@@ -31,12 +31,7 @@ const STR: Record<string, Record<Lang, string>> = {
 
   // --- Navigation ---
   'nav.dashboard': { fr: 'Tableau de bord', en: 'Dashboard', ar: 'لوحة التحكم' },
-  'nav.activate': {
-    fr: 'Grande activation de toutes les applications',
-    en: 'Grande activation de toutes les applications',
-    ar: 'Grande activation de toutes les applications',
-  },
-  'nav.remoteActivate': { fr: 'Activation à distance', en: 'Remote activation', ar: 'تفعيل عن بُعد' },
+  'nav.activate': { fr: 'Activer une box', en: 'Activate a box', ar: 'تفعيل جهاز' },
   'nav.pushSource': { fr: 'Pousser une playlist', en: 'Push a playlist', ar: 'إرسال قائمة تشغيل' },
   'nav.controlCenter': { fr: 'Centre de contrôle', en: 'Control center', ar: 'مركز التحكم' },
   'nav.forceUpdate': { fr: 'Mise à jour forcée', en: 'Force update', ar: 'تحديث إجباري' },
@@ -57,7 +52,7 @@ const STR: Record<string, Record<Lang, string>> = {
   'nav.apps': { fr: 'Applications', en: 'Apps', ar: 'التطبيقات' },
   'nav.servers': { fr: 'Serveurs', en: 'Servers', ar: 'الخوادم' },
   'nav.chaines': { fr: 'Listes', en: 'Lists', ar: 'القوائم' },
-  'nav.activations': { fr: 'Activations', en: 'Activations', ar: 'التفعيلات' },
+  'nav.activations': { fr: 'Historique des activations', en: 'Activation history', ar: 'سجل التفعيلات' },
   'nav.myActivations': { fr: 'Mes activations', en: 'My activations', ar: 'تفعيلاتي' },
   'nav.history': { fr: 'Historique', en: 'History', ar: 'السجل' },
   'nav.references': { fr: 'Références', en: 'References', ar: 'المراجع' },
@@ -67,13 +62,12 @@ const STR: Record<string, Record<Lang, string>> = {
 
   // --- Sections du menu (regroupement Sidebar) ---
   'navsec.activation': { fr: 'Activation & abonnés', en: 'Activation & subscribers', ar: 'التفعيل والمشتركون' },
-  'navsec.control':   { fr: 'Centre de contrôle', en: 'Control center', ar: 'مركز التحكم' },
-  'navsec.customers': { fr: 'Clients', en: 'Customers', ar: 'العملاء' },
-  'navsec.apps':      { fr: 'Applications', en: 'Applications', ar: 'التطبيقات' },
-  'navsec.resellers': { fr: 'Revendeurs', en: 'Resellers', ar: 'الموزعون' },
-  'navsec.blackbox':  { fr: 'Boîte noire', en: 'Black box', ar: 'الصندوق الأسود' },
+  'navsec.control':   { fr: 'Vue d’ensemble', en: 'Overview', ar: 'نظرة عامة' },
+  'navsec.customers': { fr: 'Abonnés', en: 'Subscribers', ar: 'المشتركون' },
+  'navsec.apps':      { fr: 'Versions de l’app', en: 'App versions', ar: 'إصدارات التطبيق' },
+  'navsec.resellers': { fr: 'Réseau de vente', en: 'Sales network', ar: 'شبكة البيع' },
   'navsec.channels': { fr: 'Chaînes & sources', en: 'Channels & sources', ar: 'القنوات والمصادر' },
-  'navsec.content': { fr: 'App & contenu', en: 'App & content', ar: 'التطبيق والمحتوى' },
+  'navsec.content': { fr: 'Contenu affiché', en: 'On-screen content', ar: 'المحتوى المعروض' },
   'navsec.system': { fr: 'Système', en: 'System', ar: 'النظام' },
 
   // --- Commun ---

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Navigate, Route, Routes, useNavigate } from 'react-router-dom';
+import { Navigate, Route, Routes, useNavigate, useLocation } from 'react-router-dom';
 import {
   authApi, getToken, setToken, setCurrentUser,
   ApiError,
@@ -14,7 +14,6 @@ import { ActivationsPage } from '@/pages/ActivationsPage';
 import { ResellersPage } from '@/pages/ResellersPage';
 import { ActivatePage } from '@/pages/ActivatePage';
 import { ChainesPage } from '@/pages/ChainesPage';
-import { RemoteActivatePage } from '@/pages/RemoteActivatePage';
 import { NotificationsPage } from '@/pages/NotificationsPage';
 import { HomeManagerPage } from '@/pages/HomeManagerPage';
 import { ControlCenterPage } from '@/pages/ControlCenterPage';
@@ -108,8 +107,9 @@ export default function App() {
       <Route path="/login" element={<Navigate to="/" replace />} />
       <Route path="/"            element={<DashboardPage   onLogout={handleLogout} />} />
       <Route path="/activate"    element={<ActivatePage    onLogout={handleLogout} />} />
-      {/* Activation à distance : licence + liste en un seul bouton. */}
-      <Route path="/activation-distance" element={<RemoteActivatePage onLogout={handleLogout} />} />
+      {/* Ancienne adresse d'un 2e écran d'activation (fusionné le 06/10/2026
+          dans /activate) : on y mène, MAC comprise (?mac=…). */}
+      <Route path="/activation-distance" element={<RedirectKeepQuery to="/activate" />} />
       {/* Liste de chaînes : écran à part. L'ancienne adresse y mène. */}
       <Route path="/chaines"    element={<ChainesPage     onLogout={handleLogout} />} />
       <Route path="/playlists"   element={<Navigate to="/chaines" replace />} />
@@ -140,4 +140,11 @@ export default function App() {
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
+}
+
+/// Redirection qui garde la requête (`?mac=…`) : les liens déjà copiés ou
+/// mis en favori vers l'ancienne adresse continuent de marcher.
+function RedirectKeepQuery({ to }: { to: string }) {
+  const { search } = useLocation();
+  return <Navigate to={to + search} replace />;
 }

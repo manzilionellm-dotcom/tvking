@@ -20,12 +20,11 @@ type NavItem = { key: string; to: string; cap?: string };
 // aucune logique d'activation/abonnement n'est touchée ici.
 type NavSection = { titleKey: string; items: NavItem[] };
 
-// Organisation « centre de contrôle » (06/10/2026) : chaque page existante
-// est rangée dans un groupe métier, sans en renommer aucune ni en ajouter.
-// Centre de contrôle (vue d'ensemble, en direct), Clients (abonnés,
-// appareils, activations), Applications (versions, mise à jour forcée,
-// avis), Revendeurs, Contenu (listes, serveurs, publicité, annonces, mise
-// en avant, accueil, thème), Boîte noire, Système (journal, compte).
+// Organisation « centre de contrôle » (06/10/2026), revue le même jour :
+// un titre de section ne répète jamais une entrée qu'il contient (avant :
+// « Clients › Clients », « Applications › Applications », « Boîte noire ›
+// Boîte noire »…). Vue d'ensemble, Abonnés, Chaînes & sources, Contenu
+// affiché, Versions de l'app, Réseau de vente, Système.
 const OWNER_NAV: NavSection[] = [
   {
     titleKey: 'navsec.control',
@@ -38,13 +37,29 @@ const OWNER_NAV: NavSection[] = [
   {
     titleKey: 'navsec.customers',
     items: [
+      { key: 'nav.activate',       to: '/activate' },
       { key: 'nav.customers',      to: '/customers' },
       { key: 'nav.devices',        to: '/devices' },
       { key: 'nav.activations',    to: '/activations' },
-      { key: 'nav.remoteActivate', to: '/activation-distance' },
-      { key: 'nav.activate',       to: '/activate' },
       { key: 'nav.transfer',       to: '/transfer' },
       { key: 'nav.families',       to: '/families' },
+    ],
+  },
+  {
+    titleKey: 'navsec.channels',
+    items: [
+      { key: 'nav.chaines', to: '/chaines' },
+      { key: 'nav.servers', to: '/servers' },
+    ],
+  },
+  {
+    titleKey: 'navsec.content',
+    items: [
+      { key: 'nav.homeManager',   to: '/home-manager' },
+      { key: 'nav.featured',      to: '/featured' },
+      { key: 'nav.notifications', to: '/notifications' },
+      { key: 'nav.ad',            to: '/ad' },
+      { key: 'nav.theme',         to: '/theme' },
     ],
   },
   {
@@ -64,28 +79,11 @@ const OWNER_NAV: NavSection[] = [
     ],
   },
   {
-    titleKey: 'navsec.content',
-    items: [
-      { key: 'nav.chaines',       to: '/chaines' },
-      { key: 'nav.servers',       to: '/servers' },
-      { key: 'nav.ad',            to: '/ad' },
-      { key: 'nav.notifications', to: '/notifications' },
-      { key: 'nav.featured',      to: '/featured' },
-      { key: 'nav.homeManager',   to: '/home-manager' },
-      { key: 'nav.theme',         to: '/theme' },
-    ],
-  },
-  {
-    titleKey: 'navsec.blackbox',
-    items: [
-      { key: 'nav.blackbox', to: '/blackbox' },
-    ],
-  },
-  {
     titleKey: 'navsec.system',
     items: [
-      { key: 'nav.history', to: '/history' },
-      { key: 'nav.account', to: '/account' },
+      { key: 'nav.blackbox', to: '/blackbox' },
+      { key: 'nav.history',  to: '/history' },
+      { key: 'nav.account',  to: '/account' },
     ],
   },
 ];
@@ -95,7 +93,6 @@ const RESELLER_NAV: NavSection[] = [
     titleKey: 'navsec.activation',
     // Chaque entrée n'apparaît que si l'admin a coché le droit correspondant.
     items: [
-      { key: 'nav.remoteActivate', to: '/activation-distance', cap: 'activate' },
       { key: 'nav.activate',      to: '/activate',    cap: 'activate' },
       { key: 'nav.families',      to: '/families',    cap: 'activate' },
       { key: 'nav.transfer',      to: '/transfer',    cap: 'activate' },

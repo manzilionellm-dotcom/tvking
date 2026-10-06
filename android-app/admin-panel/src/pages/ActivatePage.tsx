@@ -2,37 +2,50 @@ import { FormEvent, useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { AppLayout } from '@/components/AppLayout';
 import { Alert } from '@/components/ui';
+import { PlanPicker } from '@/components/PlanPicker';
 import {
   activateApi, appsApi, planCostsApi, meApi,
-  getCurrentUser, isOwnerRole,
+  getCurrentUser, isOwnerRole, userCan,
   DOWNLOAD_URL, DOWNLOADER_CODE, DOWNLOAD_URL_TV, DOWNLOADER_CODE_TV,
-  type App, type PlanCost, type ActivateResult, type TrialExtendResult, ApiError,
+  type App, type PlanCost, type ActivateResult, ApiError,
   newIdempotencyKey, keepIdempotencyKeyAfter,
 } from '@/lib/api';
+import {
+  DEFAULT_PLAN, activateButtonText, activationResultText, planCost,
+} from '@/lib/activation';
+import { useT } from '@/lib/i18n';
 import { formatDateTime, isValidMac, normalizeMac } from '@/lib/utils';
 import { createSingleFlight } from '@/lib/robust';
 
-// Écran d'activation — volontairement court.
-// MAC, nom (optionnel), deux durées (1 an / à vie), bouton Activer,
-// et un petit bloc pour ajouter des jours d'essai.
-// Un seul appareil à la fois. Les liens client restent en bas, en petit.
-
-const QUICK_DAYS = [3, 7, 14, 30];
-const MAX_DAYS = 365;
-
-const PLANS = [
-  { id: 'yearly', label: 'Activation 1 an' },
-  { id: 'lifetime', label: 'Activation à vie' },
-];
+// =========================================================
+//  Activer une box — l'UNIQUE écran d'activation du panel
+// =========================================================
+//  Remplace (06/10/2026) deux écrans qui faisaient le même geste avec des
+//  choix différents : « Grande activation de toutes les applications » et
+//  « Activation à distance ». L'ancienne adresse /activation-distance mène
+//  ici (App.tsx), MAC comprise.
+//
+//  Ici : la licence, et seulement elle. MAC (comme sur la box, « MK: »
+//  ajouté tout seul), nom du client, durée (essai gratuit ou abonnement),
+//  un bouton. Les listes de chaînes se gèrent dans « Listes » (/chaines) :
+//  décision du propriétaire, « listes à part, applications à part ».
+//
+//  La box est prévenue tout de suite par le Worker (ordre « activate » ou
+//  « renew »). Clé d'idempotence : un second envoi de la même intention
+//  (coupure, double appui) rejoue la réponse au lieu de redébiter.
+// =========================================================
 
 export function ActivatePage({ onLogout }: { onLogout: () => void }) {
+  const t = useT();
   const user = getCurrentUser();
   const isReseller = !isOwnerRole(user?.role);
+  const canLists = !isReseller || userCan(user, 'sources');
 
-  // ?mac=… : les autres écrans (appareils, liste de chaînes) pré-remplissent la MAC.
+  // ?mac=… : la fiche appareil, les clients et l'ancienne adresse
+  // /activation-distance pré-remplissent la MAC.
   const [sp] = useSearchParams();
-  const [mac, setMac] = useState(sp.get('mac') || 'MK:');
-  const [plan, setPlan] = useState('yearly');
+  const [mac, setMac] = useState(sp.get('mac') || '');
+  const [plan, setPlan] = useState(DEFAULT_PLAN);
   const [customerName, setCustomerName] = useState('');
   const [apps, setApps] = useState<App[]>([]);
   const [costs, setCosts] = useState<PlanCost[]>([]);
@@ -40,124 +53,71 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
 
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const [result, setResult] = useState<ActivateResult | null>(null);
+  const [result, setResult] = useState<{ res: ActivateResult; plan: string } | null>(null);
   const flight = useRef(createSingleFlight());
   const idem = useRef<string | null>(null);
 
-  const [daysChoice, setDaysChoice] = useState('7');
-  const [daysBusy, setDaysBusy] = useState(false);
-  const [daysErr, setDaysErr] = useState<string | null>(null);
-  const [daysOk, setDaysOk] = useState<TrialExtendResult | null>(null);
-
   // Application à activer : la première app « principale » du panel
   // (ni Red Room, ni Nova, ni TV) ; repli sur app_7motion si la liste
-  // n'est pas chargée. Même règle que l'écran précédent.
+  // n'est pas chargée. Même règle qu'avant.
   const primaryApp =
     apps.find((a) => !/red\s*room|nova|\btv\b/i.test(a.name)) ?? apps[0];
   const appId = primaryApp?.id ?? 'app_7motion';
-  const macOk = isValidMac(mac);
+  const normalized = normalizeMac(mac);
+  const macOk = isValidMac(normalized);
 
   useEffect(() => {
     let active = true;
-    planCostsApi.list()
-      .then((c) => { if (active) setCosts(c.items); })
-      .catch((e) => {
-        if (e instanceof ApiError && e.status === 401) onLogout();
-      });
-    appsApi.list()
-      .then((a) => { if (active) setApps(a.items); })
-      .catch((e) => {
-        if (e instanceof ApiError && e.status === 401) onLogout();
-        // Sinon : repli silencieux sur app_7motion.
-      });
-    meApi.get()
-      .then((r) => { if (active) setBalance(r.user.credit_balance ?? null); })
-      .catch((e) => {
-        if (e instanceof ApiError && e.status === 401) onLogout();
-      });
+    const out = (e: unknown) => {
+      if (e instanceof ApiError && e.status === 401) onLogout();
+    };
+    planCostsApi.list().then((c) => { if (active) setCosts(c.items); }).catch(out);
+    appsApi.list().then((a) => { if (active) setApps(a.items); }).catch(out);
+    meApi.get().then((r) => { if (active) setBalance(r.user.credit_balance ?? null); }).catch(out);
     return () => { active = false; };
   }, [onLogout]);
 
-  const costFor = (p: string): number | null => {
-    const row = costs.find((c) => c.plan === p);
-    return row ? row.credits : null;
-  };
+  // Changer la MAC ou la durée = une autre intention : nouvelle clé.
+  function changePlan(p: string) { setPlan(p); idem.current = null; setResult(null); }
+  function changeMac(v: string) { setMac(v); idem.current = null; setResult(null); }
 
   async function submit(e: FormEvent) {
     e.preventDefault();
     await flight.current.run(async () => {
-      setBusy(true);
       setErr(null);
       setResult(null);
-      const m = normalizeMac(mac);
-      if (!isValidMac(m)) {
-        setErr('MAC invalide. Format attendu : MK:XX:XX:XX:XX:XX');
-        setBusy(false);
+      if (!macOk) {
+        setErr('MAC invalide. Tape-la comme sur la box, par exemple AD:A6:98:70:6A (le « MK: » est ajouté tout seul).');
         return;
       }
+      setMac(normalized);
+      setBusy(true);
       try {
-        // Licence seulement. Pas de lien dans cet appel. La clé
-        // d'idempotence survit à une coupure : un second envoi de la même
-        // intention rejoue la réponse au lieu de réactiver et redébiter.
         const key = idem.current ?? (idem.current = newIdempotencyKey());
         const res = await activateApi.activate({
-          mac: m, plan, app_id: appId,
+          mac: normalized, plan, app_id: appId,
           customer_name: customerName.trim() || undefined,
         }, key);
         idem.current = null;
-        setResult(res);
+        setResult({ res, plan });
         if (res.credit_balance !== null) setBalance(res.credit_balance);
-      } catch (e: unknown) {
-        if (!keepIdempotencyKeyAfter(e)) idem.current = null;
-        if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
-        setErr(e instanceof ApiError ? e.message : 'Activation impossible. Réessayez.');
+      } catch (e2: unknown) {
+        if (!keepIdempotencyKeyAfter(e2)) idem.current = null;
+        if (e2 instanceof ApiError && e2.status === 401) { onLogout(); return; }
+        setErr(e2 instanceof ApiError ? e2.message : 'Activation impossible. Réessaie.');
       } finally {
         setBusy(false);
       }
     });
   }
 
-  function parsedDays(): number | null {
-    const s = daysChoice.trim();
-    if (!/^[0-9]+$/.test(s)) return null;
-    const n = Number(s);
-    if (!Number.isInteger(n) || n < 1 || n > MAX_DAYS) return null;
-    return n;
-  }
-
-  async function addDays() {
-    setDaysErr(null);
-    setDaysOk(null);
-    const m = normalizeMac(mac);
-    if (!isValidMac(m)) {
-      setDaysErr('Indique d’abord une MAC valide, en haut.');
-      return;
-    }
-    const n = parsedDays();
-    if (n == null) {
-      setDaysErr(`Jours : un entier de 1 à ${MAX_DAYS}.`);
-      return;
-    }
-    setDaysBusy(true);
-    try {
-      const res = await activateApi.extendTrial(m, n);
-      setDaysOk(res);
-    } catch (e: unknown) {
-      if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
-      setDaysErr(e instanceof ApiError ? e.message : 'Ajout impossible.');
-    } finally {
-      setDaysBusy(false);
-    }
-  }
-
   const inputCls =
     'w-full rounded-lg border border-white/10 bg-slate px-3 py-3 text-base outline-none focus:border-accent/60 focus:ring-2 focus:ring-accent/40';
-
-  const credit = costFor(plan);
+  const listsHref = `/chaines${macOk ? `?mac=${encodeURIComponent(normalized)}` : ''}`;
 
   return (
     <AppLayout
-      title="Grande activation de toutes les applications"
+      title={t('nav.activate')}
       onLogout={onLogout}
       actions={
         isReseller && balance !== null ? (
@@ -170,17 +130,18 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
       <form onSubmit={submit} className="mx-auto w-full max-w-md space-y-5">
         <div>
           <label htmlFor="act-mac" className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-ink-secondary">
-            Adresse MAC
+            Adresse MAC (comme sur la box)
           </label>
           <input
             id="act-mac"
             value={mac}
-            onChange={(e) => setMac(e.target.value)}
-            onBlur={() => setMac((v) => normalizeMac(v))}
+            onChange={(e) => changeMac(e.target.value)}
+            onBlur={() => setMac((v) => (v.trim() ? normalizeMac(v) : v))}
             autoFocus
             autoComplete="off"
-            inputMode="text"
-            placeholder="MK:XX:XX:XX:XX:XX"
+            autoCapitalize="characters"
+            spellCheck={false}
+            placeholder="AD:A6:98:70:6A"
             className={inputCls + ' font-mono'}
           />
         </div>
@@ -198,113 +159,35 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
           />
         </div>
 
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2" role="group" aria-label="Durée">
-          {PLANS.map((p) => {
-            const selected = plan === p.id;
-            const c = costFor(p.id);
-            return (
-              <button
-                type="button"
-                key={p.id}
-                onClick={() => setPlan(p.id)}
-                className={
-                  'rounded-xl border px-4 py-5 text-left transition ' +
-                  (selected
-                    ? 'border-accent bg-accent/15 text-ink-primary'
-                    : 'border-white/10 bg-midnight text-ink-secondary hover:border-white/25')
-                }
-              >
-                <span className="block text-lg font-semibold leading-tight">{p.label}</span>
-                {isReseller && c !== null && (
-                  <span className="mt-1 block text-xs text-ink-tertiary">
-                    {c} crédit{c > 1 ? 's' : ''}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
+        <PlanPicker value={plan} onChange={changePlan} costs={costs} showCosts={isReseller} />
 
         {err && <Alert>{err}</Alert>}
         {result && (
-          <p className="text-sm text-ink-primary" role="status">
-            {result.plan === 'lifetime' || result.expires_at == null
-              ? 'Activé à vie.'
-              : `Activé jusqu’au ${formatDateTime(result.expires_at)}.`}
+          <p className="rounded-xl border border-emerald-400/30 bg-emerald-400/10 px-4 py-3 text-sm text-ink-primary" role="status">
+            ✓ {activationResultText(result.plan, result.res, formatDateTime)} La box est prévenue à l’instant.
           </p>
         )}
 
         <button
           type="submit"
-          disabled={busy || !macOk}
+          disabled={busy || !mac.trim()}
           className="w-full rounded-xl bg-accent px-4 py-3.5 text-base font-semibold text-obsidian hover:bg-accent-bright disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {busy
-            ? 'Activation…'
-            : isReseller && credit !== null
-              ? `Activer · ${credit} crédit${credit > 1 ? 's' : ''}`
-              : 'Activer'}
+          {busy ? 'Activation…' : activateButtonText(plan, planCost(plan, costs), isReseller)}
         </button>
 
-        {!isReseller && (
-          <div className="space-y-3 rounded-xl border border-white/10 bg-midnight/60 p-4">
-            <p className="text-sm font-medium text-ink-primary">Ajouter des jours d’essai</p>
-            <div className="flex flex-wrap gap-2">
-              {QUICK_DAYS.map((d) => {
-                const on = daysChoice === String(d);
-                return (
-                  <button
-                    type="button"
-                    key={d}
-                    onClick={() => setDaysChoice(String(d))}
-                    className={
-                      'rounded-lg border px-3 py-2 text-sm ' +
-                      (on
-                        ? 'border-accent bg-accent/15 text-ink-primary'
-                        : 'border-white/10 text-ink-secondary')
-                    }
-                  >
-                    {d} j
-                  </button>
-                );
-              })}
-            </div>
-            <label className="block text-xs text-ink-tertiary" htmlFor="act-days">
-              Nombre de jours
-            </label>
-            <input
-              id="act-days"
-              value={daysChoice}
-              onChange={(e) => setDaysChoice(e.target.value)}
-              inputMode="numeric"
-              className={inputCls + ' font-mono'}
-            />
-            {daysErr && <Alert>{daysErr}</Alert>}
-            {daysOk && (
-              <p className="text-sm text-ink-primary" role="status">
-                Essai jusqu’au {formatDateTime(daysOk.trial_until)}.
-              </p>
-            )}
-            <button
-              type="button"
-              onClick={addDays}
-              disabled={daysBusy || !macOk}
-              className="w-full rounded-lg border border-white/15 px-4 py-2.5 text-sm font-semibold text-ink-primary hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {daysBusy ? 'Ajout…' : 'Ajouter les jours'}
-            </button>
-          </div>
+        {canLists && (
+          <p className="text-sm leading-relaxed text-ink-secondary">
+            Les listes de chaînes se gèrent à part :{' '}
+            <Link to={listsHref} className="font-medium text-accent-bright underline-offset-2 hover:underline">
+              {t('nav.chaines')}
+            </Link>.
+          </p>
         )}
 
-        <p className="text-sm leading-relaxed text-ink-secondary">
-          Le lien de la liste de chaînes est sur un autre écran :{' '}
-          <Link to={macOk ? `/chaines?mac=${encodeURIComponent(normalizeMac(mac))}` : '/chaines'} className="font-medium text-accent-bright underline-offset-2 hover:underline">
-            Liste de chaînes
-          </Link>.
-        </p>
-
-        <div className="space-y-1 pt-2 text-xs leading-relaxed text-ink-tertiary">
-          <CopyLine label="Mobile" url={DOWNLOAD_URL} code={DOWNLOADER_CODE} />
+        <div className="space-y-1 border-t border-white/5 pt-4 text-xs leading-relaxed text-ink-tertiary">
+          <p className="font-medium uppercase tracking-wide">Installer l’application</p>
+          <CopyLine label="Téléphone" url={DOWNLOAD_URL} code={DOWNLOADER_CODE} />
           <CopyLine label="TV" url={DOWNLOAD_URL_TV} code={DOWNLOADER_CODE_TV} />
         </div>
       </form>
@@ -312,6 +195,7 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
   );
 }
 
+/// Lien d'installation + code Downloader, chacun copiable d'un appui.
 function CopyLine({ label, url, code }: { label: string; url: string; code: string }) {
   const [copied, setCopied] = useState<'url' | 'code' | null>(null);
   async function copy(text: string, which: 'url' | 'code') {
@@ -322,14 +206,16 @@ function CopyLine({ label, url, code }: { label: string; url: string; code: stri
     } catch { /* copie manuelle possible */ }
   }
   return (
-    <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
-      <span>{label}</span>
-      <button type="button" onClick={() => copy(url, 'url')} className="truncate font-mono text-ink-secondary underline-offset-2 hover:underline">
+    <div className="py-1">
+      <p className="flex items-baseline gap-2">
+        <span className="text-ink-secondary">{label}</span>
+        <button type="button" onClick={() => copy(code, 'code')} className="font-mono text-ink-secondary" title="Code Downloader : appuie pour copier">
+          {copied === 'code' ? 'Copié' : `code ${code}`}
+        </button>
+      </p>
+      <button type="button" onClick={() => copy(url, 'url')} className="block max-w-full truncate font-mono text-ink-secondary underline-offset-2 hover:underline" title="Appuie pour copier">
         {copied === 'url' ? 'Copié' : url}
       </button>
-      <button type="button" onClick={() => copy(code, 'code')} className="font-mono text-ink-secondary">
-        {copied === 'code' ? 'Copié' : code}
-      </button>
-    </p>
+    </div>
   );
 }

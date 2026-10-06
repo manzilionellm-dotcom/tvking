@@ -1,6 +1,8 @@
 import { ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AppLayout } from '@/components/AppLayout';
+import { PlanPicker } from '@/components/PlanPicker';
+import { DEFAULT_RENEW_PLAN, activateButtonText, planCost } from '@/lib/activation';
 import { ListPager } from '@/components/ListPager';
 import { confirmAction } from '@/components/confirm';
 import {
@@ -8,7 +10,8 @@ import {
   TableFrame, useClientTable,
 } from '@/components/ui';
 import {
-  devicesApi, activateApi, sourcesApi, flagEmoji, isAbortError,
+  devicesApi, activateApi, sourcesApi, planCostsApi, flagEmoji, isAbortError,
+  getCurrentUser, isOwnerRole, type PlanCost,
   type Device, type DeviceSource, type DeviceOverview, type DeviceLocalSource,
   type DeviceLicense, type DevicePresence, ApiError,
   newIdempotencyKey, keepIdempotencyKeyAfter,
@@ -602,7 +605,6 @@ function DeviceDetailModal({
           <div className="mb-2 text-[10px] uppercase tracking-widest text-ink-tertiary">Actions</div>
           <div className="flex flex-wrap gap-1.5">
             <ActionBtn busy={busy} primary onClick={onActivate} title="Activer / prolonger l'abonnement">Activer / prolonger</ActionBtn>
-            <ActionBtn busy={busy} primary onClick={() => navigate(`/activation-distance?mac=${macUrl}`)} title="Activer et envoyer une liste en un seul geste. La box est prévenue tout de suite.">Activation à distance</ActionBtn>
             <ActionBtn busy={busy || sending} primary onClick={instantPush} title="Renvoie les listes du panel à la box à l'instant, puis affiche ici le moment où la TV les a vraiment reçues.">⚡ Envoi instantané</ActionBtn>
             <ActionBtn busy={busy} onClick={() => navigate(`/chaines?mac=${macUrl}`)} title="Ajouter ou changer la liste de chaînes, sans modifier l'activation">Liste de chaînes</ActionBtn>
             <ActionBtn busy={busy} onClick={() => navigate(`/blackbox?mac=${macUrl}`)} title="Journal technique de cette box : ordre du panel reçu, liste chargée en N s, liste refusée">Boîte noire</ActionBtn>
@@ -839,22 +841,22 @@ function CredRow({ label, value, mono }: { label: string; value: string; mono?: 
 function ActivatePlanModal({
   device, onClose, onDone,
 }: { device: Device; onClose: () => void; onDone: () => void }) {
-  const [plan, setPlan] = useState('yearly');
+  const [plan, setPlan] = useState(DEFAULT_RENEW_PLAN);
+  const [costs, setCosts] = useState<PlanCost[]>([]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+  const isReseller = !isOwnerRole(getCurrentUser()?.role);
+  useEffect(() => {
+    let active = true;
+    planCostsApi.list().then((c) => { if (active) setCosts(c.items); }).catch(() => { /* coûts non affichés */ });
+    return () => { active = false; };
+  }, []);
   // Verrou synchrone : deux clics avant le re-render partaient deux fois
   // et débitaient deux fois les crédits.
   const flight = useRef(createSingleFlight());
   const idem = useRef<string | null>(null);
 
-  const PLANS = [
-    { id: 'monthly', label: '1 mois' },
-    { id: 'quarterly', label: '3 mois' },
-    { id: 'biannual', label: '6 mois' },
-    { id: 'yearly', label: '1 an' },
-    { id: 'lifetime', label: 'À vie' },
-  ];
 
   async function go() {
     await flight.current.run(async () => {
@@ -878,32 +880,16 @@ function ActivatePlanModal({
         <h2 className="mb-1 text-lg font-semibold tracking-tight">Activer / prolonger</h2>
         <p className="mb-4 font-mono text-xs text-accent">{device.mac}</p>
         <p className="mb-3 text-sm text-ink-tertiary">
-          Le client a payé ? Choisis la durée — elle s'ajoute au temps restant
-          et débloque l'app immédiatement.
+          La durée s'ajoute au temps restant et débloque l'app tout de suite.
+          Mêmes choix que l'écran « Activer une box ».
         </p>
-        <div className="grid grid-cols-2 gap-2">
-          {PLANS.map((p) => (
-            <button
-              key={p.id}
-              type="button"
-              onClick={() => setPlan(p.id)}
-              className={
-                'rounded-md border px-3 py-2 text-sm transition ' +
-                (plan === p.id
-                  ? 'border-accent bg-accent/10 text-ink-primary'
-                  : 'border-white/5 bg-slate text-ink-secondary hover:border-white/20')
-              }
-            >
-              {p.label}
-            </button>
-          ))}
-        </div>
+        <PlanPicker value={plan} onChange={(p) => { setPlan(p); idem.current = null; }} costs={costs} showCosts={isReseller} />
         {err && <div className="mt-3 rounded-md border border-accent/30 bg-accent/10 px-3 py-2 text-xs text-accent-bright">{err}</div>}
         {done && <div className="mt-3 rounded-md border border-success/30 bg-success/10 px-3 py-2 text-xs text-success">Activé ✔</div>}
         <div className="flex justify-end gap-2 pt-4">
           <button type="button" onClick={onClose} className="rounded-md px-3 py-2 text-sm text-ink-secondary hover:text-ink-primary">Annuler</button>
           <button disabled={busy || done} onClick={go} className="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-black hover:bg-accent-bright disabled:opacity-50">
-            {busy ? 'Activation…' : 'Activer'}
+            {busy ? 'Activation…' : activateButtonText(plan, planCost(plan, costs), isReseller)}
           </button>
         </div>
       </div>

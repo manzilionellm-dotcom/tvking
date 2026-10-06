@@ -8,6 +8,7 @@ import {
   type DeviceSource, type DeviceSourceInput, ApiError,
 } from '@/lib/api';
 import { isValidMac, normalizeMac } from '@/lib/utils';
+import { useT } from '@/lib/i18n';
 
 // Écran LISTE DE CHAÎNES — séparé de l'activation.
 // Enregistrer un lien n'appelle PAS /api/v1/activate.
@@ -37,9 +38,11 @@ function toInput(s: Kept): DeviceSourceInput {
 }
 
 export function ChainesPage({ onLogout }: { onLogout: () => void }) {
+  const t = useT();
   const canPush = userCan(getCurrentUser(), 'sources');
   const [sp] = useSearchParams();
-  const [mac, setMac] = useState(sp.get('mac') || 'MK:');
+  // Même saisie que « Activer une box » : MAC comme sur la box, « MK: » ajouté seul.
+  const [mac, setMac] = useState(sp.get('mac') || '');
   const [link, setLink] = useState('');
   const [hasLink, setHasLink] = useState(false);
   const [otherCount, setOtherCount] = useState(0);
@@ -106,7 +109,7 @@ export function ChainesPage({ onLogout }: { onLogout: () => void }) {
     setOk(null);
     const m = normalizeMac(mac);
     if (!isValidMac(m)) {
-      setErr('MAC invalide. Format attendu : MK:XX:XX:XX:XX:XX');
+      setErr('MAC invalide. Tape-la comme sur la box, par exemple AD:A6:98:70:6A (le « MK: » est ajouté tout seul).');
       return;
     }
     if (!loaded) {
@@ -190,24 +193,27 @@ export function ChainesPage({ onLogout }: { onLogout: () => void }) {
         <form onSubmit={save} className="space-y-4 rounded-xl border border-white/10 bg-midnight p-6">
           <h2 className="text-base font-semibold">Lien de la liste</h2>
           <p className="text-sm leading-relaxed text-ink-secondary">
-            Pour activer ou désactiver l’application, ou changer la durée, va sur{' '}
-            <Link to="/activate" className="font-medium text-accent-bright underline-offset-2 hover:underline">
-              Grande activation de toutes les applications
+            Ici, seulement la liste de chaînes. Pour la licence (essai, durée) :{' '}
+            <Link
+              to={isValidMac(normalizeMac(mac)) ? `/activate?mac=${encodeURIComponent(normalizeMac(mac))}` : '/activate'}
+              className="font-medium text-accent-bright underline-offset-2 hover:underline"
+            >
+              {t('nav.activate')}
             </Link>.
           </p>
 
           <div>
             <label htmlFor="chaines-mac" className="mb-1.5 block text-xs font-medium text-ink-secondary">
-              Adresse MAC de la box
+              Adresse MAC (comme sur la box)
             </label>
             <input
               id="chaines-mac"
               value={mac}
               onChange={(e) => { setMac(e.target.value); setOk(null); }}
-              onBlur={() => setMac((v) => normalizeMac(v))}
+              onBlur={() => setMac((v) => (v.trim() ? normalizeMac(v) : v))}
               autoFocus
               autoComplete="off"
-              placeholder="MK:XX:XX:XX:XX:XX"
+              placeholder="AD:A6:98:70:6A"
               className={inputCls + ' font-mono'}
             />
           </div>
