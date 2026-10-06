@@ -421,6 +421,26 @@ demande (ce que font IBO / TiviMate / Smarters).
   le panel et échoue si le Worker ne les autorise pas (rouge sur l'ancien
   code, vert maintenant).
 
+## 5 unvicies. Preuves sur la vraie box + ANR de Direct corrigé (6 octobre, build #169)
+
+- Prouvé sur la SHIELD (boîte noire, #168) : liste du client supprimée sur
+  la télé ET le serveur (09:29:51) ; liste du panel refusée, plus
+  réimportée (09:31:31) ; ordre `source_clear` n°22 reçu par WebSocket et
+  accusé « appliqué : no_source (révision 2) » 1 s plus tard avec son
+  `trace` : le premier accusé réel d'une box.
+- ANR du 06/10 09:07 : Direct recevait 50 000 chaînes avec un drapeau de
+  pré-calcul resté vrai du lot de 1 000 ; Tendances / « Pour vous »
+  curaient les 50 000 noms sur le fil UI. Corrigé (commit 9e19cc5) : drapeau
+  remis avant, rayons lus en cache seulement. Mesure machine de test :
+  4 861 ms → 14 ms. Repli `zuno.direct.shelves_legacy`.
+- Restent visibles dans le journal : relecture de 50 000 chaînes ≈ 2,2 s
+  (`[DB] lecture`), ligne de liste disparue pendant un import de 128 s
+  (filet actif), guide `FormatException: Filter error`, import Xtream
+  catégorie par catégorie (914 appels, 136 s).
+- Build #169 = `107-test.169`, versionCode 1791272560, SHA-256
+  `80fac86949a54cf92a7d92396d88f14bc818cf1c0b878c98c3f822c0beeb8d2e`
+  (54 800 024 octets), signature `5145b8e0…9e61` relue.
+
 ## 6. Règles du propriétaire (non négociables)
 
 - Jamais `publish=true` sans son ordre écrit ; jamais de push sur `main`.
