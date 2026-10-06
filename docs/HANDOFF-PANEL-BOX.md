@@ -555,9 +555,11 @@ demande (ce que font IBO / TiviMate / Smarters).
   Il faut envoyer cette liste d'environ 50 000 chaînes à `80:78:60:07:4F`,
   ouvrir Direct, puis obtenir le journal couvrant le chargement et sa fin
   (durée et nombre de chaînes), la mémoire sous charge et les éventuels gels.
-  Le critère mémoire à 5 s reste incompatible avec le timer de 30 s décrit
-  ci-dessus : il demande une instrumentation adaptée, pas une assertion
-  assouplie. Les listes d'une autre MAC ne sont pas utilisées pour ce test.
+  Le critère initial mémoire à 5 s est incompatible avec le timer de 30 s
+  décrit ci-dessus. Le prompt de reprise a été corrigé dans `2a1cf62` :
+  aucune ligne `[GEL]` de 3 s ou plus pendant l'import. Le journal reçu
+  sans import ne permet pas encore de valider ce critère. Les listes
+  d'une autre MAC ne sont pas utilisées pour ce test.
 - Aucun déploiement Worker/panel ni publication clients effectué. La seule
   écriture produit pendant la lecture du panel est une demande de journal
   technique à la MAC de référence ; aucune licence ni liste n'a été modifiée.
