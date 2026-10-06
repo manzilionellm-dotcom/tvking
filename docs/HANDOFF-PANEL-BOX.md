@@ -441,6 +441,23 @@ demande (ce que font IBO / TiviMate / Smarters).
   `80fac86949a54cf92a7d92396d88f14bc818cf1c0b878c98c3f822c0beeb8d2e`
   (54 800 024 octets), signature `5145b8e0…9e61` relue.
 
+## 5 duovicies. Ordre rejoué à la reconnexion (6 octobre, build #170)
+
+- Mesuré (#169, 10:16:59) : l'ordre n°22 déjà appliqué à 09:35:55 est
+  renvoyé par le Durable Object à l'ouverture de la prise, retraité et
+  accusé « en échec : not_run ». Le serveur l'a ignoré (état terminal
+  APPLIED), mais le journal mentait.
+- Correctif (commit a000384) : la prise WebSocket lit le dernier numéro
+  traité gardé par l'attente longue et ignore un ordre déjà traité. Repli
+  `zuno.realtime.ws_replay_legacy`.
+- Aussi dans ce journal : 09:57 → 10:15, `Failed host lookup: 'github.com'`
+  = le DNS de la box ne répondait plus (réseau local, pas l'app) ; la mise
+  à jour attend que l'app soit à l'écran pour ouvrir l'installateur
+  Android (« installateur non ouvert (déjà proposé) »).
+- Build #170 = `107-test.170`, versionCode 1791275287, SHA-256
+  `a516b0a25882998f126ed44b301f02aabf511bee93ea45fbd6784ccc9b93a636`
+  (54 800 918 octets), signature `5145b8e0…9e61` relue.
+
 ## 6. Règles du propriétaire (non négociables)
 
 - Jamais `publish=true` sans son ordre écrit ; jamais de push sur `main`.
