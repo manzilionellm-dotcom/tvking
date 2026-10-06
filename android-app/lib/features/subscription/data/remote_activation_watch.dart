@@ -284,13 +284,27 @@ class RemoteActivationWatch {
         mac: mac,
         alive: () => _run && generation == _generation,
         onFrame: (BoxChannelFrame frame) async {
+          // Le Durable Object renvoie le DERNIER ordre à chaque ouverture
+          // de la prise. Même numéro que l'attente longue : on lit le
+          // numéro gardé (entre deux démarrages) et on ignore un ordre
+          // déjà traité. Repli `zuno.realtime.ws_replay_legacy`.
+          if (!RepairFlags.wsReplayLegacy) {
+            if (!_cursorsLoaded) await _loadCursors();
+            if (frameAlreadyHandled(seq: frame.seq, cursor: _boxCursor)) {
+              BlackBox.instance.info(
+                'PANEL',
+                'ordre ${frame.type} n°${frame.seq} déjà traité : ignoré (renvoyé à la reconnexion)',
+              );
+              return;
+            }
+          }
           // Le statut, l'annonce, le thème : la veille les connaît
           // déjà par le nom d'ordre. Un ordre de liste relit les
           // listes tout de suite dans _applyOrders (le numéro de
           // source du statut peut ne pas bouger sur le Worker de
           // production) : même chemin que l'attente longue, une
           // seule lecture de /api/device-source par ordre.
-          await _applyOrders(<BoxOrder>[
+          final bool applied = await _applyOrders(<BoxOrder>[
             BoxOrder(
               id: frame.seq,
               kind: frame.type,
@@ -299,6 +313,10 @@ class RemoteActivationWatch {
               traceId: frame.traceId,
             ),
           ], via: 'ws');
+          if (applied && !RepairFlags.wsReplayLegacy && frame.seq > _boxCursor) {
+            _boxCursor = frame.seq;
+            await _saveCursors();
+          }
         },
       );
       _session = session;
@@ -575,7 +593,12 @@ class RemoteActivationWatch {
     return _appVersion;
   }
 
+  /// Vrai une fois les numéros relus (la prise WebSocket peut recevoir
+  /// une trame avant que l'attente longue ne les ait chargés).
+  bool _cursorsLoaded = false;
+
   Future<void> _loadCursors() async {
+    _cursorsLoaded = true;
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       _boxCursor = prefs.getInt(_kBoxCursor) ?? 0;

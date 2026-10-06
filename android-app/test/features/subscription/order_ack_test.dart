@@ -102,4 +102,14 @@ void main() {
     expect(r.orders[0].traceId, 'trace-0002');
     expect(r.orders[1].orderId, '');
   });
+
+  test('trame renvoyée à la reconnexion : ordre déjà traité ignoré, ordre neuf traité', () {
+    // Mesuré le 06/10/2026 : n°22 appliqué à 09:35, renvoyé au redémarrage
+    // de 10:16 puis accusé « en échec ». Numéro gardé = 22.
+    expect(frameAlreadyHandled(seq: 22, cursor: 22), isTrue);
+    expect(frameAlreadyHandled(seq: 21, cursor: 22), isTrue);
+    expect(frameAlreadyHandled(seq: 23, cursor: 22), isFalse);
+    expect(frameAlreadyHandled(seq: 1, cursor: 0), isFalse, reason: 'box neuve : tout est neuf');
+    expect(frameAlreadyHandled(seq: 0, cursor: 22), isFalse, reason: 'ancien Worker sans numéro : on traite');
+  });
 }

@@ -67,6 +67,15 @@ bool _hasSecretKey(Object? value) {
 
 /// null si le texte n'est pas un signal, ou s'il contient une clé
 /// interdite. « hello » n'est pas un signal : c'est un battement.
+/// Vrai si la trame [seq] a déjà été traitée ([cursor] = dernier numéro
+/// traité, gardé entre deux démarrages). Le Durable Object renvoie le
+/// dernier ordre à chaque ouverture de la prise : mesuré le 06/10/2026 sur
+/// la SHIELD, l'ordre n°22 déjà appliqué à 09:35 était rejoué au
+/// redémarrage de 10:16 puis accusé « en échec ». `seq` 0 ou inconnu : on
+/// traite (ancien Worker sans numéro).
+bool frameAlreadyHandled({required int seq, required int cursor}) =>
+    seq > 0 && seq <= cursor;
+
 BoxChannelFrame? parseBoxChannelFrame(String raw) {
   Object? decoded;
   try {

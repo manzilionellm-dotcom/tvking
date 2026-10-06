@@ -237,10 +237,17 @@ abstract final class RepairFlags {
   static const String liveShelvesLegacyKey = 'zuno.direct.shelves_legacy';
   static bool liveShelvesLegacy = false;
 
+  /// Prise WebSocket : un ordre déjà traité (numéro ≤ dernier numéro gardé)
+  /// est ignoré. Faux (défaut, 06/10/2026). Vrai = ancien comportement
+  /// (l'ordre renvoyé à chaque reconnexion est retraité et ré-accusé).
+  static const String wsReplayLegacyKey = 'zuno.realtime.ws_replay_legacy';
+  static bool wsReplayLegacy = false;
+
   static Future<void> load() async {
     bool raw = false;
     bool tvDelLegacy = false;
     bool shelvesLegacy = false;
+    bool replayLegacy = false;
     bool fsyncAll = false;
     bool syncPlayback = false;
     bool epgOff = false;
@@ -298,6 +305,7 @@ abstract final class RepairFlags {
       ackOff = prefs.getBool(orderAckOffKey) ?? false;
       tvDelLegacy = prefs.getBool(tvDeleteLegacyKey) ?? false;
       shelvesLegacy = prefs.getBool(liveShelvesLegacyKey) ?? false;
+      replayLegacy = prefs.getBool(wsReplayLegacyKey) ?? false;
     } catch (_) {
       raw = false;
       fsyncAll = false;
@@ -328,10 +336,12 @@ abstract final class RepairFlags {
       ackOff = false;
       tvDelLegacy = false;
       shelvesLegacy = false;
+      replayLegacy = false;
     }
     orderAckOff = ackOff;
     tvDeleteLegacy = tvDelLegacy;
     liveShelvesLegacy = shelvesLegacy;
+    wsReplayLegacy = replayLegacy;
     sourceDropFirstLegacy = dropFirst;
     remoteResetOff = resetOff;
     testUpdatePollLegacy = testPollLegacy;
@@ -394,6 +404,7 @@ abstract final class RepairFlags {
     orderAckOff = false;
     tvDeleteLegacy = false;
     liveShelvesLegacy = false;
+    wsReplayLegacy = false;
     NativeVideoController.legacyHoldFrame = false;
   }
 }

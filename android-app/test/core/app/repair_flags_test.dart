@@ -70,6 +70,8 @@ void main() {
     expect(RepairFlags.tvDeleteLegacyKey, 'zuno.source.tv_delete_legacy');
     expect(RepairFlags.liveShelvesLegacy, isFalse);
     expect(RepairFlags.liveShelvesLegacyKey, 'zuno.direct.shelves_legacy');
+    expect(RepairFlags.wsReplayLegacy, isFalse);
+    expect(RepairFlags.wsReplayLegacyKey, 'zuno.realtime.ws_replay_legacy');
 
     SharedPreferences.setMockInitialValues(<String, Object>{
       RepairFlags.autoRefreshFullKey: true,
