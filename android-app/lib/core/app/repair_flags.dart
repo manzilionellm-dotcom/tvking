@@ -230,9 +230,17 @@ abstract final class RepairFlags {
   static const String tvDeleteLegacyKey = 'zuno.source.tv_delete_legacy';
   static bool tvDeleteLegacy = false;
 
+  /// Écran Direct, rayons Tendances / « Pour vous ». Faux (défaut,
+  /// 06/10/2026) = lecture du cache seulement et drapeau de pré-calcul remis
+  /// avant le recalcul (ANR mesuré : 50 000 chaînes curées sur le fil UI).
+  /// Vrai = ancien calcul.
+  static const String liveShelvesLegacyKey = 'zuno.direct.shelves_legacy';
+  static bool liveShelvesLegacy = false;
+
   static Future<void> load() async {
     bool raw = false;
     bool tvDelLegacy = false;
+    bool shelvesLegacy = false;
     bool fsyncAll = false;
     bool syncPlayback = false;
     bool epgOff = false;
@@ -289,6 +297,7 @@ abstract final class RepairFlags {
       dropFirst = prefs.getBool(sourceDropFirstLegacyKey) ?? false;
       ackOff = prefs.getBool(orderAckOffKey) ?? false;
       tvDelLegacy = prefs.getBool(tvDeleteLegacyKey) ?? false;
+      shelvesLegacy = prefs.getBool(liveShelvesLegacyKey) ?? false;
     } catch (_) {
       raw = false;
       fsyncAll = false;
@@ -318,9 +327,11 @@ abstract final class RepairFlags {
       dropFirst = false;
       ackOff = false;
       tvDelLegacy = false;
+      shelvesLegacy = false;
     }
     orderAckOff = ackOff;
     tvDeleteLegacy = tvDelLegacy;
+    liveShelvesLegacy = shelvesLegacy;
     sourceDropFirstLegacy = dropFirst;
     remoteResetOff = resetOff;
     testUpdatePollLegacy = testPollLegacy;
@@ -382,6 +393,7 @@ abstract final class RepairFlags {
     sourceDropFirstLegacy = false;
     orderAckOff = false;
     tvDeleteLegacy = false;
+    liveShelvesLegacy = false;
     NativeVideoController.legacyHoldFrame = false;
   }
 }

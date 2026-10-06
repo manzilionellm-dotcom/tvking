@@ -237,6 +237,19 @@ abstract final class ChannelPrecompute {
   static ChannelGenre? cachedGenre(Channel c) =>
       _ChannelComputedCache.genres[c.id];
 
+  /// Nom curé déjà calculé, ou `null` (jamais de calcul ici). Même rôle que
+  /// [cachedGenre] pour Tendances (06/10/2026 : 50 000 noms curés d'un coup
+  /// sur le fil UI = ANR mesuré sur la SHIELD).
+  static String? cachedCleanName(Channel c) =>
+      _ChannelComputedCache.cleanNames[c.id];
+
+  /// Pays déjà calculé : `known` faux s'il n'est pas encore en cache (le
+  /// pays lui-même peut valoir `null` = aucun pays détecté).
+  static ({bool known, CountryInfo? country}) cachedCountry(Channel c) {
+    final bool known = _ChannelComputedCache.countries.containsKey(c.id);
+    return (known: known, country: known ? _ChannelComputedCache.countries[c.id] : null);
+  }
+
   /// Pré-calcule nom curé / genre / pays / qualité pour toutes les chaînes
   /// pas encore en cache, par tranches de [_kChunk] dans un isolate.
   /// [cancelled] est consulté entre deux tranches (écran fermé, nouvelle

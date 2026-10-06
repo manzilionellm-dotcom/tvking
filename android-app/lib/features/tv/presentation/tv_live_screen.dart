@@ -26,6 +26,7 @@ import '../core/tv_tokens.dart';
 import '../../channels/data/recently_watched_repository.dart';
 import '../../channels/data/trending_repository.dart';
 import '../../channels/domain/channel.dart';
+import '../domain/live_shelves.dart';
 import '../../device/data/device_identity.dart';
 import '../../epg/data/epg_repository.dart';
 import '../../epg/domain/epg_program.dart';
@@ -318,70 +319,83 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
           if (_byId[id] != null) _byId[id]!,
       ];
     }
-    // Tendances (ordre de popularité, match par nom insensible à la casse).
-    if (_trending.isEmpty || _all.isEmpty || !_precomputed) {
-      _trendCh = const <Channel>[]; // attend le pré-calcul (noms curés)
+    // Tendances et « Pour vous » : LECTURE DU CACHE SEULEMENT
+    // (live_shelves.dart). ANR du 06/10/2026 : ces rayons curaient et
+    // classaient 50 000 chaînes sur le fil UI. Repli
+    // `zuno.direct.shelves_legacy` : ancien calcul (getters qui calculent).
+    if (!RepairFlags.liveShelvesLegacy) {
+      _trendCh = (_trending.isEmpty || _all.isEmpty || !_precomputed)
+          ? const <Channel>[]
+          : trendingFromCache(_all, _trending);
+      _forYouCh = (_recentIds.isEmpty || _all.isEmpty || !_precomputed)
+          ? const <Channel>[]
+          : forYouFromCache(all: _all, byId: _byId, recent: _recentIds, favorites: _favIds);
     } else {
-      final Map<String, Channel> byName = <String, Channel>{};
-      for (final Channel c in _all) {
-        byName.putIfAbsent(c.cleanName.trim().toLowerCase(), () => c);
-      }
-      final List<Channel> out = <Channel>[];
-      final Set<String> seen = <String>{};
-      for (final String name in _trending) {
-        final Channel? c = byName[name.trim().toLowerCase()];
-        if (c != null && seen.add(c.id)) out.add(c);
-      }
-      _trendCh = out;
-    }
-    // « Pour vous » : petit MOTEUR DE RECO local (pas d'envoi de données). On
-    // construit un PROFIL DE GOÛT pondéré depuis l'historique récent — genre ET
-    // pays, pondérés par fréquence ET récence (la dernière vue pèse le plus) —
-    // puis on SCORE chaque chaîne candidate (hors déjà-vues/favorites) par
-    // affinité (genre ×2 + pays ×1) et on garde les meilleures. Calculé ICI
-    // (O(n), une fois par changement de source — jamais en build).
-    if (_recentIds.isEmpty || _all.isEmpty || !_precomputed) {
-      _forYouCh = const <Channel>[]; // attend le pré-calcul (genre/pays)
-    } else {
-      final Map<ChannelGenre, double> genreScore = <ChannelGenre, double>{};
-      final Map<String, double> countryScore = <String, double>{};
-      int rank = 0;
-      for (final String id in _recentIds.take(20)) {
-        final Channel? c = _byId[id];
-        if (c == null) continue;
-        final double w = 1.0 / (1 + rank); // récence : poids décroissant
-        rank++;
-        if (c.genre != ChannelGenre.other) {
-          genreScore[c.genre] = (genreScore[c.genre] ?? 0) + w;
-        }
-        final String? cc = c.country?.code;
-        if (cc != null && cc.isNotEmpty) {
-          countryScore[cc] = (countryScore[cc] ?? 0) + w;
-        }
-      }
-      if (genreScore.isEmpty && countryScore.isEmpty) {
-        _forYouCh = const <Channel>[];
+      // Tendances (ordre de popularité, match par nom insensible à la casse).
+      if (_trending.isEmpty || _all.isEmpty || !_precomputed) {
+        _trendCh = const <Channel>[]; // attend le pré-calcul (noms curés)
       } else {
-        final Set<String> exclude = <String>{..._recentIds, ..._favIds};
-        final List<Channel> cand = <Channel>[];
-        final Map<String, double> score = <String, double>{};
+        final Map<String, Channel> byName = <String, Channel>{};
         for (final Channel c in _all) {
-          if (exclude.contains(c.id)) continue;
-          double s = 0;
+          byName.putIfAbsent(c.cleanName.trim().toLowerCase(), () => c);
+        }
+        final List<Channel> out = <Channel>[];
+        final Set<String> seen = <String>{};
+        for (final String name in _trending) {
+          final Channel? c = byName[name.trim().toLowerCase()];
+          if (c != null && seen.add(c.id)) out.add(c);
+        }
+        _trendCh = out;
+      }
+      // « Pour vous » : petit MOTEUR DE RECO local (pas d'envoi de données). On
+      // construit un PROFIL DE GOÛT pondéré depuis l'historique récent — genre ET
+      // pays, pondérés par fréquence ET récence (la dernière vue pèse le plus) —
+      // puis on SCORE chaque chaîne candidate (hors déjà-vues/favorites) par
+      // affinité (genre ×2 + pays ×1) et on garde les meilleures. Calculé ICI
+      // (O(n), une fois par changement de source — jamais en build).
+      if (_recentIds.isEmpty || _all.isEmpty || !_precomputed) {
+        _forYouCh = const <Channel>[]; // attend le pré-calcul (genre/pays)
+      } else {
+        final Map<ChannelGenre, double> genreScore = <ChannelGenre, double>{};
+        final Map<String, double> countryScore = <String, double>{};
+        int rank = 0;
+        for (final String id in _recentIds.take(20)) {
+          final Channel? c = _byId[id];
+          if (c == null) continue;
+          final double w = 1.0 / (1 + rank); // récence : poids décroissant
+          rank++;
           if (c.genre != ChannelGenre.other) {
-            s += (genreScore[c.genre] ?? 0) * 2.0;
+            genreScore[c.genre] = (genreScore[c.genre] ?? 0) + w;
           }
           final String? cc = c.country?.code;
-          if (cc != null) s += countryScore[cc] ?? 0;
-          if (s > 0) {
-            score[c.id] = s;
-            cand.add(c);
+          if (cc != null && cc.isNotEmpty) {
+            countryScore[cc] = (countryScore[cc] ?? 0) + w;
           }
         }
-        // Tri par affinité décroissante ; on garde le top 40.
-        cand.sort((Channel a, Channel b) =>
-            (score[b.id] ?? 0).compareTo(score[a.id] ?? 0));
-        _forYouCh = cand.length > 40 ? cand.sublist(0, 40) : cand;
+        if (genreScore.isEmpty && countryScore.isEmpty) {
+          _forYouCh = const <Channel>[];
+        } else {
+          final Set<String> exclude = <String>{..._recentIds, ..._favIds};
+          final List<Channel> cand = <Channel>[];
+          final Map<String, double> score = <String, double>{};
+          for (final Channel c in _all) {
+            if (exclude.contains(c.id)) continue;
+            double s = 0;
+            if (c.genre != ChannelGenre.other) {
+              s += (genreScore[c.genre] ?? 0) * 2.0;
+            }
+            final String? cc = c.country?.code;
+            if (cc != null) s += countryScore[cc] ?? 0;
+            if (s > 0) {
+              score[c.id] = s;
+              cand.add(c);
+            }
+          }
+          // Tri par affinité décroissante ; on garde le top 40.
+          cand.sort((Channel a, Channel b) =>
+              (score[b.id] ?? 0).compareTo(score[a.id] ?? 0));
+          _forYouCh = cand.length > 40 ? cand.sublist(0, 40) : cand;
+        }
       }
     }
     // Catégories affichées (pseudo-catégories non vides en tête).
@@ -613,6 +627,12 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     }
     if (!mounted) return;
     BlackBox.instance.info('DIRECT', '${live.length} chaînes · ${cats.length} catégories');
+    // Le drapeau « pré-calcul terminé » vaut pour CE lot, AVANT le recalcul
+    // des rayons (avant le 06/10/2026 il restait vrai du lot précédent de
+    // 1 000 chaînes pendant le recalcul des 50 000 → ANR).
+    if (!RepairFlags.liveShelvesLegacy) {
+      _precomputed = channels.every(ChannelPrecompute.isDone);
+    }
     setState(() {
       _all = live;
       _cats = cats;
