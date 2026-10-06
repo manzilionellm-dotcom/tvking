@@ -16,6 +16,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:media_kit/media_kit.dart';
 
 import 'core/app/boot_guard.dart';
+import 'core/app/panel_live_wait.dart';
 import 'core/assistance/assistance_overlay.dart';
 import 'core/app/guarded_main.dart';
 import 'core/backend/backend_hosts.dart';
@@ -175,6 +176,12 @@ Future<void> bootApp() async {
       RemoteSourceRepository.sync().then((_) {
         PlaylistRepository.instance.pruneEmptyPlaylists();
       });
+      // PANEL EN DIRECT (06/10/2026) : attente longue sur le canal de la
+      // box ; une liste ajoutée, retirée ou effacée dans le panel arrive
+      // tout de suite tant que l'app est à l'écran (panel_live_wait.dart).
+      if (!RemoteSourceRepository.storeBuild) {
+        unawaited(PanelLiveWait.instance.install());
+      }
     }
 
     // Sauvegarde cloud par MAC : démarre l'upload automatique (à chaque
