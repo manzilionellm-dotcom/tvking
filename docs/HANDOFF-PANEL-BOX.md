@@ -458,6 +458,20 @@ demande (ce que font IBO / TiviMate / Smarters).
   `a516b0a25882998f126ed44b301f02aabf511bee93ea45fbd6784ccc9b93a636`
   (54 800 918 octets), signature `5145b8e0…9e61` relue.
 
+## 5 tervicies. « trial_7d · 401 j restants » sur une box payée (6 octobre)
+
+- Mesuré : `MK:5C:E5:43:35:1F` (Fire TV AFTKM, Canada, hors ligne depuis le
+  05/10 19:16) payée jusqu'au 11/11/2027, affichée « trial_7d ». Un essai
+  ajouté à une licence payée active remplaçait le plan.
+- Correctif `fb0277e` sur `claude/panel-mise-en-ligne`, run #12
+  (Worker puis panel) : essai sur payé actif → jours ajoutés, plan payé
+  gardé ; panel : libellé lisible (« Essai 7 j », « 1 an »).
+  Tests failure_injection L1–L5 (L1 rouge sur l'ancien code).
+- La licence déjà marquée « trial_7d » le reste tant qu'un abonnement payé
+  n'est pas réactivé (aucune réécriture de données en production).
+- Rappel propriétaire : les listes de `5C:E5…` ne vont pas sur la SHIELD
+  (`80:78:60:07:4F`) ; chaque box a ses propres listes.
+
 ## 6. Règles du propriétaire (non négociables)
 
 - Jamais `publish=true` sans son ordre écrit ; jamais de push sur `main`.
