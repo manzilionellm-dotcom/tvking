@@ -148,14 +148,15 @@ class _SourceRow extends StatelessWidget {
       ),
     );
     if (ok != true || playlist.id == null) return;
-    try {
-      // La raison va dans la boîte noire : on sait ensuite que le retour de
-      // la liste vient du panel qui la sert toujours, pas d'un bug.
-      await PlaylistRepository.instance.deletePlaylist(
-        playlist.id!,
-        reason: fromPanel ? 'client, liste encore servie par le panel' : 'client',
+    // Suppression pour de bon : liste du client effacée aussi sur le
+    // serveur, liste du panel plus réimportée tant que le panel ne la
+    // renvoie pas (tv_delete.dart). Repli `zuno.source.tv_delete_legacy`.
+    final bool done = await RemoteSourceRepository.deleteFromTv(playlist);
+    if (!done && context.mounted) {
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        SnackBar(content: Text(context.l10n.tvDeleteSourceFailed)),
       );
-    } catch (_) {}
+    }
   }
 
   @override

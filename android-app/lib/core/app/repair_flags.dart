@@ -222,8 +222,17 @@ abstract final class RepairFlags {
   static const String orderAckOffKey = 'zuno.ack.off';
   static bool orderAckOff = false;
 
+  /// Supprimer une liste sur la télé (« Mes sources »). Faux (défaut,
+  /// 06/10/2026) = la suppression tient : une liste ajoutée par le client
+  /// est aussi supprimée sur le serveur, une liste du panel n'est plus
+  /// réimportée tant que le panel ne la renvoie pas. Vrai = ancien
+  /// comportement (copie locale seulement : la liste revient).
+  static const String tvDeleteLegacyKey = 'zuno.source.tv_delete_legacy';
+  static bool tvDeleteLegacy = false;
+
   static Future<void> load() async {
     bool raw = false;
+    bool tvDelLegacy = false;
     bool fsyncAll = false;
     bool syncPlayback = false;
     bool epgOff = false;
@@ -279,6 +288,7 @@ abstract final class RepairFlags {
       testPollLegacy = prefs.getBool(testUpdatePollLegacyKey) ?? false;
       dropFirst = prefs.getBool(sourceDropFirstLegacyKey) ?? false;
       ackOff = prefs.getBool(orderAckOffKey) ?? false;
+      tvDelLegacy = prefs.getBool(tvDeleteLegacyKey) ?? false;
     } catch (_) {
       raw = false;
       fsyncAll = false;
@@ -307,8 +317,10 @@ abstract final class RepairFlags {
       testPollLegacy = false;
       dropFirst = false;
       ackOff = false;
+      tvDelLegacy = false;
     }
     orderAckOff = ackOff;
+    tvDeleteLegacy = tvDelLegacy;
     sourceDropFirstLegacy = dropFirst;
     remoteResetOff = resetOff;
     testUpdatePollLegacy = testPollLegacy;
@@ -369,6 +381,7 @@ abstract final class RepairFlags {
     testUpdatePollLegacy = false;
     sourceDropFirstLegacy = false;
     orderAckOff = false;
+    tvDeleteLegacy = false;
     NativeVideoController.legacyHoldFrame = false;
   }
 }

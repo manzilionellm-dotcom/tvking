@@ -40,6 +40,7 @@ import '../domain/m3u_link.dart';
 import '../domain/playlist.dart';
 import '../domain/source_fingerprint.dart';
 import '../domain/source_retry.dart';
+import '../domain/tv_delete.dart';
 import 'favorites_repository.dart';
 import 'import_progress.dart';
 import 'playlist_database.dart';
@@ -185,6 +186,137 @@ abstract final class RemoteSourceRepository {
   /// [force] : ordre explicite du panel ou passe manuelle → les listes
   /// mises de côté après un refus sont retentées tout de suite (en
   /// dernier). Sinon, une liste refusée attend son délai (source_retry.dart).
+  // ---------------------------------------------------------------
+  //  Suppression depuis la télé (« Mes sources ») — voir tv_delete.dart
+  // ---------------------------------------------------------------
+
+  /// Listes du panel refusées sur la télé : empreinte → instant (ms).
+  static const String tvRefusedKey = 'zuno.source.tv_refused.v1';
+
+  /// Instant du dernier ordre « liste » du panel (renvoi explicite) : un
+  /// refus plus ancien tombe, la liste revient.
+  static int? _panelResendAtMs;
+
+  /// Appelé par la surveillance du panel quand un ordre « liste » arrive.
+  static void notePanelResend([int? atMs]) {
+    _panelResendAtMs = atMs ?? DateTime.now().millisecondsSinceEpoch;
+  }
+
+  static Map<String, int> _readRefused(SharedPreferences prefs) {
+    try {
+      final String? raw = prefs.getString(tvRefusedKey);
+      if (raw == null || raw.isEmpty) return <String, int>{};
+      final Object? d = jsonDecode(raw);
+      if (d is! Map) return <String, int>{};
+      return <String, int>{
+        for (final MapEntry<Object?, Object?> e in d.entries)
+          if (e.value is num) '${e.key}': (e.value as num).toInt(),
+      };
+    } catch (_) {
+      return <String, int>{};
+    }
+  }
+
+  static Future<void> _writeRefused(SharedPreferences prefs, Map<String, int> refused) async {
+    try {
+      await prefs.setString(tvRefusedKey, jsonEncode(refused));
+    } catch (_) {}
+  }
+
+  /// Supprime [playlist] depuis la télé, pour de bon (voir tv_delete.dart).
+  /// Rend vrai si la liste a été effacée de la télé. Faux = rien n'a été
+  /// touché (serveur injoignable pour une liste du client) : l'écran le dit.
+  /// Passe dans la même file que la synchronisation : une relecture ne peut
+  /// pas réimporter la liste entre la décision et l'effacement.
+  static Future<bool> deleteFromTv(Playlist playlist, {http.Client? client}) {
+    return _serial(() => _deleteFromTv(playlist, client: client));
+  }
+
+  static Future<bool> _deleteFromTv(Playlist playlist, {http.Client? client}) async {
+    final int? id = playlist.id;
+    if (id == null) return false;
+    final bool fromPanel = await isServedByPanel(playlist);
+    if (RepairFlags.tvDeleteLegacy) {
+      await PlaylistRepository.instance.deletePlaylist(
+        id,
+        reason: fromPanel ? 'client, liste encore servie par le panel' : 'client',
+      );
+      return true;
+    }
+    final List<String> fps = SourceFingerprint.ofPlaylist(playlist);
+    final http.Client c = client ?? http.Client();
+    try {
+      final String mac = await DeviceIdentity.instance.mac;
+      List<Map<String, dynamic>> served = const <Map<String, dynamic>>[];
+      bool known = false;
+      if (mac.startsWith('MK:')) {
+        try {
+          final http.Response resp = await c
+              .get(
+                Uri.parse('$kSubscriptionBaseUrl/api/device-source/$mac'),
+                headers: await DeviceSecret.instance.headers(),
+              )
+              .timeout(const Duration(seconds: 8));
+          if (resp.statusCode == 200) {
+            final Object? list = (jsonDecode(resp.body) as Map<String, dynamic>)['sources'];
+            served = <Map<String, dynamic>>[
+              if (list is List)
+                for (final Object? item in list)
+                  if (item is Map<String, dynamic>) item,
+            ];
+            known = true;
+          }
+        } catch (_) {
+          known = false;
+        }
+      }
+      if (!known && fromPanel) {
+        // Serveur injoignable et liste connue du serveur : on ne sait pas
+        // si elle vient du panel ou du client. On n'efface rien (sinon elle
+        // reviendrait, ou le serveur la garderait) ; l'écran dit de réessayer.
+        BlackBox.instance.warn('SOURCE', 'suppression reportée : serveur injoignable');
+        return false;
+      }
+      final TvDeleteDecision decision = decideTvDelete(playlistFingerprints: fps, served: served);
+      switch (decision.kind) {
+        case TvDeleteKind.removeOnServer:
+          final http.Response del = await c
+              .delete(
+                Uri.parse('$kSubscriptionBaseUrl/api/self-source/$mac'
+                    '?id=${Uri.encodeQueryComponent(decision.serverId!)}'),
+                headers: await DeviceSecret.instance.headers(),
+              )
+              .timeout(const Duration(seconds: 8));
+          if (del.statusCode != 200) {
+            BlackBox.instance.warn('SOURCE', 'suppression refusée par le serveur (HTTP ${del.statusCode}) : liste gardée');
+            return false;
+          }
+          await PlaylistRepository.instance.deletePlaylist(id, reason: 'client, supprimée aussi sur le serveur');
+          BlackBox.instance.info('SOURCE', 'liste du client supprimée sur la télé et sur le serveur');
+          return true;
+        case TvDeleteKind.refusePanelList:
+          final SharedPreferences prefs = await SharedPreferences.getInstance();
+          final Map<String, int> refused = _readRefused(prefs);
+          final int now = DateTime.now().millisecondsSinceEpoch;
+          for (final String fp in decision.fingerprints) {
+            refused[fp] = now;
+          }
+          await _writeRefused(prefs, refused);
+          await PlaylistRepository.instance.deletePlaylist(id, reason: 'client, liste du panel refusée sur la télé');
+          BlackBox.instance.info('SOURCE', 'liste du panel supprimée sur la télé : plus réimportée tant que le panel ne la renvoie pas');
+          return true;
+        case TvDeleteKind.localOnly:
+          await PlaylistRepository.instance.deletePlaylist(id, reason: 'client');
+          return true;
+      }
+    } catch (e) {
+      BlackBox.instance.warn('SOURCE', 'suppression impossible : $e');
+      return false;
+    } finally {
+      if (client == null) c.close();
+    }
+  }
+
   static Future<RemoteSyncResult> sync({bool force = false}) {
     return _serial(() async {
       _lastConfigRev = null;
@@ -301,10 +433,11 @@ abstract final class RemoteSourceRepository {
       // Repli sur la source unique historique si le tableau est absent.
       final Object? list = body['sources'];
       if (list is List && list.isNotEmpty) {
-        final List<Map<String, dynamic>> items = <Map<String, dynamic>>[
+        final List<Map<String, dynamic>> allItems = <Map<String, dynamic>>[
           for (final Object? item in list)
             if (item is Map<String, dynamic>) item,
         ];
+        final List<Map<String, dynamic>> items = await _withoutRefused(allItems);
         // Une liste refusée (mot de passe faux, serveur muet) ne bloque
         // plus les autres : jamais refusées d'abord, refusées après leur
         // délai, les autres mises de côté. Mesuré le 05/10/2026 : les
@@ -361,7 +494,7 @@ abstract final class RemoteSourceRepository {
         outcome = agg;
       } else {
         final Object? src = body['source'];
-        if (src is Map<String, dynamic>) {
+        if (src is Map<String, dynamic> && (await _withoutRefused(<Map<String, dynamic>>[src])).isNotEmpty) {
           servedCount = 1;
           outcome = await _applySource(src);
           anyLoaded = outcome == RemoteSyncResult.loaded;
@@ -386,6 +519,39 @@ abstract final class RemoteSourceRepository {
       BlackBox.instance.warn('PANEL', 'device-source injoignable : $e');
       return RemoteSyncResult.networkError;
     }
+  }
+
+  /// Retire de [served] les listes refusées sur la télé, après avoir oublié
+  /// les refus devenus sans objet (liste plus servie, ou renvoyée par le
+  /// panel depuis la suppression). Repli `zuno.source.tv_delete_legacy` :
+  /// rien n'est écarté.
+  static Future<List<Map<String, dynamic>>> _withoutRefused(
+    List<Map<String, dynamic>> served,
+  ) async {
+    if (RepairFlags.tvDeleteLegacy) return served;
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final Map<String, int> before = _readRefused(prefs);
+    if (before.isEmpty) return served;
+    final Map<String, int> refused = pruneRefused(
+      before,
+      servedFingerprints: <String>{
+        for (final Map<String, dynamic> item in served)
+          if (SourceFingerprint.fromMap(item) != null) SourceFingerprint.fromMap(item)!,
+      },
+      panelResendAtMs: _panelResendAtMs,
+    );
+    if (refused.length != before.length) await _writeRefused(prefs, refused);
+    final List<Map<String, dynamic>> kept = <Map<String, dynamic>>[
+      for (final Map<String, dynamic> item in served)
+        if (!isRefusedOnTv(SourceFingerprint.fromMap(item), refused)) item,
+    ];
+    if (kept.length != served.length) {
+      BlackBox.instance.info(
+        'SOURCE',
+        '${served.length - kept.length} liste(s) supprimée(s) sur la télé : pas réimportée(s)',
+      );
+    }
+    return kept;
   }
 
   /// Restaure l'historique de visionnage depuis le serveur (synchro multi-box).

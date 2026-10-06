@@ -243,6 +243,10 @@ class RemoteActivationWatch {
     // Ordre du panel : les listes mises de côté après un refus sont
     // retentées tout de suite (le revendeur vient peut-être de corriger
     // le mot de passe).
+    // Ordre « liste » du panel = renvoi explicite : une liste du panel
+    // supprimée sur la télé AVANT cet ordre peut revenir (le panel reste
+    // le maître). Voir tv_delete.dart.
+    if (ordered) RemoteSourceRepository.notePanelResend();
     final RemoteSyncResult result =
         await RemoteSourceRepository.sync(force: ordered);
     if (result == RemoteSyncResult.networkError) return;
