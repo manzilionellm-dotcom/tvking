@@ -1,0 +1,141 @@
+From 676cce97ee8ed7afbb7db9b0a20bc2b7fecb60ad Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Tue, 6 Oct 2026 07:33:29 +0000
+Subject: [PATCH] =?UTF-8?q?Worker=20(urgent)=20:=20autoriser=20les=20en-t?=
+ =?UTF-8?q?=C3=AAtes=20du=20panel=20=E2=80=94=20=C2=AB=20Connexion=20impos?=
+ =?UTF-8?q?sible=20=C2=BB=20sur=20toute=20modification?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Depuis la mise en ligne du 06/10/2026, le panel envoie X-Request-Id,
+X-Client-Sent-At et Idempotency-Key ; la réponse de pré-vol (OPTIONS) ne
+les autorisait pas, le navigateur bloquait la requête : aucune écriture du
+panel n'arrivait (activer, envoyer ou supprimer une liste…).
+
+- Access-Control-Allow-Headers complété dans worker.js et api_v1.js.
+- cors_panel.test.mjs : lit les en-têtes réellement posés par
+  admin-panel/src/lib/api.ts et vérifie le pré-vol de PUT/DELETE/POST ;
+  rouge sur le code en ligne (manque les 3 en-têtes), vert avec le correctif.
+- Toutes les suites Worker vertes.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01JKF2f3PPETfEsPAMFLsYNp
+---
+ android-app/cloudflare/api_v1.js           |  7 ++-
+ android-app/cloudflare/cors_panel.test.mjs | 67 ++++++++++++++++++++++
+ android-app/cloudflare/worker.js           |  6 +-
+ 3 files changed, 77 insertions(+), 3 deletions(-)
+ create mode 100644 android-app/cloudflare/cors_panel.test.mjs
+
+diff --git a/android-app/cloudflare/api_v1.js b/android-app/cloudflare/api_v1.js
+index 40050161..fcc491d7 100644
+--- a/android-app/cloudflare/api_v1.js
++++ b/android-app/cloudflare/api_v1.js
+@@ -105,8 +105,11 @@ import {
+ const JSON_HEADERS = {
+   'Content-Type': 'application/json; charset=utf-8',
+   'Access-Control-Allow-Origin': '*',
+-  'Access-Control-Allow-Headers':
+-    'Authorization, Content-Type, X-Admin-Secret',
++  // X-Request-Id, X-Client-Sent-At, Idempotency-Key : envoyés par le panel
++  // à chaque écriture depuis le 06/10/2026 (suivi et anti double débit).
++  // Absents ici, le navigateur bloquait la requête : « Connexion
++  // impossible » sur toute modification (cors_panel.test.mjs).
++  'Access-Control-Allow-Headers': 'Authorization, X-Admin-Secret, Content-Type, X-Request-Id, X-Client-Sent-At, Idempotency-Key',
+   'Access-Control-Allow-Methods':
+     'GET, POST, PUT, PATCH, DELETE, OPTIONS',
+   'Cache-Control': 'no-store',
+diff --git a/android-app/cloudflare/cors_panel.test.mjs b/android-app/cloudflare/cors_panel.test.mjs
+new file mode 100644
+index 00000000..f3e8a6be
+--- /dev/null
++++ b/android-app/cloudflare/cors_panel.test.mjs
+@@ -0,0 +1,67 @@
++// =========================================================
++//  cors_panel.test.mjs — Le navigateur laisse passer chaque écriture du panel
++// =========================================================
++//  Défaut mis en ligne le 06/10/2026 puis corrigé le même jour : le panel
++//  envoie X-Request-Id, X-Client-Sent-At (toute écriture) et
++//  Idempotency-Key (activation) ; le Worker ne les autorisait pas dans sa
++//  réponse de pré-vol (OPTIONS). Le navigateur bloquait la requête et le
++//  panel affichait « Connexion impossible » sur toute modification.
++//
++//  Ce test lit les en-têtes que le PANEL pose vraiment (src/lib/api.ts) :
++//  un en-tête ajouté côté panel sans être autorisé ici fait échouer le test.
++//
++//  Exécution : node --experimental-sqlite cloudflare/cors_panel.test.mjs
++// =========================================================
++import { readFileSync } from 'node:fs';
++import { dirname, join } from 'node:path';
++import { fileURLToPath } from 'node:url';
++import worker from './worker.js';
++import { createD1 } from './test_support/d1_sqlite.mjs';
++
++const here = dirname(fileURLToPath(import.meta.url));
++const ORIGIN = 'https://tvking-admin.pages.dev';
++const ctx = { waitUntil() {}, passThroughOnException() {} };
++let pass = 0;
++let fail = 0;
++const ok = (c, m) => { if (c) { pass++; console.log('PASS', m); } else { fail++; console.log('FAIL', m); } };
++
++// En-têtes posés par le panel : headers['X'] = … et { 'X': … } dans api.ts.
++const api = readFileSync(join(here, '..', 'admin-panel', 'src', 'lib', 'api.ts'), 'utf8');
++const sent = new Set(['authorization', 'content-type']);
++for (const m of api.matchAll(/headers\[['"]([A-Za-z-]+)['"]\]\s*=/g)) sent.add(m[1].toLowerCase());
++for (const m of api.matchAll(/\{\s*['"]([A-Z][A-Za-z]*-[A-Za-z-]+)['"]\s*:/g)) sent.add(m[1].toLowerCase());
++ok(sent.has('x-request-id') && sent.has('x-client-sent-at') && sent.has('idempotency-key'),
++  `en-têtes du panel lus dans api.ts : ${[...sent].sort().join(', ')}`);
++
++const t = createD1({ extraSql: ['ALTER TABLE resellers ADD COLUMN parent_reseller_id TEXT'] });
++const env = { DB: t.DB, ADMIN_SECRET: 'unit-test-admin-secret-not-real' };
++
++for (const [method, path] of [
++  ['PUT', '/api/v1/sources/MK:80:78:60:07:4F'],
++  ['DELETE', '/api/v1/sources/MK:80:78:60:07:4F'],
++  ['POST', '/api/v1/activate'],
++  ['POST', '/api/v1/sources/MK:80:78:60:07:4F/reset'],
++]) {
++  const res = await worker.fetch(new Request(`https://app.x${path}`, {
++    method: 'OPTIONS',
++    headers: {
++      Origin: ORIGIN,
++      'Access-Control-Request-Method': method,
++      'Access-Control-Request-Headers': [...sent].join(','),
++    },
++  }), env, ctx);
++  const allowH = (res.headers.get('access-control-allow-headers') || '').toLowerCase().split(/\s*,\s*/);
++  const allowM = (res.headers.get('access-control-allow-methods') || '').toUpperCase();
++  const missing = [...sent].filter((h) => !allowH.includes(h));
++  ok(res.status === 204 && missing.length === 0 && allowM.includes(method),
++    `pré-vol ${method} ${path} : ${missing.length ? `REFUSÉ, manque ${missing.join(', ')}` : 'tous les en-têtes du panel autorisés'}`);
++}
++
++// La vraie réponse porte l'origine du panel (sinon le navigateur la cache).
++const real = await worker.fetch(new Request('https://app.x/api/v1/auth/me', {
++  headers: { Origin: ORIGIN, 'X-Request-Id': 'trace-cors-0001' },
++}), env, ctx);
++ok(real.headers.get('access-control-allow-origin') === ORIGIN, 'réponse réelle : Access-Control-Allow-Origin = origine du panel');
++
++console.log(`\n${pass} passed, ${fail} failed`);
++process.exit(fail ? 1 : 0);
+diff --git a/android-app/cloudflare/worker.js b/android-app/cloudflare/worker.js
+index 7434244e..1965d2d1 100644
+--- a/android-app/cloudflare/worker.js
++++ b/android-app/cloudflare/worker.js
+@@ -1359,7 +1359,11 @@ const HTML_HEADERS = {
+ const JSON_HEADERS = {
+   'Content-Type': 'application/json; charset=utf-8',
+   'Access-Control-Allow-Origin': '*',
+-  'Access-Control-Allow-Headers': 'Authorization, X-Admin-Secret, Content-Type',
++  // X-Request-Id, X-Client-Sent-At, Idempotency-Key : envoyés par le panel
++  // à chaque écriture depuis le 06/10/2026 (suivi et anti double débit).
++  // Absents ici, le navigateur bloquait la requête : « Connexion
++  // impossible » sur toute modification (cors_panel.test.mjs).
++  'Access-Control-Allow-Headers': 'Authorization, X-Admin-Secret, Content-Type, X-Request-Id, X-Client-Sent-At, Idempotency-Key',
+   'Access-Control-Allow-Methods': 'GET,POST,PUT,PATCH,DELETE,OPTIONS',
+   'Cache-Control': 'no-store',
+   'X-Content-Type-Options': 'nosniff',
+-- 
+2.43.0
+

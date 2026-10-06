@@ -408,6 +408,19 @@ demande (ce que font IBO / TiviMate / Smarters).
   `3462665d501afbee86ac4bb22e8e7dd0b23b223d324b4b17884d276df493c911`
   (54 793 836 octets), signature `5145b8e0…9e61` relue sur l'APK.
 
+## 5 vicies. Urgence : « Connexion impossible » dans le panel (6 octobre, 09:31)
+
+- Cause : depuis la mise en ligne #10, le panel envoie `X-Request-Id`,
+  `X-Client-Sent-At` et `Idempotency-Key` ; le Worker ne les autorisait pas
+  (pré-vol CORS). Le navigateur bloquait TOUTE écriture du panel : rien
+  n'arrivait à la box. Aucun test ne jouait le pré-vol d'un navigateur.
+- Correctif `676cce9` sur `claude/panel-mise-en-ligne` (patch
+  `docs/patches/panel-cors-entetes.patch`), mis en ligne par le run #11
+  (Worker seul, vert). Relu en direct : les trois en-têtes sont autorisés.
+- Garde-fou : `cloudflare/cors_panel.test.mjs` lit les en-têtes posés par
+  le panel et échoue si le Worker ne les autorise pas (rouge sur l'ancien
+  code, vert maintenant).
+
 ## 6. Règles du propriétaire (non négociables)
 
 - Jamais `publish=true` sans son ordre écrit ; jamais de push sur `main`.
