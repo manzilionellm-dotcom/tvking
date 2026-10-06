@@ -196,3 +196,52 @@ export function planActivationList(existing: SourceLike[], add: SourceInput): Ac
     unchanged,
   };
 }
+
+export type AddListPlan =
+  | { kind: 'send'; sources: SourceInput[]; already: boolean }
+  | { kind: 'full' }
+  | { kind: 'invalid'; message: string };
+
+/// Écran « Listes » : ajouter un lien à une box (06/10/2026).
+/// Défaut corrigé : l'écran ne renvoyait que les listes Xtream du panel ;
+/// « Ajouter » un M3U effaçait donc les autres M3U, et rallumait celles qui
+/// étaient éteintes (l'état n'était pas renvoyé). Règle, prouvée par
+/// sources.test.ts et le parcours E2E :
+///   - ajouter = TOUTES les listes du panel, telles quelles (éteintes
+///     comprises), puis la nouvelle ; 3 au maximum ;
+///   - remplacer = la nouvelle seule ;
+///   - lien déjà présent = pas de doublon : il est rallumé à sa place ;
+///   - les listes du client ne sont jamais renvoyées (le serveur les garde).
+export function planAddList(existing: SourceLike[], url: string, replace: boolean): AddListPlan {
+  const fresh: SourceInput = { type: 'm3u', m3u_url: url.trim() };
+  const bad = validateListInput(fresh);
+  if (bad) return { kind: 'invalid', message: bad };
+  if (replace) return { kind: 'send', sources: [fresh], already: false };
+  const fp = sourceFingerprint(fresh);
+  const panel = existing.filter((s) => !isClientList(s));
+  let already = false;
+  const out: SourceInput[] = panel.map((s) => {
+    const input = toSourceInput(s);
+    if (sourceFingerprint(s) === fp) {
+      already = true;
+      delete input.enabled;
+    }
+    return input;
+  });
+  if (!already) out.push(fresh);
+  if (out.length > 3) return { kind: 'full' };
+  return { kind: 'send', sources: out, already };
+}
+
+/// Nom affichable d'une liste SANS secret : son libellé, sinon l'hôte seul
+/// (jamais le chemin ni les paramètres, qui portent souvent les codes).
+export function listDisplayName(s: SourceLike): string {
+  const label = String(s.label ?? '').trim();
+  if (label) return label;
+  const raw = s.type === 'xtream' ? s.server_url : s.m3u_url;
+  try {
+    return new URL(String(raw ?? '')).host || (s.type === 'xtream' ? 'Xtream' : 'M3U');
+  } catch {
+    return s.type === 'xtream' ? 'Xtream' : 'M3U';
+  }
+}

@@ -190,3 +190,47 @@ test('supprimer une liste garde l\'état éteint des autres', () => {
   if (plan.kind !== 'keep') return;
   assert.equal(plan.sources[0].enabled, false);
 });
+
+// ----- Écran Listes : « Ajouter » garde les autres listes (06/10/2026) -----
+import { listDisplayName, planAddList } from './sources.ts';
+
+const A = { type: 'm3u' as const, m3u_url: 'http://a.invalid/l.m3u', enabled: false };
+const B = { type: 'm3u' as const, m3u_url: 'http://b.invalid/l.m3u' };
+const X = { type: 'xtream' as const, server_url: 'http://x.invalid', username: 'u', password: 'p' };
+const SELF = { type: 'm3u' as const, m3u_url: 'http://c.invalid/l.m3u', origin: 'self', id: 'self-1' };
+
+test('ajouter un M3U garde les M3U déjà là, éteints compris', () => {
+  const p = planAddList([A, SELF], 'http://b.invalid/l.m3u', false);
+  assert.equal(p.kind, 'send');
+  if (p.kind !== 'send') return;
+  assert.deepEqual(p.sources, [
+    { type: 'm3u', m3u_url: 'http://a.invalid/l.m3u', enabled: false },
+    { type: 'm3u', m3u_url: 'http://b.invalid/l.m3u' },
+  ], 'A reste éteinte, la liste du client n’est pas renvoyée');
+});
+
+test('trois listes du panel : un 4e ajout est refusé, rien n’est écrasé', () => {
+  assert.equal(planAddList([A, B, X], 'http://d.invalid/l.m3u', false).kind, 'full');
+});
+
+test('lien déjà présent : pas de doublon, il est rallumé à sa place', () => {
+  const p = planAddList([A, B], ' http://a.invalid/l.m3u ', false);
+  assert.equal(p.kind, 'send');
+  if (p.kind !== 'send') return;
+  assert.equal(p.sources.length, 2);
+  assert.equal(p.already, true);
+  assert.equal(p.sources[0].enabled, undefined);
+});
+
+test('remplacer : la nouvelle seule ; lien invalide : rien n’est envoyé', () => {
+  const p = planAddList([A, B, X], 'http://d.invalid/l.m3u', true);
+  assert.equal(p.kind === 'send' && p.sources.length, 1);
+  assert.equal(planAddList([A], 'ftp://x', false).kind, 'invalid');
+  assert.equal(planAddList([A], '', false).kind, 'invalid');
+});
+
+test('nom affiché : libellé ou hôte, jamais le chemin ni les codes', () => {
+  assert.equal(listDisplayName({ type: 'm3u', m3u_url: 'http://h.invalid:8080/get.php?username=u&password=p' }), 'h.invalid:8080');
+  assert.equal(listDisplayName({ type: 'm3u', label: 'Salon', m3u_url: 'http://h.invalid/x' }), 'Salon');
+  assert.equal(listDisplayName({ type: 'xtream', server_url: 'pas une adresse' }), 'Xtream');
+});

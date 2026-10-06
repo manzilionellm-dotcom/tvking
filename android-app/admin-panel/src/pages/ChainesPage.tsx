@@ -1,41 +1,37 @@
-import { FormEvent, useEffect, useRef, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { AppLayout } from '@/components/AppLayout';
 import { confirmAction } from '@/components/confirm';
 import { Alert } from '@/components/ui';
 import {
-  sourcesApi, userCan, getCurrentUser,
-  type DeviceSource, type DeviceSourceInput, ApiError,
+  sourcesApi, ordersApi, userCan, getCurrentUser,
+  type DeviceSource, ApiError,
 } from '@/lib/api';
 import { isValidMac, normalizeMac } from '@/lib/utils';
 import { useT } from '@/lib/i18n';
+import {
+  isClientList, isListOn, listDisplayName, planAddList, planRemoveSource, planToggleSource,
+  type SourceInput, type SourceLike,
+} from '@/lib/sources';
+import {
+  DELIVERY_GIVE_UP_MS, DELIVERY_POLL_MS, deliveryStatus, findOrder, type OrderLike,
+} from '@/lib/delivery';
 
-// Écran LISTE DE CHAÎNES — séparé de l'activation.
-// Enregistrer un lien n'appelle PAS /api/v1/activate.
-// Le serveur n'a pas de case « seulement le lien » : il remplace toute
-// la liste poussée par le panel. On relit d'abord, on ne change que le
-// lien, et on renvoie le reste tel quel. Les listes ajoutées par le
-// client sur sa télé (origin = self) sont remises par le serveur.
+// Écran LISTES — séparé de l'activation (n'appelle jamais /api/v1/activate).
+//
+// Corrigé le 06/10/2026 (parcours E2E « Ajouter conserve les deux M3U ») :
+//   • « Ajouter » renvoie TOUTES les listes du panel telles quelles (éteintes
+//     comprises) + la nouvelle. Avant, seules les listes Xtream étaient
+//     gardées : ajouter un M3U effaçait les autres M3U de la box.
+//   • Chaque liste de la box est affichée avec Allumer/Éteindre et Retirer :
+//     ajouter, retirer, éteindre = un envoi, la box est prévenue à l'instant
+//     (WebSocket) et ne touche qu'à cette liste.
+//   • « Suivi de l'envoi » lit l'état RÉEL de l'ordre (accusés de la box).
+//     Avant, « la box est prévenue » s'affichait sur la seule réponse HTTP.
+// Le serveur garde d'office les listes ajoutées par le client sur sa télé
+// (origin = self) : le panel ne les renvoie jamais.
 
-type Kept = DeviceSource & { origin?: string | null };
-
-function panelSources(list: Kept[] | undefined): Kept[] {
-  return (list || []).filter((s) => s.origin !== 'self');
-}
-
-function toInput(s: Kept): DeviceSourceInput {
-  if (s.type === 'm3u') {
-    return { type: 'm3u', m3u_url: s.m3u_url || '', label: s.label ?? null, epg_url: s.epg_url ?? null };
-  }
-  return {
-    type: 'xtream',
-    label: s.label ?? null,
-    server_url: s.server_url ?? null,
-    username: s.username ?? null,
-    password: s.password ?? null,
-    epg_url: s.epg_url ?? null,
-  };
-}
+type Delivery = { mac: string; orderId: string; verb: 'load' | 'remove'; startedAt: number };
 
 export function ChainesPage({ onLogout }: { onLogout: () => void }) {
   const t = useT();
@@ -44,69 +40,107 @@ export function ChainesPage({ onLogout }: { onLogout: () => void }) {
   // Même saisie que « Activer une box » : MAC comme sur la box, « MK: » ajouté seul.
   const [mac, setMac] = useState(sp.get('mac') || '');
   const [link, setLink] = useState('');
-  const [hasLink, setHasLink] = useState(false);
-  const [otherCount, setOtherCount] = useState(0);
+  // Toutes les listes de la box, telles que le serveur les sert. Gardées en
+  // mémoire pour les renvoyer intactes ; seul le nom (libellé ou hôte) est
+  // affiché, jamais l'adresse complète ni les codes.
+  const [sources, setSources] = useState<SourceLike[]>([]);
   const [looking, setLooking] = useState(false);
   // Vrai seulement après une lecture réussie de CETTE mac. Sans ça, un
-  // enregistrement trop tôt remplacerait les autres listes par le seul lien.
+  // envoi trop tôt remplacerait les autres listes par le seul lien.
   const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const [ok, setOk] = useState<string | null>(null);
-  // Par défaut (06/10/2026, « listes à part ») : la liste envoyée REMPLACE
-  // les listes du panel déjà sur la box ; celles du client restent. Décoché
-  // = on l'ajoute aux autres (3 au maximum).
-  const [replaceOthers, setReplaceOthers] = useState(true);
-  // Sources déjà poussées, hors lien. Gardées en mémoire seulement pour
-  // les renvoyer telles quelles. Jamais affichées, jamais journalisées.
-  const keptRef = useRef<DeviceSourceInput[]>([]);
+  // Décoché par défaut : on AJOUTE (« si on ajoute, on ajoute »). Coché :
+  // la liste remplace celles du panel ; celles du client restent.
+  const [replaceOthers, setReplaceOthers] = useState(false);
+  const [delivery, setDelivery] = useState<Delivery | null>(null);
+  const [order, setOrder] = useState<OrderLike | null>(null);
+  const readSeq = useRef(0);
 
   const macOk = isValidMac(mac);
 
+  // Relit les listes servies à cette box (après chaque envoi aussi : l'écran
+  // montre l'état du serveur, pas une supposition).
+  const reload = useCallback(async (m: string): Promise<void> => {
+    const seq = ++readSeq.current;
+    setLooking(true);
+    try {
+      const r = await sourcesApi.get(m);
+      if (seq !== readSeq.current) return;
+      setSources((r.sources || []) as SourceLike[]);
+      setErr(null);
+      setLoaded(true);
+    } catch (e) {
+      if (seq !== readSeq.current) return;
+      setSources([]);
+      setLoaded(false);
+      if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
+      // 404 = aucune liste pour cette box : on peut en ajouter une.
+      if (e instanceof ApiError && e.status === 404) { setLoaded(true); return; }
+      setErr(e instanceof ApiError ? e.message : 'Impossible de lire les listes de cette box.');
+    } finally {
+      if (seq === readSeq.current) setLooking(false);
+    }
+  }, [onLogout]);
+
   useEffect(() => {
     setLoaded(false);
-    setHasLink(false);
-    setOtherCount(0);
-    keptRef.current = [];
+    setSources([]);
     if (!macOk || !canPush) return;
-    let cancel = false;
     const m = normalizeMac(mac);
-    const timer = setTimeout(() => {
-      setLooking(true);
-      sourcesApi.get(m)
-        .then((r) => {
-          if (cancel) return;
-          const panel = panelSources(r.sources as Kept[] | undefined);
-          const others = panel.filter((s) => s.type !== 'm3u');
-          keptRef.current = others.map(toInput);
-          setHasLink(panel.some((s) => s.type === 'm3u'));
-          setOtherCount(others.length);
-          setErr(null);
-          setLoaded(true);
-        })
-        .catch((e) => {
-          if (cancel) return;
-          keptRef.current = [];
-          setHasLink(false);
-          setOtherCount(0);
-          setLoaded(false);
-          if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
-          // 404 = aucune liste pour cette box. On peut en enregistrer une.
-          if (e instanceof ApiError && e.status === 404) {
-            setLoaded(true);
-            return;
-          }
-          setErr(e instanceof ApiError ? e.message : 'Impossible de lire la liste de cette box.');
-        })
-        .finally(() => { if (!cancel) setLooking(false); });
-    }, 400);
-    return () => { cancel = true; clearTimeout(timer); };
-  }, [mac, macOk, canPush, onLogout]);
+    const timer = setTimeout(() => { void reload(m); }, 400);
+    return () => { clearTimeout(timer); readSeq.current++; };
+  }, [mac, macOk, canPush, reload]);
+
+  // Suivi de l'ordre : relu toutes les 1,5 s jusqu'à un état final
+  // (appliqué, refusé, expiré) ou 11 min. Un nouvel envoi remplace le suivi.
+  useEffect(() => {
+    if (!delivery) return;
+    let stop = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const tick = async () => {
+      if (stop) return;
+      try {
+        const r = await ordersApi.list(delivery.mac);
+        if (stop) return;
+        const o = findOrder(r.items, delivery.orderId);
+        setOrder(o);
+        if (deliveryStatus(o, delivery.verb).done) {
+          // La box a fini : on relit les listes servies.
+          void reload(delivery.mac);
+          return;
+        }
+      } catch (e) {
+        if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
+        // Erreur réseau passagère : on garde le dernier état connu.
+      }
+      if (Date.now() - delivery.startedAt < DELIVERY_GIVE_UP_MS) {
+        timer = setTimeout(tick, DELIVERY_POLL_MS);
+      }
+    };
+    void tick();
+    return () => { stop = true; if (timer) clearTimeout(timer); };
+  }, [delivery, onLogout, reload]);
+
+  function track(m: string, orderId: string | null | undefined, verb: 'load' | 'remove') {
+    setOrder(null);
+    setDelivery(orderId ? { mac: m, orderId, verb, startedAt: Date.now() } : null);
+  }
+
+  async function send(m: string, next: SourceInput[], verb: 'load' | 'remove') {
+    const r = await sourcesApi.setMany(m, next);
+    track(m, r.order_id, verb);
+    await reload(m);
+  }
+
+  function failed(e: unknown, fallback: string) {
+    if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
+    setErr(e instanceof ApiError ? e.message : fallback);
+  }
 
   async function save(e: FormEvent) {
     e.preventDefault();
     setErr(null);
-    setOk(null);
     const m = normalizeMac(mac);
     if (!isValidMac(m)) {
       setErr('MAC invalide. Tape-la comme sur la box, par exemple AD:A6:98:70:6A (le « MK: » est ajouté tout seul).');
@@ -116,73 +150,90 @@ export function ChainesPage({ onLogout }: { onLogout: () => void }) {
       setErr('Attends que l’état de cette box soit lu, puis réessaie.');
       return;
     }
-    const url = link.trim();
-    if (!url) {
-      setErr('Colle le lien de la liste avant d’enregistrer.');
-      return;
-    }
-    const fresh = { type: 'm3u' as const, m3u_url: url };
-    const next = replaceOthers ? [fresh] : [...keptRef.current, fresh];
-    if (next.length > 3) {
-      setErr('Cette box a déjà 3 listes. Coche « remplacer » ou retire-en une sur la fiche appareil.');
+    const plan = planAddList(sources, link, replaceOthers);
+    if (plan.kind === 'invalid') { setErr(plan.message); return; }
+    if (plan.kind === 'full') {
+      setErr('Cette box a déjà 3 listes du panel. Retire-en une ci-dessous, ou coche « remplacer ».');
       return;
     }
     setBusy(true);
     try {
-      await sourcesApi.setMany(m, next);
+      await send(m, plan.sources, 'load');
       setLink('');
-      setHasLink(true);
-      if (replaceOthers) keptRef.current = [];
-      setOk(
-        replaceOthers
-          ? 'Liste envoyée : elle remplace les listes du panel sur cette box, la box est prévenue à l’instant. L’activation n’a pas été modifiée.'
-          : 'Liste ajoutée aux autres, la box est prévenue à l’instant. L’activation n’a pas été modifiée.',
-      );
-    } catch (e: unknown) {
-      if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
-      setErr(e instanceof ApiError ? e.message : 'Enregistrement impossible.');
+    } catch (e2) {
+      failed(e2, 'Enregistrement impossible.');
     } finally {
       setBusy(false);
     }
   }
 
-  async function removeLink() {
+  async function toggle(index: number) {
     setErr(null);
-    setOk(null);
     const m = normalizeMac(mac);
-    if (!isValidMac(m) || !hasLink) return;
-    const onlyLink = keptRef.current.length === 0;
+    const plan = planToggleSource(sources, index);
+    if (plan.kind !== 'send') return;
+    setBusy(true);
+    try {
+      await send(m, plan.sources, 'load');
+    } catch (e) {
+      failed(e, 'Changement impossible.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function remove(index: number) {
+    setErr(null);
+    const m = normalizeMac(mac);
+    const s = sources[index];
+    if (!s) return;
     const okConfirm = await confirmAction({
-      title: 'Retirer le lien de cette box ?',
-      message: onlyLink
-        ? 'Le lien sera retiré. L’activation ne change pas. Si le client avait aussi ajouté une liste depuis sa télé, le serveur peut l’effacer en même temps : il n’a pas de bouton « retirer seulement ce lien ».'
-        : 'Le lien sera retiré. L’autre liste déjà en place, et l’activation, ne changent pas.',
-      confirmLabel: 'Retirer le lien',
+      title: `Retirer « ${listDisplayName(s)} » de cette box ?`,
+      message: 'Seule cette liste est retirée. Les autres listes et l’activation ne changent pas.',
+      confirmLabel: 'Retirer',
       danger: true,
     });
     if (!okConfirm) return;
+    const plan = planRemoveSource(sources, index);
     setBusy(true);
     try {
-      if (onlyLink) await sourcesApi.clear(m);
-      else await sourcesApi.setMany(m, keptRef.current);
-      setHasLink(false);
-      setLink('');
-      setOk('Lien retiré. L’activation de l’application n’a pas été modifiée.');
-    } catch (e: unknown) {
-      if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
-      setErr(e instanceof ApiError ? e.message : 'Retrait impossible.');
+      if (plan.kind === 'keep') {
+        await send(m, plan.sources, 'remove');
+      } else if (plan.kind === 'clear') {
+        const r = await sourcesApi.clear(m);
+        track(m, r.order_id, 'remove');
+        await reload(m);
+      } else if (plan.kind === 'client' && plan.id) {
+        await sourcesApi.removeClientList(m, plan.id);
+        setDelivery(null);
+        await reload(m);
+      } else {
+        setErr('Cette liste ne peut pas être retirée d’ici.');
+      }
+    } catch (e) {
+      failed(e, 'Retrait impossible.');
     } finally {
       setBusy(false);
     }
   }
 
+  const status = delivery ? deliveryStatus(order, delivery.verb) : null;
+  const statusTone = status?.kind === 'ok'
+    ? 'border-success/30 bg-success/10 text-success'
+    : status?.kind === 'failed' || status?.kind === 'late'
+      ? 'border-warning/30 bg-warning/10 text-warning'
+      : 'border-white/10 bg-obsidian text-ink-secondary';
+  const panelCount = sources.filter((s) => !isClientList(s)).length;
+
   const inputCls =
     'w-full rounded-md border border-white/10 bg-slate px-3 py-2.5 text-sm outline-none focus:border-accent/60 focus:ring-2 focus:ring-accent/40';
+  const smallBtn =
+    'rounded-md border border-white/15 px-3 py-1.5 text-xs font-medium text-ink-primary hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40';
 
   return (
     <AppLayout
       title="Listes"
-      subtitle="Envoie, remplace ou retire la liste d’une box. Ça n’active pas l’application, et ça ne change pas la durée."
+      subtitle="Ajoute, éteins ou retire les listes d’une box. Ça n’active pas l’application, et ça ne change pas la durée."
       onLogout={onLogout}
     >
       {!canPush && (
@@ -191,9 +242,9 @@ export function ChainesPage({ onLogout }: { onLogout: () => void }) {
 
       <div className="grid max-w-3xl gap-6">
         <form onSubmit={save} className="space-y-4 rounded-xl border border-white/10 bg-midnight p-6">
-          <h2 className="text-base font-semibold">Lien de la liste</h2>
+          <h2 className="text-base font-semibold">Ajouter une liste</h2>
           <p className="text-sm leading-relaxed text-ink-secondary">
-            Ici, seulement la liste de chaînes. Pour la licence (essai, durée) :{' '}
+            Ici, seulement les listes de chaînes (3 au maximum). Pour la licence (essai, durée) :{' '}
             <Link
               to={isValidMac(normalizeMac(mac)) ? `/activate?mac=${encodeURIComponent(normalizeMac(mac))}` : '/activate'}
               className="font-medium text-accent-bright underline-offset-2 hover:underline"
@@ -209,45 +260,13 @@ export function ChainesPage({ onLogout }: { onLogout: () => void }) {
             <input
               id="chaines-mac"
               value={mac}
-              onChange={(e) => { setMac(e.target.value); setOk(null); }}
+              onChange={(e) => { setMac(e.target.value); setDelivery(null); }}
               onBlur={() => setMac((v) => (v.trim() ? normalizeMac(v) : v))}
               autoFocus
               autoComplete="off"
               placeholder="AD:A6:98:70:6A"
               className={inputCls + ' font-mono'}
             />
-          </div>
-
-          <label className="flex cursor-pointer items-start gap-2 text-sm text-ink-secondary">
-            <input
-              type="checkbox"
-              checked={replaceOthers}
-              onChange={(e) => setReplaceOthers(e.target.checked)}
-              className="mt-0.5"
-            />
-            <span>
-              Remplacer les listes du panel déjà sur la box par celle-ci
-              <span className="block text-xs text-ink-tertiary">
-                Décoché : elle s’ajoute aux autres (3 au maximum). Les listes ajoutées par le client restent dans les deux cas ;
-                pour tout effacer, fiche appareil → Réinitialiser la box.
-              </span>
-            </span>
-          </label>
-
-          <div className="rounded-lg border border-white/10 bg-obsidian px-4 py-3 text-sm">
-            {looking && <p className="text-ink-secondary">Recherche…</p>}
-            {!looking && !macOk && <p className="text-ink-secondary">Entre une MAC complète pour voir si un lien est déjà là.</p>}
-            {!looking && macOk && hasLink && (
-              <p className="font-medium text-ink-primary">Un lien est déjà enregistré pour cette box.</p>
-            )}
-            {!looking && macOk && !hasLink && (
-              <p className="text-ink-secondary">Aucun lien enregistré pour cette box.</p>
-            )}
-            {!looking && otherCount > 0 && (
-              <p className="mt-1 text-ink-secondary">
-                Une autre liste est aussi en place. Elle sera conservée.
-              </p>
-            )}
           </div>
 
           <div>
@@ -265,27 +284,97 @@ export function ChainesPage({ onLogout }: { onLogout: () => void }) {
             />
           </div>
 
-          {err && <Alert>{err}</Alert>}
-          {ok && <Alert tone="ok">{ok}</Alert>}
+          <label className="flex cursor-pointer items-start gap-2 text-sm text-ink-secondary">
+            <input
+              type="checkbox"
+              checked={replaceOthers}
+              onChange={(e) => setReplaceOthers(e.target.checked)}
+              className="mt-0.5"
+            />
+            <span>
+              Remplacer les listes du panel déjà sur la box par celle-ci
+              <span className="block text-xs text-ink-tertiary">
+                Décoché : elle s’ajoute aux autres. Les listes ajoutées par le client restent dans les deux cas.
+              </span>
+            </span>
+          </label>
 
-          <div className="flex flex-col gap-2 sm:flex-row">
-            <button
-              type="submit"
-              disabled={!canPush || busy || looking || !loaded || !macOk || !link.trim()}
-              className="rounded-md bg-accent px-4 py-2.5 text-sm font-semibold text-obsidian hover:bg-accent-bright disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {busy ? 'Enregistrement…' : hasLink ? 'Changer le lien' : 'Enregistrer le lien'}
-            </button>
-            <button
-              type="button"
-              onClick={removeLink}
-              disabled={!canPush || busy || looking || !loaded || !macOk || !hasLink}
-              className="rounded-md border border-white/15 px-4 py-2.5 text-sm font-medium text-ink-primary hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              Retirer le lien
-            </button>
-          </div>
+          {err && <Alert>{err}</Alert>}
+
+          <button
+            type="submit"
+            disabled={!canPush || busy || looking || !loaded || !macOk || !link.trim()}
+            className="rounded-md bg-accent px-4 py-2.5 text-sm font-semibold text-obsidian hover:bg-accent-bright disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {busy ? 'Envoi…' : replaceOthers ? 'Remplacer par cette liste' : 'Ajouter la liste'}
+          </button>
         </form>
+
+        {delivery && status && (
+          <section
+            aria-label="Suivi de l’envoi"
+            aria-live="polite"
+            className={'rounded-xl border px-4 py-3 text-sm ' + statusTone}
+          >
+            <p>{status.text}</p>
+          </section>
+        )}
+
+        {macOk && (
+          <section aria-label="Listes de cette box" className="rounded-xl border border-white/10 bg-midnight p-6">
+            <h2 className="mb-3 text-base font-semibold">
+              Listes de cette box {loaded ? `(${sources.length})` : ''}
+            </h2>
+            {looking && sources.length === 0 && <p className="text-sm text-ink-secondary">Recherche…</p>}
+            {!looking && loaded && sources.length === 0 && (
+              <p className="text-sm text-ink-secondary">Aucune liste sur cette box.</p>
+            )}
+            <ul className="divide-y divide-white/5">
+              {sources.map((s, i) => {
+                const on = isListOn(s);
+                const client = isClientList(s);
+                const name = listDisplayName(s);
+                return (
+                  <li key={`${i}-${name}`} className="flex flex-wrap items-center justify-between gap-2 py-2.5">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-ink-primary">{name}</p>
+                      <p className="text-xs text-ink-tertiary">
+                        {s.type === 'xtream' ? 'Xtream' : 'M3U'}
+                        {' · '}
+                        {client ? 'ajoutée par le client' : on ? 'allumée' : 'éteinte'}
+                      </p>
+                    </div>
+                    <div className="flex gap-2">
+                      {!client && (
+                        <button
+                          type="button"
+                          onClick={() => void toggle(i)}
+                          disabled={!canPush || busy}
+                          aria-label={`${on ? 'Éteindre' : 'Allumer'} ${name}`}
+                          className={smallBtn}
+                        >
+                          {on ? 'Éteindre' : 'Allumer'}
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => void remove(i)}
+                        disabled={!canPush || busy || (client && !s.id)}
+                        aria-label={`Retirer ${name}`}
+                        className={smallBtn}
+                      >
+                        Retirer
+                      </button>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+            {loaded && panelCount >= 3 && (
+              <p className="mt-3 text-xs text-ink-tertiary">3 listes du panel : retire-en une pour en ajouter une autre.</p>
+            )}
+          </section>
+        )}
       </div>
     </AppLayout>
   );

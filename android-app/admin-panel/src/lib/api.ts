@@ -525,6 +525,8 @@ export interface DeviceSourceInput {
   password?: string | null;
   m3u_url?: string | null;
   epg_url?: string | null;
+  /// `false` = liste éteinte (la box la masque sans l'effacer).
+  enabled?: boolean | null;
 }
 export interface DeviceSource extends DeviceSourceInput {
   mac?: string;
@@ -596,13 +598,14 @@ export const sourcesApi = {
     ),
   // TRIO : pousse 1 à 3 sources d'un coup sur une même MAC. Le client
   // les charge toutes et bascule entre elles dans l'app.
+  // Réponse : `order_id` = l'ordre envoyé à la box (suivi par ordersApi).
   setMany: (mac: string, sources: DeviceSourceInput[]) =>
-    request<{ ok: boolean; mac: string; count: number }>(
+    request<{ ok: boolean; mac: string; count: number; rev?: number; order_id?: string | null }>(
       `/api/v1/sources/${encodeURIComponent(mac)}`,
       { method: 'PUT', body: { sources } },
     ),
   clear: (mac: string) =>
-    request<{ ok: boolean; mac: string }>(
+    request<{ ok: boolean; mac: string; rev?: number; order_id?: string | null }>(
       `/api/v1/sources/${encodeURIComponent(mac)}`,
       { method: 'DELETE' },
     ),
@@ -682,6 +685,24 @@ export const traceApi = {
     request<TimelineResult>(`/api/v1/timeline?q=${encodeURIComponent(q)}&days=${days}`),
   latency: (hours = 24) =>
     request<LatencyResult>(`/api/v1/metrics/latency?hours=${hours}`),
+};
+
+// Ordres envoyés aux box et leur état RÉEL (accusés de la box).
+export interface OrderView {
+  order_id: string;
+  mac: string;
+  kind: string;
+  state: string;
+  config_rev?: number | null;
+  applied_rev?: number | null;
+  result?: string | null;
+  error_code?: string | null;
+  error_message?: string | null;
+  created_at?: number;
+}
+export const ordersApi = {
+  list: (mac: string) =>
+    request<{ items: OrderView[] }>(`/api/v1/orders?mac=${encodeURIComponent(mac)}`),
 };
 
 export const blackboxApi = {
