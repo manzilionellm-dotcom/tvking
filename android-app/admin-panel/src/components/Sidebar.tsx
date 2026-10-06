@@ -20,51 +20,72 @@ type NavItem = { key: string; to: string; cap?: string };
 // aucune logique d'activation/abonnement n'est touchée ici.
 type NavSection = { titleKey: string; items: NavItem[] };
 
+// Organisation « centre de contrôle » (06/10/2026) : chaque page existante
+// est rangée dans un groupe métier, sans en renommer aucune ni en ajouter.
+// Centre de contrôle (vue d'ensemble, en direct), Clients (abonnés,
+// appareils, activations), Applications (versions, mise à jour forcée,
+// avis), Revendeurs, Contenu (listes, serveurs, publicité, annonces, mise
+// en avant, accueil, thème), Boîte noire, Système (journal, compte).
 const OWNER_NAV: NavSection[] = [
   {
-    titleKey: 'navsec.activation',
+    titleKey: 'navsec.control',
     items: [
-      { key: 'nav.remoteActivate', to: '/activation-distance' },
-      { key: 'nav.activate',    to: '/activate' },
-      { key: 'nav.activations', to: '/activations' },
-      { key: 'nav.customers',   to: '/customers' },
-      { key: 'nav.devices',     to: '/devices' },
-      { key: 'nav.blackbox',    to: '/blackbox' },
-      { key: 'nav.resellers',   to: '/resellers' },
-      { key: 'nav.families',    to: '/families' },
-      { key: 'nav.transfer',    to: '/transfer' },
-      { key: 'nav.pricing',     to: '/tarifs' },
-      { key: 'nav.references',  to: '/references' },
+      { key: 'nav.dashboard',     to: '/' },
+      { key: 'nav.online',        to: '/online' },
+      { key: 'nav.controlCenter', to: '/control-center' },
     ],
   },
   {
-    titleKey: 'navsec.channels',
+    titleKey: 'navsec.customers',
     items: [
-      { key: 'nav.chaines',     to: '/chaines' },
-      { key: 'nav.servers',     to: '/servers' },
+      { key: 'nav.customers',      to: '/customers' },
+      { key: 'nav.devices',        to: '/devices' },
+      { key: 'nav.activations',    to: '/activations' },
+      { key: 'nav.remoteActivate', to: '/activation-distance' },
+      { key: 'nav.activate',       to: '/activate' },
+      { key: 'nav.transfer',       to: '/transfer' },
+      { key: 'nav.families',       to: '/families' },
+    ],
+  },
+  {
+    titleKey: 'navsec.apps',
+    items: [
+      { key: 'nav.apps',        to: '/apps' },
+      { key: 'nav.forceUpdate', to: '/force-update' },
+      { key: 'nav.reviews',     to: '/reviews' },
+    ],
+  },
+  {
+    titleKey: 'navsec.resellers',
+    items: [
+      { key: 'nav.resellers',  to: '/resellers' },
+      { key: 'nav.pricing',    to: '/tarifs' },
+      { key: 'nav.references', to: '/references' },
     ],
   },
   {
     titleKey: 'navsec.content',
     items: [
-      { key: 'nav.controlCenter', to: '/control-center' },
-      { key: 'nav.homeManager',   to: '/home-manager' },
-      { key: 'nav.featured',      to: '/featured' },
-      { key: 'nav.theme',         to: '/theme' },
+      { key: 'nav.chaines',       to: '/chaines' },
+      { key: 'nav.servers',       to: '/servers' },
       { key: 'nav.ad',            to: '/ad' },
       { key: 'nav.notifications', to: '/notifications' },
-      { key: 'nav.forceUpdate',   to: '/force-update' },
-      { key: 'nav.reviews',       to: '/reviews' },
+      { key: 'nav.featured',      to: '/featured' },
+      { key: 'nav.homeManager',   to: '/home-manager' },
+      { key: 'nav.theme',         to: '/theme' },
+    ],
+  },
+  {
+    titleKey: 'navsec.blackbox',
+    items: [
+      { key: 'nav.blackbox', to: '/blackbox' },
     ],
   },
   {
     titleKey: 'navsec.system',
     items: [
-      { key: 'nav.dashboard', to: '/' },
-      { key: 'nav.online',    to: '/online' },
-      { key: 'nav.apps',      to: '/apps' },
-      { key: 'nav.history',   to: '/history' },
-      { key: 'nav.account',   to: '/account' },
+      { key: 'nav.history', to: '/history' },
+      { key: 'nav.account', to: '/account' },
     ],
   },
 ];

@@ -7,6 +7,7 @@ import {
   getCurrentUser, isOwnerRole,
   DOWNLOAD_URL, DOWNLOADER_CODE, DOWNLOAD_URL_TV, DOWNLOADER_CODE_TV,
   type App, type PlanCost, type ActivateResult, type TrialExtendResult, ApiError,
+  newIdempotencyKey, keepIdempotencyKeyAfter,
 } from '@/lib/api';
 import { formatDateTime, isValidMac, normalizeMac } from '@/lib/utils';
 import { createSingleFlight } from '@/lib/robust';
@@ -41,6 +42,7 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
   const [err, setErr] = useState<string | null>(null);
   const [result, setResult] = useState<ActivateResult | null>(null);
   const flight = useRef(createSingleFlight());
+  const idem = useRef<string | null>(null);
 
   const [daysChoice, setDaysChoice] = useState('7');
   const [daysBusy, setDaysBusy] = useState(false);
@@ -94,14 +96,19 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
         return;
       }
       try {
-        // Licence seulement. Pas de lien dans cet appel.
+        // Licence seulement. Pas de lien dans cet appel. La clé
+        // d'idempotence survit à une coupure : un second envoi de la même
+        // intention rejoue la réponse au lieu de réactiver et redébiter.
+        const key = idem.current ?? (idem.current = newIdempotencyKey());
         const res = await activateApi.activate({
           mac: m, plan, app_id: appId,
           customer_name: customerName.trim() || undefined,
-        });
+        }, key);
+        idem.current = null;
         setResult(res);
         if (res.credit_balance !== null) setBalance(res.credit_balance);
       } catch (e: unknown) {
+        if (!keepIdempotencyKeyAfter(e)) idem.current = null;
         if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
         setErr(e instanceof ApiError ? e.message : 'Activation impossible. Réessayez.');
       } finally {

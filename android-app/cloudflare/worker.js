@@ -54,7 +54,7 @@
 
 // API v1 — App Licensing Platform (cf. cloudflare/api_v1.js)
 // Routee depuis le bas du fetch() en haut de la chaine de match.
-import { apiV1, panelActorFromToken } from './api_v1.js';
+import { apiV1, logAudit, panelActorFromToken } from './api_v1.js';
 import { blackboxRequestedAt, saveBlackBox } from './blackbox_journal.js';
 import {
   RealtimeHub,
@@ -3248,7 +3248,11 @@ async function handlePanelRemoveSelfSource(request, env, mac, id) {
   }
   await ensureDeviceSourcesTable(env);
   const out = await removeSelfSourceItem(env, MAC, String(id || ''));
-  if (out.status === 200) await notifyBox(env, MAC, 'source');
+  if (out.status === 200) {
+    await notifyBox(env, MAC, 'source');
+    await logAudit(env, request, { type: user.role === 'reseller' ? 'reseller' : 'admin', id: user.sub },
+      'source.self_remove', { type: 'device', id: MAC }, null, { source_id: String(id || '') });
+  }
   return json(out.body, out.status);
 }
 
@@ -3290,6 +3294,9 @@ async function handlePanelResetBox(request, env, mac) {
   // Les builds antérieurs à 165 ignorent « reset » : « source » leur fait
   // relire des listes vides, donc effacer celles du panel.
   await notifyBox(env, MAC, 'source');
+  // Action destructive : journalisée (acteur, cible, moment, corrélation).
+  await logAudit(env, request, { type: user.role === 'reseller' ? 'reseller' : 'admin', id: user.sub },
+    'device.reset', { type: 'device', id: MAC }, null, { reset_at: now });
   return json({ ok: true, mac: MAC, reset_at: now });
 }
 
@@ -3882,6 +3889,16 @@ async function handleRequest(request, env, ctx) {
     if (segments[0] === 'api' && segments[1] === 'device-source' && segments.length === 3) {
       if (request.method !== 'GET') {
         return badRequest('only GET supported on /api/device-source/:mac');
+      }
+      // SÉCURITÉ (06/10/2026) : cette route rend les codes IPTV déchiffrés
+      // à quiconque connaît la MAC, sans authentification (mesuré en lecture
+      // seule sur la box de test). Mitigation immédiate et compatible : au
+      // plus 120 lectures par minute et par IP (une box en attente en fait
+      // ~2,4 ; 120 couvre une salle de 40 box derrière la même IP). Le vrai
+      // correctif est le secret d'appareil (device_guard.js de la branche
+      // app) : voir docs/PROMPT-MISSION-STABILITE.md, P0.
+      if (!(await rateLimitOk(env, request, 'devsrc', 120, 60 * 1000))) {
+        return tooManyRequests();
       }
       return await handlePublicDeviceSource(env, segments[2]);
     }

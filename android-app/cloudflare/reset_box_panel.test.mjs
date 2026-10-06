@@ -145,6 +145,18 @@ async function main() {
   served = await api(env, 'GET', `/api/device-source/${MAC}`);
   ok((served.json.sources || []).length === 1, 'la box reçoit la nouvelle liste seule');
 
+  // Sécurité : lecture des codes par MAC limitée à 120 / minute / IP.
+  const ipHeaders = { 'CF-Connecting-IP': '203.0.113.7' };
+  let last = 0; let firstLimited = 0;
+  for (let i = 1; i <= 121; i++) {
+    const res = await worker.fetch(new Request(`https://app.test/api/device-source/${MAC}`, { headers: ipHeaders }), env, ctx);
+    last = res.status;
+    if (res.status === 429 && !firstLimited) firstLimited = i;
+  }
+  ok(firstLimited === 121 && last === 429, `device-source : 120 lectures passent, la 121e reçoit 429 (première 429 au n°${firstLimited})`);
+  const other = await worker.fetch(new Request(`https://app.test/api/device-source/${MAC}`, { headers: { 'CF-Connecting-IP': '203.0.113.8' } }), env, ctx);
+  ok(other.status === 200, 'une autre IP n’est pas touchée');
+
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);
 }

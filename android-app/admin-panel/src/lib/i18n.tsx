@@ -67,6 +67,11 @@ const STR: Record<string, Record<Lang, string>> = {
 
   // --- Sections du menu (regroupement Sidebar) ---
   'navsec.activation': { fr: 'Activation & abonnés', en: 'Activation & subscribers', ar: 'التفعيل والمشتركون' },
+  'navsec.control':   { fr: 'Centre de contrôle', en: 'Control center', ar: 'مركز التحكم' },
+  'navsec.customers': { fr: 'Clients', en: 'Customers', ar: 'العملاء' },
+  'navsec.apps':      { fr: 'Applications', en: 'Applications', ar: 'التطبيقات' },
+  'navsec.resellers': { fr: 'Revendeurs', en: 'Resellers', ar: 'الموزعون' },
+  'navsec.blackbox':  { fr: 'Boîte noire', en: 'Black box', ar: 'الصندوق الأسود' },
   'navsec.channels': { fr: 'Chaînes & sources', en: 'Channels & sources', ar: 'القنوات والمصادر' },
   'navsec.content': { fr: 'App & contenu', en: 'App & content', ar: 'التطبيق والمحتوى' },
   'navsec.system': { fr: 'Système', en: 'System', ar: 'النظام' },

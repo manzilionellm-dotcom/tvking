@@ -83,7 +83,12 @@ interface RequestOpts {
   noAuth?: boolean;
   /// Annule la requête précédente (recherche, rafraîchissement).
   signal?: AbortSignal;
+  /// En-têtes en plus (ex. `Idempotency-Key` sur une écriture critique).
+  headers?: Record<string, string>;
 }
+
+// Clé d'idempotence des écritures critiques : module pur (testé sous node).
+export { newIdempotencyKey, keepIdempotencyKeyAfter } from './idempotency';
 
 async function request<T = unknown>(
   path: string,
@@ -91,6 +96,7 @@ async function request<T = unknown>(
 ): Promise<T> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
+    ...(opts.headers || {}),
   };
   if (!opts.noAuth) {
     const token = getToken();
@@ -542,8 +548,12 @@ export const activateApi = {
     custom_days?: number;
     reseller_id?: string;
     source?: DeviceSourceInput;
-  }) =>
-    request<ActivateResult>('/api/v1/activate', { method: 'POST', body: payload }),
+  }, idempotencyKey?: string) =>
+    request<ActivateResult>('/api/v1/activate', {
+      method: 'POST',
+      body: payload,
+      headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : undefined,
+    }),
 
   // Prolonge l'essai d'une MAC déjà connue de N jours.
   // Réservé à l'administrateur (le Worker refuse un revendeur).

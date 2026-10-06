@@ -6,6 +6,7 @@ import {
   activateApi, appsApi, devicesApi, planCostsApi, meApi, sourcesApi,
   getCurrentUser, isOwnerRole, userCan,
   type App, type PlanCost, type ActivateResult, type DeviceSource, ApiError,
+  newIdempotencyKey, keepIdempotencyKeyAfter,
 } from '@/lib/api';
 import { formatDateTime, isValidMac, normalizeMac } from '@/lib/utils';
 import { createSingleFlight } from '@/lib/robust';
@@ -86,6 +87,9 @@ export function RemoteActivatePage({ onLogout }: { onLogout: () => void }) {
   const [listNote, setListNote] = useState<string | null>(null);
   const [result, setResult] = useState<ActivateResult | null>(null);
   const flight = useRef(createSingleFlight());
+  // Une clé par intention d'activation ; gardée si la réponse n'est pas
+  // arrivée (coupure, 5xx), pour qu'un nouvel envoi rejoue au lieu de redébiter.
+  const idem = useRef<string | null>(null);
 
   // ----- « Sur la TV » : preuve que la liste est arrivée -----
   // Dès que la liste est envoyée, on relit l'inventaire réel de la box
@@ -234,14 +238,17 @@ export function RemoteActivatePage({ onLogout }: { onLogout: () => void }) {
       setMac(m);
       setLicenceStep('busy');
       try {
+        const key = idem.current ?? (idem.current = newIdempotencyKey());
         const res = await activateApi.activate({
           mac: m, plan, app_id: appId,
           customer_name: customerName.trim() || undefined,
-        });
+        }, key);
+        idem.current = null;
         setResult(res);
         if (res.credit_balance !== null) setBalance(res.credit_balance);
         setLicenceStep('ok');
       } catch (e2: unknown) {
+        if (!keepIdempotencyKeyAfter(e2)) idem.current = null;
         if (e2 instanceof ApiError && e2.status === 401) { onLogout(); return; }
         setLicenceStep('err');
         setErr((e2 instanceof ApiError ? e2.message : 'Activation impossible.') + ' Aucune liste envoyée.');

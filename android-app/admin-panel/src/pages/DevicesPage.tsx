@@ -11,6 +11,7 @@ import {
   devicesApi, activateApi, sourcesApi, flagEmoji, isAbortError,
   type Device, type DeviceSource, type DeviceOverview, type DeviceLocalSource,
   type DeviceLicense, type DevicePresence, ApiError,
+  newIdempotencyKey, keepIdempotencyKeyAfter,
 } from '@/lib/api';
 import { shouldApplyPollResult } from '@/lib/live-sync';
 import { bindPanelRefresh } from '@/lib/box-channel';
@@ -845,6 +846,7 @@ function ActivatePlanModal({
   // Verrou synchrone : deux clics avant le re-render partaient deux fois
   // et débitaient deux fois les crédits.
   const flight = useRef(createSingleFlight());
+  const idem = useRef<string | null>(null);
 
   const PLANS = [
     { id: 'monthly', label: '1 mois' },
@@ -858,10 +860,13 @@ function ActivatePlanModal({
     await flight.current.run(async () => {
       setBusy(true); setErr(null);
       try {
-        await activateApi.activate({ mac: device.mac, plan });
+        const key = idem.current ?? (idem.current = newIdempotencyKey());
+        await activateApi.activate({ mac: device.mac, plan }, key);
+        idem.current = null;
         setDone(true);
         setTimeout(onDone, 900);
       } catch (e: any) {
+        if (!keepIdempotencyKeyAfter(e)) idem.current = null;
         setErr(e instanceof ApiError ? e.message : 'Échec.');
       } finally { setBusy(false); }
     });
