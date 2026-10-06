@@ -472,6 +472,36 @@ demande (ce que font IBO / TiviMate / Smarters).
 - Rappel propriétaire : les listes de `5C:E5…` ne vont pas sur la SHIELD
   (`80:78:60:07:4F`) ; chaque box a ses propres listes.
 
+
+## 5 suite. P0 Direct : capture SHIELD reçue le 6 octobre à 12:27
+
+- **NON PROUVÉ — fin de l'import de la grosse liste sur la SHIELD.** La
+  capture du propriétaire affiche `107-test.170+1791275287`, une mémoire
+  process de 273 Mo et « Dernière session terminée normalement » pour la
+  session précédente (10:48). Les dernières lignes visibles vont jusqu'à
+  12:12:31. Aucune ligne visible « liste … chargée en N s (X chaînes) » ne
+  permet d'attester cet import, et cette capture ne montre pas Direct
+  pendant ni après le chargement.
+- **PROUVÉ — cadence du journal mémoire par lecture du code du build #170.**
+  Dans `android-app/lib/core/blackbox/black_box.dart`, commit `a000384`,
+  ligne 91 : `_kMemoryEvery = Duration(seconds: 30)` ; ligne 165 :
+  `Timer.periodic(_kMemoryEvery, (_) => logMemory('périodique'))`.
+  Un intervalle d'environ 30 s entre ces lignes ne démontre donc pas un
+  gel. Le critère « aucun écart de plus de 5 s entre deux lignes
+  [MEM] [périodique] » est **NON PROUVÉ et incompatible avec cette cadence**,
+  même avec un fil UI disponible ; il demande une instrumentation adaptée.
+  Le chien de garde existant utilise un timer de 500 ms et journalise
+  `[GEL]` au-delà de 700 ms de retard ; aucune ligne de ce type n'est
+  visible sur la capture, ce qui ne prouve pas leur absence pendant l'import.
+- **À obtenir pour la preuve sur la SHIELD :** journal actualisé couvrant
+  l'import, sa ligne de fin avec durée et nombre de chaînes, les mesures
+  mémoire pendant le chargement et les éventuelles lignes `[GEL]` ; essai
+  de navigation dans Direct pendant puis après l'import. Les « 2 source(s) »
+  de `[MAJ]` comptent les adresses de mise à jour, pas les listes de chaînes.
+- Cette vérification est une lecture du code et de la capture, sans nouveau
+  test local ni changement du comportement de la box. Le correctif
+  `9e19cc5` reste à prouver sur la SHIELD sous cette charge.
+
 ## 6. Règles du propriétaire (non négociables)
 
 - Jamais `publish=true` sans son ordre écrit ; jamais de push sur `main`.
