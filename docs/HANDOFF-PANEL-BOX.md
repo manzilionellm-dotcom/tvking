@@ -329,6 +329,35 @@ demande (ce que font IBO / TiviMate / Smarters).
   correctif `device_guard.js` n'existe que sur la branche app.
 - Rapport complet : `docs/RAPPORT-CONTROL-CENTER.md`.
 
+## 5 sedecies. Ordres suivis, accusés réels, révisions, concurrence (6 octobre)
+
+- 7e patch `docs/patches/panel-ordres-accuses-trace-revisions.patch`, après
+  les six autres. Ordre vérifié sur `636aad6` propre : boîte noire, envoi
+  instantané, retrait liste client, activation qui remplace, remise à neuf,
+  activation idempotente, puis celui-ci. L'ancien
+  `panel-supprimer-liste-mac-sans-mk.patch` est déjà en production
+  (`0896028`) : ne pas l'appliquer.
+- Worker : ordres `ord_…` + `trace_id` (CREATED → SENT → RECEIVED → APPLIED /
+  FAILED / EXPIRED), `POST /api/box/ack` qui enregistre vraiment, révisions
+  de listes avec retour arrière vers une révision accusée, écritures de
+  listes par comparaison-échange, chronologie `GET /api/v1/timeline`,
+  centiles `GET /api/v1/metrics/latency` (owner).
+- Panel : chronologie sous la page Boîte noire.
+- Box : accusés RECEIVED puis APPLIED/FAILED (repli `zuno.ack.off`),
+  dernière bonne liste gardée tant qu'aucune nouvelle n'est chargée.
+- Tests locaux de charge : Miniflare 4 seul avec le paquet de déploiement
+  (`cloudflare/test_support/miniflare_server.mjs`), pas `wrangler dev`
+  (rapport § 1, bugs 15 et 16).
+- Divergence des branches et plan de réconciliation :
+  `docs/DIVERGENCE-BRANCHES.md`. Rapport : `docs/RAPPORT-CONTROL-CENTER.md`.
+- Build #166 = `107-test.166`, versionCode 1791243281, SHA-256
+  `e3b547e3eb6e3636162fd83e189ab73b9e032d25995cf1f36e09f5017254f8ca`
+  (54 768 727 octets, commit a09a832).
+- Build #167 = `107-test.167`, versionCode 1791248258, SHA-256
+  `d2da1aa5dac8d430e5973a4e0312a6925a8b4cdf6f6a779dfcb655b2ca786f06`
+  (54 779 385 octets, commit ea9b22e, signature `5145b8e0…9e61` relue sur
+  l'APK téléchargé). Contient les accusés d'ordres de la box.
+
 ## 6. Règles du propriétaire (non négociables)
 
 - Jamais `publish=true` sans son ordre écrit ; jamais de push sur `main`.
@@ -344,7 +373,7 @@ demande (ce que font IBO / TiviMate / Smarters).
 
 ```bash
 # App
-cd android-app && flutter analyze && flutter test        # 415 verts au 4/10
+cd android-app && flutter analyze && flutter test        # 504 verts, 2 ignorés au 6/10
 # Panel
 cd android-app/admin-panel && npm ci && npm test && npm run build   # 20/20
 # Worker

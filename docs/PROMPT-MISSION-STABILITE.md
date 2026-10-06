@@ -194,6 +194,19 @@ par le client ; « Activer » remplace au lieu d'ajouter ; **Réinitialiser la
 box** (`POST /api/v1/sources/:mac/reset`) ; Activation = licence seule et
 page **Listes** à part (remplace par défaut, ajoute si décoché).
 
+Écrit, testé, **pas encore en production** (7e patch,
+`panel-ordres-accuses-trace-revisions.patch`) : ordres `ord_…` + `trace_id`
+suivis jusqu'à l'accusé APPLIED/FAILED de la box ; révisions de listes et
+retour arrière vers une révision accusée ; écritures de listes par
+comparaison-échange (aucune perte sous 100 écritures simultanées, prouvé sur
+workerd) ; reprise d'activation après une panne post-validation ;
+chronologie et centiles de latence dans le panel ; liens `get.php` abîmés
+(apostrophe courbe, accent flottant, lien collé deux fois) refusés par le
+Worker avec un message clair. Box : accusés (repli `zuno.ack.off`).
+Rapport en PROUVÉ / NON PROUVÉ : `docs/RAPPORT-CONTROL-CENTER.md`.
+Divergence des branches : `docs/DIVERGENCE-BRANCHES.md` (ne jamais fusionner
+l'app dans la production : 18 conflits, 10 pages du site supprimées).
+
 Mesuré, pas élucidé :
 - **Qui efface la ligne de la liste pendant un import de 130 s ?** Reproduit
   deux fois (#160, #163). Aucun chemin de suppression n'est silencieux dans le
@@ -258,7 +271,8 @@ du workflow, confirmation Android comprise. Jamais de jeton dans le dépôt.
 
 **P3 — Mise en production (décisions du propriétaire, tu prépares, il
 déclenche).**
-7. Appliquer les 4 patchs sur `claude/panel-mise-en-ligne`, lancer les tests
+7. Appliquer les 7 patchs, dans l'ordre de `docs/HANDOFF-PANEL-BOX.md` § 5 sedecies,
+   sur une branche d'intégration issue de `claude/panel-mise-en-ligne`, lancer les tests
    Worker (`node --experimental-sqlite cloudflare/*.test.mjs`) et panel
    (`npm ci && npm test && npm run build`), déployer avec `confirme=DEPLOYER`,
    relire la MAC de référence avant/après.
@@ -275,7 +289,7 @@ déclenche).**
   `docs/MESURE-ACTIVATION-INSTANTANEE.md` (section numérotée, datée, avec la
   mesure avant/après) + ligne dans `docs/HANDOFF-PANEL-BOX.md`.
 - Avant chaque push : `flutter analyze` sans nouvelle erreur, `flutter test`
-  entier vert (≥ 476 tests au 6 octobre), tests Worker et panel verts si
+  entier vert (≥ 504 tests au 6 octobre), tests Worker et panel verts si
   touchés. Puis un build de test et ses empreintes.
 - Après chaque build : attendre la photo ou la copie de la boîte noire du
   propriétaire, et lire ce qu'elle dit avant de proposer la suite.
@@ -295,7 +309,17 @@ déclenche).**
   avoir ajouté une clé dans `app_fr.arb` et `app_en.arb` (fr = modèle).
 - `Playlist.createdAt` est un `int` (ms), pas un `DateTime`.
 - Les tests Worker tournent sur SQLite réel (`node --experimental-sqlite`),
-  avec des comptes et adresses `example.test` uniquement.
+  avec des comptes et adresses `example.test` uniquement. Un seul banc D1 :
+  `cloudflare/test_support/d1_sqlite.mjs` ; ne pas réécrire de fausse base
+  qui reconnaît le SQL par morceaux de texte (elle a déjà caché des défauts).
+- Test de concurrence réel (`cloudflare/concurrency.e2e.mjs`) : le lancer
+  sur Miniflare 4 seul avec le paquet de `wrangler deploy --dry-run`
+  (mode d'emploi en tête du fichier). Pas sous `wrangler dev` : wrangler
+  3.114 garde des sockets ouvertes à chaque requête (« Too many open
+  files »), et le proxy de développement de wrangler 4 perd parfois un POST
+  sous charge (« Network connection lost »). Sous `wrangler dev`, ne modifier
+  aucun fichier du Worker pendant le test : il est rechargé et les requêtes
+  en vol tombent en 503.
 - Une liste « ajoutée par le client » (`origin: 'self'`) n'est pas dans le
   PUT du panel : le Worker la garde d'office ; seule la route
   `DELETE /api/v1/sources/:mac/self/:id` (patch 3) la retire.

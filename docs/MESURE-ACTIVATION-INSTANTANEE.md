@@ -488,6 +488,38 @@ commit 67d0a85) : `107-test.165`, versionCode 1791241671, SHA-256
 54 767 130 octets, `mandatory: false`. Suite Flutter avant commit : 481 verts,
 2 ignorés.
 
+## 7 duodecies. Accusés réels, révisions, concurrence (6 octobre, 01:10)
+
+**Build #166 vérifié** (commit a09a832) : `107-test.166`, versionCode
+1791243281, SHA-256
+`e3b547e3eb6e3636162fd83e189ab73b9e032d25995cf1f36e09f5017254f8ca`,
+54 768 727 octets.
+
+**Build #167 vérifié** (`build-zuno-tv.yml`, `test_box=true`,
+`publish=false`, commit ea9b22e) : `107-test.167`, versionCode 1791248258,
+SHA-256 `d2da1aa5dac8d430e5973a4e0312a6925a8b4cdf6f6a779dfcb655b2ca786f06`,
+54 779 385 octets, `mandatory: false`, signature
+`51:45:B8:E0:…:CB:DF:9E:61` (lue par `keytool -printcert` sur l'APK
+téléchargé). Suite Flutter avant commit : 504 réussis, 2 ignorés.
+
+Ce que #167 ajoute : pour chaque ordre du panel, la box accuse RECEIVED dès
+réception puis APPLIED ou FAILED avec le résultat réel. Tant que le Worker de
+production n'a pas le 7e patch, il répond 404 et la box n'envoie qu'une fois
+(prouvé par test). Repli `zuno.ack.off`.
+
+Mesure **LOCALE** du chemin serveur (Miniflare 4 + paquet de déploiement,
+pas la production, box simulée), p50 / p95 / p99 en ms :
+
+| Opération | bout en bout panel → accusé APPLIED |
+|---|---|
+| Activation | 36 / 49 / 53 |
+| Renouvellement | 32 / 46 / 76 |
+| Listes | 31 / 42 / 50 |
+
+Détail par segment : `docs/RAPPORT-CONTROL-CENTER.md` § 8. En production :
+NON MESURÉ tant que le 7e patch n'est pas déployé ; ensuite, lire
+`GET /api/v1/metrics/latency` (owner) : mêmes colonnes, même calcul.
+
 ## 8. Remesure après correctif (à faire par le propriétaire, box de test)
 
 1. Installer `107-test.156` sur la box de test (release `zuno-tv-test`).
