@@ -396,6 +396,18 @@ demande (ce que font IBO / TiviMate / Smarters).
 - Retour arrière : versions du Worker listées par le run (étape AVANT) ;
   déploiements Pages précédents dans Cloudflare.
 
+## 5 novodecies. « Supprimer » sur la télé tient (6 octobre, build #168)
+
+- Cause mesurée : le serveur servait toujours « Mon abonnement » (panel) et
+  « 6 » (client) ; la télé n'effaçait que sa copie, la vérification
+  suivante la réimportait.
+- Box (commit f9eaef2) : liste du client supprimée aussi sur le serveur ;
+  liste du panel plus réimportée tant que le panel ne la renvoie pas ;
+  serveur injoignable = rien d'effacé. Repli `zuno.source.tv_delete_legacy`.
+- Build #168 = `107-test.168`, versionCode 1791271081, SHA-256
+  `3462665d501afbee86ac4bb22e8e7dd0b23b223d324b4b17884d276df493c911`
+  (54 793 836 octets), signature `5145b8e0…9e61` relue sur l'APK.
+
 ## 6. Règles du propriétaire (non négociables)
 
 - Jamais `publish=true` sans son ordre écrit ; jamais de push sur `main`.
