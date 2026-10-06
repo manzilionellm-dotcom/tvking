@@ -37,6 +37,8 @@ import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+import '../../../core/app/repair_flags.dart';
+
 import '../../../core/blackbox/black_box.dart';
 import '../../channels/domain/channel.dart';
 import 'import_progress.dart';
@@ -211,39 +213,34 @@ class XtreamClient {
           '$host : liste > ${kXtreamSingleShotBytes ~/ (1024 * 1024)} Mo → import PAR CATÉGORIE (${cats.length} catégories)');
       channels = <Channel>[];
       final Set<String> seen = <String>{};
-      int i = 0;
-      for (final MapEntry<String, String> cat in cats.entries) {
-        i++;
+      final List<MapEntry<String, String>> list = cats.entries.toList(growable: false);
+      // PARALLÈLE BORNÉ (06/10/2026). Mesuré sur la SHIELD : 914 catégories
+      // lues une à une = 914 appels l'un après l'autre, 136 s avant la
+      // première chaîne. On en lit [kXtreamCategoryConcurrency] à la fois
+      // (le pic mémoire reste celui de quelques catégories, pas du bouquet),
+      // et on fusionne DANS L'ORDRE des catégories : même résultat, même
+      // dédoublonnage qu'en série (xtream_category_parallel_test.dart).
+      // Repli `zuno.xtream.per_category_serial` : une à la fois.
+      final int width = RepairFlags.xtreamPerCategorySerial ? 1 : kXtreamCategoryConcurrency;
+      for (int start = 0; start < list.length; start += width) {
         if (channels.length >= kMaxChannelsPerImport) break;
+        final int end = start + width > list.length ? list.length : start + width;
+        final int remaining = kMaxChannelsPerImport - channels.length;
         BlackBox.instance.breadcrumb(
-            'Import Xtream $host : catégorie $i/${cats.length} « ${cat.value} »');
-        ImportProgressBus.category(i, cats.length, channels.length);
-        try {
-          final Uint8List? part = await _getBytes(
-            _buildUri(
-              action: 'get_live_streams',
-              extra: <String, String>{'category_id': cat.key},
-            ),
-          );
-          if (part == null) continue;
-          final _LiveStreamsResult mapped = await compute(
-            _mapLiveStreamsInIsolate,
-            _LiveStreamsJob(
-              payload: TransferableTypedData.fromList(<Uint8List>[part]),
-              categories: cats,
-              playlistId: playlistId,
-              streamUrlPrefix: prefix,
-              maxChannels: kMaxChannelsPerImport - channels.length,
-            ),
-          );
+            'Import Xtream $host : catégories ${start + 1}-$end/${list.length}');
+        ImportProgressBus.category(end, list.length, channels.length);
+        final List<_LiveStreamsResult?> parts = await Future.wait(<Future<_LiveStreamsResult?>>[
+          for (int k = start; k < end; k++)
+            _fetchCategory(list[k], cats, playlistId, prefix, remaining),
+        ]);
+        for (final _LiveStreamsResult? mapped in parts) {
+          if (mapped == null) continue;
           // Une chaîne peut être rangée dans deux catégories : dédup par id.
           for (final Channel c in mapped.channels) {
+            if (channels.length >= kMaxChannelsPerImport) break;
             if (seen.add(c.id)) channels.add(c);
           }
           epgChannelIds.addAll(mapped.epgIds);
-        } catch (e) {
-          // Une catégorie en échec n'annule pas l'import : on la note et on continue.
-          BlackBox.instance.warn('XTREAM', 'catégorie « ${cat.value} » ignorée : $e');
         }
       }
     }
@@ -256,6 +253,39 @@ class XtreamClient {
       debugPrint('[XtreamClient] ${channels.length} chaînes live récupérées');
     }
     return channels;
+  }
+
+  /// Une catégorie : téléchargement puis décodage en isolate. Une catégorie
+  /// en échec n'annule pas l'import : on la note et on rend `null`.
+  Future<_LiveStreamsResult?> _fetchCategory(
+    MapEntry<String, String> cat,
+    Map<String, String> cats,
+    int playlistId,
+    String prefix,
+    int maxChannels,
+  ) async {
+    try {
+      final Uint8List? part = await _getBytes(
+        _buildUri(
+          action: 'get_live_streams',
+          extra: <String, String>{'category_id': cat.key},
+        ),
+      );
+      if (part == null) return null;
+      return await compute(
+        _mapLiveStreamsInIsolate,
+        _LiveStreamsJob(
+          payload: TransferableTypedData.fromList(<Uint8List>[part]),
+          categories: cats,
+          playlistId: playlistId,
+          streamUrlPrefix: prefix,
+          maxChannels: maxChannels,
+        ),
+      );
+    } catch (e) {
+      BlackBox.instance.warn('XTREAM', 'catégorie « ${cat.value} » ignorée : $e');
+      return null;
+    }
   }
 
   // ============================================================

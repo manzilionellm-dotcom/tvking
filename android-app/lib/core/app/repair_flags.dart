@@ -251,12 +251,19 @@ abstract final class RepairFlags {
   static const String epgGzipByHeaderKey = 'zuno.epg.gzip_by_header';
   static bool epgGzipByHeader = false;
 
+  /// Import Xtream par catégorie (grosse liste). Faux (défaut, 06/10/2026) =
+  /// 4 catégories téléchargées à la fois, fusion dans l'ordre. Vrai = ancien
+  /// comportement, une à la fois (914 appels en série mesurés : 136 s).
+  static const String xtreamPerCategorySerialKey = 'zuno.xtream.per_category_serial';
+  static bool xtreamPerCategorySerial = false;
+
   static Future<void> load() async {
     bool raw = false;
     bool tvDelLegacy = false;
     bool shelvesLegacy = false;
     bool replayLegacy = false;
     bool gzipByHeader = false;
+    bool xtreamSerial = false;
     bool fsyncAll = false;
     bool syncPlayback = false;
     bool epgOff = false;
@@ -316,6 +323,7 @@ abstract final class RepairFlags {
       shelvesLegacy = prefs.getBool(liveShelvesLegacyKey) ?? false;
       replayLegacy = prefs.getBool(wsReplayLegacyKey) ?? false;
       gzipByHeader = prefs.getBool(epgGzipByHeaderKey) ?? false;
+      xtreamSerial = prefs.getBool(xtreamPerCategorySerialKey) ?? false;
     } catch (_) {
       raw = false;
       fsyncAll = false;
@@ -348,8 +356,10 @@ abstract final class RepairFlags {
       shelvesLegacy = false;
       replayLegacy = false;
       gzipByHeader = false;
+      xtreamSerial = false;
     }
     epgGzipByHeader = gzipByHeader;
+    xtreamPerCategorySerial = xtreamSerial;
     orderAckOff = ackOff;
     tvDeleteLegacy = tvDelLegacy;
     liveShelvesLegacy = shelvesLegacy;
@@ -418,6 +428,7 @@ abstract final class RepairFlags {
     liveShelvesLegacy = false;
     wsReplayLegacy = false;
     epgGzipByHeader = false;
+    xtreamPerCategorySerial = false;
     NativeVideoController.legacyHoldFrame = false;
   }
 }

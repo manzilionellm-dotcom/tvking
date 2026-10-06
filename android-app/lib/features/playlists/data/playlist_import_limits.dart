@@ -53,3 +53,10 @@ class PlaylistImportTooLarge implements Exception {
   @override
   String toString() => message;
 }
+
+/// Import Xtream PAR CATÉGORIE (liste > [kXtreamSingleShotBytes]) : nombre
+/// de catégories téléchargées en même temps. 4 = 914 catégories en ~230
+/// vagues au lieu de 914 appels en série (mesuré 136 s le 06/10/2026), sans
+/// rafale qui ferait refuser la box par le fournisseur. Repli :
+/// `zuno.xtream.per_category_serial`.
+const int kXtreamCategoryConcurrency = 4;
