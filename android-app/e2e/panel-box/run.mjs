@@ -308,14 +308,21 @@ async function parcours(page) {
   );
 
   // ----- Création + activation depuis l'écran, SANS lien M3U -----
-  // Écran court (activation pro) : titre « Activation », deux durées
-  // (1 an par défaut, à vie), bouton « Activer », résultat « Activé jusqu’au … ».
+  // Écran unifié du 06/10 : « Activer une box », essai 7 j par défaut.
+  // Ce parcours vérifie un abonnement payé : on choisit donc réellement
+  // « 1 an » dans l'écran, puis on garde les preuves de licence ci-dessous.
+  // Le run CI #22 attendait l'ancien titre et ne testait plus l'activation.
   await page.goto(PANEL_ORIGIN + '/activate');
-  await page.getByRole('heading', { name: 'Activation' }).waitFor();
-  await page.getByPlaceholder('MK:XX:XX:XX:XX:XX').fill(mac);
+  await page.getByRole('heading', { name: 'Activer une box', exact: true }).waitFor();
+  await page.getByLabel('Adresse MAC (comme sur la box)', { exact: true }).fill(mac);
   await page.getByPlaceholder('Ex. Salon de Karim').fill(CUSTOMER);
+  const oneYear = page.getByRole('radiogroup', { name: 'Abonnement payé', exact: true })
+    .getByRole('radio', { name: '1 an', exact: true });
+  await oneYear.click();
+  check('la durée 1 an est choisie dans le vrai écran',
+    await oneYear.getAttribute('aria-checked') === 'true');
   await page.getByRole('button', { name: 'Activer', exact: true }).click();
-  await page.getByText(/Activé jusqu’au/).waitFor();
+  await page.getByRole('status').getByText(/Activée jusqu’au/).waitFor();
   check('écran d\'activation : appareil créé sans source', true, mac);
 
   await page.goto(PANEL_ORIGIN + '/customers');
