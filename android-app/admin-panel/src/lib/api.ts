@@ -13,7 +13,22 @@
 //  partageront le meme domaine racine (Phase 2).
 // =========================================================
 
+import {
+  flagEmoji as flagEmojiSafe,
+  interpretHttpResult,
+  isAbortError,
+  listQuery,
+  networkFailureMessage,
+} from './robust';
+
 const TOKEN_KEY = 'auth_token';
+
+export { isAbortError };
+/// Drapeau ISO2 uniquement. Un code invalide (« ?? ») ne produit plus
+/// un caractère illisible.
+export function flagEmoji(code: string): string {
+  return flagEmojiSafe(code);
+}
 
 /// URL de base de l'API. En production le panel est servi par
 /// Cloudflare Pages sur un sous-domaine (ex: admin.7themotion.com)
@@ -66,6 +81,8 @@ interface RequestOpts {
   body?: unknown;
   /// Si true, n'attache pas le token (utilise par /auth/login).
   noAuth?: boolean;
+  /// Annule la requête précédente (recherche, rafraîchissement).
+  signal?: AbortSignal;
 }
 
 async function request<T = unknown>(
@@ -79,26 +96,27 @@ async function request<T = unknown>(
     const token = getToken();
     if (token) headers.Authorization = `Bearer ${token}`;
   }
-  const resp = await fetch(`${API_BASE}${path}`, {
-    method: opts.method || 'GET',
-    headers,
-    body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
-  });
+  let resp: Response;
+  try {
+    resp = await fetch(`${API_BASE}${path}`, {
+      method: opts.method || 'GET',
+      headers,
+      body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
+      signal: opts.signal,
+    });
+  } catch (e) {
+    // L'annulation n'est pas une panne : l'appelant l'ignore.
+    if (isAbortError(e)) throw e;
+    throw new ApiError(0, 'network', networkFailureMessage());
+  }
 
   const text = await resp.text();
-  let json: any = null;
-  try { json = text ? JSON.parse(text) : null; } catch { /* non-JSON */ }
-
-  if (!resp.ok) {
-    const code = (json && json.error) || 'http_error';
-    const msg = (json && json.message) || `HTTP ${resp.status}`;
-    if (resp.status === 401) {
-      // Token expire ou invalide → on flush et on reload login
-      setToken(null);
-    }
-    throw new ApiError(resp.status, code, msg);
+  const read = interpretHttpResult(resp.status, text);
+  if (!read.ok) {
+    if (read.clearToken) setToken(null);
+    throw new ApiError(read.status, read.code, read.message);
   }
-  return json as T;
+  return read.json as T;
 }
 
 // =========================================================
@@ -277,10 +295,8 @@ export interface Customer {
   created_at: number;
 }
 export const customersApi = {
-  list: (q?: string) =>
-    request<{ items: Customer[] }>(
-      `/api/v1/customers${q ? `?q=${encodeURIComponent(q)}` : ''}`,
-    ),
+  list: (q?: string, page?: { limit?: number; offset?: number }, signal?: AbortSignal) =>
+    request<{ items: Customer[] }>(listQuery('/api/v1/customers', q, page), { signal }),
   create: (payload: Partial<Customer>) =>
     request<{ id: string }>('/api/v1/customers', { method: 'POST', body: payload }),
 };
@@ -339,10 +355,8 @@ export interface DeviceOverview {
   localSources?: DeviceLocalSource[];
 }
 export const devicesApi = {
-  list: (q?: string) =>
-    request<{ items: Device[] }>(
-      `/api/v1/devices${q ? `?q=${encodeURIComponent(q)}` : ''}`,
-    ),
+  list: (q?: string, page?: { limit?: number; offset?: number }, signal?: AbortSignal) =>
+    request<{ items: Device[] }>(listQuery('/api/v1/devices', q, page), { signal }),
   // Fiche 360° d'un appareil (abonnement + présence live + M-Trio) en 1 appel.
   overview: (id: string) =>
     request<DeviceOverview>(`/api/v1/devices/${encodeURIComponent(id)}/overview`),
@@ -373,7 +387,8 @@ export interface License {
   app_name?: string;
 }
 export const licensesApi = {
-  list: () => request<{ items: License[] }>('/api/v1/licenses'),
+  list: (page?: { limit?: number; offset?: number }, signal?: AbortSignal) =>
+    request<{ items: License[] }>(listQuery('/api/v1/licenses', undefined, page), { signal }),
   create: (payload: {
     customer_id: string;
     device_id: string;
@@ -737,7 +752,8 @@ export interface AuditLog {
   created_at: number;
 }
 export const auditApi = {
-  list: () => request<{ items: AuditLog[] }>('/api/v1/audit-logs'),
+  list: (page?: { limit?: number; offset?: number }, signal?: AbortSignal) =>
+    request<{ items: AuditLog[] }>(listQuery('/api/v1/audit-logs', undefined, page), { signal }),
 };
 
 // =========================================================
@@ -753,7 +769,10 @@ export interface ActivationReference {
   updated_at: number | null;
 }
 export const referencesApi = {
-  list: () => request<{ items: ActivationReference[] }>('/api/v1/references'),
+  list: (page?: { limit?: number; offset?: number }, signal?: AbortSignal) =>
+    request<{ items: ActivationReference[] }>(
+      listQuery('/api/v1/references', undefined, page), { signal },
+    ),
 };
 
 // =========================================================
@@ -925,7 +944,8 @@ export interface OnlineSnapshot {
   items: OnlineDevice[];
 }
 export const onlineApi = {
-  get: () => request<OnlineSnapshot>('/api/v1/online'),
+  get: (page?: { limit?: number; offset?: number }, signal?: AbortSignal) =>
+    request<OnlineSnapshot>(listQuery('/api/v1/online', undefined, page), { signal }),
 };
 
 // Liste de pays (ISO2 → nom FR) pour le ciblage des annonces. Drapeau
@@ -947,17 +967,6 @@ export const COUNTRIES: { code: string; name: string }[] = [
   { code: 'QA', name: 'Qatar' }, { code: 'EG', name: 'Égypte' },
   { code: 'AU', name: 'Australie' }, { code: 'BR', name: 'Brésil' },
 ];
-
-/** Drapeau emoji à partir d'un code ISO2 (ex. 'SE' → 🇸🇪). */
-export function flagEmoji(code: string): string {
-  if (!code || code.length !== 2) return '🏳️';
-  const A = 0x1f1e6;
-  const up = code.toUpperCase();
-  return String.fromCodePoint(
-    A + (up.charCodeAt(0) - 65),
-    A + (up.charCodeAt(1) - 65),
-  );
-}
 
 export interface PlanCost { plan: string; credits: number; }
 export const planCostsApi = {

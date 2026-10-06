@@ -1,6 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
-import { referencesApi, type ActivationReference, ApiError } from '@/lib/api';
+import { ListPager } from '@/components/ListPager';
+import { referencesApi, type ActivationReference, ApiError, isAbortError } from '@/lib/api';
+import { formatDateTime } from '@/lib/utils';
+import {
+  LIST_PAGE_SIZE, createAbortBag, createGeneration, readListPage, referenceMatches,
+} from '@/lib/robust';
 
 // =========================================================
 //  ReferencesPage — carnet MAC ↔ username (support)
@@ -9,11 +14,6 @@ import { referencesApi, type ActivationReference, ApiError } from '@/lib/api';
 //  as mis (JAMAIS le mot de passe) + le nom du client. Une barre de
 //  recherche pour retrouver vite quand un client appelle.
 // =========================================================
-
-function fmtDate(ms: number | null): string {
-  if (!ms) return '—';
-  try { return new Date(ms).toLocaleDateString('fr-FR'); } catch { return '—'; }
-}
 
 /// Badge de statut (couleurs en dur → rendu garanti, pas de dépendance à
 /// des classes Tailwind non définies dans le thème).
@@ -38,33 +38,44 @@ function RefStatus({ status }: { status: string }) {
 
 export function ReferencesPage({ onLogout }: { onLogout: () => void }) {
   const [items, setItems] = useState<ActivationReference[]>([]);
+  const [offset, setOffset] = useState(0);
+  const [total, setTotal] = useState(0);
+  const [truncated, setTruncated] = useState(false);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [q, setQ] = useState('');
   const [copied, setCopied] = useState<string | null>(null);
+  const gen = useRef(createGeneration());
+  const aborts = useRef(createAbortBag());
 
-  useEffect(() => {
-    referencesApi.list()
-      .then((r) => setItems(r.items || []))
+  const load = useCallback(() => {
+    const id = gen.current.next();
+    const signal = aborts.current.next();
+    setLoading(true);
+    referencesApi.list({ limit: LIST_PAGE_SIZE, offset }, signal)
+      .then((r) => {
+        if (!gen.current.isCurrent(id)) return;
+        const page = readListPage<ActivationReference>(r);
+        setItems(page.items);
+        setTotal(page.total);
+        setTruncated(page.truncated);
+        setErr(null);
+      })
       .catch((e) => {
+        if (isAbortError(e) || !gen.current.isCurrent(id)) return;
         if (e instanceof ApiError && e.status === 401) onLogout();
         else setErr(e instanceof ApiError ? e.message : 'Erreur réseau.');
       })
-      .finally(() => setLoading(false));
-    /* eslint-disable-next-line */
-  }, []);
+      .finally(() => { if (gen.current.isCurrent(id)) setLoading(false); });
+  }, [offset, onLogout]);
+
+  useEffect(() => { load(); }, [load]);
 
   // Filtre : MAC, username ou nom du client (recherche support).
-  const filtered = useMemo(() => {
-    const t = q.trim().toLowerCase();
-    if (!t) return items;
-    return items.filter((it) =>
-      it.mac.toLowerCase().includes(t)
-      || (it.customer_name || '').toLowerCase().includes(t)
-      || it.usernames.some((u) => u.toLowerCase().includes(t))
-      || it.servers.some((s) => s.toLowerCase().includes(t)),
-    );
-  }, [items, q]);
+  const filtered = useMemo(
+    () => items.filter((it) => referenceMatches(it, q)),
+    [items, q],
+  );
 
   function copy(text: string) {
     navigator.clipboard?.writeText(text).then(() => {
@@ -91,11 +102,11 @@ export function ReferencesPage({ onLogout }: { onLogout: () => void }) {
           className="w-full max-w-md rounded-md border border-white/10 bg-slate px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-accent"
         />
         <span className="whitespace-nowrap text-[11px] text-ink-tertiary">
-          {filtered.length} / {items.length}
+          {filtered.length} / {total}
         </span>
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-white/5">
+      <div className="overflow-x-auto rounded-xl border border-white/5">
         <table className="w-full text-sm">
           <thead className="bg-midnight">
             <tr className="text-left text-[10px] uppercase tracking-widest text-ink-tertiary">
@@ -133,8 +144,8 @@ export function ReferencesPage({ onLogout }: { onLogout: () => void }) {
                 <td className="px-4 py-3"><RefStatus status={it.status} /></td>
                 <td className="px-4 py-3">
                   <div className="flex flex-wrap gap-1">
-                    {it.usernames.length === 0 && <span className="text-ink-tertiary">—</span>}
-                    {it.usernames.map((u, i) => (
+                    {(it.usernames || []).length === 0 && <span className="text-ink-tertiary">—</span>}
+                    {(it.usernames || []).map((u, i) => (
                       <button
                         key={i}
                         onClick={() => copy(u)}
@@ -148,8 +159,8 @@ export function ReferencesPage({ onLogout }: { onLogout: () => void }) {
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex flex-wrap gap-1">
-                    {it.servers.length === 0 && <span className="text-ink-tertiary">—</span>}
-                    {it.servers.map((s, i) => (
+                    {(it.servers || []).length === 0 && <span className="text-ink-tertiary">—</span>}
+                    {(it.servers || []).map((s, i) => (
                       <button
                         key={i}
                         onClick={() => copy(s)}
@@ -161,12 +172,20 @@ export function ReferencesPage({ onLogout }: { onLogout: () => void }) {
                     ))}
                   </div>
                 </td>
-                <td className="px-4 py-3 text-[11px] text-ink-tertiary">{fmtDate(it.updated_at)}</td>
+                <td className="px-4 py-3 text-[11px] text-ink-tertiary">{formatDateTime(it.updated_at)}</td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+      <ListPager
+        total={total}
+        offset={offset}
+        count={items.length}
+        limit={LIST_PAGE_SIZE}
+        truncated={truncated}
+        onOffset={setOffset}
+      />
     </AppLayout>
   );
 }

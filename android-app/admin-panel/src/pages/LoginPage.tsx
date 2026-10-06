@@ -1,6 +1,7 @@
-import { FormEvent, useState } from 'react';
+import { FormEvent, useRef, useState } from 'react';
 import { authApi, setToken, ApiError } from '@/lib/api';
 import { useT, LangSelect } from '@/lib/i18n';
+import { createSingleFlight } from '@/lib/robust';
 
 /// Ecran login : email + password, JWT en retour.
 /// Bootstrap : si la base D1 est vide, le Worker cree
@@ -31,6 +32,7 @@ export function LoginPage({ onLoggedIn }: { onLoggedIn: () => void }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [okMsg, setOkMsg] = useState<string | null>(null);
+  const flight = useRef(createSingleFlight());
 
   function switchMode(m: 'admin' | 'reseller') {
     setMode(m);
@@ -43,9 +45,20 @@ export function LoginPage({ onLoggedIn }: { onLoggedIn: () => void }) {
 
   async function submit(e: FormEvent) {
     e.preventDefault();
+    await flight.current.run(async () => {
     setBusy(true);
     setErr(null);
     setOkMsg(null);
+    if (!email.trim()) {
+      setErr('Indique un identifiant.');
+      setBusy(false);
+      return;
+    }
+    if (mode === 'reseller' && signup && password.length < 4) {
+      setErr('Le mot de passe doit faire au moins 4 caractères.');
+      setBusy(false);
+      return;
+    }
     try {
       // Auto-inscription revendeur : crée un compte 'pending' (pas de login).
       if (mode === 'reseller' && signup) {
@@ -68,6 +81,7 @@ export function LoginPage({ onLoggedIn }: { onLoggedIn: () => void }) {
     } finally {
       setBusy(false);
     }
+    });
   }
 
   return (
@@ -78,7 +92,7 @@ export function LoginPage({ onLoggedIn }: { onLoggedIn: () => void }) {
       >
         <div className="text-center">
           <div className="mx-auto mb-4 h-12 w-12 rounded-xl bg-accent/15 ring-1 ring-accent/40 grid place-items-center">
-            <span className="text-accent font-bold text-base tracking-tight">TF</span>
+            <span className="text-accent-bright font-bold text-base tracking-tight">TF</span>
           </div>
           <h1 className="text-xl font-semibold tracking-tight">{t('brand')}</h1>
           <p className="mt-1 text-xs uppercase tracking-widest text-ink-tertiary">
@@ -111,7 +125,7 @@ export function LoginPage({ onLoggedIn }: { onLoggedIn: () => void }) {
                   <span
                     className={
                       'text-sm font-semibold ' +
-                      (active ? 'text-accent' : 'text-ink-primary')
+                      (active ? 'text-accent-bright' : 'text-ink-primary')
                     }
                   >
                     {m === 'admin' ? t('login.tabAdmin') : t('login.tabReseller')}
@@ -129,46 +143,55 @@ export function LoginPage({ onLoggedIn }: { onLoggedIn: () => void }) {
 
         <div className="space-y-3">
           <div>
-            <label className="mb-1.5 block text-[10px] uppercase tracking-widest text-ink-tertiary">
+            <label htmlFor="login-id" className="mb-1.5 block text-xs font-medium text-ink-secondary">
               {t('login.identifier')}
             </label>
             <input
+              id="login-id"
+              name="username"
+              autoComplete="username"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               autoFocus
-              className="w-full rounded-md border border-white/5 bg-slate px-3 py-2 text-sm outline-none ring-accent focus:ring-1"
+              className="w-full rounded-md border border-white/10 bg-slate px-3 py-2.5 text-sm outline-none focus:border-accent/60 focus:ring-2 focus:ring-accent/40"
               placeholder={mode === 'reseller' ? 'ton-identifiant' : 'admin'}
             />
           </div>
           {mode === 'reseller' && signup && (
             <div>
-              <label className="mb-1.5 block text-[10px] uppercase tracking-widest text-ink-tertiary">
+              <label htmlFor="login-name" className="mb-1.5 block text-xs font-medium text-ink-secondary">
                 Nom (optionnel)
               </label>
               <input
+                id="login-name"
+                name="name"
+                autoComplete="name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="w-full rounded-md border border-white/5 bg-slate px-3 py-2 text-sm outline-none ring-accent focus:ring-1"
-                placeholder="Ex. Karim Reseller"
+                className="w-full rounded-md border border-white/10 bg-slate px-3 py-2.5 text-sm outline-none focus:border-accent/60 focus:ring-2 focus:ring-accent/40"
+                placeholder="Ex. Karim"
               />
             </div>
           )}
           <div>
-            <label className="mb-1.5 block text-[10px] uppercase tracking-widest text-ink-tertiary">
+            <label htmlFor="login-password" className="mb-1.5 block text-xs font-medium text-ink-secondary">
               {t('login.password')}
             </label>
             <input
+              id="login-password"
+              name="password"
               type="password"
+              autoComplete={signup ? 'new-password' : 'current-password'}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded-md border border-white/5 bg-slate px-3 py-2 text-sm outline-none ring-accent focus:ring-1"
+              className="w-full rounded-md border border-white/10 bg-slate px-3 py-2.5 text-sm outline-none focus:border-accent/60 focus:ring-2 focus:ring-accent/40"
               placeholder="••••••••"
             />
           </div>
         </div>
 
         {err && (
-          <div className="rounded-md border border-accent/30 bg-accent/10 px-3 py-2 text-xs text-accent-bright">
+          <div role="alert" className="rounded-md border border-accent/40 bg-accent/10 px-3 py-2 text-sm text-accent-bright">
             {err}
           </div>
         )}
@@ -180,8 +203,8 @@ export function LoginPage({ onLoggedIn }: { onLoggedIn: () => void }) {
 
         <button
           type="submit"
-          disabled={busy || !password}
-          className="w-full rounded-md bg-accent px-4 py-2.5 text-sm font-semibold text-black transition disabled:cursor-not-allowed disabled:opacity-50 hover:bg-accent-bright"
+          disabled={busy || !password || !email.trim()}
+          className="w-full rounded-md bg-accent px-4 py-2.5 text-sm font-semibold text-obsidian transition disabled:cursor-not-allowed disabled:opacity-50 hover:bg-accent-bright"
         >
           {busy
             ? t('login.signing')
@@ -205,7 +228,7 @@ export function LoginPage({ onLoggedIn }: { onLoggedIn: () => void }) {
 
         {!resellerOnly && (
           <p className="text-center text-[11px] text-ink-tertiary">
-            Première connexion : utilise ton <span className="text-ink-secondary">ADMIN_SECRET</span> Worker comme mot de passe.
+            Première connexion : utilise le mot de passe défini pour l’administrateur.
           </p>
         )}
         {resellerOnly && (

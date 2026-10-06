@@ -1,6 +1,11 @@
 // =========================================================
 //  api_v1.js — App Licensing Platform REST API v1
 // =========================================================
+import {
+  coerceSourceList,
+  markSourcesCleared,
+  clearSourceTombstone,
+} from './linkage.js';
 //  Importe depuis worker.js pour servir le namespace /api/v1/*.
 //  Coexiste avec les anciens endpoints /admin/* et /api/* qui
 //  continuent de fonctionner pour ne pas casser les apps mobiles
@@ -57,10 +62,26 @@
 //  Phase 1.A se limite au super_admin role. Resellers et
 //  customers viendront en Phase 3 et 5 respectivement.
 // =========================================================
+import { httpUrlError } from './source_url.js';
+import { openSource, openSourceList, sealSource } from './secret_box.js';
+
+import {
+  parsePageQuery,
+  pageEnvelope,
+  epochSql,
+  epochMs,
+  liveLicenseStatus,
+  num,
+  redact,
+  safeRoute,
+} from './page_query.js';
 
 // ---------------------------------------------------------
 //  Helpers reponse
 // ---------------------------------------------------------
+//  Le `*` ci-dessous est retiré par applyCors : seule une origine
+//  de panel connue (ou PANEL_ORIGINS) reçoit Access-Control-Allow-Origin.
+//  Sans origine (app native, curl), on n'envoie pas le header.
 
 const JSON_HEADERS = {
   'Content-Type': 'application/json; charset=utf-8',
@@ -70,7 +91,37 @@ const JSON_HEADERS = {
   'Access-Control-Allow-Methods':
     'GET, POST, PUT, PATCH, DELETE, OPTIONS',
   'Cache-Control': 'no-store',
+  'X-Content-Type-Options': 'nosniff',
 };
+
+const PANEL_ORIGINS = new Set([
+  'https://tvking-admin.pages.dev',
+  'https://admin.7themotion.com',
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+]);
+
+function originAllowed(origin, env) {
+  if (!origin) return false;
+  if (PANEL_ORIGINS.has(origin)) return true;
+  const extra = String((env && env.PANEL_ORIGINS) || '');
+  return extra.split(',').map((s) => s.trim()).filter(Boolean).includes(origin);
+}
+
+function applyCors(request, env, res) {
+  const headers = new Headers(res.headers);
+  headers.delete('access-control-allow-origin');
+  const origin = request.headers.get('Origin');
+  if (originAllowed(origin, env)) {
+    headers.set('Access-Control-Allow-Origin', origin);
+    headers.set('Vary', 'Origin');
+  }
+  return new Response(res.body, {
+    status: res.status,
+    statusText: res.statusText,
+    headers,
+  });
+}
 
 function jsonResp(body, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -185,12 +236,45 @@ async function signJwt(payload, secret, expMinutes = 60 * 24 * 7) {
   return `${h}.${p}.${sig}`;
 }
 
+/// Comparaison indépendante du contenu (la longueur d'une signature
+/// HS256 est fixe ; on ne sort pas dès le premier octet différent).
+function safeEqual(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string') return false;
+  const len = Math.max(a.length, b.length);
+  let diff = a.length === b.length ? 0 : 1;
+  for (let i = 0; i < len; i++) {
+    const ca = i < a.length ? a.charCodeAt(i) : 0;
+    const cb = i < b.length ? b.charCodeAt(i) : 0;
+    diff |= ca ^ cb;
+  }
+  return diff === 0;
+}
+
+/// Secret de signature. Refuse le vide et les valeurs de repli qui
+/// étaient écrites en dur (`dev-secret`, `change-me`).
+function authSecret(env) {
+  const s = String((env && env.ADMIN_SECRET) || '').trim();
+  if (!s || s === 'dev-secret' || s === 'change-me') return null;
+  return s;
+}
+
+async function ensurePasswordChangedColumn(env, table) {
+  if (table !== 'admin_users' && table !== 'resellers') return;
+  try {
+    await env.DB.prepare(
+      `ALTER TABLE ${table} ADD COLUMN password_changed_at INTEGER`,
+    ).run();
+  } catch (_) { /* colonne déjà présente */ }
+}
+
 async function verifyJwt(token, secret) {
   try {
     const [h, p, s] = token.split('.');
     if (!h || !p || !s) return null;
+    const header = JSON.parse(new TextDecoder().decode(b64urlDecode(h)));
+    if (!header || header.alg !== 'HS256') return null;
     const expectedSig = b64url(await hmacSha256(secret, `${h}.${p}`));
-    if (s !== expectedSig) return null;
+    if (!safeEqual(s, expectedSig)) return null;
     const claims = JSON.parse(
       new TextDecoder().decode(b64urlDecode(p)),
     );
@@ -265,13 +349,87 @@ function genId(prefix) {
 // ---------------------------------------------------------
 //  Auth middleware
 // ---------------------------------------------------------
+/// Hash factice (PBKDF2 réel) pour que « utilisateur inconnu » coûte
+/// le même temps que « mauvais mot de passe ». Ce n'est pas un secret.
+const DUMMY_PASSWORD_HASH =
+  'pbkdf2$100000$kFBE63yLabFQ6rL-K2epjA$UPY1WDxzSdMhJRQS8N2InJq65Q00rcYjO2bGkl9xRzM';
+
+/// true si le jeton a été émis avant le dernier changement de mot de passe.
+function tokenStale(row, claims) {
+  const changed = Number(row && row.password_changed_at) || 0;
+  if (!changed || !claims || !claims.iat) return false;
+  // Écriture en secondes. Un résidu en millisecondes (> 1e12) est compris.
+  if (changed > 1e12) return changed > claims.iat * 1000;
+  return claims.iat < changed;
+}
+
+async function readAdminActor(env, id) {
+  try {
+    return await env.DB.prepare(
+      'SELECT id, email, name, role, is_active, password_changed_at FROM admin_users WHERE id = ?',
+    ).bind(id).first();
+  } catch (_) {
+    return await env.DB.prepare(
+      'SELECT id, email, name, role, is_active FROM admin_users WHERE id = ?',
+    ).bind(id).first();
+  }
+}
+
+async function readResellerActor(env, id) {
+  try {
+    return await env.DB.prepare(
+      'SELECT id, email, name, status, level, permissions, password_changed_at FROM resellers WHERE id = ?',
+    ).bind(id).first();
+  } catch (_) {
+    return await env.DB.prepare(
+      'SELECT id, email, name, status, level, permissions FROM resellers WHERE id = ?',
+    ).bind(id).first();
+  }
+}
+
+/// Recharge le rôle, le statut et les droits depuis la base. Le JWT
+/// ne fait pas foi tout seul : un compte suspendu ou un mot de passe
+/// changé perd l'accès sans attendre les 7 jours du jeton.
+async function hydrateActor(env, claims) {
+  if (!claims || !claims.sub) return null;
+  if (claims.role === 'reseller') {
+    const row = await readResellerActor(env, claims.sub);
+    if (!row || row.status !== 'active') return null;
+    if (tokenStale(row, claims)) return null;
+    const level = row.level || 'basique';
+    return {
+      sub: row.id,
+      email: row.email,
+      role: 'reseller',
+      name: row.name,
+      level,
+      permissions: resellerPerms(row.permissions, level),
+    };
+  }
+  const row = await readAdminActor(env, claims.sub);
+  if (!row || !row.is_active) return null;
+  if (tokenStale(row, claims)) return null;
+  return {
+    sub: row.id,
+    email: row.email,
+    role: row.role,
+    name: row.name,
+  };
+}
+
 async function requireAuth(request, env) {
+  const secret = authSecret(env);
+  if (!secret) {
+    return { error: errResp('auth_unconfigured', 'Authentification indisponible.', 503) };
+  }
   const auth = request.headers.get('Authorization') || '';
   const m = auth.match(/^Bearer\s+(.+)$/i);
   if (!m) return { error: errResp('no_auth', 'Missing Authorization header', 401) };
-  const claims = await verifyJwt(m[1], env.ADMIN_SECRET || 'dev-secret');
+  const claims = await verifyJwt(m[1], secret);
   if (!claims) return { error: errResp('bad_token', 'Invalid or expired token', 401) };
-  return { user: claims };
+  const user = await hydrateActor(env, claims);
+  if (!user) return { error: errResp('bad_token', 'Invalid or expired token', 401) };
+  return { user };
 }
 
 // ---------------------------------------------------------
@@ -285,31 +443,40 @@ async function requireAuth(request, env) {
 //  Pour le support : retrouver vite quel identifiant a été mis sur quelle
 //  MAC. On NE renvoie JAMAIS le mot de passe. Owner = tout ; revendeur =
 //  uniquement SES appareils (cloisonnement par reseller_id).
-async function handleReferencesList(env, user) {
+async function handleReferencesList(request, env, user) {
   const reseller = user && user.role === 'reseller';
+  const { limit, offset } = parsePageQuery(new URL(request.url), {
+    defaultLimit: 100, maxLimit: 200,
+  });
   try {
     const where = reseller ? 'WHERE d.reseller_id = ?' : '';
     const binds = reseller ? [user.sub] : [];
     const now = Date.now();
-    const rs = await env.DB
-      .prepare(
-        `SELECT ds.mac AS mac, ds.username AS username, ds.server_url AS server_url,
-                ds.sources_json AS sources_json, ds.label AS label,
-                ds.updated_at AS updated_at, c.name AS customer_name,
-                (SELECT l.status    FROM licenses l JOIN devices dl ON dl.id = l.device_id
-                   WHERE dl.mac = ds.mac
-                   ORDER BY (l.expires_at IS NULL) DESC, l.expires_at DESC LIMIT 1) AS lic_status,
-                (SELECT l.expires_at FROM licenses l JOIN devices dl ON dl.id = l.device_id
-                   WHERE dl.mac = ds.mac
-                   ORDER BY (l.expires_at IS NULL) DESC, l.expires_at DESC LIMIT 1) AS lic_expires
-         FROM device_sources ds
-         LEFT JOIN devices d   ON d.mac = ds.mac
-         LEFT JOIN customers c ON c.id = d.customer_id
-         ${where}
-         ORDER BY ds.updated_at DESC LIMIT 1000`,
-      )
-      .bind(...binds)
-      .all();
+    const page = await pagedQuery(
+      env,
+      `SELECT COUNT(*) as n FROM device_sources ds
+         LEFT JOIN devices d ON d.mac = ds.mac
+         ${where}`,
+      binds,
+      `SELECT ds.mac AS mac, ds.username AS username, ds.server_url AS server_url,
+              ds.sources_json AS sources_json, ds.label AS label,
+              ds.updated_at AS updated_at, c.name AS customer_name,
+              (SELECT l.status    FROM licenses l JOIN devices dl ON dl.id = l.device_id
+                 WHERE dl.mac = ds.mac
+                 ORDER BY (l.expires_at IS NULL) DESC, l.expires_at DESC LIMIT 1) AS lic_status,
+              (SELECT l.expires_at FROM licenses l JOIN devices dl ON dl.id = l.device_id
+                 WHERE dl.mac = ds.mac
+                 ORDER BY (l.expires_at IS NULL) DESC, l.expires_at DESC LIMIT 1) AS lic_expires
+       FROM device_sources ds
+       LEFT JOIN devices d   ON d.mac = ds.mac
+       LEFT JOIN customers c ON c.id = d.customer_id
+       ${where}
+       ORDER BY ds.updated_at DESC LIMIT ? OFFSET ?`,
+      binds,
+      limit,
+      offset,
+    );
+    const rs = { results: page.items };
     const items = (rs.results || []).map((r) => {
       // username(s) + serveur(s) : depuis le trio (sources_json) sinon les
       // champs simples. On n'expose JAMAIS le mot de passe.
@@ -328,9 +495,9 @@ async function handleReferencesList(env, user) {
       let status = 'none';
       if (r.lic_status === 'banned') status = 'banned';
       else if (r.lic_status === 'frozen') status = 'frozen';
+      else if (r.lic_status && r.lic_status !== 'active') status = 'inactive';
       else if (r.lic_status) {
-        const lifetime = r.lic_expires === null || r.lic_expires === undefined;
-        status = lifetime ? 'active' : (r.lic_expires <= now ? 'expired' : 'active');
+        status = liveLicenseStatus(r.lic_status, r.lic_expires, now);
       }
       return {
         mac: r.mac,
@@ -339,33 +506,50 @@ async function handleReferencesList(env, user) {
         servers,
         status,
         label: r.label || null,
-        updated_at: r.updated_at || null,
+        updated_at: epochMs(r.updated_at),
       };
     });
-    return jsonResp({ items });
-  } catch (_) {
-    return jsonResp({ items: [] });
+    return jsonResp({ ...page, items });
+  } catch (e) {
+    const msg = String(e && e.message || e);
+    // Base jamais migrée : liste vide, pas une fausse panne.
+    // Toute autre erreur remonte au filet (journal + 500), sinon
+    // l'admin croit qu'aucune MAC n'existe.
+    if (/no such table/i.test(msg)) return jsonResp(pageEnvelope([], 0, 0, 0));
+    throw e;
   }
 }
 
 // ----- Historique des modifications (lecture seule) -----
-async function handleAuditLogsList(env) {
+async function handleAuditLogsList(request, env) {
+  const { limit, offset } = parsePageQuery(new URL(request.url));
   try {
-    const rs = await env.DB
-      .prepare(
-        `SELECT id, actor_type, actor_id, action, target_type, target_id,
-                before_json, after_json, created_at
-         FROM audit_logs ORDER BY created_at DESC LIMIT 200`,
-      )
-      .all();
-    return jsonResp({ items: rs.results || [] });
-  } catch (_) {
-    // Table absente (jamais écrit encore) → liste vide, pas d'erreur.
-    return jsonResp({ items: [] });
+    const page = await pagedQuery(
+      env,
+      'SELECT COUNT(*) as n FROM audit_logs',
+      [],
+      `SELECT id, actor_type, actor_id, action, target_type, target_id,
+              before_json, after_json, created_at
+       FROM audit_logs ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+      [],
+      limit,
+      offset,
+    );
+    page.items = page.items.map((row) => ({
+      ...row,
+      created_at: epochMs(row.created_at),
+    }));
+    return jsonResp(page);
+  } catch (e) {
+    const msg = String(e && e.message || e);
+    if (/no such table/i.test(msg)) return jsonResp(pageEnvelope([], 0, 0, 0));
+    throw e;
   }
 }
 
 async function bootstrapSuperAdminIfNeeded(env) {
+  const secret = authSecret(env);
+  if (!secret) return false;
   // Filet de sécurité : si la migration schema.sql n'a jamais tourné sur
   // la base D1, la table `admin_users` n'existe pas → le SELECT plante →
   // login impossible. On la crée à l'identique du schéma au besoin.
@@ -387,7 +571,7 @@ async function bootstrapSuperAdminIfNeeded(env) {
   if (count && count.n > 0) return false;
   const id = genId('adm');
   const now = Date.now();
-  const pwd = await hashPassword(env.ADMIN_SECRET || 'change-me');
+  const pwd = await hashPassword(secret);
   await env.DB
     .prepare(
       `INSERT INTO admin_users
@@ -420,13 +604,20 @@ async function logAudit(env, request, actor, action, target, before, after) {
         target.id || null,
         before ? JSON.stringify(before) : null,
         after ? JSON.stringify(after) : null,
-        request.headers.get('CF-Connecting-IP') || null,
-        request.headers.get('User-Agent') || null,
+        request && request.headers ? request.headers.get('CF-Connecting-IP') : null,
+        request && request.headers ? request.headers.get('User-Agent') : null,
         Date.now(),
       )
       .run();
-  } catch (_) {
-    // l'audit ne doit JAMAIS faire planter une ecriture metier.
+  } catch (e) {
+    // L'audit ne doit JAMAIS faire planter une écriture métier.
+    // On journalise la cause, pas le contenu (il peut contenir un mot de passe).
+    console.error(JSON.stringify({
+      level: 'error',
+      source: 'api_v1',
+      route: 'audit_log',
+      message: redact(e && e.message ? e.message : e),
+    }));
   }
 }
 
@@ -444,14 +635,45 @@ async function logAudit(env, request, actor, action, target, before, after) {
 // "Connexion impossible" au lieu du vrai message. Avec ce filet, on voit
 // l'erreur réelle (ex. "no such table: admin_users") et on peut la régler.
 export async function apiV1(request, env) {
-  if (request.method === 'OPTIONS') {
-    return new Response(null, { status: 204, headers: JSON_HEADERS });
-  }
+  let res;
+  // Identifiant de corrélation : le panel affiche une erreur stable,
+  // le journal Worker porte la cause réelle, redactée.
+  const requestId = crypto.randomUUID();
   try {
-    return await apiV1Inner(request, env);
+    if (request.method === 'OPTIONS') {
+      res = new Response(null, { status: 204, headers: JSON_HEADERS });
+    } else {
+      res = await apiV1Inner(request, env);
+    }
   } catch (e) {
-    return errResp('internal_error', (e && e.message) || String(e), 500);
+    const raw = (e && e.message) ? String(e.message) : String(e);
+    console.error(JSON.stringify({
+      level: 'error',
+      source: 'api_v1',
+      request_id: requestId,
+      route: safeRoute(request),
+      message: redact(raw),
+    }));
+    // Une table manquante est un message d'exploitation utile et sans
+    // secret. Tout le reste (SQL, pile, jeton) reste côté journal.
+    const safe = /no such table|no such column/i.test(raw)
+      ? raw.replace(/\s+/g, ' ').slice(0, 180)
+      : 'Erreur interne.';
+    res = jsonResp({
+      error: 'internal_error',
+      message: safe,
+      request_id: requestId,
+    }, 500);
   }
+  return applyCors(request, env, res);
+}
+
+/// COUNT + page. Le SQL de liste DOIT se terminer par « LIMIT ? OFFSET ? ».
+async function pagedQuery(env, countSql, countBinds, listSql, listBinds, limit, offset) {
+  const countRow = await env.DB.prepare(countSql).bind(...countBinds).first();
+  const total = num(countRow, 'n');
+  const rs = await env.DB.prepare(listSql).bind(...listBinds, limit, offset).all();
+  return pageEnvelope(rs.results || [], total, limit, offset);
 }
 
 async function apiV1Inner(request, env) {
@@ -514,13 +736,13 @@ async function apiV1Inner(request, env) {
     if (a.user.role !== 'super_admin') {
       return errResp('forbidden', 'Owner only', 403);
     }
-    return handleAuditLogsList(env);
+    return handleAuditLogsList(request, env);
   }
 
   // /references — carnet : MAC activées + username(s) Xtream (SANS mot de
   // passe), pour le support. Owner = tout ; revendeur = ses appareils.
   if (parts[0] === 'references' && parts.length === 1 && request.method === 'GET') {
-    return handleReferencesList(env, a.user);
+    return handleReferencesList(request, env, a.user);
   }
 
   // /me — profil de l'acteur courant (+ solde de credits si revendeur)
@@ -602,27 +824,27 @@ async function apiV1Inner(request, env) {
     if (parts.length === 2) {
       const fid = parts[1];
       if (request.method === 'GET') return handleFamiliesGet(env, fid, a.user);
-      if (request.method === 'DELETE') return handleFamiliesDelete(env, fid, actor);
+      if (request.method === 'DELETE') return handleFamiliesDelete(env, fid, actor, a.user);
     }
     if (parts.length === 3 && parts[2] === 'members' && request.method === 'POST') {
       return handleFamilyAddMember(request, env, a.user, actor, parts[1]);
     }
     if (parts.length === 4 && parts[2] === 'members' && request.method === 'DELETE') {
-      return handleFamilyRemoveMember(env, parts[1], decodeMac(parts[3]), actor);
+      return handleFamilyRemoveMember(env, parts[1], decodeMac(parts[3]), actor, a.user);
     }
     // Liens M3U distribuables (une source → plusieurs liens séparés).
     if (parts.length === 3 && parts[2] === 'links' && request.method === 'POST') {
       return handleFamilyCreateLink(request, env, a.user, actor, parts[1]);
     }
     if (parts.length === 4 && parts[2] === 'links' && request.method === 'DELETE') {
-      return handleFamilyDeleteLink(env, parts[1], parts[3], actor);
+      return handleFamilyDeleteLink(env, parts[1], parts[3], actor, a.user);
     }
   }
 
   // /apps
   if (parts[0] === 'apps') {
     if (parts.length === 1) {
-      if (request.method === 'GET') return handleAppsList(env);
+      if (request.method === 'GET') return handleAppsList(env, a.user);
       if (request.method === 'POST') {
         if (a.user.role !== 'super_admin') {
           return errResp('forbidden', 'Only super_admin can create apps', 403);
@@ -717,7 +939,7 @@ async function apiV1Inner(request, env) {
     if (a.user.role !== 'super_admin') {
       return errResp('forbidden', 'Owner only', 403);
     }
-    return handleOnlineGet(env);
+    return handleOnlineGet(request, env);
   }
 
   // /force-update — mise à jour forcée (bouton du panel). Owner uniquement.
@@ -824,30 +1046,30 @@ async function apiV1Inner(request, env) {
   // retirer.
   if (parts[0] === 'sources' && parts.length === 2) {
     const mac = parts[1];
-    if (request.method === 'GET') return handleSourceGet(env, mac);
+    if (request.method === 'GET') return handleSourceGet(env, mac, a.user);
     // Pousser/retirer une source = capacité 'sources' (niveau standard+).
     // Un revendeur 'basique' ne peut PAS configurer les sources clients.
     if ((request.method === 'PUT' || request.method === 'DELETE')
         && !resellerCan(a.user, 'sources')) {
       return errResp('forbidden', 'Ton niveau ne permet pas de pousser une source.', 403);
     }
-    if (request.method === 'PUT') return handleSourcePut(request, env, mac, actor);
-    if (request.method === 'DELETE') return handleSourceDelete(request, env, mac, actor);
+    if (request.method === 'PUT') return handleSourcePut(request, env, mac, actor, a.user);
+    if (request.method === 'DELETE') return handleSourceDelete(request, env, mac, actor, a.user);
   }
 
   // /customers
   if (parts[0] === 'customers') {
     if (parts.length === 1) {
       if (request.method === 'GET') return handleCustomersList(request, env, a.user);
-      if (request.method === 'POST') return handleCustomersCreate(request, env, actor);
+      if (request.method === 'POST') return handleCustomersCreate(request, env, actor, a.user);
     }
     if (parts.length === 2) {
       const id = parts[1];
-      if (request.method === 'GET') return handleCustomersGet(env, id);
-      if (request.method === 'PATCH') return handleCustomersUpdate(request, env, id, actor);
+      if (request.method === 'GET') return handleCustomersGet(env, id, a.user);
+      if (request.method === 'PATCH') return handleCustomersUpdate(request, env, id, actor, a.user);
     }
     if (parts.length === 3 && parts[2] === 'devices') {
-      return handleCustomerDevices(env, parts[1]);
+      return handleCustomerDevices(env, parts[1], a.user);
     }
   }
 
@@ -855,7 +1077,10 @@ async function apiV1Inner(request, env) {
   if (parts[0] === 'devices') {
     if (parts.length === 1) {
       if (request.method === 'GET') return handleDevicesList(request, env, a.user);
-      if (request.method === 'POST') return handleDevicesCreate(request, env, actor);
+      if (request.method === 'POST') {
+        if (isReseller) return errResp('forbidden', 'Passe par l\'activation.', 403);
+        return handleDevicesCreate(request, env, actor);
+      }
     }
     if (parts.length === 2) {
       const did = parts[1];
@@ -874,13 +1099,20 @@ async function apiV1Inner(request, env) {
   if (parts[0] === 'licenses') {
     if (parts.length === 1) {
       if (request.method === 'GET') return handleLicensesList(request, env, a.user);
-      if (request.method === 'POST') return handleLicensesCreate(request, env, actor);
+      if (request.method === 'POST') {
+        if (isReseller) return errResp('forbidden', 'Passe par l\'activation.', 403);
+        return handleLicensesCreate(request, env, actor);
+      }
     }
     if (parts.length === 2) {
       const id = parts[1];
-      if (request.method === 'PATCH') return handleLicensesUpdate(request, env, id, actor);
+      if (request.method === 'PATCH') {
+        if (isReseller) return errResp('forbidden', 'Owner only', 403);
+        return handleLicensesUpdate(request, env, id, actor);
+      }
     }
     if (parts.length === 3 && parts[2] === 'renew') {
+      if (isReseller) return errResp('forbidden', 'Owner only', 403);
       return handleLicensesRenew(request, env, parts[1], actor);
     }
   }
@@ -909,6 +1141,10 @@ async function handleLogin(request, env) {
     return errResp('rate_limited',
       'Trop de tentatives de connexion. Réessaie dans ~10 minutes.', 429);
   }
+  const secret = authSecret(env);
+  if (!secret) {
+    return errResp('auth_unconfigured', 'Authentification indisponible.', 503);
+  }
 
   // Bootstrap : si pas d'admin en base, on en cree un avec
   // ADMIN_SECRET comme mot de passe (transition seamless depuis
@@ -923,6 +1159,7 @@ async function handleLogin(request, env) {
     .first();
 
   if (!row || !row.is_active) {
+    await verifyPassword(password, DUMMY_PASSWORD_HASH);
     return errResp('bad_credentials', 'Invalid credentials', 401);
   }
   let ok = await verifyPassword(password, row.password_hash);
@@ -935,12 +1172,13 @@ async function handleLogin(request, env) {
   // puis l'admin peut définir un nouveau mot de passe dans « Mon compte ».
   if (!ok
       && row.role === 'super_admin'
-      && env.ADMIN_SECRET
-      && password === env.ADMIN_SECRET) {
-    const synced = await hashPassword(env.ADMIN_SECRET);
+      && safeEqual(password, secret)) {
+    const synced = await hashPassword(secret);
+    const changed = Math.floor(Date.now() / 1000);
+    await ensurePasswordChangedColumn(env, 'admin_users');
     await env.DB
-      .prepare('UPDATE admin_users SET password_hash = ? WHERE id = ?')
-      .bind(synced, row.id)
+      .prepare('UPDATE admin_users SET password_hash = ?, password_changed_at = ? WHERE id = ?')
+      .bind(synced, changed, row.id)
       .run();
     ok = true;
   }
@@ -955,7 +1193,7 @@ async function handleLogin(request, env) {
 
   const token = await signJwt(
     { sub: row.id, email: row.email, role: row.role, name: row.name },
-    env.ADMIN_SECRET || 'dev-secret',
+    secret,
   );
   return jsonResp({
     token,
@@ -966,6 +1204,17 @@ async function handleLogin(request, env) {
 // =========================================================
 //  STATS / DASHBOARD
 // =========================================================
+
+/// Retire les colonnes qui sont des secrets (hash, mot de passe, jeton).
+function redactSecrets(row) {
+  if (!row || typeof row !== 'object') return row;
+  const out = {};
+  for (const [key, value] of Object.entries(row)) {
+    if (/password|secret|token|m3u_url/i.test(key)) continue;
+    out[key] = value;
+  }
+  return out;
+}
 
 // Export JSON de toute la base (sauvegarde téléchargeable depuis le
 // panel). Filet de sécurité : si la D1 est perdue, on peut restaurer.
@@ -986,7 +1235,7 @@ async function handleBackup(env) {
     if (!/^[a-z_]+$/.test(tbl)) continue;
     try {
       const rs = await env.DB.prepare('SELECT * FROM ' + tbl).all();
-      dump[tbl] = (rs && rs.results) || [];
+      dump[tbl] = ((rs && rs.results) || []).map(redactSecrets);
     } catch (_) {
       dump[tbl] = []; // table absente sur cette base → on ignore
     }
@@ -995,7 +1244,7 @@ async function handleBackup(env) {
     const rs = await env.DB
       .prepare('SELECT id, email, name, role, status, created_at FROM admin_users')
       .all();
-    dump.admin_users = (rs && rs.results) || [];
+    dump.admin_users = ((rs && rs.results) || []).map(redactSecrets);
   } catch (_) {
     dump.admin_users = [];
   }
@@ -1007,6 +1256,11 @@ async function handleStatsOverview(env, user) {
   const month = 30 * 24 * 60 * 60 * 1000;
   const isReseller = user && user.role === 'reseller';
   const rid = isReseller ? user.sub : null;
+  // Dates en secondes ou en ms : sans ça, un expires_at en secondes
+  // est toujours « déjà passé » face à Date.now() en millisecondes.
+  const exp = epochSql('expires_at');
+  const activeSql = `status='active' AND (expires_at IS NULL OR expires_at = 0 OR ${exp} > ?)`;
+  const expiredSql = `expires_at IS NOT NULL AND expires_at > 0 AND ${exp} <= ?`;
 
   // Compteurs, filtres par revendeur si l'acteur est un revendeur.
   const [customers, devices, licenses, activeLicenses, expiredLicenses, apps] =
@@ -1021,29 +1275,32 @@ async function handleStatsOverview(env, user) {
         ? env.DB.prepare('SELECT COUNT(*) as n FROM licenses WHERE reseller_id = ?').bind(rid).first()
         : env.DB.prepare('SELECT COUNT(*) as n FROM licenses').first(),
       isReseller
-        ? env.DB.prepare(`SELECT COUNT(*) as n FROM licenses WHERE status='active' AND (expires_at IS NULL OR expires_at > ?) AND reseller_id = ?`).bind(now, rid).first()
-        : env.DB.prepare(`SELECT COUNT(*) as n FROM licenses WHERE status='active' AND (expires_at IS NULL OR expires_at > ?)`).bind(now).first(),
+        ? env.DB.prepare(`SELECT COUNT(*) as n FROM licenses WHERE ${activeSql} AND reseller_id = ?`).bind(now, rid).first()
+        : env.DB.prepare(`SELECT COUNT(*) as n FROM licenses WHERE ${activeSql}`).bind(now).first(),
       isReseller
-        ? env.DB.prepare(`SELECT COUNT(*) as n FROM licenses WHERE expires_at IS NOT NULL AND expires_at <= ? AND reseller_id = ?`).bind(now, rid).first()
-        : env.DB.prepare(`SELECT COUNT(*) as n FROM licenses WHERE expires_at IS NOT NULL AND expires_at <= ?`).bind(now).first(),
+        ? env.DB.prepare(`SELECT COUNT(*) as n FROM licenses WHERE ${expiredSql} AND reseller_id = ?`).bind(now, rid).first()
+        : env.DB.prepare(`SELECT COUNT(*) as n FROM licenses WHERE ${expiredSql}`).bind(now).first(),
       env.DB.prepare('SELECT COUNT(*) as n FROM apps WHERE is_active = 1').first(),
     ]);
 
+  // num() : un COUNT qui renvoie null (table vide / driver) ne doit
+  // pas faire planter tout le tableau de bord.
   const out = {
-    customers: customers.n,
-    devices: devices.n,
-    licenses: licenses.n,
-    active_licenses: activeLicenses.n,
-    expired_licenses: expiredLicenses.n,
-    apps: apps.n,
+    customers: num(customers, 'n'),
+    devices: num(devices, 'n'),
+    licenses: num(licenses, 'n'),
+    active_licenses: num(activeLicenses, 'n'),
+    expired_licenses: num(expiredLicenses, 'n'),
+    apps: num(apps, 'n'),
   };
 
   // Abonnements ACTIFS qui expirent dans les 7 jours → relance/renouvellement.
   const week = 7 * 24 * 60 * 60 * 1000;
+  const soonSql = `status='active' AND expires_at IS NOT NULL AND expires_at > 0 AND ${exp} > ? AND ${exp} <= ?`;
   const expSoon = isReseller
-    ? await env.DB.prepare(`SELECT COUNT(*) as n FROM licenses WHERE status='active' AND expires_at IS NOT NULL AND expires_at > ? AND expires_at <= ? AND reseller_id = ?`).bind(now, now + week, rid).first()
-    : await env.DB.prepare(`SELECT COUNT(*) as n FROM licenses WHERE status='active' AND expires_at IS NOT NULL AND expires_at > ? AND expires_at <= ?`).bind(now, now + week).first();
-  out.expiring_7d = expSoon.n;
+    ? await env.DB.prepare(`SELECT COUNT(*) as n FROM licenses WHERE ${soonSql} AND reseller_id = ?`).bind(now, now + week, rid).first()
+    : await env.DB.prepare(`SELECT COUNT(*) as n FROM licenses WHERE ${soonSql}`).bind(now, now + week).first();
+  out.expiring_7d = num(expSoon, 'n');
 
   if (isReseller) {
     const r = await env.DB
@@ -1062,8 +1319,8 @@ async function handleStatsOverview(env, user) {
         .bind(now - month)
         .first(),
     ]);
-    out.resellers = resellers.n;
-    out.revenue_30d_cents = paidLastMonth.cents;
+    out.resellers = num(resellers, 'n');
+    out.revenue_30d_cents = num(paidLastMonth, 'cents');
   }
   return jsonResp(out);
 }
@@ -1094,7 +1351,7 @@ async function ensureDefewTvApp(env) {
   }
 }
 
-async function handleAppsList(env) {
+async function handleAppsList(env, user) {
   await ensureDefewTvApp(env);
   const rs = await env.DB
     .prepare(
@@ -1104,7 +1361,14 @@ async function handleAppsList(env) {
        FROM apps ORDER BY name ASC`,
     )
     .all();
-  return jsonResp({ items: rs.results || [] });
+  const items = (rs.results || []).map((row) => {
+    if (user && user.role === 'reseller') {
+      const { default_iptv_server, ...rest } = row;
+      return rest;
+    }
+    return row;
+  });
+  return jsonResp({ items });
 }
 
 async function handleAppsGet(env, id) {
@@ -1886,7 +2150,7 @@ async function handleFeaturedPost(request, env, actor) {
 // =========================================================
 //  Lit la table `presence` alimentée par /api/heartbeat (worker.js).
 //  « En ligne » = vu il y a < 15 min ; « aujourd'hui » = < 24 h.
-async function handleOnlineGet(env) {
+async function handleOnlineGet(request, env) {
   try {
     await env.DB.prepare(
       'CREATE TABLE IF NOT EXISTS presence (' +
@@ -1898,31 +2162,55 @@ async function handleOnlineGet(env) {
   const DAY_MS = 24 * 60 * 60 * 1000;
   // `channel` peut manquer sur une base ancienne → on l'ajoute (no-op si déjà là).
   try { await env.DB.prepare('ALTER TABLE presence ADD COLUMN channel TEXT').run(); } catch (_) {}
+  const { limit, offset } = parsePageQuery(new URL(request.url), {
+    defaultLimit: 100, maxLimit: 200,
+  });
+  // last_seen peut être en secondes sur une vieille ligne.
+  const seen = epochSql('last_seen');
+  const onlineSince = now - ONLINE_MS;
+  const daySince = now - DAY_MS;
+  const onlineCountRow = await env.DB
+    .prepare(`SELECT COUNT(*) as n FROM presence WHERE ${seen} > ?`)
+    .bind(onlineSince).first();
+  const todayCountRow = await env.DB
+    .prepare(`SELECT COUNT(*) as n FROM presence WHERE ${seen} > ?`)
+    .bind(daySince).first();
+  // Seuls les vrais codes ISO2. Un pays vide ne devient pas « ?? »
+  // (le panel plantait ou affichait un caractère illisible).
+  const countries = await env.DB
+    .prepare(
+      `SELECT UPPER(country) as c, COUNT(*) as n FROM presence
+        WHERE ${seen} > ? AND country IS NOT NULL AND LENGTH(TRIM(country)) = 2
+        GROUP BY UPPER(country)`,
+    )
+    .bind(onlineSince).all();
   const rs = await env.DB
     .prepare(
-      'SELECT mac, ip, country, last_seen, channel FROM presence ' +
-        'WHERE last_seen > ? ORDER BY last_seen DESC LIMIT 1000'
+      `SELECT mac, ip, country, last_seen, channel FROM presence
+        WHERE ${seen} > ?
+        ORDER BY ${seen} DESC LIMIT ? OFFSET ?`,
     )
-    .bind(now - DAY_MS)
+    .bind(onlineSince, limit, offset)
     .all();
-  const rows = rs.results || [];
-  const online = rows.filter((r) => (r.last_seen || 0) > now - ONLINE_MS);
   const byCountry = {};
-  for (const r of online) {
-    const c = (r.country || '??').toUpperCase();
-    byCountry[c] = (byCountry[c] || 0) + 1;
+  for (const r of (countries.results || [])) {
+    const c = String(r.c || '').toUpperCase();
+    if (!/^[A-Z]{2}$/.test(c)) continue;
+    byCountry[c] = num(r, 'n');
   }
+  const onlineCount = num(onlineCountRow, 'n');
+  const items = (rs.results || []).map((r) => ({
+    mac: r.mac,
+    ip: r.ip || '',
+    country: /^[A-Za-z]{2}$/.test(r.country || '') ? String(r.country).toUpperCase() : '',
+    lastSeen: epochMs(r.last_seen) || 0,
+    channel: r.channel || '',
+  }));
   return jsonResp({
-    onlineCount: online.length,
-    todayCount: rows.length,
+    onlineCount,
+    todayCount: num(todayCountRow, 'n'),
     byCountry,
-    items: online.slice(0, 500).map((r) => ({
-      mac: r.mac,
-      ip: r.ip || '',
-      country: (r.country || '').toUpperCase(),
-      lastSeen: r.last_seen || 0,
-      channel: r.channel || '',
-    })),
+    ...pageEnvelope(items, onlineCount, limit, offset),
   });
 }
 
@@ -2026,8 +2314,7 @@ async function handleServersDelete(request, env, id, actor) {
 async function handleCustomersList(request, env, user) {
   const url = new URL(request.url);
   const search = (url.searchParams.get('q') || '').trim();
-  let sql = `SELECT id, email, name, phone, reseller_id, created_at
-             FROM customers`;
+  const { limit, offset } = parsePageQuery(url);
   const where = []; const binds = [];
   if (search) {
     where.push('(email LIKE ? OR name LIKE ? OR phone LIKE ?)');
@@ -2037,22 +2324,47 @@ async function handleCustomersList(request, env, user) {
     where.push('reseller_id = ?');
     binds.push(user.sub);
   }
-  if (where.length) sql += ' WHERE ' + where.join(' AND ');
-  sql += ` ORDER BY created_at DESC LIMIT 200`;
-  const rs = await env.DB.prepare(sql).bind(...binds).all();
-  return jsonResp({ items: rs.results || [] });
+  const whereSql = where.length ? ' WHERE ' + where.join(' AND ') : '';
+  const page = await pagedQuery(
+    env,
+    `SELECT COUNT(*) as n FROM customers${whereSql}`,
+    binds,
+    `SELECT id, email, name, phone, reseller_id, created_at
+       FROM customers${whereSql}
+      ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+    binds,
+    limit,
+    offset,
+  );
+  page.items = page.items.map((row) => ({ ...row, created_at: epochMs(row.created_at) }));
+  return jsonResp(page);
 }
 
-async function handleCustomersGet(env, id) {
+async function handleCustomersGet(env, id, user) {
   const row = await env.DB
     .prepare('SELECT * FROM customers WHERE id = ?')
     .bind(id)
     .first();
-  if (!row) return errResp('not_found', 'Customer not found', 404);
-  return jsonResp(row);
+  const gate = customerForActor(row, user);
+  if (gate.error) return gate.error;
+  return jsonResp(customerView(gate.row));
 }
 
-async function handleCustomersCreate(request, env, actor) {
+function customerView(row) {
+  if (!row) return row;
+  const { password_hash, ...rest } = row;
+  return rest;
+}
+
+function customerForActor(row, user) {
+  if (!row) return { error: errResp('not_found', 'Customer not found', 404) };
+  if (user && user.role === 'reseller' && row.reseller_id !== user.sub) {
+    return { error: errResp('forbidden', 'Ce client ne vous appartient pas', 403) };
+  }
+  return { row };
+}
+
+async function handleCustomersCreate(request, env, actor, user) {
   let body;
   try { body = await request.json(); } catch (_) {
     return errResp('bad_json', 'Invalid JSON body', 400);
@@ -2070,24 +2382,28 @@ async function handleCustomersCreate(request, env, actor) {
       body.email || null,
       body.name || null,
       body.phone || null,
-      body.reseller_id || null,
+      user && user.role === 'reseller' ? user.sub : (body.reseller_id || null),
       body.notes || null,
       now,
       now,
     )
     .run();
-  await logAudit(env, request, actor, 'customer.create', { type: 'customer', id }, null, body);
+  await logAudit(env, request, actor, 'customer.create', { type: 'customer', id }, null, {
+    email: body.email || null, name: body.name || null,
+  });
   return jsonResp({ id }, 201);
 }
 
-async function handleCustomersUpdate(request, env, id, actor) {
+async function handleCustomersUpdate(request, env, id, actor, user) {
   let body;
   try { body = await request.json(); } catch (_) {
     return errResp('bad_json', 'Invalid JSON body', 400);
   }
   const before = await env.DB.prepare('SELECT * FROM customers WHERE id = ?').bind(id).first();
-  if (!before) return errResp('not_found', 'Customer not found', 404);
-  const fields = ['email', 'name', 'phone', 'reseller_id', 'notes'];
+  const gate = customerForActor(before, user);
+  if (gate.error) return gate.error;
+  const fields = ['email', 'name', 'phone', 'notes'];
+  if (user && user.role !== 'reseller') fields.push('reseller_id');
   const sets = []; const vals = [];
   for (const f of fields) {
     if (body[f] !== undefined) { sets.push(`${f} = ?`); vals.push(body[f]); }
@@ -2096,11 +2412,20 @@ async function handleCustomersUpdate(request, env, id, actor) {
   sets.push('updated_at = ?'); vals.push(Date.now());
   vals.push(id);
   await env.DB.prepare(`UPDATE customers SET ${sets.join(', ')} WHERE id = ?`).bind(...vals).run();
-  await logAudit(env, request, actor, 'customer.update', { type: 'customer', id }, before, body);
+  await logAudit(env, request, actor, 'customer.update', { type: 'customer', id },
+    customerView(before), redactSecrets(body));
   return jsonResp({ updated: 1 });
 }
 
-async function handleCustomerDevices(env, customerId) {
+async function handleCustomerDevices(env, customerId, user) {
+  if (user && user.role === 'reseller') {
+    const parent = await env.DB
+      .prepare('SELECT reseller_id FROM customers WHERE id = ?')
+      .bind(customerId)
+      .first();
+    const gate = customerForActor(parent, user);
+    if (gate.error) return gate.error;
+  }
   const rs = await env.DB
     .prepare(
       `SELECT id, mac, label, first_seen_at, last_seen_at
@@ -2154,6 +2479,12 @@ async function ensureSourcesTable(env) {
   } catch (_) {
     /* colonne déjà présente */
   }
+  // Qui a posé la source (revendeur). NULL = admin. Sert au cloisonnement.
+  try {
+    await env.DB.prepare('ALTER TABLE device_sources ADD COLUMN reseller_id TEXT').run();
+  } catch (_) {
+    /* colonne déjà présente */
+  }
 }
 
 /// Normalise + valide un objet source venant du panel. Retourne
@@ -2164,7 +2495,14 @@ function normalizeSource(raw) {
   }
   const type = (raw.type || '').trim().toLowerCase();
   const label = (raw.label || '').trim() || null;
-  const epg = (raw.epg_url || '').trim() || null;
+  // httpUrlError refuse javascript:, ftp:, un hôte vide et les URL trop longues.
+  const epgRaw = (raw.epg_url || '').trim();
+  let epg = null;
+  if (epgRaw) {
+    const epgErr = httpUrlError(epgRaw, 'epg_url');
+    if (epgErr) return { error: epgErr };
+    epg = epgRaw;
+  }
   if (type === 'xtream') {
     const server = (raw.server_url || '').trim();
     const user = (raw.username || '').trim();
@@ -2172,11 +2510,15 @@ function normalizeSource(raw) {
     if (!server || !user || !pass) {
       return { error: 'xtream requires server_url, username, password' };
     }
+    const serverErr = httpUrlError(server, 'server_url');
+    if (serverErr) return { error: serverErr };
     return { source: { type, label, server_url: server, username: user, password: pass, m3u_url: null, epg_url: epg } };
   }
   if (type === 'm3u') {
     const m3u = (raw.m3u_url || '').trim();
     if (!m3u) return { error: 'm3u requires m3u_url' };
+    const m3uErr = httpUrlError(m3u, 'm3u_url');
+    if (m3uErr) return { error: m3uErr };
     return { source: { type, label, server_url: null, username: null, password: null, m3u_url: m3u, epg_url: epg } };
   }
   return { error: "type must be 'xtream' or 'm3u'" };
@@ -2186,11 +2528,13 @@ function normalizeSource(raw) {
 /// `sources` = tableau de 1 à 3 sources normalisées. On stocke le tableau
 /// complet en JSON (sources_json) ET la 1re dans les colonnes simples
 /// (compat avec l'ancienne app qui ne lit qu'une source).
-async function upsertDeviceSource(env, mac, sources) {
+async function upsertDeviceSource(env, mac, sources, resellerId = null) {
   await ensureSourcesTable(env);
   // Les sources assignées ICI (payant) sont marquées origin='panel' → VERROUILLÉES
   // côté self-service (le client ne peut ni les modifier ni les supprimer).
-  const panelItems = (sources || []).map((s) => ({ ...s, origin: 'panel' }));
+  // password et m3u_url sont chiffrés plus bas. Une source seule
+  // (activation) ou un tableau (trio) sont tous les deux acceptés.
+  const panelItems = coerceSourceList(sources).map((s) => ({ ...s, origin: 'panel' }));
   // PRÉSERVE les playlists 'self' que le client a ajoutées via /mon-espace : une
   // (ré)assignation panel NE DOIT PAS effacer les listes personnelles du client
   // (modèle multi-listes). On relit l'existant et on ré-empile les 'self' après.
@@ -2206,7 +2550,10 @@ async function upsertDeviceSource(env, mac, sources) {
     }
   } catch (_) { /* pas de précédent → rien à préserver */ }
 
-  const merged = [...panelItems, ...selfItems];
+  const merged = [];
+  for (const item of [...panelItems, ...selfItems]) {
+    merged.push(await sealSource(env, item));
+  }
   const first = merged[0] || {};
   const json = JSON.stringify(merged);
   await env.DB
@@ -2214,17 +2561,76 @@ async function upsertDeviceSource(env, mac, sources) {
       // Colonnes plates = 1re source PANEL (compat app/panel). origin ligne =
       // 'panel' (la source prioritaire/flat est payante et verrouillée).
       `INSERT INTO device_sources
-         (mac, type, label, server_url, username, password, m3u_url, epg_url, sources_json, origin, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'panel', ?)
+         (mac, type, label, server_url, username, password, m3u_url, epg_url, sources_json, origin, reseller_id, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'panel', ?, ?)
        ON CONFLICT(mac) DO UPDATE SET
          type=excluded.type, label=excluded.label, server_url=excluded.server_url,
          username=excluded.username, password=excluded.password,
          m3u_url=excluded.m3u_url, epg_url=excluded.epg_url,
-         sources_json=excluded.sources_json, origin='panel', updated_at=excluded.updated_at`,
+         sources_json=excluded.sources_json, origin='panel',
+         reseller_id=COALESCE(excluded.reseller_id, device_sources.reseller_id),
+         updated_at=excluded.updated_at`,
     )
     .bind(mac, first.type, first.label, first.server_url, first.username,
-          first.password, first.m3u_url, first.epg_url, json, Date.now())
+          first.password, first.m3u_url, first.epg_url, json, resellerId, Date.now())
     .run();
+  await clearSourceTombstone(env, mac);
+}
+
+/// Un revendeur ne lit / modifie / efface que les sources de SES appareils.
+/// L'admin passe toujours. Retourne une réponse d'erreur, ou null.
+async function assertSourceAccess(env, user, mac) {
+  if (!user || user.role !== 'reseller') return null;
+  await ensureSourcesTable(env);
+  const dev = await env.DB
+    .prepare('SELECT reseller_id FROM devices WHERE mac = ?')
+    .bind(mac).first();
+  if (dev && dev.reseller_id === user.sub) return null;
+  if (dev && dev.reseller_id && dev.reseller_id !== user.sub) {
+    return errResp('forbidden', 'Cet appareil ne vous appartient pas', 403);
+  }
+  const src = await env.DB
+    .prepare('SELECT reseller_id FROM device_sources WHERE mac = ?')
+    .bind(mac).first();
+  if (!src || src.reseller_id === user.sub) return null;
+  return errResp('forbidden', 'Cette source ne vous appartient pas', 403);
+}
+
+/// Retire les sources posées par le panel. Garde les listes 'self'
+/// (Mon espace). N'efface pas la licence : activation et lien sont séparés.
+async function clearPanelSources(env, mac) {
+  await ensureSourcesTable(env);
+  const prev = await env.DB
+    .prepare('SELECT sources_json, reseller_id FROM device_sources WHERE mac = ?')
+    .bind(mac).first();
+  if (!prev) return;
+  let arr = [];
+  if (prev.sources_json) {
+    try { arr = JSON.parse(prev.sources_json) || []; } catch (_) { arr = []; }
+  }
+  const selfItems = Array.isArray(arr) ? arr.filter((s) => s && s.origin === 'self') : [];
+  if (!selfItems.length) {
+    await env.DB.prepare('DELETE FROM device_sources WHERE mac = ?').bind(mac).run();
+    return;
+  }
+  const first = selfItems[0];
+  const json = JSON.stringify(selfItems);
+  await env.DB.prepare(
+    `INSERT INTO device_sources
+       (mac, type, label, server_url, username, password, m3u_url, epg_url, sources_json, origin, reseller_id, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'self', ?, ?)
+     ON CONFLICT(mac) DO UPDATE SET
+       type=excluded.type, label=excluded.label, server_url=excluded.server_url,
+       username=excluded.username, password=excluded.password,
+       m3u_url=excluded.m3u_url, epg_url=excluded.epg_url,
+       sources_json=excluded.sources_json, origin='self',
+       reseller_id=COALESCE(excluded.reseller_id, device_sources.reseller_id),
+       updated_at=excluded.updated_at`,
+  ).bind(
+    mac, first.type || 'm3u', first.label || null, first.server_url || null,
+    first.username || null, first.password || null, first.m3u_url || null,
+    first.epg_url || null, json, prev.reseller_id || null, Date.now(),
+  ).run();
 }
 
 // Décode une MAC reçue dans le PATH : le front encode les « : » en
@@ -2239,9 +2645,34 @@ function decodeMac(mac) {
   }
 }
 
-async function handleSourceGet(env, mac) {
-  await ensureSourcesTable(env);
+function isHttpUrl(value) {
+  return typeof value === 'string' && /^https?:\/\//i.test(value) && !/[\s<>]/.test(value);
+}
+
+/// Un revendeur ne touche que les MAC de SES appareils. L'owner (et le
+/// support) gardent l'accès global. Pas d'appareil en base → refus :
+/// on n'écrit pas une source sur une MAC qui n'est pas la sienne.
+async function sourceMacForActor(env, mac, user) {
   const m = decodeMac(mac).trim().toUpperCase();
+  if (user && user.role === 'reseller') {
+    const dev = await env.DB
+      .prepare('SELECT reseller_id FROM devices WHERE mac = ?')
+      .bind(m)
+      .first();
+    if (!dev || dev.reseller_id !== user.sub) {
+      return { error: errResp('forbidden', 'Cet appareil ne vous appartient pas', 403) };
+    }
+  }
+  return { mac: m };
+}
+
+async function handleSourceGet(env, mac, user) {
+  const gate = await sourceMacForActor(env, mac, user);
+  if (gate.error) return gate.error;
+  const m = gate.mac;
+  await ensureSourcesTable(env);
+  const access = await assertSourceAccess(env, user, m);
+  if (access) return access;
   const row = await env.DB
     .prepare('SELECT * FROM device_sources WHERE mac = ?')
     .bind(m)
@@ -2256,18 +2687,23 @@ async function handleSourceGet(env, mac) {
     const { sources_json, mac: _mac, updated_at, ...single } = row;
     sources = [single];
   }
+  sources = await openSourceList(env, sources);
   return jsonResp({ mac: m, source: sources[0] || null, sources });
 }
 
-async function handleSourcePut(request, env, mac, actor) {
+async function handleSourcePut(request, env, mac, actor, user) {
   let body;
   try { body = await request.json(); } catch (_) {
     return errResp('bad_json', 'Invalid JSON body', 400);
   }
-  const m = decodeMac(mac).trim().toUpperCase();
+  const gate = await sourceMacForActor(env, mac, user);
+  if (gate.error) return gate.error;
+  const m = gate.mac;
   if (!/^MK(?::[0-9A-F]{2}){5}$/i.test(m)) {
     return errResp('bad_mac', 'mac must be MK:XX:XX:XX:XX:XX', 400);
   }
+  const access = await assertSourceAccess(env, user, m);
+  if (access) return access;
   // TRIO : on accepte un tableau `sources` (1 à 3) OU une source unique
   // historique (`source` / corps direct). Chaque entrée est validée.
   let rawList = Array.isArray(body.sources) ? body.sources : [body.source || body];
@@ -2281,17 +2717,28 @@ async function handleSourcePut(request, env, mac, actor) {
   if (sources.length === 0) {
     return errResp('bad_source', 'at least one source required', 400);
   }
-  await upsertDeviceSource(env, m, sources);
+  const resellerId = user && user.role === 'reseller' ? user.sub : null;
+  await upsertDeviceSource(env, m, sources, resellerId);
   await logAudit(env, request, actor, 'source.set',
     { type: 'device_source', id: m }, null,
     { count: sources.length, types: sources.map((s) => s.type) });
   return jsonResp({ ok: true, mac: m, count: sources.length });
 }
 
-async function handleSourceDelete(request, env, mac, actor) {
+async function handleSourceDelete(request, env, mac, actor, user) {
+  const gate = await sourceMacForActor(env, mac, user);
+  if (gate.error) return gate.error;
+  const m = gate.mac;
+  if (!/^MK(?::[0-9A-F]{2}){5}$/i.test(m)) {
+    return errResp('bad_mac', 'mac must be MK:XX:XX:XX:XX:XX', 400);
+  }
   await ensureSourcesTable(env);
-  const m = decodeMac(mac).trim().toUpperCase();
-  await env.DB.prepare('DELETE FROM device_sources WHERE mac = ?').bind(m).run();
+  const access = await assertSourceAccess(env, user, m);
+  if (access) return access;
+  // Retire le lien du panel. Garde les listes perso et la licence.
+  // Le tombstone empêche le repli KV de ressusciter l'ancienne liste.
+  await clearPanelSources(env, m);
+  await markSourcesCleared(env, m, Date.now());
   await logAudit(env, request, actor, 'source.clear',
     { type: 'device_source', id: m }, null, null);
   return jsonResp({ ok: true, mac: m });
@@ -2337,9 +2784,10 @@ async function ensureFamiliesTables(env) {
 }
 
 // La source renvoyée aux LISTES masque le mot de passe (le détail le montre).
-function _familyRowToJson(row, { hidePassword = true } = {}) {
+async function _familyRowToJson(env, row, { hidePassword = true } = {}) {
   let source = null;
   try { source = row.source_json ? JSON.parse(row.source_json) : null; } catch (_) { source = null; }
+  if (source) source = await openSource(env, source);
   if (source && hidePassword && source.password) {
     source = { ...source, password: '••••••' };
   }
@@ -2369,10 +2817,10 @@ async function handleFamiliesList(env, user) {
     for (const r of (c.results || [])) counts[r.family_id] = r.n;
   } catch (_) {/* table vide */}
   return jsonResp({
-    items: list.map((row) => ({
-      ..._familyRowToJson(row),
+    items: await Promise.all(list.map(async (row) => ({
+      ...await _familyRowToJson(env, row),
       member_count: counts[row.id] || 0,
-    })),
+    }))),
   });
 }
 
@@ -2389,14 +2837,16 @@ async function handleFamiliesCreate(request, env, actor, user) {
   const id = genId('fam');
   const resellerId = user.role === 'reseller' ? user.sub : (body.reseller_id || null);
   await ensureFamiliesTables(env);
+  const sealed = await sealSource(env, norm.source);
+  const sourceJson = JSON.stringify(sealed);
   await env.DB.prepare(
     `INSERT INTO families (id, name, source_json, reseller_id, created_at, updated_at)
      VALUES (?, ?, ?, ?, ?, ?)`,
-  ).bind(id, name, JSON.stringify(norm.source), resellerId, now, now).run();
+  ).bind(id, name, sourceJson, resellerId, now, now).run();
   await logAudit(env, request, actor, 'family.create',
     { type: 'family', id }, null, { name });
-  return jsonResp({ ok: true, family: _familyRowToJson(
-    { id, name, source_json: JSON.stringify(norm.source), reseller_id: resellerId, created_at: now, updated_at: now },
+  return jsonResp({ ok: true, family: await _familyRowToJson(env,
+    { id, name, source_json: sourceJson, reseller_id: resellerId, created_at: now, updated_at: now },
     { hidePassword: false }), member_count: 0 }, 201);
 }
 
@@ -2413,10 +2863,18 @@ async function handleFamiliesGet(env, id, user) {
     'SELECT id, token, label, created_at FROM family_links WHERE family_id = ? ORDER BY created_at ASC',
   ).bind(id).all();
   return jsonResp({
-    family: _familyRowToJson(row, { hidePassword: false }),
+    family: await _familyRowToJson(env, row, { hidePassword: false }),
     members: (m.results || []),
     links: (l.results || []),
   });
+}
+
+function familyForbidden(row, user) {
+  if (!row) return errResp('not_found', 'Family not found', 404);
+  if (user && user.role === 'reseller' && row.reseller_id !== user.sub) {
+    return errResp('forbidden', 'Not your family', 403);
+  }
+  return null;
 }
 
 async function handleFamilyCreateLink(request, env, user, actor, familyId) {
@@ -2441,7 +2899,18 @@ async function handleFamilyCreateLink(request, env, user, actor, familyId) {
   return jsonResp({ ok: true, id, token, label: (body.label || '').trim() || null, created_at: now }, 201);
 }
 
-async function handleFamilyDeleteLink(env, familyId, linkId, actor) {
+async function assertFamilyAccess(env, id, user) {
+  const row = await env.DB.prepare('SELECT * FROM families WHERE id = ?').bind(id).first();
+  if (!row) return { error: errResp('not_found', 'Family not found', 404) };
+  if (user && user.role === 'reseller' && row.reseller_id !== user.sub) {
+    return { error: errResp('forbidden', 'Not your family', 403) };
+  }
+  return { row };
+}
+
+async function handleFamilyDeleteLink(env, familyId, linkId, actor, user) {
+  const gate = await assertFamilyAccess(env, familyId, user);
+  if (gate.error) return gate.error;
   await env.DB.prepare('DELETE FROM family_links WHERE id = ? AND family_id = ?')
     .bind(linkId, familyId).run();
   await logAudit(env, { headers: new Headers() }, actor, 'family.link.delete',
@@ -2449,13 +2918,17 @@ async function handleFamilyDeleteLink(env, familyId, linkId, actor) {
   return jsonResp({ ok: true, id: linkId });
 }
 
-async function handleFamiliesDelete(env, id, actor) {
-  const row = await env.DB.prepare('SELECT id FROM families WHERE id = ?').bind(id).first();
-  if (!row) return errResp('not_found', 'Family not found', 404);
-  // On retire la source poussée à chaque membre (ils perdent l'accès famille).
+async function handleFamiliesDelete(env, id, actor, user) {
+  const gate = await assertFamilyAccess(env, id, user);
+  if (gate.error) return gate.error;
+  // On retire la source panel de chaque membre. Les listes perso restent,
+  // et la licence n'est pas touchée.
   const m = await env.DB.prepare('SELECT mac FROM family_members WHERE family_id = ?').bind(id).all();
   for (const r of (m.results || [])) {
-    try { await env.DB.prepare('DELETE FROM device_sources WHERE mac = ?').bind(r.mac).run(); } catch (_) {}
+    try {
+      await clearPanelSources(env, r.mac);
+      await markSourcesCleared(env, r.mac, Date.now());
+    } catch (_) {}
   }
   await env.DB.prepare('DELETE FROM family_members WHERE family_id = ?').bind(id).run();
   await env.DB.prepare('DELETE FROM families WHERE id = ?').bind(id).run();
@@ -2478,6 +2951,7 @@ async function handleFamilyAddMember(request, env, user, actor, familyId) {
   }
   let source;
   try { source = JSON.parse(fam.source_json); } catch (_) { source = null; }
+  if (source) source = await openSource(env, source);
   if (!source) return errResp('bad_source', 'Family has no valid source', 400);
 
   // 1) Active la licence de l'appareil (réutilise handleActivate : crée
@@ -2513,12 +2987,18 @@ async function handleFamilyAddMember(request, env, user, actor, familyId) {
   return jsonResp({ ok: true, family_id: familyId, mac, label: body.label || null }, 201);
 }
 
-async function handleFamilyRemoveMember(env, familyId, mac, actor) {
+async function handleFamilyRemoveMember(env, familyId, mac, actor, user) {
+  const gate = await assertFamilyAccess(env, familyId, user);
+  if (gate.error) return gate.error;
   const m = (mac || '').trim().toUpperCase();
   await env.DB.prepare('DELETE FROM family_members WHERE family_id = ? AND mac = ?')
     .bind(familyId, m).run();
-  // Retire la source → l'appareil n'a plus l'accès famille.
-  try { await env.DB.prepare('DELETE FROM device_sources WHERE mac = ?').bind(m).run(); } catch (_) {}
+  // Retire la source panel. Les listes perso et la licence restent.
+  // Tombstone : sinon le repli KV réinjecte l'ancienne liste au prochain GET.
+  try {
+    await clearPanelSources(env, m);
+    await markSourcesCleared(env, m, Date.now());
+  } catch (_) {}
   await logAudit(env, { headers: new Headers() }, actor, 'family.member.remove',
     { type: 'family', id: familyId }, null, { mac: m });
   return jsonResp({ ok: true, family_id: familyId, mac: m });
@@ -2531,12 +3011,11 @@ async function handleFamilyRemoveMember(env, familyId, mac, actor) {
 async function handleDevicesList(request, env, user) {
   const url = new URL(request.url);
   const q = (url.searchParams.get('q') || '').trim();
+  const { limit, offset } = parsePageQuery(url);
   // `d.*` inclut automatiquement les colonnes enrichies par le heartbeat
   // (device_model, android_build, android_release, app_build) quand elles
   // existent — sans casser si elles n'ont pas encore été créées.
-  let sql = `SELECT d.*,
-                    c.name as customer_name, c.email as customer_email
-             FROM devices d LEFT JOIN customers c ON d.customer_id = c.id`;
+  const from = `FROM devices d LEFT JOIN customers c ON d.customer_id = c.id`;
   const where = []; const binds = [];
   if (q) {
     where.push('(d.mac LIKE ? OR d.label LIKE ? OR c.name LIKE ?)');
@@ -2547,10 +3026,24 @@ async function handleDevicesList(request, env, user) {
     where.push('d.reseller_id = ?');
     binds.push(user.sub);
   }
-  if (where.length) sql += ' WHERE ' + where.join(' AND ');
-  sql += ` ORDER BY d.last_seen_at DESC LIMIT 200`;
-  const rs = await env.DB.prepare(sql).bind(...binds).all();
-  return jsonResp({ items: rs.results || [] });
+  const whereSql = where.length ? ' WHERE ' + where.join(' AND ') : '';
+  const page = await pagedQuery(
+    env,
+    `SELECT COUNT(*) as n ${from}${whereSql}`,
+    binds,
+    `SELECT d.*, c.name as customer_name, c.email as customer_email
+       ${from}${whereSql}
+      ORDER BY d.last_seen_at DESC LIMIT ? OFFSET ?`,
+    binds,
+    limit,
+    offset,
+  );
+  page.items = page.items.map((row) => ({
+    ...row,
+    first_seen_at: epochMs(row.first_seen_at),
+    last_seen_at: epochMs(row.last_seen_at),
+  }));
+  return jsonResp(page);
 }
 
 // =========================================================
@@ -2579,14 +3072,11 @@ async function handleDeviceOverview(env, id, user) {
       .bind(dev.id)
       .first();
     if (lic) {
-      const live = lic.status === 'active'
-        && (lic.expires_at == null || lic.expires_at > now);
-      const expired = lic.expires_at != null && lic.expires_at <= now;
       license = {
-        status: live ? 'active' : (expired ? 'expired' : lic.status),
+        status: liveLicenseStatus(lic.status, lic.expires_at, now),
         plan: lic.plan || null,
-        started_at: lic.started_at ?? null,
-        expires_at: lic.expires_at ?? null,
+        started_at: epochMs(lic.started_at),
+        expires_at: epochMs(lic.expires_at),
         auto_renew: lic.auto_renew ? 1 : 0,
       };
     }
@@ -2601,12 +3091,13 @@ async function handleDeviceOverview(env, id, user) {
       .first();
     if (p) {
       const ONLINE_MS = 15 * 60 * 1000;
+      const seenMs = epochMs(p.last_seen) || 0;
       presence = {
-        online: (p.last_seen || 0) > now - ONLINE_MS,
+        online: seenMs > now - ONLINE_MS,
         ip: p.ip || '',
-        country: (p.country || '').toUpperCase(),
+        country: /^[A-Za-z]{2}$/.test(p.country || '') ? String(p.country).toUpperCase() : '',
         channel: p.channel || '',
-        last_seen: p.last_seen || 0,
+        last_seen: seenMs,
       };
     }
   } catch (_) { /* table presence absente : on ignore */ }
@@ -2626,6 +3117,7 @@ async function handleDeviceOverview(env, id, user) {
       const { sources_json, mac: _m, updated_at, ...single } = row;
       sources = [single];
     }
+    sources = await openSourceList(env, sources);
   } catch (_) { /* table device_sources absente : on ignore */ }
 
   // --- Inventaire RÉEL sur l'appareil (remonté par le heartbeat) : toutes les
@@ -2753,25 +3245,35 @@ function planToDays(plan, customDays) {
     case '1y':
     case 'yearly': return 365;
     case 'lifetime': return null;
-    case 'custom': return customDays && customDays > 0 ? customDays : 30;
+    case 'custom': {
+      const d = Number(customDays);
+      if (!(d > 0)) return 30;
+      // Plafond 10 ans : un custom_days énorme ne doit pas créer une date absurde.
+      return Math.min(Math.round(d), 3650);
+    }
     case 'trial': return 7;
     default: return 30;
   }
+}
+
+/// null si le plan est connu, sinon un message. Refuse les essais démesurés.
+function unknownPlanMessage(plan) {
+  if (typeof plan !== 'string' || !plan) return 'plan requis';
+  if (plan === 'trial') return null;
+  const hm = /^trial_(\d+)h$/.exec(plan);
+  if (hm) return Number(hm[1]) > 24 * 30 ? 'durée d essai trop longue' : null;
+  const dm = /^trial_(\d+)d$/.exec(plan);
+  if (dm) return Number(dm[1]) > 90 ? 'durée d essai trop longue' : null;
+  if (plan.startsWith('trial')) return 'plan d essai inconnu';
+  const known = ['1m', 'monthly', '3m', 'quarterly', '6m', 'biannual', '1y', 'yearly', 'lifetime', 'custom'];
+  if (!known.includes(plan)) return 'plan inconnu';
+  return null;
 }
 
 async function handleLicensesList(request, env, user) {
   const url = new URL(request.url);
   const status = url.searchParams.get('status');
   const appId = url.searchParams.get('app_id');
-  let sql = `SELECT l.id, l.customer_id, l.device_id, l.app_id, l.status,
-                    l.plan, l.started_at, l.expires_at, l.auto_renew, l.reseller_id,
-                    c.name as customer_name, c.email as customer_email,
-                    d.mac as device_mac, d.label as device_label,
-                    a.name as app_name
-             FROM licenses l
-             JOIN customers c ON l.customer_id = c.id
-             JOIN devices   d ON l.device_id   = d.id
-             JOIN apps      a ON l.app_id      = a.id`;
   const where = []; const binds = [];
   if (status) { where.push('l.status = ?'); binds.push(status); }
   if (appId)  { where.push('l.app_id = ?'); binds.push(appId); }
@@ -2779,10 +3281,37 @@ async function handleLicensesList(request, env, user) {
     where.push('l.reseller_id = ?');
     binds.push(user.sub);
   }
-  if (where.length) sql += ' WHERE ' + where.join(' AND ');
-  sql += ' ORDER BY l.created_at DESC LIMIT 200';
-  const rs = await env.DB.prepare(sql).bind(...binds).all();
-  return jsonResp({ items: rs.results || [] });
+  const whereSql = where.length ? ' WHERE ' + where.join(' AND ') : '';
+  const { limit, offset } = parsePageQuery(url);
+  const from = `FROM licenses l
+             JOIN customers c ON l.customer_id = c.id
+             JOIN devices   d ON l.device_id   = d.id
+             JOIN apps      a ON l.app_id      = a.id`;
+  const page = await pagedQuery(
+    env,
+    `SELECT COUNT(*) as n ${from}${whereSql}`,
+    binds,
+    `SELECT l.id, l.customer_id, l.device_id, l.app_id, l.status,
+            l.plan, l.started_at, l.expires_at, l.auto_renew, l.reseller_id,
+            c.name as customer_name, c.email as customer_email,
+            d.mac as device_mac, d.label as device_label,
+            a.name as app_name
+       ${from}${whereSql}
+      ORDER BY l.created_at DESC LIMIT ? OFFSET ?`,
+    binds,
+    limit,
+    offset,
+  );
+  const now = Date.now();
+  // Le statut en base reste souvent « active » après la date. On le
+  // recalcule ici, en acceptant les secondes comme les millisecondes.
+  page.items = page.items.map((row) => ({
+    ...row,
+    status: liveLicenseStatus(row.status, row.expires_at, now),
+    started_at: epochMs(row.started_at),
+    expires_at: epochMs(row.expires_at),
+  }));
+  return jsonResp(page);
 }
 
 async function handleLicensesCreate(request, env, actor) {
@@ -2860,7 +3389,18 @@ async function handleLicensesRenew(request, env, id, actor) {
   try { body = await request.json(); } catch (_) {}
   const before = await env.DB.prepare('SELECT * FROM licenses WHERE id = ?').bind(id).first();
   if (!before) return errResp('not_found', 'License not found', 404);
+  if (body.plan) {
+    const planError = unknownPlanMessage(body.plan);
+    if (planError) return errResp('bad_plan', planError, 400);
+  }
   const days = planToDays(body.plan || before.plan || '1y', body.custom_days);
+  // Déjà à vie : on ne raccourcit jamais, on ne réécrit pas la date.
+  if (before.expires_at == null) {
+    if (days !== null) {
+      return errResp('already_lifetime', 'Licence à vie : un renouvellement daté est refusé.', 409);
+    }
+    return jsonResp({ updated: 0, expires_at: null, already_lifetime: true });
+  }
   const now = Date.now();
   // On etend a partir de la date la plus tardive entre maintenant et l'expiry
   // actuel, pour qu'un renouvellement avant expiration cumule les jours
@@ -3006,12 +3546,19 @@ async function handleResellerLogin(request, env) {
     return errResp('rate_limited',
       'Trop de tentatives de connexion. Réessaie dans ~10 minutes.', 429);
   }
+  const secret = authSecret(env);
+  if (!secret) {
+    return errResp('auth_unconfigured', 'Authentification indisponible.', 503);
+  }
   await ensureResellerLevel(env);
   const row = await env.DB
     .prepare('SELECT id, email, password_hash, name, status, level, permissions, credit_balance FROM resellers WHERE email = ?')
     .bind(email)
     .first();
-  if (!row) return errResp('bad_credentials', 'Invalid credentials', 401);
+  if (!row) {
+    await verifyPassword(password, DUMMY_PASSWORD_HASH);
+    return errResp('bad_credentials', 'Invalid credentials', 401);
+  }
   // Vérifie d'abord le mot de passe (évite de révéler le statut d'un
   // compte sur une mauvaise saisie), puis distingue pending/suspended.
   const ok = await verifyPassword(password, row.password_hash);
@@ -3027,7 +3574,7 @@ async function handleResellerLogin(request, env) {
   const permissions = resellerPerms(row.permissions, level);
   const token = await signJwt(
     { sub: row.id, email: row.email, role: 'reseller', name: row.name, level, permissions },
-    env.ADMIN_SECRET || 'dev-secret',
+    secret,
   );
   return jsonResp({
     token,
@@ -3078,8 +3625,11 @@ async function handleChangeOwnPassword(request, env, user, actor) {
   const ok = await verifyPassword(current, row.password_hash);
   if (!ok) return errResp('bad_current', 'Mot de passe actuel incorrect', 401);
   const hash = await hashPassword(next);
-  await env.DB.prepare(`UPDATE ${table} SET password_hash = ? WHERE id = ?`)
-    .bind(hash, user.sub).run();
+  const changed = Math.floor(Date.now() / 1000);
+  await ensurePasswordChangedColumn(env, table);
+  await env.DB.prepare(
+    `UPDATE ${table} SET password_hash = ?, password_changed_at = ? WHERE id = ?`,
+  ).bind(hash, changed, user.sub).run();
   await logAudit(env, request, actor, 'password.change_self',
     { type: user.role === 'reseller' ? 'reseller' : 'admin', id: user.sub }, null, null);
   return jsonResp({ ok: true });
@@ -3449,8 +3999,15 @@ async function handleDeviceTransfer(request, env, user, actor) {
   // remplace par celle de l'ancienne (le client garde SES identifiants).
   try {
     await env.DB.prepare('DELETE FROM device_sources WHERE mac = ?').bind(newMac).run();
-    await env.DB.prepare('UPDATE device_sources SET mac = ?, updated_at = ? WHERE mac = ?')
-      .bind(newMac, now, oldMac).run();
+    const moved = await env.DB.prepare(
+      'UPDATE device_sources SET mac = ?, updated_at = ? WHERE mac = ?',
+    ).bind(newMac, now, oldMac).run();
+    await markSourcesCleared(env, oldMac, now);
+    if (moved && moved.meta && moved.meta.changes) {
+      await clearSourceTombstone(env, newMac);
+    } else {
+      await markSourcesCleared(env, newMac, now);
+    }
   } catch (_) { /* pas de source à déplacer */ }
 
   // L'ancien appareil n'a plus de licence → il redevient inactif tout seul.
@@ -3482,6 +4039,19 @@ async function handleActivate(request, env, user, actor) {
     return errResp('bad_mac', 'mac must be MK:XX:XX:XX:XX:XX', 400);
   }
 
+  // Activation = licence seulement. Le lien M3U est un second appel
+  // (PUT /api/v1/sources/:mac). On refuse AVANT toute écriture, sinon
+  // une source invalide laissait une licence créée sans débit.
+  if (body.source || body.sources) {
+    return errResp(
+      'source_separate',
+      'Activation et lien M3U sont deux opérations distinctes. Posez le lien avec PUT /api/v1/sources/:mac.',
+      400,
+    );
+  }
+  const planError = unknownPlanMessage(plan);
+  if (planError) return errResp('bad_plan', planError, 400);
+
   const isReseller = user.role === 'reseller';
 
   // ----- Plans autorisés selon le rôle (sécurité serveur) -----
@@ -3504,6 +4074,57 @@ async function handleActivate(request, env, user, actor) {
   // precise un reseller_id, on debite ce revendeur (vente pour son compte).
   const chargeResellerId = isReseller ? user.sub : (body.reseller_id || null);
   const cost = await planCreditCost(env, plan);
+  const now = Date.now();
+  const days = planToDays(plan, body.custom_days);
+
+  // Déjà à vie : on ne raccourcit pas, on ne redébite pas. On rouvre
+  // seulement si la licence avait été désactivée.
+  const earlyDev = await env.DB
+    .prepare('SELECT id, customer_id, reseller_id FROM devices WHERE mac = ?')
+    .bind(mac).first();
+  if (earlyDev && isReseller && earlyDev.reseller_id && earlyDev.reseller_id !== user.sub) {
+    return errResp('forbidden', 'This device belongs to another reseller', 403);
+  }
+  if (earlyDev) {
+    const earlyLic = await env.DB
+      .prepare('SELECT id, expires_at FROM licenses WHERE device_id = ? AND app_id = ?')
+      .bind(earlyDev.id, appId).first();
+    if (earlyLic && earlyLic.expires_at == null) {
+      if (days !== null) {
+        return errResp(
+          'already_lifetime',
+          'Cet appareil est déjà à vie. Un plan daté ne peut pas le raccourcir.',
+          409,
+        );
+      }
+      await env.DB.prepare(
+        `UPDATE licenses SET status='active', plan='lifetime', updated_at=? WHERE id=?`,
+      ).bind(now, earlyLic.id).run();
+      await env.DB.prepare('UPDATE devices SET block_status = NULL WHERE id = ?')
+        .bind(earlyDev.id).run();
+      let balance = null;
+      if (chargeResellerId) {
+        const r = await env.DB.prepare('SELECT credit_balance FROM resellers WHERE id = ?')
+          .bind(chargeResellerId).first();
+        balance = r ? r.credit_balance : null;
+      }
+      await logAudit(env, request, actor, 'activate.keep_lifetime',
+        { type: 'license', id: earlyLic.id }, null, { mac, plan: 'lifetime', cost: 0 });
+      return jsonResp({
+        ok: true,
+        license_id: earlyLic.id,
+        device_id: earlyDev.id,
+        customer_id: earlyDev.customer_id,
+        mac,
+        plan: 'lifetime',
+        expires_at: null,
+        credits_charged: 0,
+        credit_balance: balance,
+        renewed: false,
+        already_lifetime: true,
+      }, 200);
+    }
+  }
 
   let resellerRow = null;
   if (chargeResellerId) {
@@ -3519,9 +4140,6 @@ async function handleActivate(request, env, user, actor) {
         `Credits insuffisants (besoin ${cost}, solde ${resellerRow.credit_balance})`, 402);
     }
   }
-
-  const now = Date.now();
-  const days = planToDays(plan, body.custom_days);
 
   // 1) Device par MAC (find-or-create).
   const device = await env.DB
@@ -3592,14 +4210,7 @@ async function handleActivate(request, env, user, actor) {
   await env.DB.prepare('UPDATE devices SET block_status = NULL WHERE id = ?')
     .bind(deviceId).run();
 
-  // 2c) Source IPTV (Xtream/M3U) optionnelle : si le panel a joint un
-  // objet `source`, on l'assigne à la MAC. L'app la récupèrera via
-  // GET /api/device-source/:mac et la chargera automatiquement.
-  if (body.source) {
-    const norm = normalizeSource(body.source);
-    if (norm.error) return errResp('bad_source', norm.error, 400);
-    await upsertDeviceSource(env, mac, norm.source);
-  }
+  // Le lien M3U n'est PAS écrit ici. Voir PUT /api/v1/sources/:mac.
 
   // 3) Debit credits (revendeur) + ecriture au ledger, atomiquement.
   let balanceAfter = null;

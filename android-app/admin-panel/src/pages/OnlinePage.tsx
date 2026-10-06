@@ -1,60 +1,83 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
-import { onlineApi, type OnlineSnapshot, flagEmoji, ApiError } from '@/lib/api';
+import {
+  Alert, EmptyState, Pager, SearchField, SortTh, StatusBadge,
+  TableFrame, useClientTable,
+} from '@/components/ui';
+import { onlineApi, flagEmoji, ApiError, isAbortError } from '@/lib/api';
+import { PANEL_POLL_MS, shouldApplyPollResult } from '@/lib/live-sync';
+import {
+  LIST_PAGE_SIZE, agoLabel, createAbortBag, createGeneration, onlineView,
+  type OnlineView,
+} from '@/lib/robust';
 
 /// Page « En ligne » (owner) — qui utilise l'app en ce moment, depuis où.
 /// Données issues de la présence (heartbeat) : IP + pays fournis par
 /// Cloudflare. « En ligne » = vu il y a moins de 15 min.
-
-function ago(ts: number): string {
-  if (!ts) return '—';
-  const s = Math.floor((Date.now() - ts) / 1000);
-  if (s < 60) return `il y a ${s}s`;
-  if (s < 3600) return `il y a ${Math.floor(s / 60)} min`;
-  return `il y a ${Math.floor(s / 3600)} h`;
-}
+/// Rafraîchissement toutes les 2 s. Une réponse lente ne réécrit pas
+/// un état plus récent déjà affiché.
 
 export function OnlinePage({ onLogout }: { onLogout: () => void }) {
-  const [data, setData] = useState<OnlineSnapshot | null>(null);
+  const [data, setData] = useState<OnlineView | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const gen = useRef(createGeneration());
+  const aborts = useRef(createAbortBag());
+  const appliedSeq = useRef(0);
 
-  function load() {
-    onlineApi.get()
-      .then(setData)
-      .catch((e: any) => {
+  const load = useCallback(() => {
+    const id = gen.current.next();
+    const signal = aborts.current.next();
+    onlineApi.get({ limit: LIST_PAGE_SIZE, offset: 0 }, signal)
+      .then((raw) => {
+        if (!gen.current.isCurrent(id) || !shouldApplyPollResult(id, appliedSeq.current)) return;
+        appliedSeq.current = id;
+        // Corps incomplet (sans byCountry / items) : on normalise,
+        // on n'explose pas la page, et on efface l'erreur précédente.
+        setData(onlineView(raw));
+        setErr(null);
+      })
+      .catch((e: unknown) => {
+        if (isAbortError(e) || !gen.current.isCurrent(id)) return;
+        if (!shouldApplyPollResult(id, appliedSeq.current)) return;
         if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
         setErr(e instanceof ApiError ? e.message : 'Erreur réseau.');
       })
-      .finally(() => setLoading(false));
-  }
+      .finally(() => { if (gen.current.isCurrent(id)) setLoading(false); });
+  }, [onLogout]);
 
-  // Rafraîchissement auto toutes les 30 s.
   useEffect(() => {
     load();
-    const t = setInterval(load, 30000);
-    return () => clearInterval(t);
-    /* eslint-disable-next-line */
-  }, []);
+    const t = setInterval(load, PANEL_POLL_MS);
+    return () => { clearInterval(t); aborts.current.abort(); };
+  }, [load]);
 
-  const byCountry = data
-    ? Object.entries(data.byCountry).sort((a, b) => b[1] - a[1])
-    : [];
+  const byCountry = data ? data.byCountry : [];
+  const table = useClientTable(data?.items ?? [], {
+    textOf: (d) => [d.country, d.ip, d.mac, d.channel].filter(Boolean).join(' '),
+    valueOf: (d, key) => {
+      if (key === 'country') return d.country || '';
+      if (key === 'ip') return d.ip || '';
+      if (key === 'mac') return d.mac;
+      if (key === 'channel') return d.channel || '';
+      if (key === 'seen') return d.lastSeen || 0;
+      return '';
+    },
+  });
 
   return (
     <AppLayout
       title="En ligne"
-      subtitle="Qui utilise l'app en ce moment, et depuis quel pays (mise à jour auto)"
+      subtitle="Qui utilise l'app en ce moment, et depuis quel pays (rafraîchi toutes les 2 s)"
       onLogout={onLogout}
     >
-      {err && (
-        <div className="mb-4 rounded-md border border-accent/30 bg-accent/10 px-3 py-2 text-xs text-accent-bright">
-          {err}
-        </div>
-      )}
+      {err && <Alert>{err}</Alert>}
 
       {loading && !data ? (
-        <div className="text-sm text-ink-tertiary">Chargement…</div>
+        <div role="status" className="space-y-3">
+          <div className="h-24 animate-pulse rounded-xl border border-white/10 bg-midnight" />
+          <p className="text-sm text-ink-secondary">Chargement des appareils en ligne…</p>
+        </div>
       ) : (
         <>
           {/* Compteurs */}
@@ -106,45 +129,62 @@ export function OnlinePage({ onLogout }: { onLogout: () => void }) {
             </div>
           )}
 
-          {/* Liste des appareils en ligne */}
-          <div className="overflow-hidden rounded-xl border border-white/5">
-            <table className="w-full text-left text-sm">
-              <thead className="bg-midnight text-[10px] uppercase tracking-widest text-ink-tertiary">
+          <SearchField
+            label="Rechercher parmi les appareils en ligne"
+            value={table.query}
+            onChange={table.setQuery}
+            placeholder="Pays, adresse IP, MAC…"
+          />
+
+          <TableFrame label="Appareils en ligne">
+              <thead className="bg-midnight text-left">
                 <tr>
-                  <th className="px-4 py-2.5">Pays</th>
-                  <th className="px-4 py-2.5">IP</th>
-                  <th className="px-4 py-2.5">MAC</th>
-                  <th className="px-4 py-2.5">Regarde</th>
-                  <th className="px-4 py-2.5">Vu</th>
+                  <th scope="col" className="px-4 py-3 text-[10px] font-semibold uppercase tracking-widest text-ink-secondary">État</th>
+                  <SortTh label="Pays" column="country" sortKey={table.sortKey} dir={table.dir} onSort={table.toggleSort} />
+                  <SortTh label="Adresse IP" column="ip" sortKey={table.sortKey} dir={table.dir} onSort={table.toggleSort} />
+                  <SortTh label="MAC" column="mac" sortKey={table.sortKey} dir={table.dir} onSort={table.toggleSort} />
+                  <SortTh label="Regarde" column="channel" sortKey={table.sortKey} dir={table.dir} onSort={table.toggleSort} />
+                  <SortTh label="Vu" column="seen" sortKey={table.sortKey} dir={table.dir} onSort={table.toggleSort} />
                 </tr>
               </thead>
               <tbody>
-                {(data?.items ?? []).map((d) => (
+                {table.rows.map((d) => (
                   <tr key={d.mac} className="border-t border-white/5">
+                    <td className="px-4 py-2.5"><StatusBadge status="online" /></td>
                     <td className="px-4 py-2.5">
                       <span className="mr-1.5">{flagEmoji(d.country)}</span>
                       {d.country || '—'}
                     </td>
                     <td className="px-4 py-2.5 font-mono text-xs text-ink-secondary">{d.ip || '—'}</td>
-                    <td className="px-4 py-2.5 font-mono text-xs text-ink-tertiary">{d.mac}</td>
+                    <td className="px-4 py-2.5 font-mono text-xs text-ink-secondary">{d.mac}</td>
                     <td className="px-4 py-2.5 text-xs">
                       {d.channel
                         ? <span className="inline-flex items-center gap-1 text-accent-bright">▶ {d.channel}</span>
                         : <span className="text-ink-tertiary">—</span>}
                     </td>
-                    <td className="px-4 py-2.5 text-xs text-ink-tertiary">{ago(d.lastSeen)}</td>
+                    <td className="px-4 py-2.5 text-xs text-ink-tertiary">{agoLabel(d.lastSeen)}</td>
                   </tr>
                 ))}
-                {(data?.items.length ?? 0) === 0 && (
+                {table.total === 0 && (
                   <tr>
-                    <td colSpan={5} className="px-4 py-6 text-center text-xs text-ink-tertiary">
-                      Personne en ligne dans les 15 dernières minutes.
+                    <td colSpan={6}>
+                      <EmptyState
+                        title={table.query ? `Personne ne correspond à « ${table.query} ».` : 'Personne en ligne.'}
+                        hint={table.query ? 'Essaie une autre MAC ou un autre pays.' : 'Aucun appareil vu dans les 15 dernières minutes.'}
+                      />
                     </td>
                   </tr>
                 )}
               </tbody>
-            </table>
-          </div>
+          </TableFrame>
+          <Pager
+            page={table.page}
+            pages={table.pages}
+            start={table.start}
+            end={table.end}
+            total={table.total}
+            onPage={table.setPage}
+          />
         </>
       )}
     </AppLayout>

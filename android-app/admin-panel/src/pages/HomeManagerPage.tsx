@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
+import { confirmAction } from '@/components/confirm';
 import {
   homeLayoutApi, type HomeSection, type HomeLayoutSnapshot,
   HOME_RIBBONS, HOME_SECTION_LABELS, ApiError,
 } from '@/lib/api';
+import { formatDateTime } from '@/lib/utils';
 
 /// Page « Accueil » (Centre de contrôle, Module 1/8) — owner uniquement.
 /// Pilote en TEMPS RÉEL l'accueil de l'app, sans mise à jour de store :
@@ -25,7 +27,7 @@ function ribbonColor(r: string): string {
     case 'EURO 2028':
     case 'UFC':
     case 'CHAMPIONS LEAGUE': return '#E84A3E';
-    case 'POPULAIRE': return '#D63A30';
+    case 'POPULAIRE': return '#FF5A4A';
     default: return '#7E7872';
   }
 }
@@ -94,7 +96,13 @@ export function HomeManagerPage({ onLogout }: { onLogout: () => void }) {
   }
 
   async function restore(id: number) {
-    if (!window.confirm('Restaurer cette version de l\'accueil ?')) return;
+    const ok = await confirmAction({
+      title: 'Restaurer cette version ?',
+      message: 'L’accueil publié sera remplacé par cette version archivée.',
+      confirmLabel: 'Restaurer',
+      danger: true,
+    });
+    if (!ok) return;
     setBusy(true); setErr(null); setOk(null);
     try {
       await homeLayoutApi.restore(id);
@@ -158,11 +166,11 @@ export function HomeManagerPage({ onLogout }: { onLogout: () => void }) {
                 >
                   {/* Poignée + flèches */}
                   <div className="flex flex-col items-center gap-0.5 text-ink-tertiary">
-                    <button type="button" onClick={() => move(i, i - 1)}
-                      className="hover:text-ink-primary" title="Monter">▲</button>
+                    <button type="button" onClick={() => move(i, i - 1)} disabled={i === 0}
+                      className="hover:text-ink-primary disabled:opacity-30" title="Monter" aria-label="Monter">▲</button>
                     <span className="cursor-grab select-none text-base leading-none" title="Glisser">⋮⋮</span>
-                    <button type="button" onClick={() => move(i, i + 1)}
-                      className="hover:text-ink-primary" title="Descendre">▼</button>
+                    <button type="button" onClick={() => move(i, i + 1)} disabled={i === items.length - 1}
+                      className="hover:text-ink-primary disabled:opacity-30" title="Descendre" aria-label="Descendre">▼</button>
                   </div>
 
                   {/* Position + nom */}
@@ -188,6 +196,7 @@ export function HomeManagerPage({ onLogout }: { onLogout: () => void }) {
 
                   {/* Ruban */}
                   <select
+                    aria-label={`Ruban — ${HOME_SECTION_LABELS[it.key] ?? it.key}`}
                     value={it.ribbon || ''}
                     onChange={(e) => setRibbon(i, e.target.value)}
                     className="rounded-md border border-white/10 bg-slate px-2 py-1.5 text-xs outline-none focus:ring-1 focus:ring-accent"
@@ -247,7 +256,7 @@ export function HomeManagerPage({ onLogout }: { onLogout: () => void }) {
                   <div className="min-w-0">
                     <div className="truncate text-xs text-ink-secondary">{h.label}</div>
                     <div className="text-[10px] text-ink-tertiary">
-                      {new Date(h.created_at).toLocaleString()}
+                      {formatDateTime(h.created_at)}
                     </div>
                   </div>
                   <button
