@@ -38,6 +38,7 @@ const PERSIST = resolve(HERE, '.state');
 // Adresses factices. Elles ne sont jamais téléchargées.
 const M3U_A = 'http://127.0.0.1/e2e/liste-a.m3u';
 const M3U_B = 'http://127.0.0.1/e2e/liste-b.m3u';
+const M3U_C = 'http://127.0.0.1/e2e/liste-c.m3u';
 const MESSAGE_TITLE = 'Essai message instantane';
 const MESSAGE_BODY = 'Texte de demonstration local';
 const CHANNEL = 'Demo-locale';
@@ -355,6 +356,64 @@ async function parcours(page) {
     src0.status === 200 && src0.json && src0.json.source == null,
     brief(src0.json),
   );
+
+  // ----- Écran Listes : ajout réel, puis accusés du vrai Worker -----
+  // L'ancien formulaire écartait tous les M3U déjà présents et affichait
+  // « box prévenue » à la seule réponse HTTP, sans lire d'accusé de la TV.
+  const seeded = await panel(page, '/api/v1/sources/' + encodeURIComponent(mac), {
+    method: 'PUT',
+    body: { sources: [{ type: 'm3u', m3u_url: M3U_A, label: 'Liste A', enabled: false }] },
+  });
+  check('liste A éteinte préparée sur le vrai Worker', seeded.status === 200);
+  await page.goto(PANEL_ORIGIN + '/chaines?mac=' + encodeURIComponent(mac));
+  await page.getByRole('checkbox', { name: /Remplacer les listes du panel/ }).uncheck();
+  await page.getByLabel('Nouveau lien', { exact: true }).fill(M3U_B);
+  const submitList = page.locator('form button[type="submit"]');
+  const sentResponse = page.waitForResponse((r) => r.request().method() === 'PUT'
+    && r.url().includes('/api/v1/sources/'));
+  await submitList.click();
+  const sent = await (await sentResponse).json();
+  check('l’envoi renvoie un ordre traçable', typeof sent.order_id === 'string' && Number.isInteger(sent.rev));
+  const stored = await panel(page, '/api/v1/sources/' + encodeURIComponent(mac));
+  check('Ajouter conserve les deux M3U sur la même box', stored.json.sources.length === 2);
+  check('Ajouter conserve la liste A éteinte',
+    stored.json.sources.some((s) => s.m3u_url === M3U_A && s.enabled === false));
+
+  const delivery = page.getByRole('region', { name: 'Suivi de l’envoi', exact: true });
+  await delivery.getByText('Enregistrée sur le serveur. En attente de la box…', { exact: true }).waitFor();
+  check('sans accusé TV, l’écran reste en attente', true);
+  const frame = await box('GET', '/api/box/wait/' + mac + '?after=0&timeout=200');
+  check('le canal box porte le même ordre que le formulaire',
+    frame.json.box.some((o) => o.order_id === sent.order_id));
+  const receivedAt = Date.now();
+  const received = await box('POST', '/api/box/ack/' + mac, { orders: [{
+    order_id: sent.order_id, state: 'received', received_at: receivedAt,
+  }] });
+  check('le Worker persiste RECEIVED pour cet envoi', received.json.results[0].state === 'received');
+  await delivery.getByText('Ordre reçu par la box. Chargement en cours…', { exact: true }).waitFor();
+  const failed = await box('POST', '/api/box/ack/' + mac, { orders: [{
+    order_id: sent.order_id, state: 'failed', applied_at: Date.now(),
+    result: 'refused', error_code: 'refused', error_message: 'Fournisseur injoignable',
+  }] });
+  check('le Worker persiste FAILED pour cet envoi', failed.json.results[0].state === 'failed');
+  await delivery.getByText('La box n’a pas chargé la liste : Fournisseur injoignable.', { exact: true }).waitFor();
+  check('l’écran montre le refus réel de la box', true);
+
+  // Trois M3U sur la même box : chaque ajout garde les précédents.
+  await page.getByLabel('Nouveau lien', { exact: true }).fill(M3U_C);
+  const sentAgainResponse = page.waitForResponse((r) => r.request().method() === 'PUT'
+    && r.url().includes('/api/v1/sources/'));
+  await submitList.click();
+  const sentAgain = await (await sentAgainResponse).json();
+  const trio = await panel(page, '/api/v1/sources/' + encodeURIComponent(mac));
+  check('un second ajout conserve les trois M3U', trio.json.sources.length === 3);
+  const applied = await box('POST', '/api/box/ack/' + mac, { orders: [{
+    order_id: sentAgain.order_id, state: 'applied', received_at: Date.now(),
+    applied_at: Date.now(), result: 'loaded', config_rev: sentAgain.rev,
+  }] });
+  check('le Worker persiste APPLIED pour le nouvel envoi', applied.json.results[0].state === 'applied');
+  await delivery.getByText('Listes confirmées sur la box.', { exact: true }).waitFor();
+  check('l’écran confirme seulement l’ordre réellement appliqué', true);
 
   // ----- Ajout puis modification du M3U, SANS repasser par /activate -----
   const putA = await panel(page, '/api/v1/sources/' + encodeURIComponent(mac), {
