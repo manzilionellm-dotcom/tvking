@@ -5,6 +5,7 @@ import "./zuno.css";
 import Preferences from "./components/Preferences";
 import ConsentGate from "./components/ConsentGate";
 import AppChrome from "./components/site/AppChrome";
+import { jsonLdString } from "../lib/aio";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -56,6 +57,10 @@ export default function RootLayout({
         <Preferences />
         <ConsentGate />
         <AppChrome>{children}</AppChrome>
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: jsonLdString() }}
+        />
       </body>
     </html>
   );
