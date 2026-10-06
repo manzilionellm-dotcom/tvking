@@ -50,6 +50,10 @@ export function ChainesPage({ onLogout }: { onLogout: () => void }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
+  // Par défaut (06/10/2026, « listes à part ») : la liste envoyée REMPLACE
+  // les listes du panel déjà sur la box ; celles du client restent. Décoché
+  // = on l'ajoute aux autres (3 au maximum).
+  const [replaceOthers, setReplaceOthers] = useState(true);
   // Sources déjà poussées, hors lien. Gardées en mémoire seulement pour
   // les renvoyer telles quelles. Jamais affichées, jamais journalisées.
   const keptRef = useRef<DeviceSourceInput[]>([]);
@@ -114,9 +118,10 @@ export function ChainesPage({ onLogout }: { onLogout: () => void }) {
       setErr('Colle le lien de la liste avant d’enregistrer.');
       return;
     }
-    const next = [...keptRef.current, { type: 'm3u' as const, m3u_url: url }];
+    const fresh = { type: 'm3u' as const, m3u_url: url };
+    const next = replaceOthers ? [fresh] : [...keptRef.current, fresh];
     if (next.length > 3) {
-      setErr('Cette box a déjà 3 listes. Retire-en une sur la fiche appareil avant d’en ajouter une.');
+      setErr('Cette box a déjà 3 listes. Coche « remplacer » ou retire-en une sur la fiche appareil.');
       return;
     }
     setBusy(true);
@@ -124,7 +129,12 @@ export function ChainesPage({ onLogout }: { onLogout: () => void }) {
       await sourcesApi.setMany(m, next);
       setLink('');
       setHasLink(true);
-      setOk('Lien enregistré. L’activation de l’application n’a pas été modifiée.');
+      if (replaceOthers) keptRef.current = [];
+      setOk(
+        replaceOthers
+          ? 'Liste envoyée : elle remplace les listes du panel sur cette box, la box est prévenue à l’instant. L’activation n’a pas été modifiée.'
+          : 'Liste ajoutée aux autres, la box est prévenue à l’instant. L’activation n’a pas été modifiée.',
+      );
     } catch (e: unknown) {
       if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
       setErr(e instanceof ApiError ? e.message : 'Enregistrement impossible.');
@@ -168,8 +178,8 @@ export function ChainesPage({ onLogout }: { onLogout: () => void }) {
 
   return (
     <AppLayout
-      title="Liste de chaînes"
-      subtitle="Ajoute ou change le lien. Ça n’active pas l’application, et ça ne change pas la durée."
+      title="Listes"
+      subtitle="Envoie, remplace ou retire la liste d’une box. Ça n’active pas l’application, et ça ne change pas la durée."
       onLogout={onLogout}
     >
       {!canPush && (
@@ -201,6 +211,22 @@ export function ChainesPage({ onLogout }: { onLogout: () => void }) {
               className={inputCls + ' font-mono'}
             />
           </div>
+
+          <label className="flex cursor-pointer items-start gap-2 text-sm text-ink-secondary">
+            <input
+              type="checkbox"
+              checked={replaceOthers}
+              onChange={(e) => setReplaceOthers(e.target.checked)}
+              className="mt-0.5"
+            />
+            <span>
+              Remplacer les listes du panel déjà sur la box par celle-ci
+              <span className="block text-xs text-ink-tertiary">
+                Décoché : elle s’ajoute aux autres (3 au maximum). Les listes ajoutées par le client restent dans les deux cas ;
+                pour tout effacer, fiche appareil → Réinitialiser la box.
+              </span>
+            </span>
+          </label>
 
           <div className="rounded-lg border border-white/10 bg-obsidian px-4 py-3 text-sm">
             {looking && <p className="text-ink-secondary">Recherche…</p>}

@@ -2481,7 +2481,10 @@ async function handlePublicStatus(env, mac) {
       await touchTrialAnchor(env, mac, '');
       d1 = await d1StatusForMac(env, mac);
     }
-    if (d1) return json(await attachBlackboxPull(env, mac, d1));
+    if (d1) {
+      d1.reset_at = await resetAtFor(env, mac);
+      return json(await attachBlackboxPull(env, mac, d1));
+    }
   }
   const data = await readClient(env, mac);
   return json(await attachBlackboxPull(env, mac, computeStatus(data)));
@@ -3249,6 +3252,67 @@ async function handlePanelRemoveSelfSource(request, env, mac, id) {
   return json(out.body, out.status);
 }
 
+// POST /api/v1/sources/:mac/reset — REMISE À NEUF de la box depuis le panel
+// (demande du propriétaire, 06/10/2026 : « un bouton, l'application doit
+// être comme neuve, et j'ajoute à distance »). Côté serveur : toutes les
+// listes de la MAC sont retirées, celles du panel ET celles ajoutées par le
+// client (Mon espace / TV) ; `devices.reset_at` prend l'heure du clic ; la
+// box est prévenue (« reset » puis « source »). Côté box (build ≥ 165) :
+// elle lit `reset_at` dans /api/status, efface listes, chaînes, favoris,
+// historique et guide, puis relit ses listes (vides). Une box éteinte
+// l'applique à son prochain démarrage : l'horodatage reste dans le statut.
+// La licence n'est pas touchée : activation et listes sont séparées.
+async function handlePanelResetBox(request, env, mac) {
+  const auth = request.headers.get('Authorization') || '';
+  const m = auth.match(/^Bearer\s+(.+)$/i);
+  const user = m ? await panelActorFromToken(env, m[1]) : null;
+  if (!user) return json({ error: 'no_auth', message: 'Missing Authorization header' }, 401);
+  const MAC = String(mac || '').toUpperCase();
+  if (!MAC_RX.test(MAC)) return badRequest('invalid mac');
+  if (!env.DB) return json({ error: 'no_db' }, 503);
+  if (user.role === 'reseller') {
+    const dev = await env.DB.prepare('SELECT reseller_id FROM devices WHERE mac = ?').bind(MAC).first();
+    if (!dev || dev.reseller_id !== user.sub) {
+      return json({ error: 'forbidden', message: 'Cet appareil ne vous appartient pas' }, 403);
+    }
+  }
+  await ensureDeviceSourcesTable(env);
+  await ensureResetColumn(env);
+  const now = Date.now();
+  await env.DB.prepare('DELETE FROM device_sources WHERE mac = ?').bind(MAC).run();
+  const upd = await env.DB
+    .prepare('UPDATE devices SET reset_at = ? WHERE mac = ?')
+    .bind(now, MAC).run();
+  if (!upd || !upd.meta || !upd.meta.changes) {
+    return json({ error: 'not_found', message: 'Appareil inconnu' }, 404);
+  }
+  await notifyBox(env, MAC, 'reset');
+  // Les builds antérieurs à 165 ignorent « reset » : « source » leur fait
+  // relire des listes vides, donc effacer celles du panel.
+  await notifyBox(env, MAC, 'source');
+  return json({ ok: true, mac: MAC, reset_at: now });
+}
+
+let _resetColumnReady = false;
+async function ensureResetColumn(env) {
+  if (_resetColumnReady || !env.DB) return;
+  try { await env.DB.prepare('ALTER TABLE devices ADD COLUMN reset_at INTEGER').run(); } catch (_) { /* déjà là */ }
+  _resetColumnReady = true;
+}
+
+/// Heure de la dernière remise à neuf demandée par le panel (0 = jamais).
+/// Lue par la box dans /api/status/:mac. Colonne absente → 0.
+async function resetAtFor(env, mac) {
+  if (!env.DB) return 0;
+  try {
+    const row = await env.DB.prepare('SELECT reset_at FROM devices WHERE mac = ?').bind(mac).first();
+    const v = row && row.reset_at;
+    return typeof v === 'number' && v > 0 ? v : 0;
+  } catch (_) {
+    return 0;
+  }
+}
+
 // /api/history/:mac — renvoie l'historique de visionnage (ids de chaînes)
 // stocké pour cette MAC (rempli par le heartbeat). L'app le lit au démarrage
 // pour restaurer « Récemment » / « Pour vous » sur une 2e box. Lecture seule,
@@ -3716,6 +3780,11 @@ async function handleRequest(request, env, ctx) {
         return handlePanelRemoveSelfSource(
           request, env, decodeURIComponent(selfRemove[1]), decodeURIComponent(selfRemove[2]),
         );
+      }
+      // POST /api/v1/sources/:mac/reset — remise à neuf de la box.
+      const resetBox = url.pathname.match(/^\/api\/v1\/sources\/([^/]+)\/reset$/);
+      if (resetBox && request.method === 'POST') {
+        return handlePanelResetBox(request, env, decodeURIComponent(resetBox[1]));
       }
     }
 

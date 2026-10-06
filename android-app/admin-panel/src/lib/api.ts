@@ -587,6 +587,15 @@ export const sourcesApi = {
       `/api/v1/sources/${encodeURIComponent(mac)}`,
       { method: 'DELETE' },
     ),
+  // REMISE À NEUF : retire toutes les listes (panel et client) et ordonne à
+  // la box d'effacer listes, chaînes, favoris, historique et guide. La
+  // licence reste. La box relit ensuite ses listes (vides) : le revendeur
+  // en renvoie une avec « Activation à distance » ou « Liste de chaînes ».
+  reset: (mac: string) =>
+    request<{ ok: boolean; mac: string; reset_at: number }>(
+      `/api/v1/sources/${encodeURIComponent(mac)}/reset`,
+      { method: 'POST' },
+    ),
 };
 
 // =========================================================

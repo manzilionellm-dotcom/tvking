@@ -49,6 +49,9 @@ export const CHANNEL_KINDS = Object.freeze([
   'feedback',
   'servers',
   'banner',
+  // Remise à neuf de la box depuis le panel (06/10/2026) : la box relit
+  // son statut, y lit `reset_at`, efface tout, puis relit ses listes.
+  'reset',
 ]);
 
 const KIND_SET = new Set(CHANNEL_KINDS);

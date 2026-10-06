@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { AppLayout } from '@/components/AppLayout';
 import { Alert } from '@/components/ui';
 import {
@@ -51,6 +51,13 @@ export function isTrialPlan(plan: string): boolean {
 }
 
 type ListKind = 'm3u' | 'xtream' | 'none';
+
+/// Décision du propriétaire (06/10/2026) : « listes à part, applications à
+/// part ». Cette page n'active que la licence ; les listes se gèrent dans
+/// Listes (/chaines). Faux = plus de champ de liste ici. Le code de l'envoi
+/// reste (vrai le rallume) : le suivi « liste sur la TV après N s » est le
+/// même que dans la fiche appareil.
+const LISTS_IN_ACTIVATION = false;
 type Step = 'idle' | 'busy' | 'ok' | 'skip' | 'err';
 
 export function RemoteActivatePage({ onLogout }: { onLogout: () => void }) {
@@ -63,7 +70,7 @@ export function RemoteActivatePage({ onLogout }: { onLogout: () => void }) {
   // Défaut : 7 jours d'essai. Un oubli ne coûte aucun crédit.
   const [plan, setPlan] = useState('trial_7d');
   const [customerName, setCustomerName] = useState('');
-  const [kind, setKind] = useState<ListKind>(canPush ? 'm3u' : 'none');
+  const [kind, setKind] = useState<ListKind>(LISTS_IN_ACTIVATION && canPush ? 'm3u' : 'none');
   const [m3uUrl, setM3uUrl] = useState('');
   const [server, setServer] = useState('');
   const [username, setUsername] = useState('');
@@ -358,7 +365,22 @@ export function RemoteActivatePage({ onLogout }: { onLogout: () => void }) {
           })}
         </div>
 
-        {canPush && (
+        {!LISTS_IN_ACTIVATION && canPush && (
+          <div className="rounded-xl border border-white/10 bg-midnight/60 p-4 text-sm">
+            <p className="font-medium text-ink-primary">Les listes se gèrent à part.</p>
+            <p className="mt-1 text-ink-secondary">
+              Ici on active l’application. Pour envoyer, remplacer ou retirer la liste de cette box :{' '}
+              <Link
+                to={`/chaines${isValidMac(normalizeMac(mac)) ? `?mac=${encodeURIComponent(normalizeMac(mac))}` : ''}`}
+                className="font-medium text-accent-bright underline-offset-2 hover:underline"
+              >
+                Listes
+              </Link>.
+            </p>
+          </div>
+        )}
+
+        {LISTS_IN_ACTIVATION && canPush && (
           <div className="space-y-3 rounded-xl border border-white/10 bg-midnight/60 p-4">
             <p className="text-sm font-medium text-ink-primary">Liste de chaînes du client</p>
             <div className="grid grid-cols-3 gap-2" role="group" aria-label="Type de liste">

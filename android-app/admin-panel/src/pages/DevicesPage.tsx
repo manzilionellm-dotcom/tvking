@@ -287,6 +287,7 @@ function DeviceDetailModal({
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [clearing, setClearing] = useState(false);
+  const [resetting, setResetting] = useState(false);
   const pollSeq = useRef(0);
   const appliedSeq = useRef(0);
 
@@ -370,6 +371,33 @@ function DeviceDetailModal({
     const stop = bindPanelRefresh(() => { if (alive) pull(false); });
     return () => { alive = false; stop(); };
   }, [device.id]);
+
+  /// Remise à neuf (06/10/2026) : toutes les listes, panel ET client, sont
+  /// retirées du serveur, et la box efface chez elle listes, chaînes,
+  /// favoris, historique et guide. La licence reste. On renvoie ensuite une
+  /// liste avec « Activation à distance » ou « Liste de chaînes ».
+  async function resetBox() {
+    if (!window.confirm(
+      'Remettre cette box à neuf ?\n\n'
+      + 'Sur le serveur : toutes les listes de cette MAC sont retirées, y compris celles ajoutées par le client.\n'
+      + 'Sur la TV : listes, chaînes, favoris, historique et guide sont effacés (en quelques secondes si la box est allumée, sinon à son prochain démarrage).\n'
+      + 'La licence n’est pas touchée. Tu pourras renvoyer une liste juste après.',
+    )) return;
+    setResetting(true);
+    setErr(null);
+    try {
+      await sourcesApi.reset(device.mac);
+      const my = ++pollSeq.current;
+      const r = await devicesApi.overview(device.id);
+      if (!shouldApplyPollResult(my, appliedSeq.current)) return;
+      appliedSeq.current = my;
+      setOv(r);
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : 'Échec.');
+    } finally {
+      setResetting(false);
+    }
+  }
 
   async function clearPushed() {
     if (!window.confirm(
@@ -578,6 +606,7 @@ function DeviceDetailModal({
             <ActionBtn busy={busy} onClick={() => navigate(`/chaines?mac=${macUrl}`)} title="Ajouter ou changer la liste de chaînes, sans modifier l'activation">Liste de chaînes</ActionBtn>
             <ActionBtn busy={busy} onClick={() => navigate(`/blackbox?mac=${macUrl}`)} title="Journal technique de cette box : ordre du panel reçu, liste chargée en N s, liste refusée">Boîte noire</ActionBtn>
             <ActionBtn busy={busy || clearing} danger onClick={clearPushed} title="Retire toutes les listes poussées. La TV du client les efface toute seule à sa vérification suivante.">Effacer les listes</ActionBtn>
+            <ActionBtn busy={busy || resetting} danger onClick={resetBox} title="Remet la box à neuf : toutes les listes (panel et client) sont retirées, la TV efface chaînes, favoris, historique et guide. La licence reste.">Réinitialiser la box</ActionBtn>
             <ActionBtn busy={busy} onClick={() => navigate(`/transfer?mac=${macUrl}`)} title="Transférer l'abonnement vers une nouvelle MAC">Transférer</ActionBtn>
             {st !== 'frozen' && (
               <ActionBtn busy={busy} onClick={() => onBlock('frozen')} title="Geler (rappel de paiement)">Geler</ActionBtn>
