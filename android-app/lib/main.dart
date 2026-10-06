@@ -10,11 +10,14 @@
 
 import 'dart:async';
 
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:media_kit/media_kit.dart';
 
+import 'core/app/repair_flags.dart';
+import 'core/blackbox/black_box.dart';
 import 'core/app/boot_guard.dart';
 import 'core/app/guarded_main.dart';
 import 'core/crash/crash_reporting.dart';
@@ -57,6 +60,7 @@ import 'features/playlists/data/favorites_repository.dart';
 import 'features/playlists/data/cloud_backup_repository.dart';
 import 'features/playlists/data/playlist_repository.dart';
 import 'features/playlists/data/remote_source_repository.dart';
+import 'features/subscription/data/remote_activation_watch.dart';
 import 'features/pricing/data/pricing_repository.dart';
 import 'core/flavor/flavor.dart';
 import 'features/security/data/age_gate_settings.dart';
@@ -141,6 +145,11 @@ Future<void> bootApp() async {
       RemoteSourceRepository.sync().then((_) {
         PlaylistRepository.instance.pruneEmptyPlaylists();
       });
+      // VEILLE PANEL EN DIRECT (06/10/2026) : avant, une liste ajoutée dans
+      // le panel n'arrivait sur le téléphone qu'au relancement de l'app
+      // (ou toutes les 24 h). On ouvre le même canal que la box (WebSocket,
+      // repli attente longue) tant que l'app est au premier plan.
+      unawaited(_MobilePanelWatch.install());
     }
 
     // Sauvegarde cloud par MAC : démarre l'upload automatique (à chaque
@@ -634,5 +643,40 @@ class _Splash extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+
+/// Veille du panel sur le TÉLÉPHONE : allumée au premier plan, coupée en
+/// arrière-plan (batterie, données). Les ordres envoyés pendant la pause
+/// attendent sur le serveur et sont lus à la reprise. Repli
+/// `zuno.mobile.watch_off` : ancien comportement (pas de veille).
+class _MobilePanelWatch with WidgetsBindingObserver {
+  _MobilePanelWatch._();
+  static _MobilePanelWatch? _instance;
+
+  static Future<void> install() async {
+    if (_instance != null) return;
+    try {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      if (prefs.getBool(RepairFlags.mobileWatchOffKey) ?? false) {
+        BlackBox.instance.info('PANEL', 'veille du panel coupée (repli zuno.mobile.watch_off)');
+        return;
+      }
+    } catch (_) {}
+    final _MobilePanelWatch w = _MobilePanelWatch._();
+    _instance = w;
+    WidgetsBinding.instance.addObserver(w);
+    RemoteActivationWatch.instance.start();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      RemoteActivationWatch.instance.start();
+    } else if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      RemoteActivationWatch.instance.stop();
+    }
   }
 }

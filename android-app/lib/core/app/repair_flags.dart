@@ -257,6 +257,21 @@ abstract final class RepairFlags {
   static const String xtreamPerCategorySerialKey = 'zuno.xtream.per_category_serial';
   static bool xtreamPerCategorySerial = false;
 
+  /// App TÉLÉPHONE : veille panel en direct (WebSocket, comme la box) tant
+  /// que l'app est au premier plan. Faux (défaut, 06/10/2026) = une liste
+  /// ajoutée dans le panel arrive pendant que l'app est ouverte. Vrai =
+  /// ancien comportement : seulement au lancement, toutes les 24 h, ou au
+  /// bouton « Vérifier ». Lu directement par main.dart (le téléphone ne
+  /// charge pas les autres interrupteurs de la box).
+  static const String mobileWatchOffKey = 'zuno.mobile.watch_off';
+
+  /// Bouton « Vérifier mon abonnement ». Faux (défaut, 06/10/2026) = la
+  /// relecture des listes est FORCÉE : une liste refusée récemment est
+  /// retentée tout de suite (avant : mise de côté 5 à 45 min, l'écran
+  /// disait « Pas encore de chaînes »). Vrai = ancien comportement.
+  static const String verifyNoForceKey = 'zuno.source.verify_no_force';
+  static bool verifyNoForce = false;
+
   static Future<void> load() async {
     bool raw = false;
     bool tvDelLegacy = false;

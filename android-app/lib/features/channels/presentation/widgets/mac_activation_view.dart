@@ -19,7 +19,9 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../../core/app/repair_flags.dart';
 import '../../../../core/i18n/l10n_extension.dart';
 import '../../../../core/support/support_choice_sheet.dart';
 import '../../../../core/support/vip_support.dart';
@@ -248,7 +250,17 @@ class MacActivationView extends StatelessWidget {
       ),
     );
     await SubscriptionState.instance.syncWithBackend();
-    await RemoteSourceRepository.sync();
+    // Geste explicite du client : on FORCE la relecture. Sans ça, une liste
+    // refusée il y a peu (fournisseur lent, coupure) restait mise de côté
+    // 5 à 45 min et l'écran répondait « Pas encore de chaînes » alors que
+    // le panel l'avait bien envoyée. Repli : zuno.source.verify_no_force.
+    bool noForce = RepairFlags.verifyNoForce;
+    try {
+      noForce = (await SharedPreferences.getInstance())
+              .getBool(RepairFlags.verifyNoForceKey) ??
+          noForce;
+    } catch (_) {}
+    await RemoteSourceRepository.sync(force: !noForce);
 
     final bool hasChannels =
         PlaylistRepository.instance.currentChannels.isNotEmpty;

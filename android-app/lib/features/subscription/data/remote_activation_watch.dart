@@ -118,6 +118,11 @@ class RemoteActivationWatch {
     _arm(Duration.zero);
   }
 
+  /// Arrête la veille (téléphone passé en arrière-plan). [start] la
+  /// relance ; les ordres envoyés pendant la pause attendent sur le serveur
+  /// et sont lus à la reprise (curseur gardé).
+  void stop() => stopForTesting();
+
   @visibleForTesting
   void stopForTesting() {
     _run = false;
