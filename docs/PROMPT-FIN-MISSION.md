@@ -251,8 +251,11 @@ Pour **chaque** point, dans cet ordre :
   - pas de « fermeture inattendue » ;
   - `[MEM]` reste sous ≈ 300 Mo ;
   - on voit `liste … chargée en N s (X chaînes)` ;
-  - aucun écart de plus de 5 s entre deux lignes `[MEM] [périodique]`
-    pendant l'import.
+  - aucune ligne `[GEL]` de 3 s ou plus pendant l'import. Le chien de
+    garde de `core/blackbox/black_box.dart` consigne tout retard de plus
+    de 700 ms de son timer de 500 ms. Les lignes `[MEM] [périodique]`
+    arrivent toutes les 30 s (`_kMemoryEvery`) : leur écart ne mesure pas
+    un gel.
 
 ### P1 — Sécurité : codes IPTV lisibles avec la seule MAC (risque le plus grave)
 
