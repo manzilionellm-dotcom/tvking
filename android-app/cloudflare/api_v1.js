@@ -105,8 +105,11 @@ import {
 const JSON_HEADERS = {
   'Content-Type': 'application/json; charset=utf-8',
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers':
-    'Authorization, Content-Type, X-Admin-Secret',
+  // X-Request-Id, X-Client-Sent-At, Idempotency-Key : envoyés par le panel
+  // à chaque écriture depuis le 06/10/2026 (suivi et anti double débit).
+  // Absents ici, le navigateur bloquait la requête : « Connexion
+  // impossible » sur toute modification (cors_panel.test.mjs).
+  'Access-Control-Allow-Headers': 'Authorization, X-Admin-Secret, Content-Type, X-Request-Id, X-Client-Sent-At, Idempotency-Key',
   'Access-Control-Allow-Methods':
     'GET, POST, PUT, PATCH, DELETE, OPTIONS',
   'Cache-Control': 'no-store',
