@@ -183,6 +183,7 @@ class EpgRepository {
           connectTimeoutMs: connectTimeout.inMilliseconds,
           idleTimeoutMs: idleTimeout.inMilliseconds,
           port: rx.sendPort,
+          gzipByHeader: RepairFlags.epgGzipByHeader,
         ),
         onError: rx.sendPort,
         onExit: rx.sendPort,
@@ -407,6 +408,7 @@ class _EpgJob {
     required this.connectTimeoutMs,
     required this.idleTimeoutMs,
     required this.port,
+    required this.gzipByHeader,
   });
   final String url;
   final List<String>? knownIds;
@@ -414,6 +416,10 @@ class _EpgJob {
   final int connectTimeoutMs;
   final int idleTimeoutMs;
   final SendPort port;
+
+  /// Repli `zuno.epg.gzip_by_header`, lu sur le fil principal : un isolate
+  /// ne voit pas les interrupteurs chargés au démarrage.
+  final bool gzipByHeader;
 }
 
 /// Corps de l'isolate : télécharge, décode, envoie les lots, puis
@@ -430,6 +436,7 @@ Future<void> _epgWorker(_EpgJob job) async {
       idleTimeout: Duration(milliseconds: job.idleTimeoutMs),
       onProgress: (int bytes) => job.port.send(bytes),
       onRows: (List<Map<String, Object?>> rows) async => job.port.send(rows),
+      gzipByHeader: job.gzipByHeader,
     );
     job.port.send('done:$total');
   } catch (e) {

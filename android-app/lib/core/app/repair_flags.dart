@@ -243,11 +243,20 @@ abstract final class RepairFlags {
   static const String wsReplayLegacyKey = 'zuno.realtime.ws_replay_legacy';
   static bool wsReplayLegacy = false;
 
+  /// Guide (XMLTV) : décompression gzip. Faux (défaut, 06/10/2026) = décidée
+  /// d'après les deux premiers octets reçus (1f 8b). Vrai = ancien
+  /// comportement : d'après l'adresse (.gz) ou les en-têtes, ce qui
+  /// redécompressait un flux déjà décompressé par le client HTTP
+  /// (« FormatException: Filter error », guide vide).
+  static const String epgGzipByHeaderKey = 'zuno.epg.gzip_by_header';
+  static bool epgGzipByHeader = false;
+
   static Future<void> load() async {
     bool raw = false;
     bool tvDelLegacy = false;
     bool shelvesLegacy = false;
     bool replayLegacy = false;
+    bool gzipByHeader = false;
     bool fsyncAll = false;
     bool syncPlayback = false;
     bool epgOff = false;
@@ -306,6 +315,7 @@ abstract final class RepairFlags {
       tvDelLegacy = prefs.getBool(tvDeleteLegacyKey) ?? false;
       shelvesLegacy = prefs.getBool(liveShelvesLegacyKey) ?? false;
       replayLegacy = prefs.getBool(wsReplayLegacyKey) ?? false;
+      gzipByHeader = prefs.getBool(epgGzipByHeaderKey) ?? false;
     } catch (_) {
       raw = false;
       fsyncAll = false;
@@ -337,7 +347,9 @@ abstract final class RepairFlags {
       tvDelLegacy = false;
       shelvesLegacy = false;
       replayLegacy = false;
+      gzipByHeader = false;
     }
+    epgGzipByHeader = gzipByHeader;
     orderAckOff = ackOff;
     tvDeleteLegacy = tvDelLegacy;
     liveShelvesLegacy = shelvesLegacy;
@@ -405,6 +417,7 @@ abstract final class RepairFlags {
     tvDeleteLegacy = false;
     liveShelvesLegacy = false;
     wsReplayLegacy = false;
+    epgGzipByHeader = false;
     NativeVideoController.legacyHoldFrame = false;
   }
 }

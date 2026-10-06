@@ -17,6 +17,7 @@ import 'dart:io';
 
 import 'package:http/http.dart' as http;
 
+import '../../../core/app/repair_flags.dart';
 import '../domain/epg_program.dart';
 import 'epg_targets.dart';
 import 'xmltv_parser.dart';
@@ -39,6 +40,7 @@ Future<int> fetchXmltvRows({
   Duration idleTimeout = const Duration(seconds: 60),
   int batchSize = 500,
   void Function(int bytes)? onProgress,
+  bool? gzipByHeader,
 }) async {
   final http.Request req = http.Request('GET', Uri.parse(url));
   final http.StreamedResponse resp =
@@ -55,12 +57,23 @@ Future<int> fetchXmltvRows({
       sink.close();
     },
   );
-  final String lower = url.toLowerCase();
-  final bool isGzip = lower.endsWith('.gz') ||
-      lower.endsWith('.gzip') ||
-      (resp.headers['content-encoding']?.toLowerCase() == 'gzip') ||
-      (resp.headers['content-type']?.toLowerCase() ?? '').contains('gzip');
-  if (isGzip) bytes = bytes.transform<List<int>>(gzip.decoder);
+  // Décompression gzip. Mesuré le 06/10/2026 (boîte noire SHIELD) :
+  // « FormatException: Filter error ». Le client HTTP de dart:io décompresse
+  // DÉJÀ une réponse `Content-Encoding: gzip` mais laisse l'en-tête visible ;
+  // décider d'après l'en-tête ou l'adresse redécompressait du XML en clair.
+  // On regarde donc les deux premiers octets reçus (signature gzip 1f 8b),
+  // seule vérité sur ce qui arrive (epg_gzip_sniff_test.dart).
+  // Repli `zuno.epg.gzip_by_header` : ancienne décision par adresse/en-têtes.
+  if (gzipByHeader ?? RepairFlags.epgGzipByHeader) {
+    final String lower = url.toLowerCase();
+    final bool isGzip = lower.endsWith('.gz') ||
+        lower.endsWith('.gzip') ||
+        (resp.headers['content-encoding']?.toLowerCase() == 'gzip') ||
+        (resp.headers['content-type']?.toLowerCase() ?? '').contains('gzip');
+    if (isGzip) bytes = bytes.transform<List<int>>(gzip.decoder);
+  } else {
+    bytes = sniffGzip(bytes);
+  }
 
   if (onProgress != null) {
     int total = 0;
@@ -105,4 +118,28 @@ Future<int> fetchXmltvRows({
   );
   if (pending.isNotEmpty) await onRows(pending);
   return total;
+}
+
+/// Rend [source] décompressé s'il commence par la signature gzip (1f 8b),
+/// tel quel sinon. Les octets lus pour décider (même coupés entre deux
+/// paquets) sont rendus au décodeur : rien n'est perdu.
+Stream<List<int>> sniffGzip(Stream<List<int>> source) async* {
+  final List<int> head = <int>[];
+  final StreamIterator<List<int>> it = StreamIterator<List<int>>(source);
+  try {
+    while (head.length < 2 && await it.moveNext()) {
+      head.addAll(it.current);
+    }
+    final bool isGzip = head.length >= 2 && head[0] == 0x1f && head[1] == 0x8b;
+    Stream<List<int>> rest() async* {
+      if (head.isNotEmpty) yield head;
+      while (await it.moveNext()) {
+        yield it.current;
+      }
+    }
+
+    yield* isGzip ? rest().transform<List<int>>(gzip.decoder) : rest();
+  } finally {
+    await it.cancel();
+  }
 }
