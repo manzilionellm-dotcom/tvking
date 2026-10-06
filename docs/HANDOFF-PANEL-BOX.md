@@ -10,8 +10,8 @@ Un seul dépôt GitHub : `manzilionellm-dotcom/tvking`.
 | Pièce | Dossier | Techno | En ligne |
 | --- | --- | --- | --- |
 | App box Android TV / Fire TV « Zuno » | `android-app/` (point d'entrée `lib/main_tv.dart`) | Flutter 3.47, Dart, lecteur natif Media3 dans `packages/native_video_player/` | APK sur la release GitHub `zuno-tv` (clients) |
-| Panel revendeur | `android-app/admin-panel/` | React + Vite + TypeScript | `https://tvking-admin.pages.dev` (Cloudflare Pages, projet `tvking-admin`) |
-| Backend (« Worker ») | `android-app/cloudflare/` (`worker.js` routes publiques, `api_v1.js` routes du panel, `wrangler.toml`) | Cloudflare Worker `seven-motion-backend` + base D1 `tvking_licensing` | `https://app.7themotion.com` |
+| Panel revendeur | `android-app/admin-panel/` | React + Vite + TypeScript | `[adresse du service masquée]` (Cloudflare Pages, projet `tvking-admin`) |
+| Backend (« Worker ») | `android-app/cloudflare/` (`worker.js` routes publiques, `api_v1.js` routes du panel, `wrangler.toml`) | Cloudflare Worker `seven-motion-backend` + base D1 `tvking_licensing` | `[adresse du service masquée]` |
 
 ## 2. Branches : ATTENTION, deux lignes ont divergé
 
@@ -33,7 +33,7 @@ Un seul dépôt GitHub : `manzilionellm-dotcom/tvking`.
 
 Adresse compilée dans l'APK : `kSubscriptionBaseUrl`
 (`lib/features/subscription/data/subscription_backend.dart`), défaut
-`https://app.7themotion.com`, surchargeable par `--dart-define=BACKEND_URL`.
+`[adresse du service masquée]`, surchargeable par `--dart-define=BACKEND_URL`.
 
 Identité de la box : MAC « `MK:XX:XX:XX:XX:XX` » (MK + 5 octets, dérivée
 d'ANDROID_ID, `lib/features/device/data/device_identity.dart`). C'est la clé
@@ -95,7 +95,7 @@ Mots de passe et URL M3U sont chiffrés en base (`SOURCE_ENCRYPTION_KEY`).
   - `test_box=true` → release `zuno-tv-test` (box de test, jamais les clients).
   - `publish=true` (sans `test_box`) → release `zuno-tv` = **tous les clients**.
   - Signature obligatoire : certificat SHA-256
-    `5145b8e019f6d5fb96a207f2e73673fd954f799966fd598889211556cbdf9e61`.
+    `5145b8e0…cbdf9e61`.
   - Numéro visible : chaque publication client prend le suivant (106 → 107…),
     un build de test s'appelle `107-test.<run>`.
   - Mise à jour dans l'app : lit `zuno-tv/version.json` (le build de test lit
@@ -125,7 +125,7 @@ Mots de passe et URL M3U sont chiffrés en base (`SOURCE_ENCRYPTION_KEY`).
   `enabled:false` → `setPlaylistHidden`, rallumage sans retéléchargement, liste
   masquée par le client jamais rallumée. Tests 422 verts.
   Build de test **#154** = `107-test.154`, versionCode 1791217147, SHA-256
-  `8593179837f9890b2e5d819f183a5f6136806ada7d1468c074c248621e6c0a00`, signé `5145b8e0…`.
+  `85931798…1e6c0a00`, signé `5145b8e0…`.
 - Branche panel `claude/panel-mise-en-ligne` : `211f228b` (Worker garde
   `enabled:false`, interrupteur « Allumée / Éteinte » dans la fiche appareil),
   Worker **et** panel déployés (run #6). Job Worker vert ; le contrôle final du
@@ -149,7 +149,7 @@ Mots de passe et URL M3U sont chiffrés en base (`SOURCE_ENCRYPTION_KEY`).
 Rapport complet : `docs/MESURE-ACTIVATION-INSTANTANEE.md`.
 
 - **Serveur hors de cause, mesuré** : Worker → Durable Object en 193 ms en
-  production (ring de `MK:5C:E5:43:35:1F`), WebSocket ouvert en 1,1 s et
+  production (ring de `[MAC masquée]`), WebSocket ouvert en 1,1 s et
   signal rejoué en 4 ms, attente longue en 0,8 s ; en local sur le Worker
   de production, le signal atteint la box simulée 15 à 35 ms après le clic.
 - **Cause prouvée dans la v106 des clients (`7b904c7d`)** : la box refuse
@@ -168,7 +168,7 @@ Rapport complet : `docs/MESURE-ACTIVATION-INSTANTANEE.md`.
   `docs/patches/panel-worker-boite-noire.patch`, à appliquer sur
   `claude/panel-mise-en-ligne` puis déployer avec `confirme=DEPLOYER`
   (décision du propriétaire).
-- Sur `MK:5C:E5:43:35:1F` : 3 listes différentes (2 du panel, 1 tapée sur la
+- Sur `[MAC masquée]` : 3 listes différentes (2 du panel, 1 tapée sur la
   TV, libellé « Tv ») = 3 imports, pas un triple envoi.
 - Build de test **#156** = `107-test.156`, versionCode 1791226009, SHA-256
   `bcc1cbee…95c96`, signé `5145b8e0…` (release `zuno-tv-test` seule,
@@ -253,7 +253,7 @@ demande (ce que font IBO / TiviMate / Smarters).
   `454d26b8…a963a` : refus d'identifiants sans repli M3U, suppressions de
   listes journalisées.
 - Build #162 = `107-test.162`, versionCode 1791235805, SHA-256
-  `8a776baa2603eb61042757aa5103da739bcaa3b0a84e90ab36c0f3cca304a7bd`
+  `8a776baa…a304a7bd`
   (54 754 170 octets, run 37375978821, commit 510964a) : #161 + listes
   refusées mises de côté. Même adresse APK (`zuno-tv-test`), même signature
   attendue `5145b8e0…9e61` (workflow inchangé).
@@ -273,7 +273,7 @@ demande (ce que font IBO / TiviMate / Smarters).
   on la supprime sur la télé ; la boîte noire nomme la raison. Pas de flag.
 - ANR 23:47 (330 Mo) : non élucidé, il faut les lignes `GEL` 23:44–23:47.
 - Build #163 = `107-test.163`, versionCode 1791237816, SHA-256
-  `dbc30ee9f72734d81360dc09aada2cc1030b8208ebda0308a510c004cb9a012e`
+  `dbc30ee9…cb9a012e`
   (54 755 742 octets, run 37379758296, commit dab884b) : #162 + avertissement
   « Mes sources » et raison de suppression dans la boîte noire.
 
@@ -289,14 +289,14 @@ demande (ce que font IBO / TiviMate / Smarters).
   un agent pour continuer (critères mesurables, règles, état, ordre des
   travaux, pièges).
 - Build #164 = `107-test.164`, versionCode 1791239332, SHA-256
-  `f26c876a8d3b7e09a0f8633d8c70f2097c022bb259358f8f85e46e41882cd9dd`
+  `f26c876a…882cd9dd`
   (54 759 145 octets, run 37382518913, commit 11ad567).
 - Windows #14 (même code que #164, commit 8699205, `publish=false`, artefact
   de run seulement, expire le 4 novembre) : run 37384540506, artefact
   `zuno-windows-8699205…`. `Zuno-Setup.exe` 29 439 413 octets, SHA-256
-  `387ef85bbfac67286447d1a8d8c4bee1281a87a434e67c5fa3a78dba73cc90ad` ;
+  `387ef85b…73cc90ad` ;
   `zuno-windows.zip` 38 652 654 octets, SHA-256
-  `35989483b59195576e4b11c221ad4f7fdf9c4b10c9e24a49b0459f5198ad8b2d`
+  `35989483…98ad8b2d`
   (empreintes calculées sur l'artefact téléchargé). La release publique
   `zuno-windows` date toujours du 3 octobre (run #11, commit 2471156).
 
@@ -314,7 +314,7 @@ demande (ce que font IBO / TiviMate / Smarters).
   box, lecture de `version.json` toutes les 30 min. Pour les clients, le
   bouton Mise à jour forcée du panel est déjà immédiat.
 - Build #165 = `107-test.165`, versionCode 1791241671, SHA-256
-  `c0d5edd5b18d0e352c7200e25c14047d9d55c1310c407f1ca51653f345ee89f8`
+  `c0d5edd5…45ee89f8`
   (54 767 130 octets, commit 67d0a85).
 
 ## 5 quindecies. Activation idempotente, audit corrélé, sécurité des codes (6 octobre)
@@ -351,10 +351,10 @@ demande (ce que font IBO / TiviMate / Smarters).
 - Divergence des branches et plan de réconciliation :
   `docs/DIVERGENCE-BRANCHES.md`. Rapport : `docs/RAPPORT-CONTROL-CENTER.md`.
 - Build #166 = `107-test.166`, versionCode 1791243281, SHA-256
-  `e3b547e3eb6e3636162fd83e189ab73b9e032d25995cf1f36e09f5017254f8ca`
+  `e3b547e3…7254f8ca`
   (54 768 727 octets, commit a09a832).
 - Build #167 = `107-test.167`, versionCode 1791248258, SHA-256
-  `d2da1aa5dac8d430e5973a4e0312a6925a8b4cdf6f6a779dfcb655b2ca786f06`
+  `d2da1aa5…ca786f06`
   (54 779 385 octets, commit ea9b22e, signature `5145b8e0…9e61` relue sur
   l'APK téléchargé). Contient les accusés d'ordres de la box.
 
@@ -388,7 +388,7 @@ demande (ce que font IBO / TiviMate / Smarters).
   rapide, rien réécrit), tête `7f2813e`. Le repère du workflow est passé de
   « Activation 1 an » à « Activer une box ».
 - `deploy-panel-cloudflare.yml` run #10 (37403717544) : Worker puis panel,
-  les deux verts ; MAC de référence `MK:24:2A:D0:0E:F3` identique avant et
+  les deux verts ; MAC de référence `[MAC masquée]` identique avant et
   après.
 - Relu en direct : le panel sert `index-5rb0at2A.js` (même nom que le build
   testé) avec « Activer une box » ; Worker : `/api/box/ack` répond,
@@ -405,7 +405,7 @@ demande (ce que font IBO / TiviMate / Smarters).
   liste du panel plus réimportée tant que le panel ne la renvoie pas ;
   serveur injoignable = rien d'effacé. Repli `zuno.source.tv_delete_legacy`.
 - Build #168 = `107-test.168`, versionCode 1791271081, SHA-256
-  `3462665d501afbee86ac4bb22e8e7dd0b23b223d324b4b17884d276df493c911`
+  `3462665d…f493c911`
   (54 793 836 octets), signature `5145b8e0…9e61` relue sur l'APK.
 
 ## 5 vicies. Urgence : « Connexion impossible » dans le panel (6 octobre, 09:31)
@@ -438,7 +438,7 @@ demande (ce que font IBO / TiviMate / Smarters).
   (filet actif), guide `FormatException: Filter error`, import Xtream
   catégorie par catégorie (914 appels, 136 s).
 - Build #169 = `107-test.169`, versionCode 1791272560, SHA-256
-  `80fac86949a54cf92a7d92396d88f14bc818cf1c0b878c98c3f822c0beeb8d2e`
+  `80fac869…beeb8d2e`
   (54 800 024 octets), signature `5145b8e0…9e61` relue.
 
 ## 5 duovicies. Ordre rejoué à la reconnexion (6 octobre, build #170)
@@ -455,12 +455,12 @@ demande (ce que font IBO / TiviMate / Smarters).
   à jour attend que l'app soit à l'écran pour ouvrir l'installateur
   Android (« installateur non ouvert (déjà proposé) »).
 - Build #170 = `107-test.170`, versionCode 1791275287, SHA-256
-  `a516b0a25882998f126ed44b301f02aabf511bee93ea45fbd6784ccc9b93a636`
+  `a516b0a2…9b93a636`
   (54 800 918 octets), signature `5145b8e0…9e61` relue.
 
 ## 5 tervicies. « trial_7d · 401 j restants » sur une box payée (6 octobre)
 
-- Mesuré : `MK:5C:E5:43:35:1F` (Fire TV AFTKM, Canada, hors ligne depuis le
+- Mesuré : `[MAC masquée]` (Fire TV AFTKM, Canada, hors ligne depuis le
   05/10 19:16) payée jusqu'au 11/11/2027, affichée « trial_7d ». Un essai
   ajouté à une licence payée active remplaçait le plan.
 - Correctif `fb0277e` sur `claude/panel-mise-en-ligne`, run #12
@@ -470,7 +470,7 @@ demande (ce que font IBO / TiviMate / Smarters).
 - La licence déjà marquée « trial_7d » le reste tant qu'un abonnement payé
   n'est pas réactivé (aucune réécriture de données en production).
 - Rappel propriétaire : les listes de `5C:E5…` ne vont pas sur la SHIELD
-  (`80:78:60:07:4F`) ; chaque box a ses propres listes.
+  (`[MAC masquée]`) ; chaque box a ses propres listes.
 
 
 ## 5 suite. P0 Direct : capture SHIELD reçue le 6 octobre à 12:27
@@ -540,7 +540,7 @@ demande (ce que font IBO / TiviMate / Smarters).
   Wrangler s'arrête avant le parcours sur
   `uv_interface_addresses returned Unknown system error 1` ; le run GitHub
   ci-dessus fournit la preuve d'exécution avec le vrai Worker local et D1.
-- **PROUVÉ — état relu de la SHIELD `MK:80:78:60:07:4F`.** Le panel affiche
+- **PROUVÉ — état relu de la SHIELD `[MAC masquée]`.** Le panel affiche
   appareil actif, abonnement à vie, échéance à vie, **0 /3 source poussée**.
   Dernière présence affichée : 06/10 à 12:31, hors ligne lors de la relecture.
   La boîte noire reçue, datée par le panel du 06/10 à 12:32:26, contient
@@ -552,7 +552,7 @@ demande (ce que font IBO / TiviMate / Smarters).
   sur cette période sans import ne prouve pas le comportement sous charge.
 - **NON PROUVÉ — P0 sur la vraie SHIELD avec la grosse liste.** Il manque
   la liste de cette box et l'essai dans Direct pendant puis après son import.
-  Il faut envoyer cette liste d'environ 50 000 chaînes à `80:78:60:07:4F`,
+  Il faut envoyer cette liste d'environ 50 000 chaînes à `[MAC masquée]`,
   ouvrir Direct, puis obtenir le journal couvrant le chargement et sa fin
   (durée et nombre de chaînes), la mémoire sous charge et les éventuels gels.
   Le critère initial mémoire à 5 s est incompatible avec le timer de 30 s
@@ -595,7 +595,7 @@ demande (ce que font IBO / TiviMate / Smarters).
 - **PROUVÉ sur les vraies apps (propriétaire, 06/10 ~17:00) : « les 2 apps
   fonctionnent »** avec le panel — box SHIELD (v107-test.171) et téléphone
   (7motion-test, build #1734, versionCode 3734, SHA-256
-  `2483dad212a9dc0c2553feca4b1acdf154f7ae6cc50c4c9d6990a842f57cbe3c`, signé
+  `2483dad2…f57cbe3c`, signé
   `5145b8e0…9e61`).
 - L'app téléphone est une AUTRE lignée de code que la box : branche
   `claude/phone-panel-direct`, partie de `claude/motion-mobile-106`.
@@ -620,7 +620,7 @@ demande (ce que font IBO / TiviMate / Smarters).
   `[MAJ] installée 1791275287 · disponible 1791292678 (2 source(s))`
   compte les adresses de mise à jour, pas les listes de chaînes.
 - **PROUVÉ — relecture du panel, connexion owner, vers 19:17–19:18
-  Europe/Stockholm.** Fiche `MK:80:78:60:07:4F` : active, abonnement
+  Europe/Stockholm.** Fiche `[MAC masquée]` : active, abonnement
   à vie, échéance à vie, en ligne, version app `1791275287`,
   **0/3 source poussée**. Aucune licence ni liste modifiée.
 - **PROUVÉ — chronologie serveur relue pour cette MAC.**
@@ -639,7 +639,7 @@ demande (ce que font IBO / TiviMate / Smarters).
   L'état observé est vide côté panel et côté TV ; aucun nouvel ordre de
   liste n'est disponible pour mesurer sa livraison. La photo seule ne
   prouve ni un import tenté ni son échec. Il faut envoyer la liste depuis
-  **Listes** vers `80:78:60:07:4F`, puis relever le suivi Reçu/Appliqué
+  **Listes** vers `[MAC masquée]`, puis relever le suivi Reçu/Appliqué
   (ou l'erreur réelle) et la fin d'import dans la boîte noire.
 - **PROUVÉ — journal actuel reçu, nouvelle lecture vers 19:23.** Le panel
   contient des lignes de la SHIELD jusqu’à `06/10 19:22:46` ; la réception
@@ -652,6 +652,56 @@ demande (ce que font IBO / TiviMate / Smarters).
   la cause d'un éventuel clic d'ajout non enregistré reste **NON PROUVÉE**.
   Le Studio TV et le verrouillage restent en cours ; les modifications
   publicités sont locales et ne sont pas déployées.
+
+
+- **PROUVÉ — ajout effectué avec le lien fourni par le propriétaire vers
+  `[MAC masquée]`, le 06/10 à 19:27 Europe/Stockholm.** Une liste
+  ajoutée, remplacement décoché. Le panel affiche « Listes confirmées sur
+  la box » et **1/3 source poussée**.
+- **PROUVÉ — trajet serveur du nouvel ordre.** La chronologie passe de
+  34 à 41 événements : révision 3 publiée, ordre créé puis publié,
+  **reçu**, **appliqué : `loaded`**, révision confirmée : `loaded`, tous
+  affichés à 19:27. Trace de corrélation
+  `[trace masquée]`. Ce reçu est une preuve de
+  livraison et d’application ; l’heure arrondie à la minute ne mesure pas
+  une latence précise en secondes.
+- **PROUVÉ — relecture de l’inventaire réel déclaré par la SHIELD après
+  cet ajout.** Une liste Xtream active, **28 490 chaînes**, version
+  déclarée `1791275287` (build 170). Licence active à vie, plan à vie,
+  échéance à vie : identiques à la lecture avant ajout. Le nombre de
+  listes passe volontairement de 0 à 1 ; aucun déploiement effectué.
+- **PROUVÉ — l’état vide observé avant l’ajout correspondait à une
+  configuration vide au panel et à l’ordre de retrait déjà confirmé à
+  09:35.** Le nouvel ajout est confirmé dans l’inventaire de la vraie box.
+  Il n’y a pas de panne de livraison reproduite par cet envoi ; aucun
+  correctif du canal ni nouveau build nécessaire pour le réaliser.
+- **PROUVÉ — nouveau journal reçu à 19:32:51, relu ensuite dans le panel.**
+  `06/10 19:27:02 I [PANEL] ordre source n°23 reçu (ws)` ;
+  `06/10 19:27:09 I [SOURCE] liste Xtream (lien) du panel chargée en 6.7 s (28490 chaînes)` ;
+  `06/10 19:27:10 I [PANEL] inventaire envoyé au panel après la liste (applied)` ;
+  `06/10 19:27:10 I [PANEL] ordre source n°23 appliqué : loaded (révision 3)`.
+  Import API : 7,7 Mo, 28 490 chaînes ; première lecture de 1 000 chaînes
+  en 38 ms, insertion complète en 3 076 ms, relecture complète en 1 196 ms.
+- **PROUVÉ — mesures mémoire enregistrées pour cet import et sa suite.**
+  Avant import à 19:27:03 : process 143 Mo, RSS 229 Mo ;
+  après récupération à 19:27:05 : process 143 Mo, RSS 274 Mo ;
+  à 19:27:16 : process 143 Mo, RSS 262 Mo ;
+  à 19:32:46 : process 174 Mo, RSS 249 Mo.
+  Aucun `[GEL]` ni nouveau démarrage dans le journal de 19:27 à 19:32.
+  Ces échantillons ne mesurent pas un pic mémoire entre deux relevés.
+- **NON PROUVÉ — P0 Direct sur la SHIELD et latence exacte depuis le clic.**
+  Aucune ouverture de Direct après cet ajout n’est dans le journal reçu.
+  Il faut ouvrir Direct sur la télévision puis photographier la boîte
+  noire fraîche. Cet import compte 28 490 chaînes ; il ne prouve pas le
+  scénario P0 d’environ 50 000 chaînes. Les relevés périodiques mémoire
+  sont espacés de 30 s par construction ; la règle d’un écart maximal
+  de 5 s entre ces lignes n’est pas une mesure de gel exploitable.
+  La durée d’import est mesurée ; le clic n’a pas d’horodatage précis relevé.
+- **NON PROUVÉ — retrait immédiat d’une liste lors de cette vérification.**
+  La nouvelle liste est conservée pour l’essai Direct. Aucun retrait
+  supplémentaire n’a été effectué ; la preuve doit venir d’un retrait
+  demandé sur une liste de test et de son reçu réel, avec disparition
+  de l’inventaire de la SHIELD.
 
 ## 6. Règles du propriétaire (non négociables)
 
