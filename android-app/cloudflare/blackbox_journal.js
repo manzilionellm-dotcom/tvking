@@ -68,10 +68,13 @@ export function truncateBlackBoxTail(text, maxBytes) {
   return s;
 }
 
-let tableReady = false;
+// État PAR BASE (WeakSet/WeakMap clés = env.DB), pas par isolate : un drapeau
+// global sautait la création des tables pour une seconde base du même isolate
+// (défaut prouvé par un test le 06/10/2026).
+const tableReady = new WeakSet();
 
 export async function ensureBlackboxTable(env) {
-  if (tableReady || !env || !env.DB) return;
+  if (!env || !env.DB || tableReady.has(env.DB)) return;
   await env.DB.prepare(
     'CREATE TABLE IF NOT EXISTS device_blackbox ('
     + 'mac TEXT PRIMARY KEY, '
@@ -79,7 +82,7 @@ export async function ensureBlackboxTable(env) {
     + 'updated_at INTEGER NOT NULL, '
     + 'requested_at INTEGER NOT NULL DEFAULT 0)',
   ).run();
-  tableReady = true;
+  tableReady.add(env.DB);
 }
 
 /// Écrit le journal déjà filtré. Ne touche pas à `requested_at`

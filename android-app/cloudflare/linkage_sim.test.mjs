@@ -1,5 +1,6 @@
 // Simulation de la liaison panel ↔ app. Aucun secret, aucun flux.
 // Exécuter : node --test android-app/cloudflare/linkage_sim.test.mjs
+import { createD1 } from './test_support/d1_sqlite.mjs';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
@@ -138,7 +139,7 @@ test('effacement : le KV ne ressuscite pas une liste tombstonée', () => {
 });
 
 test('effacement : tombstone D1 + vidage KV', async () => {
-  const db = memClears();
+  const db = createD1({ schema: false }).DB;
   const kv = memKv({
     'client:MK:AA:BB:CC:DD:02': JSON.stringify({
       playlists: [{ type: 'm3u', url: 'https://example.invalid/old.m3u' }],
@@ -218,12 +219,23 @@ test('câblage panel : sondage ≤ 2 s et garde d\'ordre', () => {
   const online = src('android-app/admin-panel/src/pages/OnlinePage.tsx');
   const devices = src('android-app/admin-panel/src/pages/DevicesPage.tsx');
   const sync = src('android-app/admin-panel/src/lib/live-sync.ts');
+  const channel = src('android-app/admin-panel/src/lib/box-channel.ts');
   assert.match(sync, /export const PANEL_POLL_MS = 2000/);
   assert.match(sync, /shouldApplyPollResult/);
+  // Repli sans canal : panelPollInterval rend PANEL_POLL_MS (2 s).
+  assert.match(sync, /if \(REALTIME_POLL_LEGACY \|\| !channelUp\) return PANEL_POLL_MS;/);
   assert.match(online, /PANEL_POLL_MS/);
   assert.match(online, /shouldApplyPollResult/);
   assert.doesNotMatch(online, /setInterval\(load,\s*30000\)/);
-  assert.match(devices, /PANEL_POLL_MS/);
+  // Depuis 516b87f (canal panel → box), la fiche appareil ne sonde plus
+  // elle-même : elle passe par bindPanelRefresh, dont le minuteur suit
+  // panelPollInterval (≤ 2 s sans canal, plus lent avec canal ouvert).
+  // L'ancienne assertion (PANEL_POLL_MS écrit dans DevicesPage) ne
+  // correspondait plus au code ; l'invariant « sondage ≤ 2 s sans canal »
+  // est vérifié là où il vit.
+  assert.match(channel, /export function bindPanelRefresh/);
+  assert.match(channel, /panelPollInterval\(panelChannelUp\(\)\)/);
+  assert.match(devices, /bindPanelRefresh\(/);
   assert.match(devices, /shouldApplyPollResult/);
   assert.match(devices, /sourcesApi\.clear/);
 });
@@ -253,35 +265,6 @@ function memPresence() {
     },
     read(mac) {
       return rows.get(mac) || null;
-    },
-  };
-}
-
-function memClears() {
-  const rows = new Map();
-  return {
-    prepare(sql) {
-      const exec = {
-        _args: [],
-        bind(...args) {
-          exec._args = args;
-          return exec;
-        },
-        async run() {
-          if (sql.includes('INSERT INTO device_source_clears')) {
-            rows.set(exec._args[0], exec._args[1]);
-          } else if (sql.includes('DELETE FROM device_source_clears')) {
-            rows.delete(exec._args[0]);
-          }
-          return { meta: {} };
-        },
-        async first() {
-          if (!sql.includes('SELECT cleared_at')) return null;
-          const v = rows.get(exec._args[0]);
-          return v ? { cleared_at: v } : null;
-        },
-      };
-      return exec;
     },
   };
 }

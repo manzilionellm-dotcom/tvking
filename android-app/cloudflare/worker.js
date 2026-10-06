@@ -63,7 +63,9 @@ import {
   openPanelSocket,
 } from './box_channel.js';
 export { RealtimeHub };
-import { httpUrlError } from './source_url.js';
+import { httpUrlError, sourceTextProblem, sourceUrlProblem } from './source_url.js';
+import { currentRevision } from './box_orders.js';
+import { casWriteSources } from './device_sources_store.js';
 import { openSource, openSourceList, sealSource } from './secret_box.js';
 import {
   selectAnnouncements,
@@ -472,9 +474,13 @@ async function d1StatusForMac(env, mac, now = Date.now()) {
 //  seule fois par isolate (drapeaux mémoire), puis on ne fait plus que des
 //  écritures. Les INDEX gardent les requêtes rapides même à des millions de
 //  lignes (recherche panel, agrégation Tendances, statut par MAC).
-let _scaleSchemaReady = false;
-let _presenceReady = false;
-let _trendingCache = { at: 0, items: [] };
+// État PAR BASE (WeakSet/WeakMap clés = env.DB), pas par isolate : un drapeau
+// global sautait la création des tables pour une seconde base du même isolate
+// (défaut prouvé par un test le 06/10/2026).
+const _scaleSchemaReady = new WeakSet();
+const _presenceReady = new WeakSet();
+// Tendances : agrégat de la table presence → donnée D'UNE base.
+const _trendingCache = new WeakMap();
 // Caches sport (TheSportsDB, gratuit) — par isolate, 10 min. Proxy : la clé/URL
 // reste cote serveur, et on ne tape pas l'API a chaque requete client.
 const _SPORTSDB = 'https://www.thesportsdb.com/api/v1/json/3';
@@ -482,7 +488,7 @@ let _sportsTeamCache = {};   // idTeam -> { at, data }
 let _sportsSearchCache = {}; // requete(min) -> { at, data }
 
 async function ensureScaleSchema(env) {
-  if (_scaleSchemaReady || !env.DB) return;
+  if (!env.DB || _scaleSchemaReady.has(env.DB)) return;
   for (const col of ['device_model TEXT', 'android_build TEXT',
       'android_release TEXT', 'app_build INTEGER', 'platform TEXT',
       'android_id TEXT', 'app_version TEXT', 'local_sources_json TEXT',
@@ -499,7 +505,7 @@ async function ensureScaleSchema(env) {
   ]) {
     try { await env.DB.prepare(idx).run(); } catch (_) {}
   }
-  _scaleSchemaReady = true;
+  _scaleSchemaReady.add(env.DB);
 }
 
 async function recordPresence(env, mac, ip, country, now, channel) {
@@ -507,14 +513,14 @@ async function recordPresence(env, mac, ip, country, now, channel) {
   try {
     // DDL UNE fois par isolate (au lieu d'à chaque heartbeat — gros gain à
     // l'échelle de millions d'appareils). L'upsert, lui, tourne à chaque fois.
-    if (!_presenceReady) {
+    if (!_presenceReady.has(env.DB)) {
       await env.DB.prepare(
         'CREATE TABLE IF NOT EXISTS presence (' +
           'mac TEXT PRIMARY KEY, ip TEXT, country TEXT, last_seen INTEGER, channel TEXT)'
       ).run();
       try { await env.DB.prepare('ALTER TABLE presence ADD COLUMN channel TEXT').run(); } catch (_) {}
       try { await env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_presence_lastseen ON presence(last_seen)').run(); } catch (_) {}
-      _presenceReady = true;
+      _presenceReady.add(env.DB);
     }
     // L'app envoie `channel` à CHAQUE heartbeat (nom de la chaîne en cours,
     // ou '' si elle ne regarde rien) → on reflète toujours l'état courant.
@@ -543,8 +549,9 @@ async function handleTrending(env) {
   // au plus une fois par minute et par isolate → coût D1 négligeable même si des
   // millions d'apps demandent les Tendances en boucle.
   const now = Date.now();
-  if (now - _trendingCache.at < 60_000) {
-    return json({ items: _trendingCache.items });
+  const cached = _trendingCache.get(env.DB) || { at: 0, items: [] };
+  if (now - cached.at < 60_000) {
+    return json({ items: cached.items });
   }
   try {
     const since = now - 15 * 60 * 1000; // « en ligne » = vu < 15 min
@@ -557,11 +564,11 @@ async function handleTrending(env) {
       channel: r.channel,
       count: r.n,
     }));
-    _trendingCache = { at: now, items };
+    _trendingCache.set(env.DB, { at: now, items });
     return json({ items });
   } catch (_) {
     // En cas d'erreur on sert le dernier cache connu (jamais d'échec dur).
-    return json({ items: _trendingCache.items });
+    return json({ items: cached.items });
   }
 }
 
@@ -2825,7 +2832,24 @@ async function handlePublicServers(env) {
 //
 //  Identifiant = la MAC (même modèle public que /config/:mac et
 //  /api/status/:mac). Lecture en D1 (table device_sources).
+// Révision de listes servie (06/10/2026) : la box renvoie ce numéro dans
+// son accusé (`config_rev`), ce qui relie « révision publiée » et « révision
+// réellement appliquée ». Ajouté à toutes les réponses 200, sans rien
+// changer d'autre (`rev` absent = aucune révision enregistrée).
 async function handlePublicDeviceSource(env, mac) {
+  const res = await handlePublicDeviceSourceInner(env, mac);
+  if (res.status !== 200 || !env.DB || !MAC_RX.test(mac)) return res;
+  try {
+    const rev = await currentRevision(env, mac.toUpperCase());
+    if (rev == null) return res;
+    const body = await res.clone().json();
+    return jsonPrivate({ ...body, rev });
+  } catch (_) {
+    return res;
+  }
+}
+
+async function handlePublicDeviceSourceInner(env, mac) {
   if (!MAC_RX.test(mac)) return badRequest('invalid mac');
   const MAC = mac.toUpperCase();
 
@@ -3034,34 +3058,32 @@ async function readDeviceSourceItems(env, MAC) {
   return { items: opened, needsPersist: needsPersist && !unreadable };
 }
 
-// Écrit la liste complète : colonnes plates = items[0] (compat app/panel), plus
-// `sources_json` (tableau entier) + `origin` ligne (= 'self' si TOUT est self).
-async function writeDeviceSourceItems(env, MAC, items) {
-  if (!items.length) {
-    await env.DB.prepare('DELETE FROM device_sources WHERE mac = ?').bind(MAC).run();
-    await markSourcesCleared(env, MAC, Date.now());
-    return;
-  }
-  const sealed = [];
-  for (const item of items) sealed.push(await sealSource(env, item));
-  const first = sealed[0];
-  const rowOrigin = items.every((s) => s.origin === 'self') ? 'self' : 'panel';
-  const jsonStr = JSON.stringify(sealed);
-  await env.DB.prepare(
-    `INSERT INTO device_sources
-       (mac, type, label, server_url, username, password, m3u_url, epg_url, sources_json, origin, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-     ON CONFLICT(mac) DO UPDATE SET
-       type=excluded.type, label=excluded.label, server_url=excluded.server_url,
-       username=excluded.username, password=excluded.password, m3u_url=excluded.m3u_url,
-       epg_url=excluded.epg_url, sources_json=excluded.sources_json,
-       origin=excluded.origin, updated_at=excluded.updated_at`,
-  ).bind(
-    MAC, first.type || null, first.label || null, first.server_url || null, first.username || null,
-    first.password || null, first.m3u_url || null, first.epg_url || null, jsonStr, rowOrigin, Date.now(),
-  ).run();
-  await clearSourceTombstone(env, MAC);
+/// Origine et id de chaque liste, SANS déchiffrer (06/10/2026) : les
+/// écritures du client travaillent sur les listes scellées ; une liste non
+/// modifiée est réécrite telle quelle (aucun risque d'effacer un secret
+/// illisible). Pur.
+function normalizeStoredOrigins(row, items) {
+  const rowSelf = row && String(row.origin || '') === 'self';
+  let changed = false;
+  const out = items.map((s) => {
+    const it = { ...s };
+    if (it.origin !== 'self' && it.origin !== 'panel') { it.origin = rowSelf ? 'self' : 'panel'; changed = true; }
+    if (it.origin === 'self' && !it.id) { it.id = crypto.randomUUID(); changed = true; }
+    return it;
+  });
+  return { items: out, changed };
 }
+
+/// Écrit via le magasin sûr ; liste vide → tombstone (repli KV), sinon
+/// tombstone levé. `{ conflict }` remonte à l'appelant (409 explicite).
+async function writeSelfChange(env, MAC, mutate, revision) {
+  const out = await casWriteSources(env, MAC, mutate, { revision });
+  if (out.abort !== undefined || out.conflict) return out;
+  if (!out.items.length) await markSourcesCleared(env, MAC, Date.now());
+  else await clearSourceTombstone(env, MAC);
+  return out;
+}
+
 
 // Vue publique d'un item : SANS mot de passe, avec l'info de verrouillage.
 function publicItemView(it, idx) {
@@ -3096,14 +3118,16 @@ function buildSourceFromBody(body) {
     const user = String(body.username || '').trim().slice(0, 256);
     const pass = String(body.password || '').trim().slice(0, 256);
     if (!server || !user || !pass) return { error: 'xtream requires server_url, username, password' };
-    const serverErr = httpUrlError(server, 'server_url');
+    const serverErr = sourceUrlProblem(server, 'server_url');
     if (serverErr) return { error: serverErr };
+    const credErr = sourceTextProblem(user, 'username') || sourceTextProblem(pass, 'password');
+    if (credErr) return { error: credErr };
     return { source: { type: 'xtream', label, server_url: server, username: user, password: pass, m3u_url: null, epg_url: epg } };
   }
   if (type === 'm3u') {
     const m3u = String(body.m3u_url || '').trim();
     if (!m3u) return { error: 'm3u requires m3u_url' };
-    const m3uErr = httpUrlError(m3u, 'm3u_url');
+    const m3uErr = sourceUrlProblem(m3u, 'm3u_url');
     if (m3uErr) return { error: m3uErr };
     return { source: { type: 'm3u', label, server_url: null, username: null, password: null, m3u_url: m3u, epg_url: epg } };
   }
@@ -3117,9 +3141,17 @@ async function handleSelfSourceGet(env, mac) {
   const MAC = mac.toUpperCase();
   await ensureDeviceSourcesTable(env);
   const { items, needsPersist } = await readDeviceSourceItems(env, MAC);
-  // Persiste les ids/origins fraîchement attribués (migration douce, one-shot).
+  // Persiste les ids/origins fraîchement attribués (migration douce, one-shot),
+  // sur les listes SCELLÉES : la lecture déchiffrée ne sert qu'à l'affichage.
   if (needsPersist && items.length) {
-    try { await writeDeviceSourceItems(env, MAC, items); } catch (_) { /* best-effort */ }
+    try {
+      await writeSelfChange(env, MAC, (row, stored) => {
+        const n = normalizeStoredOrigins(row, stored);
+        return n.changed ? { items: n.items } : { abort: null };
+      }, null);
+    } catch (_) { /* best-effort : relu au prochain GET */ }
+    const again = await readDeviceSourceItems(env, MAC);
+    items.splice(0, items.length, ...again.items);
   }
   const view = items.map(publicItemView);
   const selfCount = items.filter((s) => s.origin === 'self').length;
@@ -3148,33 +3180,37 @@ async function handleSelfSource(env, mac, request) {
   const source = built.source;
 
   await ensureDeviceSourcesTable(env);
-  const { items } = await readDeviceSourceItems(env, MAC);
   const editId = body.id ? String(body.id) : null;
-
-  if (editId) {
-    // MODIFICATION : uniquement un item 'self' existant (panel = interdit).
-    const idx = items.findIndex((s) => s.origin === 'self' && s.id === editId);
-    if (idx < 0) {
-      return jsonPrivate({ ok: false, reason: 'not_found', message: "Cette playlist n'existe pas ou est protégée." }, 404);
-    }
-    items[idx] = { ...source, origin: 'self', id: editId };
-  } else {
-    // AJOUT : plafond anti-abus sur les items 'self'.
-    const selfCount = items.filter((s) => s.origin === 'self').length;
-    if (selfCount >= MAX_SELF_SOURCES) {
-      return jsonPrivate({
-        ok: false, reason: 'too_many',
-        message: 'Limite atteinte (' + MAX_SELF_SOURCES + ' playlists). Supprimez-en une pour en ajouter une autre.',
-      }, 409);
-    }
-    items.push({ ...source, origin: 'self', id: crypto.randomUUID() });
-  }
-
+  const newId = crypto.randomUUID();
+  let out;
   try {
-    await writeDeviceSourceItems(env, MAC, items);
+    out = await writeSelfChange(env, MAC, (row, stored) => {
+      const { items } = normalizeStoredOrigins(row, stored);
+      if (editId) {
+        // MODIFICATION : uniquement un item 'self' existant (panel = interdit).
+        const idx = items.findIndex((s) => s.origin === 'self' && s.id === editId);
+        if (idx < 0) {
+          return { abort: jsonPrivate({ ok: false, reason: 'not_found', message: "Cette playlist n'existe pas ou est protégée." }, 404) };
+        }
+        items[idx] = { ...source, origin: 'self', id: editId };
+        return { items };
+      }
+      // AJOUT : plafond anti-abus sur les items 'self'.
+      const selfCount = items.filter((s) => s.origin === 'self').length;
+      if (selfCount >= MAX_SELF_SOURCES) {
+        return { abort: jsonPrivate({
+          ok: false, reason: 'too_many',
+          message: 'Limite atteinte (' + MAX_SELF_SOURCES + ' playlists). Supprimez-en une pour en ajouter une autre.',
+        }, 409) };
+      }
+      items.push({ ...source, origin: 'self', id: newId });
+      return { items };
+    }, { actor: { type: 'customer', id: MAC } });
   } catch (_) {
     return jsonPrivate({ ok: false, error: 'db_write_failed' }, 500);
   }
+  if (out.abort !== undefined) return out.abort;
+  if (out.conflict) return jsonPrivate({ ok: false, error: 'conflict', message: 'Vos listes changent en ce moment. Réessayez.' }, 409);
   return jsonPrivate({
     ok: true,
     message: editId
@@ -3203,29 +3239,29 @@ async function handleSelfSourceDelete(env, mac, request) {
 /// (`DELETE /api/v1/sources/:mac/self/:id`) : depuis le 05/10/2026 le
 /// revendeur peut retirer une liste du client, sinon elle « revenait »
 /// sur la fiche après chaque effacement des listes du panel.
-async function removeSelfSourceItem(env, MAC, delId) {
-  const { items } = await readDeviceSourceItems(env, MAC);
-  if (!items.length) return { status: 200, body: { ok: true, message: 'Aucune playlist à supprimer.' } };
-
-  let kept;
-  if (delId) {
-    const target = items.find((s) => s.id === delId);
-    if (!target) return { status: 404, body: { ok: false, reason: 'not_found', message: 'Playlist introuvable.' } };
-    if (target.origin !== 'self') {
-      return { status: 409, body: { ok: false, reason: 'locked', message: 'Cette playlist est gérée par votre conseiller.' } };
-    }
-    kept = items.filter((s) => s.id !== delId);
-  } else {
-    // Purge de toutes les 'self', on garde les 'panel'.
-    kept = items.filter((s) => s.origin !== 'self');
-  }
-
+async function removeSelfSourceItem(env, MAC, delId, actor = { type: 'customer', id: MAC }) {
+  let out;
   try {
-    await writeDeviceSourceItems(env, MAC, kept);
+    out = await writeSelfChange(env, MAC, (row, stored) => {
+      const { items } = normalizeStoredOrigins(row, stored);
+      if (!items.length) return { abort: { status: 200, body: { ok: true, message: 'Aucune playlist à supprimer.' } } };
+      if (delId) {
+        const target = items.find((s) => s.id === delId);
+        if (!target) return { abort: { status: 404, body: { ok: false, reason: 'not_found', message: 'Playlist introuvable.' } } };
+        if (target.origin !== 'self') {
+          return { abort: { status: 409, body: { ok: false, reason: 'locked', message: 'Cette playlist est gérée par votre conseiller.' } } };
+        }
+        return { items: items.filter((s) => s.id !== delId) };
+      }
+      // Purge de toutes les 'self', on garde les 'panel'.
+      return { items: items.filter((s) => s.origin !== 'self') };
+    }, { actor });
   } catch (_) {
     return { status: 500, body: { ok: false, error: 'db_write_failed' } };
   }
-  return { status: 200, body: { ok: true, message: 'Playlist supprimée.', remaining: kept.length } };
+  if (out.abort !== undefined) return out.abort;
+  if (out.conflict) return { status: 409, body: { ok: false, error: 'conflict', message: 'Les listes changent en ce moment. Réessayez.' } };
+  return { status: 200, body: { ok: true, message: 'Playlist supprimée.', remaining: out.items.length, rev: out.rev } };
 }
 
 /// DELETE /api/v1/sources/:mac/self/:id — le panel retire une liste
@@ -3247,13 +3283,29 @@ async function handlePanelRemoveSelfSource(request, env, mac, id) {
     }
   }
   await ensureDeviceSourcesTable(env);
-  const out = await removeSelfSourceItem(env, MAC, String(id || ''));
+  const out = await removeSelfSourceItem(env, MAC, String(id || ''),
+    { type: user.role === 'reseller' ? 'reseller' : 'admin', id: user.sub });
   if (out.status === 200) {
-    await notifyBox(env, MAC, 'source');
+    const traceId = panelTraceId(request);
+    request = withTraceHeader(request, traceId);
+    await notifyBox(env, MAC, 'source', { traceId });
     await logAudit(env, request, { type: user.role === 'reseller' ? 'reseller' : 'admin', id: user.sub },
       'source.self_remove', { type: 'device', id: MAC }, null, { source_id: String(id || '') });
   }
   return json(out.body, out.status);
+}
+
+/// Identifiant de corrélation pour les routes panel servies hors api_v1 :
+/// celui du panel s'il est sain, sinon un nouveau.
+function withTraceHeader(request, traceId) {
+  const headers = new Headers(request.headers);
+  headers.set('X-Request-Id', traceId);
+  return new Request(request, { headers });
+}
+
+function panelTraceId(request) {
+  const given = (request.headers.get('X-Request-Id') || '').trim();
+  return /^[A-Za-z0-9_.:-]{8,64}$/.test(given) ? given : crypto.randomUUID();
 }
 
 // POST /api/v1/sources/:mac/reset — REMISE À NEUF de la box depuis le panel
@@ -3267,6 +3319,7 @@ async function handlePanelRemoveSelfSource(request, env, mac, id) {
 // l'applique à son prochain démarrage : l'horodatage reste dans le statut.
 // La licence n'est pas touchée : activation et listes sont séparées.
 async function handlePanelResetBox(request, env, mac) {
+  const t1 = Date.now();
   const auth = request.headers.get('Authorization') || '';
   const m = auth.match(/^Bearer\s+(.+)$/i);
   const user = m ? await panelActorFromToken(env, m[1]) : null;
@@ -3283,28 +3336,36 @@ async function handlePanelResetBox(request, env, mac) {
   await ensureDeviceSourcesTable(env);
   await ensureResetColumn(env);
   const now = Date.now();
-  await env.DB.prepare('DELETE FROM device_sources WHERE mac = ?').bind(MAC).run();
+  const traceId = panelTraceId(request);
+  request = withTraceHeader(request, traceId);
+  const actorRef = { type: user.role === 'reseller' ? 'reseller' : 'admin', id: user.sub };
+  // Toutes les listes retirées ET révision vide écrite dans la même
+  // transaction (magasin sûr) : jamais une box vidée sans révision.
+  const wiped = await casWriteSources(env, MAC, () => ({ items: [] }), { revision: { traceId, actor: actorRef } });
+  if (wiped.conflict) return json({ error: 'conflict', message: 'Les listes changent en ce moment. Réessaie.' }, 409);
+  const rev = wiped.rev;
+  await markSourcesCleared(env, MAC, now);
   const upd = await env.DB
     .prepare('UPDATE devices SET reset_at = ? WHERE mac = ?')
     .bind(now, MAC).run();
   if (!upd || !upd.meta || !upd.meta.changes) {
     return json({ error: 'not_found', message: 'Appareil inconnu' }, 404);
   }
-  await notifyBox(env, MAC, 'reset');
+  const order = await notifyBox(env, MAC, 'reset', { traceId, t1, configRev: rev });
   // Les builds antérieurs à 165 ignorent « reset » : « source » leur fait
   // relire des listes vides, donc effacer celles du panel.
-  await notifyBox(env, MAC, 'source');
+  await notifyBox(env, MAC, 'source', { traceId, t1, configRev: rev });
   // Action destructive : journalisée (acteur, cible, moment, corrélation).
   await logAudit(env, request, { type: user.role === 'reseller' ? 'reseller' : 'admin', id: user.sub },
-    'device.reset', { type: 'device', id: MAC }, null, { reset_at: now });
-  return json({ ok: true, mac: MAC, reset_at: now });
+    'device.reset', { type: 'device', id: MAC }, null, { reset_at: now, rev, order_id: order });
+  return json({ ok: true, mac: MAC, reset_at: now, rev, order_id: order, trace_id: traceId });
 }
 
-let _resetColumnReady = false;
+const _resetColumnReady = new WeakSet();
 async function ensureResetColumn(env) {
-  if (_resetColumnReady || !env.DB) return;
+  if (!env.DB || _resetColumnReady.has(env.DB)) return;
   try { await env.DB.prepare('ALTER TABLE devices ADD COLUMN reset_at INTEGER').run(); } catch (_) { /* déjà là */ }
-  _resetColumnReady = true;
+  _resetColumnReady.add(env.DB);
 }
 
 /// Heure de la dernière remise à neuf demandée par le panel (0 = jamais).
@@ -3878,7 +3939,12 @@ async function handleRequest(request, env, ctx) {
     // répond 404 : la box retombe sur sa lecture régulière.
     if (segments[0] === 'api' && segments[1] === 'box'
         && (segments[2] === 'ws' || segments[2] === 'wait' || segments[2] === 'ack')) {
-      if (!(await rateLimitOk(env, request, 'box', 60, 60 * 1000))) {
+      // Accusés dans leur PROPRE seau (06/10/2026) : mesuré en local, des
+      // accusés (2 par ordre) comptés avec l'attente longue épuisaient les
+      // 60 appels / min / IP et la box ne voyait plus ses ordres. Plusieurs
+      // box derrière une même IP (boutique, NAT d'opérateur) partagent ce seau.
+      const isAck = segments[2] === 'ack';
+      if (!(await rateLimitOk(env, request, isAck ? 'boxack' : 'box', isAck ? 600 : 60, 60 * 1000))) {
         return tooManyRequests();
       }
       const boxed = await handleBoxRoute(request, env, segments);

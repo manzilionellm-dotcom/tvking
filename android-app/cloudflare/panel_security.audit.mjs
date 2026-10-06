@@ -10,6 +10,10 @@
 import worker from './worker.js';
 import { apiV1 } from './api_v1.js';
 import { sealField, openField } from './secret_box.js';
+import { createD1 } from './test_support/d1_sqlite.mjs';
+
+// Colonnes ajoutées en production par migration (absentes de schema.sql).
+const AUDIT_EXTRA_SQL = ['ALTER TABLE resellers ADD COLUMN parent_reseller_id TEXT', 'ALTER TABLE devices ADD COLUMN block_status TEXT'];
 
 const ADMIN_SECRET = 'unit-test-admin-secret-not-real';
 const SOURCE_KEY = 'unit-test-source-key-32b';
@@ -335,24 +339,32 @@ const reseller = {
   ok(await openField({ SOURCE_ENCRYPTION_KEY: 'another-test-key-32chars' }, sealed) === null,
     'wrong key does not return ciphertext');
 
-  const db = createDb({
-    admin_users: [{
-      id: 'adm_owner', email: 'admin', role: 'super_admin', is_active: 1, password_hash: 'x',
-    }],
-  });
-  const env = { DB: db, ADMIN_SECRET, SOURCE_ENCRYPTION_KEY: SOURCE_KEY };
+  // Base D1 fidèle (SQLite réel) : depuis le 06/10/2026, l'écriture des
+  // listes est atomique (colonne `version` + compare-and-swap + révision
+  // dans le MÊME lot). L'ancienne fausse base de ce fichier reconnaissait
+  // le SQL par morceaux de texte : elle ne savait ni `ALTER TABLE`, ni
+  // `UPDATE … WHERE version = ?`, ni `INSERT … SELECT … RETURNING`, ni
+  // `batch()` — d'où un 500 qui n'était PAS un défaut du code. Ici on lit
+  // les octets réellement stockés dans la table, ce qui est une preuve
+  // plus forte que les arguments d'une écriture capturée.
+  const t = createD1({ extraSql: AUDIT_EXTRA_SQL });
+  t.db.prepare("INSERT INTO admin_users (id, email, password_hash, name, role, is_active, created_at) VALUES ('adm_owner', 'admin', 'x', 'Owner', 'super_admin', 1, 0)").run();
+  const env = { DB: t.DB, ADMIN_SECRET, SOURCE_ENCRYPTION_KEY: SOURCE_KEY };
   const token = await signJwt(owner, ADMIN_SECRET);
   const put = await call('/api/v1/sources/MK:AA:BB:CC:DD:EE', {
     method: 'PUT', env, token,
     body: { source: { type: 'm3u', m3u_url: M3U } },
   });
   ok(put.status === 200, 'owner can store an m3u source');
-  const stored = db.writes.find((w) => w.sql.includes('INSERT INTO device_sources'));
-  const storedUrl = stored ? stored.args[6] : '';
-  const storedJson = stored ? String(stored.args[8]) : '';
-  ok(String(storedUrl).startsWith('enc1.') && !String(storedUrl).includes('example.test'),
+  const stored = t.db.prepare("SELECT m3u_url, sources_json FROM device_sources WHERE mac = 'MK:AA:BB:CC:DD:EE'").get();
+  const storedUrl = stored ? String(stored.m3u_url) : '';
+  const storedJson = stored ? String(stored.sources_json) : '';
+  ok(storedUrl.startsWith('enc1.') && !storedUrl.includes('example.test'),
     'm3u url is encrypted at rest');
-  ok(!storedJson.includes('example.test'), 'sources_json does not contain the plaintext url');
+  ok(storedJson.length > 0 && !storedJson.includes('example.test'), 'sources_json does not contain the plaintext url');
+  const revs = t.db.prepare("SELECT panel_json FROM source_revisions WHERE mac = 'MK:AA:BB:CC:DD:EE'").all();
+  ok(revs.length === 1 && !String(revs[0].panel_json).includes('example.test'),
+    'source revision history does not contain the plaintext url');
   const got = await call('/api/v1/sources/MK:AA:BB:CC:DD:EE', { env, token });
   ok(got.json && got.json.source && got.json.source.m3u_url === M3U,
     'owner read decrypts the m3u url');
@@ -371,15 +383,18 @@ const reseller = {
   }), {}, ctx);
   ok(!bare.headers.get('access-control-allow-origin'), 'self-source has no CORS star');
 
-  const db = createDb();
+  // Même raison qu'au point 8 : base D1 fidèle, octets lus dans la table.
+  const t = createD1({ extraSql: AUDIT_EXTRA_SQL });
   const res = await worker.fetch(new Request('https://app.x/api/self-source/MK:AA:BB:CC:DD:EE', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Origin: 'https://evil.example' },
     body: JSON.stringify({ type: 'm3u', m3u_url: M3U }),
-  }), { DB: db, SOURCE_ENCRYPTION_KEY: SOURCE_KEY }, ctx);
+  }), { DB: t.DB, SOURCE_ENCRYPTION_KEY: SOURCE_KEY }, ctx);
   ok(!res.headers.get('access-control-allow-origin'), 'self-source write has no CORS star');
-  const write = db.writes.find((w) => w.sql.includes('INSERT INTO device_sources'));
-  ok(write && String(write.args[6]).startsWith('enc1.') && !String(write.args[6]).includes('example.test'),
+  ok(res.status === 200, 'self-source write accepted');
+  const row = t.db.prepare("SELECT m3u_url, sources_json FROM device_sources WHERE mac = 'MK:AA:BB:CC:DD:EE'").get();
+  ok(row && String(row.m3u_url).startsWith('enc1.') && !String(row.m3u_url).includes('example.test')
+    && !String(row.sources_json).includes('example.test'),
     'self-source encrypts m3u url at rest');
 }
 

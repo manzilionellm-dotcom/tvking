@@ -15,6 +15,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createD1, fakeRealtimeHub } from './test_support/d1_sqlite.mjs';
 import worker from './worker.js';
 
 const ctx = { waitUntil() {}, passThroughOnException() {} };
@@ -34,55 +35,9 @@ function check(cond, msg) {
 }
 
 function makeDb() {
-  const db = new DatabaseSync(':memory:');
-  db.exec('PRAGMA foreign_keys = ON');
-  db.exec(readFileSync(join(here, 'schema.sql'), 'utf8'));
-  // Colonnes ajoutées par les migrations (absentes du schema.sql de base).
-  for (const sql of [
-    'ALTER TABLE resellers ADD COLUMN parent_reseller_id TEXT',
-    'ALTER TABLE devices ADD COLUMN block_status TEXT',
-  ]) {
-    try { db.exec(sql); } catch (_) { /* déjà dans le schéma */ }
-  }
-  const DB = {
-    prepare(sql) {
-      const runWith = (args) => {
-        const params = args.map((v) => (v === undefined ? null : v));
-        return {
-          async first() {
-            const row = db.prepare(sql).get(...params);
-            return row === undefined ? null : row;
-          },
-          async all() {
-            return { results: db.prepare(sql).all(...params) };
-          },
-          async run() {
-            const info = db.prepare(sql).run(...params);
-            return { success: true, meta: { changes: info.changes } };
-          },
-        };
-      };
-      return {
-        bind(...args) { return runWith(args); },
-        first() { return runWith([]).first(); },
-        all() { return runWith([]).all(); },
-        run() { return runWith([]).run(); },
-      };
-    },
-    async batch(stmts) {
-      db.exec('BEGIN');
-      try {
-        const out = [];
-        for (const s of stmts) out.push(await s.run());
-        db.exec('COMMIT');
-        return out;
-      } catch (e) {
-        try { db.exec('ROLLBACK'); } catch (_) { /* déjà annulé */ }
-        throw e;
-      }
-    },
-  };
-  return { db, env: { DB, ADMIN_SECRET: crypto.randomUUID(), SECRETS_KEY: crypto.randomUUID() } };
+  // Harnais D1 partagé et fidèle (test_support/d1_sqlite.mjs).
+  const t = createD1({ extraSql: ['ALTER TABLE resellers ADD COLUMN parent_reseller_id TEXT', 'ALTER TABLE devices ADD COLUMN block_status TEXT'] });
+  return { db: t.db, faults: t.faults, env: { DB: t.DB, ADMIN_SECRET: crypto.randomUUID(), SECRETS_KEY: crypto.randomUUID() } };
 }
 
 async function api(env, method, path, { token, body } = {}) {

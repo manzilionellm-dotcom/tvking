@@ -8,6 +8,7 @@
 //  le texte apparaît 1 à 2 secondes après que l'app l'a envoyé.
 // =========================================================
 
+import { TracePanel } from './TracePanel';
 import { FormEvent, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { AppLayout } from '@/components/AppLayout';
@@ -186,6 +187,7 @@ export function BlackBoxPage({ onLogout }: { onLogout: () => void }) {
           </p>
         </div>
       )}
+      <TracePanel initialQuery={active || ''} key={active || 'vide'} />
     </AppLayout>
   );
 }

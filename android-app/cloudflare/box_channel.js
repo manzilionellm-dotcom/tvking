@@ -25,6 +25,8 @@
 //  refusé au déploiement (erreur 10064, le 3 octobre 2026).
 // =========================================================
 
+import { createOrder, markOrderSent, recordAck } from './box_orders.js';
+
 /// Noms d'ordres connus. Inconnu = refusé, pour qu'un appelant
 /// ne glisse pas un texte libre (ni un secret) dans le canal.
 export const CHANNEL_KINDS = Object.freeze([
@@ -110,13 +112,22 @@ export function eventsAfter(ring, after) {
 
 /// Corps public. Les seules clés sont celles du contrat.
 export function publicEvent(event) {
-  return {
+  const out = {
     v: 1,
     seq: Number(event.seq) || 0,
     type: String(event.type || ''),
     mac: String(event.mac || ''),
     at: Number(event.at) || 0,
   };
+  // Suivi de bout en bout (06/10/2026) : identifiants aléatoires, jamais
+  // un secret. Absents pour un ancien ordre de l'anneau.
+  if (safeId(event.order_id)) out.order_id = event.order_id;
+  if (safeId(event.trace_id)) out.trace_id = event.trace_id;
+  return out;
+}
+
+function safeId(v) {
+  return typeof v === 'string' && /^[A-Za-z0-9_.:-]{8,80}$/.test(v);
 }
 
 /// Réponse de GET /api/box/wait. `box` reprend la forme déjà lue
@@ -130,6 +141,8 @@ export function waitBody(events, timeout) {
       id: event.seq,
       kind: event.type,
       created_at: event.at,
+      ...(event.order_id ? { order_id: event.order_id } : {}),
+      ...(event.trace_id ? { trace_id: event.trace_id } : {}),
     })),
     fleet: [],
     events: list,
@@ -197,7 +210,7 @@ export function createMacMailbox(storage) {
     return eventsAfter(await readRing(), after);
   }
 
-  async function push(kind, mac) {
+  async function push(kind, mac, ids = {}) {
     const type = canonicalKind(kind);
     const clean = normalizeMac(mac);
     if (!type || !clean) return null;
@@ -205,6 +218,8 @@ export function createMacMailbox(storage) {
       const seq = (Number(await storage.get('seq')) || 0) + 1;
       const ring = eventsAfter(await storage.get('ring'), 0);
       const next = { v: 1, seq, type, mac: clean, at: Date.now() };
+      if (safeId(ids.order_id)) next.order_id = ids.order_id;
+      if (safeId(ids.trace_id)) next.trace_id = ids.trace_id;
       ring.push(next);
       while (ring.length > RING_MAX) ring.shift();
       await storage.put('seq', seq);
@@ -258,20 +273,36 @@ function stub(env, name) {
 /// Préviens la box (et le panel) qu'il faut relire. N'échoue jamais
 /// l'action du panel : la liste est déjà écrite, la lecture
 /// régulière la verra quand même.
-export async function notifyBox(env, mac, kind) {
+///
+/// Suivi (06/10/2026) : chaque appel crée un ordre `box_orders` (CREATED,
+/// T2 = fin de la transaction métier), le publie au Durable Object de la
+/// box avec son `order_id` et son `trace_id` (SENT, T3), et rend
+/// l'`order_id`. `opts` : { traceId, t0, t1, t2, configRev }. Sans canal
+/// temps réel, l'ordre reste CREATED puis EXPIRED : « jamais envoyé » se
+/// voit au lieu d'être supposé.
+export async function notifyBox(env, mac, kind, opts = {}) {
+  let orderId = null;
   try {
-    if (realtimePushOff(env)) return;
     const clean = normalizeMac(mac);
     const type = canonicalKind(kind);
-    if (!clean || !type) return;
-    const body = JSON.stringify({ kind: type, mac: clean });
+    if (!clean || !type) return null;
+    orderId = await createOrder(env, {
+      mac: clean, kind: type, traceId: opts.traceId, t0: opts.t0, t1: opts.t1,
+      t2: opts.t2 || Date.now(), configRev: opts.configRev,
+    });
+    if (realtimePushOff(env)) return orderId;
+    const ids = { order_id: orderId || undefined, trace_id: opts.traceId || undefined };
+    const body = JSON.stringify({ kind: type, mac: clean, ...ids });
     const macStub = stub(env, clean);
     const panelStub = stub(env, PANEL_NAME);
     // Deux instances : l'échec de l'une ne doit pas empêcher l'autre.
     if (macStub) {
       try {
-        await macStub.fetch('https://hub/notify', { method: 'POST', body });
-      } catch (_) { /* la box relira au prochain tour */ }
+        const res = await macStub.fetch('https://hub/notify', { method: 'POST', body });
+        let seq = null;
+        try { seq = (await res.json()).seq || null; } catch (_) { seq = null; }
+        if (res.ok && orderId) await markOrderSent(env, orderId, seq);
+      } catch (_) { /* la box relira au prochain tour ; l'ordre reste CREATED */ }
     }
     if (panelStub) {
       try {
@@ -281,6 +312,7 @@ export async function notifyBox(env, mac, kind) {
   } catch (_) {
     // Filet : le PUT / l'activation restent valides.
   }
+  return orderId;
 }
 
 function notFound() {
@@ -293,6 +325,33 @@ export async function handleBoxRoute(request, env, segments) {
   if (!segments || segments[0] !== 'api' || segments[1] !== 'box') return null;
   const action = segments[2] || '';
   if (action !== 'ws' && action !== 'wait' && action !== 'ack') return null;
+
+  // ACCUSÉ RÉEL (06/10/2026). Avant : `{ ok: true }` sans rien écrire.
+  // Corps : { orders: [{ order_id, state: received|applied|failed,
+  // received_at, applied_at, config_rev, result, error_code,
+  // error_message, trace_id, app_version }] }. Persisté dans box_orders.
+  // Un ancien corps ({ box: [...], fleet: [...] }) reste accepté tel quel.
+  // Fonctionne même sans canal temps réel (une box en sondage accuse aussi).
+  if (action === 'ack') {
+    if (request.method !== 'POST') return json({ error: 'method' }, 405);
+    const ackMac = normalizeMac(segments[3] || new URL(request.url).searchParams.get('mac'));
+    if (!ackMac) return json({ error: 'bad_mac' }, 400);
+    let payload = null;
+    try { payload = await request.json(); } catch (_) { payload = null; }
+    const list = payload && Array.isArray(payload.orders) ? payload.orders.slice(0, 20) : null;
+    if (!list || !env || !env.DB) return json({ ok: true });
+    const results = [];
+    for (const item of list) {
+      try {
+        const r = await recordAck(env, ackMac, item);
+        results.push({ order_id: item && item.order_id, status: r.status, ...r.body });
+      } catch (_) {
+        results.push({ order_id: item && item.order_id, status: 500, error: 'ack_failed' });
+      }
+    }
+    return json({ ok: true, results });
+  }
+
   if (realtimePushOff(env) || !env || !env.RT_HUB) return notFound();
 
   const url = new URL(request.url);
@@ -313,13 +372,6 @@ export async function handleBoxRoute(request, env, segments) {
   const target = stub(env, mac);
   if (!target) return notFound();
 
-  if (action === 'ack') {
-    if (request.method !== 'POST') return json({ error: 'method' }, 405);
-    // L'app accuse pour avancer son curseur. L'anneau est déjà
-    // la source de vérité (`after`), donc l'accusé est un accusé
-    // de lecture : on confirme sans rien réécrire.
-    return json({ ok: true });
-  }
 
   if (request.method !== 'GET') return json({ error: 'method' }, 405);
   const after = url.searchParams.get('after') || '0';
@@ -395,7 +447,9 @@ export class RealtimeHub {
     } catch (_) {
       return json({ error: 'bad_json' }, 400);
     }
-    const event = await this.mailbox.push(payload.kind, payload.mac);
+    const event = await this.mailbox.push(payload.kind, payload.mac, {
+      order_id: payload.order_id, trace_id: payload.trace_id,
+    });
     if (!event) return json({ error: 'ignored' }, 400);
     const text = JSON.stringify(publicEvent(event));
     if (containsSecretKey(JSON.parse(text))) return json({ error: 'blocked' }, 500);

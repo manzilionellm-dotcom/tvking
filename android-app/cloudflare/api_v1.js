@@ -77,7 +77,11 @@ import { isBlackboxMac, markBlackBoxAsked, readBlackBox } from './blackbox_journ
 //  Phase 1.A se limite au super_admin role. Resellers et
 //  customers viendront en Phase 3 et 5 respectivement.
 // =========================================================
-import { httpUrlError } from './source_url.js';
+import { httpUrlError, sourceTextProblem, sourceUrlProblem } from './source_url.js';
+import {
+  latencyStats, listOrders, revisionPanelJson, revisionView, effectiveState,
+} from './box_orders.js';
+import { casWriteSources, ensureSourcesVersion } from './device_sources_store.js';
 import { openSource, openSourceList, sealSource } from './secret_box.js';
 
 import {
@@ -611,15 +615,23 @@ async function bootstrapSuperAdminIfNeeded(env) {
   const id = genId('adm');
   const now = Date.now();
   const pwd = await hashPassword(secret);
-  await env.DB
+  // Insertion conditionnelle en UNE requête : « table vide » est vérifié
+  // au moment même de l'écriture. Avant le 06/10/2026, deux premières
+  // connexions simultanées voyaient toutes deux 0 compte, la seconde
+  // insertion heurtait UNIQUE(email) et la connexion finissait en 500
+  // (prouvé : 10 connexions → 9 × 500). Le SELECT ci-dessus reste un
+  // raccourci pour le cas courant (comptes déjà présents).
+  const res = await env.DB
     .prepare(
       `INSERT INTO admin_users
         (id, email, password_hash, name, role, is_active, created_at)
-       VALUES (?, ?, ?, ?, ?, 1, ?)`,
+       SELECT ?, ?, ?, ?, ?, 1, ?
+       WHERE NOT EXISTS (SELECT 1 FROM admin_users)
+       ON CONFLICT DO NOTHING`,
     )
     .bind(id, 'admin', pwd, 'Super Admin', 'super_admin', now)
     .run();
-  return true;
+  return !!(res && res.meta && res.meta.changes === 1);
 }
 
 // ---------------------------------------------------------
@@ -636,15 +648,20 @@ async function bootstrapSuperAdminIfNeeded(env) {
 //  simultané) → 409 `idempotency_in_progress`, à réessayer. Sans clé :
 //  comportement d'avant (compatibilité des anciens panels).
 const IDEMPOTENCY_TTL_MS = 24 * 3600 * 1000;
-let _idempotencyReady = false;
+const _idempotencyReady = new WeakSet();
 async function ensureIdempotencyTable(env) {
-  if (_idempotencyReady) return;
+  if (_idempotencyReady.has(env.DB)) return;
   await env.DB.prepare(
     'CREATE TABLE IF NOT EXISTS idempotency_keys ('
     + 'k TEXT PRIMARY KEY, actor_id TEXT, request_hash TEXT NOT NULL, '
-    + 'status INTEGER, body_json TEXT, created_at INTEGER NOT NULL)',
+    + 'status INTEGER, body_json TEXT, created_at INTEGER NOT NULL, '
+    + 'committed_at INTEGER, commit_ref TEXT)',
   ).run();
-  _idempotencyReady = true;
+  // Table créée avant l'ajout du marqueur : colonnes additives.
+  for (const col of ['committed_at INTEGER', 'commit_ref TEXT']) {
+    try { await env.DB.prepare(`ALTER TABLE idempotency_keys ADD COLUMN ${col}`).run(); } catch (_) { /* déjà là */ }
+  }
+  _idempotencyReady.add(env.DB);
 }
 
 async function sha256Hex(text) {
@@ -652,9 +669,14 @@ async function sha256Hex(text) {
   return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-async function withIdempotency(request, env, actor, route, run) {
+/// Réservation sans réponse ni engagement plus vieille que ce délai : la
+/// requête qui l'a prise est morte AVANT d'écrire quoi que ce soit (un Worker
+/// ne vit pas 60 s sur cette route). Une nouvelle tentative peut la reprendre.
+const IDEMPOTENCY_STALE_MS = 60 * 1000;
+
+async function withIdempotency(request, env, actor, route, run, recover = null) {
   const key = (request.headers.get('Idempotency-Key') || '').trim();
-  if (!key) return run(request);
+  if (!key) return run(request, null);
   if (!/^[A-Za-z0-9_-]{8,128}$/.test(key)) {
     return errResp('bad_idempotency_key', 'Idempotency-Key : 8 à 128 caractères [A-Za-z0-9_-].', 400);
   }
@@ -665,37 +687,67 @@ async function withIdempotency(request, env, actor, route, run) {
   const hash = await sha256Hex(`${route}\n${bodyText}`);
   const now = Date.now();
   const prev = await env.DB
-    .prepare('SELECT request_hash, status, body_json FROM idempotency_keys WHERE k = ?')
+    .prepare('SELECT request_hash, status, body_json, created_at, committed_at, commit_ref FROM idempotency_keys WHERE k = ?')
     .bind(k).first();
   if (prev) {
     if (prev.request_hash !== hash) {
       return errResp('idempotency_mismatch',
         'Cette clé a déjà servi pour une autre requête. Génère une nouvelle clé.', 409);
     }
-    if (prev.status == null) {
+    if (prev.status != null) {
+      const res = jsonResp(JSON.parse(prev.body_json || 'null'), prev.status);
+      return withResponseHeader(res, 'Idempotent-Replayed', 'true');
+    }
+    if (prev.committed_at != null && recover) {
+      // La requête d'origine a ENGAGÉ son écriture puis est morte avant de
+      // garder sa réponse : on la reconstruit depuis le marqueur écrit dans
+      // la même transaction, puis on la garde (les rejeux suivants sont
+      // identiques à celle-ci). Rien n'est réexécuté.
+      let ref = null;
+      try { ref = JSON.parse(prev.commit_ref || 'null'); } catch (_) { ref = null; }
+      const rebuilt = await recover(ref);
+      const text = await rebuilt.clone().text();
+      await env.DB.prepare('UPDATE idempotency_keys SET status = ?, body_json = ? WHERE k = ? AND status IS NULL')
+        .bind(rebuilt.status, text, k).run();
+      return withResponseHeader(rebuilt, 'Idempotent-Replayed', 'recovered');
+    }
+    if (prev.committed_at == null && now - Number(prev.created_at || 0) > IDEMPOTENCY_STALE_MS) {
+      // Réservation morte sans engagement : on la reprend (une seule
+      // reprise gagne, grâce à la condition sur created_at).
+      const took = await env.DB.prepare(
+        'UPDATE idempotency_keys SET created_at = ? WHERE k = ? AND status IS NULL AND committed_at IS NULL AND created_at = ?',
+      ).bind(now, k, prev.created_at).run();
+      if (!(took && took.meta && took.meta.changes === 1)) {
+        return errResp('idempotency_in_progress',
+          'La même activation est déjà en cours. Réessaie dans quelques secondes.', 409);
+      }
+    } else {
       return errResp('idempotency_in_progress',
         'La même activation est déjà en cours. Réessaie dans quelques secondes.', 409);
     }
-    const res = jsonResp(JSON.parse(prev.body_json || 'null'), prev.status);
-    return withResponseHeader(res, 'Idempotent-Replayed', 'true');
-  }
-  try {
-    await env.DB.prepare(
-      'INSERT INTO idempotency_keys (k, actor_id, request_hash, status, body_json, created_at) '
-      + 'VALUES (?, ?, ?, NULL, NULL, ?)',
-    ).bind(k, actor.id, hash, now).run();
-  } catch (_) {
-    // Clé primaire déjà prise : une requête jumelle vient de passer.
-    return errResp('idempotency_in_progress',
-      'La même activation est déjà en cours. Réessaie dans quelques secondes.', 409);
+  } else {
+    try {
+      await env.DB.prepare(
+        'INSERT INTO idempotency_keys (k, actor_id, request_hash, status, body_json, created_at) '
+        + 'VALUES (?, ?, ?, NULL, NULL, ?)',
+      ).bind(k, actor.id, hash, now).run();
+    } catch (_) {
+      // Clé primaire déjà prise : une requête jumelle vient de passer.
+      return errResp('idempotency_in_progress',
+        'La même activation est déjà en cours. Réessaie dans quelques secondes.', 409);
+    }
   }
   let res;
   try {
-    res = await run(new Request(request, { body: bodyText }));
+    // `slot` : le gestionnaire écrit le marqueur d'engagement DANS sa
+    // transaction métier (voir handleActivate).
+    res = await run(new Request(request, { body: bodyText }), { key: k });
   } catch (e) {
-    // L'exécution a échoué sans réponse : on libère la clé pour qu'une
-    // nouvelle tentative puisse s'exécuter.
-    try { await env.DB.prepare('DELETE FROM idempotency_keys WHERE k = ?').bind(k).run(); } catch (_) { /* best-effort */ }
+    // Échec AVANT engagement : la clé est libérée pour une nouvelle tentative.
+    // Échec APRÈS engagement : la clé est gardée, le rejeu reconstruira.
+    try {
+      await env.DB.prepare('DELETE FROM idempotency_keys WHERE k = ? AND committed_at IS NULL').bind(k).run();
+    } catch (_) { /* la réservation deviendra reprenable après IDEMPOTENCY_STALE_MS */ }
     throw e;
   }
   const text = await res.clone().text();
@@ -710,14 +762,36 @@ async function withIdempotency(request, env, actor, route, run) {
   return res;
 }
 
+/// Réponse d'activation reconstruite depuis le marqueur d'engagement.
+function recoverActivationResponse(ref) {
+  if (!ref || !ref.license_id) {
+    return errResp('idempotency_unrecoverable', 'Activation engagée mais illisible. Relis la fiche.', 409);
+  }
+  return jsonResp({
+    ok: true,
+    license_id: ref.license_id,
+    device_id: ref.device_id,
+    customer_id: ref.customer_id,
+    mac: ref.mac,
+    plan: ref.plan,
+    expires_at: ref.expires_at === undefined ? null : ref.expires_at,
+    credits_charged: ref.credits_charged || 0,
+    credit_balance: ref.credit_balance === undefined ? null : ref.credit_balance,
+    renewed: !!ref.renewed,
+    order_id: null,
+    trace_id: ref.trace_id || null,
+    recovered: true,
+  }, 201);
+}
+
 // Colonne de corrélation du journal d'audit (ajout additif, une fois par
 // isolate) : `X-Request-Id` de la requête → l'action du panel, l'écriture
 // en base et la réponse portent le même identifiant.
-let _auditCorrelationReady = false;
+const _auditCorrelationReady = new WeakSet();
 async function ensureAuditCorrelationColumn(env) {
-  if (_auditCorrelationReady || !env.DB) return;
+  if (!env.DB || _auditCorrelationReady.has(env.DB)) return;
   try { await env.DB.prepare('ALTER TABLE audit_logs ADD COLUMN correlation_id TEXT').run(); } catch (_) { /* déjà là */ }
-  _auditCorrelationReady = true;
+  _auditCorrelationReady.add(env.DB);
 }
 
 export async function logAudit(env, request, actor, action, target, before, after) {
@@ -779,10 +853,23 @@ function requestIdFrom(request) {
 
 /// Même requête, avec l'identifiant de corrélation posé en en-tête : les
 /// gestionnaires (audit, événement d'activation) le lisent là.
-function withRequestId(request, requestId) {
+function withRequestId(request, requestId, receivedAt = Date.now()) {
   const headers = new Headers(request.headers);
   headers.set('X-Request-Id', requestId);
+  // T1 (réception API, horloge serveur) : posé ici, lu par orderOpts().
+  headers.set('X-Api-Received-At', String(receivedAt));
   return new Request(request, { headers });
+}
+
+/// Mesures et corrélation d'un ordre box (06/10/2026) :
+///   T0 = X-Client-Sent-At (horloge du navigateur, gardée si < 24 h d'écart),
+///   T1 = réception API, T2 = maintenant (appelé juste après la transaction).
+function orderOpts(request, extra = {}) {
+  const t1 = Number(request.headers.get('X-Api-Received-At')) || null;
+  const t0raw = Number(request.headers.get('X-Client-Sent-At'));
+  const t0 = Number.isFinite(t0raw) && t0raw > 0 && t1 && Math.abs(t1 - t0raw) < 24 * 3600 * 1000
+    ? t0raw : null;
+  return { traceId: request.headers.get('X-Request-Id') || null, t0, t1, t2: Date.now(), ...extra };
 }
 
 function withResponseHeader(res, name, value) {
@@ -797,11 +884,12 @@ export async function apiV1(request, env) {
   // suit la requête jusqu'au journal d'audit et revient dans la réponse
   // (`X-Request-Id`). Le journal Worker porte la cause réelle, redactée.
   const requestId = requestIdFrom(request);
+  const receivedAt = Date.now();
   try {
     if (request.method === 'OPTIONS') {
       res = new Response(null, { status: 204, headers: JSON_HEADERS });
     } else {
-      res = await apiV1Inner(withRequestId(request, requestId), env);
+      res = await apiV1Inner(withRequestId(request, requestId, receivedAt), env);
     }
     res = withResponseHeader(res, 'X-Request-Id', requestId);
   } catch (e) {
@@ -966,7 +1054,8 @@ async function apiV1Inner(request, env) {
     // la même `Idempotency-Key` rejoue la réponse déjà engagée au lieu de
     // réactiver (et redébiter). Sans clé : comportement d'avant.
     return withIdempotency(request, env, actor, 'activate',
-      (req) => handleActivate(req, env, a.user, actor));
+      (req, slot) => handleActivate(req, env, a.user, actor, slot),
+      async (ref) => recoverActivationResponse(ref));
   }
 
   // /transfer — déplacer un abonnement d'une ancienne MAC vers une
@@ -1252,6 +1341,30 @@ async function apiV1Inner(request, env) {
   // par sa MAC, poussée à l'app. Admin ET revendeurs (chacun provisionne
   // ses clients). GET pour relire, PUT pour (ré)assigner, DELETE pour
   // retirer.
+  // /sources/:mac/revisions (GET) et /sources/:mac/rollback (POST).
+  if (parts[0] === 'sources' && parts.length === 3 && parts[2] === 'revisions' && request.method === 'GET') {
+    return handleSourceRevisions(env, parts[1], a.user);
+  }
+  if (parts[0] === 'sources' && parts.length === 3 && parts[2] === 'rollback' && request.method === 'POST') {
+    if (!resellerCan(a.user, 'sources')) {
+      return errResp('forbidden', 'Ton niveau ne permet pas de pousser une source.', 403);
+    }
+    return handleSourceRollback(request, env, parts[1], actor, a.user);
+  }
+  // /orders?mac=…|trace=… — ordres box suivis (états réels + accusés).
+  if (parts[0] === 'orders' && parts.length === 1 && request.method === 'GET') {
+    return handleOrdersList(request, env, a.user);
+  }
+  // /metrics/latency?hours=24 — p50/p95/p99 mesurés (admin).
+  if (parts[0] === 'metrics' && parts[1] === 'latency' && request.method === 'GET') {
+    if (!isOwner(a.user)) return errResp('forbidden', 'Réservé à l’administrateur.', 403);
+    return handleLatencyMetrics(request, env);
+  }
+  // /timeline?q=… — chronologie client (boîte noire).
+  if (parts[0] === 'timeline' && parts.length === 1 && request.method === 'GET') {
+    return handleTimeline(request, env, actor, a.user);
+  }
+
   if (parts[0] === 'sources' && parts.length === 2) {
     const mac = parts[1];
     if (request.method === 'GET') return handleSourceGet(env, mac, a.user);
@@ -2497,21 +2610,18 @@ async function handleServersCreate(request, env, actor) {
     return errResp('missing_fields', 'label and url required', 400);
   }
   // Position auto = max+1 si non fournie (le nouveau serveur arrive
-  // en bas de liste).
-  let position = Number.isFinite(body.position) ? body.position : null;
-  if (position === null) {
-    const row = await env.DB
-      .prepare('SELECT COALESCE(MAX(position), 0) AS m FROM default_servers')
-      .first();
-    position = ((row && row.m) || 0) + 1;
-  }
+  // en bas de liste). Calculée DANS l'INSERT (une seule requête, donc
+  // atomique) : avant le 06/10/2026, « lire MAX puis insérer » en deux
+  // requêtes donnait la même position à des créations simultanées
+  // (prouvé : 10 créations → positions 1,1,1,1,1,1,2,2,2,2).
+  const position = Number.isFinite(body.position) ? body.position : null;
   const id = body.id || genId('srv');
   const now = Date.now();
   await env.DB
     .prepare(
       `INSERT INTO default_servers
         (id, label, url, position, enabled, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+       SELECT ?, ?, ?, COALESCE(?, (SELECT COALESCE(MAX(position), 0) + 1 FROM default_servers)), ?, ?, ?`,
     )
     .bind(id, label, urlVal, position, body.enabled === false ? 0 : 1, now, now)
     .run();
@@ -2773,14 +2883,16 @@ function normalizeSource(raw) {
     if (!server || !user || !pass) {
       return { error: 'xtream requires server_url, username, password' };
     }
-    const serverErr = httpUrlError(server, 'server_url');
+    const serverErr = sourceUrlProblem(server, 'server_url');
     if (serverErr) return { error: serverErr };
+    const credErr = sourceTextProblem(user, 'username') || sourceTextProblem(pass, 'password');
+    if (credErr) return { error: credErr };
     return { source: { type, label, server_url: server, username: user, password: pass, m3u_url: null, epg_url: epg, ...off } };
   }
   if (type === 'm3u') {
     const m3u = (raw.m3u_url || '').trim();
     if (!m3u) return { error: 'm3u requires m3u_url' };
-    const m3uErr = httpUrlError(m3u, 'm3u_url');
+    const m3uErr = sourceUrlProblem(m3u, 'm3u_url');
     if (m3uErr) return { error: m3uErr };
     return { source: { type, label, server_url: null, username: null, password: null, m3u_url: m3u, epg_url: epg, ...off } };
   }
@@ -2791,53 +2903,19 @@ function normalizeSource(raw) {
 /// `sources` = tableau de 1 à 3 sources normalisées. On stocke le tableau
 /// complet en JSON (sources_json) ET la 1re dans les colonnes simples
 /// (compat avec l'ancienne app qui ne lit qu'une source).
-async function upsertDeviceSource(env, mac, sources, resellerId = null) {
+async function upsertDeviceSource(env, mac, sources, resellerId = null, revision = null) {
   await ensureSourcesTable(env);
   // Les sources assignées ICI (payant) sont marquées origin='panel' → VERROUILLÉES
-  // côté self-service (le client ne peut ni les modifier ni les supprimer).
-  // password et m3u_url sont chiffrés plus bas. Une source seule
-  // (activation) ou un tableau (trio) sont tous les deux acceptés.
+  // côté self-service. Les listes 'self' du client sont GARDÉES : elles sont
+  // relues DANS la boucle de comparaison-échange (device_sources_store.js),
+  // donc une liste ajoutée par le client pendant cet envoi n'est plus perdue.
   const panelItems = coerceSourceList(sources).map((s) => ({ ...s, origin: 'panel' }));
-  // PRÉSERVE les playlists 'self' que le client a ajoutées via /mon-espace : une
-  // (ré)assignation panel NE DOIT PAS effacer les listes personnelles du client
-  // (modèle multi-listes). On relit l'existant et on ré-empile les 'self' après.
-  let selfItems = [];
-  try {
-    const prev = await env.DB
-      .prepare('SELECT sources_json FROM device_sources WHERE mac = ?')
-      .bind(mac).first();
-    if (prev && prev.sources_json) {
-      let arr = [];
-      try { arr = JSON.parse(prev.sources_json) || []; } catch (_) { arr = []; }
-      selfItems = arr.filter((s) => s && s.origin === 'self');
-    }
-  } catch (_) { /* pas de précédent → rien à préserver */ }
-
-  const merged = [];
-  for (const item of [...panelItems, ...selfItems]) {
-    merged.push(await sealSource(env, item));
-  }
-  const first = merged[0] || {};
-  const json = JSON.stringify(merged);
-  await env.DB
-    .prepare(
-      // Colonnes plates = 1re source PANEL (compat app/panel). origin ligne =
-      // 'panel' (la source prioritaire/flat est payante et verrouillée).
-      `INSERT INTO device_sources
-         (mac, type, label, server_url, username, password, m3u_url, epg_url, sources_json, origin, reseller_id, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'panel', ?, ?)
-       ON CONFLICT(mac) DO UPDATE SET
-         type=excluded.type, label=excluded.label, server_url=excluded.server_url,
-         username=excluded.username, password=excluded.password,
-         m3u_url=excluded.m3u_url, epg_url=excluded.epg_url,
-         sources_json=excluded.sources_json, origin='panel',
-         reseller_id=COALESCE(excluded.reseller_id, device_sources.reseller_id),
-         updated_at=excluded.updated_at`,
-    )
-    .bind(mac, first.type, first.label, first.server_url, first.username,
-          first.password, first.m3u_url, first.epg_url, json, resellerId, Date.now())
-    .run();
+  const out = await casWriteSources(env, mac, (row, items) => ({
+    items: [...panelItems, ...items.filter((s) => s && s.origin === 'self')],
+  }), { resellerId, revision });
+  if (out.conflict) return { conflict: true };
   await clearSourceTombstone(env, mac);
+  return { ok: true, rev: out.rev };
 }
 
 /// Un revendeur ne lit / modifie / efface que les sources de SES appareils.
@@ -2861,39 +2939,15 @@ async function assertSourceAccess(env, user, mac) {
 
 /// Retire les sources posées par le panel. Garde les listes 'self'
 /// (Mon espace). N'efface pas la licence : activation et lien sont séparés.
-async function clearPanelSources(env, mac) {
+async function clearPanelSources(env, mac, revision = null) {
   await ensureSourcesTable(env);
-  const prev = await env.DB
-    .prepare('SELECT sources_json, reseller_id FROM device_sources WHERE mac = ?')
-    .bind(mac).first();
-  if (!prev) return;
-  let arr = [];
-  if (prev.sources_json) {
-    try { arr = JSON.parse(prev.sources_json) || []; } catch (_) { arr = []; }
-  }
-  const selfItems = Array.isArray(arr) ? arr.filter((s) => s && s.origin === 'self') : [];
-  if (!selfItems.length) {
-    await env.DB.prepare('DELETE FROM device_sources WHERE mac = ?').bind(mac).run();
-    return;
-  }
-  const first = selfItems[0];
-  const json = JSON.stringify(selfItems);
-  await env.DB.prepare(
-    `INSERT INTO device_sources
-       (mac, type, label, server_url, username, password, m3u_url, epg_url, sources_json, origin, reseller_id, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'self', ?, ?)
-     ON CONFLICT(mac) DO UPDATE SET
-       type=excluded.type, label=excluded.label, server_url=excluded.server_url,
-       username=excluded.username, password=excluded.password,
-       m3u_url=excluded.m3u_url, epg_url=excluded.epg_url,
-       sources_json=excluded.sources_json, origin='self',
-       reseller_id=COALESCE(excluded.reseller_id, device_sources.reseller_id),
-       updated_at=excluded.updated_at`,
-  ).bind(
-    mac, first.type || 'm3u', first.label || null, first.server_url || null,
-    first.username || null, first.password || null, first.m3u_url || null,
-    first.epg_url || null, json, prev.reseller_id || null, Date.now(),
-  ).run();
+  // Garde les listes 'self' ; plus aucune liste → la ligne est effacée.
+  // Même chemin sûr que l'envoi (comparaison-échange + révision atomique).
+  const out = await casWriteSources(env, mac, (row, items) => ({
+    items: items.filter((s) => s && s.origin === 'self'),
+  }), { revision });
+  if (out.conflict) return { conflict: true };
+  return { ok: true, rev: out.rev };
 }
 
 // Décode une MAC reçue dans le PATH : le front encode les « : » en
@@ -2981,12 +3035,21 @@ async function handleSourcePut(request, env, mac, actor, user) {
     return errResp('bad_source', 'at least one source required', 400);
   }
   const resellerId = user && user.role === 'reseller' ? user.sub : null;
-  await upsertDeviceSource(env, m, sources, resellerId);
+  // VALIDATED (normalizeSource ci-dessus, défauts de saisie compris) →
+  // PUBLISHED (écrite et servie) → la box accuse ACKNOWLEDGED ou la refuse
+  // (REJECTED_BY_BOX) en gardant la précédente. Une liste refusée ici n'a
+  // rien écrit : la dernière saine reste servie.
+  const opts = orderOpts(request);
+  const written = await upsertDeviceSource(env, m, sources, resellerId, { traceId: opts.traceId, actor });
+  if (written.conflict) {
+    return errResp('sources_conflict', 'Les listes de cette box changent en ce moment. Réessaie.', 409);
+  }
+  const rev = written.rev;
   await logAudit(env, request, actor, 'source.set',
     { type: 'device_source', id: m }, null,
-    { count: sources.length, types: sources.map((s) => s.type) });
-  await notifyBox(env, m, 'source');
-  return jsonResp({ ok: true, mac: m, count: sources.length });
+    { count: sources.length, types: sources.map((s) => s.type), rev });
+  const orderId = await notifyBox(env, m, 'source', { ...orderOpts(request), configRev: rev });
+  return jsonResp({ ok: true, mac: m, count: sources.length, rev, order_id: orderId, trace_id: opts.traceId });
 }
 
 async function handleSourceDelete(request, env, mac, actor, user) {
@@ -3001,12 +3064,300 @@ async function handleSourceDelete(request, env, mac, actor, user) {
   if (access) return access;
   // Retire le lien du panel. Garde les listes perso et la licence.
   // Le tombstone empêche le repli KV de ressusciter l'ancienne liste.
-  await clearPanelSources(env, m);
+  const cleared = await clearPanelSources(env, m, { traceId: request.headers.get('X-Request-Id'), actor });
+  if (cleared.conflict) {
+    return errResp('sources_conflict', 'Les listes de cette box changent en ce moment. Réessaie.', 409);
+  }
   await markSourcesCleared(env, m, Date.now());
+  const rev = cleared.rev;
   await logAudit(env, request, actor, 'source.clear',
-    { type: 'device_source', id: m }, null, null);
-  await notifyBox(env, m, 'source_clear');
-  return jsonResp({ ok: true, mac: m });
+    { type: 'device_source', id: m }, null, { rev });
+  const orderId = await notifyBox(env, m, 'source_clear', { ...orderOpts(request), configRev: rev });
+  return jsonResp({ ok: true, mac: m, rev, order_id: orderId });
+}
+
+
+// =========================================================
+//  Révisions de listes, ordres suivis, latence, chronologie (06/10/2026)
+// =========================================================
+
+async function handleSourceRevisions(env, mac, user) {
+  const gate = await sourceMacForActor(env, mac, user);
+  if (gate.error) return gate.error;
+  return jsonResp({ mac: gate.mac, ...(await revisionView(env, gate.mac)) });
+}
+
+/// Retour à une révision ACKNOWLEDGED (par défaut la dernière bonne).
+/// Republiée comme NOUVELLE révision (`rollback_of`) : rien n'est effacé.
+async function handleSourceRollback(request, env, mac, actor, user) {
+  let body = {};
+  try { body = await request.json(); } catch (_) { body = {}; }
+  const gate = await sourceMacForActor(env, mac, user);
+  if (gate.error) return gate.error;
+  const m = gate.mac;
+  const access = await assertSourceAccess(env, user, m);
+  if (access) return access;
+  const view = await revisionView(env, m);
+  const target = Number(body.rev) || view.last_good_revision;
+  if (!target) return errResp('no_good_revision', 'Aucune révision confirmée par la box : rien vers quoi revenir.', 409);
+  const row = await revisionPanelJson(env, m, target);
+  if (!row) return errResp('not_found', 'Révision inconnue.', 404);
+  if (row.state !== 'acknowledged') {
+    return errResp('revision_not_good', 'Seule une révision confirmée par la box peut être republiée.', 409);
+  }
+  let sealed = [];
+  try { sealed = JSON.parse(row.panel_json) || []; } catch (_) { sealed = []; }
+  const opened = await openSourceList(env, sealed);
+  const sources = [];
+  for (const raw of opened) {
+    const norm = normalizeSource(raw);
+    if (norm.error) return errResp('bad_revision', norm.error, 409);
+    sources.push(norm.source);
+  }
+  const resellerId = user && user.role === 'reseller' ? user.sub : null;
+  const opts = orderOpts(request);
+  const revision = { traceId: opts.traceId, actor, rollbackOf: target };
+  const written = sources.length
+    ? await upsertDeviceSource(env, m, sources, resellerId, revision)
+    : await clearPanelSources(env, m, revision);
+  if (written.conflict) {
+    return errResp('sources_conflict', 'Les listes de cette box changent en ce moment. Réessaie.', 409);
+  }
+  const rev = written.rev;
+  await logAudit(env, request, actor, 'source.rollback',
+    { type: 'device_source', id: m }, { rev: view.current_revision }, { rev, rollback_of: target });
+  const orderId = await notifyBox(env, m, 'source', { ...orderOpts(request), configRev: rev });
+  return jsonResp({ ok: true, mac: m, rev, rollback_of: target, order_id: orderId, trace_id: opts.traceId });
+}
+
+/// MAC visibles par cet acteur (revendeur : les siennes).
+async function visibleMacs(env, user, macs) {
+  if (!user || user.role !== 'reseller' || !macs.length) return macs;
+  const marks = macs.map(() => '?').join(',');
+  const rows = (await env.DB.prepare(
+    `SELECT mac FROM devices WHERE mac IN (${marks}) AND reseller_id = ?`,
+  ).bind(...macs, user.sub).all()).results || [];
+  const ok = new Set(rows.map((r) => r.mac));
+  return macs.filter((x) => ok.has(x));
+}
+
+function orderView(r) {
+  return {
+    order_id: r.order_id, mac: r.mac, customer_id: r.customer_id, device_id: r.device_id,
+    kind: r.kind, op: r.op, trace_id: r.trace_id,
+    state: effectiveState(r), late_ack: !!r.late_ack, config_rev: r.config_rev, applied_rev: r.applied_rev,
+    t0_client: r.t0_client, t1_api: r.t1_api, t2_commit: r.t2_commit, t3_published: r.t3_published,
+    received_at: r.received_at, received_srv: r.received_srv,
+    applied_at: r.applied_at, applied_srv: r.applied_srv,
+    failed_at: r.failed_at, failed_srv: r.failed_srv,
+    result: r.result, error_code: r.error_code, error_message: r.error_message,
+    app_version: r.app_version, created_at: r.created_at,
+  };
+}
+
+async function handleOrdersList(request, env, user) {
+  const url = new URL(request.url);
+  const trace = (url.searchParams.get('trace') || '').trim();
+  const macRaw = (url.searchParams.get('mac') || '').trim();
+  let rows = [];
+  if (trace) {
+    rows = await listOrders(env, { traceId: trace });
+    const allowed = new Set(await visibleMacs(env, user, [...new Set(rows.map((r) => r.mac))]));
+    rows = rows.filter((r) => allowed.has(r.mac));
+  } else if (macRaw) {
+    const gate = await sourceMacForActor(env, macRaw, user);
+    if (gate.error) return gate.error;
+    rows = await listOrders(env, { macs: [gate.mac], limit: 100 });
+  } else {
+    return errResp('bad_query', 'mac ou trace requis', 400);
+  }
+  return jsonResp({ items: rows.map(orderView) });
+}
+
+async function handleLatencyMetrics(request, env) {
+  const url = new URL(request.url);
+  const hours = Math.min(24 * 30, Math.max(1, Number(url.searchParams.get('hours')) || 24));
+  const since = Date.now() - hours * 3600 * 1000;
+  const ops = await latencyStats(env, since);
+  return jsonResp({
+    window_hours: hours,
+    since,
+    // Aucun chiffre inventé : un segment sans mesure vaut { n: 0, p50: null }.
+    ops,
+    clock_note: 'client_to_api compare l’horloge du navigateur à celle du serveur ; les autres segments n’utilisent que l’horloge serveur.',
+  });
+}
+
+const TIMELINE_DROP_KEYS = new Set(['password', 'username', 'm3u_url', 'server_url', 'url', 'email', 'phone']);
+function timelineScrub(value) {
+  if (Array.isArray(value)) return value.map(timelineScrub);
+  if (!value || typeof value !== 'object') return value;
+  const out = {};
+  for (const [k, v] of Object.entries(value)) {
+    if (TIMELINE_DROP_KEYS.has(String(k).toLowerCase())) continue;
+    out[k] = timelineScrub(v);
+  }
+  return out;
+}
+
+function normalizeQueryMac(q) {
+  const s = String(q || '').trim().toUpperCase();
+  if (/^MK(?::[0-9A-F]{2}){5}$/.test(s)) return s;
+  if (/^(?:[0-9A-F]{2}:){4}[0-9A-F]{2}$/.test(s)) return `MK:${s}`;
+  return null;
+}
+
+/// Chronologie client : q = MAC, e-mail client, id client (cus_…),
+/// id appareil (dev_…) ou trace_id. Reconstruit, triés par heure serveur :
+/// actions du panel (audit), ordres et leurs accusés, révisions de listes.
+/// Le journal de la box (heure locale de la box, sans fuseau) est joint à
+/// part, ses lignes portant un trace_id sont signalées. La recherche est
+/// elle-même auditée, sans recopier l'e-mail.
+async function handleTimeline(request, env, actor, user) {
+  const url = new URL(request.url);
+  const q = (url.searchParams.get('q') || '').trim();
+  const days = Math.min(30, Math.max(1, Number(url.searchParams.get('days')) || 7));
+  const since = Date.now() - days * 24 * 3600 * 1000;
+  if (!q || q.length > 200) return errResp('bad_query', 'q requis (MAC, e-mail, id client, id appareil ou trace)', 400);
+
+  let devices = [];
+  let kind = 'trace';
+  const mac = normalizeQueryMac(q);
+  const sel = 'SELECT id, mac, customer_id, reseller_id FROM devices';
+  if (mac) {
+    kind = 'mac';
+    devices = (await env.DB.prepare(`${sel} WHERE mac = ?`).bind(mac).all()).results || [];
+  } else if (q.includes('@')) {
+    kind = 'email';
+    devices = (await env.DB.prepare(
+      `${sel} WHERE customer_id IN (SELECT id FROM customers WHERE lower(email) = lower(?)) LIMIT 10`,
+    ).bind(q).all()).results || [];
+  } else if (q.startsWith('cus_')) {
+    kind = 'customer';
+    devices = (await env.DB.prepare(`${sel} WHERE customer_id = ? LIMIT 10`).bind(q).all()).results || [];
+  } else if (q.startsWith('dev_')) {
+    kind = 'device';
+    devices = (await env.DB.prepare(`${sel} WHERE id = ?`).bind(q).all()).results || [];
+  }
+  let traceOrders = [];
+  if (kind === 'trace') {
+    traceOrders = await listOrders(env, { traceId: q });
+    const macs = [...new Set(traceOrders.map((r) => r.mac))];
+    if (macs.length) {
+      const marks = macs.map(() => '?').join(',');
+      devices = (await env.DB.prepare(`${sel} WHERE mac IN (${marks})`).bind(...macs).all()).results || [];
+    }
+  }
+  if (user && user.role === 'reseller') {
+    devices = devices.filter((d) => d.reseller_id === user.sub);
+  }
+  const macs = devices.map((d) => d.mac);
+  const deviceIds = devices.map((d) => d.id);
+
+  const orders = kind === 'trace'
+    ? traceOrders.filter((r) => macs.includes(r.mac))
+    : (macs.length ? await listOrders(env, { macs, since, limit: 300 }) : []);
+  const traces = [...new Set(orders.map((r) => r.trace_id).filter(Boolean))];
+  if (kind === 'trace' && !traces.includes(q)) traces.push(q);
+
+  let licenseIds = [];
+  if (deviceIds.length) {
+    const marks = deviceIds.map(() => '?').join(',');
+    licenseIds = ((await env.DB.prepare(`SELECT id FROM licenses WHERE device_id IN (${marks})`)
+      .bind(...deviceIds).all()).results || []).map((r) => r.id);
+  }
+  const targets = [...macs, ...deviceIds, ...licenseIds];
+  let audits = [];
+  if (targets.length || traces.length) {
+    const conds = [];
+    const binds = [];
+    if (targets.length) { conds.push(`target_id IN (${targets.map(() => '?').join(',')})`); binds.push(...targets); }
+    if (traces.length) { conds.push(`correlation_id IN (${traces.map(() => '?').join(',')})`); binds.push(...traces); }
+    try {
+      audits = (await env.DB.prepare(
+        `SELECT action, actor_type, actor_id, target_type, target_id, before_json, after_json, correlation_id, created_at
+           FROM audit_logs WHERE (${conds.join(' OR ')}) AND created_at >= ? ORDER BY created_at ASC LIMIT 300`,
+      ).bind(...binds, since).all()).results || [];
+    } catch (_) { audits = []; }
+  }
+  if (user && user.role === 'reseller') {
+    // Un revendeur ne voit l'audit que pour ses appareils (cibles ci-dessus) ;
+    // une trace sans appareil à lui ne remonte rien.
+    if (!devices.length) audits = [];
+  }
+
+  const events = [];
+  const parse = (j) => { try { return j ? timelineScrub(JSON.parse(j)) : null; } catch (_) { return null; } };
+  for (const a of audits) {
+    events.push({
+      at: a.created_at, source: 'audit', type: a.action, trace_id: a.correlation_id || null,
+      actor: `${a.actor_type}:${a.actor_id || ''}`, target: `${a.target_type || ''}:${a.target_id || ''}`,
+      before: parse(a.before_json), after: parse(a.after_json),
+    });
+  }
+  for (const r of orders) {
+    const base = {
+      source: 'order', order_id: r.order_id, mac: r.mac, device_id: r.device_id, customer_id: r.customer_id,
+      kind: r.kind, trace_id: r.trace_id, config_rev: r.config_rev,
+    };
+    if (r.t2_commit || r.created_at) events.push({ ...base, at: r.t2_commit || r.created_at, type: 'ORDER_CREATED' });
+    if (r.t3_published) events.push({ ...base, at: r.t3_published, type: 'ORDER_SENT' });
+    if (r.received_srv) events.push({ ...base, at: r.received_srv, type: 'BOX_RECEIVED', box_time: r.received_at });
+    if (r.applied_srv) {
+      events.push({
+        ...base, at: r.applied_srv, type: 'BOX_APPLIED', late_ack: !!r.late_ack,
+        box_time: r.applied_at, result: r.result, applied_rev: r.applied_rev,
+      });
+    }
+    if (r.failed_srv) {
+      events.push({
+        ...base, at: r.failed_srv, type: 'BOX_FAILED', late_ack: !!r.late_ack,
+        box_time: r.failed_at, result: r.result, error_code: r.error_code,
+        error_message: r.error_message, applied_rev: r.applied_rev,
+      });
+    }
+    if (effectiveState(r) === 'expired') {
+      events.push({ ...base, at: (r.created_at || 0) + 10 * 60 * 1000, type: 'ORDER_EXPIRED' });
+    }
+  }
+  const revisions = [];
+  for (const m of macs) {
+    const view = await revisionView(env, m);
+    revisions.push({ mac: m, ...view, revisions: view.revisions.slice(0, 10) });
+    for (const r of view.revisions) {
+      if ((r.published_at || 0) < since) continue;
+      events.push({ at: r.published_at, source: 'revision', type: 'CONFIG_REVISION_PUBLISHED', mac: m, rev: r.rev, trace_id: r.trace_id, rollback_of: r.rollback_of });
+      if (r.acked_at) {
+        events.push({ at: r.acked_at, source: 'revision', type: r.state === 'acknowledged' ? 'CONFIG_REVISION_ACKNOWLEDGED' : 'CONFIG_REVISION_REJECTED_BY_BOX', mac: m, rev: r.rev, result: r.ack_result, error_message: r.ack_error });
+      }
+    }
+  }
+  events.sort((x, y) => (x.at || 0) - (y.at || 0));
+
+  const journals = [];
+  for (const m of macs.slice(0, 3)) {
+    const bb = await readBlackBox(env, m);
+    const lines = (bb.body || '').split('\n').filter(Boolean).slice(-300);
+    journals.push({
+      mac: m,
+      uploaded_at: bb.updated_at,
+      clock: 'heure locale de la box (sans fuseau)',
+      lines: lines.map((line) => ({ line, trace_id: traces.find((t) => line.includes(t)) || null })),
+    });
+  }
+
+  await logAudit(env, request, actor, 'blackbox.search',
+    { type: 'timeline', id: kind }, null, { kind, devices: deviceIds.length, events: events.length });
+
+  return jsonResp({
+    query_kind: kind,
+    days,
+    devices: devices.map((d) => ({ id: d.id, mac: d.mac, customer_id: d.customer_id })),
+    traces,
+    events,
+    revisions,
+    box_journals: journals,
+  });
 }
 
 // =========================================================
@@ -3191,9 +3542,12 @@ async function handleFamiliesDelete(env, id, actor, user) {
   const m = await env.DB.prepare('SELECT mac FROM family_members WHERE family_id = ?').bind(id).all();
   for (const r of (m.results || [])) {
     try {
-      await clearPanelSources(env, r.mac);
+      const c = await clearPanelSources(env, r.mac, { actor });
+      if (c.conflict) console.error(JSON.stringify({ level: 'warn', source: 'family.delete', event: 'sources_conflict' }));
       await markSourcesCleared(env, r.mac, Date.now());
-    } catch (_) {}
+    } catch (e) {
+      console.error(JSON.stringify({ level: 'warn', source: 'family.delete', message: redact(String(e && e.message || e)) }));
+    }
   }
   await env.DB.prepare('DELETE FROM family_members WHERE family_id = ?').bind(id).run();
   await env.DB.prepare('DELETE FROM families WHERE id = ?').bind(id).run();
@@ -3238,7 +3592,10 @@ async function handleFamilyAddMember(request, env, user, actor, familyId) {
   if (actResp && actResp.status >= 400) return actResp; // propage l'erreur
 
   // 2) Pousse la source de la famille à cette MAC (l'app la charge).
-  await upsertDeviceSource(env, mac, [source]);
+  const pushed = await upsertDeviceSource(env, mac, [source], null, { actor });
+  if (pushed.conflict) {
+    return errResp('sources_conflict', 'Les listes de cette box changent en ce moment. Réessaie.', 409);
+  }
 
   // 3) Enregistre le membre dans la famille.
   await env.DB.prepare(
@@ -3261,9 +3618,12 @@ async function handleFamilyRemoveMember(env, familyId, mac, actor, user) {
   // Retire la source panel. Les listes perso et la licence restent.
   // Tombstone : sinon le repli KV réinjecte l'ancienne liste au prochain GET.
   try {
-    await clearPanelSources(env, m);
+    const c = await clearPanelSources(env, m, { actor });
+    if (c.conflict) console.error(JSON.stringify({ level: 'warn', source: 'family.member.remove', event: 'sources_conflict' }));
     await markSourcesCleared(env, m, Date.now());
-  } catch (_) {}
+  } catch (e) {
+    console.error(JSON.stringify({ level: 'warn', source: 'family.member.remove', message: redact(String(e && e.message || e)) }));
+  }
   await logAudit(env, { headers: new Headers() }, actor, 'family.member.remove',
     { type: 'family', id: familyId }, null, { mac: m });
   return jsonResp({ ok: true, family_id: familyId, mac: m });
@@ -3855,15 +4215,22 @@ async function handleResellerSignup(request, env) {
   const id = genId('rsl');
   const now = Date.now();
   const hash = await hashPassword(password);
-  await env.DB
+  // `ON CONFLICT(email) DO NOTHING` : deux inscriptions simultanées du même
+  // identifiant passaient toutes deux la lecture ci-dessus ; la seconde
+  // heurtait UNIQUE(email) et finissait en 500 au lieu de 409.
+  const res = await env.DB
     .prepare(
       `INSERT INTO resellers
         (id, email, password_hash, name, credit_balance_cents, credit_balance,
          commission_rate, status, level, permissions, created_at)
-       VALUES (?, ?, ?, ?, 0, 0, 0.20, 'pending', 'basique', ?, ?)`,
+       VALUES (?, ?, ?, ?, 0, 0, 0.20, 'pending', 'basique', ?, ?)
+       ON CONFLICT(email) DO NOTHING`,
     )
     .bind(id, email, hash, name, JSON.stringify(['activate']), now)
     .run();
+  if (!res || !res.meta || res.meta.changes !== 1) {
+    return errResp('email_taken', 'Cet identifiant est déjà pris', 409);
+  }
   return jsonResp({ ok: true, pending: true }, 201);
 }
 
@@ -4334,10 +4701,17 @@ async function handleDeviceTransfer(request, env, user, actor) {
   // Déplace la source IPTV : si la nouvelle MAC en avait déjà une, on la
   // remplace par celle de l'ancienne (le client garde SES identifiants).
   try {
-    await env.DB.prepare('DELETE FROM device_sources WHERE mac = ?').bind(newMac).run();
-    const moved = await env.DB.prepare(
-      'UPDATE device_sources SET mac = ?, updated_at = ? WHERE mac = ?',
-    ).bind(newMac, now, oldMac).run();
+    await ensureSourcesTable(env);
+    await ensureSourcesVersion(env);
+    // Une seule transaction : jamais la nouvelle MAC vidée sans que les
+    // listes de l'ancienne y soient déplacées (version incrémentée : une
+    // écriture concurrente sur ces listes relira l'état réel).
+    const [, moved] = await env.DB.batch([
+      env.DB.prepare('DELETE FROM device_sources WHERE mac = ?').bind(newMac),
+      env.DB.prepare(
+        'UPDATE device_sources SET mac = ?, updated_at = ?, version = COALESCE(version, 0) + 1 WHERE mac = ?',
+      ).bind(newMac, now, oldMac),
+    ]);
     await markSourcesCleared(env, oldMac, now);
     if (moved && moved.meta && moved.meta.changes) {
       await clearSourceTombstone(env, newMac);
@@ -4455,7 +4829,7 @@ async function handleTrialExtend(request, env, actor) {
 //  Trouve-ou-cree le client + le device (cle = MAC), cree OU renouvelle
 //  la licence pour l'app, et DEBITE les credits du revendeur selon le
 //  cout du plan. C'est l'endpoint que le portail revendeur appelle.
-async function handleActivate(request, env, user, actor) {
+async function handleActivate(request, env, user, actor, idemSlot = null) {
   // Mesure réelle de la latence serveur (écrite dans l'audit, `took_ms`) et
   // identifiant de corrélation de bout en bout (`X-Request-Id`).
   const t0 = Date.now();
@@ -4542,7 +4916,7 @@ async function handleActivate(request, env, user, actor) {
       }
       await logAudit(env, request, actor, 'activate.keep_lifetime',
         { type: 'license', id: earlyLic.id }, null, { mac, plan: 'lifetime', cost: 0 });
-      await notifyBox(env, mac, 'activate');
+      await notifyBox(env, mac, 'activate', orderOpts(request));
       return jsonResp({
         ok: true,
         license_id: earlyLic.id,
@@ -4575,46 +4949,53 @@ async function handleActivate(request, env, user, actor) {
   }
 
 
-  // 1) Device par MAC (find-or-create).
-  const device = await env.DB
+  // 1) Appareil par MAC, sûr en concurrence. Deux premières activations
+  //    simultanées de la même MAC ne créent qu'UN appareil (mac UNIQUE +
+  //    ON CONFLICT DO NOTHING) et aucun client orphelin : le client créé
+  //    pour rien est retiré dans la même transaction.
+  let device = await env.DB
     .prepare('SELECT id, customer_id, reseller_id FROM devices WHERE mac = ?')
     .bind(mac).first();
-  let customerId; let deviceId;
-
-  if (device) {
-    // Cloisonnement : un revendeur ne peut activer que SES devices,
-    // ou un device orphelin (qu'il s'approprie).
-    if (isReseller && device.reseller_id && device.reseller_id !== user.sub) {
-      return errResp('forbidden', 'This device belongs to another reseller', 403);
-    }
-    deviceId = device.id;
-    customerId = device.customer_id;
-    if (chargeResellerId && !device.reseller_id) {
-      await env.DB
-        .prepare('UPDATE devices SET reseller_id = ?, last_seen_at = ? WHERE id = ?')
-        .bind(chargeResellerId, now, deviceId).run();
-    }
-  } else {
-    customerId = genId('cus');
-    deviceId = genId('dev');
+  if (!device) {
+    const newCustomerId = genId('cus');
+    const newDeviceId = genId('dev');
     await env.DB.batch([
       env.DB.prepare(
         `INSERT INTO customers (id, email, name, phone, reseller_id, notes, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      ).bind(customerId, body.customer_email || null,
+      ).bind(newCustomerId, body.customer_email || null,
              body.customer_name || ('Client ' + mac.slice(-5)),
              null, chargeResellerId, null, now, now),
       env.DB.prepare(
         `INSERT INTO devices (id, customer_id, mac, label, reseller_id, first_seen_at, last_seen_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      ).bind(deviceId, customerId, mac, body.label || null, chargeResellerId, now, now),
+         VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(mac) DO NOTHING`,
+      ).bind(newDeviceId, newCustomerId, mac, body.label || null, chargeResellerId, now, now),
+      env.DB.prepare(
+        'DELETE FROM customers WHERE id = ? AND NOT EXISTS (SELECT 1 FROM devices WHERE customer_id = ?)',
+      ).bind(newCustomerId, newCustomerId),
     ]);
+    device = await env.DB
+      .prepare('SELECT id, customer_id, reseller_id FROM devices WHERE mac = ?')
+      .bind(mac).first();
+    if (!device) {
+      return errResp('activation_conflict', 'Appareil introuvable après création. Réessaie.', 409);
+    }
+  }
+  // Cloisonnement : un revendeur n'active que SES appareils, ou un appareil
+  // orphelin qu'il s'approprie (seulement s'il l'est encore).
+  if (isReseller && device.reseller_id && device.reseller_id !== user.sub) {
+    return errResp('forbidden', 'This device belongs to another reseller', 403);
+  }
+  const deviceId = device.id;
+  const customerId = device.customer_id;
+  if (chargeResellerId && !device.reseller_id) {
+    await env.DB
+      .prepare('UPDATE devices SET reseller_id = ?, last_seen_at = ? WHERE id = ? AND reseller_id IS NULL')
+      .bind(chargeResellerId, now, deviceId).run();
   }
 
   // Interrupteur ALLUMÉ : une licence À VIE déjà active ne se paie
-  // pas une deuxième fois, et le débit est conditionnel (solde réel)
-  // AVANT d'écrire la licence. Coupé : on garde l'ancien débit
-  // (une seconde activation à vie redébiterait).
+  // pas une deuxième fois.
   const enforceCredits = trialEnforcementOn(env);
   if (enforceCredits) {
     const early = await env.DB
@@ -4625,7 +5006,7 @@ async function handleActivate(request, env, user, actor) {
       && early.status === 'active'
       && (early.expires_at === null || early.expires_at === undefined);
     if (alreadyLife) {
-      await notifyBox(env, mac, 'activate');
+      await notifyBox(env, mac, 'activate', orderOpts(request));
       return jsonResp({
         ok: true,
         already_lifetime: true,
@@ -4642,121 +5023,127 @@ async function handleActivate(request, env, user, actor) {
     }
   }
 
-  // Débit AVANT la licence quand l'interrupteur est allumé : si le solde
-  // ne suffit plus (course entre deux activations), on n'écrit PAS de
-  // licence gratuite.
-  let debitedEarly = false;
-  let balanceAfter = null;
-  if (enforceCredits && chargeResellerId && cost > 0) {
-    // RETURNING : une ligne = le débit a eu lieu. Zéro ligne = solde
-    // insuffisant (y compris si une autre activation vient de passer).
-    const row = await env.DB.prepare(
-      'UPDATE resellers SET credit_balance = credit_balance - ? '
-      + 'WHERE id = ? AND credit_balance >= ? RETURNING credit_balance',
-    ).bind(cost, chargeResellerId, cost).first();
-    if (!row) {
-      const fresh = await env.DB
-        .prepare('SELECT credit_balance FROM resellers WHERE id = ?')
-        .bind(chargeResellerId)
-        .first();
-      const bal = fresh ? fresh.credit_balance : 0;
-      return errResp('insufficient_credits',
-        `Credits insuffisants (besoin ${cost}, solde ${bal})`, 402);
-    }
-    debitedEarly = true;
-    balanceAfter = row.credit_balance;
-  }
-
-  // 2) Licence (device, app) : renouvelle si elle existe, sinon cree.
-  //    L'état d'AVANT est gardé pour le journal d'audit (événement
-  //    d'activation : état précédent → nouvel état).
-  let existing = await env.DB
+  // 2) ÉCRITURE ATOMIQUE (06/10/2026). Avant : lecture de la date de fin,
+  //    calcul en JavaScript, écriture — deux activations simultanées lisaient
+  //    la même date (une extension perdue), et débit / licence / journal
+  //    étaient des requêtes séparées.
+  //    Maintenant UN lot D1 (une transaction) :
+  //      [débit conditionnel au solde]
+  //      → licence : INSERT … ON CONFLICT DO UPDATE, la nouvelle date est
+  //        calculée PAR SQLite à partir de la valeur courante de la ligne
+  //        (MAX(fin, maintenant) + durée) : aucune extension perdue ;
+  //      → ligne de journal de crédits ; → dégel de l'appareil ;
+  //    chaque étape gardée par `changes() = 1` de l'étape précédente : si le
+  //    solde ne suffit pas, rien d'autre n'est écrit. Invariant prouvé par
+  //    concurrency.e2e.mjs : extensions = débits = réponses 2xx.
+  const before = await env.DB
     .prepare('SELECT id, expires_at, status, plan FROM licenses WHERE device_id = ? AND app_id = ?')
     .bind(deviceId, appId).first();
-  const before = existing
-    ? { status: existing.status, plan: existing.plan, expires_at: existing.expires_at }
-    : null;
-  let licenseId; let finalExpiry; let renewed = false;
-  const ledgerStmt = () => env.DB.prepare(
-    `INSERT INTO credit_ledger
-      (id, reseller_id, delta, reason, balance_after, ref_license_id,
-       ref_device_mac, actor_type, actor_id, note, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  );
-
-  if (existing) {
-    renewed = true;
-    licenseId = existing.id;
-    // Deux renouvellements en même temps (deux onglets, deux admins) lisaient
-    // la même date de fin et l'écrivaient tous les deux : un seul prolongement
-    // pour deux débits. Écriture CONDITIONNELLE à la date lue ; si elle a
-    // changé entre-temps, on relit une fois et on prolonge à partir de la
-    // nouvelle date (chaque activation payée prolonge vraiment).
-    let applied = false;
-    for (let attempt = 0; attempt < 2 && !applied; attempt++) {
-      const base = existing.expires_at && existing.expires_at > now ? existing.expires_at : now;
-      finalExpiry = days === null ? null : base + days * 24 * 60 * 60 * 1000;
-      const upd = await env.DB.prepare(
-        `UPDATE licenses
-         SET status='active', plan=?, expires_at=?, reseller_id=COALESCE(reseller_id, ?), updated_at=?
-         WHERE id=? AND expires_at IS ?`,
-      ).bind(plan, finalExpiry, chargeResellerId, now, licenseId, existing.expires_at).run();
-      applied = !!(upd && upd.meta && upd.meta.changes);
-      if (!applied) {
-        existing = await env.DB
-          .prepare('SELECT id, expires_at, status, plan FROM licenses WHERE id = ?')
-          .bind(licenseId).first();
-        if (!existing) break;
-      }
-    }
-    if (!applied) {
-      return errResp('activation_conflict',
-        'Une autre activation vient de modifier cette licence. Relis la fiche puis réessaie.', 409);
-    }
-  } else {
-    licenseId = genId('lic');
-    finalExpiry = days === null ? null : now + days * 24 * 60 * 60 * 1000;
-    await env.DB.prepare(
-      `INSERT INTO licenses
-        (id, customer_id, device_id, app_id, status, plan, started_at,
-         expires_at, auto_renew, reseller_id, created_at, updated_at)
-       VALUES (?, ?, ?, ?, 'active', ?, ?, ?, 0, ?, ?, ?)`,
-    ).bind(licenseId, customerId, deviceId, appId, plan, now, finalExpiry, chargeResellerId, now, now).run();
+  const addMs = days === null ? null : days * 24 * 60 * 60 * 1000;
+  const newLicenseId = genId('lic');
+  const charge = !!(chargeResellerId && cost > 0);
+  // Débit TOUJOURS conditionnel au solde (06/10/2026), interrupteur ou non :
+  // avant, interrupteur coupé, deux activations simultanées passaient le
+  // contrôle préalable et faisaient descendre le solde sous zéro.
+  const conditional = charge;
+  const guard = conditional ? 'changes() = 1' : '1';
+  const stmts = [];
+  if (charge) {
+    stmts.push(env.DB.prepare('UPDATE resellers SET credit_balance = credit_balance - ? WHERE id = ? AND credit_balance >= ?')
+      .bind(cost, chargeResellerId, cost));
   }
-
-  // 2b + 3) Dégel de l'appareil (le client a payé) ET journal de crédits,
-  // dans UN seul lot D1 (transactionnel) : jamais une licence prolongée
-  // sans sa ligne de ledger, ni l'inverse.
-  const tail = [
-    env.DB.prepare('UPDATE devices SET block_status = NULL WHERE id = ?').bind(deviceId),
-  ];
-  // Le lien M3U n'est PAS écrit ici. Voir PUT /api/v1/sources/:mac.
-  // (Une activation qui contient encore `source` est refusée plus haut, 400.)
-  if (debitedEarly) {
-    // Interrupteur allumé : le solde a DÉJÀ été décrémenté (RETURNING).
-    const fresh = await env.DB
-      .prepare('SELECT credit_balance FROM resellers WHERE id = ?')
-      .bind(chargeResellerId)
-      .first();
-    balanceAfter = fresh ? fresh.credit_balance : balanceAfter;
-    tail.push(ledgerStmt().bind(genId('cl'), chargeResellerId, -cost, renewed ? 'renew' : 'activation',
-      balanceAfter, licenseId, mac, actor.type, actor.id, plan, now));
-  } else if (!enforceCredits && chargeResellerId && cost > 0) {
-    balanceAfter = resellerRow.credit_balance - cost;
-    tail.push(env.DB.prepare('UPDATE resellers SET credit_balance = ? WHERE id = ?').bind(balanceAfter, chargeResellerId));
-    tail.push(ledgerStmt().bind(genId('cl'), chargeResellerId, -cost, renewed ? 'renew' : 'activation',
-      balanceAfter, licenseId, mac, actor.type, actor.id, plan, now));
+  const licenseIdx = stmts.length;
+  stmts.push(env.DB.prepare(
+    `INSERT INTO licenses
+       (id, customer_id, device_id, app_id, status, plan, started_at,
+        expires_at, auto_renew, reseller_id, created_at, updated_at)
+     SELECT ?, ?, ?, ?, 'active', ?, ?, ?, 0, ?, ?, ? WHERE ${guard}
+     ON CONFLICT(device_id, app_id) DO UPDATE SET
+       status = 'active',
+       plan = CASE WHEN licenses.expires_at IS NULL AND ? IS NOT NULL THEN licenses.plan ELSE excluded.plan END,
+       expires_at = CASE
+         WHEN ? IS NULL THEN NULL
+         WHEN licenses.expires_at IS NULL THEN NULL
+         ELSE MAX(licenses.expires_at, ?) + ?
+       END,
+       reseller_id = COALESCE(licenses.reseller_id, excluded.reseller_id),
+       updated_at = excluded.updated_at
+     RETURNING id, expires_at`,
+  ).bind(newLicenseId, customerId, deviceId, appId, plan, now,
+         addMs === null ? null : now + addMs, chargeResellerId, now, now,
+         addMs, addMs, now, addMs));
+  const ledgerId = genId('cl');
+  if (charge) {
+    stmts.push(env.DB.prepare(
+      `INSERT INTO credit_ledger
+         (id, reseller_id, delta, reason, balance_after, ref_license_id,
+          ref_device_mac, actor_type, actor_id, note, created_at)
+       SELECT ?, ?, ?,
+              CASE WHEN (SELECT id FROM licenses WHERE device_id = ? AND app_id = ?) = ? THEN 'activation' ELSE 'renew' END,
+              (SELECT credit_balance FROM resellers WHERE id = ?),
+              (SELECT id FROM licenses WHERE device_id = ? AND app_id = ?),
+              ?, ?, ?, ?, ?
+       WHERE changes() = 1`,
+    ).bind(ledgerId, chargeResellerId, -cost,
+           deviceId, appId, newLicenseId,
+           chargeResellerId,
+           deviceId, appId,
+           mac, actor.type, actor.id, plan, now));
   }
-  await env.DB.batch(tail);
+  stmts.push(env.DB.prepare('UPDATE devices SET block_status = NULL WHERE id = ?').bind(deviceId));
+  if (idemSlot && idemSlot.key) {
+    // MARQUEUR D'ENGAGEMENT dans la même transaction : si le processus meurt
+    // après ce lot, un rejeu de la même clé retrouve CE résultat au lieu de
+    // réexécuter (et de redébiter). Écrit seulement si l'activation l'est
+    // (avec débit : seulement si la ligne de journal existe).
+    stmts.push(env.DB.prepare(
+      `UPDATE idempotency_keys SET committed_at = ?, commit_ref = json_object(
+         'license_id', (SELECT id FROM licenses WHERE device_id = ? AND app_id = ?),
+         'expires_at', (SELECT expires_at FROM licenses WHERE device_id = ? AND app_id = ?),
+         'renewed', CASE WHEN (SELECT id FROM licenses WHERE device_id = ? AND app_id = ?) = ? THEN 0 ELSE 1 END,
+         'device_id', ?, 'customer_id', ?, 'mac', ?, 'plan', ?,
+         'credits_charged', ?, 'credit_balance', (SELECT credit_balance FROM resellers WHERE id = ?),
+         'trace_id', ?)
+       WHERE k = ? AND ${charge ? 'EXISTS (SELECT 1 FROM credit_ledger WHERE id = ?)' : '1 = ?'}`,
+    ).bind(Date.now(), deviceId, appId, deviceId, appId, deviceId, appId, newLicenseId,
+      deviceId, customerId, mac, plan, chargeResellerId ? cost : 0, chargeResellerId || '',
+      correlationId || null, idemSlot.key, charge ? ledgerId : 1));
+  }
+  const balanceIdx = stmts.length;
+  if (charge) {
+    stmts.push(env.DB.prepare('SELECT credit_balance FROM resellers WHERE id = ?').bind(chargeResellerId));
+  }
+  const results = await env.DB.batch(stmts);
+
+  if (conditional && !(results[0] && results[0].meta && results[0].meta.changes)) {
+    // Solde insuffisant au moment de l'écriture (course entre activations) :
+    // aucune licence, aucune ligne de journal n'a été écrite.
+    const fresh = await env.DB.prepare('SELECT credit_balance FROM resellers WHERE id = ?')
+      .bind(chargeResellerId).first();
+    return errResp('insufficient_credits',
+      `Credits insuffisants (besoin ${cost}, solde ${fresh ? fresh.credit_balance : 0})`, 402);
+  }
+  const licRow = results[licenseIdx] && results[licenseIdx].results && results[licenseIdx].results[0];
+  if (!licRow) {
+    return errResp('activation_conflict', 'Licence non écrite. Relis la fiche puis réessaie.', 409);
+  }
+  const licenseId = licRow.id;
+  const finalExpiry = licRow.expires_at === undefined ? null : licRow.expires_at;
+  const renewed = licenseId !== newLicenseId;
+  const balRow = charge && results[balanceIdx] && results[balanceIdx].results
+    ? results[balanceIdx].results[0] : null;
+  const balanceAfter = charge ? (balRow ? balRow.credit_balance : null)
+    : (resellerRow ? resellerRow.credit_balance : null);
 
   await logAudit(env, request, actor, renewed ? 'activate.renew' : 'activate.create',
-    { type: 'license', id: licenseId }, before,
+    { type: 'license', id: licenseId },
+    before ? { status: before.status, plan: before.plan, expires_at: before.expires_at } : null,
     {
       mac, plan, app_id: appId, cost, reseller_id: chargeResellerId,
       status: 'active', expires_at: finalExpiry, device_id: deviceId,
       customer_id: customerId, took_ms: Date.now() - t0, request_id: correlationId,
     });
-  await notifyBox(env, mac, renewed ? 'renew' : 'activate');
+  const orderId = await notifyBox(env, mac, renewed ? 'renew' : 'activate', orderOpts(request));
 
   return jsonResp({
     ok: true,
@@ -4769,5 +5156,7 @@ async function handleActivate(request, env, user, actor) {
     credits_charged: chargeResellerId ? cost : 0,
     credit_balance: balanceAfter,
     renewed,
+    order_id: orderId,
+    trace_id: correlationId,
   }, 201);
 }

@@ -57,10 +57,13 @@ export function trialWindow(startedAt, now, days = TRIAL_DAYS) {
   return { start, trialUntil, expired, daysLeft };
 }
 
-let _anchorReady = false;
+// État PAR BASE (WeakSet/WeakMap clés = env.DB), pas par isolate : un drapeau
+// global sautait la création des tables pour une seconde base du même isolate
+// (défaut prouvé par un test le 06/10/2026).
+const _anchorReady = new WeakSet();
 
 export async function ensureTrialAnchorTable(env) {
-  if (_anchorReady || !env || !env.DB) return;
+  if (!env || !env.DB || _anchorReady.has(env.DB)) return;
   // extended_until : date de fin posée par « Ajouter des jours ».
   // Colonne ajoutée, jamais supprimée. Une table déjà créée sans elle
   // reçoit l'ALTER juste après (échec ignoré si la colonne existe).
@@ -86,7 +89,7 @@ export async function ensureTrialAnchorTable(env) {
     + 'previous_until INTEGER, new_until INTEGER NOT NULL, '
     + 'actor_type TEXT, actor_id TEXT, created_at INTEGER NOT NULL)',
   ).run();
-  _anchorReady = true;
+  _anchorReady.add(env.DB);
 }
 
 /// Fin d'essai la plus tardive entre le calcul habituel et un ajout

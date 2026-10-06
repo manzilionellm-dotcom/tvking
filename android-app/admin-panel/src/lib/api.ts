@@ -88,6 +88,7 @@ interface RequestOpts {
 }
 
 // Clé d'idempotence des écritures critiques : module pur (testé sous node).
+import { newIdempotencyKey } from './idempotency';
 export { newIdempotencyKey, keepIdempotencyKeyAfter } from './idempotency';
 
 async function request<T = unknown>(
@@ -98,6 +99,14 @@ async function request<T = unknown>(
     'Content-Type': 'application/json',
     ...(opts.headers || {}),
   };
+  // Trace de bout en bout (06/10/2026) : chaque écriture porte un
+  // X-Request-Id (repris par l'audit, l'ordre box, la trame temps réel et
+  // l'accusé de la box) et T0 = heure d'envoi du navigateur.
+  const method = opts.method || 'GET';
+  if (method !== 'GET') {
+    if (!headers['X-Request-Id']) headers['X-Request-Id'] = newIdempotencyKey();
+    headers['X-Client-Sent-At'] = String(Date.now());
+  }
   if (!opts.noAuth) {
     const token = getToken();
     if (token) headers.Authorization = `Bearer ${token}`;
@@ -636,6 +645,45 @@ export interface BlackBoxJournal {
 
 /// Journal technique d'une box (boîte noire), déjà filtré côté app
 /// et côté Worker. `ask` demande à la box d'en renvoyer un.
+// Chronologie client et latence mesurée (Worker, 06/10/2026).
+export interface TimelineEvent {
+  at: number;
+  source: 'audit' | 'order' | 'revision';
+  type: string;
+  trace_id?: string | null;
+  order_id?: string;
+  mac?: string;
+  kind?: string;
+  config_rev?: number | null;
+  rev?: number;
+  result?: string | null;
+  error_code?: string | null;
+  error_message?: string | null;
+  late_ack?: boolean;
+  box_time?: number | null;
+  actor?: string;
+}
+export interface TimelineResult {
+  query_kind: string;
+  days: number;
+  devices: { id: string; mac: string; customer_id: string }[];
+  traces: string[];
+  events: TimelineEvent[];
+  box_journals: { mac: string; uploaded_at: number; clock: string; lines: { line: string; trace_id: string | null }[] }[];
+}
+export interface LatencySegment { n: number; p50: number | null; p95: number | null; p99: number | null }
+export interface LatencyResult {
+  window_hours: number;
+  ops: Record<string, { orders: number; states: Record<string, number>; segments: Record<string, LatencySegment> }>;
+  clock_note: string;
+}
+export const traceApi = {
+  timeline: (q: string, days = 7) =>
+    request<TimelineResult>(`/api/v1/timeline?q=${encodeURIComponent(q)}&days=${days}`),
+  latency: (hours = 24) =>
+    request<LatencyResult>(`/api/v1/metrics/latency?hours=${hours}`),
+};
+
 export const blackboxApi = {
   get: (mac: string) =>
     request<BlackBoxJournal>(`/api/v1/blackbox/${encodeURIComponent(mac)}`),
