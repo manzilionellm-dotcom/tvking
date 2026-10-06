@@ -36,6 +36,7 @@ import '../../subscription/data/subscription_state.dart';
 import '../domain/panel_source_decision.dart';
 import '../domain/playlist.dart';
 import 'source_opt_outs.dart';
+import 'source_link_utils.dart';
 import 'import_progress.dart';
 import 'playlist_repository.dart';
 
@@ -108,6 +109,11 @@ abstract final class RemoteSourceRepository {
     // [storeBuild]). L'utilisateur ajoute ses sources lui-même.
     if (storeBuild) return RemoteSyncResult.noSource;
     try {
+      try {
+        final SharedPreferences prefs = await SharedPreferences.getInstance();
+        m3uLinkAsM3u = prefs.getBool(m3uLinkAsM3uKey) ?? false;
+        panelReconcileOff = prefs.getBool(panelReconcileOffKey) ?? false;
+      } catch (_) {}
       final String mac = await DeviceIdentity.instance.mac;
       if (!mac.startsWith('MK:')) return RemoteSyncResult.noSource;
 
@@ -178,9 +184,27 @@ abstract final class RemoteSourceRepository {
 
       final Object? list = body['sources'];
       if (list is List && list.isNotEmpty) {
+        final List<Map<String, dynamic>> all =
+            list.whereType<Map<String, dynamic>>().toList();
+        // ÉTEINTE au panel (`enabled: false`) : le téléphone n'a pas de
+        // liste « masquée » ; une liste éteinte n'est donc pas chargée, et
+        // retirée si elle l'était. Rallumée, elle revient (par l'API
+        // Xtream : quelques secondes). 06/10/2026.
+        final List<Map<String, dynamic>> active = panelReconcileOff
+            ? all
+            : all.where((Map<String, dynamic> s) => s['enabled'] != false).toList();
         // Même boucle que applySources (règle du labo comprise) : une seule
         // implémentation, pas deux comportements qui divergent.
-        return await applySources(list.whereType<Map<String, dynamic>>().toList());
+        final RemoteSyncResult r = active.isEmpty
+            ? RemoteSyncResult.noSource
+            : await applySources(active);
+        // RETIRÉE au panel (06/10/2026, « si on retire, on retire ») : avant,
+        // seul « Effacer les listes » enlevait une liste du téléphone ;
+        // retirer UNE liste parmi plusieurs la laissait là. On enlève ce que
+        // le panel avait posé et ne sert plus (ou a éteint). Les listes
+        // ajoutées à la main ne sont jamais dans `provisioned`.
+        if (!panelReconcileOff) await _dropNoLongerServed(active);
+        return r;
       }
 
       final Object? src = body['source'];
@@ -603,6 +627,27 @@ abstract final class RemoteSourceRepository {
         return RemoteSyncResult.noSource;
       }
 
+      // LIEN get.php ENVOYÉ PAR LE PANEL (06/10/2026) : lu par l'API Xtream
+      // du même serveur, comme sur la box. Mesuré sur le fournisseur du
+      // propriétaire : fichier M3U > 200 Mo (744 000 entrées, 49 s avant
+      // le premier octet) contre 28 490 chaînes TV en 8 Mo et 1 s par
+      // l'API. Le téléphone restait sur « Pas encore de chaînes ». Si
+      // l'API refuse, repli sur le fichier M3U (ci-dessous).
+      final ({String server, String username, String password})? creds =
+          m3uLinkAsM3u ? null : SourceLinkUtils.tryExtractXtreamCredentials(m3u);
+      if (creds != null) {
+        final RemoteSyncResult? viaApi = await _applyGetPhpAsXtream(
+          src: src,
+          m3u: m3u,
+          creds: creds,
+          label: label,
+          existing: existing,
+          onProgress: onProgress,
+          makeActive: makeActive,
+        );
+        if (viaApi != null) return viaApi;
+      }
+
       Playlist? existingM3u;
       for (final Playlist p in existing) {
         if (p.type == PlaylistType.m3u && p.m3uUrl == m3u) {
@@ -634,6 +679,124 @@ abstract final class RemoteSourceRepository {
       }
     }
     return RemoteSyncResult.noSource;
+  }
+
+  /// Repli : vrai = un lien get.php du panel est téléchargé comme fichier
+  /// M3U complet (ancien comportement). Préférence
+  /// `zuno.mobile.getphp_as_m3u`, lue à chaque relecture.
+  static bool m3uLinkAsM3u = false;
+  static const String m3uLinkAsM3uKey = 'zuno.mobile.getphp_as_m3u';
+
+  /// Repli : vrai = ancien comportement, une liste retirée ou éteinte au
+  /// panel RESTE sur le téléphone (seul « Effacer les listes » agit).
+  /// Préférence `zuno.mobile.panel_reconcile_off`.
+  static bool panelReconcileOff = false;
+  static const String panelReconcileOffKey = 'zuno.mobile.panel_reconcile_off';
+
+  /// Tests seulement : client HTTP donné au compte Xtream tiré d'un lien
+  /// get.php (en production `null` = le client IPTV habituel).
+  @visibleForTesting
+  static http.Client Function()? xtreamHttpForTest;
+
+  /// Lien get.php → compte Xtream. `null` = l'API a refusé : l'appelant
+  /// retombe sur le fichier M3U. Les DEUX empreintes (lien et compte) sont
+  /// retenues : « Effacer » ou « Retirer » au panel (qui parle du lien)
+  /// retrouvent la liste Xtream.
+  static Future<RemoteSyncResult?> _applyGetPhpAsXtream({
+    required Map<String, dynamic> src,
+    required String m3u,
+    required ({String server, String username, String password}) creds,
+    required String label,
+    required List<Playlist> existing,
+    required ImportProgressCallback? onProgress,
+    required bool makeActive,
+  }) async {
+    // Supprimée par le client sous sa forme Xtream : on respecte.
+    if (await SourceOptOuts.isXtreamOptedOut(creds.server, creds.username,
+        assignedAt: _assignationMs(src))) {
+      return RemoteSyncResult.noSource;
+    }
+    for (final Playlist p in existing) {
+      if (p.type == PlaylistType.xtream &&
+          p.xtreamServer == creds.server &&
+          p.xtreamUsername == creds.username) {
+        await _activateIfAsked(p, makeActive);
+        await _rememberProvision(ProvisionKey.m3u(m3u));
+        await _rememberProvision(ProvisionKey.xtream(creds.server, creds.username));
+        return RemoteSyncResult.loaded;
+      }
+    }
+    try {
+      await PlaylistRepository.instance.addXtreamPlaylist(
+        name: label,
+        serverUrl: creds.server,
+        username: creds.username,
+        password: creds.password,
+        onProgress: onProgress,
+        makeActive: makeActive,
+        httpClient: xtreamHttpForTest?.call(),
+      );
+      final bool wasPanelM3u = (await _loadProvisioned()).contains(ProvisionKey.m3u(m3u));
+      await _rememberProvision(ProvisionKey.m3u(m3u));
+      await _rememberProvision(ProvisionKey.xtream(creds.server, creds.username));
+      // L'ancienne copie « fichier M3U » de CE lien, posée par le panel
+      // avant cette version, ferait doublon (même abonnement deux fois) :
+      // on la retire, la liste Xtream la remplace.
+      if (wasPanelM3u) {
+        for (final Playlist p in existing) {
+          if (p.id != null && p.type == PlaylistType.m3u && p.m3uUrl == m3u) {
+            await PlaylistRepository.instance.deletePlaylist(p.id!);
+          }
+        }
+      }
+      return RemoteSyncResult.loaded;
+    } catch (e) {
+      if (kDebugMode) debugPrint('[RemoteSource] get.php par API refusé, repli M3U : $e');
+      return null;
+    }
+  }
+
+  /// Empreintes d'une liste servie par le panel. Un lien get.php vaut
+  /// aussi pour le compte Xtream qu'on en a tiré.
+  @visibleForTesting
+  static Set<ProvisionKey> keysOfServed(List<Map<String, dynamic>> served) {
+    final Set<ProvisionKey> out = <ProvisionKey>{};
+    for (final Map<String, dynamic> s in served) {
+      final String type = '${s['type'] ?? ''}'.trim().toLowerCase();
+      if (type == 'xtream') {
+        final String server = '${s['server_url'] ?? ''}'.trim();
+        final String user = '${s['username'] ?? ''}'.trim();
+        if (server.isNotEmpty) out.add(ProvisionKey.xtream(server, user));
+      } else if (type == 'm3u') {
+        final String m3u = '${s['m3u_url'] ?? ''}'.trim();
+        if (m3u.isEmpty) continue;
+        out.add(ProvisionKey.m3u(m3u));
+        final ({String server, String username, String password})? c =
+            SourceLinkUtils.tryExtractXtreamCredentials(m3u);
+        if (c != null) out.add(ProvisionKey.xtream(c.server, c.username));
+      }
+    }
+    return out;
+  }
+
+  /// Enlève du téléphone les listes que le panel avait posées et qu'il ne
+  /// sert plus (retirées ou éteintes). Rien d'autre.
+  static Future<void> _dropNoLongerServed(List<Map<String, dynamic>> active) async {
+    final Set<ProvisionKey> provisioned = await _loadProvisioned();
+    final Set<ProvisionKey> served = keysOfServed(active);
+    final Set<ProvisionKey> drop = provisioned.difference(served);
+    if (drop.isEmpty) return;
+    final List<Playlist> local =
+        await PlaylistRepository.instance.getAllPlaylists();
+    for (final Playlist p in local) {
+      if (p.id == null) continue;
+      if (!drop.any((ProvisionKey k) => _playlistIs(p, k))) continue;
+      // Une liste encore servie sous une AUTRE empreinte (lien get.php
+      // devenu compte Xtream) reste.
+      if (served.any((ProvisionKey k) => _playlistIs(p, k))) continue;
+      await PlaylistRepository.instance.deletePlaylist(p.id!);
+    }
+    await _forgetProvision(drop);
   }
 
   static const String _kProvisioned = 'panel.provisioned_v1';
