@@ -3,6 +3,7 @@ import Link from "next/link";
 import { PLANS } from "../lib/plans";
 import BuyButton from "../components/site/BuyButton";
 import AppOnlyNotice from "../components/site/AppOnlyNotice";
+import CitationFaq from "../components/site/CitationFaq";
 
 export const metadata: Metadata = {
   title: "Forfaits",
@@ -59,6 +60,7 @@ export default function ForfaitsPage() {
         </Link>
         .
       </p>
+      <CitationFaq className="mx-auto mt-16 max-w-3xl" />
     </div>
   );
 }
