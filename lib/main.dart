@@ -179,9 +179,7 @@ Future<void> bootApp() async {
       // PANEL EN DIRECT (06/10/2026) : attente longue sur le canal de la
       // box ; une liste ajoutée, retirée ou effacée dans le panel arrive
       // tout de suite tant que l'app est à l'écran (panel_live_wait.dart).
-      if (!RemoteSourceRepository.storeBuild) {
-        unawaited(PanelLiveWait.instance.install());
-      }
+      unawaited(PanelLiveWait.instance.install());
     }
 
     // Sauvegarde cloud par MAC : démarre l'upload automatique (à chaque
