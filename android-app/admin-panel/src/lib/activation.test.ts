@@ -57,6 +57,10 @@ test('défauts : essai 7 jours pour une box neuve, 1 an pour prolonger', () => {
   assert.equal(DEFAULT_RENEW_PLAN, 'yearly');
   assert.equal(planLabel('trial_7d'), 'Essai 7 j');
   assert.equal(planLabel('yearly'), '1 an');
+  assert.equal(planLabel('monthly'), '1 mois');
+  assert.equal(planLabel('lifetime'), 'À vie');
+  assert.equal(planLabel('trial_30d'), 'Essai 30 j');
+  assert.equal(planLabel('plan_inconnu'), 'plan_inconnu');
 });
 
 test('prix dit avant le clic : essai gratuit, crédits du tarif, rien si inconnu', () => {

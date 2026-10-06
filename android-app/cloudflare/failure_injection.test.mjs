@@ -353,6 +353,39 @@ async function main() {
       `K1. 5 inscriptions simultanées du même identifiant : statuts ${JSON.stringify(st)}, ${rows} compte (attendu 201 + 4 × 409, 1 compte)`);
   }
 
+  // ---- L. Essai gratuit ajouté à un abonnement payé : le plan payé reste ----
+  // Mesuré le 06/10/2026 : box payée jusqu'en 2027 affichée « trial_7d ».
+  {
+    const { env, db } = makeEnv();
+    const admin = await login(env);
+    const plan = (mac) => one(db, 'SELECT l.plan, l.expires_at FROM licenses l JOIN devices d ON d.id = l.device_id WHERE d.mac = ?', mac);
+    const MP = 'MK:0B:00:00:00:01';
+    await api(env, 'POST', '/api/v1/activate', { token: admin, body: { mac: MP, plan: 'yearly' } });
+    const y = plan(MP);
+    const t = await api(env, 'POST', '/api/v1/activate', { token: admin, body: { mac: MP, plan: 'trial_7d' } });
+    const after = plan(MP);
+    ok(t.status === 201 && after.plan === 'yearly' && after.expires_at - y.expires_at === 7 * DAY,
+      `L1. abonnement 1 an + essai 7 j : plan « ${after.plan} », +${Math.round((after.expires_at - y.expires_at) / DAY)} j`);
+
+    const MT = 'MK:0B:00:00:00:02';
+    await api(env, 'POST', '/api/v1/activate', { token: admin, body: { mac: MT, plan: 'trial_3d' } });
+    await api(env, 'POST', '/api/v1/activate', { token: admin, body: { mac: MT, plan: 'trial_7d' } });
+    ok(plan(MT).plan === 'trial_7d', 'L2. essai puis essai : reste un essai');
+    await api(env, 'POST', '/api/v1/activate', { token: admin, body: { mac: MT, plan: 'yearly' } });
+    ok(plan(MT).plan === 'yearly', 'L3. essai puis abonnement payé : devient payé');
+
+    const ME = 'MK:0B:00:00:00:03';
+    await api(env, 'POST', '/api/v1/activate', { token: admin, body: { mac: ME, plan: 'monthly' } });
+    db.prepare('UPDATE licenses SET expires_at = ? WHERE device_id = (SELECT id FROM devices WHERE mac = ?)').run(Date.now() - DAY, ME);
+    await api(env, 'POST', '/api/v1/activate', { token: admin, body: { mac: ME, plan: 'trial_7d' } });
+    ok(plan(ME).plan === 'trial_7d', 'L4. abonnement payé EXPIRÉ + essai : c’est un essai');
+
+    const ML = 'MK:0B:00:00:00:04';
+    await api(env, 'POST', '/api/v1/activate', { token: admin, body: { mac: ML, plan: 'lifetime' } });
+    await api(env, 'POST', '/api/v1/activate', { token: admin, body: { mac: ML, plan: 'trial_7d' } });
+    ok(plan(ML).plan === 'lifetime' && plan(ML).expires_at === null, 'L5. à vie + essai : reste à vie');
+  }
+
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);
 }

@@ -5063,7 +5063,17 @@ async function handleActivate(request, env, user, actor, idemSlot = null) {
      SELECT ?, ?, ?, ?, 'active', ?, ?, ?, 0, ?, ?, ? WHERE ${guard}
      ON CONFLICT(device_id, app_id) DO UPDATE SET
        status = 'active',
-       plan = CASE WHEN licenses.expires_at IS NULL AND ? IS NOT NULL THEN licenses.plan ELSE excluded.plan END,
+       -- Le libellé du plan suit la durée achetée, sauf :
+       --   • licence à vie : elle reste à vie ;
+       --   • essai gratuit ajouté à un abonnement PAYÉ encore actif : les
+       --     jours s'ajoutent, le plan payé reste (mesuré le 06/10/2026 :
+       --     box payée jusqu'en 2027 affichée « trial_7d »).
+       plan = CASE
+         WHEN licenses.expires_at IS NULL AND ? IS NOT NULL THEN licenses.plan
+         WHEN excluded.plan LIKE 'trial%' AND licenses.plan NOT LIKE 'trial%'
+              AND licenses.status = 'active' AND licenses.expires_at > ? THEN licenses.plan
+         ELSE excluded.plan
+       END,
        expires_at = CASE
          WHEN ? IS NULL THEN NULL
          WHEN licenses.expires_at IS NULL THEN NULL
@@ -5074,7 +5084,7 @@ async function handleActivate(request, env, user, actor, idemSlot = null) {
      RETURNING id, expires_at`,
   ).bind(newLicenseId, customerId, deviceId, appId, plan, now,
          addMs === null ? null : now + addMs, chargeResellerId, now, now,
-         addMs, addMs, now, addMs));
+         addMs, now, addMs, now, addMs));
   const ledgerId = genId('cl');
   if (charge) {
     stmts.push(env.DB.prepare(

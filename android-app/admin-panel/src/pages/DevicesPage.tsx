@@ -2,7 +2,7 @@ import { ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AppLayout } from '@/components/AppLayout';
 import { PlanPicker } from '@/components/PlanPicker';
-import { DEFAULT_RENEW_PLAN, activateButtonText, planCost } from '@/lib/activation';
+import { DEFAULT_RENEW_PLAN, activateButtonText, planCost, planLabel } from '@/lib/activation';
 import { ListPager } from '@/components/ListPager';
 import { confirmAction } from '@/components/confirm';
 import {
@@ -26,11 +26,6 @@ import {
   expiryPhrase, readListPage,
 } from '@/lib/robust';
 
-/// Libellés FR lisibles des plans (clé technique → texte).
-const PLAN_LABELS: Record<string, string> = {
-  monthly: '1 mois', quarterly: '3 mois', biannual: '6 mois',
-  yearly: '1 an', lifetime: 'À vie',
-};
 
 export function DevicesPage({ onLogout }: { onLogout: () => void }) {
   const [items, setItems] = useState<Device[]>([]);
@@ -637,7 +632,9 @@ function SubscriptionBox({ loading, license }: { loading: boolean; license: Devi
   if (loading) return <div className="h-16 animate-pulse rounded-lg bg-white/5" />;
   const ok = license && license.status === 'active';
   const phrase = license ? expiryPhrase(license.expires_at) : 'Aucun abonnement';
-  const plan = license?.plan ? (PLAN_LABELS[license.plan] || license.plan) : '';
+  // Libellé lisible du catalogue commun (« Essai 7 j », « 1 an »…), jamais
+  // le code technique (« trial_7d » s'affichait tel quel avant le 06/10/2026).
+  const plan = license?.plan ? planLabel(license.plan) : '';
   const lifetime = phrase === 'À vie';
   const detail = license ? (plan && phrase !== 'À vie' ? `${plan} · ${phrase}` : phrase) : 'Aucun abonnement';
   return (
