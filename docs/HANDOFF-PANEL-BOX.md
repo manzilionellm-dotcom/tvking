@@ -502,6 +502,66 @@ demande (ce que font IBO / TiviMate / Smarters).
   test local ni changement du comportement de la box. Le correctif
   `9e19cc5` reste à prouver sur la SHIELD sous cette charge.
 
+## 5 suite bis. P0 : vérifications terminées côté dépôt et panel (6 octobre)
+
+- **PROUVÉ — build de test disponible et installé.** Le [build #170](https://github.com/manzilionellm-dotcom/tvking/actions/runs/37435992306)
+  du commit `a000384` est vert. La publication clients est ignorée et la
+  publication de test a réussi. La capture du propriétaire affiche
+  `107-test.170+1791275287` ; la fiche SHIELD relue dans le panel affiche
+  également `VERSION APP 1791275287`. Aucun nouveau comportement de box
+  n'a été ajouté pendant cette vérification ; aucun nouveau build n'est requis
+  pour le correctif `9e19cc5`, déjà inclus dans cette version.
+- **PROUVÉ — tests et mesure CI du correctif Direct.** Journal du job
+  `112177807929`, build #170 :
+  `08:28:06Z 00:49 +516 ~2: All tests passed!` ;
+  `08:27:39Z [mesure] rayons depuis le cache, 50 000 chaînes : 18 ms` ;
+  `08:27:46Z [mesure] ancien calcul sur le fil appelant, 50 000 chaînes (machine de test) : 6937 ms`.
+  Ce sont des mesures sur le runner, pas sur la SHIELD. La contre-preuve
+  exécute les anciens getters. **NON PROUVÉ — contre-preuve avec le vrai
+  interrupteur allumé dans l'écran Direct** : `live_shelves_test.dart`
+  n'allume pas `RepairFlags.liveShelvesLegacy` ; `repair_flags_test.dart`
+  vérifie sa clé et son défaut faux. Il faut un test de l'écran avec le
+  repli allumé et la transition 1 000 → 50 000 chaînes pour couvrir ce point.
+- **PROUVÉ — parcours panel/Worker réparé sans modifier le produit.** Le
+  [run E2E #22](https://github.com/manzilionellm-dotcom/tvking/actions/runs/37439344358)
+  échouait à `run.mjs:314` : attente du titre `Activation` pendant 20 s,
+  alors que le vrai écran s'appelle `Activer une box`. Son défaut est
+  désormais `trial_7d`, sa saisie MAC a une étiquette, et son résultat payé
+  commence par `Activée jusqu’au`.
+  Le commit `afc108bc` sur `claude/panel-mise-en-ligne` ne change que ce
+  parcours : choix réel du bouton radio `1 an`, vérification de
+  `aria-checked`, puis assertions inchangées sur licence active `yearly`,
+  échéance, listes et accès de la box simulée. Le [run #23](https://github.com/manzilionellm-dotcom/tvking/actions/runs/37457752964)
+  est vert : 29 contrôles, `11:39:19Z BILAN tous les contrôles locaux sont passés`.
+  `npm test` dans `android-app/admin-panel` passe aussi : 60 tests,
+  0 échec. Recherche des mêmes anciens sélecteurs dans les parcours :
+  aucune autre attente de ce titre ou de cette ancienne phrase de résultat.
+  L'exécution E2E dans cet environnement local est **NON PROUVÉE** :
+  Wrangler s'arrête avant le parcours sur
+  `uv_interface_addresses returned Unknown system error 1` ; le run GitHub
+  ci-dessus fournit la preuve d'exécution avec le vrai Worker local et D1.
+- **PROUVÉ — état relu de la SHIELD `MK:80:78:60:07:4F`.** Le panel affiche
+  appareil actif, abonnement à vie, échéance à vie, **0 /3 source poussée**.
+  Dernière présence affichée : 06/10 à 12:31, hors ligne lors de la relecture.
+  La boîte noire reçue, datée par le panel du 06/10 à 12:32:26, contient
+  322 lignes, de 10:59:23 à 12:32:22. Extraits sans donnée de flux :
+  `06/10 11:29:00 I [SCREEN] Direct ouvert` ;
+  `06/10 11:29:00 I [DIRECT] 0 chaînes · 0 catégories` ;
+  `06/10 12:32:22 I [MEM] [périodique] process 198 Mo (rss 275, natif 96)`.
+  Aucune fin d'import ni ligne `[GEL]` dans ce journal reçu. Leur absence
+  sur cette période sans import ne prouve pas le comportement sous charge.
+- **NON PROUVÉ — P0 sur la vraie SHIELD avec la grosse liste.** Il manque
+  la liste de cette box et l'essai dans Direct pendant puis après son import.
+  Il faut envoyer cette liste d'environ 50 000 chaînes à `80:78:60:07:4F`,
+  ouvrir Direct, puis obtenir le journal couvrant le chargement et sa fin
+  (durée et nombre de chaînes), la mémoire sous charge et les éventuels gels.
+  Le critère mémoire à 5 s reste incompatible avec le timer de 30 s décrit
+  ci-dessus : il demande une instrumentation adaptée, pas une assertion
+  assouplie. Les listes d'une autre MAC ne sont pas utilisées pour ce test.
+- Aucun déploiement Worker/panel ni publication clients effectué. La seule
+  écriture produit pendant la lecture du panel est une demande de journal
+  technique à la MAC de référence ; aucune licence ni liste n'a été modifiée.
+
 ## 6. Règles du propriétaire (non négociables)
 
 - Jamais `publish=true` sans son ordre écrit ; jamais de push sur `main`.
