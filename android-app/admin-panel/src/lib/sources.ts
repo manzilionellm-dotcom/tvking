@@ -162,20 +162,37 @@ export function validateListInput(s: SourceInput): string | null {
   return null;
 }
 
-export type ActivationListPlan =
-  | { kind: 'send'; sources: SourceInput[] }
-  | { kind: 'already' }
-  | { kind: 'full' };
+export type ActivationListPlan = {
+  kind: 'send';
+  /// Ce que le panel envoie : la liste saisie, seule (les listes du client
+  /// restent : le serveur les garde d'office, cf. `origin: 'self'`).
+  sources: SourceInput[];
+  /// Nombre d'anciennes listes du panel que cet envoi remplace.
+  replaced: number;
+  /// Nombre de listes du client qui restent sur la box.
+  clientKept: number;
+  /// Vrai si la liste saisie était déjà la seule liste du panel : l'envoi
+  /// sert alors seulement à prévenir la box à l'instant.
+  unchanged: boolean;
+};
 
-/// Ajoute [add] aux listes déjà posées sur la box, sans rien perdre.
-/// - déjà présente (panel ou client) → « already » : rien à envoyer ;
-/// - 3 listes du panel déjà en place → « full » (limite du serveur) ;
-/// - sinon → « send » : listes du panel existantes + la nouvelle.
+/// « Activer avec une liste » = CETTE liste, maintenant. Mesuré le 05/10/2026
+/// (box de test, 3 listes du panel déjà posées) : l'ancienne règle « on ajoute,
+/// maximum 3 » refusait l'envoi (« full ») et la box gardait l'ancien serveur ;
+/// le revendeur voyait « il me donne toujours l'ancien serveur ». Désormais
+/// la liste saisie REMPLACE les listes du panel ; celles du client restent.
+/// Pour ajouter une liste sans remplacer : fiche appareil.
 export function planActivationList(existing: SourceLike[], add: SourceInput): ActivationListPlan {
   const fp = sourceFingerprint(add);
-  if (fp && existing.some((s) => sourceFingerprint(s) === fp)) return { kind: 'already' };
   const panel = existing.filter((s) => !isClientList(s));
-  if (panel.length >= 3) return { kind: 'full' };
+  const clientKept = existing.length - panel.length;
+  const unchanged = panel.length === 1 && fp !== null && sourceFingerprint(panel[0]) === fp;
   const clean: SourceInput = { ...toSourceInput(add as SourceLike) };
-  return { kind: 'send', sources: [...panel.map(toSourceInput), clean] };
+  return {
+    kind: 'send',
+    sources: [clean],
+    replaced: unchanged ? 0 : panel.filter((s) => sourceFingerprint(s) !== fp).length,
+    clientKept,
+    unchanged,
+  };
 }

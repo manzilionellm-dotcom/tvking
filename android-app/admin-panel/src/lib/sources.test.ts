@@ -109,27 +109,44 @@ test('saisie vérifiée AVANT d\'activer', () => {
   assert.match(validateListInput({ type: 'xtream', server_url: 's.example', username: 'u', password: 'p' })!, /http/);
 });
 
-test('activation + liste : ajoutée aux listes du panel, sans renvoyer celle du client', () => {
+test('activation + liste : la liste saisie remplace celles du panel, celle du client reste', () => {
   const add = { type: 'xtream' as const, server_url: 'http://s.example.invalid', username: 'u9', password: 'p9' };
   const plan = planActivationList([panelList, clientList], add);
   assert.equal(plan.kind, 'send');
-  if (plan.kind !== 'send') return;
-  assert.equal(plan.sources.length, 2);
-  assert.equal(plan.sources[0].m3u_url, 'http://liste.example.invalid/a.m3u');
-  assert.equal(plan.sources[1].password, 'p9');
+  assert.deepEqual(plan.sources, [add]);
+  assert.equal(plan.replaced, 1);
+  assert.equal(plan.clientKept, 1);
+  assert.equal(plan.unchanged, false);
 });
 
-test('activation + liste : déjà présente, ou 3 listes du panel', () => {
-  assert.deepEqual(
-    planActivationList([clientList], { type: 'm3u', m3u_url: 'http://perso.example.invalid/p.m3u' }),
-    { kind: 'already' },
-  );
+test('activation + liste : 3 listes du panel déjà posées → remplacées, jamais « full » (mesuré 05/10/2026)', () => {
   const three = [panelList, m3u, m3u2];
-  assert.deepEqual(
-    planActivationList(three, { type: 'm3u', m3u_url: 'http://neuf.example.invalid/n.m3u' }),
-    { kind: 'full' },
-  );
-  assert.equal(planActivationList([], { type: 'm3u', m3u_url: 'http://neuf.example.invalid/n.m3u' }).kind, 'send');
+  const plan = planActivationList(three, { type: 'm3u', m3u_url: 'http://neuf.example.invalid/n.m3u' });
+  assert.equal(plan.sources.length, 1);
+  assert.equal(plan.sources[0].m3u_url, 'http://neuf.example.invalid/n.m3u');
+  assert.equal(plan.replaced, 3);
+  assert.equal(plan.clientKept, 0);
+});
+
+test('activation + liste : déjà la seule liste du panel → renvoyée telle quelle (la box est prévenue)', () => {
+  const plan = planActivationList([panelList, clientList], { type: 'm3u', m3u_url: 'http://liste.example.invalid/a.m3u' });
+  assert.equal(plan.unchanged, true);
+  assert.equal(plan.replaced, 0);
+  assert.deepEqual(plan.sources, [{ type: 'm3u', m3u_url: 'http://liste.example.invalid/a.m3u' }]);
+});
+
+test('activation + liste : déjà présente parmi d\'autres listes du panel → les autres sont remplacées', () => {
+  const plan = planActivationList([panelList, m3u], { type: 'm3u', m3u_url: 'http://liste.example.invalid/a.m3u' });
+  assert.equal(plan.unchanged, false);
+  assert.equal(plan.replaced, 1);
+  assert.equal(plan.sources.length, 1);
+});
+
+test('activation + liste : box sans liste → envoi simple', () => {
+  const plan = planActivationList([], { type: 'm3u', m3u_url: 'http://neuf.example.invalid/n.m3u' });
+  assert.equal(plan.replaced, 0);
+  assert.equal(plan.clientKept, 0);
+  assert.equal(plan.sources.length, 1);
 });
 
 // ---------------------------------------------------------------

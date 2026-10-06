@@ -10,7 +10,7 @@ import {
 import { formatDateTime, isValidMac, normalizeMac } from '@/lib/utils';
 import { createSingleFlight } from '@/lib/robust';
 import {
-  isClientList, planActivationList, toSourceInput, validateListInput, type SourceInput,
+  planActivationList, validateListInput, type SourceInput,
 } from '@/lib/sources';
 import {
   INSTANT_GIVE_UP_MS, INSTANT_POLL_MS, instantLabel, listOnTv, type InventoryLike,
@@ -165,7 +165,8 @@ export function RemoteActivatePage({ onLogout }: { onLogout: () => void }) {
     };
   }
 
-  /// Étape 3 seule : ajoute la liste aux listes déjà posées par le panel.
+  /// Étape 3 seule : envoie la liste saisie à la box (elle remplace les
+  /// listes du panel ; celles du client restent).
   async function sendList(m: string, input: SourceInput): Promise<void> {
     setListStep('busy');
     setListNote(null);
@@ -178,26 +179,22 @@ export function RemoteActivatePage({ onLogout }: { onLogout: () => void }) {
         // 404 = aucune liste encore : on part de zéro.
         if (!(e instanceof ApiError && e.status === 404)) throw e;
       }
+      // La liste saisie REMPLACE les listes du panel (mesuré le 05/10/2026 :
+      // l'ancienne règle « ajouter, maximum 3 » refusait l'envoi et la box
+      // gardait l'ancien serveur). Les listes du client restent : le
+      // serveur les garde d'office. Même liste déjà seule sur le serveur :
+      // on renvoie quand même, c'est ce renvoi qui prévient la box.
       const planList = planActivationList(existing, input);
-      if (planList.kind === 'already') {
-        // Déjà sur le serveur : on renvoie quand même l'ensemble, pour que
-        // la box soit prévenue à l'instant (si elle était éteinte au
-        // premier envoi, c'est ce renvoi qui la réveille).
-        await sourcesApi.setMany(m, existing.filter((s) => !isClientList(s)).map(toSourceInput));
-        setListStep('ok');
-        setListNote('Cette liste était déjà sur le serveur : la box est prévenue à nouveau.');
-        const now = Date.now();
-        setTv({ startedAt: now, sent: input, elapsedMs: 0, seen: null, lastSeen: 0, now });
-        return;
-      }
-      if (planList.kind === 'full') {
-        setListStep('err');
-        setListNote('Cette box a déjà 3 listes du panel. Retire-en une sur la fiche appareil, puis « Renvoyer la liste ».');
-        return;
-      }
       await sourcesApi.setMany(m, planList.sources);
       setListStep('ok');
-      setListNote(null);
+      setListNote(
+        planList.unchanged
+          ? 'Cette liste était déjà sur le serveur : la box est prévenue à nouveau.'
+          : planList.replaced > 0
+            ? `Liste envoyée. ${planList.replaced === 1 ? 'L’ancienne liste du panel est remplacée' : `Les ${planList.replaced} anciennes listes du panel sont remplacées`}`
+              + (planList.clientKept > 0 ? ` ; ${planList.clientKept === 1 ? 'la liste ajoutée par le client reste' : `les ${planList.clientKept} listes ajoutées par le client restent`}.` : '.')
+            : null,
+      );
       const now = Date.now();
       setTv({ startedAt: now, sent: input, elapsedMs: 0, seen: null, lastSeen: 0, now });
     } catch (e: unknown) {
@@ -420,7 +417,8 @@ export function RemoteActivatePage({ onLogout }: { onLogout: () => void }) {
               </div>
             )}
             <p className="text-xs text-ink-tertiary">
-              Les listes déjà sur la box sont gardées. Maximum 3 listes poussées par le panel.
+              Cette liste remplace les listes du panel déjà sur la box. Les listes ajoutées par le
+              client restent. Pour en ajouter une sans remplacer : fiche appareil → Liste de chaînes.
             </p>
           </div>
         )}
