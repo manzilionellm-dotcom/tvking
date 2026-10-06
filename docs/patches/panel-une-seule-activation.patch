@@ -1,0 +1,1639 @@
+diff --git a/android-app/admin-panel/package.json b/android-app/admin-panel/package.json
+index 73911c45..102824ba 100644
+--- a/android-app/admin-panel/package.json
++++ b/android-app/admin-panel/package.json
+@@ -8,7 +8,7 @@
+     "dev": "vite",
+     "build": "tsc -b && vite build",
+     "preview": "vite preview",
+-    "test": "node --experimental-strip-types --test src/lib/robust.test.ts src/lib/mac.test.ts src/lib/sources.test.ts src/lib/box-channel.test.ts src/lib/plans.test.ts src/lib/blackbox.test.ts src/lib/instant.test.ts src/lib/idempotency.test.ts src/lib/timeline.test.ts"
++    "test": "node --experimental-strip-types --test src/lib/robust.test.ts src/lib/mac.test.ts src/lib/sources.test.ts src/lib/box-channel.test.ts src/lib/plans.test.ts src/lib/blackbox.test.ts src/lib/instant.test.ts src/lib/idempotency.test.ts src/lib/timeline.test.ts src/lib/activation.test.ts"
+   },
+   "dependencies": {
+     "react": "^18.3.1",
+diff --git a/android-app/admin-panel/src/App.tsx b/android-app/admin-panel/src/App.tsx
+index 829290b2..d64eede1 100644
+--- a/android-app/admin-panel/src/App.tsx
++++ b/android-app/admin-panel/src/App.tsx
+@@ -1,5 +1,5 @@
+ import { useCallback, useEffect, useState } from 'react';
+-import { Navigate, Route, Routes, useNavigate } from 'react-router-dom';
++import { Navigate, Route, Routes, useNavigate, useLocation } from 'react-router-dom';
+ import {
+   authApi, getToken, setToken, setCurrentUser,
+   ApiError,
+@@ -14,7 +14,6 @@ import { ActivationsPage } from '@/pages/ActivationsPage';
+ import { ResellersPage } from '@/pages/ResellersPage';
+ import { ActivatePage } from '@/pages/ActivatePage';
+ import { ChainesPage } from '@/pages/ChainesPage';
+-import { RemoteActivatePage } from '@/pages/RemoteActivatePage';
+ import { NotificationsPage } from '@/pages/NotificationsPage';
+ import { HomeManagerPage } from '@/pages/HomeManagerPage';
+ import { ControlCenterPage } from '@/pages/ControlCenterPage';
+@@ -108,8 +107,9 @@ export default function App() {
+       <Route path="/login" element={<Navigate to="/" replace />} />
+       <Route path="/"            element={<DashboardPage   onLogout={handleLogout} />} />
+       <Route path="/activate"    element={<ActivatePage    onLogout={handleLogout} />} />
+-      {/* Activation à distance : licence + liste en un seul bouton. */}
+-      <Route path="/activation-distance" element={<RemoteActivatePage onLogout={handleLogout} />} />
++      {/* Ancienne adresse d'un 2e écran d'activation (fusionné le 06/10/2026
++          dans /activate) : on y mène, MAC comprise (?mac=…). */}
++      <Route path="/activation-distance" element={<RedirectKeepQuery to="/activate" />} />
+       {/* Liste de chaînes : écran à part. L'ancienne adresse y mène. */}
+       <Route path="/chaines"    element={<ChainesPage     onLogout={handleLogout} />} />
+       <Route path="/playlists"   element={<Navigate to="/chaines" replace />} />
+@@ -141,3 +141,10 @@ export default function App() {
+     </Routes>
+   );
+ }
++
++/// Redirection qui garde la requête (`?mac=…`) : les liens déjà copiés ou
++/// mis en favori vers l'ancienne adresse continuent de marcher.
++function RedirectKeepQuery({ to }: { to: string }) {
++  const { search } = useLocation();
++  return <Navigate to={to + search} replace />;
++}
+diff --git a/android-app/admin-panel/src/components/PlanPicker.tsx b/android-app/admin-panel/src/components/PlanPicker.tsx
+new file mode 100644
+index 00000000..63e4a1a1
+--- /dev/null
++++ b/android-app/admin-panel/src/components/PlanPicker.tsx
+@@ -0,0 +1,83 @@
++// =========================================================
++//  PlanPicker — le choix de durée, identique partout
++// =========================================================
++//  Deux rangées étiquetées : « Essai gratuit » puis « Abonnement payé ».
++//  Le coût en crédits s'affiche sous chaque abonnement pour un revendeur.
++//  Catalogue : src/lib/activation.ts (une seule source).
++// =========================================================
++import { PAID_PLANS, TRIAL_PLANS, planCost, type PlanOption } from '@/lib/activation';
++
++type Props = {
++  value: string;
++  onChange: (plan: string) => void;
++  costs: { plan: string; credits: number }[];
++  showCosts: boolean;
++};
++
++export function PlanPicker({ value, onChange, costs, showCosts }: Props) {
++  return (
++    <div className="space-y-4">
++      <PlanRow
++        title="Essai gratuit"
++        options={TRIAL_PLANS}
++        value={value}
++        onChange={onChange}
++        cols="grid-cols-4"
++        sub={() => 'Gratuit'}
++      />
++      <PlanRow
++        title="Abonnement payé"
++        options={PAID_PLANS}
++        value={value}
++        onChange={onChange}
++        cols="grid-cols-3 sm:grid-cols-5"
++        sub={(id) => {
++          if (!showCosts) return null;
++          const c = planCost(id, costs);
++          return c === null ? null : `${c} crédit${c > 1 ? 's' : ''}`;
++        }}
++      />
++    </div>
++  );
++}
++
++function PlanRow({
++  title, options, value, onChange, cols, sub,
++}: {
++  title: string;
++  options: PlanOption[];
++  value: string;
++  onChange: (plan: string) => void;
++  cols: string;
++  sub: (id: string) => string | null;
++}) {
++  return (
++    <div>
++      <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-ink-secondary">{title}</p>
++      <div className={`grid gap-2 ${cols}`} role="radiogroup" aria-label={title}>
++        {options.map((p) => {
++          const selected = value === p.id;
++          const s = sub(p.id);
++          return (
++            <button
++              type="button"
++              key={p.id}
++              role="radio"
++              aria-checked={selected}
++              onClick={() => onChange(p.id)}
++              className={
++                'rounded-xl border px-2 py-3 text-center transition ' +
++                (selected
++                  ? 'border-accent bg-accent/15 text-ink-primary'
++                  : 'border-white/10 bg-midnight text-ink-secondary hover:border-white/25')
++              }
++            >
++              <span className="block text-base font-semibold leading-tight">{p.label}</span>
++              {s && <span className="mt-0.5 block text-[11px] text-ink-tertiary">{s}</span>}
++            </button>
++          );
++        })}
++      </div>
++    </div>
++  );
++}
+diff --git a/android-app/admin-panel/src/components/Sidebar.tsx b/android-app/admin-panel/src/components/Sidebar.tsx
+index 446098e6..75f9c32e 100644
+--- a/android-app/admin-panel/src/components/Sidebar.tsx
++++ b/android-app/admin-panel/src/components/Sidebar.tsx
+@@ -20,12 +20,11 @@ type NavItem = { key: string; to: string; cap?: string };
+ // aucune logique d'activation/abonnement n'est touchée ici.
+ type NavSection = { titleKey: string; items: NavItem[] };
+ 
+-// Organisation « centre de contrôle » (06/10/2026) : chaque page existante
+-// est rangée dans un groupe métier, sans en renommer aucune ni en ajouter.
+-// Centre de contrôle (vue d'ensemble, en direct), Clients (abonnés,
+-// appareils, activations), Applications (versions, mise à jour forcée,
+-// avis), Revendeurs, Contenu (listes, serveurs, publicité, annonces, mise
+-// en avant, accueil, thème), Boîte noire, Système (journal, compte).
++// Organisation « centre de contrôle » (06/10/2026), revue le même jour :
++// un titre de section ne répète jamais une entrée qu'il contient (avant :
++// « Clients › Clients », « Applications › Applications », « Boîte noire ›
++// Boîte noire »…). Vue d'ensemble, Abonnés, Chaînes & sources, Contenu
++// affiché, Versions de l'app, Réseau de vente, Système.
+ const OWNER_NAV: NavSection[] = [
+   {
+     titleKey: 'navsec.control',
+@@ -38,54 +37,53 @@ const OWNER_NAV: NavSection[] = [
+   {
+     titleKey: 'navsec.customers',
+     items: [
++      { key: 'nav.activate',       to: '/activate' },
+       { key: 'nav.customers',      to: '/customers' },
+       { key: 'nav.devices',        to: '/devices' },
+       { key: 'nav.activations',    to: '/activations' },
+-      { key: 'nav.remoteActivate', to: '/activation-distance' },
+-      { key: 'nav.activate',       to: '/activate' },
+       { key: 'nav.transfer',       to: '/transfer' },
+       { key: 'nav.families',       to: '/families' },
+     ],
+   },
+   {
+-    titleKey: 'navsec.apps',
++    titleKey: 'navsec.channels',
+     items: [
+-      { key: 'nav.apps',        to: '/apps' },
+-      { key: 'nav.forceUpdate', to: '/force-update' },
+-      { key: 'nav.reviews',     to: '/reviews' },
++      { key: 'nav.chaines', to: '/chaines' },
++      { key: 'nav.servers', to: '/servers' },
+     ],
+   },
+   {
+-    titleKey: 'navsec.resellers',
++    titleKey: 'navsec.content',
+     items: [
+-      { key: 'nav.resellers',  to: '/resellers' },
+-      { key: 'nav.pricing',    to: '/tarifs' },
+-      { key: 'nav.references', to: '/references' },
++      { key: 'nav.homeManager',   to: '/home-manager' },
++      { key: 'nav.featured',      to: '/featured' },
++      { key: 'nav.notifications', to: '/notifications' },
++      { key: 'nav.ad',            to: '/ad' },
++      { key: 'nav.theme',         to: '/theme' },
+     ],
+   },
+   {
+-    titleKey: 'navsec.content',
++    titleKey: 'navsec.apps',
+     items: [
+-      { key: 'nav.chaines',       to: '/chaines' },
+-      { key: 'nav.servers',       to: '/servers' },
+-      { key: 'nav.ad',            to: '/ad' },
+-      { key: 'nav.notifications', to: '/notifications' },
+-      { key: 'nav.featured',      to: '/featured' },
+-      { key: 'nav.homeManager',   to: '/home-manager' },
+-      { key: 'nav.theme',         to: '/theme' },
++      { key: 'nav.apps',        to: '/apps' },
++      { key: 'nav.forceUpdate', to: '/force-update' },
++      { key: 'nav.reviews',     to: '/reviews' },
+     ],
+   },
+   {
+-    titleKey: 'navsec.blackbox',
++    titleKey: 'navsec.resellers',
+     items: [
+-      { key: 'nav.blackbox', to: '/blackbox' },
++      { key: 'nav.resellers',  to: '/resellers' },
++      { key: 'nav.pricing',    to: '/tarifs' },
++      { key: 'nav.references', to: '/references' },
+     ],
+   },
+   {
+     titleKey: 'navsec.system',
+     items: [
+-      { key: 'nav.history', to: '/history' },
+-      { key: 'nav.account', to: '/account' },
++      { key: 'nav.blackbox', to: '/blackbox' },
++      { key: 'nav.history',  to: '/history' },
++      { key: 'nav.account',  to: '/account' },
+     ],
+   },
+ ];
+@@ -95,7 +93,6 @@ const RESELLER_NAV: NavSection[] = [
+     titleKey: 'navsec.activation',
+     // Chaque entrée n'apparaît que si l'admin a coché le droit correspondant.
+     items: [
+-      { key: 'nav.remoteActivate', to: '/activation-distance', cap: 'activate' },
+       { key: 'nav.activate',      to: '/activate',    cap: 'activate' },
+       { key: 'nav.families',      to: '/families',    cap: 'activate' },
+       { key: 'nav.transfer',      to: '/transfer',    cap: 'activate' },
+diff --git a/android-app/admin-panel/src/lib/activation.test.ts b/android-app/admin-panel/src/lib/activation.test.ts
+new file mode 100644
+index 00000000..b2fb166e
+--- /dev/null
++++ b/android-app/admin-panel/src/lib/activation.test.ts
+@@ -0,0 +1,132 @@
++// =========================================================
++//  activation.test.ts — un seul écran d'activation, un seul catalogue
++// =========================================================
++//  Défaut corrigé le 06/10/2026 : deux entrées de menu pour le même geste
++//  (« Grande activation de toutes les applications », « Activation à
++//  distance ») et trois listes de durées différentes ; le libellé anglais
++//  et arabe était le texte français.
++// =========================================================
++import { test } from 'node:test';
++import assert from 'node:assert/strict';
++import { readFileSync } from 'node:fs';
++import { dirname, join } from 'node:path';
++import { fileURLToPath } from 'node:url';
++import {
++  DEFAULT_PLAN, DEFAULT_RENEW_PLAN, PAID_PLANS, TRIAL_PLANS,
++  activateButtonText, activationResultText, isTrialPlan, planCost, planLabel,
++} from './activation.ts';
++
++const here = dirname(fileURLToPath(import.meta.url));
++const src = (rel: string) => readFileSync(join(here, '..', rel), 'utf8');
++
++// Copie de planToDays (cloudflare/api_v1.js) : le Worker doit comprendre
++// chaque identifiant proposé (sinon il retombe sur 30 jours en silence).
++function workerPlanToDays(plan: string): number | null | 'inconnu' {
++  const dm = /^trial_(\d+)d$/.exec(plan);
++  if (dm) return Number(dm[1]);
++  switch (plan) {
++    case 'monthly': return 30;
++    case 'quarterly': return 90;
++    case 'biannual': return 180;
++    case 'yearly': return 365;
++    case 'lifetime': return null;
++    default: return 'inconnu';
++  }
++}
++
++test('chaque durée proposée est comprise par le Worker, avec la bonne durée', () => {
++  const want: Record<string, number | null> = {
++    trial_3d: 3, trial_7d: 7, trial_14d: 14, trial_30d: 30,
++    monthly: 30, quarterly: 90, biannual: 180, yearly: 365, lifetime: null,
++  };
++  for (const p of [...TRIAL_PLANS, ...PAID_PLANS]) {
++    assert.equal(workerPlanToDays(p.id), want[p.id], p.id);
++  }
++});
++
++test('aucun libellé en double : « 30 j » d’essai ≠ « 1 mois » payé', () => {
++  const labels = [...TRIAL_PLANS, ...PAID_PLANS].map((p) => p.label);
++  assert.equal(new Set(labels).size, labels.length);
++  assert.ok(TRIAL_PLANS.every((p) => isTrialPlan(p.id)));
++  assert.ok(PAID_PLANS.every((p) => !isTrialPlan(p.id)));
++});
++
++test('défauts : essai 7 jours pour une box neuve, 1 an pour prolonger', () => {
++  assert.equal(DEFAULT_PLAN, 'trial_7d');
++  assert.ok(TRIAL_PLANS.some((p) => p.id === DEFAULT_PLAN));
++  assert.equal(DEFAULT_RENEW_PLAN, 'yearly');
++  assert.equal(planLabel('trial_7d'), 'Essai 7 j');
++  assert.equal(planLabel('yearly'), '1 an');
++});
++
++test('prix dit avant le clic : essai gratuit, crédits du tarif, rien si inconnu', () => {
++  const costs = [{ plan: 'yearly', credits: 2 }, { plan: 'lifetime', credits: 1 }];
++  assert.equal(planCost('trial_30d', costs), 0);
++  assert.equal(planCost('yearly', costs), 2);
++  assert.equal(planCost('quarterly', costs), null);
++  assert.equal(activateButtonText('trial_7d', 0, true), 'Activer · essai gratuit');
++  assert.equal(activateButtonText('yearly', 2, true), 'Activer · 2 crédits');
++  assert.equal(activateButtonText('lifetime', 1, true), 'Activer · 1 crédit');
++  assert.equal(activateButtonText('yearly', 2, false), 'Activer');
++  assert.equal(activateButtonText('quarterly', null, true), 'Activer');
++});
++
++test('phrase de résultat', () => {
++  const f = (ms: number) => `J${ms}`;
++  assert.equal(activationResultText('trial_7d', { plan: 'trial_7d', expires_at: 5 }, f), 'Essai gratuit jusqu’au J5.');
++  assert.equal(activationResultText('yearly', { plan: 'yearly', expires_at: 9 }, f), 'Activée jusqu’au J9.');
++  assert.equal(activationResultText('lifetime', { plan: 'lifetime', expires_at: null }, f), 'Activée à vie.');
++});
++
++test('menu : UNE entrée d’activation, plus d’« Activation à distance »', () => {
++  const sidebar = src('components/Sidebar.tsx');
++  const admin = sidebar.slice(0, sidebar.indexOf('RESELLER_NAV'));
++  const reseller = sidebar.slice(sidebar.indexOf('RESELLER_NAV'));
++  for (const nav of [admin, reseller]) {
++    assert.equal((nav.match(/to: '\/activate'/g) || []).length, 1);
++    assert.doesNotMatch(nav, /activation-distance|nav\.remoteActivate/);
++  }
++  // L'ancienne adresse mène au nouvel écran, MAC comprise.
++  assert.match(src('App.tsx'), /path="\/activation-distance" element=\{<RedirectKeepQuery to="\/activate" \/>\}/);
++});
++
++test('libellés courts et vraiment traduits', () => {
++  const i18n = src('lib/i18n.tsx');
++  const m = /'nav\.activate': \{ fr: '([^']+)', en: '([^']+)', ar: '([^']+)' \}/.exec(i18n);
++  assert.ok(m, 'nav.activate sur une ligne');
++  const [, fr, en, ar] = m;
++  assert.equal(fr, 'Activer une box');
++  assert.notEqual(en, fr);
++  assert.notEqual(ar, fr);
++  assert.ok(fr.length <= 24, 'tient dans le menu d’un téléphone');
++  // Texte affiché seulement : les commentaires d'historique (// …) peuvent
++  // citer l'ancien nom.
++  const shown = [i18n, src('pages/ChainesPage.tsx'), src('pages/ActivatePage.tsx')]
++    .join('\n').split('\n').filter((l) => !l.trim().startsWith('//')).join('\n');
++  assert.doesNotMatch(shown, /Grande activation de toutes/);
++});
++
++test('menu : aucun titre de section ne répète une de ses entrées (fr, en, ar)', () => {
++  const sidebar = src('components/Sidebar.tsx');
++  const i18n = src('lib/i18n.tsx');
++  const label = (key: string, lang: 'fr' | 'en' | 'ar'): string => {
++    const line = i18n.split('\n').find((l) => l.includes(`'${key}':`));
++    assert.ok(line, `libellé manquant : ${key}`);
++    const m = new RegExp(`${lang}: '([^']+)'`).exec(line);
++    assert.ok(m, `${key} sans ${lang}`);
++    return m[1].toLowerCase();
++  };
++  // Découpe : chaque `titleKey` suivi de ses `key:` jusqu'au titre suivant.
++  const parts = sidebar.split(/titleKey: '/).slice(1);
++  assert.ok(parts.length >= 6);
++  for (const part of parts) {
++    const title = part.slice(0, part.indexOf("'"));
++    const items = [...part.matchAll(/\{ key: '([^']+)'/g)].map((m) => m[1]);
++    assert.ok(items.length >= 1, `${title} : section vide`);
++    for (const lang of ['fr', 'en', 'ar'] as const) {
++      for (const item of items) {
++        assert.notEqual(label(title, lang), label(item, lang), `${title} › ${item} (${lang})`);
++      }
++    }
++  }
++});
+diff --git a/android-app/admin-panel/src/lib/activation.ts b/android-app/admin-panel/src/lib/activation.ts
+new file mode 100644
+index 00000000..8ff2c684
+--- /dev/null
++++ b/android-app/admin-panel/src/lib/activation.ts
+@@ -0,0 +1,80 @@
++// =========================================================
++//  activation.ts — UN seul catalogue de durées pour tout le panel
++// =========================================================
++//  Avant le 06/10/2026, trois écrans proposaient trois listes différentes :
++//    • « Grande activation… »   : 1 an, à vie (+ bloc « jours d'essai » 3/7/14/30) ;
++//    • « Activation à distance » : essai 3 j / 7 j / 1 mois, 1 an, à vie ;
++//    • fiche appareil            : 1, 3, 6 mois, 1 an, à vie.
++//  Le même geste (activer une box) avait donc trois réponses. Ce fichier est
++//  désormais la seule source : l'écran « Activer une box » et la fenêtre
++//  « Activer / prolonger » de la fiche appareil lisent tous deux ce catalogue.
++//
++//  Identifiants = ceux que le Worker comprend (cloudflare/api_v1.js,
++//  planToDays) : `trial_<N>d` = N jours d'essai GRATUITS (0 crédit, même pour
++//  un revendeur), `monthly` 30 j, `quarterly` 90 j, `biannual` 180 j,
++//  `yearly` 365 j, `lifetime` sans fin.
++//  Les essais s'écrivent en jours (« 30 j ») et les abonnements en mois :
++//  jamais deux boutons « 1 mois » qui ne veulent pas dire la même chose.
++// =========================================================
++
++export type PlanOption = { id: string; label: string };
++
++/// Essais gratuits.
++export const TRIAL_PLANS: PlanOption[] = [
++  { id: 'trial_3d', label: '3 j' },
++  { id: 'trial_7d', label: '7 j' },
++  { id: 'trial_14d', label: '14 j' },
++  { id: 'trial_30d', label: '30 j' },
++];
++
++/// Abonnements payés (crédits débités pour un revendeur).
++export const PAID_PLANS: PlanOption[] = [
++  { id: 'monthly', label: '1 mois' },
++  { id: 'quarterly', label: '3 mois' },
++  { id: 'biannual', label: '6 mois' },
++  { id: 'yearly', label: '1 an' },
++  { id: 'lifetime', label: 'À vie' },
++];
++
++/// Choix par défaut d'une activation neuve : 7 jours d'essai. Un oubli ne
++/// coûte aucun crédit (décision du 05/10/2026, commit 636aad6).
++export const DEFAULT_PLAN = 'trial_7d';
++
++/// Choix par défaut pour prolonger une box qui a déjà un abonnement.
++export const DEFAULT_RENEW_PLAN = 'yearly';
++
++export function isTrialPlan(plan: string): boolean {
++  return plan.startsWith('trial');
++}
++
++export function planLabel(plan: string): string {
++  const hit = [...TRIAL_PLANS, ...PAID_PLANS].find((p) => p.id === plan);
++  if (!hit) return plan;
++  return isTrialPlan(plan) ? `Essai ${hit.label}` : hit.label;
++}
++
++/// Coût en crédits d'une durée : 0 pour un essai, sinon le tarif du panel
++/// (`plan_costs`), `null` s'il n'est pas connu (on n'affiche alors rien).
++export function planCost(plan: string, costs: { plan: string; credits: number }[]): number | null {
++  if (isTrialPlan(plan)) return 0;
++  const row = costs.find((c) => c.plan === plan);
++  return row ? row.credits : null;
++}
++
++/// Phrase de résultat après une activation réussie.
++export function activationResultText(
++  plan: string,
++  result: { plan?: string | null; expires_at?: number | null },
++  formatDate: (ms: number) => string,
++): string {
++  if (result.plan === 'lifetime' || result.expires_at == null) return 'Activée à vie.';
++  const until = formatDate(result.expires_at);
++  return isTrialPlan(plan) ? `Essai gratuit jusqu’au ${until}.` : `Activée jusqu’au ${until}.`;
++}
++
++/// Texte du bouton : le prix est dit AVANT le clic.
++export function activateButtonText(plan: string, cost: number | null, isReseller: boolean): string {
++  if (isTrialPlan(plan)) return 'Activer · essai gratuit';
++  if (isReseller && cost !== null) return `Activer · ${cost} crédit${cost > 1 ? 's' : ''}`;
++  return 'Activer';
++}
+diff --git a/android-app/admin-panel/src/lib/i18n.tsx b/android-app/admin-panel/src/lib/i18n.tsx
+index a7b7a9ce..0a47f089 100644
+--- a/android-app/admin-panel/src/lib/i18n.tsx
++++ b/android-app/admin-panel/src/lib/i18n.tsx
+@@ -31,12 +31,7 @@ const STR: Record<string, Record<Lang, string>> = {
+ 
+   // --- Navigation ---
+   'nav.dashboard': { fr: 'Tableau de bord', en: 'Dashboard', ar: 'لوحة التحكم' },
+-  'nav.activate': {
+-    fr: 'Grande activation de toutes les applications',
+-    en: 'Grande activation de toutes les applications',
+-    ar: 'Grande activation de toutes les applications',
+-  },
+-  'nav.remoteActivate': { fr: 'Activation à distance', en: 'Remote activation', ar: 'تفعيل عن بُعد' },
++  'nav.activate': { fr: 'Activer une box', en: 'Activate a box', ar: 'تفعيل جهاز' },
+   'nav.pushSource': { fr: 'Pousser une playlist', en: 'Push a playlist', ar: 'إرسال قائمة تشغيل' },
+   'nav.controlCenter': { fr: 'Centre de contrôle', en: 'Control center', ar: 'مركز التحكم' },
+   'nav.forceUpdate': { fr: 'Mise à jour forcée', en: 'Force update', ar: 'تحديث إجباري' },
+@@ -57,7 +52,7 @@ const STR: Record<string, Record<Lang, string>> = {
+   'nav.apps': { fr: 'Applications', en: 'Apps', ar: 'التطبيقات' },
+   'nav.servers': { fr: 'Serveurs', en: 'Servers', ar: 'الخوادم' },
+   'nav.chaines': { fr: 'Listes', en: 'Lists', ar: 'القوائم' },
+-  'nav.activations': { fr: 'Activations', en: 'Activations', ar: 'التفعيلات' },
++  'nav.activations': { fr: 'Historique des activations', en: 'Activation history', ar: 'سجل التفعيلات' },
+   'nav.myActivations': { fr: 'Mes activations', en: 'My activations', ar: 'تفعيلاتي' },
+   'nav.history': { fr: 'Historique', en: 'History', ar: 'السجل' },
+   'nav.references': { fr: 'Références', en: 'References', ar: 'المراجع' },
+@@ -67,13 +62,12 @@ const STR: Record<string, Record<Lang, string>> = {
+ 
+   // --- Sections du menu (regroupement Sidebar) ---
+   'navsec.activation': { fr: 'Activation & abonnés', en: 'Activation & subscribers', ar: 'التفعيل والمشتركون' },
+-  'navsec.control':   { fr: 'Centre de contrôle', en: 'Control center', ar: 'مركز التحكم' },
+-  'navsec.customers': { fr: 'Clients', en: 'Customers', ar: 'العملاء' },
+-  'navsec.apps':      { fr: 'Applications', en: 'Applications', ar: 'التطبيقات' },
+-  'navsec.resellers': { fr: 'Revendeurs', en: 'Resellers', ar: 'الموزعون' },
+-  'navsec.blackbox':  { fr: 'Boîte noire', en: 'Black box', ar: 'الصندوق الأسود' },
++  'navsec.control':   { fr: 'Vue d’ensemble', en: 'Overview', ar: 'نظرة عامة' },
++  'navsec.customers': { fr: 'Abonnés', en: 'Subscribers', ar: 'المشتركون' },
++  'navsec.apps':      { fr: 'Versions de l’app', en: 'App versions', ar: 'إصدارات التطبيق' },
++  'navsec.resellers': { fr: 'Réseau de vente', en: 'Sales network', ar: 'شبكة البيع' },
+   'navsec.channels': { fr: 'Chaînes & sources', en: 'Channels & sources', ar: 'القنوات والمصادر' },
+-  'navsec.content': { fr: 'App & contenu', en: 'App & content', ar: 'التطبيق والمحتوى' },
++  'navsec.content': { fr: 'Contenu affiché', en: 'On-screen content', ar: 'المحتوى المعروض' },
+   'navsec.system': { fr: 'Système', en: 'System', ar: 'النظام' },
+ 
+   // --- Commun ---
+diff --git a/android-app/admin-panel/src/pages/ActivatePage.tsx b/android-app/admin-panel/src/pages/ActivatePage.tsx
+index 727a2eee..596ed4a1 100644
+--- a/android-app/admin-panel/src/pages/ActivatePage.tsx
++++ b/android-app/admin-panel/src/pages/ActivatePage.tsx
+@@ -2,37 +2,50 @@ import { FormEvent, useEffect, useRef, useState } from 'react';
+ import { Link, useSearchParams } from 'react-router-dom';
+ import { AppLayout } from '@/components/AppLayout';
+ import { Alert } from '@/components/ui';
++import { PlanPicker } from '@/components/PlanPicker';
+ import {
+   activateApi, appsApi, planCostsApi, meApi,
+-  getCurrentUser, isOwnerRole,
++  getCurrentUser, isOwnerRole, userCan,
+   DOWNLOAD_URL, DOWNLOADER_CODE, DOWNLOAD_URL_TV, DOWNLOADER_CODE_TV,
+-  type App, type PlanCost, type ActivateResult, type TrialExtendResult, ApiError,
++  type App, type PlanCost, type ActivateResult, ApiError,
+   newIdempotencyKey, keepIdempotencyKeyAfter,
+ } from '@/lib/api';
++import {
++  DEFAULT_PLAN, activateButtonText, activationResultText, planCost,
++} from '@/lib/activation';
++import { useT } from '@/lib/i18n';
+ import { formatDateTime, isValidMac, normalizeMac } from '@/lib/utils';
+ import { createSingleFlight } from '@/lib/robust';
+ 
+-// Écran d'activation — volontairement court.
+-// MAC, nom (optionnel), deux durées (1 an / à vie), bouton Activer,
+-// et un petit bloc pour ajouter des jours d'essai.
+-// Un seul appareil à la fois. Les liens client restent en bas, en petit.
+-
+-const QUICK_DAYS = [3, 7, 14, 30];
+-const MAX_DAYS = 365;
+-
+-const PLANS = [
+-  { id: 'yearly', label: 'Activation 1 an' },
+-  { id: 'lifetime', label: 'Activation à vie' },
+-];
++// =========================================================
++//  Activer une box — l'UNIQUE écran d'activation du panel
++// =========================================================
++//  Remplace (06/10/2026) deux écrans qui faisaient le même geste avec des
++//  choix différents : « Grande activation de toutes les applications » et
++//  « Activation à distance ». L'ancienne adresse /activation-distance mène
++//  ici (App.tsx), MAC comprise.
++//
++//  Ici : la licence, et seulement elle. MAC (comme sur la box, « MK: »
++//  ajouté tout seul), nom du client, durée (essai gratuit ou abonnement),
++//  un bouton. Les listes de chaînes se gèrent dans « Listes » (/chaines) :
++//  décision du propriétaire, « listes à part, applications à part ».
++//
++//  La box est prévenue tout de suite par le Worker (ordre « activate » ou
++//  « renew »). Clé d'idempotence : un second envoi de la même intention
++//  (coupure, double appui) rejoue la réponse au lieu de redébiter.
++// =========================================================
+ 
+ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
++  const t = useT();
+   const user = getCurrentUser();
+   const isReseller = !isOwnerRole(user?.role);
++  const canLists = !isReseller || userCan(user, 'sources');
+ 
+-  // ?mac=… : les autres écrans (appareils, liste de chaînes) pré-remplissent la MAC.
++  // ?mac=… : la fiche appareil, les clients et l'ancienne adresse
++  // /activation-distance pré-remplissent la MAC.
+   const [sp] = useSearchParams();
+-  const [mac, setMac] = useState(sp.get('mac') || 'MK:');
+-  const [plan, setPlan] = useState('yearly');
++  const [mac, setMac] = useState(sp.get('mac') || '');
++  const [plan, setPlan] = useState(DEFAULT_PLAN);
+   const [customerName, setCustomerName] = useState('');
+   const [apps, setApps] = useState<App[]>([]);
+   const [costs, setCosts] = useState<PlanCost[]>([]);
+@@ -40,124 +53,71 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
+ 
+   const [busy, setBusy] = useState(false);
+   const [err, setErr] = useState<string | null>(null);
+-  const [result, setResult] = useState<ActivateResult | null>(null);
++  const [result, setResult] = useState<{ res: ActivateResult; plan: string } | null>(null);
+   const flight = useRef(createSingleFlight());
+   const idem = useRef<string | null>(null);
+ 
+-  const [daysChoice, setDaysChoice] = useState('7');
+-  const [daysBusy, setDaysBusy] = useState(false);
+-  const [daysErr, setDaysErr] = useState<string | null>(null);
+-  const [daysOk, setDaysOk] = useState<TrialExtendResult | null>(null);
+-
+   // Application à activer : la première app « principale » du panel
+   // (ni Red Room, ni Nova, ni TV) ; repli sur app_7motion si la liste
+-  // n'est pas chargée. Même règle que l'écran précédent.
++  // n'est pas chargée. Même règle qu'avant.
+   const primaryApp =
+     apps.find((a) => !/red\s*room|nova|\btv\b/i.test(a.name)) ?? apps[0];
+   const appId = primaryApp?.id ?? 'app_7motion';
+-  const macOk = isValidMac(mac);
++  const normalized = normalizeMac(mac);
++  const macOk = isValidMac(normalized);
+ 
+   useEffect(() => {
+     let active = true;
+-    planCostsApi.list()
+-      .then((c) => { if (active) setCosts(c.items); })
+-      .catch((e) => {
+-        if (e instanceof ApiError && e.status === 401) onLogout();
+-      });
+-    appsApi.list()
+-      .then((a) => { if (active) setApps(a.items); })
+-      .catch((e) => {
+-        if (e instanceof ApiError && e.status === 401) onLogout();
+-        // Sinon : repli silencieux sur app_7motion.
+-      });
+-    meApi.get()
+-      .then((r) => { if (active) setBalance(r.user.credit_balance ?? null); })
+-      .catch((e) => {
+-        if (e instanceof ApiError && e.status === 401) onLogout();
+-      });
++    const out = (e: unknown) => {
++      if (e instanceof ApiError && e.status === 401) onLogout();
++    };
++    planCostsApi.list().then((c) => { if (active) setCosts(c.items); }).catch(out);
++    appsApi.list().then((a) => { if (active) setApps(a.items); }).catch(out);
++    meApi.get().then((r) => { if (active) setBalance(r.user.credit_balance ?? null); }).catch(out);
+     return () => { active = false; };
+   }, [onLogout]);
+ 
+-  const costFor = (p: string): number | null => {
+-    const row = costs.find((c) => c.plan === p);
+-    return row ? row.credits : null;
+-  };
++  // Changer la MAC ou la durée = une autre intention : nouvelle clé.
++  function changePlan(p: string) { setPlan(p); idem.current = null; setResult(null); }
++  function changeMac(v: string) { setMac(v); idem.current = null; setResult(null); }
+ 
+   async function submit(e: FormEvent) {
+     e.preventDefault();
+     await flight.current.run(async () => {
+-      setBusy(true);
+       setErr(null);
+       setResult(null);
+-      const m = normalizeMac(mac);
+-      if (!isValidMac(m)) {
+-        setErr('MAC invalide. Format attendu : MK:XX:XX:XX:XX:XX');
+-        setBusy(false);
++      if (!macOk) {
++        setErr('MAC invalide. Tape-la comme sur la box, par exemple AD:A6:98:70:6A (le « MK: » est ajouté tout seul).');
+         return;
+       }
++      setMac(normalized);
++      setBusy(true);
+       try {
+-        // Licence seulement. Pas de lien dans cet appel. La clé
+-        // d'idempotence survit à une coupure : un second envoi de la même
+-        // intention rejoue la réponse au lieu de réactiver et redébiter.
+         const key = idem.current ?? (idem.current = newIdempotencyKey());
+         const res = await activateApi.activate({
+-          mac: m, plan, app_id: appId,
++          mac: normalized, plan, app_id: appId,
+           customer_name: customerName.trim() || undefined,
+         }, key);
+         idem.current = null;
+-        setResult(res);
++        setResult({ res, plan });
+         if (res.credit_balance !== null) setBalance(res.credit_balance);
+-      } catch (e: unknown) {
+-        if (!keepIdempotencyKeyAfter(e)) idem.current = null;
+-        if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
+-        setErr(e instanceof ApiError ? e.message : 'Activation impossible. Réessayez.');
++      } catch (e2: unknown) {
++        if (!keepIdempotencyKeyAfter(e2)) idem.current = null;
++        if (e2 instanceof ApiError && e2.status === 401) { onLogout(); return; }
++        setErr(e2 instanceof ApiError ? e2.message : 'Activation impossible. Réessaie.');
+       } finally {
+         setBusy(false);
+       }
+     });
+   }
+ 
+-  function parsedDays(): number | null {
+-    const s = daysChoice.trim();
+-    if (!/^[0-9]+$/.test(s)) return null;
+-    const n = Number(s);
+-    if (!Number.isInteger(n) || n < 1 || n > MAX_DAYS) return null;
+-    return n;
+-  }
+-
+-  async function addDays() {
+-    setDaysErr(null);
+-    setDaysOk(null);
+-    const m = normalizeMac(mac);
+-    if (!isValidMac(m)) {
+-      setDaysErr('Indique d’abord une MAC valide, en haut.');
+-      return;
+-    }
+-    const n = parsedDays();
+-    if (n == null) {
+-      setDaysErr(`Jours : un entier de 1 à ${MAX_DAYS}.`);
+-      return;
+-    }
+-    setDaysBusy(true);
+-    try {
+-      const res = await activateApi.extendTrial(m, n);
+-      setDaysOk(res);
+-    } catch (e: unknown) {
+-      if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
+-      setDaysErr(e instanceof ApiError ? e.message : 'Ajout impossible.');
+-    } finally {
+-      setDaysBusy(false);
+-    }
+-  }
+-
+   const inputCls =
+     'w-full rounded-lg border border-white/10 bg-slate px-3 py-3 text-base outline-none focus:border-accent/60 focus:ring-2 focus:ring-accent/40';
+-
+-  const credit = costFor(plan);
++  const listsHref = `/chaines${macOk ? `?mac=${encodeURIComponent(normalized)}` : ''}`;
+ 
+   return (
+     <AppLayout
+-      title="Grande activation de toutes les applications"
++      title={t('nav.activate')}
+       onLogout={onLogout}
+       actions={
+         isReseller && balance !== null ? (
+@@ -170,17 +130,18 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
+       <form onSubmit={submit} className="mx-auto w-full max-w-md space-y-5">
+         <div>
+           <label htmlFor="act-mac" className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-ink-secondary">
+-            Adresse MAC
++            Adresse MAC (comme sur la box)
+           </label>
+           <input
+             id="act-mac"
+             value={mac}
+-            onChange={(e) => setMac(e.target.value)}
+-            onBlur={() => setMac((v) => normalizeMac(v))}
++            onChange={(e) => changeMac(e.target.value)}
++            onBlur={() => setMac((v) => (v.trim() ? normalizeMac(v) : v))}
+             autoFocus
+             autoComplete="off"
+-            inputMode="text"
+-            placeholder="MK:XX:XX:XX:XX:XX"
++            autoCapitalize="characters"
++            spellCheck={false}
++            placeholder="AD:A6:98:70:6A"
+             className={inputCls + ' font-mono'}
+           />
+         </div>
+@@ -198,113 +159,35 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
+           />
+         </div>
+ 
+-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2" role="group" aria-label="Durée">
+-          {PLANS.map((p) => {
+-            const selected = plan === p.id;
+-            const c = costFor(p.id);
+-            return (
+-              <button
+-                type="button"
+-                key={p.id}
+-                onClick={() => setPlan(p.id)}
+-                className={
+-                  'rounded-xl border px-4 py-5 text-left transition ' +
+-                  (selected
+-                    ? 'border-accent bg-accent/15 text-ink-primary'
+-                    : 'border-white/10 bg-midnight text-ink-secondary hover:border-white/25')
+-                }
+-              >
+-                <span className="block text-lg font-semibold leading-tight">{p.label}</span>
+-                {isReseller && c !== null && (
+-                  <span className="mt-1 block text-xs text-ink-tertiary">
+-                    {c} crédit{c > 1 ? 's' : ''}
+-                  </span>
+-                )}
+-              </button>
+-            );
+-          })}
+-        </div>
++        <PlanPicker value={plan} onChange={changePlan} costs={costs} showCosts={isReseller} />
+ 
+         {err && <Alert>{err}</Alert>}
+         {result && (
+-          <p className="text-sm text-ink-primary" role="status">
+-            {result.plan === 'lifetime' || result.expires_at == null
+-              ? 'Activé à vie.'
+-              : `Activé jusqu’au ${formatDateTime(result.expires_at)}.`}
++          <p className="rounded-xl border border-emerald-400/30 bg-emerald-400/10 px-4 py-3 text-sm text-ink-primary" role="status">
++            ✓ {activationResultText(result.plan, result.res, formatDateTime)} La box est prévenue à l’instant.
+           </p>
+         )}
+ 
+         <button
+           type="submit"
+-          disabled={busy || !macOk}
++          disabled={busy || !mac.trim()}
+           className="w-full rounded-xl bg-accent px-4 py-3.5 text-base font-semibold text-obsidian hover:bg-accent-bright disabled:cursor-not-allowed disabled:opacity-50"
+         >
+-          {busy
+-            ? 'Activation…'
+-            : isReseller && credit !== null
+-              ? `Activer · ${credit} crédit${credit > 1 ? 's' : ''}`
+-              : 'Activer'}
++          {busy ? 'Activation…' : activateButtonText(plan, planCost(plan, costs), isReseller)}
+         </button>
+ 
+-        {!isReseller && (
+-          <div className="space-y-3 rounded-xl border border-white/10 bg-midnight/60 p-4">
+-            <p className="text-sm font-medium text-ink-primary">Ajouter des jours d’essai</p>
+-            <div className="flex flex-wrap gap-2">
+-              {QUICK_DAYS.map((d) => {
+-                const on = daysChoice === String(d);
+-                return (
+-                  <button
+-                    type="button"
+-                    key={d}
+-                    onClick={() => setDaysChoice(String(d))}
+-                    className={
+-                      'rounded-lg border px-3 py-2 text-sm ' +
+-                      (on
+-                        ? 'border-accent bg-accent/15 text-ink-primary'
+-                        : 'border-white/10 text-ink-secondary')
+-                    }
+-                  >
+-                    {d} j
+-                  </button>
+-                );
+-              })}
+-            </div>
+-            <label className="block text-xs text-ink-tertiary" htmlFor="act-days">
+-              Nombre de jours
+-            </label>
+-            <input
+-              id="act-days"
+-              value={daysChoice}
+-              onChange={(e) => setDaysChoice(e.target.value)}
+-              inputMode="numeric"
+-              className={inputCls + ' font-mono'}
+-            />
+-            {daysErr && <Alert>{daysErr}</Alert>}
+-            {daysOk && (
+-              <p className="text-sm text-ink-primary" role="status">
+-                Essai jusqu’au {formatDateTime(daysOk.trial_until)}.
+-              </p>
+-            )}
+-            <button
+-              type="button"
+-              onClick={addDays}
+-              disabled={daysBusy || !macOk}
+-              className="w-full rounded-lg border border-white/15 px-4 py-2.5 text-sm font-semibold text-ink-primary hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-50"
+-            >
+-              {daysBusy ? 'Ajout…' : 'Ajouter les jours'}
+-            </button>
+-          </div>
++        {canLists && (
++          <p className="text-sm leading-relaxed text-ink-secondary">
++            Les listes de chaînes se gèrent à part :{' '}
++            <Link to={listsHref} className="font-medium text-accent-bright underline-offset-2 hover:underline">
++              {t('nav.chaines')}
++            </Link>.
++          </p>
+         )}
+ 
+-        <p className="text-sm leading-relaxed text-ink-secondary">
+-          Le lien de la liste de chaînes est sur un autre écran :{' '}
+-          <Link to={macOk ? `/chaines?mac=${encodeURIComponent(normalizeMac(mac))}` : '/chaines'} className="font-medium text-accent-bright underline-offset-2 hover:underline">
+-            Liste de chaînes
+-          </Link>.
+-        </p>
+-
+-        <div className="space-y-1 pt-2 text-xs leading-relaxed text-ink-tertiary">
+-          <CopyLine label="Mobile" url={DOWNLOAD_URL} code={DOWNLOADER_CODE} />
++        <div className="space-y-1 border-t border-white/5 pt-4 text-xs leading-relaxed text-ink-tertiary">
++          <p className="font-medium uppercase tracking-wide">Installer l’application</p>
++          <CopyLine label="Téléphone" url={DOWNLOAD_URL} code={DOWNLOADER_CODE} />
+           <CopyLine label="TV" url={DOWNLOAD_URL_TV} code={DOWNLOADER_CODE_TV} />
+         </div>
+       </form>
+@@ -312,6 +195,7 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
+   );
+ }
+ 
++/// Lien d'installation + code Downloader, chacun copiable d'un appui.
+ function CopyLine({ label, url, code }: { label: string; url: string; code: string }) {
+   const [copied, setCopied] = useState<'url' | 'code' | null>(null);
+   async function copy(text: string, which: 'url' | 'code') {
+@@ -322,14 +206,16 @@ function CopyLine({ label, url, code }: { label: string; url: string; code: stri
+     } catch { /* copie manuelle possible */ }
+   }
+   return (
+-    <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
+-      <span>{label}</span>
+-      <button type="button" onClick={() => copy(url, 'url')} className="truncate font-mono text-ink-secondary underline-offset-2 hover:underline">
++    <div className="py-1">
++      <p className="flex items-baseline gap-2">
++        <span className="text-ink-secondary">{label}</span>
++        <button type="button" onClick={() => copy(code, 'code')} className="font-mono text-ink-secondary" title="Code Downloader : appuie pour copier">
++          {copied === 'code' ? 'Copié' : `code ${code}`}
++        </button>
++      </p>
++      <button type="button" onClick={() => copy(url, 'url')} className="block max-w-full truncate font-mono text-ink-secondary underline-offset-2 hover:underline" title="Appuie pour copier">
+         {copied === 'url' ? 'Copié' : url}
+       </button>
+-      <button type="button" onClick={() => copy(code, 'code')} className="font-mono text-ink-secondary">
+-        {copied === 'code' ? 'Copié' : code}
+-      </button>
+-    </p>
++    </div>
+   );
+ }
+diff --git a/android-app/admin-panel/src/pages/ChainesPage.tsx b/android-app/admin-panel/src/pages/ChainesPage.tsx
+index 30fdf6f7..7ad9ccbc 100644
+--- a/android-app/admin-panel/src/pages/ChainesPage.tsx
++++ b/android-app/admin-panel/src/pages/ChainesPage.tsx
+@@ -8,6 +8,7 @@ import {
+   type DeviceSource, type DeviceSourceInput, ApiError,
+ } from '@/lib/api';
+ import { isValidMac, normalizeMac } from '@/lib/utils';
++import { useT } from '@/lib/i18n';
+ 
+ // Écran LISTE DE CHAÎNES — séparé de l'activation.
+ // Enregistrer un lien n'appelle PAS /api/v1/activate.
+@@ -37,9 +38,11 @@ function toInput(s: Kept): DeviceSourceInput {
+ }
+ 
+ export function ChainesPage({ onLogout }: { onLogout: () => void }) {
++  const t = useT();
+   const canPush = userCan(getCurrentUser(), 'sources');
+   const [sp] = useSearchParams();
+-  const [mac, setMac] = useState(sp.get('mac') || 'MK:');
++  // Même saisie que « Activer une box » : MAC comme sur la box, « MK: » ajouté seul.
++  const [mac, setMac] = useState(sp.get('mac') || '');
+   const [link, setLink] = useState('');
+   const [hasLink, setHasLink] = useState(false);
+   const [otherCount, setOtherCount] = useState(0);
+@@ -106,7 +109,7 @@ export function ChainesPage({ onLogout }: { onLogout: () => void }) {
+     setOk(null);
+     const m = normalizeMac(mac);
+     if (!isValidMac(m)) {
+-      setErr('MAC invalide. Format attendu : MK:XX:XX:XX:XX:XX');
++      setErr('MAC invalide. Tape-la comme sur la box, par exemple AD:A6:98:70:6A (le « MK: » est ajouté tout seul).');
+       return;
+     }
+     if (!loaded) {
+@@ -190,24 +193,27 @@ export function ChainesPage({ onLogout }: { onLogout: () => void }) {
+         <form onSubmit={save} className="space-y-4 rounded-xl border border-white/10 bg-midnight p-6">
+           <h2 className="text-base font-semibold">Lien de la liste</h2>
+           <p className="text-sm leading-relaxed text-ink-secondary">
+-            Pour activer ou désactiver l’application, ou changer la durée, va sur{' '}
+-            <Link to="/activate" className="font-medium text-accent-bright underline-offset-2 hover:underline">
+-              Grande activation de toutes les applications
++            Ici, seulement la liste de chaînes. Pour la licence (essai, durée) :{' '}
++            <Link
++              to={isValidMac(normalizeMac(mac)) ? `/activate?mac=${encodeURIComponent(normalizeMac(mac))}` : '/activate'}
++              className="font-medium text-accent-bright underline-offset-2 hover:underline"
++            >
++              {t('nav.activate')}
+             </Link>.
+           </p>
+ 
+           <div>
+             <label htmlFor="chaines-mac" className="mb-1.5 block text-xs font-medium text-ink-secondary">
+-              Adresse MAC de la box
++              Adresse MAC (comme sur la box)
+             </label>
+             <input
+               id="chaines-mac"
+               value={mac}
+               onChange={(e) => { setMac(e.target.value); setOk(null); }}
+-              onBlur={() => setMac((v) => normalizeMac(v))}
++              onBlur={() => setMac((v) => (v.trim() ? normalizeMac(v) : v))}
+               autoFocus
+               autoComplete="off"
+-              placeholder="MK:XX:XX:XX:XX:XX"
++              placeholder="AD:A6:98:70:6A"
+               className={inputCls + ' font-mono'}
+             />
+           </div>
+diff --git a/android-app/admin-panel/src/pages/DevicesPage.tsx b/android-app/admin-panel/src/pages/DevicesPage.tsx
+index f21acc6b..8a6cff3c 100644
+--- a/android-app/admin-panel/src/pages/DevicesPage.tsx
++++ b/android-app/admin-panel/src/pages/DevicesPage.tsx
+@@ -1,6 +1,8 @@
+ import { ReactNode, useCallback, useEffect, useRef, useState } from 'react';
+ import { useNavigate } from 'react-router-dom';
+ import { AppLayout } from '@/components/AppLayout';
++import { PlanPicker } from '@/components/PlanPicker';
++import { DEFAULT_RENEW_PLAN, activateButtonText, planCost } from '@/lib/activation';
+ import { ListPager } from '@/components/ListPager';
+ import { confirmAction } from '@/components/confirm';
+ import {
+@@ -8,7 +10,8 @@ import {
+   TableFrame, useClientTable,
+ } from '@/components/ui';
+ import {
+-  devicesApi, activateApi, sourcesApi, flagEmoji, isAbortError,
++  devicesApi, activateApi, sourcesApi, planCostsApi, flagEmoji, isAbortError,
++  getCurrentUser, isOwnerRole, type PlanCost,
+   type Device, type DeviceSource, type DeviceOverview, type DeviceLocalSource,
+   type DeviceLicense, type DevicePresence, ApiError,
+   newIdempotencyKey, keepIdempotencyKeyAfter,
+@@ -602,7 +605,6 @@ function DeviceDetailModal({
+           <div className="mb-2 text-[10px] uppercase tracking-widest text-ink-tertiary">Actions</div>
+           <div className="flex flex-wrap gap-1.5">
+             <ActionBtn busy={busy} primary onClick={onActivate} title="Activer / prolonger l'abonnement">Activer / prolonger</ActionBtn>
+-            <ActionBtn busy={busy} primary onClick={() => navigate(`/activation-distance?mac=${macUrl}`)} title="Activer et envoyer une liste en un seul geste. La box est prévenue tout de suite.">Activation à distance</ActionBtn>
+             <ActionBtn busy={busy || sending} primary onClick={instantPush} title="Renvoie les listes du panel à la box à l'instant, puis affiche ici le moment où la TV les a vraiment reçues.">⚡ Envoi instantané</ActionBtn>
+             <ActionBtn busy={busy} onClick={() => navigate(`/chaines?mac=${macUrl}`)} title="Ajouter ou changer la liste de chaînes, sans modifier l'activation">Liste de chaînes</ActionBtn>
+             <ActionBtn busy={busy} onClick={() => navigate(`/blackbox?mac=${macUrl}`)} title="Journal technique de cette box : ordre du panel reçu, liste chargée en N s, liste refusée">Boîte noire</ActionBtn>
+@@ -839,22 +841,22 @@ function CredRow({ label, value, mono }: { label: string; value: string; mono?:
+ function ActivatePlanModal({
+   device, onClose, onDone,
+ }: { device: Device; onClose: () => void; onDone: () => void }) {
+-  const [plan, setPlan] = useState('yearly');
++  const [plan, setPlan] = useState(DEFAULT_RENEW_PLAN);
++  const [costs, setCosts] = useState<PlanCost[]>([]);
+   const [busy, setBusy] = useState(false);
+   const [err, setErr] = useState<string | null>(null);
+   const [done, setDone] = useState(false);
++  const isReseller = !isOwnerRole(getCurrentUser()?.role);
++  useEffect(() => {
++    let active = true;
++    planCostsApi.list().then((c) => { if (active) setCosts(c.items); }).catch(() => { /* coûts non affichés */ });
++    return () => { active = false; };
++  }, []);
+   // Verrou synchrone : deux clics avant le re-render partaient deux fois
+   // et débitaient deux fois les crédits.
+   const flight = useRef(createSingleFlight());
+   const idem = useRef<string | null>(null);
+ 
+-  const PLANS = [
+-    { id: 'monthly', label: '1 mois' },
+-    { id: 'quarterly', label: '3 mois' },
+-    { id: 'biannual', label: '6 mois' },
+-    { id: 'yearly', label: '1 an' },
+-    { id: 'lifetime', label: 'À vie' },
+-  ];
+ 
+   async function go() {
+     await flight.current.run(async () => {
+@@ -878,32 +880,16 @@ function ActivatePlanModal({
+         <h2 className="mb-1 text-lg font-semibold tracking-tight">Activer / prolonger</h2>
+         <p className="mb-4 font-mono text-xs text-accent">{device.mac}</p>
+         <p className="mb-3 text-sm text-ink-tertiary">
+-          Le client a payé ? Choisis la durée — elle s'ajoute au temps restant
+-          et débloque l'app immédiatement.
++          La durée s'ajoute au temps restant et débloque l'app tout de suite.
++          Mêmes choix que l'écran « Activer une box ».
+         </p>
+-        <div className="grid grid-cols-2 gap-2">
+-          {PLANS.map((p) => (
+-            <button
+-              key={p.id}
+-              type="button"
+-              onClick={() => setPlan(p.id)}
+-              className={
+-                'rounded-md border px-3 py-2 text-sm transition ' +
+-                (plan === p.id
+-                  ? 'border-accent bg-accent/10 text-ink-primary'
+-                  : 'border-white/5 bg-slate text-ink-secondary hover:border-white/20')
+-              }
+-            >
+-              {p.label}
+-            </button>
+-          ))}
+-        </div>
++        <PlanPicker value={plan} onChange={(p) => { setPlan(p); idem.current = null; }} costs={costs} showCosts={isReseller} />
+         {err && <div className="mt-3 rounded-md border border-accent/30 bg-accent/10 px-3 py-2 text-xs text-accent-bright">{err}</div>}
+         {done && <div className="mt-3 rounded-md border border-success/30 bg-success/10 px-3 py-2 text-xs text-success">Activé ✔</div>}
+         <div className="flex justify-end gap-2 pt-4">
+           <button type="button" onClick={onClose} className="rounded-md px-3 py-2 text-sm text-ink-secondary hover:text-ink-primary">Annuler</button>
+           <button disabled={busy || done} onClick={go} className="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-black hover:bg-accent-bright disabled:opacity-50">
+-            {busy ? 'Activation…' : 'Activer'}
++            {busy ? 'Activation…' : activateButtonText(plan, planCost(plan, costs), isReseller)}
+           </button>
+         </div>
+       </div>
+diff --git a/android-app/admin-panel/src/pages/RemoteActivatePage.tsx b/android-app/admin-panel/src/pages/RemoteActivatePage.tsx
+deleted file mode 100644
+index 1240f756..00000000
+--- a/android-app/admin-panel/src/pages/RemoteActivatePage.tsx
++++ /dev/null
+@@ -1,539 +0,0 @@
+-import { FormEvent, useEffect, useRef, useState } from 'react';
+-import { Link, useSearchParams } from 'react-router-dom';
+-import { AppLayout } from '@/components/AppLayout';
+-import { Alert } from '@/components/ui';
+-import {
+-  activateApi, appsApi, devicesApi, planCostsApi, meApi, sourcesApi,
+-  getCurrentUser, isOwnerRole, userCan,
+-  type App, type PlanCost, type ActivateResult, type DeviceSource, ApiError,
+-  newIdempotencyKey, keepIdempotencyKeyAfter,
+-} from '@/lib/api';
+-import { formatDateTime, isValidMac, normalizeMac } from '@/lib/utils';
+-import { createSingleFlight } from '@/lib/robust';
+-import {
+-  planActivationList, validateListInput, type SourceInput,
+-} from '@/lib/sources';
+-import {
+-  INSTANT_GIVE_UP_MS, INSTANT_POLL_MS, instantLabel, listOnTv, type InventoryLike,
+-} from '@/lib/instant';
+-
+-// =========================================================
+-//  Activation à distance — UN bouton : licence + liste.
+-// =========================================================
+-//  Le Worker refuse volontairement la liste dans l'appel d'activation
+-//  (deux opérations distinctes). Cet écran les enchaîne :
+-//    1. la liste saisie est vérifiée AVANT tout (pas de crédit débité
+-//       pour une faute de frappe) ;
+-//    2. POST /api/v1/activate (la box est prévenue : « activate »/« renew ») ;
+-//    3. PUT /api/v1/sources/:mac avec les listes déjà posées par le panel
+-//       + la nouvelle (la box est prévenue : « source »). Les listes que le
+-//       client a ajoutées lui-même sont gardées par le serveur.
+-//  Si l'étape 3 échoue, la licence reste activée et un bouton renvoie
+-//  seulement la liste. Rien n'est journalisé ici (mot de passe compris).
+-// =========================================================
+-
+-// Essais GRATUITS (0 crédit, même pour un revendeur : planCreditCost du
+-// Worker rend 0 pour tout plan « trial… »). La licence expire seule à la
+-// date, la box se bloque alors comme pour un abonnement fini.
+-const TRIALS = [
+-  { id: 'trial_3d', label: '3 jours' },
+-  { id: 'trial_7d', label: '7 jours' },
+-  { id: 'trial_30d', label: '1 mois' },
+-];
+-
+-// Abonnements PAYÉS (crédits débités pour un revendeur).
+-const PLANS = [
+-  { id: 'yearly', label: '1 an' },
+-  { id: 'lifetime', label: 'À vie' },
+-];
+-
+-export function isTrialPlan(plan: string): boolean {
+-  return plan.startsWith('trial');
+-}
+-
+-type ListKind = 'm3u' | 'xtream' | 'none';
+-
+-/// Décision du propriétaire (06/10/2026) : « listes à part, applications à
+-/// part ». Cette page n'active que la licence ; les listes se gèrent dans
+-/// Listes (/chaines). Faux = plus de champ de liste ici. Le code de l'envoi
+-/// reste (vrai le rallume) : le suivi « liste sur la TV après N s » est le
+-/// même que dans la fiche appareil.
+-const LISTS_IN_ACTIVATION = false;
+-type Step = 'idle' | 'busy' | 'ok' | 'skip' | 'err';
+-
+-export function RemoteActivatePage({ onLogout }: { onLogout: () => void }) {
+-  const user = getCurrentUser();
+-  const isReseller = !isOwnerRole(user?.role);
+-  const canPush = !isReseller || userCan(user, 'sources');
+-
+-  const [sp] = useSearchParams();
+-  const [mac, setMac] = useState(sp.get('mac') || '');
+-  // Défaut : 7 jours d'essai. Un oubli ne coûte aucun crédit.
+-  const [plan, setPlan] = useState('trial_7d');
+-  const [customerName, setCustomerName] = useState('');
+-  const [kind, setKind] = useState<ListKind>(LISTS_IN_ACTIVATION && canPush ? 'm3u' : 'none');
+-  const [m3uUrl, setM3uUrl] = useState('');
+-  const [server, setServer] = useState('');
+-  const [username, setUsername] = useState('');
+-  const [password, setPassword] = useState('');
+-
+-  const [apps, setApps] = useState<App[]>([]);
+-  const [costs, setCosts] = useState<PlanCost[]>([]);
+-  const [balance, setBalance] = useState<number | null>(null);
+-
+-  const [err, setErr] = useState<string | null>(null);
+-  const [licenceStep, setLicenceStep] = useState<Step>('idle');
+-  const [listStep, setListStep] = useState<Step>('idle');
+-  const [listNote, setListNote] = useState<string | null>(null);
+-  const [result, setResult] = useState<ActivateResult | null>(null);
+-  const flight = useRef(createSingleFlight());
+-  // Une clé par intention d'activation ; gardée si la réponse n'est pas
+-  // arrivée (coupure, 5xx), pour qu'un nouvel envoi rejoue au lieu de redébiter.
+-  const idem = useRef<string | null>(null);
+-
+-  // ----- « Sur la TV » : preuve que la liste est arrivée -----
+-  // Dès que la liste est envoyée, on relit l'inventaire réel de la box
+-  // (heartbeat) toutes les 2 s, jusqu'à la voir ou pendant 2 min. La box
+-  // (107-test.158+) remonte son inventaire tout de suite après l'import.
+-  const [tv, setTv] = useState<{
+-    startedAt: number; sent: SourceInput; elapsedMs: number;
+-    seen: InventoryLike | null; lastSeen: number; now: number;
+-  } | null>(null);
+-
+-  useEffect(() => {
+-    if (!tv || tv.seen || tv.elapsedMs >= INSTANT_GIVE_UP_MS) return;
+-    let alive = true;
+-    const m = normalizeMac(mac);
+-    let deviceId: string | null = null;
+-    const tick = async () => {
+-      try {
+-        if (!deviceId) {
+-          const r = await devicesApi.list(m, { limit: 5 });
+-          const hit = r.items.find((d) => d.mac.toUpperCase() === m.toUpperCase());
+-          deviceId = hit ? hit.id : null;
+-        }
+-        let seen: InventoryLike | null = null;
+-        let lastSeen = 0;
+-        if (deviceId) {
+-          const ov = await devicesApi.overview(deviceId);
+-          seen = listOnTv(ov.localSources ?? [], tv.sent);
+-          lastSeen = ov.presence?.last_seen ?? 0;
+-        }
+-        if (!alive) return;
+-        const now = Date.now();
+-        setTv((cur) => cur && cur.startedAt === tv.startedAt
+-          ? { ...cur, elapsedMs: now - cur.startedAt, seen, lastSeen, now }
+-          : cur);
+-      } catch (e) {
+-        if (e instanceof ApiError && e.status === 401) onLogout();
+-        if (!alive) return;
+-        const now = Date.now();
+-        setTv((cur) => cur && cur.startedAt === tv.startedAt
+-          ? { ...cur, elapsedMs: now - cur.startedAt, now }
+-          : cur);
+-      }
+-    };
+-    tick();
+-    const timer = window.setInterval(tick, INSTANT_POLL_MS);
+-    return () => { alive = false; window.clearInterval(timer); };
+-    // `tv.seen` / `tv.elapsedMs` changent à chaque relecture : on ne
+-    // relance la boucle que pour un nouvel envoi (startedAt).
+-    // eslint-disable-next-line react-hooks/exhaustive-deps
+-  }, [tv?.startedAt, tv?.seen, (tv?.elapsedMs ?? 0) >= INSTANT_GIVE_UP_MS]);
+-
+-  const primaryApp =
+-    apps.find((a) => !/red\s*room|nova|\btv\b/i.test(a.name)) ?? apps[0];
+-  const appId = primaryApp?.id ?? 'app_7motion';
+-  const macOk = isValidMac(mac);
+-  const busy = licenceStep === 'busy' || listStep === 'busy';
+-
+-  useEffect(() => {
+-    let active = true;
+-    const out = (e: unknown) => {
+-      if (e instanceof ApiError && e.status === 401) onLogout();
+-    };
+-    planCostsApi.list().then((c) => { if (active) setCosts(c.items); }).catch(out);
+-    appsApi.list().then((a) => { if (active) setApps(a.items); }).catch(out);
+-    meApi.get().then((r) => { if (active) setBalance(r.user.credit_balance ?? null); }).catch(out);
+-    return () => { active = false; };
+-  }, [onLogout]);
+-
+-  const costFor = (p: string): number | null => {
+-    if (isTrialPlan(p)) return 0;
+-    const row = costs.find((c) => c.plan === p);
+-    return row ? row.credits : null;
+-  };
+-
+-  /// Liste saisie, nettoyée. `null` = « sans liste ».
+-  function listInput(): SourceInput | null {
+-    if (kind === 'none') return null;
+-    if (kind === 'm3u') return { type: 'm3u', m3u_url: m3uUrl.trim() };
+-    return {
+-      type: 'xtream',
+-      server_url: server.trim(),
+-      username: username.trim(),
+-      password: password.trim(),
+-    };
+-  }
+-
+-  /// Étape 3 seule : envoie la liste saisie à la box (elle remplace les
+-  /// listes du panel ; celles du client restent).
+-  async function sendList(m: string, input: SourceInput): Promise<void> {
+-    setListStep('busy');
+-    setListNote(null);
+-    try {
+-      let existing: DeviceSource[] = [];
+-      try {
+-        const r = await sourcesApi.get(m);
+-        existing = (r.sources ?? (r.source ? [r.source] : [])) as DeviceSource[];
+-      } catch (e) {
+-        // 404 = aucune liste encore : on part de zéro.
+-        if (!(e instanceof ApiError && e.status === 404)) throw e;
+-      }
+-      // La liste saisie REMPLACE les listes du panel (mesuré le 05/10/2026 :
+-      // l'ancienne règle « ajouter, maximum 3 » refusait l'envoi et la box
+-      // gardait l'ancien serveur). Les listes du client restent : le
+-      // serveur les garde d'office. Même liste déjà seule sur le serveur :
+-      // on renvoie quand même, c'est ce renvoi qui prévient la box.
+-      const planList = planActivationList(existing, input);
+-      await sourcesApi.setMany(m, planList.sources);
+-      setListStep('ok');
+-      setListNote(
+-        planList.unchanged
+-          ? 'Cette liste était déjà sur le serveur : la box est prévenue à nouveau.'
+-          : planList.replaced > 0
+-            ? `Liste envoyée. ${planList.replaced === 1 ? 'L’ancienne liste du panel est remplacée' : `Les ${planList.replaced} anciennes listes du panel sont remplacées`}`
+-              + (planList.clientKept > 0 ? ` ; ${planList.clientKept === 1 ? 'la liste ajoutée par le client reste' : `les ${planList.clientKept} listes ajoutées par le client restent`}.` : '.')
+-            : null,
+-      );
+-      const now = Date.now();
+-      setTv({ startedAt: now, sent: input, elapsedMs: 0, seen: null, lastSeen: 0, now });
+-    } catch (e: unknown) {
+-      if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
+-      setListStep('err');
+-      setListNote(
+-        (e instanceof ApiError ? e.message : 'Envoi impossible.')
+-        + ' La licence reste activée : corrige la liste puis « Renvoyer la liste ».',
+-      );
+-    }
+-  }
+-
+-  async function submit(e: FormEvent) {
+-    e.preventDefault();
+-    await flight.current.run(async () => {
+-      setErr(null);
+-      setResult(null);
+-      setListNote(null);
+-      setListStep('idle');
+-      const m = normalizeMac(mac);
+-      if (!isValidMac(m)) {
+-        setErr('MAC invalide. Tape-la comme sur la box : AD:A6:98:70:6A (le « MK: » est ajouté tout seul).');
+-        return;
+-      }
+-      const input = listInput();
+-      if (input) {
+-        const bad = validateListInput(input);
+-        if (bad) { setErr(bad + ' Rien n’a été activé.'); return; }
+-      }
+-      setMac(m);
+-      setLicenceStep('busy');
+-      try {
+-        const key = idem.current ?? (idem.current = newIdempotencyKey());
+-        const res = await activateApi.activate({
+-          mac: m, plan, app_id: appId,
+-          customer_name: customerName.trim() || undefined,
+-        }, key);
+-        idem.current = null;
+-        setResult(res);
+-        if (res.credit_balance !== null) setBalance(res.credit_balance);
+-        setLicenceStep('ok');
+-      } catch (e2: unknown) {
+-        if (!keepIdempotencyKeyAfter(e2)) idem.current = null;
+-        if (e2 instanceof ApiError && e2.status === 401) { onLogout(); return; }
+-        setLicenceStep('err');
+-        setErr((e2 instanceof ApiError ? e2.message : 'Activation impossible.') + ' Aucune liste envoyée.');
+-        return;
+-      }
+-      if (input) {
+-        await sendList(m, input);
+-      } else {
+-        setListStep('skip');
+-      }
+-    });
+-  }
+-
+-  async function resendList() {
+-    const m = normalizeMac(mac);
+-    const input = listInput();
+-    if (!isValidMac(m) || !input) return;
+-    const bad = validateListInput(input);
+-    if (bad) { setListStep('err'); setListNote(bad); return; }
+-    await flight.current.run(() => sendList(m, input));
+-  }
+-
+-  const inputCls =
+-    'w-full rounded-lg border border-white/10 bg-slate px-3 py-3 text-base outline-none focus:border-accent/60 focus:ring-2 focus:ring-accent/40';
+-  const credit = costFor(plan);
+-  const done = licenceStep === 'ok' && (listStep === 'ok' || listStep === 'skip');
+-
+-  return (
+-    <AppLayout
+-      title="Activation à distance"
+-      onLogout={onLogout}
+-      actions={
+-        isReseller && balance !== null ? (
+-          <div className="rounded-lg border border-white/10 px-3 py-1.5 text-sm text-ink-secondary">
+-            {balance} crédit{balance > 1 ? 's' : ''}
+-          </div>
+-        ) : undefined
+-      }
+-    >
+-      <form onSubmit={submit} className="mx-auto w-full max-w-md space-y-5">
+-        <p className="text-sm leading-relaxed text-ink-secondary">
+-          Un seul bouton : la box est activée <em>et</em> reçoit sa liste. Elle est
+-          prévenue tout de suite et affiche la liste en quelques secondes.
+-        </p>
+-
+-        <div>
+-          <label htmlFor="ra-mac" className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-ink-secondary">
+-            Adresse MAC (comme sur la box)
+-          </label>
+-          <input
+-            id="ra-mac"
+-            value={mac}
+-            onChange={(e) => setMac(e.target.value)}
+-            onBlur={() => setMac((v) => (v.trim() ? normalizeMac(v) : v))}
+-            autoFocus
+-            autoComplete="off"
+-            placeholder="AD:A6:98:70:6A"
+-            className={inputCls + ' font-mono'}
+-          />
+-        </div>
+-
+-        <div>
+-          <label htmlFor="ra-name" className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-ink-secondary">
+-            Nom du client <span className="normal-case tracking-normal text-ink-tertiary">(optionnel)</span>
+-          </label>
+-          <input
+-            id="ra-name"
+-            value={customerName}
+-            onChange={(e) => setCustomerName(e.target.value)}
+-            placeholder="Ex. Salon de Karim"
+-            className={inputCls}
+-          />
+-        </div>
+-
+-        <p className="-mb-2 text-xs font-medium uppercase tracking-wide text-ink-secondary">Essai gratuit</p>
+-        <div className="grid grid-cols-3 gap-3" role="group" aria-label="Essai gratuit">
+-          {TRIALS.map((p) => {
+-            const selected = plan === p.id;
+-            return (
+-              <button
+-                type="button"
+-                key={p.id}
+-                onClick={() => setPlan(p.id)}
+-                className={
+-                  'rounded-xl border px-3 py-3 text-left transition ' +
+-                  (selected
+-                    ? 'border-accent bg-accent/15 text-ink-primary'
+-                    : 'border-white/10 bg-midnight text-ink-secondary hover:border-white/25')
+-                }
+-              >
+-                <span className="block text-base font-semibold leading-tight">{p.label}</span>
+-                <span className="mt-1 block text-xs text-ink-tertiary">Gratuit</span>
+-              </button>
+-            );
+-          })}
+-        </div>
+-
+-        <p className="-mb-2 text-xs font-medium uppercase tracking-wide text-ink-secondary">Abonnement payé</p>
+-        <div className="grid grid-cols-2 gap-3" role="group" aria-label="Abonnement payé">
+-          {PLANS.map((p) => {
+-            const selected = plan === p.id;
+-            const c = costFor(p.id);
+-            return (
+-              <button
+-                type="button"
+-                key={p.id}
+-                onClick={() => setPlan(p.id)}
+-                className={
+-                  'rounded-xl border px-4 py-4 text-left transition ' +
+-                  (selected
+-                    ? 'border-accent bg-accent/15 text-ink-primary'
+-                    : 'border-white/10 bg-midnight text-ink-secondary hover:border-white/25')
+-                }
+-              >
+-                <span className="block text-lg font-semibold leading-tight">{p.label}</span>
+-                {isReseller && c !== null && (
+-                  <span className="mt-1 block text-xs text-ink-tertiary">{c} crédit{c > 1 ? 's' : ''}</span>
+-                )}
+-              </button>
+-            );
+-          })}
+-        </div>
+-
+-        {!LISTS_IN_ACTIVATION && canPush && (
+-          <div className="rounded-xl border border-white/10 bg-midnight/60 p-4 text-sm">
+-            <p className="font-medium text-ink-primary">Les listes se gèrent à part.</p>
+-            <p className="mt-1 text-ink-secondary">
+-              Ici on active l’application. Pour envoyer, remplacer ou retirer la liste de cette box :{' '}
+-              <Link
+-                to={`/chaines${isValidMac(normalizeMac(mac)) ? `?mac=${encodeURIComponent(normalizeMac(mac))}` : ''}`}
+-                className="font-medium text-accent-bright underline-offset-2 hover:underline"
+-              >
+-                Listes
+-              </Link>.
+-            </p>
+-          </div>
+-        )}
+-
+-        {LISTS_IN_ACTIVATION && canPush && (
+-          <div className="space-y-3 rounded-xl border border-white/10 bg-midnight/60 p-4">
+-            <p className="text-sm font-medium text-ink-primary">Liste de chaînes du client</p>
+-            <div className="grid grid-cols-3 gap-2" role="group" aria-label="Type de liste">
+-              {(['m3u', 'xtream', 'none'] as ListKind[]).map((k) => (
+-                <button
+-                  type="button"
+-                  key={k}
+-                  onClick={() => setKind(k)}
+-                  className={
+-                    'rounded-lg border px-2 py-2 text-sm ' +
+-                    (kind === k
+-                      ? 'border-accent bg-accent/15 text-ink-primary'
+-                      : 'border-white/10 text-ink-secondary')
+-                  }
+-                >
+-                  {k === 'm3u' ? 'Lien M3U' : k === 'xtream' ? 'Code Xtream' : 'Sans liste'}
+-                </button>
+-              ))}
+-            </div>
+-            {kind === 'm3u' && (
+-              <input
+-                aria-label="Lien M3U"
+-                value={m3uUrl}
+-                onChange={(e) => setM3uUrl(e.target.value)}
+-                placeholder="http://…/get.php?…"
+-                autoComplete="off"
+-                className={inputCls + ' font-mono text-sm'}
+-              />
+-            )}
+-            {kind === 'xtream' && (
+-              <div className="space-y-2">
+-                <input
+-                  aria-label="Serveur Xtream"
+-                  value={server}
+-                  onChange={(e) => setServer(e.target.value)}
+-                  placeholder="http://serveur:port"
+-                  autoComplete="off"
+-                  className={inputCls + ' font-mono text-sm'}
+-                />
+-                <input
+-                  aria-label="Identifiant Xtream"
+-                  value={username}
+-                  onChange={(e) => setUsername(e.target.value)}
+-                  placeholder="Identifiant"
+-                  autoComplete="off"
+-                  className={inputCls + ' font-mono text-sm'}
+-                />
+-                <input
+-                  aria-label="Mot de passe Xtream"
+-                  value={password}
+-                  onChange={(e) => setPassword(e.target.value)}
+-                  placeholder="Mot de passe"
+-                  autoComplete="off"
+-                  className={inputCls + ' font-mono text-sm'}
+-                />
+-              </div>
+-            )}
+-            <p className="text-xs text-ink-tertiary">
+-              Cette liste remplace les listes du panel déjà sur la box. Les listes ajoutées par le
+-              client restent. Pour en ajouter une sans remplacer : fiche appareil → Liste de chaînes.
+-            </p>
+-          </div>
+-        )}
+-
+-        {err && <Alert>{err}</Alert>}
+-
+-        {(licenceStep !== 'idle' || listStep !== 'idle') && (
+-          <ul className="space-y-1.5 rounded-xl border border-white/10 bg-midnight/60 p-4 text-sm" role="status">
+-            <StepRow step={licenceStep} label={
+-              licenceStep === 'ok' && result
+-                ? (result.plan === 'lifetime' || result.expires_at == null
+-                  ? 'Licence activée à vie'
+-                  : isTrialPlan(plan)
+-                    ? `Essai gratuit jusqu’au ${formatDateTime(result.expires_at)}`
+-                    : `Licence activée jusqu’au ${formatDateTime(result.expires_at)}`)
+-                : 'Licence'
+-            } />
+-            {listStep !== 'skip' && (
+-              <StepRow step={listStep} label={listNote ?? 'Liste envoyée à la box'} />
+-            )}
+-            {done && tv && (() => {
+-              const l = instantLabel({
+-                elapsedMs: tv.elapsedMs,
+-                seen: tv.seen ? [tv.seen] : [],
+-                missing: tv.seen ? 0 : 1,
+-                lastSeen: tv.lastSeen,
+-                now: tv.now,
+-              });
+-              return (
+-                <li className="flex gap-2 pt-1" aria-live="polite">
+-                  <span className={
+-                    (l.kind === 'ok' ? 'text-emerald-400' : l.kind === 'late' ? 'text-accent-bright' : 'text-ink-tertiary')
+-                    + ' w-4 shrink-0 font-semibold'
+-                  }>
+-                    {l.kind === 'ok' ? '✓' : l.kind === 'late' ? '!' : '⚡'}
+-                  </span>
+-                  <span className="text-ink-primary">{l.text}</span>
+-                </li>
+-              );
+-            })()}
+-            {done && !tv && (
+-              <li className="pt-1 text-ink-secondary">
+-                La box est prévenue à l’instant. Sur l’accueil, la liste apparaît en
+-                quelques secondes.
+-              </li>
+-            )}
+-          </ul>
+-        )}
+-
+-        <button
+-          type="submit"
+-          disabled={busy || !mac.trim()}
+-          className="w-full rounded-xl bg-accent px-4 py-3.5 text-base font-semibold text-obsidian hover:bg-accent-bright disabled:cursor-not-allowed disabled:opacity-50"
+-        >
+-          {busy
+-            ? 'En cours…'
+-            : (kind === 'none' || !canPush ? 'Activer' : '⚡ Activer et envoyer la liste · instantané')
+-              + (isTrialPlan(plan)
+-                ? ' · essai gratuit'
+-                : isReseller && credit !== null ? ` · ${credit} crédit${credit > 1 ? 's' : ''}` : '')}
+-        </button>
+-
+-        {licenceStep === 'ok' && listStep === 'err' && (
+-          <button
+-            type="button"
+-            onClick={resendList}
+-            disabled={busy || !macOk}
+-            className="w-full rounded-lg border border-white/15 px-4 py-2.5 text-sm font-semibold text-ink-primary hover:bg-white/5 disabled:opacity-50"
+-          >
+-            Renvoyer la liste (sans réactiver)
+-          </button>
+-        )}
+-      </form>
+-    </AppLayout>
+-  );
+-}
+-
+-function StepRow({ step, label }: { step: Step; label: string }) {
+-  const mark = step === 'ok' ? '✓' : step === 'err' ? '✗' : step === 'busy' ? '…' : '·';
+-  const color = step === 'ok'
+-    ? 'text-emerald-400'
+-    : step === 'err' ? 'text-accent-bright' : 'text-ink-tertiary';
+-  return (
+-    <li className="flex gap-2">
+-      <span className={color + ' w-4 shrink-0 font-semibold'}>{mark}</span>
+-      <span className="text-ink-primary">{label}</span>
+-    </li>
+-  );
+-}

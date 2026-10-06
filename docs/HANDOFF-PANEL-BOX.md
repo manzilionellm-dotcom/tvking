@@ -358,6 +358,29 @@ demande (ce que font IBO / TiviMate / Smarters).
   (54 779 385 octets, commit ea9b22e, signature `5145b8e0…9e61` relue sur
   l'APK téléchargé). Contient les accusés d'ordres de la box.
 
+## 5 septdecies. Une seule activation, menu sans répétition (6 octobre)
+
+- 8e patch `docs/patches/panel-une-seule-activation.patch`, après le 7e.
+  Vérifié : la série 1-8 s'applique sur `636aad6` propre et donne l'arbre
+  testé.
+- « Grande activation de toutes les applications » et « Activation à
+  distance » faisaient le même geste avec trois listes de durées
+  différentes (la fiche appareil en avait une troisième). Il reste un seul
+  écran, **Activer une box** (`/activate`) : MAC comme sur la box, nom,
+  essai gratuit 3 / 7 / 14 / 30 j, abonnement 1 / 3 / 6 mois, 1 an, à vie,
+  un bouton qui dit le prix. La fenêtre « Activer / prolonger » de la fiche
+  appareil utilise le même choix. Licence seulement ; les listes restent
+  dans **Listes**.
+- `/activation-distance` mène à `/activate`, MAC comprise (liens et
+  favoris déjà copiés).
+- Menu : plus de titre de section qui répète une entrée (« Clients ›
+  Clients », « Boîte noire › Boîte noire »…). Libellés traduits pour de bon
+  en anglais et en arabe.
+- Supprimé : le bloc « Ajouter des jours d'essai » (doublon de l'essai
+  gratuit). La route Worker `POST /api/v1/trial-extend` reste en place.
+- Tests : `activation.test.ts` (8), panel 60/60, build OK ; 3 de ces tests
+  échouent sur le panel en ligne (contre-preuve).
+
 ## 6. Règles du propriétaire (non négociables)
 
 - Jamais `publish=true` sans son ordre écrit ; jamais de push sur `main`.
