@@ -55,6 +55,8 @@
 // API v1 — App Licensing Platform (cf. cloudflare/api_v1.js)
 // Routee depuis le bas du fetch() en haut de la chaine de match.
 import { apiV1 } from './api_v1.js';
+import { httpUrlError } from './source_url.js';
+import { openSource, sealSource } from './source_crypto.js';
 // Migration KV → D1 (cf. cloudflare/migrate_kv_to_d1.js) — exposee
 // via POST /admin/migrate-to-d1 et protegee par X-Admin-Secret.
 import { runMigration } from './migrate_kv_to_d1.js';
@@ -310,21 +312,28 @@ async function d1StatusForMac(env, mac, now = Date.now()) {
     const lstatus = lic.lstatus || 'active';
     const lifetime = lic.expires_at === null || lic.expires_at === undefined;
     const expiresAt = lifetime ? now + 36500 * DAY_MS : lic.expires_at;
-    const expired = !lifetime && expiresAt <= now;
+    const dateExpired = !lifetime && expiresAt <= now;
     const banned = lstatus === 'banned';
     const frozen = lstatus === 'frozen';
-    const active = lstatus === 'active' && !expired;
+    // inactive / suspended : l'app ne bloque que si expired && !paid
+    // (subscription_backend.dart). Sans ce drapeau, une désactivation
+    // retombait sur l'essai et l'appareil restait ouvert — y compris à vie.
+    const revoked = !banned && !frozen && lstatus !== 'active';
+    const active = lstatus === 'active' && !dateExpired;
+    const expired = dateExpired || revoked;
     return {
       exists: true,
-      status: banned ? 'banned' : frozen ? 'frozen' : 'active',
+      status: banned ? 'banned' : frozen ? 'frozen' : revoked ? 'inactive' : 'active',
       paid: active,            // licence active = debloque l'app
       // plan pour l'affichage app : 'lifetime' (à vie, expires_at NULL)
       // sinon 'paid' (abonnement à durée) ; paid_until = fin (null=à vie).
       plan: lifetime ? 'lifetime' : 'paid',
       paid_until: lifetime ? null : expiresAt,
-      trial_until: expiresAt,
-      days_left: lifetime ? 36500 : Math.max(0, Math.ceil((expiresAt - now) / DAY_MS)),
-      expired: expired && !lifetime,
+      trial_until: active ? expiresAt : now,
+      days_left: active
+        ? (lifetime ? 36500 : Math.max(0, Math.ceil((expiresAt - now) / DAY_MS)))
+        : 0,
+      expired,
       frozen,
       banned,
       source: 'd1',
@@ -2679,6 +2688,7 @@ async function handlePublicDeviceSource(env, mac) {
           const { sources_json, updated_at, ...single } = row;
           sources = [single];
         }
+        sources = await Promise.all(sources.map((s) => openSource(s, env.SECRETS_KEY)));
         return jsonPrivate({ mac: MAC, source: sources[0] || null, sources });
       }
     } catch (_) {
@@ -2795,16 +2805,17 @@ async function readDeviceSourceItems(env, MAC) {
   // 'self' (client v1 mono-liste), sinon 'panel' (défaut sûr, protège payants).
   const rowSelf = String(row.origin || '') === 'self';
   let needsPersist = false;
-  items = items.map((s) => {
-    const it = { ...s };
+  const opened = [];
+  for (const s of items) {
+    const it = await openSource({ ...s }, env.SECRETS_KEY);
     if (it.origin !== 'self' && it.origin !== 'panel') {
       it.origin = rowSelf ? 'self' : 'panel';
       needsPersist = true;
     }
     if (it.origin === 'self' && !it.id) { it.id = crypto.randomUUID(); needsPersist = true; }
-    return it;
-  });
-  return { items, needsPersist };
+    opened.push(it);
+  }
+  return { items: opened, needsPersist };
 }
 
 // Écrit la liste complète : colonnes plates = items[0] (compat app/panel), plus
@@ -2814,9 +2825,11 @@ async function writeDeviceSourceItems(env, MAC, items) {
     await env.DB.prepare('DELETE FROM device_sources WHERE mac = ?').bind(MAC).run();
     return;
   }
-  const first = items[0];
+  const sealed = [];
+  for (const s of items) sealed.push(await sealSource(s, env.SECRETS_KEY));
+  const first = sealed[0];
   const rowOrigin = items.every((s) => s.origin === 'self') ? 'self' : 'panel';
-  const jsonStr = JSON.stringify(items);
+  const jsonStr = JSON.stringify(sealed);
   await env.DB.prepare(
     `INSERT INTO device_sources
        (mac, type, label, server_url, username, password, m3u_url, epg_url, sources_json, origin, updated_at)
@@ -2854,19 +2867,26 @@ function buildSourceFromBody(body) {
   const type = String(body.type || '').trim().toLowerCase();
   const label = (String(body.label || '').trim() || 'Ma playlist').slice(0, 80);
   const epgRaw = String(body.epg_url || '').trim();
-  const epg = epgRaw && /^https?:\/\//i.test(epgRaw) ? epgRaw.slice(0, 2048) : null;
+  let epg = null;
+  if (epgRaw) {
+    const epgErr = httpUrlError(epgRaw, 'epg_url');
+    if (epgErr) return { error: epgErr };
+    epg = epgRaw;
+  }
   if (type === 'xtream') {
-    const server = String(body.server_url || '').trim().slice(0, 2048);
+    const server = String(body.server_url || '').trim();
     const user = String(body.username || '').trim().slice(0, 256);
     const pass = String(body.password || '').trim().slice(0, 256);
     if (!server || !user || !pass) return { error: 'xtream requires server_url, username, password' };
-    if (!/^https?:\/\//i.test(server)) return { error: 'server_url must start with http(s)://' };
+    const serverErr = httpUrlError(server, 'server_url');
+    if (serverErr) return { error: serverErr };
     return { source: { type: 'xtream', label, server_url: server, username: user, password: pass, m3u_url: null, epg_url: epg } };
   }
   if (type === 'm3u') {
-    const m3u = String(body.m3u_url || '').trim().slice(0, 2048);
+    const m3u = String(body.m3u_url || '').trim();
     if (!m3u) return { error: 'm3u requires m3u_url' };
-    if (!/^https?:\/\//i.test(m3u)) return { error: 'm3u_url must start with http(s)://' };
+    const m3uErr = httpUrlError(m3u, 'm3u_url');
+    if (m3uErr) return { error: m3uErr };
     return { source: { type: 'm3u', label, server_url: null, username: null, password: null, m3u_url: m3u, epg_url: epg } };
   }
   return { error: "type must be 'xtream' or 'm3u'" };
@@ -3026,6 +3046,7 @@ async function handlePublicFamilyM3u(env, rawToken) {
     if (!fam || !fam.source_json) return new Response('source absente', { status: 404 });
     let src;
     try { src = JSON.parse(fam.source_json); } catch (_) { src = null; }
+    src = await openSource(src, env.SECRETS_KEY);
     if (!src) return new Response('source invalide', { status: 404 });
 
     let target = null;

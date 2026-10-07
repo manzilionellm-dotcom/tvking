@@ -7,8 +7,8 @@
 --  (worker.js) et la charge automatiquement : le client n'a RIEN à
 --  saisir.
 --
---  Gérée via l'API /api/v1/sources/:mac (GET/PUT/DELETE) et lors de
---  l'activation /api/v1/activate (champ `source` optionnel).
+--  Gérée via l'API /api/v1/sources/:mac (GET/PUT/DELETE).
+--  L'activation /api/v1/activate n'écrit PAS dans cette table.
 --
 --  NB : le Worker crée déjà la table à la volée (ensureSourcesTable).
 --  On la garde ici pour documentation. Idempotent.
