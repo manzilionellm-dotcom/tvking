@@ -26,8 +26,15 @@ class SportsEvents {
 }
 
 class SportsRepository {
-  SportsRepository._();
+  SportsRepository._() : _baseUri = Uri.parse(kSubscriptionBaseUrl);
+
+  /// Le test passe par un vrai serveur HTTP local ; seul son emplacement change.
+  @visibleForTesting
+  SportsRepository.forTesting(Uri baseUri) : _baseUri = baseUri;
+
   static final SportsRepository instance = SportsRepository._();
+
+  final Uri _baseUri;
 
   static const String _kFavV2 = 'sports.favorites.v2'; // tableau JSON d'équipes
   static const String _kFavV1 = 'sports.favorite_team.v1'; // ancien : 1 équipe
@@ -87,7 +94,8 @@ class SportsRepository {
     if (query.length < 2) return const <SportTeam>[];
     try {
       final http.Response resp = await http
-          .get(Uri.parse('$kSubscriptionBaseUrl/api/sports/search?q=${Uri.encodeQueryComponent(query)}'),
+          .get(_baseUri.resolve('/api/sports/search').replace(
+                queryParameters: <String, String>{'q': query}),
               headers: const <String, String>{'Accept': 'application/json'})
           .timeout(const Duration(seconds: 8));
       if (resp.statusCode != 200) return const <SportTeam>[];
@@ -160,7 +168,7 @@ class SportsRepository {
     if (team == null) return;
     try {
       final http.Response resp = await http
-          .get(Uri.parse('$kSubscriptionBaseUrl/api/sports/team/${Uri.encodeComponent(id)}'),
+          .get(_baseUri.resolve('/api/sports/team/${Uri.encodeComponent(id)}'),
               headers: const <String, String>{'Accept': 'application/json'})
           .timeout(const Duration(seconds: 8));
       if (resp.statusCode != 200) return;
