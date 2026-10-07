@@ -742,3 +742,12 @@ Workflow `e2e-panel-box.yml` (branche du panel) : tests panel ↔ box, vert au 4
 
 Documents utiles : `docs/AUDIT-ZUNO-TV-2026-10.md`,
 `docs/PANEL-BOX-CARTES-ACCUEIL.md`, `docs/patches/`.
+
+
+### Verrouillage du panel demandé par le propriétaire — 7 octobre 2026
+
+PROUVÉ (code et CI) : commit `2b7d1ea` sur la branche de production. Le manifeste garde les références distinctes du dernier panel et du dernier Worker et active le gel des déploiements. Aucun fichier de produit n’est changé. Les 12 tests de protection échouent avant correction ; `node --test .github/panel-*.test.mjs` passe ensuite 30/30. Panel 70/70, compilation réussie, injection de pannes 60/60 et audit sécurité 47/47. Run GitHub `37602392077` : « Stabilité panel et Worker » réussi ; jobs Worker et panel sautés, aucun déploiement. Run `37602392026` : parcours local panel + Worker + box simulée réussi. La comparaison avant/après vérifie aussi le nombre de listes et ne journalise aucune donnée d’accès.
+
+NON PROUVÉ (verrou d’administration GitHub) : dernière relecture API, `protected: false` et aucun ruleset actif. Le connecteur ne permet pas les écritures d’administration. La connexion sécurisée a indiqué que le compte n’accepte pas le mot de passe, puis la sélection d’une autre méthode a expiré. Reprise nécessaire sur la connexion GitHub du propriétaire, puis activation et relecture des règles de gel, des contrôles obligatoires et de l’environnement protégé décrits dans `docs/PANEL-VERROUILLE.md`. La portée des identifiants Cloudflare reste à contrôler dans les réglages ; aucun secret n’a été consulté ni modifié.
+
+NON PROUVÉ (disponibilité permanente) : les protections du code ne prouvent pas l’absence de panne réseau, d’hébergement ou de fournisseur. Aucune mise à jour de la SHIELD n’est requise pour les changements de workflow de ce commit. Les publicités non publiées restent dans le travail local, en attente d’une nouvelle autorisation.
