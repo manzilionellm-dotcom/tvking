@@ -4,11 +4,8 @@ name: E2E panel et box (local)
 
 on:
   pull_request:
-    paths:
-      - 'android-app/admin-panel/**'
-      - 'android-app/cloudflare/**'
-      - 'android-app/e2e/panel-box/**'
-      - '.github/workflows/e2e-panel-box.yml'
+    # Un contrôle exigé doit aussi tourner pour une PR de documentation.
+    branches: ['claude/panel-mise-en-ligne']
   push:
     branches:
       - main
@@ -18,6 +15,9 @@ on:
       - 'android-app/cloudflare/**'
       - 'android-app/e2e/panel-box/**'
       - '.github/workflows/e2e-panel-box.yml'
+      - '.github/workflows/deploy-panel-cloudflare.yml'
+      - '.github/panel-*'
+      - '.github/CODEOWNERS'
 
 permissions:
   contents: read

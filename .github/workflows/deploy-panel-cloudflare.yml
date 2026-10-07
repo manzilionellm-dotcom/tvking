@@ -27,10 +27,15 @@ name: Deploy panel + Worker (Cloudflare)
 on:
   # Le push de CE fichier ne fait qu'enregistrer le workflow auprès de
   # GitHub (sans ça, « Run workflow » est introuvable depuis une branche).
-  # Les jobs exigent confirme == DEPLOYER : sur un push, ils sont sautés.
+  # Un push ne lance que les contrôles ; les déploiements restent manuels.
   push:
+    branches: ['claude/panel-mise-en-ligne']
     paths:
       - '.github/workflows/deploy-panel-cloudflare.yml'
+      - '.github/panel-*'
+      - '.github/CODEOWNERS'
+  pull_request:
+    branches: ['claude/panel-mise-en-ligne']
   workflow_dispatch:
     inputs:
       confirme:
@@ -45,8 +50,7 @@ on:
         options: ['worker-puis-panel', 'worker-seul', 'panel-seul']
       mac_reference:
         description: 'MAC déjà activée, relue avant/après (lecture seule)'
-        required: false
-        default: 'MK:24:2A:D0:0E:F3'
+        required: true
         type: string
 
 permissions:
@@ -64,9 +68,49 @@ env:
   WRANGLER_VERSION: '3.90.0'
 
 jobs:
+  validation:
+    name: Autorisation du propriétaire
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Refuser une autre branche, un autre auteur ou une version gelée
+        env:
+          PANEL_CONFIRMATION: ${{ inputs.confirme }}
+        run: node .github/panel-deploy-guard.mjs
+
+  stabilite:
+    name: Stabilité panel et Worker
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Protections et invariants avant/après
+        run: node --test .github/panel-*.test.mjs
+      - name: Worker — pannes, suppressions, canaux, isolation et CORS
+        working-directory: android-app/cloudflare
+        run: |
+          node --experimental-sqlite --test *.test.mjs
+          node --experimental-sqlite failure_injection.test.mjs
+          node --experimental-sqlite panel_security.audit.mjs
+      - name: Panel — tests et compilation
+        working-directory: android-app/admin-panel
+        run: |
+          npm ci --no-audit --no-fund
+          npm test
+          npm run build
+
   worker:
     name: 1) Worker → app.7themotion.com
-    if: github.event.inputs.confirme == 'DEPLOYER' && github.event.inputs.cible != 'panel-seul'
+    needs: [validation, stabilite]
+    if: needs.validation.result == 'success' && needs.stabilite.result == 'success' && github.event.inputs.cible != 'panel-seul'
+    environment: zuno-panel-production
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -99,15 +143,7 @@ jobs:
           MAC: ${{ github.event.inputs.mac_reference }}
         run: |
           set -e
-          curl -sS -m 30 "$WORKER_URL/api/status/$MAC" | tee avant_status.json; echo
-          curl -sS -m 30 -o /dev/null -w "device-source HTTP %{http_code}\n" "$WORKER_URL/api/device-source/$MAC" | tee avant_source.txt
-          # Champs qui ne doivent pas bouger : paid, plan, paid_until, frozen, banned, status.
-          node -e '
-            const s = JSON.parse(require("fs").readFileSync("avant_status.json","utf8"));
-            const keep = { exists:s.exists, status:s.status, paid:s.paid, plan:s.plan, paid_until:s.paid_until, frozen:s.frozen, banned:s.banned };
-            require("fs").writeFileSync("avant_keep.json", JSON.stringify(keep));
-            console.log("AVANT :", JSON.stringify(keep));
-          '
+          node .github/panel-reference.mjs capture avant_reference.json
 
       - name: AVANT — versions du Worker (pour le retour arrière)
         uses: cloudflare/wrangler-action@v3
@@ -142,18 +178,7 @@ jobs:
         run: |
           set -e
           sleep 5
-          curl -sS -m 30 "$WORKER_URL/api/status/$MAC" | tee apres_status.json; echo
-          curl -sS -m 30 -o /dev/null -w "device-source HTTP %{http_code}\n" "$WORKER_URL/api/device-source/$MAC" | tee apres_source.txt
-          node -e '
-            const fs = require("fs");
-            const s = JSON.parse(fs.readFileSync("apres_status.json","utf8"));
-            const keep = { exists:s.exists, status:s.status, paid:s.paid, plan:s.plan, paid_until:s.paid_until, frozen:s.frozen, banned:s.banned };
-            const avant = fs.readFileSync("avant_keep.json","utf8");
-            console.log("APRÈS :", JSON.stringify(keep));
-            if (JSON.stringify(keep) !== avant) { console.error("::error::la MAC de référence a changé"); process.exit(1); }
-            console.log("✓ MAC de référence identique avant/après");
-          '
-          diff avant_source.txt apres_source.txt && echo "✓ device-source : même code HTTP"
+          node .github/panel-reference.mjs compare avant_reference.json
           # Nouveau code en ligne : l activation refuse un lien (source_separate, 400)
           # mais seulement après authentification → sans jeton on attend 401.
           code=$(curl -sS -m 30 -o /dev/null -w "%{http_code}" -X POST "$WORKER_URL/api/v1/activate" -H "Content-Type: application/json" -d '{"mac":"MK:00:00:00:00:01","plan":"yearly"}')
@@ -169,18 +194,19 @@ jobs:
 
   panel:
     name: 2) Panel → tvking-admin.pages.dev
-    needs: [worker]
+    needs: [validation, stabilite, worker]
     # « panel-seul » saute le job worker ; « worker-puis-panel » attend son succès.
     if: >-
-      always() && github.event.inputs.confirme == 'DEPLOYER' && github.event.inputs.cible != 'worker-seul'
+      always() && needs.validation.result == 'success' && needs.stabilite.result == 'success' && github.event.inputs.cible != 'worker-seul'
       && (needs.worker.result == 'success' || (needs.worker.result == 'skipped' && github.event.inputs.cible == 'panel-seul'))
+    environment: zuno-panel-production
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
 
       - name: Build du panel (API = app.7themotion.com)
         working-directory: android-app/admin-panel
@@ -198,6 +224,10 @@ jobs:
       - name: AVANT — bundle en ligne et derniers déploiements Pages
         run: |
           curl -sS -m 30 "$PAGES_URL/" | grep -o 'assets/index-[A-Za-z0-9_-]*\.js' | head -1 | tee avant_bundle.txt
+      - name: AVANT — licence et nombre de listes, y compris panel-seul
+        env:
+          MAC: ${{ inputs.mac_reference }}
+        run: node .github/panel-reference.mjs capture avant_reference.json
       - uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -236,3 +266,7 @@ jobs:
           [ "$ok" = 1 ] || { echo "::error::le bundle servi n a pas le nouvel écran"; exit 1; }
           curl -sS -m 30 -o /dev/null -w "login HTTP %{http_code}\n" "$PAGES_URL/login"
           echo "✓ panel en ligne avec le nouvel écran"
+      - name: APRÈS — licence et nombre de listes identiques
+        env:
+          MAC: ${{ inputs.mac_reference }}
+        run: node .github/panel-reference.mjs compare avant_reference.json
