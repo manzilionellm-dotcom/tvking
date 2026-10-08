@@ -60,6 +60,11 @@ def audit(path, store=False):
             if "mediaProjection" in service.get(ANDROID + "foregroundServiceType", ""):
                 errors.append("Service de projection d'écran encore présent")
     resources = apk.get_android_resources()
+    # Androguard 4.1.3 analyse la table ARSC à la demande. La recherche
+    # par nom ne déclenche pas cette analyse : son index est encore vide.
+    # get_items() est l'entrée publique qui initialise l'index avant de
+    # contrôler le vrai son embarqué, même si R8 a renommé son fichier.
+    resources.get_items(package)
     sound_id = resources.get_res_id_by_key(package, "raw", "goal_roar")
     if not sound_id:
         errors.append("Son goal_roar absent des ressources Android")
