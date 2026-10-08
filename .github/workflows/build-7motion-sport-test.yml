@@ -414,6 +414,7 @@ jobs:
         flutter analyze --no-fatal-infos --no-fatal-warnings
         flutter test --reporter expanded
     - name: Construire l’APK mobile de test, une seule tentative
+      id: apk_build
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |-
@@ -440,8 +441,14 @@ jobs:
         [ "$CERT" = "5145b8e019f6d5fb96a207f2e73673fd954f799966fd598889211556cbdf9e61" ]
         "$BT/aapt2" dump badging "$APK" > "$RUNNER_TEMP/badging.txt"
         head -1 "$RUNNER_TEMP/badging.txt"
-        SDK=$(sed -n "s/^sdkVersion:\x27\([0-9]*\)\x27/\1/p" "$RUNNER_TEMP/badging.txt")
-        [ "$SDK" = "24" ]
+        # L'outil Android lit le manifeste binaire, sans dépendre de
+        # la présentation de la sortie aapt2. L'exigence reste 24.
+        AA="$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer"
+        test -x "$AA"
+        SDK=$("$AA" manifest min-sdk "$APK")
+        SDK_BADGING=$(sed -n "s/^sdkVersion:\x27\([0-9]*\)\x27/\1/p" "$RUNNER_TEMP/badging.txt")
+        echo "minSdk manifeste=$SDK ; ancien lecteur aapt2=${SDK_BADGING:-absent}"
+        [ "$SDK" = "24" ] || { echo "::error::minSdk attendu 24, reçu $SDK"; exit 1; }
         PKG=$(sed -n "s/^package: name='\([^']*\)'.*/\1/p" "$RUNNER_TEMP/badging.txt")
         CODE=$(sed -n "s/.*versionCode='\([0-9]*\)'.*/\1/p" "$RUNNER_TEMP/badging.txt")
         [ "$PKG" = "com.manzilionellm.tvking.tv_king" ]
@@ -460,6 +467,9 @@ jobs:
         echo "PHONE_VERSION_CODE=$CODE" >> "$GITHUB_ENV"
         echo "signature $CERT ; SHA-256 $SHA"
     - name: Conserver l’APK exact
+      # Garder le binaire compilé pour diagnostiquer un contrôle en
+      # échec. La livraison reste interdite si le contrôle a échoué.
+      if: ${{ !cancelled() && steps.apk_build.outcome == 'success' }}
       uses: actions/upload-artifact@v4
       with:
         name: 7motion-sport-test-${{ github.event.pull_request.head.sha }}

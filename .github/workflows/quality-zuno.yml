@@ -6,8 +6,9 @@
 #  `android-app/.github/workflows/quality.yml` ne partait donc
 #  jamais. Celui-ci est au bon endroit.
 #
-#  Les tests ne publient rien. La PR de preuve Sport du propriétaire
-#  appelle build-zuno-tv.yml sur zuno-tv-test après les deux barrières.
+#  La PR de preuve Sport du propriétaire appelle le constructeur
+#  concerné après les barrières : box sur zuno-tv-test, mobile sur
+#  7motion-test. Une passation seule ne refabrique aucun APK.
 #  Aucun déploiement Worker/panel, aucune écriture sur zuno-tv.
 # =========================================================
 
@@ -84,6 +85,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       box: ${{ steps.paths.outputs.box }}
+      phone: ${{ steps.paths.outputs.phone }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -96,7 +98,10 @@ jobs:
           paths=subprocess.check_output(['git','diff','--name-only','HEAD^','HEAD'],text=True).splitlines()
           roots=['android-app/lib/','android-app/test/','android-app/packages/','android-app/android_overlay/','android-app/pubspec']
           box=any(any(p.startswith(r) for r in roots) for p in paths)
-          with open(os.environ['GITHUB_OUTPUT'],'a') as out: out.write('box='+str(box).lower()+'\n')
+          phone=any(p in ['patches/mobile-sport-gratuit.patch','.github/workflows/build-7motion-sport-test.yml'] for p in paths)
+          with open(os.environ['GITHUB_OUTPUT'],'a') as out:
+              out.write('box='+str(box).lower()+'\n')
+              out.write('phone='+str(phone).lower()+'\n')
           PYPATHS
 
   # Appel réservé à la PR de preuve créée par le propriétaire. Le workflow
@@ -130,9 +135,12 @@ jobs:
 
   mobile-sport-test:
     name: APK mobile Sport gratuit
-    needs: [flutter, worker]
+    # Le patch ou son constructeur change : construire. Une preuve
+    # documentaire seule conserve l'APK déjà signé et validé.
+    needs: [flutter, worker, changes]
     if: >-
       github.event_name == 'pull_request' &&
+      needs.changes.outputs.phone == 'true' &&
       github.repository == 'manzilionellm-dotcom/tvking' &&
       github.actor == github.repository_owner &&
       github.event.pull_request.user.login == github.repository_owner &&
