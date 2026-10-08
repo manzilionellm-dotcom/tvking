@@ -1,9 +1,9 @@
 diff --git a/lib/core/app/repair_flags.dart b/lib/core/app/repair_flags.dart
 new file mode 100644
-index 0000000000000000000000000000000000000000..7aed1c98efade07c17e77edab3fc90ea58803064
+index 0000000000000000000000000000000000000000..12b3bd57f89d945b7dd4abcff22459be4ed640d2
 --- /dev/null
 +++ b/lib/core/app/repair_flags.dart
-@@ -0,0 +1,13 @@
+@@ -0,0 +1,17 @@
 +// Replis du téléphone : éteints par défaut, conservés entre deux lancements.
 +// Le repli Sport remet les routes du Worker historiques, y compris leur panne.
 +import 'package:shared_preferences/shared_preferences.dart';
@@ -11,12 +11,72 @@ index 0000000000000000000000000000000000000000..7aed1c98efade07c17e77edab3fc90ea
 +class RepairFlags {
 +  static const String mobileSportsLegacyKey = 'zuno.mobile.sports_legacy';
 +  static bool mobileSportsLegacy = false;
++  // L'ancien canal peut garder un son invalide après une mise à jour.
++  static const String mobileNotificationsLegacyKey = 'zuno.mobile.notifications_legacy';
++  static bool mobileNotificationsLegacy = false;
 +
 +  static Future<void> load() async {
 +    final SharedPreferences prefs = await SharedPreferences.getInstance();
 +    mobileSportsLegacy = prefs.getBool(mobileSportsLegacyKey) ?? false;
++    mobileNotificationsLegacy = prefs.getBool(mobileNotificationsLegacyKey) ?? false;
 +  }
 +}
+diff --git a/lib/core/notifications/notification_service.dart b/lib/core/notifications/notification_service.dart
+index f3381008c60a2aeea28e808cab2ea261f6674830..3aeaee462befec3a3455931a80c29cb78199316c 100644
+--- a/lib/core/notifications/notification_service.dart
++++ b/lib/core/notifications/notification_service.dart
+@@ -32,6 +32,7 @@ import 'package:timezone/timezone.dart' as tz;
+
+ import '../../features/subscription/data/subscription_backend.dart';
+ import '../../features/subscription/data/subscription_state.dart';
++import '../app/repair_flags.dart';
+ import '../i18n/l10n_now.dart';
+ import '../observability/structured_logger.dart';
+
+@@ -70,7 +71,13 @@ class NotificationService {
+   //  Et c'est le client qui reste maître : ce canal apparaît seul dans
+   //  les réglages Android, il peut le couper sans perdre les autres
+   //  notifications.
+-  static const String _goalChannelId = 'goal_roar_v1';
++  // Un canal Android déjà créé conserve son URI sonore, même si elle
++  // désignait la ressource manquante /0. Le canal v2 corrige les installations
++  // existantes ; le repli reprend exactement l'ancien identifiant.
++  static String get _goalChannelId => RepairFlags.mobileNotificationsLegacy
++      ? 'goal_roar_v1' : 'goal_roar_v2';
++  @visibleForTesting
++  static String get goalChannelId => _goalChannelId;
+   static String get _goalChannelName => l10nNow.notifChannelGoalName;
+   static String get _goalChannelDesc => l10nNow.notifChannelGoalDesc;
+
+@@ -183,6 +190,8 @@ class NotificationService {
+       _ready = true;
+     } catch (e) {
+       if (kDebugMode) debugPrint('[Notif] init: $e');
++      StructuredLogger.instance.warn(domain: 'notif', event: 'init.failed',
++        ctx: <String, Object?>{'reason': 'Notifications : initialisation impossible'});
+     }
+   }
+
+@@ -307,6 +316,8 @@ class NotificationService {
+       );
+     } catch (e) {
+       if (kDebugMode) debugPrint('[Notif] show: $e');
++      StructuredLogger.instance.warn(domain: 'notif', event: 'show.failed',
++        ctx: <String, Object?>{'reason': 'Notifications : affichage impossible'});
+     }
+   }
+
+@@ -350,7 +361,9 @@ class NotificationService {
+         ),
+       );
+     } catch (e) {
+-      if (kDebugMode) debugPrint('[Notif] goal: $e');
++      StructuredLogger.instance.warn(domain: 'notif', event: 'goal.failed',
++        ctx: <String, Object?>{'reason': 'Notifications : alerte de but impossible'});
++      if (kDebugMode) debugPrint('[Notif] alerte de but impossible');
+     }
+   }
+
 diff --git a/lib/features/sports/data/live_scores_service.dart b/lib/features/sports/data/live_scores_service.dart
 index 37a8727fd57055374f9d623b078f8dcd43698524..34a598a1898ae963f07f3c866014a74b3ce5869e 100644
 --- a/lib/features/sports/data/live_scores_service.dart
@@ -61,11 +121,11 @@ index 37a8727fd57055374f9d623b078f8dcd43698524..34a598a1898ae963f07f3c866014a74b
  //  poussées depuis le serveur — ce n'est pas ce fichier.
  import 'dart:async';
 -import 'dart:convert';
- 
+
  import 'package:flutter/foundation.dart';
  import 'package:flutter/widgets.dart';
 -import 'package:http/http.dart' as http;
- 
+
  import '../../../core/i18n/l10n_now.dart';
  import '../../../core/notifications/notification_service.dart';
  import '../../../core/realtime/realtime_sync_service.dart'
@@ -77,11 +137,11 @@ index 37a8727fd57055374f9d623b078f8dcd43698524..34a598a1898ae963f07f3c866014a74b
  import 'followed_matches_service.dart';
  import 'sports_repository.dart';
 +import 'public_football_repository.dart';
- 
+
  class LiveScoresService with WidgetsBindingObserver {
    LiveScoresService._();
    static final LiveScoresService instance = LiveScoresService._();
- 
+
 -  //  45 s — la source amont bouge toutes les 2 min et le serveur garde
 -  //  sa réponse 45 s. Descendre plus bas ne montrerait RIEN de plus au
 -  //  client : on ne ferait que réveiller le téléphone pour rien.
@@ -89,7 +149,7 @@ index 37a8727fd57055374f9d623b078f8dcd43698524..34a598a1898ae963f07f3c866014a74b
 +  //  espacer les téléchargements à environ 90 s ; ce n'est pas une
 +  //  promesse de notification instantanée.
    static const Duration _period = Duration(seconds: 45);
- 
+
 -  //  Court exprès. Les scores en direct sont un CONFORT : s'ils tardent,
 -  //  le reste de l'écran ne doit pas attendre avec eux.
 -  static const Duration _timeout = Duration(seconds: 7);
@@ -100,19 +160,19 @@ index 37a8727fd57055374f9d623b078f8dcd43698524..34a598a1898ae963f07f3c866014a74b
 @@ -100,12 +91,12 @@ class LiveScoresService with WidgetsBindingObserver {
    final StreamController<void> _changes = StreamController<void>.broadcast();
    Stream<void> get changes => _changes.stream;
- 
+
 -  /// Les matchs en cours, du plus important au moins important (l'ordre
 -  /// vient du serveur : c'est lui qui décide, l'app ne reclasse pas).
 +  /// Les derniers matchs reçus. Le fournisseur public inclut aussi des
 +  /// rencontres à venir ; l'écran n'en déduit jamais un statut LIVE.
    List<SportEvent> get live => List<SportEvent>.unmodifiable(_live);
- 
+
 -  /// `false` quand le serveur n'a pas de clé payante. L'écran doit alors
 -  /// le DIRE, et surtout ne pas laisser croire qu'aucun match ne se joue.
 +  /// `false` si une source est indisponible. Les scores déjà reçus
 +  /// restent accessibles avec le diagnostic du dépôt commun.
    bool get available => _available;
- 
+
    DateTime? get updatedAt => _updatedAt;
 @@ -361,30 +352,19 @@ class LiveScoresService with WidgetsBindingObserver {
      if (_inFlight) return;
@@ -163,14 +223,14 @@ index 2ccfaf9ecd7c05f2716158e6bea096c64f0175de..af30a02297159c9d6769edf8590459cf
 +++ b/lib/features/sports/data/match_alerts_service.dart
 @@ -31,19 +31,17 @@
  // =========================================================
- 
+
  import 'dart:async';
 -import 'dart:convert';
- 
+
  import 'package:flutter/foundation.dart';
 -import 'package:http/http.dart' as http;
  import 'package:shared_preferences/shared_preferences.dart';
- 
+
  import '../../../core/i18n/l10n_now.dart';
  import '../../../core/notifications/notification_service.dart';
 -import '../../subscription/data/subscription_backend.dart'
@@ -180,11 +240,11 @@ index 2ccfaf9ecd7c05f2716158e6bea096c64f0175de..af30a02297159c9d6769edf8590459cf
  import 'sports_repository.dart';
 +import 'public_football_repository.dart';
 +import 'live_scores_service.dart';
- 
+
  class MatchAlertsService {
    MatchAlertsService._();
 @@ -112,23 +110,23 @@ class MatchAlertsService {
- 
+
    Future<List<SportEvent>> _collect() async {
      final Map<String, SportEvent> byId = <String, SportEvent>{};
 -    // 1) Grandes affiches — UNE requête, tout le travail est côté serveur.
@@ -236,12 +296,12 @@ index 06f5e1d1c87311cf232426829e4842eeb69491b5..947f435e3773526f60ebbf6d7cb25a01
 --- a/lib/features/sports/data/match_detail_service.dart
 +++ b/lib/features/sports/data/match_detail_service.dart
 @@ -11,6 +11,8 @@ import 'dart:convert';
- 
+
  import 'package:flutter/foundation.dart';
  import 'package:http/http.dart' as http;
 +import '../../../core/app/repair_flags.dart';
 +import 'public_football_repository.dart';
- 
+
  import '../../subscription/data/subscription_backend.dart'
      show kSubscriptionBaseUrl;
 @@ -38,6 +40,14 @@ class MatchDetailService {
@@ -539,7 +599,7 @@ index a7e8521a2c50f491198ebbe0ad178046883c022b..e57dd68b7636b8b0def03c26cafbb322
 +++ b/lib/features/sports/presentation/match_detail_screen.dart
 @@ -375,6 +375,20 @@ class _MatchDetailScreenState extends State<MatchDetailScreen>
    }
- 
+
    Widget _incidentRow(MatchIncident i) {
 +    // La source publique donne le buteur, mais pas son équipe de manière
 +    // explicite : une ligne neutre évite de le placer chez l'adversaire.
@@ -564,7 +624,7 @@ index 24f9c823f730c976c963a1ca3c6b4ab2ae881d17..135717b92b073ecdd9575c42d52acca1
 +++ b/lib/features/sports/presentation/prediction_bar.dart
 @@ -15,6 +15,7 @@ import 'dart:async';
  import 'package:flutter/material.dart';
- 
+
  import '../../../core/i18n/l10n_extension.dart';
 +import '../../../core/app/repair_flags.dart';
  import '../../../core/theme/app_colors.dart';
@@ -597,14 +657,14 @@ index 3da0395f1be0b37f12cf2e60e4e600ff8b91e724..bb8803d4aeedc0298fefdfe5cea61a67
 +++ b/lib/features/sports/presentation/sport_screen.dart
 @@ -26,26 +26,24 @@
  // =========================================================
- 
+
  import 'dart:async';
 -import 'dart:convert';
- 
+
  import 'package:flutter/foundation.dart';
  import 'package:flutter/material.dart';
 -import 'package:http/http.dart' as http;
- 
+
  import '../../../core/i18n/l10n_extension.dart';
 +import '../../../core/app/repair_flags.dart';
  import '../../../core/theme/app_colors.dart';
@@ -629,7 +689,7 @@ index 3da0395f1be0b37f12cf2e60e4e600ff8b91e724..bb8803d4aeedc0298fefdfe5cea61a67
    /// 07/09) ; dès qu'il a choisi, on respecte son choix.
    bool _filterChosen = false;
 +  String? _diagnostic;
- 
+
    StreamSubscription<void>? _followSub;
    StreamSubscription<List<SportTeam>>? _favSub;
 @@ -115,7 +114,11 @@ class _SportScreenState extends State<SportScreen>
@@ -644,7 +704,7 @@ index 3da0395f1be0b37f12cf2e60e4e600ff8b91e724..bb8803d4aeedc0298fefdfe5cea61a67
 +      });
      });
    }
- 
+
 @@ -134,38 +137,12 @@ class _SportScreenState extends State<SportScreen>
      _BigLoad result = const _BigLoad();
      bool failed = false;
@@ -775,7 +835,7 @@ index 8dfd51f51d415d9b311cb6853b34f6475d82d52f..e356fc2eb3f8e5990d0073cbeb5ac375
 +++ b/lib/main.dart
 @@ -16,6 +16,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
  import 'package:media_kit/media_kit.dart';
- 
+
  import 'core/app/boot_guard.dart';
 +import 'core/app/repair_flags.dart';
  import 'core/app/panel_live_wait.dart';
@@ -786,9 +846,57 @@ index 8dfd51f51d415d9b311cb6853b34f6475d82d52f..e356fc2eb3f8e5990d0073cbeb5ac375
    // distant plus bas pour casser la boucle.
    await BootGuard.instance.beginBoot();
 +  await RepairFlags.load();
- 
+
    // Posture (débogage, émulateur, su) : une note dans la boîte noire.
    // Jamais un motif pour refuser la lecture.
+diff --git a/test/core/notifications/notification_channel_migration_test.dart b/test/core/notifications/notification_channel_migration_test.dart
+new file mode 100644
+index 0000000000000000000000000000000000000000..818354b3e0bfbd6d2bbd174ace267e68bf457be9
+--- /dev/null
++++ b/test/core/notifications/notification_channel_migration_test.dart
+@@ -0,0 +1,42 @@
++// Android ne corrige pas le son d'un canal existant. La migration doit
++// utiliser un autre identifiant et le repli doit conserver celui déjà créé.
++import 'package:flutter_test/flutter_test.dart';
++import 'package:shared_preferences/shared_preferences.dart';
++import 'package:tv_king/core/app/repair_flags.dart';
++import 'package:tv_king/core/notifications/notification_service.dart';
++
++void main() {
++  TestWidgetsFlutterBinding.ensureInitialized();
++  tearDown(() {
++    RepairFlags.mobileNotificationsLegacy = false;
++    RepairFlags.mobileSportsLegacy = false;
++  });
++  test('installation et préférences vides quittent le canal Android cassé', () async {
++    SharedPreferences.setMockInitialValues(<String, Object>{});
++    await RepairFlags.load();
++    expect(RepairFlags.mobileNotificationsLegacy, isFalse);
++    expect(NotificationService.goalChannelId, isNot('goal_roar_v1'),
++      reason: 'Android conserverait sinon son ancienne URI sonore /0');
++  });
++  test('le repli persistant reprend le canal historique sans changer Sport', () async {
++    SharedPreferences.setMockInitialValues(<String, Object>{
++      RepairFlags.mobileNotificationsLegacyKey: true,
++      RepairFlags.mobileSportsLegacyKey: false,
++    });
++    await RepairFlags.load();
++    expect(NotificationService.goalChannelId, 'goal_roar_v1');
++    expect(RepairFlags.mobileSportsLegacy, isFalse);
++  });
++  test('couper le repli migre vers un canal nouveau après relecture', () async {
++    SharedPreferences.setMockInitialValues(<String, Object>{
++      RepairFlags.mobileNotificationsLegacyKey: true,
++    });
++    await RepairFlags.load();
++    final String before = NotificationService.goalChannelId;
++    await (await SharedPreferences.getInstance())
++      .setBool(RepairFlags.mobileNotificationsLegacyKey, false);
++    await RepairFlags.load();
++    expect(NotificationService.goalChannelId, isNot(before));
++    expect(NotificationService.goalChannelId, 'goal_roar_v2');
++  });
++}
 diff --git a/test/features/sports/public_football_http_test.dart b/test/features/sports/public_football_http_test.dart
 new file mode 100644
 index 0000000000000000000000000000000000000000..ec9cbaaa5104bd4e072b208525c8620f709ecf9a

@@ -265,6 +265,12 @@ jobs:
       run: flutter gen-l10n
     - name: Generate launcher icons (7 MOTION ember)
       run: dart run flutter_launcher_icons
+    - name: Préparer les composants Android des notifications
+      run: |-
+        set -euo pipefail
+        python3 -m venv "$RUNNER_TEMP/mobile-audit"
+        "$RUNNER_TEMP/mobile-audit/bin/pip" install androguard==4.1.3 numpy==2.2.6
+        "$RUNNER_TEMP/mobile-audit/bin/python" ../mission/android-app/ci/mobile/prepare_notifications.py
     - name: Signature stable obligatoire
       env:
         KS_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
@@ -423,7 +429,7 @@ jobs:
         BUILD_LABEL=$(ci/build_label.sh "$GITHUB_REPOSITORY" 7motion-test)
         echo "PHONE_BUILD_LABEL=$BUILD_LABEL" >> "$GITHUB_ENV"
         flutter build apk --release --no-tree-shake-icons --split-per-abi --target-platform android-arm64 \
-          --build-number="$BUILD_TS" --build-name="0.3.4-sport-test.${{ github.run_number }}" \
+          --build-number="$BUILD_TS" --build-name="0.3.5-sport-test.${{ github.run_number }}" \
           --obfuscate --split-debug-info=build/symbols \
           --dart-define=APP_BUILD_TS="$BUILD_TS" --dart-define=APP_BUILD_LABEL="$BUILD_LABEL" \
           --dart-define=GIT_SHA=${{ github.event.pull_request.head.sha }} \
@@ -452,6 +458,7 @@ jobs:
         PKG=$(sed -n "s/^package: name='\([^']*\)'.*/\1/p" "$RUNNER_TEMP/badging.txt")
         CODE=$(sed -n "s/.*versionCode='\([0-9]*\)'.*/\1/p" "$RUNNER_TEMP/badging.txt")
         [ "$PKG" = "com.manzilionellm.tvking.tv_king" ]
+        "$RUNNER_TEMP/mobile-audit/bin/python" ../mission/android-app/ci/mobile/verify_apk.py "$APK"
         for TAG in 7motion-test phone-latest; do
           gh release download "$TAG" -R "$GITHUB_REPOSITORY" -p 7motion.apk -O "$RUNNER_TEMP/previous-$TAG.apk"
           "$BT/apksigner" verify --print-certs "$RUNNER_TEMP/previous-$TAG.apk" > "$RUNNER_TEMP/prev-signature.txt"
@@ -466,6 +473,55 @@ jobs:
         echo "APK_SHA256=$SHA" >> "$GITHUB_ENV"
         echo "PHONE_VERSION_CODE=$CODE" >> "$GITHUB_ENV"
         echo "signature $CERT ; SHA-256 $SHA"
+    - name: Construire et contrôler le bundle de la fiche Play existante
+      id: play_build
+      env:
+        KS_PW: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        KS_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        KS_KEY_PW: ${{ secrets.ANDROID_KEY_PASSWORD }}
+      run: |-
+        set -euo pipefail
+        # L'APK de test reste distinct. Le Store doit garder son propre identifiant.
+        python3 ../mission/android-app/ci/mobile/prepare_play.py
+        flutter build appbundle --release --no-tree-shake-icons \
+          --build-number="$PHONE_VERSION_CODE" --build-name=0.3.5 \
+          --obfuscate --split-debug-info=build/play-symbols \
+          --dart-define=APP_BUILD_TS="$PHONE_VERSION_CODE" --dart-define=APP_BUILD_LABEL="$PHONE_BUILD_LABEL" \
+          --dart-define=GIT_SHA=${{ github.event.pull_request.head.sha }} \
+          --dart-define=PLAY_BUILD=true --target=lib/main.dart
+        mkdir -p build/play-review
+        cp build/app/outputs/bundle/release/app-release.aab build/play-review/7motion.aab
+        curl --fail --silent --show-error --location \
+          https://github.com/google/bundletool/releases/download/1.18.3/bundletool-all-1.18.3.jar \
+          --output "$RUNNER_TEMP/bundletool.jar"
+        printf '%s  %s\n' a099cfa1543f55593bc2ed16a70a7c67fe54b1747bb7301f37fdfd6d91028e29 "$RUNNER_TEMP/bundletool.jar" | sha256sum -c -
+        java -jar "$RUNNER_TEMP/bundletool.jar" validate --bundle=build/play-review/7motion.aab
+        export KS_KEY_PW="${KS_KEY_PW:-$KS_PW}"
+        java -jar "$RUNNER_TEMP/bundletool.jar" build-apks \
+          --bundle=build/play-review/7motion.aab --output=build/play-review/7motion.apks --mode=universal \
+          --ks=android/app/release.jks --ks-pass=env:KS_PW \
+          --ks-key-alias="${KS_ALIAS:-sevenmotion}" --key-pass=env:KS_KEY_PW
+        unzip -p build/play-review/7motion.apks universal.apk > build/play-review/7motion-play.apk
+        "$RUNNER_TEMP/mobile-audit/bin/python" ../mission/android-app/ci/mobile/verify_apk.py \
+          build/play-review/7motion-play.apk --play | tee build/play-review/native-audit.json
+        BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+        "$BT/zipalign" -c -P 16 4 build/play-review/7motion-play.apk
+        sha256sum build/play-review/7motion.aab build/play-review/7motion-play.apk > build/play-review/SHA256SUMS
+        cat build/play-review/SHA256SUMS
+        echo "PLAY_AAB_SHA256=$(sha256sum build/play-review/7motion.aab | cut -d' ' -f1)" >> "$GITHUB_ENV"
+        echo "PROUVÉ : bundle Play validé, composants des notifications présents, bibliothèques et ZIP alignés 16 Ko"
+    - name: Conserver le bundle et sa preuve native
+      if: ${{ !cancelled() && steps.play_build.outcome == 'success' }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: 7motion-play-review-${{ github.event.pull_request.head.sha }}
+        path: |
+          phone/build/play-review/7motion.aab
+          phone/build/play-review/7motion-play.apk
+          phone/build/play-review/native-audit.json
+          phone/build/play-review/SHA256SUMS
+        if-no-files-found: error
+        retention-days: 30
     - name: Conserver l’APK exact
       # Garder le binaire compilé pour diagnostiquer un contrôle en
       # échec. La livraison reste interdite si le contrôle a échoué.
@@ -485,15 +541,17 @@ jobs:
         APK=build/app/outputs/flutter-apk/7motion.apk
         cat > "$RUNNER_TEMP/notes.md" <<EOF
         7 MOTION téléphone — TEST Sport gratuit, OpenLigaDB sans clé.
-        Version : 0.3.4-sport-test.${{ github.run_number }} ; versionCode : $PHONE_VERSION_CODE
+        Version : 0.3.5-sport-test.${{ github.run_number }} ; versionCode : $PHONE_VERSION_CODE
         SHA-256 : $APK_SHA256
         Base téléphone : 37fdf3305c5de9d35e20fd6567df38008fc7a7ee
         Correction : ${{ github.event.pull_request.head.sha }}
         Source communautaire : couverture limitée, délai non garanti.
         Alertes de buts : application active et autorisation Android nécessaires.
         Clients phone-latest inchangés.
+        Bundle Play 0.3.5 préparé pour revue, sans publication Store.
+        Empreinte du bundle : $PLAY_AAB_SHA256
         EOF
-        gh release upload 7motion-test "$APK" --clobber -R "$GITHUB_REPOSITORY"
+        gh release upload 7motion-test "$APK" build/play-review/7motion.aab --clobber -R "$GITHUB_REPOSITORY"
         gh release edit 7motion-test --prerelease --latest=false --notes-file "$RUNNER_TEMP/notes.md" -R "$GITHUB_REPOSITORY"
         gh api "repos/$GITHUB_REPOSITORY/releases/tags/7motion-test" > "$RUNNER_TEMP/test-after.json"
         gh api "repos/$GITHUB_REPOSITORY/releases/tags/phone-latest" > "$RUNNER_TEMP/client-after.json"
@@ -512,6 +570,10 @@ jobs:
         assert len(assets)==1
         assert assets[0]['digest']=='sha256:'+os.environ['APK_SHA256'], 'Empreinte publiée différente'
         assert assets[0]['size']==Path('build/app/outputs/flutter-apk/7motion.apk').stat().st_size
+        bundles=[x for x in test['assets'] if x['name']=='7motion.aab']
+        assert len(bundles)==1
+        assert bundles[0]['digest']=='sha256:'+os.environ['PLAY_AAB_SHA256'], 'Empreinte du bundle différente'
+        assert bundles[0]['size']==Path('build/play-review/7motion.aab').stat().st_size
         print('PROUVÉ : APK publié identique au fichier signé et testé')
         print('PROUVÉ : phone-latest identique avant et après')
         PYCHECK
