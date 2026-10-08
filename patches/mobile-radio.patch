@@ -42,14 +42,14 @@ diff --git a/lib/core/app/repair_flags.dart b/lib/core/app/repair_flags.dart
  
    static Future<void> load() async {
      final SharedPreferences prefs = await SharedPreferences.getInstance();
-@@ -19,6 +22,7 @@
+@@ -19,5 +22,7 @@
      mobileNotificationsLegacy = prefs.getBool(mobileNotificationsLegacyKey) ?? false;
      mobileChannelMetadataLegacy =
          prefs.getBool(mobileChannelMetadataLegacyKey) ?? false;
 +    mobileRadioLegacy = prefs.getBool(mobileRadioLegacyKey) ?? false;
    }
  }
- 
++
 diff --git a/lib/features/radio/data/radio_browser_client.dart b/lib/features/radio/data/radio_browser_client.dart
 new file mode 100644
 --- /dev/null
@@ -955,10 +955,15 @@ diff --git a/lib/features/simple_home/presentation/simple_home_screen.dart b/lib
            const MacActivationView(),
            const SizedBox(height: 14),
            const LegalDisclaimer.compact(),
+@@ -760,3 +763,4 @@
+     );
+   }
+ }
++
 diff --git a/lib/l10n/app_en.arb b/lib/l10n/app_en.arb
 --- a/lib/l10n/app_en.arb
 +++ b/lib/l10n/app_en.arb
-@@ -2395,6 +2395,142 @@
+@@ -2389,5 +2389,142 @@
      "description": "Indication affichee quand la saisie au clavier du telephone est active"
    },
    "freeFootballSourceNote": "OpenLigaDB · community scores; delays can vary. Goal alerts require the app to remain active.",
@@ -1102,11 +1107,10 @@ diff --git a/lib/l10n/app_en.arb b/lib/l10n/app_en.arb
 +    "description": "Radios du monde : radioAttribution"
 +  }
  }
--
 diff --git a/lib/l10n/app_fr.arb b/lib/l10n/app_fr.arb
 --- a/lib/l10n/app_fr.arb
 +++ b/lib/l10n/app_fr.arb
-@@ -5287,6 +5287,142 @@
+@@ -5281,5 +5281,142 @@
      "description": "Indication affichee quand la saisie au clavier du telephone est active"
    },
    "freeFootballSourceNote": "OpenLigaDB · scores communautaires, délai non garanti. Alertes de buts seulement tant que l’app reste active.",
@@ -1250,7 +1254,6 @@ diff --git a/lib/l10n/app_fr.arb b/lib/l10n/app_fr.arb
 +    "description": "Radios du monde : radioAttribution"
 +  }
  }
--
 diff --git a/test/features/radio/radio_browser_http_test.dart b/test/features/radio/radio_browser_http_test.dart
 new file mode 100644
 --- /dev/null
