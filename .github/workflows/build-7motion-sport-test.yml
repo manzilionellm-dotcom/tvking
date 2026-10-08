@@ -504,10 +504,10 @@ jobs:
         set -euo pipefail
         # L'APK de test reste distinct. Le Store doit garder son propre identifiant.
         python3 ../mission/android-app/ci/mobile/prepare_play.py
-        # La fiche Play conserve une progression propre : 1721 -> 1722.
+        # 1722 est réservé à la compilation précédente ; ce correctif prend 1723.
         # Incrémenter ce code à chaque release Store ; le timestamp reste
         # réservé au canal de test et à la date de construction de l’app.
-        PLAY_VERSION_CODE=1722
+        PLAY_VERSION_CODE=1723
         flutter build appbundle --release --no-tree-shake-icons \
           --build-number="$PLAY_VERSION_CODE" --build-name=0.3.5 \
           --obfuscate --split-debug-info=build/play-symbols \
