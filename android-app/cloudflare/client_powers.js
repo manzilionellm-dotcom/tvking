@@ -272,6 +272,19 @@ async function bumpRefresh(env, mac, actorId) {
   return putNotice(env, mac, 'refresh', { active: 1 }, actorId);
 }
 
+/// Relecture forcée déclenchée par une autre route (ex. changement de
+/// `hidden` sur une liste). Sans effet si CLIENT_POWERS est coupé ;
+/// une panne ici ne casse jamais l'écriture appelante.
+export async function bumpRefreshRev(env, mac, actorId) {
+  if (!clientPowersOn(env) || !env || !env.DB) return 0;
+  try {
+    await ensureClientPowersTables(env);
+    return await bumpRefresh(env, String(mac).toUpperCase(), actorId);
+  } catch (_) {
+    return 0;
+  }
+}
+
 // ----- GET /devices/:id/powers : tout l'état « pouvoirs » en un appel -----
 async function getPowers({ env, dev, mac, deps }) {
   const rs = await env.DB

@@ -8,6 +8,7 @@ Branche : `claude/pouvoirs-clients` (issue de la production `claude/panel-mise-e
 | Variable Worker | Valeur par défaut | Effet |
 |---|---|---|
 | `CLIENT_POWERS` | absente = coupé | Coupé : les routes admin répondent `404 client_powers_off` (sauf `GET …/powers` → `{enabled:false}`) et `GET /api/status/<mac>` reste **identique à avant** (aucun champ ajouté). Allumé (`1`, `true`, `on`, `yes`) : routes actives et champs ajoutés au statut. |
+| `SOURCE_HIDDEN` | absente = coupé | Drapeau `hidden` par liste (§ 2 bis). Coupé : `PUT /api/v1/sources/:mac` ignore `hidden` et les lectures retirent tout `hidden` déjà stocké → réponses **identiques à avant**. Allumé : `hidden: true` est stocké et livré à la box. |
 
 À poser comme *variable/secret du Worker* (tableau de bord Cloudflare ou `wrangler secret`), **pas** dans `wrangler.toml`
 (le garde-fou du workflow de déploiement n'accepte déjà pas `TRIAL_ENFORCEMENT` ; garder la même discipline).
@@ -44,6 +45,33 @@ Règles côté box (à implémenter dans l'app, **non fait ici**) :
    C'est le « forcer la relecture » du panel ; le temps réel (WebSocket/SSE) relèvera de l'agent « Activation instantanée ».
 5. Un champ absent (ancien Worker ou interrupteur coupé) = rien à afficher. Les anciennes versions de l'app ignorent ces champs.
 
+## 2 bis. Masquer / réafficher une liste : champ `hidden` (interrupteur `SOURCE_HIDDEN`)
+
+Compatible avec le panel « Panel cliquable » (PR #98) : booléen `hidden` sur **chaque entrée** du tableau `sources`.
+
+Panel → Worker, `PUT /api/v1/sources/:mac` (remplace toujours l'ensemble) :
+```json
+{ "sources": [ { "type": "m3u", "label": "Sport", "m3u_url": "…", "hidden": true },
+               { "type": "xtream", "label": "Principal", "server_url": "…", "username": "…", "password": "…" } ] }
+```
+- `hidden: true` → stocké. `false`, `null` ou absent → visible (le champ n'est pas écrit). Autre valeur → `400 bad_source`.
+- Comme le PUT remplace l'ensemble, le panel doit **renvoyer `hidden: true` sur les listes déjà masquées** à chaque envoi
+  (sinon elles redeviennent visibles). À signaler à « Panel cliquable » : aujourd'hui `toSourceInput` retire `hidden` (test PR #98) ;
+  il faudra le garder quand leur interrupteur `panel.liste-masquee` est allumé.
+- Un changement de l'état masqué est journalisé (`source.hidden`, visible dans `…/actions`) et incrémente `refresh_rev`
+  (si `CLIENT_POWERS` est allumé). Le canal temps réel (PR #97) envoie déjà l'ordre `source` à chaque PUT, donc aussi pour `hidden`.
+
+Worker → box, `GET /api/device-source/<mac>` : chaque entrée de `sources` peut porter `"hidden": true` (seulement si `SOURCE_HIDDEN` est allumé).
+
+Ce que la **box** doit faire (non implémenté ici) :
+1. `hidden: true` → garder la liste importée (pas d'effacement, pas de retéléchargement) mais la **masquer** : retirée des menus,
+   de la recherche, de l'accueil et du zapping ; une chaîne de cette liste en cours de lecture peut finir (pas de coupure brutale).
+2. `hidden` absent → la liste est visible (réafficher sans retéléchargement si elle était masquée).
+3. Liste absente de `sources` → effacement, comme aujourd'hui (règle existante, inchangée).
+4. La box applique le même drapeau local `hidden` qu'elle a déjà par liste (brief : « Sur la box, chaque liste a un drapeau hidden »).
+   Rapprocher les listes par position et type/label, comme pour l'effacement actuel.
+5. Les listes ajoutées par le client lui-même (`origin: 'self'`) ne sont pas concernées.
+
 ## 3. Routes admin (JWT `super_admin` uniquement ; un revendeur reçoit 403)
 
 Toutes sous `/api/v1/devices/:id/…` (`:id` = id de l'appareil, comme `PATCH /devices/:id`). Chaque écriture est **journalisée** dans `audit_logs`.
@@ -74,7 +102,7 @@ Le Worker crée aussi les tables à la volée (`CREATE TABLE IF NOT EXISTS`) : l
 
 ```
 cd android-app/cloudflare && node --check worker.js && node --check api_v1.js && node --check client_powers.js
-node --test client_powers.test.mjs                       # 23 tests (D1 simulée)
+node --test client_powers.test.mjs source_hidden.test.mjs   # D1 simulée + drapeau hidden
 cd ../admin-panel && npm ci && npm test && npm run build   # tests du panel (Node ≥ 22.6) + build
 ```
 Contre un vrai moteur SQL : `android-app/cloudflare/tools/client_powers.e2e.sqljs.mjs` (voir l'en-tête du fichier ; `npm i sql.js` hors dépôt).
@@ -84,6 +112,7 @@ Contre un vrai moteur SQL : `android-app/cloudflare/tools/client_powers.e2e.sqlj
 - **Déploiement du Worker** : le run du 3/10 (`37120120412`) a échoué à « DÉPLOYER le Worker » avec l'erreur Cloudflare **10064** :
   « New version of script does not export class 'RealtimeHub' which is depended on by existing Durable Objects ».
   Le Worker en ligne (dernier déploiement manuel du 20/09) contient une classe Durable Object `RealtimeHub` que la branche de production n'exporte pas.
-  **Ne jamais forcer** une migration `delete-class` : elle détruirait l'état du DO. Il faut d'abord retrouver le code de `RealtimeHub` (branche de l'agent « Activation instantanée » ?) et le déclarer dans `wrangler.toml` + le code déployé.
+  **Ne jamais forcer** une migration `delete-class` : elle détruirait l'état du DO. La PR #97 (canal temps réel) réexporte `RealtimeHub` et le déclare dans `wrangler.toml` :
+  le Worker de cette branche ne doit être déployé qu'**avec** la PR #97 (sinon nouvel échec 10064).
 - Journal : `logAudit` est « au mieux » (une panne du journal n'annule pas l'action) — comportement existant, inchangé.
 - Les nouvelles actions sont réservées au `super_admin` ; les revendeurs gardent uniquement ce qu'ils avaient (activation, sources, geler/bannir leurs appareils).

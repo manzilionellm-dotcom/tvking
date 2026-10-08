@@ -56,6 +56,7 @@
 // Routee depuis le bas du fetch() en haut de la chaine de match.
 import { apiV1 } from './api_v1.js';
 import { readPublicNotices } from './client_powers.js';
+import { applyHiddenPolicy } from './source_hidden.js';
 import { httpUrlError } from './source_url.js';
 import { openSource, openSourceList, sealSource } from './secret_box.js';
 import {
@@ -2833,6 +2834,8 @@ async function handlePublicDeviceSource(env, mac) {
           sources = [single];
         }
         sources = await openSourceList(env, sources);
+        // Drapeau « hidden » : livré seulement si SOURCE_HIDDEN est allumé.
+        sources = applyHiddenPolicy(env, sources);
         const live = resolvePublicSource({
           d1Sources: sources, kvSource: null, clearedAt: 0,
         });

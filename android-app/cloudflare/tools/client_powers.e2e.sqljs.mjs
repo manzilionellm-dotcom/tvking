@@ -56,3 +56,33 @@ env.CLIENT_POWERS = '';
 r = await call('/api/status/' + MAC); st = await r.json(); console.log('status flag off keys', Object.keys(st).join(','));
 console.log('write off', JSON.stringify(await api('POST', '/refresh', {})));
 console.log('powers off', JSON.stringify(await api('GET', '/powers')));
+
+// ---------- Drapeau « hidden » par liste (interrupteur SOURCE_HIDDEN) ----------
+// Adresses factices (.invalid), jamais une vraie liste.
+env.CLIENT_POWERS = '1';
+await api('POST', '/block', { status: 'active' });
+const put = async (sources) => {
+  const x = await call('/api/v1/sources/' + encodeURIComponent(MAC), {
+    method: 'PUT', headers: H, body: JSON.stringify({ sources }),
+  });
+  return [x.status, await x.json()];
+};
+const pub = async () => (await (await call('/api/device-source/' + MAC)).json()).sources || [];
+const L1 = { type: 'm3u', label: 'A', m3u_url: 'http://liste.example.invalid/a.m3u' };
+const L2 = { type: 'm3u', label: 'B', m3u_url: 'http://liste.example.invalid/b.m3u' };
+env.SOURCE_HIDDEN = '';
+console.log('hidden off put', JSON.stringify(await put([{ ...L1, hidden: true }, L2])));
+console.log('hidden off pub', JSON.stringify((await pub()).map((s) => s.hidden)));
+const rev0 = (await api('GET', '/powers'))[1].refresh_rev;
+env.SOURCE_HIDDEN = '1';
+console.log('hidden on put', JSON.stringify(await put([{ ...L1, hidden: true }, L2])));
+console.log('hidden on pub', JSON.stringify((await pub()).map((s) => s.hidden)));
+const rev1 = (await api('GET', '/powers'))[1].refresh_rev;
+console.log('refresh bumped', rev1 > rev0);
+console.log('hidden bad', JSON.stringify(await put([{ ...L1, hidden: 'oui' }])));
+await put([{ ...L1, hidden: true }, L2]);
+const rev2 = (await api('GET', '/powers'))[1].refresh_rev;
+console.log('same hidden no bump', rev2 === rev1);
+env.SOURCE_HIDDEN = '';
+console.log('stored but off pub', JSON.stringify((await pub()).map((s) => 'hidden' in s)));
+console.log('journal', JSON.stringify((await api('GET', '/actions'))[1].items.map((i) => i.action).filter((a) => a.startsWith('source'))));

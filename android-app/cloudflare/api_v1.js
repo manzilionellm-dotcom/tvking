@@ -76,7 +76,10 @@ import {
 //  customers viendront en Phase 3 et 5 respectivement.
 // =========================================================
 import { httpUrlError } from './source_url.js';
-import { handleClientPowers } from './client_powers.js';
+import { handleClientPowers, bumpRefreshRev } from './client_powers.js';
+import {
+  withHidden, applyHiddenPolicy, hiddenSignature, readHiddenSignature, sourceHiddenOn,
+} from './source_hidden.js';
 import { openSource, openSourceList, sealSource } from './secret_box.js';
 
 import {
@@ -2823,13 +2826,28 @@ async function handleSourcePut(request, env, mac, actor, user) {
   for (const raw of rawList) {
     const norm = normalizeSource(raw);
     if (norm.error) return errResp('bad_source', norm.error, 400);
-    sources.push(norm.source);
+    // Drapeau « hidden » (masquer la liste sur la box) : ignoré si
+    // l'interrupteur SOURCE_HIDDEN est coupé (comportement d'avant).
+    const hid = withHidden(env, norm.source, raw);
+    if (hid.error) return errResp('bad_source', hid.error, 400);
+    sources.push(hid.source);
   }
   if (sources.length === 0) {
     return errResp('bad_source', 'at least one source required', 400);
   }
   const resellerId = user && user.role === 'reseller' ? user.sub : null;
+  const prevHidden = sourceHiddenOn(env) ? await readHiddenSignature(env, m) : null;
   await upsertDeviceSource(env, m, sources, resellerId);
+  // Changement de l'état masqué : journal dédié + relecture forcée
+  // (refresh_rev, si CLIENT_POWERS est allumé). Le canal temps réel
+  // (PR #97) notifie déjà « source » à chaque PUT, hidden compris.
+  const nextHidden = hiddenSignature(sources);
+  if (prevHidden !== null && prevHidden !== nextHidden) {
+    await logAudit(env, request, actor, 'source.hidden',
+      { type: 'device_source', id: m }, { hidden: prevHidden }, { hidden: nextHidden });
+    await bumpRefreshRev(env, m, actor && actor.id);
+  }
+
   await logAudit(env, request, actor, 'source.set',
     { type: 'device_source', id: m }, null,
     { count: sources.length, types: sources.map((s) => s.type) });
@@ -3293,6 +3311,7 @@ async function handleDeviceOverview(env, id, user) {
       sources = [single];
     }
     sources = await openSourceList(env, sources);
+    sources = applyHiddenPolicy(env, sources); // coupé : `hidden` retiré
   } catch (_) { /* table device_sources absente : on ignore */ }
 
   // --- Inventaire RÉEL sur l'appareil (remonté par le heartbeat) : toutes les
