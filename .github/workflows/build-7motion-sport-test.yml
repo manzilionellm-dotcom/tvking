@@ -418,6 +418,27 @@ jobs:
         fi
         rm -f test/widget_test.dart
         flutter analyze --no-fatal-infos --no-fatal-warnings
+        # Même test, vrai SQLite et vrai repli : l'ancienne livraison doit échouer.
+        # On accepte uniquement l'assertion précise du cache froid, jamais une
+        # erreur de compilation, de connexion, ou un autre test rouge.
+        set +e
+        flutter test test/features/playlists/mobile_metadata_delivery_test.dart \
+          --plain-name 'livraison : chaque chaîne émise arrive déjà classée' \
+          --dart-define=METADATA_LEGACY_PROOF=true --reporter expanded \
+          > "$RUNNER_TEMP/metadata-legacy-proof.log" 2>&1
+        LEGACY_STATUS=$?
+        set -e
+        [ "$LEGACY_STATUS" -ne 0 ] || { echo '::error::Le repli ne reproduit plus le défaut'; exit 1; }
+        python3 - "$RUNNER_TEMP/metadata-legacy-proof.log" <<'PYPROOF'
+        import sys
+        proof = open(sys.argv[1]).read()
+        required = ['Expected: true', 'Actual: <false>',
+                    'Les écrans ne doivent plus classer la liste à froid.',
+                    'Some tests failed.']
+        if not all(value in proof for value in required):
+            raise SystemExit('NON PROUVÉ : échec différent de la livraison froide attendue')
+        print('PROUVÉ : le même test échoue sur la livraison froide avec le repli réel')
+        PYPROOF
         flutter test --reporter expanded
     - name: Construire l’APK mobile de test, une seule tentative
       id: apk_build

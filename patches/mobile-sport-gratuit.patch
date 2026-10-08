@@ -1,9 +1,9 @@
 diff --git a/lib/core/app/repair_flags.dart b/lib/core/app/repair_flags.dart
 new file mode 100644
-index 0000000000000000000000000000000000000000..12b3bd57f89d945b7dd4abcff22459be4ed640d2
+index 0000000000000000000000000000000000000000..6ff9b32031b31b21520d35ac28297d71e1679ac5
 --- /dev/null
 +++ b/lib/core/app/repair_flags.dart
-@@ -0,0 +1,17 @@
+@@ -0,0 +1,23 @@
 +// Replis du téléphone : éteints par défaut, conservés entre deux lancements.
 +// Le repli Sport remet les routes du Worker historiques, y compris leur panne.
 +import 'package:shared_preferences/shared_preferences.dart';
@@ -14,11 +14,17 @@ index 0000000000000000000000000000000000000000..12b3bd57f89d945b7dd4abcff22459be
 +  // L'ancien canal peut garder un son invalide après une mise à jour.
 +  static const String mobileNotificationsLegacyKey = 'zuno.mobile.notifications_legacy';
 +  static bool mobileNotificationsLegacy = false;
++  // Le repli restitue le classement paresseux sur le fil de l'écran.
++  static const String mobileChannelMetadataLegacyKey =
++      'zuno.mobile.channel_metadata_legacy';
++  static bool mobileChannelMetadataLegacy = false;
 +
 +  static Future<void> load() async {
 +    final SharedPreferences prefs = await SharedPreferences.getInstance();
 +    mobileSportsLegacy = prefs.getBool(mobileSportsLegacyKey) ?? false;
 +    mobileNotificationsLegacy = prefs.getBool(mobileNotificationsLegacyKey) ?? false;
++    mobileChannelMetadataLegacy =
++        prefs.getBool(mobileChannelMetadataLegacyKey) ?? false;
 +  }
 +}
 diff --git a/lib/core/notifications/notification_service.dart b/lib/core/notifications/notification_service.dart
@@ -77,6 +83,246 @@ index f3381008c60a2aeea28e808cab2ea261f6674830..3aeaee462befec3a3455931a80c29cb7
      }
    }
 
+diff --git a/lib/features/channels/domain/channel.dart b/lib/features/channels/domain/channel.dart
+index 45ee24acdddc91acd1c4314afc740666ecf05405..020c8d64040cc40d9ec0d5ecef16db3c060f9d53 100644
+--- a/lib/features/channels/domain/channel.dart
++++ b/lib/features/channels/domain/channel.dart
+@@ -15,6 +15,7 @@
+ //  rebuilds Flutter.
+ // =========================================================
+
++import 'package:flutter/foundation.dart';
+ import 'package:flutter/material.dart';
+
+ import '../../../core/curation/title_curator.dart';
+@@ -190,6 +191,60 @@ class Channel {
+   /// grossirait à chaque remplacement de playlist. Le vidage complet est
+   /// sans danger : tout se recalcule paresseusement au prochain accès.
+   static void clearComputedCaches() => _ChannelComputedCache.clear();
++
++  /// Prépare les valeurs coûteuses avant de livrer la liste aux écrans.
++  /// Seuls les identifiants et textes utiles quittent le fil UI : aucun flux.
++  static Future<ChannelComputedSnapshot> prepareComputedSnapshot(
++    List<Channel> channels,
++  ) =>
++      compute(
++        _computeChannelSnapshot,
++        <(String, String, String)>[
++          for (final Channel channel in channels)
++            (channel.id, channel.name, channel.category),
++        ],
++        debugLabel: 'mobile.channel_metadata',
++      );
++
++  /// Remplacement atomique, sans pause entre l'installation et l'émission.
++  /// Une liste supprimée ne laisse plus ses identifiants dans ces caches.
++  static void installComputedSnapshot(ChannelComputedSnapshot snapshot) {
++    _ChannelComputedCache.genres = snapshot.genres;
++    _ChannelComputedCache.countries = snapshot.countries;
++    _ChannelComputedCache.qualities = snapshot.qualities;
++    _ChannelComputedCache.cleanNames = snapshot.cleanNames;
++  }
++
++  /// Vérifie le contrat de livraison sans déclencher les getters paresseux.
++  @visibleForTesting
++  static bool debugHasComputedValues(Channel channel) =>
++      _ChannelComputedCache.genres.containsKey(channel.id) &&
++      _ChannelComputedCache.countries.containsKey(channel.id) &&
++      _ChannelComputedCache.qualities.containsKey(channel.id) &&
++      _ChannelComputedCache.cleanNames.containsKey(channel.id);
++}
++
++/// Résultat isolé du calcul réel : les écrans ne reclassent pas les chaînes.
++class ChannelComputedSnapshot {
++  ChannelComputedSnapshot();
++
++  final Map<String, ChannelGenre> genres = <String, ChannelGenre>{};
++  final Map<String, CountryInfo?> countries = <String, CountryInfo?>{};
++  final Map<String, ChannelQuality> qualities = <String, ChannelQuality>{};
++  final Map<String, String> cleanNames = <String, String>{};
++}
++
++ChannelComputedSnapshot _computeChannelSnapshot(
++  List<(String, String, String)> rows,
++) {
++  final ChannelComputedSnapshot result = ChannelComputedSnapshot();
++  for (final (String id, String name, String category) in rows) {
++    result.genres[id] = ChannelClassifier.classifyGenre(name, category);
++    result.countries[id] = ChannelClassifier.detectCountry(name, category);
++    result.qualities[id] = ChannelClassifier.detectQuality(name);
++    result.cleanNames[id] = TitleCurator.curate(name);
++  }
++  return result;
+ }
+
+ /// Cache statique pour les valeurs calculées (genre / pays / qualité).
+@@ -202,12 +257,12 @@ class Channel {
+ /// Limite : la Map vit pendant toute la session — ~50 octets par
+ /// chaîne soit ~1 Mo pour 20 000 entrées, négligeable.
+ abstract final class _ChannelComputedCache {
+-  static final Map<String, ChannelGenre> genres = <String, ChannelGenre>{};
+-  static final Map<String, CountryInfo?> countries = <String, CountryInfo?>{};
+-  static final Map<String, ChannelQuality> qualities =
++  static Map<String, ChannelGenre> genres = <String, ChannelGenre>{};
++  static Map<String, CountryInfo?> countries = <String, CountryInfo?>{};
++  static Map<String, ChannelQuality> qualities =
+       <String, ChannelQuality>{};
+   // Nom curé (présentable) caché par id — voir Channel.cleanName.
+-  static final Map<String, String> cleanNames = <String, String>{};
++  static Map<String, String> cleanNames = <String, String>{};
+
+   /// À appeler quand on supprime une playlist : on vide les caches
+   /// pour ne pas faire de fuite mémoire. Vider TOUT est correct et
+diff --git a/lib/features/playlists/data/playlist_database.dart b/lib/features/playlists/data/playlist_database.dart
+index b26a52f6f894dfa3103f416957442d76dd90850c..1c164d3570b32c5337dd50670d020c39868f348a 100644
+--- a/lib/features/playlists/data/playlist_database.dart
++++ b/lib/features/playlists/data/playlist_database.dart
+@@ -35,6 +35,16 @@ class PlaylistDatabase {
+
+   Database? _db;
+
++  /// Branche un vrai SQLite de test ; le schéma et les requêtes restent réels.
++  @visibleForTesting
++  void debugUseDatabase(Database? database) => _db = database;
++
++  @visibleForTesting
++  Future<void> debugCreate(Database db) async {
++    await _onConfigure(db);
++    await _onCreate(db, _kDbVersion);
++  }
++
+   Future<Database> get database async {
+     if (_db != null) return _db!;
+     _db = await _open();
+diff --git a/lib/features/playlists/data/playlist_repository.dart b/lib/features/playlists/data/playlist_repository.dart
+index 8d8a3cefc3a6bc5c43420c77fa29577426a2fd61..d51cb67e19416d31134f77754ffeb03a82c851f2 100644
+--- a/lib/features/playlists/data/playlist_repository.dart
++++ b/lib/features/playlists/data/playlist_repository.dart
+@@ -30,6 +30,7 @@ import 'package:sqflite/sqflite.dart';
+
+
+ import '../../../core/app/device_memory.dart';
++import '../../../core/app/repair_flags.dart';
+ import '../../../core/crash/crash_reporting.dart';
+ import '../../../core/observability/structured_logger.dart';
+ import '../../../core/i18n/l10n_now.dart';
+@@ -88,6 +89,16 @@ class PlaylistRepository {
+   List<Channel> _channelsCache = const <Channel>[];
+   List<Playlist> _playlistsCache = const <Playlist>[];
+
++  // Toute nouvelle lecture ou suppression invalide le calcul précédent.
++  int _emitRevision = 0;
++
++  /// Observation du vrai départ en isolate ; aucun calcul remplacé en test.
++  @visibleForTesting
++  void Function()? debugMetadataPreparationStarted;
++
++  @visibleForTesting
++  Future<void> debugEmitCurrentState() => _emitCurrentState();
++
+   // FILTRE FLAVOR (POINT UNIQUE) : sur un flavor `adultOnly` (ex. « Privé »),
+   // on ne laisse passer QUE les chaînes du genre Adulte. Comme tout l'UI
+   // (accueil, recherche, favoris, EPG, reco) lit les chaînes par ICI, la
+@@ -499,6 +510,8 @@ class PlaylistRepository {
+   }
+
+   Future<void> _warmCacheOnce() async {
++    final int revision = _emitRevision;
++    final bool legacy = RepairFlags.mobileChannelMetadataLegacy;
+     debugColdLoadCalls++;
+     debugPrint('[Playlist] searchLiveChannels : cache froid, '
+         'lecture bornée UNE fois (rangée pour les frappes suivantes)');
+@@ -508,6 +521,13 @@ class PlaylistRepository {
+     // Course : [_emitCurrentState] a pu remplir le cache entre-temps.
+     // On n'écrase pas un snapshot plus frais (playlist qui vient
+     // de changer) par une lecture commencée à froid.
++    if (!legacy) {
++      if (revision != _emitRevision) return;
++      final ChannelComputedSnapshot snapshot =
++          await Channel.prepareComputedSnapshot(all);
++      if (revision != _emitRevision || _channelsCache.isNotEmpty) return;
++      Channel.installComputedSnapshot(snapshot);
++    }
+     if (_channelsCache.isEmpty) {
+       _channelsCache = List<Channel>.unmodifiable(all);
+     }
+@@ -1366,6 +1386,7 @@ class PlaylistRepository {
+   // ============================================================
+
+   Future<void> deletePlaylist(int playlistId) async {
++    ++_emitRevision;
+     // Vidage SYNCHRONE du cache mémoire + émission immédiate d'une
+     // liste vide AVANT le DELETE SQL. Sur grosses playlists (20k+
+     // chaînes), le delete cascade prend 10-30s — sans ce vidage,
+@@ -1401,6 +1422,7 @@ class PlaylistRepository {
+   /// utilisable très tôt au démarrage, avant `initialize()`). Sert au bouton
+   /// « Supprimer ma source / Réinitialiser » de l'écran de récupération.
+   Future<void> deleteAllPlaylists() async {
++    ++_emitRevision;
+     final Database db = await PlaylistDatabase.instance.database;
+     await db.delete('channels');
+     await db.delete('playlists');
+@@ -1660,6 +1682,7 @@ class PlaylistRepository {
+   }
+
+   Future<void> _deletePlaylist(int id) async {
++    ++_emitRevision;
+     final Database db = await PlaylistDatabase.instance.database;
+     // Phase 1+/Multi-serveurs : si on delete l'active, on promeut la
+     // plus ancienne playlist restante comme nouvelle active. Comme ca
+@@ -1683,7 +1706,11 @@ class PlaylistRepository {
+     // Anti-fuite mémoire : les caches calculés (genre/pays/qualité/nom)
+     // gardaient les entrées des ids supprimés pour toujours. Vidage
+     // complet, recalcul paresseux au prochain accès — coût nul.
+-    Channel.clearComputedCaches();
++    // En mode réparé, les chaînes restantes gardent leurs valeurs chaudes
++    // jusqu'au remplacement atomique. Le repli conserve le vidage ancien.
++    if (RepairFlags.mobileChannelMetadataLegacy) {
++      Channel.clearComputedCaches();
++    }
+     if (wasActive.isNotEmpty) {
+       final List<Map<String, Object?>> next = await db.query(
+         'playlists',
+@@ -1753,8 +1780,39 @@ class PlaylistRepository {
+   }
+
+   Future<void> _emitCurrentState() async {
++    final int revision = ++_emitRevision;
++    final bool legacy = RepairFlags.mobileChannelMetadataLegacy;
+     final List<Channel> channels = await getAllChannels();
+     final List<Playlist> playlists = await getAllPlaylists();
++    if (!legacy) {
++      if (revision != _emitRevision) return;
++      final Stopwatch timer = Stopwatch()..start();
++      late final ChannelComputedSnapshot snapshot;
++      try {
++        final Future<ChannelComputedSnapshot> preparation =
++            Channel.prepareComputedSnapshot(channels);
++        debugMetadataPreparationStarted?.call();
++        snapshot = await preparation;
++      } catch (_) {
++        // Pas de texte fournisseur ni de reprise silencieuse sur le fil UI.
++        StructuredLogger.instance.warn(
++          domain: 'playlist',
++          event: 'metadata.prepare_failed',
++          ctx: <String, Object?>{'count': channels.length},
++        );
++        rethrow;
++      }
++      if (revision != _emitRevision) return;
++      Channel.installComputedSnapshot(snapshot);
++      StructuredLogger.instance.info(
++        domain: 'playlist',
++        event: 'metadata.prepared',
++        ctx: <String, Object?>{
++          'count': channels.length,
++          'ms': timer.elapsedMilliseconds,
++        },
++      );
++    }
+     // Met à jour les caches synchrones avant d'émettre
+     // (`currentChannels` est ainsi cohérent avec le dernier event).
+     _channelsCache = channels;
 diff --git a/lib/features/sports/data/live_scores_service.dart b/lib/features/sports/data/live_scores_service.dart
 index 37a8727fd57055374f9d623b078f8dcd43698524..34a598a1898ae963f07f3c866014a74b3ce5869e 100644
 --- a/lib/features/sports/data/live_scores_service.dart
@@ -895,6 +1141,246 @@ index 0000000000000000000000000000000000000000..818354b3e0bfbd6d2bbd174ace267e68
 +    await RepairFlags.load();
 +    expect(NotificationService.goalChannelId, isNot(before));
 +    expect(NotificationService.goalChannelId, 'goal_roar_v2');
++  });
++}
+diff --git a/test/features/channels/channel_metadata_isolate_test.dart b/test/features/channels/channel_metadata_isolate_test.dart
+new file mode 100644
+index 0000000000000000000000000000000000000000..e8b062fcd3a135a3b4432085586d9dc7a8b2ec37
+--- /dev/null
++++ b/test/features/channels/channel_metadata_isolate_test.dart
+@@ -0,0 +1,85 @@
++// Les vraies regex tournent dans un vrai isolate, sans classifier simulé.
++import 'dart:async';
++
++import 'package:flutter_test/flutter_test.dart';
++import 'package:tv_king/core/curation/title_curator.dart';
++import 'package:tv_king/features/channels/domain/channel.dart';
++
++Channel _channel(String id, String name, String category) => Channel(
++      id: id,
++      name: name,
++      category: category,
++      streamUrl: 'https://channels.invalid/$id',
++      isLive: true,
++    );
++
++void main() {
++  tearDown(Channel.clearComputedCaches);
++
++  test('le calcul isolé conserve les quatre résultats du classifier réel',
++      () async {
++    final List<Channel> channels = <Channel>[
++      _channel('sport', 'FR | Sport HD', 'Sports'),
++      _channel('cinema', 'UK | Cinema FHD', 'Movies'),
++      _channel('inconnu', 'Chaîne inconnue', 'Divers'),
++    ];
++    final ChannelComputedSnapshot snapshot =
++        await Channel.prepareComputedSnapshot(channels);
++    Channel.installComputedSnapshot(snapshot);
++    for (final Channel channel in channels) {
++      expect(Channel.debugHasComputedValues(channel), isTrue);
++      expect(channel.genre,
++          ChannelClassifier.classifyGenre(channel.name, channel.category));
++      expect(channel.country?.code,
++          ChannelClassifier.detectCountry(channel.name, channel.category)?.code);
++      expect(channel.quality, ChannelClassifier.detectQuality(channel.name));
++      expect(channel.cleanName, TitleCurator.curate(channel.name));
++    }
++  });
++
++  test('50 000 chaînes laissent passer un événement UI pendant le calcul',
++      () async {
++    final List<Channel> channels = List<Channel>.generate(
++      50000,
++      (int index) =>
++          _channel('large-$index', 'FR | Sport $index HD', 'Sports'),
++      growable: false,
++    );
++    bool prepared = false;
++    final Completer<bool> heartbeat = Completer<bool>();
++    final Future<ChannelComputedSnapshot> work =
++        Channel.prepareComputedSnapshot(channels).then((snapshot) {
++      prepared = true;
++      return snapshot;
++    });
++    // Un calcul bloquant termine avant cet événement, même sans seuil de temps.
++    Timer.run(() => heartbeat.complete(!prepared));
++    expect(await heartbeat.future, isTrue,
++        reason: 'Le calcul ne doit pas monopoliser le fil de l’écran.');
++    Channel.installComputedSnapshot(await work);
++    expect(channels.every(Channel.debugHasComputedValues), isTrue);
++  }, timeout: const Timeout(Duration(minutes: 2)));
++
++  test('un identifiant réutilisé reprend le nouveau nom et le nouveau genre',
++      () async {
++    final Channel old = _channel('reused', 'FR | Sport HD', 'Sports');
++    final Channel next = _channel('reused', 'UK | Cinema FHD', 'Movies');
++    Channel.installComputedSnapshot(
++        await Channel.prepareComputedSnapshot(<Channel>[old]));
++    final ChannelGenre previousGenre = old.genre;
++    Channel.installComputedSnapshot(
++        await Channel.prepareComputedSnapshot(<Channel>[next]));
++    expect(next.genre, isNot(previousGenre));
++    expect(next.genre, ChannelClassifier.classifyGenre(next.name, next.category));
++    expect(next.cleanName, TitleCurator.curate(next.name));
++  });
++
++  test('le remplacement retire les métadonnées de la liste supprimée', () async {
++    final Channel removed = _channel('removed', 'Sport HD', 'Sports');
++    Channel.installComputedSnapshot(
++        await Channel.prepareComputedSnapshot(<Channel>[removed]));
++    Channel.installComputedSnapshot(
++        await Channel.prepareComputedSnapshot(const <Channel>[]));
++    expect(Channel.debugHasComputedValues(removed), isFalse);
++  });
++}
+diff --git a/test/features/playlists/mobile_metadata_delivery_test.dart b/test/features/playlists/mobile_metadata_delivery_test.dart
+new file mode 100644
+index 0000000000000000000000000000000000000000..321965f226199e7da899526ccf269894f47b3241
+--- /dev/null
++++ b/test/features/playlists/mobile_metadata_delivery_test.dart
+@@ -0,0 +1,143 @@
++// SQLite, schéma, requêtes et pré-calcul réels : aucun chemin difficile simulé.
++import 'dart:async';
++
++import 'package:flutter_test/flutter_test.dart';
++import 'package:shared_preferences/shared_preferences.dart';
++import 'package:sqflite_common_ffi/sqflite_ffi.dart';
++import 'package:tv_king/core/app/repair_flags.dart';
++import 'package:tv_king/core/flavor/flavor.dart';
++import 'package:tv_king/features/channels/domain/channel.dart';
++import 'package:tv_king/features/playlists/data/playlist_database.dart';
++import 'package:tv_king/features/playlists/data/playlist_repository.dart';
++
++void main() {
++  TestWidgetsFlutterBinding.ensureInitialized();
++  sqfliteFfiInit();
++  final PlaylistRepository repo = PlaylistRepository.instance;
++  late Database database;
++
++  Future<int> seed(int count, {bool active = true}) async {
++    final int id = await database.insert('playlists', <String, Object?>{
++      'name': 'Liste de test',
++      'type': 'm3u',
++      'm3u_url': 'https://playlist.invalid/list.m3u',
++      'created_at': DateTime.now().millisecondsSinceEpoch,
++      'is_active': active ? 1 : 0,
++    });
++    final Batch batch = database.batch();
++    for (int index = 0; index < count; index++) {
++      batch.insert('channels', <String, Object?>{
++        'playlist_id': id,
++        'external_id': '$id-$index',
++        'name': 'FR | Sport $index HD',
++        'category': 'Sports',
++        'stream_url': 'https://channels.invalid/$id/$index',
++      });
++    }
++    await batch.commit(noResult: true);
++    return id;
++  }
++
++  setUp(() async {
++    SharedPreferences.setMockInitialValues(<String, Object>{});
++    await RepairFlags.load();
++    FlavorConfig.setCurrent(FlavorConfig.sevenMotion);
++    Channel.clearComputedCaches();
++    repo.debugSeedChannels(const <Channel>[]);
++    repo.debugSeedPlaylists(const []);
++    database = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
++    await PlaylistDatabase.instance.debugCreate(database);
++    PlaylistDatabase.instance.debugUseDatabase(database);
++  });
++
++  tearDown(() async {
++    repo.debugMetadataPreparationStarted = null;
++    repo.debugSeedChannels(const <Channel>[]);
++    repo.debugSeedPlaylists(const []);
++    PlaylistDatabase.instance.debugUseDatabase(null);
++    await database.close();
++    RepairFlags.mobileChannelMetadataLegacy = false;
++    Channel.clearComputedCaches();
++    FlavorConfig.resetForTesting();
++  });
++
++  test('livraison : chaque chaîne émise arrive déjà classée', () async {
++    await seed(40);
++    expect(RepairFlags.mobileChannelMetadataLegacy, isFalse);
++    // La CI rejoue cette même assertion avec le vrai repli pour la preuve rouge.
++    if (const bool.fromEnvironment('METADATA_LEGACY_PROOF')) {
++      RepairFlags.mobileChannelMetadataLegacy = true;
++    }
++    final Future<List<Channel>> delivered = repo.channelsStream.first;
++    await repo.debugEmitCurrentState();
++    final List<Channel> channels = await delivered;
++    expect(channels, hasLength(40));
++    expect(channels.every(Channel.debugHasComputedValues), isTrue,
++        reason: 'Les écrans ne doivent plus classer la liste à froid.');
++  });
++
++  test('le repli persistant restitue la livraison ancienne à froid', () async {
++    await seed(5);
++    await (await SharedPreferences.getInstance())
++        .setBool(RepairFlags.mobileChannelMetadataLegacyKey, true);
++    await RepairFlags.load();
++    expect(RepairFlags.mobileChannelMetadataLegacy, isTrue);
++    await repo.debugEmitCurrentState();
++    final Channel channel = repo.currentChannels.first;
++    expect(Channel.debugHasComputedValues(channel), isFalse);
++    expect(channel.genre, ChannelGenre.sports);
++    expect(Channel.debugHasComputedValues(channel), isFalse,
++        reason: 'Le repli ne prépare pas les trois autres valeurs.');
++    await (await SharedPreferences.getInstance())
++        .setBool(RepairFlags.mobileChannelMetadataLegacyKey, false);
++    await RepairFlags.load();
++    await repo.debugEmitCurrentState();
++    expect(repo.currentChannels.every(Channel.debugHasComputedValues), isTrue);
++  });
++
++  test('supprimer pendant le vrai calcul ne ressuscite jamais la liste',
++      () async {
++    final int id = await seed(8000);
++    final Completer<void> started = Completer<void>();
++    repo.debugMetadataPreparationStarted = () {
++      repo.debugMetadataPreparationStarted = null;
++      started.complete();
++    };
++    final List<int> emittedCounts = <int>[];
++    final StreamSubscription<List<Channel>> sub =
++        repo.channelsStream.listen((channels) => emittedCounts.add(channels.length));
++    final Future<void> oldRead = repo.debugEmitCurrentState();
++    await started.future;
++    final Future<void> deletion = repo.deletePlaylist(id);
++    expect(repo.currentChannels, isEmpty);
++    await Future.wait(<Future<void>>[oldRead, deletion]);
++    await Future<void>.delayed(Duration.zero);
++    await sub.cancel();
++    expect(emittedCounts, isNotEmpty);
++    expect(emittedCounts.every((count) => count == 0), isTrue);
++    expect(repo.currentChannels, isEmpty);
++    expect(await database.query('channels'), isEmpty);
++    expect(await database.query('playlists'), isEmpty);
++  });
++
++  test('une lecture plus récente conserve sa liste malgré le calcul précédent',
++      () async {
++    await seed(8000);
++    final int next = await seed(1, active: false);
++    final Completer<void> started = Completer<void>();
++    repo.debugMetadataPreparationStarted = () {
++      repo.debugMetadataPreparationStarted = null;
++      started.complete();
++    };
++    final Future<void> oldRead = repo.debugEmitCurrentState();
++    await started.future;
++    await database.update('playlists', <String, Object?>{'is_active': 0});
++    await database.update('playlists', <String, Object?>{'is_active': 1},
++        where: 'id = ?', whereArgs: <Object>[next]);
++    await repo.debugEmitCurrentState();
++    await oldRead;
++    expect(repo.currentChannels, hasLength(1));
++    expect(repo.currentChannels.single.playlistId, next);
++    expect(Channel.debugHasComputedValues(repo.currentChannels.single), isTrue);
 +  });
 +}
 diff --git a/test/features/sports/public_football_http_test.dart b/test/features/sports/public_football_http_test.dart
