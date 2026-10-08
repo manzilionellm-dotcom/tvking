@@ -887,3 +887,12 @@ PROUVÉ (mesure avant action) : après rechargement, les six changements étaien
 PROUVÉ (publication préparée et envoi confirmé) : release relue, seul nouveau bundle 1723 (0.3.5), API minimale 24, cible 36, notes enregistrées pour deux langues sur deux. Sous l’ordre écrit ci-dessus, publication gérée désactivée : l’option indique que les mises à jour validées sont publiées automatiquement. Les six changements sont renvoyés. Les vérifications rapides se terminent ; un rechargement confirme « Vos modifications sont en cours d’examen » et « Publication gérée désactivée ». Preuve visuelle : 7motion-publication-auto-1723-1791472865737.jpg. Console : https://play.google.com/console/u/0/developers/6790957789570734722/app/4972286457582978602/publishing
 
 NON PROUVÉ (disponibilité clients) : décision finale Google encore attendue ; dernière publication affichée le 20 septembre 2026. La configuration automatique est enregistrée, mais aucun déploiement terminé n’est déduit de cet envoi. L’essai sur téléphone physique demeure NON PROUVÉ. Cette autorisation ne concerne ni la release clients Zuno, ni un déploiement Worker/panel.
+
+
+### Publication mobile effective — 8 octobre 2026
+
+PROUVÉ (Google Play, après rechargement) : la vue d’ensemble indique « Dernière publication le 8 octobre 2026 » et aucune modification non publiée. Le tableau Tester et publier affiche la dernière version de production 0.3.5 avec un pourcentage de déploiement de 100 %. Dans Production → Versions, la release 0.3.5 est « Disponible sur Google Play », date de sortie affichée « 8 oct. 17:36 », avec un seul code de version : 1723. Canal actif, 178 pays/régions, 22 295 appareils Android pris en charge. La confirmation porte sur com.manzilionellm.tvking, pas sur une autre application du compte.
+
+PROUVÉ (preuve conservée) : 7motion-publie-1723-1791474375429.jpg montre le statut de disponibilité, la version 0.3.5 et le code 1723 dans la console. URL vérifiée : https://play.google.com/console/u/0/developers/6790957789570734722/app/4972286457582978602/tracks/production?tab=releases
+
+NON PROUVÉ : réception effective de la mise à jour sur chaque téléphone, résolution physique des ANR et des alertes, effet de la nouvelle fiche sur les recherches/installations. Ces points restent distincts de la publication Store désormais prouvée ; les métriques de stabilité de 1723 sont encore indisponibles au moment de la lecture.
