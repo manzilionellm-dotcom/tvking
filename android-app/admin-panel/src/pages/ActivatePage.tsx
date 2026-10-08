@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { AppLayout } from '@/components/AppLayout';
+import { BoxTargetPreview } from '@/components/BoxTargetPreview';
 import { Alert } from '@/components/ui';
 import { PlanPicker } from '@/components/PlanPicker';
 import {
@@ -135,6 +136,7 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
           <input
             id="act-mac"
             value={mac}
+            disabled={busy}
             onChange={(e) => changeMac(e.target.value)}
             onBlur={() => setMac((v) => (v.trim() ? normalizeMac(v) : v))}
             autoFocus
@@ -145,6 +147,8 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
             className={inputCls + ' font-mono'}
           />
         </div>
+
+        <BoxTargetPreview mac={mac} />
 
         <div>
           <label htmlFor="act-name" className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-ink-secondary">

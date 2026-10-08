@@ -1,6 +1,7 @@
 import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { AppLayout } from '@/components/AppLayout';
+import { BoxTargetPreview } from '@/components/BoxTargetPreview';
 import { confirmAction } from '@/components/confirm';
 import { Alert } from '@/components/ui';
 import {
@@ -8,6 +9,7 @@ import {
   type DeviceSource, ApiError,
 } from '@/lib/api';
 import { isValidMac, normalizeMac } from '@/lib/utils';
+import { sameBoxTarget } from '@/lib/box-target';
 import { useT } from '@/lib/i18n';
 import {
   isClientList, isListOn, listDisplayName, planAddList, planRemoveSource, planToggleSource,
@@ -56,22 +58,27 @@ export function ChainesPage({ onLogout }: { onLogout: () => void }) {
   const [delivery, setDelivery] = useState<Delivery | null>(null);
   const [order, setOrder] = useState<OrderLike | null>(null);
   const readSeq = useRef(0);
+  // Une fin d'envoi peut arriver après un changement de destinataire.
+  // Le numéro de lecture seul ne suffit pas : on conserve aussi la MAC.
+  const currentMac = useRef(normalizeMac(mac));
+  currentMac.current = normalizeMac(mac);
 
   const macOk = isValidMac(mac);
 
   // Relit les listes servies à cette box (après chaque envoi aussi : l'écran
   // montre l'état du serveur, pas une supposition).
   const reload = useCallback(async (m: string): Promise<void> => {
+    if (!sameBoxTarget(m, currentMac.current)) return;
     const seq = ++readSeq.current;
     setLooking(true);
     try {
       const r = await sourcesApi.get(m);
-      if (seq !== readSeq.current) return;
+      if (seq !== readSeq.current || !sameBoxTarget(m, currentMac.current)) return;
       setSources((r.sources || []) as SourceLike[]);
       setErr(null);
       setLoaded(true);
     } catch (e) {
-      if (seq !== readSeq.current) return;
+      if (seq !== readSeq.current || !sameBoxTarget(m, currentMac.current)) return;
       setSources([]);
       setLoaded(false);
       if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
@@ -79,7 +86,7 @@ export function ChainesPage({ onLogout }: { onLogout: () => void }) {
       if (e instanceof ApiError && e.status === 404) { setLoaded(true); return; }
       setErr(e instanceof ApiError ? e.message : 'Impossible de lire les listes de cette box.');
     } finally {
-      if (seq === readSeq.current) setLooking(false);
+      if (seq === readSeq.current && sameBoxTarget(m, currentMac.current)) setLooking(false);
     }
   }, [onLogout]);
 
@@ -123,6 +130,7 @@ export function ChainesPage({ onLogout }: { onLogout: () => void }) {
   }, [delivery, onLogout, reload]);
 
   function track(m: string, orderId: string | null | undefined, verb: 'load' | 'remove') {
+    if (!sameBoxTarget(m, currentMac.current)) return;
     setOrder(null);
     setDelivery(orderId ? { mac: m, orderId, verb, startedAt: Date.now() } : null);
   }
@@ -260,7 +268,15 @@ export function ChainesPage({ onLogout }: { onLogout: () => void }) {
             <input
               id="chaines-mac"
               value={mac}
-              onChange={(e) => { setMac(e.target.value); setDelivery(null); }}
+              onChange={(e) => {
+                currentMac.current = normalizeMac(e.target.value);
+                readSeq.current++;
+                setLoaded(false);
+                setSources([]);
+                setMac(e.target.value);
+                setDelivery(null);
+              }}
+              disabled={busy}
               onBlur={() => setMac((v) => (v.trim() ? normalizeMac(v) : v))}
               autoFocus
               autoComplete="off"
@@ -269,6 +285,8 @@ export function ChainesPage({ onLogout }: { onLogout: () => void }) {
             />
           </div>
 
+          <BoxTargetPreview mac={mac} />
+
           <div>
             <label htmlFor="chaines-lien" className="mb-1.5 block text-xs font-medium text-ink-secondary">
               Nouveau lien
@@ -276,6 +294,7 @@ export function ChainesPage({ onLogout }: { onLogout: () => void }) {
             <input
               id="chaines-lien"
               value={link}
+              disabled={busy}
               onChange={(e) => setLink(e.target.value)}
               autoComplete="off"
               spellCheck={false}
@@ -288,6 +307,7 @@ export function ChainesPage({ onLogout }: { onLogout: () => void }) {
             <input
               type="checkbox"
               checked={replaceOthers}
+              disabled={busy}
               onChange={(e) => setReplaceOthers(e.target.checked)}
               className="mt-0.5"
             />
