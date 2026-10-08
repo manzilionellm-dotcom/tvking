@@ -24,3 +24,29 @@ Interrupteur persistant dans le patch mobile : zuno.mobile.channel_metadata_lega
 - Suite Flutter entière en mode réparé et contrôles natifs APK/AAB, sans relâcher les assertions précédentes.
 
 NON PROUVÉ à la rédaction : exécution de ces nouveaux tests, nouveau build et essai sur téléphone réel. La CI suivante doit compléter ce rapport. L’ancien bundle #106 est validé nativement, mais ne contient pas ce nouveau correctif.
+
+
+## Première preuve CI du correctif
+
+PROUVÉ : Quality #110, run 37783987885, commit 1397d65c442d290567ff64ec73c432e6df7b2759. Le job mobile 113338549064 termine l’étape « Analyse et vrais tests du téléphone » avec success à 13:37:49 UTC. Cette étape exige d’abord l’échec précis du même test en repli réel, puis exécute la suite Flutter entière en mode réparé. Le constructeur passe ensuite à son unique compilation APK. Le code Play 1723 distingue cette réparation de la compilation parallèle précédente réservant 1722.
+
+PROUVÉ (séparation du Store) : le constructeur passe PLAY_BUILD=true au bundle. UpdateService.checkDetailed retourne avant toute recherche d’APK externe lorsque kIsPlayBuild est vrai ; prepare_play retire REQUEST_INSTALL_PACKAGES. La mise à jour du client Store reste donc confiée à Google Play.
+
+NON PROUVÉ à ce stade : nouveau binaire signé livré, import 1723 et essai sur téléphone physique. Les journaux finaux de la CI doivent encore donner les lignes de tests et contrôles natifs.
+
+
+## Résultat final de cette exécution
+
+PROUVÉ : le même test de livraison échoue avec le repli réel (13:35:42 UTC), puis `01:52 +1469 ~36: All tests passed!` à 13:37:49 UTC. Le job 113338549064 et tout Quality #110 sont verts. Les assertions et les classifiers ne sont pas simulés ni assouplis.
+
+PROUVÉ : bundle Play 1723 / 0.3.5, 129 155 633 octets ; SHA-256 bcd408e255302d76394058298db7798ef63123b60ecacb994ae32da470aa3b36. Package, minSdk 24, targetSdk 36, récepteur privé, WAV, signature, ELF et ZIP 16 Ko sont contrôlés. Rapport réel de l’APK universel : goal_sound:true, scheduled_receiver:true, native_libraries_checked:32, errors:[]. L’artefact téléchargé et l’asset de la release test ont le même digest.
+
+PROUVÉ : Google a accepté l’import 1723. La release 0.3.5 contient seulement ce bundle ; notes FR/EN sauvegardées. Six changements envoyés, console passée à « Modifications en cours d’examen », vérifications rapides en cours et publication gérée activée. Le bundle précédent est retiré de la release, récupérable dans la bibliothèque d’artefacts. Aucun déploiement clients effectué par cette action.
+
+NON PROUVÉ : accord Google, publication réelle et essai sur téléphone. Il faut vérifier un gros import et la navigation, puis Cast et une alerte suivie sur un appareil physique. La concordance code/trace et les tests ne permettent pas d’affirmer que les sept ANR historiques ont toutes la même cause ni qu’il n’en restera aucune.
+
+Preuves :
+
+- https://github.com/manzilionellm-dotcom/tvking/actions/runs/37783987885
+- APK mobile de test : https://github.com/manzilionellm-dotcom/tvking/releases/download/7motion-test/7motion.apk
+- Console observée : https://play.google.com/console/u/0/developers/6790957789570734722/app/4972286457582978602/publishing
