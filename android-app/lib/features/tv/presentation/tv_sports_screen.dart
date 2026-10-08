@@ -20,6 +20,7 @@ import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
 import 'tv_shell.dart';
 import 'tv_team_picker_screen.dart';
+import 'tv_sports_status.dart';
 
 class TvSportsScreen extends StatefulWidget {
   const TvSportsScreen({super.key});
@@ -102,6 +103,7 @@ class _TvSportsScreenState extends State<TvSportsScreen> {
                 events: SportsRepository.instance.eventsFor(t.id),
                 autofocus: i == 0,
                 onRemove: () => SportsRepository.instance.removeFavorite(t.id),
+                onRetry: () => SportsRepository.instance.refreshTeam(t.id),
               );
             },
           ),
@@ -143,11 +145,13 @@ class _TeamSection extends StatelessWidget {
     required this.team,
     required this.events,
     required this.onRemove,
+    required this.onRetry,
     this.autofocus = false,
   });
   final SportTeam team;
   final SportsEvents events;
   final VoidCallback onRemove;
+  final VoidCallback onRetry;
   final bool autofocus;
 
   @override
@@ -197,6 +201,8 @@ class _TeamSection extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 14),
+          if (events.loading || events.failure != null)
+            TvSportsStatus(loading: events.loading, failure: events.failure, onRetry: onRetry),
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[

@@ -15,14 +15,42 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../core/app/repair_flags.dart';
+import '../../../core/blackbox/black_box.dart';
 import '../../../core/notifications/notification_service.dart';
 import '../../subscription/data/subscription_backend.dart' show kSubscriptionBaseUrl;
 import '../domain/sport_models.dart';
 
 class SportsEvents {
-  const SportsEvents({this.last = const <SportEvent>[], this.next = const <SportEvent>[]});
+  const SportsEvents({this.last = const <SportEvent>[], this.next = const <SportEvent>[],
+    this.loading = false, this.failure});
   final List<SportEvent> last;
   final List<SportEvent> next;
+  final bool loading;
+  final SportsFailure? failure;
+}
+
+enum SportsFailureKind { timeout, network, http, invalidResponse, unavailable }
+
+/// Une raison sans adresse, corps serveur, requête ou exception brute.
+class SportsFailure implements Exception {
+  const SportsFailure(this.kind, {this.statusCode});
+  final SportsFailureKind kind;
+  final int? statusCode;
+
+  String get diagnostic => switch (kind) {
+    SportsFailureKind.timeout => 'délai dépassé (20 s)',
+    SportsFailureKind.network => 'connexion au service impossible',
+    SportsFailureKind.http => 'service indisponible (HTTP $statusCode)',
+    SportsFailureKind.invalidResponse => 'réponse du service illisible',
+    SportsFailureKind.unavailable => 'chargement échoué',
+  };
+}
+
+class SportsSearchResult {
+  const SportsSearchResult({this.teams = const <SportTeam>[], this.failure});
+  final List<SportTeam> teams;
+  final SportsFailure? failure;
 }
 
 class SportsRepository {
@@ -89,27 +117,81 @@ class SportsRepository {
     }
   }
 
-  Future<List<SportTeam>> search(String q) async {
+  Future<List<SportTeam>> search(String q) async => (await searchResult(q)).teams;
+
+  /// L'absence d'équipe et une panne réseau sont deux résultats distincts.
+  Future<SportsSearchResult> searchResult(String q) async {
     final String query = q.trim();
-    if (query.length < 2) return const <SportTeam>[];
+    if (query.length < 2) return const SportsSearchResult();
+    final bool legacy = RepairFlags.sportsNetworkLegacy;
+    final Stopwatch elapsed = Stopwatch()..start();
     try {
-      final http.Response resp = await http
-          .get(_baseUri.resolve('/api/sports/search').replace(
-                queryParameters: <String, String>{'q': query}),
-              headers: const <String, String>{'Accept': 'application/json'})
-          .timeout(const Duration(seconds: 8));
-      if (resp.statusCode != 200) return const <SportTeam>[];
-      final Map<String, dynamic> body = jsonDecode(resp.body) as Map<String, dynamic>;
-      final List<dynamic> teams = (body['teams'] as List<dynamic>?) ?? const <dynamic>[];
-      return teams
+      final http.Response resp = await _get(_baseUri.resolve('/api/sports/search')
+          .replace(queryParameters: <String, String>{'q': query}), legacy);
+      final Map<String, dynamic> body = _body(resp);
+      final List<SportTeam> teams = _list(body, 'teams', legacy)
           .whereType<Map<String, dynamic>>()
           .map(SportTeam.fromJson)
           .where((SportTeam t) => t.id.isNotEmpty && t.name.isNotEmpty)
           .toList(growable: false);
+      if (!legacy) BlackBox.instance.info('SPORT',
+          'recherche chargée en ${elapsed.elapsedMilliseconds} ms (${teams.length} équipe(s))');
+      return SportsSearchResult(teams: teams);
     } catch (e) {
-      if (kDebugMode) debugPrint('[Sports] search error: $e');
-      return const <SportTeam>[];
+      return SportsSearchResult(failure: _failure(e, 'recherche', legacy));
     }
+  }
+
+  /// Un seul appel, borné. Fermer le client rend aussi la connexion lorsque
+  /// le délai expire ; Future.timeout seul laisse le téléchargement continuer.
+  Future<http.Response> _get(Uri uri, bool legacy) async {
+    const Map<String, String> headers = <String, String>{'Accept': 'application/json'};
+    if (legacy) {
+      final http.Response response = await http.get(uri, headers: headers)
+          .timeout(const Duration(seconds: 8));
+      if (response.statusCode != 200) throw SportsFailure(
+          SportsFailureKind.http, statusCode: response.statusCode);
+      return response;
+    }
+    final http.Client client = http.Client();
+    try {
+      final http.Response response = await client.get(uri, headers: headers)
+          .timeout(const Duration(seconds: 20));
+      if (response.statusCode != 200) throw SportsFailure(
+          SportsFailureKind.http, statusCode: response.statusCode);
+      return response;
+    } finally {
+      client.close();
+    }
+  }
+
+  Map<String, dynamic> _body(http.Response response) {
+    final dynamic decoded = jsonDecode(response.body);
+    if (decoded is! Map<String, dynamic>) {
+      throw const FormatException('Objet Sport attendu');
+    }
+    return decoded;
+  }
+
+  List<dynamic> _list(Map<String, dynamic> body, String key, bool legacy) {
+    final dynamic value = body[key];
+    if (value == null && legacy) return const <dynamic>[];
+    if (value is! List<dynamic>) throw const FormatException('Liste Sport attendue');
+    return value;
+  }
+
+  SportsFailure? _failure(Object error, String operation, bool legacy) {
+    if (legacy) {
+      if (kDebugMode) debugPrint('[Sports] $operation échouée');
+      return null;
+    }
+    final SportsFailure failure = error is SportsFailure ? error
+        : SportsFailure(error is TimeoutException ? SportsFailureKind.timeout
+            : error is http.ClientException ? SportsFailureKind.network
+            : error is FormatException || error is TypeError
+                ? SportsFailureKind.invalidResponse : SportsFailureKind.unavailable);
+    BlackBox.instance.warn('SPORT', '$operation : ${failure.diagnostic}');
+    return failure;
   }
 
   Future<void> addFavorite(SportTeam team) async {
@@ -166,26 +248,39 @@ class SportsRepository {
       }
     }
     if (team == null) return;
+    final bool legacy = RepairFlags.sportsNetworkLegacy;
+    final SportsEvents previous = eventsFor(id);
+    if (!legacy) {
+      _eventsByTeam[id] = SportsEvents(last: previous.last, next: previous.next, loading: true);
+      if (!_changesController.isClosed) _changesController.add(null);
+    }
+    final Stopwatch elapsed = Stopwatch()..start();
     try {
-      final http.Response resp = await http
-          .get(_baseUri.resolve('/api/sports/team/${Uri.encodeComponent(id)}'),
-              headers: const <String, String>{'Accept': 'application/json'})
-          .timeout(const Duration(seconds: 8));
-      if (resp.statusCode != 200) return;
-      final Map<String, dynamic> body = jsonDecode(resp.body) as Map<String, dynamic>;
+      final http.Response resp = await _get(
+          _baseUri.resolve('/api/sports/team/${Uri.encodeComponent(id)}'), legacy);
+      final Map<String, dynamic> body = _body(resp);
       List<SportEvent> parse(String key) =>
-          ((body[key] as List<dynamic>?) ?? const <dynamic>[])
+          _list(body, key, legacy)
               .whereType<Map<String, dynamic>>()
               .map(SportEvent.fromJson)
               .toList(growable: false);
       final SportsEvents ev = SportsEvents(last: parse('last'), next: parse('next'));
       _eventsByTeam[id] = ev;
+      if (!legacy) BlackBox.instance.info('SPORT',
+          'matchs chargés en ${elapsed.elapsedMilliseconds} ms (${ev.last.length} passé(s), ${ev.next.length} à venir)');
       if (!_changesController.isClosed) _changesController.add(null);
       unawaited(_scheduleReminders(team, ev.next));
     } catch (e) {
-      if (kDebugMode) debugPrint('[Sports] events error: $e');
+      final SportsFailure? failure = _failure(e, 'matchs', legacy);
+      if (failure != null && isFavorite(id)) {
+        _eventsByTeam[id] = SportsEvents(last: previous.last, next: previous.next, failure: failure);
+        if (!_changesController.isClosed) _changesController.add(null);
+      }
     }
   }
+
+  /// Le nouvel appel part seulement lorsque le client choisit « Réessayer ».
+  Future<void> refreshTeam(String id) => _fetchTeam(id);
 
   // ALARME ~1 h avant chaque match à venir. Idempotent (le service dédoublonne
   // par id stable) → re-planifier toutes les 10 min ne crée pas de doublons.

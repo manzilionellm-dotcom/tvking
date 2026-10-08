@@ -17,6 +17,7 @@ import '../../sports/domain/sport_models.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
+import 'tv_sports_status.dart';
 
 /// Catalogue VIP : les grandes équipes par sport. On stocke des NOMS ; au clic,
 /// on résout l'équipe (id + logo) via la recherche TheSportsDB (Worker). Ainsi
@@ -57,6 +58,7 @@ class _TvTeamPickerScreenState extends State<TvTeamPickerScreen> {
   bool _loading = false;
   bool _resolving = false; // en train de résoudre une équipe du catalogue VIP
   String? _msg; // petit message (équipe introuvable…)
+  SportsFailure? _failure;
   Timer? _debounce;
   Timer? _msgTimer;
 
@@ -79,11 +81,13 @@ class _TvTeamPickerScreenState extends State<TvTeamPickerScreen> {
       _resolving = true;
       _msg = null;
     });
-    final List<SportTeam> r = await SportsRepository.instance.search(name);
+    final SportsSearchResult result = await SportsRepository.instance.searchResult(name);
+    final List<SportTeam> r = result.teams;
     if (!mounted) return;
     setState(() => _resolving = false);
     if (r.isEmpty) {
-      _flash('« $name » introuvable — essaie la recherche.');
+      _flash(result.failure == null ? '« $name » introuvable — essaie la recherche.'
+          : sportsFailureText(context, result.failure!));
       return;
     }
     final SportTeam best = r.firstWhere(
@@ -117,6 +121,7 @@ class _TvTeamPickerScreenState extends State<TvTeamPickerScreen> {
     setState(() {
       _q = '';
       _results = const <SportTeam>[];
+      _failure = null;
     });
   }
 
@@ -131,11 +136,15 @@ class _TvTeamPickerScreenState extends State<TvTeamPickerScreen> {
       if (mounted) setState(() => _results = const <SportTeam>[]);
       return;
     }
-    if (mounted) setState(() => _loading = true);
-    final List<SportTeam> r = await SportsRepository.instance.search(q);
+    if (mounted) setState(() {
+      _loading = true;
+      _failure = null;
+    });
+    final SportsSearchResult result = await SportsRepository.instance.searchResult(q);
     if (mounted) {
       setState(() {
-        _results = r;
+        _results = result.teams;
+        _failure = result.failure;
         _loading = false;
       });
     }
@@ -207,6 +216,8 @@ class _TvTeamPickerScreenState extends State<TvTeamPickerScreen> {
       );
     }
     if (_results.isEmpty) {
+      if (_failure != null) return Center(
+          child: TvSportsStatus(failure: _failure, onRetry: _run));
       return Center(
         child: Text(context.l10n.tvNoTeamFound,
             style: TextStyle(fontSize: TvDimens.body, color: TvTokens.mutedDim)),

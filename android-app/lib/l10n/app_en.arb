@@ -865,4 +865,20 @@
   "tvVoiceRemoteAiOff": "Off",
   "tvVoiceRemoteAiHelp": "Off by default. No key in the app. “Tonight” is read from your guide, on the box. If the service does not answer, Zuno searches your list.",
   "tvVoiceCinemaHint": "Open Movies or Series once: search will find them afterwards, without using the network while you watch.",
-  "tvVoiceOnChannel": "On {channel}"}
+  "tvVoiceOnChannel": "On {channel}",
+  "sportsTimeout": "The sports service is taking too long. Try again.",
+  "sportsNetworkError": "Unable to connect to the sports service.",
+  "sportsHttpError": "Sports service unavailable (HTTP {status}).",
+  "sportsInvalidResponse": "Unreadable response from the sports service.",
+  "sportsUnavailable": "Unable to load sports data.",
+  "sportsLoading": "Loading matches…",
+  "sportsRetry": "Try again",
+  "@sportsHttpError": {
+    "placeholders": {
+      "status": {
+        "type": "int"
+      }
+    }
+  }
+
+}

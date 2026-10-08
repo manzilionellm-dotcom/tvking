@@ -2333,4 +2333,20 @@
     "placeholders": {
       "channel": {"type": "String"}
     }
-  }}
+  },
+  "sportsTimeout": "Le service Sport répond trop lentement. Réessaie.",
+  "sportsNetworkError": "Connexion au service Sport impossible.",
+  "sportsHttpError": "Service Sport indisponible (HTTP {status}).",
+  "sportsInvalidResponse": "Réponse du service Sport illisible.",
+  "sportsUnavailable": "Le chargement Sport a échoué.",
+  "sportsLoading": "Chargement des matchs…",
+  "sportsRetry": "Réessayer",
+  "@sportsHttpError": {
+    "placeholders": {
+      "status": {
+        "type": "int"
+      }
+    }
+  }
+
+}
