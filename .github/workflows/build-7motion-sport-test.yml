@@ -483,8 +483,12 @@ jobs:
         set -euo pipefail
         # L'APK de test reste distinct. Le Store doit garder son propre identifiant.
         python3 ../mission/android-app/ci/mobile/prepare_play.py
+        # La fiche Play conserve une progression propre : 1721 -> 1722.
+        # Incrémenter ce code à chaque release Store ; le timestamp reste
+        # réservé au canal de test et à la date de construction de l’app.
+        PLAY_VERSION_CODE=1722
         flutter build appbundle --release --no-tree-shake-icons \
-          --build-number="$PHONE_VERSION_CODE" --build-name=0.3.5 \
+          --build-number="$PLAY_VERSION_CODE" --build-name=0.3.5 \
           --obfuscate --split-debug-info=build/play-symbols \
           --dart-define=APP_BUILD_TS="$PHONE_VERSION_CODE" --dart-define=APP_BUILD_LABEL="$PHONE_BUILD_LABEL" \
           --dart-define=GIT_SHA=${{ github.event.pull_request.head.sha }} \
@@ -511,6 +515,12 @@ jobs:
         unzip -p build/play-review/7motion.apks universal.apk > build/play-review/7motion-play.apk
         "$RUNNER_TEMP/mobile-audit/bin/python" ../mission/android-app/ci/mobile/verify_apk.py \
           build/play-review/7motion-play.apk --play | tee build/play-review/native-audit.json
+        python3 - "$PLAY_VERSION_CODE" <<'PLAYCODE'
+        import json,sys
+        report=json.load(open("build/play-review/native-audit.json"))
+        assert report["versionCode"] == sys.argv[1], "Code Play différent du code de release"
+        assert 1721 < int(report["versionCode"]) < 2100000000, "Code Play hors progression autorisée"
+        PLAYCODE
         BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
         "$BT/zipalign" -c -P 16 4 build/play-review/7motion-play.apk
         sha256sum build/play-review/7motion.aab build/play-review/7motion-play.apk > build/play-review/SHA256SUMS
