@@ -5,8 +5,8 @@ new file mode 100644
 @@ -0,0 +1,26 @@
 +import 'dart:io';
 +
-+import '../lib/features/radio/data/radio_browser_client.dart';
-+import '../lib/features/radio/domain/radio_station.dart';
++import 'package:tv_king/features/radio/data/radio_browser_client.dart';
++import 'package:tv_king/features/radio/domain/radio_station.dart';
 +
 +// Preuve de livraison contre le service public réel : aucune adresse de
 +// diffusion ni nom de station n'est affiché. Ce n'est pas un test audio Android.
@@ -509,7 +509,7 @@ diff --git a/lib/features/radio/presentation/radio_screen.dart b/lib/features/ra
 new file mode 100644
 --- /dev/null
 +++ b/lib/features/radio/presentation/radio_screen.dart
-@@ -0,0 +1,417 @@
+@@ -0,0 +1,427 @@
 +import 'dart:async';
 +
 +import 'package:flutter/material.dart';
@@ -773,7 +773,11 @@ new file mode 100644
 +        actions: <Widget>[IconButton(tooltip: l.radioRefresh,
 +          onPressed: _catalog.loading ? null : () => unawaited(_load(query)),
 +          icon: const Icon(Icons.refresh_rounded))]),
++      // L'en-tête et les résultats défilent ensemble : les filtres ne peuvent
++      // pas déborder d'un téléphone tourné en paysage. Le lecteur reste visible.
 +      body: SafeArea(child: Column(children: <Widget>[
++        Expanded(child: CustomScrollView(slivers: <Widget>[
++          SliverToBoxAdapter(child: Column(children: <Widget>[
 +        Padding(padding: const EdgeInsets.fromLTRB(16, 8, 16, 4), child: Text(
 +          l.radioCatalogNote, style: AppTextStyles.bodySmall)),
 +        Padding(padding: const EdgeInsets.all(12), child: TextField(
@@ -805,13 +809,19 @@ new file mode 100644
 +          ],
 +        )),
 +        if (_choosing) const LinearProgressIndicator(),
-+        Expanded(child: _catalog.loading
-+          ? const Center(child: CircularProgressIndicator())
-+          : _catalog.error != null ? _status(_failureText(_catalog.error!), retry: true)
-+          : _catalog.stations.isEmpty ? _status(_onlyFavorites ? l.radioNoFavorites : l.radioNoResults)
-+          : ListView.builder(key: const Key('radio-stations'), padding: const EdgeInsets.all(12),
-+            itemCount: _catalog.stations.length,
-+            itemBuilder: (BuildContext context, int index) {
++          ])),
++          if (_catalog.loading)
++            const SliverFillRemaining(hasScrollBody: false,
++              child: Center(child: CircularProgressIndicator()))
++          else if (_catalog.error != null)
++            SliverFillRemaining(hasScrollBody: false,
++              child: _status(_failureText(_catalog.error!), retry: true))
++          else if (_catalog.stations.isEmpty)
++            SliverFillRemaining(hasScrollBody: false,
++              child: _status(_onlyFavorites ? l.radioNoFavorites : l.radioNoResults))
++          else SliverPadding(padding: const EdgeInsets.all(12),
++            sliver: SliverList(key: const Key('radio-stations'),
++              delegate: SliverChildBuilderDelegate((BuildContext context, int index) {
 +              final RadioStation station = _catalog.stations[index];
 +              final bool favorite = _favoriteIds.contains(station.id);
 +              return Card(color: AppColors.surface, child: ListTile(
@@ -832,8 +842,8 @@ new file mode 100644
 +                  icon: Icon(favorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
 +                    color: favorite ? AppColors.accent : AppColors.textSecondary)),
 +              ));
-+            },
-+          )),
++              }, childCount: _catalog.stations.length))),
++        ])),
 +        if (!_catalog.loading && _catalog.error == null)
 +          Padding(padding: const EdgeInsets.symmetric(horizontal: 12), child: Row(
 +            mainAxisAlignment: MainAxisAlignment.spaceBetween, children: <Widget>[

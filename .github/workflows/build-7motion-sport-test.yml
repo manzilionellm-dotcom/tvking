@@ -449,9 +449,9 @@ jobs:
         PYPROOF
         # Le même test HTTP réel doit retrouver l'absence de catalogue au repli.
         set +e
-        flutter test test/features/radio/radio_browser_http_test.dart \\
-          --plain-name 'catalogue : une requête HTTP réelle charge une radio' \\
-          --dart-define=RADIO_LEGACY_PROOF=true --reporter expanded \\
+        flutter test test/features/radio/radio_browser_http_test.dart \
+          --plain-name 'catalogue : une requête HTTP réelle charge une radio' \
+          --dart-define=RADIO_LEGACY_PROOF=true --reporter expanded \
           > "$RUNNER_TEMP/radio-legacy-proof.log" 2>&1
         RADIO_LEGACY_STATUS=$?
         set -e
@@ -645,3 +645,4 @@ jobs:
         print('PROUVÉ : APK publié identique au fichier signé et testé')
         print('PROUVÉ : phone-latest identique avant et après')
         PYCHECK
+
