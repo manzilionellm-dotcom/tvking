@@ -15,6 +15,16 @@ tree = ET.parse(manifest)
 application = tree.getroot().find("application")
 if application is None:
     raise SystemExit("Manifeste Android sans application")
+# Le nom envoyé depuis Dart n'est pas une référence statique pour R8.
+# La racine du manifeste doit donc conserver le vrai fichier sonore.
+sound_meta = [m for m in application.findall("meta-data")
+              if m.get(name) == "zuno.notifications.goal_sound"]
+if sound_meta:
+    raise SystemExit("Référence sonore du manifeste déjà présente")
+ET.SubElement(application, "meta-data", {
+    name: "zuno.notifications.goal_sound",
+    "{" + ANDROID + "}resource": "@raw/goal_roar",
+})
 for receiver_name, actions in [
     ("com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver", []),
     ("com.dexterous.flutterlocalnotifications.ScheduledNotificationBootReceiver", [
