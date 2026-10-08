@@ -876,3 +876,14 @@ PROUVÉ (envoi Google enregistré) : Play Console, release 8, 0.3.5, seul bundle
 NON PROUVÉ (validation Google et publication) : réponse de Google encore attendue. La publication gérée est conservée ; ne pas publier aux clients sans l’ordre du propriétaire. NON PROUVÉ (réparation sur appareil physique) : importer une grosse liste sur le téléphone de test et parcourir les catégories pendant et après le chargement, essayer Cast avec un appareil compatible et observer une alerte de but avec la cloche activée, l’app active et les notifications autorisées. Aucun de ces essais physiques n’a été observé. Les sept ANR historiques ne sont pas déclarées résolues par la seule CI.
 
 PROUVÉ (recherche de mots complétée) : fiches officielles de lecteurs IPTV et multimédia établis comparées ; termes pertinents intégrés naturellement à nos descriptions, y compris Video Player, Media Player, M3U/M3U8, Xtream Codes, Chromecast/Google Cast, Live TV/VOD, EPG/TV Guide/XMLTV, Catch-up, PiP, sous-titres et contrôle parental. Détail et sources dans ASO-7MOTION-20261008.md. NON PROUVÉ : volumes des requêtes individuelles et gain de classement/installations ; les données privées disponibles restent « Autre ».
+
+
+### Publication mobile autorisée et automatique — 8 octobre 2026
+
+PROUVÉ (ordre du propriétaire) : « Termine la publication ». Cet ordre porte sur la version mobile Play 0.3.5 / 1723 et ses fiches française et anglaise préparées dans cette conversation.
+
+PROUVÉ (mesure avant action) : après rechargement, les six changements étaient revenus dans « Modifications pas encore envoyées pour examen ». L’activité montre l’envoi 16 annulé le 8 octobre à 16:07, heure affichée par la console. L’explication indique que les modifications ont été retirées de l’examen dans la vue d’ensemble de la publication. NON PROUVÉ : identité de l’auteur de ce retrait ; la page consultée ne l’indique pas.
+
+PROUVÉ (publication préparée et envoi confirmé) : release relue, seul nouveau bundle 1723 (0.3.5), API minimale 24, cible 36, notes enregistrées pour deux langues sur deux. Sous l’ordre écrit ci-dessus, publication gérée désactivée : l’option indique que les mises à jour validées sont publiées automatiquement. Les six changements sont renvoyés. Les vérifications rapides se terminent ; un rechargement confirme « Vos modifications sont en cours d’examen » et « Publication gérée désactivée ». Preuve visuelle : 7motion-publication-auto-1723-1791472865737.jpg. Console : https://play.google.com/console/u/0/developers/6790957789570734722/app/4972286457582978602/publishing
+
+NON PROUVÉ (disponibilité clients) : décision finale Google encore attendue ; dernière publication affichée le 20 septembre 2026. La configuration automatique est enregistrée, mais aucun déploiement terminé n’est déduit de cet envoi. L’essai sur téléphone physique demeure NON PROUVÉ. Cette autorisation ne concerne ni la release clients Zuno, ni un déploiement Worker/panel.
