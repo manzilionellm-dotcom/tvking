@@ -42,14 +42,13 @@ diff --git a/lib/core/app/repair_flags.dart b/lib/core/app/repair_flags.dart
  
    static Future<void> load() async {
      final SharedPreferences prefs = await SharedPreferences.getInstance();
-@@ -19,5 +22,7 @@
+@@ -19,5 +22,6 @@
      mobileNotificationsLegacy = prefs.getBool(mobileNotificationsLegacyKey) ?? false;
      mobileChannelMetadataLegacy =
          prefs.getBool(mobileChannelMetadataLegacyKey) ?? false;
 +    mobileRadioLegacy = prefs.getBool(mobileRadioLegacyKey) ?? false;
    }
  }
-+
 diff --git a/lib/features/radio/data/radio_browser_client.dart b/lib/features/radio/data/radio_browser_client.dart
 new file mode 100644
 --- /dev/null
@@ -955,11 +954,6 @@ diff --git a/lib/features/simple_home/presentation/simple_home_screen.dart b/lib
            const MacActivationView(),
            const SizedBox(height: 14),
            const LegalDisclaimer.compact(),
-@@ -760,3 +763,4 @@
-     );
-   }
- }
-+
 diff --git a/lib/l10n/app_en.arb b/lib/l10n/app_en.arb
 --- a/lib/l10n/app_en.arb
 +++ b/lib/l10n/app_en.arb
