@@ -41,7 +41,7 @@ PROUVÉ : le même test de livraison échoue avec le repli réel (13:35:42 UTC),
 
 PROUVÉ : bundle Play 1723 / 0.3.5, 129 155 633 octets ; SHA-256 bcd408e255302d76394058298db7798ef63123b60ecacb994ae32da470aa3b36. Package, minSdk 24, targetSdk 36, récepteur privé, WAV, signature, ELF et ZIP 16 Ko sont contrôlés. Rapport réel de l’APK universel : goal_sound:true, scheduled_receiver:true, native_libraries_checked:32, errors:[]. L’artefact téléchargé et l’asset de la release test ont le même digest.
 
-PROUVÉ : Google a accepté l’import 1723. La release 0.3.5 contient seulement ce bundle ; notes FR/EN sauvegardées. Six changements envoyés, console passée à « Modifications en cours d’examen », vérifications rapides en cours et publication gérée activée. Le bundle précédent est retiré de la release, récupérable dans la bibliothèque d’artefacts. Aucun déploiement clients effectué par cette action.
+PROUVÉ : Google a accepté l’import 1723. La release 0.3.5 contient seulement ce bundle ; notes FR/EN sauvegardées. Six changements envoyés ; les vérifications rapides sont terminées et la console affiche « Vos modifications sont en cours d’examen », publication gérée activée. Preuve visuelle : 7motion-google-review-1723-1791468716579.jpg. Le bundle précédent est retiré de la release, récupérable dans la bibliothèque d’artefacts. Aucun déploiement clients effectué par cette action.
 
 NON PROUVÉ : accord Google, publication réelle et essai sur téléphone. Il faut vérifier un gros import et la navigation, puis Cast et une alerte suivie sur un appareil physique. La concordance code/trace et les tests ne permettent pas d’affirmer que les sept ANR historiques ont toutes la même cause ni qu’il n’en restera aucune.
 
