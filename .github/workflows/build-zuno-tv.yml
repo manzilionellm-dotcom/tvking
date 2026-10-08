@@ -50,7 +50,7 @@
 #       s'installe toujours par-dessus), APP_BUILD_TS pour la « mise à jour
 #       forcée » pilotée par le panel.
 #    7. Artefact du run TOUJOURS ; PUBLICATION sur la release zuno-tv
-#       uniquement (a) sur push vers `main`, ou (b) en lancement manuel avec
+#       uniquement en lancement manuel avec
 #       publish=true. Un push sur une branche de travail compile et vérifie,
 #       mais n'écrase PAS le lien donné aux clients.
 #
@@ -105,14 +105,45 @@ on:
         type: choice
         options: ['box', 'telephone']
 
+  # Preuve sur la branche de travail lorsque le workflow est absent de main.
+  # Le même constructeur signe l'APK ; seul le canal de test est autorisé.
+  workflow_call:
+    inputs:
+      publish:
+        type: string
+        default: 'false'
+      test_box:
+        type: string
+        default: 'true'
+      play_aab:
+        type: string
+        default: 'false'
+      backend_url:
+        type: string
+        default: ''
+      variante:
+        type: string
+        default: 'box'
+    secrets:
+      ANDROID_KEYSTORE_BASE64:
+        required: false
+      ANDROID_KEYSTORE_PASSWORD:
+        required: false
+      ANDROID_KEY_ALIAS:
+        required: false
+      ANDROID_KEY_PASSWORD:
+        required: false
+
 permissions:
   contents: write   # publier l'APK + version.json sur la release
 
 env:
-  # QUI PUBLIE ? Une seule réponse, lue par toutes les étapes concernées.
+  # QUI PUBLIE ? Lancement manuel explicite seulement, jamais un push.
+  # La preuve Sport ci-dessous passe publish=false et test_box=true.
   # STABILITÉ (29/09/2026) : test_box=true ne publie JAMAIS pour les clients,
   # même si publish=true (la version va d'abord sur UNE box de test).
-  PUBLIER: ${{ ((github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event.inputs.publish == 'true') && github.event.inputs.test_box != 'true' }}
+  PUBLIER: ${{ github.event_name == 'workflow_dispatch' && inputs.publish == 'true' && inputs.test_box != 'true' }}
+  SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
   RELEASE_TAG: zuno-tv
   # Certificat des box clients « 7 MOTION TV » (seven-tv.apk, depuis l'été 2026).
   EXPECTED_CERT: 5145b8e019f6d5fb96a207f2e73673fd954f799966fd598889211556cbdf9e61
@@ -121,10 +152,10 @@ env:
   # zuno-essai.apk → s'installe à côté d'un Zuno déjà présent sur un
   # téléphone. Elle ne va QUE sur zuno-tv-test (garde-fou plus bas) et ne
   # remplace jamais zuno-tv.apk ni version.json.
-  ESSAI: ${{ github.event.inputs.variante == 'telephone' }}
-  APK_NAME: ${{ github.event.inputs.variante == 'telephone' && 'zuno-essai.apk' || 'zuno-tv.apk' }}
-  ZUNO_APP_ID: ${{ github.event.inputs.variante == 'telephone' && 'com.sevenmotion.tv.seven_tv.essai' || 'com.sevenmotion.tv.seven_tv' }}
-  ZUNO_APP_LABEL: ${{ github.event.inputs.variante == 'telephone' && 'Zuno essai' || 'Zuno' }}
+  ESSAI: ${{ inputs.variante == 'telephone' }}
+  APK_NAME: ${{ inputs.variante == 'telephone' && 'zuno-essai.apk' || 'zuno-tv.apk' }}
+  ZUNO_APP_ID: ${{ inputs.variante == 'telephone' && 'com.sevenmotion.tv.seven_tv.essai' || 'com.sevenmotion.tv.seven_tv' }}
+  ZUNO_APP_LABEL: ${{ inputs.variante == 'telephone' && 'Zuno essai' || 'Zuno' }}
 
 # Une seule publication à la fois sur ce canal : deux runs simultanés
 # écriraient l'APK de l'un et le version.json de l'autre. On fait la queue,
@@ -140,6 +171,16 @@ defaults:
 jobs:
   build-tv:
     name: Build Zuno TV APK
+    if: >-
+      github.event_name != 'pull_request' ||
+      (github.repository == 'manzilionellm-dotcom/tvking' &&
+       github.actor == github.repository_owner &&
+       github.event.pull_request.user.login == github.repository_owner &&
+       github.event.pull_request.head.repo.full_name == github.repository &&
+       github.event.pull_request.head.ref == 'ccr-b93e1afd-gwirw0' &&
+       github.event.pull_request.base.ref == 'ccr-sport-preuve-20261008' &&
+       inputs.publish == 'false' && inputs.test_box == 'true' &&
+       inputs.play_aab == 'false' && inputs.backend_url == '' && inputs.variante == 'box')
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -149,7 +190,7 @@ jobs:
         if: env.ESSAI == 'true'
         working-directory: .
         run: |
-          [ "${{ github.event.inputs.test_box }}" = "true" ] \
+          [ "${{ inputs.test_box }}" = "true" ] \
             || { echo "::error::variante=telephone exige test_box=true (jamais pour les clients)"; exit 1; }
           echo "variante essai : $ZUNO_APP_ID · $ZUNO_APP_LABEL · $APK_NAME"
 
@@ -157,6 +198,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
+          ref: ${{ env.SOURCE_SHA }}
 
       - name: Setup Java 17 (Temurin)
         uses: actions/setup-java@v4
@@ -373,7 +415,7 @@ jobs:
           # 107-test.152, 107-test.153… La publication client prendra 107.
           # Le numéro client n'est jamais consommé par un test (il ne lit
           # que le version.json de zuno-tv).
-          if [ "${{ github.event.inputs.test_box }}" = "true" ]; then
+          if [ "${{ inputs.test_box }}" = "true" ]; then
             NEXT_VN=$((NEW_VN + 1))
             if [ "$NEXT_VN" -le "$PREV_VN" ]; then NEXT_VN=$((PREV_VN + 1)); fi
             NEW_VN="${NEXT_VN}-test.${{ github.run_number }}"
@@ -383,7 +425,7 @@ jobs:
 
       - name: Build Zuno TV (release universel ARM, target main_tv)
         env:
-          BACKEND_URL_INPUT: ${{ github.event.inputs.backend_url }}
+          BACKEND_URL_INPUT: ${{ inputs.backend_url }}
         run: |
           set -e
           BUILD_NUMBER=$(date +%s)
@@ -407,7 +449,7 @@ jobs:
           # bouton « Mise à jour » lit aussi la release zuno-tv-test et
           # prend le plus récent (lib/main_tv.dart). Un APK client ne
           # reçoit jamais ce réglage.
-          if [ "${{ github.event.inputs.test_box }}" = "true" ] && [ "$ESSAI" != "true" ]; then
+          if [ "${{ inputs.test_box }}" = "true" ] && [ "$ESSAI" != "true" ]; then
             EXTRA_DEFINES="$EXTRA_DEFINES --dart-define=ZUNO_UPDATE_CHANNEL=test"
             echo "canal de mise à jour : test (zuno-tv-test + zuno-tv)"
           fi
@@ -418,7 +460,7 @@ jobs:
             --build-name="$TV_VERSION_NAME" \
             --obfuscate --split-debug-info=build/symbols \
             --dart-define=APP_BUILD_TS="$BUILD_NUMBER" \
-            --dart-define=GIT_SHA=${{ github.sha }} \
+            --dart-define=GIT_SHA=${{ env.SOURCE_SHA }} \
             $EXTRA_DEFINES \
             --target=lib/main_tv.dart
           cp build/app/outputs/flutter-apk/app-release.apk "build/app/outputs/flutter-apk/$APK_NAME"
@@ -448,7 +490,7 @@ jobs:
           # (les chaînes ne sont pas renommées) et doit être présente dans le
           # code AOT (libapp.so, toutes ABIs). Si elle manque, l'app ne parle
           # PAS au panel.
-          WANT="${{ github.event.inputs.backend_url }}"
+          WANT="${{ inputs.backend_url }}"
           WANT="${WANT:-https://app.7themotion.com}"
           unzip -p "$APK" 'lib/*/libapp.so' | grep -aq "$WANT" \
             || { echo "❌ backend $WANT introuvable dans l'APK"; exit 1; }
@@ -494,7 +536,7 @@ jobs:
       #  Contrôles : permission absente du bundle + certificat = clé maîtresse.
       # ------------------------------------------------------------------
       - name: Build AAB Google Play (Android TV)
-        if: github.event.inputs.play_aab == 'true'
+        if: inputs.play_aab == 'true'
         run: |
           set -e
           python3 - <<'PYEOF'
@@ -521,7 +563,7 @@ jobs:
             --obfuscate --split-debug-info=build/symbols-aab \
             --dart-define=PLAY_BUILD=true \
             --dart-define=APP_BUILD_TS="$TV_BUILD_NUMBER" \
-            --dart-define=GIT_SHA=${{ github.sha }} \
+            --dart-define=GIT_SHA=${{ env.SOURCE_SHA }} \
             --target=lib/main_tv.dart
           AAB=build/app/outputs/bundle/release/zuno-tv.aab
           cp build/app/outputs/bundle/release/app-release.aab "$AAB"
@@ -552,7 +594,7 @@ jobs:
         if: env.AAB_READY == '1'
         uses: actions/upload-artifact@v4
         with:
-          name: zuno-tv-aab-${{ github.sha }}
+          name: zuno-tv-aab-${{ env.SOURCE_SHA }}
           path: android-app/build/app/outputs/bundle/release/zuno-tv.aab
           retention-days: 30
           if-no-files-found: error
@@ -560,13 +602,13 @@ jobs:
       - name: Upload APK artifact (Zuno TV)
         uses: actions/upload-artifact@v4
         with:
-          name: zuno-tv-apk-${{ github.sha }}
+          name: zuno-tv-apk-${{ env.SOURCE_SHA }}
           path: android-app/build/app/outputs/flutter-apk/${{ env.APK_NAME }}
           retention-days: 30
           if-no-files-found: error
 
       # ------------------------------------------------------------------
-      #  PUBLICATION (main ou dispatch publish=true) — release zuno-tv
+      #  PUBLICATION (dispatch explicite publish=true) — release zuno-tv
       # ------------------------------------------------------------------
       - name: Publier sur la release zuno-tv
         if: env.PUBLIER == 'true'
@@ -606,7 +648,7 @@ jobs:
 
           versionCode : $NEW_VC · version : $VN · signature : ${SIGNING:-?}
           SHA-256 : $SHA
-          Commit : ${{ github.sha }}"
+          Commit : ${{ env.SOURCE_SHA }}"
           if gh release view "$RELEASE_TAG" -R "$REPO" >/dev/null 2>&1; then
             gh release edit "$RELEASE_TAG" -R "$REPO" --title "Zuno — APK box Android TV" --notes "$NOTES"
           else
@@ -631,7 +673,7 @@ jobs:
       #  Après validation : relancer avec publish=true (test_box=false).
       # ------------------------------------------------------------------
       - name: Publier pour la box de test (release zuno-tv-test)
-        if: github.event.inputs.test_box == 'true'
+        if: inputs.test_box == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TEST_TAG: zuno-tv-test
@@ -668,7 +710,7 @@ jobs:
 
           Installation : zuno.7themotion.com/test dans l'app Downloader.
           versionCode : ${TV_BUILD_NUMBER:-?} · SHA-256 : $SHA
-          Commit : ${{ github.sha }}"
+          Commit : ${{ env.SOURCE_SHA }}"
           if gh release view "$TEST_TAG" -R "$REPO" >/dev/null 2>&1; then
             gh release edit "$TEST_TAG" -R "$REPO" --title "Zuno — box de TEST" --notes "$NOTES"
           else
@@ -714,10 +756,10 @@ jobs:
             echo "## Zuno TV"
             echo "- applicationId : \`$ZUNO_APP_ID\` · nom : \`$ZUNO_APP_LABEL\`"
             echo "- version visible : \`${TV_VERSION_NAME:-?}\` · versionCode : \`${TV_BUILD_NUMBER:-?}\` · signature : \`${SIGNING:-?}\`"
-            echo "- backend : \`${{ github.event.inputs.backend_url || 'https://app.7themotion.com' }}\`"
+            echo "- backend : \`${{ inputs.backend_url || 'https://app.7themotion.com' }}\`"
             if [ "$PUBLIER" = "true" ]; then
               echo "- publié : https://github.com/${{ github.repository }}/releases/download/$RELEASE_TAG/$APK_NAME"
             else
-              echo "- **non publié** (artefact du run seulement). Pour publier : push sur \`main\` ou « Run workflow » avec publish=true."
+              echo "- **non publié pour les clients**. Publication clients : lancement manuel explicite seulement."
             fi
           } >> "$GITHUB_STEP_SUMMARY"

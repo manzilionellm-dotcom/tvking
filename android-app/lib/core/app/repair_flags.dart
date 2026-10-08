@@ -279,6 +279,11 @@ abstract final class RepairFlags {
   static const String sportsNetworkLegacyKey = 'zuno.sports.network_legacy';
   static bool sportsNetworkLegacy = false;
 
+  /// Vrai = ancien écran Sport, sans accès aux calendriers publics. Faux =
+  /// accès OpenLigaDB / OpenFootball sur demande, sans clé ni vidéo externe.
+  static const String sportsCommunityOffKey = 'zuno.sports.community_off';
+  static bool sportsCommunityOff = false;
+
   static Future<void> load() async {
     bool raw = false;
     bool tvDelLegacy = false;
@@ -313,6 +318,7 @@ abstract final class RepairFlags {
     bool dropFirst = false;
     bool ackOff = false;
     bool sportsLegacy = false;
+    bool communityOff = false;
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       raw = prefs.getBool(blackBoxRawKey) ?? false;
@@ -348,6 +354,7 @@ abstract final class RepairFlags {
       gzipByHeader = prefs.getBool(epgGzipByHeaderKey) ?? false;
       xtreamSerial = prefs.getBool(xtreamPerCategorySerialKey) ?? false;
       sportsLegacy = prefs.getBool(sportsNetworkLegacyKey) ?? false;
+      communityOff = prefs.getBool(sportsCommunityOffKey) ?? false;
     } catch (_) {
       raw = false;
       fsyncAll = false;
@@ -382,10 +389,12 @@ abstract final class RepairFlags {
       gzipByHeader = false;
       xtreamSerial = false;
       sportsLegacy = false;
+      communityOff = false;
     }
     epgGzipByHeader = gzipByHeader;
     xtreamPerCategorySerial = xtreamSerial;
     sportsNetworkLegacy = sportsLegacy;
+    sportsCommunityOff = communityOff;
     orderAckOff = ackOff;
     tvDeleteLegacy = tvDelLegacy;
     liveShelvesLegacy = shelvesLegacy;
@@ -456,6 +465,7 @@ abstract final class RepairFlags {
     epgGzipByHeader = false;
     xtreamPerCategorySerial = false;
     sportsNetworkLegacy = false;
+    sportsCommunityOff = false;
     NativeVideoController.legacyHoldFrame = false;
   }
 }

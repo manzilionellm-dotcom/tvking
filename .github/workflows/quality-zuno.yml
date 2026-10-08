@@ -1,13 +1,14 @@
 # =========================================================
-#  quality-zuno.yml — Tests de la box, sans compiler l'APK
+#  quality-zuno.yml — Tests de la box et preuve Sport dédiée
 # =========================================================
 #  GitHub ne lance QUE les workflows du dossier `.github/workflows`
 #  à la RACINE du dépôt. L'ancien fichier
 #  `android-app/.github/workflows/quality.yml` ne partait donc
 #  jamais. Celui-ci est au bon endroit.
 #
-#  Il ne publie rien, ne déploie pas le Worker, n'écrit pas sur
-#  la release zuno-tv.
+#  Les tests ne publient rien. La PR de preuve Sport du propriétaire
+#  appelle build-zuno-tv.yml sur zuno-tv-test après les deux barrières.
+#  Aucun déploiement Worker/panel, aucune écriture sur zuno-tv.
 # =========================================================
 
 name: Quality Zuno (tests)
@@ -31,7 +32,9 @@ on:
 
 concurrency:
   group: quality-zuno-${{ github.ref }}
-  cancel-in-progress: true
+  # La preuve dédiée peut publier sur zuno-tv-test : un autre commit ne
+  # doit pas couper son téléversement entre l'APK et le manifeste.
+  cancel-in-progress: ${{ github.event_name != 'pull_request' || github.event.pull_request.base.ref != 'ccr-sport-preuve-20261008' }}
 
 permissions:
   contents: read
@@ -75,3 +78,31 @@ jobs:
         run: |
           node android-app/cloudflare/worker_security.smoke.mjs
           node android-app/cloudflare/zuno_security.test.mjs
+
+  # Appel réservé à la PR de preuve créée par le propriétaire. Le workflow
+  # n'est pas sur main : cet appel évite de toucher la branche interdite.
+  sport-test-box:
+    name: APK Sport pour la box de test
+    needs: [flutter, worker]
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.repository == 'manzilionellm-dotcom/tvking' &&
+      github.actor == github.repository_owner &&
+      github.event.pull_request.user.login == github.repository_owner &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'ccr-b93e1afd-gwirw0' &&
+      github.event.pull_request.base.ref == 'ccr-sport-preuve-20261008'
+    permissions:
+      contents: write
+    uses: ./.github/workflows/build-zuno-tv.yml
+    with:
+      publish: 'false'
+      test_box: 'true'
+      play_aab: 'false'
+      backend_url: ''
+      variante: 'box'
+    secrets:
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
