@@ -79,13 +79,34 @@ jobs:
           node android-app/cloudflare/worker_security.smoke.mjs
           node android-app/cloudflare/zuno_security.test.mjs
 
+  changes:
+    name: Choisir l’APK concerné
+    runs-on: ubuntu-latest
+    outputs:
+      box: ${{ steps.paths.outputs.box }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 2
+      - id: paths
+        run: |
+          python3 - <<'PYPATHS'
+          import os,subprocess
+          paths=subprocess.check_output(['git','diff','--name-only','HEAD^','HEAD'],text=True).splitlines()
+          roots=['android-app/lib/','android-app/test/','android-app/packages/','android-app/android_overlay/','android-app/pubspec']
+          box=any(any(p.startswith(r) for r in roots) for p in paths)
+          with open(os.environ['GITHUB_OUTPUT'],'a') as out: out.write('box='+str(box).lower()+'\n')
+          PYPATHS
+
   # Appel réservé à la PR de preuve créée par le propriétaire. Le workflow
   # n'est pas sur main : cet appel évite de toucher la branche interdite.
   sport-test-box:
     name: APK Sport pour la box de test
-    needs: [flutter, worker]
+    needs: [flutter, worker, changes]
     if: >-
       github.event_name == 'pull_request' &&
+      needs.changes.outputs.box == 'true' &&
       github.repository == 'manzilionellm-dotcom/tvking' &&
       github.actor == github.repository_owner &&
       github.event.pull_request.user.login == github.repository_owner &&
@@ -101,6 +122,26 @@ jobs:
       play_aab: 'false'
       backend_url: ''
       variante: 'box'
+    secrets:
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+
+  mobile-sport-test:
+    name: APK mobile Sport gratuit
+    needs: [flutter, worker]
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.repository == 'manzilionellm-dotcom/tvking' &&
+      github.actor == github.repository_owner &&
+      github.event.pull_request.user.login == github.repository_owner &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'ccr-b93e1afd-gwirw0' &&
+      github.event.pull_request.base.ref == 'ccr-sport-preuve-20261008'
+    permissions:
+      contents: write
+    uses: ./.github/workflows/build-7motion-sport-test.yml
     secrets:
       ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
       ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
