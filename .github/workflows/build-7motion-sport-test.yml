@@ -1,7 +1,13 @@
 # Base mobile validée et patch isolé : aucune fusion ni publication clients.
-name: APK mobile Sport gratuit (test uniquement)
+name: APK mobile Radios et Sport (test uniquement)
 'on':
   workflow_call:
+    inputs:
+      play_aab:
+        description: 'Préparer un bundle Play pour revue (aucune publication)'
+        type: boolean
+        default: false
+        required: false
     secrets:
       ANDROID_KEYSTORE_BASE64:
         required: false
@@ -18,7 +24,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   phone:
-    name: 'Téléphone : tests et APK Sport sans clé'
+    name: 'Téléphone : tests et APK Radios du monde'
     if: github.event_name == 'pull_request' && github.repository == 'manzilionellm-dotcom/tvking' && github.actor == github.repository_owner && github.event.pull_request.user.login ==
       github.repository_owner && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'ccr-b93e1afd-gwirw0' && github.event.pull_request.base.ref
       == 'ccr-sport-preuve-20261008'
@@ -50,6 +56,8 @@ jobs:
         [ "$(git rev-parse HEAD)" = "37fdf3305c5de9d35e20fd6567df38008fc7a7ee" ]
         git apply --check ../mission/patches/mobile-sport-gratuit.patch
         git apply ../mission/patches/mobile-sport-gratuit.patch
+        git apply --check ../mission/patches/mobile-radio.patch
+        git apply ../mission/patches/mobile-radio.patch
         git diff --check
         gh api "repos/$GITHUB_REPOSITORY/releases/tags/phone-latest" > "$RUNNER_TEMP/client-before.json"
     - name: Setup Java 17 (Temurin)
@@ -439,7 +447,27 @@ jobs:
             raise SystemExit('NON PROUVÉ : échec différent de la livraison froide attendue')
         print('PROUVÉ : le même test échoue sur la livraison froide avec le repli réel')
         PYPROOF
+        # Le même test HTTP réel doit retrouver l'absence de catalogue au repli.
+        set +e
+        flutter test test/features/radio/radio_browser_http_test.dart \\
+          --plain-name 'catalogue : une requête HTTP réelle charge une radio' \\
+          --dart-define=RADIO_LEGACY_PROOF=true --reporter expanded \\
+          > "$RUNNER_TEMP/radio-legacy-proof.log" 2>&1
+        RADIO_LEGACY_STATUS=$?
+        set -e
+        [ "$RADIO_LEGACY_STATUS" -ne 0 ] || { echo '::error::Le repli Radio ne coupe plus le catalogue'; exit 1; }
+        python3 - "$RUNNER_TEMP/radio-legacy-proof.log" <<'PYRADIO'
+        import sys
+        proof=open(sys.argv[1]).read()
+        required=['Expected: <1>', 'Actual: <0>',
+                  'Le catalogue actif doit livrer une station du vrai serveur HTTP.',
+                  'Some tests failed.']
+        if not all(value in proof for value in required):
+            raise SystemExit('NON PROUVÉ : échec différent du repli Radio attendu')
+        print('PROUVÉ : le même test HTTP échoue sur le repli Radio réel')
+        PYRADIO
         flutter test --reporter expanded
+        dart run ci/radio_catalog_probe.dart
     - name: Construire l’APK mobile de test, une seule tentative
       id: apk_build
       env:
@@ -450,7 +478,7 @@ jobs:
         BUILD_LABEL=$(ci/build_label.sh "$GITHUB_REPOSITORY" 7motion-test)
         echo "PHONE_BUILD_LABEL=$BUILD_LABEL" >> "$GITHUB_ENV"
         flutter build apk --release --no-tree-shake-icons --split-per-abi --target-platform android-arm64 \
-          --build-number="$BUILD_TS" --build-name="0.3.5-sport-test.${{ github.run_number }}" \
+          --build-number="$BUILD_TS" --build-name="0.3.6-radio-test.${{ github.run_number }}" \
           --obfuscate --split-debug-info=build/symbols \
           --dart-define=APP_BUILD_TS="$BUILD_TS" --dart-define=APP_BUILD_LABEL="$BUILD_LABEL" \
           --dart-define=GIT_SHA=${{ github.event.pull_request.head.sha }} \
@@ -496,6 +524,7 @@ jobs:
         echo "signature $CERT ; SHA-256 $SHA"
     - name: Construire et contrôler le bundle de la fiche Play existante
       id: play_build
+      if: ${{ inputs.play_aab }}
       env:
         KS_PW: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
         KS_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
@@ -504,12 +533,12 @@ jobs:
         set -euo pipefail
         # L'APK de test reste distinct. Le Store doit garder son propre identifiant.
         python3 ../mission/android-app/ci/mobile/prepare_play.py
-        # 1722 est réservé à la compilation précédente ; ce correctif prend 1723.
+        # 1723 est déjà publié ; la préparation suivante doit prendre 1724.
         # Incrémenter ce code à chaque release Store ; le timestamp reste
         # réservé au canal de test et à la date de construction de l’app.
-        PLAY_VERSION_CODE=1723
+        PLAY_VERSION_CODE=1724
         flutter build appbundle --release --no-tree-shake-icons \
-          --build-number="$PLAY_VERSION_CODE" --build-name=0.3.5 \
+          --build-number="$PLAY_VERSION_CODE" --build-name=0.3.6 \
           --obfuscate --split-debug-info=build/play-symbols \
           --dart-define=APP_BUILD_TS="$PHONE_VERSION_CODE" --dart-define=APP_BUILD_LABEL="$PHONE_BUILD_LABEL" \
           --dart-define=GIT_SHA=${{ github.event.pull_request.head.sha }} \
@@ -578,18 +607,22 @@ jobs:
         # Canal fixe, aucune entrée permettant de viser les clients.
         APK=build/app/outputs/flutter-apk/7motion.apk
         cat > "$RUNNER_TEMP/notes.md" <<EOF
-        7 MOTION téléphone — TEST Sport gratuit, OpenLigaDB sans clé.
-        Version : 0.3.5-sport-test.${{ github.run_number }} ; versionCode : $PHONE_VERSION_CODE
+        7 MOTION téléphone — TEST Radios du monde et Sport gratuit.
+        Version : 0.3.6-radio-test.${{ github.run_number }} ; versionCode : $PHONE_VERSION_CODE
         SHA-256 : $APK_SHA256
         Base téléphone : 37fdf3305c5de9d35e20fd6567df38008fc7a7ee
         Correction : ${{ github.event.pull_request.head.sha }}
-        Source communautaire : couverture limitée, délai non garanti.
-        Alertes de buts : application active et autorisation Android nécessaires.
-        Clients phone-latest inchangés.
-        Bundle Play 0.3.5 préparé pour revue, sans publication Store.
-        Empreinte du bundle : $PLAY_AAB_SHA256
+        Radios : recherche mondiale, pays, langues, genres, favoris par profil.
+        Catalogue public Radio Browser ; stations et disponibilité non garanties.
+        Repli zuno.mobile.radio_legacy éteint par défaut : true restitue l'accueil sans radios.
+        Sport OpenLigaDB et notifications précédemment validés conservés.
+        Clients phone-latest inchangés. Aucune publication Store ni mise à jour Zuno.
+        Lecture et écoute sur téléphone physique : NON PROUVÉ.
         EOF
-        gh release upload 7motion-test "$APK" build/play-review/7motion.aab --clobber -R "$GITHUB_REPOSITORY"
+        gh release upload 7motion-test "$APK" --clobber -R "$GITHUB_REPOSITORY"
+        if [ "${{ inputs.play_aab }}" = "true" ]; then
+          gh release upload 7motion-test build/play-review/7motion.aab --clobber -R "$GITHUB_REPOSITORY"
+        fi
         gh release edit 7motion-test --prerelease --latest=false --notes-file "$RUNNER_TEMP/notes.md" -R "$GITHUB_REPOSITORY"
         gh api "repos/$GITHUB_REPOSITORY/releases/tags/7motion-test" > "$RUNNER_TEMP/test-after.json"
         gh api "repos/$GITHUB_REPOSITORY/releases/tags/phone-latest" > "$RUNNER_TEMP/client-after.json"
@@ -608,10 +641,7 @@ jobs:
         assert len(assets)==1
         assert assets[0]['digest']=='sha256:'+os.environ['APK_SHA256'], 'Empreinte publiée différente'
         assert assets[0]['size']==Path('build/app/outputs/flutter-apk/7motion.apk').stat().st_size
-        bundles=[x for x in test['assets'] if x['name']=='7motion.aab']
-        assert len(bundles)==1
-        assert bundles[0]['digest']=='sha256:'+os.environ['PLAY_AAB_SHA256'], 'Empreinte du bundle différente'
-        assert bundles[0]['size']==Path('build/play-review/7motion.aab').stat().st_size
+        # Le bundle éventuel est vérifié à sa construction. Cette mission livre l'APK.
         print('PROUVÉ : APK publié identique au fichier signé et testé')
         print('PROUVÉ : phone-latest identique avant et après')
         PYCHECK

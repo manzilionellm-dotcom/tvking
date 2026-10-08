@@ -98,7 +98,7 @@ jobs:
           paths=subprocess.check_output(['git','diff','--name-only','HEAD^','HEAD'],text=True).splitlines()
           roots=['android-app/lib/','android-app/test/','android-app/packages/','android-app/android_overlay/','android-app/pubspec']
           box=any(any(p.startswith(r) for r in roots) for p in paths)
-          phone=any(p in ['patches/mobile-sport-gratuit.patch','.github/workflows/build-7motion-sport-test.yml'] or p.startswith('android-app/ci/mobile/') for p in paths)
+          phone=any(p in ['patches/mobile-sport-gratuit.patch','patches/mobile-radio.patch','.github/workflows/build-7motion-sport-test.yml'] or p.startswith('android-app/ci/mobile/') for p in paths)
           with open(os.environ['GITHUB_OUTPUT'],'a') as out:
               out.write('box='+str(box).lower()+'\n')
               out.write('phone='+str(phone).lower()+'\n')

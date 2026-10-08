@@ -1,0 +1,1559 @@
+diff --git a/ci/radio_catalog_probe.dart b/ci/radio_catalog_probe.dart
+new file mode 100644
+--- /dev/null
++++ b/ci/radio_catalog_probe.dart
+@@ -0,0 +1,26 @@
++import 'dart:io';
++
++import '../lib/features/radio/data/radio_browser_client.dart';
++import '../lib/features/radio/domain/radio_station.dart';
++
++// Preuve de livraison contre le service public réel : aucune adresse de
++// diffusion ni nom de station n'est affiché. Ce n'est pas un test audio Android.
++Future<void> main() async {
++  final RadioBrowserClient client = RadioBrowserClient();
++  try {
++    final RadioPage page = await client.search(const RadioQuery());
++    final List<RadioCountry> countries = await client.countries();
++    if (page.stations.isEmpty || countries.isEmpty) {
++      stderr.writeln('NON PROUVÉ : catalogue public ou liste de pays vide');
++      exitCode = 1;
++      return;
++    }
++    stdout.writeln('PROUVÉ : API Radio Browser réelle, '
++      '${page.stations.length} stations sur la page, ${countries.length} pays');
++  } on RadioFailure catch (failure) {
++    stderr.writeln('NON PROUVÉ : API publique Radio Browser, ${failure.code.name}');
++    exitCode = 1;
++  } finally {
++    client.close();
++  }
++}
+diff --git a/lib/core/app/repair_flags.dart b/lib/core/app/repair_flags.dart
+--- a/lib/core/app/repair_flags.dart
++++ b/lib/core/app/repair_flags.dart
+@@ -12,6 +12,9 @@
+   static const String mobileChannelMetadataLegacyKey =
+       'zuno.mobile.channel_metadata_legacy';
+   static bool mobileChannelMetadataLegacy = false;
++  // Le repli retrouve l'accueil historique sans catalogue Radio Browser.
++  static const String mobileRadioLegacyKey = 'zuno.mobile.radio_legacy';
++  static bool mobileRadioLegacy = false;
+ 
+   static Future<void> load() async {
+     final SharedPreferences prefs = await SharedPreferences.getInstance();
+@@ -19,6 +22,7 @@
+     mobileNotificationsLegacy = prefs.getBool(mobileNotificationsLegacyKey) ?? false;
+     mobileChannelMetadataLegacy =
+         prefs.getBool(mobileChannelMetadataLegacyKey) ?? false;
++    mobileRadioLegacy = prefs.getBool(mobileRadioLegacyKey) ?? false;
+   }
+ }
+ 
+diff --git a/lib/features/radio/data/radio_browser_client.dart b/lib/features/radio/data/radio_browser_client.dart
+new file mode 100644
+--- /dev/null
++++ b/lib/features/radio/data/radio_browser_client.dart
+@@ -0,0 +1,207 @@
++import 'dart:async';
++import 'dart:convert';
++import 'dart:io';
++import 'dart:math';
++
++import '../domain/radio_station.dart';
++
++// Recherche et pagination côté serveur : on ne télécharge jamais tout le monde.
++// La bascule de miroir concerne seulement les GET de catalogue, jamais un flux.
++class RadioBrowserClient {
++  RadioBrowserClient({List<Uri>? mirrors,
++    this.timeout = const Duration(seconds: 7), this.maxBytes = 1024 * 1024})
++      : _suppliedMirrors = mirrors == null ? null : List<Uri>.unmodifiable(mirrors);
++
++  static const int pageSize = 50;
++  final Duration timeout;
++  final int maxBytes;
++  final List<Uri>? _suppliedMirrors;
++  final Set<HttpClient> _activeClients = <HttpClient>{};
++  Future<List<Uri>>? _discovery;
++  bool _closed = false;
++
++  Future<List<Uri>> _discover() async {
++    if (_suppliedMirrors != null) return _suppliedMirrors;
++    final List<Uri> servers = <Uri>[];
++    try {
++      final List<InternetAddress> addresses = await InternetAddress.lookup(
++        'all.api.radio-browser.info', type: InternetAddressType.IPv4,
++      ).timeout(const Duration(seconds: 2));
++      addresses.shuffle(Random());
++      for (final InternetAddress address in addresses.take(3)) {
++        try {
++          final InternetAddress reversed = await address.reverse()
++              .timeout(const Duration(seconds: 1));
++          final String host = reversed.host.toLowerCase().replaceFirst(RegExp(r'\.$'), '');
++          if (host.endsWith('.api.radio-browser.info')) {
++            servers.add(Uri.https(host, ''));
++          }
++        } on SocketException {
++          // Un PTR absent n'invalide pas les autres miroirs découverts.
++        } on TimeoutException {
++          // Chaque résolution a sa limite, aucune boucle sans fin.
++        }
++      }
++    } on SocketException {
++      // Le miroir officiel reste utilisable quand le DNS SRV/PTR est filtré.
++    } on TimeoutException {
++      // Le démarrage de l'app ne dépend jamais de cette découverte.
++    }
++    servers.add(Uri.https('de1.api.radio-browser.info', ''));
++    return servers.toSet().take(3).toList(growable: false);
++  }
++
++  Future<RadioPage> search(RadioQuery query) async {
++    if (query.page < 0 || query.page > 100000) {
++      throw const RadioFailure(RadioFailureCode.invalidResponse);
++    }
++    final List<dynamic> rows = await _get('/json/stations/search', <String, String>{
++      'hidebroken': 'true', 'order': 'votes', 'reverse': 'true',
++      'limit': '${pageSize + 1}', 'offset': '${query.page * pageSize}',
++      if (query.name.trim().isNotEmpty) 'name': query.name.trim(),
++      if (query.countryCode.isNotEmpty) 'countrycode': query.countryCode,
++      if (query.language.trim().isNotEmpty) 'language': query.language.trim(),
++      if (query.genre.trim().isNotEmpty) 'tag': query.genre.trim(),
++    });
++    // Les doublons du catalogue ne doublent pas les cartes à l'écran.
++    return RadioPage(_stations(rows.take(pageSize)), hasNext: rows.length > pageSize);
++  }
++
++  Future<RadioPage> favorites(List<String> ids, int page) async {
++    final List<String> valid = ids.where(RadioStation.validId).toList(growable: false);
++    final List<String> slice = valid.skip(page * pageSize).take(pageSize).toList();
++    if (slice.isEmpty) return const RadioPage(<RadioStation>[], hasNext: false);
++    final List<dynamic> rows = await _get('/json/stations/byuuid', <String, String>{
++      'uuids': slice.join(','), 'hidebroken': 'true', 'limit': '$pageSize',
++    });
++    return RadioPage(_stations(rows.take(pageSize)),
++      hasNext: valid.length > (page + 1) * pageSize);
++  }
++
++  List<RadioStation> _stations(Iterable<dynamic> rows) {
++    final Map<String, RadioStation> result = <String, RadioStation>{};
++    for (final dynamic value in rows) {
++      if (value is! Map<String, dynamic>) continue;
++      final RadioStation? station = RadioStation.fromJson(value);
++      if (station != null) result[station.id] = station;
++    }
++    return List<RadioStation>.unmodifiable(result.values);
++  }
++
++  Future<List<RadioCountry>> countries() async {
++    final List<dynamic> rows = await _get('/json/countries', <String, String>{
++      'hidebroken': 'true', 'order': 'name', 'limit': '300',
++    });
++    final Map<String, RadioCountry> result = <String, RadioCountry>{};
++    for (final dynamic value in rows.take(300)) {
++      if (value is! Map<String, dynamic>) continue;
++      final Object? code = value['iso_3166_1'];
++      final Object? name = value['name'];
++      if (code is String && RegExp(r'^[A-Z]{2}$').hasMatch(code) && name is String) {
++        result[code] = RadioCountry(code, name);
++      }
++    }
++    return List<RadioCountry>.unmodifiable(result.values);
++  }
++
++  Future<List<String>> languages() async {
++    final List<dynamic> rows = await _get('/json/languages', <String, String>{
++      'hidebroken': 'true', 'order': 'stationcount', 'reverse': 'true', 'limit': '500',
++    });
++    return rows.take(500).whereType<Map<String, dynamic>>()
++        .map((Map<String, dynamic> row) => row['name'])
++        .whereType<String>().where((String s) => s.isNotEmpty && s.length < 100)
++        .toSet().toList(growable: false);
++  }
++
++  Future<List<String>> genres() async {
++    final List<dynamic> rows = await _get('/json/tags', <String, String>{
++      'hidebroken': 'true', 'order': 'stationcount', 'reverse': 'true', 'limit': '500',
++    });
++    return rows.take(500).whereType<Map<String, dynamic>>()
++        .map((Map<String, dynamic> row) => row['name'])
++        .whereType<String>().where((String s) => s.isNotEmpty && s.length < 100)
++        .toSet().toList(growable: false);
++  }
++
++  Future<List<dynamic>> _get(String path, Map<String, String> params) async {
++    if (_closed) throw const RadioFailure(RadioFailureCode.unavailable);
++    final List<Uri> servers = await (_discovery ??= _discover());
++    RadioFailure last = const RadioFailure(RadioFailureCode.unavailable);
++    for (final Uri server in servers.take(3)) {
++      if (_closed) throw const RadioFailure(RadioFailureCode.unavailable);
++      try {
++        return await _fetch(server.replace(path: path, queryParameters: params));
++      } on _RadioRequestRejected {
++        rethrow;
++      } on RadioFailure catch (failure) {
++        last = failure;
++        // Une requête refusée ou trop volumineuse n'est pas répétée ailleurs.
++        if (failure.code == RadioFailureCode.responseTooLarge) rethrow;
++      }
++    }
++    throw last;
++  }
++
++  Future<List<dynamic>> _fetch(Uri uri) async {
++    final HttpClient client = HttpClient()..connectionTimeout = timeout;
++    _activeClients.add(client);
++    try {
++      return await (() async {
++        final HttpClientRequest request = await client.getUrl(uri);
++        request.headers.set(HttpHeaders.userAgentHeader, '7MOTION/0.3.6 (Radio Browser)');
++        request.headers.set(HttpHeaders.acceptHeader, 'application/json');
++        final HttpClientResponse response = await request.close();
++        if (response.statusCode >= 400 && response.statusCode < 500) {
++          throw const _RadioRequestRejected();
++        }
++        if (response.statusCode != HttpStatus.ok) {
++          throw const RadioFailure(RadioFailureCode.unavailable);
++        }
++        if (response.contentLength > maxBytes) {
++          throw const RadioFailure(RadioFailureCode.responseTooLarge);
++        }
++        final List<int> bytes = <int>[];
++        await for (final List<int> chunk in response) {
++          if (bytes.length + chunk.length > maxBytes) {
++            throw const RadioFailure(RadioFailureCode.responseTooLarge);
++          }
++          bytes.addAll(chunk);
++        }
++        final dynamic decoded = jsonDecode(utf8.decode(bytes));
++        if (decoded is! List<dynamic>) {
++          throw const RadioFailure(RadioFailureCode.invalidResponse);
++        }
++        return decoded;
++      })().timeout(timeout);
++    } on RadioFailure {
++      rethrow;
++    } on TimeoutException {
++      throw const RadioFailure(RadioFailureCode.timeout);
++    } on SocketException {
++      throw const RadioFailure(RadioFailureCode.offline);
++    } on HandshakeException {
++      throw const RadioFailure(RadioFailureCode.unavailable);
++    } on HttpException {
++      throw const RadioFailure(RadioFailureCode.unavailable);
++    } on FormatException {
++      throw const RadioFailure(RadioFailureCode.invalidResponse);
++    } finally {
++      _activeClients.remove(client);
++      client.close(force: true);
++    }
++  }
++
++  void close() {
++    _closed = true;
++    for (final HttpClient client in _activeClients) {
++      client.close(force: true);
++    }
++    _activeClients.clear();
++  }
++}
++
++// Un refus 4xx (dont 429) est respecté : changer de miroir ne le contourne pas.
++class _RadioRequestRejected extends RadioFailure {
++  const _RadioRequestRejected() : super(RadioFailureCode.unavailable);
++}
+diff --git a/lib/features/radio/data/radio_catalog_controller.dart b/lib/features/radio/data/radio_catalog_controller.dart
+new file mode 100644
+--- /dev/null
++++ b/lib/features/radio/data/radio_catalog_controller.dart
+@@ -0,0 +1,61 @@
++import 'package:flutter/foundation.dart';
++
++import '../../../core/app/repair_flags.dart';
++import '../domain/radio_station.dart';
++import 'radio_browser_client.dart';
++
++// La révision protège la recherche rapide : une réponse ancienne ne peut
++// jamais écraser le nouveau pays, ni faire revenir un favori supprimé.
++class RadioCatalogController extends ChangeNotifier {
++  RadioCatalogController(this.client);
++  final RadioBrowserClient client;
++  RadioQuery query = const RadioQuery();
++  List<RadioStation> stations = const <RadioStation>[];
++  bool loading = false;
++  bool hasNext = false;
++  RadioFailureCode? error;
++  int _revision = 0;
++  bool _disposed = false;
++
++  Future<void> load(RadioQuery next, {List<String>? favorites}) async {
++    if (_disposed) return;
++    final int revision = ++_revision;
++    query = next;
++    stations = const <RadioStation>[];
++    hasNext = false;
++    error = null;
++    // Allumer le repli restitue l'ancienne app sans accès au catalogue.
++    if (RepairFlags.mobileRadioLegacy) {
++      loading = false;
++      error = RadioFailureCode.disabled;
++      notifyListeners();
++      return;
++    }
++    loading = true;
++    notifyListeners();
++    try {
++      final RadioPage page = favorites == null
++          ? await client.search(next)
++          : await client.favorites(List<String>.of(favorites), next.page);
++      if (_disposed || revision != _revision) return;
++      stations = page.stations;
++      hasNext = page.hasNext;
++    } on RadioFailure catch (failure) {
++      if (_disposed || revision != _revision) return;
++      error = failure.code;
++    } finally {
++      if (!_disposed && revision == _revision) {
++        loading = false;
++        notifyListeners();
++      }
++    }
++  }
++
++  @override
++  void dispose() {
++    _disposed = true;
++    _revision++;
++    client.close();
++    super.dispose();
++  }
++}
+diff --git a/lib/features/radio/data/radio_favorites_store.dart b/lib/features/radio/data/radio_favorites_store.dart
+new file mode 100644
+--- /dev/null
++++ b/lib/features/radio/data/radio_favorites_store.dart
+@@ -0,0 +1,21 @@
++import 'package:shared_preferences/shared_preferences.dart';
++
++import '../domain/radio_station.dart';
++
++// Un carnet par profil ; seuls les identifiants publics sont persistés.
++// La lecture et la validation sont communes à l'écran et aux tests.
++class RadioFavoritesStore {
++  RadioFavoritesStore(this.preferences, {this.profileSuffix = ''});
++  final SharedPreferences preferences;
++  final String profileSuffix;
++  String get key => 'zuno.mobile.radio_favorites.v1$profileSuffix';
++
++  List<String> read() => (preferences.getStringList(key) ?? const <String>[])
++      .where(RadioStation.validId).toSet().take(500).toList(growable: false);
++
++  Future<void> write(Iterable<String> ids) async {
++    final List<String> safe = ids.where(RadioStation.validId).toSet().take(500).toList();
++    final bool saved = await preferences.setStringList(key, safe);
++    if (!saved) throw const RadioFailure(RadioFailureCode.favoritesUnavailable);
++  }
++}
+diff --git a/lib/features/radio/domain/radio_station.dart b/lib/features/radio/domain/radio_station.dart
+new file mode 100644
+--- /dev/null
++++ b/lib/features/radio/domain/radio_station.dart
+@@ -0,0 +1,108 @@
++// Le catalogue fournit les adresses à la demande ; aucune radio n'est codée en dur.
++// Les favoris ne conservent que les UUID, jamais une adresse de diffusion.
++class RadioStation {
++  const RadioStation({
++    required this.id,
++    required this.name,
++    required this.streamUri,
++    required this.countryCode,
++    required this.language,
++    required this.tags,
++    required this.codec,
++    required this.bitrate,
++    this.logoUri,
++  });
++
++  final String id;
++  final String name;
++  final Uri streamUri;
++  final String countryCode;
++  final String language;
++  final String tags;
++  final String codec;
++  final int bitrate;
++  final Uri? logoUri;
++
++  static final RegExp _uuid = RegExp(
++    r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
++  );
++
++  static bool validId(String id) => _uuid.hasMatch(id);
++
++  static RadioStation? fromJson(Map<String, dynamic> json) {
++    final String id = _text(json, 'stationuuid');
++    final String name = _text(json, 'name');
++    final Uri? address = _address(json['url_resolved']) ?? _address(json['url']);
++    // Les stations déclarées hors ligne et les données mal formées sont exclues.
++    if (!validId(id) || name.isEmpty || address == null ||
++        json['lastcheckok'].toString() != '1') return null;
++    return RadioStation(
++      id: id,
++      name: name,
++      streamUri: address,
++      logoUri: _address(json['favicon']),
++      countryCode: _text(json, 'countrycode').toUpperCase(),
++      language: _text(json, 'language'),
++      tags: _text(json, 'tags'),
++      codec: _text(json, 'codec'),
++      bitrate: int.tryParse(json['bitrate'].toString()) ?? 0,
++    );
++  }
++
++  static String _text(Map<String, dynamic> json, String key) {
++    final Object? value = json[key];
++    if (value is! String) return '';
++    final String cleaned = value.replaceAll(RegExp(r'[\r\n\x00-\x1f]'), ' ').trim();
++    return cleaned.length > 180 ? cleaned.substring(0, 180) : cleaned;
++  }
++
++  static Uri? _address(Object? value) {
++    if (value is! String || value.length > 4096) return null;
++    final Uri? uri = Uri.tryParse(value.trim());
++    if (uri == null || !const <String>{'http', 'https'}.contains(uri.scheme) ||
++        uri.host.isEmpty || uri.userInfo.isNotEmpty) return null;
++    return uri;
++  }
++}
++
++class RadioCountry {
++  const RadioCountry(this.code, this.name);
++  final String code;
++  final String name;
++}
++
++class RadioQuery {
++  const RadioQuery({this.name = '', this.countryCode = '', this.language = '',
++    this.genre = '', this.page = 0});
++  final String name;
++  final String countryCode;
++  final String language;
++  final String genre;
++  final int page;
++
++  RadioQuery copyWith({String? name, String? countryCode, String? language,
++    String? genre, int? page}) => RadioQuery(
++    name: name ?? this.name,
++    countryCode: countryCode ?? this.countryCode,
++    language: language ?? this.language,
++    genre: genre ?? this.genre,
++    page: page ?? this.page,
++  );
++}
++
++class RadioPage {
++  const RadioPage(this.stations, {required this.hasNext});
++  final List<RadioStation> stations;
++  final bool hasNext;
++}
++
++enum RadioFailureCode { disabled, offline, timeout, unavailable, invalidResponse,
++  responseTooLarge, favoritesUnavailable }
++
++// Une erreur publique ne contient ni URL ni texte brut de l'exception réseau.
++class RadioFailure implements Exception {
++  const RadioFailure(this.code);
++  final RadioFailureCode code;
++  @override
++  String toString() => 'RadioFailure(${code.name})';
++}
+diff --git a/lib/features/radio/presentation/radio_entry.dart b/lib/features/radio/presentation/radio_entry.dart
+new file mode 100644
+--- /dev/null
++++ b/lib/features/radio/presentation/radio_entry.dart
+@@ -0,0 +1,34 @@
++import 'package:flutter/material.dart';
++
++import '../../../core/app/repair_flags.dart';
++import '../../../core/i18n/l10n_extension.dart';
++import '../../../core/theme/app_colors.dart';
++import '../../../core/theme/app_text_styles.dart';
++import 'radio_screen.dart';
++
++// Accessible même sans playlist : la radio utilise un catalogue public distinct.
++// Le repli enlève toute l'entrée et ne crée ni lecteur ni appel réseau.
++class RadioEntry extends StatelessWidget {
++  const RadioEntry({super.key});
++
++  @override
++  Widget build(BuildContext context) {
++    if (RepairFlags.mobileRadioLegacy) return const SizedBox.shrink();
++    return Padding(
++      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
++      child: Material(
++        color: AppColors.surfaceHigh,
++        borderRadius: BorderRadius.circular(16),
++        child: ListTile(
++          leading: Icon(Icons.radio_rounded, color: AppColors.accent),
++          title: Text(context.l10n.radioTitle, style: AppTextStyles.bodyLarge),
++          subtitle: Text(context.l10n.radioEntryHint, style: AppTextStyles.bodySmall),
++          trailing: const Icon(Icons.chevron_right_rounded),
++          onTap: () => Navigator.of(context).push<void>(MaterialPageRoute<void>(
++            builder: (_) => const RadioScreen(),
++          )),
++        ),
++      ),
++    );
++  }
++}
+diff --git a/lib/features/radio/presentation/radio_screen.dart b/lib/features/radio/presentation/radio_screen.dart
+new file mode 100644
+--- /dev/null
++++ b/lib/features/radio/presentation/radio_screen.dart
+@@ -0,0 +1,417 @@
++import 'dart:async';
++
++import 'package:flutter/material.dart';
++import 'package:media_kit/media_kit.dart';
++import 'package:shared_preferences/shared_preferences.dart';
++
++import '../../../core/i18n/l10n_extension.dart';
++import '../../../core/observability/structured_logger.dart';
++import '../../../core/profiles/profiles_repository.dart';
++import '../../../core/theme/app_colors.dart';
++import '../../../core/theme/app_text_styles.dart';
++import '../data/radio_browser_client.dart';
++import '../data/radio_catalog_controller.dart';
++import '../data/radio_favorites_store.dart';
++import '../domain/radio_station.dart';
++
++class RadioScreen extends StatefulWidget {
++  const RadioScreen({super.key, this.client});
++  // Les tests utilisent un vrai serveur HTTP local, pas un catalogue simulé.
++  final RadioBrowserClient? client;
++  @override
++  State<RadioScreen> createState() => _RadioScreenState();
++}
++
++class _RadioScreenState extends State<RadioScreen> {
++  late final RadioCatalogController _catalog;
++  final TextEditingController _search = TextEditingController();
++  Timer? _debounce;
++  RadioFavoritesStore? _favorites;
++  List<String> _favoriteIds = <String>[];
++  bool _onlyFavorites = false;
++  bool _saving = false;
++  bool _choosing = false;
++  String? _countryName;
++  Player? _player;
++  RadioStation? _current;
++  bool _playing = false;
++  bool _buffering = false;
++  bool _opening = false;
++  bool _playbackError = false;
++  final List<StreamSubscription<dynamic>> _subscriptions = <StreamSubscription<dynamic>>[];
++
++  @override
++  void initState() {
++    super.initState();
++    _catalog = RadioCatalogController(widget.client ?? RadioBrowserClient());
++    _catalog.addListener(_catalogChanged);
++    unawaited(_initialize());
++  }
++
++  Future<void> _initialize() async {
++    try {
++      final SharedPreferences prefs = await SharedPreferences.getInstance();
++      if (!mounted) return;
++      _favorites = RadioFavoritesStore(prefs,
++        profileSuffix: ProfilesRepository.instance.keySuffix);
++      setState(() => _favoriteIds = _favorites!.read());
++    } catch (_) {
++      // Le catalogue reste accessible ; le bouton favori reste désactivé.
++      _logFailure('favorites.load', RadioFailureCode.favoritesUnavailable);
++    }
++    if (mounted) await _load(const RadioQuery());
++  }
++
++  void _catalogChanged() {
++    if (mounted) setState(() {});
++  }
++
++  Future<void> _load(RadioQuery query) async {
++    await _catalog.load(query, favorites: _onlyFavorites ? _favoriteIds : null);
++    if (!mounted) return;
++    if (_catalog.error != null) {
++      _logFailure('catalog.failed', _catalog.error!);
++    } else {
++      // Aucun nom de station ni adresse de diffusion n'entre dans le journal.
++      StructuredLogger.instance.info(domain: 'radio', event: 'catalog.loaded',
++        ctx: <String, Object?>{'count': _catalog.stations.length, 'page': query.page + 1});
++    }
++  }
++
++  void _scheduleSearch(String text) {
++    _debounce?.cancel();
++    _debounce = Timer(const Duration(milliseconds: 400), () {
++      unawaited(_load(_catalog.query.copyWith(name: text, page: 0)));
++    });
++  }
++
++  Future<void> _choose(String type) async {
++    if (_choosing) return;
++    setState(() => _choosing = true);
++    try {
++      final List<RadioCountry> countries = type == 'country'
++          ? await _catalog.client.countries() : const <RadioCountry>[];
++      final List<String> names = type == 'language'
++          ? await _catalog.client.languages() : type == 'genre'
++          ? await _catalog.client.genres() : <String>[];
++      if (!mounted) return;
++      final Map<String, String> choices = <String, String>{
++        '': context.l10n.radioAll,
++        for (final RadioCountry country in countries) country.code: country.name,
++        for (final String name in names) name: name,
++      };
++      final String? selected = await showSearch<String?>(context: context,
++        delegate: _RadioChoiceDelegate(choices, context.l10n.radioFilterSearch));
++      if (selected == null || !mounted) return;
++      _debounce?.cancel();
++      if (type == 'country') _countryName = choices[selected];
++      final RadioQuery next = _catalog.query.copyWith(page: 0, name: _search.text,
++        countryCode: type == 'country' ? selected : null,
++        language: type == 'language' ? selected : null,
++        genre: type == 'genre' ? selected : null);
++      await _load(next);
++    } on RadioFailure catch (failure) {
++      _logFailure('filter.failed', failure.code);
++      if (mounted) _message(_failureText(failure.code));
++    } finally {
++      if (mounted) setState(() => _choosing = false);
++    }
++  }
++
++  Future<void> _toggleFavorite(RadioStation station) async {
++    if (_saving || _favorites == null) return;
++    final List<String> next = List<String>.of(_favoriteIds);
++    if (!next.remove(station.id)) next.add(station.id);
++    setState(() => _saving = true);
++    try {
++      await _favorites!.write(next);
++      if (!mounted) return;
++      setState(() => _favoriteIds = _favorites!.read());
++      if (_onlyFavorites) await _load(_catalog.query.copyWith(page: 0));
++    } catch (_) {
++      _logFailure('favorites.save', RadioFailureCode.favoritesUnavailable);
++      if (mounted) _message(context.l10n.radioFavoritesFailed);
++    } finally {
++      if (mounted) setState(() => _saving = false);
++    }
++  }
++
++  Player _ensurePlayer() {
++    if (_player != null) return _player!;
++    final Player player = Player(configuration: const PlayerConfiguration(
++      title: '7 MOTION Radio', logLevel: MPVLogLevel.error,
++    ));
++    _player = player;
++    _subscriptions.add(player.stream.playing.listen((bool value) {
++      if (mounted) setState(() => _playing = value);
++    }));
++    _subscriptions.add(player.stream.buffering.listen((bool value) {
++      if (mounted) setState(() => _buffering = value);
++    }));
++    _subscriptions.add(player.stream.error.listen((String _) {
++      // Les messages natifs peuvent inclure l'adresse : on ne les recopie pas.
++      if (mounted) setState(() => _playbackError = true);
++      _logFailure('playback.failed', RadioFailureCode.unavailable);
++    }));
++    return player;
++  }
++
++  Future<void> _play(RadioStation station) async {
++    if (_opening) return;
++    setState(() {
++      _current = station;
++      _opening = true;
++      _playbackError = false;
++    });
++    try {
++      await _ensurePlayer().open(Media(station.streamUri.toString()));
++      StructuredLogger.instance.info(domain: 'radio', event: 'playback.requested');
++    } catch (_) {
++      if (mounted) setState(() => _playbackError = true);
++      _logFailure('playback.failed', RadioFailureCode.unavailable);
++    } finally {
++      if (mounted) setState(() => _opening = false);
++    }
++  }
++
++  Future<void> _pauseOrResume() async {
++    try {
++      if (_playbackError && _current != null) {
++        await _play(_current!);
++      } else {
++        await _player?.playOrPause();
++      }
++    } catch (_) {
++      if (mounted) setState(() => _playbackError = true);
++      _logFailure('playback.control', RadioFailureCode.unavailable);
++    }
++  }
++
++  Future<void> _stop() async {
++    try {
++      await _player?.stop();
++      if (mounted) setState(() {
++        _current = null;
++        _playbackError = false;
++      });
++    } catch (_) {
++      _logFailure('playback.stop', RadioFailureCode.unavailable);
++    }
++  }
++
++  void _logFailure(String event, RadioFailureCode code) {
++    StructuredLogger.instance.warn(domain: 'radio', event: event,
++      ctx: <String, Object?>{'reason': switch (code) {
++        RadioFailureCode.offline => 'Radio : aucune connexion au catalogue',
++        RadioFailureCode.timeout => 'Radio : délai de réponse dépassé',
++        RadioFailureCode.invalidResponse => 'Radio : réponse du catalogue invalide',
++        RadioFailureCode.responseTooLarge => 'Radio : réponse du catalogue trop volumineuse',
++        RadioFailureCode.favoritesUnavailable => 'Radio : favoris non enregistrés',
++        RadioFailureCode.disabled => 'Radio : repli activé, catalogue coupé',
++        RadioFailureCode.unavailable => event.startsWith('playback')
++          ? 'Radio : station indisponible ou format non lisible'
++          : 'Radio : catalogue temporairement indisponible',
++      }});
++  }
++
++  void _message(String text) {
++    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
++  }
++
++  String _failureText(RadioFailureCode code) {
++    final l = context.l10n;
++    return switch (code) {
++      RadioFailureCode.offline => l.radioOffline,
++      RadioFailureCode.timeout => l.radioTimeout,
++      RadioFailureCode.invalidResponse || RadioFailureCode.responseTooLarge => l.radioInvalidResponse,
++      RadioFailureCode.favoritesUnavailable => l.radioFavoritesFailed,
++      RadioFailureCode.disabled => l.radioDisabled,
++      RadioFailureCode.unavailable => l.radioUnavailable,
++    };
++  }
++
++  @override
++  void dispose() {
++    _debounce?.cancel();
++    _search.dispose();
++    _catalog.removeListener(_catalogChanged);
++    _catalog.dispose();
++    for (final StreamSubscription<dynamic> subscription in _subscriptions) {
++      unawaited(subscription.cancel());
++    }
++    unawaited(_disposePlayer());
++    super.dispose();
++  }
++
++  Future<void> _disposePlayer() async {
++    try {
++      await _player?.dispose();
++    } catch (_) {
++      _logFailure('playback.dispose', RadioFailureCode.unavailable);
++    }
++  }
++
++  @override
++  Widget build(BuildContext context) {
++    final l = context.l10n;
++    final RadioQuery query = _catalog.query;
++    return Scaffold(
++      backgroundColor: AppColors.background,
++      appBar: AppBar(title: Text(l.radioTitle, style: AppTextStyles.headlineMedium),
++        actions: <Widget>[IconButton(tooltip: l.radioRefresh,
++          onPressed: _catalog.loading ? null : () => unawaited(_load(query)),
++          icon: const Icon(Icons.refresh_rounded))]),
++      body: SafeArea(child: Column(children: <Widget>[
++        Padding(padding: const EdgeInsets.fromLTRB(16, 8, 16, 4), child: Text(
++          l.radioCatalogNote, style: AppTextStyles.bodySmall)),
++        Padding(padding: const EdgeInsets.all(12), child: TextField(
++          controller: _search, enabled: !_onlyFavorites,
++          style: AppTextStyles.bodyLarge, onChanged: _scheduleSearch,
++          decoration: InputDecoration(hintText: l.radioSearchHint,
++            prefixIcon: const Icon(Icons.search_rounded), border: OutlineInputBorder(
++              borderRadius: BorderRadius.circular(16))),
++        )),
++        Padding(padding: const EdgeInsets.symmetric(horizontal: 12), child: Wrap(
++          spacing: 8, runSpacing: 4, children: <Widget>[
++            FilterChip(label: Text(l.radioFavorites), selected: _onlyFavorites,
++              avatar: const Icon(Icons.favorite_border_rounded),
++              onSelected: (_) {
++                _debounce?.cancel();
++                setState(() => _onlyFavorites = !_onlyFavorites);
++                unawaited(_load(query.copyWith(page: 0)));
++              }),
++            if (!_onlyFavorites) ...<Widget>[
++              ActionChip(label: Text(query.countryCode.isEmpty ? l.radioCountry
++                : (_countryName ?? query.countryCode)),
++                avatar: const Icon(Icons.public_rounded),
++                onPressed: _choosing ? null : () => unawaited(_choose('country'))),
++              ActionChip(label: Text(query.language.isEmpty ? l.radioLanguage : query.language),
++                onPressed: _choosing ? null : () => unawaited(_choose('language'))),
++              ActionChip(label: Text(query.genre.isEmpty ? l.radioGenre : query.genre),
++                onPressed: _choosing ? null : () => unawaited(_choose('genre'))),
++            ],
++          ],
++        )),
++        if (_choosing) const LinearProgressIndicator(),
++        Expanded(child: _catalog.loading
++          ? const Center(child: CircularProgressIndicator())
++          : _catalog.error != null ? _status(_failureText(_catalog.error!), retry: true)
++          : _catalog.stations.isEmpty ? _status(_onlyFavorites ? l.radioNoFavorites : l.radioNoResults)
++          : ListView.builder(key: const Key('radio-stations'), padding: const EdgeInsets.all(12),
++            itemCount: _catalog.stations.length,
++            itemBuilder: (BuildContext context, int index) {
++              final RadioStation station = _catalog.stations[index];
++              final bool favorite = _favoriteIds.contains(station.id);
++              return Card(color: AppColors.surface, child: ListTile(
++                leading: _StationLogo(station.logoUri),
++                title: Text(station.name, maxLines: 1, overflow: TextOverflow.ellipsis,
++                  style: AppTextStyles.bodyLarge),
++                subtitle: Text(<String>[
++                  if (station.countryCode.isNotEmpty) station.countryCode,
++                  if (station.language.isNotEmpty) station.language,
++                  if (station.codec.isNotEmpty) station.codec,
++                  if (station.bitrate > 0) '${station.bitrate} kbps',
++                ].join(' · '), maxLines: 2, overflow: TextOverflow.ellipsis,
++                  style: AppTextStyles.bodySmall),
++                onTap: _opening ? null : () => unawaited(_play(station)),
++                trailing: IconButton(tooltip: favorite ? l.radioRemoveFavorite : l.radioAddFavorite,
++                  onPressed: _saving || _favorites == null ? null
++                    : () => unawaited(_toggleFavorite(station)),
++                  icon: Icon(favorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
++                    color: favorite ? AppColors.accent : AppColors.textSecondary)),
++              ));
++            },
++          )),
++        if (!_catalog.loading && _catalog.error == null)
++          Padding(padding: const EdgeInsets.symmetric(horizontal: 12), child: Row(
++            mainAxisAlignment: MainAxisAlignment.spaceBetween, children: <Widget>[
++              IconButton(tooltip: l.radioPrevious,
++                onPressed: query.page == 0 ? null : () => unawaited(_load(query.copyWith(page: query.page - 1))),
++                icon: const Icon(Icons.chevron_left_rounded)),
++              Text(l.radioPage(query.page + 1), style: AppTextStyles.labelSmall),
++              IconButton(tooltip: l.radioNext,
++                onPressed: !_catalog.hasNext ? null : () => unawaited(_load(query.copyWith(page: query.page + 1))),
++                icon: const Icon(Icons.chevron_right_rounded)),
++            ])),
++        if (_current != null) _nowPlaying(),
++        Padding(padding: const EdgeInsets.all(8), child: Text(l.radioAttribution,
++          style: AppTextStyles.bodySmall)),
++      ])),
++    );
++  }
++
++  Widget _status(String message, {bool retry = false}) => Center(child: Padding(
++    padding: const EdgeInsets.all(24), child: Column(mainAxisSize: MainAxisSize.min,
++      children: <Widget>[
++        Icon(Icons.radio_rounded, color: AppColors.textSecondary, size: 48),
++        const SizedBox(height: 12),
++        Text(message, textAlign: TextAlign.center, style: AppTextStyles.bodyMedium),
++        if (retry) TextButton(onPressed: () => unawaited(_load(_catalog.query)),
++          child: Text(context.l10n.radioRetry)),
++      ]),
++  ));
++
++  Widget _nowPlaying() {
++    final l = context.l10n;
++    final RadioStation station = _current!;
++    return Material(color: AppColors.surfaceHigh, child: Padding(
++      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
++      child: Row(children: <Widget>[
++        _StationLogo(station.logoUri), const SizedBox(width: 12),
++        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start,
++          children: <Widget>[
++            Text(station.name, maxLines: 1, overflow: TextOverflow.ellipsis,
++              style: AppTextStyles.bodyLarge),
++            Text(_playbackError ? l.radioPlaybackFailed : _opening || _buffering
++              ? l.radioConnecting : _playing ? l.radioLive : l.radioPaused,
++              style: AppTextStyles.bodySmall),
++          ])),
++        IconButton(tooltip: _playing ? l.radioPause : l.radioListen,
++          onPressed: _opening ? null : () => unawaited(_pauseOrResume()),
++          icon: Icon(_playbackError ? Icons.refresh_rounded : _playing
++            ? Icons.pause_rounded : Icons.play_arrow_rounded)),
++        IconButton(tooltip: l.radioStop, onPressed: () => unawaited(_stop()),
++          icon: const Icon(Icons.stop_rounded)),
++      ]),
++    ));
++  }
++}
++
++class _StationLogo extends StatelessWidget {
++  const _StationLogo(this.uri);
++  final Uri? uri;
++  @override
++  Widget build(BuildContext context) {
++    final Widget fallback = Icon(Icons.radio_rounded, color: AppColors.accent);
++    return SizedBox(width: 44, height: 44, child: ClipRRect(
++      borderRadius: BorderRadius.circular(10), child: uri == null ? fallback
++        : Image.network(uri.toString(), fit: BoxFit.contain, cacheWidth: 96,
++          errorBuilder: (_, __, ___) => fallback),
++    ));
++  }
++}
++
++class _RadioChoiceDelegate extends SearchDelegate<String?> {
++  _RadioChoiceDelegate(this.choices, String hint) : super(searchFieldLabel: hint);
++  final Map<String, String> choices;
++  @override
++  List<Widget> buildActions(BuildContext context) => <Widget>[
++    IconButton(onPressed: () => query = '', icon: const Icon(Icons.clear_rounded)),
++  ];
++  @override
++  Widget buildLeading(BuildContext context) => IconButton(
++    onPressed: () => close(context, null), icon: const Icon(Icons.arrow_back_rounded));
++  @override
++  Widget buildResults(BuildContext context) => buildSuggestions(context);
++  @override
++  Widget buildSuggestions(BuildContext context) {
++    final List<MapEntry<String, String>> matches = choices.entries.where(
++      (MapEntry<String, String> item) => item.value.toLowerCase().contains(query.toLowerCase()),
++    ).toList(growable: false);
++    return ListView.builder(itemCount: matches.length, itemBuilder: (_, int index) {
++      final MapEntry<String, String> item = matches[index];
++      return ListTile(title: Text(item.value, style: AppTextStyles.bodyLarge),
++        onTap: () => close(context, item.key));
++    });
++  }
++}
+diff --git a/lib/features/simple_home/presentation/simple_home_screen.dart b/lib/features/simple_home/presentation/simple_home_screen.dart
+--- a/lib/features/simple_home/presentation/simple_home_screen.dart
++++ b/lib/features/simple_home/presentation/simple_home_screen.dart
+@@ -46,6 +46,7 @@
+ import '../../playlists/data/playlist_repository.dart';
+ import '../../sports/data/match_alerts_service.dart';
+ import '../../sports/presentation/sport_screen.dart';
++import '../../radio/presentation/radio_entry.dart';
+ import '../../../core/app/device_memory.dart';
+ import '../../vod/data/vod_repository.dart';
+ import '../../vod/domain/vod_movie.dart';
+@@ -303,6 +304,7 @@
+                   // entrer un code reçu. Demande client : « toujours présent,
+                   // surtout côté mobile, à l'écran d'accueil ».
+                   _GuestEntryBar(onTap: () => openGuestScreen(context)),
++                  const RadioEntry(),
+                   Expanded(child: CategoryBrowserView(channels: channels)),
+                   _buildBottomBar(),
+                 ],
+@@ -342,6 +344,7 @@
+           // son propre identifiant à activer (les blocs ci-dessous).
+           _GuestEntryCard(onTap: () => openGuestScreen(context)),
+           const SizedBox(height: 22),
++          const RadioEntry(),
+           const MacActivationView(),
+           const SizedBox(height: 14),
+           const LegalDisclaimer.compact(),
+diff --git a/lib/l10n/app_en.arb b/lib/l10n/app_en.arb
+--- a/lib/l10n/app_en.arb
++++ b/lib/l10n/app_en.arb
+@@ -2395,6 +2395,142 @@
+     "description": "Indication affichee quand la saisie au clavier du telephone est active"
+   },
+   "freeFootballSourceNote": "OpenLigaDB · community scores; delays can vary. Goal alerts require the app to remain active.",
+-  "freeFootballVotesUnavailable": "Fan predictions are unavailable for this source."
++  "freeFootballVotesUnavailable": "Fan predictions are unavailable for this source.",
++  "radioTitle": "World Radio",
++  "@radioTitle": {
++    "description": "Radios du monde : radioTitle"
++  },
++  "radioEntryHint": "Countries, languages and genres · your favorites",
++  "@radioEntryHint": {
++    "description": "Radios du monde : radioEntryHint"
++  },
++  "radioCatalogNote": "Explore the worldwide directory. Some stations may be unavailable.",
++  "@radioCatalogNote": {
++    "description": "Radios du monde : radioCatalogNote"
++  },
++  "radioSearchHint": "Search for a radio station",
++  "@radioSearchHint": {
++    "description": "Radios du monde : radioSearchHint"
++  },
++  "radioFavorites": "Favorites",
++  "@radioFavorites": {
++    "description": "Radios du monde : radioFavorites"
++  },
++  "radioAll": "All",
++  "@radioAll": {
++    "description": "Radios du monde : radioAll"
++  },
++  "radioCountry": "Country",
++  "@radioCountry": {
++    "description": "Radios du monde : radioCountry"
++  },
++  "radioLanguage": "Language",
++  "@radioLanguage": {
++    "description": "Radios du monde : radioLanguage"
++  },
++  "radioGenre": "Genre",
++  "@radioGenre": {
++    "description": "Radios du monde : radioGenre"
++  },
++  "radioFilterSearch": "Search filters",
++  "@radioFilterSearch": {
++    "description": "Radios du monde : radioFilterSearch"
++  },
++  "radioRefresh": "Refresh",
++  "@radioRefresh": {
++    "description": "Radios du monde : radioRefresh"
++  },
++  "radioRetry": "Try again",
++  "@radioRetry": {
++    "description": "Radios du monde : radioRetry"
++  },
++  "radioNoFavorites": "No favorite stations yet. Tap a heart to add one.",
++  "@radioNoFavorites": {
++    "description": "Radios du monde : radioNoFavorites"
++  },
++  "radioNoResults": "No stations found. Try another name or filter.",
++  "@radioNoResults": {
++    "description": "Radios du monde : radioNoResults"
++  },
++  "radioAddFavorite": "Add to favorites",
++  "@radioAddFavorite": {
++    "description": "Radios du monde : radioAddFavorite"
++  },
++  "radioRemoveFavorite": "Remove from favorites",
++  "@radioRemoveFavorite": {
++    "description": "Radios du monde : radioRemoveFavorite"
++  },
++  "radioOffline": "Radio: cannot connect to the directory.",
++  "@radioOffline": {
++    "description": "Radios du monde : radioOffline"
++  },
++  "radioTimeout": "Radio: the directory took too long to respond.",
++  "@radioTimeout": {
++    "description": "Radios du monde : radioTimeout"
++  },
++  "radioUnavailable": "Radio: directory temporarily unavailable.",
++  "@radioUnavailable": {
++    "description": "Radios du monde : radioUnavailable"
++  },
++  "radioInvalidResponse": "Radio: invalid or oversized directory response.",
++  "@radioInvalidResponse": {
++    "description": "Radios du monde : radioInvalidResponse"
++  },
++  "radioFavoritesFailed": "Radio: favorites could not be saved on this device.",
++  "@radioFavoritesFailed": {
++    "description": "Radios du monde : radioFavoritesFailed"
++  },
++  "radioDisabled": "Radio: feature disabled by the fallback setting.",
++  "@radioDisabled": {
++    "description": "Radios du monde : radioDisabled"
++  },
++  "radioPlaybackFailed": "Station unavailable or format not supported.",
++  "@radioPlaybackFailed": {
++    "description": "Radios du monde : radioPlaybackFailed"
++  },
++  "radioConnecting": "Connecting to the station…",
++  "@radioConnecting": {
++    "description": "Radios du monde : radioConnecting"
++  },
++  "radioLive": "LIVE",
++  "@radioLive": {
++    "description": "Radios du monde : radioLive"
++  },
++  "radioPaused": "Paused",
++  "@radioPaused": {
++    "description": "Radios du monde : radioPaused"
++  },
++  "radioListen": "Listen",
++  "@radioListen": {
++    "description": "Radios du monde : radioListen"
++  },
++  "radioPause": "Pause",
++  "@radioPause": {
++    "description": "Radios du monde : radioPause"
++  },
++  "radioStop": "Stop",
++  "@radioStop": {
++    "description": "Radios du monde : radioStop"
++  },
++  "radioPrevious": "Previous page",
++  "@radioPrevious": {
++    "description": "Radios du monde : radioPrevious"
++  },
++  "radioNext": "Next page",
++  "@radioNext": {
++    "description": "Radios du monde : radioNext"
++  },
++  "radioPage": "Page {page}",
++  "@radioPage": {
++    "description": "Radios du monde : radioPage",
++    "placeholders": {
++      "page": {
++        "type": "int"
++      }
++    }
++  },
++  "radioAttribution": "Directory: Radio Browser · www.radio-browser.info",
++  "@radioAttribution": {
++    "description": "Radios du monde : radioAttribution"
++  }
+ }
+-
+diff --git a/lib/l10n/app_fr.arb b/lib/l10n/app_fr.arb
+--- a/lib/l10n/app_fr.arb
++++ b/lib/l10n/app_fr.arb
+@@ -5287,6 +5287,142 @@
+     "description": "Indication affichee quand la saisie au clavier du telephone est active"
+   },
+   "freeFootballSourceNote": "OpenLigaDB · scores communautaires, délai non garanti. Alertes de buts seulement tant que l’app reste active.",
+-  "freeFootballVotesUnavailable": "Pronostics indisponibles pour cette source."
++  "freeFootballVotesUnavailable": "Pronostics indisponibles pour cette source.",
++  "radioTitle": "Radios du monde",
++  "@radioTitle": {
++    "description": "Radios du monde : radioTitle"
++  },
++  "radioEntryHint": "Pays, langues et genres · vos favoris",
++  "@radioEntryHint": {
++    "description": "Radios du monde : radioEntryHint"
++  },
++  "radioCatalogNote": "Explorez le catalogue mondial. Certaines stations peuvent être indisponibles.",
++  "@radioCatalogNote": {
++    "description": "Radios du monde : radioCatalogNote"
++  },
++  "radioSearchHint": "Rechercher une radio",
++  "@radioSearchHint": {
++    "description": "Radios du monde : radioSearchHint"
++  },
++  "radioFavorites": "Favoris",
++  "@radioFavorites": {
++    "description": "Radios du monde : radioFavorites"
++  },
++  "radioAll": "Tous",
++  "@radioAll": {
++    "description": "Radios du monde : radioAll"
++  },
++  "radioCountry": "Pays",
++  "@radioCountry": {
++    "description": "Radios du monde : radioCountry"
++  },
++  "radioLanguage": "Langue",
++  "@radioLanguage": {
++    "description": "Radios du monde : radioLanguage"
++  },
++  "radioGenre": "Genre",
++  "@radioGenre": {
++    "description": "Radios du monde : radioGenre"
++  },
++  "radioFilterSearch": "Rechercher dans les filtres",
++  "@radioFilterSearch": {
++    "description": "Radios du monde : radioFilterSearch"
++  },
++  "radioRefresh": "Actualiser",
++  "@radioRefresh": {
++    "description": "Radios du monde : radioRefresh"
++  },
++  "radioRetry": "Réessayer",
++  "@radioRetry": {
++    "description": "Radios du monde : radioRetry"
++  },
++  "radioNoFavorites": "Aucune radio favorite. Touchez le cœur pour en ajouter une.",
++  "@radioNoFavorites": {
++    "description": "Radios du monde : radioNoFavorites"
++  },
++  "radioNoResults": "Aucune radio trouvée. Essayez un autre nom ou filtre.",
++  "@radioNoResults": {
++    "description": "Radios du monde : radioNoResults"
++  },
++  "radioAddFavorite": "Ajouter aux favoris",
++  "@radioAddFavorite": {
++    "description": "Radios du monde : radioAddFavorite"
++  },
++  "radioRemoveFavorite": "Retirer des favoris",
++  "@radioRemoveFavorite": {
++    "description": "Radios du monde : radioRemoveFavorite"
++  },
++  "radioOffline": "Radio : aucune connexion au catalogue.",
++  "@radioOffline": {
++    "description": "Radios du monde : radioOffline"
++  },
++  "radioTimeout": "Radio : le catalogue met trop de temps à répondre.",
++  "@radioTimeout": {
++    "description": "Radios du monde : radioTimeout"
++  },
++  "radioUnavailable": "Radio : catalogue temporairement indisponible.",
++  "@radioUnavailable": {
++    "description": "Radios du monde : radioUnavailable"
++  },
++  "radioInvalidResponse": "Radio : réponse du catalogue invalide ou trop volumineuse.",
++  "@radioInvalidResponse": {
++    "description": "Radios du monde : radioInvalidResponse"
++  },
++  "radioFavoritesFailed": "Radio : favoris non enregistrés sur cet appareil.",
++  "@radioFavoritesFailed": {
++    "description": "Radios du monde : radioFavoritesFailed"
++  },
++  "radioDisabled": "Radio : fonction désactivée par le repli.",
++  "@radioDisabled": {
++    "description": "Radios du monde : radioDisabled"
++  },
++  "radioPlaybackFailed": "Station indisponible ou format non lisible.",
++  "@radioPlaybackFailed": {
++    "description": "Radios du monde : radioPlaybackFailed"
++  },
++  "radioConnecting": "Connexion à la station…",
++  "@radioConnecting": {
++    "description": "Radios du monde : radioConnecting"
++  },
++  "radioLive": "EN DIRECT",
++  "@radioLive": {
++    "description": "Radios du monde : radioLive"
++  },
++  "radioPaused": "En pause",
++  "@radioPaused": {
++    "description": "Radios du monde : radioPaused"
++  },
++  "radioListen": "Écouter",
++  "@radioListen": {
++    "description": "Radios du monde : radioListen"
++  },
++  "radioPause": "Pause",
++  "@radioPause": {
++    "description": "Radios du monde : radioPause"
++  },
++  "radioStop": "Arrêter",
++  "@radioStop": {
++    "description": "Radios du monde : radioStop"
++  },
++  "radioPrevious": "Page précédente",
++  "@radioPrevious": {
++    "description": "Radios du monde : radioPrevious"
++  },
++  "radioNext": "Page suivante",
++  "@radioNext": {
++    "description": "Radios du monde : radioNext"
++  },
++  "radioPage": "Page {page}",
++  "@radioPage": {
++    "description": "Radios du monde : radioPage",
++    "placeholders": {
++      "page": {
++        "type": "int"
++      }
++    }
++  },
++  "radioAttribution": "Catalogue : Radio Browser · www.radio-browser.info",
++  "@radioAttribution": {
++    "description": "Radios du monde : radioAttribution"
++  }
+ }
+-
+diff --git a/test/features/radio/radio_browser_http_test.dart b/test/features/radio/radio_browser_http_test.dart
+new file mode 100644
+--- /dev/null
++++ b/test/features/radio/radio_browser_http_test.dart
+@@ -0,0 +1,251 @@
++import 'dart:async';
++import 'dart:convert';
++import 'dart:io';
++
++import 'package:flutter_test/flutter_test.dart';
++import 'package:tv_king/core/app/repair_flags.dart';
++import 'package:tv_king/features/radio/data/radio_browser_client.dart';
++import 'package:tv_king/features/radio/data/radio_catalog_controller.dart';
++import 'package:tv_king/features/radio/domain/radio_station.dart';
++
++// Le transport, les délais, la lecture du corps et le contrôleur sont réels.
++// Seul le fournisseur externe est remplacé par un serveur HTTP sur loopback.
++Map<String, Object?> station(int n, {bool online = true}) => <String, Object?>{
++  'stationuuid': '00000000-0000-4000-8000-${n.toString().padLeft(12, '0')}',
++  'name': 'Radio $n', 'url_resolved': 'https://radio.invalid/audio/$n',
++  'countrycode': 'SE', 'language': 'swedish', 'tags': 'jazz',
++  'codec': 'MP3', 'bitrate': 128, 'lastcheckok': online ? 1 : 0,
++};
++
++Future<HttpServer> serve(Future<void> Function(HttpRequest) handler) async {
++  final HttpServer server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
++  server.listen(handler);
++  addTearDown(() => server.close(force: true));
++  return server;
++}
++
++Uri mirror(HttpServer server) => Uri.parse('http://127.0.0.1:${server.port}');
++
++Future<void> reply(HttpRequest request, Object body) async {
++  request.response.headers.contentType = ContentType.json;
++  request.response.write(jsonEncode(body));
++  await request.response.close();
++}
++
++void main() {
++  setUp(() => RepairFlags.mobileRadioLegacy = false);
++  tearDown(() => RepairFlags.mobileRadioLegacy = false);
++
++  test('catalogue : une requête HTTP réelle charge une radio', () async {
++    int requests = 0;
++    final HttpServer server = await serve((HttpRequest request) async {
++      requests++;
++      expect(request.uri.path, '/json/stations/search');
++      expect(request.uri.queryParameters['hidebroken'], 'true');
++      expect(request.headers.value(HttpHeaders.userAgentHeader), contains('7MOTION'));
++      await reply(request, <Object>[station(1)]);
++    });
++    final RadioCatalogController controller = RadioCatalogController(
++      RadioBrowserClient(mirrors: <Uri>[mirror(server)]));
++    addTearDown(controller.dispose);
++    RepairFlags.mobileRadioLegacy = const bool.fromEnvironment('RADIO_LEGACY_PROOF');
++    await controller.load(const RadioQuery());
++    expect(controller.stations.length, 1,
++      reason: 'Le catalogue actif doit livrer une station du vrai serveur HTTP.');
++    expect(requests, 1);
++    expect(controller.stations.single.name, 'Radio 1');
++    expect(controller.error, isNull);
++  });
++
++  test('repli : aucun catalogue, aucun appel réseau', () async {
++    int requests = 0;
++    final HttpServer server = await serve((HttpRequest request) async {
++      requests++;
++      await reply(request, <Object>[station(1)]);
++    });
++    final RadioCatalogController controller = RadioCatalogController(
++      RadioBrowserClient(mirrors: <Uri>[mirror(server)]));
++    addTearDown(controller.dispose);
++    RepairFlags.mobileRadioLegacy = true;
++    await controller.load(const RadioQuery());
++    expect(requests, 0);
++    expect(controller.stations, isEmpty);
++    expect(controller.error, RadioFailureCode.disabled);
++    expect(controller.loading, isFalse);
++  });
++
++  test('filtres et pagination sont transmis au vrai serveur', () async {
++    final HttpServer server = await serve((HttpRequest request) async {
++      expect(request.uri.queryParameters, <String, String>{
++        'hidebroken': 'true', 'order': 'votes', 'reverse': 'true', 'limit': '51',
++        'offset': '100', 'name': 'Étoile & radio', 'countrycode': 'BI',
++        'language': 'kirundi', 'tag': 'gospel',
++      });
++      await reply(request, List<Object>.generate(51, (int i) => station(i + 1)));
++    });
++    final RadioBrowserClient client = RadioBrowserClient(mirrors: <Uri>[mirror(server)]);
++    addTearDown(client.close);
++    final RadioPage page = await client.search(const RadioQuery(name: 'Étoile & radio',
++      countryCode: 'BI', language: 'kirundi', genre: 'gospel', page: 2));
++    expect(page.stations.length, 50);
++    expect(page.hasNext, isTrue);
++  });
++
++  test('doublons et radios déclarées hors ligne sont exclus', () async {
++    final HttpServer server = await serve((HttpRequest r) => reply(r,
++      <Object>[station(1), station(1), station(2, online: false), <String, Object?>{'name': 'invalide'}]));
++    final RadioBrowserClient client = RadioBrowserClient(mirrors: <Uri>[mirror(server)]);
++    addTearDown(client.close);
++    final RadioPage page = await client.search(const RadioQuery());
++    expect(page.stations.map((RadioStation s) => s.name), <String>['Radio 1']);
++    expect(page.hasNext, isFalse);
++  });
++
++  test('pays, langues et genres utilisent les routes documentées', () async {
++    final List<String> routes = <String>[];
++    final HttpServer server = await serve((HttpRequest request) async {
++      routes.add(request.uri.path);
++      if (request.uri.path.endsWith('countries')) {
++        await reply(request, <Object>[
++          <String, Object?>{'name': 'Burundi', 'iso_3166_1': 'BI'},
++          <String, Object?>{'name': 'Sweden', 'iso_3166_1': 'SE'},
++        ]);
++      } else {
++        await reply(request, <Object>[<String, Object?>{'name': 'jazz'}]);
++      }
++    });
++    final RadioBrowserClient client = RadioBrowserClient(mirrors: <Uri>[mirror(server)]);
++    addTearDown(client.close);
++    expect((await client.countries()).map((RadioCountry c) => c.code), <String>['BI', 'SE']);
++    expect(await client.languages(), <String>['jazz']);
++    expect(await client.genres(), <String>['jazz']);
++    expect(routes, <String>['/json/countries', '/json/languages', '/json/tags']);
++  });
++
++  test('favoris : recharge par UUID, sans stocker une adresse', () async {
++    final String id = station(1)['stationuuid']! as String;
++    final HttpServer server = await serve((HttpRequest request) async {
++      expect(request.uri.path, '/json/stations/byuuid');
++      expect(request.uri.queryParameters['uuids'], id);
++      await reply(request, <Object>[station(1)]);
++    });
++    final RadioBrowserClient client = RadioBrowserClient(mirrors: <Uri>[mirror(server)]);
++    addTearDown(client.close);
++    final RadioPage page = await client.favorites(<String>[id, 'invalide'], 0);
++    expect(page.stations.single.id, id);
++    expect(page.hasNext, isFalse);
++  });
++
++  test('panne 503 : bascule bornée vers un autre miroir réel', () async {
++    int attempts = 0;
++    final HttpServer failed = await serve((HttpRequest request) async {
++      attempts++;
++      request.response.statusCode = 503;
++      await request.response.close();
++    });
++    final HttpServer healthy = await serve((HttpRequest r) => reply(r, <Object>[station(1)]));
++    final RadioBrowserClient client = RadioBrowserClient(mirrors: <Uri>[mirror(failed), mirror(healthy)]);
++    addTearDown(client.close);
++    expect((await client.search(const RadioQuery())).stations.length, 1);
++    expect(attempts, 1);
++  });
++
++  test('refus 429 : aucune répétition sur les autres miroirs', () async {
++    int bypassAttempts = 0;
++    final HttpServer refused = await serve((HttpRequest request) async {
++      request.response.statusCode = 429;
++      await request.response.close();
++    });
++    final HttpServer other = await serve((HttpRequest request) async {
++      bypassAttempts++;
++      await reply(request, <Object>[station(1)]);
++    });
++    final RadioBrowserClient client = RadioBrowserClient(mirrors: <Uri>[mirror(refused), mirror(other)]);
++    addTearDown(client.close);
++    await expectLater(client.search(const RadioQuery()), throwsA(isA<RadioFailure>()));
++    expect(bypassAttempts, 0);
++  });
++
++  test('JSON invalide : erreur explicite, sans valeur vide inventée', () async {
++    final HttpServer server = await serve((HttpRequest request) async {
++      request.response.write('ceci ne forme pas un JSON');
++      await request.response.close();
++    });
++    final RadioBrowserClient client = RadioBrowserClient(mirrors: <Uri>[mirror(server)]);
++    addTearDown(client.close);
++    await expectLater(client.search(const RadioQuery()), throwsA(isA<RadioFailure>()
++      .having((RadioFailure e) => e.code, 'code', RadioFailureCode.invalidResponse)));
++  });
++
++  test('réponse trop grande : arrêt même sans Content-Length', () async {
++    final HttpServer server = await serve((HttpRequest request) async {
++      request.response.bufferOutput = false;
++      request.response.write('["${'x' * 2048}"]');
++      await request.response.close();
++    });
++    final RadioBrowserClient client = RadioBrowserClient(mirrors: <Uri>[mirror(server)], maxBytes: 128);
++    addTearDown(client.close);
++    await expectLater(client.search(const RadioQuery()), throwsA(isA<RadioFailure>()
++      .having((RadioFailure e) => e.code, 'code', RadioFailureCode.responseTooLarge)));
++  });
++
++  test('timeout : requête réelle interrompue avec une raison sûre', () async {
++    final Completer<void> release = Completer<void>();
++    final HttpServer server = await serve((HttpRequest request) async {
++      await release.future;
++      await request.response.close();
++    });
++    final RadioBrowserClient client = RadioBrowserClient(mirrors: <Uri>[mirror(server)],
++      timeout: const Duration(milliseconds: 80));
++    addTearDown(client.close);
++    await expectLater(client.search(const RadioQuery()), throwsA(isA<RadioFailure>()
++      .having((RadioFailure e) => e.code, 'code', RadioFailureCode.timeout)));
++    release.complete();
++  });
++
++  test('course : une recherche ancienne ne remplace pas la suivante', () async {
++    final Completer<void> entered = Completer<void>();
++    final Completer<void> release = Completer<void>();
++    final HttpServer server = await serve((HttpRequest request) async {
++      if (request.uri.queryParameters['name'] == 'ancienne') {
++        entered.complete();
++        await release.future;
++        await reply(request, <Object>[station(1)]);
++      } else {
++        await reply(request, <Object>[station(2)]);
++      }
++    });
++    final RadioCatalogController controller = RadioCatalogController(
++      RadioBrowserClient(mirrors: <Uri>[mirror(server)]));
++    addTearDown(controller.dispose);
++    final Future<void> first = controller.load(const RadioQuery(name: 'ancienne'));
++    await entered.future;
++    await controller.load(const RadioQuery(name: 'nouvelle'));
++    release.complete();
++    await first;
++    expect(controller.stations.single.name, 'Radio 2');
++    expect(controller.query.name, 'nouvelle');
++    expect(controller.loading, isFalse);
++  });
++
++  test('retrait : une relecture ancienne ne fait pas revenir le favori', () async {
++    final String id = station(1)['stationuuid']! as String;
++    final Completer<void> entered = Completer<void>();
++    final Completer<void> release = Completer<void>();
++    final HttpServer server = await serve((HttpRequest request) async {
++      entered.complete();
++      await release.future;
++      await reply(request, <Object>[station(1)]);
++    });
++    final RadioCatalogController controller = RadioCatalogController(
++      RadioBrowserClient(mirrors: <Uri>[mirror(server)]));
++    addTearDown(controller.dispose);
++    final Future<void> old = controller.load(const RadioQuery(), favorites: <String>[id]);
++    await entered.future;
++    await controller.load(const RadioQuery(), favorites: <String>[]);
++    release.complete();
++    await old;
++    expect(controller.stations, isEmpty);
++    expect(controller.loading, isFalse);
++  });
++}
+diff --git a/test/features/radio/radio_favorites_test.dart b/test/features/radio/radio_favorites_test.dart
+new file mode 100644
+--- /dev/null
++++ b/test/features/radio/radio_favorites_test.dart
+@@ -0,0 +1,45 @@
++import 'package:flutter_test/flutter_test.dart';
++import 'package:shared_preferences/shared_preferences.dart';
++import 'package:tv_king/core/app/repair_flags.dart';
++import 'package:tv_king/features/radio/data/radio_favorites_store.dart';
++
++const String firstId = '00000000-0000-4000-8000-000000000001';
++const String secondId = '00000000-0000-4000-8000-000000000002';
++
++void main() {
++  // Ce remplacement concerne uniquement le canal système de préférences,
++  // indisponible dans flutter test. Le carnet et le repli réels sont exécutés.
++  setUp(() => SharedPreferences.setMockInitialValues(<String, Object>{}));
++
++  test('favoris : ajout, relecture et retrait définitif', () async {
++    final SharedPreferences prefs = await SharedPreferences.getInstance();
++    final RadioFavoritesStore store = RadioFavoritesStore(prefs);
++    await store.write(<String>[firstId, firstId, secondId, 'https://radio.invalid/private']);
++    expect(RadioFavoritesStore(prefs).read(), <String>[firstId, secondId]);
++    await store.write(<String>[secondId]);
++    expect(RadioFavoritesStore(prefs).read(), <String>[secondId]);
++    expect(prefs.getStringList(store.key), <String>[secondId]);
++  });
++
++  test('favoris : chaque profil conserve son carnet', () async {
++    final SharedPreferences prefs = await SharedPreferences.getInstance();
++    final RadioFavoritesStore family = RadioFavoritesStore(prefs);
++    final RadioFavoritesStore child = RadioFavoritesStore(prefs, profileSuffix: '.child');
++    await family.write(<String>[firstId]);
++    await child.write(<String>[secondId]);
++    expect(family.read(), <String>[firstId]);
++    expect(child.read(), <String>[secondId]);
++  });
++
++  test('repli radio : éteint par défaut, relu depuis les préférences', () async {
++    await RepairFlags.load();
++    expect(RepairFlags.mobileRadioLegacy, isFalse);
++    final SharedPreferences prefs = await SharedPreferences.getInstance();
++    await prefs.setBool(RepairFlags.mobileRadioLegacyKey, true);
++    await RepairFlags.load();
++    expect(RepairFlags.mobileRadioLegacy, isTrue);
++    await prefs.remove(RepairFlags.mobileRadioLegacyKey);
++    await RepairFlags.load();
++    expect(RepairFlags.mobileRadioLegacy, isFalse);
++  });
++}
