@@ -22,6 +22,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
 import { chromium } from 'playwright';
+import { testSourceButton } from './source-button.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const CLOUDFLARE = resolve(HERE, '../../cloudflare');
@@ -415,6 +416,8 @@ async function parcours(page) {
   await delivery.getByText('Listes confirmées sur la box.', { exact: true }).waitFor();
   check('l’écran confirme seulement l’ordre réellement appliqué', true);
 
+  await testSourceButton({ page, panel, box, check, origin: PANEL_ORIGIN, mac, otherMac: macExpire });
+
   // ----- Ajout puis modification du M3U, SANS repasser par /activate -----
   const putA = await panel(page, '/api/v1/sources/' + encodeURIComponent(mac), {
     method: 'PUT',
@@ -594,3 +597,4 @@ run()
   .finally(() => {
     stopAll();
   });
+

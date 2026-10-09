@@ -192,7 +192,7 @@ test('supprimer une liste garde l\'état éteint des autres', () => {
 });
 
 // ----- Écran Listes : « Ajouter » garde les autres listes (06/10/2026) -----
-import { listDisplayName, planAddList } from './sources.ts';
+import { listDisplayName, planAddList, planAddSource } from './sources.ts';
 
 const A = { type: 'm3u' as const, m3u_url: 'http://a.invalid/l.m3u', enabled: false };
 const B = { type: 'm3u' as const, m3u_url: 'http://b.invalid/l.m3u' };
@@ -234,3 +234,77 @@ test('nom affiché : libellé ou hôte, jamais le chemin ni les codes', () => {
   assert.equal(listDisplayName({ type: 'm3u', label: 'Salon', m3u_url: 'http://h.invalid/x' }), 'Salon');
   assert.equal(listDisplayName({ type: 'xtream', server_url: 'pas une adresse' }), 'Xtream');
 });
+
+// ----- Ajout Xtream depuis Listes : mêmes règles que M3U -----
+const freshXtream = {
+  type: 'xtream' as const, server_url: 'http://nouveau.invalid', username: 'u2', password: 'p2',
+};
+
+test('ajouter Xtream garde les M3U et Xtream éteints, sans convertir la liste du client', () => {
+  const oldXtream = { ...X, enabled: false, label: 'Conservée', epg_url: 'http://guide.invalid/epg.xml' };
+  const existing = [A, oldXtream, SELF];
+  const before = structuredClone(existing);
+  const plan = planAddSource(existing, freshXtream, false);
+  assert.equal(plan.kind, 'send');
+  if (plan.kind !== 'send') return;
+  assert.deepEqual(plan.sources, [toSourceInput(A), toSourceInput(oldXtream), freshXtream]);
+  assert.equal(plan.already, false);
+  assert.deepEqual(existing, before, 'aucune liste existante n’est modifiée en mémoire');
+});
+
+test('renvoyer Xtream avec un nouveau mot de passe met à jour le même compte au plafond', () => {
+  const oldXtream = { ...X, enabled: false, label: 'Principal', epg_url: 'http://guide.invalid/epg.xml' };
+  const existing = [A, B, oldXtream, SELF];
+  const before = structuredClone(existing);
+  const plan = planAddSource(existing, {
+    type: 'xtream', server_url: ' HTTP://X.invalid/ ', username: ' u ', password: ' p2 ',
+  }, false);
+  assert.equal(plan.kind, 'send');
+  if (plan.kind !== 'send') return;
+  assert.equal(plan.already, true);
+  assert.equal(plan.sources.length, 3);
+  assert.equal(plan.sources[0].enabled, false, 'le M3U éteint reste éteint');
+  assert.equal(plan.sources[2].enabled, undefined, 'seul le compte renvoyé est rallumé');
+  assert.equal(plan.sources[2].password, 'p2', 'le nouveau mot de passe remplace l’ancien');
+  assert.equal(plan.sources[2].label, 'Principal');
+  assert.equal(plan.sources[2].epg_url, 'http://guide.invalid/epg.xml');
+  assert.deepEqual(existing, before);
+});
+
+test('un quatrième Xtream distinct est refusé sans altérer les listes', () => {
+  const existing = [A, B, X];
+  const before = structuredClone(existing);
+  assert.deepEqual(planAddSource(existing, freshXtream, false), { kind: 'full' });
+  assert.deepEqual(existing, before);
+});
+
+test('remplacer explicitement par Xtream envoie seulement la nouvelle source du panel', () => {
+  const plan = planAddSource([A, B, X, SELF], freshXtream, true);
+  assert.deepEqual(plan, { kind: 'send', sources: [freshXtream], already: false });
+});
+
+test('un Xtream incomplet ou non HTTP est refusé avant tout envoi et sans dévoiler la saisie', () => {
+  for (const changes of [
+    { server_url: 'ftp://fournisseur.invalid' }, { server_url: '' },
+    { username: '' }, { password: ' ' },
+  ]) {
+    const plan = planAddSource([A], { ...freshXtream, ...changes }, false);
+    assert.equal(plan.kind, 'invalid');
+    if (plan.kind !== 'invalid') continue;
+    assert.doesNotMatch(plan.message, /fournisseur\.invalid|nouveau\.invalid|p2/);
+  }
+});
+
+test('renvoyer un M3U garde son libellé et son guide et ne rallume pas l’autre Xtream', () => {
+  const current = { ...A, label: 'Conservée', epg_url: 'http://guide.invalid/epg.xml' };
+  const other = { ...X, enabled: false };
+  const plan = planAddList([current, other, SELF], ' http://a.invalid/l.m3u ', false);
+  assert.equal(plan.kind, 'send');
+  if (plan.kind !== 'send') return;
+  assert.equal(plan.already, true);
+  assert.deepEqual(plan.sources, [
+    { type: 'm3u', m3u_url: 'http://a.invalid/l.m3u', label: 'Conservée', epg_url: 'http://guide.invalid/epg.xml' },
+    { type: 'xtream', server_url: 'http://x.invalid', username: 'u', password: 'p', enabled: false },
+  ]);
+});
+
