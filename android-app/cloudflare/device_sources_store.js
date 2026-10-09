@@ -88,17 +88,39 @@ function hostsOf(items) {
   return out;
 }
 
+/// Lit les listes ET leur révision dans la même instruction SQLite. Deux
+/// lectures séparées pourraient associer les anciennes listes à une nouvelle
+/// révision et autoriser malgré tout leur écrasement. L'historique conserve
+/// la révision même après effacement de la ligne device_sources : une ancienne
+/// version de ligne ne redevient donc pas valide après recréation.
+export async function readSourcesSnapshot(env, mac) {
+  await ensureSourcesVersion(env);
+  await ensureOrderTables(env);
+  const snapshot = await env.DB.prepare(
+    'SELECT d.*, COALESCE((SELECT MAX(rev) FROM source_revisions WHERE mac = ?), 0) AS snapshot_rev '
+    + 'FROM (SELECT ? AS requested_mac) q LEFT JOIN device_sources d ON d.mac = q.requested_mac',
+  ).bind(mac, mac).first();
+  if (!snapshot) return { row: null, rev: 0 };
+  const { snapshot_rev, ...row } = snapshot;
+  return { row: row.mac ? row : null, rev: Number(snapshot_rev) || 0 };
+}
+
 /// `mutate(row, items)` rend { items } (liste complète à stocker, en clair
 /// ou déjà scellée), ou { abort: <valeur rendue telle quelle> }.
 /// Options : { revision: { traceId, actor, rollbackOf, kind }, resellerId,
-///             maxAttempts }.
+///             maxAttempts, expectedRev }. La précondition reste optionnelle
+/// pour les anciens clients ; si elle existe, un snapshot périmé est refusé.
 /// Rend { ok, items, rev, version, attempts } | { abort } | { conflict, attempts }.
 export async function casWriteSources(env, mac, mutate, opts = {}) {
   await ensureSourcesVersion(env);
-  if (opts.revision) await ensureOrderTables(env);
+  const expectedRev = opts.expectedRev;
+  const guarded = expectedRev !== undefined;
+  if (opts.revision || guarded) await ensureOrderTables(env);
   const maxAttempts = opts.maxAttempts || 50;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    const row = await env.DB.prepare(
+    const snapshot = guarded ? await readSourcesSnapshot(env, mac) : null;
+    if (guarded && snapshot.rev !== expectedRev) return { conflict: true, attempts: attempt };
+    const row = guarded ? snapshot.row : await env.DB.prepare(
       'SELECT mac, type, label, server_url, username, password, m3u_url, epg_url, '
       + 'sources_json, origin, reseller_id, version FROM device_sources WHERE mac = ?',
     ).bind(mac).first();
@@ -108,6 +130,12 @@ export async function casWriteSources(env, mac, mutate, opts = {}) {
     for (const item of (out && out.items) || []) sealed.push(await sealSource(env, item));
     const now = Date.now();
     const stmts = [];
+    // Vérification DANS la transaction aussi : une autre écriture peut arriver
+    // après la lecture ci-dessus, avant le lot. Ce contrôle couvre également
+    // le cas où la ligne a été effacée puis recréée avec version = 1.
+    const revisionGuard = guarded
+      ? ' AND COALESCE((SELECT MAX(rev) FROM source_revisions WHERE mac = ?), 0) = ?' : '';
+    const guardParams = guarded ? [mac, expectedRev] : [];
     let writes = true;
     if (row && sealed.length) {
       const first = sealed[0];
@@ -117,13 +145,13 @@ export async function casWriteSources(env, mac, mutate, opts = {}) {
            type = ?, label = ?, server_url = ?, username = ?, password = ?, m3u_url = ?, epg_url = ?,
            sources_json = ?, origin = ?, reseller_id = COALESCE(?, reseller_id),
            updated_at = ?, version = version + 1
-         WHERE mac = ? AND version = ?`,
+         WHERE mac = ? AND version = ?${revisionGuard}`,
       ).bind(first.type || null, first.label || null, first.server_url || null, first.username || null,
         first.password || null, first.m3u_url || null, first.epg_url || null,
-        JSON.stringify(sealed), rowOrigin, opts.resellerId || null, now, mac, Number(row.version) || 0));
+        JSON.stringify(sealed), rowOrigin, opts.resellerId || null, now, mac, Number(row.version) || 0, ...guardParams));
     } else if (row && !sealed.length) {
-      stmts.push(env.DB.prepare('DELETE FROM device_sources WHERE mac = ? AND version = ?')
-        .bind(mac, Number(row.version) || 0));
+      stmts.push(env.DB.prepare('DELETE FROM device_sources WHERE mac = ? AND version = ?' + revisionGuard)
+        .bind(mac, Number(row.version) || 0, ...guardParams));
     } else if (!row && sealed.length) {
       const first = sealed[0];
       const rowOrigin = sealed.every((s) => s.origin === 'self') ? 'self' : 'panel';
@@ -131,11 +159,11 @@ export async function casWriteSources(env, mac, mutate, opts = {}) {
         `INSERT INTO device_sources
            (mac, type, label, server_url, username, password, m3u_url, epg_url, sources_json, origin,
             reseller_id, updated_at, version)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1 WHERE 1${revisionGuard}
          ON CONFLICT(mac) DO NOTHING`,
       ).bind(mac, first.type || null, first.label || null, first.server_url || null, first.username || null,
         first.password || null, first.m3u_url || null, first.epg_url || null,
-        JSON.stringify(sealed), rowOrigin, opts.resellerId || null, now));
+        JSON.stringify(sealed), rowOrigin, opts.resellerId || null, now, ...guardParams));
     } else {
       writes = false; // ni ligne ni liste : rien à écrire
     }
@@ -150,15 +178,16 @@ export async function casWriteSources(env, mac, mutate, opts = {}) {
             rollback_of, validated_at, published_at, created_at)
          SELECT ?, COALESCE((SELECT MAX(rev) FROM source_revisions WHERE mac = ?), 0) + 1,
                 'published', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-         WHERE ${writes ? 'changes() = 1' : '1'}
+         WHERE ${writes ? 'changes() = 1' : '1' + revisionGuard}
          RETURNING rev`,
       ).bind(mac, mac, JSON.stringify(panelSealed), panelSealed.length, JSON.stringify(hostsOf(panelClear)),
         r.traceId || null, r.actor ? r.actor.type : null, r.actor ? r.actor.id : null,
-        r.rollbackOf || null, now, now, now));
+        r.rollbackOf || null, now, now, now, ...(!writes ? guardParams : [])));
     }
     if (!stmts.length) return { ok: true, items: sealed, rev: null, version: null, attempts: attempt };
     const res = await env.DB.batch(stmts);
-    const wrote = !writes || (res[0] && res[0].meta && res[0].meta.changes === 1);
+    const wrote = writes ? (res[0] && res[0].meta && res[0].meta.changes === 1)
+      : !opts.revision || !!(res[revIdx] && res[revIdx].results && res[revIdx].results.length);
     if (wrote) {
       const revRow = opts.revision && res[revIdx] && res[revIdx].results ? res[revIdx].results[0] : null;
       return {

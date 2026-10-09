@@ -5,7 +5,8 @@
   "description": "Parcours local panel admin + Worker (wrangler/miniflare) + box simulée. Aucun déploiement.",
   "type": "module",
   "scripts": {
-    "e2e": "node run.mjs"
+    "e2e": "node run.mjs",
+    "audit:snapshot": "node --experimental-sqlite snapshot-chromium.mjs"
   },
   "devDependencies": {
     "playwright": "1.55.1",
