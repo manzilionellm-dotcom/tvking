@@ -81,7 +81,7 @@ import { httpUrlError, sourceTextProblem, sourceUrlProblem } from './source_url.
 import {
   latencyStats, listOrders, revisionPanelJson, revisionView, effectiveState,
 } from './box_orders.js';
-import { casWriteSources, ensureSourcesVersion } from './device_sources_store.js';
+import { casWriteSources, ensureSourcesVersion, readSourcesSnapshot } from './device_sources_store.js';
 import { openSource, openSourceList, sealSource } from './secret_box.js';
 
 import {
@@ -2906,7 +2906,7 @@ function normalizeSource(raw) {
 /// `sources` = tableau de 1 à 3 sources normalisées. On stocke le tableau
 /// complet en JSON (sources_json) ET la 1re dans les colonnes simples
 /// (compat avec l'ancienne app qui ne lit qu'une source).
-async function upsertDeviceSource(env, mac, sources, resellerId = null, revision = null) {
+async function upsertDeviceSource(env, mac, sources, resellerId = null, revision = null, expectedRev = undefined) {
   await ensureSourcesTable(env);
   // Les sources assignées ICI (payant) sont marquées origin='panel' → VERROUILLÉES
   // côté self-service. Les listes 'self' du client sont GARDÉES : elles sont
@@ -2915,7 +2915,7 @@ async function upsertDeviceSource(env, mac, sources, resellerId = null, revision
   const panelItems = coerceSourceList(sources).map((s) => ({ ...s, origin: 'panel' }));
   const out = await casWriteSources(env, mac, (row, items) => ({
     items: [...panelItems, ...items.filter((s) => s && s.origin === 'self')],
-  }), { resellerId, revision });
+  }), { resellerId, revision, expectedRev });
   if (out.conflict) return { conflict: true };
   await clearSourceTombstone(env, mac);
   return { ok: true, rev: out.rev };
@@ -2942,13 +2942,13 @@ async function assertSourceAccess(env, user, mac) {
 
 /// Retire les sources posées par le panel. Garde les listes 'self'
 /// (Mon espace). N'efface pas la licence : activation et lien sont séparés.
-async function clearPanelSources(env, mac, revision = null) {
+async function clearPanelSources(env, mac, revision = null, expectedRev = undefined) {
   await ensureSourcesTable(env);
   // Garde les listes 'self' ; plus aucune liste → la ligne est effacée.
   // Même chemin sûr que l'envoi (comparaison-échange + révision atomique).
   const out = await casWriteSources(env, mac, (row, items) => ({
     items: items.filter((s) => s && s.origin === 'self'),
-  }), { revision });
+  }), { revision, expectedRev });
   if (out.conflict) return { conflict: true };
   return { ok: true, rev: out.rev };
 }
@@ -2993,10 +2993,7 @@ async function handleSourceGet(env, mac, user) {
   await ensureSourcesTable(env);
   const access = await assertSourceAccess(env, user, m);
   if (access) return access;
-  const row = await env.DB
-    .prepare('SELECT * FROM device_sources WHERE mac = ?')
-    .bind(m)
-    .first();
+  const { row, rev } = await readSourcesSnapshot(env, m);
   // Renvoie le TRIO (sources_json) si présent, sinon la source simple
   // historique. `source` reste la 1re (compat panel existant).
   let sources = [];
@@ -3008,7 +3005,17 @@ async function handleSourceGet(env, mac, user) {
     sources = [single];
   }
   sources = await openSourceList(env, sources);
-  return jsonResp({ mac: m, source: sources[0] || null, sources });
+  return jsonResp({ mac: m, source: sources[0] || null, sources, rev });
+}
+
+/// Facultatif pour rester compatible avec les anciens panels. Une valeur
+/// fournie doit être la révision entière renvoyée par GET, zéro compris.
+function expectedSourceRevision(body) {
+  if (!body || !Object.prototype.hasOwnProperty.call(body, 'expected_rev')) return {};
+  if (!Number.isSafeInteger(body.expected_rev) || body.expected_rev < 0) {
+    return { error: errResp('bad_revision', 'expected_rev doit être une révision entière positive ou nulle.', 400) };
+  }
+  return { expectedRev: body.expected_rev };
 }
 
 async function handleSourcePut(request, env, mac, actor, user) {
@@ -3016,6 +3023,8 @@ async function handleSourcePut(request, env, mac, actor, user) {
   try { body = await request.json(); } catch (_) {
     return errResp('bad_json', 'Invalid JSON body', 400);
   }
+  const expected = expectedSourceRevision(body);
+  if (expected.error) return expected.error;
   const gate = await sourceMacForActor(env, mac, user);
   if (gate.error) return gate.error;
   const m = gate.mac;
@@ -3043,7 +3052,7 @@ async function handleSourcePut(request, env, mac, actor, user) {
   // (REJECTED_BY_BOX) en gardant la précédente. Une liste refusée ici n'a
   // rien écrit : la dernière saine reste servie.
   const opts = orderOpts(request);
-  const written = await upsertDeviceSource(env, m, sources, resellerId, { traceId: opts.traceId, actor });
+  const written = await upsertDeviceSource(env, m, sources, resellerId, { traceId: opts.traceId, actor }, expected.expectedRev);
   if (written.conflict) {
     return errResp('sources_conflict', 'Les listes de cette box changent en ce moment. Réessaie.', 409);
   }
@@ -3056,6 +3065,15 @@ async function handleSourcePut(request, env, mac, actor, user) {
 }
 
 async function handleSourceDelete(request, env, mac, actor, user) {
+  // Les anciens DELETE n'ont pas de corps ; les nouveaux transmettent le
+  // snapshot lu avant la confirmation, pour ne pas retirer des ajouts récents.
+  let body = {};
+  const text = await request.text();
+  if (text.trim()) {
+    try { body = JSON.parse(text); } catch (_) { return errResp('bad_json', 'Invalid JSON body', 400); }
+  }
+  const expected = expectedSourceRevision(body);
+  if (expected.error) return expected.error;
   const gate = await sourceMacForActor(env, mac, user);
   if (gate.error) return gate.error;
   const m = gate.mac;
@@ -3067,7 +3085,7 @@ async function handleSourceDelete(request, env, mac, actor, user) {
   if (access) return access;
   // Retire le lien du panel. Garde les listes perso et la licence.
   // Le tombstone empêche le repli KV de ressusciter l'ancienne liste.
-  const cleared = await clearPanelSources(env, m, { traceId: request.headers.get('X-Request-Id'), actor });
+  const cleared = await clearPanelSources(env, m, { traceId: request.headers.get('X-Request-Id'), actor }, expected.expectedRev);
   if (cleared.conflict) {
     return errResp('sources_conflict', 'Les listes de cette box changent en ce moment. Réessaie.', 409);
   }

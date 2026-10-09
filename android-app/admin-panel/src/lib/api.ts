@@ -588,7 +588,7 @@ export const sourcesApi = {
   // rétro-compat). On expose les deux : `sources` sert au panel pour montrer
   // « tout ce que le client a dans le ventre » à partir de sa MAC.
   get: (mac: string) =>
-    request<{ mac: string; source: DeviceSource | null; sources?: DeviceSource[] }>(
+    request<{ mac: string; source: DeviceSource | null; sources?: DeviceSource[]; rev?: number }>(
       `/api/v1/sources/${encodeURIComponent(mac)}`,
     ),
   set: (mac: string, source: DeviceSourceInput) =>
@@ -599,15 +599,15 @@ export const sourcesApi = {
   // TRIO : pousse 1 à 3 sources d'un coup sur une même MAC. Le client
   // les charge toutes et bascule entre elles dans l'app.
   // Réponse : `order_id` = l'ordre envoyé à la box (suivi par ordersApi).
-  setMany: (mac: string, sources: DeviceSourceInput[]) =>
+  setMany: (mac: string, sources: DeviceSourceInput[], expectedRev?: number) =>
     request<{ ok: boolean; mac: string; count: number; rev?: number; order_id?: string | null }>(
       `/api/v1/sources/${encodeURIComponent(mac)}`,
-      { method: 'PUT', body: { sources } },
+      { method: 'PUT', body: { sources, ...(expectedRev === undefined ? {} : { expected_rev: expectedRev }) } },
     ),
-  clear: (mac: string) =>
+  clear: (mac: string, expectedRev?: number) =>
     request<{ ok: boolean; mac: string; rev?: number; order_id?: string | null }>(
       `/api/v1/sources/${encodeURIComponent(mac)}`,
-      { method: 'DELETE' },
+      { method: 'DELETE', body: expectedRev === undefined ? undefined : { expected_rev: expectedRev } },
     ),
   // REMISE À NEUF : retire toutes les listes (panel et client) et ordonne à
   // la box d'effacer listes, chaînes, favoris, historique et guide. La

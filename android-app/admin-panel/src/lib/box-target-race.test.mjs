@@ -26,7 +26,7 @@ try {
 }
 const makeReload = new Function(
   'sourcesApi', 'setLooking', 'readSeq', 'setSources', 'setErr', 'setLoaded',
-  'onLogout', 'ApiError', 'currentMac', 'sameBoxTarget',
+  'onLogout', 'ApiError', 'currentMac', 'sameBoxTarget', 'setSourcesRev',
   stripTypeScriptTypes('const reload = ' + arrow + ';', { mode: 'transform' }) + 'return reload;',
 );
 
@@ -47,11 +47,11 @@ async function fixture(run) {
     if (blocks.has(mac)) await blocks.get(mac);
     const code = status.get(mac) ?? 200;
     res.writeHead(code, { 'content-type': 'application/json' });
-    res.end(JSON.stringify(code === 200 ? { sources: data.get(mac) ?? [] } : { error: 'fixture_http' }));
+    res.end(JSON.stringify(code === 200 ? { sources: data.get(mac) ?? [], rev: mac === A ? 7 : 11 } : { error: 'fixture_http' }));
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   const base = 'http://127.0.0.1:' + server.address().port;
-  const view = { sources: [], loaded: false, looking: false, err: null, logouts: 0 };
+  const view = { sources: [], loaded: false, looking: false, err: null, logouts: 0, rev: undefined };
   const currentMac = { current: A };
   const readSeq = { current: 0 };
   const sourcesApi = {
@@ -63,11 +63,12 @@ async function fixture(run) {
   };
   const reload = makeReload(sourcesApi, v => { view.looking = v; }, readSeq,
     v => { view.sources = v; }, v => { view.err = v; }, v => { view.loaded = v; },
-    () => { view.logouts++; }, ApiError, currentMac, sameBoxTarget);
+    () => { view.logouts++; }, ApiError, currentMac, sameBoxTarget, v => { view.rev = v; });
   function select(mac) {
     currentMac.current = mac;
     readSeq.current++;
     view.sources = [];
+    view.rev = undefined;
     view.loaded = false;
   }
   try {
@@ -87,6 +88,7 @@ test('fin de l’envoi A après sélection de B : les listes restent celles de B
     await reload(A);
     assert.equal(view.sources.length, 2);
     assert.equal(view.sources[0].m3u_url, 'https://beta.invalid/list.m3u');
+    assert.equal(view.rev, 11, 'la révision reste celle du même snapshot de B');
     assert.equal(view.loaded, true);
   });
 });

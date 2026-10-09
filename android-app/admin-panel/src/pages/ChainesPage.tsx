@@ -50,6 +50,10 @@ export function ChainesPage({ onLogout }: { onLogout: () => void }) {
   // mémoire pour les renvoyer intactes ; seul le nom (libellé ou hôte) est
   // affiché, jamais l'adresse complète ni les codes.
   const [sources, setSources] = useState<SourceLike[]>([]);
+  // Révision du même snapshot que les listes. Un autre onglet peut les
+  // changer entre la lecture et le clic : le Worker refuse alors cet envoi
+  // plutôt que d'effacer son ajout. Absent = ancien Worker compatible.
+  const [sourcesRev, setSourcesRev] = useState<number | undefined>(undefined);
   const [looking, setLooking] = useState(false);
   // Vrai seulement après une lecture réussie de CETTE mac. Sans ça, un
   // envoi trop tôt remplacerait les autres listes par le seul lien.
@@ -79,11 +83,13 @@ export function ChainesPage({ onLogout }: { onLogout: () => void }) {
       const r = await sourcesApi.get(m);
       if (seq !== readSeq.current || !sameBoxTarget(m, currentMac.current)) return;
       setSources((r.sources || []) as SourceLike[]);
+      setSourcesRev(Number.isSafeInteger(r.rev) && Number(r.rev) >= 0 ? r.rev : undefined);
       setErr(null);
       setLoaded(true);
     } catch (e) {
       if (seq !== readSeq.current || !sameBoxTarget(m, currentMac.current)) return;
       setSources([]);
+      setSourcesRev(undefined);
       setLoaded(false);
       if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
       // 404 = aucune liste pour cette box : on peut en ajouter une.
@@ -97,6 +103,7 @@ export function ChainesPage({ onLogout }: { onLogout: () => void }) {
   useEffect(() => {
     setLoaded(false);
     setSources([]);
+    setSourcesRev(undefined);
     if (!macOk || !canPush) return;
     const m = normalizeMac(mac);
     const timer = setTimeout(() => { void reload(m); }, 400);
@@ -140,13 +147,22 @@ export function ChainesPage({ onLogout }: { onLogout: () => void }) {
   }
 
   async function send(m: string, next: SourceInput[], verb: 'load' | 'remove') {
-    const r = await sourcesApi.setMany(m, next);
+    const r = await sourcesApi.setMany(m, next, sourcesRev);
     track(m, r.order_id, verb);
     await reload(m);
   }
 
-  function failed(e: unknown, fallback: string) {
+  async function failed(e: unknown, fallback: string, m: string) {
     if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
+    if (e instanceof ApiError && e.status === 409 && e.code === 'sources_conflict') {
+      // La saisie reste en place. On ne rejoue pas automatiquement une
+      // intention destructive sur des listes que l'opérateur n'avait pas vues.
+      await reload(m);
+      if (sameBoxTarget(m, currentMac.current)) {
+        setErr('Les listes ont changé. Vérifie l’état relu ci-dessous, puis renvoie ta saisie.');
+      }
+      return;
+    }
     setErr(e instanceof ApiError ? e.message : fallback);
   }
 
@@ -180,13 +196,14 @@ export function ChainesPage({ onLogout }: { onLogout: () => void }) {
       setUsername('');
       setPassword('');
     } catch (e2) {
-      failed(e2, 'Enregistrement impossible.');
+      await failed(e2, 'Enregistrement impossible.', m);
     } finally {
       setBusy(false);
     }
   }
 
   async function toggle(index: number) {
+    if (!canPush || busy || looking || !loaded) return;
     setErr(null);
     const m = normalizeMac(mac);
     const plan = planToggleSource(sources, index);
@@ -195,13 +212,14 @@ export function ChainesPage({ onLogout }: { onLogout: () => void }) {
     try {
       await send(m, plan.sources, 'load');
     } catch (e) {
-      failed(e, 'Changement impossible.');
+      await failed(e, 'Changement impossible.', m);
     } finally {
       setBusy(false);
     }
   }
 
   async function remove(index: number) {
+    if (!canPush || busy || looking || !loaded) return;
     setErr(null);
     const m = normalizeMac(mac);
     const s = sources[index];
@@ -219,7 +237,7 @@ export function ChainesPage({ onLogout }: { onLogout: () => void }) {
       if (plan.kind === 'keep') {
         await send(m, plan.sources, 'remove');
       } else if (plan.kind === 'clear') {
-        const r = await sourcesApi.clear(m);
+        const r = await sourcesApi.clear(m, sourcesRev);
         track(m, r.order_id, 'remove');
         await reload(m);
       } else if (plan.kind === 'client' && plan.id) {
@@ -230,7 +248,7 @@ export function ChainesPage({ onLogout }: { onLogout: () => void }) {
         setErr('Cette liste ne peut pas être retirée d’ici.');
       }
     } catch (e) {
-      failed(e, 'Retrait impossible.');
+      await failed(e, 'Retrait impossible.', m);
     } finally {
       setBusy(false);
     }
@@ -287,6 +305,7 @@ export function ChainesPage({ onLogout }: { onLogout: () => void }) {
                 readSeq.current++;
                 setLoaded(false);
                 setSources([]);
+                setSourcesRev(undefined);
                 setMac(e.target.value);
                 setDelivery(null);
               }}
@@ -424,7 +443,7 @@ export function ChainesPage({ onLogout }: { onLogout: () => void }) {
                         <button
                           type="button"
                           onClick={() => void toggle(i)}
-                          disabled={!canPush || busy}
+                          disabled={!canPush || busy || looking || !loaded}
                           aria-label={`${on ? 'Éteindre' : 'Allumer'} ${name}`}
                           className={smallBtn}
                         >
@@ -434,7 +453,7 @@ export function ChainesPage({ onLogout }: { onLogout: () => void }) {
                       <button
                         type="button"
                         onClick={() => void remove(i)}
-                        disabled={!canPush || busy || (client && !s.id)}
+                        disabled={!canPush || busy || looking || !loaded || (client && !s.id)}
                         aria-label={`Retirer ${name}`}
                         className={smallBtn}
                       >

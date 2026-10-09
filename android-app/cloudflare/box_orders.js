@@ -291,6 +291,16 @@ export async function recordAck(env, mac, raw, now = Date.now()) {
     logAck('unknown_order', { mac, order_id: ack.order_id });
     return { status: 404, body: { error: 'unknown_order' } };
   }
+  // Le numéro fourni doit être celui de CET ordre, même pour RECEIVED :
+  // sinon l'accusé d'un ancien envoi pourrait confirmer ou refuser une
+  // autre révision de la même box. Refus avant toute écriture. Les
+  // anciens clients sans config_rev gardent leur contrat actuel ; ils
+  // n'attestent alors aucune révision (voir markRevisionAck ci-dessous).
+  if (ack.config_rev && row.config_rev
+    && Number(ack.config_rev) !== Number(row.config_rev)) {
+    logAck('revision_mismatch', { mac, order_id: ack.order_id });
+    return { status: 409, body: { error: 'config_revision_mismatch' } };
+  }
   const current = effectiveState(row, now);
   const next = nextOrderState(current, ack.state);
   if (next === current) {
