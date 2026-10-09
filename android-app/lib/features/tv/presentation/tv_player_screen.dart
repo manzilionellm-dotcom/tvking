@@ -1169,7 +1169,10 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     unawaited(Navigator.of(context)
         .push(
       MaterialPageRoute<void>(
-        builder: (_) => TvChannelGuideScreen(channel: _current),
+        builder: (_) => TvChannelGuideScreen(
+          channel: _current,
+          currentSummary: _missed,
+        ),
       ),
     )
         .then((_) {

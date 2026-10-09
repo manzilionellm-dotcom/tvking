@@ -284,6 +284,11 @@ abstract final class RepairFlags {
   static const String sportsCommunityOffKey = 'zuno.sports.community_off';
   static bool sportsCommunityOff = false;
 
+  /// Vrai = ancien grand bandeau du guide, permanent sur la vidéo.
+  /// Faux = une ligne neutre pendant deux secondes, détails dans le Guide.
+  static const String missedNoticeLegacyKey = 'zuno.guide.notice_legacy';
+  static bool missedNoticeLegacy = false;
+
   static Future<void> load() async {
     bool raw = false;
     bool tvDelLegacy = false;
@@ -319,6 +324,7 @@ abstract final class RepairFlags {
     bool ackOff = false;
     bool sportsLegacy = false;
     bool communityOff = false;
+    bool noticeLegacy = false;
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       raw = prefs.getBool(blackBoxRawKey) ?? false;
@@ -355,6 +361,7 @@ abstract final class RepairFlags {
       xtreamSerial = prefs.getBool(xtreamPerCategorySerialKey) ?? false;
       sportsLegacy = prefs.getBool(sportsNetworkLegacyKey) ?? false;
       communityOff = prefs.getBool(sportsCommunityOffKey) ?? false;
+      noticeLegacy = prefs.getBool(missedNoticeLegacyKey) ?? false;
     } catch (_) {
       raw = false;
       fsyncAll = false;
@@ -390,11 +397,13 @@ abstract final class RepairFlags {
       xtreamSerial = false;
       sportsLegacy = false;
       communityOff = false;
+      noticeLegacy = false;
     }
     epgGzipByHeader = gzipByHeader;
     xtreamPerCategorySerial = xtreamSerial;
     sportsNetworkLegacy = sportsLegacy;
     sportsCommunityOff = communityOff;
+    missedNoticeLegacy = noticeLegacy;
     orderAckOff = ackOff;
     tvDeleteLegacy = tvDelLegacy;
     liveShelvesLegacy = shelvesLegacy;
@@ -466,6 +475,8 @@ abstract final class RepairFlags {
     xtreamPerCategorySerial = false;
     sportsNetworkLegacy = false;
     sportsCommunityOff = false;
+    missedNoticeLegacy = false;
     NativeVideoController.legacyHoldFrame = false;
   }
 }
+

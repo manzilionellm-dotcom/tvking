@@ -22,6 +22,14 @@ import 'package:google_fonts/google_fonts.dart';
 import 'app_colors.dart';
 
 abstract final class AppTextStyles {
+  /// Notification brève de la TV : lisible sans téléchargement de police.
+  static const TextStyle tvNotice = TextStyle(
+    fontSize: 20,
+    fontWeight: FontWeight.w600,
+    color: AppColors.textPrimary,
+    height: 1.2,
+  );
+
   /// Display XL — réservé aux moments rares (splash, hero d'onboarding).
   /// Poids moyen + tracking serré = sensation "affiche cinéma".
   static TextStyle get displayLarge => GoogleFonts.inter(
@@ -195,3 +203,4 @@ abstract final class AppTextStyles {
         fontFeatures: const <FontFeature>[FontFeature.tabularFigures()],
       );
 }
+

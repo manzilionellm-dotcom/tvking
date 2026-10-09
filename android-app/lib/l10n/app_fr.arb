@@ -2666,5 +2666,14 @@
         "type": "String"
       }
     }
+  },
+  "tvProgramStartedMinutesAgo": "Programme commencé il y a {minutes} min",
+  "@tvProgramStartedMinutesAgo": {
+    "description": "Notification brève du guide : temps écoulé depuis le début du programme.",
+    "placeholders": {
+      "minutes": {
+        "type": "int"
+      }
+    }
   }
 }

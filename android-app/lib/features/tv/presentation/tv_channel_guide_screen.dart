@@ -17,6 +17,8 @@ import '../../../core/i18n/l10n_extension.dart';
 import '../../channels/domain/channel.dart';
 import '../../epg/data/epg_repository.dart';
 import '../../epg/domain/epg_program.dart';
+import '../../missed_show/domain/missed_summary.dart';
+import '../../missed_show/presentation/missed_guide_details.dart';
 import '../core/tv_back_guard.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
@@ -24,9 +26,14 @@ import '../core/tv_tokens.dart';
 import 'tv_shell.dart';
 
 class TvChannelGuideScreen extends StatefulWidget {
-  const TvChannelGuideScreen({super.key, required this.channel});
+  const TvChannelGuideScreen({
+    super.key,
+    required this.channel,
+    this.currentSummary,
+  });
 
   final Channel channel;
+  final MissedSummary? currentSummary;
 
   @override
   State<TvChannelGuideScreen> createState() => _TvChannelGuideScreenState();
@@ -147,6 +154,7 @@ class _TvChannelGuideScreenState extends State<TvChannelGuideScreen> {
             const SizedBox(height: 4),
             Text(context.l10n.tvGuideHint,
                 style: TvTokens.ui(TvDimens.label, color: TvTokens.mutedDim)),
+            MissedGuideDetails(summary: widget.currentSummary),
             const SizedBox(height: 16),
             Expanded(
               child: FutureBuilder<List<EpgProgram>>(
@@ -361,3 +369,4 @@ class _ProgramRow extends StatelessWidget {
     );
   }
 }
+
