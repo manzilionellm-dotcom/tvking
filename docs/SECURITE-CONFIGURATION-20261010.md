@@ -27,8 +27,9 @@ Causes observées :
 
 ## Correctifs préparés
 
-PROUVÉ localement : 81 contrôles panel et 58 contrôles apps réussis, sans test
-ignoré. Les dix-neuf assertions initiales sont conservées. Des contre-preuves
+PROUVÉ localement : 82 contrôles panel et 59 contrôles apps réussis, sans test
+ignoré. Les assertions de régression sont conservées, avec la correction
+documentée ci-dessous du contrôle de secret historique. Des contre-preuves
 exécutent la vraie garde avec gel, autre auteur, autre relance, PR étrangère,
 option client ou entrée de dégel falsifiée. Le parcours autorisé du propriétaire
 et celui de la PR exacte de test restent acceptés.
@@ -40,9 +41,10 @@ et celui de la PR exacte de test restent acceptés.
   une confirmation explicite. La preuve TV garde `test_box=true`, `publish=false`.
 - Les anciens publishers sont manuels, gardés et gelés ; aucun ancien workflow
   n'est exécuté pour livrer la TV. Le seul constructeur TV reste `build-zuno-tv.yml`.
-- Le secret administrateur vient de `PANEL_ADMIN_SECRET_NEXT` dans
-  `zuno-panel-production`, après la même validation de branche, auteur et gel.
-  Il est transmis par stdin et ne figure plus dans les entrées du workflow.
+- Le workflow historique de mot de passe est neutralisé : il ne reçoit aucun
+  secret et ne peut appeler Cloudflare. La validation de branche, auteur et gel
+  précède un refus explicite. Toute future mutation du Worker doit passer par
+  `deploy-panel-cloudflare.yml`, avec ses contrôles avant et après.
 - Le nettoyage accepte uniquement les anciens tags numérotés `build-N` ou
   `cast-N`. Toute la liste est validée avant le premier appel, sans shell.
   Un tag actif ou une tentative d'injection refuse toute la demande.
@@ -64,6 +66,15 @@ de l'étape, hors de `with`. Un nouveau test échoue avec `6 !== 8`, puis les
 `38057803889` accepte ensuite la définition et lance les vrais jobs.
 Un contrôle supplémentaire prouve avant correction l'absence de garde exécutée
 dans le build mobile ; elle est maintenant appelée avant les étapes de signature.
+
+PROUVÉ par la documentation Cloudflare : `wrangler secret put` crée une version
+et la déploie immédiatement. Le premier durcissement du workflow historique
+gardait donc une voie de déploiement parallèle interdite par le propriétaire.
+Les nouveaux contrôles reproduisent deux échecs panel et un échec app avant
+neutralisation. Le contrôle initial qui imposait un secret d'environnement à
+cette voie était incorrect : il validait une opération interdite. Il est remplacé
+par une assertion plus stricte, qui interdit tout accès à un secret dans ce
+workflow. Les autres assertions sont inchangées. Aucune clé n'est remplacée.
 
 ## Versions relevées auprès des dépôts officiels
 
@@ -105,10 +116,16 @@ PROUVÉ, branche apps, commit `c4211da6` :
 compile, vérifie le binaire, crée l'installateur et téléverse l'artefact avec succès.
 Le job de publication Windows est ignoré. Ce run ne publie aucune release.
 
+PROUVÉ, apps au commit `93310101`,
+[qualité et canaux de test](https://github.com/manzilionellm-dotcom/tvking/actions/runs/38058107294) :
+les 58 contrôles de configuration, la sécurité Worker et les 550 tests Flutter
+réussissent (deux tests historiquement ignorés). Les jobs natifs TV et mobile
+sont lancés après ces barrières, avec gardes acceptées et SDK fixe.
+
 ## Vérifications restant à obtenir
 
-NON PROUVÉ à cette étape : fin de la qualité Flutter des apps, builds natifs
-TV et mobile après séparation des publishers et version test effectivement livrée.
+NON PROUVÉ à cette étape : fin des builds natifs TV et mobile après séparation
+des publishers, livraison des versions test et CI du dernier contrôle de secret.
 L'installation sur SHIELD et téléphone nécessite une preuve matérielle distincte.
 
 NON PROUVÉ : protection administrative des branches app, des environnements
@@ -157,6 +174,8 @@ Le refus M3U observé le 9 octobre reste un diagnostic distinct.
   https://docs.github.com/en/actions/reference/workflows-and-actions/deployments-and-environments
 - GitHub, permissions et restrictions des actions au niveau du dépôt :
   https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/enabling-features-for-your-repository/managing-github-actions-settings-for-a-repository
+- Cloudflare, une mutation de secret peut publier une nouvelle version :
+  https://developers.cloudflare.com/workers/configuration/secrets/
 - Releases officielles des actions : dépôts référencés dans le manifeste.
 - Flutter stable : https://github.com/flutter/flutter/tree/stable
 - Node LTS : https://github.com/nodejs/node/releases/tag/v24.21.0

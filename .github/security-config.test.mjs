@@ -99,3 +99,10 @@ test('Windows compile en lecture seule et ne publie jamais sur un push', () => {
   assert.match(publisher, /github\.event_name == 'workflow_dispatch' && inputs\.publish == 'true'/);
   assert.doesNotMatch(publisher, /github\.event_name == 'push'/);
 });
+
+test('le workflow historique de secret ne peut redéployer le Worker', () => {
+  const secret = read('workflows/set-admin-password.yml');
+  assert.doesNotMatch(secret, /secrets\.[A-Z_]+|wrangler[^\n]*secret (?:put|bulk|delete)/);
+  assert.match(secret, /deploy-panel-cloudflare\.yml/);
+  assert.match(secret, /exit 1/);
+});
