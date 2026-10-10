@@ -14,9 +14,15 @@ test('le workflow de secret exige le même environnement que le déploiement', (
   assert.match(secret, /panel-deploy-guard\.mjs/);
 });
 
-test('le nouveau secret ne passe jamais dans les entrées du workflow', () => {
+test('l’ancien workflow ne reçoit aucun secret et ne contourne pas le déploiement', () => {
   assert.doesNotMatch(secret, /inputs\.password|^      password:/m);
-  assert.match(secret, /secrets\.PANEL_ADMIN_SECRET_NEXT/);
+  assert.doesNotMatch(secret, /secrets\.[A-Z_]+/);
+});
+
+test('aucun secret du Worker ne peut être modifié par le workflow historique', () => {
+  assert.doesNotMatch(secret, /wrangler[^\n]*secret (?:put|bulk|delete)|CLOUDFLARE_API_TOKEN/);
+  assert.match(secret, /deploy-panel-cloudflare\.yml/);
+  assert.match(secret, /exit 1/);
 });
 
 for (const [name, content] of [['déploiement', deploy], ['mot de passe', secret], ['E2E', e2e]]) {
