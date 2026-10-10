@@ -55,6 +55,7 @@ import '../../followed/data/followed_log.dart';
 import '../../followed/domain/show_lines.dart';
 import '../../missed_show/data/missed_flag.dart';
 import '../../missed_show/domain/missed_summary.dart';
+import '../../missed_show/presentation/missed_notice.dart';
 import '../../subtitles/data/subtitle_flag.dart';
 import '../../subtitles/domain/subtitle_choice.dart';
 import '../../time_picks/data/time_pick_log.dart';
@@ -1155,79 +1156,6 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
         : 'Depuis le début de l\'émission. Droite, puis OK : retour au direct.';
   }
 
-  /// Carte hors focus : Haut/Bas continuent de zapper.
-  Widget _missedCard() {
-    final MissedSummary missed = _missed!;
-    final bool en = Localizations.localeOf(context).languageCode == 'en';
-    final String lateLine = en
-        ? 'You missed ${missed.missedMinutes} min'
-        : 'Tu as raté ${missed.missedMinutes} min';
-    final String hint = missed.canRewind
-        ? (en
-            ? 'Right, then OK: from the start.'
-            : 'Droite, puis OK : depuis le début.')
-        : (en
-            ? 'The guide has the text, not the video. Live stays as it is.'
-            : 'Le guide a le texte, pas la vidéo. Le direct ne bouge pas.');
-    return Padding(
-      padding: EdgeInsets.only(top: TvDimens.safeV + 8, left: 48, right: 48),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 720),
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: const Color(0xE6141418),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: TvTokens.line),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Text(
-                  missed.title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: TvDimens.titleS,
-                    fontWeight: FontWeight.w800,
-                    color: TvTokens.text,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  lateLine,
-                  style: TextStyle(
-                    fontSize: TvDimens.label,
-                    fontWeight: FontWeight.w700,
-                    color: TvTokens.accentBright,
-                  ),
-                ),
-                if (missed.description != null) ...<Widget>[
-                  const SizedBox(height: 4),
-                  Text(
-                    missed.description!,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                        fontSize: TvDimens.label, color: TvTokens.muted),
-                  ),
-                ],
-                const SizedBox(height: 4),
-                Text(
-                  hint,
-                  style: TextStyle(
-                      fontSize: TvDimens.label, color: TvTokens.muted),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
   // Ouvre le GUIDE de la chaîne en cours : émission actuelle + « à suivre »,
   // avec possibilité de poser une ALARME (rappel) sur un programme.
   void _openGuide() {
@@ -1241,7 +1169,10 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     unawaited(Navigator.of(context)
         .push(
       MaterialPageRoute<void>(
-        builder: (_) => TvChannelGuideScreen(channel: _current),
+        builder: (_) => TvChannelGuideScreen(
+          channel: _current,
+          currentSummary: _missed,
+        ),
       ),
     )
         .then((_) {
@@ -1499,10 +1430,14 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
               // QUELLE chaîne est visée. Un logo seul ne permettait pas de
               // zapper « à l'aveugle » sans se perdre.
               if (_zapHolding || (_buffering && !_fatal)) _loadingCard(),
-              if (_missed != null && !_catchup && !_zapHolding)
+              if (_missed != null)
                 Align(
                   alignment: Alignment.topCenter,
-                  child: ExcludeFocus(child: _missedCard()),
+                  child: MissedNotice(
+                    key: ValueKey<int>(_missedGen),
+                    summary: _missed!,
+                    suppressed: _catchup || _zapHolding,
+                  ),
                 ),
               // Écran d'ERREUR : la reconnexion automatique a été épuisée.
               // On ARRÊTE de boucler. OK réessaie, Haut/Bas change de chaîne,
@@ -2187,3 +2122,4 @@ class _CtrlButtonState extends State<_CtrlButton> {
     );
   }
 }
+

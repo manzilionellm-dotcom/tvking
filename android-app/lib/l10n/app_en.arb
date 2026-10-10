@@ -582,20 +582,56 @@
   "tvMyM3uList": "My M3U list",
   "tvBlackBoxTitle": "Black box",
   "tvBlackBoxSubtitle": "Technical log of the app (v{version}). If the app closed unexpectedly, the reason is here.",
-  "@tvBlackBoxSubtitle": {"placeholders": {"version": {"type": "String"}}},
+  "@tvBlackBoxSubtitle": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
   "tvBlackBoxFirstRun": "First launch: no previous session.",
   "tvBlackBoxCleanExit": "Last session ended normally.",
   "tvBlackBoxBrutal": "UNEXPECTED SHUTDOWN · {reason}",
-  "@tvBlackBoxBrutal": {"placeholders": {"reason": {"type": "String"}}},
+  "@tvBlackBoxBrutal": {
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
   "tvBlackBoxUnknownReason": "unknown reason (Android < 11)",
   "tvBlackBoxMemory": "memory {mb} MB",
-  "@tvBlackBoxMemory": {"placeholders": {"mb": {"type": "String"}}},
+  "@tvBlackBoxMemory": {
+    "placeholders": {
+      "mb": {
+        "type": "String"
+      }
+    }
+  },
   "tvBlackBoxWhen": "When: {when}",
-  "@tvBlackBoxWhen": {"placeholders": {"when": {"type": "String"}}},
+  "@tvBlackBoxWhen": {
+    "placeholders": {
+      "when": {
+        "type": "String"
+      }
+    }
+  },
   "tvBlackBoxLastAction": "Last action: {action}",
-  "@tvBlackBoxLastAction": {"placeholders": {"action": {"type": "String"}}},
+  "@tvBlackBoxLastAction": {
+    "placeholders": {
+      "action": {
+        "type": "String"
+      }
+    }
+  },
   "tvBlackBoxDetail": "Android detail: {detail}",
-  "@tvBlackBoxDetail": {"placeholders": {"detail": {"type": "String"}}},
+  "@tvBlackBoxDetail": {
+    "placeholders": {
+      "detail": {
+        "type": "String"
+      }
+    }
+  },
   "tvRefresh": "Refresh",
   "tvCopy": "Copy",
   "tvCopied": "Copied",
@@ -624,13 +660,17 @@
   "tvReminderSet": "Reminder set: a notification 5 min before \"{title}\", and it stays on home.",
   "@tvReminderSet": {
     "placeholders": {
-      "title": {"type": "String"}
+      "title": {
+        "type": "String"
+      }
     }
   },
   "tvReminderSavedOnly": "\"{title}\" is on home. The TV notification could not be turned on.",
   "@tvReminderSavedOnly": {
     "placeholders": {
-      "title": {"type": "String"}
+      "title": {
+        "type": "String"
+      }
     }
   },
   "tvReminderCleared": "Reminder removed.",
@@ -639,26 +679,39 @@
   "tvReminderInMinutes": "In {minutes} min",
   "@tvReminderInMinutes": {
     "placeholders": {
-      "minutes": {"type": "int"}
+      "minutes": {
+        "type": "int"
+      }
     }
   },
   "tvReminderInHours": "In {hours} h",
   "@tvReminderInHours": {
     "placeholders": {
-      "hours": {"type": "int"}
+      "hours": {
+        "type": "int"
+      }
     }
   },
   "tvReminderInHoursMinutes": "In {hours} h {minutes}",
   "@tvReminderInHoursMinutes": {
     "placeholders": {
-      "hours": {"type": "int"},
-      "minutes": {"type": "int"}
+      "hours": {
+        "type": "int"
+      },
+      "minutes": {
+        "type": "int"
+      }
     }
   },
   "tvResumeLabel": "RESUME",
   "tvNowPlayingPrefix": "NOW · {title}",
-  "@tvNowPlayingPrefix": {"placeholders": {"title": {"type": "String"}}},
-  "tvLiveBadge": "LIVE",
+  "@tvNowPlayingPrefix": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
   "tvPinUpdated": "Parental code updated ✔",
   "tvParentalTitle": "Parental controls",
   "tvKidsMode": "Kids mode",
@@ -682,7 +735,13 @@
   "tvMyRecordings": "My recordings",
   "tvDeleteQuestion": "Delete?",
   "tvDeleteRecordingConfirm": "Permanently delete “{name}”?",
-  "@tvDeleteRecordingConfirm": {"placeholders": {"name": {"type": "String"}}},
+  "@tvDeleteRecordingConfirm": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "tvCancel": "Cancel",
   "tvDelete": "Delete",
   "tvSettingsSources": "My sources (add / activate / delete)",
@@ -691,20 +750,50 @@
   "tvSettingsLegal": "Legal notice & Terms of use",
   "tvUpdateChecking": "Update: checking…",
   "tvUpdateUpToDate": "Update: up to date (version {version}) — OK to check again",
-  "@tvUpdateUpToDate": {"placeholders": {"version": {"type": "String"}}},
+  "@tvUpdateUpToDate": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
   "tvUpdateUpToDateNoVersion": "Update: up to date — OK to check again",
   "tvUpdateAvailable": "New version {version} available — OK to install",
-  "@tvUpdateAvailable": {"placeholders": {"version": {"type": "String"}}},
+  "@tvUpdateAvailable": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
   "tvUpdateDownloading": "Downloading the update… {pct} %",
-  "@tvUpdateDownloading": {"placeholders": {"pct": {"type": "String"}}},
+  "@tvUpdateDownloading": {
+    "placeholders": {
+      "pct": {
+        "type": "String"
+      }
+    }
+  },
   "tvUpdateFailed": "Update: failed (network or installer) — OK to retry",
   "tvMySources": "My sources",
   "tvAddXtream": "Add Xtream",
   "tvAddM3u": "Add M3U",
   "tvDeleteSourceConfirm": "Delete the source “{name}”?",
-  "@tvDeleteSourceConfirm": {"placeholders": {"name": {"type": "String"}}},
+  "@tvDeleteSourceConfirm": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "tvDeletePanelSourceConfirm": "“{name}” is sent by your reseller. Deleted here, it no longer comes back on this TV unless your reseller sends it again from the panel.",
-  "@tvDeletePanelSourceConfirm": {"placeholders": {"name": {"type": "String"}}},
+  "@tvDeletePanelSourceConfirm": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "tvDeleteSourceFailed": "Could not delete: no connection to the server. Nothing was removed, try again in a moment.",
   "tvActivate": "Activate",
   "tvMyTeams": "My teams",
@@ -721,21 +810,72 @@
   "tvImpConnecting": "Connecting to the server…",
   "tvImpCategories": "Reading categories…",
   "tvImpDownloading": "Downloading… {mb} MB",
-  "@tvImpDownloading": {"placeholders": {"mb": {"type": "String"}}},
+  "@tvImpDownloading": {
+    "placeholders": {
+      "mb": {
+        "type": "String"
+      }
+    }
+  },
   "tvImpDecoding": "Analyzing {mb} MB…",
-  "@tvImpDecoding": {"placeholders": {"mb": {"type": "String"}}},
+  "@tvImpDecoding": {
+    "placeholders": {
+      "mb": {
+        "type": "String"
+      }
+    }
+  },
   "tvImpCategory": "Category {i}/{total} · {found} channels found",
-  "@tvImpCategory": {"placeholders": {"i": {"type": "String"}, "total": {"type": "String"}, "found": {"type": "String"}}},
+  "@tvImpCategory": {
+    "placeholders": {
+      "i": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      },
+      "found": {
+        "type": "String"
+      }
+    }
+  },
   "tvImpFound": "{count} channels found",
-  "@tvImpFound": {"placeholders": {"count": {"type": "String"}}},
+  "@tvImpFound": {
+    "placeholders": {
+      "count": {
+        "type": "String"
+      }
+    }
+  },
   "tvImpSaving": "Saving {done} / {total} channels",
-  "@tvImpSaving": {"placeholders": {"done": {"type": "String"}, "total": {"type": "String"}}},
+  "@tvImpSaving": {
+    "placeholders": {
+      "done": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      }
+    }
+  },
   "tvImpDone": "{count} channels ready",
-  "@tvImpDone": {"placeholders": {"count": {"type": "String"}}},
+  "@tvImpDone": {
+    "placeholders": {
+      "count": {
+        "type": "String"
+      }
+    }
+  },
   "tvLanguage": "Language",
   "tvLanguageAuto": "Automatic (TV language)",
   "tvSettingsLanguage": "Language: {value}",
-  "@tvSettingsLanguage": {"placeholders": {"value": {"type": "String"}}},
+  "@tvSettingsLanguage": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
   "tvEpgNow": "Now",
   "tvEpgNext": "Up next",
   "tvEnterParentalCode": "Enter the parental code",
@@ -748,7 +888,13 @@
   "tvRecordingStarted": "Recording…",
   "tvRecordingError": "Recording error",
   "tvRecordingSaved": "Recording saved ({size})",
-  "@tvRecordingSaved": {"placeholders": {"size": {"type": "String"}}},
+  "@tvRecordingSaved": {
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
   "tvRecordingEmpty": "Empty recording",
   "tvRemovedFromFavorites": "Removed from favorites",
   "tvAddedToFavorites": "Added to favorites ❤",
@@ -756,61 +902,163 @@
   "tvCinemaAudio": "Audio",
   "tvCinemaAudioSubs": "Audio & subtitles",
   "tvCinemaCast": "Starring {names}",
-  "@tvCinemaCast": {"placeholders": {"names": {"type": "String"}}},
+  "@tvCinemaCast": {
+    "placeholders": {
+      "names": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaContinue": "Continue watching",
   "tvCinemaDeleteDownload": "Delete download",
   "tvCinemaDirector": "Director: {names}",
-  "@tvCinemaDirector": {"placeholders": {"names": {"type": "String"}}},
+  "@tvCinemaDirector": {
+    "placeholders": {
+      "names": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaDownload": "Download",
   "tvCinemaDownloadError": "Download failed",
   "tvCinemaDownloadPaused": "Paused · {pct} %",
-  "@tvCinemaDownloadPaused": {"placeholders": {"pct": {"type": "String"}}},
+  "@tvCinemaDownloadPaused": {
+    "placeholders": {
+      "pct": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaDownloaded": "Downloaded",
   "tvCinemaDownloading": "Downloading · {pct} %",
-  "@tvCinemaDownloading": {"placeholders": {"pct": {"type": "String"}}},
+  "@tvCinemaDownloading": {
+    "placeholders": {
+      "pct": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaDownloads": "My downloads",
   "tvCinemaEmptyCategory": "Nothing here yet.",
   "tvCinemaEpisode": "Episode {n}",
-  "@tvCinemaEpisode": {"placeholders": {"n": {"type": "String"}}},
+  "@tvCinemaEpisode": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaFromStart": "From the beginning",
   "tvCinemaIndexing": "Preparing search across the whole catalog…",
   "tvCinemaLanguage": "Language: {value}",
-  "@tvCinemaLanguage": {"placeholders": {"value": {"type": "String"}}},
+  "@tvCinemaLanguage": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaLoading": "Loading…",
   "tvCinemaMinutes": "{n} min",
-  "@tvCinemaMinutes": {"placeholders": {"n": {"type": "String"}}},
+  "@tvCinemaMinutes": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaNextEpisode": "Next episode",
   "tvCinemaNextHint": "OK: now · Back: stay",
   "tvCinemaNextIn": "Next episode in {s} s",
-  "@tvCinemaNextIn": {"placeholders": {"s": {"type": "String"}}},
+  "@tvCinemaNextIn": {
+    "placeholders": {
+      "s": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaNoEpisodes": "No episodes available.",
   "tvCinemaNoSource": "No movies or series yet",
   "tvCinemaNoSourceBody": "Movies and series come from your Xtream subscription. Add it in Server, or ask your reseller to activate it.",
   "tvCinemaNoSpace": "Not enough space on the box ({free} GB free).",
-  "@tvCinemaNoSpace": {"placeholders": {"free": {"type": "String"}}},
+  "@tvCinemaNoSpace": {
+    "placeholders": {
+      "free": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaPauseDownload": "Pause",
   "tvCinemaPlay": "Play",
   "tvCinemaPlayEpisode": "Play S{s} · E{e}",
-  "@tvCinemaPlayEpisode": {"placeholders": {"s": {"type": "String"}, "e": {"type": "String"}}},
+  "@tvCinemaPlayEpisode": {
+    "placeholders": {
+      "s": {
+        "type": "String"
+      },
+      "e": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaRecent": "Recently added",
   "tvCinemaRestart": "Restart",
   "tvCinemaResumeAt": "Resume at {time}",
-  "@tvCinemaResumeAt": {"placeholders": {"time": {"type": "String"}}},
+  "@tvCinemaResumeAt": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaResumeDownload": "Resume download",
   "tvCinemaResumeEpisode": "Resume S{s} · E{e}",
-  "@tvCinemaResumeEpisode": {"placeholders": {"s": {"type": "String"}, "e": {"type": "String"}}},
+  "@tvCinemaResumeEpisode": {
+    "placeholders": {
+      "s": {
+        "type": "String"
+      },
+      "e": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaResumedAt": "Resuming at {time}",
-  "@tvCinemaResumedAt": {"placeholders": {"time": {"type": "String"}}},
+  "@tvCinemaResumedAt": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaSearch": "Search",
   "tvCinemaSeason": "Season {n}",
-  "@tvCinemaSeason": {"placeholders": {"n": {"type": "String"}}},
+  "@tvCinemaSeason": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaSeasons": "{n} seasons",
-  "@tvCinemaSeasons": {"placeholders": {"n": {"type": "String"}}},
+  "@tvCinemaSeasons": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaSpecials": "Specials",
   "tvCinemaSubtitles": "Subtitles",
   "tvCinemaSubtitlesOff": "Off",
   "tvCinemaTrackUnknown": "Track {n}",
-  "@tvCinemaTrackUnknown": {"placeholders": {"n": {"type": "String"}}},
+  "@tvCinemaTrackUnknown": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
   "tvUpdatingContent": "Updating…",
   "tvDeactivate": "Deactivate",
   "tvSourceActive": "active",
@@ -847,7 +1095,13 @@
   "tvRemoteStop": "Stop",
   "tvRemoteStart": "Turn on",
   "tvRemoteLeft": "Expires in {time}",
-  "@tvRemoteLeft": {"placeholders": {"time": {"type": "String"}}},
+  "@tvRemoteLeft": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
   "tvRemoteUrlHelp": "If the scan fails, open this address in the phone browser.",
   "tvVoiceMic": "Mic",
   "tvVoiceListening": "Speak now…",
@@ -865,4 +1119,43 @@
   "tvVoiceRemoteAiOff": "Off",
   "tvVoiceRemoteAiHelp": "Off by default. No key in the app. “Tonight” is read from your guide, on the box. If the service does not answer, Zuno searches your list.",
   "tvVoiceCinemaHint": "Open Movies or Series once: search will find them afterwards, without using the network while you watch.",
-  "tvVoiceOnChannel": "On {channel}"}
+  "tvVoiceOnChannel": "On {channel}",
+  "sportsTimeout": "The sports service is taking too long. Try again.",
+  "sportsNetworkError": "Unable to connect to the sports service.",
+  "sportsHttpError": "Sports service unavailable (HTTP {status}).",
+  "sportsInvalidResponse": "Unreadable response from the sports service.",
+  "sportsUnavailable": "Unable to load sports data.",
+  "sportsLoading": "Loading matches…",
+  "sportsRetry": "Try again",
+  "@sportsHttpError": {
+    "placeholders": {
+      "status": {
+        "type": "int"
+      }
+    }
+  },
+  "sportsFootballTitle": "Scores and fixtures",
+  "sportsRefresh": "Refresh",
+  "sportsCommunityNotice": "Community scores and goals · delays possible · refresh every 60 s.",
+  "sportsCalendarNotice": "Fixtures and delayed results · OpenFootball does not provide live scores.",
+  "sportsRetrievedAt": "Retrieved at {time}",
+  "sportsUpcoming": "Upcoming",
+  "sportsRecent": "Recent matches",
+  "sportsFinished": "Finished",
+  "@sportsRetrievedAt": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "tvProgramStartedMinutesAgo": "Program started {minutes} min ago",
+  "@tvProgramStartedMinutesAgo": {
+    "description": "Notification brève du guide : temps écoulé depuis le début du programme.",
+    "placeholders": {
+      "minutes": {
+        "type": "int"
+      }
+    }
+  }
+}

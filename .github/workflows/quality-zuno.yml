@@ -1,13 +1,15 @@
 # =========================================================
-#  quality-zuno.yml — Tests de la box, sans compiler l'APK
+#  quality-zuno.yml — Tests de la box et preuve Sport dédiée
 # =========================================================
 #  GitHub ne lance QUE les workflows du dossier `.github/workflows`
 #  à la RACINE du dépôt. L'ancien fichier
 #  `android-app/.github/workflows/quality.yml` ne partait donc
 #  jamais. Celui-ci est au bon endroit.
 #
-#  Il ne publie rien, ne déploie pas le Worker, n'écrit pas sur
-#  la release zuno-tv.
+#  La PR de preuve Sport du propriétaire appelle le constructeur
+#  concerné après les barrières : box sur zuno-tv-test, mobile sur
+#  7motion-test. Une passation seule ne refabrique aucun APK.
+#  Aucun déploiement Worker/panel, aucune écriture sur zuno-tv.
 # =========================================================
 
 name: Quality Zuno (tests)
@@ -31,12 +33,30 @@ on:
 
 concurrency:
   group: quality-zuno-${{ github.ref }}
-  cancel-in-progress: true
+  # La preuve dédiée peut publier sur zuno-tv-test : un autre commit ne
+  # doit pas couper son téléversement entre l'APK et le manifeste.
+  cancel-in-progress: ${{ github.event_name != 'pull_request' || github.event.pull_request.base.ref != 'ccr-sport-preuve-20261008' }}
 
 permissions:
   contents: read
 
 jobs:
+  configuration:
+    name: Protections de configuration
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24.21.0'
+          package-manager-cache: false
+      - run: node --test .github/security-config.test.mjs .github/app-release-guard.test.mjs .github/release-cleanup.test.mjs
+      - name: Vérifier le patch additif de passation sur le vrai document
+        run: git apply --unidiff-zero --check docs/patches/handoff-securite-20261010.patch
+
   flutter:
     name: flutter analyze + test
     runs-on: ubuntu-latest
@@ -46,11 +66,14 @@ jobs:
         working-directory: android-app
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Setup Flutter
-        uses: subosito/flutter-action@v2
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
+          flutter-version: '3.47.7'
           channel: stable
           cache: true
 
@@ -69,9 +92,94 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24.21.0'
+          package-manager-cache: false
 
       - name: Smoke + sécurité
         run: |
           node android-app/cloudflare/worker_security.smoke.mjs
           node android-app/cloudflare/zuno_security.test.mjs
+
+  changes:
+    name: Choisir l’APK concerné
+    runs-on: ubuntu-latest
+    outputs:
+      box: ${{ steps.paths.outputs.box }}
+      phone: ${{ steps.paths.outputs.phone }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 2
+      - id: paths
+        run: |
+          python3 - <<'PYPATHS'
+          import os,subprocess
+          paths=subprocess.check_output(['git','diff','--name-only','HEAD^','HEAD'],text=True).splitlines()
+          roots=['android-app/lib/','android-app/test/','android-app/packages/','android-app/android_overlay/','android-app/pubspec']
+          box=any(any(p.startswith(r) for r in roots) or p in ['.github/workflows/build-zuno-tv.yml','.github/toolchain.json','.github/app-release-guard.mjs'] for p in paths)
+          phone=any(p in ['patches/mobile-sport-gratuit.patch','patches/mobile-radio.patch','.github/workflows/build-7motion-sport-test.yml'] or p.startswith('android-app/ci/mobile/') for p in paths)
+          with open(os.environ['GITHUB_OUTPUT'],'a') as out:
+              out.write('box='+str(box).lower()+'\n')
+              out.write('phone='+str(phone).lower()+'\n')
+          PYPATHS
+
+  # Appel réservé à la PR de preuve créée par le propriétaire. Le workflow
+  # n'est pas sur main : cet appel évite de toucher la branche interdite.
+  sport-test-box:
+    name: APK Sport pour la box de test
+    needs: [configuration, flutter, worker, changes]
+    if: >-
+      github.event_name == 'pull_request' &&
+      needs.changes.outputs.box == 'true' &&
+      github.repository == 'manzilionellm-dotcom/tvking' &&
+      github.actor == github.repository_owner &&
+      github.event.pull_request.user.login == github.repository_owner &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'ccr-b93e1afd-gwirw0' &&
+      github.event.pull_request.base.ref == 'ccr-sport-preuve-20261008'
+    permissions:
+      contents: write
+    uses: ./.github/workflows/build-zuno-tv.yml
+    with:
+      publish: 'false'
+      test_box: 'true'
+      play_aab: 'false'
+      backend_url: ''
+      variante: 'box'
+    secrets:
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+
+  mobile-sport-test:
+    name: APK mobile Sport gratuit
+    # Le patch ou son constructeur change : construire. Une preuve
+    # documentaire seule conserve l'APK déjà signé et validé.
+    needs: [configuration, flutter, worker, changes]
+    if: >-
+      github.event_name == 'pull_request' &&
+      needs.changes.outputs.phone == 'true' &&
+      github.repository == 'manzilionellm-dotcom/tvking' &&
+      github.actor == github.repository_owner &&
+      github.event.pull_request.user.login == github.repository_owner &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'ccr-b93e1afd-gwirw0' &&
+      github.event.pull_request.base.ref == 'ccr-sport-preuve-20261008'
+    permissions:
+      contents: write
+    uses: ./.github/workflows/build-7motion-sport-test.yml
+    secrets:
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+

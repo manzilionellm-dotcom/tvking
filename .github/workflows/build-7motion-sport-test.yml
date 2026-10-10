@@ -1,0 +1,724 @@
+# Base mobile validée et patch isolé : aucune fusion ni publication clients.
+name: APK mobile Radios et Sport (test uniquement)
+'on':
+  workflow_call:
+    inputs:
+      play_aab:
+        description: 'Préparer un bundle Play pour revue (aucune publication)'
+        type: boolean
+        default: false
+        required: false
+    secrets:
+      ANDROID_KEYSTORE_BASE64:
+        required: false
+      ANDROID_KEYSTORE_PASSWORD:
+        required: false
+      ANDROID_KEY_ALIAS:
+        required: false
+      ANDROID_KEY_PASSWORD:
+        required: false
+permissions:
+  contents: read
+concurrency:
+  group: 7motion-sport-test
+  cancel-in-progress: false
+jobs:
+  phone:
+    outputs:
+      version-code: ${{ env.PHONE_VERSION_CODE }}
+      build-label: ${{ env.PHONE_BUILD_LABEL }}
+      apk-sha: ${{ env.APK_SHA256 }}
+      aab-sha: ${{ env.PLAY_AAB_SHA256 }}
+    environment: zuno-app-test
+    name: 'Téléphone : tests et APK Radios du monde'
+    if: github.event_name == 'pull_request' && github.repository == 'manzilionellm-dotcom/tvking' && github.actor == github.repository_owner && github.triggering_actor == github.repository_owner && github.event.pull_request.user.login ==
+      github.repository_owner && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'ccr-b93e1afd-gwirw0' && github.event.pull_request.base.ref
+      == 'ccr-sport-preuve-20261008'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: phone
+    steps:
+    - name: Récupérer la correction exacte
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        ref: ${{ github.event.pull_request.head.sha }}
+        path: mission
+        persist-credentials: false
+    - name: Autoriser le build mobile avant la signature
+      working-directory: mission
+      env:
+        APP_OPERATION: build
+        APP_PUBLISH: 'false'
+        APP_TEST_BOX: 'true'
+      run: node .github/app-release-guard.mjs
+    - name: Récupérer la base mobile validée sans fusion
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        ref: 37fdf3305c5de9d35e20fd6567df38008fc7a7ee
+        path: phone
+        persist-credentials: false
+    - name: Appliquer le patch Sport et relever la release clients
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |-
+        set -euo pipefail
+        [ "$(git rev-parse HEAD)" = "37fdf3305c5de9d35e20fd6567df38008fc7a7ee" ]
+        git apply --check ../mission/patches/mobile-sport-gratuit.patch
+        git apply ../mission/patches/mobile-sport-gratuit.patch
+        git apply --check ../mission/patches/mobile-radio.patch
+        git apply ../mission/patches/mobile-radio.patch
+        git diff --check
+        gh api "repos/$GITHUB_REPOSITORY/releases/tags/phone-latest" > "$RUNNER_TEMP/client-before.json"
+    - name: Setup Java 17 (Temurin)
+      uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+      with:
+        distribution: temurin
+        java-version: '17'
+    - name: Setup Flutter
+      uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+      with:
+        flutter-version: '3.47.7'
+        channel: stable
+        cache: false
+        pub-cache: false
+    - name: Print exact Flutter version
+      run: |
+        flutter --version
+        dart --version
+    - name: Generate native Android folder
+      run: flutter create . --platforms=android --org com.manzilionellm.tvking --project-name tv_king
+    - name: Fixer minSdk 24 (téléphone — requis par ffmpeg_kit)
+      run: |
+        python3 - <<'PYEOF'
+        import re, glob
+        cands = glob.glob("android/app/build.gradle.kts") + glob.glob("android/app/build.gradle")
+        if not cands:
+            raise SystemExit("build.gradle introuvable après flutter create")
+        f = cands[0]
+        s = open(f).read()
+        if re.search(r'minSdk\s*=\s*flutter\.minSdkVersion', s):
+            s = re.sub(r'minSdk\s*=\s*flutter\.minSdkVersion', 'minSdk = 24', s)
+        elif re.search(r'minSdkVersion\s+flutter\.minSdkVersion', s):
+            s = re.sub(r'minSdkVersion\s+flutter\.minSdkVersion', 'minSdkVersion 24', s)
+        elif re.search(r'minSdk\s*=\s*\d+', s):
+            s = re.sub(r'minSdk\s*=\s*\d+', 'minSdk = 24', s, count=1)
+        elif re.search(r'minSdkVersion\s+\d+', s):
+            s = re.sub(r'minSdkVersion\s+\d+', 'minSdkVersion 24', s, count=1)
+        else:
+            raise SystemExit("minSdk introuvable dans " + f)
+        open(f, "w").write(s)
+        print("minSdk -> 24 dans", f)
+        PYEOF
+    - name: Brand AndroidManifest with The Few label
+      run: |
+        MANIFEST=android/app/src/main/AndroidManifest.xml
+        if [ -f "$MANIFEST" ]; then
+          sed -i 's|android:label="tv_king"|android:label="The Few"|g' "$MANIFEST"
+          echo "--- Patched manifest ---"
+          grep 'android:label' "$MANIFEST" || true
+        fi
+    - name: Patch AndroidManifest for network (cleartext HTTP + INTERNET)
+      run: |
+        set -e
+        MANIFEST=android/app/src/main/AndroidManifest.xml
+        if [ ! -f "$MANIFEST" ]; then
+          echo "❌ Manifest manquant — flutter create a-t-il tourné ?"
+          exit 1
+        fi
+
+        # 1. Permission INTERNET — enfant de <manifest>
+        if ! grep -q 'android.permission.INTERNET' "$MANIFEST"; then
+          sed -i '/<manifest /a\    <uses-permission android:name="android.permission.INTERNET"/>' "$MANIFEST"
+          echo "✓ permission INTERNET ajoutée"
+        else
+          echo "⊙ permission INTERNET déjà présente"
+        fi
+
+        # 2. usesCleartextTraffic="true" — attribut de <application>
+        if ! grep -q 'usesCleartextTraffic' "$MANIFEST"; then
+          sed -i 's|<application|<application\n        android:usesCleartextTraffic="true"|' "$MANIFEST"
+          echo "✓ android:usesCleartextTraffic=\"true\" ajouté (HTTP IPTV en clair autorisé)"
+        else
+          echo "⊙ usesCleartextTraffic déjà présent"
+        fi
+
+        # 3. REQUEST_INSTALL_PACKAGES — permet à l'updater in-app de
+        #    lancer l'installation du nouvel APK sans navigateur externe
+        #    (mise à jour par-dessus, sans désinstallation).
+        if ! grep -q 'REQUEST_INSTALL_PACKAGES' "$MANIFEST"; then
+          sed -i '/<manifest /a\    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>' "$MANIFEST"
+          echo "✓ permission REQUEST_INSTALL_PACKAGES ajoutée"
+        else
+          echo "⊙ permission REQUEST_INSTALL_PACKAGES déjà présente"
+        fi
+
+        echo "--- Manifest réseau patché ---"
+        grep -nE 'INTERNET|usesCleartextTraffic|REQUEST_INSTALL_PACKAGES|<application' "$MANIFEST" || true
+    - name: Patch AndroidManifest for privacy (allowBackup=false)
+      run: |
+        set -e
+        MANIFEST=android/app/src/main/AndroidManifest.xml
+        if [ ! -f "$MANIFEST" ]; then
+          echo "❌ Manifest manquant — flutter create a-t-il tourné ?"
+          exit 1
+        fi
+        if ! grep -q 'allowBackup' "$MANIFEST"; then
+          sed -i 's|<application|<application\n        android:allowBackup="false"|' "$MANIFEST"
+          echo "✓ android:allowBackup=\"false\" ajouté (base playlists/identifiants hors backup)"
+        else
+          echo "⊙ allowBackup déjà présent"
+        fi
+        grep -nE 'allowBackup|<application' "$MANIFEST" || true
+    - name: Patch AndroidManifest for Android TV (leanback)
+      run: |
+        set -e
+        MANIFEST=android/app/src/main/AndroidManifest.xml
+        if [ ! -f "$MANIFEST" ]; then
+          echo "❌ Manifest manquant — flutter create a-t-il tourné ?"
+          exit 1
+        fi
+
+        # 1+2. uses-feature — injectés juste après <manifest ...>
+        if ! grep -q 'android.software.leanback' "$MANIFEST"; then
+          sed -i '/<manifest /a\    <uses-feature android:name="android.software.leanback" android:required="false"/>\n    <uses-feature android:name="android.hardware.touchscreen" android:required="false"/>' "$MANIFEST"
+          echo "✓ uses-feature leanback + touchscreen ajoutés"
+        else
+          echo "⊙ uses-feature leanback déjà présent (re-run)"
+        fi
+
+        # 3. LEANBACK_LAUNCHER — injecté après LAUNCHER existant
+        if ! grep -q 'LEANBACK_LAUNCHER' "$MANIFEST"; then
+          sed -i 's|<category android:name="android.intent.category.LAUNCHER"/>|<category android:name="android.intent.category.LAUNCHER"/>\n                <category android:name="android.intent.category.LEANBACK_LAUNCHER"/>|' "$MANIFEST"
+          echo "✓ catégorie LEANBACK_LAUNCHER ajoutée"
+        else
+          echo "⊙ LEANBACK_LAUNCHER déjà présent"
+        fi
+
+        # 4. android:banner — sur <application>
+        if ! grep -q 'android:banner' "$MANIFEST"; then
+          sed -i 's|android:icon="@mipmap/ic_launcher"|android:icon="@mipmap/ic_launcher"\n        android:banner="@mipmap/ic_launcher"|' "$MANIFEST"
+          echo "✓ android:banner ajouté (pointe vers le launcher icon)"
+        else
+          echo "⊙ android:banner déjà présent"
+        fi
+
+        echo "--- Manifest patché ---"
+        cat "$MANIFEST"
+    - name: Apply Google Cast SDK overlay
+      run: bash android_overlay/google_cast/apply_cast_patch.sh
+    - name: FLAG_SECURE OFF (l'image doit sortir)
+      run: python3 ci/clear_secure_flag.py
+    - name: Patch AndroidManifest for Picture-in-Picture
+      run: |
+        set -e
+        MANIFEST=android/app/src/main/AndroidManifest.xml
+        if [ ! -f "$MANIFEST" ]; then
+          echo "❌ Manifest manquant"; exit 1
+        fi
+        if ! grep -q 'supportsPictureInPicture' "$MANIFEST"; then
+          # Insère les 2 attributs APRÈS android:name=".MainActivity"
+          # qui est toujours présent (généré par flutter create).
+          sed -i 's|android:name=".MainActivity"|android:name=".MainActivity"\n            android:supportsPictureInPicture="true"\n            android:resizeableActivity="true"|' "$MANIFEST"
+          echo "✓ PiP attributes ajoutés sur MainActivity"
+        else
+          echo "⊙ PiP déjà patché (re-run)"
+        fi
+        grep -A2 'supportsPictureInPicture' "$MANIFEST" || true
+    - name: Get dependencies
+      run: flutter pub get
+    - name: Patch screen_brightness_android build.gradle
+      run: |
+        set -e
+        FILE=$(find ~/.pub-cache/hosted/pub.dev -path "*/screen_brightness_android-*/android/build.gradle" 2>/dev/null | head -1)
+        if [ -z "$FILE" ]; then
+          echo "⊙ screen_brightness_android pas dans pub-cache, skip"
+          exit 0
+        fi
+        echo "Patching $FILE"
+        export PATCH_FILE="$FILE"
+        # Dump diagnostique : montre ce qu'il y a dans le fichier
+        # autour de la ligne 52 (l'erreur disait line: 52).
+        echo "===== ORIGINAL build.gradle (lignes 40-65) ====="
+        sed -n '40,65p' "$FILE"
+        echo "===== fin dump ====="
+        python3 << 'PYEOF'
+        import os, re
+        file = os.environ['PATCH_FILE']
+        with open(file) as f:
+            lines = f.readlines()
+        # Parseur ligne-par-ligne qui retire tout bloc `kotlin {...}`
+        # quelle que soit l'indentation et même s'il y a des
+        # accolades imbriquées. On compte les `{` et `}` pour
+        # trouver la fin réelle du bloc.
+        kotlin_block_re = re.compile(r'^\s*kotlin\s*\{')
+        out = []
+        in_kotlin = False
+        depth = 0
+        removed = 0
+        for line in lines:
+            if not in_kotlin:
+                if kotlin_block_re.match(line):
+                    in_kotlin = True
+                    depth = line.count('{') - line.count('}')
+                    removed += 1
+                    if depth <= 0:
+                        in_kotlin = False  # bloc sur une seule ligne
+                    continue
+                out.append(line)
+            else:
+                depth += line.count('{') - line.count('}')
+                removed += 1
+                if depth <= 0:
+                    in_kotlin = False
+        if removed > 0:
+            with open(file, 'w') as f:
+                f.writelines(out)
+            print(f'✓ retiré {removed} ligne(s) du bloc kotlin{{}}')
+        else:
+            print('⊙ aucun bloc kotlin{} trouvé (peut-être déjà fixé)')
+        PYEOF
+        echo "===== APRÈS patch (lignes 40-65) ====="
+        sed -n '40,65p' "$FILE"
+        echo "===== fin dump ====="
+    - name: Generate AppLocalizations from .arb files
+      run: flutter gen-l10n
+    - name: Generate launcher icons (7 MOTION ember)
+      run: dart run flutter_launcher_icons
+    - name: Préparer les composants Android des notifications
+      run: |-
+        set -euo pipefail
+        python3 -m venv "$RUNNER_TEMP/mobile-audit"
+        "$RUNNER_TEMP/mobile-audit/bin/pip" install androguard==4.1.3 numpy==2.2.6
+        "$RUNNER_TEMP/mobile-audit/bin/python" ../mission/android-app/ci/mobile/prepare_notifications.py
+    - name: Signature stable obligatoire
+      env:
+        KS_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        KS_PW: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        KS_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        KS_KEY_PW: ${{ secrets.ANDROID_KEY_PASSWORD }}
+      run: |-
+        set -euo pipefail
+        [ -n "$KS_PW" ]
+        if [ -n "$KS_B64" ]; then
+          printf '%s' "$KS_B64" | base64 -d > android/app/release.jks
+        else
+          test -f ci/release.jks.enc
+          openssl enc -d -aes-256-cbc -pbkdf2 -in ci/release.jks.enc -out android/app/release.jks -pass pass:"$KS_PW"
+        fi
+        cat > android/key.properties <<EOF
+        storeFile=release.jks
+        storePassword=$KS_PW
+        keyAlias=${KS_ALIAS:-sevenmotion}
+        keyPassword=${KS_KEY_PW:-$KS_PW}
+        EOF
+    - name: Patch build.gradle.kts for release signing
+      run: |
+        set -e
+        F=android/app/build.gradle.kts
+        if [ ! -f "$F" ]; then
+          echo "❌ $F introuvable"; ls -la android/app/ || true; exit 1
+        fi
+        export GRADLE_FILE="$F"
+        python3 << 'PYEOF'
+        import os
+        f = os.environ['GRADLE_FILE']
+        s = open(f).read()
+        if 'signingConfigs.getByName("release")' in s:
+            print('⊙ déjà patché'); raise SystemExit
+        # En Kotlin DSL Gradle, les noms java.* pleinement qualifiés ne
+        # se résolvent pas : il FAUT de vrais imports en tête de fichier
+        # (avant le bloc plugins{}). C'est le snippet de signature Flutter
+        # standard.
+        imports = 'import java.util.Properties\nimport java.io.FileInputStream\n\n'
+        loader = (
+            'val keystoreProperties = Properties()\n'
+            'val keystorePropertiesFile = rootProject.file("key.properties")\n'
+            'if (keystorePropertiesFile.exists()) {\n'
+            '    keystoreProperties.load(FileInputStream(keystorePropertiesFile))\n'
+            '}\n\n'
+        )
+        signing = (
+            'android {\n'
+            '    signingConfigs {\n'
+            '        create("release") {\n'
+            '            val sf = keystoreProperties.getProperty("storeFile")\n'
+            '            if (sf != null) {\n'
+            '                storeFile = file(sf)\n'
+            '                storePassword = keystoreProperties.getProperty("storePassword")\n'
+            '                keyAlias = keystoreProperties.getProperty("keyAlias")\n'
+            '                keyPassword = keystoreProperties.getProperty("keyPassword")\n'
+            '            }\n'
+            '        }\n'
+            '    }\n'
+        )
+        if 'android {' not in s:
+            print('❌ pas de bloc android {} — template inattendu'); raise SystemExit(1)
+        if 'import java.util.Properties' not in s:
+            s = imports + s
+        s = s.replace('android {', loader + 'android {', 1)
+        s = s.replace('android {', signing, 1)
+        old = 'signingConfig = signingConfigs.getByName("debug")'
+        new = ('signingConfig = if (keystorePropertiesFile.exists()) '
+               'signingConfigs.getByName("release") else '
+               'signingConfigs.getByName("debug")')
+        if old in s:
+            s = s.replace(old, new, 1)
+            print('✓ buildType release basculé sur la clé stable (si présente)')
+        else:
+            print('⚠ ligne signingConfig debug non trouvée — release reste en debug')
+        open(f, 'w').write(s)
+        print('✓ build.gradle.kts patché')
+        PYEOF
+        echo "----- build.gradle.kts (tête) -----"
+        sed -n '1,40p' "$F"
+    - name: Patch build.gradle.kts for notifications (desugaring)
+      run: |
+        set -e
+        F=android/app/build.gradle.kts
+        python3 << 'PYEOF'
+        f = "android/app/build.gradle.kts"
+        s = open(f).read()
+        if 'isCoreLibraryDesugaringEnabled' not in s:
+            s = s.replace(
+                'compileOptions {',
+                'compileOptions {\n        isCoreLibraryDesugaringEnabled = true',
+                1)
+            print('desugaring active')
+        else:
+            print('desugaring deja actif')
+        if 'desugar_jdk_libs' not in s:
+            s = s.rstrip() + ('\n\ndependencies {\n'
+                '    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")\n'
+                '}\n')
+            print('dep desugar ajoutee')
+        else:
+            print('dep desugar deja presente')
+        open(f, 'w').write(s)
+        PYEOF
+        echo "----- build.gradle.kts (queue) -----"
+        tail -n 14 "$F"
+    - name: Patch AndroidManifest for notifications
+      run: |
+        set -e
+        MANIFEST=android/app/src/main/AndroidManifest.xml
+        if ! grep -q 'POST_NOTIFICATIONS' "$MANIFEST"; then
+          sed -i '/<manifest /a\    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>\n    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>' "$MANIFEST"
+          echo "✓ permissions notifications ajoutées"
+        else
+          echo "⊙ permissions notif déjà présentes"
+        fi
+    - name: Enable R8 + ProGuard (shrink code & resources)
+      run: |
+        set -e
+        cp ci/proguard-rules.pro android/app/proguard-rules.pro
+        python3 << 'PYEOF'
+        f = "android/app/build.gradle.kts"
+        s = open(f).read()
+        if "isMinifyEnabled" not in s:
+            s = s.replace(
+                "release {",
+                ('release {\n'
+                 '            isMinifyEnabled = true\n'
+                 '            isShrinkResources = true\n'
+                 '            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")'),
+                1)
+            open(f, "w").write(s)
+            print("R8/shrink actives")
+        else:
+            print("deja actif")
+        PYEOF
+        grep -n "isMinifyEnabled\|isShrinkResources\|proguardFiles" android/app/build.gradle.kts || true
+    - name: Analyse et vrais tests du téléphone
+      run: |-
+        set -euo pipefail
+        # flutter create ajoute un exemple absent de ce dépôt et de notre application.
+        if git ls-files --error-unmatch test/widget_test.dart >/dev/null 2>&1; then
+          echo "::error::Ce test est suivi, refus de le supprimer"; exit 1
+        fi
+        rm -f test/widget_test.dart
+        flutter analyze --no-fatal-infos --no-fatal-warnings
+        # Même test, vrai SQLite et vrai repli : l'ancienne livraison doit échouer.
+        # On accepte uniquement l'assertion précise du cache froid, jamais une
+        # erreur de compilation, de connexion, ou un autre test rouge.
+        set +e
+        flutter test test/features/playlists/mobile_metadata_delivery_test.dart \
+          --plain-name 'livraison : chaque chaîne émise arrive déjà classée' \
+          --dart-define=METADATA_LEGACY_PROOF=true --reporter expanded \
+          > "$RUNNER_TEMP/metadata-legacy-proof.log" 2>&1
+        LEGACY_STATUS=$?
+        set -e
+        [ "$LEGACY_STATUS" -ne 0 ] || { echo '::error::Le repli ne reproduit plus le défaut'; exit 1; }
+        python3 - "$RUNNER_TEMP/metadata-legacy-proof.log" <<'PYPROOF'
+        import sys
+        proof = open(sys.argv[1]).read()
+        required = ['Expected: true', 'Actual: <false>',
+                    'Les écrans ne doivent plus classer la liste à froid.',
+                    'Some tests failed.']
+        if not all(value in proof for value in required):
+            raise SystemExit('NON PROUVÉ : échec différent de la livraison froide attendue')
+        print('PROUVÉ : le même test échoue sur la livraison froide avec le repli réel')
+        PYPROOF
+        # Le même test HTTP réel doit retrouver l'absence de catalogue au repli.
+        set +e
+        flutter test test/features/radio/radio_browser_http_test.dart \
+          --plain-name 'catalogue : une requête HTTP réelle charge une radio' \
+          --dart-define=RADIO_LEGACY_PROOF=true --reporter expanded \
+          > "$RUNNER_TEMP/radio-legacy-proof.log" 2>&1
+        RADIO_LEGACY_STATUS=$?
+        set -e
+        [ "$RADIO_LEGACY_STATUS" -ne 0 ] || { echo '::error::Le repli Radio ne coupe plus le catalogue'; exit 1; }
+        python3 - "$RUNNER_TEMP/radio-legacy-proof.log" <<'PYRADIO'
+        import sys
+        proof=open(sys.argv[1]).read()
+        required=['Expected: <1>', 'Actual: <0>',
+                  'Le catalogue actif doit livrer une station du vrai serveur HTTP.',
+                  'Some tests failed.']
+        if not all(value in proof for value in required):
+            raise SystemExit('NON PROUVÉ : échec différent du repli Radio attendu')
+        print('PROUVÉ : le même test HTTP échoue sur le repli Radio réel')
+        PYRADIO
+        flutter test --reporter expanded
+        dart run ci/radio_catalog_probe.dart
+    - name: Construire l’APK mobile de test, une seule tentative
+      id: apk_build
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |-
+        set -euo pipefail
+        BUILD_TS=$(date +%s)
+        BUILD_LABEL=$(ci/build_label.sh "$GITHUB_REPOSITORY" 7motion-test)
+        echo "PHONE_BUILD_LABEL=$BUILD_LABEL" >> "$GITHUB_ENV"
+        flutter build apk --release --no-tree-shake-icons --split-per-abi --target-platform android-arm64 \
+          --build-number="$BUILD_TS" --build-name="0.3.6-radio-test.${{ github.run_number }}" \
+          --obfuscate --split-debug-info=build/symbols \
+          --dart-define=APP_BUILD_TS="$BUILD_TS" --dart-define=APP_BUILD_LABEL="$BUILD_LABEL" \
+          --dart-define=GIT_SHA=${{ github.event.pull_request.head.sha }} \
+          --dart-define=PHONE_UPDATE_TAG=phone-latest --target=lib/main.dart
+        cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk build/app/outputs/flutter-apk/7motion.apk
+    - name: Vérifier identité, signature et progression du versionCode
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |-
+        set -euo pipefail
+        APK=build/app/outputs/flutter-apk/7motion.apk
+        BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+        "$BT/apksigner" verify --print-certs "$APK" > "$RUNNER_TEMP/signature.txt"
+        CERT=$(awk '/certificate SHA-256 digest/ {print $NF; exit}' "$RUNNER_TEMP/signature.txt")
+        [ "$CERT" = "5145b8e019f6d5fb96a207f2e73673fd954f799966fd598889211556cbdf9e61" ]
+        "$BT/aapt2" dump badging "$APK" > "$RUNNER_TEMP/badging.txt"
+        head -1 "$RUNNER_TEMP/badging.txt"
+        # L'outil Android lit le manifeste binaire, sans dépendre de
+        # la présentation de la sortie aapt2. L'exigence reste 24.
+        AA="$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer"
+        test -x "$AA"
+        SDK=$("$AA" manifest min-sdk "$APK")
+        SDK_BADGING=$(sed -n "s/^sdkVersion:\x27\([0-9]*\)\x27/\1/p" "$RUNNER_TEMP/badging.txt")
+        echo "minSdk manifeste=$SDK ; ancien lecteur aapt2=${SDK_BADGING:-absent}"
+        [ "$SDK" = "24" ] || { echo "::error::minSdk attendu 24, reçu $SDK"; exit 1; }
+        PKG=$(sed -n "s/^package: name='\([^']*\)'.*/\1/p" "$RUNNER_TEMP/badging.txt")
+        CODE=$(sed -n "s/.*versionCode='\([0-9]*\)'.*/\1/p" "$RUNNER_TEMP/badging.txt")
+        [ "$PKG" = "com.manzilionellm.tvking.tv_king" ]
+        "$RUNNER_TEMP/mobile-audit/bin/python" ../mission/android-app/ci/mobile/verify_apk.py "$APK"
+        for TAG in 7motion-test phone-latest; do
+          gh release download "$TAG" -R "$GITHUB_REPOSITORY" -p 7motion.apk -O "$RUNNER_TEMP/previous-$TAG.apk"
+          "$BT/apksigner" verify --print-certs "$RUNNER_TEMP/previous-$TAG.apk" > "$RUNNER_TEMP/prev-signature.txt"
+          PREV_CERT=$(awk '/certificate SHA-256 digest/ {print $NF; exit}' "$RUNNER_TEMP/prev-signature.txt")
+          [ "$PREV_CERT" = "$CERT" ]
+          "$BT/aapt2" dump badging "$RUNNER_TEMP/previous-$TAG.apk" > "$RUNNER_TEMP/prev-badging.txt"
+          PREV_CODE=$(sed -n "s/.*versionCode='\([0-9]*\)'.*/\1/p" "$RUNNER_TEMP/prev-badging.txt")
+          [ "$CODE" -gt "$PREV_CODE" ]
+          echo "versionCode précédent $PREV_CODE < nouveau $CODE"
+        done
+        SHA=$(sha256sum "$APK" | cut -d' ' -f1)
+        echo "APK_SHA256=$SHA" >> "$GITHUB_ENV"
+        echo "PHONE_VERSION_CODE=$CODE" >> "$GITHUB_ENV"
+        echo "signature $CERT ; SHA-256 $SHA"
+    - name: Construire et contrôler le bundle de la fiche Play existante
+      id: play_build
+      if: ${{ inputs.play_aab }}
+      env:
+        KS_PW: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        KS_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        KS_KEY_PW: ${{ secrets.ANDROID_KEY_PASSWORD }}
+      run: |-
+        set -euo pipefail
+        # L'APK de test reste distinct. Le Store doit garder son propre identifiant.
+        python3 ../mission/android-app/ci/mobile/prepare_play.py
+        # 1723 est déjà publié ; la préparation suivante doit prendre 1724.
+        # Incrémenter ce code à chaque release Store ; le timestamp reste
+        # réservé au canal de test et à la date de construction de l’app.
+        PLAY_VERSION_CODE=1724
+        flutter build appbundle --release --no-tree-shake-icons \
+          --build-number="$PLAY_VERSION_CODE" --build-name=0.3.6 \
+          --obfuscate --split-debug-info=build/play-symbols \
+          --dart-define=APP_BUILD_TS="$PHONE_VERSION_CODE" --dart-define=APP_BUILD_LABEL="$PHONE_BUILD_LABEL" \
+          --dart-define=GIT_SHA=${{ github.event.pull_request.head.sha }} \
+          --dart-define=PLAY_BUILD=true --target=lib/main.dart
+        mkdir -p build/play-review
+        cp build/app/outputs/bundle/release/app-release.aab build/play-review/7motion.aab
+        curl --fail --silent --show-error --location \
+          https://github.com/google/bundletool/releases/download/1.18.3/bundletool-all-1.18.3.jar \
+          --output "$RUNNER_TEMP/bundletool.jar"
+        printf '%s  %s\n' a099cfa1543f55593bc2ed16a70a7c67fe54b1747bb7301f37fdfd6d91028e29 "$RUNNER_TEMP/bundletool.jar" | sha256sum -c -
+        java -jar "$RUNNER_TEMP/bundletool.jar" validate --bundle=build/play-review/7motion.aab
+        export KS_KEY_PW="${KS_KEY_PW:-$KS_PW}"
+        # bundletool accepte pass: ou file:, mais pas env:. Des fichiers
+        # temporaires privés évitent de placer les secrets dans ses arguments.
+        PLAY_PASS_DIR=$(mktemp -d "$RUNNER_TEMP/7motion-passwords.XXXXXX")
+        trap 'rm -rf "$PLAY_PASS_DIR"' EXIT
+        umask 077
+        printf '%s\n' "$KS_PW" > "$PLAY_PASS_DIR/store.pass"
+        printf '%s\n' "$KS_KEY_PW" > "$PLAY_PASS_DIR/key.pass"
+        java -jar "$RUNNER_TEMP/bundletool.jar" build-apks \
+          --bundle=build/play-review/7motion.aab --output=build/play-review/7motion.apks --mode=universal \
+          --ks=android/app/release.jks --ks-pass="file:$PLAY_PASS_DIR/store.pass" \
+          --ks-key-alias="${KS_ALIAS:-sevenmotion}" --key-pass="file:$PLAY_PASS_DIR/key.pass"
+        unzip -p build/play-review/7motion.apks universal.apk > build/play-review/7motion-play.apk
+        "$RUNNER_TEMP/mobile-audit/bin/python" ../mission/android-app/ci/mobile/verify_apk.py \
+          build/play-review/7motion-play.apk --play | tee build/play-review/native-audit.json
+        python3 - "$PLAY_VERSION_CODE" <<'PLAYCODE'
+        import json,sys
+        report=json.load(open("build/play-review/native-audit.json"))
+        assert report["versionCode"] == sys.argv[1], "Code Play différent du code de release"
+        assert 1721 < int(report["versionCode"]) < 2100000000, "Code Play hors progression autorisée"
+        PLAYCODE
+        BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+        "$BT/zipalign" -c -P 16 4 build/play-review/7motion-play.apk
+        sha256sum build/play-review/7motion.aab build/play-review/7motion-play.apk > build/play-review/SHA256SUMS
+        cat build/play-review/SHA256SUMS
+        echo "PLAY_AAB_SHA256=$(sha256sum build/play-review/7motion.aab | cut -d' ' -f1)" >> "$GITHUB_ENV"
+        echo "PROUVÉ : bundle Play validé, composants des notifications présents, bibliothèques et ZIP alignés 16 Ko"
+    - name: Conserver le bundle et sa preuve native
+      if: ${{ !cancelled() && steps.play_build.outcome == 'success' }}
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: 7motion-play-review-${{ github.event.pull_request.head.sha }}
+        path: |
+          phone/build/play-review/7motion.aab
+          phone/build/play-review/7motion-play.apk
+          phone/build/play-review/native-audit.json
+          phone/build/play-review/SHA256SUMS
+        if-no-files-found: error
+        retention-days: 30
+    - name: Conserver l’APK exact
+      # Garder le binaire compilé pour diagnostiquer un contrôle en
+      # échec. La livraison reste interdite si le contrôle a échoué.
+      if: ${{ !cancelled() && steps.apk_build.outcome == 'success' }}
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: 7motion-sport-test-${{ github.event.pull_request.head.sha }}
+        path: phone/build/app/outputs/flutter-apk/7motion.apk
+        if-no-files-found: error
+        retention-days: 30
+    - name: Conserver la référence clients lue avant le build
+      run: |
+        mkdir -p build/mobile-proof
+        cp "$RUNNER_TEMP/client-before.json" build/mobile-proof/client-before.json
+    - name: Conserver la référence sans secret
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: 7motion-client-reference-${{ github.event.pull_request.head.sha }}
+        path: phone/build/mobile-proof/client-before.json
+        if-no-files-found: error
+        retention-days: 7
+
+  publish:
+    name: Livrer le téléphone après les contrôles
+    needs: [phone]
+    if: needs.phone.result == 'success' && github.actor == github.repository_owner && github.triggering_actor == github.repository_owner && github.repository == 'manzilionellm-dotcom/tvking'
+    environment: zuno-app-test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    defaults:
+      run:
+        working-directory: phone
+    env:
+      PHONE_VERSION_CODE: ${{ needs.phone.outputs.version-code }}
+      PHONE_BUILD_LABEL: ${{ needs.phone.outputs.build-label }}
+      APK_SHA256: ${{ needs.phone.outputs.apk-sha }}
+      PLAY_AAB_SHA256: ${{ needs.phone.outputs.aab-sha }}
+    steps:
+      - name: Relire les protections du commit testé
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Refuser tout autre canal ou auteur
+        working-directory: .
+        env:
+          APP_OPERATION: test
+          APP_PUBLISH: 'false'
+          APP_TEST_BOX: 'true'
+        run: node .github/app-release-guard.mjs
+      - name: Télécharger l’APK mobile exact
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: 7motion-sport-test-${{ github.event.pull_request.head.sha }}
+          path: phone/build/app/outputs/flutter-apk
+      - name: Relire la référence clients
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: 7motion-client-reference-${{ github.event.pull_request.head.sha }}
+          path: phone/build/mobile-proof
+      - name: Relire le bundle éventuel
+        if: ${{ inputs.play_aab }}
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: 7motion-play-review-${{ github.event.pull_request.head.sha }}
+          path: phone/build/play-review
+      - name: Vérifier l’empreinte avant toute écriture
+        run: |
+          printf '%s  %s\n' "$APK_SHA256" build/app/outputs/flutter-apk/7motion.apk | sha256sum -c -
+          cp build/mobile-proof/client-before.json "$RUNNER_TEMP/client-before.json"
+      - name: Livrer seulement sur 7motion-test et comparer les clients
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |-
+          set -euo pipefail
+          # Canal fixe, aucune entrée permettant de viser les clients.
+          APK=build/app/outputs/flutter-apk/7motion.apk
+          cat > "$RUNNER_TEMP/notes.md" <<EOF
+          7 MOTION téléphone — TEST Radios du monde et Sport gratuit.
+          Version : 0.3.6-radio-test.${{ github.run_number }} ; versionCode : $PHONE_VERSION_CODE
+          SHA-256 : $APK_SHA256
+          Base téléphone : 37fdf3305c5de9d35e20fd6567df38008fc7a7ee
+          Correction : ${{ github.event.pull_request.head.sha }}
+          Radios : recherche mondiale, pays, langues, genres, favoris par profil.
+          Catalogue public Radio Browser ; stations et disponibilité non garanties.
+          Repli zuno.mobile.radio_legacy éteint par défaut : true restitue l'accueil sans radios.
+          Sport OpenLigaDB et notifications précédemment validés conservés.
+          Clients phone-latest inchangés. Aucune publication Store ni mise à jour Zuno.
+          Lecture et écoute sur téléphone physique : NON PROUVÉ.
+          EOF
+          gh release upload 7motion-test "$APK" --clobber -R "$GITHUB_REPOSITORY"
+          if [ "${{ inputs.play_aab }}" = "true" ]; then
+            gh release upload 7motion-test build/play-review/7motion.aab --clobber -R "$GITHUB_REPOSITORY"
+          fi
+          gh release edit 7motion-test --prerelease --latest=false --notes-file "$RUNNER_TEMP/notes.md" -R "$GITHUB_REPOSITORY"
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/7motion-test" > "$RUNNER_TEMP/test-after.json"
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/phone-latest" > "$RUNNER_TEMP/client-after.json"
+          python3 - <<'PYCHECK'
+          import json,os
+          from pathlib import Path
+          a=json.loads(Path(os.environ['RUNNER_TEMP'], 'client-before.json').read_text())
+          b=json.loads(Path(os.environ['RUNNER_TEMP'], 'client-after.json').read_text())
+          # Télécharger l'APK de référence incrémente download_count : cela ne
+          # modifie ni le fichier ni sa signature. Seul ce compteur de lecture est exclu.
+          for release in (a,b):
+            for asset in release['assets']: asset.pop('download_count',None)
+          assert a == b, 'La release téléphone clients a changé'
+          test=json.loads(Path(os.environ['RUNNER_TEMP'], 'test-after.json').read_text())
+          assets=[x for x in test['assets'] if x['name']=='7motion.apk']
+          assert len(assets)==1
+          assert assets[0]['digest']=='sha256:'+os.environ['APK_SHA256'], 'Empreinte publiée différente'
+          assert assets[0]['size']==Path('build/app/outputs/flutter-apk/7motion.apk').stat().st_size
+          # Le bundle éventuel est vérifié à sa construction. Cette mission livre l'APK.
+          print('PROUVÉ : APK publié identique au fichier signé et testé')
+          print('PROUVÉ : phone-latest identique avant et après')
+          PYCHECK
+
+

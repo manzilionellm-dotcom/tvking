@@ -16,8 +16,8 @@
 #    4. Commit le tout sur la branche `claude/worker-prod-snapshot` (jamais
 #       sur main) → on peut ensuite diff / patcher / redéployer À L'IDENTIQUE.
 #
-#  Secrets réutilisés (déjà posés pour set-admin-password.yml) :
-#  CLOUDFLARE_API_TOKEN + CLOUDFLARE_ACCOUNT_ID. Aucun secret n'est écrit
+#  Accès séparé, limité à la lecture :
+#  CLOUDFLARE_READ_TOKEN + CLOUDFLARE_ACCOUNT_ID. Aucun secret n'est écrit
 #  dans le dépôt : seulement le CODE du Worker (ses secrets d'exécution,
 #  comme ADMIN_SECRET, ne sont PAS téléchargeables par cette API).
 # =========================================================
@@ -36,20 +36,24 @@ env:
 
 jobs:
   snapshot:
+    if: github.event_name == 'workflow_dispatch' && github.actor == github.repository_owner && github.triggering_actor == github.repository_owner && github.repository == 'manzilionellm-dotcom/tvking'
+    environment: zuno-panel-audit
     name: Télécharger le Worker déployé
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Télécharger (API Cloudflare, GET uniquement)
         env:
-          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_READ_TOKEN }}
           CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           set -e
-          test -n "$CF_TOKEN" || { echo "::error::CLOUDFLARE_API_TOKEN absent"; exit 1; }
+          test -n "$CF_TOKEN" || { echo "::error::CLOUDFLARE_READ_TOKEN absent"; exit 1; }
           test -n "$CF_ACCOUNT" || { echo "::error::CLOUDFLARE_ACCOUNT_ID absent"; exit 1; }
           API="https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT"
           mkdir -p "$OUT_DIR"
@@ -101,15 +105,20 @@ jobs:
           wc -l "$OUT_DIR"/modules/* || true
 
       - name: Pousser sur la branche de snapshot
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -e
           git config user.name "worker-prod-snapshot[bot]"
           git config user.email "noreply@github.com"
-          git checkout -B "$SNAPSHOT_BRANCH"
+          SNAPSHOT_BRANCH="$SNAPSHOT_BRANCH/$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          git checkout -b "$SNAPSHOT_BRANCH"
           git add -f "$OUT_DIR"
-          git commit -m "chore(cloudflare): snapshot du Worker $SCRIPT_NAME en production ($(cat "$OUT_DIR/SNAPSHOT_AT.txt"))" \
-            || echo "rien de nouveau"
-          git push -f origin "$SNAPSHOT_BRANCH"
+          git commit -m "Photographier le Worker de production ($(cat "$OUT_DIR/SNAPSHOT_AT.txt"))" \
+            -m "Co-Authored-By: Codex <noreply@openai.com>" \
+            -m "Claude-Session: workflow-worker-prod-snapshot-$GITHUB_RUN_ID"
+          gh auth setup-git --hostname github.com
+          git push origin "$SNAPSHOT_BRANCH"
           {
             echo "## Snapshot Worker prod"
             echo "- branche : \`$SNAPSHOT_BRANCH\`"
@@ -117,3 +126,4 @@ jobs:
             echo '```'; cat "$OUT_DIR/workers-list.tsv"; echo '```'
             echo "Pages :"; echo '```'; cat "$OUT_DIR/pages-projects.jsonl"; echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+

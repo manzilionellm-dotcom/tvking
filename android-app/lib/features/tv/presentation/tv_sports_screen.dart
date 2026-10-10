@@ -12,6 +12,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
+import '../../../core/app/repair_flags.dart';
 
 import '../../sports/data/sports_repository.dart';
 import '../../sports/domain/sport_models.dart';
@@ -20,6 +21,8 @@ import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
 import 'tv_shell.dart';
 import 'tv_team_picker_screen.dart';
+import 'tv_sports_status.dart';
+import 'tv_football_scores_screen.dart';
 
 class TvSportsScreen extends StatefulWidget {
   const TvSportsScreen({super.key});
@@ -61,6 +64,10 @@ class _TvSportsScreenState extends State<TvSportsScreen> {
     if (t != null) await SportsRepository.instance.addFavorite(t);
   }
 
+  Future<void> _openScores() => Navigator.of(context).push<void>(
+    MaterialPageRoute<void>(builder: (_) => const TvShell(child: TvFootballScoresScreen())),
+  );
+
   @override
   Widget build(BuildContext context) {
     if (_favs.isEmpty) return _emptyState();
@@ -85,6 +92,9 @@ class _TvSportsScreenState extends State<TvSportsScreen> {
                     fontWeight: FontWeight.w800,
                     color: TvTokens.text)),
             const Spacer(),
+            if (!RepairFlags.sportsCommunityOff)
+              _PillButton(icon: Icons.scoreboard_outlined,
+                  label: context.l10n.sportsFootballTitle, onSelect: _openScores),
             _PillButton(
                 icon: Icons.add_rounded, label: context.l10n.tvAdd, onSelect: _addTeam),
           ],
@@ -102,6 +112,7 @@ class _TvSportsScreenState extends State<TvSportsScreen> {
                 events: SportsRepository.instance.eventsFor(t.id),
                 autofocus: i == 0,
                 onRemove: () => SportsRepository.instance.removeFavorite(t.id),
+                onRetry: () => SportsRepository.instance.refreshTeam(t.id),
               );
             },
           ),
@@ -133,6 +144,9 @@ class _TvSportsScreenState extends State<TvSportsScreen> {
                 label: context.l10n.tvPickMyTeam,
                 autofocus: true,
                 onSelect: _addTeam),
+            if (!RepairFlags.sportsCommunityOff)
+              _PillButton(icon: Icons.scoreboard_outlined,
+                  label: context.l10n.sportsFootballTitle, onSelect: _openScores),
           ],
         ),
       );
@@ -143,11 +157,13 @@ class _TeamSection extends StatelessWidget {
     required this.team,
     required this.events,
     required this.onRemove,
+    required this.onRetry,
     this.autofocus = false,
   });
   final SportTeam team;
   final SportsEvents events;
   final VoidCallback onRemove;
+  final VoidCallback onRetry;
   final bool autofocus;
 
   @override
@@ -197,6 +213,8 @@ class _TeamSection extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 14),
+          if (events.loading || events.failure != null)
+            TvSportsStatus(loading: events.loading, failure: events.failure, onRetry: onRetry),
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
