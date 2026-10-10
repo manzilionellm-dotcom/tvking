@@ -141,14 +141,37 @@ avec le certificat attendu et trois architectures contrôlées. La livraison tes
 est refusée à `14:17:23` : `signature ? ≠ clé des box → pas de publication test`.
 Cause : `APK_CERT` mesuré dans le build n'était pas transmis au publisher séparé.
 Le correctif ajoute une sortie de job et sa lecture, sans supprimer la vérification
-de certificat. Nouveau test rouge puis 60 contrôles verts ; preuve native de la
-livraison après ce correctif encore à obtenir.
+de certificat. Nouveau test rouge puis 60 contrôles verts.
+
+PROUVÉ après correction, commit `e24218ce`,
+[run TV `38059166895`](https://github.com/manzilionellm-dotcom/tvking/actions/runs/38059166895) :
+60 contrôles de protection, sécurité Worker et 550 tests Flutter verts.
+`APK_CERT` est présent dans le publisher avec la valeur mesurée par le build.
+APK `107-test.133`, versionCode `1791642333`, livré uniquement sur `zuno-tv-test`
+via `build-zuno-tv.yml`, `test_box=true`, `publish=false`, `play_aab=false`.
+Journal à `14:33:41` : `✓ box de test`, avec le lien de téléchargement attendu.
+Actif publié `628185145`, 54 815 696 octets, SHA-256
+`94251b2445a32f421ba3981e0729ec3f5e000a2f85a0b52b9452898b4a390e0c`.
+L'empreinte de l'actif GitHub est identique à celle relevée par le publisher.
+
+PROUVÉ par relecture des métadonnées avant et après les livraisons :
+`zuno-tv`, `phone-latest` et `zuno-windows` gardent les mêmes identifiants,
+tailles, empreintes et dates des actifs. La production panel reste au commit
+`2b7d1ea5`, avec le gel actif et aucun contournement. Aucune mutation Cloudflare
+n'a été exécutée ; la comparaison d'une fiche de référence s'impose lors du
+prochain déploiement autorisé.
+
+PROUVÉ : le contrôle du site web, hors périmètre, échoue au run `38059161006`
+sur une résolution de module Turbopack des polices Google (16 erreurs). Le run
+indépendant `38059166754` du même commit de tête réussit. La cause de cette
+différence est NON PROUVÉE. Aucun réessai de ce job ni modification du site
+Next.js n'est effectué pour masquer cet échec.
 
 ## Vérifications restant à obtenir
 
-NON PROUVÉ à cette étape : livraison du build TV après correction du passage
-de certificat et CI du dernier contrôle de signature.
-L'installation sur SHIELD et téléphone nécessite une preuve matérielle distincte.
+NON PROUVÉ : installation du nouvel APK sur SHIELD et téléphone, et résultats
+physiques. Les fichiers construits et leurs signatures sont vérifiés ; une photo
+de la boîte noire après mise à jour est nécessaire pour prouver l'installation.
 
 NON PROUVÉ : protection administrative des branches app, des environnements
 `zuno-app-test`, `zuno-app-production`, `zuno-panel-audit`, et disponibilité limitée
@@ -197,6 +220,13 @@ interdire les auto-revues bloquerait aussi ses propres lancements : cette option
 reste désactivée. La référence exacte de PR est nécessaire pour la preuve
 native ; un joker autorisant toutes les PR exposerait inutilement les secrets.
 La relecture des paramètres effectifs reste NON PROUVÉE.
+
+La passation historique dispose du patch additif
+`docs/patches/handoff-securite-20261010.patch`, sur la base actuelle de 964 lignes.
+Sa vérification CI utilise le vrai document. NON PROUVÉ : application de cet
+ajout dans `HANDOFF-PANEL-BOX.md`, car le connecteur ne propose pas d'ajout
+ciblé sans réémettre l'ensemble du document historique contenant des données
+privées. Le rapport et le patch ne contiennent aucune de ces données.
 
 La connexion app/Worker possède un header `X-Device-Secret` dans le code app,
 et l'updater contrôle taille et SHA-256. La présence de ces fonctions dans le

@@ -54,6 +54,8 @@ jobs:
           node-version: '24.21.0'
           package-manager-cache: false
       - run: node --test .github/security-config.test.mjs .github/app-release-guard.test.mjs .github/release-cleanup.test.mjs
+      - name: Vérifier le patch additif de passation sur le vrai document
+        run: git apply --unidiff-zero --check docs/patches/handoff-securite-20261010.patch
 
   flutter:
     name: flutter analyze + test
