@@ -24,26 +24,30 @@ concurrency:
   cancel-in-progress: false
 jobs:
   phone:
+    outputs:
+      version-code: ${{ env.PHONE_VERSION_CODE }}
+      build-label: ${{ env.PHONE_BUILD_LABEL }}
+      apk-sha: ${{ env.APK_SHA256 }}
+      aab-sha: ${{ env.PLAY_AAB_SHA256 }}
+    environment: zuno-app-test
     name: 'Téléphone : tests et APK Radios du monde'
-    if: github.event_name == 'pull_request' && github.repository == 'manzilionellm-dotcom/tvking' && github.actor == github.repository_owner && github.event.pull_request.user.login ==
+    if: github.event_name == 'pull_request' && github.repository == 'manzilionellm-dotcom/tvking' && github.actor == github.repository_owner && github.triggering_actor == github.repository_owner && github.event.pull_request.user.login ==
       github.repository_owner && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'ccr-b93e1afd-gwirw0' && github.event.pull_request.base.ref
       == 'ccr-sport-preuve-20261008'
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    permissions:
-      contents: write
     defaults:
       run:
         working-directory: phone
     steps:
     - name: Récupérer la correction exacte
-      uses: actions/checkout@v4
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         ref: ${{ github.event.pull_request.head.sha }}
         path: mission
         persist-credentials: false
     - name: Récupérer la base mobile validée sans fusion
-      uses: actions/checkout@v4
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         ref: 37fdf3305c5de9d35e20fd6567df38008fc7a7ee
         path: phone
@@ -61,15 +65,17 @@ jobs:
         git diff --check
         gh api "repos/$GITHUB_REPOSITORY/releases/tags/phone-latest" > "$RUNNER_TEMP/client-before.json"
     - name: Setup Java 17 (Temurin)
-      uses: actions/setup-java@v4
+      uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
       with:
         distribution: temurin
         java-version: '17'
     - name: Setup Flutter
-      uses: subosito/flutter-action@v2
+      uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
       with:
+        flutter-version: '3.47.7'
         channel: stable
-        cache: true
+        cache: false
+      pub-cache: false
     - name: Print exact Flutter version
       run: |
         flutter --version
@@ -579,7 +585,7 @@ jobs:
         echo "PROUVÉ : bundle Play validé, composants des notifications présents, bibliothèques et ZIP alignés 16 Ko"
     - name: Conserver le bundle et sa preuve native
       if: ${{ !cancelled() && steps.play_build.outcome == 'success' }}
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       with:
         name: 7motion-play-review-${{ github.event.pull_request.head.sha }}
         path: |
@@ -593,56 +599,119 @@ jobs:
       # Garder le binaire compilé pour diagnostiquer un contrôle en
       # échec. La livraison reste interdite si le contrôle a échoué.
       if: ${{ !cancelled() && steps.apk_build.outcome == 'success' }}
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       with:
         name: 7motion-sport-test-${{ github.event.pull_request.head.sha }}
         path: phone/build/app/outputs/flutter-apk/7motion.apk
         if-no-files-found: error
         retention-days: 30
-    - name: Livrer seulement sur 7motion-test et comparer les clients
-      env:
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: |-
-        set -euo pipefail
-        # Canal fixe, aucune entrée permettant de viser les clients.
-        APK=build/app/outputs/flutter-apk/7motion.apk
-        cat > "$RUNNER_TEMP/notes.md" <<EOF
-        7 MOTION téléphone — TEST Radios du monde et Sport gratuit.
-        Version : 0.3.6-radio-test.${{ github.run_number }} ; versionCode : $PHONE_VERSION_CODE
-        SHA-256 : $APK_SHA256
-        Base téléphone : 37fdf3305c5de9d35e20fd6567df38008fc7a7ee
-        Correction : ${{ github.event.pull_request.head.sha }}
-        Radios : recherche mondiale, pays, langues, genres, favoris par profil.
-        Catalogue public Radio Browser ; stations et disponibilité non garanties.
-        Repli zuno.mobile.radio_legacy éteint par défaut : true restitue l'accueil sans radios.
-        Sport OpenLigaDB et notifications précédemment validés conservés.
-        Clients phone-latest inchangés. Aucune publication Store ni mise à jour Zuno.
-        Lecture et écoute sur téléphone physique : NON PROUVÉ.
-        EOF
-        gh release upload 7motion-test "$APK" --clobber -R "$GITHUB_REPOSITORY"
-        if [ "${{ inputs.play_aab }}" = "true" ]; then
-          gh release upload 7motion-test build/play-review/7motion.aab --clobber -R "$GITHUB_REPOSITORY"
-        fi
-        gh release edit 7motion-test --prerelease --latest=false --notes-file "$RUNNER_TEMP/notes.md" -R "$GITHUB_REPOSITORY"
-        gh api "repos/$GITHUB_REPOSITORY/releases/tags/7motion-test" > "$RUNNER_TEMP/test-after.json"
-        gh api "repos/$GITHUB_REPOSITORY/releases/tags/phone-latest" > "$RUNNER_TEMP/client-after.json"
-        python3 - <<'PYCHECK'
-        import json,os
-        from pathlib import Path
-        a=json.loads(Path(os.environ['RUNNER_TEMP'], 'client-before.json').read_text())
-        b=json.loads(Path(os.environ['RUNNER_TEMP'], 'client-after.json').read_text())
-        # Télécharger l'APK de référence incrémente download_count : cela ne
-        # modifie ni le fichier ni sa signature. Seul ce compteur de lecture est exclu.
-        for release in (a,b):
-          for asset in release['assets']: asset.pop('download_count',None)
-        assert a == b, 'La release téléphone clients a changé'
-        test=json.loads(Path(os.environ['RUNNER_TEMP'], 'test-after.json').read_text())
-        assets=[x for x in test['assets'] if x['name']=='7motion.apk']
-        assert len(assets)==1
-        assert assets[0]['digest']=='sha256:'+os.environ['APK_SHA256'], 'Empreinte publiée différente'
-        assert assets[0]['size']==Path('build/app/outputs/flutter-apk/7motion.apk').stat().st_size
-        # Le bundle éventuel est vérifié à sa construction. Cette mission livre l'APK.
-        print('PROUVÉ : APK publié identique au fichier signé et testé')
-        print('PROUVÉ : phone-latest identique avant et après')
-        PYCHECK
+    - name: Conserver la référence clients lue avant le build
+      run: |
+        mkdir -p build/mobile-proof
+        cp "$RUNNER_TEMP/client-before.json" build/mobile-proof/client-before.json
+    - name: Conserver la référence sans secret
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: 7motion-client-reference-${{ github.event.pull_request.head.sha }}
+        path: phone/build/mobile-proof/client-before.json
+        if-no-files-found: error
+        retention-days: 7
+
+  publish:
+    name: Livrer le téléphone après les contrôles
+    needs: [phone]
+    if: needs.phone.result == 'success' && github.actor == github.repository_owner && github.triggering_actor == github.repository_owner && github.repository == 'manzilionellm-dotcom/tvking'
+    environment: zuno-app-test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    defaults:
+      run:
+        working-directory: phone
+    env:
+      PHONE_VERSION_CODE: ${{ needs.phone.outputs.version-code }}
+      PHONE_BUILD_LABEL: ${{ needs.phone.outputs.build-label }}
+      APK_SHA256: ${{ needs.phone.outputs.apk-sha }}
+      PLAY_AAB_SHA256: ${{ needs.phone.outputs.aab-sha }}
+    steps:
+      - name: Relire les protections du commit testé
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Refuser tout autre canal ou auteur
+        working-directory: .
+        env:
+          APP_OPERATION: test
+          APP_PUBLISH: 'false'
+          APP_TEST_BOX: 'true'
+        run: node .github/app-release-guard.mjs
+      - name: Télécharger l’APK mobile exact
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: 7motion-sport-test-${{ github.event.pull_request.head.sha }}
+          path: phone/build/app/outputs/flutter-apk
+      - name: Relire la référence clients
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: 7motion-client-reference-${{ github.event.pull_request.head.sha }}
+          path: phone/build/mobile-proof
+      - name: Relire le bundle éventuel
+        if: ${{ inputs.play_aab }}
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: 7motion-play-review-${{ github.event.pull_request.head.sha }}
+          path: phone/build/play-review
+      - name: Vérifier l’empreinte avant toute écriture
+        run: |
+          printf '%s  %s\n' "$APK_SHA256" build/app/outputs/flutter-apk/7motion.apk | sha256sum -c -
+          cp build/mobile-proof/client-before.json "$RUNNER_TEMP/client-before.json"
+      - name: Livrer seulement sur 7motion-test et comparer les clients
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |-
+          set -euo pipefail
+          # Canal fixe, aucune entrée permettant de viser les clients.
+          APK=build/app/outputs/flutter-apk/7motion.apk
+          cat > "$RUNNER_TEMP/notes.md" <<EOF
+          7 MOTION téléphone — TEST Radios du monde et Sport gratuit.
+          Version : 0.3.6-radio-test.${{ github.run_number }} ; versionCode : $PHONE_VERSION_CODE
+          SHA-256 : $APK_SHA256
+          Base téléphone : 37fdf3305c5de9d35e20fd6567df38008fc7a7ee
+          Correction : ${{ github.event.pull_request.head.sha }}
+          Radios : recherche mondiale, pays, langues, genres, favoris par profil.
+          Catalogue public Radio Browser ; stations et disponibilité non garanties.
+          Repli zuno.mobile.radio_legacy éteint par défaut : true restitue l'accueil sans radios.
+          Sport OpenLigaDB et notifications précédemment validés conservés.
+          Clients phone-latest inchangés. Aucune publication Store ni mise à jour Zuno.
+          Lecture et écoute sur téléphone physique : NON PROUVÉ.
+          EOF
+          gh release upload 7motion-test "$APK" --clobber -R "$GITHUB_REPOSITORY"
+          if [ "${{ inputs.play_aab }}" = "true" ]; then
+            gh release upload 7motion-test build/play-review/7motion.aab --clobber -R "$GITHUB_REPOSITORY"
+          fi
+          gh release edit 7motion-test --prerelease --latest=false --notes-file "$RUNNER_TEMP/notes.md" -R "$GITHUB_REPOSITORY"
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/7motion-test" > "$RUNNER_TEMP/test-after.json"
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/phone-latest" > "$RUNNER_TEMP/client-after.json"
+          python3 - <<'PYCHECK'
+          import json,os
+          from pathlib import Path
+          a=json.loads(Path(os.environ['RUNNER_TEMP'], 'client-before.json').read_text())
+          b=json.loads(Path(os.environ['RUNNER_TEMP'], 'client-after.json').read_text())
+          # Télécharger l'APK de référence incrémente download_count : cela ne
+          # modifie ni le fichier ni sa signature. Seul ce compteur de lecture est exclu.
+          for release in (a,b):
+            for asset in release['assets']: asset.pop('download_count',None)
+          assert a == b, 'La release téléphone clients a changé'
+          test=json.loads(Path(os.environ['RUNNER_TEMP'], 'test-after.json').read_text())
+          assets=[x for x in test['assets'] if x['name']=='7motion.apk']
+          assert len(assets)==1
+          assert assets[0]['digest']=='sha256:'+os.environ['APK_SHA256'], 'Empreinte publiée différente'
+          assert assets[0]['size']==Path('build/app/outputs/flutter-apk/7motion.apk').stat().st_size
+          # Le bundle éventuel est vérifié à sa construction. Cette mission livre l'APK.
+          print('PROUVÉ : APK publié identique au fichier signé et testé')
+          print('PROUVÉ : phone-latest identique avant et après')
+          PYCHECK
+
 
