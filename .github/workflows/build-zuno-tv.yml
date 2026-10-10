@@ -182,6 +182,7 @@ jobs:
       version-name: ${{ env.TV_VERSION_NAME }}
       version-code: ${{ env.TV_BUILD_NUMBER }}
       signing: ${{ env.SIGNING }}
+      apk-cert: ${{ env.APK_CERT }}
       aab-ready: ${{ env.AAB_READY }}
     name: Build Zuno TV APK
     if: >-
@@ -655,6 +656,7 @@ jobs:
       TV_VERSION_NAME: ${{ needs.build-tv.outputs.version-name }}
       TV_BUILD_NUMBER: ${{ needs.build-tv.outputs.version-code }}
       SIGNING: ${{ needs.build-tv.outputs.signing }}
+      APK_CERT: ${{ needs.build-tv.outputs.apk-cert }}
       AAB_READY: ${{ needs.build-tv.outputs.aab-ready }}
     steps:
       - name: Relire les protections du même commit

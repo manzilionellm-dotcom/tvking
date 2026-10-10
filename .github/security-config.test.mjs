@@ -71,6 +71,16 @@ test('le publisher TV relit les artefacts aux chemins réellement utilisés par 
   assert.match(publish, /name: Télécharger l’AAB seulement si construit[\s\S]*?path: android-app\/build\/app\/outputs\/bundle\/release/);
 });
 
+test('la preuve de signature réellement mesurée par le build traverse les jobs TV', () => {
+  const build = tv.match(/^  build-tv:\n([\s\S]*?)(?=^  [a-z][\w-]*:|$(?![\s\S]))/m)?.[1];
+  const publish = tv.match(/^  publish:\n([\s\S]*)/m)?.[1];
+  assert.ok(build && publish);
+  assert.match(build, /apk-cert: \$\{\{ env\.APK_CERT \}\}/);
+  assert.match(build, /echo "APK_CERT=\$CERT" >> "\$GITHUB_ENV"/);
+  assert.match(publish, /APK_CERT: \$\{\{ needs\.build-tv\.outputs\.apk-cert \}\}/);
+  assert.match(publish, /\[ "\$\{APK_CERT:-\}" = "\$EXPECTED_CERT" \]/);
+});
+
 test('le build mobile ne peut modifier aucune release', () => {
   const build = phone.match(/^  phone:\n([\s\S]*?)(?=^  [a-z][\w-]*:|$(?![\s\S]))/m)?.[1];
   assert.ok(build);

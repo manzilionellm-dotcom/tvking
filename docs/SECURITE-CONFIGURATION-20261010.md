@@ -27,7 +27,7 @@ Causes observées :
 
 ## Correctifs préparés
 
-PROUVÉ localement : 82 contrôles panel et 59 contrôles apps réussis, sans test
+PROUVÉ localement : 82 contrôles panel et 60 contrôles apps réussis, sans test
 ignoré. Les assertions de régression sont conservées, avec la correction
 documentée ci-dessous du contrôle de secret historique. Des contre-preuves
 exécutent la vraie garde avec gel, autre auteur, autre relance, PR étrangère,
@@ -122,10 +122,32 @@ les 58 contrôles de configuration, la sécurité Worker et les 550 tests Flutte
 réussissent (deux tests historiquement ignorés). Les jobs natifs TV et mobile
 sont lancés après ces barrières, avec gardes acceptées et SDK fixe.
 
+PROUVÉ au commit `8e87600d` : configuration panel (82 tests), Worker en dry-run,
+stabilité et E2E verts aux runs `38058388936`, `38058388849`, `38058388843`.
+Au commit apps `727ccb6c`, les 59 contrôles et les 550 tests Flutter sont verts
+au run `38058436645`. L'analyse donne 244 infos et 32 avertissements, exactement
+identiques ligne par ligne au run précédent ; aucun diagnostic fatal. Les options
+d'analyse historiques sont conservées.
+
+PROUVÉ, téléphone au run `38058107294` : 1 485 tests réussis, 36 ignorés par
+la base mobile historique, contre-preuves des replis Sport et Radio en échec
+attendu. L'APK ARM64 signé est livré sur `7motion-test`, versionCode `1791643420`,
+empreinte commençant par `52f65f1a91da`. Journal du publisher :
+`PROUVÉ : APK publié identique au fichier signé et testé` et
+`PROUVÉ : phone-latest identique avant et après`.
+
+PROUVÉ, TV au même run : APK `107-test.130`, versionCode `1791641365`, signé
+avec le certificat attendu et trois architectures contrôlées. La livraison test
+est refusée à `14:17:23` : `signature ? ≠ clé des box → pas de publication test`.
+Cause : `APK_CERT` mesuré dans le build n'était pas transmis au publisher séparé.
+Le correctif ajoute une sortie de job et sa lecture, sans supprimer la vérification
+de certificat. Nouveau test rouge puis 60 contrôles verts ; preuve native de la
+livraison après ce correctif encore à obtenir.
+
 ## Vérifications restant à obtenir
 
-NON PROUVÉ à cette étape : fin des builds natifs TV et mobile après séparation
-des publishers, livraison des versions test et CI du dernier contrôle de secret.
+NON PROUVÉ à cette étape : livraison du build TV après correction du passage
+de certificat et CI du dernier contrôle de signature.
 L'installation sur SHIELD et téléphone nécessite une preuve matérielle distincte.
 
 NON PROUVÉ : protection administrative des branches app, des environnements
@@ -160,6 +182,21 @@ et de demander un jeton d'écriture ; les gardes de ces fichiers ne suffisent pa
 à arrêter ce contournement. Les droits des collaborateurs, environnements et
 secrets globaux doivent donc être relus ensemble. Le propriétaire reste le seul
 à ouvrir les branches validées et approuver l'accès aux secrets de livraison.
+
+Réglages d'environnement prêts à relire, avant toute application :
+
+| Environnement | Branches/références autorisées | Approbateur |
+| --- | --- | --- |
+| `zuno-panel-production` | `claude/panel-mise-en-ligne` | propriétaire |
+| `zuno-panel-audit` | `ccr-b93e1afd-gwirw0` | propriétaire |
+| `zuno-app-production` | `ccr-b93e1afd-gwirw0` | propriétaire |
+| `zuno-app-test` | `ccr-b93e1afd-gwirw0`, `refs/pull/102/merge` | propriétaire |
+
+Le contournement administrateur doit être désactivé. Avec un seul approbateur,
+interdire les auto-revues bloquerait aussi ses propres lancements : cette option
+reste désactivée. La référence exacte de PR est nécessaire pour la preuve
+native ; un joker autorisant toutes les PR exposerait inutilement les secrets.
+La relecture des paramètres effectifs reste NON PROUVÉE.
 
 La connexion app/Worker possède un header `X-Device-Secret` dans le code app,
 et l'updater contrôle taille et SHA-256. La présence de ces fonctions dans le
