@@ -46,6 +46,13 @@ jobs:
         ref: ${{ github.event.pull_request.head.sha }}
         path: mission
         persist-credentials: false
+    - name: Autoriser le build mobile avant la signature
+      working-directory: mission
+      env:
+        APP_OPERATION: build
+        APP_PUBLISH: 'false'
+        APP_TEST_BOX: 'true'
+      run: node .github/app-release-guard.mjs
     - name: Récupérer la base mobile validée sans fusion
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:

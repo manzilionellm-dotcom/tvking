@@ -50,9 +50,11 @@
 #       s'installe toujours par-dessus), APP_BUILD_TS pour la « mise à jour
 #       forcée » pilotée par le panel.
 #    7. Artefact du run TOUJOURS ; PUBLICATION sur la release zuno-tv
-#       uniquement en lancement manuel avec
-#       publish=true. Un push sur une branche de travail compile et vérifie,
+#       uniquement après dégel revu, lancement manuel par le propriétaire,
+#       publish=true et confirmation PUBLIER_APP. Un push compile et vérifie,
 #       mais n'écrase PAS le lien donné aux clients.
+#       Le job de build reste en lecture seule ; le canal de preuve utilise
+#       test_box=true, publish=false et le publisher séparé zuno-tv-test.
 #
 #  Surcharger le backend visé (staging…) : input `backend_url` (dispatch)
 #  → `--dart-define=BACKEND_URL=…` (cf. subscription_backend.dart).

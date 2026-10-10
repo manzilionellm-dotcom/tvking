@@ -78,6 +78,16 @@ test('le build mobile ne peut modifier aucune release', () => {
   assert.match(phone, /^  publish:\n/m);
 });
 
+test('le build mobile vérifie la vraie garde avant de préparer la signature', () => {
+  const build = phone.match(/^  phone:\n([\s\S]*?)(?=^  [a-z][\w-]*:|$(?![\s\S]))/m)?.[1];
+  assert.ok(build);
+  const guard = build.indexOf('run: node .github/app-release-guard.mjs');
+  const signature = build.indexOf('KS_B64:');
+  assert.ok(guard >= 0, 'garde réelle absente du build mobile');
+  assert.ok(signature > guard, 'la signature précède la garde');
+  assert.match(build, /working-directory: mission/);
+});
+
 test('Windows compile en lecture seule et ne publie jamais sur un push', () => {
   const windows = read('workflows/build-zuno-windows.yml');
   assert.match(windows, /^permissions:\n  contents: read/m);
