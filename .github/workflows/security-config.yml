@@ -1,0 +1,35 @@
+# Contrôler les configurations, sans secret ni accès de déploiement.
+name: Sécurité des configurations Zuno
+on:
+  pull_request:
+    paths:
+      - '.github/**'
+      - 'docs/SECURITE-CONFIGURATION-20261010.md'
+permissions:
+  contents: read
+concurrency:
+  group: securite-configuration-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  configuration:
+    name: Gardes et configurations
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24.21.0'
+          package-manager-cache: false
+      - name: Versions exactes
+        run: |
+          node --version
+          cat .github/toolchain.json
+      - name: Tester les protections et leur contre-preuve
+        run: node --test .github/panel-*.test.mjs .github/security-config.test.mjs .github/app-release-guard.test.mjs .github/release-cleanup.test.mjs
+      - name: Compiler le Worker avec Wrangler récent sans déployer
+        working-directory: android-app/cloudflare
+        run: npx --yes wrangler@4.149.0 deploy --dry-run --outdir=/tmp/zuno-worker-dry-run
+

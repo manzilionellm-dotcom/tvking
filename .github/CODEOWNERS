@@ -1,7 +1,11 @@
 # Validation de Lionel obligatoire pour la chaîne panel → Worker → box.
 # Le fichier de propriétaires et les workflows sont eux-mêmes protégés.
 /.github/ @manzilionellm-dotcom
+/android-app/ @manzilionellm-dotcom
 /android-app/admin-panel/ @manzilionellm-dotcom
 /android-app/cloudflare/ @manzilionellm-dotcom
 /android-app/e2e/panel-box/ @manzilionellm-dotcom
 /docs/PANEL-VERROUILLE.md @manzilionellm-dotcom
+
+
+/docs/SECURITE-CONFIGURATION-20261010.md @manzilionellm-dotcom

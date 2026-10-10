@@ -1,0 +1,16 @@
+--- a/docs/HANDOFF-PANEL-BOX.md
++++ b/docs/HANDOFF-PANEL-BOX.md
+@@ -964,0 +965,13 @@
++
++
++### Livraison protégée du panel et des apps — 10 octobre 2026
++
++PROUVÉ : 82 contrôles de configuration panel, stabilité Worker/panel, E2E Miniflare et compilation Wrangler 4.149.0 sans déploiement. Commits et runs dans docs/SECURITE-CONFIGURATION-20261010.md. Le gel de la production est actif et conservé ; la PR 108 reste à intégrer après ordre du propriétaire.
++
++PROUVÉ : actions figées par SHA complet, Node LTS 24.21.0 et Flutter stable 3.47.7. Compilations en lecture seule, publishers séparés, gardes de propriétaire/relance/branche/canal, clients gelés par manifeste. Nettoyage de tags sans interpolation shell, snapshot sans force, ancien changement de secret neutralisé. Les nouveaux contrôles reproduisent les refus avant correction ; 60 contrôles apps passent après correction.
++
++PROUVÉ : APK mobile signé et livré sur 7motion-test après 1 485 tests, 36 ignorés historiques. Le publisher prouve la même empreinte et phone-latest identique avant/après. Windows compile et conserve son artefact, sans publication. 550 tests Flutter de la branche box réussis, deux ignorés historiques. TV 107-test.133 (1791642333) livrée sur zuno-tv-test au run 38059166895, test_box=true et publish=false, après correction du passage de certificat entre jobs sans suppression de la vérification. Métadonnées des trois releases clients identiques avant/après.
++
++NON PROUVÉ : installation physique sur SHIELD/téléphone et verrouillage administratif complet. Les règles de branche, environnements, droits des collaborateurs et migration des secrets demandent l'accès aux réglages GitHub, non fourni par le connecteur actuel. Les propositions exactes et les preuves finales sont dans docs/SECURITE-CONFIGURATION-20261010.md. La PR panel 108 attend l'autorisation d'intégration ; aucun déploiement Cloudflare n'est effectué.
++
++
