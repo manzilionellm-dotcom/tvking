@@ -21,6 +21,19 @@ for (const [name, content] of [['box', tv], ['mobile', phone], ['qualité', qual
     assert.ok(setups.length > 0);
     for (const setup of setups) assert.match(setup[1], /flutter-version: ['"]?3\.47\.7['"]?/);
   });
+  test(`${name} : les paramètres Flutter sont placés dans with`, () => {
+    const setups = [...content.matchAll(/uses: subosito\/flutter-action@[^\n]+\n([\s\S]*?)(?=\n\s*- (?:name:|uses:|run:)|$)/g)];
+    assert.ok(setups.length > 0);
+    for (const [, block] of setups) {
+      const withLine = block.match(/^( +)with:\s*$/m);
+      assert.ok(withLine, 'with absent pour Flutter');
+      const inputs = [...block.matchAll(/^( +)(?:flutter-version|channel|cache|pub-cache):/gm)];
+      assert.ok(inputs.length > 0);
+      for (const input of inputs) {
+        assert.equal(input[1].length, withLine[1].length + 2, input[0].trim());
+      }
+    }
+  });
 }
 
 test('les tests et la compilation TV n’ont pas le droit d’écrire les releases', () => {
