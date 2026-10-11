@@ -41,7 +41,7 @@ PROUVÉ — avant implémentation, `node --test cloudflare/campaigns.test.mjs`
 depuis `android-app` : **10 échecs sur 10** ; les routes répondaient 404.
 Les tests du panel échouaient également, module de dates et d'états absent.
 
-PROUVÉ — après implémentation, la même suite enrichie : **12 tests réussis**.
+PROUVÉ — après implémentation, la même suite enrichie : **13 tests réussis**.
 Routes HTTP réelles et SQLite transactionnel, avec authentification réelle :
 brouillon privé, droits propriétaire, dates, pays, idempotence de création,
 version concurrente refusée en 409, curseur, pause/reprise, suppression,
@@ -58,12 +58,12 @@ Les mutations et leur audit sont une transaction. Le journal ne stocke
 ni texte publicitaire ni lien ; seulement statut, version et identifiant.
 
 Les courses sont exercées avec des appels concurrents sur le banc SQLite.
-Ce banc sérialise les requêtes ; il ne remplace pas la preuve workerd.
+Ce banc sérialise les requêtes ; la preuve de concurrence workerd est citée ci-dessous.
 Le parcours E2E ajouté utilise le vrai formulaire React, le Worker local,
 D1 et la route lue par l'app, sans simuler la partie difficile.
 
-NON PROUVÉ à la rédaction : exécution du nouveau parcours navigateur en CI,
-affichage sur téléphone et SHIELD, disponibilité de ce module en production.
+NON PROUVÉ : affichage sur téléphone et SHIELD, disponibilité de ce module
+en production. Il faut une mise en ligne autorisée puis un essai physique.
 Le navigateur local n'est pas installé dans l'environnement de travail.
 Aucun APK ni AAB n'est produit : aucun fichier Flutter n'est modifié.
 
@@ -98,3 +98,41 @@ campagne déjà diffusée doit être dupliquée pour publier un nouveau contenu.
 Un retour à l'ancien Worker laisse les tables additives en place ; les messages
 déjà matérialisés restent soumis à leur expiration et au contrôle global.
 Ne pas supprimer les tables pour revenir en arrière.
+
+## Résultat CI sur le code 2734584
+
+PROUVÉ — parcours réel Chrome/Chromium + React + Worker + D1, run
+[38162131019](https://github.com/manzilionellm-dotcom/tvking/actions/runs/38162131019),
+job `114537069535`, succès le 11 octobre 2026 à 18:03 UTC :
+
+- Brouillon enregistré depuis le formulaire, absent de la route publique.
+- Programmation depuis le formulaire, texte relu par la route de l'app.
+- Douze lecteurs concurrents sur workerd : un seul identifiant de campagne.
+- Pause puis reprise par boutons : aucune seconde annonce après le curseur.
+- Duplication préparée ; largeur mobile 390 px sans débordement horizontal.
+- Parcours existants d'activation, trois listes, accusés, suppression et échéance
+  également terminés ; bilan du lanceur : tous les contrôles locaux sont passés.
+
+PROUVÉ — suite Worker complète locale, `node --test *.test.mjs` : 42/42
+entrées du lanceur Node réussies. La CI Stabilité et la QA du site complètent
+ces preuves ; aucun job de déploiement n'est autorisé par une PR.
+
+Contre-preuves conservées dans l'historique, sans supprimer ni assouplir
+les assertions :
+
+- Run 38161301577 : nom du champ Message mêlé au compteur ; libellé explicite
+  et compteur conservé comme description accessible.
+- Run 38161487011 : même motif pour Type ; contrôle identique de Pays.
+- Run 38161914783 : HTTP 400, « Identifiant de campagne invalide », aucun
+  champ HTML invalide. Le nouvel appel encodait son objet deux fois alors que
+  l'enveloppe HTTP commune encode déjà les objets. Correction des deux appels
+  POST/PATCH, sans changement de l'enveloppe ni des autres écrans.
+- Reprise après « Tout retirer » : test rouge HTTP 200 au lieu de 409 et état
+  En pause au lieu de Retirée. Vérification dans la transaction et erreur
+  explicite demandant de dupliquer. Les deux contre-preuves passent après
+  correction ; la suppression ne recrée aucun message.
+
+Limite du banc CI : sa dépendance existante Wrangler 3.90.0 utilise workerd
+2024-11-06 et affiche un avertissement de compatibilité. Le déploiement reste
+configuré séparément avec Wrangler 4.149.0. Le parcours prouve le protocole
+et le stockage local, pas un déploiement dans le runtime de production.
