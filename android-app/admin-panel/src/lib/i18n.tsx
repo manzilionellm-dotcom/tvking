@@ -43,6 +43,7 @@ const STR: Record<string, Record<Lang, string>> = {
   'nav.reviews': { fr: 'Avis clients', en: 'Reviews', ar: 'آراء العملاء' },
   'nav.homeManager': { fr: 'Accueil', en: 'Home', ar: 'الرئيسية' },
   'nav.notifications': { fr: 'Annonces', en: 'Announcements', ar: 'الإعلانات' },
+  'nav.campaigns': { fr: 'Publicités et événements', en: 'Ads and events', ar: 'الإعلانات والفعاليات' },
   'nav.resellers': { fr: 'Revendeurs', en: 'Resellers', ar: 'الموزّعون' },
   'nav.myResellers': { fr: 'Mes revendeurs', en: 'My resellers', ar: 'موزّعوني' },
   'nav.customers': { fr: 'Clients', en: 'Customers', ar: 'العملاء' },

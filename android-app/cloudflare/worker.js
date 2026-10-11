@@ -55,6 +55,7 @@
 // API v1 — App Licensing Platform (cf. cloudflare/api_v1.js)
 // Routee depuis le bas du fetch() en haut de la chaine de match.
 import { apiV1, logAudit, panelActorFromToken } from './api_v1.js';
+import { dispatchDueCampaigns } from './campaigns.js';
 import { blackboxRequestedAt, saveBlackBox } from './blackbox_journal.js';
 import {
   RealtimeHub,
@@ -1824,6 +1825,15 @@ async function handleGetAnnouncement(env, request) {
       .prepare("SELECT value FROM app_config WHERE key = 'announcements_enabled'")
       .first();
     if (sw && sw.value === '0') return json({});
+
+    try {
+      await dispatchDueCampaigns(env, Date.now());
+    } catch (error) {
+      // Une panne de diffusion ne doit pas devenir un faux « aucune annonce ».
+      // Le détail SQL et le contenu des campagnes ne sortent pas en journal.
+      console.error('[CAMPAGNE] diffusion indisponible : transaction D1 refusée');
+      return json({ error: 'campaign_dispatch_unavailable', message: 'Annonces temporairement indisponibles.' }, 503);
+    }
 
     const reqCountry =
         (request && request.headers.get('CF-IPCountry')) || '';

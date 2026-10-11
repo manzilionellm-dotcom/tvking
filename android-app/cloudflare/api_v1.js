@@ -20,6 +20,7 @@ import {
   clearSourceTombstone,
 } from './linkage.js';
 import { notifyBox } from './box_channel.js';
+import { handleCampaigns, clearCampaignAnnouncements } from './campaigns.js';
 import { isBlackboxMac, markBlackBoxAsked, readBlackBox } from './blackbox_journal.js';
 //  Importe depuis worker.js pour servir le namespace /api/v1/*.
 //  Coexiste avec les anciens endpoints /admin/* et /api/* qui
@@ -1160,6 +1161,12 @@ async function apiV1Inner(request, env) {
     }
   }
 
+  // Campagnes datées : accès réservé au propriétaire, vérifié côté serveur.
+  if (parts[0] === 'campaigns') {
+    if (a.user.role !== 'super_admin') return errResp('forbidden', 'Owner only', 403);
+    return handleCampaigns(request, env, actor, parts);
+  }
+
   // /announcements — notifications broadcast envoyées à TOUTES les apps.
   // RÉSERVÉ à l'owner (super_admin) : un revendeur ne peut PAS notifier
   // tout le parc. L'app lit la dernière annonce via GET /api/announcement
@@ -1936,7 +1943,7 @@ async function handleAnnouncementsCreate(request, env, actor) {
 
 async function handleAnnouncementsClear(env, actor, request) {
   await ensureAnnouncementsTable(env);
-  await env.DB.prepare('DELETE FROM app_broadcasts').run();
+  await clearCampaignAnnouncements(env);
   await logAudit(env, request, actor, 'announcement.clear',
     { type: 'announcement', id: null }, null, null);
   return jsonResp({ ok: true });

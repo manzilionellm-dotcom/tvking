@@ -715,6 +715,16 @@ export const blackboxApi = {
     ),
 };
 
+export const campaignsApi = {
+  list: () => request<{ items: import('./campaigns').Campaign[]; now: number }>('/api/v1/campaigns'),
+  create: (body: import('./campaigns').CampaignContent & { id: string }) =>
+    request<{ item: import('./campaigns').Campaign }>('/api/v1/campaigns', { method: 'POST', body: JSON.stringify(body) }),
+  update: (id: string, version: number, action: 'save' | 'schedule' | 'pause' | 'archive', content?: import('./campaigns').CampaignContent) =>
+    request<{ item: import('./campaigns').Campaign }>(`/api/v1/campaigns/${encodeURIComponent(id)}`, {
+      method: 'PATCH', body: JSON.stringify({ ...content, version, action }),
+    }),
+};
+
 export const announcementsApi = {
   list: () => request<{ items: Announcement[] }>('/api/v1/announcements'),
   create: (payload: {

@@ -58,6 +58,7 @@ const OWNER_NAV: NavSection[] = [
       { key: 'nav.homeManager',   to: '/home-manager' },
       { key: 'nav.featured',      to: '/featured' },
       { key: 'nav.notifications', to: '/notifications' },
+      { key: 'nav.campaigns',     to: '/campaigns' },
       { key: 'nav.ad',            to: '/ad' },
       { key: 'nav.theme',         to: '/theme' },
     ],
@@ -188,7 +189,9 @@ export function Sidebar({
   const sections = (owner ? OWNER_NAV : RESELLER_NAV)
     .map((sec) => ({
       ...sec,
-      items: sec.items.filter((it) => !it.cap || userCan(user, it.cap)),
+      items: sec.items.filter((it) =>
+        (it.key !== 'nav.campaigns' || user?.role === 'super_admin') &&
+        (!it.cap || userCan(user, it.cap))),
     }))
     .filter((sec) => sec.items.length > 0);
   const who = user?.name || user?.email;

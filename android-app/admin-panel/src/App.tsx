@@ -15,6 +15,7 @@ import { ResellersPage } from '@/pages/ResellersPage';
 import { ActivatePage } from '@/pages/ActivatePage';
 import { ChainesPage } from '@/pages/ChainesPage';
 import { NotificationsPage } from '@/pages/NotificationsPage';
+import { CampaignsPage } from '@/pages/CampaignsPage';
 import { HomeManagerPage } from '@/pages/HomeManagerPage';
 import { ControlCenterPage } from '@/pages/ControlCenterPage';
 import { ForceUpdatePage } from '@/pages/ForceUpdatePage';
@@ -114,6 +115,7 @@ export default function App() {
       <Route path="/chaines"    element={<ChainesPage     onLogout={handleLogout} />} />
       <Route path="/playlists"   element={<Navigate to="/chaines" replace />} />
       <Route path="/notifications" element={<NotificationsPage onLogout={handleLogout} />} />
+      <Route path="/campaigns" element={<CampaignsPage onLogout={handleLogout} />} />
       <Route path="/control-center" element={<ControlCenterPage onLogout={handleLogout} />} />
       <Route path="/home-manager" element={<HomeManagerPage onLogout={handleLogout} />} />
       <Route path="/force-update" element={<ForceUpdatePage onLogout={handleLogout} />} />
