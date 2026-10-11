@@ -10,6 +10,7 @@ test('états honnêtes : début, fin, pause et retrait réel', () => {
   assert.equal(campaignState({ ...item, status: 'draft' }, 2000), 'draft');
   assert.equal(campaignState({ ...item, status: 'paused' }, 2000), 'paused');
   assert.equal(campaignState({ ...item, broadcast_id: 1, delivery_active: null }, 2000), 'removed');
+  assert.equal(campaignState({ ...item, status: 'paused', broadcast_id: 1, delivery_active: null }, 2000), 'removed');
   assert.equal(campaignState({ ...item, broadcast_id: 1, delivery_active: 1 }, 2000), 'available');
   assert.equal(campaignState({ ...item, broadcast_id: 1, delivery_active: 0 }, 2000), 'paused');
 });

@@ -28,13 +28,21 @@ export async function campaignsParcours({ page, box, check }) {
   await card.getByRole('button', { name: 'Programmer', exact: true }).click();
   await page.getByRole('alertdialog').getByRole('button', { name: 'Programmer', exact: true }).click();
   await page.getByRole('status').getByText('Période de diffusion enregistrée.').waitFor();
-  const available = await box('GET', '/api/announcement');
+  // Douze apps interrogent le vrai workerd au début de la diffusion.
+  // L'insertion doit rester unique même si chacune voit la campagne due.
+  const readers = await Promise.all(Array.from({ length: 12 }, () => box('GET', '/api/announcement')));
+  assert.ok(readers.every(r => r.status === 200));
+  const messages = readers.map(r => r.json.pending.filter(a => a.title === 'Événement · Rendez-vous découverte'));
+  assert.ok(messages.every(rows => rows.length === 1));
+  assert.equal(new Set(messages.map(rows => rows[0].id)).size, 1);
+  const available = readers[0];
   const message = available.json.pending.find(a => a.title === 'Événement · Rendez-vous découverte');
   assert.ok(message);
   assert.equal(message.body, 'Une rencontre ouverte à tous.');
   await page.getByRole('button', { name: 'Actualiser', exact: true }).click();
   await card.getByText('Disponible dans l’app', { exact: true }).waitFor();
   check('campagne programmée dans le formulaire : message relu par la route de l’app', true);
+  check('douze lecteurs concurrents sur workerd : un seul identifiant de campagne', true);
 
   await card.getByRole('button', { name: 'Mettre en pause', exact: true }).click();
   await card.getByText('En pause', { exact: true }).waitFor();

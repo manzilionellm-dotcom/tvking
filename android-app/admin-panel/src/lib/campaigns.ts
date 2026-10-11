@@ -23,9 +23,9 @@ export interface Campaign extends CampaignContent {
 export function campaignState(item: Campaign, now: number) {
   if (item.status === 'draft' || item.status === 'archived') return item.status;
   if (item.ends_at <= now) return 'ended';
+  if (item.broadcast_id && item.delivery_active === null) return 'removed';
   if (item.status === 'paused') return 'paused';
   if (item.broadcast_id) {
-    if (item.delivery_active === null) return 'removed';
     if (item.delivery_active === 0) return 'paused';
     return 'available';
   }

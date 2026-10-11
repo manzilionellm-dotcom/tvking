@@ -139,14 +139,20 @@ export async function handleCampaigns(request, env, actor, parts) {
       if (!status) invalid('Action inconnue.');
       if (before.status === 'archived') return json({ error: 'conflict', message: 'Une campagne archivée doit être dupliquée.' }, 409);
       if (status === 'scheduled' && before.ends_at <= now) invalid('Cette période est terminée. Crée un nouveau brouillon.');
+      if (status === 'scheduled' && before.broadcast_id) {
+        const exists = await env.DB.prepare('SELECT 1 FROM app_broadcasts WHERE id = ?').bind(before.broadcast_id).first();
+        if (!exists) return json({ error: 'conflict', message: 'Cette annonce a été retirée. Il faut la dupliquer pour diffuser à nouveau.' }, 409);
+      }
       set = 'status = ?';
       values = [status];
     }
     const result = await env.DB.batch([
       env.DB.prepare(`UPDATE panel_campaigns SET ${set}, version = version + 1, updated_at = ?
         WHERE id = ? AND version = ? AND
-        (? != 'save' OR (broadcast_id IS NULL AND status IN ('draft', 'paused')))`)
-        .bind(...values, now, id, body.version, body.action),
+        (? != 'save' OR (broadcast_id IS NULL AND status IN ('draft', 'paused')))
+        AND (? != 'schedule' OR broadcast_id IS NULL OR EXISTS
+          (SELECT 1 FROM app_broadcasts WHERE id = panel_campaigns.broadcast_id))`)
+        .bind(...values, now, id, body.version, body.action, body.action),
       audit(env.DB, actor, id, body.action, now),
       // Pause et reprise s'appliquent dans la même transaction. On ne
       // recrée jamais une annonce retirée par l'ancien écran Annonces.

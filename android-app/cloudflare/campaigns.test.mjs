@@ -185,3 +185,16 @@ test('repli global : les annonces historiques gardent le même contrat', async (
   await s.call('/api/v1/announcements/settings', { method: 'PUT', body: { enabled: false } });
   assert.deepEqual((await s.publicRead()).data, {});
 });
+
+test('reprendre une annonce effacée renvoie 409 avec une explication, jamais un faux succès', async (t) => {
+  const s = setup(t);
+  const created = await s.create({ starts_at: NOW });
+  await s.change(created, 'schedule');
+  await s.publicRead();
+  await s.call('/api/v1/announcements', { method: 'DELETE' });
+  const item = (await s.call('/api/v1/campaigns')).data.items[0];
+  const result = await s.change(item, 'schedule');
+  assert.equal(result.status, 409);
+  assert.match(result.data.message, /retirée.*dupliquer/i);
+  assert.deepEqual((await s.publicRead()).data, {});
+});
