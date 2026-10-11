@@ -20,6 +20,10 @@ name: Publish TV update manifest (anti-harcèlement)
 on:
   workflow_dispatch:
     inputs:
+      confirme:
+        description: PUBLIER_APP après dégel autorisé
+        required: true
+        type: string
       mandatory:
         description: 'Correctif critique (perce la grâce/espacement côté app)'
         required: false
@@ -28,14 +32,26 @@ on:
         options: ['false', 'true']
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   publish:
+    if: github.event_name == 'workflow_dispatch' && github.actor == github.repository_owner && github.triggering_actor == github.repository_owner && github.repository == 'manzilionellm-dotcom/tvking'
+    environment: zuno-app-production
+    permissions:
+      contents: write
     name: version.json → cinema-test + anciens canaux TV
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - name: Lire les protections
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Refuser une publication clients non revue
+        env:
+          APP_OPERATION: client
+        run: node .github/app-release-guard.mjs
       - name: Lire le versionCode réel de l'APK cinema-test puis poser les manifestes
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -70,3 +86,4 @@ jobs:
               echo "· $TAG absent, ignoré"
             fi
           done
+

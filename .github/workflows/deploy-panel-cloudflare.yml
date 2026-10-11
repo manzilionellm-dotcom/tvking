@@ -65,7 +65,7 @@ env:
   WORKER_URL: https://app.7themotion.com
   PAGES_PROJECT: tvking-admin
   PAGES_URL: https://tvking-admin.pages.dev
-  WRANGLER_VERSION: '3.90.0'
+  WRANGLER_VERSION: '4.149.0'
 
 jobs:
   validation:
@@ -73,10 +73,12 @@ jobs:
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          node-version: '22'
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24.21.0'
       - name: Refuser une autre branche, un autre auteur ou une version gelée
         env:
           PANEL_CONFIRMATION: ${{ inputs.confirme }}
@@ -87,12 +89,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          node-version: '22'
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24.21.0'
       - name: Protections et invariants avant/après
-        run: node --test .github/panel-*.test.mjs
+        run: node --test .github/panel-*.test.mjs .github/security-config.test.mjs .github/app-release-guard.test.mjs .github/release-cleanup.test.mjs
       - name: Worker — pannes, suppressions, canaux, isolation et CORS
         working-directory: android-app/cloudflare
         run: |
@@ -114,7 +118,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Secrets présents ?
         env:
@@ -146,7 +152,7 @@ jobs:
           node .github/panel-reference.mjs capture avant_reference.json
 
       - name: AVANT — versions du Worker (pour le retour arrière)
-        uses: cloudflare/wrangler-action@v3
+        uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4.1.3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -155,7 +161,7 @@ jobs:
           command: deployments list --name seven-motion-backend
 
       - name: DÉPLOYER le Worker
-        uses: cloudflare/wrangler-action@v3
+        uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4.1.3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -164,7 +170,7 @@ jobs:
           command: deploy
 
       - name: APRÈS — versions du Worker
-        uses: cloudflare/wrangler-action@v3
+        uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4.1.3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -203,10 +209,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          node-version: '22'
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24.21.0'
 
       - name: Build du panel (API = app.7themotion.com)
         working-directory: android-app/admin-panel
@@ -228,7 +236,7 @@ jobs:
         env:
           MAC: ${{ inputs.mac_reference }}
         run: node .github/panel-reference.mjs capture avant_reference.json
-      - uses: cloudflare/wrangler-action@v3
+      - uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4.1.3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -237,7 +245,7 @@ jobs:
           command: pages deployment list --project-name=tvking-admin
 
       - name: DÉPLOYER le panel (production, branche main du projet Pages)
-        uses: cloudflare/wrangler-action@v3
+        uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4.1.3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -270,3 +278,4 @@ jobs:
         env:
           MAC: ${{ inputs.mac_reference }}
         run: node .github/panel-reference.mjs compare avant_reference.json
+
