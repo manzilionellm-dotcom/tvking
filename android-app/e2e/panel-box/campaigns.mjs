@@ -17,8 +17,25 @@ export async function campaignsParcours({ page, box, check }) {
   });
   await page.getByLabel('Début de diffusion', { exact: true }).fill(dates[0]);
   await page.getByLabel('Fin de diffusion', { exact: true }).fill(dates[1]);
+  let savedStatus = null;
+  const observeSave = response => {
+    if (response.url().endsWith('/api/v1/campaigns') && response.request().method() === 'POST') savedStatus = response.status();
+  };
+  page.on('response', observeSave);
   await page.getByRole('button', { name: 'Enregistrer le brouillon', exact: true }).click();
-  await page.getByRole('status').getByText(/Brouillon enregistré/).waitFor();
+  try {
+    await page.getByRole('status').getByText(/Brouillon enregistré/).waitFor();
+  } catch (error) {
+    // Le scénario ne manipule que ses propres données fictives. Ne sortir
+    // aucun en-tête, lien ou corps de requête dans ce diagnostic.
+    process.stdout.write(JSON.stringify({
+      diagnostic: 'enregistrement_campagne', http: savedStatus,
+      statuts: await page.getByRole('status').allTextContents(),
+      alertes: await page.getByRole('alert').allTextContents(),
+      champsInvalides: await page.locator('form :invalid').evaluateAll(elements => elements.map(e => ({ type: e.type, message: e.validationMessage }))),
+    }) + '\n');
+    throw error;
+  } finally { page.off('response', observeSave); }
   const card = page.getByRole('article').filter({ has: page.getByRole('heading', { name: 'Rendez-vous découverte', exact: true }) });
   await card.getByText('Brouillon', { exact: true }).waitFor();
   const unpublished = await box('GET', '/api/announcement');
