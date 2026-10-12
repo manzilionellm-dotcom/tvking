@@ -786,6 +786,8 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
                             _mac,
                             showPrefix: RepairFlags.macShowPrefix,
                           ),
+                          // Même ordre que le QR et le panel, y compris en arabe.
+                          textDirection: TextDirection.ltr,
                           style: TvTokens.mono(
                             28,
                             color: TvTokens.accentBright,

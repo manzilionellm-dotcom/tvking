@@ -2737,5 +2737,6 @@
   "tvSizeKb": "{size} КБ",
   "tvSizeMb": "{size} МБ",
   "tvSizeGb": "{size} ГБ",
-  "tvDurationHm": "{hours} ч {minutes} мин"
+  "tvDurationHm": "{hours} ч {minutes} мин",
+  "tvWhatsAppActivationRequest": "Здравствуйте, я хочу активировать Zuno."
 }

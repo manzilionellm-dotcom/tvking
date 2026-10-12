@@ -1442,6 +1442,8 @@ class _TvHubScreenState extends State<TvHubScreen> {
                             _mac,
                             showPrefix: RepairFlags.macShowPrefix,
                           ),
+                          // Les groupes d'une MAC ne suivent pas le sens de l'UI.
+                          textDirection: TextDirection.ltr,
                           style: TvTokens.mono(
                             16,
                             color: TvTokens.accentBright,

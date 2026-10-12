@@ -3022,5 +3022,9 @@
         "type": "String"
       }
     }
+  },
+  "tvWhatsAppActivationRequest": "Bonjour, je souhaite activer Zuno.",
+  "@tvWhatsAppActivationRequest": {
+    "description": "Demande préremplie du QR WhatsApp. La MAC ASCII est ajoutée séparément, sur sa propre ligne, pour conserver son ordre en arabe."
   }
 }

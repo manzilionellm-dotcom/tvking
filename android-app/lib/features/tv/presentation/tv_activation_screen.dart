@@ -142,6 +142,9 @@ class _TvActivationScreenState extends State<TvActivationScreen> {
                 children: <Widget>[
                   Text(
                     displayMac(_mac, showPrefix: RepairFlags.macShowPrefix),
+                    // Une MAC reste gauche → droite, même dans une UI arabe.
+                    // Sinon Unicode peut déplacer ses premiers groupes chiffrés.
+                    textDirection: TextDirection.ltr,
                     style: TvTokens.mono(
                       38,
                       color: TvTokens.accentBright,

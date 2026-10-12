@@ -1307,5 +1307,6 @@
   "tvSizeKb": "{size} كيلوبايت",
   "tvSizeMb": "{size} ميغابايت",
   "tvSizeGb": "{size} غيغابايت",
-  "tvDurationHm": "{hours} ساعة و{minutes} دقيقة"
+  "tvDurationHm": "{hours} ساعة و{minutes} دقيقة",
+  "tvWhatsAppActivationRequest": "مرحبًا، أود تفعيل Zuno."
 }

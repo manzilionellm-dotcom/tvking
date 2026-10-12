@@ -18,11 +18,11 @@ La production reste gelée. Cette branche ne déploie aucune mise à jour.
 
 ## Correction
 
-Chaque catalogue contient désormais les mêmes **1 014 messages** : français,
+Chaque catalogue contient désormais les mêmes **1 015 messages** : français,
 anglais, espagnol, suédois, danois, norvégien bokmål, arabe, swahili, allemand,
 italien, portugais, néerlandais, turc, russe, chinois simplifié et hindi.
 
-Les 208 nouvelles clés couvrent notamment les profils, les contrôles parentaux,
+Les 209 nouvelles clés couvrent notamment les profils, les contrôles parentaux,
 les extras, les cartes promotionnelles, les sources et leurs erreurs, les
 diagnostics, les enregistrements, les commandes du lecteur et les conditions
 d'utilisation. Les catalogues incomplets ont également été complétés.
@@ -37,6 +37,31 @@ la langue de la TV au démarrage et après un changement système. Un choix manu
 valide reste respecté. Une préférence ancienne `sv_SE` ou `pt-BR` est reconnue ;
 une valeur inconnue revient au mode système. L'arabe active le sens droite-gauche.
 Les écrans et erreurs se retraduisent au rendu, sans ouvrir de nouveau le flux.
+
+## MAC déplacée à l'écran en arabe — signalement du 12 octobre
+
+Le QR WhatsApp et les écrans lisaient bien la même chaîne, mais les écrans
+héritaient du sens arabe sans préciser celui de la MAC. Une valeur factice
+`12:34:AB:CD:56` devient visuellement `AB:CD:56:12:34` dans ce contexte.
+Le QR conservait l'ordre stocké : comparer les chaînes seules ne pouvait donc
+pas détecter l'erreur. Ce mécanisme reproduit le déplacement observé sur les
+captures du propriétaire ; l'hypothèse initiale de deux installations ne
+correspond pas à ce signalement.
+
+L'activation, l'accueil, le Direct, les Réglages et la carte d'identifiant
+imposent désormais un ordre gauche-droite à la seule MAC. Les libellés arabes
+conservent leur sens normal. La génération, le stockage et l'envoi de la MAC
+restent inchangés. Aucune association d'appareil n'est migrée automatiquement.
+
+Le message WhatsApp était encore écrit en français dans le code. Il utilise
+maintenant les 16 catalogues, avec la MAC sur une ligne ASCII `MAC: …` séparée.
+Le sigle latin empêche le déplacement des groupes même dans un message arabe,
+sans insérer de caractères invisibles dans le code à copier.
+
+`mac_rtl_test.dart` mesure les positions réelles des caractères : reproduction
+du défaut sans correction, écran d'activation arabe, concordance avec les deux
+QR et le presse-papiers, conservation de la MAC stockée, changement de langue
+du QR et ordre de la ligne MAC dans les deux sens. Les valeurs sont factices.
 
 ## Vérification et APK
 
@@ -57,6 +82,10 @@ ARM64, Android 7+, nommé **Zuno Langues — test**, avec le package distinct
 pas des secrets de production et ne publie aucune release. Ce binaire permet
 une installation à côté de l'app habituelle. Une validation sur télévision
 physique reste nécessaire avant toute mise en production.
+Ce n'est pas une mise à jour conservant l'identité de l'app habituelle : ses
+données sont séparées et sa signature de test peut donner une autre MAC.
+Une livraison aux clients devra conserver le package et la signature historiques,
+ainsi que les données de l'installation existante.
 
 ## Limites précises
 
@@ -85,6 +114,8 @@ prévue par le gel existant.
 - [Internationalisation Flutter](https://docs.flutter.dev/ui/internationalization)
 - [Notification du changement de langue système](https://api.flutter.dev/flutter/widgets/WidgetsBindingObserver/didChangeLocales.html)
 - [Langue d'application Android](https://developer.android.com/guide/topics/resources/app-languages)
+- [Sens de lecture explicite d'un texte Flutter](https://api.flutter.dev/flutter/widgets/Text/textDirection.html)
+- [Algorithme bidirectionnel Unicode](https://www.unicode.org/reports/tr9/)
 
 Ces références expliquent la sélection de langue et le cycle de mise à jour.
 Les catalogues et les écrans Zuno doivent explicitement utiliser les messages

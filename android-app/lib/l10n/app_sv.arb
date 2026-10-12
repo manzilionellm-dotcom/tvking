@@ -1307,5 +1307,6 @@
   "tvSizeKb": "{size} kB",
   "tvSizeMb": "{size} MB",
   "tvSizeGb": "{size} GB",
-  "tvDurationHm": "{hours} tim {minutes} min"
+  "tvDurationHm": "{hours} tim {minutes} min",
+  "tvWhatsAppActivationRequest": "Hej, jag vill aktivera Zuno."
 }

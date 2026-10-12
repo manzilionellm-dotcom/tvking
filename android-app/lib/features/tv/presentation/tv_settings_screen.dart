@@ -628,6 +628,8 @@ class _SettingCard extends StatelessWidget {
                   value,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
+                  // La valeur monospace est la MAC : son ordre est invariant.
+                  textDirection: entry.mono ? TextDirection.ltr : null,
                   style: entry.mono
                       ? TvTokens.mono(
                           TvDimens.caption,

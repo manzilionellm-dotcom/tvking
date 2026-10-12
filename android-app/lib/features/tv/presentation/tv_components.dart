@@ -10,6 +10,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import '../../device/domain/display_mac.dart';
 import '../../../core/app/repair_flags.dart';
 import '../../../core/i18n/l10n_extension.dart';
+import '../../../l10n/generated/app_localizations.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
@@ -27,12 +28,16 @@ const String kWhatsAppPhone = '447307410512';
 
 /// Construit le lien wa.me avec un message pré-rempli (code MAC inclus,
 /// sans « MK: » : le panel le remet tout seul, voir display_mac.dart).
-String tvWhatsAppUrl(String mac) {
+String tvWhatsAppUrl(String mac, AppLocalizations l10n) {
   final String code = (mac == '…' || mac.isEmpty)
       ? ''
       : displayMac(mac, showPrefix: RepairFlags.macShowPrefix);
-  final String msg = Uri.encodeComponent('Bonjour, je souhaite activer Zuno.'
-      '${code.isEmpty ? '' : ' Mon code : $code'}');
+  // La phrase suit la langue TV. La MAC reste seule sur une ligne commençant
+  // par un sigle latin : Unicode conserve ainsi l'ordre de tous ses groupes,
+  // même dans un message arabe. Aucun caractère invisible dans le code copié.
+  final String msg = Uri.encodeComponent(
+    '${l10n.tvWhatsAppActivationRequest}${code.isEmpty ? '' : '\nMAC: $code'}',
+  );
   return 'https://wa.me/$kWhatsAppPhone?text=$msg';
 }
 
@@ -58,7 +63,7 @@ class TvWhatsAppQr extends StatelessWidget {
             border: Border.all(color: TvTokens.accent, width: 2),
           ),
           child: QrImageView(
-            data: tvWhatsAppUrl(mac),
+            data: tvWhatsAppUrl(mac, context.l10n),
             version: QrVersions.auto,
             size: size,
             backgroundColor: Colors.white,
