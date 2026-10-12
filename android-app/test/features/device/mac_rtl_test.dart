@@ -1,7 +1,5 @@
 // Régression : sans direction explicite, un début numérique de MAC peut
 // migrer à droite en arabe. Les données ci-dessous sont entièrement factices.
-import 'dart:ui' show TextBox;
-
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
