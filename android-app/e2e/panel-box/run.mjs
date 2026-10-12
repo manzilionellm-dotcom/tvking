@@ -22,6 +22,8 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
 import { chromium } from 'playwright';
+import { supportParcours } from './support.mjs';
+import { campaignsParcours } from './campaigns.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const CLOUDFLARE = resolve(HERE, '../../cloudflare');
@@ -465,6 +467,9 @@ async function parcours(page) {
   );
 
   // ----- Effacement de liste -----
+  await campaignsParcours({ page, box, check });
+  await supportParcours({ page, check });
+
   const wiped = await panel(page, '/api/v1/sources/' + encodeURIComponent(mac), { method: 'DELETE' });
   check('effacement de la liste côté panel', wiped.status === 200 && wiped.json && wiped.json.ok === true, brief(wiped.json));
   const srcGone = await box('GET', '/api/device-source/' + mac);
@@ -594,3 +599,4 @@ run()
   .finally(() => {
     stopAll();
   });
+

@@ -715,6 +715,16 @@ export const blackboxApi = {
     ),
 };
 
+export const campaignsApi = {
+  list: () => request<{ items: import('./campaigns').Campaign[]; now: number }>('/api/v1/campaigns'),
+  create: (body: import('./campaigns').CampaignContent & { id: string }) =>
+    request<{ item: import('./campaigns').Campaign }>('/api/v1/campaigns', { method: 'POST', body }),
+  update: (id: string, version: number, action: 'save' | 'schedule' | 'pause' | 'archive', content?: import('./campaigns').CampaignContent) =>
+    request<{ item: import('./campaigns').Campaign }>(`/api/v1/campaigns/${encodeURIComponent(id)}`, {
+      method: 'PATCH', body: { ...content, version, action },
+    }),
+};
+
 export const announcementsApi = {
   list: () => request<{ items: Announcement[] }>('/api/v1/announcements'),
   create: (payload: {
@@ -1124,4 +1134,15 @@ export const planCostsApi = {
       method: 'PUT',
       body: { costs },
     }),
+};
+
+// Messagerie indépendante : le client HTTP garde l'authentification du panel.
+export interface SupportMessage { seq: number; client_id: string; sender: 'client' | 'owner'; body: string; created_at: number }
+export interface SupportThread { mac: string; device_label: string; updated_at: number; unread: number; preview: string }
+export interface SupportPage { items: SupportMessage[]; more: boolean; unread: number; client_read_seq: number; owner_read_seq: number }
+export const supportApi = {
+  list: (q = '') => request<{ items: SupportThread[] }>(`/api/v1/support${q.trim() ? `?q=${encodeURIComponent(q.trim())}` : ''}`),
+  messages: (mac: string, before?: number, after?: number) => request<SupportPage>(`/api/v1/support/${encodeURIComponent(mac)}${before ? `?before=${before}` : after ? `?after=${after}` : ''}`),
+  send: (mac: string, body: string, client_id: string) => request<{ item: SupportMessage }>(`/api/v1/support/${encodeURIComponent(mac)}`, { method: 'POST', body: { body, client_id } }),
+  read: (mac: string, read_through: number) => request(`/api/v1/support/${encodeURIComponent(mac)}`, { method: 'PATCH', body: { read_through } }),
 };

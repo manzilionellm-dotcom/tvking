@@ -1,3 +1,5 @@
+import { handleDeviceSupport } from './support_chat.js';
+import { readCreative } from './campaign_creative.js';
 // =========================================================
 //  BLACK7 ROYAL — Cloudflare Worker (backend admin + clients)
 // =========================================================
@@ -55,6 +57,7 @@
 // API v1 — App Licensing Platform (cf. cloudflare/api_v1.js)
 // Routee depuis le bas du fetch() en haut de la chaine de match.
 import { apiV1, logAudit, panelActorFromToken } from './api_v1.js';
+import { clearCampaignAnnouncements, dispatchDueCampaigns } from './campaigns.js';
 import { blackboxRequestedAt, saveBlackBox } from './blackbox_journal.js';
 import {
   RealtimeHub,
@@ -1801,6 +1804,7 @@ function publicAnnouncement(row) {
     kind: row.kind || '',
     cta: row.cta || '',
     country: row.country || '',
+    ...(readCreative(row.creative_json) ? { creative: readCreative(row.creative_json), expires_at: row.expires_at || 0 } : {}),
     created_at: row.created_at || 0,
   };
 }
@@ -1825,6 +1829,15 @@ async function handleGetAnnouncement(env, request) {
       .first();
     if (sw && sw.value === '0') return json({});
 
+    try {
+      await dispatchDueCampaigns(env, Date.now());
+    } catch (error) {
+      // Une panne de diffusion ne doit pas devenir un faux « aucune annonce ».
+      // Le détail SQL et le contenu des campagnes ne sortent pas en journal.
+      console.error('[CAMPAGNE] diffusion indisponible : transaction D1 refusée');
+      return json({ error: 'campaign_dispatch_unavailable', message: 'Annonces temporairement indisponibles.' }, 503);
+    }
+
     const reqCountry =
         (request && request.headers.get('CF-IPCountry')) || '';
     const nowMs = Date.now();
@@ -1836,7 +1849,7 @@ async function handleGetAnnouncement(env, request) {
       after = parseInt(new URL(request.url).searchParams.get('after') || '0', 10) || 0;
     } catch (_) { after = 0; }
     const cols =
-      'id, title, body, url, kind, cta, country, created_at, expires_at, active';
+      'id, title, body, url, kind, cta, country, created_at, expires_at, active, creative_json';
     const where =
       "WHERE (country IS NULL OR country = '' OR country = ?) " +
       'AND (expires_at IS NULL OR expires_at = 0 OR expires_at > ?) ' +
@@ -2217,7 +2230,10 @@ async function handleClearAnnouncements(env) {
   if (!env.DB) return json({ error: 'db_unbound' }, 500);
   try {
     await ensureAnnouncementsTable(env);
-    await env.DB.prepare('DELETE FROM app_broadcasts').run();
+    // Le vieux point d'entrée doit couper les campagnes futures aussi :
+    // sinon une annonce programmée réapparaîtrait après « tout retirer ».
+    // Le même lot atomique protège les deux interfaces d'administration.
+    await clearCampaignAnnouncements(env);
     return json({ ok: true });
   } catch (e) {
     return json({ error: String(e) }, 500);
@@ -3902,6 +3918,11 @@ async function handleRequest(request, env, ctx) {
         return badRequest('only GET supported on /config/:mac');
       }
       return handlePublicConfig(env, segments[1]);
+    }
+
+    // Chat client : preuve stricte, jamais d'accès par la MAC seule.
+    if (segments[0] === 'api' && segments[1] === 'support' && segments.length === 3) {
+      return handleDeviceSupport(request, env, segments[2]);
     }
 
     // /api/blackbox — public, l'app envoie son journal (filtré).
