@@ -9,7 +9,8 @@ import '../data/support_repository.dart';
 /// Visible uniquement sur l'accueil. Aucune superposition au lecteur,
 /// aucun son et aucune ouverture automatique ; le client garde la main.
 class SupportBubble extends StatefulWidget {
-  const SupportBubble({super.key});
+  const SupportBubble({super.key, this.repository});
+  final SupportRepository? repository;
   @override
   State<SupportBubble> createState() => _SupportBubbleState();
 }
@@ -42,7 +43,8 @@ class _SupportBubbleState extends State<SupportBubble>
       return;
     _busy = true;
     try {
-      final int unread = await SupportRepository.instance.unread();
+      final int unread = await (widget.repository ?? SupportRepository.instance)
+          .unread();
       if (mounted) setState(() => _unread = unread);
     } catch (_) {
       /* Le chat ne peut jamais bloquer l'accueil. */
@@ -90,7 +92,7 @@ class _SupportBubbleState extends State<SupportBubble>
                     (MediaQuery.sizeOf(context).height -
                         MediaQuery.viewInsetsOf(context).bottom) *
                     .78,
-                child: const SupportChat(),
+                child: SupportChat(repository: widget.repository),
               ),
             ),
           );
@@ -138,7 +140,8 @@ class _LittleFace extends StatelessWidget {
 }
 
 class SupportChat extends StatefulWidget {
-  const SupportChat({super.key});
+  const SupportChat({super.key, this.repository});
+  final SupportRepository? repository;
   @override
   State<SupportChat> createState() => _SupportChatState();
 }
@@ -146,7 +149,8 @@ class SupportChat extends StatefulWidget {
 class _SupportChatState extends State<SupportChat> with WidgetsBindingObserver {
   final TextEditingController _text = TextEditingController();
   final ScrollController _scroll = ScrollController();
-  final SupportRepository _repo = SupportRepository.instance;
+  SupportRepository get _repo =>
+      widget.repository ?? SupportRepository.instance;
   Timer? _timer;
   List<SupportMessage> _items = <SupportMessage>[];
   bool _loading = false,
@@ -305,7 +309,7 @@ class _SupportChatState extends State<SupportChat> with WidgetsBindingObserver {
         child: _initial
             ? const Center(child: CircularProgressIndicator())
             : _items.isEmpty
-            ? Center(
+            ? SingleChildScrollView(
                 child: Padding(
                   padding: const EdgeInsets.all(24),
                   child: Column(

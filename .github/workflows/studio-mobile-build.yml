@@ -1,0 +1,56 @@
+# Compilation d’une app de démonstration : aucun secret ni publication.
+name: Studio mobile — compilation Android
+on:
+  push:
+    branches: ['feature/mobile-studio-20261012']
+    paths:
+      - 'android-app/**'
+      - '.github/workflows/studio-mobile-build.yml'
+permissions:
+  contents: read
+concurrency:
+  group: studio-mobile-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    defaults:
+      run:
+        working-directory: android-app
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+        with:
+          flutter-version: '3.47.7'
+          channel: stable
+          cache: true
+      - name: Dépendances et permissions mobiles
+        run: |
+          flutter pub get
+          python3 ci/mobile/prepare_studio.py
+          python3 - <<'PYBUILD'
+          from pathlib import Path
+          import re
+          p=Path('android/app/build.gradle.kts')
+          s=p.read_text()
+          s=re.sub(r'applicationId = "[^"]+"', 'applicationId = "com.sevenmotion.studio.preview"', s)
+          s=s.replace('minSdk = flutter.minSdkVersion', 'minSdk = 24')
+          p.write_text(s)
+          PYBUILD
+      - name: Compiler sans clé de production
+        run: flutter build apk --debug --target lib/main.dart --target-platform android-arm64
+      - name: APK de démonstration et versions résolues
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: studio-mobile-preview
+          path: |
+            android-app/build/app/outputs/flutter-apk/app-debug.apk
+            android-app/pubspec.lock
+          if-no-files-found: error

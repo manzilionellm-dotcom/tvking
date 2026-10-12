@@ -152,7 +152,7 @@ class MobileServices extends ChangeNotifier {
       return;
     try {
       await Posthog().capture(
-        event: 'mobile_feature_used',
+        eventName: 'mobile_feature_used',
         properties: <String, Object>{'feature': feature},
       );
     } catch (_) {}
