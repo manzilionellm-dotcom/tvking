@@ -12,6 +12,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:tv_king/core/app/repair_flags.dart';
 import 'package:tv_king/features/tv/presentation/tv_activation_screen.dart';
 import 'package:tv_king/features/tv/presentation/tv_components.dart';
+import 'package:tv_king/features/tv/presentation/tv_phone_source_qr.dart';
 import 'package:tv_king/l10n/generated/app_localizations.dart';
 
 const _mac = 'MK:12:34:AB:CD:56';
@@ -39,6 +40,48 @@ Widget app(Widget child, Locale locale) => MaterialApp(
   localizationsDelegates: AppLocalizations.localizationsDelegates,
   home: Scaffold(body: child),
 );
+
+// QrImageView garde sa donnée privée. Comparer le QR réellement dessiné
+// à celui du message attendu évite d'ajouter une API de test à l'application.
+Future<void> expectQrData(
+  WidgetTester tester,
+  Finder owner,
+  String data,
+) async {
+  final paint = find.descendant(
+    of: owner,
+    matching: find.byWidgetPredicate(
+      (w) => w is CustomPaint && w.painter is QrPainter,
+    ),
+  );
+  final actual = tester.widget<CustomPaint>(paint).painter! as QrPainter;
+  final expected = QrPainter(
+    data: data,
+    version: QrVersions.auto,
+    errorCorrectionLevel: actual.errorCorrectionLevel,
+    gapless: actual.gapless,
+    eyeStyle: actual.eyeStyle,
+    dataModuleStyle: actual.dataModuleStyle,
+    // Même configuration de peinture que le composant de qr_flutter 4.1.
+    // ignore: deprecated_member_use
+    color: actual.color,
+    // ignore: deprecated_member_use
+    emptyColor: actual.emptyColor,
+  );
+  await tester.runAsync(() async {
+    final actualImage = await actual.toImageData(256);
+    final expectedImage = await expected.toImageData(256);
+    expect(actualImage, isNotNull);
+    expect(expectedImage, isNotNull);
+    expect(
+      actualImage!.buffer.asUint8List(),
+      orderedEquals(expectedImage!.buffer.asUint8List()),
+    );
+  });
+}
+
+String expectedWhatsApp(String message) =>
+    'https://wa.me/$kWhatsAppPhone?text=${Uri.encodeComponent(message)}';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -99,20 +142,16 @@ void main() {
     final paragraph = tester.renderObject<RenderParagraph>(richText);
     expect(visualOrder(_display, paragraph.getBoxesForSelection), _display);
 
-    final qr = tester
-        .widgetList<QrImageView>(find.byType(QrImageView))
-        .toList();
-    final whatsapp = Uri.parse(
-      qr.singleWhere((q) => q.data!.startsWith('https://wa.me/')).data!,
-    );
-    expect(
-      whatsapp.queryParameters['text'],
-      'مرحبًا، أود تفعيل Zuno.\nMAC: $_display',
+    await expectQrData(
+      tester,
+      find.byType(TvWhatsAppQr),
+      expectedWhatsApp('مرحبًا، أود تفعيل Zuno.\nMAC: $_display'),
     );
     final portal = Uri.parse(
-      qr.singleWhere((q) => q.data!.contains('/mon-espace')).data!,
+      tester.widget<TvOwnSourceQr>(find.byType(TvOwnSourceQr)).url!,
     );
     expect(Uri.splitQueryString(portal.fragment)['mac'], _mac);
+    await expectQrData(tester, find.byType(TvOwnSourceQr), portal.toString());
 
     await tester.tap(find.byIcon(Icons.copy_rounded));
     await tester.pump(const Duration(seconds: 3));
@@ -131,22 +170,17 @@ void main() {
     const qr = TvWhatsAppQr(mac: _mac, size: 120);
     await tester.pumpWidget(app(qr, const Locale('en')));
     await tester.pumpAndSettle();
-    final first = Uri.parse(
-      tester.widget<QrImageView>(find.byType(QrImageView)).data!,
-    );
-    expect(
-      first.queryParameters['text'],
-      'Hello, I would like to activate Zuno.\nMAC: $_display',
+    await expectQrData(
+      tester,
+      find.byType(TvWhatsAppQr),
+      expectedWhatsApp('Hello, I would like to activate Zuno.\nMAC: $_display'),
     );
     await tester.pumpWidget(app(qr, const Locale('ar')));
     await tester.pumpAndSettle();
-    final second = Uri.parse(
-      tester.widget<QrImageView>(find.byType(QrImageView)).data!,
-    );
-    expect(second.path, first.path);
-    expect(
-      second.queryParameters['text'],
-      'مرحبًا، أود تفعيل Zuno.\nMAC: $_display',
+    await expectQrData(
+      tester,
+      find.byType(TvWhatsAppQr),
+      expectedWhatsApp('مرحبًا، أود تفعيل Zuno.\nMAC: $_display'),
     );
     expect(tester.takeException(), isNull);
   });
