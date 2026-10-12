@@ -1,6 +1,7 @@
 import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { AppLayout } from '@/components/AppLayout';
+import { BoxTargetPreview } from '@/components/BoxTargetPreview';
 import { confirmAction } from '@/components/confirm';
 import { Alert } from '@/components/ui';
 import {
@@ -8,9 +9,10 @@ import {
   type DeviceSource, ApiError,
 } from '@/lib/api';
 import { isValidMac, normalizeMac } from '@/lib/utils';
+import { sameBoxTarget } from '@/lib/box-target';
 import { useT } from '@/lib/i18n';
 import {
-  isClientList, isListOn, listDisplayName, planAddList, planRemoveSource, planToggleSource,
+  isClientList, isListOn, listDisplayName, planAddSource, planRemoveSource, planToggleSource,
   type SourceInput, type SourceLike,
 } from '@/lib/sources';
 import {
@@ -39,7 +41,11 @@ export function ChainesPage({ onLogout }: { onLogout: () => void }) {
   const [sp] = useSearchParams();
   // Même saisie que « Activer une box » : MAC comme sur la box, « MK: » ajouté seul.
   const [mac, setMac] = useState(sp.get('mac') || '');
+  const [sourceType, setSourceType] = useState<SourceInput['type']>('m3u');
   const [link, setLink] = useState('');
+  const [server, setServer] = useState('');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   // Toutes les listes de la box, telles que le serveur les sert. Gardées en
   // mémoire pour les renvoyer intactes ; seul le nom (libellé ou hôte) est
   // affiché, jamais l'adresse complète ni les codes.
@@ -56,22 +62,27 @@ export function ChainesPage({ onLogout }: { onLogout: () => void }) {
   const [delivery, setDelivery] = useState<Delivery | null>(null);
   const [order, setOrder] = useState<OrderLike | null>(null);
   const readSeq = useRef(0);
+  // Une fin d'envoi peut arriver après un changement de destinataire.
+  // Le numéro de lecture seul ne suffit pas : on conserve aussi la MAC.
+  const currentMac = useRef(normalizeMac(mac));
+  currentMac.current = normalizeMac(mac);
 
   const macOk = isValidMac(mac);
 
   // Relit les listes servies à cette box (après chaque envoi aussi : l'écran
   // montre l'état du serveur, pas une supposition).
   const reload = useCallback(async (m: string): Promise<void> => {
+    if (!sameBoxTarget(m, currentMac.current)) return;
     const seq = ++readSeq.current;
     setLooking(true);
     try {
       const r = await sourcesApi.get(m);
-      if (seq !== readSeq.current) return;
+      if (seq !== readSeq.current || !sameBoxTarget(m, currentMac.current)) return;
       setSources((r.sources || []) as SourceLike[]);
       setErr(null);
       setLoaded(true);
     } catch (e) {
-      if (seq !== readSeq.current) return;
+      if (seq !== readSeq.current || !sameBoxTarget(m, currentMac.current)) return;
       setSources([]);
       setLoaded(false);
       if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
@@ -79,7 +90,7 @@ export function ChainesPage({ onLogout }: { onLogout: () => void }) {
       if (e instanceof ApiError && e.status === 404) { setLoaded(true); return; }
       setErr(e instanceof ApiError ? e.message : 'Impossible de lire les listes de cette box.');
     } finally {
-      if (seq === readSeq.current) setLooking(false);
+      if (seq === readSeq.current && sameBoxTarget(m, currentMac.current)) setLooking(false);
     }
   }, [onLogout]);
 
@@ -123,6 +134,7 @@ export function ChainesPage({ onLogout }: { onLogout: () => void }) {
   }, [delivery, onLogout, reload]);
 
   function track(m: string, orderId: string | null | undefined, verb: 'load' | 'remove') {
+    if (!sameBoxTarget(m, currentMac.current)) return;
     setOrder(null);
     setDelivery(orderId ? { mac: m, orderId, verb, startedAt: Date.now() } : null);
   }
@@ -140,6 +152,7 @@ export function ChainesPage({ onLogout }: { onLogout: () => void }) {
 
   async function save(e: FormEvent) {
     e.preventDefault();
+    if (!canPush || busy || looking) return;
     setErr(null);
     const m = normalizeMac(mac);
     if (!isValidMac(m)) {
@@ -150,7 +163,10 @@ export function ChainesPage({ onLogout }: { onLogout: () => void }) {
       setErr('Attends que l’état de cette box soit lu, puis réessaie.');
       return;
     }
-    const plan = planAddList(sources, link, replaceOthers);
+    const fresh: SourceInput = sourceType === 'xtream'
+      ? { type: 'xtream', server_url: server, username, password }
+      : { type: 'm3u', m3u_url: link };
+    const plan = planAddSource(sources, fresh, replaceOthers);
     if (plan.kind === 'invalid') { setErr(plan.message); return; }
     if (plan.kind === 'full') {
       setErr('Cette box a déjà 3 listes du panel. Retire-en une ci-dessous, ou coche « remplacer ».');
@@ -160,6 +176,9 @@ export function ChainesPage({ onLogout }: { onLogout: () => void }) {
     try {
       await send(m, plan.sources, 'load');
       setLink('');
+      setServer('');
+      setUsername('');
+      setPassword('');
     } catch (e2) {
       failed(e2, 'Enregistrement impossible.');
     } finally {
@@ -224,6 +243,9 @@ export function ChainesPage({ onLogout }: { onLogout: () => void }) {
       ? 'border-warning/30 bg-warning/10 text-warning'
       : 'border-white/10 bg-obsidian text-ink-secondary';
   const panelCount = sources.filter((s) => !isClientList(s)).length;
+  const inputReady = sourceType === 'xtream'
+    ? !!(server.trim() && username.trim() && password.trim())
+    : !!link.trim();
 
   const inputCls =
     'w-full rounded-md border border-white/10 bg-slate px-3 py-2.5 text-sm outline-none focus:border-accent/60 focus:ring-2 focus:ring-accent/40';
@@ -260,7 +282,15 @@ export function ChainesPage({ onLogout }: { onLogout: () => void }) {
             <input
               id="chaines-mac"
               value={mac}
-              onChange={(e) => { setMac(e.target.value); setDelivery(null); }}
+              onChange={(e) => {
+                currentMac.current = normalizeMac(e.target.value);
+                readSeq.current++;
+                setLoaded(false);
+                setSources([]);
+                setMac(e.target.value);
+                setDelivery(null);
+              }}
+              disabled={busy}
               onBlur={() => setMac((v) => (v.trim() ? normalizeMac(v) : v))}
               autoFocus
               autoComplete="off"
@@ -269,25 +299,69 @@ export function ChainesPage({ onLogout }: { onLogout: () => void }) {
             />
           </div>
 
-          <div>
+          <BoxTargetPreview mac={mac} />
+
+          <fieldset disabled={busy} className="space-y-2">
+            <legend className="text-xs font-medium text-ink-secondary">Type de source</legend>
+            <div className="flex flex-wrap gap-4 text-sm">
+              <label className="flex cursor-pointer items-center gap-2">
+                <input type="radio" name="source-type" value="m3u"
+                  checked={sourceType === 'm3u'} onChange={() => setSourceType('m3u')} />
+                M3U
+              </label>
+              <label className="flex cursor-pointer items-center gap-2">
+                <input type="radio" name="source-type" value="xtream"
+                  checked={sourceType === 'xtream'} onChange={() => setSourceType('xtream')} />
+                Xtream
+              </label>
+            </div>
+          </fieldset>
+
+          {sourceType === 'm3u' ? <div>
             <label htmlFor="chaines-lien" className="mb-1.5 block text-xs font-medium text-ink-secondary">
               Nouveau lien
             </label>
             <input
               id="chaines-lien"
               value={link}
+              disabled={busy}
               onChange={(e) => setLink(e.target.value)}
               autoComplete="off"
               spellCheck={false}
               placeholder="Colle le lien de la liste ici"
               className={inputCls + ' font-mono'}
             />
-          </div>
+          </div> : <div className="space-y-4">
+            <div>
+              <label htmlFor="chaines-server" className="mb-1.5 block text-xs font-medium text-ink-secondary">
+                Serveur Xtream
+              </label>
+              <input id="chaines-server" value={server} disabled={busy}
+                onChange={(e) => setServer(e.target.value)} autoComplete="off" spellCheck={false}
+                placeholder="Adresse du serveur, avec le port si nécessaire" className={inputCls + ' font-mono'} />
+            </div>
+            <div>
+              <label htmlFor="chaines-username" className="mb-1.5 block text-xs font-medium text-ink-secondary">
+                Identifiant Xtream
+              </label>
+              <input id="chaines-username" value={username} disabled={busy}
+                onChange={(e) => setUsername(e.target.value)} autoComplete="off" spellCheck={false}
+                className={inputCls} />
+            </div>
+            <div>
+              <label htmlFor="chaines-password" className="mb-1.5 block text-xs font-medium text-ink-secondary">
+                Mot de passe Xtream
+              </label>
+              <input id="chaines-password" type="password" value={password} disabled={busy}
+                onChange={(e) => setPassword(e.target.value)} autoComplete="off" className={inputCls} />
+            </div>
+          </div>}
 
           <label className="flex cursor-pointer items-start gap-2 text-sm text-ink-secondary">
             <input
               type="checkbox"
               checked={replaceOthers}
+              disabled={busy}
               onChange={(e) => setReplaceOthers(e.target.checked)}
               className="mt-0.5"
             />
@@ -303,10 +377,11 @@ export function ChainesPage({ onLogout }: { onLogout: () => void }) {
 
           <button
             type="submit"
-            disabled={!canPush || busy || looking || !loaded || !macOk || !link.trim()}
+            disabled={!canPush || busy || looking || !loaded || !macOk || !inputReady}
             className="rounded-md bg-accent px-4 py-2.5 text-sm font-semibold text-obsidian hover:bg-accent-bright disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {busy ? 'Envoi…' : replaceOthers ? 'Remplacer par cette liste' : 'Ajouter la liste'}
+            {busy ? 'Envoi…' : replaceOthers ? 'Remplacer par cette liste'
+              : sourceType === 'xtream' ? 'Ajouter la source Xtream' : 'Ajouter la liste'}
           </button>
         </form>
 

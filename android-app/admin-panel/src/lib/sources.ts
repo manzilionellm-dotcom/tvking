@@ -213,7 +213,20 @@ export type AddListPlan =
 ///   - lien déjà présent = pas de doublon : il est rallumé à sa place ;
 ///   - les listes du client ne sont jamais renvoyées (le serveur les garde).
 export function planAddList(existing: SourceLike[], url: string, replace: boolean): AddListPlan {
-  const fresh: SourceInput = { type: 'm3u', m3u_url: url.trim() };
+  return planAddSource(existing, { type: 'm3u', m3u_url: url }, replace);
+}
+
+/// Le formulaire Listes accepte M3U et Xtream sans changer la licence.
+/// Renvoyer le même compte Xtream met à jour ses accès, sans doublon.
+export function planAddSource(existing: SourceLike[], add: SourceInput, replace: boolean): AddListPlan {
+  const fresh = toSourceInput(add);
+  if (fresh.type === 'xtream') {
+    fresh.server_url = String(fresh.server_url ?? '').trim();
+    fresh.username = String(fresh.username ?? '').trim();
+    fresh.password = String(fresh.password ?? '').trim();
+  } else {
+    fresh.m3u_url = String(fresh.m3u_url ?? '').trim();
+  }
   const bad = validateListInput(fresh);
   if (bad) return { kind: 'invalid', message: bad };
   if (replace) return { kind: 'send', sources: [fresh], already: false };
@@ -221,9 +234,12 @@ export function planAddList(existing: SourceLike[], url: string, replace: boolea
   const panel = existing.filter((s) => !isClientList(s));
   let already = false;
   const out: SourceInput[] = panel.map((s) => {
-    const input = toSourceInput(s);
+    let input = toSourceInput(s);
     if (sourceFingerprint(s) === fp) {
       already = true;
+      // La saisie explicite remplace les anciens accès. Le libellé et
+      // le guide restent si le formulaire ne fournit pas ces champs.
+      input = { ...input, ...fresh };
       delete input.enabled;
     }
     return input;
@@ -245,3 +261,4 @@ export function listDisplayName(s: SourceLike): string {
     return s.type === 'xtream' ? 'Xtream' : 'M3U';
   }
 }
+

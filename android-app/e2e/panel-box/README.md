@@ -27,6 +27,10 @@ Ces ports doivent être libres.
 - Connexion admin (mot de passe faux, puis bon) depuis l'écran de login.
 - Création et activation d'un client **sans** lien M3U, puis présence dans la liste Clients.
 - Ajout d'un lien M3U, puis remplacement par un autre, **sans** toucher à la date de licence.
+- Choix Xtream dans l'écran Listes, validation avant l'envoi, conservation des listes
+  éteintes et de celles du client, MAC destinataire exacte et accusés RECEIVED/APPLIED.
+- Mise à jour du même compte Xtream sans doublon, refus d'une quatrième liste et
+  remplacement uniquement lorsque la case est cochée.
 - Message instantané publié dans Annonces, relu par la box.
 - Effacement de la liste : la box ne reçoit plus de lien, l'abonnement reste valide.
 - Heartbeat, puis écran « En ligne » (MAC + chaîne annoncée).
@@ -40,3 +44,4 @@ Ces ports doivent être libres.
 - Le pays et l'IP vus par Cloudflare.
 - L'expiration en laissant l'horloge tourner, sans écrire la date à la main.
 - Le site public `https://tvking-admin.pages.dev`.
+
