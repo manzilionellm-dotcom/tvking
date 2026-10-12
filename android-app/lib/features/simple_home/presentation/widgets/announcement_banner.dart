@@ -25,6 +25,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../subscription/data/signal_inbox.dart';
+import '../../../ads/presentation/creative_card.dart';
 import '../../data/announcement_repository.dart';
 
 /// Style visuel résolu depuis la catégorie d'une annonce.
@@ -118,6 +119,9 @@ class _AnnouncementBannerState extends State<AnnouncementBanner> {
     final Announcement? a = _announcement;
     if (a == null) return const SizedBox.shrink();
 
+    if (a.creative != null) {
+      return CreativeCard(key: ValueKey<int>(a.id), announcement: a, onClose: _dismiss, onOpen: _openLink);
+    }
     final bool hasLink = a.url.isNotEmpty;
     final _KindStyle style = _styleFor(a.kind);
     final Color color = style.color;

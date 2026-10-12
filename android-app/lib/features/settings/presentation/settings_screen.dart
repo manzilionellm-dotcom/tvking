@@ -19,6 +19,7 @@ import '../../../core/theme/theme_mode_repository.dart';
 import '../../about/presentation/about_screen.dart';
 import '../../cast/presentation/cast_diagnostics_screen.dart';
 import 'notifications_settings_screen.dart';
+import '../../mobile_services/presentation/mobile_options.dart';
 import '../../channels/data/recently_watched_repository.dart';
 import '../../player/data/player_settings.dart';
 import '../../channels/presentation/widgets/source_choice_sheet.dart';
@@ -60,6 +61,11 @@ class SettingsScreen extends StatelessWidget {
             const SubscriptionCard(),
             const SizedBox(height: 4),
 
+            ListTile(leading: const Icon(Icons.auto_awesome_outlined),
+              title: const Text('Confort mobile'),
+              subtitle: const Text('Téléchargements, guide et animations'),
+              onTap: () => Navigator.push(context, MaterialPageRoute<void>(builder: (_) => const MobileOptionsScreen())),
+            ),
             // ====== LANGUE ======
             _SectionTitle(context.l10n.settingsLanguage),
             const _LanguagePicker(),
