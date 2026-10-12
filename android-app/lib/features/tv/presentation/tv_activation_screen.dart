@@ -13,7 +13,6 @@ import '../../device/domain/display_mac.dart';
 import '../../../core/app/repair_flags.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../../device/data/device_identity.dart';
-import '../../subscription/data/activation_hint.dart';
 import '../../subscription/data/remote_activation_watch.dart';
 import '../../subscription/data/subscription_state.dart';
 import '../../playlists/domain/open_source_input.dart';
@@ -87,10 +86,9 @@ class _TvActivationScreenState extends State<TvActivationScreen> {
         child: FittedBox(
           fit: BoxFit.contain,
           child: SizedBox(
-            // 540 + 48 + QR WhatsApp (210 + 32) + 40 + QR espace (210 + 112)
-            // = 1192 : tient dans la zone sûre (1184) à l'échelle ~1,0,
-            // les tailles de police dessinées restent celles du design.
-            width: 1192,
+            // Largeurs complètes, textes compris : 540 + 48 + 250 + 40 + 322.
+            // Le FittedBox adapte cet ensemble à la zone sûre de la télévision.
+            width: 1200,
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.center,
@@ -116,6 +114,13 @@ class _TvActivationScreenState extends State<TvActivationScreen> {
   }
 
   Widget _activationColumn(BuildContext context) {
+    final String? hint = switch (SubscriptionState.instance.syncHint) {
+      'offline' => context.l10n.tvNetworkUnavailableHelp,
+      'expired' => context.l10n.tvCodeInactive,
+      'frozen' => context.l10n.subFrozenMsg,
+      'banned' => context.l10n.tvStatusBanned,
+      _ => null,
+    };
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
@@ -140,15 +145,20 @@ class _TvActivationScreenState extends State<TvActivationScreen> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: <Widget>[
-                  Text(
-                    displayMac(_mac, showPrefix: RepairFlags.macShowPrefix),
-                    // Une MAC reste gauche → droite, même dans une UI arabe.
-                    // Sinon Unicode peut déplacer ses premiers groupes chiffrés.
-                    textDirection: TextDirection.ltr,
-                    style: TvTokens.mono(
-                      38,
-                      color: TvTokens.accentBright,
-                      spacing: 2,
+                  Flexible(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        displayMac(_mac, showPrefix: RepairFlags.macShowPrefix),
+                        // Une MAC reste gauche → droite, même dans une UI arabe.
+                        // Sinon Unicode déplace ses premiers groupes chiffrés.
+                        textDirection: TextDirection.ltr,
+                        style: TvTokens.mono(
+                          38,
+                          color: TvTokens.accentBright,
+                          spacing: 2,
+                        ),
+                      ),
                     ),
                   ),
                   const SizedBox(width: 16),
@@ -171,11 +181,10 @@ class _TvActivationScreenState extends State<TvActivationScreen> {
           autofocus: true,
           onSelect: _busy ? null : _check,
         ),
-        if (activationHintFr(SubscriptionState.instance.syncHint) !=
-            null) ...<Widget>[
+        if (hint != null) ...<Widget>[
           const SizedBox(height: 14),
           Text(
-            activationHintFr(SubscriptionState.instance.syncHint)!,
+            hint,
             textAlign: TextAlign.center,
             style: TvTokens.ui(16, color: TvTokens.live),
           ),

@@ -51,49 +51,68 @@ class TvWhatsAppQr extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: <Widget>[
-        // QR sur fond clair (un QR se scanne en sombre-sur-clair).
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(TvTokens.rCard),
-            border: Border.all(color: TvTokens.accent, width: 2),
-          ),
-          child: QrImageView(
-            data: tvWhatsAppUrl(mac, context.l10n),
-            version: QrVersions.auto,
-            size: size,
-            backgroundColor: Colors.white,
-            eyeStyle: const QrEyeStyle(
-                eyeShape: QrEyeShape.square, color: Color(0xFF0B0B0B)),
-            dataModuleStyle: const QrDataModuleStyle(
+    return SizedBox(
+      width: size + 40,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          // QR sur fond clair (un QR se scanne en sombre-sur-clair).
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(TvTokens.rCard),
+              border: Border.all(color: TvTokens.accent, width: 2),
+            ),
+            child: QrImageView(
+              data: tvWhatsAppUrl(mac, context.l10n),
+              version: QrVersions.auto,
+              size: size,
+              backgroundColor: Colors.white,
+              eyeStyle: const QrEyeStyle(
+                eyeShape: QrEyeShape.square,
+                color: Color(0xFF0B0B0B),
+              ),
+              dataModuleStyle: const QrDataModuleStyle(
                 dataModuleShape: QrDataModuleShape.square,
-                color: Color(0xFF0B0B0B)),
+                color: Color(0xFF0B0B0B),
+              ),
+            ),
           ),
-        ),
-        const SizedBox(height: 16),
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            const Icon(Icons.qr_code_scanner_rounded,
-                color: TvTokens.accentBright, size: 22),
-            const SizedBox(width: 10),
-            Text(context.l10n.tvScanToActivate,
-                style: TvTokens.ui(18,
-                    weight: FontWeight.w700, color: TvTokens.accentBright)),
-          ],
-        ),
-        const SizedBox(height: 6),
-        SizedBox(
-          width: size + 40,
-          child: Text(context.l10n.tvScanHelp,
+          const SizedBox(height: 16),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              const Icon(
+                Icons.qr_code_scanner_rounded,
+                color: TvTokens.accentBright,
+                size: 22,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  context.l10n.tvScanToActivate,
+                  textAlign: TextAlign.center,
+                  style: TvTokens.ui(
+                    18,
+                    weight: FontWeight.w700,
+                    color: TvTokens.accentBright,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          SizedBox(
+            width: size + 40,
+            child: Text(
+              context.l10n.tvScanHelp,
               textAlign: TextAlign.center,
-              style: TvTokens.ui(13, color: TvTokens.mutedDim)),
-        ),
-      ],
+              style: TvTokens.ui(13, color: TvTokens.mutedDim),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

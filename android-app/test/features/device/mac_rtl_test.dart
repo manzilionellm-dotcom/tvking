@@ -1,5 +1,9 @@
 // Régression : sans direction explicite, un début numérique de MAC peut
 // migrer à droite en arabe. Les données ci-dessous sont entièrement factices.
+import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -83,6 +87,62 @@ String expectedWhatsApp(String message) =>
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  // Les polices Google de production sont téléchargées à l'exécution. Ce test
+  // hors réseau fournit Ahem du SDK sous leurs noms : géométrie déterministe,
+  // aucune erreur de police ignorée, et aucun téléchargement pendant le test.
+  setUpAll(() {
+    final root = Platform.environment['FLUTTER_ROOT'];
+    if (root == null) throw StateError('FLUTTER_ROOT nécessaire pour Ahem');
+    final bytes = File('$root/packages/flutter_tools/static/Ahem.ttf')
+        .readAsBytesSync();
+    final font = ByteData.sublistView(bytes);
+    final assets = <String, List<Map<String, String>>>{
+      for (final family in ['Inter', 'Oswald', 'JetBrainsMono'])
+        for (final weight in [
+          'Thin',
+          'ExtraLight',
+          'Light',
+          'Regular',
+          'Medium',
+          'SemiBold',
+          'Bold',
+          'ExtraBold',
+          'Black',
+        ])
+          'fonts/$family-$weight.ttf': [
+            {'asset': 'fonts/$family-$weight.ttf'},
+          ],
+    };
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    messenger.setMockMessageHandler('flutter/assets', (message) async {
+      final key = utf8.decode(
+        message!.buffer.asUint8List(
+          message.offsetInBytes,
+          message.lengthInBytes,
+        ),
+      );
+      if (key == 'AssetManifest.bin')
+        return const StandardMessageCodec().encodeMessage(assets);
+      if (key == 'AssetManifest.json') {
+        return ByteData.sublistView(
+          Uint8List.fromList(
+            utf8.encode(
+              jsonEncode({
+                for (final key in assets.keys) key: [key],
+              }),
+            ),
+          ),
+        );
+      }
+      if (assets.containsKey(key)) return font;
+      return messenger.delegate.send('flutter/assets', message);
+    });
+  });
+  tearDownAll(
+    () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMessageHandler('flutter/assets', null),
+  );
   setUp(() {
     GoogleFonts.config.allowRuntimeFetching = false;
     SharedPreferences.setMockInitialValues({'device.virtual_mac.v1': _mac});

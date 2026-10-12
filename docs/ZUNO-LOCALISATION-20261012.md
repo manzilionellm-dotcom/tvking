@@ -61,7 +61,16 @@ sans insérer de caractères invisibles dans le code à copier.
 `mac_rtl_test.dart` mesure les positions réelles des caractères : reproduction
 du défaut sans correction, écran d'activation arabe, concordance avec les deux
 QR et le presse-papiers, conservation de la MAC stockée, changement de langue
-du QR et ordre de la ligne MAC dans les deux sens. Les valeurs sont factices.
+du QR et ordre de la ligne MAC dans les deux sens. Les valeurs sont factices. Le rendu utilise la police Ahem du SDK sous les noms
+des polices Google pour rester déterministe et sans réseau ; aucune erreur
+de chargement de police n’est ignorée. Ce test ne valide pas la typographie
+exacte d’une TV physique.
+
+Ce parcours a aussi reproduit un débordement de l’écran d’activation. Les
+largeurs des colonnes incluent maintenant les textes, les libellés du QR
+peuvent revenir à la ligne et la MAC se réduit seulement si nécessaire.
+Les messages de vérification de cet écran utilisent les traductions existantes
+au lieu de la fonction française historique.
 
 ## Vérification et APK
 
