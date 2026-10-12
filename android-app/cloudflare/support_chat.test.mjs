@@ -94,6 +94,10 @@ test('pagination sans perte, texte non interprété et absence de contenu dans l
  for(let i=0;i<105;i++){ t.mock.timers.tick(4000);await s.call(path,{method:'POST',body:msg('<script>test '+i+'</script>'),user:null,deviceSecret:SECRET_A}); }
  const page=await s.call(path,{user:null,deviceSecret:SECRET_A});assert.equal(page.data.items.length,100);assert.equal(page.data.more,true);
  const older=await s.call(path+'?before='+page.data.items[0].seq,{user:null,deviceSecret:SECRET_A});assert.equal(older.data.items.length,5);
+ const forward=await s.call(path+'?after='+older.data.items[0].seq,{user:null,deviceSecret:SECRET_A});
+ assert.equal(forward.data.items.length,100);assert.equal(forward.data.more,true);
+ const rest=await s.call(path+'?after='+forward.data.items.at(-1).seq,{user:null,deviceSecret:SECRET_A});
+ assert.equal(rest.data.items.length,4);assert.equal(new Set([...forward.data.items,...rest.data.items].map(m=>m.seq)).size,104);
  assert.ok(page.data.items.at(-1).body.includes('<script>'));
  assert.equal(s.db.prepare('SELECT COUNT(*) AS n FROM audit_logs').get().n,0);
 });

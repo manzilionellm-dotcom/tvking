@@ -1141,8 +1141,8 @@ export interface SupportMessage { seq: number; client_id: string; sender: 'clien
 export interface SupportThread { mac: string; device_label: string; updated_at: number; unread: number; preview: string }
 export interface SupportPage { items: SupportMessage[]; more: boolean; unread: number; client_read_seq: number; owner_read_seq: number }
 export const supportApi = {
-  list: () => request<{ items: SupportThread[] }>('/support'),
-  messages: (mac: string, before?: number) => request<SupportPage>(`/support/${encodeURIComponent(mac)}${before ? `?before=${before}` : ''}`),
-  send: (mac: string, body: string, client_id: string) => request<{ item: SupportMessage }>(`/support/${encodeURIComponent(mac)}`, { method: 'POST', body: { body, client_id } }),
-  read: (mac: string, read_through: number) => request(`/support/${encodeURIComponent(mac)}`, { method: 'PATCH', body: { read_through } }),
+  list: () => request<{ items: SupportThread[] }>('/api/v1/support'),
+  messages: (mac: string, before?: number, after?: number) => request<SupportPage>(`/api/v1/support/${encodeURIComponent(mac)}${before ? `?before=${before}` : after ? `?after=${after}` : ''}`),
+  send: (mac: string, body: string, client_id: string) => request<{ item: SupportMessage }>(`/api/v1/support/${encodeURIComponent(mac)}`, { method: 'POST', body: { body, client_id } }),
+  read: (mac: string, read_through: number) => request(`/api/v1/support/${encodeURIComponent(mac)}`, { method: 'PATCH', body: { read_through } }),
 };

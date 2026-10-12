@@ -42,6 +42,7 @@ function Conversation({ mac, onRead, onLogout }: { mac: string; onRead: () => Pr
   const locked = useRef(false);
   const loading = useRef(false);
   const loadingOlder = useRef(false);
+  const newest = useRef(0);
   const atBottom = useRef(true);
   const lastRead = useRef(0);
   const pending = useRef<{ id: string; body: string } | null>(null);
@@ -55,9 +56,11 @@ function Conversation({ mac, onRead, onLogout }: { mac: string; onRead: () => Pr
     if(document.hidden || loading.current) return;
     loading.current = true;
     try {
-      const r = await supportApi.messages(mac);
+      const after = newest.current || undefined;
+      const r = await supportApi.messages(mac, undefined, after);
       if (!alive.current) return;
-      setData(old => ({ ...r, more: old?.more ?? r.more, items: old ? [...new Map([...old.items, ...r.items].map(m => [m.seq,m])).values()].sort((a,b) => a.seq-b.seq) : r.items }));
+      setData(old => ({ ...r, more: after ? (old?.more ?? false) : r.more, items: old ? [...new Map([...old.items, ...r.items].map(m => [m.seq,m])).values()].sort((a,b) => a.seq-b.seq) : r.items }));
+      newest.current = r.items.at(-1)?.seq || newest.current;
       if(atBottom.current) requestAnimationFrame(() => { if(scroller.current) scroller.current.scrollTop = scroller.current.scrollHeight; });
       requestAnimationFrame(() => { if (alive.current) void markRead(r.items).catch(fail); });
     } catch(e) { fail(e); } finally { loading.current = false; }
