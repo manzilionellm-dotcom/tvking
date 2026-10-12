@@ -154,6 +154,7 @@ class _TvDiagnosticScreenState extends State<TvDiagnosticScreen> {
     await _runSource();
     await _runPlayer(streamUrl);
 
+    if (!mounted) return;
     _computeVerdict();
     _done = true;
     if (mounted) setState(() {});
@@ -376,7 +377,7 @@ class _TvDiagnosticScreenState extends State<TvDiagnosticScreen> {
         _captive.stat == _Stat.timeout ||
         _dns.stat == _Stat.fail ||
         _dns.stat == _Stat.timeout ||
-        (_stream.detail.contains('456'));
+        (_stream.detail(context).contains('456'));
     final bool allOk = _checks.every((_Check c) => c.stat == _Stat.ok);
     final bool netOk =
         _captive.stat == _Stat.ok &&

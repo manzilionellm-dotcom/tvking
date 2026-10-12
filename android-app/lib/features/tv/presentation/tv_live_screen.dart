@@ -564,6 +564,8 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
   final Map<String, String> _catLabelMemo = <String, String>{};
 
   String _catLabel(BuildContext context, String cat) {
+    // La clé historique de catégorie reste stable pendant un changement de langue.
+    if (cat == 'Autres') return context.l10n.tvOther;
     if (cat == _kTrendCat) return context.l10n.tvTrending;
     if (cat == _kFavCat) return '★ ${context.l10n.navFavorites}';
     if (cat == _kRecentCat) return context.l10n.tvRecent;
@@ -597,7 +599,7 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
   // noms du créateur de la playlist.
   static String _catOf(Channel c) {
     final String raw = c.category.trim();
-    return raw.isEmpty ? context.l10n.tvOther : raw;
+    return raw.isEmpty ? 'Autres' : raw;
   }
 
   /// Vrai si la chaîne est classée « Adulte » (pour le Mode Enfants).

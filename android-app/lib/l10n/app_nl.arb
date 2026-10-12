@@ -57,7 +57,11 @@
   "playerVideo": "Video",
   "playerUpNextIn": "Hierna over {seconds}s",
   "@playerUpNextIn": {
-    "placeholders": { "seconds": { "type": "int" } }
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
   },
   "playerUpNextCancel": "Annuleren",
   "playerUpNextPlay": "Afspelen",
@@ -2016,20 +2020,56 @@
   "tvMyM3uList": "Mijn M3U-lijst",
   "tvBlackBoxTitle": "Zwarte doos",
   "tvBlackBoxSubtitle": "Technisch logboek van de app (v{version}). Bij een onverwachte afsluiting staat de reden hier.",
-  "@tvBlackBoxSubtitle": {"placeholders": {"version": {"type": "String"}}},
+  "@tvBlackBoxSubtitle": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
   "tvBlackBoxFirstRun": "Eerste start: geen vorige sessie.",
   "tvBlackBoxCleanExit": "Laatste sessie normaal beëindigd.",
   "tvBlackBoxBrutal": "ONVERWACHTE AFSLUITING · {reason}",
-  "@tvBlackBoxBrutal": {"placeholders": {"reason": {"type": "String"}}},
+  "@tvBlackBoxBrutal": {
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
   "tvBlackBoxUnknownReason": "onbekende reden (Android < 11)",
   "tvBlackBoxMemory": "geheugen {mb} MB",
-  "@tvBlackBoxMemory": {"placeholders": {"mb": {"type": "String"}}},
+  "@tvBlackBoxMemory": {
+    "placeholders": {
+      "mb": {
+        "type": "String"
+      }
+    }
+  },
   "tvBlackBoxWhen": "Wanneer: {when}",
-  "@tvBlackBoxWhen": {"placeholders": {"when": {"type": "String"}}},
+  "@tvBlackBoxWhen": {
+    "placeholders": {
+      "when": {
+        "type": "String"
+      }
+    }
+  },
   "tvBlackBoxLastAction": "Laatste actie: {action}",
-  "@tvBlackBoxLastAction": {"placeholders": {"action": {"type": "String"}}},
+  "@tvBlackBoxLastAction": {
+    "placeholders": {
+      "action": {
+        "type": "String"
+      }
+    }
+  },
   "tvBlackBoxDetail": "Android-detail: {detail}",
-  "@tvBlackBoxDetail": {"placeholders": {"detail": {"type": "String"}}},
+  "@tvBlackBoxDetail": {
+    "placeholders": {
+      "detail": {
+        "type": "String"
+      }
+    }
+  },
   "tvRefresh": "Vernieuwen",
   "tvCopy": "Kopiëren",
   "tvCopied": "Gekopieerd",
@@ -2038,7 +2078,7 @@
   "tvBlackBoxHelp": "OMHOOG/OMLAAG: scrollen · CH+/CH−: pagina · Kopiëren = klembord (plak het in WhatsApp naar de support). Dit logboek kan naar de support worden gestuurd. Uitzetten kan bij Instellingen → Extra.",
   "tvNavServer": "Server",
   "tvLegalTitle": "Juridische informatie & Voorwaarden",
-    "tvHelloMorning": "Goedemorgen",
+  "tvHelloMorning": "Goedemorgen",
   "tvHelloAfternoon": "Goedemiddag",
   "tvHelloEvening": "Goedenavond",
   "tvHomeInvite": "Je zenders, films en herinneringen komen hier terug.",
@@ -2063,10 +2103,15 @@
   "tvReminderInMinutes": "Over {minutes} min",
   "tvReminderInHours": "Over {hours} u",
   "tvReminderInHoursMinutes": "Over {hours} u {minutes}",
-"tvResumeLabel": "VERDER KIJKEN",
+  "tvResumeLabel": "VERDER KIJKEN",
   "tvNowPlayingPrefix": "NU BEZIG · {title}",
-  "@tvNowPlayingPrefix": {"placeholders": {"title": {"type": "String"}}},
-  "tvLiveBadge": "LIVE",
+  "@tvNowPlayingPrefix": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
   "tvPinUpdated": "Ouderlijke code bijgewerkt ✔",
   "tvParentalTitle": "Ouderlijk toezicht",
   "tvKidsMode": "Kids-modus",
@@ -2090,7 +2135,13 @@
   "tvMyRecordings": "Mijn opnames",
   "tvDeleteQuestion": "Verwijderen?",
   "tvDeleteRecordingConfirm": "'{name}' definitief verwijderen?",
-  "@tvDeleteRecordingConfirm": {"placeholders": {"name": {"type": "String"}}},
+  "@tvDeleteRecordingConfirm": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "tvCancel": "Annuleren",
   "tvDelete": "Verwijderen",
   "tvSettingsSources": "Mijn bronnen (toevoegen / activeren / verwijderen)",
@@ -2099,18 +2150,42 @@
   "tvSettingsLegal": "Juridische informatie & Gebruiksvoorwaarden",
   "tvUpdateChecking": "Update: controleren…",
   "tvUpdateUpToDate": "Update: up-to-date (versie {version}) — OK om opnieuw te controleren",
-  "@tvUpdateUpToDate": {"placeholders": {"version": {"type": "String"}}},
+  "@tvUpdateUpToDate": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
   "tvUpdateUpToDateNoVersion": "Update: up-to-date — OK om opnieuw te controleren",
   "tvUpdateAvailable": "Nieuwe versie {version} beschikbaar — OK om te installeren",
-  "@tvUpdateAvailable": {"placeholders": {"version": {"type": "String"}}},
+  "@tvUpdateAvailable": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
   "tvUpdateDownloading": "Update downloaden… {pct} %",
-  "@tvUpdateDownloading": {"placeholders": {"pct": {"type": "String"}}},
+  "@tvUpdateDownloading": {
+    "placeholders": {
+      "pct": {
+        "type": "String"
+      }
+    }
+  },
   "tvUpdateFailed": "Update: mislukt (netwerk of installatie) — OK om opnieuw te proberen",
   "tvMySources": "Mijn bronnen",
   "tvAddXtream": "Xtream toevoegen",
   "tvAddM3u": "M3U toevoegen",
   "tvDeleteSourceConfirm": "Bron '{name}' verwijderen?",
-  "@tvDeleteSourceConfirm": {"placeholders": {"name": {"type": "String"}}},
+  "@tvDeleteSourceConfirm": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "tvActivate": "Activeren",
   "tvMyTeams": "Mijn teams",
   "tvAdd": "Toevoegen",
@@ -2126,21 +2201,72 @@
   "tvImpConnecting": "Verbinden met de server…",
   "tvImpCategories": "Categorieën lezen…",
   "tvImpDownloading": "Downloaden… {mb} MB",
-  "@tvImpDownloading": {"placeholders": {"mb": {"type": "String"}}},
+  "@tvImpDownloading": {
+    "placeholders": {
+      "mb": {
+        "type": "String"
+      }
+    }
+  },
   "tvImpDecoding": "{mb} MB verwerken…",
-  "@tvImpDecoding": {"placeholders": {"mb": {"type": "String"}}},
+  "@tvImpDecoding": {
+    "placeholders": {
+      "mb": {
+        "type": "String"
+      }
+    }
+  },
   "tvImpCategory": "Categorie {i}/{total} · {found} zenders gevonden",
-  "@tvImpCategory": {"placeholders": {"i": {"type": "String"}, "total": {"type": "String"}, "found": {"type": "String"}}},
+  "@tvImpCategory": {
+    "placeholders": {
+      "i": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      },
+      "found": {
+        "type": "String"
+      }
+    }
+  },
   "tvImpFound": "{count} zenders gevonden",
-  "@tvImpFound": {"placeholders": {"count": {"type": "String"}}},
+  "@tvImpFound": {
+    "placeholders": {
+      "count": {
+        "type": "String"
+      }
+    }
+  },
   "tvImpSaving": "Opslaan {done} / {total} zenders",
-  "@tvImpSaving": {"placeholders": {"done": {"type": "String"}, "total": {"type": "String"}}},
+  "@tvImpSaving": {
+    "placeholders": {
+      "done": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      }
+    }
+  },
   "tvImpDone": "{count} zenders klaar",
-  "@tvImpDone": {"placeholders": {"count": {"type": "String"}}},
+  "@tvImpDone": {
+    "placeholders": {
+      "count": {
+        "type": "String"
+      }
+    }
+  },
   "tvLanguage": "Taal",
   "tvLanguageAuto": "Automatisch (taal van de tv)",
   "tvSettingsLanguage": "Taal: {value}",
-  "@tvSettingsLanguage": {"placeholders": {"value": {"type": "String"}}},
+  "@tvSettingsLanguage": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
   "tvEnterParentalCode": "Voer de oudercode in",
   "tvCurrentCode": "Huidige code",
   "tvConfirmCode": "Bevestig de code",
@@ -2151,7 +2277,13 @@
   "tvRecordingStarted": "Bezig met opnemen…",
   "tvRecordingError": "Opnamefout",
   "tvRecordingSaved": "Opname opgeslagen ({size})",
-  "@tvRecordingSaved": {"placeholders": {"size": {"type": "String"}}},
+  "@tvRecordingSaved": {
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
   "tvRecordingEmpty": "Lege opname",
   "tvRemovedFromFavorites": "Verwijderd uit favorieten",
   "tvAddedToFavorites": "Toegevoegd aan favorieten ❤",
@@ -2159,61 +2291,163 @@
   "tvCinemaAudio": "Audio",
   "tvCinemaAudioSubs": "Audio en ondertiteling",
   "tvCinemaCast": "Met {names}",
-  "@tvCinemaCast": {"placeholders": {"names": {"type": "String"}}},
+  "@tvCinemaCast": {
+    "placeholders": {
+      "names": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaContinue": "Verder kijken",
   "tvCinemaDeleteDownload": "Download verwijderen",
   "tvCinemaDirector": "Regie: {names}",
-  "@tvCinemaDirector": {"placeholders": {"names": {"type": "String"}}},
+  "@tvCinemaDirector": {
+    "placeholders": {
+      "names": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaDownload": "Downloaden",
   "tvCinemaDownloadError": "Download mislukt",
   "tvCinemaDownloadPaused": "Gepauzeerd · {pct} %",
-  "@tvCinemaDownloadPaused": {"placeholders": {"pct": {"type": "String"}}},
+  "@tvCinemaDownloadPaused": {
+    "placeholders": {
+      "pct": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaDownloaded": "Gedownload",
   "tvCinemaDownloading": "Downloaden · {pct} %",
-  "@tvCinemaDownloading": {"placeholders": {"pct": {"type": "String"}}},
+  "@tvCinemaDownloading": {
+    "placeholders": {
+      "pct": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaDownloads": "Mijn downloads",
   "tvCinemaEmptyCategory": "Hier is nog niets.",
   "tvCinemaEpisode": "Aflevering {n}",
-  "@tvCinemaEpisode": {"placeholders": {"n": {"type": "String"}}},
+  "@tvCinemaEpisode": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaFromStart": "Vanaf het begin",
   "tvCinemaIndexing": "Zoeken in de hele catalogus wordt voorbereid…",
   "tvCinemaLanguage": "Taal: {value}",
-  "@tvCinemaLanguage": {"placeholders": {"value": {"type": "String"}}},
+  "@tvCinemaLanguage": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaLoading": "Laden…",
   "tvCinemaMinutes": "{n} min",
-  "@tvCinemaMinutes": {"placeholders": {"n": {"type": "String"}}},
+  "@tvCinemaMinutes": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaNextEpisode": "Volgende aflevering",
   "tvCinemaNextHint": "OK: nu · Terug: blijven",
   "tvCinemaNextIn": "Volgende aflevering over {s} s",
-  "@tvCinemaNextIn": {"placeholders": {"s": {"type": "String"}}},
+  "@tvCinemaNextIn": {
+    "placeholders": {
+      "s": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaNoEpisodes": "Geen afleveringen beschikbaar.",
   "tvCinemaNoSource": "Nog geen films of series",
   "tvCinemaNoSourceBody": "Films en series komen uit je Xtream-abonnement. Voeg het toe bij Server, of vraag je verkoper om het te activeren.",
   "tvCinemaNoSpace": "Niet genoeg ruimte op de box ({free} GB vrij).",
-  "@tvCinemaNoSpace": {"placeholders": {"free": {"type": "String"}}},
+  "@tvCinemaNoSpace": {
+    "placeholders": {
+      "free": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaPauseDownload": "Pauzeren",
   "tvCinemaPlay": "Afspelen",
   "tvCinemaPlayEpisode": "S{s} · A{e} afspelen",
-  "@tvCinemaPlayEpisode": {"placeholders": {"s": {"type": "String"}, "e": {"type": "String"}}},
+  "@tvCinemaPlayEpisode": {
+    "placeholders": {
+      "s": {
+        "type": "String"
+      },
+      "e": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaRecent": "Recent toegevoegd",
   "tvCinemaRestart": "Opnieuw beginnen",
   "tvCinemaResumeAt": "Hervatten vanaf {time}",
-  "@tvCinemaResumeAt": {"placeholders": {"time": {"type": "String"}}},
+  "@tvCinemaResumeAt": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaResumeDownload": "Download hervatten",
   "tvCinemaResumeEpisode": "S{s} · A{e} hervatten",
-  "@tvCinemaResumeEpisode": {"placeholders": {"s": {"type": "String"}, "e": {"type": "String"}}},
+  "@tvCinemaResumeEpisode": {
+    "placeholders": {
+      "s": {
+        "type": "String"
+      },
+      "e": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaResumedAt": "Hervat vanaf {time}",
-  "@tvCinemaResumedAt": {"placeholders": {"time": {"type": "String"}}},
+  "@tvCinemaResumedAt": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaSearch": "Zoeken",
   "tvCinemaSeason": "Seizoen {n}",
-  "@tvCinemaSeason": {"placeholders": {"n": {"type": "String"}}},
+  "@tvCinemaSeason": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaSeasons": "{n} seizoenen",
-  "@tvCinemaSeasons": {"placeholders": {"n": {"type": "String"}}},
+  "@tvCinemaSeasons": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaSpecials": "Specials",
   "tvCinemaSubtitles": "Ondertiteling",
   "tvCinemaSubtitlesOff": "Uit",
   "tvCinemaTrackUnknown": "Spoor {n}",
-  "@tvCinemaTrackUnknown": {"placeholders": {"n": {"type": "String"}}},
+  "@tvCinemaTrackUnknown": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
   "tvUpdatingContent": "Bijwerken…",
   "tvDeactivate": "Deactiveren",
   "tvSourceActive": "actief",
@@ -2250,4 +2484,258 @@
   "tvVoiceRemoteAiOff": "Uit",
   "tvVoiceRemoteAiHelp": "Standaard uit. Geen sleutel in de app. „Vanavond“ komt uit je gids, op de box. Als de dienst niet antwoordt, zoekt Zuno in je lijst.",
   "tvVoiceCinemaHint": "Open één keer Films of Series: de zoekfunctie vindt ze daarna, zonder netwerk terwijl je kijkt.",
-  "tvVoiceOnChannel": "Op {channel}"}
+  "tvVoiceOnChannel": "Op {channel}",
+  "tvDeletePanelSourceConfirm": "Je aanbieder verstuurt ‘{name}’. Als je deze lijst hier verwijdert, komt ze alleen terug op deze tv als de aanbieder haar opnieuw via het paneel verstuurt.",
+  "tvDeleteSourceFailed": "Verwijderen mislukt: geen verbinding met de server. Er is niets verwijderd. Probeer het zo opnieuw.",
+  "tvCinemaOfflineTitle": "Catalogus niet beschikbaar",
+  "tvCinemaOfflineBody": "Er is niets op de tv opgeslagen en de server reageert niet. Controleer de verbinding en probeer het opnieuw.",
+  "tvCinemaRetry": "Opnieuw proberen",
+  "tvCinemaUpdated": "Bijgewerkt {when}",
+  "tvCinemaAgeJustNow": "zojuist",
+  "tvCinemaAgeMinutes": "{n} min geleden",
+  "tvCinemaAgeHours": "{n} uur geleden",
+  "tvCinemaAgeDays": "{n} dagen geleden",
+  "tvCinemaCategoryFailed": "Deze categorie kon niet worden geladen.",
+  "moviesRetry": "Opnieuw proberen",
+  "tvRemoteTitle": "Afstandsbediening",
+  "tvSettingsRemote": "Je telefoon wordt een afstandsbediening op hetzelfde wifi-netwerk. Geen installatie nodig.",
+  "tvRemoteLead": "Scan de QR-code met de telefooncamera. Geen installatie nodig.",
+  "tvRemoteWarn": "Iedereen die deze code ziet, kan het apparaat bedienen tot de code verloopt. Eén telefoon. De code verloopt automatisch.",
+  "tvRemoteKeep": "Terug sluit dit scherm: de telefoon blijft werken totdat de code verloopt. Uitschakelen stopt direct.",
+  "tvRemoteStarting": "Voorbereiden…",
+  "tvRemoteWaiting": "Wachten op de telefoon…",
+  "tvRemotePaired": "Telefoon verbonden",
+  "tvRemoteExpired": "Code verlopen",
+  "tvRemoteStopped": "Afstandsbediening uitgeschakeld",
+  "tvRemoteNoLan": "Geen lokaal netwerk. Verbind het apparaat en de telefoon met hetzelfde wifi-netwerk.",
+  "tvRemoteError": "De afstandsbediening kon niet starten.",
+  "tvRemoteNewCode": "Nieuwe code",
+  "tvRemoteStop": "Uitschakelen",
+  "tvRemoteStart": "Inschakelen",
+  "tvRemoteLeft": "Verloopt over {time}",
+  "tvRemoteUrlHelp": "Lukt scannen niet? Open dit adres in de browser van je telefoon.",
+  "sportsTimeout": "De sportdienst reageert te langzaam. Probeer het opnieuw.",
+  "sportsNetworkError": "Kan geen verbinding maken met de sportdienst.",
+  "sportsHttpError": "Sportdienst niet beschikbaar (HTTP {status}).",
+  "sportsInvalidResponse": "Onleesbaar antwoord van de sportdienst.",
+  "sportsUnavailable": "Sportgegevens konden niet worden geladen.",
+  "sportsLoading": "Wedstrijden laden…",
+  "sportsRetry": "Opnieuw proberen",
+  "sportsFootballTitle": "Uitslagen en programma",
+  "sportsRefresh": "Vernieuwen",
+  "sportsCommunityNotice": "Uitslagen en doelpunten van gebruikers · vertraging mogelijk · vernieuwen elke 60 s.",
+  "sportsCalendarNotice": "Programma’s en vertraagde uitslagen · OpenFootball levert geen live-uitslagen.",
+  "sportsRetrievedAt": "Opgehaald om {time}",
+  "sportsUpcoming": "Binnenkort",
+  "sportsRecent": "Laatste wedstrijden",
+  "sportsFinished": "Afgelopen",
+  "tvProgramStartedMinutesAgo": "Programma {minutes} min geleden begonnen",
+  "tvProfiles": "Profielen",
+  "tvKidsProfile": "Kinderprofiel",
+  "tvNewProfile": "Nieuw profiel",
+  "tvChildren": "Kinderen",
+  "tvKidsExists": "Er bestaat al een kinderprofiel.",
+  "tvProfileAddFailed": "Het profiel kon niet worden toegevoegd.",
+  "tvKidsReady": "Kinderprofiel klaar. De kindermodus blijft aan.",
+  "tvRename": "Naam wijzigen",
+  "tvNameInvalid": "De naam is leeg of te lang.",
+  "tvProfileDeleteBody": "De favorieten, geschiedenis, afspeelposities, herinneringen en pincode van dit profiel worden gewist. Zenders en profiel 1 blijven bestaan.",
+  "tvProfileDeleteFailed": "Dit profiel kan niet worden verwijderd.",
+  "tvProfilesHelp": "Maximaal 4 profielen. Aparte favorieten, geschiedenis, afspeelposities, herinneringen en pincodes. Zenders worden gedeeld.",
+  "tvDefaultPinWarning": "De pincode is nog 0000. Wijzig die bij Ouderlijk toezicht.",
+  "tvAskProfileOn": "Profiel kiezen bij opstarten: aan",
+  "tvAskProfileOff": "Profiel kiezen bij opstarten: uit",
+  "tvProfileStartupSingle": "De profielkeuze verschijnt vanaf 2 profielen. Met één profiel opent de app direct.",
+  "tvProfileStartupHelp": "Als dit uitstaat, opent het laatste profiel direct. Je kunt hier of op het startscherm blijven wisselen.",
+  "tvKidsProfileHelp": "Kindermodus vergrendeld. Verlaten kan alleen met de pincode van dit profiel. Volwassen inhoud wordt verborgen. Profiel 1 bewaart je eerdere gegevens.",
+  "tvOriginProfileHelp": "Oorspronkelijk profiel: hier staan je eerdere favorieten, geschiedenis, afspeelposities en pincode. Het kan niet worden verwijderd.",
+  "tvSeparateProfileHelp": "Apart profiel. Verwijderen wist profiel 1 niet.",
+  "tvProfileActive": "Actief",
+  "tvProfileCreated": "Profiel ‘{name}’ aangemaakt.",
+  "tvProfileDeleteTitle": "‘{name}’ verwijderen?",
+  "tvWhoWatching": "Wie kijkt er?",
+  "tvProfilePickerHelp": "Iedereen heeft eigen favorieten, geschiedenis en pincode. De zenders blijven hetzelfde.",
+  "tvLater": "Later",
+  "tvNameMum": "Mama",
+  "tvNameDad": "Papa",
+  "tvNameGuest": "Gast",
+  "tvNameLivingRoom": "Woonkamer",
+  "tvNameLimit": "Maximaal 18 tekens.",
+  "tvFirstName": "Voornaam",
+  "tvListRemoved": "Lijst verwijderd",
+  "tvListRemovedBody": "Je aanbieder heeft deze lijst verwijderd. De zenders zijn niet meer beschikbaar.",
+  "tvKidsCannotDisable": "De kindermodus blijft aan in het kinderprofiel. Wissel met de pincode van profiel om alle zenders te zien.",
+  "tvKidsAlwaysOn": "Kinderprofiel: kindermodus blijft aan. Zenders zonder volwassen inhoud blijven beschikbaar.",
+  "tvKidsOn": "Aan — volwassen inhoud verborgen.",
+  "tvKidsOff": "Uit — alle zenders zichtbaar.",
+  "tvChooseSecurePin": "Kies een pincode voordat je de kindermodus inschakelt. 0000 wordt niet meer geaccepteerd.",
+  "tvPinWait": "Te veel pogingen. Probeer het over enkele minuten opnieuw.",
+  "tvEnabled": "Aan",
+  "tvDisabled": "Uit",
+  "tvProfilePinHelp": "Pincode van ‘{name}’. Kindermodus verbergt volwassen zenders. Deze pincode is nodig om de modus uit te zetten of de code te wijzigen. Elk profiel heeft een eigen code.",
+  "tvPinWaitMinutes": "Te veel pogingen. Probeer het over {minutes} min opnieuw.",
+  "tvExtras": "Extra’s",
+  "tvExtrasHelp": "Functies die je afzonderlijk kunt uitschakelen. Geen enkele blokkeert een zender.",
+  "tvMissedTitle": "Begin gemist",
+  "tvMissedOn": "De gids vertelt wat je hebt gemist. OK om uit te zetten. Live-tv spoelt nooit automatisch terug.",
+  "tvMissedOff": "Uit. OK om aan te zetten. Geen zender wordt teruggespoeld.",
+  "tvAtThisHour": "Op dit tijdstip",
+  "tvTimePicksOn": "Stelt zenders voor die je op dit tijdstip vaak opent. OK om uit te zetten. Niets start vanzelf.",
+  "tvTimePicksOff": "Uit. OK om aan te zetten. De registratie stopt en de rij verdwijnt.",
+  "tvServiceNotices": "Dienstberichten",
+  "tvNoticesOn": "Een kaart op het startscherm wanneer je aanbieder onderhoud of nieuws meldt. OK om uit te zetten. Nooit over de video.",
+  "tvNoticesOff": "Uit. OK om aan te zetten. Berichten worden niet meer getoond.",
+  "tvPickOfDay": "Tip van de dag",
+  "tvFeaturedOn": "De zender die je aanbieder uitlicht, als die in je lijst staat. OK om uit te zetten. Niets start vanzelf.",
+  "tvFeaturedOff": "Uit. OK om aan te zetten. De kaart verdwijnt van het startscherm.",
+  "tvBanners": "Advertentiebanners",
+  "tvBannersOn": "Eén afbeelding tegelijk op het startscherm, altijd aangeduid als ‘Advertentie’. Sluiten = 7 dagen verbergen. OK om uit te zetten. Nooit geluid, nooit over de video.",
+  "tvBannersOff": "Uit. OK om aan te zetten. Geen advertentiebanners meer.",
+  "tvSubtitlesOnHelp": "Toont een bestaande ondertiteltrack in jouw taal. OK om uit te zetten. Er wordt niets vertaald of gedownload.",
+  "tvSubtitlesOffHelp": "Uit. OK om aan te zetten. Live-tv wisselt niet van stream.",
+  "tvClearVoice": "Duidelijke stem",
+  "tvClearVoiceOn": "Aan. Harde stemmen worden iets zachter in de nachtmodus. OK om uit te zetten. Onbewerkt doorgestuurd surroundgeluid blijft gelijk.",
+  "tvClearVoiceOff": "Uit, de oorspronkelijke instelling. OK om te harde stemmen te dempen. Surroundgeluid dat direct naar een soundbar gaat, verandert niet.",
+  "tvLogToSupport": "Logboek naar ondersteuning",
+  "tvLogToSupportOn": "Het diagnoselogboek kan zonder streamadressen of wachtwoorden naar ondersteuning worden gestuurd. OK om uit te zetten.",
+  "tvLogToSupportOff": "Uit. Het logboek blijft op het apparaat. OK om het weer naar ondersteuning te sturen.",
+  "tvPictureEngine": "Beelddecoder",
+  "tvPictureEngineHelp": "Nu: {engine}. OK om te wijzigen. Hardware = het apparaat, standaard. Software = bij blijvend zwart beeld. FFmpeg-video ontbreekt in deze versie en wordt overgeslagen.",
+  "tvScreenRefresh": "Schermverversingssnelheid",
+  "tvScreenRefreshOn": "Aan. Het scherm kan naar 24, 50 of 60 Hz schakelen om de stream te volgen. OK om uit te zetten. Sommige apparaten verliezen even beeld. Zet dit uit als dat gebeurt.",
+  "tvScreenRefreshOff": "Uit, de oorspronkelijke instelling. OK om het scherm op 24 / 25 / 30 / 50 / 60 beelden per seconde af te stemmen. Gaat nooit vanzelf aan.",
+  "tvContrast": "Contrast",
+  "tvContrastUnavailable": "Niet beschikbaar. Het Android-filter verlaat het directe beeldpad en heeft zwarte schermen veroorzaakt. Het blijft uit.",
+  "tvUpdateAllowInstall": "Sta Zuno toe apps te installeren: schakel ‘Zuno’ in op het scherm dat Android heeft geopend. Ga terug en druk op OK. De update is al gedownload.",
+  "tvFfmpegKeepDecoder": "FFmpeg-video ontbreekt in deze versie. De huidige decoder blijft actief.",
+  "tvFfmpegBoxDecoder": "FFmpeg-video ontbreekt in deze versie. Terug naar de decoder van het apparaat.",
+  "tvFfmpegUnavailable": "FFmpeg-video ontbreekt in deze versie.",
+  "tvEngineSelected": "Decoder: {engine}",
+  "tvOnYourPhone": "Op je telefoon",
+  "tvGotIt": "Begrepen",
+  "tvClose": "Sluiten",
+  "tvPhone": "Telefoon",
+  "tvSoftware": "Software",
+  "tvHardware": "Hardware",
+  "tvProfilesSettingsHelp": "Maximaal 4 profielen met aparte favorieten, geschiedenis, afspeelposities, herinneringen en pincodes.",
+  "tvAudioDiagnostic": "Geluidsdiagnose",
+  "tvAudioDiagnosticHelp": "Lokaal rapport per zender. Er wordt niets verzonden. Testopties staan standaard uit.",
+  "tvPlayerDisclaimer": "Deze app is een mediaspeler. Ze verkoopt, levert of host geen zenders, streams of M3U-links. De gebruiker levert de inhoud en is verantwoordelijk voor de rechtmatigheid.",
+  "tvActivationDisclaimer": "Mediaspeler — verkoopt of levert geen zenders of M3U-links. De gebruiker levert de inhoud. Voorwaarden: app.7themotion.com/terms",
+  "tvSourcePasteHelp": "Plak je link of inloggegevens. Elke M3U- of Xtream-aanbieder.",
+  "tvTrending": "🔥 Populair",
+  "tvRecent": "🕒 Recent",
+  "tvForYou": "✨ Voor jou",
+  "tvOther": "Overige",
+  "tvNetworkUnavailable": "Geen netwerk",
+  "tvNetworkUnavailableHelp": "De tv kan de server niet bereiken. Controleer de verbinding en probeer het opnieuw.",
+  "tvListRejected": "Lijst geweigerd",
+  "tvListRejectedHelp": "De aanbieder heeft deze lijst geweigerd. Controleer de inloggegevens.",
+  "tvCodeInactive": "Code niet geactiveerd",
+  "tvCodeInactiveHelp": "De code van deze tv is niet geactiveerd. Activeer die in het paneel en wacht enkele seconden.",
+  "tvSourcesEmpty": "Nog geen bronnen.\nVoeg een M3U-link, Xtream-account of spelerlink toe.",
+  "tvRecordingCloseFailed": "De opname kon niet worden afgesloten. Het bestand is mogelijk onvolledig.",
+  "tvFromStart": "Vanaf het begin",
+  "tvFollow": "Volgen",
+  "tvChooseTeamHelp": "Kies hieronder een team of typ een naam…",
+  "tvTeamNotFound": "‘{name}’ niet gevonden — probeer de zoekfunctie.",
+  "tvCatchupHelp": "Vanaf het begin van het programma. Rechts, dan OK: terug naar live-tv.",
+  "tvMissedRewindHint": "Rechts, dan OK: vanaf het begin.",
+  "tvMissedNoReplayHint": "De gids bevat tekst, geen video. Live-tv gaat ongewijzigd door.",
+  "tvSourceNeedUrl": "Plak een adres dat begint met http:// of https://.",
+  "tvSourceNeedXtream": "Vul het serveradres, de gebruikersnaam en het wachtwoord in.",
+  "tvSourceNeedCredentials": "Deze spelerlink mist een gebruikersnaam of wachtwoord. Plak de volledige link of vul alle drie de Xtream-velden in.",
+  "tvSourceBadScheme": "Dit adres kan niet worden gebruikt. Een http- of https-link is nodig.",
+  "tvPlayerLink": "Spelerlink",
+  "tvAdvertisement": "Advertentie",
+  "tvSponsored": "Gesponsord",
+  "tvInformation": "Informatie",
+  "tvSportFootball": "Voetbal",
+  "tvSportBasketball": "Basketbal (NBA)",
+  "tvSportRugby": "Rugby",
+  "tvDataAttribution": "Gegevens: {source}",
+  "tvLegalSection1Title": "1. Aard van de toepassing — uitsluitend een SPELER",
+  "tvLegalSection1Body": "Deze toepassing is een mediaspeler voor audio- en videostreams die de gebruiker levert. Ze LEVERT, VERKOOPT, HOST, ZENDT of INDEXEERT GEEN televisiezenders, streams, audiovisuele inhoud, afspeellijsten (M3U) of portalgegevens (Xtream). Er wordt geen inhoud meegeleverd, vooraf geladen of met de toepassing verkocht.",
+  "tvLegalSection2Title": "2. Inhoud van de gebruiker",
+  "tvLegalSection2Body": "De gebruiker levert eigen bronnen (M3U-links / Xtream-gegevens) van een eigen aanbieder. De gebruiker is ALS ENIGE verantwoordelijk voor toegevoegde, afgespeelde of uitgezonden inhoud en voor de benodigde rechten, licenties en abonnementen.",
+  "tvLegalSection3Title": "3. Abonnement = SOFTWARE, geen inhoud",
+  "tvLegalSection3Body": "Betalingen of abonnementen vergoeden ALLEEN het gebruik van de app: de speler en functies zoals interface, favorieten, lokale opname en EPG. Ze vormen NOOIT de aankoop, verkoop, verhuur of levering van zenders, streams of inhoud.",
+  "tvLegalSection4Title": "4. Rechtmatig gebruik",
+  "tvLegalSection4Body": "De gebruiker verbindt zich ertoe de wetten van het eigen land na te leven en de app niet te gebruiken voor illegale of auteursrechtelijk inbreukmakende inhoud. Onrechtmatig gebruik is strikt verboden en uitsluitend de verantwoordelijkheid van de gebruiker.",
+  "tvLegalSection5Title": "5. Inhoud van derden — geen aansprakelijkheid",
+  "tvLegalSection5Body": "De uitgever heeft geen controle over inhoud van derden via bronnen van de gebruiker en kan daarvoor niet aansprakelijk worden gesteld. Beschikbaarheid, rechtmatigheid of kwaliteit worden niet gegarandeerd.",
+  "tvLegalSection6Title": "6. Intellectuele eigendom en klachten",
+  "tvLegalSection6Body": "Alle merken, logo’s en inhoud zijn eigendom van hun respectieve eigenaars. Omdat de app geen inhoud host, moeten auteursrechtklachten worden gericht aan de aanbieder van de betrokken bron.",
+  "tvLegalSection7Title": "7. Geleverd zoals deze is",
+  "tvLegalSection7Body": "De app wordt geleverd zoals deze is, zonder garantie op voortdurende beschikbaarheid of foutloosheid. De uitgever kan sommige of alle functies wijzigen of opschorten.",
+  "tvLegalSection8Title": "8. Persoonsgegevens",
+  "tvLegalSection8Body": "Een technische apparaatidentificatie wordt gebruikt voor licentie- en proefperiodebeheer en ondersteuning. Details: app.7themotion.com/privacy.",
+  "tvLegalSection9Title": "9. Aanvaarding",
+  "tvLegalSection9Body": "Door de app te installeren of te gebruiken bevestigt de gebruiker deze voorwaarden te hebben gelezen en aanvaard. Volledige versie: app.7themotion.com/terms",
+  "tvLegalLead": "Deze app is een speler. Ze verkoopt of levert geen zenders of links. Omhoog/omlaag om te scrollen, Terug om af te sluiten.",
+  "tvAudioSpectrumOn": "Spectrum: meting aan",
+  "tvAudioSpectrumOff": "Spectrum: uit",
+  "tvAudioFfmpegRetry": "FFmpeg: opnieuw proberen",
+  "tvAudioFfmpegDefault": "FFmpeg: standaard",
+  "tvAudioAacTest": "Apparaat-AAC: test",
+  "tvAudioAacOff": "Apparaat-AAC: uit",
+  "tvAudioFallbackSession": "Terugval: hele sessie",
+  "tvAudioFallbackChannel": "Terugval: per zender",
+  "tvAudioFocusAndroid": "Audiofocus: Android",
+  "tvAudioFocusZuno": "Audiofocus: Zuno",
+  "tvAudioBackgroundPause": "Buiten de app: pauze",
+  "tvAudioBackgroundStop": "Buiten de app: stoppen",
+  "tvAudioHomeLegacy": "Home: oude modus",
+  "tvAudioHomeNative": "Home: native stop",
+  "tvAudioHandoffNow": "Wisselen: direct",
+  "tvAudioHandoffWait": "Wisselen: wachten",
+  "tvAudioOutput48k": "Uitvoer: 48 kHz",
+  "tvAudioOutputStream": "Uitvoer: streamfrequentie",
+  "tvAudioWitnessStop": "Testgeluid: stoppen",
+  "tvAudioWitnessPreparing": "Testgeluid: voorbereiden",
+  "tvAudioWitnessPlay": "Testgeluid afspelen",
+  "tvAudioScrollHelp": "OMHOOG/OMLAAG: scrollen · CH+/CH−: pagina",
+  "tvAudioWitnessHelp": "Testgeluid gedurende 10 s: stem, daarna ruis. Dezelfde speler als de zenders. Doffe ruis → apparaat. Heldere ruis → zender.",
+  "tvAudioOptionsHelp": "Spectrum: meet op de volgende zender vier punten (decoder, duidelijke stem, stilte, AudioTrack) zonder het geluid te wijzigen. FFmpeg: probeert de softwaredecoder opnieuw; start deze niet binnen 8 s, dan neemt het apparaat over. Apparaat-AAC: de volgende zender gebruikt de AAC-decoder van het apparaat, zoals ExoPlayer. Bij een fout neemt FFmpeg deze opening over. Terugval: ‘per zender’, standaard, stuurt alleen de zender met een FFmpeg-fout naar het apparaat. ‘Hele sessie’ is het oude gedrag: alle zenders gaan naar het apparaat na één fout. Audiofocus: ‘Zuno’, standaard, verlaagt het volume nooit als een andere app of piep geluid aanvraagt. ‘Android’ is het oude gedrag, met verlaging naar 20%. Buiten de app: ‘stoppen’, standaard, stopt en geeft audio vrij bij verlaten en opent de zender opnieuw bij terugkeer. ‘Pauze’ is het oude gedrag. Home: ‘native stop’, standaard, stopt bij onPause en opent niets zolang de app buiten beeld is. ‘Oude modus’ wacht op Flutter. Wisselen: ‘wachten’, standaard, opent de volgende zender pas nadat de vorige AudioTrack is vrijgegeven, om gemengd geluid na veel wisselingen te voorkomen. ‘Direct’ is het oude gedrag. Uitvoer: ‘streamfrequentie’, standaard, gebruikt de samplefrequentie van de stream, vaak 44,1 kHz, die het apparaat omzet. ‘48 kHz’ hersampelt in de app vóór uitvoer. Probeer dit bij slecht geluid en een rapport van 44,1 kHz. Testgeluid: 10 s stem en ruis in dezelfde speler. Activeert de meting zonder geluidswijziging. Doffe ruis → apparaat. Heldere ruis → zender.",
+  "tvAudioNoReports": "Geen rapporten. Open een zender: de speler registreert codec, decoder en uitvoer. Het spectrum wordt alleen gemeten wanneer ingeschakeld.",
+  "tvAudioTestSound": "Testgeluid",
+  "tvDiagCaptive": "1. Netwerkaanmeldportaal (204)",
+  "tvDiagDns": "2. DNS-opzoeking IPTV-host",
+  "tvDiagStream": "3. Bereikbaarheid stream (HTTP / 456)",
+  "tvDiagSource": "4. Toegewezen bron (device-source)",
+  "tvDiagPlayer": "5. ExoPlayer-/Media3-test",
+  "tvDiagRequest": "generate_204 aanvragen…",
+  "tvDiagInternetOk": "HTTP 204 (internettoegang beschikbaar)",
+  "tvDiagTimeout": "Geen antwoord binnen 8 s",
+  "tvDiagNoHost": "Geen zender geladen → host ONBEKEND",
+  "tvDiagNoUrl": "Geen zender geladen → URL ONBEKEND",
+  "tvDiagStreamHead": "HEAD-aanvraag voor de stream…",
+  "tvDiagIpBlocked": "HTTP 456 — aanbieder blokkeert dit IP",
+  "tvDiagReadingMac": "MAC lezen…",
+  "tvDiagSourceAssigned": "HTTP 200 — bron toegewezen",
+  "tvDiagNoSource": "HTTP 200 — geen bron toegewezen",
+  "tvDiagPlayerBusy": "Afspelen op volledig scherm actief: test overgeslagen, één speler",
+  "tvDiagPlayerOpening": "ExoPlayer-test openen…",
+  "tvDiagFrameOk": "Eerste beeld gedecodeerd en getoond",
+  "tvDiagPlayerError": "ExoPlayer gaf een fout",
+  "tvDiagFrameTimeout": "Geen beeld binnen 8 s",
+  "tvDiagRunning": "DIAGNOSE BEZIG…",
+  "tvDiagPassed": "AFSPELEN OP HET APPARAAT BEVESTIGD",
+  "tvDiagNetworkBlocked": "NETWERKBLOKKADE",
+  "tvDiagPlayerFailed": "SPELERFOUT",
+  "tvDiagPartial": "GEDEELTELIJKE DIAGNOSE",
+  "tvDiagTitle": "APPARAATDIAGNOSE — Zuno",
+  "tvDiagHelp": "Test of de tv de stream vanaf het eigen IP-adres kan afspelen.",
+  "tvBackToExit": "TERUG om af te sluiten",
+  "tvDiagCaptiveLikely": "HTTP {status}, {bytes} bytes → mogelijk aanmeldportaal",
+  "tvDiagLookup": "{host} opzoeken…",
+  "tvDiagNoIp": "{host} → geen IP-adres",
+  "tvDiagDnsTimeout": "{host}: geen DNS-antwoord binnen 8 s",
+  "tvDiagStreamOk": "HTTP {status} (stream bereikbaar)",
+  "tvDiagUnknownMac": "MAC ONBEKEND ({mac})",
+  "tvSizeBytes": "{size} B",
+  "tvSizeKb": "{size} kB",
+  "tvSizeMb": "{size} MB",
+  "tvSizeGb": "{size} GB",
+  "tvDurationHm": "{hours} u {minutes} min"
+}

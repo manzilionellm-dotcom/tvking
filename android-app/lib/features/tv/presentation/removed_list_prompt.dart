@@ -66,8 +66,8 @@ class _RemovedListPromptState extends State<RemovedListPrompt> {
       barrierDismissible: false,
       builder: (BuildContext ctx) {
         return AlertDialog(
-          title: Text(context.l10n.tvListRemoved),
-          content: const Text(context.l10n.tvListRemovedBody),
+          title: Text(ctx.l10n.tvListRemoved),
+          content: Text(ctx.l10n.tvListRemovedBody),
           actions: <Widget>[
             TextButton(
               onPressed: () {
@@ -80,7 +80,7 @@ class _RemovedListPromptState extends State<RemovedListPrompt> {
                   ),
                 );
               },
-              child: Text(context.l10n.buttonContinue),
+              child: Text(ctx.l10n.buttonContinue),
             ),
           ],
         );

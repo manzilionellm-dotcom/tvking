@@ -1174,7 +1174,6 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   }
 
   String _missedFlash(BuildContext context) {
-    final String code = Localizations.localeOf(context).languageCode;
     return context.l10n.tvCatchupHelp;
   }
 

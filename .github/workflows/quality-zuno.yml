@@ -77,6 +77,9 @@ jobs:
           channel: stable
           cache: true
 
+      - name: Vérifier tous les catalogues de traduction
+        run: python3 tool/check_l10n.py
+
       - name: Install dependencies
         run: flutter pub get
 

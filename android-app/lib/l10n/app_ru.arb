@@ -57,7 +57,11 @@
   "playerVideo": "Видео",
   "playerUpNextIn": "Далее через {seconds} с",
   "@playerUpNextIn": {
-    "placeholders": { "seconds": { "type": "int" } }
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
   },
   "playerUpNextCancel": "Отмена",
   "playerUpNextPlay": "Смотреть",
@@ -2016,20 +2020,56 @@
   "tvMyM3uList": "Мой список M3U",
   "tvBlackBoxTitle": "Чёрный ящик",
   "tvBlackBoxSubtitle": "Технический журнал приложения (v{version}). Если приложение неожиданно закрылось, причина здесь.",
-  "@tvBlackBoxSubtitle": {"placeholders": {"version": {"type": "String"}}},
+  "@tvBlackBoxSubtitle": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
   "tvBlackBoxFirstRun": "Первый запуск: предыдущих сеансов нет.",
   "tvBlackBoxCleanExit": "Последний сеанс завершён нормально.",
   "tvBlackBoxBrutal": "АВАРИЙНОЕ ЗАВЕРШЕНИЕ · {reason}",
-  "@tvBlackBoxBrutal": {"placeholders": {"reason": {"type": "String"}}},
+  "@tvBlackBoxBrutal": {
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
   "tvBlackBoxUnknownReason": "причина неизвестна (Android < 11)",
   "tvBlackBoxMemory": "память {mb} МБ",
-  "@tvBlackBoxMemory": {"placeholders": {"mb": {"type": "String"}}},
+  "@tvBlackBoxMemory": {
+    "placeholders": {
+      "mb": {
+        "type": "String"
+      }
+    }
+  },
   "tvBlackBoxWhen": "Когда: {when}",
-  "@tvBlackBoxWhen": {"placeholders": {"when": {"type": "String"}}},
+  "@tvBlackBoxWhen": {
+    "placeholders": {
+      "when": {
+        "type": "String"
+      }
+    }
+  },
   "tvBlackBoxLastAction": "Последнее действие: {action}",
-  "@tvBlackBoxLastAction": {"placeholders": {"action": {"type": "String"}}},
+  "@tvBlackBoxLastAction": {
+    "placeholders": {
+      "action": {
+        "type": "String"
+      }
+    }
+  },
   "tvBlackBoxDetail": "Детали Android: {detail}",
-  "@tvBlackBoxDetail": {"placeholders": {"detail": {"type": "String"}}},
+  "@tvBlackBoxDetail": {
+    "placeholders": {
+      "detail": {
+        "type": "String"
+      }
+    }
+  },
   "tvRefresh": "Обновить",
   "tvCopy": "Копировать",
   "tvCopied": "Скопировано",
@@ -2038,7 +2078,7 @@
   "tvBlackBoxHelp": "ВВЕРХ/ВНИЗ: прокрутка · CH+/CH−: страница · Копировать = буфер обмена (вставь в WhatsApp для поддержки). Этот журнал может отправляться в поддержку. Отправка выключается в Настройках → Дополнительно.",
   "tvNavServer": "Сервер",
   "tvLegalTitle": "Правовая информация и условия",
-    "tvHelloMorning": "Доброе утро",
+  "tvHelloMorning": "Доброе утро",
   "tvHelloAfternoon": "Добрый день",
   "tvHelloEvening": "Добрый вечер",
   "tvHomeInvite": "Ваши каналы, фильмы и напоминания появятся здесь.",
@@ -2063,10 +2103,15 @@
   "tvReminderInMinutes": "Через {minutes} мин",
   "tvReminderInHours": "Через {hours} ч",
   "tvReminderInHoursMinutes": "Через {hours} ч {minutes} мин",
-"tvResumeLabel": "ПРОДОЛЖИТЬ",
+  "tvResumeLabel": "ПРОДОЛЖИТЬ",
   "tvNowPlayingPrefix": "СЕЙЧАС · {title}",
-  "@tvNowPlayingPrefix": {"placeholders": {"title": {"type": "String"}}},
-  "tvLiveBadge": "В ЭФИРЕ",
+  "@tvNowPlayingPrefix": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
   "tvPinUpdated": "Родительский код обновлён ✔",
   "tvParentalTitle": "Родительский контроль",
   "tvKidsMode": "Детский режим",
@@ -2090,7 +2135,13 @@
   "tvMyRecordings": "Мои записи",
   "tvDeleteQuestion": "Удалить?",
   "tvDeleteRecordingConfirm": "Удалить «{name}» навсегда?",
-  "@tvDeleteRecordingConfirm": {"placeholders": {"name": {"type": "String"}}},
+  "@tvDeleteRecordingConfirm": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "tvCancel": "Отмена",
   "tvDelete": "Удалить",
   "tvSettingsSources": "Мои источники (добавить / активировать / удалить)",
@@ -2099,18 +2150,42 @@
   "tvSettingsLegal": "Правовая информация и условия использования",
   "tvUpdateChecking": "Обновление: проверка…",
   "tvUpdateUpToDate": "Обновление: актуальная версия ({version}) — OK, чтобы проверить снова",
-  "@tvUpdateUpToDate": {"placeholders": {"version": {"type": "String"}}},
+  "@tvUpdateUpToDate": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
   "tvUpdateUpToDateNoVersion": "Обновление: всё актуально — OK, чтобы проверить снова",
   "tvUpdateAvailable": "Доступна новая версия {version} — OK, чтобы установить",
-  "@tvUpdateAvailable": {"placeholders": {"version": {"type": "String"}}},
+  "@tvUpdateAvailable": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
   "tvUpdateDownloading": "Загрузка обновления… {pct} %",
-  "@tvUpdateDownloading": {"placeholders": {"pct": {"type": "String"}}},
+  "@tvUpdateDownloading": {
+    "placeholders": {
+      "pct": {
+        "type": "String"
+      }
+    }
+  },
   "tvUpdateFailed": "Обновление: ошибка (сеть или установщик) — OK, чтобы повторить",
   "tvMySources": "Мои источники",
   "tvAddXtream": "Добавить Xtream",
   "tvAddM3u": "Добавить M3U",
   "tvDeleteSourceConfirm": "Удалить источник «{name}»?",
-  "@tvDeleteSourceConfirm": {"placeholders": {"name": {"type": "String"}}},
+  "@tvDeleteSourceConfirm": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "tvActivate": "Активировать",
   "tvMyTeams": "Мои команды",
   "tvAdd": "Добавить",
@@ -2126,21 +2201,72 @@
   "tvImpConnecting": "Подключение к серверу…",
   "tvImpCategories": "Чтение категорий…",
   "tvImpDownloading": "Загрузка… {mb} МБ",
-  "@tvImpDownloading": {"placeholders": {"mb": {"type": "String"}}},
+  "@tvImpDownloading": {
+    "placeholders": {
+      "mb": {
+        "type": "String"
+      }
+    }
+  },
   "tvImpDecoding": "Анализ {mb} МБ…",
-  "@tvImpDecoding": {"placeholders": {"mb": {"type": "String"}}},
+  "@tvImpDecoding": {
+    "placeholders": {
+      "mb": {
+        "type": "String"
+      }
+    }
+  },
   "tvImpCategory": "Категория {i}/{total} · найдено каналов: {found}",
-  "@tvImpCategory": {"placeholders": {"i": {"type": "String"}, "total": {"type": "String"}, "found": {"type": "String"}}},
+  "@tvImpCategory": {
+    "placeholders": {
+      "i": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      },
+      "found": {
+        "type": "String"
+      }
+    }
+  },
   "tvImpFound": "Найдено каналов: {count}",
-  "@tvImpFound": {"placeholders": {"count": {"type": "String"}}},
+  "@tvImpFound": {
+    "placeholders": {
+      "count": {
+        "type": "String"
+      }
+    }
+  },
   "tvImpSaving": "Сохранение {done} / {total} каналов",
-  "@tvImpSaving": {"placeholders": {"done": {"type": "String"}, "total": {"type": "String"}}},
+  "@tvImpSaving": {
+    "placeholders": {
+      "done": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      }
+    }
+  },
   "tvImpDone": "Готово каналов: {count}",
-  "@tvImpDone": {"placeholders": {"count": {"type": "String"}}},
+  "@tvImpDone": {
+    "placeholders": {
+      "count": {
+        "type": "String"
+      }
+    }
+  },
   "tvLanguage": "Язык",
   "tvLanguageAuto": "Автоматически (язык ТВ)",
   "tvSettingsLanguage": "Язык: {value}",
-  "@tvSettingsLanguage": {"placeholders": {"value": {"type": "String"}}},
+  "@tvSettingsLanguage": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
   "tvEnterParentalCode": "Введи родительский код",
   "tvCurrentCode": "Текущий код",
   "tvConfirmCode": "Подтверди код",
@@ -2151,7 +2277,13 @@
   "tvRecordingStarted": "Идёт запись…",
   "tvRecordingError": "Ошибка записи",
   "tvRecordingSaved": "Запись сохранена ({size})",
-  "@tvRecordingSaved": {"placeholders": {"size": {"type": "String"}}},
+  "@tvRecordingSaved": {
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
   "tvRecordingEmpty": "Пустая запись",
   "tvRemovedFromFavorites": "Удалено из избранного",
   "tvAddedToFavorites": "Добавлено в избранное ❤",
@@ -2159,61 +2291,163 @@
   "tvCinemaAudio": "Аудио",
   "tvCinemaAudioSubs": "Аудио и субтитры",
   "tvCinemaCast": "В ролях: {names}",
-  "@tvCinemaCast": {"placeholders": {"names": {"type": "String"}}},
+  "@tvCinemaCast": {
+    "placeholders": {
+      "names": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaContinue": "Продолжить просмотр",
   "tvCinemaDeleteDownload": "Удалить загрузку",
   "tvCinemaDirector": "Режиссёр: {names}",
-  "@tvCinemaDirector": {"placeholders": {"names": {"type": "String"}}},
+  "@tvCinemaDirector": {
+    "placeholders": {
+      "names": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaDownload": "Скачать",
   "tvCinemaDownloadError": "Ошибка загрузки",
   "tvCinemaDownloadPaused": "Пауза · {pct} %",
-  "@tvCinemaDownloadPaused": {"placeholders": {"pct": {"type": "String"}}},
+  "@tvCinemaDownloadPaused": {
+    "placeholders": {
+      "pct": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaDownloaded": "Скачано",
   "tvCinemaDownloading": "Загрузка · {pct} %",
-  "@tvCinemaDownloading": {"placeholders": {"pct": {"type": "String"}}},
+  "@tvCinemaDownloading": {
+    "placeholders": {
+      "pct": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaDownloads": "Мои загрузки",
   "tvCinemaEmptyCategory": "Здесь пока ничего нет.",
   "tvCinemaEpisode": "Серия {n}",
-  "@tvCinemaEpisode": {"placeholders": {"n": {"type": "String"}}},
+  "@tvCinemaEpisode": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaFromStart": "С начала",
   "tvCinemaIndexing": "Готовим поиск по всему каталогу…",
   "tvCinemaLanguage": "Язык: {value}",
-  "@tvCinemaLanguage": {"placeholders": {"value": {"type": "String"}}},
+  "@tvCinemaLanguage": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaLoading": "Загрузка…",
   "tvCinemaMinutes": "{n} мин",
-  "@tvCinemaMinutes": {"placeholders": {"n": {"type": "String"}}},
+  "@tvCinemaMinutes": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaNextEpisode": "Следующая серия",
   "tvCinemaNextHint": "OK: сейчас · Назад: остаться",
   "tvCinemaNextIn": "Следующая серия через {s} с",
-  "@tvCinemaNextIn": {"placeholders": {"s": {"type": "String"}}},
+  "@tvCinemaNextIn": {
+    "placeholders": {
+      "s": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaNoEpisodes": "Нет доступных серий.",
   "tvCinemaNoSource": "Пока нет фильмов и сериалов",
   "tvCinemaNoSourceBody": "Фильмы и сериалы берутся из твоей подписки Xtream. Добавь её в разделе «Сервер» или попроси продавца её активировать.",
   "tvCinemaNoSpace": "Недостаточно места на приставке (свободно {free} ГБ).",
-  "@tvCinemaNoSpace": {"placeholders": {"free": {"type": "String"}}},
+  "@tvCinemaNoSpace": {
+    "placeholders": {
+      "free": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaPauseDownload": "Пауза",
   "tvCinemaPlay": "Смотреть",
   "tvCinemaPlayEpisode": "Смотреть С{s} · Э{e}",
-  "@tvCinemaPlayEpisode": {"placeholders": {"s": {"type": "String"}, "e": {"type": "String"}}},
+  "@tvCinemaPlayEpisode": {
+    "placeholders": {
+      "s": {
+        "type": "String"
+      },
+      "e": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaRecent": "Недавно добавленные",
   "tvCinemaRestart": "Начать заново",
   "tvCinemaResumeAt": "Продолжить с {time}",
-  "@tvCinemaResumeAt": {"placeholders": {"time": {"type": "String"}}},
+  "@tvCinemaResumeAt": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaResumeDownload": "Возобновить загрузку",
   "tvCinemaResumeEpisode": "Продолжить С{s} · Э{e}",
-  "@tvCinemaResumeEpisode": {"placeholders": {"s": {"type": "String"}, "e": {"type": "String"}}},
+  "@tvCinemaResumeEpisode": {
+    "placeholders": {
+      "s": {
+        "type": "String"
+      },
+      "e": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaResumedAt": "Продолжаем с {time}",
-  "@tvCinemaResumedAt": {"placeholders": {"time": {"type": "String"}}},
+  "@tvCinemaResumedAt": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaSearch": "Поиск",
   "tvCinemaSeason": "Сезон {n}",
-  "@tvCinemaSeason": {"placeholders": {"n": {"type": "String"}}},
+  "@tvCinemaSeason": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaSeasons": "Сезонов: {n}",
-  "@tvCinemaSeasons": {"placeholders": {"n": {"type": "String"}}},
+  "@tvCinemaSeasons": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaSpecials": "Спецвыпуски",
   "tvCinemaSubtitles": "Субтитры",
   "tvCinemaSubtitlesOff": "Выкл.",
   "tvCinemaTrackUnknown": "Дорожка {n}",
-  "@tvCinemaTrackUnknown": {"placeholders": {"n": {"type": "String"}}},
+  "@tvCinemaTrackUnknown": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
   "tvUpdatingContent": "Обновление…",
   "tvDeactivate": "Отключить",
   "tvSourceActive": "активна",
@@ -2250,4 +2484,258 @@
   "tvVoiceRemoteAiOff": "Выключена",
   "tvVoiceRemoteAiHelp": "Выключена по умолчанию. В приложении нет ключа. « Сегодня вечером » читается из твоего гида, на приставке. Если служба не отвечает, Zuno ищет в твоём списке.",
   "tvVoiceCinemaHint": "Открой Фильмы или Сериалы один раз: поиск найдёт их потом, без сети пока ты смотришь.",
-  "tvVoiceOnChannel": "На {channel}"}
+  "tvVoiceOnChannel": "На {channel}",
+  "tvDeletePanelSourceConfirm": "«{name}» отправлена вашим продавцом. Если удалить её здесь, она вернётся на этот телевизор только после повторной отправки продавцом из панели.",
+  "tvDeleteSourceFailed": "Не удалось удалить: нет связи с сервером. Ничего не удалено. Повторите попытку чуть позже.",
+  "tvCinemaOfflineTitle": "Каталог недоступен",
+  "tvCinemaOfflineBody": "На телевизоре ничего не сохранено, а сервер не отвечает. Проверьте соединение и повторите попытку.",
+  "tvCinemaRetry": "Повторить",
+  "tvCinemaUpdated": "Обновлено {when}",
+  "tvCinemaAgeJustNow": "только что",
+  "tvCinemaAgeMinutes": "{n} мин назад",
+  "tvCinemaAgeHours": "{n} ч назад",
+  "tvCinemaAgeDays": "{n} дн. назад",
+  "tvCinemaCategoryFailed": "Не удалось загрузить эту категорию.",
+  "moviesRetry": "Повторить",
+  "tvRemoteTitle": "Пульт",
+  "tvSettingsRemote": "Телефон становится пультом в той же сети Wi-Fi. Устанавливать ничего не нужно.",
+  "tvRemoteLead": "Отсканируйте QR-код камерой телефона. Устанавливать ничего не нужно.",
+  "tvRemoteWarn": "Любой, кто видит код, может управлять приставкой до истечения его срока. Только один телефон. Код истекает автоматически.",
+  "tvRemoteKeep": "Назад закрывает этот экран: телефон работает до истечения кода. Отключить завершает управление сразу.",
+  "tvRemoteStarting": "Подготовка…",
+  "tvRemoteWaiting": "Ожидание телефона…",
+  "tvRemotePaired": "Телефон подключён",
+  "tvRemoteExpired": "Срок кода истёк",
+  "tvRemoteStopped": "Пульт отключён",
+  "tvRemoteNoLan": "Нет локальной сети. Подключите приставку и телефон к одной сети Wi-Fi.",
+  "tvRemoteError": "Не удалось запустить пульт.",
+  "tvRemoteNewCode": "Новый код",
+  "tvRemoteStop": "Отключить",
+  "tvRemoteStart": "Включить",
+  "tvRemoteLeft": "Истекает через {time}",
+  "tvRemoteUrlHelp": "Если сканирование не удалось, откройте этот адрес в браузере телефона.",
+  "sportsTimeout": "Спортивный сервис отвечает слишком долго. Повторите попытку.",
+  "sportsNetworkError": "Не удаётся подключиться к спортивному сервису.",
+  "sportsHttpError": "Спортивный сервис недоступен (HTTP {status}).",
+  "sportsInvalidResponse": "Ответ спортивного сервиса не читается.",
+  "sportsUnavailable": "Не удалось загрузить спортивные данные.",
+  "sportsLoading": "Загрузка матчей…",
+  "sportsRetry": "Повторить",
+  "sportsFootballTitle": "Счёт и расписание",
+  "sportsRefresh": "Обновить",
+  "sportsCommunityNotice": "Счёт и голы от сообщества · возможны задержки · обновление каждые 60 с.",
+  "sportsCalendarNotice": "Расписание и результаты с задержкой · OpenFootball не предоставляет счёт в реальном времени.",
+  "sportsRetrievedAt": "Получено в {time}",
+  "sportsUpcoming": "Предстоящие",
+  "sportsRecent": "Последние матчи",
+  "sportsFinished": "Завершён",
+  "tvProgramStartedMinutesAgo": "Программа началась {minutes} мин назад",
+  "tvProfiles": "Профили",
+  "tvKidsProfile": "Детский профиль",
+  "tvNewProfile": "Новый профиль",
+  "tvChildren": "Дети",
+  "tvKidsExists": "Детский профиль уже существует.",
+  "tvProfileAddFailed": "Не удалось добавить профиль.",
+  "tvKidsReady": "Детский профиль готов. Детский режим остаётся включённым.",
+  "tvRename": "Переименовать",
+  "tvNameInvalid": "Имя пустое или слишком длинное.",
+  "tvProfileDeleteBody": "Избранное, история, позиции просмотра, напоминания и PIN этого профиля будут удалены. Каналы и профиль 1 сохранятся.",
+  "tvProfileDeleteFailed": "Этот профиль нельзя удалить.",
+  "tvProfilesHelp": "До 4 профилей. Отдельные избранное, история, позиции просмотра, напоминания и PIN. Каналы общие.",
+  "tvDefaultPinWarning": "PIN по-прежнему 0000. Измените его в родительском контроле.",
+  "tvAskProfileOn": "Выбор профиля при запуске: вкл.",
+  "tvAskProfileOff": "Выбор профиля при запуске: выкл.",
+  "tvProfileStartupSingle": "Выбор при запуске появляется при наличии 2 и более профилей. С одним профилем приложение открывается сразу.",
+  "tvProfileStartupHelp": "Если отключено, сразу открывается последний профиль. Вы можете переключиться здесь или на главном экране.",
+  "tvKidsProfileHelp": "Детский режим заблокирован. Для выхода нужен PIN этого профиля. Взрослый контент скрыт. Профиль 1 сохраняет прежние данные.",
+  "tvOriginProfileHelp": "Исходный профиль: здесь ваши прежние избранное, история, позиции просмотра и PIN. Его нельзя удалить.",
+  "tvSeparateProfileHelp": "Отдельный профиль. Его удаление не удаляет профиль 1.",
+  "tvProfileActive": "Активен",
+  "tvProfileCreated": "Профиль «{name}» создан.",
+  "tvProfileDeleteTitle": "Удалить «{name}»?",
+  "tvWhoWatching": "Кто смотрит?",
+  "tvProfilePickerHelp": "У каждого свои избранное, история и PIN. Каналы остаются общими.",
+  "tvLater": "Позже",
+  "tvNameMum": "Мама",
+  "tvNameDad": "Папа",
+  "tvNameGuest": "Гость",
+  "tvNameLivingRoom": "Гостиная",
+  "tvNameLimit": "Не более 18 символов.",
+  "tvFirstName": "Имя",
+  "tvListRemoved": "Список удалён",
+  "tvListRemovedBody": "Ваш поставщик удалил этот список. Его каналы больше недоступны.",
+  "tvKidsCannotDisable": "В детском профиле детский режим остаётся включённым. Для просмотра всех каналов смените профиль с помощью PIN.",
+  "tvKidsAlwaysOn": "Детский профиль: режим остаётся включённым. Каналы без взрослого контента доступны.",
+  "tvKidsOn": "Включено — взрослый контент скрыт.",
+  "tvKidsOff": "Выключено — все каналы видны.",
+  "tvChooseSecurePin": "Выберите PIN перед включением детского режима. 0000 больше не принимается.",
+  "tvPinWait": "Слишком много попыток. Повторите через несколько минут.",
+  "tvEnabled": "Вкл.",
+  "tvDisabled": "Выкл.",
+  "tvProfilePinHelp": "PIN профиля «{name}». Детский режим скрывает взрослые каналы. Для отключения режима или изменения кода нужен этот PIN. У каждого профиля он свой.",
+  "tvPinWaitMinutes": "Слишком много попыток. Повторите через {minutes} мин.",
+  "tvExtras": "Дополнительно",
+  "tvExtrasHelp": "Функции можно отключать по отдельности. Ни одна не блокирует канал.",
+  "tvMissedTitle": "Пропущенное начало",
+  "tvMissedOn": "Телегид показывает, что вы пропустили. OK — отключить. Прямой эфир никогда не перематывается сам.",
+  "tvMissedOff": "Выключено. OK — включить. Канал не перематывается.",
+  "tvAtThisHour": "В это время",
+  "tvTimePicksOn": "Предлагает каналы, которые вы часто открываете в это время. OK — отключить. Ничего не запускается само.",
+  "tvTimePicksOff": "Выключено. OK — включить. Учёт просмотра прекращается, ряд исчезает.",
+  "tvServiceNotices": "Сообщения сервиса",
+  "tvNoticesOn": "Карточка на главном экране, когда поставщик сообщает об обслуживании или новостях. OK — отключить. Никогда поверх видео.",
+  "tvNoticesOff": "Выключено. OK — включить. Сообщения больше не показываются.",
+  "tvPickOfDay": "Выбор дня",
+  "tvFeaturedOn": "Рекомендованный поставщиком канал, если он есть в списке. OK — отключить. Ничего не запускается само.",
+  "tvFeaturedOff": "Выключено. OK — включить. Карточка исчезает с главного экрана.",
+  "tvBanners": "Рекламные баннеры",
+  "tvBannersOn": "По одному изображению на главном экране, всегда с пометкой «Реклама». Закрыть = скрыть на 7 дней. OK — отключить. Без звука и никогда поверх видео.",
+  "tvBannersOff": "Выключено. OK — включить. Баннеры не показываются.",
+  "tvSubtitlesOnHelp": "Показывает существующую в потоке дорожку субтитров на вашем языке. OK — отключить. Ничего не переводится и не скачивается.",
+  "tvSubtitlesOffHelp": "Выключено. OK — включить. Поток прямого эфира не меняется.",
+  "tvClearVoice": "Чёткая речь",
+  "tvClearVoiceOn": "Включено. Громкие голоса слегка приглушаются в ночном режиме. OK — отключить. Объёмный звук, передаваемый без обработки, не меняется.",
+  "tvClearVoiceOff": "Выключено — исходная настройка. OK — приглушить слишком громкие голоса. Объёмный звук, передаваемый напрямую на саундбар, не меняется.",
+  "tvLogToSupport": "Журнал в поддержку",
+  "tvLogToSupportOn": "Диагностический журнал может отправляться в поддержку без адресов потоков и паролей. OK — отключить.",
+  "tvLogToSupportOff": "Выключено. Журнал остаётся на приставке. OK — снова отправлять его в поддержку.",
+  "tvPictureEngine": "Видеодекодер",
+  "tvPictureEngineHelp": "Сейчас: {engine}. OK — сменить. Аппаратный = приставка, исходная настройка. Программный = если экран чёрный. Видео FFmpeg в этой версии отсутствует и пропускается.",
+  "tvScreenRefresh": "Частота экрана",
+  "tvScreenRefreshOn": "Включено. Экран может переключаться на 24, 50 или 60 Гц под поток. OK — отключить. На некоторых приставках изображение пропадает на секунду; в таком случае отключите.",
+  "tvScreenRefreshOff": "Выключено — исходная настройка. OK — согласовать экран с 24 / 25 / 30 / 50 / 60 кадрами в секунду. Самостоятельно не включается.",
+  "tvContrast": "Контраст",
+  "tvContrastUnavailable": "Недоступно. Фильтр Android отключает прямой путь изображения и ранее вызывал чёрный экран. Он остаётся выключенным.",
+  "tvUpdateAllowInstall": "Разрешите Zuno устанавливать приложения: включите «Zuno» на открытом Android экране. Затем вернитесь и нажмите OK. Обновление уже скачано.",
+  "tvFfmpegKeepDecoder": "Видео FFmpeg отсутствует в этой версии. Текущий декодер остаётся активным.",
+  "tvFfmpegBoxDecoder": "Видео FFmpeg отсутствует в этой версии. Возврат к декодеру приставки.",
+  "tvFfmpegUnavailable": "Видео FFmpeg отсутствует в этой версии.",
+  "tvEngineSelected": "Декодер: {engine}",
+  "tvOnYourPhone": "На вашем телефоне",
+  "tvGotIt": "Понятно",
+  "tvClose": "Закрыть",
+  "tvPhone": "Телефон",
+  "tvSoftware": "Программный",
+  "tvHardware": "Аппаратный",
+  "tvProfilesSettingsHelp": "До 4 профилей с отдельными избранным, историей, позициями просмотра, напоминаниями и PIN.",
+  "tvAudioDiagnostic": "Диагностика звука",
+  "tvAudioDiagnosticHelp": "Локальный отчёт по каждому каналу. Ничего не отправляется. Тестовые параметры по умолчанию выключены.",
+  "tvPlayerDisclaimer": "Это приложение — медиаплеер. Оно не продаёт, не предоставляет и не размещает каналы, потоки или M3U-ссылки. Контент предоставляет пользователь, отвечающий за его законность.",
+  "tvActivationDisclaimer": "Медиаплеер — не продаёт и не предоставляет каналы или M3U-ссылки. Контент предоставляет пользователь. Условия: app.7themotion.com/terms",
+  "tvSourcePasteHelp": "Вставьте ссылку или данные входа. Любой поставщик M3U или Xtream.",
+  "tvTrending": "🔥 Популярное",
+  "tvRecent": "🕒 Недавнее",
+  "tvForYou": "✨ Для вас",
+  "tvOther": "Другое",
+  "tvNetworkUnavailable": "Нет сети",
+  "tvNetworkUnavailableHelp": "Телевизор не может связаться с сервером. Проверьте соединение и повторите попытку.",
+  "tvListRejected": "Список отклонён",
+  "tvListRejectedHelp": "Поставщик отклонил этот список. Проверьте данные входа.",
+  "tvCodeInactive": "Код не активирован",
+  "tvCodeInactiveHelp": "Код этого телевизора не активирован. Активируйте его в панели и подождите несколько секунд.",
+  "tvSourcesEmpty": "Источников пока нет.\nДобавьте M3U-ссылку, учётную запись Xtream или ссылку плеера.",
+  "tvRecordingCloseFailed": "Не удалось завершить запись. Файл может быть неполным.",
+  "tvFromStart": "С начала",
+  "tvFollow": "Следить",
+  "tvChooseTeamHelp": "Выберите команду ниже или введите название…",
+  "tvTeamNotFound": "«{name}» не найдено — попробуйте поиск.",
+  "tvCatchupHelp": "С начала программы. Вправо, затем OK: вернуться в прямой эфир.",
+  "tvMissedRewindHint": "Вправо, затем OK: с начала.",
+  "tvMissedNoReplayHint": "В телегиде есть текст, но не видео. Прямой эфир не меняется.",
+  "tvSourceNeedUrl": "Вставьте адрес, начинающийся с http:// или https://.",
+  "tvSourceNeedXtream": "Укажите адрес сервера, имя пользователя и пароль.",
+  "tvSourceNeedCredentials": "В ссылке плеера отсутствует имя пользователя или пароль. Вставьте полную ссылку или заполните все три поля Xtream.",
+  "tvSourceBadScheme": "Этот адрес использовать нельзя. Нужна ссылка http или https.",
+  "tvPlayerLink": "Ссылка плеера",
+  "tvAdvertisement": "Реклама",
+  "tvSponsored": "Спонсорский материал",
+  "tvInformation": "Информация",
+  "tvSportFootball": "Футбол",
+  "tvSportBasketball": "Баскетбол (NBA)",
+  "tvSportRugby": "Регби",
+  "tvDataAttribution": "Данные: {source}",
+  "tvLegalSection1Title": "1. Назначение приложения — только ПЛЕЕР",
+  "tvLegalSection1Body": "Это приложение — медиаплеер для аудио- и видеопотоков, предоставленных пользователем. Оно НЕ ПРЕДОСТАВЛЯЕТ, НЕ ПРОДАЁТ, НЕ РАЗМЕЩАЕТ, НЕ ТРАНСЛИРУЕТ и НЕ ИНДЕКСИРУЕТ телеканалы, потоки, аудиовизуальный контент, плейлисты (M3U) или данные порталов (Xtream). Контент не включён, не загружен заранее и не продаётся вместе с приложением.",
+  "tvLegalSection2Title": "2. Контент пользователя",
+  "tvLegalSection2Body": "Пользователь самостоятельно предоставляет источники (M3U-ссылки / данные Xtream), полученные у своего поставщика. ТОЛЬКО пользователь отвечает за добавляемый, воспроизводимый или транслируемый контент и наличие необходимых прав, лицензий и подписок.",
+  "tvLegalSection3Title": "3. Подписка = ПРОГРАММА, не контент",
+  "tvLegalSection3Body": "Любая оплата или подписка покрывает ТОЛЬКО использование приложения: плеера и функций, включая интерфейс, избранное, локальную запись и EPG. Это НИКОГДА не является покупкой, продажей, арендой или предоставлением каналов, потоков либо контента.",
+  "tvLegalSection4Title": "4. Законное использование",
+  "tvLegalSection4Body": "Пользователь обязуется соблюдать законы своей страны и не использовать приложение для доступа к незаконному контенту или материалам, нарушающим авторские права. Незаконное использование строго запрещено и является исключительной ответственностью пользователя.",
+  "tvLegalSection5Title": "5. Сторонний контент — отсутствие ответственности",
+  "tvLegalSection5Body": "Издатель не контролирует сторонний контент, доступный через источники пользователя, и не несёт за него ответственности. Доступность, законность и качество такого контента не гарантируются.",
+  "tvLegalSection6Title": "6. Интеллектуальная собственность и жалобы",
+  "tvLegalSection6Body": "Все товарные знаки, логотипы и материалы принадлежат своим владельцам. Поскольку приложение не размещает контент, жалобы о нарушении авторских прав следует направлять поставщику соответствующего источника.",
+  "tvLegalSection7Title": "7. Предоставляется «как есть»",
+  "tvLegalSection7Body": "Приложение предоставляется «как есть», без гарантии непрерывной доступности или отсутствия ошибок. Издатель может изменить или приостановить часть либо все функции.",
+  "tvLegalSection8Title": "8. Персональные данные",
+  "tvLegalSection8Body": "Технический идентификатор устройства используется для управления лицензиями, пробными периодами и поддержкой. Подробнее: app.7themotion.com/privacy.",
+  "tvLegalSection9Title": "9. Принятие условий",
+  "tvLegalSection9Body": "Устанавливая или используя приложение, пользователь подтверждает, что прочитал и принял эти условия. Полная версия: app.7themotion.com/terms",
+  "tvLegalLead": "Это приложение — плеер. Оно не продаёт и не предоставляет каналы или ссылки. Вверх/вниз — прокрутка, Назад — выход.",
+  "tvAudioSpectrumOn": "Спектр: измерение включено",
+  "tvAudioSpectrumOff": "Спектр: выключен",
+  "tvAudioFfmpegRetry": "FFmpeg: повторить",
+  "tvAudioFfmpegDefault": "FFmpeg: по умолчанию",
+  "tvAudioAacTest": "AAC приставки: тест",
+  "tvAudioAacOff": "AAC приставки: выключен",
+  "tvAudioFallbackSession": "Резерв: вся сессия",
+  "tvAudioFallbackChannel": "Резерв: по каналам",
+  "tvAudioFocusAndroid": "Аудиофокус: Android",
+  "tvAudioFocusZuno": "Аудиофокус: Zuno",
+  "tvAudioBackgroundPause": "Вне приложения: пауза",
+  "tvAudioBackgroundStop": "Вне приложения: остановка",
+  "tvAudioHomeLegacy": "Домой: прежний режим",
+  "tvAudioHomeNative": "Домой: остановка в Android",
+  "tvAudioHandoffNow": "Переключение: сразу",
+  "tvAudioHandoffWait": "Переключение: подождать",
+  "tvAudioOutput48k": "Выход: 48 кГц",
+  "tvAudioOutputStream": "Выход: частота потока",
+  "tvAudioWitnessStop": "Тестовый звук: стоп",
+  "tvAudioWitnessPreparing": "Тестовый звук: подготовка",
+  "tvAudioWitnessPlay": "Воспроизвести тестовый звук",
+  "tvAudioScrollHelp": "ВВЕРХ/ВНИЗ: прокрутка · CH+/CH−: страница",
+  "tvAudioWitnessHelp": "Тестовый звук на 10 с: голос, затем шум. Тот же плеер, что у каналов. Глухой шум → устройство. Чёткий шум → канал.",
+  "tvAudioOptionsHelp": "Спектр: на следующем канале измеряет четыре точки (декодер, чёткая речь, тишина, AudioTrack), не меняя звук. FFmpeg: повторяет запуск программного декодера; если он не запустится за 8 с, управление берёт приставка. AAC приставки: на следующем канале используется её AAC-декодер, как в ExoPlayer. При сбое этот запуск берёт на себя FFmpeg. Резерв: «по каналам», по умолчанию, передаёт приставке только канал со сбоем FFmpeg. «Вся сессия» — прежнее поведение: после одного сбоя все каналы идут через приставку. Аудиофокус: «Zuno», по умолчанию, не снижает громкость, когда другая программа или сигнал запрашивает звук. «Android» — прежнее поведение со снижением до 20%. Вне приложения: «остановка», по умолчанию, останавливает и освобождает звук при выходе, а при возвращении вновь открывает канал. «Пауза» — прежнее поведение. Домой: «остановка в Android», по умолчанию, останавливает при onPause и ничего не открывает вне приложения. «Прежний режим» ждёт Flutter. Переключение: «подождать», по умолчанию, открывает следующий канал только после освобождения предыдущего AudioTrack, чтобы звуки не смешивались после множества переключений. «Сразу» — прежнее поведение. Выход: «частота потока», по умолчанию, использует частоту дискретизации потока, часто 44,1 кГц; преобразование выполняет приставка. «48 кГц» выполняет пересчёт в приложении до вывода. Попробуйте при плохом звуке и отчёте с 44,1 кГц. Тестовый звук: 10 с голоса и шума в том же плеере. Включает измерение без изменения звука. Глухой шум → устройство. Чёткий шум → канал.",
+  "tvAudioNoReports": "Отчётов нет. Откройте канал: плеер запишет кодек, декодер и выход. Спектр измеряется только при включённой опции.",
+  "tvAudioTestSound": "Тестовый звук",
+  "tvDiagCaptive": "1. Портал входа в сеть (204)",
+  "tvDiagDns": "2. DNS-разрешение узла IPTV",
+  "tvDiagStream": "3. Доступность потока (HTTP / 456)",
+  "tvDiagSource": "4. Назначенный источник (device-source)",
+  "tvDiagPlayer": "5. Проверка ExoPlayer / Media3",
+  "tvDiagRequest": "Запрос generate_204…",
+  "tvDiagInternetOk": "HTTP 204 (доступ в Интернет есть)",
+  "tvDiagTimeout": "Нет ответа за 8 с",
+  "tvDiagNoHost": "Канал не загружен → узел НЕИЗВЕСТЕН",
+  "tvDiagNoUrl": "Канал не загружен → URL НЕИЗВЕСТЕН",
+  "tvDiagStreamHead": "HEAD-запрос потока…",
+  "tvDiagIpBlocked": "HTTP 456 — поставщик блокирует этот IP",
+  "tvDiagReadingMac": "Чтение MAC…",
+  "tvDiagSourceAssigned": "HTTP 200 — источник назначен",
+  "tvDiagNoSource": "HTTP 200 — источник не назначен",
+  "tvDiagPlayerBusy": "Полноэкранное воспроизведение активно: проверка пропущена, только один плеер",
+  "tvDiagPlayerOpening": "Запуск проверки ExoPlayer…",
+  "tvDiagFrameOk": "Первый кадр декодирован и показан",
+  "tvDiagPlayerError": "ExoPlayer вернул ошибку",
+  "tvDiagFrameTimeout": "Нет кадра за 8 с",
+  "tvDiagRunning": "ВЫПОЛНЯЕТСЯ ДИАГНОСТИКА…",
+  "tvDiagPassed": "ВОСПРОИЗВЕДЕНИЕ НА УСТРОЙСТВЕ ПОДТВЕРЖДЕНО",
+  "tvDiagNetworkBlocked": "СЕТЕВАЯ БЛОКИРОВКА",
+  "tvDiagPlayerFailed": "ОШИБКА ПЛЕЕРА",
+  "tvDiagPartial": "ЧАСТИЧНАЯ ДИАГНОСТИКА",
+  "tvDiagTitle": "ДИАГНОСТИКА УСТРОЙСТВА — Zuno",
+  "tvDiagHelp": "Проверяет, может ли телевизор воспроизводить поток со своего IP-адреса.",
+  "tvBackToExit": "НАЗАД — выход",
+  "tvDiagCaptiveLikely": "HTTP {status}, {bytes} байт → возможен портал входа в сеть",
+  "tvDiagLookup": "Определение адреса {host}…",
+  "tvDiagNoIp": "{host} → IP-адрес отсутствует",
+  "tvDiagDnsTimeout": "{host}: нет ответа DNS за 8 с",
+  "tvDiagStreamOk": "HTTP {status} (поток доступен)",
+  "tvDiagUnknownMac": "MAC НЕИЗВЕСТЕН ({mac})",
+  "tvSizeBytes": "{size} Б",
+  "tvSizeKb": "{size} КБ",
+  "tvSizeMb": "{size} МБ",
+  "tvSizeGb": "{size} ГБ",
+  "tvDurationHm": "{hours} ч {minutes} мин"
+}
