@@ -2394,7 +2394,7 @@ index 0000000..b8b9e50
 +  }
 +}
 diff --git a/pubspec.yaml b/pubspec.yaml
-index 350bf6c..5358240 100644
+index 350bf6c..93ad984 100644
 --- a/pubspec.yaml
 +++ b/pubspec.yaml
 @@ -12,8 +12,8 @@ publish_to: 'none'
@@ -2417,7 +2417,7 @@ index 350bf6c..5358240 100644
  
    # --- Phase 2 : EPG XMLTV ---
    # Parser XML en streaming (XmlEventReader) — indispensable pour
-@@ -315,6 +315,20 @@ dependencies:
+@@ -315,6 +315,22 @@ dependencies:
    encrypt: ^5.0.3
    crypto: ^3.0.6
  
@@ -2429,7 +2429,9 @@ index 350bf6c..5358240 100644
 +  workmanager: 0.10.10
 +  # Services facultatifs : aucune connexion sans clé publique configurée.
 +  # GrowthBook pilote les animations ; PostHog exige le consentement.
-+  growthbook_sdk_flutter: 4.4.0
++  # 4.3.0 conserve pointycastle 3, compatible avec le chiffrement existant.
++  # 4.4.0 impose pointycastle 4 : ne pas forcer ce changement à encrypt.
++  growthbook_sdk_flutter: 4.3.0
 +  posthog_flutter: 5.53.0
 +  # Adaptateurs d'achats et de salons audio ; aucun droit panel modifié.
 +  purchases_flutter: 10.15.2
