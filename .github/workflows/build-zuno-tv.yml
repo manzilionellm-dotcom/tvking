@@ -1,0 +1,56 @@
+# Enregistre le bouton GitHub « Run workflow » sur la branche par défaut.
+# Le propriétaire sélectionne ccr-b93e1afd-gwirw0 pour utiliser le vrai
+# constructeur et toutes ses protections. Aucun build ne part depuis main.
+name: Build Zuno TV (APK → release zuno-tv)
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirme:
+        description: 'Publication clients : PUBLIER_APP après dégel et ordre écrit du propriétaire'
+        required: false
+        default: ''
+        type: string
+      publish:
+        description: 'Publier sur la release zuno-tv'
+        required: false
+        default: 'false'
+        type: choice
+        options: ['false', 'true']
+      play_aab:
+        description: 'Construire aussi le .aab Google Play (Android TV)'
+        required: false
+        default: 'false'
+        type: choice
+        options: ['false', 'true']
+      test_box:
+        description: 'BOX DE TEST seulement (release zuno-tv-test) : AUCUN client mis à jour'
+        required: false
+        default: 'false'
+        type: choice
+        options: ['false', 'true']
+      backend_url:
+        description: 'Worker/panel visé (vide = https://app.7themotion.com)'
+        required: false
+        default: ''
+        type: string
+      variante:
+        description: 'telephone = « Zuno essai » (package .essai, fichier zuno-essai.apk) — EXIGE test_box=true'
+        required: false
+        default: 'box'
+        type: choice
+        options: ['box', 'telephone']
+
+permissions: {}
+
+jobs:
+  selection:
+    name: Sélectionner la branche Zuno autorisée
+    if: github.actor == github.repository_owner && github.repository == 'manzilionellm-dotcom/tvking'
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - name: Refuser la compilation depuis la branche principale
+        run: |
+          echo '::error::Sélectionner ccr-b93e1afd-gwirw0 dans Run workflow. Le constructeur signé et ses contrôles sont sur cette branche.'
+          exit 1
