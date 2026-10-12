@@ -19,15 +19,12 @@
 //  Aucune dépendance au cast.
 // =========================================================
 
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../subscription/data/signal_inbox.dart';
-import '../../../ads/presentation/creative_card.dart';
 import '../../data/announcement_repository.dart';
 
 /// Style visuel résolu depuis la catégorie d'une annonce.
@@ -42,16 +39,10 @@ _KindStyle _styleFor(String kind) {
   switch (kind) {
     case 'nouveaute':
       return _KindStyle(
-        AppColors.accent,
-        Icons.auto_awesome_rounded,
-        'Nouveauté',
-      );
+          AppColors.accent, Icons.auto_awesome_rounded, 'Nouveauté');
     case 'promo':
       return _KindStyle(
-        AppColors.warning,
-        Icons.local_fire_department_rounded,
-        'Promo',
-      );
+          AppColors.warning, Icons.local_fire_department_rounded, 'Promo');
     case 'info':
       return _KindStyle(AppColors.info, Icons.info_rounded, 'Info');
     case 'maintenance':
@@ -73,7 +64,6 @@ class AnnouncementBanner extends StatefulWidget {
 
 class _AnnouncementBannerState extends State<AnnouncementBanner> {
   Announcement? _announcement;
-  Timer? _creativeExpiry;
 
   @override
   void initState() {
@@ -84,7 +74,6 @@ class _AnnouncementBannerState extends State<AnnouncementBanner> {
 
   @override
   void dispose() {
-    _creativeExpiry?.cancel();
     SignalInbox.instance.removeListener(_onSignal);
     super.dispose();
   }
@@ -101,26 +90,12 @@ class _AnnouncementBannerState extends State<AnnouncementBanner> {
     // Ne pas réafficher une annonce déjà fermée par l'utilisateur.
     if (await AnnouncementRepository.isDismissed(a.id)) return;
     if (!mounted) return;
-    _creativeExpiry?.cancel();
-    if (a.creative != null && a.expiresAt > 0) {
-      final int remaining = a.expiresAt - DateTime.now().millisecondsSinceEpoch;
-      if (remaining <= 0) {
-        setState(() => _announcement = null);
-        return;
-      }
-      // Extinction locale de la carte ; aucun ordre ni nouvelle requête.
-      _creativeExpiry = Timer(Duration(milliseconds: remaining), () {
-        if (mounted && _announcement?.id == a.id)
-          setState(() => _announcement = null);
-      });
-    }
     setState(() => _announcement = a);
   }
 
   Future<void> _dismiss() async {
     final Announcement? a = _announcement;
     if (a == null) return;
-    _creativeExpiry?.cancel();
     await AnnouncementRepository.dismiss(a.id);
     if (!mounted) return;
     setState(() => _announcement = null);
@@ -143,14 +118,6 @@ class _AnnouncementBannerState extends State<AnnouncementBanner> {
     final Announcement? a = _announcement;
     if (a == null) return const SizedBox.shrink();
 
-    if (a.creative != null) {
-      return CreativeCard(
-        key: ValueKey<int>(a.id),
-        announcement: a,
-        onClose: _dismiss,
-        onOpen: _openLink,
-      );
-    }
     final bool hasLink = a.url.isNotEmpty;
     final _KindStyle style = _styleFor(a.kind);
     final Color color = style.color;
@@ -189,9 +156,7 @@ class _AnnouncementBannerState extends State<AnnouncementBanner> {
                       if (style.label.isNotEmpty) ...<Widget>[
                         Container(
                           padding: const EdgeInsets.symmetric(
-                            horizontal: 7,
-                            vertical: 2,
-                          ),
+                              horizontal: 7, vertical: 2),
                           decoration: BoxDecoration(
                             color: color.withValues(alpha: 0.18),
                             borderRadius: BorderRadius.circular(6),
@@ -233,9 +198,7 @@ class _AnnouncementBannerState extends State<AnnouncementBanner> {
                           onTap: _openLink,
                           child: Container(
                             padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 6,
-                            ),
+                                horizontal: 12, vertical: 6),
                             decoration: BoxDecoration(
                               color: color,
                               borderRadius: BorderRadius.circular(8),
@@ -258,7 +221,8 @@ class _AnnouncementBannerState extends State<AnnouncementBanner> {
                 IconButton(
                   visualDensity: VisualDensity.compact,
                   splashRadius: 18,
-                  tooltip: MaterialLocalizations.of(context).closeButtonTooltip,
+                  tooltip: MaterialLocalizations.of(context)
+                      .closeButtonTooltip,
                   icon: Icon(
                     Icons.close_rounded,
                     color: AppColors.textTertiary,

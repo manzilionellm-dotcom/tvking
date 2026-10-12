@@ -44,8 +44,6 @@ import '../../playlists/data/playlist_repository.dart';
 import '../../playlists/data/remote_source_repository.dart';
 import '../../profile/presentation/profile_screen.dart';
 import '../../subscription/data/subscription_state.dart';
-import '../../support/presentation/support_chat.dart';
-import '../../mobile_services/presentation/mobile_options.dart';
 import 'widgets/announcement_banner.dart';
 import 'widgets/category_browser_view.dart';
 
@@ -143,7 +141,6 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      floatingActionButton: const MobileServicesHost(child: SupportBubble()),
       backgroundColor: AppColors.background,
       body: DecoratedBox(
         decoration: const BoxDecoration(gradient: AppColors.backgroundGradient),

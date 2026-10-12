@@ -69,6 +69,7 @@ jobs:
         git apply ../mission/patches/mobile-sport-gratuit.patch
         git apply --check ../mission/patches/mobile-radio.patch
         git apply ../mission/patches/mobile-radio.patch
+        python3 ../mission/android-app/ci/mobile/apply_studio.py ../mission/patches/mobile-studio-chat.patch
         git diff --check
         gh api "repos/$GITHUB_REPOSITORY/releases/tags/phone-latest" > "$RUNNER_TEMP/client-before.json"
     - name: Setup Java 17 (Temurin)
@@ -292,6 +293,7 @@ jobs:
         python3 -m venv "$RUNNER_TEMP/mobile-audit"
         "$RUNNER_TEMP/mobile-audit/bin/pip" install androguard==4.1.3 numpy==2.2.6
         "$RUNNER_TEMP/mobile-audit/bin/python" ../mission/android-app/ci/mobile/prepare_notifications.py
+        python3 ci/mobile/prepare_studio.py
     - name: Signature stable obligatoire
       env:
         KS_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
@@ -691,6 +693,7 @@ jobs:
           Catalogue public Radio Browser ; stations et disponibilité non garanties.
           Repli zuno.mobile.radio_legacy éteint par défaut : true restitue l'accueil sans radios.
           Sport OpenLigaDB et notifications précédemment validés conservés.
+          Chat privé et studio intégrés ; Worker de la PR #111 requis avant usage.
           Clients phone-latest inchangés. Aucune publication Store ni mise à jour Zuno.
           Lecture et écoute sur téléphone physique : NON PROUVÉ.
           EOF

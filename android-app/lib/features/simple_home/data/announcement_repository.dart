@@ -23,7 +23,6 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../subscription/data/subscription_backend.dart';
-import '../../ads/domain/campaign_creative.dart';
 
 /// Une annonce telle que renvoyée par le Worker. Immuable.
 @immutable
@@ -36,8 +35,6 @@ class Announcement {
     required this.kind,
     required this.cta,
     required this.createdAt,
-    this.creative,
-    this.expiresAt = 0,
   });
 
   /// Identifiant unique côté serveur (auto-incrément). Sert à savoir si
@@ -59,8 +56,6 @@ class Announcement {
 
   /// Timestamp epoch (ms) de création côté serveur.
   final int createdAt;
-  final CampaignCreative? creative;
-  final int expiresAt;
 
   /// Construit depuis le JSON du Worker. Renvoie `null` si la charge utile
   /// est vide (`{}` = aucune annonce) ou invalide.
@@ -73,7 +68,8 @@ class Announcement {
     // Une annonce sans titre NI corps n'a rien à montrer.
     if (title.isEmpty && body.isEmpty) return null;
     final Object? rawTs = json['created_at'];
-    final int createdAt = rawTs is int ? rawTs : int.tryParse('$rawTs') ?? 0;
+    final int createdAt =
+        rawTs is int ? rawTs : int.tryParse('$rawTs') ?? 0;
     return Announcement(
       id: id,
       title: title,
@@ -82,8 +78,6 @@ class Announcement {
       kind: (json['kind'] ?? '').toString(),
       cta: (json['cta'] ?? '').toString(),
       createdAt: createdAt,
-      creative: CampaignCreative.parse(json['creative']),
-      expiresAt: (json['expires_at'] as num?)?.toInt() ?? 0,
     );
   }
 }

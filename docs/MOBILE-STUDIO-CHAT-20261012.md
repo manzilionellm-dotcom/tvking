@@ -28,8 +28,19 @@ API distincte de la synchronisation. Secret aléatoire de 256 bits local, emprei
 Le Worker/panel correspondant doit être déployé par le processus existant avant utilisation. Tant qu’il manque, le chat affiche une indisponibilité et l’accueil reste utilisable.
 
 ## Construction et vérification
-Les fichiers du canal instantané, des ordres, des accusés d’activation et de récupération des sources restent inchangés. Ajouts UI sur l’accueil et les réglages seulement ; les dépendances doivent toutefois être validées dans un APK, elles ne sont pas sans impact binaire.
+Le livrable mobile est maintenant `patches/mobile-studio-chat.patch`, appliqué à la vraie base téléphone `37fdf3305c5de9d35e20fd6567df38008fc7a7ee` après Sport et Radio. Le code partagé `android-app/lib`, ses tests et son `pubspec.yaml` sont revenus exactement à la base de PR #112 : aucun SDK mobile n'entre dans une future compilation TV par cette PR.
 
-Le contrôle automatique local a refusé Flutter après une tentative d’accès à une adresse de métadonnées de l’environnement. Aucun contournement. Syntaxe formatée hors ligne ; tests Flutter et analyse confiés au workflow existant `Quality Zuno` sur la branche de proposition. Lire le résultat du dernier commit avant de déclarer la compilation validée. Le workflow `Studio mobile — compilation Android` construit un APK debug au nom de paquet distinct `com.sevenmotion.studio.preview`, sans secrets ni publication.
+`android-app/ci/mobile/apply_studio.py` applique le même patch dans le constructeur téléphone protégé et dans la compilation de revue. Il compare les octets de main.dart, des souscriptions, sources, hôtes backend, radios et transports temps réel avant/après. Le patch n'ajoute que le chat, les cartes et les services mobiles. Le guide utilise les alias EPG déjà présents dans la base téléphone, sans recharger les sources.
 
-Le script `android-app/ci/mobile/prepare_studio.py` complète seulement un projet Android mobile généré (permissions de téléchargement et micro facultatif). Ne pas l’appliquer à la box. iOS nécessite encore sa configuration native et une validation sur appareil. La mise en production et un parcours d’achat complet restent hors de cette proposition.
+Le workflow `Studio mobile — compilation Android` analyse et teste cette vraie application téléphone, conserve l'overlay Cast, PiP et les composants de notification, puis construit un APK debug ARM64 distinct `com.sevenmotion.studio.preview`. Il fournit l'APK, son SHA-256 et les versions résolues. Ni clé de production, ni modification d'un canal clients. L'ancienne compilation du code partagé ne constituait pas une preuve de cette base téléphone : consulter la nouvelle exécution avant de conclure.
+
+Le constructeur signé existant reçoit le patch et ses permissions, sous les mêmes conditions, environnement, contrôles de signature et canaux de test qu'avant. Les gardes, manifestes de gel et règles GitHub ne sont pas assouplis. La compilation de revue ne remplace pas cette signature ni un essai physique.
+
+Le contrôle automatique local avait refusé Flutter après une tentative d'accès à une adresse de métadonnées de l'environnement. Aucun contournement : formatage Dart hors ligne seulement ; analyse, tests et compilation sont confiés aux runners GitHub.
+
+## Mise en service
+1. Relire puis intégrer PR #110 et #111 selon la procédure protégée du panel. Activer le Worker avant le chat mobile ; comparer la référence autorisée avant/après.
+2. Après validation du téléphone, intégrer PR #112 puis utiliser le constructeur signé existant. Vérifier la bulle, un échange client/propriétaire, Lu, la reprise après coupure, les radios et une action instantanée du panel.
+3. Publier une version clients uniquement après l'ouverture autorisée et la validation prévues par les protections ; rétablir le gel.
+
+L'essai sur un téléphone physique et le déploiement ne sont pas prouvés par les tests. iOS nécessite sa configuration native. Les services externes du tableau restent facultatifs, non activés sans leurs paramètres ; le chat et le studio n'en ont pas besoin.

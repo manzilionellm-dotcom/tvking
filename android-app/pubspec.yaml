@@ -127,7 +127,7 @@ dependencies:
 
   # Détection du type de réseau (Wi-Fi / cellulaire) pour la garde
   # "données cellulaires" avant lecture (cf. core/network/cellular_guard.dart).
-  connectivity_plus: ^7.0.0
+  connectivity_plus: ^6.1.0
 
   # --- Phase 2 : EPG XMLTV ---
   # Parser XML en streaming (XmlEventReader) — indispensable pour
@@ -228,21 +228,6 @@ dependencies:
   # préfixe restent lisibles (migration douce). La clé est générée sur
   # l'appareil et rangée à part du fichier .db.
   cryptography: ^2.7.0
-
-  # Téléchargements natifs persistants (BSD/MIT) : progression et reprise
-  # hors premier plan ; conserve les anciens téléchargements existants.
-  background_downloader: 9.6.4
-  # Tâches Android différées pour le guide uniquement. Ne sonde jamais
-  # les routes d'activation ou le canal instantané ; activation volontaire.
-  workmanager: 0.10.10
-  # Services facultatifs : aucune connexion sans configuration explicite.
-  # GrowthBook : interrupteurs visuels ; PostHog : statistiques consenties.
-  growthbook_sdk_flutter: 4.4.0
-  posthog_flutter: 5.53.0
-  # RevenueCat : adaptateur achats ; LiveKit : salons audio sur invitation.
-  # Les licences du panel restent l'autorité ; aucun achat automatique.
-  purchases_flutter: 10.15.2
-  livekit_client: 2.13.1
 
   # ----- Rapport de crash (OPTIONNEL, fail-open) -----
   # firebase_core : socle Firebase (initialise l'« app » Firebase à partir
