@@ -13,6 +13,9 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+
+import '../../../core/i18n/l10n_extension.dart';
+
 import 'package:flutter/services.dart';
 import 'package:native_video_player/native_video_player.dart';
 import 'package:path_provider/path_provider.dart';
@@ -28,7 +31,8 @@ class TvAudioDiagnosticScreen extends StatefulWidget {
   const TvAudioDiagnosticScreen({super.key});
 
   @override
-  State<TvAudioDiagnosticScreen> createState() => _TvAudioDiagnosticScreenState();
+  State<TvAudioDiagnosticScreen> createState() =>
+      _TvAudioDiagnosticScreenState();
 }
 
 class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
@@ -45,17 +49,22 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
   final ScrollController _scroll = ScrollController();
   static const double _kRow = 24;
 
-
   void _scrollBy(double px) {
     if (!_scroll.hasClients) return;
-    final double target =
-        (_scroll.offset + px).clamp(0.0, _scroll.position.maxScrollExtent);
-    _scroll.animateTo(target,
-        duration: const Duration(milliseconds: 120), curve: Curves.easeOut);
+    final double target = (_scroll.offset + px).clamp(
+      0.0,
+      _scroll.position.maxScrollExtent,
+    );
+    _scroll.animateTo(
+      target,
+      duration: const Duration(milliseconds: 120),
+      curve: Curves.easeOut,
+    );
   }
 
   KeyEventResult _onKey(FocusNode node, KeyEvent e) {
-    if (e is! KeyDownEvent && e is! KeyRepeatEvent) return KeyEventResult.ignored;
+    if (e is! KeyDownEvent && e is! KeyRepeatEvent)
+      return KeyEventResult.ignored;
     final LogicalKeyboardKey k = e.logicalKey;
     if (k == LogicalKeyboardKey.arrowDown) {
       _scrollBy(_kRow * 3);
@@ -68,7 +77,8 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
       _scrollBy(-_kRow * 3);
       return KeyEventResult.handled;
     }
-    if (k == LogicalKeyboardKey.pageDown || k == LogicalKeyboardKey.channelDown) {
+    if (k == LogicalKeyboardKey.pageDown ||
+        k == LogicalKeyboardKey.channelDown) {
       _scrollBy(_kRow * 15);
       return KeyEventResult.handled;
     }
@@ -137,7 +147,9 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
     setState(() => _witnessBusy = true);
     try {
       if (!_probe) await _toggleProbe();
-      final ByteData data = await rootBundle.load('assets/audio/son_temoin.m4a');
+      final ByteData data = await rootBundle.load(
+        'assets/audio/son_temoin.m4a',
+      );
       final Directory dir = await getTemporaryDirectory();
       final File file = File('${dir.path}/son_temoin.m4a');
       await file.writeAsBytes(
@@ -233,7 +245,7 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         Text(
-          'Diagnostic du son',
+          context.l10n.tvAudioDiagnostic,
           style: TextStyle(
             fontSize: TvDimens.displayM,
             fontWeight: FontWeight.w800,
@@ -242,28 +254,31 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
         ),
         const SizedBox(height: 6),
         Text(
-          'Rapport local, une fiche par chaîne. Rien n\'est envoyé. '
-          'Les interrupteurs sont coupés par défaut : le son ne change pas.',
+          context.l10n.tvAudioDiagnosticHelp,
           style: TextStyle(fontSize: TvDimens.body, color: TvTokens.muted),
         ),
         const SizedBox(height: 16),
         Row(
           children: <Widget>[
             _Toggle(
-              label: _probe ? 'Spectre : mesuré' : 'Spectre : coupé',
+              label: _probe
+                  ? context.l10n.tvAudioSpectrumOn
+                  : context.l10n.tvAudioSpectrumOff,
               on: _probe,
               autofocus: true,
               onSelect: _toggleProbe,
             ),
             const SizedBox(width: 12),
             _Toggle(
-              label: _ffmpeg ? 'FFmpeg : réessayer' : 'FFmpeg : défaut',
+              label: _ffmpeg
+                  ? context.l10n.tvAudioFfmpegRetry
+                  : context.l10n.tvAudioFfmpegDefault,
               on: _ffmpeg,
               onSelect: _toggleFfmpeg,
             ),
             const SizedBox(width: 12),
             _Toggle(
-              label: 'Effacer',
+              label: context.l10n.buttonClear,
               on: false,
               onSelect: _clear,
             ),
@@ -273,25 +288,33 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
         Row(
           children: <Widget>[
             _Toggle(
-              label: _platform ? 'Box AAC : essai' : 'Box AAC : coupé',
+              label: _platform
+                  ? context.l10n.tvAudioAacTest
+                  : context.l10n.tvAudioAacOff,
               on: _platform,
               onSelect: _togglePlatform,
             ),
             const SizedBox(width: 12),
             _Toggle(
-              label: _sessionWide ? 'Repli : session entière' : 'Repli : par chaîne',
+              label: _sessionWide
+                  ? context.l10n.tvAudioFallbackSession
+                  : context.l10n.tvAudioFallbackChannel,
               on: _sessionWide,
               onSelect: _toggleSessionWide,
             ),
             const SizedBox(width: 12),
             _Toggle(
-              label: _androidFocus ? 'Focus : Android' : 'Focus : Zuno',
+              label: _androidFocus
+                  ? context.l10n.tvAudioFocusAndroid
+                  : context.l10n.tvAudioFocusZuno,
               on: _androidFocus,
               onSelect: _toggleAndroidFocus,
             ),
             const SizedBox(width: 12),
             _Toggle(
-              label: _bgPause ? 'Hors app : pause' : 'Hors app : arrêt',
+              label: _bgPause
+                  ? context.l10n.tvAudioBackgroundPause
+                  : context.l10n.tvAudioBackgroundStop,
               on: _bgPause,
               onSelect: _toggleBgPause,
             ),
@@ -301,27 +324,35 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
         Row(
           children: <Widget>[
             _Toggle(
-              label: _flutterOnly ? 'Home : ancien' : 'Home : arrêt natif',
+              label: _flutterOnly
+                  ? context.l10n.tvAudioHomeLegacy
+                  : context.l10n.tvAudioHomeNative,
               on: _flutterOnly,
               onSelect: _toggleFlutterOnly,
             ),
             const SizedBox(width: 12),
             _Toggle(
-              label: _immediate ? 'Passage : tout de suite' : 'Passage : attendre',
+              label: _immediate
+                  ? context.l10n.tvAudioHandoffNow
+                  : context.l10n.tvAudioHandoffWait,
               on: _immediate,
               onSelect: _toggleImmediate,
             ),
             const SizedBox(width: 12),
             _Toggle(
-              label: _out48k ? 'Sortie : 48 kHz' : 'Sortie : flux',
+              label: _out48k
+                  ? context.l10n.tvAudioOutput48k
+                  : context.l10n.tvAudioOutputStream,
               on: _out48k,
               onSelect: _toggleOutput48k,
             ),
             const SizedBox(width: 12),
             _Toggle(
               label: _witness != null
-                  ? 'Témoin : stop'
-                  : (_witnessBusy ? 'Témoin : préparation' : 'Jouer le son témoin'),
+                  ? context.l10n.tvAudioWitnessStop
+                  : (_witnessBusy
+                        ? context.l10n.tvAudioWitnessPreparing
+                        : context.l10n.tvAudioWitnessPlay),
               on: _witness != null,
               onSelect: _playWitness,
             ),
@@ -330,10 +361,11 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
         if (_witness != null) ...<Widget>[
           const SizedBox(height: 8),
           Text(
-            'Témoin en lecture (10 s) : voix, puis bruit. '
-            'Même lecteur que les chaînes. Bruit sourd → l\'appareil. '
-            'Bruit clair → la chaîne.',
-            style: TextStyle(fontSize: TvDimens.label, color: TvTokens.mutedDim),
+            context.l10n.tvAudioWitnessHelp,
+            style: TextStyle(
+              fontSize: TvDimens.label,
+              color: TvTokens.mutedDim,
+            ),
           ),
           const SizedBox(height: 4),
           // La Surface doit avoir une taille : le son passe par le même
@@ -346,31 +378,7 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
         ],
         const SizedBox(height: 8),
         Text(
-          'Spectre : à la prochaine chaîne, mesure quatre points '
-          '(décodeur, voix claire, silence, AudioTrack) sans modifier le son. '
-          'FFmpeg : réessaie le décodeur logiciel ; s\'il ne démarre pas en 8 s, '
-          'la box reprend. Box AAC : à la prochaine chaîne, l\'AAC passe par le '
-          'décodeur de la box (comme ExoPlayer). S\'il échoue, FFmpeg reprend '
-          'cette ouverture. Repli : « par chaîne » (défaut) = une panne FFmpeg '
-          'n\'envoie à la box que la chaîne concernée ; « session entière » = '
-          'ancien comportement, toutes les chaînes passent à la box après une '
-          'seule panne. Focus : « Zuno » (défaut) = jamais de baisse de volume '
-          'quand une autre app ou un bip demande le son (le son « dans un trou ») ; '
-          '« Android » = ancien comportement (baisse à 20 %). Hors app : '
-          '« arrêt » (défaut) = en quittant l\'app le son est coupé et rendu, la '
-          'chaîne est rouverte au retour ; « pause » = ancien comportement. '
-          'Home : « arrêt natif » (défaut) = coupé dès onPause, rien ne rouvre '
-          'tant que l\'app est dehors ; « ancien » = on attend Flutter. '
-          'Passage : « attendre » (défaut) = on n\'ouvre la chaîne suivante '
-          'que lorsque l\'AudioTrack précédent est vraiment rendu (sinon deux '
-          'sons se mélangent après beaucoup de zaps) ; « tout de suite » = '
-          'ancien comportement. Sortie : « flux » (défaut) = l\'AudioTrack '
-          'prend la fréquence du flux (44,1 kHz pour beaucoup de chaînes) et '
-          'la box convertit ; « 48 kHz » = l\'app rééchantillonne avant la '
-          'sortie. À essayer si le son est mauvais avec une fiche à 44,1 kHz. '
-          'Son témoin : 10 s (voix puis bruit), '
-          'lu par le même lecteur. Allume la mesure, ne change pas le son. '
-          'Bruit sourd → l\'appareil. Bruit clair → la chaîne.',
+          context.l10n.tvAudioOptionsHelp,
           style: TextStyle(fontSize: TvDimens.label, color: TvTokens.mutedDim),
         ),
         const SizedBox(height: 14),
@@ -378,70 +386,83 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
           child: _loading
               ? Center(
                   child: Text(
-                    'Lecture…',
-                    style: TextStyle(fontSize: TvDimens.body, color: TvTokens.mutedDim),
+                    context.l10n.tvReading,
+                    style: TextStyle(
+                      fontSize: TvDimens.body,
+                      color: TvTokens.mutedDim,
+                    ),
                   ),
                 )
               : _book.entries.isEmpty
-                  ? Text(
-                      'Aucun rapport. Ouvre une chaîne : le lecteur note le codec, '
-                      'le décodeur et la sortie. Le spectre n\'est mesuré que si '
-                      'l\'interrupteur est allumé.',
-                      style: TextStyle(fontSize: TvDimens.body, color: TvTokens.muted),
-                    )
-                  : Focus(
-                      onKeyEvent: _onKey,
-                      child: Builder(builder: (BuildContext context) {
-                        final bool focused = Focus.of(context).hasFocus;
-                        return ListView.separated(
-                      controller: _scroll,
-                      itemCount: _book.entries.length,
-                      separatorBuilder: (BuildContext context, int index) =>
-                          const SizedBox(height: 10),
-                      itemBuilder: (BuildContext context, int i) {
-                        final AudioReportEntry e = _book.entries[i];
-                        return Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(14),
-                          decoration: BoxDecoration(
-                            color: TvTokens.card,
-                            borderRadius: BorderRadius.circular(TvDimens.cardRadius),
-                            // Cadre doré quand la liste a le focus : Haut/Bas
-                            // défilent, CH+/CH− changent de page.
-                            border: Border.all(
-                                color: focused ? TvTokens.accent : TvTokens.lineSoft),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: <Widget>[
-                              Text(
-                                e.channel,
-                                style: TextStyle(
-                                  fontSize: TvDimens.title,
-                                  fontWeight: FontWeight.w700,
-                                  color: TvTokens.text,
-                                ),
+              ? Text(
+                  context.l10n.tvAudioNoReports,
+                  style: TextStyle(
+                    fontSize: TvDimens.body,
+                    color: TvTokens.muted,
+                  ),
+                )
+              : Focus(
+                  onKeyEvent: _onKey,
+                  child: Builder(
+                    builder: (BuildContext context) {
+                      final bool focused = Focus.of(context).hasFocus;
+                      return ListView.separated(
+                        controller: _scroll,
+                        itemCount: _book.entries.length,
+                        separatorBuilder: (BuildContext context, int index) =>
+                            const SizedBox(height: 10),
+                        itemBuilder: (BuildContext context, int i) {
+                          final AudioReportEntry e = _book.entries[i];
+                          return Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: TvTokens.card,
+                              borderRadius: BorderRadius.circular(
+                                TvDimens.cardRadius,
                               ),
-                              const SizedBox(height: 6),
-                              Text(
-                                e.body,
-                                style: TvTokens.mono(
-                                  TvDimens.caption,
-                                  weight: FontWeight.w400,
-                                  color: TvTokens.muted,
-                                ),
+                              // Cadre doré quand la liste a le focus : Haut/Bas
+                              // défilent, CH+/CH− changent de page.
+                              border: Border.all(
+                                color: focused
+                                    ? TvTokens.accent
+                                    : TvTokens.lineSoft,
                               ),
-                            ],
-                          ),
-                        );
-                      },
-                        );
-                      }),
-                    ),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: <Widget>[
+                                Text(
+                                  e.channel == 'Son témoin'
+                                      ? context.l10n.tvAudioTestSound
+                                      : e.channel,
+                                  style: TextStyle(
+                                    fontSize: TvDimens.title,
+                                    fontWeight: FontWeight.w700,
+                                    color: TvTokens.text,
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  e.body,
+                                  style: TvTokens.mono(
+                                    TvDimens.caption,
+                                    weight: FontWeight.w400,
+                                    color: TvTokens.muted,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      );
+                    },
+                  ),
+                ),
         ),
         const SizedBox(height: 6),
         Text(
-          'HAUT/BAS : défiler · CH+/CH− : page',
+          context.l10n.tvAudioScrollHelp,
           style: TextStyle(fontSize: TvDimens.label, color: TvTokens.mutedDim),
         ),
       ],
@@ -479,7 +500,9 @@ class _Toggle extends StatelessWidget {
           decoration: BoxDecoration(
             color: bg,
             borderRadius: BorderRadius.circular(TvDimens.cardRadius),
-            border: Border.all(color: focused ? TvTokens.accent : TvTokens.lineSoft),
+            border: Border.all(
+              color: focused ? TvTokens.accent : TvTokens.lineSoft,
+            ),
           ),
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
           child: Text(

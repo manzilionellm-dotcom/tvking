@@ -13,18 +13,15 @@
 
 import 'package:flutter/material.dart';
 
-import '../../box_extras/box_text.dart';
+import '../../../core/i18n/l10n_extension.dart';
+
 import '../../simple_home/data/announcement_repository.dart';
 import '../../tv/core/tv_dimens.dart';
 import '../../tv/core/tv_tokens.dart';
 import 'panel_button.dart';
 
 class TvPanelNotice extends StatelessWidget {
-  const TvPanelNotice({
-    super.key,
-    required this.notice,
-    required this.onSeen,
-  });
+  const TvPanelNotice({super.key, required this.notice, required this.onSeen});
 
   final Announcement notice;
 
@@ -52,7 +49,7 @@ class TvPanelNotice extends StatelessWidget {
     final bool hasLink = notice.url.isNotEmpty;
     final String linkLabel = notice.cta.trim().isNotEmpty
         ? notice.cta.trim()
-        : boxText(context, 'Sur ton téléphone', 'On your phone');
+        : context.l10n.tvOnYourPhone;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
@@ -91,26 +88,34 @@ class TvPanelNotice extends StatelessWidget {
                         notice.body.trim(),
                         maxLines: 3,
                         overflow: TextOverflow.ellipsis,
-                        style: TvTokens.ui(TvDimens.label, color: TvTokens.muted),
+                        style: TvTokens.ui(
+                          TvDimens.label,
+                          color: TvTokens.muted,
+                        ),
                       ),
                     ],
                     const SizedBox(height: 10),
                     Row(
                       children: <Widget>[
                         PanelButton(
-                          label: boxText(context, 'Vu', 'Got it'),
+                          label: context.l10n.tvGotIt,
                           icon: Icons.check_rounded,
                           onSelect: onSeen,
                         ),
                         if (hasLink) ...<Widget>[
                           const SizedBox(width: 14),
-                          const Icon(Icons.qr_code_scanner_rounded,
-                              size: 18, color: TvTokens.mutedDim),
+                          const Icon(
+                            Icons.qr_code_scanner_rounded,
+                            size: 18,
+                            color: TvTokens.mutedDim,
+                          ),
                           const SizedBox(width: 6),
                           Text(
                             linkLabel,
-                            style: TvTokens.ui(TvDimens.caption,
-                                color: TvTokens.mutedDim),
+                            style: TvTokens.ui(
+                              TvDimens.caption,
+                              color: TvTokens.mutedDim,
+                            ),
                           ),
                         ],
                       ],

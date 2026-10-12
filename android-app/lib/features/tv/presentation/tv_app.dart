@@ -19,6 +19,7 @@ import '../../../core/app/repair_flags.dart';
 import '../../playlists/data/import_progress.dart';
 import '../../playlists/data/remote_source_repository.dart';
 import '../../../core/i18n/l10n_extension.dart';
+import 'tv_localized_format.dart';
 import '../../../core/i18n/locale_repository.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../channels/domain/channel.dart';
@@ -117,15 +118,12 @@ class TvApp extends StatelessWidget {
               ),
               child: FittedBox(
                 fit: BoxFit.fill,
-                child: SizedBox(
-                    width: designW, height: designH, child: child),
+                child: SizedBox(width: designW, height: designH, child: child),
               ),
             ),
           );
         },
-        home: const RestartWidget(
-          child: RemovedListPrompt(child: TvGate()),
-        ),
+        home: const RestartWidget(child: RemovedListPrompt(child: TvGate())),
       ),
     );
   }
@@ -162,69 +160,72 @@ class _RestartWidgetState extends State<RestartWidget> {
 
   @override
   Widget build(BuildContext context) => Stack(
-        children: <Widget>[
-          KeyedSubtree(key: _key, child: widget.child),
-          // Mise à jour forcée : le panel l'envoie sur le canal.
-          // Tant que la box n'est pas assez récente, cet écran
-          // couvre le reste. Un build local (pas de numéro) ne
-          // se bloque pas.
-          ListenableBuilder(
-            listenable: SignalInbox.instance,
-            builder: (BuildContext context, _) {
-              if (!SignalInbox.instance.forceBlocked) {
-                return const SizedBox.shrink();
-              }
-              return ForcedUpdateScreen(
-                onRetry: () {
-                  unawaited(() async {
-                    final bool still =
-                        await ForceUpdateChecker.instance.mustUpdate();
-                    SignalInbox.instance.setForceBlocked(still);
-                  }());
-                },
-              );
+    children: <Widget>[
+      KeyedSubtree(key: _key, child: widget.child),
+      // Mise à jour forcée : le panel l'envoie sur le canal.
+      // Tant que la box n'est pas assez récente, cet écran
+      // couvre le reste. Un build local (pas de numéro) ne
+      // se bloque pas.
+      ListenableBuilder(
+        listenable: SignalInbox.instance,
+        builder: (BuildContext context, _) {
+          if (!SignalInbox.instance.forceBlocked) {
+            return const SizedBox.shrink();
+          }
+          return ForcedUpdateScreen(
+            onRetry: () {
+              unawaited(() async {
+                final bool still = await ForceUpdateChecker.instance
+                    .mustUpdate();
+                SignalInbox.instance.setForceBlocked(still);
+              }());
             },
-          ),
-          // Pastille « Mise à jour… » pendant une passe ou un import du
-          // panel. CACHÉE par défaut depuis le 05/10/2026 (demande du
-          // propriétaire : rien ne doit se voir, l'import est silencieux ;
-          // la mesure est dans la boîte noire). `zuno.sync.pill_show`
-          // la réaffiche pour un diagnostic sur une box.
-          if (RepairFlags.updatingPillShown)
-            Positioned(
-              top: TvDimens.safeV,
-              right: TvDimens.safeH,
-              child: IgnorePointer(
-                child: ListenableBuilder(
-                  listenable: Listenable.merge(<Listenable>[
-                    TvContentRefresh.running,
-                    RemoteSourceRepository.importing,
-                  ]),
-                  builder: (BuildContext context, _) =>
-                      AnimatedOpacity(
-                    opacity: (TvContentRefresh.running.value ||
-                            RemoteSourceRepository.importing.value)
-                        ? 1
-                        : 0,
-                    duration: const Duration(milliseconds: 250),
-                    child: const _UpdatingPill(),
-                  ),
-                ),
+          );
+        },
+      ),
+      // Pastille « Mise à jour… » pendant une passe ou un import du
+      // panel. CACHÉE par défaut depuis le 05/10/2026 (demande du
+      // propriétaire : rien ne doit se voir, l'import est silencieux ;
+      // la mesure est dans la boîte noire). `zuno.sync.pill_show`
+      // la réaffiche pour un diagnostic sur une box.
+      if (RepairFlags.updatingPillShown)
+        Positioned(
+          top: TvDimens.safeV,
+          right: TvDimens.safeH,
+          child: IgnorePointer(
+            child: ListenableBuilder(
+              listenable: Listenable.merge(<Listenable>[
+                TvContentRefresh.running,
+                RemoteSourceRepository.importing,
+              ]),
+              builder: (BuildContext context, _) => AnimatedOpacity(
+                opacity:
+                    (TvContentRefresh.running.value ||
+                        RemoteSourceRepository.importing.value)
+                    ? 1
+                    : 0,
+                duration: const Duration(milliseconds: 250),
+                child: const _UpdatingPill(),
               ),
             ),
-        ],
-      );
+          ),
+        ),
+    ],
+  );
 }
 
 /// Détail chiffré de l'import en cours, sans mot à traduire : « 12,4 Mo »
 /// pendant le téléchargement, « 18 000 » chaînes trouvées, « 12 000 / 18 000 »
 /// pendant l'enregistrement. Vide hors import. Pur, testé sans écran.
-String updatingPillDetail(ImportProgress? p) {
+String updatingPillDetail(
+  ImportProgress? p, {
+  String Function(int)? formatSize,
+}) {
   if (p == null) return '';
   switch (p.stage) {
     case ImportStage.downloading:
     case ImportStage.decoding:
-      return p.bytes > 0 ? '${p.mb} Mo' : '';
+      return p.bytes > 0 ? (formatSize?.call(p.bytes) ?? '${p.mb} MB') : '';
     case ImportStage.category:
       return p.total > 0 ? '${p.index} / ${p.total}' : '';
     case ImportStage.found:
@@ -263,19 +264,27 @@ class _UpdatingPill extends StatelessWidget {
             width: 14,
             height: 14,
             child: CircularProgressIndicator(
-                strokeWidth: 2, color: TvTokens.accentBright),
+              strokeWidth: 2,
+              color: TvTokens.accentBright,
+            ),
           ),
           const SizedBox(width: 10),
           ValueListenableBuilder<ImportProgress?>(
             valueListenable: ImportProgressBus.current,
             builder: (BuildContext context, ImportProgress? p, _) {
-              final String detail = updatingPillDetail(p);
+              final String detail = updatingPillDetail(
+                p,
+                formatSize: (bytes) => tvBytes(context, bytes),
+              );
               return Text(
                 detail.isEmpty
                     ? context.l10n.tvUpdatingContent
                     : '${context.l10n.tvUpdatingContent} · $detail',
-                style: TvTokens.ui(TvDimens.caption,
-                    weight: FontWeight.w600, color: TvTokens.text),
+                style: TvTokens.ui(
+                  TvDimens.caption,
+                  weight: FontWeight.w600,
+                  color: TvTokens.text,
+                ),
               );
             },
           ),
@@ -304,10 +313,7 @@ class _ExitDialog extends StatelessWidget {
     // SÉPARÉE, hors de TvShell. Sans Material ancêtre, Flutter dessine tout
     // le texte avec son style d'erreur (double soulignement jaune) — c'était
     // le bug visible sur la box (« Quitter … » souligné en jaune).
-    return Material(
-      type: MaterialType.transparency,
-      child: _content(context),
-    );
+    return Material(type: MaterialType.transparency, child: _content(context));
   }
 
   Widget _content(BuildContext context) {
@@ -323,13 +329,17 @@ class _ExitDialog extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
-            Text(context.l10n.tvQuitTitle,
-                textAlign: TextAlign.center,
-                style: TvTokens.display(28, color: TvTokens.text)),
+            Text(
+              context.l10n.tvQuitTitle,
+              textAlign: TextAlign.center,
+              style: TvTokens.display(28, color: TvTokens.text),
+            ),
             const SizedBox(height: 10),
-            Text(context.l10n.tvQuitMessage,
-                textAlign: TextAlign.center,
-                style: TvTokens.ui(15, color: TvTokens.mutedDim)),
+            Text(
+              context.l10n.tvQuitMessage,
+              textAlign: TextAlign.center,
+              style: TvTokens.ui(15, color: TvTokens.mutedDim),
+            ),
             const SizedBox(height: 26),
             _DialogBtn(
               icon: Icons.play_arrow_rounded,
@@ -390,15 +400,18 @@ class _DialogBtn extends StatelessWidget {
                 : (primary ? TvTokens.sel : Colors.transparent),
             borderRadius: BorderRadius.circular(TvTokens.rButton),
             border: Border.all(
-                color: focused ? TvTokens.accent : TvTokens.line),
+              color: focused ? TvTokens.accent : TvTokens.line,
+            ),
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: <Widget>[
               Icon(icon, size: 22, color: fg),
               const SizedBox(width: 10),
-              Text(label,
-                  style: TvTokens.ui(18, weight: FontWeight.w700, color: fg)),
+              Text(
+                label,
+                style: TvTokens.ui(18, weight: FontWeight.w700, color: fg),
+              ),
             ],
           ),
         );
@@ -425,7 +438,9 @@ class _TvGateState extends State<TvGate> {
   void initState() {
     super.initState();
     SubscriptionState.instance.addListener(_onChange);
-    _sub = PlaylistRepository.instance.channelsStream.listen((_) => _onChange());
+    _sub = PlaylistRepository.instance.channelsStream.listen(
+      (_) => _onChange(),
+    );
   }
 
   @override
@@ -447,14 +462,15 @@ class _TvGateState extends State<TvGate> {
     // 24 h / 48 h / 7 j) depuis le panel → la TV doit se débloquer pareil,
     // pas seulement pour un abonnement payant. Ou si le client a apporté sa
     // propre liste (Xtream).
-    final bool active = s == SubscriptionStatus.paid ||
-        s == SubscriptionStatus.trialActive;
+    final bool active =
+        s == SubscriptionStatus.paid || s == SubscriptionStatus.trialActive;
     // VERROU « après 7 jours, paiement obligatoire » : si le SERVEUR a tranché
     // que l'accès est fini (essai expiré) ou coupé (gelé / banni), on BLOQUE —
     // MÊME si des chaînes sont déjà en cache. Sans ça, un client ayant chargé
     // sa source pendant l'essai continuerait à regarder GRATUITEMENT après les
     // 7 jours (les chaînes restaient en base locale). C'est la fuite à fermer.
-    final bool mustBlock = s == SubscriptionStatus.trialExpired ||
+    final bool mustBlock =
+        s == SubscriptionStatus.trialExpired ||
         s == SubscriptionStatus.frozen ||
         s == SubscriptionStatus.banned;
     final bool hasOwnList =
@@ -483,7 +499,7 @@ class _TvGateState extends State<TvGate> {
           RestartWidget.restart(context);
         } else if (action == 'quit') {
           if (!Platform.isAndroid) exit(0); // PC : fermer la fenêtre
-      await SystemNavigator.pop();
+          await SystemNavigator.pop();
         }
       },
       child: home,
@@ -501,7 +517,7 @@ extension on TvDest {
       case TvDest.live:
         return context.l10n.tvNavLive;
       case TvDest.news:
-        return 'Actu';
+        return context.l10n.tvNewsTicker;
       case TvDest.films:
         return context.l10n.tvNavFilms;
       case TvDest.series:
@@ -509,7 +525,7 @@ extension on TvDest {
       case TvDest.guide:
         return context.l10n.tvNavGuide;
       case TvDest.recordings:
-        return 'Enregistrements';
+        return context.l10n.settingsRecordings;
       case TvDest.search:
         return context.l10n.tvNavSearch;
       case TvDest.settings:
@@ -559,7 +575,12 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
   // l'accueil. Le Focus englobant ci-dessous OBSERVE les touches (il renvoie
   // toujours `ignored`) → la navigation directionnelle normale n'est jamais
   // perturbée. On garde seulement les 4 dernières flèches haut/bas.
-  static const List<bool> _diagSeq = <bool>[true, true, false, false]; // H H B B
+  static const List<bool> _diagSeq = <bool>[
+    true,
+    true,
+    false,
+    false,
+  ]; // H H B B
   final List<bool> _diagBuf = <bool>[];
   bool _diagOpen = false;
 
@@ -577,7 +598,8 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
     final bool up =
         k == LogicalKeyboardKey.arrowUp || k == LogicalKeyboardKey.channelUp;
     final bool down =
-        k == LogicalKeyboardKey.arrowDown || k == LogicalKeyboardKey.channelDown;
+        k == LogicalKeyboardKey.arrowDown ||
+        k == LogicalKeyboardKey.channelDown;
     if (!up && !down) {
       if (_diagBuf.isNotEmpty) _diagBuf.clear();
       return KeyEventResult.ignored;
@@ -641,53 +663,53 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
         skipTraversal: true,
         onKeyEvent: _onHomeKey,
         child: TvShell(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: <Widget>[
-            const _HomeHeader(),
-            const SizedBox(height: 14),
-            Expanded(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: <Widget>[
-                  // ----- Rail de navigation (gauche) -----
-                  // Le Focus englobant (non focusable lui-même) sert juste à
-                  // SAVOIR si le focus est sur le menu, sans piéger la
-                  // navigation directionnelle (ce n'est pas un FocusScope).
-                  // RAIL REPLIABLE (réf. design) : icônes seules au repos
-                  // (96 px) → se DÉPLOIE à 300 px quand le focus y entre (labels
-                  // apparaissent). On réutilise `_railHasFocus` déjà suivi par le
-                  // Focus englobant. Largeur animée (décélérée) ; le contenu à
-                  // droite (grille virtualisée) se ré-agence à coût négligeable.
-                  AnimatedContainer(
-                    duration: const Duration(milliseconds: 220),
-                    curve: const Cubic(0.2, 0.0, 0.0, 1.0),
-                    width: _railHasFocus ? 300 : 96,
-                    child: Focus(
-                      canRequestFocus: false,
-                      skipTraversal: true,
-                      onFocusChange: (bool f) {
-                        if (f != _railHasFocus) {
-                          setState(() => _railHasFocus = f);
-                        }
-                      },
-                      child: _NavRail(
-                        selected: _selected,
-                        expanded: _railHasFocus,
-                        selectedFocusNode: _railFocus,
-                        onSelect: (TvDest d) => setState(() => _selected = d),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              const _HomeHeader(),
+              const SizedBox(height: 14),
+              Expanded(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: <Widget>[
+                    // ----- Rail de navigation (gauche) -----
+                    // Le Focus englobant (non focusable lui-même) sert juste à
+                    // SAVOIR si le focus est sur le menu, sans piéger la
+                    // navigation directionnelle (ce n'est pas un FocusScope).
+                    // RAIL REPLIABLE (réf. design) : icônes seules au repos
+                    // (96 px) → se DÉPLOIE à 300 px quand le focus y entre (labels
+                    // apparaissent). On réutilise `_railHasFocus` déjà suivi par le
+                    // Focus englobant. Largeur animée (décélérée) ; le contenu à
+                    // droite (grille virtualisée) se ré-agence à coût négligeable.
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 220),
+                      curve: const Cubic(0.2, 0.0, 0.0, 1.0),
+                      width: _railHasFocus ? 300 : 96,
+                      child: Focus(
+                        canRequestFocus: false,
+                        skipTraversal: true,
+                        onFocusChange: (bool f) {
+                          if (f != _railHasFocus) {
+                            setState(() => _railHasFocus = f);
+                          }
+                        },
+                        child: _NavRail(
+                          selected: _selected,
+                          expanded: _railHasFocus,
+                          selectedFocusNode: _railFocus,
+                          onSelect: (TvDest d) => setState(() => _selected = d),
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: TvDimens.gutter),
-                  // ----- Panneau de contenu -----
-                  Expanded(child: _ContentPanel(dest: _selected)),
-                ],
+                    const SizedBox(width: TvDimens.gutter),
+                    // ----- Panneau de contenu -----
+                    Expanded(child: _ContentPanel(dest: _selected)),
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
-      ),
       ),
     );
   }
@@ -732,11 +754,13 @@ class _HomeHeaderState extends State<_HomeHeader> {
     // « Lunes » en espagnol, « måndag » en suédois, « الاثنين » en arabe.
     final String localeName = Localizations.localeOf(context).toString();
     final String weekday =
-        toBeginningOfSentenceCase(DateFormat.EEEE(localeName).format(_now)) ?? '';
+        toBeginningOfSentenceCase(DateFormat.EEEE(localeName).format(_now)) ??
+        '';
     // UN SEUL bloc contexte en haut à gauche : salut + (ville · temp météo ·
     // jour · heure) sur 2 lignes. L'heure isolée en haut à droite est retirée.
-    final String temp =
-        (g != null && g.tempC != null) ? '${g.tempC!.round()}° ${g.emoji}' : '';
+    final String temp = (g != null && g.tempC != null)
+        ? '${g.tempC!.round()}° ${g.emoji}'
+        : '';
     final String dayTime = '$weekday · $_time';
     // ÉPURÉ (réf. design) : plus de « Bonjour 👋 ». Un simple cluster
     // ville · météo · jour · heure, DISCRET, aligné EN HAUT À DROITE.
@@ -748,9 +772,13 @@ class _HomeHeaderState extends State<_HomeHeader> {
           children: <InlineSpan>[
             if (g != null && g.city.isNotEmpty) ...<InlineSpan>[
               TextSpan(
-                  text: g.city,
-                  style: TvTokens.ui(18,
-                      weight: FontWeight.w600, color: TvTokens.muted)),
+                text: g.city,
+                style: TvTokens.ui(
+                  18,
+                  weight: FontWeight.w600,
+                  color: TvTokens.muted,
+                ),
+              ),
               const TextSpan(text: '   ·   '),
             ],
             if (temp.isNotEmpty) TextSpan(text: '$temp   ·   '),
@@ -763,11 +791,12 @@ class _HomeHeaderState extends State<_HomeHeader> {
 }
 
 class _NavRail extends StatelessWidget {
-  const _NavRail(
-      {required this.selected,
-      required this.onSelect,
-      this.expanded = true,
-      this.selectedFocusNode});
+  const _NavRail({
+    required this.selected,
+    required this.onSelect,
+    this.expanded = true,
+    this.selectedFocusNode,
+  });
 
   final TvDest selected;
   final ValueChanged<TvDest> onSelect;
@@ -883,9 +912,11 @@ class _NavItem extends StatelessWidget {
                     maxLines: 1,
                     softWrap: false,
                     overflow: TextOverflow.fade,
-                    style: TvTokens.ui(19,
-                        weight: selected ? FontWeight.w600 : FontWeight.w500,
-                        color: fg),
+                    style: TvTokens.ui(
+                      19,
+                      weight: selected ? FontWeight.w600 : FontWeight.w500,
+                      color: fg,
+                    ),
                   ),
                 ),
               ),

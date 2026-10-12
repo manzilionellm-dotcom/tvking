@@ -24,24 +24,54 @@ import 'tv_sports_status.dart';
 /// le client choisit en UN clic, sans rien taper.
 const Map<String, List<String>> _kVipTeams = <String, List<String>>{
   'Football': <String>[
-    'Real Madrid', 'Barcelona', 'Manchester United', 'Manchester City',
-    'Liverpool', 'Arsenal', 'Chelsea', 'Tottenham', 'Paris SG',
-    'Bayern Munich', 'Borussia Dortmund', 'Juventus', 'AC Milan',
-    'Inter Milan', 'Napoli', 'Atletico Madrid', 'Ajax', 'Porto',
-    'Benfica', 'Marseille',
+    'Real Madrid',
+    'Barcelona',
+    'Manchester United',
+    'Manchester City',
+    'Liverpool',
+    'Arsenal',
+    'Chelsea',
+    'Tottenham',
+    'Paris SG',
+    'Bayern Munich',
+    'Borussia Dortmund',
+    'Juventus',
+    'AC Milan',
+    'Inter Milan',
+    'Napoli',
+    'Atletico Madrid',
+    'Ajax',
+    'Porto',
+    'Benfica',
+    'Marseille',
   ],
   'Basket (NBA)': <String>[
-    'Los Angeles Lakers', 'Boston Celtics', 'Golden State Warriors',
-    'Chicago Bulls', 'Miami Heat', 'Milwaukee Bucks', 'Brooklyn Nets',
-    'Denver Nuggets', 'New York Knicks', 'Dallas Mavericks',
+    'Los Angeles Lakers',
+    'Boston Celtics',
+    'Golden State Warriors',
+    'Chicago Bulls',
+    'Miami Heat',
+    'Milwaukee Bucks',
+    'Brooklyn Nets',
+    'Denver Nuggets',
+    'New York Knicks',
+    'Dallas Mavericks',
   ],
   'Rugby': <String>[
-    'Leinster', 'Toulouse', 'Saracens', 'Leicester Tigers',
-    'Stade Francais', 'Munster',
+    'Leinster',
+    'Toulouse',
+    'Saracens',
+    'Leicester Tigers',
+    'Stade Francais',
+    'Munster',
   ],
   'NFL': <String>[
-    'Kansas City Chiefs', 'Dallas Cowboys', 'New England Patriots',
-    'Green Bay Packers', 'San Francisco 49ers', 'Buffalo Bills',
+    'Kansas City Chiefs',
+    'Dallas Cowboys',
+    'New England Patriots',
+    'Green Bay Packers',
+    'San Francisco 49ers',
+    'Buffalo Bills',
   ],
 };
 
@@ -63,8 +93,11 @@ class _TvTeamPickerScreenState extends State<TvTeamPickerScreen> {
   Timer? _msgTimer;
 
   // Instance STABLE → non reconstruite à chaque frappe (focus préservé).
-  late final Widget _keyboard =
-      _PickerKeyboard(onType: _type, onBackspace: _backspace, onClear: _clear);
+  late final Widget _keyboard = _PickerKeyboard(
+    onType: _type,
+    onBackspace: _backspace,
+    onClear: _clear,
+  );
 
   @override
   void dispose() {
@@ -81,13 +114,17 @@ class _TvTeamPickerScreenState extends State<TvTeamPickerScreen> {
       _resolving = true;
       _msg = null;
     });
-    final SportsSearchResult result = await SportsRepository.instance.searchResult(name);
+    final SportsSearchResult result = await SportsRepository.instance
+        .searchResult(name);
     final List<SportTeam> r = result.teams;
     if (!mounted) return;
     setState(() => _resolving = false);
     if (r.isEmpty) {
-      _flash(result.failure == null ? '« $name » introuvable — essaie la recherche.'
-          : sportsFailureText(context, result.failure!));
+      _flash(
+        result.failure == null
+            ? context.l10n.tvTeamNotFound(name)
+            : sportsFailureText(context, result.failure!),
+      );
       return;
     }
     final SportTeam best = r.firstWhere(
@@ -136,11 +173,13 @@ class _TvTeamPickerScreenState extends State<TvTeamPickerScreen> {
       if (mounted) setState(() => _results = const <SportTeam>[]);
       return;
     }
-    if (mounted) setState(() {
-      _loading = true;
-      _failure = null;
-    });
-    final SportsSearchResult result = await SportsRepository.instance.searchResult(q);
+    if (mounted)
+      setState(() {
+        _loading = true;
+        _failure = null;
+      });
+    final SportsSearchResult result = await SportsRepository.instance
+        .searchResult(q);
     if (mounted) {
       setState(() {
         _results = result.teams;
@@ -163,30 +202,37 @@ class _TvTeamPickerScreenState extends State<TvTeamPickerScreen> {
             children: <Widget>[
               Container(
                 width: double.infinity,
-                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 18,
+                  vertical: 14,
+                ),
                 decoration: BoxDecoration(
                   color: TvTokens.card,
                   borderRadius: BorderRadius.circular(TvDimens.cardRadius),
                 ),
                 child: Text(
-                  _q.isEmpty ? 'Choisis une équipe ci-dessous, ou tape un nom…' : _q,
+                  _q.isEmpty ? context.l10n.tvChooseTeamHelp : _q,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                      fontSize: TvDimens.title,
-                      fontWeight: FontWeight.w700,
-                      color: _q.isEmpty ? TvTokens.mutedDim : TvTokens.text),
+                    fontSize: TvDimens.title,
+                    fontWeight: FontWeight.w700,
+                    color: _q.isEmpty ? TvTokens.mutedDim : TvTokens.text,
+                  ),
                 ),
               ),
               const SizedBox(height: 14),
               if (_msg != null)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 10),
-                  child: Text(_msg!,
-                      style: TextStyle(
-                          fontSize: TvDimens.label,
-                          fontWeight: FontWeight.w600,
-                          color: TvTokens.live)),
+                  child: Text(
+                    _msg!,
+                    style: TextStyle(
+                      fontSize: TvDimens.label,
+                      fontWeight: FontWeight.w600,
+                      color: TvTokens.live,
+                    ),
+                  ),
                 ),
               Expanded(child: _resultsView()),
             ],
@@ -200,9 +246,13 @@ class _TvTeamPickerScreenState extends State<TvTeamPickerScreen> {
     if (_resolving) {
       return const Center(
         child: SizedBox(
-            width: 40,
-            height: 40,
-            child: CircularProgressIndicator(strokeWidth: 3, color: TvTokens.accent)),
+          width: 40,
+          height: 40,
+          child: CircularProgressIndicator(
+            strokeWidth: 3,
+            color: TvTokens.accent,
+          ),
+        ),
       );
     }
     // Requête vide → CATALOGUE VIP : on choisit une grande équipe en 1 clic.
@@ -210,17 +260,25 @@ class _TvTeamPickerScreenState extends State<TvTeamPickerScreen> {
     if (_loading && _results.isEmpty) {
       return const Center(
         child: SizedBox(
-            width: 38,
-            height: 38,
-            child: CircularProgressIndicator(strokeWidth: 3, color: TvTokens.accent)),
+          width: 38,
+          height: 38,
+          child: CircularProgressIndicator(
+            strokeWidth: 3,
+            color: TvTokens.accent,
+          ),
+        ),
       );
     }
     if (_results.isEmpty) {
-      if (_failure != null) return Center(
-          child: TvSportsStatus(failure: _failure, onRetry: _run));
+      if (_failure != null)
+        return Center(
+          child: TvSportsStatus(failure: _failure, onRetry: _run),
+        );
       return Center(
-        child: Text(context.l10n.tvNoTeamFound,
-            style: TextStyle(fontSize: TvDimens.body, color: TvTokens.mutedDim)),
+        child: Text(
+          context.l10n.tvNoTeamFound,
+          style: TextStyle(fontSize: TvDimens.body, color: TvTokens.mutedDim),
+        ),
       );
     }
     return ListView.separated(
@@ -244,12 +302,18 @@ class _TvTeamPickerScreenState extends State<TvTeamPickerScreen> {
                   child: t.badge.isNotEmpty
                       ? CachedNetworkImage(
                           imageUrl: t.badge,
-                          fit: BoxFit.contain, memCacheWidth: 120,
+                          fit: BoxFit.contain,
+                          memCacheWidth: 120,
                           fadeInDuration: const Duration(milliseconds: 150),
                           placeholder: (_, __) => const Icon(
-                              Icons.shield_rounded, color: TvTokens.muted),
+                            Icons.shield_rounded,
+                            color: TvTokens.muted,
+                          ),
                           errorWidget: (_, __, ___) => const Icon(
-                              Icons.shield_rounded, color: TvTokens.muted))
+                            Icons.shield_rounded,
+                            color: TvTokens.muted,
+                          ),
+                        )
                       : const Icon(Icons.shield_rounded, color: TvTokens.muted),
                 ),
                 const SizedBox(width: 14),
@@ -258,22 +322,29 @@ class _TvTeamPickerScreenState extends State<TvTeamPickerScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: <Widget>[
-                      Text(t.name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                              fontSize: TvDimens.title,
-                              fontWeight: FontWeight.w700,
-                              color: TvTokens.text)),
+                      Text(
+                        t.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: TvDimens.title,
+                          fontWeight: FontWeight.w700,
+                          color: TvTokens.text,
+                        ),
+                      ),
                       const SizedBox(height: 2),
                       Text(
-                          <String>[t.sport, t.league]
-                              .where((String s) => s.isNotEmpty)
-                              .join(' · '),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                              fontSize: TvDimens.label, color: TvTokens.muted)),
+                        <String>[
+                          t.sport,
+                          t.league,
+                        ].where((String s) => s.isNotEmpty).join(' · '),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: TvDimens.label,
+                          color: TvTokens.muted,
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -291,14 +362,25 @@ class _TvTeamPickerScreenState extends State<TvTeamPickerScreen> {
     bool first = true;
     bool sectionFirst = true;
     _kVipTeams.forEach((String sport, List<String> teams) {
-      children.add(Padding(
-        padding: EdgeInsets.fromLTRB(2, sectionFirst ? 0 : 20, 2, 10),
-        child: Text(sport.toUpperCase(),
-            style: TvTokens.ui(14,
-                weight: FontWeight.w700,
-                color: TvTokens.mutedDim,
-                spacing: 1.5)),
-      ));
+      children.add(
+        Padding(
+          padding: EdgeInsets.fromLTRB(2, sectionFirst ? 0 : 20, 2, 10),
+          child: Text(
+            (switch (sport) {
+              'Football' => context.l10n.tvSportFootball,
+              'Basket (NBA)' => context.l10n.tvSportBasketball,
+              'Rugby' => context.l10n.tvSportRugby,
+              _ => sport,
+            }).toUpperCase(),
+            style: TvTokens.ui(
+              14,
+              weight: FontWeight.w700,
+              color: TvTokens.mutedDim,
+              spacing: 1.5,
+            ),
+          ),
+        ),
+      );
       sectionFirst = false;
       final List<Widget> chips = <Widget>[];
       for (final String name in teams) {
@@ -325,13 +407,17 @@ class _TvTeamPickerScreenState extends State<TvTeamPickerScreen> {
             color: focused ? TvTokens.accent : TvTokens.card,
             borderRadius: BorderRadius.circular(TvTokens.rButton),
             border: Border.all(
-                color: focused ? TvTokens.accent : TvTokens.lineSoft),
+              color: focused ? TvTokens.accent : TvTokens.lineSoft,
+            ),
           ),
-          child: Text(name,
-              style: TextStyle(
-                  fontSize: TvDimens.titleS,
-                  fontWeight: FontWeight.w700,
-                  color: focused ? TvTokens.onAccent : TvTokens.text)),
+          child: Text(
+            name,
+            style: TextStyle(
+              fontSize: TvDimens.titleS,
+              fontWeight: FontWeight.w700,
+              color: focused ? TvTokens.onAccent : TvTokens.text,
+            ),
+          ),
         );
       },
     );
@@ -339,16 +425,52 @@ class _TvTeamPickerScreenState extends State<TvTeamPickerScreen> {
 }
 
 class _PickerKeyboard extends StatelessWidget {
-  const _PickerKeyboard(
-      {required this.onType, required this.onBackspace, required this.onClear});
+  const _PickerKeyboard({
+    required this.onType,
+    required this.onBackspace,
+    required this.onClear,
+  });
   final ValueChanged<String> onType;
   final VoidCallback onBackspace;
   final VoidCallback onClear;
 
   static const List<String> _keys = <String>[
-    'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L',
-    'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X',
-    'Y', 'Z', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
+    'A',
+    'B',
+    'C',
+    'D',
+    'E',
+    'F',
+    'G',
+    'H',
+    'I',
+    'J',
+    'K',
+    'L',
+    'M',
+    'N',
+    'O',
+    'P',
+    'Q',
+    'R',
+    'S',
+    'T',
+    'U',
+    'V',
+    'W',
+    'X',
+    'Y',
+    'Z',
+    '0',
+    '1',
+    '2',
+    '3',
+    '4',
+    '5',
+    '6',
+    '7',
+    '8',
+    '9',
   ];
 
   @override
@@ -356,11 +478,14 @@ class _PickerKeyboard extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        Text(context.l10n.tvMyTeam,
-            style: TextStyle(
-                fontSize: TvDimens.displayS,
-                fontWeight: FontWeight.w800,
-                color: TvTokens.text)),
+        Text(
+          context.l10n.tvMyTeam,
+          style: TextStyle(
+            fontSize: TvDimens.displayS,
+            fontWeight: FontWeight.w800,
+            color: TvTokens.text,
+          ),
+        ),
         const SizedBox(height: 16),
         Wrap(
           spacing: 8,
@@ -379,8 +504,12 @@ class _PickerKeyboard extends StatelessWidget {
 }
 
 class _Key extends StatelessWidget {
-  const _Key(
-      {required this.label, required this.onTap, this.wide = false, this.autofocus = false});
+  const _Key({
+    required this.label,
+    required this.onTap,
+    this.wide = false,
+    this.autofocus = false,
+  });
   final String label;
   final VoidCallback onTap;
   final bool wide;
@@ -402,11 +531,14 @@ class _Key extends StatelessWidget {
               color: focused ? TvTokens.accent : TvTokens.sel,
               borderRadius: BorderRadius.circular(TvDimens.cardRadius),
             ),
-            child: Text(label,
-                style: TextStyle(
-                    fontSize: TvDimens.title,
-                    fontWeight: FontWeight.w700,
-                    color: focused ? TvTokens.onAccent : TvTokens.text)),
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: TvDimens.title,
+                fontWeight: FontWeight.w700,
+                color: focused ? TvTokens.onAccent : TvTokens.text,
+              ),
+            ),
           );
         },
       ),

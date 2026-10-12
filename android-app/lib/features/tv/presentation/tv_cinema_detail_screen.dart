@@ -18,6 +18,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
+import 'tv_localized_format.dart';
 import '../../cinema/data/cinema_downloads.dart';
 import '../../vod/domain/vod_movie.dart';
 import '../../cinema/data/cinema_repository.dart';
@@ -78,7 +79,12 @@ class _Backdrop extends StatelessWidget {
 }
 
 class _Header extends StatelessWidget {
-  const _Header({required this.title, required this.meta, this.plot, this.extra});
+  const _Header({
+    required this.title,
+    required this.meta,
+    this.plot,
+    this.extra,
+  });
   final String title;
   final List<String> meta;
   final String? plot;
@@ -90,31 +96,43 @@ class _Header extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
-        Text(title,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: TvTokens.display(TvDimens.displayL, color: TvTokens.text)),
+        Text(
+          title,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: TvTokens.display(TvDimens.displayL, color: TvTokens.text),
+        ),
         if (meta.isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(top: 6),
-            child: Text(meta.join('  ·  '),
-                style: TvTokens.ui(TvDimens.body, weight: FontWeight.w600, color: TvTokens.accentBright)),
+            child: Text(
+              meta.join('  ·  '),
+              style: TvTokens.ui(
+                TvDimens.body,
+                weight: FontWeight.w600,
+                color: TvTokens.accentBright,
+              ),
+            ),
           ),
         if (plot != null)
           Padding(
             padding: const EdgeInsets.only(top: 12),
-            child: Text(plot!,
-                maxLines: 4,
-                overflow: TextOverflow.ellipsis,
-                style: TvTokens.ui(TvDimens.body, color: TvTokens.text)),
+            child: Text(
+              plot!,
+              maxLines: 4,
+              overflow: TextOverflow.ellipsis,
+              style: TvTokens.ui(TvDimens.body, color: TvTokens.text),
+            ),
           ),
         for (final String line in extra ?? const <String>[])
           Padding(
             padding: const EdgeInsets.only(top: 6),
-            child: Text(line,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TvTokens.ui(TvDimens.label, color: TvTokens.mutedDim)),
+            child: Text(
+              line,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TvTokens.ui(TvDimens.label, color: TvTokens.mutedDim),
+            ),
           ),
       ],
     );
@@ -123,9 +141,7 @@ class _Header extends StatelessWidget {
 
 String? _durationLabel(BuildContext context, int sec) {
   if (sec <= 0) return null;
-  final int h = sec ~/ 3600;
-  final int m = (sec % 3600) ~/ 60;
-  return h > 0 ? '$h h ${m.toString().padLeft(2, '0')}' : context.l10n.tvCinemaMinutes(m.toString());
+  return tvDuration(context, Duration(seconds: sec));
 }
 
 /// Bouton de téléchargement (libellé et action selon l'état).
@@ -163,14 +179,21 @@ class _DownloadPillState extends State<_DownloadPill> {
 
   Future<void> _onSelect() async {
     final Download? d = _d;
-    if (d == null || d.status == DownloadStatus.error || d.status == DownloadStatus.paused) {
-      final CinemaDownloadStart r = await CinemaDownloads.start(widget.item.toVodMovie());
+    if (d == null ||
+        d.status == DownloadStatus.error ||
+        d.status == DownloadStatus.paused) {
+      final CinemaDownloadStart r = await CinemaDownloads.start(
+        widget.item.toVodMovie(),
+      );
       if (!mounted) return;
       if (r == CinemaDownloadStart.noSpace) {
         final int free = await CinemaDownloads.freeBytes();
         if (!mounted) return;
-        setState(() => _msg = context.l10n.tvCinemaNoSpace(
-            (free / (1024 * 1024 * 1024)).toStringAsFixed(1)));
+        setState(
+          () => _msg = context.l10n.tvCinemaNoSpace(
+            (free / (1024 * 1024 * 1024)).toStringAsFixed(1),
+          ),
+        );
         Future<void>.delayed(const Duration(seconds: 5), () {
           if (mounted) setState(() => _msg = null);
         });
@@ -182,11 +205,18 @@ class _DownloadPillState extends State<_DownloadPill> {
       return;
     }
     // Terminé → proposer la suppression (confirmation).
-    await showCinemaSheet(context, title: widget.item.subtitle ?? widget.item.title, actions: <CinemaSheetAction>[
-      CinemaSheetAction(Icons.delete_outline_rounded, context.l10n.tvCinemaDeleteDownload,
-          () => DownloadsRepository.instance.delete(d.id)),
-      CinemaSheetAction(Icons.close_rounded, context.l10n.tvCancel, () {}),
-    ]);
+    await showCinemaSheet(
+      context,
+      title: widget.item.subtitle ?? widget.item.title,
+      actions: <CinemaSheetAction>[
+        CinemaSheetAction(
+          Icons.delete_outline_rounded,
+          context.l10n.tvCinemaDeleteDownload,
+          () => DownloadsRepository.instance.delete(d.id),
+        ),
+        CinemaSheetAction(Icons.close_rounded, context.l10n.tvCancel, () {}),
+      ],
+    );
   }
 
   @override
@@ -238,7 +268,11 @@ class _DownloadPillState extends State<_DownloadPill> {
                     color: focused ? TvTokens.onAccent : TvTokens.accent,
                   ),
                 ),
-              Icon(icon, size: 24, color: focused ? TvTokens.onAccent : TvTokens.accentBright),
+              Icon(
+                icon,
+                size: 24,
+                color: focused ? TvTokens.onAccent : TvTokens.accentBright,
+              ),
             ],
           ),
         ),
@@ -248,11 +282,18 @@ class _DownloadPillState extends State<_DownloadPill> {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
-        CinemaPill(icon: icon, label: label, onSelect: () => unawaited(_onSelect())),
+        CinemaPill(
+          icon: icon,
+          label: label,
+          onSelect: () => unawaited(_onSelect()),
+        ),
         if (_msg != null)
           Padding(
             padding: const EdgeInsets.only(top: 8),
-            child: Text(_msg!, style: TvTokens.ui(TvDimens.caption, color: TvTokens.live)),
+            child: Text(
+              _msg!,
+              style: TvTokens.ui(TvDimens.caption, color: TvTokens.live),
+            ),
           ),
       ],
     );
@@ -279,9 +320,13 @@ class _TvMovieDetailScreenState extends State<TvMovieDetailScreen> {
     super.initState();
     WatchProgressRepository.instance.addListener(_refresh);
     unawaited(DownloadsRepository.instance.initialize());
-    unawaited(CinemaRepository.instance.movieDetails(widget.title).then((CinemaDetails d) {
-      if (mounted) setState(() => _d = d);
-    }));
+    unawaited(
+      CinemaRepository.instance.movieDetails(widget.title).then((
+        CinemaDetails d,
+      ) {
+        if (mounted) setState(() => _d = d);
+      }),
+    );
   }
 
   @override
@@ -303,8 +348,12 @@ class _TvMovieDetailScreenState extends State<TvMovieDetailScreen> {
     final VodPlayItem item = VodPlayItem.movie(t);
     final double? rating = d.rating ?? t.rating;
     final List<String> meta = <String>[
-      if (t.year != null) t.year! else if (d.releaseDate != null && d.releaseDate!.length >= 4) d.releaseDate!.substring(0, 4),
-      if (_durationLabel(context, d.durationSec) != null) _durationLabel(context, d.durationSec)!,
+      if (t.year != null)
+        t.year!
+      else if (d.releaseDate != null && d.releaseDate!.length >= 4)
+        d.releaseDate!.substring(0, 4),
+      if (_durationLabel(context, d.durationSec) != null)
+        _durationLabel(context, d.durationSec)!,
       if (rating != null) '★ ${rating.toStringAsFixed(1)}',
       if (d.genre != null) d.genre!,
     ];
@@ -312,7 +361,12 @@ class _TvMovieDetailScreenState extends State<TvMovieDetailScreen> {
       children: <Widget>[
         _Backdrop(url: d.backdropUrl ?? d.posterUrl ?? t.posterUrl),
         Padding(
-          padding: const EdgeInsets.fromLTRB(TvDimens.contentMargin, 60, TvDimens.contentMargin, 40),
+          padding: const EdgeInsets.fromLTRB(
+            TvDimens.contentMargin,
+            60,
+            TvDimens.contentMargin,
+            40,
+          ),
           child: SizedBox(
             width: 700,
             child: Column(
@@ -324,16 +378,21 @@ class _TvMovieDetailScreenState extends State<TvMovieDetailScreen> {
                   plot: d.plot,
                   extra: <String>[
                     if (d.cast != null) context.l10n.tvCinemaCast(d.cast!),
-                    if (d.director != null) context.l10n.tvCinemaDirector(d.director!),
+                    if (d.director != null)
+                      context.l10n.tvCinemaDirector(d.director!),
                   ],
                 ),
                 if (_d == null)
                   const Padding(
                     padding: EdgeInsets.only(top: 18),
                     child: SizedBox(
-                        width: 22,
-                        height: 22,
-                        child: CircularProgressIndicator(strokeWidth: 2.5, color: TvTokens.accent)),
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.5,
+                        color: TvTokens.accent,
+                      ),
+                    ),
                   ),
                 const SizedBox(height: 30),
                 if (resumable)
@@ -361,7 +420,9 @@ class _TvMovieDetailScreenState extends State<TvMovieDetailScreen> {
                       icon: Icons.play_arrow_rounded,
                       autofocus: true,
                       label: resumable
-                          ? context.l10n.tvCinemaResumeAt(formatClock(Duration(milliseconds: w.posMs)))
+                          ? context.l10n.tvCinemaResumeAt(
+                              formatClock(Duration(milliseconds: w.posMs)),
+                            )
                           : context.l10n.tvCinemaPlay,
                       onSelect: () => unawaited(openVod(context, item)),
                     ),
@@ -369,7 +430,8 @@ class _TvMovieDetailScreenState extends State<TvMovieDetailScreen> {
                       CinemaPill(
                         icon: Icons.replay_rounded,
                         label: context.l10n.tvCinemaFromStart,
-                        onSelect: () => unawaited(openVod(context, item, fromStart: true)),
+                        onSelect: () =>
+                            unawaited(openVod(context, item, fromStart: true)),
                       ),
                     _DownloadPill(item: item),
                   ],
@@ -419,11 +481,18 @@ class _TvSeriesScreenState extends State<TvSeriesScreen> {
   }
 
   Future<void> _load() async {
-    final SeriesDetails? s = await CinemaRepository.instance.seriesDetails(widget.title);
+    final SeriesDetails? s = await CinemaRepository.instance.seriesDetails(
+      widget.title,
+    );
     if (!mounted) return;
-    final WatchEntry? last = WatchProgressRepository.instance.latestForSeries(widget.title.id);
-    int? season = s?.seasons.isNotEmpty == true ? s!.seasons.first.number : null;
-    if (last?.season != null && s?.episodes.containsKey(last!.season) == true) season = last!.season;
+    final WatchEntry? last = WatchProgressRepository.instance.latestForSeries(
+      widget.title.id,
+    );
+    int? season = s?.seasons.isNotEmpty == true
+        ? s!.seasons.first.number
+        : null;
+    if (last?.season != null && s?.episodes.containsKey(last!.season) == true)
+      season = last!.season;
     setState(() {
       _s = s;
       _season = season;
@@ -438,7 +507,9 @@ class _TvSeriesScreenState extends State<TvSeriesScreen> {
     if (s == null) return null;
     final List<CinemaEpisode> all = s.allInOrder;
     if (all.isEmpty) return null;
-    final WatchEntry? last = WatchProgressRepository.instance.latestForSeries(widget.title.id);
+    final WatchEntry? last = WatchProgressRepository.instance.latestForSeries(
+      widget.title.id,
+    );
     if (last != null) {
       for (final CinemaEpisode e in all) {
         if (e.id == last.id) return last.finished ? (s.nextAfter(e) ?? e) : e;
@@ -448,13 +519,15 @@ class _TvSeriesScreenState extends State<TvSeriesScreen> {
   }
 
   void _play(CinemaEpisode e, {bool fromStart = false}) {
-    unawaited(openVod(
-      context,
-      VodPlayItem.episode(e, widget.title),
-      fromStart: fromStart,
-      series: _s,
-      seriesTitle: widget.title,
-    ));
+    unawaited(
+      openVod(
+        context,
+        VodPlayItem.episode(e, widget.title),
+        fromStart: fromStart,
+        series: _s,
+        seriesTitle: widget.title,
+      ),
+    );
   }
 
   @override
@@ -463,26 +536,38 @@ class _TvSeriesScreenState extends State<TvSeriesScreen> {
     final SeriesDetails? s = _s;
     final CinemaDetails d = s?.details ?? CinemaDetails.empty;
     final CinemaEpisode? primary = _primary();
-    final WatchEntry? pw = primary == null ? null : WatchProgressRepository.instance.get(primary.id);
+    final WatchEntry? pw = primary == null
+        ? null
+        : WatchProgressRepository.instance.get(primary.id);
     final bool resumable = pw != null && pw.isResumable && !pw.upNext;
     final double? rating = d.rating ?? t.rating;
     final List<String> meta = <String>[
       if (t.year != null) t.year!,
       if (rating != null) '★ ${rating.toStringAsFixed(1)}',
       if (d.genre != null) d.genre!,
-      if (s != null && s.seasons.length > 1) context.l10n.tvCinemaSeasons(s.seasons.length.toString()),
+      if (s != null && s.seasons.length > 1)
+        context.l10n.tvCinemaSeasons(s.seasons.length.toString()),
     ];
     return Stack(
       children: <Widget>[
         _Backdrop(url: d.backdropUrl ?? d.posterUrl ?? t.posterUrl),
         Padding(
-          padding: const EdgeInsets.fromLTRB(TvDimens.contentMargin, 40, TvDimens.contentMargin, 24),
+          padding: const EdgeInsets.fromLTRB(
+            TvDimens.contentMargin,
+            40,
+            TvDimens.contentMargin,
+            24,
+          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
               SizedBox(
                 width: 760,
-                child: _Header(title: t.name, meta: meta, plot: d.plot ?? t.plot),
+                child: _Header(
+                  title: t.name,
+                  meta: meta,
+                  plot: d.plot ?? t.plot,
+                ),
               ),
               const SizedBox(height: 18),
               Row(
@@ -492,8 +577,14 @@ class _TvSeriesScreenState extends State<TvSeriesScreen> {
                       icon: Icons.play_arrow_rounded,
                       autofocus: true,
                       label: resumable
-                          ? context.l10n.tvCinemaResumeEpisode(primary.season.toString(), primary.number.toString())
-                          : context.l10n.tvCinemaPlayEpisode(primary.season.toString(), primary.number.toString()),
+                          ? context.l10n.tvCinemaResumeEpisode(
+                              primary.season.toString(),
+                              primary.number.toString(),
+                            )
+                          : context.l10n.tvCinemaPlayEpisode(
+                              primary.season.toString(),
+                              primary.number.toString(),
+                            ),
                       onSelect: () => _play(primary),
                     ),
                   if (primary != null) const SizedBox(width: 12),
@@ -504,17 +595,27 @@ class _TvSeriesScreenState extends State<TvSeriesScreen> {
                       valueListenable: CinemaDownloads.queued,
                       builder: (BuildContext context, int n, _) {
                         final List<CinemaEpisode> eps = s!.episodes[_season]!;
-                        final bool active = eps.any((CinemaEpisode e) =>
-                            CinemaDownloads.isQueued(VodPlayItem.episode(e, widget.title).id));
+                        final bool active = eps.any(
+                          (CinemaEpisode e) => CinemaDownloads.isQueued(
+                            VodPlayItem.episode(e, widget.title).id,
+                          ),
+                        );
                         return CinemaPill(
-                          icon: active ? Icons.downloading_rounded : Icons.download_rounded,
+                          icon: active
+                              ? Icons.downloading_rounded
+                              : Icons.download_rounded,
                           label: active
                               ? context.l10n.tvCinemaSeasonQueue(n)
                               : context.l10n.tvCinemaDownloadSeason,
-                          onSelect: () => unawaited(CinemaDownloads.startSeason(<VodMovie>[
-                            for (final CinemaEpisode e in eps)
-                              VodPlayItem.episode(e, widget.title).toVodMovie(),
-                          ]).then((_) => _refresh())),
+                          onSelect: () => unawaited(
+                            CinemaDownloads.startSeason(<VodMovie>[
+                              for (final CinemaEpisode e in eps)
+                                VodPlayItem.episode(
+                                  e,
+                                  widget.title,
+                                ).toVodMovie(),
+                            ]).then((_) => _refresh()),
+                          ),
                         );
                       },
                     ),
@@ -534,11 +635,17 @@ class _TvSeriesScreenState extends State<TvSeriesScreen> {
     final SeriesDetails? s = _s;
     if (s == null || s.seasons.isEmpty) {
       return Center(
-        child: Text(context.l10n.tvCinemaNoEpisodes,
-            style: const TextStyle(fontSize: TvDimens.body, color: TvTokens.mutedDim)),
+        child: Text(
+          context.l10n.tvCinemaNoEpisodes,
+          style: const TextStyle(
+            fontSize: TvDimens.body,
+            color: TvTokens.mutedDim,
+          ),
+        ),
       );
     }
-    final List<CinemaEpisode> eps = s.episodes[_season] ?? const <CinemaEpisode>[];
+    final List<CinemaEpisode> eps =
+        s.episodes[_season] ?? const <CinemaEpisode>[];
     return Row(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
@@ -585,7 +692,11 @@ class _TvSeriesScreenState extends State<TvSeriesScreen> {
 }
 
 class _EpisodeRow extends StatelessWidget {
-  const _EpisodeRow({required this.episode, required this.series, required this.onPlay});
+  const _EpisodeRow({
+    required this.episode,
+    required this.series,
+    required this.onPlay,
+  });
   final CinemaEpisode episode;
   final CinemaTitle series;
   final VoidCallback onPlay;
@@ -594,8 +705,12 @@ class _EpisodeRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final CinemaEpisode e = episode;
     final WatchEntry? w = WatchProgressRepository.instance.get(e.id);
-    final double? progress = w == null || w.upNext ? null : (w.finished ? 1.0 : w.fraction);
-    final String title = e.title.isEmpty ? context.l10n.tvCinemaEpisode(e.number.toString()) : '${e.number}. ${e.title}';
+    final double? progress = w == null || w.upNext
+        ? null
+        : (w.finished ? 1.0 : w.fraction);
+    final String title = e.title.isEmpty
+        ? context.l10n.tvCinemaEpisode(e.number.toString())
+        : '${e.number}. ${e.title}';
     final String? dur = _durationLabel(context, e.durationSec);
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
@@ -608,7 +723,9 @@ class _EpisodeRow extends StatelessWidget {
               builder: (BuildContext context, bool focused) => Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: focused ? TvTokens.sel : TvTokens.card.withValues(alpha: 0.6),
+                  color: focused
+                      ? TvTokens.sel
+                      : TvTokens.card.withValues(alpha: 0.6),
                   borderRadius: BorderRadius.circular(TvDimens.cardRadius),
                   border: Border.all(
                     color: focused ? TvTokens.accent : TvTokens.lineSoft,
@@ -628,13 +745,19 @@ class _EpisodeRow extends StatelessWidget {
                             ColoredBox(
                               color: TvTokens.tile,
                               child: (e.stillUrl ?? series.posterUrl) == null
-                                  ? const Icon(Icons.movie_rounded, color: TvTokens.mutedDim)
+                                  ? const Icon(
+                                      Icons.movie_rounded,
+                                      color: TvTokens.mutedDim,
+                                    )
                                   : CachedNetworkImage(
-                                      imageUrl: (e.stillUrl ?? series.posterUrl)!,
+                                      imageUrl:
+                                          (e.stillUrl ?? series.posterUrl)!,
                                       fit: BoxFit.cover,
                                       memCacheWidth: 240,
-                                      errorWidget: (_, __, ___) =>
-                                          const Icon(Icons.movie_rounded, color: TvTokens.mutedDim),
+                                      errorWidget: (_, __, ___) => const Icon(
+                                        Icons.movie_rounded,
+                                        color: TvTokens.mutedDim,
+                                      ),
                                     ),
                             ),
                             if (progress != null && progress > 0)
@@ -646,7 +769,9 @@ class _EpisodeRow extends StatelessWidget {
                                   value: progress,
                                   minHeight: 4,
                                   color: TvTokens.accent,
-                                  backgroundColor: Colors.black.withValues(alpha: 0.6),
+                                  backgroundColor: Colors.black.withValues(
+                                    alpha: 0.6,
+                                  ),
                                 ),
                               ),
                           ],
@@ -662,24 +787,41 @@ class _EpisodeRow extends StatelessWidget {
                           Row(
                             children: <Widget>[
                               Expanded(
-                                child: Text(title,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TvTokens.ui(TvDimens.titleS,
-                                        weight: FontWeight.w700,
-                                        color: focused ? TvTokens.accentBright : TvTokens.text)),
+                                child: Text(
+                                  title,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TvTokens.ui(
+                                    TvDimens.titleS,
+                                    weight: FontWeight.w700,
+                                    color: focused
+                                        ? TvTokens.accentBright
+                                        : TvTokens.text,
+                                  ),
+                                ),
                               ),
                               if (dur != null)
-                                Text(dur, style: TvTokens.ui(TvDimens.caption, color: TvTokens.mutedDim)),
+                                Text(
+                                  dur,
+                                  style: TvTokens.ui(
+                                    TvDimens.caption,
+                                    color: TvTokens.mutedDim,
+                                  ),
+                                ),
                             ],
                           ),
                           if (e.plot != null)
                             Padding(
                               padding: const EdgeInsets.only(top: 4),
-                              child: Text(e.plot!,
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TvTokens.ui(TvDimens.caption, color: TvTokens.muted)),
+                              child: Text(
+                                e.plot!,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: TvTokens.ui(
+                                  TvDimens.caption,
+                                  color: TvTokens.muted,
+                                ),
+                              ),
                             ),
                         ],
                       ),

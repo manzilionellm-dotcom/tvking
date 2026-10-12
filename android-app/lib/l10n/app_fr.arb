@@ -2675,5 +2675,352 @@
         "type": "int"
       }
     }
+  },
+  "tvProfiles": "Profils",
+  "tvKidsProfile": "Profil Enfants",
+  "tvNewProfile": "Nouveau profil",
+  "tvChildren": "Enfants",
+  "tvKidsExists": "Un profil Enfants existe déjà.",
+  "tvProfileAddFailed": "Impossible d'ajouter.",
+  "tvKidsReady": "Profil Enfants prêt. Le mode enfants reste allumé.",
+  "tvRename": "Renommer",
+  "tvNameInvalid": "Nom vide ou trop long.",
+  "tvProfileDeleteBody": "Ses favoris, son historique, sa reprise, ses rappels et son code seront effacés. Les chaînes restent. Le profil 1 n'est pas touché.",
+  "tvProfileDeleteFailed": "Ce profil ne peut pas être supprimé.",
+  "tvProfilesHelp": "Jusqu'à 4. Favoris, historique, reprise, rappels et code sont séparés. Les chaînes, non : elles restent pour tout le monde.",
+  "tvDefaultPinWarning": "Le code est encore 0000. Changez-le dans Contrôle parental.",
+  "tvAskProfileOn": "Choix au démarrage : oui",
+  "tvAskProfileOff": "Choix au démarrage : non",
+  "tvProfileStartupSingle": "Le choix au démarrage apparaît dès le 2e profil. Avec un seul profil, la box s'ouvre directement.",
+  "tvProfileStartupHelp": "« Non » : la box s'ouvre sur le dernier profil, sans écran. Vous pourrez toujours changer ici, ou depuis l'accueil.",
+  "tvKidsProfileHelp": "Mode enfants verrouillé. On ne sort qu'avec le code de ce profil. L'adulte est masqué. Le profil 1 garde vos anciennes données.",
+  "tvOriginProfileHelp": "Profil d'origine : vos favoris, votre historique, votre reprise et votre code d'avant la mise à jour sont ici. Il ne se supprime pas.",
+  "tvSeparateProfileHelp": "Tiroir à part. Supprimer ce profil n'efface pas le profil 1.",
+  "tvProfileActive": "Actif",
+  "tvProfileCreated": "Profil « {name} » créé.",
+  "@tvProfileCreated": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "tvProfileDeleteTitle": "Supprimer « {name} » ?",
+  "@tvProfileDeleteTitle": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "tvWhoWatching": "Qui regarde ?",
+  "tvProfilePickerHelp": "Chacun a ses favoris, son historique et son code. Les chaînes restent les mêmes.",
+  "tvLater": "Plus tard",
+  "tvNameMum": "Maman",
+  "tvNameDad": "Papa",
+  "tvNameGuest": "Invité",
+  "tvNameLivingRoom": "Salon",
+  "tvNameLimit": "18 lettres maximum.",
+  "tvFirstName": "Prénom",
+  "tvListRemoved": "Liste retirée",
+  "tvListRemovedBody": "Ton revendeur a retiré cette liste. Les chaînes de cette liste ne sont plus là.",
+  "tvKidsCannotDisable": "Le profil Enfants garde le mode enfants. Changez de profil avec le code pour voir toutes les chaînes.",
+  "tvKidsAlwaysOn": "Profil Enfants : le mode reste allumé. Les chaînes non adultes restent ouvertes.",
+  "tvKidsOn": "Activé — le contenu Adulte est masqué.",
+  "tvKidsOff": "Désactivé — toutes les chaînes sont visibles.",
+  "tvChooseSecurePin": "Choisis un code avant d'activer le Mode Enfants. Le code 0000 n'est plus accepté.",
+  "tvPinWait": "Trop d'essais. Réessaie dans quelques minutes.",
+  "tvEnabled": "Activé",
+  "tvDisabled": "Désactivé",
+  "tvProfilePinHelp": "Code du profil « {name} ». Le Mode Enfants masque les chaînes Adulte. Le couper et changer le code demandent ce code. Un autre profil a le sien.",
+  "@tvProfilePinHelp": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "tvPinWaitMinutes": "Trop d'essais. Réessaie dans {minutes} min.",
+  "@tvPinWaitMinutes": {
+    "placeholders": {
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
+  "tvExtras": "En plus",
+  "tvExtrasHelp": "Chaque fonction se coupe seule. Aucune ne bloque une chaîne.",
+  "tvMissedTitle": "En retard",
+  "tvMissedOn": "Le guide dit ce que tu as raté. OK pour couper. Le direct ne recule pas tout seul.",
+  "tvMissedOff": "Coupé. OK pour rallumer. Une chaîne ne sera pas rembobinée.",
+  "tvAtThisHour": "À cette heure",
+  "tvTimePicksOn": "Propose les chaînes que tu ouvres souvent à ce moment. OK pour couper. Rien ne se lance tout seul.",
+  "tvTimePicksOff": "Coupé. OK pour rallumer. On ne compte plus, et la rangée disparaît.",
+  "tvServiceNotices": "Annonces du service",
+  "tvNoticesOn": "Une carte sur l'accueil quand ton revendeur publie une info (maintenance, nouveauté). OK pour couper. Jamais sur l'image.",
+  "tvNoticesOff": "Coupé. OK pour rallumer. Les annonces ne s'affichent plus.",
+  "tvPickOfDay": "Favori du jour",
+  "tvFeaturedOn": "La chaîne mise en avant par ton revendeur, si elle est dans ta liste. OK pour couper. Rien ne se lance tout seul.",
+  "tvFeaturedOff": "Coupé. OK pour rallumer. La carte disparaît de l'accueil.",
+  "tvBanners": "Bannières",
+  "tvBannersOn": "Une image à la fois sur l'accueil, toujours marquée « Publicité ». Fermer = 7 jours sans elle. OK pour couper. Jamais de son, jamais sur l'image.",
+  "tvBannersOff": "Coupé. OK pour rallumer. Plus aucune bannière.",
+  "tvSubtitlesOnHelp": "Affiche la piste déjà dans le flux, dans ta langue. OK pour couper. Rien n'est traduit, rien n'est téléchargé.",
+  "tvSubtitlesOffHelp": "Coupé. OK pour rallumer. Le direct ne change pas de flux.",
+  "tvClearVoice": "Voix claire",
+  "tvClearVoiceOn": "Allumé. Les voix fortes sont un peu baissées (mode nuit). OK pour couper. Le son cinéma surround n'est pas modifié.",
+  "tvClearVoiceOff": "Coupé, c'est le réglage d'origine. OK pour baisser un peu les voix trop fortes. Le son surround envoyé tel quel à la barre de son ne change pas.",
+  "tvLogToSupport": "Journal au support",
+  "tvLogToSupportOn": "Le journal de la Boîte noire peut partir au support, sans adresse de flux ni mot de passe. OK pour couper.",
+  "tvLogToSupportOff": "Coupé. Le journal reste sur la box. OK pour le renvoyer au support.",
+  "tvPictureEngine": "Moteur image",
+  "tvPictureEngineHelp": "Maintenant : {engine}. OK pour changer. Matériel = la box (réglage d'origine). Logiciel = si l'image est noire. FFmpeg vidéo n'est pas dans cette version : OK le saute.",
+  "@tvPictureEngineHelp": {
+    "placeholders": {
+      "engine": {
+        "type": "String"
+      }
+    }
+  },
+  "tvScreenRefresh": "Fréquence de l'écran",
+  "tvScreenRefreshOn": "Allumé. L'écran peut passer en 24, 50 ou 60 Hz selon le flux. OK pour couper. Sur certaines box ça coupe l'image une seconde : si ça arrive, coupe.",
+  "tvScreenRefreshOff": "Coupé, c'est le réglage d'origine. OK pour caler l'écran sur 24 / 25 / 30 / 50 / 60 images par seconde. On ne le fait pas tout seul.",
+  "tvContrast": "Contraste",
+  "tvContrastUnavailable": "Pas disponible. Le seul filtre Android quitte l'image directe et a déjà fait des écrans noirs. On ne l'allume pas.",
+  "tvUpdateAllowInstall": "Autorise Zuno à installer des applications (écran ouvert par Android : active « Zuno »), puis reviens et appuie OK. La mise à jour est déjà téléchargée.",
+  "tvFfmpegKeepDecoder": "FFmpeg vidéo n'est pas dans cette version. On reste sur le décodeur actuel.",
+  "tvFfmpegBoxDecoder": "FFmpeg vidéo n'est pas dans cette version. Retour au décodeur de la box.",
+  "tvFfmpegUnavailable": "FFmpeg vidéo n'est pas dans cette version.",
+  "tvEngineSelected": "Moteur : {engine}",
+  "@tvEngineSelected": {
+    "placeholders": {
+      "engine": {
+        "type": "String"
+      }
+    }
+  },
+  "tvOnYourPhone": "Sur ton téléphone",
+  "tvGotIt": "Vu",
+  "tvClose": "Fermer",
+  "tvPhone": "Téléphone",
+  "tvSoftware": "Logiciel",
+  "tvHardware": "Matériel",
+  "tvProfilesSettingsHelp": "Favoris, historique, reprise, rappels et code séparés. Jusqu'à 4 profils.",
+  "tvAudioDiagnostic": "Diagnostic du son",
+  "tvAudioDiagnosticHelp": "Rapport local par chaîne. Rien n'est envoyé. Les correctifs restent coupés.",
+  "tvPlayerDisclaimer": "Cette application est un LECTEUR multimédia. Elle ne vend, ne fournit et n'héberge aucune chaîne, aucun flux ni aucun lien M3U. Le contenu est fourni par l'utilisateur, seul responsable de sa licéité.",
+  "tvActivationDisclaimer": "Lecteur multimédia — ne vend ni ne fournit aucune chaîne ni lien M3U. Le contenu est apporté par l'utilisateur. Conditions : app.7themotion.com/terms",
+  "tvSourcePasteHelp": "Colle ton lien ou tes identifiants. N'importe quel fournisseur M3U ou Xtream.",
+  "tvTrending": "🔥 Tendances",
+  "tvRecent": "🕒 Récemment",
+  "tvForYou": "✨ Pour vous",
+  "tvOther": "Autres",
+  "tvNetworkUnavailable": "Pas de réseau",
+  "tvNetworkUnavailableHelp": "La box n'arrive pas à joindre le serveur. Vérifie la connexion, puis réessaie.",
+  "tvListRejected": "Cette liste est refusée",
+  "tvListRejectedHelp": "Le fournisseur n'accepte pas cette liste. Vérifie les identifiants.",
+  "tvCodeInactive": "Code pas activé",
+  "tvCodeInactiveHelp": "Le code de cette box n'est pas activé. Active-le dans le panel, puis attends quelques secondes.",
+  "tvSourcesEmpty": "Aucune source pour le moment.\nAjoute un lien M3U, un compte Xtream ou un lien lecteur.",
+  "tvRecordingCloseFailed": "L'enregistrement n'a pas pu être fermé. Le fichier peut être incomplet.",
+  "tvFromStart": "Début",
+  "tvFollow": "Suivre",
+  "tvChooseTeamHelp": "Choisis une équipe ci-dessous, ou tape un nom…",
+  "tvTeamNotFound": "« {name} » introuvable — essaie la recherche.",
+  "@tvTeamNotFound": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "tvCatchupHelp": "Depuis le début de l'émission. Droite, puis OK : retour au direct.",
+  "tvMissedRewindHint": "Droite, puis OK : depuis le début.",
+  "tvMissedNoReplayHint": "Le guide a le texte, pas la vidéo. Le direct ne bouge pas.",
+  "tvSourceNeedUrl": "Colle une adresse qui commence par http:// ou https://.",
+  "tvSourceNeedXtream": "Indique l'adresse du serveur, le nom d'utilisateur et le mot de passe.",
+  "tvSourceNeedCredentials": "Ce lien de lecteur n'a pas de nom d'utilisateur ou de mot de passe. Colle le lien complet, ou remplis les trois champs Xtream.",
+  "tvSourceBadScheme": "Cette adresse n'est pas utilisable. Il faut un lien http ou https.",
+  "tvPlayerLink": "Lien lecteur",
+  "tvAdvertisement": "Publicité",
+  "tvSponsored": "Sponsorisé",
+  "tvInformation": "Info",
+  "tvSportFootball": "Football",
+  "tvSportBasketball": "Basket (NBA)",
+  "tvSportRugby": "Rugby",
+  "tvDataAttribution": "Données : {source}",
+  "@tvDataAttribution": {
+    "placeholders": {
+      "source": {
+        "type": "String"
+      }
+    }
+  },
+  "tvLegalSection1Title": "1. Nature de l'application — un LECTEUR, rien d'autre",
+  "tvLegalSection1Body": "Cette application est un LECTEUR multimédia (player) permettant de lire des flux audio/vidéo fournis par l'utilisateur. Elle NE FOURNIT PAS, NE VEND PAS, N'HÉBERGE PAS, NE DIFFUSE PAS et N'INDEXE AUCUNE chaîne de télévision, flux, contenu audiovisuel, ni liste de lecture (M3U) ou identifiants de portail (Xtream). Aucun contenu n'est inclus, préchargé ou commercialisé avec l'application.",
+  "tvLegalSection2Title": "2. Contenu fourni par l'utilisateur",
+  "tvLegalSection2Body": "L'utilisateur fournit lui-même ses propres sources (lien M3U / identifiants Xtream), obtenues auprès de son propre fournisseur. L'utilisateur est SEUL responsable des contenus qu'il ajoute, lit ou diffuse, ainsi que de la détention des droits, licences et abonnements nécessaires.",
+  "tvLegalSection3Title": "3. Abonnement = le LOGICIEL, pas le contenu",
+  "tvLegalSection3Body": "Tout paiement ou abonnement éventuel rémunère UNIQUEMENT l'utilisation de l'application (le lecteur et ses fonctionnalités : interface, favoris, enregistrement local, EPG…). Il ne constitue EN AUCUN CAS l'achat, la vente, la location ou la fourniture de chaînes, de flux ou de contenus.",
+  "tvLegalSection4Title": "4. Usage licite",
+  "tvLegalSection4Body": "L'utilisateur s'engage à utiliser l'application conformément aux lois en vigueur dans son pays et à ne pas l'utiliser pour accéder à des contenus illégaux ou portant atteinte aux droits d'auteur. Toute utilisation illicite est strictement interdite et relève de la seule responsabilité de l'utilisateur.",
+  "tvLegalSection5Title": "5. Contenus tiers — absence de responsabilité",
+  "tvLegalSection5Body": "L'éditeur n'a aucun contrôle sur les contenus tiers accessibles via les sources fournies par l'utilisateur et ne saurait en être tenu responsable. Il ne garantit ni la disponibilité, ni la légalité, ni la qualité de ces contenus.",
+  "tvLegalSection6Title": "6. Propriété intellectuelle & réclamations",
+  "tvLegalSection6Body": "Toutes les marques, logos et contenus appartiennent à leurs propriétaires respectifs. L'application n'hébergeant aucun contenu, toute réclamation relative à des droits d'auteur doit être adressée au fournisseur de la source concernée.",
+  "tvLegalSection7Title": "7. Fourniture « en l'état »",
+  "tvLegalSection7Body": "L'application est fournie « telle quelle », sans garantie de disponibilité continue ni d'absence d'erreurs. L'éditeur peut faire évoluer ou suspendre tout ou partie des fonctionnalités.",
+  "tvLegalSection8Title": "8. Données personnelles",
+  "tvLegalSection8Body": "Un identifiant technique d'appareil est utilisé pour la gestion de la licence/essai et le support. Détails : app.7themotion.com/privacy.",
+  "tvLegalSection9Title": "9. Acceptation",
+  "tvLegalSection9Body": "En installant ou en utilisant cette application, l'utilisateur reconnaît avoir lu et accepté les présentes conditions. Version complète en ligne : app.7themotion.com/terms",
+  "tvLegalLead": "Cette application est un lecteur. Elle ne vend ni ne fournit aucune chaîne ni lien. Haut/Bas pour faire défiler, Retour pour quitter.",
+  "tvAudioSpectrumOn": "Spectre : mesuré",
+  "tvAudioSpectrumOff": "Spectre : coupé",
+  "tvAudioFfmpegRetry": "FFmpeg : réessayer",
+  "tvAudioFfmpegDefault": "FFmpeg : défaut",
+  "tvAudioAacTest": "Box AAC : essai",
+  "tvAudioAacOff": "Box AAC : coupé",
+  "tvAudioFallbackSession": "Repli : session entière",
+  "tvAudioFallbackChannel": "Repli : par chaîne",
+  "tvAudioFocusAndroid": "Focus : Android",
+  "tvAudioFocusZuno": "Focus : Zuno",
+  "tvAudioBackgroundPause": "Hors app : pause",
+  "tvAudioBackgroundStop": "Hors app : arrêt",
+  "tvAudioHomeLegacy": "Home : ancien",
+  "tvAudioHomeNative": "Home : arrêt natif",
+  "tvAudioHandoffNow": "Passage : tout de suite",
+  "tvAudioHandoffWait": "Passage : attendre",
+  "tvAudioOutput48k": "Sortie : 48 kHz",
+  "tvAudioOutputStream": "Sortie : flux",
+  "tvAudioWitnessStop": "Témoin : stop",
+  "tvAudioWitnessPreparing": "Témoin : préparation",
+  "tvAudioWitnessPlay": "Jouer le son témoin",
+  "tvAudioScrollHelp": "HAUT/BAS : défiler · CH+/CH− : page",
+  "tvAudioWitnessHelp": "Témoin en lecture (10 s) : voix, puis bruit. Même lecteur que les chaînes. Bruit sourd → l'appareil. Bruit clair → la chaîne.",
+  "tvAudioOptionsHelp": "Spectre : à la prochaine chaîne, mesure quatre points (décodeur, voix claire, silence, AudioTrack) sans modifier le son. FFmpeg : réessaie le décodeur logiciel ; s'il ne démarre pas en 8 s, la box reprend. Box AAC : à la prochaine chaîne, l'AAC passe par le décodeur de la box (comme ExoPlayer). S'il échoue, FFmpeg reprend cette ouverture. Repli : « par chaîne » (défaut) = une panne FFmpeg n'envoie à la box que la chaîne concernée ; « session entière » = ancien comportement, toutes les chaînes passent à la box après une seule panne. Focus : « Zuno » (défaut) = jamais de baisse de volume quand une autre app ou un bip demande le son (le son « dans un trou ») ; « Android » = ancien comportement (baisse à 20 %). Hors app : « arrêt » (défaut) = en quittant l'app le son est coupé et rendu, la chaîne est rouverte au retour ; « pause » = ancien comportement. Home : « arrêt natif » (défaut) = coupé dès onPause, rien ne rouvre tant que l'app est dehors ; « ancien » = on attend Flutter. Passage : « attendre » (défaut) = on n'ouvre la chaîne suivante que lorsque l'AudioTrack précédent est vraiment rendu (sinon deux sons se mélangent après beaucoup de zaps) ; « tout de suite » = ancien comportement. Sortie : « flux » (défaut) = l'AudioTrack prend la fréquence du flux (44,1 kHz pour beaucoup de chaînes) et la box convertit ; « 48 kHz » = l'app rééchantillonne avant la sortie. À essayer si le son est mauvais avec une fiche à 44,1 kHz. Son témoin : 10 s (voix puis bruit), lu par le même lecteur. Allume la mesure, ne change pas le son. Bruit sourd → l'appareil. Bruit clair → la chaîne.",
+  "tvAudioNoReports": "Aucun rapport. Ouvre une chaîne : le lecteur note le codec, le décodeur et la sortie. Le spectre n'est mesuré que si l'interrupteur est allumé.",
+  "tvAudioTestSound": "Son témoin",
+  "tvDiagCaptive": "1. Portail captif (204)",
+  "tvDiagDns": "2. Résolution DNS hôte IPTV",
+  "tvDiagStream": "3. Joignabilité flux (HTTP / 456)",
+  "tvDiagSource": "4. Source poussée (device-source)",
+  "tvDiagPlayer": "5. Sonde ExoPlayer / Media3",
+  "tvDiagRequest": "requête generate_204…",
+  "tvDiagInternetOk": "HTTP 204 (sortie Internet libre)",
+  "tvDiagTimeout": "pas de réponse en 8 s",
+  "tvDiagNoHost": "aucune chaîne chargée → hôte INCONNU",
+  "tvDiagNoUrl": "aucune chaîne chargée → URL INCONNUE",
+  "tvDiagStreamHead": "HEAD du flux…",
+  "tvDiagIpBlocked": "HTTP 456 — fournisseur bloque cette IP",
+  "tvDiagReadingMac": "lecture MAC…",
+  "tvDiagSourceAssigned": "HTTP 200 — source assignée",
+  "tvDiagNoSource": "HTTP 200 — aucune source assignée",
+  "tvDiagPlayerBusy": "plein écran en cours : sonde non lancée (un seul lecteur)",
+  "tvDiagPlayerOpening": "ouverture sonde ExoPlayer…",
+  "tvDiagFrameOk": "1re image décodée et affichée",
+  "tvDiagPlayerError": "ExoPlayer a renvoyé une erreur",
+  "tvDiagFrameTimeout": "aucune image en 8 s",
+  "tvDiagRunning": "DIAGNOSTIC EN COURS…",
+  "tvDiagPassed": "PIVOT ON-DEVICE VALIDÉ",
+  "tvDiagNetworkBlocked": "BLOCAGE CÔTÉ RÉSEAU",
+  "tvDiagPlayerFailed": "BUG PLAYER",
+  "tvDiagPartial": "DIAGNOSTIC PARTIEL",
+  "tvDiagTitle": "DIAGNOSTIC ON-DEVICE — DeFew TV",
+  "tvDiagHelp": "Teste si la box peut jouer le flux depuis sa propre IP.",
+  "tvBackToExit": "RETOUR pour quitter",
+  "tvDiagCaptiveLikely": "HTTP {status}, {bytes} octets → portail captif probable",
+  "@tvDiagCaptiveLikely": {
+    "placeholders": {
+      "status": {
+        "type": "int"
+      },
+      "bytes": {
+        "type": "int"
+      }
+    }
+  },
+  "tvDiagLookup": "Résolution de {host}…",
+  "@tvDiagLookup": {
+    "placeholders": {
+      "host": {
+        "type": "String"
+      }
+    }
+  },
+  "tvDiagNoIp": "{host} → aucune IP",
+  "@tvDiagNoIp": {
+    "placeholders": {
+      "host": {
+        "type": "String"
+      }
+    }
+  },
+  "tvDiagDnsTimeout": "{host} : pas de réponse DNS en 8 s",
+  "@tvDiagDnsTimeout": {
+    "placeholders": {
+      "host": {
+        "type": "String"
+      }
+    }
+  },
+  "tvDiagStreamOk": "HTTP {status} (flux joignable)",
+  "@tvDiagStreamOk": {
+    "placeholders": {
+      "status": {
+        "type": "int"
+      }
+    }
+  },
+  "tvDiagUnknownMac": "MAC INCONNUE ({mac})",
+  "@tvDiagUnknownMac": {
+    "placeholders": {
+      "mac": {
+        "type": "String"
+      }
+    }
+  },
+  "tvSizeBytes": "{size} o",
+  "@tvSizeBytes": {
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "tvSizeKb": "{size} Ko",
+  "@tvSizeKb": {
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "tvSizeMb": "{size} Mo",
+  "@tvSizeMb": {
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "tvSizeGb": "{size} Go",
+  "@tvSizeGb": {
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "tvDurationHm": "{hours} h {minutes} min",
+  "@tvDurationHm": {
+    "placeholders": {
+      "hours": {
+        "type": "String"
+      },
+      "minutes": {
+        "type": "String"
+      }
+    }
   }
 }

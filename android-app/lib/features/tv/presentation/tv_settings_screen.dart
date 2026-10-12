@@ -24,7 +24,6 @@ import '../../subscription/data/subscription_state.dart';
 import '../core/tv_dimens.dart';
 import '../../carousel/domain/carousel_config.dart';
 import '../../carousel/presentation/zuno_ring_carousel.dart';
-import '../../box_extras/box_text.dart';
 import '../../box_extras/presentation/tv_extras_screen.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../../profiles/data/profile_repository.dart';
@@ -72,9 +71,11 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
       if (mounted) setState(() {});
     });
     ProfileRepository.instance.addListener(_onProfile);
-    unawaited(VoiceRemoteAssist.load().then((bool on) {
-      if (mounted) setState(() => _remoteAi = on);
-    }));
+    unawaited(
+      VoiceRemoteAssist.load().then((bool on) {
+        if (mounted) setState(() => _remoteAi = on);
+      }),
+    );
     _checkUpdate();
   }
 
@@ -90,10 +91,7 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
 
   Future<void> _toggleStartup() async {
     final bool next = !StartupPreference.instance.openLastChannel;
-    BlackBox.instance.info(
-      'DEMARRAGE',
-      next ? 'dernière chaîne' : 'accueil',
-    );
+    BlackBox.instance.info('DEMARRAGE', next ? 'dernière chaîne' : 'accueil');
     await StartupPreference.instance.setOpenLastChannel(next);
     if (mounted) setState(() {});
   }
@@ -131,8 +129,10 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
       case _UpdState.available:
         final UpdateInfo? u = _updInfo;
         if (u == null) return;
-        BlackBox.instance
-            .info('MAJ', 'installation demandée → build ${u.versionCode}');
+        BlackBox.instance.info(
+          'MAJ',
+          'installation demandée → build ${u.versionCode}',
+        );
         setState(() {
           _upd = _UpdState.downloading;
           _updPct = 0;
@@ -147,11 +147,13 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
         if (!mounted) return;
         // Si l'installateur s'est ouvert, Android prend la main : l'app sera
         // relancée par le système une fois la mise à jour installée.
-        setState(() => _upd = ok
-            ? _UpdState.available
-            : (UpdateService.instance.needsInstallPermission
-                ? _UpdState.permission
-                : _UpdState.failed));
+        setState(
+          () => _upd = ok
+              ? _UpdState.available
+              : (UpdateService.instance.needsInstallPermission
+                    ? _UpdState.permission
+                    : _UpdState.failed),
+        );
         return;
     }
   }
@@ -175,8 +177,9 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
     if (cur == null) {
       next = all.first;
     } else {
-      final int i =
-          all.indexWhere((Locale l) => l.languageCode == cur.languageCode);
+      final int i = all.indexWhere(
+        (Locale l) => l.languageCode == cur.languageCode,
+      );
       next = (i < 0 || i + 1 >= all.length) ? null : all[i + 1];
     }
     BlackBox.instance.info('LANGUE', 'choix : ${next?.languageCode ?? 'auto'}');
@@ -205,11 +208,7 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
       case _UpdState.failed:
         return context.l10n.tvUpdateFailed;
       case _UpdState.permission:
-        return boxText(
-          context,
-          'Autorise Zuno à installer des applications (écran ouvert par Android : active « Zuno »), puis reviens et appuie OK. La mise à jour est déjà téléchargée.',
-          'Allow Zuno to install apps (Android has opened the screen: turn on "Zuno"), then come back and press OK. The update is already downloaded.',
-        );
+        return context.l10n.tvUpdateAllowInstall;
     }
   }
 
@@ -224,28 +223,28 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
       case SubscriptionStatus.paid:
         return (
           label: context.l10n.tvStatusPaid,
-          color: const Color(0xFF3FBE7C)
+          color: const Color(0xFF3FBE7C),
         );
       case SubscriptionStatus.trialActive:
         final int d = SubscriptionState.instance.trialDaysRemaining;
         return (
           label: context.l10n.tvStatusTrial(d),
-          color: const Color(0xFF5AA0E8)
+          color: const Color(0xFF5AA0E8),
         );
       case SubscriptionStatus.trialExpired:
         return (
           label: context.l10n.tvStatusTrialExpired,
-          color: const Color(0xFFE8B23A)
+          color: const Color(0xFFE8B23A),
         );
       case SubscriptionStatus.frozen:
         return (
           label: context.l10n.tvStatusFrozen,
-          color: const Color(0xFFE8B23A)
+          color: const Color(0xFFE8B23A),
         );
       case SubscriptionStatus.banned:
         return (
           label: context.l10n.tvStatusBanned,
-          color: const Color(0xFFFF5A4A)
+          color: const Color(0xFFFF5A4A),
         );
       case SubscriptionStatus.unknown:
         return (label: context.l10n.tvStatusUnknown, color: TvTokens.mutedDim);
@@ -265,11 +264,12 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
   List<_SettingEntry> _entries(BuildContext context) {
     final ({String label, Color color}) st = _statusOf(context);
     final int channels = PlaylistRepository.instance.currentChannels.length;
-    void open(Widget page) => Navigator.of(context)
+    void open(Widget page) =>
+        Navigator.of(context)
             .push(MaterialPageRoute<void>(builder: (_) => TvShell(child: page)))
             .then((_) {
-          if (mounted) setState(() {}); // compteurs à jour au retour
-        });
+              if (mounted) setState(() {}); // compteurs à jour au retour
+            });
     return <_SettingEntry>[
       _SettingEntry(
         icon: Icons.tv_rounded,
@@ -290,12 +290,8 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
       ),
       _SettingEntry(
         icon: Icons.auto_awesome_rounded,
-        title: boxText(context, 'En plus', 'Extras'),
-        description: boxText(
-          context,
-          'Fonctions que tu peux couper une par une. Aucune ne bloque une chaîne.',
-          'Features you can turn off one by one. None of them blocks a channel.',
-        ),
+        title: context.l10n.tvExtras,
+        description: context.l10n.tvExtrasHelp,
         onSelect: () => open(const TvExtrasScreen()),
       ),
       _SettingEntry(
@@ -324,10 +320,9 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
       ),
       _SettingEntry(
         icon: Icons.switch_account_rounded,
-        title: 'Profils',
+        title: context.l10n.tvProfiles,
         value: ProfileRepository.instance.active.name,
-        description:
-            'Favoris, historique, reprise, rappels et code séparés. Jusqu\'à 4 profils.',
+        description: context.l10n.tvProfilesSettingsHelp,
         onSelect: () => open(const TvProfilesScreen()),
       ),
       _SettingEntry(
@@ -371,9 +366,8 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
       ),
       _SettingEntry(
         icon: Icons.graphic_eq_rounded,
-        title: 'Diagnostic du son',
-        description:
-            'Rapport local par chaîne. Rien n\'est envoyé. Les correctifs restent coupés.',
+        title: context.l10n.tvAudioDiagnostic,
+        description: context.l10n.tvAudioDiagnosticHelp,
         onSelect: () => open(const TvAudioDiagnosticScreen()),
       ),
       _SettingEntry(
@@ -415,17 +409,25 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
         Row(
           crossAxisAlignment: CrossAxisAlignment.end,
           children: <Widget>[
-            Text(context.l10n.tvNavSettings,
-                style: TextStyle(
-                    fontSize: TvDimens.displayM,
-                    fontWeight: FontWeight.w800,
-                    color: TvTokens.text)),
+            Text(
+              context.l10n.tvNavSettings,
+              style: TextStyle(
+                fontSize: TvDimens.displayM,
+                fontWeight: FontWeight.w800,
+                color: TvTokens.text,
+              ),
+            ),
             const Spacer(),
             Padding(
               padding: const EdgeInsets.only(bottom: 8),
-              child: Text(context.l10n.tvRingHint,
-                  style: TvTokens.ui(TvDimens.caption,
-                      color: TvTokens.mutedDim, spacing: 0.6)),
+              child: Text(
+                context.l10n.tvRingHint,
+                style: TvTokens.ui(
+                  TvDimens.caption,
+                  color: TvTokens.mutedDim,
+                  spacing: 0.6,
+                ),
+              ),
             ),
           ],
         ),
@@ -442,11 +444,11 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
               onSelectedIndex: (int i) => entries[i].onSelect(),
               cardBuilder: (BuildContext c, int i, bool selected) =>
                   _SettingCard(
-                entry: entries[i],
-                width: cfg.cardWidth,
-                height: cfg.cardHeight,
-                elevated: selected,
-              ),
+                    entry: entries[i],
+                    width: cfg.cardWidth,
+                    height: cfg.cardHeight,
+                    elevated: selected,
+                  ),
             ),
           ),
         ),
@@ -458,18 +460,27 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
             child: Column(
               key: ValueKey<int>(_focusIndex),
               children: <Widget>[
-                Text(cur.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TvTokens.display(TvDimens.headline,
-                        weight: FontWeight.w500, spacing: 0.4)),
+                Text(
+                  cur.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TvTokens.display(
+                    TvDimens.headline,
+                    weight: FontWeight.w500,
+                    spacing: 0.4,
+                  ),
+                ),
                 const SizedBox(height: 6),
-                Text(cur.description,
-                    textAlign: TextAlign.center,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TvTokens.ui(TvDimens.body, color: TvTokens.muted)
-                        .copyWith(height: 1.35)),
+                Text(
+                  cur.description,
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TvTokens.ui(
+                    TvDimens.body,
+                    color: TvTokens.muted,
+                  ).copyWith(height: 1.35),
+                ),
               ],
             ),
           ),
@@ -477,14 +488,13 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
         const SizedBox(height: 8),
         // ----- Avertissement « lecteur » toujours visible (bas de page) -----
         Text(
-          'Cette application est un LECTEUR multimédia. Elle ne vend, ne '
-          'fournit et n\'héberge aucune chaîne, aucun flux ni aucun lien '
-          'M3U. Le contenu est fourni par l\'utilisateur, seul responsable '
-          'de sa licéité.',
+          context.l10n.tvPlayerDisclaimer,
           textAlign: TextAlign.center,
           maxLines: 2,
-          style: TvTokens.ui(TvDimens.caption, color: TvTokens.mutedDim)
-              .copyWith(height: 1.4),
+          style: TvTokens.ui(
+            TvDimens.caption,
+            color: TvTokens.mutedDim,
+          ).copyWith(height: 1.4),
         ),
       ],
     );
@@ -535,8 +545,9 @@ class _SettingCard extends StatelessWidget {
   final double height;
   final bool elevated;
 
-  static const BorderRadius _radius =
-      BorderRadius.all(Radius.circular(TvDimens.cardRadius));
+  static const BorderRadius _radius = BorderRadius.all(
+    Radius.circular(TvDimens.cardRadius),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -566,7 +577,9 @@ class _SettingCard extends StatelessWidget {
       ),
       child: DecoratedBox(
         decoration: const BoxDecoration(
-            borderRadius: _radius, gradient: TvTokens.brandGlow),
+          borderRadius: _radius,
+          gradient: TvTokens.brandGlow,
+        ),
         child: Padding(
           padding: const EdgeInsets.all(TvDimens.gutter),
           child: Column(
@@ -580,7 +593,8 @@ class _SettingCard extends StatelessWidget {
                   shape: BoxShape.circle,
                   color: TvTokens.accent.withValues(alpha: 0.12),
                   border: Border.all(
-                      color: TvTokens.accent.withValues(alpha: 0.35)),
+                    color: TvTokens.accent.withValues(alpha: 0.35),
+                  ),
                 ),
                 child: Icon(entry.icon, size: 26, color: TvTokens.accentBright),
               ),
@@ -602,9 +616,11 @@ class _SettingCard extends StatelessWidget {
                 // « MENTIONS LÉGALES & CONDITIONS ») tiennent en entier.
                 maxLines: 3,
                 overflow: TextOverflow.ellipsis,
-                style: TvTokens.display(TvDimens.titleS,
-                        weight: FontWeight.w500, spacing: 0.6)
-                    .copyWith(height: 1.12),
+                style: TvTokens.display(
+                  TvDimens.titleS,
+                  weight: FontWeight.w500,
+                  spacing: 0.6,
+                ).copyWith(height: 1.12),
               ),
               if (value != null) ...<Widget>[
                 const SizedBox(height: 8),
@@ -613,15 +629,20 @@ class _SettingCard extends StatelessWidget {
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: entry.mono
-                      ? TvTokens.mono(TvDimens.caption,
-                          color: TvTokens.text, spacing: 0.5)
-                      : TvTokens.ui(TvDimens.caption,
+                      ? TvTokens.mono(
+                          TvDimens.caption,
+                          color: TvTokens.text,
+                          spacing: 0.5,
+                        )
+                      : TvTokens.ui(
+                          TvDimens.caption,
                           weight: FontWeight.w500,
                           color:
                               entry.value2 == null && entry.value2Color != null
-                                  ? entry.value2Color!
-                                  : TvTokens.muted,
-                          spacing: 0.4),
+                              ? entry.value2Color!
+                              : TvTokens.muted,
+                          spacing: 0.4,
+                        ),
                 ),
               ],
               if (value2 != null) ...<Widget>[
@@ -630,9 +651,11 @@ class _SettingCard extends StatelessWidget {
                   value2,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TvTokens.ui(TvDimens.caption,
-                      weight: FontWeight.w600,
-                      color: entry.value2Color ?? TvTokens.muted),
+                  style: TvTokens.ui(
+                    TvDimens.caption,
+                    weight: FontWeight.w600,
+                    color: entry.value2Color ?? TvTokens.muted,
+                  ),
                 ),
               ],
             ],
@@ -644,4 +667,11 @@ class _SettingCard extends StatelessWidget {
 }
 
 /// États du bouton de mise à jour des Réglages.
-enum _UpdState { checking, upToDate, available, downloading, failed, permission }
+enum _UpdState {
+  checking,
+  upToDate,
+  available,
+  downloading,
+  failed,
+  permission,
+}
