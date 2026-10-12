@@ -10,13 +10,15 @@ export function SupportPage({ onLogout }: { onLogout: () => void }) {
   const [selected, setSelected] = useState('');
   const [error, setError] = useState('');
   const [query, setQuery] = useState('');
+  const queryVersion = useRef(0);
   const owner = getCurrentUser()?.role === 'super_admin';
   const load = useCallback(async () => {
     if (document.hidden || !owner) return;
-    try { const r = await supportApi.list(); setThreads(r.items); setError(''); }
-    catch(e) { if (e instanceof ApiError && e.status === 401) onLogout(); else setError(messageError(e)); }
-  }, [owner, onLogout]);
-  useEffect(() => { void load(); const id = setInterval(() => void load(), 5000); return () => clearInterval(id); }, [load]);
+    const version = ++queryVersion.current;
+    try { const r = await supportApi.list(query); if (version !== queryVersion.current) return; setThreads(r.items); setError(''); }
+    catch(e) { if (version !== queryVersion.current) return; if (e instanceof ApiError && e.status === 401) onLogout(); else setError(messageError(e)); }
+  }, [owner, onLogout, query]);
+  useEffect(() => { const delay = setTimeout(() => void load(), 250); const id = setInterval(() => void load(), 5000); return () => { ++queryVersion.current; clearTimeout(delay); clearInterval(id); }; }, [load]);
   return <AppLayout title="Chat privé" subtitle="Les conversations de tes clients, directement dans 7MOTION." onLogout={onLogout}>
     {!owner ? <p role="alert">Réservé au propriétaire.</p> : <>
       {error && <p role="alert" className="mb-4 text-accent">{error}</p>}
@@ -24,7 +26,7 @@ export function SupportPage({ onLogout }: { onLogout: () => void }) {
         <aside className="rounded-2xl border border-white/10 bg-midnight p-4"><div className="mb-4 flex items-center justify-between"><h2 className="font-semibold">Conversations</h2><span className="rounded-full bg-accent/15 px-2 py-1 text-xs">{threads.reduce((n,t) => n + t.unread, 0)} non lus</span></div>
           <input aria-label="Rechercher un appareil" placeholder="Rechercher une MAC…" className="mb-4 w-full rounded-xl border border-white/10 bg-slate p-3 text-sm" value={query} onChange={e => setQuery(e.target.value)} />
           <div className="max-h-[560px] space-y-2 overflow-auto">{threads.filter(t => `${t.device_label} ${t.mac}`.toUpperCase().includes(query.toUpperCase())).map(t => <button key={t.mac} className={`w-full rounded-xl border p-3 text-left ${selected === t.mac ? 'border-accent/50 bg-accent/10' : 'border-transparent hover:bg-white/5'}`} onClick={() => setSelected(t.mac)}><div className="flex justify-between gap-2"><span className="font-mono text-xs">{t.device_label || `Client ${t.mac.slice(0,8)}`}</span>{t.unread > 0 && <span className="rounded-full bg-accent px-2 text-xs">{t.unread}</span>}</div><p className="mt-2 truncate text-sm text-ink-secondary">{t.preview}</p><p className="mt-2 text-xs text-ink-tertiary">{time(t.updated_at)}</p></button>)}</div>
-          {threads.length === 0 && <p className="py-8 text-sm text-ink-secondary">Le premier message d’un client apparaîtra ici.</p>}<p className="mt-4 text-xs text-ink-tertiary">Les 100 conversations les plus récentes. La MAC est déclarée par le client ; elle ne prouve pas son identité.</p>
+          {threads.length === 0 && <p className="py-8 text-sm text-ink-secondary">Le premier message d’un client apparaîtra ici.</p>}<p className="mt-4 text-xs text-ink-tertiary">Les 100 conversations les plus récentes. La recherche inclut les conversations anciennes. La MAC est déclarée par le client ; elle ne prouve pas son identité.</p>
         </aside>
         {selected ? <Conversation key={selected} mac={selected} onRead={load} onLogout={onLogout} /> : <div className="grid place-items-center rounded-2xl border border-white/10 bg-midnight p-8"><div className="max-w-sm text-center"><div className="mx-auto mb-5 grid h-20 w-20 place-items-center rounded-3xl border border-accent/30 bg-accent/10 text-3xl" aria-hidden="true">✦</div><h2 className="text-xl font-semibold">Un espace pour échanger</h2><p className="mt-3 text-sm text-ink-secondary">Choisis une conversation. Seuls le client concerné et le propriétaire peuvent lire et répondre.</p></div></div>}
       </div>

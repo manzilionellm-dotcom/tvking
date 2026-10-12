@@ -101,3 +101,14 @@ test('pagination sans perte, texte non interprété et absence de contenu dans l
  assert.ok(page.data.items.at(-1).body.includes('<script>'));
  assert.equal(s.db.prepare('SELECT COUNT(*) AS n FROM audit_logs').get().n,0);
 });
+
+
+test('le propriétaire retrouve un ancien client au-delà des 100 fils récents', async t=>{
+ const s=setup(t);
+ await s.call('/api/support/'+MAC_A,{method:'POST',body:{...msg(),device_label:'MK:AB:11:22:33:44'},user:null,deviceSecret:SECRET_A});
+ for(let i=1;i<=101;i++)s.db.prepare('INSERT INTO support_threads(mac, updated_at) VALUES (?, ?)').run(String(i).padStart(64,'0'),NOW+i);
+ const recent=await s.call('/api/v1/support');
+ assert.equal(recent.data.items.length,100);assert.equal(recent.data.items.some(t=>t.mac===MAC_A),false);
+ const found=await s.call('/api/v1/support?q=MK%3AAB%3A11');
+ assert.equal(found.data.items.length,1);assert.equal(found.data.items[0].mac,MAC_A);
+});
