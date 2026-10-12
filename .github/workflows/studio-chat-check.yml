@@ -37,8 +37,9 @@ jobs:
           npm run e2e
       - name: Captures des données de test synthétiques
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: studio-chat-preuves
           path: android-app/e2e/panel-box/.state/*.png
           if-no-files-found: ignore
+          include-hidden-files: true

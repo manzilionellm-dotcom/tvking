@@ -1804,7 +1804,7 @@ function publicAnnouncement(row) {
     kind: row.kind || '',
     cta: row.cta || '',
     country: row.country || '',
-    ...(readCreative(row.creative_json) ? { creative: readCreative(row.creative_json) } : {}),
+    ...(readCreative(row.creative_json) ? { creative: readCreative(row.creative_json), expires_at: row.expires_at || 0 } : {}),
     created_at: row.created_at || 0,
   };
 }
