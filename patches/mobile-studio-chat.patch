@@ -32,18 +32,20 @@ index 0000000..2abd452
 +tree.write(p, encoding='unicode')
 diff --git a/ci/mobile/prepare_studio_sdk.py b/ci/mobile/prepare_studio_sdk.py
 new file mode 100644
-index 0000000..1d64a6c
+index 0000000..33fdb55
 --- /dev/null
 +++ b/ci/mobile/prepare_studio_sdk.py
-@@ -0,0 +1,41 @@
+@@ -0,0 +1,59 @@
 +#!/usr/bin/env python3
-+"""Compatibilité ciblée LiveKit 2.5.3 / Dart 3.13, après flutter pub get.
++"""Compatibilité ciblée LiveKit 2.5.3 / Dart 3.13 / Android 36.
 +
 +Le chiffrement historique impose de conserver cette version du SDK.
 +Dans sa fermeture asynchrone vidéo, cinq lectures perdent la promotion
 +non-null. L'initialisation et le premier accès existant garantissent déjà
 +la valeur. On rend cette même assertion explicite, sans changer un codec,
 +un transport, le micro ou l'authentification. Refus sur toute autre source.
++Le module Android compile avec l'API 36 requise par son plugin WebRTC
++résolu, sans changer minSdk ni targetSdk.
 +"""
 +from pathlib import Path
 +import hashlib
@@ -77,6 +79,22 @@ index 0000000..1d64a6c
 +        .replace('publishOptions.degradationPreference', 'publishOptions!.degradationPreference')
 +    p.write_text(s[:a] + body + s[b:])
 +print('LiveKit 2.5.3 : cinq assertions non-null explicites, source vérifiée')
++
++gradle = root / 'android/build.gradle'
++s = gradle.read_text()
++original = 'e33243ac6c88d58f7bdbc85a3c4ee43bef7ca9065a18a8920325599064bc614d'
++old = '    compileSdk = 34\n'
++new = '    compileSdk = 36\n'
++if s.count(new) == 1:
++    clean = s.replace(new, old)
++    assert hashlib.sha256(clean.encode()).hexdigest() == original, \
++        'Configuration Android LiveKit inattendue'
++else:
++    assert hashlib.sha256(s.encode()).hexdigest() == original, \
++        'Configuration Android LiveKit inattendue'
++    assert s.count(old) == 1
++    gradle.write_text(s.replace(old, new))
++print('LiveKit 2.5.3 : compileSdk 36, minSdk/targetSdk conservés, source vérifiée')
 diff --git a/lib/features/ads/domain/campaign_creative.dart b/lib/features/ads/domain/campaign_creative.dart
 new file mode 100644
 index 0000000..c1e0ff7

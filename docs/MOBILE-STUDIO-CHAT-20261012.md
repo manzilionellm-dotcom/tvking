@@ -34,14 +34,14 @@ Le livrable mobile est maintenant `patches/mobile-studio-chat.patch`, appliqué 
 
 Le workflow `Studio mobile — compilation Android` analyse et teste cette vraie application téléphone, conserve l'overlay Cast, PiP et les composants de notification, puis construit un APK debug ARM64 distinct `com.sevenmotion.studio.preview`. Il fournit l'APK, son SHA-256 et les versions résolues. Ni clé de production, ni modification d'un canal clients. L'ancienne compilation du code partagé ne constituait pas une preuve de cette base téléphone : consulter la nouvelle exécution avant de conclure.
 
-Après `flutter pub get`, `ci/mobile/prepare_studio_sdk.py` vérifie l’empreinte du fichier officiel LiveKit 2.5.3 et rend cinq assertions non-null explicites dans sa fermeture vidéo. Aucun override de dépendance ni modification du chiffrement historique. Le script refuse toute autre source et accepte une seconde application identique. Les deux constructeurs l’appellent avant compilation.
+Après `flutter pub get`, `ci/mobile/prepare_studio_sdk.py` vérifie les empreintes de deux fichiers officiels LiveKit 2.5.3. Il rend cinq assertions non-null explicites dans sa fermeture vidéo et relève le compileSdk du module Android à 36, requis par son plugin WebRTC résolu. Aucun changement de minSdk/targetSdk, override de dépendance ni modification du chiffrement historique. Le script refuse toute autre source et accepte une seconde application identique. Les deux constructeurs l’appellent avant compilation.
 
 Le constructeur signé existant reçoit le patch et ses permissions, sous les mêmes conditions, environnement, contrôles de signature et canaux de test qu'avant. Les gardes, manifestes de gel et règles GitHub ne sont pas assouplis. La compilation de revue ne remplace pas cette signature ni un essai physique.
 
 Le contrôle automatique local avait refusé Flutter après une tentative d'accès à une adresse de métadonnées de l'environnement. Aucun contournement : formatage Dart hors ligne seulement ; analyse, tests et compilation sont confiés aux runners GitHub.
 
 ## Mise en service
-1. Relire puis intégrer PR #110 et #111 selon la procédure protégée du panel. Activer le Worker avant le chat mobile ; comparer la référence autorisée avant/après.
+1. Relire puis intégrer PR #110, qui regroupe désormais les campagnes, le studio et le chat de PR #111, selon la procédure protégée du panel. Activer le Worker avant le chat mobile ; comparer la référence autorisée avant/après.
 2. Après validation du téléphone, intégrer PR #112 puis utiliser le constructeur signé existant. Vérifier la bulle, un échange client/propriétaire, Lu, la reprise après coupure, les radios et une action instantanée du panel.
 3. Publier une version clients uniquement après l'ouverture autorisée et la validation prévues par les protections ; rétablir le gel.
 
