@@ -1,11 +1,10 @@
 // Exécuter la règle réelle, ses refus et ses parcours autorisés, sans publication.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
 import { assertAppOperationAllowed } from './app-release-guard.mjs';
 
 const base = { repository: 'manzilionellm-dotcom/tvking', actor: 'manzilionellm-dotcom', triggeringActor: 'manzilionellm-dotcom', ref: 'refs/heads/ccr-b93e1afd-gwirw0', event: 'workflow_dispatch', operation: 'build', mode: 'frozen', publish: 'false', testBox: 'false', playAab: 'false', backendUrl: '', variant: 'box', confirmation: '' };
@@ -43,15 +42,21 @@ test('une PR étrangère ou une option client est refusée', () => {
 });
 test('une opération inconnue ne reçoit pas de permission', () => assert.throws(() => assertAppOperationAllowed({ ...base, operation: 'autre' })));
 
-test('le vrai processus lit le gel du fichier, jamais une entrée de dégel falsifiée', () => {
+test('le vrai processus lit le manifeste, jamais un mode fourni par une entrée', () => {
   const directory = mkdtempSync(join(tmpdir(), 'zuno-guard-'));
   const eventPath = join(directory, 'event.json');
+  const guardPath = join(directory, 'app-release-guard.mjs');
   try {
+    // Même garde, manifestes isolés : le test ne dépend pas du gel courant.
+    copyFileSync(new URL('app-release-guard.mjs', import.meta.url), guardPath);
     writeFileSync(eventPath, JSON.stringify({ inputs: { publish: 'true', confirme: 'PUBLIER_APP', mode: 'reviewed' } }));
-    const result = spawnSync(process.execPath, [fileURLToPath(new URL('app-release-guard.mjs', import.meta.url))], {
-      encoding: 'utf8', env: { ...process.env, GITHUB_EVENT_PATH: eventPath, GITHUB_EVENT_NAME: 'workflow_dispatch', GITHUB_REPOSITORY: base.repository, GITHUB_ACTOR: base.actor, GITHUB_TRIGGERING_ACTOR: base.triggeringActor, GITHUB_REF: base.ref, APP_OPERATION: 'client', APP_MODE: 'reviewed', APP_PUBLISH: 'true', APP_CONFIRMATION: 'PUBLIER_APP' },
-    });
-    assert.equal(result.status, 1);
-    assert.match(result.stderr, /Action apps refusée/);
+    for (const mode of ['frozen', 'reviewed', 'invalide']) {
+      writeFileSync(join(directory, 'app-production.json'), JSON.stringify({ mode }));
+      const result = spawnSync(process.execPath, [guardPath], {
+        encoding: 'utf8', env: { ...process.env, GITHUB_EVENT_PATH: eventPath, GITHUB_EVENT_NAME: 'workflow_dispatch', GITHUB_REPOSITORY: base.repository, GITHUB_ACTOR: base.actor, GITHUB_TRIGGERING_ACTOR: base.triggeringActor, GITHUB_REF: base.ref, APP_OPERATION: 'client', APP_MODE: 'reviewed', APP_PUBLISH: 'true', APP_CONFIRMATION: 'PUBLIER_APP' },
+      });
+      assert.equal(result.status, mode === 'reviewed' ? 0 : 1, mode);
+      if (mode !== 'reviewed') assert.match(result.stderr, /Action apps refusée/);
+    }
   } finally { rmSync(directory, { recursive: true, force: true }); }
 });
