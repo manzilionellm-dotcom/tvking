@@ -57,6 +57,7 @@ jobs:
           fi
           rm -f test/widget_test.dart
           flutter pub get
+          python3 ci/mobile/prepare_studio_sdk.py
           flutter gen-l10n
           dart run flutter_launcher_icons
           bash android_overlay/google_cast/apply_cast_patch.sh

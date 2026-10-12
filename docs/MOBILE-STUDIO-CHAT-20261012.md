@@ -18,7 +18,7 @@ Versions explicites documentées dans pubspec.yaml. Les SDK sont du code libre ;
 | GrowthBook | SDK 4.3.0, compatible avec encrypt/pointycastle 3 existants. `GROWTHBOOK_CLIENT_KEY`, `GROWTHBOOK_HOST` HTTPS. Seul `motion_ads_3d` pilote une animation ; aucun droit/source/ordre. |
 | PostHog | `POSTHOG_PROJECT_KEY`, `POSTHOG_HOST` HTTPS. Consentement obligatoire, pas de rejeu de session ni capture automatique ; seulement événements de fonctions autorisées. Aucun chat, lien de lecture, MAC ou identifiant de licence. |
 | RevenueCat | `REVENUECAT_PUBLIC_KEY` : adaptateur offres/client/restauration préparé. Aucun achat ni déblocage commercial avant correspondance vérifiée avec les droits existants. Pas encore de parcours d’achat utilisable. |
-| LiveKit | SDK 2.5.3 compatible avec le chiffrement mobile existant. Réévaluer la version avant activation du service. `LIVEKIT_INVITATION_ENDPOINT` HTTPS : écran de salon à invitation, micro initialement coupé. Nécessite un serveur d’invitation et LiveKit configurés ; aucun serveur existant présumé. |
+| LiveKit | SDK 2.5.3 compatible avec le chiffrement mobile existant ; correction ciblée de cinq assertions non-null pour Dart 3.13. Réévaluer la version avant activation du service. `LIVEKIT_INVITATION_ENDPOINT` HTTPS : écran de salon à invitation, micro initialement coupé. Nécessite un serveur d’invitation et LiveKit configurés ; aucun serveur existant présumé. |
 
 Les clés SDK sont publiques et facultatives ; aucun secret serveur dans l’APK. L’endpoint LiveKit doit vérifier une invitation expirante côté serveur et répondre `{ "url": "wss://…", "token": "…" }` avec des droits limités au salon concerné. Sans configuration, les écrans externes restent masqués et les SDK ne s’initialisent pas.
 
@@ -33,6 +33,8 @@ Le livrable mobile est maintenant `patches/mobile-studio-chat.patch`, appliqué 
 `android-app/ci/mobile/apply_studio.py` applique le même patch dans le constructeur téléphone protégé et dans la compilation de revue. Il compare les octets de main.dart, des souscriptions, sources, hôtes backend, radios et transports temps réel avant/après. Le patch n'ajoute que le chat, les cartes et les services mobiles. Le guide utilise les alias EPG déjà présents dans la base téléphone, sans recharger les sources.
 
 Le workflow `Studio mobile — compilation Android` analyse et teste cette vraie application téléphone, conserve l'overlay Cast, PiP et les composants de notification, puis construit un APK debug ARM64 distinct `com.sevenmotion.studio.preview`. Il fournit l'APK, son SHA-256 et les versions résolues. Ni clé de production, ni modification d'un canal clients. L'ancienne compilation du code partagé ne constituait pas une preuve de cette base téléphone : consulter la nouvelle exécution avant de conclure.
+
+Après `flutter pub get`, `ci/mobile/prepare_studio_sdk.py` vérifie l’empreinte du fichier officiel LiveKit 2.5.3 et rend cinq assertions non-null explicites dans sa fermeture vidéo. Aucun override de dépendance ni modification du chiffrement historique. Le script refuse toute autre source et accepte une seconde application identique. Les deux constructeurs l’appellent avant compilation.
 
 Le constructeur signé existant reçoit le patch et ses permissions, sous les mêmes conditions, environnement, contrôles de signature et canaux de test qu'avant. Les gardes, manifestes de gel et règles GitHub ne sont pas assouplis. La compilation de revue ne remplace pas cette signature ni un essai physique.
 

@@ -30,6 +30,53 @@ index 0000000..2abd452
 +# Préférences privées : éviter de copier le secret du chat dans une sauvegarde.
 +app.set('{'+A+'}allowBackup', 'false')
 +tree.write(p, encoding='unicode')
+diff --git a/ci/mobile/prepare_studio_sdk.py b/ci/mobile/prepare_studio_sdk.py
+new file mode 100644
+index 0000000..1d64a6c
+--- /dev/null
++++ b/ci/mobile/prepare_studio_sdk.py
+@@ -0,0 +1,41 @@
++#!/usr/bin/env python3
++"""Compatibilité ciblée LiveKit 2.5.3 / Dart 3.13, après flutter pub get.
++
++Le chiffrement historique impose de conserver cette version du SDK.
++Dans sa fermeture asynchrone vidéo, cinq lectures perdent la promotion
++non-null. L'initialisation et le premier accès existant garantissent déjà
++la valeur. On rend cette même assertion explicite, sans changer un codec,
++un transport, le micro ou l'authentification. Refus sur toute autre source.
++"""
++from pathlib import Path
++import hashlib
++import json
++from urllib.parse import unquote, urljoin, urlparse
++
++config = Path('.dart_tool/package_config.json').resolve()
++packages = json.loads(config.read_text())['packages']
++entry = next(p for p in packages if p['name'] == 'livekit_client')
++uri = urlparse(urljoin(config.as_uri(), entry['rootUri']))
++assert uri.scheme == 'file', 'SDK LiveKit non local'
++root = Path(unquote(uri.path))
++assert '\nversion: 2.5.3\n' in ('\n' + (root / 'pubspec.yaml').read_text()), \
++    'Compatibilité réservée à LiveKit 2.5.3'
++p = root / 'lib/src/participant/local.dart'
++s = p.read_text()
++original = '3fbe8492c8fbcdd74a0f95b83a4144c1863203f1b1819cb97afbf46340a444dc'
++a = s.index('    Future<lk_models.TrackInfo> negotiate() async {', s.index('publishVideoTrack('))
++b = s.index('\n    final req =', a)
++body = s[a:b]
++if body.count('publishOptions!.videoCodec') == 4 and body.count('publishOptions!.degradationPreference') == 1:
++    # Valider également l'intégrité si le script a déjà été appliqué.
++    clean = body.replace('publishOptions!.videoCodec', 'publishOptions.videoCodec') \
++        .replace('publishOptions!.degradationPreference', 'publishOptions.degradationPreference')
++    assert hashlib.sha256((s[:a] + clean + s[b:]).encode()).hexdigest() == original
++else:
++    assert hashlib.sha256(s.encode()).hexdigest() == original, 'Source LiveKit inattendue'
++    assert body.count('publishOptions.videoCodec') == 4
++    assert body.count('publishOptions.degradationPreference') == 1
++    body = body.replace('publishOptions.videoCodec', 'publishOptions!.videoCodec') \
++        .replace('publishOptions.degradationPreference', 'publishOptions!.degradationPreference')
++    p.write_text(s[:a] + body + s[b:])
++print('LiveKit 2.5.3 : cinq assertions non-null explicites, source vérifiée')
 diff --git a/lib/features/ads/domain/campaign_creative.dart b/lib/features/ads/domain/campaign_creative.dart
 new file mode 100644
 index 0000000..c1e0ff7

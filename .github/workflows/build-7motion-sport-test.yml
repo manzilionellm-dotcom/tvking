@@ -228,7 +228,9 @@ jobs:
         fi
         grep -A2 'supportsPictureInPicture' "$MANIFEST" || true
     - name: Get dependencies
-      run: flutter pub get
+      run: |
+        flutter pub get
+        python3 ci/mobile/prepare_studio_sdk.py
     - name: Patch screen_brightness_android build.gradle
       run: |
         set -e
