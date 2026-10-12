@@ -1,0 +1,45 @@
+# Contrôle de proposition : aucun déploiement ni secret de production.
+name: Studio et chat — vérifications
+on:
+  push:
+    branches: ['feature/panel-studio-20261012']
+  pull_request:
+    branches: ['feature/panel-campagnes-20261011']
+permissions:
+  contents: read
+concurrency:
+  group: studio-chat-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '24.21.0'
+      - name: Routes et isolation
+        run: node --test android-app/cloudflare/support_chat.test.mjs android-app/cloudflare/campaigns.test.mjs android-app/cloudflare/box_channel.test.mjs
+      - name: Panel
+        working-directory: android-app/admin-panel
+        run: |
+          npm ci
+          npm test
+          npm run build
+      - name: Navigateur local
+        working-directory: android-app/e2e/panel-box
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+          npm run e2e
+      - name: Captures des données de test synthétiques
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: studio-chat-preuves
+          path: android-app/e2e/panel-box/.state/*.png
+          if-no-files-found: ignore
+          include-hidden-files: true

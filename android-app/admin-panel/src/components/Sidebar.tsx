@@ -38,6 +38,7 @@ const OWNER_NAV: NavSection[] = [
     titleKey: 'navsec.customers',
     items: [
       { key: 'nav.activate',       to: '/activate' },
+      { key: 'nav.support',        to: '/support' },
       { key: 'nav.customers',      to: '/customers' },
       { key: 'nav.devices',        to: '/devices' },
       { key: 'nav.activations',    to: '/activations' },

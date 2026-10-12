@@ -251,3 +251,19 @@ test('les boutons des annonces immédiates ne contournent ni pause ni archivage 
     assert.equal(toggled.data.active, active);
   }
 });
+
+const visual = {version:1,template:'orbit',palette:'ice',image_url:'https://images.example.com/product.png',badge:'NOUVEAU',motion:'gentle',duration_seconds:8};
+test('création 3D : brouillon privé, transmission additive, pause et ancien message préservés',async t=>{
+ const s=setup(t);let item=await s.create({creative:visual,starts_at:NOW});
+ assert.deepEqual(item.creative,visual);assert.deepEqual((await s.publicRead()).data,{});
+ item=(await s.change(item,'schedule')).data;
+ const published=(await s.publicRead()).data;assert.deepEqual(published.creative,visual);assert.deepEqual(published.pending[0].creative,visual);
+ assert.match(published.title,/Publicité/);assert.equal(published.body,'Une offre à découvrir.');
+ await s.change(item.item,'pause');assert.deepEqual((await s.publicRead()).data,{});
+});
+test('création 3D : aucun code, modèle arbitraire ou URL dangereuse accepté',async t=>{
+ const s=setup(t);
+ for(const creative of [{...visual,html:'<script/>'},{...visual,version:2},{...visual,template:'custom'},{...visual,duration_seconds:1000},{...visual,image_url:'http://x.invalid/image.png'},{...visual,image_url:'https://127.0.0.1/x'},{...visual,image_url:'https://image.invalid/?token=secret'}]){
+ assert.equal((await s.call('/api/v1/campaigns',{method:'POST',body:s.draft({creative})})).status,400);
+ }
+});

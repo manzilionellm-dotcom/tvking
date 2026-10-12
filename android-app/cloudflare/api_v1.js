@@ -1,3 +1,4 @@
+import { handleOwnerSupport } from './support_chat.js';
 import {
   trialEnforcementOn,
   describeAccess,
@@ -1159,6 +1160,12 @@ async function apiV1Inner(request, env) {
       if (request.method === 'PATCH') return handleServersUpdate(request, env, sid, actor);
       if (request.method === 'DELETE') return handleServersDelete(request, env, sid, actor);
     }
+  }
+
+  // Messagerie privée du propriétaire, séparée des ordres aux appareils.
+  if (parts[0] === 'support') {
+    if (a.user.role !== 'super_admin') return errResp('forbidden', 'Owner only', 403);
+    return handleOwnerSupport(request, env, parts);
   }
 
   // Campagnes datées : accès réservé au propriétaire, vérifié côté serveur.

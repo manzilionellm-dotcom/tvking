@@ -1,5 +1,6 @@
 import { type FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { CreativeStudio, CreativePreview } from '@/components/CreativeStudio';
 import { AppLayout } from '@/components/AppLayout';
 import { confirmAction } from '@/components/confirm';
 import { ApiError, campaignsApi, announcementsApi, COUNTRIES, getCurrentUser } from '@/lib/api';
@@ -115,6 +116,7 @@ export function CampaignsPage({ onLogout }: { onLogout: () => void }) {
               <label className="block space-y-1 text-sm"><span>Lien public HTTPS (facultatif)</span><input type="url" className={inputClass} maxLength={300} value={draft.url} onChange={e => setDraft({ ...draft, url: e.target.value })} placeholder="https://…" /></label>
               <label className="block space-y-1 text-sm"><span>Texte du bouton</span><input className={inputClass} maxLength={40} required={Boolean(draft.url)} value={draft.cta} onChange={e => setDraft({ ...draft, cta: e.target.value })} placeholder="En savoir plus" /></label>
             </div>
+            <CreativeStudio value={draft.creative} onChange={creative => setDraft({ ...draft, creative })} />
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="block space-y-1 text-sm"><span>Début de diffusion</span><input type="datetime-local" className={inputClass} required value={start} onChange={e => setStart(e.target.value)} /></label>
               <label className="block space-y-1 text-sm"><span>Fin de diffusion</span><input type="datetime-local" className={inputClass} required value={end} onChange={e => setEnd(e.target.value)} /></label>
@@ -125,11 +127,11 @@ export function CampaignsPage({ onLogout }: { onLogout: () => void }) {
         </form>
         <aside className="rounded-xl border border-white/10 bg-midnight p-5">
           <h2 className="mb-1 font-semibold">Aperçu du message</h2><p className="mb-5 text-xs text-ink-tertiary">Le rendu varie selon la version de l’app et l’écran.</p>
-          <div className="break-words rounded-xl border border-accent/30 bg-slate p-4">
+          {draft.creative ? <CreativePreview content={draft} /> : <div className="break-words rounded-xl border border-accent/30 bg-slate p-4">
             <span className="text-xs font-semibold uppercase tracking-wide text-accent">{draft.type === 'advertisement' ? 'Publicité' : 'Événement'}</span>
             <h3 className="mt-2 text-lg font-semibold">{draft.title || 'Ton titre'}</h3><p className="mt-2 whitespace-pre-wrap text-sm text-ink-secondary">{draft.body || 'Le message de ta campagne apparaît ici.'}</p>
             {draft.url && draft.cta && <span className="mt-4 inline-block rounded-lg bg-accent px-3 py-2 text-sm">{draft.cta}</span>}
-          </div>
+          </div>}
           <p className="mt-4 text-xs text-ink-secondary">{draft.country || 'Tous les pays'} · Message identifié comme {draft.type === 'advertisement' ? 'publicité' : 'événement'}.</p>
           <p className="mt-3 text-xs text-ink-tertiary">Une campagne déjà diffusée se duplique pour préparer un nouveau message. La reprise conserve son identifiant d’annonce.</p>
         </aside>
