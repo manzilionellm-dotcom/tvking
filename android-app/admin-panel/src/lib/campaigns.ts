@@ -1,4 +1,16 @@
+export interface CampaignCreative {
+  version: 1;
+  template: 'orbit' | 'prism' | 'spotlight';
+  palette: 'ember' | 'ice' | 'gold';
+  image_url: string;
+  badge: string;
+  motion: 'gentle' | 'still';
+  duration_seconds: 6 | 8 | 10;
+}
+export const newCreative = (): CampaignCreative => ({ version: 1, template: 'orbit', palette: 'ember', image_url: '', badge: 'À DÉCOUVRIR', motion: 'gentle', duration_seconds: 8 });
+
 export interface CampaignContent {
+  creative?: CampaignCreative | null;
   type: 'advertisement' | 'event';
   title: string;
   body: string;

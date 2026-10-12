@@ -1,3 +1,4 @@
+import { normalizeCreative, presentCampaign } from './campaign_creative.js';
 // Campagnes du propriétaire : préparation privée puis diffusion datée.
 // L'identifiant d'annonce est attribué AU DÉBUT de la diffusion : réserver
 // cet identifiant à la création ferait sauter le message aux apps à curseur.
@@ -17,7 +18,7 @@ async function migrate(db) {
     id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, body TEXT,
     url TEXT, created_at INTEGER)`).run();
   const definitions = ['kind TEXT', 'cta TEXT', 'country TEXT',
-    'expires_at INTEGER', 'active INTEGER DEFAULT 1', 'campaign_id TEXT'];
+    'expires_at INTEGER', 'active INTEGER DEFAULT 1', 'campaign_id TEXT', "creative_json TEXT NOT NULL DEFAULT ''"];
   const columns = new Set((await db.prepare('PRAGMA table_info(app_broadcasts)').all()).results.map(c => c.name));
   for (const definition of definitions) {
     const name = definition.split(' ')[0];
@@ -39,12 +40,17 @@ async function migrate(db) {
     starts_at INTEGER NOT NULL, ends_at INTEGER NOT NULL, timezone TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'draft', version INTEGER NOT NULL DEFAULT 1,
     broadcast_id INTEGER, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)`).run();
+  const campaignColumns = (await db.prepare('PRAGMA table_info(panel_campaigns)').all()).results;
+  if (!campaignColumns.some(c => c.name === 'creative_json')) {
+    try { await db.prepare("ALTER TABLE panel_campaigns ADD COLUMN creative_json TEXT NOT NULL DEFAULT ''").run(); }
+    catch (error) { if (!/duplicate column name/i.test(String(error))) throw error; }
+  }
   await db.prepare('CREATE INDEX IF NOT EXISTS campaign_due ON panel_campaigns(status, starts_at, ends_at)').run();
 }
 
 class InvalidCampaign extends Error {}
 const invalid = message => { throw new InvalidCampaign(message); };
-const fields = ['type', 'title', 'body', 'url', 'cta', 'country', 'starts_at', 'ends_at', 'timezone'];
+const fields = ['type', 'title', 'body', 'url', 'cta', 'country', 'starts_at', 'ends_at', 'timezone', 'creative_json'];
 
 function validate(body) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) invalid('Formulaire invalide.');
@@ -74,6 +80,8 @@ function validate(body) {
     }
   }
   if (Boolean(clean.url) !== Boolean(clean.cta)) invalid('Le lien et le texte du bouton vont ensemble.');
+  try { const creative = normalizeCreative(body.creative); clean.creative_json = creative ? JSON.stringify(creative) : ''; }
+  catch (error) { invalid(error.message); }
   return clean;
 }
 
@@ -96,7 +104,7 @@ export async function handleCampaigns(request, env, actor, parts) {
     const rs = await env.DB.prepare(`SELECT c.*, b.active AS delivery_active
       FROM panel_campaigns c LEFT JOIN app_broadcasts b ON b.id = c.broadcast_id
       ORDER BY c.created_at DESC, c.id DESC LIMIT 100`).all();
-    return json({ items: rs.results, now: Date.now() });
+    return json({ items: rs.results.map(presentCampaign), now: Date.now() });
   }
   if (!['POST', 'PATCH'].includes(request.method) ||
       (request.method === 'POST' ? parts.length !== 1 : parts.length !== 2)) {
@@ -113,13 +121,13 @@ export async function handleCampaigns(request, env, actor, parts) {
       const clean = validate(body);
       const result = await env.DB.batch([
         env.DB.prepare(`INSERT INTO panel_campaigns (id, ${fields.join(', ')}, created_at, updated_at)
-          VALUES (${Array(12).fill('?').join(',')}) ON CONFLICT(id) DO NOTHING`)
+          VALUES (${Array(fields.length + 3).fill('?').join(',')}) ON CONFLICT(id) DO NOTHING`)
           .bind(id, ...fields.map(k => clean[k]), now, now),
         audit(env.DB, actor, id, 'create', now), read,
       ]);
       const item = result[2].results[0];
       if (!fields.every(k => item[k] === clean[k])) return json({ error: 'conflict', message: 'Ce brouillon existe déjà avec un autre contenu. Recharge la liste.' }, 409);
-      return json({ item }, result[0].meta.changes ? 201 : 200);
+      return json({ item: presentCampaign(item) }, result[0].meta.changes ? 201 : 200);
     }
     if (!body || !Number.isSafeInteger(body.version) || body.version < 1) invalid('Version de campagne obligatoire.');
     const before = await read.first();
@@ -161,7 +169,7 @@ export async function handleCampaigns(request, env, actor, parts) {
         WHERE campaign_id = ?`).bind(id, id), read,
     ]);
     if (!result[0].meta.changes) return json({ error: 'conflict', message: 'Cette campagne a changé. Recharge la liste.' }, 409);
-    return json({ item: result[3].results[0] });
+    return json({ item: presentCampaign(result[3].results[0]) });
   } catch (error) {
     if (!(error instanceof InvalidCampaign)) throw error;
     return json({ error: 'invalid_campaign', message: error.message }, 400);
@@ -178,10 +186,10 @@ export async function dispatchDueCampaigns(env, now) {
   // marqueur. L'index unique protège aussi contre plusieurs lecteurs.
   await env.DB.batch([
     env.DB.prepare(`INSERT INTO app_broadcasts
-      (title, body, url, kind, cta, country, expires_at, created_at, active, campaign_id)
+      (title, body, url, kind, cta, country, expires_at, created_at, active, campaign_id, creative_json)
       SELECT CASE WHEN type = 'advertisement' THEN 'Publicité · ' ELSE 'Événement · ' END || title,
         body, url, CASE WHEN type = 'advertisement' THEN 'promo' ELSE 'info' END,
-        cta, country, ends_at, ?, 1, id
+        cta, country, ends_at, ?, 1, id, creative_json
       FROM panel_campaigns WHERE status = 'scheduled' AND starts_at <= ?
         AND ends_at > ? AND broadcast_id IS NULL
       ORDER BY starts_at, created_at, id ON CONFLICT(campaign_id) DO NOTHING`).bind(now, now, now),

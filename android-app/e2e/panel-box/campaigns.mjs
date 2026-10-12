@@ -7,6 +7,10 @@ export async function campaignsParcours({ page, box, check }) {
   await page.getByLabel('Titre', { exact: true }).fill('Rendez-vous découverte');
   await page.getByLabel('Message', { exact: true }).fill('Une rencontre ouverte à tous.');
   await page.getByLabel('Type', { exact: true }).selectOption('event');
+  await page.getByLabel('Activer le visuel 3D').check();
+  await page.getByRole('button', {name:'Prisme Un volume lumineux'}).click();
+  await page.getByLabel('Ambiance', {exact:true}).selectOption('ice');
+  await page.getByLabel('Petit badge', {exact:true}).fill('DÉCOUVERTE');
   const dates = await page.evaluate(() => {
     const format = at => {
       const d = new Date(at);
@@ -56,6 +60,9 @@ export async function campaignsParcours({ page, box, check }) {
   const message = available.json.pending.find(a => a.title === 'Événement · Rendez-vous découverte');
   assert.ok(message);
   assert.equal(message.body, 'Une rencontre ouverte à tous.');
+  assert.equal(message.creative.template,'prism');
+  assert.equal(message.creative.palette,'ice');
+  check('studio 3D : le visuel créé dans React est reçu par la route app',true);
   await page.getByRole('button', { name: 'Actualiser', exact: true }).click();
   await card.getByText('Disponible dans l’app', { exact: true }).waitFor();
   check('campagne programmée dans le formulaire : message relu par la route de l’app', true);
@@ -77,5 +84,9 @@ export async function campaignsParcours({ page, box, check }) {
   await page.setViewportSize({ width: 390, height: 844 });
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true);
   check('duplication préparée et écran mobile sans débordement horizontal', true);
+  await page.emulateMedia({reducedMotion:'reduce'});
+  assert.equal(await page.locator('.creative-object').evaluate(el=>getComputedStyle(el).animationName),'none');
+  await page.screenshot({path:new URL('./.state/studio-mobile.png',import.meta.url).pathname,fullPage:true});
+  await page.emulateMedia({reducedMotion:'no-preference'});
   await page.setViewportSize({ width: 1280, height: 800 });
 }

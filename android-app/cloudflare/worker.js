@@ -1,3 +1,5 @@
+import { handleDeviceSupport } from './support_chat.js';
+import { readCreative } from './campaign_creative.js';
 // =========================================================
 //  BLACK7 ROYAL — Cloudflare Worker (backend admin + clients)
 // =========================================================
@@ -1802,6 +1804,7 @@ function publicAnnouncement(row) {
     kind: row.kind || '',
     cta: row.cta || '',
     country: row.country || '',
+    ...(readCreative(row.creative_json) ? { creative: readCreative(row.creative_json) } : {}),
     created_at: row.created_at || 0,
   };
 }
@@ -1846,7 +1849,7 @@ async function handleGetAnnouncement(env, request) {
       after = parseInt(new URL(request.url).searchParams.get('after') || '0', 10) || 0;
     } catch (_) { after = 0; }
     const cols =
-      'id, title, body, url, kind, cta, country, created_at, expires_at, active';
+      'id, title, body, url, kind, cta, country, created_at, expires_at, active, creative_json';
     const where =
       "WHERE (country IS NULL OR country = '' OR country = ?) " +
       'AND (expires_at IS NULL OR expires_at = 0 OR expires_at > ?) ' +
@@ -3915,6 +3918,11 @@ async function handleRequest(request, env, ctx) {
         return badRequest('only GET supported on /config/:mac');
       }
       return handlePublicConfig(env, segments[1]);
+    }
+
+    // Chat client : preuve stricte, jamais d'accès par la MAC seule.
+    if (segments[0] === 'api' && segments[1] === 'support' && segments.length === 3) {
+      return handleDeviceSupport(request, env, segments[2]);
     }
 
     // /api/blackbox — public, l'app envoie son journal (filtré).

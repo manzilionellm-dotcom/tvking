@@ -1135,3 +1135,14 @@ export const planCostsApi = {
       body: { costs },
     }),
 };
+
+// Messagerie indépendante : le client HTTP garde l'authentification du panel.
+export interface SupportMessage { seq: number; client_id: string; sender: 'client' | 'owner'; body: string; created_at: number }
+export interface SupportThread { mac: string; device_label: string; updated_at: number; unread: number; preview: string }
+export interface SupportPage { items: SupportMessage[]; more: boolean; unread: number; client_read_seq: number; owner_read_seq: number }
+export const supportApi = {
+  list: () => request<{ items: SupportThread[] }>('/support'),
+  messages: (mac: string, before?: number) => request<SupportPage>(`/support/${encodeURIComponent(mac)}${before ? `?before=${before}` : ''}`),
+  send: (mac: string, body: string, client_id: string) => request<{ item: SupportMessage }>(`/support/${encodeURIComponent(mac)}`, { method: 'POST', body: { body, client_id } }),
+  read: (mac: string, read_through: number) => request(`/support/${encodeURIComponent(mac)}`, { method: 'PATCH', body: { read_through } }),
+};
