@@ -2394,7 +2394,7 @@ index 0000000..b8b9e50
 +  }
 +}
 diff --git a/pubspec.yaml b/pubspec.yaml
-index 350bf6c..93ad984 100644
+index 350bf6c..bcd2357 100644
 --- a/pubspec.yaml
 +++ b/pubspec.yaml
 @@ -12,8 +12,8 @@ publish_to: 'none'
@@ -2408,16 +2408,7 @@ index 350bf6c..93ad984 100644
  
  dependencies:
    flutter:
-@@ -195,7 +195,7 @@ dependencies:
- 
-   # Détection du type de réseau (Wi-Fi / cellulaire) pour la garde
-   # "données cellulaires" avant lecture (cf. core/network/cellular_guard.dart).
--  connectivity_plus: ^6.1.0
-+  connectivity_plus: ^7.0.0
- 
-   # --- Phase 2 : EPG XMLTV ---
-   # Parser XML en streaming (XmlEventReader) — indispensable pour
-@@ -315,6 +315,22 @@ dependencies:
+@@ -315,6 +315,24 @@ dependencies:
    encrypt: ^5.0.3
    crypto: ^3.0.6
  
@@ -2435,7 +2426,9 @@ index 350bf6c..93ad984 100644
 +  posthog_flutter: 5.53.0
 +  # Adaptateurs d'achats et de salons audio ; aucun droit panel modifié.
 +  purchases_flutter: 10.15.2
-+  livekit_client: 2.13.1
++  # Dernière version sans dart_jsonwebtoken/pointycastle 4 :
++  # conserver le chiffrement historique encrypt 5, sans override forcé.
++  livekit_client: 2.5.3
 +
  # Pin de screen_brightness_android pour eviter la 2.1.5 qui a un
  # build.gradle cassé (bloc kotlin{} top-level inutilisable par notre
