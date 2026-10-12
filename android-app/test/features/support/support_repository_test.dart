@@ -33,6 +33,7 @@ void main() {
         a.messages(before: 9),
       ]);
       await SupportRepository(client: client).unread();
+      await a.messages(after: 4);
       final String token =
           seen.first.headers['X-Support-Token'] ??
           seen.first.headers['x-support-token']!;
@@ -47,6 +48,7 @@ void main() {
         expect(r.headers.values, contains(token));
       }
       expect(seen[2].url.queryParameters['before'], '9');
+      expect(seen.last.url.queryParameters['after'], '4');
     },
   );
   test('un envoi incertain conserve son identifiant pour la reprise', () async {

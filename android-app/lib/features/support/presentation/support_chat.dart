@@ -205,8 +205,10 @@ class _SupportChatState extends State<SupportChat> with WidgetsBindingObserver {
     if (_loading || !_foreground || !mounted) return;
     _loading = true;
     try {
+      final bool firstPage = _items.isEmpty;
       final SupportPage page = await _repo.messages(
         before: older && _items.isNotEmpty ? _items.first.seq : null,
+        after: !older && _items.isNotEmpty ? _items.last.seq : null,
       );
       if (!mounted) return;
       final Map<int, SupportMessage> byId = <int, SupportMessage>{
@@ -219,7 +221,7 @@ class _SupportChatState extends State<SupportChat> with WidgetsBindingObserver {
             (SupportMessage a, SupportMessage b) => a.seq.compareTo(b.seq),
           );
         _ownerRead = page.ownerRead;
-        if (_initial || older) _more = page.more;
+        if (firstPage || older) _more = page.more;
         _initial = false;
         _error = '';
       });

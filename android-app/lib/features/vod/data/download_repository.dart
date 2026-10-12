@@ -21,6 +21,7 @@ import 'package:flutter/foundation.dart';
 import 'package:background_downloader/background_downloader.dart' as native;
 
 import 'native_downloads.dart';
+import '../../onboarding/data/device_class_repository.dart';
 import '../../mobile_services/data/mobile_services.dart';
 
 import 'package:path/path.dart' as p;
@@ -129,7 +130,13 @@ class DownloadsRepository {
   Stream<List<Download>> get stream => _controller.stream;
   List<Download> get current => _cache;
 
-  Future<void> initialize() => _initializing ??= _initialize();
+  Future<void> initialize() => _initializing ??= _initialize().catchError((
+    Object error,
+    StackTrace stack,
+  ) {
+    _initializing = null;
+    Error.throwWithStackTrace(error, stack);
+  });
 
   Future<void> _initialize() async {
     if (_initialized) return;
@@ -157,7 +164,10 @@ class DownloadsRepository {
       whereArgs: <Object>[DownloadStatus.downloading.name],
     );
     await _refresh();
-    if (Platform.isAndroid || Platform.isIOS) {
+    final DeviceClassRepository device = DeviceClassRepository.instance;
+    if ((Platform.isAndroid || Platform.isIOS) &&
+        !device.isForcedTv &&
+        device.choice != DeviceClass.tv) {
       try {
         await NativeDownloads.initialize((native.TaskUpdate update) {
           _nativeQueue = _nativeQueue
@@ -270,8 +280,7 @@ class DownloadsRepository {
 
   Future<Directory> _downloadsDir() async {
     Directory? base;
-    if (Platform.isAndroid || Platform.isIOS)
-      base = await getApplicationDocumentsDirectory();
+    if (_nativeReady) base = await getApplicationDocumentsDirectory();
     try {
       base ??= await getExternalStorageDirectory();
     } catch (_) {

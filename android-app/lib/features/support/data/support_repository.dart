@@ -127,9 +127,17 @@ class SupportRepository {
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
 
-  Future<SupportPage> messages({int? before}) async => SupportPage.fromJson(
-    await _request('GET', query: before == null ? '' : '?before=$before'),
-  );
+  Future<SupportPage> messages({int? before, int? after}) async =>
+      SupportPage.fromJson(
+        await _request(
+          'GET',
+          query: before != null
+              ? '?before=$before'
+              : after != null
+              ? '?after=$after'
+              : '',
+        ),
+      );
   Future<int> unread() async =>
       ((await _request('GET', query: '?summary=1'))['unread'] as num?)
           ?.toInt() ??

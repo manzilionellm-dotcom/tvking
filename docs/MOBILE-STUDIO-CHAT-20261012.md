@@ -16,7 +16,7 @@ Versions explicites documentées dans pubspec.yaml. Les SDK sont du code libre ;
 | Background Downloader | Moteur de téléchargement ajouté ; nécessite les permissions de construction mobile. |
 | Workmanager | Guide désactivé par défaut, activation par le client. Android uniquement. |
 | GrowthBook | `GROWTHBOOK_CLIENT_KEY`, `GROWTHBOOK_HOST` HTTPS. Seul `motion_ads_3d` pilote une animation ; aucun droit/source/ordre. |
-| PostHog | `POSTHOG_PROJECT_KEY`, `POSTHOG_HOST` HTTPS. Consentement obligatoire, pas de rejeu de session ni capture automatique ; seulement événements de fonctions autorisées. Aucun chat, lien de lecture ou identifiant d’appareil. |
+| PostHog | `POSTHOG_PROJECT_KEY`, `POSTHOG_HOST` HTTPS. Consentement obligatoire, pas de rejeu de session ni capture automatique ; seulement événements de fonctions autorisées. Aucun chat, lien de lecture, MAC ou identifiant de licence. |
 | RevenueCat | `REVENUECAT_PUBLIC_KEY` : adaptateur offres/client/restauration préparé. Aucun achat ni déblocage commercial avant correspondance vérifiée avec les droits existants. Pas encore de parcours d’achat utilisable. |
 | LiveKit | `LIVEKIT_INVITATION_ENDPOINT` HTTPS : écran de salon à invitation, micro initialement coupé. Nécessite un serveur d’invitation et LiveKit configurés ; aucun serveur existant présumé. |
 
@@ -30,6 +30,6 @@ Le Worker/panel correspondant doit être déployé par le processus existant ava
 ## Construction et vérification
 Les fichiers du canal instantané, des ordres, des accusés d’activation et de récupération des sources restent inchangés. Ajouts UI sur l’accueil et les réglages seulement ; les dépendances doivent toutefois être validées dans un APK, elles ne sont pas sans impact binaire.
 
-Le contrôle automatique local a refusé Flutter après une tentative d’accès à une adresse de métadonnées de l’environnement. Aucun contournement. Syntaxe formatée hors ligne ; tests Flutter et analyse confiés au workflow existant `Quality Zuno` sur la branche de proposition. Lire le résultat du dernier commit avant de déclarer la compilation validée.
+Le contrôle automatique local a refusé Flutter après une tentative d’accès à une adresse de métadonnées de l’environnement. Aucun contournement. Syntaxe formatée hors ligne ; tests Flutter et analyse confiés au workflow existant `Quality Zuno` sur la branche de proposition. Lire le résultat du dernier commit avant de déclarer la compilation validée. Le workflow `Studio mobile — compilation Android` construit un APK debug au nom de paquet distinct `com.sevenmotion.studio.preview`, sans secrets ni publication.
 
 Le script `android-app/ci/mobile/prepare_studio.py` complète seulement un projet Android mobile généré (permissions de téléchargement et micro facultatif). Ne pas l’appliquer à la box. iOS nécessite encore sa configuration native et une validation sur appareil. La mise en production et un parcours d’achat complet restent hors de cette proposition.
