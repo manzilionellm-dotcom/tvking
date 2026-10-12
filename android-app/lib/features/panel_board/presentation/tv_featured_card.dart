@@ -10,7 +10,8 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
-import '../../box_extras/box_text.dart';
+import '../../../core/i18n/l10n_extension.dart';
+
 import '../../channels/domain/channel.dart';
 import '../../tv/core/tv_dimens.dart';
 import '../../tv/core/tv_tokens.dart';
@@ -64,12 +65,14 @@ class TvFeaturedCard extends StatelessWidget {
                   children: <Widget>[
                     Row(
                       children: <Widget>[
-                        const Icon(Icons.star_rounded,
-                            size: 16, color: TvTokens.accentBright),
+                        const Icon(
+                          Icons.star_rounded,
+                          size: 16,
+                          color: TvTokens.accentBright,
+                        ),
                         const SizedBox(width: 6),
                         Text(
-                          boxText(context, 'Favori du jour', 'Pick of the day')
-                              .toUpperCase(),
+                          context.l10n.tvPickOfDay.toUpperCase(),
                           style: TvTokens.ui(
                             TvDimens.caption,
                             weight: FontWeight.w700,
@@ -95,7 +98,10 @@ class TvFeaturedCard extends StatelessWidget {
                         note.trim(),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                        style: TvTokens.ui(TvDimens.label, color: TvTokens.muted),
+                        style: TvTokens.ui(
+                          TvDimens.label,
+                          color: TvTokens.muted,
+                        ),
                       ),
                     ],
                   ],
@@ -103,7 +109,7 @@ class TvFeaturedCard extends StatelessWidget {
               ),
               const SizedBox(width: 16),
               PanelButton(
-                label: boxText(context, 'Regarder', 'Watch'),
+                label: context.l10n.buttonWatch,
                 icon: Icons.play_arrow_rounded,
                 onSelect: onWatch,
               ),

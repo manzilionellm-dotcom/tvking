@@ -13,7 +13,6 @@ import '../../device/domain/display_mac.dart';
 import '../../../core/app/repair_flags.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../../device/data/device_identity.dart';
-import '../../subscription/data/activation_hint.dart';
 import '../../subscription/data/remote_activation_watch.dart';
 import '../../subscription/data/subscription_state.dart';
 import '../../playlists/domain/open_source_input.dart';
@@ -65,7 +64,11 @@ class _TvActivationScreenState extends State<TvActivationScreen> {
   }
 
   void _copy() {
-    Clipboard.setData(ClipboardData(text: displayMac(_mac, showPrefix: RepairFlags.macShowPrefix)));
+    Clipboard.setData(
+      ClipboardData(
+        text: displayMac(_mac, showPrefix: RepairFlags.macShowPrefix),
+      ),
+    );
     setState(() => _copied = true);
     Future<void>.delayed(const Duration(seconds: 2), () {
       if (mounted) setState(() => _copied = false);
@@ -83,10 +86,9 @@ class _TvActivationScreenState extends State<TvActivationScreen> {
         child: FittedBox(
           fit: BoxFit.contain,
           child: SizedBox(
-            // 540 + 48 + QR WhatsApp (210 + 32) + 40 + QR espace (210 + 112)
-            // = 1192 : tient dans la zone sûre (1184) à l'échelle ~1,0,
-            // les tailles de police dessinées restent celles du design.
-            width: 1192,
+            // Largeurs complètes, textes compris : 540 + 48 + 250 + 40 + 322.
+            // Le FittedBox adapte cet ensemble à la zone sûre de la télévision.
+            width: 1200,
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.center,
@@ -112,119 +114,158 @@ class _TvActivationScreenState extends State<TvActivationScreen> {
   }
 
   Widget _activationColumn(BuildContext context) {
+    final String? hint = switch (SubscriptionState.instance.syncHint) {
+      'offline' => context.l10n.tvNetworkUnavailableHelp,
+      'expired' => context.l10n.tvCodeInactive,
+      'frozen' => context.l10n.subFrozenMsg,
+      'banned' => context.l10n.tvStatusBanned,
+      _ => null,
+    };
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
-            const TvLogo(width: 240),
-            const SizedBox(height: 26),
-            Text(context.l10n.tvActivationTagline,
-                textAlign: TextAlign.center,
-                style: TvTokens.ui(19, color: TvTokens.muted)),
-            const SizedBox(height: 22),
-            TvPricePill(label: context.l10n.tvLifetime, amount: '9,99 \$'),
-            const SizedBox(height: 38),
+        const TvLogo(width: 240),
+        const SizedBox(height: 26),
+        Text(
+          context.l10n.tvActivationTagline,
+          textAlign: TextAlign.center,
+          style: TvTokens.ui(19, color: TvTokens.muted),
+        ),
+        const SizedBox(height: 22),
+        TvPricePill(label: context.l10n.tvLifetime, amount: '9,99 \$'),
+        const SizedBox(height: 38),
 
-            // ----- Carte code d'activation -----
-            TvCard(
-              padding: const EdgeInsets.all(28),
-              child: Column(
+        // ----- Carte code d'activation -----
+        TvCard(
+          padding: const EdgeInsets.all(28),
+          child: Column(
+            children: <Widget>[
+              TvSectionLabel(context.l10n.tvActivationCodeLabel),
+              const SizedBox(height: 14),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: <Widget>[
-                  TvSectionLabel(context.l10n.tvActivationCodeLabel),
-                  const SizedBox(height: 14),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: <Widget>[
-                      Text(displayMac(_mac, showPrefix: RepairFlags.macShowPrefix), style: TvTokens.mono(38, color: TvTokens.accentBright, spacing: 2)),
-                      const SizedBox(width: 16),
-                      _CopyButton(copied: _copied, onSelect: _copy),
-                    ],
+                  Flexible(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        displayMac(_mac, showPrefix: RepairFlags.macShowPrefix),
+                        // Une MAC reste gauche → droite, même dans une UI arabe.
+                        // Sinon Unicode déplace ses premiers groupes chiffrés.
+                        textDirection: TextDirection.ltr,
+                        style: TvTokens.mono(
+                          38,
+                          color: TvTokens.accentBright,
+                          spacing: 2,
+                        ),
+                      ),
+                    ),
                   ),
-                  const SizedBox(height: 14),
-                  Text(
-                    context.l10n.tvActivationCodeHelp,
-                    textAlign: TextAlign.center,
-                    style: TvTokens.ui(16, color: TvTokens.mutedDim),
-                  ),
+                  const SizedBox(width: 16),
+                  _CopyButton(copied: _copied, onSelect: _copy),
                 ],
               ),
-            ),
-            const SizedBox(height: 26),
-
-            TvCtaButton(
-              label: _busy ? context.l10n.tvChecking : context.l10n.tvPaidCheck,
-              autofocus: true,
-              onSelect: _busy ? null : _check,
-            ),
-            if (activationHintFr(SubscriptionState.instance.syncHint) != null) ...<Widget>[
               const SizedBox(height: 14),
               Text(
-                activationHintFr(SubscriptionState.instance.syncHint)!,
+                context.l10n.tvActivationCodeHelp,
                 textAlign: TextAlign.center,
-                style: TvTokens.ui(16, color: TvTokens.live),
+                style: TvTokens.ui(16, color: TvTokens.mutedDim),
               ),
             ],
-            const SizedBox(height: 22),
-            // ----- CONNEXION : l'utilisateur apporte sa propre source -----
-            //  Trois entrées, sans liste de serveurs : Xtream (adresse +
-            //  nom + mot de passe), lien M3U/M3U8, ou lien lecteur get.php.
-            //  N'importe quel fournisseur. La licence (code MAC + « J'ai
-            //  payé ») reste le verrou : sans essai ni abonnement valide,
-            //  l'accueil ne s'ouvre pas, même après avoir saisi une source.
-            Text(context.l10n.sourceOwnSub.toUpperCase(),
-                style: TvTokens.ui(11,
-                    weight: FontWeight.w600, color: TvTokens.mutedDim, spacing: 2)),
-            const SizedBox(height: 12),
-            SizedBox(width: double.infinity, child: _ConnectButton(
-              icon: Icons.vpn_key_rounded,
-              label: context.l10n.playlistTypeXtream,
-              onSelect: () => Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (_) => const TvShell(
-                    child: TvAddSourceScreen(initialMode: OpenEntryMode.xtream),
-                  ),
+          ),
+        ),
+        const SizedBox(height: 26),
+
+        TvCtaButton(
+          label: _busy ? context.l10n.tvChecking : context.l10n.tvPaidCheck,
+          autofocus: true,
+          onSelect: _busy ? null : _check,
+        ),
+        if (hint != null) ...<Widget>[
+          const SizedBox(height: 14),
+          Text(
+            hint,
+            textAlign: TextAlign.center,
+            style: TvTokens.ui(16, color: TvTokens.live),
+          ),
+        ],
+        const SizedBox(height: 22),
+        // ----- CONNEXION : l'utilisateur apporte sa propre source -----
+        //  Trois entrées, sans liste de serveurs : Xtream (adresse +
+        //  nom + mot de passe), lien M3U/M3U8, ou lien lecteur get.php.
+        //  N'importe quel fournisseur. La licence (code MAC + « J'ai
+        //  payé ») reste le verrou : sans essai ni abonnement valide,
+        //  l'accueil ne s'ouvre pas, même après avoir saisi une source.
+        Text(
+          context.l10n.sourceOwnSub.toUpperCase(),
+          style: TvTokens.ui(
+            11,
+            weight: FontWeight.w600,
+            color: TvTokens.mutedDim,
+            spacing: 2,
+          ),
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          width: double.infinity,
+          child: _ConnectButton(
+            icon: Icons.vpn_key_rounded,
+            label: context.l10n.playlistTypeXtream,
+            onSelect: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => const TvShell(
+                  child: TvAddSourceScreen(initialMode: OpenEntryMode.xtream),
                 ),
-              ),
-            )),
-            const SizedBox(height: 10),
-            SizedBox(width: double.infinity, child: _ConnectButton(
-              icon: Icons.link_rounded,
-              label: context.l10n.playlistTypeM3u,
-              onSelect: () => Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (_) => const TvShell(
-                    child: TvAddSourceScreen(initialMode: OpenEntryMode.m3u),
-                  ),
-                ),
-              ),
-            )),
-            const SizedBox(height: 10),
-            SizedBox(width: double.infinity, child: _ConnectButton(
-              icon: Icons.play_circle_outline_rounded,
-              label: OpenSourceInput.playerLabel,
-              onSelect: () => Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (_) => const TvShell(
-                    child: TvAddSourceScreen(initialMode: OpenEntryMode.player),
-                  ),
-                ),
-              ),
-            )),
-            const SizedBox(height: 18),
-            Text(context.l10n.tvActivationFooter,
-                style: TvTokens.ui(13, color: TvTokens.mutedDim, spacing: 0.5)),
-            const SizedBox(height: 10),
-            // Positionnement « lecteur » (bouclier juridique) visible dès le gate.
-            SizedBox(
-              width: 540,
-              child: Text(
-                'Lecteur multimédia — ne vend ni ne fournit aucune chaîne ni '
-                'lien M3U. Le contenu est apporté par l\'utilisateur. '
-                'Conditions : app.7themotion.com/terms',
-                textAlign: TextAlign.center,
-                style: TvTokens.ui(12, color: TvTokens.mutedDim),
               ),
             ),
-          ],
+          ),
+        ),
+        const SizedBox(height: 10),
+        SizedBox(
+          width: double.infinity,
+          child: _ConnectButton(
+            icon: Icons.link_rounded,
+            label: context.l10n.playlistTypeM3u,
+            onSelect: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => const TvShell(
+                  child: TvAddSourceScreen(initialMode: OpenEntryMode.m3u),
+                ),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 10),
+        SizedBox(
+          width: double.infinity,
+          child: _ConnectButton(
+            icon: Icons.play_circle_outline_rounded,
+            label: OpenSourceInput.playerLabel,
+            onSelect: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => const TvShell(
+                  child: TvAddSourceScreen(initialMode: OpenEntryMode.player),
+                ),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 18),
+        Text(
+          context.l10n.tvActivationFooter,
+          style: TvTokens.ui(13, color: TvTokens.mutedDim, spacing: 0.5),
+        ),
+        const SizedBox(height: 10),
+        // Positionnement « lecteur » (bouclier juridique) visible dès le gate.
+        SizedBox(
+          width: 540,
+          child: Text(
+            context.l10n.tvActivationDisclaimer,
+            textAlign: TextAlign.center,
+            style: TvTokens.ui(12, color: TvTokens.mutedDim),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -258,17 +299,23 @@ class _ConnectButton extends StatelessWidget {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: <Widget>[
-            Icon(icon,
-                size: 22,
-                color: focused ? TvTokens.accentBright : TvTokens.accent),
+            Icon(
+              icon,
+              size: 22,
+              color: focused ? TvTokens.accentBright : TvTokens.accent,
+            ),
             const SizedBox(width: 10),
             Flexible(
-              child: Text(label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TvTokens.ui(18,
-                      weight: FontWeight.w600,
-                      color: focused ? TvTokens.accentBright : TvTokens.text)),
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TvTokens.ui(
+                  18,
+                  weight: FontWeight.w600,
+                  color: focused ? TvTokens.accentBright : TvTokens.text,
+                ),
+              ),
             ),
           ],
         ),
@@ -296,8 +343,11 @@ class _CopyButton extends StatelessWidget {
           border: Border.all(color: focused ? TvTokens.accent : TvTokens.line),
           borderRadius: BorderRadius.circular(TvTokens.rSmall),
         ),
-        child: Icon(copied ? Icons.check_rounded : Icons.copy_rounded,
-            size: 22, color: copied ? const Color(0xFF5FA975) : TvTokens.accent),
+        child: Icon(
+          copied ? Icons.check_rounded : Icons.copy_rounded,
+          size: 22,
+          color: copied ? const Color(0xFF5FA975) : TvTokens.accent,
+        ),
       ),
     );
   }

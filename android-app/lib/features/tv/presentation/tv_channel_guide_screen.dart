@@ -14,6 +14,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
+import 'tv_localized_format.dart';
 import '../../channels/domain/channel.dart';
 import '../../epg/data/epg_repository.dart';
 import '../../epg/domain/epg_program.dart';
@@ -138,76 +139,89 @@ class _TvChannelGuideScreenState extends State<TvChannelGuideScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
-            Text(context.l10n.tvGuideBtn.toUpperCase(),
-                style: TvTokens.ui(TvDimens.caption,
-                    weight: FontWeight.w700,
-                    color: TvTokens.accentBright,
-                    spacing: 2)),
+            Text(
+              context.l10n.tvGuideBtn.toUpperCase(),
+              style: TvTokens.ui(
+                TvDimens.caption,
+                weight: FontWeight.w700,
+                color: TvTokens.accentBright,
+                spacing: 2,
+              ),
+            ),
             const SizedBox(height: 6),
-            Text(widget.channel.cleanName,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TvTokens.display(TvDimens.headline, color: TvTokens.text)),
+            Text(
+              widget.channel.cleanName,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TvTokens.display(TvDimens.headline, color: TvTokens.text),
+            ),
             const SizedBox(height: 4),
-            Text(context.l10n.programsToday,
-                style: TvTokens.ui(TvDimens.body, color: TvTokens.muted)),
+            Text(
+              context.l10n.programsToday,
+              style: TvTokens.ui(TvDimens.body, color: TvTokens.muted),
+            ),
             const SizedBox(height: 4),
-            Text(context.l10n.tvGuideHint,
-                style: TvTokens.ui(TvDimens.label, color: TvTokens.mutedDim)),
+            Text(
+              context.l10n.tvGuideHint,
+              style: TvTokens.ui(TvDimens.label, color: TvTokens.mutedDim),
+            ),
             MissedGuideDetails(summary: widget.currentSummary),
             const SizedBox(height: 16),
             Expanded(
               child: FutureBuilder<List<EpgProgram>>(
                 future: _future,
-                builder: (BuildContext context,
-                    AsyncSnapshot<List<EpgProgram>> snap) {
-                  if (snap.connectionState == ConnectionState.waiting) {
-                    return _status(
-                      icon: null,
-                      title: context.l10n.tvGuideLoading,
-                      spinning: true,
-                    );
-                  }
-                  if (snap.hasError) {
-                    _focusRetry();
-                    return _status(
-                      icon: Icons.error_outline_rounded,
-                      title: context.l10n.programsNoneToday,
-                      body: context.l10n.programsNoneHelp,
-                      retry: true,
-                    );
-                  }
-                  final List<EpgProgram> programs =
-                      snap.data ?? const <EpgProgram>[];
-                  if (programs.isEmpty) {
-                    return _status(
-                      icon: Icons.event_note_rounded,
-                      title: context.l10n.programsNoneToday,
-                      body: context.l10n.programsNoneHelp,
-                    );
-                  }
-                  _revealLive(programs);
-                  final DateTime now = DateTime.now();
-                  return ListView.builder(
-                    controller: _scroll,
-                    padding: EdgeInsets.zero,
-                    itemExtent: _rowExtent,
-                    itemCount: programs.length,
-                    itemBuilder: (BuildContext context, int i) {
-                      final EpgProgram p = programs[i];
-                      final bool live = p.isLiveAt(now);
-                      final bool past = !live &&
-                          p.stopTime <= now.millisecondsSinceEpoch;
-                      return _ProgramRow(
-                        program: p,
-                        live: live,
-                        past: past,
-                        focusNode: _nodeFor(i),
-                        onSelect: _close,
+                builder:
+                    (
+                      BuildContext context,
+                      AsyncSnapshot<List<EpgProgram>> snap,
+                    ) {
+                      if (snap.connectionState == ConnectionState.waiting) {
+                        return _status(
+                          icon: null,
+                          title: context.l10n.tvGuideLoading,
+                          spinning: true,
+                        );
+                      }
+                      if (snap.hasError) {
+                        _focusRetry();
+                        return _status(
+                          icon: Icons.error_outline_rounded,
+                          title: context.l10n.programsNoneToday,
+                          body: context.l10n.programsNoneHelp,
+                          retry: true,
+                        );
+                      }
+                      final List<EpgProgram> programs =
+                          snap.data ?? const <EpgProgram>[];
+                      if (programs.isEmpty) {
+                        return _status(
+                          icon: Icons.event_note_rounded,
+                          title: context.l10n.programsNoneToday,
+                          body: context.l10n.programsNoneHelp,
+                        );
+                      }
+                      _revealLive(programs);
+                      final DateTime now = DateTime.now();
+                      return ListView.builder(
+                        controller: _scroll,
+                        padding: EdgeInsets.zero,
+                        itemExtent: _rowExtent,
+                        itemCount: programs.length,
+                        itemBuilder: (BuildContext context, int i) {
+                          final EpgProgram p = programs[i];
+                          final bool live = p.isLiveAt(now);
+                          final bool past =
+                              !live && p.stopTime <= now.millisecondsSinceEpoch;
+                          return _ProgramRow(
+                            program: p,
+                            live: live,
+                            past: past,
+                            focusNode: _nodeFor(i),
+                            onSelect: _close,
+                          );
+                        },
                       );
                     },
-                  );
-                },
               ),
             ),
           ],
@@ -234,23 +248,35 @@ class _TvChannelGuideScreenState extends State<TvChannelGuideScreen> {
               width: 42,
               height: 42,
               child: CircularProgressIndicator(
-                  strokeWidth: 3, color: TvTokens.accent),
+                strokeWidth: 3,
+                color: TvTokens.accent,
+              ),
             )
           else
-            Icon(icon ?? Icons.event_note_rounded,
-                size: 52, color: TvTokens.accentBright),
+            Icon(
+              icon ?? Icons.event_note_rounded,
+              size: 52,
+              color: TvTokens.accentBright,
+            ),
           const SizedBox(height: 16),
-          Text(title,
-              textAlign: TextAlign.center,
-              style: TvTokens.ui(TvDimens.title,
-                  weight: FontWeight.w700, color: TvTokens.text)),
+          Text(
+            title,
+            textAlign: TextAlign.center,
+            style: TvTokens.ui(
+              TvDimens.title,
+              weight: FontWeight.w700,
+              color: TvTokens.text,
+            ),
+          ),
           if (body != null) ...<Widget>[
             const SizedBox(height: 8),
             SizedBox(
               width: 640,
-              child: Text(body,
-                  textAlign: TextAlign.center,
-                  style: TvTokens.ui(TvDimens.body, color: TvTokens.muted)),
+              child: Text(
+                body,
+                textAlign: TextAlign.center,
+                style: TvTokens.ui(TvDimens.body, color: TvTokens.muted),
+              ),
             ),
           ],
           if (retry) ...<Widget>[
@@ -260,11 +286,18 @@ class _TvChannelGuideScreenState extends State<TvChannelGuideScreen> {
               scale: TvFocusScale.none,
               onSelect: _retry,
               child: Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
-                child: Text(context.l10n.tvRetry,
-                    style: TvTokens.ui(TvDimens.titleS,
-                        weight: FontWeight.w700, color: TvTokens.accentBright)),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 22,
+                  vertical: 12,
+                ),
+                child: Text(
+                  context.l10n.tvRetry,
+                  style: TvTokens.ui(
+                    TvDimens.titleS,
+                    weight: FontWeight.w700,
+                    color: TvTokens.accentBright,
+                  ),
+                ),
               ),
             ),
           ],
@@ -310,15 +343,19 @@ class _ProgramRow extends StatelessWidget {
           final Color badgeBg = live
               ? TvTokens.live
               : (focused ? TvTokens.accent : TvTokens.sel);
-          final Color badgeFg =
-              (live || focused) ? TvTokens.onAccent : TvTokens.muted;
+          final Color badgeFg = (live || focused)
+              ? TvTokens.onAccent
+              : TvTokens.muted;
           return Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             decoration: BoxDecoration(
               color: focused ? TvTokens.sel : Colors.transparent,
               borderRadius: BorderRadius.circular(TvTokens.rMenuItem),
               border: focused
-                  ? Border.all(color: TvTokens.accent, width: TvDimens.focusOutline)
+                  ? Border.all(
+                      color: TvTokens.accent,
+                      width: TvDimens.focusOutline,
+                    )
                   : null,
             ),
             child: Row(
@@ -331,11 +368,16 @@ class _ProgramRow extends StatelessWidget {
                     color: badgeBg,
                     borderRadius: BorderRadius.circular(TvTokens.rSmall),
                   ),
-                  child: Text(badge,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TvTokens.ui(TvDimens.caption,
-                          weight: FontWeight.w800, color: badgeFg)),
+                  child: Text(
+                    badge,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TvTokens.ui(
+                      TvDimens.caption,
+                      weight: FontWeight.w800,
+                      color: badgeFg,
+                    ),
+                  ),
                 ),
                 const SizedBox(width: 16),
                 Expanded(
@@ -343,20 +385,27 @@ class _ProgramRow extends StatelessWidget {
                     mainAxisAlignment: MainAxisAlignment.center,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: <Widget>[
-                      Text(program.title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TvTokens.ui(TvDimens.titleS,
-                              weight: FontWeight.w700,
-                              color: focused
-                                  ? TvTokens.accentBright
-                                  : (past ? TvTokens.muted : TvTokens.text))),
-                      const SizedBox(height: 4),
                       Text(
-                        '${program.timeRangeShort}  ·  ${program.durationLabel}',
+                        program.title,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: TvTokens.ui(TvDimens.label, color: TvTokens.muted),
+                        style: TvTokens.ui(
+                          TvDimens.titleS,
+                          weight: FontWeight.w700,
+                          color: focused
+                              ? TvTokens.accentBright
+                              : (past ? TvTokens.muted : TvTokens.text),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '${tvTime(context, program.startDateTime)} – ${tvTime(context, program.stopDateTime)}  ·  ${tvDuration(context, program.duration)}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TvTokens.ui(
+                          TvDimens.label,
+                          color: TvTokens.muted,
+                        ),
                       ),
                     ],
                   ),
@@ -369,4 +418,3 @@ class _ProgramRow extends StatelessWidget {
     );
   }
 }
-

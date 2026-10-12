@@ -29,13 +29,14 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:intl/intl.dart';
+import 'package:intl/intl.dart' show DateFormat;
 
 import '../../device/domain/display_mac.dart';
 import '../../../core/app/repair_flags.dart';
 import '../../../core/app/boot_guard.dart';
 import '../../../core/blackbox/black_box.dart';
 import '../../../core/i18n/l10n_extension.dart';
+import 'tv_profile_label.dart';
 import '../../channels/data/recently_watched_repository.dart';
 import '../../channels/data/trending_repository.dart';
 import '../../channels/domain/channel.dart';
@@ -68,7 +69,6 @@ import '../../playlists/domain/playlist.dart';
 import 'tv_phone_source_qr.dart';
 import '../../profiles/data/profile_repository.dart';
 import '../../profiles/domain/profile_policies.dart';
-import '../../box_extras/box_text.dart';
 import '../../security/data/parental_controls.dart';
 import '../../time_picks/data/time_pick_flag.dart';
 import '../../time_picks/data/time_pick_log.dart';
@@ -251,13 +251,15 @@ class _TvHubScreenState extends State<TvHubScreen> {
     _recentIds = RecentlyWatchedRepository.instance.current;
     _trending = TrendingRepository.instance.current;
     _rebuildShelves(notify: false);
-    _favSub =
-        FavoritesRepository.instance.favoritesStream.listen((Set<String> ids) {
+    _favSub = FavoritesRepository.instance.favoritesStream.listen((
+      Set<String> ids,
+    ) {
       _favIds = ids;
       _scheduleShelves();
     });
-    _recentSub =
-        RecentlyWatchedRepository.instance.stream.listen((List<String> ids) {
+    _recentSub = RecentlyWatchedRepository.instance.stream.listen((
+      List<String> ids,
+    ) {
       _recentIds = ids;
       _scheduleShelves();
     });
@@ -364,10 +366,12 @@ class _TvHubScreenState extends State<TvHubScreen> {
       if (_featuredChannel != null) setState(() => _featuredChannel = null);
       return;
     }
-    unawaited(findChannelByName(f.name, _channels).then((Channel? c) {
-      if (!mounted || gen != _featuredGen) return;
-      if (c?.id != _featuredChannel?.id) setState(() => _featuredChannel = c);
-    }));
+    unawaited(
+      findChannelByName(f.name, _channels).then((Channel? c) {
+        if (!mounted || gen != _featuredGen) return;
+        if (c?.id != _featuredChannel?.id) setState(() => _featuredChannel = c);
+      }),
+    );
   }
 
   /// Quelle bannière maintenant (fenêtre, mode enfants, fermée, plafond
@@ -392,10 +396,12 @@ class _TvHubScreenState extends State<TvHubScreen> {
       _promoChannel = null;
       if (next != null && next.channel.isNotEmpty) {
         final int gen = ++_promoGen;
-        unawaited(findChannelByName(next.channel, _channels).then((Channel? c) {
-          if (!mounted || gen != _promoGen || _promo?.id != next.id) return;
-          setState(() => _promoChannel = c);
-        }));
+        unawaited(
+          findChannelByName(next.channel, _channels).then((Channel? c) {
+            if (!mounted || gen != _promoGen || _promo?.id != next.id) return;
+            setState(() => _promoChannel = c);
+          }),
+        );
       }
     }
     final HeaderCard card = _headerCard;
@@ -407,12 +413,12 @@ class _TvHubScreenState extends State<TvHubScreen> {
   }
 
   HeaderCard get _headerCard => pickHeaderCard(
-        hasShow: _banner != null,
-        hasNotice: _noticeVisible,
-        hasPromo: _promo != null,
-        hasFeatured: _featuredOn && _featuredChannel != null,
-        tick: _panelTick,
-      );
+    hasShow: _banner != null,
+    hasNotice: _noticeVisible,
+    hasPromo: _promo != null,
+    hasFeatured: _featuredOn && _featuredChannel != null,
+    tick: _panelTick,
+  );
 
   void _closePromo() {
     final PromoBanner? b = _promo;
@@ -605,8 +611,10 @@ class _TvHubScreenState extends State<TvHubScreen> {
     _resumedThisVisit = true;
     _autoOpened = true;
     _deferredLiveOpen = false;
-    BlackBox.instance
-        .info('ACCUEIL', 'reprise au démarrage : ${zap.first.name}');
+    BlackBox.instance.info(
+      'ACCUEIL',
+      'reprise au démarrage : ${zap.first.name}',
+    );
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       Navigator.of(context).push(
@@ -695,7 +703,8 @@ class _TvHubScreenState extends State<TvHubScreen> {
     if (_initialShelf == null && _shelves.hasAny) {
       _initialShelf = pickInitialShelf(
         hasSoonReminder: _shelves.reminders.any(
-            (ProgramReminder r) => ProgramReminderLog.isSoon(r.startMs, now)),
+          (ProgramReminder r) => ProgramReminderLog.isSoon(r.startMs, now),
+        ),
         hasResume: _shelves.resume.isNotEmpty,
         hasContinue: _shelves.continueWatching.isNotEmpty,
         hasFavorites: _shelves.favorites.isNotEmpty,
@@ -880,14 +889,18 @@ class _TvHubScreenState extends State<TvHubScreen> {
       }
 
       try {
-        take(await EpgRepository.instance.programsOverlapping(
-          from,
-          to,
-          limit: 800,
-        ));
+        take(
+          await EpgRepository.instance.programsOverlapping(
+            from,
+            to,
+            limit: 800,
+          ),
+        );
       } catch (_) {}
-      for (final String id
-          in followedChannelIds(FollowedLog.instance.book, _favIds)) {
+      for (final String id in followedChannelIds(
+        FollowedLog.instance.book,
+        _favIds,
+      )) {
         if (gen != _showGen) return;
         try {
           take(await EpgRepository.instance.programsBetween(id, from, to));
@@ -904,17 +917,20 @@ class _TvHubScreenState extends State<TvHubScreen> {
             (hiddenForKids(channel) || roughLooksAdult(program.title))) {
           continue;
         }
-        final bool declared = channel.catchupSupported ||
+        final bool declared =
+            channel.catchupSupported ||
             (channel.catchupSource != null &&
                 channel.catchupSource!.isNotEmpty);
-        slots.add(GuideSlot(
-          channelId: channel.id,
-          channelName: channel.cleanName,
-          title: program.title,
-          startMs: program.startTime,
-          stopMs: program.stopTime,
-          catchupDeclared: declared,
-        ));
+        slots.add(
+          GuideSlot(
+            channelId: channel.id,
+            channelName: channel.cleanName,
+            title: program.title,
+            startMs: program.startTime,
+            stopMs: program.stopTime,
+            catchupDeclared: declared,
+          ),
+        );
       }
       _guide = slots;
       _guideAtMs = now;
@@ -930,8 +946,9 @@ class _TvHubScreenState extends State<TvHubScreen> {
 
   void _openShow(ShowCue cue, {bool fromStart = false, bool replay = false}) {
     final Map<String, Channel> byId = indexChannelsById(_channels);
-    final String id =
-        replay ? (cue.replayChannelId ?? cue.channelId) : cue.channelId;
+    final String id = replay
+        ? (cue.replayChannelId ?? cue.channelId)
+        : cue.channelId;
     final Channel? target = byId[id];
     unawaited(FollowedLog.instance.markSeen(cue.alertKey));
     setState(() => _banner = null);
@@ -995,7 +1012,9 @@ class _TvHubScreenState extends State<TvHubScreen> {
     ];
     final int index = shelf.indexWhere((Channel c) => c.id == target.id);
     _playShelf(
-        shelf.isEmpty ? <Channel>[target] : shelf, index < 0 ? 0 : index);
+      shelf.isEmpty ? <Channel>[target] : shelf,
+      index < 0 ? 0 : index,
+    );
   }
 
   String _hello(BuildContext context) {
@@ -1019,10 +1038,11 @@ class _TvHubScreenState extends State<TvHubScreen> {
   /// qui a déjà sa source.
   Future<void> _lookForLocalSource() async {
     try {
-      final List<Playlist> lists =
-          await PlaylistRepository.instance.getAllPlaylists();
+      final List<Playlist> lists = await PlaylistRepository.instance
+          .getAllPlaylists();
       if (!mounted) return;
-      final bool has = lists.isNotEmpty ||
+      final bool has =
+          lists.isNotEmpty ||
           PlaylistRepository.instance.currentChannels.isNotEmpty;
       setState(() => _hasLocalSource = has);
     } catch (_) {
@@ -1036,9 +1056,9 @@ class _TvHubScreenState extends State<TvHubScreen> {
       // Écran déjà parti pendant l'attente : ne pas s'abonner (fuite).
       if (!mounted) return;
       setState(() {});
-      _connSub = Connectivity()
-          .onConnectivityChanged
-          .listen((List<ConnectivityResult> r) {
+      _connSub = Connectivity().onConnectivityChanged.listen((
+        List<ConnectivityResult> r,
+      ) {
         if (mounted) setState(() => _conn = r);
       });
     } catch (_) {}
@@ -1106,8 +1126,9 @@ class _TvHubScreenState extends State<TvHubScreen> {
         return (label: context.l10n.tvStatusPaid, color: TvTokens.success);
       case SubscriptionStatus.trialActive:
         return (
-          label: context.l10n
-              .tvStatusTrial(SubscriptionState.instance.trialDaysRemaining),
+          label: context.l10n.tvStatusTrial(
+            SubscriptionState.instance.trialDaysRemaining,
+          ),
           color: TvTokens.accentBright,
         );
       case SubscriptionStatus.trialExpired:
@@ -1125,8 +1146,10 @@ class _TvHubScreenState extends State<TvHubScreen> {
     try {
       final List<Playlist> all = PlaylistRepository.instance.currentPlaylists;
       if (all.isEmpty) return '';
-      final Playlist p =
-          all.firstWhere((Playlist x) => x.isActive, orElse: () => all.first);
+      final Playlist p = all.firstWhere(
+        (Playlist x) => x.isActive,
+        orElse: () => all.first,
+      );
       final String user = (p.xtreamUsername ?? '').trim();
       final String one = user.isEmpty ? p.name : '$user · ${p.name}';
       // Mode fusion (TV) : toutes les listes sont affichées ensemble → on
@@ -1151,9 +1174,8 @@ class _TvHubScreenState extends State<TvHubScreen> {
       case _Tile.series:
         page = const TvCinemaScreen(kind: CinemaKind.series);
     }
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => TvShell(child: page)),
-    );
+    Navigator.of(context)
+        .push(MaterialPageRoute<void>(builder: (_) => TvShell(child: page)));
   }
 
   Widget _tileRow(BuildContext context, {required bool compact}) {
@@ -1206,7 +1228,8 @@ class _TvHubScreenState extends State<TvHubScreen> {
     final LogicalKeyboardKey k = event.logicalKey;
     final bool up =
         k == LogicalKeyboardKey.arrowUp || k == LogicalKeyboardKey.channelUp;
-    final bool down = k == LogicalKeyboardKey.arrowDown ||
+    final bool down =
+        k == LogicalKeyboardKey.arrowDown ||
         k == LogicalKeyboardKey.channelDown;
     if (!up && !down) {
       if (_diagBuf.isNotEmpty) _diagBuf.clear();
@@ -1223,8 +1246,11 @@ class _TvHubScreenState extends State<TvHubScreen> {
       if (!_diagOpen) {
         _diagOpen = true;
         Navigator.of(context)
-            .push<void>(MaterialPageRoute<void>(
-                builder: (_) => const TvDiagnosticScreen()))
+            .push<void>(
+              MaterialPageRoute<void>(
+                builder: (_) => const TvDiagnosticScreen(),
+              ),
+            )
             .then((_) => _diagOpen = false);
       }
     }
@@ -1249,7 +1275,8 @@ class _TvHubScreenState extends State<TvHubScreen> {
     final String src = _activeSource;
     final String lang = Localizations.localeOf(context).languageCode;
     final Widget? header = _panelHeader(lang);
-    final bool hasPersonal = _shelves.hasAny ||
+    final bool hasPersonal =
+        _shelves.hasAny ||
         _timePicks.isNotEmpty ||
         _showCards.isNotEmpty ||
         header != null;
@@ -1270,14 +1297,20 @@ class _TvHubScreenState extends State<TvHubScreen> {
           child: Stack(
             fit: StackFit.expand,
             children: <Widget>[
-              Image.asset('assets/branding/tv_hub_background.jpg',
-                  fit: BoxFit.cover),
+              Image.asset(
+                'assets/branding/tv_hub_background.jpg',
+                fit: BoxFit.cover,
+              ),
               DecoratedBox(
-                  decoration: BoxDecoration(
-                      color: TvTokens.bg.withValues(alpha: 0.35))),
+                decoration: BoxDecoration(
+                  color: TvTokens.bg.withValues(alpha: 0.35),
+                ),
+              ),
               Padding(
                 padding: const EdgeInsets.symmetric(
-                    horizontal: TvDimens.safeH, vertical: TvDimens.safeV),
+                  horizontal: TvDimens.safeH,
+                  vertical: TvDimens.safeV,
+                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: <Widget>[
@@ -1290,9 +1323,12 @@ class _TvHubScreenState extends State<TvHubScreen> {
                           onSelect: () {
                             StartupPickerSession.shown = true;
                             Navigator.of(context)
-                                .push<bool>(MaterialPageRoute<bool>(
+                                .push<bool>(
+                                  MaterialPageRoute<bool>(
                                     builder: (_) =>
-                                        const TvProfilePickerScreen()))
+                                        const TvProfilePickerScreen(),
+                                  ),
+                                )
                                 .then((_) => _openLiveIfPending());
                           },
                         ),
@@ -1304,11 +1340,15 @@ class _TvHubScreenState extends State<TvHubScreen> {
                         const SizedBox(width: 16),
                         Icon(_netIcon, size: 22, color: TvTokens.muted),
                         const SizedBox(width: 16),
-                        Text(_time,
-                            style: TvTokens.display(22, color: TvTokens.text)),
+                        Text(
+                          _time,
+                          style: TvTokens.display(22, color: TvTokens.text),
+                        ),
                         const SizedBox(width: 12),
-                        Text(date,
-                            style: TvTokens.ui(15, color: TvTokens.mutedDim)),
+                        Text(
+                          date,
+                          style: TvTokens.ui(15, color: TvTokens.mutedDim),
+                        ),
                       ],
                     ),
                     const SizedBox(height: 8),
@@ -1316,8 +1356,10 @@ class _TvHubScreenState extends State<TvHubScreen> {
                       _hello(context),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TvTokens.display(TvDimens.title,
-                          color: TvTokens.text),
+                      style: TvTokens.display(
+                        TvDimens.title,
+                        color: TvTokens.text,
+                      ),
                     ),
                     if (!hasPersonal) ...<Widget>[
                       const SizedBox(height: 4),
@@ -1325,8 +1367,10 @@ class _TvHubScreenState extends State<TvHubScreen> {
                         context.l10n.tvHomeInvite,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                        style:
-                            TvTokens.ui(TvDimens.label, color: TvTokens.muted),
+                        style: TvTokens.ui(
+                          TvDimens.label,
+                          color: TvTokens.muted,
+                        ),
                       ),
                     ],
                     // ---------- RANGÉES + TUILES ----------
@@ -1345,11 +1389,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
                                         ? _initialShelf
                                         : null,
                                     timePicks: _timePicks,
-                                    timePicksLabel: boxText(
-                                      context,
-                                      'À cette heure',
-                                      'At this hour',
-                                    ),
+                                    timePicksLabel: context.l10n.tvAtThisHour,
                                     shows: _showCards,
                                     showsLabel: followedWord(lang, 'row'),
                                     onPlayShow: _openShow,
@@ -1367,24 +1407,19 @@ class _TvHubScreenState extends State<TvHubScreen> {
                           // et à droite le QR que le téléphone photographie
                           // pour ouvrir « Mon espace » (lien M3U ou Xtream).
                           : _hasLocalSource == false
-                              ? Row(
-                                  crossAxisAlignment: CrossAxisAlignment.center,
-                                  children: <Widget>[
-                                    Expanded(
-                                      child: Center(
-                                        child: _tileRow(
-                                          context,
-                                          compact: true,
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 24),
-                                    TvPhoneSourceQr(mac: _mac),
-                                  ],
-                                )
-                              : Center(
-                                  child: _tileRow(context, compact: false),
+                          ? Row(
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: <Widget>[
+                                Expanded(
+                                  child: Center(
+                                    child: _tileRow(context, compact: true),
+                                  ),
                                 ),
+                                const SizedBox(width: 24),
+                                TvPhoneSourceQr(mac: _mac),
+                              ],
+                            )
+                          : Center(child: _tileRow(context, compact: false)),
                     ),
                     if (_refreshNotice != null && _refreshNotice!.isNotEmpty)
                       Padding(
@@ -1398,20 +1433,38 @@ class _TvHubScreenState extends State<TvHubScreen> {
                     // ---------- BARRE DU BAS ----------
                     Row(
                       children: <Widget>[
-                        Text('${context.l10n.tvActivationCodeLabel} : ',
-                            style: TvTokens.ui(14, color: TvTokens.mutedDim)),
-                        Text(displayMac(_mac, showPrefix: RepairFlags.macShowPrefix),
-                            style: TvTokens.mono(16,
-                                color: TvTokens.accentBright)),
+                        Text(
+                          '${context.l10n.tvActivationCodeLabel} : ',
+                          style: TvTokens.ui(14, color: TvTokens.mutedDim),
+                        ),
+                        Text(
+                          displayMac(
+                            _mac,
+                            showPrefix: RepairFlags.macShowPrefix,
+                          ),
+                          // Les groupes d'une MAC ne suivent pas le sens de l'UI.
+                          textDirection: TextDirection.ltr,
+                          style: TvTokens.mono(
+                            16,
+                            color: TvTokens.accentBright,
+                          ),
+                        ),
                         const Spacer(),
                         if (lic.label.isNotEmpty)
-                          Text(lic.label,
-                              style: TvTokens.ui(15,
-                                  weight: FontWeight.w600, color: lic.color)),
+                          Text(
+                            lic.label,
+                            style: TvTokens.ui(
+                              15,
+                              weight: FontWeight.w600,
+                              color: lic.color,
+                            ),
+                          ),
                         if (src.isNotEmpty) ...<Widget>[
                           const SizedBox(width: 18),
-                          Text(src,
-                              style: TvTokens.ui(14, color: TvTokens.mutedDim)),
+                          Text(
+                            src,
+                            style: TvTokens.ui(14, color: TvTokens.mutedDim),
+                          ),
                         ],
                       ],
                     ),
@@ -1454,13 +1507,20 @@ class _HubSearchButton extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
-              Icon(Icons.mic_none_rounded,
-                  size: 22,
-                  color: focused ? TvTokens.onAccent : TvTokens.accent),
+              Icon(
+                Icons.mic_none_rounded,
+                size: 22,
+                color: focused ? TvTokens.onAccent : TvTokens.accent,
+              ),
               const SizedBox(width: 8),
-              Text(label,
-                  style: TvTokens.ui(TvDimens.label,
-                      weight: FontWeight.w700, color: fg)),
+              Text(
+                label,
+                style: TvTokens.ui(
+                  TvDimens.label,
+                  weight: FontWeight.w700,
+                  color: fg,
+                ),
+              ),
             ],
           ),
         );
@@ -1490,21 +1550,29 @@ class _ProfileChip extends StatelessWidget {
                 ? TvTokens.accent
                 : TvTokens.card.withValues(alpha: 0.85),
             borderRadius: BorderRadius.circular(TvTokens.rButton),
-            border:
-                Border.all(color: focused ? TvTokens.accent : TvTokens.line),
+            border: Border.all(
+              color: focused ? TvTokens.accent : TvTokens.line,
+            ),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
-              Icon(ProfileLooks.icon(profile),
-                  size: 22,
-                  color: focused
-                      ? TvTokens.onAccent
-                      : ProfileLooks.color(profile)),
+              Icon(
+                ProfileLooks.icon(profile),
+                size: 22,
+                color: focused
+                    ? TvTokens.onAccent
+                    : ProfileLooks.color(profile),
+              ),
               const SizedBox(width: 8),
-              Text(profile.name,
-                  style: TvTokens.ui(TvDimens.label,
-                      weight: FontWeight.w700, color: fg)),
+              Text(
+                tvProfileLabel(context, profile),
+                style: TvTokens.ui(
+                  TvDimens.label,
+                  weight: FontWeight.w700,
+                  color: fg,
+                ),
+              ),
             ],
           ),
         );
@@ -1547,22 +1615,27 @@ class _HubTile extends StatelessWidget {
             color: focused ? TvTokens.accent : TvTokens.card,
             borderRadius: BorderRadius.circular(TvTokens.rCard),
             border: Border.all(
-                color: focused ? TvTokens.accent : TvTokens.line,
-                width: focused ? 2 : 1),
+              color: focused ? TvTokens.accent : TvTokens.line,
+              width: focused ? 2 : 1,
+            ),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
-              Icon(meta.icon,
-                  size: icon,
-                  color: focused ? TvTokens.onAccent : TvTokens.accent),
+              Icon(
+                meta.icon,
+                size: icon,
+                color: focused ? TvTokens.onAccent : TvTokens.accent,
+              ),
               SizedBox(height: gap),
-              Text(meta.label,
-                  style: TvTokens.ui(
-                    compact ? TvDimens.label : TvDimens.titleS,
-                    weight: FontWeight.w700,
-                    color: fg,
-                  )),
+              Text(
+                meta.label,
+                style: TvTokens.ui(
+                  compact ? TvDimens.label : TvDimens.titleS,
+                  weight: FontWeight.w700,
+                  color: fg,
+                ),
+              ),
             ],
           ),
         );

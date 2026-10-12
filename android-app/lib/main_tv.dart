@@ -61,14 +61,8 @@ void main() => runGuarded(bootstrapZunoTv);
 /// « fr » / « en » / … pour le choix de piste. Suit le réglage de l'app,
 /// ou la langue de la TV si le réglage est « Système ».
 void _syncPlayerLanguage() {
-  final Locale? forced = LocaleRepository.instance.locale;
-  final String code = (forced != null && forced.languageCode.isNotEmpty)
-      ? forced.languageCode
-      : LocaleRepository.resolve(
-          WidgetsBinding.instance.platformDispatcher.locales,
-          LocaleRepository.supportedLocales,
-        ).languageCode;
-  NativeVideoController.appAudioLanguage = code;
+  NativeVideoController.appAudioLanguage =
+      LocaleRepository.instance.effectiveLocale.languageCode;
 }
 
 /// Diagnostic du son → boîte noire (Réglages → Boîte noire). Une ligne par
@@ -121,8 +115,7 @@ Future<void> bootstrapZunoTv({Widget Function(Widget app)? wrap}) async {
   // publiée par build-zuno-tv.yml (version.json + zuno-tv.apk). Même clé de
   // signature à chaque build → l'installateur met à jour PAR-DESSUS, sans
   // désinstaller (favoris, listes, licence conservés).
-  UpdateService.manifestUrl =
-      'https://github.com/manzilionellm-dotcom/tvking/releases/download/zuno-tv/version.json';
+  UpdateService.manifestUrl = 'https://github.com/manzilionellm-dotcom/tvking/releases/download/zuno-tv/version.json';
   UpdateService.apkPrefix = 'zuno-tv';
   // Box de TEST seulement (build test_box, --dart-define=ZUNO_UPDATE_CHANNEL=test) :
   // le bouton voit aussi la release de test, et prend la plus récente des
@@ -146,7 +139,10 @@ Future<void> bootstrapZunoTv({Widget Function(Widget app)? wrap}) async {
   // Interrupteurs de repli des correctifs de l'audit (défaut faux).
   await RepairFlags.load();
   if (BootGuard.instance.safeMode) {
-    BlackBox.instance.warn('BOOT', 'MODE SANS ÉCHEC : boucle de redémarrage détectée → ré-imports sautés');
+    BlackBox.instance.warn(
+      'BOOT',
+      'MODE SANS ÉCHEC : boucle de redémarrage détectée → ré-imports sautés',
+    );
   }
 
   // ANTI-OOM TV (confirmé par logcat: lowmemorykiller / signal 9) : on N'INITIE
@@ -179,9 +175,11 @@ Future<void> bootstrapZunoTv({Widget Function(Widget app)? wrap}) async {
   // 1) Identité stable (MAC) → le panel reconnaît l'appareil TV.
   unawaited(DeviceIdentity.instance.preload());
   // 2) Licence/abonnement : heartbeat + statut depuis le MÊME worker.
-  unawaited(SubscriptionState.instance.initialize().then((_) {
-    SubscriptionState.instance.syncWithBackend();
-  }));
+  unawaited(
+    SubscriptionState.instance.initialize().then((_) {
+      SubscriptionState.instance.syncWithBackend();
+    }),
+  );
   // 3) Thème distant piloté par le panel (couleur/nom).
   unawaited(RemoteThemeRepository.fetchAndApply());
 
@@ -197,9 +195,10 @@ Future<void> bootstrapZunoTv({Widget Function(Widget app)? wrap}) async {
   //    TV = TOUTES les listes fusionnées (Xtream + M3U, jusqu'à 4-5 sources
   //    posées par le client ou le panel) affichées ensemble, façon TiviMate.
   PlaylistRepository.mergeAllPlaylists = true;
-  await PlaylistRepository.instance
-      .initialize()
-      .timeout(const Duration(seconds: 6), onTimeout: () {});
+  await PlaylistRepository.instance.initialize().timeout(
+    const Duration(seconds: 6),
+    onTimeout: () {},
+  );
   //    La source distante se (re)synchronise après, sans bloquer : si on a
   //    déjà des chaînes en cache, ça reste SILENCIEUX (pas d'écran « Recherche »).
   //    MODE SANS ÉCHEC : on SAUTE ce ré-import — c'est l'étape la plus
@@ -230,9 +229,11 @@ Future<void> bootstrapZunoTv({Widget Function(Widget app)? wrap}) async {
     // attend son retour à l'accueil. Pourquoi pas toutes les 2 minutes pour
     // les chaînes : re-télécharger 10 000+ chaînes en boucle saturerait la
     // box et ferait bloquer le compte par le fournisseur IPTV.
-    unawaited(Future<void>.delayed(const Duration(minutes: 2), () {
-      TvContentRefresh.run(waitIdle: true);
-    }));
+    unawaited(
+      Future<void>.delayed(const Duration(minutes: 2), () {
+        TvContentRefresh.run(waitIdle: true);
+      }),
+    );
     Timer.periodic(const Duration(hours: 6), (_) {
       TvContentRefresh.run(waitIdle: true);
     });
@@ -244,15 +245,18 @@ Future<void> bootstrapZunoTv({Widget Function(Widget app)? wrap}) async {
     //     version). Il reste la confirmation « Installer » d'Android, que
     //     toute app hors Play Store doit obtenir. Repli :
     //     zuno.update.auto_install_off (l'APK attend Réglages → Mise à jour).
-    unawaited(Future<void>.delayed(const Duration(minutes: 1), () {
-      UpdateService.instance.autoUpdate(busy: () => TvActivity.isBusy);
-    }));
+    unawaited(
+      Future<void>.delayed(const Duration(minutes: 1), () {
+        UpdateService.instance.autoUpdate(busy: () => TvActivity.isBusy);
+      }),
+    );
     // Box de TEST (release zuno-tv-test dans extraManifestUrls) : vérification
     // toutes les 60 s, pour qu'un build arrive dans la minute (mesuré le
     // 06/10/2026 : « 3 à 5 minutes avant que la mise à jour arrive »). Les
     // clients gardent 30 min + l'ordre « force_update » du panel, qui est
     // immédiat. Repli : zuno.update.test_poll_legacy.
-    final bool testBox = UpdateService.extraManifestUrls.isNotEmpty &&
+    final bool testBox =
+        UpdateService.extraManifestUrls.isNotEmpty &&
         !RepairFlags.testUpdatePollLegacy;
     Timer.periodic(
       testBox ? const Duration(minutes: 1) : const Duration(minutes: 30),
@@ -261,7 +265,9 @@ Future<void> bootstrapZunoTv({Widget Function(Widget app)? wrap}) async {
       },
     );
   } else {
-    debugPrint('[main_tv] mode sans échec → ré-import de la source distante sauté.');
+    debugPrint(
+      '[main_tv] mode sans échec → ré-import de la source distante sauté.',
+    );
   }
 
   // 5) Enregistrements : on initialise la base et on finalise les
@@ -279,9 +285,10 @@ Future<void> bootstrapZunoTv({Widget Function(Widget app)? wrap}) async {
   //    s'il tarde, l'app démarre quand même — une chaîne n'est jamais
   //    bloquée parce qu'aucun profil n'a été choisi. Le choix à l'écran,
   //    s'il est activé, arrive APRÈS l'accueil (voir TvHubScreen).
-  await ProfileRepository.instance
-      .load()
-      .timeout(const Duration(milliseconds: 500), onTimeout: () {});
+  await ProfileRepository.instance.load().timeout(
+    const Duration(milliseconds: 500),
+    onTimeout: () {},
+  );
 
   // 7) Favoris du profil en cours : préchargés pour que le cœur ❤
   //    du lecteur affiche le bon état dès la 1re ouverture.

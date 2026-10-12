@@ -45,7 +45,7 @@
   "playerPause": "Simamisha",
   "playerPlay": "Cheza",
   "playerRec": "REC",
-  "playerStop": "STOP",
+  "playerStop": "SIMAMISHA",
   "playerAudioOnly": "Sauti",
   "playerVideo": "Video",
   "playerUpNextIn": "Inayofuata baada ya {seconds}s",
@@ -76,11 +76,11 @@
   "settingsAbout": "Kuhusu",
   "settingsProvisioning": "Usanidi wa mbali",
   "settingsClearHistory": "Futa historia ya kutazama",
-  "themeCinema": "Cinema",
+  "themeCinema": "Sinema",
   "themeCinemaSubtitle": "Maison Noir",
-  "themeDaylight": "Daylight",
+  "themeDaylight": "Mwanga wa mchana",
   "themeDaylightSubtitle": "Hali ya mchana",
-  "themeAuto": "Auto",
+  "themeAuto": "Kiotomatiki",
   "themeAutoSubtitle": "Fuata mfumo",
   "deviceQuestion": "Unatumia nini?",
   "deviceHelp": "Tunabadilisha uzoefu kulingana na kifaa chako. Unaweza kubadilisha hili kwenye Mipangilio.",
@@ -90,7 +90,7 @@
   "deviceTv": "Televisheni",
   "deviceTvSubtitle": "Android TV, Fire TV, Google TV",
   "deviceTvDesc": "Mpangilio mkubwa kwa rimoti. Mistari ya kuzingatia inaonekana kwa mita 3, ukubwa wa sinema, njia za mkato za D-pad.",
-  "deviceAuto": "Auto",
+  "deviceAuto": "Kiotomatiki",
   "deviceAutoSubtitle": "Utambuzi otomatiki",
   "deviceAutoDesc": "App inakisia kulingana na skrini yako. Chaguo zuri ukiwa na shaka au ukitumia vifaa tofauti.",
   "onboardingWelcomeTitle": "Karibu kwenye The Few",
@@ -648,7 +648,7 @@
   "tvBlackBoxHelp": "JUU/CHINI: sogeza · CH+/CH−: ukurasa · Nakili = ubao wa kunakili (bandika kwa msaada kwenye WhatsApp). Kumbukumbu hii inaweza kutumwa kwa msaada. Unaweza kuzima utumaji kwenye Mipangilio.",
   "tvNavServer": "Seva",
   "tvLegalTitle": "Taarifa za kisheria na Masharti",
-    "tvHelloMorning": "Habari ya asubuhi",
+  "tvHelloMorning": "Habari ya asubuhi",
   "tvHelloAfternoon": "Habari ya mchana",
   "tvHelloEvening": "Habari ya jioni",
   "tvHomeInvite": "Chaneli, filamu na vikumbusho vyako vitarudi hapa.",
@@ -673,7 +673,7 @@
   "tvReminderInMinutes": "Baada ya dakika {minutes}",
   "tvReminderInHours": "Baada ya saa {hours}",
   "tvReminderInHoursMinutes": "Baada ya saa {hours} dakika {minutes}",
-"tvResumeLabel": "ENDELEA",
+  "tvResumeLabel": "ENDELEA",
   "tvNowPlayingPrefix": "SASA · {title}",
   "@tvNowPlayingPrefix": {
     "placeholders": {
@@ -847,7 +847,13 @@
   "tvRecordingStarted": "Inarekodi…",
   "tvRecordingError": "Hitilafu ya kurekodi",
   "tvRecordingSaved": "Rekodi imehifadhiwa ({size})",
-  "@tvRecordingSaved": {"placeholders": {"size": {"type": "String"}}},
+  "@tvRecordingSaved": {
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
   "tvRecordingEmpty": "Rekodi tupu",
   "tvRemovedFromFavorites": "Imeondolewa kwenye vipendwa",
   "tvAddedToFavorites": "Imeongezwa kwenye vipendwa ❤",
@@ -855,61 +861,163 @@
   "tvCinemaAudio": "Sauti",
   "tvCinemaAudioSubs": "Sauti na manukuu",
   "tvCinemaCast": "Wahusika: {names}",
-  "@tvCinemaCast": {"placeholders": {"names": {"type": "String"}}},
+  "@tvCinemaCast": {
+    "placeholders": {
+      "names": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaContinue": "Endelea kutazama",
   "tvCinemaDeleteDownload": "Futa upakuaji",
   "tvCinemaDirector": "Mwongozaji: {names}",
-  "@tvCinemaDirector": {"placeholders": {"names": {"type": "String"}}},
+  "@tvCinemaDirector": {
+    "placeholders": {
+      "names": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaDownload": "Pakua",
   "tvCinemaDownloadError": "Upakuaji umeshindwa",
   "tvCinemaDownloadPaused": "Imesitishwa · {pct} %",
-  "@tvCinemaDownloadPaused": {"placeholders": {"pct": {"type": "String"}}},
+  "@tvCinemaDownloadPaused": {
+    "placeholders": {
+      "pct": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaDownloaded": "Imepakuliwa",
   "tvCinemaDownloading": "Inapakua · {pct} %",
-  "@tvCinemaDownloading": {"placeholders": {"pct": {"type": "String"}}},
+  "@tvCinemaDownloading": {
+    "placeholders": {
+      "pct": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaDownloads": "Vipakuliwa vyangu",
   "tvCinemaEmptyCategory": "Hakuna kitu hapa bado.",
   "tvCinemaEpisode": "Sehemu ya {n}",
-  "@tvCinemaEpisode": {"placeholders": {"n": {"type": "String"}}},
+  "@tvCinemaEpisode": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaFromStart": "Kuanzia mwanzo",
   "tvCinemaIndexing": "Inaandaa utafutaji katika katalogi nzima…",
   "tvCinemaLanguage": "Lugha: {value}",
-  "@tvCinemaLanguage": {"placeholders": {"value": {"type": "String"}}},
+  "@tvCinemaLanguage": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaLoading": "Inapakia…",
   "tvCinemaMinutes": "Dakika {n}",
-  "@tvCinemaMinutes": {"placeholders": {"n": {"type": "String"}}},
+  "@tvCinemaMinutes": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaNextEpisode": "Sehemu inayofuata",
   "tvCinemaNextHint": "OK: sasa · Rudi: baki",
   "tvCinemaNextIn": "Sehemu inayofuata baada ya sekunde {s}",
-  "@tvCinemaNextIn": {"placeholders": {"s": {"type": "String"}}},
+  "@tvCinemaNextIn": {
+    "placeholders": {
+      "s": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaNoEpisodes": "Hakuna sehemu zinazopatikana.",
   "tvCinemaNoSource": "Hakuna filamu wala tamthilia bado",
   "tvCinemaNoSourceBody": "Filamu na tamthilia zinatoka kwenye usajili wako wa Xtream. Uongeze kwenye Seva, au mwombe muuzaji wako auwashe.",
   "tvCinemaNoSpace": "Nafasi haitoshi kwenye kifaa (GB {free} zimebaki).",
-  "@tvCinemaNoSpace": {"placeholders": {"free": {"type": "String"}}},
+  "@tvCinemaNoSpace": {
+    "placeholders": {
+      "free": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaPauseDownload": "Sitisha",
   "tvCinemaPlay": "Cheza",
   "tvCinemaPlayEpisode": "Cheza S{s} · E{e}",
-  "@tvCinemaPlayEpisode": {"placeholders": {"s": {"type": "String"}, "e": {"type": "String"}}},
+  "@tvCinemaPlayEpisode": {
+    "placeholders": {
+      "s": {
+        "type": "String"
+      },
+      "e": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaRecent": "Vilivyoongezwa hivi karibuni",
   "tvCinemaRestart": "Anza upya",
   "tvCinemaResumeAt": "Endelea kuanzia {time}",
-  "@tvCinemaResumeAt": {"placeholders": {"time": {"type": "String"}}},
+  "@tvCinemaResumeAt": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaResumeDownload": "Endelea kupakua",
   "tvCinemaResumeEpisode": "Endelea S{s} · E{e}",
-  "@tvCinemaResumeEpisode": {"placeholders": {"s": {"type": "String"}, "e": {"type": "String"}}},
+  "@tvCinemaResumeEpisode": {
+    "placeholders": {
+      "s": {
+        "type": "String"
+      },
+      "e": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaResumedAt": "Inaendelea kuanzia {time}",
-  "@tvCinemaResumedAt": {"placeholders": {"time": {"type": "String"}}},
+  "@tvCinemaResumedAt": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaSearch": "Tafuta",
   "tvCinemaSeason": "Msimu wa {n}",
-  "@tvCinemaSeason": {"placeholders": {"n": {"type": "String"}}},
+  "@tvCinemaSeason": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaSeasons": "Misimu {n}",
-  "@tvCinemaSeasons": {"placeholders": {"n": {"type": "String"}}},
+  "@tvCinemaSeasons": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaSpecials": "Sehemu maalum",
   "tvCinemaSubtitles": "Manukuu",
   "tvCinemaSubtitlesOff": "Zimezimwa",
   "tvCinemaTrackUnknown": "Wimbo {n}",
-  "@tvCinemaTrackUnknown": {"placeholders": {"n": {"type": "String"}}},
+  "@tvCinemaTrackUnknown": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
   "tvUpdatingContent": "Inasasisha…",
   "tvDeactivate": "Zima",
   "tvSourceActive": "hai",
@@ -946,4 +1054,259 @@
   "tvVoiceRemoteAiOff": "Imezimwa",
   "tvVoiceRemoteAiHelp": "Imezimwa kwa chaguo-msingi. Hakuna ufunguo kwenye programu. « Usiku huu » husomwa kutoka mwongozo wako, kwenye kifaa. Huduma isipojibu, Zuno hutafuta kwenye orodha yako.",
   "tvVoiceCinemaHint": "Fungua Filamu au Mifululizo mara moja: utafutaji utazipata baadaye, bila mtandao unapotazama.",
-  "tvVoiceOnChannel": "Kwenye {channel}"}
+  "tvVoiceOnChannel": "Kwenye {channel}",
+  "tvDeletePanelSourceConfirm": "“{name}” limetumwa na muuzaji wako. Ukilifuta hapa, halitarudi kwenye TV hii isipokuwa muuzaji alitume tena kutoka paneli.",
+  "tvDeleteSourceFailed": "Imeshindwa kufuta: hakuna muunganisho wa seva. Hakuna kilichoondolewa. Jaribu tena baada ya muda mfupi.",
+  "tvCinemaOfflineTitle": "Katalogi haipatikani",
+  "tvCinemaOfflineBody": "Hakuna kilichohifadhiwa kwenye TV na seva haijibu. Kagua muunganisho kisha ujaribu tena.",
+  "tvCinemaRetry": "Jaribu tena",
+  "tvCinemaUpdated": "Imesasishwa {when}",
+  "tvCinemaAgeJustNow": "sasa hivi",
+  "tvCinemaAgeMinutes": "dakika {n} zilizopita",
+  "tvCinemaAgeHours": "saa {n} zilizopita",
+  "tvCinemaAgeDays": "siku {n} zilizopita",
+  "tvCinemaCategoryFailed": "Kategoria hii haikuweza kupakiwa.",
+  "moviesRetry": "Jaribu tena",
+  "tvRemoteTitle": "Kidhibiti cha mbali",
+  "tvSettingsRemote": "Simu inakuwa kidhibiti kwenye Wi-Fi ileile. Hakuna haja ya kusakinisha programu.",
+  "tvRemoteLead": "Changanua msimbo wa QR kwa kamera ya simu. Hakuna cha kusakinisha.",
+  "tvRemoteWarn": "Yeyote anayeona msimbo huu anaweza kudhibiti kifaa hadi uishe. Simu moja tu. Msimbo unaisha kiotomatiki.",
+  "tvRemoteKeep": "Nyuma huondoka kwenye skrini hii: simu inaendelea kufanya kazi hadi msimbo uishe. Zima hukatisha mara moja.",
+  "tvRemoteStarting": "Inaandaa…",
+  "tvRemoteWaiting": "Inasubiri simu…",
+  "tvRemotePaired": "Simu imeunganishwa",
+  "tvRemoteExpired": "Msimbo umeisha",
+  "tvRemoteStopped": "Kidhibiti kimezimwa",
+  "tvRemoteNoLan": "Hakuna mtandao wa ndani. Unganisha kifaa na simu kwenye Wi-Fi ileile.",
+  "tvRemoteError": "Kidhibiti hakikuweza kuanza.",
+  "tvRemoteNewCode": "Msimbo mpya",
+  "tvRemoteStop": "Zima",
+  "tvRemoteStart": "Washa",
+  "tvRemoteLeft": "Unaisha baada ya {time}",
+  "tvRemoteUrlHelp": "Ikiwa uchanganuzi utashindikana, fungua anwani hii kwenye kivinjari cha simu.",
+  "sportsTimeout": "Huduma ya michezo inachelewa kujibu. Jaribu tena.",
+  "sportsNetworkError": "Haiwezekani kuunganisha kwenye huduma ya michezo.",
+  "sportsHttpError": "Huduma ya michezo haipatikani (HTTP {status}).",
+  "sportsInvalidResponse": "Jibu la huduma ya michezo halisomeki.",
+  "sportsUnavailable": "Data za michezo hazikuweza kupakiwa.",
+  "sportsLoading": "Inapakia mechi…",
+  "sportsRetry": "Jaribu tena",
+  "sportsFootballTitle": "Matokeo na ratiba",
+  "sportsRefresh": "Onyesha upya",
+  "sportsCommunityNotice": "Matokeo na magoli kutoka kwa jamii · huenda yakachelewa · husasishwa kila sekunde 60.",
+  "sportsCalendarNotice": "Ratiba na matokeo yaliyochelewa · OpenFootball haitoi matokeo ya moja kwa moja.",
+  "sportsRetrievedAt": "Imepatikana saa {time}",
+  "sportsUpcoming": "Zinazokuja",
+  "sportsRecent": "Mechi za karibuni",
+  "sportsFinished": "Imekwisha",
+  "tvProgramStartedMinutesAgo": "Kipindi kilianza dakika {minutes} zilizopita",
+  "tvProfiles": "Wasifu",
+  "tvKidsProfile": "Wasifu wa watoto",
+  "tvNewProfile": "Wasifu mpya",
+  "tvChildren": "Watoto",
+  "tvKidsExists": "Wasifu wa watoto tayari upo.",
+  "tvProfileAddFailed": "Wasifu haukuweza kuongezwa.",
+  "tvKidsReady": "Wasifu wa watoto uko tayari. Hali ya watoto inaendelea kuwaka.",
+  "tvRename": "Badili jina",
+  "tvNameInvalid": "Jina halijawekwa au ni refu sana.",
+  "tvProfileDeleteBody": "Vipendwa, historia, nafasi za kutazama, vikumbusho na PIN ya wasifu huu vitafutwa. Vituo na wasifu 1 vinabaki.",
+  "tvProfileDeleteFailed": "Wasifu huu hauwezi kufutwa.",
+  "tvProfilesHelp": "Hadi wasifu 4. Kila mmoja ana vipendwa, historia, nafasi za kutazama, vikumbusho na PIN yake. Vituo ni vya pamoja.",
+  "tvDefaultPinWarning": "PIN bado ni 0000. Ibadilishe kwenye Udhibiti wa wazazi.",
+  "tvAskProfileOn": "Chagua wasifu unapoanza: imewashwa",
+  "tvAskProfileOff": "Chagua wasifu unapoanza: imezimwa",
+  "tvProfileStartupSingle": "Uchaguzi wa mwanzo unaonekana kukiwa na wasifu 2 au zaidi. Ukiwa mmoja, programu hufunguka moja kwa moja.",
+  "tvProfileStartupHelp": "Ikizimwa, wasifu wa mwisho hufunguka moja kwa moja. Bado unaweza kubadili hapa au kwenye mwanzo.",
+  "tvKidsProfileHelp": "Hali ya watoto imefungwa. PIN ya wasifu huu inahitajika kutoka. Maudhui ya watu wazima yamefichwa. Wasifu 1 huhifadhi data zako za awali.",
+  "tvOriginProfileHelp": "Wasifu wa asili: vipendwa, historia, nafasi za kutazama na PIN yako ya awali viko hapa. Hauwezi kufutwa.",
+  "tvSeparateProfileHelp": "Wasifu tofauti. Kuufuta hakufuti wasifu 1.",
+  "tvProfileActive": "Unaotumika",
+  "tvProfileCreated": "Wasifu “{name}” umeundwa.",
+  "tvProfileDeleteTitle": "Futa “{name}”?",
+  "tvWhoWatching": "Nani anatazama?",
+  "tvProfilePickerHelp": "Kila mtu ana vipendwa, historia na PIN yake. Vituo vinabaki vilevile.",
+  "tvLater": "Baadaye",
+  "tvNameMum": "Mama",
+  "tvNameDad": "Baba",
+  "tvNameGuest": "Mgeni",
+  "tvNameLivingRoom": "Sebule",
+  "tvNameLimit": "Herufi zisizozidi 18.",
+  "tvFirstName": "Jina la kwanza",
+  "tvListRemoved": "Orodha imeondolewa",
+  "tvListRemovedBody": "Mtoa huduma ameondoa orodha hii. Vituo vyake havipatikani tena.",
+  "tvKidsCannotDisable": "Hali ya watoto inaendelea kuwaka katika wasifu wa watoto. Badili wasifu kwa PIN ili kuona vituo vyote.",
+  "tvKidsAlwaysOn": "Wasifu wa watoto: hali inaendelea kuwaka. Vituo visivyo vya watu wazima vinapatikana.",
+  "tvKidsOn": "Imewashwa — maudhui ya watu wazima yamefichwa.",
+  "tvKidsOff": "Imezimwa — vituo vyote vinaonekana.",
+  "tvChooseSecurePin": "Chagua PIN kabla ya kuwasha hali ya watoto. 0000 haikubaliki tena.",
+  "tvPinWait": "Majaribio mengi sana. Jaribu tena baada ya dakika chache.",
+  "tvEnabled": "Imewashwa",
+  "tvDisabled": "Imezimwa",
+  "tvProfilePinHelp": "PIN ya “{name}”. Hali ya watoto huficha vituo vya watu wazima. PIN hii inahitajika kuizima au kubadili msimbo. Kila wasifu una yake.",
+  "tvPinWaitMinutes": "Majaribio mengi sana. Jaribu tena baada ya dakika {minutes}.",
+  "tvExtras": "Ziada",
+  "tvExtrasHelp": "Vipengele unavyoweza kuzima kimoja baada ya kingine. Hakuna kinachozuia kituo.",
+  "tvMissedTitle": "Umekosa mwanzo",
+  "tvMissedOn": "Mwongozo unaeleza ulichokosa. OK kuzima. Matangazo ya moja kwa moja hayarudishwi nyuma yenyewe.",
+  "tvMissedOff": "Imezimwa. OK kuwasha. Kituo hakitarudishwa nyuma.",
+  "tvAtThisHour": "Wakati huu",
+  "tvTimePicksOn": "Inapendekeza vituo unavyofungua mara nyingi wakati huu. OK kuzima. Hakuna kinachoanza chenyewe.",
+  "tvTimePicksOff": "Imezimwa. OK kuwasha. Kurekodi mazoea kunasimama na safu inaondoka.",
+  "tvServiceNotices": "Taarifa za huduma",
+  "tvNoticesOn": "Kadi kwenye mwanzo mtoa huduma anapochapisha taarifa ya matengenezo au habari mpya. OK kuzima. Haionekani juu ya video.",
+  "tvNoticesOff": "Imezimwa. OK kuwasha. Taarifa hazitaonekana tena.",
+  "tvPickOfDay": "Chaguo la leo",
+  "tvFeaturedOn": "Kituo kinachoangaziwa na mtoa huduma, ikiwa kipo kwenye orodha yako. OK kuzima. Hakuna kinachoanza chenyewe.",
+  "tvFeaturedOff": "Imezimwa. OK kuwasha. Kadi inaondoka kwenye mwanzo.",
+  "tvBanners": "Mabango",
+  "tvBannersOn": "Picha moja kwa wakati kwenye mwanzo, daima ikiwa na alama “Tangazo”. Funga = ficha kwa siku 7. OK kuzima. Bila sauti, kamwe si juu ya video.",
+  "tvBannersOff": "Imezimwa. OK kuwasha. Hakuna mabango zaidi.",
+  "tvSubtitlesOnHelp": "Inaonyesha manukuu yaliyopo tayari kwenye mtiririko, kwa lugha yako. OK kuzima. Hakuna kinachotafsiriwa au kupakuliwa.",
+  "tvSubtitlesOffHelp": "Imezimwa. OK kuwasha. Matangazo ya moja kwa moja hayabadili mtiririko.",
+  "tvClearVoice": "Sauti wazi",
+  "tvClearVoiceOn": "Imewashwa. Sauti kubwa za watu hupunguzwa kidogo katika hali ya usiku. OK kuzima. Sauti inayozunguka inayopitishwa bila kubadilishwa inabaki vilevile.",
+  "tvClearVoiceOff": "Imezimwa, hali ya asili. OK kupunguza sauti kubwa sana za watu. Sauti inayozunguka inayotumwa moja kwa moja kwenye spika haibadiliki.",
+  "tvLogToSupport": "Tuma kumbukumbu kwa usaidizi",
+  "tvLogToSupportOn": "Kumbukumbu ya uchunguzi inaweza kutumwa kwa usaidizi bila anwani za mitiririko au nywila. OK kuzima.",
+  "tvLogToSupportOff": "Imezimwa. Kumbukumbu inabaki kwenye kifaa. OK kuituma tena kwa usaidizi.",
+  "tvPictureEngine": "Injini ya picha",
+  "tvPictureEngineHelp": "Sasa: {engine}. OK kubadili. Vifaa = kifaa chenyewe, hali ya asili. Programu = ikiwa picha inabaki nyeusi. Video ya FFmpeg haipo katika toleo hili; inarukwa.",
+  "tvScreenRefresh": "Kiwango cha kuonyesha upya skrini",
+  "tvScreenRefreshOn": "Imewashwa. Skrini inaweza kubadili hadi 24, 50 au 60 Hz kulingana na mtiririko. OK kuzima. Picha inaweza kukatika kwa sekunde moja kwenye baadhi ya vifaa; ikitokea, zima.",
+  "tvScreenRefreshOff": "Imezimwa, hali ya asili. OK kulinganisha skrini na fremu 24 / 25 / 30 / 50 / 60 kwa sekunde. Haiwaki yenyewe.",
+  "tvContrast": "Utofautishaji wa picha",
+  "tvContrastUnavailable": "Haipatikani. Kichujio cha Android huondoka kwenye njia ya moja kwa moja ya picha na kimesababisha skrini nyeusi. Kinabaki kimezimwa.",
+  "tvUpdateAllowInstall": "Ruhusu Zuno kusakinisha programu: washa “Zuno” kwenye skrini iliyofunguliwa na Android. Kisha rudi na ubonyeze OK. Sasisho tayari limepakuliwa.",
+  "tvFfmpegKeepDecoder": "Video ya FFmpeg haipo katika toleo hili. Kisimbuzi cha sasa kinaendelea kutumika.",
+  "tvFfmpegBoxDecoder": "Video ya FFmpeg haipo katika toleo hili. Inarudi kwenye kisimbuzi cha kifaa.",
+  "tvFfmpegUnavailable": "Video ya FFmpeg haipo katika toleo hili.",
+  "tvEngineSelected": "Injini: {engine}",
+  "tvOnYourPhone": "Kwenye simu yako",
+  "tvGotIt": "Nimeelewa",
+  "tvClose": "Funga",
+  "tvPhone": "Simu",
+  "tvSoftware": "Programu",
+  "tvHardware": "Vifaa",
+  "tvProfilesSettingsHelp": "Hadi wasifu 4 wenye vipendwa, historia, nafasi za kutazama, vikumbusho na PIN tofauti.",
+  "tvAudioDiagnostic": "Uchunguzi wa sauti",
+  "tvAudioDiagnosticHelp": "Ripoti ya ndani kwa kila kituo. Hakuna kinachotumwa. Chaguo za majaribio zimezimwa kwa chaguomsingi.",
+  "tvPlayerDisclaimer": "Programu hii ni KICHEZAJI cha media. Haiuzi, haitoi wala kuhifadhi vituo, mitiririko au viungo vya M3U. Mtumiaji hutoa maudhui na anawajibika kwa uhalali wake.",
+  "tvActivationDisclaimer": "Kichezaji cha media — hakiuzi wala kutoa vituo au viungo vya M3U. Mtumiaji hutoa maudhui. Masharti: app.7themotion.com/terms",
+  "tvSourcePasteHelp": "Bandika kiungo au taarifa zako za kuingia. Mtoa huduma yeyote wa M3U au Xtream.",
+  "tvTrending": "🔥 Maarufu",
+  "tvRecent": "🕒 Karibuni",
+  "tvForYou": "✨ Kwa ajili yako",
+  "tvOther": "Nyingine",
+  "tvNetworkUnavailable": "Hakuna mtandao",
+  "tvNetworkUnavailableHelp": "TV haiwezi kufikia seva. Kagua muunganisho na ujaribu tena.",
+  "tvListRejected": "Orodha imekataliwa",
+  "tvListRejectedHelp": "Mtoa huduma amekataa orodha hii. Kagua taarifa za kuingia.",
+  "tvCodeInactive": "Msimbo haujawashwa",
+  "tvCodeInactiveHelp": "Msimbo wa TV hii haujawashwa. Uwashe kwenye paneli kisha usubiri sekunde chache.",
+  "tvSourcesEmpty": "Bado hakuna vyanzo.\nOngeza kiungo cha M3U, akaunti ya Xtream au kiungo cha kichezaji.",
+  "tvRecordingCloseFailed": "Rekodi haikuweza kufungwa. Faili huenda haijakamilika.",
+  "tvFromStart": "Tangu mwanzo",
+  "tvFollow": "Fuata",
+  "tvChooseTeamHelp": "Chagua timu hapa chini au andika jina…",
+  "tvTeamNotFound": "“{name}” haikupatikana — jaribu kutafuta.",
+  "tvCatchupHelp": "Tangu mwanzo wa kipindi. Kulia, kisha OK: rudi kwenye matangazo ya moja kwa moja.",
+  "tvMissedRewindHint": "Kulia, kisha OK: tangu mwanzo.",
+  "tvMissedNoReplayHint": "Mwongozo una maandishi, si video. Matangazo ya moja kwa moja hayabadiliki.",
+  "tvSourceNeedUrl": "Bandika anwani inayoanza na http:// au https://.",
+  "tvSourceNeedXtream": "Weka anwani ya seva, jina la mtumiaji na nenosiri.",
+  "tvSourceNeedCredentials": "Kiungo hiki cha kichezaji hakina jina la mtumiaji au nenosiri. Bandika kiungo kamili au jaza sehemu zote tatu za Xtream.",
+  "tvSourceBadScheme": "Anwani hii haiwezi kutumika. Kiungo cha http au https kinahitajika.",
+  "tvPlayerLink": "Kiungo cha kichezaji",
+  "tvAdvertisement": "Tangazo",
+  "tvSponsored": "Imedhaminiwa",
+  "tvInformation": "Taarifa",
+  "tvSportFootball": "Soka",
+  "tvSportBasketball": "Mpira wa kikapu (NBA)",
+  "tvSportRugby": "Raga",
+  "tvDataAttribution": "Data: {source}",
+  "tvLegalSection1Title": "1. Aina ya programu — KICHEZAJI pekee",
+  "tvLegalSection1Body": "Programu hii ni KICHEZAJI cha media kinachocheza mitiririko ya sauti na video inayotolewa na mtumiaji. HAITOI, HAIUZI, HAIHIFADHI, HAITANGAZI wala KUORODHESHA vituo vya televisheni, mitiririko, maudhui ya sauti na picha, orodha za kucheza (M3U) au taarifa za kuingia kwenye lango (Xtream). Hakuna maudhui yaliyomo, yaliyopakiwa awali au yanayouzwa pamoja na programu.",
+  "tvLegalSection2Title": "2. Maudhui yanayotolewa na mtumiaji",
+  "tvLegalSection2Body": "Mtumiaji hutoa vyanzo vyake mwenyewe (viungo vya M3U / taarifa za Xtream), alivyopata kutoka kwa mtoa huduma wake. Mtumiaji PEKEE anawajibika kwa maudhui anayoongeza, kucheza au kutangaza na kwa kuwa na haki, leseni na usajili unaohitajika.",
+  "tvLegalSection3Title": "3. Usajili ni wa PROGRAMU, si maudhui",
+  "tvLegalSection3Body": "Malipo au usajili hulipia TU matumizi ya programu: kichezaji na vipengele kama mwonekano, vipendwa, kurekodi ndani na EPG. KAMWE si ununuzi, uuzaji, ukodishaji au utoaji wa vituo, mitiririko au maudhui.",
+  "tvLegalSection4Title": "4. Matumizi halali",
+  "tvLegalSection4Body": "Mtumiaji anakubali kufuata sheria za nchi yake na kutotumia programu kufikia maudhui haramu au yanayokiuka hakimiliki. Matumizi yasiyo halali yamekatazwa kabisa na ni jukumu la mtumiaji pekee.",
+  "tvLegalSection5Title": "5. Maudhui ya wengine — hakuna uwajibikaji",
+  "tvLegalSection5Body": "Mchapishaji hana udhibiti wa maudhui ya wengine yanayofikiwa kupitia vyanzo vya mtumiaji na hawajibiki kwa hayo. Hatoi dhamana ya upatikanaji, uhalali au ubora wake.",
+  "tvLegalSection6Title": "6. Haki za uvumbuzi na malalamiko",
+  "tvLegalSection6Body": "Alama za biashara, nembo na maudhui yote ni mali ya wamiliki wake. Kwa kuwa programu haihifadhi maudhui, malalamiko ya hakimiliki yaelekezwe kwa mtoa huduma wa chanzo husika.",
+  "tvLegalSection7Title": "7. Hutolewa kama ilivyo",
+  "tvLegalSection7Body": "Programu hutolewa kama ilivyo, bila dhamana ya kupatikana muda wote au kutokuwa na hitilafu. Mchapishaji anaweza kubadili au kusimamisha baadhi au vipengele vyote.",
+  "tvLegalSection8Title": "8. Data binafsi",
+  "tvLegalSection8Body": "Kitambulisho cha kiufundi cha kifaa hutumiwa kusimamia leseni, majaribio na usaidizi. Maelezo: app.7themotion.com/privacy.",
+  "tvLegalSection9Title": "9. Kukubali",
+  "tvLegalSection9Body": "Kwa kusakinisha au kutumia programu hii, mtumiaji anakiri kuwa amesoma na kukubali masharti haya. Toleo kamili: app.7themotion.com/terms",
+  "tvLegalLead": "Programu hii ni kichezaji. Haiuzi wala kutoa vituo au viungo. Juu/chini kusogeza, Nyuma kutoka.",
+  "tvAudioSpectrumOn": "Wigo: kipimo kimewashwa",
+  "tvAudioSpectrumOff": "Wigo: umezimwa",
+  "tvAudioFfmpegRetry": "FFmpeg: jaribu tena",
+  "tvAudioFfmpegDefault": "FFmpeg: chaguomsingi",
+  "tvAudioAacTest": "AAC ya kifaa: jaribio",
+  "tvAudioAacOff": "AAC ya kifaa: imezimwa",
+  "tvAudioFallbackSession": "Mbadala: kipindi kizima cha matumizi",
+  "tvAudioFallbackChannel": "Mbadala: kwa kila kituo",
+  "tvAudioFocusAndroid": "Kipaumbele cha sauti: Android",
+  "tvAudioFocusZuno": "Kipaumbele cha sauti: Zuno",
+  "tvAudioBackgroundPause": "Nje ya programu: pumzisha",
+  "tvAudioBackgroundStop": "Nje ya programu: simamisha",
+  "tvAudioHomeLegacy": "Mwanzo: hali ya zamani",
+  "tvAudioHomeNative": "Mwanzo: simamisha moja kwa moja",
+  "tvAudioHandoffNow": "Kubadili: mara moja",
+  "tvAudioHandoffWait": "Kubadili: subiri",
+  "tvAudioOutput48k": "Matokeo ya sauti: 48 kHz",
+  "tvAudioOutputStream": "Matokeo ya sauti: kiwango cha mtiririko",
+  "tvAudioWitnessStop": "Sauti ya majaribio: simamisha",
+  "tvAudioWitnessPreparing": "Sauti ya majaribio: inaandaa",
+  "tvAudioWitnessPlay": "Cheza sauti ya majaribio",
+  "tvAudioScrollHelp": "JUU/CHINI: sogeza · CH+/CH−: ukurasa",
+  "tvAudioWitnessHelp": "Sauti ya majaribio kwa sekunde 10: sauti ya mtu, kisha kelele. Kichezaji kilekile cha vituo. Kelele nzito → kifaa. Kelele wazi → kituo.",
+  "tvAudioOptionsHelp": "Wigo: katika kituo kinachofuata hupima sehemu nne (kisimbuzi, sauti wazi, ukimya na AudioTrack) bila kubadili sauti. FFmpeg: hujaribu tena kisimbuzi cha programu; kisipoanza ndani ya sekunde 8, kifaa huchukua nafasi. AAC ya kifaa: kituo kinachofuata hutumia kisimbuzi cha AAC cha kifaa, kama ExoPlayer. Kikishindwa, FFmpeg hushughulikia ufunguzi huo. Mbadala: “kwa kila kituo” ndiyo hali ya kawaida na hutuma kwa kifaa kituo kilichoathiriwa na hitilafu ya FFmpeg pekee. “Kipindi kizima cha matumizi” ni hali ya zamani, vituo vyote huenda kwa kifaa baada ya hitilafu moja. Kipaumbele cha sauti: “Zuno” ndiyo hali ya kawaida na haipunguzi sauti programu nyingine au mlio unapoomba sauti. “Android” ni hali ya zamani, hupunguza hadi 20%. Nje ya programu: “simamisha” ndiyo hali ya kawaida, husimamisha na kuachia sauti unapoondoka, na kufungua kituo tena unaporudi. “Pumzisha” ni hali ya zamani. Mwanzo: “simamisha moja kwa moja” ndiyo hali ya kawaida, husimama wakati wa onPause na haifungui tena programu ikiwa nje. “Hali ya zamani” husubiri Flutter. Kubadili: “subiri” ndiyo hali ya kawaida, hufungua kituo kinachofuata baada ya AudioTrack ya awali kuachiwa ili sauti zisichanganyike baada ya kubadili mara nyingi. “Mara moja” ni hali ya zamani. Matokeo ya sauti: “kiwango cha mtiririko” ndiyo hali ya kawaida, hutumia kiwango cha sampuli cha mtiririko, mara nyingi 44.1 kHz, na kifaa hubadilisha. “48 kHz” hubadili sampuli ndani ya programu kabla ya kutoa sauti. Jaribu ikiwa sauti ni mbaya na ripoti ina 44.1 kHz. Sauti ya majaribio: sekunde 10 za sauti na kelele kwenye kichezaji kilekile. Huwasha kipimo bila kubadili sauti. Kelele nzito → kifaa. Kelele wazi → kituo.",
+  "tvAudioNoReports": "Hakuna ripoti. Fungua kituo: kichezaji hurekodi kodeki, kisimbuzi na matokeo ya sauti. Wigo hupimwa tu ikiwa umewashwa.",
+  "tvAudioTestSound": "Sauti ya majaribio",
+  "tvDiagCaptive": "1. Lango la kuingia mtandaoni (204)",
+  "tvDiagDns": "2. Kutafuta mwenyeji wa IPTV kupitia DNS",
+  "tvDiagStream": "3. Kufikika kwa mtiririko (HTTP / 456)",
+  "tvDiagSource": "4. Chanzo kilichopangiwa (device-source)",
+  "tvDiagPlayer": "5. Jaribio la ExoPlayer / Media3",
+  "tvDiagRequest": "Inaomba generate_204…",
+  "tvDiagInternetOk": "HTTP 204 (Intaneti inapatikana)",
+  "tvDiagTimeout": "Hakuna jibu ndani ya sekunde 8",
+  "tvDiagNoHost": "Hakuna kituo kilichopakiwa → mwenyeji HAJULIKANI",
+  "tvDiagNoUrl": "Hakuna kituo kilichopakiwa → URL HAIJULIKANI",
+  "tvDiagStreamHead": "Ombi la HEAD la mtiririko…",
+  "tvDiagIpBlocked": "HTTP 456 — mtoa huduma anazuia IP hii",
+  "tvDiagReadingMac": "Inasoma MAC…",
+  "tvDiagSourceAssigned": "HTTP 200 — chanzo kimepangiwa",
+  "tvDiagNoSource": "HTTP 200 — hakuna chanzo kilichopangiwa",
+  "tvDiagPlayerBusy": "Video inaendelea kwenye skrini nzima: jaribio limerukwa, kichezaji kimoja tu",
+  "tvDiagPlayerOpening": "Inafungua jaribio la ExoPlayer…",
+  "tvDiagFrameOk": "Fremu ya kwanza imesimbuliwa na kuonyeshwa",
+  "tvDiagPlayerError": "ExoPlayer imerudisha hitilafu",
+  "tvDiagFrameTimeout": "Hakuna picha ndani ya sekunde 8",
+  "tvDiagRunning": "UCHUNGUZI UNAENDELEA…",
+  "tvDiagPassed": "UCHEZAJI KWENYE KIFAA UMETHIBITISHWA",
+  "tvDiagNetworkBlocked": "KIZUIZI CHA MTANDAO",
+  "tvDiagPlayerFailed": "HITILAFU YA KICHEZAJI",
+  "tvDiagPartial": "UCHUNGUZI WA SEHEMU",
+  "tvDiagTitle": "UCHUNGUZI KWENYE KIFAA — Zuno",
+  "tvDiagHelp": "Hupima kama TV inaweza kucheza mtiririko kutoka anwani yake ya IP.",
+  "tvBackToExit": "NYUMA kutoka",
+  "tvDiagCaptiveLikely": "HTTP {status}, baiti {bytes} → huenda kuna lango la kuingia mtandaoni",
+  "tvDiagLookup": "Inatafuta {host}…",
+  "tvDiagNoIp": "{host} → hakuna anwani ya IP",
+  "tvDiagDnsTimeout": "{host}: hakuna jibu la DNS ndani ya sekunde 8",
+  "tvDiagStreamOk": "HTTP {status} (mtiririko unafikika)",
+  "tvDiagUnknownMac": "MAC HAIJULIKANI ({mac})",
+  "tvSizeBytes": "{size} B",
+  "tvSizeKb": "{size} KB",
+  "tvSizeMb": "{size} MB",
+  "tvSizeGb": "{size} GB",
+  "tvDurationHm": "saa {hours} na dakika {minutes}",
+  "tvWhatsAppActivationRequest": "Habari, ningependa kuwezesha Zuno."
+}

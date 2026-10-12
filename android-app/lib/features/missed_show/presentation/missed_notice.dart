@@ -48,8 +48,10 @@ class _MissedNoticeState extends State<MissedNotice> {
         if (!mounted) return;
         _elapsed.stop();
         setState(() => _expired = true);
-        BlackBox.instance.info('GUIDE',
-            'notification masquée après ${_elapsed.elapsedMilliseconds} ms');
+        BlackBox.instance.info(
+          'GUIDE',
+          'notification masquée après ${_elapsed.elapsedMilliseconds} ms',
+        );
       });
     }
   }
@@ -70,42 +72,37 @@ class _MissedNoticeState extends State<MissedNotice> {
   }
 
   Widget _briefCard(BuildContext context) => IgnorePointer(
+    child: Padding(
+      padding: EdgeInsets.only(top: TvDimens.safeV + 8, left: 48, right: 48),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: AppColors.surface.withValues(alpha: 0.9),
+          borderRadius: BorderRadius.circular(12),
+        ),
         child: Padding(
-          padding: EdgeInsets.only(
-              top: TvDimens.safeV + 8, left: 48, right: 48),
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: AppColors.surface.withValues(alpha: 0.9),
-              borderRadius: BorderRadius.circular(12),
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+          child: Text(
+            context.l10n.tvProgramStartedMinutesAgo(
+              widget.summary.missedMinutes,
             ),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-              child: Text(
-                context.l10n.tvProgramStartedMinutesAgo(
-                    widget.summary.missedMinutes),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: AppTextStyles.tvNotice,
-              ),
-            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: AppTextStyles.tvNotice,
           ),
         ),
-      );
+      ),
+    ),
+  );
 
   // Carte historique conservée à l'identique pour le repli de diagnostic.
   Widget _legacyCard(BuildContext context) {
     final MissedSummary missed = widget.summary;
-    final bool en = Localizations.localeOf(context).languageCode == 'en';
-    final String lateLine = en
-        ? 'You missed ${missed.missedMinutes} min'
-        : 'Tu as raté ${missed.missedMinutes} min';
+    final String lateLine = context.l10n.tvProgramStartedMinutesAgo(
+      missed.missedMinutes,
+    );
     final String hint = missed.canRewind
-        ? (en
-            ? 'Right, then OK: from the start.'
-            : 'Droite, puis OK : depuis le début.')
-        : (en
-            ? 'The guide has the text, not the video. Live stays as it is.'
-            : 'Le guide a le texte, pas la vidéo. Le direct ne bouge pas.');
+        ? context.l10n.tvMissedRewindHint
+        : context.l10n.tvMissedNoReplayHint;
     return Padding(
       padding: EdgeInsets.only(top: TvDimens.safeV + 8, left: 48, right: 48),
       child: ConstrainedBox(
@@ -148,14 +145,18 @@ class _MissedNoticeState extends State<MissedNotice> {
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                        fontSize: TvDimens.label, color: TvTokens.muted),
+                      fontSize: TvDimens.label,
+                      color: TvTokens.muted,
+                    ),
                   ),
                 ],
                 const SizedBox(height: 4),
                 Text(
                   hint,
                   style: TextStyle(
-                      fontSize: TvDimens.label, color: TvTokens.muted),
+                    fontSize: TvDimens.label,
+                    color: TvTokens.muted,
+                  ),
                 ),
               ],
             ),
@@ -164,5 +165,4 @@ class _MissedNoticeState extends State<MissedNotice> {
       ),
     );
   }
-
 }

@@ -14,6 +14,7 @@ import '../../playlists/data/playlist_repository.dart';
 import '../../playlists/data/import_progress.dart';
 import '../../playlists/domain/open_source_input.dart';
 import 'tv_import_progress_label.dart';
+import 'tv_source_error_text.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_tokens.dart';
 import 'tv_components.dart';
@@ -44,7 +45,7 @@ class _TvAddM3uScreenState extends State<TvAddM3uScreen> {
     // M3U, M3U8, ou get.php : la même vérification, sans domaine imposé.
     final OpenSourceParse parsed = OpenSourceInput.playlistLink(_urlC.text);
     if (!parsed.isValid || parsed.draft == null) {
-      setState(() => _error = parsed.error ?? context.l10n.tvAddM3uInvalidUrl);
+      setState(() => _error = parsed.error ?? OpenSourceInput.errNeedUrl);
       return;
     }
     final OpenSourceDraft draft = parsed.draft!;
@@ -74,7 +75,7 @@ class _TvAddM3uScreenState extends State<TvAddM3uScreen> {
       if (mounted) Navigator.of(context).maybePop();
     } catch (e) {
       if (mounted) {
-        setState(() => _error = context.l10n.tvAddM3uFailed);
+        setState(() => _error = 'm3u_failed');
       }
     } finally {
       ImportProgressBus.clear();
@@ -90,42 +91,59 @@ class _TvAddM3uScreenState extends State<TvAddM3uScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            Text(context.l10n.tvAddM3uTitle,
-                style: TextStyle(
-                    fontSize: TvDimens.displayS,
-                    fontWeight: FontWeight.w800,
-                    color: TvTokens.text)),
+            Text(
+              context.l10n.tvAddM3uTitle,
+              style: TextStyle(
+                fontSize: TvDimens.displayS,
+                fontWeight: FontWeight.w800,
+                color: TvTokens.text,
+              ),
+            ),
             const SizedBox(height: 6),
             Text(
-                'Adresse .m3u, .m3u8, ou lien de lecteur get.php. '
-                'Avec ou sans identifiants.',
-                style: TextStyle(fontSize: TvDimens.body, color: TvTokens.muted)),
+              'Adresse .m3u, .m3u8, ou lien de lecteur get.php. '
+              'Avec ou sans identifiants.',
+              style: TextStyle(fontSize: TvDimens.body, color: TvTokens.muted),
+            ),
             const SizedBox(height: 22),
-            _Field(controller: _nameC, label: context.l10n.tvFieldNameOptional, hint: context.l10n.tvMyListHint),
+            _Field(
+              controller: _nameC,
+              label: context.l10n.tvFieldNameOptional,
+              hint: context.l10n.tvMyListHint,
+            ),
             const SizedBox(height: 14),
             _Field(
-                controller: _urlC,
-                label: context.l10n.tvFieldM3uUrl,
-                hint: 'http://exemple.test/liste.m3u'),
+              controller: _urlC,
+              label: context.l10n.tvFieldM3uUrl,
+              hint: 'http://exemple.test/liste.m3u',
+            ),
             const SizedBox(height: 14),
             _Field(
-                controller: _epgC,
-                label: context.l10n.tvFieldEpgUrlOptional,
-                hint: 'http://exemple.test/xmltv.php'),
+              controller: _epgC,
+              label: context.l10n.tvFieldEpgUrlOptional,
+              hint: 'http://exemple.test/xmltv.php',
+            ),
             if (_error != null) ...<Widget>[
               const SizedBox(height: 14),
-              Text(_error!,
-                  style: TextStyle(
-                      fontSize: TvDimens.label,
-                      fontWeight: FontWeight.w600,
-                      color: TvTokens.live)),
+              Text(
+                sourceErrorText(context, _error!),
+                style: TextStyle(
+                  fontSize: TvDimens.label,
+                  fontWeight: FontWeight.w600,
+                  color: TvTokens.live,
+                ),
+              ),
             ],
             const SizedBox(height: 22),
             ValueListenableBuilder<ImportProgress?>(
               valueListenable: ImportProgressBus.current,
               builder: (BuildContext context, ImportProgress? p, Widget? _) {
                 return TvCtaButton(
-                  label: !_busy ? context.l10n.tvAddM3uValidate : (p == null ? context.l10n.tvAddM3uBusy : importProgressLabel(context, p)),
+                  label: !_busy
+                      ? context.l10n.tvAddM3uValidate
+                      : (p == null
+                            ? context.l10n.tvAddM3uBusy
+                            : importProgressLabel(context, p)),
                   autofocus: true,
                   expand: false,
                   onSelect: _busy ? null : _submit,
@@ -150,11 +168,14 @@ class _Field extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        Text(label,
-            style: TextStyle(
-                fontSize: TvDimens.label,
-                fontWeight: FontWeight.w600,
-                color: TvTokens.mutedDim)),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: TvDimens.label,
+            fontWeight: FontWeight.w600,
+            color: TvTokens.mutedDim,
+          ),
+        ),
         const SizedBox(height: 6),
         TextField(
           controller: controller,
@@ -168,8 +189,10 @@ class _Field extends StatelessWidget {
             hintStyle: TextStyle(color: TvTokens.mutedDim),
             filled: true,
             fillColor: TvTokens.card,
-            contentPadding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 14,
+            ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(TvDimens.cardRadius),
               borderSide: BorderSide(color: TvTokens.lineSoft),

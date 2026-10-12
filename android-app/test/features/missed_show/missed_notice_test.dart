@@ -128,16 +128,16 @@ void main() {
     });
     await RepairFlags.load();
     await tester.pumpWidget(_app());
-    expect(find.text('You missed 19 min'), findsOneWidget);
+    expect(find.text('Program started 19 min ago'), findsOneWidget);
     expect(find.text(_summary.title), findsOneWidget);
     expect(find.text(_summary.description!), findsOneWidget);
     expect(find.text('Right, then OK: from the start.'), findsOneWidget);
     await tester.pump(const Duration(minutes: 1));
-    expect(find.text('You missed 19 min'), findsOneWidget);
+    expect(find.text('Program started 19 min ago'), findsOneWidget);
     await tester.pumpWidget(_app(suppressed: true));
-    expect(find.text('You missed 19 min'), findsNothing);
+    expect(find.text('Program started 19 min ago'), findsNothing);
     await tester.pumpWidget(_app());
-    expect(find.text('You missed 19 min'), findsOneWidget);
+    expect(find.text('Program started 19 min ago'), findsOneWidget);
   });
 
   testWidgets('le résumé reste consultable dans le Guide après le délai',
