@@ -22,9 +22,10 @@ function setup(t) {
     const p = Buffer.from(JSON.stringify({ sub: id, role: id === 'owner' ? 'super_admin' : 'admin', iat: NOW / 1000, exp: NOW / 1000 + 86400 })).toString('base64url');
     return `${h}.${p}.${createHmac('sha256', env.ADMIN_SECRET).update(`${h}.${p}`).digest('base64url')}`;
   }
-  async function call(path, { method = 'GET', body, user = 'owner', country = '' } = {}) {
+  async function call(path, { method = 'GET', body, user = 'owner', country = '', legacyAdmin = false } = {}) {
     const headers = { 'Content-Type': 'application/json', 'CF-IPCountry': country };
     if (user) headers.Authorization = `Bearer ${auth(user)}`;
+    if (legacyAdmin) headers['X-Admin-Secret'] = env.ADMIN_SECRET;
     const res = await worker.fetch(new Request(`https://panel.invalid${path}`, {
       method, headers, body: body === undefined ? undefined : JSON.stringify(body),
     }), env, ctx);
@@ -197,4 +198,56 @@ test('reprendre une annonce effacée renvoie 409 avec une explication, jamais un
   assert.equal(result.status, 409);
   assert.match(result.data.message, /retirée.*dupliquer/i);
   assert.deepEqual((await s.publicRead()).data, {});
+});
+
+test('le retrait historique coupe aussi les campagnes futures et conserve son authentification', async (t) => {
+  const s = setup(t);
+  const current = await s.create({ starts_at: NOW });
+  const future = await s.create();
+  await s.change(current, 'schedule');
+  await s.change(future, 'schedule');
+  assert.equal((await s.publicRead()).data.pending.length, 1);
+  assert.equal((await s.call('/api/announcement', { method: 'DELETE', user: null })).status, 401);
+  const cleared = await s.call('/api/announcement', { method: 'DELETE', user: null, legacyAdmin: true });
+  assert.equal(cleared.status, 200);
+  t.mock.timers.tick(60000);
+  assert.deepEqual((await s.publicRead()).data, {});
+  const items = (await s.call('/api/v1/campaigns')).data.items;
+  assert.ok(items.every(item => item.status === 'paused'));
+});
+
+test('panne de retrait historique : annonces et programmation restent ensemble', async (t) => {
+  const s = setup(t);
+  const item = await s.create({ starts_at: NOW });
+  await s.change(item, 'schedule');
+  const id = (await s.publicRead()).data.id;
+  s.faults.add({ match: /DELETE FROM app_broadcasts/, error: new Error('panne de retrait simulée') });
+  const rejected = await s.call('/api/announcement', { method: 'DELETE', user: null, legacyAdmin: true });
+  assert.equal(rejected.status, 500);
+  assert.equal((await s.call('/api/v1/campaigns')).data.items[0].status, 'scheduled');
+  assert.equal((await s.publicRead()).data.id, id);
+});
+
+test('les boutons des annonces immédiates ne contournent ni pause ni archivage de campagne', async (t) => {
+  const s = setup(t);
+  for (const action of ['pause', 'archive']) {
+    let item = await s.create({ starts_at: NOW });
+    item = (await s.change(item, 'schedule')).data.item;
+    const id = (await s.publicRead()).data.id;
+    item = (await s.change(item, action)).data.item;
+    const rejected = await s.call(`/api/v1/announcements/${id}`, { method: 'PATCH', body: { active: true } });
+    assert.equal(rejected.status, 409);
+    assert.match(rejected.data.message, /Publicités et événements/);
+    assert.deepEqual((await s.publicRead()).data, {});
+    const stored = (await s.call('/api/v1/campaigns')).data.items.find(c => c.id === item.id);
+    assert.equal(stored.status, item.status);
+    assert.equal(stored.version, item.version);
+  }
+  // Les annonces immédiates gardent leur interrupteur historique.
+  const created = await s.call('/api/v1/announcements', { method: 'POST', body: { title: 'Annonce classique', body: 'Information' } });
+  for (const active of [false, true]) {
+    const toggled = await s.call(`/api/v1/announcements/${created.data.id}`, { method: 'PATCH', body: { active } });
+    assert.equal(toggled.status, 200);
+    assert.equal(toggled.data.active, active);
+  }
 });

@@ -136,3 +136,34 @@ Limite du banc CI : sa dépendance existante Wrangler 3.90.0 utilise workerd
 2024-11-06 et affiche un avertissement de compatibilité. Le déploiement reste
 configuré séparément avec Wrangler 4.149.0. Le parcours prouve le protocole
 et le stockage local, pas un déploiement dans le runtime de production.
+
+## Reprise et corrections — 12 octobre 2026
+
+La reprise a vérifié la tête `c3e70fa64adf11ade2dbcff14f15f3a302617b2c` :
+ses contrôles CI étaient verts et les jobs de déploiement étaient ignorés.
+La branche de production était toujours sur `d81da1a8e3231e951d4a836f9b05e0d4806a9cdf`.
+
+Deux défauts ont ensuite été reproduits par les routes HTTP et SQLite avant
+correction, sans appel à la production :
+
+- `DELETE /api/announcement`, l'ancien retrait global, effaçait les messages
+  sans interrompre les campagnes futures. À leur échéance, elles étaient
+  encore publiées. Cette route utilise maintenant le même retrait atomique
+  que le panel : mise en pause des campagnes et suppression des annonces.
+- `PATCH /api/v1/announcements/:id` pouvait réactiver l'annonce d'une campagne
+  en pause ou archivée sans modifier son statut. Cette opération reçoit
+  maintenant HTTP 409 et renvoie vers **Publicités et événements**. Le bouton
+  reste utilisable pour les annonces immédiates.
+
+PROUVÉ localement sur cette correction : 16/16 tests campagnes, 45/45 entrées
+du lanceur de la suite Worker, 72/72 tests panel, 47/47 contrôles de sécurité,
+30/30 protections de déploiement, compilation TypeScript/Vite réussie. Aucun
+test ignoré. Les deux contre-preuves échouaient avant le correctif ; le troisième
+nouveau scénario vérifie l'annulation de toute la transaction si le retrait
+échoue. Le secret du banc est généré localement, jamais affiché ni enregistré.
+
+Les nouvelles vérifications ne remplacent pas le parcours workerd/Chromium en
+CI. Son résultat pour la nouvelle tête est à lire dans la PR 110. Aucun code
+Flutter ni configuration de déploiement ou de protection n'a été modifié.
+Le gel de production reste actif ; affichage physique et déploiement restent
+non prouvés.

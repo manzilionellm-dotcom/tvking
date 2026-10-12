@@ -24,3 +24,15 @@ gelées. Aucun fichier Flutter, APK, AAB ou catalogue client n'est modifié.
 
 Les preuves, limites, sources documentaires, procédure de mise en ligne et
 retour arrière sont dans [PUBLICITES-EVENEMENTS-20261011.md](PUBLICITES-EVENEMENTS-20261011.md).
+
+## Reprise du 12 octobre 2026
+
+Deux chemins historiques pouvaient contourner l'arrêt des campagnes : retrait
+global laissant les campagnes futures programmées, et bouton d'annonce
+réactivant une campagne en pause/archivée. Défauts reproduits puis corrigés
+sur la branche de la PR 110, avec trois scénarios de régression.
+
+PROUVÉ localement : campagnes 16/16, suite Worker 45/45 entrées, panel 72/72,
+sécurité 47/47, protections 30/30 et build panel réussi. Résultat CI de la
+nouvelle tête à vérifier sur la PR avant intégration. Production toujours
+gelée, aucun déploiement lancé. La preuve physique sur TV reste à recevoir.

@@ -20,7 +20,7 @@ import {
   clearSourceTombstone,
 } from './linkage.js';
 import { notifyBox } from './box_channel.js';
-import { handleCampaigns, clearCampaignAnnouncements } from './campaigns.js';
+import { handleCampaigns, clearCampaignAnnouncements, ensureCampaigns } from './campaigns.js';
 import { isBlackboxMac, markBlackBoxAsked, readBlackBox } from './blackbox_journal.js';
 //  Importe depuis worker.js pour servir le namespace /api/v1/*.
 //  Coexiste avec les anciens endpoints /admin/* et /api/* qui
@@ -1860,10 +1860,18 @@ async function handleAnnouncementsList(env) {
 // PATCH /api/v1/announcements/:id — active/désactive une annonce SANS la
 // supprimer. Body {active: bool}.
 async function handleAnnouncementsUpdate(request, env, id, actor) {
-  await ensureAnnouncementsTable(env);
+  await ensureCampaigns(env);
   let body;
   try { body = await request.json(); } catch (_) {
     return errResp('bad_json', 'Invalid JSON body', 400);
+  }
+  // Une campagne est pilotée avec son statut et sa version. Le bouton
+  // historique ne doit pas réactiver sa seule annonce en contournant une
+  // pause ou un archivage. Les annonces immédiates gardent ce bouton.
+  const announcement = await env.DB.prepare('SELECT campaign_id FROM app_broadcasts WHERE id = ?')
+    .bind(id).first();
+  if (announcement?.campaign_id) {
+    return errResp('managed_campaign', 'Gère cette campagne depuis Publicités et événements.', 409);
   }
   const active = body.active ? 1 : 0;
   const r = await env.DB

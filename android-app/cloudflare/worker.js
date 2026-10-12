@@ -55,7 +55,7 @@
 // API v1 — App Licensing Platform (cf. cloudflare/api_v1.js)
 // Routee depuis le bas du fetch() en haut de la chaine de match.
 import { apiV1, logAudit, panelActorFromToken } from './api_v1.js';
-import { dispatchDueCampaigns } from './campaigns.js';
+import { clearCampaignAnnouncements, dispatchDueCampaigns } from './campaigns.js';
 import { blackboxRequestedAt, saveBlackBox } from './blackbox_journal.js';
 import {
   RealtimeHub,
@@ -2227,7 +2227,10 @@ async function handleClearAnnouncements(env) {
   if (!env.DB) return json({ error: 'db_unbound' }, 500);
   try {
     await ensureAnnouncementsTable(env);
-    await env.DB.prepare('DELETE FROM app_broadcasts').run();
+    // Le vieux point d'entrée doit couper les campagnes futures aussi :
+    // sinon une annonce programmée réapparaîtrait après « tout retirer ».
+    // Le même lot atomique protège les deux interfaces d'administration.
+    await clearCampaignAnnouncements(env);
     return json({ ok: true });
   } catch (e) {
     return json({ error: String(e) }, 500);
