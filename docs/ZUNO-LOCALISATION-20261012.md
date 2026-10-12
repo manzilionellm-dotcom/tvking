@@ -28,6 +28,9 @@ diagnostics, les enregistrements, les commandes du lecteur et les conditions
 d'utilisation. Les catalogues incomplets ont également été complétés.
 Le nom du profil automatique est traduit à l'affichage ; les noms personnalisés
 restent ceux du client. Les dates, durées et unités utilisent la langue active.
+Les boutons du diagnostic audio peuvent revenir à la ligne. Son aide longue
+défile avec les rapports à la télécommande, pour rester lisible dans chaque
+langue sans réduire la taille du texte.
 
 Le mode **Automatique / Système**, utilisé sans choix manuel enregistré, suit
 la langue de la TV au démarrage et après un changement système. Un choix manuel

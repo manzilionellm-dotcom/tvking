@@ -1,6 +1,7 @@
 // Régressions observées : repli français, ancien réglage régional et erreur
 // figée dans l'ancienne langue. Aucun serveur ni lecteur natif n'est appelé.
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -175,6 +176,20 @@ void main() {
         await tester.pumpAndSettle();
         expect(find.text(words.tvAudioDiagnostic), findsOneWidget);
         expect(tester.takeException(), isNull);
+        final list = find.descendant(
+          of: find.byType(TvAudioDiagnosticScreen),
+          matching: find.byType(ListView),
+        );
+        final scroll = tester.widget<ListView>(list).controller!;
+        if (scroll.position.maxScrollExtent > 0) {
+          Focus.of(tester.element(find.text(words.tvAudioOptionsHelp)))
+              .requestFocus();
+          await tester.pump();
+          await tester.sendKeyEvent(LogicalKeyboardKey.pageDown);
+          await tester.pumpAndSettle();
+          expect(scroll.offset, greaterThan(0));
+          expect(tester.takeException(), isNull);
+        }
       },
     );
   }

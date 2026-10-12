@@ -258,7 +258,9 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
           style: TextStyle(fontSize: TvDimens.body, color: TvTokens.muted),
         ),
         const SizedBox(height: 16),
-        Row(
+        Wrap(
+          spacing: 12,
+          runSpacing: 8,
           children: <Widget>[
             _Toggle(
               label: _probe
@@ -268,7 +270,6 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
               autofocus: true,
               onSelect: _toggleProbe,
             ),
-            const SizedBox(width: 12),
             _Toggle(
               label: _ffmpeg
                   ? context.l10n.tvAudioFfmpegRetry
@@ -276,7 +277,6 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
               on: _ffmpeg,
               onSelect: _toggleFfmpeg,
             ),
-            const SizedBox(width: 12),
             _Toggle(
               label: context.l10n.buttonClear,
               on: false,
@@ -285,7 +285,9 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
           ],
         ),
         const SizedBox(height: 8),
-        Row(
+        Wrap(
+          spacing: 12,
+          runSpacing: 8,
           children: <Widget>[
             _Toggle(
               label: _platform
@@ -294,7 +296,6 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
               on: _platform,
               onSelect: _togglePlatform,
             ),
-            const SizedBox(width: 12),
             _Toggle(
               label: _sessionWide
                   ? context.l10n.tvAudioFallbackSession
@@ -302,7 +303,6 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
               on: _sessionWide,
               onSelect: _toggleSessionWide,
             ),
-            const SizedBox(width: 12),
             _Toggle(
               label: _androidFocus
                   ? context.l10n.tvAudioFocusAndroid
@@ -310,7 +310,6 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
               on: _androidFocus,
               onSelect: _toggleAndroidFocus,
             ),
-            const SizedBox(width: 12),
             _Toggle(
               label: _bgPause
                   ? context.l10n.tvAudioBackgroundPause
@@ -321,7 +320,9 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
           ],
         ),
         const SizedBox(height: 8),
-        Row(
+        Wrap(
+          spacing: 12,
+          runSpacing: 8,
           children: <Widget>[
             _Toggle(
               label: _flutterOnly
@@ -330,7 +331,6 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
               on: _flutterOnly,
               onSelect: _toggleFlutterOnly,
             ),
-            const SizedBox(width: 12),
             _Toggle(
               label: _immediate
                   ? context.l10n.tvAudioHandoffNow
@@ -338,7 +338,6 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
               on: _immediate,
               onSelect: _toggleImmediate,
             ),
-            const SizedBox(width: 12),
             _Toggle(
               label: _out48k
                   ? context.l10n.tvAudioOutput48k
@@ -346,7 +345,6 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
               on: _out48k,
               onSelect: _toggleOutput48k,
             ),
-            const SizedBox(width: 12),
             _Toggle(
               label: _witness != null
                   ? context.l10n.tvAudioWitnessStop
@@ -377,88 +375,97 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
           ),
         ],
         const SizedBox(height: 8),
-        Text(
-          context.l10n.tvAudioOptionsHelp,
-          style: TextStyle(fontSize: TvDimens.label, color: TvTokens.mutedDim),
-        ),
-        const SizedBox(height: 14),
+        // Les aides traduites peuvent être longues : elles partagent le
+        // défilement des rapports, sans réduire la taille des caractères.
         Expanded(
-          child: _loading
-              ? Center(
-                  child: Text(
-                    context.l10n.tvReading,
-                    style: TextStyle(
-                      fontSize: TvDimens.body,
-                      color: TvTokens.mutedDim,
+          child: Focus(
+            onKeyEvent: _onKey,
+            child: Builder(
+              builder: (BuildContext context) {
+                final bool focused = Focus.of(context).hasFocus;
+                return DecoratedBox(
+                  decoration: BoxDecoration(
+                    border: Border.all(
+                      color: focused ? TvTokens.accent : Colors.transparent,
                     ),
+                    borderRadius: BorderRadius.circular(TvDimens.cardRadius),
                   ),
-                )
-              : _book.entries.isEmpty
-              ? Text(
-                  context.l10n.tvAudioNoReports,
-                  style: TextStyle(
-                    fontSize: TvDimens.body,
-                    color: TvTokens.muted,
-                  ),
-                )
-              : Focus(
-                  onKeyEvent: _onKey,
-                  child: Builder(
-                    builder: (BuildContext context) {
-                      final bool focused = Focus.of(context).hasFocus;
-                      return ListView.separated(
-                        controller: _scroll,
-                        itemCount: _book.entries.length,
-                        separatorBuilder: (BuildContext context, int index) =>
-                            const SizedBox(height: 10),
-                        itemBuilder: (BuildContext context, int i) {
-                          final AudioReportEntry e = _book.entries[i];
-                          return Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.all(14),
-                            decoration: BoxDecoration(
-                              color: TvTokens.card,
-                              borderRadius: BorderRadius.circular(
-                                TvDimens.cardRadius,
-                              ),
-                              // Cadre doré quand la liste a le focus : Haut/Bas
-                              // défilent, CH+/CH− changent de page.
-                              border: Border.all(
-                                color: focused
-                                    ? TvTokens.accent
-                                    : TvTokens.lineSoft,
+                  child: ListView.separated(
+                    controller: _scroll,
+                    itemCount: _book.entries.length + 2,
+                    separatorBuilder: (BuildContext context, int index) =>
+                        const SizedBox(height: 10),
+                    itemBuilder: (BuildContext context, int i) {
+                      if (i == 0) {
+                        return Text(
+                          context.l10n.tvAudioOptionsHelp,
+                          style: TextStyle(
+                            fontSize: TvDimens.label,
+                            color: TvTokens.mutedDim,
+                          ),
+                        );
+                      }
+                      if (i == 1) {
+                        return Text(
+                          _loading
+                              ? context.l10n.tvReading
+                              : (_book.entries.isEmpty
+                                    ? context.l10n.tvAudioNoReports
+                                    : ''),
+                          style: TextStyle(
+                            fontSize: TvDimens.body,
+                            color: TvTokens.muted,
+                          ),
+                        );
+                      }
+                      final AudioReportEntry e = _book.entries[i - 2];
+                      return Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: TvTokens.card,
+                          borderRadius: BorderRadius.circular(
+                            TvDimens.cardRadius,
+                          ),
+                          // Cadre doré quand la liste a le focus : Haut/Bas
+                          // défilent, CH+/CH− changent de page.
+                          border: Border.all(
+                            color: focused
+                                ? TvTokens.accent
+                                : TvTokens.lineSoft,
+                          ),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: <Widget>[
+                            Text(
+                              e.channel == 'Son témoin'
+                                  ? context.l10n.tvAudioTestSound
+                                  : e.channel,
+                              style: TextStyle(
+                                fontSize: TvDimens.title,
+                                fontWeight: FontWeight.w700,
+                                color: TvTokens.text,
                               ),
                             ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: <Widget>[
-                                Text(
-                                  e.channel == 'Son témoin'
-                                      ? context.l10n.tvAudioTestSound
-                                      : e.channel,
-                                  style: TextStyle(
-                                    fontSize: TvDimens.title,
-                                    fontWeight: FontWeight.w700,
-                                    color: TvTokens.text,
-                                  ),
-                                ),
-                                const SizedBox(height: 6),
-                                Text(
-                                  e.body,
-                                  style: TvTokens.mono(
-                                    TvDimens.caption,
-                                    weight: FontWeight.w400,
-                                    color: TvTokens.muted,
-                                  ),
-                                ),
-                              ],
+                            const SizedBox(height: 6),
+                            Text(
+                              e.body,
+                              style: TvTokens.mono(
+                                TvDimens.caption,
+                                weight: FontWeight.w400,
+                                color: TvTokens.muted,
+                              ),
                             ),
-                          );
-                        },
+                          ],
+                        ),
                       );
                     },
                   ),
-                ),
+                );
+              },
+            ),
+          ),
         ),
         const SizedBox(height: 6),
         Text(
