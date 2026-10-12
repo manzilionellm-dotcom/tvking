@@ -36,6 +36,7 @@ import '../../../core/app/repair_flags.dart';
 import '../../../core/app/boot_guard.dart';
 import '../../../core/blackbox/black_box.dart';
 import '../../../core/i18n/l10n_extension.dart';
+import 'tv_profile_label.dart';
 import '../../channels/data/recently_watched_repository.dart';
 import '../../channels/data/trending_repository.dart';
 import '../../channels/domain/channel.dart';
@@ -1563,7 +1564,7 @@ class _ProfileChip extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               Text(
-                profile.name,
+                tvProfileLabel(context, profile),
                 style: TvTokens.ui(
                   TvDimens.label,
                   weight: FontWeight.w700,

@@ -12,6 +12,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
+import 'tv_profile_label.dart';
 
 import '../../profiles/data/profile_repository.dart';
 import '../../profiles/domain/family_profile.dart';
@@ -114,12 +115,13 @@ class _TvProfilesScreenState extends State<TvProfilesScreen> {
   }
 
   Future<void> _rename(FamilyProfile p) async {
+    final String initial = tvProfileLabel(context, p);
     final String? name = await askProfileName(
       context,
       title: context.l10n.tvRename,
-      initial: p.name,
+      initial: initial,
     );
-    if (name == null) return;
+    if (name == null || name == initial) return;
     final bool ok = await ProfileRepository.instance.rename(p.id, name);
     if (!ok && mounted) _toast(context.l10n.tvNameInvalid);
   }
@@ -132,7 +134,7 @@ class _TvProfilesScreenState extends State<TvProfilesScreen> {
       if (!allowed || !mounted) return;
     }
     final bool sure = await _confirm(
-      context.l10n.tvProfileDeleteTitle(p.name),
+      context.l10n.tvProfileDeleteTitle(tvProfileLabel(context, p)),
       context.l10n.tvProfileDeleteBody,
     );
     if (!sure || !mounted) return;
@@ -246,7 +248,7 @@ class _TvProfilesScreenState extends State<TvProfilesScreen> {
         ],
         const SizedBox(height: 8),
         Text(
-          focused.name,
+          tvProfileLabel(context, focused),
           style: TvTokens.ui(
             TvDimens.title,
             weight: FontWeight.w700,
@@ -377,7 +379,7 @@ class _Row extends StatelessWidget {
               const SizedBox(width: 14),
               Expanded(
                 child: Text(
-                  profile.name,
+                  tvProfileLabel(context, profile),
                   style: TvTokens.ui(
                     TvDimens.title,
                     weight: FontWeight.w700,

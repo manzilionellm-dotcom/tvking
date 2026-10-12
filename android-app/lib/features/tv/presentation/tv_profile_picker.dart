@@ -11,6 +11,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
+import 'tv_profile_label.dart';
 
 import '../../profiles/data/profile_repository.dart';
 import '../../profiles/domain/family_profile.dart';
@@ -212,7 +213,7 @@ class _ProfileCard extends StatelessWidget {
               ),
               const SizedBox(height: 16),
               Text(
-                profile.name,
+                tvProfileLabel(context, profile),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TvTokens.ui(

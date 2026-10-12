@@ -12,6 +12,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
+import 'tv_profile_label.dart';
 
 import '../../profiles/data/profile_repository.dart';
 import '../../profiles/domain/profile_policies.dart';
@@ -114,7 +115,10 @@ class _TvParentalScreenState extends State<TvParentalScreen> {
   Widget build(BuildContext context) {
     final bool kids = ParentalControls.instance.kidsMode.value;
     final bool kidsProfile = ProfileRepository.instance.activeIsKids;
-    final String who = ProfileRepository.instance.active.name;
+    final String who = tvProfileLabel(
+      context,
+      ProfileRepository.instance.active,
+    );
     return SingleChildScrollView(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

@@ -5,7 +5,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:tv_king/core/i18n/locale_repository.dart';
+import 'package:tv_king/features/profiles/domain/family_profile.dart';
 import 'package:tv_king/features/tv/presentation/tv_add_source_screen.dart';
+import 'package:tv_king/features/tv/presentation/tv_audio_diagnostic_screen.dart';
+import 'package:tv_king/features/tv/presentation/tv_profile_label.dart';
+import 'package:tv_king/features/tv/presentation/tv_shell.dart';
 import 'package:tv_king/features/tv/presentation/tv_components.dart';
 import 'package:tv_king/features/tv/presentation/tv_legal_screen.dart';
 import 'package:tv_king/features/tv/presentation/tv_localized_format.dart';
@@ -150,7 +154,7 @@ void main() {
 
   for (final locale in LocaleRepository.supportedLocales) {
     testWidgets(
-      'formulaire et conditions rendus en ${locale.languageCode} sans débordement',
+      'formulaire, conditions et diagnostic rendus en ${locale.languageCode} sans débordement',
       (tester) async {
         tester.view.physicalSize = const Size(1280, 720);
         tester.view.devicePixelRatio = 1;
@@ -165,9 +169,39 @@ void main() {
         await tester.pumpAndSettle();
         expect(find.text(words.tvLegalSection1Title), findsOneWidget);
         expect(tester.takeException(), isNull);
+        await tester.pumpWidget(
+          app(const TvShell(child: TvAudioDiagnosticScreen()), locale: locale),
+        );
+        await tester.pumpAndSettle();
+        expect(find.text(words.tvAudioDiagnostic), findsOneWidget);
+        expect(tester.takeException(), isNull);
       },
     );
   }
+
+  testWidgets('seul le nom de profil automatique suit la langue TV', (
+    tester,
+  ) async {
+    final origin = FamilyProfile.origin();
+    await tester.pumpWidget(
+      app(
+        Builder(
+          builder: (context) => Column(
+            children: [
+              Text(tvProfileLabel(context, origin)),
+              Text(tvProfileLabel(context, origin.copyWith(name: 'Élodie'))),
+            ],
+          ),
+        ),
+        locale: const Locale('en'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Profile 1'), findsOneWidget);
+    expect(find.text('Profil 1'), findsNothing);
+    expect(find.text('Élodie'), findsOneWidget);
+    expect(origin.name, 'Profil 1');
+  });
 
   testWidgets(
     'dates et unités ne restent pas françaises sur une TV allemande',
