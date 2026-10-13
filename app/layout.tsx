@@ -19,6 +19,7 @@ const playfair = Playfair_Display({
 });
 
 export const metadata: Metadata = {
+    twitter: { card: "summary_large_image", title: "Zuno", images: ["https://zuno.7themotion.com/social-share-v1.png"] },
   metadataBase: new URL("https://zuno.7themotion.com"),
   title: {
     default: "Zuno — TV, films & multi-appareils",
@@ -29,6 +30,7 @@ export const metadata: Metadata = {
   manifest: "/manifest.webmanifest",
   icons: { icon: "/icon.svg" },
   openGraph: {
+    images: [{ url: "https://zuno.7themotion.com/social-share-v1.png", width: 1200, height: 630, alt: "Zuno" }],
     title: "Zuno",
     description: "Lecteur premium multi-appareils. Forfaits simples.",
     url: "https://zuno.7themotion.com",
