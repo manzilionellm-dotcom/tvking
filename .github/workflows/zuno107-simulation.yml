@@ -1,0 +1,143 @@
+# Simulation réseau de la version publiée : aucun APK ni déploiement.
+# Les identifiants et les listes sont uniquement ceux, factices, des tests.
+name: Simulation Zuno 107 et panel
+on:
+  push:
+    branches: ['feature/zuno107-simulation-20261013']
+    paths: ['.github/workflows/zuno107-simulation.yml']
+permissions:
+  contents: read
+concurrency:
+  group: zuno107-simulation-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  client:
+    name: App 107 — serveur ${{ matrix.backend }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        backend: ['reference-production', 'instantane-app']
+    defaults:
+      run:
+        working-directory: app/android-app
+    env:
+      CI: 'true'
+      WRANGLER_SEND_METRICS: 'false'
+    steps:
+      - name: Code exact de Zuno 107
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: fa7fa00661f79dea1997c4782c76f8265eaf7200
+          path: app
+          persist-credentials: false
+      - name: Serveur référencé par le gel de production
+        if: matrix.backend == 'reference-production'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: fb0277e1f5476db3400100c4fe4163b1b9ef1fe3
+          path: backend
+          persist-credentials: false
+      - name: Associer le serveur référencé au client publié
+        if: matrix.backend == 'reference-production'
+        working-directory: .
+        run: cp -R backend/android-app/cloudflare/. app/android-app/cloudflare/
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '24.21.0'
+          package-manager-cache: false
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+        with:
+          flutter-version: '3.47.7'
+          channel: stable
+          cache: true
+      - name: Dépendances de simulation
+        id: dependencies
+        run: |
+          npm ci --prefix cloudflare
+          flutter pub get
+      - name: Activation et retrait réel des listes du client
+        id: box
+        if: steps.dependencies.outcome == 'success'
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          flutter test --reporter expanded --dart-define=RUN_E2E=true --dart-define=BACKEND_URL=http://127.0.0.1:8787 test/features/subscription/panel_box_e2e_test.dart 2>&1 | tee box-simulation.log
+      - name: Ordres instantanés, accusés et reprise réseau
+        id: instant
+        if: always() && steps.dependencies.outcome == 'success'
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          flutter test --reporter expanded --dart-define=RUN_E2E=true --dart-define=BACKEND_URL=http://127.0.0.1:8787 test/features/subscription/panel_instant_e2e_test.dart 2>&1 | tee instant-simulation.log
+      - name: Conserver les mesures sans données client
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: simulation-client-${{ matrix.backend }}
+          path: app/android-app/*-simulation.log
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Résultat fidèle des deux parcours
+        if: always()
+        env:
+          BOX_RESULT: ${{ steps.box.outcome }}
+          INSTANT_RESULT: ${{ steps.instant.outcome }}
+        run: |
+          test "$BOX_RESULT" = success
+          test "$INSTANT_RESULT" = success
+
+  panel:
+    name: Panel référencé — navigateur et box simulée
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CI: 'true'
+      WRANGLER_SEND_METRICS: 'false'
+    steps:
+      - name: Suite de simulation du panel
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Panel référencé par le gel
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 719928dc92c8827365815a0cd482cb903a8a3e7e
+          path: panel-reference
+          persist-credentials: false
+      - name: Serveur référencé par le gel
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: fb0277e1f5476db3400100c4fe4163b1b9ef1fe3
+          path: worker-reference
+          persist-credentials: false
+      - name: Utiliser les sources référencées, conserver le scénario
+        run: |
+          cp -R panel-reference/android-app/admin-panel/. android-app/admin-panel/
+          cp -R worker-reference/android-app/cloudflare/. android-app/cloudflare/
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '24.21.0'
+          package-manager-cache: false
+      - name: Installer les dépendances
+        run: |
+          npm ci --prefix android-app/admin-panel
+          npm ci --prefix android-app/e2e/panel-box
+      - name: Installer le navigateur de test
+        working-directory: android-app/e2e/panel-box
+        run: npx playwright install --with-deps chromium
+      - name: Parcours du panel
+        working-directory: android-app/e2e/panel-box
+        run: |
+          set -o pipefail
+          npm run e2e 2>&1 | tee panel-simulation.log
+      - name: Conserver le résultat du navigateur
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: simulation-panel-reference
+          path: android-app/e2e/panel-box/panel-simulation.log
+          if-no-files-found: ignore
+          retention-days: 14
