@@ -1,0 +1,86 @@
+# Vraie base téléphone + mêmes patches que le constructeur protégé.
+# Signature debug et paquet distinct : aucun secret ni publication clients.
+name: Studio mobile — compilation Android
+on:
+  push:
+    branches: ['feature/mobile-studio-20261012']
+    paths:
+      - 'android-app/**'
+      - 'patches/mobile-*.patch'
+      - '.github/workflows/studio-mobile-build.yml'
+permissions:
+  contents: read
+concurrency:
+  group: studio-mobile-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    defaults:
+      run:
+        working-directory: phone
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          path: mission
+      - name: Base téléphone exacte
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          ref: 37fdf3305c5de9d35e20fd6567df38008fc7a7ee
+          path: phone
+      - name: Patches mobiles et invariants de synchronisation
+        run: |
+          git apply --check ../mission/patches/mobile-sport-gratuit.patch
+          git apply ../mission/patches/mobile-sport-gratuit.patch
+          git apply --check ../mission/patches/mobile-radio.patch
+          git apply ../mission/patches/mobile-radio.patch
+          python3 ../mission/android-app/ci/mobile/apply_studio.py ../mission/patches/mobile-studio-chat.patch
+          git diff --check
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+        with:
+          flutter-version: '3.47.7'
+          channel: stable
+          cache: true
+      - name: Projet Android et composants du téléphone
+        run: |
+          flutter create . --platforms=android --org com.manzilionellm.tvking --project-name tv_king
+          # Retirer seulement l'exemple produit par flutter create.
+          if git ls-files --error-unmatch test/widget_test.dart >/dev/null 2>&1; then
+            echo '::error::Test suivi inattendu'; exit 1
+          fi
+          rm -f test/widget_test.dart
+          flutter pub get
+          python3 ci/mobile/prepare_studio_sdk.py
+          flutter gen-l10n
+          dart run flutter_launcher_icons
+          bash android_overlay/google_cast/apply_cast_patch.sh
+          python3 ci/clear_secure_flag.py
+          python3 -m venv "$RUNNER_TEMP/studio-native"
+          "$RUNNER_TEMP/studio-native/bin/pip" install numpy==2.2.6
+          "$RUNNER_TEMP/studio-native/bin/python" ../mission/android-app/ci/mobile/prepare_notifications.py
+          python3 ci/mobile/prepare_studio.py
+          python3 ../mission/android-app/ci/mobile/prepare_studio_preview.py
+      - name: Analyse et tests de la vraie application téléphone
+        run: |
+          flutter analyze --no-fatal-infos --no-fatal-warnings
+          flutter test --reporter expanded
+      - name: Compiler sans clé de production
+        run: |
+          flutter build apk --debug --target lib/main.dart --target-platform android-arm64 --dart-define=APP_BUILD_LABEL=STUDIO-TEST
+          sha256sum build/app/outputs/flutter-apk/app-debug.apk > build/app/outputs/flutter-apk/SHA256SUMS
+      - name: APK de démonstration et versions résolues
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: studio-mobile-preview
+          path: |
+            phone/build/app/outputs/flutter-apk/app-debug.apk
+            phone/build/app/outputs/flutter-apk/SHA256SUMS
+            phone/pubspec.lock
+          if-no-files-found: error

@@ -1,0 +1,2307 @@
+diff --git a/ci/mobile/prepare_studio.py b/ci/mobile/prepare_studio.py
+new file mode 100644
+index 0000000..2abd452
+--- /dev/null
++++ b/ci/mobile/prepare_studio.py
+@@ -0,0 +1,26 @@
++#!/usr/bin/env python3
++"""Permissions du studio mobile, après flutter create ; jamais appliqué à la TV."""
++from pathlib import Path
++import xml.etree.ElementTree as ET
++
++A = 'http://schemas.android.com/apk/res/android'
++ET.register_namespace('android', A)
++ET.register_namespace('tools', 'http://schemas.android.com/tools')
++name = '{' + A + '}name'
++p = Path('android/app/src/main/AndroidManifest.xml')
++tree = ET.parse(p)
++root = tree.getroot()
++for permission in ('INTERNET', 'ACCESS_NETWORK_STATE', 'RUN_USER_INITIATED_JOBS',
++                   'POST_NOTIFICATIONS', 'RECORD_AUDIO', 'MODIFY_AUDIO_SETTINGS'):
++    value = 'android.permission.' + permission
++    if not any(e.get(name) == value for e in root.findall('uses-permission')):
++        ET.SubElement(root, 'uses-permission', {name: value})
++# La permission micro ne doit pas exclure un appareil sans microphone.
++if not any(e.get(name) == 'android.hardware.microphone' for e in root.findall('uses-feature')):
++    ET.SubElement(root, 'uses-feature', {name:'android.hardware.microphone', '{'+A+'}required':'false'})
++app = root.find('application')
++if app is None:
++    raise SystemExit('Manifeste sans application')
++# Préférences privées : éviter de copier le secret du chat dans une sauvegarde.
++app.set('{'+A+'}allowBackup', 'false')
++tree.write(p, encoding='unicode')
+diff --git a/ci/mobile/prepare_studio_sdk.py b/ci/mobile/prepare_studio_sdk.py
+new file mode 100644
+index 0000000..33fdb55
+--- /dev/null
++++ b/ci/mobile/prepare_studio_sdk.py
+@@ -0,0 +1,59 @@
++#!/usr/bin/env python3
++"""Compatibilité ciblée LiveKit 2.5.3 / Dart 3.13 / Android 36.
++
++Le chiffrement historique impose de conserver cette version du SDK.
++Dans sa fermeture asynchrone vidéo, cinq lectures perdent la promotion
++non-null. L'initialisation et le premier accès existant garantissent déjà
++la valeur. On rend cette même assertion explicite, sans changer un codec,
++un transport, le micro ou l'authentification. Refus sur toute autre source.
++Le module Android compile avec l'API 36 requise par son plugin WebRTC
++résolu, sans changer minSdk ni targetSdk.
++"""
++from pathlib import Path
++import hashlib
++import json
++from urllib.parse import unquote, urljoin, urlparse
++
++config = Path('.dart_tool/package_config.json').resolve()
++packages = json.loads(config.read_text())['packages']
++entry = next(p for p in packages if p['name'] == 'livekit_client')
++uri = urlparse(urljoin(config.as_uri(), entry['rootUri']))
++assert uri.scheme == 'file', 'SDK LiveKit non local'
++root = Path(unquote(uri.path))
++assert '\nversion: 2.5.3\n' in ('\n' + (root / 'pubspec.yaml').read_text()), \
++    'Compatibilité réservée à LiveKit 2.5.3'
++p = root / 'lib/src/participant/local.dart'
++s = p.read_text()
++original = '3fbe8492c8fbcdd74a0f95b83a4144c1863203f1b1819cb97afbf46340a444dc'
++a = s.index('    Future<lk_models.TrackInfo> negotiate() async {', s.index('publishVideoTrack('))
++b = s.index('\n    final req =', a)
++body = s[a:b]
++if body.count('publishOptions!.videoCodec') == 4 and body.count('publishOptions!.degradationPreference') == 1:
++    # Valider également l'intégrité si le script a déjà été appliqué.
++    clean = body.replace('publishOptions!.videoCodec', 'publishOptions.videoCodec') \
++        .replace('publishOptions!.degradationPreference', 'publishOptions.degradationPreference')
++    assert hashlib.sha256((s[:a] + clean + s[b:]).encode()).hexdigest() == original
++else:
++    assert hashlib.sha256(s.encode()).hexdigest() == original, 'Source LiveKit inattendue'
++    assert body.count('publishOptions.videoCodec') == 4
++    assert body.count('publishOptions.degradationPreference') == 1
++    body = body.replace('publishOptions.videoCodec', 'publishOptions!.videoCodec') \
++        .replace('publishOptions.degradationPreference', 'publishOptions!.degradationPreference')
++    p.write_text(s[:a] + body + s[b:])
++print('LiveKit 2.5.3 : cinq assertions non-null explicites, source vérifiée')
++
++gradle = root / 'android/build.gradle'
++s = gradle.read_text()
++original = 'e33243ac6c88d58f7bdbc85a3c4ee43bef7ca9065a18a8920325599064bc614d'
++old = '    compileSdk = 34\n'
++new = '    compileSdk = 36\n'
++if s.count(new) == 1:
++    clean = s.replace(new, old)
++    assert hashlib.sha256(clean.encode()).hexdigest() == original, \
++        'Configuration Android LiveKit inattendue'
++else:
++    assert hashlib.sha256(s.encode()).hexdigest() == original, \
++        'Configuration Android LiveKit inattendue'
++    assert s.count(old) == 1
++    gradle.write_text(s.replace(old, new))
++print('LiveKit 2.5.3 : compileSdk 36, minSdk/targetSdk conservés, source vérifiée')
+diff --git a/lib/features/ads/domain/campaign_creative.dart b/lib/features/ads/domain/campaign_creative.dart
+new file mode 100644
+index 0000000..c1e0ff7
+--- /dev/null
++++ b/lib/features/ads/domain/campaign_creative.dart
+@@ -0,0 +1,44 @@
++// Recette de présentation bornée et versionnée. Une ancienne app garde
++// le texte ; un modèle inconnu ne lance jamais du code ou une WebView.
++class CampaignCreative {
++  const CampaignCreative({
++    required this.template,
++    required this.palette,
++    required this.imageUrl,
++    required this.badge,
++    required this.motion,
++    required this.durationSeconds,
++  });
++  final String template, palette, imageUrl, badge;
++  final bool motion;
++  final int durationSeconds;
++  static CampaignCreative? parse(Object? raw) {
++    if (raw is! Map<String, dynamic> || raw['version'] != 1) return null;
++    if (!<String>['orbit', 'prism', 'spotlight'].contains(raw['template']) ||
++        !<String>['ember', 'ice', 'gold'].contains(raw['palette']) ||
++        !<String>['gentle', 'still'].contains(raw['motion']) ||
++        !<int>[6, 8, 10].contains(raw['duration_seconds']))
++      return null;
++    final Object? badge = raw['badge'], image = raw['image_url'];
++    if (badge is! String ||
++        badge.length > 24 ||
++        image is! String ||
++        image.length > 300)
++      return null;
++    final Uri? uri = image.isEmpty ? null : Uri.tryParse(image);
++    if (image.isNotEmpty &&
++        (uri == null ||
++            uri.scheme != 'https' ||
++            uri.host.isEmpty ||
++            uri.userInfo.isNotEmpty))
++      return null;
++    return CampaignCreative(
++      template: raw['template'] as String,
++      palette: raw['palette'] as String,
++      imageUrl: image,
++      badge: badge,
++      motion: raw['motion'] == 'gentle',
++      durationSeconds: raw['duration_seconds'] as int,
++    );
++  }
++}
+diff --git a/lib/features/ads/presentation/creative_card.dart b/lib/features/ads/presentation/creative_card.dart
+new file mode 100644
+index 0000000..cf67612
+--- /dev/null
++++ b/lib/features/ads/presentation/creative_card.dart
+@@ -0,0 +1,316 @@
++import 'dart:math' as math;
++
++import 'package:cached_network_image/cached_network_image.dart';
++import 'package:flutter/material.dart';
++
++import '../../../core/theme/app_colors.dart';
++import '../../../core/theme/app_text_styles.dart';
++import '../../simple_home/data/announcement_repository.dart';
++import '../domain/campaign_creative.dart';
++import '../../mobile_services/data/mobile_services.dart';
++
++/// Relief natif léger : aucune vidéo, aucun moteur WebGL, aucun son.
++/// Le mouvement est borné à dix secondes et s'arrête hors premier plan.
++class CreativeCard extends StatefulWidget {
++  const CreativeCard({
++    super.key,
++    required this.announcement,
++    required this.onClose,
++    required this.onOpen,
++  });
++  final Announcement announcement;
++  final VoidCallback onClose, onOpen;
++  @override
++  State<CreativeCard> createState() => _CreativeCardState();
++}
++
++class _CreativeCardState extends State<CreativeCard>
++    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
++  late final AnimationController _motion;
++  bool _started = false;
++  @override
++  void initState() {
++    super.initState();
++    WidgetsBinding.instance.addObserver(this);
++    MobileServices.instance.addListener(_preferenceChanged);
++    _motion = AnimationController(
++      vsync: this,
++      duration: Duration(
++        seconds: widget.announcement.creative!.durationSeconds,
++      ),
++    );
++  }
++
++  void _preferenceChanged() {
++    if (!MobileServices.instance.allowVisualMotion) _motion.stop();
++  }
++
++  @override
++  void didChangeDependencies() {
++    super.didChangeDependencies();
++    if (MediaQuery.disableAnimationsOf(context) ||
++        !MobileServices.instance.allowVisualMotion ||
++        !widget.announcement.creative!.motion) {
++      _motion.stop();
++      return;
++    }
++    if (!_started) {
++      _started = true;
++      _motion.forward();
++    }
++  }
++
++  @override
++  void didChangeAppLifecycleState(AppLifecycleState state) {
++    if (state != AppLifecycleState.resumed) _motion.stop();
++  }
++
++  @override
++  void dispose() {
++    WidgetsBinding.instance.removeObserver(this);
++    MobileServices.instance.removeListener(_preferenceChanged);
++    _motion.dispose();
++    super.dispose();
++  }
++
++  @override
++  Widget build(BuildContext context) {
++    final Announcement a = widget.announcement;
++    final CampaignCreative c = a.creative!;
++    final Color accent = switch (c.palette) {
++      'ice' => AppColors.info,
++      'gold' => AppColors.editorialCream,
++      _ => AppColors.accent,
++    };
++    return Padding(
++      padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
++      child: RepaintBoundary(
++        child: Container(
++          decoration: BoxDecoration(
++            borderRadius: BorderRadius.circular(24),
++            color: AppColors.surface,
++            border: Border.all(color: accent.withValues(alpha: .35)),
++          ),
++          child: Column(
++            crossAxisAlignment: CrossAxisAlignment.start,
++            children: <Widget>[
++              SizedBox(
++                height: 120,
++                child: Stack(
++                  children: <Widget>[
++                    Positioned.fill(
++                      child: ClipRRect(
++                        borderRadius: const BorderRadius.vertical(
++                          top: Radius.circular(24),
++                        ),
++                        child: AnimatedBuilder(
++                          animation: _motion,
++                          builder: (BuildContext context, Widget? child) {
++                            final double wave = math.sin(
++                              _motion.value * math.pi * 4,
++                            );
++                            return Stack(
++                              children: <Widget>[
++                                Positioned.fill(
++                                  child: CustomPaint(
++                                    painter: _HaloPainter(
++                                      accent,
++                                      c.template,
++                                      wave,
++                                    ),
++                                  ),
++                                ),
++                                Align(
++                                  alignment: Alignment.centerRight,
++                                  child: Padding(
++                                    padding: const EdgeInsets.only(right: 42),
++                                    child: Transform(
++                                      alignment: Alignment.center,
++                                      transform: Matrix4.identity()
++                                        ..setEntry(3, 2, .0018)
++                                        ..rotateY(wave * .22 - .15)
++                                        ..rotateZ(wave * .06 - .12)
++                                        ..translate(0.0, wave * 5),
++                                      child: SizedBox(
++                                        width: 86,
++                                        height: 86,
++                                        child: c.imageUrl.isEmpty
++                                            ? _Gem(
++                                                accent: accent,
++                                                prism: c.template == 'prism',
++                                              )
++                                            : CachedNetworkImage(
++                                                imageUrl: c.imageUrl,
++                                                memCacheWidth: 256,
++                                                maxWidthDiskCache: 512,
++                                                fit: BoxFit.contain,
++                                                errorWidget: (_, __, ___) =>
++                                                    _Gem(
++                                                      accent: accent,
++                                                      prism:
++                                                          c.template == 'prism',
++                                                    ),
++                                              ),
++                                      ),
++                                    ),
++                                  ),
++                                ),
++                              ],
++                            );
++                          },
++                        ),
++                      ),
++                    ),
++                    Positioned(
++                      left: 18,
++                      top: 16,
++                      child: Text(
++                        'PUBLICITÉ',
++                        style: AppTextStyles.labelSmall.copyWith(
++                          color: AppColors.textSecondary,
++                          letterSpacing: 1.8,
++                        ),
++                      ),
++                    ),
++                    Positioned(
++                      right: 3,
++                      top: 3,
++                      child: IconButton(
++                        tooltip: MaterialLocalizations.of(context)
++                            .closeButtonTooltip,
++                        onPressed: widget.onClose,
++                        icon: const Icon(Icons.close_rounded),
++                      ),
++                    ),
++                  ],
++                ),
++              ),
++              Padding(
++                padding: const EdgeInsets.fromLTRB(18, 0, 18, 18),
++                child: Column(
++                  crossAxisAlignment: CrossAxisAlignment.start,
++                  children: <Widget>[
++                    if (c.badge.isNotEmpty)
++                      Text(
++                        c.badge,
++                        style: AppTextStyles.labelSmall.copyWith(
++                          color: accent,
++                          letterSpacing: 1.5,
++                        ),
++                      ),
++                    const SizedBox(height: 8),
++                    Text(a.title, style: AppTextStyles.headlineMedium),
++                    const SizedBox(height: 8),
++                    Text(
++                      a.body,
++                      style: AppTextStyles.bodyMedium.copyWith(
++                        color: AppColors.textSecondary,
++                      ),
++                    ),
++                    if (a.url.isNotEmpty && a.cta.isNotEmpty) ...<Widget>[
++                      const SizedBox(height: 14),
++                      SizedBox(
++                        width: double.infinity,
++                        child: FilledButton(
++                          style: FilledButton.styleFrom(
++                            backgroundColor: accent,
++                            foregroundColor: AppColors.voidSurface,
++                          ),
++                          onPressed: widget.onOpen,
++                          child: Padding(
++                            padding: const EdgeInsets.symmetric(vertical: 10),
++                            child: Row(
++                              children: <Widget>[
++                                Expanded(
++                                  child: Text(
++                                    a.cta,
++                                    style: AppTextStyles.button.copyWith(
++                                      color: AppColors.voidSurface,
++                                    ),
++                                  ),
++                                ),
++                                const Icon(Icons.north_east_rounded),
++                              ],
++                            ),
++                          ),
++                        ),
++                      ),
++                    ],
++                  ],
++                ),
++              ),
++            ],
++          ),
++        ),
++      ),
++    );
++  }
++}
++
++class _Gem extends StatelessWidget {
++  const _Gem({required this.accent, required this.prism});
++  final Color accent;
++  final bool prism;
++  @override
++  Widget build(BuildContext context) => Transform.rotate(
++    angle: prism ? math.pi / 4 : .1,
++    child: Container(
++      margin: const EdgeInsets.all(9),
++      decoration: BoxDecoration(
++        borderRadius: BorderRadius.circular(prism ? 8 : 22),
++        gradient: LinearGradient(
++          begin: Alignment.topLeft,
++          end: Alignment.bottomRight,
++          colors: <Color>[
++            AppColors.textPrimary,
++            accent,
++            AppColors.surfaceOverlay,
++          ],
++        ),
++        boxShadow: <BoxShadow>[
++          BoxShadow(
++            color: AppColors.voidSurface.withValues(alpha: .5),
++            offset: const Offset(12, 16),
++            blurRadius: 12,
++          ),
++        ],
++        border: Border.all(color: AppColors.textPrimary.withValues(alpha: .5)),
++      ),
++    ),
++  );
++}
++
++class _HaloPainter extends CustomPainter {
++  const _HaloPainter(this.color, this.template, this.wave);
++  final Color color;
++  final String template;
++  final double wave;
++  @override
++  void paint(Canvas canvas, Size size) {
++    final Offset center = Offset(size.width - 85, 63);
++    final Paint halo = Paint()
++      ..shader = RadialGradient(
++        colors: <Color>[
++          color.withValues(alpha: .24),
++          color.withValues(alpha: 0),
++        ],
++      ).createShader(Rect.fromCircle(center: center, radius: 130));
++    canvas.drawCircle(center, 130, halo);
++    final Paint ring = Paint()
++      ..color = color.withValues(alpha: .55)
++      ..style = PaintingStyle.stroke
++      ..strokeWidth = template == 'orbit' ? 5 : 1;
++    canvas.save();
++    canvas.translate(center.dx, center.dy);
++    canvas.rotate(-.45 + wave * .08);
++    canvas.drawOval(
++      Rect.fromCenter(center: Offset.zero, width: 162, height: 52),
++      ring,
++    );
++    canvas.restore();
++  }
++
++  @override
++  bool shouldRepaint(covariant _HaloPainter old) =>
++      wave != old.wave || color != old.color || template != old.template;
++}
+diff --git a/lib/features/mobile_services/data/background_guide.dart b/lib/features/mobile_services/data/background_guide.dart
+new file mode 100644
+index 0000000..c49f2fb
+--- /dev/null
++++ b/lib/features/mobile_services/data/background_guide.dart
+@@ -0,0 +1,128 @@
++import 'dart:io';
++import 'dart:ui';
++
++import 'package:flutter/widgets.dart';
++import 'package:http/http.dart' as http;
++import 'package:path_provider/path_provider.dart';
++import 'package:shared_preferences/shared_preferences.dart';
++import 'package:workmanager/workmanager.dart';
++
++import '../../../core/flavor/flavor.dart';
++import '../../epg/data/epg_repository.dart';
++import '../../playlists/data/playlist_database.dart';
++import '../../playlists/data/playlist_repository.dart';
++import '../../playlists/domain/playlist.dart';
++
++/// Le guide seulement : aucune route panel, aucun changement de source,
++/// d'abonnement ou de chaîne. Le système choisit l'heure d'exécution.
++@pragma('vm:entry-point')
++void mobileGuideDispatcher() {
++  Workmanager().executeTask((String task, Map<String, dynamic>? input) async {
++    WidgetsFlutterBinding.ensureInitialized();
++    DartPluginRegistrant.ensureInitialized();
++    if (task != BackgroundGuide.taskName) return true;
++    try {
++      final SharedPreferences p = await SharedPreferences.getInstance();
++      await p.reload();
++      if (p.getBool('mobile.background_guide') != true ||
++          await BackgroundGuide.foreground())
++        return true;
++      FlavorConfig.setCurrent(FlavorConfig.sevenMotion);
++      final List<Playlist> playlists = await PlaylistRepository.instance
++          .getAllPlaylists();
++      for (final Playlist playlist
++          in playlists
++              .where((Playlist p) => p.isActive && p.epgUrl?.isNotEmpty == true)
++              .take(2)) {
++        if (await BackgroundGuide.foreground()) break;
++        // La base mobile possède déjà ses alias Xtream : le moteur EPG
++        // existant les relit. Aucune source ni liste n'est rechargée ici.
++        final rows = await (await PlaylistDatabase.instance.database).query(
++          'channels',
++          columns: <String>['external_id'],
++          where: 'playlist_id = ?',
++          whereArgs: <Object?>[playlist.id],
++        );
++        final Set<String> ids = rows
++            .map((Map<String, Object?> r) => r['external_id'] as String)
++            .toSet();
++        if (ids.isEmpty) continue;
++        final http.Client client = http.Client();
++        try {
++          await EpgRepository.instance
++              .downloadAndImport(
++                url: playlist.epgUrl!,
++                knownChannelIds: ids,
++                httpClient: client,
++              )
++              .timeout(const Duration(minutes: 4));
++        } finally {
++          client.close();
++        }
++      }
++      await p.setInt(
++        'mobile.background_guide_last',
++        DateTime.now().millisecondsSinceEpoch,
++      );
++      return true;
++    } catch (_) {
++      return false;
++    }
++  });
++}
++
++class BackgroundGuide {
++  static const String taskName = '7motion.guide.refresh';
++  static bool _ready = false;
++  static Future<File> _lease() async => File(
++    '${(await getApplicationSupportDirectory()).path}/mobile-foreground.lease',
++  );
++  static Future<void> markForeground(bool value) async {
++    try {
++      await (await _lease()).writeAsString(
++        value ? '${DateTime.now().millisecondsSinceEpoch}' : '0',
++        flush: true,
++      );
++    } catch (_) {}
++  }
++
++  static Future<bool> foreground() async {
++    final File f = await _lease();
++    if (!await f.exists()) return false;
++    final int at = int.tryParse(await f.readAsString()) ?? 0;
++    return DateTime.now().millisecondsSinceEpoch - at < 90000;
++  }
++
++  static Future<bool> enabled() async =>
++      (await SharedPreferences.getInstance()).getBool(
++        'mobile.background_guide',
++      ) ??
++      false;
++  static Future<void> configure(bool value) async {
++    if (!Platform.isAndroid)
++      throw StateError('Actualisation en arrière-plan disponible sur Android.');
++    if (!_ready) {
++      await Workmanager().initialize(mobileGuideDispatcher);
++      _ready = true;
++    }
++    if (value) {
++      await Workmanager().registerPeriodicTask(
++        taskName,
++        taskName,
++        frequency: const Duration(hours: 6),
++        initialDelay: const Duration(minutes: 20),
++        constraints: Constraints(
++          networkType: NetworkType.unmetered,
++          requiresBatteryNotLow: true,
++        ),
++        existingWorkPolicy: ExistingPeriodicWorkPolicy.keep,
++      );
++    } else {
++      await Workmanager().cancelByUniqueName(taskName);
++    }
++    await (await SharedPreferences.getInstance()).setBool(
++      'mobile.background_guide',
++      value,
++    );
++  }
++}
+diff --git a/lib/features/mobile_services/data/mobile_services.dart b/lib/features/mobile_services/data/mobile_services.dart
+new file mode 100644
+index 0000000..83a7c65
+--- /dev/null
++++ b/lib/features/mobile_services/data/mobile_services.dart
+@@ -0,0 +1,160 @@
++// Services facultatifs, indépendants du canal panel. Les clés ci-dessous
++// sont des clés SDK publiques : aucun secret serveur n'entre dans l'APK.
++import 'dart:async';
++
++import 'package:flutter/foundation.dart';
++import 'package:growthbook_sdk_flutter/growthbook_sdk_flutter.dart';
++import 'package:posthog_flutter/posthog_flutter.dart';
++import 'package:shared_preferences/shared_preferences.dart';
++
++import '../../support/data/support_repository.dart';
++
++class MobileServices extends ChangeNotifier {
++  MobileServices._();
++  static final MobileServices instance = MobileServices._();
++  static const String growthKey = String.fromEnvironment(
++    'GROWTHBOOK_CLIENT_KEY',
++  );
++  static const String growthHost = String.fromEnvironment(
++    'GROWTHBOOK_HOST',
++    defaultValue: 'https://cdn.growthbook.io',
++  );
++  static const String posthogKey = String.fromEnvironment(
++    'POSTHOG_PROJECT_KEY',
++  );
++  static const String posthogHost = String.fromEnvironment(
++    'POSTHOG_HOST',
++    defaultValue: 'https://eu.i.posthog.com',
++  );
++  bool wifiDownloads = true;
++  bool analyticsConsent = false;
++  bool visualMotion = true;
++  Future<void>? _initializing;
++  bool _analyticsReady = false;
++  GrowthBookSDK? _growth;
++  static bool httpsHost(String value) {
++    final Uri? u = Uri.tryParse(value);
++    return u != null &&
++        u.scheme == 'https' &&
++        u.host.isNotEmpty &&
++        u.userInfo.isEmpty;
++  }
++
++  Future<void> initialize() => _initializing ??= _initialize();
++
++  Future<void> _initialize() async {
++    try {
++      final SharedPreferences p = await SharedPreferences.getInstance();
++      wifiDownloads = p.getBool('mobile.wifi_downloads') ?? true;
++      analyticsConsent = p.getBool('mobile.analytics_consent') ?? false;
++      visualMotion = p.getBool('mobile.visual_motion') ?? true;
++      notifyListeners();
++      if (analyticsConsent) unawaited(_startAnalytics());
++      unawaited(_startExperiments(p));
++    } catch (_) {
++      /* Une panne de service externe ne bloque pas l'app. */
++    }
++  }
++
++  Future<void> _startExperiments(SharedPreferences p) async {
++    try {
++      if (growthKey.isNotEmpty && httpsHost(growthHost)) {
++        final String id =
++            p.getString('mobile.experiment_id') ??
++            SupportRepository.newMessageId();
++        await p.setString('mobile.experiment_id', id);
++        _growth = await GBSDKBuilderApp(
++          hostURL: growthHost,
++          apiKey: growthKey,
++          attributes: <String, dynamic>{
++            'id': id,
++            'platform': defaultTargetPlatform.name,
++          },
++          backgroundSync: false,
++          growthBookTrackingCallBack: (_) {},
++        ).initialize().timeout(const Duration(seconds: 8));
++        // Le seul interrupteur distant concerne l'animation des pubs.
++        // Activation, source, réseau et chat ne sont jamais pilotés ici.
++        notifyListeners();
++      }
++    } catch (_) {
++      /* La présentation reste disponible hors ligne. */
++    }
++  }
++
++  bool get allowVisualMotion {
++    if (!visualMotion) return false;
++    final Object? value = _growth?.feature('motion_ads_3d').value;
++    return value is bool ? value : true;
++  }
++
++  Future<void> setWifiDownloads(bool value) async {
++    wifiDownloads = value;
++    await (await SharedPreferences.getInstance()).setBool(
++      'mobile.wifi_downloads',
++      value,
++    );
++    notifyListeners();
++  }
++
++  Future<void> setVisualMotion(bool value) async {
++    visualMotion = value;
++    await (await SharedPreferences.getInstance()).setBool(
++      'mobile.visual_motion',
++      value,
++    );
++    notifyListeners();
++  }
++
++  Future<void> setAnalytics(bool value) async {
++    analyticsConsent = value;
++    await (await SharedPreferences.getInstance()).setBool(
++      'mobile.analytics_consent',
++      value,
++    );
++    if (value) {
++      await _startAnalytics();
++    } else if (_analyticsReady) {
++      await Posthog().optOut();
++    }
++    notifyListeners();
++  }
++
++  Future<void> _startAnalytics() async {
++    if (posthogKey.isEmpty || !httpsHost(posthogHost) || !analyticsConsent)
++      return;
++    try {
++      if (!_analyticsReady) {
++        final PostHogConfig config = PostHogConfig(posthogKey)
++          ..host = posthogHost
++          ..captureApplicationLifecycleEvents = false
++          ..sessionReplay = false;
++        await Posthog().setup(config);
++        _analyticsReady = true;
++      }
++      if (analyticsConsent)
++        await Posthog().optIn();
++      else
++        await Posthog().optOut();
++    } catch (_) {
++      /* Aucun événement si le service n'est pas disponible. */
++    }
++  }
++
++  Future<void> used(String feature) async {
++    if (!_analyticsReady ||
++        !analyticsConsent ||
++        !<String>[
++          'download_started',
++          'studio_opened',
++          'guide_background_enabled',
++        ].contains(feature))
++      return;
++    try {
++      await Posthog().capture(
++        eventName: 'mobile_feature_used',
++        properties: <String, Object>{'feature': feature},
++      );
++    } catch (_) {}
++  }
++}
+diff --git a/lib/features/mobile_services/data/optional_services.dart b/lib/features/mobile_services/data/optional_services.dart
+new file mode 100644
+index 0000000..30b8a2d
+--- /dev/null
++++ b/lib/features/mobile_services/data/optional_services.dart
+@@ -0,0 +1,80 @@
++// Adaptateurs configurables. Ils n'altèrent ni SubscriptionState ni les
++// licences du panel. Aucun achat ni micro ne se déclenche au démarrage.
++import 'dart:convert';
++
++import 'package:http/http.dart' as http;
++import 'package:livekit_client/livekit_client.dart';
++import 'package:purchases_flutter/purchases_flutter.dart';
++
++import 'mobile_services.dart';
++
++class StoreBridge {
++  static const String publicKey = String.fromEnvironment(
++    'REVENUECAT_PUBLIC_KEY',
++  );
++  static bool _ready = false;
++  static Future<void> _configure() async {
++    if (publicKey.isEmpty) throw StateError('Achats intégrés non configurés.');
++    if (!_ready) {
++      await Purchases.configure(PurchasesConfiguration(publicKey));
++      _ready = true;
++    }
++  }
++
++  static Future<CustomerInfo> customerInfo() async {
++    await _configure();
++    return Purchases.getCustomerInfo();
++  }
++
++  static Future<CustomerInfo> restore() async {
++    await _configure();
++    return Purchases.restorePurchases();
++  }
++
++  static Future<Offerings> offers() async {
++    await _configure();
++    return Purchases.getOfferings();
++  }
++  // Pas de bouton d'achat avant le raccordement vérifié des droits magasin
++  // aux licences : recevoir de l'argent sans activer l'app serait incorrect.
++}
++
++class VoiceInvitation {
++  static const String endpoint = String.fromEnvironment(
++    'LIVEKIT_INVITATION_ENDPOINT',
++  );
++  static bool get configured => MobileServices.httpsHost(endpoint);
++  static Future<Room> join(String code) async {
++    if (!configured || !RegExp(r'^[A-Za-z0-9-]{6,64}$').hasMatch(code))
++      throw StateError('Invitation invalide.');
++    final http.Response r = await http
++        .post(
++          Uri.parse(endpoint),
++          headers: const <String, String>{'Content-Type': 'application/json'},
++          body: jsonEncode(<String, String>{'code': code}),
++        )
++        .timeout(const Duration(seconds: 8));
++    if (r.statusCode != 200)
++      throw StateError('Invitation expirée ou indisponible.');
++    final Map<String, dynamic> json =
++        jsonDecode(r.body) as Map<String, dynamic>;
++    final Uri? url = Uri.tryParse(json['url'] as String? ?? '');
++    final String token = json['token'] as String? ?? '';
++    if (url == null ||
++        url.scheme != 'wss' ||
++        url.userInfo.isNotEmpty ||
++        token.isEmpty ||
++        token.length > 8192)
++      throw StateError('Invitation invalide.');
++    final Room room = Room();
++    try {
++      await room
++          .connect(url.toString(), token)
++          .timeout(const Duration(seconds: 12));
++      return room;
++    } catch (_) {
++      await room.dispose();
++      rethrow;
++    }
++  }
++}
+diff --git a/lib/features/mobile_services/presentation/mobile_options.dart b/lib/features/mobile_services/presentation/mobile_options.dart
+new file mode 100644
+index 0000000..7c58ceb
+--- /dev/null
++++ b/lib/features/mobile_services/presentation/mobile_options.dart
+@@ -0,0 +1,254 @@
++import 'dart:async';
++import 'dart:io';
++
++import 'package:flutter/material.dart';
++import 'package:livekit_client/livekit_client.dart';
++
++import '../../../core/theme/app_colors.dart';
++import '../../../core/theme/app_text_styles.dart';
++import '../data/mobile_services.dart';
++import '../data/background_guide.dart';
++import '../data/optional_services.dart';
++
++class MobileServicesHost extends StatefulWidget {
++  const MobileServicesHost({super.key, required this.child});
++  final Widget child;
++  @override
++  State<MobileServicesHost> createState() => _MobileServicesHostState();
++}
++
++class _MobileServicesHostState extends State<MobileServicesHost>
++    with WidgetsBindingObserver {
++  Timer? _lease;
++  bool _foreground = true;
++  @override
++  void initState() {
++    super.initState();
++    WidgetsBinding.instance.addObserver(this);
++    unawaited(BackgroundGuide.markForeground(true));
++    _lease = Timer.periodic(const Duration(seconds: 30), (_) {
++      if (_foreground) unawaited(BackgroundGuide.markForeground(true));
++    });
++    WidgetsBinding.instance.addPostFrameCallback((_) {
++      unawaited(MobileServices.instance.initialize());
++    });
++  }
++
++  @override
++  void didChangeAppLifecycleState(AppLifecycleState state) {
++    _foreground = state == AppLifecycleState.resumed;
++    unawaited(BackgroundGuide.markForeground(_foreground));
++  }
++
++  @override
++  void dispose() {
++    _lease?.cancel();
++    WidgetsBinding.instance.removeObserver(this);
++    unawaited(BackgroundGuide.markForeground(false));
++    super.dispose();
++  }
++
++  @override
++  Widget build(BuildContext context) => widget.child;
++}
++
++class MobileOptionsScreen extends StatefulWidget {
++  const MobileOptionsScreen({super.key});
++  @override
++  State<MobileOptionsScreen> createState() => _MobileOptionsScreenState();
++}
++
++class _MobileOptionsScreenState extends State<MobileOptionsScreen> {
++  bool _guide = false, _busy = false;
++  String _error = '';
++  @override
++  void initState() {
++    super.initState();
++    BackgroundGuide.enabled().then((bool value) {
++      if (mounted) setState(() => _guide = value);
++    });
++    unawaited(MobileServices.instance.initialize());
++  }
++
++  Future<void> _change(Future<void> Function() work) async {
++    if (_busy) return;
++    setState(() {
++      _busy = true;
++      _error = '';
++    });
++    try {
++      await work();
++    } catch (_) {
++      if (mounted) setState(() => _error = 'Réglage indisponible. Réessaie.');
++    } finally {
++      if (mounted) setState(() => _busy = false);
++    }
++  }
++
++  @override
++  Widget build(BuildContext context) => Scaffold(
++    backgroundColor: AppColors.background,
++    appBar: AppBar(title: const Text('Confort mobile')),
++    body: ListenableBuilder(
++      listenable: MobileServices.instance,
++      builder: (BuildContext context, Widget? child) {
++        final MobileServices s = MobileServices.instance;
++        return ListView(
++          padding: const EdgeInsets.all(16),
++          children: <Widget>[
++            if (Platform.isAndroid)
++              SwitchListTile(
++                title: const Text('Préparer le guide TV'),
++                subtitle: const Text(
++                  'Actualisation en arrière-plan sur réseau non limité, lorsque la batterie le permet. Ne démarre pas pendant l’utilisation de l’app.',
++                ),
++                value: _guide,
++                onChanged: _busy
++                    ? null
++                    : (bool v) => _change(() async {
++                        await BackgroundGuide.configure(v);
++                        if (mounted) setState(() => _guide = v);
++                        if (v) unawaited(s.used('guide_background_enabled'));
++                      }),
++              ),
++            SwitchListTile(
++              title: const Text('Animations des petites publicités'),
++              subtitle: const Text('Mouvements doux et courts sur l’accueil.'),
++              value: s.visualMotion,
++              onChanged: _busy
++                  ? null
++                  : (bool v) => _change(() => s.setVisualMotion(v)),
++            ),
++            if (MobileServices.posthogKey.isNotEmpty)
++              SwitchListTile(
++                title: const Text('Aider à améliorer 7MOTION'),
++                subtitle: const Text(
++                  'Partager l’usage de ces fonctions. Aucun message privé ni lien de lecture n’est envoyé.',
++                ),
++                value: s.analyticsConsent,
++                onChanged: _busy
++                    ? null
++                    : (bool v) => _change(() => s.setAnalytics(v)),
++              ),
++            if (VoiceInvitation.configured)
++              ListTile(
++                leading: const Icon(Icons.headset_mic_outlined),
++                title: const Text('Salon vocal privé'),
++                subtitle: const Text('Rejoindre avec une invitation'),
++                onTap: () => Navigator.push(
++                  context,
++                  MaterialPageRoute<void>(
++                    builder: (_) => const VoiceRoomScreen(),
++                  ),
++                ),
++              ),
++            if (_error.isNotEmpty)
++              Padding(
++                padding: const EdgeInsets.all(16),
++                child: Text(
++                  _error,
++                  style: AppTextStyles.bodyMedium.copyWith(
++                    color: AppColors.warning,
++                  ),
++                ),
++              ),
++          ],
++        );
++      },
++    ),
++  );
++}
++
++class VoiceRoomScreen extends StatefulWidget {
++  const VoiceRoomScreen({super.key});
++  @override
++  State<VoiceRoomScreen> createState() => _VoiceRoomScreenState();
++}
++
++class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
++  final TextEditingController _code = TextEditingController();
++  Room? _room;
++  bool _busy = false, _mic = false;
++  String _error = '';
++  Future<void> _join() async {
++    if (_busy) return;
++    setState(() {
++      _busy = true;
++      _error = '';
++    });
++    try {
++      final Room r = await VoiceInvitation.join(_code.text.trim());
++      if (!mounted) {
++        await r.dispose();
++        return;
++      }
++      setState(() => _room = r);
++    } catch (_) {
++      if (mounted)
++        setState(() => _error = 'Invitation expirée ou connexion impossible.');
++    } finally {
++      if (mounted) setState(() => _busy = false);
++    }
++  }
++
++  @override
++  void dispose() {
++    _code.dispose();
++    final Room? room = _room;
++    if (room != null) unawaited(room.dispose().then((_) {}));
++    super.dispose();
++  }
++
++  @override
++  Widget build(BuildContext context) => Scaffold(
++    appBar: AppBar(title: const Text('Salon vocal privé')),
++    body: Padding(
++      padding: const EdgeInsets.all(24),
++      child: Column(
++        children: <Widget>[
++          Text(
++            _room == null ? 'Rejoins tes proches avec leur invitation.' : 'Tu as rejoint le salon. Le micro reste coupé jusqu’à ton choix.',
++            style: AppTextStyles.bodyLarge,
++          ),
++          const SizedBox(height: 24),
++          if (_room == null) ...<Widget>[
++            TextField(
++              controller: _code,
++              maxLength: 64,
++              decoration: const InputDecoration(labelText: 'Code d’invitation'),
++            ),
++            FilledButton(
++              onPressed: _busy ? null : _join,
++              child: Text(_busy ? 'Connexion…' : 'Rejoindre'),
++            ),
++          ] else ...<Widget>[
++            SwitchListTile(
++              title: const Text('Microphone'),
++              value: _mic,
++              onChanged: (bool value) async {
++                try {
++                  await _room?.localParticipant?.setMicrophoneEnabled(value);
++                  if (mounted) setState(() => _mic = value);
++                } catch (_) {
++                  if (mounted)
++                    setState(() => _error = 'Microphone indisponible.');
++                }
++              },
++            ),
++            TextButton(
++              onPressed: () => Navigator.pop(context),
++              child: const Text('Quitter le salon'),
++            ),
++          ],
++          if (_error.isNotEmpty)
++            Text(
++              _error,
++              style: AppTextStyles.bodyMedium.copyWith(
++                color: AppColors.warning,
++              ),
++            ),
++        ],
++      ),
++    ),
++  );
++}
+diff --git a/lib/features/settings/presentation/settings_screen.dart b/lib/features/settings/presentation/settings_screen.dart
+index 704ee4f..872ef7e 100644
+--- a/lib/features/settings/presentation/settings_screen.dart
++++ b/lib/features/settings/presentation/settings_screen.dart
+@@ -34,6 +34,7 @@ import '../../security/data/biometric_auth.dart';
+ import '../../security/data/lock_settings.dart';
+ import '../../security/data/parental_controls.dart';
+ import '../../subscription/presentation/subscription_card.dart';
++import '../../mobile_services/presentation/mobile_options.dart';
+ 
+ class SettingsScreen extends StatelessWidget {
+   const SettingsScreen({super.key});
+@@ -70,6 +71,14 @@ class SettingsScreen extends StatelessWidget {
+             if (!kIsPlayBuild) const SubscriptionCard(),
+             const SizedBox(height: 4),
+ 
++            _ActionTile(
++              icon: Icons.auto_awesome_outlined,
++              title: 'Confort mobile',
++              subtitle: 'Téléchargements, guide et animations',
++              onTap: () => Navigator.of(context).push<void>(
++                MaterialPageRoute<void>(builder: (_) => const MobileOptionsScreen()),
++              ),
++            ),
+             // ====== LANGUE ======
+             _SectionTitle(context.l10n.settingsLanguage),
+             const _LanguagePicker(),
+diff --git a/lib/features/simple_home/data/announcement_repository.dart b/lib/features/simple_home/data/announcement_repository.dart
+index 373efb1..0df34c1 100644
+--- a/lib/features/simple_home/data/announcement_repository.dart
++++ b/lib/features/simple_home/data/announcement_repository.dart
+@@ -24,6 +24,7 @@ import 'package:shared_preferences/shared_preferences.dart';
+ 
+ import '../../../core/i18n/l10n_now.dart';
+ import '../../subscription/data/subscription_backend.dart';
++import '../../ads/domain/campaign_creative.dart';
+ 
+ /// Une annonce telle que renvoyée par le Worker. Immuable.
+ @immutable
+@@ -36,6 +37,8 @@ class Announcement {
+     required this.kind,
+     required this.cta,
+     required this.createdAt,
++    this.creative,
++    this.expiresAt = 0,
+   });
+ 
+   /// Identifiant unique côté serveur (auto-incrément). Sert à savoir si
+@@ -57,6 +60,8 @@ class Announcement {
+ 
+   /// Timestamp epoch (ms) de création côté serveur.
+   final int createdAt;
++  final CampaignCreative? creative;
++  final int expiresAt;
+ 
+   /// Construit depuis le JSON du Worker. Renvoie `null` si la charge utile
+   /// est vide (`{}` = aucune annonce) ou invalide.
+@@ -79,6 +84,8 @@ class Announcement {
+       kind: (json['kind'] ?? '').toString(),
+       cta: (json['cta'] ?? '').toString(),
+       createdAt: createdAt,
++      creative: CampaignCreative.parse(json['creative']),
++      expiresAt: (json['expires_at'] as num?)?.toInt() ?? 0,
+     );
+   }
+ }
+diff --git a/lib/features/simple_home/presentation/simple_home_screen.dart b/lib/features/simple_home/presentation/simple_home_screen.dart
+index 26b39ba..02b8a59 100644
+--- a/lib/features/simple_home/presentation/simple_home_screen.dart
++++ b/lib/features/simple_home/presentation/simple_home_screen.dart
+@@ -55,6 +55,8 @@ import '../../playlists/presentation/import_progress_screen.dart';
+ import '../../profile/presentation/profile_screen.dart';
+ import '../../subscription/data/subscription_state.dart';
+ import '../../subscription/presentation/guest_screen.dart';
++import '../../support/presentation/support_chat.dart';
++import '../../mobile_services/presentation/mobile_options.dart';
+ import 'widgets/announcement_banner.dart';
+ import 'widgets/category_browser_view.dart';
+ 
+@@ -269,6 +271,7 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
+   @override
+   Widget build(BuildContext context) {
+     return Scaffold(
++      floatingActionButton: const MobileServicesHost(child: SupportBubble()),
+       backgroundColor: AppColors.background,
+       body: DecoratedBox(
+         decoration: const BoxDecoration(gradient: AppColors.backgroundGradient),
+diff --git a/lib/features/simple_home/presentation/widgets/announcement_banner.dart b/lib/features/simple_home/presentation/widgets/announcement_banner.dart
+index 29bcd16..d576001 100644
+--- a/lib/features/simple_home/presentation/widgets/announcement_banner.dart
++++ b/lib/features/simple_home/presentation/widgets/announcement_banner.dart
+@@ -19,6 +19,8 @@
+ //  Aucune dépendance au cast.
+ // =========================================================
+ 
++import 'dart:async';
++
+ import 'package:flutter/material.dart';
+ import 'package:url_launcher/url_launcher.dart';
+ 
+@@ -27,6 +29,7 @@ import '../../../../core/theme/app_colors.dart';
+ import '../../../../core/theme/app_text_styles.dart';
+ import '../../../../l10n/generated/app_localizations.dart';
+ import '../../data/announcement_repository.dart';
++import '../../../ads/presentation/creative_card.dart';
+ 
+ /// Style visuel résolu depuis la catégorie d'une annonce.
+ class _KindStyle {
+@@ -69,6 +72,7 @@ class AnnouncementBanner extends StatefulWidget {
+ 
+ class _AnnouncementBannerState extends State<AnnouncementBanner> {
+   Announcement? _announcement;
++  Timer? _creativeExpiry;
+ 
+   @override
+   void initState() {
+@@ -81,6 +85,7 @@ class _AnnouncementBannerState extends State<AnnouncementBanner> {
+ 
+   @override
+   void dispose() {
++    _creativeExpiry?.cancel();
+     AnnouncementRepository.revision.removeListener(_load);
+     super.dispose();
+   }
+@@ -96,12 +101,27 @@ class _AnnouncementBannerState extends State<AnnouncementBanner> {
+     // Ne pas réafficher une annonce déjà fermée par l'utilisateur.
+     if (await AnnouncementRepository.isDismissed(a.id)) return;
+     if (!mounted) return;
++    _creativeExpiry?.cancel();
++    if (a.creative != null && a.expiresAt > 0) {
++      final int remaining = a.expiresAt - DateTime.now().millisecondsSinceEpoch;
++      if (remaining <= 0) {
++        setState(() => _announcement = null);
++        return;
++      }
++      // Extinction locale de la carte ; aucun ordre ni nouvelle requête.
++      _creativeExpiry = Timer(Duration(milliseconds: remaining), () {
++        if (mounted && _announcement?.id == a.id) {
++          setState(() => _announcement = null);
++        }
++      });
++    }
+     setState(() => _announcement = a);
+   }
+ 
+   Future<void> _dismiss() async {
+     final Announcement? a = _announcement;
+     if (a == null) return;
++    _creativeExpiry?.cancel();
+     await AnnouncementRepository.dismiss(a.id);
+     if (!mounted) return;
+     setState(() => _announcement = null);
+@@ -124,6 +144,14 @@ class _AnnouncementBannerState extends State<AnnouncementBanner> {
+     final Announcement? a = _announcement;
+     if (a == null) return const SizedBox.shrink();
+ 
++    if (a.creative != null) {
++      return CreativeCard(
++        key: ValueKey<int>(a.id),
++        announcement: a,
++        onClose: _dismiss,
++        onOpen: _openLink,
++      );
++    }
+     final bool hasLink = a.url.isNotEmpty;
+     final _KindStyle style = _styleFor(a.kind, context.l10n);
+     final Color color = style.color;
+diff --git a/lib/features/support/data/support_repository.dart b/lib/features/support/data/support_repository.dart
+new file mode 100644
+index 0000000..85e93ca
+--- /dev/null
++++ b/lib/features/support/data/support_repository.dart
+@@ -0,0 +1,160 @@
++// Identité privée dédiée au chat. Ni MAC publique ni jeton du panel :
++// ce secret n'autorise QUE la conversation du téléphone et reste local.
++import 'dart:convert';
++import 'dart:math';
++
++import 'package:cryptography/cryptography.dart';
++import 'package:http/http.dart' as http;
++import 'package:shared_preferences/shared_preferences.dart';
++
++import '../../device/data/device_identity.dart';
++import '../../subscription/data/subscription_backend.dart';
++
++class SupportMessage {
++  const SupportMessage({
++    required this.seq,
++    required this.sender,
++    required this.body,
++    required this.createdAt,
++  });
++  final int seq;
++  final String sender;
++  final String body;
++  final int createdAt;
++  factory SupportMessage.fromJson(Map<String, dynamic> json) => SupportMessage(
++    seq: (json['seq'] as num).toInt(),
++    sender: json['sender'] as String,
++    body: json['body'] as String,
++    createdAt: (json['created_at'] as num).toInt(),
++  );
++}
++
++class SupportPage {
++  const SupportPage({
++    required this.items,
++    required this.more,
++    required this.ownerRead,
++    required this.unread,
++  });
++  final List<SupportMessage> items;
++  final bool more;
++  final int ownerRead;
++  final int unread;
++  factory SupportPage.fromJson(Map<String, dynamic> json) => SupportPage(
++    items: (json['items'] as List<dynamic>? ?? <dynamic>[])
++        .map((dynamic v) => SupportMessage.fromJson(v as Map<String, dynamic>))
++        .toList(),
++    more: json['more'] == true,
++    ownerRead: (json['owner_read_seq'] as num?)?.toInt() ?? 0,
++    unread: (json['unread'] as num?)?.toInt() ?? 0,
++  );
++}
++
++class SupportRepository {
++  SupportRepository({http.Client? client}) : _client = client ?? http.Client();
++  static final SupportRepository instance = SupportRepository();
++  final http.Client _client;
++  Future<({String token, String id})>? _identity;
++  static String newMessageId() {
++    final Random random = Random.secure();
++    final List<int> bytes = List<int>.generate(16, (_) => random.nextInt(256));
++    bytes[6] = (bytes[6] & 15) | 64;
++    bytes[8] = (bytes[8] & 63) | 128;
++    final String s = bytes
++        .map((int b) => b.toRadixString(16).padLeft(2, '0'))
++        .join();
++    return '${s.substring(0, 8)}-${s.substring(8, 12)}-${s.substring(12, 16)}-${s.substring(16, 20)}-${s.substring(20)}';
++  }
++
++  Future<({String token, String id})> _loadIdentity() async {
++    final SharedPreferences prefs = await SharedPreferences.getInstance();
++    String? token = prefs.getString('support.private.token.v1');
++    if (token == null) {
++      final Random r = Random.secure();
++      token = base64UrlEncode(List<int>.generate(32, (_) => r.nextInt(256)))
++          .replaceAll('=', '');
++      if (!await prefs.setString('support.private.token.v1', token))
++        throw StateError('Identité du chat indisponible.');
++    }
++    final Hash digest = await Sha256().hash(utf8.encode(token));
++    return (
++      token: token,
++      id: digest.bytes
++          .map((int b) => b.toRadixString(16).padLeft(2, '0'))
++          .join(),
++    );
++  }
++
++  Future<Map<String, dynamic>> _request(
++    String method, {
++    Map<String, Object>? body,
++    String query = '',
++  }) async {
++    _identity ??= _loadIdentity();
++    final ({String token, String id}) identity;
++    try {
++      identity = await _identity!;
++    } catch (_) {
++      _identity = null;
++      rethrow;
++    }
++    final Uri uri = Uri.parse(
++      '$kSubscriptionBaseUrl/api/support/${identity.id}$query',
++    );
++    final Map<String, String> headers = <String, String>{
++      'Accept': 'application/json',
++      'Content-Type': 'application/json',
++      'X-Support-Token': identity.token,
++    };
++    final http.Response response;
++    try {
++      response =
++          await (method == 'POST'
++                  ? _client.post(uri, headers: headers, body: jsonEncode(body))
++                  : method == 'PATCH'
++                  ? _client.patch(uri, headers: headers, body: jsonEncode(body))
++                  : _client.get(uri, headers: headers))
++              .timeout(const Duration(seconds: 8));
++    } catch (_) {
++      throw StateError(
++        'Connexion interrompue. Ton message reste prêt à envoyer.',
++      );
++    }
++    if (response.statusCode == 429)
++      throw StateError('Patiente une minute avant de réessayer.');
++    if (response.statusCode < 200 || response.statusCode >= 300)
++      throw StateError('Le chat est momentanément indisponible. Réessaie.');
++    return jsonDecode(response.body) as Map<String, dynamic>;
++  }
++
++  Future<SupportPage> messages({int? before, int? after}) async =>
++      SupportPage.fromJson(
++        await _request(
++          'GET',
++          query: before != null
++              ? '?before=$before'
++              : after != null
++              ? '?after=$after'
++              : '',
++        ),
++      );
++  Future<int> unread() async =>
++      ((await _request('GET', query: '?summary=1'))['unread'] as num?)
++          ?.toInt() ??
++      0;
++  Future<void> read(int through) async {
++    await _request('PATCH', body: <String, Object>{'read_through': through});
++  }
++
++  Future<void> send(String message, String id) async {
++    final String mac = await DeviceIdentity.instance.mac;
++    await _request(
++      'POST',
++      body: <String, Object>{
++        'body': message.trim(),
++        'client_id': id,
++        'device_label': mac,
++      },
++    );
++  }
++}
+diff --git a/lib/features/support/presentation/support_chat.dart b/lib/features/support/presentation/support_chat.dart
+new file mode 100644
+index 0000000..abf0bb9
+--- /dev/null
++++ b/lib/features/support/presentation/support_chat.dart
+@@ -0,0 +1,452 @@
++import 'dart:async';
++
++import 'package:flutter/material.dart';
++
++import '../../../core/theme/app_colors.dart';
++import '../../../core/theme/app_text_styles.dart';
++import '../data/support_repository.dart';
++
++/// Visible uniquement sur l'accueil. Aucune superposition au lecteur,
++/// aucun son et aucune ouverture automatique ; le client garde la main.
++class SupportBubble extends StatefulWidget {
++  const SupportBubble({super.key, this.repository});
++  final SupportRepository? repository;
++  @override
++  State<SupportBubble> createState() => _SupportBubbleState();
++}
++
++class _SupportBubbleState extends State<SupportBubble>
++    with WidgetsBindingObserver {
++  Timer? _timer;
++  int _unread = 0;
++  bool _busy = false;
++  bool _foreground = true;
++  @override
++  void initState() {
++    super.initState();
++    WidgetsBinding.instance.addObserver(this);
++    _timer = Timer.periodic(const Duration(seconds: 60), (_) => _refresh());
++    WidgetsBinding.instance.addPostFrameCallback((_) => _refresh());
++  }
++
++  @override
++  void didChangeAppLifecycleState(AppLifecycleState state) {
++    _foreground = state == AppLifecycleState.resumed;
++    if (_foreground) unawaited(_refresh());
++  }
++
++  Future<void> _refresh() async {
++    if (!mounted ||
++        !_foreground ||
++        _busy ||
++        ModalRoute.of(context)?.isCurrent != true)
++      return;
++    _busy = true;
++    try {
++      final int unread = await (widget.repository ?? SupportRepository.instance)
++          .unread();
++      if (mounted) setState(() => _unread = unread);
++    } catch (_) {
++      /* Le chat ne peut jamais bloquer l'accueil. */
++    } finally {
++      _busy = false;
++    }
++  }
++
++  @override
++  void dispose() {
++    _timer?.cancel();
++    WidgetsBinding.instance.removeObserver(this);
++    super.dispose();
++  }
++
++  @override
++  Widget build(BuildContext context) => Tooltip(
++    message: 'Chat privé · Assistance',
++    child: Badge(
++      isLabelVisible: _unread > 0,
++      label: Text(_unread > 99 ? '99+' : '$_unread'),
++      child: FloatingActionButton.small(
++        heroTag: 'support-chat',
++        backgroundColor: AppColors.surfaceHigh,
++        foregroundColor: AppColors.editorialCream,
++        shape: RoundedRectangleBorder(
++          borderRadius: BorderRadius.circular(18),
++          side: BorderSide(color: AppColors.accent.withValues(alpha: .45)),
++        ),
++        onPressed: () async {
++          await showModalBottomSheet<void>(
++            context: context,
++            isScrollControlled: true,
++            useSafeArea: true,
++            backgroundColor: AppColors.background,
++            shape: const RoundedRectangleBorder(
++              borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
++            ),
++            builder: (BuildContext context) => Padding(
++              padding: EdgeInsets.only(
++                bottom: MediaQuery.viewInsetsOf(context).bottom,
++              ),
++              child: SizedBox(
++                height:
++                    (MediaQuery.sizeOf(context).height -
++                        MediaQuery.viewInsetsOf(context).bottom) *
++                    .78,
++                child: SupportChat(repository: widget.repository),
++              ),
++            ),
++          );
++          unawaited(_refresh());
++        },
++        child: Semantics(
++          label: 'Ouvrir le chat privé',
++          child: const _LittleFace(),
++        ),
++      ),
++    ),
++  );
++}
++
++class _LittleFace extends StatelessWidget {
++  const _LittleFace();
++  @override
++  Widget build(BuildContext context) => Container(
++    width: 27,
++    height: 20,
++    decoration: BoxDecoration(
++      borderRadius: BorderRadius.circular(8),
++      border: Border.all(
++        color: AppColors.editorialCream.withValues(alpha: .65),
++      ),
++    ),
++    child: Row(
++      mainAxisAlignment: MainAxisAlignment.center,
++      children: <Widget>[
++        for (int i = 0; i < 2; i++)
++          Padding(
++            padding: const EdgeInsets.symmetric(horizontal: 3),
++            child: Container(
++              width: 4,
++              height: 7,
++              decoration: BoxDecoration(
++                color: AppColors.editorialCream,
++                borderRadius: BorderRadius.circular(3),
++              ),
++            ),
++          ),
++      ],
++    ),
++  );
++}
++
++class SupportChat extends StatefulWidget {
++  const SupportChat({super.key, this.repository});
++  final SupportRepository? repository;
++  @override
++  State<SupportChat> createState() => _SupportChatState();
++}
++
++class _SupportChatState extends State<SupportChat> with WidgetsBindingObserver {
++  final TextEditingController _text = TextEditingController();
++  final ScrollController _scroll = ScrollController();
++  SupportRepository get _repo =>
++      widget.repository ?? SupportRepository.instance;
++  Timer? _timer;
++  List<SupportMessage> _items = <SupportMessage>[];
++  bool _loading = false,
++      _sending = false,
++      _initial = true,
++      _foreground = true,
++      _more = false;
++  int _ownerRead = 0, _ack = 0;
++  String _error = '', _pendingText = '', _pendingId = '';
++  bool get _bottom => !_scroll.hasClients || _scroll.offset < 40;
++  @override
++  void initState() {
++    super.initState();
++    WidgetsBinding.instance.addObserver(this);
++    _scroll.addListener(_onScroll);
++    unawaited(_load());
++    _timer = Timer.periodic(const Duration(seconds: 3), (_) => _load());
++  }
++
++  @override
++  void didChangeAppLifecycleState(AppLifecycleState state) {
++    _foreground = state == AppLifecycleState.resumed;
++    if (_foreground) unawaited(_load());
++  }
++
++  @override
++  void dispose() {
++    _timer?.cancel();
++    WidgetsBinding.instance.removeObserver(this);
++    _text.dispose();
++    _scroll.dispose();
++    super.dispose();
++  }
++
++  void _onScroll() {
++    if (_bottom) unawaited(_markRead());
++  }
++
++  Future<void> _markRead() async {
++    if (!mounted || !_foreground || !_bottom || _items.isEmpty) return;
++    final int seq = _items.last.seq;
++    if (seq <= _ack) return;
++    try {
++      await _repo.read(seq);
++      _ack = seq;
++    } catch (_) {
++      /* Retenté au prochain passage. */
++    }
++  }
++
++  Future<void> _load({bool older = false}) async {
++    if (_loading || !_foreground || !mounted) return;
++    _loading = true;
++    try {
++      final bool firstPage = _items.isEmpty;
++      final SupportPage page = await _repo.messages(
++        before: older && _items.isNotEmpty ? _items.first.seq : null,
++        after: !older && _items.isNotEmpty ? _items.last.seq : null,
++      );
++      if (!mounted) return;
++      final Map<int, SupportMessage> byId = <int, SupportMessage>{
++        for (final SupportMessage m in _items) m.seq: m,
++        for (final SupportMessage m in page.items) m.seq: m,
++      };
++      setState(() {
++        _items = byId.values.toList()
++          ..sort(
++            (SupportMessage a, SupportMessage b) => a.seq.compareTo(b.seq),
++          );
++        _ownerRead = page.ownerRead;
++        if (firstPage || older) _more = page.more;
++        _initial = false;
++        _error = '';
++      });
++      WidgetsBinding.instance.addPostFrameCallback((_) {
++        if (!older) unawaited(_markRead());
++      });
++    } catch (e) {
++      if (mounted)
++        setState(() {
++          _initial = false;
++          _error = e.toString().replaceFirst('Bad state: ', '');
++        });
++    } finally {
++      _loading = false;
++    }
++  }
++
++  Future<void> _send() async {
++    final String text = _text.text.trim();
++    if (_sending || text.isEmpty) return;
++    if (_pendingText != text) {
++      _pendingText = text;
++      _pendingId = SupportRepository.newMessageId();
++    }
++    setState(() {
++      _sending = true;
++      _error = '';
++    });
++    try {
++      await _repo.send(text, _pendingId);
++      if (!mounted) return;
++      _text.clear();
++      _pendingId = '';
++      _pendingText = '';
++      await _load();
++      if (_scroll.hasClients) _scroll.jumpTo(0);
++    } catch (e) {
++      if (mounted)
++        setState(() => _error = e.toString().replaceFirst('Bad state: ', ''));
++    } finally {
++      if (mounted) setState(() => _sending = false);
++    }
++  }
++
++  @override
++  Widget build(BuildContext context) => Column(
++    children: <Widget>[
++      Container(
++        margin: const EdgeInsets.only(top: 10),
++        width: 36,
++        height: 4,
++        decoration: BoxDecoration(
++          color: AppColors.textTertiary,
++          borderRadius: BorderRadius.circular(2),
++        ),
++      ),
++      Padding(
++        padding: const EdgeInsets.fromLTRB(20, 16, 8, 12),
++        child: Row(
++          children: <Widget>[
++            const _LittleFace(),
++            const SizedBox(width: 12),
++            Expanded(
++              child: Column(
++                crossAxisAlignment: CrossAxisAlignment.start,
++                children: <Widget>[
++                  Text('7MOTION · Assistance', style: AppTextStyles.bodyLarge),
++                  Text(
++                    'Une conversation privée avec 7MOTION',
++                    style: AppTextStyles.labelSmall.copyWith(
++                      color: AppColors.textSecondary,
++                    ),
++                  ),
++                ],
++              ),
++            ),
++            IconButton(
++              tooltip: MaterialLocalizations.of(context).closeButtonTooltip,
++              onPressed: () => Navigator.pop(context),
++              icon: const Icon(Icons.close_rounded),
++            ),
++          ],
++        ),
++      ),
++      Divider(height: 1, color: AppColors.border),
++      Expanded(
++        child: _initial
++            ? const Center(child: CircularProgressIndicator())
++            : _items.isEmpty
++            ? SingleChildScrollView(
++                child: Padding(
++                  padding: const EdgeInsets.all(24),
++                  child: Column(
++                    mainAxisSize: MainAxisSize.min,
++                    children: <Widget>[
++                      const _LittleFace(),
++                      const SizedBox(height: 16),
++                      Text(
++                        'Comment pouvons-nous t’aider ?',
++                        style: AppTextStyles.headlineMedium,
++                        textAlign: TextAlign.center,
++                      ),
++                      const SizedBox(height: 10),
++                      Text(
++                        'Écris-nous ici. Tu retrouveras notre réponse dans cette conversation.',
++                        style: AppTextStyles.bodyMedium.copyWith(
++                          color: AppColors.textSecondary,
++                        ),
++                        textAlign: TextAlign.center,
++                      ),
++                    ],
++                  ),
++                ),
++              )
++            : ListView.builder(
++                controller: _scroll,
++                reverse: true,
++                padding: const EdgeInsets.all(16),
++                itemCount: _items.length + (_more ? 1 : 0),
++                itemBuilder: (BuildContext context, int index) {
++                  if (index == _items.length)
++                    return TextButton(
++                      onPressed: () => _load(older: true),
++                      child: const Text('Messages précédents'),
++                    );
++                  final SupportMessage m = _items[_items.length - 1 - index];
++                  final bool mine = m.sender == 'client';
++                  final DateTime date = DateTime.fromMillisecondsSinceEpoch(
++                    m.createdAt,
++                  );
++                  final String time = TimeOfDay.fromDateTime(date)
++                      .format(context);
++                  return Align(
++                    alignment: mine
++                        ? Alignment.centerRight
++                        : Alignment.centerLeft,
++                    child: Container(
++                      constraints: BoxConstraints(
++                        maxWidth: MediaQuery.sizeOf(context).width * .8,
++                      ),
++                      margin: const EdgeInsets.only(bottom: 12),
++                      padding: const EdgeInsets.all(13),
++                      decoration: BoxDecoration(
++                        color: mine
++                            ? AppColors.accent.withValues(alpha: .15)
++                            : AppColors.surfaceHigh,
++                        borderRadius: BorderRadius.only(
++                          topLeft: const Radius.circular(18),
++                          topRight: const Radius.circular(18),
++                          bottomLeft: Radius.circular(mine ? 18 : 4),
++                          bottomRight: Radius.circular(mine ? 4 : 18),
++                        ),
++                      ),
++                      child: Column(
++                        crossAxisAlignment: CrossAxisAlignment.end,
++                        children: <Widget>[
++                          SelectableText(
++                            m.body,
++                            style: AppTextStyles.bodyMedium,
++                          ),
++                          const SizedBox(height: 6),
++                          Text(
++                            '$time${mine ? (_ownerRead >= m.seq ? ' · Lu' : ' · Envoyé') : ''}',
++                            style: AppTextStyles.labelSmall.copyWith(
++                              color: AppColors.textTertiary,
++                            ),
++                          ),
++                        ],
++                      ),
++                    ),
++                  );
++                },
++              ),
++      ),
++      if (_error.isNotEmpty)
++        Padding(
++          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
++          child: Text(
++            _error,
++            style: AppTextStyles.labelSmall.copyWith(color: AppColors.warning),
++          ),
++        ),
++      SafeArea(
++        top: false,
++        child: Padding(
++          padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
++          child: Row(
++            crossAxisAlignment: CrossAxisAlignment.end,
++            children: <Widget>[
++              Expanded(
++                child: TextField(
++                  controller: _text,
++                  enabled: !_sending,
++                  maxLength: 2000,
++                  minLines: 1,
++                  maxLines: 4,
++                  style: AppTextStyles.bodyMedium,
++                  decoration: InputDecoration(
++                    hintText: 'Ton message…',
++                    counterText: '',
++                    filled: true,
++                    fillColor: AppColors.surfaceHigh,
++                    border: OutlineInputBorder(
++                      borderRadius: BorderRadius.circular(22),
++                      borderSide: BorderSide.none,
++                    ),
++                  ),
++                ),
++              ),
++              const SizedBox(width: 8),
++              IconButton.filled(
++                tooltip: 'Envoyer',
++                onPressed: _sending ? null : _send,
++                icon: _sending
++                    ? const SizedBox(
++                        width: 18,
++                        height: 18,
++                        child: CircularProgressIndicator(strokeWidth: 2),
++                      )
++                    : const Icon(Icons.arrow_upward_rounded),
++              ),
++            ],
++          ),
++        ),
++      ),
++    ],
++  );
++}
+diff --git a/lib/features/vod/data/native_downloads.dart b/lib/features/vod/data/native_downloads.dart
+new file mode 100644
+index 0000000..b8b9e50
+--- /dev/null
++++ b/lib/features/vod/data/native_downloads.dart
+@@ -0,0 +1,95 @@
++// Petit adaptateur au moteur natif : même écran et mêmes identifiants.
++// Les reprises historiques restent au moteur HTTP existant tant qu'un
++// transfert natif correspondant n'a pas été créé.
++import 'dart:async';
++
++import 'package:background_downloader/background_downloader.dart';
++
++import '../../mobile_services/data/mobile_services.dart';
++
++class NativeDownloads {
++  static const String group = '7motion-vod-v1';
++  static final FileDownloader engine = FileDownloader();
++  static String taskId(String id) => '7motion-vod-$id';
++  static Future<void> initialize(void Function(TaskUpdate) onUpdate) async {
++    engine.updates
++        .where((TaskUpdate e) => e.task.group == group)
++        .listen(onUpdate);
++    engine.configureNotificationForGroup(
++      group,
++      running: const TaskNotification(
++        'Téléchargement',
++        '{displayName} · {progress}',
++      ),
++      complete: const TaskNotification(
++        'Téléchargement terminé',
++        '{displayName}',
++      ),
++      error: const TaskNotification(
++        'Téléchargement interrompu',
++        'Reprends depuis 7MOTION',
++      ),
++      paused: const TaskNotification(
++        'Téléchargement en pause',
++        '{displayName}',
++      ),
++      progressBar: true,
++    );
++    await engine.start();
++  }
++
++  static Future<TaskRecord?> record(String id) =>
++      engine.database.recordForId(taskId(id));
++  static Future<bool> enqueue({
++    required String id,
++    required String url,
++    required String filename,
++    required String name,
++  }) async {
++    await MobileServices.instance.initialize();
++    final DownloadTask task = DownloadTask(
++      taskId: taskId(id),
++      url: url,
++      filename: filename,
++      directory: 'Telechargements',
++      baseDirectory: BaseDirectory.applicationDocuments,
++      group: group,
++      displayName: name,
++      metaData: id,
++      updates: Updates.statusAndProgress,
++      allowPause: true,
++      requiresWiFi: MobileServices.instance.wifiDownloads,
++      retries: 3,
++      headers: const <String, String>{'User-Agent': 'VLC/3.0.18 LibVLC/3.0.18'},
++      transferHints: const <TransferHint>{
++        TransferHint.userInitiated,
++        TransferHint.largeFile,
++      },
++    );
++    return engine.enqueue(task);
++  }
++
++  static Future<bool> pause(String id) async {
++    final TaskRecord? r = await record(id);
++    return r?.task is DownloadTask
++        ? engine.pause(r!.task as DownloadTask)
++        : false;
++  }
++
++  static Future<bool> resume(String id) async {
++    final TaskRecord? r = await record(id);
++    if (r?.task is! DownloadTask) return false;
++    final DownloadTask task = r!.task as DownloadTask;
++    if (r.status == TaskStatus.running ||
++        r.status == TaskStatus.enqueued ||
++        r.status == TaskStatus.waitingToRetry)
++      return true;
++    if (r.status == TaskStatus.paused) return engine.resume(task);
++    return engine.enqueue(task);
++  }
++
++  static Future<void> delete(String id) async {
++    await engine.cancelTaskWithId(taskId(id));
++    await engine.database.deleteRecordWithId(taskId(id));
++  }
++}
+diff --git a/pubspec.yaml b/pubspec.yaml
+index 350bf6c..bcd2357 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -12,8 +12,8 @@ publish_to: 'none'
+ version: 0.3.4+12
+ 
+ environment:
+-  sdk: ^3.5.0
+-  flutter: ">=3.24.0"
++  sdk: ^3.13.0
++  flutter: ">=3.47.0"
+ 
+ dependencies:
+   flutter:
+@@ -315,6 +315,24 @@ dependencies:
+   encrypt: ^5.0.3
+   crypto: ^3.0.6
+ 
++  # Identifiant du chat : SHA-256 d'un secret local ; aucune MAC comme clé.
++  cryptography: ^2.7.0
++  # Téléchargements natifs persistants, pause/reprise et notifications.
++  background_downloader: 9.6.4
++  # Préparation Android du guide, seulement après activation volontaire.
++  workmanager: 0.10.10
++  # Services facultatifs : aucune connexion sans clé publique configurée.
++  # GrowthBook pilote les animations ; PostHog exige le consentement.
++  # 4.3.0 conserve pointycastle 3, compatible avec le chiffrement existant.
++  # 4.4.0 impose pointycastle 4 : ne pas forcer ce changement à encrypt.
++  growthbook_sdk_flutter: 4.3.0
++  posthog_flutter: 5.53.0
++  # Adaptateurs d'achats et de salons audio ; aucun droit panel modifié.
++  purchases_flutter: 10.15.2
++  # Dernière version sans dart_jsonwebtoken/pointycastle 4 :
++  # conserver le chiffrement historique encrypt 5, sans override forcé.
++  livekit_client: 2.5.3
++
+ # Pin de screen_brightness_android pour eviter la 2.1.5 qui a un
+ # build.gradle cassé (bloc kotlin{} top-level inutilisable par notre
+ # config Flutter CI). 2.1.4 (juste avant la cassée) est compatible
+diff --git a/test/features/ads/campaign_creative_test.dart b/test/features/ads/campaign_creative_test.dart
+new file mode 100644
+index 0000000..49e77e9
+--- /dev/null
++++ b/test/features/ads/campaign_creative_test.dart
+@@ -0,0 +1,51 @@
++import 'package:flutter_test/flutter_test.dart';
++import 'package:tv_king/features/ads/domain/campaign_creative.dart';
++import 'package:tv_king/features/simple_home/data/announcement_repository.dart';
++
++void main() {
++  final Map<String, dynamic> recipe = <String, dynamic>{
++    'version': 1,
++    'template': 'prism',
++    'palette': 'ice',
++    'image_url': '',
++    'badge': 'Nouveau',
++    'motion': 'gentle',
++    'duration_seconds': 8,
++  };
++  test('modèle valide et ancien message restent lisibles', () {
++    expect(CampaignCreative.parse(recipe)?.durationSeconds, 8);
++    final Map<String, dynamic> legacy = <String, dynamic>{
++      'id': 1,
++      'title': 'Découvrir',
++      'body': 'Le programme',
++      'created_at': 1,
++    };
++    expect(Announcement.fromJson(legacy)?.creative, isNull);
++    expect(
++      Announcement.fromJson(<String, dynamic>{...legacy, 'creative': recipe})
++          ?.creative
++          ?.template,
++      'prism',
++    );
++    expect(
++      Announcement.fromJson(<String, dynamic>{
++        ...legacy,
++        'creative': <String, dynamic>{...recipe, 'version': 99},
++      })?.title,
++      'Découvrir',
++    );
++  });
++  test('aucun mouvement illimité ni URL de script', () {
++    for (final Map<String, dynamic> changes in <Map<String, dynamic>>[
++      <String, dynamic>{'duration_seconds': 999},
++      <String, dynamic>{'motion': 'loop'},
++      <String, dynamic>{'template': 'html'},
++      <String, dynamic>{'image_url': 'javascript:alert(1)'},
++      <String, dynamic>{'image_url': 'https://secret@image.invalid/a.png'},
++    ])
++      expect(
++        CampaignCreative.parse(<String, dynamic>{...recipe, ...changes}),
++        isNull,
++      );
++  });
++}
+diff --git a/test/features/support/support_chat_test.dart b/test/features/support/support_chat_test.dart
+new file mode 100644
+index 0000000..1b98ee8
+--- /dev/null
++++ b/test/features/support/support_chat_test.dart
+@@ -0,0 +1,103 @@
++// Vérifie les gestes réels : pas d’ouverture spontanée, clavier et reprise.
++import 'dart:convert';
++
++import 'package:flutter/material.dart';
++import 'package:flutter_test/flutter_test.dart';
++import 'package:google_fonts/google_fonts.dart';
++import 'package:http/http.dart' as http;
++import 'package:http/testing.dart';
++import 'package:shared_preferences/shared_preferences.dart';
++import 'package:tv_king/features/support/data/support_repository.dart';
++import 'package:tv_king/features/support/presentation/support_chat.dart';
++
++void main() {
++  TestWidgetsFlutterBinding.ensureInitialized();
++  setUp(() {
++    GoogleFonts.config.allowRuntimeFetching = false;
++    SharedPreferences.setMockInitialValues(<String, Object>{
++      'device.virtual_mac.v1': 'MK:CC:11:22:33:44',
++    });
++  });
++  testWidgets('bulle discrète : toucher, écrire, reprise et fermeture', (
++    WidgetTester t,
++  ) async {
++    t.view.physicalSize = const Size(390, 844);
++    t.view.devicePixelRatio = 1;
++    addTearDown(t.view.resetPhysicalSize);
++    addTearDown(t.view.resetDevicePixelRatio);
++    final List<Map<String, dynamic>> sent = <Map<String, dynamic>>[];
++    final SupportRepository repo = SupportRepository(
++      client: MockClient((http.Request r) async {
++        if (r.method == 'POST') {
++          sent.add(jsonDecode(r.body) as Map<String, dynamic>);
++          if (sent.length == 1) return http.Response('{}', 503);
++          return http.Response('{}', 201);
++        }
++        return http.Response(
++          '{"items":[],"unread":0,"more":false,"owner_read_seq":0}',
++          200,
++        );
++      }),
++    );
++    await t.pumpWidget(
++      MaterialApp(
++        home: Scaffold(
++          body: const Text('Accueil'),
++          floatingActionButton: SupportBubble(repository: repo),
++        ),
++      ),
++    );
++    await t.pumpAndSettle();
++    expect(find.byType(SupportChat), findsNothing);
++    await t.tap(find.byType(FloatingActionButton));
++    await t.pumpAndSettle();
++    expect(find.byType(SupportChat), findsOneWidget);
++    await t.enterText(find.byType(TextField), 'Bonjour');
++    await t.tap(find.byTooltip('Envoyer'));
++    await t.pumpAndSettle();
++    expect(
++      t.widget<TextField>(find.byType(TextField)).controller!.text,
++      'Bonjour',
++    );
++    await t.tap(find.byTooltip('Envoyer'));
++    await t.pumpAndSettle();
++    expect(sent.length, 2);
++    expect(sent[0]['client_id'], sent[1]['client_id']);
++    expect(
++      t.widget<TextField>(find.byType(TextField)).controller!.text,
++      isEmpty,
++    );
++    await t.tap(find.byIcon(Icons.close_rounded));
++    await t.pumpAndSettle();
++    expect(find.byType(SupportChat), findsNothing);
++    expect(t.takeException(), isNull);
++    await t.pumpWidget(const SizedBox());
++  });
++  testWidgets('petit téléphone avec clavier : aucune zone ne déborde', (
++    WidgetTester t,
++  ) async {
++    t.view.physicalSize = const Size(320, 640);
++    t.view.devicePixelRatio = 1;
++    addTearDown(t.view.resetPhysicalSize);
++    addTearDown(t.view.resetDevicePixelRatio);
++    addTearDown(t.view.resetViewInsets);
++    final SupportRepository repo = SupportRepository(
++      client: MockClient(
++        (_) async => http.Response('{"items":[],"unread":0,"more":false}', 200),
++      ),
++    );
++    await t.pumpWidget(
++      MaterialApp(
++        home: Scaffold(floatingActionButton: SupportBubble(repository: repo)),
++      ),
++    );
++    await t.pumpAndSettle();
++    await t.tap(find.byType(FloatingActionButton));
++    await t.pumpAndSettle();
++    t.view.viewInsets = FakeViewPadding(bottom: 280);
++    await t.pumpAndSettle();
++    expect(t.takeException(), isNull);
++    expect(find.byTooltip('Envoyer'), findsOneWidget);
++    await t.pumpWidget(const SizedBox());
++  });
++}
+diff --git a/test/features/support/support_repository_test.dart b/test/features/support/support_repository_test.dart
+new file mode 100644
+index 0000000..707819e
+--- /dev/null
++++ b/test/features/support/support_repository_test.dart
+@@ -0,0 +1,88 @@
++// HTTP simulé seulement : le stockage local et les identifiants sont réels.
++import 'dart:convert';
++
++import 'package:cryptography/cryptography.dart';
++import 'package:flutter_test/flutter_test.dart';
++import 'package:http/http.dart' as http;
++import 'package:http/testing.dart';
++import 'package:shared_preferences/shared_preferences.dart';
++import 'package:tv_king/features/support/data/support_repository.dart';
++
++void main() {
++  TestWidgetsFlutterBinding.ensureInitialized();
++  setUp(
++    () => SharedPreferences.setMockInitialValues(<String, Object>{
++      'device.virtual_mac.v1': 'MK:CC:11:22:33:44',
++    }),
++  );
++  test(
++    'identité privée stable : le secret est dans l’en-tête, jamais dans l’URL',
++    () async {
++      final List<http.Request> seen = <http.Request>[];
++      final http.Client client = MockClient((http.Request r) async {
++        seen.add(r);
++        return http.Response(
++          '{"items":[],"unread":2,"owner_read_seq":0,"more":false}',
++          200,
++        );
++      });
++      final SupportRepository a = SupportRepository(client: client);
++      expect(await a.unread(), 2);
++      await Future.wait(<Future<SupportPage>>[
++        a.messages(),
++        a.messages(before: 9),
++      ]);
++      await SupportRepository(client: client).unread();
++      await a.messages(after: 4);
++      final String token =
++          seen.first.headers['X-Support-Token'] ??
++          seen.first.headers['x-support-token']!;
++      expect(token, matches(RegExp(r'^[A-Za-z0-9_-]{43}$')));
++      final String id = (await Sha256().hash(utf8.encode(token))).bytes
++          .map((int b) => b.toRadixString(16).padLeft(2, '0'))
++          .join();
++      for (final http.Request r in seen) {
++        expect(r.url.path, '/api/support/$id');
++        expect(r.url.toString(), isNot(contains(token)));
++        expect(r.url.toString(), isNot(contains('MK:')));
++        expect(r.headers.values, contains(token));
++      }
++      expect(seen[2].url.queryParameters['before'], '9');
++      expect(seen.last.url.queryParameters['after'], '4');
++    },
++  );
++  test('un envoi incertain conserve son identifiant pour la reprise', () async {
++    final List<Map<String, dynamic>> bodies = <Map<String, dynamic>>[];
++    final SupportRepository repo = SupportRepository(
++      client: MockClient((http.Request r) async {
++        bodies.add(jsonDecode(r.body) as Map<String, dynamic>);
++        if (bodies.length == 1) throw http.ClientException('hors ligne');
++        return http.Response('{}', 201);
++      }),
++    );
++    final String id = SupportRepository.newMessageId();
++    await expectLater(repo.send(' Bonjour ', id), throwsStateError);
++    await repo.send(' Bonjour ', id);
++    expect(bodies[0], bodies[1]);
++    expect(bodies[1]['body'], 'Bonjour');
++    expect(bodies[1]['client_id'], id);
++  });
++  test(
++    'les erreurs serveur ne divulguent pas leur contenu au client',
++    () async {
++      final SupportRepository repo = SupportRepository(
++        client: MockClient((_) async => http.Response('secret interne', 500)),
++      );
++      await expectLater(
++        repo.unread(),
++        throwsA(
++          isA<StateError>().having(
++            (StateError e) => e.toString(),
++            'message',
++            isNot(contains('secret interne')),
++          ),
++        ),
++      );
++    },
++  );
++}
