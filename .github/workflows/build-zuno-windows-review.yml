@@ -165,6 +165,10 @@ jobs:
       # CL était convertie en chemin Windows (conversion POSIX de MSYS) →
       # cl.exe recevait un faux fichier source → CMake : « No
       # CMAKE_CXX_COMPILER could be found » (builds 1 et 2).
+      # L'installeur de revue ne doit jamais être remplacé automatiquement
+      # par une ancienne release cliente (les numéros des workflows diffèrent).
+      # 0 est le contrat existant « aucune mise à jour automatique » ; le
+      # workflow de production conserve son numéro et son updater inchangés.
       - name: Build Zuno Windows (release, target main_windows)
         shell: pwsh
         env:
@@ -174,7 +178,7 @@ jobs:
           flutter build windows --release `
             --build-name="$env:WIN_VERSION" --build-number="$env:WIN_BUILD" `
             --dart-define=GIT_SHA=${{ github.sha }} `
-            --dart-define=ZUNO_WIN_BUILD="$env:WIN_BUILD" `
+            --dart-define=ZUNO_WIN_BUILD=0 `
             --target=lib/main_windows.dart
           if ($LASTEXITCODE -ne 0) { throw "flutter build windows a échoué ($LASTEXITCODE)" }
 

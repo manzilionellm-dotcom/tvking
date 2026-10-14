@@ -41,6 +41,8 @@ compile le release x64, contrôle les DLL, démarre réellement Zuno sur le
 runner Windows, puis produit `Zuno-Setup.exe` et `zuno-windows.zip`.
 Les artefacts de branche sont disponibles sans remplacer la release client.
 La publication de production conserve le gel et ses protections existantes.
+Les installeurs de revue désactivent les mises à jour automatiques pour
+éviter de revenir à une ancienne release cliente durant leur évaluation.
 
 Contrôles manuels avant une diffusion à grande échelle : écran à 100/150/200 %,
 veille/reprise, carte graphique Intel/AMD/NVIDIA, HLS/MPEG-TS/VOD autorisés,
