@@ -51,7 +51,7 @@ export function CustomersPage({ onLogout }: { onLogout: () => void }) {
         <div className="mb-4 rounded-lg border border-accent/30 bg-accent/10 px-4 py-3 text-sm">{err}</div>
       )}
 
-      <div className="overflow-hidden rounded-xl border border-white/5">
+      <div className="overflow-x-auto rounded-xl border border-white/5">
         <table className="w-full text-sm">
           <thead className="bg-midnight">
             <tr className="text-left text-[10px] uppercase tracking-widest text-ink-tertiary">

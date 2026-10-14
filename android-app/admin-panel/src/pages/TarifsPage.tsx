@@ -134,10 +134,11 @@ export function TarifsPage({ onLogout }: { onLogout: () => void }) {
                   />
                 </div>
                 <div>
-                  <label className="mb-1.5 block text-[10px] uppercase tracking-widest text-ink-tertiary">
+                  <label htmlFor="price-trial" className="mb-1.5 block text-[10px] uppercase tracking-widest text-ink-tertiary">
                     Essai gratuit (jours)
                   </label>
                   <input
+                    id="price-trial"
                     type="number"
                     min={0}
                     max={365}
