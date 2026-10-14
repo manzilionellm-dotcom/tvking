@@ -103,6 +103,11 @@ DEFAULT_SERVERS = '[]'
 # Le secret admin n'est PAS dans ce fichier — il se met via
 # `wrangler secret put ADMIN_SECRET` pour ne JAMAIS être commité.
 #
-# Pareil pour la cle de chiffrement des credentials Xtream :
-# `wrangler secret put SECRETS_KEY` (32 bytes base64 minimum,
-# genere via `openssl rand -base64 32`).
+# Pareil pour la cle de chiffrement des mots de passe Xtream et des
+# liens M3U (AES-256-GCM, au repos dans D1). Les deux noms sont lus ;
+# le premier trouvé est utilisé :
+#   wrangler secret put SOURCE_ENCRYPTION_KEY
+#   wrangler secret put SECRETS_KEY
+# 32 bytes minimum, par exemple : openssl rand -base64 32
+# Tant que le secret n'est pas posé, les nouvelles sources restent
+# en clair (compatibilité). Le poser active le chiffrement.
