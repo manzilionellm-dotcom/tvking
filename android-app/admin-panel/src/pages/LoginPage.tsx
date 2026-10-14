@@ -1,6 +1,7 @@
-import { FormEvent, useState } from 'react';
+import { FormEvent, useRef, useState } from 'react';
 import { authApi, setToken, ApiError } from '@/lib/api';
 import { useT, LangSelect } from '@/lib/i18n';
+import { createSingleFlight } from '@/lib/robust';
 
 /// Ecran login : email + password, JWT en retour.
 /// Bootstrap : si la base D1 est vide, le Worker cree
@@ -31,6 +32,7 @@ export function LoginPage({ onLoggedIn }: { onLoggedIn: () => void }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [okMsg, setOkMsg] = useState<string | null>(null);
+  const flight = useRef(createSingleFlight());
 
   function switchMode(m: 'admin' | 'reseller') {
     setMode(m);
@@ -43,6 +45,7 @@ export function LoginPage({ onLoggedIn }: { onLoggedIn: () => void }) {
 
   async function submit(e: FormEvent) {
     e.preventDefault();
+    await flight.current.run(async () => {
     setBusy(true);
     setErr(null);
     setOkMsg(null);
@@ -68,6 +71,7 @@ export function LoginPage({ onLoggedIn }: { onLoggedIn: () => void }) {
     } finally {
       setBusy(false);
     }
+    });
   }
 
   return (

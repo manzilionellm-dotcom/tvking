@@ -1,12 +1,17 @@
-import { ReactNode, useCallback, useEffect, useState } from 'react';
+import { ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AppLayout } from '@/components/AppLayout';
+import { ListPager } from '@/components/ListPager';
 import {
-  devicesApi, activateApi, flagEmoji,
+  devicesApi, activateApi, flagEmoji, isAbortError,
   type Device, type DeviceSource, type DeviceOverview, type DeviceLocalSource,
   type DeviceLicense, type DevicePresence, ApiError,
 } from '@/lib/api';
 import { formatDateTime } from '@/lib/utils';
+import {
+  LIST_PAGE_SIZE, createAbortBag, createGeneration, createSingleFlight,
+  expiryPhrase, readListPage,
+} from '@/lib/robust';
 
 /// Libellés FR lisibles des plans (clé technique → texte).
 const PLAN_LABELS: Record<string, string> = {
@@ -17,27 +22,44 @@ const PLAN_LABELS: Record<string, string> = {
 export function DevicesPage({ onLogout }: { onLogout: () => void }) {
   const [items, setItems] = useState<Device[]>([]);
   const [q, setQ] = useState('');
+  const [offset, setOffset] = useState(0);
+  const [total, setTotal] = useState(0);
+  const [truncated, setTruncated] = useState(false);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [activateFor, setActivateFor] = useState<Device | null>(null);
   // Appareil dont on affiche la « fiche complète » (infos + M-Trio).
   const [detailFor, setDetailFor] = useState<Device | null>(null);
+  // Une frappe rapide lançait plusieurs requêtes : la plus lente
+  // (souvent l'ancienne recherche) écrasait la plus récente.
+  const gen = useRef(createGeneration());
+  const aborts = useRef(createAbortBag());
 
   const load = useCallback(() => {
+    const id = gen.current.next();
+    const signal = aborts.current.next();
     setLoading(true);
-    devicesApi.list(q)
-      .then((r) => { setItems(r.items); setErr(null); })
-      .catch((e) => {
-        if (e instanceof ApiError && e.status === 401) onLogout();
-        else setErr(e.message);
+    devicesApi.list(q, { limit: LIST_PAGE_SIZE, offset }, signal)
+      .then((r) => {
+        if (!gen.current.isCurrent(id)) return;
+        const page = readListPage<Device>(r);
+        setItems(page.items);
+        setTotal(page.total);
+        setTruncated(page.truncated);
+        setErr(null);
       })
-      .finally(() => setLoading(false));
-  }, [q, onLogout]);
+      .catch((e) => {
+        if (isAbortError(e) || !gen.current.isCurrent(id)) return;
+        if (e instanceof ApiError && e.status === 401) onLogout();
+        else setErr(e instanceof ApiError ? e.message : 'Erreur réseau.');
+      })
+      .finally(() => { if (gen.current.isCurrent(id)) setLoading(false); });
+  }, [q, offset, onLogout]);
 
   useEffect(() => {
     const id = setTimeout(load, 200); // petit debounce sur la recherche
-    return () => clearTimeout(id);
+    return () => { clearTimeout(id); aborts.current.abort(); };
   }, [load]);
 
   async function setBlock(d: Device, status: 'active' | 'frozen' | 'banned') {
@@ -58,13 +80,15 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
   return (
     <AppLayout
       title="Appareils"
-      subtitle={`${items.length} appareil(s)`}
+      subtitle={loading && items.length === 0
+        ? 'Chargement…'
+        : `${total} appareil(s)`}
       onLogout={onLogout}
     >
       <input
         type="search"
         value={q}
-        onChange={(e) => setQ(e.target.value)}
+        onChange={(e) => { setQ(e.target.value); setOffset(0); }}
         placeholder="Recherche par MAC, label, client…"
         className="mb-4 w-full max-w-md rounded-md border border-white/5 bg-midnight px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-accent"
       />
@@ -153,6 +177,14 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
           </tbody>
         </table>
       </div>
+      <ListPager
+        total={total}
+        offset={offset}
+        count={items.length}
+        limit={LIST_PAGE_SIZE}
+        truncated={truncated}
+        onOffset={setOffset}
+      />
 
       {activateFor && (
         <ActivatePlanModal
@@ -328,21 +360,10 @@ function DeviceDetailModal({
 function SubscriptionBox({ loading, license }: { loading: boolean; license: DeviceLicense | null }) {
   if (loading) return <div className="h-16 animate-pulse rounded-lg bg-white/5" />;
   const ok = license && license.status === 'active';
-  const lifetime = license && license.expires_at == null && ok;
-  let detail = 'Aucun abonnement';
-  if (license) {
-    const plan = license.plan ? (PLAN_LABELS[license.plan] || license.plan) : '';
-    if (lifetime) {
-      detail = `${plan || 'À vie'} · illimité`;
-    } else if (license.expires_at != null) {
-      const days = Math.ceil((license.expires_at - Date.now()) / 86400000);
-      detail = days >= 0
-        ? `${plan} · ${days} j restant${days > 1 ? 's' : ''}`
-        : `${plan} · expiré depuis ${-days} j`;
-    } else {
-      detail = plan || license.status;
-    }
-  }
+  const phrase = license ? expiryPhrase(license.expires_at) : 'Aucun abonnement';
+  const plan = license?.plan ? (PLAN_LABELS[license.plan] || license.plan) : '';
+  const lifetime = phrase === 'À vie';
+  const detail = license ? (plan && phrase !== 'À vie' ? `${plan} · ${phrase}` : phrase) : 'Aucun abonnement';
   return (
     <div className="rounded-lg border border-white/5 bg-obsidian px-3 py-2.5">
       <div className="text-[10px] uppercase tracking-widest text-ink-tertiary">Abonnement</div>
@@ -481,6 +502,9 @@ function ActivatePlanModal({
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+  // Verrou synchrone : deux clics avant le re-render partaient deux fois
+  // et débitaient deux fois les crédits.
+  const flight = useRef(createSingleFlight());
 
   const PLANS = [
     { id: 'monthly', label: '1 mois' },
@@ -491,14 +515,16 @@ function ActivatePlanModal({
   ];
 
   async function go() {
-    setBusy(true); setErr(null);
-    try {
-      await activateApi.activate({ mac: device.mac, plan });
-      setDone(true);
-      setTimeout(onDone, 900);
-    } catch (e: any) {
-      setErr(e instanceof ApiError ? e.message : 'Échec.');
-    } finally { setBusy(false); }
+    await flight.current.run(async () => {
+      setBusy(true); setErr(null);
+      try {
+        await activateApi.activate({ mac: device.mac, plan });
+        setDone(true);
+        setTimeout(onDone, 900);
+      } catch (e: any) {
+        setErr(e instanceof ApiError ? e.message : 'Échec.');
+      } finally { setBusy(false); }
+    });
   }
 
   return (

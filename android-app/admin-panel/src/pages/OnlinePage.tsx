@@ -1,45 +1,50 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
-import { onlineApi, type OnlineSnapshot, flagEmoji, ApiError } from '@/lib/api';
+import { onlineApi, flagEmoji, ApiError, isAbortError } from '@/lib/api';
+import {
+  LIST_PAGE_SIZE, agoLabel, createAbortBag, createGeneration, onlineView,
+  type OnlineView,
+} from '@/lib/robust';
 
 /// Page « En ligne » (owner) — qui utilise l'app en ce moment, depuis où.
 /// Données issues de la présence (heartbeat) : IP + pays fournis par
 /// Cloudflare. « En ligne » = vu il y a moins de 15 min.
 
-function ago(ts: number): string {
-  if (!ts) return '—';
-  const s = Math.floor((Date.now() - ts) / 1000);
-  if (s < 60) return `il y a ${s}s`;
-  if (s < 3600) return `il y a ${Math.floor(s / 60)} min`;
-  return `il y a ${Math.floor(s / 3600)} h`;
-}
-
 export function OnlinePage({ onLogout }: { onLogout: () => void }) {
-  const [data, setData] = useState<OnlineSnapshot | null>(null);
+  const [data, setData] = useState<OnlineView | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const gen = useRef(createGeneration());
+  const aborts = useRef(createAbortBag());
 
-  function load() {
-    onlineApi.get()
-      .then(setData)
-      .catch((e: any) => {
+  const load = useCallback(() => {
+    const id = gen.current.next();
+    const signal = aborts.current.next();
+    onlineApi.get({ limit: LIST_PAGE_SIZE, offset: 0 }, signal)
+      .then((raw) => {
+        if (!gen.current.isCurrent(id)) return;
+        // Corps incomplet (sans byCountry / items) : on normalise,
+        // on n'explose pas la page, et on efface l'erreur précédente.
+        setData(onlineView(raw));
+        setErr(null);
+      })
+      .catch((e: unknown) => {
+        if (isAbortError(e) || !gen.current.isCurrent(id)) return;
         if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
         setErr(e instanceof ApiError ? e.message : 'Erreur réseau.');
       })
-      .finally(() => setLoading(false));
-  }
+      .finally(() => { if (gen.current.isCurrent(id)) setLoading(false); });
+  }, [onLogout]);
 
-  // Rafraîchissement auto toutes les 30 s.
+  // Rafraîchissement auto toutes les 30 s. La requête précédente
+  // est annulée pour ne pas afficher un instantané périmé.
   useEffect(() => {
     load();
     const t = setInterval(load, 30000);
-    return () => clearInterval(t);
-    /* eslint-disable-next-line */
-  }, []);
+    return () => { clearInterval(t); aborts.current.abort(); };
+  }, [load]);
 
-  const byCountry = data
-    ? Object.entries(data.byCountry).sort((a, b) => b[1] - a[1])
-    : [];
+  const byCountry = data ? data.byCountry : [];
 
   return (
     <AppLayout
@@ -132,10 +137,10 @@ export function OnlinePage({ onLogout }: { onLogout: () => void }) {
                         ? <span className="inline-flex items-center gap-1 text-accent-bright">▶ {d.channel}</span>
                         : <span className="text-ink-tertiary">—</span>}
                     </td>
-                    <td className="px-4 py-2.5 text-xs text-ink-tertiary">{ago(d.lastSeen)}</td>
+                    <td className="px-4 py-2.5 text-xs text-ink-tertiary">{agoLabel(d.lastSeen)}</td>
                   </tr>
                 ))}
-                {(data?.items.length ?? 0) === 0 && (
+                {(data?.items?.length ?? 0) === 0 && (
                   <tr>
                     <td colSpan={5} className="px-4 py-6 text-center text-xs text-ink-tertiary">
                       Personne en ligne dans les 15 dernières minutes.

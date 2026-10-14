@@ -58,6 +58,17 @@
 //  customers viendront en Phase 3 et 5 respectivement.
 // =========================================================
 
+import {
+  parsePageQuery,
+  pageEnvelope,
+  epochSql,
+  epochMs,
+  liveLicenseStatus,
+  num,
+  redact,
+  safeRoute,
+} from './page_query.js';
+
 // ---------------------------------------------------------
 //  Helpers reponse
 // ---------------------------------------------------------
@@ -285,31 +296,40 @@ async function requireAuth(request, env) {
 //  Pour le support : retrouver vite quel identifiant a été mis sur quelle
 //  MAC. On NE renvoie JAMAIS le mot de passe. Owner = tout ; revendeur =
 //  uniquement SES appareils (cloisonnement par reseller_id).
-async function handleReferencesList(env, user) {
+async function handleReferencesList(request, env, user) {
   const reseller = user && user.role === 'reseller';
+  const { limit, offset } = parsePageQuery(new URL(request.url), {
+    defaultLimit: 100, maxLimit: 200,
+  });
   try {
     const where = reseller ? 'WHERE d.reseller_id = ?' : '';
     const binds = reseller ? [user.sub] : [];
     const now = Date.now();
-    const rs = await env.DB
-      .prepare(
-        `SELECT ds.mac AS mac, ds.username AS username, ds.server_url AS server_url,
-                ds.sources_json AS sources_json, ds.label AS label,
-                ds.updated_at AS updated_at, c.name AS customer_name,
-                (SELECT l.status    FROM licenses l JOIN devices dl ON dl.id = l.device_id
-                   WHERE dl.mac = ds.mac
-                   ORDER BY (l.expires_at IS NULL) DESC, l.expires_at DESC LIMIT 1) AS lic_status,
-                (SELECT l.expires_at FROM licenses l JOIN devices dl ON dl.id = l.device_id
-                   WHERE dl.mac = ds.mac
-                   ORDER BY (l.expires_at IS NULL) DESC, l.expires_at DESC LIMIT 1) AS lic_expires
-         FROM device_sources ds
-         LEFT JOIN devices d   ON d.mac = ds.mac
-         LEFT JOIN customers c ON c.id = d.customer_id
-         ${where}
-         ORDER BY ds.updated_at DESC LIMIT 1000`,
-      )
-      .bind(...binds)
-      .all();
+    const page = await pagedQuery(
+      env,
+      `SELECT COUNT(*) as n FROM device_sources ds
+         LEFT JOIN devices d ON d.mac = ds.mac
+         ${where}`,
+      binds,
+      `SELECT ds.mac AS mac, ds.username AS username, ds.server_url AS server_url,
+              ds.sources_json AS sources_json, ds.label AS label,
+              ds.updated_at AS updated_at, c.name AS customer_name,
+              (SELECT l.status    FROM licenses l JOIN devices dl ON dl.id = l.device_id
+                 WHERE dl.mac = ds.mac
+                 ORDER BY (l.expires_at IS NULL) DESC, l.expires_at DESC LIMIT 1) AS lic_status,
+              (SELECT l.expires_at FROM licenses l JOIN devices dl ON dl.id = l.device_id
+                 WHERE dl.mac = ds.mac
+                 ORDER BY (l.expires_at IS NULL) DESC, l.expires_at DESC LIMIT 1) AS lic_expires
+       FROM device_sources ds
+       LEFT JOIN devices d   ON d.mac = ds.mac
+       LEFT JOIN customers c ON c.id = d.customer_id
+       ${where}
+       ORDER BY ds.updated_at DESC LIMIT ? OFFSET ?`,
+      binds,
+      limit,
+      offset,
+    );
+    const rs = { results: page.items };
     const items = (rs.results || []).map((r) => {
       // username(s) + serveur(s) : depuis le trio (sources_json) sinon les
       // champs simples. On n'expose JAMAIS le mot de passe.
@@ -329,8 +349,7 @@ async function handleReferencesList(env, user) {
       if (r.lic_status === 'banned') status = 'banned';
       else if (r.lic_status === 'frozen') status = 'frozen';
       else if (r.lic_status) {
-        const lifetime = r.lic_expires === null || r.lic_expires === undefined;
-        status = lifetime ? 'active' : (r.lic_expires <= now ? 'expired' : 'active');
+        status = liveLicenseStatus(r.lic_status, r.lic_expires, now);
       }
       return {
         mac: r.mac,
@@ -339,29 +358,44 @@ async function handleReferencesList(env, user) {
         servers,
         status,
         label: r.label || null,
-        updated_at: r.updated_at || null,
+        updated_at: epochMs(r.updated_at),
       };
     });
-    return jsonResp({ items });
-  } catch (_) {
-    return jsonResp({ items: [] });
+    return jsonResp({ ...page, items });
+  } catch (e) {
+    const msg = String(e && e.message || e);
+    // Base jamais migrée : liste vide, pas une fausse panne.
+    // Toute autre erreur remonte au filet (journal + 500), sinon
+    // l'admin croit qu'aucune MAC n'existe.
+    if (/no such table/i.test(msg)) return jsonResp(pageEnvelope([], 0, 0, 0));
+    throw e;
   }
 }
 
 // ----- Historique des modifications (lecture seule) -----
-async function handleAuditLogsList(env) {
+async function handleAuditLogsList(request, env) {
+  const { limit, offset } = parsePageQuery(new URL(request.url));
   try {
-    const rs = await env.DB
-      .prepare(
-        `SELECT id, actor_type, actor_id, action, target_type, target_id,
-                before_json, after_json, created_at
-         FROM audit_logs ORDER BY created_at DESC LIMIT 200`,
-      )
-      .all();
-    return jsonResp({ items: rs.results || [] });
-  } catch (_) {
-    // Table absente (jamais écrit encore) → liste vide, pas d'erreur.
-    return jsonResp({ items: [] });
+    const page = await pagedQuery(
+      env,
+      'SELECT COUNT(*) as n FROM audit_logs',
+      [],
+      `SELECT id, actor_type, actor_id, action, target_type, target_id,
+              before_json, after_json, created_at
+       FROM audit_logs ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+      [],
+      limit,
+      offset,
+    );
+    page.items = page.items.map((row) => ({
+      ...row,
+      created_at: epochMs(row.created_at),
+    }));
+    return jsonResp(page);
+  } catch (e) {
+    const msg = String(e && e.message || e);
+    if (/no such table/i.test(msg)) return jsonResp(pageEnvelope([], 0, 0, 0));
+    throw e;
   }
 }
 
@@ -420,13 +454,20 @@ async function logAudit(env, request, actor, action, target, before, after) {
         target.id || null,
         before ? JSON.stringify(before) : null,
         after ? JSON.stringify(after) : null,
-        request.headers.get('CF-Connecting-IP') || null,
-        request.headers.get('User-Agent') || null,
+        request && request.headers ? request.headers.get('CF-Connecting-IP') : null,
+        request && request.headers ? request.headers.get('User-Agent') : null,
         Date.now(),
       )
       .run();
-  } catch (_) {
-    // l'audit ne doit JAMAIS faire planter une ecriture metier.
+  } catch (e) {
+    // L'audit ne doit JAMAIS faire planter une écriture métier.
+    // On journalise la cause, pas le contenu (il peut contenir un mot de passe).
+    console.error(JSON.stringify({
+      level: 'error',
+      source: 'api_v1',
+      route: 'audit_log',
+      message: redact(e && e.message ? e.message : e),
+    }));
   }
 }
 
@@ -447,11 +488,39 @@ export async function apiV1(request, env) {
   if (request.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: JSON_HEADERS });
   }
+  // Identifiant de corrélation : le panel affiche une erreur stable,
+  // le journal Worker (wrangler tail) porte la cause réelle, redactée.
+  const requestId = crypto.randomUUID();
   try {
     return await apiV1Inner(request, env);
   } catch (e) {
-    return errResp('internal_error', (e && e.message) || String(e), 500);
+    const raw = (e && e.message) ? String(e.message) : String(e);
+    console.error(JSON.stringify({
+      level: 'error',
+      source: 'api_v1',
+      request_id: requestId,
+      route: safeRoute(request),
+      message: redact(raw),
+    }));
+    // Une table manquante est un message d'exploitation utile et sans
+    // secret. Tout le reste (SQL, pile, jeton) reste côté journal.
+    const safe = /no such table|no such column/i.test(raw)
+      ? raw.replace(/\s+/g, ' ').slice(0, 180)
+      : 'Erreur interne';
+    return jsonResp({
+      error: 'internal_error',
+      message: safe,
+      request_id: requestId,
+    }, 500);
   }
+}
+
+/// COUNT + page. Le SQL de liste DOIT se terminer par « LIMIT ? OFFSET ? ».
+async function pagedQuery(env, countSql, countBinds, listSql, listBinds, limit, offset) {
+  const countRow = await env.DB.prepare(countSql).bind(...countBinds).first();
+  const total = num(countRow, 'n');
+  const rs = await env.DB.prepare(listSql).bind(...listBinds, limit, offset).all();
+  return pageEnvelope(rs.results || [], total, limit, offset);
 }
 
 async function apiV1Inner(request, env) {
@@ -514,13 +583,13 @@ async function apiV1Inner(request, env) {
     if (a.user.role !== 'super_admin') {
       return errResp('forbidden', 'Owner only', 403);
     }
-    return handleAuditLogsList(env);
+    return handleAuditLogsList(request, env);
   }
 
   // /references — carnet : MAC activées + username(s) Xtream (SANS mot de
   // passe), pour le support. Owner = tout ; revendeur = ses appareils.
   if (parts[0] === 'references' && parts.length === 1 && request.method === 'GET') {
-    return handleReferencesList(env, a.user);
+    return handleReferencesList(request, env, a.user);
   }
 
   // /me — profil de l'acteur courant (+ solde de credits si revendeur)
@@ -717,7 +786,7 @@ async function apiV1Inner(request, env) {
     if (a.user.role !== 'super_admin') {
       return errResp('forbidden', 'Owner only', 403);
     }
-    return handleOnlineGet(env);
+    return handleOnlineGet(request, env);
   }
 
   // /force-update — mise à jour forcée (bouton du panel). Owner uniquement.
@@ -1007,6 +1076,11 @@ async function handleStatsOverview(env, user) {
   const month = 30 * 24 * 60 * 60 * 1000;
   const isReseller = user && user.role === 'reseller';
   const rid = isReseller ? user.sub : null;
+  // Dates en secondes ou en ms : sans ça, un expires_at en secondes
+  // est toujours « déjà passé » face à Date.now() en millisecondes.
+  const exp = epochSql('expires_at');
+  const activeSql = `status='active' AND (expires_at IS NULL OR expires_at = 0 OR ${exp} > ?)`;
+  const expiredSql = `expires_at IS NOT NULL AND expires_at > 0 AND ${exp} <= ?`;
 
   // Compteurs, filtres par revendeur si l'acteur est un revendeur.
   const [customers, devices, licenses, activeLicenses, expiredLicenses, apps] =
@@ -1021,29 +1095,32 @@ async function handleStatsOverview(env, user) {
         ? env.DB.prepare('SELECT COUNT(*) as n FROM licenses WHERE reseller_id = ?').bind(rid).first()
         : env.DB.prepare('SELECT COUNT(*) as n FROM licenses').first(),
       isReseller
-        ? env.DB.prepare(`SELECT COUNT(*) as n FROM licenses WHERE status='active' AND (expires_at IS NULL OR expires_at > ?) AND reseller_id = ?`).bind(now, rid).first()
-        : env.DB.prepare(`SELECT COUNT(*) as n FROM licenses WHERE status='active' AND (expires_at IS NULL OR expires_at > ?)`).bind(now).first(),
+        ? env.DB.prepare(`SELECT COUNT(*) as n FROM licenses WHERE ${activeSql} AND reseller_id = ?`).bind(now, rid).first()
+        : env.DB.prepare(`SELECT COUNT(*) as n FROM licenses WHERE ${activeSql}`).bind(now).first(),
       isReseller
-        ? env.DB.prepare(`SELECT COUNT(*) as n FROM licenses WHERE expires_at IS NOT NULL AND expires_at <= ? AND reseller_id = ?`).bind(now, rid).first()
-        : env.DB.prepare(`SELECT COUNT(*) as n FROM licenses WHERE expires_at IS NOT NULL AND expires_at <= ?`).bind(now).first(),
+        ? env.DB.prepare(`SELECT COUNT(*) as n FROM licenses WHERE ${expiredSql} AND reseller_id = ?`).bind(now, rid).first()
+        : env.DB.prepare(`SELECT COUNT(*) as n FROM licenses WHERE ${expiredSql}`).bind(now).first(),
       env.DB.prepare('SELECT COUNT(*) as n FROM apps WHERE is_active = 1').first(),
     ]);
 
+  // num() : un COUNT qui renvoie null (table vide / driver) ne doit
+  // pas faire planter tout le tableau de bord.
   const out = {
-    customers: customers.n,
-    devices: devices.n,
-    licenses: licenses.n,
-    active_licenses: activeLicenses.n,
-    expired_licenses: expiredLicenses.n,
-    apps: apps.n,
+    customers: num(customers, 'n'),
+    devices: num(devices, 'n'),
+    licenses: num(licenses, 'n'),
+    active_licenses: num(activeLicenses, 'n'),
+    expired_licenses: num(expiredLicenses, 'n'),
+    apps: num(apps, 'n'),
   };
 
   // Abonnements ACTIFS qui expirent dans les 7 jours → relance/renouvellement.
   const week = 7 * 24 * 60 * 60 * 1000;
+  const soonSql = `status='active' AND expires_at IS NOT NULL AND expires_at > 0 AND ${exp} > ? AND ${exp} <= ?`;
   const expSoon = isReseller
-    ? await env.DB.prepare(`SELECT COUNT(*) as n FROM licenses WHERE status='active' AND expires_at IS NOT NULL AND expires_at > ? AND expires_at <= ? AND reseller_id = ?`).bind(now, now + week, rid).first()
-    : await env.DB.prepare(`SELECT COUNT(*) as n FROM licenses WHERE status='active' AND expires_at IS NOT NULL AND expires_at > ? AND expires_at <= ?`).bind(now, now + week).first();
-  out.expiring_7d = expSoon.n;
+    ? await env.DB.prepare(`SELECT COUNT(*) as n FROM licenses WHERE ${soonSql} AND reseller_id = ?`).bind(now, now + week, rid).first()
+    : await env.DB.prepare(`SELECT COUNT(*) as n FROM licenses WHERE ${soonSql}`).bind(now, now + week).first();
+  out.expiring_7d = num(expSoon, 'n');
 
   if (isReseller) {
     const r = await env.DB
@@ -1062,8 +1139,8 @@ async function handleStatsOverview(env, user) {
         .bind(now - month)
         .first(),
     ]);
-    out.resellers = resellers.n;
-    out.revenue_30d_cents = paidLastMonth.cents;
+    out.resellers = num(resellers, 'n');
+    out.revenue_30d_cents = num(paidLastMonth, 'cents');
   }
   return jsonResp(out);
 }
@@ -1886,7 +1963,7 @@ async function handleFeaturedPost(request, env, actor) {
 // =========================================================
 //  Lit la table `presence` alimentée par /api/heartbeat (worker.js).
 //  « En ligne » = vu il y a < 15 min ; « aujourd'hui » = < 24 h.
-async function handleOnlineGet(env) {
+async function handleOnlineGet(request, env) {
   try {
     await env.DB.prepare(
       'CREATE TABLE IF NOT EXISTS presence (' +
@@ -1898,31 +1975,55 @@ async function handleOnlineGet(env) {
   const DAY_MS = 24 * 60 * 60 * 1000;
   // `channel` peut manquer sur une base ancienne → on l'ajoute (no-op si déjà là).
   try { await env.DB.prepare('ALTER TABLE presence ADD COLUMN channel TEXT').run(); } catch (_) {}
+  const { limit, offset } = parsePageQuery(new URL(request.url), {
+    defaultLimit: 100, maxLimit: 200,
+  });
+  // last_seen peut être en secondes sur une vieille ligne.
+  const seen = epochSql('last_seen');
+  const onlineSince = now - ONLINE_MS;
+  const daySince = now - DAY_MS;
+  const onlineCountRow = await env.DB
+    .prepare(`SELECT COUNT(*) as n FROM presence WHERE ${seen} > ?`)
+    .bind(onlineSince).first();
+  const todayCountRow = await env.DB
+    .prepare(`SELECT COUNT(*) as n FROM presence WHERE ${seen} > ?`)
+    .bind(daySince).first();
+  // Seuls les vrais codes ISO2. Un pays vide ne devient pas « ?? »
+  // (le panel plantait ou affichait un caractère illisible).
+  const countries = await env.DB
+    .prepare(
+      `SELECT UPPER(country) as c, COUNT(*) as n FROM presence
+        WHERE ${seen} > ? AND country IS NOT NULL AND LENGTH(TRIM(country)) = 2
+        GROUP BY UPPER(country)`,
+    )
+    .bind(onlineSince).all();
   const rs = await env.DB
     .prepare(
-      'SELECT mac, ip, country, last_seen, channel FROM presence ' +
-        'WHERE last_seen > ? ORDER BY last_seen DESC LIMIT 1000'
+      `SELECT mac, ip, country, last_seen, channel FROM presence
+        WHERE ${seen} > ?
+        ORDER BY ${seen} DESC LIMIT ? OFFSET ?`,
     )
-    .bind(now - DAY_MS)
+    .bind(onlineSince, limit, offset)
     .all();
-  const rows = rs.results || [];
-  const online = rows.filter((r) => (r.last_seen || 0) > now - ONLINE_MS);
   const byCountry = {};
-  for (const r of online) {
-    const c = (r.country || '??').toUpperCase();
-    byCountry[c] = (byCountry[c] || 0) + 1;
+  for (const r of (countries.results || [])) {
+    const c = String(r.c || '').toUpperCase();
+    if (!/^[A-Z]{2}$/.test(c)) continue;
+    byCountry[c] = num(r, 'n');
   }
+  const onlineCount = num(onlineCountRow, 'n');
+  const items = (rs.results || []).map((r) => ({
+    mac: r.mac,
+    ip: r.ip || '',
+    country: /^[A-Za-z]{2}$/.test(r.country || '') ? String(r.country).toUpperCase() : '',
+    lastSeen: epochMs(r.last_seen) || 0,
+    channel: r.channel || '',
+  }));
   return jsonResp({
-    onlineCount: online.length,
-    todayCount: rows.length,
+    onlineCount,
+    todayCount: num(todayCountRow, 'n'),
     byCountry,
-    items: online.slice(0, 500).map((r) => ({
-      mac: r.mac,
-      ip: r.ip || '',
-      country: (r.country || '').toUpperCase(),
-      lastSeen: r.last_seen || 0,
-      channel: r.channel || '',
-    })),
+    ...pageEnvelope(items, onlineCount, limit, offset),
   });
 }
 
@@ -2026,8 +2127,7 @@ async function handleServersDelete(request, env, id, actor) {
 async function handleCustomersList(request, env, user) {
   const url = new URL(request.url);
   const search = (url.searchParams.get('q') || '').trim();
-  let sql = `SELECT id, email, name, phone, reseller_id, created_at
-             FROM customers`;
+  const { limit, offset } = parsePageQuery(url);
   const where = []; const binds = [];
   if (search) {
     where.push('(email LIKE ? OR name LIKE ? OR phone LIKE ?)');
@@ -2037,10 +2137,20 @@ async function handleCustomersList(request, env, user) {
     where.push('reseller_id = ?');
     binds.push(user.sub);
   }
-  if (where.length) sql += ' WHERE ' + where.join(' AND ');
-  sql += ` ORDER BY created_at DESC LIMIT 200`;
-  const rs = await env.DB.prepare(sql).bind(...binds).all();
-  return jsonResp({ items: rs.results || [] });
+  const whereSql = where.length ? ' WHERE ' + where.join(' AND ') : '';
+  const page = await pagedQuery(
+    env,
+    `SELECT COUNT(*) as n FROM customers${whereSql}`,
+    binds,
+    `SELECT id, email, name, phone, reseller_id, created_at
+       FROM customers${whereSql}
+      ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+    binds,
+    limit,
+    offset,
+  );
+  page.items = page.items.map((row) => ({ ...row, created_at: epochMs(row.created_at) }));
+  return jsonResp(page);
 }
 
 async function handleCustomersGet(env, id) {
@@ -2531,12 +2641,11 @@ async function handleFamilyRemoveMember(env, familyId, mac, actor) {
 async function handleDevicesList(request, env, user) {
   const url = new URL(request.url);
   const q = (url.searchParams.get('q') || '').trim();
+  const { limit, offset } = parsePageQuery(url);
   // `d.*` inclut automatiquement les colonnes enrichies par le heartbeat
   // (device_model, android_build, android_release, app_build) quand elles
   // existent — sans casser si elles n'ont pas encore été créées.
-  let sql = `SELECT d.*,
-                    c.name as customer_name, c.email as customer_email
-             FROM devices d LEFT JOIN customers c ON d.customer_id = c.id`;
+  const from = `FROM devices d LEFT JOIN customers c ON d.customer_id = c.id`;
   const where = []; const binds = [];
   if (q) {
     where.push('(d.mac LIKE ? OR d.label LIKE ? OR c.name LIKE ?)');
@@ -2547,10 +2656,24 @@ async function handleDevicesList(request, env, user) {
     where.push('d.reseller_id = ?');
     binds.push(user.sub);
   }
-  if (where.length) sql += ' WHERE ' + where.join(' AND ');
-  sql += ` ORDER BY d.last_seen_at DESC LIMIT 200`;
-  const rs = await env.DB.prepare(sql).bind(...binds).all();
-  return jsonResp({ items: rs.results || [] });
+  const whereSql = where.length ? ' WHERE ' + where.join(' AND ') : '';
+  const page = await pagedQuery(
+    env,
+    `SELECT COUNT(*) as n ${from}${whereSql}`,
+    binds,
+    `SELECT d.*, c.name as customer_name, c.email as customer_email
+       ${from}${whereSql}
+      ORDER BY d.last_seen_at DESC LIMIT ? OFFSET ?`,
+    binds,
+    limit,
+    offset,
+  );
+  page.items = page.items.map((row) => ({
+    ...row,
+    first_seen_at: epochMs(row.first_seen_at),
+    last_seen_at: epochMs(row.last_seen_at),
+  }));
+  return jsonResp(page);
 }
 
 // =========================================================
@@ -2579,14 +2702,11 @@ async function handleDeviceOverview(env, id, user) {
       .bind(dev.id)
       .first();
     if (lic) {
-      const live = lic.status === 'active'
-        && (lic.expires_at == null || lic.expires_at > now);
-      const expired = lic.expires_at != null && lic.expires_at <= now;
       license = {
-        status: live ? 'active' : (expired ? 'expired' : lic.status),
+        status: liveLicenseStatus(lic.status, lic.expires_at, now),
         plan: lic.plan || null,
-        started_at: lic.started_at ?? null,
-        expires_at: lic.expires_at ?? null,
+        started_at: epochMs(lic.started_at),
+        expires_at: epochMs(lic.expires_at),
         auto_renew: lic.auto_renew ? 1 : 0,
       };
     }
@@ -2601,12 +2721,13 @@ async function handleDeviceOverview(env, id, user) {
       .first();
     if (p) {
       const ONLINE_MS = 15 * 60 * 1000;
+      const seenMs = epochMs(p.last_seen) || 0;
       presence = {
-        online: (p.last_seen || 0) > now - ONLINE_MS,
+        online: seenMs > now - ONLINE_MS,
         ip: p.ip || '',
-        country: (p.country || '').toUpperCase(),
+        country: /^[A-Za-z]{2}$/.test(p.country || '') ? String(p.country).toUpperCase() : '',
         channel: p.channel || '',
-        last_seen: p.last_seen || 0,
+        last_seen: seenMs,
       };
     }
   } catch (_) { /* table presence absente : on ignore */ }
@@ -2763,15 +2884,6 @@ async function handleLicensesList(request, env, user) {
   const url = new URL(request.url);
   const status = url.searchParams.get('status');
   const appId = url.searchParams.get('app_id');
-  let sql = `SELECT l.id, l.customer_id, l.device_id, l.app_id, l.status,
-                    l.plan, l.started_at, l.expires_at, l.auto_renew, l.reseller_id,
-                    c.name as customer_name, c.email as customer_email,
-                    d.mac as device_mac, d.label as device_label,
-                    a.name as app_name
-             FROM licenses l
-             JOIN customers c ON l.customer_id = c.id
-             JOIN devices   d ON l.device_id   = d.id
-             JOIN apps      a ON l.app_id      = a.id`;
   const where = []; const binds = [];
   if (status) { where.push('l.status = ?'); binds.push(status); }
   if (appId)  { where.push('l.app_id = ?'); binds.push(appId); }
@@ -2779,10 +2891,37 @@ async function handleLicensesList(request, env, user) {
     where.push('l.reseller_id = ?');
     binds.push(user.sub);
   }
-  if (where.length) sql += ' WHERE ' + where.join(' AND ');
-  sql += ' ORDER BY l.created_at DESC LIMIT 200';
-  const rs = await env.DB.prepare(sql).bind(...binds).all();
-  return jsonResp({ items: rs.results || [] });
+  const whereSql = where.length ? ' WHERE ' + where.join(' AND ') : '';
+  const { limit, offset } = parsePageQuery(url);
+  const from = `FROM licenses l
+             JOIN customers c ON l.customer_id = c.id
+             JOIN devices   d ON l.device_id   = d.id
+             JOIN apps      a ON l.app_id      = a.id`;
+  const page = await pagedQuery(
+    env,
+    `SELECT COUNT(*) as n ${from}${whereSql}`,
+    binds,
+    `SELECT l.id, l.customer_id, l.device_id, l.app_id, l.status,
+            l.plan, l.started_at, l.expires_at, l.auto_renew, l.reseller_id,
+            c.name as customer_name, c.email as customer_email,
+            d.mac as device_mac, d.label as device_label,
+            a.name as app_name
+       ${from}${whereSql}
+      ORDER BY l.created_at DESC LIMIT ? OFFSET ?`,
+    binds,
+    limit,
+    offset,
+  );
+  const now = Date.now();
+  // Le statut en base reste souvent « active » après la date. On le
+  // recalcule ici, en acceptant les secondes comme les millisecondes.
+  page.items = page.items.map((row) => ({
+    ...row,
+    status: liveLicenseStatus(row.status, row.expires_at, now),
+    started_at: epochMs(row.started_at),
+    expires_at: epochMs(row.expires_at),
+  }));
+  return jsonResp(page);
 }
 
 async function handleLicensesCreate(request, env, actor) {

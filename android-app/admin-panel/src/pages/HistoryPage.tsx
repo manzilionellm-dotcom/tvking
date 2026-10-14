@@ -1,6 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
-import { auditApi, type AuditLog, ApiError } from '@/lib/api';
+import { ListPager } from '@/components/ListPager';
+import { auditApi, type AuditLog, ApiError, isAbortError } from '@/lib/api';
+import { formatDateTime } from '@/lib/utils';
+import { LIST_PAGE_SIZE, createAbortBag, createGeneration, readListPage } from '@/lib/robust';
 
 // =========================================================
 //  HistoryPage — historique des modifications (audit log)
@@ -21,25 +24,38 @@ const ACTION_LABELS: Record<string, string> = {
   'password.change_self': 'Mot de passe changé',
 };
 
-function fmtDate(ms: number): string {
-  try { return new Date(ms).toLocaleString('fr-FR'); } catch { return String(ms); }
-}
-
 export function HistoryPage({ onLogout }: { onLogout: () => void }) {
   const [items, setItems] = useState<AuditLog[]>([]);
+  const [offset, setOffset] = useState(0);
+  const [total, setTotal] = useState(0);
+  const [truncated, setTruncated] = useState(false);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
+  const gen = useRef(createGeneration());
+  const aborts = useRef(createAbortBag());
 
-  useEffect(() => {
-    auditApi.list()
-      .then((r) => setItems(r.items || []))
+  const load = useCallback(() => {
+    const id = gen.current.next();
+    const signal = aborts.current.next();
+    setLoading(true);
+    auditApi.list({ limit: LIST_PAGE_SIZE, offset }, signal)
+      .then((r) => {
+        if (!gen.current.isCurrent(id)) return;
+        const page = readListPage<AuditLog>(r);
+        setItems(page.items);
+        setTotal(page.total);
+        setTruncated(page.truncated);
+        setErr(null);
+      })
       .catch((e) => {
+        if (isAbortError(e) || !gen.current.isCurrent(id)) return;
         if (e instanceof ApiError && e.status === 401) onLogout();
         else setErr(e instanceof ApiError ? e.message : 'Erreur réseau.');
       })
-      .finally(() => setLoading(false));
-    /* eslint-disable-next-line */
-  }, []);
+      .finally(() => { if (gen.current.isCurrent(id)) setLoading(false); });
+  }, [offset, onLogout]);
+
+  useEffect(() => { load(); }, [load]);
 
   return (
     <AppLayout
@@ -72,7 +88,7 @@ export function HistoryPage({ onLogout }: { onLogout: () => void }) {
             )}
             {items.map((it) => (
               <tr key={it.id} className="bg-obsidian hover:bg-midnight">
-                <td className="px-4 py-3 text-ink-secondary">{fmtDate(it.created_at)}</td>
+                <td className="px-4 py-3 text-ink-secondary">{formatDateTime(it.created_at)}</td>
                 <td className="px-4 py-3 font-medium">
                   {ACTION_LABELS[it.action] || it.action}
                 </td>
@@ -87,6 +103,14 @@ export function HistoryPage({ onLogout }: { onLogout: () => void }) {
           </tbody>
         </table>
       </div>
+      <ListPager
+        total={total}
+        offset={offset}
+        count={items.length}
+        limit={LIST_PAGE_SIZE}
+        truncated={truncated}
+        onOffset={setOffset}
+      />
     </AppLayout>
   );
 }

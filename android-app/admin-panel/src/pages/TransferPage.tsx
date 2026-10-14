@@ -1,7 +1,8 @@
-import { FormEvent, useState } from 'react';
+import { FormEvent, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { AppLayout } from '@/components/AppLayout';
 import { transferApi, ApiError } from '@/lib/api';
+import { createSingleFlight } from '@/lib/robust';
 
 // =========================================================
 //  TransferPage — déplacer un abonnement vers un nouvel appareil
@@ -22,28 +23,31 @@ export function TransferPage({ onLogout }: { onLogout: () => void }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
+  const flight = useRef(createSingleFlight());
 
   async function submit(e: FormEvent) {
     e.preventDefault();
-    setErr(null); setOk(null);
-    const o = oldMac.trim().toUpperCase();
-    const n = newMac.trim().toUpperCase();
-    if (!MAC_RX.test(o)) { setErr('Ancienne MAC invalide (format MK:XX:XX:XX:XX:XX).'); return; }
-    if (!MAC_RX.test(n)) { setErr('Nouvelle MAC invalide (format MK:XX:XX:XX:XX:XX).'); return; }
-    if (o === n) { setErr('Les deux MAC sont identiques.'); return; }
-    setBusy(true);
-    try {
-      const r = await transferApi.transfer(o, n);
-      setOk(
-        `✅ Abonnement transféré de ${r.old_mac} → ${r.new_mac}. `
-        + `${r.moved_licenses} licence(s) déplacée(s), temps restant conservé. `
-        + `Le nouvel appareil sera actif à sa prochaine ouverture.`,
-      );
-      setOldMac(''); setNewMac('');
-    } catch (e: any) {
-      if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
-      setErr(e instanceof ApiError ? e.message : 'Transfert impossible.');
-    } finally { setBusy(false); }
+    await flight.current.run(async () => {
+      setErr(null); setOk(null);
+      const o = oldMac.trim().toUpperCase();
+      const n = newMac.trim().toUpperCase();
+      if (!MAC_RX.test(o)) { setErr('Ancienne MAC invalide (format MK:XX:XX:XX:XX:XX).'); return; }
+      if (!MAC_RX.test(n)) { setErr('Nouvelle MAC invalide (format MK:XX:XX:XX:XX:XX).'); return; }
+      if (o === n) { setErr('Les deux MAC sont identiques.'); return; }
+      setBusy(true);
+      try {
+        const r = await transferApi.transfer(o, n);
+        setOk(
+          `Abonnement transféré de ${r.old_mac} vers ${r.new_mac}. `
+          + `${r.moved_licenses} licence(s) déplacée(s), temps restant conservé. `
+          + `Le nouvel appareil sera actif à sa prochaine ouverture.`,
+        );
+        setOldMac(''); setNewMac('');
+      } catch (err: any) {
+        if (err instanceof ApiError && err.status === 401) { onLogout(); return; }
+        setErr(err instanceof ApiError ? err.message : 'Transfert impossible.');
+      } finally { setBusy(false); }
+    });
   }
 
   const inputCls =

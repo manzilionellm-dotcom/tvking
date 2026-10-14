@@ -1,8 +1,9 @@
-import { FormEvent, ReactNode, useEffect, useState } from 'react';
+import { FormEvent, ReactNode, useEffect, useRef, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
 import {
   resellersApi, creditsApi, type Reseller, ApiError, RESELLER_CAPS,
 } from '@/lib/api';
+import { createSingleFlight } from '@/lib/robust';
 
 /// Lien UNIQUE d'inscription revendeur (à partager). `?revendeur` force
 /// l'écran de connexion en mode revendeur seul → le revendeur ne voit
@@ -279,17 +280,20 @@ function CreditsModal({
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const flight = useRef(createSingleFlight());
 
   async function apply(sign: 1 | -1) {
     const n = (parseInt(amount, 10) || 0) * sign;
     if (!n) return;
-    setBusy(true); setErr(null);
-    try {
-      await creditsApi.issue(reseller.id, n, note.trim() || undefined);
-      onDone();
-    } catch (e: any) {
-      setErr(e instanceof ApiError ? e.message : 'Opération impossible.');
-    } finally { setBusy(false); }
+    await flight.current.run(async () => {
+      setBusy(true); setErr(null);
+      try {
+        await creditsApi.issue(reseller.id, n, note.trim() || undefined);
+        onDone();
+      } catch (e: any) {
+        setErr(e instanceof ApiError ? e.message : 'Opération impossible.');
+      } finally { setBusy(false); }
+    });
   }
 
   return (
