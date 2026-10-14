@@ -1,3 +1,6 @@
+import { httpUrlError } from './source_url.js';
+import { openSource, sealSource } from './source_crypto.js';
+
 // =========================================================
 //  api_v1.js — App Licensing Platform REST API v1
 // =========================================================
@@ -328,6 +331,7 @@ async function handleReferencesList(env, user) {
       let status = 'none';
       if (r.lic_status === 'banned') status = 'banned';
       else if (r.lic_status === 'frozen') status = 'frozen';
+      else if (r.lic_status && r.lic_status !== 'active') status = 'inactive';
       else if (r.lic_status) {
         const lifetime = r.lic_expires === null || r.lic_expires === undefined;
         status = lifetime ? 'active' : (r.lic_expires <= now ? 'expired' : 'active');
@@ -602,20 +606,20 @@ async function apiV1Inner(request, env) {
     if (parts.length === 2) {
       const fid = parts[1];
       if (request.method === 'GET') return handleFamiliesGet(env, fid, a.user);
-      if (request.method === 'DELETE') return handleFamiliesDelete(env, fid, actor);
+      if (request.method === 'DELETE') return handleFamiliesDelete(env, fid, actor, a.user);
     }
     if (parts.length === 3 && parts[2] === 'members' && request.method === 'POST') {
       return handleFamilyAddMember(request, env, a.user, actor, parts[1]);
     }
     if (parts.length === 4 && parts[2] === 'members' && request.method === 'DELETE') {
-      return handleFamilyRemoveMember(env, parts[1], decodeMac(parts[3]), actor);
+      return handleFamilyRemoveMember(env, parts[1], decodeMac(parts[3]), actor, a.user);
     }
     // Liens M3U distribuables (une source → plusieurs liens séparés).
     if (parts.length === 3 && parts[2] === 'links' && request.method === 'POST') {
       return handleFamilyCreateLink(request, env, a.user, actor, parts[1]);
     }
     if (parts.length === 4 && parts[2] === 'links' && request.method === 'DELETE') {
-      return handleFamilyDeleteLink(env, parts[1], parts[3], actor);
+      return handleFamilyDeleteLink(env, parts[1], parts[3], actor, a.user);
     }
   }
 
@@ -824,15 +828,15 @@ async function apiV1Inner(request, env) {
   // retirer.
   if (parts[0] === 'sources' && parts.length === 2) {
     const mac = parts[1];
-    if (request.method === 'GET') return handleSourceGet(env, mac);
+    if (request.method === 'GET') return handleSourceGet(env, mac, a.user);
     // Pousser/retirer une source = capacité 'sources' (niveau standard+).
     // Un revendeur 'basique' ne peut PAS configurer les sources clients.
     if ((request.method === 'PUT' || request.method === 'DELETE')
         && !resellerCan(a.user, 'sources')) {
       return errResp('forbidden', 'Ton niveau ne permet pas de pousser une source.', 403);
     }
-    if (request.method === 'PUT') return handleSourcePut(request, env, mac, actor);
-    if (request.method === 'DELETE') return handleSourceDelete(request, env, mac, actor);
+    if (request.method === 'PUT') return handleSourcePut(request, env, mac, actor, a.user);
+    if (request.method === 'DELETE') return handleSourceDelete(request, env, mac, actor, a.user);
   }
 
   // /customers
@@ -2154,6 +2158,12 @@ async function ensureSourcesTable(env) {
   } catch (_) {
     /* colonne déjà présente */
   }
+  // Qui a posé la source (revendeur). NULL = admin. Sert au cloisonnement.
+  try {
+    await env.DB.prepare('ALTER TABLE device_sources ADD COLUMN reseller_id TEXT').run();
+  } catch (_) {
+    /* colonne déjà présente */
+  }
 }
 
 /// Normalise + valide un objet source venant du panel. Retourne
@@ -2164,7 +2174,13 @@ function normalizeSource(raw) {
   }
   const type = (raw.type || '').trim().toLowerCase();
   const label = (raw.label || '').trim() || null;
-  const epg = (raw.epg_url || '').trim() || null;
+  const epgRaw = (raw.epg_url || '').trim();
+  let epg = null;
+  if (epgRaw) {
+    const epgErr = httpUrlError(epgRaw, 'epg_url');
+    if (epgErr) return { error: epgErr };
+    epg = epgRaw;
+  }
   if (type === 'xtream') {
     const server = (raw.server_url || '').trim();
     const user = (raw.username || '').trim();
@@ -2172,11 +2188,15 @@ function normalizeSource(raw) {
     if (!server || !user || !pass) {
       return { error: 'xtream requires server_url, username, password' };
     }
+    const serverErr = httpUrlError(server, 'server_url');
+    if (serverErr) return { error: serverErr };
     return { source: { type, label, server_url: server, username: user, password: pass, m3u_url: null, epg_url: epg } };
   }
   if (type === 'm3u') {
     const m3u = (raw.m3u_url || '').trim();
     if (!m3u) return { error: 'm3u requires m3u_url' };
+    const m3uErr = httpUrlError(m3u, 'm3u_url');
+    if (m3uErr) return { error: m3uErr };
     return { source: { type, label, server_url: null, username: null, password: null, m3u_url: m3u, epg_url: epg } };
   }
   return { error: "type must be 'xtream' or 'm3u'" };
@@ -2186,11 +2206,15 @@ function normalizeSource(raw) {
 /// `sources` = tableau de 1 à 3 sources normalisées. On stocke le tableau
 /// complet en JSON (sources_json) ET la 1re dans les colonnes simples
 /// (compat avec l'ancienne app qui ne lit qu'une source).
-async function upsertDeviceSource(env, mac, sources) {
+async function upsertDeviceSource(env, mac, sources, resellerId = null) {
   await ensureSourcesTable(env);
   // Les sources assignées ICI (payant) sont marquées origin='panel' → VERROUILLÉES
   // côté self-service (le client ne peut ni les modifier ni les supprimer).
-  const panelItems = (sources || []).map((s) => ({ ...s, origin: 'panel' }));
+  // password et m3u_url sont chiffrés avant l'écriture si SECRETS_KEY est posée.
+  const panelItems = [];
+  for (const s of sources || []) {
+    panelItems.push(await sealSource({ ...s, origin: 'panel' }, env.SECRETS_KEY));
+  }
   // PRÉSERVE les playlists 'self' que le client a ajoutées via /mon-espace : une
   // (ré)assignation panel NE DOIT PAS effacer les listes personnelles du client
   // (modèle multi-listes). On relit l'existant et on ré-empile les 'self' après.
@@ -2214,17 +2238,75 @@ async function upsertDeviceSource(env, mac, sources) {
       // Colonnes plates = 1re source PANEL (compat app/panel). origin ligne =
       // 'panel' (la source prioritaire/flat est payante et verrouillée).
       `INSERT INTO device_sources
-         (mac, type, label, server_url, username, password, m3u_url, epg_url, sources_json, origin, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'panel', ?)
+         (mac, type, label, server_url, username, password, m3u_url, epg_url, sources_json, origin, reseller_id, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'panel', ?, ?)
        ON CONFLICT(mac) DO UPDATE SET
          type=excluded.type, label=excluded.label, server_url=excluded.server_url,
          username=excluded.username, password=excluded.password,
          m3u_url=excluded.m3u_url, epg_url=excluded.epg_url,
-         sources_json=excluded.sources_json, origin='panel', updated_at=excluded.updated_at`,
+         sources_json=excluded.sources_json, origin='panel',
+         reseller_id=COALESCE(excluded.reseller_id, device_sources.reseller_id),
+         updated_at=excluded.updated_at`,
     )
     .bind(mac, first.type, first.label, first.server_url, first.username,
-          first.password, first.m3u_url, first.epg_url, json, Date.now())
+          first.password, first.m3u_url, first.epg_url, json, resellerId, Date.now())
     .run();
+}
+
+/// Un revendeur ne lit / modifie / efface que les sources de SES appareils.
+/// L'admin passe toujours. Retourne une réponse d'erreur, ou null.
+async function assertSourceAccess(env, user, mac) {
+  if (!user || user.role !== 'reseller') return null;
+  await ensureSourcesTable(env);
+  const dev = await env.DB
+    .prepare('SELECT reseller_id FROM devices WHERE mac = ?')
+    .bind(mac).first();
+  if (dev && dev.reseller_id === user.sub) return null;
+  if (dev && dev.reseller_id && dev.reseller_id !== user.sub) {
+    return errResp('forbidden', 'Cet appareil ne vous appartient pas', 403);
+  }
+  const src = await env.DB
+    .prepare('SELECT reseller_id FROM device_sources WHERE mac = ?')
+    .bind(mac).first();
+  if (!src || src.reseller_id === user.sub) return null;
+  return errResp('forbidden', 'Cette source ne vous appartient pas', 403);
+}
+
+/// Retire les sources posées par le panel. Garde les listes 'self'
+/// (Mon espace). N'efface pas la licence : activation et lien sont séparés.
+async function clearPanelSources(env, mac) {
+  await ensureSourcesTable(env);
+  const prev = await env.DB
+    .prepare('SELECT sources_json, reseller_id FROM device_sources WHERE mac = ?')
+    .bind(mac).first();
+  if (!prev) return;
+  let arr = [];
+  if (prev.sources_json) {
+    try { arr = JSON.parse(prev.sources_json) || []; } catch (_) { arr = []; }
+  }
+  const selfItems = Array.isArray(arr) ? arr.filter((s) => s && s.origin === 'self') : [];
+  if (!selfItems.length) {
+    await env.DB.prepare('DELETE FROM device_sources WHERE mac = ?').bind(mac).run();
+    return;
+  }
+  const first = selfItems[0];
+  const json = JSON.stringify(selfItems);
+  await env.DB.prepare(
+    `INSERT INTO device_sources
+       (mac, type, label, server_url, username, password, m3u_url, epg_url, sources_json, origin, reseller_id, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'self', ?, ?)
+     ON CONFLICT(mac) DO UPDATE SET
+       type=excluded.type, label=excluded.label, server_url=excluded.server_url,
+       username=excluded.username, password=excluded.password,
+       m3u_url=excluded.m3u_url, epg_url=excluded.epg_url,
+       sources_json=excluded.sources_json, origin='self',
+       reseller_id=COALESCE(excluded.reseller_id, device_sources.reseller_id),
+       updated_at=excluded.updated_at`,
+  ).bind(
+    mac, first.type || 'm3u', first.label || null, first.server_url || null,
+    first.username || null, first.password || null, first.m3u_url || null,
+    first.epg_url || null, json, prev.reseller_id || null, Date.now(),
+  ).run();
 }
 
 // Décode une MAC reçue dans le PATH : le front encode les « : » en
@@ -2239,9 +2321,11 @@ function decodeMac(mac) {
   }
 }
 
-async function handleSourceGet(env, mac) {
+async function handleSourceGet(env, mac, user) {
   await ensureSourcesTable(env);
   const m = decodeMac(mac).trim().toUpperCase();
+  const access = await assertSourceAccess(env, user, m);
+  if (access) return access;
   const row = await env.DB
     .prepare('SELECT * FROM device_sources WHERE mac = ?')
     .bind(m)
@@ -2256,10 +2340,11 @@ async function handleSourceGet(env, mac) {
     const { sources_json, mac: _mac, updated_at, ...single } = row;
     sources = [single];
   }
+  sources = await Promise.all(sources.map((s) => openSource(s, env.SECRETS_KEY)));
   return jsonResp({ mac: m, source: sources[0] || null, sources });
 }
 
-async function handleSourcePut(request, env, mac, actor) {
+async function handleSourcePut(request, env, mac, actor, user) {
   let body;
   try { body = await request.json(); } catch (_) {
     return errResp('bad_json', 'Invalid JSON body', 400);
@@ -2268,6 +2353,8 @@ async function handleSourcePut(request, env, mac, actor) {
   if (!/^MK(?::[0-9A-F]{2}){5}$/i.test(m)) {
     return errResp('bad_mac', 'mac must be MK:XX:XX:XX:XX:XX', 400);
   }
+  const access = await assertSourceAccess(env, user, m);
+  if (access) return access;
   // TRIO : on accepte un tableau `sources` (1 à 3) OU une source unique
   // historique (`source` / corps direct). Chaque entrée est validée.
   let rawList = Array.isArray(body.sources) ? body.sources : [body.source || body];
@@ -2281,17 +2368,23 @@ async function handleSourcePut(request, env, mac, actor) {
   if (sources.length === 0) {
     return errResp('bad_source', 'at least one source required', 400);
   }
-  await upsertDeviceSource(env, m, sources);
+  const resellerId = user && user.role === 'reseller' ? user.sub : null;
+  await upsertDeviceSource(env, m, sources, resellerId);
   await logAudit(env, request, actor, 'source.set',
     { type: 'device_source', id: m }, null,
     { count: sources.length, types: sources.map((s) => s.type) });
   return jsonResp({ ok: true, mac: m, count: sources.length });
 }
 
-async function handleSourceDelete(request, env, mac, actor) {
+async function handleSourceDelete(request, env, mac, actor, user) {
   await ensureSourcesTable(env);
   const m = decodeMac(mac).trim().toUpperCase();
-  await env.DB.prepare('DELETE FROM device_sources WHERE mac = ?').bind(m).run();
+  if (!/^MK(?::[0-9A-F]{2}){5}$/i.test(m)) {
+    return errResp('bad_mac', 'mac must be MK:XX:XX:XX:XX:XX', 400);
+  }
+  const access = await assertSourceAccess(env, user, m);
+  if (access) return access;
+  await clearPanelSources(env, m);
   await logAudit(env, request, actor, 'source.clear',
     { type: 'device_source', id: m }, null, null);
   return jsonResp({ ok: true, mac: m });
@@ -2337,9 +2430,10 @@ async function ensureFamiliesTables(env) {
 }
 
 // La source renvoyée aux LISTES masque le mot de passe (le détail le montre).
-function _familyRowToJson(row, { hidePassword = true } = {}) {
+async function _familyRowToJson(row, env, { hidePassword = true } = {}) {
   let source = null;
   try { source = row.source_json ? JSON.parse(row.source_json) : null; } catch (_) { source = null; }
+  source = await openSource(source, env && env.SECRETS_KEY);
   if (source && hidePassword && source.password) {
     source = { ...source, password: '••••••' };
   }
@@ -2368,12 +2462,11 @@ async function handleFamiliesList(env, user) {
     ).all();
     for (const r of (c.results || [])) counts[r.family_id] = r.n;
   } catch (_) {/* table vide */}
-  return jsonResp({
-    items: list.map((row) => ({
-      ..._familyRowToJson(row),
-      member_count: counts[row.id] || 0,
-    })),
-  });
+  const items = await Promise.all(list.map(async (row) => ({
+    ...await _familyRowToJson(row, env),
+    member_count: counts[row.id] || 0,
+  })));
+  return jsonResp({ items });
 }
 
 async function handleFamiliesCreate(request, env, actor, user) {
@@ -2388,16 +2481,18 @@ async function handleFamiliesCreate(request, env, actor, user) {
   const now = Date.now();
   const id = genId('fam');
   const resellerId = user.role === 'reseller' ? user.sub : (body.reseller_id || null);
+  const sealed = await sealSource(norm.source, env.SECRETS_KEY);
+  const sourceJson = JSON.stringify(sealed);
   await ensureFamiliesTables(env);
   await env.DB.prepare(
     `INSERT INTO families (id, name, source_json, reseller_id, created_at, updated_at)
      VALUES (?, ?, ?, ?, ?, ?)`,
-  ).bind(id, name, JSON.stringify(norm.source), resellerId, now, now).run();
+  ).bind(id, name, sourceJson, resellerId, now, now).run();
   await logAudit(env, request, actor, 'family.create',
     { type: 'family', id }, null, { name });
-  return jsonResp({ ok: true, family: _familyRowToJson(
-    { id, name, source_json: JSON.stringify(norm.source), reseller_id: resellerId, created_at: now, updated_at: now },
-    { hidePassword: false }), member_count: 0 }, 201);
+  return jsonResp({ ok: true, family: await _familyRowToJson(
+    { id, name, source_json: sourceJson, reseller_id: resellerId, created_at: now, updated_at: now },
+    env, { hidePassword: false }), member_count: 0 }, 201);
 }
 
 async function handleFamiliesGet(env, id, user) {
@@ -2413,10 +2508,18 @@ async function handleFamiliesGet(env, id, user) {
     'SELECT id, token, label, created_at FROM family_links WHERE family_id = ? ORDER BY created_at ASC',
   ).bind(id).all();
   return jsonResp({
-    family: _familyRowToJson(row, { hidePassword: false }),
+    family: await _familyRowToJson(row, env, { hidePassword: false }),
     members: (m.results || []),
     links: (l.results || []),
   });
+}
+
+function familyForbidden(row, user) {
+  if (!row) return errResp('not_found', 'Family not found', 404);
+  if (user && user.role === 'reseller' && row.reseller_id !== user.sub) {
+    return errResp('forbidden', 'Not your family', 403);
+  }
+  return null;
 }
 
 async function handleFamilyCreateLink(request, env, user, actor, familyId) {
@@ -2441,7 +2544,11 @@ async function handleFamilyCreateLink(request, env, user, actor, familyId) {
   return jsonResp({ ok: true, id, token, label: (body.label || '').trim() || null, created_at: now }, 201);
 }
 
-async function handleFamilyDeleteLink(env, familyId, linkId, actor) {
+async function handleFamilyDeleteLink(env, familyId, linkId, actor, user) {
+  const fam = await env.DB.prepare('SELECT id, reseller_id FROM families WHERE id = ?')
+    .bind(familyId).first();
+  const deny = familyForbidden(fam, user);
+  if (deny) return deny;
   await env.DB.prepare('DELETE FROM family_links WHERE id = ? AND family_id = ?')
     .bind(linkId, familyId).run();
   await logAudit(env, { headers: new Headers() }, actor, 'family.link.delete',
@@ -2449,13 +2556,15 @@ async function handleFamilyDeleteLink(env, familyId, linkId, actor) {
   return jsonResp({ ok: true, id: linkId });
 }
 
-async function handleFamiliesDelete(env, id, actor) {
-  const row = await env.DB.prepare('SELECT id FROM families WHERE id = ?').bind(id).first();
-  if (!row) return errResp('not_found', 'Family not found', 404);
-  // On retire la source poussée à chaque membre (ils perdent l'accès famille).
+async function handleFamiliesDelete(env, id, actor, user) {
+  const row = await env.DB.prepare('SELECT id, reseller_id FROM families WHERE id = ?').bind(id).first();
+  const deny = familyForbidden(row, user);
+  if (deny) return deny;
+  // On retire la source panel de chaque membre. Les listes perso restent,
+  // et la licence n'est pas touchée.
   const m = await env.DB.prepare('SELECT mac FROM family_members WHERE family_id = ?').bind(id).all();
   for (const r of (m.results || [])) {
-    try { await env.DB.prepare('DELETE FROM device_sources WHERE mac = ?').bind(r.mac).run(); } catch (_) {}
+    try { await clearPanelSources(env, r.mac); } catch (_) {}
   }
   await env.DB.prepare('DELETE FROM family_members WHERE family_id = ?').bind(id).run();
   await env.DB.prepare('DELETE FROM families WHERE id = ?').bind(id).run();
@@ -2513,12 +2622,16 @@ async function handleFamilyAddMember(request, env, user, actor, familyId) {
   return jsonResp({ ok: true, family_id: familyId, mac, label: body.label || null }, 201);
 }
 
-async function handleFamilyRemoveMember(env, familyId, mac, actor) {
+async function handleFamilyRemoveMember(env, familyId, mac, actor, user) {
+  const fam = await env.DB.prepare('SELECT id, reseller_id FROM families WHERE id = ?')
+    .bind(familyId).first();
+  const deny = familyForbidden(fam, user);
+  if (deny) return deny;
   const m = (mac || '').trim().toUpperCase();
   await env.DB.prepare('DELETE FROM family_members WHERE family_id = ? AND mac = ?')
     .bind(familyId, m).run();
-  // Retire la source → l'appareil n'a plus l'accès famille.
-  try { await env.DB.prepare('DELETE FROM device_sources WHERE mac = ?').bind(m).run(); } catch (_) {}
+  // Retire la source panel. Les listes perso et la licence restent.
+  try { await clearPanelSources(env, m); } catch (_) {}
   await logAudit(env, { headers: new Headers() }, actor, 'family.member.remove',
     { type: 'family', id: familyId }, null, { mac: m });
   return jsonResp({ ok: true, family_id: familyId, mac: m });
@@ -2626,6 +2739,7 @@ async function handleDeviceOverview(env, id, user) {
       const { sources_json, mac: _m, updated_at, ...single } = row;
       sources = [single];
     }
+    sources = await Promise.all(sources.map((s) => openSource(s, env.SECRETS_KEY)));
   } catch (_) { /* table device_sources absente : on ignore */ }
 
   // --- Inventaire RÉEL sur l'appareil (remonté par le heartbeat) : toutes les
@@ -2753,10 +2867,29 @@ function planToDays(plan, customDays) {
     case '1y':
     case 'yearly': return 365;
     case 'lifetime': return null;
-    case 'custom': return customDays && customDays > 0 ? customDays : 30;
+    case 'custom': {
+      const d = Number(customDays);
+      if (!(d > 0)) return 30;
+      // Plafond 10 ans : un custom_days énorme ne doit pas créer une date absurde.
+      return Math.min(Math.round(d), 3650);
+    }
     case 'trial': return 7;
     default: return 30;
   }
+}
+
+/// null si le plan est connu, sinon un message. Refuse les essais démesurés.
+function unknownPlanMessage(plan) {
+  if (typeof plan !== 'string' || !plan) return 'plan requis';
+  if (plan === 'trial') return null;
+  const hm = /^trial_(\d+)h$/.exec(plan);
+  if (hm) return Number(hm[1]) > 24 * 30 ? 'durée d essai trop longue' : null;
+  const dm = /^trial_(\d+)d$/.exec(plan);
+  if (dm) return Number(dm[1]) > 90 ? 'durée d essai trop longue' : null;
+  if (plan.startsWith('trial')) return 'plan d essai inconnu';
+  const known = ['1m', 'monthly', '3m', 'quarterly', '6m', 'biannual', '1y', 'yearly', 'lifetime', 'custom'];
+  if (!known.includes(plan)) return 'plan inconnu';
+  return null;
 }
 
 async function handleLicensesList(request, env, user) {
@@ -2860,7 +2993,18 @@ async function handleLicensesRenew(request, env, id, actor) {
   try { body = await request.json(); } catch (_) {}
   const before = await env.DB.prepare('SELECT * FROM licenses WHERE id = ?').bind(id).first();
   if (!before) return errResp('not_found', 'License not found', 404);
+  if (body.plan) {
+    const planError = unknownPlanMessage(body.plan);
+    if (planError) return errResp('bad_plan', planError, 400);
+  }
   const days = planToDays(body.plan || before.plan || '1y', body.custom_days);
+  // Déjà à vie : on ne raccourcit jamais, on ne réécrit pas la date.
+  if (before.expires_at == null) {
+    if (days !== null) {
+      return errResp('already_lifetime', 'Licence à vie : un renouvellement daté est refusé.', 409);
+    }
+    return jsonResp({ updated: 0, expires_at: null, already_lifetime: true });
+  }
   const now = Date.now();
   // On etend a partir de la date la plus tardive entre maintenant et l'expiry
   // actuel, pour qu'un renouvellement avant expiration cumule les jours
@@ -3482,6 +3626,19 @@ async function handleActivate(request, env, user, actor) {
     return errResp('bad_mac', 'mac must be MK:XX:XX:XX:XX:XX', 400);
   }
 
+  // Activation = licence seulement. Le lien M3U est un second appel
+  // (PUT /api/v1/sources/:mac). On refuse AVANT toute écriture, sinon
+  // une source invalide laissait une licence créée sans débit.
+  if (body.source || body.sources) {
+    return errResp(
+      'source_separate',
+      'Activation et lien M3U sont deux opérations distinctes. Posez le lien avec PUT /api/v1/sources/:mac.',
+      400,
+    );
+  }
+  const planError = unknownPlanMessage(plan);
+  if (planError) return errResp('bad_plan', planError, 400);
+
   const isReseller = user.role === 'reseller';
 
   // ----- Plans autorisés selon le rôle (sécurité serveur) -----
@@ -3504,6 +3661,57 @@ async function handleActivate(request, env, user, actor) {
   // precise un reseller_id, on debite ce revendeur (vente pour son compte).
   const chargeResellerId = isReseller ? user.sub : (body.reseller_id || null);
   const cost = await planCreditCost(env, plan);
+  const now = Date.now();
+  const days = planToDays(plan, body.custom_days);
+
+  // Déjà à vie : on ne raccourcit pas, on ne redébite pas. On rouvre
+  // seulement si la licence avait été désactivée.
+  const earlyDev = await env.DB
+    .prepare('SELECT id, customer_id, reseller_id FROM devices WHERE mac = ?')
+    .bind(mac).first();
+  if (earlyDev && isReseller && earlyDev.reseller_id && earlyDev.reseller_id !== user.sub) {
+    return errResp('forbidden', 'This device belongs to another reseller', 403);
+  }
+  if (earlyDev) {
+    const earlyLic = await env.DB
+      .prepare('SELECT id, expires_at FROM licenses WHERE device_id = ? AND app_id = ?')
+      .bind(earlyDev.id, appId).first();
+    if (earlyLic && earlyLic.expires_at == null) {
+      if (days !== null) {
+        return errResp(
+          'already_lifetime',
+          'Cet appareil est déjà à vie. Un plan daté ne peut pas le raccourcir.',
+          409,
+        );
+      }
+      await env.DB.prepare(
+        `UPDATE licenses SET status='active', plan='lifetime', updated_at=? WHERE id=?`,
+      ).bind(now, earlyLic.id).run();
+      await env.DB.prepare('UPDATE devices SET block_status = NULL WHERE id = ?')
+        .bind(earlyDev.id).run();
+      let balance = null;
+      if (chargeResellerId) {
+        const r = await env.DB.prepare('SELECT credit_balance FROM resellers WHERE id = ?')
+          .bind(chargeResellerId).first();
+        balance = r ? r.credit_balance : null;
+      }
+      await logAudit(env, request, actor, 'activate.keep_lifetime',
+        { type: 'license', id: earlyLic.id }, null, { mac, plan: 'lifetime', cost: 0 });
+      return jsonResp({
+        ok: true,
+        license_id: earlyLic.id,
+        device_id: earlyDev.id,
+        customer_id: earlyDev.customer_id,
+        mac,
+        plan: 'lifetime',
+        expires_at: null,
+        credits_charged: 0,
+        credit_balance: balance,
+        renewed: false,
+        already_lifetime: true,
+      }, 200);
+    }
+  }
 
   let resellerRow = null;
   if (chargeResellerId) {
@@ -3519,9 +3727,6 @@ async function handleActivate(request, env, user, actor) {
         `Credits insuffisants (besoin ${cost}, solde ${resellerRow.credit_balance})`, 402);
     }
   }
-
-  const now = Date.now();
-  const days = planToDays(plan, body.custom_days);
 
   // 1) Device par MAC (find-or-create).
   const device = await env.DB
@@ -3592,14 +3797,7 @@ async function handleActivate(request, env, user, actor) {
   await env.DB.prepare('UPDATE devices SET block_status = NULL WHERE id = ?')
     .bind(deviceId).run();
 
-  // 2c) Source IPTV (Xtream/M3U) optionnelle : si le panel a joint un
-  // objet `source`, on l'assigne à la MAC. L'app la récupèrera via
-  // GET /api/device-source/:mac et la chargera automatiquement.
-  if (body.source) {
-    const norm = normalizeSource(body.source);
-    if (norm.error) return errResp('bad_source', norm.error, 400);
-    await upsertDeviceSource(env, mac, norm.source);
-  }
+  // Le lien M3U n'est PAS écrit ici. Voir PUT /api/v1/sources/:mac.
 
   // 3) Debit credits (revendeur) + ecriture au ledger, atomiquement.
   let balanceAfter = null;
