@@ -47,6 +47,8 @@ import 'tv_search_screen.dart';
 import 'tv_settings_screen.dart';
 import 'tv_sports_screen.dart';
 import 'tv_shell.dart';
+import '../desktop/desktop_layout.dart';
+import '../desktop/desktop_shell.dart';
 
 /// Largeur LOGIQUE de référence du design TV. Toute l'app est rendue comme
 /// si l'écran faisait cette largeur, puis mise à l'échelle vers l'écran réel
@@ -103,6 +105,28 @@ class TvApp extends StatelessWidget {
         // relative, quelle que soit la TV. On neutralise aussi le textScale
         // système (certaines box le poussent à 1,3-1,5).
         builder: (BuildContext context, Widget? child) {
+          // PC : tailles réelles sur grand écran, canevas réduit seulement
+          // sur petite fenêtre. La barre ne recouvre jamais la vidéo.
+          if (Platform.isWindows && child != null) {
+            return DesktopToolbar(
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final Size available = constraints.biggest;
+                  if (available.isEmpty) return const SizedBox.shrink();
+                  final Size design = desktopDesignSize(available);
+                  return VoiceHotkey(
+                    child: MediaQuery(
+                      data: MediaQuery.of(context).copyWith(size: design),
+                      child: FittedBox(
+                        fit: BoxFit.fill,
+                        child: SizedBox.fromSize(size: design, child: child),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            );
+          }
           final MediaQueryData mq = MediaQuery.of(context);
           final Size screen = mq.size;
           if (child == null || screen.width <= 0 || screen.height <= 0) {

@@ -50,7 +50,9 @@ DisableReadyPage=yes
 Uninstallable=yes
 PrivilegesRequired=admin
 ; Mise à jour depuis l'app : l'installeur ferme Zuno s'il tourne encore.
-CloseApplications=force
+CloseApplications=yes
+RestartApplications=no
+MinVersion=10.0
 PrivilegesRequiredOverridesAllowed=commandline
 ArchitecturesInstallIn64BitMode=x64compatible
 ArchitecturesAllowed=x64compatible
@@ -83,6 +85,6 @@ Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExeName}"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\{#AppExeName}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\{#AppExeName}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent runasoriginaluser
 ; Mise à jour lancée par l'app (/SILENT) : Zuno revient tout seul après l'installation.
 Filename: "{app}\{#AppExeName}"; Flags: nowait runasoriginaluser; Check: WizardSilent

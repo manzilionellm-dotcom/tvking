@@ -14,6 +14,8 @@
 //  migrations.
 // =========================================================
 
+import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -30,6 +32,7 @@ class PlaylistDatabase {
   static const int _kDbVersion = 6;
 
   Database? _db;
+  Future<Database>? _opening;
 
   /// Chemin de fichier pour les tests (SQLite réel, sans path_provider).
   /// `null` en production : la base reste dans le dossier de l'app.
@@ -38,8 +41,14 @@ class PlaylistDatabase {
 
   Future<Database> get database async {
     if (_db != null) return _db!;
-    _db = await _open();
-    return _db!;
+    // Plusieurs repositories démarrent ensemble : une ouverture partagée.
+    _opening ??= _open();
+    try {
+      _db = await _opening!;
+      return _db!;
+    } finally {
+      _opening = null;
+    }
   }
 
   /// Ferme la connexion. Les tests s'en servent entre deux fichiers.
@@ -52,8 +61,7 @@ class PlaylistDatabase {
 
   Future<Database> _open() async {
     final String? forced = debugFilePath;
-    final String dbPath = forced ??
-        p.join((await getApplicationDocumentsDirectory()).path, _kDbFileName);
+    final String dbPath = forced ?? await _databasePath();
 
     if (kDebugMode) {
       debugPrint('[DB] Ouverture de la base SQLite : $dbPath');
@@ -66,6 +74,25 @@ class PlaylistDatabase {
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
+  }
+
+  Future<String> _databasePath() async {
+    final Directory documents = await getApplicationDocumentsDirectory();
+    if (!Platform.isWindows) return p.join(documents.path, _kDbFileName);
+    // AppData plutôt que Documents (souvent synchronisé par OneDrive).
+    // SQLite exige un disque local : préserver les anciens favoris lors
+    // de la première migration, sans supprimer la base originale.
+    final Directory support = await getApplicationSupportDirectory();
+    await support.create(recursive: true);
+    final String target = p.join(support.path, _kDbFileName);
+    final String old = p.join(documents.path, _kDbFileName);
+    if (!await File(target).exists() && await File(old).exists()) {
+      for (final String suffix in <String>['', '-wal', '-shm']) {
+        final File source = File('$old$suffix');
+        if (await source.exists()) await source.copy('$target$suffix');
+      }
+    }
+    return target;
   }
 
   /// Active les clés étrangères SUR CHAQUE connexion. SQLite les

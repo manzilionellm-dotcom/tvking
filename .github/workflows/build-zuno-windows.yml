@@ -25,10 +25,16 @@ on:
   push:
     # ccr-** : branches de session Claude Code. Elles COMPILENT (artefacts
     # du run) mais ne publient pas : voir la condition de l'étape « Publier ».
-    branches: ['main', 'claude/**', 'ccr-**']
+    branches: ['main', 'claude/**', 'ccr-**', 'feature/zuno-windows-desktop']
     paths:
       - '.github/workflows/build-zuno-windows.yml'
       - 'android-app/lib/main_windows.dart'
+      - 'android-app/lib/features/subscription/**'
+      - 'android-app/lib/features/device/**'
+      - 'android-app/lib/features/tv/core/**'
+      - 'android-app/lib/features/tv/presentation/**'
+      - 'android-app/lib/features/playlists/data/playlist_database.dart'
+      - 'android-app/test/features/desktop/**'
       - 'android-app/lib/features/tv/desktop/**'
       - 'android-app/ci/windows/**'
   workflow_dispatch:
@@ -100,6 +106,7 @@ jobs:
           flutter create . --platforms=windows --org com.sevenmotion --project-name tv_king
           rm -f test/widget_test.dart   # test par défaut ajouté par flutter create
           test -f windows/runner/Runner.rc && test -f windows/runner/main.cpp
+          python ci/windows/prepare_runner.py
 
       - name: Identité Zuno (nom, titre de fenêtre, icône)
         shell: pwsh
@@ -150,6 +157,13 @@ jobs:
           flutter pub get
           flutter gen-l10n
 
+      - name: Vérifier les régressions Windows et le canal panel
+        shell: bash
+        run: |
+          set -e
+          flutter analyze --no-fatal-infos --no-fatal-warnings lib/features/tv/desktop lib/main_windows.dart lib/features/subscription/data/box_channel_session.dart
+          flutter test test/features/desktop test/features/subscription/box_channel_test.dart
+
       - name: Numéro de version (celui de la box + n° de build PC)
         shell: bash
         run: |
@@ -187,12 +201,35 @@ jobs:
           foreach ($f in 'tv_king.exe', 'flutter_windows.dll', 'data/app.so') {
             if (!(Test-Path "$rel/$f")) { throw "manquant : $f" }
           }
+          # Runtime C++ livré avec le portable et l'installeur : un PC neuf
+          # ne doit pas dépendre de Visual Studio ni d'un redist préinstallé.
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vs = & $vswhere -latest -property installationPath
+          $crt = Get-ChildItem "$vs/VC/Redist/MSVC/*/x64/Microsoft.VC*.CRT" -Directory | Sort-Object FullName -Descending | Select-Object -First 1
+          if (-not $crt) { throw "Runtime Visual C++ introuvable" }
+          Copy-Item "$($crt.FullName)/*.dll" $rel -Force
+          foreach ($f in 'msvcp140.dll', 'vcruntime140.dll', 'vcruntime140_1.dll') {
+            if (!(Test-Path "$rel/$f")) { throw "Runtime manquant : $f" }
+          }
           $mpv = Get-ChildItem $rel -Filter '*mpv*.dll'
           if (-not $mpv) { throw "libmpv absente : pas de lecture vidéo sur PC" }
           $vi = (Get-Item "$rel/tv_king.exe").VersionInfo
           Write-Host "ProductName=$($vi.ProductName) FileVersion=$($vi.FileVersion)"
           if (($vi.ProductName -as [string]).Trim() -ne 'Zuno') { throw "ProductName ≠ Zuno" }
           Write-Host "✓ binaire complet (exe + moteur + libmpv : $($mpv.Name -join ', '))"
+
+      - name: Démarrage réel sur Windows
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $exe = (Resolve-Path 'build/windows/x64/runner/Release/tv_king.exe').Path
+          $app = Start-Process $exe -PassThru
+          try {
+            Start-Sleep -Seconds 15
+            $app.Refresh()
+            if ($app.HasExited) { throw "Zuno fermé au démarrage : $($app.ExitCode)" }
+            if ($app.MainWindowHandle -eq 0) { throw "Aucune fenêtre Windows" }
+          } finally { if (!$app.HasExited) { Stop-Process -Id $app.Id } }
 
       - name: Paquets (zip portable + installeur)
         shell: pwsh
