@@ -39,6 +39,8 @@ import '../../subscription/data/subscription_backend.dart';
 import '../domain/playlist.dart';
 import 'favorites_repository.dart';
 import 'playlist_repository.dart';
+import 'remote_pushed_memory.dart';
+import 'remote_source_sync.dart';
 
 class CloudBackupRepository {
   CloudBackupRepository._();
@@ -51,7 +53,8 @@ class CloudBackupRepository {
 
   bool _started = false;
   Timer? _debounce;
-  final List<StreamSubscription<dynamic>> _subs = <StreamSubscription<dynamic>>[];
+  final List<StreamSubscription<dynamic>> _subs =
+      <StreamSubscription<dynamic>>[];
 
   /// Démarre la sauvegarde automatique : on ré-uploade (debounce) dès
   /// que les playlists ou les favoris changent.
@@ -87,17 +90,15 @@ class CloudBackupRepository {
       final String mac = await DeviceIdentity.instance.mac;
       final Map<String, Object?> data = <String, Object?>{
         'v': 1,
-        'playlists': playlists
-            .map((Playlist p) {
-              final Map<String, Object?> m = p.toMap();
-              // On ne garde que ce qui est utile à recréer la source ;
-              // l'id SQLite local et les métriques ne servent à rien.
-              m.remove('id');
-              m.remove('channel_count');
-              m.remove('last_synced_at');
-              return m;
-            })
-            .toList(),
+        'playlists': playlists.map((Playlist p) {
+          final Map<String, Object?> m = p.toMap();
+          // On ne garde que ce qui est utile à recréer la source ;
+          // l'id SQLite local et les métriques ne servent à rien.
+          m.remove('id');
+          m.remove('channel_count');
+          m.remove('last_synced_at');
+          return m;
+        }).toList(),
         'favorites': FavoritesRepository.instance.current.toList(),
       };
 
@@ -141,6 +142,13 @@ class CloudBackupRepository {
       // ----- Playlists -----
       final List<dynamic> pls =
           (data['playlists'] as List<dynamic>?) ?? const <dynamic>[];
+      // Seulement si l'interrupteur d'effacement est compilé allumé :
+      // les listes que le panel a retirées ne doivent pas revenir du
+      // backup au prochain démarrage. Build normal : ensemble vide,
+      // la restauration est celle d'avant.
+      final Set<String> blocked = kHonorRemoteListClear
+          ? (await RemotePushedMemory.load()).blocked
+          : const <String>{};
       int restored = 0;
       for (final dynamic raw in pls) {
         if (raw is! Map) continue;
@@ -148,6 +156,17 @@ class CloudBackupRepository {
         final String type = (m['type'] as String?) ?? 'm3u';
         final String name = (m['name'] as String?) ?? 'Mon abonnement';
         try {
+          if (blocked.isNotEmpty &&
+              blocked.contains(
+                identityKeyForLocal(
+                  type: type,
+                  m3uUrl: m['m3u_url'] as String?,
+                  xtreamServer: m['xtream_server'] as String?,
+                  xtreamUsername: m['xtream_username'] as String?,
+                ),
+              )) {
+            continue;
+          }
           if (type == 'xtream') {
             final String server = (m['xtream_server'] as String?) ?? '';
             final String user = (m['xtream_username'] as String?) ?? '';

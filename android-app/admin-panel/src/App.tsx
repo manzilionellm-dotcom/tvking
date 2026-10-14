@@ -13,6 +13,7 @@ import { ServersPage } from '@/pages/ServersPage';
 import { ActivationsPage } from '@/pages/ActivationsPage';
 import { ResellersPage } from '@/pages/ResellersPage';
 import { ActivatePage } from '@/pages/ActivatePage';
+import { ChainesPage } from '@/pages/ChainesPage';
 import { NotificationsPage } from '@/pages/NotificationsPage';
 import { HomeManagerPage } from '@/pages/HomeManagerPage';
 import { ControlCenterPage } from '@/pages/ControlCenterPage';
@@ -73,10 +74,13 @@ export default function App() {
 
   if (status === 'bootstrapping') {
     return (
-      <div className="flex h-screen w-screen items-center justify-center bg-obsidian">
-        <div className="text-xs uppercase tracking-widest text-ink-tertiary">
-          Chargement…
-        </div>
+      <div
+        role="status"
+        aria-live="polite"
+        className="flex h-screen w-screen flex-col items-center justify-center gap-3 bg-obsidian"
+      >
+        <div className="h-9 w-9 animate-pulse rounded-lg bg-accent/20 ring-1 ring-accent/40" />
+        <p className="text-sm text-ink-secondary">Chargement du panneau…</p>
       </div>
     );
   }
@@ -96,8 +100,9 @@ export default function App() {
       <Route path="/login" element={<Navigate to="/" replace />} />
       <Route path="/"            element={<DashboardPage   onLogout={handleLogout} />} />
       <Route path="/activate"    element={<ActivatePage    onLogout={handleLogout} />} />
-      {/* Fusionné dans « Activer un appareil » — on redirige l'ancienne URL. */}
-      <Route path="/playlists"   element={<Navigate to="/activate" replace />} />
+      {/* Liste de chaînes : écran à part. L'ancienne adresse y mène. */}
+      <Route path="/chaines"    element={<ChainesPage     onLogout={handleLogout} />} />
+      <Route path="/playlists"   element={<Navigate to="/chaines" replace />} />
       <Route path="/notifications" element={<NotificationsPage onLogout={handleLogout} />} />
       <Route path="/control-center" element={<ControlCenterPage onLogout={handleLogout} />} />
       <Route path="/home-manager" element={<HomeManagerPage onLogout={handleLogout} />} />

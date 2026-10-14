@@ -28,14 +28,23 @@ module.exports = {
         ink: {
           primary: '#F0EDE9',
           secondary: '#B6B0A8',
-          tertiary: '#7E7872',
+          // #7E7872 était à 4,1:1 sur le fond midnight (échec AA, texte 10–12 px).
+          tertiary: '#8E8882',
           muted: '#4E4A45',
         },
+        // Utilisés partout (text-success, text-warning) mais absents du thème :
+        // Tailwind ne générait aucune règle, le statut restait de la couleur du texte.
+        success: '#3FBE7C',
+        warning: '#E8B23A',
         // Champagne (accents non-critiques, badges editoriaux)
         champagne: {
           DEFAULT: '#E8D9C0',
           deep: '#B39B7C',
         },
+        // Statuts — mêmes teintes que AppColors (succès, attention, info).
+        success: '#5FA975',
+        warning: '#D69847',
+        info: '#6A8DB0',
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', 'sans-serif'],

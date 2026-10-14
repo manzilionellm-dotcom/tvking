@@ -55,6 +55,15 @@
 // API v1 — App Licensing Platform (cf. cloudflare/api_v1.js)
 // Routee depuis le bas du fetch() en haut de la chaine de match.
 import { apiV1 } from './api_v1.js';
+import { httpUrlError } from './source_url.js';
+import { openSource, openSourceList, sealSource } from './secret_box.js';
+import {
+  selectAnnouncements,
+  resolvePublicSource,
+  readSourceTombstone,
+  markSourcesCleared,
+  clearSourceTombstone,
+} from './linkage.js';
 // Migration KV → D1 (cf. cloudflare/migrate_kv_to_d1.js) — exposee
 // via POST /admin/migrate-to-d1 et protegee par X-Admin-Secret.
 import { runMigration } from './migrate_kv_to_d1.js';
@@ -310,21 +319,28 @@ async function d1StatusForMac(env, mac, now = Date.now()) {
     const lstatus = lic.lstatus || 'active';
     const lifetime = lic.expires_at === null || lic.expires_at === undefined;
     const expiresAt = lifetime ? now + 36500 * DAY_MS : lic.expires_at;
-    const expired = !lifetime && expiresAt <= now;
+    const dateExpired = !lifetime && expiresAt <= now;
     const banned = lstatus === 'banned';
     const frozen = lstatus === 'frozen';
-    const active = lstatus === 'active' && !expired;
+    // inactive / suspended : l'app ne bloque que si expired && !paid
+    // (subscription_backend.dart). Sans ce drapeau, une désactivation
+    // retombait sur l'essai et l'appareil restait ouvert — y compris à vie.
+    const revoked = !banned && !frozen && lstatus !== 'active';
+    const active = lstatus === 'active' && !dateExpired;
+    const expired = dateExpired || revoked;
     return {
       exists: true,
-      status: banned ? 'banned' : frozen ? 'frozen' : 'active',
+      status: banned ? 'banned' : frozen ? 'frozen' : revoked ? 'inactive' : 'active',
       paid: active,            // licence active = debloque l'app
       // plan pour l'affichage app : 'lifetime' (à vie, expires_at NULL)
       // sinon 'paid' (abonnement à durée) ; paid_until = fin (null=à vie).
       plan: lifetime ? 'lifetime' : 'paid',
       paid_until: lifetime ? null : expiresAt,
-      trial_until: expiresAt,
-      days_left: lifetime ? 36500 : Math.max(0, Math.ceil((expiresAt - now) / DAY_MS)),
-      expired: expired && !lifetime,
+      trial_until: active ? expiresAt : now,
+      days_left: active
+        ? (lifetime ? 36500 : Math.max(0, Math.ceil((expiresAt - now) / DAY_MS)))
+        : 0,
+      expired,
       frozen,
       banned,
       source: 'd1',
@@ -537,7 +553,7 @@ async function ensureD1Device(env, mac, now = Date.now()) {
     if (dev) {
       await env.DB.prepare('UPDATE devices SET last_seen_at = ? WHERE id = ?')
         .bind(now, dev.id).run();
-      return;
+      return false;
     }
     const cid = 'cus_' + crypto.randomUUID().replace(/-/g, '').slice(0, 18);
     const did = 'dev_' + crypto.randomUUID().replace(/-/g, '').slice(0, 18);
@@ -549,8 +565,14 @@ async function ensureD1Device(env, mac, now = Date.now()) {
         'INSERT INTO devices (id, customer_id, mac, first_seen_at, last_seen_at) VALUES (?, ?, ?, ?, ?)',
       ).bind(did, cid, mac, now, now),
     ]);
+    return true;
   } catch (_) {
-    // Course possible entre 2 heartbeats simultanes (mac UNIQUE) → ignore.
+    // Course entre 2 heartbeats (mac UNIQUE) : on ne perd pas le last_seen.
+    try {
+      await env.DB.prepare('UPDATE devices SET last_seen_at = ? WHERE mac = ?')
+        .bind(now, mac).run();
+    } catch (_) { /* la fiche sera revue au ping suivant */ }
+    return false;
   }
 }
 
@@ -1228,7 +1250,10 @@ const PRIVACY_HTML = `<!doctype html>
 const HTML_HEADERS = {
   'Content-Type': 'text/html; charset=utf-8',
   'Cache-Control': 'public, max-age=300',
-  'Access-Control-Allow-Origin': '*',
+  'X-Content-Type-Options': 'nosniff',
+  'X-Frame-Options': 'DENY',
+  'Referrer-Policy': 'no-referrer',
+  'Content-Security-Policy': "frame-ancestors 'none'",
 };
 
 const JSON_HEADERS = {
@@ -1237,6 +1262,7 @@ const JSON_HEADERS = {
   'Access-Control-Allow-Headers': 'Authorization, X-Admin-Secret, Content-Type',
   'Access-Control-Allow-Methods': 'GET,POST,PUT,PATCH,DELETE,OPTIONS',
   'Cache-Control': 'no-store',
+  'X-Content-Type-Options': 'nosniff',
 };
 
 const TEXT_HEADERS = {
@@ -1633,6 +1659,7 @@ function tooManyRequests() {
 const JSON_HEADERS_PRIVATE = {
   'Content-Type': 'application/json; charset=utf-8',
   'Cache-Control': 'no-store',
+  'X-Content-Type-Options': 'nosniff',
 };
 function jsonPrivate(body, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: JSON_HEADERS_PRIVATE });
@@ -1661,10 +1688,27 @@ async function ensureAnnouncementsTable(env) {
   }
 }
 
+function publicAnnouncement(row) {
+  return {
+    id: row.id,
+    title: row.title || '',
+    body: row.body || '',
+    url: row.url || '',
+    kind: row.kind || '',
+    cta: row.cta || '',
+    country: row.country || '',
+    created_at: row.created_at || 0,
+  };
+}
+
 // GET /api/announcement (public) — dernière annonce CIBLÉE pour le pays
 // de l'app qui demande (Cloudflare fournit le pays), ou globale, ET non
 // expirée. {} si aucune. country='' = tout le monde ; expires_at = 0/NULL
 // = pas d'expiration ; sinon l'annonce disparaît d'elle-même passé ce ms.
+// `pending` liste chaque annonce d'id > ?after, sans doublon. L'app
+// déjà installée ignore ce tableau et lit seulement l'objet du haut
+// (la plus récente). Un client à curseur lit `pending` seul : l'objet
+// du haut répète la dernière, il ne faut pas l'afficher en plus.
 async function handleGetAnnouncement(env, request) {
   if (!env.DB) return json({});
   try {
@@ -1680,27 +1724,44 @@ async function handleGetAnnouncement(env, request) {
     const reqCountry =
         (request && request.headers.get('CF-IPCountry')) || '';
     const nowMs = Date.now();
-    const row = await env.DB
+    // Curseur optionnel : l'app historique ne l'envoie pas et continue
+    // de lire l'objet du haut (la plus récente). Un client qui passe
+    // ?after=<id> reçoit dans `pending` chaque message suivant, une fois.
+    let after = 0;
+    try {
+      after = parseInt(new URL(request.url).searchParams.get('after') || '0', 10) || 0;
+    } catch (_) { after = 0; }
+    const cols =
+      'id, title, body, url, kind, cta, country, created_at, expires_at, active';
+    const where =
+      "WHERE (country IS NULL OR country = '' OR country = ?) " +
+      'AND (expires_at IS NULL OR expires_at = 0 OR expires_at > ?) ' +
+      'AND (active IS NULL OR active = 1) ';
+    const latestRs = await env.DB
       .prepare(
-        'SELECT id, title, body, url, kind, cta, country, created_at ' +
-          'FROM app_broadcasts ' +
-          "WHERE (country IS NULL OR country = '' OR country = ?) " +
-          'AND (expires_at IS NULL OR expires_at = 0 OR expires_at > ?) ' +
-          'AND (active IS NULL OR active = 1) ' +
-          'ORDER BY id DESC LIMIT 1'
+        'SELECT ' + cols + ' FROM app_broadcasts ' + where +
+          'ORDER BY id DESC LIMIT 20',
       )
       .bind(reqCountry, nowMs)
-      .first();
+      .all();
+    const pageRs = await env.DB
+      .prepare(
+        'SELECT ' + cols + ' FROM app_broadcasts ' + where +
+          'AND id > ? ORDER BY id ASC LIMIT 30',
+      )
+      .bind(reqCountry, nowMs, after)
+      .all();
+    const latestPick = selectAnnouncements(latestRs.results || [], {
+      after: 0, now: nowMs, country: reqCountry,
+    });
+    const pagePick = selectAnnouncements(pageRs.results || [], {
+      after, now: nowMs, country: reqCountry,
+    });
+    const row = latestPick.latest;
     if (!row) return json({});
     return json({
-      id: row.id,
-      title: row.title || '',
-      body: row.body || '',
-      url: row.url || '',
-      kind: row.kind || '',
-      cta: row.cta || '',
-      country: row.country || '',
-      created_at: row.created_at || 0,
+      ...publicAnnouncement(row),
+      pending: pagePick.pending.map(publicAnnouncement),
     });
   } catch (_) {
     return json({});
@@ -2206,7 +2267,7 @@ async function handleUpsertClient(request, env, mac) {
 //  Toujours public (pas d'auth) : l'identifiant est le MAC,
 //  comme pour /config/:mac.
 // =========================================================
-async function handleHeartbeat(request, env, ctx) {
+async function handleHeartbeat(request, env, _ctx) {
   let body;
   try {
     body = await request.json();
@@ -2220,25 +2281,19 @@ async function handleHeartbeat(request, env, ctx) {
 
   const now = Date.now();
 
-  // Présence « en ligne » : on mémorise IP + pays (fournis GRATUITEMENT
-  // par Cloudflare) + l'instant. Sert au panel « En ligne » et au ciblage
-  // géographique des annonces. Best-effort, ne bloque jamais le heartbeat.
+  // Présence « en ligne » : IP + pays (fournis par Cloudflare) + l'instant.
+  // Sert au panel « En ligne ». L'écriture est attendue : une erreur reste
+  // avalée dans recordPresence, mais un succès est visible avant la réponse.
   const ip = request.headers.get('CF-Connecting-IP') || '';
   const country = request.headers.get('CF-IPCountry') || '';
   // `channel` = nom de la chaîne en cours de visionnage (envoyé par l'app),
   // ou '' si elle ne regarde rien. Affiché dans le panel « En ligne ».
   const channel = typeof body.channel === 'string' ? body.channel : '';
-  // `defer` = exécute une écriture best-effort EN ARRIÈRE-PLAN (waitUntil) :
-  // la réponse part tout de suite, l'écriture continue après. À 5M, ça
-  // raccourcit le chemin critique et réduit la contention D1. Repli `await`
-  // (renvoie la promesse) si le runtime ne fournit pas `ctx`.
-  const defer = (p) => {
-    if (ctx && typeof ctx.waitUntil === 'function') { ctx.waitUntil(p); return null; }
-    return p;
-  };
 
-  // Présence (panel « En ligne ») = purement best-effort → en fond.
-  defer(recordPresence(env, mac, ip, country, now, channel));
+  // Présence + inventaire : on ATTEND l'écriture avant de répondre.
+  // waitUntil laissait le panel lire « hors ligne » / un vieil inventaire
+  // juste après le ping, et pouvait perdre la ligne si l'isolate s'arrêtait.
+  await recordPresence(env, mac, ip, country, now, channel);
 
   // --- Chemin D1 (par defaut des que la base est branchee) ---
   // On enregistre AUTOMATIQUEMENT la MAC (essai 7 j), puis on renvoie son
@@ -2247,11 +2302,10 @@ async function handleHeartbeat(request, env, ctx) {
     // Prépare colonnes + index UNE fois par isolate (doit précéder
     // updateDeviceInfo qui écrit dans ces colonnes).
     await ensureScaleSchema(env);
-    await ensureD1Device(env, mac, now);
-    // Enrichissement (modèle, build…) pas nécessaire à la réponse → en fond.
-    defer(updateDeviceInfo(env, mac, body));
+    const created = await ensureD1Device(env, mac, now);
+    await updateDeviceInfo(env, mac, body);
     const d1 = await d1StatusForMac(env, mac, now);
-    if (d1) return json({ ok: true, created: true, ...d1 });
+    if (d1) return json({ ok: true, created: !!created, ...d1 });
   }
 
   // --- Repli KV (si D1 pas branchee) ---
@@ -2679,19 +2733,28 @@ async function handlePublicDeviceSource(env, mac) {
           const { sources_json, updated_at, ...single } = row;
           sources = [single];
         }
-        return jsonPrivate({ mac: MAC, source: sources[0] || null, sources });
+        sources = await openSourceList(env, sources);
+        const live = resolvePublicSource({
+          d1Sources: sources, kvSource: null, clearedAt: 0,
+        });
+        return jsonPrivate({
+          mac: MAC,
+          source: live.source,
+          sources: live.sources,
+          updated_at: row.updated_at || 0,
+          cleared: false,
+        });
       }
     } catch (_) {
       // Table absente / D1 indisponible → on tente le repli KV ci-dessous.
     }
   }
 
-  // 2) REPLI KV (client.playlists) — CORRECTIF "l'app ne se connecte pas
-  //    avec mon panel" : le PANEL intégré (/admin/panel) enregistre les
-  //    playlists dans le KV, pas dans device_sources. Sans ce repli,
-  //    l'app (qui lit device_sources) ne voyait jamais la source assignée
-  //    via le panel. On convertit la 1ère playlist KV au format `source`
-  //    attendu par l'app → la source est livrée quel que soit l'outil.
+  // 2) REPLI KV — seulement si la liste n'a PAS été effacée depuis le
+  //    panel. Sans tombstone, un DELETE D1 faisait revenir l'ancienne
+  //    playlist KV au prochain GET (liste « effacée » qui ressuscite).
+  const clearedAt = await readSourceTombstone(env, MAC);
+  let kvSource = null;
   try {
     const client = await readClient(env, MAC);
     const pls = client && Array.isArray(client.playlists) ? client.playlists : [];
@@ -2723,13 +2786,22 @@ async function handlePublicDeviceSource(env, mac) {
           updated_at: updatedAt,
         };
       }
-      if (source) return jsonPrivate({ mac: MAC, source });
+      kvSource = source;
     }
   } catch (_) {
-    // KV indisponible → pas de source.
+    // KV indisponible → pas de repli.
   }
 
-  return jsonPrivate({ mac: MAC, source: null });
+  const decided = resolvePublicSource({
+    d1Sources: [], kvSource, clearedAt,
+  });
+  return jsonPrivate({
+    mac: MAC,
+    source: decided.source,
+    sources: decided.sources,
+    cleared: decided.cleared,
+    cleared_at: clearedAt || 0,
+  });
 }
 
 // /api/self-source/:mac — SELF-SERVICE « Mon espace » (façon IBO Player Pro).
@@ -2795,16 +2867,26 @@ async function readDeviceSourceItems(env, MAC) {
   // 'self' (client v1 mono-liste), sinon 'panel' (défaut sûr, protège payants).
   const rowSelf = String(row.origin || '') === 'self';
   let needsPersist = false;
-  items = items.map((s) => {
-    const it = { ...s };
+  let unreadable = false;
+  const opened = [];
+  for (const s of items) {
+    const it = await openSource(env, { ...s });
     if (it.origin !== 'self' && it.origin !== 'panel') {
       it.origin = rowSelf ? 'self' : 'panel';
       needsPersist = true;
     }
     if (it.origin === 'self' && !it.id) { it.id = crypto.randomUUID(); needsPersist = true; }
-    return it;
-  });
-  return { items, needsPersist };
+    // Ne jamais réécrire une valeur chiffrée qu'on n'a pas pu lire
+    // (clé absente ou mauvaise) : on effacerait le secret en base.
+    for (const field of ['password', 'm3u_url']) {
+      const raw = s && s[field];
+      if (typeof raw === 'string' && (raw.startsWith('enc1.') || raw.startsWith('enc1:')) && !it[field]) {
+        unreadable = true;
+      }
+    }
+    opened.push(it);
+  }
+  return { items: opened, needsPersist: needsPersist && !unreadable };
 }
 
 // Écrit la liste complète : colonnes plates = items[0] (compat app/panel), plus
@@ -2812,11 +2894,14 @@ async function readDeviceSourceItems(env, MAC) {
 async function writeDeviceSourceItems(env, MAC, items) {
   if (!items.length) {
     await env.DB.prepare('DELETE FROM device_sources WHERE mac = ?').bind(MAC).run();
+    await markSourcesCleared(env, MAC, Date.now());
     return;
   }
-  const first = items[0];
+  const sealed = [];
+  for (const item of items) sealed.push(await sealSource(env, item));
+  const first = sealed[0];
   const rowOrigin = items.every((s) => s.origin === 'self') ? 'self' : 'panel';
-  const jsonStr = JSON.stringify(items);
+  const jsonStr = JSON.stringify(sealed);
   await env.DB.prepare(
     `INSERT INTO device_sources
        (mac, type, label, server_url, username, password, m3u_url, epg_url, sources_json, origin, updated_at)
@@ -2827,9 +2912,10 @@ async function writeDeviceSourceItems(env, MAC, items) {
        epg_url=excluded.epg_url, sources_json=excluded.sources_json,
        origin=excluded.origin, updated_at=excluded.updated_at`,
   ).bind(
-    MAC, first.type, first.label || null, first.server_url || null, first.username || null,
+    MAC, first.type || null, first.label || null, first.server_url || null, first.username || null,
     first.password || null, first.m3u_url || null, first.epg_url || null, jsonStr, rowOrigin, Date.now(),
   ).run();
+  await clearSourceTombstone(env, MAC);
 }
 
 // Vue publique d'un item : SANS mot de passe, avec l'info de verrouillage.
@@ -2854,19 +2940,26 @@ function buildSourceFromBody(body) {
   const type = String(body.type || '').trim().toLowerCase();
   const label = (String(body.label || '').trim() || 'Ma playlist').slice(0, 80);
   const epgRaw = String(body.epg_url || '').trim();
-  const epg = epgRaw && /^https?:\/\//i.test(epgRaw) ? epgRaw.slice(0, 2048) : null;
+  let epg = null;
+  if (epgRaw) {
+    const epgErr = httpUrlError(epgRaw, 'epg_url');
+    if (epgErr) return { error: epgErr };
+    epg = epgRaw;
+  }
   if (type === 'xtream') {
-    const server = String(body.server_url || '').trim().slice(0, 2048);
+    const server = String(body.server_url || '').trim();
     const user = String(body.username || '').trim().slice(0, 256);
     const pass = String(body.password || '').trim().slice(0, 256);
     if (!server || !user || !pass) return { error: 'xtream requires server_url, username, password' };
-    if (!/^https?:\/\//i.test(server)) return { error: 'server_url must start with http(s)://' };
+    const serverErr = httpUrlError(server, 'server_url');
+    if (serverErr) return { error: serverErr };
     return { source: { type: 'xtream', label, server_url: server, username: user, password: pass, m3u_url: null, epg_url: epg } };
   }
   if (type === 'm3u') {
-    const m3u = String(body.m3u_url || '').trim().slice(0, 2048);
+    const m3u = String(body.m3u_url || '').trim();
     if (!m3u) return { error: 'm3u requires m3u_url' };
-    if (!/^https?:\/\//i.test(m3u)) return { error: 'm3u_url must start with http(s)://' };
+    const m3uErr = httpUrlError(m3u, 'm3u_url');
+    if (m3uErr) return { error: m3uErr };
     return { source: { type: 'm3u', label, server_url: null, username: null, password: null, m3u_url: m3u, epg_url: epg } };
   }
   return { error: "type must be 'xtream' or 'm3u'" };
@@ -2874,7 +2967,7 @@ function buildSourceFromBody(body) {
 
 // GET /api/self-source/:mac — liste des playlists de « Mon espace ».
 async function handleSelfSourceGet(env, mac) {
-  if (!env.DB) return json({ ok: false, error: 'db_unavailable' }, 503);
+  if (!env.DB) return jsonPrivate({ ok: false, error: 'db_unavailable' }, 503);
   if (!MAC_RX.test(mac)) return badRequest('invalid mac');
   const MAC = mac.toUpperCase();
   await ensureDeviceSourcesTable(env);
@@ -2885,7 +2978,7 @@ async function handleSelfSourceGet(env, mac) {
   }
   const view = items.map(publicItemView);
   const selfCount = items.filter((s) => s.origin === 'self').length;
-  return json({
+  return jsonPrivate({
     ok: true, mac: MAC,
     items: view,
     count: view.length,
@@ -2898,7 +2991,7 @@ async function handleSelfSourceGet(env, mac) {
 // existant si `id` est fourni). Ne touche JAMAIS un item 'panel'. « Avale
 // toujours » : jamais bloqué par la présence d'une source panel.
 async function handleSelfSource(env, mac, request) {
-  if (!env.DB) return json({ ok: false, error: 'db_unavailable' }, 503);
+  if (!env.DB) return jsonPrivate({ ok: false, error: 'db_unavailable' }, 503);
   if (!MAC_RX.test(mac)) return badRequest('invalid mac');
   const MAC = mac.toUpperCase();
 
@@ -2917,14 +3010,14 @@ async function handleSelfSource(env, mac, request) {
     // MODIFICATION : uniquement un item 'self' existant (panel = interdit).
     const idx = items.findIndex((s) => s.origin === 'self' && s.id === editId);
     if (idx < 0) {
-      return json({ ok: false, reason: 'not_found', message: "Cette playlist n'existe pas ou est protégée." }, 404);
+      return jsonPrivate({ ok: false, reason: 'not_found', message: "Cette playlist n'existe pas ou est protégée." }, 404);
     }
     items[idx] = { ...source, origin: 'self', id: editId };
   } else {
     // AJOUT : plafond anti-abus sur les items 'self'.
     const selfCount = items.filter((s) => s.origin === 'self').length;
     if (selfCount >= MAX_SELF_SOURCES) {
-      return json({
+      return jsonPrivate({
         ok: false, reason: 'too_many',
         message: 'Limite atteinte (' + MAX_SELF_SOURCES + ' playlists). Supprimez-en une pour en ajouter une autre.',
       }, 409);
@@ -2935,9 +3028,9 @@ async function handleSelfSource(env, mac, request) {
   try {
     await writeDeviceSourceItems(env, MAC, items);
   } catch (_) {
-    return json({ ok: false, error: 'db_write_failed' }, 500);
+    return jsonPrivate({ ok: false, error: 'db_write_failed' }, 500);
   }
-  return json({
+  return jsonPrivate({
     ok: true,
     message: editId
       ? 'Playlist mise à jour ! Ouvrez (ou redémarrez) l\'app.'
@@ -2948,7 +3041,7 @@ async function handleSelfSource(env, mac, request) {
 // DELETE /api/self-source/:mac?id=<id> — supprime UN item 'self' (jamais panel).
 //  Sans `id` : supprime TOUS les items 'self' (garde les 'panel' intacts).
 async function handleSelfSourceDelete(env, mac, request) {
-  if (!env.DB) return json({ ok: false, error: 'db_unavailable' }, 503);
+  if (!env.DB) return jsonPrivate({ ok: false, error: 'db_unavailable' }, 503);
   if (!MAC_RX.test(mac)) return badRequest('invalid mac');
   const MAC = mac.toUpperCase();
   await ensureDeviceSourcesTable(env);
@@ -2957,14 +3050,14 @@ async function handleSelfSourceDelete(env, mac, request) {
   try { delId = new URL(request.url).searchParams.get('id'); } catch (_) { delId = null; }
 
   const { items } = await readDeviceSourceItems(env, MAC);
-  if (!items.length) return json({ ok: true, message: 'Aucune playlist à supprimer.' });
+  if (!items.length) return jsonPrivate({ ok: true, message: 'Aucune playlist à supprimer.' });
 
   let kept;
   if (delId) {
     const target = items.find((s) => s.id === delId);
-    if (!target) return json({ ok: false, reason: 'not_found', message: 'Playlist introuvable.' }, 404);
+    if (!target) return jsonPrivate({ ok: false, reason: 'not_found', message: 'Playlist introuvable.' }, 404);
     if (target.origin !== 'self') {
-      return json({ ok: false, reason: 'locked', message: 'Cette playlist est gérée par votre conseiller.' }, 409);
+      return jsonPrivate({ ok: false, reason: 'locked', message: 'Cette playlist est gérée par votre conseiller.' }, 409);
     }
     kept = items.filter((s) => s.id !== delId);
   } else {
@@ -2975,9 +3068,9 @@ async function handleSelfSourceDelete(env, mac, request) {
   try {
     await writeDeviceSourceItems(env, MAC, kept);
   } catch (_) {
-    return json({ ok: false, error: 'db_write_failed' }, 500);
+    return jsonPrivate({ ok: false, error: 'db_write_failed' }, 500);
   }
-  return json({ ok: true, message: 'Playlist supprimée.' });
+  return jsonPrivate({ ok: true, message: 'Playlist supprimée.' });
 }
 
 // /api/history/:mac — renvoie l'historique de visionnage (ids de chaînes)
@@ -3026,18 +3119,22 @@ async function handlePublicFamilyM3u(env, rawToken) {
     if (!fam || !fam.source_json) return new Response('source absente', { status: 404 });
     let src;
     try { src = JSON.parse(fam.source_json); } catch (_) { src = null; }
+    src = await openSource(env, src);
     if (!src) return new Response('source invalide', { status: 404 });
 
     let target = null;
     if (src.type === 'xtream' && src.server_url && src.username && src.password) {
       const base = String(src.server_url).replace(/\/+$/, '');
+      if (!/^https?:\/\//i.test(base)) return new Response('source invalide', { status: 400 });
       const u = encodeURIComponent(src.username);
       const p = encodeURIComponent(src.password);
       target = `${base}/get.php?username=${u}&password=${p}&type=m3u_plus&output=ts`;
     } else if (src.type === 'm3u' && src.m3u_url) {
       target = src.m3u_url;
     }
-    if (!target) return new Response('source incomplète', { status: 404 });
+    if (!target || !/^https?:\/\//i.test(target) || /[\s<>]/.test(target)) {
+      return new Response('source invalide', { status: 400 });
+    }
     return Response.redirect(target, 302);
   } catch (_) {
     return new Response('erreur', { status: 500 });

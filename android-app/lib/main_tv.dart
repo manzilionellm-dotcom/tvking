@@ -24,6 +24,7 @@ import 'features/device/data/device_identity.dart';
 import 'features/playlists/data/playlist_repository.dart';
 import 'features/playlists/data/favorites_repository.dart';
 import 'features/playlists/data/remote_source_repository.dart';
+import 'features/playlists/data/remote_source_sync.dart';
 import 'features/recordings/data/recording_repository.dart';
 import 'features/security/data/parental_controls.dart';
 import 'features/subscription/data/subscription_state.dart';
@@ -101,7 +102,18 @@ Future<void> _bootstrap() async {
   if (!BootGuard.instance.safeMode) {
     unawaited(RemoteSourceRepository.sync());
   } else {
-    debugPrint('[main_tv] mode sans échec → ré-import de la source distante sauté.');
+    debugPrint(
+        '[main_tv] mode sans échec → ré-import de la source distante sauté.');
+  }
+  // Même interrupteur que sur mobile. Coupé par défaut : la box
+  // continue de re-vérifier la source à son rythme actuel (12 s puis
+  // ~5 min). Allumé, elle redemande toutes les 2 s pour qu'un
+  // effacement panel vide l'écran sans attendre ce rythme lent.
+  if (kHonorRemoteListClear) {
+    Timer.periodic(kRemoteClearPollInterval, (_) {
+      if (BootGuard.instance.safeMode) return;
+      unawaited(RemoteSourceRepository.sync());
+    });
   }
 
   // 5) Enregistrements : on initialise la base et on finalise les

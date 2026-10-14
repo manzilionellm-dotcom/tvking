@@ -1,8 +1,8 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
 /* =========================================================
    Global resets and base
@@ -27,3 +27,41 @@ html, body, #root {
 
 /* Selection couleur ember */
 ::selection { background: rgba(214, 58, 48, 0.28); }
+
+/* Le rouge #D63A30 (text-accent) tombe sous 4,5:1 en petit texte sur fond
+   sombre. On garde ce rouge pour les fonds de boutons (texte noir dessus)
+   et on éclaircit seulement la couleur du texte. */
+.text-accent { color: #FF5A4A; }
+
+/* Focus clavier visible, sans changer le survol souris. */
+:focus { outline: none; }
+:focus-visible {
+  outline: 2px solid #FF5A4A;
+  outline-offset: 2px;
+}
+
+.skip-link {
+  position: absolute;
+  left: 1rem;
+  top: 0.75rem;
+  z-index: 80;
+  transform: translateY(-150%);
+  border-radius: 8px;
+  background: #F0EDE9;
+  color: #0E0E12;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+.skip-link:focus {
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

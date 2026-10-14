@@ -1,0 +1,9 @@
+# En-têtes de sécurité du panel (Cloudflare Pages).
+# Le navigateur n'accepte les scripts, styles et appels API que depuis
+# ce site et l'API officielle. Pas de cadre (anti-clickjacking).
+/*
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Referrer-Policy: no-referrer
+  Permissions-Policy: camera=(), microphone=(), geolocation=()
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https://app.7themotion.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'

@@ -80,14 +80,14 @@ function PasswordForm() {
   return (
     <form onSubmit={submit} className="space-y-3 rounded-xl border border-white/5 bg-midnight p-5">
       <h2 className="text-sm font-semibold tracking-tight">{t('account.changePwd')}</h2>
-      <Field label={t('account.current')}>
-        <input type="password" value={current} onChange={(e) => setCurrent(e.target.value)} className={inputCls} autoComplete="current-password" />
+      <Field id="pwd-current" label={t('account.current')}>
+        <input id="pwd-current" type="password" value={current} onChange={(e) => setCurrent(e.target.value)} className={inputCls} autoComplete="current-password" />
       </Field>
-      <Field label={t('account.new')}>
-        <input type="password" value={next} onChange={(e) => setNext(e.target.value)} className={inputCls} autoComplete="new-password" />
+      <Field id="pwd-next" label={t('account.new')}>
+        <input id="pwd-next" type="password" value={next} onChange={(e) => setNext(e.target.value)} className={inputCls} autoComplete="new-password" />
       </Field>
-      <Field label={t('account.confirm')}>
-        <input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} className={inputCls} autoComplete="new-password" />
+      <Field id="pwd-confirm" label={t('account.confirm')}>
+        <input id="pwd-confirm" type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} className={inputCls} autoComplete="new-password" />
       </Field>
       {msg && (
         <div className={
@@ -112,10 +112,10 @@ function PasswordForm() {
 const inputCls =
   'w-full rounded-md border border-white/5 bg-slate px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-accent';
 
-function Field({ label, children }: { label: string; children: ReactNode }) {
+function Field({ id, label, children }: { id: string; label: string; children: ReactNode }) {
   return (
     <div>
-      <label className="mb-1.5 block text-[10px] uppercase tracking-widest text-ink-tertiary">{label}</label>
+      <label htmlFor={id} className="mb-1.5 block text-[10px] uppercase tracking-widest text-ink-tertiary">{label}</label>
       {children}
     </div>
   );

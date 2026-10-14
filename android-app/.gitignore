@@ -58,6 +58,13 @@ firebase_options.dart
 # --- Logs ---------------------------------------------------------
 *.log
 
+# --- E2E panel (secrets locaux, jamais commités) ------------------
+cloudflare/.dev.vars
+cloudflare/.wrangler/
+cloudflare/node_modules/
+e2e/panel-box/node_modules/
+e2e/panel-box/.state/
+
 # --- Fichiers generes par flutter gen-l10n ------------------------
 # Regeneres automatiquement par `flutter pub get` depuis lib/l10n/*.arb.
 # Eviter de les commiter pour ne pas avoir de conflits a chaque

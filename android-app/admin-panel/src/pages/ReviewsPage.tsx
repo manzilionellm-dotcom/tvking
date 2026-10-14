@@ -85,6 +85,8 @@ export function ReviewsPage({ onLogout }: { onLogout: () => void }) {
               <span className="text-sm">Afficher l'invitation dans l'app</span>
               <button
                 type="button"
+                aria-pressed={enabled}
+                aria-label="Afficher l'invitation dans l'app"
                 onClick={() => setEnabled((v) => !v)}
                 className={'relative h-6 w-11 rounded-full transition ' + (enabled ? 'bg-accent' : 'bg-white/15')}
               >
