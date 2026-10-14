@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
-import { onlineApi, type OnlineSnapshot, flagEmoji, ApiError } from '@/lib/api';
+import { onlineApi, type OnlineSnapshot, flagEmoji, ApiError, isSessionAuthError } from '@/lib/api';
 
 /// Page « En ligne » (owner) — qui utilise l'app en ce moment, depuis où.
 /// Données issues de la présence (heartbeat) : IP + pays fournis par
@@ -23,7 +23,7 @@ export function OnlinePage({ onLogout }: { onLogout: () => void }) {
     onlineApi.get()
       .then(setData)
       .catch((e: any) => {
-        if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
+        if (isSessionAuthError(e)) { onLogout(); return; }
         setErr(e instanceof ApiError ? e.message : 'Erreur réseau.');
       })
       .finally(() => setLoading(false));

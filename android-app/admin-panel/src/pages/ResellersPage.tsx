@@ -1,7 +1,7 @@
 import { FormEvent, ReactNode, useEffect, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
 import {
-  resellersApi, creditsApi, type Reseller, ApiError, RESELLER_CAPS,
+  resellersApi, creditsApi, type Reseller, ApiError, isSessionAuthError, RESELLER_CAPS,
 } from '@/lib/api';
 
 /// Lien UNIQUE d'inscription revendeur (à partager). `?revendeur` force
@@ -35,7 +35,7 @@ export function ResellersPage({ onLogout }: { onLogout: () => void }) {
     resellersApi.list()
       .then((r) => { setItems(r.items); setErr(null); })
       .catch((e) => {
-        if (e instanceof ApiError && e.status === 401) onLogout();
+        if (isSessionAuthError(e)) onLogout();
         else setErr(e.message);
       })
       .finally(() => setLoading(false));

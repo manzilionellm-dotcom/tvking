@@ -10,6 +10,7 @@
 //
 //    Auth
 //      POST   /api/v1/auth/login            { email, password } → { token }
+//      POST   /api/v1/auth/refresh          (Bearer encore valide) → { token }
 //      GET    /api/v1/auth/me               (header Authorization)
 //
 //    Dashboard (super_admin / admin)
@@ -44,10 +45,14 @@
 //      PUT    /api/v1/licenses/:id/playlist  push Xtream/M3U
 //
 //  AUTH :
-//    Tout endpoint /api/v1/* (sauf /auth/login) exige un header
-//    `Authorization: Bearer <jwt>` valide. Le JWT est signe HMAC
-//    via env.ADMIN_SECRET (re-utilise comme cle de signature
-//    pour ne pas multiplier les secrets).
+//    Tout endpoint /api/v1/* (sauf /auth/login et l'inscription
+//    revendeur) exige un header `Authorization: Bearer <jwt>` valide.
+//    Le JWT est signe HMAC-SHA256 via env.ADMIN_SECRET (re-utilise
+//    comme cle de signature pour ne pas multiplier les secrets).
+//    POST /auth/refresh exige un jeton ENCORE valide : il en émet
+//    un neuf (session glissante). Un jeton expiré ou falsifié est
+//    refusé. L'algorithme et le secret ne changent pas : les jetons
+//    déjà émis (7 jours) restent acceptés jusqu'à leur `exp`.
 //
 //  Reponses :
 //    Tout en JSON. Les erreurs ont la forme :
@@ -171,7 +176,29 @@ async function hmacSha256(secret, msg) {
   return new Uint8Array(sig);
 }
 
-async function signJwt(payload, secret, expMinutes = 60 * 24 * 7) {
+// Durée des sessions du PANEL (en minutes).
+//
+// Administrateur (super_admin / admin / support) : 30 jours.
+//   Quelqu'un qui ouvre le panel régulièrement ne retape pas son
+//   mot de passe. Le panel appelle POST /auth/refresh dès que la
+//   moitié de la vie du jeton est écoulée et remplace le jeton.
+//
+// Revendeur : 7 jours, volontairement plus court.
+//   Le jeton revendeur porte les droits d'activation et de sources
+//   sur les appareils de SES clients, et ces comptes sont plus
+//   souvent partagés entre plusieurs postes. Sept jours limitent
+//   la durée d'un jeton volé si plus personne n'ouvre le panel.
+//   Tant que le revendeur s'en sert, le renouvellement glissant
+//   prolonge la session : il n'est pas déconnecté pour autant.
+//
+// Compatibilité : verifyJwt ne contrôle que la signature HMAC-SHA256
+// (même ADMIN_SECRET, même format HS256) et la date `exp`. Un jeton
+// émis avant ce changement reste valable jusqu'à SON expiration.
+// On ne change ni le secret, ni l'algorithme, ni le format.
+export const ADMIN_SESSION_MINUTES = 60 * 24 * 30;
+export const RESELLER_SESSION_MINUTES = 60 * 24 * 7;
+
+export async function signJwt(payload, secret, expMinutes = ADMIN_SESSION_MINUTES) {
   const header = { alg: 'HS256', typ: 'JWT' };
   const now = Math.floor(Date.now() / 1000);
   const claims = {
@@ -185,7 +212,7 @@ async function signJwt(payload, secret, expMinutes = 60 * 24 * 7) {
   return `${h}.${p}.${sig}`;
 }
 
-async function verifyJwt(token, secret) {
+export async function verifyJwt(token, secret) {
   try {
     const [h, p, s] = token.split('.');
     if (!h || !p || !s) return null;
@@ -485,6 +512,12 @@ async function apiV1Inner(request, env) {
       const a = await requireAuth(request, env);
       if (a.error) return a.error;
       return jsonResp({ user: a.user });
+    }
+    // Renouvellement glissant. Le jeton actuel DOIT encore être
+    // valide (signature + exp). Un jeton expiré ou falsifié → 401,
+    // jamais un jeton neuf.
+    if (parts[1] === 'refresh' && request.method === 'POST') {
+      return handleAuthRefresh(request, env);
     }
   }
 
@@ -956,9 +989,103 @@ async function handleLogin(request, env) {
   const token = await signJwt(
     { sub: row.id, email: row.email, role: row.role, name: row.name },
     env.ADMIN_SECRET || 'dev-secret',
+    ADMIN_SESSION_MINUTES,
   );
   return jsonResp({
     token,
+    user: { id: row.id, email: row.email, name: row.name, role: row.role },
+  });
+}
+
+// POST /api/v1/auth/refresh — session glissante.
+//
+// Le panel envoie le jeton actuel (Authorization: Bearer). S'il est
+// encore signé avec ADMIN_SECRET ET non expiré, on en émet un neuf
+// avec la durée du rôle (30 j admin, 7 j revendeur). On relit le
+// compte en base pour :
+//   - refuser un compte désactivé / suspendu / supprimé ;
+//   - recopier le rôle et les droits À JOUR (un revendeur dont
+//     l'admin a retiré une case ne les garde pas indéfiniment).
+// Un jeton expiré ou dont la signature ne colle pas est rejeté par
+// verifyJwt AVANT toute émission : on ne « ressuscite » rien.
+// Le rate-limit est un seau dédié (pas celui du login) pour qu'une
+// série de renouvellements ne bloque pas la connexion, et inversement.
+async function handleAuthRefresh(request, env) {
+  // 60 / 10 min / IP. Le panel n'appelle ça qu'une fois la moitié de
+  // la vie du jeton écoulée (donc rarement). Le plafond empêche un
+  // script de tourner en boucle. Fail-open si D1 est indisponible
+  // (rateLimitHit) : un 500 plus bas ne doit pas être un 401.
+  if (!await rateLimitHit(env, request, 'refresh', 60, 10 * 60 * 1000)) {
+    return errResp(
+      'rate_limited',
+      'Trop de renouvellements. Réessaie dans quelques minutes.',
+      429,
+    );
+  }
+  const a = await requireAuth(request, env);
+  if (a.error) return a.error;
+  const secret = env.ADMIN_SECRET || 'dev-secret';
+
+  if (a.user.role === 'reseller') {
+    await ensureResellerLevel(env);
+    const row = await env.DB
+      .prepare(
+        'SELECT id, email, name, status, level, permissions, credit_balance '
+        + 'FROM resellers WHERE id = ?',
+      )
+      .bind(a.user.sub)
+      .first();
+    // Compte disparu, en attente ou suspendu : on ne prolonge pas.
+    if (!row || row.status !== 'active') {
+      return errResp('bad_token', 'Invalid or expired token', 401);
+    }
+    const level = row.level || 'basique';
+    const permissions = resellerPerms(row.permissions, level);
+    const token = await signJwt(
+      {
+        sub: row.id,
+        email: row.email,
+        role: 'reseller',
+        name: row.name,
+        level,
+        permissions,
+      },
+      secret,
+      RESELLER_SESSION_MINUTES,
+    );
+    return jsonResp({
+      token,
+      expires_in: RESELLER_SESSION_MINUTES * 60,
+      user: {
+        id: row.id,
+        email: row.email,
+        name: row.name,
+        role: 'reseller',
+        level,
+        permissions,
+        credit_balance: row.credit_balance,
+        status: row.status,
+      },
+    });
+  }
+
+  const row = await env.DB
+    .prepare(
+      'SELECT id, email, name, role, is_active FROM admin_users WHERE id = ?',
+    )
+    .bind(a.user.sub)
+    .first();
+  if (!row || !row.is_active) {
+    return errResp('bad_token', 'Invalid or expired token', 401);
+  }
+  const token = await signJwt(
+    { sub: row.id, email: row.email, role: row.role, name: row.name },
+    secret,
+    ADMIN_SESSION_MINUTES,
+  );
+  return jsonResp({
+    token,
+    expires_in: ADMIN_SESSION_MINUTES * 60,
     user: { id: row.id, email: row.email, name: row.name, role: row.role },
   });
 }
@@ -3028,6 +3155,7 @@ async function handleResellerLogin(request, env) {
   const token = await signJwt(
     { sub: row.id, email: row.email, role: 'reseller', name: row.name, level, permissions },
     env.ADMIN_SECRET || 'dev-secret',
+    RESELLER_SESSION_MINUTES,
   );
   return jsonResp({
     token,

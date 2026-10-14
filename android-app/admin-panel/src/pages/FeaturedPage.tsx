@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
-import { featuredApi, ApiError } from '@/lib/api';
+import { featuredApi, ApiError, isSessionAuthError } from '@/lib/api';
 
 /// Page « Favori du jour » (owner) — met une chaîne en avant chaque jour
 /// pour que l'app vive au quotidien. Ex. « TF1 » + « Mondial aujourd'hui ⚽ ».
@@ -15,7 +15,7 @@ export function FeaturedPage({ onLogout }: { onLogout: () => void }) {
   const [ok, setOk] = useState<string | null>(null);
 
   function fail(e: any) {
-    if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
+    if (isSessionAuthError(e)) { onLogout(); return; }
     setErr(e instanceof ApiError ? e.message : 'Erreur réseau.');
   }
 

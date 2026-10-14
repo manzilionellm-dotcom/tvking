@@ -1,6 +1,6 @@
 import { FormEvent, ReactNode, useEffect, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
-import { serversApi, type DefaultServer, ApiError } from '@/lib/api';
+import { serversApi, type DefaultServer, ApiError, isSessionAuthError } from '@/lib/api';
 
 // =========================================================
 //  ServersPage — gestion des serveurs IPTV par défaut
@@ -24,7 +24,7 @@ export function ServersPage({ onLogout }: { onLogout: () => void }) {
     serversApi.list()
       .then((r) => { setItems(r.items); setErr(null); })
       .catch((e) => {
-        if (e instanceof ApiError && e.status === 401) onLogout();
+        if (isSessionAuthError(e)) onLogout();
         else setErr(e.message);
       })
       .finally(() => setLoading(false));

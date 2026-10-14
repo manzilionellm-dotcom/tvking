@@ -13,6 +13,12 @@
 //  partageront le meme domaine racine (Phase 2).
 // =========================================================
 
+import {
+  isTimeoutError,
+  nextTokenAfterResponse,
+  tokenNeedsRefresh,
+} from './sessionPolicy';
+
 const TOKEN_KEY = 'auth_token';
 
 /// URL de base de l'API. En production le panel est servi par
@@ -61,6 +67,18 @@ export class ApiError extends Error {
   }
 }
 
+/// true si cette erreur signifie « le jeton est invalide ou expiré ».
+/// Une erreur réseau, un timeout ou un 5xx n'est PAS une ApiError de
+/// session : l'appelant doit garder le jeton et réessayer.
+export function isSessionAuthError(e: unknown): boolean {
+  if (!(e instanceof ApiError)) return false;
+  return nextTokenAfterResponse('present', {
+    kind: 'http',
+    status: e.status,
+    code: e.code,
+  }) === null;
+}
+
 interface RequestOpts {
   method?: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
   body?: unknown;
@@ -79,11 +97,28 @@ async function request<T = unknown>(
     const token = getToken();
     if (token) headers.Authorization = `Bearer ${token}`;
   }
-  const resp = await fetch(`${API_BASE}${path}`, {
-    method: opts.method || 'GET',
-    headers,
-    body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
-  });
+  // Filet : une requête qui ne répond pas ne doit pas laisser
+  // l'interface bloquée. 2 minutes couvrent un export de sauvegarde
+  // lent. L'abandon est un timeout, pas un 401 : le jeton reste.
+  const signal = typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function'
+    ? AbortSignal.timeout(120_000)
+    : undefined;
+
+  let resp: Response;
+  try {
+    resp = await fetch(`${API_BASE}${path}`, {
+      method: opts.method || 'GET',
+      headers,
+      body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
+      signal,
+    });
+  } catch (e) {
+    // Réseau coupé ou timeout : on ne touche pas au jeton.
+    const kind = isTimeoutError(e) ? 'timeout' : 'network';
+    const kept = nextTokenAfterResponse(getToken(), { kind });
+    if (kept !== getToken()) setToken(kept);
+    throw e;
+  }
 
   const text = await resp.text();
   let json: any = null;
@@ -92,9 +127,17 @@ async function request<T = unknown>(
   if (!resp.ok) {
     const code = (json && json.error) || 'http_error';
     const msg = (json && json.message) || `HTTP ${resp.status}`;
-    if (resp.status === 401) {
-      // Token expire ou invalide → on flush et on reload login
+    // Seul un vrai rejet du jeton efface la session. Un 5xx, un 429,
+    // ou un 401 « mauvais mot de passe » (login / changement) la garde.
+    const kept = nextTokenAfterResponse(getToken(), {
+      kind: 'http',
+      status: resp.status,
+      code,
+      noAuth: opts.noAuth,
+    });
+    if (kept === null && getToken()) {
       setToken(null);
+      setCurrentUser(null);
     }
     throw new ApiError(resp.status, code, msg);
   }
@@ -163,6 +206,10 @@ export const authApi = {
       noAuth: true,
     }),
   me: () => request<{ user: MeUser }>('/api/v1/auth/me'),
+  // Nouveau jeton si l'actuel est encore valide. Le Worker refuse
+  // un jeton expiré ou falsifié (401) et ne change pas le secret.
+  refresh: () =>
+    request<AuthLoginResponse>('/api/v1/auth/refresh', { method: 'POST' }),
   // Auto-inscription revendeur via le lien unique → compte 'pending'.
   resellerSignup: (email: string, password: string, name?: string) =>
     request<{ ok: boolean; pending: boolean }>('/api/v1/auth/reseller/signup', {
@@ -171,6 +218,35 @@ export const authApi = {
       noAuth: true,
     }),
 };
+
+// Un seul renouvellement à la fois (démarrage + minuteur + retour
+// d'onglet peuvent se chevaucher). Les autres attendent le même appel.
+let refreshInFlight: Promise<boolean> | null = null;
+
+/// Renouvelle le jeton quand plus de la moitié de sa durée est passée.
+/// true = un jeton neuf a été enregistré.
+/// Réseau, 5xx, timeout, 429 : on GARDE l'ancien jeton (retourne false).
+/// 401 de session : on relance l'erreur, le jeton a déjà été effacé
+/// par request(), l'app doit afficher l'écran de connexion.
+export async function maybeRefreshSession(): Promise<boolean> {
+  const token = getToken();
+  if (!token || !tokenNeedsRefresh(token)) return false;
+  if (refreshInFlight) return refreshInFlight;
+  refreshInFlight = (async () => {
+    try {
+      const res = await authApi.refresh();
+      if (res?.token) setToken(res.token);
+      if (res?.user) setCurrentUser(res.user);
+      return true;
+    } catch (e) {
+      if (isSessionAuthError(e)) throw e;
+      return false;
+    } finally {
+      refreshInFlight = null;
+    }
+  })();
+  return refreshInFlight;
+}
 
 export interface StatsOverview {
   customers: number;

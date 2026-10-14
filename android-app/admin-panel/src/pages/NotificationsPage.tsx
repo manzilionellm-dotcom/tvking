@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
 import {
-  announcementsApi, type Announcement, ApiError,
+  announcementsApi, type Announcement, ApiError, isSessionAuthError,
   COUNTRIES, flagEmoji,
 } from '@/lib/api';
 
@@ -70,7 +70,7 @@ export function NotificationsPage({ onLogout }: { onLogout: () => void }) {
       await announcementsApi.setSettings(next);
     } catch (e: any) {
       setNotifsOn(!next);
-      if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
+      if (isSessionAuthError(e)) { onLogout(); return; }
       setErr('Échec du changement.');
     }
   }
@@ -81,7 +81,7 @@ export function NotificationsPage({ onLogout }: { onLogout: () => void }) {
       setRecent((list) =>
         list.map((x) => (x.id === id ? { ...x, active: active ? 1 : 0 } : x)));
     } catch (e: any) {
-      if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
+      if (isSessionAuthError(e)) { onLogout(); return; }
       setErr('Échec du changement.');
     }
   }
@@ -118,7 +118,7 @@ export function NotificationsPage({ onLogout }: { onLogout: () => void }) {
       setCta('');
       load();
     } catch (e: any) {
-      if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
+      if (isSessionAuthError(e)) { onLogout(); return; }
       setErr(e instanceof ApiError ? e.message : "Échec de la publication.");
     } finally {
       setBusy(false);
@@ -136,7 +136,7 @@ export function NotificationsPage({ onLogout }: { onLogout: () => void }) {
       setOk('Toutes les annonces ont été retirées.');
       load();
     } catch (e: any) {
-      if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
+      if (isSessionAuthError(e)) { onLogout(); return; }
       setErr(e instanceof ApiError ? e.message : 'Échec.');
     } finally {
       setBusy(false);
@@ -148,7 +148,7 @@ export function NotificationsPage({ onLogout }: { onLogout: () => void }) {
       await announcementsApi.remove(id);
       setRecent((list) => list.filter((x) => x.id !== id));
     } catch (e: any) {
-      if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
+      if (isSessionAuthError(e)) { onLogout(); return; }
       setErr(e instanceof ApiError ? e.message : 'Échec de la suppression.');
     }
   }

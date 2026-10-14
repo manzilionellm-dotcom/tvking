@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
-import { feedbackApi, flagEmoji, type FeedbackItem, ApiError } from '@/lib/api';
+import { feedbackApi, flagEmoji, type FeedbackItem, ApiError, isSessionAuthError } from '@/lib/api';
 
 // =========================================================
 //  ReviewsPage — Avis clients (owner)
@@ -21,7 +21,7 @@ export function ReviewsPage({ onLogout }: { onLogout: () => void }) {
   const [ok, setOk] = useState<string | null>(null);
 
   function fail(e: any) {
-    if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
+    if (isSessionAuthError(e)) { onLogout(); return; }
     setErr(e instanceof ApiError ? e.message : 'Erreur réseau.');
   }
 

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
-import { forceUpdateApi, ApiError } from '@/lib/api';
+import { forceUpdateApi, ApiError, isSessionAuthError } from '@/lib/api';
 
 /// Page « Mise à jour forcée » (owner uniquement) — un bouton qui oblige
 /// TOUS les utilisateurs sur une version plus ancienne à mettre à jour.
@@ -25,7 +25,7 @@ export function ForceUpdatePage({ onLogout }: { onLogout: () => void }) {
   const [platform, setPlatform] = useState<'mobile' | 'tv'>('mobile');
 
   function fail(e: any) {
-    if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
+    if (isSessionAuthError(e)) { onLogout(); return; }
     setErr(e instanceof ApiError ? e.message : 'Erreur réseau.');
   }
 

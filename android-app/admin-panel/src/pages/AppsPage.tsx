@@ -1,7 +1,7 @@
 import { FormEvent, ReactNode, useEffect, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
 import { CopyLink } from '@/components/CopyLink';
-import { appsApi, type App, ApiError } from '@/lib/api';
+import { appsApi, type App, ApiError, isSessionAuthError } from '@/lib/api';
 
 export function AppsPage({ onLogout }: { onLogout: () => void }) {
   const [items, setItems] = useState<App[]>([]);
@@ -16,7 +16,7 @@ export function AppsPage({ onLogout }: { onLogout: () => void }) {
     appsApi.list()
       .then((r) => { setItems(r.items); setErr(null); })
       .catch((e) => {
-        if (e instanceof ApiError && e.status === 401) onLogout();
+        if (isSessionAuthError(e)) onLogout();
         else setErr(e.message);
       })
       .finally(() => setLoading(false));

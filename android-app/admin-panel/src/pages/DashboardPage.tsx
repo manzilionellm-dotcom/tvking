@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AppLayout } from '@/components/AppLayout';
 import {
-  statsApi, backupApi, type StatsOverview, ApiError,
+  statsApi, backupApi, type StatsOverview, ApiError, isSessionAuthError,
   getCurrentUser, isOwnerRole,
 } from '@/lib/api';
 import { formatMoney } from '@/lib/utils';
@@ -34,7 +34,7 @@ export function DashboardPage({ onLogout }: { onLogout: () => void }) {
       a.remove();
       URL.revokeObjectURL(url);
     } catch (e) {
-      if (e instanceof ApiError && e.status === 401) onLogout();
+      if (isSessionAuthError(e)) onLogout();
       else setErr(e instanceof ApiError ? e.message : 'Sauvegarde impossible.');
     } finally {
       setBackupBusy(false);
@@ -47,7 +47,7 @@ export function DashboardPage({ onLogout }: { onLogout: () => void }) {
       .then((s) => { if (active) { setStats(s); setErr(null); } })
       .catch((e) => {
         if (!active) return;
-        if (e instanceof ApiError && e.status === 401) {
+        if (isSessionAuthError(e)) {
           onLogout();
         } else {
           setErr(e instanceof ApiError ? e.message : 'Erreur de chargement');
