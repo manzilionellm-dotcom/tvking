@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { AppLayout } from '@/components/AppLayout';
+import {
+  Alert, EmptyState, LoadingRows, Pager, SearchField, SortTh, TableFrame, useClientTable,
+} from '@/components/ui';
 import { customersApi, type Customer, ApiError } from '@/lib/api';
 import { formatDateTime } from '@/lib/utils';
 
@@ -25,6 +28,17 @@ export function CustomersPage({ onLogout }: { onLogout: () => void }) {
     return () => { active = false; };
   }, [q, onLogout]);
 
+  const table = useClientTable(items, {
+    query: q,
+    valueOf: (c, key) => {
+      if (key === 'name') return c.name || '';
+      if (key === 'email') return c.email || '';
+      if (key === 'phone') return c.phone || '';
+      if (key === 'created') return c.created_at || 0;
+      return '';
+    },
+  });
+
   return (
     <AppLayout
       title="Clients"
@@ -39,66 +53,62 @@ export function CustomersPage({ onLogout }: { onLogout: () => void }) {
         </button>
       }
     >
-      <input
-        type="search"
+      <SearchField
+        label="Rechercher un client"
         value={q}
-        onChange={(e) => setQ(e.target.value)}
-        placeholder="Recherche par nom, email, téléphone…"
-        className="mb-4 w-full max-w-md rounded-md border border-white/5 bg-midnight px-3 py-2 text-sm outline-none transition duration-150 focus:ring-1 focus:ring-accent"
+        onChange={setQ}
+        placeholder="Nom, e-mail, téléphone…"
       />
 
-      {err && (
-        <div className="mb-4 rounded-lg border border-accent/30 bg-accent/10 px-4 py-3 text-sm">{err}</div>
-      )}
+      {err && <Alert>{err}</Alert>}
 
-      <div className="overflow-hidden rounded-xl border border-white/5">
-        <table className="w-full text-sm">
-          <thead className="bg-midnight">
-            <tr className="text-left text-[10px] uppercase tracking-widest text-ink-tertiary">
-              <th className="px-4 py-3">Nom</th>
-              <th className="px-4 py-3">Email</th>
-              <th className="px-4 py-3">Téléphone</th>
-              <th className="px-4 py-3">Créé le</th>
+      <TableFrame label="Liste des clients" busy={loading}>
+          <thead className="bg-midnight text-left">
+            <tr>
+              <SortTh label="Nom" column="name" sortKey={table.sortKey} dir={table.dir} onSort={table.toggleSort} />
+              <SortTh label="E-mail" column="email" sortKey={table.sortKey} dir={table.dir} onSort={table.toggleSort} />
+              <SortTh label="Téléphone" column="phone" sortKey={table.sortKey} dir={table.dir} onSort={table.toggleSort} />
+              <SortTh label="Créé le" column="created" sortKey={table.sortKey} dir={table.dir} onSort={table.toggleSort} />
             </tr>
           </thead>
           <tbody className="divide-y divide-white/5">
-            {loading && Array.from({ length: 5 }).map((_, i) => (
-              <tr key={i} className="bg-obsidian">
-                <td className="px-4 py-3" colSpan={4}>
-                  <div className="h-4 w-full animate-pulse rounded bg-white/5" />
-                </td>
-              </tr>
-            ))}
-            {!loading && items.length === 0 && (
+            {loading && <LoadingRows cols={4} />}
+            {!loading && table.total === 0 && (
               <tr>
-                <td colSpan={4} className="px-4 py-10 text-center">
-                  <p className="text-sm text-ink-secondary">
-                    {q
-                      ? `Aucun client trouvé pour « ${q} ».`
-                      : 'Aucun client pour l\'instant.'}
-                  </p>
-                  {!q && (
-                    <Link
-                      to="/activate"
-                      className="mt-3 inline-flex rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-black transition duration-150 hover:bg-accent-bright"
-                    >
-                      Activer un client
-                    </Link>
-                  )}
+                <td colSpan={4}>
+                  <EmptyState
+                    title={q ? `Aucun client pour « ${q} ».` : 'Aucun client pour l’instant.'}
+                    hint={q ? 'Vérifie l’orthographe ou élargis la recherche.' : 'Un client apparaît ici dès qu’un appareil est activé.'}
+                    action={!q ? (
+                      <Link
+                        to="/activate"
+                        className="inline-flex rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-obsidian hover:bg-accent-bright"
+                      >
+                        Activer un client
+                      </Link>
+                    ) : undefined}
+                  />
                 </td>
               </tr>
             )}
-            {items.map((c) => (
-              <tr key={c.id} className="bg-obsidian transition duration-150 hover:bg-midnight">
+            {!loading && table.rows.map((c) => (
+              <tr key={c.id} className="transition duration-150 hover:bg-midnight">
                 <td className="px-4 py-3 font-medium">{c.name || '—'}</td>
                 <td className="px-4 py-3 text-ink-secondary">{c.email || '—'}</td>
                 <td className="px-4 py-3 text-ink-secondary">{c.phone || '—'}</td>
-                <td className="px-4 py-3 text-ink-tertiary">{formatDateTime(c.created_at)}</td>
+                <td className="px-4 py-3 text-ink-secondary">{formatDateTime(c.created_at)}</td>
               </tr>
             ))}
           </tbody>
-        </table>
-      </div>
+      </TableFrame>
+      <Pager
+        page={table.page}
+        pages={table.pages}
+        start={table.start}
+        end={table.end}
+        total={table.total}
+        onPage={table.setPage}
+      />
     </AppLayout>
   );
 }

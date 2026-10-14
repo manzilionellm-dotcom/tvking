@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
+import {
+  Alert, EmptyState, LoadingRows, Pager, SearchField, SortTh, TableFrame, useClientTable,
+} from '@/components/ui';
 import { auditApi, type AuditLog, ApiError } from '@/lib/api';
 
 // =========================================================
@@ -41,52 +44,75 @@ export function HistoryPage({ onLogout }: { onLogout: () => void }) {
     /* eslint-disable-next-line */
   }, []);
 
+  const table = useClientTable(items, {
+    textOf: (it) => [ACTION_LABELS[it.action] || it.action, it.actor_type, it.target_type, it.target_id].filter(Boolean).join(' '),
+    valueOf: (it, key) => {
+      if (key === 'when') return it.created_at || 0;
+      if (key === 'action') return ACTION_LABELS[it.action] || it.action;
+      if (key === 'who') return it.actor_type || '';
+      if (key === 'target') return `${it.target_type || ''} ${it.target_id || ''}`;
+      return '';
+    },
+  });
+
   return (
     <AppLayout
       title="Historique"
       subtitle="Qui a fait quoi, et quand"
       onLogout={onLogout}
     >
-      {err && (
-        <div className="mb-4 rounded-lg border border-accent/30 bg-accent/10 px-4 py-3 text-sm">{err}</div>
-      )}
+      {err && <Alert>{err}</Alert>}
 
-      <div className="overflow-hidden rounded-xl border border-white/5">
-        <table className="w-full text-sm">
-          <thead className="bg-midnight">
-            <tr className="text-left text-[10px] uppercase tracking-widest text-ink-tertiary">
-              <th className="px-4 py-3">Quand</th>
-              <th className="px-4 py-3">Action</th>
-              <th className="px-4 py-3">Par</th>
-              <th className="px-4 py-3">Cible</th>
+      <SearchField
+        label="Rechercher dans l’historique"
+        value={table.query}
+        onChange={table.setQuery}
+        placeholder="Action, personne, cible…"
+      />
+
+      <TableFrame label="Historique des modifications" busy={loading}>
+          <thead className="bg-midnight text-left">
+            <tr>
+              <SortTh label="Quand" column="when" sortKey={table.sortKey} dir={table.dir} onSort={table.toggleSort} />
+              <SortTh label="Action" column="action" sortKey={table.sortKey} dir={table.dir} onSort={table.toggleSort} />
+              <SortTh label="Par" column="who" sortKey={table.sortKey} dir={table.dir} onSort={table.toggleSort} />
+              <SortTh label="Cible" column="target" sortKey={table.sortKey} dir={table.dir} onSort={table.toggleSort} />
             </tr>
           </thead>
           <tbody className="divide-y divide-white/5">
-            {loading && (
-              <tr><td colSpan={4} className="px-4 py-8 text-center text-sm text-ink-tertiary">Chargement…</td></tr>
-            )}
-            {!loading && items.length === 0 && (
-              <tr><td colSpan={4} className="px-4 py-8 text-center text-sm text-ink-tertiary">
-                Aucune modification enregistrée pour l'instant.
+            {loading && <LoadingRows cols={4} />}
+            {!loading && table.total === 0 && (
+              <tr><td colSpan={4}>
+                <EmptyState
+                  title={table.query ? `Aucun résultat pour « ${table.query} ».` : 'Aucune modification enregistrée.'}
+                  hint={table.query ? 'Essaie un autre mot.' : 'Les changements faits dans le panneau apparaîtront ici.'}
+                />
               </td></tr>
             )}
-            {items.map((it) => (
-              <tr key={it.id} className="bg-obsidian hover:bg-midnight">
+            {!loading && table.rows.map((it) => (
+              <tr key={it.id} className="hover:bg-midnight">
                 <td className="px-4 py-3 text-ink-secondary">{fmtDate(it.created_at)}</td>
                 <td className="px-4 py-3 font-medium">
                   {ACTION_LABELS[it.action] || it.action}
                 </td>
                 <td className="px-4 py-3 text-ink-secondary">
-                  {it.actor_type === 'admin' ? '👑 Admin' : '🛒 Revendeur'}
+                  {it.actor_type === 'admin' ? 'Admin' : 'Revendeur'}
                 </td>
-                <td className="px-4 py-3 text-[11px] text-ink-tertiary">
+                <td className="px-4 py-3 text-xs text-ink-secondary">
                   {it.target_type || '—'}{it.target_id ? ` · ${it.target_id}` : ''}
                 </td>
               </tr>
             ))}
           </tbody>
-        </table>
-      </div>
+      </TableFrame>
+      <Pager
+        page={table.page}
+        pages={table.pages}
+        start={table.start}
+        end={table.end}
+        total={table.total}
+        onPage={table.setPage}
+      />
     </AppLayout>
   );
 }

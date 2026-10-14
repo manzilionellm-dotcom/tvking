@@ -129,46 +129,55 @@ export function LoginPage({ onLoggedIn }: { onLoggedIn: () => void }) {
 
         <div className="space-y-3">
           <div>
-            <label className="mb-1.5 block text-[10px] uppercase tracking-widest text-ink-tertiary">
+            <label htmlFor="login-id" className="mb-1.5 block text-xs font-medium text-ink-secondary">
               {t('login.identifier')}
             </label>
             <input
+              id="login-id"
+              name="username"
+              autoComplete="username"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               autoFocus
-              className="w-full rounded-md border border-white/5 bg-slate px-3 py-2 text-sm outline-none ring-accent focus:ring-1"
+              className="w-full rounded-md border border-white/10 bg-slate px-3 py-2.5 text-sm outline-none focus:border-accent/60 focus:ring-2 focus:ring-accent/40"
               placeholder={mode === 'reseller' ? 'ton-identifiant' : 'admin'}
             />
           </div>
           {mode === 'reseller' && signup && (
             <div>
-              <label className="mb-1.5 block text-[10px] uppercase tracking-widest text-ink-tertiary">
+              <label htmlFor="login-name" className="mb-1.5 block text-xs font-medium text-ink-secondary">
                 Nom (optionnel)
               </label>
               <input
+                id="login-name"
+                name="name"
+                autoComplete="name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="w-full rounded-md border border-white/5 bg-slate px-3 py-2 text-sm outline-none ring-accent focus:ring-1"
-                placeholder="Ex. Karim Reseller"
+                className="w-full rounded-md border border-white/10 bg-slate px-3 py-2.5 text-sm outline-none focus:border-accent/60 focus:ring-2 focus:ring-accent/40"
+                placeholder="Ex. Karim"
               />
             </div>
           )}
           <div>
-            <label className="mb-1.5 block text-[10px] uppercase tracking-widest text-ink-tertiary">
+            <label htmlFor="login-password" className="mb-1.5 block text-xs font-medium text-ink-secondary">
               {t('login.password')}
             </label>
             <input
+              id="login-password"
+              name="password"
               type="password"
+              autoComplete="current-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded-md border border-white/5 bg-slate px-3 py-2 text-sm outline-none ring-accent focus:ring-1"
+              className="w-full rounded-md border border-white/10 bg-slate px-3 py-2.5 text-sm outline-none focus:border-accent/60 focus:ring-2 focus:ring-accent/40"
               placeholder="••••••••"
             />
           </div>
         </div>
 
         {err && (
-          <div className="rounded-md border border-accent/30 bg-accent/10 px-3 py-2 text-xs text-accent-bright">
+          <div role="alert" className="rounded-md border border-accent/40 bg-accent/10 px-3 py-2 text-sm text-accent-bright">
             {err}
           </div>
         )}
@@ -181,7 +190,7 @@ export function LoginPage({ onLoggedIn }: { onLoggedIn: () => void }) {
         <button
           type="submit"
           disabled={busy || !password}
-          className="w-full rounded-md bg-accent px-4 py-2.5 text-sm font-semibold text-black transition disabled:cursor-not-allowed disabled:opacity-50 hover:bg-accent-bright"
+          className="w-full rounded-md bg-accent px-4 py-2.5 text-sm font-semibold text-obsidian transition disabled:cursor-not-allowed disabled:opacity-50 hover:bg-accent-bright"
         >
           {busy
             ? t('login.signing')
@@ -205,7 +214,7 @@ export function LoginPage({ onLoggedIn }: { onLoggedIn: () => void }) {
 
         {!resellerOnly && (
           <p className="text-center text-[11px] text-ink-tertiary">
-            Première connexion : utilise ton <span className="text-ink-secondary">ADMIN_SECRET</span> Worker comme mot de passe.
+            Première connexion : utilise le mot de passe défini pour l’administrateur.
           </p>
         )}
         {resellerOnly && (

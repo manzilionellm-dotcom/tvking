@@ -1,5 +1,6 @@
 import { FormEvent, ReactNode, useEffect, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
+import { confirmAction } from '@/components/confirm';
 import { serversApi, type DefaultServer, ApiError } from '@/lib/api';
 
 // =========================================================
@@ -42,9 +43,13 @@ export function ServersPage({ onLogout }: { onLogout: () => void }) {
   }
 
   async function remove(s: DefaultServer) {
-    if (!confirm(`Supprimer « ${s.label} » ? Le client ne pourra plus le choisir.`)) {
-      return;
-    }
+    const ok = await confirmAction({
+      title: 'Supprimer ce serveur ?',
+      message: `Supprimer « ${s.label} » ? Le client ne pourra plus le choisir.`,
+      confirmLabel: 'Supprimer',
+      danger: true,
+    });
+    if (!ok) return;
     try {
       await serversApi.remove(s.id);
       reload();

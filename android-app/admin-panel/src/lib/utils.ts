@@ -7,6 +7,15 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+/// MAC d'appareil telle que le serveur l'attend : MK:XX:XX:XX:XX:XX.
+export function normalizeMac(raw: string): string {
+  return raw.trim().toUpperCase();
+}
+
+export function isValidMac(raw: string): boolean {
+  return /^MK(?::[0-9A-F]{2}){5}$/i.test(normalizeMac(raw));
+}
+
 /// Convertit des millisecondes Unix en string locale "12 mai 2026, 14:32".
 export function formatDateTime(ms: number | null | undefined): string {
   if (!ms) return '—';
