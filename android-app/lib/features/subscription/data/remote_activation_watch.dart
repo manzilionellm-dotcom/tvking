@@ -62,6 +62,7 @@ class RemoteActivationWatch {
   Timer? _timer;
   bool _run = false;
   bool _tickBusy = false;
+  Future<void> _ordersTail = Future<void>.value();
   bool _nudge = false;
   bool _allowSourceImport = true;
   bool _channelUp = false;
@@ -449,7 +450,31 @@ class RemoteActivationWatch {
   /// [via] dit par quel chemin l'ordre est arrivé (« ws » ou
   /// « attente ») : la boîte noire horodate la réception, ce qui
   /// permet de mesurer le délai clic du panel → box.
-  Future<bool> _applyOrders(List<BoxOrder> orders, {String via = ''}) async {
+  Future<bool> _applyOrders(List<BoxOrder> orders, {String via = ''}) {
+    // La prise et l'attente longue peuvent recevoir le même ordre au
+    // démarrage. On sérialise AVANT la déduplication et l'import, sinon
+    // les deux chemins passent le test « pas encore vu » simultanément.
+    final Completer<bool> result = Completer<bool>();
+    final int generation = _generation;
+    _ordersTail = _ordersTail.then((_) async {
+      if (!_run || generation != _generation) {
+        result.complete(false);
+        return;
+      }
+      try {
+        result.complete(await _applyOrdersNow(orders, via: via));
+      } catch (_) {
+        BlackBox.instance.warn(
+          'PANEL',
+          'ordre non appliqué : nouvelle tentative',
+        );
+        result.complete(false);
+      }
+    });
+    return result.future;
+  }
+
+  Future<bool> _applyOrdersNow(List<BoxOrder> orders, {String via = ''}) async {
     final List<Map<String, Object?>> boxMaps = <Map<String, Object?>>[
       for (final BoxOrder o in orders)
         if (!o.fleet) <String, Object?>{'id': o.id, 'kind': o.kind},
@@ -516,7 +541,20 @@ class RemoteActivationWatch {
         await Future<void>.delayed(const Duration(milliseconds: 40));
       }
       _timer?.cancel();
-      await _tick(sourceOrdered: sourceOrdered);
+      try {
+        await _tick(sourceOrdered: sourceOrdered);
+      } finally {
+        // Le premier ordre annulait le timer sans le réarmer : après une
+        // coupure de prise, le filet de statut ne reprenait plus jamais.
+        if (_run)
+          _arm(
+            signalPace(
+              channelUp: _channelUp,
+              waiting: _isWaiting,
+              failures: _failures,
+            ),
+          );
+      }
       if (SubscriptionState.instance.syncHint == 'offline') return false;
     }
     final Map<String, bool> sideOk = <String, bool>{};

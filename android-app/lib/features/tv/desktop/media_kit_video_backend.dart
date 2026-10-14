@@ -48,7 +48,7 @@ class MediaKitVideoBackend implements NativeVideoBackend {
       onError: (error, stack) {
         // Ne pas journaliser l'URL ni les identifiants du fournisseur.
         BlackBox.instance.warn('PC', 'commande lecteur en échec');
-        _emit('error', 'Lecture indisponible. Réessayez.');
+        _c?.applyBackendEvent('error', 'Lecture indisponible. Réessayez.');
       },
     );
     _queue.enqueue(_configure);

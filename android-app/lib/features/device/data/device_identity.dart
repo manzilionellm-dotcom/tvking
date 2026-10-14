@@ -41,6 +41,7 @@ class DeviceIdentity {
   );
 
   String? _cached;
+  Future<String>? _loading;
 
   /// Renvoie le MAC virtuel.
   ///
@@ -55,6 +56,17 @@ class DeviceIdentity {
   ///      Android), repli sur une MAC aléatoire (ancien comportement).
   Future<String> get mac async {
     if (_cached != null) return _cached!;
+    // Heartbeat, canal et écran démarrent ensemble : une seule identité,
+    // même si le registre est indisponible et qu'il faut générer un repli.
+    _loading ??= _loadMac();
+    try {
+      return await _loading!;
+    } finally {
+      _loading = null;
+    }
+  }
+
+  Future<String> _loadMac() async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     final String? stored = prefs.getString(_kKey);
     if (stored != null && _isValid(stored)) {
