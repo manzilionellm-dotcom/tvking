@@ -93,7 +93,7 @@ class BoxChannelSession {
         hello?.cancel();
         open = false;
         try {
-          await _socket?.close();
+          await _socket?.close().timeout(const Duration(seconds: 2));
         } catch (_) {
           // Déjà fermée.
         }

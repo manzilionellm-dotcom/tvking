@@ -22,6 +22,8 @@ void main() {
     ) async {
       final WebSocket socket = await WebSocketTransformer.upgrade(request);
       sockets.add(socket);
+      // Le serveur lit aussi la fermeture et répond à la poignée de main.
+      socket.listen((_) {});
       socket.add(
         jsonEncode(<String, Object>{'seq': 7, 'type': 'source', 'mac': mac}),
       );
