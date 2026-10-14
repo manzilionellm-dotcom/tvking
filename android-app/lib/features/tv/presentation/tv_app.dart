@@ -20,6 +20,7 @@ import '../../channels/domain/channel.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../../playlists/data/remote_source_repository.dart';
 import '../../subscription/data/subscription_state.dart';
+import '../../subscription/data/trial_block_copy.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
@@ -580,7 +581,10 @@ class _HomeHeaderState extends State<_HomeHeader> {
     final String dayTime = '$weekday · $_time';
     // ÉPURÉ (réf. design) : plus de « Bonjour 👋 ». Un simple cluster
     // ville · météo · jour · heure, DISCRET, aligné EN HAUT À DROITE.
-    return Align(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: <Widget>[
+        Align(
       alignment: Alignment.centerRight,
       child: Text.rich(
         TextSpan(
@@ -598,6 +602,37 @@ class _HomeHeaderState extends State<_HomeHeader> {
           ],
         ),
       ),
+        ),
+        const _TvTrialHint(),
+      ],
+    );
+  }
+}
+
+/// Jours d'essai restants, tout petits, seulement si le serveur a
+/// allumé l'interrupteur. Sinon le bandeau n'existe pas.
+class _TvTrialHint extends StatelessWidget {
+  const _TvTrialHint();
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: SubscriptionState.instance,
+      builder: (BuildContext context, _) {
+        final SubscriptionState s = SubscriptionState.instance;
+        if (!s.trialEnforced || s.status != SubscriptionStatus.trialActive) {
+          return const SizedBox.shrink();
+        }
+        final TrialBlockText t = resolveTrialBlock(
+          languageCode: Localizations.localeOf(context).languageCode,
+          daysLeft: s.trialDaysRemaining,
+        );
+        return Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Text(t.daysLabel,
+              style: TvTokens.ui(14, color: TvTokens.mutedDim)),
+        );
+      },
     );
   }
 }

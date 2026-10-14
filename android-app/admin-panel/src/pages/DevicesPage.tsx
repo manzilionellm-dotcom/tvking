@@ -16,6 +16,7 @@ const PLAN_LABELS: Record<string, string> = {
 
 export function DevicesPage({ onLogout }: { onLogout: () => void }) {
   const [items, setItems] = useState<Device[]>([]);
+  const [trialEnforced, setTrialEnforced] = useState(false);
   const [q, setQ] = useState('');
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
@@ -27,7 +28,7 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
   const load = useCallback(() => {
     setLoading(true);
     devicesApi.list(q)
-      .then((r) => { setItems(r.items); setErr(null); })
+      .then((r) => { setItems(r.items); setTrialEnforced(!!r.trial_enforced); setErr(null); })
       .catch((e) => {
         if (e instanceof ApiError && e.status === 401) onLogout();
         else setErr(e.message);
@@ -48,7 +49,7 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
   }
 
   async function remove(d: Device) {
-    if (!window.confirm(`Supprimer définitivement la MAC ${d.mac} ?\n(Si l'app reste installée, elle réapparaîtra avec un nouvel essai. Pour stopper un abuseur, utilise plutôt « Bannir ».)`)) return;
+    if (!window.confirm(`Supprimer définitivement la MAC ${d.mac} ?\n(Interrupteur coupé : l'app peut réapparaître avec un nouvel essai. Interrupteur allumé : l'essai déjà commencé ne repart pas. Pour stopper un abuseur, utilise plutôt « Bannir ».)`)) return;
     setBusyId(d.id); setErr(null);
     try { await devicesApi.remove(d.id); load(); }
     catch (e: any) { setErr(e instanceof ApiError ? e.message : 'Échec.'); }
@@ -69,6 +70,12 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
         className="mb-4 w-full max-w-md rounded-md border border-white/5 bg-midnight px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-accent"
       />
 
+      <div className={`mb-4 rounded-lg border px-4 py-3 text-sm ${trialEnforced ? 'border-success/30 bg-success/10 text-success' : 'border-white/10 bg-midnight text-ink-secondary'}`}>
+        {trialEnforced
+          ? 'Essai 7 jours : ALLUMÉ. Sans activation, l’appareil se bloque au bout de 7 jours exactement. Les clients déjà activés restent ouverts.'
+          : 'Essai 7 jours : coupé (TRIAL_ENFORCEMENT). Les clients actuels ne changent pas. Les pastilles montrent l’état d’aujourd’hui.'}
+      </div>
+
       {err && (
         <div className="mb-4 rounded-lg border border-accent/30 bg-accent/10 px-4 py-3 text-sm">{err}</div>
       )}
@@ -81,6 +88,7 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
               <th className="px-4 py-3">Client</th>
               <th className="px-4 py-3">Appareil</th>
               <th className="px-4 py-3">Statut</th>
+              <th className="px-4 py-3">Accès</th>
               <th className="px-4 py-3">Dernière vue</th>
               <th className="px-4 py-3 text-right">Actions</th>
             </tr>
@@ -88,13 +96,13 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
           <tbody className="divide-y divide-white/5">
             {loading && Array.from({ length: 5 }).map((_, i) => (
               <tr key={i} className="bg-obsidian">
-                <td className="px-4 py-3" colSpan={6}>
+                <td className="px-4 py-3" colSpan={7}>
                   <div className="h-4 w-full animate-pulse rounded bg-white/5" />
                 </td>
               </tr>
             ))}
             {!loading && items.length === 0 && (
-              <tr><td colSpan={6} className="px-4 py-8 text-center text-sm text-ink-tertiary">
+              <tr><td colSpan={7} className="px-4 py-8 text-center text-sm text-ink-tertiary">
                 Aucun appareil pour l'instant. Dès qu'une app contacte le serveur,
                 sa MAC apparaît ici automatiquement.
               </td></tr>
@@ -130,6 +138,7 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
                     )}
                   </td>
                   <td className="px-4 py-3"><DeviceStatus status={st} /></td>
+                  <td className="px-4 py-3 text-xs text-ink-secondary">{d.access_label || '—'}</td>
                   <td className="px-4 py-3 text-ink-tertiary">{formatDateTime(d.last_seen_at)}</td>
                   <td className="px-4 py-3">
                     <div className="flex flex-wrap justify-end gap-1.5">
@@ -247,6 +256,7 @@ function DeviceDetailModal({
           <InfoRow label="Étiquette" value={device.label || '—'} />
           <InfoRow label="Dernière vue" value={formatDateTime(device.last_seen_at)} />
           <InfoRow label="Première vue" value={formatDateTime(device.first_seen_at)} />
+          <InfoRow label="Accès" value={device.access_label || '—'} />
         </div>
 
         {/* ----- M-Trio : les sources poussées ----- */}

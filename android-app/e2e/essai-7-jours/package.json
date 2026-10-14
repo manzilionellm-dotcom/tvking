@@ -1,0 +1,14 @@
+{
+  "name": "essai-7-jours",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Essai 7 jours : Worker local (miniflare + D1). Aucun déploiement.",
+  "type": "module",
+  "scripts": {
+    "e2e": "node run.mjs"
+  },
+  "devDependencies": {
+    "miniflare": "3.20240806.1",
+    "wrangler": "3.90.0"
+  }
+}

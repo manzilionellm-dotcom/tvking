@@ -61,6 +61,13 @@ class RemoteSubscriptionStatus {
     required this.frozen,
     required this.banned,
     required this.trialUntil,
+    this.trialEnforced = false,
+    this.serverNow = 0,
+    this.blockTitleFr = '',
+    this.blockBodyFr = '',
+    this.blockTitleEn = '',
+    this.blockBodyEn = '',
+    this.payUrl = '',
   });
 
   /// `true` si le serveur connaît ce MAC (= il a déjà fait un
@@ -100,6 +107,24 @@ class RemoteSubscriptionStatus {
   /// Timestamp (ms epoch) d'expiration de l'essai.
   final int trialUntil;
 
+  /// Interrupteur serveur TRIAL_ENFORCEMENT. Absent ou false =
+  /// comportement actuel de l'app (on ne change rien).
+  final bool trialEnforced;
+
+  /// Horloge du serveur (ms). L'app ne décide pas avec l'horloge du
+  /// téléphone quand [trialEnforced] est vrai.
+  final int serverNow;
+
+  /// Textes d'écran modifiables depuis le panel. Vides = texte intégré.
+  final String blockTitleFr;
+  final String blockBodyFr;
+  final String blockTitleEn;
+  final String blockBodyEn;
+
+  /// Lien https de paiement configuré dans le panel. Vide = on n'invente
+  /// pas de caisse : l'app propose les contacts déjà dans le projet.
+  final String payUrl;
+
   /// True si le client a le droit d'utiliser l'app.
   bool get canUse => !banned && !frozen && (paid || !expired);
 
@@ -118,6 +143,13 @@ class RemoteSubscriptionStatus {
       frozen: json['frozen'] == true,
       banned: json['banned'] == true,
       trialUntil: (json['trial_until'] as num?)?.toInt() ?? 0,
+      trialEnforced: json['trial_enforced'] == true,
+      serverNow: (json['server_now'] as num?)?.toInt() ?? 0,
+      blockTitleFr: (json['block_title_fr'] as String?) ?? '',
+      blockBodyFr: (json['block_body_fr'] as String?) ?? '',
+      blockTitleEn: (json['block_title_en'] as String?) ?? '',
+      blockBodyEn: (json['block_body_en'] as String?) ?? '',
+      payUrl: (json['pay_url'] as String?) ?? '',
     );
   }
 

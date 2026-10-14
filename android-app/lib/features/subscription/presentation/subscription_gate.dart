@@ -21,6 +21,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/branding/brand_logo.dart';
+import '../../device/data/device_identity.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/support/support_choice_sheet.dart';
 import '../../../core/theme/app_colors.dart';
@@ -28,6 +29,8 @@ import '../../../core/theme/app_text_styles.dart';
 import '../../../core/widgets/legal_disclaimer.dart';
 import '../../pricing/presentation/pricing_banner.dart';
 import '../data/subscription_state.dart';
+import '../data/trial_block_copy.dart';
+import 'trial_block_screen.dart';
 
 class SubscriptionGateScreen extends StatelessWidget {
   const SubscriptionGateScreen({super.key});
@@ -40,8 +43,27 @@ class SubscriptionGateScreen extends StatelessWidget {
         child: ListenableBuilder(
           listenable: SubscriptionState.instance,
           builder: (BuildContext context, _) {
-            final SubscriptionStatus status =
-                SubscriptionState.instance.status;
+            final SubscriptionState sub = SubscriptionState.instance;
+            final SubscriptionStatus status = sub.status;
+            // Interrupteur serveur allumé + essai fini : écran dédié
+            // (MAC, message, contacts déjà connus). Sinon, l'écran actuel.
+            if (sub.trialEnforced && status == SubscriptionStatus.trialExpired) {
+              final String code = Localizations.localeOf(context).languageCode;
+              final TrialBlockText text = resolveTrialBlock(
+                languageCode: code,
+                titleFr: sub.blockTitleFr,
+                bodyFr: sub.blockBodyFr,
+                titleEn: sub.blockTitleEn,
+                bodyEn: sub.blockBodyEn,
+                payUrl: sub.payUrl,
+                daysLeft: 0,
+              );
+              return TrialBlockScreen(
+                mac: DeviceIdentity.instance.macSync,
+                text: text,
+                onRefresh: () => SubscriptionState.instance.refreshRemote(),
+              );
+            }
             final bool banned = status == SubscriptionStatus.banned;
             final bool frozen = status == SubscriptionStatus.frozen;
             final bool expired = status == SubscriptionStatus.trialExpired;

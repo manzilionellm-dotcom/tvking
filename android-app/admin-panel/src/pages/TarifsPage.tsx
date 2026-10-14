@@ -18,6 +18,12 @@ export function TarifsPage({ onLogout }: { onLogout: () => void }) {
   const [trialDays, setTrialDays] = useState(7);
   const [promoEnabled, setPromoEnabled] = useState(false);
   const [promoMessage, setPromoMessage] = useState('');
+  const [blockTitleFr, setBlockTitleFr] = useState('');
+  const [blockBodyFr, setBlockBodyFr] = useState('');
+  const [blockTitleEn, setBlockTitleEn] = useState('');
+  const [blockBodyEn, setBlockBodyEn] = useState('');
+  const [payUrl, setPayUrl] = useState('');
+  const [trialEnforced, setTrialEnforced] = useState(false);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
@@ -55,6 +61,12 @@ export function TarifsPage({ onLogout }: { onLogout: () => void }) {
         setTrialDays(Number.isFinite(r.trialDays) ? r.trialDays : 7);
         setPromoEnabled(!!r.promoEnabled);
         setPromoMessage(r.promoMessage || '');
+        setBlockTitleFr(r.blockTitleFr || '');
+        setBlockBodyFr(r.blockBodyFr || '');
+        setBlockTitleEn(r.blockTitleEn || '');
+        setBlockBodyEn(r.blockBodyEn || '');
+        setPayUrl(r.payUrl || '');
+        setTrialEnforced(!!r.trialEnforced);
       })
       .catch(fail)
       .finally(() => setLoading(false));
@@ -72,6 +84,11 @@ export function TarifsPage({ onLogout }: { onLogout: () => void }) {
         trialDays,
         promoEnabled,
         promoMessage: promoMessage.trim(),
+        blockTitleFr: blockTitleFr.trim(),
+        blockBodyFr: blockBodyFr.trim(),
+        blockTitleEn: blockTitleEn.trim(),
+        blockBodyEn: blockBodyEn.trim(),
+        payUrl: payUrl.trim(),
       });
       setOk('✅ Tarifs enregistrés — l\'app les affiche dès le prochain lancement.');
     } catch (e) { fail(e); } finally { setBusy(false); }
@@ -166,6 +183,23 @@ export function TarifsPage({ onLogout }: { onLogout: () => void }) {
                   placeholder="Ex. 1 abonnement acheté = 1 offert pour ta famille"
                   className={inputCls + ' mt-2 resize-none'}
                 />
+              </div>
+
+              <div className="rounded-lg border border-white/5 bg-slate/40 p-3 space-y-2">
+                <p className="text-[10px] uppercase tracking-widest text-ink-tertiary">
+                  Écran « essai terminé » {trialEnforced ? '· interrupteur ALLUMÉ' : '· interrupteur coupé'}
+                </p>
+                <p className="text-xs text-ink-secondary">
+                  Laisse vide pour garder le texte intégré de l’app (français et anglais).
+                  Le lien de paiement reste vide par défaut : l’app propose alors WhatsApp
+                  et le site déjà connus. L’interrupteur TRIAL_ENFORCEMENT se règle sur le
+                  Worker, pas ici.
+                </p>
+                <input value={blockTitleFr} onChange={(e) => setBlockTitleFr(e.target.value)} placeholder="Titre français (optionnel)" className={inputCls} />
+                <textarea value={blockBodyFr} onChange={(e) => setBlockBodyFr(e.target.value)} rows={2} maxLength={500} placeholder="Texte français (optionnel)" className={inputCls + ' resize-none'} />
+                <input value={blockTitleEn} onChange={(e) => setBlockTitleEn(e.target.value)} placeholder="English title (optional)" className={inputCls} />
+                <textarea value={blockBodyEn} onChange={(e) => setBlockBodyEn(e.target.value)} rows={2} maxLength={500} placeholder="English text (optional)" className={inputCls + ' resize-none'} />
+                <input value={payUrl} onChange={(e) => setPayUrl(e.target.value)} placeholder="Lien https de paiement (vide par défaut)" className={inputCls} />
               </div>
 
               {err && (
