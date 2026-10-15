@@ -50,5 +50,5 @@ jobs:
       - name: Vérifier les suppressions et les commandes rejouées
         working-directory: phone
         run: |
-          flutter test test/core/app/panel_live_wait_test.dart test/features/playlists/panel_getphp_reconcile_test.dart test/features/playlists/cloud_backup_panel_removal_test.dart --reporter expanded
-          flutter analyze --no-fatal-infos --no-fatal-warnings lib/core/app/panel_live_wait.dart lib/features/playlists/data/remote_source_repository.dart lib/features/playlists/data/cloud_backup_repository.dart
+          flutter test test/features/playlists/source_opt_outs_test.dart test/core/app/panel_live_wait_test.dart test/features/playlists/panel_getphp_reconcile_test.dart test/features/playlists/cloud_backup_panel_removal_test.dart --reporter expanded
+          flutter analyze --no-fatal-infos --no-fatal-warnings lib/features/playlists/data/source_opt_outs.dart lib/core/app/panel_live_wait.dart lib/features/playlists/data/remote_source_repository.dart lib/features/playlists/data/cloud_backup_repository.dart
