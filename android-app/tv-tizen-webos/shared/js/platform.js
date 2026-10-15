@@ -32,15 +32,11 @@ DFT.isBack = function (keyCode) {
   return DFT.keys.BACK.indexOf(keyCode) > -1;
 };
 
-// Sur Tizen, on doit déclarer les touches qu'on veut recevoir (sinon la touche
-// RETOUR ferme l'app au lieu de nous être transmise). Best-effort.
+// Les flèches, OK et Retour sont reçus sans inscription. Les touches média
+// nécessitent tv.inputdevice ; une touche absente ne doit pas bloquer les autres.
 DFT.registerKeys = function () {
-  try {
-    if (DFT.platform === 'tizen' && window.tizen && tizen.tvinputdevice) {
-      tizen.tvinputdevice.registerKey('MediaPlayPause');
-      tizen.tvinputdevice.registerKey('MediaPlay');
-      tizen.tvinputdevice.registerKey('MediaPause');
-      tizen.tvinputdevice.registerKey('MediaStop');
-    }
-  } catch (e) { /* best-effort */ }
+  if (DFT.platform !== 'tizen' || !window.tizen || !tizen.tvinputdevice) return;
+  ['MediaPlayPause', 'MediaPlay', 'MediaPause', 'MediaStop'].forEach(function (key) {
+    try { tizen.tvinputdevice.registerKey(key); } catch (e) { /* modèle sans cette touche */ }
+  });
 };

@@ -19,7 +19,12 @@ DFT.m3u = (function () {
     for (var i = 0; i < lines.length; i++) {
       var line = lines[i].trim();
       if (line.indexOf('#EXTINF') === 0) {
-        var comma = line.lastIndexOf(',');
+        // La première virgule hors guillemets sépare le titre (qui peut contenir des virgules).
+        var comma = -1, quoted = false;
+        for (var j = 0; j < line.length; j++) {
+          if (line.charAt(j) === '"') quoted = !quoted;
+          else if (line.charAt(j) === ',' && !quoted) { comma = j; break; }
+        }
         pending = {
           name: comma > -1 ? line.substring(comma + 1).trim() : 'Chaîne',
           logo: attr(line, 'tvg-logo'),
@@ -28,7 +33,7 @@ DFT.m3u = (function () {
         };
       } else if (line && line.charAt(0) !== '#' && pending) {
         pending.url = line;
-        channels.push(pending);
+        if (/^https?:\/\//i.test(line)) channels.push(pending);
         pending = null;
       }
     }

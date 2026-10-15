@@ -1,14 +1,11 @@
 // =========================================================
 //  device.js — Identité stable de l'appareil (MAC « MK:… »)
 // =========================================================
-//  Le backend identifie chaque appareil par une MAC virtuelle au format
-//  MK:XX:XX:XX:XX:XX (5 octets + préfixe MK), comme les apps Android. Ici on la
-//  dérive de l'identité matérielle de la TV (MAC réelle Tizen / device-id
-//  webOS), de façon DÉTERMINISTE et STABLE :
-//    1) si une MAC a déjà été mémorisée (localStorage) → on la garde À VIE.
-//    2) sinon on la dérive (FNV-1a) de l'identifiant matériel → même TV =
-//       même MAC, même après réinstallation.
-//    3) en tout dernier recours : aléatoire (puis mémorisée).
+//  Le backend attend MK:XX:XX:XX:XX:XX. Sur Samsung, on utilise un
+//  identifiant d’installation local sans accès à la MAC matérielle. Il reste
+//  stable entre les lancements, mais peut disparaître à la désinstallation.
+//  Une ancienne identité déjà enregistrée est conservée. Sur LG, la dérivation
+//  depuis LGUDID reste disponible lorsque le service de la TV l’autorise.
 // =========================================================
 window.DFT = window.DFT || {};
 
@@ -56,25 +53,9 @@ DFT.device = (function () {
 
   // Récupère un identifiant matériel STABLE selon la plateforme (asynchrone).
   function hardwareSeed(cb) {
-    // --- Samsung Tizen : MAC réelle via webapis.network, sinon systeminfo ---
-    if (DFT.platform === 'tizen') {
-      try {
-        if (window.webapis && webapis.network && webapis.network.getMac) {
-          var mac = webapis.network.getMac();
-          if (mac) return cb(String(mac));
-        }
-      } catch (e) { /* continue */ }
-      try {
-        if (window.tizen && tizen.systeminfo) {
-          tizen.systeminfo.getPropertyValue('WIFI_NETWORK', function (w) {
-            if (w && w.macAddress) return cb(String(w.macAddress));
-            cb(null);
-          }, function () { cb(null); });
-          return;
-        }
-      } catch (e2) { /* continue */ }
-      return cb(null);
-    }
+    // Samsung : identifiant d’installation local, sans privilège partenaire.
+    // On conserve la clé historique pour ne pas changer une activation existante.
+    if (DFT.platform === 'tizen') return cb(null);
     // --- LG webOS : device-id via le service Luna ---
     if (DFT.platform === 'webos') {
       try {
@@ -102,7 +83,7 @@ DFT.device = (function () {
   function getMac(cb) {
     if (_cached) return cb(_cached);
     var stored = readStored();
-    if (stored) { _cached = stored; return cb(stored); }
+    if (stored && /^MK(:[0-9A-F]{2}){5}$/.test(stored)) { _cached = stored; return cb(stored); }
     hardwareSeed(function (seed) {
       var mac = seed ? macFromSeed(seed) : randomMac();
       writeStored(mac);
