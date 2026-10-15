@@ -1,0 +1,5 @@
+/build/
+/test-results/
+*.wgt
+*.p12
+profiles.xml

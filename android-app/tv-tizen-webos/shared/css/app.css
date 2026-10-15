@@ -1,5 +1,5 @@
 /* =========================================================
-   app.css — Thème DeFew TV (Maison Noir + or), 1080p 10-foot
+   app.css — Thème ZUNO (Maison Noir + or), 1080p 10-foot
    Couleurs alignées sur l'app Android (TvTokens) : noir profond + or.
    ========================================================= */
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -22,7 +22,7 @@ html, body {
   --live: #C8503F;
 }
 
-.screen { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+.screen { position: absolute; left: 0; top: 0; right: 0; bottom: 0; width: 1920px; height: 1080px; }
 .screen-center {
   display: flex; flex-direction: column;
   align-items: center; justify-content: center; gap: 28px;
@@ -99,8 +99,8 @@ html, body {
 .btn.focusable.focused { background: var(--gold); color: #1A1206; }
 
 /* ----- Lecteur ----- */
-.screen-player { background: #000; }
-#html5-video { position: absolute; inset: 0; width: 1920px; height: 1080px; background: #000; }
+.screen-player { background: transparent; }
+#html5-video { position: absolute; left: 0; top: 0; right: 0; bottom: 0; width: 1920px; height: 1080px; background: #000; }
 .player-overlay {
   position: absolute; left: 0; right: 0; bottom: 0;
   padding: 40px 60px;
@@ -111,7 +111,7 @@ html, body {
 .player-error { color: var(--live); font-size: 28px; margin-top: 10px; }
 
 .buffering {
-  position: absolute; inset: 0; display: flex;
+  position: absolute; left: 0; top: 0; right: 0; bottom: 0; display: flex;
   align-items: center; justify-content: center;
 }
 .spinner {
@@ -120,3 +120,10 @@ html, body {
   animation: spin 0.9s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* Le plan vidéo Samsung doit rester visible derrière les contrôles HTML. */
+#av-player { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; }
+.btn { border: 0; font-family: inherit; margin-left: 12px; margin-right: 12px; }
+.notice { margin-top: 24px; font-size: 24px; color: var(--muted); }
+#screen-about .card { width: 1400px; }
+#screen-about p { margin-top: 24px; line-height: 1.4; }

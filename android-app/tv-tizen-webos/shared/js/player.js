@@ -11,6 +11,7 @@ window.DFT = window.DFT || {};
 
 DFT.player = (function () {
   var useAvplay = (DFT.platform === 'tizen');
+  var generation = 0;
   var avplayEl = null;
   var videoEl = null;
 
@@ -21,21 +22,25 @@ DFT.player = (function () {
 
   // --- AVPlay (Samsung) ---
   function avPlay(url) {
+    var token = ++generation;
     try {
+      if (!window.webapis || !webapis.avplay) throw new Error("API Samsung AVPlay indisponible");
       var listener = {
         onbufferingstart: function () { DFT.ui && DFT.ui.setBuffering(true); },
         onbufferingcomplete: function () { DFT.ui && DFT.ui.setBuffering(false); },
         onstreamcompleted: function () { /* live : ne s'arrête normalement pas */ },
         onerror: function (e) { DFT.ui && DFT.ui.setPlayerError(String(e && e.name || e)); },
       };
-      webapis.avplay.close();
+      if (webapis.avplay.getState() !== 'NONE') webapis.avplay.close();
       webapis.avplay.open(url);
       webapis.avplay.setDisplayRect(0, 0,
         window.innerWidth || 1920, window.innerHeight || 1080);
       webapis.avplay.setListener(listener);
       webapis.avplay.prepareAsync(function () {
-        webapis.avplay.play();
+        if (token !== generation) return;
+        try { webapis.avplay.play(); } catch (e) { DFT.ui.setPlayerError(e.name); }
       }, function (e) {
+        if (token !== generation) return;
         DFT.ui && DFT.ui.setPlayerError('prepare: ' + (e && e.name || e));
       });
     } catch (err) {
@@ -44,7 +49,9 @@ DFT.player = (function () {
   }
 
   function avStop() {
-    try { webapis.avplay.stop(); webapis.avplay.close(); } catch (e) { /* ignore */ }
+    generation++;
+    try { webapis.avplay.stop(); } catch (e) { /* déjà arrêté */ }
+    try { webapis.avplay.close(); } catch (e) { /* API absente ou lecteur fermé */ }
   }
 
   // --- HTML5 <video> (LG webOS / navigateur) ---
@@ -58,7 +65,7 @@ DFT.player = (function () {
     };
     videoEl.src = url;
     var p = videoEl.play();
-    if (p && p.catch) p.catch(function () { /* autoplay : ignoré sur TV */ });
+    if (p && p.catch) p.catch(function () { DFT.ui.setPlayerError('Démarrage vidéo impossible. Réessayez.'); });
   }
 
   function htmlStop() {
@@ -79,5 +86,21 @@ DFT.player = (function () {
     else htmlStop();
   }
 
-  return { play: play, stop: stop };
+  // Les touches média sont traitées seulement lorsqu’un lecteur est visible.
+  function media(key) {
+    ensureEls();
+    try {
+      if (useAvplay && window.webapis && webapis.avplay) {
+        var state = webapis.avplay.getState();
+        if (key === 413) { stop(); return; }
+        if (key === 19 || (key === 10252 && state === 'PLAYING')) webapis.avplay.pause();
+        else if (key === 415 || key === 10252) webapis.avplay.play();
+      } else if (videoEl && videoEl.src) {
+        if (key === 413) stop();
+        else if (key === 19 || (key === 10252 && !videoEl.paused)) videoEl.pause();
+        else { var result = videoEl.play(); if (result && result.catch) result.catch(function () { DFT.ui.setPlayerError('Reprise impossible'); }); }
+      }
+    } catch (e) { DFT.ui.setPlayerError('Commande vidéo indisponible'); }
+  }
+  return { play: play, stop: stop, media: media };
 })();

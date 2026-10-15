@@ -35,7 +35,7 @@ DFT.xtream = (function () {
     ]).then(function (res) {
       var cats = res[0] || [];
       var streams = res[1] || [];
-      var catName = {};
+      var catName = Object.create(null);
       for (var i = 0; i < cats.length; i++) {
         catName[String(cats[i].category_id)] = cats[i].category_name || 'Autres';
       }

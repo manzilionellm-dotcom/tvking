@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=1920, height=1080, user-scalable=no">
-  <title>DeFew TV</title>
+  <title>ZUNO</title>
   <link rel="stylesheet" href="css/app.css">
 </head>
 <body>
@@ -14,18 +14,20 @@
 
   <!-- ===== Écran : démarrage ===== -->
   <section id="screen-boot" class="screen screen-center">
-    <div class="brand">DeFew <span>TV</span></div>
+    <div class="brand">ZUNO <span>TV</span></div>
     <div id="boot-text" class="muted">Démarrage…</div>
   </section>
 
   <!-- ===== Écran : activation (abonnement inactif) ===== -->
   <section id="screen-activation" class="screen screen-center" style="display:none">
-    <div class="brand">DeFew <span>TV</span></div>
+    <div class="brand">ZUNO <span>TV</span></div>
     <div class="card">
       <div class="card-label">Adresse de cet appareil</div>
       <div id="act-mac" class="mac">…</div>
       <div id="act-msg" class="muted">Donne cette adresse à ton revendeur pour activer ton abonnement.</div>
-      <div id="act-refresh" class="btn focusable" onclick="DFT.app.refresh()">Rafraîchir le statut</div>
+      <button id="act-refresh" class="btn focusable" onclick="DFT.app.refresh()">Réessayer</button>
+      <button class="btn focusable" onclick="DFT.app.showAbout()">À propos et confidentialité</button>
+      <p class="notice">Lecteur uniquement. Aucune chaîne ni playlist fournie.</p>
     </div>
   </section>
 
@@ -35,6 +37,22 @@
     <main id="chan-grid" class="chan-grid"></main>
   </section>
 
+  <section id="screen-about" class="screen screen-center" style="display:none">
+    <div class="brand">ZUNO</div>
+    <div class="card">
+      <h1>À propos et confidentialité</h1>
+      <p class="muted">ZUNO 1.0.0 — lecteur de sources personnelles autorisées. Aucun contenu TV fourni.</p>
+      <p class="muted">Un identifiant d’installation est conservé sur la TV et transmis avec le modèle au service app.7themotion.com pour gérer la licence et récupérer vos sources. La désinstallation peut supprimer cet identifiant. Le service peut aussi recevoir votre adresse IP et le pays de connexion. Les fournisseurs de sources reçoivent les requêtes de lecture.</p>
+      <p class="muted">Informations et assistance : zuno.7themotion.com/legal</p>
+      <button class="btn focusable" onclick="DFT.app.closeAbout()">Retour</button>
+    </div>
+  </section>
+  <section id="screen-exit" class="screen screen-center" style="display:none">
+    <div class="card"><h1>Quitter ZUNO ?</h1>
+      <button class="btn focusable" onclick="DFT.app.cancelExit()">Annuler</button>
+      <button class="btn focusable" onclick="DFT.app.exit()">Quitter</button>
+    </div>
+  </section>
   <!-- ===== Écran : lecteur ===== -->
   <section id="screen-player" class="screen screen-player" style="display:none">
     <div id="buffering" class="buffering" style="display:none"><div class="spinner"></div></div>
@@ -45,6 +63,8 @@
     </div>
   </section>
 
+  <!-- API fournie par la TV Samsung ; absente lors de la prévisualisation PC. -->
+  <script src="$WEBAPIS/webapis/webapis.js"></script>
   <script src="js/config.js"></script>
   <script src="js/platform.js"></script>
   <script src="js/device.js"></script>
