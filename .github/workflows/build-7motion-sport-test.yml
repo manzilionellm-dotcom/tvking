@@ -69,6 +69,8 @@ jobs:
         git apply ../mission/patches/mobile-sport-gratuit.patch
         git apply --check ../mission/patches/mobile-radio.patch
         git apply ../mission/patches/mobile-radio.patch
+        git apply --check ../mission/patches/mobile-panel-sync.patch
+        git apply ../mission/patches/mobile-panel-sync.patch
         git diff --check
         gh api "repos/$GITHUB_REPOSITORY/releases/tags/phone-latest" > "$RUNNER_TEMP/client-before.json"
     - name: Setup Java 17 (Temurin)
