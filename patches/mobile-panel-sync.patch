@@ -1849,3 +1849,373 @@ index 7431998..f9a4a60 100644
      });
 
      test('empreinte migrée depuis la v1 (date inconnue = 0) → on passe', () {
+diff --git a/lib/features/player/domain/playback_evidence_gate.dart b/lib/features/player/domain/playback_evidence_gate.dart
+new file mode 100644
+index 00000000..aa1e142d
+--- /dev/null
++++ b/lib/features/player/domain/playback_evidence_gate.dart
+@@ -0,0 +1,12 @@
++/// Lie une preuve de lecture au lecteur réellement ouvert pour la sélection.
++/// Un zap révoque immédiatement l’ancien lecteur, avant le debounce et son
++/// arrêt asynchrone. Seule la nouvelle ouverture peut réautoriser des preuves.
++class PlaybackEvidenceGate<T extends Object> {
++  T? _source;
++
++  void revoke() => _source = null;
++
++  void bind(T source) => _source = source;
++
++  bool accepts(T source) => identical(_source, source);
++}
+diff --git a/lib/features/player/presentation/video_player_screen.dart b/lib/features/player/presentation/video_player_screen.dart
+index 6553e7d0..976e07ca 100644
+--- a/lib/features/player/presentation/video_player_screen.dart
++++ b/lib/features/player/presentation/video_player_screen.dart
+@@ -18,6 +18,8 @@
+ import 'dart:async';
+ import 'dart:io';
+ 
++import '../domain/playback_evidence_gate.dart';
++
+ import 'package:cached_network_image/cached_network_image.dart';
+ import 'package:flutter/foundation.dart';
+ import 'package:flutter/material.dart';
+@@ -256,6 +258,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+   // joué puis coupé (problème réseau). Auto-réinitialisé au zap : si l'id
+   // courant ≠ cet id, la chaîne courante n'a jamais joué.
+   String? _playedChannelId;
++  final PlaybackEvidenceGate<Player> _playbackEvidence =
++      PlaybackEvidenceGate<Player>();
+   // Diagnostic multi-signature (« ça marche sur IBO, pas chez nous ») : id de
+   // Chaîne « échec → sonde → cascade » : extraite dans un contrôleur
+   // TESTABLE de bout en bout (StreamBlockedFallback) — le widget ne
+@@ -609,6 +613,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+   /// Abonne l'instance mpv COURANTE aux événements. Les abonnements
+   /// vivent dans `_subs` : annulés puis re-créés à chaque recyclage.
+   void _attachPlayerListeners() {
++    final Player evidenceSource = _player;
+     _subs.add(_player.stream.buffering.listen(_onBufferingChanged));
+     // Durée du flux : quand elle devient connue (> 0), c'est de la
+     // VOD/replay seekable → l'OSD doit afficher la barre de progression
+@@ -766,18 +771,21 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+       );
+     }));
+     _subs.add(_player.stream.height.listen((int? h) {
++      if (!_playbackEvidence.accepts(evidenceSource)) return;
+       final int? w = _player.state.width;
+       if (h != null && w != null && h > 0 && w > 0) {
+         StreamDiagnostics.instance.recordCodecs(resolution: '$w×$h');
+         // Des dimensions vidéo = AU MOINS une frame décodée : c'est LE
+         // signal fiable « la lecture a réellement démarré ».
+-        _markPlaybackStarted();
++        _markPlaybackStarted(evidenceSource);
+       }
+     }));
+     // Flux audio-only (radio) : pas de frame vidéo, mais la position
+     // avance dès que le son décode — même signal de vrai démarrage.
+     _subs.add(_player.stream.position.listen((Duration pos) {
+-      if (pos > const Duration(milliseconds: 400)) _markPlaybackStarted();
++      if (pos > const Duration(milliseconds: 400)) {
++        _markPlaybackStarted(evidenceSource);
++      }
+     }));
+   }
+ 
+@@ -1022,6 +1030,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+     if (_isRecording) {
+       _stopRecording();
+     }
++    // Pendant les 400 ms de debounce, les images de l’ancien lecteur
++    // arrivent encore. Elles ne prouvent rien sur la chaîne sélectionnée.
++    ++_openGeneration; // invalide aussi une ouverture encore en attente
++    _playbackEvidence.revoke();
+     setState(() {
+       _currentChannel = next;
+       _hasError = false;
+@@ -1415,8 +1427,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+       return;
+     }
+     // FERMETURE ATTENDUE + instance mpv neuve AVANT toute connexion.
++    _playbackEvidence.revoke();
+     await _recyclePlayer();
+     if (!mounted || gen != _openGeneration) return;
++    _playbackEvidence.bind(_player);
+     if (_lastOpenedUrl != null && _lastOpenedUrl != realUrl) {
+       _reconnectGate.reset();
+       _triedEngines.clear();
+@@ -2549,7 +2563,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+   /// mpv, qui est vrai dès l'ouverture même quand le serveur a répondu
+   /// 404. C'est ce drapeau qui décide « coupure réseau » (erreur
+   /// directe) vs « jamais lu » (sonde + cascade de variantes).
+-  void _markPlaybackStarted() {
++  void _markPlaybackStarted(Player source) {
++    if (!mounted || !_playbackEvidence.accepts(source)) return;
+     _startupTimer?.cancel(); // le démarrage a VRAIMENT eu lieu → borne levée
+     _vodRelayFallbackTimer?.cancel(); // 1re image OK → pas de repli relais
+     // REPRISE APRÈS PAUSE LONGUE : le flux vient d'être ré-ouvert après que
+diff --git a/test/features/player/one_connection_zapping_test.dart b/test/features/player/one_connection_zapping_test.dart
+index 2533d82d..b617c9ad 100644
+--- a/test/features/player/one_connection_zapping_test.dart
++++ b/test/features/player/one_connection_zapping_test.dart
+@@ -33,6 +33,8 @@
+ import 'dart:async';
+ import 'dart:io';
+ 
++import 'package:tv_king/features/player/domain/playback_evidence_gate.dart';
++
+ import 'package:flutter_test/flutter_test.dart';
+ import 'package:tv_king/features/channels/domain/channel.dart';
+ import 'package:tv_king/features/player/data/local_stream_relay.dart';
+@@ -119,8 +121,12 @@ class _OneConnectionPanel {
+       }
+     });
+     _feeds.add(feed);
+-    unawaited(req.response.done
+-        .then((_) => onClosed(), onError: (Object _) => onClosed()));
++    unawaited(
++      req.response.done.then(
++        (_) => onClosed(),
++        onError: (Object _) => onClosed(),
++      ),
++    );
+   }
+ 
+   Future<void> close() async {
+@@ -139,13 +145,13 @@ class _OneConnectionPanel {
+ /// les objets de production.
+ class _ZapHarness {
+   _ZapHarness({required this.channels, required Duration retryBackoff})
+-      : current = channels.first {
++    : current = channels.first {
+     fallback = StreamBlockedFallback(
+       getChannel: () => current,
+       getOverrideUrl: () => null,
+       getEffectiveUrl: () => current.streamUrl,
+       isAlive: () => alive,
+-      hasDecodedFrames: () => (bytesByChannel[current.id] ?? 0) > 0,
++      hasDecodedFrames: () => playedChannelId == current.id,
+       getAdoptedAltUrl: () => null,
+       setAdoptedAltUrl: (_) {},
+       resetWatchdogBudget: () {},
+@@ -158,6 +164,9 @@ class _ZapHarness {
+   final List<Channel> channels;
+   Channel current;
+   bool alive = true;
++  String? playedChannelId;
++  int rejectedOldEvents = 0;
++  final evidence = PlaybackEvidenceGate<Object>();
+   late final StreamBlockedFallback fallback;
+   final List<String> blockedMessages = <String>[];
+   final Map<String, int> bytesByChannel = <String, int>{};
+@@ -170,6 +179,8 @@ class _ZapHarness {
+   /// ouverture via le relais ; un client HTTP local joue le rôle de mpv.
+   Future<void> open(String url) async {
+     final Channel target = current;
++    final Object player = Object();
++    evidence.revoke();
+     // STOP ATTENDU : on ferme le « mpv » précédent avant TOUTE nouvelle
+     // connexion (dans le widget : _recyclePlayer, stop/dispose awaités).
+     await _reading?.cancel();
+@@ -187,13 +198,21 @@ class _ZapHarness {
+     // émettre sa requête après l'open.
+     await Future<void>.delayed(const Duration(milliseconds: 30));
+     if (!alive || target.id != current.id) return;
++    evidence.bind(player);
+     _client = HttpClient();
+     try {
+-      final HttpClientResponse resp =
+-          await (await _client!.getUrl(Uri.parse(localUrl))).close();
++      final HttpClientResponse resp = await (await _client!.getUrl(
++        Uri.parse(localUrl),
++      )).close();
+       _reading = resp.listen((List<int> c) {
+-        bytesByChannel[target.id] =
+-            (bytesByChannel[target.id] ?? 0) + c.length;
++        // Comme le widget, le callback voit la sélection courante : sans
++        // garde, les octets anciens la déclareraient faussement démarrée.
++        if (evidence.accepts(player)) {
++          playedChannelId = current.id;
++        } else {
++          rejectedOldEvents++;
++        }
++        bytesByChannel[target.id] = (bytesByChannel[target.id] ?? 0) + c.length;
+       });
+     } catch (_) {
+       // Session fermée par le fail-fast du relais : l'événement
+@@ -204,6 +223,8 @@ class _ZapHarness {
+   /// « _applyZap » : l'UI change tout de suite, l'ouverture RÉSEAU est
+   /// débouncée 400 ms — les chaînes intermédiaires n'émettent RIEN.
+   void zapTo(Channel next) {
++    evidence.revoke();
++    playedChannelId = null;
+     current = next;
+     _debounce?.cancel();
+     _debounce = Timer(const Duration(milliseconds: 400), () {
+@@ -222,12 +243,12 @@ class _ZapHarness {
+ }
+ 
+ void main() {
+-  test(
+-      'INTÉGRATION 1-CONNEXION : zap rapide sur 5 chaînes → la finale '
++  test('INTÉGRATION 1-CONNEXION : zap rapide sur 5 chaînes → la finale '
+       'affiche des octets TS, zéro 403 non récupéré, jamais 2 connexions '
+       'simultanées', () async {
+     final _OneConnectionPanel panel = _OneConnectionPanel(
+-        await HttpServer.bind(InternetAddress.loopbackIPv4, 0));
++      await HttpServer.bind(InternetAddress.loopbackIPv4, 0),
++    );
+     // Source non-Xtream volontairement : si le backoff échouait, la
+     // cascade sortirait en erreur visible → blockedMessages non vide →
+     // le test échoue (aucun faux positif possible).
+@@ -254,8 +275,11 @@ void main() {
+     // ----- 1) Ouverture de la chaîne 1 (comme initState) --------------
+     await screen.open(channels.first.streamUrl);
+     await Future<void>.delayed(const Duration(milliseconds: 300));
+-    expect(screen.bytesByChannel['chan-1'] ?? 0, greaterThan(0),
+-        reason: 'la chaîne 1 doit diffuser avant le test de zapping');
++    expect(
++      screen.bytesByChannel['chan-1'] ?? 0,
++      greaterThan(0),
++      reason: 'la chaîne 1 doit diffuser avant le test de zapping',
++    );
+ 
+     // ----- 2) ZAP RAPIDE 2 → 3 → 4 → 5 (80 ms entre chaque) -----------
+     for (int i = 1; i < channels.length; i++) {
+@@ -273,39 +297,70 @@ void main() {
+     }
+ 
+     // ----- 4) Definition of Done -------------------------------------
+-    expect(screen.bytesByChannel['chan-5'] ?? 0, greaterThan(0),
+-        reason: 'la chaîne FINALE doit afficher des octets TS malgré le '
+-            '403 de libération.\nJournal:\n${_journal()}');
+-    expect(screen.blockedMessages, isEmpty,
+-        reason: 'zéro 403 non récupéré : le backoff doit reprendre en '
+-            'silence, sans erreur utilisateur');
+-    expect(panel.simultaneousAttempts, 0,
+-        reason: 'JAMAIS 2 connexions simultanées côté panel');
++    expect(
++      screen.bytesByChannel['chan-5'] ?? 0,
++      greaterThan(0),
++      reason:
++          'la chaîne FINALE doit afficher des octets TS malgré le '
++          '403 de libération.\nJournal:\n${_journal()}',
++    );
++    expect(
++      screen.blockedMessages,
++      isEmpty,
++      reason:
++          'zéro 403 non récupéré : le backoff doit reprendre en '
++          'silence, sans erreur utilisateur',
++    );
++    expect(
++      screen.rejectedOldEvents,
++      greaterThan(0),
++      reason: 'des événements anciens doivent réellement arriver pendant le debounce',
++    );
++    expect(
++      panel.simultaneousAttempts,
++      0,
++      reason: 'JAMAIS 2 connexions simultanées côté panel',
++    );
+     // Les chaînes intermédiaires (2, 3, 4) n'ont émis AUCUNE requête.
+     for (final int absorbed in <int>[2, 3, 4]) {
+       expect(
+         panel.requestedPaths.where(
+-            (String p) => p.contains('/live/USER/PASS/$absorbed.ts')),
++          (String p) => p.contains('/live/USER/PASS/$absorbed.ts'),
++        ),
+         isEmpty,
+         reason: 'zap absorbé = zéro requête (chaîne $absorbed)',
+       );
+     }
+     // Seules la chaîne de départ et la chaîne finale ont diffusé.
+-    expect(panel.streamedPaths,
+-        <String>['/live/USER/PASS/1.ts', '/live/USER/PASS/5.ts']);
++    expect(panel.streamedPaths, <String>[
++      '/live/USER/PASS/1.ts',
++      '/live/USER/PASS/5.ts',
++    ]);
+     // Le 403 de la fenêtre de libération a bien eu lieu ET a été
+     // récupéré (sinon l'assertion des octets aurait échoué).
+-    expect(panel.rejected403, greaterThanOrEqualTo(1),
+-        reason: 'le scénario doit passer par le 403 de libération');
++    expect(
++      panel.rejected403,
++      greaterThanOrEqualTo(1),
++      reason: 'le scénario doit passer par le 403 de libération',
++    );
+ 
+     // ----- 5) Contrats de journal (preuves de la mission) -------------
+     final String journal = _journal();
+-    expect(journal, contains('[backoff]'),
+-        reason: 'le backoff doit être journalisé');
+-    expect(journal, contains('retry silencieux'),
+-        reason: 'le retry unique doit être journalisé');
+-    expect(journal, isNot(contains('USER/PASS')),
+-        reason: 'identifiants toujours masqués dans le journal');
++    expect(
++      journal,
++      contains('[backoff]'),
++      reason: 'le backoff doit être journalisé',
++    );
++    expect(
++      journal,
++      contains('retry silencieux'),
++      reason: 'le retry unique doit être journalisé',
++    );
++    expect(
++      journal,
++      isNot(contains('USER/PASS')),
++      reason: 'identifiants toujours masqués dans le journal',
++    );
+ 
+     // ----- LIVRABLE : extrait du journal (à coller dans le rapport) ---
+     // ignore: avoid_print
+diff --git a/test/features/player/playback_evidence_gate_test.dart b/test/features/player/playback_evidence_gate_test.dart
+new file mode 100644
+index 00000000..fc09dc5a
+--- /dev/null
++++ b/test/features/player/playback_evidence_gate_test.dart
+@@ -0,0 +1,42 @@
++import 'package:flutter_test/flutter_test.dart';
++import 'package:tv_king/features/player/domain/playback_evidence_gate.dart';
++
++void main() {
++  test(
++    'un zap refuse les images anciennes pendant le debounce et après arrêt',
++    () {
++      final gate = PlaybackEvidenceGate<Object>();
++      final oldPlayer = Object();
++      final newPlayer = Object();
++      gate.bind(oldPlayer);
++      expect(gate.accepts(oldPlayer), isTrue);
++      gate.revoke();
++      // Reproduction du journal : image à +25 ms, ouverture à +400 ms.
++      expect(gate.accepts(oldPlayer), isFalse);
++      gate.bind(newPlayer);
++      expect(gate.accepts(oldPlayer), isFalse);
++      expect(gate.accepts(newPlayer), isTrue);
++    },
++  );
++
++  test(
++    'un lecteur neuf réutilisé après un zap avant ouverture reste autorisable',
++    () {
++      final gate = PlaybackEvidenceGate<Object>();
++      final player = Object();
++      expect(gate.accepts(player), isFalse);
++      gate.revoke();
++      gate.bind(player);
++      expect(gate.accepts(player), isTrue);
++    },
++  );
++
++  test('des zaps rapides ne réautorisent aucune ancienne image', () {
++    final gate = PlaybackEvidenceGate<Object>();
++    final player = Object();
++    gate.bind(player);
++    gate.revoke();
++    gate.revoke();
++    expect(gate.accepts(player), isFalse);
++  });
++}
