@@ -49,3 +49,12 @@
 | Persistance de l’identité après redémarrage | Test unitaire ; TV à faire |
 
 Les contrôles automatisés ne remplacent ni les tests matériels ni l’acceptation Samsung. Ne soumettre qu’après levée des points ci-dessus.
+
+
+## Avancement réel dans le Seller Office — 15 octobre 2026
+
+Connexion au compte Samsung vérifiée dans le navigateur. Une nouvelle fiche **ZUNO**, type **Web App**, langue par défaut **French**, a été créée : ID Seller Office **3202610049649**. Le titre ZUNO, la description française du lecteur de direct et les mots-clés lecteur/M3U/Xtream ont été enregistrés ; le portail a confirmé la sauvegarde. Aucun paquet n’a été téléversé et aucune demande de publication n’a été envoyée.
+
+La fiche antérieure **The Few**, ID **3202608047609**, est de type **.Net App**, avec le paquet **thefew-tizen.tpk** version **1.0.0**. Son historique du 14 août 2026 signale un refus documentaire : captures de prévisualisation et politique des touches manquantes dans le document de présentation. Samsung demande un document complet et une version supérieure pour une nouvelle soumission de cette ancienne application. Cette fiche antérieure n’a pas été modifiée.
+
+La nouvelle fiche Web ZUNO est distincte de cette ancienne fiche .NET. Ne pas présenter le WGT comme une mise à jour du TPK, ni reprendre un certificat ou une identité d’application sans vérification. Pour ZUNO, les prochains livrables sont le WGT signé, les captures réelles, le document UI Description, les informations de service et les accès de test. La connexion Gmail/Samsung ne remplace pas le certificat de signature local.
