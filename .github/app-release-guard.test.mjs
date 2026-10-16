@@ -60,3 +60,13 @@ test('le vrai processus lit le manifeste, jamais un mode fourni par une entrée'
     }
   } finally { rmSync(directory, { recursive: true, force: true }); }
 });
+
+test('le bundle manuel reste une construction sans dégel ni publication clients', () => {
+  const build = { ...base, playAab: 'true', testBox: 'true' };
+  assert.doesNotThrow(() => assertAppOperationAllowed(build));
+  for (const change of [{ operation: 'client' }, { publish: 'true' },
+    { ref: 'refs/heads/main' }, { actor: 'autre' }, { triggeringActor: 'autre' },
+    { event: 'pull_request', pr }]) {
+    assert.throws(() => assertAppOperationAllowed({ ...build, ...change }));
+  }
+});

@@ -116,3 +116,34 @@ test('le workflow historique de secret ne peut redéployer le Worker', () => {
   assert.match(secret, /deploy-panel-cloudflare\.yml/);
   assert.match(secret, /exit 1/);
 });
+
+test('le parcours Play manuel prépare un artefact et ne publie aucune release', () => {
+  const dispatcher = read('workflows/publish-phone-aab.yml');
+  assert.match(dispatcher, /workflow_dispatch:/);
+  assert.match(dispatcher, /inputs\.confirme == 'PREPARER_AAB'/);
+  assert.match(dispatcher, /github\.ref == 'refs\/heads\/ccr-b93e1afd-gwirw0'/);
+  assert.match(dispatcher, /github\.actor == github\.repository_owner/);
+  assert.match(dispatcher, /github\.triggering_actor == github\.repository_owner/);
+  assert.match(dispatcher, /uses: \.\/\.github\/workflows\/build-7motion-sport-test\.yml/);
+  assert.match(dispatcher, /play_aab: true/);
+  assert.doesNotMatch(dispatcher, /gh release|run-id:|APP_OPERATION: client/);
+  const build = phone.match(/^  phone:\n([\s\S]*?)(?=^  [a-z][\w-]*:|$(?![\s\S]))/m)?.[1];
+  const publish = phone.match(/^  publish:\n([\s\S]*)/m)?.[1];
+  assert.ok(build && publish);
+  assert.match(build, /github\.event_name == 'workflow_dispatch'/);
+  assert.match(build, /github\.ref == 'refs\/heads\/ccr-b93e1afd-gwirw0' && inputs\.play_aab/);
+  assert.match(build, /APP_PLAY_AAB: \$\{\{ inputs\.play_aab && 'true' \|\| 'false' \}\}/);
+  assert.match(build, /environment: zuno-app-test/);
+  assert.match(publish, /^    if: github\.event_name == 'pull_request' && needs\.phone\.result == 'success'/m);
+  assert.equal(JSON.parse(read('app-production.json')).mode, 'frozen');
+});
+
+test('le bundle Play emporte la preuve du commit et des logos réellement compilés', () => {
+  assert.match(phone, /SOURCE_SHA: \$\{\{ github\.event\.pull_request\.head\.sha \|\| github\.sha \}\}/);
+  assert.equal((phone.match(/--dart-define=GIT_SHA=\$\{\{ env\.SOURCE_SHA \}\}/g) || []).length, 2);
+  assert.match(phone, /assert int\(report\["targetSdk"\]\) >= 36/);
+  assert.match(phone, /assert actual == source/);
+  assert.match(phone, /archive\.read\("base\/assets\/flutter_assets\/"\+asset\)/);
+  assert.match(phone, /assert shipped == expected/);
+  assert.match(phone, /phone\/build\/play-review\/build-provenance\.json/);
+});
