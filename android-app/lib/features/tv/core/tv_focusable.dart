@@ -15,6 +15,8 @@
 //  Le D-pad « OK » (select / enter / gameButtonA / space) déclenche
 //  `onSelect`. `Back` est géré par le Navigator au niveau de l'écran.
 // =========================================================
+import 'dart:io' show Platform;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -75,6 +77,7 @@ class TvFocusable extends StatefulWidget {
 class _TvFocusableState extends State<TvFocusable> {
   late final FocusNode _node = widget.focusNode ?? FocusNode();
   bool _ownsNode = false;
+  bool _hovered = false;
   bool _focused = false;
   bool _pressed = false;
 
@@ -112,6 +115,13 @@ class _TvFocusableState extends State<TvFocusable> {
 
   KeyEventResult _onKey(FocusNode node, KeyEvent event) {
     if (!widget.enabled) return KeyEventResult.ignored;
+    // Alt+Entrée / Ctrl+F sont des commandes PC, jamais « OK ».
+    if (Platform.isWindows &&
+        (HardwareKeyboard.instance.isAltPressed ||
+            HardwareKeyboard.instance.isControlPressed ||
+            HardwareKeyboard.instance.isMetaPressed)) {
+      return KeyEventResult.ignored;
+    }
     if (!_isSelectKey(event.logicalKey)) return KeyEventResult.ignored;
     if (event is KeyDownEvent) {
       if (!_pressed) setState(() => _pressed = true);
@@ -134,90 +144,106 @@ class _TvFocusableState extends State<TvFocusable> {
     final BorderRadius radius =
         widget.borderRadius ?? BorderRadius.circular(TvDimens.cardRadius);
     final Color focusBg = widget.focusColor ?? TvTokens.sel;
-    final bool active = _focused && widget.enabled;
+    final bool active = (_focused || _hovered) && widget.enabled;
 
     // Échelle : un poil moins quand on enfonce OK (effet "pressé").
-    final double targetScale =
-        active ? (_pressed ? _scaleValue * 0.97 : _scaleValue) : 1.0;
+    final double targetScale = active
+        ? (_pressed ? _scaleValue * 0.97 : _scaleValue)
+        : 1.0;
 
     // TACTILE (TV/tablette à écran tactile) : on rend l'élément cliquable au
     // doigt EN PLUS du D-pad. Comme TOUTE l'UI TV passe par TvFocusable, ce
     // seul GestureDetector rend l'app entière navigable au toucher. Le doigt
     // prend d'abord le focus (le halo suit le doigt), puis relâche = onSelect.
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTapDown: widget.enabled
-          ? (_) {
-              _node.requestFocus();
-              if (!_pressed) setState(() => _pressed = true);
-            }
-          : null,
-      onTapUp: widget.enabled
-          ? (_) {
-              if (_pressed) setState(() => _pressed = false);
-            }
-          : null,
-      onTapCancel: widget.enabled
-          ? () {
-              if (_pressed) setState(() => _pressed = false);
-            }
-          : null,
-      onTap: widget.enabled ? widget.onSelect : null,
-      child: Focus(
-        focusNode: _node,
-        autofocus: widget.autofocus,
-        canRequestFocus: widget.enabled,
-        onKeyEvent: _onKey,
-        onFocusChange: (bool f) {
-          setState(() {
-            _focused = f;
-            if (!f) _pressed = false;
-          });
-          widget.onFocusChange?.call(f);
-        },
-        child: AnimatedScale(
-          // Signal 1 : SCALE (transform GPU uniquement).
-          scale: targetScale,
-          duration: TvDimens.focusAnim,
-          curve: TvDimens.focusCurve,
-          child: AnimatedOpacity(
-            opacity: widget.enabled ? 1.0 : 0.45, // §4 disabled
-            duration: TvDimens.focusAnim,
-            child: AnimatedContainer(
+    return Semantics(
+      button: true,
+      enabled: widget.enabled,
+      child: MouseRegion(
+        cursor: widget.enabled && widget.onSelect != null
+            ? SystemMouseCursors.click
+            : SystemMouseCursors.basic,
+        onEnter: Platform.isWindows
+            ? (_) => setState(() => _hovered = true)
+            : null,
+        onExit: Platform.isWindows
+            ? (_) => setState(() => _hovered = false)
+            : null,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTapDown: widget.enabled
+              ? (_) {
+                  _node.requestFocus();
+                  if (!_pressed) setState(() => _pressed = true);
+                }
+              : null,
+          onTapUp: widget.enabled
+              ? (_) {
+                  if (_pressed) setState(() => _pressed = false);
+                }
+              : null,
+          onTapCancel: widget.enabled
+              ? () {
+                  if (_pressed) setState(() => _pressed = false);
+                }
+              : null,
+          onTap: widget.enabled ? widget.onSelect : null,
+          child: Focus(
+            focusNode: _node,
+            autofocus: widget.autofocus,
+            canRequestFocus: widget.enabled,
+            onKeyEvent: _onKey,
+            onFocusChange: (bool f) {
+              setState(() {
+                _focused = f;
+                if (!f) _pressed = false;
+              });
+              widget.onFocusChange?.call(f);
+            },
+            child: AnimatedScale(
+              // Signal 1 : SCALE (transform GPU uniquement).
+              scale: targetScale,
               duration: TvDimens.focusAnim,
               curve: TvDimens.focusCurve,
-              decoration: BoxDecoration(
-                // Signal 2 : COULEUR de surface (tonale, Maison Noir).
-                color: active
-                    ? focusBg
-                    : (widget.selected ? TvTokens.sel : widget.baseColor),
-                borderRadius: radius,
-                // Signal 4 : CONTOUR OR au focus (visible partout, §5 spec).
-                border: (widget.showOutline && (active || widget.selected))
-                    ? Border.all(
-                        color: active ? TvTokens.accent : TvTokens.line,
-                        width: TvDimens.focusOutline,
-                      )
-                    : null,
-                // Signal 3 : ÉLÉVATION (ombre portée) + lueur champagne. C'est
-                // l'ombre profonde — pas la bordure — qui « soulève » l'élément
-                // façon Apple TV+ ; la lueur or signe la marque.
-                boxShadow: (widget.showGlow && active)
-                    ? <BoxShadow>[
-                        BoxShadow(
-                          color: const Color(0x99000000), // noir 60 %
-                          blurRadius: TvDimens.focusElevBlur,
-                          offset: const Offset(0, TvDimens.focusElevDy),
-                        ),
-                        BoxShadow(
-                          color: TvTokens.accent.withValues(alpha: 0.30),
-                          blurRadius: TvDimens.focusGlowBlur,
-                          spreadRadius: TvDimens.focusGlowSpread,
-                        ),
-                      ]
-                    : null,
+              child: AnimatedOpacity(
+                opacity: widget.enabled ? 1.0 : 0.45, // §4 disabled
+                duration: TvDimens.focusAnim,
+                child: AnimatedContainer(
+                  duration: TvDimens.focusAnim,
+                  curve: TvDimens.focusCurve,
+                  decoration: BoxDecoration(
+                    // Signal 2 : COULEUR de surface (tonale, Maison Noir).
+                    color: active
+                        ? focusBg
+                        : (widget.selected ? TvTokens.sel : widget.baseColor),
+                    borderRadius: radius,
+                    // Signal 4 : CONTOUR OR au focus (visible partout, §5 spec).
+                    border: (widget.showOutline && (active || widget.selected))
+                        ? Border.all(
+                            color: active ? TvTokens.accent : TvTokens.line,
+                            width: TvDimens.focusOutline,
+                          )
+                        : null,
+                    // Signal 3 : ÉLÉVATION (ombre portée) + lueur champagne. C'est
+                    // l'ombre profonde — pas la bordure — qui « soulève » l'élément
+                    // façon Apple TV+ ; la lueur or signe la marque.
+                    boxShadow: (widget.showGlow && active)
+                        ? <BoxShadow>[
+                            BoxShadow(
+                              color: const Color(0x99000000), // noir 60 %
+                              blurRadius: TvDimens.focusElevBlur,
+                              offset: const Offset(0, TvDimens.focusElevDy),
+                            ),
+                            BoxShadow(
+                              color: TvTokens.accent.withValues(alpha: 0.30),
+                              blurRadius: TvDimens.focusGlowBlur,
+                              spreadRadius: TvDimens.focusGlowSpread,
+                            ),
+                          ]
+                        : null,
+                  ),
+                  child: widget.child,
+                ),
               ),
-              child: widget.child,
             ),
           ),
         ),

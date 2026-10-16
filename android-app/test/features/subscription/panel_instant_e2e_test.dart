@@ -759,6 +759,31 @@ Future<Process> _startWorker(String persistDir) async {
 }
 
 Future<void> _stopWorker(Process process) async {
+  // npx est un parent, pas le Worker : tuer seulement npx laissait
+  // workerd vivant, avec la D1 verrouillée. Le test de reprise arrête
+  // uniquement les descendants de SON processus, jamais un autre service.
+  await Process.run('python3', <String>['-c', r'''
+import os, signal, sys
+root = int(sys.argv[1])
+children = {}
+for name in os.listdir('/proc'):
+    if not name.isdigit():
+        continue
+    try:
+        stat = open('/proc/' + name + '/stat').read().rsplit(')', 1)[1].split()
+        parent = int(stat[1])
+        children.setdefault(parent, []).append(int(name))
+    except (OSError, ValueError, IndexError):
+        pass
+def stop_descendants(parent):
+    for child in children.get(parent, []):
+        stop_descendants(child)
+        try:
+            os.kill(child, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+stop_descendants(root)
+''', '${process.pid}']);
   process.kill(ProcessSignal.sigterm);
   try {
     await process.exitCode.timeout(const Duration(seconds: 8));

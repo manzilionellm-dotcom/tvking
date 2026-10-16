@@ -11,7 +11,7 @@
 //       ouverture de base.
 //    2. LECTEUR : ExoPlayer n'existe pas sur PC → media_kit (libmpv,
 //       décodage matériel) derrière le MÊME NativeVideoController.
-//    3. FENÊTRE / CLAVIER : plein écran, Échap = Retour, F11 = plein écran.
+//    3. FENÊTRE / CLAVIER : fenêtre mémorisée, Échap = Retour, F11 = plein écran.
 //
 //  Build : flutter build windows --release --target=lib/main_windows.dart
 //  (workflow .github/workflows/build-zuno-windows.yml).
@@ -37,7 +37,7 @@ Future<void> _bootstrapWindows() async {
   MediaKit.ensureInitialized();
   NativeVideoController.backendFactory = MediaKitVideoBackend.new;
 
-  // 3) Fenêtre plein écran « Zuno ».
+  // 3) Fenêtre Windows « Zuno », centrée et redimensionnable.
   await DesktopWindow.prepare();
 
   // Puis EXACTEMENT le démarrage de la box, avec les raccourcis PC autour.

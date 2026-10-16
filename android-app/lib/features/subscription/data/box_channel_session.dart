@@ -25,11 +25,13 @@ class BoxChannelSession {
     required this.mac,
     required this.onFrame,
     required this.alive,
+    this.backendUrl = kSubscriptionBaseUrl,
   });
 
   final String mac;
-  final Future<void> Function(BoxChannelFrame frame) onFrame;
+  final Future<bool> Function(BoxChannelFrame frame) onFrame;
   final bool Function() alive;
+  final String backendUrl;
 
   /// Dernier numéro appliqué. Un signal déjà vu ne se rejoue pas.
   int seq = 0;
@@ -59,12 +61,14 @@ class BoxChannelSession {
     while (_going()) {
       Timer? hello;
       try {
-        final Uri uri = boxChannelUri(kSubscriptionBaseUrl, mac);
+        final Uri uri = boxChannelUri(backendUrl, mac);
         final WebSocket socket = await WebSocket.connect(uri.toString())
             .timeout(const Duration(seconds: 8));
         _socket = socket;
         if (!_going()) break;
         open = true;
+        // Détecte une prise morte après veille Windows / coupure Wi-Fi.
+        socket.pingInterval = const Duration(seconds: 25);
         delaySeconds = 1;
         hello = Timer.periodic(const Duration(seconds: 25), (_) {
           try {
@@ -78,8 +82,10 @@ class BoxChannelSession {
           final BoxChannelFrame? frame = parseBoxChannelFrame('$message');
           if (frame == null || frame.seq <= seq) continue;
           if (frame.mac != mac) continue;
+          // Ne jamais consommer le numéro AVANT application : si le réseau
+          // coupe pendant la relecture, le serveur renverra le même ordre.
+          if (!await onFrame(frame)) break;
           seq = frame.seq;
-          await onFrame(frame);
         }
       } catch (e) {
         if (kDebugMode) debugPrint('[Canal] $e');
@@ -87,7 +93,7 @@ class BoxChannelSession {
         hello?.cancel();
         open = false;
         try {
-          await _socket?.close();
+          await _socket?.close().timeout(const Duration(seconds: 2));
         } catch (_) {
           // Déjà fermée.
         }
@@ -95,7 +101,7 @@ class BoxChannelSession {
       }
       if (!_going()) return;
       await _pause(Duration(seconds: delaySeconds));
-      if (delaySeconds < 30) delaySeconds *= 2;
+      delaySeconds = (delaySeconds * 2).clamp(1, 30);
     }
   }
 

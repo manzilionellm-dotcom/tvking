@@ -1,3 +1,4 @@
+import 'dart:io' show Platform;
 // =========================================================
 //  tv_vod_player_screen.dart — Lecteur Films / Épisodes (télécommande)
 // =========================================================
@@ -693,6 +694,14 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
   }
 
   KeyEventResult _onKey(FocusNode node, KeyEvent event) {
+    // Laisse les raccourcis Windows remonter à DesktopShell.
+    if (Platform.isWindows &&
+        (HardwareKeyboard.instance.isAltPressed ||
+            HardwareKeyboard.instance.isControlPressed ||
+            HardwareKeyboard.instance.isMetaPressed)) {
+      return KeyEventResult.ignored;
+    }
+
     if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
       return KeyEventResult.ignored;
     }

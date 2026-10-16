@@ -1,3 +1,4 @@
+import 'dart:io' show Platform;
 // =========================================================
 //  tv_player_screen.dart — Lecteur plein écran TV (SurfaceView natif)
 // =========================================================
@@ -1320,6 +1321,14 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
 
   // Télécommandes universelles : toutes les variantes mènent à l'action.
   KeyEventResult _onKey(FocusNode node, KeyEvent event) {
+    // Laisse les raccourcis Windows remonter à DesktopShell.
+    if (Platform.isWindows &&
+        (HardwareKeyboard.instance.isAltPressed ||
+            HardwareKeyboard.instance.isControlPressed ||
+            HardwareKeyboard.instance.isMetaPressed)) {
+      return KeyEventResult.ignored;
+    }
+
     // On prend l'appui ET la répétition (touche maintenue). Le relâchement
     // (KeyUp) est ignoré. Le flux, lui, n'est ouvert qu'une fois dans _zap.
     if (event is! KeyDownEvent && event is! KeyRepeatEvent) {

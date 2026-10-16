@@ -36,10 +36,12 @@ class DeviceIdentity {
 
   /// Channel natif qui expose l'ANDROID_ID (cf. MainActivity.kt). Sert
   /// à dériver une MAC STABLE entre réinstallations.
-  static const MethodChannel _deviceChannel =
-      MethodChannel('com.manzilionellm.tvking/device');
+  static const MethodChannel _deviceChannel = MethodChannel(
+    'com.manzilionellm.tvking/device',
+  );
 
   String? _cached;
+  Future<String>? _loading;
 
   /// Renvoie le MAC virtuel.
   ///
@@ -54,6 +56,17 @@ class DeviceIdentity {
   ///      Android), repli sur une MAC aléatoire (ancien comportement).
   Future<String> get mac async {
     if (_cached != null) return _cached!;
+    // Heartbeat, canal et écran démarrent ensemble : une seule identité,
+    // même si le registre est indisponible et qu'il faut générer un repli.
+    _loading ??= _loadMac();
+    try {
+      return await _loading!;
+    } finally {
+      _loading = null;
+    }
+  }
+
+  Future<String> _loadMac() async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     final String? stored = prefs.getString(_kKey);
     if (stored != null && _isValid(stored)) {
@@ -97,9 +110,11 @@ class DeviceIdentity {
           r'HKLM\SOFTWARE\Microsoft\Cryptography',
           '/v',
           'MachineGuid',
-        ]);
-        final RegExpMatch? m = RegExp(r'MachineGuid\s+REG_SZ\s+([0-9A-Fa-f-]{36})')
-            .firstMatch('${r.stdout}');
+          '/reg:64',
+        ]).timeout(const Duration(seconds: 3));
+        final RegExpMatch? m = RegExp(
+          r'MachineGuid\s+REG_SZ\s+([0-9A-Fa-f-]{36})',
+        ).firstMatch('${r.stdout}');
         if (m != null) return 'win-${m.group(1)!.toLowerCase()}';
       } catch (_) {}
       return null;
@@ -158,12 +173,26 @@ class DeviceIdentity {
   /// recense chaque Android où l'app est installée. Map vide si indispo.
   Future<Map<String, String>> deviceInfo() async {
     if (_info != null) return _info!;
+    if (Platform.isWindows) {
+      // Le panel reçoit une description Windows, sans nom d'utilisateur
+      // ni nom de machine. On garde platform=tv : contrat existant du panel.
+      _info = <String, String>{
+        'manufacturer': 'Microsoft',
+        'model': 'Zuno Windows',
+        'release': Platform.operatingSystemVersion,
+        'build': 'Windows',
+      };
+      return _info!;
+    }
     try {
-      final Object? raw =
-          await _deviceChannel.invokeMethod<Object?>('getDeviceInfo');
+      final Object? raw = await _deviceChannel.invokeMethod<Object?>(
+        'getDeviceInfo',
+      );
       if (raw is Map) {
-        _info = raw.map<String, String>((Object? k, Object? v) =>
-            MapEntry<String, String>('$k', '${v ?? ''}'));
+        _info = raw.map<String, String>(
+          (Object? k, Object? v) =>
+              MapEntry<String, String>('$k', '${v ?? ''}'),
+        );
       } else {
         _info = <String, String>{};
       }
@@ -192,7 +221,8 @@ class DeviceIdentity {
     final Random rnd = Random.secure();
     final List<String> octets = List<String>.generate(
       5,
-      (int _) => rnd.nextInt(256).toRadixString(16).padLeft(2, '0').toUpperCase(),
+      (int _) =>
+          rnd.nextInt(256).toRadixString(16).padLeft(2, '0').toUpperCase(),
     );
     return '$_kPrefix:${octets.join(':')}';
   }

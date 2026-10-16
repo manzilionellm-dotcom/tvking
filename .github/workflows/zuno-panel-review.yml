@@ -1,0 +1,41 @@
+name: Zuno Windows — preuve panel temps réel
+on:
+  push:
+    branches: ['feature/zuno-windows-desktop']
+    paths:
+      - '.github/workflows/zuno-panel-review.yml'
+      - 'android-app/lib/features/subscription/**'
+      - 'android-app/test/features/subscription/panel_instant_e2e_test.dart'
+permissions:
+  contents: read
+concurrency:
+  group: panel-windows-review-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  panel:
+    if: github.actor == github.repository_owner
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: android-app
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+        with:
+          flutter-version: '3.47.7'
+          channel: stable
+          cache: true
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '22'
+      - name: Dépendances du Worker local (aucun déploiement)
+        run: npm ci --prefix cloudflare
+      - name: Dépendances Flutter
+        run: flutter pub get
+      - name: Panel local vers client réel, activation et accusés
+        env:
+          WRANGLER_SEND_METRICS: 'false'
+        run: flutter test --dart-define=RUN_E2E=true --dart-define=BACKEND_URL=http://127.0.0.1:8787 test/features/subscription/panel_instant_e2e_test.dart

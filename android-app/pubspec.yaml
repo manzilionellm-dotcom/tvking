@@ -99,7 +99,7 @@ dependencies:
   # (D3D11). N'embarque QUE des .dll Windows : aucun impact sur l'APK.
   media_kit_libs_windows_video: ^1.0.10
 
-  # window_manager — PLEIN ÉCRAN SUR PC (F11 / Alt+Entrée, démarrage plein
+  # window_manager — FENÊTRE PC mémorisée (F11 / Alt+Entrée, option plein
   # écran comme sur une TV). Flutter ne pilote pas seul la fenêtre native
   # Windows. Implémentation de référence de l'écosystème desktop Flutter ;
   # ne déclare pas Android → rien n'entre dans l'APK.
