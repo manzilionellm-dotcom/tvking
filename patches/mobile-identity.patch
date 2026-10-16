@@ -2694,7 +2694,7 @@ HcmV?d00001
 
 diff --git a/assets/branding/IDENTITY.md b/assets/branding/IDENTITY.md
 new file mode 100644
-index 00000000..28805ee7
+index 00000000..252bd34b
 --- /dev/null
 +++ b/assets/branding/IDENTITY.md
 @@ -0,0 +1,10 @@
@@ -2705,11 +2705,11 @@ index 00000000..28805ee7
 +- `7motion_launcher_mint.png` : original `814446.png`, le chiffre 7 et son arc. Icône Android uniquement.
 +- `7motion_signature_mint.png` : original `814443.png`, le R avec la signature Motion. Identité intérieure via `BrandLogo` (splash, accueil, profil, À propos et écrans secondaires).
 +
-+La signature garde ses proportions : le cadrage du widget réduit ses marges sans modifier le fichier source. Le nom de l’application reste **7 MOTION**. La couleur Motion est une menthe électrique sur noir mat. Les choix personnels d’accent déjà enregistrés sont conservés.
++La signature garde ses proportions : le cadrage du widget réduit ses marges sans modifier le fichier source. Le nom de l’application reste **7 MOTION**. La dernière charte demandée est **Pure Black & White** : noir OLED, blanc et gris argenté. La signature intérieure est désaturée au rendu, avec conservation de la luminance et de la transparence. Les anciens choix de couleur restent en stockage mais ne peuvent plus recoloriser cette édition. L’icône Android extérieure conserve le fichier original fourni ; la refonte monochrome porte sur l’interface de l’application.
 +
 +Les identifiants techniques, certificats, services et canaux de mise à jour restent ceux de l’application existante.
 diff --git a/lib/core/branding/brand_logo.dart b/lib/core/branding/brand_logo.dart
-index 0140ca3a..d1df08b4 100644
+index 0140ca3a..bf603eeb 100644
 --- a/lib/core/branding/brand_logo.dart
 +++ b/lib/core/branding/brand_logo.dart
 @@ -1,18 +1,18 @@
@@ -2776,7 +2776,7 @@ index 0140ca3a..d1df08b4 100644
      if (!wantsGlow) return null;
      if (glowColor != null) {
        return <BoxShadow>[
-@@ -132,37 +134,43 @@ class BrandLogo extends StatelessWidget {
+@@ -132,37 +134,71 @@ class BrandLogo extends StatelessWidget {
      final LumiereColors palette = LumiereColors.of(context);
      final bool isLight = Theme.of(context).brightness == Brightness.light;
 
@@ -2812,36 +2812,65 @@ index 0140ca3a..d1df08b4 100644
 -                color: AppColors.accent,
 -                fontSize: _dp * 0.5,
 -                fontWeight: FontWeight.w800,
-+      child: Transform.scale(
-+        // Le fichier original contient de grandes marges. Ce cadrage visuel
-+        // les réduit sans couper le R ni le dernier trait de la signature.
-+        scale: isMotion ? 1.65 : 1,
-+        child: Image.asset(
-+          _assetPath,
-+          semanticLabel: FlavorConfig.current.appName,
-+          fit: BoxFit.cover,
-+          // En cas d'erreur de chargement (asset manquant), on dégrade
-+          // sur un placeholder texte plutôt que de crasher.
-+          errorBuilder: (BuildContext _, Object __, StackTrace? ___) {
-+            return Center(
-+              child: Text(
-+                _fallbackLetter,
-+                style: TextStyle(
-+                  color: AppColors.accent,
-+                  fontSize: _dp * 0.5,
-+                  fontWeight: FontWeight.w800,
-+                ),
-               ),
+-              ),
 -            ),
 -          );
 -        },
-+            );
-+          },
++      child: ColorFiltered(
++        // Désaturation au rendu : les originaux du propriétaire sont conservés.
++        // La signature devient argentée, sans modifier son tracé ni son alpha.
++        colorFilter: isMotion
++            ? const ColorFilter.matrix(<double>[
++                0.2126,
++                0.7152,
++                0.0722,
++                0,
++                0,
++                0.2126,
++                0.7152,
++                0.0722,
++                0,
++                0,
++                0.2126,
++                0.7152,
++                0.0722,
++                0,
++                0,
++                0,
++                0,
++                0,
++                1,
++                0,
++              ])
++            : const ColorFilter.mode(Colors.transparent, BlendMode.dst),
++        child: Transform.scale(
++          // Le fichier original contient de grandes marges. Ce cadrage visuel
++          // les réduit sans couper le R ni le dernier trait de la signature.
++          scale: isMotion ? 1.65 : 1,
++          child: Image.asset(
++            _assetPath,
++            semanticLabel: FlavorConfig.current.appName,
++            fit: BoxFit.cover,
++            // En cas d'erreur de chargement (asset manquant), on dégrade
++            // sur un placeholder texte plutôt que de crasher.
++            errorBuilder: (BuildContext _, Object __, StackTrace? ___) {
++              return Center(
++                child: Text(
++                  _fallbackLetter,
++                  style: TextStyle(
++                    color: AppColors.accent,
++                    fontSize: _dp * 0.5,
++                    fontWeight: FontWeight.w800,
++                  ),
++                ),
++              );
++            },
++          ),
 +        ),
        ),
      );
    }
-@@ -170,7 +178,7 @@ class BrandLogo extends StatelessWidget {
+@@ -170,7 +206,7 @@ class BrandLogo extends StatelessWidget {
 
  enum BrandLogoSize { compact, medium, splash, hero }
 
@@ -2850,7 +2879,7 @@ index 0140ca3a..d1df08b4 100644
  abstract final class BrandStrings {
    /// Nom court — utilisé partout dans l'app.
    static const String appName = '7 MOTION';
-@@ -179,5 +187,5 @@ abstract final class BrandStrings {
+@@ -179,5 +215,5 @@ abstract final class BrandStrings {
    static const String longName = '7 MOTION — TV & Radio';
 
    /// Tagline courte pour les hero / onboarding.
@@ -2897,10 +2926,40 @@ index cc3e697e..dd83a5f2 100644
      biometricMandatory: false,
      requireAgeGate: false,
 diff --git a/lib/core/theme/accent_controller.dart b/lib/core/theme/accent_controller.dart
-index 7c4a9b70..82d9fad7 100644
+index 7c4a9b70..5449f243 100644
 --- a/lib/core/theme/accent_controller.dart
 +++ b/lib/core/theme/accent_controller.dart
-@@ -79,16 +79,28 @@ class AccentTheme {
+@@ -1,24 +1,12 @@
+ // =========================================================
+-//  accent_controller.dart — Thème d'accent choisi par le client
++//  accent_controller.dart — Identité monochrome Motion
+ // =========================================================
+-//  Le client peut choisir la COULEUR D'ACCENT de l'app via le bouton
+-//  « Thème » (écran Profil). Le changement est INSTANTANÉ : ce
+-//  contrôleur est un ChangeNotifier branché à la racine (main.dart)
+-//  dans le `Listenable.merge` qui reconstruit tout `MaterialApp`. Comme
+-//  `AppColors.accent` (et sa famille) sont devenus des getters qui
+-//  lisent ce contrôleur, toute l'UI se recolore d'un coup.
+-//
+-//  Choix persistant (SharedPreferences) → conservé au redémarrage.
+-//
+-//  NB : c'est ICI (avec lumiere_tokens.dart) qu'il est légitime
+-//  d'écrire des `Color(0xFF...)` : c'est la SOURCE des valeurs de
+-//  palette. Ailleurs dans l'app, on passe toujours par AppColors.
+-// =========================================================
+-
+-import 'dart:async';
++//  L'identité mobile est désormais fixe : noir profond, blanc et gris.
++//  Les anciennes méthodes restent disponibles pour les appels historiques,
++//  mais ni une préférence locale ni une couleur du panel ne peuvent remettre
++//  un accent coloré. Les anciennes clés de préférences restent intactes.
+
+ import 'package:flutter/material.dart';
+-import 'package:shared_preferences/shared_preferences.dart';
+
+ /// Une variante d'accent : la couleur principale + ses deux dérivées
+ /// (claire pour les brillances/focus, profonde pour les bordures).
+@@ -79,397 +67,42 @@ class AccentTheme {
    }
  }
 
@@ -2908,49 +2967,427 @@ index 7c4a9b70..82d9fad7 100644
 -/// défaut historique The Few — valeurs IDENTIQUES à l'ancienne
 -/// façade `AppColors` pour ne rien changer tant que le client n'a pas
 -/// choisi.
-+/// Accent de marque Motion. Son identifiant reste stable en préférences :
-+/// il ne remplace jamais un choix explicite déjà enregistré par le client.
-+const Color kMotionMint = Color(0xFF2EF2C8);
-+const Color kMotionMintBright = Color(0xFF81F7DD);
-+const Color kMotionMintMuted = Color(0xFF087D65);
+-// NB : liste `final` (et non `const`) car les teintes premium ci-dessous
+-// sont DÉRIVÉES par HSL au chargement (AccentTheme.derive) — calcul runtime.
+-// Les 11 premières restent réglées à la main (défaut historique inchangé).
+-final List<AccentTheme> kAccentThemes = <AccentTheme>[
+-  // Défaut « The Few » — Maison Noir : or champagne sur noir profond.
+-  // (1er du catalogue = appliqué tant que le client/panel n'a rien choisi.)
+-  const AccentTheme(
+-    id: 'champagne',
+-    label: 'Champagne',
+-    accent: Color(0xFFC6A664),
+-    bright: Color(0xFFE2C982),
+-    muted: Color(0xFF8A7038),
+-  ),
+-  const AccentTheme(
+-    id: 'ember',
+-    label: 'Braise',
+-    accent: Color(0xFFD63A30),
+-    bright: Color(0xFFFF5A4A),
+-    muted: Color(0xFF8E1F1D),
+-  ),
+-  const AccentTheme(
+-    id: 'ocean',
+-    label: 'Océan',
+-    accent: Color(0xFF2E7DD6),
+-    bright: Color(0xFF5AA8FF),
+-    muted: Color(0xFF1D4E8E),
+-  ),
+-  const AccentTheme(
+-    id: 'emerald',
+-    label: 'Émeraude',
+-    accent: Color(0xFF2FA96A),
+-    bright: Color(0xFF4ADB8E),
+-    muted: Color(0xFF1D6E47),
+-  ),
+-  const AccentTheme(
+-    id: 'violet',
+-    label: 'Améthyste',
+-    accent: Color(0xFF8E5AD6),
+-    bright: Color(0xFFB58AFF),
+-    muted: Color(0xFF5E1D8E),
+-  ),
+-  const AccentTheme(
+-    id: 'gold',
+-    label: 'Or',
+-    accent: Color(0xFFD6A030),
+-    bright: Color(0xFFFFC94A),
+-    muted: Color(0xFF8E6A1D),
+-  ),
+-  const AccentTheme(
+-    id: 'turquoise',
+-    label: 'Turquoise',
+-    accent: Color(0xFF2EC4C6),
+-    bright: Color(0xFF5AF0F2),
+-    muted: Color(0xFF1D8E8E),
+-  ),
+-  const AccentTheme(
+-    id: 'rose',
+-    label: 'Rose',
+-    accent: Color(0xFFD63A8E),
+-    bright: Color(0xFFFF5AB0),
+-    muted: Color(0xFF8E1D5E),
+-  ),
+-  const AccentTheme(
+-    id: 'coral',
+-    label: 'Corail',
+-    accent: Color(0xFFE8703A),
+-    bright: Color(0xFFFF9A5A),
+-    muted: Color(0xFFA8431D),
+-  ),
+-  const AccentTheme(
+-    id: 'indigo',
+-    label: 'Indigo',
+-    accent: Color(0xFF4A5AD6),
+-    bright: Color(0xFF7A8AFF),
+-    muted: Color(0xFF2A2F8E),
+-  ),
+-  const AccentTheme(
+-    id: 'lime',
+-    label: 'Citron vert',
+-    accent: Color(0xFF8AC62E),
+-    bright: Color(0xFFB5F05A),
+-    muted: Color(0xFF5E8E1D),
+-  ),
+-
+-  // ===================================================================
+-  //  COLLECTION PREMIUM — teintes « riches » dérivées par HSL.
+-  //  Pierres précieuses, métaux nobles, grands crus, épices, laques…
+-  //  Objectif : une palette « app de riche », addictive, jamais fade.
+-  //  (libellé français direct — repli assumé du sélecteur, cf.
+-  //   theme_picker_sheet.dart → _accentLabel default.)
+-  // ===================================================================
+-
+-  // — Pierres & minéraux —
+-  AccentTheme.derive(id: 'saphir', label: 'Saphir', accent: const Color(0xFF0F52BA)),
+-  AccentTheme.derive(id: 'rubis', label: 'Rubis', accent: const Color(0xFFE0115F)),
+-  AccentTheme.derive(id: 'topaze', label: 'Topaze', accent: const Color(0xFFFFC12E)),
+-  AccentTheme.derive(id: 'citrine', label: 'Citrine', accent: const Color(0xFFE4A81C)),
+-  AccentTheme.derive(id: 'grenat', label: 'Grenat', accent: const Color(0xFF9B2242)),
+-  AccentTheme.derive(id: 'aiguemarine', label: 'Aigue-marine', accent: const Color(0xFF2FC4B2)),
+-  AccentTheme.derive(id: 'lapis', label: 'Lapis-lazuli', accent: const Color(0xFF26619C)),
+-  AccentTheme.derive(id: 'tanzanite', label: 'Tanzanite', accent: const Color(0xFF5A5FB0)),
+-  AccentTheme.derive(id: 'jade', label: 'Jade', accent: const Color(0xFF00A86B)),
+-  AccentTheme.derive(id: 'malachite', label: 'Malachite', accent: const Color(0xFF18C56A)),
+-  AccentTheme.derive(id: 'opale', label: 'Opale', accent: const Color(0xFF7FC7B8)),
+-  AccentTheme.derive(id: 'quartzrose', label: 'Quartz rose', accent: const Color(0xFFE8A0A6)),
+-  AccentTheme.derive(id: 'onyx', label: 'Onyx', accent: const Color(0xFF515158)),
+-  AccentTheme.derive(id: 'obsidienne', label: 'Obsidienne', accent: const Color(0xFF44454F)),
+-  AccentTheme.derive(id: 'perle', label: 'Perle', accent: const Color(0xFFCDBE9A)),
+-  AccentTheme.derive(id: 'nacre', label: 'Nacre', accent: const Color(0xFFCBBFA3)),
+-  AccentTheme.derive(id: 'ambre', label: 'Ambre', accent: const Color(0xFFF0A81E)),
+-  AccentTheme.derive(id: 'peridot', label: 'Péridot', accent: const Color(0xFF9DBE2E)),
+-
+-  // — Métaux nobles —
+-  AccentTheme.derive(id: 'orrose', label: 'Or rose', accent: const Color(0xFFE0A899)),
+-  AccentTheme.derive(id: 'platine', label: 'Platine', accent: const Color(0xFF9FB0B5)),
+-  AccentTheme.derive(id: 'argent', label: 'Argent', accent: const Color(0xFFA9B0BA)),
+-  AccentTheme.derive(id: 'bronze', label: 'Bronze', accent: const Color(0xFFC1803C)),
+-  AccentTheme.derive(id: 'cuivre', label: 'Cuivre', accent: const Color(0xFFB6642E)),
+-  AccentTheme.derive(id: 'titane', label: 'Titane', accent: const Color(0xFF8A8D8F)),
+-  AccentTheme.derive(id: 'acier', label: 'Acier', accent: const Color(0xFF6E7B86)),
+-  AccentTheme.derive(id: 'laiton', label: 'Laiton', accent: const Color(0xFFB59A3C)),
+-  AccentTheme.derive(id: 'vermeil', label: 'Vermeil', accent: const Color(0xFFD98A3C)),
+-
+-  // — Grands crus & rouges profonds —
+-  AccentTheme.derive(id: 'bordeaux', label: 'Bordeaux', accent: const Color(0xFF7A1128)),
+-  AccentTheme.derive(id: 'bourgogne', label: 'Bourgogne', accent: const Color(0xFF8C1230)),
+-  AccentTheme.derive(id: 'merlot', label: 'Merlot', accent: const Color(0xFF8A2C3A)),
+-  AccentTheme.derive(id: 'cognac', label: 'Cognac', accent: const Color(0xFFA0522D)),
+-  AccentTheme.derive(id: 'acajou', label: 'Acajou', accent: const Color(0xFF8B3A1E)),
+-  AccentTheme.derive(id: 'cerise', label: 'Cerise', accent: const Color(0xFFC51E3A)),
+-  AccentTheme.derive(id: 'framboise', label: 'Framboise', accent: const Color(0xFFCE2C5A)),
+-  AccentTheme.derive(id: 'grenadine', label: 'Grenadine', accent: const Color(0xFFE23B4E)),
+-  AccentTheme.derive(id: 'vermillon', label: 'Vermillon', accent: const Color(0xFFE34234)),
+-  AccentTheme.derive(id: 'carmin', label: 'Carmin', accent: const Color(0xFFB01030)),
+-  AccentTheme.derive(id: 'cardinal', label: 'Cardinal', accent: const Color(0xFFA51E3C)),
+-  AccentTheme.derive(id: 'ecarlate', label: 'Écarlate', accent: const Color(0xFFE62030)),
+-
+-  // — Prunes, pourpres & orchidées —
+-  AccentTheme.derive(id: 'prune', label: 'Prune', accent: const Color(0xFF9B4E86)),
+-  AccentTheme.derive(id: 'aubergine', label: 'Aubergine', accent: const Color(0xFF6E4468)),
+-  AccentTheme.derive(id: 'cassis', label: 'Cassis', accent: const Color(0xFF8A2350)),
+-  AccentTheme.derive(id: 'pourpre', label: 'Pourpre', accent: const Color(0xFF8A2360)),
+-  AccentTheme.derive(id: 'byzantin', label: 'Byzantin', accent: const Color(0xFF8A2A72)),
+-  AccentTheme.derive(id: 'magenta', label: 'Magenta', accent: const Color(0xFFC81E7A)),
+-  AccentTheme.derive(id: 'fuchsia', label: 'Fuchsia', accent: const Color(0xFFC63FB0)),
+-  AccentTheme.derive(id: 'orchidee', label: 'Orchidée', accent: const Color(0xFFB65AC8)),
+-  AccentTheme.derive(id: 'lavande', label: 'Lavande', accent: const Color(0xFF9B8AD0)),
+-  AccentTheme.derive(id: 'lilas', label: 'Lilas', accent: const Color(0xFFB07EDC)),
+-  AccentTheme.derive(id: 'glycine', label: 'Glycine', accent: const Color(0xFF9A7BC0)),
+-  AccentTheme.derive(id: 'mauve', label: 'Mauve', accent: const Color(0xFFB07AA8)),
+-  AccentTheme.derive(id: 'parme', label: 'Parme', accent: const Color(0xFFC29AE0)),
+-
+-  // — Roses raffinés —
+-  AccentTheme.derive(id: 'rosepoudre', label: 'Rose poudré', accent: const Color(0xFFE0A2AC)),
+-  AccentTheme.derive(id: 'vieuxrose', label: 'Vieux rose', accent: const Color(0xFFC58089)),
+-  AccentTheme.derive(id: 'flamant', label: 'Flamant', accent: const Color(0xFFF07EA0)),
+-  AccentTheme.derive(id: 'fraise', label: 'Fraise', accent: const Color(0xFFE23A58)),
+-
+-  // — Épices, ors chauds & agrumes —
+-  AccentTheme.derive(id: 'safran', label: 'Safran', accent: const Color(0xFFF4B41A)),
+-  AccentTheme.derive(id: 'moutarde', label: 'Moutarde', accent: const Color(0xFFD9A400)),
+-  AccentTheme.derive(id: 'curcuma', label: 'Curcuma', accent: const Color(0xFFE59A0C)),
+-  AccentTheme.derive(id: 'miel', label: 'Miel', accent: const Color(0xFFD9A02E)),
+-  AccentTheme.derive(id: 'caramel', label: 'Caramel', accent: const Color(0xFFC57F32)),
+-  AccentTheme.derive(id: 'terracotta', label: 'Terracotta', accent: const Color(0xFFC4643C)),
+-  AccentTheme.derive(id: 'rouille', label: 'Rouille', accent: const Color(0xFFB5451E)),
+-  AccentTheme.derive(id: 'paprika', label: 'Paprika', accent: const Color(0xFFC7392A)),
+-  AccentTheme.derive(id: 'abricot', label: 'Abricot', accent: const Color(0xFFF0902E)),
+-  AccentTheme.derive(id: 'mangue', label: 'Mangue', accent: const Color(0xFFF4A02A)),
+-  AccentTheme.derive(id: 'peche', label: 'Pêche', accent: const Color(0xFFF29A7A)),
+-  AccentTheme.derive(id: 'papaye', label: 'Papaye', accent: const Color(0xFFEE6C48)),
+-  AccentTheme.derive(id: 'mandarine', label: 'Mandarine', accent: const Color(0xFFF07E1E)),
+-  AccentTheme.derive(id: 'potiron', label: 'Potiron', accent: const Color(0xFFE87722)),
+-
+-  // — Verts précieux —
+-  AccentTheme.derive(id: 'menthe', label: 'Menthe', accent: const Color(0xFF2FB98A)),
+-  AccentTheme.derive(id: 'sauge', label: 'Sauge', accent: const Color(0xFF7E9B6E)),
+-  AccentTheme.derive(id: 'olive', label: 'Olive', accent: const Color(0xFF8A8A2A)),
+-  AccentTheme.derive(id: 'kaki', label: 'Kaki', accent: const Color(0xFF8C9268)),
+-  AccentTheme.derive(id: 'foret', label: 'Forêt', accent: const Color(0xFF1E7A52)),
+-  AccentTheme.derive(id: 'sapin', label: 'Sapin', accent: const Color(0xFF1F6E4C)),
+-  AccentTheme.derive(id: 'celadon', label: 'Céladon', accent: const Color(0xFF74A98A)),
+-  AccentTheme.derive(id: 'chartreuse', label: 'Chartreuse', accent: const Color(0xFF9DC81E)),
+-  AccentTheme.derive(id: 'pistache', label: 'Pistache', accent: const Color(0xFF86C24A)),
+-  AccentTheme.derive(id: 'absinthe', label: 'Absinthe', accent: const Color(0xFF9CBE1A)),
+-  AccentTheme.derive(id: 'tilleul', label: 'Tilleul', accent: const Color(0xFFBCCB4E)),
+-  AccentTheme.derive(id: 'vertimperial', label: 'Vert impérial', accent: const Color(0xFF0E7A44)),
+-  AccentTheme.derive(id: 'vertbouteille', label: 'Vert bouteille', accent: const Color(0xFF156A4A)),
+-
+-  // — Bleus & sarcelles nobles —
+-  AccentTheme.derive(id: 'azur', label: 'Azur', accent: const Color(0xFF1E88E5)),
+-  AccentTheme.derive(id: 'cobalt', label: 'Cobalt', accent: const Color(0xFF1146C8)),
+-  AccentTheme.derive(id: 'klein', label: 'Bleu Klein', accent: const Color(0xFF0A34C0)),
+-  AccentTheme.derive(id: 'marine', label: 'Marine', accent: const Color(0xFF28407A)),
+-  AccentTheme.derive(id: 'nuit', label: 'Bleu nuit', accent: const Color(0xFF2B2F8E)),
+-  AccentTheme.derive(id: 'cyan', label: 'Cyan', accent: const Color(0xFF08B7C2)),
+-  AccentTheme.derive(id: 'petrole', label: 'Bleu pétrole', accent: const Color(0xFF1F7A80)),
+-  AccentTheme.derive(id: 'lagon', label: 'Lagon', accent: const Color(0xFF1FAAA6)),
+-  AccentTheme.derive(id: 'ceruleen', label: 'Céruléen', accent: const Color(0xFF2A7FDB)),
+-  AccentTheme.derive(id: 'bleuroi', label: 'Bleu roi', accent: const Color(0xFF2C46B8)),
+-  AccentTheme.derive(id: 'bleuglacier', label: 'Bleu glacier', accent: const Color(0xFF6FB0D6)),
+-  AccentTheme.derive(id: 'paon', label: 'Bleu paon', accent: const Color(0xFF1F8FA0)),
+-  AccentTheme.derive(id: 'denim', label: 'Denim', accent: const Color(0xFF3B5EA8)),
+-  AccentTheme.derive(id: 'ardoise', label: 'Ardoise', accent: const Color(0xFF546A7B)),
+-
+-  // — Neutres sophistiqués & bruns nobles —
+-  AccentTheme.derive(id: 'sable', label: 'Sable', accent: const Color(0xFFC2A85E)),
+-  AccentTheme.derive(id: 'ivoire', label: 'Ivoire', accent: const Color(0xFFC9BC8E)),
+-  AccentTheme.derive(id: 'grege', label: 'Grège', accent: const Color(0xFFAFA48C)),
+-  AccentTheme.derive(id: 'taupe', label: 'Taupe', accent: const Color(0xFF8E8177)),
+-  AccentTheme.derive(id: 'camel', label: 'Camel', accent: const Color(0xFFC29A5E)),
+-  AccentTheme.derive(id: 'noisette', label: 'Noisette', accent: const Color(0xFF9A7A4E)),
+-  AccentTheme.derive(id: 'moka', label: 'Moka', accent: const Color(0xFF8A5A3C)),
+-  AccentTheme.derive(id: 'chocolat', label: 'Chocolat', accent: const Color(0xFF6A4028)),
+-  AccentTheme.derive(id: 'espresso', label: 'Espresso', accent: const Color(0xFF6B4A32)),
+-  AccentTheme.derive(id: 'anthracite', label: 'Anthracite', accent: const Color(0xFF4A4F57)),
+-  AccentTheme.derive(id: 'graphite', label: 'Graphite', accent: const Color(0xFF565A62)),
+-];
+-
+-/// Contrôleur global du thème d'accent. Singleton + ChangeNotifier.
++/// Accent unique de Motion. L'identifiant reste stable pour le code client.
++const Color kMotionWhite = Color(0xFFFFFFFF);
++const Color kMotionGray = Color(0xFF8E8E93);
 +const AccentTheme kMotionAccent = AccentTheme(
 +  id: 'motion',
 +  label: 'Motion',
-+  accent: kMotionMint,
-+  bright: kMotionMintBright,
-+  muted: kMotionMintMuted,
++  accent: kMotionWhite,
++  bright: kMotionWhite,
++  muted: kMotionGray,
 +);
 +
-+/// Catalogue des thèmes proposés au client. Motion est le défaut des
-+/// installations sans préférence. Tous les identifiants historiques restent
-+/// disponibles pour restaurer exactement la couleur choisie auparavant.
- // NB : liste `final` (et non `const`) car les teintes premium ci-dessous
- // sont DÉRIVÉES par HSL au chargement (AccentTheme.derive) — calcul runtime.
--// Les 11 premières restent réglées à la main (défaut historique inchangé).
-+// Les premières restent réglées à la main, puis viennent les teintes dérivées.
- final List<AccentTheme> kAccentThemes = <AccentTheme>[
--  // Défaut « The Few » — Maison Noir : or champagne sur noir profond.
--  // (1er du catalogue = appliqué tant que le client/panel n'a rien choisi.)
-+  kMotionAccent,
-+  // Ancien défaut conservé dans le catalogue pour les préférences existantes.
-   const AccentTheme(
-     id: 'champagne',
-     label: 'Champagne',
-@@ -313,9 +325,9 @@ class AccentController extends ChangeNotifier {
-   /// tout seul chaque jour). Persisté.
-   static const String _kModeKey = 'accent_mode';
++/// Seule apparence proposée par la nouvelle identité mobile.
++const List<AccentTheme> kAccentThemes = <AccentTheme>[kMotionAccent];
++
++/// Façade compatible avec les appels du panel et des anciennes versions.
++/// Les données utilisateur historiques ne sont ni supprimées ni réécrites :
++/// elles ne pilotent simplement plus la présentation de cette édition.
+ class AccentController extends ChangeNotifier {
+   AccentController._();
+   static final AccentController instance = AccentController._();
 
+-  static const String _kPrefKey = 'accent_theme_id';
+-
+-  /// Mode : 'fixed' (couleur choisie) ou 'daily' (thème IMMERSIF qui change
+-  /// tout seul chaque jour). Persisté.
+-  static const String _kModeKey = 'accent_mode';
+-
 -  /// Thème courant. Défaut = 1er du catalogue (champagne) tant que rien
 -  /// n'est chargé/choisi → comportement identique à avant.
 -  AccentTheme _current = kAccentThemes.first;
-+  /// Avant de charger une préférence, la marque s'affiche en menthe.
-+  /// initialize() restaure ensuite le choix fixe ou immersif du client.
-+  AccentTheme _current = kMotionAccent;
-   AccentTheme get current => _current;
+-  AccentTheme get current => _current;
+-
+-  /// `true` quand le mode « thème immersif » est actif : la couleur change
+-  /// toute seule CHAQUE HEURE, avec une PETITE variation à CHAQUE ouverture.
+-  bool _daily = false;
+-  bool get isDaily => _daily;
+-
+-  /// Timer horaire (mode immersif uniquement) : fait rouler la couleur de base
+-  /// à chaque heure même si l'app reste ouverte (boîtier TV allumé H24).
+-  /// 1 réveil/heure → coût négligeable, ZÉRO incidence sur la fluidité. Coupé
+-  /// dès qu'on repasse en couleur fixe.
+-  Timer? _immersiveTimer;
+-
+-  /// Index de la couleur de BASE du moment : rotation DÉTERMINISTE sur TOUT le
+-  /// catalogue, une teinte par HEURE (heure suivante → couleur suivante, en
+-  /// boucle sur les 100+ teintes). O(1).
+-  static int _hourIndex() {
+-    final int hours =
+-        DateTime.now().difference(DateTime(2020, 1, 1)).inHours;
+-    final int n = kAccentThemes.length;
+-    return ((hours % n) + n) % n;
+-  }
+-
+-  /// Couleur immersive de l'instant : la BASE de l'heure + une PETITE variation
+-  /// premium (teinte ±10°, luminosité ±0.04) dérivée de la minute/seconde
+-  /// courante → une nuance différente à chaque ouverture, SANS jamais sortir du
+-  /// haut de gamme (même famille de couleur, juste « vivante »). Pas de hasard :
+-  /// reproductible et traçable. O(1), aucun impact sur la fluidité.
+-  static AccentTheme _immersiveTheme() {
+-    final AccentTheme base = kAccentThemes[_hourIndex()];
+-    final HSLColor hsl = HSLColor.fromColor(base.accent);
+-    final DateTime now = DateTime.now();
+-    final int seed = now.minute * 60 + now.second; // 0..3599, varie par ouverture
+-    final double hueShift = ((seed % 21) - 10).toDouble(); // -10°..+10°
+-    final double lightShift = (((seed ~/ 21) % 9) - 4) / 100.0; // -0.04..+0.04
+-    double hue = (hsl.hue + hueShift) % 360;
+-    if (hue < 0) hue += 360;
+-    final Color accent = hsl
+-        .withHue(hue)
+-        .withLightness((hsl.lightness + lightShift).clamp(0.0, 1.0))
+-        .toColor();
+-    return AccentTheme.derive(
+-      id: 'immersive',
+-      label: base.label,
+-      accent: accent,
+-    );
+-  }
++  AccentTheme get current => kMotionAccent;
++  bool get isDaily => false;
 
-   /// `true` quand le mode « thème immersif » est actif : la couleur change
+-  /// (Ré)applique la couleur immersive du moment et (ré)arme le timer horaire.
+-  /// Appelé au boot, à l'activation du mode, et à chaque retour à l'écran.
+-  void _applyImmersive({bool notify = true}) {
+-    final AccentTheme t = _immersiveTheme();
+-    if (t.accent != _current.accent || _current.id != 'immersive') {
+-      _current = t;
+-      if (notify) notifyListeners();
+-    }
+-    _immersiveTimer?.cancel();
+-    _immersiveTimer = Timer.periodic(const Duration(hours: 1), (_) {
+-      if (_daily) _applyImmersive();
+-    });
+-  }
++  Future<void> initialize() async {}
+
+-  /// Charge le choix (ou le mode immersif) au démarrage. Silencieux si rien.
+-  Future<void> initialize() async {
+-    try {
+-      final SharedPreferences prefs = await SharedPreferences.getInstance();
+-      // Mode IMMERSIF : couleur de l'heure + nuance de l'ouverture.
+-      if (prefs.getString(_kModeKey) == 'daily') {
+-        _daily = true;
+-        _applyImmersive();
+-        return;
+-      }
+-      // Mode FIXE : on restaure la couleur choisie.
+-      final String? id = prefs.getString(_kPrefKey);
+-      if (id == null) return;
+-      final AccentTheme match = kAccentThemes.firstWhere(
+-        (AccentTheme t) => t.id == id,
+-        orElse: () => kAccentThemes.first,
+-      );
+-      if (match.id != _current.id) {
+-        _current = match;
+-        notifyListeners();
+-      }
+-    } catch (_) {
+-      // best-effort : en cas d'échec on reste sur le défaut.
+-    }
+-  }
++  /// Compatibilité avec le retour au premier plan ; aucun timer coloré.
++  void refreshDailyIfNeeded() {}
+
+-  /// Ré-applique la couleur immersive du moment si le mode est actif : couleur
+-  /// de l'HEURE + petite nuance de l'OUVERTURE. À appeler au retour au premier
+-  /// plan (chaque ouverture rafraîchit la nuance ; l'heure fait tourner la
+-  /// base). Sans effet en mode fixe. O(1).
+-  void refreshDailyIfNeeded() {
+-    if (!_daily) return;
+-    _applyImmersive();
+-  }
++  /// Ancienne commande conservée, sans réactiver une rotation de couleurs.
++  Future<void> enableDaily() async {}
+
+-  /// Active le mode IMMERSIF : une couleur premium qui change chaque heure,
+-  /// avec une nuance différente à chaque ouverture (rotation sur les 100+
+-  /// teintes). Applique tout de suite celle du moment. Persisté.
+-  Future<void> enableDaily() async {
+-    _daily = true;
+-    _applyImmersive();
+-    try {
+-      final SharedPreferences prefs = await SharedPreferences.getInstance();
+-      await prefs.setString(_kModeKey, 'daily');
+-    } catch (_) {
+-      // best-effort
+-    }
+-  }
++  /// Une consigne colorée distante ne remplace pas la charte monochrome.
++  void applyCustom(Color accent) {}
+
+-  /// Applique une couleur d'accent ARBITRAIRE, pilotée à distance par le
+-  /// panel « Thème » (ex. blanc, or, vert Coupe du Monde…). On dérive les
+-  /// variantes claire (glows/focus) et profonde (bordures) par HSL pour
+-  /// garder une famille cohérente. NON persistée : le panel est la source
+-  /// de vérité, relue à chaque démarrage. Sans effet si identique.
+-  void applyCustom(Color accent) {
+-    final HSLColor hsl = HSLColor.fromColor(accent);
+-    final Color bright =
+-        hsl.withLightness((hsl.lightness + 0.15).clamp(0.0, 1.0)).toColor();
+-    final Color muted =
+-        hsl.withLightness((hsl.lightness - 0.22).clamp(0.0, 1.0)).toColor();
+-    // Le panel reprend la main : on coupe le pilote immersif de cette session.
+-    _daily = false;
+-    _immersiveTimer?.cancel();
+-    _immersiveTimer = null;
+-    if (_current.id == 'remote' && _current.accent == accent) return;
+-    _current = AccentTheme(
+-      id: 'remote',
+-      label: 'Personnalisé',
+-      accent: accent,
+-      bright: bright,
+-      muted: muted,
+-    );
+-    notifyListeners();
+-  }
+-
+-  /// Applique un thème FIXE (instantané) et le persiste. Désactive le mode
+-  /// immersif (le client a repris la main sur la couleur).
+-  Future<void> select(AccentTheme theme) async {
+-    final bool same = theme.id == _current.id && !_daily;
+-    _daily = false;
+-    _immersiveTimer?.cancel();
+-    _immersiveTimer = null;
+-    if (!same) {
+-      _current = theme;
+-      notifyListeners(); // recolore toute l'app immédiatement
+-    }
+-    try {
+-      final SharedPreferences prefs = await SharedPreferences.getInstance();
+-      await prefs.setString(_kPrefKey, theme.id);
+-      await prefs.setString(_kModeKey, 'fixed');
+-    } catch (_) {
+-      // best-effort
+-    }
+-  }
++  /// L'ancien sélecteur ne peut ni recoloriser l'app ni écraser les choix
++  /// conservés en stockage ; la nouvelle feuille montre l'identité en place.
++  Future<void> select(AccentTheme theme) async {}
+ }
 diff --git a/lib/core/theme/app_colors.dart b/lib/core/theme/app_colors.dart
-index 5b9c75de..cc32ea9a 100644
+index 5b9c75de..30a760c8 100644
 --- a/lib/core/theme/app_colors.dart
 +++ b/lib/core/theme/app_colors.dart
 @@ -1,5 +1,5 @@
@@ -2960,7 +3397,12 @@ index 5b9c75de..cc32ea9a 100644
  // =========================================================
  //  IMPORTANT — Cette classe n'est PAS la source de vérité.
  //  C'est une façade statique qui réplique le `LumiereColors.cinema`
-@@ -22,70 +22,75 @@ import 'lumiere_tokens.dart';
+@@ -17,180 +17,156 @@
+
+ import 'package:flutter/material.dart';
+
+-import 'accent_controller.dart';
+ import 'lumiere_tokens.dart';
 
  abstract final class AppColors {
    // -------------------------------------------------------
@@ -2970,28 +3412,29 @@ index 5b9c75de..cc32ea9a 100644
 
 -  /// Fond principal — charbon presque noir avec une trace de chaleur.
 -  static const Color background = Color(0xFF0A0A0C);
-+  /// Fond principal — noir mat neutre, légèrement relevé pour distinguer les cartes.
-+  static const Color background = Color(0xFF090B0D);
++  /// Fond principal — noir absolu de la charte Motion.
++  static const Color background = Color(0xFF000000);
 
    /// Surface la plus profonde — splash, vidéo plein écran.
 -  static const Color voidSurface = Color(0xFF050507);
-+  static const Color voidSurface = Color(0xFF050607);
++  static const Color voidSurface = Color(0xFF000000);
 
    /// Surface élevée (cards, panels, sheets).
 -  static const Color surface = Color(0xFF14141A);
-+  static const Color surface = Color(0xFF121518);
++  static const Color surface = Color(0xFF121212);
 
    /// Glassmorphism — à combiner avec BackdropFilter.
 -  static const Color surfaceHigh = Color(0xFF1C1C24);
-+  static const Color surfaceHigh = Color(0xFF1A1E21);
++  static const Color surfaceHigh = Color(0xFF121212);
 
    /// Overlay le plus haut (modals, snackbars).
 -  static const Color surfaceOverlay = Color(0xFF28282F);
-+  static const Color surfaceOverlay = Color(0xFF252A2E);
++  static const Color surfaceOverlay = Color(0xFF121212);
 
-   /// Liseré subtil (textPrimary @ 8% alpha).
+-  /// Liseré subtil (textPrimary @ 8% alpha).
 -  static Color get border => const Color(0xFFF0EDE9).withValues(alpha: 0.08);
-+  static Color get border => const Color(0xFFF5F7F6).withValues(alpha: 0.08);
++  /// Liseré de carte exact (#242424), à afficher sur 1 dp.
++  static const Color border = Color(0xFF242424);
 
    // -------------------------------------------------------
    //  PALETTE CINÉMA — niveaux supplémentaires (Phase 1 redesign)
@@ -3006,59 +3449,62 @@ index 5b9c75de..cc32ea9a 100644
    /// Niveau 0 — obsidian. Fond principal sur grandes surfaces
    /// cinéma (home, hero plein écran).
 -  static const Color obsidian = Color(0xFF0E0E12);
-+  static const Color obsidian = Color(0xFF0D1012);
++  static const Color obsidian = Color(0xFF000000);
 
    /// Niveau 1 — midnight. Première élévation pour les rails.
 -  static const Color midnight = Color(0xFF16161C);
-+  static const Color midnight = Color(0xFF15191C);
++  static const Color midnight = Color(0xFF121212);
 
    /// Niveau 2 — slate. Cards posters, chips.
 -  static const Color slate = Color(0xFF1F1F26);
-+  static const Color slate = Color(0xFF1E2326);
++  static const Color slate = Color(0xFF121212);
 
    /// Niveau 3 — ash. Overlays, sheets, modal headers.
 -  static const Color ash = Color(0xFF2A2A33);
-+  static const Color ash = Color(0xFF2A3034);
++  static const Color ash = Color(0xFF121212);
 
    /// Voile glass — surface translucide pour BackdropFilter
    /// (dock flottant, app bars translucides).
    static Color get glassSurface =>
 -      const Color(0xFF14141A).withValues(alpha: 0.55);
-+      const Color(0xFF121518).withValues(alpha: 0.55);
++      const Color(0xFF121212).withValues(alpha: 0.55);
 
    /// Liseré ultra-subtil pour les verres flottants.
-   static Color get glassBorder =>
+-  static Color get glassBorder =>
 -      const Color(0xFFF0EDE9).withValues(alpha: 0.06);
-+      const Color(0xFFF5F7F6).withValues(alpha: 0.06);
++  static const Color glassBorder = border;
 
    // -------------------------------------------------------
 -  //  ACCENT EMBER (rouge braise The Few)
-+  //  ACCENT DE MARQUE (menthe Motion par défaut)
++  //  ACCENT MONOCHROME — blanc pour les actions et états sélectionnés.
    // -------------------------------------------------------
-
-   //  --- ACCENT DYNAMIQUE (thème choisi par le client) ---
-   //  Ces couleurs ne sont PLUS `const` : elles lisent le thème courant
-   //  via AccentController. Changer de thème (bouton « Thème ») recolore
-   //  toute l'app instantanément (la racine se reconstruit). Défaut =
+-
+-  //  --- ACCENT DYNAMIQUE (thème choisi par le client) ---
+-  //  Ces couleurs ne sont PLUS `const` : elles lisent le thème courant
+-  //  via AccentController. Changer de thème (bouton « Thème ») recolore
+-  //  toute l'app instantanément (la racine se reconstruit). Défaut =
 -  //  braise (#D63A30) → identique à avant tant que rien n'est choisi.
-+  //  menthe (#2EF2C8), sans écraser une préférence existante.
-
+-
 -  /// Accent principal — couleur du thème actif (braise par défaut).
-+  /// Accent principal — couleur du thème actif (menthe par défaut).
-   static Color get accent => AccentController.instance.current.accent;
-
-+  /// Texte/icône sur une surface d'accent PLEINE. Le seuil choisit entre noir
-+  /// et blanc pour conserver un contraste d'au moins 4,5:1, y compris avec
-+  /// une couleur personnelle sombre. Ne pas utiliser sur une photo ou un voile.
-+  static Color get onAccent => accent.computeLuminance() > 0.179
-+      ? const Color(0xFF000000)
-+      : const Color(0xFFFFFFFF);
-+
-   /// Variante claire — glow, états focus / hover / brillance.
-   static Color get accentBright => AccentController.instance.current.bright;
-
-@@ -99,57 +104,49 @@ abstract final class AppColors {
-   static Color get accentSurface => accent.withValues(alpha: 0.14);
+-  static Color get accent => AccentController.instance.current.accent;
+-
+-  /// Variante claire — glow, états focus / hover / brillance.
+-  static Color get accentBright => AccentController.instance.current.bright;
+-
+-  /// Variante deep — bordures actives, sélections passives.
+-  static Color get accentMuted => AccentController.instance.current.muted;
+-
+-  /// Halo — pour les glows sur CTAs primaires (= variante claire).
+-  static Color get emberHalo => AccentController.instance.current.bright;
+-
+-  /// Voile très léger d'accent — fond d'un état sélectionné.
+-  static Color get accentSurface => accent.withValues(alpha: 0.14);
++  static const Color accent = Color(0xFFFFFFFF);
++  static const Color onAccent = Color(0xFF000000);
++  static const Color accentBright = accent;
++  static const Color accentMuted = Color(0xFF8E8E93);
++  static const Color emberHalo = accent;
++  static const Color accentSurface = Color(0xFF242424);
 
    // -------------------------------------------------------
 -  //  CRÈME ÉDITORIAL — accent non-critique (Phase 1 redesign)
@@ -3072,11 +3518,11 @@ index 5b9c75de..cc32ea9a 100644
 -  //  chaud désaturé (#E8D9C0) qui donne la sensation premium
 -  //  calme d'Apple TV+ ou de Criterion Channel.
 +  //  Les accents éditoriaux (eyebrows, badges, séparateurs, citations)
-+  //  gardent un gris clair neutre discret. Les actions suivent la couleur
-+  //  choisie ; les erreurs et le direct gardent leurs statuts sémantiques.
++  //  gardent les mêmes blancs et gris que le reste de la charte. Les statuts
++  //  restent identifiables par leurs icônes et leurs libellés.
    //
 -  //  NB : ce crème est DISTINCT de l'accent ember (`accent`).
-+  //  NB : ce gris est DISTINCT de l'accent dynamique (`accent`).
++  //  Les anciens noms restent disponibles pour les composants existants.
    //  Anciennement nommé `champagne` — renommé `editorialCream`
 -  //  pour lever l'ambiguïté avec les tokens ember.
 +  //  pour lever l'ambiguïté avec le thème Champagne du sélecteur.
@@ -3086,19 +3532,19 @@ index 5b9c75de..cc32ea9a 100644
 -  /// agressif ni rouge — un crème chaud très tamisé.
 -  static const Color editorialCream = Color(0xFFE8D9C0);
 +  /// Gris éditorial — badges et titres secondaires, sans teinte dorée.
-+  static const Color editorialCream = Color(0xFFD7DEDA);
++  static const Color editorialCream = Color(0xFFFFFFFF);
 
 -  /// Crème éditorial profond — bordures fines et hovers
 -  /// non-critiques. Encore plus discret que `editorialCream`.
 -  static const Color editorialCreamDeep = Color(0xFFB39B7C);
 +  /// Gris éditorial profond — bordures fines et hovers non-critiques.
-+  static const Color editorialCreamDeep = Color(0xFF9AA8A1);
++  static const Color editorialCreamDeep = Color(0xFF8E8E93);
 
 -  /// Voile crème — fond des chips éditoriaux.
 +  /// Voile neutre — fond des chips éditoriaux.
    static Color get editorialCreamSurface =>
 -      const Color(0xFFE8D9C0).withValues(alpha: 0.10);
-+      const Color(0xFFD7DEDA).withValues(alpha: 0.10);
++      const Color(0xFFFFFFFF).withValues(alpha: 0.10);
 
 -  /// Or royal Maison Noir — réservé aux actions « premium » ponctuelles
 -  /// (baguette « Optimiser la source », badges VIP). Plus soutenu que
@@ -3106,13 +3552,13 @@ index 5b9c75de..cc32ea9a 100644
 -  static const Color royalGold = Color(0xFFCCB089);
 +  /// Accent Motion pour les anciens composants premium. Le nom reste stable
 +  /// pour compatibilité ; la valeur suit désormais la nouvelle marque.
-+  static const Color royalGold = Color(0xFF2EF2C8);
++  static const Color royalGold = Color(0xFFFFFFFF);
 
 -  /// Voile or — fond mat des surfaces « premium » (boutons Optimiser).
-+  /// Voile menthe — fond mat des surfaces « premium » (boutons Optimiser).
++  /// Voile blanc — fond mat des surfaces « premium » (boutons Optimiser).
    static Color get royalGoldSurface =>
 -      const Color(0xFFCCB089).withValues(alpha: 0.14);
-+      const Color(0xFF2EF2C8).withValues(alpha: 0.14);
++      const Color(0xFFFFFFFF).withValues(alpha: 0.14);
 
    // -------------------------------------------------------
    //  TEXTE
@@ -3121,33 +3567,44 @@ index 5b9c75de..cc32ea9a 100644
 -  /// Texte principal — ivoire chaud, jamais blanc pur.
 -  static const Color textPrimary = Color(0xFFF0EDE9);
 +  /// Texte principal — blanc neutre légèrement adouci.
-+  static const Color textPrimary = Color(0xFFF5F7F6);
++  static const Color textPrimary = Color(0xFFFFFFFF);
 
    /// Sous-titres, métadonnées importantes.
 -  static const Color textSecondary = Color(0xFFB6B0A8);
-+  static const Color textSecondary = Color(0xFFB9C1BF);
++  static const Color textSecondary = Color(0xFF8E8E93);
 
    /// Niveau intermédiaire — métadonnées discrètes.
 -  static const Color textTertiary = Color(0xFF9D968F);
-+  static const Color textTertiary = Color(0xFF929C99);
++  static const Color textTertiary = Color(0xFF8E8E93);
 
    /// Texte estompé — hints, timestamps, états désactivés.
 -  static const Color textMuted = Color(0xFF4E4A45);
-+  static const Color textMuted = Color(0xFF69736F);
++  static const Color textMuted = Color(0xFF8E8E93);
 
    // -------------------------------------------------------
    //  STATUTS SÉMANTIQUES
-@@ -161,33 +158,29 @@ abstract final class AppColors {
-   /// Ambre / orange — buffering, attentions douces.
-   static const Color warning = Color(0xFFD69847);
+   // -------------------------------------------------------
+
+-  /// Vert apaisé — confirmations, OK. Jamais néon.
+-  static const Color success = Color(0xFF5FA975);
++  /// Confirmation — blanc, accompagnée d’une icône ou d’un libellé.
++  static const Color success = Color(0xFFFFFFFF);
+
+-  /// Ambre / orange — buffering, attentions douces.
+-  static const Color warning = Color(0xFFD69847);
++  /// Attente / avertissement — gris secondaire.
++  static const Color warning = Color(0xFF8E8E93);
 
 -  /// Erreur critique + badge LIVE — ember-glow (légèrement plus
 -  /// orangé que l'accent principal pour se distinguer en alerte).
-+  /// Erreur critique + badge LIVE — rouge sémantique indépendant de l'accent.
-   static const Color live = Color(0xFFE84A3E);
+-  static const Color live = Color(0xFFE84A3E);
++  /// Erreur / direct — blanc ; le sens repose aussi sur l’icône et le texte.
++  static const Color live = Color(0xFFFFFFFF);
 
-   /// Bleu cendre froid — info neutre.
-   static const Color info = Color(0xFF6A8DB0);
+-  /// Bleu cendre froid — info neutre.
+-  static const Color info = Color(0xFF6A8DB0);
++  /// Information — gris secondaire.
++  static const Color info = Color(0xFF8E8E93);
 
    // -------------------------------------------------------
 -  //  MAISON NOIR / BLACK7 — palette dédiée à l'accueil refondu
@@ -3161,13 +3618,16 @@ index 5b9c75de..cc32ea9a 100644
 -  /// Fond noir vrai (économie batterie OLED). Charte Black7 #08080A.
 -  static const Color maisonBg = Color(0xFF08080A);
 +  /// Fond noir mat, aligné sur le reste du mobile.
-+  static const Color maisonBg = Color(0xFF090B0D);
++  static const Color maisonBg = Color(0xFF000000);
++
    /// Surface de carte.
 -  static const Color maisonSurface = Color(0xFF15151B);
-+  static const Color maisonSurface = Color(0xFF121518);
++  static const Color maisonSurface = Color(0xFF121212);
++
    /// Surface surélevée (hover / hero).
 -  static const Color maisonSurfaceHigh = Color(0xFF1D1D25);
-+  static const Color maisonSurfaceHigh = Color(0xFF1A1E21);
++  static const Color maisonSurfaceHigh = Color(0xFF121212);
++
    /// Texte quasi-blanc (contraste fort seniors).
 -  static const Color maisonInk = Color(0xFFF7F7F5);
 -  /// ROUGE de marque Black7 (accent principal — remplace l'or).
@@ -3175,55 +3635,63 @@ index 5b9c75de..cc32ea9a 100644
 -  /// Rouge foncé Black7 (dégradés, états).
 -  static const Color black7RedDeep = Color(0xFF8F1019);
 -  /// Rouge réservé au badge LIVE (Maison Noir / Black7).
-+  static const Color maisonInk = Color(0xFFF5F7F6);
+-  static const Color liveRed = Color(0xFFFF4D4F);
++  static const Color maisonInk = Color(0xFFFFFFFF);
++
 +  /// Accent de marque Motion (nom historique conservé).
-+  static const Color black7Red = Color(0xFF2EF2C8);
++  static const Color black7Red = Color(0xFFFFFFFF);
++
 +  /// Accent Motion profond (dégradés, états).
-+  static const Color black7RedDeep = Color(0xFF087D65);
-+  /// Rouge réservé au statut LIVE.
-   static const Color liveRed = Color(0xFFFF4D4F);
++  static const Color black7RedDeep = Color(0xFF8E8E93);
++
++  /// Statut LIVE — blanc dans la nouvelle identité.
++  static const Color liveRed = Color(0xFFFFFFFF);
++
    /// Bordure subtile (blanc 8 %).
-   static const Color maisonBorder = Color(0x14FFFFFF);
-@@ -202,9 +195,9 @@ abstract final class AppColors {
+-  static const Color maisonBorder = Color(0x14FFFFFF);
++  static const Color maisonBorder = Color(0xFF242424);
+
+   // -------------------------------------------------------
+   //  GRADIENTS RÉUTILISÉS
+@@ -202,9 +178,9 @@ abstract final class AppColors {
      begin: Alignment.topCenter,
      end: Alignment.bottomCenter,
      colors: <Color>[
 -      Color(0xFF101012),
 -      Color(0xFF0A0A0C),
 -      Color(0xFF050507),
-+      Color(0xFF101315),
-+      Color(0xFF090B0D),
-+      Color(0xFF050607),
++      Color(0xFF000000),
++      Color(0xFF000000),
++      Color(0xFF000000),
      ],
    );
 
-@@ -213,9 +206,9 @@ abstract final class AppColors {
+@@ -213,42 +189,35 @@ abstract final class AppColors {
      begin: Alignment.topCenter,
      end: Alignment.bottomCenter,
      colors: <Color>[
 -      Color(0x00050507),
 -      Color(0x00050507),
 -      Color(0xCC050507),
-+      Color(0x00050607),
-+      Color(0x00050607),
-+      Color(0xCC050607),
++      Color(0x00000000),
++      Color(0x00000000),
++      Color(0xCC000000),
      ],
      stops: <double>[0.0, 0.4, 1.0],
    );
-@@ -223,9 +216,9 @@ abstract final class AppColors {
-   /// Halo — pour les ombres d'accent sur CTAs primaires (suit le thème).
-   static List<BoxShadow> get emberGlowShadow => <BoxShadow>[
-         BoxShadow(
+
+-  /// Halo — pour les ombres d'accent sur CTAs primaires (suit le thème).
+-  static List<BoxShadow> get emberGlowShadow => <BoxShadow>[
+-        BoxShadow(
 -          color: accentBright.withValues(alpha: 0.32),
 -          blurRadius: 28,
 -          spreadRadius: 1,
-+          color: accentBright.withValues(alpha: 0.10),
-+          blurRadius: 16,
-+          spreadRadius: 0,
-         ),
-       ];
+-        ),
+-      ];
++  /// Compatibilité : la nouvelle identité ne comporte aucun halo décoratif.
++  static const List<BoxShadow> emberGlowShadow = <BoxShadow>[];
 
-@@ -233,13 +226,13 @@ abstract final class AppColors {
+   // -------------------------------------------------------
    //  ALIAS DÉPRÉCIÉS (compatibilité historique)
    // -------------------------------------------------------
 
@@ -3238,12 +3706,157 @@ index 5b9c75de..cc32ea9a 100644
 +  @Deprecated('Use AppColors.accent')
    static Color get gold => accent;
 
-   /// Dégradé premium (accent → accent profond) — pour les CTAs
+-  /// Dégradé premium (accent → accent profond) — pour les CTAs
+-  /// principaux et les badges "Premium". Suit le thème courant.
+-  static LinearGradient get premiumGradient => LinearGradient(
+-        begin: Alignment.centerLeft,
+-        end: Alignment.centerRight,
+-        colors: <Color>[accent, accentMuted],
+-      );
++  /// Remplissage blanc uniforme des anciens composants à dégradé.
++  static const LinearGradient premiumGradient = LinearGradient(
++    begin: Alignment.centerLeft,
++    end: Alignment.centerRight,
++    colors: <Color>[accent, accent],
++  );
+
+   /// Helper context-aware (les deux modes).
+   static LumiereColors lumiere(BuildContext context) =>
+diff --git a/lib/core/theme/app_text_styles.dart b/lib/core/theme/app_text_styles.dart
+index d89d77f6..173ece70 100644
+--- a/lib/core/theme/app_text_styles.dart
++++ b/lib/core/theme/app_text_styles.dart
+@@ -1,5 +1,5 @@
+ // =========================================================
+-//  app_text_styles.dart — Typographie LUMIÈRE Maison Noir
++//  app_text_styles.dart — Typographie Motion — Inter
+ // =========================================================
+ //  Police principale : Inter (chargée via google_fonts).
+ //  Échelle cinématographique — l'app doit respirer comme une
+@@ -22,6 +22,15 @@ import 'package:google_fonts/google_fonts.dart';
+ import 'app_colors.dart';
+
+ abstract final class AppTextStyles {
++  /// Signature de marque commune aux en-têtes, profils et écran de démarrage.
++  static TextStyle get brandTagline => GoogleFonts.inter(
++        fontSize: 10,
++        fontWeight: FontWeight.w500,
++        color: AppColors.textSecondary,
++        letterSpacing: 3,
++        height: 1.5,
++      );
++
+   /// Display XL — réservé aux moments rares (splash, hero d'onboarding).
+   /// Poids moyen + tracking serré = sensation "affiche cinéma".
+   static TextStyle get displayLarge => GoogleFonts.inter(
+@@ -45,11 +54,8 @@ abstract final class AppTextStyles {
+         height: 1.05,
+       );
+
+-  /// Eyebrow accentEmber — la petite ligne au-dessus d'un titre
+-  /// hero ("LE PLUS REGARDÉ", "À LA UNE", "NOUVEAUTÉ"). Couleur
+-  /// accentEmber désaturée pour rester premium sans rouge.
+-  /// Remplace `eyebrow` (qui restait en accent rouge) sur les
+-  /// surfaces où on ne veut PAS du critique.
++  /// Petite ligne éditoriale au-dessus des titres ; blanc de la charte.
++  /// Le nom historique reste disponible pour les anciens composants.
+   static TextStyle get eyebrowEmber => GoogleFonts.inter(
+         fontSize: 10,
+         fontWeight: FontWeight.w700,
+@@ -145,15 +151,15 @@ abstract final class AppTextStyles {
+
+   // =======================================================
+   //  MAISON NOIR — accueil pays refondu (country_home)
+-  //  Display : Bricolage Grotesque (caractérielle). Corps : Manrope.
++  //  Titres et corps : Inter embarquée, cohérente sur tous les écrans.
+   //  Chargées via GoogleFonts.getFont (robuste : marche quelle que
+   //  soit la version du package). Tailles ≥ 16 px (lisibilité seniors).
+   // =======================================================
+   /// Charge une Google Font par NOM, avec repli sûr : si la police n'est
+   /// pas dans le catalogue de la version installée, `getFont` lèverait —
+   /// on retombe alors sur un TextStyle standard (mêmes métriques).
+-  static TextStyle _gf(String family, double size, FontWeight w,
+-      Color? color, double spacing, double height) {
++  static TextStyle _gf(String family, double size, FontWeight w, Color? color,
++      double spacing, double height) {
+     final TextStyle base = TextStyle(
+       fontSize: size,
+       fontWeight: w,
+@@ -170,30 +176,37 @@ abstract final class AppTextStyles {
+
+   static TextStyle _display(double size, FontWeight w,
+           {Color? color, double spacing = -0.5, double height = 1.05}) =>
+-      _gf('Bricolage Grotesque', size, w, color, spacing, height);
++      _gf('Inter', size, w, color, spacing, height);
+
+   static TextStyle _body(double size, FontWeight w,
+           {Color? color, double spacing = 0, double height = 1.3}) =>
+-      _gf('Manrope', size, w, color, spacing, height);
++      _gf('Inter', size, w, color, spacing, height);
+
+   /// Titre du HERO "Pour vous" (~26 px, gras).
+   static TextStyle get maisonHeroTitle => _display(26, FontWeight.w800);
++
+   /// Titre de section ("Populaires en ce moment").
+   static TextStyle get maisonSection => _display(20, FontWeight.w700);
++
+   /// Grand chiffre de rang en filigrane (1, 2, 3…).
+-  static TextStyle get maisonRank => _display(64, FontWeight.w800,
+-      color: AppColors.maisonInk, spacing: -2);
++  static TextStyle get maisonRank =>
++      _display(64, FontWeight.w800, color: AppColors.maisonInk, spacing: -2);
++
+   /// Nom de chaîne (liste) — 17 px gras, lisible.
+   static TextStyle get maisonChannelName => _body(17, FontWeight.w700);
++
+   /// Programme EPG "en ce moment" — 14.5 px.
+   static TextStyle get maisonProgram => _body(14.5, FontWeight.w500,
+       color: AppColors.textSecondary, height: 1.25);
++
+   /// Texte du gros bouton "Regarder".
+   static TextStyle get maisonCta =>
+       _body(17, FontWeight.w800, color: AppColors.maisonBg, spacing: 0.2);
++
+   /// Petit label (badges POUR VOUS / LIVE / compteurs).
+-  static TextStyle get maisonLabel => _body(11.5, FontWeight.w800,
+-      spacing: 0.8, height: 1.0);
++  static TextStyle get maisonLabel =>
++      _body(11.5, FontWeight.w800, spacing: 0.8, height: 1.0);
++
+   /// Initiales sur vignette sans logo (Maison Noir).
+   static TextStyle get maisonInitials =>
+       _display(22, FontWeight.w800, spacing: -0.5, height: 1.0);
 diff --git a/lib/core/theme/app_theme.dart b/lib/core/theme/app_theme.dart
-index a5b33ee1..c99f4ae6 100644
+index a5b33ee1..f353c848 100644
 --- a/lib/core/theme/app_theme.dart
 +++ b/lib/core/theme/app_theme.dart
-@@ -22,6 +22,7 @@ import 'package:flutter/material.dart';
+@@ -1,52 +1,30 @@
+ // =========================================================
+-//  app_theme.dart — Thèmes globaux Maison Noir (version safe)
+-// =========================================================
+-//  Deux ThemeData, un pour chaque mode :
+-//
+-//    - `AppTheme.cinema`  → dark, Maison Noir, défaut, identité
+-//                           "club privé caché"
+-//    - `AppTheme.daylight` → light, version diurne dérivée
+-//
+-//  IMPORTANT : cette version a été rétrogradée volontairement
+-//  aux APIs Flutter 3.16+ pour passer la CI. Les enrichissements
+-//  (filledButtonTheme custom, dialogTheme, focus rings via
+-//  WidgetStateProperty…) seront re-réintroduits par couches après
+-//  confirmation que la version Flutter du CI les supporte tous.
+-//
+-//  Le `MaterialApp` choisit entre les deux via `themeMode` qui
+-//  est piloté par `ThemeModeRepository`.
++//  app_theme.dart — Identité Motion monochrome
+ // =========================================================
++//  Cinema et l'alias historique Daylight partagent la charte mobile noire.
++//  Les rôles Material sont explicitement monochromes pour empêcher une
++//  couleur dérivée de réapparaître dans les contrôles. Le thème TV conserve
++//  sa palette violette et son constructeur propres.
+
+ import 'package:flutter/material.dart';
+
  import 'app_colors.dart';
  import 'app_text_styles.dart';
  import 'lumiere_tokens.dart';
@@ -3251,18 +3864,168 @@ index a5b33ee1..c99f4ae6 100644
  import 'tv_palette.dart';
 
  abstract final class AppTheme {
-@@ -36,9 +37,7 @@ abstract final class AppTheme {
-           emberDeep: AppColors.accentMuted,
-           emberHalo: AppColors.accentBright,
-         ),
+-  /// Cinema Mode (dark) — identité Maison Noir, défaut.
++  /// Identité mobile fixe : noir absolu, cartes anthracite, actions blanches.
+   static ThemeData get cinema => _buildTheme(
+         brightness: Brightness.dark,
+-        // Les composants Material et les écrans contextuels suivent le même
+-        // choix enregistré que l'accueil. Aucun accent personnel n'est écrasé.
+-        palette: LumiereColors.cinema.copyWith(
+-          accentEmber: AppColors.accent,
+-          emberGlow: AppColors.accentBright,
+-          emberDeep: AppColors.accentMuted,
+-          emberHalo: AppColors.accentBright,
+-        ),
 -        primaryOnAccent: AppColors.accent.computeLuminance() > 0.179
 -            ? AppColors.voidSurface
 -            : AppColors.textPrimary,
++        palette: LumiereColors.cinema,
 +        primaryOnAccent: AppColors.onAccent,
++        monochrome: true,
        );
 
-   /// Daylight Mode (light) — version claire dérivée.
-@@ -185,7 +184,7 @@ abstract final class AppTheme {
+-  /// Daylight Mode (light) — version claire dérivée.
+-  static ThemeData get daylight => _buildTheme(
+-        brightness: Brightness.light,
+-        palette: LumiereColors.daylight,
+-        primaryOnAccent: const Color(0xFFFAF7F1),
+-      );
++  /// Compatibilité : une ancienne demande de mode clair garde la charte noire.
++  static ThemeData get daylight => cinema;
+
+   /// Alias historique — l'ancien code consomme `AppTheme.dark`.
+   static ThemeData get dark => cinema;
+@@ -99,21 +77,62 @@ abstract final class AppTheme {
+     required Brightness brightness,
+     required LumiereColors palette,
+     required Color primaryOnAccent,
++    bool monochrome = false,
+   }) {
+     // ColorScheme.fromSeed est le constructeur sûr — il calcule
+     // tous les containers Material 3 dérivés à partir d'un accent,
+     // pas besoin de spécifier surfaceContainerHighest etc.
+     // manuellement (paramètres qui sont arrivés à différentes
+     // versions du SDK et qui auraient pu casser la compile).
+-    final ColorScheme colorScheme = ColorScheme.fromSeed(
+-      seedColor: palette.accentEmber,
+-      brightness: brightness,
+-      surface: palette.elevated,
+-      primary: palette.accentEmber,
+-      onPrimary: primaryOnAccent,
+-      secondary: palette.emberHalo,
+-      error: palette.statusError,
+-    );
++    // Une couleur de graine blanche peut produire des dérivés bleutés dans
++    // Material 3. La charte mobile fixe donc explicitement chaque rôle ;
++    // la palette TV conserve son constructeur existant.
++    final ColorScheme colorScheme = monochrome
++        ? const ColorScheme.dark(
++            primary: AppColors.accent,
++            onPrimary: AppColors.onAccent,
++            primaryContainer: AppColors.accent,
++            onPrimaryContainer: AppColors.onAccent,
++            secondary: AppColors.accent,
++            onSecondary: AppColors.onAccent,
++            secondaryContainer: AppColors.surface,
++            onSecondaryContainer: AppColors.textPrimary,
++            tertiary: AppColors.accent,
++            onTertiary: AppColors.onAccent,
++            tertiaryContainer: AppColors.surface,
++            onTertiaryContainer: AppColors.textPrimary,
++            surface: AppColors.surface,
++            onSurface: AppColors.textPrimary,
++            onSurfaceVariant: AppColors.textSecondary,
++            surfaceContainerLowest: AppColors.background,
++            surfaceContainerLow: AppColors.surface,
++            surfaceContainer: AppColors.surface,
++            surfaceContainerHigh: AppColors.surface,
++            surfaceContainerHighest: AppColors.surface,
++            surfaceBright: AppColors.surface,
++            surfaceDim: AppColors.background,
++            surfaceTint: Colors.transparent,
++            outline: AppColors.border,
++            outlineVariant: AppColors.border,
++            error: AppColors.textPrimary,
++            onError: AppColors.background,
++            errorContainer: AppColors.surface,
++            onErrorContainer: AppColors.textPrimary,
++            inverseSurface: AppColors.textPrimary,
++            onInverseSurface: AppColors.background,
++            inversePrimary: AppColors.background,
++            shadow: AppColors.background,
++            scrim: AppColors.background,
++          )
++        : ColorScheme.fromSeed(
++            seedColor: palette.accentEmber,
++            brightness: brightness,
++            surface: palette.elevated,
++            primary: palette.accentEmber,
++            onPrimary: primaryOnAccent,
++            secondary: palette.emberHalo,
++            error: palette.statusError,
++          );
+
+     return ThemeData(
+       useMaterial3: true,
+@@ -145,6 +164,9 @@ abstract final class AppTheme {
+         elevation: 0,
+         shape: RoundedRectangleBorder(
+           borderRadius: BorderRadius.circular(16),
++          side: monochrome
++              ? const BorderSide(color: AppColors.border, width: 1)
++              : BorderSide.none,
+         ),
+         margin: EdgeInsets.zero,
+       ),
+@@ -176,6 +198,47 @@ abstract final class AppTheme {
+         size: 22,
+       ),
+
++      // Actions remplies : blanc/noir, sans teinte de surface ni halo.
++      filledButtonTheme: monochrome
++          ? FilledButtonThemeData(
++              style: FilledButton.styleFrom(
++                backgroundColor: AppColors.accent,
++                foregroundColor: AppColors.onAccent,
++                disabledBackgroundColor: AppColors.surface,
++                disabledForegroundColor: AppColors.textSecondary,
++                elevation: 0,
++                textStyle: AppTextStyles.button,
++              ),
++            )
++          : null,
++      elevatedButtonTheme: monochrome
++          ? ElevatedButtonThemeData(
++              style: ElevatedButton.styleFrom(
++                backgroundColor: AppColors.accent,
++                foregroundColor: AppColors.onAccent,
++                disabledBackgroundColor: AppColors.surface,
++                disabledForegroundColor: AppColors.textSecondary,
++                surfaceTintColor: Colors.transparent,
++                shadowColor: Colors.transparent,
++                elevation: 0,
++                textStyle: AppTextStyles.button,
++              ),
++            )
++          : null,
++      dividerTheme: monochrome
++          ? const DividerThemeData(color: AppColors.border, thickness: 1)
++          : null,
++      snackBarTheme: monochrome
++          ? SnackBarThemeData(
++              backgroundColor: AppColors.accent,
++              contentTextStyle:
++                  AppTextStyles.bodyMedium.copyWith(color: AppColors.onAccent),
++              actionTextColor: AppColors.onAccent,
++              closeIconColor: AppColors.onAccent,
++              elevation: 0,
++            )
++          : null,
++
+       // ----- Focus / hover accentEmber — APIs stables -----
+       focusColor: AppColors.accent.withValues(alpha: 0.18),
+       hoverColor: AppColors.accent.withValues(alpha: 0.10),
+@@ -185,7 +248,7 @@ abstract final class AppTheme {
        // ----- Transitions de page : fade sobre -----
        pageTransitionsTheme: const PageTransitionsTheme(
          builders: <TargetPlatform, PageTransitionsBuilder>{
@@ -3272,10 +4035,10 @@ index a5b33ee1..c99f4ae6 100644
        ),
      );
 diff --git a/lib/core/theme/lumiere_tokens.dart b/lib/core/theme/lumiere_tokens.dart
-index d7b1b498..779f52f2 100644
+index d7b1b498..5dfe1341 100644
 --- a/lib/core/theme/lumiere_tokens.dart
 +++ b/lib/core/theme/lumiere_tokens.dart
-@@ -1,14 +1,12 @@
+@@ -1,16 +1,13 @@
  // =========================================================
 -//  lumiere_tokens.dart — Système de design "The Few"
 +//  lumiere_tokens.dart — Système de design Motion
@@ -3284,18 +4047,21 @@ index d7b1b498..779f52f2 100644
 -//  Inspiré du logo — cinéma d'action, mouvement, intensité
 -//  retenue. Pas de Netflix-red criard, pas de néon : le rouge
 -//  est un rouge "ember" / "braise" qui rougeoie sans agresser.
-+//  Identité Motion : noir profond + menthe. Le thème Cinema applique
-+//  ensuite la préférence d'accent du client via AppTheme.cinema.
++//  Identité Motion : noir absolu, cartes #121212, texte blanc et gris.
++//  Les anciennes préférences colorées ne pilotent plus cette palette.
  //
  //  Deux modes :
 -//    - Cinema Mode (dark, défaut) : surfaces charbon presque
 -//      noires (jamais le noir pur), accents ember-red.
+-//    - Daylight Mode (light) : version diurne dérivée, ivoires
+-//      chauds + ember deep pour rester lisible.
 +//    - Cinema Mode (dark, défaut) : surfaces noires neutres,
-+//      cartes anthracite et accents menthe par défaut.
- //    - Daylight Mode (light) : version diurne dérivée, ivoires
- //      chauds + ember deep pour rester lisible.
++//      cartes anthracite et états sélectionnés blancs.
++//    - Daylight : alias conservé pour les appels des anciennes versions.
  //
-@@ -24,7 +22,9 @@
+ //  Source de vérité. Aucune valeur de couleur n'existe ailleurs
+ //  dans l'app.
+@@ -24,7 +21,9 @@
 
  import 'package:flutter/material.dart';
 
@@ -3306,22 +4072,22 @@ index d7b1b498..779f52f2 100644
  /// Le nom de classe reste `LumiereColors` pour conserver une API stable
  /// entre les rebrandings successifs (l'app est encore jeune, l'identité
  /// peut bouger ; les valeurs changent, l'API non).
-@@ -55,12 +55,11 @@ class LumiereColors extends ThemeExtension<LumiereColors> {
+@@ -55,12 +54,10 @@ class LumiereColors extends ThemeExtension<LumiereColors> {
    });
 
    // -------- Surfaces --------
 -  /// Fond principal. Cinema : charbon presque noir avec une pointe
 -  /// de chaleur. Daylight : ivoire chaud.
-+  /// Fond principal. Cinema : noir mat neutre. Daylight : ivoire chaud.
++  /// Fond principal noir absolu.
    final Color canvas;
 
-   /// Surface la plus profonde (splash, vidéo plein écran). Jamais
+-  /// Surface la plus profonde (splash, vidéo plein écran). Jamais
 -  /// le noir pur — on garde une trace de chaleur pour les OLED.
-+  /// le noir absolu — le contour de la surface reste perceptible.
++  /// Surface la plus profonde (splash, vidéo plein écran), noir absolu.
    final Color voidSurface;
 
    /// Surface élevée (cards, panels, sheets).
-@@ -72,20 +71,19 @@ class LumiereColors extends ThemeExtension<LumiereColors> {
+@@ -72,21 +69,17 @@ class LumiereColors extends ThemeExtension<LumiereColors> {
    /// Overlay le plus haut (modals, snackbars, dialogs).
    final Color overcast;
 
@@ -3330,36 +4096,48 @@ index d7b1b498..779f52f2 100644
 -  /// Nommé d'après sa valeur réelle (anciennement `champagne`, un nom
 -  /// hérité d'un rebranding antérieur qui ne reflétait plus la couleur).
 +  // -------- Accent (noms historiques conservés pour compatibilité) --------
-+  /// Accent principal : menthe en Cinema Mode, puis préférence du client
-+  /// lorsque AppTheme construit le thème. L'API reste stable.
++  /// Accent principal blanc. Le nom historique reste stable.
    final Color accentEmber;
 
 -  /// Variante claire — ember glow, états focus / hover / brillance.
-+  /// Variante claire — états focus / hover / brillance.
++  /// Blanc de focus / hover, conservé sous son nom historique.
    final Color emberGlow;
 
 -  /// Variante deep — ember-blood, bordures actives, états sélectionnés
-+  /// Variante profonde — bordures actives, états sélectionnés
-   /// passifs et accent principal du Daylight Mode.
+-  /// passifs et accent principal du Daylight Mode.
++  /// Gris secondaire pour les états discrets.
    final Color emberDeep;
 
 -  /// Halo ember — utilisé pour les glows / ombres rouges sur les CTAs
-+  /// Halo d'accent — utilisé pour les glows / ombres sur les CTAs
-   /// primaires et les éléments focus.
+-  /// primaires et les éléments focus.
++  /// Alias historique de l’accent ; les nouveaux composants n’ajoutent pas de halo.
    final Color emberHalo;
 
-@@ -106,9 +104,7 @@ class LumiereColors extends ThemeExtension<LumiereColors> {
-   /// Ambre / orange — buffering, avertissements doux.
+   // -------- Texte --------
+@@ -100,18 +93,16 @@ class LumiereColors extends ThemeExtension<LumiereColors> {
+   final Color textMuted;
+
+   // -------- Statuts sémantiques --------
+-  /// Vert apaisé (jamais néon).
++  /// Confirmation monochrome.
+   final Color statusSuccess;
+
+-  /// Ambre / orange — buffering, avertissements doux.
++  /// Attente / avertissement monochrome.
    final Color statusWarning;
 
 -  /// Rouge ember (le même tone que l'accent ; volontairement distinct
 -  /// de `accentEmber` par une variation de saturation pour éviter
 -  /// l'ambiguïté visuelle accent/erreur).
-+  /// Rouge d'erreur indépendant de l'accent choisi.
++  /// État d’erreur monochrome, renforcé par une icône et un libellé.
    final Color statusError;
 
-   /// Bleu cendre froid — info neutre.
-@@ -128,47 +124,45 @@ class LumiereColors extends ThemeExtension<LumiereColors> {
+-  /// Bleu cendre froid — info neutre.
++  /// Information monochrome.
+   final Color statusInfo;
+
+   // -------- Dérivés --------
+@@ -128,97 +119,53 @@ class LumiereColors extends ThemeExtension<LumiereColors> {
    final LinearGradient heroScrim;
 
    // ============================================================
@@ -3381,30 +4159,34 @@ index d7b1b498..779f52f2 100644
 -    textSecondary: Color(0xFFB6B0A8),
 -    textTertiary: Color(0xFF9D968F),
 -    textMuted: Color(0xFF4E4A45),
-+    canvas: Color(0xFF090B0D),
-+    voidSurface: Color(0xFF050607),
-+    elevated: Color(0xFF121518),
-+    glass: Color(0xFF1A1E21),
-+    overcast: Color(0xFF252A2E),
-+    accentEmber: kMotionMint,
-+    emberGlow: kMotionMintBright,
-+    emberDeep: kMotionMintMuted,
-+    emberHalo: kMotionMintBright,
-+    textPrimary: Color(0xFFF5F7F6),
-+    textSecondary: Color(0xFFB9C1BF),
-+    textTertiary: Color(0xFF929C99),
-+    textMuted: Color(0xFF69736F),
-     statusSuccess: Color(0xFF5FA975),
-     statusWarning: Color(0xFFD69847),
+-    statusSuccess: Color(0xFF5FA975),
+-    statusWarning: Color(0xFFD69847),
 -    // Erreur = ember-glow (légèrement plus orangé que l'accent pour
 -    // se distinguer en contexte d'alerte critique).
-+    // L'erreur garde son rouge, quelle que soit la couleur de marque.
-     statusError: Color(0xFFE84A3E),
-     statusInfo: Color(0xFF6A8DB0),
+-    statusError: Color(0xFFE84A3E),
+-    statusInfo: Color(0xFF6A8DB0),
 -    border: Color(0x14F0EDE9), // textPrimary @ 8%
 -    scrim: Color(0xCC050507),
-+    border: Color(0x14F5F7F6), // textPrimary @ 8%
-+    scrim: Color(0xCC050607),
++    canvas: Color(0xFF000000),
++    voidSurface: Color(0xFF000000),
++    elevated: Color(0xFF121212),
++    glass: Color(0xFF121212),
++    overcast: Color(0xFF121212),
++    accentEmber: kMotionWhite,
++    emberGlow: kMotionWhite,
++    emberDeep: kMotionGray,
++    emberHalo: kMotionWhite,
++    textPrimary: Color(0xFFFFFFFF),
++    textSecondary: Color(0xFF8E8E93),
++    textTertiary: Color(0xFF8E8E93),
++    textMuted: Color(0xFF8E8E93),
++    statusSuccess: Color(0xFFFFFFFF),
++    statusWarning: Color(0xFF8E8E93),
++    // Les statuts restent lisibles sans introduire de couleur.
++    statusError: Color(0xFFFFFFFF),
++    statusInfo: Color(0xFF8E8E93),
++    border: Color(0xFF242424), // textPrimary @ 8%
++    scrim: Color(0xCC000000),
      canvasGradient: LinearGradient(
        begin: Alignment.topCenter,
        end: Alignment.bottomCenter,
@@ -3412,9 +4194,9 @@ index d7b1b498..779f52f2 100644
 -        Color(0xFF101012),
 -        Color(0xFF0A0A0C),
 -        Color(0xFF050507),
-+        Color(0xFF101315),
-+        Color(0xFF090B0D),
-+        Color(0xFF050607),
++        Color(0xFF000000),
++        Color(0xFF000000),
++        Color(0xFF000000),
        ],
      ),
      heroScrim: LinearGradient(
@@ -3424,12 +4206,75 @@ index d7b1b498..779f52f2 100644
 -        Color(0x00050507),
 -        Color(0x80050507),
 -        Color(0xFF050507),
-+        Color(0x00050607),
-+        Color(0x80050607),
-+        Color(0xFF050607),
++        Color(0x00000000),
++        Color(0x80000000),
++        Color(0xFF000000),
        ],
        stops: <double>[0.0, 0.55, 1.0],
      ),
+   );
+
+-  // ============================================================
+-  //  Daylight Mode — version claire dérivée
+-  // ============================================================
+-  //  Ivoires chauds, ember deep pour passer le contraste AA, texte
+-  //  espresso (jamais noir pur). On évite tout blanc clinique.
+-  static const LumiereColors daylight = LumiereColors(
+-    canvas: Color(0xFFF5F2EC),
+-    voidSurface: Color(0xFFFAF8F3),
+-    elevated: Color(0xFFE9E5DC),
+-    glass: Color(0xFFD9D4C8),
+-    overcast: Color(0xFFCAC4B5),
+-    accentEmber: Color(0xFF9B2421),
+-    emberGlow: Color(0xFFC8302E),
+-    emberDeep: Color(0xFF6E1714),
+-    emberHalo: Color(0xFFC8302E),
+-    textPrimary: Color(0xFF1A0F0E),
+-    textSecondary: Color(0xFF423835),
+-    textTertiary: Color(0xFF6E635E),
+-    textMuted: Color(0xFF9C9388),
+-    statusSuccess: Color(0xFF3E7553),
+-    statusWarning: Color(0xFFA77433),
+-    statusError: Color(0xFFB02E2A),
+-    statusInfo: Color(0xFF466389),
+-    border: Color(0x141A0F0E), // textPrimary @ 8%
+-    scrim: Color(0xCCFAF8F3),
+-    canvasGradient: LinearGradient(
+-      begin: Alignment.topCenter,
+-      end: Alignment.bottomCenter,
+-      colors: <Color>[
+-        Color(0xFFFAF8F3),
+-        Color(0xFFF5F2EC),
+-        Color(0xFFEDE9DF),
+-      ],
+-    ),
+-    heroScrim: LinearGradient(
+-      begin: Alignment.topCenter,
+-      end: Alignment.bottomCenter,
+-      colors: <Color>[
+-        Color(0x00F5F2EC),
+-        Color(0x80F5F2EC),
+-        Color(0xFFF5F2EC),
+-      ],
+-      stops: <double>[0.0, 0.55, 1.0],
+-    ),
+-  );
++  /// Alias historique : tous les écrans mobiles gardent l’identité noire,
++  /// même si un ancien appel demande encore la palette Daylight.
++  static const LumiereColors daylight = cinema;
+
+   /// Helper pratique. Tombe sur Cinema Mode si l'extension n'est pas
+   /// attachée (sécurité).
+@@ -285,8 +232,7 @@ class LumiereColors extends ThemeExtension<LumiereColors> {
+       glass: Color.lerp(glass, other.glass, t)!,
+       overcast: Color.lerp(overcast, other.overcast, t)!,
+       accentEmber: Color.lerp(accentEmber, other.accentEmber, t)!,
+-      emberGlow:
+-          Color.lerp(emberGlow, other.emberGlow, t)!,
++      emberGlow: Color.lerp(emberGlow, other.emberGlow, t)!,
+       emberDeep: Color.lerp(emberDeep, other.emberDeep, t)!,
+       emberHalo: Color.lerp(emberHalo, other.emberHalo, t)!,
+       textPrimary: Color.lerp(textPrimary, other.textPrimary, t)!,
 diff --git a/lib/core/theme/premium_page_transitions.dart b/lib/core/theme/premium_page_transitions.dart
 new file mode 100644
 index 00000000..0b35f55e
@@ -3473,13 +4318,159 @@ index 00000000..0b35f55e
 +        .buildTransitions(route, context, animation, secondaryAnimation, child);
 +  }
 +}
+diff --git a/lib/core/theme/theme_mode_repository.dart b/lib/core/theme/theme_mode_repository.dart
+index 61a829b8..9c2e4648 100644
+--- a/lib/core/theme/theme_mode_repository.dart
++++ b/lib/core/theme/theme_mode_repository.dart
+@@ -1,61 +1,22 @@
+ // =========================================================
+-//  theme_mode_repository.dart — Choix Cinema / Daylight / Système
+-// =========================================================
+-//  Persiste le mode préféré dans SharedPreferences et notifie
+-//  les listeners (MaterialApp) quand il change. Trois modes :
+-//
+-//    - Cinema  (dark Maison Noir, défaut)
+-//    - Daylight (light Maison Noir)
+-//    - System  (suit le réglage OS)
+-//
+-//  Note : par défaut, on force Cinema Mode (pas System) — l'app
+-//  est conçue comme un "club privé caché" et son identité est le
+-//  dark. Si l'utilisateur veut suivre l'OS, il le choisit
+-//  explicitement dans Réglages.
++//  theme_mode_repository.dart — Apparence noire Motion
+ // =========================================================
++//  La charte mobile est noire sur tous les appareils, y compris lorsque
++//  le téléphone ou une ancienne préférence demande le mode clair.
++//  Les anciennes préférences restent stockées ; aucun effacement de données
++//  n'est nécessaire pour appliquer cette nouvelle identité.
+
+ import 'package:flutter/material.dart';
+-import 'package:shared_preferences/shared_preferences.dart';
+
+ class ThemeModeRepository extends ChangeNotifier {
+   ThemeModeRepository._();
+   static final ThemeModeRepository instance = ThemeModeRepository._();
+
+-  static const String _kKey = 'theme.mode.v1';
+-
+-  ThemeMode _mode = ThemeMode.dark; // Cinema par défaut
+-  ThemeMode get mode => _mode;
+-
+-  Future<void> initialize() async {
+-    final SharedPreferences prefs = await SharedPreferences.getInstance();
+-    final String? stored = prefs.getString(_kKey);
+-    switch (stored) {
+-      case 'light':
+-        _mode = ThemeMode.light;
+-      case 'system':
+-        _mode = ThemeMode.system;
+-      case 'dark':
+-      default:
+-        _mode = ThemeMode.dark;
+-    }
+-    notifyListeners();
+-  }
++  ThemeMode get mode => ThemeMode.dark;
+
+-  Future<void> setMode(ThemeMode mode) async {
+-    _mode = mode;
+-    final SharedPreferences prefs = await SharedPreferences.getInstance();
+-    await prefs.setString(_kKey, _serialize(mode));
+-    notifyListeners();
+-  }
++  Future<void> initialize() async {}
+
+-  String _serialize(ThemeMode mode) {
+-    switch (mode) {
+-      case ThemeMode.light:
+-        return 'light';
+-      case ThemeMode.system:
+-        return 'system';
+-      case ThemeMode.dark:
+-        return 'dark';
+-    }
+-  }
++  /// Compatibilité avec les anciens appels. L'édition monochrome n'expose
++  /// plus de commande claire/système qui promettrait un résultat différent.
++  Future<void> setMode(ThemeMode mode) async {}
+ }
+diff --git a/lib/core/widgets/live_badge.dart b/lib/core/widgets/live_badge.dart
+index 74b6dfb8..048a236b 100644
+--- a/lib/core/widgets/live_badge.dart
++++ b/lib/core/widgets/live_badge.dart
+@@ -70,7 +70,7 @@ class _LiveBadgeState extends State<LiveBadge>
+                 width: 6 + (_controller.value * 2), // 6 → 8 px
+                 height: 6 + (_controller.value * 2),
+                 decoration: BoxDecoration(
+-                  color: Colors.white.withValues(
++                  color: AppColors.onAccent.withValues(
+                     alpha: 0.6 + (_controller.value * 0.4), // 0.6 → 1.0
+                   ),
+                   shape: BoxShape.circle,
+@@ -81,7 +81,10 @@ class _LiveBadgeState extends State<LiveBadge>
+           const SizedBox(width: 6),
+           Text(
+             'EN DIRECT',
+-            style: AppTextStyles.labelSmall.copyWith(fontSize: 10),
++            style: AppTextStyles.labelSmall.copyWith(
++              fontSize: 10,
++              color: AppColors.onAccent,
++            ),
+           ),
+         ],
+       ),
+diff --git a/lib/core/widgets/monochrome_artwork.dart b/lib/core/widgets/monochrome_artwork.dart
+new file mode 100644
+index 00000000..a61b147a
+--- /dev/null
++++ b/lib/core/widgets/monochrome_artwork.dart
+@@ -0,0 +1,37 @@
++import 'package:flutter/material.dart';
++
++/// Désature uniquement le visuel fourni par le catalogue. La matrice conserve
++/// sa luminance et son canal alpha : les PNG transparents gardent leur découpe,
++/// sans rectangle blanc ajouté ni substitution par un logo inventé.
++class MonochromeArtwork extends StatelessWidget {
++  const MonochromeArtwork({super.key, required this.child});
++
++  final Widget child;
++
++  @override
++  Widget build(BuildContext context) => ColorFiltered(
++        colorFilter: const ColorFilter.matrix(<double>[
++          0.2126,
++          0.7152,
++          0.0722,
++          0,
++          0,
++          0.2126,
++          0.7152,
++          0.0722,
++          0,
++          0,
++          0.2126,
++          0.7152,
++          0.0722,
++          0,
++          0,
++          0,
++          0,
++          0,
++          1,
++          0,
++        ]),
++        child: child,
++      );
++}
 diff --git a/lib/core/widgets/premium_press.dart b/lib/core/widgets/premium_press.dart
 new file mode 100644
-index 00000000..1cd6a261
+index 00000000..4a4c4c44
 --- /dev/null
 +++ b/lib/core/widgets/premium_press.dart
-@@ -0,0 +1,77 @@
+@@ -0,0 +1,133 @@
 +import 'package:flutter/material.dart';
++
++import '../theme/app_colors.dart';
 +
 +/// Retour tactile discret des commandes mobiles : le contenu s'enfonce de 2 %,
 +/// puis revient sans rebond. La zone de toucher, elle, ne rétrécit jamais.
@@ -3513,13 +4504,37 @@ index 00000000..1cd6a261
 +
 +class _PremiumPressState extends State<PremiumPress> {
 +  bool _pressed = false;
++  bool _focused = false;
++
++  @override
++  void initState() {
++    super.initState();
++    FocusManager.instance.addHighlightModeListener(_focusModeChanged);
++  }
++
++  @override
++  void dispose() {
++    FocusManager.instance.removeHighlightModeListener(_focusModeChanged);
++    super.dispose();
++  }
++
++  void _focusModeChanged(FocusHighlightMode mode) {
++    if (mounted && _focused) setState(() {});
++  }
++
++  void _focusChanged(bool focused) {
++    if (mounted && focused != _focused) setState(() => _focused = focused);
++  }
 +
 +  @override
 +  void didUpdateWidget(PremiumPress oldWidget) {
 +    super.didUpdateWidget(oldWidget);
 +    // InkWell signale aussi la fin de l'appui pendant son build si la commande
 +    // devient indisponible. Réinitialiser ici évite un setState dans ce build.
-+    if (widget.onTap == null && widget.onLongPress == null) _pressed = false;
++    if (widget.onTap == null && widget.onLongPress == null) {
++      _pressed = false;
++      _focused = false;
++    }
 +  }
 +
 +  void _highlightChanged(bool pressed) {
@@ -3530,32 +4545,465 @@ index 00000000..1cd6a261
 +  @override
 +  Widget build(BuildContext context) {
 +    final bool reduceMotion = MediaQuery.disableAnimationsOf(context);
++    final bool showFocus = _focused &&
++        FocusManager.instance.highlightMode == FocusHighlightMode.traditional;
++    final foreground = AppColors.lumiere(context).textPrimary;
 +    return Semantics(
 +      button: true,
 +      enabled: widget.onTap != null || widget.onLongPress != null,
-+      child: InkWell(
-+        onTap: widget.onTap,
-+        onLongPress: widget.onLongPress,
-+        onHighlightChanged: _highlightChanged,
-+        borderRadius: widget.borderRadius,
-+        focusNode: widget.focusNode,
-+        autofocus: widget.autofocus,
-+        excludeFromSemantics: widget.excludeFromSemantics,
-+        child: ConstrainedBox(
-+          constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
-+          child: AnimatedScale(
-+            scale: _pressed && !reduceMotion ? 0.98 : 1,
-+            duration: reduceMotion
-+                ? Duration.zero
-+                : Duration(milliseconds: _pressed ? 110 : 160),
-+            curve: Curves.easeOutCubic,
-+            child: widget.child,
++      child: AnimatedContainer(
++        // Le halo n'existe qu'au focus clavier. Le liseré est peint au premier
++        // plan, donc il ne déplace jamais le contenu ni la cible tactile.
++        duration:
++            reduceMotion ? Duration.zero : const Duration(milliseconds: 160),
++        curve: Curves.easeOutCubic,
++        decoration: BoxDecoration(
++          borderRadius: widget.borderRadius ?? BorderRadius.circular(16),
++          boxShadow: showFocus
++              ? <BoxShadow>[
++                  BoxShadow(
++                      color: foreground.withValues(alpha: 0.14),
++                      blurRadius: 12,
++                      spreadRadius: 1),
++                ]
++              : const <BoxShadow>[],
++        ),
++        foregroundDecoration: BoxDecoration(
++          borderRadius: widget.borderRadius ?? BorderRadius.circular(16),
++          border: Border.all(
++              color: showFocus
++                  ? foreground.withValues(alpha: 0.70)
++                  : Colors.transparent,
++              width: 1.5),
++        ),
++        child: InkWell(
++          onTap: widget.onTap,
++          onLongPress: widget.onLongPress,
++          onHighlightChanged: _highlightChanged,
++          onFocusChange: _focusChanged,
++          borderRadius: widget.borderRadius,
++          focusNode: widget.focusNode,
++          autofocus: widget.autofocus,
++          excludeFromSemantics: widget.excludeFromSemantics,
++          child: ConstrainedBox(
++            constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
++            child: AnimatedScale(
++              scale: _pressed && !reduceMotion ? 0.98 : 1,
++              duration: reduceMotion
++                  ? Duration.zero
++                  : Duration(milliseconds: _pressed ? 110 : 160),
++              curve: Curves.easeOutCubic,
++              child: widget.child,
++            ),
 +          ),
 +        ),
 +      ),
 +    );
 +  }
 +}
+diff --git a/lib/features/about/presentation/about_screen.dart b/lib/features/about/presentation/about_screen.dart
+index 42f96d22..e9d6d219 100644
+--- a/lib/features/about/presentation/about_screen.dart
++++ b/lib/features/about/presentation/about_screen.dart
+@@ -228,6 +228,9 @@ class _AboutScreenState extends State<AboutScreen> {
+           ],
+         ),
+         const SizedBox(height: CinematicSpacing.s),
++        Text(FlavorConfig.current.appTagline,
++            style: AppTextStyles.brandTagline),
++        const SizedBox(height: CinematicSpacing.s),
+         Text(
+           context.l10n.aboutPremiumPlayer,
+           style: AppTextStyles.bodyLarge.copyWith(
+@@ -428,7 +431,7 @@ class _AboutScreenState extends State<AboutScreen> {
+       padding: const EdgeInsets.all(CinematicSpacing.l),
+       decoration: BoxDecoration(
+         color: palette.elevated,
+-        borderRadius: BorderRadius.circular(CinematicSpacing.radiusXL),
++        borderRadius: BorderRadius.circular(CinematicSpacing.radiusL),
+         border: Border.all(color: palette.border),
+       ),
+       child: Column(
+diff --git a/lib/features/cast/presentation/cast_button.dart b/lib/features/cast/presentation/cast_button.dart
+index 0999ea23..9fc5efa3 100644
+--- a/lib/features/cast/presentation/cast_button.dart
++++ b/lib/features/cast/presentation/cast_button.dart
+@@ -51,13 +51,11 @@ class CastButton extends StatelessWidget {
+           return const SizedBox.shrink();
+         }
+
+-        final Color color = hasTarget
+-            ? AppColors.accent
+-            : AppColors.textSecondary;
++        final Color color =
++            hasTarget ? AppColors.accent : AppColors.textSecondary;
+
+-        final IconData icon = hasTarget
+-            ? Icons.cast_connected_rounded
+-            : Icons.cast_rounded;
++        final IconData icon =
++            hasTarget ? Icons.cast_connected_rounded : Icons.cast_rounded;
+
+         Widget child = Icon(icon, color: color, size: 22);
+         if (scanning && !hasTarget) {
+@@ -186,11 +184,10 @@ void showCastFailedToast(BuildContext context, Object error) {
+       behavior: SnackBarBehavior.floating,
+       backgroundColor: AppColors.live,
+       content: Text(
+-        context.l10n.castFailedLocal(
+-            error.toString().replaceFirst('Exception: ', '')),
+-        style: AppTextStyles.bodyMedium,
++        context.l10n
++            .castFailedLocal(error.toString().replaceFirst('Exception: ', '')),
++        style: AppTextStyles.bodyMedium.copyWith(color: AppColors.onAccent),
+       ),
+     ),
+   );
+ }
+-
+diff --git a/lib/features/channels/domain/channel.dart b/lib/features/channels/domain/channel.dart
+index 020c8d64..b06174de 100644
+--- a/lib/features/channels/domain/channel.dart
++++ b/lib/features/channels/domain/channel.dart
+@@ -19,6 +19,7 @@ import 'package:flutter/foundation.dart';
+ import 'package:flutter/material.dart';
+
+ import '../../../core/curation/title_curator.dart';
++import '../../../core/theme/app_colors.dart';
+ import 'channel_genre.dart';
+
+ // Re-export pour que les widgets qui importent `channel.dart`
+@@ -176,8 +177,8 @@ class Channel {
+   /// servant uniquement de "skeleton" si jamais quelqu'un l'appelle.
+   /// Le design Maison Noir n'utilise pas de gradient aléatoire.
+   List<Color> get effectiveGradient => const <Color>[
+-        Color(0xFF16121C), // surface.elevated
+-        Color(0xFF221D2D), // surface.overcast
++        AppColors.surface,
++        AppColors.surfaceOverlay
+       ];
+
+   /// Pas de couleurs de marque arbitraires dans la v2.
+diff --git a/lib/features/channels/presentation/channel_detail_sheet.dart b/lib/features/channels/presentation/channel_detail_sheet.dart
+index 0eaf3dff..6ca92859 100644
+--- a/lib/features/channels/presentation/channel_detail_sheet.dart
++++ b/lib/features/channels/presentation/channel_detail_sheet.dart
+@@ -158,7 +158,8 @@ class ChannelDetailSheet extends StatelessWidget {
+                   // ----- Détails techniques -----
+                   _sectionLabel(context.l10n.detailDetails),
+                   const SizedBox(height: 6),
+-                  _detailRow(context.l10n.detailCategory, channel.prettyCategory),
++                  _detailRow(
++                      context.l10n.detailCategory, channel.prettyCategory),
+                   if (channel.country != null)
+                     _detailRow(
+                       context.l10n.detailCountry,
+@@ -168,7 +169,8 @@ class ChannelDetailSheet extends StatelessWidget {
+                   _detailRow(
+                     context.l10n.detailCatchup,
+                     channel.catchupSupported
+-                        ? context.l10n.detailCatchupAvailable('${channel.catchupDays ?? '?'}')
++                        ? context.l10n.detailCatchupAvailable(
++                            '${channel.catchupDays ?? '?'}')
+                         : context.l10n.detailCatchupUnavailable,
+                   ),
+
+@@ -228,8 +230,7 @@ class ChannelDetailSheet extends StatelessWidget {
+                       style: OutlinedButton.styleFrom(
+                         foregroundColor: AppColors.textPrimary,
+                         side: BorderSide(color: AppColors.border),
+-                        padding:
+-                            const EdgeInsets.symmetric(vertical: 14),
++                        padding: const EdgeInsets.symmetric(vertical: 14),
+                         shape: RoundedRectangleBorder(
+                           borderRadius: BorderRadius.circular(14),
+                         ),
+@@ -355,7 +356,7 @@ class _MetaBadges extends StatelessWidget {
+           _badge(
+             text: context.l10n.badgeLive,
+             color: AppColors.live,
+-            textColor: Colors.white,
++            textColor: AppColors.onAccent,
+           ),
+         _badge(
+           icon: channel.genre.icon,
+@@ -434,8 +435,7 @@ class _FavoriteButton extends StatelessWidget {
+         return OutlinedButton(
+           onPressed: () => FavoritesRepository.instance.toggle(channelId),
+           style: OutlinedButton.styleFrom(
+-            foregroundColor:
+-                isFav ? AppColors.accent : AppColors.textPrimary,
++            foregroundColor: isFav ? AppColors.accent : AppColors.textPrimary,
+             backgroundColor:
+                 isFav ? AppColors.accentSurface : Colors.transparent,
+             side: BorderSide(
+diff --git a/lib/features/channels/presentation/widgets/channel_card.dart b/lib/features/channels/presentation/widgets/channel_card.dart
+index 149ac628..b92ac92c 100644
+--- a/lib/features/channels/presentation/widgets/channel_card.dart
++++ b/lib/features/channels/presentation/widgets/channel_card.dart
+@@ -245,7 +245,7 @@ class _LivePill extends StatelessWidget {
+       child: Text(
+         context.l10n.badgeLive,
+         style: AppTextStyles.labelSmall.copyWith(
+-          color: Colors.white,
++          color: AppColors.onAccent,
+           fontSize: 9,
+           letterSpacing: 0.8,
+         ),
+diff --git a/lib/features/channels/presentation/widgets/channel_logo.dart b/lib/features/channels/presentation/widgets/channel_logo.dart
+index cb41d9f5..8f058823 100644
+--- a/lib/features/channels/presentation/widgets/channel_logo.dart
++++ b/lib/features/channels/presentation/widgets/channel_logo.dart
+@@ -26,6 +26,7 @@ import 'package:flutter/material.dart';
+
+ import '../../../../core/theme/app_colors.dart';
+ import '../../../../core/theme/app_text_styles.dart';
++import '../../../../core/widgets/monochrome_artwork.dart';
+ import '../../domain/channel.dart';
+
+ enum ChannelLogoSize { compact, medium, large }
+@@ -64,28 +65,32 @@ class ChannelLogo extends StatelessWidget {
+         width: _dimension,
+         height: _dimension,
+         child: channel.hasLogo
+-            ? _buildNetworkLogo(radius)
++            ? _buildNetworkLogo(context, radius)
+             : _buildFallback(),
+       ),
+     );
+   }
+
+-  Widget _buildNetworkLogo(BorderRadius radius) {
++  Widget _buildNetworkLogo(BuildContext context, BorderRadius radius) {
+     return Container(
+       color: AppColors.surface,
+       padding: EdgeInsets.all(_dimension * 0.08),
+-      child: CachedNetworkImage(
+-        imageUrl: channel.logoUrl!,
+-        fit: BoxFit.contain,
+-        // Pendant le chargement → fallback discret (pas de spinner
+-        // 20 000 spinners qui tournent en même temps = lag).
+-        placeholder: (BuildContext context, String url) => _buildFallback(),
+-        // Si l'URL 404 / DNS fail / format invalide → fallback.
+-        errorWidget: (BuildContext context, String url, dynamic error) =>
+-            _buildFallback(),
+-        memCacheWidth: (_dimension * 2).toInt(),
+-        memCacheHeight: (_dimension * 2).toInt(),
+-        fadeInDuration: const Duration(milliseconds: 200),
++      child: MonochromeArtwork(
++        child: CachedNetworkImage(
++          imageUrl: channel.logoUrl!,
++          fit: BoxFit.contain,
++          // Pendant le chargement → fallback discret (pas de spinner
++          // 20 000 spinners qui tournent en même temps = lag).
++          placeholder: (BuildContext context, String url) => _buildFallback(),
++          // Si l'URL 404 / DNS fail / format invalide → fallback.
++          errorWidget: (BuildContext context, String url, dynamic error) =>
++              _buildFallback(),
++          memCacheWidth: (_dimension * 2).toInt(),
++          memCacheHeight: (_dimension * 2).toInt(),
++          fadeInDuration: MediaQuery.disableAnimationsOf(context)
++              ? Duration.zero
++              : const Duration(milliseconds: 200),
++        ),
+       ),
+     );
+   }
+diff --git a/lib/features/channels/presentation/widgets/poster_card.dart b/lib/features/channels/presentation/widgets/poster_card.dart
+index 7d0842cb..c85b063e 100644
+--- a/lib/features/channels/presentation/widgets/poster_card.dart
++++ b/lib/features/channels/presentation/widgets/poster_card.dart
+@@ -291,7 +291,7 @@ class _LivePill extends StatelessWidget {
+       child: Text(
+         context.l10n.badgeLive,
+         style: AppTextStyles.labelSmall.copyWith(
+-          color: Colors.white,
++          color: AppColors.onAccent,
+           fontSize: 9,
+           letterSpacing: 0.8,
+         ),
+diff --git a/lib/features/channels/presentation/widgets/premium_channel_card.dart b/lib/features/channels/presentation/widgets/premium_channel_card.dart
+index bc57f034..2ee0b2db 100644
+--- a/lib/features/channels/presentation/widgets/premium_channel_card.dart
++++ b/lib/features/channels/presentation/widgets/premium_channel_card.dart
+@@ -247,7 +247,7 @@ class _LivePill extends StatelessWidget {
+       child: Text(
+         context.l10n.badgeLive,
+         style: AppTextStyles.labelSmall.copyWith(
+-          color: Colors.white,
++          color: AppColors.onAccent,
+           fontSize: 9,
+           letterSpacing: 0.8,
+         ),
+diff --git a/lib/features/channels/presentation/widgets/search_result_card.dart b/lib/features/channels/presentation/widgets/search_result_card.dart
+index 7a2837ef..3fa41973 100644
+--- a/lib/features/channels/presentation/widgets/search_result_card.dart
++++ b/lib/features/channels/presentation/widgets/search_result_card.dart
+@@ -170,14 +170,14 @@ class _LiveBadge extends StatelessWidget {
+             height: 5,
+             decoration: const BoxDecoration(
+               shape: BoxShape.circle,
+-              color: Colors.white,
++              color: AppColors.onAccent,
+             ),
+           ),
+           const SizedBox(width: 4),
+           Text(
+             context.l10n.badgeLive,
+             style: AppTextStyles.labelSmall.copyWith(
+-              color: Colors.white,
++              color: AppColors.onAccent,
+               fontSize: 9,
+               letterSpacing: 0.8,
+             ),
+diff --git a/lib/features/country_home/presentation/widgets/channel_logo.dart b/lib/features/country_home/presentation/widgets/channel_logo.dart
+index a4458051..8db5ebdc 100644
+--- a/lib/features/country_home/presentation/widgets/channel_logo.dart
++++ b/lib/features/country_home/presentation/widgets/channel_logo.dart
+@@ -2,8 +2,8 @@
+ //  channel_logo.dart — Logo de chaîne + fallback initiales
+ // =========================================================
+ //  Affiche `tvg-logo` s'il charge (contain, fond neutre). Sinon (vide
+-//  ou erreur), génère une vignette à initiales avec une couleur
+-//  déterministe (cf. channel_curation). Fallback INSTANTANÉ (pas de
++//  ou erreur), conserve une vignette anthracite à initiales argentées.
++//  L'image du fournisseur est désaturée. Fallback INSTANTANÉ (pas de
+ //  flash, pas de spinner). Aucune dépendance au cast.
+ // =========================================================
+
+@@ -12,6 +12,7 @@ import 'package:flutter/material.dart';
+
+ import '../../../../core/theme/app_colors.dart';
+ import '../../../../core/theme/app_text_styles.dart';
++import '../../../../core/widgets/monochrome_artwork.dart';
+ import '../../../channels/domain/channel.dart';
+ import '../../data/channel_curation.dart';
+
+@@ -30,12 +31,17 @@ class ChannelLogo extends StatelessWidget {
+   @override
+   Widget build(BuildContext context) {
+     final String? url = channel.logoUrl;
+-    final Widget fallback = _fallback();
++    final Widget fallback = _fallback(context);
+     return ClipRRect(
+       borderRadius: BorderRadius.circular(radius),
+-      child: SizedBox(
++      child: Container(
+         width: size,
+         height: size,
++        decoration: BoxDecoration(
++          color: AppColors.lumiere(context).elevated,
++          border: Border.all(color: AppColors.lumiere(context).border),
++          borderRadius: BorderRadius.circular(radius),
++        ),
+         child: (url == null || url.isEmpty)
+             ? fallback
+             // CachedNetworkImage : cache DISQUE en plus du borné mémoire.
+@@ -51,21 +57,24 @@ class ChannelLogo extends StatelessWidget {
+                 // Fade court et doux (revue images V1) : la valeur par
+                 // défaut (500 ms) traînait — 200 ms suffit pour éviter le
+                 // « pop » sans donner une impression de lenteur.
+-                fadeInDuration: const Duration(milliseconds: 200),
++                fadeInDuration: MediaQuery.disableAnimationsOf(context)
++                    ? Duration.zero
++                    : const Duration(milliseconds: 200),
+                 useOldImageOnUrlChange: true,
+                 errorWidget: (_, __, ___) => fallback,
+                 placeholder: (_, __) => fallback,
+-                imageBuilder:
+-                    (BuildContext c, ImageProvider<Object> provider) {
++                imageBuilder: (BuildContext c, ImageProvider<Object> provider) {
+                   // Image prête → on la pose sur un fond neutre.
+                   return Container(
+-                    color: AppColors.maisonSurfaceHigh,
++                    color: AppColors.lumiere(c).elevated,
+                     alignment: Alignment.center,
+                     padding: EdgeInsets.all(size * 0.12),
+-                    child: Image(
+-                        image: provider,
+-                        fit: BoxFit.contain,
+-                        gaplessPlayback: true),
++                    child: MonochromeArtwork(
++                      child: Image(
++                          image: provider,
++                          fit: BoxFit.contain,
++                          gaplessPlayback: true),
++                    ),
+                   );
+                 },
+               ),
+@@ -73,26 +82,21 @@ class ChannelLogo extends StatelessWidget {
+     );
+   }
+
+-  Widget _fallback() {
+-    final Color base = logoFallbackColor(channel.name);
+-    return Container(
+-      width: size,
+-      height: size,
+-      alignment: Alignment.center,
+-      decoration: BoxDecoration(
+-        gradient: LinearGradient(
+-          begin: Alignment.topLeft,
+-          end: Alignment.bottomRight,
+-          colors: <Color>[
+-            base,
+-            Color.lerp(base, Colors.black, 0.5) ?? base,
+-          ],
++  Widget _fallback(BuildContext context) {
++    final colors = AppColors.lumiere(context);
++    return Center(
++      child: Padding(
++        padding: EdgeInsets.all(size * 0.18),
++        child: FittedBox(
++          fit: BoxFit.scaleDown,
++          child: Text(
++            logoInitials(channel.name),
++            style: AppTextStyles.maisonInitials.copyWith(
++              color: colors.textSecondary,
++            ),
++          ),
+         ),
+       ),
+-      child: Text(
+-        logoInitials(channel.name),
+-        style: AppTextStyles.maisonInitials.copyWith(fontSize: size * 0.32),
+-      ),
+     );
+   }
+ }
+diff --git a/lib/features/epg/presentation/channel_programs_screen.dart b/lib/features/epg/presentation/channel_programs_screen.dart
+index d08fdfd9..e65e7325 100644
+--- a/lib/features/epg/presentation/channel_programs_screen.dart
++++ b/lib/features/epg/presentation/channel_programs_screen.dart
+@@ -293,12 +293,12 @@ class _StateBadge extends StatelessWidget {
+     switch (state) {
+       case _ProgramState.live:
+         bg = AppColors.live;
+-        fg = Colors.white;
++        fg = AppColors.onAccent;
+         text = context.l10n.badgeLive;
+         icon = Icons.fiber_manual_record_rounded;
+       case _ProgramState.past:
+         bg = AppColors.accent;
+-        fg = Colors.black;
++        fg = AppColors.onAccent;
+         text = context.l10n.badgeReplay;
+         icon = Icons.replay_rounded;
+       case _ProgramState.future:
+diff --git a/lib/features/player/presentation/stream_debug_screen.dart b/lib/features/player/presentation/stream_debug_screen.dart
+index b6f71555..4e9af62e 100644
+--- a/lib/features/player/presentation/stream_debug_screen.dart
++++ b/lib/features/player/presentation/stream_debug_screen.dart
+@@ -373,7 +373,7 @@ class _StreamDebugScreenState extends State<StreamDebugScreen> {
+                                       height: 1.3,
+                                       color: switch (e.level) {
+                                         'error' => AppColors.live,
+-                                        'warn' => const Color(0xFFFFB74D),
++                                        'warn' => AppColors.warning,
+                                         _ => AppColors.textSecondary,
+                                       },
+                                     ),
 diff --git a/lib/features/player/presentation/video_player_screen.dart b/lib/features/player/presentation/video_player_screen.dart
 index 976e07ca..7eff32a7 100644
 --- a/lib/features/player/presentation/video_player_screen.dart
@@ -3571,6 +5019,37 @@ index 976e07ca..7eff32a7 100644
                    ),
                    icon: const Icon(Icons.refresh_rounded),
                    label: Text(context.l10n.buttonRetry),
+diff --git a/lib/features/player/presentation/widgets/player_settings_sheet.dart b/lib/features/player/presentation/widgets/player_settings_sheet.dart
+index 35b53183..4cf4a462 100644
+--- a/lib/features/player/presentation/widgets/player_settings_sheet.dart
++++ b/lib/features/player/presentation/widgets/player_settings_sheet.dart
+@@ -285,7 +285,7 @@ class _PlayerSettingsSheetState extends State<PlayerSettingsSheet> {
+           selectedColor: AppColors.accentPink,
+           backgroundColor: AppColors.surface,
+           labelStyle: AppTextStyles.bodyMedium.copyWith(
+-            color: selected ? Colors.white : AppColors.textSecondary,
++            color: selected ? AppColors.onAccent : AppColors.textSecondary,
+             fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+           ),
+           side: BorderSide(
+@@ -311,7 +311,7 @@ class _PlayerSettingsSheetState extends State<PlayerSettingsSheet> {
+       selectedColor: AppColors.accentCyan,
+       backgroundColor: AppColors.surface,
+       labelStyle: AppTextStyles.bodyMedium.copyWith(
+-        color: selected ? Colors.black : AppColors.textSecondary,
++        color: selected ? AppColors.onAccent : AppColors.textSecondary,
+         fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+       ),
+       side: BorderSide(
+@@ -398,7 +398,7 @@ class _PlayerSettingsSheetState extends State<PlayerSettingsSheet> {
+       selectedColor: AppColors.accentPink,
+       backgroundColor: AppColors.surface,
+       labelStyle: AppTextStyles.bodyMedium.copyWith(
+-        color: selected ? Colors.white : AppColors.textSecondary,
++        color: selected ? AppColors.onAccent : AppColors.textSecondary,
+         fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+       ),
+       side: BorderSide(
 diff --git a/lib/features/playlists/presentation/playlists_screen.dart b/lib/features/playlists/presentation/playlists_screen.dart
 index 1723fcd8..9720b7a3 100644
 --- a/lib/features/playlists/presentation/playlists_screen.dart
@@ -3587,9 +5066,18 @@ index 1723fcd8..9720b7a3 100644
                      const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
                  shape: RoundedRectangleBorder(
 diff --git a/lib/features/profile/presentation/profile_screen.dart b/lib/features/profile/presentation/profile_screen.dart
-index 0ae7442f..37129893 100644
+index 0ae7442f..af6b74b1 100644
 --- a/lib/features/profile/presentation/profile_screen.dart
 +++ b/lib/features/profile/presentation/profile_screen.dart
+@@ -4,7 +4,7 @@
+ //  Le profil rassemble les outils utiles dans deux groupes lisibles.
+ //  La marque reste discrète : priorité aux réglages et à l'identifiant
+ //  de l'appareil. La palette contextuelle conserve la même hiérarchie
+-//  en mode clair, sombre et avec une couleur d'accent personnalisée.
++//  avec la charte monochrome et le texte agrandi.
+
+ import 'package:flutter/material.dart';
+ import 'package:flutter/services.dart';
 @@ -15,6 +15,7 @@ import '../../../core/i18n/l10n_extension.dart';
  import '../../../core/theme/app_colors.dart';
  import '../../../core/theme/app_text_styles.dart';
@@ -3598,22 +5086,19 @@ index 0ae7442f..37129893 100644
  import '../../about/presentation/about_screen.dart';
  import '../../cast/data/cast_manager.dart';
  import '../../cast/domain/cast_device.dart';
-@@ -177,6 +178,14 @@ class _Header extends StatelessWidget {
+@@ -177,6 +178,11 @@ class _Header extends StatelessWidget {
              ),
            ],
          ),
 +        const SizedBox(height: CinematicSpacing.s),
 +        Text(
 +          FlavorConfig.current.appTagline,
-+          style: AppTextStyles.labelSmall.copyWith(
-+            color: palette.textSecondary,
-+            letterSpacing: 1.4,
-+          ),
++          style: AppTextStyles.brandTagline,
 +        ),
          const SizedBox(height: CinematicSpacing.l),
          Semantics(
            header: true,
-@@ -187,6 +196,12 @@ class _Header extends StatelessWidget {
+@@ -187,6 +193,12 @@ class _Header extends StatelessWidget {
              ),
            ),
          ),
@@ -3626,7 +5111,37 @@ index 0ae7442f..37129893 100644
        ],
      );
    }
-@@ -350,7 +365,7 @@ class _MenuTile extends StatelessWidget {
+@@ -213,18 +225,8 @@ class _AccountCard extends StatelessWidget {
+     return Container(
+       padding: const EdgeInsets.all(CinematicSpacing.l),
+       decoration: BoxDecoration(
+-        gradient: LinearGradient(
+-          begin: Alignment.topLeft,
+-          end: Alignment.bottomRight,
+-          colors: <Color>[
+-            Color.alphaBlend(
+-              AppColors.accent.withValues(alpha: 0.08),
+-              palette.elevated,
+-            ),
+-            palette.elevated,
+-          ],
+-        ),
+-        borderRadius: BorderRadius.circular(CinematicSpacing.radiusXL),
++        color: palette.elevated,
++        borderRadius: BorderRadius.circular(CinematicSpacing.radiusL),
+         border: Border.all(color: palette.border),
+       ),
+       child: Column(
+@@ -309,7 +311,7 @@ class _MenuGroup extends StatelessWidget {
+     return Material(
+       color: palette.elevated,
+       shape: RoundedRectangleBorder(
+-        borderRadius: BorderRadius.circular(CinematicSpacing.radiusXL),
++        borderRadius: BorderRadius.circular(CinematicSpacing.radiusL),
+         side: BorderSide(color: palette.border),
+       ),
+       clipBehavior: Clip.antiAlias,
+@@ -350,7 +352,7 @@ class _MenuTile extends StatelessWidget {
    @override
    Widget build(BuildContext context) {
      final palette = AppColors.lumiere(context);
@@ -3636,34 +5151,357 @@ index 0ae7442f..37129893 100644
        child: Padding(
          padding: const EdgeInsets.all(CinematicSpacing.m),
 diff --git a/lib/features/profile/presentation/widgets/theme_picker_sheet.dart b/lib/features/profile/presentation/widgets/theme_picker_sheet.dart
-index 0a64c9ba..0bb4df69 100644
+index 0a64c9ba..7ae18fe4 100644
 --- a/lib/features/profile/presentation/widgets/theme_picker_sheet.dart
 +++ b/lib/features/profile/presentation/widgets/theme_picker_sheet.dart
-@@ -25,6 +25,8 @@ import '../../../../core/theme/app_text_styles.dart';
- /// plutôt que de planter ou de montrer un id technique).
- String _accentLabel(BuildContext context, AccentTheme theme) {
-   switch (theme.id) {
-+    case 'motion':
-+      return 'Motion'; // Nom de marque identique dans toutes les langues.
-     case 'champagne':
-       return context.l10n.accentChampagne;
-     case 'ember':
-@@ -202,9 +204,11 @@ class _Swatch extends StatelessWidget {
-                 ],
-               ),
-               child: selected
+@@ -1,297 +1,78 @@
+ // =========================================================
+-//  theme_picker_sheet.dart — Sélecteur de couleur d'accent
+-// =========================================================
+-//  Bottom sheet ouvert depuis le bouton « Thème » (Profil). Affiche
+-//  une grille de pastilles de couleur ; un tap applique le thème
+-//  INSTANTANÉMENT (AccentController notifie → la racine se reconstruit
+-//  → toute l'app se recolore). La feuille reste ouverte pour que le
+-//  client puisse essayer plusieurs couleurs et voir le résultat en
+-//  direct ; il ferme quand il a choisi.
++//  theme_picker_sheet.dart — Présentation de l'identité Motion
+ // =========================================================
++//  La charte est monochrome et fixe. Cette feuille montre l'apparence active
++//  sans proposer d'anciennes couleurs qui n'auraient plus aucun effet.
+
+ import 'package:flutter/material.dart';
+
+ import '../../../../core/i18n/l10n_extension.dart';
+-import '../../../../core/theme/accent_controller.dart';
+ import '../../../../core/theme/app_colors.dart';
+ import '../../../../core/theme/app_text_styles.dart';
+
+-/// Libellé localisé d'un thème d'accent.
+-///
+-/// Les thèmes du catalogue (accent_controller.dart) portent un `id`
+-/// stable + un `label` français : on mappe ici l'`id` vers la clé de
+-/// traduction `accentX`, et `label` sert de REPLI documenté si un
+-/// nouvel id n'a pas encore sa clé (l'app affiche alors le français
+-/// plutôt que de planter ou de montrer un id technique).
+-String _accentLabel(BuildContext context, AccentTheme theme) {
+-  switch (theme.id) {
+-    case 'champagne':
+-      return context.l10n.accentChampagne;
+-    case 'ember':
+-      return context.l10n.accentEmber;
+-    case 'ocean':
+-      return context.l10n.accentOcean;
+-    case 'emerald':
+-      return context.l10n.accentEmerald;
+-    case 'violet':
+-      return context.l10n.accentViolet;
+-    case 'gold':
+-      return context.l10n.accentGold;
+-    case 'turquoise':
+-      return context.l10n.accentTurquoise;
+-    case 'rose':
+-      return context.l10n.accentRose;
+-    case 'coral':
+-      return context.l10n.accentCoral;
+-    case 'indigo':
+-      return context.l10n.accentIndigo;
+-    case 'lime':
+-      return context.l10n.accentLime;
+-    case 'remote':
+-      return context.l10n.accentCustom;
+-    default:
+-      return theme.label; // repli : libellé français du catalogue
+-  }
+-}
+-
+-/// Ouvre le sélecteur de thème.
+ Future<void> showThemePicker(BuildContext context) {
+   return showModalBottomSheet<void>(
+     context: context,
+-    backgroundColor: Colors.transparent,
+-    isScrollControlled: true,
+-    builder: (_) => const _ThemePickerSheet(),
++    backgroundColor: AppColors.background,
++    showDragHandle: true,
++    builder: (_) => const _ThemeIdentitySheet(),
+   );
+ }
+
+-class _ThemePickerSheet extends StatefulWidget {
+-  const _ThemePickerSheet();
+-
+-  @override
+-  State<_ThemePickerSheet> createState() => _ThemePickerSheetState();
+-}
+-
+-class _ThemePickerSheetState extends State<_ThemePickerSheet> {
+-  @override
+-  Widget build(BuildContext context) {
+-    final String currentId = AccentController.instance.current.id;
+-    // La palette premium compte 100+ teintes : on borne la feuille à ~82 %
+-    // de l'écran et on rend la GRILLE défilante (titre + sous-titre fixes).
+-    final double maxH = MediaQuery.of(context).size.height * 0.82;
+-    return Container(
+-      decoration: const BoxDecoration(
+-        color: AppColors.background,
+-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+-      ),
+-      padding: const EdgeInsets.fromLTRB(20, 14, 20, 12),
+-      child: SafeArea(
+-        top: false,
+-        child: ConstrainedBox(
+-          constraints: BoxConstraints(maxHeight: maxH),
+-          child: Column(
+-            mainAxisSize: MainAxisSize.min,
+-            children: <Widget>[
+-              // Poignée
+-              Container(
+-                width: 40,
+-                height: 4,
+-                decoration: BoxDecoration(
+-                  color: AppColors.border,
+-                  borderRadius: BorderRadius.circular(2),
+-                ),
+-              ),
+-              const SizedBox(height: 18),
+-              Text(
+-                context.l10n.themeChooseTitle,
+-                style: AppTextStyles.headlineMedium.copyWith(fontSize: 18),
+-              ),
+-              const SizedBox(height: 4),
+-              Text(
+-                context.l10n.themeChooseSub,
+-                textAlign: TextAlign.center,
+-                style: AppTextStyles.bodyMedium.copyWith(
+-                  fontSize: 12,
+-                  color: AppColors.textTertiary,
+-                ),
+-              ),
+-              const SizedBox(height: 16),
+-              // Mode IMMERSIF — une couleur premium différente chaque jour.
+-              _ImmersiveTile(
+-                active: AccentController.instance.isDaily,
+-                onTap: () async {
+-                  await AccentController.instance.enableDaily();
+-                  if (mounted) setState(() {});
+-                },
+-              ),
+-              const SizedBox(height: 16),
+-              // Grille de pastilles — DÉFILANTE (catalogue premium 100+).
+-              Flexible(
+-                child: SingleChildScrollView(
+-                  padding: const EdgeInsets.only(bottom: 16),
+-                  child: Wrap(
+-                    spacing: 16,
+-                    runSpacing: 16,
+-                    alignment: WrapAlignment.center,
+-                    children: <Widget>[
+-                      for (final AccentTheme t in kAccentThemes)
+-                        _Swatch(
+-                          theme: t,
+-                          selected: t.id == currentId,
+-                          onTap: () async {
+-                            await AccentController.instance.select(t);
+-                            // setState local pour rafraîchir l'anneau de
+-                            // sélection dans la feuille elle-même.
+-                            if (mounted) setState(() {});
+-                          },
+-                        ),
+-                    ],
+-                  ),
+-                ),
+-              ),
+-            ],
+-          ),
+-        ),
+-      ),
+-    );
+-  }
+-}
+-
+-/// Une pastille colorée + libellé. Anneau ivoire quand sélectionnée.
+-class _Swatch extends StatelessWidget {
+-  const _Swatch({
+-    required this.theme,
+-    required this.selected,
+-    required this.onTap,
+-  });
+-
+-  final AccentTheme theme;
+-  final bool selected;
+-  final VoidCallback onTap;
++class _ThemeIdentitySheet extends StatelessWidget {
++  const _ThemeIdentitySheet();
+
+   @override
+   Widget build(BuildContext context) {
+-    return GestureDetector(
+-      onTap: onTap,
+-      child: SizedBox(
+-        width: 72,
++    return SafeArea(
++      top: false,
++      child: Padding(
++        padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+         child: Column(
+           mainAxisSize: MainAxisSize.min,
++          crossAxisAlignment: CrossAxisAlignment.start,
+           children: <Widget>[
+-            Container(
+-              width: 56,
+-              height: 56,
+-              decoration: BoxDecoration(
+-                gradient: LinearGradient(
+-                  begin: Alignment.topLeft,
+-                  end: Alignment.bottomRight,
+-                  colors: <Color>[theme.bright, theme.accent, theme.muted],
++            Row(
++              children: <Widget>[
++                Expanded(
++                  child: Text(context.l10n.themeChooseTitle,
++                      style: AppTextStyles.headlineMedium),
+                 ),
+-                shape: BoxShape.circle,
+-                border: Border.all(
+-                  color: selected
+-                      ? AppColors.textPrimary
+-                      : Colors.transparent,
+-                  width: 3,
++                IconButton(
++                  tooltip: MaterialLocalizations.of(context).closeButtonTooltip,
++                  icon: const Icon(Icons.close_rounded),
++                  onPressed: () => Navigator.of(context).pop(),
+                 ),
+-                boxShadow: <BoxShadow>[
+-                  BoxShadow(
+-                    color: theme.accent.withValues(alpha: 0.45),
+-                    blurRadius: 12,
+-                    offset: const Offset(0, 3),
+-                  ),
+-                ],
+-              ),
+-              child: selected
 -                  ? const Icon(
-+                  ? Icon(
-                       Icons.check_rounded,
+-                      Icons.check_rounded,
 -                      color: AppColors.textPrimary,
-+                      color: theme.accent.computeLuminance() > 0.179
-+                          ? AppColors.background
-+                          : AppColors.textPrimary,
-                       size: 26,
-                     )
-                   : null,
+-                      size: 26,
+-                    )
+-                  : null,
+-            ),
+-            const SizedBox(height: 6),
+-            Text(
+-              _accentLabel(context, theme),
+-              maxLines: 1,
+-              overflow: TextOverflow.ellipsis,
+-              textAlign: TextAlign.center,
+-              style: AppTextStyles.labelSmall.copyWith(
+-                fontSize: 10,
+-                color: selected
+-                    ? AppColors.textPrimary
+-                    : AppColors.textTertiary,
+-                fontWeight: selected ? FontWeight.w800 : FontWeight.w500,
+-              ),
++              ],
+             ),
+-          ],
+-        ),
+-      ),
+-    );
+-  }
+-}
+-
+-/// Tuile « Thème immersif » : une couleur premium qui change chaque heure,
+-/// avec une nuance différente à chaque ouverture (rotation automatique sur les
+-/// 100+ teintes). Liseré d'accent quand actif.
+-class _ImmersiveTile extends StatelessWidget {
+-  const _ImmersiveTile({required this.active, required this.onTap});
+-
+-  final bool active;
+-  final VoidCallback onTap;
+-
+-  @override
+-  Widget build(BuildContext context) {
+-    return GestureDetector(
+-      onTap: onTap,
+-      child: Container(
+-        width: double.infinity,
+-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+-        decoration: BoxDecoration(
+-          color: active
+-              ? AppColors.accent.withValues(alpha: 0.14)
+-              : AppColors.surface,
+-          borderRadius: BorderRadius.circular(14),
+-          border: Border.all(
+-            color: active
+-                ? AppColors.accent.withValues(alpha: 0.7)
+-                : AppColors.border,
+-            width: active ? 1.4 : 1,
+-          ),
+-        ),
+-        child: Row(
+-          children: <Widget>[
+-            Icon(Icons.auto_awesome_rounded, color: AppColors.accent, size: 22),
+-            const SizedBox(width: 12),
+-            Expanded(
+-              child: Column(
+-                crossAxisAlignment: CrossAxisAlignment.start,
+-                children: <Widget>[
+-                  Text(
+-                    context.l10n.themeImmersiveTitle,
+-                    style: AppTextStyles.bodyLarge.copyWith(
+-                      fontSize: 14,
+-                      fontWeight: FontWeight.w800,
+-                    ),
+-                  ),
+-                  const SizedBox(height: 2),
+-                  Text(
+-                    context.l10n.themeImmersiveSubtitle,
+-                    style: AppTextStyles.bodyMedium.copyWith(
+-                      fontSize: 11,
+-                      color: AppColors.textTertiary,
++            const SizedBox(height: 8),
++            Text(context.l10n.themeChooseSub, style: AppTextStyles.bodyMedium),
++            const SizedBox(height: 24),
++            Semantics(
++              selected: true,
++              label: 'Motion',
++              child: Container(
++                width: double.infinity,
++                padding: const EdgeInsets.all(20),
++                decoration: BoxDecoration(
++                  color: AppColors.surface,
++                  border: Border.all(color: AppColors.border, width: 1),
++                  borderRadius: BorderRadius.circular(16),
++                ),
++                child: Row(
++                  children: <Widget>[
++                    const Icon(Icons.contrast_rounded,
++                        color: AppColors.textPrimary),
++                    const SizedBox(width: 16),
++                    Expanded(
++                      child: Text('Motion', style: AppTextStyles.bodyLarge),
+                     ),
+-                  ),
+-                ],
++                    const Icon(Icons.check_circle_rounded,
++                        color: AppColors.textPrimary),
++                  ],
++                ),
+               ),
+             ),
+-            const SizedBox(width: 10),
+-            Icon(
+-              active
+-                  ? Icons.check_circle_rounded
+-                  : Icons.circle_outlined,
+-              color: active ? AppColors.accent : AppColors.textTertiary,
+-              size: 24,
+-            ),
+           ],
+         ),
+       ),
 diff --git a/lib/features/radio/presentation/radio_entry.dart b/lib/features/radio/presentation/radio_entry.dart
-index aef6b2e8..9b7646b9 100644
+index aef6b2e8..3ab6a33c 100644
 --- a/lib/features/radio/presentation/radio_entry.dart
 +++ b/lib/features/radio/presentation/radio_entry.dart
 @@ -4,6 +4,7 @@ import '../../../core/app/repair_flags.dart';
@@ -3674,9 +5512,12 @@ index aef6b2e8..9b7646b9 100644
  import 'radio_screen.dart';
 
  // Accessible même sans playlist : la radio utilise un catalogue public distinct.
-@@ -23,31 +24,35 @@ class RadioEntry extends StatelessWidget {
+@@ -21,33 +22,37 @@ class RadioEntry extends StatelessWidget {
+       child: Material(
+         color: colors.elevated,
          shape: RoundedRectangleBorder(
-             borderRadius: BorderRadius.circular(22),
+-            borderRadius: BorderRadius.circular(22),
++            borderRadius: BorderRadius.circular(16),
              side: BorderSide(color: colors.border)),
 -        child: ListTile(
 -          contentPadding:
@@ -3701,7 +5542,7 @@ index aef6b2e8..9b7646b9 100644
 -          trailing:
 -              Icon(Icons.arrow_forward_rounded, color: colors.textSecondary),
 +        child: PremiumPress(
-+          borderRadius: BorderRadius.circular(22),
++          borderRadius: BorderRadius.circular(16),
            onTap: () => Navigator.of(context).push<void>(MaterialPageRoute<void>(
              builder: (_) => const RadioScreen(),
            )),
@@ -3714,10 +5555,10 @@ index aef6b2e8..9b7646b9 100644
 +                    width: 48,
 +                    height: 48,
 +                    decoration: BoxDecoration(
-+                        color: colors.accentEmber.withValues(alpha: 0.12),
++                        color: colors.canvas,
 +                        borderRadius: BorderRadius.circular(14)),
 +                    child:
-+                        Icon(Icons.radio_rounded, color: colors.textPrimary)),
++                        Icon(Icons.radio_rounded, color: colors.textSecondary)),
 +            title: Text(context.l10n.radioTitle,
 +                style: AppTextStyles.bodyLarge.copyWith(
 +                    color: colors.textPrimary, fontWeight: FontWeight.w600)),
@@ -3733,7 +5574,7 @@ index aef6b2e8..9b7646b9 100644
        ),
      );
 diff --git a/lib/features/radio/presentation/radio_screen.dart b/lib/features/radio/presentation/radio_screen.dart
-index 9fb683d0..fa527316 100644
+index 9fb683d0..822924ae 100644
 --- a/lib/features/radio/presentation/radio_screen.dart
 +++ b/lib/features/radio/presentation/radio_screen.dart
 @@ -9,6 +9,7 @@ import '../../../core/observability/structured_logger.dart';
@@ -3744,15 +5585,396 @@ index 9fb683d0..fa527316 100644
  import '../data/radio_browser_client.dart';
  import '../data/radio_catalog_controller.dart';
  import '../data/radio_favorites_store.dart';
-@@ -762,7 +763,7 @@ class _RadioScreenState extends State<RadioScreen> {
-               ? colors.accentEmber.withValues(alpha: 0.10)
-               : colors.elevated,
-           borderRadius: BorderRadius.circular(20),
+@@ -463,33 +464,35 @@ class _RadioScreenState extends State<RadioScreen> {
+                         contentPadding: const EdgeInsets.symmetric(
+                             horizontal: 16, vertical: 18),
+                         border: OutlineInputBorder(
+-                            borderRadius: BorderRadius.circular(18),
++                            borderRadius: BorderRadius.circular(16),
+                             borderSide: BorderSide(color: colors.border)),
+                       ),
+                     ),
+                     const SizedBox(height: 12),
+                     Wrap(spacing: 8, runSpacing: 4, children: <Widget>[
+-                      ActionChip(
+-                          label: Text(query.countryCode.isEmpty
++                      _filterChip(
++                          label: query.countryCode.isEmpty
+                               ? l.radioWorld
+-                              : (_countryName ?? query.countryCode)),
+-                          avatar: const Icon(Icons.public_rounded, size: 18),
++                              : (_countryName ?? query.countryCode),
++                          icon: Icons.public_rounded,
++                          active: query.countryCode.isNotEmpty,
+                           onPressed: _choosing
+                               ? null
+                               : () => unawaited(_choose('country'))),
+-                      ActionChip(
+-                          label: Text(query.language.isEmpty
++                      _filterChip(
++                          label: query.language.isEmpty
+                               ? l.radioLanguage
+-                              : query.language),
+-                          avatar: const Icon(Icons.translate_rounded, size: 18),
++                              : query.language,
++                          icon: Icons.translate_rounded,
++                          active: query.language.isNotEmpty,
+                           onPressed: _choosing
+                               ? null
+                               : () => unawaited(_choose('language'))),
+-                      ActionChip(
+-                          label: Text(
+-                              query.genre.isEmpty ? l.radioGenre : query.genre),
+-                          avatar:
+-                              const Icon(Icons.music_note_rounded, size: 18),
++                      _filterChip(
++                          label:
++                              query.genre.isEmpty ? l.radioGenre : query.genre,
++                          icon: Icons.music_note_rounded,
++                          active: query.genre.isNotEmpty,
+                           onPressed: _choosing
+                               ? null
+                               : () => unawaited(_choose('genre'))),
+@@ -497,9 +500,10 @@ class _RadioScreenState extends State<RadioScreen> {
+                           query.language.isNotEmpty ||
+                           query.genre.isNotEmpty ||
+                           query.name.isNotEmpty)
+-                        ActionChip(
+-                            label: Text(l.radioResetFilters),
+-                            avatar: const Icon(Icons.close_rounded, size: 18),
++                        _filterChip(
++                            label: l.radioResetFilters,
++                            icon: Icons.close_rounded,
++                            active: false,
+                             onPressed: _resetFilters),
+                     ]),
+                     if (_choosing) const LinearProgressIndicator(),
+@@ -540,10 +544,42 @@ class _RadioScreenState extends State<RadioScreen> {
+                             },
+                             itemBuilder: (_) => RadioSort.values
+                                 .map((RadioSort sort) =>
+-                                    CheckedPopupMenuItem<RadioSort>(
++                                    PopupMenuItem<RadioSort>(
+                                         value: sort,
+-                                        checked: query.sort == sort,
+-                                        child: Text(_sortLabel(sort))))
++                                        child: Semantics(
++                                          selected: query.sort == sort,
++                                          child: Container(
++                                            padding: const EdgeInsets.all(12),
++                                            decoration: BoxDecoration(
++                                              color: query.sort == sort
++                                                  ? colors.textPrimary
++                                                  : colors.elevated,
++                                              borderRadius:
++                                                  BorderRadius.circular(16),
++                                            ),
++                                            child: Row(children: <Widget>[
++                                              Icon(
++                                                  query.sort == sort
++                                                      ? Icons.check_rounded
++                                                      : Icons.sort_rounded,
++                                                  color: query.sort == sort
++                                                      ? colors.canvas
++                                                      : colors.textSecondary),
++                                              const SizedBox(width: 12),
++                                              Flexible(
++                                                  child: Text(_sortLabel(sort),
++                                                      style: AppTextStyles
++                                                          .bodyMedium
++                                                          .copyWith(
++                                                              color: query.sort ==
++                                                                      sort
++                                                                  ? colors
++                                                                      .canvas
++                                                                  : colors
++                                                                      .textSecondary))),
++                                            ]),
++                                          ),
++                                        )))
+                                 .toList(),
+                             child: Padding(
+                                 padding:
+@@ -634,19 +670,42 @@ class _RadioScreenState extends State<RadioScreen> {
+     );
+   }
+
++  Widget _filterChip({
++    required String label,
++    required IconData icon,
++    required bool active,
++    required VoidCallback? onPressed,
++  }) {
++    final colors = AppColors.lumiere(context);
++    final foreground = active ? colors.canvas : colors.textSecondary;
++    return ActionChip(
++      label: Text(label),
++      labelStyle: AppTextStyles.bodyMedium.copyWith(color: foreground),
++      avatar: Icon(icon, size: 18, color: foreground),
++      backgroundColor: active ? colors.textPrimary : colors.elevated,
++      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
++      side: BorderSide(color: active ? colors.textPrimary : colors.border),
++      onPressed: onPressed,
++    );
++  }
++
+   Widget _collectionChip(
+       _RadioCollection collection, String label, IconData icon) {
+     final colors = AppColors.lumiere(context);
++    final bool selected = _collection == collection;
++    final foreground = selected ? colors.canvas : colors.textSecondary;
+     return ChoiceChip(
+       label: Text(label),
+-      avatar: Icon(icon, size: 18),
++      avatar: Icon(icon, size: 18, color: foreground),
+       labelStyle: AppTextStyles.bodyMedium.copyWith(
+-          color: colors.textPrimary,
+-          fontWeight:
+-              _collection == collection ? FontWeight.w600 : FontWeight.w400),
+-      selected: _collection == collection,
++          color: foreground,
++          fontWeight: selected ? FontWeight.w600 : FontWeight.w400),
++      selected: selected,
+       showCheckmark: true,
+-      selectedColor: colors.accentEmber.withValues(alpha: 0.16),
++      checkmarkColor: colors.canvas,
++      selectedColor: colors.textPrimary,
++      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
++      side: BorderSide(color: selected ? colors.textPrimary : colors.border),
+       backgroundColor: colors.elevated,
+       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+       onSelected: (_) => _selectCollection(collection),
+@@ -699,7 +758,7 @@ class _RadioScreenState extends State<RadioScreen> {
+     return DecoratedBox(
+       decoration: BoxDecoration(
+           color: colors.elevated,
+-          borderRadius: BorderRadius.circular(22),
++          borderRadius: BorderRadius.circular(16),
+           border: Border.all(color: colors.border)),
+       child: Padding(
+           padding: const EdgeInsets.fromLTRB(16, 16, 16, 10),
+@@ -729,13 +788,27 @@ class _RadioScreenState extends State<RadioScreen> {
+                                       country.key, country.value),
+                                   avatar: Text(country.key,
+                                       style: AppTextStyles.bodySmall.copyWith(
+-                                          color: colors.textPrimary,
++                                          color: _catalog.query.countryCode ==
++                                                  country.key
++                                              ? colors.canvas
++                                              : colors.textSecondary,
+                                           fontWeight: FontWeight.w600)),
+                                   showCheckmark: true,
+-                                  labelStyle: AppTextStyles.bodyMedium
+-                                      .copyWith(color: colors.textPrimary),
+-                                  selectedColor: colors.accentEmber
+-                                      .withValues(alpha: 0.16),
++                                  checkmarkColor: colors.canvas,
++                                  labelStyle: AppTextStyles.bodyMedium.copyWith(
++                                      color: _catalog.query.countryCode ==
++                                              country.key
++                                          ? colors.canvas
++                                          : colors.textSecondary),
++                                  selectedColor: colors.textPrimary,
++                                  backgroundColor: colors.elevated,
++                                  shape: RoundedRectangleBorder(
++                                      borderRadius: BorderRadius.circular(16)),
++                                  side: BorderSide(
++                                      color: _catalog.query.countryCode ==
++                                              country.key
++                                          ? colors.textPrimary
++                                          : colors.border),
+                                   padding: const EdgeInsets.symmetric(
+                                       horizontal: 6, vertical: 8),
+                                 )))
+@@ -749,6 +822,8 @@ class _RadioScreenState extends State<RadioScreen> {
+     final colors = AppColors.lumiere(context);
+     final bool favorite = _favoriteIds.contains(station.id);
+     final bool active = _current?.id == station.id;
++    final foreground = active ? colors.canvas : colors.textPrimary;
++    final secondary = active ? colors.canvas : colors.textSecondary;
+     final String metadata = <String>[
+       if (station.countryCode.isNotEmpty)
+         _countryLabel(station.countryCode, station.countryCode),
+@@ -758,12 +833,14 @@ class _RadioScreenState extends State<RadioScreen> {
+     return Padding(
+         padding: const EdgeInsets.only(bottom: 10),
+         child: Material(
+-          color: active
+-              ? colors.accentEmber.withValues(alpha: 0.10)
+-              : colors.elevated,
+-          borderRadius: BorderRadius.circular(20),
 -          child: InkWell(
+-            borderRadius: BorderRadius.circular(20),
++          color: active ? colors.textPrimary : colors.elevated,
++          shape: RoundedRectangleBorder(
++            borderRadius: BorderRadius.circular(16),
++            side:
++                BorderSide(color: active ? colors.textPrimary : colors.border),
++          ),
 +          child: PremiumPress(
-             borderRadius: BorderRadius.circular(20),
++            borderRadius: BorderRadius.circular(16),
              onTap: _opening
                  ? null
+                 : () => unawaited(active ? _pauseOrResume() : _play(station)),
+@@ -780,7 +857,7 @@ class _RadioScreenState extends State<RadioScreen> {
+                             maxLines: 2,
+                             overflow: TextOverflow.ellipsis,
+                             style: AppTextStyles.bodyLarge.copyWith(
+-                                color: colors.textPrimary,
++                                color: foreground,
+                                 fontWeight: FontWeight.w600)),
+                         if (metadata.isNotEmpty) ...<Widget>[
+                           const SizedBox(height: 4),
+@@ -788,7 +865,7 @@ class _RadioScreenState extends State<RadioScreen> {
+                               maxLines: 2,
+                               overflow: TextOverflow.ellipsis,
+                               style: AppTextStyles.bodyMedium
+-                                  .copyWith(color: colors.textSecondary)),
++                                  .copyWith(color: secondary)),
+                         ],
+                         if (active &&
+                             _playing &&
+@@ -796,7 +873,7 @@ class _RadioScreenState extends State<RadioScreen> {
+                             !_playbackError)
+                           Text(l.radioLive,
+                               style: AppTextStyles.bodySmall
+-                                  .copyWith(color: colors.textPrimary)),
++                                  .copyWith(color: foreground)),
+                       ])),
+                   IconButton(
+                       tooltip:
+@@ -804,13 +881,16 @@ class _RadioScreenState extends State<RadioScreen> {
+                       onPressed: _saving || _favorites == null
+                           ? null
+                           : () => unawaited(_toggleFavorite(station)),
+-                      icon: Icon(
+-                          favorite
+-                              ? Icons.favorite_rounded
+-                              : Icons.favorite_border_rounded,
+-                          color: favorite
+-                              ? colors.accentEmber
+-                              : colors.textSecondary)),
++                      style: IconButton.styleFrom(
++                        backgroundColor:
++                            favorite ? colors.textPrimary : Colors.transparent,
++                        foregroundColor: favorite ? colors.canvas : secondary,
++                        disabledForegroundColor: colors.textSecondary,
++                        minimumSize: const Size(48, 48),
++                      ),
++                      icon: Icon(favorite
++                          ? Icons.favorite_rounded
++                          : Icons.favorite_border_rounded)),
+                   IconButton(
+                       tooltip:
+                           '${active && _playing ? l.radioPause : l.radioListen} · ${station.name}',
+@@ -822,7 +902,7 @@ class _RadioScreenState extends State<RadioScreen> {
+                           active && _playing
+                               ? Icons.pause_circle_rounded
+                               : Icons.play_circle_outline_rounded,
+-                          color: colors.textPrimary,
++                          color: active ? colors.canvas : colors.textSecondary,
+                           size: 28)),
+                 ])),
+           ),
+@@ -859,7 +939,8 @@ class _RadioScreenState extends State<RadioScreen> {
+     final colors = AppColors.lumiere(context);
+     final RadioStation station = _current!;
+     return Material(
+-        color: colors.glass,
++        color: colors.elevated,
++        shape: Border(top: BorderSide(color: colors.border)),
+         child: Column(mainAxisSize: MainAxisSize.min, children: <Widget>[
+           if (_opening || _buffering && !_playbackError)
+             const LinearProgressIndicator(minHeight: 2),
+@@ -883,11 +964,19 @@ class _RadioScreenState extends State<RadioScreen> {
+                       onPressed: _saving || _favorites == null
+                           ? null
+                           : () => unawaited(_toggleFavorite(station)),
+-                      icon: Icon(
+-                          _favoriteIds.contains(station.id)
+-                              ? Icons.favorite_rounded
+-                              : Icons.favorite_border_rounded,
+-                          color: colors.textPrimary)),
++                      style: IconButton.styleFrom(
++                        backgroundColor: _favoriteIds.contains(station.id)
++                            ? colors.textPrimary
++                            : Colors.transparent,
++                        foregroundColor: _favoriteIds.contains(station.id)
++                            ? colors.canvas
++                            : colors.textSecondary,
++                        disabledForegroundColor: colors.textSecondary,
++                        minimumSize: const Size(48, 48),
++                      ),
++                      icon: Icon(_favoriteIds.contains(station.id)
++                          ? Icons.favorite_rounded
++                          : Icons.favorite_border_rounded)),
+                 ]),
+                 Row(children: <Widget>[
+                   Expanded(
+@@ -904,6 +993,13 @@ class _RadioScreenState extends State<RadioScreen> {
+                           style: AppTextStyles.bodyMedium
+                               .copyWith(color: colors.textSecondary))),
+                   IconButton.filled(
++                      style: IconButton.styleFrom(
++                        backgroundColor: colors.textPrimary,
++                        foregroundColor: colors.canvas,
++                        disabledBackgroundColor: colors.border,
++                        disabledForegroundColor: colors.textSecondary,
++                        minimumSize: const Size(48, 48),
++                      ),
+                       tooltip: _playbackError
+                           ? l.radioRetry
+                           : _playing
+@@ -919,7 +1015,8 @@ class _RadioScreenState extends State<RadioScreen> {
+                   IconButton(
+                       tooltip: l.radioStop,
+                       onPressed: _opening ? null : () => unawaited(_stop()),
+-                      icon: const Icon(Icons.stop_rounded)),
++                      icon: Icon(Icons.stop_rounded,
++                          color: colors.textSecondary)),
+                 ]),
+               ])),
+         ]));
+@@ -943,10 +1040,35 @@ class _StationLogo extends StatelessWidget {
+             clipBehavior: Clip.antiAlias,
+             child: uri == null
+                 ? fallback
+-                : Image.network(uri.toString(),
+-                    fit: BoxFit.contain,
+-                    cacheWidth: 128,
+-                    errorBuilder: (_, __, ___) => fallback)));
++                : ColorFiltered(
++                    // Le logo reste celui de la station ; seul son rendu suit
++                    // l'identité monochrome, sans modifier l'image du catalogue.
++                    colorFilter: const ColorFilter.matrix(<double>[
++                      0.2126,
++                      0.7152,
++                      0.0722,
++                      0,
++                      0,
++                      0.2126,
++                      0.7152,
++                      0.0722,
++                      0,
++                      0,
++                      0.2126,
++                      0.7152,
++                      0.0722,
++                      0,
++                      0,
++                      0,
++                      0,
++                      0,
++                      1,
++                      0,
++                    ]),
++                    child: Image.network(uri.toString(),
++                        fit: BoxFit.contain,
++                        cacheWidth: 128,
++                        errorBuilder: (_, __, ___) => fallback))));
+   }
+ }
+
 diff --git a/lib/features/recordings/presentation/recordings_screen.dart b/lib/features/recordings/presentation/recordings_screen.dart
 index 31522936..81bd8956 100644
 --- a/lib/features/recordings/presentation/recordings_screen.dart
@@ -3807,8 +6029,33 @@ index 31522936..81bd8956 100644
                  ),
                ),
              ),
+diff --git a/lib/features/security/presentation/lock_screen.dart b/lib/features/security/presentation/lock_screen.dart
+index 1881077f..3839b716 100644
+--- a/lib/features/security/presentation/lock_screen.dart
++++ b/lib/features/security/presentation/lock_screen.dart
+@@ -24,7 +24,6 @@
+ import 'package:flutter/material.dart';
+ import 'package:flutter/services.dart';
+
+-import '../../../core/branding/verified_badge.dart';
+ import '../../../core/flavor/flavor.dart';
+ import '../../../core/i18n/l10n_extension.dart';
+ import '../../../core/theme/app_colors.dart';
+@@ -149,12 +148,6 @@ class _LockScreenState extends State<LockScreen> {
+                       FlavorConfig.current.appName,
+                       style: AppTextStyles.headlineLarge,
+                     ),
+-                    // Le badge verifie est l'identite visuelle de
+-                    // The Few uniquement.
+-                    if (FlavorConfig.current.flavor == Flavor.sevenMotion) ...[
+-                      const SizedBox(width: 8),
+-                      const VerifiedBadge.large(),
+-                    ],
+                   ],
+                 ),
+                 const SizedBox(height: 4),
 diff --git a/lib/features/simple_home/presentation/simple_home_screen.dart b/lib/features/simple_home/presentation/simple_home_screen.dart
-index 1fe085fc..bdd4d5a6 100644
+index 1fe085fc..7837f436 100644
 --- a/lib/features/simple_home/presentation/simple_home_screen.dart
 +++ b/lib/features/simple_home/presentation/simple_home_screen.dart
 @@ -26,6 +26,7 @@ import 'dart:async';
@@ -3819,20 +6066,377 @@ index 1fe085fc..bdd4d5a6 100644
  import '../../../core/branding/brand_logo.dart';
  import '../../../core/i18n/l10n_extension.dart';
  import '../../../core/theme/app_colors.dart';
-@@ -374,7 +375,7 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
+@@ -269,46 +270,54 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
+   @override
+   Widget build(BuildContext context) {
+     final colors = AppColors.lumiere(context);
+-    return Scaffold(
+-      backgroundColor: colors.canvas,
+-      body: DecoratedBox(
+-        decoration: BoxDecoration(gradient: colors.canvasGradient),
+-        child: SafeArea(
+-          child: StreamBuilder<List<Channel>>(
+-            stream: PlaylistRepository.instance.channelsStream,
+-            initialData: PlaylistRepository.instance.currentChannels,
+-            builder: (BuildContext context, AsyncSnapshot<List<Channel>> snap) {
+-              final List<Channel> channels = snap.data ?? const <Channel>[];
+-              if (channels.isEmpty) return _buildActivationEntry(context);
+-
+-              return Column(
+-                children: <Widget>[
+-                  _buildHeader(),
+-                  Expanded(
+-                    child: CategoryBrowserView(
+-                      channels: channels,
+-                      // Une seule zone défilante : les annonces, la reprise
+-                      // et les radios ne compriment plus la liste des chaînes.
+-                      discoveryHeader: Column(
+-                        crossAxisAlignment: CrossAxisAlignment.stretch,
+-                        children: <Widget>[
+-                          const AnnouncementBanner(),
+-                          const ResumeBanner(),
+-                          const RadioEntry(),
+-                          _GuestEntryBar(
+-                            onTap: () => openGuestScreen(context),
++    return StreamBuilder<List<Channel>>(
++      stream: PlaylistRepository.instance.channelsStream,
++      initialData: PlaylistRepository.instance.currentChannels,
++      builder: (BuildContext context, AsyncSnapshot<List<Channel>> snap) {
++        final List<Channel> channels = snap.data ?? const <Channel>[];
++        return Scaffold(
++          backgroundColor: colors.canvas,
++          // Le catalogue passe réellement sous le dock : le flou prélève
++          // son contenu, pas seulement un aplat noir. Chaque liste conserve
++          // l'inset fourni par Scaffold pour révéler sa dernière ligne.
++          extendBody: channels.isNotEmpty,
++          bottomNavigationBar: channels.isEmpty
++              ? null
++              : SafeArea(top: false, child: _buildBottomBar()),
++          body: DecoratedBox(
++            decoration: BoxDecoration(gradient: colors.canvasGradient),
++            child: SafeArea(
++              bottom: channels.isEmpty,
++              child: channels.isEmpty
++                  ? _buildActivationEntry(context)
++                  : Column(
++                      children: <Widget>[
++                        _buildHeader(),
++                        Expanded(
++                          child: CategoryBrowserView(
++                            channels: channels,
++                            // Une seule zone défilante : les annonces, la
++                            // reprise et les radios ne compriment plus la
++                            // liste des chaînes.
++                            discoveryHeader: Column(
++                              crossAxisAlignment: CrossAxisAlignment.stretch,
++                              children: <Widget>[
++                                const AnnouncementBanner(),
++                                const ResumeBanner(),
++                                const RadioEntry(),
++                                _GuestEntryBar(
++                                  onTap: () => openGuestScreen(context),
++                                ),
++                              ],
++                            ),
+                           ),
+-                        ],
+-                      ),
++                        ),
++                      ],
+                     ),
+-                  ),
+-                  _buildBottomBar(),
+-                ],
+-              );
+-            },
++            ),
+           ),
+-        ),
+-      ),
++        );
++      },
+     );
+   }
+
+@@ -374,10 +383,8 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
                  ),
                  const SizedBox(height: 3),
                  Text(
 -                  context.l10n.navHome,
+-                  style: AppTextStyles.bodySmall.copyWith(
+-                    color: colors.textSecondary,
+-                  ),
 +                  FlavorConfig.current.appTagline,
-                   style: AppTextStyles.bodySmall.copyWith(
-                     color: colors.textSecondary,
-                   ),
++                  style: AppTextStyles.brandTagline,
+                 ),
+               ],
+             ),
+diff --git a/lib/features/simple_home/presentation/widgets/category_browser_view.dart b/lib/features/simple_home/presentation/widgets/category_browser_view.dart
+index 5c1f4ab9..335817f5 100644
+--- a/lib/features/simple_home/presentation/widgets/category_browser_view.dart
++++ b/lib/features/simple_home/presentation/widgets/category_browser_view.dart
+@@ -34,6 +34,7 @@ import '../../../../core/i18n/l10n_extension.dart';
+ import '../../../../core/theme/app_colors.dart';
+ import '../../../../core/theme/app_text_styles.dart';
+ import '../../../../core/haptics/haptics.dart';
++import '../../../../core/widgets/premium_press.dart';
+ import '../../../channels/data/affinity_service.dart';
+ import '../../../channels/data/category_order_store.dart';
+ import '../../../channels/data/hidden_categories_store.dart';
+@@ -892,7 +893,9 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
+             // quand le contenu tient dans l'écran (petite playlist).
+             physics: const BouncingScrollPhysics(
+                 parent: AlwaysScrollableScrollPhysics()),
+-            padding: const EdgeInsets.only(bottom: 16),
++            padding: EdgeInsets.only(
++              bottom: 16 + MediaQuery.paddingOf(context).bottom,
++            ),
+             children: <Widget>[
+               if (widget.discoveryHeader != null) widget.discoveryHeader!,
+               _buildResumeVodRail(),
+@@ -966,6 +969,7 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
+   /// refonte : un catalogue filtré vide ne doit pas faire disparaître l'accueil.
+   Widget _buildEmptyCatalog() {
+     return ListView(
++      padding: EdgeInsets.only(bottom: MediaQuery.paddingOf(context).bottom),
+       children: <Widget>[
+         if (widget.discoveryHeader != null) widget.discoveryHeader!,
+         Padding(
+@@ -1027,7 +1031,7 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
+         // En-tête de catégorie : retour + nom + compteur.
+         Material(
+           color: Colors.transparent,
+-          child: InkWell(
++          child: PremiumPress(
+             onTap: () => setState(() => _selected = null),
+             child: Padding(
+               padding: const EdgeInsets.fromLTRB(16, 12, 20, 12),
+@@ -1069,7 +1073,8 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
+               final int rowCount = (channels.length + cols - 1) ~/ cols;
+               return ListView.separated(
+                 physics: const BouncingScrollPhysics(),
+-                padding: const EdgeInsets.fromLTRB(10, 6, 10, 16),
++                padding: EdgeInsets.fromLTRB(
++                    10, 6, 10, 16 + MediaQuery.paddingOf(context).bottom),
+                 itemCount: rowCount,
+                 separatorBuilder: (_, __) => const SizedBox(height: 4),
+                 itemBuilder: (BuildContext context, int r) {
+@@ -1107,7 +1112,7 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
+
+ // ---- Sous-widgets ----
+
+-/// Puce de filtre (rayon). Teintée ember quand active.
++/// Puce de filtre : contraste blanc/noir franc pour le rayon actif.
+ class _FilterChip extends StatelessWidget {
+   const _FilterChip({
+     required this.label,
+@@ -1127,10 +1132,9 @@ class _FilterChip extends StatelessWidget {
+       button: true,
+       selected: active,
+       child: Material(
+-        color:
+-            active ? AppColors.accent.withValues(alpha: 0.14) : colors.elevated,
++        color: active ? AppColors.accent : colors.elevated,
+         borderRadius: BorderRadius.circular(14),
+-        child: InkWell(
++        child: PremiumPress(
+           onTap: onTap,
+           borderRadius: BorderRadius.circular(14),
+           child: Container(
+@@ -1147,11 +1151,11 @@ class _FilterChip extends StatelessWidget {
+               children: <Widget>[
+                 Icon(icon,
+                     size: 20,
+-                    color: active ? AppColors.accent : colors.textSecondary),
++                    color: active ? AppColors.onAccent : colors.textSecondary),
+                 const SizedBox(width: 8),
+                 Text(label,
+                     style: AppTextStyles.bodyMedium.copyWith(
+-                      color: colors.textPrimary,
++                      color: active ? AppColors.onAccent : colors.textPrimary,
+                       fontWeight: active ? FontWeight.w600 : FontWeight.w400,
+                     )),
+               ],
+@@ -1165,7 +1169,7 @@ class _FilterChip extends StatelessWidget {
+
+ /// Ligne de catégorie : dossier + nom + pastille « nombre de chaînes ».
+ ///
+-/// APPUI LONG → on « attrape » le groupe (rebond + flèches dorées ▲▼) pour le
++/// APPUI LONG → on « attrape » le groupe (rebond + flèches ▲▼) pour le
+ /// monter / descendre (ex. Angleterre tout en haut). Ordre partagé partout.
+ class _CategoryRow extends StatefulWidget {
+   const _CategoryRow({
+@@ -1249,14 +1253,14 @@ class _CategoryRowState extends State<_CategoryRow>
+     final bool reordering = widget.reordering;
+     final Widget tile = Material(
+       color: colors.elevated,
+-      borderRadius: BorderRadius.circular(18),
+-      child: InkWell(
++      borderRadius: BorderRadius.circular(16),
++      child: PremiumPress(
+         onTap: widget.onTap,
+         onLongPress: widget.onLongPress,
+-        borderRadius: BorderRadius.circular(18),
++        borderRadius: BorderRadius.circular(16),
+         child: Container(
+           decoration: BoxDecoration(
+-            borderRadius: BorderRadius.circular(18),
++            borderRadius: BorderRadius.circular(16),
+             border: Border.all(
+               color: reordering ? AppColors.accent : colors.border,
+             ),
+@@ -1333,7 +1337,7 @@ class _CategoryRowState extends State<_CategoryRow>
+   }
+ }
+
+-/// Chevrons DORÉS ▲ ▼ (+ ✓) — montent / descendent le groupe. Grisés quand
++/// Chevrons ▲ ▼ (+ ✓) — montent / descendent le groupe. Grisés quand
+ /// l'action est impossible (déjà tout en haut / tout en bas).
+ class _GroupReorderChevrons extends StatelessWidget {
+   const _GroupReorderChevrons({
+@@ -1373,7 +1377,7 @@ class _GroupReorderChevrons extends StatelessWidget {
+         ),
+         IconButton(
+           tooltip: context.l10n.tvSourceDone,
+-          icon: Icon(Icons.check_rounded, color: AppColors.accent),
++          icon: const Icon(Icons.check_rounded, color: AppColors.accent),
+           onPressed: onDone,
+         ),
+       ],
+@@ -1393,7 +1397,7 @@ class _ChannelRow extends StatelessWidget {
+   Widget build(BuildContext context) {
+     return Material(
+       color: Colors.transparent,
+-      child: InkWell(
++      child: PremiumPress(
+         onTap: onTap,
+         // Appui long = favori (geste « façon TikTok »). Investissement Hook :
+         // plus l'utilisateur dépose de favoris, plus il a de raisons de revenir.
+@@ -1479,35 +1483,40 @@ class _ResumeVodCard extends StatelessWidget {
+
+   @override
+   Widget build(BuildContext context) {
+-    return GestureDetector(
+-      onTap: onTap,
+-      child: SizedBox(
+-        width: 92,
+-        child: Column(
+-          mainAxisSize: MainAxisSize.min,
+-          crossAxisAlignment: CrossAxisAlignment.start,
+-          children: <Widget>[
+-            ChannelLogo(channel: channel, size: 88, radius: 12),
+-            const SizedBox(height: 6),
+-            ClipRRect(
+-              borderRadius: BorderRadius.circular(2),
+-              child: LinearProgressIndicator(
+-                value: progress.clamp(0.0, 1.0),
+-                minHeight: 3,
+-                backgroundColor: AppColors.lumiere(context).elevated,
+-                valueColor: AlwaysStoppedAnimation<Color>(AppColors.accent),
++    return Material(
++      color: Colors.transparent,
++      child: PremiumPress(
++        onTap: onTap,
++        borderRadius: BorderRadius.circular(16),
++        child: SizedBox(
++          width: 92,
++          child: Column(
++            mainAxisSize: MainAxisSize.min,
++            crossAxisAlignment: CrossAxisAlignment.start,
++            children: <Widget>[
++              ChannelLogo(channel: channel, size: 88, radius: 12),
++              const SizedBox(height: 6),
++              ClipRRect(
++                borderRadius: BorderRadius.circular(2),
++                child: LinearProgressIndicator(
++                  value: progress.clamp(0.0, 1.0),
++                  minHeight: 3,
++                  backgroundColor: AppColors.lumiere(context).elevated,
++                  valueColor:
++                      const AlwaysStoppedAnimation<Color>(AppColors.accent),
++                ),
+               ),
+-            ),
+-            const SizedBox(height: 5),
+-            Text(
+-              channel.cleanName,
+-              maxLines: 2,
+-              overflow: TextOverflow.ellipsis,
+-              style: AppTextStyles.bodySmall.copyWith(
+-                color: AppColors.lumiere(context).textSecondary,
++              const SizedBox(height: 5),
++              Text(
++                channel.cleanName,
++                maxLines: 2,
++                overflow: TextOverflow.ellipsis,
++                style: AppTextStyles.bodySmall.copyWith(
++                  color: AppColors.lumiere(context).textSecondary,
++                ),
+               ),
+-            ),
+-          ],
++            ],
++          ),
+         ),
+       ),
+     );
+@@ -1524,25 +1533,29 @@ class _RecentCard extends StatelessWidget {
+
+   @override
+   Widget build(BuildContext context) {
+-    return GestureDetector(
+-      onTap: onTap,
+-      child: SizedBox(
+-        width: 100,
+-        child: Column(
+-          mainAxisSize: MainAxisSize.min,
+-          children: <Widget>[
+-            ChannelLogo(channel: channel, size: 68, radius: 18),
+-            const SizedBox(height: 6),
+-            Text(
+-              channel.cleanName,
+-              maxLines: 2,
+-              overflow: TextOverflow.ellipsis,
+-              textAlign: TextAlign.center,
+-              style: AppTextStyles.bodySmall.copyWith(
+-                color: AppColors.lumiere(context).textSecondary,
++    return Material(
++      color: Colors.transparent,
++      child: PremiumPress(
++        onTap: onTap,
++        borderRadius: BorderRadius.circular(16),
++        child: SizedBox(
++          width: 100,
++          child: Column(
++            mainAxisSize: MainAxisSize.min,
++            children: <Widget>[
++              ChannelLogo(channel: channel, size: 68, radius: 18),
++              const SizedBox(height: 6),
++              Text(
++                channel.cleanName,
++                maxLines: 2,
++                overflow: TextOverflow.ellipsis,
++                textAlign: TextAlign.center,
++                style: AppTextStyles.bodySmall.copyWith(
++                  color: AppColors.lumiere(context).textSecondary,
++                ),
+               ),
+-            ),
+-          ],
++            ],
++          ),
+         ),
+       ),
+     );
 diff --git a/lib/features/simple_home/presentation/widgets/home_navigation_bar.dart b/lib/features/simple_home/presentation/widgets/home_navigation_bar.dart
-index b8bcac57..af775ca6 100644
+index b8bcac57..06cf9ec8 100644
 --- a/lib/features/simple_home/presentation/widgets/home_navigation_bar.dart
 +++ b/lib/features/simple_home/presentation/widgets/home_navigation_bar.dart
-@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
+@@ -1,8 +1,11 @@
++import 'dart:ui';
++
+ import 'package:flutter/material.dart';
+
  import '../../../../core/i18n/l10n_extension.dart';
  import '../../../../core/theme/app_colors.dart';
  import '../../../../core/theme/app_text_styles.dart';
@@ -3840,7 +6444,116 @@ index b8bcac57..af775ca6 100644
 
  /// Dock de l'accueil mobile. Les destinations restent des routes : l'état
  /// sélectionné décrit donc l'accueil, sans simuler des onglets persistants.
-@@ -107,8 +108,9 @@ class _Destination extends StatelessWidget {
+@@ -24,55 +27,63 @@ class HomeNavigationBar extends StatelessWidget {
+   @override
+   Widget build(BuildContext context) {
+     final colors = AppColors.lumiere(context);
+-    return Container(
+-      margin: const EdgeInsets.fromLTRB(12, 6, 12, 8),
+-      decoration: BoxDecoration(
+-        color: colors.elevated,
++    return Padding(
++      padding: const EdgeInsets.fromLTRB(12, 6, 12, 8),
++      child: ClipRRect(
+         borderRadius: BorderRadius.circular(24),
+-        border: Border.all(color: colors.border),
+-      ),
+-      child: Padding(
+-        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+-        child: Row(
+-          crossAxisAlignment: CrossAxisAlignment.start,
+-          children: <Widget>[
+-            Expanded(
+-              child: _Destination(
+-                icon: Icons.home_rounded,
+-                label: context.l10n.navHome,
+-                selected: true,
+-                onTap: () {},
+-              ),
+-            ),
+-            Expanded(
+-              child: _Destination(
+-                icon: Icons.favorite_border_rounded,
+-                label: context.l10n.navFavorites,
+-                onTap: onFavorites,
+-              ),
+-            ),
+-            Expanded(
+-              child: _Destination(
+-                icon: Icons.sports_soccer_outlined,
+-                label: context.l10n.navSport,
+-                onTap: onSport,
+-              ),
++        child: BackdropFilter(
++          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
++          child: DecoratedBox(
++            decoration: BoxDecoration(
++              color: AppColors.background.withValues(alpha: 0.8),
++              borderRadius: BorderRadius.circular(24),
++              border: Border.all(color: colors.border),
+             ),
+-            Expanded(
+-              child: _Destination(
+-                icon: Icons.search_rounded,
+-                label: context.l10n.navSearch,
+-                onTap: onSearch,
+-              ),
+-            ),
+-            Expanded(
+-              child: _Destination(
+-                icon: Icons.add_circle_outline_rounded,
+-                label: context.l10n.buttonAdd,
+-                onTap: onAdd,
++            child: Padding(
++              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
++              child: Row(
++                crossAxisAlignment: CrossAxisAlignment.start,
++                children: <Widget>[
++                  Expanded(
++                    child: _Destination(
++                      icon: Icons.home_rounded,
++                      label: context.l10n.navHome,
++                      selected: true,
++                      onTap: () {},
++                    ),
++                  ),
++                  Expanded(
++                    child: _Destination(
++                      icon: Icons.favorite_border_rounded,
++                      label: context.l10n.navFavorites,
++                      onTap: onFavorites,
++                    ),
++                  ),
++                  Expanded(
++                    child: _Destination(
++                      icon: Icons.sports_soccer_outlined,
++                      label: context.l10n.navSport,
++                      onTap: onSport,
++                    ),
++                  ),
++                  Expanded(
++                    child: _Destination(
++                      icon: Icons.search_rounded,
++                      label: context.l10n.navSearch,
++                      onTap: onSearch,
++                    ),
++                  ),
++                  Expanded(
++                    child: _Destination(
++                      icon: Icons.add_circle_outline_rounded,
++                      label: context.l10n.buttonAdd,
++                      onTap: onAdd,
++                    ),
++                  ),
++                ],
+               ),
+             ),
+-          ],
++          ),
+         ),
+       ),
+     );
+@@ -107,8 +118,9 @@ class _Destination extends StatelessWidget {
          message: label,
          child: Material(
            color: Colors.transparent,
@@ -3851,6 +6564,45 @@ index b8bcac57..af775ca6 100644
              borderRadius: BorderRadius.circular(18),
              child: ConstrainedBox(
                constraints: const BoxConstraints(minHeight: 56),
+@@ -121,14 +133,12 @@ class _Destination extends StatelessWidget {
+                       padding: const EdgeInsets.symmetric(
+                           horizontal: 12, vertical: 5),
+                       decoration: BoxDecoration(
+-                        color: selected
+-                            ? AppColors.accent.withValues(alpha: 0.14)
+-                            : Colors.transparent,
++                        color: selected ? AppColors.accent : Colors.transparent,
+                         borderRadius: BorderRadius.circular(12),
+                       ),
+                       child: Icon(icon,
+                           size: 23,
+-                          color: selected ? AppColors.accent : foreground),
++                          color: selected ? AppColors.onAccent : foreground),
+                     ),
+                     const SizedBox(height: 4),
+                     Text(
+diff --git a/lib/features/subscription/presentation/subscription_card.dart b/lib/features/subscription/presentation/subscription_card.dart
+index c8be0047..48e1b15d 100644
+--- a/lib/features/subscription/presentation/subscription_card.dart
++++ b/lib/features/subscription/presentation/subscription_card.dart
+@@ -103,7 +103,7 @@ class SubscriptionCard extends StatelessWidget {
+                       backgroundColor: status == SubscriptionStatus.trialExpired
+                           ? AppColors.live
+                           : AppColors.accent,
+-                      foregroundColor: Colors.white,
++                      foregroundColor: AppColors.onAccent,
+                       padding: const EdgeInsets.symmetric(vertical: 14),
+                       shape: RoundedRectangleBorder(
+                         borderRadius: BorderRadius.circular(10),
+@@ -137,7 +137,7 @@ class SubscriptionCard extends StatelessWidget {
+           backgroundColor: AppColors.live,
+           content: Text(
+             context.l10n.subCantOpenUrl(kPurchaseUrl),
+-            style: AppTextStyles.bodyMedium,
++            style: AppTextStyles.bodyMedium.copyWith(color: AppColors.onAccent),
+           ),
+         ),
+       );
 diff --git a/lib/features/subscription/presentation/subscription_gate.dart b/lib/features/subscription/presentation/subscription_gate.dart
 index b158c387..7fa90dbc 100644
 --- a/lib/features/subscription/presentation/subscription_gate.dart
@@ -3915,8 +6667,21 @@ index 0b178d76..eb3e3f7b 100644
                            padding:
                                const EdgeInsets.symmetric(vertical: 14),
                          ),
+diff --git a/lib/features/vod/presentation/series_detail_screen.dart b/lib/features/vod/presentation/series_detail_screen.dart
+index b7a71da3..7a179fad 100644
+--- a/lib/features/vod/presentation/series_detail_screen.dart
++++ b/lib/features/vod/presentation/series_detail_screen.dart
+@@ -246,7 +246,7 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
+                           selectedColor: AppColors.accent,
+                           labelStyle: TextStyle(
+                               color: sel
+-                                  ? Colors.white
++                                  ? AppColors.onAccent
+                                   : AppColors.textSecondary),
+                           onSelected: (_) =>
+                               setState(() => _season = s),
 diff --git a/lib/l10n/app_ar.arb b/lib/l10n/app_ar.arb
-index 43569457..ba3ef946 100644
+index 43569457..ca59c34e 100644
 --- a/lib/l10n/app_ar.arb
 +++ b/lib/l10n/app_ar.arb
 @@ -1,6 +1,6 @@
@@ -3963,6 +6728,19 @@ index 43569457..ba3ef946 100644
    "lockPinTooShort": "أدخل 4 أرقام على الأقل.",
    "lockPinWrong": "رمز غير صحيح.",
    "lockPinLocked": "محاولات كثيرة. أعد المحاولة خلال {seconds} ثانية.",
+@@ -529,9 +529,9 @@
+   "forceUpdateTitle": "تتوفر نسخة جديدة",
+   "navAi": "ذكاء",
+   "profileTheme": "السمة",
+-  "profileThemeSub": "اختر لونك",
+-  "themeChooseSub": "يتغير اللون فورًا في كل أنحاء التطبيق",
+-  "themeChooseTitle": "اختر سمتك",
++  "profileThemeSub": "أسود وأبيض",
++  "themeChooseSub": "أسود عميق وتفاصيل بيضاء",
++  "themeChooseTitle": "هوية Motion",
+   "catFilterMovies": "سينما",
+   "catFilterSeries": "مسلسلات",
+   "pricingOffersTitle": "عروضنا",
 @@ -2376,5 +2376,6 @@
    "tvSearchPhoneKeyboardOn": "⌨ اكتب على هاتفك. اضغط رجوع للعودة إلى لوحة مفاتيح الشاشة.",
    "@tvSearchPhoneKeyboardOn": {
@@ -3972,7 +6750,7 @@ index 43569457..ba3ef946 100644
 +  "profileSignature": "عالمك. بصمتك."
  }
 diff --git a/lib/l10n/app_da.arb b/lib/l10n/app_da.arb
-index e8294152..c5ce707b 100644
+index e8294152..d9779342 100644
 --- a/lib/l10n/app_da.arb
 +++ b/lib/l10n/app_da.arb
 @@ -1,6 +1,6 @@
@@ -4019,6 +6797,19 @@ index e8294152..c5ce707b 100644
    "lockPinTooShort": "Indtast mindst 4 cifre.",
    "lockPinWrong": "Forkert kode.",
    "lockPinLocked": "For mange forsøg. Prøv igen om {seconds} s.",
+@@ -529,9 +529,9 @@
+   "forceUpdateTitle": "Ny version tilgængelig",
+   "navAi": "AI",
+   "profileTheme": "Tema",
+-  "profileThemeSub": "Vælg din farve",
+-  "themeChooseSub": "Farven ændres øjeblikkeligt i hele appen",
+-  "themeChooseTitle": "Vælg dit tema",
++  "profileThemeSub": "Sort og hvid",
++  "themeChooseSub": "Dyb sort, hvide detaljer",
++  "themeChooseTitle": "Motion-identitet",
+   "catFilterMovies": "Film",
+   "catFilterSeries": "Serier",
+   "pricingOffersTitle": "Vores tilbud",
 @@ -2376,5 +2376,6 @@
    "tvSearchPhoneKeyboardOn": "⌨ Skriv på din telefon. Tryk Tilbage for at vende tilbage til skærmtastaturet.",
    "@tvSearchPhoneKeyboardOn": {
@@ -4028,7 +6819,7 @@ index e8294152..c5ce707b 100644
 +  "profileSignature": "Din verden. Dit særpræg."
  }
 diff --git a/lib/l10n/app_en.arb b/lib/l10n/app_en.arb
-index cd88ec28..833ac47b 100644
+index cd88ec28..eda8de64 100644
 --- a/lib/l10n/app_en.arb
 +++ b/lib/l10n/app_en.arb
 @@ -1,6 +1,6 @@
@@ -4075,6 +6866,19 @@ index cd88ec28..833ac47b 100644
    "lockPinTooShort": "Enter at least 4 digits.",
    "lockPinWrong": "Wrong code.",
    "lockPinLocked": "Too many attempts. Try again in {seconds} s.",
+@@ -453,9 +453,9 @@
+   "profileSettings": "Settings",
+   "profileSettingsSub": "Playback, language and security",
+   "profileTheme": "Appearance",
+-  "profileThemeSub": "Choose your signature color",
+-  "themeChooseTitle": "Choose your theme",
+-  "themeChooseSub": "The color changes instantly across the app",
++  "profileThemeSub": "Black & white",
++  "themeChooseTitle": "Motion identity",
++  "themeChooseSub": "Deep black, white details",
+   "forceUpdateTitle": "New version available",
+   "forceUpdateBody": "This version is out of date. Download the latest version to keep using the app.",
+   "forceUpdateDownloaderHint": "ON TV / BOX: OPEN DOWNLOADER AND ENTER THIS CODE",
 @@ -2696,5 +2696,9 @@
    "radioNoFilterResults": "No results. Try another name.",
    "@radioNoFilterResults": {
@@ -4086,7 +6890,7 @@ index cd88ec28..833ac47b 100644
    }
  }
 diff --git a/lib/l10n/app_es.arb b/lib/l10n/app_es.arb
-index f3cbae39..360a0503 100644
+index f3cbae39..c15c22ff 100644
 --- a/lib/l10n/app_es.arb
 +++ b/lib/l10n/app_es.arb
 @@ -1,6 +1,6 @@
@@ -4133,6 +6937,19 @@ index f3cbae39..360a0503 100644
    "lockPinTooShort": "Introduce al menos 4 dígitos.",
    "lockPinWrong": "Código incorrecto.",
    "lockPinLocked": "Demasiados intentos. Inténtalo de nuevo en {seconds} s.",
+@@ -529,9 +529,9 @@
+   "forceUpdateTitle": "Nueva versión disponible",
+   "navAi": "IA",
+   "profileTheme": "Tema",
+-  "profileThemeSub": "Elige tu color",
+-  "themeChooseSub": "El color cambia al instante en toda la app",
+-  "themeChooseTitle": "Elige tu tema",
++  "profileThemeSub": "Blanco y negro",
++  "themeChooseSub": "Negro profundo, detalles blancos",
++  "themeChooseTitle": "Identidad Motion",
+   "catFilterMovies": "Cine",
+   "catFilterSeries": "Series",
+   "pricingOffersTitle": "Nuestras ofertas",
 @@ -2376,5 +2376,6 @@
    "tvSearchPhoneKeyboardOn": "⌨ Escribe en tu teléfono. Pulsa Atrás para volver al teclado en pantalla.",
    "@tvSearchPhoneKeyboardOn": {
@@ -4142,7 +6959,7 @@ index f3cbae39..360a0503 100644
 +  "profileSignature": "Tu mundo. Tu sello."
  }
 diff --git a/lib/l10n/app_fr.arb b/lib/l10n/app_fr.arb
-index 1b455ec9..bfa56a5f 100644
+index 1b455ec9..ad3096e2 100644
 --- a/lib/l10n/app_fr.arb
 +++ b/lib/l10n/app_fr.arb
 @@ -2,7 +2,7 @@
@@ -4190,6 +7007,25 @@ index 1b455ec9..bfa56a5f 100644
    "@aboutLegalNotice": {
      "description": "Texte UI : aboutLegalNotice"
    },
+@@ -1608,15 +1608,15 @@
+   "@profileTheme": {
+     "description": "Texte UI : bouton choix du thème de couleur"
+   },
+-  "profileThemeSub": "Une couleur qui vous ressemble",
++  "profileThemeSub": "Noir & blanc",
+   "@profileThemeSub": {
+     "description": "Texte UI : sous-titre du bouton Thème"
+   },
+-  "themeChooseTitle": "Choisis ton thème",
++  "themeChooseTitle": "Identité Motion",
+   "@themeChooseTitle": {
+     "description": "Titre du sélecteur de thème"
+   },
+-  "themeChooseSub": "La couleur change instantanément dans toute l'app",
++  "themeChooseSub": "Noir profond, détails blancs",
+   "@themeChooseSub": {
+     "description": "Sous-titre du sélecteur de thème"
+   },
 @@ -5555,5 +5555,6 @@
    "radioNoFilterResults": "Aucun résultat. Essayez un autre nom.",
    "@radioNoFilterResults": {
@@ -4199,7 +7035,7 @@ index 1b455ec9..bfa56a5f 100644
 +  "profileSignature": "Votre univers. Votre signature."
  }
 diff --git a/lib/l10n/app_nb.arb b/lib/l10n/app_nb.arb
-index 8bc9213d..4aded005 100644
+index 8bc9213d..52cb7af8 100644
 --- a/lib/l10n/app_nb.arb
 +++ b/lib/l10n/app_nb.arb
 @@ -1,6 +1,6 @@
@@ -4246,6 +7082,19 @@ index 8bc9213d..4aded005 100644
    "lockPinTooShort": "Skriv inn minst 4 sifre.",
    "lockPinWrong": "Feil kode.",
    "lockPinLocked": "For mange forsøk. Prøv igjen om {seconds} s.",
+@@ -529,9 +529,9 @@
+   "forceUpdateTitle": "Ny versjon tilgjengelig",
+   "navAi": "KI",
+   "profileTheme": "Tema",
+-  "profileThemeSub": "Velg fargen din",
+-  "themeChooseSub": "Fargen endres umiddelbart i hele appen",
+-  "themeChooseTitle": "Velg temaet ditt",
++  "profileThemeSub": "Svart og hvitt",
++  "themeChooseSub": "Dyp svart, hvite detaljer",
++  "themeChooseTitle": "Motion-identitet",
+   "catFilterMovies": "Film",
+   "catFilterSeries": "Serier",
+   "pricingOffersTitle": "Våre tilbud",
 @@ -2376,5 +2376,6 @@
    "tvSearchPhoneKeyboardOn": "⌨ Skriv på telefonen. Trykk Tilbake for å gå tilbake til skjermtastaturet.",
    "@tvSearchPhoneKeyboardOn": {
@@ -4255,7 +7104,7 @@ index 8bc9213d..4aded005 100644
 +  "profileSignature": "Din verden. Ditt særpreg."
  }
 diff --git a/lib/l10n/app_sv.arb b/lib/l10n/app_sv.arb
-index 01acc6de..33c4f349 100644
+index 01acc6de..fcac6e1f 100644
 --- a/lib/l10n/app_sv.arb
 +++ b/lib/l10n/app_sv.arb
 @@ -1,6 +1,6 @@
@@ -4302,6 +7151,19 @@ index 01acc6de..33c4f349 100644
    "lockPinTooShort": "Ange minst 4 siffror.",
    "lockPinWrong": "Fel kod.",
    "lockPinLocked": "För många försök. Försök igen om {seconds} s.",
+@@ -529,9 +529,9 @@
+   "forceUpdateTitle": "Ny version tillgänglig",
+   "navAi": "AI",
+   "profileTheme": "Tema",
+-  "profileThemeSub": "Välj din färg",
+-  "themeChooseSub": "Färgen ändras direkt i hela appen",
+-  "themeChooseTitle": "Välj ditt tema",
++  "profileThemeSub": "Svart och vitt",
++  "themeChooseSub": "Djupsvart med vita detaljer",
++  "themeChooseTitle": "Motion-identitet",
+   "catFilterMovies": "Film",
+   "catFilterSeries": "Serier",
+   "pricingOffersTitle": "Våra erbjudanden",
 @@ -2376,5 +2376,6 @@
    "tvSearchPhoneKeyboardOn": "⌨ Skriv på din telefon. Tryck Bakåt för att återgå till skärmtangentbordet.",
    "@tvSearchPhoneKeyboardOn": {
@@ -4311,7 +7173,7 @@ index 01acc6de..33c4f349 100644
 +  "profileSignature": "Din värld. Din prägel."
  }
 diff --git a/lib/l10n/app_sw.arb b/lib/l10n/app_sw.arb
-index 17457875..b1cf9c69 100644
+index 17457875..3e87c191 100644
 --- a/lib/l10n/app_sw.arb
 +++ b/lib/l10n/app_sw.arb
 @@ -1,6 +1,6 @@
@@ -4358,6 +7220,19 @@ index 17457875..b1cf9c69 100644
    "lockPinTooShort": "Weka angalau tarakimu 4.",
    "lockPinWrong": "Msimbo si sahihi.",
    "lockPinLocked": "Majaribio mengi. Jaribu tena baada ya sekunde {seconds}.",
+@@ -529,9 +529,9 @@
+   "forceUpdateTitle": "Toleo jipya linapatikana",
+   "navAi": "AI",
+   "profileTheme": "Mwonekano",
+-  "profileThemeSub": "Chagua rangi inayokufaa",
+-  "themeChooseSub": "Rangi hubadilika papo hapo katika programu nzima",
+-  "themeChooseTitle": "Chagua mandhari yako",
++  "profileThemeSub": "Nyeusi na nyeupe",
++  "themeChooseSub": "Nyeusi nzito, maelezo meupe",
++  "themeChooseTitle": "Utambulisho wa Motion",
+   "catFilterMovies": "Sinema",
+   "catFilterSeries": "Mfululizo",
+   "pricingOffersTitle": "Ofa zetu",
 @@ -2641,5 +2641,6 @@
    "radioNoFilterResults": "Hakuna matokeo. Jaribu jina jingine.",
    "@radioNoFilterResults": {
@@ -4367,7 +7242,7 @@ index 17457875..b1cf9c69 100644
 +  "profileSignature": "Ulimwengu wako. Alama yako."
  }
 diff --git a/lib/main.dart b/lib/main.dart
-index e356fc2e..db05e516 100644
+index e356fc2e..abd318b0 100644
 --- a/lib/main.dart
 +++ b/lib/main.dart
 @@ -30,14 +30,12 @@ import 'core/realtime/realtime_sync_service.dart';
@@ -4404,7 +7279,7 @@ index e356fc2e..db05e516 100644
  /// onboarding soit lu depuis SharedPreferences. Toujours en Cinema
  /// Mode : c'est l'identité du produit qui s'affiche en premier.
  class _Splash extends StatelessWidget {
-@@ -984,24 +981,19 @@ class _Splash extends StatelessWidget {
+@@ -984,24 +981,16 @@ class _Splash extends StatelessWidget {
                    children: <Widget>[
                      const BrandLogo.splash(),
                      const SizedBox(height: 18),
@@ -4425,10 +7300,7 @@ index e356fc2e..db05e516 100644
 +                    const SizedBox(height: 12),
 +                    Text(FlavorConfig.current.appTagline,
 +                        textAlign: TextAlign.center,
-+                        style: AppTextStyles.labelSmall.copyWith(
-+                          color: AppColors.textSecondary,
-+                          letterSpacing: 2,
-+                        )),
++                        style: AppTextStyles.brandTagline),
                    ],
                  ),
                ),
@@ -4495,100 +7367,145 @@ index b1eb8ec1..f4186ed3 100644
      - assets/branding/prive_icon.png
 diff --git a/test/core/theme/accent_controller_test.dart b/test/core/theme/accent_controller_test.dart
 new file mode 100644
-index 00000000..05d2da05
+index 00000000..bff37681
 --- /dev/null
 +++ b/test/core/theme/accent_controller_test.dart
-@@ -0,0 +1,84 @@
+@@ -0,0 +1,129 @@
 +import 'package:flutter/material.dart';
 +import 'package:flutter_test/flutter_test.dart';
 +import 'package:shared_preferences/shared_preferences.dart';
 +
 +import 'package:tv_king/core/theme/accent_controller.dart';
 +import 'package:tv_king/core/theme/app_colors.dart';
++import 'package:tv_king/core/theme/app_text_styles.dart';
 +import 'package:tv_king/core/theme/app_theme.dart';
++import 'package:tv_king/core/theme/lumiere_tokens.dart';
++import 'package:tv_king/core/theme/theme_mode_repository.dart';
++import 'package:tv_king/core/theme/tv_palette.dart';
 +
 +void main() {
 +  TestWidgetsFlutterBinding.ensureInitialized();
 +
 +  final AccentController controller = AccentController.instance;
++  final ThemeModeRepository modes = ThemeModeRepository.instance;
 +
-+  test('Motion est le défaut sans écrire de préférence au premier lancement',
++  test('la nouvelle installation utilise la charte noire et blanche exacte',
 +      () async {
 +    SharedPreferences.setMockInitialValues(<String, Object>{});
-+    expect(controller.current.id, 'motion');
 +    await controller.initialize();
++    await modes.initialize();
 +
-+    expect(controller.current.accent, const Color(0xFF2EF2C8));
++    expect(AppColors.background, const Color(0xFF000000));
++    expect(AppColors.surface, const Color(0xFF121212));
++    expect(AppColors.border, const Color(0xFF242424));
++    expect(AppColors.textPrimary, const Color(0xFFFFFFFF));
++    expect(AppColors.textSecondary, const Color(0xFF8E8E93));
++    expect(AppColors.accent, Colors.white);
++    expect(AppColors.onAccent, Colors.black);
++    expect(controller.current.id, 'motion');
++    expect(controller.current.accent, Colors.white);
 +    expect(controller.isDaily, isFalse);
-+    final SharedPreferences prefs = await SharedPreferences.getInstance();
-+    expect(prefs.getKeys(), isEmpty);
-+
-+    // Le nouveau fond menthe doit rester lisible sur les actions remplies.
-+    final Color foreground = AppTheme.cinema.colorScheme.onPrimary;
-+    final double light = controller.current.accent.computeLuminance();
-+    final double dark = foreground.computeLuminance();
-+    expect((light + 0.05) / (dark + 0.05), greaterThanOrEqualTo(4.5));
++    expect(modes.mode, ThemeMode.dark);
++    expect((await SharedPreferences.getInstance()).getKeys(), isEmpty);
 +  });
 +
-+  test('chaque choix fixe existant est restauré sans migration destructive',
++  test('les anciens accents et modes clairs restent stockés sans recoloriser',
 +      () async {
-+    for (final AccentTheme theme in kAccentThemes) {
-+      final Map<String, Object> saved = <String, Object>{
-+        'accent_theme_id': theme.id,
-+        'accent_mode': 'fixed',
-+      };
-+      SharedPreferences.setMockInitialValues(saved);
-+      await controller.initialize();
++    for (final String oldMode in <String>['light', 'system', 'dark']) {
++      for (final String oldAccentMode in <String>['fixed', 'daily']) {
++        final Map<String, Object> saved = <String, Object>{
++          'accent_theme_id': 'emerald',
++          'accent_mode': oldAccentMode,
++          'theme.mode.v1': oldMode,
++        };
++        SharedPreferences.setMockInitialValues(saved);
++        await controller.initialize();
++        await modes.initialize();
++        controller.refreshDailyIfNeeded();
 +
-+      expect(controller.current, theme, reason: theme.id);
-+      expect(controller.isDaily, isFalse);
-+      // Chaque couleur personnelle, même sombre, garde un libellé lisible.
-+      final double a = theme.accent.computeLuminance();
-+      final double b = AppColors.onAccent.computeLuminance();
-+      final double contrast =
-+          a > b ? (a + 0.05) / (b + 0.05) : (b + 0.05) / (a + 0.05);
-+      expect(contrast, greaterThanOrEqualTo(4.5), reason: theme.id);
-+      final SharedPreferences prefs = await SharedPreferences.getInstance();
-+      expect(prefs.getString('accent_theme_id'), theme.id);
-+      expect(prefs.getString('accent_mode'), 'fixed');
++        expect(controller.current.accent, Colors.white);
++        expect(controller.isDaily, isFalse);
++        expect(modes.mode, ThemeMode.dark);
++        final SharedPreferences prefs = await SharedPreferences.getInstance();
++        for (final MapEntry<String, Object> value in saved.entries) {
++          expect(prefs.get(value.key), value.value);
++        }
++      }
 +    }
 +  });
 +
-+  test('un choix historique sans champ mode reste conservé', () async {
-+    SharedPreferences.setMockInitialValues(<String, Object>{
-+      'accent_theme_id': 'champagne',
-+    });
-+    await controller.initialize();
-+
-+    expect(controller.current.id, 'champagne');
-+    final SharedPreferences prefs = await SharedPreferences.getInstance();
-+    expect(prefs.getString('accent_mode'), isNull);
-+  });
-+
-+  test('le mode immersif enregistré reste actif après changement de marque',
++  test('le panel et les anciennes commandes ne réactivent pas les couleurs',
 +      () async {
 +    SharedPreferences.setMockInitialValues(<String, Object>{
 +      'accent_theme_id': 'ocean',
 +      'accent_mode': 'daily',
++      'theme.mode.v1': 'light',
 +    });
 +    await controller.initialize();
++    controller.applyCustom(const Color(0xFF2EF2C8));
++    await controller.enableDaily();
++    await controller.select(AccentTheme.derive(
++      id: 'emerald',
++      label: 'Ancien choix',
++      accent: Colors.green,
++    ));
++    await modes.setMode(ThemeMode.light);
 +
-+    expect(controller.isDaily, isTrue);
-+    expect(controller.current.id, 'immersive');
++    expect(controller.current.accent, Colors.white);
++    expect(controller.isDaily, isFalse);
++    expect(AppTheme.daylight.brightness, Brightness.dark);
++    expect(modes.mode, ThemeMode.dark);
 +    final SharedPreferences prefs = await SharedPreferences.getInstance();
-+    expect(prefs.getString('accent_mode'), 'daily');
 +    expect(prefs.getString('accent_theme_id'), 'ocean');
++    expect(prefs.getString('accent_mode'), 'daily');
++    expect(prefs.getString('theme.mode.v1'), 'light');
++  });
 +
-+    // Coupe le timer horaire du singleton à la fin du test.
-+    await controller.select(kMotionAccent);
++  test('Material ne réintroduit pas de tons colorés depuis une graine blanche',
++      () {
++    final ThemeData theme = AppTheme.cinema;
++    final ColorScheme colors = theme.colorScheme;
++    expect(colors.primary, Colors.white);
++    expect(colors.onPrimary, Colors.black);
++    expect(colors.outline, const Color(0xFF242424));
++    expect(colors.onSurfaceVariant, const Color(0xFF8E8E93));
++    for (final Color color in <Color>[
++      colors.primary,
++      colors.primaryContainer,
++      colors.secondary,
++      colors.secondaryContainer,
++      colors.tertiary,
++      colors.tertiaryContainer,
++      colors.error,
++      colors.errorContainer,
++      colors.surface,
++      colors.surfaceContainer,
++      colors.surfaceContainerHighest,
++      colors.outline,
++    ]) {
++      expect(color.r, color.g);
++      expect(color.g, color.b);
++    }
++    expect(theme.extension<LumiereColors>()!.canvas, AppColors.background);
++    expect((theme.cardTheme.shape! as RoundedRectangleBorder).side,
++        const BorderSide(color: AppColors.border, width: 1));
++    expect(theme.snackBarTheme.contentTextStyle!.color, Colors.black);
++    expect(AppTextStyles.headlineLarge.fontFamily, contains('Inter'));
++    expect(AppTextStyles.maisonHeroTitle.fontFamily, contains('Inter'));
++    expect(AppTextStyles.brandTagline.letterSpacing, 3);
++  });
++
++  test('la palette TV explicite conserve son accent violet', () {
++    expect(AppTheme.tvViolet.colorScheme.primary, TvRoyal.accent);
++    expect(AppTheme.tvViolet.scaffoldBackgroundColor, TvRoyal.background);
 +  });
 +}
 diff --git a/test/core/widgets/premium_motion_test.dart b/test/core/widgets/premium_motion_test.dart
 new file mode 100644
-index 00000000..3361aa3d
+index 00000000..1e008385
 --- /dev/null
 +++ b/test/core/widgets/premium_motion_test.dart
-@@ -0,0 +1,164 @@
+@@ -0,0 +1,197 @@
 +import 'package:flutter/material.dart';
 +import 'package:flutter/services.dart';
 +import 'package:flutter_test/flutter_test.dart';
@@ -4752,6 +7669,39 @@ index 00000000..3361aa3d
 +    expect(favorites, 1);
 +    await tester.pumpAndSettle();
 +  });
++
++  testWidgets(
++      'Le halo apparaît seulement au focus clavier et reste immobile en mode réduit',
++      (tester) async {
++    final focusNode = FocusNode();
++    final strategy = FocusManager.instance.highlightStrategy;
++    FocusManager.instance.highlightStrategy =
++        FocusHighlightStrategy.alwaysTraditional;
++    addTearDown(() {
++      focusNode.dispose();
++      FocusManager.instance.highlightStrategy = strategy;
++    });
++    int actions = 0;
++    await tester.pumpWidget(_host(
++        PremiumPress(
++          focusNode: focusNode,
++          onTap: () => actions++,
++          child: const Text('Ouvrir'),
++        ),
++        reduceMotion: true));
++    AnimatedContainer container() =>
++        tester.widget<AnimatedContainer>(find.byType(AnimatedContainer));
++    expect((container().decoration! as BoxDecoration).boxShadow, isEmpty);
++    focusNode.requestFocus();
++    await tester.pumpAndSettle();
++    expect((container().decoration! as BoxDecoration).boxShadow, hasLength(1));
++    expect(container().duration, Duration.zero);
++    expect(actions, 0);
++    focusNode.unfocus();
++    await tester.pumpAndSettle();
++    expect((container().decoration! as BoxDecoration).boxShadow, isEmpty);
++    expect(actions, 0);
++  });
 +}
 diff --git a/test/features/profile/premium_profile_preview_test.dart b/test/features/profile/premium_profile_preview_test.dart
 index 833bff28..ca5fe266 100644
@@ -4766,8 +7716,25 @@ index 833bff28..ca5fe266 100644
        captureKey.currentContext!));
    await tester.pumpAndSettle();
    final RenderRepaintBoundary boundary =
+diff --git a/test/features/radio/radio_screen_test.dart b/test/features/radio/radio_screen_test.dart
+index 736e8edf..fb10c12a 100644
+--- a/test/features/radio/radio_screen_test.dart
++++ b/test/features/radio/radio_screen_test.dart
+@@ -159,6 +159,12 @@ void main() {
+     expect(find.text('Tous les pays'), findsOneWidget);
+     await _tapVisible(tester, _collection('Rwanda'));
+     expect(client.searches.last.countryCode, 'RW');
++    // Une sélection reste lisible : surface blanche et contenu noir, jamais
++    // une écriture blanche héritée du thème sur ce fond blanc.
++    final ChoiceChip rwanda = tester.widget<ChoiceChip>(_collection('Rwanda'));
++    expect(rwanda.selectedColor, Colors.white);
++    expect(rwanda.labelStyle!.color, Colors.black);
++    expect(rwanda.checkmarkColor, Colors.black);
+     await _tapVisible(
+         tester, find.widgetWithText(ActionChip, 'Effacer les filtres'));
+     expect(client.searches.last.countryCode, isEmpty);
 diff --git a/test/features/simple_home/premium_home_visual_test.dart b/test/features/simple_home/premium_home_visual_test.dart
-index d11b41c2..fd267533 100644
+index d11b41c2..2f6f08ac 100644
 --- a/test/features/simple_home/premium_home_visual_test.dart
 +++ b/test/features/simple_home/premium_home_visual_test.dart
 @@ -99,7 +99,7 @@ void main() {
@@ -4794,3 +7761,27 @@ index d11b41c2..fd267533 100644
        await tester.pump(const Duration(milliseconds: 100));
        await tester.longPress(find.text('Afrique de l’Est').last);
        await tester.pump(const Duration(milliseconds: 650));
+@@ -165,6 +166,23 @@ void main() {
+       await _render(tester);
+       expect(tester.takeException(), isNull);
+       expect(find.text('Rwanda TV'), findsOneWidget);
++      // Le dock flotte au-dessus du catalogue. En fin de défilement, la
++      // dernière catégorie doit rester entièrement touchable, y compris
++      // à 320 dp avec le texte à 200 % (pas de ligne cachée sous le verre).
++      await tester.tap(find.byIcon(Icons.arrow_back_rounded));
++      await _render(tester);
++      await tester.scrollUntilVisible(find.text('Documentaires'), 160,
++          scrollable: find.byType(Scrollable).first);
++      await tester.drag(find.byType(Scrollable).first, const Offset(0, -2000));
++      await tester.pumpAndSettle();
++      expect(
++          tester.getBottomLeft(find.text('Documentaires')).dy,
++          lessThanOrEqualTo(
++              tester.getTopLeft(find.byType(HomeNavigationBar)).dy));
++      await tester.tap(find.text('Documentaires'));
++      await _render(tester);
++      expect(find.text('Nature'), findsOneWidget);
++      expect(tester.takeException(), isNull);
+       await tester.pumpWidget(const SizedBox.shrink());
+       await tester.pump(const Duration(seconds: 10));
+       PlaylistRepository.instance.debugSeedChannels(const <Channel>[]);

@@ -33,7 +33,7 @@ Les sources ont été consultées le **16 octobre 2026**. La date d'une page et 
 - **Apple Music Android, août–septembre 2026** : certains utilisateurs apprécient le service tout en décrivant des difficultés de connexion ou de démarrage audio. Une refonte visuelle ne doit pas dégrader les parcours existants. [S13]
 - **myTuner, novembre 2025** : un avis d'utilisateur VoiceOver signale que recherche et favoris sont devenus inaccessibles après une refonte. C'est un signal d'accessibilité à prendre en compte, sans prétendre qu'il représente tous les utilisateurs. [S14]
 
-La recherche ne prouve pas que « les gens préfèrent tous le noir et l'or ». La direction sombre, les accents chaleureux et une typographie éditoriale constituent une **proposition créative adaptée à 7 MOTION**. Netflix expérimente une découverte visuelle animée, tandis que des auditeurs radio réclament davantage de simplicité : il faut arbitrer selon le besoin d'écoute rapide du client.
+La recherche ne démontre pas une préférence universelle pour une palette. La direction finale **Pure Black & White** suit le cahier des charges explicite du propriétaire, après une première proposition noir et menthe. Netflix expérimente une découverte visuelle animée, tandis que des auditeurs radio réclament davantage de simplicité : il faut arbitrer selon le besoin d'écoute rapide du client.
 
 ## Audit initial du code mobile
 
@@ -62,24 +62,26 @@ Un commentaire du code attribue environ 70 % des lectures Netflix à la reprise.
 6. **Favoris et récents utiles.** Recherche et filtres doivent permettre de retrouver rapidement une station ; changer de présentation ne doit pas effacer une sélection personnelle.
 7. **Ton français clair.** Préférer des libellés concrets tels que « Radios du monde », « Afrique de l'Est », « Vos favoris », « Écoutes récentes », « Rechercher une radio » et « Réessayer ». Adapter le tutoiement ou le vouvoiement de manière cohérente avec les traductions existantes.
 
-La refonte livrable couvre l’accueil, la découverte radio, le profil et À propos. Les autres écrans héritent des ajustements de contraste et de l’accent partagé ; ils n’ont pas tous été redessinés. Les composants visuels conservent les choix personnels de couleur. La direction finale noir et menthe est détaillée ci-dessous.
+La refonte livrable couvre l’accueil, la découverte radio, le profil et À propos. Les autres écrans héritent des ajustements de contraste et de l’accent partagé ; ils n’ont pas tous été redessinés. Les composants partagés adoptent désormais la palette monochrome fixe demandée. Les anciennes préférences restent stockées, mais ne recolorent plus cette édition. La direction finale est détaillée ci-dessous.
 
-## Identité validée par le propriétaire et mouvement
+## Identité Pure Black & White et mouvement
 
-Les demandes suivantes précisent la direction de la refonte : **noir mat, menthe électrique et signature personnelle**. Le chiffre **7** fourni dans `814446.png` est réservé à l’icône Android ; le **R avec Motion manuscrit** de `814443.png` est utilisé à l’intérieur. Les deux fichiers originaux sont conservés sans retouche, avec leurs empreintes vérifiables dans le dépôt mobile reconstruit.
+Le dernier cahier des charges remplace la direction menthe dans l’interface par un monochrome strict. Le chiffre **7** fourni dans `814446.png` reste l’icône Android originale, extérieure à l’interface ; le **R avec Motion manuscrit** de `814443.png` est désaturé au rendu dans l’application. Les deux fichiers sources sont conservés sans retouche.
 
-La devise **NOT FOR EVERYONE.** apparaît dans l’accueil, le démarrage et le profil. « **Votre univers. Votre signature.** » accompagne l’espace personnel. Ces textes expriment la marque ; ils ne prétendent pas vérifier un abonnement premium.
+La devise **NOT FOR EVERYONE.** apparaît dans l’accueil, le démarrage, le profil et À propos : Inter 10, majuscules, espacement de 3 px, gris argenté. « **Votre univers. Votre signature.** » accompagne l’espace personnel. Ces textes expriment la marque ; ils ne prétendent pas vérifier un abonnement premium.
 
-- Noir principal `#090B0D`, cartes `#121518` et `#1A1E21`, textes blanc/gris neutres. Accent Motion `#2EF2C8` par défaut ; préférences de couleur déjà choisies conservées.
-- Signature intérieure cadrée dans une surface paysage, sans déformer ni couper le dessin. Icônes Android standards et adaptatives générées depuis le 7 original.
-- Appui : contraction de 2 % en 110 ms, retour en 160 ms. L’action reste immédiate, la zone tactile conserve au moins 48 dp.
+- Fond `#000000`, cartes `#121212`, bordures `#242424` de 1 dp, texte principal `#FFFFFF`, texte secondaire et icônes inactives `#8E8E93`.
+- Éléments sélectionnés blancs avec texte et icônes noirs. Les anciens choix d’accent et de mode clair restent stockés mais ne changent plus cette palette fixe.
+- Titres et textes communs en Inter embarquée. Catégories et cartes principales avec un rayon de 16 dp.
+- Logos de chaînes et radios désaturés au rendu, avec transparence préservée ; initiales neutres quand le fournisseur ne fournit pas de logo utilisable. Aucun logo officiel n’est inventé. Le décodeur d’images existant est conservé, sans ajout de prise en charge SVG.
+- Dock flottant noir à 80 %, avec un véritable `BackdropFilter` de 20 px au-dessus du contenu. Sélection blanche, icône noire ; icônes inactives argentées sans remplissage.
+- Focus clavier/télécommande : halo blanc diffus discret, sans halo permanent. Appui : contraction de 2 % en 110 ms, retour en 160 ms ; l’action reste immédiate et la cible tactile garde au moins 48 dp.
 - Navigation Android : fondu de 240 ms. Le réglage système de réduction des animations supprime le mouvement, y compris sur la page précédente.
-- Retours tactiles intégrés au dock, au profil, à l’entrée Radio et aux stations. Les favoris et la lecture conservent des actions indépendantes.
-- Texte des boutons sur menthe adapté au contraste ; ratio minimal de 4,5:1 vérifié pour chaque accent proposé.
+- Favoris et lecture gardent des actions indépendantes. Les badges LIVE, boutons et messages transitoires utilisent un premier plan noir lorsqu’ils sont sur fond blanc.
 
-L’icône générée pour Android :
+L’icône Android extérieure conserve l’original fourni précédemment ; elle n’est pas présentée comme un élément blanc de l’interface :
 
-![Icône Android 7](previews/motion-launcher.png)
+![Icône Android 7 originale](previews/motion-launcher.png)
 
 ## Accessibilité et vérifications attendues
 
@@ -88,14 +90,14 @@ Les recommandations Android demandent notamment un contraste de 4,5:1 pour le pe
 | Vérification | Résultat attendu | État à renseigner par l'intégrateur |
 | --- | --- | --- |
 | Écrans mobiles étroits et texte agrandi | Aucun débordement bloquant ; défilement possible. | Tests Flutter : accueil à 320 dp et texte 200 % ; profil/À propos à 360 dp et 200 % ; radio à 320×568 et 740×320, 200 %. Réussis. |
-| Modes et accents pris en charge | Hiérarchie lisible ; sélection autrement que par la couleur. | Captures sombres/claires revues. L’accent du thème Material suit désormais le choix utilisateur. Texte tertiaire sombre éclairci. |
+| Palette fixe et préférences anciennes | Aucun accent coloré ne réapparaît ; sélection lisible. | Couleurs exactes et rôles Material testés. Anciennes préférences clair/couleur conservées en stockage mais ignorées à l’affichage ; les deux entrées de thème produisent le même noir. |
 | TalkBack et cibles tactiles | Actions nommées et atteignables. | Libellés lecture/favori/recherche/retour contrôlés ; dock et réorganisation mesurés ≥48 dp. Essai TalkBack sur téléphone non réalisé. |
 | Navigation | Retour cohérent et fonctions accessibles. | Profil : retour visible ; catégories, réorganisation et quatre actions du dock testées. Mode Enfants conserve la découverte sans afficher les catégories filtrées. |
 | Radio : monde et régions | Monde par défaut et filtres explicites. | Test monde → Rwanda → effacer → tous les pays réussi. Tris serveur, erreurs, ordre UUID et pagination couverts par les tests du client HTTP local. |
 | Favoris et récents | Persistance et ordre cohérents. | Retrait favori résistant à une réponse ancienne ; historique par profil de 30 UUID max, enregistré après progression du média ; corruption et écritures concurrentes testées. |
 | Flux radio | États honnêtes, aucune ancienne session attribuée à la nouvelle. | Tests avec PlatformPlayer de contrôle : arrêt/ouverture sérialisés, ancien événement ignoré, historique après progression. Écoute native et disponibilité des stations sur téléphone non vérifiées. |
-| Régressions | Contrôles adaptés à la modification. | 55 tests ciblés réussis, dont 7 tests de gestes/transitions et 4 de préférences/contraste ; analyse sans erreur ni avertissement, avec 12 informations préexistantes hors des lignes modifiées ; 36 tests de protection de publication/configuration réussis. La suite générale locale a été bloquée par la revue automatique sur un test réseau : elle n’est pas déclarée validée. |
-| Reconstruction | Même code que celui testé. | Patches Sport → Radio → panel → identité appliqués dans l’ordre de CI, sur une base mobile propre. Arbre reconstruit strictement identique à celui testé : `143b6f5a0ad3d6d2b1042e9a03d48afed52bd8a6`. |
+| Régressions | Contrôles adaptés à la modification. | 57 tests ciblés réussis, dont 8 tests de gestes/focus/transitions et 5 de thème/préférences/contraste ; analyse sans erreur ni avertissement, avec des informations de style (12 dans le lot principal, 4 dans les trois derniers fichiers de contraste). Les 36 tests de protection de publication/configuration avaient réussi sur la préparation précédente ; aucun de ces fichiers n’a changé dans cette itération monochrome. La suite générale locale a été bloquée par la revue automatique sur un test réseau : elle n’est pas déclarée validée. |
+| Reconstruction | Même code que celui testé. | Patches Sport → Radio → panel → identité appliqués dans l’ordre de CI, sur une base mobile propre. Arbre reconstruit strictement identique à celui testé : `e90de20474b28ab3097d8e0d10ccc05bf80e7a2d`. |
 | Livraison | Distinguer code, validation et APK. | Nouveau code préparé pour la branche d’intégration protégée. Aucun nouvel APK n’est annoncé construit ou publié à ce stade. |
 
 L'analyse statique seule ne valide ni le rendu visuel sur téléphone ni la disponibilité réelle de chaque radio. La publication d'un APK ne signifie pas que les propositions de cette note ont toutes été livrées.
@@ -112,7 +114,7 @@ Ces captures proviennent des vrais widgets de l’application, avec un catalogue
 |---|---|
 | ![Profil](previews/premium-profile.png) | ![À propos](previews/premium-about.png) |
 
-Les styles principaux utilisent 13 fichiers de police officiels embarqués (2,26 Mo, licences OFL et provenance jointes), pour que leur chargement ne dépende plus du réseau. La découverte radio et les nouveaux textes sont disponibles en français, anglais et swahili. Les autres langues conservent leur mécanisme de repli existant pour les nouvelles clés radio.
+La famille Inter est utilisée dans les styles communs. Les 13 fichiers de police officiels déjà embarqués (2,26 Mo, licences OFL et provenance jointes) sont conservés, pour que leur chargement ne dépende plus du réseau. La découverte radio et les nouveaux textes sont disponibles en français, anglais et swahili. Les autres langues conservent leur mécanisme de repli existant pour les nouvelles clés radio.
 
 ## Sources
 
