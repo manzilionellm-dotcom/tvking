@@ -62,7 +62,24 @@ Un commentaire du code attribue environ 70 % des lectures Netflix à la reprise.
 6. **Favoris et récents utiles.** Recherche et filtres doivent permettre de retrouver rapidement une station ; changer de présentation ne doit pas effacer une sélection personnelle.
 7. **Ton français clair.** Préférer des libellés concrets tels que « Radios du monde », « Afrique de l'Est », « Vos favoris », « Écoutes récentes », « Rechercher une radio » et « Réessayer ». Adapter le tutoiement ou le vouvoiement de manière cohérente avec les traductions existantes.
 
-La refonte livrable couvre l’accueil, la découverte radio, le profil et À propos. Les autres écrans héritent des ajustements de contraste et de l’accent partagé ; ils n’ont pas tous été redessinés. Les composants visuels conservent les choix personnels de couleur.
+La refonte livrable couvre l’accueil, la découverte radio, le profil et À propos. Les autres écrans héritent des ajustements de contraste et de l’accent partagé ; ils n’ont pas tous été redessinés. Les composants visuels conservent les choix personnels de couleur. La direction finale noir et menthe est détaillée ci-dessous.
+
+## Identité validée par le propriétaire et mouvement
+
+Les demandes suivantes précisent la direction de la refonte : **noir mat, menthe électrique et signature personnelle**. Le chiffre **7** fourni dans `814446.png` est réservé à l’icône Android ; le **R avec Motion manuscrit** de `814443.png` est utilisé à l’intérieur. Les deux fichiers originaux sont conservés sans retouche, avec leurs empreintes vérifiables dans le dépôt mobile reconstruit.
+
+La devise **NOT FOR EVERYONE.** apparaît dans l’accueil, le démarrage et le profil. « **Votre univers. Votre signature.** » accompagne l’espace personnel. Ces textes expriment la marque ; ils ne prétendent pas vérifier un abonnement premium.
+
+- Noir principal `#090B0D`, cartes `#121518` et `#1A1E21`, textes blanc/gris neutres. Accent Motion `#2EF2C8` par défaut ; préférences de couleur déjà choisies conservées.
+- Signature intérieure cadrée dans une surface paysage, sans déformer ni couper le dessin. Icônes Android standards et adaptatives générées depuis le 7 original.
+- Appui : contraction de 2 % en 110 ms, retour en 160 ms. L’action reste immédiate, la zone tactile conserve au moins 48 dp.
+- Navigation Android : fondu de 240 ms. Le réglage système de réduction des animations supprime le mouvement, y compris sur la page précédente.
+- Retours tactiles intégrés au dock, au profil, à l’entrée Radio et aux stations. Les favoris et la lecture conservent des actions indépendantes.
+- Texte des boutons sur menthe adapté au contraste ; ratio minimal de 4,5:1 vérifié pour chaque accent proposé.
+
+L’icône générée pour Android :
+
+![Icône Android 7](previews/motion-launcher.png)
 
 ## Accessibilité et vérifications attendues
 
@@ -77,8 +94,8 @@ Les recommandations Android demandent notamment un contraste de 4,5:1 pour le pe
 | Radio : monde et régions | Monde par défaut et filtres explicites. | Test monde → Rwanda → effacer → tous les pays réussi. Tris serveur, erreurs, ordre UUID et pagination couverts par les tests du client HTTP local. |
 | Favoris et récents | Persistance et ordre cohérents. | Retrait favori résistant à une réponse ancienne ; historique par profil de 30 UUID max, enregistré après progression du média ; corruption et écritures concurrentes testées. |
 | Flux radio | États honnêtes, aucune ancienne session attribuée à la nouvelle. | Tests avec PlatformPlayer de contrôle : arrêt/ouverture sérialisés, ancien événement ignoré, historique après progression. Écoute native et disponibilité des stations sur téléphone non vérifiées. |
-| Régressions | Contrôles adaptés à la modification. | 44 tests ciblés réussis ; analyse des fichiers modifiés sans problème ; 17 tests de protection de publication réussis. La suite générale locale a été bloquée par la revue automatique sur un test réseau : elle n’est pas déclarée validée. |
-| Reconstruction | Même code que celui testé. | Patch radio cumulatif appliqué après Sport puis suivi du patch panel, dans l’ordre de CI, sur une copie propre de la base mobile. Arbre reconstruit strictement identique à celui testé : `06216ca0918b88dba45ce7f317ccc22190aa6945`. |
+| Régressions | Contrôles adaptés à la modification. | 55 tests ciblés réussis, dont 7 tests de gestes/transitions et 4 de préférences/contraste ; analyse sans erreur ni avertissement, avec 12 informations préexistantes hors des lignes modifiées ; 36 tests de protection de publication/configuration réussis. La suite générale locale a été bloquée par la revue automatique sur un test réseau : elle n’est pas déclarée validée. |
+| Reconstruction | Même code que celui testé. | Patches Sport → Radio → panel → identité appliqués dans l’ordre de CI, sur une base mobile propre. Arbre reconstruit strictement identique à celui testé : `143b6f5a0ad3d6d2b1042e9a03d48afed52bd8a6`. |
 | Livraison | Distinguer code, validation et APK. | Nouveau code préparé pour la branche d’intégration protégée. Aucun nouvel APK n’est annoncé construit ou publié à ce stade. |
 
 L'analyse statique seule ne valide ni le rendu visuel sur téléphone ni la disponibilité réelle de chaque radio. La publication d'un APK ne signifie pas que les propositions de cette note ont toutes été livrées.

@@ -71,6 +71,8 @@ jobs:
         git apply ../mission/patches/mobile-radio.patch
         git apply --check ../mission/patches/mobile-panel-sync.patch
         git apply ../mission/patches/mobile-panel-sync.patch
+        git apply --check ../mission/patches/mobile-identity.patch
+        git apply ../mission/patches/mobile-identity.patch
         git diff --check
         gh api "repos/$GITHUB_REPOSITORY/releases/tags/phone-latest" > "$RUNNER_TEMP/client-before.json"
     - name: Setup Java 17 (Temurin)
@@ -286,7 +288,7 @@ jobs:
         echo "===== fin dump ====="
     - name: Generate AppLocalizations from .arb files
       run: flutter gen-l10n
-    - name: Generate launcher icons (7 MOTION ember)
+    - name: Generate launcher icons (7 MOTION menthe)
       run: dart run flutter_launcher_icons
     - name: Préparer les composants Android des notifications
       run: |-
