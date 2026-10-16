@@ -113,11 +113,11 @@ jobs:
         open(f, "w").write(s)
         print("minSdk -> 24 dans", f)
         PYEOF
-    - name: Brand AndroidManifest with The Few label
+    - name: Harmoniser le nom Android 7 MOTION
       run: |
         MANIFEST=android/app/src/main/AndroidManifest.xml
         if [ -f "$MANIFEST" ]; then
-          sed -i 's|android:label="tv_king"|android:label="The Few"|g' "$MANIFEST"
+          sed -i 's|android:label="tv_king"|android:label="7 MOTION"|g' "$MANIFEST"
           echo "--- Patched manifest ---"
           grep 'android:label' "$MANIFEST" || true
         fi
@@ -689,7 +689,9 @@ jobs:
           SHA-256 : $APK_SHA256
           Base téléphone : 37fdf3305c5de9d35e20fd6567df38008fc7a7ee
           Correction : ${{ github.event.pull_request.head.sha }}
-          Radios : recherche mondiale, pays, langues, genres, favoris par profil.
+          Design : accueil, radios, espace personnel et À propos refondus.
+          Radios : catalogue mondial, raccourcis Afrique de l’Est, favoris et écoutes récentes par profil.
+          Polices embarquées pour une présentation stable hors connexion.
           Catalogue public Radio Browser ; stations et disponibilité non garanties.
           Repli zuno.mobile.radio_legacy éteint par défaut : true restitue l'accueil sans radios.
           Sport OpenLigaDB et notifications précédemment validés conservés.
