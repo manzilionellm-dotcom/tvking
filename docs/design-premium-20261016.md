@@ -66,7 +66,7 @@ La refonte livrable couvre l’accueil, la découverte radio, le profil et À pr
 
 ## Identité Pure Black & White et mouvement
 
-Le dernier cahier des charges remplace la direction menthe dans l’interface par un monochrome strict. Le chiffre **7** fourni dans `814446.png` reste l’icône Android originale, extérieure à l’interface ; le **R avec Motion manuscrit** de `814443.png` est désaturé au rendu dans l’application. Les deux fichiers sources sont conservés sans retouche.
+Le cahier des charges remplace la direction menthe dans l’interface par un monochrome strict. Une précision ultérieure du propriétaire réserve une **exception rouge aux deux marques** : le **R rouge avec Motion manuscrit argenté** à l’intérieur et le **7 avec son arc rouges** pour l’icône Android. Ces deux variantes ont été produites avec ImageGen à partir des PNG fournis ; les originaux menthe sont conservés intacts. Les variantes sont une retouche de couleur, sans promesse d’identité pixel à pixel avec les originaux.
 
 La devise **NOT FOR EVERYONE.** apparaît dans l’accueil, le démarrage, le profil et À propos : Inter 10, majuscules, espacement de 3 px, gris argenté. « **Votre univers. Votre signature.** » accompagne l’espace personnel. Ces textes expriment la marque ; ils ne prétendent pas vérifier un abonnement premium.
 
@@ -77,11 +77,12 @@ La devise **NOT FOR EVERYONE.** apparaît dans l’accueil, le démarrage, le pr
 - Dock flottant noir à 80 %, avec un véritable `BackdropFilter` de 20 px au-dessus du contenu. Sélection blanche, icône noire ; icônes inactives argentées sans remplissage.
 - Focus clavier/télécommande : halo blanc diffus discret, sans halo permanent. Appui : contraction de 2 % en 110 ms, retour en 160 ms ; l’action reste immédiate et la cible tactile garde au moins 48 dp.
 - Navigation Android : fondu de 240 ms. Le réglage système de réduction des animations supprime le mouvement, y compris sur la page précédente.
+- Accès TV / Cinéma / Radio / 18+ regroupés en tête. Le rayon 18+ utilise uniquement les chaînes déjà classées adultes dans la source et demande le PIN parental personnalisé ; le code initial dirige vers les Réglages existants. Il est masqué en mode Enfants et révoqué au changement de profil. Filtrage individuel avant regroupement, y compris catégories mixtes, et vérification au toucher avant lecture. Les favoris/reprises de cet accueil reçoivent la liste autorisée. Cela ne constitue pas un audit de tous les parcours parentaux historiques de l’application.
 - Favoris et lecture gardent des actions indépendantes. Les badges LIVE, boutons et messages transitoires utilisent un premier plan noir lorsqu’ils sont sur fond blanc.
 
-L’icône Android extérieure conserve l’original fourni précédemment ; elle n’est pas présentée comme un élément blanc de l’interface :
+L’icône Android générée utilise désormais la variante rouge du 7 :
 
-![Icône Android 7 originale](previews/motion-launcher.png)
+![Icône Android 7 rouge](previews/motion-launcher.png)
 
 ## Accessibilité et vérifications attendues
 
@@ -92,12 +93,13 @@ Les recommandations Android demandent notamment un contraste de 4,5:1 pour le pe
 | Écrans mobiles étroits et texte agrandi | Aucun débordement bloquant ; défilement possible. | Tests Flutter : accueil à 320 dp et texte 200 % ; profil/À propos à 360 dp et 200 % ; radio à 320×568 et 740×320, 200 %. Réussis. |
 | Palette fixe et préférences anciennes | Aucun accent coloré ne réapparaît ; sélection lisible. | Couleurs exactes et rôles Material testés. Anciennes préférences clair/couleur conservées en stockage mais ignorées à l’affichage ; les deux entrées de thème produisent le même noir. |
 | TalkBack et cibles tactiles | Actions nommées et atteignables. | Libellés lecture/favori/recherche/retour contrôlés ; dock et réorganisation mesurés ≥48 dp. Essai TalkBack sur téléphone non réalisé. |
-| Navigation | Retour cohérent et fonctions accessibles. | Profil : retour visible ; catégories, réorganisation et quatre actions du dock testées. Mode Enfants conserve la découverte sans afficher les catégories filtrées. |
+| Navigation | Retour cohérent et fonctions accessibles. | TV, Cinéma, Radio et 18+ visibles à 390 dp ; défilement conservé à 200 %. Cinéma conserve Films et Séries. Les 12 tests de l’accueil passent, dont 7 nouveaux parcours PIN/profil/Enfants ; analyse ciblée sans problème. |
 | Radio : monde et régions | Monde par défaut et filtres explicites. | Test monde → Rwanda → effacer → tous les pays réussi. Tris serveur, erreurs, ordre UUID et pagination couverts par les tests du client HTTP local. |
 | Favoris et récents | Persistance et ordre cohérents. | Retrait favori résistant à une réponse ancienne ; historique par profil de 30 UUID max, enregistré après progression du média ; corruption et écritures concurrentes testées. |
 | Flux radio | États honnêtes, aucune ancienne session attribuée à la nouvelle. | Tests avec PlatformPlayer de contrôle : arrêt/ouverture sérialisés, ancien événement ignoré, historique après progression. Écoute native et disponibilité des stations sur téléphone non vérifiées. |
-| Régressions | Contrôles adaptés à la modification. | 57 tests ciblés réussis, dont 8 tests de gestes/focus/transitions et 5 de thème/préférences/contraste ; analyse sans erreur ni avertissement, avec des informations de style (12 dans le lot principal, 4 dans les trois derniers fichiers de contraste). Les 36 tests de protection de publication/configuration avaient réussi sur la préparation précédente ; aucun de ces fichiers n’a changé dans cette itération monochrome. La suite générale locale a été bloquée par la revue automatique sur un test réseau : elle n’est pas déclarée validée. |
-| Reconstruction | Même code que celui testé. | Patches Sport → Radio → panel → identité appliqués dans l’ordre de CI, sur une base mobile propre. Arbre reconstruit strictement identique à celui testé : `e90de20474b28ab3097d8e0d10ccc05bf80e7a2d`. |
+| Régressions | Contrôles adaptés à la modification. | Campagne monochrome : 57 tests ciblés réussis, dont 8 tests de gestes/focus/transitions et 5 de thème/préférences/contraste ; analyse sans erreur ni avertissement, avec des informations de style (12 dans le lot principal, 4 dans les trois derniers fichiers de contraste). Les 36 tests de protection de publication/configuration avaient réussi sur la préparation précédente ; aucun de ces fichiers n’a changé dans cette itération monochrome. La suite générale locale a été bloquée par la revue automatique sur un test réseau : elle n’est pas déclarée validée. |
+| Reconstruction | Même code que celui testé. | Patches Sport → Radio → panel → identité appliqués dans l’ordre de CI, sur une base mobile propre. Arbre reconstruit strictement identique à celui testé : `431ba14e484aa9df13c9629c54444a0ce37926a6`. |
+| Variantes rouges | R rouge, Motion argenté et icône 7 rouge ; aucune propagation à l’accent du thème. | Les 13 cas visuels accueil/profil/À propos ont réussi après remplacement des assets, avant ajout des nouvelles rubriques ; l’accueil final a été recapturé ensuite. Génération des icônes Android vérifiée. |
 | Livraison | Distinguer code, validation et APK. | Nouveau code préparé pour la branche d’intégration protégée. Aucun nouvel APK n’est annoncé construit ou publié à ce stade. |
 
 L'analyse statique seule ne valide ni le rendu visuel sur téléphone ni la disponibilité réelle de chaque radio. La publication d'un APK ne signifie pas que les propositions de cette note ont toutes été livrées.

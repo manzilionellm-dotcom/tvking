@@ -288,7 +288,7 @@ jobs:
         echo "===== fin dump ====="
     - name: Generate AppLocalizations from .arb files
       run: flutter gen-l10n
-    - name: Generate launcher icons (7 MOTION menthe)
+    - name: Generate launcher icons (7 MOTION)
       run: dart run flutter_launcher_icons
     - name: Préparer les composants Android des notifications
       run: |-
