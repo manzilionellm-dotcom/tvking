@@ -44132,7 +44132,7 @@ HcmV?d00001
 
 diff --git a/assets/branding/IDENTITY.md b/assets/branding/IDENTITY.md
 new file mode 100644
-index 00000000..6aae42b7
+index 00000000..a6deebd3
 --- /dev/null
 +++ b/assets/branding/IDENTITY.md
 @@ -0,0 +1,24 @@
@@ -44150,7 +44150,7 @@ index 00000000..6aae42b7
 +
 +Ce sont des variantes retouchées, pas des copies identiques pixel par pixel des références. Le widget conserve les proportions de l’image et réduit visuellement ses marges. La signature active s’affiche en couleur, sans filtre de désaturation.
 +
-+Le rouge est limité aux deux marques. Le reste de l’interface conserve la charte **Pure Black & White** : noir OLED, blanc et gris argenté. Les filtres monochromes des logos de chaînes et de radios restent en place. Les anciens choix de couleur restent en stockage mais ne peuvent pas recoloriser cette édition.
++Le rouge est limité aux deux marques. Le reste de l’interface conserve la charte **Pure Black & White** : noir OLED, blanc et gris argenté. Les logos de chaînes et de radios sont les logos officiels fournis par la playlist ou le catalogue, affichés en couleur, sans filtre ni substitution. Les anciens choix de couleur restent en stockage mais ne peuvent pas recoloriser cette édition.
 +
 +Le nom de l’application reste **7 MOTION**. Les identifiants techniques, certificats, services et canaux de mise à jour restent ceux de l’application existante.
 +
@@ -44186,7 +44186,7 @@ index 0140ca3a..4d65f31f 100644
 +//  Son cadrage paysage est réservé à l'interface ; le 7 rouge carré est
 +//  réservé au launcher Android. Le thème de l'app reste noir et blanc.
  // =========================================================
-
+ 
  import 'package:flutter/material.dart';
 @@ -46,8 +46,7 @@ class BrandLogo extends StatelessWidget {
    /// Variante hero 160 dp — pour le splash Télévision (lisible à 3 m).
@@ -44195,13 +44195,13 @@ index 0140ca3a..4d65f31f 100644
 -  const BrandLogo.hero({super.key, this.glowColor})
 -      : size = BrandLogoSize.hero;
 +  const BrandLogo.hero({super.key, this.glowColor}) : size = BrandLogoSize.hero;
-
+ 
    final BrandLogoSize size;
-
+ 
 @@ -56,14 +55,16 @@ class BrandLogo extends StatelessWidget {
    /// une autre palette (ex. `TvRoyal.accentGlow` sur la TV).
    final Color? glowColor;
-
+ 
 -  /// Asset PNG/JPG selon le flavor courant. Le logo Red Room (R rouge
 -  /// stylise sur velours noir, livre par l'utilisateur) remplace
 -  /// 1:1 le logo The Few partout dans l'app quand le binaire est
@@ -44232,7 +44232,7 @@ index 0140ca3a..4d65f31f 100644
 @@ -132,37 +135,43 @@ class BrandLogo extends StatelessWidget {
      final LumiereColors palette = LumiereColors.of(context);
      final bool isLight = Theme.of(context).brightness == Brightness.light;
-
+ 
 +    final isMotion = FlavorConfig.current.flavor == Flavor.sevenMotion;
      return Container(
 -      width: _dp,
@@ -44295,9 +44295,9 @@ index 0140ca3a..4d65f31f 100644
      );
    }
 @@ -170,7 +179,7 @@ class BrandLogo extends StatelessWidget {
-
+ 
  enum BrandLogoSize { compact, medium, splash, hero }
-
+ 
 -/// Constantes de chaîne pour les wordmarks The Few.
 +/// Constantes de chaîne pour les wordmarks 7 MOTION.
  abstract final class BrandStrings {
@@ -44305,7 +44305,7 @@ index 0140ca3a..4d65f31f 100644
    static const String appName = '7 MOTION';
 @@ -179,5 +188,5 @@ abstract final class BrandStrings {
    static const String longName = '7 MOTION — TV & Radio';
-
+ 
    /// Tagline courte pour les hero / onboarding.
 -  static const String tagline = 'Cinéma sans limites';
 +  static const String tagline = 'NOT FOR EVERYONE.';
@@ -44377,16 +44377,16 @@ index 7c4a9b70..5449f243 100644
 +//  Les anciennes méthodes restent disponibles pour les appels historiques,
 +//  mais ni une préférence locale ni une couleur du panel ne peuvent remettre
 +//  un accent coloré. Les anciennes clés de préférences restent intactes.
-
+ 
  import 'package:flutter/material.dart';
 -import 'package:shared_preferences/shared_preferences.dart';
-
+ 
  /// Une variante d'accent : la couleur principale + ses deux dérivées
  /// (claire pour les brillances/focus, profonde pour les bordures).
 @@ -79,397 +67,42 @@ class AccentTheme {
    }
  }
-
+ 
 -/// Catalogue des thèmes proposés au client. Le 1er (ember) est le
 -/// défaut historique The Few — valeurs IDENTIQUES à l'ancienne
 -/// façade `AppColors` pour ne rien changer tant que le client n'a pas
@@ -44631,7 +44631,7 @@ index 7c4a9b70..5449f243 100644
  class AccentController extends ChangeNotifier {
    AccentController._();
    static final AccentController instance = AccentController._();
-
+ 
 -  static const String _kPrefKey = 'accent_theme_id';
 -
 -  /// Mode : 'fixed' (couleur choisie) ou 'daily' (thème IMMERSIF qui change
@@ -44690,7 +44690,7 @@ index 7c4a9b70..5449f243 100644
 -  }
 +  AccentTheme get current => kMotionAccent;
 +  bool get isDaily => false;
-
+ 
 -  /// (Ré)applique la couleur immersive du moment et (ré)arme le timer horaire.
 -  /// Appelé au boot, à l'activation du mode, et à chaque retour à l'écran.
 -  void _applyImmersive({bool notify = true}) {
@@ -44705,7 +44705,7 @@ index 7c4a9b70..5449f243 100644
 -    });
 -  }
 +  Future<void> initialize() async {}
-
+ 
 -  /// Charge le choix (ou le mode immersif) au démarrage. Silencieux si rien.
 -  Future<void> initialize() async {
 -    try {
@@ -44733,7 +44733,7 @@ index 7c4a9b70..5449f243 100644
 -  }
 +  /// Compatibilité avec le retour au premier plan ; aucun timer coloré.
 +  void refreshDailyIfNeeded() {}
-
+ 
 -  /// Ré-applique la couleur immersive du moment si le mode est actif : couleur
 -  /// de l'HEURE + petite nuance de l'OUVERTURE. À appeler au retour au premier
 -  /// plan (chaque ouverture rafraîchit la nuance ; l'heure fait tourner la
@@ -44744,7 +44744,7 @@ index 7c4a9b70..5449f243 100644
 -  }
 +  /// Ancienne commande conservée, sans réactiver une rotation de couleurs.
 +  Future<void> enableDaily() async {}
-
+ 
 -  /// Active le mode IMMERSIF : une couleur premium qui change chaque heure,
 -  /// avec une nuance différente à chaque ouverture (rotation sur les 100+
 -  /// teintes). Applique tout de suite celle du moment. Persisté.
@@ -44760,7 +44760,7 @@ index 7c4a9b70..5449f243 100644
 -  }
 +  /// Une consigne colorée distante ne remplace pas la charte monochrome.
 +  void applyCustom(Color accent) {}
-
+ 
 -  /// Applique une couleur d'accent ARBITRAIRE, pilotée à distance par le
 -  /// panel « Thème » (ex. blanc, or, vert Coupe du Monde…). On dérive les
 -  /// variantes claire (glows/focus) et profonde (bordures) par HSL pour
@@ -44822,44 +44822,44 @@ index 5b9c75de..30a760c8 100644
  //  IMPORTANT — Cette classe n'est PAS la source de vérité.
  //  C'est une façade statique qui réplique le `LumiereColors.cinema`
 @@ -17,180 +17,156 @@
-
+ 
  import 'package:flutter/material.dart';
-
+ 
 -import 'accent_controller.dart';
  import 'lumiere_tokens.dart';
-
+ 
  abstract final class AppColors {
    // -------------------------------------------------------
 -  //  FONDS / SURFACES (Cinema Mode The Few)
 +  //  FONDS / SURFACES (Cinema Mode Motion)
    // -------------------------------------------------------
-
+ 
 -  /// Fond principal — charbon presque noir avec une trace de chaleur.
 -  static const Color background = Color(0xFF0A0A0C);
 +  /// Fond principal — noir absolu de la charte Motion.
 +  static const Color background = Color(0xFF000000);
-
+ 
    /// Surface la plus profonde — splash, vidéo plein écran.
 -  static const Color voidSurface = Color(0xFF050507);
 +  static const Color voidSurface = Color(0xFF000000);
-
+ 
    /// Surface élevée (cards, panels, sheets).
 -  static const Color surface = Color(0xFF14141A);
 +  static const Color surface = Color(0xFF121212);
-
+ 
    /// Glassmorphism — à combiner avec BackdropFilter.
 -  static const Color surfaceHigh = Color(0xFF1C1C24);
 +  static const Color surfaceHigh = Color(0xFF121212);
-
+ 
    /// Overlay le plus haut (modals, snackbars).
 -  static const Color surfaceOverlay = Color(0xFF28282F);
 +  static const Color surfaceOverlay = Color(0xFF121212);
-
+ 
 -  /// Liseré subtil (textPrimary @ 8% alpha).
 -  static Color get border => const Color(0xFFF0EDE9).withValues(alpha: 0.08);
 +  /// Liseré de carte exact (#242424), à afficher sur 1 dp.
 +  static const Color border = Color(0xFF242424);
-
+ 
    // -------------------------------------------------------
    //  PALETTE CINÉMA — niveaux supplémentaires (Phase 1 redesign)
    // -------------------------------------------------------
@@ -44869,35 +44869,35 @@ index 5b9c75de..30a760c8 100644
 -  //  imperceptibles qui donnent la sensation de stratification.
 +  //  Surfaces noires étagées : chaque carte se distingue par sa valeur
 +  //  lumineuse et un fin liseré, sans reflet coloré ni ombre décorative.
-
+ 
    /// Niveau 0 — obsidian. Fond principal sur grandes surfaces
    /// cinéma (home, hero plein écran).
 -  static const Color obsidian = Color(0xFF0E0E12);
 +  static const Color obsidian = Color(0xFF000000);
-
+ 
    /// Niveau 1 — midnight. Première élévation pour les rails.
 -  static const Color midnight = Color(0xFF16161C);
 +  static const Color midnight = Color(0xFF121212);
-
+ 
    /// Niveau 2 — slate. Cards posters, chips.
 -  static const Color slate = Color(0xFF1F1F26);
 +  static const Color slate = Color(0xFF121212);
-
+ 
    /// Niveau 3 — ash. Overlays, sheets, modal headers.
 -  static const Color ash = Color(0xFF2A2A33);
 +  static const Color ash = Color(0xFF121212);
-
+ 
    /// Voile glass — surface translucide pour BackdropFilter
    /// (dock flottant, app bars translucides).
    static Color get glassSurface =>
 -      const Color(0xFF14141A).withValues(alpha: 0.55);
 +      const Color(0xFF121212).withValues(alpha: 0.55);
-
+ 
    /// Liseré ultra-subtil pour les verres flottants.
 -  static Color get glassBorder =>
 -      const Color(0xFFF0EDE9).withValues(alpha: 0.06);
 +  static const Color glassBorder = border;
-
+ 
    // -------------------------------------------------------
 -  //  ACCENT EMBER (rouge braise The Few)
 +  //  ACCENT MONOCHROME — blanc pour les actions et états sélectionnés.
@@ -44929,7 +44929,7 @@ index 5b9c75de..30a760c8 100644
 +  static const Color accentMuted = Color(0xFF8E8E93);
 +  static const Color emberHalo = accent;
 +  static const Color accentSurface = Color(0xFF242424);
-
+ 
    // -------------------------------------------------------
 -  //  CRÈME ÉDITORIAL — accent non-critique (Phase 1 redesign)
 +  //  NEUTRES ÉDITORIAUX — noms historiques conservés
@@ -44950,26 +44950,26 @@ index 5b9c75de..30a760c8 100644
    //  Anciennement nommé `champagne` — renommé `editorialCream`
 -  //  pour lever l'ambiguïté avec les tokens ember.
 +  //  pour lever l'ambiguïté avec le thème Champagne du sélecteur.
-
+ 
 -  /// Crème éditorial — accent principal non-critique (eyebrows,
 -  /// badges "À LA UNE", "RECOMMANDÉ", "NOUVEAU"). Ni or jaune
 -  /// agressif ni rouge — un crème chaud très tamisé.
 -  static const Color editorialCream = Color(0xFFE8D9C0);
 +  /// Gris éditorial — badges et titres secondaires, sans teinte dorée.
 +  static const Color editorialCream = Color(0xFFFFFFFF);
-
+ 
 -  /// Crème éditorial profond — bordures fines et hovers
 -  /// non-critiques. Encore plus discret que `editorialCream`.
 -  static const Color editorialCreamDeep = Color(0xFFB39B7C);
 +  /// Gris éditorial profond — bordures fines et hovers non-critiques.
 +  static const Color editorialCreamDeep = Color(0xFF8E8E93);
-
+ 
 -  /// Voile crème — fond des chips éditoriaux.
 +  /// Voile neutre — fond des chips éditoriaux.
    static Color get editorialCreamSurface =>
 -      const Color(0xFFE8D9C0).withValues(alpha: 0.10);
 +      const Color(0xFFFFFFFF).withValues(alpha: 0.10);
-
+ 
 -  /// Or royal Maison Noir — réservé aux actions « premium » ponctuelles
 -  /// (baguette « Optimiser la source », badges VIP). Plus soutenu que
 -  /// `editorialCream`, jamais utilisé pour du critique.
@@ -44977,59 +44977,59 @@ index 5b9c75de..30a760c8 100644
 +  /// Accent Motion pour les anciens composants premium. Le nom reste stable
 +  /// pour compatibilité ; la valeur suit désormais la nouvelle marque.
 +  static const Color royalGold = Color(0xFFFFFFFF);
-
+ 
 -  /// Voile or — fond mat des surfaces « premium » (boutons Optimiser).
 +  /// Voile blanc — fond mat des surfaces « premium » (boutons Optimiser).
    static Color get royalGoldSurface =>
 -      const Color(0xFFCCB089).withValues(alpha: 0.14);
 +      const Color(0xFFFFFFFF).withValues(alpha: 0.14);
-
+ 
    // -------------------------------------------------------
    //  TEXTE
    // -------------------------------------------------------
-
+ 
 -  /// Texte principal — ivoire chaud, jamais blanc pur.
 -  static const Color textPrimary = Color(0xFFF0EDE9);
 +  /// Texte principal — blanc neutre légèrement adouci.
 +  static const Color textPrimary = Color(0xFFFFFFFF);
-
+ 
    /// Sous-titres, métadonnées importantes.
 -  static const Color textSecondary = Color(0xFFB6B0A8);
 +  static const Color textSecondary = Color(0xFF8E8E93);
-
+ 
    /// Niveau intermédiaire — métadonnées discrètes.
 -  static const Color textTertiary = Color(0xFF9D968F);
 +  static const Color textTertiary = Color(0xFF8E8E93);
-
+ 
    /// Texte estompé — hints, timestamps, états désactivés.
 -  static const Color textMuted = Color(0xFF4E4A45);
 +  static const Color textMuted = Color(0xFF8E8E93);
-
+ 
    // -------------------------------------------------------
    //  STATUTS SÉMANTIQUES
    // -------------------------------------------------------
-
+ 
 -  /// Vert apaisé — confirmations, OK. Jamais néon.
 -  static const Color success = Color(0xFF5FA975);
 +  /// Confirmation — blanc, accompagnée d’une icône ou d’un libellé.
 +  static const Color success = Color(0xFFFFFFFF);
-
+ 
 -  /// Ambre / orange — buffering, attentions douces.
 -  static const Color warning = Color(0xFFD69847);
 +  /// Attente / avertissement — gris secondaire.
 +  static const Color warning = Color(0xFF8E8E93);
-
+ 
 -  /// Erreur critique + badge LIVE — ember-glow (légèrement plus
 -  /// orangé que l'accent principal pour se distinguer en alerte).
 -  static const Color live = Color(0xFFE84A3E);
 +  /// Erreur / direct — blanc ; le sens repose aussi sur l’icône et le texte.
 +  static const Color live = Color(0xFFFFFFFF);
-
+ 
 -  /// Bleu cendre froid — info neutre.
 -  static const Color info = Color(0xFF6A8DB0);
 +  /// Information — gris secondaire.
 +  static const Color info = Color(0xFF8E8E93);
-
+ 
    // -------------------------------------------------------
 -  //  MAISON NOIR / BLACK7 — palette dédiée à l'accueil refondu
 -  //  (country_home). Charte Black7 : noir vrai OLED + ROUGE de marque
@@ -45074,7 +45074,7 @@ index 5b9c75de..30a760c8 100644
    /// Bordure subtile (blanc 8 %).
 -  static const Color maisonBorder = Color(0x14FFFFFF);
 +  static const Color maisonBorder = Color(0xFF242424);
-
+ 
    // -------------------------------------------------------
    //  GRADIENTS RÉUTILISÉS
 @@ -202,9 +178,9 @@ abstract final class AppColors {
@@ -45089,7 +45089,7 @@ index 5b9c75de..30a760c8 100644
 +      Color(0xFF000000),
      ],
    );
-
+ 
 @@ -213,42 +189,35 @@ abstract final class AppColors {
      begin: Alignment.topCenter,
      end: Alignment.bottomCenter,
@@ -45103,7 +45103,7 @@ index 5b9c75de..30a760c8 100644
      ],
      stops: <double>[0.0, 0.4, 1.0],
    );
-
+ 
 -  /// Halo — pour les ombres d'accent sur CTAs primaires (suit le thème).
 -  static List<BoxShadow> get emberGlowShadow => <BoxShadow>[
 -        BoxShadow(
@@ -45114,22 +45114,22 @@ index 5b9c75de..30a760c8 100644
 -      ];
 +  /// Compatibilité : la nouvelle identité ne comporte aucun halo décoratif.
 +  static const List<BoxShadow> emberGlowShadow = <BoxShadow>[];
-
+ 
    // -------------------------------------------------------
    //  ALIAS DÉPRÉCIÉS (compatibilité historique)
    // -------------------------------------------------------
-
+ 
 -  @Deprecated('Use AppColors.accent (ember)')
 +  @Deprecated('Use AppColors.accent')
    static Color get accentPink => accent;
-
+ 
    @Deprecated('Use AppColors.textSecondary or AppColors.emberHalo')
    static const Color accentCyan = textSecondary;
-
+ 
 -  @Deprecated('Use AppColors.accent (ember)')
 +  @Deprecated('Use AppColors.accent')
    static Color get gold => accent;
-
+ 
 -  /// Dégradé premium (accent → accent profond) — pour les CTAs
 -  /// principaux et les badges "Premium". Suit le thème courant.
 -  static LinearGradient get premiumGradient => LinearGradient(
@@ -45143,7 +45143,7 @@ index 5b9c75de..30a760c8 100644
 +    end: Alignment.centerRight,
 +    colors: <Color>[accent, accent],
 +  );
-
+ 
    /// Helper context-aware (les deux modes).
    static LumiereColors lumiere(BuildContext context) =>
 diff --git a/lib/core/theme/app_text_styles.dart b/lib/core/theme/app_text_styles.dart
@@ -45159,7 +45159,7 @@ index d89d77f6..173ece70 100644
  //  Échelle cinématographique — l'app doit respirer comme une
 @@ -22,6 +22,15 @@ import 'package:google_fonts/google_fonts.dart';
  import 'app_colors.dart';
-
+ 
  abstract final class AppTextStyles {
 +  /// Signature de marque commune aux en-têtes, profils et écran de démarrage.
 +  static TextStyle get brandTagline => GoogleFonts.inter(
@@ -45176,7 +45176,7 @@ index d89d77f6..173ece70 100644
 @@ -45,11 +54,8 @@ abstract final class AppTextStyles {
          height: 1.05,
        );
-
+ 
 -  /// Eyebrow accentEmber — la petite ligne au-dessus d'un titre
 -  /// hero ("LE PLUS REGARDÉ", "À LA UNE", "NOUVEAUTÉ"). Couleur
 -  /// accentEmber désaturée pour rester premium sans rouge.
@@ -45188,7 +45188,7 @@ index d89d77f6..173ece70 100644
          fontSize: 10,
          fontWeight: FontWeight.w700,
 @@ -145,15 +151,15 @@ abstract final class AppTextStyles {
-
+ 
    // =======================================================
    //  MAISON NOIR — accueil pays refondu (country_home)
 -  //  Display : Bricolage Grotesque (caractérielle). Corps : Manrope.
@@ -45207,17 +45207,17 @@ index d89d77f6..173ece70 100644
        fontSize: size,
        fontWeight: w,
 @@ -170,30 +176,37 @@ abstract final class AppTextStyles {
-
+ 
    static TextStyle _display(double size, FontWeight w,
            {Color? color, double spacing = -0.5, double height = 1.05}) =>
 -      _gf('Bricolage Grotesque', size, w, color, spacing, height);
 +      _gf('Inter', size, w, color, spacing, height);
-
+ 
    static TextStyle _body(double size, FontWeight w,
            {Color? color, double spacing = 0, double height = 1.3}) =>
 -      _gf('Manrope', size, w, color, spacing, height);
 +      _gf('Inter', size, w, color, spacing, height);
-
+ 
    /// Titre du HERO "Pour vous" (~26 px, gras).
    static TextStyle get maisonHeroTitle => _display(26, FontWeight.w800);
 +
@@ -45278,15 +45278,15 @@ index a5b33ee1..f353c848 100644
 +//  Les rôles Material sont explicitement monochromes pour empêcher une
 +//  couleur dérivée de réapparaître dans les contrôles. Le thème TV conserve
 +//  sa palette violette et son constructeur propres.
-
+ 
  import 'package:flutter/material.dart';
-
+ 
  import 'app_colors.dart';
  import 'app_text_styles.dart';
  import 'lumiere_tokens.dart';
 +import 'premium_page_transitions.dart';
  import 'tv_palette.dart';
-
+ 
  abstract final class AppTheme {
 -  /// Cinema Mode (dark) — identité Maison Noir, défaut.
 +  /// Identité mobile fixe : noir absolu, cartes anthracite, actions blanches.
@@ -45307,7 +45307,7 @@ index a5b33ee1..f353c848 100644
 +        primaryOnAccent: AppColors.onAccent,
 +        monochrome: true,
        );
-
+ 
 -  /// Daylight Mode (light) — version claire dérivée.
 -  static ThemeData get daylight => _buildTheme(
 -        brightness: Brightness.light,
@@ -45316,7 +45316,7 @@ index a5b33ee1..f353c848 100644
 -      );
 +  /// Compatibilité : une ancienne demande de mode clair garde la charte noire.
 +  static ThemeData get daylight => cinema;
-
+ 
    /// Alias historique — l'ancien code consomme `AppTheme.dark`.
    static ThemeData get dark => cinema;
 @@ -99,21 +77,62 @@ abstract final class AppTheme {
@@ -45388,7 +45388,7 @@ index a5b33ee1..f353c848 100644
 +            secondary: palette.emberHalo,
 +            error: palette.statusError,
 +          );
-
+ 
      return ThemeData(
        useMaterial3: true,
 @@ -145,6 +164,9 @@ abstract final class AppTheme {
@@ -45404,7 +45404,7 @@ index a5b33ee1..f353c848 100644
 @@ -176,6 +198,47 @@ abstract final class AppTheme {
          size: 22,
        ),
-
+ 
 +      // Actions remplies : blanc/noir, sans teinte de surface ni halo.
 +      filledButtonTheme: monochrome
 +          ? FilledButtonThemeData(
@@ -45486,9 +45486,9 @@ index d7b1b498..5dfe1341 100644
  //  Source de vérité. Aucune valeur de couleur n'existe ailleurs
  //  dans l'app.
 @@ -24,7 +21,9 @@
-
+ 
  import 'package:flutter/material.dart';
-
+ 
 -/// Extension `ThemeData` qui transporte la palette The Few complète.
 +import 'accent_controller.dart';
 +
@@ -45498,23 +45498,23 @@ index d7b1b498..5dfe1341 100644
  /// peut bouger ; les valeurs changent, l'API non).
 @@ -55,12 +54,10 @@ class LumiereColors extends ThemeExtension<LumiereColors> {
    });
-
+ 
    // -------- Surfaces --------
 -  /// Fond principal. Cinema : charbon presque noir avec une pointe
 -  /// de chaleur. Daylight : ivoire chaud.
 +  /// Fond principal noir absolu.
    final Color canvas;
-
+ 
 -  /// Surface la plus profonde (splash, vidéo plein écran). Jamais
 -  /// le noir pur — on garde une trace de chaleur pour les OLED.
 +  /// Surface la plus profonde (splash, vidéo plein écran), noir absolu.
    final Color voidSurface;
-
+ 
    /// Surface élevée (cards, panels, sheets).
 @@ -72,21 +69,17 @@ class LumiereColors extends ThemeExtension<LumiereColors> {
    /// Overlay le plus haut (modals, snackbars, dialogs).
    final Color overcast;
-
+ 
 -  // -------- Accent ember (rouge braise) --------
 -  /// Accent principal The Few : l'ember-red (#D63A30 en Cinema Mode).
 -  /// Nommé d'après sa valeur réelle (anciennement `champagne`, un nom
@@ -45522,48 +45522,48 @@ index d7b1b498..5dfe1341 100644
 +  // -------- Accent (noms historiques conservés pour compatibilité) --------
 +  /// Accent principal blanc. Le nom historique reste stable.
    final Color accentEmber;
-
+ 
 -  /// Variante claire — ember glow, états focus / hover / brillance.
 +  /// Blanc de focus / hover, conservé sous son nom historique.
    final Color emberGlow;
-
+ 
 -  /// Variante deep — ember-blood, bordures actives, états sélectionnés
 -  /// passifs et accent principal du Daylight Mode.
 +  /// Gris secondaire pour les états discrets.
    final Color emberDeep;
-
+ 
 -  /// Halo ember — utilisé pour les glows / ombres rouges sur les CTAs
 -  /// primaires et les éléments focus.
 +  /// Alias historique de l’accent ; les nouveaux composants n’ajoutent pas de halo.
    final Color emberHalo;
-
+ 
    // -------- Texte --------
 @@ -100,18 +93,16 @@ class LumiereColors extends ThemeExtension<LumiereColors> {
    final Color textMuted;
-
+ 
    // -------- Statuts sémantiques --------
 -  /// Vert apaisé (jamais néon).
 +  /// Confirmation monochrome.
    final Color statusSuccess;
-
+ 
 -  /// Ambre / orange — buffering, avertissements doux.
 +  /// Attente / avertissement monochrome.
    final Color statusWarning;
-
+ 
 -  /// Rouge ember (le même tone que l'accent ; volontairement distinct
 -  /// de `accentEmber` par une variation de saturation pour éviter
 -  /// l'ambiguïté visuelle accent/erreur).
 +  /// État d’erreur monochrome, renforcé par une icône et un libellé.
    final Color statusError;
-
+ 
 -  /// Bleu cendre froid — info neutre.
 +  /// Information monochrome.
    final Color statusInfo;
-
+ 
    // -------- Dérivés --------
 @@ -128,97 +119,53 @@ class LumiereColors extends ThemeExtension<LumiereColors> {
    final LinearGradient heroScrim;
-
+ 
    // ============================================================
 -  //  Cinema Mode (The Few) — défaut, identité du produit
 +  //  Cinema Mode (Motion) — défaut, identité du produit
@@ -45637,7 +45637,7 @@ index d7b1b498..5dfe1341 100644
        stops: <double>[0.0, 0.55, 1.0],
      ),
    );
-
+ 
 -  // ============================================================
 -  //  Daylight Mode — version claire dérivée
 -  // ============================================================
@@ -45686,7 +45686,7 @@ index d7b1b498..5dfe1341 100644
 +  /// Alias historique : tous les écrans mobiles gardent l’identité noire,
 +  /// même si un ancien appel demande encore la palette Daylight.
 +  static const LumiereColors daylight = cinema;
-
+ 
    /// Helper pratique. Tombe sur Cinema Mode si l'extension n'est pas
    /// attachée (sécurité).
 @@ -285,8 +232,7 @@ class LumiereColors extends ThemeExtension<LumiereColors> {
@@ -45767,14 +45767,14 @@ index 61a829b8..9c2e4648 100644
 +//  le téléphone ou une ancienne préférence demande le mode clair.
 +//  Les anciennes préférences restent stockées ; aucun effacement de données
 +//  n'est nécessaire pour appliquer cette nouvelle identité.
-
+ 
  import 'package:flutter/material.dart';
 -import 'package:shared_preferences/shared_preferences.dart';
-
+ 
  class ThemeModeRepository extends ChangeNotifier {
    ThemeModeRepository._();
    static final ThemeModeRepository instance = ThemeModeRepository._();
-
+ 
 -  static const String _kKey = 'theme.mode.v1';
 -
 -  ThemeMode _mode = ThemeMode.dark; // Cinema par défaut
@@ -45795,7 +45795,7 @@ index 61a829b8..9c2e4648 100644
 -    notifyListeners();
 -  }
 +  ThemeMode get mode => ThemeMode.dark;
-
+ 
 -  Future<void> setMode(ThemeMode mode) async {
 -    _mode = mode;
 -    final SharedPreferences prefs = await SharedPreferences.getInstance();
@@ -45803,7 +45803,7 @@ index 61a829b8..9c2e4648 100644
 -    notifyListeners();
 -  }
 +  Future<void> initialize() async {}
-
+ 
 -  String _serialize(ThemeMode mode) {
 -    switch (mode) {
 -      case ThemeMode.light:
@@ -45818,6 +45818,66 @@ index 61a829b8..9c2e4648 100644
 +  /// plus de commande claire/système qui promettrait un résultat différent.
 +  Future<void> setMode(ThemeMode mode) async {}
  }
+diff --git a/lib/core/widgets/country_flag.dart b/lib/core/widgets/country_flag.dart
+new file mode 100644
+index 00000000..8cbc42b4
+--- /dev/null
++++ b/lib/core/widgets/country_flag.dart
+@@ -0,0 +1,54 @@
++import 'package:flutter/material.dart';
++
++import '../theme/app_text_styles.dart';
++
++/// Drapeau d'un pays à partir de son code ISO 3166-1 alpha-2.
++///
++/// Le drapeau est composé des deux symboles indicateurs régionaux Unicode :
++/// Android les rend avec sa police emoji système, sans aucune image
++/// embarquée ni requête réseau. Un code inconnu ou malformé renvoie une
++/// chaîne vide, et le widget retombe alors sur le code texte.
++String countryFlagEmoji(String code) {
++  final String iso =
++      code.trim().toUpperCase() == 'UK' ? 'GB' : code.trim().toUpperCase();
++  if (!RegExp(r'^[A-Z]{2}$').hasMatch(iso)) return '';
++  const int base = 0x1F1E6 - 0x41;
++  return String.fromCharCodes(
++      <int>[base + iso.codeUnitAt(0), base + iso.codeUnitAt(1)]);
++}
++
++/// Petit drapeau textuel, lisible par les lecteurs d'écran via le nom du pays
++/// fourni par l'appelant. Sans drapeau disponible, affiche le code ISO.
++class CountryFlag extends StatelessWidget {
++  const CountryFlag(this.code,
++      {super.key, required this.semanticLabel, this.size = 18, this.color});
++
++  final String code;
++  final String semanticLabel;
++  final double size;
++
++  /// Couleur du code texte de repli uniquement ; un emoji garde ses couleurs.
++  final Color? color;
++
++  @override
++  Widget build(BuildContext context) {
++    final String flag = countryFlagEmoji(code);
++    return Semantics(
++      label: semanticLabel,
++      excludeSemantics: true,
++      child: Text(
++        flag.isEmpty ? code.toUpperCase() : flag,
++        style: flag.isEmpty
++            ? AppTextStyles.bodySmall
++                .copyWith(color: color, fontWeight: FontWeight.w600)
++            // Famille explicite de repli : la police emoji couleur d'Android.
++            // Absente, le système choisit lui-même sa police emoji.
++            : TextStyle(
++                fontSize: size,
++                height: 1,
++                fontFamilyFallback: const <String>['Noto Color Emoji']),
++        textScaler: TextScaler.noScaling,
++      ),
++    );
++  }
++}
 diff --git a/lib/core/widgets/live_badge.dart b/lib/core/widgets/live_badge.dart
 index 74b6dfb8..048a236b 100644
 --- a/lib/core/widgets/live_badge.dart
@@ -45843,49 +45903,6 @@ index 74b6dfb8..048a236b 100644
            ),
          ],
        ),
-diff --git a/lib/core/widgets/monochrome_artwork.dart b/lib/core/widgets/monochrome_artwork.dart
-new file mode 100644
-index 00000000..a61b147a
---- /dev/null
-+++ b/lib/core/widgets/monochrome_artwork.dart
-@@ -0,0 +1,37 @@
-+import 'package:flutter/material.dart';
-+
-+/// Désature uniquement le visuel fourni par le catalogue. La matrice conserve
-+/// sa luminance et son canal alpha : les PNG transparents gardent leur découpe,
-+/// sans rectangle blanc ajouté ni substitution par un logo inventé.
-+class MonochromeArtwork extends StatelessWidget {
-+  const MonochromeArtwork({super.key, required this.child});
-+
-+  final Widget child;
-+
-+  @override
-+  Widget build(BuildContext context) => ColorFiltered(
-+        colorFilter: const ColorFilter.matrix(<double>[
-+          0.2126,
-+          0.7152,
-+          0.0722,
-+          0,
-+          0,
-+          0.2126,
-+          0.7152,
-+          0.0722,
-+          0,
-+          0,
-+          0.2126,
-+          0.7152,
-+          0.0722,
-+          0,
-+          0,
-+          0,
-+          0,
-+          0,
-+          1,
-+          0,
-+        ]),
-+        child: child,
-+      );
-+}
 diff --git a/lib/core/widgets/premium_press.dart b/lib/core/widgets/premium_press.dart
 new file mode 100644
 index 00000000..4a4c4c44
@@ -46055,19 +46072,19 @@ index 0999ea23..9fc5efa3 100644
 @@ -51,13 +51,11 @@ class CastButton extends StatelessWidget {
            return const SizedBox.shrink();
          }
-
+ 
 -        final Color color = hasTarget
 -            ? AppColors.accent
 -            : AppColors.textSecondary;
 +        final Color color =
 +            hasTarget ? AppColors.accent : AppColors.textSecondary;
-
+ 
 -        final IconData icon = hasTarget
 -            ? Icons.cast_connected_rounded
 -            : Icons.cast_rounded;
 +        final IconData icon =
 +            hasTarget ? Icons.cast_connected_rounded : Icons.cast_rounded;
-
+ 
          Widget child = Icon(icon, color: color, size: 22);
          if (scanning && !hasTarget) {
 @@ -186,11 +184,10 @@ void showCastFailedToast(BuildContext context, Object error) {
@@ -46091,11 +46108,11 @@ index 020c8d64..b06174de 100644
 +++ b/lib/features/channels/domain/channel.dart
 @@ -19,6 +19,7 @@ import 'package:flutter/foundation.dart';
  import 'package:flutter/material.dart';
-
+ 
  import '../../../core/curation/title_curator.dart';
 +import '../../../core/theme/app_colors.dart';
  import 'channel_genre.dart';
-
+ 
  // Re-export pour que les widgets qui importent `channel.dart`
 @@ -176,8 +177,8 @@ class Channel {
    /// servant uniquement de "skeleton" si jamais quelqu'un l'appelle.
@@ -46106,7 +46123,7 @@ index 020c8d64..b06174de 100644
 +        AppColors.surface,
 +        AppColors.surfaceOverlay
        ];
-
+ 
    /// Pas de couleurs de marque arbitraires dans la v2.
 diff --git a/lib/features/channels/presentation/channel_detail_sheet.dart b/lib/features/channels/presentation/channel_detail_sheet.dart
 index 0eaf3dff..6ca92859 100644
@@ -46131,7 +46148,7 @@ index 0eaf3dff..6ca92859 100644
 +                            '${channel.catchupDays ?? '?'}')
                          : context.l10n.detailCatchupUnavailable,
                    ),
-
+ 
 @@ -228,8 +230,7 @@ class ChannelDetailSheet extends StatelessWidget {
                        style: OutlinedButton.styleFrom(
                          foregroundColor: AppColors.textPrimary,
@@ -46175,18 +46192,10 @@ index 149ac628..b92ac92c 100644
            letterSpacing: 0.8,
          ),
 diff --git a/lib/features/channels/presentation/widgets/channel_logo.dart b/lib/features/channels/presentation/widgets/channel_logo.dart
-index cb41d9f5..8f058823 100644
+index cb41d9f5..bda158cc 100644
 --- a/lib/features/channels/presentation/widgets/channel_logo.dart
 +++ b/lib/features/channels/presentation/widgets/channel_logo.dart
-@@ -26,6 +26,7 @@ import 'package:flutter/material.dart';
-
- import '../../../../core/theme/app_colors.dart';
- import '../../../../core/theme/app_text_styles.dart';
-+import '../../../../core/widgets/monochrome_artwork.dart';
- import '../../domain/channel.dart';
-
- enum ChannelLogoSize { compact, medium, large }
-@@ -64,28 +65,32 @@ class ChannelLogo extends StatelessWidget {
+@@ -64,16 +64,18 @@ class ChannelLogo extends StatelessWidget {
          width: _dimension,
          height: _dimension,
          child: channel.hasLogo
@@ -46196,40 +46205,25 @@ index cb41d9f5..8f058823 100644
        ),
      );
    }
-
+ 
 -  Widget _buildNetworkLogo(BorderRadius radius) {
 +  Widget _buildNetworkLogo(BuildContext context, BorderRadius radius) {
      return Container(
        color: AppColors.surface,
        padding: EdgeInsets.all(_dimension * 0.08),
--      child: CachedNetworkImage(
--        imageUrl: channel.logoUrl!,
--        fit: BoxFit.contain,
--        // Pendant le chargement → fallback discret (pas de spinner
--        // 20 000 spinners qui tournent en même temps = lag).
--        placeholder: (BuildContext context, String url) => _buildFallback(),
--        // Si l'URL 404 / DNS fail / format invalide → fallback.
--        errorWidget: (BuildContext context, String url, dynamic error) =>
--            _buildFallback(),
--        memCacheWidth: (_dimension * 2).toInt(),
--        memCacheHeight: (_dimension * 2).toInt(),
++      // Le logo officiel fourni par la playlist est affiché tel quel, en
++      // couleur : aucun filtre, aucune substitution par un logo inventé.
+       child: CachedNetworkImage(
+         imageUrl: channel.logoUrl!,
+         fit: BoxFit.contain,
+@@ -85,7 +87,9 @@ class ChannelLogo extends StatelessWidget {
+             _buildFallback(),
+         memCacheWidth: (_dimension * 2).toInt(),
+         memCacheHeight: (_dimension * 2).toInt(),
 -        fadeInDuration: const Duration(milliseconds: 200),
-+      child: MonochromeArtwork(
-+        child: CachedNetworkImage(
-+          imageUrl: channel.logoUrl!,
-+          fit: BoxFit.contain,
-+          // Pendant le chargement → fallback discret (pas de spinner
-+          // 20 000 spinners qui tournent en même temps = lag).
-+          placeholder: (BuildContext context, String url) => _buildFallback(),
-+          // Si l'URL 404 / DNS fail / format invalide → fallback.
-+          errorWidget: (BuildContext context, String url, dynamic error) =>
-+              _buildFallback(),
-+          memCacheWidth: (_dimension * 2).toInt(),
-+          memCacheHeight: (_dimension * 2).toInt(),
-+          fadeInDuration: MediaQuery.disableAnimationsOf(context)
-+              ? Duration.zero
-+              : const Duration(milliseconds: 200),
-+        ),
++        fadeInDuration: MediaQuery.disableAnimationsOf(context)
++            ? Duration.zero
++            : const Duration(milliseconds: 200),
        ),
      );
    }
@@ -46238,16 +46232,16 @@ index 1a00852a..e9f9fbdf 100644
 --- a/lib/features/channels/presentation/widgets/live_now_favorites_row.dart
 +++ b/lib/features/channels/presentation/widgets/live_now_favorites_row.dart
 @@ -20,6 +20,7 @@
-
+ 
  import 'dart:async';
-
+ 
 +import 'package:flutter/foundation.dart';
  import 'package:flutter/material.dart';
-
+ 
  import '../../../../core/i18n/l10n_extension.dart';
 @@ -35,7 +36,12 @@ import '../../domain/channel.dart';
  import 'channel_logo.dart';
-
+ 
  class LiveNowFavoritesRow extends StatefulWidget {
 -  const LiveNowFavoritesRow({super.key});
 +  const LiveNowFavoritesRow({super.key, this.allowedChannels});
@@ -46256,13 +46250,13 @@ index 1a00852a..e9f9fbdf 100644
 +  /// `null` garde le comportement historique des autres écrans. La même
 +  /// restriction vaut pour les cartes affichées ET le zapping du lecteur.
 +  final List<Channel>? allowedChannels;
-
+ 
    @override
    State<LiveNowFavoritesRow> createState() => _LiveNowFavoritesRowState();
 @@ -58,8 +64,21 @@ class _LiveNowFavoritesRowState extends State<LiveNowFavoritesRow> {
      _recompute();
    }
-
+ 
 +  @override
 +  void didUpdateWidget(covariant LiveNowFavoritesRow oldWidget) {
 +    super.didUpdateWidget(oldWidget);
@@ -46302,7 +46296,7 @@ index 1a00852a..e9f9fbdf 100644
 @@ -114,6 +137,23 @@ class _LiveNowFavoritesRowState extends State<LiveNowFavoritesRow> {
      }
    }
-
+ 
 +  void _openChannel(Channel channel) {
 +    final List<Channel> allowed =
 +        widget.allowedChannels ?? PlaylistRepository.instance.currentChannels;
@@ -46378,7 +46372,7 @@ index 1f4e43ab..0d9dfb3f 100644
 +++ b/lib/features/channels/presentation/widgets/resume_banner.dart
 @@ -30,7 +30,12 @@ import '../../domain/channel.dart';
  import 'channel_logo.dart';
-
+ 
  class ResumeBanner extends StatefulWidget {
 -  const ResumeBanner({super.key});
 +  const ResumeBanner({super.key, this.allowedChannels});
@@ -46387,7 +46381,7 @@ index 1f4e43ab..0d9dfb3f 100644
 +  /// Une liste vide masque la bannière ; `null` conserve le comportement
 +  /// historique des autres écrans, basé sur toute la playlist courante.
 +  final List<Channel>? allowedChannels;
-
+ 
    /// Seuil au-delà duquel on n'affiche plus la bannière. Élargi à 72 h :
    /// « reprends là où tu t'es arrêté » doit survivre à une nuit (voire un
 @@ -64,7 +69,7 @@ class _ResumeBannerState extends State<ResumeBanner> {
@@ -46428,7 +46422,7 @@ index 1f4e43ab..0d9dfb3f 100644
 +    }
 +  }
  }
-
+ 
  class _Banner extends StatelessWidget {
 @@ -180,7 +194,7 @@ class _Banner extends StatelessWidget {
                  ),
@@ -46461,28 +46455,23 @@ index 7a2837ef..3fa41973 100644
                letterSpacing: 0.8,
              ),
 diff --git a/lib/features/country_home/presentation/widgets/channel_logo.dart b/lib/features/country_home/presentation/widgets/channel_logo.dart
-index a4458051..8db5ebdc 100644
+index a4458051..b5f6ffea 100644
 --- a/lib/features/country_home/presentation/widgets/channel_logo.dart
 +++ b/lib/features/country_home/presentation/widgets/channel_logo.dart
-@@ -2,8 +2,8 @@
+@@ -2,9 +2,10 @@
  //  channel_logo.dart — Logo de chaîne + fallback initiales
  // =========================================================
  //  Affiche `tvg-logo` s'il charge (contain, fond neutre). Sinon (vide
 -//  ou erreur), génère une vignette à initiales avec une couleur
 -//  déterministe (cf. channel_curation). Fallback INSTANTANÉ (pas de
+-//  flash, pas de spinner). Aucune dépendance au cast.
 +//  ou erreur), conserve une vignette anthracite à initiales argentées.
-+//  L'image du fournisseur est désaturée. Fallback INSTANTANÉ (pas de
- //  flash, pas de spinner). Aucune dépendance au cast.
++//  L'image du fournisseur est affichée telle quelle, en couleur.
++//  Fallback INSTANTANÉ (pas de flash, pas de spinner). Aucune dépendance
++//  au cast.
  // =========================================================
-
-@@ -12,6 +12,7 @@ import 'package:flutter/material.dart';
-
- import '../../../../core/theme/app_colors.dart';
- import '../../../../core/theme/app_text_styles.dart';
-+import '../../../../core/widgets/monochrome_artwork.dart';
- import '../../../channels/domain/channel.dart';
- import '../../data/channel_curation.dart';
-
+ 
+ import 'package:cached_network_image/cached_network_image.dart';
 @@ -30,12 +31,17 @@ class ChannelLogo extends StatelessWidget {
    @override
    Widget build(BuildContext context) {
@@ -46503,7 +46492,7 @@ index a4458051..8db5ebdc 100644
          child: (url == null || url.isEmpty)
              ? fallback
              // CachedNetworkImage : cache DISQUE en plus du borné mémoire.
-@@ -51,21 +57,24 @@ class ChannelLogo extends StatelessWidget {
+@@ -51,15 +57,16 @@ class ChannelLogo extends StatelessWidget {
                  // Fade court et doux (revue images V1) : la valeur par
                  // défaut (500 ms) traînait — 200 ms suffit pour éviter le
                  // « pop » sans donner une impression de lenteur.
@@ -46523,23 +46512,11 @@ index a4458051..8db5ebdc 100644
 +                    color: AppColors.lumiere(c).elevated,
                      alignment: Alignment.center,
                      padding: EdgeInsets.all(size * 0.12),
--                    child: Image(
--                        image: provider,
--                        fit: BoxFit.contain,
--                        gaplessPlayback: true),
-+                    child: MonochromeArtwork(
-+                      child: Image(
-+                          image: provider,
-+                          fit: BoxFit.contain,
-+                          gaplessPlayback: true),
-+                    ),
-                   );
-                 },
-               ),
-@@ -73,26 +82,21 @@ class ChannelLogo extends StatelessWidget {
+                     child: Image(
+@@ -73,26 +80,21 @@ class ChannelLogo extends StatelessWidget {
      );
    }
-
+ 
 -  Widget _fallback() {
 -    final Color base = logoFallbackColor(channel.name);
 -    return Container(
@@ -46679,7 +46656,7 @@ index 0ae7442f..af6b74b1 100644
  //  de l'appareil. La palette contextuelle conserve la même hiérarchie
 -//  en mode clair, sombre et avec une couleur d'accent personnalisée.
 +//  avec la charte monochrome et le texte agrandi.
-
+ 
  import 'package:flutter/material.dart';
  import 'package:flutter/services.dart';
 @@ -15,6 +15,7 @@ import '../../../core/i18n/l10n_extension.dart';
@@ -46772,14 +46749,14 @@ index 0a64c9ba..7ae18fe4 100644
  // =========================================================
 +//  La charte est monochrome et fixe. Cette feuille montre l'apparence active
 +//  sans proposer d'anciennes couleurs qui n'auraient plus aucun effet.
-
+ 
  import 'package:flutter/material.dart';
-
+ 
  import '../../../../core/i18n/l10n_extension.dart';
 -import '../../../../core/theme/accent_controller.dart';
  import '../../../../core/theme/app_colors.dart';
  import '../../../../core/theme/app_text_styles.dart';
-
+ 
 -/// Libellé localisé d'un thème d'accent.
 -///
 -/// Les thèmes du catalogue (accent_controller.dart) portent un `id`
@@ -46830,7 +46807,7 @@ index 0a64c9ba..7ae18fe4 100644
 +    builder: (_) => const _ThemeIdentitySheet(),
    );
  }
-
+ 
 -class _ThemePickerSheet extends StatefulWidget {
 -  const _ThemePickerSheet();
 -
@@ -46936,7 +46913,7 @@ index 0a64c9ba..7ae18fe4 100644
 -  final VoidCallback onTap;
 +class _ThemeIdentitySheet extends StatelessWidget {
 +  const _ThemeIdentitySheet();
-
+ 
    @override
    Widget build(BuildContext context) {
 -    return GestureDetector(
@@ -47114,7 +47091,7 @@ index aef6b2e8..3ab6a33c 100644
  import '../../../core/theme/app_text_styles.dart';
 +import '../../../core/widgets/premium_press.dart';
  import 'radio_screen.dart';
-
+ 
  // Accessible même sans playlist : la radio utilise un catalogue public distinct.
 @@ -21,33 +22,37 @@ class RadioEntry extends StatelessWidget {
        child: Material(
@@ -47178,18 +47155,19 @@ index aef6b2e8..3ab6a33c 100644
        ),
      );
 diff --git a/lib/features/radio/presentation/radio_screen.dart b/lib/features/radio/presentation/radio_screen.dart
-index 9fb683d0..822924ae 100644
+index 9fb683d0..e2a78cbd 100644
 --- a/lib/features/radio/presentation/radio_screen.dart
 +++ b/lib/features/radio/presentation/radio_screen.dart
-@@ -9,6 +9,7 @@ import '../../../core/observability/structured_logger.dart';
+@@ -9,6 +9,8 @@ import '../../../core/observability/structured_logger.dart';
  import '../../../core/profiles/profiles_repository.dart';
  import '../../../core/theme/app_colors.dart';
  import '../../../core/theme/app_text_styles.dart';
++import '../../../core/widgets/country_flag.dart';
 +import '../../../core/widgets/premium_press.dart';
  import '../data/radio_browser_client.dart';
  import '../data/radio_catalog_controller.dart';
  import '../data/radio_favorites_store.dart';
-@@ -463,33 +464,35 @@ class _RadioScreenState extends State<RadioScreen> {
+@@ -463,33 +465,36 @@ class _RadioScreenState extends State<RadioScreen> {
                          contentPadding: const EdgeInsets.symmetric(
                              horizontal: 16, vertical: 18),
                          border: OutlineInputBorder(
@@ -47209,6 +47187,7 @@ index 9fb683d0..822924ae 100644
 -                          avatar: const Icon(Icons.public_rounded, size: 18),
 +                              : (_countryName ?? query.countryCode),
 +                          icon: Icons.public_rounded,
++                          flagCode: query.countryCode,
 +                          active: query.countryCode.isNotEmpty,
                            onPressed: _choosing
                                ? null
@@ -47239,7 +47218,7 @@ index 9fb683d0..822924ae 100644
                            onPressed: _choosing
                                ? null
                                : () => unawaited(_choose('genre'))),
-@@ -497,9 +500,10 @@ class _RadioScreenState extends State<RadioScreen> {
+@@ -497,9 +502,10 @@ class _RadioScreenState extends State<RadioScreen> {
                            query.language.isNotEmpty ||
                            query.genre.isNotEmpty ||
                            query.name.isNotEmpty)
@@ -47253,7 +47232,7 @@ index 9fb683d0..822924ae 100644
                              onPressed: _resetFilters),
                      ]),
                      if (_choosing) const LinearProgressIndicator(),
-@@ -540,10 +544,42 @@ class _RadioScreenState extends State<RadioScreen> {
+@@ -540,10 +546,42 @@ class _RadioScreenState extends State<RadioScreen> {
                              },
                              itemBuilder: (_) => RadioSort.values
                                  .map((RadioSort sort) =>
@@ -47299,22 +47278,27 @@ index 9fb683d0..822924ae 100644
                                  .toList(),
                              child: Padding(
                                  padding:
-@@ -634,19 +670,42 @@ class _RadioScreenState extends State<RadioScreen> {
+@@ -634,19 +672,47 @@ class _RadioScreenState extends State<RadioScreen> {
      );
    }
-
+ 
 +  Widget _filterChip({
 +    required String label,
 +    required IconData icon,
 +    required bool active,
 +    required VoidCallback? onPressed,
++    String flagCode = '',
 +  }) {
 +    final colors = AppColors.lumiere(context);
 +    final foreground = active ? colors.canvas : colors.textSecondary;
++    final bool flag =
++        flagCode.isNotEmpty && countryFlagEmoji(flagCode).isNotEmpty;
 +    return ActionChip(
 +      label: Text(label),
 +      labelStyle: AppTextStyles.bodyMedium.copyWith(color: foreground),
-+      avatar: Icon(icon, size: 18, color: foreground),
++      avatar: flag
++          ? CountryFlag(flagCode, semanticLabel: label, color: foreground)
++          : Icon(icon, size: 18, color: foreground),
 +      backgroundColor: active ? colors.textPrimary : colors.elevated,
 +      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
 +      side: BorderSide(color: active ? colors.textPrimary : colors.border),
@@ -47348,7 +47332,7 @@ index 9fb683d0..822924ae 100644
        backgroundColor: colors.elevated,
        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
        onSelected: (_) => _selectCollection(collection),
-@@ -699,7 +758,7 @@ class _RadioScreenState extends State<RadioScreen> {
+@@ -699,7 +765,7 @@ class _RadioScreenState extends State<RadioScreen> {
      return DecoratedBox(
        decoration: BoxDecoration(
            color: colors.elevated,
@@ -47357,16 +47341,20 @@ index 9fb683d0..822924ae 100644
            border: Border.all(color: colors.border)),
        child: Padding(
            padding: const EdgeInsets.fromLTRB(16, 16, 16, 10),
-@@ -729,13 +788,27 @@ class _RadioScreenState extends State<RadioScreen> {
+@@ -727,15 +793,28 @@ class _RadioScreenState extends State<RadioScreen> {
+                                       _catalog.query.countryCode == country.key,
+                                   onSelected: (_) => _selectCountry(
                                        country.key, country.value),
-                                   avatar: Text(country.key,
-                                       style: AppTextStyles.bodySmall.copyWith(
+-                                  avatar: Text(country.key,
+-                                      style: AppTextStyles.bodySmall.copyWith(
 -                                          color: colors.textPrimary,
-+                                          color: _catalog.query.countryCode ==
-+                                                  country.key
-+                                              ? colors.canvas
-+                                              : colors.textSecondary,
-                                           fontWeight: FontWeight.w600)),
+-                                          fontWeight: FontWeight.w600)),
++                                  avatar: CountryFlag(country.key,
++                                      semanticLabel: country.value,
++                                      color: _catalog.query.countryCode ==
++                                              country.key
++                                          ? colors.canvas
++                                          : colors.textSecondary),
                                    showCheckmark: true,
 -                                  labelStyle: AppTextStyles.bodyMedium
 -                                      .copyWith(color: colors.textPrimary),
@@ -47390,7 +47378,7 @@ index 9fb683d0..822924ae 100644
                                    padding: const EdgeInsets.symmetric(
                                        horizontal: 6, vertical: 8),
                                  )))
-@@ -749,6 +822,8 @@ class _RadioScreenState extends State<RadioScreen> {
+@@ -749,6 +828,8 @@ class _RadioScreenState extends State<RadioScreen> {
      final colors = AppColors.lumiere(context);
      final bool favorite = _favoriteIds.contains(station.id);
      final bool active = _current?.id == station.id;
@@ -47399,7 +47387,7 @@ index 9fb683d0..822924ae 100644
      final String metadata = <String>[
        if (station.countryCode.isNotEmpty)
          _countryLabel(station.countryCode, station.countryCode),
-@@ -758,12 +833,14 @@ class _RadioScreenState extends State<RadioScreen> {
+@@ -758,12 +839,14 @@ class _RadioScreenState extends State<RadioScreen> {
      return Padding(
          padding: const EdgeInsets.only(bottom: 10),
          child: Material(
@@ -47420,7 +47408,7 @@ index 9fb683d0..822924ae 100644
              onTap: _opening
                  ? null
                  : () => unawaited(active ? _pauseOrResume() : _play(station)),
-@@ -780,7 +857,7 @@ class _RadioScreenState extends State<RadioScreen> {
+@@ -780,15 +863,29 @@ class _RadioScreenState extends State<RadioScreen> {
                              maxLines: 2,
                              overflow: TextOverflow.ellipsis,
                              style: AppTextStyles.bodyLarge.copyWith(
@@ -47429,16 +47417,34 @@ index 9fb683d0..822924ae 100644
                                  fontWeight: FontWeight.w600)),
                          if (metadata.isNotEmpty) ...<Widget>[
                            const SizedBox(height: 4),
-@@ -788,7 +865,7 @@ class _RadioScreenState extends State<RadioScreen> {
-                               maxLines: 2,
-                               overflow: TextOverflow.ellipsis,
-                               style: AppTextStyles.bodyMedium
+-                          Text(metadata,
+-                              maxLines: 2,
+-                              overflow: TextOverflow.ellipsis,
+-                              style: AppTextStyles.bodyMedium
 -                                  .copyWith(color: colors.textSecondary)),
-+                                  .copyWith(color: secondary)),
++                          Row(
++                              crossAxisAlignment: CrossAxisAlignment.start,
++                              children: <Widget>[
++                                if (countryFlagEmoji(station.countryCode)
++                                    .isNotEmpty) ...<Widget>[
++                                  CountryFlag(station.countryCode,
++                                      semanticLabel: _countryLabel(
++                                          station.countryCode,
++                                          station.countryCode),
++                                      size: 15),
++                                  const SizedBox(width: 6),
++                                ],
++                                Expanded(
++                                    child: Text(metadata,
++                                        maxLines: 2,
++                                        overflow: TextOverflow.ellipsis,
++                                        style: AppTextStyles.bodyMedium
++                                            .copyWith(color: secondary))),
++                              ]),
                          ],
                          if (active &&
                              _playing &&
-@@ -796,7 +873,7 @@ class _RadioScreenState extends State<RadioScreen> {
+@@ -796,7 +893,7 @@ class _RadioScreenState extends State<RadioScreen> {
                              !_playbackError)
                            Text(l.radioLive,
                                style: AppTextStyles.bodySmall
@@ -47447,7 +47453,7 @@ index 9fb683d0..822924ae 100644
                        ])),
                    IconButton(
                        tooltip:
-@@ -804,13 +881,16 @@ class _RadioScreenState extends State<RadioScreen> {
+@@ -804,13 +901,16 @@ class _RadioScreenState extends State<RadioScreen> {
                        onPressed: _saving || _favorites == null
                            ? null
                            : () => unawaited(_toggleFavorite(station)),
@@ -47471,7 +47477,7 @@ index 9fb683d0..822924ae 100644
                    IconButton(
                        tooltip:
                            '${active && _playing ? l.radioPause : l.radioListen} · ${station.name}',
-@@ -822,7 +902,7 @@ class _RadioScreenState extends State<RadioScreen> {
+@@ -822,7 +922,7 @@ class _RadioScreenState extends State<RadioScreen> {
                            active && _playing
                                ? Icons.pause_circle_rounded
                                : Icons.play_circle_outline_rounded,
@@ -47480,7 +47486,7 @@ index 9fb683d0..822924ae 100644
                            size: 28)),
                  ])),
            ),
-@@ -859,7 +939,8 @@ class _RadioScreenState extends State<RadioScreen> {
+@@ -859,7 +959,8 @@ class _RadioScreenState extends State<RadioScreen> {
      final colors = AppColors.lumiere(context);
      final RadioStation station = _current!;
      return Material(
@@ -47490,7 +47496,7 @@ index 9fb683d0..822924ae 100644
          child: Column(mainAxisSize: MainAxisSize.min, children: <Widget>[
            if (_opening || _buffering && !_playbackError)
              const LinearProgressIndicator(minHeight: 2),
-@@ -883,11 +964,19 @@ class _RadioScreenState extends State<RadioScreen> {
+@@ -883,11 +984,19 @@ class _RadioScreenState extends State<RadioScreen> {
                        onPressed: _saving || _favorites == null
                            ? null
                            : () => unawaited(_toggleFavorite(station)),
@@ -47515,7 +47521,7 @@ index 9fb683d0..822924ae 100644
                  ]),
                  Row(children: <Widget>[
                    Expanded(
-@@ -904,6 +993,13 @@ class _RadioScreenState extends State<RadioScreen> {
+@@ -904,6 +1013,13 @@ class _RadioScreenState extends State<RadioScreen> {
                            style: AppTextStyles.bodyMedium
                                .copyWith(color: colors.textSecondary))),
                    IconButton.filled(
@@ -47529,7 +47535,7 @@ index 9fb683d0..822924ae 100644
                        tooltip: _playbackError
                            ? l.radioRetry
                            : _playing
-@@ -919,7 +1015,8 @@ class _RadioScreenState extends State<RadioScreen> {
+@@ -919,7 +1035,8 @@ class _RadioScreenState extends State<RadioScreen> {
                    IconButton(
                        tooltip: l.radioStop,
                        onPressed: _opening ? null : () => unawaited(_stop()),
@@ -47539,46 +47545,29 @@ index 9fb683d0..822924ae 100644
                  ]),
                ])),
          ]));
-@@ -943,10 +1040,35 @@ class _StationLogo extends StatelessWidget {
+@@ -943,6 +1060,8 @@ class _StationLogo extends StatelessWidget {
              clipBehavior: Clip.antiAlias,
              child: uri == null
                  ? fallback
--                : Image.network(uri.toString(),
--                    fit: BoxFit.contain,
--                    cacheWidth: 128,
--                    errorBuilder: (_, __, ___) => fallback)));
-+                : ColorFiltered(
-+                    // Le logo reste celui de la station ; seul son rendu suit
-+                    // l'identité monochrome, sans modifier l'image du catalogue.
-+                    colorFilter: const ColorFilter.matrix(<double>[
-+                      0.2126,
-+                      0.7152,
-+                      0.0722,
-+                      0,
-+                      0,
-+                      0.2126,
-+                      0.7152,
-+                      0.0722,
-+                      0,
-+                      0,
-+                      0.2126,
-+                      0.7152,
-+                      0.0722,
-+                      0,
-+                      0,
-+                      0,
-+                      0,
-+                      0,
-+                      1,
-+                      0,
-+                    ]),
-+                    child: Image.network(uri.toString(),
-+                        fit: BoxFit.contain,
-+                        cacheWidth: 128,
-+                        errorBuilder: (_, __, ___) => fallback))));
-   }
- }
-
++                // Le logo officiel de la station, en couleur, tel que fourni
++                // par le catalogue.
+                 : Image.network(uri.toString(),
+                     fit: BoxFit.contain,
+                     cacheWidth: 128,
+@@ -1000,9 +1119,10 @@ class _RadioChoiceDelegate extends SearchDelegate<String?> {
+                   style: AppTextStyles.bodyLarge
+                       .copyWith(color: colors.textPrimary)),
+               leading: RegExp(r'^[A-Z]{2}$').hasMatch(item.key)
+-                  ? Text(item.key,
+-                      style: AppTextStyles.bodyMedium
+-                          .copyWith(color: colors.textSecondary))
++                  ? CountryFlag(item.key,
++                      semanticLabel: item.value,
++                      size: 22,
++                      color: colors.textSecondary)
+                   : null,
+               onTap: () => close(context, item.key));
+         });
 diff --git a/lib/features/recordings/presentation/recordings_screen.dart b/lib/features/recordings/presentation/recordings_screen.dart
 index 31522936..81bd8956 100644
 --- a/lib/features/recordings/presentation/recordings_screen.dart
@@ -47586,7 +47575,7 @@ index 31522936..81bd8956 100644
 @@ -26,6 +26,7 @@ import 'package:open_filex/open_filex.dart';
  // le type XFile utilisé pour joindre le fichier.
  import 'package:share_plus/share_plus.dart';
-
+ 
 +import '../../../core/branding/brand_logo.dart';
  import '../../../core/i18n/l10n_extension.dart';
  import '../../../core/theme/app_colors.dart';
@@ -47640,7 +47629,7 @@ index 1881077f..3839b716 100644
 @@ -24,7 +24,6 @@
  import 'package:flutter/material.dart';
  import 'package:flutter/services.dart';
-
+ 
 -import '../../../core/branding/verified_badge.dart';
  import '../../../core/flavor/flavor.dart';
  import '../../../core/i18n/l10n_extension.dart';
@@ -47664,7 +47653,7 @@ index 1fe085fc..f1b500b9 100644
 +++ b/lib/features/simple_home/presentation/simple_home_screen.dart
 @@ -26,6 +26,7 @@ import 'dart:async';
  import 'package:flutter/material.dart';
-
+ 
  import '../../../core/branding/brand_config.dart';
 +import '../../../core/flavor/flavor.dart';
  import '../../../core/branding/brand_logo.dart';
@@ -47768,7 +47757,7 @@ index 1fe085fc..f1b500b9 100644
 +      },
      );
    }
-
+ 
 @@ -374,10 +381,8 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
                  ),
                  const SizedBox(height: 3),
@@ -47802,57 +47791,84 @@ index 1fe085fc..f1b500b9 100644
          ),
 diff --git a/lib/features/simple_home/presentation/widgets/adult_access_dialog.dart b/lib/features/simple_home/presentation/widgets/adult_access_dialog.dart
 new file mode 100644
-index 00000000..634db6f9
+index 00000000..f5127259
 --- /dev/null
 +++ b/lib/features/simple_home/presentation/widgets/adult_access_dialog.dart
-@@ -0,0 +1,132 @@
+@@ -0,0 +1,159 @@
 +import 'package:flutter/material.dart';
 +import 'package:flutter/services.dart';
 +
 +import '../../../../core/i18n/l10n_extension.dart';
++import '../../../../core/theme/app_colors.dart';
 +import '../../../../core/theme/app_text_styles.dart';
 +import '../../../security/data/app_pin_settings.dart';
-+import '../../../settings/presentation/settings_screen.dart';
 +
-+/// Point d'entrée 18+ de l'accueil. Réutilise le code parental et son
-+/// anti-brute-force. Un appareil encore au code initial est dirigé vers le
-+/// parcours Réglages existant, sans créer de code implicite ni lever Kids.
-+/// Le propriétaire du parcours doit revérifier le profil après cet await.
++/// Point d'entrée 18+ de l'accueil.
++///
++/// Sans code parental personnel, l'espace s'ouvre par une confirmation d'âge
++/// en un geste, sans mot de passe. Dès qu'un code personnel a été défini
++/// dans Réglages → Contrôle parental, ce code est exigé, avec son
++/// anti-brute-force. L'entrée reste masquée en mode Enfants et l'accès est
++/// révoqué au changement de profil par l'appelant, qui doit revérifier le
++/// profil après cet await.
 +Future<bool> requestHomeAdultAccess(BuildContext context) async {
-+  if (await AppPinSettings.instance.isUsingDefault()) {
-+    if (!context.mounted) return false;
-+    final bool setup = await showDialog<bool>(
-+          context: context,
-+          builder: (BuildContext ctx) => AlertDialog(
-+            scrollable: true,
-+            title: Text(ctx.l10n.homeTabAdult),
-+            content: Text(ctx.l10n.homeAdultPinSetup),
-+            actions: <Widget>[
-+              TextButton(
-+                onPressed: () => Navigator.of(ctx).pop(false),
-+                child: Text(ctx.l10n.buttonCancel),
-+              ),
-+              FilledButton(
-+                onPressed: () => Navigator.of(ctx).pop(true),
-+                child: Text(ctx.l10n.tvParentalChangePin),
-+              ),
-+            ],
-+          ),
-+        ) ??
-+        false;
-+    if (!setup || !context.mounted) return false;
-+    await Navigator.of(context).push<void>(MaterialPageRoute<void>(
-+      builder: (_) => const SettingsScreen(),
-+    ));
-+    // Retour des réglages sans code personnel : accès toujours fermé.
-+    if (await AppPinSettings.instance.isUsingDefault()) return false;
-+  }
++  final bool protected = !await AppPinSettings.instance.isUsingDefault();
 +  if (!context.mounted) return false;
 +  return await showDialog<bool>(
 +        context: context,
-+        builder: (_) => const _AdultPinDialog(),
++        builder: (_) =>
++            protected ? const _AdultPinDialog() : const _AdultConfirmDialog(),
 +      ) ??
 +      false;
++}
++
++/// Confirmation d'âge en un geste : aucun code, aucune saisie.
++class _AdultConfirmDialog extends StatelessWidget {
++  const _AdultConfirmDialog();
++
++  @override
++  Widget build(BuildContext context) {
++    final l = context.l10n;
++    final colors = AppColors.lumiere(context);
++    return AlertDialog(
++      scrollable: true,
++      title: Column(
++        children: <Widget>[
++          Container(
++            width: 48,
++            height: 48,
++            alignment: Alignment.center,
++            decoration: BoxDecoration(
++              shape: BoxShape.circle,
++              color: colors.textPrimary,
++            ),
++            child: Text('18+',
++                style: AppTextStyles.bodyMedium.copyWith(
++                    color: colors.canvas, fontWeight: FontWeight.w800)),
++          ),
++          const SizedBox(height: 14),
++          Text(l.homeAdultConfirmTitle, textAlign: TextAlign.center),
++        ],
++      ),
++      content: Text(l.homeAdultConfirmHint,
++          textAlign: TextAlign.center,
++          style:
++              AppTextStyles.bodyMedium.copyWith(color: colors.textSecondary)),
++      actionsAlignment: MainAxisAlignment.center,
++      actionsOverflowAlignment: OverflowBarAlignment.center,
++      actions: <Widget>[
++        FilledButton.icon(
++          onPressed: () => Navigator.of(context).pop(true),
++          icon: const Icon(Icons.check_rounded, size: 18),
++          label: Text(l.homeAdultConfirmButton),
++        ),
++        TextButton(
++          onPressed: () => Navigator.of(context).pop(false),
++          child: Text(l.buttonBack),
++        ),
++      ],
++    );
++  }
 +}
 +
 +class _AdultPinDialog extends StatefulWidget {
@@ -47944,7 +47960,7 @@ index 5c1f4ab9..f2cf91cc 100644
 +++ b/lib/features/simple_home/presentation/widgets/category_browser_view.dart
 @@ -30,10 +30,13 @@ import 'dart:async';
  import 'package:flutter/material.dart';
-
+ 
  import '../../../../core/flavor/flavor.dart';
 +import '../../../../core/app/repair_flags.dart';
 +import '../../../../core/profiles/profiles_repository.dart';
@@ -47970,7 +47986,7 @@ index 5c1f4ab9..f2cf91cc 100644
  import '../../../vod/presentation/cinema_screen.dart';
 +import '../../../radio/presentation/radio_screen.dart';
 +import 'adult_access_dialog.dart';
-
+ 
  /// Nombre de colonnes ADAPTATIF pour les listes verticales (catégories et
  /// chaînes) : calculé depuis la LARGEUR RÉELLE au lieu d'être figé à 1
 @@ -68,6 +74,7 @@ enum _Bucket {
@@ -47979,7 +47995,7 @@ index 5c1f4ab9..f2cf91cc 100644
    series(Icons.video_library_outlined),
 +  radio(Icons.radio_rounded),
    adult(Icons.no_adult_content_rounded);
-
+ 
    const _Bucket(this.icon);
 @@ -82,8 +89,10 @@ enum _Bucket {
          return context.l10n.catFilterMovies;
@@ -47996,7 +48012,7 @@ index 5c1f4ab9..f2cf91cc 100644
 @@ -159,6 +168,74 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
    /// sélectionné, bien séparé et lisible.
    _Bucket? _bucket;
-
+ 
 +  // L'autorisation appartient à cet accueil et à son profil courant.
 +  // Elle n'est jamais persistée et disparaît au retour vers TV / à la
 +  // modification du profil / dès que le Mode Enfants devient actif.
@@ -48090,7 +48106,7 @@ index 5c1f4ab9..f2cf91cc 100644
      // ignore: discarded_futures
 @@ -409,11 +488,11 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
    List<Channel>? _byIdFor;
-
+ 
    Map<String, Channel> _channelsById() {
 -    if (!identical(_byIdFor, widget.channels)) {
 +    if (!identical(_byIdFor, _visibleChannels)) {
@@ -48158,7 +48174,7 @@ index 5c1f4ab9..f2cf91cc 100644
        final String cat = raw.isEmpty ? noCat : raw;
        (map[cat] ??= <Channel>[]).add(c);
 @@ -824,8 +903,6 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
-
+ 
    // ----- Niveau 1 : la liste des catégories (+ barre de filtres) -----
    Widget _buildCategoryList(Map<String, List<Channel>> grouped) {
 -    if (grouped.isEmpty) return _buildEmptyCatalog();
@@ -48204,7 +48220,7 @@ index 5c1f4ab9..f2cf91cc 100644
 +    ];
 +    final _Bucket effective =
 +        _bucket == _Bucket.adult && _canShowAdult ? _Bucket.adult : _Bucket.tv;
-
+ 
      // Catégories visibles = celles du rayon actif (plus de « Tout »),
      // RÉORDONNÉES selon le choix de l'usager, puis les MASQUÉES retirées.
 @@ -892,32 +957,46 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
@@ -48278,7 +48294,7 @@ index 5c1f4ab9..f2cf91cc 100644
 @@ -961,32 +1042,12 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
      );
    }
-
+ 
 -  /// Le mode Enfants peut masquer tous les rayons d'une source. Les radios
 -  /// publiques et l'accès invité restent alors disponibles, comme avant la
 -  /// refonte : un catalogue filtré vide ne doit pas faire disparaître l'accueil.
@@ -48347,7 +48363,7 @@ index 5c1f4ab9..f2cf91cc 100644
 @@ -1020,6 +1095,22 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
      );
    }
-
+ 
 +  /// Le doigt peut se relever entre la révocation et le prochain rendu.
 +  /// Ne pas jouer la liste capturée par une ancienne tuile : re-résoudre
 +  /// l'identifiant dans les autorisations courantes juste avant l'action.
@@ -48395,11 +48411,11 @@ index 5c1f4ab9..f2cf91cc 100644
 +                      onTap: () => _playCategoryChannel(c.id, category),
                      );
                    }
-
+ 
 @@ -1107,16 +1198,16 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
-
+ 
  // ---- Sous-widgets ----
-
+ 
 -/// Puce de filtre (rayon). Teintée ember quand active.
 +/// Puce de filtre : contraste blanc/noir franc pour le rayon actif.
  class _FilterChip extends StatelessWidget {
@@ -48415,7 +48431,7 @@ index 5c1f4ab9..f2cf91cc 100644
 +  final String? semanticsLabel;
    final bool active;
    final VoidCallback onTap;
-
+ 
 @@ -1126,11 +1217,13 @@ class _FilterChip extends StatelessWidget {
      return Semantics(
        button: true,
@@ -48449,7 +48465,7 @@ index 5c1f4ab9..f2cf91cc 100644
                      )),
                ],
 @@ -1165,7 +1254,7 @@ class _FilterChip extends StatelessWidget {
-
+ 
  /// Ligne de catégorie : dossier + nom + pastille « nombre de chaînes ».
  ///
 -/// APPUI LONG → on « attrape » le groupe (rebond + flèches dorées ▲▼) pour le
@@ -48479,7 +48495,7 @@ index 5c1f4ab9..f2cf91cc 100644
 @@ -1333,7 +1422,7 @@ class _CategoryRowState extends State<_CategoryRow>
    }
  }
-
+ 
 -/// Chevrons DORÉS ▲ ▼ (+ ✓) — montent / descendent le groupe. Grisés quand
 +/// Chevrons ▲ ▼ (+ ✓) — montent / descendent le groupe. Grisés quand
  /// l'action est impossible (déjà tout en haut / tout en bas).
@@ -48504,7 +48520,7 @@ index 5c1f4ab9..f2cf91cc 100644
          // Appui long = favori (geste « façon TikTok »). Investissement Hook :
          // plus l'utilisateur dépose de favoris, plus il a de raisons de revenir.
 @@ -1479,35 +1568,40 @@ class _ResumeVodCard extends StatelessWidget {
-
+ 
    @override
    Widget build(BuildContext context) {
 -    return GestureDetector(
@@ -48572,7 +48588,7 @@ index 5c1f4ab9..f2cf91cc 100644
        ),
      );
 @@ -1524,25 +1618,29 @@ class _RecentCard extends StatelessWidget {
-
+ 
    @override
    Widget build(BuildContext context) {
 -    return GestureDetector(
@@ -48627,12 +48643,12 @@ index b8bcac57..06cf9ec8 100644
 +import 'dart:ui';
 +
  import 'package:flutter/material.dart';
-
+ 
  import '../../../../core/i18n/l10n_extension.dart';
  import '../../../../core/theme/app_colors.dart';
  import '../../../../core/theme/app_text_styles.dart';
 +import '../../../../core/widgets/premium_press.dart';
-
+ 
  /// Dock de l'accueil mobile. Les destinations restent des routes : l'état
  /// sélectionné décrit donc l'accueil, sans simuler des onglets persistants.
 @@ -24,55 +27,63 @@ class HomeNavigationBar extends StatelessWidget {
@@ -48801,7 +48817,7 @@ index b158c387..7fa90dbc 100644
 @@ -23,6 +23,7 @@ import 'package:flutter/material.dart';
  import 'package:flutter/services.dart';
  import 'package:url_launcher/url_launcher.dart';
-
+ 
 +import '../../../core/branding/brand_config.dart';
  import '../../../core/branding/brand_logo.dart';
  import '../../../core/i18n/l10n_extension.dart';
@@ -48872,7 +48888,7 @@ index b7a71da3..7a179fad 100644
                            onSelected: (_) =>
                                setState(() => _season = s),
 diff --git a/lib/l10n/app_ar.arb b/lib/l10n/app_ar.arb
-index 43569457..d7f77518 100644
+index 43569457..cc26b4a3 100644
 --- a/lib/l10n/app_ar.arb
 +++ b/lib/l10n/app_ar.arb
 @@ -1,6 +1,6 @@
@@ -48932,7 +48948,7 @@ index 43569457..d7f77518 100644
    "catFilterMovies": "سينما",
    "catFilterSeries": "مسلسلات",
    "pricingOffersTitle": "عروضنا",
-@@ -2376,5 +2376,9 @@
+@@ -2376,5 +2376,11 @@
    "tvSearchPhoneKeyboardOn": "⌨ اكتب على هاتفك. اضغط رجوع للعودة إلى لوحة مفاتيح الشاشة.",
    "@tvSearchPhoneKeyboardOn": {
      "description": "Indication affichee quand la saisie au clavier du telephone est active"
@@ -48941,10 +48957,12 @@ index 43569457..d7f77518 100644
 +  "profileSignature": "عالمك. بصمتك.",
 +  "homeTabRadio": "الراديو",
 +  "homeTabAdult": "للبالغين +18",
-+  "homeAdultPinSetup": "لفتح هذا القسم، عيّن رمز PIN شخصيًا في الإعدادات ← الرقابة الأبوية. الرمز الأولي هو 0000 حتى تغيّره."
++  "homeAdultConfirmTitle": "مساحة مخصصة.",
++  "homeAdultConfirmHint": "أكّد أن عمرك 18 عامًا أو أكثر للدخول إلى هذه المساحة.",
++  "homeAdultConfirmButton": "عمري 18 عامًا أو أكثر"
  }
 diff --git a/lib/l10n/app_da.arb b/lib/l10n/app_da.arb
-index e8294152..1ad716b9 100644
+index e8294152..7b40de02 100644
 --- a/lib/l10n/app_da.arb
 +++ b/lib/l10n/app_da.arb
 @@ -1,6 +1,6 @@
@@ -49004,7 +49022,7 @@ index e8294152..1ad716b9 100644
    "catFilterMovies": "Film",
    "catFilterSeries": "Serier",
    "pricingOffersTitle": "Vores tilbud",
-@@ -2376,5 +2376,9 @@
+@@ -2376,5 +2376,11 @@
    "tvSearchPhoneKeyboardOn": "⌨ Skriv på din telefon. Tryk Tilbage for at vende tilbage til skærmtastaturet.",
    "@tvSearchPhoneKeyboardOn": {
      "description": "Indication affichee quand la saisie au clavier du telephone est active"
@@ -49013,10 +49031,12 @@ index e8294152..1ad716b9 100644
 +  "profileSignature": "Din verden. Dit særpræg.",
 +  "homeTabRadio": "Radio",
 +  "homeTabAdult": "Voksne 18+",
-+  "homeAdultPinSetup": "Indstil din personlige PIN-kode i Indstillinger → Forældrekontrol for at åbne dette område. Startkoden er 0000, indtil du ændrer den."
++  "homeAdultConfirmTitle": "Et forbeholdt område.",
++  "homeAdultConfirmHint": "Bekræft, at du er 18 år eller ældre, for at åbne dette område.",
++  "homeAdultConfirmButton": "Jeg er 18 år eller ældre"
  }
 diff --git a/lib/l10n/app_en.arb b/lib/l10n/app_en.arb
-index cd88ec28..e8b8a89e 100644
+index cd88ec28..c04d146c 100644
 --- a/lib/l10n/app_en.arb
 +++ b/lib/l10n/app_en.arb
 @@ -1,6 +1,6 @@
@@ -49076,7 +49096,7 @@ index cd88ec28..e8b8a89e 100644
    "forceUpdateTitle": "New version available",
    "forceUpdateBody": "This version is out of date. Download the latest version to keep using the app.",
    "forceUpdateDownloaderHint": "ON TV / BOX: OPEN DOWNLOADER AND ENTER THIS CODE",
-@@ -2696,5 +2696,12 @@
+@@ -2696,5 +2696,14 @@
    "radioNoFilterResults": "No results. Try another name.",
    "@radioNoFilterResults": {
      "description": "Aucun résultat dans le sélecteur pays, langue ou genre."
@@ -49088,10 +49108,12 @@ index cd88ec28..e8b8a89e 100644
 +  },
 +  "homeTabRadio": "Radio",
 +  "homeTabAdult": "Adults 18+",
-+  "homeAdultPinSetup": "To open this area, set your personal PIN in Settings → Parental controls. The initial PIN is 0000 until you change it."
++  "homeAdultConfirmTitle": "A reserved space.",
++  "homeAdultConfirmHint": "Confirm that you are 18 or older to enter this space.",
++  "homeAdultConfirmButton": "I am 18 or older"
  }
 diff --git a/lib/l10n/app_es.arb b/lib/l10n/app_es.arb
-index f3cbae39..2ea3a911 100644
+index f3cbae39..460d8d04 100644
 --- a/lib/l10n/app_es.arb
 +++ b/lib/l10n/app_es.arb
 @@ -1,6 +1,6 @@
@@ -49151,7 +49173,7 @@ index f3cbae39..2ea3a911 100644
    "catFilterMovies": "Cine",
    "catFilterSeries": "Series",
    "pricingOffersTitle": "Nuestras ofertas",
-@@ -2376,5 +2376,9 @@
+@@ -2376,5 +2376,11 @@
    "tvSearchPhoneKeyboardOn": "⌨ Escribe en tu teléfono. Pulsa Atrás para volver al teclado en pantalla.",
    "@tvSearchPhoneKeyboardOn": {
      "description": "Indication affichee quand la saisie au clavier du telephone est active"
@@ -49160,10 +49182,12 @@ index f3cbae39..2ea3a911 100644
 +  "profileSignature": "Tu mundo. Tu sello.",
 +  "homeTabRadio": "Radio",
 +  "homeTabAdult": "Adultos 18+",
-+  "homeAdultPinSetup": "Para abrir este espacio, configura tu PIN personal en Ajustes → Control parental. El PIN inicial es 0000 hasta que lo cambies."
++  "homeAdultConfirmTitle": "Un espacio reservado.",
++  "homeAdultConfirmHint": "Confirma que tienes 18 años o más para entrar en este espacio.",
++  "homeAdultConfirmButton": "Tengo 18 años o más"
  }
 diff --git a/lib/l10n/app_fr.arb b/lib/l10n/app_fr.arb
-index 1b455ec9..8c7ea00d 100644
+index 1b455ec9..45d3f8cb 100644
 --- a/lib/l10n/app_fr.arb
 +++ b/lib/l10n/app_fr.arb
 @@ -2,7 +2,7 @@
@@ -49230,7 +49254,7 @@ index 1b455ec9..8c7ea00d 100644
    "@themeChooseSub": {
      "description": "Sous-titre du sélecteur de thème"
    },
-@@ -5555,5 +5555,12 @@
+@@ -5555,5 +5555,16 @@
    "radioNoFilterResults": "Aucun résultat. Essayez un autre nom.",
    "@radioNoFilterResults": {
      "description": "Aucun résultat dans le sélecteur pays, langue ou genre."
@@ -49241,11 +49265,15 @@ index 1b455ec9..8c7ea00d 100644
 +  "@homeTabRadio": {"description": "Navigation de l’accueil et accès parental 18+"},
 +  "homeTabAdult": "Adultes 18+",
 +  "@homeTabAdult": {"description": "Navigation de l’accueil et accès parental 18+"},
-+  "homeAdultPinSetup": "Pour ouvrir cet espace, définissez votre code personnel dans Réglages → Contrôle parental. Le code initial est 0000 tant que vous ne l’avez pas changé.",
-+  "@homeAdultPinSetup": {"description": "Navigation de l’accueil et accès parental 18+"}
++  "homeAdultConfirmTitle": "Un espace réservé.",
++  "@homeAdultConfirmTitle": {"description": "Confirmation 18+ en un geste sur l’accueil"},
++  "homeAdultConfirmHint": "Confirmez que vous avez 18 ans ou plus pour accéder à cet espace.",
++  "@homeAdultConfirmHint": {"description": "Confirmation 18+ en un geste sur l’accueil"},
++  "homeAdultConfirmButton": "J’ai 18 ans ou plus",
++  "@homeAdultConfirmButton": {"description": "Confirmation 18+ en un geste sur l’accueil"}
  }
 diff --git a/lib/l10n/app_nb.arb b/lib/l10n/app_nb.arb
-index 8bc9213d..bc3a53dd 100644
+index 8bc9213d..fdd78b22 100644
 --- a/lib/l10n/app_nb.arb
 +++ b/lib/l10n/app_nb.arb
 @@ -1,6 +1,6 @@
@@ -49305,7 +49333,7 @@ index 8bc9213d..bc3a53dd 100644
    "catFilterMovies": "Film",
    "catFilterSeries": "Serier",
    "pricingOffersTitle": "Våre tilbud",
-@@ -2376,5 +2376,9 @@
+@@ -2376,5 +2376,11 @@
    "tvSearchPhoneKeyboardOn": "⌨ Skriv på telefonen. Trykk Tilbake for å gå tilbake til skjermtastaturet.",
    "@tvSearchPhoneKeyboardOn": {
      "description": "Indication affichee quand la saisie au clavier du telephone est active"
@@ -49314,10 +49342,12 @@ index 8bc9213d..bc3a53dd 100644
 +  "profileSignature": "Din verden. Ditt særpreg.",
 +  "homeTabRadio": "Radio",
 +  "homeTabAdult": "Voksne 18+",
-+  "homeAdultPinSetup": "Angi din personlige PIN-kode i Innstillinger → Foreldrekontroll for å åpne dette området. Startkoden er 0000 til du endrer den."
++  "homeAdultConfirmTitle": "Et reservert område.",
++  "homeAdultConfirmHint": "Bekreft at du er 18 år eller eldre for å åpne dette området.",
++  "homeAdultConfirmButton": "Jeg er 18 år eller eldre"
  }
 diff --git a/lib/l10n/app_sv.arb b/lib/l10n/app_sv.arb
-index 01acc6de..e84b32c5 100644
+index 01acc6de..f5b72c8f 100644
 --- a/lib/l10n/app_sv.arb
 +++ b/lib/l10n/app_sv.arb
 @@ -1,6 +1,6 @@
@@ -49377,7 +49407,7 @@ index 01acc6de..e84b32c5 100644
    "catFilterMovies": "Film",
    "catFilterSeries": "Serier",
    "pricingOffersTitle": "Våra erbjudanden",
-@@ -2376,5 +2376,9 @@
+@@ -2376,5 +2376,11 @@
    "tvSearchPhoneKeyboardOn": "⌨ Skriv på din telefon. Tryck Bakåt för att återgå till skärmtangentbordet.",
    "@tvSearchPhoneKeyboardOn": {
      "description": "Indication affichee quand la saisie au clavier du telephone est active"
@@ -49386,10 +49416,12 @@ index 01acc6de..e84b32c5 100644
 +  "profileSignature": "Din värld. Din prägel.",
 +  "homeTabRadio": "Radio",
 +  "homeTabAdult": "Vuxna 18+",
-+  "homeAdultPinSetup": "Ställ in din personliga PIN-kod i Inställningar → Föräldrakontroll för att öppna detta område. Den ursprungliga koden är 0000 tills du ändrar den."
++  "homeAdultConfirmTitle": "Ett reserverat utrymme.",
++  "homeAdultConfirmHint": "Bekräfta att du är 18 år eller äldre för att öppna det här utrymmet.",
++  "homeAdultConfirmButton": "Jag är 18 år eller äldre"
  }
 diff --git a/lib/l10n/app_sw.arb b/lib/l10n/app_sw.arb
-index 17457875..993be601 100644
+index 17457875..505f3a1d 100644
 --- a/lib/l10n/app_sw.arb
 +++ b/lib/l10n/app_sw.arb
 @@ -1,6 +1,6 @@
@@ -49449,7 +49481,7 @@ index 17457875..993be601 100644
    "catFilterMovies": "Sinema",
    "catFilterSeries": "Mfululizo",
    "pricingOffersTitle": "Ofa zetu",
-@@ -2641,5 +2641,9 @@
+@@ -2641,5 +2641,11 @@
    "radioNoFilterResults": "Hakuna matokeo. Jaribu jina jingine.",
    "@radioNoFilterResults": {
      "description": "Aucun résultat dans le sélecteur pays, langue ou genre."
@@ -49458,7 +49490,9 @@ index 17457875..993be601 100644
 +  "profileSignature": "Ulimwengu wako. Alama yako.",
 +  "homeTabRadio": "Redio",
 +  "homeTabAdult": "Watu wazima 18+",
-+  "homeAdultPinSetup": "Ili kufungua sehemu hii, weka PIN yako katika Mipangilio → Udhibiti wa wazazi. PIN ya awali ni 0000 hadi uibadilishe."
++  "homeAdultConfirmTitle": "Sehemu maalum.",
++  "homeAdultConfirmHint": "Thibitisha kuwa una miaka 18 au zaidi ili kuingia sehemu hii.",
++  "homeAdultConfirmButton": "Nina miaka 18 au zaidi"
  }
 diff --git a/lib/main.dart b/lib/main.dart
 index e356fc2e..abd318b0 100644
@@ -49492,7 +49526,7 @@ index e356fc2e..abd318b0 100644
 @@ -964,7 +961,7 @@ class _AppEntryState extends State<_AppEntry> with WidgetsBindingObserver {
    }
  }
-
+ 
 -/// Splash The Few — apparaît max 50 ms le temps que le flag
 +/// Splash 7 MOTION — apparaît max 50 ms le temps que le flag
  /// onboarding soit lu depuis SharedPreferences. Toujours en Cinema
@@ -49535,13 +49569,13 @@ index b1eb8ec1..927af7d1 100644
 +++ b/pubspec.yaml
 @@ -7,7 +7,7 @@
  # =========================================================
-
+ 
  name: tv_king
 -description: "The Few — lecteur multimédia premium (Not For Everyone)."
 +description: "7 MOTION — TV, cinéma et radios du monde."
  publish_to: 'none'
  version: 0.3.4+12
-
+ 
 @@ -356,29 +356,25 @@ dev_dependencies:
    # Sans ce package, `flutter create` met l'icône Flutter par défaut
    # (le F bleu). Avec, on génère toutes les tailles mipmap-* depuis
@@ -49549,7 +49583,7 @@ index b1eb8ec1..927af7d1 100644
 -  # juste après `flutter create` pour que l'icône finale soit ember.
 +  # juste après `flutter create` pour générer le 7 rouge du launcher.
    flutter_launcher_icons: ^0.14.1
-
+ 
  # ============================================================
  #  Configuration du generateur d'icones (utilisée par
 -#  flutter_launcher_icons). L'icône source est notre logo
@@ -49578,7 +49612,7 @@ index b1eb8ec1..927af7d1 100644
 +  adaptive_icon_background: "#0B0D10"
 +  adaptive_icon_foreground: "assets/branding/7motion_launcher_red.png"
 +  adaptive_icon_foreground_inset: 0
-
+ 
  flutter:
    uses-material-design: true
 @@ -397,6 +393,10 @@ flutter:
@@ -49725,6 +49759,45 @@ index 00000000..bff37681
 +  test('la palette TV explicite conserve son accent violet', () {
 +    expect(AppTheme.tvViolet.colorScheme.primary, TvRoyal.accent);
 +    expect(AppTheme.tvViolet.scaffoldBackgroundColor, TvRoyal.background);
++  });
++}
+diff --git a/test/core/widgets/country_flag_test.dart b/test/core/widgets/country_flag_test.dart
+new file mode 100644
+index 00000000..56c5e9da
+--- /dev/null
++++ b/test/core/widgets/country_flag_test.dart
+@@ -0,0 +1,33 @@
++import 'package:flutter/material.dart';
++import 'package:flutter_test/flutter_test.dart';
++import 'package:tv_king/core/widgets/country_flag.dart';
++
++void main() {
++  test('drapeau : codes ISO vers indicateurs régionaux, UK vers GB', () {
++    expect(countryFlagEmoji('RW'), '🇷🇼');
++    expect(countryFlagEmoji('fr'), '🇫🇷');
++    expect(countryFlagEmoji(' ke '), '🇰🇪');
++    expect(countryFlagEmoji('UK'), countryFlagEmoji('GB'));
++  });
++
++  test('drapeau : code absent ou malformé donne une chaîne vide', () {
++    expect(countryFlagEmoji(''), '');
++    expect(countryFlagEmoji('R'), '');
++    expect(countryFlagEmoji('RWA'), '');
++    expect(countryFlagEmoji('1A'), '');
++  });
++
++  testWidgets('drapeau : le nom du pays reste la sémantique, le code le repli',
++      (WidgetTester tester) async {
++    await tester.pumpWidget(const MaterialApp(
++        home: Scaffold(
++            body: Row(children: <Widget>[
++      CountryFlag('RW', semanticLabel: 'Rwanda'),
++      CountryFlag('ZZZ', semanticLabel: 'Inconnu'),
++    ]))));
++    expect(find.text('🇷🇼'), findsOneWidget);
++    expect(find.text('ZZZ'), findsOneWidget);
++    expect(find.bySemanticsLabel('Rwanda'), findsOneWidget);
++    expect(find.bySemanticsLabel('Inconnu'), findsOneWidget);
 +  });
 +}
 diff --git a/test/core/widgets/premium_motion_test.dart b/test/core/widgets/premium_motion_test.dart
@@ -49970,21 +50043,20 @@ index 736e8edf..fb10c12a 100644
          tester, find.widgetWithText(ActionChip, 'Effacer les filtres'));
      expect(client.searches.last.countryCode, isEmpty);
 diff --git a/test/features/simple_home/premium_home_visual_test.dart b/test/features/simple_home/premium_home_visual_test.dart
-index d11b41c2..e405d49b 100644
+index d11b41c2..e81a29e7 100644
 --- a/test/features/simple_home/premium_home_visual_test.dart
 +++ b/test/features/simple_home/premium_home_visual_test.dart
-@@ -10,6 +10,10 @@ import 'package:google_fonts/google_fonts.dart';
+@@ -10,6 +10,9 @@ import 'package:google_fonts/google_fonts.dart';
  import 'package:shared_preferences/shared_preferences.dart';
  import 'package:sqflite_common_ffi/sqflite_ffi.dart';
  import 'package:tv_king/core/flavor/flavor.dart';
 +import 'package:tv_king/core/widgets/premium_press.dart';
 +import 'package:tv_king/core/profiles/profiles_repository.dart';
 +import 'package:tv_king/features/security/data/app_pin_settings.dart';
-+import 'package:tv_king/features/settings/presentation/settings_screen.dart';
  import 'package:tv_king/core/theme/app_theme.dart';
  import 'package:tv_king/core/theme/accent_controller.dart';
  import 'package:tv_king/features/channels/data/category_order_store.dart';
-@@ -99,7 +103,7 @@ void main() {
+@@ -99,7 +102,7 @@ void main() {
      });
      FlavorConfig.setCurrent(FlavorConfig.sevenMotion);
      await AccentController.instance
@@ -49993,7 +50065,7 @@ index d11b41c2..e405d49b 100644
      sqfliteFfiInit();
      databaseFactory = databaseFactoryFfiNoIsolate;
      db = await databaseFactory.openDatabase(inMemoryDatabasePath);
-@@ -110,6 +114,7 @@ void main() {
+@@ -110,6 +113,7 @@ void main() {
      await WatchHistoryRepository.instance.initialize();
      await CategoryOrderStore.instance.ensureLoaded();
      await HiddenCategoriesStore.instance.ensureLoaded();
@@ -50001,7 +50073,7 @@ index d11b41c2..e405d49b 100644
    });
    tearDownAll(() async {
      PlaylistDatabase.instance.debugUseDatabase(null);
-@@ -137,12 +142,21 @@ void main() {
+@@ -137,12 +141,21 @@ void main() {
        await _render(tester);
        expect(tester.takeException(), isNull);
        expect(find.byType(HomeNavigationBar), findsOneWidget);
@@ -50026,7 +50098,7 @@ index d11b41c2..e405d49b 100644
        await tester.pump(const Duration(milliseconds: 100));
        await tester.longPress(find.text('Afrique de l’Est').last);
        await tester.pump(const Duration(milliseconds: 650));
-@@ -165,6 +179,23 @@ void main() {
+@@ -165,6 +178,23 @@ void main() {
        await _render(tester);
        expect(tester.takeException(), isNull);
        expect(find.text('Rwanda TV'), findsOneWidget);
@@ -50050,7 +50122,7 @@ index d11b41c2..e405d49b 100644
        await tester.pumpWidget(const SizedBox.shrink());
        await tester.pump(const Duration(seconds: 10));
        PlaylistRepository.instance.debugSeedChannels(const <Channel>[]);
-@@ -231,4 +262,217 @@ void main() {
+@@ -231,4 +261,239 @@ void main() {
      expect(tester.takeException(), isNull);
      await tester.pumpWidget(const SizedBox.shrink());
    });
@@ -50231,21 +50303,43 @@ index d11b41c2..e405d49b 100644
 +  });
 +
 +  testWidgets(
-+      '18+ : sans code personnel, le parcours Réglages reste obligatoire',
++      '18+ : sans code personnel, une confirmation d’âge en un geste suffit',
 +      (WidgetTester tester) async {
 +    await AppPinSettings.instance.resetToDefault();
 +    await mountParentalHome(tester);
 +    await openAdultPrompt(tester);
 +    expect(find.byType(TextField), findsNothing);
-+    expect(find.textContaining('code initial est 0000'), findsOneWidget);
-+    await tester.tap(find.text('Changer le code PIN'));
++    expect(find.text('Un espace réservé.'), findsOneWidget);
++    expect(find.text('XXX Test Entry'), findsNothing);
++    await tester.tap(find.text('J’ai 18 ans ou plus'));
 +    await _render(tester);
-+    expect(find.byType(SettingsScreen), findsOneWidget);
-+    await tester.tap(find.byTooltip('Retour'));
++    expect(find.byType(AlertDialog), findsNothing);
++    expect(find.text('Adultes 18+'), findsOneWidget);
++    expect(find.text('Public One'), findsNothing);
++    await tester.pumpWidget(const SizedBox.shrink());
++  });
++
++  testWidgets('18+ : retour depuis la confirmation ne révèle aucune chaîne',
++      (WidgetTester tester) async {
++    await AppPinSettings.instance.resetToDefault();
++    await mountParentalHome(tester);
++    await openAdultPrompt(tester);
++    await tester.tap(find.text('Retour'));
 +    await _render(tester);
 +    expect(find.byType(AlertDialog), findsNothing);
 +    expect(find.text('XXX Test Entry'), findsNothing);
 +    expect(find.text('Adultes 18+'), findsNothing);
++    await tester.pumpWidget(const SizedBox.shrink());
++  });
++
++  testWidgets('18+ : la confirmation en un geste reste absente en mode Enfants',
++      (WidgetTester tester) async {
++    await AppPinSettings.instance.resetToDefault();
++    await ParentalControls.instance.setKidsMode(true);
++    addTearDown(() => ParentalControls.instance.setKidsMode(false));
++    await mountParentalHome(tester);
++    expect(find.text('18+'), findsNothing);
++    expect(find.text('XXX Test Entry'), findsNothing);
 +    await tester.pumpWidget(const SizedBox.shrink());
 +  });
 +
@@ -50267,4 +50361,19 @@ index d11b41c2..e405d49b 100644
 +    expect(tester.takeException(), isNull);
 +    await tester.pumpWidget(const SizedBox.shrink());
 +  });
+ }
+diff --git a/test/support/premium_capture_fonts.dart b/test/support/premium_capture_fonts.dart
+index 76fdaa2e..e1796268 100644
+--- a/test/support/premium_capture_fonts.dart
++++ b/test/support/premium_capture_fonts.dart
+@@ -28,6 +28,10 @@ Future<void> preparePremiumCaptureFonts() async {
+     interFallback.addFont(rootBundle.load('assets/fonts/Inter-Regular.ttf'));
+     interFallback.addFont(Future<ByteData>.value(emoji));
+     await interFallback.load();
++    // Drapeaux et emoji des widgets qui nomment explicitement cette famille.
++    final FontLoader colorEmoji = FontLoader('Noto Color Emoji');
++    colorEmoji.addFont(Future<ByteData>.value(emoji));
++    await colorEmoji.load();
+   }
+   await materialFallback.load();
  }
