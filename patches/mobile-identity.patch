@@ -44160,6 +44160,78 @@ index 00000000..a6deebd3
 +
 +- Signature : « Edit the supplied logo ONLY by recoloring it. Preserve the original stylized R geometry, all edges, handwritten Motion signature shape, composition, position, scale, aspect ratio and generous negative space. Recolor the R red and the word Motion neutral light silver; preserve the black backdrop. No new shapes, lettering, cropping, restyling or glow. »
 +- Icône : « Edit the supplied logo ONLY by recoloring it. Preserve the numeral 7, its crisp edges, angle, thickness, central position, thin horizon arc, margins and square composition. Recolor the 7 and arc red; preserve the near-black background. No new shapes, text, cropping, restyling or glow. »
+diff --git a/lib/core/app/boot_steps.dart b/lib/core/app/boot_steps.dart
+new file mode 100644
+index 00000000..a5a64fff
+--- /dev/null
++++ b/lib/core/app/boot_steps.dart
+@@ -0,0 +1,66 @@
++// =========================================================
++//  boot_steps.dart — Démarrage qui ne reste jamais sur l'écran natif.
++// =========================================================
++//  Chaque étape attendue avant `runApp` passe ici : une exception ou un
++//  blocage d'une étape est consigné puis l'app CONTINUE. Avant, une seule
++//  erreur dans la séquence de boot laissait le téléphone figé sur l'icône
++//  Android (la zone gardée avalait l'exception et `runApp` n'était jamais
++//  appelé). Les échecs restent visibles : journal, boîte noire et
++//  [BootDiagnostics.failures] que l'accueil affiche une fois.
++// =========================================================
++import 'dart:async';
++
++import '../crash/crash_reporting.dart';
++import '../observability/structured_logger.dart';
++
++/// Échec d'une étape de démarrage, conservé pour l'affichage et le journal.
++class BootFailure {
++  const BootFailure(this.step, this.error);
++  final String step;
++  final String error;
++
++  @override
++  String toString() => '$step : $error';
++}
++
++abstract final class BootDiagnostics {
++  static final List<BootFailure> failures = <BootFailure>[];
++
++  /// Délai maximal d'une étape attendue au boot. Au-delà, l'app démarre
++  /// sans elle ; l'étape continue en arrière-plan si elle finit par aboutir.
++  static const Duration stepTimeout = Duration(seconds: 8);
++
++  static void _record(String step, Object error, StackTrace? stack) {
++    failures.add(BootFailure(step, error.toString()));
++    StructuredLogger.instance.error(
++      domain: 'boot',
++      event: 'step.failed',
++      ctx: <String, Object?>{'step': step, 'error': error.toString()},
++    );
++    CrashReporting.instance.recordError(error, stack, context: 'boot.$step');
++  }
++
++  /// Exécute une étape asynchrone sans jamais interrompre le démarrage.
++  static Future<void> step(String name, Future<void> Function() body,
++      {Duration timeout = stepTimeout}) async {
++    try {
++      await body().timeout(timeout, onTimeout: () {
++        throw TimeoutException('étape trop longue (${timeout.inSeconds} s)');
++      });
++    } catch (e, s) {
++      _record(name, e, s);
++    }
++  }
++
++  /// Exécute une étape synchrone sans jamais interrompre le démarrage.
++  static void sync(String name, void Function() body) {
++    try {
++      body();
++    } catch (e, s) {
++      _record(name, e, s);
++    }
++  }
++
++  /// Résumé lisible pour l'utilisateur ou une capture d'écran.
++  static String summary() => failures.map((BootFailure f) => '• $f').join('\n');
++}
 diff --git a/lib/core/branding/brand_logo.dart b/lib/core/branding/brand_logo.dart
 index 0140ca3a..4d65f31f 100644
 --- a/lib/core/branding/brand_logo.dart
@@ -49495,10 +49567,18 @@ index 17457875..505f3a1d 100644
 +  "homeAdultConfirmButton": "Nina miaka 18 au zaidi"
  }
 diff --git a/lib/main.dart b/lib/main.dart
-index e356fc2e..abd318b0 100644
+index e356fc2e..2ffcec8b 100644
 --- a/lib/main.dart
 +++ b/lib/main.dart
-@@ -30,14 +30,12 @@ import 'core/realtime/realtime_sync_service.dart';
+@@ -16,6 +16,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
+ import 'package:media_kit/media_kit.dart';
+ 
+ import 'core/app/boot_guard.dart';
++import 'core/app/boot_steps.dart';
+ import 'core/app/repair_flags.dart';
+ import 'core/app/panel_live_wait.dart';
+ import 'core/assistance/assistance_overlay.dart';
+@@ -30,14 +31,12 @@ import 'core/realtime/realtime_sync_service.dart';
  import 'core/crash/crash_reporting.dart';
  import 'core/branding/brand_config.dart';
  import 'core/branding/brand_logo.dart';
@@ -49513,7 +49593,129 @@ index e356fc2e..abd318b0 100644
  import 'core/theme/app_text_styles.dart' show AppTextStyles;
  import 'core/i18n/locale_repository.dart';
  import 'core/i18n/locale_resolver.dart';
-@@ -447,8 +445,7 @@ class TvKingApp extends StatelessWidget {
+@@ -102,10 +101,27 @@ void main() {
+     // projet depuis le retrait des variantes TV et Red Room). Doit être
+     // posée AVANT `bootApp()` (qui touche aux repos lisant `FlavorConfig`).
+     FlavorConfig.setCurrent(FlavorConfig.sevenMotion);
+-    await bootApp();
++    try {
++      await bootApp();
++    } catch (e, s) {
++      // Dernier filet : une erreur inattendue avant `runApp` ne doit plus
++      // laisser l'écran natif figé. L'app démarre, l'erreur reste visible.
++      BootDiagnostics.failures.add(BootFailure('bootApp', e.toString()));
++      CrashReporting.instance.recordError(e, s, context: 'bootApp');
++      startApp();
++    }
+   });
+ }
+ 
++bool _appStarted = false;
++
++/// Lance l'interface une seule fois, quelle que soit l'issue du boot.
++void startApp() {
++  if (_appStarted) return;
++  _appStarted = true;
++  runApp(const TvKingApp());
++}
++
+ /// Séquence d'initialisation de l'application. Le flavor doit déjà avoir
+ /// été posé par `main()` — on lit `FlavorConfig.current` librement à
+ /// partir d'ici.
+@@ -134,8 +150,8 @@ Future<void> bootApp() async {
+   // si l'app s'est relancée plusieurs fois de suite (crash natif type
+   // mémoire en ré-important une grosse source), on saute le ré-import
+   // distant plus bas pour casser la boucle.
+-  await BootGuard.instance.beginBoot();
+-  await RepairFlags.load();
++  await BootDiagnostics.step('bootGuard', BootGuard.instance.beginBoot);
++  await BootDiagnostics.step('repairFlags', RepairFlags.load);
+ 
+   // Posture (débogage, émulateur, su) : une note dans la boîte noire.
+   // Jamais un motif pour refuser la lecture.
+@@ -207,9 +223,11 @@ Future<void> bootApp() async {
+   // profil jusqu'à la prochaine bascule. AWAIT assumé (une lecture
+   // SharedPreferences, quasi instantanée) avec le même timeout de sécurité
+   // que la TV : prefs lent ne retarde jamais le boot.
+-  await ProfilesRepository.instance
+-      .load()
+-      .timeout(const Duration(seconds: 2), onTimeout: () {});
++  await BootDiagnostics.step(
++      'profiles',
++      () => ProfilesRepository.instance
++          .load()
++          .timeout(const Duration(seconds: 2), onTimeout: () {}));
+   // Profils PILOTÉS PAR LE PANEL (mêmes règles que le boot TV) : le
+   // propriétaire colle UNE source et le serveur génère les cinq profils
+   // de la famille. Non bloquant : le `load()` ci-dessus a déjà servi la
+@@ -278,7 +296,7 @@ Future<void> bootApp() async {
+   //     avant, seule l'arrivée sur l'accueil les déclenchait, donc une app
+   //     laissée ouverte sur un film ne reprogrammait jamais rien.
+   unawaited(SportsRepository.instance.initialize());
+-  LiveScoresService.instance.startSentinel();
++  BootDiagnostics.sync('liveScores', LiveScoresService.instance.startSentinel);
+   Timer.periodic(const Duration(minutes: 30), (_) {
+     unawaited(MatchAlertsService.instance.refresh());
+   });
+@@ -292,14 +310,15 @@ Future<void> bootApp() async {
+   // était KO au dernier lancement, on repart directement sur l'adresse
+   // Cloudflare de secours mémorisée (retour auto au domaine maison au
+   // 1er heartbeat réussi). Voir core/backend/backend_hosts.dart.
+-  await BackendHosts.loadPreferred();
++  await BootDiagnostics.step('backendHosts', BackendHosts.loadPreferred);
+ 
+   // Licence : cache local d'ABORD (prefs, ms) pour que le 1er frame
+   // connaisse déjà ban/gel/grâce — puis heartbeat Worker (autorité).
+   // Retentes 2/10/30 min si le Wi-Fi a un creux au boot. Périodique
+   // 45 min (pas 6 h) : un ban panel coupe à la prochaine fenêtre,
+   // sans spammer une Firestick 1 Go (debounce 8 min dans syncIfStale).
+-  await SubscriptionState.instance.initialize();
++  await BootDiagnostics.step(
++      'subscription', SubscriptionState.instance.initialize);
+   unawaited((() async {
+     await SubscriptionState.instance.syncWithBackend();
+     for (final int minutes in <int>[2, 10, 30]) {
+@@ -383,11 +402,12 @@ Future<void> bootApp() async {
+ 
+   // Choix Cinema / Daylight / System — chargé avant runApp pour
+   // éviter un flash de mauvais thème au démarrage.
+-  await ThemeModeRepository.instance.initialize();
++  await BootDiagnostics.step(
++      'themeMode', ThemeModeRepository.instance.initialize);
+ 
+   // Couleur d'accent choisie par le client (bouton « Thème »). Chargée
+   // avant runApp pour éviter un flash de la couleur par défaut.
+-  await AccentController.instance.initialize();
++  await BootDiagnostics.step('accent', AccentController.instance.initialize);
+ 
+   // Thème DISTANT (nom de l'app + couleur d'accent) piloté par le panel
+   // « Thème ». Non bloquant : s'applique dès que la réponse arrive et
+@@ -407,12 +427,13 @@ Future<void> bootApp() async {
+ 
+   // Classe d'appareil (Téléphone / TV / Auto). Chargée tôt pour que
+   // `_AppEntry` puisse décider immédiatement quel home afficher.
+-  await DeviceClassRepository.instance.initialize();
++  await BootDiagnostics.step(
++      'deviceClass', DeviceClassRepository.instance.initialize);
+ 
+   // Langue préférée (FR / EN / ES / SV / DA / NB / AR / SW / Système).
+   // Doit être chargée avant runApp pour éviter un flash de mauvaise
+   // langue au premier frame.
+-  await LocaleRepository.instance.initialize();
++  await BootDiagnostics.step('locale', LocaleRepository.instance.initialize);
+ 
+   // Update checker — silencieux en arrière-plan. Le résultat est lu
+   // par AboutScreen / un toast plus tard. Si une build plus récente est
+@@ -434,7 +455,7 @@ Future<void> bootApp() async {
+     NotificationService.instance.checkAnnouncement();
+   });
+ 
+-  runApp(const TvKingApp());
++  startApp();
+ 
+   // App lancée : si elle tient quelques secondes, on efface l'historique de
+   // boucle de crash (un démarrage réussi « pardonne » les crashs précédents).
+@@ -447,8 +468,7 @@ class TvKingApp extends StatelessWidget {
    @override
    Widget build(BuildContext context) {
      return ListenableBuilder(
@@ -49523,7 +49725,25 @@ index e356fc2e..abd318b0 100644
          ThemeModeRepository.instance,
          LocaleRepository.instance,
          AccentController.instance,
-@@ -964,7 +961,7 @@ class _AppEntryState extends State<_AppEntry> with WidgetsBindingObserver {
+@@ -698,6 +718,17 @@ class _AppEntryState extends State<_AppEntry> with WidgetsBindingObserver {
+   void initState() {
+     super.initState();
+     _checkForcedUpdate();
++    // Démarrage dégradé : chaque étape en échec est montrée une fois, pour
++    // qu'une capture d'écran suffise à diagnostiquer un téléphone.
++    if (BootDiagnostics.failures.isNotEmpty) {
++      WidgetsBinding.instance.addPostFrameCallback((_) {
++        if (!mounted) return;
++        ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(
++          duration: const Duration(seconds: 30),
++          content: Text('Démarrage incomplet\n${BootDiagnostics.summary()}'),
++        ));
++      });
++    }
+     // Temps réel : quand l'admin appuie « Forcer la mise à jour » sur le
+     // panel, le RealtimeSyncService incrémente `revision` → re-check
+     // immédiat, l'écran de blocage apparaît sans redémarrage.
+@@ -964,7 +995,7 @@ class _AppEntryState extends State<_AppEntry> with WidgetsBindingObserver {
    }
  }
  
@@ -49532,7 +49752,7 @@ index e356fc2e..abd318b0 100644
  /// onboarding soit lu depuis SharedPreferences. Toujours en Cinema
  /// Mode : c'est l'identité du produit qui s'affiche en premier.
  class _Splash extends StatelessWidget {
-@@ -984,24 +981,16 @@ class _Splash extends StatelessWidget {
+@@ -984,24 +1015,16 @@ class _Splash extends StatelessWidget {
                    children: <Widget>[
                      const BrandLogo.splash(),
                      const SizedBox(height: 18),
@@ -49626,6 +49846,49 @@ index b1eb8ec1..927af7d1 100644
      - assets/branding/thefew_tv_icon.png
      - assets/branding/thefew_logo.png
      - assets/branding/prive_icon.png
+diff --git a/test/core/app/boot_steps_test.dart b/test/core/app/boot_steps_test.dart
+new file mode 100644
+index 00000000..46ed244c
+--- /dev/null
++++ b/test/core/app/boot_steps_test.dart
+@@ -0,0 +1,37 @@
++import 'dart:async';
++
++import 'package:flutter_test/flutter_test.dart';
++import 'package:tv_king/core/app/boot_steps.dart';
++
++void main() {
++  setUp(BootDiagnostics.failures.clear);
++
++  test('une étape qui lève ne bloque pas le démarrage et reste consignée',
++      () async {
++    await BootDiagnostics.step('casse', () async => throw StateError('vieux'));
++    expect(BootDiagnostics.failures, hasLength(1));
++    expect(BootDiagnostics.failures.single.step, 'casse');
++    expect(BootDiagnostics.failures.single.error, contains('vieux'));
++    expect(BootDiagnostics.summary(), contains('casse : Bad state: vieux'));
++  });
++
++  test('une étape qui ne répond jamais est abandonnée après le délai',
++      () async {
++    final Completer<void> never = Completer<void>();
++    await BootDiagnostics.step('bloquee', () => never.future,
++        timeout: const Duration(milliseconds: 50));
++    expect(BootDiagnostics.failures.single.step, 'bloquee');
++    expect(BootDiagnostics.failures.single.error, contains('trop longue'));
++  });
++
++  test('une étape saine ne laisse aucune trace', () async {
++    await BootDiagnostics.step('ok', () async {});
++    BootDiagnostics.sync('ok-sync', () {});
++    expect(BootDiagnostics.failures, isEmpty);
++  });
++
++  test('une étape synchrone qui lève est consignée', () {
++    BootDiagnostics.sync('sync', () => throw ArgumentError('x'));
++    expect(BootDiagnostics.failures.single.step, 'sync');
++  });
++}
 diff --git a/test/core/theme/accent_controller_test.dart b/test/core/theme/accent_controller_test.dart
 new file mode 100644
 index 00000000..bff37681
