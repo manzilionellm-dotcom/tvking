@@ -1,0 +1,60 @@
+name: 7 MOTION mobile — synchronisation du panel
+
+on:
+  push:
+    branches: ['feature/7motion-panel-sync']
+  pull_request:
+    paths:
+      - 'patches/mobile-panel-sync.patch'
+      - 'patches/mobile-sport-gratuit.patch'
+      - 'patches/mobile-radio.patch'
+      - 'patches/mobile-identity.patch'
+      - '.github/workflows/mobile-panel-sync-tests.yml'
+
+# Tests du vrai code mobile préparé par la chaîne de livraison. Aucun
+# secret de signature ni droit de publication n'est nécessaire ici.
+permissions:
+  contents: read
+
+concurrency:
+  group: mobile-panel-sync-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          path: mission
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 37fdf3305c5de9d35e20fd6567df38008fc7a7ee
+          path: phone
+          persist-credentials: false
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+        with:
+          flutter-version: '3.47.7'
+          channel: stable
+      - name: Préparer le code mobile sans fusionner la lignée TV
+        working-directory: phone
+        run: |
+          git apply ../mission/patches/mobile-sport-gratuit.patch
+          git apply ../mission/patches/mobile-radio.patch
+          git apply --check ../mission/patches/mobile-panel-sync.patch
+          git apply ../mission/patches/mobile-panel-sync.patch
+          git apply --check ../mission/patches/mobile-identity.patch
+          git apply ../mission/patches/mobile-identity.patch
+          git diff --check
+          flutter pub get
+          flutter gen-l10n
+      - name: Vérifier les suppressions et les commandes rejouées
+        working-directory: phone
+        run: |
+          flutter test test/features/playlists/source_opt_outs_test.dart test/core/app/panel_live_wait_test.dart test/features/playlists/panel_getphp_reconcile_test.dart test/features/playlists/cloud_backup_panel_removal_test.dart --reporter expanded
+          flutter analyze --no-fatal-infos --no-fatal-warnings lib/features/playlists/data/source_opt_outs.dart lib/core/app/panel_live_wait.dart lib/features/playlists/data/remote_source_repository.dart lib/features/playlists/data/cloud_backup_repository.dart
+      - name: Vérifier l’identité, les gestes et les écrans mobiles
+        working-directory: phone
+        run: flutter test test/core/theme/accent_controller_test.dart test/core/widgets/premium_motion_test.dart test/features/profile test/features/simple_home test/features/radio --reporter expanded

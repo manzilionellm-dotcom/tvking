@@ -272,6 +272,23 @@ abstract final class RepairFlags {
   static const String verifyNoForceKey = 'zuno.source.verify_no_force';
   static bool verifyNoForce = false;
 
+  /// Vrai = ancien accès Sport : délai de 8 s et échec présenté comme une
+  /// liste vide. Faux = délai borné de 20 s, raison visible et journal sûr.
+  /// Mesuré le 07/10/2026 : réponses valides après 8,5 à 11,7 s ; test HTTP
+  /// réel rouge avec une réponse après 9 s. Aucun réessai automatique ajouté.
+  static const String sportsNetworkLegacyKey = 'zuno.sports.network_legacy';
+  static bool sportsNetworkLegacy = false;
+
+  /// Vrai = ancien écran Sport, sans accès aux calendriers publics. Faux =
+  /// accès OpenLigaDB / OpenFootball sur demande, sans clé ni vidéo externe.
+  static const String sportsCommunityOffKey = 'zuno.sports.community_off';
+  static bool sportsCommunityOff = false;
+
+  /// Vrai = ancien grand bandeau du guide, permanent sur la vidéo.
+  /// Faux = une ligne neutre pendant deux secondes, détails dans le Guide.
+  static const String missedNoticeLegacyKey = 'zuno.guide.notice_legacy';
+  static bool missedNoticeLegacy = false;
+
   static Future<void> load() async {
     bool raw = false;
     bool tvDelLegacy = false;
@@ -305,6 +322,9 @@ abstract final class RepairFlags {
     bool testPollLegacy = false;
     bool dropFirst = false;
     bool ackOff = false;
+    bool sportsLegacy = false;
+    bool communityOff = false;
+    bool noticeLegacy = false;
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       raw = prefs.getBool(blackBoxRawKey) ?? false;
@@ -339,6 +359,9 @@ abstract final class RepairFlags {
       replayLegacy = prefs.getBool(wsReplayLegacyKey) ?? false;
       gzipByHeader = prefs.getBool(epgGzipByHeaderKey) ?? false;
       xtreamSerial = prefs.getBool(xtreamPerCategorySerialKey) ?? false;
+      sportsLegacy = prefs.getBool(sportsNetworkLegacyKey) ?? false;
+      communityOff = prefs.getBool(sportsCommunityOffKey) ?? false;
+      noticeLegacy = prefs.getBool(missedNoticeLegacyKey) ?? false;
     } catch (_) {
       raw = false;
       fsyncAll = false;
@@ -372,9 +395,15 @@ abstract final class RepairFlags {
       replayLegacy = false;
       gzipByHeader = false;
       xtreamSerial = false;
+      sportsLegacy = false;
+      communityOff = false;
+      noticeLegacy = false;
     }
     epgGzipByHeader = gzipByHeader;
     xtreamPerCategorySerial = xtreamSerial;
+    sportsNetworkLegacy = sportsLegacy;
+    sportsCommunityOff = communityOff;
+    missedNoticeLegacy = noticeLegacy;
     orderAckOff = ackOff;
     tvDeleteLegacy = tvDelLegacy;
     liveShelvesLegacy = shelvesLegacy;
@@ -444,6 +473,10 @@ abstract final class RepairFlags {
     wsReplayLegacy = false;
     epgGzipByHeader = false;
     xtreamPerCategorySerial = false;
+    sportsNetworkLegacy = false;
+    sportsCommunityOff = false;
+    missedNoticeLegacy = false;
     NativeVideoController.legacyHoldFrame = false;
   }
 }
+

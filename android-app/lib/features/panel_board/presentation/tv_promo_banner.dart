@@ -14,7 +14,8 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
-import '../../box_extras/box_text.dart';
+import '../../../core/i18n/l10n_extension.dart';
+
 import '../../tv/core/tv_dimens.dart';
 import '../../tv/core/tv_tokens.dart';
 import '../domain/panel_board.dart';
@@ -45,7 +46,7 @@ class TvPromoBanner extends StatelessWidget {
     final bool hasQr = banner.url.isNotEmpty;
     final String watchLabel = banner.cta.trim().isNotEmpty
         ? banner.cta.trim()
-        : boxText(context, 'Regarder', 'Watch');
+        : context.l10n.buttonWatch;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
@@ -85,15 +86,22 @@ class TvPromoBanner extends StatelessWidget {
                 left: 14,
                 top: 12,
                 child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: TvTokens.bg.withValues(alpha: 0.7),
                     borderRadius: BorderRadius.circular(TvTokens.rSmall),
                     border: Border.all(color: TvTokens.line),
                   ),
                   child: Text(
-                    banner.label.toUpperCase(),
+                    (switch (banner.label) {
+                      'Publicité' => context.l10n.tvAdvertisement,
+                      'Sponsorisé' => context.l10n.tvSponsored,
+                      'Info' => context.l10n.tvInformation,
+                      _ => banner.label,
+                    }).toUpperCase(),
                     style: TvTokens.ui(
                       TvDimens.caption,
                       weight: FontWeight.w700,
@@ -127,7 +135,10 @@ class TvPromoBanner extends StatelessWidget {
                         banner.subtitle,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: TvTokens.ui(TvDimens.label, color: TvTokens.muted),
+                        style: TvTokens.ui(
+                          TvDimens.label,
+                          color: TvTokens.muted,
+                        ),
                       ),
                     ],
                     const SizedBox(height: 10),
@@ -142,7 +153,7 @@ class TvPromoBanner extends StatelessWidget {
                           const SizedBox(width: 10),
                         ],
                         PanelButton(
-                          label: boxText(context, 'Fermer', 'Close'),
+                          label: context.l10n.tvClose,
                           icon: Icons.close_rounded,
                           onSelect: onClose,
                         ),
@@ -159,9 +170,11 @@ class TvPromoBanner extends StatelessWidget {
                   child: Row(
                     children: <Widget>[
                       Text(
-                        boxText(context, 'Téléphone', 'Phone'),
-                        style: TvTokens.ui(TvDimens.caption,
-                            color: TvTokens.mutedDim),
+                        context.l10n.tvPhone,
+                        style: TvTokens.ui(
+                          TvDimens.caption,
+                          color: TvTokens.mutedDim,
+                        ),
                       ),
                       const SizedBox(width: 10),
                       PanelQr(data: banner.url, size: 104),

@@ -33,6 +33,11 @@ on:
       - 'android-app/ci/windows/**'
   workflow_dispatch:
     inputs:
+      confirme:
+        description: 'PUBLIER_APP après dégel et ordre écrit du propriétaire'
+        required: false
+        default: ''
+        type: string
       publish:
         description: 'Publier sur la release zuno-windows'
         required: false
@@ -41,7 +46,7 @@ on:
         options: ['false', 'true']
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: publish-zuno-windows
@@ -53,6 +58,13 @@ defaults:
 
 jobs:
   build:
+    outputs:
+      version: ${{ env.WIN_VERSION }}
+      build: ${{ env.WIN_BUILD }}
+      setup-sha: ${{ env.SETUP_SHA }}
+      setup-size: ${{ env.SETUP_SIZE }}
+    if: github.actor == github.repository_owner && github.triggering_actor == github.repository_owner && github.repository == 'manzilionellm-dotcom/tvking'
+    environment: zuno-app-production
     name: Build Zuno Windows
     # windows-2022 (Visual Studio 2022) : combinaison connue de Flutter.
     # (windows-latest = windows-2025-vs2026 depuis septembre 2026.)
@@ -62,11 +74,21 @@ jobs:
       RELEASE_TAG: zuno-windows
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Autoriser le canal avant la compilation
+        shell: bash
+        working-directory: .
+        env:
+          APP_PUBLISH: ${{ inputs.publish || 'false' }}
+        run: node .github/app-release-guard.mjs
 
       - name: Setup Flutter (stable)
-        uses: subosito/flutter-action@v2
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
+          flutter-version: '3.47.7'
           channel: 'stable'
           cache: true
 
@@ -194,7 +216,7 @@ jobs:
           "SETUP_SIZE=$size" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: Artefact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: zuno-windows-${{ github.sha }}
           path: |
@@ -203,12 +225,38 @@ jobs:
           retention-days: 30
           if-no-files-found: error
 
-      # Publie sur un lancement manuel publish=true, ou sur push de main /
-      # claude/** (release zuno-windows, séparée : aucun effet sur la box ni
-      # son lien). Un push de branche ccr-** s'arrête aux artefacts : la
-      # version PC se publie après test, jamais parce qu'un commit est passé.
+  publish:
+    name: Publication Windows manuelle et revue
+    needs: [build]
+    if: github.event_name == 'workflow_dispatch' && inputs.publish == 'true' && github.actor == github.repository_owner && github.triggering_actor == github.repository_owner && github.repository == 'manzilionellm-dotcom/tvking'
+    environment: zuno-app-production
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      RELEASE_TAG: zuno-windows
+      WIN_VERSION: ${{ needs.build.outputs.version }}
+      WIN_BUILD: ${{ needs.build.outputs.build }}
+      SETUP_SHA: ${{ needs.build.outputs.setup-sha }}
+      SETUP_SIZE: ${{ needs.build.outputs.setup-size }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Refuser une publication sans dégel revu
+        working-directory: .
+        env:
+          APP_OPERATION: client
+        run: node .github/app-release-guard.mjs
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: zuno-windows-${{ github.sha }}
+          path: android-app/dist
+      - name: Vérifier le fichier repris sans reconstruire
+        run: |
+          printf '%s  %s\n' "$SETUP_SHA" dist/Zuno-Setup.exe | sha256sum -c -
       - name: Publier sur la release zuno-windows
-        if: (github.event_name == 'push' && !startsWith(github.ref, 'refs/heads/ccr-')) || github.event.inputs.publish == 'true'
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -244,3 +292,4 @@ jobs:
           python3 -c "import json; d=json.load(open('dist/version.json')); assert d['versionCode']>0 and len(d['sha256'])==64 and d['size']>0, d"
           gh release upload "$RELEASE_TAG" dist/Zuno-Setup.exe dist/zuno-windows.zip dist/version.json --clobber -R "$REPO"
           echo "✓ https://github.com/$REPO/releases/download/$RELEASE_TAG/Zuno-Setup.exe"
+

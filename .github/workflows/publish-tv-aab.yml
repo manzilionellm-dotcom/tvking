@@ -14,23 +14,39 @@ name: Publish TV AAB (lien direct)
 on:
   workflow_dispatch:
     inputs:
+      confirme:
+        description: PUBLIER_APP après dégel autorisé
+        required: true
+        type: string
       run_id:
         description: 'ID du run build-tv dont on publie l''AAB Google Play'
         required: true
         type: string
 
 permissions:
-  contents: write   # attacher les assets à la release cinema-test
+  contents: read
   actions: read     # télécharger les artefacts du run build-tv
 
 jobs:
   publish:
+    if: github.event_name == 'workflow_dispatch' && github.actor == github.repository_owner && github.triggering_actor == github.repository_owner && github.repository == 'manzilionellm-dotcom/tvking'
+    environment: zuno-app-production
+    permissions:
+      contents: write
     name: Attache defew-tv.aab (+APK store-test) à cinema-test
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - name: Lire les protections
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Refuser une publication clients non revue
+        env:
+          APP_OPERATION: client
+        run: node .github/app-release-guard.mjs
       - name: Télécharger l'AAB et l'APK store-test du run build-tv
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: defew-tv-*
           run-id: ${{ inputs.run_id }}
@@ -54,3 +70,4 @@ jobs:
           else
             echo "⊙ pas d'APK store-test dans ce run (workflow antérieur)"
           fi
+

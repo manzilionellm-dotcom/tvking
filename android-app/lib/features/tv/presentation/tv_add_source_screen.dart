@@ -26,12 +26,10 @@ import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
 import 'tv_components.dart';
 import 'tv_import_progress_label.dart';
+import 'tv_source_error_text.dart';
 
 class TvAddSourceScreen extends StatefulWidget {
-  const TvAddSourceScreen({
-    super.key,
-    this.initialMode = OpenEntryMode.xtream,
-  });
+  const TvAddSourceScreen({super.key, this.initialMode = OpenEntryMode.xtream});
 
   /// Onglet ouvert en premier. Les trois restent accessibles.
   final OpenEntryMode initialMode;
@@ -68,10 +66,10 @@ class _TvAddSourceScreenState extends State<TvAddSourceScreen> {
   Future<void> _validate() async {
     final OpenSourceParse parsed = switch (_mode) {
       OpenEntryMode.xtream => OpenSourceInput.xtream(
-          server: _serverC.text,
-          username: _userC.text,
-          password: _passC.text,
-        ),
+        server: _serverC.text,
+        username: _userC.text,
+        password: _passC.text,
+      ),
       OpenEntryMode.m3u => OpenSourceInput.playlistLink(_linkC.text),
       OpenEntryMode.player => OpenSourceInput.playerLink(_linkC.text),
     };
@@ -113,26 +111,10 @@ class _TvAddSourceScreenState extends State<TvAddSourceScreen> {
       if (mounted) {
         setState(() {
           _busy = false;
-          _error = _safeMessage(e);
+          _error = 'connect_failed';
         });
       }
     }
-  }
-
-  /// Phrase du dépôt si elle est déjà en français et sans secret.
-  /// Sinon la phrase courte déjà traduite.
-  String _safeMessage(Object error) {
-    final String raw =
-        error.toString().replaceFirst('Exception: ', '').trim();
-    final String lower = raw.toLowerCase();
-    if (raw.isEmpty ||
-        lower.contains('http://') ||
-        lower.contains('https://') ||
-        lower.contains('password') ||
-        lower.contains('mot de passe=')) {
-      return context.l10n.tvConnectError;
-    }
-    return raw;
   }
 
   @override
@@ -148,12 +130,13 @@ class _TvAddSourceScreenState extends State<TvAddSourceScreen> {
               // Titre traduit (clé tvAddListTitle, « Ajouter ma source » en
               // français) : un texte en dur cassait les autres langues et le
               // test removed_list_prompt_test (retour après une liste retirée).
-              Text(context.l10n.tvAddListTitle,
-                  style: TvTokens.display(34, color: TvTokens.text)),
+              Text(
+                context.l10n.tvAddListTitle,
+                style: TvTokens.display(34, color: TvTokens.text),
+              ),
               const SizedBox(height: 6),
               Text(
-                'Colle ton lien ou tes identifiants. '
-                'N\'importe quel fournisseur M3U ou Xtream.',
+                context.l10n.tvSourcePasteHelp,
                 style: TvTokens.ui(16, color: TvTokens.mutedDim),
               ),
               const SizedBox(height: 18),
@@ -172,7 +155,7 @@ class _TvAddSourceScreenState extends State<TvAddSourceScreen> {
                     onSelect: () => _select(OpenEntryMode.m3u),
                   ),
                   _ModeChip(
-                    label: OpenSourceInput.playerLabel,
+                    label: context.l10n.tvPlayerLink,
                     selected: _mode == OpenEntryMode.player,
                     onSelect: () => _select(OpenEntryMode.player),
                   ),
@@ -188,10 +171,7 @@ class _TvAddSourceScreenState extends State<TvAddSourceScreen> {
                   keyboardType: TextInputType.url,
                 ),
                 const SizedBox(height: 10),
-                _TextField(
-                  controller: _userC,
-                  label: context.l10n.tvFieldUser,
-                ),
+                _TextField(controller: _userC, label: context.l10n.tvFieldUser),
                 const SizedBox(height: 10),
                 _TextField(
                   controller: _passC,
@@ -202,7 +182,7 @@ class _TvAddSourceScreenState extends State<TvAddSourceScreen> {
                 _TextField(
                   controller: _linkC,
                   label: _mode == OpenEntryMode.player
-                      ? OpenSourceInput.playerLabel
+                      ? context.l10n.tvPlayerLink
                       : context.l10n.tvFieldM3uUrl,
                   hint: _mode == OpenEntryMode.player
                       ? 'http://exemple.test:8080/get.php?username=…&password=…'
@@ -212,12 +192,16 @@ class _TvAddSourceScreenState extends State<TvAddSourceScreen> {
                 ),
               ],
               const SizedBox(height: 10),
-              Text(context.l10n.tvKeyboardHint,
-                  style: TvTokens.ui(12, color: TvTokens.mutedDim)),
+              Text(
+                context.l10n.tvKeyboardHint,
+                style: TvTokens.ui(12, color: TvTokens.mutedDim),
+              ),
               if (_error != null) ...<Widget>[
                 const SizedBox(height: 8),
-                Text(_error!,
-                    style: TvTokens.ui(14, color: TvTokens.live)),
+                Text(
+                  sourceErrorText(context, _error!),
+                  style: TvTokens.ui(14, color: TvTokens.live),
+                ),
               ],
               const SizedBox(height: 20),
               ValueListenableBuilder<ImportProgress?>(
@@ -226,8 +210,8 @@ class _TvAddSourceScreenState extends State<TvAddSourceScreen> {
                   final String label = !_busy
                       ? context.l10n.tvAddListValidate
                       : (p == null
-                          ? context.l10n.tvConnecting
-                          : importProgressLabel(context, p));
+                            ? context.l10n.tvConnecting
+                            : importProgressLabel(context, p));
                   return TvCtaButton(
                     label: label,
                     onSelect: _busy ? null : _validate,
@@ -270,9 +254,9 @@ class _TextField extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     OutlineInputBorder border(Color c, double w) => OutlineInputBorder(
-          borderRadius: BorderRadius.circular(TvTokens.rButton),
-          borderSide: BorderSide(color: c, width: w),
-        );
+      borderRadius: BorderRadius.circular(TvTokens.rButton),
+      borderSide: BorderSide(color: c, width: w),
+    );
     return TextField(
       controller: controller,
       autofocus: autofocus,
@@ -290,8 +274,10 @@ class _TextField extends StatelessWidget {
         floatingLabelStyle: TvTokens.ui(13, color: TvTokens.accentBright),
         filled: true,
         fillColor: TvTokens.card,
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 18,
+          vertical: 16,
+        ),
         enabledBorder: border(TvTokens.line, 1),
         focusedBorder: border(TvTokens.accent, 2),
       ),
@@ -325,12 +311,16 @@ class _ModeChip extends StatelessWidget {
             borderRadius: BorderRadius.circular(TvTokens.rButton),
             border: Border.all(color: hl ? TvTokens.accent : TvTokens.line),
           ),
-          child: Text(label,
-              style: TvTokens.ui(15,
-                  weight: FontWeight.w600,
-                  color: focused
-                      ? TvTokens.onAccent
-                      : (selected ? TvTokens.accentBright : TvTokens.muted))),
+          child: Text(
+            label,
+            style: TvTokens.ui(
+              15,
+              weight: FontWeight.w600,
+              color: focused
+                  ? TvTokens.onAccent
+                  : (selected ? TvTokens.accentBright : TvTokens.muted),
+            ),
+          ),
         );
       },
     );
