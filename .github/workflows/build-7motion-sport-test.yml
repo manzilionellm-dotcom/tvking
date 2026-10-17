@@ -564,10 +564,11 @@ jobs:
         set -euo pipefail
         # L'APK de test reste distinct. Le Store doit garder son propre identifiant.
         python3 ../mission/android-app/ci/mobile/prepare_play.py
-        # 1723 est déjà publié ; la préparation suivante doit prendre 1724.
+        # 1724 est publié en production depuis le 17 octobre 2026 ; la
+        # préparation suivante doit prendre 1725.
         # Incrémenter ce code à chaque release Store ; le timestamp reste
         # réservé au canal de test et à la date de construction de l’app.
-        PLAY_VERSION_CODE=1724
+        PLAY_VERSION_CODE=1725
         flutter build appbundle --release --no-tree-shake-icons \
           --build-number="$PLAY_VERSION_CODE" --build-name=0.3.6 \
           --obfuscate --split-debug-info=build/play-symbols \
@@ -601,7 +602,7 @@ jobs:
         from pathlib import Path
         report=json.load(open("build/play-review/native-audit.json"))
         assert report["versionCode"] == sys.argv[1], "Code Play différent du code de release"
-        assert 1723 < int(report["versionCode"]) < 2100000000, "Code Play hors progression autorisée"
+        assert 1724 < int(report["versionCode"]) < 2100000000, "Code Play hors progression autorisée"
         assert int(report["targetSdk"]) >= 36, "Le bundle mobile doit cibler Android 16 / API 36"
         source=os.environ["SOURCE_SHA"]
         assert re.fullmatch(r"[0-9a-f]{40}", source), "Commit source invalide"
