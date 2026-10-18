@@ -6,6 +6,7 @@ import AppOnlyNotice from "../components/site/AppOnlyNotice";
 import CitationFaq from "../components/site/CitationFaq";
 import PageJsonLd from "../components/site/PageJsonLd";
 import { canonicalFor } from "../lib/seo";
+import { zunoWaUrl } from "../lib/wa";
 
 export const metadata: Metadata = {
   title: "Forfaits",
@@ -53,7 +54,21 @@ export default function ForfaitsPage() {
           );
         })}
       </div>
-      <p className="mt-8 text-center text-sm text-white/40">
+      <div className="mt-8 flex justify-center">
+        <a
+          href={zunoWaUrl(
+            "support",
+            `Sujet : forfaits — ${plans.map((p) => `${p.name} ${p.priceLabel} ${p.period}`).join(" · ")} (page forfaits).`,
+          )}
+          target="_blank"
+          rel="noopener noreferrer"
+          data-cta="forfaits-body"
+          className="inline-flex items-center justify-center rounded-xl bg-[#25D366] px-6 py-3.5 text-sm font-semibold text-white shadow-[0_0_28px_rgba(37,211,102,0.35)]"
+        >
+          Besoin d&apos;aide ? WhatsApp
+        </a>
+      </div>
+      <p className="mt-6 text-center text-sm text-white/40">
         Après paiement :{" "}
         <Link href="/activer" className="text-[#60a5fa] hover:underline">
           activez votre appareil

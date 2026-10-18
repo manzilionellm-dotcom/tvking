@@ -5,6 +5,11 @@ import CitationFaq from "./components/site/CitationFaq";
 import PageJsonLd from "./components/site/PageJsonLd";
 import { aio } from "../lib/aio";
 import { canonicalFor } from "./lib/seo";
+import { PLANS } from "./lib/plans";
+import { zunoWaUrl } from "./lib/wa";
+
+/** WhatsApp prefill context: this page + the licence prices it shows (same PLANS constants). */
+const HOME_WA_TOPIC = `Sujet : licence app — ${PLANS.annual.name} ${PLANS.annual.priceLabel} ${PLANS.annual.period} · ${PLANS.lifetime.name} ${PLANS.lifetime.priceLabel} (page d'accueil).`;
 
 export const metadata: Metadata = {
   title: "Zuno — Application IPTV multi-appareils",
@@ -107,6 +112,15 @@ export default function HomePage() {
             <Link href="/activer" className="rounded-xl border border-white/15 px-5 py-3 text-sm font-medium text-white/80">
               Activer mon appareil
             </Link>
+            <a
+              href={zunoWaUrl("support", HOME_WA_TOPIC)}
+              target="_blank"
+              rel="noopener noreferrer"
+              data-cta="home-body"
+              className="rounded-xl bg-[#25D366] px-5 py-3 text-sm font-semibold text-white"
+            >
+              Besoin d&apos;aide ? WhatsApp
+            </a>
           </div>
         </div>
       </section>
