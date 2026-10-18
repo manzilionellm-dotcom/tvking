@@ -2,12 +2,15 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import AppOnlyNotice from "./components/site/AppOnlyNotice";
 import CitationFaq from "./components/site/CitationFaq";
+import PageJsonLd from "./components/site/PageJsonLd";
 import { aio } from "../lib/aio";
+import { canonicalFor } from "./lib/seo";
 
 export const metadata: Metadata = {
   title: "Zuno — Application IPTV multi-appareils",
   description:
     "Zuno est une application IPTV — nous ne vendons pas de chaînes. Lecteur pour box Android TV, Fire TV, Google TV et Windows. Vous apportez vos propres sources.",
+  ...canonicalFor("/"),
 };
 
 const BENEFITS = [
@@ -31,6 +34,8 @@ const BENEFITS = [
 export default function HomePage() {
   return (
     <div className="zuno-page">
+      {/* Product × licences (prix affichés ci-dessous) + FAQPage (mêmes Q/R que <CitationFaq />) */}
+      <PageJsonLd products faq />
       <section className="relative overflow-hidden px-4 pb-20 pt-16 sm:px-6 sm:pt-24">
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(59,130,246,0.18),_transparent_55%)]" />
         <div className="pointer-events-none absolute -right-24 top-10 h-72 w-72 rounded-full bg-[#3b82f6]/10 blur-3xl" />

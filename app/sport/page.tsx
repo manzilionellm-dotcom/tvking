@@ -1,15 +1,19 @@
 import type { Metadata } from "next";
 import Row from "../components/Row";
 import { sportRows } from "../lib/data";
+import PageJsonLd from "../components/site/PageJsonLd";
+import { canonicalFor } from "../lib/seo";
 
 export const metadata: Metadata = {
   title: "Sport en direct",
   description: "Live, scores, calendrier et replays — classés par discipline.",
+  ...canonicalFor("/sport"),
 };
 
 export default function SportPage() {
   return (
     <div className="pb-[var(--safe-y)] pl-[var(--safe-x)] pt-[var(--safe-y)]">
+      <PageJsonLd crumbs={[{ name: "Sport", path: "/sport" }]} />
       <header className="mb-[1.8rem]">
         <p className="text-[1rem] font-semibold uppercase tracking-[0.2em] text-[var(--sport)]">
           Sport

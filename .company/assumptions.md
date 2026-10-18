@@ -11,3 +11,10 @@
    absents de ce repo → Tier B NON VÉRIFIÉ, exclus du rapport, reportés au backlog.
 5. Pas de première publication production dans ce run → aucun point VALIDATION_HUMAINE déclenché,
    hormis le merge de la PR (laissé à l'humain — protection de main non configurable d'ici).
+
+# Hypothèses (run-002 kit « Metrics & Conversion Engine », 2026-10-18)
+6. Hôte canonique = `metadataBase` d'app/layout.tsx (zuno.7themotion.com), identique au sitemap et au
+   canonical déjà posé sur /telecharger ; les deux hôtes (zuno.7themotion.com, tvking.vercel.app) servent
+   le même déploiement (HTTP 200 mesuré le 2026-10-18). Les `@id` JSON-LD gardent `siteUrl` d'aio.config.json
+   (tvking.vercel.app), comme avant. Aucun hôte n'a été changé ; décision humaine attendue pour unifier.
+7. `activeSessions` du widget /api/status = `null` (NON MESURÉ) tant qu'aucun store KV REST n'est configuré.

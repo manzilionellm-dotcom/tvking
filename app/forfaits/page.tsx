@@ -4,16 +4,20 @@ import { PLANS } from "../lib/plans";
 import BuyButton from "../components/site/BuyButton";
 import AppOnlyNotice from "../components/site/AppOnlyNotice";
 import CitationFaq from "../components/site/CitationFaq";
+import PageJsonLd from "../components/site/PageJsonLd";
+import { canonicalFor } from "../lib/seo";
 
 export const metadata: Metadata = {
   title: "Forfaits",
   description: "Licence app Zuno : 9,99 € / an ou 15 € à vie. Nous ne vendons pas de chaînes.",
+  ...canonicalFor("/forfaits"),
 };
 
 export default function ForfaitsPage() {
   const plans = [PLANS.annual, PLANS.lifetime];
   return (
     <div className="zuno-page mx-auto max-w-5xl px-4 py-14 sm:px-6">
+      <PageJsonLd products faq crumbs={[{ name: "Forfaits", path: "/forfaits" }]} />
       <div className="text-center">
         <h1 className="text-3xl font-bold text-white sm:text-4xl">Forfaits</h1>
         <p className="mt-3 text-white/50">Licence application uniquement — pas de chaînes ni de M3U. Paiement sécurisé via Stripe.</p>

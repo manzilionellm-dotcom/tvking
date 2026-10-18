@@ -1,15 +1,19 @@
 import type { Metadata } from "next";
 import AppOnlyNotice from "../components/site/AppOnlyNotice";
 import { ZUNO_APP_ONLY_PHRASE } from "../lib/legal-copy";
+import PageJsonLd from "../components/site/PageJsonLd";
+import { canonicalFor } from "../lib/seo";
 
 export const metadata: Metadata = {
   title: "Mentions légales",
   description: "CGU, confidentialité et mentions légales — 7 Few, LLC.",
+  ...canonicalFor("/legal"),
 };
 
 export default function LegalPage() {
   return (
     <div className="zuno-page mx-auto max-w-3xl px-4 py-14 sm:px-6">
+      <PageJsonLd crumbs={[{ name: "Mentions légales", path: "/legal" }]} />
       <h1 className="text-3xl font-bold text-white">Mentions légales</h1>
       <div className="mt-6"><AppOnlyNotice variant="hero" /></div>
 

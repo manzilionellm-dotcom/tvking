@@ -3,11 +3,27 @@ import { notFound } from "next/navigation";
 import Row from "../../components/Row";
 import FilmActions from "../../components/FilmActions";
 import { LevelBadge, LiveBadge } from "../../components/Badge";
+import type { Metadata } from "next";
 import { allItems, getItem, kindOf, relatedTo } from "../../lib/data";
+import PageJsonLd from "../../components/site/PageJsonLd";
+import { canonicalFor } from "../../lib/seo";
 
 /* Pre-render a detail page for every known item. */
 export function generateStaticParams() {
   return allItems.map((it) => ({ slug: it.id }));
+}
+
+const SECTION_CRUMB = {
+  film: { name: "Films", path: "/films" },
+  sport: { name: "Sport", path: "/sport" },
+  formation: { name: "Formation", path: "/formation" },
+} as const;
+
+export async function generateMetadata({ params }: PageProps<"/title/[slug]">): Promise<Metadata> {
+  const { slug } = await params;
+  const item = getItem(slug);
+  if (!item) return {};
+  return { title: item.title, ...canonicalFor(`/title/${item.id}`) };
 }
 
 function synopsis(item: ReturnType<typeof getItem>) {
@@ -32,6 +48,7 @@ export default async function TitlePage({ params }: PageProps<"/title/[slug]">) 
 
   return (
     <div className="pb-[var(--safe-y)]">
+      <PageJsonLd crumbs={[SECTION_CRUMB[kind], { name: item.title, path: `/title/${item.id}` }]} />
       {/* Backdrop */}
       <header className="relative min-h-[62vh] w-full overflow-hidden">
         <div

@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { ZUNO_APP_ONLY_BLURB, ZUNO_APP_ONLY_PHRASE } from "../../lib/legal-copy";
+import { zunoWaUrl } from "../../lib/wa";
+import LiveStatus from "./LiveStatus";
 
 export default function SiteFooter() {
   return (
@@ -17,6 +19,17 @@ export default function SiteFooter() {
           <p className="mt-4 text-xs leading-relaxed text-white/35">
             7 Few, LLC — 131 Continental Dr Suite 305, Newark, DE 19713, United States
           </p>
+          {/* État du service (valeurs mesurées uniquement) ; clic → WhatsApp support. Hauteur fixe. */}
+          <LiveStatus
+            href={zunoWaUrl("support", "Sujet : état du service (pied de page).")}
+            className="mt-4 text-white/45"
+            labels={{
+              operational: "Service en ligne",
+              region: "région",
+              online: "{n} en ligne (2 min)",
+              checked: "vérifié à",
+            }}
+          />
         </div>
         <div className="flex flex-col gap-2 text-sm">
           <p className="mb-1 font-semibold text-white/70">Parcours</p>
