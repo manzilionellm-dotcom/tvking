@@ -1,3 +1,835 @@
+diff --git a/android_overlay/google_cast/RecordingForegroundService.kt b/android_overlay/google_cast/RecordingForegroundService.kt
+index d78f0682..c1c633ea 100644
+--- a/android_overlay/google_cast/RecordingForegroundService.kt
++++ b/android_overlay/google_cast/RecordingForegroundService.kt
+@@ -58,6 +58,7 @@ class RecordingForegroundService : Service() {
+         const val EXTRA_TITLE = "title"
+         const val EXTRA_URL = "url"
+         const val EXTRA_FILE = "file"
++        const val EXTRA_LIVE = "live"
+ 
+         /// i18n : libellés localisés fournis par Dart (AppLocalizations,
+         /// langue du téléphone ou choix Réglages). Les défauts français
+@@ -74,6 +75,9 @@ class RecordingForegroundService : Service() {
+         /// best-effort par Dart si besoin. 0 = inactif.
+         @Volatile
+         var bytesWritten: Long = 0L
++        @Volatile var activeFile: String? = null
++        @Volatile var downloading: Boolean = false
++        @Volatile var lastFailure: String? = null
+     }
+ 
+     /// Flag de vie du thread de téléchargement natif. `false` = arrêt
+@@ -88,6 +92,13 @@ class RecordingForegroundService : Service() {
+     // Mémorisés pour re-livraison si l'OS redémarre le service.
+     private var currentUrl: String? = null
+     private var currentFile: String? = null
++    private var liveStream = true
++    private fun running(): Boolean = recording && Thread.currentThread() === downloadThread
++    private class StorageFailure(cause: Throwable) : java.io.IOException("Écriture impossible", cause)
++    private fun writeBytes(out: java.io.FileOutputStream, data: ByteArray, length: Int) {
++        try { out.write(data, 0, length) } catch (error: java.io.IOException) { throw StorageFailure(error) }
++        bytesWritten += length
++    }
+ 
+     /// PartialWakeLock = garde le CPU actif même quand l'écran s'éteint.
+     /// CRITIQUE pour que le Dart isolate continue de tourner et que
+@@ -126,6 +137,7 @@ class RecordingForegroundService : Service() {
+                 // NATIVEMENT (le telechargement vit dans CE service, donc
+                 // il survit a la fermeture de l'app par l'utilisateur).
+                 if (url != null && file != null) {
++                    liveStream = intent.getBooleanExtra(EXTRA_LIVE, true)
+                     startDownload(url, file)
+                 }
+             }
+@@ -192,8 +204,11 @@ class RecordingForegroundService : Service() {
+     //       servies sans extension .m3u8.
+ 
+     private fun startDownload(url: String, filePath: String) {
+-        if (recording) return
++        if (downloadThread?.isAlive == true) return
+         recording = true
++        downloading = true
++        activeFile = null
++        lastFailure = null
+         currentUrl = url
+         currentFile = filePath
+         bytesWritten = 0L
+@@ -202,7 +217,10 @@ class RecordingForegroundService : Service() {
+             try {
+                 // append=true : si l'OS a redemarre le service, on
+                 // continue le meme fichier au lieu de l'ecraser.
+-                out = java.io.FileOutputStream(java.io.File(filePath), true)
++                // Un fichier VOD ne peut pas être repris par simple append :
++                // sans requête Range cela dupliquerait son début.
++                out = java.io.FileOutputStream(java.io.File(filePath), liveStream)
++                activeFile = filePath
+ 
+                 // AIGUILLAGE DU PIPELINE (correctif "ecran noir") :
+                 //   - HLS (.m3u8) : on NE telecharge PAS le texte de la
+@@ -220,20 +238,34 @@ class RecordingForegroundService : Service() {
+                     runRawLoop(url, out)
+                 }
+             } catch (e: Throwable) {
+-                Log.e(TAG, "download fatal: $e", e)
++                lastFailure = e.javaClass.simpleName
++                Log.e(TAG, "download interrompu: ${e.javaClass.simpleName}")
+             } finally {
+                 try {
+                     out?.flush()
+                     out?.fd?.sync()
+                     out?.close()
+                 } catch (_: Throwable) {}
++                if (Thread.currentThread() === downloadThread) {
++                    recording = false
++                    downloading = false
++                    val finishedThread = Thread.currentThread()
++                    android.os.Handler(mainLooper).post {
++                        if (downloadThread === finishedThread) {
++                            releaseLocks()
++                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) stopForeground(STOP_FOREGROUND_REMOVE)
++                            else { @Suppress("DEPRECATION") stopForeground(true) }
++                            stopSelf()
++                        }
++                    }
++                }
+                 Log.i(TAG, "download termine, octets=$bytesWritten")
+             }
+         }.apply {
+             isDaemon = true
+             name = "rec-download"
+-            start()
+         }
++        downloadThread?.start()
+     }
+ 
+     /// Heuristique d'extension. Le sniff de contenu dans runRawLoop
+@@ -248,7 +280,7 @@ class RecordingForegroundService : Service() {
+         val buf = ByteArray(64 * 1024)
+         var attempts = 0
+         var sniffed = false
+-        while (recording) {
++        while (running()) {
+             var conn: java.net.HttpURLConnection? = null
+             try {
+                 conn = openConn(url)
+@@ -268,7 +300,7 @@ class RecordingForegroundService : Service() {
+                 attempts = 0
+                 val input = conn.inputStream
+                 var first = true
+-                while (recording) {
++                while (running()) {
+                     val n = input.read(buf)
+                     if (n < 0) break // EOF → reconnecter
+                     // Sniff de securite : si le tout 1er bloc commence par
+@@ -288,18 +320,23 @@ class RecordingForegroundService : Service() {
+                         }
+                     }
+                     first = false
+-                    out.write(buf, 0, n)
+-                    bytesWritten += n
++                    writeBytes(out, buf, n)
+                 }
+                 try { input.close() } catch (_: Throwable) {}
+-                if (!recording) break
++                if (!running()) break
++                if (!liveStream) return
+                 // EOF mais on enregistre toujours : le serveur a coupe →
+                 // petite pause puis reconnexion.
+                 Thread.sleep(500)
++            } catch (e: StorageFailure) {
++                throw e
++            } catch (e: UnsupportedOperationException) {
++                throw e
+             } catch (e: InterruptedException) {
+                 break
+             } catch (e: Throwable) {
+-                if (!recording) break
++                if (!running()) break
++                if (!liveStream) throw e
+                 attempts++
+                 if (attempts > 30) break
+                 Log.w(TAG, "reconnect (#$attempts) apres: ${e.message}")
+@@ -323,21 +360,31 @@ class RecordingForegroundService : Service() {
+         var mediaUrl = playlistUrl
+         var resolved = false
+ 
+-        while (recording) {
++        while (running()) {
+             try {
+                 if (!resolved) {
+-                    val head = fetchText(playlistUrl)
++                    val fetched = fetchText(playlistUrl)
++                    val head = fetched.first
++                    mediaUrl = fetched.second
+                     mediaUrl = if (isMasterPlaylist(head)) {
+-                        val v = selectVariant(head, playlistUrl)
++                        val v = selectVariant(head, mediaUrl)
+                         Log.i(TAG, "master playlist → variante choisie: $v")
+-                        v ?: playlistUrl
++                        v ?: mediaUrl
+                     } else {
+-                        playlistUrl
++                        mediaUrl
+                     }
+                     resolved = true
+                 }
+ 
+-                val body = fetchText(mediaUrl)
++                val fetched = fetchText(mediaUrl)
++                mediaUrl = fetched.second
++                val body = fetched.first
++                // Concaténer ces formats sans démuxeur produirait un fichier
++                // illisible. Arrêt explicite au lieu d'un faux succès REC.
++                if (body.contains("#EXT-X-MAP") || body.contains("#EXT-X-BYTERANGE") ||
++                    body.lineSequence().any { it.startsWith("#EXT-X-KEY:") && !it.contains("METHOD=NONE") }) {
++                    throw UnsupportedOperationException("Format HLS non enregistrable sans démuxeur")
++                }
+                 if (isMasterPlaylist(body)) {
+                     // La "variante" est elle-meme une master → on descend.
+                     selectVariant(body, mediaUrl)?.let { mediaUrl = it }
+@@ -348,20 +395,28 @@ class RecordingForegroundService : Service() {
+                 val segments = parseSegments(body, mediaUrl)
+                 var newCount = 0
+                 for (seg in segments) {
+-                    if (!recording) break
++                    if (!running()) break
+                     if (seen.contains(seg)) continue
+-                    seen.add(seg)
+                     downloadSegment(seg, out)
++                    if (!running()) break
++                    seen.add(seg)
+                     newCount++
+                 }
++                // Garder uniquement les segments encore dans la fenêtre.
++                seen.retainAll(segments.toSet())
+                 consecutiveErrors = 0
++                if (body.contains("#EXT-X-ENDLIST")) return
+                 // Re-poll au ~demi target-duration (3s si on rattrape, 5s
+                 // si rien de neuf), comme ffmpeg/TiviMate.
+                 Thread.sleep(if (newCount > 0) 3000L else 5000L)
++            } catch (e: StorageFailure) {
++                throw e
++            } catch (e: UnsupportedOperationException) {
++                throw e
+             } catch (e: InterruptedException) {
+                 break
+             } catch (e: Throwable) {
+-                if (!recording) break
++                if (!running()) break
+                 consecutiveErrors++
+                 if (consecutiveErrors > 30) {
+                     Log.w(TAG, "serveur HLS injoignable, abandon")
+@@ -377,22 +432,27 @@ class RecordingForegroundService : Service() {
+     /// un segment ne tue pas l'enregistrement (segment perdu ≠ rec perdu).
+     private fun downloadSegment(segUrl: String, out: java.io.FileOutputStream) {
+         var conn: java.net.HttpURLConnection? = null
++        val start = out.channel.position()
++        val previousBytes = bytesWritten
+         try {
+             conn = openConn(segUrl)
+             activeConn = conn
+             val code = conn.responseCode
+-            if (code !in 200..299) return
+-            val input = conn.inputStream
+-            val buf = ByteArray(64 * 1024)
+-            while (recording) {
+-                val n = input.read(buf)
+-                if (n < 0) break
+-                out.write(buf, 0, n)
+-                bytesWritten += n
++            if (code !in 200..299) throw java.io.IOException("HTTP $code")
++            conn.inputStream.use { input ->
++                val buf = ByteArray(64 * 1024)
++                while (running()) {
++                    val n = input.read(buf)
++                    if (n < 0) break
++                    writeBytes(out, buf, n)
++                }
+             }
+-            try { input.close() } catch (_: Throwable) {}
+-        } catch (e: Throwable) {
+-            Log.w(TAG, "segment KO: ${e.message}")
++        } catch (error: Throwable) {
++            // Un segment partiel est retiré AVANT une nouvelle tentative :
++            // ni trou silencieux, ni octets dupliqués au prochain poll.
++            try { out.channel.truncate(start); out.channel.position(start) } catch (storage: Throwable) { throw StorageFailure(storage) }
++            bytesWritten = previousBytes
++            throw error
+         } finally {
+             activeConn = null
+             try { conn?.disconnect() } catch (_: Throwable) {}
+@@ -401,15 +461,15 @@ class RecordingForegroundService : Service() {
+ 
+     /// Recupere le corps texte d'une URL (playlist). Utilise pour les
+     /// .m3u8 uniquement (petits fichiers texte).
+-    private fun fetchText(urlStr: String): String {
++    private fun fetchText(urlStr: String): Pair<String, String> {
+         var conn: java.net.HttpURLConnection? = null
+         try {
+             conn = openConn(urlStr)
+             activeConn = conn
+             val code = conn.responseCode
+             if (code !in 200..299) throw java.io.IOException("HTTP $code")
+-            return conn.inputStream.bufferedReader(Charsets.UTF_8)
+-                .use { it.readText() }
++            val text = conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
++            return Pair(text, conn.url.toString())
+         } finally {
+             activeConn = null
+             try { conn?.disconnect() } catch (_: Throwable) {}
+@@ -520,16 +580,10 @@ class RecordingForegroundService : Service() {
+ 
+     private fun stopDownload() {
+         recording = false
+-        // Couper la socket en cours pour debloquer un read() bloque.
++        // Aucune attente join sur le thread UI Android : le worker ferme le
++        // fichier, puis seulement publie downloading=false (accusé de stop).
+         try { activeConn?.disconnect() } catch (_: Throwable) {}
+-        try {
+-            downloadThread?.interrupt()
+-            downloadThread?.join(3000)
+-        } catch (_: Throwable) {}
+-        downloadThread = null
+-        activeConn = null
+-        currentUrl = null
+-        currentFile = null
++        downloadThread?.interrupt()
+     }
+ 
+     /// Acquiert PartialWakeLock (CPU) + WifiLock (réseau). À appeler
+diff --git a/android_overlay/google_cast/RecordingServiceBridge.kt b/android_overlay/google_cast/RecordingServiceBridge.kt
+index 06cea1d8..afd53fcc 100644
+--- a/android_overlay/google_cast/RecordingServiceBridge.kt
++++ b/android_overlay/google_cast/RecordingServiceBridge.kt
+@@ -39,7 +39,16 @@ class RecordingServiceBridge(
+     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
+         try {
+             when (call.method) {
++                "status" -> result.success(mapOf(
++                    "active" to RecordingForegroundService.downloading,
++                    "file" to RecordingForegroundService.activeFile,
++                    "bytes" to RecordingForegroundService.bytesWritten,
++                    "error" to RecordingForegroundService.lastFailure,
++                ))
+                 "start" -> {
++                    if (RecordingForegroundService.downloading) { result.success(false); return }
++                    RecordingForegroundService.lastFailure = null
++                    RecordingForegroundService.activeFile = null
+                     val title = call.argument<String>("title") ?: "7 MOTION"
+                     // url + file optionnels : si fournis, le service
+                     // enregistre NATIVEMENT (survit a la fermeture app).
+@@ -49,6 +58,7 @@ class RecordingServiceBridge(
+                         title,
+                         url,
+                         file,
++                        call.argument<Boolean>("live") ?: true,
+                         // i18n : libellés localisés fournis par Dart.
+                         call.argument<String>("notifTitle"),
+                         call.argument<String>("channelName"),
+@@ -61,6 +71,8 @@ class RecordingServiceBridge(
+                     result.success(RecordingForegroundService.bytesWritten)
+                 }
+                 "stop" -> {
++                    val expected = call.argument<String>("file")
++                    if (expected != null && RecordingForegroundService.activeFile != expected) { result.success(false); return }
+                     stopService()
+                     result.success(true)
+                 }
+@@ -76,6 +88,7 @@ class RecordingServiceBridge(
+         title: String,
+         url: String?,
+         file: String?,
++        live: Boolean,
+         notifTitle: String?,
+         channelName: String?,
+         channelDesc: String?,
+@@ -85,6 +98,7 @@ class RecordingServiceBridge(
+             putExtra(RecordingForegroundService.EXTRA_TITLE, title)
+             if (url != null) putExtra(RecordingForegroundService.EXTRA_URL, url)
+             if (file != null) putExtra(RecordingForegroundService.EXTRA_FILE, file)
++            putExtra(RecordingForegroundService.EXTRA_LIVE, live)
+             if (notifTitle != null) {
+                 putExtra(RecordingForegroundService.EXTRA_NOTIF_TITLE, notifTitle)
+             }
+diff --git a/lib/core/notifications/notification_service.dart b/lib/core/notifications/notification_service.dart
+index 3aeaee46..bb66f41e 100644
+--- a/lib/core/notifications/notification_service.dart
++++ b/lib/core/notifications/notification_service.dart
+@@ -285,15 +285,18 @@ class NotificationService {
+ 
+   /// Affiche tout de suite une notification dans le canal "général".
+   /// Best-effort : silencieux si le plugin/permission n'est pas dispo.
+-  Future<void> showNow({
++  Future<void> showNow({required int id, required String title, required String body, String? payload}) async {
++    await tryShowNow(id: id, title: title, body: body, payload: payload);
++  }
++
++  Future<bool> tryShowNow({
+     required int id,
+     required String title,
+     required String body,
+     String? payload,
+   }) async {
+     await init();
+-    if (!_ready) return;
+-    await requestPermission();
++    if (!_ready || !await requestPermission()) return false;
+     try {
+       await _plugin.show(
+         id,
+@@ -314,10 +317,12 @@ class NotificationService {
+         ),
+         payload: payload,
+       );
++      return true;
+     } catch (e) {
+       if (kDebugMode) debugPrint('[Notif] show: $e');
+       StructuredLogger.instance.warn(domain: 'notif', event: 'show.failed',
+         ctx: <String, Object?>{'reason': 'Notifications : affichage impossible'});
++      return false;
+     }
+   }
+ 
+@@ -467,16 +472,19 @@ class NotificationService {
+   /// alarme système, et non un timer Dart. Best-effort de bout en bout :
+   /// permission refusée, heure déjà passée, plugin muet → on ne fait rien
+   /// et on ne lève jamais.
+-  Future<void> scheduleAt({
++  Future<void> scheduleAt({required int id, required DateTime when, required String title, required String body}) async {
++    await tryScheduleAt(id: id, when: when, title: title, body: body);
++  }
++
++  Future<bool> tryScheduleAt({
+     required int id,
+     required DateTime when,
+     required String title,
+     required String body,
+   }) async {
+     await init();
+-    if (!_ready) return;
+-    await requestPermission();
+-    await _scheduleAt(
++    if (!_ready || !await requestPermission()) return false;
++    return _scheduleAt(
+       id,
+       tz.TZDateTime.from(when, tz.local),
+       title,
+@@ -484,14 +492,14 @@ class NotificationService {
+     );
+   }
+ 
+-  Future<void> _scheduleAt(
++  Future<bool> _scheduleAt(
+     int id,
+     tz.TZDateTime when,
+     String title,
+     String body, {
+     DateTimeComponents? repeat,
+   }) async {
+-    if (when.isBefore(tz.TZDateTime.now(tz.local))) return;
++    if (when.isBefore(tz.TZDateTime.now(tz.local))) return false;
+     try {
+       await _plugin.zonedSchedule(
+         id,
+@@ -504,8 +512,10 @@ class NotificationService {
+             UILocalNotificationDateInterpretation.absoluteTime,
+         matchDateTimeComponents: repeat,
+       );
++      return true;
+     } catch (e) {
+       if (kDebugMode) debugPrint('[Notif] reengage: $e');
++      return false;
+     }
+   }
+ 
+diff --git a/lib/features/cast/data/cast_manager.dart b/lib/features/cast/data/cast_manager.dart
+index aea5dc9a..35aa4e0a 100644
+--- a/lib/features/cast/data/cast_manager.dart
++++ b/lib/features/cast/data/cast_manager.dart
+@@ -138,6 +138,21 @@ class CastManager extends ChangeNotifier {
+   }
+   static final CastManager instance = CastManager._();
+ 
++  /// Injection des entrées réseau pour reproduire les courses sans TV réelle.
++  @visibleForTesting
++  CastManager.forTesting({
++    required CastTransport Function(CastDevice) transportFactory,
++    required Future<StreamProbeResult> Function(String) probe,
++    Duration timeout = const Duration(seconds: 1),
++  }) : _testTransportFactory = transportFactory, _testProbe = probe, _testTimeout = timeout;
++
++  CastTransport Function(CastDevice)? _testTransportFactory;
++  Future<StreamProbeResult> Function(String)? _testProbe;
++  Duration? _testTimeout;
++
++  @visibleForTesting
++  void debugNativeSessionEvent(CastNativeSessionEvent event) => _onNativeSessionEvent(event);
++
+   /// Phase 1+/G2 — abonnements aux streams natifs Google Cast SDK
+   /// (sessionEvent + mediaStateChanged). Garde l'etat Dart aligne
+   /// avec ce que la TV fait reellement, meme quand l'utilisateur
+@@ -169,6 +184,9 @@ class CastManager extends ChangeNotifier {
+   }
+ 
+   void _onNativeSessionEvent(CastNativeSessionEvent evt) {
++    // Une fermeture Google tardive ne concerne jamais le nouveau Roku/DLNA.
++    if (_device != null && _device!.kind != CastDeviceKind.chromecast && _device!.kind != CastDeviceKind.googleCast) return;
++    if (evt.kind == 'ended' && _state == CastState.connecting) return;
+     StructuredLogger.instance.info(
+       domain: 'cast',
+       event: 'native.session_event',
+@@ -179,6 +197,7 @@ class CastManager extends ChangeNotifier {
+     );
+     switch (evt.kind) {
+       case 'ended':
++        ++_sessionSeq;
+         // Le SDK signale la fin DEFINITIVE de la session — on aligne
+         // notre etat. ATTENTION : ne pas appeler disconnect() ici
+         // (boucle : notre disconnect() ferme aussi la session SDK).
+@@ -194,7 +213,7 @@ class CastManager extends ChangeNotifier {
+         _transport = null;
+         _device = null;
+         _currentTitle = null;
+-        if (_selectedDevice?.kind == CastDeviceKind.chromecast) {
++        if (_selectedDevice?.kind == CastDeviceKind.chromecast || _selectedDevice?.kind == CastDeviceKind.googleCast) {
+           _selectedDevice = null;
+         }
+         // Revue 2026-07-09 (MAJEUR 2) : la fin de session peut venir de
+@@ -261,6 +280,7 @@ class CastManager extends ChangeNotifier {
+   }
+ 
+   void _onNativeMediaState(CastNativeMediaState state) {
++    if (_device != null && _device!.kind != CastDeviceKind.chromecast && _device!.kind != CastDeviceKind.googleCast) return;
+     // L'etat Dart ne refait surface que pour les transitions
+     // play/pause utiles a l'UI. On n'a pas (encore) de mapping
+     // buffering -> CastState dedie (sera utile quand on aura un
+@@ -591,77 +611,23 @@ class CastManager extends ChangeNotifier {
+     String? channelGenre,
+     String? imageUrl,
+   }) async {
+-    // Phase 1 / F-09 : on borne la session entiere a kCastTotalTimeout.
+-    // En cas de depassement, _castToInner sera abandonne, on coupe
+-    // proprement (disconnect best-effort) et on remonte une
+-    // TimeoutException avec un message UX clair.
++    final int mySeq = ++_sessionSeq;
++    final Duration timeout = _testTimeout ?? (device.kind == CastDeviceKind.dlna ? kCastTotalTimeoutDlna : kCastTotalTimeout);
+     try {
+-      await _castToInner(
+-        device,
+-        streamUrl: streamUrl,
+-        title: title,
+-        channelName: channelName,
+-        channelGenre: channelGenre,
+-        imageUrl: imageUrl,
+-      ).timeout(device.kind == CastDeviceKind.dlna
+-          ? kCastTotalTimeoutDlna
+-          : kCastTotalTimeout);
++      await _castToInner(device, mySeq: mySeq, streamUrl: streamUrl,
++          title: title, channelName: channelName, channelGenre: channelGenre,
++          imageUrl: imageUrl).timeout(timeout);
+     } on TimeoutException {
+-      // Phase 1+/B5 (2026-06-01) — Annulation cooperative.
+-      // Bump `_sessionSeq` immediatement. L'inner orphelin verra
+-      // au prochain `_checkCancelled` que sa session est obsolete
+-      // et s'arretera proprement au lieu de continuer 90-157s.
+-      _sessionSeq++;
+-      StructuredLogger.instance.warn(
+-        domain: 'cast',
+-        event: 'session.global_timeout',
+-        ctx: <String, Object?>{
+-          'deviceKind': device.kind.name,
+-          'deviceName': device.name,
+-          'timeoutSeconds': (device.kind == CastDeviceKind.dlna
+-                  ? kCastTotalTimeoutDlna
+-                  : kCastTotalTimeout)
+-              .inSeconds,
+-          'newSessionSeq': _sessionSeq,
+-        },
+-      );
+-      // Note : annulation cooperative — le Future inner finit son
+-      // SOAP en cours (15s max) puis voit le mismatch de seq et exit.
+-      // Plus court que les 90-157s pre-B5 mais pas instantane.
+-      // [HYPOTHESE — historique] Limitation connue avant B5 :
+-      // `.timeout()` abandonnait le Future de _castToInner mais Dart
+-      // ne savait pas reellement
+-      // l'interrompre. Les SOAP en cours continuent en arriere-plan
+-      // jusqu'a leurs propres timeouts (15s SOAP x N), puis leurs
+-      // exceptions deviennent des unhandled errors. Pas de leak
+-      // memoire grave (HttpClient se fermera tout seul), juste du
+-      // bruit dans les logs. Une vraie annulation cooperative (flag
+-      // _cancelled verifie entre chaque strategie) sera ajoutee en
+-      // Phase 2 si besoin.
+-      //
+-      // Best-effort cleanup : on coupe le transport courant pour ne
+-      // pas laisser une connexion ouverte cote TV ; disconnect()
+-      // reset l'etat.
+-      try {
+-        await disconnect();
+-      } catch (_) {
+-        // disconnect best-effort, on continue meme si echec.
+-      }
+-      // On remplace l'etat residuel par un error explicite — prend
+-      // le pas sur le `idle` que disconnect() vient de poser. Si
+-      // _castToInner finit sa course apres et re-ecrit le state, ce
+-      // sera aussi vers error (son propre catch) → pas
+-      // d'inconsistance visible utilisateur.
++      // Le timeout appartient à CET appel. Un ancien délai ne doit jamais
++      // interrompre une nouvelle session qui fonctionne déjà.
++      if (mySeq != _sessionSeq) return;
++      await disconnect();
++      if (_sessionSeq != mySeq + 1) return;
+       _state = CastState.error;
+       _errorMessage = l10nNow.castErrorTimeout;
+-      _setProgress(
+-        CastProgress.failure(
+-          l10nNow.castErrorTimeoutRetry,
+-          details: 'castTo timeout after '
+-              '${(device.kind == CastDeviceKind.dlna ? kCastTotalTimeoutDlna : kCastTotalTimeout).inSeconds}s',
+-        ),
+-      );
+-      throw Exception(_errorMessage);
++      _setProgress(CastProgress.failure(l10nNow.castErrorTimeoutRetry,
++          details: 'castTo timeout after ${timeout.inSeconds}s'));
++      throw TimeoutException(_errorMessage, timeout);
+     }
+   }
+ 
+@@ -805,6 +771,7 @@ class CastManager extends ChangeNotifier {
+ 
+   Future<void> _castToInner(
+     CastDevice device, {
++    required int mySeq,
+     required String streamUrl,
+     required String title,
+     String? channelName,
+@@ -817,7 +784,6 @@ class CastManager extends ChangeNotifier {
+     _stopDlnaWatchdog();
+     // Phase 1+/B5 (2026-06-01) — Capture ma seq des le start. Si une
+     // autre castTo bumpe _sessionSeq pendant que je tourne, j'arrete.
+-    final int mySeq = ++_sessionSeq;
+     // Transport créé par CETTE session (posé plus bas) : seul objet que le
+     // nettoyage du catch a le droit de toucher — jamais le champ global
+     // `_transport`, qui appartient peut-être déjà à une session plus
+@@ -865,6 +831,7 @@ class CastManager extends ChangeNotifier {
+         await prevTransport.stop().timeout(const Duration(seconds: 3));
+       } on Exception catch (_) {/* best-effort : le probe tranchera */}
+     }
++    if (mySeq != _sessionSeq) return;
+     _setProgress(CastProgress.validating);
+ 
+     final CastSessionDiagnostic diag = CastSessionDiagnostic(
+@@ -891,7 +858,7 @@ class CastManager extends ChangeNotifier {
+           device.kind == CastDeviceKind.roku) {
+         _checkCancelled(mySeq);
+         _setProgress(CastProgress.connecting());
+-        final bool reachable = await _probeDeviceReachable(device);
++        final bool reachable = _testTransportFactory != null || await _probeDeviceReachable(device);
+         diag.deviceReachable = reachable;
+         if (!reachable) {
+           // SOFT-PASS (boîte noire 2026-07-09, 15:51) : 4 sessions
+@@ -928,7 +895,7 @@ class CastManager extends ChangeNotifier {
+ 
+       // (1) Pré-vol : on vérifie l'URL avant de la pousser au récepteur.
+       _checkCancelled(mySeq);
+-      StreamProbeResult probe = await StreamProbe.instance.probe(streamUrl);
++      StreamProbeResult probe = await (_testProbe?.call(streamUrl) ?? StreamProbe.instance.probe(streamUrl));
+       // CASCADE DE SECOURS (terrain 2026-07-10, panel « /live/ requis ») :
+       // certains panels Xtream repondent 404 (page HTML) sur la forme
+       // brute `host/U/P/ID.ts` mais servent `host/live/U/P/ID.ts` — le
+@@ -946,7 +913,7 @@ class CastManager extends ChangeNotifier {
+           if (cand.url == streamUrl) continue;
+           _checkCancelled(mySeq);
+           final StreamProbeResult alt =
+-              await StreamProbe.instance.probe(cand.url);
++              await (_testProbe?.call(cand.url) ?? StreamProbe.instance.probe(cand.url));
+           if (alt.success) {
+             StructuredLogger.instance.info(
+               domain: 'cast',
+@@ -982,7 +949,7 @@ class CastManager extends ChangeNotifier {
+       //     Branche non-DLNA = appel direct simple, comportement historique
+       //     conservé pour ne pas régresser Roku / Web / Chromecast-stub.
+       _checkCancelled(mySeq);
+-      _transport = CastTransport.forDevice(device);
++      _transport = _testTransportFactory?.call(device) ?? CastTransport.forDevice(device);
+       // Référence LOCALE du transport de CETTE session (audit 19/08) : le
+       // champ `_transport` est GLOBAL et réécrit par la session suivante —
+       // une session orpheline qui échouait tardivement lisait alors le
+@@ -992,7 +959,7 @@ class CastManager extends ChangeNotifier {
+       myTransport = _transport;
+       if (device.kind == CastDeviceKind.dlna) {
+         await _castDlnaWithFailover(
+-          transport: _transport! as UpnpAvTransport,
++          transport: myTransport! as UpnpAvTransport,
+           probe: probe,
+           title: title,
+           diag: diag,
+@@ -1006,13 +973,13 @@ class CastManager extends ChangeNotifier {
+         // IPTV frais côté TV) au lieu de recevoir le token périssable déjà
+         // résolu par le probe du téléphone. Cf. GoogleCastTransport
+         // .originalUpstreamUrl (diag SHIELD 2026-07-06 : redirect /live/).
+-        if (_transport is GoogleCastTransport) {
+-          (_transport as GoogleCastTransport).originalUpstreamUrl =
++        if (myTransport is GoogleCastTransport) {
++          (myTransport as GoogleCastTransport).originalUpstreamUrl =
+               probe.originalUrl;
+         }
+         final Stopwatch sw = Stopwatch()..start();
+         try {
+-          await _transport!.playStream(
++          await myTransport!.playStream(
+             streamUrl: probe.finalUrl,
+             title: title,
+             imageUrl: imageUrl,
+@@ -1020,8 +987,8 @@ class CastManager extends ChangeNotifier {
+           // Le vrai chemin de routage ('cast_proxy'/'local_hls_relay'/'direct')
+           // n'est connu qu'apres coup, expose par GoogleCastTransport.
+           final GoogleCastTransport? gct =
+-              _transport is GoogleCastTransport
+-                  ? _transport as GoogleCastTransport
++              myTransport is GoogleCastTransport
++                  ? myTransport as GoogleCastTransport
+                   : null;
+           final String realPath = gct?.lastCastPath ?? 'direct';
+           diag.attempts.add(AttemptResult(
+@@ -1041,8 +1008,8 @@ class CastManager extends ChangeNotifier {
+           // relais + keep-alive vivants). Frontière de session = on
+           // rattrape TOUT, on archive, on nettoie.
+           final GoogleCastTransport? gctF =
+-              _transport is GoogleCastTransport
+-                  ? _transport as GoogleCastTransport
++              myTransport is GoogleCastTransport
++                  ? myTransport as GoogleCastTransport
+                   : null;
+           final String realPathF = gctF?.lastCastPath ?? 'direct';
+           diag.attempts.add(AttemptResult(
+@@ -2053,26 +2020,27 @@ class CastManager extends ChangeNotifier {
+   }
+ 
+   Future<void> pause() async {
+-    if (_transport == null) return;
++    final CastTransport? transport = _transport;
++    final int revision = _sessionSeq;
++    if (transport == null) return;
+     try {
+-      await _transport!.pause();
++      await transport.pause();
++      if (revision != _sessionSeq || !identical(transport, _transport)) return;
+       _state = CastState.paused;
+       notifyListeners();
+-    } catch (_) {
+-      // best effort — on remet l'état "casting" si la pause échoue
+-    }
++    } catch (_) { /* Commande refusée : conserver l'état courant. */ }
+   }
+ 
+   Future<void> resume() async {
+-    if (_transport == null) return;
++    final CastTransport? transport = _transport;
++    final int revision = _sessionSeq;
++    if (transport == null) return;
+     try {
+-      await _transport!.resume();
++      await transport.resume();
++      if (revision != _sessionSeq || !identical(transport, _transport)) return;
+       _state = CastState.casting;
+       notifyListeners();
+-    } catch (_) {
+-      // best effort — même logique que pause() : l'état n'est modifié
+-      // que si la commande a réussi.
+-    }
++    } catch (_) { /* Commande refusée : conserver l'état courant. */ }
+   }
+ 
+   /// `true` quand le foreground service « cast relais » est actif.
+@@ -2163,30 +2131,26 @@ class CastManager extends ChangeNotifier {
+   }
+ 
+   Future<void> disconnect() async {
++    ++_sessionSeq;
++    final CastTransport? previous = _transport;
++    final String? relay = _currentRelayUrl;
++    // Détacher AVANT l'attente : aucune continuation ne peut recréer ou
++    // nettoyer la session suivante après un Stop lent de l'ancienne TV.
+     _stopDlnaWatchdog();
+     _stopRelayKeepAlive();
+-    try {
+-      await _transport?.stop();
+-    } catch (_) {
+-      // best-effort : la TV est peut-être déjà éteinte/déconnectée —
+-      // on poursuit le nettoyage local quoi qu'il arrive.
+-    }
+-    // Libère la session relay si on en avait une — évite de
+-    // garder un mapping orphelin en mémoire.
+-    if (_currentRelayUrl != null) {
+-      LocalCastServer.instance.clearRelay(_currentRelayUrl!);
+-      _currentRelayUrl = null;
+-    }
+     _transport = null;
++    _currentRelayUrl = null;
+     _device = null;
+     _selectedDevice = null;
+     _currentTitle = null;
+-    // VAGUE B — le contexte de zap appartient à la session : on le
+-    // vide pour que la mini-barre ne propose pas Ch+/Ch- fantômes.
+     _castPlaylist = null;
+     _castIndex = -1;
+     _state = CastState.idle;
+     _setProgress(CastProgress.idle);
++    if (relay != null) LocalCastServer.instance.clearRelay(relay);
++    try {
++      await previous?.stop().timeout(const Duration(seconds: 5));
++    } catch (_) { /* TV hors réseau : état local déjà nettoyé. */ }
+   }
+ 
+   // ============================================================
+@@ -2230,6 +2194,7 @@ class CastManager extends ChangeNotifier {
+       // qu'il a mis en pause), ni pendant une reconnexion déjà en cours.
+       if (_state != CastState.casting || _dlnaReconnecting) return;
+       final String? st = await transport.currentTransportState();
++      if (mySeq != _sessionSeq || !identical(transport, _transport)) return;
+       // null = la TV ne supporte pas GetTransportInfo → rien à surveiller.
+       if (st == null) return;
+       if (st == 'STOPPED' || st == 'NO_MEDIA_PRESENT') {
+@@ -2286,7 +2251,7 @@ class CastManager extends ChangeNotifier {
+       // (keep-alive téléphone activé) au lieu de mourir en silence.
+       await _dlnaReconnectViaRelay(transport, url, mySeq, directError: e);
+     } finally {
+-      _dlnaReconnecting = false;
++      if (mySeq == _sessionSeq) _dlnaReconnecting = false;
+     }
+   }
+ 
+@@ -2306,8 +2271,10 @@ class CastManager extends ChangeNotifier {
+     // Déjà sur le relais → rejouer la même URL au prochain tick suffit.
+     if (failedUrl.contains('/relay/')) return;
+     if (mySeq != _sessionSeq || _transport == null) return;
++    String? relayUrl;
++    bool adopted = false;
+     try {
+-      final String? relayUrl = await LocalCastServer.instance.registerRelay(
++      relayUrl = await LocalCastServer.instance.registerRelay(
+         upstreamUrl: upstream,
+         profile: prof,
+         receiverHost: transport.device.host,
+@@ -2321,6 +2288,8 @@ class CastManager extends ChangeNotifier {
+         streamUrl: relayUrl,
+         title: _dlnaLiveTitle ?? '7 MOTION',
+       );
++      if (mySeq != _sessionSeq || !identical(transport, _transport)) return;
++      adopted = true;
+       _currentRelayUrl = relayUrl;
+       _dlnaLiveUrl = relayUrl;
+       // Le téléphone alimente désormais la TV : foreground service
+@@ -2337,6 +2306,8 @@ class CastManager extends ChangeNotifier {
+         event: 'dlna.auto_reconnect_relay_fail',
+         ctx: <String, Object?>{'error': e2.toString()},
+       );
++    } finally {
++      if (!adopted && relayUrl != null) LocalCastServer.instance.clearRelay(relayUrl);
+     }
+   }
+ 
 diff --git a/lib/features/device/data/device_secret.dart b/lib/features/device/data/device_secret.dart
 new file mode 100644
 index 00000000..41d9c9b4
@@ -68,6 +900,446 @@ index 00000000..41d9c9b4
 +    };
 +  }
 +}
+diff --git a/lib/features/player/data/local_stream_relay.dart b/lib/features/player/data/local_stream_relay.dart
+index b7e98099..c10170e7 100644
+--- a/lib/features/player/data/local_stream_relay.dart
++++ b/lib/features/player/data/local_stream_relay.dart
+@@ -46,6 +46,8 @@
+ //  requêtes Range (avance/recul), ce que ce relais live ne fait pas.
+ // =========================================================
+ 
++import '../../recordings/data/bounded_recording_writer.dart';
++
+ import 'dart:async';
+ import 'dart:convert';
+ import 'dart:io';
+@@ -189,7 +191,7 @@ class LocalStreamRelay {
+ 
+   /// `true` si une chaîne donnée est en cours d'enregistrement via le relais.
+   bool isRecording(String realUrl) =>
+-      _sessions[realUrl]?.recordSink != null;
++      _sessions[realUrl]?.recordSink?.isOpen ?? false;
+ 
+   /// `true` si un LECTEUR est branché sur la session de [realUrl] — le
+   /// planificateur s'en sert pour capter une émission programmée en se
+@@ -409,46 +411,34 @@ class LocalStreamRelay {
+   /// sur la connexion DÉJÀ ouverte pour la lecture (aucune 2e connexion).
+   /// Si aucune session n'existe encore pour cette URL (cas limite), on
+   /// l'ouvre. Retourne `false` si l'ouverture du fichier échoue.
+-  Future<bool> startRecording({
+-    required String realUrl,
+-    required String filePath,
+-  }) async {
++  Future<bool> startRecording({required String realUrl, required String filePath}) async {
+     final _RelaySession session = _ensureSession(realUrl);
+-    _ensureUpstream(session);
+-    if (session.recordSink != null) {
+-      // Déjà en train d'enregistrer cette chaîne → on ignore le double-start.
+-      return true;
+-    }
++    if (session.recordSink != null || session.recordStarting) return false;
++    session.recordStarting = true;
++    final int revision = ++session.recordRevision;
+     try {
+-      final File file = File(filePath);
+-      await file.parent.create(recursive: true);
+-      // COURSE (correctif d'audit) : `create` est un point d'`await`. Si le
+-      // DERNIER lecteur s'est débranché pendant cet await, _maybeCloseSession
+-      // a pu FERMER la session (recordSink encore null → aucun consommateur)
+-      // et la retirer de _sessions. Poser recordSink ici l'attacherait alors à
+-      // une session ORPHELINE (upstream mort, absente de la map) → fichier
+-      // jamais alimenté + sink jamais fermé (fuite de descripteur). On
+-      // revérifie donc que la session est TOUJOURS celle enregistrée.
+-      if (_sessions[realUrl] != session) {
+-        // La session a été fermée sous nos pieds : on la ré-ouvre proprement
+-        // (REC seul, sans lecteur, est un cas valide) et on relance l'upstream.
+-        _sessions[realUrl] = session;
+-        _ensureUpstream(session);
++      final BoundedRecordingWriter writer = await BoundedRecordingWriter.open(filePath,
++        onFailure: (Object error) {
++          StructuredLogger.instance.error(domain: 'rec', event: 'relay.disk_write_fail',
++            ctx: <String, Object?>{'reason': error.runtimeType.toString()});
++        });
++      if (_sessions[realUrl] != session || revision != session.recordRevision) {
++        await writer.close();
++        return false;
+       }
+-      final IOSink sink = file.openWrite();
+-      session.recordSink = sink;
++      session.recordSink = writer;
+       session.recordPath = filePath;
+       session.recordBytes = 0;
+-    } catch (e) {
+-      if (kDebugMode) debugPrint('[Relay] ouverture fichier KO: $e');
++      _ensureUpstream(session);
++      return true;
++    } catch (error) {
++      StructuredLogger.instance.warn(domain: 'rec', event: 'relay.record_open_fail',
++          ctx: <String, Object?>{'reason': error.runtimeType.toString()});
+       return false;
++    } finally {
++      session.recordStarting = false;
++      _maybeCloseSession(session);
+     }
+-    StructuredLogger.instance.info(
+-      domain: 'rec',
+-      event: 'relay.record_start',
+-      ctx: <String, Object?>{'filePath': filePath},
+-    );
+-    return true;
+   }
+ 
+   /// Arrête l'enregistrement de cette chaîne et renvoie le nombre
+@@ -456,29 +446,14 @@ class LocalStreamRelay {
+   /// vivante tant que le lecteur est branché).
+   Future<int> stopRecording(String realUrl) async {
+     final _RelaySession? session = _sessions[realUrl];
+-    if (session == null || session.recordSink == null) return 0;
+-    final IOSink sink = session.recordSink!;
+-    final int bytes = session.recordBytes;
++    if (session == null) return 0;
++    ++session.recordRevision;
++    session.recordStarting = false;
++    final BoundedRecordingWriter? writer = session.recordSink;
+     session.recordSink = null;
+-    final String? path = session.recordPath;
+     session.recordPath = null;
+-    try {
+-      await sink.flush();
+-      await sink.close();
+-    } catch (_) {
+-      // On rend quand même la main (l'UI attend), mais un flush/close
+-      // raté = fichier potentiellement tronqué → visible en boîte noire.
+-      StructuredLogger.instance.warn(
+-        domain: 'rec',
+-        event: 'relay.record_close_fail',
+-        ctx: <String, Object?>{'filePath': path, 'bytes': bytes},
+-      );
+-    }
+-    StructuredLogger.instance.info(
+-      domain: 'rec',
+-      event: 'relay.record_stop',
+-      ctx: <String, Object?>{'filePath': path, 'bytes': bytes},
+-    );
++    final int bytes = writer == null ? session.recordBytes : await writer.close();
++    session.recordBytes = bytes;
+     _maybeCloseSession(session);
+     return bytes;
+   }
+@@ -643,7 +618,9 @@ class LocalStreamRelay {
+ 
+   /// Octets déjà écrits pour la chaîne en cours d'enregistrement (0 si
+   /// pas d'enregistrement). Utile pour afficher la taille en temps réel.
+-  int recordedBytes(String realUrl) => _sessions[realUrl]?.recordBytes ?? 0;
++  bool isRecordingFile(String path) => _sessions.values.any((s) => s.recordPath == path && s.recordSink?.isOpen == true);
++
++  int recordedBytes(String realUrl) => _sessions[realUrl]?.recordSink?.bytesWritten ?? _sessions[realUrl]?.recordBytes ?? 0;
+ 
+   // ---------------------------------------------------------------
+   //  Serveur HTTP local
+@@ -1219,33 +1196,9 @@ class LocalStreamRelay {
+       session.players.remove(c);
+     }
+ 
+-    // Enregistrement : mêmes octets, écrits dans le fichier.
+-    final IOSink? sink = session.recordSink;
+-    if (sink != null) {
+-      try {
+-        sink.add(data);
+-        session.recordBytes += data.length;
+-      } catch (e) {
+-        // Erreur disque (plein, carte éjectée) → on coupe l'enregistrement
+-        // mais on NE casse PAS la lecture. Événement MAJEUR pour
+-        // l'utilisateur (son REC s'arrête) → boîte noire, pas que debug.
+-        if (kDebugMode) debugPrint('[Relay] écriture disque KO: $e');
+-        StructuredLogger.instance.error(
+-          domain: 'rec',
+-          event: 'relay.disk_write_fail',
+-          ctx: <String, Object?>{
+-            'bytes': session.recordBytes,
+-            'error': e.toString(),
+-          },
+-        );
+-        session.recordSink = null;
+-        try {
+-          sink.close();
+-        } catch (_) {
+-          // best-effort : le sink est déjà en erreur, close peut jeter.
+-        }
+-      }
+-    }
++    // Écriture asynchrone bornée ; toutes les erreurs sont consommées par
++    // le writer, y compris celles qui arrivent après le retour de add().
++    session.recordSink?.add(data);
+ 
+     // Différé (timeshift) : mêmes octets dans le tampon disque, bornés.
+     final IOSink? shift = session.shiftSink;
+@@ -1425,17 +1378,11 @@ class LocalStreamRelay {
+       c.markClosed();
+     }
+     session.players.clear();
+-    // Si un enregistrement traînait encore, on le ferme proprement.
+-    final IOSink? sink = session.recordSink;
++    final BoundedRecordingWriter? writer = session.recordSink;
++    ++session.recordRevision;
++    session.recordStarting = false;
+     session.recordSink = null;
+-    if (sink != null) {
+-      try {
+-        sink.flush().then((_) => sink.close());
+-      } catch (_) {
+-        // best-effort : fermeture d'un REC orphelin — le stop nominal
+-        // (stopRecording) journalise déjà les échecs de close.
+-      }
+-    }
++    if (writer != null) unawaited(writer.close());
+     // Un tampon différé est JETABLE : fermé et supprimé avec la session.
+     if (session.shiftSink != null || session.shiftPath != null) {
+       unawaited(_closeShift(session, delete: true));
+@@ -1552,7 +1499,9 @@ class _RelaySession {
+   Timer? lingerTimer;
+ 
+   /// Destination d'enregistrement (null = pas d'enregistrement en cours).
+-  IOSink? recordSink;
++  BoundedRecordingWriter? recordSink;
++  int recordRevision = 0;
++  bool recordStarting = false;
+   String? recordPath;
+   int recordBytes = 0;
+ 
+@@ -1567,5 +1516,5 @@ class _RelaySession {
+   /// Vrai tant qu'au moins un consommateur (lecteur, enregistrement ou
+   /// tampon différé) a besoin de l'upstream.
+   bool get hasConsumers =>
+-      players.isNotEmpty || recordSink != null || shiftSink != null;
++      players.isNotEmpty || recordSink != null || recordStarting || shiftSink != null;
+ }
+diff --git a/lib/features/player/presentation/video_player_screen.dart b/lib/features/player/presentation/video_player_screen.dart
+index 7eff32a7..f56cdd70 100644
+--- a/lib/features/player/presentation/video_player_screen.dart
++++ b/lib/features/player/presentation/video_player_screen.dart
+@@ -60,6 +60,7 @@ import '../../playlists/data/xtream_url_format_store.dart';
+ import '../../playlists/domain/playlist.dart' as pl;
+ import '../../recordings/data/recording_repository.dart';
+ import '../../recordings/data/recording_service.dart';
++import '../../recordings/data/recording_storage_policy.dart';
+ import '../../recordings/domain/recording.dart';
+ import '../../stats/data/engagement_service.dart';
+ import '../../vod/data/playback_position_repository.dart';
+@@ -220,6 +221,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+ 
+   // Enregistrement en cours (null si pas d'enregistrement actif).
+   Recording? _activeRecording;
++  bool _recordingBusy = false;
++  bool _recordingViaRelay = false;
++  Timer? _recordingMonitor;
++  bool _checkingRecording = false;
+   bool get _isRecording => _activeRecording != null;
+ 
+   // Mode « Écouteurs » (audio seul), façon YouTube : on masque l'image
+@@ -1808,105 +1813,98 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+       widget.overrideUrl == null && !HlsPreflight.isHlsUrl(_effectiveUrl);
+ 
+   Future<void> _startRecording() async {
++    if (_recordingBusy || _activeRecording != null) return;
++    _recordingBusy = true;
++    final Channel channel = _currentChannel;
++    final String url = _effectiveUrl;
++    final bool viaRelay = _liveViaRelay;
++    bool started = false;
++    Recording? created;
++    String? path;
+     try {
+-      final String path =
+-          await RecordingRepository.instance.createFilePath(
+-        channelName: _currentChannel.cleanName,
+-        programTitle: widget.overrideTitle,
+-      );
+-
+-      final String url = _effectiveUrl;
+-
+-      bool ok;
+-      if (_liveViaRelay) {
+-        // ENREGISTREMENT VIA LE MINI-RELAIS (1 connexion) :
+-        // Le relais ouvre DÉJÀ l'unique connexion vers le serveur pour la
+-        // lecture. On lui demande juste de recopier AUSSI les octets vers
+-        // le fichier. Donc : on continue à regarder, l'enregistrement
+-        // capture EXACTEMENT ce qui passe à l'écran, et le serveur ne voit
+-        // toujours qu'UNE connexion (pas de multi-view, fichier non vide).
+-        ok = await LocalStreamRelay.instance.startRecording(
+-          realUrl: url,
+-          filePath: path,
+-        );
+-      } else {
+-        // CATCH-UP / VOD : pas de relais (contenu seekable). On retombe
+-        // sur le téléchargement natif en arrière-plan.
+-        final String title = widget.overrideTitle != null &&
+-                widget.overrideTitle!.isNotEmpty
+-            ? '${_currentChannel.cleanName} – ${widget.overrideTitle}'
+-            : _currentChannel.cleanName;
+-        ok = await RecordingService.instance.start(
+-          title: title,
+-          url: url,
+-          filePath: path,
+-        );
++      if (!await RecordingStoragePolicy.instance.hasRoomToStart()) {
++        if (mounted) _toast(context.l10n.recStartFailed);
++        return;
+       }
+-      if (!ok) {
+-        _toast(context.l10n.recStartFailed);
++      path = await RecordingRepository.instance.createFilePath(
++          channelName: channel.cleanName, programTitle: widget.overrideTitle);
++      if (!mounted || channel.id != _currentChannel.id) return;
++      started = viaRelay
++          ? await LocalStreamRelay.instance.startRecording(realUrl: url, filePath: path)
++          : await RecordingService.instance.start(title: channel.cleanName,
++              url: url, filePath: path, isLive: widget.overrideUrl == null && channel.isLive);
++      if (!started) {
++        if (mounted) _toast(context.l10n.recStartFailed);
+         return;
+       }
+-
+-      final Recording rec =
+-          await RecordingRepository.instance.startRecording(
+-        channelId: _currentChannel.id,
+-        channelName: _currentChannel.cleanName,
+-        programTitle: widget.overrideTitle,
+-        filePath: path,
+-        channelLogoUrl: _currentChannel.logoUrl,
+-        streamUrl: url,
++      created = await RecordingRepository.instance.startRecording(
++        channelId: channel.id, channelName: channel.cleanName,
++        programTitle: widget.overrideTitle, filePath: path,
++        channelLogoUrl: channel.logoUrl, streamUrl: url,
+       );
+-
+-      if (mounted) {
+-        setState(() => _activeRecording = rec);
+-        _toast(context.l10n.recInProgress);
++      // La sortie du player ou un zap pendant l'ouverture doit fermer le
++      // moteur démarré, sans abandonner de fichier ni de fiche « REC ».
++      if (!mounted || channel.id != _currentChannel.id) return;
++      _recordingViaRelay = viaRelay;
++      setState(() => _activeRecording = created);
++      started = false; // le player possède maintenant cette capture
++      _recordingMonitor?.cancel();
++      _recordingMonitor = Timer.periodic(const Duration(seconds: 2), (_) => unawaited(_checkRecording()));
++      _toast(context.l10n.recInProgress);
++    } catch (_) {
++      if (mounted) _toast(context.l10n.recStartFailed);
++    } finally {
++      if (started) {
++        try {
++          if (viaRelay) await LocalStreamRelay.instance.stopRecording(url);
++          else await RecordingService.instance.stop(filePath: path);
++          if (created != null) await RecordingRepository.instance.finishRecording(created);
++        } catch (_) { /* La récupération des orphelins relira le fichier. */ }
+       }
+-    } catch (e) {
+-      _toast(context.l10n.startFailedWithError('$e'));
++      _recordingBusy = false;
+     }
+   }
+ 
+-  Future<void> _stopRecording() async {
++  Future<void> _checkRecording() async {
++    final Recording? rec = _activeRecording;
++    if (rec == null || _recordingBusy || _checkingRecording) return;
++    _checkingRecording = true;
+     try {
+-      final Recording? rec = _activeRecording;
+-      final String url = rec?.streamUrl ??
+-          (_effectiveUrl);
+-
+-      // On arrête le bon moteur selon le mode.
+-      int bytes = 0;
+-      if (_liveViaRelay) {
+-        bytes = await LocalStreamRelay.instance.stopRecording(url);
++      final bool active;
++      if (_recordingViaRelay) {
++        active = LocalStreamRelay.instance.isRecording(rec.streamUrl ?? '');
+       } else {
+-        await RecordingService.instance.stop();
++        final Map<Object?, Object?> status = await RecordingService.instance.status();
++        if (!status.containsKey('active')) return;
++        active = status['active'] == true && status['file'] == rec.filePath;
+       }
++      if (!active && identical(_activeRecording, rec)) await _stopRecording();
++    } finally { _checkingRecording = false; }
++  }
+ 
+-      if (rec != null) {
+-        // Pour le relais, `bytes` est déjà le compteur exact. Pour le
+-        // moteur natif, on relit la taille réelle du fichier.
+-        if (!_liveViaRelay) {
+-          try {
+-            final File f = File(rec.filePath);
+-            if (await f.exists()) bytes = await f.length();
+-          } catch (_) {
+-            // best-effort : taille purement cosmétique (toast), le
+-            // fichier enregistré n'est pas affecté.
+-          }
+-        }
+-        await RecordingRepository.instance.finishRecording(rec);
+-      }
++  Future<int> _finishRecording(Recording rec, bool viaRelay) async {
++    if (viaRelay) await LocalStreamRelay.instance.stopRecording(rec.streamUrl ?? '');
++    else await RecordingService.instance.stop(filePath: rec.filePath);
++    // La base et le message utilisent le fichier APRÈS flush/close.
++    await RecordingRepository.instance.finishRecording(rec);
++    final File file = File(rec.filePath);
++    return await file.exists() ? await file.length() : 0;
++  }
+ 
+-      if (mounted) {
+-        setState(() => _activeRecording = null);
+-        final String sizeLabel = _humanSize(bytes);
+-        if (bytes == 0) {
+-          _toast(context.l10n.recEmpty);
+-        } else {
+-          _toast(context.l10n.recSaved(sizeLabel));
+-        }
+-      }
+-    } catch (e) {
+-      _toast(context.l10n.recStopError('$e'));
+-    }
++  Future<void> _stopRecording() async {
++    final Recording? rec = _activeRecording;
++    if (rec == null || _recordingBusy) return;
++    _recordingBusy = true;
++    final bool viaRelay = _recordingViaRelay;
++    _recordingMonitor?.cancel();
++    if (mounted) setState(() => _activeRecording = null);
++    else _activeRecording = null;
++    try {
++      final int bytes = await _finishRecording(rec, viaRelay);
++      if (mounted) _toast(bytes == 0 ? context.l10n.recEmpty : context.l10n.recSaved(_humanSize(bytes)));
++    } catch (_) {
++      if (mounted) _toast(context.l10n.recStopError('Fermeture du fichier en cours'));
++    } finally { _recordingBusy = false; }
+   }
+ 
+   /// Badge discret « ● REC » affiché en haut pendant l'enregistrement.
+@@ -2345,15 +2343,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+     // Si un enregistrement relais tourne encore, on le clôt (sinon la
+     // session du relais resterait à enregistrer une chaîne que plus
+     // personne ne regarde). On finalise aussi la fiche en base.
++    _recordingMonitor?.cancel();
+     final Recording? rec = _activeRecording;
++    _activeRecording = null;
+     if (rec != null) {
+-      if (_liveViaRelay) {
+-        LocalStreamRelay.instance
+-            .stopRecording(rec.streamUrl ?? _currentChannel.streamUrl);
+-      } else {
+-        RecordingService.instance.stop();
+-      }
+-      RecordingRepository.instance.finishRecording(rec);
++      unawaited(_finishRecording(rec, _recordingViaRelay).catchError((Object _) => 0));
+     }
+     _zapPageController?.dispose();
+     // ON REND LA CONNEXION EN QUITTANT — et le suivant DOIT l'attendre
 diff --git a/lib/features/playlists/data/cloud_backup_repository.dart b/lib/features/playlists/data/cloud_backup_repository.dart
 index 969bd1a2..c91128b3 100644
 --- a/lib/features/playlists/data/cloud_backup_repository.dart
@@ -604,7 +1876,7 @@ index d51cb67e..3a618502 100644
        late final ChannelComputedSnapshot snapshot;
        try {
 diff --git a/lib/features/playlists/data/remote_source_repository.dart b/lib/features/playlists/data/remote_source_repository.dart
-index 1c4a4dae..cf6981b3 100644
+index 1c4a4dae..01721059 100644
 --- a/lib/features/playlists/data/remote_source_repository.dart
 +++ b/lib/features/playlists/data/remote_source_repository.dart
 @@ -29,6 +29,7 @@ import 'package:shared_preferences/shared_preferences.dart';
@@ -624,7 +1896,18 @@ index 1c4a4dae..cf6981b3 100644
        ).timeout(const Duration(seconds: 8));
        if (resp.statusCode != 200) return RemoteSyncResult.networkError;
  
-@@ -223,6 +224,10 @@ abstract final class RemoteSourceRepository {
+@@ -170,6 +171,10 @@ abstract final class RemoteSourceRepository {
+         if (changed) return await _syncOnce(hop: hop + 1);
+       }
+ 
++      // Les révocations ne contiennent aucun code fournisseur : elles
++      // restent applicables même quand la licence interdit un nouvel import.
++      await _applyRevoked(body['revoked']);
++
+       // VERROU SERVEUR : expired/frozen/banned/loaned → pas de playlist,
+       // et on bascule l'état local tout de suite (sondage 60 s, plus
+       // rapide que le heartbeat périodique).
+@@ -223,6 +228,10 @@ abstract final class RemoteSourceRepository {
              : all
                  .where((Map<String, dynamic> s) => s['enabled'] != false)
                  .toList();
@@ -635,7 +1918,7 @@ index 1c4a4dae..cf6981b3 100644
          // Même boucle que applySources (règle du labo comprise) : une seule
          // implémentation, pas deux comportements qui divergent.
          final RemoteSyncResult r = active.isEmpty
-@@ -233,7 +238,7 @@ abstract final class RemoteSourceRepository {
+@@ -233,7 +242,7 @@ abstract final class RemoteSourceRepository {
          // retirer UNE liste parmi plusieurs la laissait là. On enlève ce que
          // le panel avait posé et ne sert plus (ou a éteint). Les listes
          // ajoutées à la main ne sont jamais dans `provisioned`.
@@ -644,10 +1927,37 @@ index 1c4a4dae..cf6981b3 100644
          return r;
        }
  
-@@ -272,6 +277,13 @@ abstract final class RemoteSourceRepository {
+@@ -248,6 +257,25 @@ abstract final class RemoteSourceRepository {
+     }
+   }
+ 
++  static Future<void> _applyRevoked(Object? raw) async {
++    if (raw is! List) return;
++    for (final Object? value in raw) {
++      if (value is! Map) continue;
++      final Map<String, Object?> source = <String, Object?>{
++        'm3u_url': value['m3u_url'], 'xtream_server': value['server_url'] ?? value['server'],
++        'xtream_username': value['username'],
++      };
++      final Set<String> identities = SourceOptOuts.identities(source);
++      if (identities.isEmpty) continue;
++      await SourceOptOuts.rememberSource(source);
++      for (final Playlist p in await PlaylistRepository.instance.getAllPlaylists()) {
++        if (p.id != null && SourceOptOuts.identities(p.toMap()).any(identities.contains)) {
++          await PlaylistRepository.instance.deletePlaylist(p.id!);
++        }
++      }
++    }
++  }
++
+   /// Applique les ORDRES déposés par le panel sur les listes locales du
+   /// client : retirer une liste, ou en faire l'active. La cible est
+   /// décrite par serveur+identifiant (et non par index : l'ordre des
+@@ -272,7 +300,14 @@ abstract final class RemoteSourceRepository {
          continue;
        }
        try {
+-        final Playlist? target = _matchLocal(t);
 +        if (kind == 'source_remove') {
 +          // Mémoriser même si l'import est encore avant son INSERT SQLite.
 +          await SourceOptOuts.rememberSource(<String, Object?>{
@@ -655,10 +1965,11 @@ index 1c4a4dae..cf6981b3 100644
 +            'xtream_username': t['username'],
 +          });
 +        }
-         final Playlist? target = _matchLocal(t);
++        final Playlist? target = await _matchLocal(t);
          if (target != null && target.id != null) {
            if (kind == 'source_remove') {
-@@ -295,7 +307,7 @@ abstract final class RemoteSourceRepository {
+             await CloudBackupRepository.instance.rememberPanelRemoval(target);
+@@ -295,7 +330,7 @@ abstract final class RemoteSourceRepository {
        await http
            .post(
              Uri.parse('$kSubscriptionBaseUrl/api/device-orders/ack'),
@@ -667,7 +1978,7 @@ index 1c4a4dae..cf6981b3 100644
              body: jsonEncode(<String, Object>{'mac': mac, 'ids': done}),
            )
            .timeout(const Duration(seconds: 8));
-@@ -355,6 +367,7 @@ abstract final class RemoteSourceRepository {
+@@ -355,6 +390,7 @@ abstract final class RemoteSourceRepository {
      if (type == 'xtream') {
        if (server.isEmpty || user.isEmpty || pass.isEmpty) return;
        await PlaylistRepository.instance.addXtreamPlaylist(
@@ -675,7 +1986,7 @@ index 1c4a4dae..cf6981b3 100644
          name: label,
          serverUrl: server,
          username: user,
-@@ -366,6 +379,7 @@ abstract final class RemoteSourceRepository {
+@@ -366,6 +402,7 @@ abstract final class RemoteSourceRepository {
        // `addM3uPlaylistSmart` (repli Xtream auto) n'expose pas `makeActive` :
        // on remet donc l'active d'avant si on n'aurait pas du en changer.
        await PlaylistRepository.instance.addM3uPlaylistSmart(
@@ -683,7 +1994,21 @@ index 1c4a4dae..cf6981b3 100644
          name: label,
          url: m3u,
          epgUrl: (epg != null && epg.isNotEmpty) ? epg : null,
-@@ -412,7 +426,7 @@ abstract final class RemoteSourceRepository {
+@@ -383,11 +420,11 @@ abstract final class RemoteSourceRepository {
+   }
+ 
+   /// Retrouve la playlist locale visee par un ordre.
+-  static Playlist? _matchLocal(Map<String, dynamic> t) {
++  static Future<Playlist?> _matchLocal(Map<String, dynamic> t) async {
+     final String server = (t['server'] as String?)?.trim() ?? '';
+     final String user = (t['username'] as String?)?.trim() ?? '';
+     final String m3u = (t['m3u_url'] as String?)?.trim() ?? '';
+-    for (final Playlist p in PlaylistRepository.instance.currentPlaylists) {
++    for (final Playlist p in await PlaylistRepository.instance.getAllPlaylists()) {
+       if (m3u.isNotEmpty && p.type == PlaylistType.m3u && p.m3uUrl == m3u) {
+         return p;
+       }
+@@ -412,7 +449,7 @@ abstract final class RemoteSourceRepository {
        if (!mac.startsWith('MK:')) return;
        final http.Response resp = await http.get(
          Uri.parse('$kSubscriptionBaseUrl/api/history/$mac'),
@@ -692,7 +2017,7 @@ index 1c4a4dae..cf6981b3 100644
        ).timeout(const Duration(seconds: 8));
        if (resp.statusCode != 200) return;
        final Map<String, dynamic> body =
-@@ -439,7 +453,7 @@ abstract final class RemoteSourceRepository {
+@@ -439,7 +476,7 @@ abstract final class RemoteSourceRepository {
        if (!mac.startsWith('MK:')) return <Map<String, dynamic>>[];
        final http.Response resp = await http.get(
          Uri.parse('$kSubscriptionBaseUrl/api/device-source/$mac'),
@@ -701,7 +2026,7 @@ index 1c4a4dae..cf6981b3 100644
        ).timeout(const Duration(seconds: 8));
        if (resp.statusCode != 200) return <Map<String, dynamic>>[];
        final Map<String, dynamic> body =
-@@ -631,6 +645,7 @@ abstract final class RemoteSourceRepository {
+@@ -631,6 +668,7 @@ abstract final class RemoteSourceRepository {
  
        try {
          await PlaylistRepository.instance.addXtreamPlaylist(
@@ -709,7 +2034,7 @@ index 1c4a4dae..cf6981b3 100644
            name: label,
            serverUrl: server,
            username: user,
-@@ -696,6 +711,7 @@ abstract final class RemoteSourceRepository {
+@@ -696,6 +734,7 @@ abstract final class RemoteSourceRepository {
  
        try {
          await PlaylistRepository.instance.addM3uPlaylist(
@@ -717,7 +2042,7 @@ index 1c4a4dae..cf6981b3 100644
            name: label,
            url: m3u,
            epgUrl: (epg != null && epg.isNotEmpty) ? epg : null,
-@@ -762,6 +778,7 @@ abstract final class RemoteSourceRepository {
+@@ -762,6 +801,7 @@ abstract final class RemoteSourceRepository {
      }
      try {
        await PlaylistRepository.instance.addXtreamPlaylist(
@@ -725,7 +2050,7 @@ index 1c4a4dae..cf6981b3 100644
          name: label,
          serverUrl: creds.server,
          username: creds.username,
-@@ -781,7 +798,7 @@ abstract final class RemoteSourceRepository {
+@@ -781,7 +821,7 @@ abstract final class RemoteSourceRepository {
        if (wasPanelM3u) {
          for (final Playlist p in existing) {
            if (p.id != null && p.type == PlaylistType.m3u && p.m3uUrl == m3u) {
@@ -734,7 +2059,7 @@ index 1c4a4dae..cf6981b3 100644
            }
          }
        }
-@@ -819,23 +836,26 @@ abstract final class RemoteSourceRepository {
+@@ -819,23 +859,26 @@ abstract final class RemoteSourceRepository {
    /// Enlève du téléphone les listes que le panel avait posées et qu'il ne
    /// sert plus (retirées ou éteintes). Rien d'autre.
    static Future<void> _dropNoLongerServed(
@@ -771,7 +2096,7 @@ index 1c4a4dae..cf6981b3 100644
    }
  
    static const String _kProvisioned = 'panel.provisioned_v1';
-@@ -847,9 +867,7 @@ abstract final class RemoteSourceRepository {
+@@ -847,9 +890,7 @@ abstract final class RemoteSourceRepository {
    }
  
    static Future<void> _rememberProvision(ProvisionKey key) async {
@@ -783,7 +2108,7 @@ index 1c4a4dae..cf6981b3 100644
      final List<String> raw = prefs.getStringList(_kProvisioned) ?? <String>[];
      if (raw.contains(key.wire)) return;
 diff --git a/lib/features/playlists/data/source_opt_outs.dart b/lib/features/playlists/data/source_opt_outs.dart
-index 38d7a3fe..b0508760 100644
+index 38d7a3fe..35ad952a 100644
 --- a/lib/features/playlists/data/source_opt_outs.dart
 +++ b/lib/features/playlists/data/source_opt_outs.dart
 @@ -1,246 +1,155 @@
@@ -848,7 +2173,7 @@ index 38d7a3fe..b0508760 100644
 -// =========================================================
 +import 'dart:convert';
  
-+import 'package:cryptography/cryptography.dart';
++import 'package:crypto/crypto.dart';
  import 'package:flutter/foundation.dart';
  import 'package:shared_preferences/shared_preferences.dart';
 +import 'package:sqflite/sqflite.dart';
@@ -926,7 +2251,7 @@ index 38d7a3fe..b0508760 100644
 +  static Future<List<String>> hashes(Iterable<String> fingerprints) async {
 +    final List<String> out = <String>[];
 +    for (final String fp in fingerprints.toSet()) {
-+      final Hash hash = await Sha256().hash(utf8.encode(fp));
++      final Digest hash = sha256.convert(utf8.encode(fp));
 +      out.add(hash.bytes.map((int b) => b.toRadixString(16).padLeft(2, '0')).join());
      }
 +    return out;
@@ -1156,6 +2481,255 @@ index 38d7a3fe..b0508760 100644
 +  @override
 +  String toString() => 'Cette liste a été supprimée. Ajoute-la à nouveau pour la rétablir.';
  }
+diff --git a/lib/features/recordings/data/bounded_recording_writer.dart b/lib/features/recordings/data/bounded_recording_writer.dart
+new file mode 100644
+index 00000000..500730b5
+--- /dev/null
++++ b/lib/features/recordings/data/bounded_recording_writer.dart
+@@ -0,0 +1,76 @@
++import 'dart:async';
++import 'dart:io';
++import 'dart:typed_data';
++
++/// Le disque peut être plus lent que le direct. La file est bornée : une
++/// carte pleine/lente arrête la capture, sans gonfler la RAM ni couper le player.
++class BoundedRecordingWriter {
++  BoundedRecordingWriter._(this._write, this._finish, this._onFailure, this.maxPendingBytes);
++
++  static Future<BoundedRecordingWriter> open(String path, {void Function(Object)? onFailure}) async {
++    final File file = File(path);
++    await file.parent.create(recursive: true);
++    final RandomAccessFile handle = await file.open(mode: FileMode.write);
++    return BoundedRecordingWriter._(
++      (List<int> data) async { await handle.writeFrom(data); },
++      () async { try { await handle.flush(); } finally { await handle.close(); } },
++      onFailure, 8 * 1024 * 1024,
++    );
++  }
++
++  /// Même ordonnanceur, avec un disque lent ou défaillant contrôlé en test.
++  BoundedRecordingWriter.forTesting({
++    required Future<void> Function(List<int>) write,
++    required Future<void> Function() finish,
++    void Function(Object)? onFailure,
++    this.maxPendingBytes = 8 * 1024 * 1024,
++  }) : _write = write, _finish = finish, _onFailure = onFailure;
++
++  final Future<void> Function(List<int>) _write;
++  final Future<void> Function() _finish;
++  final void Function(Object)? _onFailure;
++  final int maxPendingBytes;
++  Future<void> _tail = Future<void>.value();
++  Future<int>? _closing;
++  int _pending = 0;
++  int bytesWritten = 0;
++  Object? failure;
++  bool get isOpen => _closing == null && failure == null;
++
++  void _fail(Object error) {
++    if (failure != null) return;
++    failure = error;
++    try { _onFailure?.call(error); } catch (_) { /* Le diagnostic ne bloque jamais la fermeture. */ }
++  }
++
++  void add(List<int> bytes) {
++    if (!isOpen || bytes.isEmpty) return;
++    if (_pending + bytes.length > maxPendingBytes) {
++      _fail(const FileSystemException('Le stockage ne suit plus le débit du flux.'));
++      unawaited(close());
++      return;
++    }
++    final Uint8List owned = Uint8List.fromList(bytes);
++    _pending += owned.length;
++    _tail = _tail.then((_) async {
++      try {
++        if (failure != null) return;
++        await _write(owned);
++        bytesWritten += owned.length;
++      } catch (error) {
++        _fail(error);
++        // Ne pas attendre close ici : il attend lui-même cette écriture.
++        unawaited(close());
++      } finally {
++        _pending -= owned.length;
++      }
++    });
++  }
++
++  Future<int> close() => _closing ??= _close();
++  Future<int> _close() async {
++    await _tail;
++    try { await _finish(); } catch (error) { _fail(error); }
++    return bytesWritten;
++  }
++}
+diff --git a/lib/features/recordings/data/recording_repository.dart b/lib/features/recordings/data/recording_repository.dart
+index 5d55c9a4..7541d827 100644
+--- a/lib/features/recordings/data/recording_repository.dart
++++ b/lib/features/recordings/data/recording_repository.dart
+@@ -24,6 +24,8 @@ import '../../playlists/data/playlist_database.dart';
+ import '../domain/recording.dart';
+ import 'gallery_exporter.dart';
+ import 'http_recording_downloader.dart';
++import 'recording_service.dart';
++import '../../player/data/local_stream_relay.dart';
+ import 'recording_storage_policy.dart';
+ 
+ /// Hook de conversion `.ts` → `.mp4` posé par l'ENTRÉE MOBILE (main.dart) avec
+@@ -257,7 +259,7 @@ class RecordingRepository {
+     if (!filePath.toLowerCase().endsWith('.ts')) return;
+     // Jamais pendant qu'une capture écrit ENCORE dans ce fichier
+     // (cas exotique d'un finish concurrent d'un job actif).
+-    if (HttpRecordingDownloader.instance.isRecordingFile(filePath)) return;
++    if (await _isRecordingFile(filePath)) return;
+     try {
+       final File src = File(filePath);
+       if (!await src.exists() || await src.length() == 0) return;
+@@ -271,7 +273,7 @@ class RecordingRepository {
+       // garde le .ts tel quel (lisible in-app et via "Ouvrir avec").
+       final int sizeBefore = await src.length();
+       await Future<void>.delayed(const Duration(seconds: 2));
+-      if (HttpRecordingDownloader.instance.isRecordingFile(filePath)) return;
++      if (await _isRecordingFile(filePath)) return;
+       final int sizeAfter = await src.length();
+       if (sizeAfter != sizeBefore) {
+         StructuredLogger.instance.warn(
+@@ -362,6 +364,12 @@ class RecordingRepository {
+   ///
+   /// Idempotent : un 2e appel ne fait rien (les fiches sont deja
+   /// finalisees).
++  Future<bool> _isRecordingFile(String path) async {
++    if (HttpRecordingDownloader.instance.isRecordingFile(path) || LocalStreamRelay.instance.isRecordingFile(path)) return true;
++    final Map<Object?, Object?> native = await RecordingService.instance.status();
++    return native['active'] == true && native['file'] == path;
++  }
++
+   Future<List<Recording>> recoverOrphans() async {
+     await initialize();
+     final Database db = await PlaylistDatabase.instance.database;
+@@ -372,14 +380,13 @@ class RecordingRepository {
+     if (rows.isEmpty) return const <Recording>[];
+ 
+     final List<Recording> recovered = <Recording>[];
+-    final HttpRecordingDownloader dl = HttpRecordingDownloader.instance;
+ 
+     for (final Map<String, Object?> row in rows) {
+       final Recording r = Recording.fromMap(row);
+       // Ceinture + bretelles : si un job tourne reellement pour ce
+       // path (cas exotique), on ne touche PAS — c'est un vrai
+       // recording en cours.
+-      if (dl.isRecordingFile(r.filePath)) {
++      if (await _isRecordingFile(r.filePath)) {
+         continue;
+       }
+       await finishRecordingByPath(
+diff --git a/lib/features/recordings/data/recording_service.dart b/lib/features/recordings/data/recording_service.dart
+index 330b3b72..42e1cd04 100644
+--- a/lib/features/recordings/data/recording_service.dart
++++ b/lib/features/recordings/data/recording_service.dart
+@@ -43,12 +43,14 @@ class RecordingService {
+     required String title,
+     String? url,
+     String? filePath,
++    bool isLive = true,
+   }) async {
+     try {
+       final bool? ok = await _channel.invokeMethod<bool>(
+         'start',
+         <String, dynamic>{
+           'title': title,
++          'live': isLive,
+           if (url != null) 'url': url,
+           if (filePath != null) 'file': filePath,
+           // i18n : la notification Android et son canal suivent la
+@@ -58,7 +60,17 @@ class RecordingService {
+           'channelDesc': l10nNow.recordingNotifChannelDesc,
+         },
+       );
+-      return ok ?? false;
++      if (ok != true) return false;
++      if (filePath == null) return true;
++      // L'intent livré n'est pas une preuve d'ouverture du fichier.
++      for (int attempt = 0; attempt < 40; attempt++) {
++        final Map<Object?, Object?> current = await status();
++        if (current['file'] == filePath && current['error'] == null) return true;
++        if (current['error'] != null) return false;
++        await Future<void>.delayed(const Duration(milliseconds: 50));
++      }
++      await stop();
++      return false;
+     } on PlatformException catch (e) {
+       if (kDebugMode) {
+         debugPrint('[RecService] start error: ${e.message}');
+@@ -70,6 +82,13 @@ class RecordingService {
+     }
+   }
+ 
++  Future<Map<Object?, Object?>> status() async {
++    try {
++      return await _channel.invokeMapMethod<Object?, Object?>('status') ?? <Object?, Object?>{};
++    } on PlatformException { return <Object?, Object?>{}; }
++      on MissingPluginException { return <Object?, Object?>{}; }
++  }
++
+   /// Octets écrits par l'enregistrement natif en cours (0 si inactif
+   /// ou non supporté). Best effort.
+   Future<int> bytes() async {
+@@ -84,9 +103,15 @@ class RecordingService {
+   }
+ 
+   /// Arrête le ForegroundService et retire la notification.
+-  Future<void> stop() async {
++  Future<void> stop({String? filePath}) async {
+     try {
+-      await _channel.invokeMethod<bool>('stop');
++      await _channel.invokeMethod<bool>('stop', <String, Object?>{'file': filePath});
++      for (int attempt = 0; attempt < 100; attempt++) {
++        final Map<Object?, Object?> current = await status();
++        if (current['active'] != true || (filePath != null && current['file'] != filePath)) return;
++        await Future<void>.delayed(const Duration(milliseconds: 50));
++      }
++      throw StateError('La fermeture du fichier est encore en cours.');
+     } on PlatformException catch (e) {
+       if (kDebugMode) {
+         debugPrint('[RecService] stop error: ${e.message}');
+diff --git a/lib/features/sports/data/match_alerts_service.dart b/lib/features/sports/data/match_alerts_service.dart
+index af30a022..f65bc23c 100644
+--- a/lib/features/sports/data/match_alerts_service.dart
++++ b/lib/features/sports/data/match_alerts_service.dart
+@@ -183,7 +183,7 @@ class MatchAlertsService {
+       // Trop tard (match commencé ou dans moins de 15 min) ou trop loin.
+       if (when.isBefore(now)) continue;
+       if (kickoff.difference(now) > _horizon) continue;
+-      await NotificationService.instance.scheduleAt(
++      final bool scheduled = await NotificationService.instance.tryScheduleAt(
+         id: _idBaseSoon + _slot(ev.id),
+         when: when,
+         title: l10nNow.notifMatchSoonTitle,
+@@ -192,6 +192,7 @@ class MatchAlertsService {
+           _lead.inMinutes,
+         ),
+       );
++      if (!scheduled) continue;
+       done.add(ev.id);
+       changed = true;
+     }
+@@ -221,13 +222,14 @@ class MatchAlertsService {
+       if (kickoff == null) continue;
+       if (now.difference(kickoff) > _resultWindow) continue;
+       if (kickoff.isAfter(now)) continue;
+-      await NotificationService.instance.showNow(
++      final bool scheduled = await NotificationService.instance.tryShowNow(
+         id: _idBaseResult + _slot(ev.id),
+         title: l10nNow.notifMatchResultTitle,
+         // Corps VOLONTAIREMENT non traduit : « Real Madrid 2 – 1 Chelsea »
+         // se lit dans toutes les langues.
+         body: '${ev.home} ${ev.homeScore} – ${ev.awayScore} ${ev.away}',
+       );
++      if (!scheduled) continue;
+       done.add(ev.id);
+       changed = true;
+     }
 diff --git a/lib/features/sports/domain/live_alert_plan.dart b/lib/features/sports/domain/live_alert_plan.dart
 index 9b36eaf4..d08f7057 100644
 --- a/lib/features/sports/domain/live_alert_plan.dart
@@ -1214,7 +2788,7 @@ index 9b36eaf4..d08f7057 100644
      return out;
    }
 diff --git a/lib/features/subscription/data/subscription_state.dart b/lib/features/subscription/data/subscription_state.dart
-index 1a6af892..31aaeefb 100644
+index 1a6af892..a7b2afc7 100644
 --- a/lib/features/subscription/data/subscription_state.dart
 +++ b/lib/features/subscription/data/subscription_state.dart
 @@ -12,6 +12,8 @@
@@ -1300,7 +2874,7 @@ index 1a6af892..31aaeefb 100644
    int get trialDaysRemaining {
 -    if (_remote.exists) return _remote.daysLeft;
 +    if (_remote.exists && _remote.trialUntil > 0) {
-+      return ((_remote.trialUntil - _effectiveNowMs) / _kDayMs).ceil().clamp(0, kTrialDurationDays);
++      return ((_remote.trialUntil - _effectiveNowMs) / _kDayMs).ceil().clamp(0, kTrialDurationDays).toInt();
 +    }
 +    if (_remote.exists && _remote.expired) return 0;
      if (_firstLaunchAt == null) return kTrialDurationDays;
@@ -1547,13 +3121,13 @@ index b7963823..004e9eb9 100644
  /// Politique commune du rafraîchissement silencieux (stale-while-revalidate).
 diff --git a/lib/features/vod/data/catalog_source.dart b/lib/features/vod/data/catalog_source.dart
 new file mode 100644
-index 00000000..b37c8750
+index 00000000..d5469f68
 --- /dev/null
 +++ b/lib/features/vod/data/catalog_source.dart
 @@ -0,0 +1,35 @@
 +import 'dart:convert';
 +
-+import 'package:cryptography/cryptography.dart';
++import 'package:crypto/crypto.dart';
 +
 +import '../../playlists/data/playlist_repository.dart';
 +import '../../playlists/data/xtream_client.dart';
@@ -1572,7 +3146,7 @@ index 00000000..b37c8750
 +        p.type == PlaylistType.xtream && (p.xtreamServer ?? '').isNotEmpty).toList();
 +    if (xtream.isEmpty) return null;
 +    final Playlist selected = xtream.firstWhere((Playlist p) => p.isActive, orElse: () => xtream.first);
-+    final Hash digest = await Sha256().hash(utf8.encode(signature(<Playlist>[selected])));
++    final Digest digest = sha256.convert(utf8.encode(signature(<Playlist>[selected])));
 +    return CatalogSource(selected, digest.bytes.map((int b) => b.toRadixString(16).padLeft(2, '0')).join());
 +  }
 +
@@ -2111,6 +3685,100 @@ index cef35528..174d8948 100644
        if (info != null) {
          _infoCache[movieId] = info;
          // Éviction LRU : la tête de la map est la moins récemment utilisée.
+diff --git a/test/features/cast/session_lifecycle_test.dart b/test/features/cast/session_lifecycle_test.dart
+new file mode 100644
+index 00000000..e62af3a9
+--- /dev/null
++++ b/test/features/cast/session_lifecycle_test.dart
+@@ -0,0 +1,88 @@
++import 'dart:async';
++import 'package:flutter_test/flutter_test.dart';
++import 'package:tv_king/features/cast/data/cast_manager.dart';
++import 'package:tv_king/features/cast/data/cast_transport.dart';
++import 'package:tv_king/features/cast/data/google_cast_api.dart';
++import 'package:tv_king/features/cast/data/stream_probe.dart';
++import 'package:tv_king/features/cast/domain/cast_device.dart';
++
++class _Transport implements CastTransport {
++  Completer<void>? playGate;
++  Completer<void>? stopGate;
++  Completer<void>? pauseGate;
++  final Completer<void> playing = Completer<void>();
++  int stops = 0;
++  @override
++  Future<void> playStream({required String streamUrl, String title = 'Test', String? imageUrl}) async {
++    if (!playing.isCompleted) playing.complete();
++    if (playGate != null) await playGate!.future;
++  }
++  @override
++  Future<void> stop() async { stops++; if (stopGate != null) await stopGate!.future; }
++  @override
++  Future<void> pause() async { if (pauseGate != null) await pauseGate!.future; }
++  @override
++  Future<void> resume() async {}
++}
++CastDevice _device(String id) => CastDevice(id: id, name: id, kind: CastDeviceKind.roku,
++  host: '192.0.2.1', port: 8060, controlUrl: 'http://192.0.2.1');
++
++void main() {
++  TestWidgetsFlutterBinding.ensureInitialized();
++  late _Transport first;
++  late _Transport second;
++  late CastManager manager;
++  setUp(() {
++    first = _Transport(); second = _Transport();
++    manager = CastManager.forTesting(
++      transportFactory: (d) => d.id == 'first' ? first : second,
++      probe: (url) async => StreamProbeResult(originalUrl: url, finalUrl: url, success: true),
++      timeout: const Duration(milliseconds: 150),
++    );
++  });
++  tearDown(() async { await manager.disconnect(); manager.dispose(); });
++  Future<void> cast(String id) => manager.castTo(_device(id), streamUrl: 'http://stream.invalid/live.ts', title: id);
++
++  test('timeout ancien ne stoppe jamais une nouvelle session', () async {
++    first.playGate = Completer<void>();
++    final Future<void> old = cast('first');
++    await first.playing.future;
++    await cast('second');
++    await old;
++    expect(manager.state, CastState.casting);
++    expect(manager.currentTitle, 'second');
++    expect(second.stops, 0);
++    first.playGate!.complete();
++  });
++  test('déconnexion pendant play ne ressuscite pas la session', () async {
++    first.playGate = Completer<void>();
++    final Future<void> pending = cast('first');
++    await first.playing.future;
++    await manager.disconnect();
++    first.playGate!.complete();
++    await pending;
++    expect(manager.state, CastState.idle);
++    expect(manager.device, isNull);
++  });
++  test('ancien stop lent ne nettoie pas le nouveau récepteur', () async {
++    await cast('first');
++    first.stopGate = Completer<void>();
++    final Future<void> stopping = manager.disconnect();
++    await cast('second');
++    first.stopGate!.complete();
++    await stopping;
++    expect(manager.device?.id, 'second');
++    expect(manager.state, CastState.casting);
++  });
++  test('pause ancienne et événement Google ne touchent pas Roku', () async {
++    await cast('first');
++    first.pauseGate = Completer<void>();
++    final Future<void> pausing = manager.pause();
++    await cast('second');
++    first.pauseGate!.complete();
++    await pausing;
++    manager.debugNativeSessionEvent(const CastNativeSessionEvent('ended'));
++    expect(manager.state, CastState.casting);
++    expect(manager.device?.id, 'second');
++  });
++}
 diff --git a/test/features/playlists/cloud_backup_panel_removal_test.dart b/test/features/playlists/cloud_backup_panel_removal_test.dart
 index befc0183..cb78d61e 100644
 --- a/test/features/playlists/cloud_backup_panel_removal_test.dart
@@ -2326,6 +3994,62 @@ index f9a4a608..50eaa6ea 100644
 +    expect(SourceOptOuts.doitSauter(assignationMs: 100), isFalse);
    });
  }
+diff --git a/test/features/recordings/data/bounded_recording_writer_test.dart b/test/features/recordings/data/bounded_recording_writer_test.dart
+new file mode 100644
+index 00000000..96ac3a9a
+--- /dev/null
++++ b/test/features/recordings/data/bounded_recording_writer_test.dart
+@@ -0,0 +1,50 @@
++import 'dart:async';
++import 'dart:io';
++import 'package:flutter_test/flutter_test.dart';
++import 'package:tv_king/features/recordings/data/bounded_recording_writer.dart';
++
++void main() {
++  test('close attend toutes les écritures puis ferme une seule fois', () async {
++    final Completer<void> gate = Completer<void>();
++    final List<int> output = <int>[];
++    int closes = 0;
++    final writer = BoundedRecordingWriter.forTesting(write: (bytes) async { await gate.future; output.addAll(bytes); }, finish: () async { closes++; });
++    writer.add(<int>[1,2]); writer.add(<int>[3]);
++    final Future<int> close = writer.close();
++    expect(writer.bytesWritten, 0);
++    gate.complete();
++    expect(await close, 3);
++    expect(await writer.close(), 3);
++    expect(output, <int>[1,2,3]);
++    expect(closes, 1);
++  });
++  test('erreur disque asynchrone ferme sans exception non consommée', () async {
++    int failures = 0; int closes = 0;
++    final writer = BoundedRecordingWriter.forTesting(write: (_) async { throw const FileSystemException('plein'); }, finish: () async { closes++; }, onFailure: (_) { failures++; });
++    writer.add(<int>[1,2]); writer.add(<int>[3]);
++    expect(await writer.close(), 0);
++    expect(writer.failure, isA<FileSystemException>());
++    expect(failures, 1); expect(closes, 1);
++  });
++  test('disque lent : la file reste bornée et la capture s’arrête', () async {
++    final Completer<void> gate = Completer<void>();
++    final writer = BoundedRecordingWriter.forTesting(maxPendingBytes: 4,
++      write: (_) => gate.future, finish: () async {});
++    writer.add(<int>[1,2,3,4]);
++    writer.add(<int>[5]);
++    expect(writer.isOpen, isFalse);
++    expect(writer.failure, isNotNull);
++    gate.complete();
++    await writer.close();
++  });
++  test('fichier réel : les octets sont relisibles après clôture', () async {
++    final Directory dir = Directory.systemTemp.createTempSync('record-writer-');
++    try {
++      final File file = File('${dir.path}/capture.ts');
++      final writer = await BoundedRecordingWriter.open(file.path);
++      writer.add(<int>[0x47, 1, 2, 3]);
++      expect(await writer.close(), 4);
++      expect(await file.readAsBytes(), <int>[0x47, 1, 2, 3]);
++    } finally { await dir.delete(recursive: true); }
++  });
++}
 diff --git a/test/features/sports/live_alert_plan_test.dart b/test/features/sports/live_alert_plan_test.dart
 index 352024b6..bac8198e 100644
 --- a/test/features/sports/live_alert_plan_test.dart
