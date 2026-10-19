@@ -23,9 +23,8 @@ class TvVipCountriesScreen extends StatefulWidget {
 }
 
 class _TvVipCountriesScreenState extends State<TvVipCountriesScreen> {
-  late final String _profileId = ActiveProfile.instance.id;
-  late List<String> _selected = VipCountriesRepository.instance.current
-      .toList();
+  late final String _profileId;
+  late List<String> _selected;
   String _query = '';
   bool _saving = false;
   bool _failed = false;
