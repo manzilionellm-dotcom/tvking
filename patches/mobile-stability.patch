@@ -1388,6 +1388,21 @@ index 2d8bfbde..efbf898d 100644
      if (streamId == null) return Future<List<EpgProgram>>.value(const <EpgProgram>[]);
  
      final ({DateTime at, List<EpgProgram> programs})? hit = _cache[channel.id];
+diff --git a/lib/features/epg/data/xmltv_parser.dart b/lib/features/epg/data/xmltv_parser.dart
+index 663cdda0..e452bfc0 100644
+--- a/lib/features/epg/data/xmltv_parser.dart
++++ b/lib/features/epg/data/xmltv_parser.dart
+@@ -203,7 +203,9 @@ class XmltvParser {
+     chunks.listen((Object? msg) {
+       if (msg == null) {
+         bytes.close();
+-        chunks.close();
++        // Garder le port vivant jusqu'au kill du parent dans finally.
++        // Sinon l'isolate sort dès l'envoi des stats, avant les écritures
++        // SQLite encore en vol : onExit annonçait un faux échec d'import.
+       } else if (msg is List) {
+         bytes.add(msg.cast<int>());
+       }
 diff --git a/lib/features/epg/data/xmltv_transport.dart b/lib/features/epg/data/xmltv_transport.dart
 new file mode 100644
 index 00000000..e8a53a31
@@ -4152,7 +4167,7 @@ index 330b3b72..580721ca 100644
        if (kDebugMode) {
          debugPrint('[RecService] stop error: ${e.message}');
 diff --git a/lib/features/simple_home/presentation/widgets/category_browser_view.dart b/lib/features/simple_home/presentation/widgets/category_browser_view.dart
-index f2cf91cc..c9cc36dc 100644
+index f2cf91cc..fe03b0d2 100644
 --- a/lib/features/simple_home/presentation/widgets/category_browser_view.dart
 +++ b/lib/features/simple_home/presentation/widgets/category_browser_view.dart
 @@ -53,6 +53,7 @@ import '../../../playlists/data/playlist_repository.dart';
@@ -4255,9 +4270,9 @@ index f2cf91cc..c9cc36dc 100644
 +              if (effective == _Bucket.adult) Padding(
 +                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
 +                child: Wrap(spacing: 12, runSpacing: 8, children: <Widget>[
-+                  Chip(label: Text(context.l10n.catFilterTv)),
++                  Chip(label: Text(context.l10n.navDirect)),
 +                  for (final int tab in <int>[0, 1]) ActionChip(
-+                    label: Text(tab == 0 ? context.l10n.catFilterMovies : context.l10n.catFilterSeries),
++                    label: Text(tab == 0 ? context.l10n.sectionMovies : context.l10n.sectionSeries),
 +                    onPressed: () {
 +                      if (!_canShowAdult) return;
 +                      Navigator.of(context).push<void>(MaterialPageRoute<void>(
@@ -5578,7 +5593,7 @@ index 00000000..f9f3fdc0
 +      isAdult(name, category) == adultOnly;
 +}
 diff --git a/lib/features/vod/presentation/cinema_screen.dart b/lib/features/vod/presentation/cinema_screen.dart
-index 66795897..766139bb 100644
+index 66795897..f971751d 100644
 --- a/lib/features/vod/presentation/cinema_screen.dart
 +++ b/lib/features/vod/presentation/cinema_screen.dart
 @@ -34,6 +34,9 @@ import '../data/vod_novelty_service.dart';
@@ -5680,6 +5695,17 @@ index 66795897..766139bb 100644
              style: const TextStyle(
                  fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
          bottom: TabBar(
+@@ -187,8 +211,8 @@ class _CinemaScreenState extends State<CinemaScreen>
+           labelColor: AppColors.accent,
+           unselectedLabelColor: AppColors.textSecondary,
+           tabs: <Widget>[
+-            Tab(text: context.l10n.catFilterMovies),
+-            Tab(text: context.l10n.catFilterSeries),
++            Tab(text: context.l10n.sectionMovies),
++            Tab(text: context.l10n.sectionSeries),
+             Tab(text: context.l10n.tvDlRail),
+           ],
+         ),
 @@ -202,7 +226,7 @@ class _CinemaScreenState extends State<CinemaScreen>
            // attendre, cet onglet garde le sien le temps qu'elles arrivent.
            _SeriesTab(
@@ -6123,6 +6149,31 @@ index 00000000..e8247941
 +    expect(rows.last['title'], 'two.invalid');
 +  });
 +}
+diff --git a/test/features/epg/xmltv_parse_isolate_test.dart b/test/features/epg/xmltv_parse_isolate_test.dart
+index 29185ef4..fe9c0fbc 100644
+--- a/test/features/epg/xmltv_parse_isolate_test.dart
++++ b/test/features/epg/xmltv_parse_isolate_test.dart
+@@ -69,6 +69,20 @@ void main() {
+         reason: 'les Map doivent être prêtes pour batch.insert');
+   });
+ 
++  test('la fin du parse attend les écritures SQLite lentes sans fausse mort isolate', () async {
++    final List<Map<String, Object?>> stored = <Map<String, Object?>>[];
++    final EpgParseStats stats = await XmltvParser.parseInIsolate(
++      chunked(xmltv(programmes: 3)), batchSize: 1,
++      onBatch: (List<Map<String, Object?>> batch) async {
++        await Future<void>.delayed(const Duration(milliseconds: 40));
++        stored.addAll(batch);
++      },
++    );
++    expect(stats.emitted, 3);
++    expect(stored, hasLength(3));
++    expect(stored.map((r) => r['title']), <String>['Prog 0', 'Prog 1', 'Prog 2']);
++  });
++
+   test('parseInIsolate respecte le filtre des chaînes connues', () async {
+     final List<Map<String, Object?>> rows = <Map<String, Object?>>[];
+     final EpgParseStats total = await XmltvParser.parseInIsolate(
 diff --git a/test/features/epg/xmltv_transport_test.dart b/test/features/epg/xmltv_transport_test.dart
 new file mode 100644
 index 00000000..dd13aba9
