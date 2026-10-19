@@ -1,0 +1,679 @@
+diff --git a/lib/features/player/data/local_stream_relay.dart b/lib/features/player/data/local_stream_relay.dart
+index 88b2cf7..77b3224 100644
+--- a/lib/features/player/data/local_stream_relay.dart
++++ b/lib/features/player/data/local_stream_relay.dart
+@@ -113,6 +113,9 @@ class LocalStreamRelay {
+   LocalStreamRelay._();
+   static final LocalStreamRelay instance = LocalStreamRelay._();
+ 
++  // Après un remplacement fournisseur, un retry HTTP natif ne constitue
++  // PAS une nouvelle demande de lecture. Seul playUrlFor réarme cette URL.
++  String? _terminalPlaybackUrl;
+   HttpServer? _server;
+   int _port = 0;
+ 
+@@ -232,6 +235,7 @@ class LocalStreamRelay {
+     // où le lecteur se connecte à l'URL renvoyée) qu'APRÈS que les anciennes
+     // ont été coupées → jamais deux connexions amont qui se chevauchent.
+     await closeOtherPlaybacks(realUrl);
++    _terminalPlaybackUrl = null;
+     final String token = Uri.encodeComponent(realUrl);
+     return 'http://127.0.0.1:$_port/s?u=$token';
+   }
+@@ -714,6 +718,12 @@ class LocalStreamRelay {
+       return;
+     }
+ 
++    if (_terminalPlaybackUrl == realUrl) {
++      req.response.statusCode = HttpStatus.gone;
++      await req.response.close();
++      return;
++    }
++
+     final _RelaySession session = _ensureSession(realUrl);
+     _ensureUpstream(session);
+ 
+@@ -1089,6 +1099,7 @@ class LocalStreamRelay {
+     );
+     final String failedUrl = session.realUrl;
+     final int? lastStatus = session.lastUpstreamStatus;
++    _terminalPlaybackUrl = failedUrl;
+     _closeSession(session);
+     _definitiveFailures.add(RelayFailure(url: failedUrl, status: lastStatus,
+         placeholder: session.upstreamPlaceholder));
+diff --git a/lib/features/player/data/stream_blocked_fallback.dart b/lib/features/player/data/stream_blocked_fallback.dart
+index c57c273..18e365a 100644
+--- a/lib/features/player/data/stream_blocked_fallback.dart
++++ b/lib/features/player/data/stream_blocked_fallback.dart
+@@ -262,7 +262,29 @@ class StreamBlockedFallback {
+   // Compteur de retries 5xx pour la CHAÎNE COURANTE (réinitialisé au zap).
+   String? _conn5xxChannelId;
+   int _conn5xxCount = 0;
+-  bool _inFlight = false;
++  // Chaque ouverture possède sa génération. Un ancien timer/diagnostic ne
++  // doit ni relancer une chaîne terminalisée, ni survivre à un aller-retour.
++  int _attemptGeneration = 0;
++  int? _diagnosisGeneration;
++  bool _terminal = false;
++
++  void beginPlaybackAttempt({bool resetDiagnosis = false}) {
++    _attemptGeneration++;
++    _terminal = false;
++    if (resetDiagnosis) {
++      _attemptedForChannelId = null;
++      _backoffConsumedForChannelId = null;
++    }
++  }
++
++  void stopRecovery() {
++    _terminal = true;
++    _attemptGeneration++;
++  }
++
++  bool _isCurrent(Channel channel, int generation) =>
++      !_terminal && isAlive() && generation == _attemptGeneration &&
++      channel.id == getChannel().id;
+   StreamSubscription<RelayFailure>? _relaySub;
+ 
+   static void _log(String message, {String level = 'info'}) =>
+@@ -282,6 +304,7 @@ class StreamBlockedFallback {
+   }
+ 
+   void detach() {
++    stopRecovery();
+     _relaySub?.cancel();
+     _relaySub = null;
+   }
+@@ -299,7 +322,7 @@ class StreamBlockedFallback {
+   }
+ 
+   void _onRelayFailure(RelayFailure failure) {
+-    if (!isAlive()) return; // écran fermé : rien à faire ni à journaliser
++    if (_terminal || !isAlive()) return; // écran fermé : rien à faire ni à journaliser
+     final String failedUrl = failure.url;
+     final String current = getEffectiveUrl();
+     if (failedUrl != current) {
+@@ -314,6 +337,7 @@ class StreamBlockedFallback {
+     // Un clip noir peut contenir des frames valides. Il ne prouve jamais
+     // que la chaîne demandée a démarré, même après une lecture précédente.
+     if (failure.placeholder) {
++      stopRecovery();
+       _log('Flux de remplacement reçu → chaîne indisponible, sans sonde ni boucle');
+       showBlocked(const BlockedVerdict(BlockedKind.channelBlocked,
+           message: 'La source renvoie une vidéo de remplacement au lieu de cette chaîne. '
+@@ -404,6 +428,7 @@ class StreamBlockedFallback {
+   /// 1-connexion que pour le 403 du relais : UN retry silencieux après
+   /// [retryBackoff], puis le diagnostic complet si ça échoue encore.
+   void onPlaybackRefused(String reason) {
++    if (_terminal || !isAlive()) return;
+     if (!hasDecodedFrames() && _tryScheduleBackoffRetry(reason)) return;
+     // Fire-and-forget : run() a son propre catch-all.
+     run();
+@@ -440,6 +465,7 @@ class StreamBlockedFallback {
+   /// reste en reconnexion), `false` s'il faut passer au diagnostic normal —
+   /// une image DÉJÀ affichée, elle, signe un vrai souci de format.
+   bool onContainerUnsupported() {
++    if (_terminal) return true; // échec déjà expliqué, aucune nouvelle sonde
+     if (hasDecodedFrames()) return false;
+     // Jamais terminal non plus (même décision du 21/08 que pour le 458) :
+     // la patrouille tient l'écran en « reconnexion » jusqu'à la libération.
+@@ -448,6 +474,8 @@ class StreamBlockedFallback {
+   }
+ 
+   bool _try458Retry() {
++    if (_terminal || !isAlive()) return true;
++    final int generation = _attemptGeneration;
+     final Channel channel = getChannel();
+     if (_conn458ChannelId != channel.id) {
+       _conn458ChannelId = channel.id;
+@@ -467,7 +495,7 @@ class StreamBlockedFallback {
+         '(le panel libère le créneau à l\'expiration de SA session, '
+         'pas à la fermeture de la socket)');
+     Future<void>.delayed(wait).then((_) async {
+-      if (!isAlive() || channel.id != getChannel().id) {
++      if (!_isCurrent(channel, generation)) {
+         _log('[458] retry abandonné (zap ou écran fermé pendant l\'attente)');
+         return;
+       }
+@@ -479,7 +507,7 @@ class StreamBlockedFallback {
+       // non-Xtream, réseau) → comportement historique, réouverture à
+       // l'aveugle.
+       final bool? busy = await _isSlotStillBusy();
+-      if (!isAlive() || channel.id != getChannel().id) {
++      if (!_isCurrent(channel, generation)) {
+         _log('[458] retry abandonné (zap ou écran fermé pendant le sondage '
+             'du créneau)');
+         return;
+@@ -616,6 +644,8 @@ class StreamBlockedFallback {
+   /// [_kMax5xxRetries] retries de la chaîne sont épuisés (→ message clair). Le
+   /// compteur se réinitialise dès qu'on change de chaîne (zap).
+   bool _try5xxRetry() {
++    if (_terminal || !isAlive()) return true;
++    final int generation = _attemptGeneration;
+     final Channel channel = getChannel();
+     if (_conn5xxChannelId != channel.id) {
+       _conn5xxChannelId = channel.id;
+@@ -627,7 +657,7 @@ class StreamBlockedFallback {
+         '$_conn5xxCount/$_kMax5xxRetries dans ${_k5xxBackoff.inMilliseconds} '
+         'ms (le serveur peut revenir)');
+     Future<void>.delayed(_k5xxBackoff).then((_) {
+-      if (!isAlive() || channel.id != getChannel().id) {
++      if (!_isCurrent(channel, generation)) {
+         _log('[5xx] retry abandonné (zap ou écran fermé pendant l\'attente)');
+         return;
+       }
+@@ -643,6 +673,8 @@ class StreamBlockedFallback {
+   /// Renvoie `false` si le backoff a DÉJÀ été consommé pour cette chaîne
+   /// (le prochain échec doit partir en diagnostic complet).
+   bool _tryScheduleBackoffRetry(String reason) {
++    if (_terminal || !isAlive()) return true;
++    final int generation = _attemptGeneration;
+     final Channel channel = getChannel();
+     if (_backoffConsumedForChannelId == channel.id) {
+       _log('[backoff] déjà consommé pour « ${channel.cleanName} » → '
+@@ -654,7 +686,7 @@ class StreamBlockedFallback {
+         '${retryBackoff.inMilliseconds} ms (le panel libère l\'ancienne '
+         'session) puis UN retry automatique et silencieux');
+     Future<void>.delayed(retryBackoff).then((_) {
+-      if (!isAlive() || channel.id != getChannel().id) {
++      if (!_isCurrent(channel, generation)) {
+         _log('[backoff] retry abandonné (zap ou écran fermé pendant '
+             'l\'attente)');
+         return;
+@@ -767,9 +799,11 @@ class StreamBlockedFallback {
+   /// la CASCADE de variantes. Appelé par l'événement relais, l'erreur
+   /// mpv, le timeout de démarrage et le watchdog.
+   Future<void> run() async {
++    if (_terminal || !isAlive()) return;
++    final int generation = _attemptGeneration;
+     final Channel channel = getChannel();
+     // ----- Gardes (JOURNALISÉES — c'étaient les sorties muettes) -----
+-    if (_inFlight) {
++    if (_diagnosisGeneration == generation) {
+       _log('Diagnostic déjà EN COURS pour cette chaîne — appel ignoré '
+           '(l\'issue arrivera au journal)');
+       return;
+@@ -786,25 +820,25 @@ class StreamBlockedFallback {
+       return;
+     }
+     _attemptedForChannelId = channel.id;
+-    _inFlight = true;
++    _diagnosisGeneration = generation;
+     try {
+-      await _runInner(channel);
++      await _runInner(channel, generation);
+     } catch (e, st) {
+       // RÈGLE 2 : aucune exception avalée sans trace. C'est le genre de
+       // trou noir qui a rendu ce bug indiagnosticable pendant 3 journaux.
+       _log('EXCEPTION pendant le diagnostic : $e', level: 'error');
+       if (kDebugMode) debugPrint('[Fallback] $e\n$st');
+-      if (isAlive() && channel.id == getChannel().id) {
++      if (_isCurrent(channel, generation)) {
+         showBlocked(const BlockedVerdict(BlockedKind.channelBlocked,
+             message: kChannelBlockedMessage));
+       }
+     } finally {
+-      _inFlight = false;
++      if (_diagnosisGeneration == generation) _diagnosisGeneration = null;
+     }
+   }
+ 
+-  Future<void> _runInner(Channel channel) async {
+-    bool stillCurrent() => isAlive() && channel.id == getChannel().id;
++  Future<void> _runInner(Channel channel, int generation) async {
++    bool stillCurrent() => _isCurrent(channel, generation);
+ 
+     // AUDIT 19/08 : « la lecture est déjà morte ici » était une HYPOTHÈSE,
+     // pas une garantie — sur le chemin du watchdog de démarrage, le lecteur
+diff --git a/lib/features/player/presentation/video_player_screen.dart b/lib/features/player/presentation/video_player_screen.dart
+index 7f5ea31..f2c8813 100644
+--- a/lib/features/player/presentation/video_player_screen.dart
++++ b/lib/features/player/presentation/video_player_screen.dart
+@@ -160,6 +160,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+   /// `_openGeneration` invalide les ouvertures dépassées par un zap.
+   Future<void> _openChain = Future<void>.value();
+   int _openGeneration = 0;
++  bool _playbackTerminated = false;
++  Future<void> _playerOptionsReady = Future<void>.value();
+ 
+   /// Un seul lecteur audible (pub de démarrage comprise) et un jeton
+   /// par ouverture : un jeton périmé ne remonte pas le son.
+@@ -551,7 +553,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+     _videoController = VideoController(_player);
+ 
+     // Applique les options libmpv pour hardware decoding + cache
+-    _applyMpvOptions();
++    _playerOptionsReady = _applyMpvOptions();
+ 
+     _attachPlayerListeners();
+ 
+@@ -619,7 +621,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+   /// vivent dans `_subs` : annulés puis re-créés à chaque recyclage.
+   void _attachPlayerListeners() {
+     final Player evidenceSource = _player;
+-    _subs.add(_player.stream.buffering.listen(_onBufferingChanged));
++    _subs.add(_player.stream.buffering.listen((bool buffering) {
++      if (_playbackTerminated || !identical(evidenceSource, _player)) return;
++      _onBufferingChanged(buffering);
++    }));
+     // Durée du flux : quand elle devient connue (> 0), c'est de la
+     // VOD/replay seekable → l'OSD doit afficher la barre de progression
+     // et les boutons ±10s. On rafraîchit donc le build à ce moment.
+@@ -633,6 +638,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+     // NEUVE dès que son track-list expose la piste (cf. _maybeReapplyVideoTrack).
+     _subs.add(_player.stream.tracks.listen(_maybeReapplyVideoTrack));
+     _subs.add(_player.stream.playing.listen((bool p) {
++      if (_playbackTerminated || !identical(evidenceSource, _player)) return;
+       if (mounted) {
+         setState(() {
+           _isPlaying = p;
+@@ -666,7 +672,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+     // n'apparaît que si la reprise échoue (budget watchdog, puis
+     // diagnostic complet).
+     _subs.add(_player.stream.completed.listen((bool done) {
+-      if (!done || !mounted) return;
++      if (!done || !mounted || _playbackTerminated ||
++          !identical(evidenceSource, _player)) return;
+       final bool liveDecoded = widget.overrideUrl == null &&
+           _currentChannel.isLive &&
+           _playedChannelId == _currentChannel.id;
+@@ -681,7 +688,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+       _maybeStartUpNext();
+     }));
+     _subs.add(_player.stream.error.listen((String e) {
+-      if (!mounted) return;
++      if (!mounted || _playbackTerminated ||
++          !identical(evidenceSource, _player)) return;
+       _lastPlayerError = e; // sert au tri « format » vs « créneau occupé »
+       // Boîte noire : TOUTES les erreurs libmpv, exactes, y compris
+       // celles que l'UI filtre. `fatal` est ajusté plus bas si on
+@@ -829,6 +837,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+       reopen: _openMedia,
+       showBlocked: (BlockedVerdict verdict) {
+         if (!mounted) return;
++        _stopTerminalPlayback();
+         setState(() {
+           _hasError = true;
+           // Le verdict typé est TRADUIT ici (l10n) : le contrôleur, qui ne
+@@ -1309,6 +1318,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+   /// récent est abandonnée (garde de génération, journalisée).
+   Future<void> _openMedia(String realUrl) {
+     final int gen = ++_openGeneration;
++    _playbackTerminated = true;
++    _playbackEvidence.revoke();
++    _fallback.stopRecovery();
+     // COURTOISIE RÉSEAU (téléchargements Cinéma) : une lecture DISTANTE
+     // suspend la file (beaucoup de comptes n'ont qu'UNE connexion — un
+     // téléchargement simultané ferait « chaîne vide »). Un fichier LOCAL
+@@ -1434,7 +1446,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+     // FERMETURE ATTENDUE + instance mpv neuve AVANT toute connexion.
+     _playbackEvidence.revoke();
+     await _recyclePlayer();
++    await _playerOptionsReady;
+     if (!mounted || gen != _openGeneration) return;
++    _playbackTerminated = false;
++    _fallback.beginPlaybackAttempt();
+     _playbackEvidence.bind(_player);
+     if (_lastOpenedUrl != null && _lastOpenedUrl != realUrl) {
+       _reconnectGate.reset();
+@@ -2060,11 +2075,18 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+       //    - reconnect_delay_max=30 : jusqu'à 30s de backoff
+       //    - reconnect_at_eof=1     : redémarre aussi à l'EOF prématuré
+       //    - reconnect_on_http_error=4xx,5xx : reconnect sur erreurs HTTP
++      // Le relais TS gère DÉJÀ les coupures réseau. Sa fermeture est un
++      // verdict définitif, pas un EOF à relancer par FFmpeg en parallèle.
++      final bool relayedLive = widget.overrideUrl == null &&
++          _currentChannel.isLive && !HlsPreflight.isHlsUrl(_effectiveUrl);
+       await native?.setProperty(
+         'stream-lavf-o',
+-        'reconnect=1,reconnect_streamed=1,reconnect_delay_max=30,'
+-            'reconnect_at_eof=1,reconnect_on_http_error=4xx,5xx,'
+-            'reconnect_on_network_error=1',
++        relayedLive
++            ? 'reconnect=0,reconnect_streamed=0,reconnect_at_eof=0,'
++                'reconnect_on_network_error=0'
++            : 'reconnect=1,reconnect_streamed=1,reconnect_delay_max=30,'
++                'reconnect_at_eof=1,reconnect_on_http_error=4xx,5xx,'
++                'reconnect_on_network_error=1',
+       );
+ 
+       // 2. TAMPON DEMUXER + STRATÉGIE DE REBUFFER
+@@ -2667,7 +2689,46 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+     );
+   }
+ 
++  /// Un verdict définitif termine aussi le moteur : changer seulement
++  /// l'overlay laissait FFmpeg reconnecter, puis masquer l'erreur avec un
++  /// événement « playing » tardif. Les ouvertures suivantes attendent stop.
++  void _stopTerminalPlayback() {
++    _playbackTerminated = true;
++    _openGeneration++;
++    _fallback.stopRecovery();
++    _playbackEvidence.revoke();
++    _startupTimer?.cancel();
++    _vodRelayFallbackTimer?.cancel();
++    _eofReopenTimer?.cancel();
++    _bufferNoticeTimer?.cancel();
++    _reconnectGate.reset();
++    _isPlaying = false;
++    _isBuffering = false;
++    _weakConnection = false;
++    PipService.instance.setPlaybackActive(false);
++    final Player stoppedPlayer = _player;
++    final Future<void> relayClosed =
++        LocalStreamRelay.instance.closeOtherPlaybacks('');
++    final Future<void> stopped = () async {
++      try {
++        await stoppedPlayer.stop().timeout(const Duration(seconds: 5));
++      } catch (e) {
++        StreamDiagnostics.instance.recordEvent('player',
++            'Arrêt définitif du lecteur incomplet : $e', level: 'warn');
++      }
++      await relayClosed;
++    }();
++    _openChain = Future.wait<void>(<Future<void>>[_openChain, stopped])
++        .then<void>((_) {}).catchError((Object e) {
++      StreamDiagnostics.instance.recordEvent('player',
++          'Fermeture définitive incomplète : $e', level: 'warn');
++    });
++    StreamDiagnostics.instance.recordEvent('player',
++        'Lecture terminée : moteur arrêté, tentatives automatiques annulées');
++  }
++
+   void _retry() {
++    _fallback.beginPlaybackAttempt(resetDiagnosis: true);
+     setState(() {
+       _hasError = false;
+       _errorMessage = null;
+@@ -2884,10 +2945,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+   /// true = une réouverture est armée (1/2/4/8 s). false = une attente
+   /// est déjà en cours, ou le budget silencieux est épuisé.
+   bool _scheduleSilentReopen(String why) {
++    if (_playbackTerminated) return false;
+     final int? delay = _reconnectGate.arm(maxAttempts: ReconnectPlan.maxSilent);
+     if (delay == null) return false;
+     _eofReopenTimer?.cancel();
+     final String url = _effectiveUrl;
++    final int generation = _openGeneration;
+     StreamDiagnostics.instance.recordEvent(
+       'watchdog',
+       '$why → réouverture dans $delay ms (essai ${_reconnectGate.attempt}/'
+@@ -2896,7 +2959,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+     );
+     _eofReopenTimer = Timer(Duration(milliseconds: delay), () {
+       if (!_reconnectGate.fire()) return;
+-      if (!mounted) return;
++      if (!mounted || _playbackTerminated || generation != _openGeneration) return;
+       if (widget.overrideUrl == null &&
+           _currentChannel.isLive &&
+           !HlsPreflight.isHlsUrl(url)) {
+diff --git a/test/features/player/upstream_placeholder_test.dart b/test/features/player/upstream_placeholder_test.dart
+index 77fd9da..5dcac04 100644
+--- a/test/features/player/upstream_placeholder_test.dart
++++ b/test/features/player/upstream_placeholder_test.dart
+@@ -1,5 +1,6 @@
+ import 'dart:async';
+ import 'dart:io';
++
+ import 'package:flutter_test/flutter_test.dart';
+ import 'package:tv_king/features/channels/domain/channel.dart';
+ import 'package:tv_king/features/player/data/local_stream_relay.dart';
+@@ -7,38 +8,226 @@ import 'package:tv_king/features/player/data/stream_blocked_fallback.dart';
+ 
+ void main() {
+   for (final bool decoded in <bool>[false, true]) {
+-    test('redirection black.ts : aucun octet transmis, aucune fausse panne réseau (frames=$decoded)', () async {
+-      final HttpServer server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+-      int requests = 0;
+-      server.listen((HttpRequest req) async {
+-        requests++;
+-        if (req.uri.path == '/video/black.ts') {
+-          req.response.headers.contentType = ContentType('video', 'mp2t');
+-          req.response.add(List<int>.filled(188, 0x47));
+-          await req.response.close();
+-        } else {
+-          await req.response.redirect(Uri.parse('http://127.0.0.1:${server.port}/video/black.ts'));
++    test(
++      'black.ts terminalise la lecture et ses retries, puis autorise un essai explicite (frames=$decoded)',
++      () async {
++        final HttpServer server = await HttpServer.bind(
++          InternetAddress.loopbackIPv4,
++          0,
++        );
++        int requests = 0;
++        bool available = false;
++        Timer? feed;
++        server.listen((HttpRequest req) async {
++          requests++;
++          if (available) {
++            req.response.headers.contentType = ContentType('video', 'mp2t');
++            req.response.bufferOutput = false;
++            feed = Timer.periodic(const Duration(milliseconds: 20), (_) {
++              try {
++                req.response.add(List<int>.filled(188 * 5, 0x47));
++              } catch (_) {}
++            });
++          } else if (req.uri.path == '/video/black.ts') {
++            req.response.headers.contentType = ContentType('video', 'mp2t');
++            req.response.add(List<int>.filled(188, 0x47));
++            await req.response.close();
++          } else {
++            await req.response.redirect(
++              Uri.parse('http://127.0.0.1:${server.port}/video/black.ts'),
++            );
++          }
++        });
++        final String url =
++            'http://127.0.0.1:${server.port}/live/test/test/1.ts';
++        final Channel channel = Channel(
++          id: 'placeholder-$decoded',
++          name: 'Chaîne test',
++          category: 'Tests',
++          streamUrl: url,
++          isLive: true,
++        );
++        final Completer<BlockedVerdict> blocked = Completer<BlockedVerdict>();
++        int reopened = 0;
++        final StreamBlockedFallback fallback = StreamBlockedFallback(
++          getChannel: () => channel,
++          getOverrideUrl: () => null,
++          getEffectiveUrl: () => url,
++          isAlive: () => true,
++          hasDecodedFrames: () => decoded,
++          getAdoptedAltUrl: () => null,
++          setAdoptedAltUrl: (_) {},
++          resetWatchdogBudget: () {},
++          reopen: (_) {
++            reopened++;
++          },
++          retryBackoff: const Duration(milliseconds: 300),
++          showBlocked: (BlockedVerdict v) {
++            if (!blocked.isCompleted) blocked.complete(v);
++          },
++        )..attach();
++        final HttpClient client = HttpClient();
++        final LocalStreamRelay relay = LocalStreamRelay.instance;
++        addTearDown(() async {
++          fallback.detach();
++          feed?.cancel();
++          client.close(force: true);
++          await relay.closeOtherPlaybacks('');
++          await server.close(force: true);
++        });
++        // Un EOF peut armer ce retry juste AVANT le verdict du relais.
++        if (!decoded) fallback.onPlaybackRefused('EOF avant le verdict');
++        final String local = await relay.playUrlFor(url);
++        final HttpClientResponse response = await (await client.getUrl(
++          Uri.parse(local),
++        )).close();
++        final List<int> bytes = await response
++            .fold<List<int>>(
++              <int>[],
++              (List<int> a, List<int> b) => a..addAll(b),
++            )
++            .timeout(const Duration(seconds: 5));
++        final verdict = await blocked.future.timeout(
++          const Duration(seconds: 5),
++        );
++        expect(verdict.kind, BlockedKind.channelBlocked);
++        expect(verdict.message, contains('ne signifie pas'));
++        expect(bytes, isEmpty);
++        // Simule les reconnexions FFmpeg sur l'ANCIENNE URL locale : aucun
++        // nouvel amont, même avant que le moteur natif ait fini de s'arrêter.
++        for (int i = 0; i < 2; i++) {
++          final HttpClientResponse retry = await (await client.getUrl(
++            Uri.parse(local),
++          )).close();
++          expect(retry.statusCode, HttpStatus.gone);
++          await retry.drain<void>();
+         }
+-      });
+-      final String url = 'http://127.0.0.1:${server.port}/live/test/test/1.ts';
+-      final Channel channel = Channel(id: 'placeholder-$decoded', name: 'Chaîne test', category: 'Tests', streamUrl: url, isLive: true);
+-      final Completer<BlockedVerdict> blocked = Completer<BlockedVerdict>();
+-      int reopened = 0;
+-      final StreamBlockedFallback fallback = StreamBlockedFallback(
+-          getChannel: () => channel, getOverrideUrl: () => null, getEffectiveUrl: () => url,
+-          isAlive: () => true, hasDecodedFrames: () => decoded, getAdoptedAltUrl: () => null,
+-          setAdoptedAltUrl: (_) {}, resetWatchdogBudget: () {}, reopen: (_) { reopened++; },
+-          showBlocked: (BlockedVerdict v) { if (!blocked.isCompleted) blocked.complete(v); })..attach();
+-      final HttpClient client = HttpClient();
+-      addTearDown(() async { fallback.detach(); client.close(force: true); await server.close(force: true); });
+-      final String local = await LocalStreamRelay.instance.playUrlFor(url);
+-      final HttpClientResponse response = await (await client.getUrl(Uri.parse(local))).close();
+-      final List<int> bytes = await response.fold<List<int>>(<int>[], (List<int> a, List<int> b) => a..addAll(b)).timeout(const Duration(seconds: 5));
+-      final verdict = await blocked.future.timeout(const Duration(seconds: 5));
+-      expect(verdict.kind, BlockedKind.channelBlocked);
+-      expect(bytes, isEmpty);
+-      expect(reopened, 0);
+-      expect(requests, 2, reason: 'pas de reconnexions ni de sondes concurrentes');
+-    });
++        fallback.onPlaybackRefused('erreur mpv tardive');
++        expect(fallback.onContainerUnsupported(), isTrue);
++        await fallback.run();
++        await Future<void>.delayed(const Duration(milliseconds: 400));
++        expect(reopened, 0);
++        expect(
++          requests,
++          2,
++          reason: 'ni reconnexion fournisseur, ni sonde après le verdict',
++        );
++
++        // Le fournisseur rétablit la chaîne : Réessayer doit marcher, sans
++        // conserver un blacklistage permanent sur la chaîne ou le compte.
++        available = true;
++        fallback.beginPlaybackAttempt(resetDiagnosis: true);
++        final String retriedLocal = await relay.playUrlFor(url);
++        final HttpClientResponse healthy = await (await client.getUrl(
++          Uri.parse(retriedLocal),
++        )).close();
++        expect(
++          await healthy.first.timeout(const Duration(seconds: 5)),
++          isNotEmpty,
++        );
++        expect(requests, 3);
++      },
++    );
+   }
++
++  test('un diagnostic déjà en attente ne sonde plus après black.ts', () async {
++    final HttpServer server = await HttpServer.bind(
++      InternetAddress.loopbackIPv4,
++      0,
++    );
++    int requests = 0;
++    server.listen((HttpRequest req) async {
++      requests++;
++      if (req.uri.path == '/video/black.ts') {
++        req.response.headers.contentType = ContentType('video', 'mp2t');
++        req.response.add(List<int>.filled(188, 0x47));
++        await req.response.close();
++      } else {
++        await req.response.redirect(
++          Uri.parse('http://127.0.0.1:${server.port}/video/black.ts'),
++        );
++      }
++    });
++    final String url = 'http://127.0.0.1:${server.port}/live/test/test/2.ts';
++    final Channel channel = Channel(
++      id: 'in-flight',
++      name: 'Test',
++      category: 'Tests',
++      streamUrl: url,
++      isLive: true,
++    );
++    final Completer<void> released = Completer<void>();
++    final Completer<void> blocked = Completer<void>();
++    int reopens = 0;
++    final StreamBlockedFallback fallback = StreamBlockedFallback(
++      getChannel: () => channel,
++      getOverrideUrl: () => null,
++      getEffectiveUrl: () => url,
++      isAlive: () => true,
++      hasDecodedFrames: () => false,
++      getAdoptedAltUrl: () => null,
++      setAdoptedAltUrl: (_) {},
++      resetWatchdogBudget: () {},
++      reopen: (_) {
++        reopens++;
++      },
++      releaseForDiagnosis: () => released.future,
++      showBlocked: (_) {
++        if (!blocked.isCompleted) blocked.complete();
++      },
++    )..attach();
++    final HttpClient client = HttpClient();
++    addTearDown(() async {
++      fallback.detach();
++      if (!released.isCompleted) released.complete();
++      client.close(force: true);
++      await LocalStreamRelay.instance.closeOtherPlaybacks('');
++      await server.close(force: true);
++    });
++    final Future<void> diagnosis = fallback.run();
++    final String local = await LocalStreamRelay.instance.playUrlFor(url);
++    final HttpClientResponse response = await (await client.getUrl(
++      Uri.parse(local),
++    )).close();
++    await response.drain<void>();
++    await blocked.future.timeout(const Duration(seconds: 5));
++    released.complete();
++    await diagnosis;
++    expect(requests, 2);
++    expect(reopens, 0);
++  });
++
++  test(
++    'un ancien retry ne survit pas à une nouvelle tentative de la même chaîne',
++    () async {
++      final Channel channel = Channel(
++        id: 'generation',
++        name: 'Test',
++        category: 'Tests',
++        streamUrl: 'http://example.invalid/1.ts',
++        isLive: true,
++      );
++      int reopens = 0;
++      final StreamBlockedFallback fallback = StreamBlockedFallback(
++        getChannel: () => channel,
++        getOverrideUrl: () => null,
++        getEffectiveUrl: () => channel.streamUrl,
++        isAlive: () => true,
++        hasDecodedFrames: () => false,
++        getAdoptedAltUrl: () => null,
++        setAdoptedAltUrl: (_) {},
++        resetWatchdogBudget: () {},
++        reopen: (_) {
++          reopens++;
++        },
++        retryBackoff: const Duration(milliseconds: 20),
++        showBlocked: (_) {},
++      );
++      fallback.onPlaybackRefused('ancienne tentative');
++      fallback.beginPlaybackAttempt(resetDiagnosis: true);
++      await Future<void>.delayed(const Duration(milliseconds: 60));
++      expect(reopens, 0);
++      fallback.detach();
++    },
++  );
+ }
