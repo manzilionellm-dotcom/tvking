@@ -24,6 +24,8 @@
 //  enchaîner 20 setUrl gelait la box.
 // =========================================================
 import 'dart:async';
+import 'package:flutter/foundation.dart';
+import '../desktop/desktop_cast_controls.dart';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
@@ -98,6 +100,7 @@ class TvPlayerScreen extends StatefulWidget {
 class _TvPlayerScreenState extends State<TvPlayerScreen>
     with WidgetsBindingObserver {
   late final NativeVideoController _controller;
+  final GlobalKey<DesktopCastControlsState> _desktopCastKey = GlobalKey<DesktopCastControlsState>();
   final FocusNode _focus = FocusNode();
 
   late int _index = widget.startIndex;
@@ -1217,6 +1220,10 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   // Lecture/pause (touche média OU bouton tactile). setState pour rafraîchir
   // l'icône ▶/⏸ des contrôles tactiles.
   void _togglePlayPause() {
+    if (_desktopCastKey.currentState?.ownsSession == true) {
+      unawaited(_desktopCastKey.currentState!.togglePause());
+      return;
+    }
     if (_controller.isPlaying) {
       _controller.pause();
     } else {
@@ -1537,6 +1544,10 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
                       ),
                     ),
                   ),
+                  if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows)
+                    Positioned(top: TvDimens.safeV, right: TvDimens.safeH,
+                      child: DesktopCastControls(key: _desktopCastKey,
+                        controller: _controller, streamUrl: _playingUrl, title: _current.name, imageUrl: _current.logoUrl)),
                   // Numéro saisi à la télécommande (coin haut-droit).
                   if (_numBuffer.isNotEmpty)
                     Positioned(

@@ -13,6 +13,7 @@
 // =========================================================
 
 import '../domain/cast_device.dart';
+import 'cast_platform.dart';
 import 'google_cast_transport.dart';
 import 'roku_ecp_transport.dart';
 import 'upnp_av_transport.dart';
@@ -32,7 +33,7 @@ abstract class CastTransport {
   /// affichera son placeholder).
   Future<void> playStream({
     required String streamUrl,
-    String title = '7 MOTION',
+    String title = 'ZUNO',
     String? imageUrl,
   });
 
@@ -40,22 +41,15 @@ abstract class CastTransport {
   Future<void> resume();
   Future<void> stop();
 
-  /// Nom de la stratégie RÉELLEMENT empruntée par le dernier [playStream],
-  /// pour le rapport de diagnostic. Par défaut `'direct'` : le flux est parti
-  /// tel quel au récepteur. Un transport qui route le flux de façon
-  /// conditionnelle SURCHARGE ce getter pour refléter le vrai chemin — Google
-  /// Cast renvoie ainsi `'proxy_signed'` (URL /cast-proxy signée) ou
-  /// `'local_hls_relay'` (repli relais HLS du téléphone) selon le cas. Le
-  /// CastManager le lit APRÈS [playStream] pour étiqueter l'`AttemptResult`
-  /// au lieu de supposer `'direct'`.
-  String get lastStrategyName => 'direct';
-
   /// Construit l'implémentation appropriée pour un device donné.
   /// Le `CastManager` appelle cette factory dès qu'il a besoin de
   /// piloter un récepteur. Aucune ressource n'est ouverte ici —
   /// les connexions réseau sont établies au premier appel à
   /// [playStream].
   static CastTransport forDevice(CastDevice device) {
+    if (!CastPlatform.supports(device.kind)) {
+      throw UnsupportedError('Ce protocole nécessite le SDK Android. Sur Windows, utilisez un récepteur DLNA ou Roku.');
+    }
     switch (device.kind) {
       case CastDeviceKind.dlna:
         return UpnpAvTransport(device);

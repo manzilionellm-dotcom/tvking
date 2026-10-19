@@ -3026,5 +3026,50 @@
   "tvWhatsAppActivationRequest": "Bonjour, je souhaite activer Zuno.",
   "@tvWhatsAppActivationRequest": {
     "description": "Demande préremplie du QR WhatsApp. La MAC ASCII est ajoutée séparément, sur sa propre ligne, pour conserver son ordre en arabe."
-  }
+  },
+  "castErrorTimeoutRetry": "La TV met trop de temps à répondre. Réessaie ou choisis une autre TV.",
+  "castProgressRelay": "Préparation du relais…",
+  "castFriendlyNetworkFail": "Connexion impossible avec la TV.",
+  "castFriendlyTvTimeout": "La TV ne répond pas. Vérifie le WiFi.",
+  "castFriendlyBadFormat": "Ta TV n'accepte pas ce format. Essaie une autre chaîne.",
+  "castProgressLive": "Diffusion en cours sur la TV",
+  "castFriendlyAuthExpired": "Accès au flux refusé — ton abonnement a peut-être expiré.",
+  "castFriendlyTvRefused": "Cette TV n'a pas accepté ce flux. Essaie une autre chaîne.",
+  "castProgressConnectingAttempt": "Connexion à la TV ({attempt}/{total})…",
+  "@castProgressConnectingAttempt": {
+    "placeholders": {
+      "attempt": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "castFriendlyGenericFail": "Le cast a échoué. Essaie de relancer.",
+  "castProgressWebFallback": "Passage en mode universel (QR code)…",
+  "castFriendlyTvUnreachable": "La TV ne répond pas. Vérifie qu’elle est allumée et connectée au même réseau privé que cet appareil.",
+  "castProgressDetecting": "Détection de la TV…",
+  "castDlnaReceiverFallback": "Récepteur DLNA",
+  "castErrorApIsolation": "La TV ne peut pas joindre cet appareil. Connecte les deux au même réseau privé, sans réseau invité.",
+  "castProgressRetrying": "Nouvel essai en mode compatible ({attempt}/{total})…",
+  "@castProgressRetrying": {
+    "placeholders": {
+      "attempt": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "castFriendlyTvStuck": "Ta TV est bloquée sur un précédent cast. Éteins-la quelques secondes puis rallume-la et réessaie.",
+  "castErrorReceiverRejected": "La TV a refusé ce flux — format probablement non pris en charge par ce récepteur. Essaie une autre chaîne.",
+  "castProgressConnecting": "Connexion à la TV…",
+  "castFriendlyNoGms": "Le Chromecast officiel a besoin des services Google Play, absents sur ce téléphone. Tu peux quand même caster vers une Smart TV (DLNA) ou un Roku depuis la liste.",
+  "castErrorTimeout": "Cast trop long — la TV ou le réseau ne répondent pas",
+  "castFriendlyDnsUnstable": "Internet ou DNS instable. Réessaie dans quelques secondes.",
+  "castFriendlyProviderLimit": "Ton fournisseur IPTV refuse une connexion supplémentaire (limite atteinte). Coupe une autre app qui regarde et réessaie.",
+  "castProgressValidating": "Vérification du flux…",
+  "castWindowsHelp": "PC et TV sur le même réseau privé (Wi-Fi ou Ethernet). Choisis une TV DLNA ou Roku. Google Cast seul n’est pas disponible sous Windows. Utilise la télécommande de la TV pour les pistes audio et l’avance rapide."
 }
