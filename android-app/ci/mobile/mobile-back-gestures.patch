@@ -1,0 +1,594 @@
+diff --git a/android_overlay/google_cast/apply_cast_patch.sh b/android_overlay/google_cast/apply_cast_patch.sh
+index 8dd3032..e77f855 100755
+--- a/android_overlay/google_cast/apply_cast_patch.sh
++++ b/android_overlay/google_cast/apply_cast_patch.sh
+@@ -245,3 +245,20 @@ cat "$MANIFEST"
+ echo "============================================="
+ echo "  ✅ Cast SDK overlay applied"
+ echo "============================================="
++
++# Retour prédictif Android : appliqué APRÈS la génération native et à chaque
++# build, pour ne pas perdre le réglage lors du prochain flutter create.
++python3 - "$MANIFEST" <<'PYBACK'
++from pathlib import Path
++import re
++import sys
++p = Path(sys.argv[1])
++s = p.read_text()
++s = re.sub(r'android:enableOnBackInvokedCallback="[^"]*"',
++           'android:enableOnBackInvokedCallback="true"', s)
++start = s.index('<application')
++end = s.index('>', start)
++if 'android:enableOnBackInvokedCallback=' not in s[start:end]:
++    s = s[:end] + '\n        android:enableOnBackInvokedCallback="true"' + s[end:]
++p.write_text(s)
++PYBACK
+diff --git a/lib/core/theme/app_theme.dart b/lib/core/theme/app_theme.dart
+index ca1ecdf..0687980 100644
+--- a/lib/core/theme/app_theme.dart
++++ b/lib/core/theme/app_theme.dart
+@@ -279,10 +279,14 @@ abstract final class AppTheme {
+       splashColor: AppColors.accent.withValues(alpha: 0.14),
+       highlightColor: AppColors.accent.withValues(alpha: 0.08),
+ 
+-      // ----- Transitions de page : fade sobre -----
++      // Transitions natives : Android prédictif, balayage interactif iOS.
+       pageTransitionsTheme: const PageTransitionsTheme(
+         builders: <TargetPlatform, PageTransitionsBuilder>{
+-          TargetPlatform.android: PremiumPageTransitionsBuilder(),
++          TargetPlatform.android: PredictiveBackPageTransitionsBuilder(),
++          TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
++          TargetPlatform.macOS: CupertinoPageTransitionsBuilder(),
++          TargetPlatform.windows: PremiumPageTransitionsBuilder(),
++          TargetPlatform.linux: PremiumPageTransitionsBuilder(),
+         },
+       ),
+     );
+diff --git a/lib/features/player/presentation/player_gesture_layer.dart b/lib/features/player/presentation/player_gesture_layer.dart
+index 907efb1..945ea35 100644
+--- a/lib/features/player/presentation/player_gesture_layer.dart
++++ b/lib/features/player/presentation/player_gesture_layer.dart
+@@ -30,8 +30,10 @@
+ // =========================================================
+ 
+ import 'dart:async';
++import 'dart:math' as math;
+ 
+ import 'package:flutter/material.dart';
++import 'package:flutter/gestures.dart';
+ import 'package:screen_brightness/screen_brightness.dart';
+ 
+ import '../../../core/theme/app_colors.dart';
+@@ -154,9 +156,11 @@ class _PlayerGestureLayerState extends State<PlayerGestureLayer> {
+     // doit PAS survivre au lecteur — on rend la main au système en
+     // quittant. Fire-and-forget (dispose ne peut pas attendre).
+     if (_brightnessTouched) {
+-      unawaited(ScreenBrightness.instance
+-          .resetApplicationScreenBrightness()
+-          .catchError((Object _) {}));
++      unawaited(
++        ScreenBrightness.instance.resetApplicationScreenBrightness().catchError(
++          (Object _) {},
++        ),
++      );
+     }
+     super.dispose();
+   }
+@@ -188,8 +192,7 @@ class _PlayerGestureLayerState extends State<PlayerGestureLayer> {
+     final Duration dur = widget.duration();
+     if (dur <= Duration.zero) return;
+ 
+-    Duration target =
+-        widget.position() + Duration(seconds: forward ? 10 : -10);
++    Duration target = widget.position() + Duration(seconds: forward ? 10 : -10);
+     if (target < Duration.zero) target = Duration.zero;
+     if (target > dur) target = dur;
+     widget.onSeekTo(target);
+@@ -238,9 +241,11 @@ class _PlayerGestureLayerState extends State<PlayerGestureLayer> {
+         // Fire-and-forget : attendre chaque aller-retour plateforme
+         // saccaderait le geste ; en cas d'échec (plugin absent) la
+         // jauge reste cohérente et le drag inoffensif.
+-        unawaited(ScreenBrightness.instance
+-            .setApplicationScreenBrightness(_brightness)
+-            .catchError((Object _) {}));
++        unawaited(
++          ScreenBrightness.instance
++              .setApplicationScreenBrightness(_brightness)
++              .catchError((Object _) {}),
++        );
+       }
+     });
+   }
+@@ -281,9 +286,11 @@ class _PlayerGestureLayerState extends State<PlayerGestureLayer> {
+     // Toute la largeur d'écran = ±3 min de contenu (borné à la durée) :
+     // précision avant tout — pour traverser un film entier, la barre de
+     // progression de l'overlay existe déjà.
+-    final Duration window =
+-        dur < const Duration(minutes: 3) ? dur : const Duration(minutes: 3);
+-    Duration target = _scrubStart +
++    final Duration window = dur < const Duration(minutes: 3)
++        ? dur
++        : const Duration(minutes: 3);
++    Duration target =
++        _scrubStart +
+         Duration(
+           milliseconds: (_scrubDx / width * window.inMilliseconds).round(),
+         );
+@@ -305,6 +312,29 @@ class _PlayerGestureLayerState extends State<PlayerGestureLayer> {
+     setState(() => _scrubbing = false);
+   }
+ 
++  /// Refuser AVANT l'arène gestuelle, et non après onDragStart : sinon
++  /// le scrub gagne déjà contre le balayage de retour de la route iOS.
++  /// Les marges système sont relues à chaque geste (rotation / multifenêtre).
++  bool _canStartScrub(PointerDownEvent event) {
++    final RenderBox? box = context.findRenderObject() as RenderBox?;
++    if (box == null || !box.hasSize) return false;
++    final MediaQueryData media = MediaQuery.of(context);
++    final double x = box.globalToLocal(event.position).dx;
++    final bool cupertino = Theme.of(context).platform == TargetPlatform.iOS;
++    final bool rtl = Directionality.of(context) == TextDirection.rtl;
++    // 20 dp est la zone de départ de la route Cupertino ; les découpes
++    // et les marges Android fournies par le système peuvent l'élargir.
++    final double left = math.max(
++      media.systemGestureInsets.left,
++      cupertino && !rtl ? 20 + media.padding.left : 0.0,
++    );
++    final double right = math.max(
++      media.systemGestureInsets.right,
++      cupertino && rtl ? 20 + media.padding.right : 0.0,
++    );
++    return x > left && x < box.size.width - right;
++  }
++
+   // ── Build ──────────────────────────────────────────────────────────
+ 
+   @override
+@@ -323,21 +353,35 @@ class _PlayerGestureLayerState extends State<PlayerGestureLayer> {
+       onVerticalDragUpdate: vertical ? _onVerticalDragUpdate : null,
+       onVerticalDragEnd: vertical ? _onVerticalDragEnd : null,
+       onVerticalDragCancel: vertical ? _onVerticalDragCancel : null,
+-      onHorizontalDragStart: seek ? _onHorizontalDragStart : null,
+-      onHorizontalDragUpdate: seek ? _onHorizontalDragUpdate : null,
+-      onHorizontalDragEnd: seek ? _onHorizontalDragEnd : null,
+-      onHorizontalDragCancel: seek ? _onHorizontalDragCancel : null,
+-      child: Stack(
+-        fit: StackFit.expand,
+-        children: <Widget>[
+-          widget.child,
+-          // Feedbacks visuels — IgnorePointer : jamais dans le chemin
+-          // tactile, ils ne doivent voler ni tap ni drag.
+-          if (_seekFlashSecs != 0) IgnorePointer(child: _buildSeekFlash()),
+-          if (_vDrag != _VerticalDragMode.none)
+-            IgnorePointer(child: _buildVerticalGauge()),
+-          if (_scrubbing) IgnorePointer(child: _buildScrubPreview()),
+-        ],
++      child: RawGestureDetector(
++        gestures: <Type, GestureRecognizerFactory>{
++          if (seek)
++            _PlayerScrubGestureRecognizer:
++                GestureRecognizerFactoryWithHandlers<
++                  _PlayerScrubGestureRecognizer
++                >(() => _PlayerScrubGestureRecognizer(), (
++                  _PlayerScrubGestureRecognizer recognizer,
++                ) {
++                  recognizer
++                    ..acceptStart = _canStartScrub
++                    ..onStart = _onHorizontalDragStart
++                    ..onUpdate = _onHorizontalDragUpdate
++                    ..onEnd = _onHorizontalDragEnd
++                    ..onCancel = _onHorizontalDragCancel;
++                }),
++        },
++        child: Stack(
++          fit: StackFit.expand,
++          children: <Widget>[
++            widget.child,
++            // Feedbacks visuels — IgnorePointer : jamais dans le chemin
++            // tactile, ils ne doivent voler ni tap ni drag.
++            if (_seekFlashSecs != 0) IgnorePointer(child: _buildSeekFlash()),
++            if (_vDrag != _VerticalDragMode.none)
++              IgnorePointer(child: _buildVerticalGauge()),
++            if (_scrubbing) IgnorePointer(child: _buildScrubPreview()),
++          ],
++        ),
+       ),
+     );
+   }
+@@ -394,14 +438,15 @@ class _PlayerGestureLayerState extends State<PlayerGestureLayer> {
+   /// doigt, avec icône adaptée au niveau et pourcentage.
+   Widget _buildVerticalGauge() {
+     final bool isVolume = _vDrag == _VerticalDragMode.volume;
+-    final double fraction =
+-        (isVolume ? _volume / 100 : _brightness).clamp(0.0, 1.0).toDouble();
++    final double fraction = (isVolume ? _volume / 100 : _brightness)
++        .clamp(0.0, 1.0)
++        .toDouble();
+     final IconData icon = isVolume
+         ? (_volume <= 0
+-            ? Icons.volume_off_rounded
+-            : _volume < 50
+-                ? Icons.volume_down_rounded
+-                : Icons.volume_up_rounded)
++              ? Icons.volume_off_rounded
++              : _volume < 50
++              ? Icons.volume_down_rounded
++              : Icons.volume_up_rounded)
+         : Icons.brightness_6_rounded;
+     return Align(
+       alignment: Alignment(isVolume ? 0.75 : -0.75, 0),
+@@ -496,3 +541,13 @@ class _PlayerGestureLayerState extends State<PlayerGestureLayer> {
+     );
+   }
+ }
++
++/// Seul le scrub horizontal abandonne les bords réservés au système.
++/// Le tap, le zapping vertical et les boutons gardent leur comportement.
++class _PlayerScrubGestureRecognizer extends HorizontalDragGestureRecognizer {
++  bool Function(PointerDownEvent event)? acceptStart;
++
++  @override
++  bool isPointerAllowed(PointerDownEvent event) =>
++      (acceptStart?.call(event) ?? false) && super.isPointerAllowed(event);
++}
+diff --git a/lib/features/player/presentation/video_player_screen.dart b/lib/features/player/presentation/video_player_screen.dart
+index 5ee2afb..f08184a 100644
+--- a/lib/features/player/presentation/video_player_screen.dart
++++ b/lib/features/player/presentation/video_player_screen.dart
+@@ -3346,50 +3346,21 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+     // garantit qu'au cold start le player capte les touches même
+     // si rien d'autre n'a le focus.
+     //
+-    // `PopScope(canPop: false, ...)` intercepte le back gesture /
+-    // bouton retour pour entrer en PiP au lieu de fermer le
+-    // player — comportement YouTube Premium canonique : "tu n'as
+-    // pas DIT que tu voulais arrêter la vidéo, tu as juste appuyé
+-    // back, donc je continue de jouer en mini-fenêtre."
+-    return PopScope(
+-      canPop: false,
+-      onPopInvokedWithResult: _onPopInvoked,
+-      child: Focus(
+-        autofocus: true,
+-        onKeyEvent: _handlePlayerKeyEvent,
+-        child: Scaffold(
+-          backgroundColor: Colors.black,
+-          body: useTikTokSwipe
+-              ? _buildTikTokPageView()
+-              : _buildPlayerSurface(),
+-        ),
++    // Retour = une seule page en arrière, par bouton OU geste natif.
++    // Le canPop:false permanent empêchait le balayage iOS et transformait
++    // le retour Android en PiP (donc sortie vers l'accueil du téléphone).
++    // Le PiP reste disponible par son bouton et l'action Home native.
++    // Le dispose existant ferme le lecteur et rend sa connexion au retour.
++    return Focus(
++      autofocus: true,
++      onKeyEvent: _handlePlayerKeyEvent,
++      child: Scaffold(
++        backgroundColor: Colors.black,
++        body: useTikTokSwipe ? _buildTikTokPageView() : _buildPlayerSurface(),
+       ),
+     );
+   }
+ 
+-  /// Intercepteur du BACK. Si la vidéo joue ET que le PiP est
+-  /// supporté ET qu'on n'est pas déjà en PiP, on entre en mini-
+-  /// fenêtre plutôt que de fermer le player. Sinon, pop normal.
+-  Future<void> _onPopInvoked(bool didPop, Object? result) async {
+-    if (didPop) return; // déjà sorti, rien à faire
+-    if (!mounted) return;
+-
+-    final bool alreadyInPip = PipService.instance.isInPipMode;
+-    final bool pipSupported = await PipService.instance.isSupported();
+-
+-    if (!alreadyInPip && pipSupported && _isPlaying) {
+-      final bool ok = await PipService.instance.enterPip();
+-      // Si le natif refuse (permission désactivée, etc.), on quitte
+-      // quand même — sinon le bouton back ferait rien.
+-      if (!ok && mounted) {
+-        Navigator.of(context).pop();
+-      }
+-      return;
+-    }
+-    // Pas de PiP possible → pop normal du player.
+-    if (mounted) Navigator.of(context).pop();
+-  }
+-
+   /// PageView vertical "TikTok-style" — swipe haut/bas pour zapper.
+   /// Chaque page est la zone player ; la page active rend la vidéo
+   /// en cours de lecture, les voisines un poster de la chaîne (logo
+diff --git a/lib/features/simple_home/presentation/widgets/category_browser_view.dart b/lib/features/simple_home/presentation/widgets/category_browser_view.dart
+index ccf1433..e43c2c4 100644
+--- a/lib/features/simple_home/presentation/widgets/category_browser_view.dart
++++ b/lib/features/simple_home/presentation/widgets/category_browser_view.dart
+@@ -136,6 +136,12 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
+   /// Catégorie ouverte (`null` = on est sur la liste des catégories).
+   String? _selected;
+ 
++  // Les catégories ont leur propre pile : le retour de la liste remonte
++  // d'un niveau sans quitter l'accueil. Les vraies routes permettent aussi
++  // le balayage interactif iOS, impossible avec un simple setState/PopScope.
++  final GlobalKey<NavigatorState> _categoryNavigator =
++      GlobalKey<NavigatorState>();
++
+   /// Rayon actif (TV / Cinéma / Série / Adulte). `null` au tout début
+   /// = pas encore choisi → on prend le 1er rayon présent (plus de bouton
+   /// « Tout » : il embrouillait, demande client). Toujours un rayon
+@@ -909,19 +915,35 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
+     final bool inCategory =
+         allAdultLive || (_selected != null && grouped.containsKey(_selected));
+ 
+-    // On intercepte le « retour » système pour remonter d'abord de la
+-    // liste des chaînes vers la liste des catégories (au lieu de quitter).
+-    return PopScope<Object?>(
+-      canPop: !inCategory,
+-      onPopInvokedWithResult: (bool didPop, Object? _) {
+-        if (!didPop && inCategory) setState(() => _selected = null);
++    return NavigatorPopHandler<Object?>(
++      onPopWithResult: (Object? result) {
++        final NavigatorState? navigator = _categoryNavigator.currentState;
++        if (navigator != null && navigator.canPop()) navigator.pop(result);
+       },
+-      child: inCategory
+-          ? _buildChannelList(
+-              _selected!,
+-              allAdultLive ? _visibleChannels : grouped[_selected]!,
+-            )
+-          : _buildCategoryList(grouped),
++      child: Navigator(
++        key: _categoryNavigator,
++        pages: <Page<Object?>>[
++          MaterialPage<Object?>(
++            key: const ValueKey<String>('categories'),
++            child: _buildCategoryList(grouped),
++          ),
++          if (inCategory)
++            MaterialPage<Object?>(
++              key: ValueKey<String>('channels:$_selected'),
++              child: _buildChannelList(
++                _selected!,
++                allAdultLive ? _visibleChannels : grouped[_selected]!,
++              ),
++            ),
++        ],
++        onDidRemovePage: (Page<Object?> page) {
++          // Une ancienne transition ne doit pas effacer la nouvelle sélection
++          // ni rouvrir un espace dont le profil vient de perdre l'accès.
++          if (mounted && page.key == ValueKey<String>('channels:$_selected')) {
++            setState(() => _selected = null);
++          }
++        },
++      ),
+     );
+   }
+ 
+@@ -978,6 +1000,7 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
+           color: AppColors.accent,
+           backgroundColor: AppColors.lumiere(context).elevated,
+           child: ListView(
++            key: const PageStorageKey<String>('home-categories-scroll'),
+             // Parent AlwaysScrollable : le geste « tirer » doit marcher même
+             // quand le contenu tient dans l'écran (petite playlist).
+             physics: const BouncingScrollPhysics(
+@@ -1200,7 +1223,7 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
+         Material(
+           color: Colors.transparent,
+           child: PremiumPress(
+-            onTap: () => setState(() => _selected = null),
++            onTap: () => _categoryNavigator.currentState?.maybePop(),
+             child: Padding(
+               padding: const EdgeInsets.fromLTRB(16, 12, 20, 12),
+               child: Row(
+@@ -1246,6 +1269,7 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
+               final int cols = _adaptiveColumns(box.maxWidth);
+               final int rowCount = (channels.length + cols - 1) ~/ cols;
+               return ListView.separated(
++                key: PageStorageKey<String>('channels-scroll:$category'),
+                 physics: const BouncingScrollPhysics(),
+                 padding: EdgeInsets.fromLTRB(
+                   10,
+diff --git a/test/features/player/mobile_gestures_test.dart b/test/features/player/mobile_gestures_test.dart
+new file mode 100644
+index 0000000..26153c5
+--- /dev/null
++++ b/test/features/player/mobile_gestures_test.dart
+@@ -0,0 +1,146 @@
++// Parcours utilisateur sans moteur vidéo : les vraies routes, le vrai thème
++// et la couche tactile de production doivent rendre le geste au bon écran.
++import 'package:flutter/foundation.dart';
++import 'package:flutter/material.dart';
++import 'package:flutter/services.dart';
++import 'package:flutter_test/flutter_test.dart';
++import 'package:tv_king/core/theme/app_theme.dart';
++import 'package:tv_king/features/player/presentation/player_gesture_layer.dart';
++
++import '../../support/premium_capture_fonts.dart';
++
++Future<void> _systemGesture(
++  WidgetTester tester,
++  String method, [
++  Map<String, Object>? arguments,
++]) async {
++  await tester.binding.defaultBinaryMessenger.handlePlatformMessage(
++    'flutter/backgesture',
++    const StandardMethodCodec().encodeMethodCall(MethodCall(method, arguments)),
++    (ByteData? _) {},
++  );
++  await tester.pump();
++}
++
++void main() {
++  TestWidgetsFlutterBinding.ensureInitialized();
++  setUpAll(preparePremiumCaptureFonts);
++
++  Future<void> openPlayer(
++    WidgetTester tester,
++    TargetPlatform platform,
++    ValueChanged<Duration> seek,
++  ) async {
++    debugDefaultTargetPlatformOverride = platform;
++    addTearDown(() => debugDefaultTargetPlatformOverride = null);
++    final key = GlobalKey<NavigatorState>();
++    await tester.pumpWidget(
++      MaterialApp(
++        navigatorKey: key,
++        theme: AppTheme.cinema,
++        home: const Scaffold(body: Text('catalogue')),
++      ),
++    );
++    key.currentState!.push<void>(
++      MaterialPageRoute<void>(
++        builder: (_) => const Scaffold(body: Text('fiche précédente')),
++      ),
++    );
++    await tester.pumpAndSettle();
++    key.currentState!.push<void>(
++      MaterialPageRoute<void>(
++        builder: (_) => Scaffold(
++          body: PlayerGestureLayer(
++            onTap: () {},
++            seekEnabled: true,
++            verticalGesturesEnabled: true,
++            position: () => const Duration(minutes: 1),
++            duration: () => const Duration(minutes: 10),
++            onSeekTo: seek,
++            volume: () => 50,
++            onSetVolume: (_) {},
++            onDoubleTapCenter: () {},
++            child: const Center(child: Text('lecture')),
++          ),
++        ),
++      ),
++    );
++    await tester.pumpAndSettle();
++  }
++
++  testWidgets('Android : bouton retour ne saute pas la fiche', (tester) async {
++    await openPlayer(tester, TargetPlatform.android, (_) {});
++    await tester.binding.handlePopRoute();
++    await tester.pumpAndSettle();
++    expect(find.text('fiche précédente'), findsOneWidget);
++    expect(find.text('catalogue'), findsNothing);
++  });
++
++  testWidgets('Android : retour prédictif annulé puis validé', (tester) async {
++    await openPlayer(tester, TargetPlatform.android, (_) {});
++    for (final commit in <bool>[false, true]) {
++      await _systemGesture(tester, 'startBackGesture', <String, Object>{
++        'touchOffset': <double>[5, 300],
++        'progress': 0.0,
++        'swipeEdge': 0,
++      });
++      await _systemGesture(
++        tester,
++        'updateBackGestureProgress',
++        <String, Object>{
++          'touchOffset': <double>[220, 300],
++          'progress': 0.6,
++          'swipeEdge': 0,
++        },
++      );
++      await _systemGesture(
++        tester,
++        commit ? 'commitBackGesture' : 'cancelBackGesture',
++      );
++      await tester.pumpAndSettle();
++      expect(
++        find.text(commit ? 'fiche précédente' : 'lecture'),
++        findsOneWidget,
++      );
++      expect(find.text('catalogue'), findsNothing);
++    }
++  });
++
++  testWidgets('iPhone : bord retour prioritaire sur le scrub vidéo', (
++    tester,
++  ) async {
++    final seeks = <Duration>[];
++    await openPlayer(tester, TargetPlatform.iOS, seeks.add);
++    await tester.dragFrom(const Offset(5, 300), const Offset(650, 0));
++    await tester.pumpAndSettle();
++    expect(find.text('fiche précédente'), findsOneWidget);
++    expect(find.text('catalogue'), findsNothing);
++    expect(seeks, isEmpty);
++  });
++
++  testWidgets('iPhone : geste annulé conserve la lecture', (tester) async {
++    final seeks = <Duration>[];
++    await openPlayer(tester, TargetPlatform.iOS, seeks.add);
++    final gesture = await tester.startGesture(const Offset(5, 300));
++    await gesture.moveBy(const Offset(180, 0));
++    await tester.pump();
++    await gesture.moveBy(const Offset(-175, 0));
++    await tester.pump(const Duration(milliseconds: 400));
++    await gesture.up();
++    await tester.pumpAndSettle();
++    expect(find.text('lecture'), findsOneWidget);
++    expect(seeks, isEmpty);
++  });
++
++  testWidgets('iPhone : glisser au centre avance toujours la vidéo', (
++    tester,
++  ) async {
++    final seeks = <Duration>[];
++    await openPlayer(tester, TargetPlatform.iOS, seeks.add);
++    await tester.dragFrom(const Offset(300, 300), const Offset(200, 0));
++    await tester.pumpAndSettle();
++    expect(find.text('lecture'), findsOneWidget);
++    expect(seeks, isNotEmpty);
++    expect(seeks.last, greaterThan(const Duration(minutes: 1)));
++  });
++}
+diff --git a/test/features/simple_home/premium_home_visual_test.dart b/test/features/simple_home/premium_home_visual_test.dart
+index 0f69941..f684fc1 100644
+--- a/test/features/simple_home/premium_home_visual_test.dart
++++ b/test/features/simple_home/premium_home_visual_test.dart
+@@ -4,6 +4,7 @@ import 'dart:io';
+ import 'dart:ui' as ui;
+ 
+ import 'package:flutter/material.dart';
++import 'package:flutter/foundation.dart';
+ import 'package:flutter/rendering.dart';
+ import 'package:flutter_test/flutter_test.dart';
+ import 'package:google_fonts/google_fonts.dart';
+@@ -130,6 +131,40 @@ void main() {
+     await db.close();
+   });
+ 
++  for (final platform in <TargetPlatform>[TargetPlatform.android, TargetPlatform.iOS]) {
++    testWidgets('Retour ${platform.name} : lecteur puis catégorie, un niveau à la fois', (tester) async {
++      debugDefaultTargetPlatformOverride = platform;
++      addTearDown(() => debugDefaultTargetPlatformOverride = null);
++      await tester.pumpWidget(_host(Scaffold(body: CategoryBrowserView(channels: _channels))));
++      await _render(tester);
++      await tester.scrollUntilVisible(find.text('Sport').last, 160,
++          scrollable: find.byType(Scrollable).first);
++      await tester.tap(find.text('Sport').last);
++      await tester.pumpAndSettle();
++      expect(find.text('Sport 1'), findsOneWidget);
++      final navigator = Navigator.of(tester.element(find.byType(CategoryBrowserView)));
++      navigator.push<void>(MaterialPageRoute<void>(
++        builder: (_) => const Scaffold(body: Text('lecture de test')),
++      ));
++      await tester.pumpAndSettle();
++      // Un retour du lecteur ne doit pas aussi consommer celui de la catégorie.
++      await tester.binding.handlePopRoute();
++      await tester.pumpAndSettle();
++      expect(find.text('Sport 1'), findsOneWidget);
++      if (platform == TargetPlatform.iOS) {
++        await tester.dragFrom(const Offset(5, 300), const Offset(650, 0));
++      } else {
++        await tester.binding.handlePopRoute();
++      }
++      await tester.pumpAndSettle();
++      expect(find.byKey(const PageStorageKey<String>('channels-scroll:Sport')), findsNothing);
++      expect(find.text('Sport').last, findsOneWidget);
++      expect(tester.takeException(), isNull);
++      await tester.pumpWidget(const SizedBox.shrink());
++      await tester.pump(const Duration(seconds: 10));
++    });
++  }
++
+   for (final (String name, bool light, double width, double scale)
+       in <(String, bool, double, double)>[
+     ('home-dark', false, 390, 1),
