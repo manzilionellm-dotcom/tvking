@@ -511,7 +511,7 @@ jobs:
         BUILD_LABEL=$(ci/build_label.sh "$GITHUB_REPOSITORY" 7motion-test)
         echo "PHONE_BUILD_LABEL=$BUILD_LABEL" >> "$GITHUB_ENV"
         flutter build apk --release --no-tree-shake-icons --split-per-abi --target-platform android-arm64 \
-          --build-number="$BUILD_TS" --build-name="0.3.6-radio-test.${{ github.run_number }}" \
+          --build-number="$BUILD_TS" --build-name="0.3.7-stability-test.${{ github.run_number }}" \
           --obfuscate --split-debug-info=build/symbols \
           --dart-define=APP_BUILD_TS="$BUILD_TS" --dart-define=APP_BUILD_LABEL="$BUILD_LABEL" \
           --dart-define=GIT_SHA=${{ env.SOURCE_SHA }} \
@@ -572,7 +572,7 @@ jobs:
         # réservé au canal de test et à la date de construction de l’app.
         PLAY_VERSION_CODE=1727
         flutter build appbundle --release --no-tree-shake-icons \
-          --build-number="$PLAY_VERSION_CODE" --build-name=0.3.6 \
+          --build-number="$PLAY_VERSION_CODE" --build-name=0.3.7 \
           --obfuscate --split-debug-info=build/play-symbols \
           --dart-define=APP_BUILD_TS="$PHONE_VERSION_CODE" --dart-define=APP_BUILD_LABEL="$PHONE_BUILD_LABEL" \
           --dart-define=GIT_SHA=${{ env.SOURCE_SHA }} \
@@ -732,12 +732,17 @@ jobs:
           # Canal fixe, aucune entrée permettant de viser les clients.
           APK=build/app/outputs/flutter-apk/7motion.apk
           cat > "$RUNNER_TEMP/notes.md" <<EOF
-          7 MOTION téléphone — TEST Radios du monde et Sport gratuit.
-          Version : 0.3.6-radio-test.${{ github.run_number }} ; versionCode : $PHONE_VERSION_CODE
+          7 MOTION téléphone — TEST stabilité et thème noir premium.
+          Version : 0.3.7-stability-test.${{ github.run_number }} ; versionCode : $PHONE_VERSION_CODE
           SHA-256 : $APK_SHA256
           Base téléphone : 37fdf3305c5de9d35e20fd6567df38008fc7a7ee
           Correction : ${{ env.SOURCE_SHA }}
-          Design : accueil, radios, espace personnel et À propos refondus.
+          Suppressions : refus persistants, sauvegardes filtrées et catalogues VOD/séries invalidés.
+          Cast : isolation des sessions et des réponses tardives.
+          Enregistrement : écritures bornées, erreurs disque et fermeture des fichiers suivies.
+          Panel : preuve d’appareil ; essai de 7 jours et grâce hors ligne vérifiés à expiration.
+          Foot : fin de match explicite et notifications confirmées avant mémorisation.
+          Design : surfaces noires étagées, texte plus lisible et dock affiné.
           Radios : catalogue mondial, raccourcis Afrique de l’Est, favoris et écoutes récentes par profil.
           Polices embarquées pour une présentation stable hors connexion.
           Catalogue public Radio Browser ; stations et disponibilité non garanties.

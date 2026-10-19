@@ -2091,7 +2091,7 @@ index d51cb67e..3a618502 100644
        late final ChannelComputedSnapshot snapshot;
        try {
 diff --git a/lib/features/playlists/data/remote_source_repository.dart b/lib/features/playlists/data/remote_source_repository.dart
-index 1c4a4dae..01721059 100644
+index 1c4a4dae..2d239436 100644
 --- a/lib/features/playlists/data/remote_source_repository.dart
 +++ b/lib/features/playlists/data/remote_source_repository.dart
 @@ -29,6 +29,7 @@ import 'package:shared_preferences/shared_preferences.dart';
@@ -2122,10 +2122,18 @@ index 1c4a4dae..01721059 100644
        // VERROU SERVEUR : expired/frozen/banned/loaned → pas de playlist,
        // et on bascule l'état local tout de suite (sondage 60 s, plus
        // rapide que le heartbeat périodique).
-@@ -223,6 +228,10 @@ abstract final class RemoteSourceRepository {
-             : all
-                 .where((Map<String, dynamic> s) => s['enabled'] != false)
-                 .toList();
+@@ -218,11 +223,13 @@ abstract final class RemoteSourceRepository {
+         // liste « masquée » ; une liste éteinte n'est donc pas chargée, et
+         // retirée si elle l'était. Rallumée, elle revient (par l'API
+         // Xtream : quelques secondes). 06/10/2026.
+-        final List<Map<String, dynamic>> active = panelReconcileOff
+-            ? all
+-            : all
+-                .where((Map<String, dynamic> s) => s['enabled'] != false)
+-                .toList();
++        final List<Map<String, dynamic>> active = all
++            .where((Map<String, dynamic> s) => s['enabled'] != false)
++            .toList();
 +        if (all.length != list.length) return RemoteSyncResult.networkError;
 +        // Retirer d'abord : une panne de la nouvelle source ne retarde jamais
 +        // l'effacement demandé sur l'ancienne.
@@ -2133,7 +2141,7 @@ index 1c4a4dae..01721059 100644
          // Même boucle que applySources (règle du labo comprise) : une seule
          // implémentation, pas deux comportements qui divergent.
          final RemoteSyncResult r = active.isEmpty
-@@ -233,7 +242,7 @@ abstract final class RemoteSourceRepository {
+@@ -233,7 +240,7 @@ abstract final class RemoteSourceRepository {
          // retirer UNE liste parmi plusieurs la laissait là. On enlève ce que
          // le panel avait posé et ne sert plus (ou a éteint). Les listes
          // ajoutées à la main ne sont jamais dans `provisioned`.
@@ -2142,7 +2150,7 @@ index 1c4a4dae..01721059 100644
          return r;
        }
  
-@@ -248,6 +257,25 @@ abstract final class RemoteSourceRepository {
+@@ -248,6 +255,25 @@ abstract final class RemoteSourceRepository {
      }
    }
  
@@ -2168,7 +2176,7 @@ index 1c4a4dae..01721059 100644
    /// Applique les ORDRES déposés par le panel sur les listes locales du
    /// client : retirer une liste, ou en faire l'active. La cible est
    /// décrite par serveur+identifiant (et non par index : l'ordre des
-@@ -272,7 +300,14 @@ abstract final class RemoteSourceRepository {
+@@ -272,7 +298,14 @@ abstract final class RemoteSourceRepository {
          continue;
        }
        try {
@@ -2184,7 +2192,7 @@ index 1c4a4dae..01721059 100644
          if (target != null && target.id != null) {
            if (kind == 'source_remove') {
              await CloudBackupRepository.instance.rememberPanelRemoval(target);
-@@ -295,7 +330,7 @@ abstract final class RemoteSourceRepository {
+@@ -295,7 +328,7 @@ abstract final class RemoteSourceRepository {
        await http
            .post(
              Uri.parse('$kSubscriptionBaseUrl/api/device-orders/ack'),
@@ -2193,7 +2201,7 @@ index 1c4a4dae..01721059 100644
              body: jsonEncode(<String, Object>{'mac': mac, 'ids': done}),
            )
            .timeout(const Duration(seconds: 8));
-@@ -355,6 +390,7 @@ abstract final class RemoteSourceRepository {
+@@ -355,6 +388,7 @@ abstract final class RemoteSourceRepository {
      if (type == 'xtream') {
        if (server.isEmpty || user.isEmpty || pass.isEmpty) return;
        await PlaylistRepository.instance.addXtreamPlaylist(
@@ -2201,7 +2209,7 @@ index 1c4a4dae..01721059 100644
          name: label,
          serverUrl: server,
          username: user,
-@@ -366,6 +402,7 @@ abstract final class RemoteSourceRepository {
+@@ -366,6 +400,7 @@ abstract final class RemoteSourceRepository {
        // `addM3uPlaylistSmart` (repli Xtream auto) n'expose pas `makeActive` :
        // on remet donc l'active d'avant si on n'aurait pas du en changer.
        await PlaylistRepository.instance.addM3uPlaylistSmart(
@@ -2209,7 +2217,7 @@ index 1c4a4dae..01721059 100644
          name: label,
          url: m3u,
          epgUrl: (epg != null && epg.isNotEmpty) ? epg : null,
-@@ -383,11 +420,11 @@ abstract final class RemoteSourceRepository {
+@@ -383,11 +418,11 @@ abstract final class RemoteSourceRepository {
    }
  
    /// Retrouve la playlist locale visee par un ordre.
@@ -2223,7 +2231,7 @@ index 1c4a4dae..01721059 100644
        if (m3u.isNotEmpty && p.type == PlaylistType.m3u && p.m3uUrl == m3u) {
          return p;
        }
-@@ -412,7 +449,7 @@ abstract final class RemoteSourceRepository {
+@@ -412,7 +447,7 @@ abstract final class RemoteSourceRepository {
        if (!mac.startsWith('MK:')) return;
        final http.Response resp = await http.get(
          Uri.parse('$kSubscriptionBaseUrl/api/history/$mac'),
@@ -2232,7 +2240,7 @@ index 1c4a4dae..01721059 100644
        ).timeout(const Duration(seconds: 8));
        if (resp.statusCode != 200) return;
        final Map<String, dynamic> body =
-@@ -439,7 +476,7 @@ abstract final class RemoteSourceRepository {
+@@ -439,7 +474,7 @@ abstract final class RemoteSourceRepository {
        if (!mac.startsWith('MK:')) return <Map<String, dynamic>>[];
        final http.Response resp = await http.get(
          Uri.parse('$kSubscriptionBaseUrl/api/device-source/$mac'),
@@ -2241,7 +2249,7 @@ index 1c4a4dae..01721059 100644
        ).timeout(const Duration(seconds: 8));
        if (resp.statusCode != 200) return <Map<String, dynamic>>[];
        final Map<String, dynamic> body =
-@@ -631,6 +668,7 @@ abstract final class RemoteSourceRepository {
+@@ -631,6 +666,7 @@ abstract final class RemoteSourceRepository {
  
        try {
          await PlaylistRepository.instance.addXtreamPlaylist(
@@ -2249,7 +2257,7 @@ index 1c4a4dae..01721059 100644
            name: label,
            serverUrl: server,
            username: user,
-@@ -696,6 +734,7 @@ abstract final class RemoteSourceRepository {
+@@ -696,6 +732,7 @@ abstract final class RemoteSourceRepository {
  
        try {
          await PlaylistRepository.instance.addM3uPlaylist(
@@ -2257,7 +2265,20 @@ index 1c4a4dae..01721059 100644
            name: label,
            url: m3u,
            epgUrl: (epg != null && epg.isNotEmpty) ? epg : null,
-@@ -762,6 +801,7 @@ abstract final class RemoteSourceRepository {
+@@ -720,9 +757,9 @@ abstract final class RemoteSourceRepository {
+   static bool m3uLinkAsM3u = false;
+   static const String m3uLinkAsM3uKey = 'zuno.mobile.getphp_as_m3u';
+ 
+-  /// Repli : vrai = ancien comportement, une liste retirée ou éteinte au
+-  /// panel RESTE sur le téléphone (seul « Effacer les listes » agit).
+-  /// Préférence `zuno.mobile.panel_reconcile_off`.
++  /// Ancienne préférence conservée pour compatibilité de lecture seulement.
++  /// Elle ne peut plus empêcher un retrait ou une désactivation du panel :
++  /// la décision explicite de l'utilisateur doit toujours être respectée.
+   static bool panelReconcileOff = false;
+   static const String panelReconcileOffKey = 'zuno.mobile.panel_reconcile_off';
+ 
+@@ -762,6 +799,7 @@ abstract final class RemoteSourceRepository {
      }
      try {
        await PlaylistRepository.instance.addXtreamPlaylist(
@@ -2265,7 +2286,7 @@ index 1c4a4dae..01721059 100644
          name: label,
          serverUrl: creds.server,
          username: creds.username,
-@@ -781,7 +821,7 @@ abstract final class RemoteSourceRepository {
+@@ -781,7 +819,7 @@ abstract final class RemoteSourceRepository {
        if (wasPanelM3u) {
          for (final Playlist p in existing) {
            if (p.id != null && p.type == PlaylistType.m3u && p.m3uUrl == m3u) {
@@ -2274,7 +2295,7 @@ index 1c4a4dae..01721059 100644
            }
          }
        }
-@@ -819,23 +859,26 @@ abstract final class RemoteSourceRepository {
+@@ -819,23 +857,26 @@ abstract final class RemoteSourceRepository {
    /// Enlève du téléphone les listes que le panel avait posées et qu'il ne
    /// sert plus (retirées ou éteintes). Rien d'autre.
    static Future<void> _dropNoLongerServed(
@@ -2311,7 +2332,7 @@ index 1c4a4dae..01721059 100644
    }
  
    static const String _kProvisioned = 'panel.provisioned_v1';
-@@ -847,9 +890,7 @@ abstract final class RemoteSourceRepository {
+@@ -847,9 +888,7 @@ abstract final class RemoteSourceRepository {
    }
  
    static Future<void> _rememberProvision(ProvisionKey key) async {
@@ -3702,7 +3723,7 @@ index 00000000..b866a135
 +  );
 +}
 diff --git a/lib/features/vod/data/series_repository.dart b/lib/features/vod/data/series_repository.dart
-index b9a07e81..69b276ee 100644
+index b9a07e81..406bda45 100644
 --- a/lib/features/vod/data/series_repository.dart
 +++ b/lib/features/vod/data/series_repository.dart
 @@ -26,6 +26,7 @@ import '../../playlists/domain/playlist.dart';
@@ -3752,7 +3773,7 @@ index b9a07e81..69b276ee 100644
    /// Part XTREAM (mémoire ← disque ← réseau).
    List<VodSeries>? _cache;
  
-@@ -76,42 +91,15 @@ class SeriesRepository extends ChangeNotifier {
+@@ -76,54 +91,36 @@ class SeriesRepository extends ChangeNotifier {
      encode: encodeSeriesCatalog,
    );
  
@@ -3789,15 +3810,29 @@ index b9a07e81..69b276ee 100644
    /// (épisodes de la playlist regroupés par nom de série).
    /// Mémoire → disque (instantané + refresh silencieux) → réseau.
    Future<List<VodSeries>> fetchSeries({bool forceRefresh = false}) async {
-+    final int revision = _revision;
-     final List<VodSeries> xtream =
-         await _fetchXtreamSeries(forceRefresh: forceRefresh);
-     final List<VodSeries> m3u = await _fetchM3uSeries(forceRefresh: forceRefresh);
-+    if (revision != _revision) return const <VodSeries>[];
-     if (m3u.isEmpty) return xtream;
-     if (xtream.isEmpty) return m3u;
-     return <VodSeries>[...xtream, ...m3u];
-@@ -120,10 +108,12 @@ class SeriesRepository extends ChangeNotifier {
+-    final List<VodSeries> xtream =
+-        await _fetchXtreamSeries(forceRefresh: forceRefresh);
+-    final List<VodSeries> m3u = await _fetchM3uSeries(forceRefresh: forceRefresh);
+-    if (m3u.isEmpty) return xtream;
+-    if (xtream.isEmpty) return m3u;
+-    return <VodSeries>[...xtream, ...m3u];
++    // Les événements SQLite sont livrés en microtâche. Un écran ouvert
++    // juste après une activation peut démarrer avant le dernier événement.
++    // Reprendre une fois avec l'état courant évite un premier catalogue vide,
++    // sans jamais réutiliser une réponse de la source supprimée.
++    for (int attempt = 0; attempt < 2; attempt++) {
++      final int revision = _revision;
++      final List<VodSeries> xtream =
++          await _fetchXtreamSeries(forceRefresh: forceRefresh);
++      final List<VodSeries> m3u = await _fetchM3uSeries(forceRefresh: forceRefresh);
++      if (revision != _revision) continue;
++      if (m3u.isEmpty) return xtream;
++      if (xtream.isEmpty) return m3u;
++      return <VodSeries>[...xtream, ...m3u];
++    }
++    return const <VodSeries>[];
+   }
+ 
    /// Séries M3U (SQLite → regroupement en mémoire). SQLite est déjà le
    /// cache disque de la playlist : une requête bornée suffit à (re)chauffer.
    Future<List<VodSeries>> _fetchM3uSeries({bool forceRefresh = false}) async {
@@ -3810,7 +3845,7 @@ index b9a07e81..69b276ee 100644
        _m3uEpisodeChannels = splitM3uVod(vod).episodes;
        _m3uSeries = groupM3uEpisodesIntoSeries(_m3uEpisodeChannels!);
        if (_m3uSeries!.isNotEmpty) {
-@@ -131,6 +121,7 @@ class SeriesRepository extends ChangeNotifier {
+@@ -131,6 +128,7 @@ class SeriesRepository extends ChangeNotifier {
              '(${_m3uEpisodeChannels!.length} épisodes)');
        }
      } catch (e) {
@@ -3818,7 +3853,7 @@ index b9a07e81..69b276ee 100644
        // Fail-open : une erreur SQLite ne prive pas l'écran de la part Xtream.
        if (kDebugMode) debugPrint('[Series] m3u error: $e');
        _m3uSeries = const <VodSeries>[];
-@@ -141,50 +132,41 @@ class SeriesRepository extends ChangeNotifier {
+@@ -141,50 +139,41 @@ class SeriesRepository extends ChangeNotifier {
  
    /// Part Xtream seule (mémoire → disque → réseau) — logique historique.
    Future<List<VodSeries>> _fetchXtreamSeries({bool forceRefresh = false}) async {
@@ -3895,7 +3930,7 @@ index b9a07e81..69b276ee 100644
      try {
        return await client.fetchSeries();
      } catch (e) {
-@@ -198,11 +180,12 @@ class SeriesRepository extends ChangeNotifier {
+@@ -198,11 +187,12 @@ class SeriesRepository extends ChangeNotifier {
    /// Stale-while-revalidate : re-télécharge derrière l'écran affiché et
    /// prévient les abonnés si le catalogue a changé (empreinte de TOUS les
    /// ids) ; sauvegarde disque uniquement en cas de changement.
@@ -3910,7 +3945,7 @@ index b9a07e81..69b276ee 100644
        if (fresh.isEmpty) return; // panne / M3U seul → cache affiché conservé
        final List<VodSeries> old = _cache ?? const <VodSeries>[];
        final bool changed = catalogChanged(
-@@ -211,11 +194,11 @@ class SeriesRepository extends ChangeNotifier {
+@@ -211,11 +201,11 @@ class SeriesRepository extends ChangeNotifier {
        );
        _cache = fresh;
        if (changed) {
@@ -3924,7 +3959,7 @@ index b9a07e81..69b276ee 100644
      }
    }
  
-@@ -230,25 +213,29 @@ class SeriesRepository extends ChangeNotifier {
+@@ -230,25 +220,29 @@ class SeriesRepository extends ChangeNotifier {
    /// n'en fournit pas (fail-open : la fiche s'affiche avec ce qu'elle a).
    Future<({VodInfo? info, List<VodEpisode> episodes})> fetchDetail(
        String seriesId) async {
@@ -3957,7 +3992,7 @@ index b9a07e81..69b276ee 100644
            ? 'ouverture série $seriesId : 0 épisode renvoyé par le serveur'
            : 'ouverture série $seriesId : ${d.episodes.length} épisodes',
 diff --git a/lib/features/vod/data/vod_repository.dart b/lib/features/vod/data/vod_repository.dart
-index cef35528..174d8948 100644
+index cef35528..d03d3e9e 100644
 --- a/lib/features/vod/data/vod_repository.dart
 +++ b/lib/features/vod/data/vod_repository.dart
 @@ -35,6 +35,7 @@ import '../../playlists/data/xtream_client.dart';
@@ -4057,19 +4092,33 @@ index cef35528..174d8948 100644
  
    Future<List<VodMovie>> fetchMovies({bool forceRefresh = false}) {
      // Un rafraîchissement FORCÉ (tirer pour recharger) doit vraiment
-@@ -150,9 +133,11 @@ class VodRepository extends ChangeNotifier {
+@@ -150,21 +133,32 @@ class VodRepository extends ChangeNotifier {
    }
  
    Future<List<VodMovie>> _fetchMoviesOnce({bool forceRefresh = false}) async {
-+    final int revision = _revision;
-     final List<VodMovie> xtream =
-         await _fetchXtreamMovies(forceRefresh: forceRefresh);
-     final List<VodMovie> m3u = await _fetchM3uMovies(forceRefresh: forceRefresh);
-+    if (revision != _revision) return const <VodMovie>[];
-     if (m3u.isEmpty) return xtream;
-     if (xtream.isEmpty) return m3u;
-     return <VodMovie>[...xtream, ...m3u];
-@@ -161,10 +146,12 @@ class VodRepository extends ChangeNotifier {
+-    final List<VodMovie> xtream =
+-        await _fetchXtreamMovies(forceRefresh: forceRefresh);
+-    final List<VodMovie> m3u = await _fetchM3uMovies(forceRefresh: forceRefresh);
+-    if (m3u.isEmpty) return xtream;
+-    if (xtream.isEmpty) return m3u;
+-    return <VodMovie>[...xtream, ...m3u];
++    // Les événements SQLite sont livrés en microtâche. Un écran ouvert
++    // juste après une activation peut démarrer avant le dernier événement.
++    // Reprendre une fois avec l'état courant évite un premier catalogue vide,
++    // sans jamais réutiliser une réponse de la source supprimée.
++    for (int attempt = 0; attempt < 2; attempt++) {
++      final int revision = _revision;
++      final List<VodMovie> xtream =
++          await _fetchXtreamMovies(forceRefresh: forceRefresh);
++      final List<VodMovie> m3u = await _fetchM3uMovies(forceRefresh: forceRefresh);
++      if (revision != _revision) continue;
++      if (m3u.isEmpty) return xtream;
++      if (xtream.isEmpty) return m3u;
++      return <VodMovie>[...xtream, ...m3u];
++    }
++    return const <VodMovie>[];
+   }
+ 
    /// Films M3U (SQLite → mémoire). SQLite est déjà local : pas d'étage
    /// disque supplémentaire, une requête bornée suffit à (re)chauffer.
    Future<List<VodMovie>> _fetchM3uMovies({bool forceRefresh = false}) async {
@@ -4082,7 +4131,7 @@ index cef35528..174d8948 100644
        final List<Channel> movies = splitM3uVod(vod).movies;
        _m3uMovies =
            movies.map(m3uChannelToMovie).toList(growable: false);
-@@ -172,6 +159,7 @@ class VodRepository extends ChangeNotifier {
+@@ -172,6 +166,7 @@ class VodRepository extends ChangeNotifier {
          _diag('M3U : ${_m3uMovies!.length} films détectés dans la playlist');
        }
      } catch (e) {
@@ -4090,7 +4139,7 @@ index cef35528..174d8948 100644
        // Fail-open : une erreur SQLite ne prive pas l'écran de la part Xtream.
        if (kDebugMode) debugPrint('[VOD] m3u error: $e');
        _m3uMovies = const <VodMovie>[];
-@@ -181,44 +169,33 @@ class VodRepository extends ChangeNotifier {
+@@ -181,44 +176,33 @@ class VodRepository extends ChangeNotifier {
  
    /// Part Xtream seule (mémoire → disque → réseau) — logique historique.
    Future<List<VodMovie>> _fetchXtreamMovies({bool forceRefresh = false}) async {
@@ -4159,7 +4208,7 @@ index cef35528..174d8948 100644
    }
  
    /// Films DÉJÀ en mémoire (aucun réseau) — pour les surfaces « best-effort »
-@@ -231,9 +208,8 @@ class VodRepository extends ChangeNotifier {
+@@ -231,9 +215,8 @@ class VodRepository extends ChangeNotifier {
  
    /// Appel réseau brut (liste vide en cas d'erreur — fail-open, et AUCUN
    /// effet de bord sur _cache : c'est l'appelant qui décide quoi garder).
@@ -4171,7 +4220,7 @@ index cef35528..174d8948 100644
      try {
        return await client.fetchVodMovies();
      } catch (e) {
-@@ -250,11 +226,12 @@ class VodRepository extends ChangeNotifier {
+@@ -250,11 +233,12 @@ class VodRepository extends ChangeNotifier {
    /// Détection de changement ROBUSTE (empreinte de TOUS les ids) et
    /// sauvegarde disque UNIQUEMENT si changement (pas de réécriture de
    /// plusieurs Mo à chaque ouverture).
@@ -4186,7 +4235,7 @@ index cef35528..174d8948 100644
        if (fresh.isEmpty) return;
        final List<VodMovie> old = _cache ?? const <VodMovie>[];
        final bool changed = catalogChanged(
-@@ -263,11 +240,11 @@ class VodRepository extends ChangeNotifier {
+@@ -263,11 +247,11 @@ class VodRepository extends ChangeNotifier {
        );
        _cache = fresh;
        if (changed) {
@@ -4200,7 +4249,7 @@ index cef35528..174d8948 100644
      }
    }
  
-@@ -298,6 +275,10 @@ class VodRepository extends ChangeNotifier {
+@@ -298,6 +282,10 @@ class VodRepository extends ChangeNotifier {
      // Seuls les films Xtream (`vod-…`) ont une fiche serveur.
      if (!movieId.startsWith('vod-')) return null;
  
@@ -4211,7 +4260,7 @@ index cef35528..174d8948 100644
      // Accès LRU : retirer + ré-insérer = marquer « utilisé récemment ».
      final VodInfo? cached = _infoCache.remove(movieId);
      if (cached != null) {
-@@ -307,12 +288,11 @@ class VodRepository extends ChangeNotifier {
+@@ -307,12 +295,11 @@ class VodRepository extends ChangeNotifier {
  
      // Timeout plus court que le catalogue : une fiche pèse ~2 Ko — si le
      // serveur met > 12 s, on affiche la fiche « pauvre » plutôt qu'attendre.
@@ -4513,7 +4562,7 @@ index befc0183..cb78d61e 100644
 +
  }
 diff --git a/test/features/playlists/panel_getphp_reconcile_test.dart b/test/features/playlists/panel_getphp_reconcile_test.dart
-index 4a4de8e1..98314938 100644
+index 4a4de8e1..c0c9b817 100644
 --- a/test/features/playlists/panel_getphp_reconcile_test.dart
 +++ b/test/features/playlists/panel_getphp_reconcile_test.dart
 @@ -141,6 +141,7 @@ void main() {
@@ -4535,6 +4584,26 @@ index 4a4de8e1..98314938 100644
    });
  
    test('lien get.php du panel → compte Xtream (API), pas le fichier M3U',
+@@ -251,7 +252,7 @@ void main() {
+   });
+ 
+   test(
+-      'contre-preuve repli zuno.mobile.panel_reconcile_off : la liste retirée RESTE (ancien défaut)',
++      'ancienne préférence de repli : une suppression du panel reste prioritaire',
+       () async {
+     SharedPreferences.setMockInitialValues(<String, Object>{
+       'device.virtual_mac.v1': kMac,
+@@ -268,8 +269,8 @@ void main() {
+     ];
+     await _sync(s);
+     expect((await _lists()).any((Playlist p) => p.type == PlaylistType.xtream),
+-        isTrue,
+-        reason: 'le défaut d’avant est bien reproduit');
++        isFalse,
++        reason: 'une ancienne préférence ne doit pas bloquer la suppression');
+   });
+ 
+   test(
 diff --git a/test/features/playlists/source_opt_outs_test.dart b/test/features/playlists/source_opt_outs_test.dart
 index f9a4a608..50eaa6ea 100644
 --- a/test/features/playlists/source_opt_outs_test.dart
@@ -4703,10 +4772,10 @@ index 00000000..96ac3a9a
 +}
 diff --git a/test/features/recordings/data/http_recording_lifecycle_test.dart b/test/features/recordings/data/http_recording_lifecycle_test.dart
 new file mode 100644
-index 00000000..af6c4fe1
+index 00000000..a22be720
 --- /dev/null
 +++ b/test/features/recordings/data/http_recording_lifecycle_test.dart
-@@ -0,0 +1,68 @@
+@@ -0,0 +1,70 @@
 +import 'dart:async';
 +import 'dart:io';
 +
@@ -4725,8 +4794,8 @@ index 00000000..af6c4fe1
 +  });
 +  tearDown(() async {
 +    await downloader.stop();
-+    await server.close(force: true);
 +    await requests.cancel();
++    await server.close(force: true);
 +    await directory.delete(recursive: true);
 +  });
 +  Future<HttpRequest> nextRequest() async {
@@ -4763,13 +4832,15 @@ index 00000000..af6c4fe1
 +    final accepted = downloader.start(streamUrl: url('live.ts'), filePath: path);
 +    final request = await nextRequest();
 +    final bytes = List<int>.generate(188 * 4, (i) => i % 256);
++    request.response.contentLength = bytes.length;
 +    request.response.add(bytes);
-+    await request.response.flush();
++    await request.response.close();
 +    expect(await accepted, isTrue);
 +    // Attendre la réception, puis vérifier que stop attend aussi l'écriture.
-+    for (int i = 0; i < 100 && downloader.bytesWrittenFor(path) < bytes.length; i++) {
++    for (int i = 0; i < 300 && downloader.bytesWrittenFor(path) < bytes.length; i++) {
 +      await Future<void>.delayed(const Duration(milliseconds: 10));
 +    }
++    expect(downloader.bytesWrittenFor(path), bytes.length);
 +    expect(await downloader.stop(filePath: path), bytes.length);
 +    expect(await File(path).readAsBytes(), bytes);
 +    expect(downloader.activeCount, 0);
