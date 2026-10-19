@@ -1042,6 +1042,21 @@ index aea5dc9a..35aa4e0a 100644
      }
    }
  
+diff --git a/lib/features/channels/domain/channel.dart b/lib/features/channels/domain/channel.dart
+index b06174de..742c5669 100644
+--- a/lib/features/channels/domain/channel.dart
++++ b/lib/features/channels/domain/channel.dart
+@@ -52,6 +52,10 @@ class Channel {
+   /// chaînes fictives de démo).
+   final int? playlistId;
+ 
++  /// Clé locale unique entre fournisseurs ; l'identifiant EPG reste séparé.
++  String get sourceScopedId => playlistId == null || id.endsWith('@p$playlistId')
++      ? id : '$id@p$playlistId';
++
+   /// Nom affiché (ex : "Canal+ Sport HD").
+   final String name;
+ 
 diff --git a/lib/features/device/data/device_secret.dart b/lib/features/device/data/device_secret.dart
 new file mode 100644
 index 00000000..891dd711
@@ -1115,8 +1130,96 @@ index 00000000..891dd711
 +    };
 +  }
 +}
+diff --git a/lib/features/epg/data/epg_repository.dart b/lib/features/epg/data/epg_repository.dart
+index 0ccfb847..f98c3685 100644
+--- a/lib/features/epg/data/epg_repository.dart
++++ b/lib/features/epg/data/epg_repository.dart
+@@ -31,6 +31,7 @@ import 'epg_alias_index.dart';
+ import 'epg_id.dart';
+ import 'epg_import_stats.dart';
+ import 'xmltv_parser.dart';
++import 'xmltv_transport.dart';
+ 
+ class EpgRepository {
+   EpgRepository._();
+@@ -362,19 +363,8 @@ class EpgRepository {
+           throw Exception('HTTP ${resp.statusCode}');
+         }
+ 
+-        // Source de bytes (gzip décompressé si nécessaire)
+-        Stream<List<int>> bytes = resp.stream;
+-        final String lower = url.toLowerCase();
+-        final bool isGzip = lower.endsWith('.gz') ||
+-            lower.endsWith('.gzip') ||
+-            (resp.headers['content-encoding']?.toLowerCase() == 'gzip') ||
+-            (resp.headers['content-type']?.toLowerCase() ?? '')
+-                .contains('gzip');
+-
+-        if (isGzip) {
+-          // Décompression streaming via dart:io
+-          bytes = bytes.transform<List<int>>(gzip.decoder);
+-        }
++        // L'en-tête peut décrire les octets AVANT décompression HTTP.
++        Stream<List<int>> bytes = decodeXmltvTransport(resp.stream);
+ 
+         // Compteur progression simple
+         if (onProgress != null) {
+@@ -397,7 +387,13 @@ class EpgRepository {
+         // Vague 4 : 1:N + normalisation + self-alias M3U (tvg-id = Channel.id
+         // mais « tf1.fr » ≠ « TF1.fr » sans rabotage).
+         final Map<String, List<String>> aliases = await _loadAliases();
+-        final EpgAliasIndex index = EpgAliasIndex.fromMap(aliases);
++        // Deux fournisseurs peuvent employer le même tvg-id pour des
++        // grilles différentes. Ce téléchargement n'écrit que ses sources.
++        final EpgAliasIndex index = EpgAliasIndex.fromMap(<String, List<String>>{
++          for (final MapEntry<String, List<String>> entry in aliases.entries)
++            entry.key: knownChannelIds == null ? entry.value : entry.value
++                .where(knownChannelIds.contains).toList(growable: false),
++        });
+         if (knownChannelIds != null) {
+           index.addSelfAliases(knownChannelIds);
+         }
+diff --git a/lib/features/epg/data/xmltv_transport.dart b/lib/features/epg/data/xmltv_transport.dart
+new file mode 100644
+index 00000000..e8a53a31
+--- /dev/null
++++ b/lib/features/epg/data/xmltv_transport.dart
+@@ -0,0 +1,33 @@
++import 'dart:async';
++import 'dart:io';
++
++/// Décompresse seulement des octets réellement gzip. HttpClient peut déjà
++/// avoir décompressé la réponse tout en conservant Content-Encoding: gzip.
++/// Se fier à cet en-tête ou au suffixe .gz provoquait une seconde inflation
++/// et « Filter error, bad data ». Deux octets suffisent ; le guide entier
++/// reste un flux, jamais une allocation de plusieurs centaines de Mo.
++Stream<List<int>> decodeXmltvTransport(Stream<List<int>> source) async* {
++  final StreamIterator<List<int>> input = StreamIterator<List<int>>(source);
++  final List<List<int>> prefix = <List<int>>[];
++  final List<int> signature = <int>[];
++  try {
++    while (signature.length < 2 && await input.moveNext()) {
++      final List<int> chunk = input.current;
++      if (chunk.isEmpty) continue;
++      prefix.add(chunk);
++      signature.addAll(chunk.take(2 - signature.length));
++    }
++    Stream<List<int>> replay() async* {
++      for (final List<int> chunk in prefix) { yield chunk; }
++      while (await input.moveNext()) { yield input.current; }
++    }
++    final Stream<List<int>> bytes = replay();
++    if (signature.length == 2 && signature[0] == 0x1f && signature[1] == 0x8b) {
++      yield* bytes.transform<List<int>>(gzip.decoder);
++    } else {
++      yield* bytes;
++    }
++  } finally {
++    await input.cancel();
++  }
++}
 diff --git a/lib/features/player/data/local_stream_relay.dart b/lib/features/player/data/local_stream_relay.dart
-index b7e98099..c10170e7 100644
+index b7e98099..88b2cf75 100644
 --- a/lib/features/player/data/local_stream_relay.dart
 +++ b/lib/features/player/data/local_stream_relay.dart
 @@ -46,6 +46,8 @@
@@ -1128,7 +1231,20 @@ index b7e98099..c10170e7 100644
  import 'dart:async';
  import 'dart:convert';
  import 'dart:io';
-@@ -189,7 +191,7 @@ class LocalStreamRelay {
+@@ -98,10 +100,11 @@ const Duration _kStallCheckInterval = Duration(seconds: 4);
+ /// parade : 403 « slot 1-connexion encore occupé » → backoff + retry ;
+ /// 404 « mauvais format d'URL » → cascade de variantes directe.
+ class RelayFailure {
+-  const RelayFailure({required this.url, this.status});
++  const RelayFailure({required this.url, this.status, this.placeholder = false});
+ 
+   final String url;
+   final int? status;
++  final bool placeholder;
+ }
+ 
+ /// Relais singleton. Une instance pour toute l'app : un seul serveur HTTP
+@@ -189,7 +192,7 @@ class LocalStreamRelay {
  
    /// `true` si une chaîne donnée est en cours d'enregistrement via le relais.
    bool isRecording(String realUrl) =>
@@ -1137,7 +1253,7 @@ index b7e98099..c10170e7 100644
  
    /// `true` si un LECTEUR est branché sur la session de [realUrl] — le
    /// planificateur s'en sert pour capter une émission programmée en se
-@@ -409,46 +411,34 @@ class LocalStreamRelay {
+@@ -409,46 +412,34 @@ class LocalStreamRelay {
    /// sur la connexion DÉJÀ ouverte pour la lecture (aucune 2e connexion).
    /// Si aucune session n'existe encore pour cette URL (cas limite), on
    /// l'ouvre. Retourne `false` si l'ouverture du fichier échoue.
@@ -1205,7 +1321,7 @@ index b7e98099..c10170e7 100644
    }
  
    /// Arrête l'enregistrement de cette chaîne et renvoie le nombre
-@@ -456,29 +446,14 @@ class LocalStreamRelay {
+@@ -456,29 +447,14 @@ class LocalStreamRelay {
    /// vivante tant que le lecteur est branché).
    Future<int> stopRecording(String realUrl) async {
      final _RelaySession? session = _sessions[realUrl];
@@ -1241,7 +1357,7 @@ index b7e98099..c10170e7 100644
      _maybeCloseSession(session);
      return bytes;
    }
-@@ -643,7 +618,9 @@ class LocalStreamRelay {
+@@ -643,7 +619,9 @@ class LocalStreamRelay {
  
    /// Octets déjà écrits pour la chaîne en cours d'enregistrement (0 si
    /// pas d'enregistrement). Utile pour afficher la taille en temps réel.
@@ -1252,7 +1368,55 @@ index b7e98099..c10170e7 100644
  
    // ---------------------------------------------------------------
    //  Serveur HTTP local
-@@ -1219,33 +1196,9 @@ class LocalStreamRelay {
+@@ -830,6 +808,7 @@ class LocalStreamRelay {
+       return;
+     }
+     if (resp == null) {
++      if (session.upstreamPlaceholder && _abortIfLineDead(session)) return;
+       // ÉCHEC DÉFINITIF vs TRANSITOIRE — le cœur du correctif terrain :
+       //   - 4xx (404/403/401/410…) dès la 1re réponse, session jamais
+       //     diffusée = le serveur a RÉPONDU et refuse CETTE URL. Boucler
+@@ -950,6 +929,10 @@ class LocalStreamRelay {
+       // tempête de reconnexions (cf. _abortIfLineDead).
+       if (_isBlockedPlaceholder(finalUrl)) {
+         StreamDiagnostics.instance.recordUpstreamPlaceholder(finalUrl);
++        session.upstreamPlaceholder = true;
++        // Ne jamais décoder le clip de remplacement comme une vraie chaîne.
++        session.client?.close(force: true);
++        return null;
+       }
+       //  2.5 (05/09/2026) — UN 200 QUI N'EST PAS UN FLUX N'EST PAS UN FLUX.
+       //  Un serveur IPTV bloqué renvoie souvent 200 + une page HTML
+@@ -1083,7 +1066,8 @@ class LocalStreamRelay {
+     // ICI les reconnexions d'un flux parfaitement valide. blockReasonForUrl
+     // n'applique banni/expiré que si le compte contrôlé est celui de CE flux.
+     final StreamBlockReason r =
+-        StreamDiagnostics.instance.blockReasonForUrl(session.realUrl);
++        session.upstreamPlaceholder ? StreamBlockReason.providerBlocked
++            : StreamDiagnostics.instance.blockReasonForUrl(session.realUrl);
+     // `providerBlocked` compte AUSSI comme mort : c'est l'ancien cas « écran
+     // noir », qui rentrait ici sous l'étiquette `expired` avant qu'on ne les
+     // sépare. Le séparer sans le rajouter ici aurait relancé les
+@@ -1097,7 +1081,7 @@ class LocalStreamRelay {
+       'relay',
+       r == StreamBlockReason.providerBlocked
+           ? 'Le fournisseur ne sert qu\'un écran noir sur cette chaîne — '
+-              'reconnexions ARRÊTÉES. Le compte, lui, n\'est pas en cause.'
++              'reconnexions arrêtées. Ce remplacement ne prouve pas une expiration.'
+           : 'Abonnement expiré/bloqué (compte) — reconnexions ARRÊTÉES : '
+               'inutile de marteler une ligne morte. Renouvelle la ligne '
+               'auprès du fournisseur.',
+@@ -1106,7 +1090,8 @@ class LocalStreamRelay {
+     final String failedUrl = session.realUrl;
+     final int? lastStatus = session.lastUpstreamStatus;
+     _closeSession(session);
+-    _definitiveFailures.add(RelayFailure(url: failedUrl, status: lastStatus));
++    _definitiveFailures.add(RelayFailure(url: failedUrl, status: lastStatus,
++        placeholder: session.upstreamPlaceholder));
+     return true;
+   }
+ 
+@@ -1219,33 +1204,9 @@ class LocalStreamRelay {
        session.players.remove(c);
      }
  
@@ -1289,7 +1453,7 @@ index b7e98099..c10170e7 100644
  
      // Différé (timeshift) : mêmes octets dans le tampon disque, bornés.
      final IOSink? shift = session.shiftSink;
-@@ -1425,17 +1378,11 @@ class LocalStreamRelay {
+@@ -1425,17 +1386,11 @@ class LocalStreamRelay {
        c.markClosed();
      }
      session.players.clear();
@@ -1311,7 +1475,17 @@ index b7e98099..c10170e7 100644
      // Un tampon différé est JETABLE : fermé et supprimé avec la session.
      if (session.shiftSink != null || session.shiftPath != null) {
        unawaited(_closeShift(session, delete: true));
-@@ -1552,7 +1499,9 @@ class _RelaySession {
+@@ -1492,6 +1447,9 @@ class _RelaySession {
+   /// et non un flux : échec définitif, même sans code 4xx.
+   bool upstreamBodyIsText = false;
+ 
++  /// Remplacement observé sur CETTE connexion, indépendant des autres sources.
++  bool upstreamPlaceholder = false;
++
+   HttpClient? client;
+   StreamSubscription<List<int>>? sub;
+   bool upstreamActive = false;
+@@ -1552,7 +1510,9 @@ class _RelaySession {
    Timer? lingerTimer;
  
    /// Destination d'enregistrement (null = pas d'enregistrement en cours).
@@ -1322,15 +1496,50 @@ index b7e98099..c10170e7 100644
    String? recordPath;
    int recordBytes = 0;
  
-@@ -1567,5 +1516,5 @@ class _RelaySession {
+@@ -1567,5 +1527,5 @@ class _RelaySession {
    /// Vrai tant qu'au moins un consommateur (lecteur, enregistrement ou
    /// tampon différé) a besoin de l'upstream.
    bool get hasConsumers =>
 -      players.isNotEmpty || recordSink != null || shiftSink != null;
 +      players.isNotEmpty || recordSink != null || recordStarting || shiftSink != null;
  }
+diff --git a/lib/features/player/data/stream_blocked_fallback.dart b/lib/features/player/data/stream_blocked_fallback.dart
+index 025ef961..c57c2732 100644
+--- a/lib/features/player/data/stream_blocked_fallback.dart
++++ b/lib/features/player/data/stream_blocked_fallback.dart
+@@ -311,6 +311,15 @@ class StreamBlockedFallback {
+       );
+       return;
+     }
++    // Un clip noir peut contenir des frames valides. Il ne prouve jamais
++    // que la chaîne demandée a démarré, même après une lecture précédente.
++    if (failure.placeholder) {
++      _log('Flux de remplacement reçu → chaîne indisponible, sans sonde ni boucle');
++      showBlocked(const BlockedVerdict(BlockedKind.channelBlocked,
++          message: 'La source renvoie une vidéo de remplacement au lieu de cette chaîne. '
++              'Ce résultat ne signifie pas que votre compte a expiré.'));
++      return;
++    }
+     _log('Relais : échec définitif signalé '
+         '(HTTP ${failure.status ?? '— (réseau)'}) → décision immédiate');
+     // HTTP 458 = LIMITE DE CONNEXIONS (mission terrain 2026-07-19). Ce n'est
+diff --git a/lib/features/player/data/stream_diagnostics.dart b/lib/features/player/data/stream_diagnostics.dart
+index 3be46fe8..1b3df036 100644
+--- a/lib/features/player/data/stream_diagnostics.dart
++++ b/lib/features/player/data/stream_diagnostics.dart
+@@ -285,8 +285,8 @@ class StreamDiagnostics extends ChangeNotifier {
+     _add(
+       'relay',
+       'Le fournisseur renvoie un flux « écran noir » '
+-          '(${maskCredentials(finalUrl)}) — ligne expirée ou bloquée côté '
+-          'fournisseur (pas un défaut de l\'app).',
++          '(${maskCredentials(finalUrl)}). La chaîne demandée n’est pas servie ; '
++          'ce constat ne prouve ni une expiration du compte ni une panne réseau.',
+       level: 'error',
+     );
+     notifyListeners();
 diff --git a/lib/features/player/presentation/video_player_screen.dart b/lib/features/player/presentation/video_player_screen.dart
-index 7eff32a7..f56cdd70 100644
+index 7eff32a7..7f5ea311 100644
 --- a/lib/features/player/presentation/video_player_screen.dart
 +++ b/lib/features/player/presentation/video_player_screen.dart
 @@ -60,6 +60,7 @@ import '../../playlists/data/xtream_url_format_store.dart';
@@ -1536,7 +1745,15 @@ index 7eff32a7..f56cdd70 100644
    }
  
    /// Badge discret « ● REC » affiché en haut pendant l'enregistrement.
-@@ -2345,15 +2343,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+@@ -2301,6 +2299,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+       final Duration pos = _player.state.position;
+       final Duration dur = _player.state.duration;
+       unawaited(PlaybackPositionRepository.instance.record(
++        category: _currentChannel.category,
+         key: _currentChannel.id,
+         position: pos,
+         duration: dur,
+@@ -2345,15 +2344,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
      // Si un enregistrement relais tourne encore, on le clôt (sinon la
      // session du relais resterait à enregistrer une chaîne que plus
      // personne ne regarde). On finalise aussi la fiche en base.
@@ -1555,6 +1772,14 @@ index 7eff32a7..f56cdd70 100644
      }
      _zapPageController?.dispose();
      // ON REND LA CONNEXION EN QUITTANT — et le suivant DOIT l'attendre
+@@ -2519,6 +2514,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+     _pauseReleasedPosition = seekable ? pos : null;
+     if (seekable && dur > Duration.zero) {
+       unawaited(PlaybackPositionRepository.instance.record(
++        category: _currentChannel.category,
+         key: _currentChannel.id,
+         position: pos,
+         duration: dur,
 diff --git a/lib/features/playlists/data/cloud_backup_repository.dart b/lib/features/playlists/data/cloud_backup_repository.dart
 index 969bd1a2..c91128b3 100644
 --- a/lib/features/playlists/data/cloud_backup_repository.dart
@@ -1776,22 +2001,23 @@ index 969bd1a2..c91128b3 100644
                await PlaylistRepository.instance.deletePlaylist(imported.id!);
              }
 diff --git a/lib/features/playlists/data/playlist_database.dart b/lib/features/playlists/data/playlist_database.dart
-index 1c164d35..989a155b 100644
+index 1c164d35..af6b5462 100644
 --- a/lib/features/playlists/data/playlist_database.dart
 +++ b/lib/features/playlists/data/playlist_database.dart
-@@ -31,9 +31,10 @@ class PlaylistDatabase {
+@@ -31,9 +31,11 @@ class PlaylistDatabase {
    // mémorisé PAR SOURCE par la cascade Xtream — zapping sans re-sonde).
    // v7 ajoute `epg_channel_id` à channels (Vague 4 : pont EPG 1:N
    // reconstructible au resync sans re-fetch du bouquet).
 -  static const int _kDbVersion = 7;
-+  static const int _kDbVersion = 8;
++  // v9 : identifiants de chaînes distincts par source, favoris conservés.
++  static const int _kDbVersion = 9;
  
    Database? _db;
 +  Future<Database>? _opening;
  
    /// Branche un vrai SQLite de test ; le schéma et les requêtes restent réels.
    @visibleForTesting
-@@ -47,8 +48,8 @@ class PlaylistDatabase {
+@@ -47,8 +49,8 @@ class PlaylistDatabase {
  
    Future<Database> get database async {
      if (_db != null) return _db!;
@@ -1802,7 +2028,15 @@ index 1c164d35..989a155b 100644
    }
  
    Future<Database> _open() async {
-@@ -150,6 +151,7 @@ class PlaylistDatabase {
+@@ -130,6 +132,7 @@ class PlaylistDatabase {
+     await db.execute('''
+       CREATE INDEX idx_channels_category ON channels(category)
+     ''');
++    await db.execute('CREATE INDEX idx_channels_external ON channels(external_id)');
+ 
+     // v3 : sessions de visionnage pour le Hook Model (Continue Watching,
+     // affinity scoring, time-of-day adaptation).
+@@ -150,6 +153,7 @@ class PlaylistDatabase {
        'CREATE INDEX idx_ws_channel ON watch_sessions(channel_id)',
      );
  
@@ -1810,7 +2044,7 @@ index 1c164d35..989a155b 100644
      if (kDebugMode) debugPrint('[DB] Schéma v$version créé.');
    }
  
-@@ -181,7 +183,11 @@ class PlaylistDatabase {
+@@ -181,7 +185,11 @@ class PlaylistDatabase {
      await db.execute('ALTER TABLE $table ADD COLUMN $column $definition');
    }
  
@@ -1822,11 +2056,74 @@ index 1c164d35..989a155b 100644
      if (kDebugMode) {
        debugPrint('[DB] Migration $oldVersion → $newVersion');
      }
+@@ -264,5 +272,51 @@ class PlaylistDatabase {
+       // (stabilité Firestick 1 Go). IDEMPOTENT comme les autres ADD COLUMN.
+       await _addColumnIfMissing(db, 'channels', 'epg_channel_id', 'TEXT');
+     }
++    if (oldVersion < 9 && newVersion >= 9) {
++      await _scopeChannelIds(db);
++    }
++  }
++
++  /// Les anciens favoris ne portaient pas de source : on les rattache à
++  /// l'ancienne liste active, puis à la plus ancienne en cas d'ambiguïté.
++  /// Les listes désactivées restent désactivées. La migration est rejouable.
++  Future<void> _scopeChannelIds(Database db) async {
++    final List<Map<String, Object?>> columns = await db.rawQuery('PRAGMA table_info(channels)');
++    if (!columns.any((Map<String, Object?> c) => c['name'] == 'external_id')) return;
++    await db.execute('CREATE INDEX IF NOT EXISTS idx_channels_external ON channels(external_id)');
++    await db.execute('''
++      CREATE TEMP TABLE IF NOT EXISTS source_id_migration AS
++      SELECT c.external_id AS old_id, c.external_id || '@p' || (
++        SELECT c2.playlist_id FROM channels c2
++        JOIN playlists p ON p.id = c2.playlist_id
++        WHERE c2.external_id = c.external_id
++        ORDER BY p.is_active DESC, p.id ASC LIMIT 1
++      ) AS new_id FROM channels c
++      WHERE substr(c.external_id, -length('@p' || c.playlist_id)) != '@p' || c.playlist_id
++      GROUP BY c.external_id
++    ''');
++    await db.execute('CREATE INDEX IF NOT EXISTS source_id_migration_old ON source_id_migration(old_id)');
++    for (final String table in <String>['favorites', 'favorites_scoped', 'recently_watched', 'watch_sessions']) {
++      final List<Map<String, Object?>> exists = await db.rawQuery(
++          'SELECT name FROM sqlite_master WHERE type = ? AND name = ?', <Object>['table', table]);
++      if (exists.isEmpty) continue;
++      await db.execute('''
++        UPDATE OR IGNORE $table SET channel_id = (
++          SELECT new_id FROM source_id_migration WHERE old_id = $table.channel_id
++        ) WHERE channel_id IN (SELECT old_id FROM source_id_migration WHERE new_id IS NOT NULL)
++      ''');
++    }
++    // Un vieux M3U pouvait avoir son tvg-id uniquement dans external_id.
++    await db.execute('''
++      UPDATE channels SET epg_channel_id = external_id
++      WHERE (epg_channel_id IS NULL OR epg_channel_id = '')
++        AND external_id NOT LIKE 'xtream-%' AND external_id NOT LIKE 'm3u-%'
++        AND external_id IN (SELECT old_id FROM source_id_migration)
++    ''');
++    await db.execute('''
++      UPDATE channels SET external_id = external_id || '@p' || playlist_id
++      WHERE substr(external_id, -length('@p' || playlist_id)) != '@p' || playlist_id
++    ''');
++    await db.execute('DROP TABLE source_id_migration');
+   }
+ }
 diff --git a/lib/features/playlists/data/playlist_repository.dart b/lib/features/playlists/data/playlist_repository.dart
-index d51cb67e..3a618502 100644
+index d51cb67e..92457be0 100644
 --- a/lib/features/playlists/data/playlist_repository.dart
 +++ b/lib/features/playlists/data/playlist_repository.dart
-@@ -49,6 +49,7 @@ import 'import_progress.dart';
+@@ -15,9 +15,7 @@
+ //
+ //  Stream :
+ //    - `channelsStream` émet la liste à jour des chaînes
+-//      visibles (toutes playlists confondues, on ne supporte
+-//      qu'une playlist active pour l'instant mais c'est
+-//      facile à étendre).
++//      visibles (toutes les playlists activées réunies).
+ //    - L'écran d'accueil s'abonne via `StreamBuilder`.
+ // =========================================================
+ 
+@@ -49,6 +47,7 @@ import 'import_progress.dart';
  import 'm3u_fetcher.dart';
  import 'm3u_parser.dart';
  import 'playlist_database.dart';
@@ -1834,7 +2131,177 @@ index d51cb67e..3a618502 100644
  import 'source_link_utils.dart';
  import 'xtream_client.dart';
  
-@@ -521,8 +522,8 @@ class PlaylistRepository {
+@@ -198,33 +197,10 @@ class PlaylistRepository {
+   Future<List<Channel>> getAllChannels() async {
+     final Database db = await PlaylistDatabase.instance.database;
+ 
+-    // Phase 1+/Multi-serveurs (2026-06-01) : si une playlist est
+-    // marquee active, on filtre les chaines pour ne renvoyer que les
+-    // siennes. Sinon (cas sans active marquee — peut arriver si
+-    // l'user a delete la derniere active sans en designer une autre),
+-    // on retombe sur "toutes les chaines de toutes les playlists"
+-    // pour ne pas casser l'app.
+-    final List<Map<String, Object?>> activeRows = await db.query(
+-      'playlists',
+-      columns: <String>['id'],
+-      where: 'is_active = 1',
+-      limit: 1,
+-    );
+-
+-    final int? activeId =
+-        activeRows.isNotEmpty ? activeRows.first['id'] as int : null;
+-    if (activeId == null) {
+-      // Aucune playlist active. AVANT de tout renvoyer, on PURGE les
+-      // chaînes orphelines (dont la playlist a été supprimée) : sur les
+-      // bases créées avant l'activation des clés étrangères, le CASCADE
+-      // n'avait pas joué et ces chaînes « fantômes » réapparaissaient
+-      // après suppression de toutes les listes. Cette purge guérit ces
+-      // bases au premier passage → l'écran se vide vraiment.
+-      await db.delete(
+-        'channels',
+-        where: 'playlist_id NOT IN (SELECT id FROM playlists)',
+-      );
+-    }
++    // Les sources cochées composent UN catalogue. Aucune source active
++    // signifie un catalogue vide, jamais un retour des listes désactivées.
++    await db.delete('channels',
++        where: 'playlist_id NOT IN (SELECT id FROM playlists)');
+     // LECTURE PAR LOTS + PLAFOND MÉMOIRE (anti-OOM box faibles). Avant, un
+     // SEUL gros SELECT ramenait TOUTES les lignes d'un coup, puis on
+     // construisait la liste complète de Channel : sur une grosse source
+@@ -232,7 +208,7 @@ class PlaylistRepository {
+     // planter/redémarrer les petites box. On lit désormais par tranches
+     // (keyset sur local_id, l'ordre natif de la playlist est préservé) et on
+     // s'arrête au plafond. Voir _readChannelsBounded.
+-    final List<Channel> all = await _readChannelsBounded(db, activeId);
++    final List<Channel> all = await _readChannelsBounded(db);
+ 
+     // Filtre adultOnly du flavor Red Room. On le pose ICI (point
+     // unique de lecture) pour que TOUS les consommateurs (home,
+@@ -262,32 +238,36 @@ class PlaylistRepository {
+   /// Lit les chaînes par lots successifs et borne le total à
+   /// [kMaxInMemoryChannels]. Keyset pagination : `local_id > dernier` (O(1) par
+   /// lot grâce à l'index PK), l'ORDRE NATIF de la playlist est préservé.
+-  Future<List<Channel>> _readChannelsBounded(Database db, int? activeId) async {
++  Future<List<Channel>> _readChannelsBounded(Database db,
++      {String filter = '1 = 1', int? limit}) async {
++    final int cap = limit ?? kMaxInMemoryChannels;
++    if (cap <= 0) return const <Channel>[];
++    final List<Map<String, Object?>> sources = await db.query('playlists',
++        columns: <String>['id'], where: 'is_active = 1', orderBy: 'id ASC');
++    if (sources.isEmpty) return const <Channel>[];
++    final Map<int, int> cursors = <int, int>{
++      for (final Map<String, Object?> row in sources) row['id'] as int: 0,
++    };
+     final List<Channel> out = <Channel>[];
+-    int afterLocalId = 0; // local_id (AUTOINCREMENT) démarre à 1
+-    while (out.length < kMaxInMemoryChannels) {
+-      final List<Map<String, Object?>> rows = await db.query(
+-        'channels',
+-        where: activeId != null
+-            ? 'playlist_id = ? AND local_id > ?'
+-            : 'local_id > ?',
+-        whereArgs: activeId != null
+-            ? <Object>[activeId, afterLocalId]
+-            : <Object>[afterLocalId],
+-        orderBy: 'local_id ASC',
+-        limit: _kReadChunk,
+-      );
+-      if (rows.isEmpty) break;
+-      for (final Map<String, Object?> r in rows) {
+-        out.add(_channelFromMap(r));
+-        afterLocalId = r['local_id'] as int;
++    // Lecture équitable : la première très grosse liste ne masque pas les
++    // neuf suivantes. Le plafond RAM reste global, les autres pages en SQL.
++    final int share = (cap ~/ sources.length).clamp(1, _kReadChunk).toInt();
++    while (out.length < cap && cursors.isNotEmpty) {
++      for (final int id in cursors.keys.toList(growable: false)) {
++        final int remaining = cap - out.length;
++        if (remaining <= 0) break;
++        final int batchSize = share < remaining ? share : remaining;
++        final List<Map<String, Object?>> rows = await db.query('channels',
++            where: 'playlist_id = ? AND local_id > ? AND ($filter)',
++            whereArgs: <Object>[id, cursors[id]!],
++            orderBy: 'local_id ASC', limit: batchSize);
++        out.addAll(rows.map(_channelFromMap));
++        if (rows.length < batchSize) {
++          cursors.remove(id);
++        } else {
++          cursors[id] = rows.last['local_id'] as int;
++        }
+       }
+-      if (rows.length < _kReadChunk) break; // dernière tranche
+-    }
+-    if (out.length >= kMaxInMemoryChannels) {
+-      debugPrint('[Playlist] plafond mémoire atteint '
+-          '($kMaxInMemoryChannels chaînes) → tranches suivantes NON chargées '
+-          '(garde-fou anti-OOM box faibles).');
+     }
+     return out;
+   }
+@@ -301,16 +281,9 @@ class PlaylistRepository {
+   //  (+ un petit tampon) est matérialisée. Ces méthodes sont ADDITIVES : les
+   //  écrans existants (stream/getAllChannels) continuent de marcher tels quels.
+ 
+-  /// Id de la playlist active (ou null si aucune n'est marquée active).
+-  Future<int?> _activePlaylistId(Database db) async {
+-    final List<Map<String, Object?>> rows = await db.query(
+-      'playlists',
+-      columns: <String>['id'],
+-      where: 'is_active = 1',
+-      limit: 1,
+-    );
+-    return rows.isNotEmpty ? rows.first['id'] as int : null;
+-  }
++  /// Filtre commun à toutes les lectures : direct, recherche, favoris et VOD.
++  static const String _activeSourcesSql =
++      'playlist_id IN (SELECT id FROM playlists WHERE is_active = 1)';
+ 
+   /// Liste des catégories de la playlist active + nombre de chaînes LIVE par
+   /// catégorie, dans l'ordre d'apparition (min local_id). Requête LÉGÈRE
+@@ -318,9 +291,8 @@ class PlaylistRepository {
+   /// de catégories sans charger 100k objets.
+   Future<List<({String category, int count})>> getActiveCategoryCounts() async {
+     final Database db = await PlaylistDatabase.instance.database;
+-    final int? activeId = await _activePlaylistId(db);
+-    final String where = activeId != null ? 'WHERE playlist_id = ? AND is_live = 1' : 'WHERE is_live = 1';
+-    final List<Object> args = activeId != null ? <Object>[activeId] : <Object>[];
++    const String where = 'WHERE $_activeSourcesSql AND is_live = 1';
++    final List<Object> args = <Object>[];
+     final List<Map<String, Object?>> rows = await db.rawQuery(
+       'SELECT category AS c, COUNT(*) AS n, MIN(local_id) AS o '
+       'FROM channels $where GROUP BY category ORDER BY o ASC',
+@@ -340,12 +312,9 @@ class PlaylistRepository {
+   /// « Toutes » et les compteurs). Léger (COUNT).
+   Future<int> countActiveLiveChannels() async {
+     final Database db = await PlaylistDatabase.instance.database;
+-    final int? activeId = await _activePlaylistId(db);
+     final List<Map<String, Object?>> rows = await db.rawQuery(
+-      activeId != null
+-          ? 'SELECT COUNT(*) AS n FROM channels WHERE playlist_id = ? AND is_live = 1'
+-          : 'SELECT COUNT(*) AS n FROM channels WHERE is_live = 1',
+-      activeId != null ? <Object>[activeId] : <Object>[],
++      'SELECT COUNT(*) AS n FROM channels WHERE $_activeSourcesSql AND is_live = 1',
++      <Object>[],
+     );
+     return (rows.first['n'] as int?) ?? 0;
+   }
+@@ -391,13 +360,9 @@ class PlaylistRepository {
+     int limit = 120,
+   }) async {
+     final Database db = await PlaylistDatabase.instance.database;
+-    final int? activeId = await _activePlaylistId(db);
+     final StringBuffer where = StringBuffer('is_live = 1 AND local_id > ?');
+     final List<Object> args = <Object>[afterLocalId];
+-    if (activeId != null) {
+-      where.write(' AND playlist_id = ?');
+-      args.add(activeId);
+-    }
++    where.write(' AND $_activeSourcesSql');
+     if (category != null) {
+       // 'Autres' = catégorie vide/absente dans la source.
+       if (category == 'Autres') {
+@@ -521,8 +486,8 @@ class PlaylistRepository {
      // Course : [_emitCurrentState] a pu remplir le cache entre-temps.
      // On n'écrase pas un snapshot plus frais (playlist qui vient
      // de changer) par une lecture commencée à froid.
@@ -1844,17 +2311,131 @@ index d51cb67e..3a618502 100644
        final ChannelComputedSnapshot snapshot =
            await Channel.prepareComputedSnapshot(all);
        if (revision != _emitRevision || _channelsCache.isNotEmpty) return;
-@@ -734,6 +735,9 @@ class PlaylistRepository {
-   Future<void> setActivePlaylist(int playlistId) async {
+@@ -560,13 +525,9 @@ class PlaylistRepository {
+     if (debugDisableSqlFallback) return const <Channel>[];
+     if (ramPoolSize < kMaxInMemoryChannels) return const <Channel>[];
      final Database db = await PlaylistDatabase.instance.database;
-     await db.transaction((Transaction txn) async {
-+      if ((await txn.query('playlists', columns: <String>['id'], where: 'id = ?', whereArgs: <Object>[playlistId], limit: 1)).isEmpty) {
-+        throw const PlaylistDeletedException();
-+      }
-       await txn.update(
-         'playlists',
-         <String, Object?>{'is_active': 0},
-@@ -802,15 +806,20 @@ class PlaylistRepository {
+-    final int? activeId = await _activePlaylistId(db);
+     final StringBuffer where = StringBuffer('is_live = 1 AND name LIKE ?');
+     final List<Object> args = <Object>['%$query%'];
+-    if (activeId != null) {
+-      where.write(' AND playlist_id = ?');
+-      args.add(activeId);
+-    }
++    where.write(' AND $_activeSourcesSql');
+     if (alreadyIds.isNotEmpty) {
+       final String ph =
+           List<String>.filled(alreadyIds.length, '?').join(',');
+@@ -628,7 +589,6 @@ class PlaylistRepository {
+   Future<List<Channel>> getChannelsByExternalIds(List<String> ids) async {
+     if (ids.isEmpty) return const <Channel>[];
+     final Database db = await PlaylistDatabase.instance.database;
+-    final int? activeId = await _activePlaylistId(db);
+     final List<Channel> out = <Channel>[];
+     // Chunké à 800 pour rester sous la limite de variables SQLite (~999).
+     const int chunk = 800;
+@@ -639,10 +599,7 @@ class PlaylistRepository {
+       final StringBuffer where =
+           StringBuffer('is_live = 1 AND external_id IN ($placeholders)');
+       final List<Object> args = <Object>[...part];
+-      if (activeId != null) {
+-        where.write(' AND playlist_id = ?');
+-        args.add(activeId);
+-      }
++      where.write(' AND $_activeSourcesSql');
+       final List<Map<String, Object?>> rows = await db.query(
+         'channels',
+         where: where.toString(),
+@@ -666,29 +623,16 @@ class PlaylistRepository {
+   /// Tout reste borné : LIKE + LIMIT côté SQL, jamais de scan matérialisé.
+   Future<List<Channel>> getVodChannels({int? limit}) async {
+     final Database db = await PlaylistDatabase.instance.database;
+-    final int? activeId = await _activePlaylistId(db);
+     final int cap = limit ?? DeviceMemory.channelCap;
+-    final StringBuffer where = StringBuffer(
+-        "(is_live = 0 OR stream_url LIKE '%/movie/%' OR stream_url LIKE "
++    const String filter =
++        "is_live = 0 OR stream_url LIKE '%/movie/%' OR stream_url LIKE "
+         "'%/movies/%' OR stream_url LIKE '%/series/%' OR stream_url LIKE "
+-        "'%.mp4' OR stream_url LIKE '%.mkv' OR stream_url LIKE '%.avi' OR "
+-        "stream_url LIKE '%.m4v' OR stream_url LIKE '%.webm' OR "
+-        "stream_url LIKE '%.mov')");
+-    final List<Object> args = <Object>[];
+-    if (activeId != null) {
+-      where.write(' AND playlist_id = ?');
+-      args.add(activeId);
+-    }
+-    final List<Map<String, Object?>> rows = await db.query(
+-      'channels',
+-      where: where.toString(),
+-      whereArgs: args,
+-      orderBy: 'local_id ASC', // ordre natif de la playlist (déterministe)
+-      limit: cap,
+-    );
+-    Iterable<Channel> out = rows.map(_channelFromMap).where((Channel c) =>
+-        M3uVodClassifier.classify(url: c.streamUrl, name: c.name) !=
+-        M3uVodKind.live);
++        "'%.mp4%' OR stream_url LIKE '%.mkv%' OR stream_url LIKE '%.avi%' OR "
++        "stream_url LIKE '%.m4v%' OR stream_url LIKE '%.webm%' OR "
++        "stream_url LIKE '%.mov%'";
++    final List<Channel> channels = await _readChannelsBounded(db, filter: filter, limit: cap);
++    Iterable<Channel> out = channels.where((Channel c) =>
++        M3uVodClassifier.classify(url: c.streamUrl, name: c.name) != M3uVodKind.live);
+     // Red Room : même restriction que getAllChannels (point unique côté VOD).
+     if (FlavorConfig.current.adultOnly) {
+       out = out.where((Channel c) => c.genre == ChannelGenre.adult);
+@@ -717,38 +661,21 @@ class PlaylistRepository {
+       limit: 1,
+     );
+     if (active.isNotEmpty) return _playlistFromRow(active.first);
+-    // 2) Fallback sur la plus ancienne
+-    final List<Map<String, Object?>> first = await db.query(
+-      'playlists',
+-      orderBy: 'created_at ASC',
+-      limit: 1,
+-    );
+-    if (first.isEmpty) return null;
+-    return _playlistFromRow(first.first);
++    return null;
+   }
+ 
+-  /// Phase 1+/Multi-serveurs : marque [playlistId] comme la playlist
+-  /// active. Garantit l'exclusivite (toutes les autres passent a
+-  /// is_active=0) via une transaction. Refresh ensuite le stream
+-  /// channels pour que l'UI bascule sans recharger.
+-  Future<void> setActivePlaylist(int playlistId) async {
++  /// Activation additive : ajouter une source ne retire aucune autre liste.
++  Future<void> setActivePlaylist(int playlistId) =>
++      setPlaylistEnabled(playlistId, true);
++
++  /// La désactivation masque la source, sans l'effacer ni la réactiver par
++  /// repli. La suppression conserve son mécanisme durable distinct.
++  Future<void> setPlaylistEnabled(int playlistId, bool enabled) async {
+     final Database db = await PlaylistDatabase.instance.database;
+-    await db.transaction((Transaction txn) async {
+-      await txn.update(
+-        'playlists',
+-        <String, Object?>{'is_active': 0},
+-        // Tout sauf la cible -> 0
+-        where: 'id != ?',
+-        whereArgs: <Object>[playlistId],
+-      );
+-      await txn.update(
+-        'playlists',
+-        <String, Object?>{'is_active': 1},
+-        where: 'id = ?',
+-        whereArgs: <Object>[playlistId],
+-      );
+-    });
+-    // Re-emit les chaines de la nouvelle playlist active.
++    final int changed = await db.update('playlists',
++        <String, Object?>{'is_active': enabled ? 1 : 0},
++        where: 'id = ?', whereArgs: <Object>[playlistId]);
++    if (changed == 0) throw const PlaylistDeletedException();
+     await _emitCurrentState();
+   }
+ 
+@@ -802,15 +729,20 @@ class PlaylistRepository {
      required String name,
      required String url,
      String? epgUrl,
@@ -1875,7 +2456,7 @@ index d51cb67e..3a618502 100644
            name: name,
            url: url,
            epgUrl: epgUrl,
-@@ -821,20 +830,24 @@ class PlaylistRepository {
+@@ -821,20 +753,24 @@ class PlaylistRepository {
      // Lien Xtream : l'API d'abord (voie royale, anti-OOM, rapide).
      try {
        return await addXtreamPlaylist(
@@ -1902,7 +2483,7 @@ index d51cb67e..3a618502 100644
              url: url,
              epgUrl: epgUrl,
              httpClient: httpClient,
-@@ -862,6 +875,7 @@ class PlaylistRepository {
+@@ -862,6 +798,7 @@ class PlaylistRepository {
      // une source du LABO : elle s'ajoute à la bibliothèque de la box maître
      // mais ne doit PAS voler l'écran à l'abonnement réel.
      bool makeActive = true,
@@ -1910,7 +2491,7 @@ index d51cb67e..3a618502 100644
    }) async {
      // NORMALISATION : complète http:// si l'utilisateur/le panel admin a
      // donné juste un domaine (« serveur.com/playlist.m3u ») sans schéma —
-@@ -872,6 +886,9 @@ class PlaylistRepository {
+@@ -872,6 +809,9 @@ class PlaylistRepository {
      if (epgUrl != null && epgUrl.trim().isNotEmpty) {
        epgUrl = SourceLinkUtils.ensureScheme(epgUrl);
      }
@@ -1920,7 +2501,30 @@ index d51cb67e..3a618502 100644
      final http.Client client = httpClient ?? http.Client();
      // On insère la playlist AVANT le download (le parser a besoin de son
      // id pour rattacher les chaînes). MAIS : si une étape échoue ensuite
-@@ -1253,6 +1270,7 @@ class PlaylistRepository {
+@@ -1003,7 +943,7 @@ class PlaylistRepository {
+     List<Channel> channels,
+     String epgUrl,
+   ) async {
+-    await _syncEpgForIds(channels.map((Channel c) => c.id).toSet(), epgUrl);
++    await _syncEpgForIds(channels.map((Channel c) => c.sourceScopedId).toSet(), epgUrl);
+   }
+ 
+   /// Reconstruit le pont EPG depuis les chaînes déjà en mémoire
+@@ -1013,11 +953,11 @@ class PlaylistRepository {
+     for (final Channel ch in channels) {
+       final String? epg = ch.epgChannelId?.trim();
+       if (epg != null && epg.isNotEmpty) {
+-        idx.add(epg, ch.id);
++        idx.add(epg, ch.sourceScopedId);
+       } else if (_looksLikeEpgId(ch.id)) {
+         // M3U : Channel.id EST le tvg-id (pas encore persisté en colonne
+         // sur une vieille base) — on l'enregistre quand même.
+-        idx.add(ch.id, ch.id);
++        idx.add(ch.id, ch.sourceScopedId);
+       } else {
+         idx.recordEmpty();
+       }
+@@ -1253,6 +1193,7 @@ class PlaylistRepository {
      // Voir addM3uPlaylist : `false` = importer sans prendre la main sur
      // l'abonnement déjà actif (sources du Labo du Maître).
      bool makeActive = true,
@@ -1928,7 +2532,7 @@ index d51cb67e..3a618502 100644
    }) async {
      // NORMALISATION CENTRALE (tous les points d'entrée passent ici —
      // panneaux mobile/TV, panel admin via push MAC, restauration cloud) :
-@@ -1266,6 +1284,11 @@ class PlaylistRepository {
+@@ -1266,6 +1207,11 @@ class PlaylistRepository {
      serverUrl = SourceLinkUtils.sanitizeXtreamServer(serverUrl);
      username = SourceLinkUtils.cleanInput(username);
      password = SourceLinkUtils.cleanInput(password);
@@ -1940,7 +2544,16 @@ index d51cb67e..3a618502 100644
      // 1) Vérifie d'abord les credentials, avant de polluer la base
      final XtreamClient xtream = XtreamClient(
        serverUrl: serverUrl,
-@@ -1385,7 +1408,7 @@ class PlaylistRepository {
+@@ -1312,7 +1258,7 @@ class PlaylistRepository {
+         onBatch: (List<Channel> batch) async {
+           await _insertChannels(batch);
+           for (final Channel c in batch) {
+-            epgIds.add(c.id);
++            epgIds.add(c.sourceScopedId);
+           }
+           // Compteur VIVANT : chaque lot importé fait grimper le total
+           // affiché à l'écran (le client voit que « ça avance »).
+@@ -1385,7 +1331,7 @@ class PlaylistRepository {
    //  SUPPRESSION
    // ============================================================
  
@@ -1949,7 +2562,7 @@ index d51cb67e..3a618502 100644
      ++_emitRevision;
      // Vidage SYNCHRONE du cache mémoire + émission immédiate d'une
      // liste vide AVANT le DELETE SQL. Sur grosses playlists (20k+
-@@ -1411,7 +1434,7 @@ class PlaylistRepository {
+@@ -1411,7 +1357,7 @@ class PlaylistRepository {
  
      // Maintenant le DELETE SQL réel (peut prendre du temps sur
      // grosses playlists, mais l'UI est déjà à jour).
@@ -1958,7 +2571,7 @@ index d51cb67e..3a618502 100644
      // Re-émet l'état "officiel" depuis la DB pour rester cohérent
      // en cas d'incohérence (rare).
      await _emitCurrentState();
-@@ -1424,10 +1447,18 @@ class PlaylistRepository {
+@@ -1424,10 +1370,18 @@ class PlaylistRepository {
    Future<void> deleteAllPlaylists() async {
      ++_emitRevision;
      final Database db = await PlaylistDatabase.instance.database;
@@ -1979,7 +2592,7 @@ index d51cb67e..3a618502 100644
      // Même nettoyage anti-fuite que _deletePlaylist (voir plus bas).
      Channel.clearComputedCaches();
    }
-@@ -1653,6 +1684,8 @@ class PlaylistRepository {
+@@ -1653,6 +1607,8 @@ class PlaylistRepository {
    // ============================================================
  
    Future<int> _insertPlaylist(Playlist playlist) async {
@@ -1988,7 +2601,7 @@ index d51cb67e..3a618502 100644
      final Database db = await PlaylistDatabase.instance.database;
      // Phase 1+/Multi-serveurs : si c'est la PREMIERE playlist (la
      // table etait vide), on la marque auto-active. Sinon, les
-@@ -1678,55 +1711,30 @@ class PlaylistRepository {
+@@ -1678,55 +1634,27 @@ class PlaylistRepository {
      if (pw is String && pw.isNotEmpty) {
        map['xtream_password'] = SecretCipher.instance.encrypt(pw);
      }
@@ -2054,16 +2667,13 @@ index d51cb67e..3a618502 100644
 -    }
 +      await tx.delete('channels', where: 'playlist_id = ?', whereArgs: <Object>[id]);
 +      await tx.delete('playlists', where: 'id = ?', whereArgs: <Object>[id]);
-+      if (rows.first['is_active'] == 1) {
-+        final List<Map<String, Object?>> next = await tx.query('playlists', columns: <String>['id'], orderBy: 'created_at ASC', limit: 1);
-+        if (next.isNotEmpty) await tx.update('playlists', <String, Object?>{'is_active': 1}, where: 'id = ?', whereArgs: <Object>[next.first['id'] as int]);
-+      }
++
 +    });
 +    if (RepairFlags.mobileChannelMetadataLegacy) Channel.clearComputedCaches();
    }
  
    /// Insert toutes les chaînes en CHUNKS de 1000 + ré-émet l'état
-@@ -1768,7 +1776,7 @@ class PlaylistRepository {
+@@ -1768,7 +1696,7 @@ class PlaylistRepository {
    Future<void> _updatePlaylistMetrics(Playlist playlist) async {
      if (playlist.id == null) return;
      final Database db = await PlaylistDatabase.instance.database;
@@ -2072,7 +2682,7 @@ index d51cb67e..3a618502 100644
        'playlists',
        <String, Object?>{
          'last_synced_at': playlist.lastSyncedAt,
-@@ -1777,6 +1785,7 @@ class PlaylistRepository {
+@@ -1777,6 +1705,7 @@ class PlaylistRepository {
        where: 'id = ?',
        whereArgs: <Object>[playlist.id!],
      );
@@ -2080,7 +2690,7 @@ index d51cb67e..3a618502 100644
    }
  
    Future<void> _emitCurrentState() async {
-@@ -1784,8 +1793,8 @@ class PlaylistRepository {
+@@ -1784,8 +1713,8 @@ class PlaylistRepository {
      final bool legacy = RepairFlags.mobileChannelMetadataLegacy;
      final List<Channel> channels = await getAllChannels();
      final List<Playlist> playlists = await getAllPlaylists();
@@ -2090,6 +2700,15 @@ index d51cb67e..3a618502 100644
        final Stopwatch timer = Stopwatch()..start();
        late final ChannelComputedSnapshot snapshot;
        try {
+@@ -1832,7 +1761,7 @@ class PlaylistRepository {
+   Map<String, Object?> _channelToMap(Channel ch) {
+     return <String, Object?>{
+       'playlist_id': ch.playlistId,
+-      'external_id': ch.id,
++      'external_id': ch.sourceScopedId,
+       'name': ch.name,
+       'category': ch.category,
+       'stream_url': ch.streamUrl,
 diff --git a/lib/features/playlists/data/remote_source_repository.dart b/lib/features/playlists/data/remote_source_repository.dart
 index 1c4a4dae..2d239436 100644
 --- a/lib/features/playlists/data/remote_source_repository.dart
@@ -2717,6 +3336,57 @@ index 38d7a3fe..35ad952a 100644
 +  @override
 +  String toString() => 'Cette liste a été supprimée. Ajoute-la à nouveau pour la rétablir.';
  }
+diff --git a/lib/features/playlists/presentation/playlists_screen.dart b/lib/features/playlists/presentation/playlists_screen.dart
+index 9720b7a3..a9adeb6b 100644
+--- a/lib/features/playlists/presentation/playlists_screen.dart
++++ b/lib/features/playlists/presentation/playlists_screen.dart
+@@ -54,11 +54,16 @@ class PlaylistsScreen extends StatelessWidget {
+           return ListView.separated(
+             padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+             physics: const BouncingScrollPhysics(),
+-            itemCount: playlists.length,
++            itemCount: playlists.length + 1,
+             separatorBuilder: (BuildContext _, int __) =>
+                 const SizedBox(height: 8),
+             itemBuilder: (BuildContext context, int index) {
+-              return _PlaylistTile(playlist: playlists[index]);
++              if (index == 0) return Padding(
++                padding: const EdgeInsets.symmetric(vertical: 12),
++                child: Text(context.l10n.playlistsCombinedHint,
++                    style: AppTextStyles.bodyMedium),
++              );
++              return _PlaylistTile(playlist: playlists[index - 1]);
+             },
+           );
+         },
+@@ -306,10 +311,10 @@ class _PlaylistTile extends StatelessWidget {
+                   : AppColors.textTertiary,
+             ),
+             tooltip: playlist.isActive
+-                ? context.l10n.playlistActiveBadge
++                ? context.l10n.tvSleepDisable
+                 : context.l10n.playlistTapToActivate,
+             onPressed:
+-                playlist.isActive ? null : () => _activate(context),
++                () => _activate(context),
+           ),
+           // « Optimiser la source » : calibration automatique (compte,
+           // format d'URL gagnant, signature, temps de démarrage). Or
+@@ -347,12 +352,12 @@ class _PlaylistTile extends StatelessWidget {
+   /// `setActivePlaylist`, qui recharge aussi les chaînes de l'accueil).
+   Future<void> _activate(BuildContext context) async {
+     if (playlist.id == null) return;
+-    await PlaylistRepository.instance.setActivePlaylist(playlist.id!);
++    await PlaylistRepository.instance.setPlaylistEnabled(playlist.id!, !playlist.isActive);
+     if (!context.mounted) return;
+     ScaffoldMessenger.of(context).showSnackBar(
+       SnackBar(
+         backgroundColor: AppColors.success,
+-        content: Text(context.l10n.playlistNowActive(playlist.name)),
++        content: Text('${playlist.name} · ${playlist.isActive ? context.l10n.tvDisabled : context.l10n.tvEnabled}'),
+       ),
+     );
+   }
 diff --git a/lib/features/recordings/data/bounded_recording_writer.dart b/lib/features/recordings/data/bounded_recording_writer.dart
 new file mode 100644
 index 00000000..500730b5
@@ -3214,6 +3884,124 @@ index 330b3b72..580721ca 100644
      } on PlatformException catch (e) {
        if (kDebugMode) {
          debugPrint('[RecService] stop error: ${e.message}');
+diff --git a/lib/features/simple_home/presentation/widgets/category_browser_view.dart b/lib/features/simple_home/presentation/widgets/category_browser_view.dart
+index f2cf91cc..c9cc36dc 100644
+--- a/lib/features/simple_home/presentation/widgets/category_browser_view.dart
++++ b/lib/features/simple_home/presentation/widgets/category_browser_view.dart
+@@ -53,6 +53,7 @@ import '../../../playlists/data/playlist_repository.dart';
+ import '../../../playlists/data/remote_source_repository.dart';
+ import '../../../vod/data/playback_position_repository.dart';
+ import '../../../vod/presentation/cinema_screen.dart';
++import '../../../vod/domain/content_partition.dart';
+ import '../../../radio/presentation/radio_screen.dart';
+ import 'adult_access_dialog.dart';
+ 
+@@ -101,41 +102,11 @@ enum _Bucket {
+ /// On s'appuie sur le classifier partagé, puis on rattrape le cas très
+ /// courant des rayons « VOD » (que le classifier ne capte pas) : on les
+ /// met en Séries s'ils mentionnent une série, sinon en Films.
+-_Bucket _bucketOf(String category) {
+-  switch (ChannelClassifier.classifyGenre('', category)) {
+-    case ChannelGenre.movies:
+-      return _Bucket.films;
+-    case ChannelGenre.series:
+-      return _Bucket.series;
+-    case ChannelGenre.adult:
+-      return _Bucket.adult;
+-    default:
+-      final String t = category.toLowerCase();
+-      if (t.contains('vod')) {
+-        return t.contains('seri') ? _Bucket.series : _Bucket.films;
+-      }
+-      return _Bucket.tv;
+-  }
+-}
+-
+-/// Variante CONTENU-AWARE : détecte le rayon « Adulte » même quand le
+-/// group-title est générique. Une catégorie bascule en Adulte si son nom
+-/// est adulte OU si une part notable (≥ 40 %) de ses chaînes l'est — cas
+-/// fréquent des bouquets VOD X où seul le NOM des chaînes trahit le
+-/// contenu (le group-title, lui, reste neutre). Ça fait apparaître le
+-/// rayon Adulte là où la détection par nom de catégorie le ratait.
+ _Bucket _bucketOfCategory(String category, List<Channel> channels) {
+-  if (ChannelClassifier.classifyGenre('', category) == ChannelGenre.adult) {
+-    return _Bucket.adult;
+-  }
+-  if (channels.isNotEmpty) {
+-    int adult = 0;
+-    for (final Channel c in channels) {
+-      if (c.genre == ChannelGenre.adult) adult++;
+-    }
+-    if (adult * 100 >= channels.length * 40) return _Bucket.adult;
+-  }
+-  return _bucketOf(category);
++  // Les VOD sont affichées dans CinemaScreen. Le nom d'un bouquet « cinéma »
++  // ne transforme donc plus ses chaînes en films à la demande.
++  return channels.any((Channel c) => ContentPartition.isAdult(c.name, c.category))
++      ? _Bucket.adult : _Bucket.tv;
+ }
+ 
+ class CategoryBrowserView extends StatefulWidget {
+@@ -189,9 +160,8 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
+       _visibleFor = widget.channels;
+       _visibleAllowsAdult = allow;
+       _visibleCache = widget.channels
+-          .where((Channel c) => allow
+-              ? c.genre == ChannelGenre.adult
+-              : c.genre != ChannelGenre.adult)
++          .where((Channel c) => ContentPartition.isLive(c) &&
++              ContentPartition.visible(c.name, c.category, adultOnly: allow))
+           .toList(growable: false);
+     }
+     return _visibleCache!;
+@@ -507,10 +477,16 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
+     return ListenableBuilder(
+       listenable: PlaybackPositionRepository.instance,
+       builder: (BuildContext context, _) {
++        final Set<String> activeSources = <String>{
++          for (final p in PlaylistRepository.instance.currentPlaylists)
++            if (p.isActive && p.id != null) '@p${p.id}',
++        };
+         final List<PlaybackPosition> items = <PlaybackPosition>[
+           for (final PlaybackPosition p
+               in PlaybackPositionRepository.instance.entries)
+-            if (p.progress > 0.02 && p.progress < 0.95) p,
++            if (p.progress > 0.02 && p.progress < 0.95 && p.category != null &&
++                ContentPartition.visible(p.name, p.category!, adultOnly: false) &&
++                activeSources.any(p.key.endsWith)) p,
+         ];
+         if (items.isEmpty) return const SizedBox.shrink();
+         final List<PlaybackPosition> shown =
+@@ -535,7 +511,7 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
+                   final Channel ch = Channel(
+                     id: p.key,
+                     name: p.name,
+-                    category: '',
++                    category: p.category!,
+                     streamUrl: p.streamUrl,
+                     isLive: false,
+                     logoUrl: p.posterUrl,
+@@ -962,6 +938,20 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
+             ),
+             children: <Widget>[
+               _buildFilterBar(ordered, effective),
++              if (effective == _Bucket.adult) Padding(
++                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
++                child: Wrap(spacing: 12, runSpacing: 8, children: <Widget>[
++                  Chip(label: Text(context.l10n.catFilterTv)),
++                  for (final int tab in <int>[0, 1]) ActionChip(
++                    label: Text(tab == 0 ? context.l10n.catFilterMovies : context.l10n.catFilterSeries),
++                    onPressed: () {
++                      if (!_canShowAdult) return;
++                      Navigator.of(context).push<void>(MaterialPageRoute<void>(
++                        builder: (_) => CinemaScreen(initialTab: tab, adultOnly: true)));
++                    },
++                  ),
++                ]),
++              ),
+               if (effective != _Bucket.adult) ...<Widget>[
+                 if (widget.discoveryHeader != null) widget.discoveryHeader!,
+                 ResumeBanner(allowedChannels: _visibleChannels),
 diff --git a/lib/features/simple_home/presentation/widgets/home_navigation_bar.dart b/lib/features/simple_home/presentation/widgets/home_navigation_bar.dart
 index 06cf9ec8..e2a9f0a7 100644
 --- a/lib/features/simple_home/presentation/widgets/home_navigation_bar.dart
@@ -3678,10 +4466,10 @@ index b7963823..004e9eb9 100644
  /// Politique commune du rafraîchissement silencieux (stale-while-revalidate).
 diff --git a/lib/features/vod/data/catalog_source.dart b/lib/features/vod/data/catalog_source.dart
 new file mode 100644
-index 00000000..b866a135
+index 00000000..4cd2cab7
 --- /dev/null
 +++ b/lib/features/vod/data/catalog_source.dart
-@@ -0,0 +1,40 @@
+@@ -0,0 +1,65 @@
 +import 'dart:convert';
 +
 +import 'package:crypto/crypto.dart';
@@ -3701,14 +4489,39 @@ index 00000000..b866a135
 +  @visibleForTesting
 +  static http.Client Function()? httpForTesting;
 +
-+  static Future<CatalogSource?> current() async {
++  /// Seules les sources activées participent au catalogue commun.
++  static Future<List<CatalogSource>> active() async {
 +    final List<Playlist> rows = await PlaylistRepository.instance.getAllPlaylists();
-+    final List<Playlist> xtream = rows.where((Playlist p) =>
-+        p.type == PlaylistType.xtream && (p.xtreamServer ?? '').isNotEmpty).toList();
-+    if (xtream.isEmpty) return null;
-+    final Playlist selected = xtream.firstWhere((Playlist p) => p.isActive, orElse: () => xtream.first);
-+    final Digest digest = sha256.convert(utf8.encode(signature(<Playlist>[selected])));
-+    return CatalogSource(selected, digest.bytes.map((int b) => b.toRadixString(16).padLeft(2, '0')).join());
++    final List<Playlist> selected = rows.where((Playlist p) => p.isActive &&
++        p.id != null && p.type == PlaylistType.xtream &&
++        (p.xtreamServer ?? '').isNotEmpty).toList()
++      ..sort((Playlist a, Playlist b) => a.id!.compareTo(b.id!));
++    return <CatalogSource>[for (final Playlist p in selected)
++      CatalogSource(p, sha256.convert(utf8.encode(signature(<Playlist>[p]))).toString())];
++  }
++
++  static Future<CatalogSource?> current() async {
++    final List<CatalogSource> sources = await active();
++    return sources.isEmpty ? null : sources.first;
++  }
++
++  static String collectionKey(List<CatalogSource> sources) =>
++      sha256.convert(utf8.encode(sources.map((CatalogSource s) => s.key).join(':'))).toString();
++
++  /// Le suffixe conserve les préfixes historiques vod-/ep- tout en
++  /// distinguant deux fournisseurs qui utilisent le même numéro.
++  String qualify(String id) => '$id@p${playlist.id}';
++  bool owns(String id) => id.endsWith('@p${playlist.id}');
++  String rawId(String id) => owns(id) ? id.substring(0, id.lastIndexOf('@p')) : id;
++
++  static Future<CatalogSource?> forItem(String id) async {
++    final List<CatalogSource> sources = await active();
++    for (final CatalogSource source in sources) {
++      if (source.owns(id)) return source;
++    }
++    // Ancien favori non qualifié : jamais deviner entre plusieurs comptes.
++    if (!RegExp(r'@p[0-9]+$').hasMatch(id) && sources.length == 1) return sources.single;
++    return null;
 +  }
 +
 +  static String signature(List<Playlist> rows) => jsonEncode(<Object?>[
@@ -3722,11 +4535,119 @@ index 00000000..b866a135
 +    httpClient: httpForTesting?.call(),
 +  );
 +}
+diff --git a/lib/features/vod/data/m3u_vod_source.dart b/lib/features/vod/data/m3u_vod_source.dart
+index 95bd457a..3ddfae2c 100644
+--- a/lib/features/vod/data/m3u_vod_source.dart
++++ b/lib/features/vod/data/m3u_vod_source.dart
+@@ -33,12 +33,13 @@ const String kM3uSeriesIdPrefix = 'm3useries-';
+ 
+ /// Identifiant STABLE d'une série M3U : dérivé du seul nom (normalisé), pas
+ /// de l'ordre de la playlist → survit aux rafraîchissements de la source.
+-String m3uSeriesId(String seriesName) {
++String m3uSeriesId(String seriesName, {int? playlistId}) {
+   final String norm = seriesName
+       .toLowerCase()
+       .replaceAll(RegExp(r'[^a-z0-9]+'), '-')
+       .replaceAll(RegExp(r'^-+|-+$'), '');
+-  return '$kM3uSeriesIdPrefix${norm.isEmpty ? 'sans-nom' : norm}';
++  return '$kM3uSeriesIdPrefix${norm.isEmpty ? 'sans-nom' : norm}'
++      '${playlistId == null ? '' : '@p$playlistId'}';
+ }
+ 
+ /// Extension du conteneur depuis l'URL (« …/123.mkv?tk=a » → « mkv »),
+@@ -92,7 +93,7 @@ List<VodSeries> groupM3uEpisodesIntoSeries(List<Channel> episodes) {
+   for (final Channel c in episodes) {
+     final M3uEpisodeTag? tag = M3uVodClassifier.episodeTag(c.name);
+     final String name = tag?.seriesName ?? c.name;
+-    final String id = m3uSeriesId(name);
++    final String id = m3uSeriesId(name, playlistId: c.playlistId);
+     counts[id] = (counts[id] ?? 0) + 1;
+     bySeries.putIfAbsent(
+       id,
+@@ -116,7 +117,7 @@ List<VodEpisode> m3uEpisodesForSeries(
+   for (final Channel c in episodes) {
+     final M3uEpisodeTag? tag = M3uVodClassifier.episodeTag(c.name);
+     final String name = tag?.seriesName ?? c.name;
+-    if (m3uSeriesId(name) != seriesId) continue;
++    if (m3uSeriesId(name, playlistId: c.playlistId) != seriesId) continue;
+     fallbackNum++;
+     out.add(VodEpisode(
+       // « ep- » = contrat AutoplayPolicy (épisode suivant automatique).
+diff --git a/lib/features/vod/data/playback_position_repository.dart b/lib/features/vod/data/playback_position_repository.dart
+index 182cd97e..8d54a0c4 100644
+--- a/lib/features/vod/data/playback_position_repository.dart
++++ b/lib/features/vod/data/playback_position_repository.dart
+@@ -45,6 +45,7 @@ class PlaybackPosition {
+     required this.name,
+     required this.streamUrl,
+     this.posterUrl,
++    this.category,
+     this.isEpisode = false,
+   });
+ 
+@@ -66,6 +67,9 @@ class PlaybackPosition {
+   /// Nom affichable (titre du film, ou « S1 E3 · Titre » pour un épisode).
+   final String name;
+ 
++  /// Absente sur les anciennes reprises : accès public non présumé.
++  final String? category;
++
+   /// URL du flux au moment de la sauvegarde — de quoi relancer la lecture
+   /// directement depuis la rangée « Continuer à regarder ».
+   final String streamUrl;
+@@ -168,6 +172,7 @@ class PlaybackPositionRepository extends ChangeNotifier {
+         streamUrl: local?.streamUrl ?? r.streamUrl,
+         posterUrl: r.posterUrl ?? local?.posterUrl,
+         isEpisode: r.isEpisode,
++        category: local?.category ?? r.category,
+       ));
+       changed++;
+     }
+@@ -206,6 +211,7 @@ class PlaybackPositionRepository extends ChangeNotifier {
+     required String name,
+     required String streamUrl,
+     String? posterUrl,
++    String? category,
+     bool isEpisode = false,
+     DateTime? at,
+   }) async {
+@@ -233,6 +239,7 @@ class PlaybackPositionRepository extends ChangeNotifier {
+         streamUrl: streamUrl,
+         posterUrl: posterUrl,
+         isEpisode: isEpisode,
++        category: category,
+       ),
+     );
+     // L'insertion en tête suffit en production (now() est croissant) ; le tri
+@@ -300,6 +307,7 @@ class PlaybackPositionRepository extends ChangeNotifier {
+         'durationMs': e.durationMs,
+         'updatedAt': e.updatedAt.millisecondsSinceEpoch,
+         'name': e.name,
++        'category': e.category,
+         'streamUrl': e.streamUrl,
+         'posterUrl': e.posterUrl,
+         'isEpisode': e.isEpisode,
+@@ -315,6 +323,7 @@ class PlaybackPositionRepository extends ChangeNotifier {
+         updatedAt:
+             DateTime.fromMillisecondsSinceEpoch(j['updatedAt'] as int),
+         name: (j['name'] as String?) ?? '',
++        category: j['category'] as String?,
+         streamUrl: j['streamUrl'] as String,
+         posterUrl: j['posterUrl'] as String?,
+         isEpisode: (j['isEpisode'] as bool?) ?? false,
 diff --git a/lib/features/vod/data/series_repository.dart b/lib/features/vod/data/series_repository.dart
-index b9a07e81..406bda45 100644
+index b9a07e81..3b187cd7 100644
 --- a/lib/features/vod/data/series_repository.dart
 +++ b/lib/features/vod/data/series_repository.dart
-@@ -26,6 +26,7 @@ import '../../playlists/domain/playlist.dart';
+@@ -14,6 +14,7 @@
+ // =========================================================
+ 
+ import 'dart:async';
++import '../../../core/app/device_memory.dart';
+ import 'dart:convert';
+ 
+ import 'package:flutter/foundation.dart';
+@@ -26,6 +27,7 @@ import '../../playlists/domain/playlist.dart';
  import '../domain/vod_info.dart';
  import '../domain/vod_series.dart';
  import 'catalog_disk_cache.dart';
@@ -3734,7 +4655,7 @@ index b9a07e81..406bda45 100644
  import 'm3u_vod_source.dart';
  import '../../player/data/stream_diagnostics.dart';
  
-@@ -48,17 +49,31 @@ String encodeSeriesCatalog((List<VodSeries>, String) input) =>
+@@ -48,17 +50,31 @@ String encodeSeriesCatalog((List<VodSeries>, String) input) =>
  
  class SeriesRepository extends ChangeNotifier {
    SeriesRepository._() {
@@ -3773,7 +4694,7 @@ index b9a07e81..406bda45 100644
    /// Part XTREAM (mémoire ← disque ← réseau).
    List<VodSeries>? _cache;
  
-@@ -76,54 +91,36 @@ class SeriesRepository extends ChangeNotifier {
+@@ -76,54 +92,36 @@ class SeriesRepository extends ChangeNotifier {
      encode: encodeSeriesCatalog,
    );
  
@@ -3845,7 +4766,7 @@ index b9a07e81..406bda45 100644
        _m3uEpisodeChannels = splitM3uVod(vod).episodes;
        _m3uSeries = groupM3uEpisodesIntoSeries(_m3uEpisodeChannels!);
        if (_m3uSeries!.isNotEmpty) {
-@@ -131,6 +128,7 @@ class SeriesRepository extends ChangeNotifier {
+@@ -131,6 +129,7 @@ class SeriesRepository extends ChangeNotifier {
              '(${_m3uEpisodeChannels!.length} épisodes)');
        }
      } catch (e) {
@@ -3853,7 +4774,7 @@ index b9a07e81..406bda45 100644
        // Fail-open : une erreur SQLite ne prive pas l'écran de la part Xtream.
        if (kDebugMode) debugPrint('[Series] m3u error: $e');
        _m3uSeries = const <VodSeries>[];
-@@ -141,50 +139,41 @@ class SeriesRepository extends ChangeNotifier {
+@@ -141,68 +140,82 @@ class SeriesRepository extends ChangeNotifier {
  
    /// Part Xtream seule (mémoire → disque → réseau) — logique historique.
    Future<List<VodSeries>> _fetchXtreamSeries({bool forceRefresh = false}) async {
@@ -3861,9 +4782,10 @@ index b9a07e81..406bda45 100644
 -      _diag('mémoire : ${_cache!.length} séries');
 -      return _cache!;
 +    final int revision = _revision;
-+    final CatalogSource? source = await CatalogSource.current();
++    final List<CatalogSource> sources = await CatalogSource.active();
++    final String sourceKey = CatalogSource.collectionKey(sources);
 +    if (revision != _revision) return const <VodSeries>[];
-+    if (source == null) {
++    if (sources.isEmpty) {
 +      _cache = null;
 +      _cacheKey = null;
 +      unawaited(_disk.invalidate());
@@ -3878,9 +4800,9 @@ index b9a07e81..406bda45 100644
 -        unawaited(_refreshInBackground());
 -        return disk;
 -      }
-+    if (_cacheKey != source.key) {
++    if (_cacheKey != sourceKey) {
 +      _cache = null;
-+      _cacheKey = source.key;
++      _cacheKey = sourceKey;
      }
 -    _diag('réseau demandé (source $key)…');
 -    final List<VodSeries>? diskNow =
@@ -3902,19 +4824,19 @@ index b9a07e81..406bda45 100644
 -          '(${_cache?.length ?? 0})',
 -          level: 'warn');
 +    if (!forceRefresh && _cache != null) return _cache!;
-+    final List<VodSeries>? disk = await _disk.load(source.key);
-+    if (revision != _revision || _cacheKey != source.key) return const <VodSeries>[];
++    final List<VodSeries>? disk = await _disk.load(sourceKey);
++    if (revision != _revision || _cacheKey != sourceKey) return const <VodSeries>[];
 +    if (!forceRefresh && disk != null && disk.isNotEmpty) {
 +      _cache = disk;
-+      unawaited(_refreshInBackground(source, revision));
++      unawaited(_refreshInBackground(sources, sourceKey, revision));
 +      return disk;
      }
 -    return _cache ?? const <VodSeries>[];
-+    final List<VodSeries> fresh = await _fetchFromNetwork(source);
-+    if (revision != _revision || _cacheKey != source.key) return const <VodSeries>[];
++    final List<VodSeries> fresh = await _fetchFromNetwork(sources, previous: _cache ?? disk ?? const <VodSeries>[]);
++    if (revision != _revision || _cacheKey != sourceKey) return const <VodSeries>[];
 +    _cache = keepPreviousWhenEmpty<VodSeries>(incoming: fresh,
 +        previous: _cache ?? const <VodSeries>[], disk: disk ?? const <VodSeries>[]);
-+    if (fresh.isNotEmpty) unawaited(_disk.save(fresh, source.key));
++    if (fresh.isNotEmpty) unawaited(_disk.save(fresh, sourceKey));
 +    return _cache!;
    }
  
@@ -3925,32 +4847,66 @@ index b9a07e81..406bda45 100644
 -  Future<List<VodSeries>> _fetchFromNetwork() async {
 -    final XtreamClient? client = await _client();
 -    if (client == null) return const <VodSeries>[];
-+  Future<List<VodSeries>> _fetchFromNetwork(CatalogSource source) async {
-+    final XtreamClient client = source.client();
-     try {
-       return await client.fetchSeries();
-     } catch (e) {
-@@ -198,11 +187,12 @@ class SeriesRepository extends ChangeNotifier {
+-    try {
+-      return await client.fetchSeries();
+-    } catch (e) {
+-      if (kDebugMode) debugPrint('[Series] fetch error: $e');
+-      return const <VodSeries>[];
+-    } finally {
+-      client.dispose();
++  Future<List<VodSeries>> _fetchFromNetwork(List<CatalogSource> sources,
++      {List<VodSeries> previous = const <VodSeries>[]}) async {
++    if (sources.isEmpty) return const <VodSeries>[];
++    // Deux téléchargements de métadonnées au maximum ; le quota mémoire
++    // reste global. Un fournisseur lent ne sérialise pas les dix comptes.
++    final int quota = (DeviceMemory.channelCap ~/ sources.length).clamp(1, DeviceMemory.channelCap).toInt();
++    final int revision = _revision;
++    final List<List<VodSeries>> parts = List<List<VodSeries>>.generate(sources.length, (_) => <VodSeries>[]);
++    int next = 0;
++    Future<void> worker() async {
++      while (next < sources.length && revision == _revision) {
++        final int slot = next++;
++        final CatalogSource source = sources[slot];
++        final XtreamClient client = source.client();
++        try {
++          final List<VodSeries> items = await client.fetchSeries();
++          if (revision != _revision) return;
++          final Iterable<VodSeries> selected = items.isEmpty
++              ? previous.where((VodSeries item) => source.owns(item.id))
++              : items.map((VodSeries item) => VodSeries.fromJson(
++                  <String, dynamic>{...item.toJson(), 'i': source.qualify(item.id)}));
++          parts[slot] = selected.take(quota).toList(growable: false);
++        } catch (_) {
++          if (revision != _revision) return;
++          parts[slot] = previous.where((VodSeries item) => source.owns(item.id)).take(quota).toList(growable: false);
++          _diag('Catalogue temporairement indisponible pour une source activée', level: 'warn');
++        } finally { client.dispose(); }
++      }
+     }
++    await Future.wait(<Future<void>>[worker(), if (sources.length > 1) worker()]);
++    return revision == _revision ? parts.expand((List<VodSeries> part) => part).toList(growable: false) : const <VodSeries>[];
+   }
+ 
    /// Stale-while-revalidate : re-télécharge derrière l'écran affiché et
    /// prévient les abonnés si le catalogue a changé (empreinte de TOUS les
    /// ids) ; sauvegarde disque uniquement en cas de changement.
 -  Future<void> _refreshInBackground() async {
-+  Future<void> _refreshInBackground(CatalogSource source, int revision) async {
++  Future<void> _refreshInBackground(List<CatalogSource> sources, String sourceKey, int revision) async {
      if (_refreshing) return;
      _refreshing = true;
      try {
 -      final List<VodSeries> fresh = await _fetchFromNetwork();
-+      final List<VodSeries> fresh = await _fetchFromNetwork(source);
-+      if (revision != _revision || _cacheKey != source.key) return;
++      final List<VodSeries> fresh = await _fetchFromNetwork(sources, previous: _cache ?? const <VodSeries>[]);
++      if (revision != _revision || _cacheKey != sourceKey) return;
        if (fresh.isEmpty) return; // panne / M3U seul → cache affiché conservé
        final List<VodSeries> old = _cache ?? const <VodSeries>[];
        final bool changed = catalogChanged(
-@@ -211,11 +201,11 @@ class SeriesRepository extends ChangeNotifier {
+@@ -211,11 +224,11 @@ class SeriesRepository extends ChangeNotifier {
        );
        _cache = fresh;
        if (changed) {
 -        unawaited(_disk.save(fresh, await _sourceKey()));
-+        unawaited(_disk.save(fresh, source.key));
++        unawaited(_disk.save(fresh, sourceKey));
          notifyListeners();
        }
      } finally {
@@ -3959,7 +4915,7 @@ index b9a07e81..406bda45 100644
      }
    }
  
-@@ -230,25 +220,29 @@ class SeriesRepository extends ChangeNotifier {
+@@ -230,30 +243,39 @@ class SeriesRepository extends ChangeNotifier {
    /// n'en fournit pas (fail-open : la fiche s'affiche avec ce qu'elle a).
    Future<({VodInfo? info, List<VodEpisode> episodes})> fetchDetail(
        String seriesId) async {
@@ -3977,7 +4933,7 @@ index b9a07e81..406bda45 100644
      }
 -    final XtreamClient? client = await _client();
 -    if (client == null) {
-+    final CatalogSource? source = await CatalogSource.current();
++    final CatalogSource? source = await CatalogSource.forItem(seriesId);
 +    if (source == null || revision != _revision) {
        _diag('ouverture série $seriesId : aucun compte Xtream (M3U seul) → '
            'pas d\'épisodes', level: 'warn');
@@ -3986,16 +4942,36 @@ index b9a07e81..406bda45 100644
 +    final XtreamClient client = source.client();
      try {
        final ({VodInfo? info, List<VodEpisode> episodes}) d =
-           await client.fetchSeriesDetail(seriesId);
+-          await client.fetchSeriesDetail(seriesId);
++          await client.fetchSeriesDetail(source.rawId(seriesId));
 +      if (revision != _revision) return (info: null, episodes: const <VodEpisode>[]);
        _diag(d.episodes.isEmpty
            ? 'ouverture série $seriesId : 0 épisode renvoyé par le serveur'
            : 'ouverture série $seriesId : ${d.episodes.length} épisodes',
+           level: d.episodes.isEmpty ? 'warn' : 'info');
+-      return d;
++      return (info: d.info, episodes: <VodEpisode>[
++        for (final VodEpisode e in d.episodes) VodEpisode(
++          id: source.qualify(e.id), title: e.title, season: e.season,
++          episodeNum: e.episodeNum, streamUrl: e.streamUrl,
++          containerExt: e.containerExt, posterUrl: e.posterUrl),
++      ]);
+     } catch (e) {
+       if (kDebugMode) debugPrint('[Series] detail error: $e');
+       _diag('ouverture série $seriesId : ÉCHEC ($e)', level: 'error');
 diff --git a/lib/features/vod/data/vod_repository.dart b/lib/features/vod/data/vod_repository.dart
-index cef35528..d03d3e9e 100644
+index cef35528..847ce168 100644
 --- a/lib/features/vod/data/vod_repository.dart
 +++ b/lib/features/vod/data/vod_repository.dart
-@@ -35,6 +35,7 @@ import '../../playlists/data/xtream_client.dart';
+@@ -28,6 +28,7 @@ import 'dart:convert';
+ import 'package:flutter/foundation.dart';
+ 
+ import '../../../core/async/single_flight.dart';
++import '../../../core/app/device_memory.dart';
+ import '../../channels/domain/channel.dart';
+ import '../../playlists/data/playlist_repository.dart';
+ import '../../playlists/domain/playlist.dart';
+@@ -35,6 +36,7 @@ import '../../playlists/data/xtream_client.dart';
  import '../domain/vod_info.dart';
  import '../domain/vod_movie.dart';
  import 'catalog_disk_cache.dart';
@@ -4003,7 +4979,7 @@ index cef35528..d03d3e9e 100644
  import 'm3u_vod_source.dart';
  import '../../player/data/stream_diagnostics.dart';
  
-@@ -62,17 +63,32 @@ String encodeVodCatalog((List<VodMovie>, String) input) =>
+@@ -62,17 +64,32 @@ String encodeVodCatalog((List<VodMovie>, String) input) =>
  
  class VodRepository extends ChangeNotifier {
    VodRepository._() {
@@ -4043,7 +5019,7 @@ index cef35528..d03d3e9e 100644
    /// Part XTREAM du catalogue (mémoire ← disque ← réseau).
    List<VodMovie>? _cache;
  
-@@ -91,39 +107,6 @@ class VodRepository extends ChangeNotifier {
+@@ -91,39 +108,6 @@ class VodRepository extends ChangeNotifier {
      encode: encodeVodCatalog,
    );
  
@@ -4083,7 +5059,7 @@ index cef35528..d03d3e9e 100644
    /// Renvoie le catalogue de films UNIFIÉ : part Xtream (get_vod_streams)
    /// + part M3U (fichiers VOD de la playlist, classés au parsing).
    /// [forceRefresh] re-tape le serveur (Xtream) et relit SQLite (M3U).
-@@ -140,7 +123,7 @@ class VodRepository extends ChangeNotifier {
+@@ -140,7 +124,7 @@ class VodRepository extends ChangeNotifier {
    /// plusieurs Mo en double, sur le même petit réseau, avec deux isolates
    /// de parsing : on doublait exactement l'attente qu'on cherchait à
    /// supprimer. Désormais le second appel S'ACCROCHE au premier.
@@ -4092,7 +5068,7 @@ index cef35528..d03d3e9e 100644
  
    Future<List<VodMovie>> fetchMovies({bool forceRefresh = false}) {
      // Un rafraîchissement FORCÉ (tirer pour recharger) doit vraiment
-@@ -150,21 +133,32 @@ class VodRepository extends ChangeNotifier {
+@@ -150,21 +134,32 @@ class VodRepository extends ChangeNotifier {
    }
  
    Future<List<VodMovie>> _fetchMoviesOnce({bool forceRefresh = false}) async {
@@ -4131,7 +5107,7 @@ index cef35528..d03d3e9e 100644
        final List<Channel> movies = splitM3uVod(vod).movies;
        _m3uMovies =
            movies.map(m3uChannelToMovie).toList(growable: false);
-@@ -172,6 +166,7 @@ class VodRepository extends ChangeNotifier {
+@@ -172,6 +167,7 @@ class VodRepository extends ChangeNotifier {
          _diag('M3U : ${_m3uMovies!.length} films détectés dans la playlist');
        }
      } catch (e) {
@@ -4139,7 +5115,7 @@ index cef35528..d03d3e9e 100644
        // Fail-open : une erreur SQLite ne prive pas l'écran de la part Xtream.
        if (kDebugMode) debugPrint('[VOD] m3u error: $e');
        _m3uMovies = const <VodMovie>[];
-@@ -181,44 +176,33 @@ class VodRepository extends ChangeNotifier {
+@@ -181,44 +177,34 @@ class VodRepository extends ChangeNotifier {
  
    /// Part Xtream seule (mémoire → disque → réseau) — logique historique.
    Future<List<VodMovie>> _fetchXtreamMovies({bool forceRefresh = false}) async {
@@ -4147,9 +5123,10 @@ index cef35528..d03d3e9e 100644
 -      _diag('mémoire : ${_cache!.length} films');
 -      return _cache!;
 +    final int revision = _revision;
-+    final CatalogSource? source = await CatalogSource.current();
++    final List<CatalogSource> sources = await CatalogSource.active();
++    final String sourceKey = CatalogSource.collectionKey(sources);
 +    if (revision != _revision) return const <VodMovie>[];
-+    if (source == null) {
++    if (sources.isEmpty) {
 +      _cache = null;
 +      _cacheKey = null;
 +      unawaited(_disk.invalidate());
@@ -4165,9 +5142,9 @@ index cef35528..d03d3e9e 100644
 -        unawaited(_refreshInBackground());
 -        return disk;
 -      }
-+    if (_cacheKey != source.key) {
++    if (_cacheKey != sourceKey) {
 +      _cache = null;
-+      _cacheKey = source.key;
++      _cacheKey = sourceKey;
      }
 -    _diag('réseau demandé (source $key)…');
 -    final List<VodMovie>? diskNow =
@@ -4191,56 +5168,92 @@ index cef35528..d03d3e9e 100644
 -          '(${_cache?.length ?? 0})',
 -          level: 'warn');
 +    if (!forceRefresh && _cache != null) return _cache!;
-+    final List<VodMovie>? disk = await _disk.load(source.key);
-+    if (revision != _revision || _cacheKey != source.key) return const <VodMovie>[];
++    final List<VodMovie>? disk = await _disk.load(sourceKey);
++    if (revision != _revision || _cacheKey != sourceKey) return const <VodMovie>[];
 +    if (!forceRefresh && disk != null && disk.isNotEmpty) {
 +      _cache = disk;
-+      unawaited(_refreshInBackground(source, revision));
++      unawaited(_refreshInBackground(sources, sourceKey, revision));
 +      return disk;
      }
 -    return _cache ?? const <VodMovie>[];
-+    final List<VodMovie> fresh = await _fetchFromNetwork(source);
-+    if (revision != _revision || _cacheKey != source.key) return const <VodMovie>[];
++    final List<VodMovie> fresh = await _fetchFromNetwork(sources, previous: _cache ?? disk ?? const <VodMovie>[]);
++    if (revision != _revision || _cacheKey != sourceKey) return const <VodMovie>[];
 +    _cache = keepPreviousWhenEmpty<VodMovie>(incoming: fresh,
 +        previous: _cache ?? const <VodMovie>[], disk: disk ?? const <VodMovie>[]);
-+    if (fresh.isNotEmpty) unawaited(_disk.save(fresh, source.key));
++    if (fresh.isNotEmpty) unawaited(_disk.save(fresh, sourceKey));
 +    return _cache!;
    }
  
    /// Films DÉJÀ en mémoire (aucun réseau) — pour les surfaces « best-effort »
-@@ -231,9 +215,8 @@ class VodRepository extends ChangeNotifier {
+@@ -231,17 +217,37 @@ class VodRepository extends ChangeNotifier {
  
    /// Appel réseau brut (liste vide en cas d'erreur — fail-open, et AUCUN
    /// effet de bord sur _cache : c'est l'appelant qui décide quoi garder).
 -  Future<List<VodMovie>> _fetchFromNetwork() async {
 -    final XtreamClient? client = await _client();
 -    if (client == null) return const <VodMovie>[];
-+  Future<List<VodMovie>> _fetchFromNetwork(CatalogSource source) async {
-+    final XtreamClient client = source.client();
-     try {
-       return await client.fetchVodMovies();
-     } catch (e) {
-@@ -250,11 +233,12 @@ class VodRepository extends ChangeNotifier {
+-    try {
+-      return await client.fetchVodMovies();
+-    } catch (e) {
+-      if (kDebugMode) debugPrint('[VOD] fetch error: $e');
+-      return const <VodMovie>[];
+-    } finally {
+-      client.dispose();
++  Future<List<VodMovie>> _fetchFromNetwork(List<CatalogSource> sources,
++      {List<VodMovie> previous = const <VodMovie>[]}) async {
++    if (sources.isEmpty) return const <VodMovie>[];
++    // Deux téléchargements de métadonnées au maximum ; le quota mémoire
++    // reste global. Un fournisseur lent ne sérialise pas les dix comptes.
++    final int quota = (DeviceMemory.channelCap ~/ sources.length).clamp(1, DeviceMemory.channelCap).toInt();
++    final int revision = _revision;
++    final List<List<VodMovie>> parts = List<List<VodMovie>>.generate(sources.length, (_) => <VodMovie>[]);
++    int next = 0;
++    Future<void> worker() async {
++      while (next < sources.length && revision == _revision) {
++        final int slot = next++;
++        final CatalogSource source = sources[slot];
++        final XtreamClient client = source.client();
++        try {
++          final List<VodMovie> items = await client.fetchVodMovies();
++          if (revision != _revision) return;
++          final Iterable<VodMovie> selected = items.isEmpty
++              ? previous.where((VodMovie item) => source.owns(item.id))
++              : items.map((VodMovie item) => VodMovie.fromJson(
++                  <String, dynamic>{...item.toJson(), 'i': source.qualify(item.id)}));
++          parts[slot] = selected.take(quota).toList(growable: false);
++        } catch (_) {
++          if (revision != _revision) return;
++          parts[slot] = previous.where((VodMovie item) => source.owns(item.id)).take(quota).toList(growable: false);
++          _diag('Catalogue temporairement indisponible pour une source activée', level: 'warn');
++        } finally { client.dispose(); }
++      }
+     }
++    await Future.wait(<Future<void>>[worker(), if (sources.length > 1) worker()]);
++    return revision == _revision ? parts.expand((List<VodMovie> part) => part).toList(growable: false) : const <VodMovie>[];
+   }
+ 
+   /// Rafraîchissement SILENCIEUX (stale-while-revalidate) : re-télécharge le
+@@ -250,11 +256,12 @@ class VodRepository extends ChangeNotifier {
    /// Détection de changement ROBUSTE (empreinte de TOUS les ids) et
    /// sauvegarde disque UNIQUEMENT si changement (pas de réécriture de
    /// plusieurs Mo à chaque ouverture).
 -  Future<void> _refreshInBackground() async {
-+  Future<void> _refreshInBackground(CatalogSource source, int revision) async {
++  Future<void> _refreshInBackground(List<CatalogSource> sources, String sourceKey, int revision) async {
      if (_refreshing) return;
      _refreshing = true;
      try {
 -      final List<VodMovie> fresh = await _fetchFromNetwork();
-+      final List<VodMovie> fresh = await _fetchFromNetwork(source);
-+      if (revision != _revision || _cacheKey != source.key) return;
++      final List<VodMovie> fresh = await _fetchFromNetwork(sources, previous: _cache ?? const <VodMovie>[]);
++      if (revision != _revision || _cacheKey != sourceKey) return;
        if (fresh.isEmpty) return;
        final List<VodMovie> old = _cache ?? const <VodMovie>[];
        final bool changed = catalogChanged(
-@@ -263,11 +247,11 @@ class VodRepository extends ChangeNotifier {
+@@ -263,11 +270,11 @@ class VodRepository extends ChangeNotifier {
        );
        _cache = fresh;
        if (changed) {
 -        unawaited(_disk.save(fresh, await _sourceKey()));
-+        unawaited(_disk.save(fresh, source.key));
++        unawaited(_disk.save(fresh, sourceKey));
          notifyListeners();
        }
      } finally {
@@ -4249,18 +5262,17 @@ index cef35528..d03d3e9e 100644
      }
    }
  
-@@ -298,6 +282,10 @@ class VodRepository extends ChangeNotifier {
+@@ -298,6 +305,9 @@ class VodRepository extends ChangeNotifier {
      // Seuls les films Xtream (`vod-…`) ont une fiche serveur.
      if (!movieId.startsWith('vod-')) return null;
  
 +    final int revision = _revision;
-+    final CatalogSource? source = await CatalogSource.current();
++    final CatalogSource? source = await CatalogSource.forItem(movieId);
 +    if (source == null || revision != _revision) return null;
-+    if (_cacheKey != source.key) _infoCache.clear();
      // Accès LRU : retirer + ré-insérer = marquer « utilisé récemment ».
      final VodInfo? cached = _infoCache.remove(movieId);
      if (cached != null) {
-@@ -307,12 +295,11 @@ class VodRepository extends ChangeNotifier {
+@@ -307,12 +317,11 @@ class VodRepository extends ChangeNotifier {
  
      // Timeout plus court que le catalogue : une fiche pèse ~2 Ko — si le
      // serveur met > 12 s, on affiche la fiche « pauvre » plutôt qu'attendre.
@@ -4270,11 +5282,271 @@ index cef35528..d03d3e9e 100644
 +    final XtreamClient client = source.client(timeout: const Duration(seconds: 12));
      try {
        final VodInfo? info =
-           await client.fetchVodInfo(movieId.substring('vod-'.length));
+-          await client.fetchVodInfo(movieId.substring('vod-'.length));
++          await client.fetchVodInfo(source.rawId(movieId).substring('vod-'.length));
 +      if (revision != _revision) return null;
        if (info != null) {
          _infoCache[movieId] = info;
          // Éviction LRU : la tête de la map est la moins récemment utilisée.
+diff --git a/lib/features/vod/domain/content_partition.dart b/lib/features/vod/domain/content_partition.dart
+new file mode 100644
+index 00000000..f9f3fdc0
+--- /dev/null
++++ b/lib/features/vod/domain/content_partition.dart
+@@ -0,0 +1,16 @@
++import '../../channels/domain/channel.dart';
++import 'm3u_vod_classifier.dart';
++
++/// Le type (direct / film / épisode) et l'accès 18+ sont deux axes séparés.
++/// Une chaîne cinéma en direct reste du direct ; un film 18+ ne rejoint
++/// jamais le rayon public simplement parce qu'il se trouve dans « Films ».
++abstract final class ContentPartition {
++  static bool isAdult(String name, String category) =>
++      ChannelClassifier.classifyGenre(name, category) == ChannelGenre.adult;
++
++  static bool isLive(Channel channel) => channel.isLive &&
++      M3uVodClassifier.classify(url: channel.streamUrl, name: channel.name) == M3uVodKind.live;
++
++  static bool visible(String name, String category, {required bool adultOnly}) =>
++      isAdult(name, category) == adultOnly;
++}
+diff --git a/lib/features/vod/presentation/cinema_screen.dart b/lib/features/vod/presentation/cinema_screen.dart
+index 66795897..766139bb 100644
+--- a/lib/features/vod/presentation/cinema_screen.dart
++++ b/lib/features/vod/presentation/cinema_screen.dart
+@@ -34,6 +34,9 @@ import '../data/vod_novelty_service.dart';
+ import '../data/vod_repository.dart';
+ import '../data/vod_taste.dart';
+ import '../domain/vod_movie.dart';
++import '../domain/content_partition.dart';
++import '../../security/data/parental_controls.dart';
++import '../../../core/profiles/profiles_repository.dart';
+ import '../../tv/core/vod_titles.dart';
+ import '../domain/vod_series.dart';
+ import 'movie_detail_screen.dart';
+@@ -52,7 +55,9 @@ double _posterWidth(BuildContext context) =>
+ double _posterHeight(double width) => width * 140 / 96;
+ 
+ class CinemaScreen extends StatefulWidget {
+-  const CinemaScreen({super.key, this.initialTab = 0});
++  const CinemaScreen({super.key, this.initialTab = 0, this.adultOnly = false});
++
++  final bool adultOnly;
+ 
+   /// 0 = Films, 1 = Séries, 2 = Téléchargés (le rayon tapé dans l'accueil
+   /// ouvre directement le bon onglet).
+@@ -70,6 +75,17 @@ class _CinemaScreenState extends State<CinemaScreen>
+   List<VodMovie> _movies = const <VodMovie>[];
+   List<VodSeries> _series = const <VodSeries>[];
+   bool _loading = true;
++  late final String _openedProfile;
++  bool _adultAccessValid = true;
++
++  void _checkAdultAccess() {
++    if (!widget.adultOnly || !mounted) return;
++    if (ParentalControls.instance.kidsMode.value ||
++        ProfilesRepository.instance.active.id != _openedProfile) {
++      setState(() { _adultAccessValid = false; _movies = const <VodMovie>[]; _series = const <VodSeries>[]; });
++      Navigator.of(context).maybePop();
++    }
++  }
+ 
+   /// Squelette PROPRE à l'onglet Séries : les films s'affichent sans
+   /// l'attendre (cf. [_load]), donc les deux états sont désormais distincts.
+@@ -82,6 +98,9 @@ class _CinemaScreenState extends State<CinemaScreen>
+   @override
+   void initState() {
+     super.initState();
++    _openedProfile = ProfilesRepository.instance.active.id;
++    ParentalControls.instance.kidsMode.addListener(_checkAdultAccess);
++    ProfilesRepository.instance.addListener(_checkAdultAccess);
+     // Rafraîchissement silencieux (même règle que la TV) : cache disque
+     // d'abord, mise à jour sans spinner quand le réseau répond.
+     VodRepository.instance.addListener(_reload);
+@@ -95,6 +114,8 @@ class _CinemaScreenState extends State<CinemaScreen>
+     VodRepository.instance.removeListener(_reload);
+     SeriesRepository.instance.removeListener(_reload);
+     VodDownloadService.instance.removeListener(_onDownloadsChanged);
++    ParentalControls.instance.kidsMode.removeListener(_checkAdultAccess);
++    ProfilesRepository.instance.removeListener(_checkAdultAccess);
+     _tabs.dispose();
+     super.dispose();
+   }
+@@ -134,10 +155,10 @@ class _CinemaScreenState extends State<CinemaScreen>
+     final Future<void> positionsFuture =
+         PlaybackPositionRepository.instance.ensureLoaded();
+     final List<VodMovie> movies = await VodRepository.instance.fetchMovies();
+-    if (!mounted) return;
++    if (!mounted || (widget.adultOnly && (!_adultAccessValid || ParentalControls.instance.kidsMode.value))) return;
+     // 1er rendu dès les FILMS : l'onglet ouvert n'attend plus les séries.
+     setState(() {
+-      _movies = movies;
++      _movies = movies.where((VodMovie m) => ContentPartition.visible(m.name, m.category, adultOnly: widget.adultOnly)).toList(growable: false);
+       _loading = false;
+     });
+     final int nowMs = DateTime.now().millisecondsSinceEpoch;
+@@ -160,9 +181,9 @@ class _CinemaScreenState extends State<CinemaScreen>
+     } catch (_) {
+       // idem : les reprises manquantes ne bloquent pas l'affichage.
+     }
+-    if (!mounted) return;
++    if (!mounted || (widget.adultOnly && (!_adultAccessValid || ParentalControls.instance.kidsMode.value))) return;
+     setState(() {
+-      _series = series;
++      _series = series.where((VodSeries item) => ContentPartition.visible(item.name, item.category, adultOnly: widget.adultOnly)).toList(growable: false);
+       _seriesLoading = false;
+     });
+     VodNoveltyService.instance
+@@ -174,11 +195,14 @@ class _CinemaScreenState extends State<CinemaScreen>
+ 
+   @override
+   Widget build(BuildContext context) {
++    if (widget.adultOnly && (!_adultAccessValid || ParentalControls.instance.kidsMode.value)) {
++      return const Scaffold(body: SizedBox.shrink());
++    }
+     return Scaffold(
+       backgroundColor: AppColors.background,
+       appBar: AppBar(
+         backgroundColor: AppColors.background,
+-        title: Text(context.l10n.catFilterMovies,
++        title: Text(widget.adultOnly ? context.l10n.homeTabAdult : context.l10n.catFilterMovies,
+             style: const TextStyle(
+                 fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
+         bottom: TabBar(
+@@ -202,7 +226,7 @@ class _CinemaScreenState extends State<CinemaScreen>
+           // attendre, cet onglet garde le sien le temps qu'elles arrivent.
+           _SeriesTab(
+               series: _series, loading: _seriesLoading, newIds: _newSeriesIds),
+-          const _DownloadsTab(),
++          _DownloadsTab(adultOnly: widget.adultOnly),
+         ],
+       ),
+     );
+@@ -675,7 +699,8 @@ class _SeriesTab extends StatelessWidget {
+ // ---------------------------------------------------------------------------
+ 
+ class _DownloadsTab extends StatefulWidget {
+-  const _DownloadsTab();
++  const _DownloadsTab({this.adultOnly = false});
++  final bool adultOnly;
+ 
+   @override
+   State<_DownloadsTab> createState() => _DownloadsTabState();
+@@ -698,6 +723,7 @@ class _DownloadsTabState extends State<_DownloadsTab> {
+   }
+ 
+   void _playOffline(VodDownload d) {
++    if (widget.adultOnly && ParentalControls.instance.kidsMode.value) return;
+     unawaited(playChannel(
+       context,
+       Channel(
+@@ -732,7 +758,9 @@ class _DownloadsTabState extends State<_DownloadsTab> {
+       listenable: VodDownloadService.instance,
+       builder: (BuildContext context, _) {
+         final VodDownloadService dl = VodDownloadService.instance;
+-        final List<VodDownload> items = dl.all;
++        final List<VodDownload> items = dl.all.where((VodDownload d) =>
++            ContentPartition.visible(d.name, d.category,
++                adultOnly: widget.adultOnly)).toList(growable: false);
+         return ListView(
+           padding: const EdgeInsets.all(16),
+           children: <Widget>[
+diff --git a/lib/l10n/app_ar.arb b/lib/l10n/app_ar.arb
+index cc26b4a3..fd6c4419 100644
+--- a/lib/l10n/app_ar.arb
++++ b/lib/l10n/app_ar.arb
+@@ -2382,5 +2382,6 @@
+   "homeTabAdult": "للبالغين +18",
+   "homeAdultConfirmTitle": "مساحة مخصصة.",
+   "homeAdultConfirmHint": "أكّد أن عمرك 18 عامًا أو أكثر للدخول إلى هذه المساحة.",
+-  "homeAdultConfirmButton": "عمري 18 عامًا أو أكثر"
++  "homeAdultConfirmButton": "عمري 18 عامًا أو أكثر",
++  "playlistsCombinedHint": "فعّل عدة مصادر M3U أو Xtream لعرض محتواها معًا. يمكنك إبقاء 10 مصادر على الأقل مفعّلة."
+ }
+diff --git a/lib/l10n/app_da.arb b/lib/l10n/app_da.arb
+index 7b40de02..4603a8d8 100644
+--- a/lib/l10n/app_da.arb
++++ b/lib/l10n/app_da.arb
+@@ -2382,5 +2382,6 @@
+   "homeTabAdult": "Voksne 18+",
+   "homeAdultConfirmTitle": "Et forbeholdt område.",
+   "homeAdultConfirmHint": "Bekræft, at du er 18 år eller ældre, for at åbne dette område.",
+-  "homeAdultConfirmButton": "Jeg er 18 år eller ældre"
++  "homeAdultConfirmButton": "Jeg er 18 år eller ældre",
++  "playlistsCombinedHint": "Aktivér flere M3U- eller Xtream-kilder for at samle deres indhold. Mindst 10 kilder kan være aktive."
+ }
+diff --git a/lib/l10n/app_en.arb b/lib/l10n/app_en.arb
+index c04d146c..b3f13fb9 100644
+--- a/lib/l10n/app_en.arb
++++ b/lib/l10n/app_en.arb
+@@ -2705,5 +2705,6 @@
+   "homeTabAdult": "Adults 18+",
+   "homeAdultConfirmTitle": "A reserved space.",
+   "homeAdultConfirmHint": "Confirm that you are 18 or older to enter this space.",
+-  "homeAdultConfirmButton": "I am 18 or older"
++  "homeAdultConfirmButton": "I am 18 or older",
++  "playlistsCombinedHint": "Enable several M3U or Xtream sources to browse their content together. At least 10 sources can stay enabled."
+ }
+diff --git a/lib/l10n/app_es.arb b/lib/l10n/app_es.arb
+index 460d8d04..1dba0210 100644
+--- a/lib/l10n/app_es.arb
++++ b/lib/l10n/app_es.arb
+@@ -2382,5 +2382,6 @@
+   "homeTabAdult": "Adultos 18+",
+   "homeAdultConfirmTitle": "Un espacio reservado.",
+   "homeAdultConfirmHint": "Confirma que tienes 18 años o más para entrar en este espacio.",
+-  "homeAdultConfirmButton": "Tengo 18 años o más"
++  "homeAdultConfirmButton": "Tengo 18 años o más",
++  "playlistsCombinedHint": "Activa varias fuentes M3U o Xtream para reunir su contenido. Puedes mantener al menos 10 fuentes activas."
+ }
+diff --git a/lib/l10n/app_fr.arb b/lib/l10n/app_fr.arb
+index 45d3f8cb..cc2e3a99 100644
+--- a/lib/l10n/app_fr.arb
++++ b/lib/l10n/app_fr.arb
+@@ -5566,5 +5566,6 @@
+   "homeAdultConfirmHint": "Confirmez que vous avez 18 ans ou plus pour accéder à cet espace.",
+   "@homeAdultConfirmHint": {"description": "Confirmation 18+ en un geste sur l’accueil"},
+   "homeAdultConfirmButton": "J’ai 18 ans ou plus",
+-  "@homeAdultConfirmButton": {"description": "Confirmation 18+ en un geste sur l’accueil"}
++  "@homeAdultConfirmButton": {"description": "Confirmation 18+ en un geste sur l’accueil"},
++  "playlistsCombinedHint": "Activez plusieurs sources M3U ou Xtream : leurs contenus apparaissent ensemble. Au moins 10 sources peuvent rester actives."
+ }
+diff --git a/lib/l10n/app_nb.arb b/lib/l10n/app_nb.arb
+index fdd78b22..3ca799ce 100644
+--- a/lib/l10n/app_nb.arb
++++ b/lib/l10n/app_nb.arb
+@@ -2382,5 +2382,6 @@
+   "homeTabAdult": "Voksne 18+",
+   "homeAdultConfirmTitle": "Et reservert område.",
+   "homeAdultConfirmHint": "Bekreft at du er 18 år eller eldre for å åpne dette området.",
+-  "homeAdultConfirmButton": "Jeg er 18 år eller eldre"
++  "homeAdultConfirmButton": "Jeg er 18 år eller eldre",
++  "playlistsCombinedHint": "Aktiver flere M3U- eller Xtream-kilder for å samle innholdet. Minst 10 kilder kan være aktive."
+ }
+diff --git a/lib/l10n/app_sv.arb b/lib/l10n/app_sv.arb
+index f5b72c8f..a6b0539f 100644
+--- a/lib/l10n/app_sv.arb
++++ b/lib/l10n/app_sv.arb
+@@ -2382,5 +2382,6 @@
+   "homeTabAdult": "Vuxna 18+",
+   "homeAdultConfirmTitle": "Ett reserverat utrymme.",
+   "homeAdultConfirmHint": "Bekräfta att du är 18 år eller äldre för att öppna det här utrymmet.",
+-  "homeAdultConfirmButton": "Jag är 18 år eller äldre"
++  "homeAdultConfirmButton": "Jag är 18 år eller äldre",
++  "playlistsCombinedHint": "Aktivera flera M3U- eller Xtream-källor för att samla deras innehåll. Minst 10 källor kan vara aktiva."
+ }
+diff --git a/lib/l10n/app_sw.arb b/lib/l10n/app_sw.arb
+index 505f3a1d..6a549608 100644
+--- a/lib/l10n/app_sw.arb
++++ b/lib/l10n/app_sw.arb
+@@ -2647,5 +2647,6 @@
+   "homeTabAdult": "Watu wazima 18+",
+   "homeAdultConfirmTitle": "Sehemu maalum.",
+   "homeAdultConfirmHint": "Thibitisha kuwa una miaka 18 au zaidi ili kuingia sehemu hii.",
+-  "homeAdultConfirmButton": "Nina miaka 18 au zaidi"
++  "homeAdultConfirmButton": "Nina miaka 18 au zaidi",
++  "playlistsCombinedHint": "Washa vyanzo kadhaa vya M3U au Xtream ili kuona maudhui pamoja. Angalau vyanzo 10 vinaweza kubaki vimewashwa."
+ }
 diff --git a/test/core/theme/accent_controller_test.dart b/test/core/theme/accent_controller_test.dart
 index bff37681..35602f36 100644
 --- a/test/core/theme/accent_controller_test.dart
@@ -4479,6 +5751,104 @@ index 00000000..5d428137
 +    }));
 +  });
 +}
+diff --git a/test/features/epg/xmltv_transport_test.dart b/test/features/epg/xmltv_transport_test.dart
+new file mode 100644
+index 00000000..dd13aba9
+--- /dev/null
++++ b/test/features/epg/xmltv_transport_test.dart
+@@ -0,0 +1,42 @@
++import 'dart:convert';
++import 'dart:io';
++import 'package:flutter_test/flutter_test.dart';
++import 'package:tv_king/features/epg/data/xmltv_transport.dart';
++
++Future<String> decode(List<List<int>> chunks) =>
++    decodeXmltvTransport(Stream<List<int>>.fromIterable(chunks))
++        .transform(utf8.decoder).join();
++
++void main() {
++  const xml = '<?xml version="1.0"?><tv><channel id="test"/></tv>';
++  test('XML déjà décompressé accepté sans seconde inflation', () async {
++    expect(await decode([utf8.encode(xml)]), xml);
++  });
++  test('vrai HttpClient : gzip HTTP déjà décodé malgré son en-tête conservé', () async {
++    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
++    server.listen((request) async {
++      request.response.headers.set(HttpHeaders.contentEncodingHeader, 'gzip');
++      request.response.add(gzip.encode(utf8.encode(xml)));
++      await request.response.close();
++    });
++    final client = HttpClient();
++    addTearDown(() async { client.close(force: true); await server.close(force: true); });
++    final response = await (await client.getUrl(Uri.parse('http://127.0.0.1:${server.port}/xmltv.gz'))).close();
++    expect(response.headers.value(HttpHeaders.contentEncodingHeader), 'gzip');
++    expect(await decodeXmltvTransport(response).transform(utf8.decoder).join(), xml);
++  });
++  test('gzip réel accepté même sans extension ou en-tête', () async {
++    expect(await decode([gzip.encode(utf8.encode(xml))]), xml);
++  });
++  test('signature gzip coupée entre plusieurs paquets', () async {
++    final bytes = gzip.encode(utf8.encode(xml));
++    expect(await decode([[], [bytes[0]], [], bytes.sublist(1, 2), bytes.sublist(2)]), xml);
++  });
++  test('un fichier gzip corrompu reste une erreur explicite', () async {
++    await expectLater(decode([[0x1f, 0x8b, 0, 0, 0]]), throwsA(isA<FormatException>()));
++  });
++  test('réponse vide ou très courte ne perd pas ses octets', () async {
++    expect(await decode([]), '');
++    expect(await decode([[60]]), '<');
++  });
++}
+diff --git a/test/features/player/upstream_placeholder_test.dart b/test/features/player/upstream_placeholder_test.dart
+new file mode 100644
+index 00000000..77fd9da1
+--- /dev/null
++++ b/test/features/player/upstream_placeholder_test.dart
+@@ -0,0 +1,44 @@
++import 'dart:async';
++import 'dart:io';
++import 'package:flutter_test/flutter_test.dart';
++import 'package:tv_king/features/channels/domain/channel.dart';
++import 'package:tv_king/features/player/data/local_stream_relay.dart';
++import 'package:tv_king/features/player/data/stream_blocked_fallback.dart';
++
++void main() {
++  for (final bool decoded in <bool>[false, true]) {
++    test('redirection black.ts : aucun octet transmis, aucune fausse panne réseau (frames=$decoded)', () async {
++      final HttpServer server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
++      int requests = 0;
++      server.listen((HttpRequest req) async {
++        requests++;
++        if (req.uri.path == '/video/black.ts') {
++          req.response.headers.contentType = ContentType('video', 'mp2t');
++          req.response.add(List<int>.filled(188, 0x47));
++          await req.response.close();
++        } else {
++          await req.response.redirect(Uri.parse('http://127.0.0.1:${server.port}/video/black.ts'));
++        }
++      });
++      final String url = 'http://127.0.0.1:${server.port}/live/test/test/1.ts';
++      final Channel channel = Channel(id: 'placeholder-$decoded', name: 'Chaîne test', category: 'Tests', streamUrl: url, isLive: true);
++      final Completer<BlockedVerdict> blocked = Completer<BlockedVerdict>();
++      int reopened = 0;
++      final StreamBlockedFallback fallback = StreamBlockedFallback(
++          getChannel: () => channel, getOverrideUrl: () => null, getEffectiveUrl: () => url,
++          isAlive: () => true, hasDecodedFrames: () => decoded, getAdoptedAltUrl: () => null,
++          setAdoptedAltUrl: (_) {}, resetWatchdogBudget: () {}, reopen: (_) { reopened++; },
++          showBlocked: (BlockedVerdict v) { if (!blocked.isCompleted) blocked.complete(v); })..attach();
++      final HttpClient client = HttpClient();
++      addTearDown(() async { fallback.detach(); client.close(force: true); await server.close(force: true); });
++      final String local = await LocalStreamRelay.instance.playUrlFor(url);
++      final HttpClientResponse response = await (await client.getUrl(Uri.parse(local))).close();
++      final List<int> bytes = await response.fold<List<int>>(<int>[], (List<int> a, List<int> b) => a..addAll(b)).timeout(const Duration(seconds: 5));
++      final verdict = await blocked.future.timeout(const Duration(seconds: 5));
++      expect(verdict.kind, BlockedKind.channelBlocked);
++      expect(bytes, isEmpty);
++      expect(reopened, 0);
++      expect(requests, 2, reason: 'pas de reconnexions ni de sondes concurrentes');
++    });
++  }
++}
 diff --git a/test/features/playlists/cloud_backup_panel_removal_test.dart b/test/features/playlists/cloud_backup_panel_removal_test.dart
 index befc0183..cb78d61e 100644
 --- a/test/features/playlists/cloud_backup_panel_removal_test.dart
@@ -4561,6 +5931,89 @@ index befc0183..cb78d61e 100644
 +  });
 +
  }
+diff --git a/test/features/playlists/multiple_active_sources_test.dart b/test/features/playlists/multiple_active_sources_test.dart
+new file mode 100644
+index 00000000..bb6d3c2f
+--- /dev/null
++++ b/test/features/playlists/multiple_active_sources_test.dart
+@@ -0,0 +1,77 @@
++import 'dart:convert';
++import 'package:flutter_test/flutter_test.dart';
++import 'package:http/http.dart' as http;
++import 'package:http/testing.dart';
++import 'package:shared_preferences/shared_preferences.dart';
++import 'package:sqflite_common_ffi/sqflite_ffi.dart';
++import 'package:tv_king/core/flavor/flavor.dart';
++import 'package:tv_king/features/channels/domain/channel.dart';
++import 'package:tv_king/features/playlists/data/playlist_database.dart';
++import 'package:tv_king/features/playlists/data/playlist_repository.dart';
++import 'package:tv_king/features/playlists/domain/playlist.dart';
++
++void main() {
++  TestWidgetsFlutterBinding.ensureInitialized();
++  sqfliteFfiInit();
++  FlavorConfig.setCurrent(FlavorConfig.sevenMotion);
++  final PlaylistRepository repo = PlaylistRepository.instance;
++  late Database db;
++  setUp(() async {
++    SharedPreferences.setMockInitialValues(<String, Object>{});
++    db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
++    await PlaylistDatabase.instance.debugCreate(db);
++    PlaylistDatabase.instance.debugUseDatabase(db);
++    repo.debugSeedChannels(const <Channel>[]);
++    repo.debugSeedPlaylists(const <Playlist>[]);
++  });
++  tearDown(() async {
++    repo.debugSeedChannels(const <Channel>[]);
++    repo.debugSeedPlaylists(const <Playlist>[]);
++    PlaylistDatabase.instance.debugUseDatabase(null);
++    await db.close();
++  });
++  test('10 vrais imports M3U restent activés ensemble sans collision tvg-id', () async {
++    final http.Client client = MockClient((http.Request req) async => http.Response(
++        '#EXTM3U\n#EXTINF:-1 tvg-id="shared.tv" group-title="Direct",Source ${req.url.host}\nhttps://${req.url.host}/live/1.ts\n',
++        200, headers: <String, String>{'content-type': 'application/x-mpegurl'}));
++    addTearDown(client.close);
++    final List<int> ids = <int>[];
++    for (int i = 0; i < 10; i++) {
++      final Playlist p = await repo.addM3uPlaylist(name: 'Source $i',
++          url: 'https://source$i.invalid/list.m3u', httpClient: client);
++      ids.add(p.id!);
++    }
++    expect((await repo.getAllPlaylists()).where((Playlist p) => p.isActive), hasLength(10));
++    final List<Channel> all = await repo.getAllChannels();
++    expect(all, hasLength(10));
++    expect(all.map((Channel c) => c.id).toSet(), hasLength(10));
++    expect(all.every((Channel c) => c.id == 'shared.tv@p${c.playlistId}'), isTrue);
++    expect(await repo.countActiveLiveChannels(), 10);
++    expect(await repo.searchLiveChannels('source', limit: 20), hasLength(10));
++    expect(await repo.getChannelsByExternalIds(all.map((Channel c) => c.id).toList()), hasLength(10));
++    await repo.setPlaylistEnabled(ids.first, false);
++    expect(await repo.countActiveLiveChannels(), 9);
++    await repo.deletePlaylist(ids.last);
++    expect(await repo.countActiveLiveChannels(), 8);
++    for (final int id in ids.skip(1).take(8)) { await repo.setPlaylistEnabled(id, false); }
++    expect(await repo.getAllChannels(), isEmpty);
++    expect(await repo.getActivePlaylist(), isNull);
++    expect(await repo.countActiveLiveChannels(), 0);
++  });
++  test('migration v8 conserve favoris et historique sur la source anciennement active', () async {
++    for (int i = 1; i <= 2; i++) {
++      await db.insert('playlists', <String, Object?>{'id': i, 'name': 'Source $i', 'type': 'm3u', 'created_at': i, 'is_active': i == 2 ? 1 : 0});
++      await db.insert('channels', <String, Object?>{'playlist_id': i, 'external_id': 'shared.tv', 'name': 'Test', 'stream_url': 'https://test.invalid/$i.ts'});
++    }
++    await db.execute('CREATE TABLE favorites_scoped (scope TEXT, channel_id TEXT, PRIMARY KEY(scope,channel_id))');
++    await db.insert('favorites_scoped', <String, Object?>{'scope': 'default', 'channel_id': 'shared.tv'});
++    await db.insert('watch_sessions', <String, Object?>{'channel_id': 'shared.tv', 'started_at': 1});
++    await PlaylistDatabase.instance.debugUpgrade(db, 8, 9);
++    await PlaylistDatabase.instance.debugUpgrade(db, 8, 9);
++    expect((await db.query('channels')).map((Map<String, Object?> r) => r['external_id']).toSet(), <String>{'shared.tv@p1', 'shared.tv@p2'});
++    expect((await db.query('favorites_scoped')).single['channel_id'], 'shared.tv@p2');
++    expect((await db.query('watch_sessions')).single['channel_id'], 'shared.tv@p2');
++    expect((await db.query('channels')).every((Map<String, Object?> r) => r['epg_channel_id'] == 'shared.tv'), isTrue);
++    expect(jsonEncode(await db.query('playlists', columns: <String>['is_active'])), '[{"is_active":0},{"is_active":1}]');
++  });
++}
 diff --git a/test/features/playlists/panel_getphp_reconcile_test.dart b/test/features/playlists/panel_getphp_reconcile_test.dart
 index 4a4de8e1..c0c9b817 100644
 --- a/test/features/playlists/panel_getphp_reconcile_test.dart
@@ -4928,6 +6381,165 @@ index e57468d5..62089e56 100644
    await db.delete('favorites');
    await db.delete('favorites_scoped');
    await db.delete('watch_sessions');
+diff --git a/test/features/vod/content_partition_test.dart b/test/features/vod/content_partition_test.dart
+new file mode 100644
+index 00000000..d115c323
+--- /dev/null
++++ b/test/features/vod/content_partition_test.dart
+@@ -0,0 +1,33 @@
++import 'package:flutter_test/flutter_test.dart';
++import 'package:tv_king/features/channels/domain/channel.dart';
++import 'package:tv_king/features/vod/domain/content_partition.dart';
++import 'package:tv_king/features/vod/data/m3u_vod_source.dart';
++
++void main() {
++  Channel channel(String url, {String category = 'Cinéma', int source = 1, String name = 'Cinéma en direct'}) => Channel(
++      id: '1@p$source', playlistId: source, name: name, category: category, streamUrl: url, isLive: true);
++  test('une chaîne cinéma reste du direct ; un fichier film même ancien ne devient pas live', () {
++    expect(ContentPartition.isLive(channel('https://test.invalid/live/1.ts')), isTrue);
++    expect(ContentPartition.isLive(channel('https://test.invalid/movie/1.ts')), isFalse);
++    expect(ContentPartition.isLive(channel('https://test.invalid/film.mp4')), isFalse);
++  });
++  test('adultes et public restent séparés pour chaque type de contenu', () {
++    for (final String category in <String>['18+', 'ADULT FILMS', 'XXX LIVE', 'Adult Series']) {
++      expect(ContentPartition.visible('Programme', category, adultOnly: false), isFalse);
++      expect(ContentPartition.visible('Programme', category, adultOnly: true), isTrue);
++    }
++    expect(ContentPartition.visible('Programme', 'Cinéma', adultOnly: true), isFalse);
++    expect(ContentPartition.visible('Programme', 'Cinéma', adultOnly: false), isTrue);
++  });
++  test('deux séries M3U homonymes gardent leurs épisodes chez le bon fournisseur', () {
++    final entries = <Channel>[
++      channel('https://one.invalid/series/1.mp4', name: 'Série Test S01E01'),
++      channel('https://two.invalid/series/1.mp4', source: 2, name: 'Série Test S01E01'),
++    ];
++    final series = groupM3uEpisodesIntoSeries(entries);
++    expect(series, hasLength(2));
++    final first = m3uEpisodesForSeries(entries, series.first.id);
++    expect(first, hasLength(1));
++    expect(first.single.streamUrl, startsWith('https://one.invalid/'));
++  });
++}
+diff --git a/test/features/vod/m3u_vod_source_test.dart b/test/features/vod/m3u_vod_source_test.dart
+index 41426b47..11ecb3ff 100644
+--- a/test/features/vod/m3u_vod_source_test.dart
++++ b/test/features/vod/m3u_vod_source_test.dart
+@@ -95,7 +95,7 @@ void main() {
+       final List<VodSeries> series = groupM3uEpisodesIntoSeries(eps);
+       expect(series.length, 2);
+       expect(series.first.name, 'Vikings');
+-      expect(series.first.id, 'm3useries-vikings');
++      expect(series.first.id, 'm3useries-vikings@p1');
+       // Poster = celui du premier épisode rencontré.
+       expect(series.first.posterUrl, 'http://h/vikings.jpg');
+       expect(series.last.name, 'Dark');
+@@ -103,7 +103,7 @@ void main() {
+ 
+     test('m3uEpisodesForSeries : tri saison puis épisode, préfixe ep-', () {
+       final List<VodEpisode> out =
+-          m3uEpisodesForSeries(eps, 'm3useries-vikings');
++          m3uEpisodesForSeries(eps, 'm3useries-vikings@p1');
+       expect(out.length, 3);
+       expect(out.map((VodEpisode e) => e.tag),
+           <String>['S01E01', 'S01E02', 'S02E01']);
+diff --git a/test/features/vod/multiple_catalog_sources_test.dart b/test/features/vod/multiple_catalog_sources_test.dart
+new file mode 100644
+index 00000000..d8d61269
+--- /dev/null
++++ b/test/features/vod/multiple_catalog_sources_test.dart
+@@ -0,0 +1,92 @@
++import 'dart:convert';
++import 'dart:io';
++import 'package:flutter_test/flutter_test.dart';
++import 'package:http/http.dart' as http;
++import 'package:http/testing.dart';
++// ignore: depend_on_referenced_packages
++import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
++import 'package:shared_preferences/shared_preferences.dart';
++import 'package:sqflite_common_ffi/sqflite_ffi.dart';
++import 'package:tv_king/core/flavor/flavor.dart';
++import 'package:tv_king/features/playlists/data/playlist_database.dart';
++import 'package:tv_king/features/playlists/data/playlist_repository.dart';
++import 'package:tv_king/features/playlists/domain/playlist.dart';
++import 'package:tv_king/features/vod/data/catalog_source.dart';
++import 'package:tv_king/features/vod/data/vod_repository.dart';
++import 'package:tv_king/features/vod/data/series_repository.dart';
++
++class _Paths extends PathProviderPlatform {
++  _Paths(this.root);
++  final String root;
++  @override Future<String?> getApplicationDocumentsPath() async => root;
++  @override Future<String?> getApplicationSupportPath() async => root;
++  @override Future<String?> getTemporaryPath() async => root;
++}
++
++void main() {
++  TestWidgetsFlutterBinding.ensureInitialized();
++  sqfliteFfiInit();
++  FlavorConfig.setCurrent(FlavorConfig.sevenMotion);
++  SharedPreferences.setMockInitialValues(<String, Object>{});
++  test('10 Xtream partagent le catalogue, jamais les identifiants ni les épisodes', () async {
++    final Directory dir = Directory.systemTemp.createTempSync('multi-catalog-');
++    PathProviderPlatform.instance = _Paths(dir.path);
++    final Database db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
++    await PlaylistDatabase.instance.debugCreate(db);
++    PlaylistDatabase.instance.debugUseDatabase(db);
++    final repo = PlaylistRepository.instance;
++    final movies = VodRepository.instance;
++    final series = SeriesRepository.instance;
++    final List<Uri> requests = <Uri>[];
++    CatalogSource.httpForTesting = () => MockClient((http.Request req) async {
++      requests.add(req.url);
++      final String host = req.url.host;
++      final String? action = req.url.queryParameters['action'];
++      Object body = <Object>[];
++      if (action == 'get_vod_streams' || action == 'get_series') {
++        body = <Object>[<String, Object>{'stream_id': 10, 'series_id': 11, 'name': 'Catalogue $host', 'category_id': '1', 'container_extension': 'mp4'}];
++      } else if (action == 'get_vod_info') {
++        body = <String, Object>{'info': <String, Object>{'plot': host}};
++      } else if (action == 'get_series_info') {
++        body = <String, Object>{'info': <String, Object>{'plot': host}, 'episodes': <String, Object>{'1': <Object>[
++          <String, Object>{'id': '99', 'title': 'Episode $host', 'season': 1, 'episode_num': 1, 'container_extension': 'mp4'}
++        ]}};
++      }
++      return http.Response(jsonEncode(body), 200);
++    });
++    addTearDown(() async {
++      await repo.deleteAllPlaylists();
++      CatalogSource.httpForTesting = null;
++      PlaylistDatabase.instance.debugUseDatabase(null);
++      await db.close();
++    });
++    final List<int> ids = <int>[];
++    for (int i = 0; i < 10; i++) {
++      final int id = await db.insert('playlists', Playlist(id: null, name: 'Compte $i', type: PlaylistType.xtream,
++          xtreamServer: 'https://source$i.invalid', xtreamUsername: 'user$i', xtreamPassword: 'test', createdAt: i).toMap());
++      ids.add(id);
++      await repo.setActivePlaylist(id);
++    }
++    final films = await movies.fetchMovies();
++    final shows = await series.fetchSeries();
++    expect(films, hasLength(10));
++    expect(shows, hasLength(10));
++    expect(films.map((m) => m.id).toSet(), hasLength(10));
++    expect(shows.map((s) => s.id).toSet(), hasLength(10));
++    for (int i = 0; i < 10; i++) {
++      expect((await movies.fetchInfo('vod-10@p${ids[i]}'))?.plot, 'source$i.invalid');
++      final detail = await series.fetchDetail('11@p${ids[i]}');
++      expect(detail.info?.plot, 'source$i.invalid');
++      expect(detail.episodes.single.id, 'ep-99@p${ids[i]}');
++      expect(Uri.parse(detail.episodes.single.streamUrl).host, 'source$i.invalid');
++    }
++    expect(await CatalogSource.forItem('vod-10'), isNull, reason: 'ne jamais deviner un compte ambigu');
++    await repo.deletePlaylist(ids.first);
++    final int before = requests.length;
++    expect(await movies.fetchInfo('vod-10@p${ids.first}'), isNull);
++    expect((await series.fetchDetail('11@p${ids.first}')).episodes, isEmpty);
++    expect(requests, hasLength(before));
++    expect(await movies.fetchMovies(), hasLength(9));
++    expect(await series.fetchSeries(), hasLength(9));
++  });
++}
 diff --git a/test/features/vod/source_deletion_test.dart b/test/features/vod/source_deletion_test.dart
 new file mode 100644
 index 00000000..35105424
