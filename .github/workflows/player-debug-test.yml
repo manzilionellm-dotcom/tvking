@@ -142,15 +142,15 @@ jobs:
 
         s=p.read_text()
 
-        s=s.replace(''applicationId = "com.manzilionellm.tvking.tv_king"'', ''applicationId = "com.manzilionellm.tvking.tv_king.adulttest"'')
+        s=s.replace(''applicationId = "com.manzilionellm.tvking.tv_king"'', ''applicationId = "com.manzilionellm.tvking.tv_king.fluxtest"'')
 
-        assert ''applicationId = "com.manzilionellm.tvking.tv_king.adulttest"'' in s
+        assert ''applicationId = "com.manzilionellm.tvking.tv_king.fluxtest"'' in s
 
         p.write_text(s)
 
         p=Path(''android/app/src/main/AndroidManifest.xml'')
 
-        s=p.read_text().replace(''android:label="7 MOTION"'',''android:label="7 MOTION TEST"'')
+        s=p.read_text().replace(''android:label="7 MOTION"'',''android:label="7 MOTION TEST FLUX"'')
 
         p.write_text(s)
 
