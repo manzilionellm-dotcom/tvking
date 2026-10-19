@@ -9,6 +9,7 @@ on:
       - 'patches/mobile-sport-gratuit.patch'
       - 'patches/mobile-radio.patch'
       - 'patches/mobile-identity.patch'
+      - 'patches/mobile-stability.patch'
       - '.github/workflows/mobile-panel-sync-tests.yml'
 
 # Tests du vrai code mobile préparé par la chaîne de livraison. Aucun
@@ -47,14 +48,24 @@ jobs:
           git apply ../mission/patches/mobile-panel-sync.patch
           git apply --check ../mission/patches/mobile-identity.patch
           git apply ../mission/patches/mobile-identity.patch
+          git apply --check ../mission/patches/mobile-stability.patch
+          git apply ../mission/patches/mobile-stability.patch
           git diff --check
           flutter pub get
           flutter gen-l10n
-      - name: Vérifier les suppressions et les commandes rejouées
+      - name: Analyser le code mobile complet
+        working-directory: phone
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+      - name: Vérifier les régressions et la suite mobile complète
         working-directory: phone
         run: |
-          flutter test test/features/playlists/source_opt_outs_test.dart test/core/app/panel_live_wait_test.dart test/features/playlists/panel_getphp_reconcile_test.dart test/features/playlists/cloud_backup_panel_removal_test.dart --reporter expanded
-          flutter analyze --no-fatal-infos --no-fatal-warnings lib/features/playlists/data/source_opt_outs.dart lib/core/app/panel_live_wait.dart lib/features/playlists/data/remote_source_repository.dart lib/features/playlists/data/cloud_backup_repository.dart
-      - name: Vérifier l’identité, les gestes et les écrans mobiles
-        working-directory: phone
-        run: flutter test test/core/theme/accent_controller_test.dart test/core/widgets/premium_motion_test.dart test/features/profile test/features/simple_home test/features/radio --reporter expanded
+          mkdir -p build/premium-captures
+          flutter test --reporter expanded --dart-define=PREMIUM_CAPTURE_DIR=build/premium-captures
+      - name: Conserver les captures du vrai accueil mobile
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: 7motion-premium-preview
+          path: phone/build/premium-captures/*.png
+          if-no-files-found: ignore
+          retention-days: 14

@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       confirme:
-        description: 'PREPARER_AAB : construire le bundle 1724, sans publication'
+        description: 'PREPARER_AAB : construire le dernier bundle corrigé, sans publication'
         required: true
         type: string
 
