@@ -53,7 +53,7 @@ index ca1ecdf..bd842c3 100644
        ),
      );
 diff --git a/lib/features/player/presentation/player_gesture_layer.dart b/lib/features/player/presentation/player_gesture_layer.dart
-index 907efb1..00ecb3a 100644
+index 907efb1..ccbb9ed 100644
 --- a/lib/features/player/presentation/player_gesture_layer.dart
 +++ b/lib/features/player/presentation/player_gesture_layer.dart
 @@ -30,8 +30,10 @@
@@ -152,7 +152,7 @@ index 907efb1..00ecb3a 100644
    // ── Build ──────────────────────────────────────────────────────────
  
    @override
-@@ -323,21 +353,35 @@ class _PlayerGestureLayerState extends State<PlayerGestureLayer> {
+@@ -323,21 +353,36 @@ class _PlayerGestureLayerState extends State<PlayerGestureLayer> {
        onVerticalDragUpdate: vertical ? _onVerticalDragUpdate : null,
        onVerticalDragEnd: vertical ? _onVerticalDragEnd : null,
        onVerticalDragCancel: vertical ? _onVerticalDragCancel : null,
@@ -172,6 +172,7 @@ index 907efb1..00ecb3a 100644
 -          if (_scrubbing) IgnorePointer(child: _buildScrubPreview()),
 -        ],
 +      child: RawGestureDetector(
++        behavior: HitTestBehavior.opaque,
 +        gestures: <Type, GestureRecognizerFactory>{
 +          if (seek)
 +            _PlayerScrubGestureRecognizer:
@@ -203,7 +204,7 @@ index 907efb1..00ecb3a 100644
        ),
      );
    }
-@@ -394,14 +438,15 @@ class _PlayerGestureLayerState extends State<PlayerGestureLayer> {
+@@ -394,14 +439,15 @@ class _PlayerGestureLayerState extends State<PlayerGestureLayer> {
    /// doigt, avec icône adaptée au niveau et pourcentage.
    Widget _buildVerticalGauge() {
      final bool isVolume = _vDrag == _VerticalDragMode.volume;
@@ -225,7 +226,7 @@ index 907efb1..00ecb3a 100644
          : Icons.brightness_6_rounded;
      return Align(
        alignment: Alignment(isVolume ? 0.75 : -0.75, 0),
-@@ -496,3 +541,13 @@ class _PlayerGestureLayerState extends State<PlayerGestureLayer> {
+@@ -496,3 +542,13 @@ class _PlayerGestureLayerState extends State<PlayerGestureLayer> {
      );
    }
  }
@@ -306,7 +307,7 @@ index 5ee2afb..f08184a 100644
    /// Chaque page est la zone player ; la page active rend la vidéo
    /// en cours de lecture, les voisines un poster de la chaîne (logo
 diff --git a/lib/features/simple_home/presentation/widgets/category_browser_view.dart b/lib/features/simple_home/presentation/widgets/category_browser_view.dart
-index ccf1433..e43c2c4 100644
+index ccf1433..e6b04ab 100644
 --- a/lib/features/simple_home/presentation/widgets/category_browser_view.dart
 +++ b/lib/features/simple_home/presentation/widgets/category_browser_view.dart
 @@ -136,6 +136,12 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
@@ -316,13 +317,23 @@ index ccf1433..e43c2c4 100644
 +  // Les catégories ont leur propre pile : le retour de la liste remonte
 +  // d'un niveau sans quitter l'accueil. Les vraies routes permettent aussi
 +  // le balayage interactif iOS, impossible avec un simple setState/PopScope.
-+  final GlobalKey<NavigatorState> _categoryNavigator =
++  GlobalKey<NavigatorState> _categoryNavigator =
 +      GlobalKey<NavigatorState>();
 +
    /// Rayon actif (TV / Cinéma / Série / Adulte). `null` au tout début
    /// = pas encore choisi → on prend le 1er rayon présent (plus de bouton
    /// « Tout » : il embrouillait, demande client). Toujours un rayon
-@@ -909,19 +915,35 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
+@@ -178,6 +184,9 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
+     _accessGeneration++;
+     if (!mounted) return;
+     setState(() {
++      // Le retrait animé d’une route conserverait son ancienne image jusqu’à
++      // la fin de la transition. Une révocation détruit immédiatement la pile.
++      _categoryNavigator = GlobalKey<NavigatorState>();
+       _adultUnlocked = false;
+       _bucket = _Bucket.tv;
+       _selected = null;
+@@ -909,19 +918,41 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
      final bool inCategory =
          allAdultLive || (_selected != null && grouped.containsKey(_selected));
  
@@ -348,14 +359,20 @@ index ccf1433..e43c2c4 100644
 +        pages: <Page<Object?>>[
 +          MaterialPage<Object?>(
 +            key: const ValueKey<String>('categories'),
-+            child: _buildCategoryList(grouped),
++            child: ColoredBox(
++              color: Theme.of(context).scaffoldBackgroundColor,
++              child: _buildCategoryList(grouped),
++            ),
 +          ),
 +          if (inCategory)
 +            MaterialPage<Object?>(
 +              key: ValueKey<String>('channels:$_selected'),
-+              child: _buildChannelList(
-+                _selected!,
-+                allAdultLive ? _visibleChannels : grouped[_selected]!,
++              child: ColoredBox(
++                color: Theme.of(context).scaffoldBackgroundColor,
++                child: _buildChannelList(
++                  _selected!,
++                  allAdultLive ? _visibleChannels : grouped[_selected]!,
++                ),
 +              ),
 +            ),
 +        ],
@@ -370,7 +387,7 @@ index ccf1433..e43c2c4 100644
      );
    }
  
-@@ -978,6 +1000,7 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
+@@ -978,6 +1009,7 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
            color: AppColors.accent,
            backgroundColor: AppColors.lumiere(context).elevated,
            child: ListView(
@@ -378,7 +395,7 @@ index ccf1433..e43c2c4 100644
              // Parent AlwaysScrollable : le geste « tirer » doit marcher même
              // quand le contenu tient dans l'écran (petite playlist).
              physics: const BouncingScrollPhysics(
-@@ -1200,7 +1223,7 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
+@@ -1200,7 +1232,7 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
          Material(
            color: Colors.transparent,
            child: PremiumPress(
@@ -387,7 +404,7 @@ index ccf1433..e43c2c4 100644
              child: Padding(
                padding: const EdgeInsets.fromLTRB(16, 12, 20, 12),
                child: Row(
-@@ -1246,6 +1269,7 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
+@@ -1246,6 +1278,7 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
                final int cols = _adaptiveColumns(box.maxWidth);
                final int rowCount = (channels.length + cols - 1) ~/ cols;
                return ListView.separated(
@@ -397,10 +414,10 @@ index ccf1433..e43c2c4 100644
                    10,
 diff --git a/test/features/player/mobile_gestures_test.dart b/test/features/player/mobile_gestures_test.dart
 new file mode 100644
-index 0000000..26153c5
+index 0000000..d30c5f3
 --- /dev/null
 +++ b/test/features/player/mobile_gestures_test.dart
-@@ -0,0 +1,146 @@
+@@ -0,0 +1,144 @@
 +// Parcours utilisateur sans moteur vidéo : les vraies routes, le vrai thème
 +// et la couche tactile de production doivent rendre le geste au bon écran.
 +import 'package:flutter/foundation.dart';
@@ -434,8 +451,6 @@ index 0000000..26153c5
 +    TargetPlatform platform,
 +    ValueChanged<Duration> seek,
 +  ) async {
-+    debugDefaultTargetPlatformOverride = platform;
-+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
 +    final key = GlobalKey<NavigatorState>();
 +    await tester.pumpWidget(
 +      MaterialApp(
@@ -477,7 +492,7 @@ index 0000000..26153c5
 +    await tester.pumpAndSettle();
 +    expect(find.text('fiche précédente'), findsOneWidget);
 +    expect(find.text('catalogue'), findsNothing);
-+  });
++  }, variant: TargetPlatformVariant.only(TargetPlatform.android));
 +
 +  testWidgets('Android : retour prédictif annulé puis validé', (tester) async {
 +    await openPlayer(tester, TargetPlatform.android, (_) {});
@@ -507,7 +522,7 @@ index 0000000..26153c5
 +      );
 +      expect(find.text('catalogue'), findsNothing);
 +    }
-+  });
++  }, variant: TargetPlatformVariant.only(TargetPlatform.android));
 +
 +  testWidgets('iPhone : bord retour prioritaire sur le scrub vidéo', (
 +    tester,
@@ -519,7 +534,7 @@ index 0000000..26153c5
 +    expect(find.text('fiche précédente'), findsOneWidget);
 +    expect(find.text('catalogue'), findsNothing);
 +    expect(seeks, isEmpty);
-+  });
++  }, variant: TargetPlatformVariant.only(TargetPlatform.iOS));
 +
 +  testWidgets('iPhone : geste annulé conserve la lecture', (tester) async {
 +    final seeks = <Duration>[];
@@ -533,7 +548,7 @@ index 0000000..26153c5
 +    await tester.pumpAndSettle();
 +    expect(find.text('lecture'), findsOneWidget);
 +    expect(seeks, isEmpty);
-+  });
++  }, variant: TargetPlatformVariant.only(TargetPlatform.iOS));
 +
 +  testWidgets('iPhone : glisser au centre avance toujours la vidéo', (
 +    tester,
@@ -545,10 +560,10 @@ index 0000000..26153c5
 +    expect(find.text('lecture'), findsOneWidget);
 +    expect(seeks, isNotEmpty);
 +    expect(seeks.last, greaterThan(const Duration(minutes: 1)));
-+  });
++  }, variant: TargetPlatformVariant.only(TargetPlatform.iOS));
 +}
 diff --git a/test/features/simple_home/premium_home_visual_test.dart b/test/features/simple_home/premium_home_visual_test.dart
-index 0f69941..f684fc1 100644
+index 0f69941..efe61ad 100644
 --- a/test/features/simple_home/premium_home_visual_test.dart
 +++ b/test/features/simple_home/premium_home_visual_test.dart
 @@ -4,6 +4,7 @@ import 'dart:io';
@@ -559,14 +574,22 @@ index 0f69941..f684fc1 100644
  import 'package:flutter/rendering.dart';
  import 'package:flutter_test/flutter_test.dart';
  import 'package:google_fonts/google_fonts.dart';
-@@ -130,6 +131,40 @@ void main() {
+@@ -76,6 +77,9 @@ Future<void> _render(WidgetTester tester) async {
+     });
+     await tester.pump(const Duration(milliseconds: 100));
+   }
++  // Attendre la vraie fin des transitions natives, dont la durée dépend
++  // de la plateforme, avant de compter les éléments de la route visible.
++  await tester.pumpAndSettle();
+ }
+ 
+ Future<void> _capture(WidgetTester tester, GlobalKey key, String name) async {
+@@ -130,6 +134,38 @@ void main() {
      await db.close();
    });
  
 +  for (final platform in <TargetPlatform>[TargetPlatform.android, TargetPlatform.iOS]) {
 +    testWidgets('Retour ${platform.name} : lecteur puis catégorie, un niveau à la fois', (tester) async {
-+      debugDefaultTargetPlatformOverride = platform;
-+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
 +      await tester.pumpWidget(_host(Scaffold(body: CategoryBrowserView(channels: _channels))));
 +      await _render(tester);
 +      await tester.scrollUntilVisible(find.text('Sport').last, 160,
@@ -594,9 +617,29 @@ index 0f69941..f684fc1 100644
 +      expect(tester.takeException(), isNull);
 +      await tester.pumpWidget(const SizedBox.shrink());
 +      await tester.pump(const Duration(seconds: 10));
-+    });
++    }, variant: TargetPlatformVariant.only(platform));
 +  }
 +
    for (final (String name, bool light, double width, double scale)
        in <(String, bool, double, double)>[
      ('home-dark', false, 390, 1),
+@@ -420,6 +456,9 @@ void main() {
+     ParentalControls.instance.kidsMode.value = true;
+     // Relâchement d'un doigt posé AVANT la révocation, sans attendre le build.
+     stalePress();
++    await tester.pump();
++    expect(find.text('XXX Test Entry'), findsNothing,
++        reason: 'La révocation retire la route dès la première frame.');
+     await _render(tester);
+     expect(RecentlyWatchedRepository.instance.current,
+         isNot(contains('restricted')));
+@@ -484,6 +523,9 @@ void main() {
+     expect(find.text('XXX Film Fixture'), findsNothing);
+     expect(find.text('XXX Series Fixture S01E01'), findsNothing);
+     await ProfilesRepository.instance.setActive(other);
++    await tester.pump();
++    expect(find.text('XXX Test Entry'), findsNothing,
++        reason: 'Le nouveau profil ne conserve aucune ancienne route adulte.');
+     await _render(tester);
+     expect(find.text('XXX Test Entry'), findsNothing);
+     expect(find.text('Adultes 18+'), findsNothing);
