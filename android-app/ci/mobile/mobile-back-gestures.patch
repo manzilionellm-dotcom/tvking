@@ -24,10 +24,18 @@ index 8dd3032..e77f855 100755
 +p.write_text(s)
 +PYBACK
 diff --git a/lib/core/theme/app_theme.dart b/lib/core/theme/app_theme.dart
-index ca1ecdf..0687980 100644
+index ca1ecdf..bd842c3 100644
 --- a/lib/core/theme/app_theme.dart
 +++ b/lib/core/theme/app_theme.dart
-@@ -279,10 +279,14 @@ abstract final class AppTheme {
+@@ -6,6 +6,7 @@
+ //  couleur dérivée de réapparaître dans les contrôles. Le thème TV conserve
+ //  sa palette violette et son constructeur propres.
+ 
++import 'package:flutter/cupertino.dart' show CupertinoPageTransitionsBuilder;
+ import 'package:flutter/material.dart';
+ 
+ import 'app_colors.dart';
+@@ -279,10 +280,14 @@ abstract final class AppTheme {
        splashColor: AppColors.accent.withValues(alpha: 0.14),
        highlightColor: AppColors.accent.withValues(alpha: 0.08),
  
@@ -45,7 +53,7 @@ index ca1ecdf..0687980 100644
        ),
      );
 diff --git a/lib/features/player/presentation/player_gesture_layer.dart b/lib/features/player/presentation/player_gesture_layer.dart
-index 907efb1..945ea35 100644
+index 907efb1..00ecb3a 100644
 --- a/lib/features/player/presentation/player_gesture_layer.dart
 +++ b/lib/features/player/presentation/player_gesture_layer.dart
 @@ -30,8 +30,10 @@
@@ -121,7 +129,7 @@ index 907efb1..945ea35 100644
 +  /// Refuser AVANT l'arène gestuelle, et non après onDragStart : sinon
 +  /// le scrub gagne déjà contre le balayage de retour de la route iOS.
 +  /// Les marges système sont relues à chaque geste (rotation / multifenêtre).
-+  bool _canStartScrub(PointerDownEvent event) {
++  bool _canStartScrub(PointerEvent event) {
 +    final RenderBox? box = context.findRenderObject() as RenderBox?;
 +    if (box == null || !box.hasSize) return false;
 +    final MediaQueryData media = MediaQuery.of(context);
@@ -225,10 +233,10 @@ index 907efb1..945ea35 100644
 +/// Seul le scrub horizontal abandonne les bords réservés au système.
 +/// Le tap, le zapping vertical et les boutons gardent leur comportement.
 +class _PlayerScrubGestureRecognizer extends HorizontalDragGestureRecognizer {
-+  bool Function(PointerDownEvent event)? acceptStart;
++  bool Function(PointerEvent event)? acceptStart;
 +
 +  @override
-+  bool isPointerAllowed(PointerDownEvent event) =>
++  bool isPointerAllowed(PointerEvent event) =>
 +      (acceptStart?.call(event) ?? false) && super.isPointerAllowed(event);
 +}
 diff --git a/lib/features/player/presentation/video_player_screen.dart b/lib/features/player/presentation/video_player_screen.dart
