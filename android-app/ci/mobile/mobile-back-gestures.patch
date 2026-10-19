@@ -307,7 +307,7 @@ index 5ee2afb..f08184a 100644
    /// Chaque page est la zone player ; la page active rend la vidéo
    /// en cours de lecture, les voisines un poster de la chaîne (logo
 diff --git a/lib/features/simple_home/presentation/widgets/category_browser_view.dart b/lib/features/simple_home/presentation/widgets/category_browser_view.dart
-index ccf1433..e6b04ab 100644
+index ccf1433..f2b6553 100644
 --- a/lib/features/simple_home/presentation/widgets/category_browser_view.dart
 +++ b/lib/features/simple_home/presentation/widgets/category_browser_view.dart
 @@ -136,6 +136,12 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
@@ -323,17 +323,23 @@ index ccf1433..e6b04ab 100644
    /// Rayon actif (TV / Cinéma / Série / Adulte). `null` au tout début
    /// = pas encore choisi → on prend le 1er rayon présent (plus de bouton
    /// « Tout » : il embrouillait, demande client). Toujours un rayon
-@@ -178,6 +184,9 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
+@@ -178,6 +184,15 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
      _accessGeneration++;
      if (!mounted) return;
      setState(() {
 +      // Le retrait animé d’une route conserverait son ancienne image jusqu’à
-+      // la fin de la transition. Une révocation détruit immédiatement la pile.
-+      _categoryNavigator = GlobalKey<NavigatorState>();
++      // la fin de la transition. Révoquer un accès déjà ouvert détruit donc
++      // immédiatement la pile, même si une transition de retour est en cours.
++      // Pendant la demande de PIN, aucun contenu protégé n'est encore ouvert :
++      // conserver la pile évite qu'un nouveau Navigator vole le focus du champ.
++      // La génération ci-dessus invalide quand même le résultat de la demande.
++      if (_adultUnlocked || _selected != null) {
++        _categoryNavigator = GlobalKey<NavigatorState>();
++      }
        _adultUnlocked = false;
        _bucket = _Bucket.tv;
        _selected = null;
-@@ -909,19 +918,41 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
+@@ -909,19 +924,41 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
      final bool inCategory =
          allAdultLive || (_selected != null && grouped.containsKey(_selected));
  
@@ -387,7 +393,7 @@ index ccf1433..e6b04ab 100644
      );
    }
  
-@@ -978,6 +1009,7 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
+@@ -978,6 +1015,7 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
            color: AppColors.accent,
            backgroundColor: AppColors.lumiere(context).elevated,
            child: ListView(
@@ -395,7 +401,7 @@ index ccf1433..e6b04ab 100644
              // Parent AlwaysScrollable : le geste « tirer » doit marcher même
              // quand le contenu tient dans l'écran (petite playlist).
              physics: const BouncingScrollPhysics(
-@@ -1200,7 +1232,7 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
+@@ -1200,7 +1238,7 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
          Material(
            color: Colors.transparent,
            child: PremiumPress(
@@ -404,7 +410,7 @@ index ccf1433..e6b04ab 100644
              child: Padding(
                padding: const EdgeInsets.fromLTRB(16, 12, 20, 12),
                child: Row(
-@@ -1246,6 +1278,7 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
+@@ -1246,6 +1284,7 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
                final int cols = _adaptiveColumns(box.maxWidth);
                final int rowCount = (channels.length + cols - 1) ~/ cols;
                return ListView.separated(
