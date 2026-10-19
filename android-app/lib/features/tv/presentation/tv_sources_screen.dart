@@ -162,9 +162,8 @@ class _SourceRow extends StatelessWidget {
       ),
     );
     if (ok != true || playlist.id == null) return;
-    // Suppression pour de bon : liste du client effacée aussi sur le
-    // serveur, liste du panel plus réimportée tant que le panel ne la
-    // renvoie pas (tv_delete.dart). Repli `zuno.source.tv_delete_legacy`.
+    // Suppression locale durable ; retrait serveur tenté ensuite pour les
+    // listes personnelles. Une simple synchronisation ne les rétablit pas.
     final bool done = await RemoteSourceRepository.deleteFromTv(playlist);
     if (!done && context.mounted) {
       ScaffoldMessenger.maybeOf(context)?.showSnackBar(

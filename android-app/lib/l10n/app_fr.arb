@@ -2240,7 +2240,7 @@
       }
     }
   },
-  "tvDeletePanelSourceConfirm": "« {name} » est envoyée par ton revendeur. Supprimée ici, elle ne revient plus sur cette télé, sauf si le revendeur la renvoie depuis le panel.",
+  "tvDeletePanelSourceConfirm": "« {name} » sera supprimée de cette télé. Elle ne reviendra pas après une synchronisation ou un renvoi du panel. Pour la rétablir, ajoute-la à nouveau dans l’application.",
   "@tvDeletePanelSourceConfirm": {
     "placeholders": {
       "name": {
@@ -2248,7 +2248,7 @@
       }
     }
   },
-  "tvDeleteSourceFailed": "Suppression impossible : pas de connexion au serveur. Rien n’a été effacé, réessaie dans un instant.",
+  "tvDeleteSourceFailed": "La suppression locale a échoué. Réessaie dans un instant.",
   "tvActivate": "Activer",
   "tvMyTeams": "Mes équipes",
   "tvAdd": "Ajouter",
