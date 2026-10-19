@@ -3657,13 +3657,15 @@ index b7963823..004e9eb9 100644
  /// Politique commune du rafraîchissement silencieux (stale-while-revalidate).
 diff --git a/lib/features/vod/data/catalog_source.dart b/lib/features/vod/data/catalog_source.dart
 new file mode 100644
-index 00000000..d5469f68
+index 00000000..b866a135
 --- /dev/null
 +++ b/lib/features/vod/data/catalog_source.dart
-@@ -0,0 +1,35 @@
+@@ -0,0 +1,40 @@
 +import 'dart:convert';
 +
 +import 'package:crypto/crypto.dart';
++import 'package:flutter/foundation.dart';
++import 'package:http/http.dart' as http;
 +
 +import '../../playlists/data/playlist_repository.dart';
 +import '../../playlists/data/xtream_client.dart';
@@ -3675,6 +3677,8 @@ index 00000000..d5469f68
 +  CatalogSource(this.playlist, this.key);
 +  final Playlist playlist;
 +  final String key;
++  @visibleForTesting
++  static http.Client Function()? httpForTesting;
 +
 +  static Future<CatalogSource?> current() async {
 +    final List<Playlist> rows = await PlaylistRepository.instance.getAllPlaylists();
@@ -3694,6 +3698,7 @@ index 00000000..d5469f68
 +  XtreamClient client({Duration timeout = const Duration(seconds: 20)}) => XtreamClient(
 +    serverUrl: playlist.xtreamServer!, username: playlist.xtreamUsername ?? '',
 +    password: playlist.xtreamPassword ?? '', timeout: timeout,
++    httpClient: httpForTesting?.call(),
 +  );
 +}
 diff --git a/lib/features/vod/data/series_repository.dart b/lib/features/vod/data/series_repository.dart
@@ -4854,10 +4859,10 @@ index e57468d5..62089e56 100644
    await db.delete('watch_sessions');
 diff --git a/test/features/vod/source_deletion_test.dart b/test/features/vod/source_deletion_test.dart
 new file mode 100644
-index 00000000..48b5c63a
+index 00000000..35105424
 --- /dev/null
 +++ b/test/features/vod/source_deletion_test.dart
-@@ -0,0 +1,93 @@
+@@ -0,0 +1,99 @@
 +import 'dart:async';
 +import 'dart:convert';
 +import 'dart:io';
@@ -4870,9 +4875,11 @@ index 00000000..48b5c63a
 +import 'package:shared_preferences/shared_preferences.dart';
 +import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 +import 'package:tv_king/features/playlists/data/playlist_database.dart';
++import 'package:tv_king/core/flavor/flavor.dart';
 +import 'package:tv_king/features/playlists/data/playlist_repository.dart';
 +import 'package:tv_king/features/playlists/domain/playlist.dart';
 +import 'package:tv_king/features/vod/data/vod_repository.dart';
++import 'package:tv_king/features/vod/data/catalog_source.dart';
 +import 'package:tv_king/features/vod/data/series_repository.dart';
 +
 +class _Paths extends PathProviderPlatform {
@@ -4888,6 +4895,7 @@ index 00000000..48b5c63a
 +
 +void main() {
 +  TestWidgetsFlutterBinding.ensureInitialized();
++  FlavorConfig.setCurrent(FlavorConfig.sevenMotion);
 +  sqfliteFfiInit();
 +  databaseFactory = databaseFactoryFfiNoIsolate;
 +  final Directory dir = Directory.systemTemp.createTempSync('catalog-removal-');
@@ -4911,6 +4919,7 @@ index 00000000..48b5c63a
 +  });
 +
 +  setUp(() async {
++    CatalogSource.httpForTesting = client;
 +    SharedPreferences.setMockInitialValues(<String, Object>{});
 +    started = null;
 +    release = null;
@@ -4921,6 +4930,8 @@ index 00000000..48b5c63a
 +      xtreamServer: 'http://catalog.invalid', xtreamUsername: 'test', xtreamPassword: 'test', createdAt: 1).toMap());
 +    await PlaylistRepository.instance.setActivePlaylist(playlistId);
 +  });
++
++  tearDown(() { CatalogSource.httpForTesting = null; });
 +
 +  test('effacer la source vide les films et séries déjà en mémoire', () async {
 +    await http.runWithClient(() async {
