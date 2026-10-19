@@ -226,7 +226,7 @@ index c57c273..18e365a 100644
      // AUDIT 19/08 : « la lecture est déjà morte ici » était une HYPOTHÈSE,
      // pas une garantie — sur le chemin du watchdog de démarrage, le lecteur
 diff --git a/lib/features/player/presentation/video_player_screen.dart b/lib/features/player/presentation/video_player_screen.dart
-index 7f5ea31..f2c8813 100644
+index 7f5ea31..5ee2afb 100644
 --- a/lib/features/player/presentation/video_player_screen.dart
 +++ b/lib/features/player/presentation/video_player_screen.dart
 @@ -160,6 +160,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
@@ -338,7 +338,7 @@ index 7f5ea31..f2c8813 100644
        );
  
        // 2. TAMPON DEMUXER + STRATÉGIE DE REBUFFER
-@@ -2667,7 +2689,46 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+@@ -2667,7 +2689,48 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
      );
    }
  
@@ -365,6 +365,8 @@ index 7f5ea31..f2c8813 100644
 +    final Future<void> stopped = () async {
 +      try {
 +        await stoppedPlayer.stop().timeout(const Duration(seconds: 5));
++        StreamDiagnostics.instance.recordEvent('player',
++            'Arrêt du moteur confirmé après le verdict définitif');
 +      } catch (e) {
 +        StreamDiagnostics.instance.recordEvent('player',
 +            'Arrêt définitif du lecteur incomplet : $e', level: 'warn');
@@ -377,7 +379,7 @@ index 7f5ea31..f2c8813 100644
 +          'Fermeture définitive incomplète : $e', level: 'warn');
 +    });
 +    StreamDiagnostics.instance.recordEvent('player',
-+        'Lecture terminée : moteur arrêté, tentatives automatiques annulées');
++        'Arrêt de lecture demandé : tentatives automatiques annulées');
 +  }
 +
    void _retry() {
@@ -385,7 +387,7 @@ index 7f5ea31..f2c8813 100644
      setState(() {
        _hasError = false;
        _errorMessage = null;
-@@ -2884,10 +2945,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+@@ -2884,10 +2947,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
    /// true = une réouverture est armée (1/2/4/8 s). false = une attente
    /// est déjà en cours, ou le budget silencieux est épuisé.
    bool _scheduleSilentReopen(String why) {
@@ -398,7 +400,7 @@ index 7f5ea31..f2c8813 100644
      StreamDiagnostics.instance.recordEvent(
        'watchdog',
        '$why → réouverture dans $delay ms (essai ${_reconnectGate.attempt}/'
-@@ -2896,7 +2959,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+@@ -2896,7 +2961,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
      );
      _eofReopenTimer = Timer(Duration(milliseconds: delay), () {
        if (!_reconnectGate.fire()) return;
