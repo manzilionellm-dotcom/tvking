@@ -10,6 +10,7 @@ import '../core/tv_tokens.dart';
 import '../data/vip_countries_repository.dart';
 import '../domain/vip_countries.dart';
 import 'tv_components.dart';
+import 'vip_country_names.dart';
 
 /// Éditeur sans lecture vidéo : OK ajoute/retire, flèches pour l'ordre,
 /// Enregistrer valide tout. Retour abandonne les changements non enregistrés.
@@ -85,13 +86,12 @@ class _TvVipCountriesScreenState extends State<TvVipCountriesScreen> {
         {...widget.available.keys, ..._selected}.where((code) {
           final country = ChannelClassifier.countryForKey(code);
           return country != null &&
-              (tvSearchKey('${country.name} ${country.code}')
-                      .contains(tvSearchKey(_query)) ||
+              (tvSearchKey(
+                    '${vipCountryName(l, code)} ${country.name} ${country.code}',
+                  ).contains(tvSearchKey(_query)) ||
                   ChannelClassifier.detectCountryKey('', _query) == code);
         }).toList()..sort(
-          (a, b) =>
-              ChannelClassifier.countryForKey(a)!.name
-                  .compareTo(ChannelClassifier.countryForKey(b)!.name),
+          (a, b) => vipCountryName(l, a).compareTo(vipCountryName(l, b)),
         );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -178,9 +178,7 @@ class _TvVipCountriesScreenState extends State<TvVipCountriesScreen> {
                                           const SizedBox(width: 16),
                                           Expanded(
                                             child: Text(
-                                              ChannelClassifier.countryForKey(
-                                                code,
-                                              )!.name,
+                                              vipCountryName(l, code),
                                               style: TvTokens.ui(20),
                                             ),
                                           ),
@@ -240,9 +238,7 @@ class _TvVipCountriesScreenState extends State<TvVipCountriesScreen> {
                                 const SizedBox(width: 12),
                                 Expanded(
                                   child: Text(
-                                    ChannelClassifier.countryForKey(code)
-                                            ?.name ??
-                                        code.toUpperCase(),
+                                    vipCountryName(l, code),
                                     style: TvTokens.ui(18),
                                   ),
                                 ),

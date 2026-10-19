@@ -1,3 +1,6 @@
+import 'package:flutter/widgets.dart';
+import 'package:tv_king/l10n/generated/app_localizations.dart';
+import 'package:tv_king/features/tv/presentation/vip_country_names.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:tv_king/features/channels/domain/channel.dart';
@@ -8,6 +11,24 @@ import 'package:tv_king/features/tv/domain/vip_channel_groups.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  test(
+    'les noms des pays suivent la langue active dans tous les catalogues',
+    () async {
+      for (final locale in AppLocalizations.supportedLocales) {
+        final l = await AppLocalizations.delegate.load(locale);
+        expect(vipCountryName(l, 'rs'), isNotEmpty);
+        expect(l.vipCountriesTitle, isNotEmpty);
+      }
+      final fr = await AppLocalizations.delegate.load(const Locale('fr'));
+      final en = await AppLocalizations.delegate.load(const Locale('en'));
+      final sv = await AppLocalizations.delegate.load(const Locale('sv'));
+      expect(vipCountryName(fr, 'rs'), 'Serbie');
+      expect(vipCountryName(en, 'rs'), 'Serbia');
+      expect(vipCountryName(sv, 'rs'), 'Serbien');
+      expect(vipCountryName(sv, 'uk'), 'Storbritannien');
+    },
+  );
+
   test('dix pays maximum, doublons supprimés sans perdre l’ordre choisi', () {
     expect(VipCountries.normalize([' RS ', 'fr', 'rs', '', '???']), [
       'rs',

@@ -98,7 +98,7 @@ jobs:
     - name: Construire APK Zuno VIP de test
       run: 'set -euo pipefail
 
-        flutter build apk --debug --target=lib/main_tv.dart --target-platform android-arm64 --build-number="$(date +%s)" --dart-define=APP_BUILD_LABEL=VIPTEST --dart-define=GIT_SHA=${{ env.SOURCE_SHA }}
+        flutter build apk --debug --target=lib/main_tv.dart --target-platform android-arm,android-arm64 --build-number="$(date +%s)" --dart-define=APP_BUILD_LABEL=VIPTEST --dart-define=GIT_SHA=${{ env.SOURCE_SHA }}
 
         cp build/app/outputs/flutter-apk/app-debug.apk build/app/outputs/flutter-apk/zuno-vip-test.apk
 

@@ -44,6 +44,7 @@ import 'tv_phone_source_qr.dart';
 import 'tv_player_screen.dart';
 import 'tv_shell.dart';
 import 'tv_vip_countries_screen.dart';
+import 'vip_country_names.dart';
 import '../data/vip_countries_repository.dart';
 import '../../profiles/data/active_profile.dart';
 
@@ -640,7 +641,7 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     // La clé historique de catégorie reste stable pendant un changement de langue.
     if (cat.startsWith(_vipPrefix)) {
       final code = cat.substring(_vipPrefix.length);
-      return '★ ${ChannelClassifier.countryForKey(code)?.name ?? code.toUpperCase()}';
+      return '★ ${vipCountryName(context.l10n, code)}';
     }
     if (cat == 'Autres') return context.l10n.tvOther;
     if (cat == _kTrendCat) return context.l10n.tvTrending;
