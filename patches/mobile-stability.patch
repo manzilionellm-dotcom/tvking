@@ -1061,6 +1061,48 @@ index b06174de..4a56d0d1 100644
    /// Nom affiché (ex : "Canal+ Sport HD").
    final String name;
  
+diff --git a/lib/features/channels/presentation/search_screen.dart b/lib/features/channels/presentation/search_screen.dart
+index 1e36f884..bc07d8e4 100644
+--- a/lib/features/channels/presentation/search_screen.dart
++++ b/lib/features/channels/presentation/search_screen.dart
+@@ -62,6 +62,7 @@ import '../data/recently_watched_repository.dart';
+ import '../data/smart_search.dart';
+ import '../data/watch_history_repository.dart';
+ import '../domain/channel.dart';
++import '../../vod/domain/content_partition.dart';
+ import '../domain/channel_genre.dart';
+ import 'channel_detail_sheet.dart';
+ import 'genre_l10n.dart';
+@@ -194,7 +195,8 @@ class _SearchScreenState extends State<SearchScreen> {
+   List<Channel> get _searchPool => <Channel>[
+         ...PlaylistRepository.instance.currentChannels,
+         ..._movies,
+-      ];
++      ].where((Channel c) => ContentPartition.visible(c.name, c.category,
++          adultOnly: false)).toList(growable: false);
+ 
+   @override
+   void dispose() {
+@@ -288,7 +290,8 @@ class _SearchScreenState extends State<SearchScreen> {
+               progs.map((EpgProgram p) => p.channelId).toList());
+       if (!mounted || epoch != _epoch) return;
+       final Map<String, Channel> byId = <String, Channel>{
+-        for (final Channel c in chs) c.id: c,
++        for (final Channel c in chs)
++          if (ContentPartition.visible(c.name, c.category, adultOnly: false)) c.id: c,
+       };
+       setState(() => _airing = <({Channel channel, EpgProgram program})>[
+             // Un programme dont la chaîne n'est pas dans la playlist
+@@ -448,7 +451,8 @@ class _SearchScreenState extends State<SearchScreen> {
+                   final List<Channel> all = <Channel>[
+                     ...(snap.data ?? <Channel>[]),
+                     ..._movies,
+-                  ];
++                  ].where((Channel c) => ContentPartition.visible(c.name,
++                      c.category, adultOnly: false)).toList(growable: false);
+                   if (all.isEmpty) {
+                     return const _EmptyCatalog();
+                   }
 diff --git a/lib/features/device/data/device_secret.dart b/lib/features/device/data/device_secret.dart
 new file mode 100644
 index 00000000..891dd711
@@ -1705,6 +1747,46 @@ index 3be46fe8..1b3df036 100644
        level: 'error',
      );
      notifyListeners();
+diff --git a/lib/features/player/presentation/play_channel.dart b/lib/features/player/presentation/play_channel.dart
+index 9605a059..7726cdff 100644
+--- a/lib/features/player/presentation/play_channel.dart
++++ b/lib/features/player/presentation/play_channel.dart
+@@ -38,6 +38,7 @@ import '../../cast/domain/cast_device.dart';
+ import '../../cast/presentation/cast_button.dart';
+ import '../../channels/data/recently_watched_repository.dart';
+ import '../../channels/domain/channel.dart';
++import '../../security/data/parental_controls.dart';
+ import 'video_player_screen.dart';
+ 
+ Future<void> playChannel(
+@@ -47,13 +48,17 @@ Future<void> playChannel(
+   String? overrideUrl,
+   String? overrideTitle,
+ }) async {
++  // Une ancienne tuile ne doit pas ouvrir du 18+ après activation Kids.
++  bool denied() => ParentalControls.instance.kidsMode.value &&
++      channel.genre == ChannelGenre.adult;
++  if (denied()) return;
+   RecentlyWatchedRepository.instance.record(channel.id);
+ 
+-  if (!context.mounted) return;
++  if (!context.mounted || denied()) return;
+   // Garde données cellulaires (Wi-Fi only / avertissement data). Fail-open :
+   // n'empêche jamais la lecture à cause d'un bug réseau.
+   if (!await guardCellularPlayback(context)) return;
+-  if (!context.mounted) return;
++  if (!context.mounted || denied()) return;
+ 
+   final CastManager mgr = CastManager.instance;
+   final CastDevice? target = mgr.selectedDevice;
+@@ -66,6 +71,7 @@ Future<void> playChannel(
+       // garde en plus une cascade de secours si le pré-vol échoue.
+       final String castUrl =
+           overrideUrl ?? await CastUrlResolver.resolve(channel);
++      if (!context.mounted || denied()) return;
+       // VAGUE B — on partage la playlist de zap avec le CastManager :
+       // la mini-barre globale (et l'overlay du lecteur) peuvent alors
+       // proposer Ch+/Ch- qui changent la chaîne SUR LA TV, par le même
 diff --git a/lib/features/player/presentation/video_player_screen.dart b/lib/features/player/presentation/video_player_screen.dart
 index 7eff32a7..7f5ea311 100644
 --- a/lib/features/player/presentation/video_player_screen.dart
@@ -5636,6 +5718,29 @@ index 66795897..766139bb 100644
          return ListView(
            padding: const EdgeInsets.all(16),
            children: <Widget>[
+diff --git a/lib/features/vod/presentation/movie_detail_screen.dart b/lib/features/vod/presentation/movie_detail_screen.dart
+index eb3e3f7b..4aa3825b 100644
+--- a/lib/features/vod/presentation/movie_detail_screen.dart
++++ b/lib/features/vod/presentation/movie_detail_screen.dart
+@@ -27,6 +27,7 @@ import '../data/vod_download_service.dart';
+ import '../data/vod_repository.dart';
+ import '../domain/vod_info.dart';
+ import '../domain/vod_movie.dart';
++import '../domain/content_partition.dart';
+ import '../../tv/core/vod_titles.dart';
+ 
+ class MovieDetailScreen extends StatefulWidget {
+@@ -101,7 +102,9 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
+     setState(() {
+       _similar = all
+           .where((VodMovie m) =>
+-              m.category == widget.movie.category && m.id != widget.movie.id)
++              m.category == widget.movie.category && m.id != widget.movie.id &&
++              ContentPartition.isAdult(m.name, m.category) ==
++                  ContentPartition.isAdult(widget.movie.name, widget.movie.category))
+           .take(12)
+           .toList(growable: false);
+     });
 diff --git a/lib/features/vod/presentation/series_detail_screen.dart b/lib/features/vod/presentation/series_detail_screen.dart
 index 7a179fad..e2a19ddd 100644
 --- a/lib/features/vod/presentation/series_detail_screen.dart
@@ -6572,18 +6677,19 @@ index 00000000..a22be720
 +  });
 +}
 diff --git a/test/features/simple_home/premium_home_visual_test.dart b/test/features/simple_home/premium_home_visual_test.dart
-index e81a29e7..6b2a9e0a 100644
+index e81a29e7..3a20e596 100644
 --- a/test/features/simple_home/premium_home_visual_test.dart
 +++ b/test/features/simple_home/premium_home_visual_test.dart
-@@ -27,6 +27,7 @@ import 'package:tv_king/features/simple_home/presentation/simple_home_screen.dar
+@@ -27,6 +27,8 @@ import 'package:tv_king/features/simple_home/presentation/simple_home_screen.dar
  import 'package:tv_king/features/simple_home/presentation/widgets/home_navigation_bar.dart';
  import 'package:tv_king/features/simple_home/presentation/widgets/category_browser_view.dart';
  import 'package:tv_king/features/security/data/parental_controls.dart';
 +import 'package:tv_king/features/vod/presentation/cinema_screen.dart';
++import 'package:tv_king/features/channels/presentation/search_screen.dart';
  import 'package:tv_king/l10n/generated/app_localizations.dart';
  
  import '../../support/premium_capture_fonts.dart';
-@@ -281,6 +282,10 @@ void main() {
+@@ -281,6 +283,10 @@ void main() {
          category: 'Mixte',
          streamUrl: 'https://example.test/fixture-only',
          isLive: true),
@@ -6594,7 +6700,33 @@ index e81a29e7..6b2a9e0a 100644
      // Métadonnée de test uniquement : une entrée 18+ parmi trois publiques.
      // Elle était auparavant noyée sous le seuil de 40 % de sa catégorie.
      Channel(
-@@ -342,6 +347,25 @@ void main() {
+@@ -319,6 +325,25 @@ void main() {
+     await _render(tester);
+   }
+ 
++  testWidgets('la recherche publique ne révèle pas le catalogue 18+',
++      (WidgetTester tester) async {
++    PlaylistRepository.instance.debugSeedChannels(parentalCatalog);
++    await tester.pumpWidget(_host(const SearchScreen()));
++    await _render(tester);
++    await tester.enterText(find.byType(TextField), 'XXX');
++    await tester.pump(const Duration(milliseconds: 400));
++    await _render(tester);
++    expect(find.text('XXX Test Entry'), findsNothing);
++    expect(find.text('XXX Film Fixture'), findsNothing);
++    await tester.enterText(find.byType(TextField), 'Public');
++    await tester.pump(const Duration(milliseconds: 400));
++    await _render(tester);
++    expect(find.text('Public One'), findsOneWidget);
++    expect(tester.takeException(), isNull);
++    await tester.pumpWidget(const SizedBox.shrink());
++    PlaylistRepository.instance.debugSeedChannels(const <Channel>[]);
++  });
++
+   testWidgets('18+ : annulation et mauvais PIN ne révèlent aucune chaîne',
+       (WidgetTester tester) async {
+     await AppPinSettings.instance.setPin('2468');
+@@ -342,6 +367,25 @@ void main() {
      await tester.pumpWidget(const SizedBox.shrink());
    });
  
@@ -6620,7 +6752,7 @@ index e81a29e7..6b2a9e0a 100644
    testWidgets(
        '18+ : PIN valide, catégorie mixte puis révocation immédiate Kids',
        (WidgetTester tester) async {
-@@ -354,6 +378,8 @@ void main() {
+@@ -354,6 +398,8 @@ void main() {
      await tester.tap(find.text('Mixte'));
      await _render(tester);
      expect(find.text('XXX Test Entry'), findsOneWidget);
@@ -6629,7 +6761,7 @@ index e81a29e7..6b2a9e0a 100644
      expect(find.text('Public One'), findsNothing);
      final VoidCallback stalePress = tester
          .widget<PremiumPress>(
-@@ -428,6 +454,8 @@ void main() {
+@@ -428,6 +474,8 @@ void main() {
      await tester.tap(find.text('Mixte'));
      await _render(tester);
      expect(find.text('XXX Test Entry'), findsOneWidget);
