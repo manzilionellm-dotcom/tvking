@@ -1,0 +1,2509 @@
+diff --git a/lib/features/device/data/device_secret.dart b/lib/features/device/data/device_secret.dart
+new file mode 100644
+index 00000000..41d9c9b4
+--- /dev/null
++++ b/lib/features/device/data/device_secret.dart
+@@ -0,0 +1,64 @@
++import 'dart:convert';
++import 'dart:math';
++
++import 'package:http/http.dart' as http;
++import 'package:shared_preferences/shared_preferences.dart';
++
++import '../../subscription/data/subscription_backend.dart';
++import 'device_identity.dart';
++
++/// Preuve d'appareil compatible avec le Worker : la MAC affichée à l'écran
++/// ne suffit plus à lire une sauvegarde ou les identifiants d'une source.
++/// Aucun secret ne doit apparaître dans les journaux.
++class DeviceSecret {
++  DeviceSecret._();
++  static final DeviceSecret instance = DeviceSecret._();
++  Future<String>? _creating;
++  final Map<String, Future<void>> _enrolling = <String, Future<void>>{};
++  final Map<String, DateTime> _lastAttempt = <String, DateTime>{};
++
++  Future<String> getOrCreate() => _creating ??= _load().whenComplete(() => _creating = null);
++
++  Future<String> _load() async {
++    final SharedPreferences prefs = await SharedPreferences.getInstance();
++    final String? existing = prefs.getString('device.secret.v1');
++    if (existing != null && existing.length >= 32) return existing;
++    final Random random = Random.secure();
++    final String secret = base64Url.encode(List<int>.generate(32, (_) => random.nextInt(256)));
++    if (!await prefs.setString('device.secret.v1', secret)) {
++      throw StateError('Impossible de conserver la preuve de cet appareil.');
++    }
++    return secret;
++  }
++
++  Future<void> enroll(String mac) {
++    final String key = '$kSubscriptionBaseUrl|$mac';
++    if (_enrolling.containsKey(key)) return _enrolling[key]!;
++    final DateTime now = DateTime.now();
++    if (_lastAttempt[key] != null && now.difference(_lastAttempt[key]!) < const Duration(minutes: 1)) return Future<void>.value();
++    _lastAttempt[key] = now;
++    return _enrolling[key] = _enroll(mac).whenComplete(() => _enrolling.remove(key));
++  }
++
++  Future<void> _enroll(String mac) async {
++    if (!mac.startsWith('MK:')) return;
++    try {
++      final String secret = await getOrCreate();
++      final String androidId = await DeviceIdentity.instance.androidId();
++      await http.post(Uri.parse('$kSubscriptionBaseUrl/api/device-proof'),
++        headers: const <String, String>{'Content-Type': 'application/json', 'Accept': 'application/json'},
++        body: jsonEncode(<String, String>{'mac': mac, 'androidId': androidId, 'secret': secret}),
++      ).timeout(const Duration(seconds: 8));
++    } catch (_) { /* Repli réseau borné ; les requêtes gardent leur preuve. */ }
++  }
++
++  Future<Map<String, String>> headers({bool jsonBody = false}) async {
++    final String mac = await DeviceIdentity.instance.mac;
++    await enroll(mac);
++    return <String, String>{
++      'Accept': 'application/json',
++      if (jsonBody) 'Content-Type': 'application/json',
++      'X-Device-Secret': await getOrCreate(),
++    };
++  }
++}
+diff --git a/lib/features/playlists/data/cloud_backup_repository.dart b/lib/features/playlists/data/cloud_backup_repository.dart
+index 969bd1a2..c91128b3 100644
+--- a/lib/features/playlists/data/cloud_backup_repository.dart
++++ b/lib/features/playlists/data/cloud_backup_repository.dart
+@@ -37,99 +37,33 @@ import 'package:shared_preferences/shared_preferences.dart';
+ import '../../../core/i18n/l10n_now.dart';
+ import '../../../core/observability/structured_logger.dart';
+ import '../../device/data/device_identity.dart';
++import '../../device/data/device_secret.dart';
+ import '../../subscription/data/subscription_backend.dart';
+ import '../domain/playlist.dart';
+ import '../domain/panel_source_decision.dart';
+ import 'favorites_repository.dart';
+ import 'playlist_repository.dart';
+-import 'source_link_utils.dart';
+ import 'source_opt_outs.dart';
+ 
+ class CloudBackupRepository {
+   CloudBackupRepository._();
+   static final CloudBackupRepository instance = CloudBackupRepository._();
+ 
+-  /// Une suppression du panel survit au redémarrage, même hors réseau.
+-  /// Ce carnet est distinct des opt-out de provision : pousser une AUTRE
+-  /// liste ne doit jamais autoriser une ancienne sauvegarde à la recréer.
+-  static const String _kPanelRemoved = 'backup.panel_removed.v1';
+-
+   static const String _kRestoredKey = 'backup.restored.v1';
+   Future<void>? _restoreWork;
++  Future<void> _uploadTail = Future<void>.value();
+ 
+-  /// Deux représentations d'un même compte (get.php et Xtream) désignent
+-  /// la même source. Aucun mot de passe ni URL n'est écrit dans les logs.
+-  static Set<String> _identities(Map<String, Object?> source) {
+-    final Set<String> keys = <String>{};
+-    final String url = '${source['m3u_url'] ?? ''}'.trim();
+-    if (url.isNotEmpty) {
+-      keys.add('m3u|$url');
+-      final credentials = SourceLinkUtils.tryExtractXtreamCredentials(url);
+-      if (credentials != null) {
+-        keys.add('xtream|${credentials.server}|${credentials.username}');
+-      }
+-    }
+-    final String server = '${source['xtream_server'] ?? ''}'.trim();
+-    final String user = '${source['xtream_username'] ?? ''}'.trim();
+-    if (server.isNotEmpty) {
+-      keys.add('xtream|${SourceLinkUtils.sanitizeXtreamServer(server)}|$user');
+-    }
+-    return keys;
+-  }
+-
+-  Future<Set<String>> _removed() async =>
+-      ((await SharedPreferences.getInstance()).getStringList(_kPanelRemoved) ??
+-              const <String>[])
+-          .toSet();
+-
+-  /// À attendre AVANT le DELETE local : aucune réponse réseau tardive
+-  /// ne doit ressusciter cette source pendant ou après la suppression.
+-  Future<void> rememberPanelRemoval(Playlist playlist) =>
+-      _rememberIdentities(_identities(playlist.toMap()));
+-
+-  /// Une source provisionnée peut encore n'exister que dans le backup en
+-  /// transit. L'effacement doit gagner même avant son insertion SQLite.
++  Future<void> rememberPanelRemoval(Playlist playlist) => SourceOptOuts.markDeleted(playlist);
+   Future<void> rememberPanelRemovalKey(ProvisionKey key) =>
+-      _rememberIdentities(_identities(_sourceForKey(key)));
+-
+-  static Map<String, Object?> _sourceForKey(ProvisionKey key) =>
+-      <String, Object?>{
+-        'm3u_url': key.m3uUrl,
+-        'xtream_server': key.server,
+-        'xtream_username': key.username,
+-      };
++      SourceOptOuts.rememberSource(_sourceForKey(key));
+ 
+-  Future<void> _rememberIdentities(Set<String> identities) async {
+-    final Set<String> removed = await _removed();
+-    removed.addAll(identities);
+-    await (await SharedPreferences.getInstance()).setStringList(
+-      _kPanelRemoved,
+-      removed.toList(),
+-    );
+-  }
+-
+-  /// Une nouvelle provision réussie constitue un nouveau choix du panel.
+-  /// Elle lève uniquement les empreintes de cette source, jamais les autres.
+-  Future<void> forgetPanelRemoval(ProvisionKey key) async {
+-    final Set<String> removed = await _removed();
+-    if (removed.isEmpty) return;
+-    final Set<String> allowed = _identities(_sourceForKey(key));
+-    // Une nouvelle provision Xtream autorise aussi l'ancien lien get.php
+-    // du même compte. Retirer seulement l'empreinte Xtream laisserait son
+-    // alias M3U bloqué à tort, alors que le panel vient de le réassigner.
+-    removed.removeWhere((String stored) {
+-      final ProvisionKey? previous = ProvisionKey.parse(stored);
+-      return previous != null &&
+-          _identities(_sourceForKey(previous)).any(allowed.contains);
+-    });
+-    await (await SharedPreferences.getInstance()).setStringList(
+-      _kPanelRemoved,
+-      removed.toList(),
+-    );
+-  }
++  static Map<String, Object?> _sourceForKey(ProvisionKey key) => <String, Object?>{
++    'm3u_url': key.m3uUrl, 'xtream_server': key.server, 'xtream_username': key.username,
++  };
+ 
+-  bool _isRemoved(Map<String, Object?> source, Set<String> removed) =>
+-      _identities(source).any(removed.contains);
++  /// Compatibilité : uniquement un geste de restauration explicite.
++  /// Aucun appel automatique à cette méthode n'est autorisé.
++  Future<void> forgetPanelRemoval(ProvisionKey key) => SourceOptOuts.restoreManually(_sourceForKey(key));
+ 
+   bool _started = false;
+   Timer? _debounce;
+@@ -160,16 +94,26 @@ class CloudBackupRepository {
+   }
+ 
+   /// Envoie l'instantané courant au backend (best-effort).
+-  Future<void> _upload() async {
++  // Les PUT sont ordonnés : une ancienne requête lente ne peut finir après
++  // le nouvel instantané et remettre le dernier abonnement supprimé.
++  Future<void> _upload() => _uploadTail = _uploadTail.then((_) => _uploadSnapshot());
++
++  @visibleForTesting
++  Future<void> debugUpload() => _upload();
++
++  Future<void> _uploadSnapshot() async {
+     try {
+       final List<Playlist> playlists =
+           await PlaylistRepository.instance.getAllPlaylists();
+-      // Garde-fou : ne jamais écraser le backup par du vide.
+-      if (playlists.isEmpty) return;
++      final Set<String> deleted = await SourceOptOuts.read();
++      // Une installation neuve n'efface rien. Une suppression explicite,
++      // même de la DERNIÈRE source, doit mettre la sauvegarde à jour.
++      if (playlists.isEmpty && deleted.isEmpty) return;
+ 
+       final String mac = await DeviceIdentity.instance.mac;
+       final Map<String, Object?> data = <String, Object?>{
+-        'v': 1,
++        'v': 2,
++        'deleted_sources': deleted.toList(),
+         'playlists': playlists.map((Playlist p) {
+           final Map<String, Object?> m = p.toMap();
+           // On ne garde que ce qui est utile à recréer la source ;
+@@ -182,13 +126,16 @@ class CloudBackupRepository {
+         'favorites': FavoritesRepository.instance.current.toList(),
+       };
+ 
+-      await http
++      final http.Response response = await http
+           .put(
+             Uri.parse('$kSubscriptionBaseUrl/api/backup/$mac'),
+-            headers: const <String, String>{'Content-Type': 'application/json'},
++            headers: await DeviceSecret.instance.headers(jsonBody: true),
+             body: jsonEncode(<String, Object?>{'data': data}),
+           )
+           .timeout(const Duration(seconds: 8));
++      if (response.statusCode < 200 || response.statusCode >= 300) {
++        throw StateError('backup HTTP ${response.statusCode}');
++      }
+       if (kDebugMode) {
+         debugPrint('[Backup] upload OK (${playlists.length} playlist(s))');
+       }
+@@ -226,7 +173,8 @@ class CloudBackupRepository {
+ 
+       final String mac = await DeviceIdentity.instance.mac;
+       final http.Response resp = await http
+-          .get(Uri.parse('$kSubscriptionBaseUrl/api/backup/$mac'))
++          .get(Uri.parse('$kSubscriptionBaseUrl/api/backup/$mac'),
++              headers: await DeviceSecret.instance.headers())
+           .timeout(const Duration(seconds: 8));
+       if (resp.statusCode != 200) return;
+ 
+@@ -235,6 +183,9 @@ class CloudBackupRepository {
+       final Object? data = body['data'];
+       if (data is! Map) return;
+ 
++      final Object? deleted = data['deleted_sources'];
++      if (deleted is List) await SourceOptOuts.restoreHashes(deleted);
++
+       // ----- Playlists -----
+       final List<dynamic> pls =
+           (data['playlists'] as List<dynamic>?) ?? const <dynamic>[];
+@@ -242,8 +193,7 @@ class CloudBackupRepository {
+       for (final dynamic raw in pls) {
+         if (raw is! Map) continue;
+         final Map<String, Object?> m = Map<String, Object?>.from(raw);
+-        if (_isRemoved(m, await _removed()) ||
+-            await SourceOptOuts.isBackupOptedOut(m)) continue;
++        if (await SourceOptOuts.isBackupOptedOut(m)) continue;
+         final String type = (m['type'] as String?) ?? 'm3u';
+         // Nom par défaut LOCALISÉ (langue active à la restauration) — ne
+         // sert que si le backup ne portait pas de nom ; il est ensuite
+@@ -258,6 +208,7 @@ class CloudBackupRepository {
+             final String pass = (m['xtream_password'] as String?) ?? '';
+             if (server.isEmpty || user.isEmpty) continue;
+             imported = await PlaylistRepository.instance.addXtreamPlaylist(
++              restoreDeleted: false,
+               name: name,
+               serverUrl: server,
+               username: user,
+@@ -267,6 +218,7 @@ class CloudBackupRepository {
+             final String url = (m['m3u_url'] as String?) ?? '';
+             if (url.isEmpty) continue;
+             imported = await PlaylistRepository.instance.addM3uPlaylist(
++              restoreDeleted: false,
+               name: name,
+               url: url,
+               epgUrl: m['epg_url'] as String?,
+@@ -275,8 +227,7 @@ class CloudBackupRepository {
+           if (imported == null) continue;
+           // Une suppression peut arriver pendant le téléchargement. Elle
+           // gagne aussi cette course : seul l'import tout juste créé part.
+-          if (_isRemoved(m, await _removed()) ||
+-              await SourceOptOuts.isBackupOptedOut(m)) {
++          if (await SourceOptOuts.isBackupOptedOut(m)) {
+             if (imported.id != null) {
+               await PlaylistRepository.instance.deletePlaylist(imported.id!);
+             }
+diff --git a/lib/features/playlists/data/playlist_database.dart b/lib/features/playlists/data/playlist_database.dart
+index 1c164d35..989a155b 100644
+--- a/lib/features/playlists/data/playlist_database.dart
++++ b/lib/features/playlists/data/playlist_database.dart
+@@ -31,9 +31,10 @@ class PlaylistDatabase {
+   // mémorisé PAR SOURCE par la cascade Xtream — zapping sans re-sonde).
+   // v7 ajoute `epg_channel_id` à channels (Vague 4 : pont EPG 1:N
+   // reconstructible au resync sans re-fetch du bouquet).
+-  static const int _kDbVersion = 7;
++  static const int _kDbVersion = 8;
+ 
+   Database? _db;
++  Future<Database>? _opening;
+ 
+   /// Branche un vrai SQLite de test ; le schéma et les requêtes restent réels.
+   @visibleForTesting
+@@ -47,8 +48,8 @@ class PlaylistDatabase {
+ 
+   Future<Database> get database async {
+     if (_db != null) return _db!;
+-    _db = await _open();
+-    return _db!;
++    return _opening ??= _open().then((Database db) => _db = db)
++        .whenComplete(() => _opening = null);
+   }
+ 
+   Future<Database> _open() async {
+@@ -150,6 +151,7 @@ class PlaylistDatabase {
+       'CREATE INDEX idx_ws_channel ON watch_sessions(channel_id)',
+     );
+ 
++    await _createDeletedSources(db);
+     if (kDebugMode) debugPrint('[DB] Schéma v$version créé.');
+   }
+ 
+@@ -181,7 +183,11 @@ class PlaylistDatabase {
+     await db.execute('ALTER TABLE $table ADD COLUMN $column $definition');
+   }
+ 
++  Future<void> _createDeletedSources(Database db) => db.execute(
++      'CREATE TABLE IF NOT EXISTS deleted_sources (fingerprint TEXT PRIMARY KEY)');
++
+   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
++    if (oldVersion < 8) await _createDeletedSources(db);
+     if (kDebugMode) {
+       debugPrint('[DB] Migration $oldVersion → $newVersion');
+     }
+diff --git a/lib/features/playlists/data/playlist_repository.dart b/lib/features/playlists/data/playlist_repository.dart
+index d51cb67e..3a618502 100644
+--- a/lib/features/playlists/data/playlist_repository.dart
++++ b/lib/features/playlists/data/playlist_repository.dart
+@@ -49,6 +49,7 @@ import 'import_progress.dart';
+ import 'm3u_fetcher.dart';
+ import 'm3u_parser.dart';
+ import 'playlist_database.dart';
++import 'source_opt_outs.dart';
+ import 'source_link_utils.dart';
+ import 'xtream_client.dart';
+ 
+@@ -521,8 +522,8 @@ class PlaylistRepository {
+     // Course : [_emitCurrentState] a pu remplir le cache entre-temps.
+     // On n'écrase pas un snapshot plus frais (playlist qui vient
+     // de changer) par une lecture commencée à froid.
++    if (revision != _emitRevision) return;
+     if (!legacy) {
+-      if (revision != _emitRevision) return;
+       final ChannelComputedSnapshot snapshot =
+           await Channel.prepareComputedSnapshot(all);
+       if (revision != _emitRevision || _channelsCache.isNotEmpty) return;
+@@ -734,6 +735,9 @@ class PlaylistRepository {
+   Future<void> setActivePlaylist(int playlistId) async {
+     final Database db = await PlaylistDatabase.instance.database;
+     await db.transaction((Transaction txn) async {
++      if ((await txn.query('playlists', columns: <String>['id'], where: 'id = ?', whereArgs: <Object>[playlistId], limit: 1)).isEmpty) {
++        throw const PlaylistDeletedException();
++      }
+       await txn.update(
+         'playlists',
+         <String, Object?>{'is_active': 0},
+@@ -802,15 +806,20 @@ class PlaylistRepository {
+     required String name,
+     required String url,
+     String? epgUrl,
++    bool restoreDeleted = true,
+     http.Client? httpClient,
+     ImportProgressCallback? onProgress,
+   }) async {
++    if (restoreDeleted) {
++      await SourceOptOuts.restoreManually(<String, Object?>{'m3u_url': url});
++    }
+     final ({String server, String username, String password})? creds =
+         SourceLinkUtils.tryExtractXtreamCredentials(url);
+ 
+     // Vraie playlist M3U (pas d'identifiants) : un seul chemin possible.
+     if (creds == null) {
+       return addM3uPlaylist(
++          restoreDeleted: false,
+           name: name,
+           url: url,
+           epgUrl: epgUrl,
+@@ -821,20 +830,24 @@ class PlaylistRepository {
+     // Lien Xtream : l'API d'abord (voie royale, anti-OOM, rapide).
+     try {
+       return await addXtreamPlaylist(
+-        name: name,
++        restoreDeleted: false,
++          name: name,
+         serverUrl: creds.server,
+         username: creds.username,
+         password: creds.password,
+         httpClient: httpClient,
+         onProgress: onProgress,
+       );
++    } on PlaylistDeletedException {
++      rethrow;
+     } on Object catch (xtErr) {
+       if (kDebugMode) {
+         debugPrint('[Repo] API Xtream KO → repli sur le M3U brut : $xtErr');
+       }
+       try {
+         return await addM3uPlaylist(
+-            name: name,
++            restoreDeleted: false,
++          name: name,
+             url: url,
+             epgUrl: epgUrl,
+             httpClient: httpClient,
+@@ -862,6 +875,7 @@ class PlaylistRepository {
+     // une source du LABO : elle s'ajoute à la bibliothèque de la box maître
+     // mais ne doit PAS voler l'écran à l'abonnement réel.
+     bool makeActive = true,
++    bool restoreDeleted = true,
+   }) async {
+     // NORMALISATION : complète http:// si l'utilisateur/le panel admin a
+     // donné juste un domaine (« serveur.com/playlist.m3u ») sans schéma —
+@@ -872,6 +886,9 @@ class PlaylistRepository {
+     if (epgUrl != null && epgUrl.trim().isNotEmpty) {
+       epgUrl = SourceLinkUtils.ensureScheme(epgUrl);
+     }
++    if (restoreDeleted) {
++      await SourceOptOuts.restoreManually(<String, Object?>{'m3u_url': url});
++    }
+     final http.Client client = httpClient ?? http.Client();
+     // On insère la playlist AVANT le download (le parser a besoin de son
+     // id pour rattacher les chaînes). MAIS : si une étape échoue ensuite
+@@ -1253,6 +1270,7 @@ class PlaylistRepository {
+     // Voir addM3uPlaylist : `false` = importer sans prendre la main sur
+     // l'abonnement déjà actif (sources du Labo du Maître).
+     bool makeActive = true,
++    bool restoreDeleted = true,
+   }) async {
+     // NORMALISATION CENTRALE (tous les points d'entrée passent ici —
+     // panneaux mobile/TV, panel admin via push MAC, restauration cloud) :
+@@ -1266,6 +1284,11 @@ class PlaylistRepository {
+     serverUrl = SourceLinkUtils.sanitizeXtreamServer(serverUrl);
+     username = SourceLinkUtils.cleanInput(username);
+     password = SourceLinkUtils.cleanInput(password);
++    if (restoreDeleted) {
++      await SourceOptOuts.restoreManually(<String, Object?>{
++        'xtream_server': serverUrl, 'xtream_username': username,
++      });
++    }
+     // 1) Vérifie d'abord les credentials, avant de polluer la base
+     final XtreamClient xtream = XtreamClient(
+       serverUrl: serverUrl,
+@@ -1385,7 +1408,7 @@ class PlaylistRepository {
+   //  SUPPRESSION
+   // ============================================================
+ 
+-  Future<void> deletePlaylist(int playlistId) async {
++  Future<void> deletePlaylist(int playlistId, {bool rememberDeletion = true}) async {
+     ++_emitRevision;
+     // Vidage SYNCHRONE du cache mémoire + émission immédiate d'une
+     // liste vide AVANT le DELETE SQL. Sur grosses playlists (20k+
+@@ -1411,7 +1434,7 @@ class PlaylistRepository {
+ 
+     // Maintenant le DELETE SQL réel (peut prendre du temps sur
+     // grosses playlists, mais l'UI est déjà à jour).
+-    await _deletePlaylist(playlistId);
++    await _deletePlaylist(playlistId, rememberDeletion: rememberDeletion);
+     // Re-émet l'état "officiel" depuis la DB pour rester cohérent
+     // en cas d'incohérence (rare).
+     await _emitCurrentState();
+@@ -1424,10 +1447,18 @@ class PlaylistRepository {
+   Future<void> deleteAllPlaylists() async {
+     ++_emitRevision;
+     final Database db = await PlaylistDatabase.instance.database;
+-    await db.delete('channels');
+-    await db.delete('playlists');
++    await SourceOptOuts.migrateLegacy();
++    await db.transaction((Transaction tx) async {
++      for (final Map<String, Object?> row in await tx.query('playlists')) {
++        await SourceOptOuts.rememberHashes(tx, await SourceOptOuts.hashes(SourceOptOuts.identities(row)));
++      }
++      await tx.delete('channels');
++      await tx.delete('playlists');
++    });
+     _channelsCache = const <Channel>[];
+     _playlistsCache = const <Playlist>[];
++    if (!_playlistsController.isClosed) _playlistsController.add(_playlistsCache);
++    if (!_channelsController.isClosed) _channelsController.add(_channelsCache);
+     // Même nettoyage anti-fuite que _deletePlaylist (voir plus bas).
+     Channel.clearComputedCaches();
+   }
+@@ -1653,6 +1684,8 @@ class PlaylistRepository {
+   // ============================================================
+ 
+   Future<int> _insertPlaylist(Playlist playlist) async {
++    await SourceOptOuts.migrateLegacy();
++    final List<String> keys = await SourceOptOuts.hashes(SourceOptOuts.identities(playlist.toMap()));
+     final Database db = await PlaylistDatabase.instance.database;
+     // Phase 1+/Multi-serveurs : si c'est la PREMIERE playlist (la
+     // table etait vide), on la marque auto-active. Sinon, les
+@@ -1678,55 +1711,30 @@ class PlaylistRepository {
+     if (pw is String && pw.isNotEmpty) {
+       map['xtream_password'] = SecretCipher.instance.encrypt(pw);
+     }
+-    return db.insert('playlists', map);
++    return db.transaction((Transaction tx) async {
++      if (await SourceOptOuts.containsHashes(tx, keys)) throw const PlaylistDeletedException();
++      return tx.insert('playlists', map);
++    });
+   }
+ 
+-  Future<void> _deletePlaylist(int id) async {
++  Future<void> _deletePlaylist(int id, {bool rememberDeletion = false}) async {
+     ++_emitRevision;
++    await SourceOptOuts.migrateLegacy();
+     final Database db = await PlaylistDatabase.instance.database;
+-    // Phase 1+/Multi-serveurs : si on delete l'active, on promeut la
+-    // plus ancienne playlist restante comme nouvelle active. Comme ca
+-    // l'user n'a pas a aller manuellement reactiver une autre source
+-    // apres suppression.
+-    final List<Map<String, Object?>> wasActive = await db.query(
+-      'playlists',
+-      columns: <String>['id'],
+-      where: 'id = ? AND is_active = 1',
+-      whereArgs: <Object>[id],
+-      limit: 1,
+-    );
+-    // Suppression EXPLICITE des chaînes de cette liste AVANT la liste.
+-    // On ne se repose pas sur le seul `ON DELETE CASCADE` : il exige que
+-    // `PRAGMA foreign_keys = ON` soit actif (ce qui est désormais le cas,
+-    // cf. PlaylistDatabase._onConfigure), mais ce delete direct garantit
+-    // le nettoyage même sur d'anciennes bases et purge toute chaîne déjà
+-    // orpheline. Sans ça, les chaînes réapparaissaient après suppression.
+-    await db.delete('channels', where: 'playlist_id = ?', whereArgs: <Object>[id]);
+-    await db.delete('playlists', where: 'id = ?', whereArgs: <Object>[id]);
+-    // Anti-fuite mémoire : les caches calculés (genre/pays/qualité/nom)
+-    // gardaient les entrées des ids supprimés pour toujours. Vidage
+-    // complet, recalcul paresseux au prochain accès — coût nul.
+-    // En mode réparé, les chaînes restantes gardent leurs valeurs chaudes
+-    // jusqu'au remplacement atomique. Le repli conserve le vidage ancien.
+-    if (RepairFlags.mobileChannelMetadataLegacy) {
+-      Channel.clearComputedCaches();
+-    }
+-    if (wasActive.isNotEmpty) {
+-      final List<Map<String, Object?>> next = await db.query(
+-        'playlists',
+-        columns: <String>['id'],
+-        orderBy: 'created_at ASC',
+-        limit: 1,
+-      );
+-      if (next.isNotEmpty) {
+-        await db.update(
+-          'playlists',
+-          <String, Object?>{'is_active': 1},
+-          where: 'id = ?',
+-          whereArgs: <Object>[next.first['id'] as int],
+-        );
++    await db.transaction((Transaction tx) async {
++      final List<Map<String, Object?>> rows = await tx.query('playlists', where: 'id = ?', whereArgs: <Object>[id]);
++      if (rows.isEmpty) return;
++      if (rememberDeletion) {
++        await SourceOptOuts.rememberHashes(tx, await SourceOptOuts.hashes(SourceOptOuts.identities(rows.first)));
+       }
+-    }
++      await tx.delete('channels', where: 'playlist_id = ?', whereArgs: <Object>[id]);
++      await tx.delete('playlists', where: 'id = ?', whereArgs: <Object>[id]);
++      if (rows.first['is_active'] == 1) {
++        final List<Map<String, Object?>> next = await tx.query('playlists', columns: <String>['id'], orderBy: 'created_at ASC', limit: 1);
++        if (next.isNotEmpty) await tx.update('playlists', <String, Object?>{'is_active': 1}, where: 'id = ?', whereArgs: <Object>[next.first['id'] as int]);
++      }
++    });
++    if (RepairFlags.mobileChannelMetadataLegacy) Channel.clearComputedCaches();
+   }
+ 
+   /// Insert toutes les chaînes en CHUNKS de 1000 + ré-émet l'état
+@@ -1768,7 +1776,7 @@ class PlaylistRepository {
+   Future<void> _updatePlaylistMetrics(Playlist playlist) async {
+     if (playlist.id == null) return;
+     final Database db = await PlaylistDatabase.instance.database;
+-    await db.update(
++    final int count = await db.update(
+       'playlists',
+       <String, Object?>{
+         'last_synced_at': playlist.lastSyncedAt,
+@@ -1777,6 +1785,7 @@ class PlaylistRepository {
+       where: 'id = ?',
+       whereArgs: <Object>[playlist.id!],
+     );
++    if (count == 0) throw const PlaylistDeletedException();
+   }
+ 
+   Future<void> _emitCurrentState() async {
+@@ -1784,8 +1793,8 @@ class PlaylistRepository {
+     final bool legacy = RepairFlags.mobileChannelMetadataLegacy;
+     final List<Channel> channels = await getAllChannels();
+     final List<Playlist> playlists = await getAllPlaylists();
++    if (revision != _emitRevision) return;
+     if (!legacy) {
+-      if (revision != _emitRevision) return;
+       final Stopwatch timer = Stopwatch()..start();
+       late final ChannelComputedSnapshot snapshot;
+       try {
+diff --git a/lib/features/playlists/data/remote_source_repository.dart b/lib/features/playlists/data/remote_source_repository.dart
+index 1c4a4dae..cf6981b3 100644
+--- a/lib/features/playlists/data/remote_source_repository.dart
++++ b/lib/features/playlists/data/remote_source_repository.dart
+@@ -29,6 +29,7 @@ import 'package:shared_preferences/shared_preferences.dart';
+ import '../../../core/i18n/l10n_now.dart';
+ import '../../channels/data/recently_watched_repository.dart';
+ import '../../device/data/device_identity.dart';
++import '../../device/data/device_secret.dart';
+ import '../../subscription/data/subscription_backend.dart'
+     show kSubscriptionBaseUrl;
+ import '../../subscription/data/subscription_state.dart';
+@@ -147,7 +148,7 @@ abstract final class RemoteSourceRepository {
+ 
+       final http.Response resp = await http.get(
+         Uri.parse('$kSubscriptionBaseUrl/api/device-source/$mac'),
+-        headers: const <String, String>{'Accept': 'application/json'},
++        headers: await DeviceSecret.instance.headers(),
+       ).timeout(const Duration(seconds: 8));
+       if (resp.statusCode != 200) return RemoteSyncResult.networkError;
+ 
+@@ -223,6 +224,10 @@ abstract final class RemoteSourceRepository {
+             : all
+                 .where((Map<String, dynamic> s) => s['enabled'] != false)
+                 .toList();
++        if (all.length != list.length) return RemoteSyncResult.networkError;
++        // Retirer d'abord : une panne de la nouvelle source ne retarde jamais
++        // l'effacement demandé sur l'ancienne.
++        await _dropNoLongerServed(active, all);
+         // Même boucle que applySources (règle du labo comprise) : une seule
+         // implémentation, pas deux comportements qui divergent.
+         final RemoteSyncResult r = active.isEmpty
+@@ -233,7 +238,7 @@ abstract final class RemoteSourceRepository {
+         // retirer UNE liste parmi plusieurs la laissait là. On enlève ce que
+         // le panel avait posé et ne sert plus (ou a éteint). Les listes
+         // ajoutées à la main ne sont jamais dans `provisioned`.
+-        if (!panelReconcileOff) await _dropNoLongerServed(active);
++
+         return r;
+       }
+ 
+@@ -272,6 +277,13 @@ abstract final class RemoteSourceRepository {
+         continue;
+       }
+       try {
++        if (kind == 'source_remove') {
++          // Mémoriser même si l'import est encore avant son INSERT SQLite.
++          await SourceOptOuts.rememberSource(<String, Object?>{
++            'm3u_url': t['m3u_url'], 'xtream_server': t['server'],
++            'xtream_username': t['username'],
++          });
++        }
+         final Playlist? target = _matchLocal(t);
+         if (target != null && target.id != null) {
+           if (kind == 'source_remove') {
+@@ -295,7 +307,7 @@ abstract final class RemoteSourceRepository {
+       await http
+           .post(
+             Uri.parse('$kSubscriptionBaseUrl/api/device-orders/ack'),
+-            headers: const <String, String>{'Content-Type': 'application/json'},
++            headers: await DeviceSecret.instance.headers(jsonBody: true),
+             body: jsonEncode(<String, Object>{'mac': mac, 'ids': done}),
+           )
+           .timeout(const Duration(seconds: 8));
+@@ -355,6 +367,7 @@ abstract final class RemoteSourceRepository {
+     if (type == 'xtream') {
+       if (server.isEmpty || user.isEmpty || pass.isEmpty) return;
+       await PlaylistRepository.instance.addXtreamPlaylist(
++        restoreDeleted: false,
+         name: label,
+         serverUrl: server,
+         username: user,
+@@ -366,6 +379,7 @@ abstract final class RemoteSourceRepository {
+       // `addM3uPlaylistSmart` (repli Xtream auto) n'expose pas `makeActive` :
+       // on remet donc l'active d'avant si on n'aurait pas du en changer.
+       await PlaylistRepository.instance.addM3uPlaylistSmart(
++        restoreDeleted: false,
+         name: label,
+         url: m3u,
+         epgUrl: (epg != null && epg.isNotEmpty) ? epg : null,
+@@ -412,7 +426,7 @@ abstract final class RemoteSourceRepository {
+       if (!mac.startsWith('MK:')) return;
+       final http.Response resp = await http.get(
+         Uri.parse('$kSubscriptionBaseUrl/api/history/$mac'),
+-        headers: const <String, String>{'Accept': 'application/json'},
++        headers: await DeviceSecret.instance.headers(),
+       ).timeout(const Duration(seconds: 8));
+       if (resp.statusCode != 200) return;
+       final Map<String, dynamic> body =
+@@ -439,7 +453,7 @@ abstract final class RemoteSourceRepository {
+       if (!mac.startsWith('MK:')) return <Map<String, dynamic>>[];
+       final http.Response resp = await http.get(
+         Uri.parse('$kSubscriptionBaseUrl/api/device-source/$mac'),
+-        headers: const <String, String>{'Accept': 'application/json'},
++        headers: await DeviceSecret.instance.headers(),
+       ).timeout(const Duration(seconds: 8));
+       if (resp.statusCode != 200) return <Map<String, dynamic>>[];
+       final Map<String, dynamic> body =
+@@ -631,6 +645,7 @@ abstract final class RemoteSourceRepository {
+ 
+       try {
+         await PlaylistRepository.instance.addXtreamPlaylist(
++        restoreDeleted: false,
+           name: label,
+           serverUrl: server,
+           username: user,
+@@ -696,6 +711,7 @@ abstract final class RemoteSourceRepository {
+ 
+       try {
+         await PlaylistRepository.instance.addM3uPlaylist(
++        restoreDeleted: false,
+           name: label,
+           url: m3u,
+           epgUrl: (epg != null && epg.isNotEmpty) ? epg : null,
+@@ -762,6 +778,7 @@ abstract final class RemoteSourceRepository {
+     }
+     try {
+       await PlaylistRepository.instance.addXtreamPlaylist(
++        restoreDeleted: false,
+         name: label,
+         serverUrl: creds.server,
+         username: creds.username,
+@@ -781,7 +798,7 @@ abstract final class RemoteSourceRepository {
+       if (wasPanelM3u) {
+         for (final Playlist p in existing) {
+           if (p.id != null && p.type == PlaylistType.m3u && p.m3uUrl == m3u) {
+-            await PlaylistRepository.instance.deletePlaylist(p.id!);
++            await PlaylistRepository.instance.deletePlaylist(p.id!, rememberDeletion: false);
+           }
+         }
+       }
+@@ -819,23 +836,26 @@ abstract final class RemoteSourceRepository {
+   /// Enlève du téléphone les listes que le panel avait posées et qu'il ne
+   /// sert plus (retirées ou éteintes). Rien d'autre.
+   static Future<void> _dropNoLongerServed(
+-      List<Map<String, dynamic>> active) async {
++      List<Map<String, dynamic>> active, List<Map<String, dynamic>> all) async {
+     final Set<ProvisionKey> provisioned = await _loadProvisioned();
+     final Set<ProvisionKey> served = keysOfServed(active);
++    final Set<ProvisionKey> assigned = keysOfServed(all);
+     final Set<ProvisionKey> drop = provisioned.difference(served);
++    final Set<ProvisionKey> removed = provisioned.difference(assigned);
++    for (final ProvisionKey key in removed) {
++      await CloudBackupRepository.instance.rememberPanelRemovalKey(key);
++    }
+     if (drop.isEmpty) return;
+-    final List<Playlist> local =
+-        await PlaylistRepository.instance.getAllPlaylists();
++    final List<Playlist> local = await PlaylistRepository.instance.getAllPlaylists();
+     for (final Playlist p in local) {
+-      if (p.id == null) continue;
+-      if (!drop.any((ProvisionKey k) => _playlistIs(p, k))) continue;
+-      // Une liste encore servie sous une AUTRE empreinte (lien get.php
+-      // devenu compte Xtream) reste.
++      if (p.id == null || !drop.any((ProvisionKey k) => _playlistIs(p, k))) continue;
+       if (served.any((ProvisionKey k) => _playlistIs(p, k))) continue;
+-      await CloudBackupRepository.instance.rememberPanelRemoval(p);
+-      await PlaylistRepository.instance.deletePlaylist(p.id!);
++      // Éteindre est réversible ; supprimer est définitif. Garder le carnet
++      // des listes éteintes pour reconnaître leur suppression ultérieure.
++      final bool deleted = !assigned.any((ProvisionKey k) => _playlistIs(p, k));
++      await PlaylistRepository.instance.deletePlaylist(p.id!, rememberDeletion: deleted);
+     }
+-    await _forgetProvision(drop);
++    await _forgetProvision(removed);
+   }
+ 
+   static const String _kProvisioned = 'panel.provisioned_v1';
+@@ -847,9 +867,7 @@ abstract final class RemoteSourceRepository {
+   }
+ 
+   static Future<void> _rememberProvision(ProvisionKey key) async {
+-    // Une nouvelle assignation du panel autorise à nouveau CETTE source
+-    // dans les sauvegardes ; les autres suppressions restent mémorisées.
+-    await CloudBackupRepository.instance.forgetPanelRemoval(key);
++    // La provision automatique ne lève jamais une suppression volontaire.
+     final SharedPreferences prefs = await SharedPreferences.getInstance();
+     final List<String> raw = prefs.getStringList(_kProvisioned) ?? <String>[];
+     if (raw.contains(key.wire)) return;
+diff --git a/lib/features/playlists/data/source_opt_outs.dart b/lib/features/playlists/data/source_opt_outs.dart
+index 38d7a3fe..b0508760 100644
+--- a/lib/features/playlists/data/source_opt_outs.dart
++++ b/lib/features/playlists/data/source_opt_outs.dart
+@@ -1,246 +1,155 @@
+-// =========================================================
+-//  source_opt_outs.dart — Suppressions VOLONTAIRES de sources
+-// =========================================================
+-//  Retour client (21/08) : « si je supprime l'abonnement, ça doit être
+-//  supprimé carrément — au redémarrage il est toujours là, c'est pas
+-//  professionnel. » La cause : la PROVISION AUTOMATIQUE par MAC
+-//  (RemoteSourceRepository.sync) re-importait au boot la source que le
+-//  client venait de supprimer localement.
+-//
+-//  Ici : on mémorise l'« empreinte » de chaque source supprimée PAR UN
+-//  GESTE VOLONTAIRE (écran Sources TV/téléphone, ou ordre du panel).
+-//  La provision automatique la SAUTE tant que l'empreinte est posée.
+-//
+-//  =========================================================
+-//   17/09/2026 — CE FICHIER A RENDU UNE ACTIVATION IMPOSSIBLE
+-//  =========================================================
+-//  Le propriétaire, deux jours durant :
+-//
+-//    « Si j'écris bonjour, l'application reçoit bonjour. Mais si
+-//      j'active à distance, l'application ne peut pas s'activer. Et si
+-//      le client le met manuellement, ça fonctionne. »
+-//
+-//  Ces trois faits, mis ensemble, désignaient un seul coupable. Le
+-//  transport allait bien (le message arrive). Les identifiants allaient
+-//  bien (la saisie manuelle marche). Restait un filtre, entre les deux,
+-//  qui ne s'applique QU'À la source poussée : celui-ci.
+-//
+-//  Les messages arrivent par `/api/device-messages/:mac`, sans filtre.
+-//  La source arrive par `/api/device-source/:mac`, et
+-//  `RemoteSourceRepository._applySource` la SAUTAIT en silence dès
+-//  qu'une empreinte traînait. Le revendeur poussait dans le vide, le
+-//  panel affichait « envoyé », et personne — ni lui, ni le client, ni
+-//  le panneau — ne pouvait voir pourquoi.
+-//
+-//  CE QUI ÉTAIT CENSÉ LEVER L'EMPREINTE ne pouvait presque jamais
+-//  s'exécuter : `signalPushed()` n'est appelé que par un événement
+-//  WEBSOCKET. Socket coupé, app en arrière-plan, réveil par le sondage
+-//  de 6 secondes — tous ces chemins arrivaient directement au filtre,
+-//  empreinte intacte. Le parcours de récupération existait sur le
+-//  papier ; dans la vraie vie il ne se déclenchait pas.
+-//
+-//  LA CORRECTION : une empreinte porte désormais une DATE, et le
+-//  serveur dit depuis quand la source est assignée (`assigned_at`,
+-//  c'est-à-dire `device_sources.updated_at`, qui était déjà écrit à
+-//  chaque poussée du panel — rien à migrer). Les deux besoins cessent
+-//  alors de se contredire :
+-//
+-//    • supprimée APRÈS la dernière assignation → elle reste supprimée.
+-//      C'est le 21/08, intact.
+-//    • assignée APRÈS la suppression → le revendeur a reparlé depuis,
+-//      la source revient. C'est aujourd'hui.
+-//
+-//  Plus besoin du WebSocket pour ça : la comparaison se fait sur le
+-//  chemin normal, celui qui marche déjà puisque les messages passent.
+-//
+-//  15/10/2026 : une absence de date serveur ne constitue pas une nouvelle
+-//  attribution. Une suppression volontaire datée reste donc prioritaire.
+-//  Seule une attribution explicitement plus récente permet la récupération.
+-// =========================================================
++import 'dart:convert';
+ 
++import 'package:cryptography/cryptography.dart';
+ import 'package:flutter/foundation.dart';
+ import 'package:shared_preferences/shared_preferences.dart';
++import 'package:sqflite/sqflite.dart';
+ 
+ import '../domain/playlist.dart';
++import 'playlist_database.dart';
+ import 'source_link_utils.dart';
+ 
++/// Une suppression est définitive, indépendamment des dates du panel.
++/// Seul un nouvel ajout MANUEL peut lever le refus de cette source.
++/// SQLite permet de conserver le refus et d'effacer la liste atomiquement.
++/// Les empreintes sont hachées pour ne pas recopier les codes IPTV.
+ abstract final class SourceOptOuts {
+-  /// v1 : simple liste d'empreintes, SANS date. Encore lue une fois pour
+-  /// la migration (voir [_migrerV1]), puis effacée.
+-  static const String _kKeyV1 = 'remote.source.optout.v1';
+-
+-  /// v2 : `empreinte|dateMs`. La date est ce qui permet de départager
+-  /// « supprimée puis réassignée » de « supprimée, point ».
+-  static const String _kKey = 'remote.source.optout.v2';
+-
+-  static String _fpXtream(String server, String user) =>
++  static Future<void>? _migration;
++  static String _xtream(String server, String user) =>
+       'x|${SourceLinkUtils.sanitizeXtreamServer(server)}|${user.trim()}';
+-  static String _fpM3u(String url) => 'm|${url.trim()}';
+ 
+-  /// Empreinte d'une playlist locale (null = type inconnu, rien à poser).
+-  static String? _fpOf(Playlist p) {
+-    if (p.type == PlaylistType.xtream) {
+-      return _fpXtream(p.xtreamServer ?? '', p.xtreamUsername ?? '');
++  static Set<String> identities(Map<String, Object?> source) {
++    final Set<String> out = <String>{};
++    final String url = '${source['m3u_url'] ?? ''}'.trim();
++    if (url.isNotEmpty) {
++      final String normalized = SourceLinkUtils.ensureScheme(url);
++      final credentials = SourceLinkUtils.tryExtractXtreamCredentials(normalized);
++      if (credentials != null) {
++        out.add(_xtream(credentials.server, credentials.username));
++      } else {
++        out.add('m|$normalized');
++      }
+     }
+-    if (p.type == PlaylistType.m3u) return _fpM3u(p.m3uUrl ?? '');
+-    return null;
++    final String server = '${source['xtream_server'] ?? ''}'.trim();
++    if (server.isNotEmpty) {
++      out.add(_xtream(server, '${source['xtream_username'] ?? ''}'));
++    }
++    return out;
+   }
+ 
+-  /// Pose l'empreinte d'une source supprimée VOLONTAIREMENT, datée.
+-  static Future<void> markDeleted(Playlist p) async {
+-    final String? fp = _fpOf(p);
+-    if (fp == null) return;
+-    try {
+-      final SharedPreferences prefs = await SharedPreferences.getInstance();
+-      final Map<String, int> all = await _lire(prefs);
+-      final deletedAt = DateTime.now().millisecondsSinceEpoch;
+-      all[fp] = deletedAt;
+-      // Le même abonnement peut être relu comme fichier M3U ou via Xtream.
+-      // Mémoriser l'alias empêche un changement de représentation de le recréer.
+-      if (p.type == PlaylistType.m3u) {
+-        final credentials =
+-            SourceLinkUtils.tryExtractXtreamCredentials(p.m3uUrl ?? '');
+-        if (credentials != null) {
+-          all[_fpXtream(credentials.server, credentials.username)] = deletedAt;
+-        }
+-      }
+-      await _ecrire(prefs, all);
+-      if (kDebugMode) debugPrint('[OptOut] suppression volontaire mémorisée');
+-    } catch (_) {
+-      // best-effort — au pire la source revient une fois de plus.
++  static Future<List<String>> hashes(Iterable<String> fingerprints) async {
++    final List<String> out = <String>[];
++    for (final String fp in fingerprints.toSet()) {
++      final Hash hash = await Sha256().hash(utf8.encode(fp));
++      out.add(hash.bytes.map((int b) => b.toRadixString(16).padLeft(2, '0')).join());
+     }
++    return out;
+   }
+ 
+-  /// La provision automatique doit-elle SAUTER cette source Xtream ?
+-  ///
+-  ///  [assignedAt] = `assigned_at` renvoyé par le serveur (ms). `null` ou
+-  ///  0 = date absente : une suppression volontaire reste prioritaire.
+-  static Future<bool> isXtreamOptedOut(
+-    String server,
+-    String user, {
+-    int? assignedAt,
+-  }) =>
+-      _doitSauter(_fpXtream(server, user), assignedAt);
+-
+-  /// La provision automatique doit-elle SAUTER cette source M3U ?
+-  static Future<bool> isM3uOptedOut(String url, {int? assignedAt}) =>
+-      _doitSauter(_fpM3u(url), assignedAt);
+-
+-  /// Vérifie aussi les alias get.php/Xtream d'un ancien instantané cloud.
+-  static Future<bool> isBackupOptedOut(Map<String, Object?> source) async {
+-    final String url = '${source['m3u_url'] ?? ''}'.trim();
+-    if (url.isNotEmpty) {
+-      if (await isM3uOptedOut(url)) return true;
+-      final credentials = SourceLinkUtils.tryExtractXtreamCredentials(url);
+-      if (credentials != null &&
+-          await isXtreamOptedOut(credentials.server, credentials.username))
+-        return true;
++  /// Pas d'amnistie : une ancienne suppression sans date reste un refus.
++  static Future<void> migrateLegacy() =>
++      _migration ??= _migrate().whenComplete(() => _migration = null);
++
++  static Future<void> _migrate() async {
++    final SharedPreferences prefs = await SharedPreferences.getInstance();
++    final Set<String> legacy = <String>{
++      ...?prefs.getStringList('remote.source.optout.v1'),
++    };
++    for (final String entry in prefs.getStringList('remote.source.optout.v2') ?? <String>[]) {
++      final int split = entry.lastIndexOf('|');
++      if (split > 0) legacy.add(entry.substring(0, split));
++    }
++    for (final String entry in prefs.getStringList('backup.panel_removed.v1') ?? <String>[]) {
++      if (entry.startsWith('m3u|')) legacy.add('m|${entry.substring(4)}');
++      if (entry.startsWith('xtream|')) legacy.add('x|${entry.substring(7)}');
++    }
++    final Set<String> canonical = <String>{};
++    for (final String entry in legacy) {
++      if (entry.startsWith('m|')) {
++        canonical.addAll(identities(<String, Object?>{'m3u_url': entry.substring(2)}));
++      } else if (entry.startsWith('x|')) {
++        final int split = entry.lastIndexOf('|');
++        if (split > 2) canonical.add(_xtream(entry.substring(2, split), entry.substring(split + 1)));
++      }
++    }
++    if (canonical.isNotEmpty) {
++      final Database db = await PlaylistDatabase.instance.database;
++      final List<String> keys = await hashes(canonical);
++      await db.transaction((Transaction tx) => rememberHashes(tx, keys));
++    }
++    // Effacer seulement APRÈS la validation de l'écriture durable.
++    for (final String key in <String>['remote.source.optout.v1', 'remote.source.optout.v2', 'backup.panel_removed.v1']) {
++      if (prefs.containsKey(key)) await prefs.remove(key);
+     }
+-    final String server = '${source['xtream_server'] ?? ''}'.trim();
+-    return server.isNotEmpty &&
+-        await isXtreamOptedOut(server, '${source['xtream_username'] ?? ''}');
+   }
+ 
+-  /// LE JUGE. Fonction pure, sortie exprès du stockage pour être testable.
+-  ///
+-  ///  [suppressionMs] : quand le client l'a supprimée (0 / null = inconnu).
+-  ///  [assignationMs] : depuis quand le panel l'assigne (0 / null = inconnu).
+-  @visibleForTesting
+-  static bool doitSauter({int? suppressionMs, int? assignationMs}) {
+-    final int supp = suppressionMs ?? 0;
+-    // Jamais supprimée → rien à sauter.
+-    if (supp <= 0) return false;
+-    final int assign = assignationMs ?? 0;
+-    // L'absence de date n'est pas une preuve de réattribution. Actualiser
+-    // une réponse ancienne ou incomplète doit respecter le choix du client.
+-    if (assign <= 0) return true;
+-    // Réassignée APRÈS la suppression → le revendeur a reparlé depuis.
+-    // Strictement supérieur : à égalité de milliseconde, la suppression
+-    // gagne (elle est forcément postérieure à l'assignation qu'elle vise).
+-    return supp >= assign;
++  static Future<void> rememberHashes(DatabaseExecutor db, Iterable<String> keys) async {
++    for (final String key in keys) {
++      await db.insert('deleted_sources', <String, Object?>{'fingerprint': key},
++          conflictAlgorithm: ConflictAlgorithm.ignore);
++    }
+   }
+ 
+-  static Future<bool> _doitSauter(String fp, int? assignedAt) async {
+-    try {
+-      final SharedPreferences prefs = await SharedPreferences.getInstance();
+-      final Map<String, int> all = await _lire(prefs);
+-      return doitSauter(suppressionMs: all[fp], assignationMs: assignedAt);
+-    } catch (_) {
+-      return false; // en cas de doute : ne jamais bloquer une provision
++  static Future<bool> containsHashes(DatabaseExecutor db, Iterable<String> keys) async {
++    for (final String key in keys) {
++      if ((await db.query('deleted_sources', where: 'fingerprint = ?', whereArgs: <Object>[key], limit: 1)).isNotEmpty) return true;
+     }
++    return false;
+   }
+ 
+-  /// Lève TOUTES les empreintes — appelé quand le panel POUSSE une source
+-  /// en temps réel (geste délibéré du revendeur = récupération).
+-  ///
+-  ///  Reste utile, mais n'est PLUS le seul filet : le chemin normal sait
+-  ///  désormais trancher tout seul grâce aux dates. C'était le défaut du
+-  ///  21/08 → 17/09, où tout reposait sur un WebSocket qui n'arrivait pas.
+-  static Future<void> clearAll() async {
+-    try {
+-      final SharedPreferences prefs = await SharedPreferences.getInstance();
+-      await prefs.remove(_kKey);
+-      await prefs.remove(_kKeyV1);
+-      if (kDebugMode) debugPrint('[OptOut] tout levé (push panel)');
+-    } catch (_) {
+-      // best-effort.
+-    }
++  static Future<void> rememberSource(Map<String, Object?> source) async {
++    await migrateLegacy();
++    final Database db = await PlaylistDatabase.instance.database;
++    final List<String> keys = await hashes(identities(source));
++    await db.transaction((Transaction tx) => rememberHashes(tx, keys));
+   }
+ 
+-  // ---------------------------------------------------------
+-  //  Stockage
+-  // ---------------------------------------------------------
+-  static Future<Map<String, int>> _lire(SharedPreferences prefs) async {
+-    final Map<String, int> out = <String, int>{};
+-    for (final String e in prefs.getStringList(_kKey) ?? const <String>[]) {
+-      final int i = e.lastIndexOf('|');
+-      if (i <= 0) continue;
+-      final int? ts = int.tryParse(e.substring(i + 1));
+-      if (ts == null) continue;
+-      out[e.substring(0, i)] = ts;
+-    }
+-    await _migrerV1(prefs, out);
+-    return out;
++  static Future<void> markDeleted(Playlist playlist) => rememberSource(playlist.toMap());
++
++  static Future<bool> isBackupOptedOut(Map<String, Object?> source) async {
++    await migrateLegacy();
++    final Database db = await PlaylistDatabase.instance.database;
++    return containsHashes(db, await hashes(identities(source)));
+   }
+ 
+-  /// AMNISTIE UNIQUE des empreintes v1 (17/09/2026).
+-  ///
+-  ///  Une empreinte v1 n'a pas de date : impossible de savoir si elle est
+-  ///  antérieure ou postérieure à l'assignation. On ne peut donc pas
+-  ///  trancher — et `doitSauter` ne bloque pas dans le doute.
+-  ///
+-  ///  Conséquence ASSUMÉE : sur chaque appareil déjà bloqué aujourd'hui,
+-  ///  la source assignée revient UNE fois. C'est précisément ce qu'on
+-  ///  veut — c'est ce qui débloque le parc sans que personne ait à
+-  ///  toucher un téléphone. Si le client la resupprime, l'empreinte est
+-  ///  réécrite avec une vraie date et tient, cette fois pour de bon.
+-  ///
+-  ///  On convertit en date 0 (« inconnue ») plutôt que de jeter la clé
+-  ///  tout de suite : la trace reste lisible en débogage, et la v1 est
+-  ///  effacée une bonne fois.
+-  static Future<void> _migrerV1(
+-    SharedPreferences prefs,
+-    Map<String, int> out,
+-  ) async {
+-    final List<String>? v1 = prefs.getStringList(_kKeyV1);
+-    if (v1 == null) return;
+-    for (final String fp in v1) {
+-      out.putIfAbsent(fp, () => 0);
+-    }
+-    await prefs.remove(_kKeyV1);
+-    await _ecrire(prefs, out);
+-    if (kDebugMode) debugPrint('[OptOut] v1 migrée (${v1.length}) — amnistie');
++  static Future<bool> isXtreamOptedOut(String server, String user, {int? assignedAt}) =>
++      isBackupOptedOut(<String, Object?>{'xtream_server': server, 'xtream_username': user});
++  static Future<bool> isM3uOptedOut(String url, {int? assignedAt}) =>
++      isBackupOptedOut(<String, Object?>{'m3u_url': url});
++
++  /// Appelé au DÉBUT d'un ajout volontaire, avant le réseau : une suppression
++  /// ultérieure gagne donc contre un téléchargement encore en cours.
++  static Future<void> restoreManually(Map<String, Object?> source) async {
++    await migrateLegacy();
++    final List<String> keys = await hashes(identities(source));
++    final Database db = await PlaylistDatabase.instance.database;
++    await db.transaction((Transaction tx) async {
++      for (final String key in keys) {
++        await tx.delete('deleted_sources', where: 'fingerprint = ?', whereArgs: <Object>[key]);
++      }
++    });
++  }
++
++  static Future<Set<String>> read() async {
++    await migrateLegacy();
++    final Database db = await PlaylistDatabase.instance.database;
++    return (await db.query('deleted_sources')).map((Map<String, Object?> row) => row['fingerprint'] as String).toSet();
+   }
+ 
+-  static Future<void> _ecrire(
+-    SharedPreferences prefs,
+-    Map<String, int> all,
+-  ) async {
+-    await prefs.setStringList(
+-      _kKey,
+-      all.entries
+-          .map((MapEntry<String, int> e) => '${e.key}|${e.value}')
+-          .toList(),
+-    );
++  static Future<void> restoreHashes(Iterable<Object?> values) async {
++    await migrateLegacy();
++    final RegExp digest = RegExp(r'^[0-9a-f]{64}$');
++    final Iterable<String> keys = values.whereType<String>().where(digest.hasMatch).toSet();
++    final Database db = await PlaylistDatabase.instance.database;
++    await db.transaction((Transaction tx) => rememberHashes(tx, keys));
+   }
++
++  @visibleForTesting
++  static bool doitSauter({int? suppressionMs, int? assignationMs}) => suppressionMs != null;
++}
++
++class PlaylistDeletedException implements Exception {
++  const PlaylistDeletedException();
++  @override
++  String toString() => 'Cette liste a été supprimée. Ajoute-la à nouveau pour la rétablir.';
+ }
+diff --git a/lib/features/sports/domain/live_alert_plan.dart b/lib/features/sports/domain/live_alert_plan.dart
+index 9b36eaf4..d08f7057 100644
+--- a/lib/features/sports/domain/live_alert_plan.dart
++++ b/lib/features/sports/domain/live_alert_plan.dart
+@@ -25,7 +25,6 @@ class LiveAlert {
+ class LiveAlertPlan {
+   final Map<String, int> _totals = <String, int>{};
+   final Map<String, SportEvent> _seen = <String, SportEvent>{};
+-  final Map<String, int> _misses = <String, int>{};
+   final Set<String> _ended = <String>{};
+   bool _baseline = false;
+ 
+@@ -33,7 +32,6 @@ class LiveAlertPlan {
+   void reset() {
+     _totals.clear();
+     _seen.clear();
+-    _misses.clear();
+     _ended.clear();
+     _baseline = false;
+   }
+@@ -76,25 +74,22 @@ class LiveAlertPlan {
+       }
+       if (t != null) _totals[e.id] = t;
+       final bool wasLive = before != null && before.isLive;
+-      if (e.isLive && !wasLive && !_ended.contains(e.id)) {
++      if (before != null && e.isLive && !wasLive && !_ended.contains(e.id)) {
+         out.add(LiveAlert(LiveAlertKind.started, e));
+       }
+       _seen[e.id] = e;
+-      _misses.remove(e.id);
++      if (wasLive && <String>{'ft', 'aet', 'pen'}.contains(e.status.trim().toLowerCase()) && _ended.add(e.id)) {
++        out.add(LiveAlert(LiveAlertKind.ended, e));
++      }
+     }
+ 
+-    final List<String> tracked = _seen.keys.toList(growable: false);
+-    for (final String id in tracked) {
+-      if (byId.containsKey(id)) continue;
+-      final SportEvent? last = _seen[id];
+-      if (last == null || !last.isLive || _ended.contains(id)) continue;
+-      final int n = (_misses[id] ?? 0) + 1;
+-      _misses[id] = n;
+-      if (n >= 2) {
+-        _ended.add(id);
+-        _misses.remove(id);
+-        out.add(LiveAlert(LiveAlertKind.ended, last));
+-      }
++    // Une absence, même répétée, peut être une panne partielle. Seul le
++    // statut terminal du fournisseur annonce la fin. Mémoire bornée.
++    while (_seen.length > 512) {
++      final String oldest = _seen.keys.first;
++      _seen.remove(oldest);
++      _totals.remove(oldest);
++      _ended.remove(oldest);
+     }
+     return out;
+   }
+diff --git a/lib/features/subscription/data/subscription_state.dart b/lib/features/subscription/data/subscription_state.dart
+index 1a6af892..31aaeefb 100644
+--- a/lib/features/subscription/data/subscription_state.dart
++++ b/lib/features/subscription/data/subscription_state.dart
+@@ -12,6 +12,8 @@
+ //  sur le cache payant (plus de bouclier « le serveur se trompe »).
+ // =========================================================
+ 
++import 'dart:async';
++
+ import 'package:flutter/foundation.dart';
+ import 'package:shared_preferences/shared_preferences.dart';
+ 
+@@ -102,12 +104,24 @@ class SubscriptionState extends ChangeNotifier {
+   int _hwmMs = 0;
+   bool _everSynced = false;
+   DateTime? _lastSyncAttempt;
++  int _authorityRevision = 0;
++  int _remoteValidUntil = 0;
++  Timer? _expiryTimer;
++  Future<void>? _syncWork;
++  final Stopwatch _elapsed = Stopwatch();
++  int _clockAnchor = 0;
++
++  @visibleForTesting
++  DateTime Function()? debugNow;
++  DateTime get _now => debugNow?.call() ?? DateTime.now();
+ 
+   /// « Maintenant » anti-recul : on ne fait jamais confiance à une horloge
+   /// revenue en arrière par rapport au plus grand instant déjà observé.
+   int get _effectiveNowMs {
+-    final int n = DateTime.now().millisecondsSinceEpoch;
+-    return n > _hwmMs ? n : _hwmMs;
++    final int n = _now.millisecondsSinceEpoch;
++    final int elapsedNow = _clockAnchor + _elapsed.elapsedMilliseconds;
++    final int floor = elapsedNow > _hwmMs ? elapsedNow : _hwmMs;
++    return n > floor ? n : floor;
+   }
+ 
+   /// Snapshot du serveur (heartbeat + status). Reste `unknown` tant
+@@ -157,26 +171,36 @@ class SubscriptionState extends ChangeNotifier {
+   SubscriptionStatus get status {
+     if (!_loaded) return SubscriptionStatus.unknown;
+ 
++    final int nowMs = _effectiveNowMs;
++
+     // ----- Source de vérité côté serveur (si dispo) -----
+     if (_remote.exists) {
+       if (_remote.banned) return SubscriptionStatus.banned;
+       if (_remote.frozen) return SubscriptionStatus.frozen;
+       // Prêt d'abo : le proprio a cédé sa ligne — plus de TV ici.
+       if (_remote.loaned) return SubscriptionStatus.trialExpired;
+-      if (_remote.paid) return SubscriptionStatus.paid;
++      if (_remote.paid) {
++        if (!_remote.isLifetime && _remote.paidUntil > 0 && nowMs >= _remote.paidUntil) return SubscriptionStatus.trialExpired;
++        if (nowMs < _remoteValidUntil) return SubscriptionStatus.paid;
++      }
+       // STRICT : expired serveur = expired. Plus de bouclier qui
+       // réécrit « payé » à partir du cache (c'était le trou 30 j).
+       if (_remote.expired) return SubscriptionStatus.trialExpired;
+-      return SubscriptionStatus.trialActive;
++      if (!_remote.paid) {
++        if (_remote.trialUntil > 0) {
++          return nowMs < _remote.trialUntil ? SubscriptionStatus.trialActive : SubscriptionStatus.trialExpired;
++        }
++        // Une réponse sans échéance ne crée pas un essai illimité.
++        if (nowMs < _remoteValidUntil && _remote.daysLeft > 0) return SubscriptionStatus.trialActive;
++      }
+     }
+ 
+     // ----- Fallback local (offline ou 1er boot avant heartbeat) -----
+-    final int nowMs = _effectiveNowMs;
+-
+     // 1) Blocage admin mis en cache : un compte banni/gelé ne doit PAS
+     //    pouvoir esquiver le blocage simplement en passant hors-ligne.
+     if (_blockCache == 'banned') return SubscriptionStatus.banned;
+     if (_blockCache == 'frozen') return SubscriptionStatus.frozen;
++    if (_blockCache == 'expired' || _blockCache == 'loaned') return SubscriptionStatus.trialExpired;
+ 
+     // 2) Abonnement payant connu (cache local = grâce glissante COURTE).
+     if (_paidUntil != null &&
+@@ -209,7 +233,10 @@ class SubscriptionState extends ChangeNotifier {
+ 
+   /// Jours restants d'essai. Priorité serveur, fallback local.
+   int get trialDaysRemaining {
+-    if (_remote.exists) return _remote.daysLeft;
++    if (_remote.exists && _remote.trialUntil > 0) {
++      return ((_remote.trialUntil - _effectiveNowMs) / _kDayMs).ceil().clamp(0, kTrialDurationDays);
++    }
++    if (_remote.exists && _remote.expired) return 0;
+     if (_firstLaunchAt == null) return kTrialDurationDays;
+     final int nowMs = _effectiveNowMs;
+     final int deadline = _trialUntilCache > 0
+@@ -312,12 +339,13 @@ class SubscriptionState extends ChangeNotifier {
+       final SharedPreferences prefs = await SharedPreferences.getInstance();
+       final int? firstMs = prefs.getInt(_kFirstLaunchKey);
+       if (firstMs == null) {
+-        final int nowMs = DateTime.now().millisecondsSinceEpoch;
++        final int nowMs = _now.millisecondsSinceEpoch;
+         await prefs.setInt(_kFirstLaunchKey, nowMs);
+         _firstLaunchAt = DateTime.fromMillisecondsSinceEpoch(nowMs);
+       } else {
+         _firstLaunchAt = DateTime.fromMillisecondsSinceEpoch(firstMs);
+       }
++      _paidUntil = null;
+       final int? paidMs = prefs.getInt(_kPaidUntilKey);
+       if (paidMs != null) {
+         _paidUntil = DateTime.fromMillisecondsSinceEpoch(paidMs);
+@@ -327,7 +355,7 @@ class SubscriptionState extends ChangeNotifier {
+       _hwmMs = prefs.getInt(_kHwmKey) ?? 0;
+       _activatedAck = prefs.getBool(_kActivatedAckKey) ?? false;
+       _everSynced = prefs.getBool(_kSyncedKey) ?? false;
+-      final int nowMs = DateTime.now().millisecondsSinceEpoch;
++      final int nowMs = _effectiveNowMs;
+       if (nowMs > _hwmMs) {
+         _hwmMs = nowMs;
+         await prefs.setInt(_kHwmKey, nowMs);
+@@ -335,7 +363,10 @@ class SubscriptionState extends ChangeNotifier {
+     } catch (e) {
+       if (kDebugMode) debugPrint('[Subscription] init failed: $e');
+     }
++    _clockAnchor = _effectiveNowMs;
++    _elapsed..reset()..start();
+     _loaded = true;
++    _scheduleExpiry();
+     notifyListeners();
+   }
+ 
+@@ -348,6 +379,12 @@ class SubscriptionState extends ChangeNotifier {
+ 
+   @visibleForTesting
+   Future<void> resetForTesting() async {
++    _expiryTimer?.cancel();
++    _elapsed..stop()..reset();
++    _clockAnchor = 0;
++    _remoteValidUntil = 0;
++    debugNow = null;
++    ++_authorityRevision;
+     final SharedPreferences prefs = await SharedPreferences.getInstance();
+     await prefs.remove(_kFirstLaunchKey);
+     await prefs.remove(_kPaidUntilKey);
+@@ -429,7 +466,7 @@ class SubscriptionState extends ChangeNotifier {
+     Duration minInterval = kLicenseMinSyncInterval,
+     bool force = false,
+   }) async {
+-    final DateTime now = DateTime.now();
++    final DateTime now = _now;
+     if (!force &&
+         _lastSyncAttempt != null &&
+         now.difference(_lastSyncAttempt!) < minInterval) {
+@@ -440,12 +477,16 @@ class SubscriptionState extends ChangeNotifier {
+   }
+ 
+   /// Synchronise avec le backend Cloudflare.
+-  Future<void> syncWithBackend() async {
+-    _lastSyncAttempt = DateTime.now();
++  Future<void> syncWithBackend() => _syncWork ??= _syncBackend().whenComplete(() => _syncWork = null);
++
++  Future<void> _syncBackend() async {
++    final int revision = _authorityRevision;
++    _lastSyncAttempt = _now;
+     try {
+       final String mac = await DeviceIdentity.instance.mac;
+       final RemoteSubscriptionStatus snap =
+           await SubscriptionBackend.heartbeat(mac);
++      if (revision != _authorityRevision) return;
+       if (!snap.exists) {
+         // Réseau KO / Worker muet : on GARDE le cache (grâce courte).
+         StructuredLogger.instance.warn(
+@@ -468,7 +509,9 @@ class SubscriptionState extends ChangeNotifier {
+   }
+ 
+   Future<void> _applyRemoteSnapshot(RemoteSubscriptionStatus snap) async {
++    ++_authorityRevision;
+     _remote = snap;
++    _remoteValidUntil = _effectiveNowMs + graceWindowMs(snap);
+     try {
+       final SharedPreferences prefs = await SharedPreferences.getInstance();
+       _everSynced = true;
+@@ -478,6 +521,8 @@ class SubscriptionState extends ChangeNotifier {
+         _blockCache = 'banned';
+       } else if (snap.frozen) {
+         _blockCache = 'frozen';
++      } else if (snap.loaned || snap.expired) {
++        _blockCache = snap.loaned ? 'loaned' : 'expired';
+       } else {
+         _blockCache = '';
+       }
+@@ -488,7 +533,7 @@ class SubscriptionState extends ChangeNotifier {
+         await prefs.setInt(_kTrialUntilKey, snap.trialUntil);
+       }
+ 
+-      final int nowMs = DateTime.now().millisecondsSinceEpoch;
++      final int nowMs = _effectiveNowMs;
+       if (nowMs > _hwmMs) {
+         _hwmMs = nowMs;
+         await prefs.setInt(_kHwmKey, nowMs);
+@@ -503,7 +548,7 @@ class SubscriptionState extends ChangeNotifier {
+                 : graceCapMs;
+         _paidUntil = DateTime.fromMillisecondsSinceEpoch(targetMs);
+         await prefs.setInt(_kPaidUntilKey, targetMs);
+-      } else if (snap.expired || snap.frozen || snap.banned || snap.loaned) {
++      } else {
+         // STRICT : verdict négatif → on EFFACE le cache payant.
+         _paidUntil = null;
+         await prefs.remove(_kPaidUntilKey);
+@@ -522,16 +567,39 @@ class SubscriptionState extends ChangeNotifier {
+     } catch (e) {
+       if (kDebugMode) debugPrint('[Subscription] applyRemote failed: $e');
+     }
++    _scheduleExpiry();
+     notifyListeners();
+   }
+ 
++  /// Une échéance coupe aussi une lecture déjà ouverte, même sans nouvelle
++  /// réponse réseau. Un unique timer évite un sondage permanent de l'UI.
++  void _scheduleExpiry() {
++    _expiryTimer?.cancel();
++    final int now = _effectiveNowMs;
++    final List<int> deadlines = <int>[
++      _remoteValidUntil, _remote.trialUntil,
++      if (!_remote.isLifetime) _remote.paidUntil,
++      _trialUntilCache, _paidUntil?.millisecondsSinceEpoch ?? 0,
++      if (!_everSynced && _firstLaunchAt != null)
++        _firstLaunchAt!.millisecondsSinceEpoch + graceWindowMs(),
++    ].where((int deadline) => deadline > now).toList()..sort();
++    if (deadlines.isEmpty) return;
++    _expiryTimer = Timer(Duration(milliseconds: deadlines.first - now), () {
++      _hwmMs = _effectiveNowMs;
++      unawaited(SharedPreferences.getInstance().then((SharedPreferences p) => p.setInt(_kHwmKey, _hwmMs)));
++      notifyListeners();
++      _scheduleExpiry();
++    });
++  }
++
+   /// Force un re-fetch du statut serveur sans toucher au heartbeat.
+   Future<void> refreshRemote() async {
++    final int revision = _authorityRevision;
+     try {
+       final String mac = await DeviceIdentity.instance.mac;
+       final RemoteSubscriptionStatus snap =
+           await SubscriptionBackend.getStatus(mac);
+-      if (snap.exists) {
++      if (snap.exists && revision == _authorityRevision) {
+         await _applyRemoteSnapshot(snap);
+       }
+     } catch (e) {
+diff --git a/lib/features/vod/data/catalog_disk_cache.dart b/lib/features/vod/data/catalog_disk_cache.dart
+index b7963823..004e9eb9 100644
+--- a/lib/features/vod/data/catalog_disk_cache.dart
++++ b/lib/features/vod/data/catalog_disk_cache.dart
+@@ -30,6 +30,8 @@ class CatalogDiskCache<T> {
+   });
+ 
+   final String fileName;
++  int _revision = 0;
++  Future<void> _writes = Future<void>.value();
+ 
+   /// (contenu brut du fichier) → éléments. Doit VÉRIFIER la version et
+   /// renvoyer une liste vide si inconnue.
+@@ -54,35 +56,54 @@ class CatalogDiskCache<T> {
+   /// Charge le catalogue SI la clé de source correspond ; sinon supprime le
+   /// fichier (catalogue d'un autre compte) et renvoie null.
+   Future<List<T>?> load(String sourceKey) async {
++    final int revision = _revision;
+     try {
++      await _writes;
+       final File f = await _file();
+       if (!await f.exists()) return null;
+       final String raw = await f.readAsString();
+       if (raw.isEmpty) return null;
+-      if (sourceKeyOf(raw) != sourceKey) {
+-        // Le cache appartient à une AUTRE source → on le jette (sécurité :
+-        // les streamUrl contiennent les identifiants de l'ancien compte).
+-        try {
+-          await f.delete();
+-        } catch (_) {}
+-        return null;
+-      }
+-      return await compute(decode, raw);
++      if (sourceKeyOf(raw) != sourceKey) return null;
++      final List<T> items = await compute(decode, raw);
++      return revision == _revision ? items : null;
+     } catch (e) {
+       if (kDebugMode) debugPrint('[$fileName] cache illisible: $e');
+       return null; // corrompu → réseau, sans crash
+     }
+   }
+ 
+-  Future<void> save(List<T> items, String sourceKey) async {
+-    try {
+-      final String raw = await compute(encode, (items, sourceKey));
+-      final File f = await _file();
+-      await f.writeAsString(raw, flush: true);
+-    } catch (e) {
+-      if (kDebugMode) debugPrint('[$fileName] cache non écrit: $e');
+-    }
++  /// Invalider immédiatement les lectures/écritures en vol, puis effacer.
++  Future<void> invalidate() {
++    ++_revision;
++    return _writes = _writes.then((_) async {
++      try {
++        final File f = await _file();
++        if (await f.exists()) await f.delete();
++      } catch (_) { /* Un cache absent reste ignoré par sa clé de source. */ }
++    });
+   }
++
++  Future<void> save(List<T> items, String sourceKey) {
++    final int revision = _revision;
++    return _writes = _writes.then((_) async {
++      if (revision != _revision) return;
++      File? temporary;
++      try {
++        final String raw = await compute(encode, (items, sourceKey));
++        if (revision != _revision) return;
++        final File f = await _file();
++        await f.parent.create(recursive: true);
++        temporary = File('${f.path}.tmp');
++        await temporary.writeAsString(raw, flush: true);
++        if (revision == _revision) await temporary.rename(f.path);
++      } catch (e) {
++        if (kDebugMode) debugPrint('[$fileName] cache non écrit: $e');
++      } finally {
++        try { if (temporary != null && await temporary.exists()) await temporary.delete(); } catch (_) {}
++      }
++    });
++  }
++
+ }
+ 
+ /// Politique commune du rafraîchissement silencieux (stale-while-revalidate).
+diff --git a/lib/features/vod/data/catalog_source.dart b/lib/features/vod/data/catalog_source.dart
+new file mode 100644
+index 00000000..b37c8750
+--- /dev/null
++++ b/lib/features/vod/data/catalog_source.dart
+@@ -0,0 +1,35 @@
++import 'dart:convert';
++
++import 'package:cryptography/cryptography.dart';
++
++import '../../playlists/data/playlist_repository.dart';
++import '../../playlists/data/xtream_client.dart';
++import '../../playlists/domain/playlist.dart';
++
++/// Capture immuable : la clé disque et la requête utilisent TOUJOURS le même
++/// compte, même si la source active change pendant un téléchargement.
++class CatalogSource {
++  CatalogSource(this.playlist, this.key);
++  final Playlist playlist;
++  final String key;
++
++  static Future<CatalogSource?> current() async {
++    final List<Playlist> rows = await PlaylistRepository.instance.getAllPlaylists();
++    final List<Playlist> xtream = rows.where((Playlist p) =>
++        p.type == PlaylistType.xtream && (p.xtreamServer ?? '').isNotEmpty).toList();
++    if (xtream.isEmpty) return null;
++    final Playlist selected = xtream.firstWhere((Playlist p) => p.isActive, orElse: () => xtream.first);
++    final Hash digest = await Sha256().hash(utf8.encode(signature(<Playlist>[selected])));
++    return CatalogSource(selected, digest.bytes.map((int b) => b.toRadixString(16).padLeft(2, '0')).join());
++  }
++
++  static String signature(List<Playlist> rows) => jsonEncode(<Object?>[
++    for (final Playlist p in rows)
++      <Object?>[p.id, p.type.name, p.isActive, p.m3uUrl, p.xtreamServer, p.xtreamUsername, p.xtreamPassword],
++  ]);
++
++  XtreamClient client({Duration timeout = const Duration(seconds: 20)}) => XtreamClient(
++    serverUrl: playlist.xtreamServer!, username: playlist.xtreamUsername ?? '',
++    password: playlist.xtreamPassword ?? '', timeout: timeout,
++  );
++}
+diff --git a/lib/features/vod/data/series_repository.dart b/lib/features/vod/data/series_repository.dart
+index b9a07e81..69b276ee 100644
+--- a/lib/features/vod/data/series_repository.dart
++++ b/lib/features/vod/data/series_repository.dart
+@@ -26,6 +26,7 @@ import '../../playlists/domain/playlist.dart';
+ import '../domain/vod_info.dart';
+ import '../domain/vod_series.dart';
+ import 'catalog_disk_cache.dart';
++import 'catalog_source.dart';
+ import 'm3u_vod_source.dart';
+ import '../../player/data/stream_diagnostics.dart';
+ 
+@@ -48,17 +49,31 @@ String encodeSeriesCatalog((List<VodSeries>, String) input) =>
+ 
+ class SeriesRepository extends ChangeNotifier {
+   SeriesRepository._() {
+-    // Les épisodes M3U vivent dans SQLite : invalidation quand la source
+-    // change (import/refresh/suppression), comme VodRepository.
+-    PlaylistRepository.instance.channelsStream.listen((_) {
+-      if (_m3uSeries == null) return;
+-      _m3uSeries = null;
+-      _m3uEpisodeChannels = null;
+-      notifyListeners();
++    PlaylistRepository.instance.playlistsStream.listen((List<Playlist> rows) {
++      final String signature = CatalogSource.signature(rows);
++      if (signature == _playlistSignature) return;
++      _playlistSignature = signature;
++      _invalidate();
+     });
++    PlaylistRepository.instance.channelsStream.listen((_) => _invalidate());
+   }
+   static final SeriesRepository instance = SeriesRepository._();
+ 
++  int _revision = 0;
++  String? _playlistSignature;
++  String? _cacheKey;
++
++  void _invalidate() {
++    ++_revision;
++    _cache = null;
++    _m3uSeries = null;
++    _cacheKey = null;
++    _refreshing = false;
++      _m3uEpisodeChannels = null;
++    unawaited(_disk.invalidate());
++    notifyListeners();
++  }
++
+   /// Part XTREAM (mémoire ← disque ← réseau).
+   List<VodSeries>? _cache;
+ 
+@@ -76,42 +91,15 @@ class SeriesRepository extends ChangeNotifier {
+     encode: encodeSeriesCatalog,
+   );
+ 
+-  /// Empreinte de la source active (même contrat que VodRepository).
+-  Future<String> _sourceKey() async {
+-    final List<Playlist> playlists =
+-        await PlaylistRepository.instance.getAllPlaylists();
+-    for (final Playlist p in playlists) {
+-      if (p.type == PlaylistType.xtream && (p.xtreamServer ?? '').isNotEmpty) {
+-        return '${p.xtreamServer}|${p.xtreamUsername ?? ''}'
+-            .replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
+-      }
+-    }
+-    return 'none';
+-  }
+-
+-  /// Construit un client Xtream depuis la playlist active (ou null si aucune).
+-  Future<XtreamClient?> _client() async {
+-    final List<Playlist> playlists =
+-        await PlaylistRepository.instance.getAllPlaylists();
+-    for (final Playlist p in playlists) {
+-      if (p.type == PlaylistType.xtream && (p.xtreamServer ?? '').isNotEmpty) {
+-        return XtreamClient(
+-          serverUrl: p.xtreamServer!,
+-          username: p.xtreamUsername ?? '',
+-          password: p.xtreamPassword ?? '',
+-        );
+-      }
+-    }
+-    return null;
+-  }
+-
+   /// Catalogue des séries UNIFIÉ : part Xtream (get_series) + part M3U
+   /// (épisodes de la playlist regroupés par nom de série).
+   /// Mémoire → disque (instantané + refresh silencieux) → réseau.
+   Future<List<VodSeries>> fetchSeries({bool forceRefresh = false}) async {
++    final int revision = _revision;
+     final List<VodSeries> xtream =
+         await _fetchXtreamSeries(forceRefresh: forceRefresh);
+     final List<VodSeries> m3u = await _fetchM3uSeries(forceRefresh: forceRefresh);
++    if (revision != _revision) return const <VodSeries>[];
+     if (m3u.isEmpty) return xtream;
+     if (xtream.isEmpty) return m3u;
+     return <VodSeries>[...xtream, ...m3u];
+@@ -120,10 +108,12 @@ class SeriesRepository extends ChangeNotifier {
+   /// Séries M3U (SQLite → regroupement en mémoire). SQLite est déjà le
+   /// cache disque de la playlist : une requête bornée suffit à (re)chauffer.
+   Future<List<VodSeries>> _fetchM3uSeries({bool forceRefresh = false}) async {
++    final int revision = _revision;
+     if (!forceRefresh && _m3uSeries != null) return _m3uSeries!;
+     try {
+       final List<Channel> vod =
+           await PlaylistRepository.instance.getVodChannels();
++      if (revision != _revision) return const <VodSeries>[];
+       _m3uEpisodeChannels = splitM3uVod(vod).episodes;
+       _m3uSeries = groupM3uEpisodesIntoSeries(_m3uEpisodeChannels!);
+       if (_m3uSeries!.isNotEmpty) {
+@@ -131,6 +121,7 @@ class SeriesRepository extends ChangeNotifier {
+             '(${_m3uEpisodeChannels!.length} épisodes)');
+       }
+     } catch (e) {
++      if (revision != _revision) return const <VodSeries>[];
+       // Fail-open : une erreur SQLite ne prive pas l'écran de la part Xtream.
+       if (kDebugMode) debugPrint('[Series] m3u error: $e');
+       _m3uSeries = const <VodSeries>[];
+@@ -141,50 +132,41 @@ class SeriesRepository extends ChangeNotifier {
+ 
+   /// Part Xtream seule (mémoire → disque → réseau) — logique historique.
+   Future<List<VodSeries>> _fetchXtreamSeries({bool forceRefresh = false}) async {
+-    if (!forceRefresh && _cache != null) {
+-      _diag('mémoire : ${_cache!.length} séries');
+-      return _cache!;
++    final int revision = _revision;
++    final CatalogSource? source = await CatalogSource.current();
++    if (revision != _revision) return const <VodSeries>[];
++    if (source == null) {
++      _cache = null;
++      _cacheKey = null;
++      unawaited(_disk.invalidate());
++      return const <VodSeries>[];
+     }
+-    final String key = await _sourceKey();
+-    if (!forceRefresh) {
+-      final List<VodSeries>? disk = await _disk.load(key);
+-      if (disk != null && disk.isNotEmpty) {
+-        _cache = disk;
+-        _diag('disque (source $key) : ${disk.length} séries');
+-        unawaited(_refreshInBackground());
+-        return disk;
+-      }
++    if (_cacheKey != source.key) {
++      _cache = null;
++      _cacheKey = source.key;
+     }
+-    _diag('réseau demandé (source $key)…');
+-    final List<VodSeries>? diskNow =
+-        _cache == null ? await _disk.load(key) : null;
+-    final List<VodSeries> fresh = await _fetchFromNetwork();
+-    final List<VodSeries> kept = keepPreviousWhenEmpty<VodSeries>(
+-      incoming: fresh,
+-      previous: _cache ?? const <VodSeries>[],
+-      disk: diskNow ?? const <VodSeries>[],
+-    );
+-    if (fresh.isNotEmpty) {
+-      _cache = fresh;
+-      _diag('réseau OK : ${fresh.length} séries reçues');
+-      unawaited(_disk.save(fresh, key));
+-    } else {
+-      if (kept.isNotEmpty) _cache = kept;
+-      _diag(
+-          'réseau : 0 série — catalogue précédent conservé '
+-          '(${_cache?.length ?? 0})',
+-          level: 'warn');
++    if (!forceRefresh && _cache != null) return _cache!;
++    final List<VodSeries>? disk = await _disk.load(source.key);
++    if (revision != _revision || _cacheKey != source.key) return const <VodSeries>[];
++    if (!forceRefresh && disk != null && disk.isNotEmpty) {
++      _cache = disk;
++      unawaited(_refreshInBackground(source, revision));
++      return disk;
+     }
+-    return _cache ?? const <VodSeries>[];
++    final List<VodSeries> fresh = await _fetchFromNetwork(source);
++    if (revision != _revision || _cacheKey != source.key) return const <VodSeries>[];
++    _cache = keepPreviousWhenEmpty<VodSeries>(incoming: fresh,
++        previous: _cache ?? const <VodSeries>[], disk: disk ?? const <VodSeries>[]);
++    if (fresh.isNotEmpty) unawaited(_disk.save(fresh, source.key));
++    return _cache!;
+   }
+ 
+   void _diag(String m, {String level = 'info'}) =>
+       StreamDiagnostics.instance.recordEvent('séries', m, level: level);
+ 
+   /// Appel réseau brut — AUCUN effet de bord sur _cache.
+-  Future<List<VodSeries>> _fetchFromNetwork() async {
+-    final XtreamClient? client = await _client();
+-    if (client == null) return const <VodSeries>[];
++  Future<List<VodSeries>> _fetchFromNetwork(CatalogSource source) async {
++    final XtreamClient client = source.client();
+     try {
+       return await client.fetchSeries();
+     } catch (e) {
+@@ -198,11 +180,12 @@ class SeriesRepository extends ChangeNotifier {
+   /// Stale-while-revalidate : re-télécharge derrière l'écran affiché et
+   /// prévient les abonnés si le catalogue a changé (empreinte de TOUS les
+   /// ids) ; sauvegarde disque uniquement en cas de changement.
+-  Future<void> _refreshInBackground() async {
++  Future<void> _refreshInBackground(CatalogSource source, int revision) async {
+     if (_refreshing) return;
+     _refreshing = true;
+     try {
+-      final List<VodSeries> fresh = await _fetchFromNetwork();
++      final List<VodSeries> fresh = await _fetchFromNetwork(source);
++      if (revision != _revision || _cacheKey != source.key) return;
+       if (fresh.isEmpty) return; // panne / M3U seul → cache affiché conservé
+       final List<VodSeries> old = _cache ?? const <VodSeries>[];
+       final bool changed = catalogChanged(
+@@ -211,11 +194,11 @@ class SeriesRepository extends ChangeNotifier {
+       );
+       _cache = fresh;
+       if (changed) {
+-        unawaited(_disk.save(fresh, await _sourceKey()));
++        unawaited(_disk.save(fresh, source.key));
+         notifyListeners();
+       }
+     } finally {
+-      _refreshing = false;
++      if (revision == _revision) _refreshing = false;
+     }
+   }
+ 
+@@ -230,25 +213,29 @@ class SeriesRepository extends ChangeNotifier {
+   /// n'en fournit pas (fail-open : la fiche s'affiche avec ce qu'elle a).
+   Future<({VodInfo? info, List<VodEpisode> episodes})> fetchDetail(
+       String seriesId) async {
++    final int revision = _revision;
+     // Série M3U : les épisodes sont déjà en local (SQLite) → fiche
+     // instantanée, zéro réseau. `info` reste null (un M3U ne porte pas de
+     // synopsis/casting) — la fiche s'affiche avec les données du catalogue.
+     if (seriesId.startsWith(kM3uSeriesIdPrefix)) {
+       await _fetchM3uSeries();
++      if (revision != _revision) return (info: null, episodes: const <VodEpisode>[]);
+       final List<VodEpisode> eps =
+           m3uEpisodesForSeries(_m3uEpisodeChannels ?? const <Channel>[], seriesId);
+       _diag('ouverture série M3U $seriesId : ${eps.length} épisodes (local)');
+       return (info: null, episodes: eps);
+     }
+-    final XtreamClient? client = await _client();
+-    if (client == null) {
++    final CatalogSource? source = await CatalogSource.current();
++    if (source == null || revision != _revision) {
+       _diag('ouverture série $seriesId : aucun compte Xtream (M3U seul) → '
+           'pas d\'épisodes', level: 'warn');
+       return (info: null, episodes: const <VodEpisode>[]);
+     }
++    final XtreamClient client = source.client();
+     try {
+       final ({VodInfo? info, List<VodEpisode> episodes}) d =
+           await client.fetchSeriesDetail(seriesId);
++      if (revision != _revision) return (info: null, episodes: const <VodEpisode>[]);
+       _diag(d.episodes.isEmpty
+           ? 'ouverture série $seriesId : 0 épisode renvoyé par le serveur'
+           : 'ouverture série $seriesId : ${d.episodes.length} épisodes',
+diff --git a/lib/features/vod/data/vod_repository.dart b/lib/features/vod/data/vod_repository.dart
+index cef35528..174d8948 100644
+--- a/lib/features/vod/data/vod_repository.dart
++++ b/lib/features/vod/data/vod_repository.dart
+@@ -35,6 +35,7 @@ import '../../playlists/data/xtream_client.dart';
+ import '../domain/vod_info.dart';
+ import '../domain/vod_movie.dart';
+ import 'catalog_disk_cache.dart';
++import 'catalog_source.dart';
+ import 'm3u_vod_source.dart';
+ import '../../player/data/stream_diagnostics.dart';
+ 
+@@ -62,17 +63,32 @@ String encodeVodCatalog((List<VodMovie>, String) input) =>
+ 
+ class VodRepository extends ChangeNotifier {
+   VodRepository._() {
+-    // Les films M3U vivent dans SQLite (table channels, is_live=0) : quand
+-    // la source change (import, refresh, suppression), on invalide la part
+-    // M3U et on prévient les écrans — même contrat que le refresh silencieux.
+-    PlaylistRepository.instance.channelsStream.listen((_) {
+-      if (_m3uMovies == null) return;
+-      _m3uMovies = null;
+-      notifyListeners();
++    PlaylistRepository.instance.playlistsStream.listen((List<Playlist> rows) {
++      final String signature = CatalogSource.signature(rows);
++      if (signature == _playlistSignature) return;
++      _playlistSignature = signature;
++      _invalidate();
+     });
++    PlaylistRepository.instance.channelsStream.listen((_) => _invalidate());
+   }
+   static final VodRepository instance = VodRepository._();
+ 
++  int _revision = 0;
++  String? _playlistSignature;
++  String? _cacheKey;
++
++  void _invalidate() {
++    ++_revision;
++    _cache = null;
++    _m3uMovies = null;
++    _cacheKey = null;
++    _refreshing = false;
++      _infoCache.clear();
++      _flight = SingleFlight<List<VodMovie>>();
++    unawaited(_disk.invalidate());
++    notifyListeners();
++  }
++
+   /// Part XTREAM du catalogue (mémoire ← disque ← réseau).
+   List<VodMovie>? _cache;
+ 
+@@ -91,39 +107,6 @@ class VodRepository extends ChangeNotifier {
+     encode: encodeVodCatalog,
+   );
+ 
+-  /// Empreinte de la source ACTIVE (serveur + utilisateur Xtream). Le cache
+-  /// disque n'est relu QUE si elle correspond — jamais le catalogue d'un
+-  /// ancien compte après un « Changer la source ».
+-  Future<String> _sourceKey() async {
+-    final List<Playlist> playlists =
+-        await PlaylistRepository.instance.getAllPlaylists();
+-    for (final Playlist p in playlists) {
+-      if (p.type == PlaylistType.xtream && (p.xtreamServer ?? '').isNotEmpty) {
+-        return '${p.xtreamServer}|${p.xtreamUsername ?? ''}'
+-            .replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
+-      }
+-    }
+-    return 'none';
+-  }
+-
+-  /// Construit un client Xtream depuis la première playlist Xtream active
+-  /// (`null` si le compte est M3U seul → pas de VOD, pas de get_vod_info).
+-  Future<XtreamClient?> _client({Duration? timeout}) async {
+-    final List<Playlist> playlists =
+-        await PlaylistRepository.instance.getAllPlaylists();
+-    for (final Playlist p in playlists) {
+-      if (p.type == PlaylistType.xtream && (p.xtreamServer ?? '').isNotEmpty) {
+-        return XtreamClient(
+-          serverUrl: p.xtreamServer!,
+-          username: p.xtreamUsername ?? '',
+-          password: p.xtreamPassword ?? '',
+-          timeout: timeout ?? const Duration(seconds: 20),
+-        );
+-      }
+-    }
+-    return null;
+-  }
+-
+   /// Renvoie le catalogue de films UNIFIÉ : part Xtream (get_vod_streams)
+   /// + part M3U (fichiers VOD de la playlist, classés au parsing).
+   /// [forceRefresh] re-tape le serveur (Xtream) et relit SQLite (M3U).
+@@ -140,7 +123,7 @@ class VodRepository extends ChangeNotifier {
+   /// plusieurs Mo en double, sur le même petit réseau, avec deux isolates
+   /// de parsing : on doublait exactement l'attente qu'on cherchait à
+   /// supprimer. Désormais le second appel S'ACCROCHE au premier.
+-  final SingleFlight<List<VodMovie>> _flight = SingleFlight<List<VodMovie>>();
++  SingleFlight<List<VodMovie>> _flight = SingleFlight<List<VodMovie>>();
+ 
+   Future<List<VodMovie>> fetchMovies({bool forceRefresh = false}) {
+     // Un rafraîchissement FORCÉ (tirer pour recharger) doit vraiment
+@@ -150,9 +133,11 @@ class VodRepository extends ChangeNotifier {
+   }
+ 
+   Future<List<VodMovie>> _fetchMoviesOnce({bool forceRefresh = false}) async {
++    final int revision = _revision;
+     final List<VodMovie> xtream =
+         await _fetchXtreamMovies(forceRefresh: forceRefresh);
+     final List<VodMovie> m3u = await _fetchM3uMovies(forceRefresh: forceRefresh);
++    if (revision != _revision) return const <VodMovie>[];
+     if (m3u.isEmpty) return xtream;
+     if (xtream.isEmpty) return m3u;
+     return <VodMovie>[...xtream, ...m3u];
+@@ -161,10 +146,12 @@ class VodRepository extends ChangeNotifier {
+   /// Films M3U (SQLite → mémoire). SQLite est déjà local : pas d'étage
+   /// disque supplémentaire, une requête bornée suffit à (re)chauffer.
+   Future<List<VodMovie>> _fetchM3uMovies({bool forceRefresh = false}) async {
++    final int revision = _revision;
+     if (!forceRefresh && _m3uMovies != null) return _m3uMovies!;
+     try {
+       final List<Channel> vod =
+           await PlaylistRepository.instance.getVodChannels();
++      if (revision != _revision) return const <VodMovie>[];
+       final List<Channel> movies = splitM3uVod(vod).movies;
+       _m3uMovies =
+           movies.map(m3uChannelToMovie).toList(growable: false);
+@@ -172,6 +159,7 @@ class VodRepository extends ChangeNotifier {
+         _diag('M3U : ${_m3uMovies!.length} films détectés dans la playlist');
+       }
+     } catch (e) {
++      if (revision != _revision) return const <VodMovie>[];
+       // Fail-open : une erreur SQLite ne prive pas l'écran de la part Xtream.
+       if (kDebugMode) debugPrint('[VOD] m3u error: $e');
+       _m3uMovies = const <VodMovie>[];
+@@ -181,44 +169,33 @@ class VodRepository extends ChangeNotifier {
+ 
+   /// Part Xtream seule (mémoire → disque → réseau) — logique historique.
+   Future<List<VodMovie>> _fetchXtreamMovies({bool forceRefresh = false}) async {
+-    if (!forceRefresh && _cache != null) {
+-      _diag('mémoire : ${_cache!.length} films');
+-      return _cache!;
++    final int revision = _revision;
++    final CatalogSource? source = await CatalogSource.current();
++    if (revision != _revision) return const <VodMovie>[];
++    if (source == null) {
++      _cache = null;
++      _cacheKey = null;
++      unawaited(_disk.invalidate());
++      return const <VodMovie>[];
+     }
+-    final String key = await _sourceKey();
+-    if (!forceRefresh) {
+-      final List<VodMovie>? disk = await _disk.load(key);
+-      if (disk != null && disk.isNotEmpty) {
+-        _cache = disk;
+-        _diag('disque (source $key) : ${disk.length} films → '
+-            'rafraîchissement en arrière-plan');
+-        unawaited(_refreshInBackground());
+-        return disk;
+-      }
++    if (_cacheKey != source.key) {
++      _cache = null;
++      _cacheKey = source.key;
+     }
+-    _diag('réseau demandé (source $key)…');
+-    final List<VodMovie>? diskNow =
+-        _cache == null ? await _disk.load(key) : null;
+-    final List<VodMovie> fresh = await _fetchFromNetwork();
+-    final List<VodMovie> kept = keepPreviousWhenEmpty<VodMovie>(
+-      incoming: fresh,
+-      previous: _cache ?? const <VodMovie>[],
+-      disk: diskNow ?? const <VodMovie>[],
+-    );
+-    if (fresh.isNotEmpty) {
+-      _cache = fresh;
+-      _diag('réseau OK : ${fresh.length} films reçus');
+-      unawaited(_disk.save(fresh, key));
+-    } else {
+-      // Réponse vide ou panne : on ne remplace PAS le catalogue déjà
+-      // gardé (mémoire ou disque), et on n'écrit pas le vide.
+-      if (kept.isNotEmpty) _cache = kept;
+-      _diag(
+-          'réseau : 0 film — catalogue précédent conservé '
+-          '(${_cache?.length ?? 0})',
+-          level: 'warn');
++    if (!forceRefresh && _cache != null) return _cache!;
++    final List<VodMovie>? disk = await _disk.load(source.key);
++    if (revision != _revision || _cacheKey != source.key) return const <VodMovie>[];
++    if (!forceRefresh && disk != null && disk.isNotEmpty) {
++      _cache = disk;
++      unawaited(_refreshInBackground(source, revision));
++      return disk;
+     }
+-    return _cache ?? const <VodMovie>[];
++    final List<VodMovie> fresh = await _fetchFromNetwork(source);
++    if (revision != _revision || _cacheKey != source.key) return const <VodMovie>[];
++    _cache = keepPreviousWhenEmpty<VodMovie>(incoming: fresh,
++        previous: _cache ?? const <VodMovie>[], disk: disk ?? const <VodMovie>[]);
++    if (fresh.isNotEmpty) unawaited(_disk.save(fresh, source.key));
++    return _cache!;
+   }
+ 
+   /// Films DÉJÀ en mémoire (aucun réseau) — pour les surfaces « best-effort »
+@@ -231,9 +208,8 @@ class VodRepository extends ChangeNotifier {
+ 
+   /// Appel réseau brut (liste vide en cas d'erreur — fail-open, et AUCUN
+   /// effet de bord sur _cache : c'est l'appelant qui décide quoi garder).
+-  Future<List<VodMovie>> _fetchFromNetwork() async {
+-    final XtreamClient? client = await _client();
+-    if (client == null) return const <VodMovie>[];
++  Future<List<VodMovie>> _fetchFromNetwork(CatalogSource source) async {
++    final XtreamClient client = source.client();
+     try {
+       return await client.fetchVodMovies();
+     } catch (e) {
+@@ -250,11 +226,12 @@ class VodRepository extends ChangeNotifier {
+   /// Détection de changement ROBUSTE (empreinte de TOUS les ids) et
+   /// sauvegarde disque UNIQUEMENT si changement (pas de réécriture de
+   /// plusieurs Mo à chaque ouverture).
+-  Future<void> _refreshInBackground() async {
++  Future<void> _refreshInBackground(CatalogSource source, int revision) async {
+     if (_refreshing) return;
+     _refreshing = true;
+     try {
+-      final List<VodMovie> fresh = await _fetchFromNetwork();
++      final List<VodMovie> fresh = await _fetchFromNetwork(source);
++      if (revision != _revision || _cacheKey != source.key) return;
+       if (fresh.isEmpty) return;
+       final List<VodMovie> old = _cache ?? const <VodMovie>[];
+       final bool changed = catalogChanged(
+@@ -263,11 +240,11 @@ class VodRepository extends ChangeNotifier {
+       );
+       _cache = fresh;
+       if (changed) {
+-        unawaited(_disk.save(fresh, await _sourceKey()));
++        unawaited(_disk.save(fresh, source.key));
+         notifyListeners();
+       }
+     } finally {
+-      _refreshing = false;
++      if (revision == _revision) _refreshing = false;
+     }
+   }
+ 
+@@ -298,6 +275,10 @@ class VodRepository extends ChangeNotifier {
+     // Seuls les films Xtream (`vod-…`) ont une fiche serveur.
+     if (!movieId.startsWith('vod-')) return null;
+ 
++    final int revision = _revision;
++    final CatalogSource? source = await CatalogSource.current();
++    if (source == null || revision != _revision) return null;
++    if (_cacheKey != source.key) _infoCache.clear();
+     // Accès LRU : retirer + ré-insérer = marquer « utilisé récemment ».
+     final VodInfo? cached = _infoCache.remove(movieId);
+     if (cached != null) {
+@@ -307,12 +288,11 @@ class VodRepository extends ChangeNotifier {
+ 
+     // Timeout plus court que le catalogue : une fiche pèse ~2 Ko — si le
+     // serveur met > 12 s, on affiche la fiche « pauvre » plutôt qu'attendre.
+-    final XtreamClient? client =
+-        await _client(timeout: const Duration(seconds: 12));
+-    if (client == null) return null;
++    final XtreamClient client = source.client(timeout: const Duration(seconds: 12));
+     try {
+       final VodInfo? info =
+           await client.fetchVodInfo(movieId.substring('vod-'.length));
++      if (revision != _revision) return null;
+       if (info != null) {
+         _infoCache[movieId] = info;
+         // Éviction LRU : la tête de la map est la moins récemment utilisée.
+diff --git a/test/features/playlists/cloud_backup_panel_removal_test.dart b/test/features/playlists/cloud_backup_panel_removal_test.dart
+index befc0183..cb78d61e 100644
+--- a/test/features/playlists/cloud_backup_panel_removal_test.dart
++++ b/test/features/playlists/cloud_backup_panel_removal_test.dart
+@@ -115,6 +115,7 @@ void main() {
+     final Database db = await PlaylistDatabase.instance.database;
+     await db.delete('channels');
+     await db.delete('playlists');
++    await db.delete('deleted_sources');
+   });
+ 
+   test('suppression volontaire dans app bloque un ancien backup', () async {
+@@ -198,7 +199,7 @@ void main() {
+   );
+ 
+   test(
+-    'nouvelle provision : seule cette source retrouve le droit de restaurer',
++    'restauration volontaire : seule cette source est rétablie',
+     () async {
+       await CloudBackupRepository.instance.rememberPanelRemoval(
+         _playlist(_panelUrl),
+@@ -278,7 +279,7 @@ void main() {
+     expect(await PlaylistRepository.instance.getAllPlaylists(), isEmpty);
+     expect(server.downloads, isEmpty);
+   });
+-  test('réassignation Xtream : l’ancien alias M3U du compte est autorisé',
++  test('restauration volontaire Xtream : son alias M3U est autorisé',
+       () async {
+     const String url =
+         'http://panel-source.invalid/get.php?username=test&password=test';
+@@ -291,4 +292,51 @@ void main() {
+     expect(await PlaylistRepository.instance.getAllPlaylists(), hasLength(1));
+     expect(server.downloads, <String>[url]);
+   });
++  test('DELETE du repository suffit, sans passer par un écran', () async {
++    final server = _Server();
++    final Playlist p = await http.runWithClient(() => PlaylistRepository.instance.addM3uPlaylist(name: 'Test', url: _panelUrl), server.client);
++    await PlaylistRepository.instance.deletePlaylist(p.id!);
++    expect(await SourceOptOuts.isM3uOptedOut(_panelUrl, assignedAt: 9999999999999), isTrue);
++    server.backup = <Map<String, Object?>>[p.toMap()];
++    await server.restore();
++    expect(await PlaylistRepository.instance.getAllPlaylists(), isEmpty);
++    final Playlist added = await http.runWithClient(() => PlaylistRepository.instance.addM3uPlaylist(name: 'Ajout volontaire', url: _panelUrl), server.client);
++    expect(added.id, isNotNull);
++    expect(await SourceOptOuts.isM3uOptedOut(_panelUrl), isFalse);
++  });
++
++  test('import automatique commencé avant la suppression ne revient pas', () async {
++    final server = _Server()..downloadStarted = Completer<void>()..finishDownload = Completer<void>();
++    final Future<Playlist> importWork = http.runWithClient(() => PlaylistRepository.instance.addM3uPlaylist(name: 'Test', url: _panelUrl, restoreDeleted: false), server.client);
++    final Future<void> rejected = expectLater(importWork, throwsA(anything));
++    await server.downloadStarted!.future;
++    final Playlist p = (await PlaylistRepository.instance.getAllPlaylists()).single;
++    await PlaylistRepository.instance.deletePlaylist(p.id!);
++    server.finishDownload!.complete();
++    await rejected;
++    expect(await PlaylistRepository.instance.getAllPlaylists(), isEmpty);
++    expect(await SourceOptOuts.isM3uOptedOut(_panelUrl), isTrue);
++  });
++
++  test('migration v1 garde le refus après disparition des préférences', () async {
++    final SharedPreferences prefs = await SharedPreferences.getInstance();
++    await prefs.setStringList('remote.source.optout.v1', <String>['m|$_panelUrl']);
++    expect(await SourceOptOuts.isM3uOptedOut(_panelUrl), isTrue);
++    await prefs.clear();
++    expect(await SourceOptOuts.isM3uOptedOut(_panelUrl), isTrue);
++    expect((await SourceOptOuts.read()).single, matches(RegExp(r'^[0-9a-f]{64}$')));
++  });
++
++  test('suppression de la dernière liste envoie un backup vide avec refus', () async {
++    await SourceOptOuts.markDeleted(_playlist(_panelUrl));
++    Map<String, dynamic>? uploaded;
++    await http.runWithClient(CloudBackupRepository.instance.debugUpload, () => MockClient((request) async {
++      if (request.method == 'PUT') uploaded = jsonDecode(request.body) as Map<String, dynamic>;
++      return http.Response('{}', 200);
++    }));
++    expect(uploaded?['data']['v'], 2);
++    expect(uploaded?['data']['playlists'], isEmpty);
++    expect(uploaded?['data']['deleted_sources'], hasLength(1));
++  });
++
+ }
+diff --git a/test/features/playlists/panel_getphp_reconcile_test.dart b/test/features/playlists/panel_getphp_reconcile_test.dart
+index 4a4de8e1..98314938 100644
+--- a/test/features/playlists/panel_getphp_reconcile_test.dart
++++ b/test/features/playlists/panel_getphp_reconcile_test.dart
+@@ -141,6 +141,7 @@ void main() {
+     final Database db = await PlaylistDatabase.instance.database;
+     await db.delete('channels');
+     await db.delete('playlists');
++    await db.delete('deleted_sources');
+   });
+ 
+   test(
+@@ -163,8 +164,8 @@ void main() {
+     s.sources.single['assigned_at'] =
+         DateTime.now().millisecondsSinceEpoch + 1000;
+     await _sync(s);
+-    expect(await _lists(), hasLength(1),
+-        reason: 'une réattribution plus récente reste possible');
++    expect(await _lists(), isEmpty,
++        reason: 'une nouvelle date ne lève jamais une suppression');
+   });
+ 
+   test('lien get.php du panel → compte Xtream (API), pas le fichier M3U',
+diff --git a/test/features/playlists/source_opt_outs_test.dart b/test/features/playlists/source_opt_outs_test.dart
+index f9a4a608..50eaa6ea 100644
+--- a/test/features/playlists/source_opt_outs_test.dart
++++ b/test/features/playlists/source_opt_outs_test.dart
+@@ -1,97 +1,16 @@
+-// =========================================================
+-//  source_opt_outs_test.dart — « j'active à distance, rien n'arrive »
+-// =========================================================
+-//  CE QUE CE TEST EMPÊCHE DE REVENIR (17/09/2026).
+-//
+-//  Le propriétaire, deux jours durant :
+-//    « Si j'écris bonjour, l'application reçoit bonjour. Mais si
+-//      j'active à distance, l'application ne peut pas s'activer. Et si
+-//      le client le met manuellement, ça fonctionne. »
+-//
+-//  Trois faits qui, ensemble, ne laissaient qu'un coupable possible :
+-//  le transport allait bien (le message arrive), les identifiants
+-//  allaient bien (la saisie manuelle marche), donc un FILTRE local
+-//  mangeait la source poussée. C'était l'empreinte de suppression.
+-//
+-//  Elle n'était levée que par un événement WebSocket. Quand celui-ci
+-//  n'arrivait pas — socket coupé, app en arrière-plan, réveil par le
+-//  sondage — le revendeur poussait dans le vide, indéfiniment.
+-//
+-//  Le juge ci-dessous départage les deux besoins qui se contredisaient.
+-//  Si quelqu'un le simplifie un jour en « empreinte présente → on
+-//  saute », ces tests tombent, et c'est exactement leur rôle.
+-// =========================================================
+-
+ import 'package:flutter_test/flutter_test.dart';
+ import 'package:tv_king/features/playlists/data/source_opt_outs.dart';
+ 
+ void main() {
+-  // Deux instants, bien séparés, pour que la lecture reste évidente.
+-  const int lundi = 1000000;
+-  const int mardi = 2000000;
+-
+-  group('le besoin du 21/08 — une suppression doit TENIR', () {
+-    test('supprimée APRÈS la dernière assignation → on saute', () {
+-      //  Le client a supprimé sa liste. Le panel n'a rien fait depuis.
+-      //  Au redémarrage, elle ne doit PAS revenir : « c'est pas
+-      //  professionnel » — et il avait raison.
+-      expect(
+-        SourceOptOuts.doitSauter(suppressionMs: mardi, assignationMs: lundi),
+-        isTrue,
+-      );
+-    });
+-
+-    test('même milliseconde → la suppression gagne', () {
+-      //  À égalité, la suppression est forcément postérieure : on ne
+-      //  peut supprimer que ce qui est déjà assigné.
+-      expect(
+-        SourceOptOuts.doitSauter(suppressionMs: lundi, assignationMs: lundi),
+-        isTrue,
+-      );
+-    });
++  test('une suppression survit à toutes les dates de réassignation', () {
++    for (final int? assigned in <int?>[null, 0, 10, 20, 30]) {
++      expect(SourceOptOuts.doitSauter(suppressionMs: 20, assignationMs: assigned), isTrue);
++    }
+   });
+-
+-  group('LE BESOIN D\'AUJOURD\'HUI — le revendeur repousse, ça arrive', () {
+-    test('réassignée APRÈS la suppression → on NE saute PAS', () {
+-      //  C'est LE cas qui rendait l'activation à distance impossible.
+-      expect(
+-        SourceOptOuts.doitSauter(suppressionMs: lundi, assignationMs: mardi),
+-        isFalse,
+-      );
+-    });
+-
+-    test('jamais supprimée → on ne saute jamais', () {
+-      expect(
+-        SourceOptOuts.doitSauter(suppressionMs: null, assignationMs: mardi),
+-        isFalse,
+-      );
+-      expect(
+-        SourceOptOuts.doitSauter(suppressionMs: 0, assignationMs: mardi),
+-        isFalse,
+-      );
+-    });
++  test('ancienne suppression sans date : aucune amnistie', () {
++    expect(SourceOptOuts.doitSauter(suppressionMs: 0, assignationMs: 100), isTrue);
+   });
+-
+-  group('date serveur absente : respecter une suppression datée', () {
+-    test('suppression locale et attribution inconnue → on saute', () {
+-      expect(SourceOptOuts.doitSauter(suppressionMs: mardi), isTrue);
+-      expect(SourceOptOuts.doitSauter(suppressionMs: mardi, assignationMs: 0),
+-          isTrue);
+-    });
+-
+-    test('empreinte migrée depuis la v1 (date inconnue = 0) → on passe', () {
+-      //  L'AMNISTIE : une empreinte posée avant le 17/09 n'a pas de date.
+-      //  On ne peut pas trancher, donc on laisse passer — et c'est ça qui
+-      //  débloque tout seul chaque appareil coincé aujourd'hui, sans que
+-      //  personne ait à toucher un téléphone.
+-      expect(
+-        SourceOptOuts.doitSauter(suppressionMs: 0, assignationMs: mardi),
+-        isFalse,
+-      );
+-    });
+-
+-    test('tout inconnu → on passe', () {
+-      expect(SourceOptOuts.doitSauter(), isFalse);
+-    });
++  test('jamais supprimée : la provision reste autorisée', () {
++    expect(SourceOptOuts.doitSauter(assignationMs: 100), isFalse);
+   });
+ }
+diff --git a/test/features/sports/live_alert_plan_test.dart b/test/features/sports/live_alert_plan_test.dart
+index 352024b6..bac8198e 100644
+--- a/test/features/sports/live_alert_plan_test.dart
++++ b/test/features/sports/live_alert_plan_test.dart
+@@ -41,7 +41,7 @@ void main() {
+     );
+   });
+ 
+-  test('le coup d\'envoi n\'est pas répété, la fin attend deux absences', () {
++  test('le coup d\'envoi n\'est pas répété, la fin exige un statut terminal', () {
+     final LiveAlertPlan plan = LiveAlertPlan();
+     plan.consume(<SportEvent>[ev('a', '0', '0', status: 'NS')]);
+     final List<LiveAlert> start =
+@@ -52,9 +52,12 @@ void main() {
+       isEmpty,
+     );
+     expect(plan.consume(const <SportEvent>[]), isEmpty);
+-    final List<LiveAlert> end = plan.consume(const <SportEvent>[]);
++    expect(plan.consume(const <SportEvent>[]), isEmpty);
++    final List<LiveAlert> end = plan.consume(<SportEvent>[ev('a', '1', '0', status: 'FT')]).where((LiveAlert a) => a.kind == LiveAlertKind.ended).toList();
+     expect(end.single.kind, LiveAlertKind.ended);
+     expect(end.single.event.id, 'a');
++    expect(end.single.event.homeScore, '1');
++    expect(plan.consume(<SportEvent>[ev('a', '1', '0', status: 'FT')]), isEmpty);
+   });
+ 
+   test('mille photos se décident en moins de 200 ms sur cette machine', () {
+diff --git a/test/features/subscription/subscription_state_strict_test.dart b/test/features/subscription/subscription_state_strict_test.dart
+index 3f91812c..e5b9cf06 100644
+--- a/test/features/subscription/subscription_state_strict_test.dart
++++ b/test/features/subscription/subscription_state_strict_test.dart
+@@ -201,4 +201,38 @@ void main() {
+     expect(s.canUse, isFalse);
+     expect(s.shouldBlock, isTrue);
+   });
++  test('échéance essai dépassée sans nouveau heartbeat : bloqué', () async {
++    final DateTime start = DateTime(2026, 10, 19);
++    sub.debugNow = () => start;
++    await sub.initialize();
++    await sub.applyRemoteForTesting(_snap(trialUntil: start.add(const Duration(days: 7)).millisecondsSinceEpoch, daysLeft: 7));
++    expect(sub.canStream, isTrue);
++    sub.debugNow = () => start.add(const Duration(days: 7, seconds: 1));
++    expect(sub.canStream, isFalse);
++    expect(sub.trialDaysRemaining, 0);
++  });
++
++  test('verdict expiré ou prêt ne réutilise pas un ancien essai hors réseau', () async {
++    await sub.initialize();
++    final int future = DateTime.now().add(const Duration(days: 5)).millisecondsSinceEpoch;
++    await sub.applyRemoteForTesting(_snap(trialUntil: future, daysLeft: 5));
++    await sub.applyRemoteForTesting(_snap(expired: true, plan: 'expired'));
++    sub.simulateOfflineForTesting();
++    expect(sub.canStream, isFalse);
++    await sub.applyRemoteForTesting(_snap(trialUntil: future, daysLeft: 5));
++    await sub.applyRemoteForTesting(_snap(loaned: true));
++    sub.simulateOfflineForTesting();
++    expect(sub.canStream, isFalse);
++  });
++
++  test('ancien verdict payé en mémoire expire après la grâce bornée', () async {
++    final DateTime start = DateTime(2026, 10, 19);
++    sub.debugNow = () => start;
++    await sub.initialize();
++    await sub.applyRemoteForTesting(_snap(paid: true, plan: 'lifetime'));
++    expect(sub.canStream, isTrue);
++    sub.debugNow = () => start.add(const Duration(hours: 13));
++    expect(sub.canStream, isFalse);
++  });
++
+ }
+diff --git a/test/features/tv/simulator/tv_simulator_harness.dart b/test/features/tv/simulator/tv_simulator_harness.dart
+index e57468d5..62089e56 100644
+--- a/test/features/tv/simulator/tv_simulator_harness.dart
++++ b/test/features/tv/simulator/tv_simulator_harness.dart
+@@ -131,6 +131,7 @@ Future<void> resetTvSimulatorState() async {
+   await RecentlyWatchedRepository.instance.initialize();
+   await db.delete('channels');
+   await db.delete('playlists');
++    await db.delete('deleted_sources');
+   await db.delete('favorites');
+   await db.delete('favorites_scoped');
+   await db.delete('watch_sessions');
+diff --git a/test/features/vod/source_deletion_test.dart b/test/features/vod/source_deletion_test.dart
+new file mode 100644
+index 00000000..48b5c63a
+--- /dev/null
++++ b/test/features/vod/source_deletion_test.dart
+@@ -0,0 +1,93 @@
++import 'dart:async';
++import 'dart:convert';
++import 'dart:io';
++
++import 'package:flutter_test/flutter_test.dart';
++import 'package:http/http.dart' as http;
++import 'package:http/testing.dart';
++// ignore: depend_on_referenced_packages
++import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
++import 'package:shared_preferences/shared_preferences.dart';
++import 'package:sqflite_common_ffi/sqflite_ffi.dart';
++import 'package:tv_king/features/playlists/data/playlist_database.dart';
++import 'package:tv_king/features/playlists/data/playlist_repository.dart';
++import 'package:tv_king/features/playlists/domain/playlist.dart';
++import 'package:tv_king/features/vod/data/vod_repository.dart';
++import 'package:tv_king/features/vod/data/series_repository.dart';
++
++class _Paths extends PathProviderPlatform {
++  _Paths(this.root);
++  final String root;
++  @override
++  Future<String?> getApplicationDocumentsPath() async => root;
++  @override
++  Future<String?> getApplicationSupportPath() async => root;
++  @override
++  Future<String?> getTemporaryPath() async => root;
++}
++
++void main() {
++  TestWidgetsFlutterBinding.ensureInitialized();
++  sqfliteFfiInit();
++  databaseFactory = databaseFactoryFfiNoIsolate;
++  final Directory dir = Directory.systemTemp.createTempSync('catalog-removal-');
++  PathProviderPlatform.instance = _Paths(dir.path);
++  final VodRepository movies = VodRepository.instance;
++  final SeriesRepository series = SeriesRepository.instance;
++  late int playlistId;
++  Completer<void>? started;
++  Completer<void>? release;
++
++  http.Client client() => MockClient((http.Request req) async {
++    final String? action = req.url.queryParameters['action'];
++    if (action == 'get_vod_streams' || action == 'get_series') {
++      if (started != null && !started!.isCompleted) started!.complete();
++      if (release != null) await release!.future;
++      return http.Response(jsonEncode(<Object?>[
++        <String, Object?>{'stream_id': 10, 'series_id': 11, 'name': 'Catalogue privé', 'category_id': '1', 'container_extension': 'mp4'},
++      ]), 200);
++    }
++    return http.Response('[]', 200);
++  });
++
++  setUp(() async {
++    SharedPreferences.setMockInitialValues(<String, Object>{});
++    started = null;
++    release = null;
++    await PlaylistRepository.instance.deleteAllPlaylists();
++    final Database db = await PlaylistDatabase.instance.database;
++    await db.delete('deleted_sources');
++    playlistId = await db.insert('playlists', Playlist(id: null, name: 'Test', type: PlaylistType.xtream,
++      xtreamServer: 'http://catalog.invalid', xtreamUsername: 'test', xtreamPassword: 'test', createdAt: 1).toMap());
++    await PlaylistRepository.instance.setActivePlaylist(playlistId);
++  });
++
++  test('effacer la source vide les films et séries déjà en mémoire', () async {
++    await http.runWithClient(() async {
++      expect(await movies.fetchMovies(), hasLength(1));
++      expect(await series.fetchSeries(), hasLength(1));
++      await PlaylistRepository.instance.deletePlaylist(playlistId);
++      expect(await movies.fetchMovies(), isEmpty);
++      expect(await series.fetchSeries(), isEmpty);
++      expect(movies.cachedMovies, isEmpty);
++      expect(movies.categories(), isEmpty);
++      expect(series.categories(), isEmpty);
++    }, client);
++  });
++
++  for (final bool isFilm in <bool>[true, false]) {
++    test('réponse ${isFilm ? "films" : "séries"} tardive après DELETE ignorée', () async {
++      started = Completer<void>();
++      release = Completer<void>();
++      await http.runWithClient(() async {
++        final Future<List<Object>> request = isFilm ? movies.fetchMovies() : series.fetchSeries();
++        await started!.future;
++        await PlaylistRepository.instance.deletePlaylist(playlistId);
++        release!.complete();
++        expect(await request, isEmpty);
++        expect(await movies.fetchMovies(), isEmpty);
++        expect(await series.fetchSeries(), isEmpty);
++      }, client);
++    });
++  }
++}

@@ -9,6 +9,7 @@ on:
       - 'patches/mobile-sport-gratuit.patch'
       - 'patches/mobile-radio.patch'
       - 'patches/mobile-identity.patch'
+      - 'patches/mobile-stability.patch'
       - '.github/workflows/mobile-panel-sync-tests.yml'
 
 # Tests du vrai code mobile préparé par la chaîne de livraison. Aucun
@@ -47,6 +48,8 @@ jobs:
           git apply ../mission/patches/mobile-panel-sync.patch
           git apply --check ../mission/patches/mobile-identity.patch
           git apply ../mission/patches/mobile-identity.patch
+          git apply --check ../mission/patches/mobile-stability.patch
+          git apply ../mission/patches/mobile-stability.patch
           git diff --check
           flutter pub get
           flutter gen-l10n
@@ -58,3 +61,9 @@ jobs:
       - name: Vérifier l’identité, les gestes et les écrans mobiles
         working-directory: phone
         run: flutter test test/core/theme/accent_controller_test.dart test/core/widgets/premium_motion_test.dart test/features/profile test/features/simple_home test/features/radio --reporter expanded
+
+      - name: Vérifier la stabilité mobile complète
+        working-directory: phone
+        run: |
+          flutter analyze --no-fatal-infos --no-fatal-warnings
+          flutter test --reporter expanded
