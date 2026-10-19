@@ -1,5 +1,5 @@
 diff --git a/android_overlay/google_cast/RecordingForegroundService.kt b/android_overlay/google_cast/RecordingForegroundService.kt
-index d78f0682..c1c633ea 100644
+index d78f0682..7f2ef8b7 100644
 --- a/android_overlay/google_cast/RecordingForegroundService.kt
 +++ b/android_overlay/google_cast/RecordingForegroundService.kt
 @@ -58,6 +58,7 @@ class RecordingForegroundService : Service() {
@@ -67,7 +67,7 @@ index d78f0682..c1c633ea 100644
  
                  // AIGUILLAGE DU PIPELINE (correctif "ecran noir") :
                  //   - HLS (.m3u8) : on NE telecharge PAS le texte de la
-@@ -220,20 +238,34 @@ class RecordingForegroundService : Service() {
+@@ -220,20 +238,40 @@ class RecordingForegroundService : Service() {
                      runRawLoop(url, out)
                  }
              } catch (e: Throwable) {
@@ -78,8 +78,16 @@ index d78f0682..c1c633ea 100644
                  try {
                      out?.flush()
                      out?.fd?.sync()
-                     out?.close()
-                 } catch (_: Throwable) {}
+-                    out?.close()
+-                } catch (_: Throwable) {}
++                } catch (e: Throwable) {
++                    lastFailure = e.javaClass.simpleName
++                } finally {
++                    // Même un disque plein doit libérer le descripteur.
++                    try { out?.close() } catch (e: Throwable) {
++                        lastFailure = e.javaClass.simpleName
++                    }
++                }
 +                if (Thread.currentThread() === downloadThread) {
 +                    recording = false
 +                    downloading = false
@@ -104,7 +112,7 @@ index d78f0682..c1c633ea 100644
      }
  
      /// Heuristique d'extension. Le sniff de contenu dans runRawLoop
-@@ -248,7 +280,7 @@ class RecordingForegroundService : Service() {
+@@ -248,7 +286,7 @@ class RecordingForegroundService : Service() {
          val buf = ByteArray(64 * 1024)
          var attempts = 0
          var sniffed = false
@@ -113,7 +121,7 @@ index d78f0682..c1c633ea 100644
              var conn: java.net.HttpURLConnection? = null
              try {
                  conn = openConn(url)
-@@ -268,7 +300,7 @@ class RecordingForegroundService : Service() {
+@@ -268,7 +306,7 @@ class RecordingForegroundService : Service() {
                  attempts = 0
                  val input = conn.inputStream
                  var first = true
@@ -122,7 +130,7 @@ index d78f0682..c1c633ea 100644
                      val n = input.read(buf)
                      if (n < 0) break // EOF → reconnecter
                      // Sniff de securite : si le tout 1er bloc commence par
-@@ -288,18 +320,23 @@ class RecordingForegroundService : Service() {
+@@ -288,18 +326,23 @@ class RecordingForegroundService : Service() {
                          }
                      }
                      first = false
@@ -150,7 +158,7 @@ index d78f0682..c1c633ea 100644
                  attempts++
                  if (attempts > 30) break
                  Log.w(TAG, "reconnect (#$attempts) apres: ${e.message}")
-@@ -323,21 +360,31 @@ class RecordingForegroundService : Service() {
+@@ -323,21 +366,31 @@ class RecordingForegroundService : Service() {
          var mediaUrl = playlistUrl
          var resolved = false
  
@@ -188,7 +196,7 @@ index d78f0682..c1c633ea 100644
                  if (isMasterPlaylist(body)) {
                      // La "variante" est elle-meme une master → on descend.
                      selectVariant(body, mediaUrl)?.let { mediaUrl = it }
-@@ -348,20 +395,28 @@ class RecordingForegroundService : Service() {
+@@ -348,20 +401,28 @@ class RecordingForegroundService : Service() {
                  val segments = parseSegments(body, mediaUrl)
                  var newCount = 0
                  for (seg in segments) {
@@ -220,7 +228,7 @@ index d78f0682..c1c633ea 100644
                  consecutiveErrors++
                  if (consecutiveErrors > 30) {
                      Log.w(TAG, "serveur HLS injoignable, abandon")
-@@ -377,22 +432,27 @@ class RecordingForegroundService : Service() {
+@@ -377,22 +438,27 @@ class RecordingForegroundService : Service() {
      /// un segment ne tue pas l'enregistrement (segment perdu ≠ rec perdu).
      private fun downloadSegment(segUrl: String, out: java.io.FileOutputStream) {
          var conn: java.net.HttpURLConnection? = null
@@ -259,7 +267,7 @@ index d78f0682..c1c633ea 100644
          } finally {
              activeConn = null
              try { conn?.disconnect() } catch (_: Throwable) {}
-@@ -401,15 +461,15 @@ class RecordingForegroundService : Service() {
+@@ -401,15 +467,15 @@ class RecordingForegroundService : Service() {
  
      /// Recupere le corps texte d'une URL (playlist). Utilise pour les
      /// .m3u8 uniquement (petits fichiers texte).
@@ -278,7 +286,7 @@ index d78f0682..c1c633ea 100644
          } finally {
              activeConn = null
              try { conn?.disconnect() } catch (_: Throwable) {}
-@@ -520,16 +580,10 @@ class RecordingForegroundService : Service() {
+@@ -520,16 +586,10 @@ class RecordingForegroundService : Service() {
  
      private fun stopDownload() {
          recording = false
@@ -443,6 +451,210 @@ index 3aeaee46..bb66f41e 100644
      }
    }
  
+diff --git a/lib/core/theme/app_colors.dart b/lib/core/theme/app_colors.dart
+index 30a760c8..20d6ee63 100644
+--- a/lib/core/theme/app_colors.dart
++++ b/lib/core/theme/app_colors.dart
+@@ -34,13 +34,13 @@ abstract final class AppColors {
+   static const Color surface = Color(0xFF121212);
+ 
+   /// Glassmorphism — à combiner avec BackdropFilter.
+-  static const Color surfaceHigh = Color(0xFF121212);
++  static const Color surfaceHigh = Color(0xFF1C1C1C);
+ 
+   /// Overlay le plus haut (modals, snackbars).
+-  static const Color surfaceOverlay = Color(0xFF121212);
++  static const Color surfaceOverlay = Color(0xFF262626);
+ 
+-  /// Liseré de carte exact (#242424), à afficher sur 1 dp.
+-  static const Color border = Color(0xFF242424);
++  /// Liseré de carte neutre (#303030), à afficher sur 1 dp.
++  static const Color border = Color(0xFF303030);
+ 
+   // -------------------------------------------------------
+   //  PALETTE CINÉMA — niveaux supplémentaires (Phase 1 redesign)
+@@ -56,15 +56,15 @@ abstract final class AppColors {
+   static const Color midnight = Color(0xFF121212);
+ 
+   /// Niveau 2 — slate. Cards posters, chips.
+-  static const Color slate = Color(0xFF121212);
++  static const Color slate = Color(0xFF1C1C1C);
+ 
+   /// Niveau 3 — ash. Overlays, sheets, modal headers.
+-  static const Color ash = Color(0xFF121212);
++  static const Color ash = Color(0xFF262626);
+ 
+   /// Voile glass — surface translucide pour BackdropFilter
+   /// (dock flottant, app bars translucides).
+   static Color get glassSurface =>
+-      const Color(0xFF121212).withValues(alpha: 0.55);
++      surfaceHigh.withValues(alpha: 0.92);
+ 
+   /// Liseré ultra-subtil pour les verres flottants.
+   static const Color glassBorder = border;
+@@ -116,13 +116,13 @@ abstract final class AppColors {
+   static const Color textPrimary = Color(0xFFFFFFFF);
+ 
+   /// Sous-titres, métadonnées importantes.
+-  static const Color textSecondary = Color(0xFF8E8E93);
++  static const Color textSecondary = Color(0xFFC4C4C4);
+ 
+   /// Niveau intermédiaire — métadonnées discrètes.
+-  static const Color textTertiary = Color(0xFF8E8E93);
++  static const Color textTertiary = Color(0xFFA6A6A6);
+ 
+   /// Texte estompé — hints, timestamps, états désactivés.
+-  static const Color textMuted = Color(0xFF8E8E93);
++  static const Color textMuted = Color(0xFF929292);
+ 
+   // -------------------------------------------------------
+   //  STATUTS SÉMANTIQUES
+@@ -151,7 +151,7 @@ abstract final class AppColors {
+   static const Color maisonSurface = Color(0xFF121212);
+ 
+   /// Surface surélevée (hover / hero).
+-  static const Color maisonSurfaceHigh = Color(0xFF121212);
++  static const Color maisonSurfaceHigh = Color(0xFF1C1C1C);
+ 
+   /// Texte quasi-blanc (contraste fort seniors).
+   static const Color maisonInk = Color(0xFFFFFFFF);
+@@ -166,7 +166,7 @@ abstract final class AppColors {
+   static const Color liveRed = Color(0xFFFFFFFF);
+ 
+   /// Bordure subtile (blanc 8 %).
+-  static const Color maisonBorder = Color(0xFF242424);
++  static const Color maisonBorder = Color(0xFF303030);
+ 
+   // -------------------------------------------------------
+   //  GRADIENTS RÉUTILISÉS
+@@ -178,7 +178,7 @@ abstract final class AppColors {
+     begin: Alignment.topCenter,
+     end: Alignment.bottomCenter,
+     colors: <Color>[
+-      Color(0xFF000000),
++      Color(0xFF080808),
+       Color(0xFF000000),
+       Color(0xFF000000),
+     ],
+diff --git a/lib/core/theme/app_theme.dart b/lib/core/theme/app_theme.dart
+index f353c848..ca1ecdf0 100644
+--- a/lib/core/theme/app_theme.dart
++++ b/lib/core/theme/app_theme.dart
+@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
+ 
+ import 'app_colors.dart';
+ import 'app_text_styles.dart';
++import 'cinematic_spacing.dart';
+ import 'lumiere_tokens.dart';
+ import 'premium_page_transitions.dart';
+ import 'tv_palette.dart';
+@@ -107,9 +108,9 @@ abstract final class AppTheme {
+             surfaceContainerLowest: AppColors.background,
+             surfaceContainerLow: AppColors.surface,
+             surfaceContainer: AppColors.surface,
+-            surfaceContainerHigh: AppColors.surface,
+-            surfaceContainerHighest: AppColors.surface,
+-            surfaceBright: AppColors.surface,
++            surfaceContainerHigh: AppColors.surfaceHigh,
++            surfaceContainerHighest: AppColors.surfaceOverlay,
++            surfaceBright: AppColors.surfaceOverlay,
+             surfaceDim: AppColors.background,
+             surfaceTint: Colors.transparent,
+             outline: AppColors.border,
+@@ -208,6 +209,10 @@ abstract final class AppTheme {
+                 disabledForegroundColor: AppColors.textSecondary,
+                 elevation: 0,
+                 textStyle: AppTextStyles.button,
++                minimumSize: const Size(CinematicSpacing.xxl, CinematicSpacing.xxl),
++                shape: RoundedRectangleBorder(
++                  borderRadius: BorderRadius.circular(CinematicSpacing.radiusM),
++                ),
+               ),
+             )
+           : null,
+@@ -222,6 +227,10 @@ abstract final class AppTheme {
+                 shadowColor: Colors.transparent,
+                 elevation: 0,
+                 textStyle: AppTextStyles.button,
++                minimumSize: const Size(CinematicSpacing.xxl, CinematicSpacing.xxl),
++                shape: RoundedRectangleBorder(
++                  borderRadius: BorderRadius.circular(CinematicSpacing.radiusM),
++                ),
+               ),
+             )
+           : null,
+@@ -239,6 +248,31 @@ abstract final class AppTheme {
+             )
+           : null,
+ 
++      // Les fenêtres se détachent du catalogue sans voile teinté.
++      bottomSheetTheme: monochrome
++          ? BottomSheetThemeData(
++              backgroundColor: palette.glass,
++              modalBackgroundColor: palette.glass,
++              surfaceTintColor: Colors.transparent,
++              dragHandleColor: palette.textTertiary,
++              shape: const RoundedRectangleBorder(
++                borderRadius: BorderRadius.vertical(
++                  top: Radius.circular(CinematicSpacing.radiusXL),
++                ),
++              ),
++            )
++          : null,
++      dialogTheme: monochrome
++          ? DialogThemeData(
++              backgroundColor: palette.overcast,
++              surfaceTintColor: Colors.transparent,
++              shape: RoundedRectangleBorder(
++                borderRadius: BorderRadius.circular(CinematicSpacing.radiusXL),
++                side: BorderSide(color: palette.border),
++              ),
++            )
++          : null,
++
+       // ----- Focus / hover accentEmber — APIs stables -----
+       focusColor: AppColors.accent.withValues(alpha: 0.18),
+       hoverColor: AppColors.accent.withValues(alpha: 0.10),
+diff --git a/lib/core/theme/lumiere_tokens.dart b/lib/core/theme/lumiere_tokens.dart
+index 5dfe1341..3d7b1e36 100644
+--- a/lib/core/theme/lumiere_tokens.dart
++++ b/lib/core/theme/lumiere_tokens.dart
+@@ -125,28 +125,28 @@ class LumiereColors extends ThemeExtension<LumiereColors> {
+     canvas: Color(0xFF000000),
+     voidSurface: Color(0xFF000000),
+     elevated: Color(0xFF121212),
+-    glass: Color(0xFF121212),
+-    overcast: Color(0xFF121212),
++    glass: Color(0xFF1C1C1C),
++    overcast: Color(0xFF262626),
+     accentEmber: kMotionWhite,
+     emberGlow: kMotionWhite,
+     emberDeep: kMotionGray,
+     emberHalo: kMotionWhite,
+     textPrimary: Color(0xFFFFFFFF),
+-    textSecondary: Color(0xFF8E8E93),
+-    textTertiary: Color(0xFF8E8E93),
+-    textMuted: Color(0xFF8E8E93),
++    textSecondary: Color(0xFFC4C4C4),
++    textTertiary: Color(0xFFA6A6A6),
++    textMuted: Color(0xFF929292),
+     statusSuccess: Color(0xFFFFFFFF),
+     statusWarning: Color(0xFF8E8E93),
+     // Les statuts restent lisibles sans introduire de couleur.
+     statusError: Color(0xFFFFFFFF),
+     statusInfo: Color(0xFF8E8E93),
+-    border: Color(0xFF242424), // textPrimary @ 8%
++    border: Color(0xFF303030),
+     scrim: Color(0xCC000000),
+     canvasGradient: LinearGradient(
+       begin: Alignment.topCenter,
+       end: Alignment.bottomCenter,
+       colors: <Color>[
+-        Color(0xFF000000),
++        Color(0xFF080808),
+         Color(0xFF000000),
+         Color(0xFF000000),
+       ],
 diff --git a/lib/features/cast/data/cast_manager.dart b/lib/features/cast/data/cast_manager.dart
 index aea5dc9a..35aa4e0a 100644
 --- a/lib/features/cast/data/cast_manager.dart
@@ -832,10 +1044,10 @@ index aea5dc9a..35aa4e0a 100644
  
 diff --git a/lib/features/device/data/device_secret.dart b/lib/features/device/data/device_secret.dart
 new file mode 100644
-index 00000000..41d9c9b4
+index 00000000..891dd711
 --- /dev/null
 +++ b/lib/features/device/data/device_secret.dart
-@@ -0,0 +1,64 @@
+@@ -0,0 +1,67 @@
 +import 'dart:convert';
 +import 'dart:math';
 +
@@ -875,14 +1087,17 @@ index 00000000..41d9c9b4
 +    final DateTime now = DateTime.now();
 +    if (_lastAttempt[key] != null && now.difference(_lastAttempt[key]!) < const Duration(minutes: 1)) return Future<void>.value();
 +    _lastAttempt[key] = now;
-+    return _enrolling[key] = _enroll(mac).whenComplete(() => _enrolling.remove(key));
++    return _enrolling[key] = _enroll(mac).whenComplete(() {
++      _enrolling.remove(key);
++    });
 +  }
 +
 +  Future<void> _enroll(String mac) async {
 +    if (!mac.startsWith('MK:')) return;
 +    try {
 +      final String secret = await getOrCreate();
-+      final String androidId = await DeviceIdentity.instance.androidId();
++      final String androidId = await DeviceIdentity.instance.androidId().timeout(
++          const Duration(seconds: 2), onTimeout: () => '');
 +      await http.post(Uri.parse('$kSubscriptionBaseUrl/api/device-proof'),
 +        headers: const <String, String>{'Content-Type': 'application/json', 'Accept': 'application/json'},
 +        body: jsonEncode(<String, String>{'mac': mac, 'androidId': androidId, 'secret': secret}),
@@ -2563,6 +2778,291 @@ index 00000000..500730b5
 +    return bytesWritten;
 +  }
 +}
+diff --git a/lib/features/recordings/data/http_recording_downloader.dart b/lib/features/recordings/data/http_recording_downloader.dart
+index e11257a3..be1738ee 100644
+--- a/lib/features/recordings/data/http_recording_downloader.dart
++++ b/lib/features/recordings/data/http_recording_downloader.dart
+@@ -63,6 +63,7 @@ import 'dart:io';
+ import 'package:flutter/foundation.dart';
+ 
+ import '../../../core/observability/structured_logger.dart';
++import 'bounded_recording_writer.dart';
+ 
+ /// Durée maximale d'un enregistrement. Demande user : enregistrements
+ /// ILLIMITÉS. On garde un garde-fou très haut (30 jours) — purement
+@@ -219,25 +220,32 @@ class HttpRecordingDownloader {
+   }) async {
+     final _Job job = _Job(filePath: filePath, streamUrl: streamUrl)
+       ..onAutoStopped = onAutoStopped;
++    _jobs[filePath] = job;
+ 
+     // 1) On ouvre le fichier de sortie AVANT toute connexion. Il
+     //    restera ouvert pendant toute la durée de l'enregistrement,
+     //    y compris à travers les reconnexions (on append).
+     try {
+-      final File file = File(filePath);
+-      await file.parent.create(recursive: true);
+-      job.sink = file.openWrite();
++      final BoundedRecordingWriter writer = await BoundedRecordingWriter.open(filePath,
++        onFailure: (_) => _autoFinish(filePath, AutoStopReason.diskError, expected: job));
++      if (job.stopping || !identical(_jobs[filePath], job)) {
++        await writer.close();
++        return false;
++      }
++      job.sink = writer;
+     } catch (e) {
+       if (kDebugMode) debugPrint('[Rec] ouverture fichier KO ($filePath): $e');
+       await _stopJob(job);
++      if (identical(_jobs[filePath], job)) _jobs.remove(filePath);
+       return false;
+     }
+ 
+     // 2) Première connexion. Si elle échoue d'emblée, on rend false
+     //    pour que l'UI affiche l'erreur (serveur injoignable / refus).
+     final HttpClientResponse? resp = await _openRawConnection(job, streamUrl);
+-    if (resp == null) {
++    if (resp == null || job.stopping || !identical(_jobs[filePath], job)) {
+       await _stopJob(job);
++      if (identical(_jobs[filePath], job)) _jobs.remove(filePath);
+       return false;
+     }
+ 
+@@ -301,7 +309,7 @@ class HttpRecordingDownloader {
+       req.maxRedirects = 8;
+       req.headers.set(HttpHeaders.acceptHeader, '*/*');
+ 
+-      final HttpClientResponse resp = await req.close();
++      final HttpClientResponse resp = await req.close().timeout(const Duration(seconds: 30));
+       if (resp.statusCode != 200 && resp.statusCode != 206) {
+         if (kDebugMode) {
+           debugPrint('[Rec] HTTP ${resp.statusCode} sur $streamUrl');
+@@ -358,7 +366,7 @@ class HttpRecordingDownloader {
+             },
+           );
+           if (job.sinkErrorCount >= _kMaxConsecutiveSinkErrors) {
+-            _autoFinish(job.filePath, AutoStopReason.diskError);
++            _autoFinish(job.filePath, AutoStopReason.diskError, expected: job);
+           }
+         }
+       },
+@@ -390,14 +398,14 @@ class HttpRecordingDownloader {
+   ///   - on a dépassé 6 h,
+   ///   - trop d'échecs de reconnexion consécutifs.
+   Future<void> _reconnectRaw(_Job job, String streamUrl) async {
+-    if (job.stopping || !_jobs.containsKey(job.filePath)) return;
++    if (job.stopping || !identical(_jobs[job.filePath], job)) return;
+ 
+     // Plafond 6 h — on finalise proprement.
+     if (job.elapsed >= kMaxRecordingDuration) {
+       if (kDebugMode) {
+         debugPrint('[Rec] plafond de durée atteint sur ${job.filePath}');
+       }
+-      _autoFinish(job.filePath, AutoStopReason.maxDurationReached);
++      _autoFinish(job.filePath, AutoStopReason.maxDurationReached, expected: job);
+       return;
+     }
+ 
+@@ -411,9 +419,10 @@ class HttpRecordingDownloader {
+     // Petit délai avant de retaper le serveur (évite le hammering
+     // si le serveur est en train de rebasculer d'edge).
+     await Future<void>.delayed(const Duration(seconds: 2));
+-    if (job.stopping || !_jobs.containsKey(job.filePath)) return;
++    if (job.stopping || !identical(_jobs[job.filePath], job)) return;
+ 
+     final HttpClientResponse? resp = await _openRawConnection(job, streamUrl);
++    if (job.stopping || !identical(_jobs[job.filePath], job)) return;
+     if (resp == null) {
+       job.reconnectFailures++;
+       StructuredLogger.instance.warn(
+@@ -429,7 +438,7 @@ class HttpRecordingDownloader {
+         if (kDebugMode) {
+           debugPrint('[Rec] serveur injoignable, abandon ${job.filePath}');
+         }
+-        _autoFinish(job.filePath, AutoStopReason.serverUnreachable);
++        _autoFinish(job.filePath, AutoStopReason.serverUnreachable, expected: job);
+         return;
+       }
+       // Back-off progressif : 2s, 4s, 6s… plafonné à 16s.
+@@ -469,6 +478,7 @@ class HttpRecordingDownloader {
+   }) async {
+     final _Job job = _Job(filePath: filePath, streamUrl: streamUrl)
+       ..onAutoStopped = onAutoStopped;
++    _jobs[filePath] = job;
+     try {
+       job.client = HttpClient()
+         ..connectionTimeout = const Duration(seconds: 30)
+@@ -482,14 +492,19 @@ class HttpRecordingDownloader {
+         Uri.parse(streamUrl),
+       );
+       if (probe.statusCode != 200) {
+-        job.client?.close(force: true);
++        await _stopJob(job);
++        if (identical(_jobs[filePath], job)) _jobs.remove(filePath);
+         return false;
+       }
+-      await probe.drain<void>();
++      await probe.drain<void>().timeout(const Duration(seconds: 30));
+ 
+-      final File file = File(filePath);
+-      await file.parent.create(recursive: true);
+-      job.sink = file.openWrite();
++      final BoundedRecordingWriter writer = await BoundedRecordingWriter.open(filePath,
++        onFailure: (_) => _autoFinish(filePath, AutoStopReason.diskError, expected: job));
++      if (job.stopping || !identical(_jobs[filePath], job)) {
++        await writer.close();
++        return false;
++      }
++      job.sink = writer;
+       _jobs[filePath] = job;
+       _armMaxDurationTimer(job);
+ 
+@@ -514,7 +529,8 @@ class HttpRecordingDownloader {
+       return true;
+     } catch (e) {
+       if (kDebugMode) debugPrint('[Rec] _startHls failed ($filePath): $e');
+-      _cleanupJob(filePath);
++      await _stopJob(job);
++      if (identical(_jobs[filePath], job)) _jobs.remove(filePath);
+       return false;
+     }
+   }
+@@ -633,7 +649,7 @@ class HttpRecordingDownloader {
+       // _downloadSegment a peut-etre deja appele _autoFinish suite a
+       // une rafale d'erreurs disque ; dans ce cas le job a deja ete
+       // retire de _jobs et le second _autoFinish sera no-op.
+-      _autoFinish(filePath, exitReason);
++      _autoFinish(filePath, exitReason, expected: job);
+     }
+   }
+ 
+@@ -644,7 +660,7 @@ class HttpRecordingDownloader {
+     req.followRedirects = true;
+     req.maxRedirects = 8;
+     req.headers.set(HttpHeaders.acceptHeader, '*/*');
+-    return req.close();
++    return req.close().timeout(const Duration(seconds: 30));
+   }
+ 
+   /// Récupère le corps texte d'une playlist (.m3u8). Suit les
+@@ -656,7 +672,7 @@ class HttpRecordingDownloader {
+       await resp.drain<void>();
+       throw HttpException('HTTP ${resp.statusCode}', uri: uri);
+     }
+-    return resp.transform(_utf8Lenient).join();
++    return resp.transform(_utf8Lenient).join().timeout(const Duration(seconds: 30));
+   }
+ 
+   /// Une MASTER playlist contient des `#EXT-X-STREAM-INF` (déclaration
+@@ -750,7 +766,7 @@ class HttpRecordingDownloader {
+             },
+           );
+           if (job.sinkErrorCount >= _kMaxConsecutiveSinkErrors) {
+-            _autoFinish(job.filePath, AutoStopReason.diskError);
++            _autoFinish(job.filePath, AutoStopReason.diskError, expected: job);
+             return; // sort du await-for, la boucle exterieure verra _jobs vide
+           }
+           // Sous le seuil : on continue (le chunk est perdu mais le job vit).
+@@ -773,9 +789,9 @@ class HttpRecordingDownloader {
+       // HLS ou une reconnexion raw en cours de relancer une connexion
+       // pendant qu'on ferme.
+       job.stopping = true;
+-      final int size = job.bytesWritten;
+       await _stopJob(job);
+-      _jobs.remove(filePath);
++      final int size = job.bytesWritten;
++      if (identical(_jobs[filePath], job)) _jobs.remove(filePath);
+       if (kDebugMode) {
+         debugPrint(
+             '[Rec] stopped $filePath ($size bytes, ${_jobs.length} actifs restants)');
+@@ -798,10 +814,10 @@ class HttpRecordingDownloader {
+     final List<_Job> all = _jobs.values.toList();
+     for (final _Job job in all) {
+       job.stopping = true;
+-      total += job.bytesWritten;
+       await _stopJob(job);
++      total += job.bytesWritten;
++      if (identical(_jobs[job.filePath], job)) _jobs.remove(job.filePath);
+     }
+-    _jobs.clear();
+     if (kDebugMode) debugPrint('[Rec] stopped ALL ($total bytes total)');
+     return total;
+   }
+@@ -813,7 +829,7 @@ class HttpRecordingDownloader {
+       if (kDebugMode) {
+         debugPrint('[Rec] timer plafond déclenché → arrêt ${job.filePath}');
+       }
+-      _autoFinish(job.filePath, AutoStopReason.maxDurationReached);
++      _autoFinish(job.filePath, AutoStopReason.maxDurationReached, expected: job);
+     });
+   }
+ 
+@@ -825,8 +841,9 @@ class HttpRecordingDownloader {
+   /// et retire le badge "REC". Le motif [reason] est propage au
+   /// callback (Phase 1 / F-03) pour que l'UI choisisse le message
+   /// adapte.
+-  void _autoFinish(String filePath, AutoStopReason reason) {
+-    final _Job? job = _jobs.remove(filePath);
++  void _autoFinish(String filePath, AutoStopReason reason, {_Job? expected}) {
++    if (expected != null && !identical(_jobs[filePath], expected)) return;
++    final _Job? job = _jobs[filePath];
+     if (job == null) return;
+     job.stopping = true;
+     final void Function(String, AutoStopReason)? cb = job.onAutoStopped;
+@@ -842,26 +859,17 @@ class HttpRecordingDownloader {
+         'activeCount': _jobs.length,
+       },
+     );
+-    // _stopJob est async mais on n'a pas besoin de l'attendre ici —
+-    // le flush/close se fait en arrière-plan, et le callback peut
+-    // partir tout de suite (l'UI lira la taille du fichier ensuite).
+-    _stopJob(job);
+-    if (cb != null) {
+-      // On déclenche le callback hors de la pile d'appels courante
+-      // pour éviter tout effet de bord de réentrance.
+-      scheduleMicrotask(() => cb(filePath, reason));
+-    }
++    unawaited(_stopJob(job).then((_) {
++      if (identical(_jobs[filePath], job)) _jobs.remove(filePath);
++      cb?.call(filePath, reason);
++    }));
+   }
+ 
+-  /// Cleanup d'un job sans le retirer de la map (utilisé par onDone /
+-  /// onError quand le stream se termine de lui-même côté serveur).
+-  void _cleanupJob(String filePath) {
+-    final _Job? job = _jobs.remove(filePath);
+-    if (job == null) return;
+-    _stopJob(job);
+-  }
++  Future<void> _stopJob(_Job job) => job.closing ??= _closeJob(job);
+ 
+-  Future<void> _stopJob(_Job job) async {
++  Future<void> _closeJob(_Job job) async {
++    job.stopping = true;
++    try { job.client?.close(force: true); } catch (_) {}
+     try {
+       job.maxTimer?.cancel();
+     } catch (_) {}
+@@ -871,8 +879,7 @@ class HttpRecordingDownloader {
+     } catch (_) {}
+     job.sub = null;
+     try {
+-      await job.sink?.flush();
+-      await job.sink?.close();
++      if (job.sink != null) job.bytesWritten = await job.sink!.close();
+     } catch (_) {}
+     job.sink = null;
+     try {
+@@ -896,7 +903,8 @@ class _Job {
+ 
+   HttpClient? client;
+   StreamSubscription<List<int>>? sub;
+-  IOSink? sink;
++  BoundedRecordingWriter? sink;
++  Future<void>? closing;
+ 
+   /// Horodatage de démarrage — sert à calculer la durée écoulée et à
+   /// déclencher l'arrêt automatique à 6 h.
 diff --git a/lib/features/recordings/data/recording_repository.dart b/lib/features/recordings/data/recording_repository.dart
 index 5d55c9a4..7541d827 100644
 --- a/lib/features/recordings/data/recording_repository.dart
@@ -2624,7 +3124,7 @@ index 5d55c9a4..7541d827 100644
        }
        await finishRecordingByPath(
 diff --git a/lib/features/recordings/data/recording_service.dart b/lib/features/recordings/data/recording_service.dart
-index 330b3b72..42e1cd04 100644
+index 330b3b72..580721ca 100644
 --- a/lib/features/recordings/data/recording_service.dart
 +++ b/lib/features/recordings/data/recording_service.dart
 @@ -43,12 +43,14 @@ class RecordingService {
@@ -2656,7 +3156,7 @@ index 330b3b72..42e1cd04 100644
 +        if (current['error'] != null) return false;
 +        await Future<void>.delayed(const Duration(milliseconds: 50));
 +      }
-+      await stop();
++      await stop(filePath: filePath);
 +      return false;
      } on PlatformException catch (e) {
        if (kDebugMode) {
@@ -2693,6 +3193,42 @@ index 330b3b72..42e1cd04 100644
      } on PlatformException catch (e) {
        if (kDebugMode) {
          debugPrint('[RecService] stop error: ${e.message}');
+diff --git a/lib/features/simple_home/presentation/widgets/home_navigation_bar.dart b/lib/features/simple_home/presentation/widgets/home_navigation_bar.dart
+index 06cf9ec8..e2a9f0a7 100644
+--- a/lib/features/simple_home/presentation/widgets/home_navigation_bar.dart
++++ b/lib/features/simple_home/presentation/widgets/home_navigation_bar.dart
+@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
+ import '../../../../core/i18n/l10n_extension.dart';
+ import '../../../../core/theme/app_colors.dart';
+ import '../../../../core/theme/app_text_styles.dart';
++import '../../../../core/theme/cinematic_spacing.dart';
+ import '../../../../core/widgets/premium_press.dart';
+ 
+ /// Dock de l'accueil mobile. Les destinations restent des routes : l'état
+@@ -30,13 +31,20 @@ class HomeNavigationBar extends StatelessWidget {
+     return Padding(
+       padding: const EdgeInsets.fromLTRB(12, 6, 12, 8),
+       child: ClipRRect(
+-        borderRadius: BorderRadius.circular(24),
++        borderRadius: BorderRadius.circular(CinematicSpacing.radiusDock),
+         child: BackdropFilter(
+           filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+           child: DecoratedBox(
+             decoration: BoxDecoration(
+-              color: AppColors.background.withValues(alpha: 0.8),
+-              borderRadius: BorderRadius.circular(24),
++              gradient: LinearGradient(
++                begin: Alignment.topCenter,
++                end: Alignment.bottomCenter,
++                colors: <Color>[
++                  colors.glass.withValues(alpha: 0.94),
++                  colors.elevated.withValues(alpha: 0.94),
++                ],
++              ),
++              borderRadius: BorderRadius.circular(CinematicSpacing.radiusDock),
+               border: Border.all(color: colors.border),
+             ),
+             child: Padding(
 diff --git a/lib/features/sports/data/match_alerts_service.dart b/lib/features/sports/data/match_alerts_service.dart
 index af30a022..f65bc23c 100644
 --- a/lib/features/sports/data/match_alerts_service.dart
@@ -3685,6 +4221,68 @@ index cef35528..174d8948 100644
        if (info != null) {
          _infoCache[movieId] = info;
          // Éviction LRU : la tête de la map est la moins récemment utilisée.
+diff --git a/test/core/theme/accent_controller_test.dart b/test/core/theme/accent_controller_test.dart
+index bff37681..35602f36 100644
+--- a/test/core/theme/accent_controller_test.dart
++++ b/test/core/theme/accent_controller_test.dart
+@@ -16,7 +16,7 @@ void main() {
+   final AccentController controller = AccentController.instance;
+   final ThemeModeRepository modes = ThemeModeRepository.instance;
+ 
+-  test('la nouvelle installation utilise la charte noire et blanche exacte',
++  test('la nouvelle installation utilise la charte noire et blanche à surfaces étagées',
+       () async {
+     SharedPreferences.setMockInitialValues(<String, Object>{});
+     await controller.initialize();
+@@ -24,9 +24,9 @@ void main() {
+ 
+     expect(AppColors.background, const Color(0xFF000000));
+     expect(AppColors.surface, const Color(0xFF121212));
+-    expect(AppColors.border, const Color(0xFF242424));
++    expect(AppColors.border, const Color(0xFF303030));
+     expect(AppColors.textPrimary, const Color(0xFFFFFFFF));
+-    expect(AppColors.textSecondary, const Color(0xFF8E8E93));
++    expect(AppColors.textSecondary, const Color(0xFFC4C4C4));
+     expect(AppColors.accent, Colors.white);
+     expect(AppColors.onAccent, Colors.black);
+     expect(controller.current.id, 'motion');
+@@ -94,8 +94,8 @@ void main() {
+     final ColorScheme colors = theme.colorScheme;
+     expect(colors.primary, Colors.white);
+     expect(colors.onPrimary, Colors.black);
+-    expect(colors.outline, const Color(0xFF242424));
+-    expect(colors.onSurfaceVariant, const Color(0xFF8E8E93));
++    expect(colors.outline, const Color(0xFF303030));
++    expect(colors.onSurfaceVariant, const Color(0xFFC4C4C4));
+     for (final Color color in <Color>[
+       colors.primary,
+       colors.primaryContainer,
+@@ -122,6 +122,25 @@ void main() {
+     expect(AppTextStyles.brandTagline.letterSpacing, 3);
+   });
+ 
++  test('texte lisible sur toutes les surfaces et tokens cohérents', () {
++    final palette = LumiereColors.cinema;
++    expect(palette.elevated, AppColors.surface);
++    expect(palette.glass, AppColors.surfaceHigh);
++    expect(palette.overcast, AppColors.surfaceOverlay);
++    expect(palette.textSecondary, AppColors.textSecondary);
++    expect(palette.textTertiary, AppColors.textTertiary);
++    expect(palette.textMuted, AppColors.textMuted);
++    expect(palette.border, AppColors.border);
++    expect(AppColors.surface.computeLuminance(), lessThan(AppColors.surfaceHigh.computeLuminance()));
++    expect(AppColors.surfaceHigh.computeLuminance(), lessThan(AppColors.surfaceOverlay.computeLuminance()));
++    for (final background in <Color>[AppColors.background, AppColors.surface, AppColors.surfaceHigh, AppColors.surfaceOverlay]) {
++      for (final foreground in <Color>[AppColors.textPrimary, AppColors.textSecondary, AppColors.textTertiary, AppColors.textMuted]) {
++        final contrast = (foreground.computeLuminance() + 0.05) / (background.computeLuminance() + 0.05);
++        expect(contrast, greaterThanOrEqualTo(4.5), reason: '$foreground sur $background');
++      }
++    }
++  });
++
+   test('la palette TV explicite conserve son accent violet', () {
+     expect(AppTheme.tvViolet.colorScheme.primary, TvRoyal.accent);
+     expect(AppTheme.tvViolet.scaffoldBackgroundColor, TvRoyal.background);
 diff --git a/test/features/cast/session_lifecycle_test.dart b/test/features/cast/session_lifecycle_test.dart
 new file mode 100644
 index 00000000..e62af3a9
@@ -3777,6 +4375,54 @@ index 00000000..e62af3a9
 +    manager.debugNativeSessionEvent(const CastNativeSessionEvent('ended'));
 +    expect(manager.state, CastState.casting);
 +    expect(manager.device?.id, 'second');
++  });
++}
+diff --git a/test/features/device/device_secret_test.dart b/test/features/device/device_secret_test.dart
+new file mode 100644
+index 00000000..5d428137
+--- /dev/null
++++ b/test/features/device/device_secret_test.dart
+@@ -0,0 +1,42 @@
++import 'dart:convert';
++
++import 'package:flutter/services.dart';
++import 'package:flutter_test/flutter_test.dart';
++import 'package:http/http.dart' as http;
++import 'package:http/testing.dart';
++import 'package:shared_preferences/shared_preferences.dart';
++import 'package:tv_king/features/device/data/device_secret.dart';
++
++void main() {
++  TestWidgetsFlutterBinding.ensureInitialized();
++  test('preuve unique, inscription partagée et requêtes libérées', () async {
++    SharedPreferences.setMockInitialValues(<String, Object>{
++      'device.virtual_mac.v1': 'MK:01:02:03:04:05',
++    });
++    const channel = MethodChannel('com.manzilionellm.tvking/device');
++    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
++        .setMockMethodCallHandler(channel, (_) async => 'android-fixture');
++    addTearDown(() => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
++        .setMockMethodCallHandler(channel, null));
++    int enrollments = 0;
++    String? enrolledSecret;
++    await http.runWithClient(() async {
++      final results = await Future.wait(List.generate(8, (_) => DeviceSecret.instance.headers()))
++          .timeout(const Duration(seconds: 2));
++      final secret = results.first['X-Device-Secret'];
++      expect(secret, isNotNull);
++      expect(secret!.length, greaterThanOrEqualTo(32));
++      expect(results.every((r) => r['X-Device-Secret'] == secret), isTrue);
++      expect(enrolledSecret, secret);
++      expect(enrollments, 1);
++      expect((await DeviceSecret.instance.headers())['X-Device-Secret'], secret);
++      expect(enrollments, 1);
++      expect((await SharedPreferences.getInstance()).getString('device.secret.v1'), secret);
++    }, () => MockClient((request) async {
++      expect(request.url.path, '/api/device-proof');
++      enrollments++;
++      enrolledSecret = (jsonDecode(request.body) as Map<String, dynamic>)['secret'] as String;
++      return http.Response('{}', 200);
++    }));
 +  });
 +}
 diff --git a/test/features/playlists/cloud_backup_panel_removal_test.dart b/test/features/playlists/cloud_backup_panel_removal_test.dart
@@ -4048,6 +4694,80 @@ index 00000000..96ac3a9a
 +      expect(await writer.close(), 4);
 +      expect(await file.readAsBytes(), <int>[0x47, 1, 2, 3]);
 +    } finally { await dir.delete(recursive: true); }
++  });
++}
+diff --git a/test/features/recordings/data/http_recording_lifecycle_test.dart b/test/features/recordings/data/http_recording_lifecycle_test.dart
+new file mode 100644
+index 00000000..af6c4fe1
+--- /dev/null
++++ b/test/features/recordings/data/http_recording_lifecycle_test.dart
+@@ -0,0 +1,68 @@
++import 'dart:async';
++import 'dart:io';
++
++import 'package:flutter_test/flutter_test.dart';
++import 'package:tv_king/features/recordings/data/http_recording_downloader.dart';
++
++void main() {
++  final downloader = HttpRecordingDownloader.instance;
++  late Directory directory;
++  late HttpServer server;
++  late StreamIterator<HttpRequest> requests;
++  setUp(() async {
++    directory = await Directory.systemTemp.createTemp('recording-lifecycle-');
++    server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
++    requests = StreamIterator<HttpRequest>(server);
++  });
++  tearDown(() async {
++    await downloader.stop();
++    await server.close(force: true);
++    await requests.cancel();
++    await directory.delete(recursive: true);
++  });
++  Future<HttpRequest> nextRequest() async {
++    expect(await requests.moveNext().timeout(const Duration(seconds: 5)), isTrue);
++    final request = requests.current;
++    unawaited(request.response.done.then<void>((_) {}, onError: (Object _) {}));
++    return request;
++  }
++  String url(String suffix) => 'http://127.0.0.1:${server.port}/$suffix';
++
++  for (final suffix in <String>['live.ts', 'live.m3u8']) {
++    test('annulation et double départ avant les en-têtes : $suffix', () async {
++      final path = '${directory.path}/video.ts';
++      final starting = downloader.start(streamUrl: url(suffix), filePath: path);
++      await nextRequest(); // Le serveur retient volontairement ses en-têtes.
++      expect(downloader.activeCount, 1);
++      expect(await downloader.start(streamUrl: url(suffix), filePath: path), isFalse);
++      await downloader.stop(filePath: path).timeout(const Duration(seconds: 5));
++      expect(await starting.timeout(const Duration(seconds: 5)), isFalse);
++      expect(downloader.isRecordingFile(path), isFalse);
++      expect(downloader.activeCount, 0);
++    });
++  }
++
++  test('échec HLS libère le fichier et stop attend les octets réels', () async {
++    final path = '${directory.path}/video.ts';
++    final rejected = downloader.start(streamUrl: url('denied.m3u8'), filePath: path);
++    final denied = await nextRequest();
++    denied.response.statusCode = HttpStatus.forbidden;
++    await denied.response.close();
++    expect(await rejected, isFalse);
++    expect(downloader.activeCount, 0);
++
++    final accepted = downloader.start(streamUrl: url('live.ts'), filePath: path);
++    final request = await nextRequest();
++    final bytes = List<int>.generate(188 * 4, (i) => i % 256);
++    request.response.add(bytes);
++    await request.response.flush();
++    expect(await accepted, isTrue);
++    // Attendre la réception, puis vérifier que stop attend aussi l'écriture.
++    for (int i = 0; i < 100 && downloader.bytesWrittenFor(path) < bytes.length; i++) {
++      await Future<void>.delayed(const Duration(milliseconds: 10));
++    }
++    expect(await downloader.stop(filePath: path), bytes.length);
++    expect(await File(path).readAsBytes(), bytes);
++    expect(downloader.activeCount, 0);
 +  });
 +}
 diff --git a/test/features/sports/live_alert_plan_test.dart b/test/features/sports/live_alert_plan_test.dart

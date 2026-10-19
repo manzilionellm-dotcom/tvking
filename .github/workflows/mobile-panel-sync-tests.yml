@@ -58,4 +58,12 @@ jobs:
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
       - name: Vérifier les régressions et la suite mobile complète
         working-directory: phone
-        run: flutter test --reporter expanded
+        run: flutter test --reporter expanded --dart-define=PREMIUM_CAPTURE_DIR=build/premium-captures
+      - name: Conserver les captures du vrai accueil mobile
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: 7motion-premium-preview
+          path: phone/build/premium-captures/*.png
+          if-no-files-found: ignore
+          retention-days: 14
