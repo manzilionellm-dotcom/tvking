@@ -1,15 +1,19 @@
 import type { Metadata } from "next";
 import Row from "../components/Row";
 import { formationRows } from "../lib/data";
+import PageJsonLd from "../components/site/PageJsonLd";
+import { canonicalFor } from "../lib/seo";
 
 export const metadata: Metadata = {
   title: "Formation",
   description: "Parcours par niveau, progression et intervenants.",
+  ...canonicalFor("/formation"),
 };
 
 export default function FormationPage() {
   return (
     <div className="pb-[var(--safe-y)] pl-[var(--safe-x)] pt-[var(--safe-y)]">
+      <PageJsonLd crumbs={[{ name: "Formation", path: "/formation" }]} />
       <header className="mb-[1.8rem]">
         <p className="text-[1rem] font-semibold uppercase tracking-[0.2em] text-[var(--learn)]">
           Formation

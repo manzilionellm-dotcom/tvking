@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import AppOnlyNotice from "../components/site/AppOnlyNotice";
+import PageJsonLd from "../components/site/PageJsonLd";
 import {
   ZUNO_ANDROID_PACKAGE_ID,
   zunoAndroidDownloadUrl,
@@ -45,6 +46,7 @@ export default function TelechargerPage() {
 
   return (
     <div className="zuno-page mx-auto max-w-4xl px-4 py-14 sm:px-6">
+      <PageJsonLd crumbs={[{ name: "Télécharger", path: "/telecharger" }]} />
       <h1 className="text-3xl font-bold text-white sm:text-4xl">Télécharger</h1>
       <p className="mt-3 text-white/50">
         Application Zuno uniquement — toujours la dernière version.

@@ -2,16 +2,20 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import ActivationForm from "../components/site/ActivationForm";
 import AppOnlyNotice from "../components/site/AppOnlyNotice";
+import PageJsonLd from "../components/site/PageJsonLd";
+import { canonicalFor } from "../lib/seo";
 
 export const metadata: Metadata = {
   title: "Activer mon appareil",
   description:
     "Activez Zuno avec votre S code et votre M2 (identifiant appareil).",
+  ...canonicalFor("/activer"),
 };
 
 export default function ActiverPage() {
   return (
     <div className="zuno-page mx-auto max-w-3xl px-4 py-14 sm:px-6">
+      <PageJsonLd crumbs={[{ name: "Activer", path: "/activer" }]} />
       <div className="text-center">
         <h1 className="text-3xl font-bold text-white sm:text-4xl">
           Activer mon appareil
