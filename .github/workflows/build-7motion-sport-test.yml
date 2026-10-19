@@ -91,6 +91,10 @@ jobs:
         git apply ../mission/patches/mobile-stability.patch
         git apply --check ../mission/android-app/ci/mobile/adult-classification.patch
         git apply ../mission/android-app/ci/mobile/adult-classification.patch
+        git apply --check ../mission/android-app/ci/mobile/player-terminal-fallback.patch
+        git apply ../mission/android-app/ci/mobile/player-terminal-fallback.patch
+        git apply --check ../mission/android-app/ci/mobile/mobile-back-gestures.patch
+        git apply ../mission/android-app/ci/mobile/mobile-back-gestures.patch
         git diff --check
         gh api "repos/$GITHUB_REPOSITORY/releases/tags/phone-latest" > "$RUNNER_TEMP/client-before.json"
     - name: Setup Java 17 (Temurin)
