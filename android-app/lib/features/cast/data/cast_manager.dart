@@ -2230,7 +2230,7 @@ class CastManager extends ChangeNotifier {
       if (mySeq != _sessionSeq || _transport == null) return;
       await transport.playStream(
         streamUrl: url,
-        title: _dlnaLiveTitle ?? '7 MOTION',
+        title: _dlnaLiveTitle ?? 'ZUNO',
       );
     } on Object catch (e) {
       StructuredLogger.instance.warn(
@@ -2281,7 +2281,7 @@ class CastManager extends ChangeNotifier {
       }
       await transport.playStream(
         streamUrl: relayUrl,
-        title: _dlnaLiveTitle ?? '7 MOTION',
+        title: _dlnaLiveTitle ?? 'ZUNO',
       );
       if (mySeq != _sessionSeq || !identical(transport, _transport)) return;
       adopted = true;
@@ -2289,7 +2289,7 @@ class CastManager extends ChangeNotifier {
       _dlnaLiveUrl = relayUrl;
       // Le téléphone alimente désormais la TV : foreground service
       // (wakelock + wifilock) pour survivre à l'écran éteint.
-      _updateRelayKeepAlive(_dlnaLiveTitle ?? '7 MOTION');
+      _updateRelayKeepAlive(_dlnaLiveTitle ?? 'ZUNO');
       StructuredLogger.instance.info(
         domain: 'cast',
         event: 'dlna.auto_reconnect_relay',

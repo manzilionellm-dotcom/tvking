@@ -1332,5 +1332,6 @@
   "castErrorTimeout": "Cast tager for lang tid — tv'et eller netværket svarer ikke",
   "castFriendlyDnsUnstable": "Ustabilt internet eller DNS. Prøv igen om et par sekunder.",
   "castFriendlyProviderLimit": "Din IPTV-udbyder afviser en ekstra forbindelse (grænsen er nået). Luk en anden app, der ser med, og prøv igen.",
-  "castProgressValidating": "Tjekker streamen…"
+  "castProgressValidating": "Tjekker streamen…",
+  "castWindowsHelp": "Forbind pc og TV til det samme private netværk (Wi-Fi eller Ethernet). Vælg et DLNA-TV eller Roku. Modtagere med kun Google Cast understøttes ikke på Windows. Brug TV-fjernbetjeningen til lydspor og spoling."
 }

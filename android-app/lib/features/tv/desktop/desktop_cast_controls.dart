@@ -13,11 +13,13 @@ import 'media_kit_video_backend.dart';
 
 class DesktopCastControls extends StatefulWidget {
   const DesktopCastControls({super.key, required this.controller,
-    required this.streamUrl, required this.title, this.imageUrl});
+    required this.streamUrl, required this.title, this.imageUrl,
+    this.onHandoffChanged});
   final NativeVideoController controller;
   final String streamUrl;
   final String title;
   final String? imageUrl;
+  final ValueChanged<bool>? onHandoffChanged;
   @override
   State<DesktopCastControls> createState() => DesktopCastControlsState();
 }
@@ -42,6 +44,7 @@ class DesktopCastControlsState extends State<DesktopCastControls> {
     if (_owns && !_busy && (_manager.state == CastState.idle || _manager.state == CastState.error)) {
       _owns = false;
       MediaKitVideoBackend.resumeAfterCast(widget.controller);
+      widget.onHandoffChanged?.call(false);
     }
     setState(() {});
   }
@@ -57,6 +60,7 @@ class DesktopCastControlsState extends State<DesktopCastControls> {
       if (mounted && ticket == _revision) {
         _owns = false;
         MediaKitVideoBackend.resumeAfterCast(widget.controller);
+        widget.onHandoffChanged?.call(false);
       }
     } finally {
       if (mounted && ticket == _revision) { _busy = false; setState(() {}); }
@@ -65,7 +69,9 @@ class DesktopCastControlsState extends State<DesktopCastControls> {
   Future<void> _pick() async {
     if (_busy) return;
     final int ticket = ++_revision;
+    final String requestedUrl = widget.streamUrl;
     setState(() => _busy = true);
+    widget.onHandoffChanged?.call(true);
     // Fermer le flux local avant le Cast évite de consommer deux connexions
     // chez les fournisseurs qui n’en autorisent qu’une. Le film garde sa position.
     try {
@@ -75,11 +81,23 @@ class DesktopCastControlsState extends State<DesktopCastControls> {
           title: widget.title, imageUrl: widget.imageUrl);
       if (!mounted || ticket != _revision) return;
       _owns = _manager.isCasting;
+      if (!_owns) {
+        // Fermer le sélecteur pendant une connexion annule aussi celle-ci :
+        // une réponse tardive ne doit pas démarrer la TV après le retour au PC.
+        await _manager.disconnect();
+      } else if (requestedUrl != widget.streamUrl && _manager.device != null) {
+        await _manager.castTo(_manager.device!, streamUrl: widget.streamUrl,
+            title: widget.title, imageUrl: widget.imageUrl);
+        if (mounted && ticket == _revision) _owns = _manager.isCasting;
+      }
     } catch (_) {
       if (mounted && ticket == _revision) _owns = false;
     } finally {
       if (mounted && ticket == _revision) {
-        if (!_owns) MediaKitVideoBackend.resumeAfterCast(widget.controller);
+        if (!_owns) {
+          MediaKitVideoBackend.resumeAfterCast(widget.controller);
+          widget.onHandoffChanged?.call(false);
+        }
         setState(() => _busy = false);
       }
     }
@@ -93,6 +111,8 @@ class DesktopCastControlsState extends State<DesktopCastControls> {
       else { await _manager.pause(); }
     } finally { if (mounted) setState(() => _busy = false); }
   }
+  Future<void> pause() async { if (_owns && !_busy) await _manager.pause(); }
+  Future<void> resume() async { if (_owns && !_busy) await _manager.resume(); }
   Future<void> _stop() async {
     if (_busy) return;
     ++_revision;
@@ -100,6 +120,7 @@ class DesktopCastControlsState extends State<DesktopCastControls> {
     await _manager.disconnect();
     if (!mounted) return;
     MediaKitVideoBackend.resumeAfterCast(widget.controller);
+    widget.onHandoffChanged?.call(false);
     setState(() => _busy = false);
   }
   @override

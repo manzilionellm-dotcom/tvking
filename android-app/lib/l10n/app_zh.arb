@@ -2762,5 +2762,6 @@
   "castErrorTimeout": "投屏超时",
   "castFriendlyDnsUnstable": "互联网或 DNS 不稳定。请稍后重试。",
   "castFriendlyProviderLimit": "来源不允许更多连接。请停止另一个播放会话。",
-  "castProgressValidating": "正在检查流…"
+  "castProgressValidating": "正在检查流…",
+  "castWindowsHelp": "将电脑和电视连接到同一个专用网络（Wi-Fi 或以太网），选择 DLNA 电视或 Roku。Windows 不支持仅使用 Google Cast 的接收设备。请使用电视遥控器选择音轨和快进。"
 }

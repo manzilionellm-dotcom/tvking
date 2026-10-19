@@ -1332,5 +1332,6 @@
   "castErrorTimeout": "استغرق البث وقتًا طويلًا — التلفاز أو الشبكة لا يستجيبان",
   "castFriendlyDnsUnstable": "الإنترنت أو DNS غير مستقر. أعد المحاولة بعد بضع ثوانٍ.",
   "castFriendlyProviderLimit": "يرفض مزوّد IPTV اتصالًا إضافيًا (تم بلوغ الحد الأقصى). أغلق تطبيقًا آخر يشاهد ثم أعد المحاولة.",
-  "castProgressValidating": "جارٍ التحقق من البث…"
+  "castProgressValidating": "جارٍ التحقق من البث…",
+  "castWindowsHelp": "وصّل الكمبيوتر والتلفاز بالشبكة الخاصة نفسها (Wi-Fi أو Ethernet). اختر تلفاز DLNA أو Roku. الأجهزة التي تدعم Google Cast فقط غير مدعومة على Windows. استخدم جهاز تحكم التلفاز للمسارات الصوتية والتقديم."
 }

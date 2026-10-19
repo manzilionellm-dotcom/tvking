@@ -1388,10 +1388,10 @@
   "castProgressConnectingAttempt": "Connecting to the TV ({attempt}/{total})…",
   "castFriendlyGenericFail": "Cast failed. Try again.",
   "castProgressWebFallback": "Switching to universal mode (QR code)…",
-  "castFriendlyTvUnreachable": "Your TV isn't responding on the network. Check: (1) it's turned on, (2) it's on the SAME WiFi as your phone (not the \"guest\" network), (3) the \"Client isolation / AP isolation\" option is turned OFF in your router settings.",
+  "castFriendlyTvUnreachable": "The TV is not responding. Check that it is switched on and connected to the same private network as this device.",
   "castProgressDetecting": "Detecting the TV…",
   "castDlnaReceiverFallback": "DLNA receiver",
-  "castErrorApIsolation": "Your TV can't reach your phone (guest WiFi or AP isolation?). Put the phone and the TV on the SAME WiFi network (not the guest network) and turn off AP isolation.",
+  "castErrorApIsolation": "The TV cannot reach this device. Connect both to the same private network, without a guest network.",
   "castProgressRetrying": "Retrying in compatibility mode ({attempt}/{total})…",
   "castFriendlyTvStuck": "Your TV is stuck on a previous cast. Turn it off for a few seconds, turn it back on and try again.",
   "castErrorReceiverRejected": "The TV rejected this stream — the format is probably not supported by this receiver. Try another channel.",
@@ -1400,5 +1400,6 @@
   "castErrorTimeout": "Cast took too long — the TV or the network isn't responding",
   "castFriendlyDnsUnstable": "Unstable internet or DNS. Try again in a few seconds.",
   "castFriendlyProviderLimit": "Your IPTV provider is refusing an extra connection (limit reached). Close another app that's watching and try again.",
-  "castProgressValidating": "Checking the stream…"
+  "castProgressValidating": "Checking the stream…",
+  "castWindowsHelp": "Connect your PC and TV to the same private network (Wi-Fi or Ethernet). Choose a DLNA TV or Roku. Google Cast-only receivers are not supported on Windows. Use the TV remote for audio tracks and seeking."
 }

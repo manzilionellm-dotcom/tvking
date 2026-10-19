@@ -25,7 +25,7 @@ on:
   push:
     # ccr-** : branches de session Claude Code. Elles COMPILENT (artefacts
     # du run) mais ne publient pas : voir la condition de l'étape « Publier ».
-    branches: ['main', 'claude/**', 'feature/zuno-windows-cast-*', 'ccr-**']
+    branches: ['main', 'claude/**', 'ccr-**']
     paths:
       - '.github/workflows/build-zuno-windows.yml'
       - 'android-app/lib/main_windows.dart'

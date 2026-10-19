@@ -2762,5 +2762,6 @@
   "castErrorTimeout": "कास्ट का समय समाप्त हो गया",
   "castFriendlyDnsUnstable": "इंटरनेट या DNS अस्थिर है। बाद में फिर कोशिश करें।",
   "castFriendlyProviderLimit": "स्रोत अतिरिक्त कनेक्शन की अनुमति नहीं देता। दूसरा प्लेबैक बंद करें।",
-  "castProgressValidating": "स्ट्रीम जाँची जा रही है…"
+  "castProgressValidating": "स्ट्रीम जाँची जा रही है…",
+  "castWindowsHelp": "पीसी और टीवी को एक ही निजी नेटवर्क (Wi-Fi या Ethernet) से जोड़ें। DLNA टीवी या Roku चुनें। केवल Google Cast वाले रिसीवर Windows पर समर्थित नहीं हैं। ऑडियो और आगे-पीछे करने के लिए टीवी का रिमोट इस्तेमाल करें।"
 }

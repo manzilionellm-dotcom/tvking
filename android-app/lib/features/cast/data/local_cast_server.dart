@@ -868,7 +868,7 @@ class LocalCastServer {
   static const String _screenHtml = r'''<!doctype html>
 <html lang="fr"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>7 MOTION - Ecran</title>
+<title>ZUNO - Écran</title>
 <script src="//cdn.jsdelivr.net/npm/mpegts.js@1.7.3/dist/mpegts.js"></script>
 <style>*{margin:0;padding:0;box-sizing:border-box}html,body{width:100%;height:100%;
 background:#0A0A0C;color:#fff;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;overflow:hidden}

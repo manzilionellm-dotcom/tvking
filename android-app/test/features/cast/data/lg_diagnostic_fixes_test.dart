@@ -135,7 +135,7 @@ void main() {
       );
       final String msg = mgr.friendlyMessageFor(e);
       expect(msg, contains('allumée'));
-      expect(msg, contains('WiFi'));
+      expect(msg, contains('réseau privé'));
       // S'assure qu'on ne tombe PAS sur le message generique socket.
       expect(msg, isNot('Connexion impossible avec la TV.'));
     });

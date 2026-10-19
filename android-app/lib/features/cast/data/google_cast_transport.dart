@@ -209,7 +209,7 @@ class GoogleCastTransport implements CastTransport {
   @override
   Future<void> playStream({
     required String streamUrl,
-    String title = '7 MOTION',
+    String title = 'ZUNO',
     String? imageUrl,
   }) async {
     // Reset des marqueurs de diagnostic : evite d'afficher le chemin

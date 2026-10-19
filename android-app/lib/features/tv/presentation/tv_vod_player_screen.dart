@@ -77,6 +77,8 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
     with WidgetsBindingObserver {
   late NativeVideoController _c;
   final GlobalKey<DesktopCastControlsState> _desktopCastKey = GlobalKey<DesktopCastControlsState>();
+  bool _desktopCasting = false;
+  String? _playingUrl;
   late VodPlayItem _item;
   final FocusNode _focus = FocusNode();
 
@@ -244,8 +246,9 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
       'CINEMA',
       'lecture ${item.id} ${local != null ? '(hors ligne)' : ''} à ${startAt.inSeconds}s',
     );
+    setState(() => _playingUrl = local ?? item.url);
     _c.setUrl(
-      local ?? item.url,
+      _playingUrl!,
       vod: true,
       startAt: startAt,
       preferredAudio: audioPref ?? appLang,
@@ -478,6 +481,7 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
   // ---------------------------------------------------------
 
   void _seekBy(int direction, {bool repeat = false}) {
+    if (_desktopCasting) return;
     _repeat = repeat ? _repeat + 1 : 0;
     final int step = _repeat > 15 ? 60 : (_repeat > 5 ? 30 : 10);
     final Duration base = _seekTarget ?? _c.position;
@@ -500,6 +504,7 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
   }
 
   void _togglePlay() {
+    if (_desktopCasting && _desktopCastKey.currentState?.ownsSession != true) return;
     if (_desktopCastKey.currentState?.ownsSession == true) {
       unawaited(_desktopCastKey.currentState!.togglePause());
       return;
@@ -715,6 +720,23 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
       return KeyEventResult.handled;
     }
 
+    // Les pistes et la barre de temps locales ne commandent pas la TV.
+    // Pause/reprise passent par le transport ; les autres réglages restent
+    // sur la télécommande du récepteur jusqu'au retour au PC.
+    if (_desktopCasting) {
+      final DesktopCastControlsState? cast = _desktopCastKey.currentState;
+      if (!repeat) {
+        if (_isOk(k) || k == LogicalKeyboardKey.mediaPlayPause) {
+          unawaited(cast?.togglePause());
+        } else if (k == LogicalKeyboardKey.mediaPlay) {
+          unawaited(cast?.resume());
+        } else if (k == LogicalKeyboardKey.mediaPause || k == LogicalKeyboardKey.mediaStop) {
+          unawaited(cast?.pause());
+        }
+      }
+      return KeyEventResult.ignored;
+    }
+
     if (_fatal) {
       if (_isOk(k) && !repeat) {
         setState(() {
@@ -868,18 +890,28 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
                       child: NativeVideoView(controller: _c),
                     ),
                   ),
-                  if (!_c.firstFrame && !_fatal && !_c.holdFrame)
+                  if (!_desktopCasting && !_c.firstFrame && !_fatal && !_c.holdFrame)
                     _buildLoading(),
-                  if (_c.cues.isNotEmpty) _buildSubtitles(),
-                  if (_overlay || _fatal) _buildOverlay(context),
+                  if (!_desktopCasting && _c.cues.isNotEmpty) _buildSubtitles(),
+                  if (!_desktopCasting && (_overlay || _fatal)) _buildOverlay(context),
                   if (_toast != null) _buildToast(),
-                  if (_nextCard && _next != null) _buildNextCard(context),
-                  if (_tracksOpen) _buildTracks(context),
-                  if (_fatal) _buildError(context),
+                  if (!_desktopCasting && _nextCard && _next != null) _buildNextCard(context),
+                  if (!_desktopCasting && _tracksOpen) _buildTracks(context),
+                  if (!_desktopCasting && _fatal) _buildError(context),
                   if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows)
                     Positioned(top: TvDimens.safeV, right: TvDimens.safeH,
                       child: DesktopCastControls(key: _desktopCastKey,
-                        controller: _c, streamUrl: _item.url, title: _item.title, imageUrl: null)),
+                        controller: _c, streamUrl: _playingUrl ?? _item.url,
+                        title: _item.title, imageUrl: null,
+                        onHandoffChanged: (bool active) {
+                          if (!mounted) return;
+                          _seekTimer?.cancel();
+                          setState(() {
+                            _desktopCasting = active;
+                            _seekTarget = null;
+                            _tracksOpen = false;
+                          });
+                        })),
                 ],
               ),
             ),

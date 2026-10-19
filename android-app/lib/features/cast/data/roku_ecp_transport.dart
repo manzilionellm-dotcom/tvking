@@ -38,7 +38,7 @@ class RokuEcpTransport implements CastTransport {
   @override
   Future<void> playStream({
     required String streamUrl,
-    String title = '7 MOTION',
+    String title = 'ZUNO',
     String? imageUrl,
   }) async {
     final String videoFormat = _detectFormat(streamUrl);

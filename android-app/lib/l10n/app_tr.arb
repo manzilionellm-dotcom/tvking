@@ -2762,5 +2762,6 @@
   "castErrorTimeout": "Yayın bağlantısı zaman aşımına uğradı",
   "castFriendlyDnsUnstable": "İnternet veya DNS kararsız. Daha sonra tekrar deneyin.",
   "castFriendlyProviderLimit": "Kaynak ek bağlantıya izin vermiyor. Başka bir oynatmayı durdurun.",
-  "castProgressValidating": "Akış kontrol ediliyor…"
+  "castProgressValidating": "Akış kontrol ediliyor…",
+  "castWindowsHelp": "Bilgisayarı ve TV’yi aynı özel ağa (Wi-Fi veya Ethernet) bağlayın. DLNA TV veya Roku seçin. Yalnızca Google Cast kullanan alıcılar Windows’ta desteklenmez. Ses ve ileri sarma için TV kumandasını kullanın."
 }

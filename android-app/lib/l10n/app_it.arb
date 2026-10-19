@@ -2762,5 +2762,6 @@
   "castErrorTimeout": "Tempo di trasmissione scaduto",
   "castFriendlyDnsUnstable": "Internet o DNS instabile. Riprova più tardi.",
   "castFriendlyProviderLimit": "La sorgente non consente altre connessioni. Interrompi un’altra riproduzione.",
-  "castProgressValidating": "Verifica del flusso…"
+  "castProgressValidating": "Verifica del flusso…",
+  "castWindowsHelp": "Collega PC e TV alla stessa rete privata (Wi-Fi o Ethernet). Scegli una TV DLNA o Roku. I ricevitori con solo Google Cast non sono supportati su Windows. Usa il telecomando della TV per le tracce audio e per avanzare."
 }
