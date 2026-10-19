@@ -33,6 +33,10 @@ class _TvVipCountriesScreenState extends State<TvVipCountriesScreen> {
   @override
   void initState() {
     super.initState();
+    // Capture immédiate : un initialiseur late serait évalué au premier
+    // clic, potentiellement APRÈS un changement de profil.
+    _profileId = ActiveProfile.instance.id;
+    _selected = VipCountriesRepository.instance.current.toList();
     ActiveProfile.instance.listenable.addListener(_profileChanged);
   }
 
@@ -59,7 +63,11 @@ class _TvVipCountriesScreenState extends State<TvVipCountriesScreen> {
         _selected,
         profileId: _profileId,
       );
-      if (mounted) Navigator.of(context).pop(true);
+      if (mounted &&
+          ActiveProfile.instance.id == _profileId &&
+          (ModalRoute.of(context)?.isCurrent ?? false)) {
+        Navigator.of(context).pop(true);
+      }
     } catch (_) {
       if (mounted)
         setState(() {
