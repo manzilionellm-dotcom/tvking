@@ -1,0 +1,72 @@
+User-Agent: *
+Allow: /
+Disallow: /api/
+Disallow: /ops
+
+User-Agent: GPTBot
+Allow: /
+Disallow: /api/
+Disallow: /ops
+
+User-Agent: ChatGPT-User
+Allow: /
+Disallow: /api/
+Disallow: /ops
+
+User-Agent: OAI-SearchBot
+Allow: /
+Disallow: /api/
+Disallow: /ops
+
+User-Agent: PerplexityBot
+Allow: /
+Disallow: /api/
+Disallow: /ops
+
+User-Agent: Perplexity-User
+Allow: /
+Disallow: /api/
+Disallow: /ops
+
+User-Agent: ClaudeBot
+Allow: /
+Disallow: /api/
+Disallow: /ops
+
+User-Agent: anthropic-ai
+Allow: /
+Disallow: /api/
+Disallow: /ops
+
+User-Agent: Claude-Web
+Allow: /
+Disallow: /api/
+Disallow: /ops
+
+User-Agent: Google-Extended
+Allow: /
+Disallow: /api/
+Disallow: /ops
+
+User-Agent: Applebot-Extended
+Allow: /
+Disallow: /api/
+Disallow: /ops
+
+User-Agent: CCBot
+Allow: /
+Disallow: /api/
+Disallow: /ops
+
+User-Agent: DuckAssistBot
+Allow: /
+Disallow: /api/
+Disallow: /ops
+
+User-Agent: meta-externalagent
+Allow: /
+Disallow: /api/
+Disallow: /ops
+
+Host: https://tvking.vercel.app
+Sitemap: https://tvking.vercel.app/sitemap.xml
