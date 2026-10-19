@@ -1412,6 +1412,78 @@ index 0000000..59839b2
 +    expect(await settings.isConfirmed(profileId: 'one'), isFalse);
 +  });
 +}
+diff --git a/test/features/simple_home/premium_home_visual_test.dart b/test/features/simple_home/premium_home_visual_test.dart
+index 3a20e59..0f69941 100644
+--- a/test/features/simple_home/premium_home_visual_test.dart
++++ b/test/features/simple_home/premium_home_visual_test.dart
+@@ -117,6 +117,14 @@ void main() {
+     await HiddenCategoriesStore.instance.ensureLoaded();
+     await ParentalControls.instance.load();
+   });
++  setUp(() async {
++    // Chaque scénario démarre sans déclaration mémorisée ; un scénario
++    // dédié ci-dessous vérifie plusieurs entrées avec le même profil.
++    final prefs = await SharedPreferences.getInstance();
++    for (final key in prefs.getKeys().where((k) => k.startsWith('security.age_gate_confirmed_at.profile.'))) {
++      await prefs.remove(key);
++    }
++  });
+   tearDownAll(() async {
+     PlaylistDatabase.instance.debugUseDatabase(null);
+     await db.close();
+@@ -283,16 +291,15 @@ void main() {
+         category: 'Mixte',
+         streamUrl: 'https://example.test/fixture-only',
+         isLive: true),
+-    Channel(id: 'adult-film-fixture', name: 'XXX Film Fixture', category: 'Mixte',
++    Channel(id: 'adult-film-fixture', name: 'XXX Film Fixture', category: 'FOR ADULTS',
+         streamUrl: 'https://example.test/movie/fixture.mp4', isLive: false),
+-    Channel(id: 'adult-episode-fixture', name: 'XXX Series Fixture S01E01', category: 'Mixte',
++    Channel(id: 'adult-episode-fixture', name: 'XXX Series Fixture S01E01', category: 'FOR ADULTS',
+         streamUrl: 'https://example.test/series/fixture.mp4', isLive: false),
+-    // Métadonnée de test uniquement : une entrée 18+ parmi trois publiques.
+-    // Elle était auparavant noyée sous le seuil de 40 % de sa catégorie.
++    // Catégorie fournisseur explicite : le titre seul ne prouve pas le 18+.
+     Channel(
+         id: 'restricted',
+         name: 'XXX Test Entry',
+-        category: 'Mixte',
++        category: 'FOR ADULTS',
+         streamUrl: 'https://example.test/fixture-only',
+         isLive: true),
+   ];
+@@ -395,7 +402,7 @@ void main() {
+     await enterParentalPin(tester, '2468');
+     expect(find.byType(AlertDialog), findsNothing);
+     expect(find.text('Adultes 18+'), findsOneWidget);
+-    await tester.tap(find.text('Mixte'));
++    await tester.tap(find.widgetWithText(ActionChip, 'Direct'));
+     await _render(tester);
+     expect(find.text('XXX Test Entry'), findsOneWidget);
+     expect(find.text('XXX Film Fixture'), findsNothing);
+@@ -471,7 +478,7 @@ void main() {
+     await mountParentalHome(tester);
+     await openAdultPrompt(tester);
+     await enterParentalPin(tester, '2468');
+-    await tester.tap(find.text('Mixte'));
++    await tester.tap(find.widgetWithText(ActionChip, 'Direct'));
+     await _render(tester);
+     expect(find.text('XXX Test Entry'), findsOneWidget);
+     expect(find.text('XXX Film Fixture'), findsNothing);
+@@ -499,6 +506,13 @@ void main() {
+     expect(find.byType(AlertDialog), findsNothing);
+     expect(find.text('Adultes 18+'), findsOneWidget);
+     expect(find.text('Public One'), findsNothing);
++    // Retour à TV puis nouvelle entrée : aucune seconde confirmation.
++    await tester.tap(find.text('TV'));
++    await _render(tester);
++    await tester.tap(find.text('18+'));
++    await _render(tester);
++    expect(find.byType(AlertDialog), findsNothing);
++    expect(find.text('Adultes 18+'), findsOneWidget);
+     await tester.pumpWidget(const SizedBox.shrink());
+   });
+ 
 diff --git a/test/features/vod/content_partition_test.dart b/test/features/vod/content_partition_test.dart
 index bc3351b..e37180e 100644
 --- a/test/features/vod/content_partition_test.dart
