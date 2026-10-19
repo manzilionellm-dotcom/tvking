@@ -1043,16 +1043,20 @@ index aea5dc9a..35aa4e0a 100644
    }
  
 diff --git a/lib/features/channels/domain/channel.dart b/lib/features/channels/domain/channel.dart
-index b06174de..742c5669 100644
+index b06174de..4a56d0d1 100644
 --- a/lib/features/channels/domain/channel.dart
 +++ b/lib/features/channels/domain/channel.dart
-@@ -52,6 +52,10 @@ class Channel {
+@@ -52,6 +52,14 @@ class Channel {
    /// chaînes fictives de démo).
    final int? playlistId;
  
 +  /// Clé locale unique entre fournisseurs ; l'identifiant EPG reste séparé.
 +  String get sourceScopedId => playlistId == null || id.endsWith('@p$playlistId')
 +      ? id : '$id@p$playlistId';
++
++  /// Identifiant fournisseur pour les appels API ; jamais le suffixe local.
++  String get sourceRawId => playlistId != null && id.endsWith('@p$playlistId')
++      ? id.substring(0, id.length - '@p$playlistId'.length) : id;
 +
    /// Nom affiché (ex : "Canal+ Sport HD").
    final String name;
@@ -1131,10 +1135,18 @@ index 00000000..891dd711
 +  }
 +}
 diff --git a/lib/features/epg/data/epg_repository.dart b/lib/features/epg/data/epg_repository.dart
-index 0ccfb847..f98c3685 100644
+index 0ccfb847..627b6d59 100644
 --- a/lib/features/epg/data/epg_repository.dart
 +++ b/lib/features/epg/data/epg_repository.dart
-@@ -31,6 +31,7 @@ import 'epg_alias_index.dart';
+@@ -17,7 +17,6 @@
+ 
+ import 'dart:async';
+ import 'dart:convert';
+-import 'dart:io';
+ 
+ import 'package:flutter/foundation.dart';
+ import 'package:http/http.dart' as http;
+@@ -31,6 +30,7 @@ import 'epg_alias_index.dart';
  import 'epg_id.dart';
  import 'epg_import_stats.dart';
  import 'xmltv_parser.dart';
@@ -1142,7 +1154,50 @@ index 0ccfb847..f98c3685 100644
  
  class EpgRepository {
    EpgRepository._();
-@@ -362,19 +363,8 @@ class EpgRepository {
+@@ -44,6 +44,7 @@ class EpgRepository {
+ 
+   bool _initialized = false;
+   bool _syncing = false;
++  Future<void> _syncTail = Future<void>.value();
+ 
+   bool get isSyncing => _syncing;
+ 
+@@ -349,7 +350,26 @@ class EpgRepository {
+     http.Client? httpClient,
+     void Function(int progressBytes)? onProgress,
+   }) async {
+-    if (_syncing) return 0;
++    // Ajouter dix sources ne doit pas abandonner neuf guides pendant le
++    // premier import. File séquentielle : une seule inflation/XML/SQLite.
++    final Future<void> previous = _syncTail;
++    final Completer<void> finished = Completer<void>();
++    _syncTail = finished.future;
++    await previous;
++    try {
++      return await _downloadAndImport(url: url, knownChannelIds: knownChannelIds,
++          httpClient: httpClient, onProgress: onProgress);
++    } finally {
++      finished.complete();
++    }
++  }
++
++  Future<int> _downloadAndImport({
++    required String url,
++    Set<String>? knownChannelIds,
++    http.Client? httpClient,
++    void Function(int progressBytes)? onProgress,
++  }) async {
+     _syncing = true;
+     try {
+       await initialize();
+@@ -357,24 +377,15 @@ class EpgRepository {
+       final http.Client client = httpClient ?? http.Client();
+       try {
+         final http.Request req = http.Request('GET', Uri.parse(url));
+-        final http.StreamedResponse resp = await client.send(req);
++        final http.StreamedResponse resp = await client.send(req)
++            .timeout(const Duration(seconds: 30));
+         if (resp.statusCode != 200) {
            throw Exception('HTTP ${resp.statusCode}');
          }
  
@@ -1160,11 +1215,12 @@ index 0ccfb847..f98c3685 100644
 -          bytes = bytes.transform<List<int>>(gzip.decoder);
 -        }
 +        // L'en-tête peut décrire les octets AVANT décompression HTTP.
-+        Stream<List<int>> bytes = decodeXmltvTransport(resp.stream);
++        Stream<List<int>> bytes = decodeXmltvTransport(resp.stream
++            .timeout(const Duration(seconds: 30)));
  
          // Compteur progression simple
          if (onProgress != null) {
-@@ -397,7 +387,13 @@ class EpgRepository {
+@@ -397,7 +408,13 @@ class EpgRepository {
          // Vague 4 : 1:N + normalisation + self-alias M3U (tvg-id = Channel.id
          // mais « tf1.fr » ≠ « TF1.fr » sans rabotage).
          final Map<String, List<String>> aliases = await _loadAliases();
@@ -1179,6 +1235,117 @@ index 0ccfb847..f98c3685 100644
          if (knownChannelIds != null) {
            index.addSelfAliases(knownChannelIds);
          }
+diff --git a/lib/features/epg/data/expiring_catchup_service.dart b/lib/features/epg/data/expiring_catchup_service.dart
+index 417d3a72..a3dbdc98 100644
+--- a/lib/features/epg/data/expiring_catchup_service.dart
++++ b/lib/features/epg/data/expiring_catchup_service.dart
+@@ -60,21 +60,19 @@ class ExpiringCatchupService {
+   List<ExpiringCatchupItem> _cache = const <ExpiringCatchupItem>[];
+   DateTime? _at;
+   bool _busy = false;
++  String? _affinityKey;
+ 
+   /// [affinity] : chaînes classées par intérêt (récents puis favoris) — on
+   /// n'interroge que les 4 premières qui supportent le catch-up.
+   Future<List<ExpiringCatchupItem>> load(List<Channel> affinity) async {
+     final DateTime now = DateTime.now();
+-    if (_busy) return _cache;
++    final String key = affinity.map((Channel c) => c.id).join('|');
++    if (_busy) return key == _affinityKey ? _cache : const <ExpiringCatchupItem>[];
++    if (_affinityKey != key) { _cache = const <ExpiringCatchupItem>[]; _at = null; }
++    _affinityKey = key;
+     if (_at != null && now.difference(_at!) < _ttl) return _cache;
+     _busy = true;
+     try {
+-      final Playlist? src = _activeXtream();
+-      if (src == null) {
+-        _cache = const <ExpiringCatchupItem>[];
+-        _at = now;
+-        return _cache;
+-      }
+       final List<Channel> targets = <Channel>[];
+       final Set<String> seen = <String>{};
+       for (final Channel c in affinity) {
+@@ -89,18 +87,16 @@ class ExpiringCatchupService {
+         _at = now;
+         return _cache;
+       }
+-      final XtreamClient client = XtreamClient(
+-        serverUrl: src.xtreamServer!,
+-        username: src.xtreamUsername!,
+-        password: src.xtreamPassword!,
+-      );
+       final List<ExpiringCatchupItem> out = <ExpiringCatchupItem>[];
+       final int nowS = now.millisecondsSinceEpoch ~/ 1000;
+-      try {
+-        for (final Channel c in targets) {
+-          try {
++      for (final Channel c in targets) {
++        final Playlist? src = _sourceFor(c.playlistId);
++        if (src == null) continue;
++        final XtreamClient client = XtreamClient(serverUrl: src.xtreamServer!,
++            username: src.xtreamUsername!, password: src.xtreamPassword!);
++        try {
+             final List<Map<String, dynamic>> rows = await client
+-                .fetchArchiveTable(c.id.substring('xtream-'.length));
++                .fetchArchiveTable(c.sourceRawId.substring('xtream-'.length));
+             final int days = c.catchupDays ?? 0;
+             for (final Map<String, dynamic> r in rows) {
+               if ((r['has_archive']?.toString() ?? '0') != '1') continue;
+@@ -123,12 +119,11 @@ class ExpiringCatchupService {
+                 expiresAtMs: expiryS * 1000,
+               ));
+             }
+-          } catch (_) {
+-            // Chaîne sans data table / panel grognon : on passe.
+-          }
++        } catch (_) {
++          // Chaîne sans data table / panel grognon : on passe.
++        } finally {
++          client.dispose();
+         }
+-      } finally {
+-        client.dispose();
+       }
+       out.sort((ExpiringCatchupItem a, ExpiringCatchupItem b) =>
+           a.expiresAtMs.compareTo(b.expiresAtMs));
+@@ -143,19 +138,17 @@ class ExpiringCatchupService {
+     }
+   }
+ 
+-  Playlist? _activeXtream() {
+-    Playlist? fallback;
++  Playlist? _sourceFor(int? id) {
+     for (final Playlist p in PlaylistRepository.instance.currentPlaylists) {
+-      if (p.type != PlaylistType.xtream) continue;
++      if (p.id != id || !p.isActive || p.type != PlaylistType.xtream) continue;
+       if (p.xtreamServer == null ||
+           p.xtreamUsername == null ||
+           p.xtreamPassword == null) {
+         continue;
+       }
+-      if (p.isActive) return p;
+-      fallback ??= p;
++      return p;
+     }
+-    return fallback;
++    return null;
+   }
+ 
+   /// Les titres de `get_simple_data_table` sont souvent en base64 —
+diff --git a/lib/features/epg/data/short_epg_service.dart b/lib/features/epg/data/short_epg_service.dart
+index 2d8bfbde..efbf898d 100644
+--- a/lib/features/epg/data/short_epg_service.dart
++++ b/lib/features/epg/data/short_epg_service.dart
+@@ -57,7 +57,7 @@ class ShortEpgService {
+   /// n'est pas Xtream, si sa playlist n'a plus d'identifiants, ou si le
+   /// panel ne répond rien d'exploitable.
+   Future<List<EpgProgram>> upcomingFor(Channel channel) {
+-    final String? streamId = _xtreamStreamId(channel.id);
++    final String? streamId = _xtreamStreamId(channel.sourceRawId);
+     if (streamId == null) return Future<List<EpgProgram>>.value(const <EpgProgram>[]);
+ 
+     final ({DateTime at, List<EpgProgram> programs})? hit = _cache[channel.id];
 diff --git a/lib/features/epg/data/xmltv_transport.dart b/lib/features/epg/data/xmltv_transport.dart
 new file mode 100644
 index 00000000..e8a53a31
@@ -2109,7 +2276,7 @@ index 1c164d35..af6b5462 100644
    }
  }
 diff --git a/lib/features/playlists/data/playlist_repository.dart b/lib/features/playlists/data/playlist_repository.dart
-index d51cb67e..92457be0 100644
+index d51cb67e..492f13ab 100644
 --- a/lib/features/playlists/data/playlist_repository.dart
 +++ b/lib/features/playlists/data/playlist_repository.dart
 @@ -15,9 +15,7 @@
@@ -2553,6 +2720,15 @@ index d51cb67e..92457be0 100644
            }
            // Compteur VIVANT : chaque lot importé fait grimper le total
            // affiché à l'écran (le client voit que « ça avance »).
+@@ -1362,7 +1308,7 @@ class PlaylistRepository {
+       // l'import AVANT la sync XMLTV (elle s'en sert pour ranger chaque
+       // programme sous l'id de sa chaîne — fin du « Programme non
+       // disponible » sur les comptes Xtream). Vague 4 : index 1:N.
+-      await EpgRepository.instance.saveAliasIndex(xtream.epgAliasIndex);
++      await _persistAliasesFromDb(await PlaylistDatabase.instance.database, playlistId);
+       // EPG auto en arrière-plan (Xtream a sa propre URL XMLTV). On passe les
+       // IDS collectés pendant l'import en flux (pas de liste Channel gardée).
+       if (newPlaylist.epgUrl != null) {
 @@ -1385,7 +1331,7 @@ class PlaylistRepository {
    //  SUPPRESSION
    // ============================================================
@@ -2592,6 +2768,15 @@ index d51cb67e..92457be0 100644
      // Même nettoyage anti-fuite que _deletePlaylist (voir plus bas).
      Channel.clearComputedCaches();
    }
+@@ -1633,7 +1587,7 @@ class PlaylistRepository {
+         // PONT EPG : mêmes alias qu'à l'ajout (le refresh re-télécharge
+         // get_live_streams → correspondances à jour avant la sync XMLTV).
+         // Vague 4 : 1:N.
+-        await EpgRepository.instance.saveAliasIndex(xtream.epgAliasIndex);
++        await _persistAliasesFromChannels(channels);
+         // EPG : même correctif que le chemin M3U ci-dessus — le refresh
+         // des chaînes rafraîchit aussi le guide (sinon il se périme en ~2 j).
+         if (playlist.epgUrl != null && playlist.epgUrl!.isNotEmpty) {
 @@ -1653,6 +1607,8 @@ class PlaylistRepository {
    // ============================================================
  
@@ -5451,6 +5636,35 @@ index 66795897..766139bb 100644
          return ListView(
            padding: const EdgeInsets.all(16),
            children: <Widget>[
+diff --git a/lib/features/vod/presentation/series_detail_screen.dart b/lib/features/vod/presentation/series_detail_screen.dart
+index 7a179fad..e2a19ddd 100644
+--- a/lib/features/vod/presentation/series_detail_screen.dart
++++ b/lib/features/vod/presentation/series_detail_screen.dart
+@@ -84,7 +84,7 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
+     return Channel(
+       id: e.id,
+       name: '${e.tag} · ${e.title}',
+-      category: widget.series.name,
++      category: widget.series.category,
+       streamUrl: url,
+       isLive: false,
+       logoUrl: e.posterUrl ?? widget.series.posterUrl,
+@@ -111,6 +111,7 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
+         streamUrl: e.streamUrl,
+         posterUrl: e.posterUrl ?? widget.series.posterUrl,
+         containerExt: e.containerExt,
++        category: widget.series.category,
+         isEpisode: true,
+         groupName: widget.series.name,
+       ));
+@@ -140,6 +141,7 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
+         streamUrl: e.streamUrl,
+         posterUrl: e.posterUrl ?? widget.series.posterUrl,
+         containerExt: e.containerExt,
++        category: widget.series.category,
+         isEpisode: true,
+         groupName: widget.series.name,
+       ));
 diff --git a/lib/l10n/app_ar.arb b/lib/l10n/app_ar.arb
 index cc26b4a3..fd6c4419 100644
 --- a/lib/l10n/app_ar.arb
@@ -5751,6 +5965,59 @@ index 00000000..5d428137
 +    }));
 +  });
 +}
+diff --git a/test/features/epg/multiple_source_guides_test.dart b/test/features/epg/multiple_source_guides_test.dart
+new file mode 100644
+index 00000000..e8247941
+--- /dev/null
++++ b/test/features/epg/multiple_source_guides_test.dart
+@@ -0,0 +1,47 @@
++import 'dart:async';
++import 'package:flutter_test/flutter_test.dart';
++import 'package:http/http.dart' as http;
++import 'package:http/testing.dart';
++import 'package:shared_preferences/shared_preferences.dart';
++import 'package:sqflite_common_ffi/sqflite_ffi.dart';
++import 'package:tv_king/features/epg/data/epg_repository.dart';
++import 'package:tv_king/features/playlists/data/playlist_database.dart';
++
++String stamp(DateTime d) => '${d.year}${d.month.toString().padLeft(2, '0')}${d.day.toString().padLeft(2, '0')}'
++    '${d.hour.toString().padLeft(2, '0')}${d.minute.toString().padLeft(2, '0')}00 +0000';
++
++void main() {
++  TestWidgetsFlutterBinding.ensureInitialized();
++  sqfliteFfiInit();
++  SharedPreferences.setMockInitialValues(<String, Object>{});
++  test('deux imports concurrents sont servis et un tvg-id partagé ne mélange pas leurs programmes', () async {
++    final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
++    await PlaylistDatabase.instance.debugCreate(db);
++    PlaylistDatabase.instance.debugUseDatabase(db);
++    addTearDown(() async { PlaylistDatabase.instance.debugUseDatabase(null); await db.close(); });
++    final epg = EpgRepository.instance;
++    await epg.saveAliases(<String, List<String>>{'shared.tv': <String>['xtream-1@p1', 'xtream-1@p2']});
++    final firstStarted = Completer<void>();
++    final releaseFirst = Completer<void>();
++    final now = DateTime.now().toUtc();
++    final client = MockClient((http.Request req) async {
++      if (req.url.host == 'one.invalid') { firstStarted.complete(); await releaseFirst.future; }
++      final xml = '<tv><programme start="${stamp(now.subtract(const Duration(minutes: 10)))}" '
++          'stop="${stamp(now.add(const Duration(hours: 1)))}" channel="shared.tv">'
++          '<title>${req.url.host}</title></programme></tv>';
++      return http.Response(xml, 200);
++    });
++    addTearDown(client.close);
++    final first = epg.downloadAndImport(url: 'https://one.invalid/guide', knownChannelIds: <String>{'xtream-1@p1'}, httpClient: client);
++    await firstStarted.future;
++    final second = epg.downloadAndImport(url: 'https://two.invalid/guide', knownChannelIds: <String>{'xtream-1@p2'}, httpClient: client);
++    releaseFirst.complete();
++    expect(await Future.wait(<Future<int>>[first, second]), <int>[1, 1]);
++    final rows = await db.query('epg_programs', orderBy: 'channel_id');
++    expect(rows, hasLength(2));
++    expect(rows.first['channel_id'], 'xtream-1@p1');
++    expect(rows.first['title'], 'one.invalid');
++    expect(rows.last['channel_id'], 'xtream-1@p2');
++    expect(rows.last['title'], 'two.invalid');
++  });
++}
 diff --git a/test/features/epg/xmltv_transport_test.dart b/test/features/epg/xmltv_transport_test.dart
 new file mode 100644
 index 00000000..dd13aba9
@@ -5933,10 +6200,10 @@ index befc0183..cb78d61e 100644
  }
 diff --git a/test/features/playlists/multiple_active_sources_test.dart b/test/features/playlists/multiple_active_sources_test.dart
 new file mode 100644
-index 00000000..bb6d3c2f
+index 00000000..6c15e68a
 --- /dev/null
 +++ b/test/features/playlists/multiple_active_sources_test.dart
-@@ -0,0 +1,77 @@
+@@ -0,0 +1,82 @@
 +import 'dart:convert';
 +import 'package:flutter_test/flutter_test.dart';
 +import 'package:http/http.dart' as http;
@@ -5986,6 +6253,11 @@ index 00000000..bb6d3c2f
 +    expect(all.map((Channel c) => c.id).toSet(), hasLength(10));
 +    expect(all.every((Channel c) => c.id == 'shared.tv@p${c.playlistId}'), isTrue);
 +    expect(await repo.countActiveLiveChannels(), 10);
++    final firstPage = await repo.getChannelsPage(limit: 6);
++    final nextPage = await repo.getChannelsPage(afterLocalId: firstPage.nextCursor, limit: 6);
++    expect(firstPage.channels, hasLength(6));
++    expect(nextPage.channels, hasLength(4));
++    expect(<String>{...firstPage.channels.map((Channel c) => c.id), ...nextPage.channels.map((Channel c) => c.id)}, hasLength(10));
 +    expect(await repo.searchLiveChannels('source', limit: 20), hasLength(10));
 +    expect(await repo.getChannelsByExternalIds(all.map((Channel c) => c.id).toList()), hasLength(10));
 +    await repo.setPlaylistEnabled(ids.first, false);
@@ -6299,6 +6571,73 @@ index 00000000..a22be720
 +    expect(downloader.activeCount, 0);
 +  });
 +}
+diff --git a/test/features/simple_home/premium_home_visual_test.dart b/test/features/simple_home/premium_home_visual_test.dart
+index e81a29e7..6b2a9e0a 100644
+--- a/test/features/simple_home/premium_home_visual_test.dart
++++ b/test/features/simple_home/premium_home_visual_test.dart
+@@ -27,6 +27,7 @@ import 'package:tv_king/features/simple_home/presentation/simple_home_screen.dar
+ import 'package:tv_king/features/simple_home/presentation/widgets/home_navigation_bar.dart';
+ import 'package:tv_king/features/simple_home/presentation/widgets/category_browser_view.dart';
+ import 'package:tv_king/features/security/data/parental_controls.dart';
++import 'package:tv_king/features/vod/presentation/cinema_screen.dart';
+ import 'package:tv_king/l10n/generated/app_localizations.dart';
+ 
+ import '../../support/premium_capture_fonts.dart';
+@@ -281,6 +282,10 @@ void main() {
+         category: 'Mixte',
+         streamUrl: 'https://example.test/fixture-only',
+         isLive: true),
++    Channel(id: 'adult-film-fixture', name: 'XXX Film Fixture', category: 'Mixte',
++        streamUrl: 'https://example.test/movie/fixture.mp4', isLive: false),
++    Channel(id: 'adult-episode-fixture', name: 'XXX Series Fixture S01E01', category: 'Mixte',
++        streamUrl: 'https://example.test/series/fixture.mp4', isLive: false),
+     // Métadonnée de test uniquement : une entrée 18+ parmi trois publiques.
+     // Elle était auparavant noyée sous le seuil de 40 % de sa catégorie.
+     Channel(
+@@ -342,6 +347,25 @@ void main() {
+     await tester.pumpWidget(const SizedBox.shrink());
+   });
+ 
++  testWidgets('18+ : Films ouvre le cinéma réservé, le direct ne contient aucune VOD',
++      (WidgetTester tester) async {
++    await AppPinSettings.instance.setPin('2468');
++    await mountParentalHome(tester);
++    await openAdultPrompt(tester);
++    await enterParentalPin(tester, '2468');
++    final Finder films = find.widgetWithText(ActionChip, 'Films');
++    expect(films, findsOneWidget);
++    expect(find.widgetWithText(ActionChip, 'Séries'), findsOneWidget);
++    await tester.tap(films);
++    await _render(tester);
++    final CinemaScreen screen = tester.widget<CinemaScreen>(find.byType(CinemaScreen));
++    expect(screen.adultOnly, isTrue);
++    expect(screen.initialTab, 0);
++    expect(tester.takeException(), isNull);
++    await tester.pumpWidget(const SizedBox.shrink());
++    await tester.pump(const Duration(seconds: 1));
++  });
++
+   testWidgets(
+       '18+ : PIN valide, catégorie mixte puis révocation immédiate Kids',
+       (WidgetTester tester) async {
+@@ -354,6 +378,8 @@ void main() {
+     await tester.tap(find.text('Mixte'));
+     await _render(tester);
+     expect(find.text('XXX Test Entry'), findsOneWidget);
++    expect(find.text('XXX Film Fixture'), findsNothing);
++    expect(find.text('XXX Series Fixture S01E01'), findsNothing);
+     expect(find.text('Public One'), findsNothing);
+     final VoidCallback stalePress = tester
+         .widget<PremiumPress>(
+@@ -428,6 +454,8 @@ void main() {
+     await tester.tap(find.text('Mixte'));
+     await _render(tester);
+     expect(find.text('XXX Test Entry'), findsOneWidget);
++    expect(find.text('XXX Film Fixture'), findsNothing);
++    expect(find.text('XXX Series Fixture S01E01'), findsNothing);
+     await ProfilesRepository.instance.setActive(other);
+     await _render(tester);
+     expect(find.text('XXX Test Entry'), findsNothing);
 diff --git a/test/features/sports/live_alert_plan_test.dart b/test/features/sports/live_alert_plan_test.dart
 index 352024b6..bac8198e 100644
 --- a/test/features/sports/live_alert_plan_test.dart
@@ -6383,10 +6722,10 @@ index e57468d5..62089e56 100644
    await db.delete('watch_sessions');
 diff --git a/test/features/vod/content_partition_test.dart b/test/features/vod/content_partition_test.dart
 new file mode 100644
-index 00000000..d115c323
+index 00000000..bc3351bf
 --- /dev/null
 +++ b/test/features/vod/content_partition_test.dart
-@@ -0,0 +1,33 @@
+@@ -0,0 +1,38 @@
 +import 'package:flutter_test/flutter_test.dart';
 +import 'package:tv_king/features/channels/domain/channel.dart';
 +import 'package:tv_king/features/vod/domain/content_partition.dart';
@@ -6395,6 +6734,11 @@ index 00000000..d115c323
 +void main() {
 +  Channel channel(String url, {String category = 'Cinéma', int source = 1, String name = 'Cinéma en direct'}) => Channel(
 +      id: '1@p$source', playlistId: source, name: name, category: category, streamUrl: url, isLive: true);
++  test('les API reçoivent le numéro fournisseur sans le suffixe local', () {
++    const item = Channel(id: 'xtream-42@p7', playlistId: 7, name: 'Test', category: '', streamUrl: '', isLive: true);
++    expect(item.sourceRawId, 'xtream-42');
++    expect(item.sourceScopedId, 'xtream-42@p7');
++  });
 +  test('une chaîne cinéma reste du direct ; un fichier film même ancien ne devient pas live', () {
 +    expect(ContentPartition.isLive(channel('https://test.invalid/live/1.ts')), isTrue);
 +    expect(ContentPartition.isLive(channel('https://test.invalid/movie/1.ts')), isFalse);
@@ -6540,6 +6884,26 @@ index 00000000..d8d61269
 +    expect(await series.fetchSeries(), hasLength(9));
 +  });
 +}
+diff --git a/test/features/vod/playback_position_repository_test.dart b/test/features/vod/playback_position_repository_test.dart
+index f5e6f1ff..ca5e2be1 100644
+--- a/test/features/vod/playback_position_repository_test.dart
++++ b/test/features/vod/playback_position_repository_test.dart
+@@ -50,6 +50,15 @@ void main() {
+     await repo.load();
+   });
+ 
++  test('la catégorie de restriction survit au redémarrage', () async {
++    await repo.record(key: 'vod-1@p2', position: const Duration(minutes: 4),
++        duration: const Duration(minutes: 90), name: 'Film test', category: '18+',
++        streamUrl: 'https://example.invalid/movie.mp4');
++    repo.resetForTest();
++    await repo.load();
++    expect(repo.entryFor('vod-1@p2')?.category, '18+');
++  });
++
+   group('Seuil bas (60 s) — zapping d\'essai', () {
+     test('position < 60 s → rien n\'est sauvegardé', () async {
+       await rec('vod-1', 59);
 diff --git a/test/features/vod/source_deletion_test.dart b/test/features/vod/source_deletion_test.dart
 new file mode 100644
 index 00000000..35105424
