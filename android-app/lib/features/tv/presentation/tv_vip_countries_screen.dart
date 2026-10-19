@@ -326,9 +326,9 @@ class VipCountryFlag extends StatelessWidget {
     child: CachedNetworkImage(
       imageUrl: 'https://flagcdn.com/w80/${code == 'uk' ? 'gb' : code}.png',
       fit: BoxFit.contain,
-      placeholder: (_, _) =>
+      placeholder: (context, url) =>
           Center(child: Text(code.toUpperCase(), style: TvTokens.ui(14))),
-      errorWidget: (_, _, _) =>
+      errorWidget: (context, url, error) =>
           Center(child: Text(code.toUpperCase(), style: TvTokens.ui(14))),
     ),
   );
