@@ -786,7 +786,7 @@
       }
     }
   },
-  "tvDeletePanelSourceConfirm": "“{name}” is sent by your reseller. Deleted here, it no longer comes back on this TV unless your reseller sends it again from the panel.",
+  "tvDeletePanelSourceConfirm": "“{name}” will be deleted from this TV. Syncing or resending it from the panel will not restore it. To restore it, add it again in the app.",
   "@tvDeletePanelSourceConfirm": {
     "placeholders": {
       "name": {
@@ -794,7 +794,7 @@
       }
     }
   },
-  "tvDeleteSourceFailed": "Could not delete: no connection to the server. Nothing was removed, try again in a moment.",
+  "tvDeleteSourceFailed": "Local deletion failed. Please try again in a moment.",
   "tvActivate": "Activate",
   "tvMyTeams": "My teams",
   "tvAdd": "Add",

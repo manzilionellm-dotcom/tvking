@@ -446,8 +446,17 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     }
     // Progression réelle → « pas gelé ». La lecture est repartie : on remet à
     // zéro le budget de reconnexion (et on lève un éventuel état d'erreur).
-    if (_controller.position != _lastPos && !_controller.hasError) {
-      _lastPos = _controller.position;
+    final bool progressed = ReconnectPlan.madePlaybackProgress(
+      previous: _lastPos,
+      current: _controller.position,
+      playing: _controller.isPlaying,
+      buffering: _controller.isBuffering,
+      hasError: _controller.hasError,
+    );
+    // On recale la mesure même après un retour à zéro, sans effacer les
+    // échecs. La prochaine vraie avancée pourra alors être reconnue.
+    _lastPos = _controller.position;
+    if (progressed) {
       _lastProgress = DateTime.now();
       _recoverAttempts = 0;
       _cancelRecover();
