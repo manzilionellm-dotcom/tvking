@@ -5,6 +5,10 @@
 import { ImageResponse } from "next/og";
 import { aio } from "../lib/aio";
 
+// Required by the GitHub Pages static export (deploy-pages.yml, output: "export"),
+// same as app/robots.ts and app/sitemap.ts. On Vercel the card is built once either way.
+export const dynamic = "force-static";
+
 export const alt = `${aio.siteName} — L'app IPTV, pas les chaînes`;
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";

@@ -1,5 +1,9 @@
 /**
- * app/api/status/route.ts — real-time status over Server-Sent Events. REAL DATA ONLY.
+ * app/api/status/route.server.ts — real-time status over Server-Sent Events. REAL DATA ONLY.
+ *
+ * The `.server.ts` suffix is a page extension that next.config.ts enables only for the
+ * Vercel build. The GitHub Pages static export (GITHUB_PAGES=true) cannot contain a dynamic
+ * route, so there this file is not a route at all and the widget simply gets a 404.
  *
  * GET  → one `status` SSE event, then the stream closes with `retry: 60000` so EventSource
  *        reconnects every 60 s (cheap polling with SSE semantics; no long-lived function time).

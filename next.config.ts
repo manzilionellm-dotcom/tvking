@@ -7,6 +7,9 @@ const CSP_REPORT_ONLY =
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  // `route.server.ts` files are dynamic server routes (the /api/status SSE feed). They exist
+  // only in the Vercel build: a static export (GitHub Pages) cannot serve them.
+  pageExtensions: onPages ? ["tsx", "ts", "jsx", "js"] : ["tsx", "ts", "jsx", "js", "server.ts"],
   ...(onPages && {
     output: "export" as const,
     basePath: "/tvking",
