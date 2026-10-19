@@ -3071,5 +3071,13 @@
   "castFriendlyDnsUnstable": "Internet ou DNS instable. Réessaie dans quelques secondes.",
   "castFriendlyProviderLimit": "Ton fournisseur IPTV refuse une connexion supplémentaire (limite atteinte). Coupe une autre app qui regarde et réessaie.",
   "castProgressValidating": "Vérification du flux…",
-  "castWindowsHelp": "PC et TV sur le même réseau privé (Wi-Fi ou Ethernet). Choisis une TV DLNA ou Roku. Google Cast seul n’est pas disponible sous Windows. Utilise la télécommande de la TV pour les pistes audio et l’avance rapide."
+  "castWindowsHelp": "PC et TV sur le même réseau privé (Wi-Fi ou Ethernet). Choisis une TV DLNA ou Roku. Google Cast seul n’est pas disponible sous Windows. Utilise la télécommande de la TV pour les pistes audio et l’avance rapide.",
+  "vipCountriesTitle": "Mes pays · VIP",
+  "vipCountriesHint": "Choisis jusqu’à 10 pays. Leur ordre est mémorisé pour ce profil ; les autres restent accessibles.",
+  "vipCountriesOrder": "Mon ordre",
+  "vipCountriesEmpty": "Aucun pays trouvé dans les chaînes disponibles.",
+  "vipCountriesSaveError": "Enregistrement impossible. Réessaie.",
+  "vipCountriesMoveUp": "Monter",
+  "vipCountriesMoveDown": "Descendre",
+  "vipCountriesRemove": "Retirer"
 }

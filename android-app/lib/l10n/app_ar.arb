@@ -1333,5 +1333,13 @@
   "castFriendlyDnsUnstable": "الإنترنت أو DNS غير مستقر. أعد المحاولة بعد بضع ثوانٍ.",
   "castFriendlyProviderLimit": "يرفض مزوّد IPTV اتصالًا إضافيًا (تم بلوغ الحد الأقصى). أغلق تطبيقًا آخر يشاهد ثم أعد المحاولة.",
   "castProgressValidating": "جارٍ التحقق من البث…",
-  "castWindowsHelp": "وصّل الكمبيوتر والتلفاز بالشبكة الخاصة نفسها (Wi-Fi أو Ethernet). اختر تلفاز DLNA أو Roku. الأجهزة التي تدعم Google Cast فقط غير مدعومة على Windows. استخدم جهاز تحكم التلفاز للمسارات الصوتية والتقديم."
+  "castWindowsHelp": "وصّل الكمبيوتر والتلفاز بالشبكة الخاصة نفسها (Wi-Fi أو Ethernet). اختر تلفاز DLNA أو Roku. الأجهزة التي تدعم Google Cast فقط غير مدعومة على Windows. استخدم جهاز تحكم التلفاز للمسارات الصوتية والتقديم.",
+  "vipCountriesTitle": "بلداني · VIP",
+  "vipCountriesHint": "اختر حتى 10 بلدان. يُحفظ ترتيبها لهذا الملف الشخصي وتبقى البلدان الأخرى متاحة.",
+  "vipCountriesOrder": "ترتيبي",
+  "vipCountriesEmpty": "لم يتم العثور على بلد في القنوات المتاحة.",
+  "vipCountriesSaveError": "تعذر الحفظ. حاول مجددًا.",
+  "vipCountriesMoveUp": "نقل لأعلى",
+  "vipCountriesMoveDown": "نقل لأسفل",
+  "vipCountriesRemove": "إزالة"
 }

@@ -1333,5 +1333,13 @@
   "castFriendlyDnsUnstable": "Intaneti au DNS si thabiti. Jaribu tena baada ya sekunde chache.",
   "castFriendlyProviderLimit": "Mtoa huduma wako wa IPTV amekataa muunganisho wa ziada (kikomo kimefikiwa). Funga programu nyingine inayotazama kisha ujaribu tena.",
   "castProgressValidating": "Inathibitisha mtiririko…",
-  "castWindowsHelp": "Unganisha PC na TV kwenye mtandao uleule wa binafsi (Wi-Fi au Ethernet). Chagua TV ya DLNA au Roku. Vipokezi vya Google Cast pekee havitumiki kwenye Windows. Tumia rimoti ya TV kuchagua sauti na kusogeza video."
+  "castWindowsHelp": "Unganisha PC na TV kwenye mtandao uleule wa binafsi (Wi-Fi au Ethernet). Chagua TV ya DLNA au Roku. Vipokezi vya Google Cast pekee havitumiki kwenye Windows. Tumia rimoti ya TV kuchagua sauti na kusogeza video.",
+  "vipCountriesTitle": "Nchi zangu · VIP",
+  "vipCountriesHint": "Chagua hadi nchi 10. Mpangilio huhifadhiwa kwa wasifu huu; nyingine bado zinapatikana.",
+  "vipCountriesOrder": "Mpangilio wangu",
+  "vipCountriesEmpty": "Hakuna nchi iliyopatikana katika vituo vinavyopatikana.",
+  "vipCountriesSaveError": "Imeshindwa kuhifadhi. Jaribu tena.",
+  "vipCountriesMoveUp": "Sogeza juu",
+  "vipCountriesMoveDown": "Sogeza chini",
+  "vipCountriesRemove": "Ondoa"
 }

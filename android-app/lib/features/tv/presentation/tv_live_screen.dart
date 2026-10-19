@@ -27,6 +27,7 @@ import '../../channels/data/recently_watched_repository.dart';
 import '../../channels/data/trending_repository.dart';
 import '../../channels/domain/channel.dart';
 import '../domain/live_shelves.dart';
+import '../domain/vip_channel_groups.dart';
 import '../../device/data/device_identity.dart';
 import '../../epg/data/epg_repository.dart';
 import '../../epg/domain/epg_program.dart';
@@ -42,6 +43,9 @@ import 'tv_live_preview.dart';
 import 'tv_phone_source_qr.dart';
 import 'tv_player_screen.dart';
 import 'tv_shell.dart';
+import 'tv_vip_countries_screen.dart';
+import '../data/vip_countries_repository.dart';
+import '../../profiles/data/active_profile.dart';
 
 // Polissage TV-ONLY des libellés (n'altère PAS le curateur partagé/mobile ni le
 // nom brut servant au matching flux/EPG) :
@@ -95,6 +99,50 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
   List<String> _recentIds = RecentlyWatchedRepository.instance.current;
   List<Channel> _all = const <Channel>[];
   List<String> _cats = const <String>[];
+  static const String _vipPrefix = 'vip.country.';
+  Map<String, List<Channel>> _countryChannels = const {};
+  bool _vipInitialApplied = false;
+  bool _userPickedCategory = false;
+
+  void _onVipChanged() {
+    if (!mounted) return;
+    setState(() {
+      final countries = VipCountriesRepository.instance.current;
+      if (!_vipInitialApplied && !_userPickedCategory && countries.isNotEmpty) {
+        _selectedCat = '$_vipPrefix${countries.first}';
+        _vipInitialApplied = true;
+      }
+      _recompute();
+    });
+  }
+
+  void _onVipProfileChanged() {
+    _vipInitialApplied = false;
+    _userPickedCategory = false;
+    _selectedCat = null;
+    _catDebounce?.cancel();
+    VipCountriesRepository.instance.load();
+  }
+
+  Future<void> _openVipCountries() async {
+    _catDebounce?.cancel();
+    final saved = await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(
+        builder: (_) => TvShell(
+          child: TvVipCountriesScreen(
+            available: {
+              for (final entry in _countryChannels.entries)
+                entry.key: entry.value.length,
+            },
+          ),
+        ),
+      ),
+    );
+    if (!mounted || saved != true) return;
+    final selected = VipCountriesRepository.instance.current;
+    if (selected.isNotEmpty) _select('$_vipPrefix${selected.first}');
+  }
+
   String? _selectedCat;
   // Dernière liste BRUTE reçue (avant filtre Mode Enfants) : permet de
   // re-filtrer instantanément quand le parent bascule le Mode Enfants.
@@ -172,6 +220,9 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
   void initState() {
     super.initState();
     TvActivity.enter();
+    VipCountriesRepository.instance.addListener(_onVipChanged);
+    ActiveProfile.instance.listenable.addListener(_onVipProfileChanged);
+    VipCountriesRepository.instance.load();
     BlackBox.instance.info('SCREEN', 'Direct ouvert');
     _ingest(PlaylistRepository.instance.currentChannels);
     _sub = PlaylistRepository.instance.channelsStream.listen(_ingest);
@@ -257,6 +308,8 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     TvActivity.leave();
     BlackBox.instance.info('SCREEN', 'Direct fermé');
     _ingestGen++; // annule un pré-calcul en cours
+    VipCountriesRepository.instance.removeListener(_onVipChanged);
+    ActiveProfile.instance.listenable.removeListener(_onVipProfileChanged);
     _sub?.cancel();
     _favSub?.cancel();
     _trendSub?.cancel();
@@ -408,8 +461,20 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
         }
       }
     }
-    // Catégories affichées (pseudo-catégories non vides en tête).
-    final List<String> cats = <String>[];
+    // Groupes pays construits UNE FOIS par lot, à partir du cache calculé
+    // en isolate. Jamais de regex sur toutes les chaînes au déplacement D-pad.
+    _countryChannels = _precomputed ? vipChannelGroups(_all) : const {};
+    if (_selectedCat?.startsWith(_vipPrefix) == true &&
+        !VipCountriesRepository.instance.current.contains(
+          _selectedCat!.substring(_vipPrefix.length),
+        )) {
+      _selectedCat = _cats.isEmpty ? null : _cats.first;
+    }
+    // Catégories affichées (pays VIP dans l'ordre choisi, puis autres rayons).
+    final List<String> cats = <String>[
+      for (final code in VipCountriesRepository.instance.current)
+        '$_vipPrefix$code',
+    ];
     if (_trendCh.isNotEmpty) cats.add(_kTrendCat);
     if (_favCh.isNotEmpty) cats.add(_kFavCat);
     if (_recentCh.isNotEmpty) cats.add(_kRecentCat);
@@ -440,7 +505,11 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
   /// catégories → fil UI figé ~3,7 s → ANR. Ici : une seule passe O(n) de
   /// filtre sur la catégorie BRUTE (trim, aucune curation) → instantané.
   void _recomputeShown() {
-    if (_selectedCat == _kTrendCat) {
+    if (_selectedCat?.startsWith(_vipPrefix) == true) {
+      _shownList =
+          _countryChannels[_selectedCat!.substring(_vipPrefix.length)] ??
+          const [];
+    } else if (_selectedCat == _kTrendCat) {
       _shownList = _trendCh;
     } else if (_selectedCat == _kFavCat) {
       _shownList = _favCh;
@@ -511,6 +580,8 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
 
   /// Compteur affiché dans la C-List pour une catégorie (vraie ou pseudo).
   int _countOf(String cat) {
+    if (cat.startsWith(_vipPrefix))
+      return _countryChannels[cat.substring(_vipPrefix.length)]?.length ?? 0;
     if (cat == _kTrendCat) return _trendCh.length;
     if (cat == _kFavCat) return _favCh.length;
     if (cat == _kRecentCat) return _recentCh.length;
@@ -521,6 +592,7 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
   /// Sélectionne une catégorie (focus/OK) puis recalcule SEULEMENT la grille
   /// (pas tout l'état dérivé — cf. _recomputeShown, anti-ANR).
   void _select(String cat) {
+    _userPickedCategory = true;
     if (_selectedCat == cat) return;
     setState(() {
       _selectedCat = cat;
@@ -552,6 +624,7 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
 
   /// Vrai pour les pseudo-catégories spéciales (teintées or).
   bool _isSpecialCat(String cat) =>
+      cat.startsWith(_vipPrefix) ||
       cat == _kTrendCat ||
       cat == _kFavCat ||
       cat == _kRecentCat ||
@@ -565,6 +638,10 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
 
   String _catLabel(BuildContext context, String cat) {
     // La clé historique de catégorie reste stable pendant un changement de langue.
+    if (cat.startsWith(_vipPrefix)) {
+      final code = cat.substring(_vipPrefix.length);
+      return '★ ${ChannelClassifier.countryForKey(code)?.name ?? code.toUpperCase()}';
+    }
     if (cat == 'Autres') return context.l10n.tvOther;
     if (cat == _kTrendCat) return context.l10n.tvTrending;
     if (cat == _kFavCat) return '★ ${context.l10n.navFavorites}';
@@ -842,18 +919,29 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     //   gauche  : catégories (pleine hauteur)
     //   centre  : LISTE des chaînes (n° · logo · nom), focus = aperçu à droite
     //   droite  : aperçu vidéo (même moteur que le plein écran) + guide
-    final Widget cList = _CategoryRail(
-      cats: _dispCats,
-      selectedCat: _selectedCat,
-      // La liste des catégories ne PREND JAMAIS le focus initial / au retour
-      // (sinon la 1re catégorie se sélectionnait toute seule en revenant du
-      // lecteur). Le focus revient sur la LIGNE de chaîne quittée.
-      autofocusFirst: false,
-      fill: true,
-      labelOf: (String c) => _catLabel(context, c),
-      countOf: _countOf,
-      onSelect: _select,
-      onFocusDebounced: _selectDebounced,
+    final Widget cList = Column(
+      children: [
+        TvCtaButton(
+          label: context.l10n.vipCountriesTitle,
+          onSelect: _precomputed ? _openVipCountries : null,
+        ),
+        const SizedBox(height: 12),
+        Expanded(
+          child: _CategoryRail(
+            cats: _dispCats,
+            selectedCat: _selectedCat,
+            // La liste des catégories ne PREND JAMAIS le focus initial / au retour
+            // (sinon la 1re catégorie se sélectionnait toute seule en revenant du
+            // lecteur). Le focus revient sur la LIGNE de chaîne quittée.
+            autofocusFirst: false,
+            fill: true,
+            labelOf: (String c) => _catLabel(context, c),
+            countOf: _countOf,
+            onSelect: _select,
+            onFocusDebounced: _selectDebounced,
+          ),
+        ),
+      ],
     );
 
     final Widget list = _ChannelList(

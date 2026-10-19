@@ -2763,5 +2763,13 @@
   "castFriendlyDnsUnstable": "Нестабильное соединение или DNS. Повторите позже.",
   "castFriendlyProviderLimit": "Источник не разрешает ещё одно соединение. Остановите другое воспроизведение.",
   "castProgressValidating": "Проверка потока…",
-  "castWindowsHelp": "Подключите ПК и телевизор к одной частной сети (Wi-Fi или Ethernet). Выберите телевизор DLNA или Roku. Приёмники только с Google Cast не поддерживаются в Windows. Для звуковых дорожек и перемотки используйте пульт телевизора."
+  "castWindowsHelp": "Подключите ПК и телевизор к одной частной сети (Wi-Fi или Ethernet). Выберите телевизор DLNA или Roku. Приёмники только с Google Cast не поддерживаются в Windows. Для звуковых дорожек и перемотки используйте пульт телевизора.",
+  "vipCountriesTitle": "Мои страны · VIP",
+  "vipCountriesHint": "Выберите до 10 стран. Порядок сохраняется для этого профиля; остальные остаются доступны.",
+  "vipCountriesOrder": "Мой порядок",
+  "vipCountriesEmpty": "В доступных каналах страны не найдены.",
+  "vipCountriesSaveError": "Не удалось сохранить. Повторите попытку.",
+  "vipCountriesMoveUp": "Выше",
+  "vipCountriesMoveDown": "Ниже",
+  "vipCountriesRemove": "Удалить"
 }

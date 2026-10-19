@@ -2763,5 +2763,13 @@
   "castFriendlyDnsUnstable": "Internet of DNS is instabiel. Probeer later opnieuw.",
   "castFriendlyProviderLimit": "De bron weigert een extra verbinding. Stop een andere weergave.",
   "castProgressValidating": "Stream controleren…",
-  "castWindowsHelp": "Verbind je pc en tv met hetzelfde privénetwerk (wifi of Ethernet). Kies een DLNA-tv of Roku. Ontvangers met alleen Google Cast worden niet ondersteund op Windows. Gebruik de tv-afstandsbediening voor audio en doorspoelen."
+  "castWindowsHelp": "Verbind je pc en tv met hetzelfde privénetwerk (wifi of Ethernet). Kies een DLNA-tv of Roku. Ontvangers met alleen Google Cast worden niet ondersteund op Windows. Gebruik de tv-afstandsbediening voor audio en doorspoelen.",
+  "vipCountriesTitle": "Mijn landen · VIP",
+  "vipCountriesHint": "Kies maximaal 10 landen. De volgorde wordt voor dit profiel opgeslagen; de overige blijven beschikbaar.",
+  "vipCountriesOrder": "Mijn volgorde",
+  "vipCountriesEmpty": "Geen land gevonden in de beschikbare zenders.",
+  "vipCountriesSaveError": "Opslaan mislukt. Probeer opnieuw.",
+  "vipCountriesMoveUp": "Omhoog",
+  "vipCountriesMoveDown": "Omlaag",
+  "vipCountriesRemove": "Verwijderen"
 }

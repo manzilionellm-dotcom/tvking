@@ -2763,5 +2763,13 @@
   "castFriendlyDnsUnstable": "Internet oder DNS instabil. Versuche es später erneut.",
   "castFriendlyProviderLimit": "Die Quelle erlaubt keine weitere Verbindung. Beende eine andere Wiedergabe.",
   "castProgressValidating": "Stream wird geprüft…",
-  "castWindowsHelp": "Verbinde PC und TV mit demselben privaten Netzwerk (WLAN oder Ethernet). Wähle einen DLNA-TV oder Roku. Reine Google-Cast-Empfänger werden unter Windows nicht unterstützt. Für Tonspuren und Spulen nutze die TV-Fernbedienung."
+  "castWindowsHelp": "Verbinde PC und TV mit demselben privaten Netzwerk (WLAN oder Ethernet). Wähle einen DLNA-TV oder Roku. Reine Google-Cast-Empfänger werden unter Windows nicht unterstützt. Für Tonspuren und Spulen nutze die TV-Fernbedienung.",
+  "vipCountriesTitle": "Meine Länder · VIP",
+  "vipCountriesHint": "Wähle bis zu 10 Länder. Die Reihenfolge wird für dieses Profil gespeichert; alle anderen bleiben verfügbar.",
+  "vipCountriesOrder": "Meine Reihenfolge",
+  "vipCountriesEmpty": "Kein Land in den verfügbaren Sendern gefunden.",
+  "vipCountriesSaveError": "Speichern fehlgeschlagen. Versuche es erneut.",
+  "vipCountriesMoveUp": "Nach oben",
+  "vipCountriesMoveDown": "Nach unten",
+  "vipCountriesRemove": "Entfernen"
 }

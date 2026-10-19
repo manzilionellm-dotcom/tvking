@@ -1333,5 +1333,13 @@
   "castFriendlyDnsUnstable": "Internet eller DNS är instabilt. Försök igen om några sekunder.",
   "castFriendlyProviderLimit": "Din IPTV-leverantör nekar ytterligare en anslutning (gränsen nådd). Stäng en annan app som tittar och försök igen.",
   "castProgressValidating": "Verifierar strömmen…",
-  "castWindowsHelp": "Anslut datorn och TV:n till samma privata nätverk (wifi eller Ethernet). Välj en DLNA-TV eller Roku. Mottagare med enbart Google Cast stöds inte på Windows. Använd TV:ns fjärrkontroll för ljudspår och spolning."
+  "castWindowsHelp": "Anslut datorn och TV:n till samma privata nätverk (wifi eller Ethernet). Välj en DLNA-TV eller Roku. Mottagare med enbart Google Cast stöds inte på Windows. Använd TV:ns fjärrkontroll för ljudspår och spolning.",
+  "vipCountriesTitle": "Mina länder · VIP",
+  "vipCountriesHint": "Välj upp till 10 länder. Ordningen sparas för profilen; övriga finns kvar.",
+  "vipCountriesOrder": "Min ordning",
+  "vipCountriesEmpty": "Inget land hittades bland tillgängliga kanaler.",
+  "vipCountriesSaveError": "Kunde inte spara. Försök igen.",
+  "vipCountriesMoveUp": "Flytta upp",
+  "vipCountriesMoveDown": "Flytta ned",
+  "vipCountriesRemove": "Ta bort"
 }
