@@ -563,6 +563,15 @@ jobs:
       #      l'ajoute (tools:node="remove").
       #  Contrôles : permission absente du bundle + certificat = clé maîtresse.
       # ------------------------------------------------------------------
+      # Le Store possède sa propre suite de codes : les secondes epoch
+      # consommaient inutilement la plage de mises à jour autorisée par Google.
+      # Ce manifeste est avancé après publication, sans renuméroter les APK.
+      - name: Numérotation incrémentale Google Play
+        if: inputs.play_aab == 'true'
+        run: |
+          python3 -m unittest discover -s ci -p 'test_play_tv_version.py'
+          python3 ci/play_tv_version.py ci/play-tv-version.json "$GITHUB_ENV"
+
       - name: Build AAB Google Play (Android TV)
         if: inputs.play_aab == 'true'
         run: |
@@ -586,8 +595,8 @@ jobs:
             || { echo "❌ minSdk 24 non posé pour l'AAB Play"; exit 1; }
           flutter build appbundle --release --no-tree-shake-icons \
             --android-skip-build-dependency-validation \
-            --build-number="$TV_BUILD_NUMBER" \
-            --build-name="$TV_VERSION_NAME" \
+            --build-number="$PLAY_VERSION_CODE" \
+            --build-name="$PLAY_VERSION_NAME" \
             --obfuscate --split-debug-info=build/symbols-aab \
             --dart-define=PLAY_BUILD=true \
             --dart-define=APP_BUILD_TS="$TV_BUILD_NUMBER" \
