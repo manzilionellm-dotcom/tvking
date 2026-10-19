@@ -15,6 +15,8 @@
 // =========================================================
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:tv_king/core/i18n/locale_repository.dart';
 import 'package:tv_king/features/cast/data/cast_manager.dart';
 import 'package:tv_king/features/cast/data/cast_session_diagnostic.dart';
 import 'package:tv_king/features/cast/data/stream_probe.dart';
@@ -54,6 +56,16 @@ AttemptResult _failed(int idx, String msg) => AttemptResult(
 
 void main() {
   final CastManager mgr = CastManager.instance;
+
+  // i18n : friendlyMessageFor sort desormais d'AppLocalizations via
+  // l10nNow. On force la langue FR pour garder les assertions
+  // textuelles deterministes.
+  setUpAll(() async {
+    TestWidgetsFlutterBinding.ensureInitialized();
+    SharedPreferences.setMockInitialValues(
+        <String, Object>{'app.locale.v1': 'fr'});
+    await LocaleRepository.instance.initialize();
+  });
 
   // ============================================================
   //  B2 : friendlyMessageFor — nouvelles branches

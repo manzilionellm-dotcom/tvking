@@ -22,6 +22,8 @@
 //    • choix audio / sous-titres retenu pour les films suivants.
 // =========================================================
 import 'dart:async';
+import 'package:flutter/foundation.dart';
+import '../desktop/desktop_cast_controls.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -74,6 +76,7 @@ enum _Zone { timeline, buttons }
 class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
     with WidgetsBindingObserver {
   late NativeVideoController _c;
+  final GlobalKey<DesktopCastControlsState> _desktopCastKey = GlobalKey<DesktopCastControlsState>();
   late VodPlayItem _item;
   final FocusNode _focus = FocusNode();
 
@@ -497,6 +500,10 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
   }
 
   void _togglePlay() {
+    if (_desktopCastKey.currentState?.ownsSession == true) {
+      unawaited(_desktopCastKey.currentState!.togglePause());
+      return;
+    }
     if (_c.isPlaying) {
       _c.pause();
       _saveProgress(flush: true);
@@ -869,6 +876,10 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
                   if (_nextCard && _next != null) _buildNextCard(context),
                   if (_tracksOpen) _buildTracks(context),
                   if (_fatal) _buildError(context),
+                  if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows)
+                    Positioned(top: TvDimens.safeV, right: TvDimens.safeH,
+                      child: DesktopCastControls(key: _desktopCastKey,
+                        controller: _c, streamUrl: _item.url, title: _item.title, imageUrl: null)),
                 ],
               ),
             ),

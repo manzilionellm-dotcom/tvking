@@ -18,11 +18,20 @@ import 'dart:io' show Socket;
 
 import 'package:flutter/foundation.dart';
 
+import '../../../core/crash/crash_reporting.dart';
+import '../../../core/i18n/l10n_now.dart';
+import '../../../core/notifications/notification_service.dart';
 import '../../../core/observability/structured_logger.dart';
+import '../../channels/domain/channel.dart';
+import '../../player/data/pip_service.dart';
+import '../../player/data/xtream_url_variants.dart';
 import '../domain/cast_device.dart';
 import 'cast_progress.dart';
+import 'cast_platform.dart';
+import 'cast_url_resolver.dart';
 import 'cast_session_diagnostic.dart';
 import 'cast_transport.dart';
+import 'google_cast_transport.dart';
 import 'dlna_capabilities.dart';
 import 'dlna_profiles.dart';
 import 'google_cast_api.dart';
@@ -46,7 +55,63 @@ import 'upnp_av_transport.dart';
 /// 40 s laisse la place a "1 direct (15 s) + relais (jusqu'a ~20 s)".
 /// Couple a la regle skip-direct->relais (cf. _castDlnaWithFailover),
 /// le cas median reste rapide ; seul l'echec complet va jusqu'a 40 s.
-const Duration kCastTotalTimeout = Duration(seconds: 40);
+/// 2026-07-10 : releve de 40 s -> 90 s. Le chemin Chromecast a
+/// desormais une cascade complete cast_proxy (25 s) -> bascule de
+/// receiver (~12 s) -> TV-direct (12 s) -> relais telephone (25 s) :
+/// 40 s tuait la session PENDANT que le repli gagnant travaillait.
+/// Le cas median reste rapide (le premier chemin marche, et les memos
+/// par hote evitent de re-derouler la cascade a chaque zap) ; seul
+/// l'echec complet va au bout du budget.
+const Duration kCastTotalTimeout = Duration(seconds: 90);
+
+/// Budget global DLNA — plus large que le Chromecast : l'échelle de
+/// failover (jusqu'à 9 stratégies, SOAP 15 s chacune) + les rendeurs
+/// LENTS (diag Nebula 2026-07-09 : relay+full réussit en ~30 s à lui
+/// seul) ne tiennent pas dans 40 s. Le timeout tuait des sessions
+/// PENDANT que la stratégie gagnante travaillait (« Nouvel essai en
+/// mode compatible (5/9)… » figé en échec).
+const Duration kCastTotalTimeoutDlna = Duration(seconds: 90);
+
+/// Fenêtre de validité de la mémoire de chemin DLNA. Passé ce délai
+/// sans nouvel échec, l'appareil retrouve le comportement par défaut
+/// (direct d'abord, timeout SOAP plein) — les conditions réseau ont
+/// pu changer, on re-sonde le chemin le plus autonome.
+const Duration kDlnaPathMemoTtl = Duration(minutes: 15);
+
+/// Timeout SOAP raccourci pour une tentative DIRECTE quand l'appareil
+/// vient de timeout en direct. 8 s couvre encore les TVs lentes au
+/// réveil (LG webOS : 8-12 s constatés SEULEMENT à la sortie de
+/// standby — or ici la TV vient de nous parler, elle n'est pas en
+/// standby) tout en divisant par ~2 le coût d'un direct muet.
+const Duration kDlnaShortSoapTimeout = Duration(seconds: 8);
+
+/// Mémoire de chemin DLNA par appareil (clé : `device.id`).
+///
+/// Diag boîte noire Nebula 2026-07-09 : le MÊME appareil accepte le
+/// direct en ~3 s la plupart du temps, puis reste muet 15 s (timeout
+/// SOAP) par vagues — et chaque vague coûtait 15 s de direct + ~22 s
+/// de relais = sessions à 40-70 s. Cette mémoire apprend :
+///   - 1 échec CONNEXION direct récent  → timeout direct raccourci (8 s)
+///   - 2 échecs consécutifs ou plus     → on démarre directement au
+///     relais (stratégie 3) tant que la fenêtre [kDlnaPathMemoTtl]
+///     n'a pas expiré, puis on re-sonde le direct.
+/// Un SUCCÈS direct remet le compteur à zéro — un appareil sain garde
+/// exactement le comportement historique.
+class _DlnaPathMemo {
+  int directConnFailStreak = 0;
+  DateTime? lastDirectConnFail;
+
+  /// STRATÉGIE GAGNANTE du dernier cast réussi sur cet appareil
+  /// (terrain LG webOS 2026-07-17 : la cascade re-payait ~45 s
+  /// d'essais perdus à CHAQUE chaîne — direct 15 s + relay+full en
+  /// timeout — avant de retomber sur la gagnante). Fraîcheur bornée
+  /// par [kDlnaPathMemoTtl] : expirée, on re-déroule l'échelle
+  /// complète (le direct, plus autonome, mérite d'être re-sondé).
+  /// Un échec TOTAL de cascade efface ce souvenir (la TV a peut-être
+  /// changé d'humeur — firmware, réseau, panel).
+  int? winningStrategy;
+  DateTime? lastWin;
+}
 
 /// Phase 1+/B5 — Exception interne levee par `_checkCancelled` quand
 /// une session inner a ete supersede par un timeout outer ou une
@@ -74,6 +139,21 @@ class CastManager extends ChangeNotifier {
   }
   static final CastManager instance = CastManager._();
 
+  /// Injection des entrées réseau pour reproduire les courses sans TV réelle.
+  @visibleForTesting
+  CastManager.forTesting({
+    required CastTransport Function(CastDevice) transportFactory,
+    required Future<StreamProbeResult> Function(String) probe,
+    Duration timeout = const Duration(seconds: 1),
+  }) : _testTransportFactory = transportFactory, _testProbe = probe, _testTimeout = timeout;
+
+  CastTransport Function(CastDevice)? _testTransportFactory;
+  Future<StreamProbeResult> Function(String)? _testProbe;
+  Duration? _testTimeout;
+
+  @visibleForTesting
+  void debugNativeSessionEvent(CastNativeSessionEvent event) => _onNativeSessionEvent(event);
+
   /// Phase 1+/G2 — abonnements aux streams natifs Google Cast SDK
   /// (sessionEvent + mediaStateChanged). Garde l'etat Dart aligne
   /// avec ce que la TV fait reellement, meme quand l'utilisateur
@@ -82,6 +162,7 @@ class CastManager extends ChangeNotifier {
   StreamSubscription<CastNativeMediaState>? _nativeMediaSub;
 
   void _subscribeToNativeEvents() {
+    if (CastPlatform.isWindows) return;
     _nativeSessionSub = GoogleCastApi.instance.sessionEventStream.listen(
       _onNativeSessionEvent,
       onError: (Object e) {
@@ -105,6 +186,9 @@ class CastManager extends ChangeNotifier {
   }
 
   void _onNativeSessionEvent(CastNativeSessionEvent evt) {
+    // Une fermeture Google tardive ne concerne jamais le nouveau Roku/DLNA.
+    if (_device != null && _device!.kind != CastDeviceKind.chromecast && _device!.kind != CastDeviceKind.googleCast) return;
+    if (evt.kind == 'ended' && _state == CastState.connecting) return;
     StructuredLogger.instance.info(
       domain: 'cast',
       event: 'native.session_event',
@@ -115,11 +199,49 @@ class CastManager extends ChangeNotifier {
     );
     switch (evt.kind) {
       case 'ended':
+        ++_sessionSeq;
+        // Le SDK signale la fin DEFINITIVE de la session — on aligne
+        // notre etat. ATTENTION : ne pas appeler disconnect() ici
+        // (boucle : notre disconnect() ferme aussi la session SDK).
+        if (_state == CastState.casting || _state == CastState.paused) {
+          _state = CastState.idle;
+          _setProgress(CastProgress.idle);
+        }
+        // Une session terminee invalide aussi le device/transport et la
+        // cible memorisee (si c'etait un Chromecast). Sans ce nettoyage,
+        // le bouton Cast restait dore "connecte" et le picker montrait
+        // un bandeau Stop pour une session qui n'existe plus, jusqu'a
+        // un disconnect() manuel.
+        _transport = null;
+        _device = null;
+        _currentTitle = null;
+        if (_selectedDevice?.kind == CastDeviceKind.chromecast || _selectedDevice?.kind == CastDeviceKind.googleCast) {
+          _selectedDevice = null;
+        }
+        // Revue 2026-07-09 (MAJEUR 2) : la fin de session peut venir de
+        // la TV elle-meme (stop TV, extinction) — sans ce nettoyage, le
+        // foreground service (wakelock + wifilock, notification
+        // « Diffusion sur la TV ») et la session relais tournaient
+        // indefiniment, plus rien ne declenchant disconnect().
+        _stopRelayKeepAlive();
+        if (_currentRelayUrl != null) {
+          LocalCastServer.instance.clearRelay(_currentRelayUrl!);
+          _currentRelayUrl = null;
+        }
+        notifyListeners();
+        break;
+      case 'receiver_switching':
+        // Fin de session PILOTÉE par le sender lui-même : bascule de
+        // receiver custom ⇄ Default (GoogleCastTransport, CAST_HANDOFF
+        // §6.2). Le natif re-sélectionne la même TV tout seul et
+        // playStream attend la reconnexion — on ne détruit PAS l'état
+        // (contrairement à 'ended'), sinon le cast en cours
+        // d'établissement perdrait device/transport.
+        break;
       case 'suspended':
-        // Le SDK signale la fin de la session — on aligne notre etat.
-        // ATTENTION : ne pas appeler disconnect() ici (eviterait une
-        // boucle car notre disconnect() ferme aussi la session SDK).
-        // On reset juste l'etat Dart.
+        // Suspension TEMPORAIRE (changement de reseau, veille) : le SDK
+        // peut la reprendre tout seul (`resumed`). On reflete juste
+        // l'etat sans jeter device/cible — comportement historique.
         if (_state == CastState.casting || _state == CastState.paused) {
           _state = CastState.idle;
           _setProgress(CastProgress.idle);
@@ -152,9 +274,7 @@ class CastManager extends ChangeNotifier {
             _state == CastState.casting ||
             _state == CastState.paused) {
           _state = CastState.error;
-          _errorMessage =
-              'La TV a refusé ce flux — format probablement non pris en '
-              'charge par ce récepteur. Essaie une autre chaîne.';
+          _errorMessage = l10nNow.castErrorReceiverRejected;
           _setProgress(CastProgress.failure(_errorMessage!));
         }
         break;
@@ -162,6 +282,7 @@ class CastManager extends ChangeNotifier {
   }
 
   void _onNativeMediaState(CastNativeMediaState state) {
+    if (_device != null && _device!.kind != CastDeviceKind.chromecast && _device!.kind != CastDeviceKind.googleCast) return;
     // L'etat Dart ne refait surface que pour les transitions
     // play/pause utiles a l'UI. On n'a pas (encore) de mapping
     // buffering -> CastState dedie (sera utile quand on aura un
@@ -185,6 +306,17 @@ class CastManager extends ChangeNotifier {
         if (_state == CastState.casting || _state == CastState.paused) {
           _state = CastState.idle;
           _setProgress(CastProgress.idle);
+          // AUDIT 19/08 : contrairement au chemin 'ended', ce chemin
+          // (stop depuis la telecommande TV) ne liberait RIEN — la
+          // session relais continuait de tirer le panel (1/1 occupe)
+          // et le foreground service (wakelock+wifilock) tournait,
+          // alors que l'UI se croyait a l'arret. Relancer une lecture
+          // passe de toute facon par un nouveau castTo/playStream.
+          _stopRelayKeepAlive();
+          if (_currentRelayUrl != null) {
+            LocalCastServer.instance.clearRelay(_currentRelayUrl!);
+            _currentRelayUrl = null;
+          }
         }
         break;
       case CastNativePlayerState.loading:
@@ -258,6 +390,16 @@ class CastManager extends ChangeNotifier {
   /// pour pouvoir la libérer dans `disconnect()`.
   String? _currentRelayUrl;
 
+  /// Mémoire de chemin DLNA par appareil (cf. [_DlnaPathMemo]).
+  final Map<String, _DlnaPathMemo> _dlnaPathMemos = <String, _DlnaPathMemo>{};
+
+  /// Dernier cast RÉUSSI par appareil (clé : `device.id`). Sert au
+  /// pré-vol TCP « soft-pass » : un appareil qui vient de jouer une
+  /// chaîne il y a quelques secondes n'est PAS derrière une isolation
+  /// AP — un refus de connexion ponctuel est un artefact de zapping
+  /// (renderer mono-connexion occupé), pas une TV injoignable.
+  final Map<String, DateTime> _lastCastSuccessAt = <String, DateTime>{};
+
   // ----- Surveillance de session DLNA (reconnexion auto) -----
   //  En DLNA, c'est le lecteur INTERNE de la TV qui bufferise (pas l'app) :
   //  on ne peut PAS faire un buffer « façon YouTube » côté sender. Le maximum
@@ -268,6 +410,16 @@ class CastManager extends ChangeNotifier {
   String? _dlnaLiveTitle;
   final List<DateTime> _dlnaReconnects = <DateTime>[];
   bool _dlnaReconnecting = false;
+
+  /// Contexte de REPLI RELAIS pour la reconnexion auto : URL upstream
+  /// (portail d'origine — token frais à chaque connexion) et profil
+  /// DLNA gagnant. Posés au démarrage du watchdog. Permettent, quand le
+  /// replay DIRECT reste muet (timeout connexion), de retenter UNE fois
+  /// via le relais du téléphone au lieu d'abandonner la session
+  /// (boîte noire 2026-07-09 : `dlna.auto_reconnect_fail` après 15 s,
+  /// l'utilisateur devait re-caster à la main).
+  String? _dlnaRelayFallbackUpstream;
+  DlnaProfile? _dlnaRelayFallbackProfile;
 
   /// Progression friendly-french exposée à l'UI. Le picker, la
   /// mini-bar et le VideoPlayerScreen s'abonnent via ListenableBuilder
@@ -346,6 +498,7 @@ class CastManager extends ChangeNotifier {
     _discoveryTimer?.cancel();
 
     void onDevice(CastDevice d) {
+      if (!CastPlatform.supports(d.kind)) return;
       // Double dédup : par id ET par host+port pour ne jamais lister
       // la même TV plusieurs fois même si SSDP et mDNS la renvoient
       // tous les deux (cas typique des Google TV qui font SSDP +
@@ -363,10 +516,22 @@ class CastManager extends ChangeNotifier {
         SsdpDiscovery.instance.discover(timeout: timeout).listen(onDevice);
 
     // mDNS en parallèle (Chromecast / Google TV)
-    _mdnsSub =
-        MdnsDiscovery.instance.discover(timeout: timeout).listen(onDevice);
+    if (!CastPlatform.isWindows) {
+      _mdnsSub = MdnsDiscovery.instance.discover(timeout: timeout).listen(onDevice);
+    }
 
     _discoveryTimer = Timer(timeout, () {
+      // On COUPE aussi les abonnements au timeout, pas seulement l'état.
+      // Sans ça, les générateurs SSDP/mDNS restaient vivants jusqu'à la
+      // PROCHAINE découverte (60s en warmup) : leur `finally` (fermeture
+      // socket UDP + release du MulticastLock) ne tournait jamais à
+      // temps → lock multicast tenu quasi en permanence (batterie) et
+      // sockets orphelines. Annuler la subscription complète le
+      // générateur async* → son finally s'exécute immédiatement.
+      _discoverySub?.cancel();
+      _mdnsSub?.cancel();
+      _discoverySub = null;
+      _mdnsSub = null;
       if (_state == CastState.discovering) {
         _state = isCasting ? CastState.casting : CastState.idle;
         notifyListeners();
@@ -397,13 +562,25 @@ class CastManager extends ChangeNotifier {
   }) {
     _warmupTimer?.cancel();
     Future<void>.delayed(initialDelay, () {
-      if (_state != CastState.discovering && !isCasting) {
+      if (_state != CastState.discovering &&
+          _state != CastState.connecting &&
+          !isCasting) {
         startDiscovery(timeout: const Duration(seconds: 3));
       }
     });
     _warmupTimer = Timer.periodic(interval, (_) {
-      // On ne dérange jamais une session active ou une discovery en cours
-      if (_state == CastState.discovering || isCasting) return;
+      // On ne dérange jamais une session active, une CONNEXION en cours
+      // ou une discovery en cours. Le garde `connecting` manquait : un
+      // castTo peut durer jusqu'à kCastTotalTimeout (40s) et le tick
+      // warmup (60s) pouvait tomber pendant — startDiscovery écrasait
+      // alors l'état `connecting` par `discovering` puis `idle`,
+      // corrompant l'UI (mini-bar / overlay / picker) en pleine
+      // négociation.
+      if (_state == CastState.discovering ||
+          _state == CastState.connecting ||
+          isCasting) {
+        return;
+      }
       startDiscovery(timeout: const Duration(seconds: 3));
     });
   }
@@ -438,77 +615,167 @@ class CastManager extends ChangeNotifier {
     String? channelGenre,
     String? imageUrl,
   }) async {
-    // Phase 1 / F-09 : on borne la session entiere a kCastTotalTimeout.
-    // En cas de depassement, _castToInner sera abandonne, on coupe
-    // proprement (disconnect best-effort) et on remonte une
-    // TimeoutException avec un message UX clair.
+    final int mySeq = ++_sessionSeq;
+    final Duration timeout = _testTimeout ?? (device.kind == CastDeviceKind.dlna ? kCastTotalTimeoutDlna : kCastTotalTimeout);
     try {
-      await _castToInner(
-        device,
-        streamUrl: streamUrl,
-        title: title,
-        channelName: channelName,
-        channelGenre: channelGenre,
-        imageUrl: imageUrl,
-      ).timeout(kCastTotalTimeout);
+      await _castToInner(device, mySeq: mySeq, streamUrl: streamUrl,
+          title: title, channelName: channelName, channelGenre: channelGenre,
+          imageUrl: imageUrl).timeout(timeout);
     } on TimeoutException {
-      // Phase 1+/B5 (2026-06-01) — Annulation cooperative.
-      // Bump `_sessionSeq` immediatement. L'inner orphelin verra
-      // au prochain `_checkCancelled` que sa session est obsolete
-      // et s'arretera proprement au lieu de continuer 90-157s.
-      _sessionSeq++;
+      // Le timeout appartient à CET appel. Un ancien délai ne doit jamais
+      // interrompre une nouvelle session qui fonctionne déjà.
+      if (mySeq != _sessionSeq) return;
+      await disconnect();
+      if (_sessionSeq != mySeq + 1) return;
+      _state = CastState.error;
+      _errorMessage = l10nNow.castErrorTimeout;
+      _setProgress(CastProgress.failure(l10nNow.castErrorTimeoutRetry,
+          details: 'castTo timeout after ${timeout.inSeconds}s'));
+      throw TimeoutException(_errorMessage, timeout);
+    }
+  }
+
+  // ============================================================
+  //  VAGUE B — Zapping en mode « télécommande pure »
+  // ============================================================
+  //  Pendant un cast, le téléphone est une TÉLÉCOMMANDE : changer de
+  //  chaîne doit changer la chaîne SUR LA TV, jamais rouvrir le flux
+  //  sur le téléphone (sur les comptes « 1 connexion », deux flux
+  //  simultanés = refus fournisseur → écran noir + instabilité).
+  //
+  //  Le CastManager porte donc un CONTEXTE DE ZAP partagé (playlist +
+  //  index de la chaîne en cours) posé par le lecteur ou par
+  //  `playChannel()`. Grâce à lui, TOUTES les surfaces (D-pad du
+  //  lecteur, overlay de cast, mini-barre globale) zappent par le
+  //  MÊME chemin : `castChannelOnCurrentSession`.
+
+  /// Playlist de zap de la session de cast courante (posée par le
+  /// lecteur ou `playChannel`). `null` tant qu'aucun contexte n'a été
+  /// fourni — les boutons Ch+/Ch- des surfaces globales se masquent.
+  List<Channel>? _castPlaylist;
+
+  /// Index de la chaîne EN COURS sur la TV dans [_castPlaylist].
+  int _castIndex = -1;
+
+  /// `true` si les surfaces globales (mini-barre, overlay) peuvent
+  /// proposer Ch+/Ch- : un cast est actif ET on connaît la playlist.
+  bool get canZapOnCast => isCasting && (_castPlaylist?.length ?? 0) > 1;
+
+  /// Chaîne actuellement diffusée sur la TV, si le contexte est connu.
+  Channel? get currentCastChannel =>
+      (_castPlaylist != null && _castIndex >= 0 &&
+              _castIndex < _castPlaylist!.length)
+          ? _castPlaylist![_castIndex]
+          : null;
+
+  /// Pose (ou met à jour) le contexte de zap de la session de cast :
+  /// [playlist] complète + [current] la chaîne qui vient de partir vers
+  /// la TV. Idempotent et sans effet réseau — ne fait que mémoriser.
+  void setCastPlaylist(List<Channel> playlist, Channel current) {
+    _castPlaylist = playlist;
+    _castIndex = playlist.indexWhere((Channel c) => c.id == current.id);
+    notifyListeners();
+  }
+
+  /// Chaîne suivante sur la TV (bouton Ch+ / ⏭ des surfaces globales).
+  Future<void> zapCastNext() => _zapCastBy(1);
+
+  /// Chaîne précédente sur la TV (bouton Ch- / ⏮).
+  Future<void> zapCastPrev() => _zapCastBy(-1);
+
+  Future<void> _zapCastBy(int delta) async {
+    final List<Channel>? list = _castPlaylist;
+    if (list == null || list.length < 2 || !isCasting) return;
+    // Un swap est déjà en cours (connecting) : on l'ignore plutôt que
+    // d'empiler des sessions — `_sessionSeq` annulerait la précédente,
+    // mais ne pas empiler du tout est plus doux pour le récepteur.
+    if (_state == CastState.connecting) return;
+    final int prev = _castIndex;
+    final int next =
+        ((_castIndex + delta) % list.length + list.length) % list.length;
+    final Channel ch = list[next];
+    _castIndex = next;
+    notifyListeners();
+    try {
+      // Même URL que le lecteur : format Xtream mémorisé appliqué
+      // (sinon 404 sur les panels qui exigent /live/).
+      final String castUrl = await CastUrlResolver.resolve(ch);
+      await castChannelOnCurrentSession(
+        streamUrl: castUrl,
+        title: ch.cleanName,
+        channelName: ch.cleanName,
+        channelGenre: ch.category,
+        imageUrl: ch.logoUrl,
+        channel: ch,
+      );
+    } on Object catch (e, st) {
+      // Échec du swap : l'état d'erreur est déjà posé par castTo et
+      // affiché par les surfaces abonnées. On journalise, on ne crashe
+      // jamais l'UI depuis un bouton de télécommande — mais un Error
+      // est un BUG : télémétrie crash au lieu d'un silence trompeur.
+      if (e is! Exception) {
+        CrashReporting.instance.recordError(e, st, context: 'cast.zapCastBy');
+      }
+      // L'index revient sur la chaîne réellement jouée : sinon le
+      // prochain Ch+ sauterait une chaîne jamais lancée.
+      _castIndex = prev;
+      notifyListeners();
       StructuredLogger.instance.warn(
         domain: 'cast',
-        event: 'session.global_timeout',
-        ctx: <String, Object?>{
-          'deviceKind': device.kind.name,
-          'deviceName': device.name,
-          'timeoutSeconds': kCastTotalTimeout.inSeconds,
-          'newSessionSeq': _sessionSeq,
-        },
+        event: 'zap.swap_failed',
+        ctx: <String, Object?>{'channel': ch.cleanName, 'error': '$e'},
       );
-      // Note : annulation cooperative — le Future inner finit son
-      // SOAP en cours (15s max) puis voit le mismatch de seq et exit.
-      // Plus court que les 90-157s pre-B5 mais pas instantane.
-      // [HYPOTHESE — historique] Limitation connue avant B5 :
-      // `.timeout()` abandonnait le Future de _castToInner mais Dart
-      // ne savait pas reellement
-      // l'interrompre. Les SOAP en cours continuent en arriere-plan
-      // jusqu'a leurs propres timeouts (15s SOAP x N), puis leurs
-      // exceptions deviennent des unhandled errors. Pas de leak
-      // memoire grave (HttpClient se fermera tout seul), juste du
-      // bruit dans les logs. Une vraie annulation cooperative (flag
-      // _cancelled verifie entre chaque strategie) sera ajoutee en
-      // Phase 2 si besoin.
-      //
-      // Best-effort cleanup : on coupe le transport courant pour ne
-      // pas laisser une connexion ouverte cote TV ; disconnect()
-      // reset l'etat.
-      try {
-        await disconnect();
-      } catch (_) {
-        // disconnect best-effort, on continue meme si echec.
-      }
-      // On remplace l'etat residuel par un error explicite — prend
-      // le pas sur le `idle` que disconnect() vient de poser. Si
-      // _castToInner finit sa course apres et re-ecrit le state, ce
-      // sera aussi vers error (son propre catch) → pas
-      // d'inconsistance visible utilisateur.
-      _state = CastState.error;
-      _errorMessage = 'Cast trop long — la TV ou le réseau ne répondent pas';
-      _setProgress(
-        CastProgress.failure(
-          'La TV met trop de temps à répondre. Réessaie ou choisis une '
-              'autre TV.',
-          details: 'castTo timeout after ${kCastTotalTimeout.inSeconds}s',
-        ),
-      );
-      throw Exception(_errorMessage);
     }
+  }
+
+  /// VAGUE B — Change la chaîne SUR la session de cast EN COURS, sans
+  /// re-choisir le récepteur ni rouvrir le picker.
+  ///
+  /// Réutilise la cible active ([_device]) ou, à défaut, la cible
+  /// mémorisée ([_selectedDevice]). Tout le travail délicat est déjà
+  /// fait par `castTo` → `_castToInner` :
+  ///   - arrêt du média précédent côté TV (media stop SEULEMENT, la
+  ///     session Cast reste ouverte — pas de re-négociation 5-20 s),
+  ///   - libération de l'ancien relais HLS,
+  ///   - annulation coopérative de la session précédente (_sessionSeq).
+  /// Côté Google Cast, `_ensureSessionOn` réutilise la session active :
+  /// aucun picker ne s'ouvre tant que la TV est connectée.
+  ///
+  /// Retourne `false` si aucune session/cible n'est disponible.
+  /// L'appelant peut alors décider — mais ne doit JAMAIS relancer la
+  /// lecture locale pendant qu'un cast est engagé.
+  Future<bool> castChannelOnCurrentSession({
+    required String streamUrl,
+    required String title,
+    String? channelName,
+    String? channelGenre,
+    String? imageUrl,
+    Channel? channel,
+  }) async {
+    final CastDevice? target = _device ?? _selectedDevice;
+    if (target == null) return false;
+    // Garde le contexte de zap aligné quand le swap vient du lecteur
+    // (qui connaît la playlist) : si la chaîne est dans la playlist
+    // mémorisée, on synchronise l'index pour la mini-barre.
+    final List<Channel>? list = _castPlaylist;
+    if (channel != null && list != null) {
+      final int i = list.indexWhere((Channel c) => c.id == channel.id);
+      if (i >= 0) _castIndex = i;
+    }
+    await castTo(
+      target,
+      streamUrl: streamUrl,
+      title: title,
+      channelName: channelName,
+      channelGenre: channelGenre,
+      imageUrl: imageUrl,
+    );
+    return true;
   }
 
   Future<void> _castToInner(
     CastDevice device, {
+    required int mySeq,
     required String streamUrl,
     required String title,
     String? channelName,
@@ -521,11 +788,54 @@ class CastManager extends ChangeNotifier {
     _stopDlnaWatchdog();
     // Phase 1+/B5 (2026-06-01) — Capture ma seq des le start. Si une
     // autre castTo bumpe _sessionSeq pendant que je tourne, j'arrete.
-    final int mySeq = ++_sessionSeq;
+    // Transport créé par CETTE session (posé plus bas) : seul objet que le
+    // nettoyage du catch a le droit de toucher — jamais le champ global
+    // `_transport`, qui appartient peut-être déjà à une session plus
+    // récente (audit 19/08).
+    CastTransport? myTransport;
     _state = CastState.connecting;
     _device = device;
     _errorMessage = null;
+    // Libere le relais de la session precedente (zap) : sinon la
+    // session HLS continuait de tirer le flux jusqu'au GC d'inactivite.
+    if (_currentRelayUrl != null) {
+      LocalCastServer.instance.clearRelay(_currentRelayUrl!);
+    }
     _currentRelayUrl = null;
+    // Zap depuis un cast ou la TV tire ELLE-MEME le flux fournisseur
+    // (direct_tv, cast_proxy) : sur les comptes 1-connexion, cette
+    // connexion encore ouverte ferait refuser le probe de la NOUVELLE
+    // chaine (« limite atteinte »). On arrete la lecture de la TV
+    // d'abord — media stop SEULEMENT, la session Cast reste ouverte
+    // (la re-etablir couterait 5-20 s).
+    final GoogleCastTransport? prevGct =
+        _transport is GoogleCastTransport
+            ? _transport as GoogleCastTransport
+            : null;
+    if (prevGct != null &&
+        (prevGct.lastCastPath == 'direct_tv' ||
+            prevGct.lastCastPath == 'cast_proxy')) {
+      try {
+        await GoogleCastApi.instance.stop();
+      } on Exception catch (_) {/* best-effort : le probe tranchera */}
+    }
+    // MIROIR DLNA du réflexe ci-dessus (terrain LG webOS 2026-07-17,
+    // « limite atteinte » ×3 dans la boîte noire) : sur les stratégies
+    // DIRECTES, la TV DLNA tire ELLE-MÊME le flux fournisseur — et
+    // continue de le tirer pendant tout le pré-vol de la nouvelle
+    // chaîne → le panel 1-connexion refuse le probe. On arrête la
+    // lecture d'abord. Best-effort et borné COURT : si la TV traîne,
+    // le Stop systématique de playStream refera le ménage — ici on
+    // veut juste libérer le slot fournisseur avant le probe. Bonus :
+    // la TV a ~toute la durée du pré-vol pour se libérer → moins de
+    // 701 « Transition not available » au SetAVTransportURI suivant.
+    final Object? prevTransport = _transport;
+    if (prevTransport is UpnpAvTransport) {
+      try {
+        await prevTransport.stop().timeout(const Duration(seconds: 3));
+      } on Exception catch (_) {/* best-effort : le probe tranchera */}
+    }
+    if (mySeq != _sessionSeq) return;
     _setProgress(CastProgress.validating);
 
     final CastSessionDiagnostic diag = CastSessionDiagnostic(
@@ -552,22 +862,77 @@ class CastManager extends ChangeNotifier {
           device.kind == CastDeviceKind.roku) {
         _checkCancelled(mySeq);
         _setProgress(CastProgress.connecting());
-        final bool reachable = await _probeDeviceReachable(device);
+        final bool reachable = _testTransportFactory != null || await _probeDeviceReachable(device);
         diag.deviceReachable = reachable;
         if (!reachable) {
-          // Message contient "no route to host" → friendlyMessageFor le
-          // route vers le hint réseau/AP-isolation dédié (Phase 1+/B4).
-          throw Exception(
-            'TV injoignable sur le réseau (${device.host}:${device.port}) '
-            '— no route to host (pré-vol TCP)',
-          );
+          // SOFT-PASS (boîte noire 2026-07-09, 15:51) : 4 sessions
+          // consécutives déclarées « TV ne répond pas » en 2,5 s
+          // (attempts:0) alors que la MÊME TV castait avec succès 5 s
+          // avant ET 5 s après. Un renderer occupé (zapping rapide,
+          // socket de contrôle mono-connexion) peut refuser une
+          // connexion TCP ponctuellement SANS être injoignable. Si
+          // l'appareil a réussi un cast très récemment, on laisse la
+          // chaîne de failover trancher au lieu d'accuser le réseau.
+          final DateTime? lastOk = _lastCastSuccessAt[device.id];
+          final bool recentlyCasting = lastOk != null &&
+              DateTime.now().difference(lastOk) < const Duration(minutes: 2);
+          if (recentlyCasting) {
+            StructuredLogger.instance.warn(
+              domain: 'cast',
+              event: 'preflight.soft_pass',
+              ctx: <String, Object?>{
+                'deviceName': device.name,
+                'lastSuccessAgoMs':
+                    DateTime.now().difference(lastOk).inMilliseconds,
+              },
+            );
+          } else {
+            // Message contient "no route to host" → friendlyMessageFor
+            // le route vers le hint réseau/AP-isolation dédié (B4).
+            throw Exception(
+              'TV injoignable sur le réseau (${device.host}:${device.port}) '
+              '— no route to host (pré-vol TCP)',
+            );
+          }
         }
       }
 
       // (1) Pré-vol : on vérifie l'URL avant de la pousser au récepteur.
       _checkCancelled(mySeq);
-      final StreamProbeResult probe =
-          await StreamProbe.instance.probe(streamUrl);
+      StreamProbeResult probe = await (_testProbe?.call(streamUrl) ?? StreamProbe.instance.probe(streamUrl));
+      // CASCADE DE SECOURS (terrain 2026-07-10, panel « /live/ requis ») :
+      // certains panels Xtream repondent 404 (page HTML) sur la forme
+      // brute `host/U/P/ID.ts` mais servent `host/live/U/P/ID.ts` — le
+      // lecteur du telephone se corrige via le format memorise, le cast
+      // doit savoir faire pareil TOUT SEUL (y compris depuis le picker
+      // « flux maintenant » qui n'a pas de Channel). cascadeFor se
+      // protege : URL non-Xtream → [originale] uniquement, donc aucun
+      // risque de reecrire un flux CDN/M3U exotique. On n'adopte une
+      // variante QUE si l'originale est morte ET que la variante repond.
+      if (!probe.success) {
+        final XtreamContentType cascadeType =
+            XtreamUrlVariants.detectType(streamUrl) ?? XtreamContentType.live;
+        for (final XtreamUrlCandidate cand
+            in XtreamUrlVariants.cascadeFor(streamUrl, cascadeType)) {
+          if (cand.url == streamUrl) continue;
+          _checkCancelled(mySeq);
+          final StreamProbeResult alt =
+              await (_testProbe?.call(cand.url) ?? StreamProbe.instance.probe(cand.url));
+          if (alt.success) {
+            StructuredLogger.instance.info(
+              domain: 'cast',
+              event: 'probe.variant_adopted',
+              ctx: <String, Object?>{
+                'formatCode': cand.formatCode,
+                'url': redactStreamUrl(cand.url),
+              },
+            );
+            streamUrl = cand.url;
+            probe = alt;
+            break;
+          }
+        }
+      }
       diag.probe = ProbeSummary(
         success: probe.success,
         finalUrl: probe.finalUrl, // redacté à l'export JSON
@@ -588,10 +953,17 @@ class CastManager extends ChangeNotifier {
       //     Branche non-DLNA = appel direct simple, comportement historique
       //     conservé pour ne pas régresser Roku / Web / Chromecast-stub.
       _checkCancelled(mySeq);
-      _transport = CastTransport.forDevice(device);
+      _transport = _testTransportFactory?.call(device) ?? CastTransport.forDevice(device);
+      // Référence LOCALE du transport de CETTE session (audit 19/08) : le
+      // champ `_transport` est GLOBAL et réécrit par la session suivante —
+      // une session orpheline qui échouait tardivement lisait alors le
+      // transport de la session en cours et effaçait SON relais (cast qui
+      // meurt en 404), pendant que son propre relais fuyait jusqu'à l'idle
+      // timeout. Le nettoyage du catch n'utilise QUE cette référence.
+      myTransport = _transport;
       if (device.kind == CastDeviceKind.dlna) {
         await _castDlnaWithFailover(
-          transport: _transport! as UpnpAvTransport,
+          transport: myTransport! as UpnpAvTransport,
           probe: probe,
           title: title,
           diag: diag,
@@ -600,51 +972,124 @@ class CastManager extends ChangeNotifier {
         );
       } else {
         _setProgress(CastProgress.connecting());
+        // Pour Google Cast, on fournit l'URL D'ORIGINE au transport : le
+        // proxy /cast-proxy re-suivra la redirection au play-time (token
+        // IPTV frais côté TV) au lieu de recevoir le token périssable déjà
+        // résolu par le probe du téléphone. Cf. GoogleCastTransport
+        // .originalUpstreamUrl (diag SHIELD 2026-07-06 : redirect /live/).
+        if (myTransport is GoogleCastTransport) {
+          (myTransport as GoogleCastTransport).originalUpstreamUrl =
+              probe.originalUrl;
+        }
         final Stopwatch sw = Stopwatch()..start();
         try {
-          await _transport!.playStream(
+          await myTransport!.playStream(
             streamUrl: probe.finalUrl,
             title: title,
             imageUrl: imageUrl,
           );
-          // (2026-07) NE PLUS supposer 'direct' : le transport décide en
-          // interne le vrai chemin (Google Cast → proxy signé /cast-proxy ou
-          // repli relais HLS) et l'expose via `lastStrategyName`. On étiquette
-          // donc le diagnostic avec la vérité, pas avec une constante.
-          final String realPath = _transport!.lastStrategyName;
+          // Le vrai chemin de routage ('cast_proxy'/'local_hls_relay'/'direct')
+          // n'est connu qu'apres coup, expose par GoogleCastTransport.
+          final GoogleCastTransport? gct =
+              myTransport is GoogleCastTransport
+                  ? myTransport as GoogleCastTransport
+                  : null;
+          final String realPath = gct?.lastCastPath ?? 'direct';
           diag.attempts.add(AttemptResult(
             strategyIndex: 0,
             strategyName: realPath,
-            urlKind: _urlKindFor(realPath),
+            urlKind: realPath,
             metadataMode: 'n/a',
             durationMs: sw.elapsedMilliseconds,
             success: true,
+            lastCastUrlRedacted: gct?.lastCastUrlRedacted,
           ));
-        } on Exception catch (e) {
-          // `lastStrategyName` est figé AVANT le loadMedia, donc il reflète le
-          // chemin réellement tenté même en cas d'échec.
-          final String realPath = _transport!.lastStrategyName;
+        } on Object catch (e) {
+          // `on Object` et non `on Exception` : un Error (TypeError,
+          // StateError, cast raté…) passait à travers, sautait la
+          // comptabilité du diagnostic ET le nettoyage du catch
+          // principal → session « zombie » (état connecting figé,
+          // relais + keep-alive vivants). Frontière de session = on
+          // rattrape TOUT, on archive, on nettoie.
+          final GoogleCastTransport? gctF =
+              myTransport is GoogleCastTransport
+                  ? myTransport as GoogleCastTransport
+                  : null;
+          final String realPathF = gctF?.lastCastPath ?? 'direct';
           diag.attempts.add(AttemptResult(
             strategyIndex: 0,
-            strategyName: realPath,
-            urlKind: _urlKindFor(realPath),
+            strategyName: realPathF,
+            urlKind: realPathF,
             metadataMode: 'n/a',
             durationMs: sw.elapsedMilliseconds,
             success: false,
             errorMessage: e.toString(),
+            lastCastUrlRedacted: gctF?.lastCastUrlRedacted,
           ));
           rethrow;
         }
       }
 
+      // Revue 2026-07-09 (MAJEUR 1) : playStream peut durer plus que le
+      // timeout global (picker 30 s + lecture 25 s > 40 s) — cette
+      // session est peut-etre devenue ORPHELINE (zap, timeout) pendant
+      // l'attente. Ne JAMAIS ecraser l'etat/le relais/le keep-alive de
+      // la session plus recente.
+      _checkCancelled(mySeq);
       _currentTitle = title;
       _selectedDevice = device;
       _state = CastState.casting;
       _setProgress(CastProgress.live);
       diag.success = true;
-    } on Exception catch (e) {
+      // Horodatage pour le soft-pass du pré-vol TCP (cf. étape 0).
+      _lastCastSuccessAt[device.id] = DateTime.now();
+      // CAST AUTONOME (« je pars a la douche, ca continue ») : si le
+      // flux passe par le TELEPHONE (relais HLS Chromecast — le relais
+      // DLNA pose deja _currentRelayUrl), on memorise l'URL pour la
+      // liberer au disconnect, et on demarre le foreground service
+      // (notification + wakelock + wifilock) : sans lui, Android
+      // suspend l'app ecran eteint / en arriere-plan → saccades puis
+      // gel sur la TV au bout de quelques dizaines de secondes.
+      if (_transport is GoogleCastTransport) {
+        final String? relayUrl =
+            (_transport as GoogleCastTransport).lastRelayUrl;
+        if (relayUrl != null) _currentRelayUrl = relayUrl;
+      }
+      _updateRelayKeepAlive(title);
+    } on Object catch (e) {
+      // FRONTIÈRE DE SESSION — `on Object` et non `on Exception` : un
+      // Error (TypeError, StateError, cast `as` rate…) traversait le
+      // bloc et sautait TOUT le nettoyage ci-dessous → session zombie
+      // (etat connecting fige, relais + keep-alive + transport
+      // vivants). Le kernel Dart distingue Error/Exception, mais a une
+      // frontiere de session on doit nettoyer dans TOUS les cas.
+      //
+      // Revue 2026-07-09 (MAJEUR 1) : une session ORPHELINE (zap ou
+      // timeout global — mySeq depasse) qui echoue tardivement ne doit
+      // toucher NI l'etat NI le keep-alive : une session plus recente
+      // est peut-etre en train d'alimenter la TV. On libere seulement
+      // le relais que CE playStream aurait enregistre (fuite sinon,
+      // MINEUR 7) et on sort.
+      // AUDIT 19/08 : on ne touche QUE le transport de CETTE session
+      // (myTransport). L'ancien code lisait le champ GLOBAL `_transport`
+      // — déjà réécrit par la session suivante quand une orpheline
+      // échouait tardivement : il effaçait le relais de la session EN
+      // COURS (cast qui meurt en 404) et laissait fuir le sien.
+      final CastTransport? leakedTransport = myTransport;
+      final GoogleCastTransport? gctLeak =
+          leakedTransport is GoogleCastTransport ? leakedTransport : null;
+      final String? leakedRelay = gctLeak?.lastRelayUrl;
+      if (leakedRelay != null && leakedRelay != _currentRelayUrl) {
+        LocalCastServer.instance.clearRelay(leakedRelay);
+      }
+      if (mySeq != _sessionSeq) {
+        return;
+      }
       _state = CastState.error;
       _errorMessage = e.toString();
+      // Le cast a echoue → plus personne a alimenter : coupe le
+      // foreground service d'une eventuelle session relais precedente.
+      _stopRelayKeepAlive();
       // Phase 1 / F-12 + B1 (2026-06-01) : le hint "WiFi isolation"
       // ne doit s'afficher QUE quand les deux strategies relay ont
       // timeout (= la TV ne joint pas notre serveur). Si elles ont
@@ -655,9 +1100,7 @@ class CastManager extends ChangeNotifier {
       // montre le faux positif.
       final bool relayPathBlocked = bothRelayStrategiesTimedOut(diag);
       final String userMessage = relayPathBlocked
-          ? 'Ta TV ne joint pas le téléphone (WiFi invité ou isolation '
-              'AP ?). Mets le téléphone et la TV sur le MÊME réseau WiFi '
-              '(pas le réseau invité) et désactive l\'isolation AP.'
+          ? l10nNow.castErrorApIsolation
           : friendlyMessageFor(e);
       _setProgress(
         CastProgress.failure(
@@ -817,6 +1260,15 @@ class CastManager extends ChangeNotifier {
       profileNames: profileNames.toSet().take(12).toList(growable: false),
     );
 
+    // Renderer « muet » : Sink vide = il ne répond ni à GetProtocolInfo ni
+    // (quasi toujours) à GetTransportInfo. Sur ces TVs génériques, une
+    // tentative DIRECTE d'un TS live « réussissait » sans rien afficher
+    // (faux positif : aucun état à vérifier). Pour elles, on n'assume PLUS
+    // le succès en direct → le failover escalade vers le relais HLS (que
+    // ces renderers savent lire). Les renderers qui exposent leur Sink
+    // (LG/Samsung…) gardent EXACTEMENT le comportement d'avant.
+    final bool barebonesRenderer = sink.entries.isEmpty;
+
     // Profil retenu pour ce flux (informé par MIME + LIVE/VOD heuristique).
     DlnaProfile profile = DlnaProfiles.select(
       url: probe.finalUrl,
@@ -842,6 +1294,11 @@ class CastManager extends ChangeNotifier {
         fileExtension: profile.fileExtension,
       );
     }
+
+    // RÉGLAGE PAR MARQUE (recherche 2026-07-09, sourcée — MediaTomb/
+    // SamyGO/minidlna/Serviio/BubbleUPnP) : le MÊME flux TS doit être
+    // étiqueté différemment selon le constructeur pour être accepté.
+    profile = brandTunedProfile(device: transport.device, base: profile);
 
     diag.profile = ProfileSummary.from(profile);
 
@@ -891,10 +1348,56 @@ class CastManager extends ChangeNotifier {
     // TV qui caste déjà (LG) réussit en stratégie 0 et n'atteint JAMAIS ces
     // variantes — son comportement est strictement inchangé.
     final int totalStrategies = 5 + altCount * 2;
-    final int startStrategy = 0;
+    // MÉMOIRE DE CHEMIN (2026-07-09, boîte noire Nebula) : si ce même
+    // appareil vient d'enchaîner ≥ 2 échecs CONNEXION en direct, on
+    // démarre directement au relais (s=3) — le direct muet coûtait
+    // 15 s de SOAP timeout à CHAQUE session pendant la vague. La
+    // fenêtre expire (kDlnaPathMemoTtl) : le direct — plus autonome
+    // (téléphone-éteint-TV-continue) — est re-sondé ensuite.
+    final _DlnaPathMemo memo =
+        _dlnaPathMemos.putIfAbsent(transport.device.id, _DlnaPathMemo.new);
+    final DateTime nowForMemo = DateTime.now();
+    // Le souvenir de victoire peut viser une variante altmime (s ≥ 5)
+    // dont l'index dépend du MIME de CETTE chaîne : on borne à
+    // l'échelle réelle du jour (au pire on retombe une marche avant).
+    int startStrategy = dlnaStartStrategyFor(
+      failStreak: memo.directConnFailStreak,
+      lastFail: memo.lastDirectConnFail,
+      now: nowForMemo,
+      winningStrategy: memo.winningStrategy,
+      lastWin: memo.lastWin,
+    );
+    if (startStrategy > totalStrategies - 1) {
+      startStrategy = totalStrategies - 1;
+    }
+    if (startStrategy > 0) {
+      final bool fromWin = startStrategy == memo.winningStrategy;
+      StructuredLogger.instance.info(
+        domain: 'cast',
+        event: fromWin ? 'failover.start_at_winner' : 'failover.start_at_relay',
+        ctx: <String, Object?>{
+          'deviceName': transport.device.name,
+          'startStrategy': startStrategy,
+          'directConnFailStreak': memo.directConnFailStreak,
+        },
+      );
+    }
+    // Timeout SOAP adaptatif pour les tentatives DIRECTES : plein
+    // (15 s) par défaut, raccourci (8 s) si le direct vient déjà de
+    // rester muet sur cet appareil. Les stratégies RELAIS gardent
+    // toujours le timeout plein.
+    final Duration directSoapTimeout = dlnaDirectSoapTimeoutFor(
+      failStreak: memo.directConnFailStreak,
+      lastFail: memo.lastDirectConnFail,
+      now: nowForMemo,
+    );
     final int budget = totalStrategies;
 
-    Exception? lastError;
+    // `Object` et non `Exception` : la boucle de failover est une
+    // frontière de session — un Error d'une tentative doit être
+    // comptabilisé et re-levé comme un échec normal, pas traverser en
+    // sautant la comptabilité (session zombie).
+    Object? lastError;
     for (int s = startStrategy; s < totalStrategies; s++) {
       // Phase 1+/B5 — Check cancellation entre chaque strategie. Si
       // l'outer a timeout (25s) et bump _sessionSeq, on s'arrete au
@@ -910,6 +1413,9 @@ class CastManager extends ChangeNotifier {
       final bool isAltRelay = s >= 5 + altCount;
       final String urlKind =
           (s < 3 || isAltDirect) ? 'direct' : 'relay';
+      transport.soapTimeout = urlKind == 'direct'
+          ? directSoapTimeout
+          : UpnpAvTransport.kDefaultSoapTimeout;
       final String strategyName =
           (s >= 5) ? '$urlKind+altmime' : _strategyName(s);
       final String metaName = (s == 1 || s == 4) ? 'minimal' : (s == 2 ? 'none' : 'full');
@@ -951,7 +1457,12 @@ class CastManager extends ChangeNotifier {
             break;
           case 3:
             urlToCast = await _ensureRelayUrl(
-              upstreamUrl: probe.finalUrl,
+              // URL D'ORIGINE, pas finalUrl : token Xtream frais a
+              // chaque connexion du relais (cf. relayUpstreamUrlFor).
+              upstreamUrl: relayUpstreamUrlFor(
+                originalUrl: probe.originalUrl,
+                finalUrl: probe.finalUrl,
+              ),
               profile: profile,
               receiverHost: transport.device.host,
             );
@@ -959,7 +1470,10 @@ class CastManager extends ChangeNotifier {
             break;
           case 4:
             urlToCast = await _ensureRelayUrl(
-              upstreamUrl: probe.finalUrl,
+              upstreamUrl: relayUpstreamUrlFor(
+                originalUrl: probe.originalUrl,
+                finalUrl: probe.finalUrl,
+              ),
               profile: profile,
               receiverHost: transport.device.host,
             );
@@ -976,7 +1490,10 @@ class CastManager extends ChangeNotifier {
               transport.metadataMode = MetadataMode.full;
               urlToCast = isAltRelay
                   ? await _ensureRelayUrl(
-                      upstreamUrl: probe.finalUrl,
+                      upstreamUrl: relayUpstreamUrlFor(
+                        originalUrl: probe.originalUrl,
+                        finalUrl: probe.finalUrl,
+                      ),
                       profile: altProfiles[altIdx],
                       receiverHost: transport.device.host,
                     )
@@ -989,6 +1506,11 @@ class CastManager extends ChangeNotifier {
           streamUrl: urlToCast,
           title: title,
           imageUrl: imageUrl,
+          // Renderer muet + tentative DIRECTE → ne pas gober un faux
+          // succès : on force l'escalade vers le relais. En RELAIS (ou
+          // renderer non muet), on garde l'hypothèse de succès historique.
+          assumeSuccessWhenUnknown:
+              !(barebonesRenderer && urlKind == 'direct'),
         );
         diag.attempts.add(AttemptResult(
           strategyIndex: s,
@@ -998,12 +1520,44 @@ class CastManager extends ChangeNotifier {
           durationMs: attemptSw.elapsedMilliseconds,
           success: true,
         ));
+        // Mémoire de chemin : un SUCCÈS direct efface l'historique
+        // d'échecs — l'appareil retrouve le comportement par défaut.
+        if (urlKind == 'direct') {
+          memo.directConnFailStreak = 0;
+          memo.lastDirectConnFail = null;
+        }
+        // Souvenir de victoire : le prochain cast sur cette TV démarre
+        // ICI au lieu de re-payer tout le gradient (TTL 15 min).
+        memo.winningStrategy = s;
+        memo.lastWin = DateTime.now();
+        // Revue 2026-07-09 (MINEUR 6) : si une strategie RELAIS a
+        // echoue avant qu'une strategie DIRECTE ne gagne,
+        // _currentRelayUrl est reste pose → le keep-alive foreground
+        // (wakelock/wifilock) demarrait pour rien (la TV tire le flux
+        // elle-meme). On libere le relais inutilise.
+        if (urlKind == 'direct' && _currentRelayUrl != null) {
+          LocalCastServer.instance.clearRelay(_currentRelayUrl!);
+          _currentRelayUrl = null;
+        }
         // Lecture confirmée PLAYING → on arme la surveillance de session
         // (reconnexion auto si le flux coupe). On relance sur l'URL
-        // GAGNANTE (`urlToCast`), donc avec la même stratégie/profil.
-        _startDlnaWatchdog(transport, urlToCast, title, mySeq);
+        // GAGNANTE (`urlToCast`), donc avec la même stratégie/profil ;
+        // le contexte de repli relais (upstream d'origine + profil
+        // EFFECTIF de la tentative gagnante) permet au watchdog de
+        // basculer sur le relais si le replay direct reste muet.
+        _startDlnaWatchdog(
+          transport,
+          urlToCast,
+          title,
+          mySeq,
+          relayFallbackUpstream: relayUpstreamUrlFor(
+            originalUrl: probe.originalUrl,
+            finalUrl: probe.finalUrl,
+          ),
+          relayFallbackProfile: transport.profile,
+        );
         return; // succès
-      } on Exception catch (e) {
+      } on Object catch (e) {
         lastError = e;
         diag.attempts.add(AttemptResult(
           strategyIndex: s,
@@ -1038,6 +1592,11 @@ class CastManager extends ChangeNotifier {
               'reason': e.toString(),
             },
           );
+          // Mémoire de chemin : cet appareil vient (encore) de rester
+          // muet en direct — la prochaine session raccourcira son
+          // timeout direct, puis démarrera au relais dès 2 échecs.
+          memo.directConnFailStreak++;
+          memo.lastDirectConnFail = DateTime.now();
           s = 2; // la boucle fera s++ -> s=3 (relay+full)
         }
 
@@ -1052,22 +1611,12 @@ class CastManager extends ChangeNotifier {
         }
       }
     }
+    // Échec TOTAL : le souvenir de victoire ne vaut plus rien (TV
+    // coincée, panel qui a changé d'humeur…) — on l'efface pour que la
+    // prochaine session re-déroule l'échelle complète depuis le début.
+    memo.winningStrategy = null;
+    memo.lastWin = null;
     throw lastError ?? Exception('Cast DLNA échec inconnu');
-  }
-
-  /// Traduit la stratégie réelle du transport non-DLNA (`lastStrategyName`)
-  /// en `urlKind` du diagnostic ("direct" / "relay" / "proxy") — ce qui a été
-  /// envoyé au récepteur. Le relais HLS du téléphone = "relay" ; l'URL signée
-  /// /cast-proxy = "proxy" ; tout le reste part tel quel = "direct".
-  String _urlKindFor(String strategyName) {
-    switch (strategyName) {
-      case 'local_hls_relay':
-        return 'relay';
-      case 'proxy_signed':
-        return 'proxy';
-      default:
-        return 'direct';
-    }
   }
 
   String _strategyName(int strategyIndex) {
@@ -1087,7 +1636,7 @@ class CastManager extends ChangeNotifier {
     }
   }
 
-  // ⚠️ NE JAMAIS remettre _workerTsUrl en stratégie 0/1 DLNA. Le Worker
+  // NE JAMAIS remettre _workerTsUrl en stratégie 0/1 DLNA. Le Worker
   // Cloudflare coupe le flux LIVE à ~105s (limite de durée). La LG doit
   // recevoir l'URL upstream DIRECTE (probe.finalUrl) pour tirer le flux
   // elle-même → téléphone-éteint-TV-continue. Régression historique:
@@ -1123,6 +1672,50 @@ class CastManager extends ChangeNotifier {
   /// `DLNA.ORG_PN` : étiquette MIME nue). Liste vide si le flux n'est pas du
   /// MPEG-TS (mp4/mkv… → aucune variante).
   ///
+  /// Stratégie de DÉPART de l'échelle DLNA selon la mémoire de chemin.
+  /// 0 = comportement historique (direct d'abord) ; 3 = relais d'abord
+  /// (≥ 2 échecs CONNEXION direct consécutifs dans la fenêtre
+  /// [kDlnaPathMemoTtl]). Pur + statique → testable sans stack réseau.
+  @visibleForTesting
+  static int dlnaStartStrategyFor({
+    required int failStreak,
+    required DateTime? lastFail,
+    required DateTime now,
+    int? winningStrategy,
+    DateTime? lastWin,
+  }) {
+    // SOUVENIR DE VICTOIRE prioritaire (terrain LG 2026-07-17) : si ce
+    // même appareil a un cast gagnant FRAIS — et plus récent que le
+    // dernier échec direct, sinon la mémoire d'échecs sait mieux — on
+    // démarre directement sur la stratégie qui a marché. Zapping :
+    // ~45 s d'essais perdus économisés par chaîne sur les TV têtues.
+    if (winningStrategy != null &&
+        lastWin != null &&
+        now.difference(lastWin) < kDlnaPathMemoTtl &&
+        (lastFail == null || lastWin.isAfter(lastFail))) {
+      return winningStrategy;
+    }
+    final bool recent =
+        lastFail != null && now.difference(lastFail) < kDlnaPathMemoTtl;
+    return (recent && failStreak >= 2) ? 3 : 0;
+  }
+
+  /// Timeout SOAP des tentatives DIRECTES selon la mémoire de chemin :
+  /// plein (15 s) par défaut, raccourci (8 s) dès 1 échec CONNEXION
+  /// direct récent. Pur + statique → testable sans stack réseau.
+  @visibleForTesting
+  static Duration dlnaDirectSoapTimeoutFor({
+    required int failStreak,
+    required DateTime? lastFail,
+    required DateTime now,
+  }) {
+    final bool recent =
+        lastFail != null && now.difference(lastFail) < kDlnaPathMemoTtl;
+    return (recent && failStreak >= 1)
+        ? kDlnaShortSoapTimeout
+        : UpnpAvTransport.kDefaultSoapTimeout;
+  }
+
   /// Pur + statique → testable (simulation Samsung/LG sans stack réseau).
   @visibleForTesting
   static List<DlnaProfile> buildAltMimeProfiles(DlnaProfile base) {
@@ -1147,6 +1740,76 @@ class CastManager extends ChangeNotifier {
       }
     }
     return out;
+  }
+
+  /// URL upstream que le RELAIS du téléphone doit tirer. TOUJOURS
+  /// l'URL PORTAIL D'ORIGINE quand on l'a : les serveurs Xtream
+  /// redirigent vers un endpoint à TOKEN PAR-CONNEXION — celui de
+  /// `probe.finalUrl` a déjà été consommé par le probe du téléphone.
+  /// Le re-donner au relais (ou à la TV) = « Resource not found » /
+  /// timeout (diag LG QNED816QA 2026-07-09 : 6/8 échecs, seuls les
+  /// serveurs à token réutilisable passaient). Le relais, lui, suit
+  /// la redirection à CHAQUE connexion → token frais, IP du téléphone.
+  /// Nettoie les « ? » orphelins de fin (fréquents sur les URLs Xtream).
+  @visibleForTesting
+  static String relayUpstreamUrlFor({
+    required String originalUrl,
+    required String finalUrl,
+  }) {
+    String u = originalUrl.trim();
+    while (u.endsWith('?')) {
+      u = u.substring(0, u.length - 1);
+    }
+    final bool usable =
+        u.startsWith('http://') || u.startsWith('https://');
+    return usable ? u : finalUrl;
+  }
+
+  /// Étiquetage DLNA PAR MARQUE pour le MPEG-TS live (recherche sourcée
+  /// 2026-07-09) :
+  ///   - SAMSUNG (Tizen) : ne JAMAIS commencer par `video/mp2t` — le
+  ///     protocolInfo rapporté fonctionnel est `video/mpeg` +
+  ///     `MPEG_TS_HD_NA_ISO` (MediaTomb/SamyGO). Nos FLAGS live
+  ///     `01700000…` correspondent déjà aux valeurs validées.
+  ///   - PANASONIC (Viera) : client STRICT sur le DLNA_PN (minidlna
+  ///     FLAG_DLNA) ; les profils Serviio qui marchent mappent
+  ///     `video/vnd.dlna.mpeg-tts` + `AVC_TS_MP_HD_AC3`.
+  ///   - HISENSE (VIDAA) : renderer fragile, profil générique —
+  ///     `video/mpeg` SANS PN (best-effort, les variantes altmime
+  ///     couvrent le reste).
+  /// Les autres marques gardent le profil de base (LG a déjà sa règle
+  /// adaptée à sa Sink). Ne touche que les MIME MPEG-TS.
+  @visibleForTesting
+  static DlnaProfile brandTunedProfile({
+    required CastDevice device,
+    required DlnaProfile base,
+  }) {
+    const Set<String> tsMimes = <String>{
+      'video/mp2t',
+      'video/vnd.dlna.mpeg-tts',
+      'video/mpeg',
+    };
+    if (!tsMimes.contains(base.mime)) return base;
+    final String hay =
+        '${device.name} ${device.manufacturer ?? ''} ${device.model ?? ''}'
+            .toLowerCase();
+    DlnaProfile retag(String mime, String? pn) => DlnaProfile(
+          mime: mime,
+          profileName: pn,
+          transferMode: base.transferMode,
+          objectClass: base.objectClass,
+          fileExtension: base.fileExtension,
+        );
+    if (hay.contains('samsung') || hay.contains('tizen')) {
+      return retag('video/mpeg', 'MPEG_TS_HD_NA_ISO');
+    }
+    if (hay.contains('panasonic') || hay.contains('viera')) {
+      return retag('video/vnd.dlna.mpeg-tts', 'AVC_TS_MP_HD_AC3');
+    }
+    if (hay.contains('hisense') || hay.contains('vidaa')) {
+      return retag('video/mpeg', null);
+    }
+    return base;
   }
 
   /// Pur + statique → testable sans stack réseau (cf. tests cast).
@@ -1194,24 +1857,45 @@ class CastManager extends ChangeNotifier {
   /// timeout. Ce pré-vol détecte le cas en ~2,5s et permet d'afficher
   /// tout de suite le bon diagnostic (cf. friendlyMessageFor).
   ///
-  /// 2,5s = assez pour un LAN WiFi normal (RTT < 50ms, connexion en
-  /// quelques ms), assez court pour ne pas faire patienter sur une TV
-  /// réellement injoignable.
+  /// 2026-07-09 : le tir UNIQUE de 2,5 s produisait des FAUX NÉGATIFS
+  /// en rafale de zapping (renderer occupé qui ignore un SYN) → message
+  /// « TV ne répond pas » à tort (boîte noire, 4 échecs attempts:0
+  /// encadrés de succès). On tente désormais jusqu'à 3 connexions
+  /// courtes (1,2 s / 1,2 s / 2,5 s, pause 250 ms) : une TV vraiment
+  /// injoignable échoue toujours en ~5,4 s, une TV momentanément
+  /// occupée est récupérée dès le 2e essai.
   Future<bool> _probeDeviceReachable(CastDevice device) async {
-    try {
-      final Socket socket = await Socket.connect(
-        device.host,
-        device.port,
-        timeout: const Duration(milliseconds: 2500),
-      );
-      socket.destroy();
-      return true;
-    } on Exception {
-      // SocketException (timeout, no route to host, connection refused)
-      // → injoignable. On ne log pas ici : le caller throw un message
-      // dédié qui sera archivé dans le diagnostic.
-      return false;
+    const List<Duration> attempts = <Duration>[
+      Duration(milliseconds: 1200),
+      Duration(milliseconds: 1200),
+      Duration(milliseconds: 2500),
+    ];
+    for (int i = 0; i < attempts.length; i++) {
+      try {
+        final Socket socket = await Socket.connect(
+          device.host,
+          device.port,
+          timeout: attempts[i],
+        );
+        socket.destroy();
+        if (i > 0) {
+          StructuredLogger.instance.info(
+            domain: 'cast',
+            event: 'preflight.retry_success',
+            ctx: <String, Object?>{'attempt': i + 1},
+          );
+        }
+        return true;
+      } on Exception {
+        // SocketException (timeout, no route to host, connection
+        // refused) → on retente ; le diagnostic final est porté par le
+        // caller (message dédié archivé dans le diag de session).
+        if (i + 1 < attempts.length) {
+          await Future<void>.delayed(const Duration(milliseconds: 250));
+        }
+      }
     }
+    return false;
   }
 
   /// Convertit une Exception interne en message court pour l'UI.
@@ -1227,7 +1911,10 @@ class CastManager extends ChangeNotifier {
   /// AVANT le hint generique "reseau" pour eviter de faussement
   /// pointer du doigt le WiFi.
   @visibleForTesting
-  String friendlyMessageFor(Exception e) {
+  // `Object` et non `Exception` : appelé depuis des frontières de
+  // session qui rattrapent aussi les Error (cf. _castToInner). Seul
+  // toString() est utilisé, le type large est sans risque.
+  String friendlyMessageFor(Object e) {
     final String s = e.toString().toLowerCase();
 
     // --- Google Cast indisponible (pas de Google Play Services) ---
@@ -1239,9 +1926,7 @@ class CastManager extends ChangeNotifier {
     if (s.contains('google play services') ||
         s.contains('cast indisponible') ||
         s.contains('google cast indisponible')) {
-      return 'Le Chromecast officiel a besoin des services Google Play, '
-          'absents sur ce téléphone. Tu peux quand même caster vers une '
-          'Smart TV (DLNA) ou un Roku depuis la liste.';
+      return l10nNow.castFriendlyNoGms;
     }
 
     // --- DNS / hostname (Phase 1+) ---
@@ -1251,7 +1936,7 @@ class CastManager extends ChangeNotifier {
         s.contains('name resolution') ||
         s.contains('nodename') ||
         s.contains('servname')) {
-      return 'Internet ou DNS instable. Réessaie dans quelques secondes.';
+      return l10nNow.castFriendlyDnsUnstable;
     }
 
     // --- TV bloquee en TRANSITIONING (Phase 1+/B2) ---
@@ -1261,37 +1946,35 @@ class CastManager extends ChangeNotifier {
     // SetURI / Play. Solution utilisateur fiable : redemarrer la TV.
     if (s.contains('transition not available') ||
         s.contains('transitioning')) {
-      return 'Ta TV est bloquée sur un précédent cast. '
-          'Éteins-la quelques secondes puis rallume-la et réessaie.';
+      return l10nNow.castFriendlyTvStuck;
     }
 
     // --- Action refusee par le recepteur (codec / format inconnu) ---
     if (s.contains('action failed') ||
         s.contains('resource not found')) {
-      return 'Ta TV n\'accepte pas ce format. Essaie une autre chaîne.';
+      return l10nNow.castFriendlyBadFormat;
     }
 
     // --- HTTP 458 ou autres 4xx custom des providers IPTV ---
     // Beaucoup de revendeurs Xtream renvoient 458 pour "trop de
     // connexions simultanees" (la limite de l'abonnement).
     if (s.contains('458')) {
-      return 'Ton fournisseur IPTV refuse une connexion supplémentaire '
-          '(limite atteinte). Coupe une autre app qui regarde et réessaie.';
+      return l10nNow.castFriendlyProviderLimit;
     }
 
     // --- Timeout serveur generique ---
     if (s.contains('timeout') || s.contains('ne répond pas')) {
-      return 'La TV ne répond pas. Vérifie le WiFi.';
+      return l10nNow.castFriendlyTvTimeout;
     }
 
     // --- Auth / abonnement expire ---
     if (s.contains('auth') || s.contains('401') || s.contains('403')) {
-      return 'Accès au flux refusé — ton abonnement a peut-être expiré.';
+      return l10nNow.castFriendlyAuthExpired;
     }
 
     // --- Refus generique du recepteur (500, STOPPED apres Play) ---
     if (s.contains('refusé') || s.contains('500') || s.contains('stopped')) {
-      return 'Cette TV n\'a pas accepté ce flux. Essaie une autre chaîne.';
+      return l10nNow.castFriendlyTvRefused;
     }
 
     // --- TV physiquement injoignable au niveau IP (Phase 1+/B4) ---
@@ -1324,20 +2007,15 @@ class CastManager extends ChangeNotifier {
       //      le routeur bloque la communication entre appareils. C'est
       //      LA cause quand la TV est bien listée mais qu'aucun cast ne
       //      passe (cf. errno 113 répété).
-      return 'Ta TV ne répond pas sur le réseau. Vérifie : '
-          '(1) qu\'elle est allumée, '
-          '(2) qu\'elle est sur le MÊME WiFi que ton téléphone '
-          '(pas le réseau "invité"), '
-          '(3) que l\'option « Isolation client / AP isolation » est '
-          'DÉSACTIVÉE dans les réglages de ta box internet.';
+      return l10nNow.castFriendlyTvUnreachable;
     }
 
     // --- Reseau bas-niveau ---
     if (s.contains('réseau') || s.contains('socket')) {
-      return 'Connexion impossible avec la TV.';
+      return l10nNow.castFriendlyNetworkFail;
     }
 
-    return 'Le cast a échoué. Essaie de relancer.';
+    return l10nNow.castFriendlyGenericFail;
   }
 
   void _setProgress(CastProgress p) {
@@ -1346,42 +2024,128 @@ class CastManager extends ChangeNotifier {
   }
 
   Future<void> pause() async {
-    if (_transport == null) return;
+    final CastTransport? transport = _transport;
+    final int revision = _sessionSeq;
+    if (transport == null) return;
     try {
-      await _transport!.pause();
+      await transport.pause();
+      if (revision != _sessionSeq || !identical(transport, _transport)) return;
       _state = CastState.paused;
       notifyListeners();
-    } catch (_) {
-      // best effort — on remet l'état "casting" si la pause échoue
-    }
+    } catch (_) { /* Commande refusée : conserver l'état courant. */ }
   }
 
   Future<void> resume() async {
-    if (_transport == null) return;
+    final CastTransport? transport = _transport;
+    final int revision = _sessionSeq;
+    if (transport == null) return;
     try {
-      await _transport!.resume();
+      await transport.resume();
+      if (revision != _sessionSeq || !identical(transport, _transport)) return;
       _state = CastState.casting;
       notifyListeners();
-    } catch (_) {}
+    } catch (_) { /* Commande refusée : conserver l'état courant. */ }
+  }
+
+  /// `true` quand le foreground service « cast relais » est actif.
+  bool _relayKeepAliveActive = false;
+
+  /// Le telephone alimente-t-il la TV ? Alors il doit SURVIVRE a
+  /// l'ecran eteint : foreground service + wakelock + wifilock (le
+  /// meme PlaybackForegroundService que le mode « Ecouteurs », avec un
+  /// libelle adapte). Sans relais (cast_proxy/direct : la TV tire le
+  /// flux elle-meme), on s'assure au contraire que le service est coupe.
+  void _updateRelayKeepAlive(String title) {
+    // Le PC ne possède pas le service Android de notification.
+    if (CastPlatform.isWindows) return;
+    if (_currentRelayUrl != null) {
+      _relayKeepAliveActive = true;
+      // Le maintien éveillé (foreground service + wakelock + wifilock) est
+      // VITAL pour que le relais survive à l'écran éteint. On JOURNALISE
+      // son démarrage ET un éventuel échec : « le cast coupe écran éteint »
+      // devient enfin visible dans la boîte noire (avant, un échec du
+      // service était avalé silencieusement).
+      unawaited(_startRelayKeepAlive(title));
+    } else {
+      _stopRelayKeepAlive();
+    }
+  }
+
+  /// La demande POST_NOTIFICATIONS du chemin cast n'est posée qu'UNE
+  /// fois par session : re-surgir à chaque cast réussi était intrusif
+  /// et, pire, l'ancienne version ATTENDAIT la réponse avant de
+  /// démarrer le foreground service (revue adversariale 2026-07-16).
+  static bool _notifPermissionAsked = false;
+
+  /// Démarre réellement le maintien éveillé du relais.
+  ///
+  /// ORDRE CRITIQUE (revue 2026-07-16) : le SERVICE d'abord, la
+  /// permission ensuite. La version précédente attendait la réponse au
+  /// dialogue POST_NOTIFICATIONS avant `startForegroundService` — le
+  /// maintien éveillé était suspendu à un dialogue système : écran
+  /// éteint sans réponse → démarrage refusé (app en fond, Android 12+)
+  /// → relais sans protection → « le cast coupe ». Désormais le service
+  /// part immédiatement (l'app est au premier plan à cet instant) ; la
+  /// permission est demandée en parallèle, une seule fois, et si elle
+  /// est accordée on re-poste la notification (idempotent) pour la
+  /// rendre visible.
+  Future<void> _startRelayKeepAlive(String title) async {
+    await PipService.instance.startBackgroundAudio(title);
+    StructuredLogger.instance.info(
+      domain: 'cast', event: 'relay.keepalive_requested',
+    );
+    // Android 13+ : sans POST_NOTIFICATIONS, la notification du service
+    // est INVISIBLE → kill OEM probable écran éteint. On la demande en
+    // arrière-plan (jamais bloquant pour le cast), une seule fois.
+    if (!_notifPermissionAsked) {
+      _notifPermissionAsked = true;
+      unawaited(
+        NotificationService.instance.requestPermission().then((bool granted) {
+          StructuredLogger.instance.info(
+            domain: 'cast',
+            event: 'relay.keepalive_notif_permission',
+            ctx: <String, Object?>{'granted': granted},
+          );
+          // Accordée APRÈS le démarrage : on re-poste la notification
+          // (ACTION_START met à jour, ne redémarre pas le service).
+          if (granted && _relayKeepAliveActive) {
+            unawaited(PipService.instance
+                .startBackgroundAudio(title));
+          }
+        }).catchError((Object _) {
+          // Best-effort : sur Android < 13 il n'y a rien à demander.
+        }),
+      );
+    }
+  }
+
+  void _stopRelayKeepAlive() {
+    if (!_relayKeepAliveActive) return;
+    _relayKeepAliveActive = false;
+    unawaited(PipService.instance.stopBackgroundAudio());
   }
 
   Future<void> disconnect() async {
+    ++_sessionSeq;
+    final CastTransport? previous = _transport;
+    final String? relay = _currentRelayUrl;
+    // Détacher AVANT l'attente : aucune continuation ne peut recréer ou
+    // nettoyer la session suivante après un Stop lent de l'ancienne TV.
     _stopDlnaWatchdog();
-    try {
-      await _transport?.stop();
-    } catch (_) {}
-    // Libère la session relay si on en avait une — évite de
-    // garder un mapping orphelin en mémoire.
-    if (_currentRelayUrl != null) {
-      LocalCastServer.instance.clearRelay(_currentRelayUrl!);
-      _currentRelayUrl = null;
-    }
+    _stopRelayKeepAlive();
     _transport = null;
+    _currentRelayUrl = null;
     _device = null;
     _selectedDevice = null;
     _currentTitle = null;
+    _castPlaylist = null;
+    _castIndex = -1;
     _state = CastState.idle;
     _setProgress(CastProgress.idle);
+    if (relay != null) LocalCastServer.instance.clearRelay(relay);
+    try {
+      await previous?.stop().timeout(const Duration(seconds: 5));
+    } catch (_) { /* TV hors réseau : état local déjà nettoyé. */ }
   }
 
   // ============================================================
@@ -1401,11 +2165,15 @@ class CastManager extends ChangeNotifier {
     UpnpAvTransport transport,
     String url,
     String title,
-    int mySeq,
-  ) {
+    int mySeq, {
+    String? relayFallbackUpstream,
+    DlnaProfile? relayFallbackProfile,
+  }) {
     _dlnaWatchdog?.cancel();
     _dlnaLiveUrl = url;
     _dlnaLiveTitle = title;
+    _dlnaRelayFallbackUpstream = relayFallbackUpstream;
+    _dlnaRelayFallbackProfile = relayFallbackProfile;
     _dlnaReconnects.clear();
     _dlnaReconnecting = false;
     _dlnaWatchdog =
@@ -1421,6 +2189,7 @@ class CastManager extends ChangeNotifier {
       // qu'il a mis en pause), ni pendant une reconnexion déjà en cours.
       if (_state != CastState.casting || _dlnaReconnecting) return;
       final String? st = await transport.currentTransportState();
+      if (mySeq != _sessionSeq || !identical(transport, _transport)) return;
       // null = la TV ne supporte pas GetTransportInfo → rien à surveiller.
       if (st == null) return;
       if (st == 'STOPPED' || st == 'NO_MEDIA_PRESENT') {
@@ -1463,14 +2232,77 @@ class CastManager extends ChangeNotifier {
         streamUrl: url,
         title: _dlnaLiveTitle ?? '7 MOTION',
       );
-    } on Exception catch (e) {
+    } on Object catch (e) {
       StructuredLogger.instance.warn(
         domain: 'cast',
         event: 'dlna.auto_reconnect_fail',
         ctx: <String, Object?>{'error': e.toString()},
       );
+      // REPLI RELAIS (2026-07-09) : le replay DIRECT est resté muet au
+      // niveau CONNEXION alors que la TV jouait il y a ~10 s. Même
+      // logique que le skip direct→relais du failover initial, mais
+      // sans re-dérouler castTo : on registre le relais et on rejoue
+      // UNE fois. En cas de succès, la session continue sur le relais
+      // (keep-alive téléphone activé) au lieu de mourir en silence.
+      await _dlnaReconnectViaRelay(transport, url, mySeq, directError: e);
     } finally {
-      _dlnaReconnecting = false;
+      if (mySeq == _sessionSeq) _dlnaReconnecting = false;
+    }
+  }
+
+  /// Tente la reprise de session via le RELAIS du téléphone après un
+  /// replay direct muet. Best-effort : toute erreur est journalisée et
+  /// la main revient au tick suivant du watchdog (rate-limité 3/min).
+  Future<void> _dlnaReconnectViaRelay(
+    UpnpAvTransport transport,
+    String failedUrl,
+    int mySeq, {
+    required Object directError,
+  }) async {
+    final String? upstream = _dlnaRelayFallbackUpstream;
+    final DlnaProfile? prof = _dlnaRelayFallbackProfile;
+    if (!_looksLikeConnFailure(directError.toString())) return;
+    if (upstream == null || prof == null) return;
+    // Déjà sur le relais → rejouer la même URL au prochain tick suffit.
+    if (failedUrl.contains('/relay/')) return;
+    if (mySeq != _sessionSeq || _transport == null) return;
+    String? relayUrl;
+    bool adopted = false;
+    try {
+      relayUrl = await LocalCastServer.instance.registerRelay(
+        upstreamUrl: upstream,
+        profile: prof,
+        receiverHost: transport.device.host,
+      );
+      if (relayUrl == null) return;
+      if (mySeq != _sessionSeq || _transport == null) {
+        LocalCastServer.instance.clearRelay(relayUrl);
+        return;
+      }
+      await transport.playStream(
+        streamUrl: relayUrl,
+        title: _dlnaLiveTitle ?? '7 MOTION',
+      );
+      if (mySeq != _sessionSeq || !identical(transport, _transport)) return;
+      adopted = true;
+      _currentRelayUrl = relayUrl;
+      _dlnaLiveUrl = relayUrl;
+      // Le téléphone alimente désormais la TV : foreground service
+      // (wakelock + wifilock) pour survivre à l'écran éteint.
+      _updateRelayKeepAlive(_dlnaLiveTitle ?? '7 MOTION');
+      StructuredLogger.instance.info(
+        domain: 'cast',
+        event: 'dlna.auto_reconnect_relay',
+        ctx: <String, Object?>{'deviceName': transport.device.name},
+      );
+    } on Object catch (e2) {
+      StructuredLogger.instance.warn(
+        domain: 'cast',
+        event: 'dlna.auto_reconnect_relay_fail',
+        ctx: <String, Object?>{'error': e2.toString()},
+      );
+    } finally {
+      if (!adopted && relayUrl != null) LocalCastServer.instance.clearRelay(relayUrl);
     }
   }
 
@@ -1481,5 +2313,7 @@ class CastManager extends ChangeNotifier {
     _dlnaReconnecting = false;
     _dlnaLiveUrl = null;
     _dlnaLiveTitle = null;
+    _dlnaRelayFallbackUpstream = null;
+    _dlnaRelayFallbackProfile = null;
   }
 }

@@ -25,11 +25,12 @@ on:
   push:
     # ccr-** : branches de session Claude Code. Elles COMPILENT (artefacts
     # du run) mais ne publient pas : voir la condition de l'étape « Publier ».
-    branches: ['main', 'claude/**', 'ccr-**']
+    branches: ['main', 'claude/**', 'feature/zuno-windows-cast-*', 'ccr-**']
     paths:
       - '.github/workflows/build-zuno-windows.yml'
       - 'android-app/lib/main_windows.dart'
       - 'android-app/lib/features/tv/desktop/**'
+      - 'android-app/lib/features/cast/**'
       - 'android-app/ci/windows/**'
   workflow_dispatch:
     inputs:
@@ -149,6 +150,13 @@ jobs:
           set -e
           flutter pub get
           flutter gen-l10n
+
+      - name: Contrôler le Cast avant l’exécutable
+        shell: bash
+        run: |
+          set -e
+          flutter analyze --no-fatal-infos --no-fatal-warnings
+          flutter test test/features/cast test/features/tv/desktop --reporter expanded
 
       - name: Numéro de version (celui de la box + n° de build PC)
         shell: bash

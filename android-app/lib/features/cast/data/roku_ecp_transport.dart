@@ -29,11 +29,6 @@ class RokuEcpTransport implements CastTransport {
 
   final CastDevice device;
 
-  /// Roku reçoit toujours l'URL du flux telle quelle (pas de proxy ni de
-  /// relais côté app) → le chemin de diagnostic est constant : `'direct'`.
-  @override
-  String get lastStrategyName => 'direct';
-
   /// Channel ID du "Roku Media Player" (préinstallé sur tous les Roku).
   static const String _kMediaPlayerChannelId = '2213';
 
