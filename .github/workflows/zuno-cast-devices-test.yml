@@ -118,10 +118,27 @@ jobs:
           APK=build/cast-test/zuno-cast-test.apk
           SDK_ANALYZER="$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer"
           "$SDK_ANALYZER" manifest print "$APK" > build/cast-test/AndroidManifest.xml
-          SDK_SIGNER=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)
-          test -n "$SDK_SIGNER"
-          "$SDK_SIGNER" verify --print-certs "$APK" > build/cast-test/signature.txt
-          grep -E 'Signer #1 certificate DN:.*CN=Android Debug' build/cast-test/signature.txt
+          SDK_SIGNER=$(python3 - <<'PY'
+          import os
+          from pathlib import Path
+          import re
+          import sys
+
+          build_tools = Path(os.environ['ANDROID_HOME']) / 'build-tools'
+          # glob/is_file suivent les liens du SDK, des versions et du binaire.
+          signers = [path for path in build_tools.glob('*/apksigner') if path.is_file()]
+          if not signers:
+              print(f'::error::apksigner absent des versions installées dans {build_tools}', file=sys.stderr)
+              sys.exit(1)
+          print(max(signers, key=lambda path: tuple(map(int, re.findall(r'\d+', path.parent.name)))))
+          PY
+          )
+          echo "apksigner sélectionné : $SDK_SIGNER"
+          "$SDK_SIGNER" verify --print-certs "$APK" 2>&1 | tee build/cast-test/signature.txt
+          if ! grep -E 'Signer #1 certificate DN:.*CN=Android Debug' build/cast-test/signature.txt; then
+            echo '::error::Le certificat Android Debug attendu est absent du rapport de signature.'
+            exit 1
+          fi
           python3 ci/cast_test/verify_android.py "$APK" build/cast-test/AndroidManifest.xml build/cast-test/build-provenance.json
 
       - name: Conserver l’APK et sa preuve de compilation
@@ -131,6 +148,15 @@ jobs:
           path: android-app/build/cast-test/
           if-no-files-found: error
           retention-days: 14
+
+      - name: Conserver un diagnostic Android NON VALIDÉ en cas d’échec
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: zuno-cast-android-DIAGNOSTIC-NON-VALIDE-${{ github.sha }}-${{ github.run_attempt }}
+          path: android-app/build/cast-test/
+          if-no-files-found: ignore
+          retention-days: 1
 
   windows:
     name: ZIP Windows Cast (test isolé)
