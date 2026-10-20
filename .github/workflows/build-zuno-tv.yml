@@ -271,6 +271,23 @@ jobs:
           cp ci/proguard-rules.pro android/app/proguard-rules.pro
           python3 ci/tv/patch_gradle.py android/app/build.gradle.kts
 
+      - name: Préserver les préférences sur les box Android 5
+        if: env.ESSAI != 'true'
+        run: |
+          # La version 2.5.1 impose DataStore 1.2.1 (Android 6 minimum).
+          # La box conserve Android 5 et la version 2.5.0 du build signé
+          # du 19/10/2026. Ce pin local au runner ne touche pas le mobile.
+          python3 - <<'PYEOF'
+          from pathlib import Path
+          path = Path('pubspec.yaml')
+          source = path.read_text(encoding='utf-8')
+          anchor = '  shared_preferences: ^2.3.4\n'
+          if source.count(anchor) != 1 or '  shared_preferences_android:' in source:
+              raise SystemExit('Contrainte SharedPreferences inattendue : vérifier le pin TV.')
+          source = source.replace(anchor, anchor + '  shared_preferences_android: 2.5.0\n', 1)
+          path.write_text(source, encoding='utf-8')
+          PYEOF
+
       - name: Flutter pub get
         run: flutter pub get
 
