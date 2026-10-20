@@ -22,13 +22,14 @@
 //    • choix audio / sous-titres retenu pour les films suivants.
 // =========================================================
 import 'dart:async';
+import 'package:flutter/foundation.dart';
+import '../desktop/desktop_cast_controls.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:native_video_player/native_video_player.dart';
 import 'package:native_video_player/playback_lease.dart';
 
-import '../../box_extras/box_text.dart';
 import '../../player/data/clear_voice_flag.dart';
 import '../../player/data/image_prefs.dart';
 import '../../player/domain/image_engine.dart';
@@ -75,6 +76,9 @@ enum _Zone { timeline, buttons }
 class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
     with WidgetsBindingObserver {
   late NativeVideoController _c;
+  final GlobalKey<DesktopCastControlsState> _desktopCastKey = GlobalKey<DesktopCastControlsState>();
+  bool _desktopCasting = false;
+  String? _playingUrl;
   late VodPlayItem _item;
   final FocusNode _focus = FocusNode();
 
@@ -125,17 +129,24 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
     ForegroundPlayback.lock();
     _item = widget.item;
     _c = NativeVideoController()..addListener(_onPlayer);
-    unawaited(ClearVoiceFlag.load().then((_) {
-      if (mounted) _c.setClearVoice(ClearVoiceFlag.value);
-    }));
+    unawaited(
+      ClearVoiceFlag.load().then((_) {
+        if (mounted) _c.setClearVoice(ClearVoiceFlag.value);
+      }),
+    );
     ClearVoiceFlag.changes.addListener(_onClearVoice);
     ImagePrefs.changes.addListener(_onImagePrefs);
-    unawaited(ImagePrefs.load().then((_) {
-      if (mounted) _onImagePrefs();
-    }));
+    unawaited(
+      ImagePrefs.load().then((_) {
+        if (mounted) _onImagePrefs();
+      }),
+    );
     _next = _computeNext();
     unawaited(_start(_item, widget.startAt, local: widget.localPath));
-    _saveTimer = Timer.periodic(const Duration(seconds: 10), (_) => _saveProgress());
+    _saveTimer = Timer.periodic(
+      const Duration(seconds: 10),
+      (_) => _saveProgress(),
+    );
     _armHide();
   }
 
@@ -155,24 +166,22 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
     );
     unawaited(ImagePrefs.setEngine(step.engine));
     _c.setImageEngine(step.engine.wire);
-    _showToast(step.ffmpegMissing
-        ? boxText(
-            context,
-            'FFmpeg vidéo n\'est pas dans cette version.',
-            'FFmpeg video is not in this version.',
-          )
-        : boxText(context, 'Moteur : ${_engineLabel()}', 'Engine: ${_engineLabel()}'));
+    _showToast(
+      step.ffmpegMissing
+          ? context.l10n.tvFfmpegUnavailable
+          : context.l10n.tvEngineSelected(_engineLabel()),
+    );
     _showOverlay();
   }
 
   String _engineLabel() {
     switch (ImageEngine.fromWire(_c.imageEngineWire)) {
       case ImageEngine.software:
-        return 'Logiciel';
+        return context.l10n.tvSoftware;
       case ImageEngine.ffmpeg:
         return 'FFmpeg';
       case ImageEngine.hardware:
-        return 'Matériel';
+        return context.l10n.tvHardware;
     }
   }
 
@@ -230,11 +239,16 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
     final String? textPref = await CinemaTrackPrefs.text();
     if (!mounted) return;
     final String appLang = Localizations.localeOf(context).languageCode;
-    BlackBox.instance.breadcrumb('Cinéma : lecture ${item.title} ${item.subtitle ?? ''}');
-    BlackBox.instance.info('CINEMA',
-        'lecture ${item.id} ${local != null ? '(hors ligne)' : ''} à ${startAt.inSeconds}s');
+    BlackBox.instance.breadcrumb(
+      'Cinéma : lecture ${item.title} ${item.subtitle ?? ''}',
+    );
+    BlackBox.instance.info(
+      'CINEMA',
+      'lecture ${item.id} ${local != null ? '(hors ligne)' : ''} à ${startAt.inSeconds}s',
+    );
+    setState(() => _playingUrl = local ?? item.url);
     _c.setUrl(
-      local ?? item.url,
+      _playingUrl!,
       vod: true,
       startAt: startAt,
       preferredAudio: audioPref ?? appLang,
@@ -314,15 +328,21 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
     // affichée sur l'image jusqu'au prochain appui.
     if (_c.isPlaying && !_wasPlaying && _overlay && !_tracksOpen) _armHide();
     _wasPlaying = _c.isPlaying;
-    if (_c.hasError && !_fatal && !_vodArmed &&
+    if (_c.hasError &&
+        !_fatal &&
+        !_vodArmed &&
         !ReconnectPlan.letNativeOwnRetry(_c.nativeRetrying)) {
       _armVodRetry();
     }
     final Duration d = _c.duration;
     final Duration p = _c.position;
-    if (d > Duration.zero && _item.isEpisode && _next != null && !_nextDismissed) {
+    if (d > Duration.zero &&
+        _item.isEpisode &&
+        _next != null &&
+        !_nextDismissed) {
       final Duration left = d - p;
-      if (!_nextCard && (left <= const Duration(seconds: 20) || _c.isEnded) &&
+      if (!_nextCard &&
+          (left <= const Duration(seconds: 20) || _c.isEnded) &&
           d > const Duration(minutes: 5)) {
         _openNextCard(left);
       }
@@ -364,12 +384,14 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
       _vodArmed = false;
       if (!mounted || _fatal) return;
       if (ReconnectPlan.letNativeOwnRetry(_c.nativeRetrying)) return;
-      unawaited(_start(
-        _item,
-        at,
-        local: widget.localPath,
-        keepPicture: _c.firstFrame || _c.holdFrame,
-      ));
+      unawaited(
+        _start(
+          _item,
+          at,
+          local: widget.localPath,
+          keepPicture: _c.firstFrame || _c.holdFrame,
+        ),
+      );
     });
   }
 
@@ -396,8 +418,10 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
     int pos = _c.position.inMilliseconds;
     if (ended && dur > 0) pos = dur;
     if (pos <= 0 || dur <= 0) return;
-    final WatchEntry stored = WatchProgressRepository.instance
-        .record(_item.toEntry(posMs: pos, durMs: dur), flushNow: flush);
+    final WatchEntry stored = WatchProgressRepository.instance.record(
+      _item.toEntry(posMs: pos, durMs: dur),
+      flushNow: flush,
+    );
     if (stored.finished && !_finishHandled) {
       _finishHandled = true;
       _onFinished();
@@ -410,13 +434,17 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
     VodPlayItem? ni;
     if (n != null && st != null) {
       ni = VodPlayItem.episode(n, st);
-      WatchProgressRepository.instance.proposeNext(ni.toEntry(posMs: 0, durMs: n.durationSec * 1000));
+      WatchProgressRepository.instance.proposeNext(
+        ni.toEntry(posMs: 0, durMs: n.durationSec * 1000),
+      );
     }
     if (_item.isEpisode) {
-      unawaited(CinemaDownloads.onEpisodeFinished(
-        finishedId: _item.id,
-        next: ni?.toVodMovie(),
-      ));
+      unawaited(
+        CinemaDownloads.onEpisodeFinished(
+          finishedId: _item.id,
+          next: ni?.toVodMovie(),
+        ),
+      );
     }
   }
 
@@ -453,6 +481,7 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
   // ---------------------------------------------------------
 
   void _seekBy(int direction, {bool repeat = false}) {
+    if (_desktopCasting) return;
     _repeat = repeat ? _repeat + 1 : 0;
     final int step = _repeat > 15 ? 60 : (_repeat > 5 ? 30 : 10);
     final Duration base = _seekTarget ?? _c.position;
@@ -475,6 +504,11 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
   }
 
   void _togglePlay() {
+    if (_desktopCasting && _desktopCastKey.currentState?.ownsSession != true) return;
+    if (_desktopCastKey.currentState?.ownsSession == true) {
+      unawaited(_desktopCastKey.currentState!.togglePause());
+      return;
+    }
     if (_c.isPlaying) {
       _c.pause();
       _saveProgress(flush: true);
@@ -488,41 +522,40 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
   //  Boutons (zone du bas)
   // ---------------------------------------------------------
 
-  List<({IconData icon, String label, VoidCallback run})> _buttons(BuildContext context) =>
-      <({IconData icon, String label, VoidCallback run})>[
-        (
-          icon: Icons.subtitles_rounded,
-          label: context.l10n.tvCinemaAudioSubs,
-          run: _openTracks,
-        ),
-        (
-          icon: Icons.replay_rounded,
-          label: context.l10n.tvCinemaRestart,
-          run: () {
-            _c.seekTo(Duration.zero);
-            _c.play();
-            _showOverlay();
-          },
-        ),
-        if (_next != null)
-          (
-            icon: Icons.skip_next_rounded,
-            label: context.l10n.tvCinemaNextEpisode,
-            run: () => unawaited(_playNext()),
-          ),
-        (
-          icon: Icons.memory_rounded,
-          label: _engineLabel(),
-          run: _cycleEngine,
-        ),
-      ];
+  List<({IconData icon, String label, VoidCallback run})> _buttons(
+    BuildContext context,
+  ) => <({IconData icon, String label, VoidCallback run})>[
+    (
+      icon: Icons.subtitles_rounded,
+      label: context.l10n.tvCinemaAudioSubs,
+      run: _openTracks,
+    ),
+    (
+      icon: Icons.replay_rounded,
+      label: context.l10n.tvCinemaRestart,
+      run: () {
+        _c.seekTo(Duration.zero);
+        _c.play();
+        _showOverlay();
+      },
+    ),
+    if (_next != null)
+      (
+        icon: Icons.skip_next_rounded,
+        label: context.l10n.tvCinemaNextEpisode,
+        run: () => unawaited(_playNext()),
+      ),
+    (icon: Icons.memory_rounded, label: _engineLabel(), run: _cycleEngine),
+  ];
 
   // ---------------------------------------------------------
   //  Audio / sous-titres
   // ---------------------------------------------------------
 
-  List<NativeTrack> get _audio => _c.tracks.where((NativeTrack t) => t.isAudio).toList();
-  List<NativeTrack> get _texts => _c.tracks.where((NativeTrack t) => !t.isAudio).toList();
+  List<NativeTrack> get _audio =>
+      _c.tracks.where((NativeTrack t) => t.isAudio).toList();
+  List<NativeTrack> get _texts =>
+      _c.tracks.where((NativeTrack t) => !t.isAudio).toList();
 
   /// Entrées du panneau : audio…, « Sous-titres désactivés », sous-titres…
   int get _trackCount => _audio.length + 1 + _texts.length;
@@ -542,16 +575,26 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
     final List<NativeTrack> t = _texts;
     if (i < a.length) {
       _c.selectTrack(a[i]);
-      unawaited(CinemaTrackPrefs.setAudio(
-          a[i].language == null ? null : CinemaLanguage.normalizeCode(a[i].language!)));
+      unawaited(
+        CinemaTrackPrefs.setAudio(
+          a[i].language == null
+              ? null
+              : CinemaLanguage.normalizeCode(a[i].language!),
+        ),
+      );
     } else if (i == a.length) {
       _c.disableSubtitles();
       unawaited(CinemaTrackPrefs.setText(null));
     } else {
       final NativeTrack tr = t[i - a.length - 1];
       _c.selectTrack(tr);
-      unawaited(CinemaTrackPrefs.setText(
-          tr.language == null ? null : CinemaLanguage.normalizeCode(tr.language!)));
+      unawaited(
+        CinemaTrackPrefs.setText(
+          tr.language == null
+              ? null
+              : CinemaLanguage.normalizeCode(tr.language!),
+        ),
+      );
     }
     setState(() => _tracksOpen = false);
     _showOverlay();
@@ -561,7 +604,8 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
     final String? lang = CinemaLanguage.labelFor(t.language);
     final List<String> parts = <String>[
       lang ?? context.l10n.tvCinemaTrackUnknown(n.toString()),
-      if (t.label != null && t.label!.trim().isNotEmpty && t.label != lang) t.label!.trim(),
+      if (t.label != null && t.label!.trim().isNotEmpty && t.label != lang)
+        t.label!.trim(),
       if (t.isAudio && t.channels >= 6) '5.1',
     ];
     return parts.join(' · ');
@@ -573,7 +617,8 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
   /// défaut, un numéro (« Español · 2 »).
   List<String> _trackLabels(BuildContext context, List<NativeTrack> list) {
     final List<String> base = <String>[
-      for (int i = 0; i < list.length; i++) _trackLabel(context, list[i], i + 1),
+      for (int i = 0; i < list.length; i++)
+        _trackLabel(context, list[i], i + 1),
     ];
     final Map<String, int> total = <String, int>{};
     for (final String s in base) {
@@ -608,12 +653,14 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
       if (!mounted || !_tracksOpen) return;
       final BuildContext? ctx = _trackRowKeys[_trackIdx]?.currentContext;
       if (ctx == null) return;
-      unawaited(Scrollable.ensureVisible(
-        ctx,
-        alignment: 0.5,
-        duration: TvDimens.focusAnim,
-        curve: Curves.easeOutCubic,
-      ));
+      unawaited(
+        Scrollable.ensureVisible(
+          ctx,
+          alignment: 0.5,
+          duration: TvDimens.focusAnim,
+          curve: Curves.easeOutCubic,
+        ),
+      );
     });
   }
 
@@ -673,6 +720,23 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
       return KeyEventResult.handled;
     }
 
+    // Les pistes et la barre de temps locales ne commandent pas la TV.
+    // Pause/reprise passent par le transport ; les autres réglages restent
+    // sur la télécommande du récepteur jusqu'au retour au PC.
+    if (_desktopCasting) {
+      final DesktopCastControlsState? cast = _desktopCastKey.currentState;
+      if (!repeat) {
+        if (_isOk(k) || k == LogicalKeyboardKey.mediaPlayPause) {
+          unawaited(cast?.togglePause());
+        } else if (k == LogicalKeyboardKey.mediaPlay) {
+          unawaited(cast?.resume());
+        } else if (k == LogicalKeyboardKey.mediaPause || k == LogicalKeyboardKey.mediaStop) {
+          unawaited(cast?.pause());
+        }
+      }
+      return KeyEventResult.ignored;
+    }
+
     if (_fatal) {
       if (_isOk(k) && !repeat) {
         setState(() {
@@ -683,12 +747,14 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
         final Duration at = _c.position > const Duration(seconds: 1)
             ? _c.position
             : widget.startAt;
-        unawaited(_start(
-          _item,
-          at,
-          local: widget.localPath,
-          keepPicture: _c.firstFrame || _c.holdFrame,
-        ));
+        unawaited(
+          _start(
+            _item,
+            at,
+            local: widget.localPath,
+            keepPicture: _c.firstFrame || _c.holdFrame,
+          ),
+        );
       }
       return KeyEventResult.handled;
     }
@@ -725,7 +791,8 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
       _showOverlay();
       return KeyEventResult.handled;
     }
-    if (k == LogicalKeyboardKey.mediaPause || k == LogicalKeyboardKey.mediaStop) {
+    if (k == LogicalKeyboardKey.mediaPause ||
+        k == LogicalKeyboardKey.mediaStop) {
       _c.pause();
       _saveProgress(flush: true);
       _showOverlay();
@@ -823,13 +890,28 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
                       child: NativeVideoView(controller: _c),
                     ),
                   ),
-                  if (!_c.firstFrame && !_fatal && !_c.holdFrame) _buildLoading(),
-                  if (_c.cues.isNotEmpty) _buildSubtitles(),
-                  if (_overlay || _fatal) _buildOverlay(context),
+                  if (!_desktopCasting && !_c.firstFrame && !_fatal && !_c.holdFrame)
+                    _buildLoading(),
+                  if (!_desktopCasting && _c.cues.isNotEmpty) _buildSubtitles(),
+                  if (!_desktopCasting && (_overlay || _fatal)) _buildOverlay(context),
                   if (_toast != null) _buildToast(),
-                  if (_nextCard && _next != null) _buildNextCard(context),
-                  if (_tracksOpen) _buildTracks(context),
-                  if (_fatal) _buildError(context),
+                  if (!_desktopCasting && _nextCard && _next != null) _buildNextCard(context),
+                  if (!_desktopCasting && _tracksOpen) _buildTracks(context),
+                  if (!_desktopCasting && _fatal) _buildError(context),
+                  if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows)
+                    Positioned(top: TvDimens.safeV, right: TvDimens.safeH,
+                      child: DesktopCastControls(key: _desktopCastKey,
+                        controller: _c, streamUrl: _playingUrl ?? _item.url,
+                        title: _item.title, imageUrl: null,
+                        onHandoffChanged: (bool active) {
+                          if (!mounted) return;
+                          _seekTimer?.cancel();
+                          setState(() {
+                            _desktopCasting = active;
+                            _seekTarget = null;
+                            _tracksOpen = false;
+                          });
+                        })),
                 ],
               ),
             ),
@@ -840,34 +922,38 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
   }
 
   Widget _buildLoading() => const Center(
-        child: SizedBox(
-          width: 46,
-          height: 46,
-          child: CircularProgressIndicator(strokeWidth: 3, color: TvTokens.accent),
-        ),
-      );
+    child: SizedBox(
+      width: 46,
+      height: 46,
+      child: CircularProgressIndicator(strokeWidth: 3, color: TvTokens.accent),
+    ),
+  );
 
   Widget _buildSubtitles() => Positioned(
-        left: 120,
-        right: 120,
-        bottom: _overlay ? 170 : 60,
-        child: Text(
-          _c.cues,
-          textAlign: TextAlign.center,
-          style: TvTokens.ui(30, weight: FontWeight.w600, color: TvTokens.text).copyWith(
+    left: 120,
+    right: 120,
+    bottom: _overlay ? 170 : 60,
+    child: Text(
+      _c.cues,
+      textAlign: TextAlign.center,
+      style: TvTokens.ui(30, weight: FontWeight.w600, color: TvTokens.text)
+          .copyWith(
             shadows: const <Shadow>[
               Shadow(blurRadius: 6, color: Colors.black),
               Shadow(offset: Offset(0, 2), blurRadius: 3, color: Colors.black),
             ],
           ),
-        ),
-      );
+    ),
+  );
 
   Widget _buildOverlay(BuildContext context) {
     final Duration d = _c.duration;
     final Duration p = _seekTarget ?? _c.position;
-    final double frac = d > Duration.zero ? (p.inMilliseconds / d.inMilliseconds).clamp(0.0, 1.0) : 0;
-    final List<({IconData icon, String label, VoidCallback run})> btns = _buttons(context);
+    final double frac = d > Duration.zero
+        ? (p.inMilliseconds / d.inMilliseconds).clamp(0.0, 1.0)
+        : 0;
+    final List<({IconData icon, String label, VoidCallback run})> btns =
+        _buttons(context);
     return Stack(
       fit: StackFit.expand,
       children: <Widget>[
@@ -882,22 +968,29 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
-                colors: <Color>[Colors.black.withValues(alpha: 0.75), Colors.transparent],
+                colors: <Color>[
+                  Colors.black.withValues(alpha: 0.75),
+                  Colors.transparent,
+                ],
               ),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[
-                Text(_item.title,
+                Text(
+                  _item.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TvTokens.display(34, color: TvTokens.text),
+                ),
+                if (_item.subtitle != null)
+                  Text(
+                    _item.subtitle!,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TvTokens.display(34, color: TvTokens.text)),
-                if (_item.subtitle != null)
-                  Text(_item.subtitle!,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TvTokens.ui(TvDimens.title, color: TvTokens.muted)),
+                    style: TvTokens.ui(TvDimens.title, color: TvTokens.muted),
+                  ),
               ],
             ),
           ),
@@ -913,7 +1006,10 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
               gradient: LinearGradient(
                 begin: Alignment.bottomCenter,
                 end: Alignment.topCenter,
-                colors: <Color>[Colors.black.withValues(alpha: 0.85), Colors.transparent],
+                colors: <Color>[
+                  Colors.black.withValues(alpha: 0.85),
+                  Colors.transparent,
+                ],
               ),
             ),
             child: Column(
@@ -923,8 +1019,12 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
                 Row(
                   children: <Widget>[
                     Icon(
-                      _c.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                      color: _zone == _Zone.timeline ? TvTokens.accentBright : TvTokens.muted,
+                      _c.isPlaying
+                          ? Icons.pause_rounded
+                          : Icons.play_arrow_rounded,
+                      color: _zone == _Zone.timeline
+                          ? TvTokens.accentBright
+                          : TvTokens.muted,
                       size: 34,
                     ),
                     const SizedBox(width: 12),
@@ -949,9 +1049,15 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
                     ),
                     const SizedBox(width: 16),
                     Text(
-                      d > Duration.zero ? '${formatClock(p)} / ${formatClock(d)}' : formatClock(p),
-                      style: TvTokens.mono(18,
-                          color: _seekTarget != null ? TvTokens.accentBright : TvTokens.text),
+                      d > Duration.zero
+                          ? '${formatClock(p)} / ${formatClock(d)}'
+                          : formatClock(p),
+                      style: TvTokens.mono(
+                        18,
+                        color: _seekTarget != null
+                            ? TvTokens.accentBright
+                            : TvTokens.text,
+                      ),
                     ),
                   ],
                 ),
@@ -977,21 +1083,27 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
   }
 
   Widget _buildToast() => Positioned(
-        top: 120,
-        left: 0,
-        right: 0,
-        child: Center(
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
-            decoration: BoxDecoration(
-              color: TvTokens.surface3.withValues(alpha: 0.92),
-              borderRadius: BorderRadius.circular(TvTokens.rButton),
-            ),
-            child: Text(_toast!,
-                style: TvTokens.ui(TvDimens.titleS, weight: FontWeight.w600, color: TvTokens.text)),
+    top: 120,
+    left: 0,
+    right: 0,
+    child: Center(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
+        decoration: BoxDecoration(
+          color: TvTokens.surface3.withValues(alpha: 0.92),
+          borderRadius: BorderRadius.circular(TvTokens.rButton),
+        ),
+        child: Text(
+          _toast!,
+          style: TvTokens.ui(
+            TvDimens.titleS,
+            weight: FontWeight.w600,
+            color: TvTokens.text,
           ),
         ),
-      );
+      ),
+    ),
+  );
 
   Widget _buildNextCard(BuildContext context) {
     final CinemaEpisode n = _next!;
@@ -1004,22 +1116,39 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
         decoration: BoxDecoration(
           color: TvTokens.surface3.withValues(alpha: 0.96),
           borderRadius: BorderRadius.circular(TvTokens.rCard),
-          border: Border.all(color: TvTokens.accent, width: TvDimens.focusOutline),
+          border: Border.all(
+            color: TvTokens.accent,
+            width: TvDimens.focusOutline,
+          ),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            Text(context.l10n.tvCinemaNextIn(_countdown.clamp(0, 99).toString()),
-                style: TvTokens.ui(TvDimens.label, weight: FontWeight.w700, color: TvTokens.accentBright)),
+            Text(
+              context.l10n.tvCinemaNextIn(_countdown.clamp(0, 99).toString()),
+              style: TvTokens.ui(
+                TvDimens.label,
+                weight: FontWeight.w700,
+                color: TvTokens.accentBright,
+              ),
+            ),
             const SizedBox(height: 6),
-            Text(episodeLabel(n),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TvTokens.ui(TvDimens.titleS, weight: FontWeight.w700, color: TvTokens.text)),
+            Text(
+              episodeLabel(n),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TvTokens.ui(
+                TvDimens.titleS,
+                weight: FontWeight.w700,
+                color: TvTokens.text,
+              ),
+            ),
             const SizedBox(height: 10),
-            Text(context.l10n.tvCinemaNextHint,
-                style: TvTokens.ui(TvDimens.caption, color: TvTokens.mutedDim)),
+            Text(
+              context.l10n.tvCinemaNextHint,
+              style: TvTokens.ui(TvDimens.caption, color: TvTokens.mutedDim),
+            ),
           ],
         ),
       ),
@@ -1033,40 +1162,55 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
     final List<Widget> rows = <Widget>[];
     int idx = 0;
     Widget row(String label, bool selected, int i) => Container(
-          key: _trackKey(i),
-          margin: const EdgeInsets.only(bottom: 4),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          decoration: BoxDecoration(
-            color: _trackIdx == i ? TvTokens.sel : Colors.transparent,
-            borderRadius: BorderRadius.circular(TvTokens.rMenuItem),
-            border: _trackIdx == i
-                ? Border.all(color: TvTokens.accent, width: TvDimens.focusOutline)
+      key: _trackKey(i),
+      margin: const EdgeInsets.only(bottom: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: _trackIdx == i ? TvTokens.sel : Colors.transparent,
+        borderRadius: BorderRadius.circular(TvTokens.rMenuItem),
+        border: _trackIdx == i
+            ? Border.all(color: TvTokens.accent, width: TvDimens.focusOutline)
+            : null,
+      ),
+      child: Row(
+        children: <Widget>[
+          SizedBox(
+            width: 28,
+            child: selected
+                ? const Icon(
+                    Icons.check_rounded,
+                    color: TvTokens.accentBright,
+                    size: 22,
+                  )
                 : null,
           ),
-          child: Row(
-            children: <Widget>[
-              SizedBox(
-                width: 28,
-                child: selected
-                    ? const Icon(Icons.check_rounded, color: TvTokens.accentBright, size: 22)
-                    : null,
+          Expanded(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TvTokens.ui(
+                TvDimens.body,
+                weight: FontWeight.w600,
+                color: _trackIdx == i ? TvTokens.accentBright : TvTokens.text,
               ),
-              Expanded(
-                child: Text(label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TvTokens.ui(TvDimens.body,
-                        weight: FontWeight.w600,
-                        color: _trackIdx == i ? TvTokens.accentBright : TvTokens.text)),
-              ),
-            ],
+            ),
           ),
-        );
+        ],
+      ),
+    );
     Widget header(String s) => Padding(
-          padding: const EdgeInsets.fromLTRB(6, 14, 6, 8),
-          child: Text(s.toUpperCase(),
-              style: TvTokens.ui(12, weight: FontWeight.w700, color: TvTokens.mutedDim, spacing: 2)),
-        );
+      padding: const EdgeInsets.fromLTRB(6, 14, 6, 8),
+      child: Text(
+        s.toUpperCase(),
+        style: TvTokens.ui(
+          12,
+          weight: FontWeight.w700,
+          color: TvTokens.mutedDim,
+          spacing: 2,
+        ),
+      ),
+    );
 
     final List<String> aLabels = _trackLabels(context, a);
     final List<String> tLabels = _trackLabels(context, t);
@@ -1091,8 +1235,10 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
-              Text(context.l10n.tvCinemaAudioSubs,
-                  style: TvTokens.display(28, color: TvTokens.text)),
+              Text(
+                context.l10n.tvCinemaAudioSubs,
+                style: TvTokens.display(28, color: TvTokens.text),
+              ),
               ...rows,
             ],
           ),
@@ -1102,30 +1248,46 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
   }
 
   Widget _buildError(BuildContext context) => Center(
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 34, vertical: 26),
-          decoration: BoxDecoration(
-            color: TvTokens.surface3.withValues(alpha: 0.96),
-            borderRadius: BorderRadius.circular(TvTokens.rCard),
+    child: Container(
+      padding: const EdgeInsets.symmetric(horizontal: 34, vertical: 26),
+      decoration: BoxDecoration(
+        color: TvTokens.surface3.withValues(alpha: 0.96),
+        borderRadius: BorderRadius.circular(TvTokens.rCard),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          const Icon(
+            Icons.error_outline_rounded,
+            color: TvTokens.live,
+            size: 44,
           ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              const Icon(Icons.error_outline_rounded, color: TvTokens.live, size: 44),
-              const SizedBox(height: 12),
-              Text(context.l10n.tvPlaybackImpossible,
-                  style: TvTokens.display(28, color: TvTokens.text)),
-              const SizedBox(height: 14),
-              Text(context.l10n.tvPlayerFatalHint,
-                  style: TvTokens.ui(TvDimens.titleS, weight: FontWeight.w700, color: TvTokens.accentBright)),
-            ],
+          const SizedBox(height: 12),
+          Text(
+            context.l10n.tvPlaybackImpossible,
+            style: TvTokens.display(28, color: TvTokens.text),
           ),
-        ),
-      );
+          const SizedBox(height: 14),
+          Text(
+            context.l10n.tvPlayerFatalHint,
+            style: TvTokens.ui(
+              TvDimens.titleS,
+              weight: FontWeight.w700,
+              color: TvTokens.accentBright,
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
 }
 
 class _PlayerButton extends StatelessWidget {
-  const _PlayerButton({required this.icon, required this.label, required this.focused});
+  const _PlayerButton({
+    required this.icon,
+    required this.label,
+    required this.focused,
+  });
   final IconData icon;
   final String label;
   final bool focused;
@@ -1145,7 +1307,14 @@ class _PlayerButton extends StatelessWidget {
         children: <Widget>[
           Icon(icon, size: 22, color: fg),
           const SizedBox(width: 8),
-          Text(label, style: TvTokens.ui(TvDimens.label, weight: FontWeight.w700, color: fg)),
+          Text(
+            label,
+            style: TvTokens.ui(
+              TvDimens.label,
+              weight: FontWeight.w700,
+              color: fg,
+            ),
+          ),
         ],
       ),
     );

@@ -648,7 +648,7 @@
   "tvBlackBoxHelp": "OPP/NED: bla · CH+/CH−: side · Kopier = utklippstavle (lim det inn til support på WhatsApp). Denne loggen kan sendes til support. Du kan slå av sendingen under Innstillinger.",
   "tvNavServer": "Server",
   "tvLegalTitle": "Juridisk informasjon og vilkår",
-    "tvHelloMorning": "God morgen",
+  "tvHelloMorning": "God morgen",
   "tvHelloAfternoon": "God ettermiddag",
   "tvHelloEvening": "God kveld",
   "tvHomeInvite": "Kanalene, filmene og påminnelsene dine kommer tilbake hit.",
@@ -673,7 +673,7 @@
   "tvReminderInMinutes": "Om {minutes} min",
   "tvReminderInHours": "Om {hours} t",
   "tvReminderInHoursMinutes": "Om {hours} t {minutes}",
-"tvResumeLabel": "FORTSETT",
+  "tvResumeLabel": "FORTSETT",
   "tvNowPlayingPrefix": "NÅ · {title}",
   "@tvNowPlayingPrefix": {
     "placeholders": {
@@ -847,7 +847,13 @@
   "tvRecordingStarted": "Tar opp…",
   "tvRecordingError": "Opptaksfeil",
   "tvRecordingSaved": "Opptak lagret ({size})",
-  "@tvRecordingSaved": {"placeholders": {"size": {"type": "String"}}},
+  "@tvRecordingSaved": {
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
   "tvRecordingEmpty": "Tomt opptak",
   "tvRemovedFromFavorites": "Fjernet fra favoritter",
   "tvAddedToFavorites": "Lagt til i favoritter ❤",
@@ -855,61 +861,163 @@
   "tvCinemaAudio": "Lyd",
   "tvCinemaAudioSubs": "Lyd og teksting",
   "tvCinemaCast": "Med {names}",
-  "@tvCinemaCast": {"placeholders": {"names": {"type": "String"}}},
+  "@tvCinemaCast": {
+    "placeholders": {
+      "names": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaContinue": "Fortsett å se",
   "tvCinemaDeleteDownload": "Slett nedlasting",
   "tvCinemaDirector": "Regi: {names}",
-  "@tvCinemaDirector": {"placeholders": {"names": {"type": "String"}}},
+  "@tvCinemaDirector": {
+    "placeholders": {
+      "names": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaDownload": "Last ned",
   "tvCinemaDownloadError": "Nedlastingen mislyktes",
   "tvCinemaDownloadPaused": "På pause · {pct} %",
-  "@tvCinemaDownloadPaused": {"placeholders": {"pct": {"type": "String"}}},
+  "@tvCinemaDownloadPaused": {
+    "placeholders": {
+      "pct": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaDownloaded": "Lastet ned",
   "tvCinemaDownloading": "Laster ned · {pct} %",
-  "@tvCinemaDownloading": {"placeholders": {"pct": {"type": "String"}}},
+  "@tvCinemaDownloading": {
+    "placeholders": {
+      "pct": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaDownloads": "Mine nedlastinger",
   "tvCinemaEmptyCategory": "Ingenting her ennå.",
   "tvCinemaEpisode": "Episode {n}",
-  "@tvCinemaEpisode": {"placeholders": {"n": {"type": "String"}}},
+  "@tvCinemaEpisode": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaFromStart": "Fra begynnelsen",
   "tvCinemaIndexing": "Klargjør søk i hele katalogen…",
   "tvCinemaLanguage": "Språk: {value}",
-  "@tvCinemaLanguage": {"placeholders": {"value": {"type": "String"}}},
+  "@tvCinemaLanguage": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaLoading": "Laster inn…",
   "tvCinemaMinutes": "{n} min",
-  "@tvCinemaMinutes": {"placeholders": {"n": {"type": "String"}}},
+  "@tvCinemaMinutes": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaNextEpisode": "Neste episode",
   "tvCinemaNextHint": "OK: nå · Tilbake: bli",
   "tvCinemaNextIn": "Neste episode om {s} s",
-  "@tvCinemaNextIn": {"placeholders": {"s": {"type": "String"}}},
+  "@tvCinemaNextIn": {
+    "placeholders": {
+      "s": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaNoEpisodes": "Ingen episoder tilgjengelig.",
   "tvCinemaNoSource": "Ingen filmer eller serier ennå",
   "tvCinemaNoSourceBody": "Filmer og serier kommer fra Xtream-abonnementet ditt. Legg det til under Server, eller be forhandleren din om å aktivere det.",
   "tvCinemaNoSpace": "Ikke nok plass på boksen ({free} GB ledig).",
-  "@tvCinemaNoSpace": {"placeholders": {"free": {"type": "String"}}},
+  "@tvCinemaNoSpace": {
+    "placeholders": {
+      "free": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaPauseDownload": "Sett på pause",
   "tvCinemaPlay": "Spill av",
   "tvCinemaPlayEpisode": "Spill av S{s} · E{e}",
-  "@tvCinemaPlayEpisode": {"placeholders": {"s": {"type": "String"}, "e": {"type": "String"}}},
+  "@tvCinemaPlayEpisode": {
+    "placeholders": {
+      "s": {
+        "type": "String"
+      },
+      "e": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaRecent": "Nylig lagt til",
   "tvCinemaRestart": "Start på nytt",
   "tvCinemaResumeAt": "Fortsett fra {time}",
-  "@tvCinemaResumeAt": {"placeholders": {"time": {"type": "String"}}},
+  "@tvCinemaResumeAt": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaResumeDownload": "Gjenoppta nedlasting",
   "tvCinemaResumeEpisode": "Fortsett S{s} · E{e}",
-  "@tvCinemaResumeEpisode": {"placeholders": {"s": {"type": "String"}, "e": {"type": "String"}}},
+  "@tvCinemaResumeEpisode": {
+    "placeholders": {
+      "s": {
+        "type": "String"
+      },
+      "e": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaResumedAt": "Fortsetter fra {time}",
-  "@tvCinemaResumedAt": {"placeholders": {"time": {"type": "String"}}},
+  "@tvCinemaResumedAt": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaSearch": "Søk",
   "tvCinemaSeason": "Sesong {n}",
-  "@tvCinemaSeason": {"placeholders": {"n": {"type": "String"}}},
+  "@tvCinemaSeason": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaSeasons": "{n} sesonger",
-  "@tvCinemaSeasons": {"placeholders": {"n": {"type": "String"}}},
+  "@tvCinemaSeasons": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaSpecials": "Spesialepisoder",
   "tvCinemaSubtitles": "Teksting",
   "tvCinemaSubtitlesOff": "Av",
   "tvCinemaTrackUnknown": "Spor {n}",
-  "@tvCinemaTrackUnknown": {"placeholders": {"n": {"type": "String"}}},
+  "@tvCinemaTrackUnknown": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
   "tvUpdatingContent": "Oppdaterer…",
   "tvDeactivate": "Deaktiver",
   "tvSourceActive": "aktiv",
@@ -946,4 +1054,325 @@
   "tvVoiceRemoteAiOff": "Av",
   "tvVoiceRemoteAiHelp": "Av som standard. Ingen nøkkel i appen. «I kveld» leses fra guiden din, på boksen. Hvis tjenesten ikke svarer, søker Zuno i listen din.",
   "tvVoiceCinemaHint": "Åpne Filmer eller Serier én gang: søket finner dem etterpå, uten nett mens du ser.",
-  "tvVoiceOnChannel": "På {channel}"}
+  "tvVoiceOnChannel": "På {channel}",
+  "tvDeletePanelSourceConfirm": "«{name}» blir slettet fra denne TV-en. Synkronisering eller ny sending fra panelet gjenoppretter den ikke. Legg den til igjen i appen for å gjenopprette den.",
+  "tvDeleteSourceFailed": "Lokal sletting mislyktes. Prøv igjen om litt.",
+  "tvCinemaOfflineTitle": "Katalogen er utilgjengelig",
+  "tvCinemaOfflineBody": "Ingenting er lagret på TV-en, og serveren svarer ikke. Sjekk forbindelsen og prøv igjen.",
+  "tvCinemaRetry": "Prøv igjen",
+  "tvCinemaUpdated": "Oppdatert {when}",
+  "tvCinemaAgeJustNow": "akkurat nå",
+  "tvCinemaAgeMinutes": "for {n} min siden",
+  "tvCinemaAgeHours": "for {n} timer siden",
+  "tvCinemaAgeDays": "for {n} dager siden",
+  "tvCinemaCategoryFailed": "Denne kategorien kunne ikke lastes inn.",
+  "moviesRetry": "Prøv igjen",
+  "tvRemoteTitle": "Fjernkontroll",
+  "tvSettingsRemote": "Telefonen blir fjernkontroll på samme Wi-Fi. Ingen installasjon nødvendig.",
+  "tvRemoteLead": "Skann QR-koden med telefonkameraet. Ingen installasjon nødvendig.",
+  "tvRemoteWarn": "Alle som ser koden, kan styre boksen til koden utløper. Bare én telefon. Koden utløper automatisk.",
+  "tvRemoteKeep": "Tilbake forlater skjermen: telefonen virker til koden utløper. Slå av avslutter med en gang.",
+  "tvRemoteStarting": "Forbereder…",
+  "tvRemoteWaiting": "Venter på telefonen…",
+  "tvRemotePaired": "Telefon tilkoblet",
+  "tvRemoteExpired": "Koden er utløpt",
+  "tvRemoteStopped": "Fjernkontrollen er slått av",
+  "tvRemoteNoLan": "Ingen lokal nettverkstilkobling. Koble boksen og telefonen til samme Wi-Fi.",
+  "tvRemoteError": "Fjernkontrollen kunne ikke starte.",
+  "tvRemoteNewCode": "Ny kode",
+  "tvRemoteStop": "Slå av",
+  "tvRemoteStart": "Aktiver",
+  "tvRemoteLeft": "Utløper om {time}",
+  "tvRemoteUrlHelp": "Hvis skanningen mislykkes, åpner du adressen i telefonens nettleser.",
+  "sportsTimeout": "Sportstjenesten svarer for sakte. Prøv igjen.",
+  "sportsNetworkError": "Kan ikke koble til sportstjenesten.",
+  "sportsHttpError": "Sportstjenesten er utilgjengelig (HTTP {status}).",
+  "sportsInvalidResponse": "Svaret fra sportstjenesten kan ikke leses.",
+  "sportsUnavailable": "Sportsdata kunne ikke lastes inn.",
+  "sportsLoading": "Laster inn kamper…",
+  "sportsRetry": "Prøv igjen",
+  "sportsFootballTitle": "Resultater og kampoppsett",
+  "sportsRefresh": "Oppdater",
+  "sportsCommunityNotice": "Resultater og mål fra brukere · forsinkelser kan forekomme · oppdateres hvert 60. sekund.",
+  "sportsCalendarNotice": "Kampoppsett og forsinkede resultater · OpenFootball tilbyr ikke direktesendte resultater.",
+  "sportsRetrievedAt": "Hentet kl. {time}",
+  "sportsUpcoming": "Kommende",
+  "sportsRecent": "Siste kamper",
+  "sportsFinished": "Avsluttet",
+  "tvProgramStartedMinutesAgo": "Programmet startet for {minutes} min siden",
+  "tvProfiles": "Profiler",
+  "tvKidsProfile": "Barneprofil",
+  "tvNewProfile": "Ny profil",
+  "tvChildren": "Barn",
+  "tvKidsExists": "Det finnes allerede en barneprofil.",
+  "tvProfileAddFailed": "Profilen kunne ikke legges til.",
+  "tvKidsReady": "Barneprofilen er klar. Barnemodus forblir på.",
+  "tvRename": "Endre navn",
+  "tvNameInvalid": "Navnet er tomt eller for langt.",
+  "tvProfileDeleteBody": "Profilens favoritter, historikk, avspillingsposisjoner, påminnelser og PIN-kode slettes. Kanalene og profil 1 beholdes.",
+  "tvProfileDeleteFailed": "Denne profilen kan ikke slettes.",
+  "tvProfilesHelp": "Opptil 4 profiler. Separate favoritter, historikk, avspillingsposisjoner, påminnelser og PIN-koder. Kanalene deles.",
+  "tvDefaultPinWarning": "PIN-koden er fortsatt 0000. Endre den under Foreldrekontroll.",
+  "tvAskProfileOn": "Velg profil ved oppstart: på",
+  "tvAskProfileOff": "Velg profil ved oppstart: av",
+  "tvProfileStartupSingle": "Profilvalget vises fra 2 profiler. Med én profil åpnes appen direkte.",
+  "tvProfileStartupHelp": "Når dette er av, åpnes den siste profilen direkte. Du kan fortsatt bytte her eller på startskjermen.",
+  "tvKidsProfileHelp": "Barnemodus er låst. Profilens PIN-kode kreves for å forlate den. Vokseninnhold skjules. Profil 1 beholder de tidligere dataene dine.",
+  "tvOriginProfileHelp": "Opprinnelig profil: tidligere favoritter, historikk, avspillingsposisjoner og PIN-kode finnes her. Den kan ikke slettes.",
+  "tvSeparateProfileHelp": "Separat profil. Sletting av denne sletter ikke profil 1.",
+  "tvProfileActive": "Aktiv",
+  "tvProfileCreated": "Profilen «{name}» er opprettet.",
+  "tvProfileDeleteTitle": "Slette «{name}»?",
+  "tvWhoWatching": "Hvem ser på?",
+  "tvProfilePickerHelp": "Alle har egne favoritter, historikk og PIN-kode. Kanalene er de samme.",
+  "tvLater": "Senere",
+  "tvNameMum": "Mamma",
+  "tvNameDad": "Pappa",
+  "tvNameGuest": "Gjest",
+  "tvNameLivingRoom": "Stue",
+  "tvNameLimit": "Maksimalt 18 tegn.",
+  "tvFirstName": "Fornavn",
+  "tvListRemoved": "Listen er fjernet",
+  "tvListRemovedBody": "Leverandøren har fjernet listen. Kanalene i den er ikke lenger tilgjengelige.",
+  "tvKidsCannotDisable": "Barnemodus forblir på i barneprofilen. Bytt profil med PIN-koden for å se alle kanaler.",
+  "tvKidsAlwaysOn": "Barneprofil: barnemodus forblir på. Kanaler uten vokseninnhold er tilgjengelige.",
+  "tvKidsOn": "På — vokseninnhold skjules.",
+  "tvKidsOff": "Av — alle kanaler er synlige.",
+  "tvChooseSecurePin": "Velg en PIN-kode før du aktiverer barnemodus. 0000 godtas ikke lenger.",
+  "tvPinWait": "For mange forsøk. Prøv igjen om noen minutter.",
+  "tvEnabled": "På",
+  "tvDisabled": "Av",
+  "tvProfilePinHelp": "PIN-kode for «{name}». Barnemodus skjuler voksenkanaler. Koden kreves for å slå av modusen eller endre koden. Hver profil har sin egen.",
+  "tvPinWaitMinutes": "For mange forsøk. Prøv igjen om {minutes} min.",
+  "tvExtras": "Ekstra",
+  "tvExtrasHelp": "Funksjoner du kan slå av hver for seg. Ingen blokkerer en kanal.",
+  "tvMissedTitle": "Gikk du glipp av starten?",
+  "tvMissedOn": "Guiden viser hva du gikk glipp av. OK for å slå av. Direktesendingen spoles aldri automatisk tilbake.",
+  "tvMissedOff": "Av. OK for å slå på. Ingen kanal spoles tilbake.",
+  "tvAtThisHour": "På denne tiden",
+  "tvTimePicksOn": "Foreslår kanaler du ofte åpner på denne tiden. OK for å slå av. Ingenting starter automatisk.",
+  "tvTimePicksOff": "Av. OK for å slå på. Registreringen stopper, og raden forsvinner.",
+  "tvServiceNotices": "Tjenestemeldinger",
+  "tvNoticesOn": "Et kort på startskjermen når leverandøren publiserer informasjon om vedlikehold eller nyheter. OK for å slå av. Aldri oppå videoen.",
+  "tvNoticesOff": "Av. OK for å slå på. Meldinger vises ikke lenger.",
+  "tvPickOfDay": "Dagens anbefaling",
+  "tvFeaturedOn": "Kanalen leverandøren fremhever, hvis den finnes i listen din. OK for å slå av. Ingenting starter automatisk.",
+  "tvFeaturedOff": "Av. OK for å slå på. Kortet forsvinner fra startskjermen.",
+  "tvBanners": "Bannere",
+  "tvBannersOn": "Ett bilde om gangen på startskjermen, alltid merket «Reklame». Lukk = skjul i 7 dager. OK for å slå av. Aldri lyd, aldri oppå videoen.",
+  "tvBannersOff": "Av. OK for å slå på. Ingen bannere vises.",
+  "tvSubtitlesOnHelp": "Viser et eksisterende undertekstspor på språket ditt. OK for å slå av. Ingenting oversettes eller lastes ned.",
+  "tvSubtitlesOffHelp": "Av. OK for å slå på. Direktesendingen bytter ikke strøm.",
+  "tvClearVoice": "Tydelig stemme",
+  "tvClearVoiceOn": "På. Høye stemmer dempes litt i nattmodus. OK for å slå av. Ubehandlet surroundlyd endres ikke.",
+  "tvClearVoiceOff": "Av, som er standardinnstillingen. OK for å dempe for høye stemmer. Surroundlyd som sendes direkte til en lydplanke, endres ikke.",
+  "tvLogToSupport": "Logg til kundestøtte",
+  "tvLogToSupportOn": "Feilloggen kan sendes til kundestøtte uten strømadresser eller passord. OK for å slå av.",
+  "tvLogToSupportOff": "Av. Loggen blir på boksen. OK for å sende den til kundestøtte igjen.",
+  "tvPictureEngine": "Bildemotor",
+  "tvPictureEngineHelp": "Nå: {engine}. OK for å endre. Maskinvare = boksen, som standard. Programvare = hvis bildet forblir svart. FFmpeg-video finnes ikke i denne versjonen og hoppes over.",
+  "tvScreenRefresh": "Skjermens oppdateringsfrekvens",
+  "tvScreenRefreshOn": "På. Skjermen kan bytte til 24, 50 eller 60 Hz etter strømmen. OK for å slå av. På enkelte bokser forsvinner bildet et sekund. Slå av hvis det skjer.",
+  "tvScreenRefreshOff": "Av, som er standardinnstillingen. OK for å tilpasse skjermen til 24 / 25 / 30 / 50 / 60 bilder per sekund. Slås aldri på automatisk.",
+  "tvContrast": "Kontrast",
+  "tvContrastUnavailable": "Ikke tilgjengelig. Android-filteret forlater den direkte bildebanen og har gitt svart skjerm. Det forblir av.",
+  "tvUpdateAllowInstall": "Tillat Zuno å installere apper: aktiver «Zuno» på skjermen Android har åpnet. Gå tilbake og trykk OK. Oppdateringen er allerede lastet ned.",
+  "tvFfmpegKeepDecoder": "FFmpeg-video finnes ikke i denne versjonen. Nåværende dekoder beholdes.",
+  "tvFfmpegBoxDecoder": "FFmpeg-video finnes ikke i denne versjonen. Tilbake til boksens dekoder.",
+  "tvFfmpegUnavailable": "FFmpeg-video finnes ikke i denne versjonen.",
+  "tvEngineSelected": "Motor: {engine}",
+  "tvOnYourPhone": "På telefonen din",
+  "tvGotIt": "Forstått",
+  "tvClose": "Lukk",
+  "tvPhone": "Telefon",
+  "tvSoftware": "Programvare",
+  "tvHardware": "Maskinvare",
+  "tvProfilesSettingsHelp": "Opptil 4 profiler med separate favoritter, historikk, avspillingsposisjoner, påminnelser og PIN-koder.",
+  "tvAudioDiagnostic": "Lyddiagnostikk",
+  "tvAudioDiagnosticHelp": "Lokal rapport per kanal. Ingenting sendes. Testvalgene er av som standard.",
+  "tvPlayerDisclaimer": "Appen er en mediespiller. Den selger, leverer eller lagrer ingen kanaler, strømmer eller M3U-lenker. Innholdet leveres av brukeren, som er ansvarlig for at det er lovlig.",
+  "tvActivationDisclaimer": "Mediespiller — selger eller leverer ingen kanaler eller M3U-lenker. Brukeren leverer innholdet. Vilkår: app.7themotion.com/terms",
+  "tvSourcePasteHelp": "Lim inn lenken eller innloggingsopplysningene dine. Alle M3U- og Xtream-leverandører.",
+  "tvTrending": "🔥 Populært",
+  "tvRecent": "🕒 Siste",
+  "tvForYou": "✨ For deg",
+  "tvOther": "Annet",
+  "tvNetworkUnavailable": "Intet nettverk",
+  "tvNetworkUnavailableHelp": "TV-en når ikke serveren. Sjekk forbindelsen og prøv igjen.",
+  "tvListRejected": "Listen ble avvist",
+  "tvListRejectedHelp": "Leverandøren avviste listen. Sjekk innloggingsopplysningene.",
+  "tvCodeInactive": "Koden er ikke aktivert",
+  "tvCodeInactiveHelp": "TV-ens kode er ikke aktivert. Aktiver den i panelet og vent noen sekunder.",
+  "tvSourcesEmpty": "Ingen kilder ennå.\nLegg til en M3U-lenke, en Xtream-konto eller en spillerlenke.",
+  "tvRecordingCloseFailed": "Opptaket kunne ikke avsluttes. Filen kan være ufullstendig.",
+  "tvFromStart": "Fra starten",
+  "tvFollow": "Følg",
+  "tvChooseTeamHelp": "Velg et lag nedenfor, eller skriv et navn…",
+  "tvTeamNotFound": "Fant ikke «{name}» — prøv søket.",
+  "tvCatchupHelp": "Fra programmets start. Høyre, deretter OK: tilbake til direktesending.",
+  "tvMissedRewindHint": "Høyre, deretter OK: fra starten.",
+  "tvMissedNoReplayHint": "Guiden har teksten, ikke videoen. Direktesendingen fortsetter uendret.",
+  "tvSourceNeedUrl": "Lim inn en adresse som begynner med http:// eller https://.",
+  "tvSourceNeedXtream": "Oppgi serveradresse, brukernavn og passord.",
+  "tvSourceNeedCredentials": "Spillerlenken mangler brukernavn eller passord. Lim inn hele lenken eller fyll ut alle tre Xtream-feltene.",
+  "tvSourceBadScheme": "Adressen kan ikke brukes. En http- eller https-lenke kreves.",
+  "tvPlayerLink": "Spillerlenke",
+  "tvAdvertisement": "Reklame",
+  "tvSponsored": "Sponset",
+  "tvInformation": "Informasjon",
+  "tvSportFootball": "Fotball",
+  "tvSportBasketball": "Basketball (NBA)",
+  "tvSportRugby": "Rugby",
+  "tvDataAttribution": "Data: {source}",
+  "tvLegalSection1Title": "1. Appens funksjon — bare en SPILLER",
+  "tvLegalSection1Body": "Appen er en mediespiller for lyd- og videostrømmer fra brukeren. Den LEVERER, SELGER, LAGRER, SENDER eller INDEKSERER INGEN TV-kanaler, strømmer, audiovisuelt innhold, spillelister (M3U) eller portalopplysninger (Xtream). Innhold er ikke inkludert, forhåndslastet eller solgt med appen.",
+  "tvLegalSection2Title": "2. Innhold fra brukeren",
+  "tvLegalSection2Body": "Brukeren leverer egne kilder (M3U-lenker / Xtream-opplysninger) fra sin egen leverandør. Brukeren er ALENE ansvarlig for innhold som legges til, spilles av eller sendes, og for nødvendige rettigheter, lisenser og abonnementer.",
+  "tvLegalSection3Title": "3. Abonnement = PROGRAMVARE, ikke innhold",
+  "tvLegalSection3Body": "Betaling eller abonnement gjelder BARE bruk av appen: spilleren og funksjoner som grensesnitt, favoritter, lokale opptak og EPG. Det utgjør ALDRI kjøp, salg, utleie eller levering av kanaler, strømmer eller innhold.",
+  "tvLegalSection4Title": "4. Lovlig bruk",
+  "tvLegalSection4Body": "Brukeren forplikter seg til å følge lovene i sitt land og ikke bruke appen til ulovlig innhold eller brudd på opphavsrett. Ulovlig bruk er strengt forbudt og utelukkende brukerens ansvar.",
+  "tvLegalSection5Title": "5. Tredjepartsinnhold — intet ansvar",
+  "tvLegalSection5Body": "Utgiveren har ingen kontroll over tredjepartsinnhold via brukerens kilder og kan ikke holdes ansvarlig for det. Tilgjengelighet, lovlighet og kvalitet garanteres ikke.",
+  "tvLegalSection6Title": "6. Immaterielle rettigheter og klager",
+  "tvLegalSection6Body": "Alle varemerker, logoer og alt innhold tilhører sine respektive eiere. Appen lagrer ikke innhold. Klager om opphavsrett må derfor rettes til leverandøren av den aktuelle kilden.",
+  "tvLegalSection7Title": "7. Leveres som den er",
+  "tvLegalSection7Body": "Appen leveres som den er uten garanti for kontinuerlig tilgjengelighet eller feilfrihet. Utgiveren kan endre eller stanse noen eller alle funksjoner.",
+  "tvLegalSection8Title": "8. Personopplysninger",
+  "tvLegalSection8Body": "En teknisk enhetsidentifikator brukes til lisens- og prøveperiodeadministrasjon samt kundestøtte. Detaljer: app.7themotion.com/privacy.",
+  "tvLegalSection9Title": "9. Godtakelse",
+  "tvLegalSection9Body": "Ved å installere eller bruke appen bekrefter brukeren å ha lest og godtatt disse vilkårene. Full versjon: app.7themotion.com/terms",
+  "tvLegalLead": "Appen er en spiller. Den selger eller leverer ingen kanaler eller lenker. Opp/ned for å bla, Tilbake for å avslutte.",
+  "tvAudioSpectrumOn": "Spektrum: måles",
+  "tvAudioSpectrumOff": "Spektrum: av",
+  "tvAudioFfmpegRetry": "FFmpeg: prøv igjen",
+  "tvAudioFfmpegDefault": "FFmpeg: standard",
+  "tvAudioAacTest": "Boks AAC: test",
+  "tvAudioAacOff": "Boks AAC: av",
+  "tvAudioFallbackSession": "Reserve: hele økten",
+  "tvAudioFallbackChannel": "Reserve: per kanal",
+  "tvAudioFocusAndroid": "Lydfokus: Android",
+  "tvAudioFocusZuno": "Lydfokus: Zuno",
+  "tvAudioBackgroundPause": "Utenfor appen: pause",
+  "tvAudioBackgroundStop": "Utenfor appen: stopp",
+  "tvAudioHomeLegacy": "Hjem-knapp: eldre modus",
+  "tvAudioHomeNative": "Hjem-knapp: stopp i Android",
+  "tvAudioHandoffNow": "Bytte: straks",
+  "tvAudioHandoffWait": "Bytte: vent",
+  "tvAudioOutput48k": "Utgang: 48 kHz",
+  "tvAudioOutputStream": "Utgang: strømmens frekvens",
+  "tvAudioWitnessStop": "Testlyd: stopp",
+  "tvAudioWitnessPreparing": "Testlyd: forbereder",
+  "tvAudioWitnessPlay": "Spill testlyd",
+  "tvAudioScrollHelp": "OPP/NED: bla · CH+/CH−: side",
+  "tvAudioWitnessHelp": "Testlyd spilles i 10 s: stemme, deretter støy. Samme spiller som kanalene. Dempet støy → enheten. Klar støy → kanalen.",
+  "tvAudioOptionsHelp": "Spektrum: måler fire punkter på neste kanal (dekoder, tydelig stemme, stillhet, AudioTrack) uten å endre lyden. FFmpeg: prøver programvaredekoderen igjen. Starter den ikke innen 8 s, tar boksen over. Boks AAC: neste kanal bruker boksens AAC-dekoder, som ExoPlayer. Ved feil tar FFmpeg over denne åpningen. Reserve: «per kanal» er standard og sender bare den berørte kanalen til boksen etter FFmpeg-feil. «Hele økten» er eldre oppførsel, der alle kanaler går til boksen etter én feil. Lydfokus: «Zuno» er standard og senker aldri volumet når en annen app eller en tone ber om lyd. «Android» er eldre oppførsel og senker til 20 %. Utenfor appen: «stopp» er standard og stopper og frigjør lyden når appen forlates, så åpnes kanalen igjen ved retur. «Pause» er eldre oppførsel. Hjem-knapp: «stopp i Android» er standard, stopper ved onPause og åpner ingenting mens appen er i bakgrunnen. «Eldre modus» venter på Flutter. Bytte: «vent» er standard og åpner neste kanal først når forrige AudioTrack er frigjort, slik at lyder ikke blandes etter mange kanalbytter. «Straks» er eldre oppførsel. Utgang: «strømmens frekvens» er standard og bruker strømmens samplingsfrekvens, ofte 44,1 kHz, som boksen konverterer. «48 kHz» resampler i appen før utgangen. Prøv ved dårlig lyd og en rapport på 44,1 kHz. Testlyd: 10 s stemme og støy i samme spiller. Aktiverer måling uten å endre lyden. Dempet støy → enheten. Klar støy → kanalen.",
+  "tvAudioNoReports": "Ingen rapporter. Åpne en kanal: spilleren registrerer kodek, dekoder og utgang. Spektrum måles bare når det er aktivert.",
+  "tvAudioTestSound": "Testlyd",
+  "tvDiagCaptive": "1. Nettverksportal (204)",
+  "tvDiagDns": "2. DNS-oppslag for IPTV-vert",
+  "tvDiagStream": "3. Strømmens tilgjengelighet (HTTP / 456)",
+  "tvDiagSource": "4. Tildelt kilde (device-source)",
+  "tvDiagPlayer": "5. ExoPlayer / Media3-test",
+  "tvDiagRequest": "Ber om generate_204…",
+  "tvDiagInternetOk": "HTTP 204 (internettilgang tilgjengelig)",
+  "tvDiagTimeout": "Intet svar innen 8 s",
+  "tvDiagNoHost": "Ingen kanal lastet inn → UKJENT vert",
+  "tvDiagNoUrl": "Ingen kanal lastet inn → UKJENT URL",
+  "tvDiagStreamHead": "HEAD-forespørsel for strømmen…",
+  "tvDiagIpBlocked": "HTTP 456 — leverandøren blokkerer denne IP-en",
+  "tvDiagReadingMac": "Leser MAC…",
+  "tvDiagSourceAssigned": "HTTP 200 — kilde tildelt",
+  "tvDiagNoSource": "HTTP 200 — ingen kilde tildelt",
+  "tvDiagPlayerBusy": "Fullskjermavspilling pågår: testen hoppes over, bare én spiller",
+  "tvDiagPlayerOpening": "Åpner ExoPlayer-test…",
+  "tvDiagFrameOk": "Første bilde dekodet og vist",
+  "tvDiagPlayerError": "ExoPlayer returnerte en feil",
+  "tvDiagFrameTimeout": "Intet bilde innen 8 s",
+  "tvDiagRunning": "DIAGNOSTIKK PÅGÅR…",
+  "tvDiagPassed": "AVSPILLING PÅ ENHETEN BEKREFTET",
+  "tvDiagNetworkBlocked": "NETTVERKSBLOKKERING",
+  "tvDiagPlayerFailed": "SPILLERFEIL",
+  "tvDiagPartial": "DELVIS DIAGNOSTIKK",
+  "tvDiagTitle": "DIAGNOSTIKK PÅ ENHETEN — Zuno",
+  "tvDiagHelp": "Tester om TV-en kan spille strømmen fra sin egen IP-adresse.",
+  "tvBackToExit": "TILBAKE for å avslutte",
+  "tvDiagCaptiveLikely": "HTTP {status}, {bytes} byte → mulig nettverksportal",
+  "tvDiagLookup": "Slår opp {host}…",
+  "tvDiagNoIp": "{host} → ingen IP-adresse",
+  "tvDiagDnsTimeout": "{host}: intet DNS-svar innen 8 s",
+  "tvDiagStreamOk": "HTTP {status} (strømmen er tilgjengelig)",
+  "tvDiagUnknownMac": "UKJENT MAC ({mac})",
+  "tvSizeBytes": "{size} B",
+  "tvSizeKb": "{size} kB",
+  "tvSizeMb": "{size} MB",
+  "tvSizeGb": "{size} GB",
+  "tvDurationHm": "{hours} t {minutes} min",
+  "tvWhatsAppActivationRequest": "Hei, jeg vil gjerne aktivere Zuno.",
+  "castErrorTimeoutRetry": "TV-en bruker for lang tid på å svare. Prøv igjen eller velg en annen TV.",
+  "castProgressRelay": "Forbereder videresending…",
+  "castFriendlyNetworkFail": "Kunne ikke koble til TV-en.",
+  "castFriendlyTvTimeout": "TV-en svarer ikke. Sjekk WiFi-et.",
+  "castFriendlyBadFormat": "TV-en din godtar ikke dette formatet. Prøv en annen kanal.",
+  "castProgressLive": "Strømmer nå til TV-en",
+  "castFriendlyAuthExpired": "Tilgang til strømmen avvist — abonnementet ditt kan ha utløpt.",
+  "castFriendlyTvRefused": "Denne TV-en godtok ikke strømmen. Prøv en annen kanal.",
+  "castProgressConnectingAttempt": "Kobler til TV-en ({attempt}/{total})…",
+  "castFriendlyGenericFail": "Casten mislyktes. Prøv å starte den på nytt.",
+  "castProgressWebFallback": "Bytter til universell modus (QR-kode)…",
+  "castFriendlyTvUnreachable": "TV-en din svarer ikke på nettverket. Sjekk: (1) at den er på, (2) at den er på SAMME WiFi som telefonen din (ikke «gjestenettverket»), (3) at «Klientisolasjon / AP isolation» er SLÅTT AV i innstillingene til ruteren din.",
+  "castProgressDetecting": "Oppdager TV-en…",
+  "castDlnaReceiverFallback": "DLNA-mottaker",
+  "castErrorApIsolation": "TV-en din når ikke telefonen (gjeste-WiFi eller AP-isolasjon?). Sett telefonen og TV-en på SAMME WiFi-nettverk (ikke gjestenettverket), og slå av AP-isolasjon.",
+  "castProgressRetrying": "Nytt forsøk i kompatibel modus ({attempt}/{total})…",
+  "castFriendlyTvStuck": "TV-en din henger fast i en tidligere cast. Slå den av i noen sekunder, slå den på igjen og prøv på nytt.",
+  "castErrorReceiverRejected": "TV-en avviste denne strømmen — formatet støttes trolig ikke av denne mottakeren. Prøv en annen kanal.",
+  "castProgressConnecting": "Kobler til TV-en…",
+  "castFriendlyNoGms": "Offisiell Chromecast trenger Google Play-tjenester, som mangler på denne telefonen. Du kan likevel caste til en Smart-TV (DLNA) eller en Roku fra listen.",
+  "castErrorTimeout": "Casten tar for lang tid — TV-en eller nettverket svarer ikke",
+  "castFriendlyDnsUnstable": "Ustabilt internett eller DNS. Prøv igjen om noen sekunder.",
+  "castFriendlyProviderLimit": "IPTV-leverandøren din avviser en ekstra tilkobling (grensen er nådd). Lukk en annen app som ser på, og prøv igjen.",
+  "castProgressValidating": "Verifiserer strømmen…",
+  "castWindowsHelp": "Koble PC og TV til samme private nettverk (Wi-Fi eller Ethernet). Velg en DLNA-TV eller Roku. Mottakere med bare Google Cast støttes ikke på Windows. Bruk TV-fjernkontrollen til lydspor og spoling.",
+  "vipCountriesTitle": "Mine land · VIP",
+  "vipCountriesHint": "Velg opptil 10 land. Rekkefølgen lagres for profilen; de andre er fortsatt tilgjengelige.",
+  "vipCountriesOrder": "Min rekkefølge",
+  "vipCountriesEmpty": "Ingen land funnet blant tilgjengelige kanaler.",
+  "vipCountriesSaveError": "Kunne ikke lagre. Prøv igjen.",
+  "vipCountriesMoveUp": "Flytt opp",
+  "vipCountriesMoveDown": "Flytt ned",
+  "vipCountriesRemove": "Fjern",
+  "vipCountryRs": "Serbia",
+  "vipCountryFr": "Frankrike",
+  "vipCountryUs": "USA",
+  "vipCountryUk": "Storbritannia",
+  "vipCountryDe": "Tyskland",
+  "vipCountryIt": "Italia",
+  "vipCountryEs": "Spania",
+  "vipCountryPt": "Portugal",
+  "vipCountryBe": "Belgia",
+  "vipCountryCh": "Sveits",
+  "vipCountryCa": "Canada",
+  "vipCountryBr": "Brasil",
+  "vipCountryMx": "Mexico",
+  "vipCountryAr": "Argentina",
+  "vipCountrySa": "Saudi-Arabia",
+  "vipCountryTr": "Tyrkia",
+  "vipCountryGr": "Hellas",
+  "vipCountryPl": "Polen",
+  "vipCountryRu": "Russland",
+  "vipCountryNl": "Nederland",
+  "vipCountryJp": "Japan",
+  "vipCountryKr": "Sør-Korea",
+  "vipCountryCn": "Kina",
+  "vipCountryIn": "India",
+  "vipCountryAu": "Australia",
+  "vipCountrySe": "Sverige",
+  "vipCountryNo": "Norge",
+  "vipCountryDk": "Danmark",
+  "vipCountryFi": "Finland",
+  "vipCountryMa": "Marokko",
+  "vipCountryDz": "Algerie",
+  "vipCountryTn": "Tunisia",
+  "vipCountryEg": "Egypt"
+}

@@ -648,7 +648,7 @@
   "tvBlackBoxHelp": "UPP/NER: bläddra · CH+/CH−: sida · Kopiera = urklipp (klistra in det till supporten på WhatsApp). Denna logg kan skickas till support. Du kan stänga av sändningen under Inställningar.",
   "tvNavServer": "Server",
   "tvLegalTitle": "Juridisk information & villkor",
-    "tvHelloMorning": "God morgon",
+  "tvHelloMorning": "God morgon",
   "tvHelloAfternoon": "God eftermiddag",
   "tvHelloEvening": "God kväll",
   "tvHomeInvite": "Dina kanaler, filmer och påminnelser kommer tillbaka hit.",
@@ -673,7 +673,7 @@
   "tvReminderInMinutes": "Om {minutes} min",
   "tvReminderInHours": "Om {hours} tim",
   "tvReminderInHoursMinutes": "Om {hours} tim {minutes}",
-"tvResumeLabel": "FORTSÄTT",
+  "tvResumeLabel": "FORTSÄTT",
   "tvNowPlayingPrefix": "NU · {title}",
   "@tvNowPlayingPrefix": {
     "placeholders": {
@@ -847,7 +847,13 @@
   "tvRecordingStarted": "Spelar in…",
   "tvRecordingError": "Inspelningsfel",
   "tvRecordingSaved": "Inspelning sparad ({size})",
-  "@tvRecordingSaved": {"placeholders": {"size": {"type": "String"}}},
+  "@tvRecordingSaved": {
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
   "tvRecordingEmpty": "Tom inspelning",
   "tvRemovedFromFavorites": "Borttagen från favoriter",
   "tvAddedToFavorites": "Tillagd i favoriter ❤",
@@ -855,61 +861,163 @@
   "tvCinemaAudio": "Ljud",
   "tvCinemaAudioSubs": "Ljud och undertexter",
   "tvCinemaCast": "Med {names}",
-  "@tvCinemaCast": {"placeholders": {"names": {"type": "String"}}},
+  "@tvCinemaCast": {
+    "placeholders": {
+      "names": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaContinue": "Fortsätt titta",
   "tvCinemaDeleteDownload": "Radera nedladdning",
   "tvCinemaDirector": "Regi: {names}",
-  "@tvCinemaDirector": {"placeholders": {"names": {"type": "String"}}},
+  "@tvCinemaDirector": {
+    "placeholders": {
+      "names": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaDownload": "Ladda ned",
   "tvCinemaDownloadError": "Nedladdningen misslyckades",
   "tvCinemaDownloadPaused": "Pausad · {pct} %",
-  "@tvCinemaDownloadPaused": {"placeholders": {"pct": {"type": "String"}}},
+  "@tvCinemaDownloadPaused": {
+    "placeholders": {
+      "pct": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaDownloaded": "Nedladdad",
   "tvCinemaDownloading": "Laddar ned · {pct} %",
-  "@tvCinemaDownloading": {"placeholders": {"pct": {"type": "String"}}},
+  "@tvCinemaDownloading": {
+    "placeholders": {
+      "pct": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaDownloads": "Mina nedladdningar",
   "tvCinemaEmptyCategory": "Inget här ännu.",
   "tvCinemaEpisode": "Avsnitt {n}",
-  "@tvCinemaEpisode": {"placeholders": {"n": {"type": "String"}}},
+  "@tvCinemaEpisode": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaFromStart": "Från början",
   "tvCinemaIndexing": "Förbereder sökning i hela katalogen…",
   "tvCinemaLanguage": "Språk: {value}",
-  "@tvCinemaLanguage": {"placeholders": {"value": {"type": "String"}}},
+  "@tvCinemaLanguage": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaLoading": "Laddar…",
   "tvCinemaMinutes": "{n} min",
-  "@tvCinemaMinutes": {"placeholders": {"n": {"type": "String"}}},
+  "@tvCinemaMinutes": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaNextEpisode": "Nästa avsnitt",
   "tvCinemaNextHint": "OK: nu · Tillbaka: stanna",
   "tvCinemaNextIn": "Nästa avsnitt om {s} s",
-  "@tvCinemaNextIn": {"placeholders": {"s": {"type": "String"}}},
+  "@tvCinemaNextIn": {
+    "placeholders": {
+      "s": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaNoEpisodes": "Inga avsnitt tillgängliga.",
   "tvCinemaNoSource": "Inga filmer eller serier ännu",
   "tvCinemaNoSourceBody": "Filmer och serier kommer från ditt Xtream-abonnemang. Lägg till det under Server, eller be din återförsäljare aktivera det.",
   "tvCinemaNoSpace": "Inte tillräckligt med utrymme på boxen ({free} GB ledigt).",
-  "@tvCinemaNoSpace": {"placeholders": {"free": {"type": "String"}}},
+  "@tvCinemaNoSpace": {
+    "placeholders": {
+      "free": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaPauseDownload": "Pausa",
   "tvCinemaPlay": "Spela upp",
   "tvCinemaPlayEpisode": "Spela upp S{s} · E{e}",
-  "@tvCinemaPlayEpisode": {"placeholders": {"s": {"type": "String"}, "e": {"type": "String"}}},
+  "@tvCinemaPlayEpisode": {
+    "placeholders": {
+      "s": {
+        "type": "String"
+      },
+      "e": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaRecent": "Nyligen tillagda",
   "tvCinemaRestart": "Börja om",
   "tvCinemaResumeAt": "Fortsätt från {time}",
-  "@tvCinemaResumeAt": {"placeholders": {"time": {"type": "String"}}},
+  "@tvCinemaResumeAt": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaResumeDownload": "Återuppta nedladdning",
   "tvCinemaResumeEpisode": "Fortsätt S{s} · E{e}",
-  "@tvCinemaResumeEpisode": {"placeholders": {"s": {"type": "String"}, "e": {"type": "String"}}},
+  "@tvCinemaResumeEpisode": {
+    "placeholders": {
+      "s": {
+        "type": "String"
+      },
+      "e": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaResumedAt": "Fortsätter från {time}",
-  "@tvCinemaResumedAt": {"placeholders": {"time": {"type": "String"}}},
+  "@tvCinemaResumedAt": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaSearch": "Sök",
   "tvCinemaSeason": "Säsong {n}",
-  "@tvCinemaSeason": {"placeholders": {"n": {"type": "String"}}},
+  "@tvCinemaSeason": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaSeasons": "{n} säsonger",
-  "@tvCinemaSeasons": {"placeholders": {"n": {"type": "String"}}},
+  "@tvCinemaSeasons": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaSpecials": "Specialavsnitt",
   "tvCinemaSubtitles": "Undertexter",
   "tvCinemaSubtitlesOff": "Av",
   "tvCinemaTrackUnknown": "Spår {n}",
-  "@tvCinemaTrackUnknown": {"placeholders": {"n": {"type": "String"}}},
+  "@tvCinemaTrackUnknown": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
   "tvUpdatingContent": "Uppdaterar…",
   "tvDeactivate": "Inaktivera",
   "tvSourceActive": "aktiv",
@@ -946,4 +1054,325 @@
   "tvVoiceRemoteAiOff": "Av",
   "tvVoiceRemoteAiHelp": "Av som standard. Ingen nyckel i appen. ”I kväll” läses från din guide, på boxen. Om tjänsten inte svarar söker Zuno i din lista.",
   "tvVoiceCinemaHint": "Öppna Filmer eller Serier en gång: sökningen hittar dem sedan, utan nätverk medan du tittar.",
-  "tvVoiceOnChannel": "På {channel}"}
+  "tvVoiceOnChannel": "På {channel}",
+  "tvDeletePanelSourceConfirm": "”{name}” tas bort från denna TV. Synkronisering eller omsändning från panelen återställer den inte. Lägg till den igen i appen för att återställa den.",
+  "tvDeleteSourceFailed": "Lokal borttagning misslyckades. Försök igen om en stund.",
+  "tvCinemaOfflineTitle": "Katalogen är inte tillgänglig",
+  "tvCinemaOfflineBody": "Inget finns sparat på TV:n och servern svarar inte. Kontrollera anslutningen och försök igen.",
+  "tvCinemaRetry": "Försök igen",
+  "tvCinemaUpdated": "Uppdaterad {when}",
+  "tvCinemaAgeJustNow": "nyss",
+  "tvCinemaAgeMinutes": "för {n} min sedan",
+  "tvCinemaAgeHours": "för {n} tim sedan",
+  "tvCinemaAgeDays": "för {n} dagar sedan",
+  "tvCinemaCategoryFailed": "Det gick inte att läsa in den här kategorin.",
+  "moviesRetry": "Försök igen",
+  "tvRemoteTitle": "Fjärrkontroll",
+  "tvSettingsRemote": "Telefonen blir en fjärrkontroll på samma Wi-Fi. Ingen installation behövs.",
+  "tvRemoteLead": "Skanna QR-koden med telefonens kamera. Ingen installation behövs.",
+  "tvRemoteWarn": "Alla som ser koden kan styra boxen tills den löper ut. Bara en telefon. Koden upphör automatiskt.",
+  "tvRemoteKeep": "Tillbaka lämnar skärmen: telefonen fungerar tills koden löper ut. Stäng av avslutar direkt.",
+  "tvRemoteStarting": "Förbereder…",
+  "tvRemoteWaiting": "Väntar på telefonen…",
+  "tvRemotePaired": "Telefon ansluten",
+  "tvRemoteExpired": "Koden har löpt ut",
+  "tvRemoteStopped": "Fjärrkontrollen avstängd",
+  "tvRemoteNoLan": "Inget lokalt nätverk. Anslut boxen och telefonen till samma Wi-Fi.",
+  "tvRemoteError": "Fjärrkontrollen kunde inte startas.",
+  "tvRemoteNewCode": "Ny kod",
+  "tvRemoteStop": "Stäng av",
+  "tvRemoteStart": "Aktivera",
+  "tvRemoteLeft": "Löper ut om {time}",
+  "tvRemoteUrlHelp": "Om skanningen misslyckas, öppna adressen i telefonens webbläsare.",
+  "sportsTimeout": "Sporttjänsten svarar för långsamt. Försök igen.",
+  "sportsNetworkError": "Det går inte att ansluta till sporttjänsten.",
+  "sportsHttpError": "Sporttjänsten är inte tillgänglig (HTTP {status}).",
+  "sportsInvalidResponse": "Sporttjänstens svar kunde inte läsas.",
+  "sportsUnavailable": "Sportinformationen kunde inte läsas in.",
+  "sportsLoading": "Läser in matcher…",
+  "sportsRetry": "Försök igen",
+  "sportsFootballTitle": "Resultat och spelschema",
+  "sportsRefresh": "Uppdatera",
+  "sportsCommunityNotice": "Resultat och mål från användare · fördröjning kan förekomma · uppdateras var 60:e sekund.",
+  "sportsCalendarNotice": "Spelscheman och fördröjda resultat · OpenFootball erbjuder inte liveresultat.",
+  "sportsRetrievedAt": "Hämtat kl. {time}",
+  "sportsUpcoming": "Kommande",
+  "sportsRecent": "Senaste matcher",
+  "sportsFinished": "Avslutad",
+  "tvProgramStartedMinutesAgo": "Programmet började för {minutes} min sedan",
+  "tvProfiles": "Profiler",
+  "tvKidsProfile": "Barnprofil",
+  "tvNewProfile": "Ny profil",
+  "tvChildren": "Barn",
+  "tvKidsExists": "Det finns redan en barnprofil.",
+  "tvProfileAddFailed": "Profilen kunde inte läggas till.",
+  "tvKidsReady": "Barnprofilen är klar. Barnläget förblir på.",
+  "tvRename": "Byt namn",
+  "tvNameInvalid": "Namnet är tomt eller för långt.",
+  "tvProfileDeleteBody": "Profilens favoriter, historik, uppspelningspositioner, påminnelser och PIN-kod raderas. Kanalerna och profil 1 finns kvar.",
+  "tvProfileDeleteFailed": "Den här profilen kan inte tas bort.",
+  "tvProfilesHelp": "Upp till 4 profiler. Separata favoriter, historik, uppspelningspositioner, påminnelser och PIN-koder. Kanalerna delas.",
+  "tvDefaultPinWarning": "PIN-koden är fortfarande 0000. Ändra den under Föräldrakontroll.",
+  "tvAskProfileOn": "Välj profil vid start: på",
+  "tvAskProfileOff": "Välj profil vid start: av",
+  "tvProfileStartupSingle": "Profilvalet visas när det finns minst 2 profiler. Med en profil öppnas appen direkt.",
+  "tvProfileStartupHelp": "När detta är av öppnas den senaste profilen direkt. Du kan fortfarande byta här eller på hemskärmen.",
+  "tvKidsProfileHelp": "Barnläget är låst. Profilens PIN-kod krävs för att lämna det. Vuxeninnehåll döljs. Profil 1 behåller dina tidigare uppgifter.",
+  "tvOriginProfileHelp": "Ursprunglig profil: dina tidigare favoriter, historik, uppspelningspositioner och PIN-kod finns här. Den kan inte tas bort.",
+  "tvSeparateProfileHelp": "Separat profil. Om den tas bort raderas inte profil 1.",
+  "tvProfileActive": "Aktiv",
+  "tvProfileCreated": "Profilen ”{name}” har skapats.",
+  "tvProfileDeleteTitle": "Ta bort ”{name}”?",
+  "tvWhoWatching": "Vem tittar?",
+  "tvProfilePickerHelp": "Alla har egna favoriter, historik och PIN-kod. Kanalerna är desamma.",
+  "tvLater": "Senare",
+  "tvNameMum": "Mamma",
+  "tvNameDad": "Pappa",
+  "tvNameGuest": "Gäst",
+  "tvNameLivingRoom": "Vardagsrum",
+  "tvNameLimit": "Högst 18 tecken.",
+  "tvFirstName": "Förnamn",
+  "tvListRemoved": "Listan har tagits bort",
+  "tvListRemovedBody": "Din leverantör har tagit bort listan. Dess kanaler är inte längre tillgängliga.",
+  "tvKidsCannotDisable": "Barnläget förblir på i barnprofilen. Byt profil med PIN-koden för att se alla kanaler.",
+  "tvKidsAlwaysOn": "Barnprofil: barnläget förblir på. Kanaler utan vuxeninnehåll är tillgängliga.",
+  "tvKidsOn": "På — vuxeninnehåll döljs.",
+  "tvKidsOff": "Av — alla kanaler är synliga.",
+  "tvChooseSecurePin": "Välj en PIN-kod innan du aktiverar barnläget. 0000 godtas inte längre.",
+  "tvPinWait": "För många försök. Försök igen om några minuter.",
+  "tvEnabled": "På",
+  "tvDisabled": "Av",
+  "tvProfilePinHelp": "PIN-kod för ”{name}”. Barnläget döljer vuxenkanaler. Koden krävs för att stänga av läget eller ändra koden. Varje profil har sin egen.",
+  "tvPinWaitMinutes": "För många försök. Försök igen om {minutes} min.",
+  "tvExtras": "Extra",
+  "tvExtrasHelp": "Funktioner som du kan stänga av var för sig. Ingen blockerar en kanal.",
+  "tvMissedTitle": "Missat början",
+  "tvMissedOn": "Guiden visar vad du har missat. OK för att stänga av. Direktsändningen spolas aldrig tillbaka automatiskt.",
+  "tvMissedOff": "Av. OK för att slå på. Ingen kanal spolas tillbaka.",
+  "tvAtThisHour": "Vid den här tiden",
+  "tvTimePicksOn": "Föreslår kanaler som du ofta öppnar vid den här tiden. OK för att stänga av. Inget startar automatiskt.",
+  "tvTimePicksOff": "Av. OK för att slå på. Registreringen upphör och raden försvinner.",
+  "tvServiceNotices": "Servicemeddelanden",
+  "tvNoticesOn": "Ett kort på hemskärmen när leverantören publicerar information, till exempel om underhåll eller nyheter. OK för att stänga av. Aldrig ovanpå videon.",
+  "tvNoticesOff": "Av. OK för att slå på. Meddelanden visas inte längre.",
+  "tvPickOfDay": "Dagens tips",
+  "tvFeaturedOn": "Kanalen som leverantören lyfter fram, om den finns i din lista. OK för att stänga av. Inget startar automatiskt.",
+  "tvFeaturedOff": "Av. OK för att slå på. Kortet försvinner från hemskärmen.",
+  "tvBanners": "Annonsbilder",
+  "tvBannersOn": "En bild i taget på hemskärmen, alltid märkt ”Annons”. Stäng = dölj i 7 dagar. OK för att stänga av. Aldrig ljud, aldrig ovanpå videon.",
+  "tvBannersOff": "Av. OK för att slå på. Inga annonsbilder visas.",
+  "tvSubtitlesOnHelp": "Visar ett befintligt undertextspår på ditt språk. OK för att stänga av. Inget översätts eller laddas ned.",
+  "tvSubtitlesOffHelp": "Av. OK för att slå på. Direktsändningen byter inte ström.",
+  "tvClearVoice": "Tydlig röst",
+  "tvClearVoiceOn": "På. Höga röster dämpas något i nattläget. OK för att stänga av. Obehandlat surroundljud ändras inte.",
+  "tvClearVoiceOff": "Av, vilket är grundinställningen. OK för att dämpa alltför höga röster. Surroundljud som skickas direkt till en soundbar ändras inte.",
+  "tvLogToSupport": "Logg till supporten",
+  "tvLogToSupportOn": "Felsökningsloggen kan skickas till supporten utan strömadresser eller lösenord. OK för att stänga av.",
+  "tvLogToSupportOff": "Av. Loggen stannar på boxen. OK för att skicka den till supporten igen.",
+  "tvPictureEngine": "Bildmotor",
+  "tvPictureEngineHelp": "Nu: {engine}. OK för att ändra. Hårdvara = boxen, grundinställningen. Programvara = om bilden förblir svart. FFmpeg-video ingår inte i denna version och hoppas över.",
+  "tvScreenRefresh": "Skärmens uppdateringsfrekvens",
+  "tvScreenRefreshOn": "På. Skärmen kan växla till 24, 50 eller 60 Hz efter strömmen. OK för att stänga av. På vissa boxar försvinner bilden en sekund. Stäng av om det händer.",
+  "tvScreenRefreshOff": "Av, vilket är grundinställningen. OK för att anpassa skärmen till 24 / 25 / 30 / 50 / 60 bilder per sekund. Aktiveras aldrig automatiskt.",
+  "tvContrast": "Kontrast",
+  "tvContrastUnavailable": "Inte tillgängligt. Android-filtret lämnar den direkta bildvägen och har orsakat svart bild. Det förblir avstängt.",
+  "tvUpdateAllowInstall": "Tillåt Zuno att installera appar: aktivera ”Zuno” på skärmen som Android har öppnat. Gå sedan tillbaka och tryck OK. Uppdateringen är redan nedladdad.",
+  "tvFfmpegKeepDecoder": "FFmpeg-video ingår inte i denna version. Nuvarande avkodare behålls.",
+  "tvFfmpegBoxDecoder": "FFmpeg-video ingår inte i denna version. Återgår till boxens avkodare.",
+  "tvFfmpegUnavailable": "FFmpeg-video ingår inte i denna version.",
+  "tvEngineSelected": "Motor: {engine}",
+  "tvOnYourPhone": "På din telefon",
+  "tvGotIt": "Förstått",
+  "tvClose": "Stäng",
+  "tvPhone": "Telefon",
+  "tvSoftware": "Programvara",
+  "tvHardware": "Hårdvara",
+  "tvProfilesSettingsHelp": "Upp till 4 profiler med separata favoriter, historik, uppspelningspositioner, påminnelser och PIN-koder.",
+  "tvAudioDiagnostic": "Ljuddiagnostik",
+  "tvAudioDiagnosticHelp": "Lokal rapport per kanal. Inget skickas. Testalternativen är avstängda som standard.",
+  "tvPlayerDisclaimer": "Den här appen är en mediaspelare. Den säljer, tillhandahåller eller lagrar inga kanaler, strömmar eller M3U-länkar. Innehållet kommer från användaren, som ansvarar för att det är lagligt.",
+  "tvActivationDisclaimer": "Mediaspelare — säljer eller tillhandahåller inga kanaler eller M3U-länkar. Användaren tillhandahåller innehållet. Villkor: app.7themotion.com/terms",
+  "tvSourcePasteHelp": "Klistra in din länk eller dina inloggningsuppgifter. Alla M3U- och Xtream-leverantörer.",
+  "tvTrending": "🔥 Populärt",
+  "tvRecent": "🕒 Senaste",
+  "tvForYou": "✨ För dig",
+  "tvOther": "Övrigt",
+  "tvNetworkUnavailable": "Inget nätverk",
+  "tvNetworkUnavailableHelp": "TV:n kan inte nå servern. Kontrollera anslutningen och försök igen.",
+  "tvListRejected": "Listan avvisades",
+  "tvListRejectedHelp": "Leverantören avvisade listan. Kontrollera inloggningsuppgifterna.",
+  "tvCodeInactive": "Koden är inte aktiverad",
+  "tvCodeInactiveHelp": "TV:ns kod är inte aktiverad. Aktivera den i panelen och vänta några sekunder.",
+  "tvSourcesEmpty": "Inga källor ännu.\nLägg till en M3U-länk, ett Xtream-konto eller en spelarlänk.",
+  "tvRecordingCloseFailed": "Inspelningen kunde inte avslutas. Filen kan vara ofullständig.",
+  "tvFromStart": "Från början",
+  "tvFollow": "Följ",
+  "tvChooseTeamHelp": "Välj ett lag nedan eller skriv ett namn…",
+  "tvTeamNotFound": "”{name}” hittades inte — försök med sökningen.",
+  "tvCatchupHelp": "Från programmets början. Höger, sedan OK: tillbaka till direktsändningen.",
+  "tvMissedRewindHint": "Höger, sedan OK: från början.",
+  "tvMissedNoReplayHint": "Guiden har texten, inte videon. Direktsändningen fortsätter som vanligt.",
+  "tvSourceNeedUrl": "Klistra in en adress som börjar med http:// eller https://.",
+  "tvSourceNeedXtream": "Ange serveradress, användarnamn och lösenord.",
+  "tvSourceNeedCredentials": "Spelarlänken saknar användarnamn eller lösenord. Klistra in hela länken eller fyll i alla tre Xtream-fälten.",
+  "tvSourceBadScheme": "Adressen kan inte användas. En http- eller https-länk krävs.",
+  "tvPlayerLink": "Spelarlänk",
+  "tvAdvertisement": "Annons",
+  "tvSponsored": "Sponsrat",
+  "tvInformation": "Information",
+  "tvSportFootball": "Fotboll",
+  "tvSportBasketball": "Basket (NBA)",
+  "tvSportRugby": "Rugby",
+  "tvDataAttribution": "Data: {source}",
+  "tvLegalSection1Title": "1. Appens funktion — endast en SPELARE",
+  "tvLegalSection1Body": "Appen är en mediaspelare för ljud- och videoströmmar som användaren tillhandahåller. Den TILLHANDAHÅLLER, SÄLJER, LAGRAR, SÄNDER eller INDEXERAR INGA TV-kanaler, strömmar, audiovisuellt innehåll, spellistor (M3U) eller portaluppgifter (Xtream). Inget innehåll ingår, är förinstallerat eller säljs med appen.",
+  "tvLegalSection2Title": "2. Innehåll från användaren",
+  "tvLegalSection2Body": "Användaren tillhandahåller egna källor (M3U-länkar / Xtream-uppgifter) från sin egen leverantör. Användaren ansvarar ENSAM för innehåll som läggs till, spelas upp eller sänds och för nödvändiga rättigheter, licenser och abonnemang.",
+  "tvLegalSection3Title": "3. Abonnemang = PROGRAMVARA, inte innehåll",
+  "tvLegalSection3Body": "Eventuell betalning eller abonnemang avser ENDAST användningen av appen: spelaren och dess funktioner, som gränssnitt, favoriter, lokal inspelning och EPG. Det utgör ALDRIG köp, försäljning, uthyrning eller tillhandahållande av kanaler, strömmar eller innehåll.",
+  "tvLegalSection4Title": "4. Laglig användning",
+  "tvLegalSection4Body": "Användaren förbinder sig att följa lagarna i sitt land och att inte använda appen för olagligt innehåll eller upphovsrättsintrång. Olaglig användning är strängt förbjuden och är helt användarens ansvar.",
+  "tvLegalSection5Title": "5. Tredjepartsinnehåll — inget ansvar",
+  "tvLegalSection5Body": "Utgivaren har ingen kontroll över tredjepartsinnehåll som nås via användarens källor och kan inte hållas ansvarig för det. Tillgänglighet, laglighet eller kvalitet garanteras inte.",
+  "tvLegalSection6Title": "6. Immateriella rättigheter och klagomål",
+  "tvLegalSection6Body": "Alla varumärken, logotyper och innehåll tillhör respektive ägare. Appen lagrar inget innehåll. Klagomål om upphovsrätt ska därför riktas till leverantören av den berörda källan.",
+  "tvLegalSection7Title": "7. Tillhandahålls i befintligt skick",
+  "tvLegalSection7Body": "Appen tillhandahålls i befintligt skick utan garanti om ständig tillgänglighet eller felfrihet. Utgivaren kan ändra eller avbryta vissa eller alla funktioner.",
+  "tvLegalSection8Title": "8. Personuppgifter",
+  "tvLegalSection8Body": "En teknisk enhetsidentifierare används för licens- och provperiodshantering samt support. Mer information: app.7themotion.com/privacy.",
+  "tvLegalSection9Title": "9. Godkännande",
+  "tvLegalSection9Body": "Genom att installera eller använda appen bekräftar användaren att dessa villkor har lästs och godkänts. Fullständig version: app.7themotion.com/terms",
+  "tvLegalLead": "Appen är en spelare. Den säljer eller tillhandahåller inga kanaler eller länkar. Upp/ned för att bläddra, Tillbaka för att avsluta.",
+  "tvAudioSpectrumOn": "Spektrum: mäts",
+  "tvAudioSpectrumOff": "Spektrum: av",
+  "tvAudioFfmpegRetry": "FFmpeg: försök igen",
+  "tvAudioFfmpegDefault": "FFmpeg: standard",
+  "tvAudioAacTest": "Box AAC: test",
+  "tvAudioAacOff": "Box AAC: av",
+  "tvAudioFallbackSession": "Reservläge: hela sessionen",
+  "tvAudioFallbackChannel": "Reservläge: per kanal",
+  "tvAudioFocusAndroid": "Ljudfokus: Android",
+  "tvAudioFocusZuno": "Ljudfokus: Zuno",
+  "tvAudioBackgroundPause": "Utanför appen: pausa",
+  "tvAudioBackgroundStop": "Utanför appen: stoppa",
+  "tvAudioHomeLegacy": "Hemknapp: äldre läge",
+  "tvAudioHomeNative": "Hemknapp: stopp i Android",
+  "tvAudioHandoffNow": "Byte: direkt",
+  "tvAudioHandoffWait": "Byte: vänta",
+  "tvAudioOutput48k": "Utgång: 48 kHz",
+  "tvAudioOutputStream": "Utgång: strömmens frekvens",
+  "tvAudioWitnessStop": "Testljud: stoppa",
+  "tvAudioWitnessPreparing": "Testljud: förbereder",
+  "tvAudioWitnessPlay": "Spela testljudet",
+  "tvAudioScrollHelp": "UPP/NED: bläddra · CH+/CH−: sida",
+  "tvAudioWitnessHelp": "Testljudet spelas i 10 s: röst, sedan brus. Samma spelare som kanalerna. Dovt brus → enheten. Klart brus → kanalen.",
+  "tvAudioOptionsHelp": "Spektrum: mäter fyra punkter på nästa kanal (avkodare, tydlig röst, tystnad, AudioTrack) utan att ändra ljudet. FFmpeg: provar programvaruavkodaren igen. Om den inte startar inom 8 s tar boxen över. Box AAC: nästa kanal använder boxens AAC-avkodare, som ExoPlayer. Om den misslyckas tar FFmpeg över denna öppning. Reservläge: ”per kanal” är standard och skickar bara den berörda kanalen till boxen vid FFmpeg-fel. ”Hela sessionen” är det äldre läget där alla kanaler går till boxen efter ett fel. Ljudfokus: ”Zuno” är standard och sänker aldrig volymen när en annan app eller en signal begär ljud. ”Android” är det äldre läget som sänker till 20 %. Utanför appen: ”stoppa” är standard och stoppar samt frigör ljudet när appen lämnas. Kanalen öppnas igen vid återkomst. ”Pausa” är det äldre läget. Hemknapp: ”stopp i Android” är standard, stoppar vid onPause och öppnar inget medan appen är i bakgrunden. ”Äldre läge” väntar på Flutter. Byte: ”vänta” är standard och öppnar nästa kanal först när föregående AudioTrack har frigjorts, så att ljud inte överlappar efter många kanalbyten. ”Direkt” är det äldre läget. Utgång: ”strömmens frekvens” är standard och använder strömmens samplingsfrekvens, ofta 44,1 kHz, som boxen omvandlar. ”48 kHz” samplar om i appen före utgången. Prova om ljudet är dåligt och rapporten visar 44,1 kHz. Testljud: 10 s röst och brus i samma spelare. Aktiverar mätning utan att ändra ljudet. Dovt brus → enheten. Klart brus → kanalen.",
+  "tvAudioNoReports": "Inga rapporter. Öppna en kanal: spelaren registrerar kodek, avkodare och utgång. Spektrum mäts endast när det är aktiverat.",
+  "tvAudioTestSound": "Testljud",
+  "tvDiagCaptive": "1. Inloggningsportal för nätverk (204)",
+  "tvDiagDns": "2. DNS-uppslag för IPTV-värden",
+  "tvDiagStream": "3. Strömmens åtkomlighet (HTTP / 456)",
+  "tvDiagSource": "4. Tilldelad källa (device-source)",
+  "tvDiagPlayer": "5. ExoPlayer / Media3-test",
+  "tvDiagRequest": "Begär generate_204…",
+  "tvDiagInternetOk": "HTTP 204 (internetåtkomst tillgänglig)",
+  "tvDiagTimeout": "Inget svar inom 8 s",
+  "tvDiagNoHost": "Ingen kanal inläst → OKÄND värd",
+  "tvDiagNoUrl": "Ingen kanal inläst → OKÄND URL",
+  "tvDiagStreamHead": "HEAD-förfrågan för strömmen…",
+  "tvDiagIpBlocked": "HTTP 456 — leverantören blockerar denna IP",
+  "tvDiagReadingMac": "Läser MAC…",
+  "tvDiagSourceAssigned": "HTTP 200 — källa tilldelad",
+  "tvDiagNoSource": "HTTP 200 — ingen källa tilldelad",
+  "tvDiagPlayerBusy": "Helskärmsuppspelning pågår: testet hoppas över, endast en spelare",
+  "tvDiagPlayerOpening": "Öppnar ExoPlayer-test…",
+  "tvDiagFrameOk": "Första bildrutan avkodad och visad",
+  "tvDiagPlayerError": "ExoPlayer gav ett fel",
+  "tvDiagFrameTimeout": "Ingen bildruta inom 8 s",
+  "tvDiagRunning": "DIAGNOSTIK PÅGÅR…",
+  "tvDiagPassed": "UPPSPELNING PÅ ENHETEN VERIFIERAD",
+  "tvDiagNetworkBlocked": "NÄTVERKSBLOCKERING",
+  "tvDiagPlayerFailed": "SPELARFEL",
+  "tvDiagPartial": "OFULLSTÄNDIG DIAGNOSTIK",
+  "tvDiagTitle": "DIAGNOSTIK PÅ ENHETEN — Zuno",
+  "tvDiagHelp": "Testar om TV:n kan spela strömmen från sin egen IP-adress.",
+  "tvBackToExit": "TILLBAKA för att avsluta",
+  "tvDiagCaptiveLikely": "HTTP {status}, {bytes} byte → möjlig nätverksinloggning",
+  "tvDiagLookup": "Slår upp {host}…",
+  "tvDiagNoIp": "{host} → ingen IP-adress",
+  "tvDiagDnsTimeout": "{host}: inget DNS-svar inom 8 s",
+  "tvDiagStreamOk": "HTTP {status} (strömmen kan nås)",
+  "tvDiagUnknownMac": "OKÄND MAC ({mac})",
+  "tvSizeBytes": "{size} B",
+  "tvSizeKb": "{size} kB",
+  "tvSizeMb": "{size} MB",
+  "tvSizeGb": "{size} GB",
+  "tvDurationHm": "{hours} tim {minutes} min",
+  "tvWhatsAppActivationRequest": "Hej, jag vill aktivera Zuno.",
+  "castErrorTimeoutRetry": "TV:n tar för lång tid på sig att svara. Försök igen eller välj en annan TV.",
+  "castProgressRelay": "Förbereder relä…",
+  "castFriendlyNetworkFail": "Det gick inte att ansluta till TV:n.",
+  "castFriendlyTvTimeout": "TV:n svarar inte. Kontrollera WiFi.",
+  "castFriendlyBadFormat": "Din TV accepterar inte det här formatet. Prova en annan kanal.",
+  "castProgressLive": "Uppspelning pågår på TV:n",
+  "castFriendlyAuthExpired": "Åtkomst till strömmen nekades — ditt abonnemang kan ha gått ut.",
+  "castFriendlyTvRefused": "Den här TV:n accepterade inte strömmen. Prova en annan kanal.",
+  "castProgressConnectingAttempt": "Ansluter till TV:n ({attempt}/{total})…",
+  "castFriendlyGenericFail": "Castningen misslyckades. Prova att starta om den.",
+  "castProgressWebFallback": "Växlar till universellt läge (QR-kod)…",
+  "castFriendlyTvUnreachable": "Din TV svarar inte på nätverket. Kontrollera: (1) att den är på, (2) att den är på SAMMA WiFi som din telefon (inte ”gäst”-nätverket), (3) att alternativet ”Klientisolering / AP isolation” är AVSTÄNGT i routerns inställningar.",
+  "castProgressDetecting": "Identifierar TV:n…",
+  "castDlnaReceiverFallback": "DLNA-mottagare",
+  "castErrorApIsolation": "Din TV når inte telefonen (gäst-WiFi eller AP-isolering?). Anslut telefonen och TV:n till SAMMA WiFi-nätverk (inte gästnätverket) och stäng av AP-isolering.",
+  "castProgressRetrying": "Nytt försök i kompatibelt läge ({attempt}/{total})…",
+  "castFriendlyTvStuck": "Din TV har fastnat i en tidigare castning. Stäng av den i några sekunder, sätt på den igen och försök på nytt.",
+  "castErrorReceiverRejected": "TV:n avvisade den här strömmen — formatet stöds förmodligen inte av den här mottagaren. Prova en annan kanal.",
+  "castProgressConnecting": "Ansluter till TV:n…",
+  "castFriendlyNoGms": "Officiell Chromecast kräver Google Play-tjänster, som saknas på den här telefonen. Du kan ändå casta till en Smart TV (DLNA) eller en Roku från listan.",
+  "castErrorTimeout": "Castningen tog för lång tid — TV:n eller nätverket svarar inte",
+  "castFriendlyDnsUnstable": "Internet eller DNS är instabilt. Försök igen om några sekunder.",
+  "castFriendlyProviderLimit": "Din IPTV-leverantör nekar ytterligare en anslutning (gränsen nådd). Stäng en annan app som tittar och försök igen.",
+  "castProgressValidating": "Verifierar strömmen…",
+  "castWindowsHelp": "Anslut datorn och TV:n till samma privata nätverk (wifi eller Ethernet). Välj en DLNA-TV eller Roku. Mottagare med enbart Google Cast stöds inte på Windows. Använd TV:ns fjärrkontroll för ljudspår och spolning.",
+  "vipCountriesTitle": "Mina länder · VIP",
+  "vipCountriesHint": "Välj upp till 10 länder. Ordningen sparas för profilen; övriga finns kvar.",
+  "vipCountriesOrder": "Min ordning",
+  "vipCountriesEmpty": "Inget land hittades bland tillgängliga kanaler.",
+  "vipCountriesSaveError": "Kunde inte spara. Försök igen.",
+  "vipCountriesMoveUp": "Flytta upp",
+  "vipCountriesMoveDown": "Flytta ned",
+  "vipCountriesRemove": "Ta bort",
+  "vipCountryRs": "Serbien",
+  "vipCountryFr": "Frankrike",
+  "vipCountryUs": "USA",
+  "vipCountryUk": "Storbritannien",
+  "vipCountryDe": "Tyskland",
+  "vipCountryIt": "Italien",
+  "vipCountryEs": "Spanien",
+  "vipCountryPt": "Portugal",
+  "vipCountryBe": "Belgien",
+  "vipCountryCh": "Schweiz",
+  "vipCountryCa": "Kanada",
+  "vipCountryBr": "Brasilien",
+  "vipCountryMx": "Mexiko",
+  "vipCountryAr": "Argentina",
+  "vipCountrySa": "Saudiarabien",
+  "vipCountryTr": "Turkiet",
+  "vipCountryGr": "Grekland",
+  "vipCountryPl": "Polen",
+  "vipCountryRu": "Ryssland",
+  "vipCountryNl": "Nederländerna",
+  "vipCountryJp": "Japan",
+  "vipCountryKr": "Sydkorea",
+  "vipCountryCn": "Kina",
+  "vipCountryIn": "Indien",
+  "vipCountryAu": "Australien",
+  "vipCountrySe": "Sverige",
+  "vipCountryNo": "Norge",
+  "vipCountryDk": "Danmark",
+  "vipCountryFi": "Finland",
+  "vipCountryMa": "Marocko",
+  "vipCountryDz": "Algeriet",
+  "vipCountryTn": "Tunisien",
+  "vipCountryEg": "Egypten"
+}

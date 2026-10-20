@@ -17,7 +17,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-class LocaleRepository extends ChangeNotifier {
+class LocaleRepository extends ChangeNotifier with WidgetsBindingObserver {
   LocaleRepository._();
   static final LocaleRepository instance = LocaleRepository._();
 
@@ -30,7 +30,7 @@ class LocaleRepository extends ChangeNotifier {
   /// standards écrits du norvégien). `sw` = swahili. `ar` est
   /// rendu en RTL automatiquement par Flutter via `Directionality`.
   static const List<Locale> supportedLocales = <Locale>[
-    Locale('fr'), // Français — défaut
+    Locale('fr'), // Français — premier choix manuel, pas langue par défaut
     Locale('en'), // English
     Locale('es'), // Español
     Locale('sv'), // Svenska
@@ -80,41 +80,89 @@ class LocaleRepository extends ChangeNotifier {
   /// « no » → `nb`). Rien ne correspond → anglais (langue la plus comprise),
   /// jamais le français par accident.
   static Locale resolve(List<Locale>? system, Iterable<Locale> supported) {
-    final Set<String> codes = <String>{
-      for (final Locale l in supported) l.languageCode,
-    };
+    final List<Locale> choices = supported.toList();
+    assert(choices.isNotEmpty);
     for (final Locale l in system ?? const <Locale>[]) {
-      String code = l.languageCode.toLowerCase();
-      if (code == 'no' || code == 'nn') code = 'nb'; // norvégien → bokmål
-      if (code == 'iw') code = 'he'; // ancien code Android de l'hébreu
-      if (code == 'in') code = 'id'; // ancien code Android de l'indonésien
-      if (codes.contains(code)) return Locale(code);
+      final String code = _languageCode(l.languageCode);
+      for (final Locale choice in choices) {
+        if (choice.languageCode == code) return choice;
+      }
     }
-    return const Locale('en');
+    return choices.firstWhere(
+      (l) => l.languageCode == 'en',
+      orElse: () => choices.first,
+    );
+  }
+
+  /// Accepte aussi les anciennes valeurs « sv_SE » et « pt-BR ».
+  static String _languageCode(String value) {
+    final String code = value.trim().toLowerCase().split(RegExp('[-_]')).first;
+    return switch (code) {
+      'no' || 'nn' => 'nb',
+      'iw' => 'he',
+      'in' => 'id',
+      _ => code,
+    };
+  }
+
+  static Locale? _supportedChoice(String? value) {
+    if (value == null) return null;
+    final String code = _languageCode(value);
+    for (final Locale choice in supportedLocales) {
+      if (choice.languageCode == code) return choice;
+    }
+    return null; // une valeur obsolète reprend la langue de la télévision
   }
 
   Locale? _locale; // null = suit l'OS
   Locale? get locale => _locale;
+  bool _observing = false;
+
+  Locale get effectiveLocale =>
+      _locale ??
+      resolve(
+        WidgetsBinding.instance.platformDispatcher.locales,
+        supportedLocales,
+      );
 
   Future<void> initialize() async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     final String? stored = prefs.getString(_kKey);
-    if (stored == null || stored.isEmpty || stored == 'system') {
-      _locale = null;
-    } else {
-      _locale = Locale(stored);
+    _locale = _supportedChoice(stored);
+    if (!_observing) {
+      WidgetsBinding.instance.addObserver(this);
+      _observing = true;
     }
     notifyListeners();
   }
 
   Future<void> setLocale(Locale? locale) async {
-    _locale = locale;
+    _locale = _supportedChoice(locale?.languageCode);
     final SharedPreferences prefs = await SharedPreferences.getInstance();
-    if (locale == null) {
+    if (_locale == null) {
       await prefs.setString(_kKey, 'system');
     } else {
-      await prefs.setString(_kKey, locale.languageCode);
+      await prefs.setString(_kKey, _locale!.languageCode);
     }
     notifyListeners();
+  }
+
+  /// Flutter reconstruit les écrans ; on prévient aussi les services qui
+  /// choisissent la langue du prochain programme, sans rouvrir le flux.
+  @override
+  void didChangeLocales(List<Locale>? locales) {
+    if (_locale == null) notifyListeners();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && _locale == null)
+      notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    if (_observing) WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
   }
 }

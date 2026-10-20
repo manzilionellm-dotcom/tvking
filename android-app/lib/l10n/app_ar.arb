@@ -76,9 +76,9 @@
   "settingsAbout": "حول",
   "settingsProvisioning": "إعداد عن بُعد",
   "settingsClearHistory": "مسح سجل المشاهدة",
-  "themeCinema": "Cinema",
+  "themeCinema": "سينما",
   "themeCinemaSubtitle": "Maison Noir",
-  "themeDaylight": "Daylight",
+  "themeDaylight": "ضوء النهار",
   "themeDaylightSubtitle": "وضع فاتح",
   "themeAuto": "تلقائي",
   "themeAutoSubtitle": "حسب النظام",
@@ -648,7 +648,7 @@
   "tvBlackBoxHelp": "أعلى/أسفل: تمرير · CH+/CH−: صفحة · نسخ = الحافظة (الصقه للدعم عبر WhatsApp). قد يُرسل هذا السجل إلى الدعم. يمكنك إيقاف الإرسال من الإعدادات.",
   "tvNavServer": "الخادم",
   "tvLegalTitle": "الإشعار القانوني والشروط",
-    "tvHelloMorning": "صباح الخير",
+  "tvHelloMorning": "صباح الخير",
   "tvHelloAfternoon": "طاب يومك",
   "tvHelloEvening": "مساء الخير",
   "tvHomeInvite": "ستعود قنواتك وأفلامك وتذكيراتك إلى هنا.",
@@ -673,7 +673,7 @@
   "tvReminderInMinutes": "بعد {minutes} د",
   "tvReminderInHours": "بعد {hours} س",
   "tvReminderInHoursMinutes": "بعد {hours} س {minutes} د",
-"tvResumeLabel": "استئناف",
+  "tvResumeLabel": "استئناف",
   "tvNowPlayingPrefix": "الآن · {title}",
   "@tvNowPlayingPrefix": {
     "placeholders": {
@@ -847,7 +847,13 @@
   "tvRecordingStarted": "جارٍ التسجيل…",
   "tvRecordingError": "خطأ في التسجيل",
   "tvRecordingSaved": "تم حفظ التسجيل ({size})",
-  "@tvRecordingSaved": {"placeholders": {"size": {"type": "String"}}},
+  "@tvRecordingSaved": {
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
   "tvRecordingEmpty": "تسجيل فارغ",
   "tvRemovedFromFavorites": "أُزيل من المفضلة",
   "tvAddedToFavorites": "أُضيف إلى المفضلة ❤",
@@ -855,61 +861,163 @@
   "tvCinemaAudio": "الصوت",
   "tvCinemaAudioSubs": "الصوت والترجمة",
   "tvCinemaCast": "بطولة {names}",
-  "@tvCinemaCast": {"placeholders": {"names": {"type": "String"}}},
+  "@tvCinemaCast": {
+    "placeholders": {
+      "names": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaContinue": "متابعة المشاهدة",
   "tvCinemaDeleteDownload": "حذف التنزيل",
   "tvCinemaDirector": "إخراج: {names}",
-  "@tvCinemaDirector": {"placeholders": {"names": {"type": "String"}}},
+  "@tvCinemaDirector": {
+    "placeholders": {
+      "names": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaDownload": "تنزيل",
   "tvCinemaDownloadError": "فشل التنزيل",
   "tvCinemaDownloadPaused": "متوقف مؤقتًا · {pct} ٪",
-  "@tvCinemaDownloadPaused": {"placeholders": {"pct": {"type": "String"}}},
+  "@tvCinemaDownloadPaused": {
+    "placeholders": {
+      "pct": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaDownloaded": "تم التنزيل",
   "tvCinemaDownloading": "جارٍ التنزيل · {pct} ٪",
-  "@tvCinemaDownloading": {"placeholders": {"pct": {"type": "String"}}},
+  "@tvCinemaDownloading": {
+    "placeholders": {
+      "pct": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaDownloads": "تنزيلاتي",
   "tvCinemaEmptyCategory": "لا يوجد شيء هنا بعد.",
   "tvCinemaEpisode": "الحلقة {n}",
-  "@tvCinemaEpisode": {"placeholders": {"n": {"type": "String"}}},
+  "@tvCinemaEpisode": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaFromStart": "من البداية",
   "tvCinemaIndexing": "جارٍ تجهيز البحث في الكتالوج كاملًا…",
   "tvCinemaLanguage": "اللغة: {value}",
-  "@tvCinemaLanguage": {"placeholders": {"value": {"type": "String"}}},
+  "@tvCinemaLanguage": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaLoading": "جارٍ التحميل…",
   "tvCinemaMinutes": "{n} دقيقة",
-  "@tvCinemaMinutes": {"placeholders": {"n": {"type": "String"}}},
+  "@tvCinemaMinutes": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaNextEpisode": "الحلقة التالية",
   "tvCinemaNextHint": "OK: الآن · رجوع: البقاء",
   "tvCinemaNextIn": "الحلقة التالية بعد {s} ث",
-  "@tvCinemaNextIn": {"placeholders": {"s": {"type": "String"}}},
+  "@tvCinemaNextIn": {
+    "placeholders": {
+      "s": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaNoEpisodes": "لا توجد حلقات متاحة.",
   "tvCinemaNoSource": "لا توجد أفلام أو مسلسلات حاليًا",
   "tvCinemaNoSourceBody": "تأتي الأفلام والمسلسلات من اشتراك Xtream الخاص بك. أضفه في الخادم، أو اطلب من الموزّع تفعيله.",
   "tvCinemaNoSpace": "لا توجد مساحة كافية على الجهاز ({free} غيغابايت متاحة).",
-  "@tvCinemaNoSpace": {"placeholders": {"free": {"type": "String"}}},
+  "@tvCinemaNoSpace": {
+    "placeholders": {
+      "free": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaPauseDownload": "إيقاف مؤقت",
   "tvCinemaPlay": "تشغيل",
   "tvCinemaPlayEpisode": "تشغيل م{s} · ح{e}",
-  "@tvCinemaPlayEpisode": {"placeholders": {"s": {"type": "String"}, "e": {"type": "String"}}},
+  "@tvCinemaPlayEpisode": {
+    "placeholders": {
+      "s": {
+        "type": "String"
+      },
+      "e": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaRecent": "أضيف مؤخرًا",
   "tvCinemaRestart": "إعادة التشغيل",
   "tvCinemaResumeAt": "استئناف من {time}",
-  "@tvCinemaResumeAt": {"placeholders": {"time": {"type": "String"}}},
+  "@tvCinemaResumeAt": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaResumeDownload": "استئناف التنزيل",
   "tvCinemaResumeEpisode": "استئناف م{s} · ح{e}",
-  "@tvCinemaResumeEpisode": {"placeholders": {"s": {"type": "String"}, "e": {"type": "String"}}},
+  "@tvCinemaResumeEpisode": {
+    "placeholders": {
+      "s": {
+        "type": "String"
+      },
+      "e": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaResumedAt": "الاستئناف من {time}",
-  "@tvCinemaResumedAt": {"placeholders": {"time": {"type": "String"}}},
+  "@tvCinemaResumedAt": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaSearch": "بحث",
   "tvCinemaSeason": "الموسم {n}",
-  "@tvCinemaSeason": {"placeholders": {"n": {"type": "String"}}},
+  "@tvCinemaSeason": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaSeasons": "{n} مواسم",
-  "@tvCinemaSeasons": {"placeholders": {"n": {"type": "String"}}},
+  "@tvCinemaSeasons": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaSpecials": "حلقات خاصة",
   "tvCinemaSubtitles": "الترجمة",
   "tvCinemaSubtitlesOff": "إيقاف",
   "tvCinemaTrackUnknown": "المسار {n}",
-  "@tvCinemaTrackUnknown": {"placeholders": {"n": {"type": "String"}}},
+  "@tvCinemaTrackUnknown": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
   "tvUpdatingContent": "جارٍ التحديث…",
   "tvDeactivate": "إيقاف",
   "tvSourceActive": "مفعّل",
@@ -946,4 +1054,325 @@
   "tvVoiceRemoteAiOff": "متوقفة",
   "tvVoiceRemoteAiHelp": "متوقفة افتراضياً. لا يوجد مفتاح في التطبيق. « الليلة » تُقرأ من دليلك على الجهاز. إذا لم يجب الخدمة، يبحث Zuno في قائمتك.",
   "tvVoiceCinemaHint": "افتح الأفلام أو المسلسلات مرة واحدة: البحث سيجدها بعد ذلك، دون شبكة أثناء المشاهدة.",
-  "tvVoiceOnChannel": "على {channel}"}
+  "tvVoiceOnChannel": "على {channel}",
+  "tvDeletePanelSourceConfirm": "سيتم حذف «{name}» من هذا التلفاز. لن تعيدها المزامنة أو إعادة إرسالها من لوحة الإدارة. لاستعادتها، أضفها مجددًا في التطبيق.",
+  "tvDeleteSourceFailed": "تعذّر الحذف المحلي. حاول مجددًا بعد قليل.",
+  "tvCinemaOfflineTitle": "الكتالوج غير متاح",
+  "tvCinemaOfflineBody": "لا يوجد محتوى محفوظ على التلفاز والخادم لا يستجيب. تحقّق من الاتصال وحاول مجددًا.",
+  "tvCinemaRetry": "إعادة المحاولة",
+  "tvCinemaUpdated": "تم التحديث {when}",
+  "tvCinemaAgeJustNow": "الآن",
+  "tvCinemaAgeMinutes": "قبل {n} دقيقة",
+  "tvCinemaAgeHours": "قبل {n} ساعة",
+  "tvCinemaAgeDays": "قبل {n} يوم",
+  "tvCinemaCategoryFailed": "تعذّر تحميل هذه الفئة.",
+  "moviesRetry": "إعادة المحاولة",
+  "tvRemoteTitle": "جهاز التحكم",
+  "tvSettingsRemote": "يصبح الهاتف جهاز تحكم عبر شبكة Wi-Fi نفسها، دون تثبيت أي تطبيق.",
+  "tvRemoteLead": "امسح رمز QR بكاميرا الهاتف. لا حاجة إلى تثبيت تطبيق.",
+  "tvRemoteWarn": "يمكن لأي شخص يرى هذا الرمز التحكم بالجهاز حتى انتهاء صلاحيته. هاتف واحد فقط. تنتهي صلاحية الرمز تلقائيًا.",
+  "tvRemoteKeep": "زر الرجوع يغادر هذه الشاشة، ويستمر الهاتف بالعمل حتى انتهاء الرمز. إيقاف يعطّل التحكم فورًا.",
+  "tvRemoteStarting": "جارٍ التحضير…",
+  "tvRemoteWaiting": "بانتظار الهاتف…",
+  "tvRemotePaired": "تم توصيل الهاتف",
+  "tvRemoteExpired": "انتهت صلاحية الرمز",
+  "tvRemoteStopped": "تم إيقاف جهاز التحكم",
+  "tvRemoteNoLan": "لا توجد شبكة محلية. صِل الجهاز والهاتف بشبكة Wi-Fi نفسها.",
+  "tvRemoteError": "تعذّر تشغيل جهاز التحكم.",
+  "tvRemoteNewCode": "رمز جديد",
+  "tvRemoteStop": "إيقاف",
+  "tvRemoteStart": "تشغيل",
+  "tvRemoteLeft": "تنتهي الصلاحية بعد {time}",
+  "tvRemoteUrlHelp": "إذا فشل المسح، افتح هذا العنوان في متصفح الهاتف.",
+  "sportsTimeout": "خدمة الرياضة تستجيب ببطء شديد. حاول مجددًا.",
+  "sportsNetworkError": "تعذّر الاتصال بخدمة الرياضة.",
+  "sportsHttpError": "خدمة الرياضة غير متاحة (HTTP {status}).",
+  "sportsInvalidResponse": "تعذّرت قراءة استجابة خدمة الرياضة.",
+  "sportsUnavailable": "تعذّر تحميل البيانات الرياضية.",
+  "sportsLoading": "جارٍ تحميل المباريات…",
+  "sportsRetry": "إعادة المحاولة",
+  "sportsFootballTitle": "النتائج وجدول المباريات",
+  "sportsRefresh": "تحديث",
+  "sportsCommunityNotice": "نتائج وأهداف يقدّمها المجتمع · قد تتأخر · تحديث كل 60 ثانية.",
+  "sportsCalendarNotice": "جداول ونتائج متأخرة · لا يوفّر OpenFootball نتائج مباشرة.",
+  "sportsRetrievedAt": "تم الاسترجاع في {time}",
+  "sportsUpcoming": "القادمة",
+  "sportsRecent": "آخر المباريات",
+  "sportsFinished": "انتهت",
+  "tvProgramStartedMinutesAgo": "بدأ البرنامج قبل {minutes} دقيقة",
+  "tvProfiles": "الملفات الشخصية",
+  "tvKidsProfile": "ملف الأطفال",
+  "tvNewProfile": "ملف جديد",
+  "tvChildren": "الأطفال",
+  "tvKidsExists": "يوجد ملف أطفال بالفعل.",
+  "tvProfileAddFailed": "تعذّرت إضافة الملف.",
+  "tvKidsReady": "ملف الأطفال جاهز. يبقى وضع الأطفال مفعّلًا.",
+  "tvRename": "إعادة التسمية",
+  "tvNameInvalid": "الاسم فارغ أو طويل جدًا.",
+  "tvProfileDeleteBody": "ستُحذف المفضّلة والسجل ومواضع استئناف المشاهدة والتذكيرات والرمز السري لهذا الملف. تبقى القنوات والملف 1.",
+  "tvProfileDeleteFailed": "لا يمكن حذف هذا الملف.",
+  "tvProfilesHelp": "حتى 4 ملفات، لكل منها مفضّلة وسجل ومواضع مشاهدة وتذكيرات ورمز سري مستقل. القنوات مشتركة.",
+  "tvDefaultPinWarning": "الرمز السري ما زال 0000. غيّره من الرقابة الأبوية.",
+  "tvAskProfileOn": "اختيار الملف عند البدء: مفعّل",
+  "tvAskProfileOff": "اختيار الملف عند البدء: معطّل",
+  "tvProfileStartupSingle": "يظهر اختيار الملف عند البدء بوجود ملفين أو أكثر. مع ملف واحد يفتح التطبيق مباشرة.",
+  "tvProfileStartupHelp": "عند التعطيل يفتح آخر ملف مباشرة. يمكنك التبديل هنا أو من الصفحة الرئيسية.",
+  "tvKidsProfileHelp": "وضع الأطفال مقفل. للخروج يلزم الرمز السري لهذا الملف. محتوى البالغين مخفي. يحتفظ الملف 1 ببياناتك السابقة.",
+  "tvOriginProfileHelp": "الملف الأصلي: هنا المفضّلة والسجل ومواضع المشاهدة والرمز السري السابقة. لا يمكن حذفه.",
+  "tvSeparateProfileHelp": "ملف مستقل. حذفه لا يحذف الملف 1.",
+  "tvProfileActive": "نشط",
+  "tvProfileCreated": "تم إنشاء الملف «{name}».",
+  "tvProfileDeleteTitle": "حذف «{name}»؟",
+  "tvWhoWatching": "من يشاهد؟",
+  "tvProfilePickerHelp": "لكل شخص مفضّلته وسجله ورمزه السري. تبقى القنوات نفسها.",
+  "tvLater": "لاحقًا",
+  "tvNameMum": "الأم",
+  "tvNameDad": "الأب",
+  "tvNameGuest": "ضيف",
+  "tvNameLivingRoom": "غرفة المعيشة",
+  "tvNameLimit": "18 حرفًا كحد أقصى.",
+  "tvFirstName": "الاسم الأول",
+  "tvListRemoved": "تمت إزالة القائمة",
+  "tvListRemovedBody": "أزال مزوّد الخدمة هذه القائمة. لم تعد قنواتها متاحة.",
+  "tvKidsCannotDisable": "يبقى وضع الأطفال مفعّلًا في ملف الأطفال. بدّل الملف باستخدام الرمز السري لمشاهدة جميع القنوات.",
+  "tvKidsAlwaysOn": "ملف الأطفال: يبقى الوضع مفعّلًا. القنوات غير المخصّصة للبالغين متاحة.",
+  "tvKidsOn": "مفعّل — محتوى البالغين مخفي.",
+  "tvKidsOff": "معطّل — جميع القنوات ظاهرة.",
+  "tvChooseSecurePin": "اختر رمزًا سريًا قبل تفعيل وضع الأطفال. لم يعد الرمز 0000 مقبولًا.",
+  "tvPinWait": "محاولات كثيرة جدًا. حاول مجددًا بعد بضع دقائق.",
+  "tvEnabled": "مفعّل",
+  "tvDisabled": "معطّل",
+  "tvProfilePinHelp": "الرمز السري للملف «{name}». يخفي وضع الأطفال قنوات البالغين. يلزم هذا الرمز لتعطيل الوضع أو تغييره. لكل ملف رمزه الخاص.",
+  "tvPinWaitMinutes": "محاولات كثيرة جدًا. حاول مجددًا بعد {minutes} دقيقة.",
+  "tvExtras": "إضافات",
+  "tvExtrasHelp": "ميزات يمكنك تعطيل كل منها على حدة. لا تمنع أي منها تشغيل قناة.",
+  "tvMissedTitle": "فاتتك البداية",
+  "tvMissedOn": "يوضّح الدليل ما فاتك. اضغط موافق للتعطيل. لا يرجع البث المباشر إلى الوراء تلقائيًا.",
+  "tvMissedOff": "معطّل. اضغط موافق للتفعيل. لن تُعاد القناة إلى الوراء.",
+  "tvAtThisHour": "في هذا الوقت",
+  "tvTimePicksOn": "يقترح القنوات التي تفتحها غالبًا في هذا الوقت. اضغط موافق للتعطيل. لا يبدأ شيء تلقائيًا.",
+  "tvTimePicksOff": "معطّل. اضغط موافق للتفعيل. يتوقف تسجيل العادات ويختفي الصف.",
+  "tvServiceNotices": "إشعارات الخدمة",
+  "tvNoticesOn": "بطاقة على الصفحة الرئيسية عندما ينشر المزوّد إشعار صيانة أو خبرًا. اضغط موافق للتعطيل. لا تظهر فوق الفيديو.",
+  "tvNoticesOff": "معطّل. اضغط موافق للتفعيل. لا تُعرض الإشعارات.",
+  "tvPickOfDay": "اختيار اليوم",
+  "tvFeaturedOn": "القناة التي يبرزها المزوّد، إن كانت في قائمتك. اضغط موافق للتعطيل. لا يبدأ شيء تلقائيًا.",
+  "tvFeaturedOff": "معطّل. اضغط موافق للتفعيل. تختفي البطاقة من الصفحة الرئيسية.",
+  "tvBanners": "اللافتات الإعلانية",
+  "tvBannersOn": "صورة واحدة في كل مرة على الصفحة الرئيسية، تحمل دائمًا عبارة «إعلان». إغلاق يعني إخفاءها 7 أيام. اضغط موافق للتعطيل. دون صوت ولا تظهر فوق الفيديو.",
+  "tvBannersOff": "معطّل. اضغط موافق للتفعيل. لا تُعرض لافتات.",
+  "tvSubtitlesOnHelp": "يعرض مسار الترجمة الموجود أصلًا في البث بلغتك. اضغط موافق للتعطيل. لا تتم ترجمة أو تنزيل أي شيء.",
+  "tvSubtitlesOffHelp": "معطّل. اضغط موافق للتفعيل. لا يتغير مسار البث المباشر.",
+  "tvClearVoice": "صوت واضح",
+  "tvClearVoiceOn": "مفعّل. تُخفّض الأصوات المرتفعة قليلًا في الوضع الليلي. اضغط موافق للتعطيل. لا يتغير الصوت المحيطي الممرّر دون معالجة.",
+  "tvClearVoiceOff": "معطّل، وهو الإعداد الأصلي. اضغط موافق لخفض الأصوات المرتفعة جدًا. لا يتغير الصوت المحيطي المرسل مباشرة إلى مكبّر الصوت.",
+  "tvLogToSupport": "إرسال السجل إلى الدعم",
+  "tvLogToSupportOn": "يمكن إرسال سجل التشخيص إلى الدعم دون عناوين البث أو كلمات المرور. اضغط موافق للتعطيل.",
+  "tvLogToSupportOff": "معطّل. يبقى السجل على الجهاز. اضغط موافق لإرساله إلى الدعم مجددًا.",
+  "tvPictureEngine": "محرّك الصورة",
+  "tvPictureEngineHelp": "الحالي: {engine}. اضغط موافق للتغيير. العتادي يستخدم الجهاز، وهو الإعداد الأصلي. البرمجي يُستخدم عند بقاء الصورة سوداء. فيديو FFmpeg غير متاح في هذا الإصدار ويتم تجاوزه.",
+  "tvScreenRefresh": "معدل تحديث الشاشة",
+  "tvScreenRefreshOn": "مفعّل. قد تنتقل الشاشة إلى 24 أو 50 أو 60 هرتز لمطابقة البث. اضغط موافق للتعطيل. قد تنقطع الصورة ثانيةً في بعض الأجهزة؛ عطّل الخيار إذا حدث ذلك.",
+  "tvScreenRefreshOff": "معطّل، وهو الإعداد الأصلي. اضغط موافق لمطابقة الشاشة مع 24 / 25 / 30 / 50 / 60 إطارًا في الثانية. لا يتفعّل تلقائيًا.",
+  "tvContrast": "التباين",
+  "tvContrastUnavailable": "غير متاح. يخرج مرشّح Android من مسار العرض المباشر وقد سبّب شاشات سوداء. يبقى معطّلًا.",
+  "tvUpdateAllowInstall": "اسمح لـ Zuno بتثبيت التطبيقات: فعّل «Zuno» في الشاشة التي فتحها Android، ثم ارجع واضغط موافق. التحديث مُنزّل بالفعل.",
+  "tvFfmpegKeepDecoder": "فيديو FFmpeg غير متاح في هذا الإصدار. يبقى مفكّك الترميز الحالي.",
+  "tvFfmpegBoxDecoder": "فيديو FFmpeg غير متاح في هذا الإصدار. الرجوع إلى مفكّك ترميز الجهاز.",
+  "tvFfmpegUnavailable": "فيديو FFmpeg غير متاح في هذا الإصدار.",
+  "tvEngineSelected": "المحرّك: {engine}",
+  "tvOnYourPhone": "على هاتفك",
+  "tvGotIt": "فهمت",
+  "tvClose": "إغلاق",
+  "tvPhone": "الهاتف",
+  "tvSoftware": "برمجي",
+  "tvHardware": "عتادي",
+  "tvProfilesSettingsHelp": "حتى 4 ملفات، لكل منها مفضّلة وسجل ومواضع مشاهدة وتذكيرات ورمز سري مستقل.",
+  "tvAudioDiagnostic": "تشخيص الصوت",
+  "tvAudioDiagnosticHelp": "تقرير محلي لكل قناة. لا يُرسل شيء. خيارات الاختبار معطّلة افتراضيًا.",
+  "tvPlayerDisclaimer": "هذا التطبيق مشغّل وسائط. لا يبيع ولا يوفّر ولا يستضيف قنوات أو بثًا أو روابط M3U. يقدّم المستخدم المحتوى ويتحمّل مسؤولية قانونيته.",
+  "tvActivationDisclaimer": "مشغّل وسائط — لا يبيع ولا يوفّر قنوات أو روابط M3U. يقدّم المستخدم المحتوى. الشروط: app.7themotion.com/terms",
+  "tvSourcePasteHelp": "الصق الرابط أو بيانات الدخول. يدعم أي مزوّد M3U أو Xtream.",
+  "tvTrending": "🔥 الرائج",
+  "tvRecent": "🕒 الأخيرة",
+  "tvForYou": "✨ لك",
+  "tvOther": "أخرى",
+  "tvNetworkUnavailable": "لا توجد شبكة",
+  "tvNetworkUnavailableHelp": "لا يستطيع التلفاز الوصول إلى الخادم. تحقّق من الاتصال وحاول مجددًا.",
+  "tvListRejected": "تم رفض القائمة",
+  "tvListRejectedHelp": "رفض المزوّد هذه القائمة. تحقّق من بيانات الدخول.",
+  "tvCodeInactive": "الرمز غير مفعّل",
+  "tvCodeInactiveHelp": "رمز هذا التلفاز غير مفعّل. فعّله في لوحة الإدارة وانتظر بضع ثوانٍ.",
+  "tvSourcesEmpty": "لا توجد مصادر بعد.\nأضف رابط M3U أو حساب Xtream أو رابط مشغّل.",
+  "tvRecordingCloseFailed": "تعذّر إنهاء التسجيل. قد يكون الملف غير مكتمل.",
+  "tvFromStart": "من البداية",
+  "tvFollow": "متابعة",
+  "tvChooseTeamHelp": "اختر فريقًا أدناه أو اكتب اسمًا…",
+  "tvTeamNotFound": "لم يُعثر على «{name}» — جرّب البحث.",
+  "tvCatchupHelp": "من بداية البرنامج. يمين ثم موافق: العودة إلى البث المباشر.",
+  "tvMissedRewindHint": "يمين ثم موافق: من البداية.",
+  "tvMissedNoReplayHint": "الدليل يحتوي على النص لا الفيديو. يبقى البث المباشر كما هو.",
+  "tvSourceNeedUrl": "الصق عنوانًا يبدأ بـ http:// أو https://.",
+  "tvSourceNeedXtream": "أدخل عنوان الخادم واسم المستخدم وكلمة المرور.",
+  "tvSourceNeedCredentials": "رابط المشغّل يفتقد اسم المستخدم أو كلمة المرور. الصق الرابط كاملًا أو املأ حقول Xtream الثلاثة.",
+  "tvSourceBadScheme": "لا يمكن استخدام هذا العنوان. يلزم رابط http أو https.",
+  "tvPlayerLink": "رابط المشغّل",
+  "tvAdvertisement": "إعلان",
+  "tvSponsored": "محتوى برعاية",
+  "tvInformation": "معلومات",
+  "tvSportFootball": "كرة القدم",
+  "tvSportBasketball": "كرة السلة (NBA)",
+  "tvSportRugby": "الرغبي",
+  "tvDataAttribution": "البيانات: {source}",
+  "tvLegalSection1Title": "1. طبيعة التطبيق — مشغّل فقط",
+  "tvLegalSection1Body": "هذا التطبيق مشغّل وسائط لتشغيل بث الصوت والفيديو الذي يقدّمه المستخدم. لا يوفّر ولا يبيع ولا يستضيف ولا يبث ولا يفهرس أي قنوات تلفزيونية أو بث أو محتوى سمعي بصري أو قوائم تشغيل M3U أو بيانات بوابات Xtream. لا يُضمّن أو يُحمّل مسبقًا أو يُباع أي محتوى مع التطبيق.",
+  "tvLegalSection2Title": "2. المحتوى الذي يقدّمه المستخدم",
+  "tvLegalSection2Body": "يقدّم المستخدم مصادره الخاصة، من روابط M3U أو بيانات Xtream، التي يحصل عليها من مزوّده. ويتحمّل وحده مسؤولية المحتوى الذي يضيفه أو يشغّله أو يبثه، وامتلاك الحقوق والتراخيص والاشتراكات اللازمة.",
+  "tvLegalSection3Title": "3. الاشتراك مقابل البرنامج لا المحتوى",
+  "tvLegalSection3Body": "أي دفعة أو اشتراك يقابل استخدام التطبيق فقط: المشغّل وميزاته، مثل الواجهة والمفضّلة والتسجيل المحلي ودليل البرامج. ولا يمثّل مطلقًا شراء أو بيع أو تأجير أو توفير قنوات أو بث أو محتوى.",
+  "tvLegalSection4Title": "4. الاستخدام القانوني",
+  "tvLegalSection4Body": "يلتزم المستخدم بقوانين بلده وبعدم استخدام التطبيق للوصول إلى محتوى غير قانوني أو منتهك لحقوق النشر. يُحظر الاستخدام غير القانوني تمامًا ويتحمّل المستخدم وحده مسؤوليته.",
+  "tvLegalSection5Title": "5. محتوى الأطراف الأخرى — عدم المسؤولية",
+  "tvLegalSection5Body": "لا يتحكم الناشر في محتوى الأطراف الأخرى المتاح عبر مصادر المستخدم ولا يتحمّل مسؤوليته. ولا يضمن توفّره أو قانونيته أو جودته.",
+  "tvLegalSection6Title": "6. الملكية الفكرية والشكاوى",
+  "tvLegalSection6Body": "جميع العلامات والشعارات والمحتويات تخص أصحابها. ولأن التطبيق لا يستضيف محتوى، يجب توجيه شكاوى حقوق النشر إلى مزوّد المصدر المعني.",
+  "tvLegalSection7Title": "7. يُقدَّم كما هو",
+  "tvLegalSection7Body": "يُقدَّم التطبيق كما هو، دون ضمان التوفّر المستمر أو الخلو من الأخطاء. يمكن للناشر تغيير بعض الميزات أو كلها أو تعليقها.",
+  "tvLegalSection8Title": "8. البيانات الشخصية",
+  "tvLegalSection8Body": "يُستخدم معرّف تقني للجهاز لإدارة التراخيص والفترات التجريبية والدعم. التفاصيل: app.7themotion.com/privacy.",
+  "tvLegalSection9Title": "9. القبول",
+  "tvLegalSection9Body": "بتثبيت التطبيق أو استخدامه، يقرّ المستخدم بأنه قرأ هذه الشروط وقبلها. النسخة الكاملة: app.7themotion.com/terms",
+  "tvLegalLead": "هذا التطبيق مشغّل، ولا يبيع ولا يوفّر قنوات أو روابط. أعلى/أسفل للتمرير، ورجوع للخروج.",
+  "tvAudioSpectrumOn": "الطيف: القياس مفعّل",
+  "tvAudioSpectrumOff": "الطيف: معطّل",
+  "tvAudioFfmpegRetry": "FFmpeg: إعادة المحاولة",
+  "tvAudioFfmpegDefault": "FFmpeg: افتراضي",
+  "tvAudioAacTest": "AAC الجهاز: اختبار",
+  "tvAudioAacOff": "AAC الجهاز: معطّل",
+  "tvAudioFallbackSession": "البديل: الجلسة كاملة",
+  "tvAudioFallbackChannel": "البديل: لكل قناة",
+  "tvAudioFocusAndroid": "تركيز الصوت: Android",
+  "tvAudioFocusZuno": "تركيز الصوت: Zuno",
+  "tvAudioBackgroundPause": "خارج التطبيق: إيقاف مؤقت",
+  "tvAudioBackgroundStop": "خارج التطبيق: إيقاف",
+  "tvAudioHomeLegacy": "زر الرئيسية: الوضع السابق",
+  "tvAudioHomeNative": "زر الرئيسية: إيقاف أصلي",
+  "tvAudioHandoffNow": "الانتقال: فورًا",
+  "tvAudioHandoffWait": "الانتقال: انتظار",
+  "tvAudioOutput48k": "الخرج: 48 كيلوهرتز",
+  "tvAudioOutputStream": "الخرج: تردد البث",
+  "tvAudioWitnessStop": "صوت الاختبار: إيقاف",
+  "tvAudioWitnessPreparing": "صوت الاختبار: تحضير",
+  "tvAudioWitnessPlay": "تشغيل صوت الاختبار",
+  "tvAudioScrollHelp": "أعلى/أسفل: تمرير · CH+/CH−: صفحة",
+  "tvAudioWitnessHelp": "صوت اختبار لمدة 10 ثوانٍ: كلام ثم ضجيج، بالمشغّل نفسه المستخدم للقنوات. ضجيج مكتوم ← الجهاز. ضجيج واضح ← القناة.",
+  "tvAudioOptionsHelp": "الطيف: يقيس في القناة التالية أربع نقاط، هي مفكّك الترميز والصوت الواضح والصمت وAudioTrack، دون تغيير الصوت. FFmpeg: يعيد تجربة مفكّك الترميز البرمجي؛ إن لم يبدأ خلال 8 ثوانٍ يتولّى الجهاز المهمة. AAC الجهاز: تستخدم القناة التالية مفكّك AAC الخاص بالجهاز، مثل ExoPlayer. عند الفشل يتولّى FFmpeg هذا الفتح. البديل: «لكل قناة» هو الافتراضي، وينقل إلى الجهاز القناة المتأثرة بفشل FFmpeg فقط. «الجلسة كاملة» هو السلوك السابق، وينقل جميع القنوات بعد فشل واحد. تركيز الصوت: «Zuno» هو الافتراضي ولا يخفض الصوت حين يطلب تطبيق آخر أو تنبيه استخدامه. «Android» هو السلوك السابق ويخفضه إلى 20٪. خارج التطبيق: «إيقاف» هو الافتراضي، يوقف الصوت ويحرّره عند الخروج ويعيد فتح القناة عند العودة. «إيقاف مؤقت» هو السلوك السابق. زر الرئيسية: «إيقاف أصلي» هو الافتراضي، يتوقف عند onPause ولا يعيد الفتح ما دام التطبيق خارج الواجهة. «الوضع السابق» ينتظر Flutter. الانتقال: «انتظار» هو الافتراضي، لا يفتح القناة التالية حتى يتحرّر AudioTrack السابق، لمنع اختلاط الصوت بعد تبديلات كثيرة. «فورًا» هو السلوك السابق. الخرج: «تردد البث» هو الافتراضي، يستخدم معدل أخذ العينات للبث، وغالبًا 44.1 كيلوهرتز، ويحوّله الجهاز. «48 كيلوهرتز» يعيد أخذ العينات داخل التطبيق قبل الخرج. جرّبه إذا كان الصوت سيئًا والتقرير يعرض 44.1 كيلوهرتز. صوت الاختبار: 10 ثوانٍ من الكلام ثم الضجيج بالمشغّل نفسه. يفعّل القياس دون تغيير الصوت. ضجيج مكتوم ← الجهاز. ضجيج واضح ← القناة.",
+  "tvAudioNoReports": "لا توجد تقارير. افتح قناة ليسجّل المشغّل الترميز ومفكّكه والخرج. لا يُقاس الطيف إلا عند تفعيل الخيار.",
+  "tvAudioTestSound": "صوت الاختبار",
+  "tvDiagCaptive": "1. بوابة تسجيل الدخول للشبكة (204)",
+  "tvDiagDns": "2. حل عنوان مضيف IPTV عبر DNS",
+  "tvDiagStream": "3. إمكانية الوصول للبث (HTTP / 456)",
+  "tvDiagSource": "4. المصدر المعيّن (device-source)",
+  "tvDiagPlayer": "5. اختبار ExoPlayer / Media3",
+  "tvDiagRequest": "جارٍ طلب generate_204…",
+  "tvDiagInternetOk": "HTTP 204 (الإنترنت متاح)",
+  "tvDiagTimeout": "لا استجابة خلال 8 ثوانٍ",
+  "tvDiagNoHost": "لم تُحمّل قناة ← المضيف غير معروف",
+  "tvDiagNoUrl": "لم تُحمّل قناة ← الرابط غير معروف",
+  "tvDiagStreamHead": "جارٍ إرسال طلب HEAD للبث…",
+  "tvDiagIpBlocked": "HTTP 456 — المزوّد يحظر عنوان IP هذا",
+  "tvDiagReadingMac": "جارٍ قراءة MAC…",
+  "tvDiagSourceAssigned": "HTTP 200 — تم تعيين مصدر",
+  "tvDiagNoSource": "HTTP 200 — لم يُعيّن مصدر",
+  "tvDiagPlayerBusy": "تشغيل ملء الشاشة نشط: تم تجاوز الاختبار، مشغّل واحد فقط",
+  "tvDiagPlayerOpening": "جارٍ فتح اختبار ExoPlayer…",
+  "tvDiagFrameOk": "فُكّ ترميز الإطار الأول وعُرض",
+  "tvDiagPlayerError": "أعاد ExoPlayer خطأً",
+  "tvDiagFrameTimeout": "لا صورة خلال 8 ثوانٍ",
+  "tvDiagRunning": "التشخيص جارٍ…",
+  "tvDiagPassed": "تم التحقق من التشغيل على الجهاز",
+  "tvDiagNetworkBlocked": "حظر في الشبكة",
+  "tvDiagPlayerFailed": "خطأ في المشغّل",
+  "tvDiagPartial": "تشخيص جزئي",
+  "tvDiagTitle": "تشخيص الجهاز — Zuno",
+  "tvDiagHelp": "يختبر قدرة التلفاز على تشغيل البث من عنوان IP الخاص به.",
+  "tvBackToExit": "رجوع للخروج",
+  "tvDiagCaptiveLikely": "HTTP {status}، {bytes} بايت ← قد توجد بوابة تسجيل دخول",
+  "tvDiagLookup": "جارٍ حل عنوان {host}…",
+  "tvDiagNoIp": "{host} ← لا يوجد عنوان IP",
+  "tvDiagDnsTimeout": "{host}: لا استجابة DNS خلال 8 ثوانٍ",
+  "tvDiagStreamOk": "HTTP {status} (البث قابل للوصول)",
+  "tvDiagUnknownMac": "عنوان MAC غير معروف ({mac})",
+  "tvSizeBytes": "{size} بايت",
+  "tvSizeKb": "{size} كيلوبايت",
+  "tvSizeMb": "{size} ميغابايت",
+  "tvSizeGb": "{size} غيغابايت",
+  "tvDurationHm": "{hours} ساعة و{minutes} دقيقة",
+  "tvWhatsAppActivationRequest": "مرحبًا، أود تفعيل Zuno.",
+  "castErrorTimeoutRetry": "يستغرق التلفاز وقتًا طويلًا للرد. أعد المحاولة أو اختر تلفازًا آخر.",
+  "castProgressRelay": "جارٍ تجهيز الوسيط…",
+  "castFriendlyNetworkFail": "تعذّر الاتصال بالتلفاز.",
+  "castFriendlyTvTimeout": "التلفاز لا يستجيب. تحقّق من WiFi.",
+  "castFriendlyBadFormat": "تلفازك لا يقبل هذه الصيغة. جرّب قناة أخرى.",
+  "castProgressLive": "البث جارٍ على التلفاز",
+  "castFriendlyAuthExpired": "رُفض الوصول إلى البث — ربما انتهى اشتراكك.",
+  "castFriendlyTvRefused": "لم يقبل هذا التلفاز هذا البث. جرّب قناة أخرى.",
+  "castProgressConnectingAttempt": "جارٍ الاتصال بالتلفاز ({attempt}/{total})…",
+  "castFriendlyGenericFail": "فشل البث. حاول من جديد.",
+  "castProgressWebFallback": "جارٍ التحويل إلى الوضع العام (رمز QR)…",
+  "castFriendlyTvUnreachable": "تلفازك لا يستجيب على الشبكة. تحقّق: (1) أنه قيد التشغيل، (2) أنه على نفس شبكة WiFi مع هاتفك (وليس شبكة «الضيوف»)، (3) أن خيار «عزل العملاء / AP isolation» معطَّل في إعدادات جهاز التوجيه (الراوتر).",
+  "castProgressDetecting": "جارٍ اكتشاف التلفاز…",
+  "castDlnaReceiverFallback": "مستقبِل DLNA",
+  "castErrorApIsolation": "تلفازك لا يصل إلى الهاتف (شبكة WiFi للضيوف أو عزل AP؟). ضع الهاتف والتلفاز على نفس شبكة WiFi (وليس شبكة الضيوف) وعطّل عزل AP.",
+  "castProgressRetrying": "محاولة جديدة في الوضع المتوافق ({attempt}/{total})…",
+  "castFriendlyTvStuck": "تلفازك عالق على بث سابق. أطفئه لبضع ثوانٍ ثم أعد تشغيله وحاول مجددًا.",
+  "castErrorReceiverRejected": "رفض التلفاز هذا البث — الصيغة غالبًا غير مدعومة على هذا المستقبِل. جرّب قناة أخرى.",
+  "castProgressConnecting": "جارٍ الاتصال بالتلفاز…",
+  "castFriendlyNoGms": "يحتاج Chromecast الرسمي إلى خدمات Google Play، وهي غير موجودة على هذا الهاتف. يمكنك مع ذلك البث إلى تلفاز ذكي (DLNA) أو Roku من القائمة.",
+  "castErrorTimeout": "استغرق البث وقتًا طويلًا — التلفاز أو الشبكة لا يستجيبان",
+  "castFriendlyDnsUnstable": "الإنترنت أو DNS غير مستقر. أعد المحاولة بعد بضع ثوانٍ.",
+  "castFriendlyProviderLimit": "يرفض مزوّد IPTV اتصالًا إضافيًا (تم بلوغ الحد الأقصى). أغلق تطبيقًا آخر يشاهد ثم أعد المحاولة.",
+  "castProgressValidating": "جارٍ التحقق من البث…",
+  "castWindowsHelp": "وصّل الكمبيوتر والتلفاز بالشبكة الخاصة نفسها (Wi-Fi أو Ethernet). اختر تلفاز DLNA أو Roku. الأجهزة التي تدعم Google Cast فقط غير مدعومة على Windows. استخدم جهاز تحكم التلفاز للمسارات الصوتية والتقديم.",
+  "vipCountriesTitle": "بلداني · VIP",
+  "vipCountriesHint": "اختر حتى 10 بلدان. يُحفظ ترتيبها لهذا الملف الشخصي وتبقى البلدان الأخرى متاحة.",
+  "vipCountriesOrder": "ترتيبي",
+  "vipCountriesEmpty": "لم يتم العثور على بلد في القنوات المتاحة.",
+  "vipCountriesSaveError": "تعذر الحفظ. حاول مجددًا.",
+  "vipCountriesMoveUp": "نقل لأعلى",
+  "vipCountriesMoveDown": "نقل لأسفل",
+  "vipCountriesRemove": "إزالة",
+  "vipCountryRs": "صربيا",
+  "vipCountryFr": "فرنسا",
+  "vipCountryUs": "الولايات المتحدة",
+  "vipCountryUk": "المملكة المتحدة",
+  "vipCountryDe": "ألمانيا",
+  "vipCountryIt": "إيطاليا",
+  "vipCountryEs": "إسبانيا",
+  "vipCountryPt": "البرتغال",
+  "vipCountryBe": "بلجيكا",
+  "vipCountryCh": "سويسرا",
+  "vipCountryCa": "كندا",
+  "vipCountryBr": "البرازيل",
+  "vipCountryMx": "المكسيك",
+  "vipCountryAr": "الأرجنتين",
+  "vipCountrySa": "المملكة العربية السعودية",
+  "vipCountryTr": "تركيا",
+  "vipCountryGr": "اليونان",
+  "vipCountryPl": "بولندا",
+  "vipCountryRu": "روسيا",
+  "vipCountryNl": "هولندا",
+  "vipCountryJp": "اليابان",
+  "vipCountryKr": "كوريا الجنوبية",
+  "vipCountryCn": "الصين",
+  "vipCountryIn": "الهند",
+  "vipCountryAu": "أستراليا",
+  "vipCountrySe": "السويد",
+  "vipCountryNo": "النرويج",
+  "vipCountryDk": "الدانمرك",
+  "vipCountryFi": "فنلندا",
+  "vipCountryMa": "المغرب",
+  "vipCountryDz": "الجزائر",
+  "vipCountryTn": "تونس",
+  "vipCountryEg": "مصر"
+}

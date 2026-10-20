@@ -57,7 +57,11 @@
   "playerVideo": "वीडियो",
   "playerUpNextIn": "{seconds} सेकंड में अगला",
   "@playerUpNextIn": {
-    "placeholders": { "seconds": { "type": "int" } }
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
   },
   "playerUpNextCancel": "रद्द करें",
   "playerUpNextPlay": "चलाएँ",
@@ -2016,20 +2020,56 @@
   "tvMyM3uList": "मेरी M3U लिस्ट",
   "tvBlackBoxTitle": "ब्लैक बॉक्स",
   "tvBlackBoxSubtitle": "ऐप का तकनीकी लॉग (v{version})। अगर ऐप अचानक बंद हुआ हो, तो उसकी वजह यहाँ मिलेगी।",
-  "@tvBlackBoxSubtitle": {"placeholders": {"version": {"type": "String"}}},
+  "@tvBlackBoxSubtitle": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
   "tvBlackBoxFirstRun": "पहला लॉन्च: कोई पिछला सेशन नहीं।",
   "tvBlackBoxCleanExit": "पिछला सेशन सामान्य रूप से खत्म हुआ।",
   "tvBlackBoxBrutal": "अचानक बंद · {reason}",
-  "@tvBlackBoxBrutal": {"placeholders": {"reason": {"type": "String"}}},
+  "@tvBlackBoxBrutal": {
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
   "tvBlackBoxUnknownReason": "अज्ञात वजह (Android < 11)",
   "tvBlackBoxMemory": "मेमोरी {mb} MB",
-  "@tvBlackBoxMemory": {"placeholders": {"mb": {"type": "String"}}},
+  "@tvBlackBoxMemory": {
+    "placeholders": {
+      "mb": {
+        "type": "String"
+      }
+    }
+  },
   "tvBlackBoxWhen": "कब: {when}",
-  "@tvBlackBoxWhen": {"placeholders": {"when": {"type": "String"}}},
+  "@tvBlackBoxWhen": {
+    "placeholders": {
+      "when": {
+        "type": "String"
+      }
+    }
+  },
   "tvBlackBoxLastAction": "आख़िरी क्रिया: {action}",
-  "@tvBlackBoxLastAction": {"placeholders": {"action": {"type": "String"}}},
+  "@tvBlackBoxLastAction": {
+    "placeholders": {
+      "action": {
+        "type": "String"
+      }
+    }
+  },
   "tvBlackBoxDetail": "Android विवरण: {detail}",
-  "@tvBlackBoxDetail": {"placeholders": {"detail": {"type": "String"}}},
+  "@tvBlackBoxDetail": {
+    "placeholders": {
+      "detail": {
+        "type": "String"
+      }
+    }
+  },
   "tvRefresh": "रीफ़्रेश",
   "tvCopy": "कॉपी करें",
   "tvCopied": "कॉपी हो गया",
@@ -2038,7 +2078,7 @@
   "tvBlackBoxHelp": "ऊपर/नीचे: स्क्रॉल · CH+/CH−: पेज · कॉपी = क्लिपबोर्ड (इसे WhatsApp पर सपोर्ट को पेस्ट करें)। यह लॉग सहायता को भेजा जा सकता है। भेजना सेटिंग्स में बंद किया जा सकता है।",
   "tvNavServer": "सर्वर",
   "tvLegalTitle": "कानूनी जानकारी और शर्तें",
-    "tvHelloMorning": "सुप्रभात",
+  "tvHelloMorning": "सुप्रभात",
   "tvHelloAfternoon": "नमस्कार",
   "tvHelloEvening": "शुभ संध्या",
   "tvHomeInvite": "आपके चैनल, फ़िल्में और यादें यहाँ लौटेंगी।",
@@ -2063,10 +2103,15 @@
   "tvReminderInMinutes": "{minutes} मिनट में",
   "tvReminderInHours": "{hours} घंटे में",
   "tvReminderInHoursMinutes": "{hours} घंटे {minutes} मिनट में",
-"tvResumeLabel": "जारी रखें",
+  "tvResumeLabel": "जारी रखें",
   "tvNowPlayingPrefix": "अभी चल रहा है · {title}",
-  "@tvNowPlayingPrefix": {"placeholders": {"title": {"type": "String"}}},
-  "tvLiveBadge": "लाइव",
+  "@tvNowPlayingPrefix": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
   "tvPinUpdated": "पैरेंटल कोड अपडेट हो गया ✔",
   "tvParentalTitle": "पैरेंटल कंट्रोल",
   "tvKidsMode": "किड्स मोड",
@@ -2090,7 +2135,13 @@
   "tvMyRecordings": "मेरी रिकॉर्डिंग",
   "tvDeleteQuestion": "हटाएँ?",
   "tvDeleteRecordingConfirm": "« {name} » को हमेशा के लिए हटाएँ?",
-  "@tvDeleteRecordingConfirm": {"placeholders": {"name": {"type": "String"}}},
+  "@tvDeleteRecordingConfirm": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "tvCancel": "रद्द करें",
   "tvDelete": "हटाएँ",
   "tvSettingsSources": "मेरे सोर्स (जोड़ें / चालू करें / हटाएँ)",
@@ -2099,18 +2150,42 @@
   "tvSettingsLegal": "कानूनी जानकारी और उपयोग की शर्तें",
   "tvUpdateChecking": "अपडेट: जाँच हो रही है…",
   "tvUpdateUpToDate": "अपडेट: अप-टू-डेट (वर्ज़न {version}) — फिर जाँचने के लिए OK",
-  "@tvUpdateUpToDate": {"placeholders": {"version": {"type": "String"}}},
+  "@tvUpdateUpToDate": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
   "tvUpdateUpToDateNoVersion": "अपडेट: अप-टू-डेट — फिर जाँचने के लिए OK",
   "tvUpdateAvailable": "नया वर्ज़न {version} उपलब्ध — इंस्टॉल करने के लिए OK",
-  "@tvUpdateAvailable": {"placeholders": {"version": {"type": "String"}}},
+  "@tvUpdateAvailable": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
   "tvUpdateDownloading": "अपडेट डाउनलोड हो रहा है… {pct} %",
-  "@tvUpdateDownloading": {"placeholders": {"pct": {"type": "String"}}},
+  "@tvUpdateDownloading": {
+    "placeholders": {
+      "pct": {
+        "type": "String"
+      }
+    }
+  },
   "tvUpdateFailed": "अपडेट: फ़ेल (नेटवर्क या इंस्टॉलर) — फिर कोशिश के लिए OK",
   "tvMySources": "मेरे सोर्स",
   "tvAddXtream": "Xtream जोड़ें",
   "tvAddM3u": "M3U जोड़ें",
   "tvDeleteSourceConfirm": "सोर्स « {name} » हटाएँ?",
-  "@tvDeleteSourceConfirm": {"placeholders": {"name": {"type": "String"}}},
+  "@tvDeleteSourceConfirm": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "tvActivate": "चालू करें",
   "tvMyTeams": "मेरी टीमें",
   "tvAdd": "जोड़ें",
@@ -2126,21 +2201,72 @@
   "tvImpConnecting": "सर्वर से कनेक्ट हो रहा है…",
   "tvImpCategories": "कैटेगरी पढ़ी जा रही हैं…",
   "tvImpDownloading": "डाउनलोड हो रहा है… {mb} MB",
-  "@tvImpDownloading": {"placeholders": {"mb": {"type": "String"}}},
+  "@tvImpDownloading": {
+    "placeholders": {
+      "mb": {
+        "type": "String"
+      }
+    }
+  },
   "tvImpDecoding": "{mb} MB का विश्लेषण…",
-  "@tvImpDecoding": {"placeholders": {"mb": {"type": "String"}}},
+  "@tvImpDecoding": {
+    "placeholders": {
+      "mb": {
+        "type": "String"
+      }
+    }
+  },
   "tvImpCategory": "कैटेगरी {i}/{total} · {found} चैनल मिले",
-  "@tvImpCategory": {"placeholders": {"i": {"type": "String"}, "total": {"type": "String"}, "found": {"type": "String"}}},
+  "@tvImpCategory": {
+    "placeholders": {
+      "i": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      },
+      "found": {
+        "type": "String"
+      }
+    }
+  },
   "tvImpFound": "{count} चैनल मिले",
-  "@tvImpFound": {"placeholders": {"count": {"type": "String"}}},
+  "@tvImpFound": {
+    "placeholders": {
+      "count": {
+        "type": "String"
+      }
+    }
+  },
   "tvImpSaving": "सेव हो रहे हैं {done} / {total} चैनल",
-  "@tvImpSaving": {"placeholders": {"done": {"type": "String"}, "total": {"type": "String"}}},
+  "@tvImpSaving": {
+    "placeholders": {
+      "done": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      }
+    }
+  },
   "tvImpDone": "{count} चैनल तैयार",
-  "@tvImpDone": {"placeholders": {"count": {"type": "String"}}},
+  "@tvImpDone": {
+    "placeholders": {
+      "count": {
+        "type": "String"
+      }
+    }
+  },
   "tvLanguage": "भाषा",
   "tvLanguageAuto": "अपने-आप (TV की भाषा)",
   "tvSettingsLanguage": "भाषा: {value}",
-  "@tvSettingsLanguage": {"placeholders": {"value": {"type": "String"}}},
+  "@tvSettingsLanguage": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
   "tvEnterParentalCode": "पैरेंटल कोड डालें",
   "tvCurrentCode": "वर्तमान कोड",
   "tvConfirmCode": "कोड की पुष्टि करें",
@@ -2151,7 +2277,13 @@
   "tvRecordingStarted": "रिकॉर्डिंग चल रही है…",
   "tvRecordingError": "रिकॉर्डिंग में त्रुटि",
   "tvRecordingSaved": "रिकॉर्डिंग सहेजी गई ({size})",
-  "@tvRecordingSaved": {"placeholders": {"size": {"type": "String"}}},
+  "@tvRecordingSaved": {
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
   "tvRecordingEmpty": "खाली रिकॉर्डिंग",
   "tvRemovedFromFavorites": "पसंदीदा से हटाया गया",
   "tvAddedToFavorites": "पसंदीदा में जोड़ा गया ❤",
@@ -2159,61 +2291,163 @@
   "tvCinemaAudio": "ऑडियो",
   "tvCinemaAudioSubs": "ऑडियो और सबटाइटल",
   "tvCinemaCast": "कलाकार: {names}",
-  "@tvCinemaCast": {"placeholders": {"names": {"type": "String"}}},
+  "@tvCinemaCast": {
+    "placeholders": {
+      "names": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaContinue": "देखना जारी रखें",
   "tvCinemaDeleteDownload": "डाउनलोड हटाएँ",
   "tvCinemaDirector": "निर्देशक: {names}",
-  "@tvCinemaDirector": {"placeholders": {"names": {"type": "String"}}},
+  "@tvCinemaDirector": {
+    "placeholders": {
+      "names": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaDownload": "डाउनलोड करें",
   "tvCinemaDownloadError": "डाउनलोड विफल",
   "tvCinemaDownloadPaused": "रुका हुआ · {pct} %",
-  "@tvCinemaDownloadPaused": {"placeholders": {"pct": {"type": "String"}}},
+  "@tvCinemaDownloadPaused": {
+    "placeholders": {
+      "pct": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaDownloaded": "डाउनलोड हो गया",
   "tvCinemaDownloading": "डाउनलोड हो रहा है · {pct} %",
-  "@tvCinemaDownloading": {"placeholders": {"pct": {"type": "String"}}},
+  "@tvCinemaDownloading": {
+    "placeholders": {
+      "pct": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaDownloads": "मेरे डाउनलोड",
   "tvCinemaEmptyCategory": "यहाँ अभी कुछ नहीं है।",
   "tvCinemaEpisode": "एपिसोड {n}",
-  "@tvCinemaEpisode": {"placeholders": {"n": {"type": "String"}}},
+  "@tvCinemaEpisode": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaFromStart": "शुरुआत से",
   "tvCinemaIndexing": "पूरे कैटलॉग में सर्च तैयार हो रहा है…",
   "tvCinemaLanguage": "भाषा: {value}",
-  "@tvCinemaLanguage": {"placeholders": {"value": {"type": "String"}}},
+  "@tvCinemaLanguage": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaLoading": "लोड हो रहा है…",
   "tvCinemaMinutes": "{n} मिनट",
-  "@tvCinemaMinutes": {"placeholders": {"n": {"type": "String"}}},
+  "@tvCinemaMinutes": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaNextEpisode": "अगला एपिसोड",
   "tvCinemaNextHint": "OK: अभी · वापस: यहीं रहें",
   "tvCinemaNextIn": "अगला एपिसोड {s} सेकंड में",
-  "@tvCinemaNextIn": {"placeholders": {"s": {"type": "String"}}},
+  "@tvCinemaNextIn": {
+    "placeholders": {
+      "s": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaNoEpisodes": "कोई एपिसोड उपलब्ध नहीं है।",
   "tvCinemaNoSource": "अभी कोई फ़िल्म या सीरीज़ नहीं",
   "tvCinemaNoSourceBody": "फ़िल्में और सीरीज़ आपके Xtream सब्सक्रिप्शन से आती हैं। इसे सर्वर में जोड़ें, या अपने विक्रेता से इसे चालू करने को कहें।",
   "tvCinemaNoSpace": "बॉक्स में पर्याप्त जगह नहीं है ({free} GB खाली)।",
-  "@tvCinemaNoSpace": {"placeholders": {"free": {"type": "String"}}},
+  "@tvCinemaNoSpace": {
+    "placeholders": {
+      "free": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaPauseDownload": "रोकें",
   "tvCinemaPlay": "चलाएँ",
   "tvCinemaPlayEpisode": "S{s} · E{e} चलाएँ",
-  "@tvCinemaPlayEpisode": {"placeholders": {"s": {"type": "String"}, "e": {"type": "String"}}},
+  "@tvCinemaPlayEpisode": {
+    "placeholders": {
+      "s": {
+        "type": "String"
+      },
+      "e": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaRecent": "हाल ही में जोड़े गए",
   "tvCinemaRestart": "फिर से शुरू करें",
   "tvCinemaResumeAt": "{time} से जारी रखें",
-  "@tvCinemaResumeAt": {"placeholders": {"time": {"type": "String"}}},
+  "@tvCinemaResumeAt": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaResumeDownload": "डाउनलोड फिर शुरू करें",
   "tvCinemaResumeEpisode": "S{s} · E{e} जारी रखें",
-  "@tvCinemaResumeEpisode": {"placeholders": {"s": {"type": "String"}, "e": {"type": "String"}}},
+  "@tvCinemaResumeEpisode": {
+    "placeholders": {
+      "s": {
+        "type": "String"
+      },
+      "e": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaResumedAt": "{time} से जारी",
-  "@tvCinemaResumedAt": {"placeholders": {"time": {"type": "String"}}},
+  "@tvCinemaResumedAt": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaSearch": "खोजें",
   "tvCinemaSeason": "सीज़न {n}",
-  "@tvCinemaSeason": {"placeholders": {"n": {"type": "String"}}},
+  "@tvCinemaSeason": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaSeasons": "{n} सीज़न",
-  "@tvCinemaSeasons": {"placeholders": {"n": {"type": "String"}}},
+  "@tvCinemaSeasons": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaSpecials": "विशेष एपिसोड",
   "tvCinemaSubtitles": "सबटाइटल",
   "tvCinemaSubtitlesOff": "बंद",
   "tvCinemaTrackUnknown": "ट्रैक {n}",
-  "@tvCinemaTrackUnknown": {"placeholders": {"n": {"type": "String"}}},
+  "@tvCinemaTrackUnknown": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
   "tvUpdatingContent": "अपडेट हो रहा है…",
   "tvDeactivate": "निष्क्रिय करें",
   "tvSourceActive": "सक्रिय",
@@ -2250,4 +2484,325 @@
   "tvVoiceRemoteAiOff": "बंद",
   "tvVoiceRemoteAiHelp": "डिफ़ॉल्ट रूप से बंद। ऐप में कोई कुंजी नहीं। « आज रात » आपकी गाइड से, बॉक्स पर पढ़ा जाता है। सेवा जवाब न दे तो Zuno आपकी सूची में खोजता है।",
   "tvVoiceCinemaHint": "एक बार फ़िल्में या सीरीज़ खोलें: खोज उन्हें बाद में ढूँढ लेगी, देखते समय नेटवर्क के बिना।",
-  "tvVoiceOnChannel": "{channel} पर"}
+  "tvVoiceOnChannel": "{channel} पर",
+  "tvDeletePanelSourceConfirm": "“{name}” इस टीवी से हटाई जाएगी। सिंक करने या पैनल से दोबारा भेजने पर यह वापस नहीं आएगी। इसे वापस लाने के लिए ऐप में फिर से जोड़ें।",
+  "tvDeleteSourceFailed": "स्थानीय रूप से हटाया नहीं जा सका। कृपया थोड़ी देर में फिर से कोशिश करें।",
+  "tvCinemaOfflineTitle": "कैटलॉग उपलब्ध नहीं है",
+  "tvCinemaOfflineBody": "टीवी पर कुछ भी सहेजा नहीं गया है और सर्वर जवाब नहीं दे रहा। कनेक्शन जाँचकर फिर कोशिश करें।",
+  "tvCinemaRetry": "फिर कोशिश करें",
+  "tvCinemaUpdated": "अपडेट किया गया: {when}",
+  "tvCinemaAgeJustNow": "अभी",
+  "tvCinemaAgeMinutes": "{n} मिनट पहले",
+  "tvCinemaAgeHours": "{n} घंटे पहले",
+  "tvCinemaAgeDays": "{n} दिन पहले",
+  "tvCinemaCategoryFailed": "यह श्रेणी लोड नहीं की जा सकी।",
+  "moviesRetry": "फिर कोशिश करें",
+  "tvRemoteTitle": "रिमोट",
+  "tvSettingsRemote": "उसी Wi-Fi पर फ़ोन रिमोट बन जाता है। कुछ इंस्टॉल करने की ज़रूरत नहीं।",
+  "tvRemoteLead": "फ़ोन के कैमरे से QR कोड स्कैन करें। कुछ इंस्टॉल करने की ज़रूरत नहीं।",
+  "tvRemoteWarn": "यह कोड देखने वाला कोई भी व्यक्ति इसकी समय-सीमा तक डिवाइस नियंत्रित कर सकता है। केवल एक फ़ोन। कोड अपने आप समाप्त हो जाता है।",
+  "tvRemoteKeep": "वापस दबाने से यह स्क्रीन बंद होती है; कोड समाप्त होने तक फ़ोन काम करता रहता है। बंद करें दबाने से नियंत्रण तुरंत रुक जाता है।",
+  "tvRemoteStarting": "तैयारी हो रही है…",
+  "tvRemoteWaiting": "फ़ोन का इंतज़ार है…",
+  "tvRemotePaired": "फ़ोन कनेक्ट हो गया",
+  "tvRemoteExpired": "कोड समाप्त हो गया",
+  "tvRemoteStopped": "रिमोट बंद है",
+  "tvRemoteNoLan": "स्थानीय नेटवर्क नहीं है। डिवाइस और फ़ोन को उसी Wi-Fi से जोड़ें।",
+  "tvRemoteError": "रिमोट शुरू नहीं हो सका।",
+  "tvRemoteNewCode": "नया कोड",
+  "tvRemoteStop": "बंद करें",
+  "tvRemoteStart": "चालू करें",
+  "tvRemoteLeft": "{time} में समाप्त होगा",
+  "tvRemoteUrlHelp": "स्कैन न हो तो फ़ोन के ब्राउज़र में यह पता खोलें।",
+  "sportsTimeout": "खेल सेवा जवाब देने में बहुत समय ले रही है। फिर कोशिश करें।",
+  "sportsNetworkError": "खेल सेवा से कनेक्ट नहीं हो पा रहा।",
+  "sportsHttpError": "खेल सेवा उपलब्ध नहीं है (HTTP {status})।",
+  "sportsInvalidResponse": "खेल सेवा का जवाब पढ़ा नहीं जा सका।",
+  "sportsUnavailable": "खेल के आँकड़े लोड नहीं हो सके।",
+  "sportsLoading": "मैच लोड हो रहे हैं…",
+  "sportsRetry": "फिर कोशिश करें",
+  "sportsFootballTitle": "स्कोर और समय-सारणी",
+  "sportsRefresh": "ताज़ा करें",
+  "sportsCommunityNotice": "समुदाय से मिले स्कोर और गोल · देरी संभव · हर 60 सेकंड में अपडेट।",
+  "sportsCalendarNotice": "समय-सारणी और विलंबित नतीजे · OpenFootball लाइव स्कोर नहीं देता।",
+  "sportsRetrievedAt": "प्राप्त करने का समय: {time}",
+  "sportsUpcoming": "आगामी",
+  "sportsRecent": "हाल के मैच",
+  "sportsFinished": "समाप्त",
+  "tvProgramStartedMinutesAgo": "कार्यक्रम {minutes} मिनट पहले शुरू हुआ",
+  "tvProfiles": "प्रोफ़ाइल",
+  "tvKidsProfile": "बच्चों की प्रोफ़ाइल",
+  "tvNewProfile": "नई प्रोफ़ाइल",
+  "tvChildren": "बच्चे",
+  "tvKidsExists": "बच्चों की प्रोफ़ाइल पहले से मौजूद है।",
+  "tvProfileAddFailed": "प्रोफ़ाइल जोड़ी नहीं जा सकी।",
+  "tvKidsReady": "बच्चों की प्रोफ़ाइल तैयार है। बच्चों का मोड चालू रहेगा।",
+  "tvRename": "नाम बदलें",
+  "tvNameInvalid": "नाम खाली है या बहुत लंबा है।",
+  "tvProfileDeleteBody": "इस प्रोफ़ाइल के पसंदीदा, इतिहास, देखने की स्थिति, रिमाइंडर और पिन मिट जाएँगे। चैनल और प्रोफ़ाइल 1 बने रहेंगे।",
+  "tvProfileDeleteFailed": "यह प्रोफ़ाइल हटाई नहीं जा सकती।",
+  "tvProfilesHelp": "अधिकतम 4 प्रोफ़ाइल। अलग पसंदीदा, इतिहास, देखने की स्थिति, रिमाइंडर और पिन। चैनल सभी के लिए साझा हैं।",
+  "tvDefaultPinWarning": "पिन अभी भी 0000 है। अभिभावक नियंत्रण में इसे बदलें।",
+  "tvAskProfileOn": "शुरू करते समय प्रोफ़ाइल चुनें: चालू",
+  "tvAskProfileOff": "शुरू करते समय प्रोफ़ाइल चुनें: बंद",
+  "tvProfileStartupSingle": "दो या अधिक प्रोफ़ाइल होने पर शुरू में चुनाव दिखता है। एक प्रोफ़ाइल होने पर ऐप सीधे खुलता है।",
+  "tvProfileStartupHelp": "बंद होने पर पिछली प्रोफ़ाइल सीधे खुलती है। आप यहाँ या होम स्क्रीन से प्रोफ़ाइल बदल सकते हैं।",
+  "tvKidsProfileHelp": "बच्चों का मोड लॉक है। बाहर निकलने के लिए इस प्रोफ़ाइल का पिन चाहिए। वयस्क सामग्री छिपी है। प्रोफ़ाइल 1 में आपका पुराना डेटा बना रहता है।",
+  "tvOriginProfileHelp": "मूल प्रोफ़ाइल: आपके पुराने पसंदीदा, इतिहास, देखने की स्थिति और पिन यहाँ हैं। इसे हटाया नहीं जा सकता।",
+  "tvSeparateProfileHelp": "अलग प्रोफ़ाइल। इसे हटाने से प्रोफ़ाइल 1 नहीं मिटती।",
+  "tvProfileActive": "सक्रिय",
+  "tvProfileCreated": "“{name}” प्रोफ़ाइल बनाई गई।",
+  "tvProfileDeleteTitle": "“{name}” हटाएँ?",
+  "tvWhoWatching": "कौन देख रहा है?",
+  "tvProfilePickerHelp": "हर व्यक्ति के अपने पसंदीदा, इतिहास और पिन हैं। चैनल वही रहते हैं।",
+  "tvLater": "बाद में",
+  "tvNameMum": "माँ",
+  "tvNameDad": "पिता",
+  "tvNameGuest": "मेहमान",
+  "tvNameLivingRoom": "बैठक",
+  "tvNameLimit": "अधिकतम 18 अक्षर।",
+  "tvFirstName": "पहला नाम",
+  "tvListRemoved": "सूची हटा दी गई",
+  "tvListRemovedBody": "आपके प्रदाता ने यह सूची हटा दी है। इसके चैनल अब उपलब्ध नहीं हैं।",
+  "tvKidsCannotDisable": "बच्चों की प्रोफ़ाइल में बच्चों का मोड चालू रहता है। सभी चैनल देखने के लिए पिन से प्रोफ़ाइल बदलें।",
+  "tvKidsAlwaysOn": "बच्चों की प्रोफ़ाइल: मोड चालू रहता है। गैर-वयस्क चैनल उपलब्ध रहते हैं।",
+  "tvKidsOn": "चालू — वयस्क सामग्री छिपी है।",
+  "tvKidsOff": "बंद — सभी चैनल दिखाई देते हैं।",
+  "tvChooseSecurePin": "बच्चों का मोड चालू करने से पहले पिन चुनें। 0000 अब स्वीकार नहीं है।",
+  "tvPinWait": "बहुत अधिक कोशिशें हुईं। कुछ मिनट बाद फिर कोशिश करें।",
+  "tvEnabled": "चालू",
+  "tvDisabled": "बंद",
+  "tvProfilePinHelp": "“{name}” का पिन। बच्चों का मोड वयस्क चैनल छिपाता है। मोड बंद करने या पिन बदलने के लिए यही पिन चाहिए। हर प्रोफ़ाइल का अपना पिन है।",
+  "tvPinWaitMinutes": "बहुत अधिक कोशिशें हुईं। {minutes} मिनट बाद फिर कोशिश करें।",
+  "tvExtras": "अतिरिक्त सुविधाएँ",
+  "tvExtrasHelp": "हर सुविधा अलग से बंद कर सकते हैं। कोई भी चैनल नहीं रोकती।",
+  "tvMissedTitle": "शुरुआत छूट गई",
+  "tvMissedOn": "गाइड बताता है कि क्या छूटा। बंद करने के लिए OK दबाएँ। लाइव प्रसारण अपने आप पीछे नहीं जाता।",
+  "tvMissedOff": "बंद है। चालू करने के लिए OK दबाएँ। चैनल पीछे नहीं जाएगा।",
+  "tvAtThisHour": "इस समय",
+  "tvTimePicksOn": "इस समय अक्सर खोले जाने वाले चैनल सुझाता है। बंद करने के लिए OK दबाएँ। कुछ भी अपने आप शुरू नहीं होता।",
+  "tvTimePicksOff": "बंद है। चालू करने के लिए OK दबाएँ। आदतें दर्ज करना रुकता है और पंक्ति हट जाती है।",
+  "tvServiceNotices": "सेवा सूचनाएँ",
+  "tvNoticesOn": "प्रदाता रखरखाव या नई जानकारी भेजे तो होम स्क्रीन पर कार्ड दिखता है। बंद करने के लिए OK दबाएँ। वीडियो के ऊपर कभी नहीं।",
+  "tvNoticesOff": "बंद है। चालू करने के लिए OK दबाएँ। सूचनाएँ नहीं दिखाई जाएँगी।",
+  "tvPickOfDay": "आज की पसंद",
+  "tvFeaturedOn": "प्रदाता का सुझाया चैनल, यदि आपकी सूची में है। बंद करने के लिए OK दबाएँ। कुछ भी अपने आप शुरू नहीं होता।",
+  "tvFeaturedOff": "बंद है। चालू करने के लिए OK दबाएँ। कार्ड होम स्क्रीन से हट जाता है।",
+  "tvBanners": "विज्ञापन बैनर",
+  "tvBannersOn": "होम स्क्रीन पर एक समय में एक तस्वीर, हमेशा “विज्ञापन” के रूप में चिह्नित। बंद करें = 7 दिनों तक छिपाएँ। निष्क्रिय करने के लिए OK दबाएँ। बिना आवाज़, वीडियो के ऊपर कभी नहीं।",
+  "tvBannersOff": "बंद है। चालू करने के लिए OK दबाएँ। बैनर नहीं दिखेंगे।",
+  "tvSubtitlesOnHelp": "प्रसारण में पहले से मौजूद आपकी भाषा का उपशीर्षक ट्रैक दिखाता है। बंद करने के लिए OK दबाएँ। कोई अनुवाद या डाउनलोड नहीं होता।",
+  "tvSubtitlesOffHelp": "बंद है। चालू करने के लिए OK दबाएँ। लाइव प्रसारण की स्ट्रीम नहीं बदलती।",
+  "tvClearVoice": "स्पष्ट आवाज़",
+  "tvClearVoiceOn": "चालू है। रात के मोड में तेज़ आवाज़ें थोड़ी धीमी होती हैं। बंद करने के लिए OK दबाएँ। बिना प्रोसेसिंग भेजी जाने वाली सराउंड ध्वनि नहीं बदलती।",
+  "tvClearVoiceOff": "बंद है, यही मूल सेटिंग है। बहुत तेज़ आवाज़ें धीमी करने के लिए OK दबाएँ। साउंडबार को सीधे भेजी जाने वाली सराउंड ध्वनि नहीं बदलती।",
+  "tvLogToSupport": "सहायता को लॉग भेजें",
+  "tvLogToSupportOn": "जाँच लॉग बिना स्ट्रीम पते और पासवर्ड के सहायता को भेजा जा सकता है। बंद करने के लिए OK दबाएँ।",
+  "tvLogToSupportOff": "बंद है। लॉग डिवाइस पर रहता है। सहायता को फिर भेजने के लिए OK दबाएँ।",
+  "tvPictureEngine": "चित्र इंजन",
+  "tvPictureEngineHelp": "अभी: {engine}। बदलने के लिए OK दबाएँ। हार्डवेयर = डिवाइस, मूल सेटिंग। सॉफ़्टवेयर = चित्र काला रहने पर। इस संस्करण में FFmpeg वीडियो नहीं है, इसे छोड़ दिया जाता है।",
+  "tvScreenRefresh": "स्क्रीन रिफ़्रेश दर",
+  "tvScreenRefreshOn": "चालू है। स्क्रीन प्रसारण के अनुसार 24, 50 या 60 Hz पर जा सकती है। बंद करने के लिए OK दबाएँ। कुछ डिवाइस पर चित्र एक सेकंड कटता है; ऐसा हो तो बंद करें।",
+  "tvScreenRefreshOff": "बंद है, यही मूल सेटिंग है। स्क्रीन को 24 / 25 / 30 / 50 / 60 फ़्रेम प्रति सेकंड से मिलाने के लिए OK दबाएँ। अपने आप चालू नहीं होता।",
+  "tvContrast": "कॉन्ट्रास्ट",
+  "tvContrastUnavailable": "उपलब्ध नहीं है। Android फ़िल्टर सीधे चित्र वाले रास्ते से हटता है और पहले काली स्क्रीन का कारण बना है। यह बंद रहता है।",
+  "tvUpdateAllowInstall": "Zuno को ऐप इंस्टॉल करने दें: Android द्वारा खोली गई स्क्रीन में “Zuno” चालू करें। फिर वापस आकर OK दबाएँ। अपडेट पहले ही डाउनलोड हो चुका है।",
+  "tvFfmpegKeepDecoder": "इस संस्करण में FFmpeg वीडियो नहीं है। मौजूदा डिकोडर इस्तेमाल होगा।",
+  "tvFfmpegBoxDecoder": "इस संस्करण में FFmpeg वीडियो नहीं है। डिवाइस के डिकोडर पर वापस जा रहे हैं।",
+  "tvFfmpegUnavailable": "इस संस्करण में FFmpeg वीडियो नहीं है।",
+  "tvEngineSelected": "इंजन: {engine}",
+  "tvOnYourPhone": "आपके फ़ोन पर",
+  "tvGotIt": "समझ गया",
+  "tvClose": "बंद करें",
+  "tvPhone": "फ़ोन",
+  "tvSoftware": "सॉफ़्टवेयर",
+  "tvHardware": "हार्डवेयर",
+  "tvProfilesSettingsHelp": "अलग पसंदीदा, इतिहास, देखने की स्थिति, रिमाइंडर और पिन वाली अधिकतम 4 प्रोफ़ाइल।",
+  "tvAudioDiagnostic": "ध्वनि जाँच",
+  "tvAudioDiagnosticHelp": "हर चैनल की स्थानीय रिपोर्ट। कुछ भी भेजा नहीं जाता। परीक्षण विकल्प पहले से बंद हैं।",
+  "tvPlayerDisclaimer": "यह ऐप एक मीडिया प्लेयर है। यह चैनल, स्ट्रीम या M3U लिंक बेचता, उपलब्ध कराता या होस्ट नहीं करता। सामग्री उपयोगकर्ता देता है और उसकी वैधता की ज़िम्मेदारी उसी की है।",
+  "tvActivationDisclaimer": "मीडिया प्लेयर — चैनल या M3U लिंक बेचता या उपलब्ध नहीं कराता। सामग्री उपयोगकर्ता देता है। शर्तें: app.7themotion.com/terms",
+  "tvSourcePasteHelp": "अपना लिंक या लॉगिन विवरण पेस्ट करें। किसी भी M3U या Xtream प्रदाता का।",
+  "tvTrending": "🔥 लोकप्रिय",
+  "tvRecent": "🕒 हाल के",
+  "tvForYou": "✨ आपके लिए",
+  "tvOther": "अन्य",
+  "tvNetworkUnavailable": "नेटवर्क नहीं है",
+  "tvNetworkUnavailableHelp": "टीवी सर्वर तक नहीं पहुँच पा रहा। कनेक्शन जाँचकर फिर कोशिश करें।",
+  "tvListRejected": "सूची अस्वीकार हुई",
+  "tvListRejectedHelp": "प्रदाता ने यह सूची अस्वीकार की है। लॉगिन विवरण जाँचें।",
+  "tvCodeInactive": "कोड सक्रिय नहीं है",
+  "tvCodeInactiveHelp": "इस टीवी का कोड सक्रिय नहीं है। पैनल में इसे सक्रिय करके कुछ सेकंड प्रतीक्षा करें।",
+  "tvSourcesEmpty": "अभी कोई स्रोत नहीं है।\nM3U लिंक, Xtream खाता या प्लेयर लिंक जोड़ें।",
+  "tvRecordingCloseFailed": "रिकॉर्डिंग बंद नहीं हो सकी। फ़ाइल अधूरी हो सकती है।",
+  "tvFromStart": "शुरुआत से",
+  "tvFollow": "फ़ॉलो करें",
+  "tvChooseTeamHelp": "नीचे टीम चुनें या नाम लिखें…",
+  "tvTeamNotFound": "“{name}” नहीं मिला — खोज करके देखें।",
+  "tvCatchupHelp": "कार्यक्रम की शुरुआत से। दायाँ, फिर OK: लाइव पर लौटें।",
+  "tvMissedRewindHint": "दायाँ, फिर OK: शुरुआत से।",
+  "tvMissedNoReplayHint": "गाइड में पाठ है, वीडियो नहीं। लाइव प्रसारण वैसा ही रहता है।",
+  "tvSourceNeedUrl": "http:// या https:// से शुरू होने वाला पता पेस्ट करें।",
+  "tvSourceNeedXtream": "सर्वर का पता, उपयोगकर्ता नाम और पासवर्ड डालें।",
+  "tvSourceNeedCredentials": "इस प्लेयर लिंक में उपयोगकर्ता नाम या पासवर्ड नहीं है। पूरा लिंक पेस्ट करें या तीनों Xtream फ़ील्ड भरें।",
+  "tvSourceBadScheme": "यह पता इस्तेमाल नहीं किया जा सकता। http या https लिंक चाहिए।",
+  "tvPlayerLink": "प्लेयर लिंक",
+  "tvAdvertisement": "विज्ञापन",
+  "tvSponsored": "प्रायोजित",
+  "tvInformation": "जानकारी",
+  "tvSportFootball": "फ़ुटबॉल",
+  "tvSportBasketball": "बास्केटबॉल (NBA)",
+  "tvSportRugby": "रग्बी",
+  "tvDataAttribution": "डेटा: {source}",
+  "tvLegalSection1Title": "1. ऐप का स्वरूप — केवल एक प्लेयर",
+  "tvLegalSection1Body": "यह ऐप उपयोगकर्ता द्वारा दी गई ऑडियो और वीडियो स्ट्रीम चलाने वाला मीडिया प्लेयर है। यह कोई टीवी चैनल, स्ट्रीम, दृश्य-श्रव्य सामग्री, प्लेलिस्ट (M3U) या पोर्टल विवरण (Xtream) प्रदान, बेच, होस्ट, प्रसारित या सूचीबद्ध नहीं करता। ऐप में कोई सामग्री शामिल, पहले से लोड या उसके साथ बेची नहीं जाती।",
+  "tvLegalSection2Title": "2. उपयोगकर्ता द्वारा दी गई सामग्री",
+  "tvLegalSection2Body": "उपयोगकर्ता अपने प्रदाता से प्राप्त स्रोत (M3U लिंक / Xtream विवरण) स्वयं देता है। जो सामग्री वह जोड़ता, चलाता या प्रसारित करता है और उसके लिए आवश्यक अधिकार, लाइसेंस व सदस्यता रखने की ज़िम्मेदारी केवल उसी की है।",
+  "tvLegalSection3Title": "3. सदस्यता सॉफ़्टवेयर के लिए है, सामग्री के लिए नहीं",
+  "tvLegalSection3Body": "कोई भी भुगतान या सदस्यता केवल ऐप के उपयोग के लिए है: प्लेयर और इंटरफ़ेस, पसंदीदा, स्थानीय रिकॉर्डिंग, EPG जैसी सुविधाएँ। यह कभी भी चैनल, स्ट्रीम या सामग्री की खरीद, बिक्री, किराया या उपलब्धता नहीं है।",
+  "tvLegalSection4Title": "4. वैध उपयोग",
+  "tvLegalSection4Body": "उपयोगकर्ता अपने देश के कानूनों का पालन करने और ऐप से अवैध या कॉपीराइट का उल्लंघन करने वाली सामग्री तक न पहुँचने के लिए सहमत है। अवैध उपयोग पूरी तरह निषिद्ध है और उसकी ज़िम्मेदारी केवल उपयोगकर्ता की है।",
+  "tvLegalSection5Title": "5. तीसरे पक्ष की सामग्री — कोई ज़िम्मेदारी नहीं",
+  "tvLegalSection5Body": "प्रकाशक उपयोगकर्ता के स्रोतों से उपलब्ध तीसरे पक्ष की सामग्री को नियंत्रित नहीं करता और उसके लिए ज़िम्मेदार नहीं ठहराया जा सकता। इसकी उपलब्धता, वैधता या गुणवत्ता की गारंटी नहीं है।",
+  "tvLegalSection6Title": "6. बौद्धिक संपदा और शिकायतें",
+  "tvLegalSection6Body": "सभी ट्रेडमार्क, लोगो और सामग्री अपने-अपने मालिकों की हैं। ऐप कोई सामग्री होस्ट नहीं करता, इसलिए कॉपीराइट संबंधी शिकायत संबंधित स्रोत के प्रदाता को भेजें।",
+  "tvLegalSection7Title": "7. जैसी है वैसी उपलब्ध",
+  "tvLegalSection7Body": "ऐप जैसी है वैसी उपलब्ध है, निरंतर उपलब्धता या त्रुटिरहित होने की गारंटी के बिना। प्रकाशक कुछ या सभी सुविधाएँ बदल या रोक सकता है।",
+  "tvLegalSection8Title": "8. निजी डेटा",
+  "tvLegalSection8Body": "लाइसेंस, परीक्षण अवधि और सहायता के प्रबंधन के लिए तकनीकी डिवाइस पहचानकर्ता इस्तेमाल होता है। विवरण: app.7themotion.com/privacy।",
+  "tvLegalSection9Title": "9. स्वीकृति",
+  "tvLegalSection9Body": "इस ऐप को इंस्टॉल या इस्तेमाल करके उपयोगकर्ता इन शर्तों को पढ़ने और स्वीकार करने की पुष्टि करता है। पूरी शर्तें: app.7themotion.com/terms",
+  "tvLegalLead": "यह ऐप एक प्लेयर है। यह चैनल या लिंक बेचता या प्रदान नहीं करता। स्क्रॉल करने के लिए ऊपर/नीचे, बाहर जाने के लिए वापस दबाएँ।",
+  "tvAudioSpectrumOn": "स्पेक्ट्रम: मापन चालू",
+  "tvAudioSpectrumOff": "स्पेक्ट्रम: बंद",
+  "tvAudioFfmpegRetry": "FFmpeg: फिर कोशिश करें",
+  "tvAudioFfmpegDefault": "FFmpeg: डिफ़ॉल्ट",
+  "tvAudioAacTest": "डिवाइस AAC: परीक्षण",
+  "tvAudioAacOff": "डिवाइस AAC: बंद",
+  "tvAudioFallbackSession": "वैकल्पिक डिकोडर: पूरा सत्र",
+  "tvAudioFallbackChannel": "वैकल्पिक डिकोडर: हर चैनल",
+  "tvAudioFocusAndroid": "ऑडियो फ़ोकस: Android",
+  "tvAudioFocusZuno": "ऑडियो फ़ोकस: Zuno",
+  "tvAudioBackgroundPause": "ऐप के बाहर: विराम",
+  "tvAudioBackgroundStop": "ऐप के बाहर: रोकें",
+  "tvAudioHomeLegacy": "होम: पुराना मोड",
+  "tvAudioHomeNative": "होम: नेटिव रोक",
+  "tvAudioHandoffNow": "बदलाव: तुरंत",
+  "tvAudioHandoffWait": "बदलाव: प्रतीक्षा",
+  "tvAudioOutput48k": "आउटपुट: 48 kHz",
+  "tvAudioOutputStream": "आउटपुट: स्ट्रीम की दर",
+  "tvAudioWitnessStop": "परीक्षण ध्वनि: रोकें",
+  "tvAudioWitnessPreparing": "परीक्षण ध्वनि: तैयारी",
+  "tvAudioWitnessPlay": "परीक्षण ध्वनि चलाएँ",
+  "tvAudioScrollHelp": "ऊपर/नीचे: स्क्रॉल · CH+/CH−: पृष्ठ",
+  "tvAudioWitnessHelp": "10 सेकंड की परीक्षण ध्वनि: आवाज़, फिर शोर। चैनलों वाला ही प्लेयर। दबा शोर → डिवाइस। साफ़ शोर → चैनल।",
+  "tvAudioOptionsHelp": "स्पेक्ट्रम: अगले चैनल पर चार जगह मापता है—डिकोडर, स्पष्ट आवाज़, मौन और AudioTrack—बिना ध्वनि बदले। FFmpeg: सॉफ़्टवेयर डिकोडर फिर आज़माता है; 8 सेकंड में शुरू न हो तो डिवाइस सँभालता है। डिवाइस AAC: अगला चैनल ExoPlayer की तरह डिवाइस का AAC डिकोडर इस्तेमाल करता है। विफल होने पर उस बार FFmpeg सँभालता है। वैकल्पिक डिकोडर: डिफ़ॉल्ट “हर चैनल” में FFmpeg की विफलता पर केवल प्रभावित चैनल डिवाइस को दिया जाता है। “पूरा सत्र” पुराना व्यवहार है, जिसमें एक विफलता के बाद सभी चैनल डिवाइस को जाते हैं। ऑडियो फ़ोकस: डिफ़ॉल्ट “Zuno” दूसरी ऐप या बीप के ध्वनि माँगने पर वॉल्यूम कम नहीं करता। “Android” पुराना व्यवहार है, जो वॉल्यूम 20% तक घटाता है। ऐप के बाहर: डिफ़ॉल्ट “रोकें” बाहर जाने पर ध्वनि रोककर संसाधन छोड़ता है और लौटने पर चैनल फिर खोलता है। “विराम” पुराना व्यवहार है। होम: डिफ़ॉल्ट “नेटिव रोक” onPause पर रुकता है और ऐप बाहर रहने तक दोबारा नहीं खुलता। “पुराना मोड” Flutter का इंतज़ार करता है। बदलाव: डिफ़ॉल्ट “प्रतीक्षा” में पुराना AudioTrack मुक्त होने पर ही अगला चैनल खुलता है, ताकि कई बदलावों के बाद आवाज़ें न मिलें। “तुरंत” पुराना व्यवहार है। आउटपुट: डिफ़ॉल्ट “स्ट्रीम की दर” स्ट्रीम का सैंपल रेट इस्तेमाल करता है, जो कई चैनलों पर 44.1 kHz होता है; डिवाइस उसे बदलता है। “48 kHz” आउटपुट से पहले ऐप में रीसैंपल करता है। 44.1 kHz रिपोर्ट पर ध्वनि खराब हो तो आज़माएँ। परीक्षण ध्वनि: उसी प्लेयर में 10 सेकंड आवाज़ और शोर। ध्वनि बदले बिना मापन चालू करता है। दबा शोर → डिवाइस। साफ़ शोर → चैनल।",
+  "tvAudioNoReports": "कोई रिपोर्ट नहीं। चैनल खोलें: प्लेयर कोडेक, डिकोडर और आउटपुट दर्ज करता है। स्पेक्ट्रम केवल विकल्प चालू होने पर मापा जाता है।",
+  "tvAudioTestSound": "परीक्षण ध्वनि",
+  "tvDiagCaptive": "1. नेटवर्क लॉगिन पोर्टल (204)",
+  "tvDiagDns": "2. IPTV होस्ट का DNS पता",
+  "tvDiagStream": "3. स्ट्रीम तक पहुँच (HTTP / 456)",
+  "tvDiagSource": "4. सौंपा गया स्रोत (device-source)",
+  "tvDiagPlayer": "5. ExoPlayer / Media3 परीक्षण",
+  "tvDiagRequest": "generate_204 का अनुरोध…",
+  "tvDiagInternetOk": "HTTP 204 (इंटरनेट उपलब्ध है)",
+  "tvDiagTimeout": "8 सेकंड में कोई जवाब नहीं",
+  "tvDiagNoHost": "कोई चैनल लोड नहीं → होस्ट अज्ञात",
+  "tvDiagNoUrl": "कोई चैनल लोड नहीं → URL अज्ञात",
+  "tvDiagStreamHead": "स्ट्रीम का HEAD अनुरोध…",
+  "tvDiagIpBlocked": "HTTP 456 — प्रदाता इस IP को रोक रहा है",
+  "tvDiagReadingMac": "MAC पढ़ा जा रहा है…",
+  "tvDiagSourceAssigned": "HTTP 200 — स्रोत सौंपा गया",
+  "tvDiagNoSource": "HTTP 200 — कोई स्रोत नहीं सौंपा गया",
+  "tvDiagPlayerBusy": "पूरे पर्दे पर प्लेबैक चालू है: परीक्षण छोड़ा गया, केवल एक प्लेयर",
+  "tvDiagPlayerOpening": "ExoPlayer परीक्षण खुल रहा है…",
+  "tvDiagFrameOk": "पहला फ़्रेम डिकोड करके दिखाया गया",
+  "tvDiagPlayerError": "ExoPlayer ने त्रुटि दी",
+  "tvDiagFrameTimeout": "8 सेकंड में कोई चित्र नहीं",
+  "tvDiagRunning": "जाँच चल रही है…",
+  "tvDiagPassed": "डिवाइस पर प्लेबैक सत्यापित",
+  "tvDiagNetworkBlocked": "नेटवर्क अवरोध",
+  "tvDiagPlayerFailed": "प्लेयर की त्रुटि",
+  "tvDiagPartial": "आंशिक जाँच",
+  "tvDiagTitle": "डिवाइस पर जाँच — Zuno",
+  "tvDiagHelp": "जाँचता है कि टीवी अपने IP पते से स्ट्रीम चला सकता है या नहीं।",
+  "tvBackToExit": "बाहर जाने के लिए वापस",
+  "tvDiagCaptiveLikely": "HTTP {status}, {bytes} बाइट → संभावित नेटवर्क लॉगिन पोर्टल",
+  "tvDiagLookup": "{host} का पता खोजा जा रहा है…",
+  "tvDiagNoIp": "{host} → कोई IP पता नहीं",
+  "tvDiagDnsTimeout": "{host}: 8 सेकंड में DNS जवाब नहीं",
+  "tvDiagStreamOk": "HTTP {status} (स्ट्रीम उपलब्ध है)",
+  "tvDiagUnknownMac": "MAC अज्ञात ({mac})",
+  "tvSizeBytes": "{size} बाइट",
+  "tvSizeKb": "{size} KB",
+  "tvSizeMb": "{size} MB",
+  "tvSizeGb": "{size} GB",
+  "tvDurationHm": "{hours} घंटे {minutes} मिनट",
+  "tvWhatsAppActivationRequest": "नमस्ते, मैं Zuno सक्रिय करना चाहता हूँ।",
+  "castErrorTimeoutRetry": "टीवी जवाब देने में बहुत समय ले रहा है। फिर कोशिश करें या दूसरा टीवी चुनें।",
+  "castProgressRelay": "रिले तैयार हो रहा है…",
+  "castFriendlyNetworkFail": "टीवी से कनेक्ट नहीं हो सका।",
+  "castFriendlyTvTimeout": "टीवी जवाब नहीं दे रहा है। वाई-फ़ाई जाँचें।",
+  "castFriendlyBadFormat": "यह फ़ॉर्मेट समर्थित नहीं है। दूसरा चैनल आज़माएँ।",
+  "castProgressLive": "टीवी पर चल रहा है",
+  "castFriendlyAuthExpired": "स्ट्रीम तक पहुँच अस्वीकार कर दी गई। अपना एक्सेस जाँचें।",
+  "castFriendlyTvRefused": "टीवी ने स्ट्रीम अस्वीकार कर दी। दूसरा चैनल आज़माएँ।",
+  "castProgressConnectingAttempt": "टीवी से कनेक्ट हो रहा है ({attempt}/{total})…",
+  "castFriendlyGenericFail": "कास्ट विफल हुआ। फिर कोशिश करें।",
+  "castProgressWebFallback": "ब्राउज़र मोड में जा रहा है (QR कोड)…",
+  "castFriendlyTvUnreachable": "जाँचें कि टीवी चालू है और उसी निजी नेटवर्क से जुड़ा है।",
+  "castProgressDetecting": "टीवी खोजा जा रहा है…",
+  "castDlnaReceiverFallback": "DLNA रिसीवर",
+  "castErrorApIsolation": "टीवी इस डिवाइस तक नहीं पहुँच पा रहा है। दोनों को उसी निजी नेटवर्क से जोड़ें।",
+  "castProgressRetrying": "संगत मोड में फिर कोशिश हो रही है ({attempt}/{total})…",
+  "castFriendlyTvStuck": "टीवी पिछले सत्र में अटका है। उसे पुनः चालू करें।",
+  "castErrorReceiverRejected": "टीवी इस स्ट्रीम का समर्थन नहीं करता हो सकता है। दूसरा चैनल आज़माएँ।",
+  "castProgressConnecting": "टीवी से कनेक्ट हो रहा है…",
+  "castFriendlyNoGms": "Google Cast के लिए Android SDK चाहिए। DLNA या Roku रिसीवर इस्तेमाल करें।",
+  "castErrorTimeout": "कास्ट का समय समाप्त हो गया",
+  "castFriendlyDnsUnstable": "इंटरनेट या DNS अस्थिर है। बाद में फिर कोशिश करें।",
+  "castFriendlyProviderLimit": "स्रोत अतिरिक्त कनेक्शन की अनुमति नहीं देता। दूसरा प्लेबैक बंद करें।",
+  "castProgressValidating": "स्ट्रीम जाँची जा रही है…",
+  "castWindowsHelp": "पीसी और टीवी को एक ही निजी नेटवर्क (Wi-Fi या Ethernet) से जोड़ें। DLNA टीवी या Roku चुनें। केवल Google Cast वाले रिसीवर Windows पर समर्थित नहीं हैं। ऑडियो और आगे-पीछे करने के लिए टीवी का रिमोट इस्तेमाल करें।",
+  "vipCountriesTitle": "मेरे देश · VIP",
+  "vipCountriesHint": "अधिकतम 10 देश चुनें। उनका क्रम इस प्रोफ़ाइल के लिए सहेजा जाएगा; अन्य देश उपलब्ध रहेंगे।",
+  "vipCountriesOrder": "मेरा क्रम",
+  "vipCountriesEmpty": "उपलब्ध चैनलों में कोई देश नहीं मिला।",
+  "vipCountriesSaveError": "सहेजा नहीं जा सका। फिर कोशिश करें।",
+  "vipCountriesMoveUp": "ऊपर ले जाएँ",
+  "vipCountriesMoveDown": "नीचे ले जाएँ",
+  "vipCountriesRemove": "हटाएँ",
+  "vipCountryRs": "सर्बिया",
+  "vipCountryFr": "फ़्रांस",
+  "vipCountryUs": "संयुक्त राज्य",
+  "vipCountryUk": "यूनाइटेड किंगडम",
+  "vipCountryDe": "जर्मनी",
+  "vipCountryIt": "इटली",
+  "vipCountryEs": "स्पेन",
+  "vipCountryPt": "पुर्तगाल",
+  "vipCountryBe": "बेल्जियम",
+  "vipCountryCh": "स्विट्ज़रलैंड",
+  "vipCountryCa": "कनाडा",
+  "vipCountryBr": "ब्राज़ील",
+  "vipCountryMx": "मैक्सिको",
+  "vipCountryAr": "अर्जेंटीना",
+  "vipCountrySa": "सऊदी अरब",
+  "vipCountryTr": "तुर्किये",
+  "vipCountryGr": "यूनान",
+  "vipCountryPl": "पोलैंड",
+  "vipCountryRu": "रूस",
+  "vipCountryNl": "नीदरलैंड",
+  "vipCountryJp": "जापान",
+  "vipCountryKr": "दक्षिण कोरिया",
+  "vipCountryCn": "चीन",
+  "vipCountryIn": "भारत",
+  "vipCountryAu": "ऑस्ट्रेलिया",
+  "vipCountrySe": "स्वीडन",
+  "vipCountryNo": "नॉर्वे",
+  "vipCountryDk": "डेनमार्क",
+  "vipCountryFi": "फ़िनलैंड",
+  "vipCountryMa": "मोरक्को",
+  "vipCountryDz": "अल्जीरिया",
+  "vipCountryTn": "ट्यूनीशिया",
+  "vipCountryEg": "मिस्र"
+}

@@ -26,6 +26,7 @@ import 'package:media_kit_video/media_kit_video.dart';
 import 'package:native_video_player/native_video_player.dart';
 
 import '../../../core/blackbox/black_box.dart';
+import 'desktop_playback_queue.dart';
 
 class MediaKitVideoBackend implements NativeVideoBackend {
   MediaKitVideoBackend()
@@ -44,6 +45,37 @@ class MediaKitVideoBackend implements NativeVideoBackend {
       ),
     );
     unawaited(_configure());
+  }
+
+  // Registre limité aux lecteurs vivants : aucune URL n’est exposée hors du PC.
+  static final Map<NativeVideoController, MediaKitVideoBackend> _bound = {};
+  bool _castSuspended = false;
+  final DesktopPlaybackQueue _queue = DesktopPlaybackQueue();
+  Map<String, dynamic>? _lastOpenArgs;
+  String? _suspendedUrl;
+  int _suspendedPosition = 0;
+
+  static Future<void> suspendForCast(NativeVideoController controller) async {
+    final MediaKitVideoBackend? backend = _bound[controller];
+    if (backend == null || backend._castSuspended) return;
+    backend._suspendedUrl = backend._lastOpenArgs?['url'] as String?;
+    backend._suspendedPosition = controller.position.inMilliseconds;
+    backend._castSuspended = true;
+    controller.applyBackendEvent('playing', false);
+    // stop ferme le flux réseau ; pause seul laisse souvent la connexion ouverte.
+    await backend._queue.stop(backend._player.stop);
+  }
+
+  static void resumeAfterCast(NativeVideoController controller) {
+    final MediaKitVideoBackend? backend = _bound[controller];
+    if (backend == null || !backend._castSuspended) return;
+    backend._castSuspended = false;
+    final Map<String, dynamic>? args = backend._lastOpenArgs;
+    if (args == null) return;
+    backend.open({...args,
+      if (args['vod'] == true && args['url'] == backend._suspendedUrl)
+        'startMs': backend._suspendedPosition,
+    });
   }
 
   final Player _player;
@@ -74,6 +106,7 @@ class MediaKitVideoBackend implements NativeVideoBackend {
   @override
   void bind(NativeVideoController controller) {
     _c = controller;
+    _bound[controller] = this;
     final PlayerStream s = _player.stream;
     _subs
       ..add(s.position.listen((Duration d) => _emit('position', d.inMilliseconds)))
@@ -101,7 +134,9 @@ class MediaKitVideoBackend implements NativeVideoBackend {
       ..add(s.track.listen((_) => _publishTracks()));
   }
 
-  void _emit(String event, Object? value) => _c?.applyBackendEvent(event, value);
+  void _emit(String event, Object? value) {
+    if (!_castSuspended) _c?.applyBackendEvent(event, value);
+  }
 
   void _publishTracks() {
     final Tracks all = _player.state.tracks;
@@ -137,6 +172,8 @@ class MediaKitVideoBackend implements NativeVideoBackend {
   void open(Map<String, dynamic> args) {
     final String url = (args['url'] as String?) ?? '';
     if (url.isEmpty) return;
+    _lastOpenArgs = Map<String, dynamic>.of(args);
+    if (_castSuspended) return;
     _firstFrame = false;
     // Un zap remet le volume : silence() l'avait coupé pour qu'un autre
     // lecteur ne se mélange pas à celui-ci.
@@ -144,7 +181,8 @@ class MediaKitVideoBackend implements NativeVideoBackend {
     final int startMs = (args['startMs'] as num?)?.toInt() ?? 0;
     final String? prefAudio = args['preferredAudio'] as String?;
     final String? prefText = args['preferredText'] as String?;
-    unawaited(() async {
+    unawaited(_queue.replace(() async {
+      if (_castSuspended) return;
       final PlatformPlayer? p = _player.platform;
       if (p is NativePlayer) {
         try {
@@ -156,11 +194,13 @@ class MediaKitVideoBackend implements NativeVideoBackend {
         Media(url, start: startMs > 0 ? Duration(milliseconds: startMs) : null),
         play: true,
       );
-    }());
+    }).catchError((Object error, StackTrace stack) {
+      _emit('error', 'La lecture locale n’a pas pu démarrer.');
+    }));
   }
 
   @override
-  void play() => unawaited(_player.play());
+  void play() { if (!_castSuspended) unawaited(_player.play()); }
 
   @override
   void pause() => unawaited(_player.pause());
@@ -220,8 +260,9 @@ class MediaKitVideoBackend implements NativeVideoBackend {
       unawaited(s.cancel());
     }
     _subs.clear();
+    if (_c != null) _bound.remove(_c);
     _noFocus.dispose();
-    unawaited(_player.dispose());
+    unawaited(_queue.close(_player.dispose));
     _c = null;
   }
 }

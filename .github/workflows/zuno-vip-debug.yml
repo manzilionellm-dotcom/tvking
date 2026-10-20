@@ -1,0 +1,114 @@
+name: Zuno VIP test APK (no release)
+'on':
+  push:
+    branches:
+    - feature/zuno-vip-countries
+permissions:
+  contents: read
+env:
+  SOURCE_SHA: ${{ github.sha }}
+jobs:
+  vip-test:
+    name: 'Classement VIP : tests et APK isolé'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: android-app
+    steps:
+    - name: Checkout
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        persist-credentials: false
+        fetch-depth: 1
+        ref: ${{ env.SOURCE_SHA }}
+    - name: Setup Java 17 (Temurin)
+      uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+      with:
+        distribution: temurin
+        java-version: '17'
+    - name: Setup Flutter (stable)
+      uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+      with:
+        flutter-version: 3.47.7
+        channel: stable
+        cache: false
+        pub-cache: false
+    - name: Setup Android SDK
+      id: setup_android
+      uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+    - name: Accept Android licenses
+      run: yes | sdkmanager --licenses >/dev/null 2>&1 || true
+    - name: Patch manifest (Zuno, Leanback, réseau, compat box)
+      run: python3 ci/tv/patch_manifest.py android/app/src/main/AndroidManifest.xml
+    - name: Patch build.gradle.kts (applicationId TV, signature, R8)
+      run: 'set -e
+
+        cp ci/proguard-rules.pro android/app/proguard-rules.pro
+
+        python3 ci/tv/patch_gradle.py android/app/build.gradle.kts
+
+        '
+      env:
+        ZUNO_APP_ID: com.sevenmotion.tv.seven_tv.viptest
+    - name: Flutter pub get
+      run: flutter pub get
+    - name: Patch screen_brightness_android build.gradle (si nécessaire)
+      run: "set -e\nFILE=$(find ~/.pub-cache/hosted/pub.dev -path \"*/screen_brightness_android-*/android/build.gradle\" 2>/dev/null | head -1)\nif [ -z \"$FILE\" ]; then\n  echo \"⊙ screen_brightness_android pas dans pub-cache, skip\"\n  exit 0\nfi\nexport PATCH_FILE=\"$FILE\"\npython3 - <<'PYEOF'\nimport os, re\nfile = os.environ['PATCH_FILE']\nlines = open(file).readlines()\nout, in_kotlin, depth, removed = [], False, 0, 0\nfor line in lines:\n    if not in_kotlin:\n        if re.match(r'^\\s*kotlin\\s*\\{', line):\n            in_kotlin = True\n            depth = line.count('{') - line.count('}')\n            removed += 1\n            if depth <= 0:\n                in_kotlin = False\n            continue\n        out.append(line)\n    else:\n        depth += line.count('{') - line.count('}')\n        removed += 1\n        if depth <= 0:\n            in_kotlin = False\nif removed:\n    open(file, 'w').writelines(out)\n    print(f'retiré {removed} ligne(s) kotlin{{}}')\nelse:\n    print('aucun\
+        \ bloc kotlin{} (déjà propre)')\nPYEOF\n"
+    - name: Generate AppLocalizations (.arb → Dart)
+      run: flutter gen-l10n
+    - name: Icône launcher (logo Zuno)
+      run: dart run flutter_launcher_icons -f flutter_launcher_icons_zuno_tv.yaml
+    - name: Bannière Android TV + écran de lancement sombre
+      run: "set -e\nRES=android/app/src/main/res\nmkdir -p \"$RES/drawable\" \"$RES/drawable-v21\" \"$RES/drawable-xhdpi\" \"$RES/drawable-xxhdpi\" \"$RES/values\" \"$RES/values-night\"\n# Bannière Leanback (spec Android TV : 320×180 en xhdpi).\ncp assets/branding/zuno_tv_banner.png    \"$RES/drawable/tv_banner.png\"\ncp assets/branding/zuno_tv_banner.png    \"$RES/drawable-xhdpi/tv_banner.png\"\ncp assets/branding/zuno_tv_banner_2x.png \"$RES/drawable-xxhdpi/tv_banner.png\"\n# Splash sombre avec le logo centré (remplace le fond blanc du template).\nfor DIR in drawable drawable-v21; do\n  cat > \"$RES/$DIR/launch_background.xml\" <<'XML'\n<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<layer-list xmlns:android=\"http://schemas.android.com/apk/res/android\">\n    <item>\n        <shape android:shape=\"rectangle\">\n            <solid android:color=\"#FF050505\" />\n        </shape>\n    </item>\n    <item>\n        <bitmap\n            android:gravity=\"center\"\n            android:src=\"@drawable/tv_banner\"\
+        \ />\n    </item>\n</layer-list>\nXML\ndone\nfor DIR in values values-night; do\n  cat > \"$RES/$DIR/styles.xml\" <<'XML'\n<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<resources>\n    <style name=\"LaunchTheme\" parent=\"@android:style/Theme.Black.NoTitleBar\">\n        <item name=\"android:windowBackground\">@drawable/launch_background</item>\n    </style>\n    <style name=\"NormalTheme\" parent=\"@android:style/Theme.Black.NoTitleBar\">\n        <item name=\"android:windowBackground\">@drawable/launch_background</item>\n    </style>\n</resources>\nXML\ndone\necho \"✓ bannière + splash sombre en place\"\n"
+    - name: Quality gate (analyze + tests)
+      run: 'set -euo pipefail
+
+        python3 tool/check_l10n.py
+
+        flutter analyze --no-fatal-infos --no-fatal-warnings
+
+        flutter test --reporter expanded
+
+        '
+    - name: Isoler le test VIP sans clé de publication
+      run: 'python3 - <<''PYTEST''
+
+        from pathlib import Path
+
+        p=Path(''android/app/build.gradle.kts'');s=p.read_text()
+
+        s=s.replace(''val kBoxMinSdk = 21'', ''val kBoxMinSdk = 24'')
+
+        p.write_text(s)
+
+        p=Path(''android/app/src/main/AndroidManifest.xml'')
+
+        s=p.read_text().replace(''android:label="Zuno"'',''android:label="Zuno VIP TEST"'')
+
+        p.write_text(s)
+
+        assert not Path(''android/key.properties'').exists()
+
+        PYTEST
+
+        '
+    - name: Construire APK Zuno VIP de test
+      run: 'set -euo pipefail
+
+        flutter build apk --debug --target=lib/main_tv.dart --target-platform android-arm,android-arm64 --build-number="$(date +%s)" --dart-define=APP_BUILD_LABEL=VIPTEST --dart-define=GIT_SHA=${{ env.SOURCE_SHA }}
+
+        cp build/app/outputs/flutter-apk/app-debug.apk build/app/outputs/flutter-apk/zuno-vip-test.apk
+
+        sha256sum build/app/outputs/flutter-apk/zuno-vip-test.apk
+
+        '
+    - name: Conserver APK de test
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      with:
+        name: zuno-vip-debug-${{ github.sha }}
+        path: android-app/build/app/outputs/flutter-apk/zuno-vip-test.apk
+        if-no-files-found: error
+        retention-days: 7

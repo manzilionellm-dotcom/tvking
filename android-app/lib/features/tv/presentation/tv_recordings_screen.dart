@@ -15,6 +15,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
+import 'tv_localized_format.dart';
 
 import '../../recordings/data/recording_repository.dart';
 import '../../recordings/domain/recording.dart';
@@ -46,11 +47,14 @@ class TvRecordingsScreen extends StatelessWidget {
           children: <Widget>[
             Padding(
               padding: const EdgeInsets.fromLTRB(8, 0, 8, 14),
-              child: Text(context.l10n.tvMyRecordings,
-                  style: TextStyle(
-                      fontSize: TvDimens.displayS,
-                      fontWeight: FontWeight.w800,
-                      color: TvTokens.text)),
+              child: Text(
+                context.l10n.tvMyRecordings,
+                style: TextStyle(
+                  fontSize: TvDimens.displayS,
+                  fontWeight: FontWeight.w800,
+                  color: TvTokens.text,
+                ),
+              ),
             ),
             Expanded(
               child: ListView.separated(
@@ -90,16 +94,29 @@ class _RecordingRow extends StatelessWidget {
       context: context,
       builder: (BuildContext ctx) => AlertDialog(
         backgroundColor: TvTokens.card,
-        title: Text(context.l10n.tvDeleteQuestion, style: TextStyle(color: TvTokens.text)),
-        content: Text(context.l10n.tvDeleteRecordingConfirm(rec.channelName),
-            style: TextStyle(color: TvTokens.muted)),
+        title: Text(
+          context.l10n.tvDeleteQuestion,
+          style: TextStyle(color: TvTokens.text),
+        ),
+        content: Text(
+          context.l10n.tvDeleteRecordingConfirm(rec.channelName),
+          style: TextStyle(color: TvTokens.muted),
+        ),
         actions: <Widget>[
           TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: Text(context.l10n.tvCancel, style: TextStyle(color: TvTokens.muted))),
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(
+              context.l10n.tvCancel,
+              style: TextStyle(color: TvTokens.muted),
+            ),
+          ),
           TextButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: Text(context.l10n.tvDelete, style: TextStyle(color: TvTokens.live))),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(
+              context.l10n.tvDelete,
+              style: TextStyle(color: TvTokens.live),
+            ),
+          ),
         ],
       ),
     );
@@ -117,8 +134,8 @@ class _RecordingRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final String title =
         (rec.programTitle != null && rec.programTitle!.isNotEmpty)
-            ? '${rec.channelName} · ${rec.programTitle}'
-            : rec.channelName;
+        ? '${rec.channelName} · ${rec.programTitle}'
+        : rec.channelName;
     return Row(
       children: <Widget>[
         Expanded(
@@ -131,29 +148,37 @@ class _RecordingRow extends StatelessWidget {
               padding: const EdgeInsets.all(14),
               child: Row(
                 children: <Widget>[
-                  const Icon(Icons.play_circle_fill_rounded,
-                      color: TvTokens.accent, size: 38),
+                  const Icon(
+                    Icons.play_circle_fill_rounded,
+                    color: TvTokens.accent,
+                    size: 38,
+                  ),
                   const SizedBox(width: 16),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisSize: MainAxisSize.min,
                       children: <Widget>[
-                        Text(title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                                fontSize: TvDimens.title,
-                                fontWeight: FontWeight.w700,
-                                color: TvTokens.text)),
+                        Text(
+                          title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: TvDimens.title,
+                            fontWeight: FontWeight.w700,
+                            color: TvTokens.text,
+                          ),
+                        ),
                         const SizedBox(height: 4),
                         Text(
-                            '${rec.startedLabel}  ·  ${rec.durationLabel}  ·  ${rec.sizeLabel}',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                                fontSize: TvDimens.label,
-                                color: TvTokens.muted)),
+                          '${tvDateTime(context, DateTime.fromMillisecondsSinceEpoch(rec.startedAt))}  ·  ${tvDuration(context, rec.duration)}  ·  ${tvBytes(context, rec.fileSizeBytes)}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: TvDimens.label,
+                            color: TvTokens.muted,
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -169,8 +194,11 @@ class _RecordingRow extends StatelessWidget {
           onSelect: () => _delete(context),
           child: const Padding(
             padding: EdgeInsets.all(16),
-            child: Icon(Icons.delete_outline_rounded,
-                color: TvTokens.muted, size: 28),
+            child: Icon(
+              Icons.delete_outline_rounded,
+              color: TvTokens.muted,
+              size: 28,
+            ),
           ),
         ),
       ],

@@ -12,6 +12,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
+import 'tv_profile_label.dart';
 
 import '../../profiles/data/profile_repository.dart';
 import '../../profiles/domain/profile_policies.dart';
@@ -64,14 +65,9 @@ class _TvParentalScreenState extends State<TvParentalScreen> {
     if (!wantOn &&
         !KidsProfilePolicy.canDisableKidsMode(isKidsProfile: kidsProfile)) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Le profil Enfants garde le mode enfants. '
-            'Changez de profil avec le code pour voir toutes les chaînes.',
-          ),
-        ),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(context.l10n.tvKidsCannotDisable)));
       return;
     }
     // Activer : le foyer choisit d'abord un code (plus de 0000).
@@ -110,9 +106,8 @@ class _TvParentalScreenState extends State<TvParentalScreen> {
     final bool def = await AppPinSettings.instance.isUsingDefault();
     if (mounted) {
       setState(() => _usingDefaultPin = def);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.l10n.tvPinUpdated)),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(context.l10n.tvPinUpdated)));
     }
   }
 
@@ -120,32 +115,36 @@ class _TvParentalScreenState extends State<TvParentalScreen> {
   Widget build(BuildContext context) {
     final bool kids = ParentalControls.instance.kidsMode.value;
     final bool kidsProfile = ProfileRepository.instance.activeIsKids;
-    final String who = ProfileRepository.instance.active.name;
+    final String who = tvProfileLabel(
+      context,
+      ProfileRepository.instance.active,
+    );
     return SingleChildScrollView(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Text(context.l10n.tvParentalTitle,
-              style: TextStyle(
-                  fontSize: TvDimens.displayM,
-                  fontWeight: FontWeight.w800,
-                  color: TvTokens.text)),
+          Text(
+            context.l10n.tvParentalTitle,
+            style: TextStyle(
+              fontSize: TvDimens.displayM,
+              fontWeight: FontWeight.w800,
+              color: TvTokens.text,
+            ),
+          ),
           const SizedBox(height: 6),
           Text(
-            'Code du profil « $who ». Le Mode Enfants masque les chaînes Adulte. '
-            'Le couper et changer le code demandent ce code. '
-            'Un autre profil a le sien.',
+            context.l10n.tvProfilePinHelp(who),
             style: TextStyle(fontSize: TvDimens.body, color: TvTokens.muted),
           ),
           if (kidsProfile) ...<Widget>[
             const SizedBox(height: 8),
             Text(
-              'Profil Enfants : le mode reste allumé. Les chaînes non adultes '
-              'restent ouvertes.',
+              context.l10n.tvKidsAlwaysOn,
               style: TextStyle(
-                  fontSize: TvDimens.label,
-                  fontWeight: FontWeight.w600,
-                  color: TvTokens.accentBright),
+                fontSize: TvDimens.label,
+                fontWeight: FontWeight.w600,
+                color: TvTokens.accentBright,
+              ),
             ),
           ],
           const SizedBox(height: 22),
@@ -154,27 +153,33 @@ class _TvParentalScreenState extends State<TvParentalScreen> {
           _Card(
             child: Row(
               children: <Widget>[
-                Icon(Icons.child_care_rounded,
-                    color: kids ? TvTokens.accent : TvTokens.muted, size: 30),
+                Icon(
+                  Icons.child_care_rounded,
+                  color: kids ? TvTokens.accent : TvTokens.muted,
+                  size: 30,
+                ),
                 const SizedBox(width: 14),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: <Widget>[
-                      Text(context.l10n.tvKidsMode,
-                          style: TextStyle(
-                              fontSize: TvDimens.title,
-                              fontWeight: FontWeight.w700,
-                              color: TvTokens.text)),
+                      Text(
+                        context.l10n.tvKidsMode,
+                        style: TextStyle(
+                          fontSize: TvDimens.title,
+                          fontWeight: FontWeight.w700,
+                          color: TvTokens.text,
+                        ),
+                      ),
                       const SizedBox(height: 2),
                       Text(
-                          kids
-                              ? 'Activé — le contenu Adulte est masqué.'
-                              : 'Désactivé — toutes les chaînes sont visibles.',
-                          style: TextStyle(
-                              fontSize: TvDimens.label,
-                              color: kids ? TvTokens.accent : TvTokens.muted)),
+                        kids ? context.l10n.tvKidsOn : context.l10n.tvKidsOff,
+                        style: TextStyle(
+                          fontSize: TvDimens.label,
+                          color: kids ? TvTokens.accent : TvTokens.muted,
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -198,27 +203,34 @@ class _TvParentalScreenState extends State<TvParentalScreen> {
                   children: <Widget>[
                     Icon(Icons.lock_rounded, color: TvTokens.muted, size: 26),
                     const SizedBox(width: 12),
-                    Text(context.l10n.tvParentalCode,
-                        style: TextStyle(
-                            fontSize: TvDimens.title,
-                            fontWeight: FontWeight.w700,
-                            color: TvTokens.text)),
+                    Text(
+                      context.l10n.tvParentalCode,
+                      style: TextStyle(
+                        fontSize: TvDimens.title,
+                        fontWeight: FontWeight.w700,
+                        color: TvTokens.text,
+                      ),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 10),
                 if (_usingDefaultPin)
                   Text(
-                    'Choisis un code avant d\'activer le Mode Enfants. '
-                    'Le code 0000 n\'est plus accepté.',
+                    context.l10n.tvChooseSecurePin,
                     style: TextStyle(
-                        fontSize: TvDimens.label,
-                        fontWeight: FontWeight.w600,
-                        color: TvTokens.live),
+                      fontSize: TvDimens.label,
+                      fontWeight: FontWeight.w600,
+                      color: TvTokens.live,
+                    ),
                   )
                 else
-                  Text(context.l10n.tvCustomPinInPlace,
-                      style: TextStyle(
-                          fontSize: TvDimens.label, color: TvTokens.muted)),
+                  Text(
+                    context.l10n.tvCustomPinInPlace,
+                    style: TextStyle(
+                      fontSize: TvDimens.label,
+                      color: TvTokens.muted,
+                    ),
+                  ),
                 const SizedBox(height: 16),
                 TvFocusBuilder(
                   scale: TvFocusScale.large,
@@ -230,21 +242,28 @@ class _TvParentalScreenState extends State<TvParentalScreen> {
                         : TvTokens.accentBright;
                     return Container(
                       decoration: BoxDecoration(
-                          color: bg,
-                          borderRadius:
-                              BorderRadius.circular(TvDimens.cardRadius)),
+                        color: bg,
+                        borderRadius: BorderRadius.circular(
+                          TvDimens.cardRadius,
+                        ),
+                      ),
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 22, vertical: 14),
+                        horizontal: 22,
+                        vertical: 14,
+                      ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: <Widget>[
                           Icon(Icons.pin_rounded, color: fg, size: 22),
                           const SizedBox(width: 10),
-                          Text(context.l10n.tvChangePin,
-                              style: TextStyle(
-                                  fontSize: TvDimens.title,
-                                  fontWeight: FontWeight.w700,
-                                  color: fg)),
+                          Text(
+                            context.l10n.tvChangePin,
+                            style: TextStyle(
+                              fontSize: TvDimens.title,
+                              fontWeight: FontWeight.w700,
+                              color: fg,
+                            ),
+                          ),
                         ],
                       ),
                     );
@@ -283,13 +302,13 @@ Future<bool> _askPin(BuildContext context, String title) async {
             final int locked = await AppPinSettings.instance.lockRemainingMs();
             if (locked > 0) {
               final int minutes = (locked / 60000).ceil().clamp(1, 5);
-              return 'Trop d\'essais. Réessaie dans $minutes min.';
+              return context.l10n.tvPinWaitMinutes(minutes);
             }
             final bool good = await AppPinSettings.instance.verify(pin);
             if (good) return null;
             final int after = await AppPinSettings.instance.lockRemainingMs();
             if (after > 0) {
-              return 'Trop d\'essais. Réessaie dans quelques minutes.';
+              return context.l10n.tvPinWait;
             }
             return wrong;
           },
@@ -405,22 +424,29 @@ class _PinPadScreenState extends State<_PinPadScreen> {
   @override
   Widget build(BuildContext context) {
     final bool confirmStep = widget.confirm && _firstEntry != null;
-    final String title = confirmStep ? context.l10n.tvConfirmCode : widget.title;
+    final String title = confirmStep
+        ? context.l10n.tvConfirmCode
+        : widget.title;
     return Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 420),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
-            Text(title,
-                style: TextStyle(
-                    fontSize: TvDimens.displayS,
-                    fontWeight: FontWeight.w800,
-                    color: TvTokens.text)),
+            Text(
+              title,
+              style: TextStyle(
+                fontSize: TvDimens.displayS,
+                fontWeight: FontWeight.w800,
+                color: TvTokens.text,
+              ),
+            ),
             const SizedBox(height: 8),
-            Text(widget.subtitle,
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: TvDimens.body, color: TvTokens.muted)),
+            Text(
+              widget.subtitle,
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: TvDimens.body, color: TvTokens.muted),
+            ),
             const SizedBox(height: 22),
             // Points indiquant le nombre de chiffres saisis.
             Row(
@@ -446,11 +472,14 @@ class _PinPadScreenState extends State<_PinPadScreen> {
               height: 24,
               child: _error == null
                   ? null
-                  : Text(_error!,
+                  : Text(
+                      _error!,
                       style: TextStyle(
-                          fontSize: TvDimens.label,
-                          fontWeight: FontWeight.w600,
-                          color: TvTokens.live)),
+                        fontSize: TvDimens.label,
+                        fontWeight: FontWeight.w600,
+                        color: TvTokens.live,
+                      ),
+                    ),
             ),
             const SizedBox(height: 8),
             // Pavé 1-9 puis ⌫ / 0.
@@ -462,9 +491,7 @@ class _PinPadScreenState extends State<_PinPadScreen> {
             ])
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
-                children: <Widget>[
-                  for (final String k in row) _key(k),
-                ],
+                children: <Widget>[for (final String k in row) _key(k)],
               ),
           ],
         ),
@@ -519,8 +546,7 @@ class _PadButton extends StatelessWidget {
         onSelect: onSelect,
         builder: (BuildContext context, bool focused) {
           final Color bg = focused ? TvTokens.accent : TvTokens.card;
-          final Color fg =
-              focused ? TvTokens.onAccent : TvTokens.text;
+          final Color fg = focused ? TvTokens.onAccent : TvTokens.text;
           return Container(
             width: 84,
             height: 64,
@@ -532,11 +558,14 @@ class _PadButton extends StatelessWidget {
             ),
             child: icon != null
                 ? Icon(icon, color: fg, size: 28)
-                : Text(label,
+                : Text(
+                    label,
                     style: TextStyle(
-                        fontSize: TvDimens.title,
-                        fontWeight: FontWeight.w800,
-                        color: fg)),
+                      fontSize: TvDimens.title,
+                      fontWeight: FontWeight.w800,
+                      color: fg,
+                    ),
+                  ),
           );
         },
       ),
@@ -566,8 +595,11 @@ class _Card extends StatelessWidget {
 
 /// Interrupteur ON/OFF focusable (style « pilule »).
 class _TogglePill extends StatelessWidget {
-  const _TogglePill(
-      {required this.on, required this.onSelect, this.autofocus = false});
+  const _TogglePill({
+    required this.on,
+    required this.onSelect,
+    this.autofocus = false,
+  });
   final bool on;
   final VoidCallback onSelect;
   final bool autofocus;
@@ -591,14 +623,22 @@ class _TogglePill extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
-              Icon(on ? Icons.toggle_on_rounded : Icons.toggle_off_rounded,
-                  size: 22, color: focused ? fg : (on ? TvTokens.accent : TvTokens.muted)),
+              Icon(
+                on ? Icons.toggle_on_rounded : Icons.toggle_off_rounded,
+                size: 22,
+                color: focused ? fg : (on ? TvTokens.accent : TvTokens.muted),
+              ),
               const SizedBox(width: 8),
-              Text(on ? 'Activé' : 'Désactivé',
-                  style: TextStyle(
-                      fontSize: TvDimens.titleS,
-                      fontWeight: FontWeight.w700,
-                      color: focused ? fg : (on ? TvTokens.accentBright : TvTokens.muted))),
+              Text(
+                on ? context.l10n.tvEnabled : context.l10n.tvDisabled,
+                style: TextStyle(
+                  fontSize: TvDimens.titleS,
+                  fontWeight: FontWeight.w700,
+                  color: focused
+                      ? fg
+                      : (on ? TvTokens.accentBright : TvTokens.muted),
+                ),
+              ),
             ],
           ),
         );

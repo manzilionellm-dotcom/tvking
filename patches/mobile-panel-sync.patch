@@ -1,0 +1,2221 @@
+diff --git a/lib/core/app/panel_live_wait.dart b/lib/core/app/panel_live_wait.dart
+index ed2c302..303938d 100644
+--- a/lib/core/app/panel_live_wait.dart
++++ b/lib/core/app/panel_live_wait.dart
+@@ -44,8 +44,13 @@ import '../../features/subscription/data/subscription_state.dart';
+ /// Préférence de repli : vrai = pas d'écoute en direct (ancien comportement).
+ const String kLiveWaitOffKey = 'zuno.mobile.live_wait_off';
+
+-/// Dernier numéro d'ordre déjà traité (survit à la fermeture de l'app).
+-const String kLiveWaitCursorKey = 'zuno.mobile.live_wait_cursor.v1';
++/// Préfixe du dernier numéro d'ordre traité, propre à CHAQUE MAC.
++/// L'ancien curseur global v1 n'indiquait pas son propriétaire : après
++/// une réattribution de MAC, il pouvait masquer les ordres de la nouvelle.
++/// On ne le migre donc pas ; rejouer un signal relit seulement l'état actuel.
++const String kLiveWaitCursorKey = 'zuno.mobile.live_wait_cursor.v2';
++
++String liveWaitCursorKey(String mac) => '$kLiveWaitCursorKey.$mac';
+
+ /// Ce que le téléphone retient d'une réponse de l'attente longue.
+ @immutable
+@@ -69,7 +74,9 @@ LiveWaitStep readLiveWait(Object? body, int cursor) {
+   bool changed = false;
+   for (final Object? item in box) {
+     if (item is! Map) continue;
+-    final num? id = item['id'] is num ? item['id'] as num : num.tryParse('${item['id']}');
++    final num? id = item['id'] is num
++        ? item['id'] as num
++        : num.tryParse('${item['id']}');
+     if (id == null) continue;
+     if (id.toInt() > cursor) changed = true;
+     if (id.toInt() > next) next = id.toInt();
+@@ -95,8 +102,15 @@ class PanelLiveWait with WidgetsBindingObserver {
+   http.Client Function() clientFactory = http.Client.new;
+
+   static Future<void> _defaultOnChange() async {
+-    await RemoteSourceRepository.sync();
++    final RemoteSyncResult result = await RemoteSourceRepository.sync();
+     await SubscriptionState.instance.syncIfStale(force: true);
++    // sync() rend un résultat, elle ne lève pas en cas de panne. Sans
++    // ce contrôle, une suppression reçue pendant une coupure réseau
++    // était marquée « traitée » avant d'avoir été appliquée localement.
++    if (result == RemoteSyncResult.networkError ||
++        result == RemoteSyncResult.sourceFailed) {
++      throw StateError('synchronisation des sources : ${result.name}');
++    }
+   }
+
+   bool _installed = false;
+@@ -104,7 +118,7 @@ class PanelLiveWait with WidgetsBindingObserver {
+   int _generation = 0;
+   http.Client? _client;
+
+-  bool _syncing = false;
++  Future<void>? _syncing;
+   bool _again = false;
+
+   /// À appeler une fois au démarrage du téléphone.
+@@ -146,40 +160,67 @@ class PanelLiveWait with WidgetsBindingObserver {
+   /// Relecture unique : un ordre pendant une relecture en relance une
+   /// seule après, jamais deux en parallèle.
+   @visibleForTesting
+-  Future<void> trigger() async {
+-    if (_syncing) {
++  Future<void> trigger() {
++    final Future<void>? running = _syncing;
++    if (running != null) {
+       _again = true;
+-      return;
++      return running;
+     }
+-    _syncing = true;
++    // Le microtask laisse le temps d'enregistrer la Future avant que
++    // onChange démarre, même si un callback de test lève immédiatement.
++    _again = false;
++    final Future<void> operation = Future<void>.microtask(_drainChanges);
++    _syncing = operation;
++    return operation;
++  }
++
++  Future<void> _drainChanges() async {
+     try {
+-      do {
+-        _again = false;
++      while (true) {
+         await onChange();
+-      } while (_again);
+-    } catch (e) {
+-      if (kDebugMode) debugPrint('[PanelLiveWait] relecture : $e');
++        if (!_again) break;
++        _again = false;
++      }
+     } finally {
+-      _syncing = false;
++      _syncing = null;
+     }
+   }
+
+   Future<void> _loop(int gen) async {
+     int failures = 0;
+     int cursor = 0;
+-    try {
+-      cursor = (await SharedPreferences.getInstance()).getInt(kLiveWaitCursorKey) ?? 0;
+-    } catch (_) {}
++    String? cursorMac;
+     while (_running && gen == _generation) {
+       final String mac = await DeviceIdentity.instance.mac;
+-      if (!mac.startsWith('MK:')) return;
++      if (gen != _generation) return;
++      if (!mac.startsWith('MK:')) {
++        _running = false;
++        return;
++      }
++      if (cursorMac != mac) {
++        cursorMac = mac;
++        cursor = 0;
++        failures = 0;
++        try {
++          cursor =
++              (await SharedPreferences.getInstance()).getInt(
++                liveWaitCursorKey(mac),
++              ) ??
++              0;
++        } catch (_) {}
++        if (gen != _generation) return;
++      }
+       final http.Client client = clientFactory();
+       _client = client;
+       try {
+         final Uri uri = Uri.parse(
+-            '$kSubscriptionBaseUrl/api/box/wait/$mac?after=$cursor&timeout=25000');
++          '$kSubscriptionBaseUrl/api/box/wait/$mac?after=$cursor&timeout=25000',
++        );
+         final http.Response resp = await client
+-            .get(uri, headers: const <String, String>{'Accept': 'application/json'})
++            .get(
++              uri,
++              headers: const <String, String>{'Accept': 'application/json'},
++            )
+             .timeout(const Duration(seconds: 40));
+         if (gen != _generation) return;
+         if (resp.statusCode == 404) {
+@@ -190,14 +231,24 @@ class PanelLiveWait with WidgetsBindingObserver {
+         }
+         if (resp.statusCode != 200) throw StateError('HTTP ${resp.statusCode}');
+         final LiveWaitStep step = readLiveWait(jsonDecode(resp.body), cursor);
++        // Le serveur conserve le signal dans son anneau. On attend la
++        // vraie relecture AVANT d'avancer le curseur : un échec rejoue
++        // le même ordre après backoff au lieu de le perdre jusqu'au poll.
++        if (step.changed) await trigger();
++        if (gen != _generation) return;
++        final String currentMac = await DeviceIdentity.instance.mac;
++        if (gen != _generation) return;
++        if (currentMac != mac) continue;
+         failures = 0;
+         if (step.cursor != cursor) {
+           cursor = step.cursor;
+           try {
+-            await (await SharedPreferences.getInstance()).setInt(kLiveWaitCursorKey, cursor);
++            await (await SharedPreferences.getInstance()).setInt(
++              liveWaitCursorKey(mac),
++              cursor,
++            );
+           } catch (_) {}
+         }
+-        if (step.changed) unawaited(trigger());
+       } catch (e) {
+         if (gen != _generation) return;
+         failures++;
+diff --git a/lib/features/playlists/data/cloud_backup_repository.dart b/lib/features/playlists/data/cloud_backup_repository.dart
+index b9633fa..969bd1a 100644
+--- a/lib/features/playlists/data/cloud_backup_repository.dart
++++ b/lib/features/playlists/data/cloud_backup_repository.dart
+@@ -39,21 +39,102 @@ import '../../../core/observability/structured_logger.dart';
+ import '../../device/data/device_identity.dart';
+ import '../../subscription/data/subscription_backend.dart';
+ import '../domain/playlist.dart';
++import '../domain/panel_source_decision.dart';
+ import 'favorites_repository.dart';
+ import 'playlist_repository.dart';
++import 'source_link_utils.dart';
++import 'source_opt_outs.dart';
+
+ class CloudBackupRepository {
+   CloudBackupRepository._();
+   static final CloudBackupRepository instance = CloudBackupRepository._();
+
+-  /// Flag : une restauration a déjà été tentée avec succès sur cette
+-  /// install (évite de re-restaurer en boucle si l'utilisateur vide
+-  /// volontairement ses playlists ensuite).
++  /// Une suppression du panel survit au redémarrage, même hors réseau.
++  /// Ce carnet est distinct des opt-out de provision : pousser une AUTRE
++  /// liste ne doit jamais autoriser une ancienne sauvegarde à la recréer.
++  static const String _kPanelRemoved = 'backup.panel_removed.v1';
++
+   static const String _kRestoredKey = 'backup.restored.v1';
++  Future<void>? _restoreWork;
++
++  /// Deux représentations d'un même compte (get.php et Xtream) désignent
++  /// la même source. Aucun mot de passe ni URL n'est écrit dans les logs.
++  static Set<String> _identities(Map<String, Object?> source) {
++    final Set<String> keys = <String>{};
++    final String url = '${source['m3u_url'] ?? ''}'.trim();
++    if (url.isNotEmpty) {
++      keys.add('m3u|$url');
++      final credentials = SourceLinkUtils.tryExtractXtreamCredentials(url);
++      if (credentials != null) {
++        keys.add('xtream|${credentials.server}|${credentials.username}');
++      }
++    }
++    final String server = '${source['xtream_server'] ?? ''}'.trim();
++    final String user = '${source['xtream_username'] ?? ''}'.trim();
++    if (server.isNotEmpty) {
++      keys.add('xtream|${SourceLinkUtils.sanitizeXtreamServer(server)}|$user');
++    }
++    return keys;
++  }
++
++  Future<Set<String>> _removed() async =>
++      ((await SharedPreferences.getInstance()).getStringList(_kPanelRemoved) ??
++              const <String>[])
++          .toSet();
++
++  /// À attendre AVANT le DELETE local : aucune réponse réseau tardive
++  /// ne doit ressusciter cette source pendant ou après la suppression.
++  Future<void> rememberPanelRemoval(Playlist playlist) =>
++      _rememberIdentities(_identities(playlist.toMap()));
++
++  /// Une source provisionnée peut encore n'exister que dans le backup en
++  /// transit. L'effacement doit gagner même avant son insertion SQLite.
++  Future<void> rememberPanelRemovalKey(ProvisionKey key) =>
++      _rememberIdentities(_identities(_sourceForKey(key)));
++
++  static Map<String, Object?> _sourceForKey(ProvisionKey key) =>
++      <String, Object?>{
++        'm3u_url': key.m3uUrl,
++        'xtream_server': key.server,
++        'xtream_username': key.username,
++      };
++
++  Future<void> _rememberIdentities(Set<String> identities) async {
++    final Set<String> removed = await _removed();
++    removed.addAll(identities);
++    await (await SharedPreferences.getInstance()).setStringList(
++      _kPanelRemoved,
++      removed.toList(),
++    );
++  }
++
++  /// Une nouvelle provision réussie constitue un nouveau choix du panel.
++  /// Elle lève uniquement les empreintes de cette source, jamais les autres.
++  Future<void> forgetPanelRemoval(ProvisionKey key) async {
++    final Set<String> removed = await _removed();
++    if (removed.isEmpty) return;
++    final Set<String> allowed = _identities(_sourceForKey(key));
++    // Une nouvelle provision Xtream autorise aussi l'ancien lien get.php
++    // du même compte. Retirer seulement l'empreinte Xtream laisserait son
++    // alias M3U bloqué à tort, alors que le panel vient de le réassigner.
++    removed.removeWhere((String stored) {
++      final ProvisionKey? previous = ProvisionKey.parse(stored);
++      return previous != null &&
++          _identities(_sourceForKey(previous)).any(allowed.contains);
++    });
++    await (await SharedPreferences.getInstance()).setStringList(
++      _kPanelRemoved,
++      removed.toList(),
++    );
++  }
++
++  bool _isRemoved(Map<String, Object?> source, Set<String> removed) =>
++      _identities(source).any(removed.contains);
+
+   bool _started = false;
+   Timer? _debounce;
+-  final List<StreamSubscription<dynamic>> _subs = <StreamSubscription<dynamic>>[];
++  final List<StreamSubscription<dynamic>> _subs =
++      <StreamSubscription<dynamic>>[];
+
+   /// Démarre la sauvegarde automatique : on ré-uploade (debounce) dès
+   /// que les playlists ou les favoris changent.
+@@ -89,26 +170,22 @@ class CloudBackupRepository {
+       final String mac = await DeviceIdentity.instance.mac;
+       final Map<String, Object?> data = <String, Object?>{
+         'v': 1,
+-        'playlists': playlists
+-            .map((Playlist p) {
+-              final Map<String, Object?> m = p.toMap();
+-              // On ne garde que ce qui est utile à recréer la source ;
+-              // l'id SQLite local et les métriques ne servent à rien.
+-              m.remove('id');
+-              m.remove('channel_count');
+-              m.remove('last_synced_at');
+-              return m;
+-            })
+-            .toList(),
++        'playlists': playlists.map((Playlist p) {
++          final Map<String, Object?> m = p.toMap();
++          // On ne garde que ce qui est utile à recréer la source ;
++          // l'id SQLite local et les métriques ne servent à rien.
++          m.remove('id');
++          m.remove('channel_count');
++          m.remove('last_synced_at');
++          return m;
++        }).toList(),
+         'favorites': FavoritesRepository.instance.current.toList(),
+       };
+
+       await http
+           .put(
+             Uri.parse('$kSubscriptionBaseUrl/api/backup/$mac'),
+-            headers: const <String, String>{
+-              'Content-Type': 'application/json',
+-            },
++            headers: const <String, String>{'Content-Type': 'application/json'},
+             body: jsonEncode(<String, Object?>{'data': data}),
+           )
+           .timeout(const Duration(seconds: 8));
+@@ -129,8 +206,19 @@ class CloudBackupRepository {
+
+   /// Restaure depuis le cloud SI aucune playlist locale n'existe.
+   /// À appeler au démarrage (après l'init de PlaylistRepository).
+-  Future<void> restoreIfNeeded() async {
++  Future<void> restoreIfNeeded() {
++    return _restoreWork ??= _restoreSnapshot().whenComplete(() {
++      _restoreWork = null;
++    });
++  }
++
++  Future<void> _restoreSnapshot() async {
+     try {
++      // Une restauration réussie ne se rejoue pas après une suppression
++      // volontaire. Sur une nouvelle installation cette préférence est
++      // absente : la récupération habituelle reste possible.
++      final SharedPreferences prefs = await SharedPreferences.getInstance();
++      if (prefs.getBool(_kRestoredKey) ?? false) return;
+       final List<Playlist> existing =
+           await PlaylistRepository.instance.getAllPlaylists();
+       // L'utilisateur a déjà des données locales → on ne touche à rien.
+@@ -154,6 +242,8 @@ class CloudBackupRepository {
+       for (final dynamic raw in pls) {
+         if (raw is! Map) continue;
+         final Map<String, Object?> m = Map<String, Object?>.from(raw);
++        if (_isRemoved(m, await _removed()) ||
++            await SourceOptOuts.isBackupOptedOut(m)) continue;
+         final String type = (m['type'] as String?) ?? 'm3u';
+         // Nom par défaut LOCALISÉ (langue active à la restauration) — ne
+         // sert que si le backup ne portait pas de nom ; il est ensuite
+@@ -161,28 +251,38 @@ class CloudBackupRepository {
+         final String name =
+             (m['name'] as String?) ?? l10nNow.playlistDefaultSubscription;
+         try {
++          Playlist? imported;
+           if (type == 'xtream') {
+             final String server = (m['xtream_server'] as String?) ?? '';
+             final String user = (m['xtream_username'] as String?) ?? '';
+             final String pass = (m['xtream_password'] as String?) ?? '';
+             if (server.isEmpty || user.isEmpty) continue;
+-            await PlaylistRepository.instance.addXtreamPlaylist(
++            imported = await PlaylistRepository.instance.addXtreamPlaylist(
+               name: name,
+               serverUrl: server,
+               username: user,
+               password: pass,
+             );
+-            restored++;
+           } else if (type == 'm3u') {
+             final String url = (m['m3u_url'] as String?) ?? '';
+             if (url.isEmpty) continue;
+-            await PlaylistRepository.instance.addM3uPlaylist(
++            imported = await PlaylistRepository.instance.addM3uPlaylist(
+               name: name,
+               url: url,
+               epgUrl: m['epg_url'] as String?,
+             );
+-            restored++;
+           }
++          if (imported == null) continue;
++          // Une suppression peut arriver pendant le téléchargement. Elle
++          // gagne aussi cette course : seul l'import tout juste créé part.
++          if (_isRemoved(m, await _removed()) ||
++              await SourceOptOuts.isBackupOptedOut(m)) {
++            if (imported.id != null) {
++              await PlaylistRepository.instance.deletePlaylist(imported.id!);
++            }
++            continue;
++          }
++          restored++;
+         } catch (e) {
+           if (kDebugMode) debugPrint('[Backup] restore playlist "$name": $e');
+         }
+@@ -206,7 +306,6 @@ class CloudBackupRepository {
+       }
+
+       if (restored > 0) {
+-        final SharedPreferences prefs = await SharedPreferences.getInstance();
+         await prefs.setBool(_kRestoredKey, true);
+         if (kDebugMode) {
+           debugPrint('[Backup] restore OK ($restored playlist(s))');
+diff --git a/lib/features/playlists/data/remote_source_repository.dart b/lib/features/playlists/data/remote_source_repository.dart
+index bbe0f28..1c4a4da 100644
+--- a/lib/features/playlists/data/remote_source_repository.dart
++++ b/lib/features/playlists/data/remote_source_repository.dart
+@@ -27,7 +27,6 @@ import 'package:http/http.dart' as http;
+ import 'package:shared_preferences/shared_preferences.dart';
+
+ import '../../../core/i18n/l10n_now.dart';
+-import '../../../core/update/build_flags.dart';
+ import '../../channels/data/recently_watched_repository.dart';
+ import '../../device/data/device_identity.dart';
+ import '../../subscription/data/subscription_backend.dart'
+@@ -35,6 +34,7 @@ import '../../subscription/data/subscription_backend.dart'
+ import '../../subscription/data/subscription_state.dart';
+ import '../domain/panel_source_decision.dart';
+ import '../domain/playlist.dart';
++import 'cloud_backup_repository.dart';
+ import 'source_opt_outs.dart';
+ import 'source_link_utils.dart';
+ import 'import_progress.dart';
+@@ -88,23 +88,51 @@ abstract final class RemoteSourceRepository {
+   /// d'un événement `sync sources`/`all`.
+   static final ValueNotifier<int> pushedTick = ValueNotifier<int>(0);
+
+-  /// Réveille les écouteurs (l'accueil) : « une source vient d'être poussée,
+-  /// charge-la tout de suite ». Best-effort, jamais bloquant.
+-  ///
+-  /// Un push est un geste DÉLIBÉRÉ du revendeur : il lève aussi les
+-  /// empreintes de suppression volontaire (SourceOptOuts) — c'est le
+-  /// parcours de RÉCUPÉRATION d'une source supprimée par accident
+-  /// (« contacte ton revendeur, il te la remet »).
++  /// Un réveil temps réel demande une relecture, sans annuler le choix du
++  /// client. Seule une attribution plus récente de la source l'autorise.
+   static void signalPushed() {
+-    // ignore: discarded_futures
+-    SourceOptOuts.clearAll();
+     pushedTick.value++;
+   }
+
+   /// Récupère la source assignée à cet appareil et la charge si besoin.
+   /// Best effort, idempotent (la dédup évite de réimporter à chaque boot).
+   /// Renvoie un [RemoteSyncResult] pour permettre un diagnostic précis.
+-  static Future<RemoteSyncResult> sync({int hop = 0}) async {
++  static Future<RemoteSyncResult>? _syncInFlight;
++  static bool _syncAgain = false;
++
++  /// Le réveil, le minuteur et le panel peuvent demander une relecture
++  /// ensemble. Une seule réponse doit modifier SQLite à la fois : sinon
++  /// une réponse ancienne peut réimporter la liste tout juste supprimée.
++  /// Un appel pendant la relecture réclame un nouveau GET, et tous les
++  /// appelants attendent l'état final, y compris cette dernière relecture.
++  static Future<RemoteSyncResult> sync({int hop = 0}) {
++    final Future<RemoteSyncResult>? pending = _syncInFlight;
++    if (pending != null) {
++      _syncAgain = true;
++      return pending;
++    }
++    final Completer<RemoteSyncResult> done = Completer<RemoteSyncResult>();
++    _syncInFlight = done.future;
++    unawaited(() async {
++      RemoteSyncResult result = RemoteSyncResult.networkError;
++      try {
++        do {
++          _syncAgain = false;
++          result = await _syncOnce(hop: hop);
++        } while (_syncAgain);
++        done.complete(result);
++      } catch (_) {
++        // Même contrat best-effort qu'avant : jamais d'erreur non gérée
++        // dans les nombreux appels déclenchés sans attente par l'UI.
++        done.complete(RemoteSyncResult.networkError);
++      } finally {
++        _syncInFlight = null;
++      }
++    }());
++    return done.future;
++  }
++
++  static Future<RemoteSyncResult> _syncOnce({int hop = 0}) async {
+     // Build store : pas de source poussée, pas d'ordres du panel (cf.
+     // [storeBuild]). L'utilisateur ajoute ses sources lui-même.
+     if (storeBuild) return RemoteSyncResult.noSource;
+@@ -117,12 +145,10 @@ abstract final class RemoteSourceRepository {
+       final String mac = await DeviceIdentity.instance.mac;
+       if (!mac.startsWith('MK:')) return RemoteSyncResult.noSource;
+
+-      final http.Response resp = await http
+-          .get(
+-            Uri.parse('$kSubscriptionBaseUrl/api/device-source/$mac'),
+-            headers: const <String, String>{'Accept': 'application/json'},
+-          )
+-          .timeout(const Duration(seconds: 8));
++      final http.Response resp = await http.get(
++        Uri.parse('$kSubscriptionBaseUrl/api/device-source/$mac'),
++        headers: const <String, String>{'Accept': 'application/json'},
++      ).timeout(const Duration(seconds: 8));
+       if (resp.statusCode != 200) return RemoteSyncResult.networkError;
+
+       final Object? decoded = jsonDecode(resp.body);
+@@ -141,14 +167,16 @@ abstract final class RemoteSourceRepository {
+       );
+       if (reassigned != null && reassigned != mac && hop < 1) {
+         final bool changed = await DeviceIdentity.instance.adopt(reassigned);
+-        if (changed) return sync(hop: hop + 1);
++        if (changed) return await _syncOnce(hop: hop + 1);
+       }
+
+       // VERROU SERVEUR : expired/frozen/banned/loaned → pas de playlist,
+       // et on bascule l'état local tout de suite (sondage 60 s, plus
+       // rapide que le heartbeat périodique).
+       final Object? blocked = body['blocked'];
+-      if (blocked is String && blocked.isNotEmpty && blocked != 'mac_reassigned') {
++      if (blocked is String &&
++          blocked.isNotEmpty &&
++          blocked != 'mac_reassigned') {
+         await SubscriptionState.instance.markBlockedFromSource(blocked);
+         return RemoteSyncResult.noSource;
+       }
+@@ -192,7 +220,9 @@ abstract final class RemoteSourceRepository {
+         // Xtream : quelques secondes). 06/10/2026.
+         final List<Map<String, dynamic>> active = panelReconcileOff
+             ? all
+-            : all.where((Map<String, dynamic> s) => s['enabled'] != false).toList();
++            : all
++                .where((Map<String, dynamic> s) => s['enabled'] != false)
++                .toList();
+         // Même boucle que applySources (règle du labo comprise) : une seule
+         // implémentation, pas deux comportements qui divergent.
+         final RemoteSyncResult r = active.isEmpty
+@@ -245,6 +275,7 @@ abstract final class RemoteSourceRepository {
+         final Playlist? target = _matchLocal(t);
+         if (target != null && target.id != null) {
+           if (kind == 'source_remove') {
++            await CloudBackupRepository.instance.rememberPanelRemoval(target);
+             await PlaylistRepository.instance.deletePlaylist(target.id!);
+             if (kDebugMode) debugPrint('[Orders] retiree: ' + target.name);
+           } else if (kind == 'source_activate' && !target.isActive) {
+@@ -289,15 +320,17 @@ abstract final class RemoteSourceRepository {
+   ///    client garde ce qu'il avait.
+   static Future<void> _updateLocal(Playlist target, Object? rawNext) async {
+     if (rawNext is! Map<String, dynamic>) return;
+-    final String type = (rawNext['type'] as String?)?.trim().toLowerCase() ?? '';
++    final String type =
++        (rawNext['type'] as String?)?.trim().toLowerCase() ?? '';
+     final String server = (rawNext['server_url'] as String?)?.trim() ?? '';
+     final String user = (rawNext['username'] as String?)?.trim() ?? '';
+     final String pass = (rawNext['password'] as String?)?.trim() ?? '';
+     final String m3u = (rawNext['m3u_url'] as String?)?.trim() ?? '';
+     final String? epg = (rawNext['epg_url'] as String?)?.trim();
+-    final String label = (rawNext['label'] as String?)?.trim().isNotEmpty == true
+-        ? (rawNext['label'] as String).trim()
+-        : target.name;
++    final String label =
++        (rawNext['label'] as String?)?.trim().isNotEmpty == true
++            ? (rawNext['label'] as String).trim()
++            : target.name;
+
+     final bool sameXtream = type == 'xtream' &&
+         target.type == PlaylistType.xtream &&
+@@ -308,15 +341,17 @@ abstract final class RemoteSourceRepository {
+       await PlaylistRepository.instance.updateXtreamPassword(target.id!, pass);
+       await PlaylistRepository.instance
+           .refreshPlaylist(target.copyWith(xtreamPassword: pass));
+-      if (kDebugMode) debugPrint('[Orders] identifiants corriges: ' + target.name);
++      if (kDebugMode)
++        debugPrint('[Orders] identifiants corriges: ' + target.name);
+       return;
+     }
+
+     final bool wasActive = target.isActive;
+     // Liste regardee AVANT le remplacement : si la source corrigee n'etait pas
+     // l'active, l'import ne doit pas voler l'ecran au client.
+-    final Playlist? previouslyActive =
+-        wasActive ? null : await PlaylistRepository.instance.getActivePlaylist();
++    final Playlist? previouslyActive = wasActive
++        ? null
++        : await PlaylistRepository.instance.getActivePlaylist();
+     if (type == 'xtream') {
+       if (server.isEmpty || user.isEmpty || pass.isEmpty) return;
+       await PlaylistRepository.instance.addXtreamPlaylist(
+@@ -335,8 +370,7 @@ abstract final class RemoteSourceRepository {
+         url: m3u,
+         epgUrl: (epg != null && epg.isNotEmpty) ? epg : null,
+       );
+-      if (previouslyActive?.id != null &&
+-          previouslyActive!.id != target.id) {
++      if (previouslyActive?.id != null && previouslyActive!.id != target.id) {
+         await PlaylistRepository.instance
+             .setActivePlaylist(previouslyActive.id!);
+       }
+@@ -376,19 +410,16 @@ abstract final class RemoteSourceRepository {
+     try {
+       final String mac = await DeviceIdentity.instance.mac;
+       if (!mac.startsWith('MK:')) return;
+-      final http.Response resp = await http
+-          .get(
+-            Uri.parse('$kSubscriptionBaseUrl/api/history/$mac'),
+-            headers: const <String, String>{'Accept': 'application/json'},
+-          )
+-          .timeout(const Duration(seconds: 8));
++      final http.Response resp = await http.get(
++        Uri.parse('$kSubscriptionBaseUrl/api/history/$mac'),
++        headers: const <String, String>{'Accept': 'application/json'},
++      ).timeout(const Duration(seconds: 8));
+       if (resp.statusCode != 200) return;
+       final Map<String, dynamic> body =
+           jsonDecode(resp.body) as Map<String, dynamic>;
+       final Object? rec = body['recent'];
+       if (rec is List && rec.isNotEmpty) {
+-        final List<String> ids =
+-            rec.map((Object? e) => e.toString()).toList();
++        final List<String> ids = rec.map((Object? e) => e.toString()).toList();
+         await RecentlyWatchedRepository.instance.seedIfEmpty(ids);
+       }
+     } catch (e) {
+@@ -406,12 +437,10 @@ abstract final class RemoteSourceRepository {
+     try {
+       final String mac = await DeviceIdentity.instance.mac;
+       if (!mac.startsWith('MK:')) return <Map<String, dynamic>>[];
+-      final http.Response resp = await http
+-          .get(
+-            Uri.parse('$kSubscriptionBaseUrl/api/device-source/$mac'),
+-            headers: const <String, String>{'Accept': 'application/json'},
+-          )
+-          .timeout(const Duration(seconds: 8));
++      final http.Response resp = await http.get(
++        Uri.parse('$kSubscriptionBaseUrl/api/device-source/$mac'),
++        headers: const <String, String>{'Accept': 'application/json'},
++      ).timeout(const Duration(seconds: 8));
+       if (resp.statusCode != 200) return <Map<String, dynamic>>[];
+       final Map<String, dynamic> body =
+           jsonDecode(resp.body) as Map<String, dynamic>;
+@@ -486,13 +515,14 @@ abstract final class RemoteSourceRepository {
+     // liste le client doit regarder — et le client, lui, ne sait pas la
+     // changer dans l'app. Dès qu'UNE source porte le drapeau, elle seule
+     // est activée ; les autres sont importées sans prendre la main.
+-    final bool anyExplicit = all.any((Map<String, dynamic> s) => s['active'] == true);
++    final bool anyExplicit =
++        all.any((Map<String, dynamic> s) => s['active'] == true);
+     if (anyExplicit) return source['active'] == true;
+
+     final bool isLab = (source['origin'] as String?) == 'lab';
+     if (!isLab) return true;
+-    final bool hasRealSource = all.any(
+-        (Map<String, dynamic> s) => (s['origin'] as String?) != 'lab');
++    final bool hasRealSource =
++        all.any((Map<String, dynamic> s) => (s['origin'] as String?) != 'lab');
+     return !hasRealSource;
+   }
+
+@@ -508,8 +538,7 @@ abstract final class RemoteSourceRepository {
+   /// Depuis quand le panel assigne-t-il cette source ? (`assigned_at`, ms).
+   ///
+   ///  0 = le serveur ne le dit pas (Worker plus ancien que le 17/09). Le
+-  ///  juge des empreintes ne bloque alors pas : on préfère une source de
+-  ///  trop à un client payant devant un écran vide.
++  ///  choix de suppression locale reste prioritaire sans date plus récente.
+   static int _assignationMs(Map<String, dynamic> src) {
+     final Object? v = src['assigned_at'];
+     if (v is int) return v;
+@@ -531,10 +560,9 @@ abstract final class RemoteSourceRepository {
+     // ce libellé est ensuite STOCKÉ comme nom de la playlist — comme tout
+     // nom de playlist, il est figé à la création (champ libre, pas
+     // re-localisable à l'affichage).
+-    final String label =
+-        (src['label'] as String?)?.trim().isNotEmpty == true
+-            ? (src['label'] as String).trim()
+-            : l10nNow.playlistDefaultSubscription;
++    final String label = (src['label'] as String?)?.trim().isNotEmpty == true
++        ? (src['label'] as String).trim()
++        : l10nNow.playlistDefaultSubscription;
+     final String? epg = (src['epg_url'] as String?)?.trim();
+
+     // On s'assure que la liste locale est chargée avant la dédup.
+@@ -580,17 +608,20 @@ abstract final class RemoteSourceRepository {
+         // liste est « déjà là », mais avec des identifiants morts. On écrit
+         // les nouveaux et on recharge le catalogue — sinon le client voit
+         // ses chaînes tomber et ne peut rien y faire depuis sa TV.
+-        if (existingXtream.id != null && existingXtream.xtreamPassword != pass) {
++        if (existingXtream.id != null &&
++            existingXtream.xtreamPassword != pass) {
+           try {
+             await PlaylistRepository.instance
+                 .updateXtreamPassword(existingXtream.id!, pass);
+-            final Playlist updated = existingXtream.copyWith(xtreamPassword: pass);
++            final Playlist updated =
++                existingXtream.copyWith(xtreamPassword: pass);
+             await PlaylistRepository.instance.refreshPlaylist(updated);
+             if (kDebugMode) {
+               debugPrint('[RemoteSource] identifiants mis a jour ($server)');
+             }
+           } catch (e) {
+-            if (kDebugMode) debugPrint('[RemoteSource] maj identifiants KO: $e');
++            if (kDebugMode)
++              debugPrint('[RemoteSource] maj identifiants KO: $e');
+           }
+         }
+         await _activateIfAsked(existingXtream, makeActive);
+@@ -634,7 +665,9 @@ abstract final class RemoteSourceRepository {
+       // l'API. Le téléphone restait sur « Pas encore de chaînes ». Si
+       // l'API refuse, repli sur le fichier M3U (ci-dessous).
+       final ({String server, String username, String password})? creds =
+-          m3uLinkAsM3u ? null : SourceLinkUtils.tryExtractXtreamCredentials(m3u);
++          m3uLinkAsM3u
++              ? null
++              : SourceLinkUtils.tryExtractXtreamCredentials(m3u);
+       if (creds != null) {
+         final RemoteSyncResult? viaApi = await _applyGetPhpAsXtream(
+           src: src,
+@@ -722,7 +755,8 @@ abstract final class RemoteSourceRepository {
+           p.xtreamUsername == creds.username) {
+         await _activateIfAsked(p, makeActive);
+         await _rememberProvision(ProvisionKey.m3u(m3u));
+-        await _rememberProvision(ProvisionKey.xtream(creds.server, creds.username));
++        await _rememberProvision(
++            ProvisionKey.xtream(creds.server, creds.username));
+         return RemoteSyncResult.loaded;
+       }
+     }
+@@ -736,9 +770,11 @@ abstract final class RemoteSourceRepository {
+         makeActive: makeActive,
+         httpClient: xtreamHttpForTest?.call(),
+       );
+-      final bool wasPanelM3u = (await _loadProvisioned()).contains(ProvisionKey.m3u(m3u));
++      final bool wasPanelM3u =
++          (await _loadProvisioned()).contains(ProvisionKey.m3u(m3u));
+       await _rememberProvision(ProvisionKey.m3u(m3u));
+-      await _rememberProvision(ProvisionKey.xtream(creds.server, creds.username));
++      await _rememberProvision(
++          ProvisionKey.xtream(creds.server, creds.username));
+       // L'ancienne copie « fichier M3U » de CE lien, posée par le panel
+       // avant cette version, ferait doublon (même abonnement deux fois) :
+       // on la retire, la liste Xtream la remplace.
+@@ -751,7 +787,8 @@ abstract final class RemoteSourceRepository {
+       }
+       return RemoteSyncResult.loaded;
+     } catch (e) {
+-      if (kDebugMode) debugPrint('[RemoteSource] get.php par API refusé, repli M3U : $e');
++      if (kDebugMode)
++        debugPrint('[RemoteSource] get.php par API refusé, repli M3U : $e');
+       return null;
+     }
+   }
+@@ -781,7 +818,8 @@ abstract final class RemoteSourceRepository {
+
+   /// Enlève du téléphone les listes que le panel avait posées et qu'il ne
+   /// sert plus (retirées ou éteintes). Rien d'autre.
+-  static Future<void> _dropNoLongerServed(List<Map<String, dynamic>> active) async {
++  static Future<void> _dropNoLongerServed(
++      List<Map<String, dynamic>> active) async {
+     final Set<ProvisionKey> provisioned = await _loadProvisioned();
+     final Set<ProvisionKey> served = keysOfServed(active);
+     final Set<ProvisionKey> drop = provisioned.difference(served);
+@@ -794,6 +832,7 @@ abstract final class RemoteSourceRepository {
+       // Une liste encore servie sous une AUTRE empreinte (lien get.php
+       // devenu compte Xtream) reste.
+       if (served.any((ProvisionKey k) => _playlistIs(p, k))) continue;
++      await CloudBackupRepository.instance.rememberPanelRemoval(p);
+       await PlaylistRepository.instance.deletePlaylist(p.id!);
+     }
+     await _forgetProvision(drop);
+@@ -808,6 +847,9 @@ abstract final class RemoteSourceRepository {
+   }
+
+   static Future<void> _rememberProvision(ProvisionKey key) async {
++    // Une nouvelle assignation du panel autorise à nouveau CETTE source
++    // dans les sauvegardes ; les autres suppressions restent mémorisées.
++    await CloudBackupRepository.instance.forgetPanelRemoval(key);
+     final SharedPreferences prefs = await SharedPreferences.getInstance();
+     final List<String> raw = prefs.getStringList(_kProvisioned) ?? <String>[];
+     if (raw.contains(key.wire)) return;
+@@ -839,12 +881,18 @@ abstract final class RemoteSourceRepository {
+       orders: orders,
+     );
+     if (drop.isEmpty) return;
++    // Un ancien backup peut encore être en transit avant toute insertion
++    // locale. Sa source doit rester supprimée même dans cette fenêtre.
++    for (final ProvisionKey key in drop) {
++      await CloudBackupRepository.instance.rememberPanelRemovalKey(key);
++    }
+     final List<Playlist> local =
+         await PlaylistRepository.instance.getAllPlaylists();
+     for (final Playlist p in local) {
+       if (p.id == null) continue;
+       final bool hit = drop.any((ProvisionKey k) => _playlistIs(p, k));
+       if (!hit) continue;
++      await CloudBackupRepository.instance.rememberPanelRemoval(p);
+       await PlaylistRepository.instance.deletePlaylist(p.id!);
+     }
+     await _forgetProvision(drop);
+diff --git a/lib/features/playlists/data/source_opt_outs.dart b/lib/features/playlists/data/source_opt_outs.dart
+index c1b5344..38d7a3f 100644
+--- a/lib/features/playlists/data/source_opt_outs.dart
++++ b/lib/features/playlists/data/source_opt_outs.dart
+@@ -53,17 +53,16 @@
+ //  Plus besoin du WebSocket pour ça : la comparaison se fait sur le
+ //  chemin normal, celui qui marche déjà puisque les messages passent.
+ //
+-//  DANS LE DOUTE, ON NE BLOQUE PAS. Serveur sans date, préférences
+-//  illisibles, empreinte sans date : on laisse passer. Les deux erreurs
+-//  ne coûtent pas pareil — une source qui revient une fois de trop est
+-//  agaçante et visible ; un client payant devant un écran vide coûte un
+-//  abonnement et un appel.
++//  15/10/2026 : une absence de date serveur ne constitue pas une nouvelle
++//  attribution. Une suppression volontaire datée reste donc prioritaire.
++//  Seule une attribution explicitement plus récente permet la récupération.
+ // =========================================================
+
+ import 'package:flutter/foundation.dart';
+ import 'package:shared_preferences/shared_preferences.dart';
+
+ import '../domain/playlist.dart';
++import 'source_link_utils.dart';
+
+ abstract final class SourceOptOuts {
+   /// v1 : simple liste d'empreintes, SANS date. Encore lue une fois pour
+@@ -75,7 +74,7 @@ abstract final class SourceOptOuts {
+   static const String _kKey = 'remote.source.optout.v2';
+
+   static String _fpXtream(String server, String user) =>
+-      'x|${server.trim()}|${user.trim()}';
++      'x|${SourceLinkUtils.sanitizeXtreamServer(server)}|${user.trim()}';
+   static String _fpM3u(String url) => 'm|${url.trim()}';
+
+   /// Empreinte d'une playlist locale (null = type inconnu, rien à poser).
+@@ -94,9 +93,19 @@ abstract final class SourceOptOuts {
+     try {
+       final SharedPreferences prefs = await SharedPreferences.getInstance();
+       final Map<String, int> all = await _lire(prefs);
+-      all[fp] = DateTime.now().millisecondsSinceEpoch;
++      final deletedAt = DateTime.now().millisecondsSinceEpoch;
++      all[fp] = deletedAt;
++      // Le même abonnement peut être relu comme fichier M3U ou via Xtream.
++      // Mémoriser l'alias empêche un changement de représentation de le recréer.
++      if (p.type == PlaylistType.m3u) {
++        final credentials =
++            SourceLinkUtils.tryExtractXtreamCredentials(p.m3uUrl ?? '');
++        if (credentials != null) {
++          all[_fpXtream(credentials.server, credentials.username)] = deletedAt;
++        }
++      }
+       await _ecrire(prefs, all);
+-      if (kDebugMode) debugPrint('[OptOut] posé : $fp');
++      if (kDebugMode) debugPrint('[OptOut] suppression volontaire mémorisée');
+     } catch (_) {
+       // best-effort — au pire la source revient une fois de plus.
+     }
+@@ -105,7 +114,7 @@ abstract final class SourceOptOuts {
+   /// La provision automatique doit-elle SAUTER cette source Xtream ?
+   ///
+   ///  [assignedAt] = `assigned_at` renvoyé par le serveur (ms). `null` ou
+-  ///  0 = le serveur ne le dit pas (vieux Worker) → on NE BLOQUE PAS.
++  ///  0 = date absente : une suppression volontaire reste prioritaire.
+   static Future<bool> isXtreamOptedOut(
+     String server,
+     String user, {
+@@ -117,6 +126,21 @@ abstract final class SourceOptOuts {
+   static Future<bool> isM3uOptedOut(String url, {int? assignedAt}) =>
+       _doitSauter(_fpM3u(url), assignedAt);
+
++  /// Vérifie aussi les alias get.php/Xtream d'un ancien instantané cloud.
++  static Future<bool> isBackupOptedOut(Map<String, Object?> source) async {
++    final String url = '${source['m3u_url'] ?? ''}'.trim();
++    if (url.isNotEmpty) {
++      if (await isM3uOptedOut(url)) return true;
++      final credentials = SourceLinkUtils.tryExtractXtreamCredentials(url);
++      if (credentials != null &&
++          await isXtreamOptedOut(credentials.server, credentials.username))
++        return true;
++    }
++    final String server = '${source['xtream_server'] ?? ''}'.trim();
++    return server.isNotEmpty &&
++        await isXtreamOptedOut(server, '${source['xtream_username'] ?? ''}');
++  }
++
+   /// LE JUGE. Fonction pure, sortie exprès du stockage pour être testable.
+   ///
+   ///  [suppressionMs] : quand le client l'a supprimée (0 / null = inconnu).
+@@ -127,10 +151,9 @@ abstract final class SourceOptOuts {
+     // Jamais supprimée → rien à sauter.
+     if (supp <= 0) return false;
+     final int assign = assignationMs ?? 0;
+-    // Le serveur ne dit pas depuis quand il l'assigne (vieux Worker, ou
+-    // empreinte migrée). On ne peut pas trancher — donc on ne bloque pas :
+-    // priver un client payant coûte plus cher qu'une source de trop.
+-    if (assign <= 0) return false;
++    // L'absence de date n'est pas une preuve de réattribution. Actualiser
++    // une réponse ancienne ou incomplète doit respecter le choix du client.
++    if (assign <= 0) return true;
+     // Réassignée APRÈS la suppression → le revendeur a reparlé depuis.
+     // Strictement supérieur : à égalité de milliseconde, la suppression
+     // gagne (elle est forcément postérieure à l'assignation qu'elle vise).
+@@ -215,7 +238,8 @@ abstract final class SourceOptOuts {
+   ) async {
+     await prefs.setStringList(
+       _kKey,
+-      all.entries.map((MapEntry<String, int> e) => '${e.key}|${e.value}')
++      all.entries
++          .map((MapEntry<String, int> e) => '${e.key}|${e.value}')
+           .toList(),
+     );
+   }
+diff --git a/test/core/app/panel_live_wait_test.dart b/test/core/app/panel_live_wait_test.dart
+index 3fd05be..07d1bcc 100644
+--- a/test/core/app/panel_live_wait_test.dart
++++ b/test/core/app/panel_live_wait_test.dart
+@@ -13,6 +13,11 @@ import 'package:http/http.dart' as http;
+ import 'package:http/testing.dart';
+ import 'package:shared_preferences/shared_preferences.dart';
+ import 'package:tv_king/core/app/panel_live_wait.dart';
++import 'package:tv_king/features/device/data/device_identity.dart';
++
++// Clé attendue sur disque, indépendante du calcul du service : les tests
++// peuvent ainsi s'exécuter aussi contre sa version antérieure.
++String _cursorKey(String mac) => 'zuno.mobile.live_wait_cursor.v2.$mac';
+
+ void main() {
+   TestWidgetsFlutterBinding.ensureInitialized();
+@@ -30,9 +35,17 @@ void main() {
+     });
+
+     test('délai écoulé sans ordre, ordre déjà vu, corps illisible : rien', () {
+-      expect(readLiveWait(<String, Object>{'timeout': true, 'box': <Object>[]}, 4).changed, isFalse);
++      expect(
++        readLiveWait(<String, Object>{
++          'timeout': true,
++          'box': <Object>[],
++        }, 4).changed,
++        isFalse,
++      );
+       final LiveWaitStep old = readLiveWait(<String, Object>{
+-        'box': <Map<String, Object>>[<String, Object>{'id': 3}],
++        'box': <Map<String, Object>>[
++          <String, Object>{'id': 3},
++        ],
+       }, 4);
+       expect(old.changed, isFalse);
+       expect(old.cursor, 4, reason: 'le curseur ne recule jamais');
+@@ -55,6 +68,7 @@ void main() {
+       SharedPreferences.setMockInitialValues(<String, Object>{
+         'device.virtual_mac.v1': 'MK:30:70:0E:D7:5B',
+       });
++      DeviceIdentity.instance.debugResetCache();
+       w = PanelLiveWait.instance;
+       w.stop();
+       syncs = 0;
+@@ -68,20 +82,28 @@ void main() {
+       int calls = 0;
+       final List<String> afters = <String>[];
+       w.clientFactory = () => MockClient((http.Request r) async {
+-            expect(r.url.path, '/api/box/wait/MK:30:70:0E:D7:5B');
+-            afters.add(r.url.queryParameters['after'] ?? '');
+-            calls++;
+-            if (calls == 1) {
+-              // Le serveur garde la requête ouverte jusqu'au clic du panel.
+-              await panelClick.future;
+-              return http.Response(jsonEncode(<String, Object>{
+-                'box': <Map<String, Object>>[<String, Object>{'id': 12, 'kind': 'source_clear'}],
+-              }), 200);
+-            }
+-            // Ensuite : attente sans ordre.
+-            await Future<void>.delayed(const Duration(milliseconds: 50));
+-            return http.Response(jsonEncode(<String, Object>{'timeout': true, 'box': <Object>[]}), 200);
+-          });
++        expect(r.url.path, '/api/box/wait/MK:30:70:0E:D7:5B');
++        afters.add(r.url.queryParameters['after'] ?? '');
++        calls++;
++        if (calls == 1) {
++          // Le serveur garde la requête ouverte jusqu'au clic du panel.
++          await panelClick.future;
++          return http.Response(
++            jsonEncode(<String, Object>{
++              'box': <Map<String, Object>>[
++                <String, Object>{'id': 12, 'kind': 'source_clear'},
++              ],
++            }),
++            200,
++          );
++        }
++        // Ensuite : attente sans ordre.
++        await Future<void>.delayed(const Duration(milliseconds: 50));
++        return http.Response(
++          jsonEncode(<String, Object>{'timeout': true, 'box': <Object>[]}),
++          200,
++        );
++      });
+       w.start();
+       await Future<void>.delayed(const Duration(milliseconds: 100));
+       expect(syncs, 0, reason: 'rien tant que le panel n’a rien envoyé');
+@@ -92,26 +114,152 @@ void main() {
+         await Future<void>.delayed(const Duration(milliseconds: 5));
+       }
+       expect(syncs, 1);
+-      expect(sw.elapsedMilliseconds, lessThan(1000), reason: 'à l’instant, pas au tour de 60 s');
++      expect(
++        sw.elapsedMilliseconds,
++        lessThan(1000),
++        reason: 'à l’instant, pas au tour de 60 s',
++      );
+       await Future<void>.delayed(const Duration(milliseconds: 150));
+-      expect(afters.skip(1).every((String a) => a == '12'), isTrue,
+-          reason: 'l’ordre n’est pas retraité : curseur avancé à 12');
++      expect(
++        afters.skip(1).every((String a) => a == '12'),
++        isTrue,
++        reason: 'l’ordre n’est pas retraité : curseur avancé à 12',
++      );
+       expect(syncs, 1);
+-      expect((await SharedPreferences.getInstance()).getInt(kLiveWaitCursorKey), 12);
++      expect(
++        (await SharedPreferences.getInstance()).getInt(
++          _cursorKey('MK:30:70:0E:D7:5B'),
++        ),
++        12,
++      );
+     });
+
+-    test('serveur sans canal (404) : l’écoute s’arrête, pas de boucle', () async {
+-      int calls = 0;
+-      w.clientFactory = () => MockClient((http.Request r) async {
+-            calls++;
++    test(
++      'une relecture en échec ne consomme pas la suppression et est retentée',
++      () async {
++        final Completer<void> firstAttempt = Completer<void>();
++        final Completer<void> retried = Completer<void>();
++        final List<String?> afters = <String?>[];
++        w.onChange = () async {
++          syncs++;
++          if (syncs == 1) {
++            firstAttempt.complete();
++            throw StateError('réseau indisponible pendant la relecture');
++          }
++          retried.complete();
++        };
++        w.clientFactory = () => MockClient((http.Request r) async {
++          afters.add(r.url.queryParameters['after']);
++          if (r.url.queryParameters['after'] == '12') {
+             return http.Response('{}', 404);
+-          });
++          }
++          return http.Response(
++            jsonEncode(<String, Object>{
++              'box': <Map<String, Object>>[
++                <String, Object>{'id': 12, 'kind': 'source_clear'},
++              ],
++            }),
++            200,
++          );
++        });
++
++        w.start();
++        await firstAttempt.future.timeout(const Duration(seconds: 1));
++        final SharedPreferences prefs = await SharedPreferences.getInstance();
++        expect(
++          prefs.getInt(_cursorKey('MK:30:70:0E:D7:5B')),
++          isNull,
++          reason: 'recevoir un ordre ne prouve pas son application',
++        );
++        await retried.future.timeout(const Duration(seconds: 4));
++        await Future<void>.delayed(const Duration(milliseconds: 50));
++        expect(afters, <String>['0', '0', '12']);
++        expect(syncs, 2);
++        expect(prefs.getInt(_cursorKey('MK:30:70:0E:D7:5B')), 12);
++      },
++    );
++
++    test(
++      'une nouvelle MAC repart avec son curseur, même si l’ancien était élevé',
++      () async {
++        const String firstMac = 'MK:30:70:0E:D7:5B';
++        const String nextMac = 'MK:11:22:33:44:55';
++        final SharedPreferences prefs = await SharedPreferences.getInstance();
++        await prefs.setInt('zuno.mobile.live_wait_cursor.v1', 900);
++        await prefs.setInt(_cursorKey(firstMac), 500);
++        final List<String> requests = <String>[];
++        final Completer<void> secondIdentitySeen = Completer<void>();
++        w.onChange = () async {
++          syncs++;
++          if (syncs == 1) await DeviceIdentity.instance.adopt(nextMac);
++        };
++        w.clientFactory = () => MockClient((http.Request r) async {
++          requests.add('${r.url.path}?after=${r.url.queryParameters['after']}');
++          if (r.url.path.endsWith(firstMac)) {
++            return http.Response('{"box":[{"id":501,"kind":"source"}]}', 200);
++          }
++          if (r.url.queryParameters['after'] == '0') {
++            return http.Response(
++              '{"box":[{"id":1,"kind":"source_clear"}]}',
++              200,
++            );
++          }
++          secondIdentitySeen.complete();
++          return http.Response('{}', 404);
++        });
++
++        w.start();
++        await secondIdentitySeen.future.timeout(const Duration(seconds: 1));
++        expect(requests, <String>[
++          '/api/box/wait/$firstMac?after=500',
++          '/api/box/wait/$nextMac?after=0',
++          '/api/box/wait/$nextMac?after=1',
++        ]);
++        expect(syncs, 2);
++        expect(prefs.getInt(_cursorKey(nextMac)), 1);
++        expect(prefs.getInt(_cursorKey(firstMac)), 500);
++      },
++    );
++
++    test('arrêter pendant une relecture ne valide pas un ordre dans une ancienne génération', () async {
++      final Completer<void> started = Completer<void>();
++      final Completer<void> finish = Completer<void>();
++      w.onChange = () async {
++        started.complete();
++        await finish.future;
++      };
++      w.clientFactory = () => MockClient(
++        (http.Request r) async =>
++            http.Response('{"box":[{"id":12,"kind":"source_clear"}]}', 200),
++      );
+       w.start();
+-      await Future<void>.delayed(const Duration(milliseconds: 200));
+-      expect(calls, 1);
+-      expect(syncs, 0);
++      await started.future.timeout(const Duration(seconds: 1));
++      w.stop();
++      finish.complete();
++      await Future<void>.delayed(const Duration(milliseconds: 50));
++      expect(
++        (await SharedPreferences.getInstance()).getInt(
++          _cursorKey('MK:30:70:0E:D7:5B'),
++        ),
++        isNull,
++      );
+     });
+
++    test(
++      'serveur sans canal (404) : l’écoute s’arrête, pas de boucle',
++      () async {
++        int calls = 0;
++        w.clientFactory = () => MockClient((http.Request r) async {
++          calls++;
++          return http.Response('{}', 404);
++        });
++        w.start();
++        await Future<void>.delayed(const Duration(milliseconds: 200));
++        expect(calls, 1);
++        expect(syncs, 0);
++      },
++    );
++
+     test('ordres pendant une relecture : une seule relance, jamais deux en parallèle', () async {
+       int inFlight = 0;
+       int maxInFlight = 0;
+@@ -129,7 +277,11 @@ void main() {
+       slow.complete();
+       await Future<void>.delayed(const Duration(milliseconds: 50));
+       expect(maxInFlight, 1);
+-      expect(syncs, 2, reason: 'la première + une relance pour les ordres arrivés pendant');
++      expect(
++        syncs,
++        2,
++        reason: 'la première + une relance pour les ordres arrivés pendant',
++      );
+     });
+   });
+ }
+diff --git a/test/features/playlists/cloud_backup_panel_removal_test.dart b/test/features/playlists/cloud_backup_panel_removal_test.dart
+new file mode 100644
+index 0000000..befc018
+--- /dev/null
++++ b/test/features/playlists/cloud_backup_panel_removal_test.dart
+@@ -0,0 +1,294 @@
++// Suppression réelle SQLite + ancien instantané cloud : une liste effacée
++// au panel ne doit pas revenir au prochain démarrage. Les sources privées
++// et la restauration sur une installation neuve restent disponibles.
++import 'dart:async';
++import 'dart:convert';
++import 'dart:io';
++
++import 'package:flutter_test/flutter_test.dart';
++import 'package:http/http.dart' as http;
++import 'package:http/testing.dart';
++// Interface fournie par path_provider, déjà utilisée par les tests SQLite.
++// ignore: depend_on_referenced_packages
++import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
++import 'package:shared_preferences/shared_preferences.dart';
++import 'package:sqflite_common_ffi/sqflite_ffi.dart';
++import 'package:tv_king/core/flavor/flavor.dart';
++import 'package:tv_king/features/playlists/data/cloud_backup_repository.dart';
++import 'package:tv_king/features/playlists/data/playlist_database.dart';
++import 'package:tv_king/features/playlists/data/playlist_repository.dart';
++import 'package:tv_king/features/playlists/data/remote_source_repository.dart';
++import 'package:tv_king/features/playlists/data/source_opt_outs.dart';
++import 'package:tv_king/features/playlists/domain/panel_source_decision.dart';
++import 'package:tv_king/features/playlists/domain/playlist.dart';
++
++const String _mac = 'MK:24:2A:D0:0E:F3';
++const String _panelUrl = 'http://panel-source.invalid/list.m3u';
++const String _personalUrl = 'http://personal-source.invalid/list.m3u';
++
++class _Paths extends PathProviderPlatform {
++  _Paths(this.root);
++  final String root;
++  @override
++  Future<String?> getApplicationDocumentsPath() async => root;
++  @override
++  Future<String?> getApplicationSupportPath() async => root;
++  @override
++  Future<String?> getTemporaryPath() async => root;
++}
++
++Playlist _playlist(String url) => Playlist(
++      id: null,
++      name: 'Source de test',
++      type: PlaylistType.m3u,
++      createdAt: 1,
++      m3uUrl: url,
++    );
++
++class _Server {
++  List<Map<String, Object?>> sources = <Map<String, Object?>>[];
++  List<Map<String, Object?>> backup = <Map<String, Object?>>[];
++  final List<String> downloads = <String>[];
++  int backupReads = 0;
++  Completer<void>? backupStarted;
++  Completer<void>? finishBackup;
++  Completer<void>? downloadStarted;
++  Completer<void>? finishDownload;
++
++  http.Client client() => MockClient((http.Request request) async {
++        if (request.url.path.startsWith('/api/device-source/')) {
++          return http.Response(
++            jsonEncode(<String, Object?>{'mac': _mac, 'sources': sources}),
++            200,
++          );
++        }
++        if (request.url.path.startsWith('/api/backup/')) {
++          backupReads++;
++          backupStarted?.complete();
++          if (finishBackup != null) await finishBackup!.future;
++          return http.Response(
++            jsonEncode(<String, Object?>{
++              'data': <String, Object?>{
++                'v': 1,
++                'playlists': backup,
++                'favorites': <String>[],
++              },
++            }),
++            200,
++          );
++        }
++        if (request.url.host.endsWith('-source.invalid')) {
++          downloads.add(request.url.toString());
++          downloadStarted?.complete();
++          if (finishDownload != null) await finishDownload!.future;
++          return http.Response(
++            '#EXTM3U\n#EXTINF:-1 group-title="Test",Chaîne\n'
++            'http://stream.invalid/1.ts\n',
++            200,
++          );
++        }
++        return http.Response('{}', 404);
++      });
++
++  Future<void> sync() =>
++      http.runWithClient(() async => RemoteSourceRepository.sync(), client);
++  Future<void> restore() => http.runWithClient(
++        CloudBackupRepository.instance.restoreIfNeeded,
++        client,
++      );
++}
++
++void main() {
++  TestWidgetsFlutterBinding.ensureInitialized();
++  sqfliteFfiInit();
++  databaseFactory = databaseFactoryFfiNoIsolate;
++  final Directory directory = Directory.systemTemp.createTempSync(
++    'mobile-backup-removal-',
++  );
++  PathProviderPlatform.instance = _Paths(directory.path);
++  FlavorConfig.setCurrent(FlavorConfig.sevenMotion);
++
++  setUp(() async {
++    SharedPreferences.setMockInitialValues(<String, Object>{
++      'device.virtual_mac.v1': _mac,
++    });
++    final Database db = await PlaylistDatabase.instance.database;
++    await db.delete('channels');
++    await db.delete('playlists');
++  });
++
++  test('suppression volontaire dans app bloque un ancien backup', () async {
++    await SourceOptOuts.markDeleted(_playlist(_panelUrl));
++    final server = _Server()
++      ..backup = [
++        _playlist(_panelUrl).toMap(),
++        _playlist(_personalUrl).toMap()
++      ];
++    await server.restore();
++    final lists = await PlaylistRepository.instance.getAllPlaylists();
++    expect(lists.map((p) => p.m3uUrl), [_personalUrl]);
++  });
++
++  test(
++    'source panel effacée puis redémarrage : le backup ne la recrée pas',
++    () async {
++      final _Server server = _Server()
++        ..sources = <Map<String, Object?>>[
++          <String, Object?>{'type': 'm3u', 'm3u_url': _panelUrl},
++        ];
++      await server.sync();
++      final List<Playlist> before =
++          await PlaylistRepository.instance.getAllPlaylists();
++      expect(before, hasLength(1));
++      server.backup = before.map((Playlist p) => p.toMap()).toList();
++      server.sources = <Map<String, Object?>>[];
++      await server.sync();
++      expect(await PlaylistRepository.instance.getAllPlaylists(), isEmpty);
++
++      await server.restore();
++
++      expect(await PlaylistRepository.instance.getAllPlaylists(), isEmpty);
++      expect(server.downloads, <String>[_panelUrl]);
++    },
++  );
++
++  test(
++    'une suppression ciblée conserve la source personnelle du backup',
++    () async {
++      await CloudBackupRepository.instance.rememberPanelRemoval(
++        _playlist(_panelUrl),
++      );
++      final _Server server = _Server()
++        ..backup = <Map<String, Object?>>[
++          _playlist(_panelUrl).toMap(),
++          _playlist(_personalUrl).toMap(),
++        ];
++      await server.restore();
++      final List<Playlist> restored =
++          await PlaylistRepository.instance.getAllPlaylists();
++      expect(restored, hasLength(1));
++      expect(restored.single.m3uUrl, _personalUrl);
++      expect(server.downloads, <String>[_personalUrl]);
++    },
++  );
++
++  test(
++    'une source supprimée en Xtream ne revient pas sous son lien get.php',
++    () async {
++      await CloudBackupRepository.instance.rememberPanelRemoval(
++        const Playlist(
++          id: null,
++          name: 'Compte test',
++          type: PlaylistType.xtream,
++          createdAt: 1,
++          xtreamServer: 'http://panel-source.invalid',
++          xtreamUsername: 'test',
++        ),
++      );
++      final _Server server = _Server()
++        ..backup = <Map<String, Object?>>[
++          _playlist(
++            'http://panel-source.invalid/get.php?username=test&password=test',
++          ).toMap(),
++        ];
++      await server.restore();
++      expect(await PlaylistRepository.instance.getAllPlaylists(), isEmpty);
++      expect(server.downloads, isEmpty);
++    },
++  );
++
++  test(
++    'nouvelle provision : seule cette source retrouve le droit de restaurer',
++    () async {
++      await CloudBackupRepository.instance.rememberPanelRemoval(
++        _playlist(_panelUrl),
++      );
++      await CloudBackupRepository.instance.rememberPanelRemoval(
++        _playlist(_personalUrl),
++      );
++      await CloudBackupRepository.instance.forgetPanelRemoval(
++        const ProvisionKey.m3u(_panelUrl),
++      );
++      final _Server server = _Server()
++        ..backup = <Map<String, Object?>>[
++          _playlist(_panelUrl).toMap(),
++          _playlist(_personalUrl).toMap(),
++        ];
++      await server.restore();
++      expect(server.downloads, <String>[_panelUrl]);
++    },
++  );
++
++  test(
++    'restauration déjà réussie : pas de répétition après un effacement',
++    () async {
++      SharedPreferences.setMockInitialValues(<String, Object>{
++        'device.virtual_mac.v1': _mac,
++        'backup.restored.v1': true,
++      });
++      final _Server server = _Server()
++        ..backup = <Map<String, Object?>>[_playlist(_personalUrl).toMap()];
++      await server.restore();
++      expect(server.backupReads, 0);
++      expect(await PlaylistRepository.instance.getAllPlaylists(), isEmpty);
++    },
++  );
++
++  test('installation neuve : la récupération personnelle fonctionne', () async {
++    final _Server server = _Server()
++      ..backup = <Map<String, Object?>>[_playlist(_personalUrl).toMap()];
++    await server.restore();
++    expect(await PlaylistRepository.instance.getAllPlaylists(), hasLength(1));
++    expect(server.downloads, <String>[_personalUrl]);
++  });
++
++  test(
++    'suppression pendant le téléchargement : pas de résurrection tardive',
++    () async {
++      final _Server server = _Server()
++        ..backup = <Map<String, Object?>>[_playlist(_panelUrl).toMap()]
++        ..downloadStarted = Completer<void>()
++        ..finishDownload = Completer<void>();
++      final Future<void> restore = server.restore();
++      await server.downloadStarted!.future;
++      await CloudBackupRepository.instance.rememberPanelRemoval(
++        _playlist(_panelUrl),
++      );
++      server.finishDownload!.complete();
++      await restore;
++      expect(await PlaylistRepository.instance.getAllPlaylists(), isEmpty);
++    },
++  );
++  test('panel vidé pendant la lecture du backup, avant toute insertion locale',
++      () async {
++    SharedPreferences.setMockInitialValues(<String, Object>{
++      'device.virtual_mac.v1': _mac,
++      'panel.provisioned_v1': <String>['m3u|$_panelUrl'],
++    });
++    final _Server server = _Server()
++      ..backup = <Map<String, Object?>>[_playlist(_panelUrl).toMap()]
++      ..backupStarted = Completer<void>()
++      ..finishBackup = Completer<void>();
++    final Future<void> restore = server.restore();
++    await server.backupStarted!.future;
++    expect(await PlaylistRepository.instance.getAllPlaylists(), isEmpty);
++    await server.sync();
++    server.finishBackup!.complete();
++    await restore;
++    expect(await PlaylistRepository.instance.getAllPlaylists(), isEmpty);
++    expect(server.downloads, isEmpty);
++  });
++  test('réassignation Xtream : l’ancien alias M3U du compte est autorisé',
++      () async {
++    const String url =
++        'http://panel-source.invalid/get.php?username=test&password=test';
++    await CloudBackupRepository.instance.rememberPanelRemoval(_playlist(url));
++    await CloudBackupRepository.instance.forgetPanelRemoval(
++        const ProvisionKey.xtream('http://panel-source.invalid', 'test'));
++    final _Server server = _Server()
++      ..backup = <Map<String, Object?>>[_playlist(url).toMap()];
++    await server.restore();
++    expect(await PlaylistRepository.instance.getAllPlaylists(), hasLength(1));
++    expect(server.downloads, <String>[url]);
++  });
++}
+diff --git a/test/features/playlists/panel_getphp_reconcile_test.dart b/test/features/playlists/panel_getphp_reconcile_test.dart
+index 513d665..4a4de8e 100644
+--- a/test/features/playlists/panel_getphp_reconcile_test.dart
++++ b/test/features/playlists/panel_getphp_reconcile_test.dart
+@@ -9,6 +9,7 @@
+ //  Vrai RemoteSourceRepository.sync, vrai SQLite (FFI), serveur simulé
+ //  (MockClient) qui joue le Worker ET le fournisseur. Hôtes *.invalid.
+ // =========================================================
++import 'dart:async';
+ import 'dart:convert';
+ import 'dart:io';
+
+@@ -22,11 +23,13 @@ import 'package:tv_king/core/flavor/flavor.dart';
+ import 'package:tv_king/features/playlists/data/playlist_database.dart';
+ import 'package:tv_king/features/playlists/data/playlist_repository.dart';
+ import 'package:tv_king/features/playlists/data/remote_source_repository.dart';
++import 'package:tv_king/features/playlists/data/source_opt_outs.dart';
+ import 'package:tv_king/features/playlists/domain/panel_source_decision.dart';
+ import 'package:tv_king/features/playlists/domain/playlist.dart';
+
+ const String kMac = 'MK:24:2A:D0:0E:F3';
+-const String kGetPhp = 'http://fournisseur.invalid:8080/get.php?username=u1&password=p1&type=m3u_plus&output=ts';
++const String kGetPhp =
++    'http://fournisseur.invalid:8080/get.php?username=u1&password=p1&type=m3u_plus&output=ts';
+ const String kOther = 'http://autre.invalid/liste.m3u';
+
+ class _Fs extends PathProviderPlatform {
+@@ -44,41 +47,72 @@ class _Server {
+   List<Map<String, Object?>> sources = <Map<String, Object?>>[];
+   int m3uDownloads = 0;
+   bool apiDown = false;
++  int sourceReads = 0;
++  Completer<void>? firstReadStarted;
++  Completer<void>? releaseFirstRead;
+
+   http.Client client() => MockClient((http.Request r) async {
+         final String path = r.url.path;
+         if (path.startsWith('/api/device-source/')) {
+-          return http.Response(jsonEncode(<String, Object?>{'mac': kMac, 'sources': sources}), 200);
++          final String snapshot =
++              jsonEncode(<String, Object?>{'mac': kMac, 'sources': sources});
++          sourceReads++;
++          if (sourceReads == 1 && releaseFirstRead != null) {
++            firstReadStarted?.complete();
++            await releaseFirstRead!.future;
++          }
++          return http.Response(snapshot, 200);
+         }
+         if (path.startsWith('/api/')) return http.Response('{}', 404);
+-        if (r.url.host == 'fournisseur.invalid' && path.endsWith('player_api.php')) {
++        if (r.url.host == 'fournisseur.invalid' &&
++            path.endsWith('player_api.php')) {
+           if (apiDown) return http.Response('refusé', 403);
+           final String action = r.url.queryParameters['action'] ?? '';
+           if (action.isEmpty) {
+-            return http.Response(jsonEncode(<String, Object?>{
+-              'user_info': <String, Object?>{'auth': 1, 'status': 'Active'},
+-              'server_info': <String, Object?>{'url': 'fournisseur.invalid', 'port': '8080'},
+-            }), 200);
++            return http.Response(
++                jsonEncode(<String, Object?>{
++                  'user_info': <String, Object?>{'auth': 1, 'status': 'Active'},
++                  'server_info': <String, Object?>{
++                    'url': 'fournisseur.invalid',
++                    'port': '8080'
++                  },
++                }),
++                200);
+           }
+           if (action == 'get_live_categories') {
+-            return http.Response(jsonEncode(<Map<String, String>>[
+-              <String, String>{'category_id': '1', 'category_name': 'Sport'},
+-            ]), 200);
++            return http.Response(
++                jsonEncode(<Map<String, String>>[
++                  <String, String>{
++                    'category_id': '1',
++                    'category_name': 'Sport'
++                  },
++                ]),
++                200);
+           }
+           if (action == 'get_live_streams') {
+-            return http.Response(jsonEncode(<Map<String, Object>>[
+-              for (int i = 1; i <= 5; i++)
+-                <String, Object>{'stream_id': i, 'name': 'Chaîne $i', 'category_id': '1'},
+-            ]), 200);
++            return http.Response(
++                jsonEncode(<Map<String, Object>>[
++                  for (int i = 1; i <= 5; i++)
++                    <String, Object>{
++                      'stream_id': i,
++                      'name': 'Chaîne $i',
++                      'category_id': '1'
++                    },
++                ]),
++                200);
+           }
+           return http.Response('[]', 200);
+         }
+         if (r.url.host == 'fournisseur.invalid' && path.endsWith('get.php')) {
+           m3uDownloads++;
+-          return http.Response('#EXTM3U\n#EXTINF:-1 group-title="G",Lourde\nhttp://127.0.0.1/s/1.ts\n', 200);
++          return http.Response(
++              '#EXTM3U\n#EXTINF:-1 group-title="G",Lourde\nhttp://127.0.0.1/s/1.ts\n',
++              200);
+         }
+         if (r.url.host == 'autre.invalid') {
+-          return http.Response('#EXTM3U\n#EXTINF:-1 group-title="G",Autre\nhttp://127.0.0.1/s/9.ts\n', 200);
++          return http.Response(
++              '#EXTM3U\n#EXTINF:-1 group-title="G",Autre\nhttp://127.0.0.1/s/9.ts\n',
++              200);
+         }
+         return http.Response('inconnu', 404);
+       });
+@@ -88,32 +122,67 @@ Future<void> _sync(_Server s) {
+   RemoteSourceRepository.xtreamHttpForTest = s.client;
+   return http.runWithClient(() => RemoteSourceRepository.sync(), s.client);
+ }
+-Future<List<Playlist>> _lists() => PlaylistRepository.instance.getAllPlaylists();
++
++Future<List<Playlist>> _lists() =>
++    PlaylistRepository.instance.getAllPlaylists();
+
+ void main() {
+   TestWidgetsFlutterBinding.ensureInitialized();
+   sqfliteFfiInit();
+   databaseFactory = databaseFactoryFfiNoIsolate;
+-  PathProviderPlatform.instance = _Fs(Directory.systemTemp.createTempSync('zuno-phone-').path);
++  PathProviderPlatform.instance =
++      _Fs(Directory.systemTemp.createTempSync('zuno-phone-').path);
+   FlavorConfig.setCurrent(FlavorConfig.sevenMotion);
+
+   setUp(() async {
+-    SharedPreferences.setMockInitialValues(<String, Object>{'device.virtual_mac.v1': kMac});
++    SharedPreferences.setMockInitialValues(
++        <String, Object>{'device.virtual_mac.v1': kMac});
+     RemoteSourceRepository.m3uLinkAsM3u = false;
+     final Database db = await PlaylistDatabase.instance.database;
+     await db.delete('channels');
+     await db.delete('playlists');
+   });
+
+-  test('lien get.php du panel → compte Xtream (API), pas le fichier M3U', () async {
+-    final _Server s = _Server()..sources = <Map<String, Object?>>[
+-      <String, Object?>{'type': 'm3u', 'm3u_url': kGetPhp, 'label': 'Mon abonnement'},
+-    ];
++  test(
++      'suppression dans app puis actualisation sans date serveur reste supprimée',
++      () async {
++    final s = _Server()
++      ..sources = [
++        {'type': 'm3u', 'm3u_url': kGetPhp}
++      ];
++    await _sync(s);
++    final p = (await _lists()).single;
++    await SourceOptOuts.markDeleted(p);
++    await PlaylistRepository.instance.deletePlaylist(p.id!);
++    await _sync(s);
++    expect(await _lists(), isEmpty);
++    RemoteSourceRepository.signalPushed();
++    await _sync(s);
++    expect(await _lists(), isEmpty,
++        reason: 'un réveil générique ne réattribue pas une source');
++    s.sources.single['assigned_at'] =
++        DateTime.now().millisecondsSinceEpoch + 1000;
++    await _sync(s);
++    expect(await _lists(), hasLength(1),
++        reason: 'une réattribution plus récente reste possible');
++  });
++
++  test('lien get.php du panel → compte Xtream (API), pas le fichier M3U',
++      () async {
++    final _Server s = _Server()
++      ..sources = <Map<String, Object?>>[
++        <String, Object?>{
++          'type': 'm3u',
++          'm3u_url': kGetPhp,
++          'label': 'Mon abonnement'
++        },
++      ];
+     await _sync(s);
+     final List<Playlist> ps = await _lists();
+     expect(ps, hasLength(1));
+     expect(ps.single.type, PlaylistType.xtream);
+-    expect(s.m3uDownloads, 0, reason: 'le gros fichier M3U n’est jamais téléchargé');
++    expect(s.m3uDownloads, 0,
++        reason: 'le gros fichier M3U n’est jamais téléchargé');
+   });
+
+   test('API refusée → repli sur le fichier M3U', () async {
+@@ -128,80 +197,133 @@ void main() {
+     expect(s.m3uDownloads, 1);
+   });
+
+-  test('retirer UNE liste au panel : enlevée du téléphone, l’autre reste ; ajoutée à la main : jamais touchée', () async {
+-    final _Server s = _Server()..sources = <Map<String, Object?>>[
+-      <String, Object?>{'type': 'm3u', 'm3u_url': kGetPhp},
+-      <String, Object?>{'type': 'm3u', 'm3u_url': kOther},
+-    ];
++  test(
++      'retirer UNE liste au panel : enlevée du téléphone, l’autre reste ; ajoutée à la main : jamais touchée',
++      () async {
++    final _Server s = _Server()
++      ..sources = <Map<String, Object?>>[
++        <String, Object?>{'type': 'm3u', 'm3u_url': kGetPhp},
++        <String, Object?>{'type': 'm3u', 'm3u_url': kOther},
++      ];
+     await _sync(s);
+     expect(await _lists(), hasLength(2));
+     // Liste ajoutée à la main par le client (pas posée par le panel).
+     await http.runWithClient(
+-        () => PlaylistRepository.instance.addM3uPlaylist(name: 'Perso', url: 'http://autre.invalid/perso.m3u'),
++        () => PlaylistRepository.instance.addM3uPlaylist(
++            name: 'Perso', url: 'http://autre.invalid/perso.m3u'),
+         s.client);
+     expect(await _lists(), hasLength(3));
+
+-    s.sources = <Map<String, Object?>>[<String, Object?>{'type': 'm3u', 'm3u_url': kOther}];
++    s.sources = <Map<String, Object?>>[
++      <String, Object?>{'type': 'm3u', 'm3u_url': kOther}
++    ];
+     await _sync(s);
+     final List<Playlist> ps = await _lists();
+-    expect(ps.any((Playlist p) => p.type == PlaylistType.xtream), isFalse, reason: 'retirée = retirée');
++    expect(ps.any((Playlist p) => p.type == PlaylistType.xtream), isFalse,
++        reason: 'retirée = retirée');
+     expect(ps.any((Playlist p) => p.m3uUrl == kOther), isTrue);
+-    expect(ps.any((Playlist p) => p.name == 'Perso'), isTrue, reason: 'liste du client intacte');
++    expect(ps.any((Playlist p) => p.name == 'Perso'), isTrue,
++        reason: 'liste du client intacte');
+   });
+
+   test('éteindre au panel : enlevée ; rallumer : revient', () async {
+-    final _Server s = _Server()..sources = <Map<String, Object?>>[
+-      <String, Object?>{'type': 'm3u', 'm3u_url': kGetPhp},
+-      <String, Object?>{'type': 'm3u', 'm3u_url': kOther},
+-    ];
++    final _Server s = _Server()
++      ..sources = <Map<String, Object?>>[
++        <String, Object?>{'type': 'm3u', 'm3u_url': kGetPhp},
++        <String, Object?>{'type': 'm3u', 'm3u_url': kOther},
++      ];
+     await _sync(s);
+     s.sources = <Map<String, Object?>>[
+       <String, Object?>{'type': 'm3u', 'm3u_url': kGetPhp, 'enabled': false},
+       <String, Object?>{'type': 'm3u', 'm3u_url': kOther},
+     ];
+     await _sync(s);
+-    expect((await _lists()).any((Playlist p) => p.type == PlaylistType.xtream), isFalse);
++    expect((await _lists()).any((Playlist p) => p.type == PlaylistType.xtream),
++        isFalse);
+     s.sources = <Map<String, Object?>>[
+       <String, Object?>{'type': 'm3u', 'm3u_url': kGetPhp},
+       <String, Object?>{'type': 'm3u', 'm3u_url': kOther},
+     ];
+     await _sync(s);
+-    expect((await _lists()).where((Playlist p) => p.type == PlaylistType.xtream), hasLength(1));
++    expect(
++        (await _lists()).where((Playlist p) => p.type == PlaylistType.xtream),
++        hasLength(1));
+   });
+
+-  test('contre-preuve repli zuno.mobile.panel_reconcile_off : la liste retirée RESTE (ancien défaut)', () async {
++  test(
++      'contre-preuve repli zuno.mobile.panel_reconcile_off : la liste retirée RESTE (ancien défaut)',
++      () async {
+     SharedPreferences.setMockInitialValues(<String, Object>{
+       'device.virtual_mac.v1': kMac,
+       RemoteSourceRepository.panelReconcileOffKey: true,
+     });
+-    final _Server s = _Server()..sources = <Map<String, Object?>>[
+-      <String, Object?>{'type': 'm3u', 'm3u_url': kGetPhp},
+-      <String, Object?>{'type': 'm3u', 'm3u_url': kOther},
+-    ];
++    final _Server s = _Server()
++      ..sources = <Map<String, Object?>>[
++        <String, Object?>{'type': 'm3u', 'm3u_url': kGetPhp},
++        <String, Object?>{'type': 'm3u', 'm3u_url': kOther},
++      ];
+     await _sync(s);
+-    s.sources = <Map<String, Object?>>[<String, Object?>{'type': 'm3u', 'm3u_url': kOther}];
++    s.sources = <Map<String, Object?>>[
++      <String, Object?>{'type': 'm3u', 'm3u_url': kOther}
++    ];
+     await _sync(s);
+-    expect((await _lists()).any((Playlist p) => p.type == PlaylistType.xtream), isTrue,
++    expect((await _lists()).any((Playlist p) => p.type == PlaylistType.xtream),
++        isTrue,
+         reason: 'le défaut d’avant est bien reproduit');
+   });
+
+-  test('contre-preuve repli zuno.mobile.getphp_as_m3u : le fichier M3U est téléchargé', () async {
++  test(
++      'contre-preuve repli zuno.mobile.getphp_as_m3u : le fichier M3U est téléchargé',
++      () async {
+     SharedPreferences.setMockInitialValues(<String, Object>{
+       'device.virtual_mac.v1': kMac,
+       RemoteSourceRepository.m3uLinkAsM3uKey: true,
+     });
+-    final _Server s = _Server()..sources = <Map<String, Object?>>[
+-      <String, Object?>{'type': 'm3u', 'm3u_url': kGetPhp},
+-    ];
++    final _Server s = _Server()
++      ..sources = <Map<String, Object?>>[
++        <String, Object?>{'type': 'm3u', 'm3u_url': kGetPhp},
++      ];
+     await _sync(s);
+     expect((await _lists()).single.type, PlaylistType.m3u);
+     expect(s.m3uDownloads, 1);
+   });
+
+-  test('empreintes servies : un lien get.php vaut aussi pour son compte Xtream', () {
+-    final Set<ProvisionKey> k = RemoteSourceRepository.keysOfServed(<Map<String, dynamic>>[
++  test('empreintes servies : un lien get.php vaut aussi pour son compte Xtream',
++      () {
++    final Set<ProvisionKey> k =
++        RemoteSourceRepository.keysOfServed(<Map<String, dynamic>>[
+       <String, dynamic>{'type': 'm3u', 'm3u_url': kGetPhp},
+     ]);
+-    expect(k.map((ProvisionKey e) => e.kind).toSet(), <String>{'m3u', 'xtream'});
++    expect(
++        k.map((ProvisionKey e) => e.kind).toSet(), <String>{'m3u', 'xtream'});
++  });
++
++  test(
++      'suppression pendant une réponse ancienne : aucune résurrection, tous les appels attendent le dernier état',
++      () async {
++    final _Server s = _Server()
++      ..sources = <Map<String, Object?>>[
++        <String, Object?>{'type': 'm3u', 'm3u_url': kGetPhp},
++      ]
++      ..firstReadStarted = Completer<void>()
++      ..releaseFirstRead = Completer<void>();
++    final Future<void> oldRead = _sync(s);
++    await s.firstReadStarted!.future;
++    // Le panel retire la source pendant que l'ancienne réponse est en vol.
++    s.sources = <Map<String, Object?>>[];
++    final Future<void> clear = _sync(s);
++    await Future<void>.delayed(const Duration(milliseconds: 20));
++    final int concurrentReads = s.sourceReads;
++    s.releaseFirstRead!.complete();
++    await Future.wait(<Future<void>>[oldRead, clear]);
++    expect(concurrentReads, 1,
++        reason: 'une seule réponse peut écrire en base à la fois');
++    expect(s.sourceReads, 2,
++        reason: 'la suppression réclame bien une nouvelle lecture');
++    expect(await _lists(), isEmpty,
++        reason: 'la dernière décision du panel gagne');
++    final Database db = await PlaylistDatabase.instance.database;
++    expect(await db.query('channels'), isEmpty,
++        reason: 'le catalogue supprimé ne reste pas en SQLite');
+   });
+ }
+diff --git a/test/features/playlists/source_opt_outs_test.dart b/test/features/playlists/source_opt_outs_test.dart
+index 7431998..f9a4a60 100644
+--- a/test/features/playlists/source_opt_outs_test.dart
++++ b/test/features/playlists/source_opt_outs_test.dart
+@@ -72,23 +72,11 @@ void main() {
+     });
+   });
+
+-  group('DANS LE DOUTE, ON NE BLOQUE PAS', () {
+-    //  Les deux erreurs ne coûtent pas pareil : une source qui revient
+-    //  une fois de trop est agaçante et visible ; un client payant
+-    //  devant un écran vide coûte un abonnement et un appel.
+-
+-    test('serveur qui ne dit pas depuis quand (vieux Worker) → on passe', () {
+-      expect(
+-        SourceOptOuts.doitSauter(suppressionMs: mardi, assignationMs: null),
+-        isFalse,
+-        reason: 'un Worker antérieur au 17/09 n\'envoie pas assigned_at ; '
+-            'bloquer ici rendrait la mise à jour du serveur obligatoire '
+-            'pour que les clients revoient leurs chaînes',
+-      );
+-      expect(
+-        SourceOptOuts.doitSauter(suppressionMs: mardi, assignationMs: 0),
+-        isFalse,
+-      );
++  group('date serveur absente : respecter une suppression datée', () {
++    test('suppression locale et attribution inconnue → on saute', () {
++      expect(SourceOptOuts.doitSauter(suppressionMs: mardi), isTrue);
++      expect(SourceOptOuts.doitSauter(suppressionMs: mardi, assignationMs: 0),
++          isTrue);
+     });
+
+     test('empreinte migrée depuis la v1 (date inconnue = 0) → on passe', () {
+diff --git a/lib/features/player/domain/playback_evidence_gate.dart b/lib/features/player/domain/playback_evidence_gate.dart
+new file mode 100644
+index 00000000..aa1e142d
+--- /dev/null
++++ b/lib/features/player/domain/playback_evidence_gate.dart
+@@ -0,0 +1,12 @@
++/// Lie une preuve de lecture au lecteur réellement ouvert pour la sélection.
++/// Un zap révoque immédiatement l’ancien lecteur, avant le debounce et son
++/// arrêt asynchrone. Seule la nouvelle ouverture peut réautoriser des preuves.
++class PlaybackEvidenceGate<T extends Object> {
++  T? _source;
++
++  void revoke() => _source = null;
++
++  void bind(T source) => _source = source;
++
++  bool accepts(T source) => identical(_source, source);
++}
+diff --git a/lib/features/player/presentation/video_player_screen.dart b/lib/features/player/presentation/video_player_screen.dart
+index 6553e7d0..976e07ca 100644
+--- a/lib/features/player/presentation/video_player_screen.dart
++++ b/lib/features/player/presentation/video_player_screen.dart
+@@ -18,6 +18,8 @@
+ import 'dart:async';
+ import 'dart:io';
+ 
++import '../domain/playback_evidence_gate.dart';
++
+ import 'package:cached_network_image/cached_network_image.dart';
+ import 'package:flutter/foundation.dart';
+ import 'package:flutter/material.dart';
+@@ -256,6 +258,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+   // joué puis coupé (problème réseau). Auto-réinitialisé au zap : si l'id
+   // courant ≠ cet id, la chaîne courante n'a jamais joué.
+   String? _playedChannelId;
++  final PlaybackEvidenceGate<Player> _playbackEvidence =
++      PlaybackEvidenceGate<Player>();
+   // Diagnostic multi-signature (« ça marche sur IBO, pas chez nous ») : id de
+   // Chaîne « échec → sonde → cascade » : extraite dans un contrôleur
+   // TESTABLE de bout en bout (StreamBlockedFallback) — le widget ne
+@@ -609,6 +613,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+   /// Abonne l'instance mpv COURANTE aux événements. Les abonnements
+   /// vivent dans `_subs` : annulés puis re-créés à chaque recyclage.
+   void _attachPlayerListeners() {
++    final Player evidenceSource = _player;
+     _subs.add(_player.stream.buffering.listen(_onBufferingChanged));
+     // Durée du flux : quand elle devient connue (> 0), c'est de la
+     // VOD/replay seekable → l'OSD doit afficher la barre de progression
+@@ -766,18 +771,21 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+       );
+     }));
+     _subs.add(_player.stream.height.listen((int? h) {
++      if (!_playbackEvidence.accepts(evidenceSource)) return;
+       final int? w = _player.state.width;
+       if (h != null && w != null && h > 0 && w > 0) {
+         StreamDiagnostics.instance.recordCodecs(resolution: '$w×$h');
+         // Des dimensions vidéo = AU MOINS une frame décodée : c'est LE
+         // signal fiable « la lecture a réellement démarré ».
+-        _markPlaybackStarted();
++        _markPlaybackStarted(evidenceSource);
+       }
+     }));
+     // Flux audio-only (radio) : pas de frame vidéo, mais la position
+     // avance dès que le son décode — même signal de vrai démarrage.
+     _subs.add(_player.stream.position.listen((Duration pos) {
+-      if (pos > const Duration(milliseconds: 400)) _markPlaybackStarted();
++      if (pos > const Duration(milliseconds: 400)) {
++        _markPlaybackStarted(evidenceSource);
++      }
+     }));
+   }
+ 
+@@ -1022,6 +1030,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+     if (_isRecording) {
+       _stopRecording();
+     }
++    // Pendant les 400 ms de debounce, les images de l’ancien lecteur
++    // arrivent encore. Elles ne prouvent rien sur la chaîne sélectionnée.
++    ++_openGeneration; // invalide aussi une ouverture encore en attente
++    _playbackEvidence.revoke();
+     setState(() {
+       _currentChannel = next;
+       _hasError = false;
+@@ -1415,8 +1427,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+       return;
+     }
+     // FERMETURE ATTENDUE + instance mpv neuve AVANT toute connexion.
++    _playbackEvidence.revoke();
+     await _recyclePlayer();
+     if (!mounted || gen != _openGeneration) return;
++    _playbackEvidence.bind(_player);
+     if (_lastOpenedUrl != null && _lastOpenedUrl != realUrl) {
+       _reconnectGate.reset();
+       _triedEngines.clear();
+@@ -2549,7 +2563,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+   /// mpv, qui est vrai dès l'ouverture même quand le serveur a répondu
+   /// 404. C'est ce drapeau qui décide « coupure réseau » (erreur
+   /// directe) vs « jamais lu » (sonde + cascade de variantes).
+-  void _markPlaybackStarted() {
++  void _markPlaybackStarted(Player source) {
++    if (!mounted || !_playbackEvidence.accepts(source)) return;
+     _startupTimer?.cancel(); // le démarrage a VRAIMENT eu lieu → borne levée
+     _vodRelayFallbackTimer?.cancel(); // 1re image OK → pas de repli relais
+     // REPRISE APRÈS PAUSE LONGUE : le flux vient d'être ré-ouvert après que
+diff --git a/test/features/player/one_connection_zapping_test.dart b/test/features/player/one_connection_zapping_test.dart
+index 2533d82d..b617c9ad 100644
+--- a/test/features/player/one_connection_zapping_test.dart
++++ b/test/features/player/one_connection_zapping_test.dart
+@@ -33,6 +33,8 @@
+ import 'dart:async';
+ import 'dart:io';
+ 
++import 'package:tv_king/features/player/domain/playback_evidence_gate.dart';
++
+ import 'package:flutter_test/flutter_test.dart';
+ import 'package:tv_king/features/channels/domain/channel.dart';
+ import 'package:tv_king/features/player/data/local_stream_relay.dart';
+@@ -119,8 +121,12 @@ class _OneConnectionPanel {
+       }
+     });
+     _feeds.add(feed);
+-    unawaited(req.response.done
+-        .then((_) => onClosed(), onError: (Object _) => onClosed()));
++    unawaited(
++      req.response.done.then(
++        (_) => onClosed(),
++        onError: (Object _) => onClosed(),
++      ),
++    );
+   }
+ 
+   Future<void> close() async {
+@@ -139,13 +145,13 @@ class _OneConnectionPanel {
+ /// les objets de production.
+ class _ZapHarness {
+   _ZapHarness({required this.channels, required Duration retryBackoff})
+-      : current = channels.first {
++    : current = channels.first {
+     fallback = StreamBlockedFallback(
+       getChannel: () => current,
+       getOverrideUrl: () => null,
+       getEffectiveUrl: () => current.streamUrl,
+       isAlive: () => alive,
+-      hasDecodedFrames: () => (bytesByChannel[current.id] ?? 0) > 0,
++      hasDecodedFrames: () => playedChannelId == current.id,
+       getAdoptedAltUrl: () => null,
+       setAdoptedAltUrl: (_) {},
+       resetWatchdogBudget: () {},
+@@ -158,6 +164,9 @@ class _ZapHarness {
+   final List<Channel> channels;
+   Channel current;
+   bool alive = true;
++  String? playedChannelId;
++  int rejectedOldEvents = 0;
++  final evidence = PlaybackEvidenceGate<Object>();
+   late final StreamBlockedFallback fallback;
+   final List<String> blockedMessages = <String>[];
+   final Map<String, int> bytesByChannel = <String, int>{};
+@@ -170,6 +179,8 @@ class _ZapHarness {
+   /// ouverture via le relais ; un client HTTP local joue le rôle de mpv.
+   Future<void> open(String url) async {
+     final Channel target = current;
++    final Object player = Object();
++    evidence.revoke();
+     // STOP ATTENDU : on ferme le « mpv » précédent avant TOUTE nouvelle
+     // connexion (dans le widget : _recyclePlayer, stop/dispose awaités).
+     await _reading?.cancel();
+@@ -187,13 +198,21 @@ class _ZapHarness {
+     // émettre sa requête après l'open.
+     await Future<void>.delayed(const Duration(milliseconds: 30));
+     if (!alive || target.id != current.id) return;
++    evidence.bind(player);
+     _client = HttpClient();
+     try {
+-      final HttpClientResponse resp =
+-          await (await _client!.getUrl(Uri.parse(localUrl))).close();
++      final HttpClientResponse resp = await (await _client!.getUrl(
++        Uri.parse(localUrl),
++      )).close();
+       _reading = resp.listen((List<int> c) {
+-        bytesByChannel[target.id] =
+-            (bytesByChannel[target.id] ?? 0) + c.length;
++        // Comme le widget, le callback voit la sélection courante : sans
++        // garde, les octets anciens la déclareraient faussement démarrée.
++        if (evidence.accepts(player)) {
++          playedChannelId = current.id;
++        } else {
++          rejectedOldEvents++;
++        }
++        bytesByChannel[target.id] = (bytesByChannel[target.id] ?? 0) + c.length;
+       });
+     } catch (_) {
+       // Session fermée par le fail-fast du relais : l'événement
+@@ -204,6 +223,8 @@ class _ZapHarness {
+   /// « _applyZap » : l'UI change tout de suite, l'ouverture RÉSEAU est
+   /// débouncée 400 ms — les chaînes intermédiaires n'émettent RIEN.
+   void zapTo(Channel next) {
++    evidence.revoke();
++    playedChannelId = null;
+     current = next;
+     _debounce?.cancel();
+     _debounce = Timer(const Duration(milliseconds: 400), () {
+@@ -222,12 +243,12 @@ class _ZapHarness {
+ }
+ 
+ void main() {
+-  test(
+-      'INTÉGRATION 1-CONNEXION : zap rapide sur 5 chaînes → la finale '
++  test('INTÉGRATION 1-CONNEXION : zap rapide sur 5 chaînes → la finale '
+       'affiche des octets TS, zéro 403 non récupéré, jamais 2 connexions '
+       'simultanées', () async {
+     final _OneConnectionPanel panel = _OneConnectionPanel(
+-        await HttpServer.bind(InternetAddress.loopbackIPv4, 0));
++      await HttpServer.bind(InternetAddress.loopbackIPv4, 0),
++    );
+     // Source non-Xtream volontairement : si le backoff échouait, la
+     // cascade sortirait en erreur visible → blockedMessages non vide →
+     // le test échoue (aucun faux positif possible).
+@@ -254,8 +275,11 @@ void main() {
+     // ----- 1) Ouverture de la chaîne 1 (comme initState) --------------
+     await screen.open(channels.first.streamUrl);
+     await Future<void>.delayed(const Duration(milliseconds: 300));
+-    expect(screen.bytesByChannel['chan-1'] ?? 0, greaterThan(0),
+-        reason: 'la chaîne 1 doit diffuser avant le test de zapping');
++    expect(
++      screen.bytesByChannel['chan-1'] ?? 0,
++      greaterThan(0),
++      reason: 'la chaîne 1 doit diffuser avant le test de zapping',
++    );
+ 
+     // ----- 2) ZAP RAPIDE 2 → 3 → 4 → 5 (80 ms entre chaque) -----------
+     for (int i = 1; i < channels.length; i++) {
+@@ -273,39 +297,70 @@ void main() {
+     }
+ 
+     // ----- 4) Definition of Done -------------------------------------
+-    expect(screen.bytesByChannel['chan-5'] ?? 0, greaterThan(0),
+-        reason: 'la chaîne FINALE doit afficher des octets TS malgré le '
+-            '403 de libération.\nJournal:\n${_journal()}');
+-    expect(screen.blockedMessages, isEmpty,
+-        reason: 'zéro 403 non récupéré : le backoff doit reprendre en '
+-            'silence, sans erreur utilisateur');
+-    expect(panel.simultaneousAttempts, 0,
+-        reason: 'JAMAIS 2 connexions simultanées côté panel');
++    expect(
++      screen.bytesByChannel['chan-5'] ?? 0,
++      greaterThan(0),
++      reason:
++          'la chaîne FINALE doit afficher des octets TS malgré le '
++          '403 de libération.\nJournal:\n${_journal()}',
++    );
++    expect(
++      screen.blockedMessages,
++      isEmpty,
++      reason:
++          'zéro 403 non récupéré : le backoff doit reprendre en '
++          'silence, sans erreur utilisateur',
++    );
++    expect(
++      screen.rejectedOldEvents,
++      greaterThan(0),
++      reason: 'des événements anciens doivent réellement arriver pendant le debounce',
++    );
++    expect(
++      panel.simultaneousAttempts,
++      0,
++      reason: 'JAMAIS 2 connexions simultanées côté panel',
++    );
+     // Les chaînes intermédiaires (2, 3, 4) n'ont émis AUCUNE requête.
+     for (final int absorbed in <int>[2, 3, 4]) {
+       expect(
+         panel.requestedPaths.where(
+-            (String p) => p.contains('/live/USER/PASS/$absorbed.ts')),
++          (String p) => p.contains('/live/USER/PASS/$absorbed.ts'),
++        ),
+         isEmpty,
+         reason: 'zap absorbé = zéro requête (chaîne $absorbed)',
+       );
+     }
+     // Seules la chaîne de départ et la chaîne finale ont diffusé.
+-    expect(panel.streamedPaths,
+-        <String>['/live/USER/PASS/1.ts', '/live/USER/PASS/5.ts']);
++    expect(panel.streamedPaths, <String>[
++      '/live/USER/PASS/1.ts',
++      '/live/USER/PASS/5.ts',
++    ]);
+     // Le 403 de la fenêtre de libération a bien eu lieu ET a été
+     // récupéré (sinon l'assertion des octets aurait échoué).
+-    expect(panel.rejected403, greaterThanOrEqualTo(1),
+-        reason: 'le scénario doit passer par le 403 de libération');
++    expect(
++      panel.rejected403,
++      greaterThanOrEqualTo(1),
++      reason: 'le scénario doit passer par le 403 de libération',
++    );
+ 
+     // ----- 5) Contrats de journal (preuves de la mission) -------------
+     final String journal = _journal();
+-    expect(journal, contains('[backoff]'),
+-        reason: 'le backoff doit être journalisé');
+-    expect(journal, contains('retry silencieux'),
+-        reason: 'le retry unique doit être journalisé');
+-    expect(journal, isNot(contains('USER/PASS')),
+-        reason: 'identifiants toujours masqués dans le journal');
++    expect(
++      journal,
++      contains('[backoff]'),
++      reason: 'le backoff doit être journalisé',
++    );
++    expect(
++      journal,
++      contains('retry silencieux'),
++      reason: 'le retry unique doit être journalisé',
++    );
++    expect(
++      journal,
++      isNot(contains('USER/PASS')),
++      reason: 'identifiants toujours masqués dans le journal',
++    );
+ 
+     // ----- LIVRABLE : extrait du journal (à coller dans le rapport) ---
+     // ignore: avoid_print
+diff --git a/test/features/player/playback_evidence_gate_test.dart b/test/features/player/playback_evidence_gate_test.dart
+new file mode 100644
+index 00000000..fc09dc5a
+--- /dev/null
++++ b/test/features/player/playback_evidence_gate_test.dart
+@@ -0,0 +1,42 @@
++import 'package:flutter_test/flutter_test.dart';
++import 'package:tv_king/features/player/domain/playback_evidence_gate.dart';
++
++void main() {
++  test(
++    'un zap refuse les images anciennes pendant le debounce et après arrêt',
++    () {
++      final gate = PlaybackEvidenceGate<Object>();
++      final oldPlayer = Object();
++      final newPlayer = Object();
++      gate.bind(oldPlayer);
++      expect(gate.accepts(oldPlayer), isTrue);
++      gate.revoke();
++      // Reproduction du journal : image à +25 ms, ouverture à +400 ms.
++      expect(gate.accepts(oldPlayer), isFalse);
++      gate.bind(newPlayer);
++      expect(gate.accepts(oldPlayer), isFalse);
++      expect(gate.accepts(newPlayer), isTrue);
++    },
++  );
++
++  test(
++    'un lecteur neuf réutilisé après un zap avant ouverture reste autorisable',
++    () {
++      final gate = PlaybackEvidenceGate<Object>();
++      final player = Object();
++      expect(gate.accepts(player), isFalse);
++      gate.revoke();
++      gate.bind(player);
++      expect(gate.accepts(player), isTrue);
++    },
++  );
++
++  test('des zaps rapides ne réautorisent aucune ancienne image', () {
++    final gate = PlaybackEvidenceGate<Object>();
++    final player = Object();
++    gate.bind(player);
++    gate.revoke();
++    gate.revoke();
++    expect(gate.accepts(player), isFalse);
++  });
++}

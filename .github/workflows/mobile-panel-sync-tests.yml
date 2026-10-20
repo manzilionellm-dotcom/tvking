@@ -1,0 +1,85 @@
+name: 7 MOTION mobile — régressions du téléphone
+
+on:
+  push:
+    branches: ['feature/7motion-panel-sync', 'feature/7motion-foot-upcoming-20261020', 'feature/7motion-player-zap-20261020']
+  pull_request:
+    paths:
+      - 'patches/mobile-panel-sync.patch'
+      - 'patches/mobile-sport-gratuit.patch'
+      - 'patches/mobile-radio.patch'
+      - 'patches/mobile-identity.patch'
+      - 'patches/mobile-stability.patch'
+      - 'android-app/ci/mobile/**'
+      - '.github/workflows/mobile-panel-sync-tests.yml'
+
+# Tests du vrai code mobile préparé par la chaîne de livraison. Aucun
+# secret de signature ni droit de publication n'est nécessaire ici.
+permissions:
+  contents: read
+
+concurrency:
+  group: mobile-panel-sync-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          path: mission
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 37fdf3305c5de9d35e20fd6567df38008fc7a7ee
+          path: phone
+          persist-credentials: false
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+        with:
+          flutter-version: '3.47.7'
+          channel: stable
+      - name: Préparer le code mobile sans fusionner la lignée TV
+        working-directory: phone
+        run: |
+          git apply ../mission/patches/mobile-sport-gratuit.patch
+          git apply ../mission/patches/mobile-radio.patch
+          git apply --check ../mission/patches/mobile-panel-sync.patch
+          git apply ../mission/patches/mobile-panel-sync.patch
+          git apply --check ../mission/patches/mobile-identity.patch
+          git apply ../mission/patches/mobile-identity.patch
+          git apply --check ../mission/patches/mobile-stability.patch
+          git apply ../mission/patches/mobile-stability.patch
+          git apply --check ../mission/android-app/ci/mobile/adult-classification.patch
+          git apply ../mission/android-app/ci/mobile/adult-classification.patch
+          git apply --check ../mission/android-app/ci/mobile/player-terminal-fallback.patch
+          git apply ../mission/android-app/ci/mobile/player-terminal-fallback.patch
+          git apply --check ../mission/android-app/ci/mobile/mobile-back-gestures.patch
+          git apply ../mission/android-app/ci/mobile/mobile-back-gestures.patch
+          git apply --check ../mission/android-app/ci/mobile/football-upcoming.patch
+          git apply ../mission/android-app/ci/mobile/football-upcoming.patch
+          git apply --check ../mission/android-app/ci/mobile/player-session-handoff.patch
+          git apply ../mission/android-app/ci/mobile/player-session-handoff.patch
+          git diff --check
+          flutter pub get
+          flutter gen-l10n
+      - name: Vérifier la numérotation des APK publiés
+        working-directory: phone
+        run: bash ci/build_label_test.sh
+      - name: Analyser le code mobile complet
+        working-directory: phone
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+      - name: Vérifier les régressions et la suite mobile complète
+        working-directory: phone
+        run: |
+          mkdir -p build/premium-captures
+          flutter test --reporter expanded --dart-define=PREMIUM_CAPTURE_DIR=build/premium-captures
+      - name: Conserver les captures du vrai accueil mobile
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: 7motion-premium-preview
+          path: phone/build/premium-captures/*.png
+          if-no-files-found: ignore
+          retention-days: 14

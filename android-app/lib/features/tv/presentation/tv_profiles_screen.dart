@@ -11,6 +11,9 @@
 
 import 'package:flutter/material.dart';
 
+import '../../../core/i18n/l10n_extension.dart';
+import 'tv_profile_label.dart';
+
 import '../../profiles/data/profile_repository.dart';
 import '../../profiles/domain/family_profile.dart';
 import '../../profiles/domain/profile_catalog.dart';
@@ -67,8 +70,10 @@ class _TvProfilesScreenState extends State<TvProfilesScreen> {
   Future<void> _use(FamilyProfile target) async {
     final bool ok = await confirmProfileSwitch(context, target.id);
     if (!ok || !mounted) return;
-    final bool entered =
-        await ProfileRepository.instance.activate(target.id, leaveAllowed: true);
+    final bool entered = await ProfileRepository.instance.activate(
+      target.id,
+      leaveAllowed: true,
+    );
     if (entered && mounted) setState(() => _focusId = target.id);
   }
 
@@ -77,16 +82,19 @@ class _TvProfilesScreenState extends State<TvProfilesScreen> {
     if (kids && _cat.hasKids) return;
     final String? name = await askProfileName(
       context,
-      title: kids ? 'Profil Enfants' : 'Nouveau profil',
-      initial: kids ? 'Enfants' : '',
+      title: kids ? context.l10n.tvKidsProfile : context.l10n.tvNewProfile,
+      initial: kids ? context.l10n.tvChildren : '',
     );
     if (name == null || !mounted) return;
     final FamilyProfile? created = await ProfileRepository.instance.addProfile(
       name: name,
       isKids: kids,
     );
-    if (created == null || !mounted) {
-      _toast(kids ? 'Un profil Enfants existe déjà.' : 'Impossible d\'ajouter.');
+    if (!mounted) return;
+    if (created == null) {
+      _toast(
+        kids ? context.l10n.tvKidsExists : context.l10n.tvProfileAddFailed,
+      );
       return;
     }
     // Entrer dans le nouveau profil ne demande pas de code.
@@ -100,21 +108,22 @@ class _TvProfilesScreenState extends State<TvProfilesScreen> {
     if (kids) await offerKidsPin(context);
     if (mounted) {
       setState(() => _focusId = created.id);
-      _toast(kids
-          ? 'Profil Enfants prêt. Le mode enfants reste allumé.'
-          : 'Profil « $name » créé.');
+      _toast(
+        kids ? context.l10n.tvKidsReady : context.l10n.tvProfileCreated(name),
+      );
     }
   }
 
   Future<void> _rename(FamilyProfile p) async {
+    final String initial = tvProfileLabel(context, p);
     final String? name = await askProfileName(
       context,
-      title: 'Renommer',
-      initial: p.name,
+      title: context.l10n.tvRename,
+      initial: initial,
     );
-    if (name == null) return;
+    if (name == null || name == initial) return;
     final bool ok = await ProfileRepository.instance.rename(p.id, name);
-    if (!ok && mounted) _toast('Nom vide ou trop long.');
+    if (!ok && mounted) _toast(context.l10n.tvNameInvalid);
   }
 
   Future<void> _delete(FamilyProfile p) async {
@@ -125,19 +134,19 @@ class _TvProfilesScreenState extends State<TvProfilesScreen> {
       if (!allowed || !mounted) return;
     }
     final bool sure = await _confirm(
-      'Supprimer « ${p.name} » ?',
-      'Ses favoris, son historique, sa reprise, ses rappels et son code '
-          'seront effacés. Les chaînes restent. Le profil 1 n\'est pas touché.',
+      context.l10n.tvProfileDeleteTitle(tvProfileLabel(context, p)),
+      context.l10n.tvProfileDeleteBody,
     );
     if (!sure || !mounted) return;
-    final bool ok = await ProfileRepository.instance.remove(p.id, leaveAllowed: allowed);
-    if (!ok && mounted) _toast('Ce profil ne peut pas être supprimé.');
+    final bool ok = await ProfileRepository.instance.remove(
+      p.id,
+      leaveAllowed: allowed,
+    );
+    if (!ok && mounted) _toast(context.l10n.tvProfileDeleteFailed);
   }
 
-  Future<bool> askLeave(BuildContext context) => confirmProfileSwitch(
-        context,
-        ProfileIds.origin,
-      );
+  Future<bool> askLeave(BuildContext context) =>
+      confirmProfileSwitch(context, ProfileIds.origin);
 
   Future<void> _toggleAsk() async {
     if (_cat.profiles.length < 2) return;
@@ -170,21 +179,28 @@ class _TvProfilesScreenState extends State<TvProfilesScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[
-                Text(title,
-                    textAlign: TextAlign.center,
-                    style: TvTokens.display(TvDimens.headline, color: TvTokens.text)),
+                Text(
+                  title,
+                  textAlign: TextAlign.center,
+                  style: TvTokens.display(
+                    TvDimens.headline,
+                    color: TvTokens.text,
+                  ),
+                ),
                 const SizedBox(height: 10),
-                Text(body,
-                    textAlign: TextAlign.center,
-                    style: TvTokens.ui(TvDimens.body, color: TvTokens.muted)),
+                Text(
+                  body,
+                  textAlign: TextAlign.center,
+                  style: TvTokens.ui(TvDimens.body, color: TvTokens.muted),
+                ),
                 const SizedBox(height: 20),
                 _DialogBtn(
-                  label: 'Supprimer',
+                  label: context.l10n.buttonDelete,
                   onSelect: () => Navigator.of(ctx).pop(true),
                 ),
                 const SizedBox(height: 10),
                 _DialogBtn(
-                  label: 'Annuler',
+                  label: context.l10n.buttonCancel,
                   autofocus: true,
                   primary: true,
                   onSelect: () => Navigator.of(ctx).pop(false),
@@ -210,12 +226,13 @@ class _TvProfilesScreenState extends State<TvProfilesScreen> {
     return ListView(
       padding: const EdgeInsets.only(bottom: 24),
       children: <Widget>[
-        Text('Profils',
-            style: TvTokens.display(TvDimens.displayM, color: TvTokens.text)),
+        Text(
+          context.l10n.tvProfiles,
+          style: TvTokens.display(TvDimens.displayM, color: TvTokens.text),
+        ),
         const SizedBox(height: 6),
         Text(
-          'Jusqu\'à 4. Favoris, historique, reprise, rappels et code sont '
-          'séparés. Les chaînes, non : elles restent pour tout le monde.',
+          context.l10n.tvProfilesHelp,
           style: TvTokens.ui(TvDimens.body, color: TvTokens.muted),
         ),
         const SizedBox(height: 18),
@@ -230,17 +247,30 @@ class _TvProfilesScreenState extends State<TvProfilesScreen> {
           const SizedBox(height: 10),
         ],
         const SizedBox(height: 8),
-        Text(focused.name,
-            style: TvTokens.ui(TvDimens.title, weight: FontWeight.w700, color: TvTokens.text)),
+        Text(
+          tvProfileLabel(context, focused),
+          style: TvTokens.ui(
+            TvDimens.title,
+            weight: FontWeight.w700,
+            color: TvTokens.text,
+          ),
+        ),
         const SizedBox(height: 4),
-        Text(_detail(focused, origin),
-            style: TvTokens.ui(TvDimens.label, color: TvTokens.muted)),
-        if (focused.isKids && focused.id == cat.activeId && _defaultPin == true) ...<Widget>[
+        Text(
+          _detail(focused, origin),
+          style: TvTokens.ui(TvDimens.label, color: TvTokens.muted),
+        ),
+        if (focused.isKids &&
+            focused.id == cat.activeId &&
+            _defaultPin == true) ...<Widget>[
           const SizedBox(height: 6),
           Text(
-            'Le code est encore 0000. Changez-le dans Contrôle parental.',
-            style: TvTokens.ui(TvDimens.label,
-                weight: FontWeight.w600, color: TvTokens.accentBright),
+            context.l10n.tvDefaultPinWarning,
+            style: TvTokens.ui(
+              TvDimens.label,
+              weight: FontWeight.w600,
+              color: TvTokens.accentBright,
+            ),
           ),
         ],
         const SizedBox(height: 14),
@@ -249,30 +279,32 @@ class _TvProfilesScreenState extends State<TvProfilesScreen> {
           runSpacing: 12,
           children: <Widget>[
             _Action(
-              label: 'Renommer',
+              label: context.l10n.tvRename,
               icon: Icons.edit_rounded,
               onSelect: () => _rename(focused),
             ),
             if (!origin)
               _Action(
-                label: 'Supprimer',
+                label: context.l10n.buttonDelete,
                 icon: Icons.delete_outline_rounded,
                 onSelect: () => _delete(focused),
               ),
             if (cat.canAdd)
               _Action(
-                label: 'Ajouter',
+                label: context.l10n.buttonAdd,
                 icon: Icons.person_add_rounded,
                 onSelect: () => _add(kids: false),
               ),
             if (cat.canAdd && !cat.hasKids)
               _Action(
-                label: 'Profil Enfants',
+                label: context.l10n.tvKidsProfile,
                 icon: Icons.child_care_rounded,
                 onSelect: () => _add(kids: true),
               ),
             _Action(
-              label: ask ? 'Choix au démarrage : oui' : 'Choix au démarrage : non',
+              label: ask
+                  ? context.l10n.tvAskProfileOn
+                  : context.l10n.tvAskProfileOff,
               icon: ask ? Icons.waving_hand_rounded : Icons.flash_on_rounded,
               onSelect: _toggleAsk,
             ),
@@ -281,10 +313,8 @@ class _TvProfilesScreenState extends State<TvProfilesScreen> {
         const SizedBox(height: 12),
         Text(
           cat.profiles.length < 2
-              ? 'Le choix au démarrage apparaît dès le 2e profil. '
-                  'Avec un seul profil, la box s\'ouvre directement.'
-              : '« Non » : la box s\'ouvre sur le dernier profil, sans écran. '
-                  'Vous pourrez toujours changer ici, ou depuis l\'accueil.',
+              ? context.l10n.tvProfileStartupSingle
+              : context.l10n.tvProfileStartupHelp,
           style: TvTokens.ui(TvDimens.caption, color: TvTokens.mutedDim),
         ),
       ],
@@ -293,14 +323,12 @@ class _TvProfilesScreenState extends State<TvProfilesScreen> {
 
   String _detail(FamilyProfile p, bool origin) {
     if (p.isKids) {
-      return 'Mode enfants verrouillé. On ne sort qu\'avec le code de ce profil. '
-          'L\'adulte est masqué. Le profil 1 garde vos anciennes données.';
+      return context.l10n.tvKidsProfileHelp;
     }
     if (origin) {
-      return 'Profil d\'origine : vos favoris, votre historique, votre reprise '
-          'et votre code d\'avant la mise à jour sont ici. Il ne se supprime pas.';
+      return context.l10n.tvOriginProfileHelp;
     }
-    return 'Tiroir à part. Supprimer ce profil n\'efface pas le profil 1.';
+    return context.l10n.tvSeparateProfileHelp;
   }
 }
 
@@ -329,7 +357,9 @@ class _Row extends StatelessWidget {
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
           decoration: BoxDecoration(
-            color: focused ? TvTokens.accent : (selected ? TvTokens.sel : TvTokens.card),
+            color: focused
+                ? TvTokens.accent
+                : (selected ? TvTokens.sel : TvTokens.card),
             borderRadius: BorderRadius.circular(TvTokens.rButton),
             border: Border.all(
               color: focused
@@ -339,24 +369,42 @@ class _Row extends StatelessWidget {
           ),
           child: Row(
             children: <Widget>[
-              Icon(ProfileLooks.icon(profile),
-                  size: 28,
-                  color: focused ? TvTokens.onAccent : ProfileLooks.color(profile)),
+              Icon(
+                ProfileLooks.icon(profile),
+                size: 28,
+                color: focused
+                    ? TvTokens.onAccent
+                    : ProfileLooks.color(profile),
+              ),
               const SizedBox(width: 14),
               Expanded(
-                child: Text(profile.name,
-                    style: TvTokens.ui(TvDimens.title, weight: FontWeight.w700, color: fg)),
+                child: Text(
+                  tvProfileLabel(context, profile),
+                  style: TvTokens.ui(
+                    TvDimens.title,
+                    weight: FontWeight.w700,
+                    color: fg,
+                  ),
+                ),
               ),
               if (profile.isKids)
-                Text('Enfants',
-                    style: TvTokens.ui(TvDimens.caption,
-                        color: focused ? TvTokens.onAccent : TvTokens.success)),
+                Text(
+                  context.l10n.tvChildren,
+                  style: TvTokens.ui(
+                    TvDimens.caption,
+                    color: focused ? TvTokens.onAccent : TvTokens.success,
+                  ),
+                ),
               if (active) ...<Widget>[
                 const SizedBox(width: 12),
-                Text('Actif',
-                    style: TvTokens.ui(TvDimens.caption,
-                        weight: FontWeight.w700,
-                        color: focused ? TvTokens.onAccent : TvTokens.accentBright)),
+                Text(
+                  context.l10n.tvProfileActive,
+                  style: TvTokens.ui(
+                    TvDimens.caption,
+                    weight: FontWeight.w700,
+                    color: focused ? TvTokens.onAccent : TvTokens.accentBright,
+                  ),
+                ),
               ],
             ],
           ),
@@ -367,7 +415,11 @@ class _Row extends StatelessWidget {
 }
 
 class _Action extends StatelessWidget {
-  const _Action({required this.label, required this.icon, required this.onSelect});
+  const _Action({
+    required this.label,
+    required this.icon,
+    required this.onSelect,
+  });
   final String label;
   final IconData icon;
   final VoidCallback onSelect;
@@ -383,15 +435,23 @@ class _Action extends StatelessWidget {
           decoration: BoxDecoration(
             color: focused ? TvTokens.accent : TvTokens.card,
             borderRadius: BorderRadius.circular(TvTokens.rButton),
-            border: Border.all(color: focused ? TvTokens.accent : TvTokens.line),
+            border: Border.all(
+              color: focused ? TvTokens.accent : TvTokens.line,
+            ),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
               Icon(icon, size: 20, color: fg),
               const SizedBox(width: 8),
-              Text(label,
-                  style: TvTokens.ui(TvDimens.label, weight: FontWeight.w700, color: fg)),
+              Text(
+                label,
+                style: TvTokens.ui(
+                  TvDimens.label,
+                  weight: FontWeight.w700,
+                  color: fg,
+                ),
+              ),
             ],
           ),
         );
@@ -427,11 +487,19 @@ class _DialogBtn extends StatelessWidget {
                 ? TvTokens.accent
                 : (primary ? TvTokens.sel : Colors.transparent),
             borderRadius: BorderRadius.circular(TvTokens.rButton),
-            border: Border.all(color: focused ? TvTokens.accent : TvTokens.line),
+            border: Border.all(
+              color: focused ? TvTokens.accent : TvTokens.line,
+            ),
           ),
-          child: Text(label,
-              textAlign: TextAlign.center,
-              style: TvTokens.ui(TvDimens.title, weight: FontWeight.w700, color: fg)),
+          child: Text(
+            label,
+            textAlign: TextAlign.center,
+            style: TvTokens.ui(
+              TvDimens.title,
+              weight: FontWeight.w700,
+              color: fg,
+            ),
+          ),
         );
       },
     );

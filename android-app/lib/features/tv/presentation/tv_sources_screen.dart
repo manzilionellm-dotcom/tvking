@@ -34,9 +34,7 @@ class TvSourcesScreen extends StatelessWidget {
   void _open(BuildContext context, OpenEntryMode mode) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => TvShell(
-          child: TvAddSourceScreen(initialMode: mode),
-        ),
+        builder: (_) => TvShell(child: TvAddSourceScreen(initialMode: mode)),
       ),
     );
   }
@@ -48,11 +46,14 @@ class TvSourcesScreen extends StatelessWidget {
       children: <Widget>[
         Row(
           children: <Widget>[
-            Text(context.l10n.tvMySources,
-                style: TextStyle(
-                    fontSize: TvDimens.displayS,
-                    fontWeight: FontWeight.w800,
-                    color: TvTokens.text)),
+            Text(
+              context.l10n.tvMySources,
+              style: TextStyle(
+                fontSize: TvDimens.displayS,
+                fontWeight: FontWeight.w800,
+                color: TvTokens.text,
+              ),
+            ),
             const Spacer(),
             _Pill(
               icon: Icons.add_rounded,
@@ -81,25 +82,27 @@ class TvSourcesScreen extends StatelessWidget {
             initialData: PlaylistRepository.instance.currentPlaylists,
             builder:
                 (BuildContext context, AsyncSnapshot<List<Playlist>> snap) {
-              final List<Playlist> items = snap.data ?? const <Playlist>[];
-              if (items.isEmpty) {
-                return Center(
-                  child: Text(
-                    'Aucune source pour le moment.\nAjoute un lien M3U, un compte Xtream ou un lien lecteur.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                        fontSize: TvDimens.body, color: TvTokens.mutedDim),
-                  ),
-                );
-              }
-              return ListView.separated(
-                padding: const EdgeInsets.only(right: 6, bottom: 8),
-                itemCount: items.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 10),
-                itemBuilder: (BuildContext context, int i) =>
-                    _SourceRow(playlist: items[i]),
-              );
-            },
+                  final List<Playlist> items = snap.data ?? const <Playlist>[];
+                  if (items.isEmpty) {
+                    return Center(
+                      child: Text(
+                        context.l10n.tvSourcesEmpty,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: TvDimens.body,
+                          color: TvTokens.mutedDim,
+                        ),
+                      ),
+                    );
+                  }
+                  return ListView.separated(
+                    padding: const EdgeInsets.only(right: 6, bottom: 8),
+                    itemCount: items.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 10),
+                    itemBuilder: (BuildContext context, int i) =>
+                        _SourceRow(playlist: items[i]),
+                  );
+                },
           ),
         ),
       ],
@@ -122,35 +125,45 @@ class _SourceRow extends StatelessWidget {
     // Une liste envoyée par le panel revient à la vérification suivante :
     // on le dit AVANT de supprimer (mesuré le 05/10/2026, « j'efface, il
     // revient après cinq minutes »). Le retrait définitif = panel.
-    final bool fromPanel = await RemoteSourceRepository.isServedByPanel(playlist);
+    final bool fromPanel = await RemoteSourceRepository.isServedByPanel(
+      playlist,
+    );
     if (!context.mounted) return;
     final bool? ok = await showDialog<bool>(
       context: context,
       builder: (BuildContext ctx) => AlertDialog(
         backgroundColor: TvTokens.card,
-        title: Text(context.l10n.tvDeleteQuestion,
-            style: TextStyle(color: TvTokens.text)),
+        title: Text(
+          context.l10n.tvDeleteQuestion,
+          style: TextStyle(color: TvTokens.text),
+        ),
         content: Text(
-            fromPanel
-                ? context.l10n.tvDeletePanelSourceConfirm(playlist.name)
-                : context.l10n.tvDeleteSourceConfirm(playlist.name),
-            style: TextStyle(color: TvTokens.muted)),
+          fromPanel
+              ? context.l10n.tvDeletePanelSourceConfirm(playlist.name)
+              : context.l10n.tvDeleteSourceConfirm(playlist.name),
+          style: TextStyle(color: TvTokens.muted),
+        ),
         actions: <Widget>[
           TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: Text(context.l10n.tvCancel,
-                  style: TextStyle(color: TvTokens.muted))),
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(
+              context.l10n.tvCancel,
+              style: TextStyle(color: TvTokens.muted),
+            ),
+          ),
           TextButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: Text(context.l10n.tvDelete,
-                  style: TextStyle(color: TvTokens.live))),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(
+              context.l10n.tvDelete,
+              style: TextStyle(color: TvTokens.live),
+            ),
+          ),
         ],
       ),
     );
     if (ok != true || playlist.id == null) return;
-    // Suppression pour de bon : liste du client effacée aussi sur le
-    // serveur, liste du panel plus réimportée tant que le panel ne la
-    // renvoie pas (tv_delete.dart). Repli `zuno.source.tv_delete_legacy`.
+    // Suppression locale durable ; retrait serveur tenté ensuite pour les
+    // listes personnelles. Une simple synchronisation ne les rétablit pas.
     final bool done = await RemoteSourceRepository.deleteFromTv(playlist);
     if (!done && context.mounted) {
       ScaffoldMessenger.maybeOf(context)?.showSnackBar(
@@ -169,8 +182,9 @@ class _SourceRow extends StatelessWidget {
         color: TvTokens.panel,
         borderRadius: BorderRadius.circular(TvTokens.rCard),
         border: Border.all(
-            color: _on ? TvTokens.accent : TvTokens.lineSoft,
-            width: _on ? 1.5 : 1),
+          color: _on ? TvTokens.accent : TvTokens.lineSoft,
+          width: _on ? 1.5 : 1,
+        ),
       ),
       child: Row(
         children: <Widget>[
@@ -180,12 +194,15 @@ class _SourceRow extends StatelessWidget {
               color: badge.withValues(alpha: 0.16),
               borderRadius: BorderRadius.circular(5),
             ),
-            child: Text(_xtream ? 'XTREAM' : 'M3U',
-                style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0.5,
-                    color: badge)),
+            child: Text(
+              _xtream ? 'XTREAM' : 'M3U',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.5,
+                color: badge,
+              ),
+            ),
           ),
           const SizedBox(width: 14),
           Expanded(
@@ -193,50 +210,59 @@ class _SourceRow extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[
-                Text(playlist.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                        fontSize: TvDimens.title,
-                        fontWeight: FontWeight.w700,
-                        color: TvTokens.text)),
+                Text(
+                  playlist.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: TvDimens.title,
+                    fontWeight: FontWeight.w700,
+                    color: TvTokens.text,
+                  ),
+                ),
                 if (ref.user != null || ref.host != null) ...<Widget>[
                   const SizedBox(height: 4),
                   _Reference(user: ref.user, host: ref.host),
                 ],
                 const SizedBox(height: 4),
                 Text(
-                    '${context.l10n.tvSourceChannels(playlist.channelCount)}'
-                    '  ·  '
-                    '${_on ? '✓ ${context.l10n.tvSourceActive}' : context.l10n.tvSourceInactive}',
-                    style: TextStyle(
-                        fontSize: TvDimens.label,
-                        color: _on ? TvTokens.accent : TvTokens.mutedDim)),
+                  '${context.l10n.tvSourceChannels(playlist.channelCount)}'
+                  '  ·  '
+                  '${_on ? '✓ ${context.l10n.tvSourceActive}' : context.l10n.tvSourceInactive}',
+                  style: TextStyle(
+                    fontSize: TvDimens.label,
+                    color: _on ? TvTokens.accent : TvTokens.mutedDim,
+                  ),
+                ),
               ],
             ),
           ),
           if (playlist.id != null && _merge) ...<Widget>[
             // Bascule indépendante : les autres sources ne bougent pas.
             _Pill(
-                icon: _on
-                    ? Icons.pause_circle_outline_rounded
-                    : Icons.play_arrow_rounded,
-                label:
-                    _on ? context.l10n.tvDeactivate : context.l10n.tvActivate,
-                onSelect: () => PlaylistRepository.instance
-                    .setPlaylistHidden(playlist.id!, _on)),
+              icon: _on
+                  ? Icons.pause_circle_outline_rounded
+                  : Icons.play_arrow_rounded,
+              label: _on ? context.l10n.tvDeactivate : context.l10n.tvActivate,
+              onSelect: () => PlaylistRepository.instance.setPlaylistHidden(
+                playlist.id!,
+                _on,
+              ),
+            ),
             const SizedBox(width: 10),
           ] else if (!playlist.isActive && playlist.id != null) ...<Widget>[
             _Pill(
-                icon: Icons.play_arrow_rounded,
-                label: context.l10n.tvActivate,
-                onSelect: () => PlaylistRepository.instance
-                    .setActivePlaylist(playlist.id!)),
+              icon: Icons.play_arrow_rounded,
+              label: context.l10n.tvActivate,
+              onSelect: () =>
+                  PlaylistRepository.instance.setActivePlaylist(playlist.id!),
+            ),
             const SizedBox(width: 10),
           ],
           _IconBtn(
-              icon: Icons.delete_outline_rounded,
-              onSelect: () => _delete(context)),
+            icon: Icons.delete_outline_rounded,
+            onSelect: () => _delete(context),
+          ),
         ],
       ),
     );
@@ -252,29 +278,43 @@ class _Reference extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final TextStyle st = TextStyle(
-        fontSize: TvDimens.label,
-        fontWeight: FontWeight.w600,
-        color: TvTokens.text);
+      fontSize: TvDimens.label,
+      fontWeight: FontWeight.w600,
+      color: TvTokens.text,
+    );
     return Row(
       children: <Widget>[
         if (user != null) ...<Widget>[
-          const Icon(Icons.person_outline_rounded,
-              size: 18, color: TvTokens.muted),
+          const Icon(
+            Icons.person_outline_rounded,
+            size: 18,
+            color: TvTokens.muted,
+          ),
           const SizedBox(width: 6),
           Flexible(
-              child: Text(user!,
-                  maxLines: 1, overflow: TextOverflow.ellipsis, style: st)),
+            child: Text(
+              user!,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: st,
+            ),
+          ),
         ],
         if (user != null && host != null) const SizedBox(width: 16),
         if (host != null) ...<Widget>[
           const Icon(Icons.dns_outlined, size: 18, color: TvTokens.muted),
           const SizedBox(width: 6),
           Flexible(
-              child: Text(host!,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: st.copyWith(
-                      fontWeight: FontWeight.w400, color: TvTokens.muted))),
+            child: Text(
+              host!,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: st.copyWith(
+                fontWeight: FontWeight.w400,
+                color: TvTokens.muted,
+              ),
+            ),
+          ),
         ],
       ],
     );
@@ -282,11 +322,12 @@ class _Reference extends StatelessWidget {
 }
 
 class _Pill extends StatelessWidget {
-  const _Pill(
-      {required this.icon,
-      required this.label,
-      required this.onSelect,
-      this.autofocus = false});
+  const _Pill({
+    required this.icon,
+    required this.label,
+    required this.onSelect,
+    this.autofocus = false,
+  });
   final IconData icon;
   final String label;
   final VoidCallback onSelect;
@@ -311,11 +352,14 @@ class _Pill extends StatelessWidget {
             children: <Widget>[
               Icon(icon, size: 19, color: fg),
               const SizedBox(width: 8),
-              Text(label,
-                  style: TextStyle(
-                      fontSize: TvDimens.titleS,
-                      fontWeight: FontWeight.w700,
-                      color: fg)),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: TvDimens.titleS,
+                  fontWeight: FontWeight.w700,
+                  color: fg,
+                ),
+              ),
             ],
           ),
         );
@@ -341,8 +385,11 @@ class _IconBtn extends StatelessWidget {
             color: focused ? TvTokens.live : Colors.transparent,
             shape: BoxShape.circle,
           ),
-          child: Icon(icon,
-              size: 24, color: focused ? Colors.white : TvTokens.muted),
+          child: Icon(
+            icon,
+            size: 24,
+            color: focused ? Colors.white : TvTokens.muted,
+          ),
         );
       },
     );

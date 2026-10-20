@@ -57,7 +57,11 @@
   "playerVideo": "Video",
   "playerUpNextIn": "{seconds} sn sonra sıradaki",
   "@playerUpNextIn": {
-    "placeholders": { "seconds": { "type": "int" } }
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
   },
   "playerUpNextCancel": "İptal",
   "playerUpNextPlay": "Oynat",
@@ -2016,20 +2020,56 @@
   "tvMyM3uList": "M3U listem",
   "tvBlackBoxTitle": "Kara kutu",
   "tvBlackBoxSubtitle": "Uygulamanın teknik günlüğü (v{version}). Beklenmedik bir kapanma olursa nedeni burada.",
-  "@tvBlackBoxSubtitle": {"placeholders": {"version": {"type": "String"}}},
+  "@tvBlackBoxSubtitle": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
   "tvBlackBoxFirstRun": "İlk başlatma: önceki oturum yok.",
   "tvBlackBoxCleanExit": "Son oturum normal şekilde sona erdi.",
   "tvBlackBoxBrutal": "ANİ KAPANMA · {reason}",
-  "@tvBlackBoxBrutal": {"placeholders": {"reason": {"type": "String"}}},
+  "@tvBlackBoxBrutal": {
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
   "tvBlackBoxUnknownReason": "bilinmeyen neden (Android < 11)",
   "tvBlackBoxMemory": "bellek {mb} MB",
-  "@tvBlackBoxMemory": {"placeholders": {"mb": {"type": "String"}}},
+  "@tvBlackBoxMemory": {
+    "placeholders": {
+      "mb": {
+        "type": "String"
+      }
+    }
+  },
   "tvBlackBoxWhen": "Ne zaman: {when}",
-  "@tvBlackBoxWhen": {"placeholders": {"when": {"type": "String"}}},
+  "@tvBlackBoxWhen": {
+    "placeholders": {
+      "when": {
+        "type": "String"
+      }
+    }
+  },
   "tvBlackBoxLastAction": "Son işlem: {action}",
-  "@tvBlackBoxLastAction": {"placeholders": {"action": {"type": "String"}}},
+  "@tvBlackBoxLastAction": {
+    "placeholders": {
+      "action": {
+        "type": "String"
+      }
+    }
+  },
   "tvBlackBoxDetail": "Android ayrıntısı: {detail}",
-  "@tvBlackBoxDetail": {"placeholders": {"detail": {"type": "String"}}},
+  "@tvBlackBoxDetail": {
+    "placeholders": {
+      "detail": {
+        "type": "String"
+      }
+    }
+  },
   "tvRefresh": "Yenile",
   "tvCopy": "Kopyala",
   "tvCopied": "Kopyalandı",
@@ -2038,7 +2078,7 @@
   "tvBlackBoxHelp": "YUKARI/AŞAĞI: kaydır · CH+/CH−: sayfa · Kopyala = pano (WhatsApp'tan desteğe yapıştır). Bu günlük desteğe gönderilebilir. Gönderimi Ayarlar → Ekstralar bölümünden kapatabilirsin.",
   "tvNavServer": "Sunucu",
   "tvLegalTitle": "Yasal bilgiler & Koşullar",
-    "tvHelloMorning": "Günaydın",
+  "tvHelloMorning": "Günaydın",
   "tvHelloAfternoon": "İyi günler",
   "tvHelloEvening": "İyi akşamlar",
   "tvHomeInvite": "Kanallarınız, filmleriniz ve hatırlatmalarınız burada görünecek.",
@@ -2063,10 +2103,15 @@
   "tvReminderInMinutes": "{minutes} dk içinde",
   "tvReminderInHours": "{hours} sa içinde",
   "tvReminderInHoursMinutes": "{hours} sa {minutes} dk içinde",
-"tvResumeLabel": "DEVAM ET",
+  "tvResumeLabel": "DEVAM ET",
   "tvNowPlayingPrefix": "ŞU AN · {title}",
-  "@tvNowPlayingPrefix": {"placeholders": {"title": {"type": "String"}}},
-  "tvLiveBadge": "CANLI",
+  "@tvNowPlayingPrefix": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
   "tvPinUpdated": "Ebeveyn kodu güncellendi ✔",
   "tvParentalTitle": "Ebeveyn kontrolü",
   "tvKidsMode": "Çocuk Modu",
@@ -2090,7 +2135,13 @@
   "tvMyRecordings": "Kayıtlarım",
   "tvDeleteQuestion": "Silinsin mi?",
   "tvDeleteRecordingConfirm": "« {name} » kalıcı olarak silinsin mi?",
-  "@tvDeleteRecordingConfirm": {"placeholders": {"name": {"type": "String"}}},
+  "@tvDeleteRecordingConfirm": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "tvCancel": "İptal",
   "tvDelete": "Sil",
   "tvSettingsSources": "Kaynaklarım (ekle / etkinleştir / sil)",
@@ -2099,18 +2150,42 @@
   "tvSettingsLegal": "Yasal bilgiler & Kullanım koşulları",
   "tvUpdateChecking": "Güncelleme: kontrol ediliyor…",
   "tvUpdateUpToDate": "Güncelleme: güncel (sürüm {version}) — yeniden kontrol için OK",
-  "@tvUpdateUpToDate": {"placeholders": {"version": {"type": "String"}}},
+  "@tvUpdateUpToDate": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
   "tvUpdateUpToDateNoVersion": "Güncelleme: güncel — yeniden kontrol için OK",
   "tvUpdateAvailable": "Yeni sürüm {version} mevcut — yüklemek için OK",
-  "@tvUpdateAvailable": {"placeholders": {"version": {"type": "String"}}},
+  "@tvUpdateAvailable": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
   "tvUpdateDownloading": "Güncelleme indiriliyor… %{pct}",
-  "@tvUpdateDownloading": {"placeholders": {"pct": {"type": "String"}}},
+  "@tvUpdateDownloading": {
+    "placeholders": {
+      "pct": {
+        "type": "String"
+      }
+    }
+  },
   "tvUpdateFailed": "Güncelleme: başarısız (ağ ya da yükleyici) — tekrar denemek için OK",
   "tvMySources": "Kaynaklarım",
   "tvAddXtream": "Xtream ekle",
   "tvAddM3u": "M3U ekle",
   "tvDeleteSourceConfirm": "« {name} » kaynağı silinsin mi?",
-  "@tvDeleteSourceConfirm": {"placeholders": {"name": {"type": "String"}}},
+  "@tvDeleteSourceConfirm": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "tvActivate": "Etkinleştir",
   "tvMyTeams": "Takımlarım",
   "tvAdd": "Ekle",
@@ -2126,21 +2201,72 @@
   "tvImpConnecting": "Sunucuya bağlanılıyor…",
   "tvImpCategories": "Kategoriler okunuyor…",
   "tvImpDownloading": "İndiriliyor… {mb} MB",
-  "@tvImpDownloading": {"placeholders": {"mb": {"type": "String"}}},
+  "@tvImpDownloading": {
+    "placeholders": {
+      "mb": {
+        "type": "String"
+      }
+    }
+  },
   "tvImpDecoding": "{mb} MB analiz ediliyor…",
-  "@tvImpDecoding": {"placeholders": {"mb": {"type": "String"}}},
+  "@tvImpDecoding": {
+    "placeholders": {
+      "mb": {
+        "type": "String"
+      }
+    }
+  },
   "tvImpCategory": "Kategori {i}/{total} · {found} kanal bulundu",
-  "@tvImpCategory": {"placeholders": {"i": {"type": "String"}, "total": {"type": "String"}, "found": {"type": "String"}}},
+  "@tvImpCategory": {
+    "placeholders": {
+      "i": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      },
+      "found": {
+        "type": "String"
+      }
+    }
+  },
   "tvImpFound": "{count} kanal bulundu",
-  "@tvImpFound": {"placeholders": {"count": {"type": "String"}}},
+  "@tvImpFound": {
+    "placeholders": {
+      "count": {
+        "type": "String"
+      }
+    }
+  },
   "tvImpSaving": "Kaydediliyor: {done} / {total} kanal",
-  "@tvImpSaving": {"placeholders": {"done": {"type": "String"}, "total": {"type": "String"}}},
+  "@tvImpSaving": {
+    "placeholders": {
+      "done": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      }
+    }
+  },
   "tvImpDone": "{count} kanal hazır",
-  "@tvImpDone": {"placeholders": {"count": {"type": "String"}}},
+  "@tvImpDone": {
+    "placeholders": {
+      "count": {
+        "type": "String"
+      }
+    }
+  },
   "tvLanguage": "Dil",
   "tvLanguageAuto": "Otomatik (TV dili)",
   "tvSettingsLanguage": "Dil: {value}",
-  "@tvSettingsLanguage": {"placeholders": {"value": {"type": "String"}}},
+  "@tvSettingsLanguage": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
   "tvEnterParentalCode": "Ebeveyn kodunu gir",
   "tvCurrentCode": "Mevcut kod",
   "tvConfirmCode": "Kodu onayla",
@@ -2151,7 +2277,13 @@
   "tvRecordingStarted": "Kaydediliyor…",
   "tvRecordingError": "Kayıt hatası",
   "tvRecordingSaved": "Kayıt kaydedildi ({size})",
-  "@tvRecordingSaved": {"placeholders": {"size": {"type": "String"}}},
+  "@tvRecordingSaved": {
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
   "tvRecordingEmpty": "Boş kayıt",
   "tvRemovedFromFavorites": "Favorilerden kaldırıldı",
   "tvAddedToFavorites": "Favorilere eklendi ❤",
@@ -2159,61 +2291,163 @@
   "tvCinemaAudio": "Ses",
   "tvCinemaAudioSubs": "Ses ve altyazılar",
   "tvCinemaCast": "Oyuncular: {names}",
-  "@tvCinemaCast": {"placeholders": {"names": {"type": "String"}}},
+  "@tvCinemaCast": {
+    "placeholders": {
+      "names": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaContinue": "İzlemeye devam et",
   "tvCinemaDeleteDownload": "İndirmeyi sil",
   "tvCinemaDirector": "Yönetmen: {names}",
-  "@tvCinemaDirector": {"placeholders": {"names": {"type": "String"}}},
+  "@tvCinemaDirector": {
+    "placeholders": {
+      "names": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaDownload": "İndir",
   "tvCinemaDownloadError": "İndirme başarısız",
   "tvCinemaDownloadPaused": "Duraklatıldı · %{pct}",
-  "@tvCinemaDownloadPaused": {"placeholders": {"pct": {"type": "String"}}},
+  "@tvCinemaDownloadPaused": {
+    "placeholders": {
+      "pct": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaDownloaded": "İndirildi",
   "tvCinemaDownloading": "İndiriliyor · %{pct}",
-  "@tvCinemaDownloading": {"placeholders": {"pct": {"type": "String"}}},
+  "@tvCinemaDownloading": {
+    "placeholders": {
+      "pct": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaDownloads": "İndirdiklerim",
   "tvCinemaEmptyCategory": "Burada henüz bir şey yok.",
   "tvCinemaEpisode": "{n}. bölüm",
-  "@tvCinemaEpisode": {"placeholders": {"n": {"type": "String"}}},
+  "@tvCinemaEpisode": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaFromStart": "Baştan",
   "tvCinemaIndexing": "Tüm katalogda arama hazırlanıyor…",
   "tvCinemaLanguage": "Dil: {value}",
-  "@tvCinemaLanguage": {"placeholders": {"value": {"type": "String"}}},
+  "@tvCinemaLanguage": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaLoading": "Yükleniyor…",
   "tvCinemaMinutes": "{n} dk",
-  "@tvCinemaMinutes": {"placeholders": {"n": {"type": "String"}}},
+  "@tvCinemaMinutes": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaNextEpisode": "Sonraki bölüm",
   "tvCinemaNextHint": "OK: şimdi · Geri: kal",
   "tvCinemaNextIn": "Sonraki bölüm {s} sn sonra",
-  "@tvCinemaNextIn": {"placeholders": {"s": {"type": "String"}}},
+  "@tvCinemaNextIn": {
+    "placeholders": {
+      "s": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaNoEpisodes": "Kullanılabilir bölüm yok.",
   "tvCinemaNoSource": "Henüz film veya dizi yok",
   "tvCinemaNoSourceBody": "Filmler ve diziler Xtream aboneliğinden gelir. Sunucu bölümünden ekle ya da satıcından etkinleştirmesini iste.",
   "tvCinemaNoSpace": "Kutuda yeterli alan yok ({free} GB boş).",
-  "@tvCinemaNoSpace": {"placeholders": {"free": {"type": "String"}}},
+  "@tvCinemaNoSpace": {
+    "placeholders": {
+      "free": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaPauseDownload": "Duraklat",
   "tvCinemaPlay": "Oynat",
   "tvCinemaPlayEpisode": "S{s} · B{e} oynat",
-  "@tvCinemaPlayEpisode": {"placeholders": {"s": {"type": "String"}, "e": {"type": "String"}}},
+  "@tvCinemaPlayEpisode": {
+    "placeholders": {
+      "s": {
+        "type": "String"
+      },
+      "e": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaRecent": "Yeni eklenenler",
   "tvCinemaRestart": "Baştan başlat",
   "tvCinemaResumeAt": "{time} noktasından devam et",
-  "@tvCinemaResumeAt": {"placeholders": {"time": {"type": "String"}}},
+  "@tvCinemaResumeAt": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaResumeDownload": "İndirmeye devam et",
   "tvCinemaResumeEpisode": "S{s} · B{e} devam et",
-  "@tvCinemaResumeEpisode": {"placeholders": {"s": {"type": "String"}, "e": {"type": "String"}}},
+  "@tvCinemaResumeEpisode": {
+    "placeholders": {
+      "s": {
+        "type": "String"
+      },
+      "e": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaResumedAt": "{time} noktasından devam ediliyor",
-  "@tvCinemaResumedAt": {"placeholders": {"time": {"type": "String"}}},
+  "@tvCinemaResumedAt": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaSearch": "Ara",
   "tvCinemaSeason": "{n}. sezon",
-  "@tvCinemaSeason": {"placeholders": {"n": {"type": "String"}}},
+  "@tvCinemaSeason": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaSeasons": "{n} sezon",
-  "@tvCinemaSeasons": {"placeholders": {"n": {"type": "String"}}},
+  "@tvCinemaSeasons": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaSpecials": "Özel bölümler",
   "tvCinemaSubtitles": "Altyazılar",
   "tvCinemaSubtitlesOff": "Kapalı",
   "tvCinemaTrackUnknown": "Parça {n}",
-  "@tvCinemaTrackUnknown": {"placeholders": {"n": {"type": "String"}}},
+  "@tvCinemaTrackUnknown": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
   "tvUpdatingContent": "Güncelleniyor…",
   "tvDeactivate": "Devre dışı bırak",
   "tvSourceActive": "etkin",
@@ -2250,4 +2484,325 @@
   "tvVoiceRemoteAiOff": "Kapalı",
   "tvVoiceRemoteAiHelp": "Varsayılan olarak kapalı. Uygulamada anahtar yok. « Bu akşam » kutudaki rehberden okunur. Hizmet yanıt vermezse Zuno listenin içinde arar.",
   "tvVoiceCinemaHint": "Filmler veya Diziler'i bir kez aç: arama onları sonra bulur, sen izlerken ağa gerek kalmaz.",
-  "tvVoiceOnChannel": "{channel} kanalında"}
+  "tvVoiceOnChannel": "{channel} kanalında",
+  "tvDeletePanelSourceConfirm": "“{name}” bu TV’den silinecek. Senkronizasyon veya panelden yeniden gönderme listeyi geri getirmez. Geri getirmek için uygulamada yeniden ekleyin.",
+  "tvDeleteSourceFailed": "Yerel silme başarısız oldu. Biraz sonra yeniden deneyin.",
+  "tvCinemaOfflineTitle": "Katalog kullanılamıyor",
+  "tvCinemaOfflineBody": "TV’de kayıtlı içerik yok ve sunucu yanıt vermiyor. Bağlantıyı kontrol edip yeniden deneyin.",
+  "tvCinemaRetry": "Yeniden dene",
+  "tvCinemaUpdated": "Güncellendi: {when}",
+  "tvCinemaAgeJustNow": "az önce",
+  "tvCinemaAgeMinutes": "{n} dk önce",
+  "tvCinemaAgeHours": "{n} saat önce",
+  "tvCinemaAgeDays": "{n} gün önce",
+  "tvCinemaCategoryFailed": "Bu kategori yüklenemedi.",
+  "moviesRetry": "Yeniden dene",
+  "tvRemoteTitle": "Uzaktan kumanda",
+  "tvSettingsRemote": "Telefon, aynı Wi-Fi üzerinden kumanda olur. Kurulum gerekmez.",
+  "tvRemoteLead": "QR kodunu telefon kamerasıyla tarayın. Kurulum gerekmez.",
+  "tvRemoteWarn": "Bu kodu gören herkes, süresi dolana kadar cihazı yönetebilir. Yalnızca bir telefon. Kodun süresi kendiliğinden dolar.",
+  "tvRemoteKeep": "Geri bu ekrandan çıkar: telefon, kodun süresi dolana kadar çalışır. Kapat bağlantıyı hemen sonlandırır.",
+  "tvRemoteStarting": "Hazırlanıyor…",
+  "tvRemoteWaiting": "Telefon bekleniyor…",
+  "tvRemotePaired": "Telefon bağlandı",
+  "tvRemoteExpired": "Kodun süresi doldu",
+  "tvRemoteStopped": "Kumanda kapatıldı",
+  "tvRemoteNoLan": "Yerel ağ yok. Cihazı ve telefonu aynı Wi-Fi ağına bağlayın.",
+  "tvRemoteError": "Kumanda başlatılamadı.",
+  "tvRemoteNewCode": "Yeni kod",
+  "tvRemoteStop": "Kapat",
+  "tvRemoteStart": "Aç",
+  "tvRemoteLeft": "{time} sonra sona erer",
+  "tvRemoteUrlHelp": "Tarama başarısız olursa bu adresi telefonun tarayıcısında açın.",
+  "sportsTimeout": "Spor hizmeti çok yavaş yanıt veriyor. Yeniden deneyin.",
+  "sportsNetworkError": "Spor hizmetine bağlanılamıyor.",
+  "sportsHttpError": "Spor hizmeti kullanılamıyor (HTTP {status}).",
+  "sportsInvalidResponse": "Spor hizmetinin yanıtı okunamıyor.",
+  "sportsUnavailable": "Spor verileri yüklenemedi.",
+  "sportsLoading": "Maçlar yükleniyor…",
+  "sportsRetry": "Yeniden dene",
+  "sportsFootballTitle": "Skorlar ve fikstür",
+  "sportsRefresh": "Yenile",
+  "sportsCommunityNotice": "Topluluk skorları ve golleri · gecikmeler olabilir · 60 saniyede bir yenilenir.",
+  "sportsCalendarNotice": "Fikstür ve gecikmeli sonuçlar · OpenFootball canlı skor sağlamaz.",
+  "sportsRetrievedAt": "Alınma saati: {time}",
+  "sportsUpcoming": "Yaklaşan",
+  "sportsRecent": "Son maçlar",
+  "sportsFinished": "Bitti",
+  "tvProgramStartedMinutesAgo": "Program {minutes} dk önce başladı",
+  "tvProfiles": "Profiller",
+  "tvKidsProfile": "Çocuk profili",
+  "tvNewProfile": "Yeni profil",
+  "tvChildren": "Çocuklar",
+  "tvKidsExists": "Zaten bir çocuk profili var.",
+  "tvProfileAddFailed": "Profil eklenemedi.",
+  "tvKidsReady": "Çocuk profili hazır. Çocuk modu açık kalır.",
+  "tvRename": "Yeniden adlandır",
+  "tvNameInvalid": "Ad boş veya çok uzun.",
+  "tvProfileDeleteBody": "Bu profilin favorileri, geçmişi, oynatma konumları, hatırlatıcıları ve PIN’i silinir. Kanallar ve profil 1 kalır.",
+  "tvProfileDeleteFailed": "Bu profil silinemez.",
+  "tvProfilesHelp": "En fazla 4 profil. Ayrı favoriler, geçmiş, oynatma konumları, hatırlatıcılar ve PIN’ler. Kanallar ortaktır.",
+  "tvDefaultPinWarning": "PIN hâlâ 0000. Ebeveyn denetiminden değiştirin.",
+  "tvAskProfileOn": "Başlangıçta profil seç: açık",
+  "tvAskProfileOff": "Başlangıçta profil seç: kapalı",
+  "tvProfileStartupSingle": "Başlangıçta seçim, en az 2 profil olduğunda görünür. Tek profille uygulama doğrudan açılır.",
+  "tvProfileStartupHelp": "Kapalıyken son profil doğrudan açılır. Buradan veya ana ekrandan profil değiştirebilirsiniz.",
+  "tvKidsProfileHelp": "Çocuk modu kilitli. Çıkmak için bu profilin PIN’i gerekir. Yetişkin içeriği gizlenir. Profil 1 önceki verilerinizi korur.",
+  "tvOriginProfileHelp": "İlk profil: önceki favorileriniz, geçmişiniz, oynatma konumlarınız ve PIN’iniz buradadır. Silinemez.",
+  "tvSeparateProfileHelp": "Ayrı profil. Bunu silmek profil 1’i silmez.",
+  "tvProfileActive": "Etkin",
+  "tvProfileCreated": "“{name}” profili oluşturuldu.",
+  "tvProfileDeleteTitle": "“{name}” silinsin mi?",
+  "tvWhoWatching": "Kim izliyor?",
+  "tvProfilePickerHelp": "Herkesin favorileri, geçmişi ve PIN’i ayrıdır. Kanallar aynı kalır.",
+  "tvLater": "Daha sonra",
+  "tvNameMum": "Anne",
+  "tvNameDad": "Baba",
+  "tvNameGuest": "Misafir",
+  "tvNameLivingRoom": "Salon",
+  "tvNameLimit": "En fazla 18 karakter.",
+  "tvFirstName": "Ad",
+  "tvListRemoved": "Liste kaldırıldı",
+  "tvListRemovedBody": "Sağlayıcınız bu listeyi kaldırdı. Listedeki kanallar artık kullanılamıyor.",
+  "tvKidsCannotDisable": "Çocuk profilinde çocuk modu açık kalır. Tüm kanalları görmek için PIN ile profil değiştirin.",
+  "tvKidsAlwaysOn": "Çocuk profili: çocuk modu açık kalır. Yetişkin içeriği olmayan kanallar kullanılabilir.",
+  "tvKidsOn": "Açık — yetişkin içeriği gizli.",
+  "tvKidsOff": "Kapalı — tüm kanallar görünür.",
+  "tvChooseSecurePin": "Çocuk modunu açmadan önce bir PIN seçin. 0000 artık kabul edilmiyor.",
+  "tvPinWait": "Çok fazla deneme. Birkaç dakika sonra yeniden deneyin.",
+  "tvEnabled": "Açık",
+  "tvDisabled": "Kapalı",
+  "tvProfilePinHelp": "“{name}” profilinin PIN’i. Çocuk modu yetişkin kanallarını gizler. Modu kapatmak veya PIN’i değiştirmek için bu PIN gerekir. Her profilin PIN’i ayrıdır.",
+  "tvPinWaitMinutes": "Çok fazla deneme. {minutes} dk sonra yeniden deneyin.",
+  "tvExtras": "Ek özellikler",
+  "tvExtrasHelp": "Tek tek kapatabileceğiniz özellikler. Hiçbiri kanalı engellemez.",
+  "tvMissedTitle": "Başlangıcı kaçırdınız",
+  "tvMissedOn": "Rehber kaçırdıklarınızı gösterir. Kapatmak için OK. Canlı yayın kendiliğinden geri sarılmaz.",
+  "tvMissedOff": "Kapalı. Açmak için OK. Kanal geri sarılmaz.",
+  "tvAtThisHour": "Bu saatte",
+  "tvTimePicksOn": "Bu saatte sık açtığınız kanalları önerir. Kapatmak için OK. Hiçbir şey kendiliğinden başlamaz.",
+  "tvTimePicksOff": "Kapalı. Açmak için OK. Kullanım kaydı durur ve satır kaybolur.",
+  "tvServiceNotices": "Hizmet duyuruları",
+  "tvNoticesOn": "Sağlayıcınız bakım veya yenilik duyurduğunda ana ekranda bir kart görünür. Kapatmak için OK. Videonun üzerinde gösterilmez.",
+  "tvNoticesOff": "Kapalı. Açmak için OK. Duyurular artık gösterilmez.",
+  "tvPickOfDay": "Günün seçimi",
+  "tvFeaturedOn": "Sağlayıcınızın öne çıkardığı kanal, listenizde varsa gösterilir. Kapatmak için OK. Kendiliğinden başlamaz.",
+  "tvFeaturedOff": "Kapalı. Açmak için OK. Kart ana ekrandan kalkar.",
+  "tvBanners": "Reklam afişleri",
+  "tvBannersOn": "Ana ekranda tek seferde bir görsel, daima “Reklam” etiketiyle. Kapat = 7 gün gizle. Devre dışı bırakmak için OK. Ses yoktur, videonun üzerine gelmez.",
+  "tvBannersOff": "Kapalı. Açmak için OK. Reklam afişleri gösterilmez.",
+  "tvSubtitlesOnHelp": "Yayında zaten bulunan, dilinizdeki altyazı parçasını gösterir. Kapatmak için OK. Çeviri veya indirme yapılmaz.",
+  "tvSubtitlesOffHelp": "Kapalı. Açmak için OK. Canlı yayın akışı değiştirilmez.",
+  "tvClearVoice": "Net ses",
+  "tvClearVoiceOn": "Açık. Yüksek konuşma sesleri gece modunda biraz azaltılır. Kapatmak için OK. İşlenmeden aktarılan çevresel ses değişmez.",
+  "tvClearVoiceOff": "Kapalı, başlangıç ayarı. Çok yüksek konuşma seslerini azaltmak için OK. Ses çubuğuna doğrudan aktarılan çevresel ses değişmez.",
+  "tvLogToSupport": "Günlüğü desteğe gönder",
+  "tvLogToSupportOn": "Tanılama günlüğü, yayın adresleri ve parolalar olmadan desteğe gönderilebilir. Kapatmak için OK.",
+  "tvLogToSupportOff": "Kapalı. Günlük cihazda kalır. Desteğe yeniden göndermek için OK.",
+  "tvPictureEngine": "Görüntü motoru",
+  "tvPictureEngineHelp": "Şimdi: {engine}. Değiştirmek için OK. Donanım = cihaz, başlangıç ayarı. Yazılım = görüntü siyah kalırsa. Bu sürümde FFmpeg video yoktur; atlanır.",
+  "tvScreenRefresh": "Ekran yenileme hızı",
+  "tvScreenRefreshOn": "Açık. Ekran yayına göre 24, 50 veya 60 Hz’e geçebilir. Kapatmak için OK. Bazı cihazlarda görüntü bir saniye kesilebilir; olursa kapatın.",
+  "tvScreenRefreshOff": "Kapalı, başlangıç ayarı. Ekranı saniyede 24 / 25 / 30 / 50 / 60 kareye uyarlamak için OK. Kendiliğinden açılmaz.",
+  "tvContrast": "Kontrast",
+  "tvContrastUnavailable": "Kullanılamıyor. Android filtresi doğrudan görüntü yolundan çıkar ve daha önce siyah ekrana yol açmıştır. Kapalı kalır.",
+  "tvUpdateAllowInstall": "Zuno’nun uygulama yüklemesine izin verin: Android’in açtığı ekranda “Zuno”yu etkinleştirin. Sonra geri dönüp OK’ye basın. Güncelleme zaten indirildi.",
+  "tvFfmpegKeepDecoder": "Bu sürümde FFmpeg video yok. Mevcut kod çözücü korunuyor.",
+  "tvFfmpegBoxDecoder": "Bu sürümde FFmpeg video yok. Cihazın kod çözücüsüne dönülüyor.",
+  "tvFfmpegUnavailable": "Bu sürümde FFmpeg video yok.",
+  "tvEngineSelected": "Motor: {engine}",
+  "tvOnYourPhone": "Telefonunuzda",
+  "tvGotIt": "Anladım",
+  "tvClose": "Kapat",
+  "tvPhone": "Telefon",
+  "tvSoftware": "Yazılım",
+  "tvHardware": "Donanım",
+  "tvProfilesSettingsHelp": "Ayrı favoriler, geçmiş, oynatma konumları, hatırlatıcılar ve PIN’lerle en fazla 4 profil.",
+  "tvAudioDiagnostic": "Ses tanılama",
+  "tvAudioDiagnosticHelp": "Kanal başına yerel rapor. Hiçbir şey gönderilmez. Test seçenekleri varsayılan olarak kapalıdır.",
+  "tvPlayerDisclaimer": "Bu uygulama bir medya OYNATICISIDIR. Kanal, yayın veya M3U bağlantısı satmaz, sağlamaz veya barındırmaz. İçeriği kullanıcı sağlar ve yasallığından sorumludur.",
+  "tvActivationDisclaimer": "Medya oynatıcı — kanal veya M3U bağlantısı satmaz ya da sağlamaz. İçeriği kullanıcı sağlar. Koşullar: app.7themotion.com/terms",
+  "tvSourcePasteHelp": "Bağlantınızı veya giriş bilgilerinizi yapıştırın. Herhangi bir M3U veya Xtream sağlayıcısı.",
+  "tvTrending": "🔥 Popüler",
+  "tvRecent": "🕒 Son izlenenler",
+  "tvForYou": "✨ Sizin için",
+  "tvOther": "Diğer",
+  "tvNetworkUnavailable": "Ağ yok",
+  "tvNetworkUnavailableHelp": "TV sunucuya ulaşamıyor. Bağlantıyı kontrol edip yeniden deneyin.",
+  "tvListRejected": "Liste reddedildi",
+  "tvListRejectedHelp": "Sağlayıcı bu listeyi reddetti. Giriş bilgilerini kontrol edin.",
+  "tvCodeInactive": "Kod etkin değil",
+  "tvCodeInactiveHelp": "Bu TV’nin kodu etkin değil. Panelde etkinleştirip birkaç saniye bekleyin.",
+  "tvSourcesEmpty": "Henüz kaynak yok.\nM3U bağlantısı, Xtream hesabı veya oynatıcı bağlantısı ekleyin.",
+  "tvRecordingCloseFailed": "Kayıt kapatılamadı. Dosya eksik olabilir.",
+  "tvFromStart": "Baştan",
+  "tvFollow": "Takip et",
+  "tvChooseTeamHelp": "Aşağıdan bir takım seçin veya ad yazın…",
+  "tvTeamNotFound": "“{name}” bulunamadı — aramayı deneyin.",
+  "tvCatchupHelp": "Programın başından. Sağ, ardından OK: canlı yayına dön.",
+  "tvMissedRewindHint": "Sağ, ardından OK: baştan.",
+  "tvMissedNoReplayHint": "Rehberde metin vardır, video yoktur. Canlı yayın değişmez.",
+  "tvSourceNeedUrl": "http:// veya https:// ile başlayan bir adres yapıştırın.",
+  "tvSourceNeedXtream": "Sunucu adresini, kullanıcı adını ve parolayı girin.",
+  "tvSourceNeedCredentials": "Bu oynatıcı bağlantısında kullanıcı adı veya parola eksik. Tam bağlantıyı yapıştırın ya da üç Xtream alanını doldurun.",
+  "tvSourceBadScheme": "Bu adres kullanılamaz. http veya https bağlantısı gerekir.",
+  "tvPlayerLink": "Oynatıcı bağlantısı",
+  "tvAdvertisement": "Reklam",
+  "tvSponsored": "Sponsorlu",
+  "tvInformation": "Bilgi",
+  "tvSportFootball": "Futbol",
+  "tvSportBasketball": "Basketbol (NBA)",
+  "tvSportRugby": "Ragbi",
+  "tvDataAttribution": "Veriler: {source}",
+  "tvLegalSection1Title": "1. Uygulamanın niteliği — yalnızca bir OYNATICI",
+  "tvLegalSection1Body": "Bu uygulama, kullanıcının sağladığı ses ve video akışlarını oynatan bir medya OYNATICISIDIR. Televizyon kanalı, akış, görsel-işitsel içerik, oynatma listesi (M3U) veya portal bilgisi (Xtream) SAĞLAMAZ, SATMAZ, BARINDIRMAZ, YAYINLAMAZ ve DİZİNLEMEZ. Uygulamaya hiçbir içerik dahil edilmez, önceden yüklenmez veya uygulamayla satılmaz.",
+  "tvLegalSection2Title": "2. Kullanıcının sağladığı içerik",
+  "tvLegalSection2Body": "Kullanıcı, kendi sağlayıcısından aldığı kaynakları (M3U bağlantıları / Xtream bilgileri) kendisi sağlar. Eklediği, oynattığı veya yayınladığı içeriklerden ve gerekli hak, lisans ve aboneliklere sahip olmaktan YALNIZCA kullanıcı sorumludur.",
+  "tvLegalSection3Title": "3. Abonelik = YAZILIM, içerik değil",
+  "tvLegalSection3Body": "Her ödeme veya abonelik YALNIZCA uygulamanın kullanımını karşılar: oynatıcı ve arayüz, favoriler, yerel kayıt, EPG gibi işlevler. Kanal, akış veya içerik satın alma, satma, kiralama ya da sağlama anlamına ASLA gelmez.",
+  "tvLegalSection4Title": "4. Yasal kullanım",
+  "tvLegalSection4Body": "Kullanıcı ülkesinin yasalarına uymayı ve uygulamayı yasa dışı veya telif hakkı ihlali içeren içeriklere erişmek için kullanmamayı kabul eder. Yasa dışı kullanım kesinlikle yasaktır ve yalnızca kullanıcının sorumluluğundadır.",
+  "tvLegalSection5Title": "5. Üçüncü taraf içeriği — sorumluluk kabul edilmez",
+  "tvLegalSection5Body": "Yayıncı, kullanıcının kaynakları üzerinden erişilen üçüncü taraf içeriğini kontrol etmez ve bundan sorumlu tutulamaz. İçeriğin erişilebilirliğini, yasallığını veya kalitesini garanti etmez.",
+  "tvLegalSection6Title": "6. Fikri mülkiyet ve şikâyetler",
+  "tvLegalSection6Body": "Tüm markalar, logolar ve içerikler ilgili sahiplerine aittir. Uygulama içerik barındırmadığından telif hakkı şikâyetleri ilgili kaynağın sağlayıcısına iletilmelidir.",
+  "tvLegalSection7Title": "7. Olduğu gibi sunulur",
+  "tvLegalSection7Body": "Uygulama sürekli erişim veya hatasızlık garantisi olmadan olduğu gibi sunulur. Yayıncı işlevlerin bir kısmını veya tümünü değiştirebilir ya da durdurabilir.",
+  "tvLegalSection8Title": "8. Kişisel veriler",
+  "tvLegalSection8Body": "Lisans, deneme süresi ve destek yönetimi için teknik bir cihaz kimliği kullanılır. Ayrıntılar: app.7themotion.com/privacy.",
+  "tvLegalSection9Title": "9. Kabul",
+  "tvLegalSection9Body": "Kullanıcı uygulamayı yükleyerek veya kullanarak bu koşulları okuyup kabul ettiğini onaylar. Tam metin: app.7themotion.com/terms",
+  "tvLegalLead": "Bu uygulama bir oynatıcıdır. Kanal veya bağlantı satmaz ya da sağlamaz. Kaydırmak için yukarı/aşağı, çıkmak için Geri.",
+  "tvAudioSpectrumOn": "Spektrum: ölçüm açık",
+  "tvAudioSpectrumOff": "Spektrum: kapalı",
+  "tvAudioFfmpegRetry": "FFmpeg: yeniden dene",
+  "tvAudioFfmpegDefault": "FFmpeg: varsayılan",
+  "tvAudioAacTest": "Cihaz AAC: test",
+  "tvAudioAacOff": "Cihaz AAC: kapalı",
+  "tvAudioFallbackSession": "Yedek: tüm oturum",
+  "tvAudioFallbackChannel": "Yedek: kanal başına",
+  "tvAudioFocusAndroid": "Ses odağı: Android",
+  "tvAudioFocusZuno": "Ses odağı: Zuno",
+  "tvAudioBackgroundPause": "Uygulama dışında: duraklat",
+  "tvAudioBackgroundStop": "Uygulama dışında: durdur",
+  "tvAudioHomeLegacy": "Ana ekran: eski mod",
+  "tvAudioHomeNative": "Ana ekran: yerel durdurma",
+  "tvAudioHandoffNow": "Geçiş: hemen",
+  "tvAudioHandoffWait": "Geçiş: bekle",
+  "tvAudioOutput48k": "Çıkış: 48 kHz",
+  "tvAudioOutputStream": "Çıkış: akış frekansı",
+  "tvAudioWitnessStop": "Test sesi: durdur",
+  "tvAudioWitnessPreparing": "Test sesi: hazırlanıyor",
+  "tvAudioWitnessPlay": "Test sesini çal",
+  "tvAudioScrollHelp": "YUKARI/AŞAĞI: kaydır · CH+/CH−: sayfa",
+  "tvAudioWitnessHelp": "10 saniyelik test sesi: konuşma, sonra gürültü. Kanallarla aynı oynatıcı. Boğuk gürültü → cihaz. Net gürültü → kanal.",
+  "tvAudioOptionsHelp": "Spektrum: sonraki kanalda dört noktayı ölçer (kod çözücü, net ses, sessizlik, AudioTrack); sesi değiştirmez. FFmpeg: yazılım kod çözücüsünü yeniden dener; 8 saniyede başlamazsa cihaz devralır. Cihaz AAC: sonraki kanalda ExoPlayer gibi cihazın AAC kod çözücüsünü kullanır. Başarısızsa o açılışı FFmpeg devralır. Yedek: varsayılan “kanal başına”, FFmpeg hatasında yalnızca etkilenen kanalı cihaza geçirir. “Tüm oturum” eski davranıştır: tek hatadan sonra tüm kanallar cihaza geçer. Ses odağı: varsayılan “Zuno”, başka uygulama veya uyarı sesi ses istediğinde sesi kısmaz. “Android” eski davranıştır, sesi %20’ye düşürür. Uygulama dışında: varsayılan “durdur”, çıkışta sesi durdurup serbest bırakır, dönüşte kanalı yeniden açar. “Duraklat” eski davranıştır. Ana ekran: varsayılan “yerel durdurma”, onPause sırasında durur ve uygulama dışarıdayken yeniden açmaz. “Eski mod” Flutter’ı bekler. Geçiş: varsayılan “bekle”, önceki AudioTrack serbest bırakılmadan sonraki kanalı açmaz; çok sayıda geçişten sonra seslerin karışmasını önler. “Hemen” eski davranıştır. Çıkış: varsayılan “akış frekansı”, akışın örnekleme hızını kullanır; çoğu kanalda 44,1 kHz’dir ve cihaz dönüştürür. “48 kHz”, çıkıştan önce uygulamada yeniden örnekler. 44,1 kHz raporunda ses kötüyse deneyin. Test sesi: aynı oynatıcıda 10 saniye konuşma ve gürültü. Sesi değiştirmeden ölçümü açar. Boğuk gürültü → cihaz. Net gürültü → kanal.",
+  "tvAudioNoReports": "Rapor yok. Bir kanal açın: oynatıcı codec, kod çözücü ve çıkışı kaydeder. Spektrum yalnızca etkinleştirilirse ölçülür.",
+  "tvAudioTestSound": "Test sesi",
+  "tvDiagCaptive": "1. Ağ giriş portalı (204)",
+  "tvDiagDns": "2. IPTV sunucusu DNS çözümleme",
+  "tvDiagStream": "3. Akış erişilebilirliği (HTTP / 456)",
+  "tvDiagSource": "4. Atanan kaynak (device-source)",
+  "tvDiagPlayer": "5. ExoPlayer / Media3 testi",
+  "tvDiagRequest": "generate_204 isteniyor…",
+  "tvDiagInternetOk": "HTTP 204 (İnternet erişimi var)",
+  "tvDiagTimeout": "8 saniyede yanıt yok",
+  "tvDiagNoHost": "Kanal yüklenmedi → sunucu BİLİNMİYOR",
+  "tvDiagNoUrl": "Kanal yüklenmedi → URL BİLİNMİYOR",
+  "tvDiagStreamHead": "Akış için HEAD isteği…",
+  "tvDiagIpBlocked": "HTTP 456 — sağlayıcı bu IP’yi engelliyor",
+  "tvDiagReadingMac": "MAC okunuyor…",
+  "tvDiagSourceAssigned": "HTTP 200 — kaynak atandı",
+  "tvDiagNoSource": "HTTP 200 — kaynak atanmadı",
+  "tvDiagPlayerBusy": "Tam ekran oynatma etkin: test atlandı, yalnızca bir oynatıcı",
+  "tvDiagPlayerOpening": "ExoPlayer testi açılıyor…",
+  "tvDiagFrameOk": "İlk kare çözüldü ve gösterildi",
+  "tvDiagPlayerError": "ExoPlayer hata döndürdü",
+  "tvDiagFrameTimeout": "8 saniyede görüntü yok",
+  "tvDiagRunning": "TANILAMA SÜRÜYOR…",
+  "tvDiagPassed": "CİHAZDA OYNATMA DOĞRULANDI",
+  "tvDiagNetworkBlocked": "AĞ ENGELİ",
+  "tvDiagPlayerFailed": "OYNATICI HATASI",
+  "tvDiagPartial": "KISMİ TANILAMA",
+  "tvDiagTitle": "CİHAZ TANILAMASI — Zuno",
+  "tvDiagHelp": "TV’nin akışı kendi IP adresinden oynatıp oynatamadığını sınar.",
+  "tvBackToExit": "Çıkmak için GERİ",
+  "tvDiagCaptiveLikely": "HTTP {status}, {bytes} bayt → olası ağ giriş portalı",
+  "tvDiagLookup": "{host} çözümleniyor…",
+  "tvDiagNoIp": "{host} → IP adresi yok",
+  "tvDiagDnsTimeout": "{host}: 8 saniyede DNS yanıtı yok",
+  "tvDiagStreamOk": "HTTP {status} (akış erişilebilir)",
+  "tvDiagUnknownMac": "MAC BİLİNMİYOR ({mac})",
+  "tvSizeBytes": "{size} B",
+  "tvSizeKb": "{size} KB",
+  "tvSizeMb": "{size} MB",
+  "tvSizeGb": "{size} GB",
+  "tvDurationHm": "{hours} sa {minutes} dk",
+  "tvWhatsAppActivationRequest": "Merhaba, Zuno’yu etkinleştirmek istiyorum.",
+  "castErrorTimeoutRetry": "TV çok yavaş yanıt veriyor. Tekrar deneyin veya başka bir TV seçin.",
+  "castProgressRelay": "Aktarım hazırlanıyor…",
+  "castFriendlyNetworkFail": "TV’ye bağlanılamadı.",
+  "castFriendlyTvTimeout": "TV yanıt vermiyor. Wi-Fi bağlantısını kontrol edin.",
+  "castFriendlyBadFormat": "Bu biçim desteklenmiyor. Başka bir kanal deneyin.",
+  "castProgressLive": "TV’de oynatılıyor",
+  "castFriendlyAuthExpired": "Akışa erişim reddedildi. Erişim bilgilerinizi kontrol edin.",
+  "castFriendlyTvRefused": "TV akışı reddetti. Başka bir kanal deneyin.",
+  "castProgressConnectingAttempt": "TV’ye bağlanılıyor ({attempt}/{total})…",
+  "castFriendlyGenericFail": "Yayın başarısız. Tekrar deneyin.",
+  "castProgressWebFallback": "Tarayıcı moduna geçiliyor (QR kodu)…",
+  "castFriendlyTvUnreachable": "TV’nin açık ve aynı özel ağa bağlı olduğundan emin olun.",
+  "castProgressDetecting": "TV algılanıyor…",
+  "castDlnaReceiverFallback": "DLNA alıcısı",
+  "castErrorApIsolation": "TV bu cihaza ulaşamıyor. İkisini de aynı özel ağa bağlayın.",
+  "castProgressRetrying": "Uyumlu modda tekrar deneniyor ({attempt}/{total})…",
+  "castFriendlyTvStuck": "TV önceki oturumda takılmış. TV’yi yeniden başlatın.",
+  "castErrorReceiverRejected": "TV bu akışı desteklemiyor olabilir. Başka bir kanal deneyin.",
+  "castProgressConnecting": "TV’ye bağlanılıyor…",
+  "castFriendlyNoGms": "Google Cast için Android SDK gerekir. DLNA veya Roku alıcısı kullanın.",
+  "castErrorTimeout": "Yayın bağlantısı zaman aşımına uğradı",
+  "castFriendlyDnsUnstable": "İnternet veya DNS kararsız. Daha sonra tekrar deneyin.",
+  "castFriendlyProviderLimit": "Kaynak ek bağlantıya izin vermiyor. Başka bir oynatmayı durdurun.",
+  "castProgressValidating": "Akış kontrol ediliyor…",
+  "castWindowsHelp": "Bilgisayarı ve TV’yi aynı özel ağa (Wi-Fi veya Ethernet) bağlayın. DLNA TV veya Roku seçin. Yalnızca Google Cast kullanan alıcılar Windows’ta desteklenmez. Ses ve ileri sarma için TV kumandasını kullanın.",
+  "vipCountriesTitle": "Ülkelerim · VIP",
+  "vipCountriesHint": "En fazla 10 ülke seçin. Sıralama bu profil için kaydedilir; diğer ülkeler erişilebilir kalır.",
+  "vipCountriesOrder": "Sıralamam",
+  "vipCountriesEmpty": "Mevcut kanallarda ülke bulunamadı.",
+  "vipCountriesSaveError": "Kaydedilemedi. Tekrar deneyin.",
+  "vipCountriesMoveUp": "Yukarı taşı",
+  "vipCountriesMoveDown": "Aşağı taşı",
+  "vipCountriesRemove": "Kaldır",
+  "vipCountryRs": "Sırbistan",
+  "vipCountryFr": "Fransa",
+  "vipCountryUs": "Amerika Birleşik Devletleri",
+  "vipCountryUk": "Birleşik Krallık",
+  "vipCountryDe": "Almanya",
+  "vipCountryIt": "İtalya",
+  "vipCountryEs": "İspanya",
+  "vipCountryPt": "Portekiz",
+  "vipCountryBe": "Belçika",
+  "vipCountryCh": "İsviçre",
+  "vipCountryCa": "Kanada",
+  "vipCountryBr": "Brezilya",
+  "vipCountryMx": "Meksika",
+  "vipCountryAr": "Arjantin",
+  "vipCountrySa": "Suudi Arabistan",
+  "vipCountryTr": "Türkiye",
+  "vipCountryGr": "Yunanistan",
+  "vipCountryPl": "Polonya",
+  "vipCountryRu": "Rusya",
+  "vipCountryNl": "Hollanda",
+  "vipCountryJp": "Japonya",
+  "vipCountryKr": "Güney Kore",
+  "vipCountryCn": "Çin",
+  "vipCountryIn": "Hindistan",
+  "vipCountryAu": "Avustralya",
+  "vipCountrySe": "İsveç",
+  "vipCountryNo": "Norveç",
+  "vipCountryDk": "Danimarka",
+  "vipCountryFi": "Finlandiya",
+  "vipCountryMa": "Fas",
+  "vipCountryDz": "Cezayir",
+  "vipCountryTn": "Tunus",
+  "vipCountryEg": "Mısır"
+}

@@ -1,52 +1,38 @@
-# ============================================================================
-#  cleanup-old-apks.yml — Suppression CONTRÔLÉE d'anciennes releases/APK.
-#
-#  Lancement MANUEL uniquement (workflow_dispatch). On donne la liste des
-#  tags à supprimer ; l'action supprime la release ET le tag git associé.
-#  Par défaut : les vieux builds TÉLÉPHONE périmés (remplacés par `latest`
-#  et `prive-latest`). On ne touche JAMAIS aux apps TV ni aux 2 apps
-#  officielles (latest / prive-latest).
-# ============================================================================
-name: Cleanup old APKs
-
+# Nettoyage manuel ; les canaux actifs sont toujours exclus.
+name: Cleanup old APKs (protégé)
 on:
   workflow_dispatch:
     inputs:
       tags:
-        description: 'Tags des releases à supprimer (séparés par des espaces)'
+        description: 'Anciens tags build-N ou cast-N, séparés par des espaces'
         required: true
         default: 'build-522 build-526 cast-1132'
-
+        type: string
+      confirme:
+        description: 'NETTOYER_RELEASES après dégel autorisé'
+        required: true
+        type: string
 permissions:
-  contents: write
-
+  contents: read
 jobs:
   cleanup:
-    name: Supprime les anciennes releases
+    name: Nettoyage validé avant toute suppression
+    if: github.event_name == 'workflow_dispatch' && github.actor == github.repository_owner && github.triggering_actor == github.repository_owner && github.repository == 'manzilionellm-dotcom/tvking'
+    environment: zuno-app-production
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
     steps:
-      - name: Delete releases + tags
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Refuser le nettoyage tant que les apps sont gelées
         env:
+          APP_OPERATION: cleanup
+        run: node .github/app-release-guard.mjs
+      - name: Valider les tags et supprimer sans shell interpolé
+        env:
+          CLEANUP_TAGS: ${{ inputs.tags }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPO: ${{ github.repository }}
-        run: |
-          set -u
-          # Garde-fou : on REFUSE de supprimer les 2 apps officielles,
-          # même si elles sont passées par erreur dans la liste.
-          PROTECTED="latest prive-latest"
-          for t in ${{ inputs.tags }}; do
-            skip=0
-            for p in $PROTECTED; do
-              if [ "$t" = "$p" ]; then
-                echo "🔒 PROTÉGÉ, on saute : $t"
-                skip=1
-              fi
-            done
-            [ "$skip" = "1" ] && continue
-            echo ">>> Suppression de la release + tag : $t"
-            gh release delete "$t" --repo "$REPO" --yes --cleanup-tag \
-              && echo "   ✅ supprimé" \
-              || echo "   ⚠️ introuvable (déjà supprimé ?)"
-          done
-          echo ">>> Releases restantes :"
-          gh release list --repo "$REPO" --limit 50
+        run: node .github/release-cleanup.mjs
