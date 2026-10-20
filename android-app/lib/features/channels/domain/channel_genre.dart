@@ -101,10 +101,13 @@ abstract final class ChannelClassifier {
   /// Comme [detectCountry] mais renvoie la CLÉ ('fr', 'uk'…) : sérialisable,
   /// donc utilisable depuis un isolate (cf. ChannelPrecompute).
   static String? detectCountryKey(String name, String category) {
-    final String text = _normalize('$category $name');
-    for (final MapEntry<String, CountryInfo> e in _kCountries.entries) {
-      for (final String pattern in _patternsForCountry(e.key)) {
-        if (_containsAsToken(text, pattern)) return e.key;
+    // La catégorie du fournisseur prime : une chaîne « France 24 » dans
+    // un bouquet serbe ne doit pas déplacer ce bouquet vers la France.
+    for (final String text in <String>[_normalize(category), _normalize(name)]) {
+      for (final MapEntry<String, CountryInfo> e in _kCountries.entries) {
+        for (final String pattern in _patternsForCountry(e.key)) {
+          if (_containsAsToken(text, pattern)) return e.key;
+        }
       }
     }
     return null;
@@ -293,6 +296,7 @@ abstract final class ChannelClassifier {
   ];
 
   static const Map<String, CountryInfo> _kCountries = <String, CountryInfo>{
+    'rs': CountryInfo('RS', 'Serbie', '🇷🇸'),
     'fr': CountryInfo('FR', 'France', '🇫🇷'),
     'us': CountryInfo('US', 'États-Unis', '🇺🇸'),
     'uk': CountryInfo('UK', 'Royaume-Uni', '🇬🇧'),
@@ -329,6 +333,8 @@ abstract final class ChannelClassifier {
 
   static List<String> _patternsForCountry(String code) {
     switch (code) {
+      case 'rs':
+        return <String>['rs', 'srb', 'serbia', 'serbie', 'srbija', 'србија'];
       case 'fr':
         return <String>['fr', 'france', 'francais', 'french'];
       case 'us':
