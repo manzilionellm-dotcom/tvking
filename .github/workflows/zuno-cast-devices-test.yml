@@ -118,10 +118,10 @@ jobs:
           APK=build/cast-test/zuno-cast-test.apk
           SDK_ANALYZER="$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer"
           "$SDK_ANALYZER" manifest print "$APK" > build/cast-test/AndroidManifest.xml
-          SDK_SIGNER=$(rg --files "$ANDROID_HOME/build-tools" | rg '/apksigner$' | sort -V | tail -n 1)
+          SDK_SIGNER=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)
           test -n "$SDK_SIGNER"
           "$SDK_SIGNER" verify --print-certs "$APK" > build/cast-test/signature.txt
-          rg 'Signer #1 certificate DN:.*CN=Android Debug' build/cast-test/signature.txt
+          grep -E 'Signer #1 certificate DN:.*CN=Android Debug' build/cast-test/signature.txt
           python3 ci/cast_test/verify_android.py "$APK" build/cast-test/AndroidManifest.xml build/cast-test/build-provenance.json
 
       - name: Conserver l’APK et sa preuve de compilation
