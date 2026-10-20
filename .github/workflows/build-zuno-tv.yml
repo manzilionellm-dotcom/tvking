@@ -583,7 +583,8 @@ jobs:
       # ------------------------------------------------------------------
       #  AAB GOOGLE PLAY (Android TV) — sur demande (input play_aab=true).
       #  Même code, même clé maîtresse (= clé d'importation Play), mêmes
-      #  numéros de version que l'APK. Différences exigées par Google Play :
+      #  identité que l'APK ; numérotation Play dédiée ci-dessous.
+      #  Différences exigées par Google Play :
       #    • PLAY_BUILD=true → l'updater sideload est coupé (les mises à jour
       #      viennent du Store, cf. core/update/build_flags.dart) ;
       #    • permission REQUEST_INSTALL_PACKAGES RETIRÉE du manifeste fusionné
@@ -593,7 +594,8 @@ jobs:
       # ------------------------------------------------------------------
       # Le Store possède sa propre suite de codes : les secondes epoch
       # consommaient inutilement la plage de mises à jour autorisée par Google.
-      # Ce manifeste est avancé après publication, sans renuméroter les APK.
+      # Ce manifeste suit les codes importés et publiés séparément, sans
+      # renuméroter les APK ni réutiliser le code d'un bundle encore en examen.
       - name: Numérotation incrémentale Google Play
         if: inputs.play_aab == 'true'
         run: |
@@ -654,6 +656,18 @@ jobs:
           fi
           echo "✓ AAB Google Play prêt : $AAB"
           echo "AAB_READY=1" >> "$GITHUB_ENV"
+
+      # La seconde compilation peut produire des DEX différents de l'APK.
+      # Le contrôle du démarrage porte donc aussi sur le bundle signé final.
+      - name: Vérifier le bundle et le démarrage de l'AAB Google Play
+        if: inputs.play_aab == 'true'
+        run: |
+          set -e
+          AAB=build/app/outputs/bundle/release/zuno-tv.aab
+          java -jar /tmp/bundletool.jar validate --bundle "$AAB"
+          BUILD_TOOLS=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          python3 ci/tv/verify_apk_jni.py "$AAB" --bundle \
+            --dexdump "$BUILD_TOOLS/dexdump"
 
       - name: Upload AAB artifact (Google Play)
         if: env.AAB_READY == '1'
