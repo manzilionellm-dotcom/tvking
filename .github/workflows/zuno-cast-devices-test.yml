@@ -1,0 +1,217 @@
+# Artefacts isolés pour essayer le Cast ZUNO sur téléphone/tablette et PC.
+# Aucun job de publication, aucune clé client, aucun environnement de sortie.
+# Les workflows TV et la version en examen sur Play restent indépendants.
+name: Zuno Cast devices (test artifacts only)
+
+on:
+  push:
+    branches: ['feature/zuno-cast-devices-20261020']
+    paths:
+      - '.github/workflows/zuno-cast-devices-test.yml'
+      - 'android-app/lib/**'
+      - 'android-app/packages/native_video_player/**'
+      - 'android-app/test/**'
+      - 'android-app/ci/cast_test/**'
+      - 'android-app/android_overlay/google_cast/**'
+      - 'android-app/pubspec.yaml'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: zuno-cast-devices-test-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: android-app
+
+jobs:
+  native-logic:
+    name: Handoff réseau natif (Kotlin/JVM)
+    if: github.repository == 'manzilionellm-dotcom/tvking' && github.actor == github.repository_owner && github.triggering_actor == github.repository_owner
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout du commit exact
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Java 21 pour la logique seule
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      # Le runner Kotlin/JUnit épingle ses JAR et leurs SHA-256. Il compile
+      # les vraies sources de handoff, sans SDK Android ni Gradle du runner.
+      # La compilation complète du plugin/Media3 a lieu avec l'APK ci-dessous.
+      - name: Tester le handoff natif sans lecteur ni flux distant
+        run: python3 ci/cast_test/run_native_logic.py
+
+  android-touch:
+    name: APK téléphone et tablette (test isolé)
+    needs: native-logic
+    if: github.repository == 'manzilionellm-dotcom/tvking' && github.actor == github.repository_owner && github.triggering_actor == github.repository_owner
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout du commit exact
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Vérifier le packaging isolé sur une copie temporaire
+        run: python3 -m unittest discover -s ci/cast_test -p 'test_*.py' -v
+
+      - name: Setup Java 17
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          flutter-version: '3.47.7'
+          channel: stable
+          cache: false
+          pub-cache: false
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
+
+      - name: Préparer le téléphone/tablette et ses ponts natifs
+        run: python3 ci/cast_test/prepare_android.py
+
+      - name: Dépendances et traductions
+        run: |
+          set -euo pipefail
+          flutter pub get
+          flutter gen-l10n
+
+      - name: Contrats Cast, moteur natif, téléchargements et mises à jour
+        run: |
+          flutter test --no-pub test/features/cast test/features/tv/desktop \
+            test/core/update packages/native_video_player/test \
+            test/features/player/single_player_audio_test.dart \
+            test/features/cinema/playback_download_pause_test.dart \
+            test/features/cinema/download_repository_handoff_test.dart \
+            --reporter expanded
+
+      - name: Construire un APK debug avec la seule clé jetable du runner
+        run: |
+          set -euo pipefail
+          flutter build apk --debug --target=lib/main_zuno_mobile.dart \
+            --build-name=0.0.${{ github.run_number }} \
+            --build-number=${{ github.run_number }} \
+            --dart-define=ZUNO_CAST_TEST=true \
+            --dart-define=GIT_SHA=${{ github.sha }}
+          mkdir -p build/cast-test
+          cp build/app/outputs/flutter-apk/app-debug.apk build/cast-test/zuno-cast-test.apk
+
+      - name: Vérifier le vrai APK (identité, lanceur mobile, SDK et signature debug)
+        run: |
+          set -euo pipefail
+          APK=build/cast-test/zuno-cast-test.apk
+          SDK_ANALYZER="$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer"
+          "$SDK_ANALYZER" manifest print "$APK" > build/cast-test/AndroidManifest.xml
+          SDK_SIGNER=$(rg --files "$ANDROID_HOME/build-tools" | rg '/apksigner$' | sort -V | tail -n 1)
+          test -n "$SDK_SIGNER"
+          "$SDK_SIGNER" verify --print-certs "$APK" > build/cast-test/signature.txt
+          rg 'Signer #1 certificate DN:.*CN=Android Debug' build/cast-test/signature.txt
+          python3 ci/cast_test/verify_android.py "$APK" build/cast-test/AndroidManifest.xml build/cast-test/build-provenance.json
+
+      - name: Conserver l’APK et sa preuve de compilation
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: zuno-cast-android-test-${{ github.sha }}
+          path: android-app/build/cast-test/
+          if-no-files-found: error
+          retention-days: 14
+
+  windows:
+    name: ZIP Windows Cast (test isolé)
+    needs: native-logic
+    if: github.repository == 'manzilionellm-dotcom/tvking' && github.actor == github.repository_owner && github.triggering_actor == github.repository_owner
+    runs-on: windows-2022
+    timeout-minutes: 60
+    steps:
+      - name: Checkout du commit exact
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          flutter-version: '3.47.7'
+          channel: stable
+          cache: false
+          pub-cache: false
+
+      - name: Générer uniquement le runner Windows de test
+        shell: bash
+        run: |
+          set -euo pipefail
+          flutter config --enable-windows-desktop
+          flutter create . --platforms=windows --org com.sevenmotion --project-name tv_king
+          rm -f test/widget_test.dart
+          python ci/cast_test/prepare_windows.py
+          flutter pub get
+          flutter gen-l10n
+
+      - name: Contrats Cast et bureau sur Windows
+        shell: bash
+        run: |
+          flutter test --no-pub test/features/cast test/features/tv/desktop \
+            test/core/update packages/native_video_player/test \
+            test/features/player/single_player_audio_test.dart \
+            test/features/cinema/playback_download_pause_test.dart \
+            test/features/cinema/download_repository_handoff_test.dart \
+            --reporter expanded
+
+      - name: Compiler le PC sans installeur ni canal de mise à jour client
+        shell: pwsh
+        env:
+          CL: /D_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS
+        run: |
+          $ErrorActionPreference = 'Stop'
+          flutter build windows --release --target=lib/main_windows.dart `
+            --build-name=0.0.${{ github.run_number }} `
+            --build-number=${{ github.run_number }} `
+            --dart-define=ZUNO_CAST_TEST=true `
+            --dart-define=GIT_SHA=${{ github.sha }}
+          if ($LASTEXITCODE -ne 0) { throw "La compilation Windows a échoué ($LASTEXITCODE)" }
+
+      - name: Vérifier le lecteur et préparer le ZIP de test
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $rel = 'build/windows/x64/runner/Release'
+          foreach ($file in 'tv_king.exe', 'flutter_windows.dll', 'data/app.so') {
+            if (!(Test-Path "$rel/$file")) { throw "Fichier absent : $file" }
+          }
+          if (!(Get-ChildItem $rel -Filter '*mpv*.dll')) { throw 'Lecteur libmpv absent' }
+          $name = (Get-Item "$rel/tv_king.exe").VersionInfo.ProductName.Trim()
+          if ($name -ne 'Zuno Cast test') { throw "Identité de test absente : $name" }
+          New-Item -ItemType Directory -Force build/cast-test | Out-Null
+          Compress-Archive -Path "$rel/*" -DestinationPath build/cast-test/zuno-windows-cast-test.zip
+          $zip = Get-Item build/cast-test/zuno-windows-cast-test.zip
+          @{
+            sourceCommit = '${{ github.sha }}'; edition = 'desktop';
+            entrypoint = 'lib/main_windows.dart'; label = 'Zuno Cast test';
+            updatesDisabledByBuild = $true; signing = 'unsigned-test';
+            sha256 = (Get-FileHash $zip.FullName -Algorithm SHA256).Hash.ToLower();
+            sizeBytes = $zip.Length
+          } | ConvertTo-Json | Set-Content build/cast-test/build-provenance.json -Encoding UTF8
+
+      - name: Conserver le ZIP de test et sa preuve de compilation
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: zuno-cast-windows-test-${{ github.sha }}
+          path: android-app/build/cast-test/
+          if-no-files-found: error
+          retention-days: 14

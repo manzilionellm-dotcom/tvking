@@ -24,8 +24,8 @@
 //  enchaîner 20 setUrl gelait la box.
 // =========================================================
 import 'dart:async';
-import 'package:flutter/foundation.dart';
 import '../desktop/desktop_cast_controls.dart';
+import '../../cast/data/cast_platform.dart';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
@@ -100,7 +100,10 @@ class TvPlayerScreen extends StatefulWidget {
 class _TvPlayerScreenState extends State<TvPlayerScreen>
     with WidgetsBindingObserver {
   late final NativeVideoController _controller;
-  final GlobalKey<DesktopCastControlsState> _desktopCastKey = GlobalKey<DesktopCastControlsState>();
+  final GlobalKey<DesktopCastControlsState> _desktopCastKey =
+      GlobalKey<DesktopCastControlsState>();
+  bool _castingHandoff = false;
+  final Object _downloadOwner = Object();
   final FocusNode _focus = FocusNode();
 
   late int _index = widget.startIndex;
@@ -159,9 +162,10 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   // fichier capture EXACTEMENT ce qui est à l'écran. Hors enregistrement, la
   // lecture reste DIRECTE (le relais n'est pas dans le chemin).
   Recording? _activeRecording;
+  bool _recordingBusy = false;
   bool get _isRecording => _activeRecording != null;
   String?
-  _relayPlayUrl; // URL locale 127.0.0.1 utilisée pendant l'enregistrement
+      _relayPlayUrl; // URL locale 127.0.0.1 utilisée pendant l'enregistrement
   String? _toastMsg; // petit message éphémère (sauvegardé / vide / échec)
 
   // ----- Favoris -----
@@ -276,7 +280,11 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     // téléchargement de film en cours ferait refuser le direct (« le cinéma
     // marche mais pas les chaînes »). On le met en pause le temps du direct,
     // il reprend tout seul en quittant le lecteur.
-    unawaited(CinemaDownloads.pauseForLive());
+    unawaited(CinemaDownloads.pauseForLive(owner: _downloadOwner)
+        .catchError((Object _) {
+      BlackBox.instance
+          .warn('CINEMA', 'Pause des téléchargements non confirmée');
+    }));
     _controller.addListener(_onPlayer);
     // Favoris en direct (le ❤ se met à jour tout seul).
     FavoritesRepository.instance.initialize();
@@ -294,7 +302,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     // l'infini. Désormais chaque tentative ratée en relance une autre 15 s
     // plus tard, jusqu'au budget, puis l'écran « Réessayer ».)
     _watchdog = Timer.periodic(_watchEvery, (_) {
-      if (!_appActive) {
+      if (!_appActive || _castingHandoff || _controller.castSuspended) {
         _lastProgress = DateTime.now(); // pause voulue : pas un gel
         return;
       }
@@ -328,6 +336,25 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     _controller.setFrameRateMatch(ImagePrefs.frameRateMatch);
   }
 
+  void _onCastHandoff(bool active) {
+    if (!mounted) return;
+    _cancelRecover();
+    _lastProgress = DateTime.now();
+    _lastPos = _controller.position;
+    setState(() {
+      _castingHandoff = active;
+      _fatal = false;
+      _buffering = !active && !_controller.firstFrame;
+    });
+  }
+
+  Future<void> _prepareCastHandoff() async {
+    // Un enregistrement a son propre consommateur réseau. On garde le
+    // bouton indisponible jusqu'à sa clôture, sans couper le fichier.
+    if (_isRecording || _recordingBusy) throw StateError('recording-active');
+    await CinemaDownloads.pauseForLive(owner: _downloadOwner);
+  }
+
   // Quitter / minimiser l'app (Home, multitâche) : AUCUNE lecture hors de
   // l'app. Avant, on mettait en pause : le décodeur, la sortie son et le
   // focus audio restaient vivants pendant que la box faisait autre chose,
@@ -342,6 +369,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
       case AppLifecycleState.detached:
         if (!_appActive) break; // déjà fait (hidden suit paused)
         _appActive = false;
+        if (_castingHandoff || _controller.castSuspended) break;
         if (NativeVideoController.backgroundPauseOnly) {
           BlackBox.instance.info(
             'SON',
@@ -359,6 +387,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
         if (_appActive) break;
         _appActive = true;
         _lastProgress = DateTime.now();
+        if (_castingHandoff || _controller.castSuspended) break;
         if (NativeVideoController.backgroundPauseOnly) {
           _controller.play();
         } else {
@@ -375,6 +404,8 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
 
   @override
   void dispose() {
+    final Future<void> castClosed =
+        _desktopCastKey.currentState?.close() ?? Future<void>.value();
     TvActivity.leave();
     WidgetsBinding.instance.removeObserver(this);
     // On quitte sur cette chaîne : si une image a été vue, elle compte
@@ -413,7 +444,8 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     SubscriptionState.instance.syncWithBackend(); // on ne regarde plus rien
     _controller.dispose();
     ForegroundPlayback.unlock();
-    unawaited(CinemaDownloads.resumeAfterLive());
+    unawaited(castClosed
+        .then((_) => CinemaDownloads.resumeAfterLive(owner: _downloadOwner)));
     _focus.dispose();
     super.dispose();
   }
@@ -425,7 +457,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     // affichée. On ignore ses erreurs / sa première image, sinon l'écran
     // croirait que la mauvaise chaîne est prête et lancerait une
     // reconnexion inutile.
-    if (_zapHolding) return;
+    if (_zapHolding || _castingHandoff || _controller.castSuspended) return;
     if (_controller.reopenCount != _seenReopen) {
       _seenReopen = _controller.reopenCount;
       _lastProgress = DateTime.now();
@@ -482,8 +514,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     // Panneau opaque seulement s'il n'y a pas d'image à garder.
     // holdFrame = le natif montre la dernière image : un panneau
     // par-dessus ferait un écran noir le temps de revenir.
-    final bool buffering =
-        !_controller.holdFrame &&
+    final bool buffering = !_controller.holdFrame &&
         (_controller.isBuffering || !_controller.firstFrame);
     if (mounted && buffering != _buffering) {
       setState(() => _buffering = buffering);
@@ -603,7 +634,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
 
   void _showFatal() {
     _cancelRecover();
-    if (!mounted) return;
+    if (!mounted || _castingHandoff || _controller.castSuspended) return;
     setState(() {
       _fatal = true;
       _buffering = false;
@@ -619,7 +650,11 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   }
 
   void _recover() {
-    if (_fatal || _zapHolding || _recoverArmed) return;
+    if (_fatal ||
+        _zapHolding ||
+        _recoverArmed ||
+        _castingHandoff ||
+        _controller.castSuspended) return;
     // Dehors : pas de second flux. Le natif refuse aussi, au cas où.
     if (NativeVideoController.blocksReopenInBackground) {
       _noteBackgroundRefusal();
@@ -642,16 +677,16 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     BlackBox.instance.warn(
       'PLAYER',
       'reconnexion dans ${delay}ms (tentative $next/$_maxRecover)'
-          '${_controller.hasError
-              ? ' après erreur ExoPlayer'
-              : _controller.isEnded
-              ? ' après fin de flux'
-              : ' après gel 15 s'}',
+          '${_controller.hasError ? ' après erreur ExoPlayer' : _controller.isEnded ? ' après fin de flux' : ' après gel 15 s'}',
     );
     _recoverTimer = Timer(Duration(milliseconds: delay), () {
       _recoverTimer = null;
       _recoverArmed = false;
-      if (!mounted || _fatal || _zapHolding) return;
+      if (!mounted ||
+          _fatal ||
+          _zapHolding ||
+          _castingHandoff ||
+          _controller.castSuspended) return;
       if (NativeVideoController.blocksReopenInBackground) {
         _noteBackgroundRefusal();
         return;
@@ -664,6 +699,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   /// Ouvre à nouveau, après l'attente. Même adresse si l'image avait
   /// déjà été vue (on garde cette image). Sinon, adresse de secours.
   void _reopenAfterFailure() {
+    if (_castingHandoff || _controller.castSuspended) return;
     if (_relayPlayUrl != null) {
       _controller.setUrl(_relayPlayUrl!, keepPicture: _everShownFrame);
       return;
@@ -697,6 +733,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
 
   /// « Réessayer » manuel depuis l'écran d'erreur : on repart d'un budget neuf.
   void _manualRetry() {
+    if (_castingHandoff || _controller.castSuspended) return;
     _zapSettle?.cancel();
     _zapHolding = false;
     _cancelRecover();
@@ -715,12 +752,18 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   // ----- Enregistrement (bouton REC / touche média) -----
 
   Future<void> _toggleRecording() async {
-    if (_isRecording) {
-      await _finalizeRecording(resumeDirect: true);
-    } else {
-      await _startRecording();
+    if (_castingHandoff || _recordingBusy) return;
+    setState(() => _recordingBusy = true);
+    try {
+      if (_isRecording) {
+        await _finalizeRecording(resumeDirect: true);
+      } else {
+        await _startRecording();
+      }
+    } finally {
+      if (mounted) setState(() => _recordingBusy = false);
     }
-    _showOverlayTemporarily();
+    if (mounted) _showOverlayTemporarily();
   }
 
   Future<void> _startRecording() async {
@@ -913,16 +956,16 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   }
 
   int _engineBtn(BuildContext context) => LiveBarSlots.engine(
-    showStart: _showStart,
-    showSubs: _subsBtn(context) != null,
-    showFollow: _canFollow,
-  );
+        showStart: _showStart,
+        showSubs: _subsBtn(context) != null,
+        showFollow: _canFollow,
+      );
 
   int _btnCount(BuildContext context) => LiveBarSlots.count(
-    showStart: _showStart,
-    showSubs: _subsBtn(context) != null,
-    showFollow: _canFollow,
-  );
+        showStart: _showStart,
+        showSubs: _subsBtn(context) != null,
+        showFollow: _canFollow,
+      );
 
   int? _subsBtn(BuildContext context) {
     if (!_subsOn || !_subsReady) return null;
@@ -1018,9 +1061,8 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     if (!_subsReady || !_subsOn || !mounted) return;
     final List<NativeTrack> tracks = _controller.tracks;
     if (identical(_appliedTracks, tracks)) return;
-    final List<NativeTrack> texts = tracks
-        .where((NativeTrack t) => !t.isAudio)
-        .toList();
+    final List<NativeTrack> texts =
+        tracks.where((NativeTrack t) => !t.isAudio).toList();
     if (texts.isEmpty) return;
     final List<NativeTrack> mine = _userTextTracks(context);
     if (_subsWant == null) {
@@ -1132,8 +1174,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
         try {
           await missedShowFlag.load();
           if (missedShowFlag.value && !_catchup && gen == _missedGen) {
-            final bool declared =
-                channel.catchupSupported ||
+            final bool declared = channel.catchupSupported ||
                 (channel.catchupSource != null &&
                     channel.catchupSource!.isNotEmpty);
             final String? url = declared && program != null
@@ -1202,17 +1243,17 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     unawaited(
       Navigator.of(context)
           .push(
-            MaterialPageRoute<void>(
-              builder: (_) => TvChannelGuideScreen(
-                channel: _current,
-                currentSummary: _missed,
-              ),
-            ),
-          )
+        MaterialPageRoute<void>(
+          builder: (_) => TvChannelGuideScreen(
+            channel: _current,
+            currentSummary: _missed,
+          ),
+        ),
+      )
           .then((_) {
-            // Au retour, le focus clavier était parti avec la route du guide.
-            if (mounted) _focus.requestFocus();
-          }),
+        // Au retour, le focus clavier était parti avec la route du guide.
+        if (mounted) _focus.requestFocus();
+      }),
     );
     _showOverlayTemporarily();
   }
@@ -1224,6 +1265,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
       unawaited(_desktopCastKey.currentState!.togglePause());
       return;
     }
+    if (_castingHandoff || _controller.castSuspended) return;
     if (_controller.isPlaying) {
       _controller.pause();
     } else {
@@ -1472,14 +1514,16 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
                   // Le temps que l'image arrive (ou qu'on lâche Haut/Bas), on dit
                   // QUELLE chaîne est visée. Un logo seul ne permettait pas de
                   // zapper « à l'aveugle » sans se perdre.
-                  if (_zapHolding || (_buffering && !_fatal)) _loadingCard(),
+                  if (!_castingHandoff &&
+                      (_zapHolding || (_buffering && !_fatal)))
+                    _loadingCard(),
                   if (_missed != null)
                     Align(
                       alignment: Alignment.topCenter,
                       child: MissedNotice(
                         key: ValueKey<int>(_missedGen),
                         summary: _missed!,
-                        suppressed: _catchup || _zapHolding,
+                        suppressed: _catchup || _zapHolding || _castingHandoff,
                       ),
                     ),
                   // Écran d'ERREUR : la reconnexion automatique a été épuisée.
@@ -1487,7 +1531,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
                   // Retour quitte. Masqué pendant un zap : la personne est déjà
                   // en train d'en choisir une autre. Le texte (chaîne coupée ou
                   // chaîne vide) reste celui des traductions, lisible à 3 m.
-                  if (_fatal && !_zapHolding) _errorCard(),
+                  if (!_castingHandoff && _fatal && !_zapHolding) _errorCard(),
                   // Panneau de lecture (façon YouTube / Netflix) : glisse depuis le
                   // bas + fondu, masqué automatiquement après 5 s. Contient l'info
                   // chaîne + tous les contrôles (dont REC et ❤ en bas).
@@ -1544,10 +1588,20 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
                       ),
                     ),
                   ),
-                  if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows)
-                    Positioned(top: TvDimens.safeV, right: TvDimens.safeH,
-                      child: DesktopCastControls(key: _desktopCastKey,
-                        controller: _controller, streamUrl: _playingUrl, title: _current.name, imageUrl: _current.logoUrl)),
+                  if (CastPlatform.canSend)
+                    Positioned(
+                        top: TvDimens.safeV,
+                        right: TvDimens.safeH,
+                        child: DesktopCastControls(
+                            key: _desktopCastKey,
+                            controller: _controller,
+                            streamUrl: _playingUrl,
+                            title: _current.name,
+                            imageUrl: _current.logoUrl,
+                            enabled: !_isRecording && !_recordingBusy,
+                            disabledHint: context.l10n.playerRecording,
+                            prepareHandoff: _prepareCastHandoff,
+                            onHandoffChanged: _onCastHandoff)),
                   // Numéro saisi à la télécommande (coin haut-droit).
                   if (_numBuffer.isNotEmpty)
                     Positioned(
@@ -2046,110 +2100,112 @@ class _ControlsBar extends StatelessWidget {
   }
 
   Widget _logo() => SizedBox(
-    width: 56,
-    height: 56,
-    child: (channel.logoUrl != null && channel.logoUrl!.isNotEmpty)
-        ? CachedNetworkImage(
-            imageUrl: channel.logoUrl!,
-            fit: BoxFit.contain,
-            memCacheWidth: 160,
-            fadeInDuration: const Duration(milliseconds: 150),
-            placeholder: (_, __) => _initials(),
-            errorWidget: (_, __, ___) => _initials(),
-          )
-        : _initials(),
-  );
+        width: 56,
+        height: 56,
+        child: (channel.logoUrl != null && channel.logoUrl!.isNotEmpty)
+            ? CachedNetworkImage(
+                imageUrl: channel.logoUrl!,
+                fit: BoxFit.contain,
+                memCacheWidth: 160,
+                fadeInDuration: const Duration(milliseconds: 150),
+                placeholder: (_, __) => _initials(),
+                errorWidget: (_, __, ___) => _initials(),
+              )
+            : _initials(),
+      );
 
   Widget _initials() => Center(
-    child: Text(
-      channel.initials,
-      style: TextStyle(
-        fontSize: TvDimens.title,
-        fontWeight: FontWeight.w800,
-        color: TvTokens.muted,
-      ),
-    ),
-  );
+        child: Text(
+          channel.initials,
+          style: TextStyle(
+            fontSize: TvDimens.title,
+            fontWeight: FontWeight.w800,
+            color: TvTokens.muted,
+          ),
+        ),
+      );
 
   Widget _info(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    mainAxisSize: MainAxisSize.min,
-    children: <Widget>[
-      Text(
-        channel.cleanName,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: TextStyle(
-          fontSize: TvDimens.headline,
-          fontWeight: FontWeight.w800,
-          color: TvTokens.text,
-        ),
-      ),
-      // Programme en cours, sous le nom : le guide sans quitter l'image.
-      _LiveEpgLine(channelId: channel.id),
-      const SizedBox(height: 6),
-      Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: <Widget>[
-          if (channel.isLive) ...<Widget>[
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
-              decoration: BoxDecoration(
-                color: TvTokens.live,
-                borderRadius: BorderRadius.circular(5),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: <Widget>[
-                  const Icon(
-                    Icons.fiber_manual_record_rounded,
-                    color: Colors.white,
-                    size: 11,
-                  ),
-                  const SizedBox(width: 5),
-                  Text(
-                    context.l10n.tvLiveBadge,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w800,
-                      color: Colors.white,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 12),
-          ],
-          Flexible(
-            child: Text(
-              channel.category.trim().isEmpty
-                  ? context.l10n.tvOthers
-                  : channel.category.trim(),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: TvDimens.label, color: TvTokens.muted),
+          Text(
+            channel.cleanName,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: TvDimens.headline,
+              fontWeight: FontWeight.w800,
+              color: TvTokens.text,
             ),
           ),
+          // Programme en cours, sous le nom : le guide sans quitter l'image.
+          _LiveEpgLine(channelId: channel.id),
+          const SizedBox(height: 6),
+          Row(
+            children: <Widget>[
+              if (channel.isLive) ...<Widget>[
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: TvTokens.live,
+                    borderRadius: BorderRadius.circular(5),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      const Icon(
+                        Icons.fiber_manual_record_rounded,
+                        color: Colors.white,
+                        size: 11,
+                      ),
+                      const SizedBox(width: 5),
+                      Text(
+                        context.l10n.tvLiveBadge,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+              ],
+              Flexible(
+                child: Text(
+                  channel.category.trim().isEmpty
+                      ? context.l10n.tvOthers
+                      : channel.category.trim(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      fontSize: TvDimens.label, color: TvTokens.muted),
+                ),
+              ),
+            ],
+          ),
         ],
-      ),
-    ],
-  );
+      );
 
   Widget _channelNumber() => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-    decoration: BoxDecoration(
-      color: Colors.white.withValues(alpha: 0.08),
-      borderRadius: BorderRadius.circular(10),
-      border: Border.all(color: Colors.white24),
-    ),
-    child: Text(
-      '${index + 1} / $total',
-      style: TextStyle(
-        fontSize: TvDimens.label,
-        fontWeight: FontWeight.w800,
-        color: TvTokens.text,
-      ),
-    ),
-  );
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: Colors.white24),
+        ),
+        child: Text(
+          '${index + 1} / $total',
+          style: TextStyle(
+            fontSize: TvDimens.label,
+            fontWeight: FontWeight.w800,
+            color: TvTokens.text,
+          ),
+        ),
+      );
 }
 
 /// Bouton de commande « verre » avec animation d'appui (scale), façon lecteur
@@ -2191,8 +2247,8 @@ class _CtrlButtonState extends State<_CtrlButton> {
     final Color bg = widget.focused
         ? TvTokens.accent.withValues(alpha: 0.28)
         : (widget.active
-              ? accent.withValues(alpha: 0.22)
-              : Colors.black.withValues(alpha: 0.42));
+            ? accent.withValues(alpha: 0.22)
+            : Colors.black.withValues(alpha: 0.42));
     final Color iconColor = widget.focused
         ? TvTokens.accent
         : (widget.active ? accent : TvTokens.text);

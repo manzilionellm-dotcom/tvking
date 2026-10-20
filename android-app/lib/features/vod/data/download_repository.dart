@@ -194,16 +194,19 @@ class DownloadsRepository {
     final _Job? job = _jobs[id];
     if (job != null) {
       job.cancelled = true;
-      await job.sub?.cancel();
-      try { await job.sink?.flush(); await job.sink?.close(); } catch (_) {}
+      // Fermer d'abord le réseau : getUrl/close peuvent être en attente alors
+      // qu'aucune souscription n'a encore été créée.
       job.client?.close(force: true);
+      await job.sub?.cancel();
       // Débloque la coroutine _download (qui attend `done.future`) :
       // annuler la souscription ne déclenche ni onDone ni onError, donc
       // sans ça elle resterait bloquée à jamais (fuite).
       if (job.completer != null && !job.completer!.isCompleted) {
         job.completer!.complete();
       }
-      _jobs.remove(id);
+      // La préparation disque peut encore être en vol. Elle doit constater
+      // l'annulation et achever son finally AVANT de rendre le créneau Cast.
+      await job.finished;
     }
     final Download? d = byId(id);
     if (d != null && d.status != DownloadStatus.done) {
@@ -238,19 +241,24 @@ class DownloadsRepository {
   void _runJob(Download d) {
     final _Job job = _Job();
     _jobs[d.id] = job;
-    unawaited(_download(d, job));
+    job.finished = _download(d, job);
+    unawaited(job.finished);
   }
 
   Future<void> _download(Download d, _Job job) async {
     try {
       final File file = File(d.filePath);
       await file.parent.create(recursive: true);
+      if (job.cancelled) return;
       // Reprise : on repart de la taille déjà téléchargée.
       int start = 0;
       if (await file.exists()) {
         start = await file.length();
       }
 
+      // Une pause pendant les await du disque ne doit jamais être suivie
+      // d'un nouveau client HTTP. Ce contrôle et sa création sont synchrones.
+      if (job.cancelled) return;
       job.client = HttpClient()
         ..connectionTimeout = const Duration(seconds: 30)
         ..autoUncompress = false
@@ -258,12 +266,14 @@ class DownloadsRepository {
 
       final HttpClientRequest req =
           await job.client!.getUrl(Uri.parse(d.sourceUrl));
+      if (job.cancelled) return;
       req.followRedirects = true;
       req.maxRedirects = 8;
       if (start > 0) {
         req.headers.set(HttpHeaders.rangeHeader, 'bytes=$start-');
       }
       final HttpClientResponse resp = await req.close();
+      if (job.cancelled) return;
 
       // 200 = depuis le début, 206 = reprise partielle acceptée.
       final bool partial = resp.statusCode == 206;
@@ -276,6 +286,7 @@ class DownloadsRepository {
         start = 0;
         try { await file.delete(); } catch (_) {}
       }
+      if (job.cancelled) return;
 
       // Taille totale = (déjà reçu) + contentLength.
       final int contentLen = resp.contentLength;
@@ -289,6 +300,7 @@ class DownloadsRepository {
         receivedBytes: received,
         totalBytes: total,
       ));
+      if (job.cancelled) return;
 
       final Completer<void> done = Completer<void>();
       job.completer = done;
@@ -322,7 +334,6 @@ class DownloadsRepository {
       await done.future;
       try { await job.sink?.flush(); await job.sink?.close(); } catch (_) {}
       job.client?.close(force: true);
-      _jobs.remove(d.id);
 
       if (job.cancelled) return; // mis en pause par l'utilisateur
 
@@ -341,11 +352,19 @@ class DownloadsRepository {
       if (kDebugMode) debugPrint('[Downloads] ${d.id} erreur: $e');
       try { await job.sink?.flush(); await job.sink?.close(); } catch (_) {}
       job.client?.close(force: true);
-      _jobs.remove(d.id);
       final Download? cur = byId(d.id);
       if (cur != null && !job.cancelled) {
         await _upsert(cur.copyWith(status: DownloadStatus.error));
       }
+    } finally {
+      if (job.cancelled) {
+        // Couvre aussi les retours anticipés après un await : une ressource
+        // reçue tardivement appartient toujours à ce job, jamais au suivant.
+        job.client?.close(force: true);
+        try { await job.sub?.cancel(); } catch (_) {}
+        try { await job.sink?.flush(); await job.sink?.close(); } catch (_) {}
+      }
+      if (identical(_jobs[d.id], job)) _jobs.remove(d.id);
     }
   }
 
@@ -379,4 +398,6 @@ class _Job {
   /// Complété quand le téléchargement se termine OU est mis en pause,
   /// pour débloquer la coroutine _download.
   Completer<void>? completer;
+  /// Achèvement réel de la coroutine, fermeture des ressources comprise.
+  Future<void>? finished;
 }

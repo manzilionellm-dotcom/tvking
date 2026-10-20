@@ -10,6 +10,7 @@
 //      rendue dans une vraie fenêtre, pas dans une texture Flutter) puis
 //      rattache le controller à l'instance native.
 // =========================================================
+import 'dart:async';
 import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart';
@@ -81,6 +82,19 @@ abstract class NativeVideoBackend {
   void selectTrack(NativeTrack track);
   void disableSubtitles();
 
+  /// Ferme réellement le média et attend sa fermeture avant le Cast.
+  /// Un moteur qui ne sait pas le faire doit refuser le transfert.
+  Future<void> suspendForCast() => Future<void>.error(
+        UnsupportedError('Ce moteur ne permet pas le transfert Cast.'),
+      );
+
+  /// Reprend uniquement sur demande explicite, après l'arrêt du récepteur.
+  /// [args] est le dernier choix du contrôleur, avec sa position de reprise.
+  Future<void> resumeAfterCast(Map<String, dynamic>? args) =>
+      Future<void>.error(
+        UnsupportedError('Ce moteur ne permet pas la reprise après Cast.'),
+      );
+
   /// Coupe le son tout de suite (volume 0 + arrêt). Un autre lecteur
   /// vient de prendre la place. Ne relance rien.
   void silence() {}
@@ -116,14 +130,18 @@ class NativeVideoController extends ChangeNotifier {
       _preferredAudio = preferredAudio;
     }
     _leaseId = audiblePlayers.register(_silenceFromPeer);
+    final String? url = initialUrl;
+    if (url != null) {
+      _pendingArgs = _openArgs(url);
+      _wantsToPlay = true;
+    }
     final NativeVideoBackend Function()? f = backendFactory;
     if (f != null && !Platform.isAndroid) {
       _backend = f()..bind(this);
-      final String? url = initialUrl;
       if (url != null) {
         audible = true;
         audiblePlayers.claim(_leaseId);
-        _backend!.open(_openArgs(url));
+        _backend!.open(_pendingArgs!);
       }
     }
   }
@@ -238,9 +256,24 @@ class NativeVideoController extends ChangeNotifier {
   final bool openAsVod;
 
   MethodChannel? _channel;
-  String? _pendingUrl;
   bool _attached = false;
   bool _disposed = false;
+
+  bool _castSuspended = false;
+  bool _hasCastHandoff = false;
+  bool _castRevoked = false;
+  bool _wantsToPlay = false;
+  int _castGeneration = 0;
+  int _selectionGeneration = 0;
+  int _castSelectionGeneration = 0;
+  Duration _castPosition = Duration.zero;
+  Future<void>? _castStopFuture;
+  Future<void>? _castResumeFuture;
+  Future<void>? _nativeCastHoldFuture;
+
+  /// La lecture locale est réservée au Cast : ni Play, ni Home/retour,
+  /// ni une vue attachée en retard ne peuvent rouvrir le média.
+  bool get castSuspended => _castSuspended;
 
   /// Génération du dernier [setUrl]. Les événements natifs d'une génération
   /// précédente (zap très rapide) sont ignorés jusqu'à l'accusé `ack`.
@@ -270,7 +303,10 @@ class NativeVideoController extends ChangeNotifier {
 
   String? get preferredAudio => _preferredAudio ?? appAudioLanguage;
 
-  bool get _acceptEvents => _backend != null || _ackedEpoch == _epoch;
+  bool get _acceptEvents =>
+      !_castSuspended &&
+      !_castRevoked &&
+      (_backend != null || _ackedEpoch == _epoch);
 
   /// Position de lecture courante (avance → « pas gelé », pour le watchdog).
   Duration position = Duration.zero;
@@ -335,7 +371,8 @@ class NativeVideoController extends ChangeNotifier {
   String _imageEngine = 'hardware';
   bool _frameRateMatch = false;
 
-  // Paramètres du dernier setUrl (rejoués si la vue native arrive après).
+  // Dernier choix, même lorsque la vue est déjà attachée. Le transfert Cast
+  // et l'attachement tardif partagent ainsi la même source de vérité.
   Map<String, dynamic>? _pendingArgs;
 
   /// Appelé par [NativeVideoView] quand la PlatformView native est créée.
@@ -361,12 +398,24 @@ class NativeVideoController extends ChangeNotifier {
     ch.invokeMethod<void>('setBackgroundFlutterOnly', backgroundFlutterOnly);
     ch.invokeMethod<void>('setLegacyHoldFrame', legacyHoldFrame);
     ch.invokeMethod<void>('setOutput48k', output48k);
-    final String? url = _pendingUrl ?? initialUrl;
-    if (url != null) {
+    if (_castSuspended) {
+      // La vue est neuve (aucun média), mais elle doit aussi connaître le
+      // verrou : son onResume natif peut arriver avant celui de Flutter.
+      final Future<void> hold = ch.invokeMethod<void>('suspendForCast');
+      _nativeCastHoldFuture = hold;
+      unawaited(hold.catchError((Object error, StackTrace stack) {
+        if (!_disposed && identical(_channel, ch) && _castSuspended) {
+          _castStopFuture = null;
+        }
+        onAudioDiagnostic?.call('Cast : verrou natif non confirmé.');
+      }));
+      return;
+    }
+    final Map<String, dynamic>? args = _pendingArgs;
+    if (args != null && !_castRevoked) {
       audible = true;
       audiblePlayers.claim(_leaseId);
-      ch.invokeMethod<void>(
-          'setUrl', _pendingArgs ?? _openArgs(url));
+      ch.invokeMethod<void>('setUrl', args);
     }
   }
 
@@ -388,6 +437,9 @@ class NativeVideoController extends ChangeNotifier {
   void _silenceFromPeer() {
     if (_disposed) return;
     audible = false;
+    if (_hasCastHandoff) _castSuspended = true;
+    _castRevoked = true;
+    _castGeneration++;
     _epoch++;
     _backend?.silence();
     _channel?.invokeMethod<void>('silence');
@@ -522,7 +574,9 @@ class NativeVideoController extends ChangeNotifier {
     final SpokenTrack? pick = chooseSpokenTrack(audio, preferredAudio);
     if (pick == null) return;
     for (final NativeTrack track in tracks) {
-      if (track.isAudio && track.group == pick.group && track.index == pick.index) {
+      if (track.isAudio &&
+          track.group == pick.group &&
+          track.index == pick.index) {
         _sendTrack(track);
         return;
       }
@@ -548,11 +602,16 @@ class NativeVideoController extends ChangeNotifier {
     if (_disposed) return;
     // On prend le son AVANT d'ouvrir : les autres lecteurs sont coupés
     // tout de suite (volume 0 + arrêt), puis seulement on charge.
-    audible = true;
-    audiblePlayers.claim(_leaseId);
+    if (!_castSuspended) {
+      _castRevoked = false;
+      audible = true;
+      audiblePlayers.claim(_leaseId);
+    }
     // Nouvelle génération : les événements encore en route (ancienne chaîne)
     // seront ignorés jusqu'à l'ack natif de CELLE-CI.
     _epoch++;
+    _selectionGeneration++;
+    _wantsToPlay = true;
     _userPickedAudio = false;
     _audioAutoDone = false;
     // Une langue explicite (film) remplace celle de l'app pour CETTE
@@ -588,7 +647,6 @@ class NativeVideoController extends ChangeNotifier {
       tracks = const <NativeTrack>[];
       cues = '';
     }
-    notifyListeners();
     final Map<String, dynamic> args = <String, dynamic>{
       'url': url,
       'epoch': _epoch,
@@ -597,20 +655,25 @@ class NativeVideoController extends ChangeNotifier {
       if (lang != null && lang.isNotEmpty) 'preferredAudio': lang,
       if (preferredText != null) 'preferredText': preferredText,
     };
+    _pendingArgs = args;
+    if (_castSuspended) {
+      isBuffering = false;
+      notifyListeners();
+      return;
+    }
+    notifyListeners();
     if (_backend != null) {
       // PC : pas d'ack. On accepte les événements tout de suite.
       _ackedEpoch = _epoch;
       _backend!.open(args);
     } else if (_channel != null) {
       _channel!.invokeMethod<void>('setUrl', args);
-    } else {
-      _pendingUrl = url; // pas encore rattaché : on jouera ça à l'attach.
-      _pendingArgs = args;
     }
   }
 
   /// Saute à [to] (bornée à la durée côté natif). Films / épisodes.
   void seekTo(Duration to) {
+    if (_disposed || _castSuspended) return;
     final Duration t = to < Duration.zero ? Duration.zero : to;
     position = t;
     if (!_disposed) notifyListeners();
@@ -631,6 +694,7 @@ class NativeVideoController extends ChangeNotifier {
   }
 
   void _sendTrack(NativeTrack t) {
+    if (_disposed || _castSuspended) return;
     if (_backend != null) {
       _backend!.selectTrack(t);
       return;
@@ -682,7 +746,8 @@ class NativeVideoController extends ChangeNotifier {
 
   void _readEngine(Object? arguments) {
     if (arguments is! Map) return;
-    final String? name = arguments['name'] as String? ?? arguments['engine'] as String?;
+    final String? name =
+        arguments['name'] as String? ?? arguments['engine'] as String?;
     if (name != null && name.isNotEmpty) {
       imageEngineWire = name;
       _imageEngine = name;
@@ -707,20 +772,184 @@ class NativeVideoController extends ChangeNotifier {
     _channel?.invokeMethod<void>('disableText');
   }
 
-  void play() => _backend != null ? _backend!.play() : _channel?.invokeMethod<void>('play');
+  void play() {
+    if (_disposed || _castSuspended || _castRevoked) return;
+    _wantsToPlay = true;
+    if (_backend != null) {
+      _backend!.play();
+    } else {
+      _channel?.invokeMethod<void>('play');
+    }
+  }
 
-  void pause() => _backend != null ? _backend!.pause() : _channel?.invokeMethod<void>('pause');
+  void pause() {
+    if (_disposed || _castSuspended) return;
+    _wantsToPlay = false;
+    if (_backend != null) {
+      _backend!.pause();
+    } else {
+      _channel?.invokeMethod<void>('pause');
+    }
+  }
+
+  /// Réserve immédiatement le lecteur, annule les événements et attend
+  /// l'arrêt RÉEL du média réseau. Le demandeur ne doit lancer le récepteur
+  /// qu'après la réussite de ce Future ; une erreur laisse le verrou fermé.
+  Future<void> suspendForCast() {
+    if (_disposed || _castRevoked) {
+      return Future<void>.error(StateError('Ce lecteur a été quitté.'));
+    }
+    final Future<void>? previous = _castStopFuture;
+    if (_castSuspended && previous != null) return previous;
+    if (!_castSuspended) {
+      _castPosition = position;
+      _castSelectionGeneration = _selectionGeneration;
+    }
+    _castSuspended = true;
+    _hasCastHandoff = true;
+    final int ticket = ++_castGeneration;
+    _epoch++;
+    audible = false;
+    isPlaying = false;
+    isBuffering = false;
+    nativeRetrying = false;
+    hasError = false;
+    isEnded = false;
+    _castResumeFuture = null;
+    final Future<void> operation = _stopForCast(ticket);
+    _castStopFuture = operation;
+    notifyListeners();
+    return operation;
+  }
+
+  Future<void> _stopForCast(int ticket) async {
+    try {
+      if (_backend != null) {
+        await _backend!.suspendForCast();
+      } else {
+        final MethodChannel? ch = _channel;
+        if (ch != null) {
+          final Future<void> hold = ch.invokeMethod<void>('suspendForCast');
+          _nativeCastHoldFuture = hold;
+          await hold;
+        }
+      }
+      if (_disposed || _castRevoked || ticket != _castGeneration) {
+        throw StateError('Le transfert de ce lecteur a été annulé.');
+      }
+    } catch (_) {
+      // Un nouvel essai explicite peut réessayer Stop. Ne jamais traiter
+      // l'échec comme un succès, ni rouvrir automatiquement le flux.
+      if (ticket == _castGeneration) _castStopFuture = null;
+      rethrow;
+    }
+  }
+
+  /// À appeler lorsque le récepteur a effectivement arrêté sa lecture.
+  /// Le dernier média choisi reprend ; la position capturée ne s'applique
+  /// que si aucun setUrl ne l'a remplacé, même par la même adresse.
+  Future<void> resumeAfterCast() {
+    if (_disposed || _castRevoked || !_castSuspended) {
+      return Future<void>.value();
+    }
+    return _castResumeFuture ??= _resumeAfterCast(_castGeneration);
+  }
+
+  Future<void> _resumeAfterCast(int ticket) async {
+    try {
+      final Future<void>? stop = _castStopFuture;
+      if (stop == null) {
+        throw StateError(
+            'La fermeture locale doit être confirmée avant la reprise.');
+      }
+      await stop;
+      // Une PlatformView peut s'attacher pendant l'attente précédente.
+      // Attendre aussi son verrou, même s'il vient de remplacer « aucune vue ».
+      while (true) {
+        final Future<void>? attachedHold = _nativeCastHoldFuture;
+        await attachedHold;
+        if (identical(attachedHold, _nativeCastHoldFuture)) break;
+      }
+      if (_disposed || _castRevoked || ticket != _castGeneration) return;
+      final Map<String, dynamic>? saved = _pendingArgs;
+      final Map<String, dynamic>? args = saved == null
+          ? null
+          : <String, dynamic>{
+              ...saved,
+              'epoch': ++_epoch,
+              'play': _wantsToPlay,
+              if (saved['vod'] == true &&
+                  _castSelectionGeneration == _selectionGeneration)
+                'startMs': _castPosition.inMilliseconds,
+            };
+      _pendingArgs = args;
+      // À partir d'ici le Cast est terminé. Un setUrl concurrent doit
+      // invalider l'ouverture de reprise dans la file du moteur, pas rester
+      // mémorisé derrière elle et ressusciter ensuite le mauvais média.
+      _castSuspended = false;
+      _castStopFuture = null;
+      _nativeCastHoldFuture = null;
+      if (args != null) {
+        audible = _wantsToPlay;
+        audiblePlayers.claim(_leaseId);
+        isBuffering = _wantsToPlay;
+        firstFrame = false;
+        holdFrame = false;
+        position =
+            Duration(milliseconds: (args['startMs'] as num?)?.toInt() ?? 0);
+      }
+      // Claim peut notifier d'autres contrôleurs. Une sélection déclenchée
+      // par ces écouteurs est déjà le nouveau choix à reprendre.
+      if (_disposed || _castRevoked || ticket != _castGeneration) return;
+      final Map<String, dynamic>? latestArgs = _pendingArgs;
+      final Future<void> opening;
+      if (_backend != null) {
+        _ackedEpoch = _epoch;
+        opening = _backend!.resumeAfterCast(latestArgs);
+      } else {
+        opening = _channel?.invokeMethod<void>('resumeAfterCast', latestArgs) ??
+            Future<void>.value();
+      }
+      // Le moteur a levé son verrou AVANT ces écouteurs : leur éventuel
+      // nouveau setUrl remplace la reprise dans sa file, sans être perdu.
+      notifyListeners();
+      await opening;
+    } catch (_) {
+      if (!_disposed && !_castRevoked && ticket == _castGeneration) {
+        _castSuspended = true;
+        audible = false;
+        isPlaying = false;
+        isBuffering = false;
+        notifyListeners();
+      }
+      rethrow;
+    } finally {
+      if (ticket == _castGeneration) _castResumeFuture = null;
+    }
+  }
 
   /// App en arrière-plan (Home, multitâche) : ARRÊT, pas pause. Le natif
   /// rend le décodeur, l'AudioTrack et le focus audio. Hors Android, une
   /// pause suffit.
-  void suspendForBackground() =>
-      _backend != null ? _backend!.pause() : _channel?.invokeMethod<void>('suspend');
+  void suspendForBackground() {
+    if (_disposed || _castSuspended) return;
+    if (_backend != null) {
+      _backend!.pause();
+    } else {
+      _channel?.invokeMethod<void>('suspend');
+    }
+  }
 
   /// Retour au premier plan après [suspendForBackground] : la chaîne est
   /// rouverte au direct (un film, à sa position), comme un zap.
-  void resumeFromBackground() =>
-      _backend != null ? _backend!.play() : _channel?.invokeMethod<void>('resume');
+  void resumeFromBackground() {
+    if (_disposed || _castSuspended || _castRevoked) return;
+    if (_backend != null) {
+      _backend!.play();
+    } else {
+      _channel?.invokeMethod<void>('resume');
+    }
+  }
 
   /// Libère le décodeur natif et ATTEND qu'il ait rendu la surface.
   ///
@@ -733,6 +962,7 @@ class NativeVideoController extends ChangeNotifier {
     if (_nativeReleased) return;
     _nativeReleased = true;
     _disposed = true;
+    _castGeneration++;
     audible = false;
     audiblePlayers.unregister(_leaseId);
     _backend?.dispose();
@@ -755,6 +985,7 @@ class NativeVideoController extends ChangeNotifier {
     if (_notifierClosed) return;
     _notifierClosed = true;
     _disposed = true;
+    _castGeneration++;
     audible = false;
     if (!_nativeReleased) {
       audiblePlayers.unregister(_leaseId);
@@ -790,7 +1021,8 @@ class NativeVideoView extends StatelessWidget {
     if (backend != null) return backend.buildView(context);
     return PlatformViewLink(
       viewType: _viewType,
-      surfaceFactory: (BuildContext context, PlatformViewController controller) {
+      surfaceFactory:
+          (BuildContext context, PlatformViewController controller) {
         return AndroidViewSurface(
           controller: controller as AndroidViewController,
           gestureRecognizers: const <Factory<OneSequenceGestureRecognizer>>{},

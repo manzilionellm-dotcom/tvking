@@ -37,7 +37,10 @@ Future<void> showCastPicker(
   required String streamUrl,
   required String title,
   String? imageUrl,
+  CastManager? manager,
+  Object? owner,
 }) {
+  if (!CastPlatform.canSend) return Future<void>.value();
   return showModalBottomSheet<void>(
     context: context,
     backgroundColor: Colors.transparent,
@@ -47,6 +50,8 @@ Future<void> showCastPicker(
       streamUrl: streamUrl,
       title: title,
       imageUrl: imageUrl,
+      manager: manager,
+      owner: owner,
     ),
   );
 }
@@ -56,6 +61,7 @@ Future<void> showCastPicker(
 ///   Ensuite, dès que l'utilisateur tape sur une chaîne, le flux part
 ///   automatiquement vers la TV (modèle YouTube/Netflix).
 Future<void> showCastPickerGlobal(BuildContext context) {
+  if (!CastPlatform.canSend) return Future<void>.value();
   return showModalBottomSheet<void>(
     context: context,
     backgroundColor: Colors.transparent,
@@ -70,6 +76,8 @@ class CastPickerSheet extends StatefulWidget {
     this.streamUrl,
     this.title,
     this.imageUrl,
+    this.manager,
+    this.owner,
     super.key,
   });
 
@@ -81,32 +89,46 @@ class CastPickerSheet extends StatefulWidget {
   /// Logo de la chaine — sera affiche sur le recepteur (idle +
   /// overlay) via les metadonnees Cast. Phase 1+/G1.
   final String? imageUrl;
+  final CastManager? manager;
+
+  /// Le lecteur qui transfère sa connexion reste propriétaire de sa
+  /// tentative, même si le sélecteur est fermé avant la fin du démarrage.
+  final Object? owner;
 
   @override
   State<CastPickerSheet> createState() => _CastPickerSheetState();
 }
 
 class _CastPickerSheetState extends State<CastPickerSheet> {
+  CastManager? _manager;
+  bool _connecting = false;
+  int _attempt = 0;
+
   @override
   void initState() {
     super.initState();
+    if (!CastPlatform.canSend) return;
+    _manager = widget.manager ?? CastManager.instance;
     // Lance un scan (en gardant la liste chaude pré-warmée) pour ne
     // jamais afficher de "page vide" si le warmup a déjà trouvé du
     // monde. L'utilisateur voit instantanément les devices connus,
     // puis le scan en cours peut en ajouter d'autres.
-    CastManager.instance.startDiscovery();
+    _manager!.startDiscovery();
   }
 
   @override
   void dispose() {
-    CastManager.instance.stopDiscovery();
+    ++_attempt;
+    _manager?.stopDiscovery();
     super.dispose();
   }
 
   bool get _isGlobalMode => widget.streamUrl == null;
 
   Future<void> _onDeviceTap(CastDevice device) async {
-    final CastManager mgr = CastManager.instance;
+    if (_connecting || _manager == null || !CastPlatform.canSend) return;
+    final CastManager mgr = _manager!;
+    final int attempt = ++_attempt;
 
     // Chromecast / Google TV : on a maintenant un VRAI bridge SDK
     // natif (cf. GoogleCastTransport). Le tap passe par le flow
@@ -127,22 +149,24 @@ class _CastPickerSheetState extends State<CastPickerSheet> {
       return;
     }
 
-    // Mode "flux maintenant" : si on caste déjà ailleurs → coupe propre
-    if (mgr.isCasting && mgr.device?.id != device.id) {
-      await mgr.disconnect();
-    }
-
+    // castTo sérialise l'arrêt de l'ancien récepteur avec le démarrage du
+    // nouveau. Une double pression ne doit pas lancer deux transports.
+    setState(() => _connecting = true);
     try {
       await mgr.castTo(
         device,
         streamUrl: widget.streamUrl!,
         title: widget.title ?? context.l10n.castPlayDefault,
         imageUrl: widget.imageUrl,
+        owner: widget.owner,
       );
-      if (!mounted) return;
+      if (!mounted ||
+          attempt != _attempt ||
+          !mgr.isCasting ||
+          (widget.owner != null && !mgr.ownsSession(widget.owner!))) return;
+      final String message = context.l10n.castSendingTo(device.displayName);
+      _toast(context, message, accent: true);
       Navigator.of(context).pop();
-      _toast(context, context.l10n.castSendingTo(device.displayName),
-          accent: true);
     } on Exception catch (_) {
       if (!mounted) return;
       // Le CastManager a déjà transformé l'exception en message friendly
@@ -151,6 +175,8 @@ class _CastPickerSheetState extends State<CastPickerSheet> {
           ? mgr.progress.message
           : context.l10n.castFailedRetry;
       _toast(context, friendly, error: true);
+    } finally {
+      if (mounted && attempt == _attempt) setState(() => _connecting = false);
     }
   }
 
@@ -158,8 +184,7 @@ class _CastPickerSheetState extends State<CastPickerSheet> {
   /// pas de jargon protocolaire). Pendant un connect on relaye le
   /// `CastProgress.message` pour montrer le failover en direct.
   String? _statusLine(CastManager mgr, {required bool discovering}) {
-    if (mgr.state == CastState.connecting &&
-        mgr.progress.message.isNotEmpty) {
+    if (mgr.state == CastState.connecting && mgr.progress.message.isNotEmpty) {
       return mgr.progress.message;
     }
     if (discovering) return context.l10n.castSearching;
@@ -167,7 +192,11 @@ class _CastPickerSheetState extends State<CastPickerSheet> {
   }
 
   Future<void> _disconnect() async {
-    await CastManager.instance.disconnect();
+    final CastManager? manager = _manager;
+    if (manager == null) return;
+    // Le bouton vise la session affichée au clic. Une route qui prend la
+    // main pendant le Stop ne sera pas effacée par la réponse tardive.
+    await manager.disconnectIfOwned(manager.sessionRevision);
     if (!mounted) return;
     _toast(context, context.l10n.castSessionStopped);
   }
@@ -196,6 +225,8 @@ class _CastPickerSheetState extends State<CastPickerSheet> {
 
   @override
   Widget build(BuildContext context) {
+    if (!CastPlatform.canSend || _manager == null)
+      return const SizedBox.shrink();
     final double maxH = MediaQuery.of(context).size.height * 0.8;
 
     return ClipRRect(
@@ -211,17 +242,16 @@ class _CastPickerSheetState extends State<CastPickerSheet> {
           child: SafeArea(
             top: false,
             child: ListenableBuilder(
-              listenable: CastManager.instance,
+              listenable: _manager!,
               builder: (BuildContext context, _) {
-                final CastManager mgr = CastManager.instance;
+                final CastManager mgr = _manager!;
                 final List<CastDevice> devices = mgr.discoveredDevices;
                 // "Actif" = soit en train de caster, soit pré-sélectionné
                 // (mode global). Les deux états méritent le marqueur
                 // "EN COURS" pour rassurer l'utilisateur que sa cible
                 // est bien en place.
-                final CastDevice? active =
-                    mgr.device ?? mgr.selectedDevice;
-                final bool discovering = mgr.state == CastState.discovering;
+                final CastDevice? active = mgr.device ?? mgr.selectedDevice;
+                final bool discovering = mgr.isDiscovering;
 
                 return Column(
                   mainAxisSize: MainAxisSize.min,
@@ -250,9 +280,12 @@ class _CastPickerSheetState extends State<CastPickerSheet> {
                               Icon(Icons.cast_rounded,
                                   color: AppColors.accent, size: 22),
                               const SizedBox(width: 10),
-                              Text(context.l10n.castSendTo,
-                                  style: AppTextStyles.headlineMedium),
-                              const Spacer(),
+                              Expanded(
+                                child: Text(context.l10n.castSendTo,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: AppTextStyles.headlineMedium),
+                              ),
                               IconButton(
                                 icon: Icon(
                                   Icons.refresh_rounded,
@@ -263,8 +296,7 @@ class _CastPickerSheetState extends State<CastPickerSheet> {
                                 tooltip: context.l10n.castRefresh,
                                 onPressed: discovering
                                     ? null
-                                    : () => CastManager.instance
-                                        .startDiscovery(
+                                    : () => mgr.startDiscovery(
                                           keepExisting: false,
                                         ),
                               ),
@@ -308,22 +340,19 @@ class _CastPickerSheetState extends State<CastPickerSheet> {
                       child: devices.isEmpty
                           ? _empty(discovering)
                           : ListView.separated(
-                              padding: const EdgeInsets.fromLTRB(
-                                  20, 0, 20, 12),
+                              padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
                               physics: const BouncingScrollPhysics(),
                               shrinkWrap: true,
                               itemCount: devices.length,
-                              separatorBuilder:
-                                  (BuildContext _, int __) =>
-                                      const SizedBox(height: 8),
-                              itemBuilder: (BuildContext context,
-                                  int index) {
+                              separatorBuilder: (BuildContext _, int __) =>
+                                  const SizedBox(height: 8),
+                              itemBuilder: (BuildContext context, int index) {
                                 final CastDevice d = devices[index];
-                                final bool isActive =
-                                    active?.id == d.id;
+                                final bool isActive = active?.id == d.id;
                                 return _DeviceTile(
                                   device: d,
                                   isActive: isActive,
+                                  enabled: !_connecting,
                                   onTap: () => _onDeviceTap(d),
                                 );
                               },
@@ -360,8 +389,7 @@ class _CastPickerSheetState extends State<CastPickerSheet> {
                 child: CircularProgressIndicator(strokeWidth: 2),
               )
             else
-              Icon(Icons.tv_off_rounded,
-                  size: 20, color: AppColors.textMuted),
+              Icon(Icons.tv_off_rounded, size: 20, color: AppColors.textMuted),
             const SizedBox(width: 12),
             Expanded(
               child: Text(
@@ -376,7 +404,6 @@ class _CastPickerSheetState extends State<CastPickerSheet> {
       ),
     );
   }
-
 }
 
 // ============================================================
@@ -388,11 +415,13 @@ class _DeviceTile extends StatelessWidget {
     required this.device,
     required this.isActive,
     required this.onTap,
+    this.enabled = true,
   });
 
   final CastDevice device;
   final bool isActive;
   final VoidCallback onTap;
+  final bool enabled;
 
   @override
   Widget build(BuildContext context) {
@@ -401,12 +430,11 @@ class _DeviceTile extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         borderRadius: BorderRadius.circular(14),
-        onTap: isActive ? null : onTap,
+        onTap: isActive || !enabled ? null : onTap,
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
           decoration: BoxDecoration(
-            color:
-                isActive ? AppColors.accentSurface : AppColors.surface,
+            color: isActive ? AppColors.accentSurface : AppColors.surface,
             borderRadius: BorderRadius.circular(14),
             border: Border.all(
               color: isActive ? AppColors.accent : AppColors.border,
@@ -430,9 +458,8 @@ class _DeviceTile extends StatelessWidget {
                       style: AppTextStyles.bodyLarge.copyWith(
                         fontSize: 15,
                         fontWeight: FontWeight.w600,
-                        color: isActive
-                            ? AppColors.accent
-                            : AppColors.textPrimary,
+                        color:
+                            isActive ? AppColors.accent : AppColors.textPrimary,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -455,8 +482,8 @@ class _DeviceTile extends StatelessWidget {
               ),
               if (isActive)
                 Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 8, vertical: 4),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
                     color: AppColors.accent,
                     borderRadius: BorderRadius.circular(6),
@@ -593,8 +620,7 @@ class _ActiveSessionBanner extends StatelessWidget {
             onPressed: onDisconnect,
             style: TextButton.styleFrom(
               foregroundColor: AppColors.live,
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 10, vertical: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               minimumSize: const Size(0, 32),
             ),
             icon: const Icon(Icons.stop_circle_outlined, size: 16),
@@ -630,13 +656,13 @@ class _BrandInfo {
 
 _BrandInfo _brandFor(CastDevice d) {
   final String haystack =
-      '${d.manufacturer ?? ""} ${d.model ?? ""} ${d.name}'
-          .toLowerCase();
+      '${d.manufacturer ?? ""} ${d.model ?? ""} ${d.name}'.toLowerCase();
 
   bool has(String needle) => haystack.contains(needle);
 
   // ----- Marques de TV courantes -----
-  if (has('lg')) return const _BrandInfo(monogram: 'LG', subtitle: 'LG · webOS');
+  if (has('lg'))
+    return const _BrandInfo(monogram: 'LG', subtitle: 'LG · webOS');
   if (has('samsung')) {
     return const _BrandInfo(monogram: 'SAM', subtitle: 'Samsung · Tizen');
   }
@@ -660,7 +686,8 @@ _BrandInfo _brandFor(CastDevice d) {
   if (has('panasonic')) {
     return const _BrandInfo(monogram: 'PAN', subtitle: 'Panasonic');
   }
-  if (has('sharp')) return const _BrandInfo(monogram: 'SHRP', subtitle: 'Sharp');
+  if (has('sharp'))
+    return const _BrandInfo(monogram: 'SHRP', subtitle: 'Sharp');
   if (has('toshiba')) {
     return const _BrandInfo(monogram: 'TOSH', subtitle: 'Toshiba');
   }

@@ -47,42 +47,64 @@ class MediaKitVideoBackend implements NativeVideoBackend {
     unawaited(_configure());
   }
 
-  // Registre limité aux lecteurs vivants : aucune URL n’est exposée hors du PC.
-  static final Map<NativeVideoController, MediaKitVideoBackend> _bound = {};
-  bool _castSuspended = false;
-  final DesktopPlaybackQueue _queue = DesktopPlaybackQueue();
-  Map<String, dynamic>? _lastOpenArgs;
-  String? _suspendedUrl;
-  int _suspendedPosition = 0;
+  /// Le même moteur et la même file, avec un lecteur sans réseau pour vérifier
+  /// les courses ouverture/Stop. Aucun objet vidéo natif n'est créé par ce test.
+  @visibleForTesting
+  MediaKitVideoBackend.forTesting({required Player player}) : _player = player;
 
-  static Future<void> suspendForCast(NativeVideoController controller) async {
-    final MediaKitVideoBackend? backend = _bound[controller];
-    if (backend == null || backend._castSuspended) return;
-    backend._suspendedUrl = backend._lastOpenArgs?['url'] as String?;
-    backend._suspendedPosition = controller.position.inMilliseconds;
-    backend._castSuspended = true;
-    controller.applyBackendEvent('playing', false);
-    // stop ferme le flux réseau ; pause seul laisse souvent la connexion ouverte.
-    await backend._queue.stop(backend._player.stop);
+  bool _castSuspended = false;
+  bool _hasCastHandoff = false;
+  bool _castStopConfirmed = false;
+  bool _revoked = false;
+  bool _disposed = false;
+  int _generation = 0;
+  final DesktopPlaybackQueue _queue = DesktopPlaybackQueue();
+
+  @override
+  Future<void> suspendForCast() async {
+    if (_disposed || _revoked) throw StateError('Ce lecteur a été quitté.');
+    _castSuspended = true;
+    _hasCastHandoff = true;
+    _castStopConfirmed = false;
+    final int ticket = ++_generation;
+    // L'ouverture déjà commencée finit AVANT Stop. Les ouvertures encore
+    // en file sont invalidées ; aucune ne pourra repartir derrière le Cast.
+    await _queue.stop(_player.stop).timeout(const Duration(seconds: 20));
+    if (_disposed || _revoked || ticket != _generation) {
+      throw StateError('Le transfert de ce lecteur a été annulé.');
+    }
+    _castStopConfirmed = true;
   }
 
-  static void resumeAfterCast(NativeVideoController controller) {
-    final MediaKitVideoBackend? backend = _bound[controller];
-    if (backend == null || !backend._castSuspended) return;
-    backend._castSuspended = false;
-    final Map<String, dynamic>? args = backend._lastOpenArgs;
+  @override
+  Future<void> resumeAfterCast(Map<String, dynamic>? args) async {
+    if (_disposed || _revoked) return;
+    if (!_castSuspended || !_castStopConfirmed) {
+      throw StateError(
+          'La fermeture locale doit être confirmée avant la reprise.');
+    }
+    _castSuspended = false;
+    _castStopConfirmed = false;
     if (args == null) return;
-    backend.open({...args,
-      if (args['vod'] == true && args['url'] == backend._suspendedUrl)
-        'startMs': backend._suspendedPosition,
-    });
+    final Future<void> opening = _open(args);
+    final int ticket = _generation;
+    try {
+      await opening;
+    } catch (_) {
+      if (!_disposed && !_revoked && ticket == _generation) {
+        _castSuspended = true;
+      }
+      rethrow;
+    }
   }
 
   final Player _player;
   late final VideoController _video;
   NativeVideoController? _c;
-  final List<StreamSubscription<Object?>> _subs = <StreamSubscription<Object?>>[];
-  final FocusNode _noFocus = FocusNode(skipTraversal: true, canRequestFocus: false);
+  final List<StreamSubscription<Object?>> _subs =
+      <StreamSubscription<Object?>>[];
+  final FocusNode _noFocus =
+      FocusNode(skipTraversal: true, canRequestFocus: false);
 
   // Correspondance index de piste « NativeTrack » ↔ piste media_kit.
   List<AudioTrack> _audio = const <AudioTrack>[];
@@ -95,8 +117,8 @@ class MediaKitVideoBackend implements NativeVideoBackend {
       try {
         await p.setProperty('user-agent', 'VLC/3.0.20 LibVLC/3.0.20');
         // Reconnexion réseau automatique (coupure brève du serveur IPTV).
-        await p.setProperty(
-            'stream-lavf-o', 'reconnect=1,reconnect_streamed=1,reconnect_delay_max=5');
+        await p.setProperty('stream-lavf-o',
+            'reconnect=1,reconnect_streamed=1,reconnect_delay_max=5');
       } catch (e) {
         BlackBox.instance.warn('PC', 'réglages libmpv : $e');
       }
@@ -106,10 +128,10 @@ class MediaKitVideoBackend implements NativeVideoBackend {
   @override
   void bind(NativeVideoController controller) {
     _c = controller;
-    _bound[controller] = this;
     final PlayerStream s = _player.stream;
     _subs
-      ..add(s.position.listen((Duration d) => _emit('position', d.inMilliseconds)))
+      ..add(s.position
+          .listen((Duration d) => _emit('position', d.inMilliseconds)))
       ..add(s.duration.listen((Duration d) {
         if (d > Duration.zero) _emit('duration', d.inMilliseconds);
       }))
@@ -128,22 +150,28 @@ class MediaKitVideoBackend implements NativeVideoBackend {
           _emit('firstFrame', null);
         }
       }))
-      ..add(s.subtitle.listen((List<String> lines) =>
-          _emit('cues', lines.where((String l) => l.trim().isNotEmpty).join('\n'))))
+      ..add(s.subtitle.listen((List<String> lines) => _emit(
+          'cues', lines.where((String l) => l.trim().isNotEmpty).join('\n'))))
       ..add(s.tracks.listen((_) => _publishTracks()))
       ..add(s.track.listen((_) => _publishTracks()));
   }
 
   void _emit(String event, Object? value) {
-    if (!_castSuspended) _c?.applyBackendEvent(event, value);
+    if (!_castSuspended && !_disposed && !_revoked) {
+      _c?.applyBackendEvent(event, value);
+    }
   }
 
   void _publishTracks() {
     final Tracks all = _player.state.tracks;
     final Track cur = _player.state.track;
     // « auto » et « no » sont des pseudo-pistes de mpv : on ne les liste pas.
-    _audio = all.audio.where((AudioTrack t) => t.id != 'auto' && t.id != 'no').toList();
-    _texts = all.subtitle.where((SubtitleTrack t) => t.id != 'auto' && t.id != 'no').toList();
+    _audio = all.audio
+        .where((AudioTrack t) => t.id != 'auto' && t.id != 'no')
+        .toList();
+    _texts = all.subtitle
+        .where((SubtitleTrack t) => t.id != 'auto' && t.id != 'no')
+        .toList();
     _emit('tracks', <Map<String, Object?>>[
       for (int i = 0; i < _audio.length; i++)
         <String, Object?>{
@@ -170,19 +198,22 @@ class MediaKitVideoBackend implements NativeVideoBackend {
 
   @override
   void open(Map<String, dynamic> args) {
+    unawaited(_open(args).catchError((Object error, StackTrace stack) {
+      _emit('error', 'La lecture locale n’a pas pu démarrer.');
+    }));
+  }
+
+  Future<void> _open(Map<String, dynamic> args) {
     final String url = (args['url'] as String?) ?? '';
-    if (url.isEmpty) return;
-    _lastOpenArgs = Map<String, dynamic>.of(args);
-    if (_castSuspended) return;
+    if (url.isEmpty || _castSuspended || _disposed) return Future<void>.value();
+    _revoked = false;
+    final int ticket = ++_generation;
     _firstFrame = false;
-    // Un zap remet le volume : silence() l'avait coupé pour qu'un autre
-    // lecteur ne se mélange pas à celui-ci.
-    unawaited(_player.setVolume(100));
     final int startMs = (args['startMs'] as num?)?.toInt() ?? 0;
     final String? prefAudio = args['preferredAudio'] as String?;
     final String? prefText = args['preferredText'] as String?;
-    unawaited(_queue.replace(() async {
-      if (_castSuspended) return;
+    return _queue.replace(() async {
+      if (_castSuspended || _disposed || ticket != _generation) return;
       final PlatformPlayer? p = _player.platform;
       if (p is NativePlayer) {
         try {
@@ -190,25 +221,41 @@ class MediaKitVideoBackend implements NativeVideoBackend {
           if (prefText != null) await p.setProperty('slang', prefText);
         } catch (_) {}
       }
+      if (_castSuspended || _disposed || ticket != _generation) return;
+      // Le volume ne peut pas être remonté par une vieille ouverture après
+      // silence()/Stop : il fait partie de la même opération sérialisée.
+      await _player.setVolume(100);
+      if (_castSuspended || _disposed || ticket != _generation) return;
       await _player.open(
         Media(url, start: startMs > 0 ? Duration(milliseconds: startMs) : null),
-        play: true,
+        play: args['play'] != false,
       );
-    }).catchError((Object error, StackTrace stack) {
-      _emit('error', 'La lecture locale n’a pas pu démarrer.');
-    }));
+    });
   }
 
   @override
-  void play() { if (!_castSuspended) unawaited(_player.play()); }
+  void play() {
+    if (!_castSuspended && !_disposed && !_revoked) unawaited(_player.play());
+  }
 
   @override
-  void pause() => unawaited(_player.pause());
+  void pause() {
+    if (!_castSuspended && !_disposed) unawaited(_player.pause());
+  }
 
   @override
   void silence() {
+    if (_disposed) return;
+    if (_hasCastHandoff) _castSuspended = true;
+    _revoked = true;
+    _generation++;
     unawaited(_player.setVolume(0));
-    unawaited(_player.pause());
+    // Une pause laisserait la connexion de l'ancien contrôleur occupée.
+    unawaited(
+        _queue.stop(_player.stop).catchError((Object error, StackTrace stack) {
+      BlackBox.instance
+          .warn('PC', 'La fermeture du lecteur précédent a échoué.');
+    }));
   }
 
   /// Le PC (libmpv) n'a pas le compresseur Media3. L'option reste sans effet
@@ -240,7 +287,8 @@ class MediaKitVideoBackend implements NativeVideoBackend {
   }
 
   @override
-  void disableSubtitles() => unawaited(_player.setSubtitleTrack(SubtitleTrack.no()));
+  void disableSubtitles() =>
+      unawaited(_player.setSubtitleTrack(SubtitleTrack.no()));
 
   @override
   Widget buildView(BuildContext context) => Video(
@@ -248,7 +296,8 @@ class MediaKitVideoBackend implements NativeVideoBackend {
         // Aucune commande media_kit : ce sont celles de Zuno (mêmes que la box).
         controls: null,
         // Les sous-titres sont dessinés par l'app (même rendu que la box).
-        subtitleViewConfiguration: const SubtitleViewConfiguration(visible: false),
+        subtitleViewConfiguration:
+            const SubtitleViewConfiguration(visible: false),
         // Ne jamais voler le focus clavier aux écrans de Zuno.
         focusNode: _noFocus,
         fill: Colors.black,
@@ -256,11 +305,14 @@ class MediaKitVideoBackend implements NativeVideoBackend {
 
   @override
   void dispose() {
+    if (_disposed) return;
+    _disposed = true;
+    _revoked = true;
+    _generation++;
     for (final StreamSubscription<Object?> s in _subs) {
       unawaited(s.cancel());
     }
     _subs.clear();
-    if (_c != null) _bound.remove(_c);
     _noFocus.dispose();
     unawaited(_queue.close(_player.dispose));
     _c = null;

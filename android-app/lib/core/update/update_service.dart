@@ -68,6 +68,11 @@ class UpdateService {
   UpdateService._();
   static final UpdateService instance = UpdateService._();
 
+  /// Les paquets de test isolés coupent les mises à jour avant leur boot :
+  /// leur package / signature ne doit jamais être remplacé par un client.
+  /// Le comportement de toutes les entrées existantes reste actif par défaut.
+  static bool enabled = true;
+
   /// `version.json` publie par le CI. Defaut = release `latest` (telephone).
   /// L'app TV (Zuno) pointe sur SA release au boot (main_tv.dart) : chaque
   /// produit ne voit que ses propres mises a jour.
@@ -106,6 +111,7 @@ class UpdateService {
   /// Retourne les infos de MAJ si une version PLUS RECENTE est dispo,
   /// sinon `null`. Fail-open : toute erreur → `null`.
   Future<UpdateInfo?> check() async {
+    if (!enabled) return null;
     // Play Store : les MAJ viennent du Store, jamais du sideload GitHub.
     if (kIsPlayBuild) return null;
     // PC (Zuno Windows) : sa propre release (installeur .exe), sinon rien.
@@ -232,6 +238,7 @@ class UpdateService {
   /// fichier complet, ou `null` en cas d'échec. Ne lance jamais deux
   /// téléchargements en parallèle.
   Future<File?> prefetch(UpdateInfo update) {
+    if (!enabled) return Future<File?>.value(null);
     final bool allowed =
         (Platform.isAndroid && !kIsPlayBuild) || _isWindowsUpdater;
     if (!allowed) return Future<File?>.value(null);
@@ -469,6 +476,7 @@ class UpdateService {
     UpdateInfo update, {
     void Function(double progress)? onProgress,
   }) async {
+    if (!enabled) return false;
     void relay() {
       final double? v = progress.value;
       if (v != null) onProgress?.call(v);

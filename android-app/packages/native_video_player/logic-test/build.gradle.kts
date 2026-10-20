@@ -23,6 +23,7 @@ sourceSets {
         kotlin.exclude("**/NativeVideoView.kt")
         kotlin.exclude("**/NativeVideoViewFactory.kt")
         kotlin.exclude("**/NativeVideoPlayerPlugin.kt")
+        kotlin.exclude("**/CastDataSource.kt")
         kotlin.exclude("**/ClearVoiceProcessor.kt")
         kotlin.exclude("**/AudioProbeProcessor.kt")
         kotlin.exclude("**/ZunoAudioChain.kt")

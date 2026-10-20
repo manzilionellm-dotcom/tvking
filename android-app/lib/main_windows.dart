@@ -21,6 +21,7 @@ import 'package:native_video_player/native_video_player.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'core/app/guarded_main.dart';
+import 'core/app/zuno_edition.dart';
 import 'features/cinema/data/cinema_repository.dart';
 import 'features/tv/desktop/desktop_shell.dart';
 import 'features/tv/desktop/media_kit_video_backend.dart';
@@ -44,5 +45,8 @@ Future<void> _bootstrapWindows() async {
   // Films / Séries : recherche sur 150 000 titres (un PC a la mémoire que
   // n'ont pas les box 1–2 Go ; même code que la box, seul ce plafond change).
   CinemaRepository.instance.useDesktopMemory();
-  await bootstrapZunoTv(wrap: (app) => DesktopShell(child: app));
+  await bootstrapZunoTv(
+    edition: ZunoEdition.desktop,
+    wrap: (app) => DesktopShell(child: app),
+  );
 }

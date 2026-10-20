@@ -25,6 +25,7 @@ import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../data/cast_manager.dart';
+import '../data/cast_platform.dart';
 import 'cast_picker_sheet.dart';
 
 class CastButton extends StatelessWidget {
@@ -32,13 +33,14 @@ class CastButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (!CastPlatform.canSend) return const SizedBox.shrink();
     return ListenableBuilder(
       listenable: CastManager.instance,
       builder: (BuildContext context, _) {
         final CastManager mgr = CastManager.instance;
         final bool hasTarget = mgr.hasTarget;
         final bool isActive = mgr.isCasting;
-        final bool scanning = mgr.state == CastState.discovering;
+        final bool scanning = mgr.isDiscovering;
         final bool hasDevices = mgr.discoveredDevices.isNotEmpty;
 
         // Phase 1+/G4 : la spec exige que l'icone Cast ne s'affiche
@@ -51,13 +53,11 @@ class CastButton extends StatelessWidget {
           return const SizedBox.shrink();
         }
 
-        final Color color = hasTarget
-            ? AppColors.accent
-            : AppColors.textSecondary;
+        final Color color =
+            hasTarget ? AppColors.accent : AppColors.textSecondary;
 
-        final IconData icon = hasTarget
-            ? Icons.cast_connected_rounded
-            : Icons.cast_rounded;
+        final IconData icon =
+            hasTarget ? Icons.cast_connected_rounded : Icons.cast_rounded;
 
         Widget child = Icon(icon, color: color, size: 22);
         if (scanning && !hasTarget) {
@@ -186,11 +186,10 @@ void showCastFailedToast(BuildContext context, Object error) {
       behavior: SnackBarBehavior.floating,
       backgroundColor: AppColors.live,
       content: Text(
-        context.l10n.castFailedLocal(
-            error.toString().replaceFirst('Exception: ', '')),
+        context.l10n
+            .castFailedLocal(error.toString().replaceFirst('Exception: ', '')),
         style: AppTextStyles.bodyMedium,
       ),
     ),
   );
 }
-

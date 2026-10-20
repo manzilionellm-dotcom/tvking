@@ -87,9 +87,11 @@ unknown profile names.
 |-------|----|-----------|---------|---|---------|---------------|-------|
 | *(pending)* | | | | | | | |
 
-> **Note:** native Cast SDK bridge is not yet implemented. These
-> receivers currently fall back to the QR-code web receiver, which
-> covers the actual playback path. Discovery (mDNS) works.
+> **Android sender:** the native Google Cast SDK bridge is implemented in
+> the 7MOTION overlay and reused by the ZUNO touch test build. Receiver
+> compatibility still requires physical measurements in this table.
+> See [ZUNO editions and test builds](../../../ci/cast_test/README.md); the
+> ZUNO TV edition has no sender UI and Windows offers DLNA/Roku only.
 
 ### Fire TV (with AirReceiver or BubbleUPnP installed)
 

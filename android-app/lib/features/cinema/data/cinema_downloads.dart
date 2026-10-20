@@ -24,6 +24,7 @@ import 'package:path_provider/path_provider.dart';
 import '../../../core/blackbox/black_box.dart';
 import '../../vod/data/download_repository.dart';
 import '../../vod/domain/vod_movie.dart';
+import 'playback_download_pause.dart';
 
 /// Espace libre minimal pour lancer un téléchargement (3 Go).
 const int kMinFreeBytes = 3 * 1024 * 1024 * 1024;
@@ -160,7 +161,7 @@ abstract final class CinemaDownloads {
     } else if (d.status == DownloadStatus.paused) {
       // Pause posée par le DIRECT (voir pauseForLive) : la file attend, elle
       // reprendra toute seule à la sortie du lecteur.
-      if (_pausedForLive.contains(id)) return;
+      if (_playbackPause.holds(id)) return;
       // Pause décidée par le client : on arrête la file.
       _current = null;
       _queue.clear();
@@ -178,38 +179,43 @@ abstract final class CinemaDownloads {
   //  n'est perdu).
   // ---------------------------------------------------------------
 
-  /// Téléchargements mis en pause par le direct (à relancer ensuite).
-  static final Set<String> _pausedForLive = <String>{};
+  /// La réservation de chaque route survit au Stop asynchrone de son Cast.
+  /// Les téléchargements attendent la sortie du DERNIER lecteur réservé.
+  static final PlaybackDownloadPause _playbackPause = PlaybackDownloadPause(
+    activeIds: () => DownloadsRepository.instance.current
+        .where((Download d) => d.status == DownloadStatus.downloading)
+        .map((Download d) => d.id),
+    pause: (String id) => DownloadsRepository.instance.pause(id),
+    resume: (String id) => DownloadsRepository.instance.resume(id),
+  );
 
-  /// Met en pause les téléchargements en cours (ouverture du direct).
-  static Future<void> pauseForLive() async {
+  /// Réserve immédiatement puis attend la fermeture des téléchargements.
+  /// Un appel avec propriétaire remonte l'erreur pour interdire le Cast si
+  /// la fermeture n'est pas confirmée. Sans jeton : compatibilité historique.
+  static Future<void> pauseForLive({Object? owner}) {
+    final Future<void> paused = _playbackPause.reserve(owner: owner);
+    return _finishPause(paused, strict: owner != null);
+  }
+
+  static Future<void> _finishPause(Future<void> paused, {required bool strict}) async {
     try {
-      final List<String> active = DownloadsRepository.instance.current
-          .where((Download d) => d.status == DownloadStatus.downloading)
-          .map((Download d) => d.id)
-          .toList();
-      if (active.isEmpty) return;
-      _pausedForLive.addAll(active);
-      for (final String id in active) {
-        await DownloadsRepository.instance.pause(id);
+      await paused;
+      if (_playbackPause.pendingCount > 0) {
+        BlackBox.instance.info('CINEMA', '${_playbackPause.pendingCount} téléchargement(s) réservés au lecteur');
       }
-      BlackBox.instance.info('CINEMA', '${active.length} téléchargement(s) en pause pendant le direct');
     } catch (_) {
-      // Jamais bloquant pour le direct.
+      if (strict) rethrow;
+      // Ancien appel sans propriétaire : ne change pas son contrat tolérant.
     }
   }
 
-  /// Relance les téléchargements mis en pause par le direct (sortie du lecteur).
-  static Future<void> resumeAfterLive() async {
-    if (_pausedForLive.isEmpty) return;
-    final List<String> ids = _pausedForLive.toList();
-    _pausedForLive.clear();
-    for (final String id in ids) {
-      try {
-        await DownloadsRepository.instance.resume(id);
-      } catch (_) {}
-    }
-    BlackBox.instance.info('CINEMA', '${ids.length} téléchargement(s) relancé(s) après le direct');
+  /// Libère seulement cette route ; une autre route peut déjà avoir réservé.
+  /// Les échecs de reprise gardent leurs IDs pour une libération ultérieure.
+  static Future<void> resumeAfterLive({Object? owner}) {
+    final Future<void> resumed = _playbackPause.release(owner: owner);
+    return resumed.catchError((Object error) {
+      BlackBox.instance.warn('CINEMA', 'reprise des téléchargements différée : $error');
+    });
   }
 
   static Future<bool> _unmeteredNetwork() async {

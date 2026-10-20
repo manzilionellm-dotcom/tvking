@@ -34,6 +34,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.common.util.Util
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.DataSource
 import androidx.media3.decoder.ffmpeg.ExperimentalFfmpegVideoRenderer
 import androidx.media3.decoder.ffmpeg.FfmpegAudioRenderer
 import androidx.media3.decoder.ffmpeg.FfmpegLibrary
@@ -71,6 +72,7 @@ import com.manzilionellm.native_video_player.logic.AudioStages
 import com.manzilionellm.native_video_player.logic.AudioTrackBuffer
 import com.manzilionellm.native_video_player.logic.AacRoute
 import com.manzilionellm.native_video_player.logic.CodecOrder
+import com.manzilionellm.native_video_player.logic.CastNetworkHandoff
 import com.manzilionellm.native_video_player.logic.DecoderFallback
 import com.manzilionellm.native_video_player.logic.DisplayModeOption
 import com.manzilionellm.native_video_player.logic.ExclusiveAudio
@@ -292,6 +294,12 @@ class NativeVideoView(
      * rouvre la chaîne au direct (ou le film à sa position).
      */
     private var suspended = false
+
+    // Le Cast ne partage PAS le verrou Home : onResume ne peut pas le lever.
+    private val castHandoff = CastNetworkHandoff()
+    private val castStopResults = mutableListOf<MethodChannel.Result>()
+    private var deferredCastArgs: Any? = null
+    private var playWhenOpened = true
 
     /** Autres lectures audio actives sur la box (API 26+), pour la fiche. */
     private var playbackCallback: AudioManager.AudioPlaybackCallback? = null
@@ -546,7 +554,10 @@ class NativeVideoView(
         // noir. stop() rend le codec ; la surface, elle, reste. Le logo
         // Flutter couvre l'ancienne image jusqu'à la nouvelle trame.
         attachToSurface(player)
-        playerKey = owners.register { silenceForHandoff() }
+        playerKey = owners.register {
+            revokeCastHandoff()
+            silenceForHandoff()
+        }
 
         handler.postDelayed(positionPump, 500)
         handler.postDelayed(pictureWatch, 2_000)
@@ -799,6 +810,7 @@ class NativeVideoView(
      * Écrit une seule ligne [SON] pour tout le séjour dehors.
      */
     private fun refuseReopen(): Boolean {
+        if (!castHandoff.allowsLocalOpen()) return true
         if (AppForeground.allowsReopen()) return false
         AppForeground.noteRefuse()?.let { emit("audioDiag", it) }
         return true
@@ -810,7 +822,7 @@ class NativeVideoView(
      * que la box fait autre chose ; au retour, c'est ce qui sonnait faux.
      */
     private fun suspendForBackground() {
-        if (released || suspended) return
+        if (released || suspended || castHandoff.isHeld()) return
         suspended = true
         if (vodMode && player.currentPosition > 0) lastKnownPos = player.currentPosition
         silenceForHandoff()
@@ -833,14 +845,14 @@ class NativeVideoView(
      * (le bouton OK appelle « play », qui rouvre à la position).
      */
     private fun resumeAfterForeground() {
-        if (vodMode) return
+        if (vodMode || !playWhenOpened || !castHandoff.allowsLocalOpen()) return
         if (playerKey >= 0 && owners.owner != null && owners.owner != playerKey) return
         resumeFromBackground()
     }
 
     /** Retour au premier plan : on rouvre, comme un zap (direct au bord du direct). */
     private fun resumeFromBackground() {
-        if (released || !suspended) return
+        if (released || !suspended || !castHandoff.allowsLocalOpen()) return
         suspended = false
         if (currentUrl == null) return
         // Ligne d'avant, gardée. La suivante précise film (position) ou direct.
@@ -850,6 +862,88 @@ class NativeVideoView(
         if (holdView.visibility != View.VISIBLE) emit("buffering", true)
         openCurrent(plan.startPositionMs)
         armFfmpegReadyWatchdog()
+    }
+
+    /** Ferme le média puis attend le thread ExoPlayer ET tous les close(). */
+    private fun suspendForCast(result: MethodChannel.Result) {
+        if (released || disposeStarted) {
+            result.error("cast_reader_closed", "Ce lecteur a été quitté.", null)
+            return
+        }
+        if (castHandoff.isHeld()) {
+            when (castHandoff.stopState(castHandoff.currentGeneration())) {
+                CastNetworkHandoff.StopState.READY -> {
+                    result.success(null)
+                    return
+                }
+                CastNetworkHandoff.StopState.WAITING -> {
+                    castStopResults.add(result)
+                    return
+                }
+                CastNetworkHandoff.StopState.CANCELLED -> {
+                    result.error("cast_reader_closed", "Ce lecteur a été quitté.", null)
+                    return
+                }
+                CastNetworkHandoff.StopState.FAILED -> Unit // Réessai explicite de Stop.
+            }
+        }
+        val ticket = try {
+            castHandoff.beginHold()
+        } catch (_: IllegalStateException) {
+            result.error("cast_reader_closed", "Ce lecteur a été quitté.", null)
+            return
+        }
+        castStopResults.add(result)
+        suspended = true
+        try {
+            if (vodMode && player.currentPosition > 0) lastKnownPos = player.currentPosition
+            silenceForHandoff(throwOnStopFailure = true)
+            abandonOwnFocus()
+            // Sans position, PlayerMessage traverse immédiatement la file du
+            // thread de lecture APRÈS stop/clearMediaItems. Les chargeurs peuvent
+            // encore terminer un close() : le compteur reste donc nécessaire.
+            player.createMessage { _, _ ->
+                handler.post { castHandoff.acknowledgeStop(ticket) }
+            }.send()
+        } catch (_: RuntimeException) {
+            castHandoff.failStop(ticket)
+        }
+        // Le timeout HTTP est de 15 s. On laisse sa fermeture se terminer,
+        // puis on refuse le transfert si elle n'a pas été confirmée.
+        awaitCastNetworkClose(ticket, SystemClock.elapsedRealtime() + 18_000L)
+    }
+
+    private fun awaitCastNetworkClose(ticket: Int, deadline: Long) {
+        if (castStopResults.isEmpty()) return
+        when (castHandoff.stopState(ticket)) {
+            CastNetworkHandoff.StopState.READY -> completeCastStop()
+            CastNetworkHandoff.StopState.CANCELLED ->
+                completeCastStop("cast_reader_closed", "Le transfert de ce lecteur a été annulé.")
+            CastNetworkHandoff.StopState.FAILED ->
+                completeCastStop("cast_stop_failed", "La fermeture du lecteur local a échoué.")
+            CastNetworkHandoff.StopState.WAITING -> {
+                if (SystemClock.elapsedRealtime() >= deadline) {
+                    castHandoff.failStop(ticket)
+                    completeCastStop("cast_stop_timeout", "La fermeture du flux local n'a pas été confirmée.")
+                } else {
+                    handler.postDelayed({ awaitCastNetworkClose(ticket, deadline) }, 25L)
+                }
+            }
+        }
+    }
+
+    private fun completeCastStop(code: String? = null, message: String? = null) {
+        val waiting = castStopResults.toList()
+        castStopResults.clear()
+        for (result in waiting) {
+            if (code == null) result.success(null)
+            else result.error(code, message, null)
+        }
+    }
+
+    private fun revokeCastHandoff() {
+        castHandoff.revoke()
+        completeCastStop("cast_reader_closed", "Le transfert de ce lecteur a été annulé.")
     }
 
     /**
@@ -1019,7 +1113,10 @@ class NativeVideoView(
 
         // Politique de ré-essai réseau AGRESSIVE : on retente beaucoup avant
         // d'abandonner un chargement (le direct IPTV coupe souvent brièvement).
-        val mediaSourceFactory = DefaultMediaSourceFactory(dataSourceFactory)
+        val trackedFactory = DataSource.Factory {
+            CastDataSource(dataSourceFactory.createDataSource(), castHandoff)
+        }
+        val mediaSourceFactory = DefaultMediaSourceFactory(trackedFactory)
             .setLoadErrorHandlingPolicy(DefaultLoadErrorHandlingPolicy(6))
 
         // QUALITÉ HLS (plusieurs débits dans la même chaîne). On part des
@@ -1134,6 +1231,10 @@ class NativeVideoView(
     // ---- Dart → natif -------------------------------------------------------
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
+        if ((released || disposeStarted) && call.method != "dispose") {
+            result.error("reader_closed", "Ce lecteur a été quitté.", null)
+            return
+        }
         when (call.method) {
             "setUrl" -> {
                 // L'accusé part APRÈS le silence (volume 0 + stop), dans
@@ -1147,6 +1248,21 @@ class NativeVideoView(
                     result.error("no_url", "setUrl appelé sans url", null)
                     return
                 }
+                playWhenOpened = call.argument<Boolean>("play") != false
+                if (castHandoff.isHeld()) {
+                    // Défense native pour un setUrl déjà en route au moment du
+                    // transfert. Seule la dernière sélection pourra reprendre.
+                    deferredCastArgs = call.arguments
+                    sessions.open()
+                    cancelRetry()
+                    currentUrl = url
+                    vodMode = call.argument<Boolean>("vod") ?: false
+                    lastKnownPos = call.argument<Number>("startMs")?.toLong() ?: 0L
+                    suspended = true
+                    result.success(null)
+                    return
+                }
+                castHandoff.onNewSelection()
                 // Dehors : on garde l'adresse pour le retour, sans prepare.
                 // Un essai déjà armé est annulé, sinon il rouvrirait le flux.
                 if (!AppForeground.allowsReopen()) {
@@ -1234,8 +1350,21 @@ class NativeVideoView(
             "silence" -> {
                 // Un autre lecteur a pris le son. On se tait et on invalide
                 // la session : un retry déjà posté ne doit pas relancer.
+                revokeCastHandoff()
                 silenceForHandoff()
                 result.success(null)
+            }
+            "suspendForCast" -> suspendForCast(result)
+            "resumeAfterCast" -> {
+                if (castStopResults.isNotEmpty() || !castHandoff.resumeAfterHold()) {
+                    result.error("cast_resume_refused", "La fermeture locale doit être confirmée avant la reprise.", null)
+                    return
+                }
+                val args = call.arguments ?: deferredCastArgs
+                deferredCastArgs = null
+                suspended = false
+                if (args == null) result.success(null)
+                else onMethodCall(MethodCall("setUrl", args), result)
             }
             "setEngine" -> {
                 // Choix manuel. « ffmpeg » sans décodeur vidéo ne rouvre
@@ -1249,6 +1378,12 @@ class NativeVideoView(
                 preferredEngine = requested
                 triedEngines.clear()
                 videoGaveUp = false
+                if (castHandoff.isHeld()) {
+                    // Le choix sera appliqué au setUrl de reprise. Recréer le
+                    // lecteur ici annulerait sa barrière Stop encore en route.
+                    result.success(null)
+                    return
+                }
                 applyEngine(requested, reopen = currentUrl != null)
                 result.success(null)
             }
@@ -1477,6 +1612,7 @@ class NativeVideoView(
                     result.success(null)
                     return
                 }
+                playWhenOpened = true
                 // Lecture arrêtée pour l'arrière-plan : « play » rouvre
                 // (film : à sa position). Un simple play() sur un lecteur
                 // vidé ne ferait rien.
@@ -1513,7 +1649,7 @@ class NativeVideoView(
     // chaîne (1re image figée, position, « je joue ») et on le jette.
 
     private fun fresh(eventTime: AnalyticsListener.EventTime): Boolean {
-        if (released) return false
+        if (released || !castHandoff.allowsLocalOpen()) return false
         return eventTime.realtimeMs >= sessionOpenedAt && sessionOpenedAt > 0L
     }
 
@@ -1795,7 +1931,7 @@ class NativeVideoView(
      * l'ancienne chaîne. Le jeton change : les callbacks déjà postés
      * ne relancent plus cette session.
      */
-    private fun silenceForHandoff() {
+    private fun silenceForHandoff(throwOnStopFailure: Boolean = false) {
         if (released) return
         pausedByFocus = false
         sessions.open()
@@ -1822,7 +1958,8 @@ class NativeVideoView(
             player.playWhenReady = false
             player.stop()
             player.clearMediaItems()
-        } catch (_: RuntimeException) {
+        } catch (error: RuntimeException) {
+            if (throwOnStopFailure) throw error
             // Un stop raté ne doit pas empêcher le lecteur suivant de parler.
         }
     }
@@ -1898,7 +2035,7 @@ class NativeVideoView(
     /** prepare() de [currentUrl]. Appelé seulement quand aucune piste ne vit. */
     private fun prepareCurrent(startPositionMs: Long?) {
         val url = currentUrl ?: return
-        if (released || disposeStarted) return
+        if (released || disposeStarted || !castHandoff.allowsLocalOpen()) return
         val token = sessions.generation
         // L'override audio de la chaîne précédente ne doit pas choisir
         // une piste au hasard sur la nouvelle.
@@ -1923,7 +2060,7 @@ class NativeVideoView(
         player.prepare()
         // Perte de focus pendant le zap : on ne repart pas tant que GAIN
         // n'est pas revenu (ou qu'un nouveau zap n'a pas redemandé le focus).
-        player.playWhenReady = !pausedByFocus
+        player.playWhenReady = playWhenOpened && !pausedByFocus
         armVolumeTrace()
     }
 
@@ -2609,6 +2746,8 @@ class NativeVideoView(
             return
         }
         disposeStarted = true
+        castHandoff.dispose()
+        completeCastStop("cast_reader_closed", "Le transfert de ce lecteur a été annulé.")
         disposeResult = result
         audioGate.cancel()
         openDeferred = false
@@ -2749,6 +2888,7 @@ class NativeVideoView(
      * surface : pas de flash noir.
      */
     private fun applyEngine(next: VideoEngine, reopen: Boolean) {
+        if (castHandoff.isHeld()) return
         if (next == VideoEngine.FFMPEG && !ffmpegVideoReady) {
             emitEngine(rejected = "ffmpeg")
             return
@@ -2775,7 +2915,7 @@ class NativeVideoView(
      * le même lecteur, seul l'ordre des codecs change.
      */
     private fun rebuildPlayer() {
-        if (!::player.isInitialized) return
+        if (!::player.isInitialized || released || disposeStarted || castHandoff.isHeld()) return
         val old = player
         val next = buildConfiguredPlayer()
         PlayerCensus.playerCreated()
@@ -2809,7 +2949,7 @@ class NativeVideoView(
     }
 
     private fun considerPictureFallback() {
-        if (released || videoGaveUp || videoFallbackPosted) return
+        if (released || videoGaveUp || videoFallbackPosted || !castHandoff.allowsLocalOpen()) return
         if (!::player.isInitialized) return
         // Dehors, l'image est partie : ce n'est pas un décodeur à changer.
         if (!AppForeground.allowsReopen()) return
