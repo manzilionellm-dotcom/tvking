@@ -2338,6 +2338,228 @@ index dbd8d98..c3c2160 100644
 +    expect(slot.owns(quitte), isFalse);
    });
  }
+diff --git a/test/features/player/exit_guards_wave2_test.dart b/test/features/player/exit_guards_wave2_test.dart
+index 158772d..c64aeb1 100644
+--- a/test/features/player/exit_guards_wave2_test.dart
++++ b/test/features/player/exit_guards_wave2_test.dart
+@@ -8,8 +8,9 @@
+ //   2.1 TV — en arrière-plan (Home), la cascade de secours ne doit plus
+ //       relancer la chaîne : `isAlive` tient compte de `_suspended`, et
+ //       le chien de garde de démarrage est annulé.
+-//   2.3 TV + mobile — la fermeture d'un écran note le rang de session
+-//       relais AVANT ses `await`, et ne ferme rien de plus récent.
++//   2.3 TV + mobile — la fermeture ne touche pas la lecture suivante :
++//       rang relais capturé sur TV ; fermeture lancée par le propriétaire
++//       mobile avant ses attentes, sans droit conservé après révocation.
+ //   2.6 mobile — le verrou des téléchargements ne se lève qu'à la FIN
+ //       de la fermeture réseau, et un recyclage de lecteur après
+ //       `dispose` ne crée pas d'instance orpheline.
+@@ -34,6 +35,21 @@ String _code(File f) => f
+     .where((String l) => !l.trimLeft().startsWith('//'))
+     .join('\n');
+ 
++/// Limite une recherche à la méthode concernée, au lieu de laisser une
++/// garde placée dans un autre chemin satisfaire le test. Le format Dart
++/// ferme les méthodes de cet écran avec deux espaces d'indentation.
++String _member(String code, String signature) {
++  final int start = code.indexOf(signature);
++  expect(start, greaterThan(-1), reason: 'méthode absente : $signature');
++  const String closing = '\n  }';
++  final int end = code.indexOf(closing, start);
++  expect(end, greaterThan(start), reason: 'méthode non terminée : $signature');
++  return code.substring(start, end + closing.length);
++}
++
++/// Les sauts de ligne du formateur ne font pas partie du contrat.
++String _compact(String code) => code.replaceAll(RegExp(r'\s+'), ' ').trim();
++
+ void main() {
+   final File tv = File('lib/features/tv/presentation/tv_player_screen.dart');
+   final File mobile =
+@@ -56,8 +72,7 @@ void main() {
+               'autre chose (« connexion déjà utilisée »).');
+     });
+ 
+-    test('le passage en arrière-plan suspend ET annule le chien de garde',
+-        () {
++    test('le passage en arrière-plan suspend ET annule le chien de garde', () {
+       final int paused = code.indexOf('case AppLifecycleState.paused:');
+       final int resumed = code.indexOf('case AppLifecycleState.resumed:');
+       expect(paused, greaterThan(-1));
+@@ -76,7 +91,7 @@ void main() {
+     });
+   });
+ 
+-  group('2.3 — la fermeture d\'un écran est bornée à son rang relais', () {
++  group('2.3 — la fermeture ne touche pas le relais de l’écran suivant', () {
+     /// Dans `dispose()`, entre son début et la fermeture bornée : le rang
+     /// doit être lu là, et AUCUNE fermeture non bornée ne doit s'y
+     /// trouver. (Les autres `closeOtherPlaybacks('')` du fichier — zap,
+@@ -92,7 +107,8 @@ void main() {
+       final String bloc = code.substring(dispose, close);
+       expect(
+         bloc,
+-        contains('final int relayGen = LocalStreamRelay.instance.sessionGeneration;'),
++        contains(
++            'final int relayGen = LocalStreamRelay.instance.sessionGeneration;'),
+         reason: 'le rang doit être lu DANS dispose(), avant les await',
+       );
+       expect(bloc, isNot(contains("closeOtherPlaybacks('')")),
+@@ -103,47 +119,123 @@ void main() {
+     test('TV : le rang est lu AVANT les await, puis passé à la fermeture',
+         () => verifie(tv));
+ 
+-    test('mobile : même garde', () => verifie(mobile));
++    test(
++        'mobile : seul le propriétaire capture la fermeture avant les attentes',
++        () {
++      final String code = _code(mobile);
++      final String dispose = _compact(_member(code, 'void dispose() {'));
++      final String network = _compact(
++        _member(code, 'Future<void> _stopPlaybackNetwork('),
++      );
++      final int owner = dispose.indexOf(
++        'final bool wasOwner = StreamSlot.instance.owns(this);',
++      );
++      expect(owner, greaterThan(-1));
++      expect(owner, lessThan(dispose.indexOf('_disposing = true;')),
++          reason: 'le droit de fermer doit être capturé avant de quitter');
++      expect(
++        dispose,
++        contains('final Future<void> networkClosed = wasOwner '
++            '? _stopPlaybackNetwork(closeRelay: true) '
++            ': _slotShutdown.then((_) => _stopPlaybackNetwork(closeRelay: false));'),
++        reason: 'un écran déjà révoqué attend sa fermeture capturée, puis '
++            'arrête seulement son moteur ; il ne ferme pas le relais suivant',
++      );
++      expect(dispose, isNot(contains('closeOtherPlaybacks(')),
++          reason: 'aucune fermeture globale tardive ne doit contourner '
++              'le droit capturé par networkClosed');
++      expect(
++        RegExp(
++          r"if \(wasOwner\) \{\s*StreamSlot\.instance\s*"
++          r"\.handOff\(this, shutdown, label: 'fermeture lecteur quitté'\);"
++          r"\s*\} else \{\s*StreamSlot\.instance\.unregister\(this\);\s*\}",
++        ).hasMatch(dispose),
++        isTrue,
++        reason: 'le propriétaire transmet la fermeture au prochain claim ; '
++            'un écran déjà révoqué retire seulement sa propre inscription',
++      );
++      expect(
++        network,
++        contains('final Future<void> relayClosed = closeRelay '
++            "? LocalStreamRelay.instance.closeOtherPlaybacks('') "
++            ': Future<void>.value();'),
++      );
++      final int capturedPlayer =
++          network.indexOf('final Player stoppedPlayer = _player;');
++      final int close = network.indexOf("closeOtherPlaybacks('')");
++      final int stop = network.indexOf('await stoppedPlayer.stop()');
++      expect(capturedPlayer, greaterThan(-1));
++      expect(close, greaterThan(capturedPlayer));
++      expect(stop, greaterThan(close),
++          reason: 'la fermeture du relais doit commencer avant le premier '
++              'await : un stop lent ne doit pas viser une nouvelle session');
++      expect(network, contains('return Future.wait<void>(<Future<void>>['));
++      expect(network, contains('relayClosed,'),
++          reason: 'la fin réseau doit attendre aussi la fermeture du relais');
++    });
+   });
+ 
+   group('2.6 — mobile : sortie propre', () {
+     late String code;
+     setUp(() => code = _code(mobile));
+ 
+-    test('le verrou des téléchargements se lève à la FIN de la fermeture',
+-        () {
+-      // Dans `dispose`, la seule levée autorisée est celle qui attend le
+-      // shutdown. On localise `dispose()` et on vérifie qu'entre son
+-      // début et le `handOff`, aucune levée immédiate ne subsiste.
+-      final int dispose = code.indexOf('void dispose() {');
+-      final int handOff =
+-          code.indexOf("handOff(this, shutdown, label: 'fermeture lecteur quitté')");
+-      expect(dispose, greaterThan(-1));
+-      expect(handOff, greaterThan(dispose));
+-      final String avant = code.substring(dispose, handOff);
+-      expect(avant, isNot(contains('setPlaybackHold(false)')),
+-          reason: 'levé AVANT le stop mpv, le verrou laissait la file '
+-              'Cinéma reprendre la ligne pendant le démontage → « déjà '
+-              'ouverte ailleurs » au film suivant');
++    test('le verrou des téléchargements se lève à la FIN de la fermeture', () {
++      final String dispose = _compact(_member(code, 'void dispose() {'));
++      final int captured = dispose.indexOf(
++        'final List<Object> holds = _downloadHolds.toList(growable: false);',
++      );
++      final int closing = dispose.indexOf('final Future<void> networkClosed =');
++      expect(captured, greaterThan(-1));
++      expect(closing, greaterThan(captured),
++          reason: 'les jetons à libérer doivent être capturés avant toute '
++              'attente, sans inclure ceux d’une lecture suivante');
++      final int networkDone = dispose.indexOf('await networkClosed;');
++      final int playerDone = dispose.indexOf('await player.dispose()');
++      expect(networkDone, greaterThan(closing));
++      expect(playerDone, greaterThan(networkDone));
+       expect(
+-        code,
+-        contains('shutdown.whenComplete(\n'
+-            '        () => VodDownloadService.instance.setPlaybackHold(false))'),
+-        reason: 'la levée doit attendre la fin réelle de la fermeture',
++        dispose,
++        contains('shutdown.whenComplete(() => _releaseDownloadHolds(holds))'),
++        reason: 'la fermeture terminée libère seulement les jetons capturés',
+       );
++      expect(
++          RegExp(r'_releaseDownloadHolds\(').allMatches(dispose), hasLength(1),
++          reason: 'aucune libération anticipée ne doit précéder whenComplete');
++      expect(dispose, isNot(contains('setPlaybackHold(false)')),
++          reason: 'une levée globale pourrait libérer les téléchargements '
++              'alors qu’un autre propriétaire lit encore');
++      final String release = _compact(
++        _member(code, 'void _releaseDownloadHolds('),
++      );
++      expect(release, contains('for (final Object hold in holds)'));
++      expect(release,
++          contains('VodDownloadService.instance.releasePlaybackHold(hold);'));
++      expect(release, contains('_downloadHolds.remove(hold);'),
++          reason: 'une fermeture tardive retire ses jetons, sans vider les '
++              'demandes ajoutées depuis');
++      expect(release, isNot(contains('_downloadHolds.clear()')));
+     });
+ 
+-    test('un recyclage de lecteur après la sortie ne crée pas d\'orphelin',
+-        () {
+-      final int recycle = code.indexOf('_recyclePlayer(');
+-      expect(recycle, greaterThan(-1));
+-      final int create = code.indexOf('_createPlayer();', recycle);
+-      expect(create, greaterThan(recycle));
+-      final String bloc = code.substring(recycle, create);
+-      expect(bloc, contains('if (!mounted) return;'),
+-          reason: 'deux await (jusqu\'à 10 s) précèdent la création : '
+-              'écran quitté entre-temps = instance mpv que personne ne '
+-              'ferme, et une connexion fournisseur que rien ne rend');
++    test('un recyclage de lecteur après la sortie ne crée pas d\'orphelin', () {
++      expect(
++        _compact(code),
++        contains(
++            'bool get _screenActive => mounted && !_disposing && !_slotRevoked;'),
++        reason: 'la garde doit couvrir la sortie et la perte de propriété, '
++            'même si le widget est encore monté',
++      );
++      final String recycle = _compact(
++        _member(code, 'Future<void> _recyclePlayer()'),
++      );
++      final int disposed = recycle.indexOf('await old.dispose()');
++      final int guard =
++          recycle.indexOf('if (!_screenActive) return;', disposed);
++      final int create = recycle.indexOf('_createPlayer();');
++      expect(disposed, greaterThan(-1));
++      expect(guard, greaterThan(disposed));
++      expect(create, greaterThan(guard),
++          reason: 'après le dernier await, un écran quitté ou révoqué ne '
++              'doit pas créer une instance mpv orpheline');
+     });
+   });
+ }
 diff --git a/test/features/player/playback_transition_integration_test.dart b/test/features/player/playback_transition_integration_test.dart
 new file mode 100644
 index 0000000..051ba61
