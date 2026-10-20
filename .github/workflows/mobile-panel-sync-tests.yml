@@ -1,8 +1,8 @@
-name: 7 MOTION mobile — synchronisation du panel
+name: 7 MOTION mobile — régressions du téléphone
 
 on:
   push:
-    branches: ['feature/7motion-panel-sync']
+    branches: ['feature/7motion-panel-sync', 'feature/7motion-foot-upcoming-20261020']
   pull_request:
     paths:
       - 'patches/mobile-panel-sync.patch'
@@ -10,6 +10,7 @@ on:
       - 'patches/mobile-radio.patch'
       - 'patches/mobile-identity.patch'
       - 'patches/mobile-stability.patch'
+      - 'android-app/ci/mobile/**'
       - '.github/workflows/mobile-panel-sync-tests.yml'
 
 # Tests du vrai code mobile préparé par la chaîne de livraison. Aucun
@@ -50,9 +51,20 @@ jobs:
           git apply ../mission/patches/mobile-identity.patch
           git apply --check ../mission/patches/mobile-stability.patch
           git apply ../mission/patches/mobile-stability.patch
+          git apply --check ../mission/android-app/ci/mobile/adult-classification.patch
+          git apply ../mission/android-app/ci/mobile/adult-classification.patch
+          git apply --check ../mission/android-app/ci/mobile/player-terminal-fallback.patch
+          git apply ../mission/android-app/ci/mobile/player-terminal-fallback.patch
+          git apply --check ../mission/android-app/ci/mobile/mobile-back-gestures.patch
+          git apply ../mission/android-app/ci/mobile/mobile-back-gestures.patch
+          git apply --check ../mission/android-app/ci/mobile/football-upcoming.patch
+          git apply ../mission/android-app/ci/mobile/football-upcoming.patch
           git diff --check
           flutter pub get
           flutter gen-l10n
+      - name: Vérifier la numérotation des APK publiés
+        working-directory: phone
+        run: bash ci/build_label_test.sh
       - name: Analyser le code mobile complet
         working-directory: phone
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
