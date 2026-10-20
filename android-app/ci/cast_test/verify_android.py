@@ -5,10 +5,22 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import xml.etree.ElementTree as ET
 import zipfile
 
 from prepare_android import ANDROID, PERMISSIONS, TEST_LABEL, TEST_PACKAGE
+
+
+def is_media_playback_type(value):
+    # ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK vaut exactement 2.
+    # apkanalyzer peut imprimer le nom OU l'entier encodé dans le manifeste
+    # binaire (par exemple 0x2). Un autre bit associé reste interdit.
+    if value == "mediaPlayback":
+        return True
+    if value is None or re.fullmatch(r"(?:[0-9]+|0[xX][0-9a-fA-F]+)", value) is None:
+        return False
+    return int(value, 16 if value.lower().startswith("0x") else 10) == 2
 
 
 def verify(apk_path, manifest_path):
@@ -36,8 +48,8 @@ def verify(apk_path, manifest_path):
                for m in app.findall("meta-data")), "Options Google Cast absentes"
     for service in ("RecordingForegroundService", "PlaybackForegroundService"):
         assert any(s.get(ANDROID + "name") == f"com.example.tv_king.{service}"
-                   and s.get(ANDROID + "foregroundServiceType") == "mediaPlayback"
-                   for s in app.findall("service")), f"Service absent : {service}"
+                   and is_media_playback_type(s.get(ANDROID + "foregroundServiceType"))
+                   for s in app.findall("service")), f"Service absent ou type foreground incorrect : {service}"
     # Le build est debug, sans R8 : les noms de classes sont conservés dans
     # les DEX. Vérifier l'APK détecte un overlay oublié malgré un Dart valide.
     expected = {

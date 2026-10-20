@@ -135,7 +135,7 @@ jobs:
           )
           echo "apksigner sélectionné : $SDK_SIGNER"
           "$SDK_SIGNER" verify --print-certs "$APK" 2>&1 | tee build/cast-test/signature.txt
-          if ! grep -E 'Signer #1 certificate DN:.*CN=Android Debug' build/cast-test/signature.txt; then
+          if ! grep -E '^(Signer #1 certificate DN:|V2 Signer: certificate DN:)([[:space:]]+|.*,[[:space:]]*)CN=Android Debug([[:space:]]*,|[[:space:]]*$)' build/cast-test/signature.txt; then
             echo '::error::Le certificat Android Debug attendu est absent du rapport de signature.'
             exit 1
           fi
