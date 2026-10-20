@@ -511,6 +511,17 @@ jobs:
           cp build/app/outputs/flutter-apk/app-release.apk "build/app/outputs/flutter-apk/$APK_NAME"
           ls -lah build/app/outputs/flutter-apk/
 
+      # Un APK peut compiler et passer les tests Dart tout en restant sur le
+      # logo : JNI cherche les noms Kotlin littéraux, que R8 peut renommer.
+      # On vérifie donc le contrat réel DEX/Dart de l'APK optimisé et signé.
+      - name: Vérifier le démarrage SharedPreferences après R8
+        run: |
+          set -e
+          BUILD_TOOLS=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          python3 ci/tv/verify_apk_jni.py \
+            "build/app/outputs/flutter-apk/$APK_NAME" \
+            --dexdump "$BUILD_TOOLS/dexdump"
+
       # Vérification sur le binaire produit (pas sur nos intentions) :
       # package, versionCode, label, catégorie Leanback, et surtout le
       # backend compilé dedans (= le Worker que le panel utilise).
