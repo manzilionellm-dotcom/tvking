@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Vérifie le contrat JNI des préférences dans l'APK TV réellement minifié.
+"""Vérifie le contrat JNI des préférences dans l'APK ou l'AAB TV minifié.
 
 Le build 216 contenait les bons noms dans libapp.so, mais ses méthodes DEX
 attendaient une classe Continuation renommée par R8. Chercher des chaînes
@@ -7,6 +7,7 @@ dans l'APK ne suffit donc pas : on lit les classes et membres effectivement
 définis avec dexdump, l'outil officiel des Android SDK Build Tools.
 
 Usage : python3 ci/tv/verify_apk_jni.py app.apk --dexdump /sdk/build-tools/36.1.0/dexdump
+Bundle : ajouter --bundle pour lire les DEX et bibliothèques du module base.
 """
 
 import argparse
@@ -77,16 +78,21 @@ def has_member(classes, owner, kind, name, signature):
     return False
 
 
-def verify(apk, dexdump):
+def verify(artifact, dexdump, bundle=False):
     errors = []
     classes = {}
-    with zipfile.ZipFile(apk) as archive, tempfile.TemporaryDirectory() as temporary:
+    with zipfile.ZipFile(artifact) as archive, tempfile.TemporaryDirectory() as temporary:
         names = set(archive.namelist())
-        dex_files = sorted(name for name in names if re.fullmatch(r"classes\d*\.dex", name))
+        # Le bundle est reconstruit avec PLAY_BUILD=true : contrôler ses
+        # propres DEX, et non ceux de l'APK construit juste avant lui.
+        dex_prefix = "base/dex/" if bundle else ""
+        lib_prefix = "base/" if bundle else ""
+        dex_pattern = re.escape(dex_prefix) + r"classes\d*\.dex"
+        dex_files = sorted(name for name in names if re.fullmatch(dex_pattern, name))
         if not dex_files:
-            raise ValueError("Aucun DEX dans l'APK")
+            raise ValueError("Aucun DEX dans le module base de l'AAB" if bundle else "Aucun DEX dans l'APK")
         for name in dex_files:
-            path = Path(temporary, name)
+            path = Path(temporary, Path(name).name)
             path.write_bytes(archive.read(name))
             result = subprocess.run(
                 [str(dexdump), str(path)],
@@ -101,7 +107,7 @@ def verify(apk, dexdump):
         # Dart et le pont natif. Les DEX communs sont vérifiés juste après.
         for abi in ABIS:
             for library in ("libapp.so", "libdartjni.so"):
-                name = f"lib/{abi}/{library}"
+                name = f"{lib_prefix}lib/{abi}/{library}"
                 if name not in names or not archive.getinfo(name).file_size:
                     errors.append(f"Bibliothèque absente ou vide : {name}")
                 elif library == "libapp.so" and GET_ALL.encode() not in archive.read(name):
@@ -148,11 +154,12 @@ def verify(apk, dexdump):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("apk", type=Path)
+    parser.add_argument("artifact", type=Path)
+    parser.add_argument("--bundle", action="store_true", help="Contrôler le module base d'un AAB")
     parser.add_argument("--dexdump", required=True, type=Path)
     arguments = parser.parse_args()
     try:
-        errors = verify(arguments.apk, arguments.dexdump)
+        errors = verify(arguments.artifact, arguments.dexdump, arguments.bundle)
     except (OSError, ValueError, zipfile.BadZipFile, subprocess.SubprocessError) as error:
         print(f"Échec de lecture du contrat JNI : {error}", file=sys.stderr)
         return 1
