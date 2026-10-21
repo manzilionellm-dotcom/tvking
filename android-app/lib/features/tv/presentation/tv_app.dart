@@ -16,6 +16,8 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/app/repair_flags.dart';
+import '../../../core/app/zuno_edition.dart';
+import '../../cast/data/cast_platform.dart';
 import '../../playlists/data/import_progress.dart';
 import '../../playlists/data/remote_source_repository.dart';
 import '../../../core/i18n/l10n_extension.dart';
@@ -88,8 +90,11 @@ class TvApp extends StatelessWidget {
           // Police par défaut = Inter (Maison Noir) sur TOUT le texte.
           textTheme: GoogleFonts.interTextTheme(base.textTheme)
               .apply(bodyColor: TvTokens.text, displayColor: TvTokens.text),
-          // Coupe TOUT effet tactile (hover/splash souris) — D-pad only.
-          splashFactory: NoSplash.splashFactory,
+          // Le téléphone garde le retour tactile Material ; la télévision
+          // conserve ses animations de focus à la télécommande.
+          splashFactory: CastPlatform.zunoEdition == ZunoEdition.touch
+              ? InkRipple.splashFactory
+              : NoSplash.splashFactory,
           hoverColor: Colors.transparent,
           // Retour sans « flash » : fondu court, sans capture d'écran
           // (voir tv_page_transitions.dart).
@@ -107,6 +112,13 @@ class TvApp extends StatelessWidget {
           final Size screen = mq.size;
           if (child == null || screen.width <= 0 || screen.height <= 0) {
             return child ?? const SizedBox.shrink();
+          }
+          // Une édition tactile utilise la largeur du téléphone/tablette et
+          // son agrandissement de texte. Lui imposer 1280 dp réduisait toute
+          // l'interface à moins d'un tiers de sa taille sur un téléphone.
+          // Conserver aussi les insets réels (encoche, gestes et clavier).
+          if (CastPlatform.zunoEdition == ZunoEdition.touch) {
+            return VoiceHotkey(child: child);
           }
           const double designW = kTvDesignWidth;
           final double designH = designW * screen.height / screen.width;
@@ -160,58 +172,57 @@ class _RestartWidgetState extends State<RestartWidget> {
 
   @override
   Widget build(BuildContext context) => Stack(
-    children: <Widget>[
-      KeyedSubtree(key: _key, child: widget.child),
-      // Mise à jour forcée : le panel l'envoie sur le canal.
-      // Tant que la box n'est pas assez récente, cet écran
-      // couvre le reste. Un build local (pas de numéro) ne
-      // se bloque pas.
-      ListenableBuilder(
-        listenable: SignalInbox.instance,
-        builder: (BuildContext context, _) {
-          if (!SignalInbox.instance.forceBlocked) {
-            return const SizedBox.shrink();
-          }
-          return ForcedUpdateScreen(
-            onRetry: () {
-              unawaited(() async {
-                final bool still = await ForceUpdateChecker.instance
-                    .mustUpdate();
-                SignalInbox.instance.setForceBlocked(still);
-              }());
+        children: <Widget>[
+          KeyedSubtree(key: _key, child: widget.child),
+          // Mise à jour forcée : le panel l'envoie sur le canal.
+          // Tant que la box n'est pas assez récente, cet écran
+          // couvre le reste. Un build local (pas de numéro) ne
+          // se bloque pas.
+          ListenableBuilder(
+            listenable: SignalInbox.instance,
+            builder: (BuildContext context, _) {
+              if (!SignalInbox.instance.forceBlocked) {
+                return const SizedBox.shrink();
+              }
+              return ForcedUpdateScreen(
+                onRetry: () {
+                  unawaited(() async {
+                    final bool still =
+                        await ForceUpdateChecker.instance.mustUpdate();
+                    SignalInbox.instance.setForceBlocked(still);
+                  }());
+                },
+              );
             },
-          );
-        },
-      ),
-      // Pastille « Mise à jour… » pendant une passe ou un import du
-      // panel. CACHÉE par défaut depuis le 05/10/2026 (demande du
-      // propriétaire : rien ne doit se voir, l'import est silencieux ;
-      // la mesure est dans la boîte noire). `zuno.sync.pill_show`
-      // la réaffiche pour un diagnostic sur une box.
-      if (RepairFlags.updatingPillShown)
-        Positioned(
-          top: TvDimens.safeV,
-          right: TvDimens.safeH,
-          child: IgnorePointer(
-            child: ListenableBuilder(
-              listenable: Listenable.merge(<Listenable>[
-                TvContentRefresh.running,
-                RemoteSourceRepository.importing,
-              ]),
-              builder: (BuildContext context, _) => AnimatedOpacity(
-                opacity:
-                    (TvContentRefresh.running.value ||
-                        RemoteSourceRepository.importing.value)
-                    ? 1
-                    : 0,
-                duration: const Duration(milliseconds: 250),
-                child: const _UpdatingPill(),
+          ),
+          // Pastille « Mise à jour… » pendant une passe ou un import du
+          // panel. CACHÉE par défaut depuis le 05/10/2026 (demande du
+          // propriétaire : rien ne doit se voir, l'import est silencieux ;
+          // la mesure est dans la boîte noire). `zuno.sync.pill_show`
+          // la réaffiche pour un diagnostic sur une box.
+          if (RepairFlags.updatingPillShown)
+            Positioned(
+              top: TvDimens.safeV,
+              right: TvDimens.safeH,
+              child: IgnorePointer(
+                child: ListenableBuilder(
+                  listenable: Listenable.merge(<Listenable>[
+                    TvContentRefresh.running,
+                    RemoteSourceRepository.importing,
+                  ]),
+                  builder: (BuildContext context, _) => AnimatedOpacity(
+                    opacity: (TvContentRefresh.running.value ||
+                            RemoteSourceRepository.importing.value)
+                        ? 1
+                        : 0,
+                    duration: const Duration(milliseconds: 250),
+                    child: const _UpdatingPill(),
+                  ),
+                ),
               ),
             ),
-          ),
-        ),
-    ],
-  );
+        ],
+      );
 }
 
 /// Détail chiffré de l'import en cours, sans mot à traduire : « 12,4 Mo »
@@ -309,6 +320,30 @@ class _ExitDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (CastPlatform.zunoEdition == ZunoEdition.touch) {
+      // AlertDialog sait défiler et empiler ses actions quand la largeur ou
+      // l'accessibilité ne permet pas de garder les trois boutons en ligne.
+      return AlertDialog(
+        scrollable: true,
+        backgroundColor: TvTokens.card,
+        title: Text(context.l10n.tvQuitTitle),
+        content: Text(context.l10n.tvQuitMessage),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: Text(context.l10n.tvStay),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop('restart'),
+            child: Text(context.l10n.tvRestart),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop('quit'),
+            child: Text(context.l10n.tvQuit),
+          ),
+        ],
+      );
+    }
     // Material TRANSPARENT obligatoire : un showDialog pousse une route
     // SÉPARÉE, hors de TvShell. Sans Material ancêtre, Flutter dessine tout
     // le texte avec son style d'erreur (double soulignement jaune) — c'était
@@ -469,8 +504,7 @@ class _TvGateState extends State<TvGate> {
     // MÊME si des chaînes sont déjà en cache. Sans ça, un client ayant chargé
     // sa source pendant l'essai continuerait à regarder GRATUITEMENT après les
     // 7 jours (les chaînes restaient en base locale). C'est la fuite à fermer.
-    final bool mustBlock =
-        s == SubscriptionStatus.trialExpired ||
+    final bool mustBlock = s == SubscriptionStatus.trialExpired ||
         s == SubscriptionStatus.frozen ||
         s == SubscriptionStatus.banned;
     final bool hasOwnList =
@@ -597,8 +631,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
     final LogicalKeyboardKey k = event.logicalKey;
     final bool up =
         k == LogicalKeyboardKey.arrowUp || k == LogicalKeyboardKey.channelUp;
-    final bool down =
-        k == LogicalKeyboardKey.arrowDown ||
+    final bool down = k == LogicalKeyboardKey.arrowDown ||
         k == LogicalKeyboardKey.channelDown;
     if (!up && !down) {
       if (_diagBuf.isNotEmpty) _diagBuf.clear();
@@ -755,12 +788,11 @@ class _HomeHeaderState extends State<_HomeHeader> {
     final String localeName = Localizations.localeOf(context).toString();
     final String weekday =
         toBeginningOfSentenceCase(DateFormat.EEEE(localeName).format(_now)) ??
-        '';
+            '';
     // UN SEUL bloc contexte en haut à gauche : salut + (ville · temp météo ·
     // jour · heure) sur 2 lignes. L'heure isolée en haut à droite est retirée.
-    final String temp = (g != null && g.tempC != null)
-        ? '${g.tempC!.round()}° ${g.emoji}'
-        : '';
+    final String temp =
+        (g != null && g.tempC != null) ? '${g.tempC!.round()}° ${g.emoji}' : '';
     final String dayTime = '$weekday · $_time';
     // ÉPURÉ (réf. design) : plus de « Bonjour 👋 ». Un simple cluster
     // ville · météo · jour · heure, DISCRET, aligné EN HAUT À DROITE.

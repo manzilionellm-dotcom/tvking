@@ -25,6 +25,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show SliverConstraints;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/blackbox/black_box.dart';
@@ -46,6 +47,7 @@ import 'tv_components.dart';
 import 'tv_parental_screen.dart';
 import 'tv_search_screen.dart';
 import 'tv_shell.dart';
+import 'tv_touch_components.dart';
 
 class TvCinemaScreen extends StatefulWidget {
   const TvCinemaScreen({super.key, required this.kind});
@@ -489,15 +491,102 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_loadingCats) return const CinemaLoading();
+    if (_loadingCats) {
+      return isZunoTouch
+          ? _touchMessage(context, const CinemaLoading())
+          : const CinemaLoading();
+    }
     if (_accountsMissing) {
-      return TvEmptyState(
+      final Widget empty = TvEmptyState(
         icon: _movies ? Icons.movie_rounded : Icons.video_library_rounded,
         title: context.l10n.tvCinemaNoSource,
         subtitle: context.l10n.tvCinemaNoSourceBody,
       );
+      return isZunoTouch ? _touchMessage(context, empty) : empty;
     }
-    if (_catalogMissing) return _unavailable(context);
+    if (_catalogMissing) {
+      final Widget empty = _unavailable(context);
+      return isZunoTouch ? _touchMessage(context, empty) : empty;
+    }
+    if (isZunoTouch) {
+      final List<({String label, _Sel selection})> options =
+          <({String label, _Sel selection})>[
+        (
+          label: context.l10n.tvCinemaSearch,
+          selection: const _Sel(_View.search)
+        ),
+        if (_continue.isNotEmpty)
+          (
+            label: context.l10n.sectionResumeWhereYouLeftOff,
+            selection: const _Sel(_View.continueW)
+          ),
+        if (_myDownloads.isNotEmpty)
+          (
+            label: context.l10n.tvCinemaDownloads,
+            selection: const _Sel(_View.downloads)
+          ),
+        if (_repo.recent(widget.kind, allowedCats: _allowedKeys).isNotEmpty)
+          (
+            label: context.l10n.tvCinemaRecent,
+            selection: const _Sel(_View.recent)
+          ),
+        for (final CinemaCategory category in _visibleCats)
+          (label: category.name, selection: _Sel(_View.category, category)),
+      ];
+      String selectedLabel = context.l10n.categoriesTitle;
+      for (final option in options) {
+        if (option.selection.key == _sel.key) selectedLabel = option.label;
+      }
+      return CustomScrollView(
+        key: const ValueKey<String>('zuno-touch-cinema'),
+        slivers: <Widget>[
+          // Un seul défilement contient l'en-tête, la recherche et les
+          // affiches : le clavier paysage ne laisse aucun bloc fixe déborder.
+          SliverToBoxAdapter(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                TvTouchPageHeader(
+                    title: _movies
+                        ? context.l10n.tvNavFilms
+                        : context.l10n.tvNavSeries),
+                const SizedBox(height: TvDimens.touchGap),
+                TvTouchMenuButton<String>(
+                  label: selectedLabel,
+                  selected: _sel.key,
+                  choices: <TvTouchChoice<String>>[
+                    for (final option in options)
+                      TvTouchChoice<String>(
+                          value: option.selection.key, label: option.label),
+                  ],
+                  // _select conserve la demande du code parental pour les catégories
+                  // adultes : changer la disposition ne contourne pas cette garde.
+                  onSelected: (String key) => _select(
+                    options
+                        .firstWhere((option) => option.selection.key == key)
+                        .selection,
+                    explicit: true,
+                  ),
+                ),
+                if (_langOptions.isNotEmpty)
+                  TextButton.icon(
+                    onPressed: () => unawaited(_cycleLanguage()),
+                    icon: const Icon(Icons.language_rounded),
+                    label: Text(context.l10n.tvCinemaLanguage(_lang == null
+                        ? context.l10n.tvCinemaAllLanguages
+                        : (CinemaLanguage.labelFor(_lang) ?? _lang!))),
+                    style: TextButton.styleFrom(
+                        minimumSize:
+                            const Size.fromHeight(TvDimens.touchTarget)),
+                  ),
+                const SizedBox(height: TvDimens.touchGap),
+              ],
+            ),
+          ),
+          _buildMain(context),
+        ],
+      );
+    }
     return Row(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
@@ -507,6 +596,23 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
       ],
     );
   }
+
+  Widget _touchMessage(BuildContext context, Widget message) =>
+      CustomScrollView(
+        key: const ValueKey<String>('zuno-touch-cinema'),
+        slivers: <Widget>[
+          SliverToBoxAdapter(
+            child: TvTouchPageHeader(
+              title:
+                  _movies ? context.l10n.tvNavFilms : context.l10n.tvNavSeries,
+            ),
+          ),
+          SliverPadding(
+            padding: const EdgeInsets.only(top: TvDimens.touchSafeV),
+            sliver: SliverToBoxAdapter(child: message),
+          ),
+        ],
+      );
 
   Widget _buildRail(BuildContext context) {
     final List<CinemaCategory> vis = _visibleCats;
@@ -669,23 +775,34 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
         return _withHero(context,
             _titlesGrid(_repo.recent(widget.kind, allowedCats: _allowedKeys)));
       case _View.category:
-        if (_loadingTitles) return _withHero(context, const CinemaLoading());
+        if (_loadingTitles) {
+          return _withHero(context, _contentBox(const CinemaLoading()));
+        }
         if (_titlesFailed && _titles.isEmpty) {
-          return _withHero(context, _failedCategory(context));
+          return _withHero(context, _contentBox(_failedCategory(context)));
         }
         if (_titles.isEmpty) {
           return _withHero(
             context,
-            Center(
+            _contentBox(Center(
               child: Text(context.l10n.tvCinemaEmptyCategory,
                   style: const TextStyle(
                       fontSize: TvDimens.body, color: TvTokens.mutedDim)),
-            ),
+            )),
           );
         }
         return _withHero(context, _titlesGrid(_titles));
     }
   }
+
+  Widget _contentBox(Widget child) => isZunoTouch
+      ? SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.only(top: TvDimens.touchGap),
+            child: child,
+          ),
+        )
+      : child;
 
   Widget _unavailable(BuildContext context) {
     return TvEmptyState(
@@ -781,10 +898,41 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
       required Widget Function(int) builder,
       int columns = 5}) {
     if (count == 0) {
-      return Center(
+      return _contentBox(Center(
         child: Text(context.l10n.tvCinemaEmptyCategory,
             style: const TextStyle(
                 fontSize: TvDimens.body, color: TvTokens.mutedDim)),
+      ));
+    }
+    if (isZunoTouch) {
+      return SliverPadding(
+        padding: const EdgeInsets.only(
+            top: TvDimens.touchGap / 2, bottom: TvDimens.touchSafeV),
+        sliver: SliverLayoutBuilder(
+          builder: (BuildContext context, SliverConstraints constraints) {
+            final int countAcross =
+                (constraints.crossAxisExtent / TvDimens.touchTileMinWidth)
+                    .floor()
+                    .clamp(1, 5);
+            final double width = (constraints.crossAxisExtent -
+                    TvDimens.touchGap * (countAcross - 1)) /
+                countAcross;
+            return SliverGrid(
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: countAcross,
+                crossAxisSpacing: TvDimens.touchGap,
+                mainAxisSpacing: TvDimens.touchSafeV,
+                mainAxisExtent:
+                    width * 1.5 + MediaQuery.textScalerOf(context).scale(42),
+              ),
+              delegate: SliverChildBuilderDelegate(
+                (BuildContext context, int index) => builder(index),
+                childCount: count,
+                addAutomaticKeepAlives: false,
+              ),
+            );
+          },
+        ),
       );
     }
     return LayoutBuilder(builder: (BuildContext context, BoxConstraints c) {
@@ -807,6 +955,9 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
   }
 
   Widget _withHero(BuildContext context, Widget body) {
+    // Le détail s'ouvre au toucher de l'affiche. Un hero TV de 150 dp ne
+    // doit pas retirer presque toute la hauteur d'un téléphone en paysage.
+    if (isZunoTouch) return body;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
@@ -826,6 +977,44 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
 
   Widget _buildSearch(BuildContext context) {
     final bool indexing = !_repo.indexReady(widget.kind);
+    if (isZunoTouch) {
+      return SliverMainAxisGroup(
+        slivers: <Widget>[
+          SliverToBoxAdapter(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                TextFormField(
+                  key: const ValueKey<String>('zuno-touch-cinema-search'),
+                  initialValue: _q,
+                  textInputAction: TextInputAction.search,
+                  decoration: InputDecoration(
+                    labelText: context.l10n.tvSearchHint,
+                    prefixIcon: const Icon(Icons.search_rounded),
+                    filled: true,
+                    fillColor: TvTokens.card,
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(TvTokens.rButton)),
+                  ),
+                  style: TvTokens.ui(TvDimens.body),
+                  onChanged: (String query) {
+                    setState(() => _q = query);
+                    _scheduleSearch();
+                  },
+                  onFieldSubmitted: (_) => _runSearch(),
+                ),
+                if (indexing)
+                  Text(context.l10n.tvCinemaIndexing,
+                      style:
+                          TvTokens.ui(TvDimens.caption, color: TvTokens.muted)),
+                const SizedBox(height: TvDimens.touchGap),
+              ],
+            ),
+          ),
+          _titlesGrid(_results),
+        ],
+      );
+    }
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[

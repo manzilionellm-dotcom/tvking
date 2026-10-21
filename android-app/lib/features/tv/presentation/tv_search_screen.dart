@@ -17,7 +17,9 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/app/zuno_edition.dart';
 import '../../../core/i18n/l10n_extension.dart';
+import '../../cast/data/cast_platform.dart';
 import '../../channels/data/ai_search_service.dart';
 import '../../channels/domain/channel.dart';
 import '../../cinema/data/cinema_repository.dart';
@@ -68,6 +70,9 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
   int _gen = 0;
   Timer? _debounce;
   late final VoiceSearchHooks _hooks;
+  late final TextEditingController _touchText = TextEditingController(
+    text: widget.initialQuery,
+  );
   // Une seule fermeture : le hub compare l'identité pour se désinscrire.
   late final bool Function(String text) _remoteTyping = _onRemoteQuery;
 
@@ -89,7 +94,8 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
     VoiceNavigation.attach(_hooks);
     RemoteTypingHub.instance.register(_remoteTyping);
     _channels = List<Channel>.of(PlaylistRepository.instance.currentChannels);
-    _sub = PlaylistRepository.instance.channelsStream.listen((List<Channel> ch) {
+    _sub =
+        PlaylistRepository.instance.channelsStream.listen((List<Channel> ch) {
       if (!mounted) return;
       _channels = List<Channel>.of(ch);
       if (_q.trim().isNotEmpty) _schedule();
@@ -110,6 +116,7 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
     RemoteTypingHub.instance.unregister(_remoteTyping);
     _sub?.cancel();
     _debounce?.cancel();
+    _touchText.dispose();
     CinemaRepository.instance.indexVersion.removeListener(_onIndex);
     super.dispose();
   }
@@ -121,12 +128,14 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
 
   void _type(String ch) {
     setState(() => _q += ch);
+    _syncTouchQuery();
     _schedule();
   }
 
   void _backspace() {
     if (_q.isEmpty) return;
     setState(() => _q = _q.substring(0, _q.length - 1));
+    _syncTouchQuery();
     _schedule();
   }
 
@@ -139,6 +148,7 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
       _tonight = null;
       _banner = null;
     });
+    _syncTouchQuery();
   }
 
   /// Le téléphone envoie toute la phrase d'un coup. On la cherche
@@ -155,7 +165,27 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
       _q = text;
       _banner = null;
     });
+    _syncTouchQuery();
     unawaited(_runSearch());
+  }
+
+  /// La voix et la télécommande du téléphone empruntent la même recherche.
+  /// On reflète leurs phrases dans le champ natif sans recréer son contrôleur
+  /// à chaque build, ni interrompre la composition du clavier Android.
+  void _syncTouchQuery() {
+    if (_touchText.text == _q) return;
+    _touchText.value = TextEditingValue(
+      text: _q,
+      selection: TextSelection.collapsed(offset: _q.length),
+    );
+  }
+
+  void _onTouchQuery(String value) {
+    setState(() {
+      _q = value;
+      _banner = null;
+    });
+    _schedule();
   }
 
   void _schedule() {
@@ -374,6 +404,9 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
         _q.trim().isNotEmpty &&
         _cinemaCold &&
         !_hits.any((VoiceHit h) => h.kind != VoiceHitKind.channel);
+    if (CastPlatform.zunoEdition == ZunoEdition.touch) {
+      return _touchSearch(context, tonight, showCinemaHint);
+    }
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
@@ -390,7 +423,8 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
             children: <Widget>[
               Container(
                 width: double.infinity,
-                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
                 decoration: BoxDecoration(
                   color: TvTokens.card,
                   borderRadius: BorderRadius.circular(TvDimens.cardRadius),
@@ -428,13 +462,174 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
                     context.l10n.tvVoiceCinemaHint,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: TvTokens.ui(TvDimens.caption, color: TvTokens.mutedDim),
+                    style:
+                        TvTokens.ui(TvDimens.caption, color: TvTokens.mutedDim),
                   ),
                 ),
             ],
           ),
         ),
       ],
+    );
+  }
+
+  /// Le clavier système remplace uniquement le pavé TV. Toute la page défile
+  /// au-dessus du clavier : même en paysage, aucun bloc de hauteur fixe ne
+  /// peut repousser le champ ou les résultats hors de la zone accessible.
+  Widget _touchSearch(
+    BuildContext context,
+    TonightLineup? tonight,
+    bool showCinemaHint,
+  ) {
+    final DateFormat hm =
+        DateFormat.Hm(Localizations.localeOf(context).toString());
+    return Align(
+      alignment: Alignment.topCenter,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(
+          maxWidth: TvDimens.touchContentWidth,
+        ),
+        child: ListView(
+          key: const ValueKey<String>('zuno-touch-search-scroll'),
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          children: <Widget>[
+            Row(
+              children: <Widget>[
+                const BackButton(color: TvTokens.text),
+                const SizedBox(width: TvDimens.touchGap),
+                Expanded(
+                  child: Text(
+                    context.l10n.tvNavSearch,
+                    style: TvTokens.display(TvDimens.title),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: TvDimens.touchGap),
+            TextField(
+              key: const ValueKey<String>('zuno-touch-search-input'),
+              controller: _touchText,
+              onChanged: _onTouchQuery,
+              textInputAction: TextInputAction.search,
+              style: TvTokens.ui(TvDimens.body),
+              cursorColor: TvTokens.accent,
+              decoration: InputDecoration(
+                hintText: context.l10n.tvSearchHint,
+                hintStyle: TvTokens.ui(TvDimens.body, color: TvTokens.mutedDim),
+                filled: true,
+                fillColor: TvTokens.card,
+                contentPadding: const EdgeInsets.all(TvDimens.touchSafeH),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(TvTokens.rButton),
+                  borderSide: const BorderSide(color: TvTokens.line),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(TvTokens.rButton),
+                  borderSide: const BorderSide(color: TvTokens.accent),
+                ),
+              ),
+              onSubmitted: (_) {
+                _debounce?.cancel();
+                unawaited(_runSearch());
+                FocusScope.of(context).unfocus();
+              },
+            ),
+            const SizedBox(height: TvDimens.touchGap),
+            Wrap(
+              spacing: TvDimens.touchGap,
+              runSpacing: TvDimens.touchGap,
+              children: <Widget>[
+                OutlinedButton.icon(
+                  key: const ValueKey<String>('zuno-touch-search-mic'),
+                  onPressed: _listening
+                      ? null
+                      : () {
+                          FocusScope.of(context).unfocus();
+                          unawaited(_listen());
+                        },
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: TvTokens.text,
+                    minimumSize: const Size(0, TvDimens.touchTarget),
+                    padding: const EdgeInsets.all(TvDimens.touchGap),
+                    side: const BorderSide(color: TvTokens.line),
+                    textStyle: TvTokens.ui(TvDimens.label),
+                  ),
+                  icon: const Icon(Icons.mic_none_rounded),
+                  label: Text(
+                    _listening
+                        ? context.l10n.tvVoiceListening
+                        : context.l10n.tvVoiceMic,
+                  ),
+                ),
+                TextButton.icon(
+                  key: const ValueKey<String>('zuno-touch-search-clear'),
+                  onPressed: _q.isEmpty ? null : _clear,
+                  style: TextButton.styleFrom(
+                    foregroundColor: TvTokens.text,
+                    minimumSize: const Size(0, TvDimens.touchTarget),
+                    padding: const EdgeInsets.all(TvDimens.touchGap),
+                    textStyle: TvTokens.ui(TvDimens.label),
+                  ),
+                  icon: const Icon(Icons.clear_rounded),
+                  label: Text(context.l10n.buttonClear),
+                ),
+              ],
+            ),
+            if (_banner != null) ...<Widget>[
+              const SizedBox(height: TvDimens.touchGap),
+              Text(
+                _banner!,
+                style: TvTokens.ui(TvDimens.label, color: TvTokens.muted),
+              ),
+            ],
+            if (showCinemaHint) ...<Widget>[
+              const SizedBox(height: TvDimens.touchGap),
+              Text(
+                context.l10n.tvVoiceCinemaHint,
+                style: TvTokens.ui(TvDimens.caption, color: TvTokens.mutedDim),
+              ),
+            ],
+            const SizedBox(height: TvDimens.touchSafeV),
+            if (tonight != null) ...<Widget>[
+              Text(
+                context.l10n.tvVoiceTonightTitle,
+                style: TvTokens.ui(TvDimens.title, weight: FontWeight.w700),
+              ),
+              const SizedBox(height: TvDimens.touchGap),
+              if (tonight.isEmpty)
+                Text(
+                  context.l10n.tvVoiceTonightEmpty,
+                  style: TvTokens.ui(TvDimens.body, color: TvTokens.mutedDim),
+                ),
+              for (final TonightSlot slot in tonight.slots) ...<Widget>[
+                _RowTile(
+                  title: slot.title,
+                  badge: hm.format(
+                    DateTime.fromMillisecondsSinceEpoch(slot.startMs),
+                  ),
+                  subtitle: context.l10n.tvVoiceOnChannel(slot.channelName),
+                  onSelect: slot.canPlay ? () => _openSlot(slot) : () {},
+                ),
+                const SizedBox(height: TvDimens.touchGap),
+              ],
+            ] else if (_hits.isEmpty && _q.trim().isNotEmpty)
+              Text(
+                context.l10n.tvNoResult,
+                style: TvTokens.ui(TvDimens.body, color: TvTokens.mutedDim),
+              )
+            else
+              for (final VoiceHit hit in _hits) ...<Widget>[
+                _RowTile(
+                  title: hit.title,
+                  badge: _kindLabel(context, hit.kind),
+                  subtitle: hit.subtitle,
+                  onSelect: () => _openHit(hit),
+                ),
+                const SizedBox(height: TvDimens.touchGap),
+              ],
+          ],
+        ),
+      ),
     );
   }
 
@@ -465,8 +660,8 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
               separatorBuilder: (_, __) => const SizedBox(height: 8),
               itemBuilder: (BuildContext context, int i) {
                 final TonightSlot slot = tonight.slots[i];
-                final String when =
-                    hm.format(DateTime.fromMillisecondsSinceEpoch(slot.startMs));
+                final String when = hm
+                    .format(DateTime.fromMillisecondsSinceEpoch(slot.startMs));
                 return _RowTile(
                   autofocus: i == 0,
                   title: slot.title,
@@ -522,6 +717,47 @@ class _RowTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (CastPlatform.zunoEdition == ZunoEdition.touch) {
+      return OutlinedButton(
+        onPressed: onSelect,
+        style: OutlinedButton.styleFrom(
+          backgroundColor: TvTokens.card,
+          foregroundColor: TvTokens.text,
+          alignment: AlignmentDirectional.centerStart,
+          minimumSize: const Size(0, TvDimens.touchButtonHeight),
+          padding: const EdgeInsets.all(TvDimens.touchSafeH),
+          side: const BorderSide(color: TvTokens.line),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(TvTokens.rCard),
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text(
+              badge,
+              style: TvTokens.ui(
+                TvDimens.label,
+                weight: FontWeight.w700,
+                color: TvTokens.accentBright,
+              ),
+            ),
+            const SizedBox(height: TvDimens.rowGap),
+            Text(
+              title,
+              style: TvTokens.ui(TvDimens.body, weight: FontWeight.w600),
+            ),
+            if (subtitle.trim().isNotEmpty) ...<Widget>[
+              const SizedBox(height: TvDimens.rowGap),
+              Text(
+                subtitle,
+                style: TvTokens.ui(TvDimens.label, color: TvTokens.muted),
+              ),
+            ],
+          ],
+        ),
+      );
+    }
     return TvFocusable(
       autofocus: autofocus,
       scale: TvFocusScale.small,
@@ -555,7 +791,8 @@ class _RowTile extends StatelessWidget {
                       subtitle,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TvTokens.ui(TvDimens.caption, color: TvTokens.muted),
+                      style:
+                          TvTokens.ui(TvDimens.caption, color: TvTokens.muted),
                     ),
                 ],
               ),
@@ -603,12 +840,42 @@ class _Keyboard extends StatelessWidget {
   final VoidCallback? onMic;
 
   static const List<String> _keys = <String>[
-    'A', 'B', 'C', 'D', 'E', 'F',
-    'G', 'H', 'I', 'J', 'K', 'L',
-    'M', 'N', 'O', 'P', 'Q', 'R',
-    'S', 'T', 'U', 'V', 'W', 'X',
-    'Y', 'Z', '0', '1', '2', '3',
-    '4', '5', '6', '7', '8', '9',
+    'A',
+    'B',
+    'C',
+    'D',
+    'E',
+    'F',
+    'G',
+    'H',
+    'I',
+    'J',
+    'K',
+    'L',
+    'M',
+    'N',
+    'O',
+    'P',
+    'Q',
+    'R',
+    'S',
+    'T',
+    'U',
+    'V',
+    'W',
+    'X',
+    'Y',
+    'Z',
+    '0',
+    '1',
+    '2',
+    '3',
+    '4',
+    '5',
+    '6',
+    '7',
+    '8',
+    '9',
   ];
 
   @override

@@ -33,6 +33,8 @@ import 'package:intl/intl.dart' show DateFormat;
 
 import '../../device/domain/display_mac.dart';
 import '../../../core/app/repair_flags.dart';
+import '../../../core/app/zuno_edition.dart';
+import '../../cast/data/cast_platform.dart';
 import '../../../core/app/boot_guard.dart';
 import '../../../core/blackbox/black_box.dart';
 import '../../../core/i18n/l10n_extension.dart';
@@ -413,12 +415,12 @@ class _TvHubScreenState extends State<TvHubScreen> {
   }
 
   HeaderCard get _headerCard => pickHeaderCard(
-    hasShow: _banner != null,
-    hasNotice: _noticeVisible,
-    hasPromo: _promo != null,
-    hasFeatured: _featuredOn && _featuredChannel != null,
-    tick: _panelTick,
-  );
+        hasShow: _banner != null,
+        hasNotice: _noticeVisible,
+        hasPromo: _promo != null,
+        hasFeatured: _featuredOn && _featuredChannel != null,
+        tick: _panelTick,
+      );
 
   void _closePromo() {
     final PromoBanner? b = _promo;
@@ -917,8 +919,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
             (hiddenForKids(channel) || roughLooksAdult(program.title))) {
           continue;
         }
-        final bool declared =
-            channel.catchupSupported ||
+        final bool declared = channel.catchupSupported ||
             (channel.catchupSource != null &&
                 channel.catchupSource!.isNotEmpty);
         slots.add(
@@ -946,9 +947,8 @@ class _TvHubScreenState extends State<TvHubScreen> {
 
   void _openShow(ShowCue cue, {bool fromStart = false, bool replay = false}) {
     final Map<String, Channel> byId = indexChannelsById(_channels);
-    final String id = replay
-        ? (cue.replayChannelId ?? cue.channelId)
-        : cue.channelId;
+    final String id =
+        replay ? (cue.replayChannelId ?? cue.channelId) : cue.channelId;
     final Channel? target = byId[id];
     unawaited(FollowedLog.instance.markSeen(cue.alertKey));
     setState(() => _banner = null);
@@ -1038,11 +1038,10 @@ class _TvHubScreenState extends State<TvHubScreen> {
   /// qui a déjà sa source.
   Future<void> _lookForLocalSource() async {
     try {
-      final List<Playlist> lists = await PlaylistRepository.instance
-          .getAllPlaylists();
+      final List<Playlist> lists =
+          await PlaylistRepository.instance.getAllPlaylists();
       if (!mounted) return;
-      final bool has =
-          lists.isNotEmpty ||
+      final bool has = lists.isNotEmpty ||
           PlaylistRepository.instance.currentChannels.isNotEmpty;
       setState(() => _hasLocalSource = has);
     } catch (_) {
@@ -1196,6 +1195,189 @@ class _TvHubScreenState extends State<TvHubScreen> {
     );
   }
 
+  void _openProfiles() {
+    StartupPickerSession.shown = true;
+    Navigator.of(context)
+        .push<bool>(
+          MaterialPageRoute<bool>(
+            builder: (_) => const TvProfilePickerScreen(),
+          ),
+        )
+        .then((_) => _openLiveIfPending());
+  }
+
+  /// Le même accueil et les mêmes données, composés dans la largeur réelle
+  /// d'un téléphone. Un seul défilement vertical garde toutes les actions
+  /// atteignables en paysage, avec un petit écran ou du texte agrandi.
+  Widget _touchContent(
+    BuildContext context, {
+    required bool hasPersonal,
+    required Widget? header,
+    required String lang,
+    required ({String label, Color color}) license,
+    required String source,
+  }) {
+    return SafeArea(
+      child: Align(
+        alignment: Alignment.topCenter,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(
+            maxWidth: TvDimens.touchContentWidth,
+          ),
+          child: ListView(
+            key: const ValueKey<String>('zuno-touch-hub-root'),
+            padding: const EdgeInsets.symmetric(
+              horizontal: TvDimens.touchSafeH,
+              vertical: TvDimens.touchSafeV,
+            ),
+            children: <Widget>[
+              Row(
+                children: <Widget>[
+                  const TvLogo(width: TvDimens.touchLogoWidth),
+                  const SizedBox(width: TvDimens.touchGap),
+                  Expanded(
+                    child: Align(
+                      alignment: AlignmentDirectional.centerEnd,
+                      child: _ProfileChip(onSelect: _openProfiles),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: TvDimens.touchSafeV),
+              Text(
+                _hello(context),
+                style: TvTokens.display(TvDimens.title),
+              ),
+              if (!hasPersonal) ...<Widget>[
+                const SizedBox(height: TvDimens.rowGap),
+                Text(
+                  context.l10n.tvHomeInvite,
+                  style: TvTokens.ui(TvDimens.label, color: TvTokens.muted),
+                ),
+              ],
+              const SizedBox(height: TvDimens.touchSafeV),
+              _HubSearchButton(
+                label: context.l10n.tvNavSearch,
+                onSelect: () => VoiceNavigation.openSearch(),
+              ),
+              const SizedBox(height: TvDimens.touchSafeV),
+              LayoutBuilder(
+                builder: (BuildContext context, BoxConstraints constraints) {
+                  // Une grande police peut réduire le nombre de colonnes ;
+                  // on ne réduit jamais la police pour conserver une grille.
+                  final double textRatio =
+                      MediaQuery.textScalerOf(context).scale(TvDimens.label) /
+                          TvDimens.label;
+                  final double minWidth =
+                      TvDimens.touchTileMinWidth * textRatio.clamp(1.0, 1.5);
+                  final int columns =
+                      ((constraints.maxWidth + TvDimens.touchGap) /
+                              (minWidth + TvDimens.touchGap))
+                          .floor()
+                          .clamp(1, 4)
+                          .toInt();
+                  final double tileWidth = (constraints.maxWidth -
+                          TvDimens.touchGap * (columns - 1)) /
+                      columns;
+                  return Wrap(
+                    spacing: TvDimens.touchGap,
+                    runSpacing: TvDimens.touchGap,
+                    children: <Widget>[
+                      for (final _Tile tile in _Tile.values)
+                        SizedBox(
+                          width: tileWidth,
+                          child: _TouchHubTile(
+                            key: ValueKey<String>(
+                              'zuno-touch-hub-${tile == _Tile.server ? 'sources' : tile.name}',
+                            ),
+                            meta: _tileMeta(context, tile),
+                            onSelect: () => _openTile(tile),
+                          ),
+                        ),
+                    ],
+                  );
+                },
+              ),
+              if (hasPersonal) ...<Widget>[
+                const SizedBox(height: TvDimens.touchSafeV),
+                TvHomeRails(
+                  shrinkWrap: true,
+                  model: _shelves,
+                  nowMs: _now.millisecondsSinceEpoch,
+                  timePicks: _timePicks,
+                  timePicksLabel: context.l10n.tvAtThisHour,
+                  shows: _showCards,
+                  showsLabel: followedWord(lang, 'row'),
+                  onPlayShow: _openShow,
+                  header: header,
+                  onPlayChannel: _playShelf,
+                  onPlayContinue: _playContinue,
+                  onPlayReminder: _playReminder,
+                ),
+              ],
+              if (_refreshNotice != null &&
+                  _refreshNotice!.isNotEmpty) ...<Widget>[
+                const SizedBox(height: TvDimens.touchGap),
+                Text(
+                  _refreshNotice!,
+                  style: TvTokens.ui(TvDimens.caption, color: TvTokens.live),
+                ),
+              ],
+              const SizedBox(height: TvDimens.touchSafeV),
+              Container(
+                padding: const EdgeInsets.all(TvDimens.touchSafeH),
+                decoration: BoxDecoration(
+                  color: TvTokens.card,
+                  borderRadius: BorderRadius.circular(TvTokens.rCard),
+                  border: Border.all(color: TvTokens.line),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      context.l10n.tvActivationCodeLabel,
+                      style:
+                          TvTokens.ui(TvDimens.caption, color: TvTokens.muted),
+                    ),
+                    const SizedBox(height: TvDimens.rowGap),
+                    SelectableText(
+                      displayMac(_mac, showPrefix: RepairFlags.macShowPrefix),
+                      textDirection: TextDirection.ltr,
+                      style: TvTokens.mono(TvDimens.label),
+                    ),
+                    if (license.label.isNotEmpty) ...<Widget>[
+                      const SizedBox(height: TvDimens.touchGap),
+                      Text(
+                        license.label,
+                        style: TvTokens.ui(
+                          TvDimens.label,
+                          weight: FontWeight.w600,
+                          color: license.color,
+                        ),
+                      ),
+                    ],
+                    if (source.isNotEmpty) ...<Widget>[
+                      const SizedBox(height: TvDimens.touchGap),
+                      Text(
+                        source,
+                        style: TvTokens.ui(TvDimens.caption,
+                            color: TvTokens.muted),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              if (_hasLocalSource == false) ...<Widget>[
+                const SizedBox(height: TvDimens.touchSafeV),
+                Align(child: TvPhoneSourceQr(mac: _mac)),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   ({IconData icon, String label}) _tileMeta(BuildContext c, _Tile t) {
     switch (t) {
       case _Tile.live:
@@ -1228,8 +1410,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
     final LogicalKeyboardKey k = event.logicalKey;
     final bool up =
         k == LogicalKeyboardKey.arrowUp || k == LogicalKeyboardKey.channelUp;
-    final bool down =
-        k == LogicalKeyboardKey.arrowDown ||
+    final bool down = k == LogicalKeyboardKey.arrowDown ||
         k == LogicalKeyboardKey.channelDown;
     if (!up && !down) {
       if (_diagBuf.isNotEmpty) _diagBuf.clear();
@@ -1275,8 +1456,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
     final String src = _activeSource;
     final String lang = Localizations.localeOf(context).languageCode;
     final Widget? header = _panelHeader(lang);
-    final bool hasPersonal =
-        _shelves.hasAny ||
+    final bool hasPersonal = _shelves.hasAny ||
         _timePicks.isNotEmpty ||
         _showCards.isNotEmpty ||
         header != null;
@@ -1306,171 +1486,184 @@ class _TvHubScreenState extends State<TvHubScreen> {
                   color: TvTokens.bg.withValues(alpha: 0.35),
                 ),
               ),
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: TvDimens.safeH,
-                  vertical: TvDimens.safeV,
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: <Widget>[
-                    // ---------- BARRE DU HAUT ----------
-                    Row(
-                      children: <Widget>[
-                        const TvLogo(width: 150),
-                        const SizedBox(width: 18),
-                        _ProfileChip(
-                          onSelect: () {
-                            StartupPickerSession.shown = true;
-                            Navigator.of(context)
-                                .push<bool>(
-                                  MaterialPageRoute<bool>(
-                                    builder: (_) =>
-                                        const TvProfilePickerScreen(),
-                                  ),
-                                )
-                                .then((_) => _openLiveIfPending());
-                          },
-                        ),
-                        const Spacer(),
-                        _HubSearchButton(
-                          label: context.l10n.tvNavSearch,
-                          onSelect: () => VoiceNavigation.openSearch(),
-                        ),
-                        const SizedBox(width: 16),
-                        Icon(_netIcon, size: 22, color: TvTokens.muted),
-                        const SizedBox(width: 16),
-                        Text(
-                          _time,
-                          style: TvTokens.display(22, color: TvTokens.text),
-                        ),
-                        const SizedBox(width: 12),
-                        Text(
-                          date,
-                          style: TvTokens.ui(15, color: TvTokens.mutedDim),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      _hello(context),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TvTokens.display(
-                        TvDimens.title,
-                        color: TvTokens.text,
-                      ),
-                    ),
-                    if (!hasPersonal) ...<Widget>[
-                      const SizedBox(height: 4),
-                      Text(
-                        context.l10n.tvHomeInvite,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: TvTokens.ui(
-                          TvDimens.label,
-                          color: TvTokens.muted,
-                        ),
-                      ),
-                    ],
-                    // ---------- RANGÉES + TUILES ----------
-                    // Avec du contenu personnel, les rangées prennent la place et
-                    // les tuiles se font plus petites en bas. Sans historique, les
-                    // tuiles restent grandes et centrées (l'accueil d'origine).
-                    Expanded(
-                      child: hasPersonal
-                          ? Column(
-                              children: <Widget>[
-                                Expanded(
-                                  child: TvHomeRails(
-                                    model: _shelves,
-                                    nowMs: _now.millisecondsSinceEpoch,
-                                    initialShelf: _pendingShelfFocus
-                                        ? _initialShelf
-                                        : null,
-                                    timePicks: _timePicks,
-                                    timePicksLabel: context.l10n.tvAtThisHour,
-                                    shows: _showCards,
-                                    showsLabel: followedWord(lang, 'row'),
-                                    onPlayShow: _openShow,
-                                    header: header,
-                                    onPlayChannel: _playShelf,
-                                    onPlayContinue: _playContinue,
-                                    onPlayReminder: _playReminder,
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                _tileRow(context, compact: true),
-                              ],
-                            )
-                          // Aucune playlist sur la box : tuiles un peu plus petites,
-                          // et à droite le QR que le téléphone photographie
-                          // pour ouvrir « Mon espace » (lien M3U ou Xtream).
-                          : _hasLocalSource == false
-                          ? Row(
-                              crossAxisAlignment: CrossAxisAlignment.center,
-                              children: <Widget>[
-                                Expanded(
-                                  child: Center(
-                                    child: _tileRow(context, compact: true),
-                                  ),
-                                ),
-                                const SizedBox(width: 24),
-                                TvPhoneSourceQr(mac: _mac),
-                              ],
-                            )
-                          : Center(child: _tileRow(context, compact: false)),
-                    ),
-                    if (_refreshNotice != null && _refreshNotice!.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: Text(
-                          _refreshNotice!,
-                          textAlign: TextAlign.center,
-                          style: TvTokens.ui(14, color: TvTokens.live),
-                        ),
-                      ),
-                    // ---------- BARRE DU BAS ----------
-                    Row(
-                      children: <Widget>[
-                        Text(
-                          '${context.l10n.tvActivationCodeLabel} : ',
-                          style: TvTokens.ui(14, color: TvTokens.mutedDim),
-                        ),
-                        Text(
-                          displayMac(
-                            _mac,
-                            showPrefix: RepairFlags.macShowPrefix,
-                          ),
-                          // Les groupes d'une MAC ne suivent pas le sens de l'UI.
-                          textDirection: TextDirection.ltr,
-                          style: TvTokens.mono(
-                            16,
-                            color: TvTokens.accentBright,
-                          ),
-                        ),
-                        const Spacer(),
-                        if (lic.label.isNotEmpty)
-                          Text(
-                            lic.label,
-                            style: TvTokens.ui(
-                              15,
-                              weight: FontWeight.w600,
-                              color: lic.color,
-                            ),
-                          ),
-                        if (src.isNotEmpty) ...<Widget>[
+              if (CastPlatform.zunoEdition == ZunoEdition.touch)
+                _touchContent(
+                  context,
+                  hasPersonal: hasPersonal,
+                  header: header,
+                  lang: lang,
+                  license: lic,
+                  source: src,
+                )
+              else
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: TvDimens.safeH,
+                    vertical: TvDimens.safeV,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: <Widget>[
+                      // ---------- BARRE DU HAUT ----------
+                      Row(
+                        children: <Widget>[
+                          const TvLogo(width: 150),
                           const SizedBox(width: 18),
+                          _ProfileChip(
+                            onSelect: () {
+                              StartupPickerSession.shown = true;
+                              Navigator.of(context)
+                                  .push<bool>(
+                                    MaterialPageRoute<bool>(
+                                      builder: (_) =>
+                                          const TvProfilePickerScreen(),
+                                    ),
+                                  )
+                                  .then((_) => _openLiveIfPending());
+                            },
+                          ),
+                          const Spacer(),
+                          _HubSearchButton(
+                            label: context.l10n.tvNavSearch,
+                            onSelect: () => VoiceNavigation.openSearch(),
+                          ),
+                          const SizedBox(width: 16),
+                          Icon(_netIcon, size: 22, color: TvTokens.muted),
+                          const SizedBox(width: 16),
                           Text(
-                            src,
-                            style: TvTokens.ui(14, color: TvTokens.mutedDim),
+                            _time,
+                            style: TvTokens.display(22, color: TvTokens.text),
+                          ),
+                          const SizedBox(width: 12),
+                          Text(
+                            date,
+                            style: TvTokens.ui(15, color: TvTokens.mutedDim),
                           ),
                         ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        _hello(context),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TvTokens.display(
+                          TvDimens.title,
+                          color: TvTokens.text,
+                        ),
+                      ),
+                      if (!hasPersonal) ...<Widget>[
+                        const SizedBox(height: 4),
+                        Text(
+                          context.l10n.tvHomeInvite,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TvTokens.ui(
+                            TvDimens.label,
+                            color: TvTokens.muted,
+                          ),
+                        ),
                       ],
-                    ),
-                  ],
+                      // ---------- RANGÉES + TUILES ----------
+                      // Avec du contenu personnel, les rangées prennent la place et
+                      // les tuiles se font plus petites en bas. Sans historique, les
+                      // tuiles restent grandes et centrées (l'accueil d'origine).
+                      Expanded(
+                        child: hasPersonal
+                            ? Column(
+                                children: <Widget>[
+                                  Expanded(
+                                    child: TvHomeRails(
+                                      model: _shelves,
+                                      nowMs: _now.millisecondsSinceEpoch,
+                                      initialShelf: _pendingShelfFocus
+                                          ? _initialShelf
+                                          : null,
+                                      timePicks: _timePicks,
+                                      timePicksLabel: context.l10n.tvAtThisHour,
+                                      shows: _showCards,
+                                      showsLabel: followedWord(lang, 'row'),
+                                      onPlayShow: _openShow,
+                                      header: header,
+                                      onPlayChannel: _playShelf,
+                                      onPlayContinue: _playContinue,
+                                      onPlayReminder: _playReminder,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  _tileRow(context, compact: true),
+                                ],
+                              )
+                            // Aucune playlist sur la box : tuiles un peu plus petites,
+                            // et à droite le QR que le téléphone photographie
+                            // pour ouvrir « Mon espace » (lien M3U ou Xtream).
+                            : _hasLocalSource == false
+                                ? Row(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.center,
+                                    children: <Widget>[
+                                      Expanded(
+                                        child: Center(
+                                          child:
+                                              _tileRow(context, compact: true),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 24),
+                                      TvPhoneSourceQr(mac: _mac),
+                                    ],
+                                  )
+                                : Center(
+                                    child: _tileRow(context, compact: false)),
+                      ),
+                      if (_refreshNotice != null && _refreshNotice!.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: Text(
+                            _refreshNotice!,
+                            textAlign: TextAlign.center,
+                            style: TvTokens.ui(14, color: TvTokens.live),
+                          ),
+                        ),
+                      // ---------- BARRE DU BAS ----------
+                      Row(
+                        children: <Widget>[
+                          Text(
+                            '${context.l10n.tvActivationCodeLabel} : ',
+                            style: TvTokens.ui(14, color: TvTokens.mutedDim),
+                          ),
+                          Text(
+                            displayMac(
+                              _mac,
+                              showPrefix: RepairFlags.macShowPrefix,
+                            ),
+                            // Les groupes d'une MAC ne suivent pas le sens de l'UI.
+                            textDirection: TextDirection.ltr,
+                            style: TvTokens.mono(
+                              16,
+                              color: TvTokens.accentBright,
+                            ),
+                          ),
+                          const Spacer(),
+                          if (lic.label.isNotEmpty)
+                            Text(
+                              lic.label,
+                              style: TvTokens.ui(
+                                15,
+                                weight: FontWeight.w600,
+                                color: lic.color,
+                              ),
+                            ),
+                          if (src.isNotEmpty) ...<Widget>[
+                            const SizedBox(width: 18),
+                            Text(
+                              src,
+                              style: TvTokens.ui(14, color: TvTokens.mutedDim),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
-              ),
             ],
           ),
         ),
@@ -1489,13 +1682,22 @@ class _HubSearchButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final bool touch = CastPlatform.zunoEdition == ZunoEdition.touch;
     return TvFocusBuilder(
       scale: TvFocusScale.small,
       onSelect: onSelect,
       builder: (BuildContext context, bool focused) {
         final Color fg = focused ? TvTokens.onAccent : TvTokens.text;
+        final Widget caption = Text(
+          label,
+          style:
+              TvTokens.ui(TvDimens.label, weight: FontWeight.w700, color: fg),
+        );
         return Container(
-          height: 48,
+          height: touch ? null : 48,
+          constraints: touch
+              ? const BoxConstraints(minHeight: TvDimens.touchTarget)
+              : null,
           padding: const EdgeInsets.symmetric(horizontal: 16),
           decoration: BoxDecoration(
             color: focused ? TvTokens.accent : TvTokens.card,
@@ -1513,14 +1715,7 @@ class _HubSearchButton extends StatelessWidget {
                 color: focused ? TvTokens.onAccent : TvTokens.accent,
               ),
               const SizedBox(width: 8),
-              Text(
-                label,
-                style: TvTokens.ui(
-                  TvDimens.label,
-                  weight: FontWeight.w700,
-                  color: fg,
-                ),
-              ),
+              if (touch) Flexible(child: caption) else caption,
             ],
           ),
         );
@@ -1538,12 +1733,23 @@ class _ProfileChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final bool touch = CastPlatform.zunoEdition == ZunoEdition.touch;
     final profile = ProfileRepository.instance.active;
     return TvFocusBuilder(
       onSelect: onSelect,
       builder: (BuildContext context, bool focused) {
         final Color fg = focused ? TvTokens.onAccent : TvTokens.text;
+        final Widget caption = Text(
+          tvProfileLabel(context, profile),
+          maxLines: touch ? 1 : null,
+          overflow: touch ? TextOverflow.ellipsis : null,
+          style:
+              TvTokens.ui(TvDimens.label, weight: FontWeight.w700, color: fg),
+        );
         return Container(
+          constraints: touch
+              ? const BoxConstraints(minHeight: TvDimens.touchTarget)
+              : null,
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
           decoration: BoxDecoration(
             color: focused
@@ -1560,23 +1766,65 @@ class _ProfileChip extends StatelessWidget {
               Icon(
                 ProfileLooks.icon(profile),
                 size: 22,
-                color: focused
-                    ? TvTokens.onAccent
-                    : ProfileLooks.color(profile),
+                color:
+                    focused ? TvTokens.onAccent : ProfileLooks.color(profile),
               ),
               const SizedBox(width: 8),
-              Text(
-                tvProfileLabel(context, profile),
-                style: TvTokens.ui(
-                  TvDimens.label,
-                  weight: FontWeight.w700,
-                  color: fg,
-                ),
-              ),
+              if (touch) Flexible(child: caption) else caption,
             ],
           ),
         );
       },
+    );
+  }
+}
+
+/// Carte tactile à hauteur minimale, qui grandit avec son libellé traduit.
+/// Aucun FittedBox : une grande police reste grande et passe à la ligne.
+class _TouchHubTile extends StatelessWidget {
+  const _TouchHubTile({
+    super.key,
+    required this.meta,
+    required this.onSelect,
+  });
+
+  final ({IconData icon, String label}) meta;
+  final VoidCallback onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: TvTokens.card,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(TvTokens.rCard),
+        side: const BorderSide(color: TvTokens.line),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onSelect,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(
+            minHeight: TvDimens.touchTileMinHeight,
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(TvDimens.touchSafeH),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: <Widget>[
+                Icon(meta.icon,
+                    size: TvDimens.touchIcon, color: TvTokens.accent),
+                const SizedBox(height: TvDimens.touchGap),
+                Text(
+                  meta.label,
+                  textAlign: TextAlign.center,
+                  style: TvTokens.ui(TvDimens.label, weight: FontWeight.w700),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

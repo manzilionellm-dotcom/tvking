@@ -46,6 +46,7 @@ import '../core/tv_back_guard.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_tokens.dart';
 import 'tv_cinema_common.dart';
+import 'tv_touch_components.dart';
 
 class TvVodPlayerScreen extends StatefulWidget {
   const TvVodPlayerScreen({
@@ -760,6 +761,18 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
     }
   }
 
+  // Le bouton Retour visible sur téléphone quitte le lecteur. Le premier
+  // Retour de télécommande continue à masquer l'overlay TV comme auparavant.
+  void _handleTouchBack() {
+    if (_tracksOpen) {
+      setState(() => _tracksOpen = false);
+      _armHide();
+      return;
+    }
+    _saveProgress(flush: true);
+    Navigator.of(context).pop();
+  }
+
   KeyEventResult _onKey(FocusNode node, KeyEvent event) {
     if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
       return KeyEventResult.ignored;
@@ -962,8 +975,12 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
                   if (!_castingHandoff && _fatal) _buildError(context),
                   if (CastPlatform.canSend)
                     Positioned(
-                        top: TvDimens.safeV,
-                        right: TvDimens.safeH,
+                        top: isZunoTouch
+                            ? MediaQuery.paddingOf(context).top +
+                                TvDimens.touchSafeV
+                            : TvDimens.safeV,
+                        right:
+                            isZunoTouch ? TvDimens.touchSafeH : TvDimens.safeH,
                         child: DesktopCastControls(
                             key: _desktopCastKey,
                             controller: _c,
@@ -991,13 +1008,14 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
       );
 
   Widget _buildSubtitles() => Positioned(
-        left: 120,
-        right: 120,
+        left: isZunoTouch ? TvDimens.touchSafeH : 120,
+        right: isZunoTouch ? TvDimens.touchSafeH : 120,
         bottom: _overlay ? 170 : 60,
         child: Text(
           _c.cues,
           textAlign: TextAlign.center,
-          style: TvTokens.ui(30, weight: FontWeight.w600, color: TvTokens.text)
+          style: TvTokens.ui(isZunoTouch ? TvDimens.title : 30,
+                  weight: FontWeight.w600, color: TvTokens.text)
               .copyWith(
             shadows: const <Shadow>[
               Shadow(blurRadius: 6, color: Colors.black),
@@ -1015,6 +1033,7 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
         : 0;
     final List<({IconData icon, String label, VoidCallback run})> btns =
         _buttons(context);
+    if (isZunoTouch) return _buildTouchOverlay(context, d, p, frac, btns);
     return Stack(
       fit: StackFit.expand,
       children: <Widget>[
@@ -1143,6 +1162,133 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
     );
   }
 
+  Widget _buildTouchOverlay(
+    BuildContext context,
+    Duration duration,
+    Duration position,
+    double fraction,
+    List<({IconData icon, String label, VoidCallback run})> buttons,
+  ) {
+    final EdgeInsets safe = MediaQuery.paddingOf(context);
+    return Stack(
+      key: const ValueKey<String>('zuno-touch-vod-controls'),
+      children: <Widget>[
+        Positioned(
+          top: safe.top + TvDimens.touchSafeV,
+          left: TvDimens.touchSafeH,
+          child: BackButton(color: TvTokens.text, onPressed: _handleTouchBack),
+        ),
+        // Le titre passe sous la ligne Retour / Cast : le bouton Cast reste
+        // accessible même lorsque le nom du film ou de la TV est long.
+        Positioned(
+          top: safe.top +
+              TvDimens.touchSafeV +
+              TvDimens.touchTarget +
+              TvDimens.touchGap,
+          left: TvDimens.touchSafeH,
+          right: TvDimens.touchSafeH,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Text(
+                _item.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TvTokens.display(TvDimens.title, color: TvTokens.text),
+              ),
+              if (_item.subtitle != null)
+                Text(
+                  _item.subtitle!,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TvTokens.ui(TvDimens.caption, color: TvTokens.muted),
+                ),
+            ],
+          ),
+        ),
+        Positioned(
+          left: 0,
+          right: 0,
+          bottom: 0,
+          child: Container(
+            padding: EdgeInsets.fromLTRB(
+              TvDimens.touchSafeH,
+              TvDimens.touchSafeV,
+              TvDimens.touchSafeH,
+              TvDimens.touchSafeV + safe.bottom,
+            ),
+            color: TvTokens.panel.withValues(alpha: 0.92),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                Text(
+                  duration > Duration.zero
+                      ? '${formatClock(position)} / ${formatClock(duration)}'
+                      : formatClock(position),
+                  textAlign: TextAlign.center,
+                  style: TvTokens.mono(TvDimens.caption),
+                ),
+                Slider(
+                  value: fraction,
+                  activeColor: TvTokens.accent,
+                  onChanged: duration <= Duration.zero
+                      ? null
+                      : (double value) {
+                          if (_castingHandoff || _c.castSuspended) return;
+                          _seekTimer?.cancel();
+                          setState(() => _seekTarget = Duration(
+                                milliseconds:
+                                    (duration.inMilliseconds * value).round(),
+                              ));
+                          _showOverlay();
+                        },
+                  onChangeEnd: duration <= Duration.zero
+                      ? null
+                      : (double value) {
+                          if (_castingHandoff || _c.castSuspended) return;
+                          _c.seekTo(Duration(
+                            milliseconds:
+                                (duration.inMilliseconds * value).round(),
+                          ));
+                          setState(() => _seekTarget = null);
+                          _saveProgress();
+                        },
+                ),
+                // Les actions TV pilotées au D-pad deviennent de vrais
+                // boutons tactiles. Le défilement conserve tous les libellés.
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: <Widget>[
+                      CinemaPill(
+                        icon: _c.isPlaying
+                            ? Icons.pause_rounded
+                            : Icons.play_arrow_rounded,
+                        label: _c.isPlaying
+                            ? context.l10n.playerPause
+                            : context.l10n.playerPlay,
+                        onSelect: _togglePlay,
+                      ),
+                      for (final button in buttons) ...<Widget>[
+                        const SizedBox(width: TvDimens.touchGap),
+                        CinemaPill(
+                          icon: button.icon,
+                          label: button.label,
+                          onSelect: button.run,
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildToast() => Positioned(
         top: 120,
         left: 0,
@@ -1222,46 +1368,56 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
     final bool textOn = t.any((NativeTrack x) => x.selected);
     final List<Widget> rows = <Widget>[];
     int idx = 0;
-    Widget row(String label, bool selected, int i) => Container(
-          key: _trackKey(i),
-          margin: const EdgeInsets.only(bottom: 4),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          decoration: BoxDecoration(
-            color: _trackIdx == i ? TvTokens.sel : Colors.transparent,
-            borderRadius: BorderRadius.circular(TvTokens.rMenuItem),
-            border: _trackIdx == i
-                ? Border.all(
-                    color: TvTokens.accent, width: TvDimens.focusOutline)
-                : null,
-          ),
-          child: Row(
-            children: <Widget>[
-              SizedBox(
-                width: 28,
-                child: selected
-                    ? const Icon(
-                        Icons.check_rounded,
-                        color: TvTokens.accentBright,
-                        size: 22,
-                      )
-                    : null,
-              ),
-              Expanded(
-                child: Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TvTokens.ui(
-                    TvDimens.body,
-                    weight: FontWeight.w600,
-                    color:
-                        _trackIdx == i ? TvTokens.accentBright : TvTokens.text,
+    Widget row(String label, bool selected, int i) => isZunoTouch
+        ? ListTile(
+            key: _trackKey(i),
+            selected: selected,
+            selectedColor: TvTokens.accentBright,
+            leading: Icon(selected ? Icons.check_rounded : Icons.audiotrack),
+            title: Text(label, style: TvTokens.ui(TvDimens.label)),
+            onTap: () => _chooseTrack(i),
+          )
+        : Container(
+            key: _trackKey(i),
+            margin: const EdgeInsets.only(bottom: 4),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: _trackIdx == i ? TvTokens.sel : Colors.transparent,
+              borderRadius: BorderRadius.circular(TvTokens.rMenuItem),
+              border: _trackIdx == i
+                  ? Border.all(
+                      color: TvTokens.accent, width: TvDimens.focusOutline)
+                  : null,
+            ),
+            child: Row(
+              children: <Widget>[
+                SizedBox(
+                  width: 28,
+                  child: selected
+                      ? const Icon(
+                          Icons.check_rounded,
+                          color: TvTokens.accentBright,
+                          size: 22,
+                        )
+                      : null,
+                ),
+                Expanded(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TvTokens.ui(
+                      TvDimens.body,
+                      weight: FontWeight.w600,
+                      color: _trackIdx == i
+                          ? TvTokens.accentBright
+                          : TvTokens.text,
+                    ),
                   ),
                 ),
-              ),
-            ],
-          ),
-        );
+              ],
+            ),
+          );
     Widget header(String s) => Padding(
           padding: const EdgeInsets.fromLTRB(6, 14, 6, 8),
           child: Text(
@@ -1291,13 +1447,27 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
       top: 0,
       bottom: 0,
       child: Container(
-        width: 420,
-        padding: const EdgeInsets.fromLTRB(22, 40, 22, 30),
+        width: isZunoTouch ? MediaQuery.sizeOf(context).width : 420,
+        padding: isZunoTouch
+            ? EdgeInsets.fromLTRB(
+                TvDimens.touchSafeH,
+                MediaQuery.paddingOf(context).top +
+                    TvDimens.touchTarget +
+                    TvDimens.touchSafeV,
+                TvDimens.touchSafeH,
+                MediaQuery.paddingOf(context).bottom + TvDimens.touchSafeV,
+              )
+            : const EdgeInsets.fromLTRB(22, 40, 22, 30),
         color: TvTokens.panel.withValues(alpha: 0.97),
         child: SingleChildScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
+              if (isZunoTouch)
+                Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: CloseButton(onPressed: _handleTouchBack),
+                ),
               Text(
                 context.l10n.tvCinemaAudioSubs,
                 style: TvTokens.display(28, color: TvTokens.text),

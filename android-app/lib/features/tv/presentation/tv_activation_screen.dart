@@ -11,11 +11,14 @@ import 'package:flutter/services.dart';
 
 import '../../device/domain/display_mac.dart';
 import '../../../core/app/repair_flags.dart';
+import '../../../core/app/zuno_edition.dart';
 import '../../../core/i18n/l10n_extension.dart';
+import '../../cast/data/cast_platform.dart';
 import '../../device/data/device_identity.dart';
 import '../../subscription/data/remote_activation_watch.dart';
 import '../../subscription/data/subscription_state.dart';
 import '../../playlists/domain/open_source_input.dart';
+import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
 import 'tv_add_source_screen.dart';
@@ -77,6 +80,12 @@ class _TvActivationScreenState extends State<TvActivationScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // L'identité envoyée au panel reste celle de ZUNO. Seule l'édition
+    // explicite choisit cette présentation : une grande tablette reste
+    // tactile, tandis que la TV et le bureau gardent leur canevas actuel.
+    if (CastPlatform.zunoEdition == ZunoEdition.touch) {
+      return _touchActivation(context);
+    }
     // Le design est pensé à une taille FIXE puis MIS À L'ÉCHELLE pour tenir
     // dans n'importe quel écran TV (720p → 4K, overscan inclus). FittedBox =
     // jamais de débordement, jamais « trop zoomé ». On neutralise aussi le
@@ -110,6 +119,277 @@ class _TvActivationScreenState extends State<TvActivationScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _touchActivation(BuildContext context) {
+    final String? hint = switch (SubscriptionState.instance.syncHint) {
+      'offline' => context.l10n.tvNetworkUnavailableHelp,
+      'expired' => context.l10n.tvCodeInactive,
+      'frozen' => context.l10n.subFrozenMsg,
+      'banned' => context.l10n.tvStatusBanned,
+      _ => null,
+    };
+    // Le shell fournit la zone sûre et l'espace du clavier. Ici, le contenu
+    // utilise ses vraies contraintes et peut défiler, même en paysage ou
+    // avec de grands caractères. Aucun texte n'est réduit par un FittedBox.
+    return LayoutBuilder(
+      builder: (BuildContext context, BoxConstraints constraints) {
+        final double width =
+            constraints.maxWidth.clamp(0, TvDimens.touchFormWidth).toDouble();
+        // Le panneau « Mon espace » ajoute 112 dp autour de son QR. Adapter
+        // le seul dessin conserve ses phrases lisibles sur les petits écrans.
+        final double qrSize = (width - 112).clamp(72, 168).toDouble();
+        return SingleChildScrollView(
+          key: const ValueKey<String>('zuno-touch-activation-scroll'),
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          padding: const EdgeInsets.only(
+              top: TvDimens.touchGap, bottom: TvDimens.touchGap * 2),
+          child: Center(
+            child: ConstrainedBox(
+              constraints:
+                  const BoxConstraints(maxWidth: TvDimens.touchFormWidth),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: <Widget>[
+                  const Center(child: TvLogo()),
+                  const SizedBox(height: TvDimens.touchSafeV),
+                  Text(
+                    context.l10n.tvActivationTagline,
+                    textAlign: TextAlign.center,
+                    style: TvTokens.ui(TvDimens.title, color: TvTokens.text),
+                  ),
+                  const SizedBox(height: TvDimens.touchSafeV),
+                  // Wrap conserve le prix et sa légende à leur taille normale
+                  // lorsque l'accessibilité ou une traduction prend deux lignes.
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: TvDimens.touchSafeH,
+                      vertical: TvDimens.touchGap,
+                    ),
+                    decoration: BoxDecoration(
+                      gradient: TvTokens.pillGradient,
+                      border: Border.all(color: TvTokens.line),
+                      borderRadius: BorderRadius.circular(TvTokens.rCard),
+                    ),
+                    child: Wrap(
+                      alignment: WrapAlignment.center,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      spacing: TvDimens.touchGap,
+                      runSpacing: TvDimens.touchGap,
+                      children: <Widget>[
+                        Text(
+                          context.l10n.tvLifetime.toUpperCase(),
+                          textAlign: TextAlign.center,
+                          style: TvTokens.ui(
+                            TvDimens.label,
+                            weight: FontWeight.w600,
+                            color: TvTokens.accent,
+                          ),
+                        ),
+                        Text(
+                          '9,99 \$',
+                          style: TvTokens.display(
+                            TvDimens.title,
+                            color: TvTokens.accentBright,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: TvDimens.touchSafeV),
+                  TvCard(
+                    padding: const EdgeInsets.all(TvDimens.touchSafeH),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: <Widget>[
+                        Text(
+                          context.l10n.tvActivationCodeLabel,
+                          textAlign: TextAlign.center,
+                          style: TvTokens.ui(
+                            TvDimens.label,
+                            color: TvTokens.muted,
+                          ),
+                        ),
+                        const SizedBox(height: TvDimens.touchGap),
+                        Text(
+                          displayMac(
+                            _mac,
+                            showPrefix: RepairFlags.macShowPrefix,
+                          ),
+                          textAlign: TextAlign.center,
+                          textDirection: TextDirection.ltr,
+                          style: TvTokens.mono(TvDimens.title),
+                        ),
+                        const SizedBox(height: TvDimens.touchGap),
+                        // Le bouton est sous le code pour lui laisser toute la
+                        // largeur. Copier utilise exactement la même MAC que TV.
+                        Center(
+                          child: TextButton.icon(
+                            key: const ValueKey<String>(
+                              'zuno-touch-activation-copy',
+                            ),
+                            onPressed: _copy,
+                            style: TextButton.styleFrom(
+                              minimumSize: const Size(
+                                  TvDimens.touchTarget, TvDimens.touchTarget),
+                              foregroundColor: _copied
+                                  ? TvTokens.success
+                                  : TvTokens.accentBright,
+                              textStyle: TvTokens.ui(TvDimens.label),
+                            ),
+                            icon: Icon(
+                              _copied
+                                  ? Icons.check_rounded
+                                  : Icons.copy_rounded,
+                            ),
+                            label: Text(
+                              _copied
+                                  ? context.l10n.tvCopied
+                                  : context.l10n.tvCopy,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: TvDimens.touchGap),
+                        Text(
+                          context.l10n.tvActivationCodeHelp,
+                          textAlign: TextAlign.center,
+                          style: TvTokens.ui(
+                            TvDimens.label,
+                            color: TvTokens.muted,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: TvDimens.touchSafeV),
+                  FilledButton(
+                    key: const ValueKey<String>('zuno-touch-activation-check'),
+                    onPressed: _busy ? null : _check,
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size(0, TvDimens.touchButtonHeight),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: TvDimens.touchSafeH,
+                        vertical: TvDimens.touchSafeV,
+                      ),
+                      backgroundColor: TvTokens.accent,
+                      foregroundColor: TvTokens.onAccent,
+                      textStyle: TvTokens.ui(
+                        TvDimens.body,
+                        weight: FontWeight.w600,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(TvTokens.rButton),
+                      ),
+                    ),
+                    child: Text(
+                      _busy
+                          ? context.l10n.tvChecking
+                          : context.l10n.tvPaidCheck,
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                  if (hint != null) ...<Widget>[
+                    const SizedBox(height: TvDimens.touchGap),
+                    Text(
+                      hint,
+                      textAlign: TextAlign.center,
+                      style: TvTokens.ui(TvDimens.label, color: TvTokens.live),
+                    ),
+                  ],
+                  const SizedBox(height: TvDimens.touchGap * 2),
+                  Text(
+                    context.l10n.sourceOwnSub,
+                    textAlign: TextAlign.center,
+                    style: TvTokens.ui(
+                      TvDimens.label,
+                      weight: FontWeight.w600,
+                      color: TvTokens.muted,
+                    ),
+                  ),
+                  const SizedBox(height: TvDimens.touchGap),
+                  _touchSourceButton(
+                    context,
+                    OpenEntryMode.xtream,
+                    Icons.vpn_key_rounded,
+                    context.l10n.playlistTypeXtream,
+                  ),
+                  const SizedBox(height: TvDimens.touchGap),
+                  _touchSourceButton(
+                    context,
+                    OpenEntryMode.m3u,
+                    Icons.link_rounded,
+                    context.l10n.playlistTypeM3u,
+                  ),
+                  const SizedBox(height: TvDimens.touchGap),
+                  _touchSourceButton(
+                    context,
+                    OpenEntryMode.player,
+                    Icons.play_circle_outline_rounded,
+                    context.l10n.tvPlayerLink,
+                  ),
+                  const SizedBox(height: TvDimens.touchSafeV),
+                  Text(
+                    context.l10n.tvActivationFooter,
+                    textAlign: TextAlign.center,
+                    style: TvTokens.ui(TvDimens.caption, color: TvTokens.muted),
+                  ),
+                  const SizedBox(height: TvDimens.touchGap),
+                  Text(
+                    context.l10n.tvActivationDisclaimer,
+                    textAlign: TextAlign.center,
+                    style: TvTokens.ui(TvDimens.caption, color: TvTokens.muted),
+                  ),
+                  const SizedBox(height: TvDimens.touchGap * 2),
+                  const Divider(color: TvTokens.line),
+                  const SizedBox(height: TvDimens.touchSafeV),
+                  // Les QR restent disponibles pour un autre appareil, après
+                  // les actions utilisables directement sur ce téléphone.
+                  Wrap(
+                    alignment: WrapAlignment.center,
+                    spacing: TvDimens.touchGap * 2,
+                    runSpacing: TvDimens.touchSafeV * 2,
+                    children: <Widget>[
+                      TvWhatsAppQr(mac: _mac, size: qrSize),
+                      TvPhoneSourceQr(mac: _mac, qrSize: qrSize),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _touchSourceButton(
+    BuildContext context,
+    OpenEntryMode mode,
+    IconData icon,
+    String label,
+  ) {
+    return OutlinedButton.icon(
+      key: ValueKey<String>('zuno-touch-source-${mode.name}'),
+      onPressed: () => Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => TvShell(child: TvAddSourceScreen(initialMode: mode)),
+        ),
+      ),
+      style: OutlinedButton.styleFrom(
+        minimumSize: const Size(0, TvDimens.touchButtonHeight),
+        padding: const EdgeInsets.symmetric(
+            horizontal: TvDimens.touchSafeH, vertical: TvDimens.touchSafeV),
+        foregroundColor: TvTokens.text,
+        backgroundColor: TvTokens.card,
+        side: const BorderSide(color: TvTokens.line),
+        textStyle: TvTokens.ui(TvDimens.body, weight: FontWeight.w600),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(TvTokens.rButton),
+        ),
+      ),
+      icon: Icon(icon, color: TvTokens.accent),
+      label: Text(label, textAlign: TextAlign.center),
     );
   }
 

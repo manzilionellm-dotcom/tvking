@@ -75,6 +75,7 @@ import '../core/tv_dimens.dart';
 import '../core/tv_zap.dart';
 import 'tv_channel_guide_screen.dart';
 import 'tv_cinema_common.dart';
+import 'tv_touch_components.dart';
 
 class TvPlayerScreen extends StatefulWidget {
   const TvPlayerScreen({
@@ -1590,8 +1591,12 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
                   ),
                   if (CastPlatform.canSend)
                     Positioned(
-                        top: TvDimens.safeV,
-                        right: TvDimens.safeH,
+                        top: isZunoTouch
+                            ? MediaQuery.paddingOf(context).top +
+                                TvDimens.touchSafeV
+                            : TvDimens.safeV,
+                        right:
+                            isZunoTouch ? TvDimens.touchSafeH : TvDimens.safeH,
                         child: DesktopCastControls(
                             key: _desktopCastKey,
                             controller: _controller,
@@ -1980,10 +1985,12 @@ class _ControlsBar extends StatelessWidget {
     return Container(
       width: double.infinity,
       padding: EdgeInsets.fromLTRB(
-        TvDimens.safeH,
-        44,
-        TvDimens.safeH,
-        TvDimens.safeV + 14,
+        isZunoTouch ? TvDimens.touchSafeH : TvDimens.safeH,
+        isZunoTouch ? TvDimens.touchSafeV : 44,
+        isZunoTouch ? TvDimens.touchSafeH : TvDimens.safeH,
+        isZunoTouch
+            ? TvDimens.touchSafeV + MediaQuery.paddingOf(context).bottom
+            : TvDimens.safeV + 14,
       ),
       decoration: const BoxDecoration(
         gradient: LinearGradient(
@@ -2019,85 +2026,95 @@ class _ControlsBar extends StatelessWidget {
           const SizedBox(height: 18),
           // ---- Commandes utiles en DIRECT uniquement : Guide, REC, Favori ----
           // (Lecture/pause et avance/retour n'ont aucun sens en live → retirés.)
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              _CtrlButton(
-                icon: Icons.calendar_month_rounded,
-                label: context.l10n.tvGuideBtn,
-                onTap: onGuide,
-                focused: focusedIndex == 0,
-              ),
-              const SizedBox(width: 34),
-              _CtrlButton(
-                icon: isRecording
-                    ? Icons.stop_rounded
-                    : Icons.fiber_manual_record_rounded,
-                label: isRecording ? context.l10n.tvStop : context.l10n.tvRec,
-                onTap: onRecord,
-                accent: TvTokens.live,
-                active: isRecording,
-                focused: focusedIndex == 1,
-              ),
-              const SizedBox(width: 34),
-              _CtrlButton(
-                icon: isFavorite
-                    ? Icons.favorite_rounded
-                    : Icons.favorite_border_rounded,
-                label: context.l10n.tvFavoriteBtn,
-                onTap: onFavorite,
-                accent: TvTokens.accent,
-                active: isFavorite,
-                focused: focusedIndex == 2,
-              ),
-              if (onFollow != null) ...<Widget>[
-                const SizedBox(width: 34),
-                _CtrlButton(
-                  icon: followOn
-                      ? Icons.bookmark_added_rounded
-                      : Icons.bookmark_border_rounded,
-                  label: followLabel ?? context.l10n.tvFollow,
-                  onTap: onFollow!,
-                  accent: TvTokens.accent,
-                  active: followOn,
-                  focused: focusedIndex == followIndex,
-                ),
-              ],
-              if (onStart != null) ...<Widget>[
-                const SizedBox(width: 34),
-                _CtrlButton(
-                  icon: Icons.skip_previous_rounded,
-                  label: startLabel ?? context.l10n.tvFromStart,
-                  onTap: onStart!,
-                  focused: focusedIndex == startIndex,
-                ),
-              ],
-              if (onSubtitles != null) ...<Widget>[
-                const SizedBox(width: 34),
-                _CtrlButton(
-                  icon: Icons.subtitles_rounded,
-                  label: subtitlesLabel ?? context.l10n.tracksSubtitles,
-                  onTap: onSubtitles!,
-                  active: subtitlesOn,
-                  focused: focusedIndex == subsIndex,
-                ),
-              ],
-              if (onEngine != null) ...<Widget>[
-                const SizedBox(width: 34),
-                _CtrlButton(
-                  icon: Icons.memory_rounded,
-                  label: engineLabel ?? context.l10n.tvPictureEngine,
-                  onTap: onEngine!,
-                  focused: engineFocused,
-                ),
-              ],
-            ],
-          ),
+          if (isZunoTouch)
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: _controls(context),
+            )
+          else
+            _controls(context),
         ],
       ),
     );
   }
+
+  // Toutes les commandes restent accessibles au doigt, sans réduire leurs
+  // cibles pour faire entrer la rangée TV sur la largeur d'un téléphone.
+  Widget _controls(BuildContext context) => Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          _CtrlButton(
+            icon: Icons.calendar_month_rounded,
+            label: context.l10n.tvGuideBtn,
+            onTap: onGuide,
+            focused: focusedIndex == 0,
+          ),
+          const SizedBox(width: 34),
+          _CtrlButton(
+            icon: isRecording
+                ? Icons.stop_rounded
+                : Icons.fiber_manual_record_rounded,
+            label: isRecording ? context.l10n.tvStop : context.l10n.tvRec,
+            onTap: onRecord,
+            accent: TvTokens.live,
+            active: isRecording,
+            focused: focusedIndex == 1,
+          ),
+          const SizedBox(width: 34),
+          _CtrlButton(
+            icon: isFavorite
+                ? Icons.favorite_rounded
+                : Icons.favorite_border_rounded,
+            label: context.l10n.tvFavoriteBtn,
+            onTap: onFavorite,
+            accent: TvTokens.accent,
+            active: isFavorite,
+            focused: focusedIndex == 2,
+          ),
+          if (onFollow != null) ...<Widget>[
+            const SizedBox(width: 34),
+            _CtrlButton(
+              icon: followOn
+                  ? Icons.bookmark_added_rounded
+                  : Icons.bookmark_border_rounded,
+              label: followLabel ?? context.l10n.tvFollow,
+              onTap: onFollow!,
+              accent: TvTokens.accent,
+              active: followOn,
+              focused: focusedIndex == followIndex,
+            ),
+          ],
+          if (onStart != null) ...<Widget>[
+            const SizedBox(width: 34),
+            _CtrlButton(
+              icon: Icons.skip_previous_rounded,
+              label: startLabel ?? context.l10n.tvFromStart,
+              onTap: onStart!,
+              focused: focusedIndex == startIndex,
+            ),
+          ],
+          if (onSubtitles != null) ...<Widget>[
+            const SizedBox(width: 34),
+            _CtrlButton(
+              icon: Icons.subtitles_rounded,
+              label: subtitlesLabel ?? context.l10n.tracksSubtitles,
+              onTap: onSubtitles!,
+              active: subtitlesOn,
+              focused: focusedIndex == subsIndex,
+            ),
+          ],
+          if (onEngine != null) ...<Widget>[
+            const SizedBox(width: 34),
+            _CtrlButton(
+              icon: Icons.memory_rounded,
+              label: engineLabel ?? context.l10n.tvPictureEngine,
+              onTap: onEngine!,
+              focused: engineFocused,
+            ),
+          ],
+        ],
+      );
 
   Widget _logo() => SizedBox(
         width: 56,

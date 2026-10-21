@@ -28,6 +28,7 @@ import '../../vod/domain/vod_movie.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
+import 'tv_touch_components.dart';
 import 'tv_vod_player_screen.dart';
 
 // =========================================================
@@ -79,7 +80,8 @@ class VodPlayItem {
         remoteId: t.remoteId,
       );
 
-  factory VodPlayItem.episode(CinemaEpisode e, CinemaTitle series) => VodPlayItem(
+  factory VodPlayItem.episode(CinemaEpisode e, CinemaTitle series) =>
+      VodPlayItem(
         id: e.id,
         isEpisode: true,
         title: series.name,
@@ -250,6 +252,19 @@ class CinemaPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (isZunoTouch) {
+      return OutlinedButton.icon(
+        focusNode: focusNode,
+        onPressed: onSelect,
+        icon: Icon(icon),
+        label: Text(label, style: TvTokens.ui(TvDimens.label)),
+        style: OutlinedButton.styleFrom(
+          minimumSize: const Size(0, TvDimens.touchTarget),
+          foregroundColor: TvTokens.accentBright,
+          padding: const EdgeInsets.all(TvDimens.touchGap),
+        ),
+      );
+    }
     return TvFocusBuilder(
       autofocus: autofocus,
       focusNode: focusNode,
@@ -312,7 +327,8 @@ class CinemaRailRow extends StatelessWidget {
         builder: (BuildContext context, bool focused) {
           if (focused) onFocused?.call();
           final bool active = selected && !focused;
-          final Color bg = (focused || active) ? TvTokens.sel : Colors.transparent;
+          final Color bg =
+              (focused || active) ? TvTokens.sel : Colors.transparent;
           final Color fg = focused
               ? TvTokens.accentBright
               : (active ? TvTokens.text : TvTokens.muted);
@@ -321,7 +337,8 @@ class CinemaRailRow extends StatelessWidget {
               color: bg,
               borderRadius: BorderRadius.circular(TvTokens.rMenuItem),
               border: focused
-                  ? Border.all(color: TvTokens.accent, width: TvDimens.focusOutline)
+                  ? Border.all(
+                      color: TvTokens.accent, width: TvDimens.focusOutline)
                   : null,
             ),
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -338,7 +355,9 @@ class CinemaRailRow extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                         fontSize: TvDimens.body,
-                        fontWeight: (focused || active) ? FontWeight.w700 : FontWeight.w600,
+                        fontWeight: (focused || active)
+                            ? FontWeight.w700
+                            : FontWeight.w600,
                         color: fg),
                   ),
                 ),
@@ -348,7 +367,9 @@ class CinemaRailRow extends StatelessWidget {
                       style: TextStyle(
                           fontSize: TvDimens.label,
                           fontWeight: FontWeight.w700,
-                          color: focused ? TvTokens.accentBright : TvTokens.mutedDim)),
+                          color: focused
+                              ? TvTokens.accentBright
+                              : TvTokens.mutedDim)),
                 ],
               ],
             ),
@@ -418,7 +439,8 @@ class CinemaPoster extends StatelessWidget {
                       ColoredBox(
                         color: Colors.black.withValues(alpha: 0.7),
                         child: const Center(
-                          child: Icon(Icons.lock_rounded, color: TvTokens.accentBright, size: 34),
+                          child: Icon(Icons.lock_rounded,
+                              color: TvTokens.accentBright, size: 34),
                         ),
                       ),
                     if (downloaded)
@@ -515,11 +537,13 @@ class CinemaLoading extends StatelessWidget {
           const SizedBox(
             width: 22,
             height: 22,
-            child: CircularProgressIndicator(strokeWidth: 2.5, color: TvTokens.accent),
+            child: CircularProgressIndicator(
+                strokeWidth: 2.5, color: TvTokens.accent),
           ),
           const SizedBox(width: 14),
           Text(label ?? context.l10n.tvCinemaLoading,
-              style: const TextStyle(fontSize: TvDimens.body, color: TvTokens.mutedDim)),
+              style: const TextStyle(
+                  fontSize: TvDimens.body, color: TvTokens.mutedDim)),
         ],
       ),
     );
@@ -545,7 +569,8 @@ Future<void> showCinemaSheet(
   required String title,
   required List<CinemaSheetAction> actions,
 }) async {
-  final CinemaSheetAction? chosen = await Navigator.of(context).push<CinemaSheetAction>(
+  final CinemaSheetAction? chosen =
+      await Navigator.of(context).push<CinemaSheetAction>(
     PageRouteBuilder<CinemaSheetAction>(
       opaque: false,
       barrierDismissible: true,

@@ -31,6 +31,22 @@ import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
 import '../data/home_shelves.dart';
+import 'tv_touch_components.dart';
+
+/// Les cartes TV gardent leur hauteur de 124 dp. Sur téléphone, les lignes
+/// agrandies par l'accessibilité doivent aussi agrandir leur cadre : on garde
+/// le texte choisi par l'utilisateur et le défilement horizontal de la rangée.
+double _railCardHeight(BuildContext context) {
+  if (!isZunoTouch) return TvDimens.railCardH;
+  final TextScaler scaler = MediaQuery.textScalerOf(context);
+  final double scale = <double>[
+    1,
+    scaler.scale(TvDimens.body) / TvDimens.body,
+    scaler.scale(TvDimens.label) / TvDimens.label,
+    scaler.scale(TvDimens.caption) / TvDimens.caption,
+  ].reduce((double a, double b) => a > b ? a : b);
+  return TvDimens.railCardH * scale;
+}
 
 class TvHomeRails extends StatelessWidget {
   const TvHomeRails({
@@ -47,6 +63,7 @@ class TvHomeRails extends StatelessWidget {
     this.showsLabel = '',
     this.onPlayShow,
     this.header,
+    this.shrinkWrap = false,
   });
 
   final HomeShelfModel model;
@@ -73,6 +90,10 @@ class TvHomeRails extends StatelessWidget {
   /// Bandeau au-dessus des rangées, dans le MÊME défilement,
   /// pour que Haut/Bas l'atteigne. Pas de focus automatique.
   final Widget? header;
+
+  /// Sur téléphone, les rangées partagent le défilement de tout l'accueil.
+  /// La télévision conserve sa liste bornée et son défilement D-pad propre.
+  final bool shrinkWrap;
 
   @override
   Widget build(BuildContext context) {
@@ -177,6 +198,9 @@ class TvHomeRails extends StatelessWidget {
     if (rails.isEmpty && header == null) return const SizedBox.shrink();
 
     return ListView(
+      shrinkWrap: shrinkWrap,
+      primary: shrinkWrap ? false : null,
+      physics: shrinkWrap ? const NeverScrollableScrollPhysics() : null,
       padding: const EdgeInsets.only(top: 8, bottom: 8),
       children: <Widget>[
         if (header != null) header!,
@@ -236,7 +260,7 @@ class _Rail extends StatelessWidget {
         ),
         const SizedBox(height: 8),
         SizedBox(
-          height: TvDimens.railCardH,
+          height: _railCardHeight(context),
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             itemCount: count,
@@ -305,7 +329,7 @@ class _ChannelCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return SizedBox(
       width: TvDimens.railCardW,
-      height: TvDimens.railCardH,
+      height: _railCardHeight(context),
       child: TvFocusBuilder(
         autofocus: autofocus,
         scale: TvFocusScale.small,
@@ -367,8 +391,8 @@ class _ContinueCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final String? sub = entry.subtitle;
     return SizedBox(
-      width: TvDimens.posterW + 28,
-      height: TvDimens.railCardH,
+      width: isZunoTouch ? TvDimens.railCardW : TvDimens.posterW + 28,
+      height: _railCardHeight(context),
       child: TvFocusBuilder(
         autofocus: autofocus,
         scale: TvFocusScale.small,
@@ -458,7 +482,7 @@ class _TextCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return SizedBox(
       width: TvDimens.railCardW + 20,
-      height: TvDimens.railCardH,
+      height: _railCardHeight(context),
       child: TvFocusBuilder(
         autofocus: autofocus,
         scale: TvFocusScale.small,

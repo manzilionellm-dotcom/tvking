@@ -15,6 +15,28 @@ La distinction vient de `ZunoEdition`, configurée avant le démarrage des servi
 
 Le nouveau point d'entrée tactile conserve les écrans et le lecteur natif de ZUNO. Il dispose d'un lanceur Android mobile, d'une orientation libre et d'une activité distincte, `ZunoCastActivity`, qui combine les ponts Google Cast existants avec les callbacks de cycle de vie du lecteur ZUNO.
 
+## Affichage sur téléphone et tablette
+
+L'édition tactile utilise les dimensions réelles de la fenêtre et la taille
+de texte choisie dans Android. Le canevas TV de 1280 dp reste réservé aux
+éditions télévision et bureau : le réduire dans un téléphone rendait le
+message « Code pas activé », son code et ses actions presque illisibles.
+
+Les écrans tactiles défilent dans leur zone sûre ; les formulaires gardent
+de la place au-dessus du clavier. L'accueil utilise des cartes adaptatives,
+les catégories de contenus s'ouvrent dans une liste et les commandes du
+lecteur restent atteignables au toucher. Ces choix de présentation ne
+modifient ni le statut d'abonnement ni les règles de lecture et de Cast.
+
+Les tests `test/features/tv/touch` montent les vrais widgets et mesurent les
+boutons après transformation. Ils couvrent téléphone, petit écran, paysage,
+tablette, texte agrandi, clavier et conservation du canevas télévision. Les
+données et identités de leurs captures sont fictives ; aucun abonnement
+réel n'est utilisé. `ZUNO_TOUCH_CAPTURE_DIR` active les PNG de vérification,
+et `ZUNO_TOUCH_FONT_DIR` peut fournir les polices Inter, Oswald et
+JetBrainsMono pour les aperçus. Sans ces variables, les tests CI restent
+hors réseau avec la police de test fournie par Flutter.
+
 ## Transfert de lecture
 
 Le contrôle met d'abord les récupérations locales en attente, réserve la pause des téléchargements pour cette route, puis attend `NativeVideoController.suspendForCast()`. Un simple état « pause » ne prouve pas une fermeture réseau. Le natif Android attend la barrière ExoPlayer et la fermeture des sources de données suivies ; Windows attend le Stop dans la file media_kit.
@@ -37,6 +59,12 @@ Le workflow `zuno-cast-devices-test.yml` est réservé à la branche de travail 
 | `zuno-windows-cast-test.zip` | Application Windows `Zuno Cast test`, sans installeur | Désactivée par `ZUNO_CAST_TEST=true` |
 
 L'APK est distinct du package TV. Sa préparation ne réécrit pas le `MainActivity.kt` de la télévision. Les versions de SDK sont reprises de l'overlay 7MOTION. Le workflow utilise `contents: read`, sans clé de signature client, sans secret de production et sans étape de publication.
+
+La clé debug est propre au runner et n'est pas conservée dans les artefacts.
+Avant de proposer une installation par-dessus un APK de test précédent,
+comparer leurs certificats : Android refuse une mise à jour de même package
+signée avec une autre clé. Ne pas supprimer automatiquement une installation
+existante ni promettre de conserver ses données ou son identité d'activation.
 
 Chaque artefact contient une provenance avec le commit compilé et son empreinte SHA-256. Pour Android, les vérifications portent sur le manifeste fusionné et les classes effectivement présentes dans l'APK : lanceur mobile, absence de Leanback, activité, permissions multicast, métadonnées Cast et ponts natifs. Pour Windows, le ZIP doit contenir l'exécutable, Flutter, l'application et libmpv.
 

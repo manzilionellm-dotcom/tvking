@@ -37,6 +37,7 @@ import 'tv_legal_screen.dart';
 import 'tv_parental_screen.dart';
 import 'tv_recordings_screen.dart';
 import 'tv_shell.dart';
+import 'tv_touch_components.dart';
 import 'tv_sources_screen.dart';
 
 class TvSettingsScreen extends StatefulWidget {
@@ -151,8 +152,8 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
           () => _upd = ok
               ? _UpdState.available
               : (UpdateService.instance.needsInstallPermission
-                    ? _UpdState.permission
-                    : _UpdState.failed),
+                  ? _UpdState.permission
+                  : _UpdState.failed),
         );
         return;
     }
@@ -264,12 +265,11 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
   List<_SettingEntry> _entries(BuildContext context) {
     final ({String label, Color color}) st = _statusOf(context);
     final int channels = PlaylistRepository.instance.currentChannels.length;
-    void open(Widget page) =>
-        Navigator.of(context)
+    void open(Widget page) => Navigator.of(context)
             .push(MaterialPageRoute<void>(builder: (_) => TvShell(child: page)))
             .then((_) {
-              if (mounted) setState(() {}); // compteurs à jour au retour
-            });
+          if (mounted) setState(() {}); // compteurs à jour au retour
+        });
     return <_SettingEntry>[
       _SettingEntry(
         icon: Icons.tv_rounded,
@@ -403,6 +403,54 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
     final List<_SettingEntry> entries = _entries(context);
     final _SettingEntry cur = entries[_focusIndex.clamp(0, entries.length - 1)];
     const CarouselConfig cfg = _ringConfig;
+    if (isZunoTouch) {
+      // Le carrousel 10-foot garde son rendu TV. Sur un téléphone, chaque
+      // rubrique possède une ligne tactile qui grandit avec le texte système.
+      return ListView(
+        key: const ValueKey<String>('zuno-touch-settings'),
+        children: <Widget>[
+          TvTouchPageHeader(title: context.l10n.tvNavSettings),
+          const SizedBox(height: TvDimens.touchSafeV),
+          for (final _SettingEntry entry in entries)
+            Padding(
+              padding: const EdgeInsets.only(bottom: TvDimens.touchGap),
+              child: Material(
+                color: TvTokens.card,
+                borderRadius: BorderRadius.circular(TvTokens.rCard),
+                child: ListTile(
+                  contentPadding: const EdgeInsets.all(TvDimens.touchSafeH),
+                  leading: Icon(entry.icon, color: TvTokens.accent),
+                  title: Text(entry.title,
+                      style: TvTokens.ui(TvDimens.titleS,
+                          weight: FontWeight.w700)),
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: <Widget>[
+                      Text(entry.description,
+                          style: TvTokens.ui(TvDimens.caption,
+                              color: TvTokens.muted)),
+                      if (entry.value?.isNotEmpty ?? false)
+                        Text(entry.value!,
+                            style: entry.mono
+                                ? TvTokens.mono(TvDimens.label)
+                                : TvTokens.ui(TvDimens.label,
+                                    color: TvTokens.accentBright)),
+                      if (entry.value2?.isNotEmpty ?? false)
+                        Text(entry.value2!,
+                            style: TvTokens.ui(TvDimens.label,
+                                color: entry.value2Color ?? TvTokens.muted)),
+                    ],
+                  ),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: entry.onSelect,
+                ),
+              ),
+            ),
+          Text(context.l10n.tvPlayerDisclaimer,
+              style: TvTokens.ui(TvDimens.caption, color: TvTokens.muted)),
+        ],
+      );
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
@@ -444,11 +492,11 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
               onSelectedIndex: (int i) => entries[i].onSelect(),
               cardBuilder: (BuildContext c, int i, bool selected) =>
                   _SettingCard(
-                    entry: entries[i],
-                    width: cfg.cardWidth,
-                    height: cfg.cardHeight,
-                    elevated: selected,
-                  ),
+                entry: entries[i],
+                width: cfg.cardWidth,
+                height: cfg.cardHeight,
+                elevated: selected,
+              ),
             ),
           ),
         ),
@@ -641,8 +689,8 @@ class _SettingCard extends StatelessWidget {
                           weight: FontWeight.w500,
                           color:
                               entry.value2 == null && entry.value2Color != null
-                              ? entry.value2Color!
-                              : TvTokens.muted,
+                                  ? entry.value2Color!
+                                  : TvTokens.muted,
                           spacing: 0.4,
                         ),
                 ),

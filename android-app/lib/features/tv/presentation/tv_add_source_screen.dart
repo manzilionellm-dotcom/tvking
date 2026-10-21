@@ -27,6 +27,7 @@ import '../core/tv_tokens.dart';
 import 'tv_components.dart';
 import 'tv_import_progress_label.dart';
 import 'tv_source_error_text.dart';
+import 'tv_touch_components.dart';
 
 class TvAddSourceScreen extends StatefulWidget {
   const TvAddSourceScreen({super.key, this.initialMode = OpenEntryMode.xtream});
@@ -66,10 +67,10 @@ class _TvAddSourceScreenState extends State<TvAddSourceScreen> {
   Future<void> _validate() async {
     final OpenSourceParse parsed = switch (_mode) {
       OpenEntryMode.xtream => OpenSourceInput.xtream(
-        server: _serverC.text,
-        username: _userC.text,
-        password: _passC.text,
-      ),
+          server: _serverC.text,
+          username: _userC.text,
+          password: _passC.text,
+        ),
       OpenEntryMode.m3u => OpenSourceInput.playlistLink(_linkC.text),
       OpenEntryMode.player => OpenSourceInput.playerLink(_linkC.text),
     };
@@ -130,10 +131,13 @@ class _TvAddSourceScreenState extends State<TvAddSourceScreen> {
               // Titre traduit (clé tvAddListTitle, « Ajouter ma source » en
               // français) : un texte en dur cassait les autres langues et le
               // test removed_list_prompt_test (retour après une liste retirée).
-              Text(
-                context.l10n.tvAddListTitle,
-                style: TvTokens.display(34, color: TvTokens.text),
-              ),
+              if (isZunoTouch)
+                TvTouchPageHeader(title: context.l10n.tvAddListTitle)
+              else
+                Text(
+                  context.l10n.tvAddListTitle,
+                  style: TvTokens.display(34, color: TvTokens.text),
+                ),
               const SizedBox(height: 6),
               Text(
                 context.l10n.tvSourcePasteHelp,
@@ -210,8 +214,8 @@ class _TvAddSourceScreenState extends State<TvAddSourceScreen> {
                   final String label = !_busy
                       ? context.l10n.tvAddListValidate
                       : (p == null
-                            ? context.l10n.tvConnecting
-                            : importProgressLabel(context, p));
+                          ? context.l10n.tvConnecting
+                          : importProgressLabel(context, p));
                   return TvCtaButton(
                     label: label,
                     onSelect: _busy ? null : _validate,
@@ -254,9 +258,9 @@ class _TextField extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     OutlineInputBorder border(Color c, double w) => OutlineInputBorder(
-      borderRadius: BorderRadius.circular(TvTokens.rButton),
-      borderSide: BorderSide(color: c, width: w),
-    );
+          borderRadius: BorderRadius.circular(TvTokens.rButton),
+          borderSide: BorderSide(color: c, width: w),
+        );
     return TextField(
       controller: controller,
       autofocus: autofocus,

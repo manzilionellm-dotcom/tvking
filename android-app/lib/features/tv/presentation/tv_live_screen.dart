@@ -42,6 +42,7 @@ import 'tv_live_preview.dart';
 import 'tv_phone_source_qr.dart';
 import 'tv_player_screen.dart';
 import 'tv_shell.dart';
+import 'tv_touch_components.dart';
 
 // Polissage TV-ONLY des libellés (n'altère PAS le curateur partagé/mobile ni le
 // nom brut servant au matching flux/EPG) :
@@ -311,8 +312,8 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     _favCh = _favIds.isEmpty
         ? const <Channel>[]
         : _all
-              .where((Channel c) => _favIds.contains(c.id))
-              .toList(growable: false);
+            .where((Channel c) => _favIds.contains(c.id))
+            .toList(growable: false);
     // Récemment regardées (ordre historique).
     if (_recentIds.isEmpty || _all.isEmpty) {
       _recentCh = const <Channel>[];
@@ -623,13 +624,11 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     // ne s'applique QUE si le parent l'a activé (défaut : désactivé → aucun
     // changement). Détection via le classifieur existant (mots-clés robustes).
     final bool kids = ParentalControls.instance.kidsMode.value;
-    final List<Channel> live = channels
-        .where((Channel c) {
-          if (!c.isLive) return false;
-          if (kids && _hideForKids(c)) return false;
-          return true;
-        })
-        .toList(growable: false);
+    final List<Channel> live = channels.where((Channel c) {
+      if (!c.isLive) return false;
+      if (kids && _hideForKids(c)) return false;
+      return true;
+    }).toList(growable: false);
     // Ordre des catégories = ordre d'APPARITION ; dédup via Set (O(1)) pour
     // rester rapide même sur de très grandes listes (évite un contains O(n²)).
     final List<String> cats = <String>[];
@@ -725,6 +724,62 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
       } else {
         title = context.l10n.tvCodeInactive;
         subtitle = context.l10n.tvCodeInactiveHelp;
+      }
+      if (isZunoTouch) {
+        // La même attente de source occupe la largeur du téléphone. Aucune
+        // activation ni lecture n'est déclenchée par cette présentation.
+        return SingleChildScrollView(
+          key: const ValueKey<String>('zuno-touch-live'),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              TvTouchPageHeader(title: context.l10n.tvNavLive),
+              const SizedBox(height: TvDimens.touchSafeV),
+              Text(title, style: TvTokens.display(TvDimens.headline)),
+              const SizedBox(height: TvDimens.touchGap),
+              Text(subtitle,
+                  style: TvTokens.ui(TvDimens.label, color: TvTokens.muted)),
+              const SizedBox(height: TvDimens.touchSafeV),
+              Text(context.l10n.tvDeviceAddress,
+                  style: TvTokens.ui(TvDimens.caption)),
+              SelectableText(
+                displayMac(_mac, showPrefix: RepairFlags.macShowPrefix),
+                textDirection: TextDirection.ltr,
+                style: TvTokens.mono(TvDimens.title),
+              ),
+              const SizedBox(height: TvDimens.touchSafeV),
+              _ActionPill(
+                key: const ValueKey<String>('zuno-touch-live-retry'),
+                icon: Icons.refresh_rounded,
+                label: _syncing
+                    ? context.l10n.tvSearchingChannels
+                    : context.l10n.tvRetry,
+                onSelect: _syncing ? null : _kickSourceSync,
+              ),
+              const SizedBox(height: TvDimens.touchGap),
+              _ActionPill(
+                key: const ValueKey<String>('zuno-touch-live-add-source'),
+                icon: Icons.playlist_add_rounded,
+                label: context.l10n.tvAddOwnList,
+                onSelect: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const TvShell(child: TvAddSourceScreen()),
+                  ),
+                ),
+              ),
+              const SizedBox(height: TvDimens.touchSafeV),
+              Wrap(
+                alignment: WrapAlignment.center,
+                spacing: TvDimens.touchGap,
+                runSpacing: TvDimens.touchSafeV,
+                children: <Widget>[
+                  TvWhatsAppQr(mac: _mac, size: 190),
+                  TvPhoneSourceQr(mac: _mac, qrSize: 150),
+                ],
+              ),
+            ],
+          ),
+        );
       }
       return Center(
         child: Row(
@@ -864,6 +919,51 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
       restoreFocusId: _restoreFromRail ? null : _restoreFocusId,
       onRestored: () => _restoreFocusId = null,
     );
+
+    if (isZunoTouch) {
+      // Le mobile conserve les catégories, la restauration et le même lecteur.
+      // L'aperçu automatique TV n'est pas monté : aucun second flux caché.
+      // La feuille peut rester ouverte pendant une synchronisation : ses
+      // choix et le retour doivent pointer vers le même instantané.
+      final List<String> categories = List<String>.unmodifiable(_dispCats);
+      return Column(
+        key: const ValueKey<String>('zuno-touch-live'),
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          TvTouchPageHeader(title: context.l10n.tvNavLive),
+          const SizedBox(height: TvDimens.touchGap),
+          TvTouchMenuButton<int>(
+            label: _selectedCat == null
+                ? context.l10n.filterAll
+                : _catLabel(context, _selectedCat!),
+            selected: _selectedCat == null
+                ? 0
+                : categories.indexOf(_selectedCat!) + 1,
+            choices: <TvTouchChoice<int>>[
+              TvTouchChoice<int>(value: 0, label: context.l10n.filterAll),
+              for (int i = 0; i < categories.length; i++)
+                TvTouchChoice<int>(
+                  value: i + 1,
+                  label:
+                      '${_catLabel(context, categories[i])} (${_countOf(categories[i])})',
+                ),
+            ],
+            onSelected: (int index) {
+              if (index == 0) {
+                setState(() {
+                  _selectedCat = null;
+                  _recomputeShown();
+                });
+              } else {
+                _select(categories[index - 1]);
+              }
+            },
+          ),
+          const SizedBox(height: TvDimens.touchGap),
+          Expanded(child: list),
+        ],
+      );
+    }
 
     // Chaîne prévisualisée : celle sous le focus, sinon la 1re de la liste.
     // ValueListenableBuilder : le changement de focus ne reconstruit QUE cette
@@ -1020,9 +1120,8 @@ class _CRow extends StatelessWidget {
           // FOCUS UNIQUE : seule la ligne RÉELLEMENT focus porte l'or. La
           // catégorie active-mais-pas-focus = gris discret (jamais d'or).
           final bool active = selected && !focused;
-          final Color bg = (focused || active)
-              ? TvTokens.sel
-              : Colors.transparent;
+          final Color bg =
+              (focused || active) ? TvTokens.sel : Colors.transparent;
           final Color fg = focused
               ? TvTokens.accentBright
               : (active ? TvTokens.text : TvTokens.muted);
@@ -1292,95 +1391,93 @@ class _LiveHeroState extends State<_LiveHero> {
                   // repli sur la catégorie si pas d'EPG → jamais de ligne vide.
                   FutureBuilder<EpgProgram?>(
                     future: _epg,
-                    builder:
-                        (
-                          BuildContext context,
-                          AsyncSnapshot<EpgProgram?> snap,
-                        ) {
-                          final EpgProgram? p = snap.data;
-                          // FALLBACK (pas d'EPG) : on reste COMPACT — juste la
-                          // catégorie (ou rien), jamais de grand vide.
-                          if (p == null) {
-                            final String cat = c.category.trim();
-                            if (cat.isEmpty) return const SizedBox.shrink();
-                            return Text(
-                              _tvPretty(cat),
-                              maxLines: 1,
+                    builder: (
+                      BuildContext context,
+                      AsyncSnapshot<EpgProgram?> snap,
+                    ) {
+                      final EpgProgram? p = snap.data;
+                      // FALLBACK (pas d'EPG) : on reste COMPACT — juste la
+                      // catégorie (ou rien), jamais de grand vide.
+                      if (p == null) {
+                        final String cat = c.category.trim();
+                        if (cat.isEmpty) return const SizedBox.shrink();
+                        return Text(
+                          _tvPretty(cat),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: TvDimens.body,
+                            color: TvTokens.muted,
+                          ),
+                        );
+                      }
+                      // EPG dispo : titre + barre de progression + horaires
+                      // (+ synopsis si présent).
+                      final int now = DateTime.now().millisecondsSinceEpoch;
+                      final int span = p.stopTime - p.startTime;
+                      final double prog = span > 0
+                          ? ((now - p.startTime) / span)
+                              .clamp(0.0, 1.0)
+                              .toDouble()
+                          : 0.0;
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: <Widget>[
+                          Text(
+                            context.l10n.tvNowPlayingPrefix(p.title),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: TvDimens.body,
+                              fontWeight: FontWeight.w600,
+                              color: TvTokens.text,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Row(
+                            children: <Widget>[
+                              Expanded(
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(2),
+                                  child: SizedBox(
+                                    height: 4,
+                                    child: LinearProgressIndicator(
+                                      value: prog,
+                                      backgroundColor: TvTokens.line,
+                                      valueColor:
+                                          const AlwaysStoppedAnimation<Color>(
+                                              TvTokens.accent),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Text(
+                                p.timeRangeShort,
+                                style: TextStyle(
+                                  fontSize: TvDimens.label,
+                                  color: TvTokens.mutedDim,
+                                ),
+                              ),
+                            ],
+                          ),
+                          if (p.description != null &&
+                              p.description!.trim().isNotEmpty) ...<Widget>[
+                            const SizedBox(height: 8),
+                            Text(
+                              p.description!.trim(),
+                              maxLines: 2,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
-                                fontSize: TvDimens.body,
+                                fontSize: TvDimens.label,
                                 color: TvTokens.muted,
                               ),
-                            );
-                          }
-                          // EPG dispo : titre + barre de progression + horaires
-                          // (+ synopsis si présent).
-                          final int now = DateTime.now().millisecondsSinceEpoch;
-                          final int span = p.stopTime - p.startTime;
-                          final double prog = span > 0
-                              ? ((now - p.startTime) / span)
-                                    .clamp(0.0, 1.0)
-                                    .toDouble()
-                              : 0.0;
-                          return Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: <Widget>[
-                              Text(
-                                context.l10n.tvNowPlayingPrefix(p.title),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontSize: TvDimens.body,
-                                  fontWeight: FontWeight.w600,
-                                  color: TvTokens.text,
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              Row(
-                                children: <Widget>[
-                                  Expanded(
-                                    child: ClipRRect(
-                                      borderRadius: BorderRadius.circular(2),
-                                      child: SizedBox(
-                                        height: 4,
-                                        child: LinearProgressIndicator(
-                                          value: prog,
-                                          backgroundColor: TvTokens.line,
-                                          valueColor:
-                                              const AlwaysStoppedAnimation<
-                                                Color
-                                              >(TvTokens.accent),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Text(
-                                    p.timeRangeShort,
-                                    style: TextStyle(
-                                      fontSize: TvDimens.label,
-                                      color: TvTokens.mutedDim,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              if (p.description != null &&
-                                  p.description!.trim().isNotEmpty) ...<Widget>[
-                                const SizedBox(height: 8),
-                                Text(
-                                  p.description!.trim(),
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    fontSize: TvDimens.label,
-                                    color: TvTokens.muted,
-                                  ),
-                                ),
-                              ],
-                            ],
-                          );
-                        },
+                            ),
+                          ],
+                        ],
+                      );
+                    },
                   ),
                 ],
               ),
@@ -1595,9 +1692,9 @@ class _ChannelCardState extends State<_ChannelCard> {
     // PREMIUM (réf. design) : on retire le jargon codec (RAW/HEVC/60FPS/VIP/LIVE)
     // qui faisait « IPTV brut » et on ne garde qu'UN chip qualité (4K/FHD/HD).
     final String? quality = p.badges.cast<String?>().firstWhere(
-      (String? b) => b == '4K' || b == 'FHD' || b == 'HD',
-      orElse: () => null,
-    );
+          (String? b) => b == '4K' || b == 'FHD' || b == 'HD',
+          orElse: () => null,
+        );
     // RESTAURATION DU FOCUS au retour du lecteur (déterministe) : quand l'écran
     // nous DÉSIGNE (restoreFocusId == notre id), on (re)prend le focus en
     // post-frame puis on libère le drapeau. Déclenché par un rebuild explicite
@@ -1813,15 +1910,15 @@ class _Logo extends StatelessWidget {
     // Repli PARESSEUX : `initials` (regex + split) n'est calculé que si le logo
     // manque ou échoue — pas pour chaque ligne qui a un logo.
     Widget fallback() => Center(
-      child: Text(
-        channel.initials,
-        style: TextStyle(
-          fontSize: TvDimens.title,
-          fontWeight: FontWeight.w800,
-          color: TvTokens.muted,
-        ),
-      ),
-    );
+          child: Text(
+            channel.initials,
+            style: TextStyle(
+              fontSize: TvDimens.title,
+              fontWeight: FontWeight.w800,
+              color: TvTokens.muted,
+            ),
+          ),
+        );
     final String? url = channel.logoUrl;
     if (url == null || url.isEmpty) return fallback();
     // CACHE DISQUE + mémoire (cached_network_image) : après le 1er affichage,
@@ -1849,6 +1946,7 @@ class _Logo extends StatelessWidget {
 /// (« Réessayer », « J'ajoute ma propre liste »).
 class _ActionPill extends StatelessWidget {
   const _ActionPill({
+    super.key,
     required this.icon,
     required this.label,
     required this.onSelect,
@@ -1861,6 +1959,20 @@ class _ActionPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (isZunoTouch) {
+      return FilledButton.icon(
+        onPressed: onSelect,
+        icon: Icon(icon),
+        label: Text(label,
+            style: TvTokens.ui(TvDimens.label, color: TvTokens.onAccent)),
+        style: FilledButton.styleFrom(
+          minimumSize: const Size.fromHeight(TvDimens.touchButtonHeight),
+          padding: const EdgeInsets.all(TvDimens.touchGap),
+          backgroundColor: TvTokens.accent,
+          foregroundColor: TvTokens.onAccent,
+        ),
+      );
+    }
     return TvFocusBuilder(
       autofocus: autofocus,
       scale: TvFocusScale.large,
@@ -1946,12 +2058,13 @@ class _ChannelList extends StatelessWidget {
       padding: const EdgeInsets.all(8),
       child: ListView.builder(
         padding: EdgeInsets.zero,
-        itemExtent: _kRowExtent,
+        // L'agrandissement système du texte peut augmenter une ligne tactile.
+        itemExtent: isZunoTouch ? null : _kRowExtent,
         itemCount: channels.length,
         itemBuilder: (BuildContext context, int i) => _ChannelRow(
           channel: channels[i],
           index: i,
-          autofocus: i == 0 && restoreFocusId == null,
+          autofocus: !isZunoTouch && i == 0 && restoreFocusId == null,
           onFocused: onFocused,
           onPlay: onPlay,
           restoreFocusId: restoreFocusId,
@@ -2003,9 +2116,9 @@ class _ChannelRowState extends State<_ChannelRow> {
     // la carte de grille — on l'appelle par sa classe.
     final _ParsedName p = _ChannelCardState._parseName(channel);
     final String? quality = p.badges.cast<String?>().firstWhere(
-      (String? b) => b == '4K' || b == 'FHD' || b == 'HD',
-      orElse: () => null,
-    );
+          (String? b) => b == '4K' || b == 'FHD' || b == 'HD',
+          orElse: () => null,
+        );
     if (widget.restoreFocusId != null && widget.restoreFocusId == channel.id) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
@@ -2039,18 +2152,19 @@ class _ChannelRowState extends State<_ChannelRow> {
             padding: const EdgeInsets.symmetric(horizontal: 10),
             child: Row(
               children: <Widget>[
-                SizedBox(
-                  width: 48,
-                  child: Text(
-                    '${widget.index + 1}',
-                    textAlign: TextAlign.right,
-                    style: TvTokens.mono(
-                      TvDimens.label,
-                      color: focused ? TvTokens.accentBright : TvTokens.muted,
+                if (!isZunoTouch)
+                  SizedBox(
+                    width: 48,
+                    child: Text(
+                      '${widget.index + 1}',
+                      textAlign: TextAlign.right,
+                      style: TvTokens.mono(
+                        TvDimens.label,
+                        color: focused ? TvTokens.accentBright : TvTokens.muted,
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 12),
+                if (!isZunoTouch) const SizedBox(width: 12),
                 SizedBox(
                   width: 48,
                   height: 48,
@@ -2060,7 +2174,7 @@ class _ChannelRowState extends State<_ChannelRow> {
                 Expanded(
                   child: Text(
                     p.name,
-                    maxLines: 1,
+                    maxLines: isZunoTouch ? 2 : 1,
                     overflow: TextOverflow.ellipsis,
                     style: TvTokens.ui(
                       TvDimens.titleS,
@@ -2077,7 +2191,7 @@ class _ChannelRowState extends State<_ChannelRow> {
                     color: TvTokens.accent,
                   ),
                 ],
-                if (quality != null) ...<Widget>[
+                if (quality != null && !isZunoTouch) ...<Widget>[
                   const SizedBox(width: 10),
                   _TagBadge(label: quality),
                 ],
@@ -2144,9 +2258,9 @@ class _PreviewInfoState extends State<_PreviewInfo> {
   late Future<List<EpgProgram?>> _epg = _load();
 
   Future<List<EpgProgram?>> _load() => Future.wait(<Future<EpgProgram?>>[
-    EpgRepository.instance.currentProgram(widget.channel.id),
-    EpgRepository.instance.nextProgram(widget.channel.id),
-  ]);
+        EpgRepository.instance.currentProgram(widget.channel.id),
+        EpgRepository.instance.nextProgram(widget.channel.id),
+      ]);
 
   @override
   void didUpdateWidget(covariant _PreviewInfo old) {
@@ -2183,116 +2297,116 @@ class _PreviewInfoState extends State<_PreviewInfo> {
             future: _epg,
             builder:
                 (BuildContext context, AsyncSnapshot<List<EpgProgram?>> snap) {
-                  // Tant que la base n'a pas répondu, on ne montre PAS la
-                  // catégorie : elle clignotait puis était remplacée par le
-                  // programme, et on croyait qu'il n'y avait pas de guide.
-                  if (snap.connectionState == ConnectionState.waiting) {
-                    return Text(
-                      context.l10n.tvGuideLoading,
-                      style: TvTokens.ui(TvDimens.body, color: TvTokens.muted),
-                    );
-                  }
-                  final EpgProgram? now =
-                      (snap.data != null && snap.data!.isNotEmpty)
+              // Tant que la base n'a pas répondu, on ne montre PAS la
+              // catégorie : elle clignotait puis était remplacée par le
+              // programme, et on croyait qu'il n'y avait pas de guide.
+              if (snap.connectionState == ConnectionState.waiting) {
+                return Text(
+                  context.l10n.tvGuideLoading,
+                  style: TvTokens.ui(TvDimens.body, color: TvTokens.muted),
+                );
+              }
+              final EpgProgram? now =
+                  (snap.data != null && snap.data!.isNotEmpty)
                       ? snap.data![0]
                       : null;
-                  final EpgProgram? next =
-                      (snap.data != null && snap.data!.length > 1)
+              final EpgProgram? next =
+                  (snap.data != null && snap.data!.length > 1)
                       ? snap.data![1]
                       : null;
-                  if (snap.hasError || now == null) {
-                    final String cat = c.category.trim();
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: <Widget>[
-                        Text(
-                          cat.isEmpty ? context.l10n.tvNavLive : _tvPretty(cat),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TvTokens.ui(
-                            TvDimens.body,
-                            color: TvTokens.muted,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          context.l10n.tvNoEpg,
-                          style: TvTokens.ui(
-                            TvDimens.label,
-                            color: TvTokens.mutedDim,
-                          ),
-                        ),
-                      ],
-                    );
-                  }
-                  final int nowMs = DateTime.now().millisecondsSinceEpoch;
-                  final int span = now.stopTime - now.startTime;
-                  final double prog = span > 0
-                      ? ((nowMs - now.startTime) / span).clamp(0.0, 1.0)
-                      : 0.0;
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      Text(
-                        context.l10n.tvEpgNow.toUpperCase(),
-                        style: TvTokens.ui(
-                          TvDimens.caption,
-                          weight: FontWeight.w700,
-                          color: TvTokens.accentBright,
-                          spacing: 2,
-                        ),
+              if (snap.hasError || now == null) {
+                final String cat = c.category.trim();
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      cat.isEmpty ? context.l10n.tvNavLive : _tvPretty(cat),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TvTokens.ui(
+                        TvDimens.body,
+                        color: TvTokens.muted,
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        now.title,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: TvTokens.ui(
-                          TvDimens.titleS,
-                          weight: FontWeight.w600,
-                          color: TvTokens.text,
-                        ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      context.l10n.tvNoEpg,
+                      style: TvTokens.ui(
+                        TvDimens.label,
+                        color: TvTokens.mutedDim,
                       ),
-                      const SizedBox(height: 8),
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(TvTokens.rSmall),
-                        child: LinearProgressIndicator(
-                          value: prog,
-                          minHeight: 4,
-                          backgroundColor: TvTokens.line,
-                          color: TvTokens.accent,
-                        ),
+                    ),
+                  ],
+                );
+              }
+              final int nowMs = DateTime.now().millisecondsSinceEpoch;
+              final int span = now.stopTime - now.startTime;
+              final double prog = span > 0
+                  ? ((nowMs - now.startTime) / span).clamp(0.0, 1.0)
+                  : 0.0;
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    context.l10n.tvEpgNow.toUpperCase(),
+                    style: TvTokens.ui(
+                      TvDimens.caption,
+                      weight: FontWeight.w700,
+                      color: TvTokens.accentBright,
+                      spacing: 2,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    now.title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TvTokens.ui(
+                      TvDimens.titleS,
+                      weight: FontWeight.w600,
+                      color: TvTokens.text,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(TvTokens.rSmall),
+                    child: LinearProgressIndicator(
+                      value: prog,
+                      minHeight: 4,
+                      backgroundColor: TvTokens.line,
+                      color: TvTokens.accent,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    '${_hm(now.startTime)} – ${_hm(now.stopTime)}',
+                    style: TvTokens.ui(13, color: TvTokens.mutedDim),
+                  ),
+                  if (next != null) ...<Widget>[
+                    const SizedBox(height: 12),
+                    Text(
+                      context.l10n.tvEpgNext.toUpperCase(),
+                      style: TvTokens.ui(
+                        TvDimens.caption,
+                        weight: FontWeight.w700,
+                        color: TvTokens.muted,
+                        spacing: 2,
                       ),
-                      const SizedBox(height: 6),
-                      Text(
-                        '${_hm(now.startTime)} – ${_hm(now.stopTime)}',
-                        style: TvTokens.ui(13, color: TvTokens.mutedDim),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${_hm(next.startTime)}  ${next.title}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TvTokens.ui(
+                        TvDimens.body,
+                        color: TvTokens.text,
                       ),
-                      if (next != null) ...<Widget>[
-                        const SizedBox(height: 12),
-                        Text(
-                          context.l10n.tvEpgNext.toUpperCase(),
-                          style: TvTokens.ui(
-                            TvDimens.caption,
-                            weight: FontWeight.w700,
-                            color: TvTokens.muted,
-                            spacing: 2,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          '${_hm(next.startTime)}  ${next.title}',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TvTokens.ui(
-                            TvDimens.body,
-                            color: TvTokens.text,
-                          ),
-                        ),
-                      ],
-                    ],
-                  );
-                },
+                    ),
+                  ],
+                ],
+              );
+            },
           ),
         ],
       ),

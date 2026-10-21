@@ -14,6 +14,7 @@ import '../../../l10n/generated/app_localizations.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
+import 'tv_touch_components.dart';
 
 /// Nom produit affiché PARTOUT.
 const String kAppName = 'Zuno';
@@ -267,6 +268,37 @@ class TvEmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (isZunoTouch) {
+      // Le message reste intégralement lisible même en paysage ou avec le
+      // texte système agrandi. Le centre TV garde sa géométrie d'origine.
+      return Center(
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              Icon(icon, color: TvTokens.accent, size: TvDimens.touchTarget),
+              const SizedBox(height: TvDimens.touchSafeV),
+              Text(
+                title,
+                textAlign: TextAlign.center,
+                style: TvTokens.display(TvDimens.headline),
+              ),
+              const SizedBox(height: TvDimens.touchGap),
+              Text(
+                subtitle,
+                textAlign: TextAlign.center,
+                style: TvTokens.ui(TvDimens.label, color: TvTokens.mutedDim),
+              ),
+              if (footer != null) ...<Widget>[
+                const SizedBox(height: TvDimens.touchSafeV),
+                footer!,
+              ],
+            ],
+          ),
+        ),
+      );
+    }
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,

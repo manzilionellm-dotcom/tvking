@@ -95,6 +95,7 @@ jobs:
       - name: Contrats Cast, moteur natif, téléchargements et mises à jour
         run: |
           flutter test --no-pub test/features/cast test/features/tv/desktop \
+            test/features/tv/touch \
             test/core/update packages/native_video_player/test \
             test/features/player/single_player_audio_test.dart \
             test/features/cinema/playback_download_pause_test.dart \

@@ -11,9 +11,11 @@
 // =========================================================
 import 'package:flutter/material.dart';
 
+import '../../../core/app/zuno_edition.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import 'tv_profile_label.dart';
 
+import '../../cast/data/cast_platform.dart';
 import '../../profiles/data/profile_repository.dart';
 import '../../profiles/domain/profile_policies.dart';
 import '../../security/data/app_pin_settings.dart';
@@ -237,9 +239,8 @@ class _TvParentalScreenState extends State<TvParentalScreen> {
                   onSelect: _changePin,
                   builder: (BuildContext context, bool focused) {
                     final Color bg = focused ? TvTokens.accent : TvTokens.sel;
-                    final Color fg = focused
-                        ? TvTokens.onAccent
-                        : TvTokens.accentBright;
+                    final Color fg =
+                        focused ? TvTokens.onAccent : TvTokens.accentBright;
                     return Container(
                       decoration: BoxDecoration(
                         color: bg,
@@ -424,9 +425,11 @@ class _PinPadScreenState extends State<_PinPadScreen> {
   @override
   Widget build(BuildContext context) {
     final bool confirmStep = widget.confirm && _firstEntry != null;
-    final String title = confirmStep
-        ? context.l10n.tvConfirmCode
-        : widget.title;
+    final String title =
+        confirmStep ? context.l10n.tvConfirmCode : widget.title;
+    if (CastPlatform.zunoEdition == ZunoEdition.touch) {
+      return _touchPinPad(context, title);
+    }
     return Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 420),
@@ -496,6 +499,131 @@ class _PinPadScreenState extends State<_PinPadScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  /// Le même PIN à quatre chiffres et les mêmes contrôles, dans un pavé
+  /// tactile. Les touches partagent la largeur disponible ; la page défile
+  /// si les explications ou une erreur grandissent avec la police système.
+  Widget _touchPinPad(BuildContext context, String title) {
+    return Align(
+      alignment: Alignment.topCenter,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: TvDimens.touchFormWidth),
+        child: SingleChildScrollView(
+          key: const ValueKey<String>('zuno-touch-pin-scroll'),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              Text(
+                title,
+                textAlign: TextAlign.center,
+                style: TvTokens.display(TvDimens.title),
+              ),
+              const SizedBox(height: TvDimens.touchGap),
+              Text(
+                widget.subtitle,
+                textAlign: TextAlign.center,
+                style: TvTokens.ui(TvDimens.label, color: TvTokens.muted),
+              ),
+              const SizedBox(height: TvDimens.touchSafeV),
+              // Seul le nombre de chiffres est exposé ; jamais leur valeur.
+              Semantics(
+                label: widget.subtitle,
+                value: '${_entry.length} / $_len',
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: <Widget>[
+                    for (int i = 0; i < _len; i++) ...<Widget>[
+                      if (i > 0) const SizedBox(width: TvDimens.touchGap),
+                      Container(
+                        width: TvDimens.body,
+                        height: TvDimens.body,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: i < _entry.length
+                              ? TvTokens.accent
+                              : Colors.transparent,
+                          border: Border.all(color: TvTokens.accent),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              if (_error != null) ...<Widget>[
+                const SizedBox(height: TvDimens.touchGap),
+                Semantics(
+                  liveRegion: true,
+                  child: Text(
+                    _error!,
+                    textAlign: TextAlign.center,
+                    style: TvTokens.ui(
+                      TvDimens.label,
+                      weight: FontWeight.w600,
+                      color: TvTokens.live,
+                    ),
+                  ),
+                ),
+              ],
+              const SizedBox(height: TvDimens.touchSafeV),
+              for (final List<String> row in const <List<String>>[
+                <String>['1', '2', '3'],
+                <String>['4', '5', '6'],
+                <String>['7', '8', '9'],
+                <String>['back', '0', 'done'],
+              ]) ...<Widget>[
+                Row(
+                  children: <Widget>[
+                    for (int i = 0; i < row.length; i++) ...<Widget>[
+                      if (i > 0) const SizedBox(width: TvDimens.touchGap),
+                      Expanded(child: _touchKey(context, row[i])),
+                    ],
+                  ],
+                ),
+                const SizedBox(height: TvDimens.touchGap),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _touchKey(BuildContext context, String key) {
+    final VoidCallback action;
+    final Widget label;
+    if (key == 'done') {
+      action = () => Navigator.of(context).maybePop(false);
+      label = Icon(
+        Icons.close_rounded,
+        semanticLabel: context.l10n.buttonCancel,
+      );
+    } else if (key == 'back') {
+      action = _onBackspace;
+      label = Icon(
+        Icons.backspace_rounded,
+        semanticLabel: MaterialLocalizations.of(context).deleteButtonTooltip,
+      );
+    } else {
+      action = () => _onDigit(key);
+      label = Text(key);
+    }
+    return OutlinedButton(
+      key: ValueKey<String>('zuno-touch-pin-$key'),
+      onPressed: _busy && key != 'done' ? null : action,
+      style: OutlinedButton.styleFrom(
+        foregroundColor: TvTokens.text,
+        backgroundColor: TvTokens.card,
+        minimumSize: const Size(0, TvDimens.touchButtonHeight),
+        padding: const EdgeInsets.all(TvDimens.touchGap),
+        side: const BorderSide(color: TvTokens.line),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(TvTokens.rButton),
+        ),
+        textStyle: TvTokens.ui(TvDimens.title, weight: FontWeight.w800),
+      ),
+      child: label,
     );
   }
 

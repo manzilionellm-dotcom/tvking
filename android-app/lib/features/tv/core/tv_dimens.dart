@@ -14,6 +14,22 @@ class TvDimens {
   static const double safeH = 48; // marges gauche/droite
   static const double safeV = 24; // marges haut/bas
 
+  // --- Édition ZUNO tactile : unités réelles, sans réduction du canevas TV ---
+  // Ces dimensions sont propres au téléphone/tablette. Les valeurs 10-foot
+  // ci-dessus restent inchangées pour les téléviseurs et le bureau.
+  static const double touchSafeH = 16;
+  static const double touchSafeV = 16;
+  static const double touchGap = 12;
+  static const double touchTarget = 48;
+  static const double touchButtonHeight = 56;
+  static const double touchFormWidth = 600;
+  static const double touchContentWidth = 960;
+  static const double touchBreakpoint = 720;
+  static const double touchTileMinWidth = 140;
+  static const double touchTileMinHeight = 124;
+  static const double touchIcon = 36;
+  static const double touchLogoWidth = 132;
+
   // --- §3 Grille 12 colonnes ---
   static const int gridColumns = 12;
   static const double columnWidth = 52;
@@ -57,9 +73,9 @@ class TvDimens {
   static const double panelRadius = 16;
 
   // --- Rangées / cartes de référence ---
-  static const double channelLogo = 56;   // logo dans une rangée
-  static const double posterW = 132;       // affiche Film 2:3
-  static const double posterH = 198;       // 132 × 3/2
-  static const double railCardW = 220;     // carte large (live/cluster)
-  static const double railCardH = 124;     // ~16:9
+  static const double channelLogo = 56; // logo dans une rangée
+  static const double posterW = 132; // affiche Film 2:3
+  static const double posterH = 198; // 132 × 3/2
+  static const double railCardW = 220; // carte large (live/cluster)
+  static const double railCardH = 124; // ~16:9
 }

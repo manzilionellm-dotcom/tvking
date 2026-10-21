@@ -27,6 +27,7 @@ import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
 import 'tv_add_source_screen.dart';
 import 'tv_shell.dart';
+import 'tv_touch_components.dart';
 
 class TvSourcesScreen extends StatelessWidget {
   const TvSourcesScreen({super.key});
@@ -41,6 +42,69 @@ class TvSourcesScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (isZunoTouch) {
+      return StreamBuilder<List<Playlist>>(
+        stream: PlaylistRepository.instance.playlistsStream,
+        initialData: PlaylistRepository.instance.currentPlaylists,
+        builder: (BuildContext context, AsyncSnapshot<List<Playlist>> snap) {
+          final List<Playlist> items = snap.data ?? const <Playlist>[];
+          // Les actions font partie du même défilement que les sources :
+          // même avec le texte à 200 %, elles ne bloquent pas toute la page.
+          return CustomScrollView(
+            key: const ValueKey<String>('zuno-touch-sources'),
+            slivers: <Widget>[
+              SliverToBoxAdapter(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: <Widget>[
+                    TvTouchPageHeader(title: context.l10n.tvMySources),
+                    const SizedBox(height: TvDimens.touchGap),
+                    Wrap(
+                      spacing: TvDimens.touchGap,
+                      runSpacing: TvDimens.touchGap,
+                      children: <Widget>[
+                        _Pill(
+                          icon: Icons.add_rounded,
+                          label: context.l10n.tvAddXtream,
+                          onSelect: () => _open(context, OpenEntryMode.xtream),
+                        ),
+                        _Pill(
+                          icon: Icons.playlist_add_rounded,
+                          label: context.l10n.tvAddM3u,
+                          onSelect: () => _open(context, OpenEntryMode.m3u),
+                        ),
+                        _Pill(
+                          icon: Icons.play_circle_outline_rounded,
+                          label: context.l10n.tvPlayerLink,
+                          onSelect: () => _open(context, OpenEntryMode.player),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: TvDimens.touchSafeV),
+                  ],
+                ),
+              ),
+              if (items.isEmpty)
+                SliverToBoxAdapter(
+                  child: Text(
+                    context.l10n.tvSourcesEmpty,
+                    textAlign: TextAlign.center,
+                    style: TvTokens.ui(TvDimens.body, color: TvTokens.mutedDim),
+                  ),
+                )
+              else
+                SliverList.builder(
+                  itemCount: items.length,
+                  itemBuilder: (BuildContext context, int index) => Padding(
+                    padding: const EdgeInsets.only(bottom: TvDimens.touchGap),
+                    child: _SourceRow(playlist: items[index]),
+                  ),
+                ),
+            ],
+          );
+        },
+      );
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
@@ -82,27 +146,27 @@ class TvSourcesScreen extends StatelessWidget {
             initialData: PlaylistRepository.instance.currentPlaylists,
             builder:
                 (BuildContext context, AsyncSnapshot<List<Playlist>> snap) {
-                  final List<Playlist> items = snap.data ?? const <Playlist>[];
-                  if (items.isEmpty) {
-                    return Center(
-                      child: Text(
-                        context.l10n.tvSourcesEmpty,
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: TvDimens.body,
-                          color: TvTokens.mutedDim,
-                        ),
-                      ),
-                    );
-                  }
-                  return ListView.separated(
-                    padding: const EdgeInsets.only(right: 6, bottom: 8),
-                    itemCount: items.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 10),
-                    itemBuilder: (BuildContext context, int i) =>
-                        _SourceRow(playlist: items[i]),
-                  );
-                },
+              final List<Playlist> items = snap.data ?? const <Playlist>[];
+              if (items.isEmpty) {
+                return Center(
+                  child: Text(
+                    context.l10n.tvSourcesEmpty,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: TvDimens.body,
+                      color: TvTokens.mutedDim,
+                    ),
+                  ),
+                );
+              }
+              return ListView.separated(
+                padding: const EdgeInsets.only(right: 6, bottom: 8),
+                itemCount: items.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 10),
+                itemBuilder: (BuildContext context, int i) =>
+                    _SourceRow(playlist: items[i]),
+              );
+            },
           ),
         ),
       ],
@@ -176,6 +240,61 @@ class _SourceRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final Color badge = _xtream ? TvTokens.accent : const Color(0xFF5AA0E8);
     final ({String? user, String? host}) ref = playlist.reference;
+    if (isZunoTouch) {
+      return Container(
+        padding: const EdgeInsets.all(TvDimens.touchSafeH),
+        decoration: BoxDecoration(
+          color: TvTokens.panel,
+          borderRadius: BorderRadius.circular(TvTokens.rCard),
+          border: Border.all(color: _on ? TvTokens.accent : TvTokens.lineSoft),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            Text(playlist.name,
+                style: TvTokens.ui(TvDimens.title, weight: FontWeight.w700)),
+            const SizedBox(height: TvDimens.touchGap),
+            Text(_xtream ? 'XTREAM' : 'M3U',
+                style: TvTokens.ui(TvDimens.caption, color: badge)),
+            if (ref.user != null || ref.host != null)
+              _Reference(user: ref.user, host: ref.host),
+            const SizedBox(height: TvDimens.touchGap),
+            Text(
+              '${context.l10n.tvSourceChannels(playlist.channelCount)} · ${_on ? context.l10n.tvSourceActive : context.l10n.tvSourceInactive}',
+              style: TvTokens.ui(TvDimens.label,
+                  color: _on ? TvTokens.accentBright : TvTokens.muted),
+            ),
+            const SizedBox(height: TvDimens.touchGap),
+            Wrap(
+              spacing: TvDimens.touchGap,
+              runSpacing: TvDimens.touchGap,
+              children: <Widget>[
+                if (playlist.id != null && _merge)
+                  _Pill(
+                    icon: _on
+                        ? Icons.pause_circle_outline_rounded
+                        : Icons.play_arrow_rounded,
+                    label: _on
+                        ? context.l10n.tvDeactivate
+                        : context.l10n.tvActivate,
+                    onSelect: () => PlaylistRepository.instance
+                        .setPlaylistHidden(playlist.id!, _on),
+                  )
+                else if (!playlist.isActive && playlist.id != null)
+                  _Pill(
+                      icon: Icons.play_arrow_rounded,
+                      label: context.l10n.tvActivate,
+                      onSelect: () => PlaylistRepository.instance
+                          .setActivePlaylist(playlist.id!)),
+                _IconBtn(
+                    icon: Icons.delete_outline_rounded,
+                    onSelect: () => _delete(context)),
+              ],
+            ),
+          ],
+        ),
+      );
+    }
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
       decoration: BoxDecoration(
@@ -335,6 +454,18 @@ class _Pill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (isZunoTouch) {
+      return OutlinedButton.icon(
+        onPressed: onSelect,
+        icon: Icon(icon),
+        label: Text(label, style: TvTokens.ui(TvDimens.label)),
+        style: OutlinedButton.styleFrom(
+          minimumSize: const Size(TvDimens.touchTarget, TvDimens.touchTarget),
+          padding: const EdgeInsets.all(TvDimens.touchGap),
+          foregroundColor: TvTokens.accentBright,
+        ),
+      );
+    }
     return TvFocusBuilder(
       autofocus: autofocus,
       scale: TvFocusScale.medium,
@@ -375,6 +506,15 @@ class _IconBtn extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (isZunoTouch) {
+      return IconButton(
+        onPressed: onSelect,
+        tooltip: context.l10n.tvDelete,
+        icon: Icon(icon),
+        constraints: const BoxConstraints(
+            minWidth: TvDimens.touchTarget, minHeight: TvDimens.touchTarget),
+      );
+    }
     return TvFocusBuilder(
       scale: TvFocusScale.small,
       onSelect: onSelect,

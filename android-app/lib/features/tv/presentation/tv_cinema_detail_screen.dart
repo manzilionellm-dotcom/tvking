@@ -29,6 +29,7 @@ import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
 import 'tv_cinema_common.dart';
+import 'tv_touch_components.dart';
 
 // =========================================================
 //  Commun : fond + en-tête
@@ -96,12 +97,15 @@ class _Header extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
-        Text(
-          title,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-          style: TvTokens.display(TvDimens.displayL, color: TvTokens.text),
-        ),
+        if (isZunoTouch)
+          TvTouchPageHeader(title: title)
+        else
+          Text(
+            title,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TvTokens.display(TvDimens.displayL, color: TvTokens.text),
+          ),
         if (meta.isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(top: 6),
@@ -119,7 +123,7 @@ class _Header extends StatelessWidget {
             padding: const EdgeInsets.only(top: 12),
             child: Text(
               plot!,
-              maxLines: 4,
+              maxLines: isZunoTouch ? null : 4,
               overflow: TextOverflow.ellipsis,
               style: TvTokens.ui(TvDimens.body, color: TvTokens.text),
             ),
@@ -129,7 +133,7 @@ class _Header extends StatelessWidget {
             padding: const EdgeInsets.only(top: 6),
             child: Text(
               line,
-              maxLines: 1,
+              maxLines: isZunoTouch ? null : 1,
               overflow: TextOverflow.ellipsis,
               style: TvTokens.ui(TvDimens.label, color: TvTokens.mutedDim),
             ),
@@ -245,6 +249,17 @@ class _DownloadPillState extends State<_DownloadPill> {
       }
     }
     if (widget.compact) {
+      if (isZunoTouch) {
+        return IconButton(
+          tooltip: label,
+          onPressed: () => unawaited(_onSelect()),
+          icon: Icon(icon, color: TvTokens.accentBright),
+          constraints: const BoxConstraints(
+            minWidth: TvDimens.touchTarget,
+            minHeight: TvDimens.touchTarget,
+          ),
+        );
+      }
       return TvFocusBuilder(
         scale: TvFocusScale.small,
         onSelect: () => unawaited(_onSelect()),
@@ -357,6 +372,72 @@ class _TvMovieDetailScreenState extends State<TvMovieDetailScreen> {
       if (rating != null) '★ ${rating.toStringAsFixed(1)}',
       if (d.genre != null) d.genre!,
     ];
+    if (isZunoTouch) {
+      // La fiche se parcourt verticalement : le résumé et les actions ne
+      // doivent jamais être coupés par la hauteur d'un téléphone en paysage.
+      return SafeArea(
+        minimum: const EdgeInsets.symmetric(
+          horizontal: TvDimens.touchSafeH,
+          vertical: TvDimens.touchSafeV,
+        ),
+        child: Stack(
+          children: <Widget>[
+            _Backdrop(url: d.backdropUrl ?? d.posterUrl ?? t.posterUrl),
+            SingleChildScrollView(
+              key: const ValueKey<String>('zuno-touch-movie-detail'),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: <Widget>[
+                  _Header(
+                    title: t.name,
+                    meta: meta,
+                    plot: d.plot,
+                    extra: <String>[
+                      if (d.cast != null) context.l10n.tvCinemaCast(d.cast!),
+                      if (d.director != null)
+                        context.l10n.tvCinemaDirector(d.director!),
+                    ],
+                  ),
+                  const SizedBox(height: TvDimens.touchGap),
+                  if (_d == null)
+                    const LinearProgressIndicator(color: TvTokens.accent),
+                  if (resumable)
+                    LinearProgressIndicator(
+                      value: w.fraction,
+                      color: TvTokens.accent,
+                      backgroundColor: TvTokens.line,
+                    ),
+                  const SizedBox(height: TvDimens.touchGap),
+                  Wrap(
+                    spacing: TvDimens.touchGap,
+                    runSpacing: TvDimens.touchGap,
+                    children: <Widget>[
+                      CinemaPill(
+                        icon: Icons.play_arrow_rounded,
+                        label: resumable
+                            ? context.l10n.tvCinemaResumeAt(
+                                formatClock(Duration(milliseconds: w.posMs)),
+                              )
+                            : context.l10n.tvCinemaPlay,
+                        onSelect: () => unawaited(openVod(context, item)),
+                      ),
+                      if (resumable)
+                        CinemaPill(
+                          icon: Icons.replay_rounded,
+                          label: context.l10n.tvCinemaFromStart,
+                          onSelect: () => unawaited(
+                              openVod(context, item, fromStart: true)),
+                        ),
+                      _DownloadPill(item: item),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
     return Stack(
       children: <Widget>[
         _Backdrop(url: d.backdropUrl ?? d.posterUrl ?? t.posterUrl),
@@ -488,9 +569,8 @@ class _TvSeriesScreenState extends State<TvSeriesScreen> {
     final WatchEntry? last = WatchProgressRepository.instance.latestForSeries(
       widget.title.id,
     );
-    int? season = s?.seasons.isNotEmpty == true
-        ? s!.seasons.first.number
-        : null;
+    int? season =
+        s?.seasons.isNotEmpty == true ? s!.seasons.first.number : null;
     if (last?.season != null && s?.episodes.containsKey(last!.season) == true)
       season = last!.season;
     setState(() {
@@ -548,6 +628,132 @@ class _TvSeriesScreenState extends State<TvSeriesScreen> {
       if (s != null && s.seasons.length > 1)
         context.l10n.tvCinemaSeasons(s.seasons.length.toString()),
     ];
+    if (isZunoTouch) {
+      final List<CinemaEpisode> episodes =
+          s?.episodes[_season] ?? const <CinemaEpisode>[];
+      return SafeArea(
+        minimum: const EdgeInsets.symmetric(
+          horizontal: TvDimens.touchSafeH,
+          vertical: TvDimens.touchSafeV,
+        ),
+        child: Stack(
+          children: <Widget>[
+            _Backdrop(url: d.backdropUrl ?? d.posterUrl ?? t.posterUrl),
+            CustomScrollView(
+              key: const ValueKey<String>('zuno-touch-series-detail'),
+              slivers: <Widget>[
+                SliverToBoxAdapter(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: <Widget>[
+                      _Header(
+                        title: t.name,
+                        meta: meta,
+                        plot: d.plot ?? t.plot,
+                      ),
+                      const SizedBox(height: TvDimens.touchGap),
+                      Wrap(
+                        spacing: TvDimens.touchGap,
+                        runSpacing: TvDimens.touchGap,
+                        children: <Widget>[
+                          if (primary != null)
+                            CinemaPill(
+                              icon: Icons.play_arrow_rounded,
+                              label: resumable
+                                  ? context.l10n.tvCinemaResumeEpisode(
+                                      primary.season.toString(),
+                                      primary.number.toString(),
+                                    )
+                                  : context.l10n.tvCinemaPlayEpisode(
+                                      primary.season.toString(),
+                                      primary.number.toString(),
+                                    ),
+                              onSelect: () => _play(primary),
+                            ),
+                          if (!_loading && episodes.isNotEmpty)
+                            ValueListenableBuilder<int>(
+                              valueListenable: CinemaDownloads.queued,
+                              builder: (BuildContext context, int queued, _) {
+                                final bool active = episodes.any(
+                                  (CinemaEpisode e) => CinemaDownloads.isQueued(
+                                    VodPlayItem.episode(e, widget.title).id,
+                                  ),
+                                );
+                                return CinemaPill(
+                                  icon: active
+                                      ? Icons.downloading_rounded
+                                      : Icons.download_rounded,
+                                  label: active
+                                      ? context.l10n.tvCinemaSeasonQueue(queued)
+                                      : context.l10n.tvCinemaDownloadSeason,
+                                  onSelect: () => unawaited(
+                                    CinemaDownloads.startSeason(<VodMovie>[
+                                      for (final CinemaEpisode e in episodes)
+                                        VodPlayItem.episode(
+                                          e,
+                                          widget.title,
+                                        ).toVodMovie(),
+                                    ]).then((_) => _refresh()),
+                                  ),
+                                );
+                              },
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: TvDimens.touchGap),
+                      if (s != null && s.seasons.isNotEmpty)
+                        TvTouchMenuButton<int>(
+                          label: _season == 0
+                              ? context.l10n.tvCinemaSpecials
+                              : context.l10n.tvCinemaSeason(
+                                  (_season ?? s.seasons.first.number)
+                                      .toString(),
+                                ),
+                          selected: _season,
+                          choices: <TvTouchChoice<int>>[
+                            for (final CinemaSeason season in s.seasons)
+                              TvTouchChoice<int>(
+                                value: season.number,
+                                label: season.number == 0
+                                    ? context.l10n.tvCinemaSpecials
+                                    : context.l10n.tvCinemaSeason(
+                                        season.number.toString(),
+                                      ),
+                              ),
+                          ],
+                          onSelected: (int season) =>
+                              setState(() => _season = season),
+                        ),
+                      const SizedBox(height: TvDimens.touchGap),
+                      if (_loading)
+                        const LinearProgressIndicator(color: TvTokens.accent)
+                      else if (episodes.isEmpty)
+                        Text(
+                          context.l10n.tvCinemaNoEpisodes,
+                          style: TvTokens.ui(
+                            TvDimens.body,
+                            color: TvTokens.mutedDim,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                // Une liste paresseuse conserve les saisons longues sans
+                // imposer le rail TV ni une hauteur fixe aux résumés.
+                SliverList.builder(
+                  itemCount: episodes.length,
+                  itemBuilder: (BuildContext context, int index) => _EpisodeRow(
+                    episode: episodes[index],
+                    series: widget.title,
+                    onPlay: () => _play(episodes[index]),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+    }
     return Stack(
       children: <Widget>[
         _Backdrop(url: d.backdropUrl ?? d.posterUrl ?? t.posterUrl),
@@ -705,13 +911,56 @@ class _EpisodeRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final CinemaEpisode e = episode;
     final WatchEntry? w = WatchProgressRepository.instance.get(e.id);
-    final double? progress = w == null || w.upNext
-        ? null
-        : (w.finished ? 1.0 : w.fraction);
+    final double? progress =
+        w == null || w.upNext ? null : (w.finished ? 1.0 : w.fraction);
     final String title = e.title.isEmpty
         ? context.l10n.tvCinemaEpisode(e.number.toString())
         : '${e.number}. ${e.title}';
     final String? dur = _durationLabel(context, e.durationSec);
+    if (isZunoTouch) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: TvDimens.touchGap),
+        child: Material(
+          color: TvTokens.card,
+          borderRadius: BorderRadius.circular(TvDimens.cardRadius),
+          clipBehavior: Clip.antiAlias,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              ListTile(
+                onTap: onPlay,
+                contentPadding: const EdgeInsets.all(TvDimens.touchGap),
+                title: Text(title, style: TvTokens.ui(TvDimens.body)),
+                subtitle: dur == null && e.plot == null
+                    ? null
+                    : Text(
+                        <String>[
+                          if (dur != null) dur,
+                          if (e.plot != null) e.plot!,
+                        ].join(' · '),
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
+                        style: TvTokens.ui(
+                          TvDimens.caption,
+                          color: TvTokens.muted,
+                        ),
+                      ),
+                trailing: _DownloadPill(
+                  item: VodPlayItem.episode(e, series),
+                  compact: true,
+                ),
+              ),
+              if (progress != null && progress > 0)
+                LinearProgressIndicator(
+                  value: progress,
+                  color: TvTokens.accent,
+                  backgroundColor: TvTokens.line,
+                ),
+            ],
+          ),
+        ),
+      );
+    }
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Row(
