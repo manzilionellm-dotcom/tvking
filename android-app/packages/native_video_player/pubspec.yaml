@@ -30,6 +30,11 @@ dependencies:
   flutter:
     sdk: flutter
 
+# Le moteur est simulé : aucun flux ni appareil requis pour les tests de Cast.
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
 flutter:
   plugin:
     platforms:

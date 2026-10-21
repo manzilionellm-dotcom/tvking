@@ -144,11 +144,19 @@ class CastManager extends ChangeNotifier {
   CastManager.forTesting({
     required CastTransport Function(CastDevice) transportFactory,
     required Future<StreamProbeResult> Function(String) probe,
+    Stream<CastDevice> Function(Duration)? discoverSsdp,
+    Stream<CastDevice> Function(Duration)? discoverMdns,
     Duration timeout = const Duration(seconds: 1),
-  }) : _testTransportFactory = transportFactory, _testProbe = probe, _testTimeout = timeout;
+  }) : _testTransportFactory = transportFactory,
+       _testProbe = probe,
+       _testSsdpDiscovery = discoverSsdp,
+       _testMdnsDiscovery = discoverMdns,
+       _testTimeout = timeout;
 
   CastTransport Function(CastDevice)? _testTransportFactory;
   Future<StreamProbeResult> Function(String)? _testProbe;
+  Stream<CastDevice> Function(Duration)? _testSsdpDiscovery;
+  Stream<CastDevice> Function(Duration)? _testMdnsDiscovery;
   Duration? _testTimeout;
 
   @visibleForTesting
@@ -162,7 +170,7 @@ class CastManager extends ChangeNotifier {
   StreamSubscription<CastNativeMediaState>? _nativeMediaSub;
 
   void _subscribeToNativeEvents() {
-    if (CastPlatform.isWindows) return;
+    if (!CastPlatform.canSend || CastPlatform.isWindows) return;
     _nativeSessionSub = GoogleCastApi.instance.sessionEventStream.listen(
       _onNativeSessionEvent,
       onError: (Object e) {
@@ -189,6 +197,13 @@ class CastManager extends ChangeNotifier {
     // Une fermeture Google tardive ne concerne jamais le nouveau Roku/DLNA.
     if (_device != null && _device!.kind != CastDeviceKind.chromecast && _device!.kind != CastDeviceKind.googleCast) return;
     if (evt.kind == 'ended' && _state == CastState.connecting) return;
+    // Notre disconnect a déjà invalidé la session avant d'appeler le SDK.
+    // Son accusé de fin ne représente pas une autre session : rebump la
+    // révision ferait notamment disparaître l'erreur d'un timeout nettoyé.
+    if (evt.kind == 'ended' && _state == CastState.idle &&
+        _device == null && _transport == null && _sessionOwner == null) {
+      return;
+    }
     StructuredLogger.instance.info(
       domain: 'cast',
       event: 'native.session_event',
@@ -200,12 +215,13 @@ class CastManager extends ChangeNotifier {
     switch (evt.kind) {
       case 'ended':
         ++_sessionSeq;
+        _isSuspended = false;
         // Le SDK signale la fin DEFINITIVE de la session — on aligne
         // notre etat. ATTENTION : ne pas appeler disconnect() ici
         // (boucle : notre disconnect() ferme aussi la session SDK).
         if (_state == CastState.casting || _state == CastState.paused) {
           _state = CastState.idle;
-          _setProgress(CastProgress.idle);
+          _progress = CastProgress.idle;
         }
         // Une session terminee invalide aussi le device/transport et la
         // cible memorisee (si c'etait un Chromecast). Sans ce nettoyage,
@@ -241,10 +257,18 @@ class CastManager extends ChangeNotifier {
       case 'suspended':
         // Suspension TEMPORAIRE (changement de reseau, veille) : le SDK
         // peut la reprendre tout seul (`resumed`). On reflete juste
-        // l'etat sans jeter device/cible — comportement historique.
+        // l'état sans jeter device/cible. La TV peut continuer à lire :
+        // passer en idle ferait rouvrir le flux local pendant la reprise
+        // automatique du SDK, donc consommer deux connexions fournisseur.
         if (_state == CastState.casting || _state == CastState.paused) {
-          _state = CastState.idle;
-          _setProgress(CastProgress.idle);
+          _isSuspended = true;
+          notifyListeners();
+        }
+        break;
+      case 'resumed':
+        if (_isSuspended) {
+          _isSuspended = false;
+          notifyListeners();
         }
         break;
       case 'resumed_at_boot':
@@ -254,6 +278,7 @@ class CastManager extends ChangeNotifier {
         // active. L'utilisateur peut casser cette session via
         // disconnect() depuis l'UI ou le picker.
         if (_state == CastState.idle) {
+          _isSuspended = false;
           _state = CastState.casting;
           _setProgress(CastProgress.live);
         }
@@ -273,6 +298,11 @@ class CastManager extends ChangeNotifier {
         if (_state == CastState.connecting ||
             _state == CastState.casting ||
             _state == CastState.paused) {
+          // Le refus arrive parfois après le retour de playStream. Poser
+          // le nettoyage AVANT error permet à l'UI d'attendre le Stop avant
+          // de reprendre en local, même sans Future castTo encore en cours.
+          ++_sessionSeq;
+          _cleanupFailedTransport();
           _state = CastState.error;
           _errorMessage = l10nNow.castErrorReceiverRejected;
           _setProgress(CastProgress.failure(_errorMessage!));
@@ -304,8 +334,9 @@ class CastManager extends ChangeNotifier {
         // Lecture finie ou stop par la TV. Si on etait en cours, on
         // revient en idle (l'utilisateur peut relancer une chaine).
         if (_state == CastState.casting || _state == CastState.paused) {
+          _isSuspended = false;
           _state = CastState.idle;
-          _setProgress(CastProgress.idle);
+          _progress = CastProgress.idle;
           // AUDIT 19/08 : contrairement au chemin 'ended', ce chemin
           // (stop depuis la telecommande TV) ne liberait RIEN — la
           // session relais continuait de tirer le panel (1/1 occupe)
@@ -317,6 +348,9 @@ class CastManager extends ChangeNotifier {
             LocalCastServer.instance.clearRelay(_currentRelayUrl!);
             _currentRelayUrl = null;
           }
+          // Le listener peut déjà ouvrir une autre route : terminer le
+          // nettoyage de l'ancienne AVANT de lui rendre la main.
+          notifyListeners();
         }
         break;
       case CastNativePlayerState.loading:
@@ -337,6 +371,11 @@ class CastManager extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
+    ++_sessionSeq;
+    stopWarmup();
+    _stopDiscovery(notify: false);
+    _stopDlnaWatchdog();
     _nativeSessionSub?.cancel();
     _nativeMediaSub?.cancel();
     super.dispose();
@@ -346,6 +385,20 @@ class CastManager extends ChangeNotifier {
   CastDevice? _device;
   CastTransport? _transport;
   String? _currentTitle;
+  bool _disposed = false;
+  bool _isSuspended = false;
+
+  /// Identité de la route qui a demandé le Cast. Elle reste disponible
+  /// après une erreur/fin native pour que cette route reconnaisse SA fin
+  /// de session ; une déconnexion explicite la libère.
+  Object? _sessionOwner;
+
+  /// Les Stops sont sérialisés et capturés avant toute notification UI.
+  /// Une reprise locale ou le probe du prochain Cast attend leur fin ;
+  /// un ancien Stop ne doit jamais s'exécuter sur le nouveau récepteur.
+  Future<void>? _pendingSessionCleanup;
+  final Map<Object, Future<void>> _ownerCleanups =
+      Map<Object, Future<void>>.identity();
 
   /// Phase 1+/B5 (2026-06-01) — Annulation cooperative du `_castToInner`.
   ///
@@ -454,10 +507,26 @@ class CastManager extends ChangeNotifier {
   StreamSubscription<CastDevice>? _mdnsSub;
   Timer? _discoveryTimer;
   Timer? _warmupTimer;
+  Timer? _initialWarmupTimer;
+  bool _discovering = false;
+  int _discoverySeq = 0;
 
   // ----- Getters -----
 
-  CastState get state => _state;
+  // Compatibilité du picker historique : « discovering » ne représente
+  // que le scan SANS session. La découverte n'écrase jamais son état.
+  CastState get state =>
+      _state == CastState.idle && _discovering ? CastState.discovering : _state;
+  bool get isDiscovering => _discovering;
+  bool get isSuspended => _isSuspended;
+  int get sessionRevision => _sessionSeq;
+  bool ownsSession(Object owner) => identical(_sessionOwner, owner);
+
+  /// Attend les fermetures déjà engagées, sans piloter une autre session.
+  /// L'appelant re-vérifie l'état/propriétaire après cet await : une autre
+  /// route peut avoir demandé un Cast entre-temps.
+  Future<void> waitForSessionCleanup() =>
+      _pendingSessionCleanup ?? Future<void>.value();
   CastDevice? get device => _device;
   CastDevice? get selectedDevice => _selectedDevice;
   String? get currentTitle => _currentTitle;
@@ -488,17 +557,18 @@ class CastManager extends ChangeNotifier {
     Duration timeout = const Duration(seconds: 5),
     bool keepExisting = true,
   }) async {
-    if (_state == CastState.discovering) return;
+    if (_disposed || !CastPlatform.canSend || _discovering) return;
+    final int scanSeq = ++_discoverySeq;
     if (!keepExisting) _discovered.clear();
-    _state = CastState.discovering;
+    _discovering = true;
     notifyListeners();
-
-    _discoverySub?.cancel();
-    _mdnsSub?.cancel();
-    _discoveryTimer?.cancel();
+    if (_disposed || scanSeq != _discoverySeq || !_discovering) return;
 
     void onDevice(CastDevice d) {
-      if (!CastPlatform.supports(d.kind)) return;
+      if (_disposed || scanSeq != _discoverySeq || !_discovering ||
+          !CastPlatform.supports(d.kind)) {
+        return;
+      }
       // Double dédup : par id ET par host+port pour ne jamais lister
       // la même TV plusieurs fois même si SSDP et mDNS la renvoient
       // tous les deux (cas typique des Google TV qui font SSDP +
@@ -512,12 +582,17 @@ class CastManager extends ChangeNotifier {
     }
 
     // SSDP en parallèle (DLNA + Roku)
-    _discoverySub =
-        SsdpDiscovery.instance.discover(timeout: timeout).listen(onDevice);
+    final Stream<CastDevice> ssdp = _testTransportFactory != null
+        ? (_testSsdpDiscovery?.call(timeout) ?? const Stream<CastDevice>.empty())
+        : SsdpDiscovery.instance.discover(timeout: timeout);
+    _discoverySub = ssdp.listen(onDevice);
 
     // mDNS en parallèle (Chromecast / Google TV)
     if (!CastPlatform.isWindows) {
-      _mdnsSub = MdnsDiscovery.instance.discover(timeout: timeout).listen(onDevice);
+      final Stream<CastDevice> mdns = _testTransportFactory != null
+          ? (_testMdnsDiscovery?.call(timeout) ?? const Stream<CastDevice>.empty())
+          : MdnsDiscovery.instance.discover(timeout: timeout);
+      _mdnsSub = mdns.listen(onDevice);
     }
 
     _discoveryTimer = Timer(timeout, () {
@@ -528,27 +603,23 @@ class CastManager extends ChangeNotifier {
       // temps → lock multicast tenu quasi en permanence (batterie) et
       // sockets orphelines. Annuler la subscription complète le
       // générateur async* → son finally s'exécute immédiatement.
-      _discoverySub?.cancel();
-      _mdnsSub?.cancel();
-      _discoverySub = null;
-      _mdnsSub = null;
-      if (_state == CastState.discovering) {
-        _state = isCasting ? CastState.casting : CastState.idle;
-        notifyListeners();
-      }
+      if (scanSeq == _discoverySeq) stopDiscovery();
     });
   }
 
-  void stopDiscovery() {
+  void stopDiscovery() => _stopDiscovery();
+
+  void _stopDiscovery({bool notify = true}) {
+    ++_discoverySeq;
     _discoverySub?.cancel();
     _mdnsSub?.cancel();
     _discoveryTimer?.cancel();
     _discoverySub = null;
     _mdnsSub = null;
     _discoveryTimer = null;
-    if (_state == CastState.discovering) {
-      _state = isCasting ? CastState.casting : CastState.idle;
-      notifyListeners();
+    if (_discovering) {
+      _discovering = false;
+      if (notify && !_disposed) notifyListeners();
     }
   }
 
@@ -560,9 +631,13 @@ class CastManager extends ChangeNotifier {
     Duration initialDelay = const Duration(seconds: 2),
     Duration interval = const Duration(seconds: 60),
   }) {
-    _warmupTimer?.cancel();
-    Future<void>.delayed(initialDelay, () {
-      if (_state != CastState.discovering &&
+    stopWarmup();
+    if (_disposed || !CastPlatform.canSend) return;
+    // Un Timer annulable évite qu'un scan différé démarre après
+    // stopWarmup/dispose (Future.delayed ne pouvait pas être annulé).
+    _initialWarmupTimer = Timer(initialDelay, () {
+      _initialWarmupTimer = null;
+      if (!_discovering &&
           _state != CastState.connecting &&
           !isCasting) {
         startDiscovery(timeout: const Duration(seconds: 3));
@@ -576,7 +651,7 @@ class CastManager extends ChangeNotifier {
       // alors l'état `connecting` par `discovering` puis `idle`,
       // corrompant l'UI (mini-bar / overlay / picker) en pleine
       // négociation.
-      if (_state == CastState.discovering ||
+      if (_discovering ||
           _state == CastState.connecting ||
           isCasting) {
         return;
@@ -586,6 +661,8 @@ class CastManager extends ChangeNotifier {
   }
 
   void stopWarmup() {
+    _initialWarmupTimer?.cancel();
+    _initialWarmupTimer = null;
     _warmupTimer?.cancel();
     _warmupTimer = null;
   }
@@ -614,8 +691,15 @@ class CastManager extends ChangeNotifier {
     String? channelName,
     String? channelGenre,
     String? imageUrl,
+    Object? owner,
   }) async {
+    if (_disposed) throw StateError('CastManager déjà fermé');
+    if (!CastPlatform.supports(device.kind)) {
+      throw UnsupportedError('Cast indisponible dans cette édition de l’application');
+    }
     final int mySeq = ++_sessionSeq;
+    _sessionOwner = owner;
+    _isSuspended = false;
     final Duration timeout = _testTimeout ?? (device.kind == CastDeviceKind.dlna ? kCastTotalTimeoutDlna : kCastTotalTimeout);
     try {
       await _castToInner(device, mySeq: mySeq, streamUrl: streamUrl,
@@ -625,8 +709,12 @@ class CastManager extends ChangeNotifier {
       // Le timeout appartient à CET appel. Un ancien délai ne doit jamais
       // interrompre une nouvelle session qui fonctionne déjà.
       if (mySeq != _sessionSeq) return;
-      await disconnect();
+      await disconnectIfOwned(mySeq);
       if (_sessionSeq != mySeq + 1) return;
+      // Le Stop a libéré les ressources et le propriétaire. On rend
+      // l'identité au seul état terminal pour que la route d'origine
+      // reconnaisse son timeout et reprenne après le nettoyage.
+      _sessionOwner = owner;
       _state = CastState.error;
       _errorMessage = l10nNow.castErrorTimeout;
       _setProgress(CastProgress.failure(l10nNow.castErrorTimeoutRetry,
@@ -659,7 +747,8 @@ class CastManager extends ChangeNotifier {
 
   /// `true` si les surfaces globales (mini-barre, overlay) peuvent
   /// proposer Ch+/Ch- : un cast est actif ET on connaît la playlist.
-  bool get canZapOnCast => isCasting && (_castPlaylist?.length ?? 0) > 1;
+  bool get canZapOnCast =>
+      isCasting && !_isSuspended && (_castPlaylist?.length ?? 0) > 1;
 
   /// Chaîne actuellement diffusée sur la TV, si le contexte est connu.
   Channel? get currentCastChannel =>
@@ -685,12 +774,13 @@ class CastManager extends ChangeNotifier {
 
   Future<void> _zapCastBy(int delta) async {
     final List<Channel>? list = _castPlaylist;
-    if (list == null || list.length < 2 || !isCasting) return;
+    if (list == null || list.length < 2 || !isCasting || _isSuspended) return;
     // Un swap est déjà en cours (connecting) : on l'ignore plutôt que
     // d'empiler des sessions — `_sessionSeq` annulerait la précédente,
     // mais ne pas empiler du tout est plus doux pour le récepteur.
     if (_state == CastState.connecting) return;
     final int prev = _castIndex;
+    int zapSeq = _sessionSeq;
     final int next =
         ((_castIndex + delta) % list.length + list.length) % list.length;
     final Channel ch = list[next];
@@ -700,7 +790,14 @@ class CastManager extends ChangeNotifier {
       // Même URL que le lecteur : format Xtream mémorisé appliqué
       // (sinon 404 sur les panels qui exigent /live/).
       final String castUrl = await CastUrlResolver.resolve(ch);
-      await castChannelOnCurrentSession(
+      // La résolution peut attendre le stockage Xtream. Une autre route
+      // a pu reprendre le Cast entre-temps : ne jamais lui envoyer cet
+      // ancien zap, ni lui restaurer ensuite notre ancien index.
+      if (zapSeq != _sessionSeq || !identical(list, _castPlaylist) ||
+          _castIndex != next) {
+        return;
+      }
+      final Future<bool> swapping = castChannelOnCurrentSession(
         streamUrl: castUrl,
         title: ch.cleanName,
         channelName: ch.cleanName,
@@ -708,6 +805,8 @@ class CastManager extends ChangeNotifier {
         imageUrl: ch.logoUrl,
         channel: ch,
       );
+      zapSeq = _sessionSeq;
+      await swapping;
     } on Object catch (e, st) {
       // Échec du swap : l'état d'erreur est déjà posé par castTo et
       // affiché par les surfaces abonnées. On journalise, on ne crashe
@@ -718,8 +817,10 @@ class CastManager extends ChangeNotifier {
       }
       // L'index revient sur la chaîne réellement jouée : sinon le
       // prochain Ch+ sauterait une chaîne jamais lancée.
-      _castIndex = prev;
-      notifyListeners();
+      if (zapSeq == _sessionSeq && identical(list, _castPlaylist)) {
+        _castIndex = prev;
+        notifyListeners();
+      }
       StructuredLogger.instance.warn(
         domain: 'cast',
         event: 'zap.swap_failed',
@@ -751,7 +852,10 @@ class CastManager extends ChangeNotifier {
     String? channelGenre,
     String? imageUrl,
     Channel? channel,
+    Object? owner,
   }) async {
+    if (owner != null && !ownsSession(owner)) return false;
+    if (_isSuspended) return false;
     final CastDevice? target = _device ?? _selectedDevice;
     if (target == null) return false;
     // Garde le contexte de zap aligné quand le swap vient du lecteur
@@ -762,15 +866,18 @@ class CastManager extends ChangeNotifier {
       final int i = list.indexWhere((Channel c) => c.id == channel.id);
       if (i >= 0) _castIndex = i;
     }
-    await castTo(
+    final Future<void> casting = castTo(
       target,
       streamUrl: streamUrl,
       title: title,
       channelName: channelName,
       channelGenre: channelGenre,
       imageUrl: imageUrl,
+      owner: owner ?? _sessionOwner,
     );
-    return true;
+    final int mySeq = _sessionSeq;
+    await casting;
+    return mySeq == _sessionSeq && isCasting;
   }
 
   Future<void> _castToInner(
@@ -782,10 +889,18 @@ class CastManager extends ChangeNotifier {
     String? channelGenre,
     String? imageUrl,
   }) async {
-    stopDiscovery();
+    // Capturer/détacher l'ancienne session AVANT le premier await et
+    // avant toute notification. Une continuation obsolète ne doit jamais
+    // relire _transport et stopper celui de la route qui l'a remplacée.
+    final CastTransport? previous = _transport;
+    final String? previousRelay = _currentRelayUrl ??
+        (previous is GoogleCastTransport ? previous.lastRelayUrl : null);
+    _transport = null;
+    _currentRelayUrl = null;
     // Coupe une éventuelle surveillance DLNA de la session précédente
     // avant d'en démarrer une nouvelle (évite deux watchdogs concurrents).
     _stopDlnaWatchdog();
+    _stopRelayKeepAlive();
     // Phase 1+/B5 (2026-06-01) — Capture ma seq des le start. Si une
     // autre castTo bumpe _sessionSeq pendant que je tourne, j'arrete.
     // Transport créé par CETTE session (posé plus bas) : seul objet que le
@@ -798,45 +913,23 @@ class CastManager extends ChangeNotifier {
     _errorMessage = null;
     // Libere le relais de la session precedente (zap) : sinon la
     // session HLS continuait de tirer le flux jusqu'au GC d'inactivite.
-    if (_currentRelayUrl != null) {
-      LocalCastServer.instance.clearRelay(_currentRelayUrl!);
+    if (previousRelay != null) {
+      LocalCastServer.instance.clearRelay(previousRelay);
     }
-    _currentRelayUrl = null;
-    // Zap depuis un cast ou la TV tire ELLE-MEME le flux fournisseur
-    // (direct_tv, cast_proxy) : sur les comptes 1-connexion, cette
-    // connexion encore ouverte ferait refuser le probe de la NOUVELLE
-    // chaine (« limite atteinte »). On arrete la lecture de la TV
-    // d'abord — media stop SEULEMENT, la session Cast reste ouverte
-    // (la re-etablir couterait 5-20 s).
-    final GoogleCastTransport? prevGct =
-        _transport is GoogleCastTransport
-            ? _transport as GoogleCastTransport
-            : null;
-    if (prevGct != null &&
-        (prevGct.lastCastPath == 'direct_tv' ||
-            prevGct.lastCastPath == 'cast_proxy')) {
-      try {
-        await GoogleCastApi.instance.stop();
-      } on Exception catch (_) {/* best-effort : le probe tranchera */}
-    }
-    // MIROIR DLNA du réflexe ci-dessus (terrain LG webOS 2026-07-17,
-    // « limite atteinte » ×3 dans la boîte noire) : sur les stratégies
-    // DIRECTES, la TV DLNA tire ELLE-MÊME le flux fournisseur — et
-    // continue de le tirer pendant tout le pré-vol de la nouvelle
-    // chaîne → le panel 1-connexion refuse le probe. On arrête la
-    // lecture d'abord. Best-effort et borné COURT : si la TV traîne,
-    // le Stop systématique de playStream refera le ménage — ici on
-    // veut juste libérer le slot fournisseur avant le probe. Bonus :
-    // la TV a ~toute la durée du pré-vol pour se libérer → moins de
-    // 701 « Transition not available » au SetAVTransportURI suivant.
-    final Object? prevTransport = _transport;
-    if (prevTransport is UpnpAvTransport) {
-      try {
-        await prevTransport.stop().timeout(const Duration(seconds: 3));
-      } on Exception catch (_) {/* best-effort : le probe tranchera */}
-    }
-    if (mySeq != _sessionSeq) return;
+    // Tous les récepteurs, Roku compris, peuvent encore tirer le panel.
+    // Le prochain probe attend donc leur Stop. Un zap sur le même Google
+    // Cast garde la session SDK et arrête seulement le média. La barrière
+    // inclut aussi un disconnect précédent encore en cours : B annulé par
+    // C pendant le Stop de A ne doit pas laisser C doubler cette fermeture.
+    final Future<void> previousCleanup = _queueTransportStop(
+      previous,
+      keepGoogleSession: previous is GoogleCastTransport &&
+          previous.device.id == device.id,
+    );
+    stopDiscovery();
     _setProgress(CastProgress.validating);
+    await previousCleanup;
+    if (mySeq != _sessionSeq) return;
 
     final CastSessionDiagnostic diag = CastSessionDiagnostic(
       startedAt: DateTime.now(),
@@ -961,6 +1054,9 @@ class CastManager extends ChangeNotifier {
       // meurt en 404), pendant que son propre relais fuyait jusqu'à l'idle
       // timeout. Le nettoyage du catch n'utilise QUE cette référence.
       myTransport = _transport;
+      if (myTransport is GoogleCastTransport) {
+        myTransport.sessionIsCurrent = () => !_disposed && mySeq == _sessionSeq;
+      }
       if (device.kind == CastDeviceKind.dlna) {
         await _castDlnaWithFailover(
           transport: myTransport! as UpnpAvTransport,
@@ -978,8 +1074,7 @@ class CastManager extends ChangeNotifier {
         // résolu par le probe du téléphone. Cf. GoogleCastTransport
         // .originalUpstreamUrl (diag SHIELD 2026-07-06 : redirect /live/).
         if (myTransport is GoogleCastTransport) {
-          (myTransport as GoogleCastTransport).originalUpstreamUrl =
-              probe.originalUrl;
+          myTransport.originalUpstreamUrl = probe.originalUrl;
         }
         final Stopwatch sw = Stopwatch()..start();
         try {
@@ -992,7 +1087,7 @@ class CastManager extends ChangeNotifier {
           // n'est connu qu'apres coup, expose par GoogleCastTransport.
           final GoogleCastTransport? gct =
               myTransport is GoogleCastTransport
-                  ? myTransport as GoogleCastTransport
+                  ? myTransport
                   : null;
           final String realPath = gct?.lastCastPath ?? 'direct';
           diag.attempts.add(AttemptResult(
@@ -1013,7 +1108,7 @@ class CastManager extends ChangeNotifier {
           // rattrape TOUT, on archive, on nettoie.
           final GoogleCastTransport? gctF =
               myTransport is GoogleCastTransport
-                  ? myTransport as GoogleCastTransport
+                  ? myTransport
                   : null;
           final String realPathF = gctF?.lastCastPath ?? 'direct';
           diag.attempts.add(AttemptResult(
@@ -1085,6 +1180,7 @@ class CastManager extends ChangeNotifier {
       if (mySeq != _sessionSeq) {
         return;
       }
+      _cleanupFailedTransport();
       _state = CastState.error;
       _errorMessage = e.toString();
       // Le cast a echoue → plus personne a alimenter : coupe le
@@ -1120,8 +1216,10 @@ class CastManager extends ChangeNotifier {
           },
         );
       }
-      // On garde _device/_transport pour permettre le diagnostic UI ;
-      // ils seront vraiment nettoyés au prochain disconnect().
+      // Le device reste disponible pour le diagnostic. Le transport et le
+      // relais sont déjà détachés et leur fermeture est dans la barrière :
+      // même un appelant sans UI ne laisse pas une session en erreur tirer
+      // le fournisseur jusqu'au prochain disconnect.
       rethrow;
     } finally {
       diag.totalDurationMs = totalSw.elapsedMilliseconds;
@@ -2026,7 +2124,7 @@ class CastManager extends ChangeNotifier {
   Future<void> pause() async {
     final CastTransport? transport = _transport;
     final int revision = _sessionSeq;
-    if (transport == null) return;
+    if (transport == null || _isSuspended) return;
     try {
       await transport.pause();
       if (revision != _sessionSeq || !identical(transport, _transport)) return;
@@ -2038,7 +2136,7 @@ class CastManager extends ChangeNotifier {
   Future<void> resume() async {
     final CastTransport? transport = _transport;
     final int revision = _sessionSeq;
-    if (transport == null) return;
+    if (transport == null || _isSuspended) return;
     try {
       await transport.resume();
       if (revision != _sessionSeq || !identical(transport, _transport)) return;
@@ -2125,27 +2223,116 @@ class CastManager extends ChangeNotifier {
     unawaited(PipService.instance.stopBackgroundAudio());
   }
 
+  /// Pose une fermeture dans l'ordre des sessions. Seule la référence
+  /// capturée est manipulée après l'attente ; jamais le champ _transport.
+  Future<void> _queueTransportStop(
+    CastTransport? previous, {
+    bool keepGoogleSession = false,
+  }) {
+    if (previous == null) return waitForSessionCleanup();
+    final Future<void> earlierCleanup = waitForSessionCleanup();
+    final Future<void> cleanup = () async {
+      await earlierCleanup;
+      if (previous is GoogleCastTransport) {
+        // Ne PAS borner previous.stop() de l'extérieur : son Future
+        // continuerait après le délai et pourrait alors appeler le
+        // disconnect SDK sur la NOUVELLE session. Chaque commande est
+        // bornée séparément ; aucune continuation tardive ne les enchaîne.
+        try {
+          await GoogleCastApi.instance.stop().timeout(const Duration(seconds: 5));
+        } on Object catch (_) { /* fermeture best-effort du média */ }
+        if (!keepGoogleSession) {
+          try {
+            await GoogleCastApi.instance.disconnect().timeout(const Duration(seconds: 5));
+          } on Object catch (_) { /* fermeture best-effort de la session */ }
+        }
+        return;
+      }
+      try {
+        await previous.stop().timeout(const Duration(seconds: 5));
+      } on Object catch (_) {
+        // TV hors réseau : borne l'attente, l'état local est déjà détaché.
+      }
+    }();
+    _pendingSessionCleanup = cleanup;
+    return cleanup;
+  }
+
+  void _rememberOwnerCleanup(Object? owner, Future<void> cleanup) {
+    if (owner == null) return;
+    _ownerCleanups[owner] = cleanup;
+    unawaited(cleanup.then((_) {
+      if (identical(_ownerCleanups[owner], cleanup)) {
+        _ownerCleanups.remove(owner);
+      }
+    }));
+  }
+
+  /// Détache les ressources d'un échec sans effacer son identité et son
+  /// diagnostic. La barrière est publiée avant la notification error.
+  void _cleanupFailedTransport() {
+    final CastTransport? previous = _transport;
+    final String? relay = _currentRelayUrl ??
+        (previous is GoogleCastTransport ? previous.lastRelayUrl : null);
+    _transport = null;
+    _currentRelayUrl = null;
+    _isSuspended = false;
+    _stopDlnaWatchdog();
+    _stopRelayKeepAlive();
+    if (relay != null) LocalCastServer.instance.clearRelay(relay);
+    _rememberOwnerCleanup(_sessionOwner, _queueTransportStop(previous));
+  }
+
+  /// Une ancienne route peut se fermer après le démarrage d'une nouvelle.
+  /// Sa révision ne lui donne aucun droit de stopper cette nouvelle session.
+  Future<bool> disconnectIfOwned(int revision) async {
+    if (revision != _sessionSeq) return false;
+    await disconnect();
+    return true;
+  }
+
+  /// Jeton de route stable à travers les zaps, utilisable aussi pendant
+  /// castTo. Si le picker/mini-lecteur a déjà demandé le Stop, on attend
+  /// encore SON nettoyage avant de reprendre en local, sans toucher à la
+  /// session éventuellement ouverte depuis par une autre route.
+  Future<bool> disconnectForOwner(Object owner) async {
+    if (ownsSession(owner)) {
+      await disconnect();
+      return true;
+    }
+    final Future<void>? cleanup = _ownerCleanups[owner];
+    if (cleanup == null) return false;
+    await cleanup;
+    return true;
+  }
+
   Future<void> disconnect() async {
     ++_sessionSeq;
     final CastTransport? previous = _transport;
-    final String? relay = _currentRelayUrl;
+    final String? relay = _currentRelayUrl ??
+        (previous is GoogleCastTransport ? previous.lastRelayUrl : null);
+    final Object? owner = _sessionOwner;
     // Détacher AVANT l'attente : aucune continuation ne peut recréer ou
     // nettoyer la session suivante après un Stop lent de l'ancienne TV.
     _stopDlnaWatchdog();
     _stopRelayKeepAlive();
     _transport = null;
     _currentRelayUrl = null;
+    _sessionOwner = null;
+    _isSuspended = false;
     _device = null;
     _selectedDevice = null;
     _currentTitle = null;
     _castPlaylist = null;
     _castIndex = -1;
     _state = CastState.idle;
-    _setProgress(CastProgress.idle);
     if (relay != null) LocalCastServer.instance.clearRelay(relay);
-    try {
-      await previous?.stop().timeout(const Duration(seconds: 5));
-    } catch (_) { /* TV hors réseau : état local déjà nettoyé. */ }
+    final Future<void> cleanup = _queueTransportStop(previous);
+    _rememberOwnerCleanup(owner, cleanup);
+    // Une UI peut réagir immédiatement à idle : elle doit déjà pouvoir
+    // attendre cette fermeture via waitForSessionCleanup/disconnectForOwner.
+    _setProgress(CastProgress.idle);
+    await cleanup;
   }
 
   // ============================================================

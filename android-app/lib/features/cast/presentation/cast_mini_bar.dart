@@ -15,12 +15,14 @@ import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../data/cast_manager.dart';
+import '../data/cast_platform.dart';
 
 class CastMiniBar extends StatelessWidget {
   const CastMiniBar({super.key});
 
   @override
   Widget build(BuildContext context) {
+    if (!CastPlatform.canSend) return const SizedBox.shrink();
     return ListenableBuilder(
       listenable: CastManager.instance,
       builder: (BuildContext context, _) {

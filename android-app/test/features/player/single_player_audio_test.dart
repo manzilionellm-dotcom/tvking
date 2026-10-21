@@ -11,7 +11,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:native_video_player/native_video_player.dart';
 import 'package:native_video_player/playback_lease.dart';
 
-class _FakeBackend implements NativeVideoBackend {
+class _FakeBackend extends NativeVideoBackend {
   int silences = 0;
   int opens = 0;
   NativeTrack? picked;
@@ -122,7 +122,8 @@ void main() {
     right.dispose();
   });
 
-  test('la première liste de pistes choisit le français, pas le commentaire', () {
+  test('la première liste de pistes choisit le français, pas le commentaire',
+      () {
     final NativeVideoController player = NativeVideoController();
     player.setUrl('http://a.example.invalid/live.ts');
     player.applyBackendEvent('tracks', <Map<String, Object?>>[

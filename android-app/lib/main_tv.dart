@@ -16,6 +16,7 @@ import 'package:flutter/services.dart';
 import 'package:native_video_player/native_video_player.dart';
 
 import 'core/app/app_platform.dart';
+import 'core/app/zuno_edition.dart';
 import 'core/blackbox/black_box.dart';
 import 'core/blackbox/black_box_upload.dart';
 import 'features/player/data/audio_diag_prefs.dart';
@@ -30,6 +31,7 @@ import 'core/i18n/locale_repository.dart';
 import 'features/tv/core/tv_back_guard.dart';
 import 'core/notifications/notification_service.dart';
 import 'features/channels/data/recently_watched_repository.dart';
+import 'features/cast/data/cast_platform.dart';
 import 'features/device/data/device_identity.dart';
 import 'features/playlists/data/playlist_repository.dart';
 import 'features/playlists/data/favorites_repository.dart';
@@ -55,6 +57,10 @@ import 'features/tv/presentation/tv_app.dart';
 /// Canal de mise à jour, posé par le CI : vide pour les clients,
 /// « test » pour la box de test (voir build-zuno-tv.yml).
 const String kZunoUpdateChannel = String.fromEnvironment('ZUNO_UPDATE_CHANNEL');
+
+/// Les artefacts Cast ont une identité d'installation distincte. Aucun ne
+/// doit proposer de migrer vers un APK TV ou l'installeur Windows client.
+const bool kZunoCastTest = bool.fromEnvironment('ZUNO_CAST_TEST');
 
 void main() => runGuarded(bootstrapZunoTv);
 
@@ -93,7 +99,17 @@ void _wireAudioDiagnostic() {
 /// fonction : MÊME app, même design, mêmes services. [wrap] permet au PC
 /// d'ajouter ses raccourcis clavier (Échap = Retour, F11 = plein écran)
 /// autour de l'app, sans rien changer sur la box.
-Future<void> bootstrapZunoTv({Widget Function(Widget app)? wrap}) async {
+Future<void> bootstrapZunoTv({
+  ZunoEdition edition = ZunoEdition.television,
+  Widget Function(Widget app)? wrap,
+}) async {
+  // La TV n'instancie aucun service Cast. Les entrées tactile et ordinateur
+  // s'identifient ici explicitement, même sur un très grand écran.
+  CastPlatform.configureZuno(edition);
+  // L'entrée tactile n'a pas encore de canal client propre : même un
+  // lancement local sans drapeau de test ne doit pas proposer l'APK TV.
+  UpdateService.enabled = !kZunoCastTest && edition != ZunoEdition.touch;
+
   // RETOUR « UN À UN » : un appui Retour ne recule que d'UN écran (voir
   // tv_back_guard.dart). Inscrit avant runApp → consulté avant le Navigator.
   TvBackGuard.install();
@@ -107,8 +123,8 @@ Future<void> bootstrapZunoTv({Widget Function(Widget app)? wrap}) async {
   // distant plus bas → la boucle est cassée. Voir core/app/boot_guard.dart.
   await BootGuard.instance.beginBoot();
 
-  // Cette app est la version TÉLÉVISION → le heartbeat enverra
-  // platform='tv' et le panel l'affichera comme 📺 (vs 📱 mobile).
+  // Identité historique ZUNO pour le panel, partagée avec Windows. Elle
+  // ne décide pas des capacités de l'app : celles-ci dépendent d'edition.
   AppPlatform.isTv = true;
 
   // MISE À JOUR IN-APP : la TV ne regarde QUE sa propre release (zuno-tv),
@@ -153,8 +169,8 @@ Future<void> bootstrapZunoTv({Widget Function(Widget app)? wrap}) async {
   // sur des box à RAM limitée (SHIELD incluse). Aucune fonctionnalité TV perdue.
 
   // La TV est TOUJOURS en paysage : on verrouille (pas de portrait).
-  // (Orientation : Android uniquement — sur PC la fenêtre est libre.)
-  if (Platform.isAndroid) {
+  // (Le téléphone / la tablette et la fenêtre PC restent libres.)
+  if (Platform.isAndroid && edition == ZunoEdition.television) {
     await SystemChrome.setPreferredOrientations(<DeviceOrientation>[
       DeviceOrientation.landscapeLeft,
       DeviceOrientation.landscapeRight,

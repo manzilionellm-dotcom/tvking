@@ -171,10 +171,39 @@ class _ProxyVerdict {
   final DateTime at;
 }
 
+class _GoogleCastSessionCancelled implements Exception {
+  const _GoogleCastSessionCancelled();
+
+  @override
+  String toString() => 'Session Google Cast remplacée ou annulée';
+}
+
 class GoogleCastTransport implements CastTransport {
   GoogleCastTransport(this.device);
 
   final CastDevice device;
+
+  /// Le SDK est partagé par toutes les routes. CastManager injecte la
+  /// révision de CE démarrage : après un await (picker, réseau, LOAD), une
+  /// ancienne session ne doit plus charger de média ni ouvrir de repli sur
+  /// la TV que la route suivante vient de prendre en charge.
+  bool Function()? sessionIsCurrent;
+
+  void _checkCurrentSession() {
+    if (sessionIsCurrent?.call() == false) {
+      throw const _GoogleCastSessionCancelled();
+    }
+  }
+
+  /// Un relais peut avoir fini de s'enregistrer pendant l'annulation.
+  /// Libérer seulement cette URL avant de remonter l'annulation évite
+  /// d'occuper le fournisseur avec une lecture qui ne sera jamais envoyée.
+  void _checkRegisteredRelay(String? relayUrl) {
+    if (sessionIsCurrent?.call() == false) {
+      if (relayUrl != null) LocalCastServer.instance.clearRelay(relayUrl);
+      throw const _GoogleCastSessionCancelled();
+    }
+  }
 
   /// Dernier chemin de routage reellement emprunte par [playStream] :
   /// 'cast_proxy' | 'local_hls_relay' | 'direct'. Lu par CastManager pour
@@ -212,6 +241,7 @@ class GoogleCastTransport implements CastTransport {
     String title = 'ZUNO',
     String? imageUrl,
   }) async {
+    _checkCurrentSession();
     // Reset des marqueurs de diagnostic : evite d'afficher le chemin
     // du cast precedent si celui-ci echoue avant la decision de routage.
     lastCastPath = 'direct';
@@ -224,6 +254,7 @@ class GoogleCastTransport implements CastTransport {
     //    custom ROMs). Dans ce cas on lève — le CastManager retombera
     //    sur le fallback navigateur ou affichera un message friendly.
     final bool available = await api.isCastAvailable();
+    _checkCurrentSession();
     if (!available) {
       throw Exception(
         'Google Cast indisponible sur ce téléphone — '
@@ -316,6 +347,7 @@ class GoogleCastTransport implements CastTransport {
         );
       } else if (kCastUseCustomReceiver) {
         proxied = await _signedCastProxyUrl(upstream);
+        _checkCurrentSession();
 
         // NOUVEAU (CAST_HANDOFF §6.1) : ne PAS faire confiance aveuglément au
         // proxy — le Worker peut être BLOQUÉ par le fournisseur IPTV (IP
@@ -324,7 +356,9 @@ class GoogleCastTransport implements CastTransport {
         // vérifie que /cast-proxy DÉLIVRE vraiment avant de l'envoyer à la TV
         // (sauf verdict « délivre » tout frais dans le mémo).
         if (proxied != null && memoBlocked != false) {
-          if (await _proxyDelivers(proxied)) {
+          final bool delivers = await _proxyDelivers(proxied);
+          _checkCurrentSession();
+          if (delivers) {
             CastProxyVerdictMemo.instance
                 .remember(upstreamHost, blocked: false);
           } else {
@@ -409,6 +443,7 @@ class GoogleCastTransport implements CastTransport {
         );
         return; // La TV tire le flux via le Worker — téléphone libre.
       } on Exception catch (e) {
+        _checkCurrentSession();
         CastProxyVerdictMemo.instance
             .remember(upstreamHost, blocked: true);
         StructuredLogger.instance.warn(
@@ -464,6 +499,7 @@ class GoogleCastTransport implements CastTransport {
         // reste null → CastManager ne démarre pas le keep-alive).
         return;
       } on Exception catch (e) {
+        _checkCurrentSession();
         CastProxyVerdictMemo.directTv
             .remember(upstreamHost, blocked: true);
         StructuredLogger.instance.warn(
@@ -494,6 +530,7 @@ class GoogleCastTransport implements CastTransport {
         budget: const Duration(seconds: 25),
       );
     } on Exception {
+      _checkCurrentSession();
       // SAUVETAGE AUDIO (terrain 2026-07-16, SHIELD × AC-3) : le relais
       // a servi le flux (load_ok) mais le récepteur web n'a pas pu le
       // JOUER — mux.js ne sait ré-emballer que l'AAC/MP3, un TS en
@@ -573,6 +610,7 @@ class GoogleCastTransport implements CastTransport {
     required String upstream,
     required String profileUrl,
   }) async {
+    _checkCurrentSession();
     final DlnaProfile profile =
         DlnaProfiles.select(url: profileUrl, finalMime: null);
     final String? hlsRelay = await LocalCastServer.instance.registerRelay(
@@ -581,6 +619,7 @@ class GoogleCastTransport implements CastTransport {
       receiverHost: device.host,
       wrapInHls: true,
     );
+    _checkRegisteredRelay(hlsRelay);
     if (hlsRelay == null) {
       throw Exception(
         'Le cast vers cette TV est indisponible (réseau incompatible). '
@@ -610,6 +649,7 @@ class GoogleCastTransport implements CastTransport {
     required String profileUrl,
     required String streamUrl,
   }) async {
+    _checkCurrentSession();
     final bool isLiveTs = _looksLikeRawMpegTs(streamUrl);
     if (!isLiveTs && !isHlsOrDash(streamUrl)) {
       // VOD : pass-through du fichier (wrapInHls:false → route /relay/<t>.<ext>).
@@ -621,6 +661,7 @@ class GoogleCastTransport implements CastTransport {
         receiverHost: device.host,
         wrapInHls: false,
       );
+      _checkRegisteredRelay(passthrough);
       if (passthrough != null) {
         StructuredLogger.instance.info(
           domain: 'cast',
@@ -650,6 +691,7 @@ class GoogleCastTransport implements CastTransport {
     String? imageUrl,
     required Duration budget,
   }) async {
+    _checkCurrentSession();
     // DIAGNOSTIC (brief §4.3) — tracer EXACTEMENT l'URL et le MIME
     // pousses au recepteur (URL redactee, pas de fuite credentials).
     StructuredLogger.instance.info(
@@ -682,6 +724,7 @@ class GoogleCastTransport implements CastTransport {
       imageUrl: imageUrl,
       debug: kCastDebugOverlay,
     );
+    _checkCurrentSession();
     if (!loaded) {
       throw Exception('La TV a refusé le flux.');
     }
@@ -693,7 +736,9 @@ class GoogleCastTransport implements CastTransport {
     // lecture REELLE (etat PLAYING) avant de declarer le succes.
     try {
       await _awaitRealPlayback(api, budget: budget);
+      _checkCurrentSession();
     } on Exception catch (e) {
+      _checkCurrentSession();
       // Sur le chemin relais, enrichit l'erreur avec l'etat REEL de la
       // session HLS (codec vu en PMT + compteurs de requetes du
       // recepteur) : « codec/format non supporte » avec 0 segment servi
@@ -818,10 +863,12 @@ class GoogleCastTransport implements CastTransport {
   /// initial ET par les replis qui changent de receiver en cours de
   /// playStream (cast_proxy custom → relais/direct sur le Default).
   Future<void> _ensureSessionOn(GoogleCastApi api, String castPath) async {
+    _checkCurrentSession();
     final String desiredReceiver = receiverAppIdForCastPath(castPath);
     final String switchOutcome = kCastUseCustomReceiver
         ? await api.setReceiverApplicationId(desiredReceiver)
         : 'skipped';
+    _checkCurrentSession();
     StructuredLogger.instance.info(
       domain: 'cast',
       event: 'google.receiver_select',
@@ -845,12 +892,14 @@ class GoogleCastTransport implements CastTransport {
     } else {
       hasSession = await api.hasActiveSession();
     }
+    _checkCurrentSession();
 
     // Pas de session → on demande au SDK d'ouvrir SON dialog natif.
     // L'utilisateur sélectionne sa TV. Le SDK gère la négociation,
     // le pairing, etc. — c'est exactement le flow Netflix / YouTube.
     if (!hasSession) {
       await api.showRoutePicker();
+      _checkCurrentSession();
       // Le dialog est asynchrone côté utilisateur (il doit tap sa TV).
       // On poll hasActiveSession pendant 30s max — au-delà on suppose
       // que l'utilisateur a annulé.
@@ -858,7 +907,10 @@ class GoogleCastTransport implements CastTransport {
           DateTime.now().add(const Duration(seconds: 30));
       while (DateTime.now().isBefore(deadline)) {
         await Future<void>.delayed(const Duration(milliseconds: 500));
-        if (await api.hasActiveSession()) {
+        _checkCurrentSession();
+        final bool active = await api.hasActiveSession();
+        _checkCurrentSession();
+        if (active) {
           hasSession = true;
           break;
         }
@@ -874,15 +926,19 @@ class GoogleCastTransport implements CastTransport {
   /// active pendant sa fermeture, d'où la double condition session + App ID.
   /// `null` (métadonnées pas encore remontées) est toléré : l'App ID du
   /// contexte vient d'être changé, toute NOUVELLE session est la bonne.
-  static Future<bool> _waitForSessionOn(
+  Future<bool> _waitForSessionOn(
     GoogleCastApi api,
     String appId,
     Duration timeout,
   ) async {
     final DateTime deadline = DateTime.now().add(timeout);
     while (DateTime.now().isBefore(deadline)) {
-      if (await api.hasActiveSession()) {
+      _checkCurrentSession();
+      final bool active = await api.hasActiveSession();
+      _checkCurrentSession();
+      if (active) {
         final String? current = await api.currentReceiverApplicationId();
+        _checkCurrentSession();
         if (current == null || current == appId) return true;
       }
       await Future<void>.delayed(const Duration(milliseconds: 500));
@@ -906,17 +962,22 @@ class GoogleCastTransport implements CastTransport {
   /// xtream_url_variants) ; une URL non-Xtream part telle quelle.
   @visibleForTesting
   Future<String> directTvCandidate(String upstream) async {
+    _checkCurrentSession();
     final XtreamUrlShape? shape = XtreamUrlShape.parse(upstream);
     final bool liveShape = shape != null &&
         (shape.prefix == 'live' ||
             (shape.prefix == null && shape.ext == 'ts'));
     if (liveShape) {
       final String hls = shape.build(newPrefix: 'live', newExt: 'm3u8');
-      if (await _urlDelivers(hls)) return hls;
+      final bool hlsWorks = await _urlDelivers(hls);
+      _checkCurrentSession();
+      if (hlsWorks) return hls;
       // Forme nue (panels sans préfixe) : deuxième et dernière chance HLS.
       if (shape.prefix == null) {
         final String nakedHls = shape.build(newPrefix: null, newExt: 'm3u8');
-        if (await _urlDelivers(nakedHls)) return nakedHls;
+        final bool nakedHlsWorks = await _urlDelivers(nakedHls);
+        _checkCurrentSession();
+        if (nakedHlsWorks) return nakedHls;
       }
     }
     return upstream;
