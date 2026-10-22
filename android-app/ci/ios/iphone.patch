@@ -303,7 +303,7 @@ index d1202fa..2677552 100644
 +      isAdult(name, category) == adultOnly;
  }
 diff --git a/pubspec.yaml b/pubspec.yaml
-index 927af7d..cb2dc97 100644
+index 927af7d..175387d 100644
 --- a/pubspec.yaml
 +++ b/pubspec.yaml
 @@ -95,6 +95,12 @@ dependencies:
@@ -319,12 +319,14 @@ index 927af7d..cb2dc97 100644
    # Binaires libmpv pour WINDOWS (équivalent desktop de _android_video). Sans
    # ce package, `flutter build windows` ne sait pas lier le moteur de lecture
    # (libmpv) → pas de vidéo sur PC. Il n'embarque QUE les .dll Windows, donc
-@@ -368,8 +374,8 @@ dev_dependencies:
+@@ -367,9 +373,9 @@ dev_dependencies:
+ #  rendrait le 7 trop petit. Le signe reste dans la zone sûre du masque.
  # ============================================================
  flutter_launcher_icons:
-   android: true
+-  android: true
 -  ios: false
 -  remove_alpha_ios: false
++  android: false
 +  ios: true
 +  remove_alpha_ios: true
    image_path: "assets/branding/7motion_launcher_red.png"
