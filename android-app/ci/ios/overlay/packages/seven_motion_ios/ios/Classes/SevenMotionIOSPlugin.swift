@@ -2,12 +2,18 @@ import Flutter
 import UIKit
 import AVFoundation
 import Security
+import UserNotifications
 
 /// Le moteur vidéo reste media_kit. Ce pont apporte les services Apple qui
 /// étaient auparavant confiés à MainActivity sur Android.
 public final class SevenMotionIOSPlugin: NSObject, FlutterPlugin {
     public static func register(with registrar: FlutterPluginRegistrar) {
         let plugin = SevenMotionIOSPlugin()
+        // FlutterAppDelegate relaie les événements vers flutter_local_notifications.
+        // Nécessaire pour afficher également une notification au premier plan.
+        if let delegate = UIApplication.shared.delegate as? UNUserNotificationCenterDelegate {
+            UNUserNotificationCenter.current().delegate = delegate
+        }
         for name in ["device", "pip"] {
             let channel = FlutterMethodChannel(
                 name: "com.manzilionellm.tvking/\(name)",
