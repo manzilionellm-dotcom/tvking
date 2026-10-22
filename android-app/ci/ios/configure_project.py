@@ -12,9 +12,13 @@ def configure(root: Path, bundle: str):
     info = root / 'ios/Runner/Info.plist'
     project = root / 'ios/Runner.xcodeproj/project.pbxproj'
     podfile = root / 'ios/Podfile'
-    for path in [info, project, podfile]:
+    for path in [info, project]:
         if not path.is_file():
             raise FileNotFoundError(str(path))
+    # CocoaPods n'est plus généré au flutter create --no-pub sous Flutter
+    # 3.47. Notre modèle explicite est partagé par le build et la signature.
+    if not podfile.is_file():
+        podfile.write_text(Path(__file__).with_name('Podfile').read_text())
     data = plistlib.loads(info.read_bytes())
     data.update({
         'CFBundleDisplayName': '7 MOTION',

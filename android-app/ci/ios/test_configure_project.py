@@ -22,7 +22,7 @@ class ProjectTests(unittest.TestCase):
             pbx.write_text(('PRODUCT_BUNDLE_IDENTIFIER = com.example.app;\n'
                             'IPHONEOS_DEPLOYMENT_TARGET = 13.0;\n'
                             'TARGETED_DEVICE_FAMILY = "1,2";\n') * 3)
-            (root / 'ios/Podfile').write_text("# platform :ios, '13.0'\n")
+            # Cas réel Flutter 3.47 : aucun Podfile n'a encore été généré.
             module.configure(root, 'com.manzilionellm.sevenmotion')
             first = (info.read_bytes(),pbx.read_bytes())
             module.configure(root, 'com.manzilionellm.sevenmotion')
@@ -34,6 +34,7 @@ class ProjectTests(unittest.TestCase):
             self.assertEqual(data['UIBackgroundModes'],['audio'])
             self.assertEqual(data['CFBundleVersion'],'$(FLUTTER_BUILD_NUMBER)')
             self.assertNotIn('1,2',pbx.read_text())
+            self.assertIn("platform :ios, '15.0'", (root / 'ios/Podfile').read_text())
     def test_missing_project_is_an_error(self):
         with tempfile.TemporaryDirectory() as directory:
             with self.assertRaises(FileNotFoundError): module.configure(Path(directory),'com.example.valid')
