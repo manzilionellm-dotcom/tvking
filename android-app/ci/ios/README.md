@@ -37,8 +37,8 @@ simulé ne prouve ni la lecture d'une source, ni l'audio verrouillé, ni Face ID
 - Description de permission Face ID pour le verrou biométrique existant.
 - Session audio Apple et identifiant privé dans le trousseau local.
 - Clé AES aléatoire de 32 octets dans le trousseau pour le chiffrement existant.
-- Plateforme `ios` envoyée au panel ; il faut vérifier la présentation du nouveau
-  libellé dans le backend avant ouverture aux clients.
+- Profil `mobile` conservé pour le panel existant, qui n'accepte pas encore un
+  profil `ios`. Le pont natif identifie Apple dans les informations d'assistance.
 - Restrictions Store existantes activées : pas de téléchargement/mise à jour APK.
 - Rayon réservé 18+ absent de cette édition ; filtre du dépôt de chaînes et de VOD.
 

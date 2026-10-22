@@ -21,7 +21,7 @@ void main() {
   test('canal Apple : aucune recherche de mise à jour APK', () async {
     expect(kIsAppStoreBuild, isTrue);
     expect(kIsPlayBuild, isTrue);
-    expect(AppPlatform.id, 'ios');
+    expect(AppPlatform.id, 'mobile'); // Contrat actuel du panel d'activation.
     expect(await UpdateChecker.instance.check(), isNull);
     expect(await ForceUpdateChecker.instance.mustUpdate(), isFalse);
   });
