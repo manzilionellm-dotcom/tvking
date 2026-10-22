@@ -1,0 +1,177 @@
+name: 7 MOTION iPhone — build and verify
+'on':
+  push:
+    branches: ['feature/7motion-iphone-*', 'ccr-b93e1afd-gwirw0']
+    paths:
+      - '.github/workflows/7motion-ios.yml'
+      - 'android-app/ci/ios/**'
+  workflow_dispatch:
+    inputs:
+      signed_archive:
+        description: 'Produire aussi une archive Apple signée (sans publication)'
+        type: boolean
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: 7motion-iphone-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  iphone:
+    runs-on: macos-15
+    timeout-minutes: 55
+    steps:
+      - name: Checkout iPhone preparation
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          path: mission
+          persist-credentials: false
+      - name: Respect existing app release guard
+        working-directory: mission
+        env:
+          APP_OPERATION: build
+          APP_PUBLISH: 'false'
+          APP_TEST_BOX: 'false'
+        run: node .github/app-release-guard.mjs
+      - name: Checkout exact published mobile base
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 37fdf3305c5de9d35e20fd6567df38008fc7a7ee
+          path: phone
+          persist-credentials: false
+      - name: Reconstruct 1988121 and apply iPhone port
+        run: python3 mission/android-app/ci/ios/prepare_source.py mission phone
+      - name: Validate project configuration scripts
+        run: python3 -m unittest discover -s mission/android-app/ci/ios -p 'test_*.py'
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+      - name: Check App Store SDK requirement
+        run: |
+          set -euo pipefail
+          xcodebuild -version
+          XCODE_MAJOR=$(xcodebuild -version | head -1 | awk '{print $2}' | cut -d. -f1)
+          [ "$XCODE_MAJOR" -ge 26 ]
+          xcrun --sdk iphoneos --show-sdk-version
+      - name: Setup proven mobile Flutter version
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+        with:
+          flutter-version: '3.47.7'
+          channel: stable
+          cache: false
+          pub-cache: false
+      - name: Generate iPhone project
+        working-directory: phone
+        run: |
+          set -euo pipefail
+          flutter config --no-enable-swift-package-manager
+          flutter create . --platforms=ios --org com.manzilionellm --project-name tv_king --no-pub
+          python3 ../mission/android-app/ci/ios/configure_project.py .
+          flutter pub get
+          flutter gen-l10n
+          dart run flutter_launcher_icons
+      - name: iPhone behavior tests
+        working-directory: phone
+        run: flutter test test/ios/iphone_contract_test.dart --dart-define=APP_STORE_BUILD=true --reporter expanded
+      - name: Build release for physical iPhone without signing
+        working-directory: phone
+        run: |
+          set -euo pipefail
+          flutter build ios --release --no-codesign --no-tree-shake-icons \
+            --target=lib/main.dart --build-name=0.3.7 --build-number="${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}" \
+            --dart-define=APP_STORE_BUILD=true --dart-define=APP_BUILD_LABEL=1988121 \
+            --dart-define=GIT_SHA="$GITHUB_SHA"
+          test -d build/ios/iphoneos/Runner.app
+          plutil -lint build/ios/iphoneos/Runner.app/Info.plist
+          ditto -c -k --keepParent build/ios/iphoneos/Runner.app build/7motion-iphone-unsigned.zip
+      - name: Build simulator for launch verification
+        working-directory: phone
+        run: |
+          flutter build ios --simulator --debug --no-codesign --target=lib/main.dart \
+            --build-name=0.3.7 --build-number="${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}" \
+            --dart-define=APP_STORE_BUILD=true --dart-define=APP_BUILD_LABEL=1988121
+      - name: Launch on an iPhone simulator and capture actual screen
+        run: python3 mission/android-app/ci/ios/smoke_simulator.py phone
+      - name: Package reproducible Xcode source
+        working-directory: phone
+        run: |
+          mkdir -p build/ios-delivery
+          ditto -c -k --keepParent build/ios/iphonesimulator/Runner.app build/ios-delivery/7motion-iphone-simulator.zip
+          tar --exclude='.git' --exclude='build' --exclude='.dart_tool' --exclude='ios/Pods' \
+            --exclude='ios/.symlinks' --exclude='android' --exclude='windows' --exclude='linux' \
+            --exclude='macos' --exclude='web' -czf "$RUNNER_TEMP/7motion-iphone-source.tar.gz" .
+          cp "$RUNNER_TEMP/7motion-iphone-source.tar.gz" build/ios-delivery/
+      - name: Upload iPhone build and source
+        uses: actions/upload-artifact@v4
+        with:
+          name: 7motion-iphone-0.3.7-${{ github.run_number }}
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            phone/build/7motion-iphone-unsigned.zip
+            phone/build/ios-delivery/
+            phone/build/iphone-simulator.png
+            phone/IOS_SOURCE_PROVENANCE.json
+      - name: Preserve diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: 7motion-iphone-diagnostics-${{ github.run_number }}
+          retention-days: 7
+          path: |
+            phone/build/iphone-simulator.png
+            phone/build/iphone-simulator.log
+            phone/ios/Podfile.lock
+            phone/IOS_SOURCE_PROVENANCE.json
+  signed-archive:
+    if: github.event_name == 'workflow_dispatch' && inputs.signed_archive
+    needs: iphone
+    runs-on: macos-15
+    environment: zuno-app-test
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Verify signing prerequisites without printing them
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_BUNDLE_ID: ${{ secrets.APPLE_BUNDLE_ID }}
+          APPLE_CERT_P12_BASE64: ${{ secrets.APPLE_CERT_P12_BASE64 }}
+          APPLE_CERT_P12_PASSWORD: ${{ secrets.APPLE_CERT_P12_PASSWORD }}
+          APPLE_PROFILE_BASE64: ${{ secrets.APPLE_PROFILE_BASE64 }}
+        run: python3 android-app/ci/ios/signing_preflight.py
+      - uses: actions/download-artifact@v4
+        with:
+          name: 7motion-iphone-0.3.7-${{ github.run_number }}
+          path: delivery
+      - name: Unpack verified source
+        run: |
+          mkdir phone
+          SOURCE=$(find delivery -name 7motion-iphone-source.tar.gz -print -quit)
+          test -n "$SOURCE"
+          tar -xzf "$SOURCE" -C phone
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+        with:
+          flutter-version: '3.47.7'
+          cache: false
+      - name: Export signed IPA for App Store Connect
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_BUNDLE_ID: ${{ secrets.APPLE_BUNDLE_ID }}
+          APPLE_CERT_P12_BASE64: ${{ secrets.APPLE_CERT_P12_BASE64 }}
+          APPLE_CERT_P12_PASSWORD: ${{ secrets.APPLE_CERT_P12_PASSWORD }}
+          APPLE_PROFILE_BASE64: ${{ secrets.APPLE_PROFILE_BASE64 }}
+        run: bash android-app/ci/ios/sign_and_export.sh phone
+      - uses: actions/upload-artifact@v4
+        with:
+          name: 7motion-iphone-signed-${{ github.run_number }}
+          if-no-files-found: error
+          retention-days: 7
+          path: |
+            phone/build/ios/ipa/*.ipa
+            phone/build/ios/archive/Runner.xcarchive/dSYMs/

@@ -1,0 +1,353 @@
+diff --git a/lib/core/app/app_platform.dart b/lib/core/app/app_platform.dart
+index 2b6c80c..af05523 100644
+--- a/lib/core/app/app_platform.dart
++++ b/lib/core/app/app_platform.dart
+@@ -7,6 +7,7 @@
+ //  thème par plateforme, mise à jour forcée par plateforme…).
+ //  Additif : ne change RIEN au comportement du mobile.
+ // =========================================================
++import 'package:flutter/foundation.dart';
+ class AppPlatform {
+   AppPlatform._();
+ 
+@@ -20,5 +21,7 @@ class AppPlatform {
+   /// Identifiant envoyé au backend.
+   /// Windows est testé EN PREMIER car un poste PC peut aussi être une box TV
+   /// (mini-PC branché à l'écran) : on veut alors l'étiquette la plus précise.
+-  static String get id => isWindows ? 'windows' : (isTv ? 'tv' : 'mobile');
++  static String get id => defaultTargetPlatform == TargetPlatform.iOS
++      ? 'ios'
++      : (isWindows ? 'windows' : (isTv ? 'tv' : 'mobile'));
+ }
+diff --git a/lib/core/notifications/notification_service.dart b/lib/core/notifications/notification_service.dart
+index bb66f41..d4d7200 100644
+--- a/lib/core/notifications/notification_service.dart
++++ b/lib/core/notifications/notification_service.dart
+@@ -145,7 +145,14 @@ class NotificationService {
+       const AndroidInitializationSettings androidInit =
+           AndroidInitializationSettings('@mipmap/ic_launcher');
+       const InitializationSettings settings =
+-          InitializationSettings(android: androidInit);
++          InitializationSettings(
++        android: androidInit,
++        iOS: DarwinInitializationSettings(
++          requestAlertPermission: false,
++          requestBadgePermission: false,
++          requestSoundPermission: false,
++        ),
++      );
+       await _plugin.initialize(settings);
+ 
+       final AndroidFlutterLocalNotificationsPlugin? android =
+@@ -199,6 +206,11 @@ class NotificationService {
+   /// si accordée (ou si la version d'Android n'exige pas de demande).
+   Future<bool> requestPermission() async {
+     try {
++      if (defaultTargetPlatform == TargetPlatform.iOS) {
++        final ios = _plugin.resolvePlatformSpecificImplementation<
++            IOSFlutterLocalNotificationsPlugin>();
++        return await ios?.requestPermissions(alert: true, badge: true, sound: true) ?? false;
++      }
+       final AndroidFlutterLocalNotificationsPlugin? android =
+           _plugin.resolvePlatformSpecificImplementation<
+               AndroidFlutterLocalNotificationsPlugin>();
+@@ -249,6 +261,7 @@ class NotificationService {
+         l10nNow.notifBodyStartsAt(hhmm, channelName),
+         when,
+         NotificationDetails(
++          iOS: const DarwinNotificationDetails(),
+           android: AndroidNotificationDetails(
+             _channelId,
+             _channelName,
+@@ -303,6 +316,7 @@ class NotificationService {
+         title,
+         body,
+         NotificationDetails(
++          iOS: const DarwinNotificationDetails(),
+           android: AndroidNotificationDetails(
+             _generalChannelId,
+             _generalChannelName,
+@@ -346,6 +360,7 @@ class NotificationService {
+         title,
+         body,
+         NotificationDetails(
++          iOS: const DarwinNotificationDetails(),
+           android: AndroidNotificationDetails(
+             _goalChannelId,
+             _goalChannelName,
+@@ -455,6 +470,7 @@ class NotificationService {
+   // Plus `const` : le nom/description du canal sont désormais LOCALISÉS
+   // (getters l10nNow, non constants).
+   NotificationDetails get _generalDetails => NotificationDetails(
++          iOS: const DarwinNotificationDetails(),
+         android: AndroidNotificationDetails(
+           _generalChannelId,
+           _generalChannelName,
+diff --git a/lib/core/update/build_flags.dart b/lib/core/update/build_flags.dart
+index b2055f1..89e3138 100644
+--- a/lib/core/update/build_flags.dart
++++ b/lib/core/update/build_flags.dart
+@@ -19,5 +19,8 @@
+ 
+ /// `true` uniquement pour l'App Bundle Play Store (via
+ /// `--dart-define=PLAY_BUILD=true`). `false` pour l'APK sideload GitHub.
++/// Le canal Apple reprend les restrictions Store déjà appliquées au canal
++/// Play : aucun téléchargement APK, aucune installation externe ni CTA d'achat.
++const bool kIsAppStoreBuild = bool.fromEnvironment('APP_STORE_BUILD');
+ const bool kIsPlayBuild =
+-    bool.fromEnvironment('PLAY_BUILD', defaultValue: false);
++    bool.fromEnvironment('PLAY_BUILD', defaultValue: false) || kIsAppStoreBuild;
+diff --git a/lib/features/cast/data/cast_manager.dart b/lib/features/cast/data/cast_manager.dart
+index 35aa4e0..b957d86 100644
+--- a/lib/features/cast/data/cast_manager.dart
++++ b/lib/features/cast/data/cast_manager.dart
+@@ -486,6 +486,7 @@ class CastManager extends ChangeNotifier {
+     Duration timeout = const Duration(seconds: 5),
+     bool keepExisting = true,
+   }) async {
++    if (defaultTargetPlatform == TargetPlatform.iOS) return;
+     if (_state == CastState.discovering) return;
+     if (!keepExisting) _discovered.clear();
+     _state = CastState.discovering;
+@@ -556,6 +557,7 @@ class CastManager extends ChangeNotifier {
+     Duration initialDelay = const Duration(seconds: 2),
+     Duration interval = const Duration(seconds: 60),
+   }) {
++    if (defaultTargetPlatform == TargetPlatform.iOS) return;
+     _warmupTimer?.cancel();
+     Future<void>.delayed(initialDelay, () {
+       if (_state != CastState.discovering &&
+diff --git a/lib/features/cast/presentation/cast_button.dart b/lib/features/cast/presentation/cast_button.dart
+index 9fc5efa..8b4138e 100644
+--- a/lib/features/cast/presentation/cast_button.dart
++++ b/lib/features/cast/presentation/cast_button.dart
+@@ -19,6 +19,7 @@
+ //  une fois, ensuite tout tap de chaîne part vers la TV.
+ // =========================================================
+ 
++import 'package:flutter/foundation.dart';
+ import 'package:flutter/material.dart';
+ 
+ import '../../../core/i18n/l10n_extension.dart';
+@@ -32,6 +33,7 @@ class CastButton extends StatelessWidget {
+ 
+   @override
+   Widget build(BuildContext context) {
++    if (defaultTargetPlatform == TargetPlatform.iOS) return const SizedBox.shrink();
+     return ListenableBuilder(
+       listenable: CastManager.instance,
+       builder: (BuildContext context, _) {
+diff --git a/lib/features/cast/presentation/cast_picker_sheet.dart b/lib/features/cast/presentation/cast_picker_sheet.dart
+index 1700c09..02f4008 100644
+--- a/lib/features/cast/presentation/cast_picker_sheet.dart
++++ b/lib/features/cast/presentation/cast_picker_sheet.dart
+@@ -16,6 +16,7 @@
+ //    - Le bouton "Rechercher à nouveau" relance la discovery.
+ // =========================================================
+ 
++import 'package:flutter/foundation.dart';
+ import 'dart:ui';
+ 
+ import 'package:flutter/material.dart';
+@@ -37,6 +38,7 @@ Future<void> showCastPicker(
+   required String title,
+   String? imageUrl,
+ }) {
++  if (defaultTargetPlatform == TargetPlatform.iOS) return _showIOSCastStatus(context);
+   return showModalBottomSheet<void>(
+     context: context,
+     backgroundColor: Colors.transparent,
+@@ -55,6 +57,7 @@ Future<void> showCastPicker(
+ ///   Ensuite, dès que l'utilisateur tape sur une chaîne, le flux part
+ ///   automatiquement vers la TV (modèle YouTube/Netflix).
+ Future<void> showCastPickerGlobal(BuildContext context) {
++  if (defaultTargetPlatform == TargetPlatform.iOS) return _showIOSCastStatus(context);
+   return showModalBottomSheet<void>(
+     context: context,
+     backgroundColor: Colors.transparent,
+@@ -702,3 +705,15 @@ _BrandInfo _brandFor(CastDevice d) {
+       return const _BrandInfo(monogram: 'TV', subtitle: null);
+   }
+ }
++
++/// Cette édition ne lance pas un scan Android voué à échouer sur iPhone.
++Future<void> _showIOSCastStatus(BuildContext context) async {
++  final french = Localizations.localeOf(context).languageCode == 'fr';
++  await showDialog<void>(context: context, builder: (context) => AlertDialog(
++    title: Text(french ? 'Diffusion sur TV' : 'TV casting'),
++    content: Text(french
++        ? 'La diffusion Chromecast, DLNA et AirPlay n’est pas encore disponible dans cette version iPhone. Tu peux regarder sur ton iPhone.'
++        : 'Chromecast, DLNA and AirPlay are not available in this iPhone version yet. You can watch on your iPhone.'),
++    actions: <Widget>[TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('OK'))],
++  ));
++}
+diff --git a/lib/features/device/data/device_identity.dart b/lib/features/device/data/device_identity.dart
+index 26a4d77..33aa326 100644
+--- a/lib/features/device/data/device_identity.dart
++++ b/lib/features/device/data/device_identity.dart
+@@ -62,7 +62,7 @@ class DeviceIdentity extends ChangeNotifier {
+     }
+     final String? androidId = await _stableDeviceId();
+     String seed = (androidId ?? '').trim();
+-    if (seed.isEmpty) {
++    if (seed.isEmpty && defaultTargetPlatform != TargetPlatform.iOS) {
+       // REPLI DURCI (anti-reset d'essai) : si l'ANDROID_ID manque (rare :
+       // émulateurs, ROMs exotiques), on DÉRIVE d'une EMPREINTE MATÉRIELLE stable
+       // (fabricant, modèle, build…) AU LIEU d'un aléatoire stocké localement qui
+@@ -88,7 +88,11 @@ class DeviceIdentity extends ChangeNotifier {
+   /// Lit l'ANDROID_ID via le channel natif. `null` si indisponible.
+   Future<String?> _stableDeviceId() async {
+     try {
+-      return await _deviceChannel.invokeMethod<String>('getAndroidId');
++      // iOS utilise un identifiant aléatoire privé du trousseau ; aucun
++      // identifiant publicitaire ni empreinte matérielle n'est collecté.
++      return await _deviceChannel.invokeMethod<String>(
++        defaultTargetPlatform == TargetPlatform.iOS ? 'getInstallId' : 'getAndroidId',
++      );
+     } catch (_) {
+       return null;
+     }
+@@ -100,6 +104,8 @@ class DeviceIdentity extends ChangeNotifier {
+   /// panel peut afficher / rechercher par l'identifiant Android réel, en plus
+   /// de la MAC virtuelle qui en dérive. `''` si indisponible.
+   Future<String> androidId() async {
++    // Ne pas présenter l'identifiant Apple au serveur comme un ANDROID_ID.
++    if (defaultTargetPlatform == TargetPlatform.iOS) return '';
+     if (_androidIdCache != null) return _androidIdCache!;
+     final String? id = await _stableDeviceId();
+     _androidIdCache = (id ?? '').trim();
+diff --git a/lib/features/playlists/data/playlist_repository.dart b/lib/features/playlists/data/playlist_repository.dart
+index 492f13a..4932d20 100644
+--- a/lib/features/playlists/data/playlist_repository.dart
++++ b/lib/features/playlists/data/playlist_repository.dart
+@@ -19,6 +19,7 @@
+ //    - L'écran d'accueil s'abonne via `StreamBuilder`.
+ // =========================================================
+ 
++import '../../../core/update/build_flags.dart';
+ import 'dart:async';
+ 
+ import 'package:flutter/foundation.dart';
+@@ -104,6 +105,9 @@ class PlaylistRepository {
+   // restriction est héritée partout, sans toucher chaque écran. Sur les
+   // flavors normaux (The Few, TV), `adultOnly` = false → aucune restriction.
+   List<Channel> _applyFlavorFilter(List<Channel> all) {
++    if (kIsAppStoreBuild) {
++      return all.where((c) => c.genre != ChannelGenre.adult).toList(growable: false);
++    }
+     if (!FlavorConfig.current.adultOnly) return all;
+     return all
+         .where((Channel c) => c.genre == ChannelGenre.adult)
+@@ -215,10 +219,7 @@ class PlaylistRepository {
+     // favoris, recherche, EPG, recommandations) héritent
+     // automatiquement de la restriction. Aucun risque d'oubli dans
+     // un widget qui contournerait le repo.
+-    if (FlavorConfig.current.adultOnly) {
+-      return all.where((Channel c) => c.genre == ChannelGenre.adult).toList();
+-    }
+-    return all;
++    return _applyFlavorFilter(all);
+   }
+ 
+   /// Plafond de chaînes chargées EN MÉMOIRE — garde-fou anti-OOM des box
+@@ -543,12 +544,7 @@ class PlaylistRepository {
+     );
+     List<Channel> out =
+         rows.map(_channelFromMap).toList(growable: false);
+-    if (FlavorConfig.current.adultOnly) {
+-      out = out
+-          .where((Channel c) => c.genre == ChannelGenre.adult)
+-          .toList(growable: false);
+-    }
+-    return out;
++    return _applyFlavorFilter(out);
+   }
+ 
+   /// Même sémantique que le `LIKE '%q%'` SQLite (ASCII, casse ignorée).
+@@ -634,10 +630,7 @@ class PlaylistRepository {
+     Iterable<Channel> out = channels.where((Channel c) =>
+         M3uVodClassifier.classify(url: c.streamUrl, name: c.name) != M3uVodKind.live);
+     // Red Room : même restriction que getAllChannels (point unique côté VOD).
+-    if (FlavorConfig.current.adultOnly) {
+-      out = out.where((Channel c) => c.genre == ChannelGenre.adult);
+-    }
+-    return out.toList(growable: false);
++    return _applyFlavorFilter(out.toList(growable: false));
+   }
+ 
+   Future<List<Playlist>> getAllPlaylists() async {
+diff --git a/lib/features/simple_home/presentation/widgets/category_browser_view.dart b/lib/features/simple_home/presentation/widgets/category_browser_view.dart
+index f2b6553..f6cc57d 100644
+--- a/lib/features/simple_home/presentation/widgets/category_browser_view.dart
++++ b/lib/features/simple_home/presentation/widgets/category_browser_view.dart
+@@ -25,6 +25,7 @@
+ //  catégories/chaînes. Aucune dépendance au cast.
+ // =========================================================
+ 
++import '../../../../core/update/build_flags.dart';
+ import 'dart:async';
+ 
+ import 'package:flutter/material.dart';
+@@ -157,7 +158,7 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
+   int _accessGeneration = 0;
+ 
+   bool get _kidsMode => ParentalControls.instance.kidsMode.value;
+-  bool get _canShowAdult => _adultUnlocked && !_kidsMode;
++  bool get _canShowAdult => !kIsAppStoreBuild && _adultUnlocked && !_kidsMode;
+ 
+   List<Channel>? _visibleCache;
+   List<Channel>? _visibleFor;
+@@ -978,7 +979,7 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
+       _Bucket.tv,
+       _Bucket.films,
+       if (!RepairFlags.mobileRadioLegacy) _Bucket.radio,
+-      if (!_kidsMode) _Bucket.adult,
++      if (!kIsAppStoreBuild && !_kidsMode) _Bucket.adult,
+     ];
+     final _Bucket effective = _bucket == _Bucket.adult && _canShowAdult
+         ? _Bucket.adult
+diff --git a/lib/features/vod/domain/content_partition.dart b/lib/features/vod/domain/content_partition.dart
+index d1202fa..2677552 100644
+--- a/lib/features/vod/domain/content_partition.dart
++++ b/lib/features/vod/domain/content_partition.dart
+@@ -1,3 +1,4 @@
++import '../../../core/update/build_flags.dart';
+ import '../../channels/domain/channel.dart';
+ import 'm3u_vod_classifier.dart';
+ 
+@@ -17,5 +18,6 @@ abstract final class ContentPartition {
+     String name,
+     String category, {
+     required bool adultOnly,
+-  }) => isAdult(name, category) == adultOnly;
++  }) => !(kIsAppStoreBuild && isAdult(name, category)) &&
++      isAdult(name, category) == adultOnly;
+ }
+diff --git a/pubspec.yaml b/pubspec.yaml
+index 927af7d..cb2dc97 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -95,6 +95,12 @@ dependencies:
+   # screen_brightness compatible et un build.gradle sans bloc kotlin{}.
+   media_kit_video: ^1.3.0
+   media_kit_libs_android_video: ^1.3.6
++  # iPhone : moteur libmpv correspondant au lecteur mobile existant.
++  # Déclaré explicitement pour ne jamais produire un écran sans décodeur.
++  media_kit_libs_ios_video: 1.1.4
++  # Pont Apple local : session audio et identité dans le trousseau iOS.
++  seven_motion_ios:
++    path: packages/seven_motion_ios
+   # Binaires libmpv pour WINDOWS (équivalent desktop de _android_video). Sans
+   # ce package, `flutter build windows` ne sait pas lier le moteur de lecture
+   # (libmpv) → pas de vidéo sur PC. Il n'embarque QUE les .dll Windows, donc
+@@ -368,8 +374,8 @@ dev_dependencies:
+ # ============================================================
+ flutter_launcher_icons:
+   android: true
+-  ios: false
+-  remove_alpha_ios: false
++  ios: true
++  remove_alpha_ios: true
+   image_path: "assets/branding/7motion_launcher_red.png"
+   min_sdk_android: 21
+   adaptive_icon_background: "#0B0D10"
