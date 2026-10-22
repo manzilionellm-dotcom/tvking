@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:tv_king/core/app/app_platform.dart';
@@ -14,6 +15,9 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUp(() {
     debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    // Depuis la version 18, les tests doivent enregistrer explicitement
+    // l'implémentation ; le vrai iPhone le fait via le registrant Flutter.
+    IOSFlutterLocalNotificationsPlugin.registerWith();
     SharedPreferences.setMockInitialValues(<String, Object>{});
   });
   tearDown(() { debugDefaultTargetPlatformOverride = null; });

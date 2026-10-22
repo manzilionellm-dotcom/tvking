@@ -26,7 +26,7 @@ import base64, os
 from pathlib import Path
 p=Path(os.environ['SIGN_DIR'])
 for name,file in [('APPLE_CERT_P12_BASE64','certificate.p12'),('APPLE_PROFILE_BASE64','profile.mobileprovision')]:
-    (p/file).write_bytes(base64.b64decode(os.environ[name],validate=True))
+    (p/file).write_bytes(base64.b64decode(''.join(os.environ[name].split()),validate=True))
 PY
 security cms -D -i "$SIGN_DIR/profile.mobileprovision" > "$SIGN_DIR/profile.plist"
 python3 - <<'PY'
