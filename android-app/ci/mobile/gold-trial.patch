@@ -180,10 +180,10 @@ index 2a90504..7665b7d 100644
            // son propre identifiant à activer (les blocs ci-dessous).
 diff --git a/lib/features/subscription/data/gold_trial_backend.dart b/lib/features/subscription/data/gold_trial_backend.dart
 new file mode 100644
-index 0000000..4b26421
+index 0000000..db82111
 --- /dev/null
 +++ b/lib/features/subscription/data/gold_trial_backend.dart
-@@ -0,0 +1,169 @@
+@@ -0,0 +1,173 @@
 +import 'dart:async';
 +import 'dart:convert';
 +
@@ -306,9 +306,13 @@ index 0000000..4b26421
 +    required Map<String, String> headers,
 +    required Duration timeout,
 +  }) async {
++    final String deviceMac = mac.toUpperCase();
++    if (!RegExp(r'^MK(?::[0-9A-F]{2}){5}$').hasMatch(deviceMac)) return false;
 +    final http.Response response = await _request(
 +      (http.Client client) => client.get(
-+        Uri.parse('$baseUrl/api/device-source/${Uri.encodeComponent(mac)}'),
++        // Cette route lit le segment brut côté Worker : les deux-points
++        // restent littéraux, comme dans le synchroniseur déjà en service.
++        Uri.parse('$baseUrl/api/device-source/$deviceMac'),
 +        headers: <String, String>{'Accept': 'application/json', ...headers},
 +      ),
 +      timeout,
@@ -621,7 +625,7 @@ index 0000000..6b0af91
 +}
 diff --git a/lib/features/subscription/presentation/gold_trial_card.dart b/lib/features/subscription/presentation/gold_trial_card.dart
 new file mode 100644
-index 0000000..af476cf
+index 0000000..512fa97
 --- /dev/null
 +++ b/lib/features/subscription/presentation/gold_trial_card.dart
 @@ -0,0 +1,107 @@
@@ -652,12 +656,12 @@ index 0000000..af476cf
 +          final String? message = switch (outcome) {
 +            GoldTrialOutcome.activated => 'Essai activé ✔',
 +            GoldTrialOutcome.alreadyUsed =>
-+              'Tu as déjà utilisé ton essai gratuit. Contacte-nous sur WhatsApp pour t’abonner.',
++              "Tu as déjà utilisé ton essai gratuit. Contacte-nous sur WhatsApp pour t'abonner.",
 +            GoldTrialOutcome.inProgress =>
 +              'Activation en cours, patiente quelques secondes.',
 +            GoldTrialOutcome.disabled => 'Les essais sont fermés pour le moment.',
 +            GoldTrialOutcome.dailyCap =>
-+              'Plus d’essais disponibles aujourd’hui, reviens demain.',
++              "Plus d'essais disponibles aujourd'hui, reviens demain.",
 +            GoldTrialOutcome.error => 'Erreur, réessaie.',
 +            _ => null,
 +          };
@@ -750,10 +754,10 @@ index 927af7d..268a529 100644
  
 diff --git a/test/features/subscription/gold_trial_backend_test.dart b/test/features/subscription/gold_trial_backend_test.dart
 new file mode 100644
-index 0000000..610875c
+index 0000000..4a8d3b8
 --- /dev/null
 +++ b/test/features/subscription/gold_trial_backend_test.dart
-@@ -0,0 +1,109 @@
+@@ -0,0 +1,110 @@
 +import 'dart:async';
 +import 'dart:convert';
 +
@@ -843,6 +847,7 @@ index 0000000..610875c
 +    final GoldTrialBackend api = GoldTrialBackend(clientFactory: () => MockClient((request) async {
 +      expect(request.method, 'GET');
 +      expect(request.url.pathSegments.last, device.mac);
++      expect(request.url.toString(), '$kGoldTrialBaseUrl/api/device-source/${device.mac}');
 +      expect(request.headers['x-device-secret'], 'test-proof');
 +      return http.Response(jsonEncode(responseSource), 200);
 +    }));
@@ -865,7 +870,7 @@ index 0000000..610875c
 +}
 diff --git a/test/features/subscription/gold_trial_card_test.dart b/test/features/subscription/gold_trial_card_test.dart
 new file mode 100644
-index 0000000..1c9e45d
+index 0000000..04cce06
 --- /dev/null
 +++ b/test/features/subscription/gold_trial_card_test.dart
 @@ -0,0 +1,93 @@
@@ -921,11 +926,11 @@ index 0000000..1c9e45d
 +  });
 +
 +  for (final (int status, String code, String text, bool whatsapp) in <(int, String, String, bool)>[
-+    (409,'trial_already_used','Tu as déjà utilisé ton essai gratuit. Contacte-nous sur WhatsApp pour t’abonner.',true),
++    (409,'trial_already_used',"Tu as déjà utilisé ton essai gratuit. Contacte-nous sur WhatsApp pour t'abonner.",true),
 +    (409,'in_progress','Activation en cours, patiente quelques secondes.',false),
 +    (403,'trial_disabled','Les essais sont fermés pour le moment.',true),
-+    (429,'daily_cap_reached','Plus d’essais disponibles aujourd’hui, reviens demain.',true),
-+    (429,'rate_limited','Plus d’essais disponibles aujourd’hui, reviens demain.',true),
++    (429,'daily_cap_reached',"Plus d'essais disponibles aujourd'hui, reviens demain.",true),
++    (429,'rate_limited',"Plus d'essais disponibles aujourd'hui, reviens demain.",true),
 +    (500,'private-provider','Erreur, réessaie.',false),
 +  ]) {
 +    testWidgets('$code : texte demandé et WhatsApp, aucune donnée fournisseur', (tester) async {
