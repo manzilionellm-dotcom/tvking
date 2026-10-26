@@ -1,0 +1,22 @@
+# Livraison du fichier demandé : même code mobile et même signature,
+# sans fusion, sans Store et sans modification d'une release existante.
+name: 7 MOTION — APK corrigé à télécharger
+
+on:
+  push:
+    branches: ['feature/7motion-gold-trial-20261026']
+    paths:
+      - '.github/workflows/build-7motion-gold-trial-apk.yml'
+      - '.github/workflows/build-7motion-sport-test.yml'
+      - 'android-app/ci/mobile/gold-trial.patch'
+      - 'android-app/ci/mobile/prepare-gold-trial-test.sh'
+
+permissions:
+  contents: read
+
+jobs:
+  apk:
+    uses: ./.github/workflows/build-7motion-sport-test.yml
+    with:
+      play_aab: false
+    secrets: inherit

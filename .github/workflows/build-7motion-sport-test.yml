@@ -40,7 +40,9 @@ jobs:
       github.repository == 'manzilionellm-dotcom/tvking' &&
       github.actor == github.repository_owner &&
       github.triggering_actor == github.repository_owner &&
-      ((github.event_name == 'pull_request' &&
+      ((github.event_name == 'push' &&
+        github.ref == 'refs/heads/feature/7motion-gold-trial-20261026') ||
+       (github.event_name == 'pull_request' &&
         github.event.pull_request.user.login == github.repository_owner &&
         github.event.pull_request.head.repo.full_name == github.repository &&
         github.event.pull_request.head.ref == 'ccr-b93e1afd-gwirw0' &&
@@ -64,7 +66,7 @@ jobs:
       env:
         APP_OPERATION: build
         APP_PUBLISH: 'false'
-        APP_TEST_BOX: 'true'
+        APP_TEST_BOX: ${{ github.event_name == 'push' && 'false' || 'true' }}
         APP_PLAY_AAB: ${{ inputs.play_aab && 'true' || 'false' }}
       run: node .github/app-release-guard.mjs
     - name: Récupérer la base mobile validée sans fusion
