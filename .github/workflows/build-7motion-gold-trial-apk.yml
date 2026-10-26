@@ -283,7 +283,9 @@ jobs:
         required=['Expected: <1>', 'Actual: <0>',\n          'Le catalogue actif doit livrer une station du vrai\
         \ serveur HTTP.',\n          'Some tests failed.']\nif not all(value in proof for value in required):\n\
         \    raise SystemExit('NON PROUVÉ : échec différent du repli Radio attendu')\nprint('PROUVÉ : le même test\
-        \ HTTP échoue sur le repli Radio réel')\nPYRADIO\nflutter test --reporter expanded\ndart run ci/radio_catalog_probe.dart"
+        \ HTTP échoue sur le repli Radio réel')\nPYRADIO\nflutter test --reporter expanded\n# Disponibilité externe\
+        \ informative pour cet APK de test.\ndart run ci/radio_catalog_probe.dart || echo \"::warning::Radio Browser\
+        \ hors ligne : disponibilité des radios non vérifiée.\""
     - name: Construire l’application normale de test (ARM64)
       id: apk_build
       env:
