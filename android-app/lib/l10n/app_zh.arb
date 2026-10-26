@@ -2804,5 +2804,8 @@
   "vipCountryMa": "摩洛哥",
   "vipCountryDz": "阿尔及利亚",
   "vipCountryTn": "突尼斯",
-  "vipCountryEg": "埃及"
+  "vipCountryEg": "埃及",
+  "libraryRefreshRunning": "正在刷新…",
+  "libraryRefreshIncomplete": "刷新未完成。部分来源不可用，请重试。"
+
 }

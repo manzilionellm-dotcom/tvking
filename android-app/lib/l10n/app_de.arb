@@ -2804,5 +2804,8 @@
   "vipCountryMa": "Marokko",
   "vipCountryDz": "Algerien",
   "vipCountryTn": "Tunesien",
-  "vipCountryEg": "Ägypten"
+  "vipCountryEg": "Ägypten",
+  "libraryRefreshRunning": "Wird aktualisiert…",
+  "libraryRefreshIncomplete": "Aktualisierung unvollständig. Einige Quellen sind nicht verfügbar. Versuche es erneut."
+
 }

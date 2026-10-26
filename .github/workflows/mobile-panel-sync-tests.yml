@@ -2,7 +2,7 @@ name: 7 MOTION mobile — régressions du téléphone
 
 on:
   push:
-    branches: ['feature/7motion-panel-sync', 'feature/7motion-foot-upcoming-20261020', 'feature/7motion-player-zap-20261020']
+    branches: ['feature/7motion-panel-sync', 'feature/7motion-foot-upcoming-20261020', 'feature/7motion-player-zap-20261020', 'feature/playlist-delete-definitive-20261026']
   pull_request:
     paths:
       - 'patches/mobile-panel-sync.patch'
@@ -61,6 +61,8 @@ jobs:
           git apply ../mission/android-app/ci/mobile/football-upcoming.patch
           git apply --check ../mission/android-app/ci/mobile/player-session-handoff.patch
           git apply ../mission/android-app/ci/mobile/player-session-handoff.patch
+          git apply --check ../mission/android-app/ci/mobile/library-user-actions.patch
+          git apply ../mission/android-app/ci/mobile/library-user-actions.patch
           git diff --check
           flutter pub get
           flutter gen-l10n

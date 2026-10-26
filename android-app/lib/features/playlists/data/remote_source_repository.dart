@@ -502,8 +502,7 @@ abstract final class RemoteSourceRepository {
     final Set<String> deleted = await DeletedSources.read();
     final List<Map<String, dynamic>> kept = <Map<String, dynamic>>[];
     for (final Map<String, dynamic> item in served) {
-      final String? fp = SourceFingerprint.fromMap(item);
-      final List<String> hashes = await DeletedSources.hashes(fp == null ? <String>[] : <String>[fp]);
+      final List<String> hashes = await DeletedSources.hashes(SourceFingerprint.allFromMap(item));
       if (!hashes.any(deleted.contains)) kept.add(item);
     }
     if (kept.length != served.length) {

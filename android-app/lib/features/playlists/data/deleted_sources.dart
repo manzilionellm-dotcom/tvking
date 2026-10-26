@@ -53,6 +53,20 @@ abstract final class DeletedSources {
     await db.transaction((Transaction txn) => rememberHashes(txn, keys));
   }
 
+  /// Levée volontaire AVANT le réseau. Un ajout déjà en cours ne peut pas
+  /// annuler une suppression plus récente quand sa réponse arrive enfin.
+  static Future<void> restoreManually(Iterable<String> fingerprints) async {
+    await migrateLegacy();
+    final List<String> keys = await hashes(fingerprints);
+    final Database db = await PlaylistDatabase.instance.database;
+    await db.transaction((Transaction txn) async {
+      for (final String key in keys) {
+        await txn.delete('deleted_sources', where: 'fingerprint = ?',
+          whereArgs: <Object>[key]);
+      }
+    });
+  }
+
   /// Sauvegarde v2 : seules des empreintes SHA-256 valides sont acceptées.
   /// On fusionne les refus ; une ancienne sauvegarde ne peut en retirer.
   static Future<void> restoreHashes(Iterable<Object?> values) async {

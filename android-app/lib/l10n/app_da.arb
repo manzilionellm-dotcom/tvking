@@ -1374,5 +1374,8 @@
   "vipCountryMa": "Marokko",
   "vipCountryDz": "Algeriet",
   "vipCountryTn": "Tunesien",
-  "vipCountryEg": "Egypten"
+  "vipCountryEg": "Egypten",
+  "libraryRefreshRunning": "Opdaterer…",
+  "libraryRefreshIncomplete": "Opdateringen er ufuldstændig. Nogle kilder er utilgængelige. Prøv igen."
+
 }

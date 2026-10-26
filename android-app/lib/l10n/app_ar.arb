@@ -1374,5 +1374,8 @@
   "vipCountryMa": "المغرب",
   "vipCountryDz": "الجزائر",
   "vipCountryTn": "تونس",
-  "vipCountryEg": "مصر"
+  "vipCountryEg": "مصر",
+  "libraryRefreshRunning": "جارٍ التحديث…",
+  "libraryRefreshIncomplete": "التحديث غير مكتمل. بعض المصادر غير متاحة. حاول مجددًا."
+
 }

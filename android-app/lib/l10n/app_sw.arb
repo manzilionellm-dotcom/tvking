@@ -1374,5 +1374,8 @@
   "vipCountryMa": "Morocco",
   "vipCountryDz": "Aljeria",
   "vipCountryTn": "Tunisia",
-  "vipCountryEg": "Misri"
+  "vipCountryEg": "Misri",
+  "libraryRefreshRunning": "Inasasisha…",
+  "libraryRefreshIncomplete": "Usasishaji haujakamilika. Baadhi ya vyanzo havipatikani. Jaribu tena."
+
 }

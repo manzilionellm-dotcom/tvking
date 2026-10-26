@@ -2804,5 +2804,8 @@
   "vipCountryMa": "मोरक्को",
   "vipCountryDz": "अल्जीरिया",
   "vipCountryTn": "ट्यूनीशिया",
-  "vipCountryEg": "मिस्र"
+  "vipCountryEg": "मिस्र",
+  "libraryRefreshRunning": "अपडेट हो रहा है…",
+  "libraryRefreshIncomplete": "अपडेट अधूरा है। कुछ स्रोत उपलब्ध नहीं हैं। फिर से प्रयास करें।"
+
 }

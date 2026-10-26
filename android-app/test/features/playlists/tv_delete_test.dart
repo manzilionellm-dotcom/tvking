@@ -27,6 +27,7 @@ import 'package:tv_king/features/playlists/data/cloud_backup_repository.dart';
 import 'package:tv_king/features/playlists/data/deleted_sources.dart';
 import 'package:tv_king/features/playlists/domain/playlist.dart';
 import 'package:tv_king/features/playlists/domain/tv_delete.dart';
+import 'package:tv_king/features/playlists/domain/source_fingerprint.dart';
 
 const String kMac = 'MK:AA:BB:CC:DD:EE';
 
@@ -113,6 +114,50 @@ void main() {
     final List<Playlist> ps = await _lists();
     expect(_find(ps, 'panel-a.invalid').channelCount, 4);
     expect(_find(ps, 'client-b.invalid').channelCount, 3);
+  });
+
+  test('coupure après le refus durable : la ligne restante disparaît au redémarrage', () async {
+    final _Server s = _Server();
+    await _sync(s);
+    final Playlist deleted = _find(await _lists(), 'panel-a.invalid');
+    await DeletedSources.remember(SourceFingerprint.ofPlaylist(deleted));
+    // SQLite garde encore la ligne si le processus est tué pendant le DELETE.
+    await PlaylistDatabase.instance.closeForTesting();
+    await PlaylistRepository.instance.initialize();
+    expect(_has(PlaylistRepository.instance.currentPlaylists, 'panel-a.invalid'), isFalse);
+    expect(_has(await _lists(), 'client-b.invalid'), isTrue);
+    await _sync(s);
+    expect(_has(await _lists(), 'panel-a.invalid'), isFalse);
+  });
+
+  test('M3U saisi à la main puis effacé : ne revient pas sous sa forme Xtream', () async {
+    const String link = 'http://account.invalid/get.php?username=user&password=pass&type=m3u_plus';
+    final http.Client file = MockClient((_) async => http.Response(_m3u('manual', 1), 200));
+    final Playlist playlist = await PlaylistRepository.instance.addM3uPlaylist(name: 'Manuel', url: link, httpClient: file);
+    await PlaylistRepository.instance.deletePlaylist(playlist.id!);
+    final _Server s = _Server()..served = <Map<String, Object?>>[
+      <String, Object?>{'type': 'xtream', 'server_url': 'http://account.invalid', 'username': 'user', 'password': 'pass'},
+    ];
+    await PlaylistDatabase.instance.closeForTesting();
+    await _sync(s);
+    expect(await _lists(), isEmpty);
+    file.close();
+  });
+
+  test('un ajout Xtream lent commencé avant la suppression ne la lève pas à son retour', () async {
+    const Playlist source = Playlist(id: null, name: 'Compte', type: PlaylistType.xtream,
+      xtreamServer: 'http://account.invalid', xtreamUsername: 'user', xtreamPassword: 'pass', createdAt: 1);
+    final Database db = await PlaylistDatabase.instance.database;
+    final int oldId = await db.insert('playlists', source.toMap());
+    final http.Client slow = MockClient((_) async {
+      await PlaylistRepository.instance.deletePlaylist(oldId);
+      return http.Response('{"user_info":{"auth":1,"status":"Active"}}', 200);
+    });
+    await expectLater(PlaylistRepository.instance.addXtreamPlaylist(name: 'En cours',
+      serverUrl: source.xtreamServer!, username: 'user', password: 'pass', httpClient: slow),
+      throwsA(isA<PlaylistDeletedException>()));
+    expect(await _lists(), isEmpty);
+    slow.close();
   });
 
   test('liste ajoutée par le client : supprimée sur la télé ET sur le serveur, ne revient pas', () async {
