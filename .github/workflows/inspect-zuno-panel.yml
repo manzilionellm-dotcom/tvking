@@ -1,0 +1,90 @@
+# Diagnostic en lecture seule avant le transfert du panel vers zuno8k.com.
+# Réutilise les accès Cloudflare existants ; ne modifie ni DNS, ni Worker, ni D1.
+name: Inspect ZUNO panel migration
+
+on:
+  push:
+    branches: [feature/panel-zuno-domain-20261026]
+    paths: [.github/workflows/inspect-zuno-panel.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Inspect existing panel, Worker and target domain
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          const token = process.env.CLOUDFLARE_API_TOKEN;
+          const account = process.env.CLOUDFLARE_ACCOUNT_ID;
+          if (!token || !account) throw new Error('Existing Cloudflare deployment credentials are unavailable.');
+          const base = 'https://api.cloudflare.com/client/v4';
+          async function read(path) {
+            const r = await fetch(base + path, {
+              headers: { Authorization: 'Bearer ' + token },
+              redirect: 'error',
+              signal: AbortSignal.timeout(15000),
+            });
+            const body = await r.json();
+            if (!r.ok || !body.success) {
+              throw new Error('Cloudflare HTTP ' + r.status + ': ' + JSON.stringify(body.errors));
+            }
+            return body.result;
+          }
+          const prefix = '/accounts/' + encodeURIComponent(account);
+          let failed = false;
+          async function inspect(label, path, select) {
+            try {
+              const result = await read(path);
+              console.log(label + ': ' + JSON.stringify(select(result)));
+              return result;
+            } catch (error) {
+              console.error(label + ': ' + error.message);
+              failed = true;
+              return null;
+            }
+          }
+          const zone = await inspect('ZUNO_ZONE',
+            '/zones?name=zuno8k.com&account.id=' + encodeURIComponent(account),
+            rows => rows.map(row => ({id: row.id, name: row.name, status: row.status})));
+          await inspect('PANEL', prefix + '/pages/projects/tvking-admin',
+            project => ({
+              name: project.name,
+              subdomain: project.subdomain,
+              domains: project.domains,
+              source: project.source && {type: project.source.type, production_branch: project.source.config?.production_branch},
+              deployment: project.production_deployment && {
+                id: project.production_deployment.id,
+                url: project.production_deployment.url,
+                source: project.production_deployment.deployment_trigger?.metadata,
+              },
+            }));
+          await inspect('WORKER_BINDINGS', prefix + '/workers/scripts/seven-motion-backend/settings',
+            settings => ({bindings: (settings.bindings || []).map(binding => ({
+              name: binding.name, type: binding.type,
+              ...(binding.type === 'd1' ? {database_id: binding.id || binding.database_id} : {}),
+            }))}));
+          await inspect('WORKER_DOMAINS', prefix + '/workers/domains?service=seven-motion-backend',
+            rows => rows.map(row => ({hostname: row.hostname, service: row.service, zone_name: row.zone_name, enabled: row.enabled})));
+          await inspect('WORKER_SUBDOMAIN', prefix + '/workers/scripts/seven-motion-backend/subdomain',
+            data => ({enabled: data.enabled, previews_enabled: data.previews_enabled}));
+          if (zone?.length === 1) {
+            for (const hostname of ['admin.zuno8k.com', 'api.zuno8k.com']) {
+              await inspect('DNS_' + hostname,
+                '/zones/' + zone[0].id + '/dns_records?name=' + encodeURIComponent(hostname),
+                rows => rows.map(row => ({type: row.type, name: row.name, content: row.content, proxied: row.proxied})));
+            }
+          } else {
+            console.error('Expected exactly one accessible zuno8k.com zone in the existing deployment account.');
+            failed = true;
+          }
+          if (failed) process.exitCode = 1;
+          NODE
