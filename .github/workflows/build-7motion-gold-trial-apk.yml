@@ -1,6 +1,6 @@
-# Commandes du dernier build mobile, sans le job de publication.
-# La garde existante est exécutée avant tout accès à la signature.
-name: 7 MOTION — APK corrigé à télécharger
+# APK de test séparé : aucune clé de production ni accès à son environnement.
+# Les commandes natives et les correctifs viennent du dernier téléphone validé.
+name: 7 MOTION — APK corrigé de test
 'on':
   push:
     branches:
@@ -18,8 +18,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   phone:
-    environment: zuno-app-test
-    name: APK 7 MOTION corrigé et signé
+    name: APK de test installable à côté de 7 MOTION
     if: github.repository == 'manzilionellm-dotcom/tvking' && github.actor == github.repository_owner && github.triggering_actor
       == github.repository_owner && github.event_name == 'push' && github.ref == 'refs/heads/feature/7motion-gold-trial-20261026'
     runs-on: ubuntu-latest
@@ -34,7 +33,7 @@ jobs:
         ref: ${{ env.SOURCE_SHA }}
         path: mission
         persist-credentials: false
-    - name: Autoriser le build mobile avant la signature
+    - name: Autoriser la compilation sans publication
       working-directory: mission
       env:
         APP_OPERATION: build
@@ -126,6 +125,24 @@ jobs:
         '
     - name: Generate native Android folder
       run: flutter create . --platforms=android --org com.manzilionellm.tvking --project-name tv_king
+    - name: Isoler les données et l’installation de test
+      run: 'python3 - <<''PYTEST''
+
+        from pathlib import Path
+
+        p=Path(''android/app/build.gradle.kts'')
+
+        s=p.read_text()
+
+        assert ''defaultConfig {'' in s
+
+        s=s.replace(''defaultConfig {'',''defaultConfig {\n        applicationIdSuffix = ".goldtrialtest"'',1)
+
+        p.write_text(s)
+
+        PYTEST
+
+        '
     - name: Fixer minSdk 24 (téléphone — requis par ffmpeg_kit)
       run: "python3 - <<'PYEOF'\nimport re, glob\ncands = glob.glob(\"android/app/build.gradle.kts\") + glob.glob(\"\
         android/app/build.gradle\")\nif not cands:\n    raise SystemExit(\"build.gradle introuvable après flutter\
@@ -138,8 +155,8 @@ jobs:
         \ \"w\").write(s)\nprint(\"minSdk -> 24 dans\", f)\nPYEOF\n"
     - name: Harmoniser le nom Android 7 MOTION
       run: "MANIFEST=android/app/src/main/AndroidManifest.xml\nif [ -f \"$MANIFEST\" ]; then\n  sed -i 's|android:label=\"\
-        tv_king\"|android:label=\"7 MOTION\"|g' \"$MANIFEST\"\n  echo \"--- Patched manifest ---\"\n  grep 'android:label'\
-        \ \"$MANIFEST\" || true\nfi\n"
+        tv_king\"|android:label=\"7 MOTION Test\"|g' \"$MANIFEST\"\n  echo \"--- Patched manifest ---\"\n  grep\
+        \ 'android:label' \"$MANIFEST\" || true\nfi\n"
     - name: Patch AndroidManifest for network (cleartext HTTP + INTERNET)
       run: "set -e\nMANIFEST=android/app/src/main/AndroidManifest.xml\nif [ ! -f \"$MANIFEST\" ]; then\n  echo \"\
         ❌ Manifest manquant — flutter create a-t-il tourné ?\"\n  exit 1\nfi\n\n# 1. Permission INTERNET — enfant\
@@ -221,40 +238,6 @@ jobs:
         "$RUNNER_TEMP/mobile-audit/bin/pip" install androguard==4.1.3 numpy==2.2.6
 
         "$RUNNER_TEMP/mobile-audit/bin/python" ../mission/android-app/ci/mobile/prepare_notifications.py'
-    - name: Signature stable obligatoire
-      env:
-        KS_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-        KS_PW: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-        KS_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-        KS_KEY_PW: ${{ secrets.ANDROID_KEY_PASSWORD }}
-      run: "set -euo pipefail\n[ -n \"$KS_PW\" ]\nif [ -n \"$KS_B64\" ]; then\n  printf '%s' \"$KS_B64\" | base64\
-        \ -d > android/app/release.jks\nelse\n  test -f ci/release.jks.enc\n  openssl enc -d -aes-256-cbc -pbkdf2\
-        \ -in ci/release.jks.enc -out android/app/release.jks -pass pass:\"$KS_PW\"\nfi\ncat > android/key.properties\
-        \ <<EOF\nstoreFile=release.jks\nstorePassword=$KS_PW\nkeyAlias=${KS_ALIAS:-sevenmotion}\nkeyPassword=${KS_KEY_PW:-$KS_PW}\n\
-        EOF"
-    - name: Patch build.gradle.kts for release signing
-      run: "set -e\nF=android/app/build.gradle.kts\nif [ ! -f \"$F\" ]; then\n  echo \"❌ $F introuvable\"; ls -la\
-        \ android/app/ || true; exit 1\nfi\nexport GRADLE_FILE=\"$F\"\npython3 << 'PYEOF'\nimport os\nf = os.environ['GRADLE_FILE']\n\
-        s = open(f).read()\nif 'signingConfigs.getByName(\"release\")' in s:\n    print('⊙ déjà patché'); raise\
-        \ SystemExit\n# En Kotlin DSL Gradle, les noms java.* pleinement qualifiés ne\n# se résolvent pas : il FAUT\
-        \ de vrais imports en tête de fichier\n# (avant le bloc plugins{}). C'est le snippet de signature Flutter\n\
-        # standard.\nimports = 'import java.util.Properties\\nimport java.io.FileInputStream\\n\\n'\nloader = (\n\
-        \    'val keystoreProperties = Properties()\\n'\n    'val keystorePropertiesFile = rootProject.file(\"key.properties\"\
-        )\\n'\n    'if (keystorePropertiesFile.exists()) {\\n'\n    '    keystoreProperties.load(FileInputStream(keystorePropertiesFile))\\\
-        n'\n    '}\\n\\n'\n)\nsigning = (\n    'android {\\n'\n    '    signingConfigs {\\n'\n    '        create(\"\
-        release\") {\\n'\n    '            val sf = keystoreProperties.getProperty(\"storeFile\")\\n'\n    '   \
-        \         if (sf != null) {\\n'\n    '                storeFile = file(sf)\\n'\n    '                storePassword\
-        \ = keystoreProperties.getProperty(\"storePassword\")\\n'\n    '                keyAlias = keystoreProperties.getProperty(\"\
-        keyAlias\")\\n'\n    '                keyPassword = keystoreProperties.getProperty(\"keyPassword\")\\n'\n\
-        \    '            }\\n'\n    '        }\\n'\n    '    }\\n'\n)\nif 'android {' not in s:\n    print('❌ pas\
-        \ de bloc android {} — template inattendu'); raise SystemExit(1)\nif 'import java.util.Properties' not in\
-        \ s:\n    s = imports + s\ns = s.replace('android {', loader + 'android {', 1)\ns = s.replace('android {',\
-        \ signing, 1)\nold = 'signingConfig = signingConfigs.getByName(\"debug\")'\nnew = ('signingConfig = if (keystorePropertiesFile.exists())\
-        \ '\n       'signingConfigs.getByName(\"release\") else '\n       'signingConfigs.getByName(\"debug\")')\n\
-        if old in s:\n    s = s.replace(old, new, 1)\n    print('✓ buildType release basculé sur la clé stable (si\
-        \ présente)')\nelse:\n    print('⚠ ligne signingConfig debug non trouvée — release reste en debug')\nopen(f,\
-        \ 'w').write(s)\nprint('✓ build.gradle.kts patché')\nPYEOF\necho \"----- build.gradle.kts (tête) -----\"\
-        \nsed -n '1,40p' \"$F\"\n"
     - name: Patch build.gradle.kts for notifications (desugaring)
       run: "set -e\nF=android/app/build.gradle.kts\npython3 << 'PYEOF'\nf = \"android/app/build.gradle.kts\"\ns\
         \ = open(f).read()\nif 'isCoreLibraryDesugaringEnabled' not in s:\n    s = s.replace(\n        'compileOptions\
@@ -301,41 +284,31 @@ jobs:
         \ serveur HTTP.',\n          'Some tests failed.']\nif not all(value in proof for value in required):\n\
         \    raise SystemExit('NON PROUVÉ : échec différent du repli Radio attendu')\nprint('PROUVÉ : le même test\
         \ HTTP échoue sur le repli Radio réel')\nPYRADIO\nflutter test --reporter expanded\ndart run ci/radio_catalog_probe.dart"
-    - name: Construire l’APK mobile de test, une seule tentative
+    - name: Construire l’application normale de test (ARM64)
       id: apk_build
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: "set -euo pipefail\nBUILD_TS=$(date +%s)\nBUILD_LABEL=$(ci/build_label.sh \"$GITHUB_REPOSITORY\" 7motion-test)\n\
-        echo \"PHONE_BUILD_LABEL=$BUILD_LABEL\" >> \"$GITHUB_ENV\"\nflutter build apk --release --no-tree-shake-icons\
-        \ --split-per-abi --target-platform android-arm64 \\\n  --build-number=\"$BUILD_TS\" --build-name=\"0.3.7-gold-trial.${{\
-        \ github.run_number }}\" \\\n  --obfuscate --split-debug-info=build/symbols \\\n  --dart-define=APP_BUILD_TS=\"\
-        $BUILD_TS\" --dart-define=APP_BUILD_LABEL=\"$BUILD_LABEL\" \\\n  --dart-define=GIT_SHA=${{ env.SOURCE_SHA\
-        \ }} \\\n  --dart-define=PHONE_UPDATE_TAG=phone-latest --target=lib/main.dart\ncp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk\
-        \ build/app/outputs/flutter-apk/7motion.apk"
-    - name: Vérifier identité, signature et progression du versionCode
+        echo \"PHONE_BUILD_LABEL=$BUILD_LABEL\" >> \"$GITHUB_ENV\"\nflutter build apk --debug --no-tree-shake-icons\
+        \ --split-per-abi --target-platform android-arm64 \\\n  --build-number=\"$BUILD_TS\" --build-name=\"0.3.7-gold-trial-test.${{\
+        \ github.run_number }}\" \\\n  --dart-define=APP_BUILD_TS=\"$BUILD_TS\" --dart-define=APP_BUILD_LABEL=\"\
+        $BUILD_LABEL\" \\\n  --dart-define=GIT_SHA=${{ env.SOURCE_SHA }} \\\n  --dart-define=PHONE_UPDATE_TAG=gold-trial-review\
+        \ --target=lib/main.dart\ncp build/app/outputs/flutter-apk/app-arm64-v8a-debug.apk build/app/outputs/flutter-apk/7motion.apk"
+    - name: Vérifier le vrai APK de test et ses correctifs
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: "set -euo pipefail\nAPK=build/app/outputs/flutter-apk/7motion.apk\nBT=$(ls -d \"$ANDROID_HOME\"/build-tools/*\
         \ | sort -V | tail -1)\n\"$BT/apksigner\" verify --print-certs \"$APK\" > \"$RUNNER_TEMP/signature.txt\"\
-        \nCERT=$(awk '/certificate SHA-256 digest/ {print $NF; exit}' \"$RUNNER_TEMP/signature.txt\")\n[ \"$CERT\"\
-        \ = \"5145b8e019f6d5fb96a207f2e73673fd954f799966fd598889211556cbdf9e61\" ]\n\"$BT/aapt2\" dump badging \"\
-        $APK\" > \"$RUNNER_TEMP/badging.txt\"\nhead -1 \"$RUNNER_TEMP/badging.txt\"\n# L'outil Android lit le manifeste\
-        \ binaire, sans dépendre de\n# la présentation de la sortie aapt2. L'exigence reste 24.\nAA=\"$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer\"\
-        \ntest -x \"$AA\"\nSDK=$(\"$AA\" manifest min-sdk \"$APK\")\nSDK_BADGING=$(sed -n \"s/^sdkVersion:\\x27\\\
-        ([0-9]*\\)\\x27/\\1/p\" \"$RUNNER_TEMP/badging.txt\")\necho \"minSdk manifeste=$SDK ; ancien lecteur aapt2=${SDK_BADGING:-absent}\"\
-        \n[ \"$SDK\" = \"24\" ] || { echo \"::error::minSdk attendu 24, reçu $SDK\"; exit 1; }\nPKG=$(sed -n \"\
-        s/^package: name='\\([^']*\\)'.*/\\1/p\" \"$RUNNER_TEMP/badging.txt\")\nCODE=$(sed -n \"s/.*versionCode='\\\
-        ([0-9]*\\)'.*/\\1/p\" \"$RUNNER_TEMP/badging.txt\")\n[ \"$PKG\" = \"com.manzilionellm.tvking.tv_king\" ]\n\
-        \"$RUNNER_TEMP/mobile-audit/bin/python\" ../mission/android-app/ci/mobile/verify_apk.py \"$APK\"\nfor TAG\
-        \ in 7motion-test phone-latest; do\n  gh release download \"$TAG\" -R \"$GITHUB_REPOSITORY\" -p 7motion.apk\
-        \ -O \"$RUNNER_TEMP/previous-$TAG.apk\"\n  \"$BT/apksigner\" verify --print-certs \"$RUNNER_TEMP/previous-$TAG.apk\"\
-        \ > \"$RUNNER_TEMP/prev-signature.txt\"\n  PREV_CERT=$(awk '/certificate SHA-256 digest/ {print $NF; exit}'\
-        \ \"$RUNNER_TEMP/prev-signature.txt\")\n  [ \"$PREV_CERT\" = \"$CERT\" ]\n  \"$BT/aapt2\" dump badging \"\
-        $RUNNER_TEMP/previous-$TAG.apk\" > \"$RUNNER_TEMP/prev-badging.txt\"\n  PREV_CODE=$(sed -n \"s/.*versionCode='\\\
-        ([0-9]*\\)'.*/\\1/p\" \"$RUNNER_TEMP/prev-badging.txt\")\n  [ \"$CODE\" -gt \"$PREV_CODE\" ]\n  echo \"\
-        versionCode précédent $PREV_CODE < nouveau $CODE\"\ndone\nSHA=$(sha256sum \"$APK\" | cut -d' ' -f1)\necho\
-        \ \"APK_SHA256=$SHA\" >> \"$GITHUB_ENV\"\necho \"PHONE_VERSION_CODE=$CODE\" >> \"$GITHUB_ENV\"\necho \"\
-        signature $CERT ; SHA-256 $SHA\""
+        \n\"$BT/aapt2\" dump badging \"$APK\" > \"$RUNNER_TEMP/badging.txt\"\nhead -1 \"$RUNNER_TEMP/badging.txt\"\
+        \n\"$RUNNER_TEMP/mobile-audit/bin/python\" - \"$APK\" \"$RUNNER_TEMP/signature.txt\" <<'PYAUDIT'\nimport\
+        \ hashlib,json,sys,zipfile\nfrom pathlib import Path\nfrom androguard.core.apk import APK\npath=Path(sys.argv[1])\n\
+        apk=APK(str(path))\nassert apk.get_package()=='com.manzilionellm.tvking.tv_king.goldtrialtest'\nassert apk.get_min_sdk_version()=='24'\n\
+        assert 'com.manzilionellm.tvking.tv_king.MainActivity'==apk.get_main_activity()\nassert 'CN=Android Debug'\
+        \ in Path(sys.argv[2]).read_text()\nwith zipfile.ZipFile(path) as z:\n data=z.read('assets/flutter_assets/kernel_blob.bin')\n\
+        \ for marker in [b'Je teste',b'/api/gold-trial',b'7 MOTION Essai',b'android_id',b'app_version']:\n  assert\
+        \ marker in data, 'Correctif absent du binaire: '+repr(marker)\nprint(json.dumps({'package':apk.get_package(),'versionName':apk.get_androidversion_name(),'versionCode':apk.get_androidversion_code(),'minSdk':apk.get_min_sdk_version(),'sha256':hashlib.sha256(path.read_bytes()).hexdigest(),'signature':'Android\
+        \ Debug','entrypoint':'lib/main.dart'},ensure_ascii=False))\nPYAUDIT\nSHA=$(sha256sum \"$APK\" | cut -d'\
+        \ ' -f1)\necho \"APK_SHA256=$SHA\" >> \"$GITHUB_ENV\"\necho \"SHA-256 $SHA\"\n"
     - name: Conserver l’APK exact
       if: ${{ !cancelled() && steps.apk_build.outcome == 'success' }}
       uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
