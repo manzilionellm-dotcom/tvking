@@ -390,7 +390,7 @@ index 492f13a..de4c5b3 100644
        try {
          await xtream.verifyCredentials();
 diff --git a/lib/features/playlists/presentation/import_progress_screen.dart b/lib/features/playlists/presentation/import_progress_screen.dart
-index 616a499..86085ef 100644
+index 616a499..bb57fe9 100644
 --- a/lib/features/playlists/presentation/import_progress_screen.dart
 +++ b/lib/features/playlists/presentation/import_progress_screen.dart
 @@ -50,7 +50,9 @@ Future<ImportOutcome<T>> runImportWithProgress<T>(
@@ -523,7 +523,7 @@ index 616a499..86085ef 100644
 +            onPressed: _complete,
 +            icon: const Icon(Icons.arrow_back_rounded),
 +            label: Text(context.l10n.importBackToChannels,
-+                style: AppTextStyles.bodyMedium),
++                style: AppTextStyles.bodyMedium.copyWith(color: AppColors.onAccent)),
 +          ),
 +        ],
        ],
