@@ -119,7 +119,7 @@ index 2a90504..7665b7d 100644
  import 'widgets/category_browser_view.dart';
 @@ -68,6 +70,9 @@ class SimpleHomeScreen extends StatefulWidget {
  }
- 
+
  class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
 +  // Le contrôleur survit au passage accueil vide → catalogue chargé.
 +  final GoldTrialController _goldTrial = GoldTrialController();
@@ -136,7 +136,7 @@ index 2a90504..7665b7d 100644
      RecentlyWatchedRepository.instance.initialize();
      // Palier de streak atteint → on célèbre à l'accueil (Hook : récompense).
 @@ -189,6 +195,7 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
- 
+
    @override
    void dispose() {
 +    _goldTrial.dispose();
@@ -750,7 +750,7 @@ index 927af7d..268a529 100644
 +++ b/pubspec.yaml
 @@ -324,6 +324,11 @@ dependency_overrides:
    screen_brightness_android: 2.1.4
- 
+
  dev_dependencies:
 +  # Test du parcours d'essai sur Android : binding officiel Flutter,
 +  # uniquement en développement (aucune dépendance de production ajoutée).
@@ -759,7 +759,7 @@ index 927af7d..268a529 100644
 +
    flutter_test:
      sdk: flutter
- 
+
 diff --git a/test/features/subscription/gold_trial_backend_test.dart b/test/features/subscription/gold_trial_backend_test.dart
 new file mode 100644
 index 0000000..4a8d3b8
