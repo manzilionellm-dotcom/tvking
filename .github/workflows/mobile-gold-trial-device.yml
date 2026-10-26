@@ -51,6 +51,8 @@ jobs:
           flutter gen-l10n
           flutter analyze lib/features/subscription/data/gold_trial_backend.dart lib/features/subscription/data/gold_trial_controller.dart lib/features/subscription/presentation/gold_trial_card.dart test/features/subscription/gold_trial_backend_test.dart test/features/subscription/gold_trial_controller_test.dart test/features/subscription/gold_trial_card_test.dart integration_test/gold_trial_device_test.dart
           flutter test --reporter expanded test/features/subscription/gold_trial_backend_test.dart test/features/subscription/gold_trial_controller_test.dart test/features/subscription/gold_trial_card_test.dart
+      - name: Installer les outils Android et les ajouter au PATH
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
       - name: Préparer le paquet de test Android sans signature de production
         run: |
           flutter create . --platforms=android --org com.manzilionellm.tvking --project-name tv_king

@@ -359,10 +359,10 @@ index 0000000..db82111
 +}
 diff --git a/lib/features/subscription/data/gold_trial_controller.dart b/lib/features/subscription/data/gold_trial_controller.dart
 new file mode 100644
-index 0000000..6b0af91
+index 0000000..ef9f1e3
 --- /dev/null
 +++ b/lib/features/subscription/data/gold_trial_controller.dart
-@@ -0,0 +1,260 @@
+@@ -0,0 +1,266 @@
 +import 'dart:async';
 +
 +import 'package:flutter/foundation.dart';
@@ -416,6 +416,7 @@ index 0000000..6b0af91
 +  bool importing = false;
 +  bool sourceFailed = false;
 +  bool sourceLoaded = false;
++  bool _activatedHere = false;
 +  bool _disposed = false;
 +  bool _checkingSource = false;
 +  int _generation = 0;
@@ -429,6 +430,10 @@ index 0000000..6b0af91
 +  bool get canRequest => visible && !busy &&
 +      result.outcome != GoldTrialOutcome.activated &&
 +      result.outcome != GoldTrialOutcome.alreadyUsed;
++  // Un heartbeat peut confirmer la licence AVANT la réponse 201. Le
++  // bouton disparaît, mais la confirmation de ce clic doit rester lisible.
++  bool get showConfirmation => _activatedHere &&
++      result.outcome == GoldTrialOutcome.activated;
 +
 +  static bool _deviceHasSubscription() {
 +    final SubscriptionState subscription = SubscriptionState.instance;
@@ -492,6 +497,7 @@ index 0000000..6b0af91
 +      if (_disposed) return;
 +      result = await _backend.activate(_identity!);
 +      if (_disposed) return;
++      _activatedHere = result.outcome == GoldTrialOutcome.activated;
 +      await _rememberResult();
 +      if (_disposed) return;
 +      if (result.outcome == GoldTrialOutcome.activated ||
@@ -625,10 +631,10 @@ index 0000000..6b0af91
 +}
 diff --git a/lib/features/subscription/presentation/gold_trial_card.dart b/lib/features/subscription/presentation/gold_trial_card.dart
 new file mode 100644
-index 0000000..512fa97
+index 0000000..7d65c83
 --- /dev/null
 +++ b/lib/features/subscription/presentation/gold_trial_card.dart
-@@ -0,0 +1,107 @@
+@@ -0,0 +1,109 @@
 +import 'package:flutter/material.dart';
 +import 'package:intl/intl.dart';
 +import 'package:url_launcher/url_launcher.dart';
@@ -650,7 +656,9 @@ index 0000000..512fa97
 +  Widget build(BuildContext context) => ListenableBuilder(
 +        listenable: controller,
 +        builder: (BuildContext context, _) {
-+          if (!controller.visible) return const SizedBox.shrink();
++          if (!controller.visible && !controller.showConfirmation) {
++            return const SizedBox.shrink();
++          }
 +          final colors = AppColors.lumiere(context);
 +          final GoldTrialOutcome outcome = controller.result.outcome;
 +          final String? message = switch (outcome) {
@@ -969,10 +977,10 @@ index 0000000..04cce06
 +}
 diff --git a/test/features/subscription/gold_trial_controller_test.dart b/test/features/subscription/gold_trial_controller_test.dart
 new file mode 100644
-index 0000000..c4beeb0
+index 0000000..1694ed8
 --- /dev/null
 +++ b/test/features/subscription/gold_trial_controller_test.dart
-@@ -0,0 +1,145 @@
+@@ -0,0 +1,160 @@
 +import 'dart:async';
 +
 +import 'package:flutter/foundation.dart';
@@ -1071,6 +1079,21 @@ index 0000000..c4beeb0
 +    await tester.pump();
 +    expect(gets, 1); expect(imports, 1);
 +    expect(controller.sourceLoaded, isTrue);
++  });
++
++  testWidgets('licence arrivée avant 201 : confirmation conservée, bouton caché', (tester) async {
++    await controller.initialize();
++    pending=Completer<http.Response>();
++    final Future<void> request=controller.request();
++    await tester.pump();
++    subscription.value=true;
++    expect(controller.visible, isFalse);
++    pending!.complete(http.Response(body, 201));
++    await request;
++    expect(controller.showConfirmation, isTrue);
++    expect(controller.canRequest, isFalse);
++    assigned=true;
++    await tester.pump(const Duration(seconds: 2));
 +  });
 +
 +  testWidgets('sondage arrêté à 30 secondes ; reprise sans second POST', (tester) async {
