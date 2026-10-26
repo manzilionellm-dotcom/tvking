@@ -1,9 +1,9 @@
 diff --git a/lib/core/widgets/settled_page_view.dart b/lib/core/widgets/settled_page_view.dart
 new file mode 100644
-index 0000000..522b4cb
+index 0000000..1e27a73
 --- /dev/null
 +++ b/lib/core/widgets/settled_page_view.dart
-@@ -0,0 +1,59 @@
+@@ -0,0 +1,62 @@
 +import 'package:flutter/material.dart';
 +
 +/// Le geste reste purement visuel. Le lecteur n'est averti qu'une fois la
@@ -44,6 +44,9 @@ index 0000000..522b4cb
 +        _committed = _page;
 +        widget.onSettled(_page);
 +      });
++      // ScrollEnd peut arriver dans les rappels de fin de frame. Sans
++      // nouvelle frame, le dernier choix resterait en attente indéfiniment.
++      WidgetsBinding.instance.ensureVisualUpdate();
 +    }
 +    return false;
 +  }
@@ -64,7 +67,7 @@ index 0000000..522b4cb
 +  );
 +}
 diff --git a/lib/features/player/presentation/video_player_screen.dart b/lib/features/player/presentation/video_player_screen.dart
-index b82fc47..821d965 100644
+index b82fc47..0030a17 100644
 --- a/lib/features/player/presentation/video_player_screen.dart
 +++ b/lib/features/player/presentation/video_player_screen.dart
 @@ -40,6 +40,7 @@ import '../../../core/observability/structured_logger.dart';
@@ -190,7 +193,17 @@ index b82fc47..821d965 100644
    }
  
    void _zapNext() => _zapTo(_zapIndex + 1);
-@@ -3536,20 +3584,19 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+@@ -3507,6 +3555,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+     if (useTikTokSwipe && _zapPageController == null) {
+       final int initial = _zapIndex.clamp(0, widget.zapPlaylist!.length - 1);
+       _zapPageController = PageController(initialPage: initial);
++      WidgetsBinding.instance.addPostFrameCallback((_) {
++        if (mounted) unawaited(_warmZapLogos(initial));
++      });
+     }
+ 
+     // Le `Focus` parent reçoit les touches télécommande qui n'ont
+@@ -3536,20 +3587,19 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
    /// + nom) pour la transition fluide pendant le swipe.
    Widget _buildTikTokPageView() {
      final List<Channel> list = widget.zapPlaylist!;
@@ -628,10 +641,17 @@ index f2b6553..487ab0d 100644
  
    /// Cache MAC id→chaîne pour le rail « Récemment regardées ». Reconstruit
 diff --git a/lib/features/vod/data/series_repository.dart b/lib/features/vod/data/series_repository.dart
-index 3b187cd..08e2035 100644
+index 3b187cd..e4d9dda 100644
 --- a/lib/features/vod/data/series_repository.dart
 +++ b/lib/features/vod/data/series_repository.dart
-@@ -56,14 +56,25 @@ class SeriesRepository extends ChangeNotifier {
+@@ -50,20 +50,32 @@ String encodeSeriesCatalog((List<VodSeries>, String) input) =>
+ 
+ class SeriesRepository extends ChangeNotifier {
+   SeriesRepository._() {
++    _playlistSignature = CatalogSource.signature(PlaylistRepository.instance.currentPlaylists);
+     PlaylistRepository.instance.playlistsStream.listen((List<Playlist> rows) {
+       final String signature = CatalogSource.signature(rows);
+       if (signature == _playlistSignature) return;
        _playlistSignature = signature;
        _invalidate();
      });
@@ -658,7 +678,7 @@ index 3b187cd..08e2035 100644
    void _invalidate() {
      ++_revision;
      _cache = null;
-@@ -96,6 +107,12 @@ class SeriesRepository extends ChangeNotifier {
+@@ -96,6 +108,12 @@ class SeriesRepository extends ChangeNotifier {
    /// (épisodes de la playlist regroupés par nom de série).
    /// Mémoire → disque (instantané + refresh silencieux) → réseau.
    Future<List<VodSeries>> fetchSeries({bool forceRefresh = false}) async {
@@ -671,7 +691,7 @@ index 3b187cd..08e2035 100644
      // Les événements SQLite sont livrés en microtâche. Un écran ouvert
      // juste après une activation peut démarrer avant le dernier événement.
      // Reprendre une fois avec l'état courant évite un premier catalogue vide,
-@@ -166,7 +183,9 @@ class SeriesRepository extends ChangeNotifier {
+@@ -166,7 +184,9 @@ class SeriesRepository extends ChangeNotifier {
      if (revision != _revision || _cacheKey != sourceKey) return const <VodSeries>[];
      _cache = keepPreviousWhenEmpty<VodSeries>(incoming: fresh,
          previous: _cache ?? const <VodSeries>[], disk: disk ?? const <VodSeries>[]);
@@ -682,7 +702,7 @@ index 3b187cd..08e2035 100644
      return _cache!;
    }
  
-@@ -177,6 +196,7 @@ class SeriesRepository extends ChangeNotifier {
+@@ -177,6 +197,7 @@ class SeriesRepository extends ChangeNotifier {
    Future<List<VodSeries>> _fetchFromNetwork(List<CatalogSource> sources,
        {List<VodSeries> previous = const <VodSeries>[]}) async {
      if (sources.isEmpty) return const <VodSeries>[];
@@ -690,7 +710,7 @@ index 3b187cd..08e2035 100644
      // Deux téléchargements de métadonnées au maximum ; le quota mémoire
      // reste global. Un fournisseur lent ne sérialise pas les dix comptes.
      final int quota = (DeviceMemory.channelCap ~/ sources.length).clamp(1, DeviceMemory.channelCap).toInt();
-@@ -191,6 +211,7 @@ class SeriesRepository extends ChangeNotifier {
+@@ -191,6 +212,7 @@ class SeriesRepository extends ChangeNotifier {
          try {
            final List<VodSeries> items = await client.fetchSeries();
            if (revision != _revision) return;
@@ -698,7 +718,7 @@ index 3b187cd..08e2035 100644
            final Iterable<VodSeries> selected = items.isEmpty
                ? previous.where((VodSeries item) => source.owns(item.id))
                : items.map((VodSeries item) => VodSeries.fromJson(
-@@ -198,12 +219,14 @@ class SeriesRepository extends ChangeNotifier {
+@@ -198,12 +220,14 @@ class SeriesRepository extends ChangeNotifier {
            parts[slot] = selected.take(quota).toList(growable: false);
          } catch (_) {
            if (revision != _revision) return;
@@ -714,10 +734,17 @@ index 3b187cd..08e2035 100644
    }
  
 diff --git a/lib/features/vod/data/vod_repository.dart b/lib/features/vod/data/vod_repository.dart
-index 847ce16..513057d 100644
+index 847ce16..a2dda01 100644
 --- a/lib/features/vod/data/vod_repository.dart
 +++ b/lib/features/vod/data/vod_repository.dart
-@@ -70,14 +70,27 @@ class VodRepository extends ChangeNotifier {
+@@ -64,20 +64,34 @@ String encodeVodCatalog((List<VodMovie>, String) input) =>
+ 
+ class VodRepository extends ChangeNotifier {
+   VodRepository._() {
++    _playlistSignature = CatalogSource.signature(PlaylistRepository.instance.currentPlaylists);
+     PlaylistRepository.instance.playlistsStream.listen((List<Playlist> rows) {
+       final String signature = CatalogSource.signature(rows);
+       if (signature == _playlistSignature) return;
        _playlistSignature = signature;
        _invalidate();
      });
@@ -746,7 +773,7 @@ index 847ce16..513057d 100644
    void _invalidate() {
      ++_revision;
      _cache = null;
-@@ -129,7 +142,15 @@ class VodRepository extends ChangeNotifier {
+@@ -129,7 +143,15 @@ class VodRepository extends ChangeNotifier {
    Future<List<VodMovie>> fetchMovies({bool forceRefresh = false}) {
      // Un rafraîchissement FORCÉ (tirer pour recharger) doit vraiment
      // re-taper le serveur : il ne s'accroche pas à un chargement en cours.
@@ -763,7 +790,7 @@ index 847ce16..513057d 100644
      return _flight.run(_fetchMoviesOnce);
    }
  
-@@ -203,7 +224,9 @@ class VodRepository extends ChangeNotifier {
+@@ -203,7 +225,9 @@ class VodRepository extends ChangeNotifier {
      if (revision != _revision || _cacheKey != sourceKey) return const <VodMovie>[];
      _cache = keepPreviousWhenEmpty<VodMovie>(incoming: fresh,
          previous: _cache ?? const <VodMovie>[], disk: disk ?? const <VodMovie>[]);
@@ -774,7 +801,7 @@ index 847ce16..513057d 100644
      return _cache!;
    }
  
-@@ -220,6 +243,7 @@ class VodRepository extends ChangeNotifier {
+@@ -220,6 +244,7 @@ class VodRepository extends ChangeNotifier {
    Future<List<VodMovie>> _fetchFromNetwork(List<CatalogSource> sources,
        {List<VodMovie> previous = const <VodMovie>[]}) async {
      if (sources.isEmpty) return const <VodMovie>[];
@@ -782,7 +809,7 @@ index 847ce16..513057d 100644
      // Deux téléchargements de métadonnées au maximum ; le quota mémoire
      // reste global. Un fournisseur lent ne sérialise pas les dix comptes.
      final int quota = (DeviceMemory.channelCap ~/ sources.length).clamp(1, DeviceMemory.channelCap).toInt();
-@@ -234,6 +258,7 @@ class VodRepository extends ChangeNotifier {
+@@ -234,6 +259,7 @@ class VodRepository extends ChangeNotifier {
          try {
            final List<VodMovie> items = await client.fetchVodMovies();
            if (revision != _revision) return;
@@ -790,7 +817,7 @@ index 847ce16..513057d 100644
            final Iterable<VodMovie> selected = items.isEmpty
                ? previous.where((VodMovie item) => source.owns(item.id))
                : items.map((VodMovie item) => VodMovie.fromJson(
-@@ -241,12 +266,14 @@ class VodRepository extends ChangeNotifier {
+@@ -241,12 +267,14 @@ class VodRepository extends ChangeNotifier {
            parts[slot] = selected.take(quota).toList(growable: false);
          } catch (_) {
            if (revision != _revision) return;
@@ -1109,10 +1136,10 @@ index 6a54960..1e10509 100644
  }
 diff --git a/test/core/settled_page_view_test.dart b/test/core/settled_page_view_test.dart
 new file mode 100644
-index 0000000..ce84eba
+index 0000000..bbe42ac
 --- /dev/null
 +++ b/test/core/settled_page_view_test.dart
-@@ -0,0 +1,50 @@
+@@ -0,0 +1,53 @@
 +import 'package:flutter/material.dart';
 +import 'package:flutter_test/flutter_test.dart';
 +import 'package:tv_king/core/widgets/settled_page_view.dart';
@@ -1129,6 +1156,8 @@ index 0000000..ce84eba
 +      onSettled: opened.add,
 +    ))));
 +    final TestGesture gesture = await tester.startGesture(tester.getCenter(find.byType(PageView)));
++    await gesture.moveBy(const Offset(0, -20));
++    await tester.pump(const Duration(milliseconds: 16));
 +    await gesture.moveBy(const Offset(0, -400));
 +    await tester.pump(const Duration(milliseconds: 50));
 +    expect(opened, isEmpty, reason: 'la texture et le réseau ne changent pas en plein glissé');
@@ -1137,6 +1166,7 @@ index 0000000..ce84eba
 +    expect(opened, isEmpty);
 +    await gesture.up();
 +    await tester.pumpAndSettle();
++    expect(controller.page!.round(), greaterThan(0));
 +    expect(opened, hasLength(1));
 +    expect(opened.single, controller.page!.round());
 +    expect(built.length, lessThan(12), reason: 'le catalogue entier ne doit jamais devenir des widgets');
@@ -1227,7 +1257,7 @@ index 0000000..ad249c6
 +}
 diff --git a/test/features/playlists/library_refresh_test.dart b/test/features/playlists/library_refresh_test.dart
 new file mode 100644
-index 0000000..88ecf7e
+index 0000000..e5475e5
 --- /dev/null
 +++ b/test/features/playlists/library_refresh_test.dart
 @@ -0,0 +1,163 @@
@@ -1351,7 +1381,7 @@ index 0000000..88ecf7e
 +      ]),200);
 +    });
 +    final old=VodRepository.instance.fetchMovies(forceRefresh:true);
-+    await started.future;
++    await started.future.timeout(const Duration(seconds: 10));
 +    expect(await VodRepository.instance.fetchMovies(forceRefresh:true),hasLength(2));
 +    release.complete();
 +    await old;

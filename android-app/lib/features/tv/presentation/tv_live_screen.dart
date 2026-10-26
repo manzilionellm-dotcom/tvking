@@ -739,7 +739,7 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
       // la source l'en ferait sortir.
       if (_selectedCat != null &&
           !_isSpecialCat(_selectedCat!) &&
-          !seenCats.contains(_selectedCat)) {
+          !categoryIndex.containsCategory(_selectedCat)) {
         _selectedCat = cats.isNotEmpty ? cats.first : null;
       }
       _recompute();

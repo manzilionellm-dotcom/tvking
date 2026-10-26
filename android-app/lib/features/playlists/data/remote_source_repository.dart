@@ -72,10 +72,8 @@ abstract final class RemoteSourceRepository {
 
   /// Vrai si [playlist] est (encore) envoyée par le panel du revendeur :
   /// son empreinte figure dans les listes servies à la dernière vérification.
-  /// Sert à « Mes sources » : supprimer une telle liste sur la télé ne la
-  /// retire pas du serveur, elle revient à la vérification suivante (mesuré
-  /// le 05/10/2026 : « j'efface, il revient après cinq minutes »). Le retrait
-  /// définitif se fait depuis le panel.
+  /// Identifie son origine pour les diagnostics. Sa présence sur le panel
+  /// ne l'autorise jamais à contourner une suppression locale définitive.
   static Future<bool> isServedByPanel(Playlist playlist) async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     final List<String> remembered =

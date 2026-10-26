@@ -25,4 +25,5 @@ class ChannelCategoryIndex {
   final Map<String, List<Channel>> _groups;
   List<Channel> channelsIn(String category) => _groups[category] ?? const <Channel>[];
   int countIn(String category) => _groups[category]?.length ?? 0;
+  bool containsCategory(String? category) => _groups.containsKey(category);
 }
