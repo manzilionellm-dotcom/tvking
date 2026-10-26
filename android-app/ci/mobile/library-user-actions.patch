@@ -1,9 +1,9 @@
 diff --git a/lib/core/widgets/settled_page_view.dart b/lib/core/widgets/settled_page_view.dart
 new file mode 100644
-index 0000000..1e27a73
+index 0000000..9333981
 --- /dev/null
 +++ b/lib/core/widgets/settled_page_view.dart
-@@ -0,0 +1,62 @@
+@@ -0,0 +1,71 @@
 +import 'package:flutter/material.dart';
 +
 +/// Le geste reste purement visuel. Le lecteur n'est averti qu'une fois la
@@ -24,9 +24,18 @@ index 0000000..1e27a73
 +}
 +
 +class _SettledPageViewState extends State<SettledPageView> {
-+  late int _page = widget.controller.initialPage;
-+  late int _committed = _page;
++  late int _page;
++  late int _committed;
 +  int _intent = 0;
++
++  @override
++  void initState() {
++    super.initState();
++    // Initialisation immédiate : une valeur late calculée au premier arrêt
++    // prendrait déjà la nouvelle page et ferait disparaître le premier zap.
++    _page = widget.controller.initialPage;
++    _committed = _page;
++  }
 +
 +  bool _onScroll(ScrollNotification notification) {
 +    if (notification.depth != 0) return false;
