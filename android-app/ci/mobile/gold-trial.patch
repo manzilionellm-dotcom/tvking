@@ -1,9 +1,9 @@
 diff --git a/integration_test/gold_trial_device_test.dart b/integration_test/gold_trial_device_test.dart
 new file mode 100644
-index 0000000..b0ad8f0
+index 0000000..35920ae
 --- /dev/null
 +++ b/integration_test/gold_trial_device_test.dart
-@@ -0,0 +1,100 @@
+@@ -0,0 +1,151 @@
 +// Vrai Android : ANDROID_ID natif, versionName, HTTP local et SQLite réels.
 +// Le serveur de fixture ne contient aucun flux ni compte de production.
 +import 'dart:async';
@@ -14,11 +14,13 @@ index 0000000..b0ad8f0
 +import 'package:flutter_test/flutter_test.dart';
 +import 'package:integration_test/integration_test.dart';
 +import 'package:package_info_plus/package_info_plus.dart';
++import 'package:shared_preferences/shared_preferences.dart';
 +import 'package:tv_king/core/backend/backend_hosts.dart';
 +import 'package:tv_king/core/flavor/flavor.dart';
 +import 'package:tv_king/core/theme/app_theme.dart';
 +import 'package:tv_king/features/device/data/device_identity.dart';
 +import 'package:tv_king/features/playlists/data/playlist_repository.dart';
++import 'package:tv_king/features/playlists/domain/playlist.dart';
 +import 'package:tv_king/features/subscription/data/gold_trial_backend.dart';
 +import 'package:tv_king/features/subscription/data/gold_trial_controller.dart';
 +import 'package:tv_king/features/subscription/presentation/gold_trial_card.dart';
@@ -33,6 +35,7 @@ index 0000000..b0ad8f0
 +    BackendHosts.current = fixture;
 +    int posts = 0;
 +    int sourceReads = 0;
++    int activationStatus = 201;
 +    Map<String, dynamic>? payload;
 +    final String mac = await DeviceIdentity.instance.mac;
 +    final String androidId = await DeviceIdentity.instance.androidId();
@@ -45,8 +48,9 @@ index 0000000..b0ad8f0
 +      if (path == '/api/gold-trial' && request.method == 'POST') {
 +        posts++;
 +        payload = jsonDecode(await utf8.decoder.bind(request).join()) as Map<String, dynamic>;
-+        request.response.statusCode = 201;
-+        request.response.write(jsonEncode(<String, Object>{
++        request.response.statusCode = activationStatus;
++        request.response.write(activationStatus == 403
++            ? '{"error":"trial_disabled"}' : jsonEncode(<String, Object>{
 +          'ok': true, 'expire': DateTime.now().toUtc().add(const Duration(hours: 24)).toIso8601String(),
 +          'message': 'Cette valeur ne doit jamais apparaître dans l’interface',
 +        }));
@@ -65,7 +69,7 @@ index 0000000..b0ad8f0
 +    });
 +    await PlaylistRepository.instance.initialize();
 +    await PlaylistRepository.instance.deleteAllPlaylists();
-+    final GoldTrialController controller = GoldTrialController(
++    GoldTrialController controller = GoldTrialController(
 +      backend: GoldTrialBackend(baseUrl: fixture), hasSubscription: () => false,
 +    );
 +    try {
@@ -94,6 +98,53 @@ index 0000000..b0ad8f0
 +      expect(find.text(kGoldTrialPlaylistName), findsOneWidget);
 +      expect(find.text('Essai activé ✔'), findsOneWidget);
 +      expect(find.textContaining('Cette valeur'), findsNothing);
++
++      // Reproduit la capture du client : licence du lecteur non payante,
++      // réponse « essais fermés », puis véritable abonnement M3U en SQLite.
++      controller.dispose();
++      await PlaylistRepository.instance.deleteAllPlaylists();
++      final SharedPreferences prefs = await SharedPreferences.getInstance();
++      await prefs.remove('gold_trial.$mac.expire');
++      activationStatus = 403;
++      controller = GoldTrialController(
++        backend: GoldTrialBackend(baseUrl: fixture), hasSubscription: () => false,
++      );
++      await controller.initialize();
++      await tester.pumpWidget(MaterialApp(theme: AppTheme.cinema,
++        home: Scaffold(body: GoldTrialCard(controller: controller))));
++      await tester.pumpAndSettle();
++      await tester.tap(find.text('Je teste'));
++      await tester.pump();
++      for (int n=0; n<100 && controller.requesting; n++) {
++        await Future<void>.delayed(const Duration(milliseconds: 100));
++        await tester.pump();
++      }
++      expect(find.text('Les essais sont fermés pour le moment.'), findsOneWidget);
++      expect(find.text('WhatsApp'), findsOneWidget);
++      await PlaylistRepository.instance.addM3uPlaylist(
++        name: 'Mon abonnement', url: '$fixture/trial.m3u',
++      );
++      await tester.pumpAndSettle();
++      expect(find.text('Je teste'), findsNothing);
++      expect(find.text('Les essais sont fermés pour le moment.'), findsNothing);
++      expect(find.text('WhatsApp'), findsNothing);
++      await controller.request();
++      expect(posts, 2);
++
++      // Le retour sur l'accueil relit la base réelle, même avant le cache
++      // des chaînes. Aucun nouvel essai n'est proposé à ce client existant.
++      controller.dispose();
++      PlaylistRepository.instance.debugSeedPlaylists(const <Playlist>[]);
++      controller = GoldTrialController(
++        backend: GoldTrialBackend(baseUrl: fixture), hasSubscription: () => false,
++      );
++      await controller.initialize();
++      await tester.pumpWidget(MaterialApp(theme: AppTheme.cinema,
++        home: Scaffold(body: GoldTrialCard(controller: controller))));
++      await tester.pumpAndSettle();
++      expect(find.text('Je teste'), findsNothing);
++      await controller.request();
++      expect(posts, 2);
 +    } finally {
 +      controller.dispose();
 +      await tester.pumpWidget(const SizedBox.shrink());
@@ -359,10 +410,10 @@ index 0000000..db82111
 +}
 diff --git a/lib/features/subscription/data/gold_trial_controller.dart b/lib/features/subscription/data/gold_trial_controller.dart
 new file mode 100644
-index 0000000..ef9f1e3
+index 0000000..7b6eb45
 --- /dev/null
 +++ b/lib/features/subscription/data/gold_trial_controller.dart
-@@ -0,0 +1,266 @@
+@@ -0,0 +1,318 @@
 +import 'dart:async';
 +
 +import 'package:flutter/foundation.dart';
@@ -373,6 +424,7 @@ index 0000000..ef9f1e3
 +import '../../device/data/device_secret.dart';
 +import '../../playlists/data/playlist_repository.dart';
 +import '../../playlists/data/remote_source_repository.dart';
++import '../../playlists/domain/playlist.dart';
 +import 'gold_trial_backend.dart';
 +import 'subscription_state.dart';
 +
@@ -388,6 +440,8 @@ index 0000000..ef9f1e3
 +    bool Function()? hasLoadedTrial,
 +    Listenable? subscriptionChanges,
 +    Listenable? sourceChanges,
++    Future<List<Playlist>> Function()? loadPlaylists,
++    Stream<List<Playlist>>? playlistChanges,
 +  })  : _backend = backend ?? GoldTrialBackend(),
 +        _loadIdentity = loadIdentity ?? _deviceIdentity,
 +        _sourceHeaders = sourceHeaders ?? DeviceSecret.instance.headers,
@@ -396,8 +450,11 @@ index 0000000..ef9f1e3
 +        _hasLoadedTrial = hasLoadedTrial ?? _deviceHasTrial,
 +        _subscriptionChanges = subscriptionChanges ?? SubscriptionState.instance,
 +        _sourceChanges = sourceChanges ?? RemoteSourceRepository.pushedTick {
++    _loadPlaylists = loadPlaylists ?? PlaylistRepository.instance.getAllPlaylists;
 +    _subscriptionChanges.addListener(_changed);
 +    _sourceChanges.addListener(_sourcePushed);
++    _playlistSubscription = (playlistChanges ?? PlaylistRepository.instance.playlistsStream)
++        .listen(_playlistsChanged);
 +  }
 +
 +  final GoldTrialBackend _backend;
@@ -408,6 +465,11 @@ index 0000000..ef9f1e3
 +  final bool Function() _hasLoadedTrial;
 +  final Listenable _subscriptionChanges;
 +  final Listenable _sourceChanges;
++  late final Future<List<Playlist>> Function() _loadPlaylists;
++  late final StreamSubscription<List<Playlist>> _playlistSubscription;
++  List<Playlist> _playlists = const <Playlist>[];
++  bool _playlistsReady = false;
++  int _playlistRevision = 0;
 +  GoldTrialIdentity? _identity;
 +  GoldTrialResult result = const GoldTrialResult(GoldTrialOutcome.idle);
 +  bool ready = false;
@@ -425,7 +487,11 @@ index 0000000..ef9f1e3
 +  Stopwatch? _elapsed;
 +
 +  bool get busy => requesting || waitingForSource || importing;
-+  bool get visible => ready && !_hasSubscription() &&
++  // La licence du lecteur et la source IPTV sont deux états distincts.
++  // Une liste déjà enregistrée (panel ou ajout manuel) suffit à masquer
++  // l'offre, même hors ligne, désactivée ou sans chaînes dans le cache RAM.
++  // Les radios et le sport gratuits n'utilisent pas ce dépôt de playlists.
++  bool get visible => ready && _playlistsReady && _playlists.isEmpty && !_hasSubscription() &&
 +      result.outcome != GoldTrialOutcome.alreadyCustomer;
 +  bool get canRequest => visible && !busy &&
 +      result.outcome != GoldTrialOutcome.activated &&
@@ -433,7 +499,34 @@ index 0000000..ef9f1e3
 +  // Un heartbeat peut confirmer la licence AVANT la réponse 201. Le
 +  // bouton disparaît, mais la confirmation de ce clic doit rester lisible.
 +  bool get showConfirmation => _activatedHere &&
-+      result.outcome == GoldTrialOutcome.activated;
++      result.outcome == GoldTrialOutcome.activated &&
++      !_hasCustomerSource;
++
++  bool get _hasCustomerSource =>
++      _playlists.any((p) => p.name != kGoldTrialPlaylistName);
++
++  void _playlistsChanged(List<Playlist> playlists) {
++    if (_disposed) return;
++    _playlistRevision++;
++    _playlists = List<Playlist>.unmodifiable(playlists);
++    _playlistsReady = true;
++    if (_hasCustomerSource) _stopWaiting();
++    _changed();
++  }
++
++  Future<void> _readPlaylists() async {
++    final int revision = _playlistRevision;
++    try {
++      final List<Playlist> playlists = await _loadPlaylists();
++      // Un import/suppression récent prime sur une lecture commencée avant.
++      if (_disposed || revision != _playlistRevision) return;
++      _playlists = List<Playlist>.unmodifiable(playlists);
++      _playlistsReady = true;
++    } catch (_) {
++      // Une base pas encore lisible ne prouve pas l'absence d'abonnement.
++      if (!_disposed && revision == _playlistRevision) _playlistsReady = false;
++    }
++  }
 +
 +  static bool _deviceHasSubscription() {
 +    final SubscriptionState subscription = SubscriptionState.instance;
@@ -462,6 +555,9 @@ index 0000000..ef9f1e3
 +  String get _cacheKey => 'gold_trial.${_identity!.mac}';
 +
 +  Future<void> initialize() async {
++    // Le boot charge les chaînes en arrière-plan : lire aussi SQLite évite
++    // qu'un ancien client voie l'offre avant le premier événement du dépôt.
++    final Future<void> playlistsLoaded = _readPlaylists();
 +    try {
 +      _identity = await _loadIdentity();
 +      if (_disposed) return;
@@ -480,6 +576,7 @@ index 0000000..ef9f1e3
 +    } catch (_) {
 +      // La lecture de l'identité sera retentée au clic si nécessaire.
 +    }
++    await playlistsLoaded;
 +    if (_disposed) return;
 +    ready = true;
 +    if (result.outcome == GoldTrialOutcome.activated) _startWaiting();
@@ -495,6 +592,10 @@ index 0000000..ef9f1e3
 +    try {
 +      _identity ??= await _loadIdentity();
 +      if (_disposed) return;
++      // Revalider juste avant le POST si une source est arrivée pendant
++      // l'attente d'identité, même avant son premier affichage à l'accueil.
++      await _readPlaylists();
++      if (_disposed || !visible) return;
 +      result = await _backend.activate(_identity!);
 +      if (_disposed) return;
 +      _activatedHere = result.outcome == GoldTrialOutcome.activated;
@@ -545,6 +646,7 @@ index 0000000..ef9f1e3
 +
 +  void _startWaiting() {
 +    _stopWaiting();
++    if (_hasCustomerSource) return;
 +    sourceFailed = false;
 +    sourceLoaded = _hasLoadedTrial();
 +    if (sourceLoaded) return;
@@ -626,6 +728,7 @@ index 0000000..ef9f1e3
 +    _backend.cancelPending();
 +    _subscriptionChanges.removeListener(_changed);
 +    _sourceChanges.removeListener(_sourcePushed);
++    unawaited(_playlistSubscription.cancel());
 +    super.dispose();
 +  }
 +}
@@ -878,10 +981,10 @@ index 0000000..4a8d3b8
 +}
 diff --git a/test/features/subscription/gold_trial_card_test.dart b/test/features/subscription/gold_trial_card_test.dart
 new file mode 100644
-index 0000000..04cce06
+index 0000000..8155398
 --- /dev/null
 +++ b/test/features/subscription/gold_trial_card_test.dart
-@@ -0,0 +1,93 @@
+@@ -0,0 +1,126 @@
 +import 'dart:async';
 +
 +import 'package:flutter/material.dart';
@@ -890,6 +993,7 @@ index 0000000..04cce06
 +import 'package:http/testing.dart';
 +import 'package:shared_preferences/shared_preferences.dart';
 +import 'package:tv_king/core/theme/app_theme.dart';
++import 'package:tv_king/features/playlists/domain/playlist.dart';
 +import 'package:tv_king/features/subscription/data/gold_trial_backend.dart';
 +import 'package:tv_king/features/subscription/data/gold_trial_controller.dart';
 +import 'package:tv_king/features/subscription/presentation/gold_trial_card.dart';
@@ -910,6 +1014,8 @@ index 0000000..04cce06
 +        loadIdentity: () async => const GoldTrialIdentity(mac:'MK:11:22:33:44:55', androidId:'test', appVersion:'1'),
 +        hasSubscription: () => customer,
 +        hasLoadedTrial: () => true,
++        loadPlaylists: () async => const <Playlist>[],
++        playlistChanges: const Stream<List<Playlist>>.empty(),
 +      );
 +
 +  Future<void> show(WidgetTester tester, GoldTrialController controller) async {
@@ -974,13 +1080,43 @@ index 0000000..04cce06
 +    addTearDown(controller.dispose); await show(tester,controller);
 +    expect(find.text('Je teste'),findsNothing);
 +  });
++
++  testWidgets('abonnement importé après 403 : toute la carte disparaît immédiatement', (tester) async {
++    final StreamController<List<Playlist>> events = StreamController<List<Playlist>>.broadcast();
++    int posts = 0;
++    final GoldTrialController controller = GoldTrialController(
++      backend: GoldTrialBackend(clientFactory: () => MockClient((_) async {
++        posts++;
++        return http.Response('{"error":"trial_disabled"}', 403);
++      })),
++      loadIdentity: () async => const GoldTrialIdentity(mac:'MK:11:22:33:44:55', androidId:'test', appVersion:'1'),
++      hasSubscription: () => false,
++      loadPlaylists: () async => const <Playlist>[],
++      playlistChanges: events.stream,
++    );
++    addTearDown(() async { controller.dispose(); await events.close(); });
++    await show(tester, controller);
++    await tester.tap(find.text('Je teste'));
++    await tester.pumpAndSettle();
++    expect(find.text('Les essais sont fermés pour le moment.'), findsOneWidget);
++    expect(find.text('WhatsApp'), findsOneWidget);
++    events.add(<Playlist>[const Playlist(
++      id: 1, name: 'Mon abonnement', type: PlaylistType.xtream, createdAt: 1,
++    )]);
++    await tester.pumpAndSettle();
++    expect(find.text('Je teste'), findsNothing);
++    expect(find.text('Les essais sont fermés pour le moment.'), findsNothing);
++    expect(find.text('WhatsApp'), findsNothing);
++    await controller.request();
++    expect(posts, 1);
++  });
 +}
 diff --git a/test/features/subscription/gold_trial_controller_test.dart b/test/features/subscription/gold_trial_controller_test.dart
 new file mode 100644
-index 0000000..1694ed8
+index 0000000..1d97afa
 --- /dev/null
 +++ b/test/features/subscription/gold_trial_controller_test.dart
-@@ -0,0 +1,160 @@
+@@ -0,0 +1,244 @@
 +import 'dart:async';
 +
 +import 'package:flutter/foundation.dart';
@@ -989,6 +1125,7 @@ index 0000000..1694ed8
 +import 'package:http/testing.dart';
 +import 'package:shared_preferences/shared_preferences.dart';
 +import 'package:tv_king/features/playlists/data/remote_source_repository.dart';
++import 'package:tv_king/features/playlists/domain/playlist.dart';
 +import 'package:tv_king/features/subscription/data/gold_trial_backend.dart';
 +import 'package:tv_king/features/subscription/data/gold_trial_controller.dart';
 +
@@ -999,6 +1136,10 @@ index 0000000..1694ed8
 +  late ValueNotifier<bool> subscription;
 +  late ValueNotifier<int> push;
 +  late GoldTrialController controller;
++  late StreamController<List<Playlist>> playlistEvents;
++  List<Playlist> savedPlaylists = <Playlist>[];
++  Completer<List<Playlist>>? pendingPlaylists;
++  bool playlistReadFails = false;
 +  int posts = 0;
 +  int gets = 0;
 +  int imports = 0;
@@ -1025,17 +1166,79 @@ index 0000000..1694ed8
 +    hasSubscription: () => subscription.value,
 +    hasLoadedTrial: () => loaded,
 +    subscriptionChanges: subscription, sourceChanges: push,
++    loadPlaylists: () async {
++      if (playlistReadFails) throw StateError('database unavailable');
++      return pendingPlaylists == null ? savedPlaylists : await pendingPlaylists!.future;
++    },
++    playlistChanges: playlistEvents.stream,
 +  );
 +
 +  setUp(() {
 +    SharedPreferences.setMockInitialValues(<String, Object>{});
 +    subscription = ValueNotifier<bool>(false);
 +    push = ValueNotifier<int>(0);
++    playlistEvents = StreamController<List<Playlist>>.broadcast(sync: true);
++    savedPlaylists = <Playlist>[]; pendingPlaylists = null; playlistReadFails = false;
 +    posts=0; gets=0; imports=0; assigned=false; loaded=false;
 +    status=201; body='{"ok":true,"expire":1793102400}'; pending=null;
 +    controller=create();
 +  });
-+  tearDown(() { controller.dispose(); subscription.dispose(); push.dispose(); });
++  tearDown(() async {
++    controller.dispose(); subscription.dispose(); push.dispose();
++    await playlistEvents.close();
++  });
++
++  for (final PlaylistType type in PlaylistType.values) {
++    test('$type enregistré : caché sans licence payante, même vide/inactif et après retour', () async {
++      savedPlaylists = <Playlist>[Playlist(
++        id: 1, name: 'Mon abonnement', type: type, createdAt: 1,
++        channelCount: 0, isActive: false,
++      )];
++      await controller.initialize();
++      expect(subscription.value, isFalse);
++      expect(controller.visible, isFalse);
++      await controller.request();
++      expect(posts, 0);
++      controller.dispose(); controller = create();
++      await controller.initialize();
++      expect(controller.visible, isFalse);
++      expect(controller.canRequest, isFalse);
++    });
++  }
++
++  test('boot : aucune offre avant SQLite ; événement récent prioritaire', () async {
++    pendingPlaylists = Completer<List<Playlist>>();
++    final Future<void> boot = controller.initialize();
++    expect(controller.visible, isFalse);
++    playlistEvents.add(<Playlist>[const Playlist(
++      id: 1, name: 'Mon abonnement', type: PlaylistType.m3u, createdAt: 1,
++    )]);
++    pendingPlaylists!.complete(<Playlist>[]);
++    await boot;
++    expect(controller.visible, isFalse);
++  });
++
++  test('base illisible : offre cachée jusqu’à un état fiable des playlists', () async {
++    playlistReadFails = true;
++    await controller.initialize();
++    expect(controller.visible, isFalse);
++    await controller.request();
++    expect(posts, 0);
++    playlistEvents.add(<Playlist>[]);
++    expect(controller.visible, isTrue);
++  });
++
++  test('source enregistrée avant son événement UI : aucun POST au clic', () async {
++    await controller.initialize();
++    expect(controller.visible, isTrue);
++    savedPlaylists = <Playlist>[const Playlist(
++      id: 1, name: 'Mon abonnement', type: PlaylistType.xtream, createdAt: 1,
++    )];
++    await controller.request();
++    expect(posts, 0);
++    expect(controller.visible, isFalse);
++    expect(controller.busy, isFalse);
++  });
 +
 +  test('abonné : bouton absent avant et après une notification', () async {
 +    subscription.value=true;
@@ -1079,6 +1282,23 @@ index 0000000..1694ed8
 +    await tester.pump();
 +    expect(gets, 1); expect(imports, 1);
 +    expect(controller.sourceLoaded, isTrue);
++  });
++
++  testWidgets('un abonnement reçu remplace la confirmation et arrête le sondage d’essai', (tester) async {
++    await controller.initialize();
++    await controller.request();
++    playlistEvents.add(<Playlist>[const Playlist(
++      id: 1, name: kGoldTrialPlaylistName, type: PlaylistType.m3u, createdAt: 1,
++    )]);
++    expect(controller.visible, isFalse);
++    expect(controller.showConfirmation, isTrue);
++    playlistEvents.add(<Playlist>[const Playlist(
++      id: 2, name: 'Mon abonnement', type: PlaylistType.xtream, createdAt: 2,
++    )]);
++    expect(controller.showConfirmation, isFalse);
++    expect(controller.waitingForSource, isFalse);
++    await tester.pump(const Duration(seconds: 40));
++    expect(gets, 0);
 +  });
 +
 +  testWidgets('licence arrivée avant 201 : confirmation conservée, bouton caché', (tester) async {

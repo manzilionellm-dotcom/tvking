@@ -125,6 +125,8 @@ jobs:
         '
     - name: Generate native Android folder
       run: flutter create . --platforms=android --org com.manzilionellm.tvking --project-name tv_king
+    # Nouvelle installation de revue : la signature debug du premier runner
+    # était éphémère. Garder sa copie et ses données sans désinstallation.
     - name: Isoler les données et l’installation de test
       run: 'python3 - <<''PYTEST''
 
@@ -136,7 +138,7 @@ jobs:
 
         assert ''defaultConfig {'' in s
 
-        s=s.replace(''defaultConfig {'',''defaultConfig {\n        applicationIdSuffix = ".goldtrialtest"'',1)
+        s=s.replace(''defaultConfig {'',''defaultConfig {\n        applicationIdSuffix = ".goldtrialtest2"'',1)
 
         p.write_text(s)
 
@@ -155,7 +157,7 @@ jobs:
         \ \"w\").write(s)\nprint(\"minSdk -> 24 dans\", f)\nPYEOF\n"
     - name: Harmoniser le nom Android 7 MOTION
       run: "MANIFEST=android/app/src/main/AndroidManifest.xml\nif [ -f \"$MANIFEST\" ]; then\n  sed -i 's|android:label=\"\
-        tv_king\"|android:label=\"7 MOTION Test\"|g' \"$MANIFEST\"\n  echo \"--- Patched manifest ---\"\n  grep\
+        tv_king\"|android:label=\"7 MOTION Test 2\"|g' \"$MANIFEST\"\n  echo \"--- Patched manifest ---\"\n  grep\
         \ 'android:label' \"$MANIFEST\" || true\nfi\n"
     - name: Patch AndroidManifest for network (cleartext HTTP + INTERNET)
       run: "set -e\nMANIFEST=android/app/src/main/AndroidManifest.xml\nif [ ! -f \"$MANIFEST\" ]; then\n  echo \"\
@@ -304,7 +306,7 @@ jobs:
         \n\"$BT/aapt2\" dump badging \"$APK\" > \"$RUNNER_TEMP/badging.txt\"\nhead -1 \"$RUNNER_TEMP/badging.txt\"\
         \n\"$RUNNER_TEMP/mobile-audit/bin/python\" - \"$APK\" \"$RUNNER_TEMP/signature.txt\" <<'PYAUDIT'\nimport\
         \ hashlib,json,sys,zipfile\nfrom pathlib import Path\nfrom androguard.core.apk import APK\npath=Path(sys.argv[1])\n\
-        apk=APK(str(path))\nassert apk.get_package()=='com.manzilionellm.tvking.tv_king.goldtrialtest'\nassert apk.get_min_sdk_version()=='24'\n\
+        apk=APK(str(path))\nassert apk.get_package()=='com.manzilionellm.tvking.tv_king.goldtrialtest2'\nassert apk.get_min_sdk_version()=='24'\n\
         assert 'com.manzilionellm.tvking.tv_king.MainActivity'==apk.get_main_activity()\nassert 'CN=Android Debug'\
         \ in Path(sys.argv[2]).read_text()\nwith zipfile.ZipFile(path) as z:\n data=z.read('lib/arm64-v8a/libapp.so')\n\
         \ for marker in [b'Je teste',b'/api/gold-trial',b'7 MOTION Essai',b'android_id',b'app_version']:\n  assert\
