@@ -105,7 +105,7 @@ index 0000000..b0ad8f0
 +  });
 +}
 diff --git a/lib/features/simple_home/presentation/simple_home_screen.dart b/lib/features/simple_home/presentation/simple_home_screen.dart
-index 2a90504..290f983 100644
+index 2a90504..7665b7d 100644
 --- a/lib/features/simple_home/presentation/simple_home_screen.dart
 +++ b/lib/features/simple_home/presentation/simple_home_screen.dart
 @@ -55,6 +55,8 @@ import '../../playlists/data/remote_source_repository.dart';
@@ -152,7 +152,17 @@ index 2a90504..290f983 100644
      // Déjà des chaînes ? on arrête le sondage (cas course / retour écran).
      if (PlaylistRepository.instance.currentChannels.isNotEmpty) {
        _activationPoll?.cancel();
-@@ -302,6 +309,7 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
+@@ -231,7 +238,8 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
+     } finally {
+       _polling = false;
+     }
+-    if (!mounted || pending.isEmpty) return;
++    // Un sondage commencé avant le clic laisse aussi la main à l'essai.
++    if (!mounted || pending.isEmpty || _goldTrial.busy) return;
+     // Course : une autre voie (temps réel, sync silencieux de secours) a pu
+     // charger entre-temps → on ne double pas.
+     if (PlaylistRepository.instance.currentChannels.isNotEmpty) {
+@@ -302,6 +310,7 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
                              discoveryHeader: Column(
                                crossAxisAlignment: CrossAxisAlignment.stretch,
                                children: <Widget>[
@@ -160,7 +170,7 @@ index 2a90504..290f983 100644
                                  const AnnouncementBanner(),
                                  const RadioEntry(),
                                  _GuestEntryBar(
-@@ -345,6 +353,7 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
+@@ -345,6 +354,7 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
              ),
            ),
            const SizedBox(height: 24),
@@ -345,10 +355,10 @@ index 0000000..4b26421
 +}
 diff --git a/lib/features/subscription/data/gold_trial_controller.dart b/lib/features/subscription/data/gold_trial_controller.dart
 new file mode 100644
-index 0000000..e30a249
+index 0000000..6b0af91
 --- /dev/null
 +++ b/lib/features/subscription/data/gold_trial_controller.dart
-@@ -0,0 +1,258 @@
+@@ -0,0 +1,260 @@
 +import 'dart:async';
 +
 +import 'package:flutter/foundation.dart';
@@ -516,7 +526,9 @@ index 0000000..e30a249
 +  /// Reprend uniquement la lecture de la source, sans jamais recréer l'essai.
 +  void retrySource() {
 +    if (_disposed || busy || (result.outcome != GoldTrialOutcome.activated &&
-+        result.outcome != GoldTrialOutcome.inProgress)) return;
++        result.outcome != GoldTrialOutcome.inProgress)) {
++      return;
++    }
 +    _startWaiting();
 +    _changed();
 +  }
