@@ -1,0 +1,99 @@
+name: 7 MOTION — essai sur Android virtuel
+
+on:
+  push:
+    branches: ['feature/7motion-gold-trial-20261026']
+  pull_request:
+    paths:
+      - 'android-app/ci/mobile/gold-trial.patch'
+      - 'android-app/ci/mobile/prepare-gold-trial-test.sh'
+      - '.github/workflows/mobile-gold-trial-device.yml'
+
+# Aucun secret, aucune signature de production, aucune publication.
+permissions:
+  contents: read
+
+concurrency:
+  group: gold-trial-device-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  android:
+    name: Identité Android · HTTP · import SQLite · interface
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    defaults:
+      run:
+        working-directory: phone
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          path: mission
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 37fdf3305c5de9d35e20fd6567df38008fc7a7ee
+          path: phone
+          persist-credentials: false
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+        with:
+          flutter-version: '3.47.7'
+          channel: stable
+      - name: Préparer exactement le dernier téléphone et le bouton d'essai
+        run: bash ../mission/android-app/ci/mobile/prepare-gold-trial-test.sh
+      - name: Tests des réponses, doubles clics, minuterie et affichage
+        run: |
+          flutter pub get
+          flutter gen-l10n
+          flutter analyze lib/features/subscription/data/gold_trial_backend.dart lib/features/subscription/data/gold_trial_controller.dart lib/features/subscription/presentation/gold_trial_card.dart test/features/subscription/gold_trial_backend_test.dart test/features/subscription/gold_trial_controller_test.dart test/features/subscription/gold_trial_card_test.dart integration_test/gold_trial_device_test.dart
+          flutter test --reporter expanded test/features/subscription/gold_trial_backend_test.dart test/features/subscription/gold_trial_controller_test.dart test/features/subscription/gold_trial_card_test.dart
+      - name: Préparer le paquet de test Android sans signature de production
+        run: |
+          flutter create . --platforms=android --org com.manzilionellm.tvking --project-name tv_king
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          for p in [Path('android/app/build.gradle.kts'), Path('android/app/build.gradle')]:
+              if p.exists():
+                  s=p.read_text()
+                  s=re.sub(r'minSdk\s*=\s*flutter.minSdkVersion', 'minSdk = 24', s)
+                  s=re.sub(r'minSdkVersion\s+flutter.minSdkVersion', 'minSdkVersion 24', s)
+                  p.write_text(s)
+          p=Path('android/app/src/main/AndroidManifest.xml')
+          s=p.read_text()
+          if 'usesCleartextTraffic' not in s:
+              s=s.replace('<application', '<application android:usesCleartextTraffic="true"', 1)
+          p.write_text(s)
+          PY
+      - name: Préparer un émulateur Android 35
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager 'platform-tools' 'emulator' 'platforms;android-35' 'system-images;android-35;google_apis;x86_64'
+          echo no | avdmanager create avd --name gold_trial --package 'system-images;android-35;google_apis;x86_64' --force
+          sudo chmod 666 /dev/kvm
+          "$ANDROID_HOME/emulator/emulator" -avd gold_trial -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect > emulator.log 2>&1 &
+          timeout 180 adb wait-for-device
+          for attempt in $(seq 1 120); do
+            if [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = 1 ]; then break; fi
+            sleep 2
+          done
+          test "$(adb shell getprop sys.boot_completed | tr -d '\r')" = 1
+          adb shell input keyevent 82
+      - name: Exécuter le vrai parcours sur l'appareil Android virtuel
+        run: |
+          set -o pipefail
+          flutter test integration_test/gold_trial_device_test.dart -d emulator-5554 --reporter expanded 2>&1 | tee gold-trial-device.log
+      - name: Conserver les diagnostics du test Android
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: 7motion-gold-trial-device
+          path: |
+            phone/gold-trial-device.log
+            phone/emulator.log
+          if-no-files-found: ignore
+          retention-days: 14

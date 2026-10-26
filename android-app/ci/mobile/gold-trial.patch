@@ -1,0 +1,1102 @@
+diff --git a/integration_test/gold_trial_device_test.dart b/integration_test/gold_trial_device_test.dart
+new file mode 100644
+index 0000000..b0ad8f0
+--- /dev/null
++++ b/integration_test/gold_trial_device_test.dart
+@@ -0,0 +1,100 @@
++// Vrai Android : ANDROID_ID natif, versionName, HTTP local et SQLite réels.
++// Le serveur de fixture ne contient aucun flux ni compte de production.
++import 'dart:async';
++import 'dart:convert';
++import 'dart:io';
++
++import 'package:flutter/material.dart';
++import 'package:flutter_test/flutter_test.dart';
++import 'package:integration_test/integration_test.dart';
++import 'package:package_info_plus/package_info_plus.dart';
++import 'package:tv_king/core/backend/backend_hosts.dart';
++import 'package:tv_king/core/flavor/flavor.dart';
++import 'package:tv_king/core/theme/app_theme.dart';
++import 'package:tv_king/features/device/data/device_identity.dart';
++import 'package:tv_king/features/playlists/data/playlist_repository.dart';
++import 'package:tv_king/features/subscription/data/gold_trial_backend.dart';
++import 'package:tv_king/features/subscription/data/gold_trial_controller.dart';
++import 'package:tv_king/features/subscription/presentation/gold_trial_card.dart';
++
++void main() {
++  IntegrationTestWidgetsFlutterBinding.ensureInitialized();
++  testWidgets('Android : Je teste → identité native → import automatique SQLite', (tester) async {
++    FlavorConfig.setCurrent(FlavorConfig.sevenMotion);
++    final HttpServer server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
++    final String fixture = 'http://127.0.0.1:${server.port}';
++    final String oldHost = BackendHosts.current;
++    BackendHosts.current = fixture;
++    int posts = 0;
++    int sourceReads = 0;
++    Map<String, dynamic>? payload;
++    final String mac = await DeviceIdentity.instance.mac;
++    final String androidId = await DeviceIdentity.instance.androidId();
++    final PackageInfo package = await PackageInfo.fromPlatform();
++    expect(androidId, isNotEmpty, reason: 'ANDROID_ID lu via le plugin Android réel');
++    expect(mac, matches(RegExp(r'^MK(?::[0-9A-F]{2}){5}$')));
++    final StreamSubscription<HttpRequest> requests = server.listen((request) async {
++      final String path = request.uri.path;
++      request.response.headers.contentType = ContentType.json;
++      if (path == '/api/gold-trial' && request.method == 'POST') {
++        posts++;
++        payload = jsonDecode(await utf8.decoder.bind(request).join()) as Map<String, dynamic>;
++        request.response.statusCode = 201;
++        request.response.write(jsonEncode(<String, Object>{
++          'ok': true, 'expire': DateTime.now().toUtc().add(const Duration(hours: 24)).toIso8601String(),
++          'message': 'Cette valeur ne doit jamais apparaître dans l’interface',
++        }));
++      } else if (path.startsWith('/api/device-source/')) {
++        sourceReads++;
++        request.response.write(jsonEncode(<String, Object>{'source': <String, Object>{
++          'type': 'm3u', 'label': kGoldTrialPlaylistName, 'm3u_url': '$fixture/trial.m3u',
++        }}));
++      } else if (path == '/trial.m3u') {
++        request.response.headers.contentType = ContentType.text;
++        request.response.write('#EXTM3U\n#EXTINF:-1 tvg-id="fixture" group-title="Test",Chaîne locale de test\n$fixture/fixture.ts\n');
++      } else {
++        request.response.write('{"ok":true}');
++      }
++      await request.response.close();
++    });
++    await PlaylistRepository.instance.initialize();
++    await PlaylistRepository.instance.deleteAllPlaylists();
++    final GoldTrialController controller = GoldTrialController(
++      backend: GoldTrialBackend(baseUrl: fixture), hasSubscription: () => false,
++    );
++    try {
++      await controller.initialize();
++      await tester.pumpWidget(MaterialApp(theme: AppTheme.cinema,
++        home: Scaffold(body: SingleChildScrollView(child: Column(children: <Widget>[
++          GoldTrialCard(controller: controller),
++          ListenableBuilder(listenable: controller, builder: (context, _) => Column(children: <Widget>[
++            for (final p in PlaylistRepository.instance.currentPlaylists) Text(p.name),
++          ])),
++        ])))));
++      await tester.pumpAndSettle();
++      await tester.tap(find.text('Je teste'));
++      await tester.pump();
++      // Les vraies E/S Android restent asynchrones ; attendre les frames
++      // avec un plafond, sans jamais avancer une horloge fictive serveur.
++      for (int n=0; n<180 && !controller.sourceLoaded; n++) {
++        await Future<void>.delayed(const Duration(milliseconds: 200));
++        await tester.pump();
++      }
++      expect(posts, 1);
++      expect(payload, <String, String>{'mac':mac, 'android_id':androidId, 'app_version':package.version});
++      expect(sourceReads, greaterThanOrEqualTo(2));
++      expect(controller.sourceLoaded, isTrue);
++      expect(PlaylistRepository.instance.currentChannels, isNotEmpty);
++      expect(find.text(kGoldTrialPlaylistName), findsOneWidget);
++      expect(find.text('Essai activé ✔'), findsOneWidget);
++      expect(find.textContaining('Cette valeur'), findsNothing);
++    } finally {
++      controller.dispose();
++      await tester.pumpWidget(const SizedBox.shrink());
++      await PlaylistRepository.instance.deleteAllPlaylists();
++      BackendHosts.current = oldHost;
++      await requests.cancel();
++      await server.close(force: true);
++    }
++  });
++}
+diff --git a/lib/features/simple_home/presentation/simple_home_screen.dart b/lib/features/simple_home/presentation/simple_home_screen.dart
+index 2a90504..290f983 100644
+--- a/lib/features/simple_home/presentation/simple_home_screen.dart
++++ b/lib/features/simple_home/presentation/simple_home_screen.dart
+@@ -55,6 +55,8 @@ import '../../playlists/data/remote_source_repository.dart';
+ import '../../playlists/presentation/import_progress_screen.dart';
+ import '../../profile/presentation/profile_screen.dart';
+ import '../../subscription/data/subscription_state.dart';
++import '../../subscription/data/gold_trial_controller.dart';
++import '../../subscription/presentation/gold_trial_card.dart';
+ import '../../subscription/presentation/guest_screen.dart';
+ import 'widgets/announcement_banner.dart';
+ import 'widgets/category_browser_view.dart';
+@@ -68,6 +70,9 @@ class SimpleHomeScreen extends StatefulWidget {
+ }
+ 
+ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
++  // Le contrôleur survit au passage accueil vide → catalogue chargé.
++  final GoldTrialController _goldTrial = GoldTrialController();
++
+   /// Sondage SILENCIEUX de la source assignée par le revendeur. Tant que
+   /// l'app n'a pas de chaînes (écran d'activation affiché), on interroge
+   /// le backend toutes les 6 s. Dès que le revendeur a poussé la MAC dans
+@@ -104,6 +109,7 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
+   @override
+   void initState() {
+     super.initState();
++    unawaited(_goldTrial.initialize());
+     FavoritesRepository.instance.initialize();
+     RecentlyWatchedRepository.instance.initialize();
+     // Palier de streak atteint → on célèbre à l'accueil (Hook : récompense).
+@@ -189,6 +195,7 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
+ 
+   @override
+   void dispose() {
++    _goldTrial.dispose();
+     _activationPoll?.cancel();
+     RemoteSourceRepository.pushedTick.removeListener(_onSourcePushed);
+     EngagementService.instance.removeListener(_maybeCelebrate);
+@@ -212,7 +219,7 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
+   /// la source EN SILENCE : le client ne voyait rien télécharger et l'activation
+   /// paraissait ne « rien faire ».
+   Future<void> _pollActivation() async {
+-    if (_polling || _importing || !mounted) return;
++    if (_polling || _importing || _goldTrial.busy || !mounted) return;
+     // Déjà des chaînes ? on arrête le sondage (cas course / retour écran).
+     if (PlaylistRepository.instance.currentChannels.isNotEmpty) {
+       _activationPoll?.cancel();
+@@ -302,6 +309,7 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
+                             discoveryHeader: Column(
+                               crossAxisAlignment: CrossAxisAlignment.stretch,
+                               children: <Widget>[
++                                GoldTrialCard(controller: _goldTrial),
+                                 const AnnouncementBanner(),
+                                 const RadioEntry(),
+                                 _GuestEntryBar(
+@@ -345,6 +353,7 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
+             ),
+           ),
+           const SizedBox(height: 24),
++          GoldTrialCard(controller: _goldTrial),
+           // « Invité ou code perso ? » — le tout premier choix d'une nouvelle
+           // install : soit on a été invité par un ami (mode invité), soit on a
+           // son propre identifiant à activer (les blocs ci-dessous).
+diff --git a/lib/features/subscription/data/gold_trial_backend.dart b/lib/features/subscription/data/gold_trial_backend.dart
+new file mode 100644
+index 0000000..4b26421
+--- /dev/null
++++ b/lib/features/subscription/data/gold_trial_backend.dart
+@@ -0,0 +1,169 @@
++import 'dart:async';
++import 'dart:convert';
++
++import 'package:http/http.dart' as http;
++
++/// L'essai utilise son adresse dédiée, sans déplacer le heartbeat ni
++/// l'activation habituelle. Aucune réponse brute n'est transmise à l'UI.
++const String kGoldTrialBaseUrl =
++    'https://seven-motion-backend.manzilionel-lm.workers.dev';
++const String kGoldTrialPlaylistName = '7 MOTION Essai';
++
++enum GoldTrialOutcome {
++  idle,
++  activated,
++  alreadyUsed,
++  alreadyCustomer,
++  inProgress,
++  disabled,
++  dailyCap,
++  error,
++}
++
++class GoldTrialResult {
++  const GoldTrialResult(this.outcome, {this.expire});
++  final GoldTrialOutcome outcome;
++  final DateTime? expire;
++}
++
++class GoldTrialIdentity {
++  const GoldTrialIdentity({
++    required this.mac,
++    required this.androidId,
++    required this.appVersion,
++  });
++  final String mac;
++  final String androidId;
++  final String appVersion;
++}
++
++class GoldTrialBackend {
++  GoldTrialBackend({
++    this.baseUrl = kGoldTrialBaseUrl,
++    http.Client Function()? clientFactory,
++  }) : _clientFactory = clientFactory ?? http.Client.new;
++
++  final String baseUrl;
++  final http.Client Function() _clientFactory;
++  final Set<http.Client> _pending = <http.Client>{};
++
++  /// Un client par requête permet d'arrêter réellement le réseau au timeout,
++  /// au départ de l'écran et au bout des 30 secondes de sondage.
++  Future<http.Response> _request(
++    Future<http.Response> Function(http.Client) send,
++    Duration timeout,
++  ) async {
++    final http.Client client = _clientFactory();
++    _pending.add(client);
++    try {
++      return await send(client).timeout(timeout);
++    } finally {
++      _pending.remove(client);
++      client.close();
++    }
++  }
++
++  Future<GoldTrialResult> activate(GoldTrialIdentity identity) async {
++    try {
++      final String mac = identity.mac.toUpperCase();
++      if (!RegExp(r'^MK(?::[0-9A-F]{2}){5}$').hasMatch(mac) ||
++          identity.androidId.trim().isEmpty ||
++          identity.appVersion.trim().isEmpty) {
++        return const GoldTrialResult(GoldTrialOutcome.error);
++      }
++      final http.Response response = await _request(
++        (http.Client client) => client.post(
++          Uri.parse('$baseUrl/api/gold-trial'),
++          headers: const <String, String>{
++            'Content-Type': 'application/json',
++            'Accept': 'application/json',
++          },
++          body: jsonEncode(<String, String>{
++            'mac': mac,
++            'android_id': identity.androidId,
++            'app_version': identity.appVersion,
++          }),
++        ),
++        const Duration(seconds: 15),
++      );
++      final Object? body = jsonDecode(response.body);
++      if (body is! Map<String, dynamic>) {
++        return const GoldTrialResult(GoldTrialOutcome.error);
++      }
++      if (response.statusCode == 201 && body['ok'] == true) {
++        final DateTime? expire = parseExpiration(body['expire']);
++        return expire == null
++            ? const GoldTrialResult(GoldTrialOutcome.error)
++            : GoldTrialResult(GoldTrialOutcome.activated, expire: expire);
++      }
++      final Object? code = body['error'] is String ? body['error'] : body['code'];
++      final GoldTrialOutcome outcome = switch ((response.statusCode, code)) {
++        (409, 'trial_already_used') => GoldTrialOutcome.alreadyUsed,
++        (409, 'already_customer') => GoldTrialOutcome.alreadyCustomer,
++        (409, 'in_progress') => GoldTrialOutcome.inProgress,
++        (403, 'trial_disabled') => GoldTrialOutcome.disabled,
++        (429, 'daily_cap_reached' || 'rate_limited') => GoldTrialOutcome.dailyCap,
++        _ => GoldTrialOutcome.error,
++      };
++      return GoldTrialResult(outcome);
++    } catch (_) {
++      // Ne jamais afficher une exception, un message serveur, une clé ou
++      // une adresse fournisseur, même si le serveur renvoie du HTML.
++      return const GoldTrialResult(GoldTrialOutcome.error);
++    }
++  }
++
++  /// Lecture uniquement : le chargement reste assuré par le synchroniseur
++  /// existant, avec ses protections contre les doublons et suppressions.
++  Future<bool> hasAssignedTrial(
++    String mac, {
++    required Map<String, String> headers,
++    required Duration timeout,
++  }) async {
++    final http.Response response = await _request(
++      (http.Client client) => client.get(
++        Uri.parse('$baseUrl/api/device-source/${Uri.encodeComponent(mac)}'),
++        headers: <String, String>{'Accept': 'application/json', ...headers},
++      ),
++      timeout,
++    );
++    if (response.statusCode != 200) return false;
++    final Object? body = jsonDecode(response.body);
++    if (body is! Map<String, dynamic> || body['blocked'] != null) return false;
++    final Object? sources = body['sources'];
++    final List<Object?> candidates = sources is List && sources.isNotEmpty
++        ? List<Object?>.from(sources)
++        : <Object?>[body['source']];
++    return candidates.whereType<Map<String, dynamic>>().any(
++          (Map<String, dynamic> source) =>
++              source['enabled'] != false &&
++              source['label'] == kGoldTrialPlaylistName,
++        );
++  }
++
++  /// Le contrat peut fournir une date ISO ou un timestamp Unix (secondes
++  /// ou millisecondes). Une date invalide ne doit pas devenir une fausse fin.
++  static DateTime? parseExpiration(Object? value) {
++    final num? epoch = value is num
++        ? value
++        : value is String
++            ? num.tryParse(value)
++            : null;
++    if (epoch != null && epoch.isFinite && epoch > 0) {
++      final int ms = (epoch < 100000000000 ? epoch * 1000 : epoch).toInt();
++      try {
++        return DateTime.fromMillisecondsSinceEpoch(ms, isUtc: true);
++      } catch (_) {
++        return null;
++      }
++    }
++    return value is String ? DateTime.tryParse(value) : null;
++  }
++
++  void cancelPending() {
++    for (final http.Client client in _pending.toList()) {
++      client.close();
++    }
++    _pending.clear();
++  }
++}
+diff --git a/lib/features/subscription/data/gold_trial_controller.dart b/lib/features/subscription/data/gold_trial_controller.dart
+new file mode 100644
+index 0000000..e30a249
+--- /dev/null
++++ b/lib/features/subscription/data/gold_trial_controller.dart
+@@ -0,0 +1,258 @@
++import 'dart:async';
++
++import 'package:flutter/foundation.dart';
++import 'package:package_info_plus/package_info_plus.dart';
++import 'package:shared_preferences/shared_preferences.dart';
++
++import '../../device/data/device_identity.dart';
++import '../../device/data/device_secret.dart';
++import '../../playlists/data/playlist_repository.dart';
++import '../../playlists/data/remote_source_repository.dart';
++import 'gold_trial_backend.dart';
++import 'subscription_state.dart';
++
++/// Un seul contrôleur vit dans l'accueil, même lorsque l'arrivée des
++/// chaînes remplace l'écran vide. Un double clic ne crée jamais deux POST.
++class GoldTrialController extends ChangeNotifier {
++  GoldTrialController({
++    GoldTrialBackend? backend,
++    Future<GoldTrialIdentity> Function()? loadIdentity,
++    Future<Map<String, String>> Function()? sourceHeaders,
++    Future<RemoteSyncResult> Function()? importSource,
++    bool Function()? hasSubscription,
++    bool Function()? hasLoadedTrial,
++    Listenable? subscriptionChanges,
++    Listenable? sourceChanges,
++  })  : _backend = backend ?? GoldTrialBackend(),
++        _loadIdentity = loadIdentity ?? _deviceIdentity,
++        _sourceHeaders = sourceHeaders ?? DeviceSecret.instance.headers,
++        _importSource = importSource ?? RemoteSourceRepository.sync,
++        _hasSubscription = hasSubscription ?? _deviceHasSubscription,
++        _hasLoadedTrial = hasLoadedTrial ?? _deviceHasTrial,
++        _subscriptionChanges = subscriptionChanges ?? SubscriptionState.instance,
++        _sourceChanges = sourceChanges ?? RemoteSourceRepository.pushedTick {
++    _subscriptionChanges.addListener(_changed);
++    _sourceChanges.addListener(_sourcePushed);
++  }
++
++  final GoldTrialBackend _backend;
++  final Future<GoldTrialIdentity> Function() _loadIdentity;
++  final Future<Map<String, String>> Function() _sourceHeaders;
++  final Future<RemoteSyncResult> Function() _importSource;
++  final bool Function() _hasSubscription;
++  final bool Function() _hasLoadedTrial;
++  final Listenable _subscriptionChanges;
++  final Listenable _sourceChanges;
++  GoldTrialIdentity? _identity;
++  GoldTrialResult result = const GoldTrialResult(GoldTrialOutcome.idle);
++  bool ready = false;
++  bool requesting = false;
++  bool waitingForSource = false;
++  bool importing = false;
++  bool sourceFailed = false;
++  bool sourceLoaded = false;
++  bool _disposed = false;
++  bool _checkingSource = false;
++  int _generation = 0;
++  Timer? _poll;
++  Timer? _deadline;
++  Stopwatch? _elapsed;
++
++  bool get busy => requesting || waitingForSource || importing;
++  bool get visible => ready && !_hasSubscription() &&
++      result.outcome != GoldTrialOutcome.alreadyCustomer;
++  bool get canRequest => visible && !busy &&
++      result.outcome != GoldTrialOutcome.activated &&
++      result.outcome != GoldTrialOutcome.alreadyUsed;
++
++  static bool _deviceHasSubscription() {
++    final SubscriptionState subscription = SubscriptionState.instance;
++    // Attendre la lecture du cache évite d'offrir un essai à un abonné
++    // pendant le tout premier rendu, y compris hors connexion.
++    return !subscription.isLoaded || subscription.remote.paid ||
++        subscription.status == SubscriptionStatus.paid;
++  }
++
++  static bool _deviceHasTrial() =>
++      PlaylistRepository.instance.currentPlaylists.any((p) =>
++          p.name == kGoldTrialPlaylistName && p.channelCount > 0);
++
++  static Future<GoldTrialIdentity> _deviceIdentity() async {
++    final String mac = await DeviceIdentity.instance.mac;
++    final String androidId = await DeviceIdentity.instance.androidId();
++    final PackageInfo package = await PackageInfo.fromPlatform();
++    return GoldTrialIdentity(
++      mac: mac,
++      androidId: androidId,
++      // versionName Android : ni versionCode, ni numéro de build humain.
++      appVersion: package.version,
++    );
++  }
++
++  String get _cacheKey => 'gold_trial.${_identity!.mac}';
++
++  Future<void> initialize() async {
++    try {
++      _identity = await _loadIdentity();
++      if (_disposed) return;
++      final SharedPreferences prefs = await SharedPreferences.getInstance();
++      if (_disposed) return;
++      if (prefs.getBool('$_cacheKey.customer') == true) {
++        result = const GoldTrialResult(GoldTrialOutcome.alreadyCustomer);
++      } else if (prefs.getInt('$_cacheKey.expire') case final int ms) {
++        result = ms > DateTime.now().millisecondsSinceEpoch
++            ? GoldTrialResult(GoldTrialOutcome.activated,
++                expire: DateTime.fromMillisecondsSinceEpoch(ms, isUtc: true))
++            : const GoldTrialResult(GoldTrialOutcome.alreadyUsed);
++      } else if (prefs.getBool('$_cacheKey.used') == true) {
++        result = const GoldTrialResult(GoldTrialOutcome.alreadyUsed);
++      }
++    } catch (_) {
++      // La lecture de l'identité sera retentée au clic si nécessaire.
++    }
++    if (_disposed) return;
++    ready = true;
++    if (result.outcome == GoldTrialOutcome.activated) _startWaiting();
++    _changed();
++  }
++
++  Future<void> request() async {
++    if (!canRequest || _disposed) return;
++    // Ce verrou est posé AVANT le premier await, pas après le POST.
++    requesting = true;
++    sourceFailed = false;
++    _changed();
++    try {
++      _identity ??= await _loadIdentity();
++      if (_disposed) return;
++      result = await _backend.activate(_identity!);
++      if (_disposed) return;
++      await _rememberResult();
++      if (_disposed) return;
++      if (result.outcome == GoldTrialOutcome.activated ||
++          result.outcome == GoldTrialOutcome.inProgress) {
++        _startWaiting();
++      }
++    } catch (_) {
++      if (!_disposed) result = const GoldTrialResult(GoldTrialOutcome.error);
++    } finally {
++      requesting = false;
++      _changed();
++    }
++  }
++
++  Future<void> _rememberResult() async {
++    try {
++      final SharedPreferences prefs = await SharedPreferences.getInstance();
++      switch (result.outcome) {
++        case GoldTrialOutcome.alreadyCustomer:
++          await prefs.setBool('$_cacheKey.customer', true);
++          return;
++        case GoldTrialOutcome.alreadyUsed:
++          await prefs.setBool('$_cacheKey.used', true);
++          return;
++        case GoldTrialOutcome.activated:
++          await prefs.setInt('$_cacheKey.expire', result.expire!.millisecondsSinceEpoch);
++          return;
++        default:
++          break;
++      }
++    } catch (_) {
++      // Une écriture locale impossible n'annule pas un essai confirmé.
++    }
++  }
++
++  /// Reprend uniquement la lecture de la source, sans jamais recréer l'essai.
++  void retrySource() {
++    if (_disposed || busy || (result.outcome != GoldTrialOutcome.activated &&
++        result.outcome != GoldTrialOutcome.inProgress)) return;
++    _startWaiting();
++    _changed();
++  }
++
++  void _startWaiting() {
++    _stopWaiting();
++    sourceFailed = false;
++    sourceLoaded = _hasLoadedTrial();
++    if (sourceLoaded) return;
++    waitingForSource = true;
++    _elapsed = Stopwatch()..start();
++    _poll = Timer.periodic(const Duration(seconds: 2), (_) => _sourcePushed());
++    _deadline = Timer(const Duration(seconds: 30), () {
++      _stopWaiting();
++      _backend.cancelPending();
++      sourceFailed = true;
++      _changed();
++    });
++  }
++
++  void _sourcePushed() {
++    if (waitingForSource && !_checkingSource && !_disposed) {
++      unawaited(_checkSource());
++    }
++  }
++
++  Future<void> _checkSource() async {
++    _checkingSource = true;
++    final int generation = _generation;
++    try {
++      if (_hasLoadedTrial()) {
++        _stopWaiting();
++        sourceLoaded = true;
++        return;
++      }
++      // La preuve existante est réutilisée, sans en exposer la valeur ni
++      // modifier l'inscription de l'appareil au backend.
++      final Map<String, String> headers = await _sourceHeaders()
++          .timeout(const Duration(seconds: 2));
++      if (_disposed || generation != _generation) return;
++      final Duration remaining = const Duration(seconds: 30) - _elapsed!.elapsed;
++      if (remaining <= Duration.zero) return;
++      final bool assigned = await _backend.hasAssignedTrial(
++        _identity!.mac,
++        headers: headers,
++        timeout: remaining < const Duration(seconds: 2)
++            ? remaining : const Duration(seconds: 2),
++      );
++      if (!assigned || _disposed || generation != _generation) return;
++      // Le synchroniseur existant sérialise les imports concurrents (push
++      // box, démarrage, vérification manuelle). On garde cette unique voie.
++      _stopWaiting();
++      importing = true;
++      _changed();
++      await _importSource();
++      if (_disposed) return;
++      sourceLoaded = _hasLoadedTrial();
++      sourceFailed = !sourceLoaded;
++    } catch (_) {
++      // Une panne de GET se retente au prochain tick, jusqu'à la limite.
++      if (importing && !_disposed) sourceFailed = true;
++    } finally {
++      _checkingSource = false;
++      importing = false;
++      _changed();
++    }
++  }
++
++  void _stopWaiting() {
++    _generation++;
++    waitingForSource = false;
++    _poll?.cancel();
++    _deadline?.cancel();
++    _elapsed?.stop();
++  }
++
++  void _changed() {
++    if (!_disposed) notifyListeners();
++  }
++
++  @override
++  void dispose() {
++    _disposed = true;
++    _stopWaiting();
++    _backend.cancelPending();
++    _subscriptionChanges.removeListener(_changed);
++    _sourceChanges.removeListener(_sourcePushed);
++    super.dispose();
++  }
++}
+diff --git a/lib/features/subscription/presentation/gold_trial_card.dart b/lib/features/subscription/presentation/gold_trial_card.dart
+new file mode 100644
+index 0000000..af476cf
+--- /dev/null
++++ b/lib/features/subscription/presentation/gold_trial_card.dart
+@@ -0,0 +1,107 @@
++import 'package:flutter/material.dart';
++import 'package:intl/intl.dart';
++import 'package:url_launcher/url_launcher.dart';
++
++import '../../../core/theme/app_colors.dart';
++import '../../../core/theme/app_text_styles.dart';
++import '../data/gold_trial_backend.dart';
++import '../data/gold_trial_controller.dart';
++
++/// Les textes sont volontairement fermés : jamais de message ou d'URL
++/// provenant du fournisseur dans cette carte, même pour les erreurs.
++class GoldTrialCard extends StatelessWidget {
++  const GoldTrialCard({super.key, required this.controller});
++  final GoldTrialController controller;
++
++  static final Uri whatsapp = Uri.parse('https://wa.me/447307410512');
++
++  @override
++  Widget build(BuildContext context) => ListenableBuilder(
++        listenable: controller,
++        builder: (BuildContext context, _) {
++          if (!controller.visible) return const SizedBox.shrink();
++          final colors = AppColors.lumiere(context);
++          final GoldTrialOutcome outcome = controller.result.outcome;
++          final String? message = switch (outcome) {
++            GoldTrialOutcome.activated => 'Essai activé ✔',
++            GoldTrialOutcome.alreadyUsed =>
++              'Tu as déjà utilisé ton essai gratuit. Contacte-nous sur WhatsApp pour t’abonner.',
++            GoldTrialOutcome.inProgress =>
++              'Activation en cours, patiente quelques secondes.',
++            GoldTrialOutcome.disabled => 'Les essais sont fermés pour le moment.',
++            GoldTrialOutcome.dailyCap =>
++              'Plus d’essais disponibles aujourd’hui, reviens demain.',
++            GoldTrialOutcome.error => 'Erreur, réessaie.',
++            _ => null,
++          };
++          final bool showWhatsApp = outcome == GoldTrialOutcome.alreadyUsed ||
++              outcome == GoldTrialOutcome.disabled || outcome == GoldTrialOutcome.dailyCap;
++          final DateTime? expire = controller.result.expire;
++          return Padding(
++            padding: const EdgeInsets.symmetric(vertical: 12),
++            child: Column(
++              crossAxisAlignment: CrossAxisAlignment.stretch,
++              children: <Widget>[
++                if (outcome != GoldTrialOutcome.activated &&
++                    outcome != GoldTrialOutcome.alreadyUsed)
++                  FilledButton.icon(
++                    key: const ValueKey<String>('gold-trial-button'),
++                    onPressed: controller.canRequest ? controller.request : null,
++                    icon: controller.requesting
++                        ? SizedBox.square(
++                            dimension: 18,
++                            child: CircularProgressIndicator(
++                              strokeWidth: 2, color: colors.textPrimary),
++                          )
++                        : const Icon(Icons.play_circle_outline),
++                    label: Text(controller.requesting
++                        ? 'Activation de ton essai…' : 'Je teste'),
++                  ),
++                if (message != null) ...<Widget>[
++                  const SizedBox(height: 8),
++                  Semantics(
++                    liveRegion: true,
++                    child: Text(message, textAlign: TextAlign.center,
++                        style: AppTextStyles.bodyMedium.copyWith(color: colors.textPrimary)),
++                  ),
++                ],
++                if (expire != null) Text(
++                  'Expiration : ${DateFormat('dd/MM/yyyy à HH:mm').format(expire.toLocal())}',
++                  textAlign: TextAlign.center,
++                  style: AppTextStyles.bodyMedium.copyWith(color: colors.textSecondary),
++                ),
++                if (controller.waitingForSource || controller.importing) ...<Widget>[
++                  const SizedBox(height: 8),
++                  const LinearProgressIndicator(),
++                ],
++                if (controller.sourceFailed) ...<Widget>[
++                  Text('Erreur, réessaie.', textAlign: TextAlign.center,
++                      style: AppTextStyles.bodyMedium.copyWith(color: colors.textPrimary)),
++                  OutlinedButton(
++                    onPressed: controller.busy ? null : controller.retrySource,
++                    child: const Text('Réessayer le chargement'),
++                  ),
++                ],
++                if (showWhatsApp) OutlinedButton.icon(
++                  onPressed: () => _openWhatsApp(context),
++                  icon: const Icon(Icons.chat_outlined),
++                  label: const Text('WhatsApp'),
++                ),
++              ],
++            ),
++          );
++        },
++      );
++
++  Future<void> _openWhatsApp(BuildContext context) async {
++    try {
++      if (await launchUrl(whatsapp, mode: LaunchMode.externalApplication)) return;
++    } catch (_) {
++      // Même message fermé si WhatsApp/le navigateur n'est pas disponible.
++    }
++    if (!context.mounted) return;
++    ScaffoldMessenger.of(context).showSnackBar(
++      const SnackBar(content: Text('Erreur, réessaie.')),
++    );
++  }
++}
+diff --git a/pubspec.yaml b/pubspec.yaml
+index 927af7d..268a529 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -324,6 +324,11 @@ dependency_overrides:
+   screen_brightness_android: 2.1.4
+ 
+ dev_dependencies:
++  # Test du parcours d'essai sur Android : binding officiel Flutter,
++  # uniquement en développement (aucune dépendance de production ajoutée).
++  integration_test:
++    sdk: flutter
++
+   flutter_test:
+     sdk: flutter
+ 
+diff --git a/test/features/subscription/gold_trial_backend_test.dart b/test/features/subscription/gold_trial_backend_test.dart
+new file mode 100644
+index 0000000..610875c
+--- /dev/null
++++ b/test/features/subscription/gold_trial_backend_test.dart
+@@ -0,0 +1,109 @@
++import 'dart:async';
++import 'dart:convert';
++
++import 'package:flutter_test/flutter_test.dart';
++import 'package:http/http.dart' as http;
++import 'package:http/testing.dart';
++import 'package:tv_king/features/subscription/data/gold_trial_backend.dart';
++
++const GoldTrialIdentity device = GoldTrialIdentity(
++  mac: 'MK:11:22:33:44:55', androidId: 'android-test', appVersion: '0.3.7-test.216',
++);
++
++void main() {
++  test('POST exact : identité stable, versionName et seulement les 3 champs', () async {
++    final GoldTrialBackend api = GoldTrialBackend(clientFactory: () => MockClient((request) async {
++      expect(request.method, 'POST');
++      expect(request.url.toString(), '$kGoldTrialBaseUrl/api/gold-trial');
++      expect(request.headers['content-type'], 'application/json');
++      expect(jsonDecode(request.body), <String, String>{
++        'mac': device.mac, 'android_id': device.androidId, 'app_version': device.appVersion,
++      });
++      return http.Response('{"ok":true,"expire":1793102400,"message":"private provider URL"}', 201);
++    }));
++    final GoldTrialResult result = await api.activate(device);
++    expect(result.outcome, GoldTrialOutcome.activated);
++    expect(result.expire, DateTime.fromMillisecondsSinceEpoch(1793102400000, isUtc: true));
++  });
++
++  for (final (int status, String code, GoldTrialOutcome outcome) in <(int, String, GoldTrialOutcome)>[
++    (409, 'trial_already_used', GoldTrialOutcome.alreadyUsed),
++    (409, 'already_customer', GoldTrialOutcome.alreadyCustomer),
++    (409, 'in_progress', GoldTrialOutcome.inProgress),
++    (403, 'trial_disabled', GoldTrialOutcome.disabled),
++    (429, 'daily_cap_reached', GoldTrialOutcome.dailyCap),
++    (429, 'rate_limited', GoldTrialOutcome.dailyCap),
++    (500, 'private-provider-secret', GoldTrialOutcome.error),
++    (200, 'already_customer', GoldTrialOutcome.error),
++  ]) {
++    test('$status $code est traduit sans exposer le message serveur', () async {
++      final GoldTrialBackend api = GoldTrialBackend(clientFactory: () => MockClient((_) async =>
++          http.Response(jsonEncode(<String, Object>{'error': code, 'message': 'private-provider-secret'}), status)));
++      expect((await api.activate(device)).outcome, outcome);
++    });
++  }
++
++  test('JSON invalide, timeout et réseau retombent sur une erreur fermée', () async {
++    for (final Future<http.Response> Function(http.Request) reply in <Future<http.Response> Function(http.Request)>[
++      (_) async => http.Response('<html>private-provider</html>', 500),
++      (_) async => throw TimeoutException('private URL'),
++      (_) async => throw http.ClientException('private secret'),
++      (_) async => http.Response('{"ok":true,"expire":"invalid"}', 201),
++      (_) async => http.Response('{"ok":false,"expire":1793102400}', 201),
++    ]) {
++      final GoldTrialBackend api = GoldTrialBackend(clientFactory: () => MockClient(reply));
++      expect((await api.activate(device)).outcome, GoldTrialOutcome.error);
++    }
++  });
++
++  test('aucun POST avec une identité Android incomplète', () async {
++    int calls = 0;
++    final GoldTrialBackend api = GoldTrialBackend(clientFactory: () => MockClient((_) async {
++      calls++;
++      return http.Response('{}', 500);
++    }));
++    for (final GoldTrialIdentity identity in <GoldTrialIdentity>[
++      const GoldTrialIdentity(mac:'bad', androidId:'id', appVersion:'1'),
++      const GoldTrialIdentity(mac:'MK:11:22:33:44:55', androidId:'', appVersion:'1'),
++      const GoldTrialIdentity(mac:'MK:11:22:33:44:55', androidId:'id', appVersion:''),
++    ]) {
++      expect((await api.activate(identity)).outcome, GoldTrialOutcome.error);
++    }
++    expect(calls, 0);
++  });
++
++  test('dates ISO, secondes et millisecondes sont conservées', () {
++    final DateTime expected = DateTime.utc(2026, 10, 27, 12);
++    for (final Object value in <Object>[expected.toIso8601String(), expected.millisecondsSinceEpoch,
++      expected.millisecondsSinceEpoch ~/ 1000, '${expected.millisecondsSinceEpoch ~/ 1000}']) {
++      expect(GoldTrialBackend.parseExpiration(value), expected);
++    }
++    expect(GoldTrialBackend.parseExpiration(-1), isNull);
++    expect(GoldTrialBackend.parseExpiration('bad'), isNull);
++  });
++
++  test('le GET filtre la bonne liste et conserve la preuve appareil', () async {
++    Object? responseSource;
++    final GoldTrialBackend api = GoldTrialBackend(clientFactory: () => MockClient((request) async {
++      expect(request.method, 'GET');
++      expect(request.url.pathSegments.last, device.mac);
++      expect(request.headers['x-device-secret'], 'test-proof');
++      return http.Response(jsonEncode(responseSource), 200);
++    }));
++    Future<bool> read() => api.hasAssignedTrial(device.mac,
++      headers: <String, String>{'X-Device-Secret': 'test-proof'}, timeout: const Duration(seconds: 2));
++    responseSource = <String, Object?>{'source': null};
++    expect(await read(), isFalse);
++    responseSource = <String, Object?>{'source': <String, Object>{'label': 'Abonnement existant'}};
++    expect(await read(), isFalse);
++    responseSource = <String, Object?>{'sources': <Object>[
++      <String, Object>{'label': 'Abonnement existant'},
++      <String, Object>{'label': kGoldTrialPlaylistName, 'enabled': false},
++    ]};
++    expect(await read(), isFalse);
++    responseSource = <String, Object?>{'source': <String, Object>{'label': kGoldTrialPlaylistName}};
++    expect(await read(), isTrue);
++    responseSource = <String, Object?>{'blocked': 'expired', 'source': <String, Object>{'label': kGoldTrialPlaylistName}};
++    expect(await read(), isFalse);
++  });
++}
+diff --git a/test/features/subscription/gold_trial_card_test.dart b/test/features/subscription/gold_trial_card_test.dart
+new file mode 100644
+index 0000000..bcce842
+--- /dev/null
++++ b/test/features/subscription/gold_trial_card_test.dart
+@@ -0,0 +1,92 @@
++import 'dart:async';
++
++import 'package:flutter/material.dart';
++import 'package:flutter_test/flutter_test.dart';
++import 'package:http/http.dart' as http;
++import 'package:http/testing.dart';
++import 'package:shared_preferences/shared_preferences.dart';
++import 'package:tv_king/core/theme/app_theme.dart';
++import 'package:tv_king/features/subscription/data/gold_trial_backend.dart';
++import 'package:tv_king/features/subscription/data/gold_trial_controller.dart';
++import 'package:tv_king/features/subscription/presentation/gold_trial_card.dart';
++
++import '../../support/premium_capture_fonts.dart';
++
++void main() {
++  TestWidgetsFlutterBinding.ensureInitialized();
++  setUpAll(preparePremiumCaptureFonts);
++  setUp(() => SharedPreferences.setMockInitialValues(<String, Object>{}));
++
++  GoldTrialController create(int status, String body, {Completer<http.Response>? pending, bool customer=false}) =>
++      GoldTrialController(
++        backend: GoldTrialBackend(clientFactory: () => MockClient((_) async {
++          if (pending != null) return await pending.future;
++          return http.Response(body, status);
++        })),
++        loadIdentity: () async => const GoldTrialIdentity(mac:'MK:11:22:33:44:55', androidId:'test', appVersion:'1'),
++        hasSubscription: () => customer,
++        hasLoadedTrial: () => true,
++      );
++
++  Future<void> show(WidgetTester tester, GoldTrialController controller) async {
++    await controller.initialize();
++    await tester.pumpWidget(MaterialApp(theme: AppTheme.cinema,
++      home: Scaffold(body: SingleChildScrollView(child: GoldTrialCard(controller: controller)))));
++    await tester.pumpAndSettle();
++  }
++
++  testWidgets('chargement exact et bouton réellement désactivé', (tester) async {
++    final Completer<http.Response> pending=Completer<http.Response>();
++    final GoldTrialController controller=create(500, '{}', pending:pending);
++    addTearDown(controller.dispose);
++    await show(tester,controller);
++    await tester.tap(find.text('Je teste')); await tester.pump();
++    expect(find.text('Activation de ton essai…'), findsOneWidget);
++    final FilledButton button=tester.widget(find.byType(FilledButton));
++    expect(button.onPressed,isNull);
++    pending.complete(http.Response('{}',500)); await tester.pumpAndSettle();
++    expect(find.text('Erreur, réessaie.'),findsOneWidget);
++    expect(find.text('Je teste'),findsOneWidget);
++  });
++
++  for (final (int status, String code, String text, bool whatsapp) in <(int, String, String, bool)>[
++    (409,'trial_already_used','Tu as déjà utilisé ton essai gratuit. Contacte-nous sur WhatsApp pour t’abonner.',true),
++    (409,'in_progress','Activation en cours, patiente quelques secondes.',false),
++    (403,'trial_disabled','Les essais sont fermés pour le moment.',true),
++    (429,'daily_cap_reached','Plus d’essais disponibles aujourd’hui, reviens demain.',true),
++    (429,'rate_limited','Plus d’essais disponibles aujourd’hui, reviens demain.',true),
++    (500,'private-provider','Erreur, réessaie.',false),
++  ]) {
++    testWidgets('$code : texte demandé et WhatsApp, aucune donnée fournisseur', (tester) async {
++      final GoldTrialController controller=create(status,'{"error":"$code","message":"private-provider-secret"}');
++      addTearDown(controller.dispose);
++      await show(tester,controller);
++      await tester.tap(find.text('Je teste')); await tester.pumpAndSettle();
++      expect(find.text(text),findsOneWidget);
++      expect(find.text('WhatsApp'), whatsapp?findsOneWidget:findsNothing);
++      expect(find.textContaining('private-provider'),findsNothing);
++      expect(GoldTrialCard.whatsapp.toString(),'https://wa.me/447307410512');
++    });
++  }
++
++  testWidgets('succès : confirmation et date ; déjà client : carte cachée', (tester) async {
++    final GoldTrialController controller=create(201,'{"ok":true,"expire":"2026-10-27T12:00:00Z"}');
++    addTearDown(controller.dispose);
++    await show(tester,controller);
++    await tester.tap(find.text('Je teste')); await tester.pumpAndSettle();
++    expect(find.text('Essai activé ✔'),findsOneWidget);
++    expect(find.textContaining('27/10/2026'),findsOneWidget);
++    expect(find.text('Je teste'),findsNothing);
++    final GoldTrialController customer=create(409,'{"error":"already_customer"}');
++    addTearDown(customer.dispose);
++    await show(tester,customer);
++    await tester.tap(find.text('Je teste')); await tester.pumpAndSettle();
++    expect(find.byType(FilledButton),findsNothing);
++  });
++
++  testWidgets('abonné : aucun bouton Je teste', (tester) async {
++    final GoldTrialController controller=create(500,'{}',customer:true);
++    addTearDown(controller.dispose); await show(tester,controller);
++    expect(find.text('Je teste'),findsNothing);
++  });
++}
+diff --git a/test/features/subscription/gold_trial_controller_test.dart b/test/features/subscription/gold_trial_controller_test.dart
+new file mode 100644
+index 0000000..c4beeb0
+--- /dev/null
++++ b/test/features/subscription/gold_trial_controller_test.dart
+@@ -0,0 +1,145 @@
++import 'dart:async';
++
++import 'package:flutter/foundation.dart';
++import 'package:flutter_test/flutter_test.dart';
++import 'package:http/http.dart' as http;
++import 'package:http/testing.dart';
++import 'package:shared_preferences/shared_preferences.dart';
++import 'package:tv_king/features/playlists/data/remote_source_repository.dart';
++import 'package:tv_king/features/subscription/data/gold_trial_backend.dart';
++import 'package:tv_king/features/subscription/data/gold_trial_controller.dart';
++
++void main() {
++  TestWidgetsFlutterBinding.ensureInitialized();
++  const GoldTrialIdentity identity = GoldTrialIdentity(
++      mac:'MK:11:22:33:44:55', androidId:'test-id', appVersion:'1.2.3');
++  late ValueNotifier<bool> subscription;
++  late ValueNotifier<int> push;
++  late GoldTrialController controller;
++  int posts = 0;
++  int gets = 0;
++  int imports = 0;
++  bool assigned = false;
++  bool loaded = false;
++  int status = 201;
++  String body = '';
++  Completer<http.Response>? pending;
++
++  GoldTrialController create() => GoldTrialController(
++    backend: GoldTrialBackend(clientFactory: () => MockClient((request) async {
++      if (request.method == 'POST') {
++        posts++;
++        if (pending != null) return await pending!.future;
++        return http.Response(body, status);
++      }
++      gets++;
++      return http.Response(assigned
++          ? '{"source":{"label":"7 MOTION Essai"}}' : '{"source":null}', 200);
++    })),
++    loadIdentity: () async => identity,
++    sourceHeaders: () async => <String, String>{},
++    importSource: () async { imports++; loaded=true; return RemoteSyncResult.loaded; },
++    hasSubscription: () => subscription.value,
++    hasLoadedTrial: () => loaded,
++    subscriptionChanges: subscription, sourceChanges: push,
++  );
++
++  setUp(() {
++    SharedPreferences.setMockInitialValues(<String, Object>{});
++    subscription = ValueNotifier<bool>(false);
++    push = ValueNotifier<int>(0);
++    posts=0; gets=0; imports=0; assigned=false; loaded=false;
++    status=201; body='{"ok":true,"expire":1793102400}'; pending=null;
++    controller=create();
++  });
++  tearDown(() { controller.dispose(); subscription.dispose(); push.dispose(); });
++
++  test('abonné : bouton absent avant et après une notification', () async {
++    subscription.value=true;
++    await controller.initialize();
++    expect(controller.visible, isFalse);
++    await controller.request();
++    expect(posts, 0);
++    subscription.value=false;
++    expect(controller.visible, isTrue);
++    subscription.value=true;
++    expect(controller.visible, isFalse);
++  });
++
++  testWidgets('double clic : un seul POST puis arrivée automatique de la liste', (tester) async {
++    await controller.initialize();
++    pending=Completer<http.Response>();
++    final Future<void> first=controller.request();
++    final Future<void> second=controller.request();
++    await tester.pump();
++    expect(posts, 1);
++    expect(controller.requesting, isTrue);
++    expect(controller.canRequest, isFalse);
++    pending!.complete(http.Response(body, status));
++    await first; await second;
++    expect(controller.result.outcome, GoldTrialOutcome.activated);
++    await tester.pump(const Duration(seconds: 2));
++    expect(gets, 1); expect(imports, 0);
++    assigned=true;
++    await tester.pump(const Duration(seconds: 2));
++    expect(imports, 1); expect(loaded, isTrue);
++    expect(controller.busy, isFalse);
++    await tester.pump(const Duration(seconds: 40));
++    expect(gets, 2); expect(posts, 1);
++  });
++
++  testWidgets('push box : relecture immédiate, sans attendre 2 secondes', (tester) async {
++    await controller.initialize();
++    await controller.request();
++    assigned=true;
++    push.value++;
++    await tester.pump();
++    expect(gets, 1); expect(imports, 1);
++    expect(controller.sourceLoaded, isTrue);
++  });
++
++  testWidgets('sondage arrêté à 30 secondes ; reprise sans second POST', (tester) async {
++    await controller.initialize(); await controller.request();
++    for (int i=0; i<16; i++) { await tester.pump(const Duration(seconds: 2)); }
++    final int total=gets;
++    expect(total, inInclusiveRange(14, 15));
++    expect(controller.busy, isFalse);
++    expect(controller.sourceFailed, isTrue);
++    await tester.pump(const Duration(seconds: 60));
++    expect(gets, total);
++    assigned=true; controller.retrySource();
++    await tester.pump(const Duration(seconds: 2));
++    expect(imports, 1); expect(posts, 1);
++  });
++
++  test('already_customer reste masqué après retour à l’accueil', () async {
++    status=409; body='{"error":"already_customer"}';
++    await controller.initialize(); await controller.request();
++    expect(controller.visible, isFalse);
++    controller.dispose(); controller=create();
++    await controller.initialize();
++    expect(controller.visible, isFalse);
++    await controller.request(); expect(posts, 1);
++  });
++
++  testWidgets('in_progress attend la source et interdit les doubles POST', (tester) async {
++    status=409; body='{"error":"in_progress"}';
++    await controller.initialize(); await controller.request();
++    expect(controller.waitingForSource, isTrue);
++    await controller.request(); expect(posts, 1);
++    assigned=true; await tester.pump(const Duration(seconds: 2));
++    expect(imports, 1);
++  });
++
++  testWidgets('quitter pendant le POST ne démarre aucun sondage tardif', (tester) async {
++    await controller.initialize(); pending=Completer<http.Response>();
++    final Future<void> request=controller.request();
++    await tester.pump();
++    controller.dispose();
++    pending!.complete(http.Response(body, 201));
++    await request;
++    controller=create();
++    await tester.pump(const Duration(seconds: 40));
++    expect(gets, 0); expect(imports, 0);
++  });
++}
