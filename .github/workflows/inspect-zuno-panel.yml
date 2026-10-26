@@ -61,10 +61,10 @@ jobs:
               subdomain: project.subdomain,
               domains: project.domains,
               source: project.source && {type: project.source.type, production_branch: project.source.config?.production_branch},
-              deployment: project.production_deployment && {
-                id: project.production_deployment.id,
-                url: project.production_deployment.url,
-                source: project.production_deployment.deployment_trigger?.metadata,
+              deployment: project.canonical_deployment && {
+                id: project.canonical_deployment.id,
+                url: project.canonical_deployment.url,
+                source: project.canonical_deployment.deployment_trigger?.metadata,
               },
             }));
           await inspect('WORKER_BINDINGS', prefix + '/workers/scripts/seven-motion-backend/settings',
