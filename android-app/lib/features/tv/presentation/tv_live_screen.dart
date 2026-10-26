@@ -9,6 +9,7 @@
 //  RemoteSourceRepository). États vides PROFESSIONNELS (pas d'écran mort).
 // =========================================================
 import 'dart:async';
+import '../../channels/domain/channel_category_index.dart';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/foundation.dart' show listEquals;
@@ -100,6 +101,7 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
   List<String> _recentIds = RecentlyWatchedRepository.instance.current;
   List<Channel> _all = const <Channel>[];
   List<String> _cats = const <String>[];
+  ChannelCategoryIndex _categoryIndex = const ChannelCategoryIndex.empty();
   static const String _vipPrefix = 'vip.country.';
   Map<String, List<Channel>> _countryChannels = const {};
   bool _vipInitialApplied = false;
@@ -521,9 +523,7 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     } else if (_selectedCat == null) {
       _shownList = _all;
     } else {
-      _shownList = _all
-          .where((Channel c) => _catOf(c) == _selectedCat)
-          .toList(growable: false);
+      _shownList = _categoryIndex.channelsIn(_selectedCat!);
     }
   }
 
@@ -710,16 +710,13 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
         .toList(growable: false);
     // Ordre des catégories = ordre d'APPARITION ; dédup via Set (O(1)) pour
     // rester rapide même sur de très grandes listes (évite un contains O(n²)).
-    final List<String> cats = <String>[];
-    final Set<String> seenCats = <String>{};
+    final ChannelCategoryIndex categoryIndex = ChannelCategoryIndex(live, categoryOf: _catOf);
+    final List<String> cats = categoryIndex.categories;
     // Compteur par catégorie calculé ICI, dans la MÊME passe O(n) (pas par ligne
     // de la C-List) → affichage du compteur sans rescanner _all.
-    final Map<String, int> counts = <String, int>{};
-    for (final Channel c in live) {
-      final String cat = _catOf(c);
-      if (seenCats.add(cat)) cats.add(cat);
-      counts[cat] = (counts[cat] ?? 0) + 1;
-    }
+    final Map<String, int> counts = <String, int>{
+      for (final String cat in cats) cat: categoryIndex.countIn(cat),
+    };
     if (!mounted) return;
     BlackBox.instance.info(
       'DIRECT',
@@ -733,6 +730,7 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     }
     setState(() {
       _all = live;
+      _categoryIndex = categoryIndex;
       _cats = cats;
       _realCatCounts = counts;
       _selectedCat ??= cats.isNotEmpty ? cats.first : null;
@@ -741,7 +739,7 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
       // la source l'en ferait sortir.
       if (_selectedCat != null &&
           !_isSpecialCat(_selectedCat!) &&
-          !seenCats.contains(_selectedCat)) {
+          !categoryIndex.containsCategory(_selectedCat)) {
         _selectedCat = cats.isNotEmpty ? cats.first : null;
       }
       _recompute();

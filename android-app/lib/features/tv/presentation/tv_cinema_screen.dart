@@ -69,6 +69,7 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
   final CinemaRepository _repo = CinemaRepository.instance;
 
   bool _loadingCats = true;
+  bool _refreshingCatalog = false;
 
   /// Pas de compte Xtream : le message « ajoute ton abonnement ».
   bool _accountsMissing = false;
@@ -339,6 +340,21 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
     await _init();
   }
 
+  Future<void> _refreshCatalogNow() async {
+    if (_refreshingCatalog) return;
+    setState(() => _refreshingCatalog = true);
+    try {
+      final bool done = await _repo.refreshNow(widget.kind);
+      if (!mounted) return;
+      _onIndex();
+      await _select(_sel, explicit: true);
+      if (!done && mounted) ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        SnackBar(content: Text(context.l10n.libraryRefreshIncomplete)));
+    } finally {
+      if (mounted) setState(() => _refreshingCatalog = false);
+    }
+  }
+
   Future<void> _retryCategory() async {
     final CinemaCategory? cat = _sel.cat;
     if (cat == null) return;
@@ -519,6 +535,12 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
         : (CinemaLanguage.labelFor(_lang) ?? _lang!);
 
     final List<Widget> fixed = <Widget>[
+      CinemaRailRow(
+        icon: Icons.sync_rounded,
+        label: _refreshingCatalog ? context.l10n.libraryRefreshRunning : context.l10n.tvRefresh,
+        selected: _refreshingCatalog,
+        onSelect: () => unawaited(_refreshCatalogNow()),
+      ),
       if (_langOptions.isNotEmpty)
         CinemaRailRow(
           icon: Icons.language_rounded,

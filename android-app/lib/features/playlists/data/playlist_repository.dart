@@ -110,7 +110,21 @@ class PlaylistRepository {
   /// Charge initialement les chaînes depuis la base et émet sur le stream.
   /// À appeler une fois au démarrage de l'app.
   Future<void> initialize() async {
+    await _completePendingDeletions();
     await _emitCurrentState();
+  }
+
+  /// Une coupure peut interrompre le nettoyage des milliers de chaînes,
+  /// jamais le refus déjà enregistré. On termine avant le premier affichage.
+  Future<void> _completePendingDeletions() async {
+    final Set<String> deleted = await DeletedSources.read();
+    if (deleted.isEmpty) return;
+    final Database db = await PlaylistDatabase.instance.database;
+    for (final Map<String, Object?> row in await db.query('playlists')) {
+      final Playlist playlist = await _playlistFromRow(row);
+      final List<String> keys = await DeletedSources.hashes(SourceFingerprint.ofPlaylist(playlist));
+      if (keys.any(deleted.contains)) await _deletePlaylist(playlist.id!);
+    }
   }
 
   // ============================================================
@@ -371,6 +385,7 @@ class PlaylistRepository {
     http.Client? httpClient,
     bool restoreDeleted = true,
   }) async {
+    if (restoreDeleted) await DeletedSources.restoreManually(SourceFingerprint.ofM3uUrl(url));
     final http.Client client = httpClient ?? http.Client();
     // On insère la playlist AVANT le download (le parser a besoin de son
     // id pour rattacher les chaînes). MAIS : si une étape échoue ensuite
@@ -387,7 +402,7 @@ class PlaylistRepository {
         epgUrl: epgUrl,
         createdAt: DateTime.now().millisecondsSinceEpoch,
       );
-      playlistId = await _insertPlaylist(newPlaylist, restoreDeleted: restoreDeleted);
+      playlistId = await _insertPlaylist(newPlaylist);
 
       // 2) Télécharge le contenu M3U via le fetcher robuste
       //    (User-Agent navigateur + UTF-8 / Latin-1 fallback +
@@ -559,6 +574,12 @@ class PlaylistRepository {
     http.Client? httpClient,
     bool restoreDeleted = true,
   }) async {
+    if (restoreDeleted) {
+      await DeletedSources.restoreManually(<String>[
+        ...SourceFingerprint.xtreamAliases(serverUrl, username),
+        ...SourceFingerprint.ofM3uUrl(originM3uUrl),
+      ]);
+    }
     // 1) Vérifie d'abord les credentials, avant de polluer la base
     final XtreamClient xtream = XtreamClient(
       serverUrl: serverUrl,
@@ -588,7 +609,7 @@ class PlaylistRepository {
         ),
         createdAt: DateTime.now().millisecondsSinceEpoch,
       );
-      playlistId = await _insertPlaylist(newPlaylist, restoreDeleted: restoreDeleted);
+      playlistId = await _insertPlaylist(newPlaylist);
 
       // 3) Récupère catégories + chaînes
       final Map<String, String> cats = await xtream.fetchLiveCategories();
@@ -652,6 +673,14 @@ class PlaylistRepository {
   /// PENDANT son import (« FOREIGN KEY constraint failed ») sans qu'aucune
   /// ligne ne dise qui l'avait supprimée.
   Future<void> deletePlaylist(int playlistId, {String reason = 'client'}) async {
+    final Database db = await PlaylistDatabase.instance.database;
+    final List<Map<String, Object?>> rows = await db.query(
+      'playlists', where: 'id = ?', whereArgs: <Object>[playlistId], limit: 1,
+    );
+    if (rows.isNotEmpty) {
+      // Petite écriture validée avant de vider l'écran et avant le gros DELETE.
+      await DeletedSources.remember(SourceFingerprint.ofPlaylist(await _playlistFromRow(rows.single)));
+    }
     // Une relecture déjà en vol ne doit pas republier l'ancien cache après
     // la suppression immédiate affichée ci-dessous.
     _stateRevision++;
@@ -897,7 +926,7 @@ class PlaylistRepository {
   //  Helpers SQLite internes
   // ============================================================
 
-  Future<int> _insertPlaylist(Playlist playlist, {required bool restoreDeleted}) async {
+  Future<int> _insertPlaylist(Playlist playlist) async {
     await DeletedSources.migrateLegacy();
     final Database db = await PlaylistDatabase.instance.database;
     // Phase 1+/Multi-serveurs : si c'est la PREMIERE playlist (la
@@ -925,13 +954,8 @@ class PlaylistRepository {
         final List<Map<String, Object?>> deleted = await txn.query(
           'deleted_sources', where: 'fingerprint = ?', whereArgs: <Object>[key], limit: 1,
         );
-        if (deleted.isNotEmpty && !restoreDeleted) {
+        if (deleted.isNotEmpty) {
           throw const PlaylistDeletedException();
-        }
-        if (restoreDeleted) {
-          // Seul un ajout explicite dans l'app rétablit cette source.
-          // La synchronisation et les sauvegardes passent false.
-          await txn.delete('deleted_sources', where: 'fingerprint = ?', whereArgs: <Object>[key]);
         }
       }
       return txn.insert('playlists', map);

@@ -2804,5 +2804,8 @@
   "vipCountryMa": "Marokko",
   "vipCountryDz": "Algerije",
   "vipCountryTn": "Tunesië",
-  "vipCountryEg": "Egypte"
+  "vipCountryEg": "Egypte",
+  "libraryRefreshRunning": "Bijwerken…",
+  "libraryRefreshIncomplete": "Bijwerken niet voltooid. Sommige bronnen zijn niet beschikbaar. Probeer het opnieuw."
+
 }

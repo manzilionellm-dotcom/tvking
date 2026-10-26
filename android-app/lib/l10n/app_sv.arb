@@ -1374,5 +1374,8 @@
   "vipCountryMa": "Marocko",
   "vipCountryDz": "Algeriet",
   "vipCountryTn": "Tunisien",
-  "vipCountryEg": "Egypten"
+  "vipCountryEg": "Egypten",
+  "libraryRefreshRunning": "Uppdaterar…",
+  "libraryRefreshIncomplete": "Uppdateringen är ofullständig. Vissa källor är inte tillgängliga. Försök igen."
+
 }

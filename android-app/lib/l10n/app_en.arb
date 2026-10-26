@@ -1442,5 +1442,8 @@
   "vipCountryMa": "Morocco",
   "vipCountryDz": "Algeria",
   "vipCountryTn": "Tunisia",
-  "vipCountryEg": "Egypt"
+  "vipCountryEg": "Egypt",
+  "libraryRefreshRunning": "Refreshing…",
+  "libraryRefreshIncomplete": "Refresh incomplete. Some sources are unavailable. Try again."
+
 }

@@ -122,13 +122,7 @@ class _SourceRow extends StatelessWidget {
   bool get _on => _merge ? !playlist.hidden : playlist.isActive;
 
   Future<void> _delete(BuildContext context) async {
-    // Une liste envoyée par le panel revient à la vérification suivante :
-    // on le dit AVANT de supprimer (mesuré le 05/10/2026, « j'efface, il
-    // revient après cinq minutes »). Le retrait définitif = panel.
-    final bool fromPanel = await RemoteSourceRepository.isServedByPanel(
-      playlist,
-    );
-    if (!context.mounted) return;
+    // Le choix local est définitif, y compris pour une liste venue du panel.
     final bool? ok = await showDialog<bool>(
       context: context,
       builder: (BuildContext ctx) => AlertDialog(
@@ -138,9 +132,7 @@ class _SourceRow extends StatelessWidget {
           style: TextStyle(color: TvTokens.text),
         ),
         content: Text(
-          fromPanel
-              ? context.l10n.tvDeletePanelSourceConfirm(playlist.name)
-              : context.l10n.tvDeleteSourceConfirm(playlist.name),
+          context.l10n.tvDeleteSourceConfirm(playlist.name),
           style: TextStyle(color: TvTokens.muted),
         ),
         actions: <Widget>[

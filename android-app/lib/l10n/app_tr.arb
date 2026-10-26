@@ -2804,5 +2804,8 @@
   "vipCountryMa": "Fas",
   "vipCountryDz": "Cezayir",
   "vipCountryTn": "Tunus",
-  "vipCountryEg": "Mısır"
+  "vipCountryEg": "Mısır",
+  "libraryRefreshRunning": "Güncelleniyor…",
+  "libraryRefreshIncomplete": "Güncelleme tamamlanamadı. Bazı kaynaklar kullanılamıyor. Tekrar dene."
+
 }
