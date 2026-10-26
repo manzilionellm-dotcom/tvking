@@ -1,5 +1,5 @@
-# APK de test séparé : aucune clé de production ni accès à son environnement.
-# Les commandes natives et les correctifs viennent du dernier téléphone validé.
+# APK de test optimisé : signature Android Debug, aucune clé de production.
+# Installation séparée ; commandes natives et correctifs du dernier téléphone.
 name: 7 MOTION — APK corrigé de test
 'on':
   push:
@@ -286,16 +286,16 @@ jobs:
         \ HTTP échoue sur le repli Radio réel')\nPYRADIO\nflutter test --reporter expanded\n# Disponibilité externe\
         \ informative pour cet APK de test.\ndart run ci/radio_catalog_probe.dart || echo \"::warning::Radio Browser\
         \ hors ligne : disponibilité des radios non vérifiée.\""
-    - name: Construire l’application normale de test (ARM64)
+    - name: Construire l’application optimisée de test (ARM64)
       id: apk_build
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: "set -euo pipefail\nBUILD_TS=$(date +%s)\nBUILD_LABEL=$(ci/build_label.sh \"$GITHUB_REPOSITORY\" 7motion-test)\n\
-        echo \"PHONE_BUILD_LABEL=$BUILD_LABEL\" >> \"$GITHUB_ENV\"\nflutter build apk --debug --no-tree-shake-icons\
+        echo \"PHONE_BUILD_LABEL=$BUILD_LABEL\" >> \"$GITHUB_ENV\"\nflutter build apk --release --no-tree-shake-icons\
         \ --split-per-abi --target-platform android-arm64 \\\n  --build-number=\"$BUILD_TS\" --build-name=\"0.3.7-gold-trial-test.${{\
         \ github.run_number }}\" \\\n  --dart-define=APP_BUILD_TS=\"$BUILD_TS\" --dart-define=APP_BUILD_LABEL=\"\
         $BUILD_LABEL\" \\\n  --dart-define=GIT_SHA=${{ env.SOURCE_SHA }} \\\n  --dart-define=PHONE_UPDATE_TAG=gold-trial-review\
-        \ --target=lib/main.dart\ncp build/app/outputs/flutter-apk/app-arm64-v8a-debug.apk build/app/outputs/flutter-apk/7motion.apk"
+        \ --target=lib/main.dart\ncp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk build/app/outputs/flutter-apk/7motion.apk"
     - name: Vérifier le vrai APK de test et ses correctifs
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -306,11 +306,11 @@ jobs:
         \ hashlib,json,sys,zipfile\nfrom pathlib import Path\nfrom androguard.core.apk import APK\npath=Path(sys.argv[1])\n\
         apk=APK(str(path))\nassert apk.get_package()=='com.manzilionellm.tvking.tv_king.goldtrialtest'\nassert apk.get_min_sdk_version()=='24'\n\
         assert 'com.manzilionellm.tvking.tv_king.MainActivity'==apk.get_main_activity()\nassert 'CN=Android Debug'\
-        \ in Path(sys.argv[2]).read_text()\nwith zipfile.ZipFile(path) as z:\n data=z.read('assets/flutter_assets/kernel_blob.bin')\n\
+        \ in Path(sys.argv[2]).read_text()\nwith zipfile.ZipFile(path) as z:\n data=z.read('lib/arm64-v8a/libapp.so')\n\
         \ for marker in [b'Je teste',b'/api/gold-trial',b'7 MOTION Essai',b'android_id',b'app_version']:\n  assert\
         \ marker in data, 'Correctif absent du binaire: '+repr(marker)\nprint(json.dumps({'package':apk.get_package(),'versionName':apk.get_androidversion_name(),'versionCode':apk.get_androidversion_code(),'minSdk':apk.get_min_sdk_version(),'sha256':hashlib.sha256(path.read_bytes()).hexdigest(),'signature':'Android\
-        \ Debug','entrypoint':'lib/main.dart'},ensure_ascii=False))\nPYAUDIT\nSHA=$(sha256sum \"$APK\" | cut -d'\
-        \ ' -f1)\necho \"APK_SHA256=$SHA\" >> \"$GITHUB_ENV\"\necho \"SHA-256 $SHA\"\n"
+        \ Debug','entrypoint':'lib/main.dart','mode':'release-optimized-test'},ensure_ascii=False))\nPYAUDIT\nSHA=$(sha256sum\
+        \ \"$APK\" | cut -d' ' -f1)\necho \"APK_SHA256=$SHA\" >> \"$GITHUB_ENV\"\necho \"SHA-256 $SHA\"\n"
     - name: Conserver l’APK exact
       if: ${{ !cancelled() && steps.apk_build.outcome == 'success' }}
       uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
