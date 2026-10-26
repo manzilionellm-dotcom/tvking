@@ -865,10 +865,10 @@ index 0000000..610875c
 +}
 diff --git a/test/features/subscription/gold_trial_card_test.dart b/test/features/subscription/gold_trial_card_test.dart
 new file mode 100644
-index 0000000..bcce842
+index 0000000..1c9e45d
 --- /dev/null
 +++ b/test/features/subscription/gold_trial_card_test.dart
-@@ -0,0 +1,92 @@
+@@ -0,0 +1,93 @@
 +import 'dart:async';
 +
 +import 'package:flutter/material.dart';
@@ -948,6 +948,7 @@ index 0000000..bcce842
 +    expect(find.text('Essai activé ✔'),findsOneWidget);
 +    expect(find.textContaining('27/10/2026'),findsOneWidget);
 +    expect(find.text('Je teste'),findsNothing);
++    SharedPreferences.setMockInitialValues(<String, Object>{});
 +    final GoldTrialController customer=create(409,'{"error":"already_customer"}');
 +    addTearDown(customer.dispose);
 +    await show(tester,customer);
