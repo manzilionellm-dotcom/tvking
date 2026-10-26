@@ -1,3 +1,221 @@
+diff --git a/lib/core/widgets/settled_page_view.dart b/lib/core/widgets/settled_page_view.dart
+new file mode 100644
+index 0000000..522b4cb
+--- /dev/null
++++ b/lib/core/widgets/settled_page_view.dart
+@@ -0,0 +1,59 @@
++import 'package:flutter/material.dart';
++
++/// Le geste reste purement visuel. Le lecteur n'est averti qu'une fois la
++/// page arrêtée : franchir cinq pages ne lance pas cinq ouvertures réseau.
++/// Seules la page visible et ses voisines sont construites, même à 25 000.
++class SettledPageView extends StatefulWidget {
++  const SettledPageView({super.key, required this.controller,
++    required this.itemCount, required this.itemBuilder, required this.onSettled,
++    this.onUserScrollStart});
++  final PageController controller;
++  final int itemCount;
++  final IndexedWidgetBuilder itemBuilder;
++  final ValueChanged<int> onSettled;
++  final VoidCallback? onUserScrollStart;
++
++  @override
++  State<SettledPageView> createState() => _SettledPageViewState();
++}
++
++class _SettledPageViewState extends State<SettledPageView> {
++  late int _page = widget.controller.initialPage;
++  late int _committed = _page;
++  int _intent = 0;
++
++  bool _onScroll(ScrollNotification notification) {
++    if (notification.depth != 0) return false;
++    if (notification is ScrollStartNotification) {
++      ++_intent;
++      if (notification.dragDetails != null) widget.onUserScrollStart?.call();
++    }
++    if (notification is ScrollEndNotification) {
++      final int intent = ++_intent;
++      // Éviter de reconstruire/déplacer une texture vidéo pendant le layout
++      // du défilement. Une nouvelle intention invalide ce rappel tardif.
++      WidgetsBinding.instance.addPostFrameCallback((_) {
++        if (!mounted || intent != _intent || _page == _committed ||
++            _page < 0 || _page >= widget.itemCount) return;
++        _committed = _page;
++        widget.onSettled(_page);
++      });
++    }
++    return false;
++  }
++
++  @override
++  Widget build(BuildContext context) => NotificationListener<ScrollNotification>(
++    onNotification: _onScroll,
++    child: PageView.builder(
++      controller: widget.controller,
++      scrollDirection: Axis.vertical,
++      physics: const BouncingScrollPhysics(),
++      allowImplicitScrolling: true,
++      onPageChanged: (int page) => _page = page,
++      itemCount: widget.itemCount,
++      itemBuilder: (BuildContext context, int index) =>
++        RepaintBoundary(child: widget.itemBuilder(context, index)),
++    ),
++  );
++}
+diff --git a/lib/features/player/presentation/video_player_screen.dart b/lib/features/player/presentation/video_player_screen.dart
+index b82fc47..821d965 100644
+--- a/lib/features/player/presentation/video_player_screen.dart
++++ b/lib/features/player/presentation/video_player_screen.dart
+@@ -40,6 +40,7 @@ import '../../../core/observability/structured_logger.dart';
+ import '../../../core/theme/app_colors.dart';
+ import '../../../core/theme/app_text_styles.dart';
+ import '../../../core/widgets/live_badge.dart';
++import '../../../core/widgets/settled_page_view.dart';
+ import '../../cast/data/cast_manager.dart';
+ import '../../cast/data/cast_url_resolver.dart';
+ import '../../cast/data/local_cast_server.dart';
+@@ -434,6 +435,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+   /// tour tire `onPageChanged`. Pour éviter de re-traiter le swipe
+   /// déjà appliqué (double `_player.open`), on flag pendant l'animation.
+   bool _zapAnimating = false;
++  int _zapNavigationGeneration = 0;
++  final GlobalKey _playbackSurfaceKey = GlobalKey(debugLabel: 'mobile-playback-surface');
++  List<Channel>? _indexedZapPlaylist;
++  Map<String, int> _zapPositions = const <String, int>{};
++  int _logoWarmGeneration = 0;
+ 
+   @override
+   void initState() {
+@@ -1102,9 +1108,17 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+   bool get _isTvUi => DeviceClassRepository.instance.isTvFor(context);
+ 
+   int get _zapIndex {
+-    if (widget.zapPlaylist == null) return -1;
+-    return widget.zapPlaylist!
+-        .indexWhere((Channel c) => c.id == _currentChannel.id);
++    final List<Channel>? list = widget.zapPlaylist;
++    if (list == null) return -1;
++    if (!identical(list, _indexedZapPlaylist)) {
++      _indexedZapPlaylist = list;
++      _zapPositions = <String, int>{};
++      for (int i = 0; i < list.length; i++) {
++        _zapPositions.putIfAbsent(list[i].id, () => i);
++      }
++    }
++    // Aucun parcours de 25 000 chaînes à chaque reconstruction du lecteur.
++    return _zapPositions[_currentChannel.id] ?? -1;
+   }
+ 
+   /// Zap à un index donné. Appelé depuis :
+@@ -1120,6 +1134,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+     final List<Channel> list = widget.zapPlaylist!;
+     if (list.isEmpty) return;
+     final int wrapped = ((newIndex % list.length) + list.length) % list.length;
++    final int navigation = ++_zapNavigationGeneration;
+ 
+     if (_zapPageController != null && _zapPageController!.hasClients) {
+       // Animation fluide TikTok-style. `_zapAnimating` empêche le
+@@ -1130,6 +1145,14 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+       // On ignore donc les pages traversées et on applique le zap
+       // UNE seule fois, à la fin de l'animation.
+       _zapAnimating = true;
++      final int visible = _zapPageController!.page?.round() ?? _zapIndex;
++      if ((wrapped - visible).abs() > 1) {
++        // Le passage première ↔ dernière chaîne ne traverse pas 25 000 pages.
++        _zapPageController!.jumpToPage(wrapped);
++        _zapAnimating = false;
++        _applyZap(wrapped);
++        return;
++      }
+       _zapPageController!
+           .animateToPage(
+             wrapped,
+@@ -1137,6 +1160,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+             curve: Curves.easeOutCubic,
+           )
+           .whenComplete(() {
++            if (!mounted || navigation != _zapNavigationGeneration) return;
+             _zapAnimating = false;
+             _applyZap(wrapped);
+           });
+@@ -1149,7 +1173,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+   /// Applique réellement le changement de chaîne. Tirée par `_zapTo`
+   /// directement (mode TV) ou par `onPageChanged` du PageView après
+   /// le snap d'un swipe utilisateur.
+-  void _applyZap(int newIndex) {
++  void _applyZap(int newIndex, {Duration settleDelay = const Duration(milliseconds: 400)}) {
+     if (widget.zapPlaylist == null) return;
+     final List<Channel> list = widget.zapPlaylist!;
+     if (newIndex < 0 || newIndex >= list.length) return;
+@@ -1227,7 +1251,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+     // S3 : la session de métriques de l'ANCIENNE chaîne est résumée
+     // (boîte noire), une neuve démarre pour la chaîne visée.
+     _startStatsSession();
+-    _zapDebounce = Timer(const Duration(milliseconds: 400), () {
++    _zapDebounce = Timer(settleDelay, () {
+       _pendingZapChannel = null;
+       if (!mounted || _currentChannel.id != next.id) return;
+       // Seule la chaîne FINALE est rapportée au panel « En ligne »
+@@ -1888,7 +1912,31 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+   /// `whenComplete` de l'animation (cf. `_zapTo`).
+   void _onZapPageChanged(int newIndex) {
+     if (_zapAnimating) return;
+-    _applyZap(newIndex);
++    // Le pager garantit déjà l'arrêt du geste : délai réduit, sans ouvrir
++    // les chaînes traversées ni multiplier les connexions fournisseur.
++    _applyZap(newIndex, settleDelay: const Duration(milliseconds: 120));
++    _warmZapLogos(newIndex);
++  }
++
++  void _onUserSwipeStart() {
++    ++_zapNavigationGeneration;
++    _zapAnimating = false;
++  }
++
++  Future<void> _warmZapLogos(int index) async {
++    final int generation = ++_logoWarmGeneration;
++    final List<Channel>? list = widget.zapPlaylist;
++    if (list == null) return;
++    // Uniquement les deux logos voisins, jamais leurs flux vidéo.
++    for (final int neighbor in <int>[index + 1, index - 1]) {
++      if (!mounted || generation != _logoWarmGeneration) return;
++      if (neighbor < 0 || neighbor >= list.length) continue;
++      final String? logo = list[neighbor].logoUrl;
++      if (logo == null || logo.isEmpty) continue;
++      await precacheImage(ResizeImage.resizeIfNeeded(360, null,
++        CachedNetworkImageProvider(logo)), context,
++        onError: (Object _, StackTrace? __) {});
++    }
+   }
+ 
+   void _zapNext() => _zapTo(_zapIndex + 1);
+@@ -3536,20 +3584,19 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+   /// + nom) pour la transition fluide pendant le swipe.
+   Widget _buildTikTokPageView() {
+     final List<Channel> list = widget.zapPlaylist!;
+-    return PageView.builder(
+-      scrollDirection: Axis.vertical,
+-      controller: _zapPageController,
++    return SettledPageView(
++      controller: _zapPageController!,
+       // Physics élastique — donne le rebond doux qu'on attend d'un
+       // feed TikTok / Reels au lieu du clamp brutal par défaut.
+-      physics: const BouncingScrollPhysics(),
+-      onPageChanged: _onZapPageChanged,
++      onSettled: _onZapPageChanged,
++      onUserScrollStart: _onUserSwipeStart,
+       itemCount: list.length,
+       itemBuilder: (BuildContext context, int i) {
+         final bool isCurrent = list[i].id == _currentChannel.id;
+         return GestureDetector(
+           onTap: _toggleOverlay,
+           child: isCurrent
+-              ? _buildPlayerSurface()
++              ? KeyedSubtree(key: _playbackSurfaceKey, child: _buildPlayerSurface())
+               : _ZapPreviewPage(channel: list[i]),
+         );
+       },
 diff --git a/lib/features/playlists/data/library_refresh.dart b/lib/features/playlists/data/library_refresh.dart
 new file mode 100644
 index 0000000..b0aa918
@@ -47,7 +265,7 @@ index 0000000..b0aa918
 +  }
 +}
 diff --git a/lib/features/playlists/data/playlist_repository.dart b/lib/features/playlists/data/playlist_repository.dart
-index 492f13a..d8b4d3b 100644
+index 492f13a..de4c5b3 100644
 --- a/lib/features/playlists/data/playlist_repository.dart
 +++ b/lib/features/playlists/data/playlist_repository.dart
 @@ -172,9 +172,23 @@ class PlaylistRepository {
@@ -101,12 +319,14 @@ index 492f13a..d8b4d3b 100644
        await tx.delete('channels');
        await tx.delete('playlists');
      });
-@@ -1400,12 +1427,13 @@ class PlaylistRepository {
+@@ -1400,12 +1427,15 @@ class PlaylistRepository {
    // timer 24 h et l'auto-refresh — sans verrou, deux passes pouvaient se
    // chevaucher et DOUBLER le pic mémoire (suspect OOM). On garantit une seule
    // passe à la fois.
 -  bool _refreshingAll = false;
 +  Future<int>? _refreshAllWork;
++  @visibleForTesting
++  http.Client Function()? refreshClientForTesting;
  
 -  Future<int> refreshAll() async {
 -    if (_refreshingAll) return 0; // une passe déjà en cours → on ne double pas
@@ -120,7 +340,7 @@ index 492f13a..d8b4d3b 100644
        final List<Playlist> all = await getAllPlaylists();
        int ok = 0;
        for (final Playlist p in all) {
-@@ -1430,9 +1458,6 @@ class PlaylistRepository {
+@@ -1430,9 +1460,6 @@ class PlaylistRepository {
        // plus de chaîne) pour ne pas laisser de playlist morte traîner.
        await pruneEmptyPlaylists();
        return ok;
@@ -130,8 +350,25 @@ index 492f13a..d8b4d3b 100644
    }
  
    /// Supprime les playlists DÉJÀ synchronisées qui n'ont AUCUNE chaîne
+@@ -1507,7 +1534,7 @@ class PlaylistRepository {
+     final Database db = await PlaylistDatabase.instance.database;
+ 
+     if (playlist.type == PlaylistType.m3u && playlist.m3uUrl != null) {
+-      final http.Client client = http.Client();
++      final http.Client client = refreshClientForTesting?.call() ?? http.Client();
+       try {
+         // Même fetcher robuste qu'à l'ajout initial (Latin-1 fallback,
+         // User-Agent navigateur, strip BOM, timeout 90s).
+@@ -1560,6 +1587,7 @@ class PlaylistRepository {
+         serverUrl: playlist.xtreamServer!,
+         username: playlist.xtreamUsername!,
+         password: playlist.xtreamPassword!,
++        httpClient: refreshClientForTesting?.call(),
+       );
+       try {
+         await xtream.verifyCredentials();
 diff --git a/lib/features/playlists/presentation/import_progress_screen.dart b/lib/features/playlists/presentation/import_progress_screen.dart
-index 616a499..6fa9090 100644
+index 616a499..86085ef 100644
 --- a/lib/features/playlists/presentation/import_progress_screen.dart
 +++ b/lib/features/playlists/presentation/import_progress_screen.dart
 @@ -50,7 +50,9 @@ Future<ImportOutcome<T>> runImportWithProgress<T>(
@@ -190,7 +427,7 @@ index 616a499..6fa9090 100644
  
    @override
    void initState() {
-@@ -116,22 +127,37 @@ class _ImportProgressScreenState<T> extends State<ImportProgressScreen<T>>
+@@ -116,22 +127,38 @@ class _ImportProgressScreenState<T> extends State<ImportProgressScreen<T>>
        final T result = await widget.task((ImportProgress p) {
          if (mounted && !_finished) _progress.value = p;
        });
@@ -199,6 +436,7 @@ index 616a499..6fa9090 100644
 +      final ImportOutcome<T> outcome = ImportOutcome<T>.success(result);
 +      setState(() { _finished = true; _outcome = outcome; });
 +      _clock?.cancel();
++      _pulse.stop();
 +      widget.onFinished?.call(outcome);
        _progress.value = _progress.value.copyWith(phase: ImportPhase.done);
 -      // Petit temps de « victoire » : le client voit le total prêt.
@@ -235,7 +473,7 @@ index 616a499..6fa9090 100644
      _pulse.dispose();
      _progress.dispose();
      super.dispose();
-@@ -149,14 +175,14 @@ class _ImportProgressScreenState<T> extends State<ImportProgressScreen<T>>
+@@ -149,14 +176,14 @@ class _ImportProgressScreenState<T> extends State<ImportProgressScreen<T>>
            child: Center(
              child: ConstrainedBox(
                constraints: BoxConstraints(maxWidth: 420 * widget.scale),
@@ -252,7 +490,7 @@ index 616a499..6fa9090 100644
              ),
            ),
          ),
-@@ -213,6 +239,16 @@ class _ImportProgressScreenState<T> extends State<ImportProgressScreen<T>>
+@@ -213,6 +240,16 @@ class _ImportProgressScreenState<T> extends State<ImportProgressScreen<T>>
              color: AppColors.textMuted,
            ),
          ),
@@ -869,6 +1107,62 @@ index 6a54960..1e10509 100644
 +  }
 +
  }
+diff --git a/test/core/settled_page_view_test.dart b/test/core/settled_page_view_test.dart
+new file mode 100644
+index 0000000..ce84eba
+--- /dev/null
++++ b/test/core/settled_page_view_test.dart
+@@ -0,0 +1,50 @@
++import 'package:flutter/material.dart';
++import 'package:flutter_test/flutter_test.dart';
++import 'package:tv_king/core/widgets/settled_page_view.dart';
++
++void main() {
++  testWidgets('25 000 pages : construction bornée et aucune ouverture pendant le geste', (WidgetTester tester) async {
++    final PageController controller = PageController();
++    final Set<int> built = <int>{};
++    final List<int> opened = <int>[];
++    await tester.pumpWidget(MaterialApp(home: Scaffold(body: SettledPageView(
++      controller: controller,
++      itemCount: 25000,
++      itemBuilder: (_, int i) { built.add(i); return Center(child: Text('Chaîne $i')); },
++      onSettled: opened.add,
++    ))));
++    final TestGesture gesture = await tester.startGesture(tester.getCenter(find.byType(PageView)));
++    await gesture.moveBy(const Offset(0, -400));
++    await tester.pump(const Duration(milliseconds: 50));
++    expect(opened, isEmpty, reason: 'la texture et le réseau ne changent pas en plein glissé');
++    await gesture.moveBy(const Offset(0, -500));
++    await tester.pump(const Duration(milliseconds: 50));
++    expect(opened, isEmpty);
++    await gesture.up();
++    await tester.pumpAndSettle();
++    expect(opened, hasLength(1));
++    expect(opened.single, controller.page!.round());
++    expect(built.length, lessThan(12), reason: 'le catalogue entier ne doit jamais devenir des widgets');
++    await tester.pumpWidget(const SizedBox.shrink());
++    controller.dispose();
++  });
++
++  testWidgets('un geste annulé ne redémarre pas la chaîne courante', (WidgetTester tester) async {
++    final PageController controller = PageController();
++    final List<int> opened = <int>[];
++    await tester.pumpWidget(MaterialApp(home: Scaffold(body: SettledPageView(
++      controller: controller, itemCount: 25000,
++      itemBuilder: (_, int i) => Text('$i'), onSettled: opened.add,
++    ))));
++    final TestGesture gesture = await tester.startGesture(tester.getCenter(find.byType(PageView)));
++    await gesture.moveBy(const Offset(0, -40));
++    await tester.pump(const Duration(milliseconds: 300));
++    await gesture.moveBy(const Offset(0, 40));
++    await tester.pump(const Duration(milliseconds: 300));
++    await gesture.up();
++    await tester.pumpAndSettle();
++    expect(opened, isEmpty);
++    await tester.pumpWidget(const SizedBox.shrink());
++    controller.dispose();
++  });
++}
 diff --git a/test/features/playlists/import_return_test.dart b/test/features/playlists/import_return_test.dart
 new file mode 100644
 index 0000000..ad249c6
@@ -933,10 +1227,10 @@ index 0000000..ad249c6
 +}
 diff --git a/test/features/playlists/library_refresh_test.dart b/test/features/playlists/library_refresh_test.dart
 new file mode 100644
-index 0000000..fcbc6b8
+index 0000000..88ecf7e
 --- /dev/null
 +++ b/test/features/playlists/library_refresh_test.dart
-@@ -0,0 +1,139 @@
+@@ -0,0 +1,163 @@
 +import 'dart:async';
 +import 'dart:convert';
 +import 'dart:io';
@@ -1007,13 +1301,17 @@ index 0000000..fcbc6b8
 +    SharedPreferences.setMockInitialValues(<String, Object>{'device.virtual_mac.v1':'MK:11:22:33:44:55'});
 +    count=1; movieRequests=0; fail=false; serveDeleted=false;
 +    CatalogSource.httpForTesting=client;
++    PlaylistRepository.instance.refreshClientForTesting=client;
 +    await PlaylistRepository.instance.deleteAllPlaylists();
 +    final Database db=await PlaylistDatabase.instance.database;
 +    await db.delete('deleted_sources');
 +    id=await db.insert('playlists',source.toMap());
 +    await PlaylistRepository.instance.setActivePlaylist(id);
 +  });
-+  tearDown(() { CatalogSource.httpForTesting=null; });
++  tearDown(() {
++    CatalogSource.httpForTesting=null;
++    PlaylistRepository.instance.refreshClientForTesting=null;
++  });
 +
 +  test('un seul nouveau film dans une catégorie existante apparaît après Tout actualiser', () async {
 +    await http.runWithClient(() async {
@@ -1038,6 +1336,26 @@ index 0000000..fcbc6b8
 +      expect((await second).movies,1);
 +      expect((await first).movies,1);
 +    },client);
++  });
++
++  test('une réponse ancienne lente ne remplace pas le catalogue forcé plus récent', () async {
++    final Completer<void> started=Completer<void>();
++    final Completer<void> release=Completer<void>();
++    int requestNumber=0;
++    CatalogSource.httpForTesting=()=>MockClient((http.Request request) async {
++      if (request.url.queryParameters['action']!='get_vod_streams') return http.Response('[]',200);
++      final int number=++requestNumber;
++      if (number==1) { started.complete(); await release.future; }
++      return http.Response(jsonEncode(<Object>[
++        for (int n=1;n<=(number==1?1:2);n++) <String,Object>{'stream_id':n,'name':'Film $n','category_id':'1','container_extension':'mp4'},
++      ]),200);
++    });
++    final old=VodRepository.instance.fetchMovies(forceRefresh:true);
++    await started.future;
++    expect(await VodRepository.instance.fetchMovies(forceRefresh:true),hasLength(2));
++    release.complete();
++    await old;
++    expect(await VodRepository.instance.fetchMovies(),hasLength(2));
 +  });
 +
 +  test('une panne garde le dernier catalogue et ne prétend pas avoir tout actualisé', () async {

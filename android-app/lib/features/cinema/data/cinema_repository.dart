@@ -174,7 +174,11 @@ class CinemaRepository {
     await sources();
     if (_sources.isEmpty) return false;
     final Future<void>? previous = _refreshInFlight[kind];
-    if (previous != null) await previous;
+    if (previous != null) {
+      // Réveille aussi une passe silencieuse en attente de fin de lecture.
+      ++_catalogGen;
+      await previous;
+    }
     final int gen = _catalogGen;
     final String? folder = _folderSig;
     final CatalogDisk? disk = await _openDisk();
@@ -942,7 +946,7 @@ class CinemaRepository {
         fetchCategories: () => _downloadCategoryRecords(kind),
         fetchTitles: (CatalogCategoryRecord category) =>
             _downloadTitleRecords(kind, category),
-        playbackBusy: () => TvActivity.isBusy,
+        playbackBusy: () => !forceNetwork && TvActivity.isBusy,
         sleep: (Duration delay) => Future<void>.delayed(delay),
         jitterPermille: () => _jitter.nextInt(1001),
         cancelled: () => gen != _catalogGen,
