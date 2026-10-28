@@ -49,9 +49,10 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
   useEffect(() => {
     let stop = false;
     let busy = false;
+    let again = false;
     let duringRead: PanelEvent[] = [];
     async function tick() {
-      if (busy) return;
+      if (busy) { again = true; return; }
       busy = true;
       duringRead = [];
       try {
@@ -64,6 +65,7 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
         if (e instanceof ApiError && e.status === 401) onLogout();
       } finally {
         busy = false;
+        if (again && !stop) { again = false; void tick(); }
       }
     }
     const unsubscribe = subscribePanel(event => {

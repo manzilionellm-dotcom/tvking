@@ -20,14 +20,9 @@ const assert = require('node:assert/strict');
     };
     await call('/__fixture/register', 'POST', { mac, androidId: 'browser-fixture' });
     await call('/api/device-proof', 'POST', { mac, androidId: 'browser-fixture', secret });
-    device = (await fixture.mf.dispatchFetch(`${fixture.origin}/api/box/ws?mac=${mac}`, {
-      headers: { Upgrade: 'websocket', 'X-Device-Secret': secret },
-    })).webSocket;
-    assert.ok(device);
-    device.accept();
     let applied = false;
     let appError;
-    device.addEventListener('message', event => {
+    const onDeviceMessage = event => {
       void (async () => {
         const order = JSON.parse(event.data);
         if (order.type !== 'suspend') return;
@@ -38,15 +33,59 @@ const assert = require('node:assert/strict');
           order_id: order.order_id, state: 'applied', result: 'refreshed', applied_at: Date.now(),
         }] }, true);
       })().catch(error => { appError = error; });
-    });
+    };
     const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
     const errors = [], sockets = [];
+    const deferred = () => {
+      let resolve;
+      const promise = new Promise(done => { resolve = done; });
+      return { promise, resolve };
+    };
+    const within = async (promise, label) => {
+      let timer;
+      try {
+        return await Promise.race([promise, new Promise((_, reject) => {
+          timer = setTimeout(() => reject(new Error(`Attente dépassée : ${label}`)), 10000);
+        })]);
+      } finally { clearTimeout(timer); }
+    };
+    const snapshot = deferred(), releaseSnapshot = deferred(), releaseTicket = deferred(), connected = deferred();
+    let snapshotReads = 0;
     page.on('pageerror', error => errors.push(error.message));
-    page.on('websocket', ws => sockets.push(ws.url()));
+    page.on('websocket', ws => {
+      sockets.push(ws.url());
+      ws.on('framereceived', () => connected.resolve());
+    });
+    // Une vraie lecture hors ligne part avant la connexion de l'appareil.
+    // Sa réponse arrive après l'ouverture du socket panel : elle doit être
+    // réconciliée, même si la présence a été publiée pendant cet intervalle.
+    await page.route('**/api/v1/rt/ticket', async route => {
+      await releaseTicket.promise;
+      await route.continue();
+    });
+    await page.route('**/api/v1/boxes/live**', async route => {
+      snapshotReads++;
+      if (snapshotReads !== 1) { await route.continue(); return; }
+      const response = await route.fetch();
+      snapshot.resolve();
+      await releaseSnapshot.promise;
+      await route.fulfill({ response });
+    });
     await page.addInitScript(token => localStorage.setItem('auth_token', token), fixture.token);
     await page.goto('http://127.0.0.1:4173/devices');
+    await within(snapshot.promise, 'lecture initiale');
+    device = (await fixture.mf.dispatchFetch(`${fixture.origin}/api/box/ws?mac=${mac}`, {
+      headers: { Upgrade: 'websocket', 'X-Device-Secret': secret },
+    })).webSocket;
+    assert.ok(device);
+    device.accept();
+    device.addEventListener('message', onDeviceMessage);
+    releaseTicket.resolve();
+    await within(connected.promise, 'connexion panel');
+    releaseSnapshot.resolve();
     const row = page.getByRole('row').filter({ hasText: mac });
     await row.getByText(/en ligne/).waitFor();
+    assert.ok(snapshotReads >= 2, 'présence relue après une connexion pendant la lecture initiale');
     // Toute actualisation de présence ultérieure doit venir du WebSocket.
     await page.route('**/api/v1/boxes/live**', route => route.abort());
     const click = Date.now();
@@ -65,7 +104,7 @@ const assert = require('node:assert/strict');
     assert.ok(sockets.every(url => !url.includes(fixture.token) && !url.includes(secret)));
     assert.deepEqual(errors, []);
     if (process.env.PANEL_CAPTURE_DIR) await page.screenshot({ path: `${process.env.PANEL_CAPTURE_DIR}/panel-realtime.png`, fullPage: true });
-    console.log(JSON.stringify({ passed: true, appliedMs, offlineMs, errors }));
+    console.log(JSON.stringify({ passed: true, initialSnapshotReconciled: true, appliedMs, offlineMs, errors }));
   } finally {
     try { device?.close(); } catch { /* Déjà fermée par la recette hors ligne. */ }
     await browser.close();

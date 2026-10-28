@@ -66,7 +66,6 @@ class RemoteActivationWatch {
   bool _allowSourceImport = true;
   bool _channelUp = false;
   int _failures = 0;
-  int _signalFailures = 0;
   int? _lastSourceRev;
   int _generation = 0;
   int _boxCursor = 0;
@@ -144,7 +143,6 @@ class RemoteActivationWatch {
     _tickBusy = false;
     _nudge = false;
     _failures = 0;
-    _signalFailures = 0;
     _channelUp = false;
     _lastSourceRev = null;
     _session?.stop();
@@ -232,6 +230,14 @@ class RemoteActivationWatch {
   Future<void> _maybeImportSource({bool ordered = false}) async {
     if (!_allowSourceImport) return;
     final RemoteSubscriptionStatus snap = SubscriptionState.instance.remote;
+    // Le statut verrouille déjà l'app. Une suspension ne doit pas convertir
+    // la réponse « sources interdites » en suppression locale, ni retarder
+    // l'accusé avec un import. Les révocations explicites sont traitées avant.
+    if (snap.shouldBlock) {
+      _lastSourceRev = null;
+      RemoteSourceRepository.lastReport = null;
+      return;
+    }
     final bool has = PlaylistRepository.instance.currentChannels.isNotEmpty;
     final bool busy = TvActivity.isBusy;
     final bool fetch = SourceFetchDecision.shouldFetch(
@@ -307,8 +313,8 @@ class RemoteActivationWatch {
         },
         onConnected: nudge,
         onFrame: (BoxChannelFrame frame) async {
-          // Le Durable Object renvoie le DERNIER ordre à chaque ouverture
-          // de la prise. Même numéro que l'attente longue : on lit le
+          // Le Durable Object rejoue les ordres après le curseur à chaque
+          // ouverture. Même numéro que l'attente longue : on lit le
           // numéro gardé (entre deux démarrages) et on ignore un ordre
           // déjà traité. Repli `zuno.realtime.ws_replay_legacy`.
           if (!RepairFlags.wsReplayLegacy) {
@@ -394,14 +400,11 @@ class RemoteActivationWatch {
           continue;
         }
         if (result.offline) {
-          // Reprise courte : 1 s, puis 2, 4… plafonné à 30 s.
-          // On ne martèle pas le réseau, et un retour de Wi-Fi
-          // n'attend pas le plafond de 45 s de la lecture courte.
+          // Le repli reste à 5 s, indépendamment du backoff WebSocket.
           _setChannelUp(false);
           continue;
         }
         _setChannelUp(_session?.open == true);
-        _signalFailures = 0;
         lastSignalBody = result.raw;
         if (result.orders.isEmpty) continue;
         final bool applied = await _applyOrders(result.orders, via: 'attente');

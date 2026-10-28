@@ -103,6 +103,8 @@ void main() {
         'message', () => find.text('Message RT Android').evaluate().isNotEmpty, visible: find.text('Message RT Android'));
       await action('suspension', '/api/v1/devices/fixture-$mac', 'PATCH', <String, Object>{'block_status': 'frozen'}, 'suspend',
         () => SubscriptionState.instance.remote.frozen);
+      expect(PlaylistRepository.instance.currentChannels.length, 1,
+        reason: 'une suspension verrouille l’accès sans supprimer la liste');
       await action('réactivation', '/api/v1/devices/fixture-$mac', 'PATCH', <String, Object>{'block_status': 'active'}, 'resume',
         () => !SubscriptionState.instance.remote.frozen);
       await action('retrait de liste', '/api/v1/sources/$mac', 'DELETE', null, 'source_clear',
