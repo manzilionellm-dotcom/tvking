@@ -14,6 +14,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.Process
 import android.os.SystemClock
+import android.view.Gravity
 import android.view.PixelCopy
 import android.view.Surface
 import android.view.SurfaceView
@@ -29,6 +30,7 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Tracks
+import androidx.media3.common.VideoSize
 import androidx.media3.common.text.CueGroup
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.common.util.Util
@@ -90,6 +92,7 @@ import com.manzilionellm.native_video_player.logic.SpokenCandidate
 import com.manzilionellm.native_video_player.logic.SpokenTrackChoice
 import com.manzilionellm.native_video_player.logic.VideoCandidate
 import com.manzilionellm.native_video_player.logic.VideoEngine
+import com.manzilionellm.native_video_player.logic.VideoGeometry
 import com.manzilionellm.native_video_player.logic.VideoTrackChoice
 import java.util.concurrent.atomic.AtomicInteger
 import io.flutter.plugin.common.BinaryMessenger
@@ -291,6 +294,9 @@ class NativeVideoView(
      * décodeur et AudioTrack rendus, focus abandonné. « play » ou « resume »
      * rouvre la chaîne au direct (ou le film à sa position).
      */
+    // Le Cast garde le flux fermé, y compris lors d'un retour au premier plan.
+    // Home / onResume ne doivent jamais voler la connexion du récepteur.
+    private var castSuspended = false
     private var suspended = false
 
     /** Autres lectures audio actives sur la box (API 26+), pour la fiche. */
@@ -466,6 +472,10 @@ class NativeVideoView(
     private var bytesLoaded: Long = 0L
     private var bitrateEstimate: Long = 0L
     private var videoChosenForSession: Boolean = false
+    private var preferMaximumVideo: Boolean = false
+    // Invalide aussi un choix déjà posté lors d'un retour rapide Maximum → Auto.
+    private var videoChoiceGeneration: Long = 0L
+    private var currentVideoSize: VideoSize = VideoSize.UNKNOWN
 
     private val positionPump = object : Runnable {
         override fun run() {
@@ -546,6 +556,12 @@ class NativeVideoView(
         // noir. stop() rend le codec ; la surface, elle, reste. Le logo
         // Flutter couvre l'ancienne image jusqu'à la nouvelle trame.
         attachToSurface(player)
+        root.setBackgroundColor(android.graphics.Color.BLACK)
+        root.addOnLayoutChangeListener { _, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom ->
+            if (right - left != oldRight - oldLeft || bottom - top != oldBottom - oldTop) {
+                updateVideoLayout()
+            }
+        }
         playerKey = owners.register { silenceForHandoff() }
 
         handler.postDelayed(positionPump, 500)
@@ -799,6 +815,7 @@ class NativeVideoView(
      * Écrit une seule ligne [SON] pour tout le séjour dehors.
      */
     private fun refuseReopen(): Boolean {
+        if (castSuspended) return true
         if (AppForeground.allowsReopen()) return false
         AppForeground.noteRefuse()?.let { emit("audioDiag", it) }
         return true
@@ -840,7 +857,7 @@ class NativeVideoView(
 
     /** Retour au premier plan : on rouvre, comme un zap (direct au bord du direct). */
     private fun resumeFromBackground() {
-        if (released || !suspended) return
+        if (released || !suspended || castSuspended) return
         suspended = false
         if (currentUrl == null) return
         // Ligne d'avant, gardée. La suivante précise film (position) ou direct.
@@ -1149,7 +1166,7 @@ class NativeVideoView(
                 }
                 // Dehors : on garde l'adresse pour le retour, sans prepare.
                 // Un essai déjà armé est annulé, sinon il rouvrirait le flux.
-                if (!AppForeground.allowsReopen()) {
+                if (castSuspended || !AppForeground.allowsReopen()) {
                     cancelRetry()
                     currentUrl = url
                     vodMode = call.argument<Boolean>("vod") ?: false
@@ -1170,6 +1187,8 @@ class NativeVideoView(
                     reconnect.onDifferentUrl()
                     discardHeldFrame()
                     sawFrame = false
+                    currentVideoSize = VideoSize.UNKNOWN
+                    updateVideoLayout()
                 } else {
                     reconnect.onExternalReopen()
                 }
@@ -1261,6 +1280,29 @@ class NativeVideoView(
                 }
                 result.success(null)
             }
+            "setVideoQuality" -> {
+                val maximum = call.arguments == "maximum"
+                if (maximum != preferMaximumVideo) {
+                    preferMaximumVideo = maximum
+                    videoChoiceGeneration++
+                    videoChosenForSession = false
+                    // On ne rouvre pas le flux et on ne touche ni au son ni aux
+                    // sous-titres. Auto rend immédiatement la sélection à Media3.
+                    val params = player.trackSelectionParameters.buildUpon()
+                        .clearOverridesOfType(C.TRACK_TYPE_VIDEO)
+                    if (maximum) {
+                        params.clearViewportSizeConstraints()
+                    } else {
+                        val size = physicalDisplaySize()
+                        params.setViewportSize(size.x, size.y, true)
+                    }
+                    player.trackSelectionParameters = params.build()
+                    if (!released && !castSuspended && AppForeground.allowsReopen()) {
+                        maybeChooseVideo(player.currentTracks)
+                    }
+                }
+                result.success(null)
+            }
             "setContrast" -> {
                 // Le filtre OpenGL quitterait la Surface. On ne l'allume
                 // pas : hardwareAllows reste faux, la fonction testée
@@ -1303,6 +1345,17 @@ class NativeVideoView(
                 // Repli : vrai = Media3 reprend le focus (avec sa baisse à 20 %).
                 // Pris en compte à la prochaine ouverture.
                 AudioFixes.androidFocus = call.arguments == true
+                result.success(null)
+            }
+            "suspendForCast" -> {
+                castSuspended = true
+                cancelRetry()
+                suspendForBackground()
+                result.success(null)
+            }
+            "resumeAfterCast" -> {
+                castSuspended = false
+                if (!refuseReopen()) resumeFromBackground()
                 result.success(null)
             }
             "suspend" -> {
@@ -1682,11 +1735,21 @@ class NativeVideoView(
         decoderReuseEvaluation: DecoderReuseEvaluation?,
     ) {
         if (!fresh(eventTime)) return
+        emit("videoFormat", mapOf(
+            "width" to positive(format.width),
+            "height" to positive(format.height),
+        ))
         val fps = format.frameRate
         if (fps > 0f) {
             contentFps = fps
             applyFrameRate(fps)
         }
+    }
+
+    override fun onVideoSizeChanged(eventTime: AnalyticsListener.EventTime, videoSize: VideoSize) {
+        if (!fresh(eventTime)) return
+        currentVideoSize = videoSize
+        updateVideoLayout()
     }
 
     override fun onBandwidthEstimate(
@@ -1900,10 +1963,16 @@ class NativeVideoView(
         val url = currentUrl ?: return
         if (released || disposeStarted) return
         val token = sessions.generation
+        videoChoiceGeneration++
+        videoChosenForSession = false
+        // Les mesures du réseau précédent ne doivent pas plafonner une nouvelle source.
+        bytesLoaded = 0L
+        bitrateEstimate = 0L
         // L'override audio de la chaîne précédente ne doit pas choisir
         // une piste au hasard sur la nouvelle.
         val params = player.trackSelectionParameters.buildUpon()
             .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
+            .clearOverridesOfType(C.TRACK_TYPE_VIDEO)
             .setPreferredAudioRoleFlags(C.ROLE_FLAG_MAIN)
         val lang = prefAudio
         if (!lang.isNullOrBlank()) params.setPreferredAudioLanguage(lang)
@@ -2879,11 +2948,11 @@ class NativeVideoView(
      * Le HLS adaptatif reste à Media3 : on ne fige pas un débit.
      */
     private fun maybeChooseVideo(tracks: Tracks) {
-        if (videoChosenForSession) return
+        if (videoChosenForSession || released || currentUrl == null) return
         val videos = ArrayList<VideoCandidate>()
         tracks.groups.forEachIndexed { gi, g ->
             if (g.type != C.TRACK_TYPE_VIDEO) return@forEachIndexed
-            val adaptive = g.length > 1
+            val adaptive = g.isAdaptiveSupported
             for (i in 0 until g.length) {
                 if (!g.isTrackSupported(i)) continue
                 val f = g.getTrackFormat(i)
@@ -2904,7 +2973,7 @@ class NativeVideoView(
         }
         if (videos.isEmpty()) return
         val bandwidth = VideoTrackChoice.bandwidthForChoice(bitrateEstimate, bytesLoaded)
-        val pick = VideoTrackChoice.pick(videos, bandwidth, screenHeightPx())
+        val pick = VideoTrackChoice.pick(videos, bandwidth, screenHeightPx(), preferMaximumVideo)
         val fixed = videos.count { !it.adaptive }
         if (pick == null) {
             if (player.playbackState == Player.STATE_READY || fixed < 2) {
@@ -2914,13 +2983,18 @@ class NativeVideoView(
         }
         videoChosenForSession = true
         val token = sessions.generation
+        val choice = videoChoiceGeneration
+        val targetGroup = tracks.groups[pick.group].mediaTrackGroup
+        val targetPlayer = player
         handler.post {
-            if (released || token != sessions.generation) return@post
+            if (released || token != sessions.generation || choice != videoChoiceGeneration ||
+                targetPlayer !== player || castSuspended || !AppForeground.allowsReopen()
+            ) return@post
             val groups = player.currentTracks.groups
-            if (pick.group < 0 || pick.group >= groups.size) return@post
-            val g = groups[pick.group]
+            // L'ordre des groupes peut changer pendant une mise à jour du manifeste.
+            val g = groups.firstOrNull { it.mediaTrackGroup == targetGroup } ?: return@post
             if (g.type != C.TRACK_TYPE_VIDEO) return@post
-            if (pick.index < 0 || pick.index >= g.length) return@post
+            if (pick.index < 0 || pick.index >= g.length || !g.isTrackSupported(pick.index)) return@post
             player.trackSelectionParameters = player.trackSelectionParameters
                 .buildUpon()
                 .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, false)
@@ -2931,10 +3005,34 @@ class NativeVideoView(
 
     private fun positive(value: Int): Int = if (value > 0) value else 0
 
+    private fun physicalDisplaySize(): android.graphics.Point = try {
+        val display = surfaceView.display
+        if (display != null) Util.getCurrentDisplayModeSize(appContext, display)
+        else Util.getCurrentDisplayModeSize(appContext)
+    } catch (_: RuntimeException) {
+        val metrics = appContext.resources.displayMetrics
+        android.graphics.Point(metrics.widthPixels.coerceAtLeast(1), metrics.heightPixels.coerceAtLeast(1))
+    }
+
     private fun screenHeightPx(): Int {
-        val fromView = surfaceView.height
-        if (fromView > 0) return fromView
-        return appContext.resources.displayMetrics.heightPixels
+        val size = physicalDisplaySize()
+        return VideoGeometry.screenHeight(size.x, size.y, appContext.resources.displayMetrics.heightPixels)
+    }
+
+    /** Ratio du flux, pixels non carrés compris ; pas de filtre ni de copie de la vidéo. */
+    private fun updateVideoLayout() {
+        if (released || root.width <= 0 || root.height <= 0) return
+        val size = currentVideoSize
+        val bounds = VideoGeometry.fit(root.width, root.height, size.width, size.height, size.pixelWidthHeightRatio)
+        for (view in listOf(surfaceView, holdView)) {
+            val params = view.layoutParams as FrameLayout.LayoutParams
+            if (params.width != bounds.width || params.height != bounds.height || params.gravity != Gravity.CENTER) {
+                params.width = bounds.width
+                params.height = bounds.height
+                params.gravity = Gravity.CENTER
+                view.layoutParams = params
+            }
+        }
     }
 
     @Suppress("DEPRECATION") // defaultDisplay : lu seulement pour la liste des modes
@@ -2943,9 +3041,14 @@ class NativeVideoView(
         val activity = findActivity(appContext) ?: return
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return
         val display = surfaceView.display ?: activity.windowManager.defaultDisplay
-        val modes = display.supportedModes.map { DisplayModeOption(it.modeId, it.refreshRate) }
-        val current = activity.window.attributes.preferredDisplayModeId
-        val pick = FrameRateMatch.pick(true, fps, modes, current) ?: return
+        val currentDisplay = display.mode
+        val modes = display.supportedModes.map {
+            DisplayModeOption(it.modeId, it.refreshRate, it.physicalWidth, it.physicalHeight)
+        }
+        val requestedMode = activity.window.attributes.preferredDisplayModeId
+        val current = if (requestedMode != 0) requestedMode else currentDisplay.modeId
+        val pick = FrameRateMatch.pick(true, fps, modes, current,
+            currentDisplay.physicalWidth, currentDisplay.physicalHeight) ?: return
         try {
             val attrs = activity.window.attributes
             attrs.preferredDisplayModeId = pick.id

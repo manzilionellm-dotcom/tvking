@@ -1,3 +1,4 @@
+import '../../cast/data/cast_platform.dart';
 // =========================================================
 //  tv_player_screen.dart — Lecteur plein écran TV (SurfaceView natif)
 // =========================================================
@@ -35,6 +36,7 @@ import 'package:native_video_player/playback_lease.dart';
 
 import '../../player/data/clear_voice_flag.dart';
 import '../../player/data/image_prefs.dart';
+import '../../player/data/video_quality_prefs.dart';
 import '../../player/domain/image_engine.dart';
 import '../../player/domain/live_bar_slots.dart';
 import '../../player/domain/reconnect_plan.dart';
@@ -100,6 +102,7 @@ class TvPlayerScreen extends StatefulWidget {
 class _TvPlayerScreenState extends State<TvPlayerScreen>
     with WidgetsBindingObserver {
   late final NativeVideoController _controller;
+  bool _casting = false;
   final GlobalKey<DesktopCastControlsState> _desktopCastKey = GlobalKey<DesktopCastControlsState>();
   final FocusNode _focus = FocusNode();
 
@@ -114,6 +117,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   int _btnFocus = -1;
   int _seenReopen = 0;
   String _shownEngine = 'hardware';
+  String _shownVideoSize = '';
   String? _engineNote;
   bool _followOn = true;
   String? _guideTitle;
@@ -267,6 +271,10 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     );
     ClearVoiceFlag.changes.addListener(_onClearVoice);
     ImagePrefs.changes.addListener(_onImagePrefs);
+    VideoQualityPrefs.changes.addListener(_onVideoQuality);
+    unawaited(VideoQualityPrefs.load().then((_) {
+      if (mounted) _onVideoQuality();
+    }));
     unawaited(
       ImagePrefs.load().then((_) {
         if (mounted) _onImagePrefs();
@@ -294,7 +302,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     // l'infini. Désormais chaque tentative ratée en relance une autre 15 s
     // plus tard, jusqu'au budget, puis l'écran « Réessayer ».)
     _watchdog = Timer.periodic(_watchEvery, (_) {
-      if (!_appActive) {
+      if (!_appActive || _casting) {
         _lastProgress = DateTime.now(); // pause voulue : pas un gel
         return;
       }
@@ -321,6 +329,10 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
 
   void _onClearVoice() {
     _controller.setClearVoice(ClearVoiceFlag.value);
+  }
+
+  void _onVideoQuality() {
+    _controller.setVideoQuality(VideoQualityPrefs.value.wire);
   }
 
   void _onImagePrefs() {
@@ -408,6 +420,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     subtitlesFlag.changes.removeListener(_onSubsFlag);
     ClearVoiceFlag.changes.removeListener(_onClearVoice);
     ImagePrefs.changes.removeListener(_onImagePrefs);
+    VideoQualityPrefs.changes.removeListener(_onVideoQuality);
     followedFlag.changes.removeListener(_onFollowFlag);
     NowPlaying.instance.clear();
     SubscriptionState.instance.syncWithBackend(); // on ne regarde plus rien
@@ -439,8 +452,12 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
       }
       return;
     }
-    if (_controller.imageEngineWire != _shownEngine && mounted) {
-      setState(() => _shownEngine = _controller.imageEngineWire);
+    if (mounted && (_controller.imageEngineWire != _shownEngine ||
+        _controller.videoSizeLabel != _shownVideoSize)) {
+      setState(() {
+        _shownEngine = _controller.imageEngineWire;
+        _shownVideoSize = _controller.videoSizeLabel;
+      });
     }
     if (_controller.engineRejectedFfmpeg && _engineNote == null && mounted) {
       setState(() {
@@ -619,7 +636,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   }
 
   void _recover() {
-    if (_fatal || _zapHolding || _recoverArmed) return;
+    if (_casting || _fatal || _zapHolding || _recoverArmed) return;
     // Dehors : pas de second flux. Le natif refuse aussi, au cas où.
     if (NativeVideoController.blocksReopenInBackground) {
       _noteBackgroundRefusal();
@@ -1472,7 +1489,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
                   // Le temps que l'image arrive (ou qu'on lâche Haut/Bas), on dit
                   // QUELLE chaîne est visée. Un logo seul ne permettait pas de
                   // zapper « à l'aveugle » sans se perdre.
-                  if (_zapHolding || (_buffering && !_fatal)) _loadingCard(),
+                  if (!_casting && (_zapHolding || (_buffering && !_fatal))) _loadingCard(),
                   if (_missed != null)
                     Align(
                       alignment: Alignment.topCenter,
@@ -1487,7 +1504,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
                   // Retour quitte. Masqué pendant un zap : la personne est déjà
                   // en train d'en choisir une autre. Le texte (chaîne coupée ou
                   // chaîne vide) reste celui des traductions, lisible à 3 m.
-                  if (_fatal && !_zapHolding) _errorCard(),
+                  if (!_casting && _fatal && !_zapHolding) _errorCard(),
                   // Panneau de lecture (façon YouTube / Netflix) : glisse depuis le
                   // bas + fondu, masqué automatiquement après 5 s. Contient l'info
                   // chaîne + tous les contrôles (dont REC et ❤ en bas).
@@ -1537,6 +1554,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
                                 .any((NativeTrack t) => t.selected),
                             onEngine: _cycleEngine,
                             engineLabel: _engineLabel(),
+                            videoSizeLabel: _controller.videoSizeLabel,
                             engineFocused: _btnFocus == _engineBtn(context),
                             engineNote: _engineNote,
                           ),
@@ -1544,10 +1562,16 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
                       ),
                     ),
                   ),
-                  if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows)
+                  if (CastPlatform.canSendFromZuno)
                     Positioned(top: TvDimens.safeV, right: TvDimens.safeH,
                       child: DesktopCastControls(key: _desktopCastKey,
-                        controller: _controller, streamUrl: _playingUrl, title: _current.name, imageUrl: _current.logoUrl)),
+                        controller: _controller, streamUrl: _playingUrl, title: _current.name, imageUrl: _current.logoUrl,
+                        onHandoffChanged: (bool active) {
+                          if (!mounted) return;
+                          _cancelRecover();
+                          _lastProgress = DateTime.now();
+                          setState(() => _casting = active);
+                        })),
                   // Numéro saisi à la télécommande (coin haut-droit).
                   if (_numBuffer.isNotEmpty)
                     Positioned(
@@ -1884,6 +1908,7 @@ class _ControlsBar extends StatelessWidget {
     this.engineLabel,
     this.engineFocused = false,
     this.engineNote,
+    this.videoSizeLabel = '',
   });
 
   final Channel channel;
@@ -1920,6 +1945,7 @@ class _ControlsBar extends StatelessWidget {
   final String? engineLabel;
   final bool engineFocused;
   final String? engineNote;
+  final String videoSizeLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -2085,6 +2111,9 @@ class _ControlsBar extends StatelessWidget {
           color: TvTokens.text,
         ),
       ),
+      if (videoSizeLabel.isNotEmpty)
+        Text(videoSizeLabel,
+            style: TextStyle(fontSize: TvDimens.label, color: TvTokens.muted)),
       // Programme en cours, sous le nom : le guide sans quitter l'image.
       _LiveEpgLine(channelId: channel.id),
       const SizedBox(height: 6),

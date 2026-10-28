@@ -2806,6 +2806,10 @@
   "vipCountryTn": "突尼斯",
   "vipCountryEg": "埃及",
   "libraryRefreshRunning": "正在刷新…",
-  "libraryRefreshIncomplete": "刷新未完成。部分来源不可用，请重试。"
-
+  "libraryRefreshIncomplete": "刷新未完成。部分来源不可用，请重试。",
+  "tvVideoQuality": "视频画质",
+  "tvVideoQualityAuto": "自动",
+  "tvVideoQualityMaximum": "最高分辨率",
+  "tvVideoQualityAutoHelp": "根据网络连接调整画质。按确定键优先选择最高分辨率。",
+  "tvVideoQualityMaximumHelp": "选择片源提供且设备支持的最佳视频轨道。需要更多带宽；如果播放卡顿，请按确定键返回自动模式。"
 }

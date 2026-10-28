@@ -1376,6 +1376,10 @@
   "vipCountryTn": "Tunisia",
   "vipCountryEg": "Misri",
   "libraryRefreshRunning": "Inasasisha…",
-  "libraryRefreshIncomplete": "Usasishaji haujakamilika. Baadhi ya vyanzo havipatikani. Jaribu tena."
-
+  "libraryRefreshIncomplete": "Usasishaji haujakamilika. Baadhi ya vyanzo havipatikani. Jaribu tena.",
+  "tvVideoQuality": "Ubora wa video",
+  "tvVideoQualityAuto": "Otomatiki",
+  "tvVideoQualityMaximum": "Mwonekano wa juu zaidi",
+  "tvVideoQualityAutoHelp": "Hurekebisha ubora kulingana na muunganisho. Bonyeza OK kupendelea mwonekano wa juu zaidi.",
+  "tvVideoQualityMaximumHelp": "Huchagua video bora zaidi inayotumika kutoka kwenye chanzo. Inahitaji kasi zaidi ya mtandao; ikikwama, bonyeza OK kurudi Otomatiki."
 }

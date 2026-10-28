@@ -29,6 +29,7 @@ const OWNER_NAV: NavSection[] = [
       { key: 'nav.customers',   to: '/customers' },
       { key: 'nav.devices',     to: '/devices' },
       { key: 'nav.blackbox',    to: '/blackbox' },
+      { key: 'Essais gratuits 24 h', to: '/gold-trials' },
       { key: 'nav.resellers',   to: '/resellers' },
       { key: 'nav.families',    to: '/families' },
       { key: 'nav.transfer',    to: '/transfer' },

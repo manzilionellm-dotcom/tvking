@@ -53,7 +53,7 @@ abstract final class BackendRepository {
     if (resp.statusCode == 404) {
       throw const BackendException(
         'URL du serveur introuvable. Vérifie que tu as bien collé '
-        'l\'URL complète de ton Worker (https://....workers.dev).',
+        'l\'URL complète de ton Worker (https://api.zuno8k.com).',
       );
     }
     if (resp.statusCode != 200) {

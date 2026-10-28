@@ -1,0 +1,55 @@
+name: Essai partagé 24 h — Worker et panel
+on:
+  push:
+    branches: ['feature/shared-trial-24h-20261028']
+  pull_request:
+    paths:
+      - 'android-app/cloudflare/gold*.js'
+      - 'android-app/cloudflare/production/**'
+      - 'android-app/cloudflare/prepare_gold_runtime.mjs'
+      - 'android-app/cloudflare/wrangler.toml'
+      - 'android-app/cloudflare/tests/**'
+      - 'android-app/cloudflare/migrations/20261028_gold_trial*.sql'
+      - 'android-app/admin-panel/**'
+      - '.github/workflows/shared-gold-trial-checks.yml'
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '24.21.0'
+          package-manager-cache: false
+      - run: node --test android-app/cloudflare/tests/gold_trial_policy.test.mjs android-app/cloudflare/tests/gold_trial_runtime.test.mjs android-app/admin-panel/src/lib/goldTrial.test.ts android-app/admin-panel/src/lib/deliveryStatus.test.ts
+      - run: npm ci --no-audit --no-fund && npm run build
+        working-directory: android-app/admin-panel
+      - name: Vérifier le vrai formulaire dans Chrome, sans API de production
+        working-directory: android-app/admin-panel
+        run: |
+          set -euo pipefail
+          npm install --prefix "$RUNNER_TEMP/panel-browser" --no-save --package-lock=false playwright@1.62.1
+          export PANEL_PLAYWRIGHT_MODULE="$RUNNER_TEMP/panel-browser/node_modules/playwright"
+          export PANEL_BROWSER_EXECUTABLE="$(command -v google-chrome)"
+          export PANEL_CAPTURE_DIR="$RUNNER_TEMP/panel-captures"
+          npm run preview -- --host 127.0.0.1 --port 4173 > "$RUNNER_TEMP/panel-preview.log" 2>&1 &
+          preview_pid=$!
+          trap 'kill "$preview_pid" 2>/dev/null || true' EXIT
+          for n in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:4173/activate > /dev/null; then break; fi
+            sleep 1
+          done
+          node tests/activation_browser.cjs
+      - name: Conserver la capture de recette du panel
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: panel-delivery-preview
+          path: ${{ runner.temp }}/panel-captures/*.png
+          if-no-files-found: ignore
+          retention-days: 14

@@ -8,6 +8,7 @@
 // =========================================================
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
 
@@ -22,6 +23,8 @@ import '../../panel_board/data/panel_board_flags.dart';
 import '../../time_picks/data/time_pick_flag.dart';
 import '../../player/data/clear_voice_flag.dart';
 import '../../player/data/image_prefs.dart';
+import '../../player/data/video_quality_prefs.dart';
+import '../../player/presentation/video_quality_setting.dart';
 import '../../player/domain/image_engine.dart';
 import '../../subtitles/data/subtitle_flag.dart';
 import '../../tv/core/tv_dimens.dart';
@@ -56,6 +59,7 @@ class _TvExtrasScreenState extends State<TvExtrasScreen> {
     ClearVoiceFlag.load().then((_) {
       if (mounted) setState(() {});
     });
+    VideoQualityPrefs.load();
     ImagePrefs.load().then((_) {
       if (mounted) setState(() {});
     });
@@ -174,8 +178,10 @@ class _TvExtrasScreenState extends State<TvExtrasScreen> {
           style: TextStyle(fontSize: TvDimens.body, color: TvTokens.muted),
         ),
         const SizedBox(height: 18),
+        if (defaultTargetPlatform == TargetPlatform.android)
+          const VideoQualitySetting(autofocus: true),
         ExtrasRow(
-          autofocus: true,
+          autofocus: defaultTargetPlatform != TargetPlatform.android,
           title: context.l10n.tvMissedTitle,
           subtitle: on ? context.l10n.tvMissedOn : context.l10n.tvMissedOff,
           onSelect: _toggleMissed,

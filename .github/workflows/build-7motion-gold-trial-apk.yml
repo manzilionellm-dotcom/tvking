@@ -5,9 +5,12 @@ name: 7 MOTION — APK corrigé de test
   push:
     branches:
     - feature/7motion-gold-trial-20261026
+    - feature/shared-trial-24h-20261028
     paths:
     - .github/workflows/build-7motion-gold-trial-apk.yml
-    - android-app/ci/mobile/gold-trial.patch
+    - android-app/ci/mobile/**
+    - android-app/lib/features/subscription/**
+    - android-app/test/features/subscription/**
     - android-app/ci/mobile/prepare-gold-trial-test.sh
 permissions:
   contents: read
@@ -20,7 +23,7 @@ jobs:
   phone:
     name: APK de test installable à côté de 7 MOTION
     if: github.repository == 'manzilionellm-dotcom/tvking' && github.actor == github.repository_owner && github.triggering_actor
-      == github.repository_owner && github.event_name == 'push' && github.ref == 'refs/heads/feature/7motion-gold-trial-20261026'
+      == github.repository_owner && github.event_name == 'push' && (github.ref == 'refs/heads/feature/7motion-gold-trial-20261026' || github.ref == 'refs/heads/feature/shared-trial-24h-20261028')
     runs-on: ubuntu-latest
     timeout-minutes: 45
     defaults:
@@ -102,6 +105,8 @@ jobs:
 
         git apply ../mission/android-app/ci/mobile/gold-trial.patch
 
+        bash ../mission/android-app/ci/mobile/apply-shared-gold-trial.sh
+
         git diff --check
 
         gh api "repos/$GITHUB_REPOSITORY/releases/tags/phone-latest" > "$RUNNER_TEMP/client-before.json"'
@@ -138,7 +143,7 @@ jobs:
 
         assert ''defaultConfig {'' in s
 
-        s=s.replace(''defaultConfig {'',''defaultConfig {\n        applicationIdSuffix = ".goldtrialtest2"'',1)
+        s=s.replace(''defaultConfig {'',''defaultConfig {\n        applicationIdSuffix = ".sharedtrialreview"'',1)
 
         p.write_text(s)
 
@@ -157,7 +162,7 @@ jobs:
         \ \"w\").write(s)\nprint(\"minSdk -> 24 dans\", f)\nPYEOF\n"
     - name: Harmoniser le nom Android 7 MOTION
       run: "MANIFEST=android/app/src/main/AndroidManifest.xml\nif [ -f \"$MANIFEST\" ]; then\n  sed -i 's|android:label=\"\
-        tv_king\"|android:label=\"7 MOTION Test 2\"|g' \"$MANIFEST\"\n  echo \"--- Patched manifest ---\"\n  grep\
+        tv_king\"|android:label=\"7 MOTION Essai Test\"|g' \"$MANIFEST\"\n  echo \"--- Patched manifest ---\"\n  grep\
         \ 'android:label' \"$MANIFEST\" || true\nfi\n"
     - name: Patch AndroidManifest for network (cleartext HTTP + INTERNET)
       run: "set -e\nMANIFEST=android/app/src/main/AndroidManifest.xml\nif [ ! -f \"$MANIFEST\" ]; then\n  echo \"\
@@ -306,7 +311,7 @@ jobs:
         \n\"$BT/aapt2\" dump badging \"$APK\" > \"$RUNNER_TEMP/badging.txt\"\nhead -1 \"$RUNNER_TEMP/badging.txt\"\
         \n\"$RUNNER_TEMP/mobile-audit/bin/python\" - \"$APK\" \"$RUNNER_TEMP/signature.txt\" <<'PYAUDIT'\nimport\
         \ hashlib,json,sys,zipfile\nfrom pathlib import Path\nfrom androguard.core.apk import APK\npath=Path(sys.argv[1])\n\
-        apk=APK(str(path))\nassert apk.get_package()=='com.manzilionellm.tvking.tv_king.goldtrialtest2'\nassert apk.get_min_sdk_version()=='24'\n\
+        apk=APK(str(path))\nassert apk.get_package()=='com.manzilionellm.tvking.tv_king.sharedtrialreview'\nassert apk.get_min_sdk_version()=='24'\n\
         assert 'com.manzilionellm.tvking.tv_king.MainActivity'==apk.get_main_activity()\nassert 'CN=Android Debug'\
         \ in Path(sys.argv[2]).read_text()\nwith zipfile.ZipFile(path) as z:\n data=z.read('lib/arm64-v8a/libapp.so')\n\
         \ for marker in [b'Je teste',b'/api/gold-trial',b'7 MOTION Essai',b'android_id',b'app_version']:\n  assert\

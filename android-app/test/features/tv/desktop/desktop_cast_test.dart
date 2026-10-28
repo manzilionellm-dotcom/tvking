@@ -1,11 +1,28 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tv_king/features/cast/data/cast_platform.dart';
 import 'package:tv_king/features/cast/domain/cast_device.dart';
 import 'package:tv_king/features/tv/desktop/desktop_playback_queue.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  const channel = MethodChannel('com.sevenmotion.zuno/cast-capability');
+  test('Zuno mobile active le même moteur ; box et ancien binaire restent fermés', () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    final messenger = TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    for (final handset in [true, false]) {
+      messenger.setMockMethodCallHandler(channel, (_) async => handset);
+      await CastPlatform.initializeZuno();
+      expect(CastPlatform.canSendFromZuno, handset);
+    }
+    messenger.setMockMethodCallHandler(channel, (_) async => throw MissingPluginException());
+    await CastPlatform.initializeZuno();
+    expect(CastPlatform.canSendFromZuno, isFalse);
+    messenger.setMockMethodCallHandler(channel, null);
+  });
+
   tearDown(() => debugDefaultTargetPlatformOverride = null);
   test('Windows propose uniquement les transports réseau disponibles', () {
     debugDefaultTargetPlatformOverride = TargetPlatform.windows;

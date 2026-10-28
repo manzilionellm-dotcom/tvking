@@ -1,0 +1,290 @@
+diff --git a/lib/core/app/panel_live_wait.dart b/lib/core/app/panel_live_wait.dart
+--- a/lib/core/app/panel_live_wait.dart
++++ b/lib/core/app/panel_live_wait.dart
+@@ -35,8 +35,10 @@
+ import 'package:flutter/widgets.dart';
+ import 'package:http/http.dart' as http;
+ import 'package:shared_preferences/shared_preferences.dart';
++import 'package:package_info_plus/package_info_plus.dart';
+ 
+ import '../../features/device/data/device_identity.dart';
++import '../../features/device/data/device_secret.dart';
+ import '../../features/playlists/data/remote_source_repository.dart';
+ import '../../features/subscription/data/subscription_backend.dart';
+ import '../../features/subscription/data/subscription_state.dart';
+@@ -102,8 +104,10 @@
+   http.Client Function() clientFactory = http.Client.new;
+ 
+   static Future<void> _defaultOnChange() async {
++    if (!await SubscriptionState.instance.refreshAfterPanel()) {
++      throw StateError('statut non confirmé après l’ordre');
++    }
+     final RemoteSyncResult result = await RemoteSourceRepository.sync();
+-    await SubscriptionState.instance.syncIfStale(force: true);
+     // sync() rend un résultat, elle ne lève pas en cas de panne. Sans
+     // ce contrôle, une suppression reçue pendant une coupure réseau
+     // était marquée « traitée » avant d'avoir été appliquée localement.
+@@ -111,6 +115,8 @@
+         result == RemoteSyncResult.sourceFailed) {
+       throw StateError('synchronisation des sources : ${result.name}');
+     }
++    // L'inventaire suit sans retarder l'affichage de la liste ni son accusé.
++    unawaited(SubscriptionState.instance.syncWithBackend());
+   }
+ 
+   bool _installed = false;
+@@ -120,6 +126,70 @@
+ 
+   Future<void>? _syncing;
+   bool _again = false;
++
++  /// Accusé du protocole réellement déployé (box_orders), sans identifiants
++  /// fournisseur. Un HTTP 200 contenant une erreur par ordre reste un refus.
++  Future<bool> _ack(String mac, List<Map<String, Object?>> orders) async {
++    if (orders.isEmpty) return true;
++    final http.Client client = clientFactory();
++    try {
++      final http.Response response = await client.post(
++        Uri.parse('$kSubscriptionBaseUrl/api/box/ack/$mac'),
++        headers: await DeviceSecret.instance.headers(jsonBody: true),
++        body: jsonEncode(<String, Object?>{'orders': orders}),
++      ).timeout(const Duration(seconds: 8));
++      if (response.statusCode != 200) return false;
++      final Object? decoded = jsonDecode(response.body);
++      if (decoded is! Map || decoded['results'] is! List) return false;
++      final List<dynamic> results = decoded['results'] as List<dynamic>;
++      return orders.every((order) => results.any((result) => result is Map &&
++        result['order_id'] == order['order_id'] && result['status'] == 200 &&
++        result['error'] == null && (result['state'] == order['state'] ||
++          (order['state'] == 'received' && result['state'] == 'applied'))));
++    } catch (_) { return false; }
++    finally { client.close(); }
++  }
++
++  Future<void> _applyTracked(Object? body, int cursor, String mac, int gen) async {
++    final List<Map<String, Object?>> tracked = <Map<String, Object?>>[];
++    if (body is Map && body['box'] is List) {
++      for (final Object? item in body['box'] as List) {
++        if (item is! Map || item['id'] is! num || (item['id'] as num) <= cursor) continue;
++        final String id = '${item['order_id'] ?? ''}';
++        if (!RegExp(r'^[A-Za-z0-9_.:-]{8,80}$').hasMatch(id)) continue;
++        tracked.add(<String, Object?>{'order_id': id, 'kind': '${item['kind'] ?? ''}'});
++      }
++    }
++    final int received = DateTime.now().millisecondsSinceEpoch;
++    String version = '';
++    if (tracked.isNotEmpty) {
++      try { version = (await PackageInfo.fromPlatform()).version; } catch (_) {}
++      unawaited(_ack(mac, <Map<String, Object?>>[
++        for (final item in tracked) <String, Object?>{
++          'order_id': item['order_id'], 'state': 'received',
++          'received_at': received, 'app_version': version,
++        },
++      ]));
++    }
++    try {
++      await trigger();
++      if (gen != _generation) throw StateError('veille arrêtée');
++      final bool confirmed = await _ack(mac, <Map<String, Object?>>[
++        for (final item in tracked) <String, Object?>{
++          'order_id': item['order_id'], 'state': 'applied',
++          'received_at': received, 'applied_at': DateTime.now().millisecondsSinceEpoch,
++          'app_version': version, 'result': 'refreshed',
++          if (<String>{'source', 'source_clear', 'reset'}.contains(item['kind']) && RemoteSourceRepository.lastConfigRev != null)
++            'config_rev': RemoteSourceRepository.lastConfigRev,
++        },
++      ]);
++      if (!confirmed) throw StateError('accusé non confirmé');
++    } catch (_) {
++      // « failed » est terminal dans le Worker exporté. Une panne réseau
++      // reste RECEIVED jusqu'à la reprise, elle ne doit pas condamner l'ordre.
++      rethrow;
++    }
++  }
+ 
+   /// À appeler une fois au démarrage du téléphone.
+   Future<void> install() async {
+@@ -219,7 +289,7 @@
+         final http.Response resp = await client
+             .get(
+               uri,
+-              headers: const <String, String>{'Accept': 'application/json'},
++              headers: await DeviceSecret.instance.headers(),
+             )
+             .timeout(const Duration(seconds: 40));
+         if (gen != _generation) return;
+@@ -230,11 +300,12 @@
+           return;
+         }
+         if (resp.statusCode != 200) throw StateError('HTTP ${resp.statusCode}');
+-        final LiveWaitStep step = readLiveWait(jsonDecode(resp.body), cursor);
++        final Object? body = jsonDecode(resp.body);
++        final LiveWaitStep step = readLiveWait(body, cursor);
+         // Le serveur conserve le signal dans son anneau. On attend la
+         // vraie relecture AVANT d'avancer le curseur : un échec rejoue
+         // le même ordre après backoff au lieu de le perdre jusqu'au poll.
+-        if (step.changed) await trigger();
++        if (step.changed) await _applyTracked(body, cursor, mac, gen);
+         if (gen != _generation) return;
+         final String currentMac = await DeviceIdentity.instance.mac;
+         if (gen != _generation) return;
+diff --git a/lib/features/playlists/data/remote_source_repository.dart b/lib/features/playlists/data/remote_source_repository.dart
+--- a/lib/features/playlists/data/remote_source_repository.dart
++++ b/lib/features/playlists/data/remote_source_repository.dart
+@@ -99,6 +99,8 @@
+   /// Best effort, idempotent (la dédup évite de réimporter à chaque boot).
+   /// Renvoie un [RemoteSyncResult] pour permettre un diagnostic précis.
+   static Future<RemoteSyncResult>? _syncInFlight;
++  /// Révision réellement lue, utilisée pour confirmer la bonne liste au panel.
++  static int? lastConfigRev;
+   static bool _syncAgain = false;
+ 
+   /// Le réveil, le minuteur et le panel peuvent demander une relecture
+@@ -134,6 +136,7 @@
+   }
+ 
+   static Future<RemoteSyncResult> _syncOnce({int hop = 0}) async {
++    lastConfigRev = null;
+     // Build store : pas de source poussée, pas d'ordres du panel (cf.
+     // [storeBuild]). L'utilisateur ajoute ses sources lui-même.
+     if (storeBuild) return RemoteSyncResult.noSource;
+@@ -159,6 +162,8 @@
+           : decoded.map(
+               (Object? k, Object? v) => MapEntry<String, dynamic>('$k', v),
+             );
++      final Object? revision = body['rev'] ?? body['updated_at'];
++      lastConfigRev = revision is num ? revision.toInt() : null;
+ 
+       // AVANT le verrou : une MAC tombstonée renvoie blocked + le
+       // nouveau numéro. Si on markBlocked d'abord, l'écran reste
+@@ -515,11 +520,12 @@
+         onProgress: onProgress,
+         makeActive: shouldActivate(item, sources),
+       );
+-      if (r == RemoteSyncResult.loaded) {
++      if (r == RemoteSyncResult.sourceFailed) {
++        // Une liste réussie ne masque pas l'échec d'une autre : sinon
++        // le panel annoncerait le trio appliqué alors qu'il est incomplet.
++        agg = RemoteSyncResult.sourceFailed;
++      } else if (r == RemoteSyncResult.loaded && agg != RemoteSyncResult.sourceFailed) {
+         agg = RemoteSyncResult.loaded;
+-      } else if (agg != RemoteSyncResult.loaded &&
+-          r == RemoteSyncResult.sourceFailed) {
+-        agg = RemoteSyncResult.sourceFailed;
+       }
+     }
+     return agg;
+diff --git a/lib/features/subscription/data/subscription_state.dart b/lib/features/subscription/data/subscription_state.dart
+--- a/lib/features/subscription/data/subscription_state.dart
++++ b/lib/features/subscription/data/subscription_state.dart
+@@ -479,6 +479,18 @@
+   /// Synchronise avec le backend Cloudflare.
+   Future<void> syncWithBackend() => _syncWork ??= _syncBackend().whenComplete(() => _syncWork = null);
+ 
++  int _successfulRemoteReads = 0;
++
++  /// Un ordre du panel exige une lecture partie APRÈS sa réception.
++  /// Un cache hors ligne ou un heartbeat déjà en vol ne vaut pas accusé.
++  Future<bool> refreshAfterPanel() async {
++    final Future<void>? previous = _syncWork;
++    if (previous != null) await previous;
++    final int before = _successfulRemoteReads;
++    await syncWithBackend();
++    return _successfulRemoteReads > before;
++  }
++
+   Future<void> _syncBackend() async {
+     final int revision = _authorityRevision;
+     _lastSyncAttempt = _now;
+@@ -498,6 +510,7 @@
+         return;
+       }
+       await _applyRemoteSnapshot(snap);
++      _successfulRemoteReads++;
+     } catch (e) {
+       if (kDebugMode) debugPrint('[Subscription] syncWithBackend error: $e');
+       StructuredLogger.instance.warn(
+diff --git a/test/core/app/panel_live_wait_test.dart b/test/core/app/panel_live_wait_test.dart
+--- a/test/core/app/panel_live_wait_test.dart
++++ b/test/core/app/panel_live_wait_test.dart
+@@ -14,6 +14,7 @@
+ import 'package:shared_preferences/shared_preferences.dart';
+ import 'package:tv_king/core/app/panel_live_wait.dart';
+ import 'package:tv_king/features/device/data/device_identity.dart';
++import 'package:tv_king/features/playlists/data/remote_source_repository.dart';
+ 
+ // Clé attendue sur disque, indépendante du calcul du service : les tests
+ // peuvent ainsi s'exécuter aussi contre sa version antérieure.
+@@ -76,6 +77,72 @@
+     });
+ 
+     tearDown(() => w.stop());
++
++    test('ordre suivi : reçu avant import, puis appliqué avec sa révision', () async {
++      final Completer<void> importing = Completer<void>();
++      final Completer<void> finish = Completer<void>();
++      final Completer<void> applied = Completer<void>();
++      final List<String> states = <String>[];
++      w.onChange = () async {
++        importing.complete();
++        await finish.future;
++        RemoteSourceRepository.lastConfigRev = 42;
++      };
++      w.clientFactory = () => MockClient((http.Request r) async {
++        expect(r.headers['X-Device-Secret']?.length, greaterThanOrEqualTo(32));
++        if (r.method == 'POST') {
++          final Map body = jsonDecode(r.body) as Map;
++          final Map ack = (body['orders'] as List).single as Map;
++          states.add('${ack['state']}');
++          expect(r.body.contains('password'), isFalse);
++          if (ack['state'] == 'applied') {
++            expect(ack['config_rev'], 42);
++            applied.complete();
++          }
++          return http.Response(jsonEncode(<String,Object>{'results': <Object>[
++            <String,Object?>{'order_id': ack['order_id'], 'status': 200, 'state': ack['state']},
++          ]}), 200);
++        }
++        if (r.url.queryParameters['after'] == '12') return http.Response('{}', 404);
++        return http.Response('{"box":[{"id":12,"kind":"source","order_id":"ord_fixture1234"}]}', 200);
++      });
++      w.start();
++      await importing.future.timeout(const Duration(seconds: 1));
++      await Future<void>.delayed(const Duration(milliseconds: 20));
++      expect(states, <String>['received']);
++      finish.complete();
++      await applied.future.timeout(const Duration(seconds: 1));
++      await Future<void>.delayed(const Duration(milliseconds: 20));
++      expect(states, <String>['received','applied']);
++      expect((await SharedPreferences.getInstance()).getInt(_cursorKey('MK:30:70:0E:D7:5B')),12);
++    });
++
++    test('HTTP 200 avec refus d’accusé ne consomme pas l’ordre', () async {
++      int finals = 0;
++      final List<String?> cursors = <String?>[];
++      final Completer<void> firstAck = Completer<void>();
++      final Completer<void> completed = Completer<void>();
++      w.clientFactory = () => MockClient((http.Request r) async {
++        if (r.method == 'POST') {
++          final Map ack = ((jsonDecode(r.body) as Map)['orders'] as List).single as Map;
++          final bool failed = ack['state'] == 'applied' && ++finals == 1;
++          if (failed) firstAck.complete();
++          return http.Response(jsonEncode(<String,Object>{'results': <Object>[
++            <String,Object?>{'order_id':ack['order_id'],'status':failed ? 500 : 200,
++              'state':ack['state'],if(failed)'error':'ack_failed'},
++          ]}),200);
++        }
++        cursors.add(r.url.queryParameters['after']);
++        if (r.url.queryParameters['after'] == '12') { completed.complete(); return http.Response('{}',404); }
++        return http.Response('{"box":[{"id":12,"kind":"activate","order_id":"ord_fixture1234"}]}',200);
++      });
++      w.start();
++      await firstAck.future.timeout(const Duration(seconds:1));
++      expect((await SharedPreferences.getInstance()).getInt(_cursorKey('MK:30:70:0E:D7:5B')),isNull);
++      await completed.future.timeout(const Duration(seconds:4));
++      expect(cursors,<String>['0','0','12']);
++      expect(syncs,2);
++    });
+ 
+     test('« Effacer les listes » au panel → relecture immédiate, pas au bout de 60 s', () async {
+       final Completer<void> panelClick = Completer<void>();

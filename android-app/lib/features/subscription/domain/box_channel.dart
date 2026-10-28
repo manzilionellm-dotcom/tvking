@@ -87,7 +87,8 @@ BoxChannelFrame? parseBoxChannelFrame(String raw) {
   if (_hasSecretKey(decoded)) return null;
   final Object? typeRaw = decoded['type'];
   if (typeRaw == 'hello') return null;
-  final int seq = (decoded['seq'] as num?)?.toInt() ?? 0;
+  final Object? seqRaw = decoded['seq'];
+  final int seq = seqRaw is num ? seqRaw.toInt() : 0;
   final String type = typeRaw is String ? typeRaw : '';
   final String mac = decoded['mac'] is String ? decoded['mac'] as String : '';
   if (seq <= 0 || type.isEmpty || !mac.startsWith('MK:')) return null;

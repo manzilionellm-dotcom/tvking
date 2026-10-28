@@ -2806,6 +2806,10 @@
   "vipCountryTn": "Tunus",
   "vipCountryEg": "Mısır",
   "libraryRefreshRunning": "Güncelleniyor…",
-  "libraryRefreshIncomplete": "Güncelleme tamamlanamadı. Bazı kaynaklar kullanılamıyor. Tekrar dene."
-
+  "libraryRefreshIncomplete": "Güncelleme tamamlanamadı. Bazı kaynaklar kullanılamıyor. Tekrar dene.",
+  "tvVideoQuality": "Video kalitesi",
+  "tvVideoQualityAuto": "Otomatik",
+  "tvVideoQualityMaximum": "En yüksek çözünürlük",
+  "tvVideoQualityAutoHelp": "Kaliteyi bağlantıya göre ayarlar. En yüksek çözünürlük için OK tuşuna basın.",
+  "tvVideoQualityMaximumHelp": "Kaynağın sunduğu en iyi desteklenen video parçasını seçer. Daha fazla bant genişliği gerekir; takılma olursa Otomatik için OK tuşuna basın."
 }

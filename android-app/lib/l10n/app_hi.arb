@@ -2806,6 +2806,10 @@
   "vipCountryTn": "ट्यूनीशिया",
   "vipCountryEg": "मिस्र",
   "libraryRefreshRunning": "अपडेट हो रहा है…",
-  "libraryRefreshIncomplete": "अपडेट अधूरा है। कुछ स्रोत उपलब्ध नहीं हैं। फिर से प्रयास करें।"
-
+  "libraryRefreshIncomplete": "अपडेट अधूरा है। कुछ स्रोत उपलब्ध नहीं हैं। फिर से प्रयास करें।",
+  "tvVideoQuality": "वीडियो गुणवत्ता",
+  "tvVideoQualityAuto": "ऑटो",
+  "tvVideoQualityMaximum": "अधिकतम रिज़ॉल्यूशन",
+  "tvVideoQualityAutoHelp": "कनेक्शन के अनुसार गुणवत्ता बदलता है। अधिकतम रिज़ॉल्यूशन के लिए OK दबाएँ।",
+  "tvVideoQualityMaximumHelp": "स्रोत का सर्वोत्तम समर्थित वीडियो ट्रैक चुनता है। अधिक बैंडविड्थ चाहिए; रुकावट आने पर ऑटो पर लौटने के लिए OK दबाएँ।"
 }

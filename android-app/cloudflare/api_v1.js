@@ -59,6 +59,7 @@
 // =========================================================
 
 import { sealSource, openSource, encryptionKey } from './source_crypto.js';
+import { goldTrialAdmin } from './gold_trial_admin.js';
 import {
   isBlackboxMac,
   markBlackBoxAsked,
@@ -546,6 +547,13 @@ async function apiV1Inner(request, env) {
   // (role 'reseller') est cloisonne a ses propres donnees.
   const isReseller = a.user.role === 'reseller';
   const actor = { type: isReseller ? 'reseller' : 'admin', id: a.user.sub };
+
+  // Routes nouvelles : ne remplace ni /gold/history ni la création existante.
+  if (parts[0] === 'gold' && parts[1] === 'trial-control') {
+    const response = await goldTrialAdmin(request, env, a.user);
+    return new Response(response.body, { status: response.status,
+      headers: { ...JSON_HEADERS, 'Cache-Control': 'no-store' } });
+  }
 
   // /stats/overview
   if (parts[0] === 'stats' && parts[1] === 'overview') {

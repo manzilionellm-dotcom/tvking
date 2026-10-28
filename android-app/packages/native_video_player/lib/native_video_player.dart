@@ -100,6 +100,9 @@ abstract class NativeVideoBackend {
   /// que le filtre quitterait la Surface.
   void setLightContrast(bool enabled) {}
 
+  /// Choix de piste source. Le réglage est proposé uniquement sur Android.
+  void setVideoQuality(String quality) {}
+
   /// Le widget qui affiche la vidéo.
   Widget buildView(BuildContext context);
   void dispose();
@@ -332,6 +335,16 @@ class NativeVideoController extends ChangeNotifier {
   /// Nom du décodeur vidéo créé (pour l'écran, pas une mesure de qualité).
   String videoDecoderName = '';
 
+  /// Dimensions annoncées par le décodeur, jamais déduites du nom de la chaîne.
+  int videoWidth = 0;
+  int videoHeight = 0;
+  String get videoSizeLabel => videoWidth > 0 && videoHeight > 0
+      ? '$videoWidth × $videoHeight'
+      : '';
+
+  String _videoQuality = 'auto';
+  String get videoQualityWire => _videoQuality;
+
   String _imageEngine = 'hardware';
   bool _frameRateMatch = false;
 
@@ -350,6 +363,7 @@ class NativeVideoController extends ChangeNotifier {
     // second démarrage si le choix n'est pas le matériel).
     ch.invokeMethod<void>('setEngine', _imageEngine);
     ch.invokeMethod<void>('setFrameRateMatch', _frameRateMatch);
+    ch.invokeMethod<void>('setVideoQuality', _videoQuality);
     // Diagnostic audio. Tout est faux par défaut : sonde inactive,
     // AAC toujours sur FFmpeg, pas d'essai du décodeur de la box.
     ch.invokeMethod<void>('setAudioProbe', audioProbeEnabled);
@@ -426,6 +440,14 @@ class NativeVideoController extends ChangeNotifier {
     if (!_acceptEvents) return;
     final _Ev call = _Ev(method, arguments);
     switch (call.method) {
+      case 'videoFormat':
+        if (call.arguments is Map) {
+          final Map data = call.arguments as Map;
+          int dimension(Object? value) => value is num && value.isFinite && value > 0 && value <= 32768
+              ? value.toInt() : 0;
+          videoWidth = dimension(data['width']);
+          videoHeight = dimension(data['height']);
+        }
       case 'buffering':
         isBuffering = call.arguments as bool;
       case 'playing':
@@ -564,6 +586,8 @@ class NativeVideoController extends ChangeNotifier {
     }
     final String? lang = _preferredAudio ?? appAudioLanguage;
     hasError = false;
+    videoWidth = 0;
+    videoHeight = 0;
     engineExhausted = false;
     engineRejectedFfmpeg = false;
     isEnded = false;
@@ -672,6 +696,19 @@ class NativeVideoController extends ChangeNotifier {
     _channel?.invokeMethod<void>('setFrameRateMatch', enabled);
   }
 
+  /// Mémorisé avant la création de la Surface, sans rouvrir l'URL.
+  void setVideoQuality(String quality) {
+    if (_disposed) return;
+    final String wire = quality == 'maximum' ? 'maximum' : 'auto';
+    if (_videoQuality == wire) return;
+    _videoQuality = wire;
+    if (_backend != null) {
+      _backend!.setVideoQuality(wire);
+      return;
+    }
+    _channel?.invokeMethod<void>('setVideoQuality', wire);
+  }
+
   void setLightContrast(bool enabled) {
     if (_backend != null) {
       _backend!.setLightContrast(enabled);
@@ -710,6 +747,22 @@ class NativeVideoController extends ChangeNotifier {
   void play() => _backend != null ? _backend!.play() : _channel?.invokeMethod<void>('play');
 
   void pause() => _backend != null ? _backend!.pause() : _channel?.invokeMethod<void>('pause');
+
+  /// Passation volontaire au Cast : ferme le flux local même si l'app reste
+  /// au premier plan. Ce verrou est distinct du cycle de vie Home/retour.
+  Future<void> suspendForCast() async {
+    if (_disposed) throw StateError('Lecteur fermé');
+    final MethodChannel? channel = _channel;
+    if (channel == null) throw StateError('Lecteur pas encore prêt');
+    await channel.invokeMethod<void>('suspendForCast');
+    isPlaying = false;
+    if (!_disposed) notifyListeners();
+  }
+
+  Future<void> resumeAfterCast() async {
+    if (_disposed) return;
+    await _channel?.invokeMethod<void>('resumeAfterCast');
+  }
 
   /// App en arrière-plan (Home, multitâche) : ARRÊT, pas pause. Le natif
   /// rend le décodeur, l'AudioTrack et le focus audio. Hors Android, une

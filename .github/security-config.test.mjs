@@ -13,7 +13,9 @@ for (const [name, content] of [['box', tv], ['mobile', phone], ['qualité', qual
   test(`${name} : les actions sont figées par commit complet`, () => {
     for (const [, action] of content.matchAll(/\buses:\s*([^\s#]+)/g)) {
       if (action.startsWith('./')) continue;
-      assert.match(action, /^[\w-]+\/[\w.-]+@[a-f0-9]{40}$/, action);
+      // Une action peut vivre dans un sous-dossier officiel (gradle/actions/setup-gradle).
+      // Le SHA complet reste obligatoire ; ni tag flottant ni chemin « .. ».
+      assert.match(action, /^[\w-]+\/[\w.-]+(?:\/[\w-]+)*@[a-f0-9]{40}$/, action);
     }
   });
   test(`${name} : le SDK stable est fixé à la version validée`, () => {

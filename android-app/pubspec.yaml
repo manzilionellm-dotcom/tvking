@@ -168,6 +168,11 @@ dependencies:
   tvking_device:
     path: packages/tvking_device
 
+  # Même Google Cast / mDNS / DLNA que 7 MOTION sur Zuno téléphone.
+  # Plugin local : réutilise les bridges Kotlin existants, conserve MainActivity TV.
+  zuno_cast:
+    path: packages/zuno_cast
+
   # --- Recherche à la voix (bouton micro de la télécommande) ---
   # Plugin local, même raison que tvking_device : le build TV régénère
   # android/ avec `flutter create`, donc le Kotlin doit vivre dans un
