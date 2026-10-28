@@ -52,3 +52,44 @@
 
    /// LE NOMBRE DE CHAÎNES — le VRAI, compté en base à chaque affichage.
    ///
+--- a/lib/features/tv/presentation/tv_diagnostic_screen.dart
++++ b/lib/features/tv/presentation/tv_diagnostic_screen.dart
+@@ -37,6 +37,7 @@
+ import '../../../core/i18n/l10n_extension.dart';
+ import '../../channels/domain/channel.dart';
+ import '../../playlists/data/playlist_repository.dart';
++import '../../subscription/data/gold_trial_backend.dart' show isGoldTrialPlaylist;
+ import '../data/tv_diagnostics_service.dart';
+
+ /// Tag logcat — `adb logcat -s DEFEW_DIAG`.
+@@ -100,8 +101,20 @@
+   void _set(_Check c, _Stat s, String detail) {
+     c.stat = s;
+     c.detail = detail;
+-    _log('${_glyph(s)} ${c.name} — $detail');
++    _log('${_glyph(s)} ${c.name} — ${_publicDetail(c)}');
+     if (mounted) setState(() {});
++  }
++
++  // Pendant un essai, les sondes ne dévoilent pas les adresses fournisseur.
++  String _publicDetail(_Check check) {
++    if (!PlaylistRepository.instance.currentPlaylists
++        .any((p) => isGoldTrialPlaylist(p.name))) return check.detail;
++    return switch (check.stat) {
++      _Stat.ok => 'Vérification réussie.',
++      _Stat.running => 'Vérification en cours…',
++      _Stat.pending => 'En attente.',
++      _ => 'Vérification indisponible.',
++    };
+   }
+
+   String _glyph(_Stat s) {
+@@ -446,7 +459,7 @@
+                                   ),
+                                   const SizedBox(height: 2),
+                                   Text(
+-                                    c.detail,
++                                    _publicDetail(c),
+                                     style: TextStyle(
+                                       color: _statColor(c.stat),
+                                       fontSize: 19,
