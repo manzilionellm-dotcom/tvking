@@ -33,6 +33,7 @@ import 'package:native_video_player/playback_lease.dart';
 
 import '../../player/data/clear_voice_flag.dart';
 import '../../player/data/image_prefs.dart';
+import '../../player/data/video_quality_prefs.dart';
 import '../../player/domain/image_engine.dart';
 import '../../player/domain/reconnect_plan.dart';
 
@@ -137,6 +138,10 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
     );
     ClearVoiceFlag.changes.addListener(_onClearVoice);
     ImagePrefs.changes.addListener(_onImagePrefs);
+    VideoQualityPrefs.changes.addListener(_onVideoQuality);
+    unawaited(VideoQualityPrefs.load().then((_) {
+      if (mounted) _onVideoQuality();
+    }));
     unawaited(
       ImagePrefs.load().then((_) {
         if (mounted) _onImagePrefs();
@@ -153,6 +158,10 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
 
   void _onClearVoice() {
     _c.setClearVoice(ClearVoiceFlag.value);
+  }
+
+  void _onVideoQuality() {
+    _c.setVideoQuality(VideoQualityPrefs.value.wire);
   }
 
   void _onImagePrefs() {
@@ -220,6 +229,7 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
     _c.removeListener(_onPlayer);
     ClearVoiceFlag.changes.removeListener(_onClearVoice);
     ImagePrefs.changes.removeListener(_onImagePrefs);
+    VideoQualityPrefs.changes.removeListener(_onVideoQuality);
     _c.dispose();
     ForegroundPlayback.unlock();
     _focus.dispose();
@@ -985,6 +995,9 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
                   overflow: TextOverflow.ellipsis,
                   style: TvTokens.display(34, color: TvTokens.text),
                 ),
+                if (_c.videoSizeLabel.isNotEmpty)
+                  Text(_c.videoSizeLabel,
+                      style: TextStyle(fontSize: TvDimens.label, color: TvTokens.muted)),
                 if (_item.subtitle != null)
                   Text(
                     _item.subtitle!,

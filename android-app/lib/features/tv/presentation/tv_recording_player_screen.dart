@@ -30,6 +30,7 @@ import 'package:native_video_player/playback_lease.dart';
 
 import '../../player/data/clear_voice_flag.dart';
 import '../../player/data/image_prefs.dart';
+import '../../player/data/video_quality_prefs.dart';
 
 import '../../recordings/domain/recording.dart';
 import '../core/tv_tokens.dart';
@@ -103,6 +104,9 @@ class _TvRecordingPlayerScreenState extends State<TvRecordingPlayerScreen>
       if (!mounted) return;
       c.setImageEngine(ImagePrefs.engine.wire);
       c.setFrameRateMatch(ImagePrefs.frameRateMatch);
+    }));
+    unawaited(VideoQualityPrefs.load().then((_) {
+      if (mounted) c.setVideoQuality(VideoQualityPrefs.value.wire);
     }));
   }
 

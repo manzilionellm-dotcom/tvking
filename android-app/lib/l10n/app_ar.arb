@@ -1376,6 +1376,10 @@
   "vipCountryTn": "تونس",
   "vipCountryEg": "مصر",
   "libraryRefreshRunning": "جارٍ التحديث…",
-  "libraryRefreshIncomplete": "التحديث غير مكتمل. بعض المصادر غير متاحة. حاول مجددًا."
-
+  "libraryRefreshIncomplete": "التحديث غير مكتمل. بعض المصادر غير متاحة. حاول مجددًا.",
+  "tvVideoQuality": "جودة الفيديو",
+  "tvVideoQualityAuto": "تلقائي",
+  "tvVideoQualityMaximum": "أعلى دقة",
+  "tvVideoQualityAutoHelp": "يضبط الجودة حسب الاتصال. اضغط موافق لتفضيل أعلى دقة.",
+  "tvVideoQualityMaximumHelp": "يختار أفضل مسار فيديو يدعمه الجهاز من المصدر. يحتاج إلى اتصال أسرع؛ عند التقطّع اضغط موافق للعودة إلى الوضع التلقائي."
 }

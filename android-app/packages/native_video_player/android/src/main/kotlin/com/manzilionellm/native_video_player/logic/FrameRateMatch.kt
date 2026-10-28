@@ -23,7 +23,9 @@ package com.manzilionellm.native_video_player.logic
  * La cadence du flux est reconnue à 0,5 Hz près : 23,976 compte
  * comme 24, mais 25 ne doit pas être pris pour 24 (écart d'1 Hz).
  */
-data class DisplayModeOption(val id: Int, val refreshHz: Float)
+data class DisplayModeOption(
+    val id: Int, val refreshHz: Float, val width: Int = 0, val height: Int = 0,
+)
 
 object FrameRateMatch {
     fun pick(
@@ -31,12 +33,19 @@ object FrameRateMatch {
         contentFps: Float,
         modes: List<DisplayModeOption>,
         currentModeId: Int,
+        currentWidth: Int = 0,
+        currentHeight: Int = 0,
     ): DisplayModeOption? {
         if (!enabled || modes.isEmpty()) return null
         val wanted = preferredHz(contentFps)
         if (wanted.isEmpty()) return null
+        // Une cadence à 24 Hz en 1080p ne doit pas remplacer une sortie 4K.
+        val sameSize = modes.filter {
+            currentWidth <= 0 || currentHeight <= 0 ||
+                (it.width == currentWidth && it.height == currentHeight)
+        }
         for (hz in wanted) {
-            val found = modes.firstOrNull { kotlin.math.abs(it.refreshHz - hz) <= 1f }
+            val found = sameSize.firstOrNull { kotlin.math.abs(it.refreshHz - hz) <= 1f }
             if (found != null) {
                 if (found.id == currentModeId) return null
                 return found

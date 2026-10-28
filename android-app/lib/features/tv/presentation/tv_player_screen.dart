@@ -36,6 +36,7 @@ import 'package:native_video_player/playback_lease.dart';
 
 import '../../player/data/clear_voice_flag.dart';
 import '../../player/data/image_prefs.dart';
+import '../../player/data/video_quality_prefs.dart';
 import '../../player/domain/image_engine.dart';
 import '../../player/domain/live_bar_slots.dart';
 import '../../player/domain/reconnect_plan.dart';
@@ -116,6 +117,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   int _btnFocus = -1;
   int _seenReopen = 0;
   String _shownEngine = 'hardware';
+  String _shownVideoSize = '';
   String? _engineNote;
   bool _followOn = true;
   String? _guideTitle;
@@ -269,6 +271,10 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     );
     ClearVoiceFlag.changes.addListener(_onClearVoice);
     ImagePrefs.changes.addListener(_onImagePrefs);
+    VideoQualityPrefs.changes.addListener(_onVideoQuality);
+    unawaited(VideoQualityPrefs.load().then((_) {
+      if (mounted) _onVideoQuality();
+    }));
     unawaited(
       ImagePrefs.load().then((_) {
         if (mounted) _onImagePrefs();
@@ -323,6 +329,10 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
 
   void _onClearVoice() {
     _controller.setClearVoice(ClearVoiceFlag.value);
+  }
+
+  void _onVideoQuality() {
+    _controller.setVideoQuality(VideoQualityPrefs.value.wire);
   }
 
   void _onImagePrefs() {
@@ -410,6 +420,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     subtitlesFlag.changes.removeListener(_onSubsFlag);
     ClearVoiceFlag.changes.removeListener(_onClearVoice);
     ImagePrefs.changes.removeListener(_onImagePrefs);
+    VideoQualityPrefs.changes.removeListener(_onVideoQuality);
     followedFlag.changes.removeListener(_onFollowFlag);
     NowPlaying.instance.clear();
     SubscriptionState.instance.syncWithBackend(); // on ne regarde plus rien
@@ -441,8 +452,12 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
       }
       return;
     }
-    if (_controller.imageEngineWire != _shownEngine && mounted) {
-      setState(() => _shownEngine = _controller.imageEngineWire);
+    if (mounted && (_controller.imageEngineWire != _shownEngine ||
+        _controller.videoSizeLabel != _shownVideoSize)) {
+      setState(() {
+        _shownEngine = _controller.imageEngineWire;
+        _shownVideoSize = _controller.videoSizeLabel;
+      });
     }
     if (_controller.engineRejectedFfmpeg && _engineNote == null && mounted) {
       setState(() {
@@ -1539,6 +1554,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
                                 .any((NativeTrack t) => t.selected),
                             onEngine: _cycleEngine,
                             engineLabel: _engineLabel(),
+                            videoSizeLabel: _controller.videoSizeLabel,
                             engineFocused: _btnFocus == _engineBtn(context),
                             engineNote: _engineNote,
                           ),
@@ -1892,6 +1908,7 @@ class _ControlsBar extends StatelessWidget {
     this.engineLabel,
     this.engineFocused = false,
     this.engineNote,
+    this.videoSizeLabel = '',
   });
 
   final Channel channel;
@@ -1928,6 +1945,7 @@ class _ControlsBar extends StatelessWidget {
   final String? engineLabel;
   final bool engineFocused;
   final String? engineNote;
+  final String videoSizeLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -2093,6 +2111,9 @@ class _ControlsBar extends StatelessWidget {
           color: TvTokens.text,
         ),
       ),
+      if (videoSizeLabel.isNotEmpty)
+        Text(videoSizeLabel,
+            style: TextStyle(fontSize: TvDimens.label, color: TvTokens.muted)),
       // Programme en cours, sous le nom : le guide sans quitter l'image.
       _LiveEpgLine(channelId: channel.id),
       const SizedBox(height: 6),

@@ -127,6 +127,7 @@ jobs:
         flutter test test/features/tv/home_performance_test.dart
         test/features/tv/channel_cache_refresh_test.dart
         test/features/tv/tv_gold_trial_card_test.dart
+        test/features/player/video_quality_test.dart
         --reporter expanded
     - name: Construire le binaire de revue
       run: 'set -euo pipefail

@@ -57,6 +57,18 @@ class FrameRateMatchTest {
     }
 
     @Test
+    fun changerLaCadenceNeReduitPasLaDefinitionHdmi() {
+        val resolutions = listOf(
+            DisplayModeOption(1, 24f, 1920, 1080),
+            DisplayModeOption(2, 60f, 3840, 2160),
+            DisplayModeOption(3, 24f, 3840, 2160),
+        )
+        assertEquals(3, FrameRateMatch.pick(true, 24f, resolutions, 2, 3840, 2160)?.id)
+        assertNull(FrameRateMatch.pick(true, 24f, resolutions.take(2), 2, 3840, 2160))
+        assertNull(FrameRateMatch.pick(true, 60f, resolutions, 2, 3840, 2160))
+    }
+
+    @Test
     fun contrasteSeulementSiLeMaterielLePermet() {
         assertFalse(PictureTune.resolve(requested = true, hardwareAllows = false))
         assertFalse(PictureTune.resolve(requested = false, hardwareAllows = true))

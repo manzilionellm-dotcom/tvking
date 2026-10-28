@@ -3114,6 +3114,10 @@
   "vipCountryTn": "Tunisie",
   "vipCountryEg": "Égypte",
   "libraryRefreshRunning": "Actualisation…",
-  "libraryRefreshIncomplete": "Actualisation incomplète : certaines sources sont indisponibles. Réessaie."
-
+  "libraryRefreshIncomplete": "Actualisation incomplète : certaines sources sont indisponibles. Réessaie.",
+  "tvVideoQuality": "Qualité vidéo",
+  "tvVideoQualityAuto": "Auto",
+  "tvVideoQualityMaximum": "Définition maximale",
+  "tvVideoQualityAutoHelp": "Adapte la qualité à la connexion. OK pour privilégier la définition maximale.",
+  "tvVideoQualityMaximumHelp": "Choisit la meilleure piste compatible fournie par la source. Plus de débit nécessaire ; en cas de coupures, OK pour revenir à Auto."
 }
