@@ -112,7 +112,7 @@ class TvHubScreen extends StatefulWidget {
 }
 
 class _TvHubScreenState extends State<TvHubScreen> with WidgetsBindingObserver {
-  final HomeWorkQueue _work = HomeWorkQueue(onError: (_, _) {
+  final HomeWorkQueue _work = HomeWorkQueue(onError: (error, stack) {
     BlackBox.instance.info('ACCUEIL', 'Actualisation différée indisponible');
   });
   bool _routeCurrent = true;
