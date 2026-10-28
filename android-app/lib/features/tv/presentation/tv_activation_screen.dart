@@ -255,7 +255,11 @@ class _TvActivationScreenState extends State<TvActivationScreen> {
         SizedBox(
           width: 540,
           child: Text(
-            context.l10n.tvActivationDisclaimer,
+            // Le lien affiché migre sans modifier les catalogues de traduction.
+            context.l10n.tvActivationDisclaimer.replaceFirst(
+              RegExp(r'[A-Za-z0-9.-]+/terms\b'),
+              'api.zuno8k.com/terms',
+            ),
             textAlign: TextAlign.center,
             style: TvTokens.ui(12, color: TvTokens.mutedDim),
           ),

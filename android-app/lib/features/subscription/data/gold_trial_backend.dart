@@ -3,10 +3,11 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
-/// L'essai utilise son adresse dédiée, sans déplacer le heartbeat ni
-/// l'activation habituelle. Aucune réponse brute n'est transmise à l'UI.
-const String kGoldTrialBaseUrl =
-    'https://seven-motion-backend.manzilionel-lm.workers.dev';
+import 'subscription_backend.dart' show kSubscriptionBaseUrl;
+
+/// L'essai partage le backend du heartbeat, y compris sa surcharge au build.
+/// Aucune réponse brute n'est transmise à l'UI.
+const String kGoldTrialBaseUrl = kSubscriptionBaseUrl;
 const String kGoldTrialPlaylistName = '7 MOTION Essai';
 
 /// Les deux marques partagent le même droit d'essai côté serveur.

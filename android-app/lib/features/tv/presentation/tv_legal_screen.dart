@@ -7,7 +7,7 @@
 //  le LOGICIEL, pas le contenu. Affiché en clair pour limiter le risque de
 //  retrait/bannissement et clarifier les responsabilités.
 //
-//  Le MÊME texte est servi en ligne par le worker sur app.7themotion.com/terms
+//  Le MÊME texte est servi en ligne par le worker sur api.zuno8k.com/terms
 //  (à coller dans la fiche des stores).
 //
 //  Défilement à la télécommande : Haut/Bas font défiler le texte (D-pad), Retour
@@ -43,8 +43,21 @@ class _TvLegalScreenState extends State<TvLegalScreen> {
     (context.l10n.tvLegalSection5Title, context.l10n.tvLegalSection5Body),
     (context.l10n.tvLegalSection6Title, context.l10n.tvLegalSection6Body),
     (context.l10n.tvLegalSection7Title, context.l10n.tvLegalSection7Body),
-    (context.l10n.tvLegalSection8Title, context.l10n.tvLegalSection8Body),
-    (context.l10n.tvLegalSection9Title, context.l10n.tvLegalSection9Body),
+    // Les catalogues restent inchangés : seul le domaine des liens est migré.
+    (
+      context.l10n.tvLegalSection8Title,
+      context.l10n.tvLegalSection8Body.replaceFirst(
+        RegExp(r'[A-Za-z0-9.-]+/privacy\b'),
+        'api.zuno8k.com/privacy',
+      ),
+    ),
+    (
+      context.l10n.tvLegalSection9Title,
+      context.l10n.tvLegalSection9Body.replaceFirst(
+        RegExp(r'[A-Za-z0-9.-]+/terms\b'),
+        'api.zuno8k.com/terms',
+      ),
+    ),
   ];
 
   @override

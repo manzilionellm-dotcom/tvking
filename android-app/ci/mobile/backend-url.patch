@@ -1,0 +1,417 @@
+diff --git a/lib/core/app/build_info.dart b/lib/core/app/build_info.dart
+index 85b00b5..879c3e4 100644
+--- a/lib/core/app/build_info.dart
++++ b/lib/core/app/build_info.dart
+@@ -56,4 +56,4 @@ const String kDownloaderCode = '7988141';
+
+ /// Lien de téléchargement anonyme (domaine de marque, proxy de l'APK).
+ /// Affiché pour le téléphone (ouverture navigateur).
+-const String kDownloadUrl = 'https://app.7themotion.com/vip';
++const String kDownloadUrl = 'https://api.zuno8k.com/vip';
+diff --git a/lib/core/backend/backend_hosts.dart b/lib/core/backend/backend_hosts.dart
+index 9af28ff..57db175 100644
+--- a/lib/core/backend/backend_hosts.dart
++++ b/lib/core/backend/backend_hosts.dart
+@@ -1,81 +1,27 @@
+ // =========================================================
+-//  backend_hosts.dart — FAILOVER multi-adresses du backend
++//  backend_hosts.dart — Adresse commune du backend mobile
+ // =========================================================
+-//  Le worker Cloudflare `seven-motion-backend` répond sur DEUX adresses
+-//  qui pointent sur le MÊME code et la MÊME base D1 :
+-//
+-//    1. https://app.7themotion.com                       (domaine maison)
+-//    2. https://seven-motion-backend.manzilionel-lm.workers.dev
+-//                                                        (adresse Cloudflare
+-//                                                         native, indépendante
+-//                                                         du DNS du domaine)
+-//
+-//  Si le domaine maison casse (DNS Hostinger/Cloudflare, expiration,
+-//  blocage), le heartbeat bascule sur l'adresse de secours et TOUTE
+-//  l'app suit (les ~20 modules qui parlent au serveur lisent
+-//  `kSubscriptionBaseUrl`, qui est un getter vers [current]).
+-//
+-//  Auto-guérison : à chaque heartbeat on retente d'abord le domaine
+-//  maison → dès qu'il répond de nouveau, tout le monde y revient.
+-//  Le dernier hôte qui marche est mémorisé (SharedPreferences) pour
+-//  démarrer directement dessus au boot suivant.
+-// =========================================================
+-import 'package:flutter/foundation.dart';
+-import 'package:shared_preferences/shared_preferences.dart';
+-
+-import '../observability/structured_logger.dart';
++//  Le heartbeat, le temps réel, l'essai et le Cast doivent joindre
++//  le même Worker. La configuration reste surchargeable au build.
++//  Une adresse mémorisée par une ancienne version ne doit jamais
++//  remplacer cette configuration ni réactiver un ancien secours.
+
+ abstract final class BackendHosts {
+-  /// Domaine maison — TOUJOURS essayé en premier (auto-guérison).
+-  static const String primary = 'https://app.7themotion.com';
+-
+-  /// Adresse Cloudflare native du MÊME worker — ne dépend pas du DNS
+-  /// du domaine maison. Secours uniquement.
+-  static const String backup =
+-      'https://seven-motion-backend.manzilionel-lm.workers.dev';
+-
+-  static const String _kPrefKey = 'backend.preferred_host';
++  static const String primary = String.fromEnvironment(
++    'BACKEND_URL',
++    defaultValue: 'https://api.zuno8k.com',
++  );
+
+-  /// Hôte servi à toute l'app via `kSubscriptionBaseUrl`.
+-  static String current = primary;
++  static const String current = primary;
+
+-  /// Ordre d'essai pour les sondes (heartbeat/status) : le domaine
+-  /// maison D'ABORD — c'est ce qui fait revenir tout le monde dessus
+-  /// dès qu'il remarche — puis le secours.
+-  static List<String> candidates() => const <String>[primary, backup];
++  /// Une seule destination autorisée ; aucune seconde requête de secours.
++  static List<String> candidates() => const <String>[primary];
+
+-  /// Mémorise l'hôte qui vient de répondre : bascule immédiate de toute
+-  /// l'app + persistance pour le prochain démarrage. Best-effort.
+-  static Future<void> markGood(String base) async {
+-    if (current == base) return;
+-    current = base;
+-    debugPrint('[BackendHosts] bascule sur $base');
+-    try {
+-      final SharedPreferences prefs = await SharedPreferences.getInstance();
+-      await prefs.setString(_kPrefKey, base);
+-    } catch (_) {
+-      // best-effort : la bascule en mémoire (`current`) a déjà eu lieu ;
+-      // seule la persistance pour le prochain boot est perdue.
+-    }
+-  }
++  /// Interface conservée pour les appels du heartbeat existant.
++  /// Une réponse réseau ne peut pas modifier l'adresse choisie au build.
++  static Future<void> markGood(String base) async {}
+
+-  /// Recharge l'hôte mémorisé au boot (si le domaine maison était KO au
+-  /// dernier lancement, on repart directement sur le secours — le retour
+-  /// au domaine maison se fera tout seul au prochain heartbeat réussi).
+-  static Future<void> loadPreferred() async {
+-    try {
+-      final SharedPreferences prefs = await SharedPreferences.getInstance();
+-      final String? saved = prefs.getString(_kPrefKey);
+-      if (saved == backup) current = backup;
+-    } catch (e) {
+-      // On démarre sur le domaine maison par défaut, mais si celui-ci
+-      // était KO au dernier boot, l'app va re-sonder à froid : à tracer
+-      // pour comprendre les démarrages lents côté terrain.
+-      StructuredLogger.instance.warn(
+-        domain: 'net',
+-        event: 'backend.load_pref_fail',
+-        ctx: <String, Object?>{'error': e.toString()},
+-      );
+-    }
+-  }
++  /// Interface conservée au démarrage ; les anciennes préférences réseau
++  /// sont volontairement ignorées pour ne pas restaurer un ancien domaine.
++  static Future<void> loadPreferred() async {}
+ }
+diff --git a/lib/core/update/update_service.dart b/lib/core/update/update_service.dart
+index 01cff42..e600388 100644
+--- a/lib/core/update/update_service.dart
++++ b/lib/core/update/update_service.dart
+@@ -167,7 +167,7 @@ class UpdateService {
+   static const String _ghBase =
+       'https://github.com/manzilionellm-dotcom/tvking/releases/download/';
+   static String _mirror(String url) => url.startsWith(_ghBase)
+-      ? url.replaceFirst(_ghBase, 'https://app.7themotion.com/r/')
++      ? url.replaceFirst(_ghBase, 'https://api.zuno8k.com/r/')
+       : url;
+
+   /// Retourne les infos de MAJ si une version PLUS RECENTE est dispo,
+diff --git a/lib/features/about/presentation/about_screen.dart b/lib/features/about/presentation/about_screen.dart
+index e9d6d21..e90eb13 100644
+--- a/lib/features/about/presentation/about_screen.dart
++++ b/lib/features/about/presentation/about_screen.dart
+@@ -164,7 +164,7 @@ class _AboutScreenState extends State<AboutScreen> {
+                 label: context.l10n.aboutPrivacyPolicy,
+                 onTap: () => _openUrl(
+                   // Même politique et domaine que la fiche du store.
+-                  'https://app.7themotion.com/privacy',
++                  'https://api.zuno8k.com/privacy',
+                 ),
+                 external: true,
+               ),
+diff --git a/lib/features/admin/data/admin_credentials.dart b/lib/features/admin/data/admin_credentials.dart
+index 71a50b8..9b4fdd8 100644
+--- a/lib/features/admin/data/admin_credentials.dart
++++ b/lib/features/admin/data/admin_credentials.dart
+@@ -6,7 +6,7 @@
+ //
+ //    - PIN admin (4 chiffres) qui protège l'accès au dashboard
+ //      sur le téléphone admin
+-//    - URL du Worker (https://seven-motion-backend.X.workers.dev)
++//    - URL du Worker (https://api.zuno8k.com)
+ //    - Secret admin (envoyé en header X-Admin-Secret aux endpoints
+ //      /admin/* du Worker)
+ //
+diff --git a/lib/features/cast/data/cast_manager.dart b/lib/features/cast/data/cast_manager.dart
+index 35aa4e0..7e59082 100644
+--- a/lib/features/cast/data/cast_manager.dart
++++ b/lib/features/cast/data/cast_manager.dart
+@@ -25,6 +25,8 @@ import '../../../core/observability/structured_logger.dart';
+ import '../../channels/domain/channel.dart';
+ import '../../player/data/pip_service.dart';
+ import '../../player/data/xtream_url_variants.dart';
++import '../../subscription/data/subscription_backend.dart'
++    show kSubscriptionBaseUrl;
+ import '../domain/cast_device.dart';
+ import 'cast_progress.dart';
+ import 'cast_url_resolver.dart';
+@@ -1645,7 +1647,7 @@ class CastManager extends ChangeNotifier {
+   String _workerTsUrl(String upstreamUrl) {
+     final String b64 =
+         base64Url.encode(utf8.encode(upstreamUrl)).replaceAll('=', '');
+-    return 'https://app.7themotion.com/cs/$b64.ts';
++    return '$kSubscriptionBaseUrl/cs/$b64.ts';
+   }
+
+   /// Choisit l'URL à pousser en stratégie DIRECT (0/1) vers une TV DLNA.
+diff --git a/lib/features/cast/data/cast_network_diagnostic.dart b/lib/features/cast/data/cast_network_diagnostic.dart
+index 8e2e4ce..cbec082 100644
+--- a/lib/features/cast/data/cast_network_diagnostic.dart
++++ b/lib/features/cast/data/cast_network_diagnostic.dart
+@@ -22,6 +22,8 @@ import 'package:network_info_plus/network_info_plus.dart';
+
+ import '../../channels/domain/channel.dart';
+ import '../../playlists/data/playlist_repository.dart';
++import '../../subscription/data/subscription_backend.dart'
++    show kSubscriptionBaseUrl;
+ import 'cast_diagnostics.dart' show kBuildCommit;
+ import 'cast_session_diagnostic.dart' show redactStreamUrl;
+ import 'google_cast_transport.dart';
+@@ -30,8 +32,8 @@ import 'stream_probe.dart';
+ class CastNetworkDiagnostic {
+   CastNetworkDiagnostic._();
+
+-  static const String _host = 'app.7themotion.com';
+-  static const String _base = 'https://app.7themotion.com';
++  static String get _host => Uri.parse(_base).host;
++  static const String _base = kSubscriptionBaseUrl;
+   static const String _testUpstream = 'http://example.com/test.ts';
+
+   /// Exécute les 6 checks EN SÉQUENCE, SANS caster, et renvoie un rapport JSON
+diff --git a/lib/features/cast/data/google_cast_transport.dart b/lib/features/cast/data/google_cast_transport.dart
+index ccc460f..93ed90b 100644
+--- a/lib/features/cast/data/google_cast_transport.dart
++++ b/lib/features/cast/data/google_cast_transport.dart
+@@ -23,7 +23,7 @@
+ //  Le Default Media Receiver (CC1AD845) ne décode PAS le MPEG-TS brut des
+ //  flux IPTV. On charge donc le récepteur custom (5BDFD969, mpegts.js) qui
+ //  décode le TS sur la TV, et on lui envoie l'URL HTTPS de MÊME origine
+-//  https://app.7themotion.com/cast-proxy?u=… (signée par le Worker) : cela
++//  https://api.zuno8k.com/cast-proxy?u=… (signée par le Worker) : cela
+ //  lève le blocage contenu mixte / CORS du fetch depuis la page récepteur.
+ //  Repli si le proxy est injoignable : le RELAIS HLS du téléphone
+ //  (registerRelay/wrapInHls). Le DLNA (LG/Samsung) n'est PAS concerné — il
+@@ -39,6 +39,8 @@ import 'package:flutter/foundation.dart';
+ import '../../../core/observability/structured_logger.dart';
+ import '../domain/cast_device.dart';
+ import '../../player/data/xtream_url_variants.dart';
++import '../../subscription/data/subscription_backend.dart'
++    show kSubscriptionBaseUrl;
+ import 'cast_session_diagnostic.dart' show redactStreamUrl;
+ import 'cast_transport.dart';
+ import 'dlna_profiles.dart';
+@@ -53,7 +55,7 @@ import 'local_cast_server.dart';
+ ///   telephone ou VPS.
+ ///
+ /// `true` : le custom receiver `5BDFD969` (page mpegts.js servie par le
+-///   Worker à `https://app.7themotion.com/cast-receiver`) decode le MPEG-TS
++///   Worker à `https://api.zuno8k.com/cast-receiver`) decode le MPEG-TS
+ ///   LUI-MEME sur la TV → on envoie l'URL Xtream .ts DIRECTE (sans VPS).
+ ///
+ /// kCastUseCustomReceiver (ici) et USE_CUSTOM_RECEIVER
+@@ -61,14 +63,14 @@ import 'local_cast_server.dart';
+ ///    TOUJOURS valoir LA MÊME CHOSE. Les desynchroniser = ECRAN NOIR.
+ ///
+ /// ACTIVÉ (2026-06-25) : `5BDFD969` est desormais PUBLISHED (Custom
+-///    Receiver → https://app.7themotion.com/cast-receiver). Le receiver
++///    Receiver → https://api.zuno8k.com/cast-receiver). Le receiver
+ ///    mpegts.js decode le MPEG-TS sur la TV → on envoie le .ts DIRECT, sans
+ ///    VPS, et la box reapparait dans le picker (le filtre par app id publie
+ ///    ne cache plus les appareils).
+ ///
+ /// REACTIVÉ (2026-07-01) — le blocage CORS / contenu mixte du 2026-06-29 est
+ ///    RESOLU. On n'envoie plus le .ts HTTP brut au custom receiver : on envoie
+-///    l'URL HTTPS `https://app.7themotion.com/cast-proxy?u=…` (MÊME origine que
++///    l'URL HTTPS `https://api.zuno8k.com/cast-proxy?u=…` (MÊME origine que
+ ///    la page receiver, en-tetes CORS ouverts, re-type video/mp2t). Le LOAD
+ ///    interceptor du receiver route video/mp2t vers mpegts.js, qui fetch cette
+ ///    URL HTTPS sans contenu mixte ni CORS → la TV decode le TS elle-meme et le
+@@ -109,7 +111,7 @@ const bool kCastDebugOverlay = false;
+ /// Base du Worker (même domaine que le récepteur Cast custom) qui signe et sert
+ /// le proxy Cast. Le secret HMAC vit UNIQUEMENT côté Worker : l'app demande une
+ /// URL signée à `/cast-sign`, elle n'embarque aucun secret.
+-const String _kCastProxyBase = 'https://app.7themotion.com';
++const String _kCastProxyBase = kSubscriptionBaseUrl;
+
+ /// Mémo du verdict `/cast-proxy` PAR HÔTE UPSTREAM (fluidité 2026-07-10).
+ ///
+diff --git a/lib/features/subscription/data/subscription_backend.dart b/lib/features/subscription/data/subscription_backend.dart
+index 3e0c967..c55f99f 100644
+--- a/lib/features/subscription/data/subscription_backend.dart
++++ b/lib/features/subscription/data/subscription_backend.dart
+@@ -47,12 +47,10 @@ import 'now_playing.dart';
+ /// l'app lit un autre serveur que celui où le panel écrit les
+ /// activations/sources → « l'app ne se connecte pas avec le panel ».
+ ///
+-/// FAILOVER : ce n'est plus une adresse EN DUR mais un getter vers
+-/// [BackendHosts.current]. Le heartbeat sonde `app.7themotion.com`
+-/// puis, s'il ne répond pas, l'adresse Cloudflare native du MÊME
+-/// worker — et toute l'app (sources, thème, annonces, sauvegarde…)
+-/// bascule d'un coup sur l'hôte qui marche. Voir backend_hosts.dart.
+-String get kSubscriptionBaseUrl => BackendHosts.current;
++/// Le téléphone partage une constante avec le heartbeat et le temps réel.
++/// La surcharge BACKEND_URL reste définie au build dans BackendHosts.
++/// L'essai et le Cast peuvent donc utiliser exactement le même backend.
++const String kSubscriptionBaseUrl = BackendHosts.primary;
+
+ /// Snapshot de l'état renvoyé par le serveur. Immuable.
+ @immutable
+@@ -260,9 +258,8 @@ abstract final class SubscriptionBackend {
+         //  confort, pas le besoin du client.
+         if (!shielded) ..._ressources(),
+       };
+-      // FAILOVER : domaine maison d'abord (auto-guérison), puis l'adresse
+-      // Cloudflare de secours. Le premier hôte qui répond 200 devient
+-      // l'hôte COURANT de toute l'app (BackendHosts.markGood).
++      // La sonde utilise la même adresse configurée que le temps réel,
++      // l'essai et le Cast, sans basculer vers un autre domaine.
+       final String body = jsonEncode(payload);
+       for (final String base in BackendHosts.candidates()) {
+         try {
+diff --git a/lib/features/tv/presentation/tv_help_screen.dart b/lib/features/tv/presentation/tv_help_screen.dart
+index 7d2d8cc..4502c01 100644
+--- a/lib/features/tv/presentation/tv_help_screen.dart
++++ b/lib/features/tv/presentation/tv_help_screen.dart
+@@ -12,7 +12,7 @@
+ //    • Nous écrire  → wa.me/<numéro> avec un message pré-rempli qui
+ //      contient le CODE de l'appareil (le support sait tout de suite
+ //      quelle box appelle à l'aide) ;
+-//    • Notre site   → https://app.7themotion.com.
++//    • Notre site   → https://api.zuno8k.com.
+ //
+ //  Réutilise les briques existantes : kWhatsAppPhone (tv_components),
+ //  DeviceIdentity (le code), TvShell/TvTokens (habillage), QrImageView
+@@ -28,7 +28,7 @@ import '../core/tv_tokens.dart';
+ import 'tv_components.dart';
+
+ /// Site public — même adresse que les liens de téléchargement clients.
+-const String kTvHelpWebsiteUrl = 'https://app.7themotion.com';
++const String kTvHelpWebsiteUrl = 'https://api.zuno8k.com';
+
+ class TvHelpScreen extends StatefulWidget {
+   const TvHelpScreen({super.key});
+@@ -92,7 +92,7 @@ class _TvHelpScreenState extends State<TvHelpScreen> {
+                     data: kTvHelpWebsiteUrl,
+                     icon: Icons.language_rounded,
+                     title: context.l10n.tvHelpWebsite,
+-                    subtitle: 'app.7themotion.com',
++                    subtitle: 'api.zuno8k.com',
+                   ),
+                 ],
+               ),
+diff --git a/lib/features/tv/presentation/tv_legal_screen.dart b/lib/features/tv/presentation/tv_legal_screen.dart
+index 09a2ff9..e4d3e94 100644
+--- a/lib/features/tv/presentation/tv_legal_screen.dart
++++ b/lib/features/tv/presentation/tv_legal_screen.dart
+@@ -7,7 +7,7 @@
+ //  le LOGICIEL, pas le contenu. Affiché en clair pour limiter le risque de
+ //  retrait/bannissement et clarifier les responsabilités.
+ //
+-//  Le MÊME texte est servi en ligne par le worker sur app.7themotion.com/terms
++//  Le MÊME texte est servi en ligne par le worker sur api.zuno8k.com/terms
+ //  (à coller dans la fiche des stores).
+ //
+ //  Défilement à la télécommande : Haut/Bas font défiler le texte (D-pad), Retour
+@@ -88,13 +88,13 @@ class _TvLegalScreenState extends State<TvLegalScreen> {
+     (
+       '8. Données personnelles',
+       'Un identifiant technique d\'appareil est utilisé pour la gestion de la '
+-          'licence/essai et le support. Détails : app.7themotion.com/privacy.',
++          'licence/essai et le support. Détails : api.zuno8k.com/privacy.',
+     ),
+     (
+       '9. Acceptation',
+       'En installant ou en utilisant cette application, l\'utilisateur reconnaît '
+           'avoir lu et accepté les présentes conditions. Version complète en '
+-          'ligne : app.7themotion.com/terms',
++          'ligne : api.zuno8k.com/terms',
+     ),
+   ];
+
+diff --git a/test/core/backend/backend_hosts_test.dart b/test/core/backend/backend_hosts_test.dart
+new file mode 100644
+index 0000000..4be91f6
+--- /dev/null
++++ b/test/core/backend/backend_hosts_test.dart
+@@ -0,0 +1,41 @@
++import 'package:flutter_test/flutter_test.dart';
++import 'package:shared_preferences/shared_preferences.dart';
++import 'package:tv_king/core/backend/backend_hosts.dart';
++import 'package:tv_king/features/subscription/data/gold_trial_backend.dart';
++import 'package:tv_king/features/subscription/data/subscription_backend.dart';
++
++void main() {
++  TestWidgetsFlutterBinding.ensureInitialized();
++
++  test('une préférence ancienne ne restaure pas un backend retiré', () async {
++    SharedPreferences.setMockInitialValues(<String, Object>{
++      'backend.preferred_host':
++          'https://seven-motion-backend.manzilionel-lm.workers.dev',
++    });
++
++    await BackendHosts.loadPreferred();
++
++    expect(BackendHosts.current, kSubscriptionBaseUrl);
++    expect(BackendHosts.candidates(), <String>[kSubscriptionBaseUrl]);
++    expect(GoldTrialBackend().baseUrl, kSubscriptionBaseUrl);
++    expect(kGoldTrialBaseUrl, kSubscriptionBaseUrl);
++  });
++
++  test('une réponse réseau ne remplace pas le backend configuré', () async {
++    await BackendHosts.markGood('https://retired.example');
++
++    expect(BackendHosts.current, kSubscriptionBaseUrl);
++    expect(BackendHosts.candidates(), <String>[kSubscriptionBaseUrl]);
++    expect(GoldTrialBackend().baseUrl, kSubscriptionBaseUrl);
++  });
++
++  test('la surcharge au build est partagée avec le temps réel et l’essai', () {
++    const String configured = String.fromEnvironment(
++      'BACKEND_URL',
++      defaultValue: 'https://api.zuno8k.com',
++    );
++    expect(BackendHosts.primary, configured);
++    expect(kSubscriptionBaseUrl, configured);
++    expect(GoldTrialBackend().baseUrl, configured);
++  });
++}
+diff --git a/tv-tizen-webos/shared/js/config.js b/tv-tizen-webos/shared/js/config.js
+index 3f53703..ecab5d8 100644
+--- a/tv-tizen-webos/shared/js/config.js
++++ b/tv-tizen-webos/shared/js/config.js
+@@ -2,14 +2,14 @@
+ //  config.js — Configuration globale de DeFew TV (Tizen / webOS)
+ // =========================================================
+ //  App web pour Samsung (Tizen) et LG (webOS). MÊME backend que les apps
+-//  Android (app.7themotion.com) : activation par MAC, source poussée par le
++//  Android (api.zuno8k.com) : activation par MAC, source poussée par le
+ //  panel, statut d'abonnement. Aucune URL IPTV en dur (règle AGENTS.md).
+ // =========================================================
+ window.DFT = window.DFT || {};
+
+ DFT.config = {
+   // Backend Cloudflare — IDENTIQUE aux apps mobiles/TV Android.
+-  apiBase: 'https://app.7themotion.com',
++  apiBase: 'https://api.zuno8k.com',
+   appName: 'The Few',
+   // Extension des flux Xtream Live. La plupart des serveurs servent du MPEG-TS
+   // (.ts) ; certains préfèrent le HLS (.m3u8). Si l'image ne démarre pas,

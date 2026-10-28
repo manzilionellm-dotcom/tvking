@@ -25,6 +25,8 @@ import '../../../core/observability/structured_logger.dart';
 import '../../channels/domain/channel.dart';
 import '../../player/data/pip_service.dart';
 import '../../player/data/xtream_url_variants.dart';
+import '../../subscription/data/subscription_backend.dart'
+    show kSubscriptionBaseUrl;
 import '../domain/cast_device.dart';
 import 'cast_progress.dart';
 import 'cast_platform.dart';
@@ -1649,7 +1651,7 @@ class CastManager extends ChangeNotifier {
   String _workerTsUrl(String upstreamUrl) {
     final String b64 =
         base64Url.encode(utf8.encode(upstreamUrl)).replaceAll('=', '');
-    return 'https://app.7themotion.com/cs/$b64.ts';
+    return '$kSubscriptionBaseUrl/cs/$b64.ts';
   }
 
   /// Choisit l'URL à pousser en stratégie DIRECT (0/1) vers une TV DLNA.
