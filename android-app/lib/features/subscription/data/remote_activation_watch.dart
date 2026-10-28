@@ -192,7 +192,7 @@ class RemoteActivationWatch {
     _tickBusy = true;
     try {
       final bool waiting = _isWaiting;
-      final bool heartbeatDue = waiting &&
+      final bool heartbeatDue = !sourceOrdered && waiting &&
           DateTime.now().difference(_lastHeartbeat) >= _heartbeatWhileWaiting;
       final RemoteSyncOutcome outcome = heartbeatDue
           ? await SubscriptionState.instance.syncWithBackend()
@@ -279,13 +279,10 @@ class RemoteActivationWatch {
     if (ordered &&
         result == RemoteSyncResult.loaded &&
         !RepairFlags.heartbeatAfterImportOff) {
-      final RemoteSyncOutcome hb =
-          await SubscriptionState.instance.syncWithBackend();
-      if (hb == RemoteSyncOutcome.applied) _lastHeartbeat = DateTime.now();
-      BlackBox.instance.info(
-        'PANEL',
-        'inventaire envoyé au panel après la liste (${hb.name})',
-      );
+      // L'import et son accusé ne doivent pas attendre l'inventaire.
+      unawaited(SubscriptionState.instance.syncWithBackend().then((hb) {
+        if (hb == RemoteSyncOutcome.applied) _lastHeartbeat = DateTime.now();
+      }));
     }
   }
 
@@ -304,7 +301,10 @@ class RemoteActivationWatch {
       final BoxChannelSession session = BoxChannelSession(
         mac: mac,
         alive: () => _run && generation == _generation,
-        headers: () => DeviceSecret.instance.headers(),
+        headers: () async {
+          await DeviceSecret.instance.enroll(mac);
+          return DeviceSecret.instance.headers();
+        },
         onConnected: nudge,
         onFrame: (BoxChannelFrame frame) async {
           // Le Durable Object renvoie le DERNIER ordre à chaque ouverture
@@ -343,6 +343,8 @@ class RemoteActivationWatch {
           return applied;
         },
       );
+      if (!_cursorsLoaded) await _loadCursors();
+      session.seq = _boxCursor;
       _session = session;
       await session.run();
       if (identical(_session, session)) _session = null;
@@ -354,6 +356,7 @@ class RemoteActivationWatch {
     _signalHttp = client;
     try {
       await _loadCursors();
+      DateTime nextPoll = DateTime.now();
       while (_run && generation == _generation) {
         // Prise ouverte : on ne double pas avec l'attente longue.
         // Elle reprend toute seule dès que la prise tombe.
@@ -362,6 +365,11 @@ class RemoteActivationWatch {
           await _pause(const Duration(seconds: 2), generation);
           continue;
         }
+        _setChannelUp(false);
+        final Duration remaining = nextPoll.difference(DateTime.now());
+        if (remaining > Duration.zero) await _pause(remaining, generation);
+        if (!_run || generation != _generation) return;
+        nextPoll = DateTime.now().add(const Duration(seconds: 5));
         final String mac = await DeviceIdentity.instance.mac;
         if (!mac.startsWith('MK:')) {
           await _pause(const Duration(seconds: 5), generation);
@@ -376,13 +384,13 @@ class RemoteActivationWatch {
           fleetAfter: _fleetCursor,
           version: await _version(),
           build: '0',
+          timeoutMs: 200,
         );
         if (!_run || generation != _generation) return;
         if (result.unauthorized || result.rateLimited) {
           // Ancien Worker, secret refusé, ou trop d'ouvertures :
           // la lecture courte continue. On réessaie le canal plus tard.
           _setChannelUp(false);
-          await _pause(const Duration(seconds: 30), generation);
           continue;
         }
         if (result.offline) {
@@ -390,16 +398,9 @@ class RemoteActivationWatch {
           // On ne martèle pas le réseau, et un retour de Wi-Fi
           // n'attend pas le plafond de 45 s de la lecture courte.
           _setChannelUp(false);
-          _signalFailures++;
-          final int shift = _signalFailures > 5 ? 5 : _signalFailures;
-          final int seconds = 1 << (shift - 1);
-          await _pause(
-            Duration(seconds: seconds > 30 ? 30 : seconds),
-            generation,
-          );
           continue;
         }
-        _setChannelUp(true);
+        _setChannelUp(_session?.open == true);
         _signalFailures = 0;
         lastSignalBody = result.raw;
         if (result.orders.isEmpty) continue;
@@ -598,7 +599,7 @@ class RemoteActivationWatch {
     final Set<SignalRefresh> plan = refreshesFor(kind);
     try {
       if (plan.contains(SignalRefresh.announcement)) {
-        await AnnouncementRepository.fetchLatest();
+        await AnnouncementRepository.fetchLatest(strict: true);
       }
       if (plan.contains(SignalRefresh.theme)) {
         await RemoteThemeRepository.fetchAndApply();

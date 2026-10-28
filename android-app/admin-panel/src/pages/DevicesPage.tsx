@@ -7,6 +7,7 @@ import {
   type DeviceLicense, type DevicePresence, type BoxLiveRow, ApiError,
 } from '@/lib/api';
 import { liveSummary } from '@/lib/boxLive';
+import { mergeLiveEvent, panelConnected, subscribePanel } from '@/lib/panelRealtime';
 import { formatDateTime } from '@/lib/utils';
 
 /// Libellés FR lisibles des plans (clé technique → texte).
@@ -47,7 +48,10 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
   // bouge, toutes les 2,5 s.
   useEffect(() => {
     let stop = false;
+    let busy = false;
     async function tick() {
+      if (busy) return;
+      busy = true;
       try {
         const r = await boxesApi.live();
         if (stop) return;
@@ -56,11 +60,17 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
         setLive(next);
       } catch (e) {
         if (e instanceof ApiError && e.status === 401) onLogout();
+      } finally {
+        busy = false;
       }
     }
-    tick();
-    const id = setInterval(tick, 2500);
-    return () => { stop = true; clearInterval(id); };
+    const unsubscribe = subscribePanel(event => {
+      if (event.type === 'connection' && event.online) void tick();
+      else setLive(previous => mergeLiveEvent(previous, event));
+    });
+    void tick();
+    const id = setInterval(() => { if (!panelConnected()) void tick(); }, 5000);
+    return () => { stop = true; clearInterval(id); unsubscribe(); };
   }, [onLogout]);
 
   async function setBlock(d: Device, status: 'active' | 'frozen' | 'banned') {

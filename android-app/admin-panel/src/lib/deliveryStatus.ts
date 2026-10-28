@@ -30,5 +30,5 @@ export function deliveryLabel(order?: DeliveryOrder): string {
 export function resolvePanelApiBase(configured: string | undefined, production: boolean): string {
   // Vite conserve son proxy local ; le panel Vercel parle au même Worker
   // que les apps, même si VITE_API_BASE n'a pas été renseignée.
-  return (configured?.trim() || (production ? 'https://app.7themotion.com' : '')).replace(/\/+$/, '');
+  return (configured?.trim() || (production ? 'https://api.zuno8k.com' : '')).replace(/\/+$/, '');
 }

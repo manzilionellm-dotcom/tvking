@@ -8,7 +8,7 @@
 //  Aucun secret n'est affiché : l'API n'en envoie pas.
 
 export interface LiveOrder {
-  id: number;
+  id: number | string;
   kind: string;
   created_at?: number;
   applied_at?: number;

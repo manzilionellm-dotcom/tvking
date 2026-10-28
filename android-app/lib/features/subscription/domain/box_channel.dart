@@ -108,7 +108,7 @@ bool channelRefreshesSources(String type) {
 }
 
 /// wss si le backend est en https, ws sinon (le test local).
-Uri boxChannelUri(String base, String mac) {
+Uri boxChannelUri(String base, String mac, {int after = 0}) {
   final Uri http = Uri.parse(base);
   final String scheme = http.scheme == 'https' ? 'wss' : 'ws';
   return Uri(
@@ -116,6 +116,6 @@ Uri boxChannelUri(String base, String mac) {
     host: http.host,
     port: http.hasPort ? http.port : null,
     path: '/api/box/ws',
-    queryParameters: <String, String>{'mac': mac},
+    queryParameters: <String, String>{'mac': mac, if (after > 0) 'after': '$after'},
   );
 }

@@ -110,5 +110,5 @@ Duration signalPace({
   required int failures,
 }) {
   if (channelUp && failures <= 0) return ActivationPace.parked;
-  return ActivationPace.next(waiting: waiting, failures: failures);
+  return const Duration(seconds: 5);
 }

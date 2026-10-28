@@ -11,7 +11,7 @@ const assert=require('node:assert/strict');
  await page.route('**/*',async route=>{
   const u=new URL(route.request().url());
   if(u.origin==='http://127.0.0.1:4173')return route.continue();
-  if(u.origin!=='https://app.7themotion.com')return route.abort();
+  if(u.origin!=='https://api.zuno8k.com')return route.abort();
   if(route.request().method()==='OPTIONS') return route.fulfill({status:204,headers:{'Access-Control-Allow-Origin':'http://127.0.0.1:4173','Access-Control-Allow-Headers':'Authorization, Content-Type','Access-Control-Allow-Methods':'GET, POST, PUT'}});
   let body={items:[]},status=200;
   if(u.pathname.endsWith('/auth/me')||u.pathname.endsWith('/me'))body={user:{id:'fixture',role:'super_admin',email:'fixture@example.invalid',credit_balance:null}};

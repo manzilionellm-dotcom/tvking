@@ -4,7 +4,7 @@ import { ActivationSession } from './activationSession.ts';
 import { deliveryLabel, resolvePanelApiBase } from './deliveryStatus.ts';
 
 test('Vercel sans variable vise le Worker ; le proxy Vite et la surcharge restent possibles', () => {
-  assert.equal(resolvePanelApiBase(undefined, true), 'https://app.7themotion.com');
+  assert.equal(resolvePanelApiBase(undefined, true), 'https://api.zuno8k.com');
   assert.equal(resolvePanelApiBase(undefined, false), '');
   assert.equal(resolvePanelApiBase(' https://staging.example.test/// ', true), 'https://staging.example.test');
 });

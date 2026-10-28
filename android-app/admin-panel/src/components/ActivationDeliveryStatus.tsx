@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ApiError, deliveryApi, type ActivationDelivery } from '@/lib/api';
 import { deliveryConfirmed, deliveryLabel, type DeliveryOrder } from '@/lib/deliveryStatus';
+import { subscribePanel } from '@/lib/panelRealtime';
 
 export function ActivationDeliveryStatus({ mac, licenseOrder, sourceOrder, trace, manualSources }: {
   mac: string;
@@ -20,15 +21,17 @@ export function ActivationDeliveryStatus({ mac, licenseOrder, sourceOrder, trace
     let timer: ReturnType<typeof setTimeout> | undefined;
     let controller: AbortController | undefined;
     let finished = false;
+    let inFlight = false;
     let preparationState: ActivationDelivery | null = null;
     const deadline = Date.now() + 5 * 60_000;
     setExpired(false);
     async function poll() {
-      if (closed) return;
+      if (closed || inFlight) return;
       if (Date.now() >= deadline) { setExpired(true); return; }
       // Un onglet caché ne martèle pas le serveur ; le retour relit sous 1 s.
       if (document.visibilityState === 'hidden') { timer = setTimeout(poll, 1000); return; }
       controller = new AbortController();
+      inFlight = true;
       const timeout = setTimeout(() => controller?.abort(), 8000);
       try {
         const [receipt, preparation] = await Promise.allSettled([
@@ -56,11 +59,20 @@ export function ActivationDeliveryStatus({ mac, licenseOrder, sourceOrder, trace
         }
       } finally {
         clearTimeout(timeout);
-        if (!closed && !finished) timer = setTimeout(poll, 1000);
+        inFlight = false;
+        if (!closed && !finished) timer = setTimeout(poll, 5000);
       }
     }
+    const unsubscribe = subscribePanel(event => {
+      if (event.mac !== mac || event.type !== 'receipt' || !event.order_id || !event.state || !event.kind) return;
+      const received = event as DeliveryOrder;
+      setOrders(previous => [...previous.filter(row => row.order_id !== received.order_id), received]);
+      setUnavailable(false);
+      clearTimeout(timer);
+      void poll();
+    });
     void poll();
-    return () => { closed = true; clearTimeout(timer); controller?.abort(); };
+    return () => { closed = true; clearTimeout(timer); controller?.abort(); unsubscribe(); };
   }, [mac, trace, licenseOrder, sourceOrder, manualSources, refresh]);
 
   const license = orders.find(order => order.order_id === licenseOrder);

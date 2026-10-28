@@ -27,6 +27,11 @@ jobs:
           node-version: '24.21.0'
           package-manager-cache: false
       - run: node --test android-app/cloudflare/tests/gold_trial_policy.test.mjs android-app/cloudflare/tests/gold_trial_runtime.test.mjs android-app/admin-panel/src/lib/goldTrial.test.ts android-app/admin-panel/src/lib/deliveryStatus.test.ts
+      - name: Vérifier les vrais Durable Objects locaux
+        working-directory: android-app/cloudflare
+        run: |
+          npm ci --no-audit --no-fund
+          node --test tests/gold_realtime.test.mjs
       - run: npm ci --no-audit --no-fund && npm run build
         working-directory: android-app/admin-panel
       - name: Vérifier le vrai formulaire dans Chrome, sans API de production

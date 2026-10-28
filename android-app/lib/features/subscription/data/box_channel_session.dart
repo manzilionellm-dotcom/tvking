@@ -69,7 +69,7 @@ class BoxChannelSession {
     while (_going()) {
       Timer? hello;
       try {
-        final Uri uri = boxChannelUri(baseUrl ?? kSubscriptionBaseUrl, mac);
+        final Uri uri = boxChannelUri(baseUrl ?? kSubscriptionBaseUrl, mac, after: seq);
         final Future<WebSocket> pending = WebSocket.connect(uri.toString(),
             headers: await headers?.call());
         final WebSocket socket = await pending.timeout(const Duration(seconds: 8),
@@ -79,13 +79,17 @@ class BoxChannelSession {
             throw TimeoutException('canal indisponible');
           });
         _socket = socket;
-        if (!_going()) break;
+        if (!_going()) {
+          await socket.close();
+          break;
+        }
         // Ping protocolaire : Cloudflare répond même pendant l'hibernation.
         // Une prise devenue muette est fermée au lieu de masquer le repli.
         socket.pingInterval = pingInterval;
         open = true;
         onConnected?.call();
-        hello = Timer.periodic(const Duration(seconds: 25), (_) {
+        socket.add('{"v":1,"type":"hello"}');
+        hello = Timer.periodic(const Duration(seconds: 10), (_) {
           try {
             _socket?.add('{"v":1,"type":"hello"}');
           } catch (_) {
@@ -94,6 +98,8 @@ class BoxChannelSession {
         });
         await for (final dynamic message in socket) {
           if (!_going()) break;
+          // Une réponse du serveur valide aussi une connexion sans ordre.
+          delaySeconds = 1;
           final BoxChannelFrame? frame = parseBoxChannelFrame('$message');
           if (frame == null || frame.seq <= seq) continue;
           if (frame.mac != mac) continue;

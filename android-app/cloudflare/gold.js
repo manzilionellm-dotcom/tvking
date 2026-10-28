@@ -1,7 +1,8 @@
 // 7 MOTION x GOLD/Strong panel (cms-8k.net API v1.81) — wrapper module.
 // Main module: wraps the unchanged production bundle (./worker.js).
 import orig, { goldSealSource, goldOpenSourceList, goldNotifyBox } from './production/worker.runtime.js';
-export { RealtimeHub } from './production/worker.runtime.js';
+export { RealtimeHub } from './gold_realtime.js';
+import { createRealtimeRoutes, pushAnnouncementChange } from './gold_realtime.js';
 import { activationDeliveryState } from './gold_activation_delivery.js';
 import { createTrialRuntime } from './gold_trial_runtime.js';
 import { sourceEncryptionEnv } from './gold_trial_delivery.js';
@@ -607,6 +608,8 @@ function cors(request,env,response) {
   return new Response(response.body,{status:response.status,headers});
 }
 
+const realtimeRoutes = createRealtimeRoutes({ original: orig, actorFor: adminActor });
+
 export default {
   ...orig,
   async fetch(request, rawEnv, ctx) {
@@ -615,9 +618,17 @@ export default {
       [rawEnv.PANEL_ORIGINS,'https://atlas-console-k7q2.vercel.app'].filter(Boolean).join(',')});
     const p=new URL(request.url).pathname;
     const own=p.startsWith('/api/v1/gold/') || p.startsWith('/api/gold-trial') ||
-      p==='/api/v1/device/trial' || p==='/api/device-proof' || p==='/api/v1/activation-delivery';
+      p==='/api/v1/device/trial' || p==='/api/device-proof' || p==='/api/v1/activation-delivery' ||
+      p.startsWith('/api/v1/rt/') || p==='/api/v1/boxes/live' || p.startsWith('/api/box/');
     if (own && request.method==='OPTIONS') return cors(request,env,new Response(null,{status:204}));
     try {
+      const realtime = await realtimeRoutes(request, env, ctx);
+      if (realtime) return realtime.status === 101 ? realtime : cors(request, env, realtime);
+      if (p.startsWith('/api/v1/announcements') && ['POST','PATCH','PUT','DELETE'].includes(request.method)) {
+        const response = await orig.fetch(request, env, ctx);
+        if (response.ok) ctx.waitUntil(pushAnnouncementChange(env));
+        return response;
+      }
       if (p==='/api/v1/activation-delivery' && request.method==='GET') {
         const actor=await adminActor(request,env,ctx,['super_admin','admin','reseller']);
         if (!actor) return cors(request,env,J({error:'unauthorized'},401));

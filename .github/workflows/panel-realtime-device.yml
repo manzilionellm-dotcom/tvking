@@ -1,0 +1,104 @@
+name: Temps réel — Zuno et 7 MOTION sur Android
+on:
+  pull_request:
+    paths:
+      - 'android-app/**'
+      - '.github/workflows/panel-realtime-device.yml'
+permissions:
+  contents: read
+concurrency:
+  group: realtime-device-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  android:
+    name: '${{ matrix.app }} : panel → DO → Android < 2 s'
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [zuno, 7motion]
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          path: mission
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        if: matrix.app == '7motion'
+        with:
+          ref: 37fdf3305c5de9d35e20fd6567df38008fc7a7ee
+          path: phone
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '24.21.0'
+          package-manager-cache: false
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+        with:
+          flutter-version: '3.47.7'
+          channel: stable
+      - name: Préparer les sources de l’app
+        env:
+          APP: '${{ matrix.app }}'
+        run: |
+          if [ "$APP" = 7motion ]; then
+            cd phone
+            bash ../mission/android-app/ci/mobile/prepare-gold-trial-test.sh
+          else
+            cd mission/android-app
+          fi
+          echo "APP_DIR=$PWD" >> "$GITHUB_ENV"
+          python "$GITHUB_WORKSPACE/mission/android-app/ci/prepare-realtime-test.py" "$APP" "$GITHUB_WORKSPACE/mission"
+          flutter pub get
+          flutter gen-l10n
+          flutter analyze --no-fatal-infos --no-fatal-warnings integration_test/realtime_device_test.dart
+      - name: Démarrer le vrai Worker et les DO locaux
+        working-directory: mission/android-app/cloudflare
+        run: |
+          npm ci --no-audit --no-fund
+          node --test tests/gold_realtime.test.mjs
+          node tests/realtime_fixture.mjs > "$RUNNER_TEMP/realtime-worker.log" 2>&1 &
+          for n in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8787/__fixture/info > /dev/null; then break; fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:8787/__fixture/info > /dev/null
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+      - name: Préparer Android sans signature de production
+        run: |
+          cd "$APP_DIR"
+          flutter create . --platforms=android --org com.manzilionellm.tvking --project-name tv_king
+          python "$GITHUB_WORKSPACE/mission/android-app/ci/prepare-realtime-android.py"
+          flutter build apk --debug --target=integration_test/realtime_device_test.dart --dart-define=BACKEND_URL=http://127.0.0.1:8787 --dart-define=REALTIME_VARIANT=${{ matrix.app }}
+      - name: Démarrer l’émulateur Android 35
+        run: |
+          yes | sdkmanager --licenses > /dev/null || true
+          sdkmanager 'platform-tools' 'emulator' 'platforms;android-35' 'system-images;android-35;google_apis;x86_64'
+          echo no | avdmanager create avd --name realtime --package 'system-images;android-35;google_apis;x86_64' --force
+          sudo chmod 666 /dev/kvm
+          "$ANDROID_HOME/emulator/emulator" -avd realtime -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect > "$RUNNER_TEMP/realtime-emulator.log" 2>&1 &
+          timeout 180 adb wait-for-device
+          for attempt in $(seq 1 120); do
+            if [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = 1 ]; then break; fi
+            sleep 2
+          done
+          test "$(adb shell getprop sys.boot_completed | tr -d '\r')" = 1
+          adb reverse tcp:8787 tcp:8787
+          adb shell input keyevent 82
+      - name: Mesurer les actions appliquées et affichées
+        run: |
+          cd "$APP_DIR"
+          set -o pipefail
+          flutter test integration_test/realtime_device_test.dart -d emulator-5554 --reporter expanded --dart-define=BACKEND_URL=http://127.0.0.1:8787 --dart-define=REALTIME_VARIANT=${{ matrix.app }} 2>&1 | tee "$RUNNER_TEMP/realtime-device.log"
+      - name: Conserver mesures et diagnostics
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: realtime-${{ matrix.app }}
+          path: ${{ runner.temp }}/realtime-*.log
+          if-no-files-found: ignore
+          retention-days: 14

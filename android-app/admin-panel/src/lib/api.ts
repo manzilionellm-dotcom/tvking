@@ -21,7 +21,7 @@ const TOKEN_KEY = 'auth_token';
 /// Cloudflare Pages sur un sous-domaine (ex: admin.7themotion.com)
 /// et l'API tourne sur seven-motion-backend.workers.dev. On garde
 /// la config configurable via VITE_API_BASE.
-const API_BASE = resolvePanelApiBase(import.meta.env.VITE_API_BASE, import.meta.env.PROD);
+export const API_BASE = resolvePanelApiBase(import.meta.env.VITE_API_BASE, import.meta.env.PROD);
 
 /// Lien de TÉLÉCHARGEMENT de l'app à donner au client. Domaine propre
 /// dédié (app.7themotion.com → route /vip du Worker, proxy du dernier
@@ -430,7 +430,7 @@ export const devicesApi = {
 };
 
 export interface BoxLiveOrder {
-  id: number;
+  id: number | string;
   kind: string;
   created_at?: number;
   applied_at?: number;
@@ -451,6 +451,7 @@ export interface BoxLiveRow {
 }
 /// État en direct, sans recharger la page. Le JWT du panel est exigé.
 export const boxesApi = {
+  ticket: () => request<{ ticket: string }>('/api/v1/rt/ticket', { method: 'POST' }),
   live: (mac?: string) =>
     request<{ now: number; items: BoxLiveRow[] }>(
       `/api/v1/boxes/live${mac ? `?mac=${encodeURIComponent(mac)}` : ''}`,
