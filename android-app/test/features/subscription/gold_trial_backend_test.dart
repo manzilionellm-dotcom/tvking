@@ -33,6 +33,7 @@ void main() {
       expect(request.method, 'POST');
       expect(request.url.toString(), '$kGoldTrialBaseUrl/api/gold-trial');
       expect(request.headers['content-type'], 'application/json');
+      expect(request.headers['x-app-brand'], '7motion');
       expect(jsonDecode(request.body), <String, String>{
         'mac': device.mac, 'android_id': device.androidId, 'app_version': device.appVersion,
       });
@@ -41,6 +42,16 @@ void main() {
     final GoldTrialResult result = await api.activate(device);
     expect(result.outcome, GoldTrialOutcome.activated);
     expect(result.expire, DateTime.fromMillisecondsSinceEpoch(1793102400000, isUtc: true));
+  });
+
+  test('Zuno identifie sa marque sans ajouter de champs au contrat POST', () async {
+    final GoldTrialBackend api = GoldTrialBackend(clientFactory: () => MockClient((request) async {
+      expect(request.headers['x-app-brand'], 'zuno');
+      expect((jsonDecode(request.body) as Map<String, dynamic>).length, 3);
+      return http.Response('{"error":"trial_disabled"}', 403);
+    }));
+    await api.activate(GoldTrialIdentity(mac: device.mac, androidId: device.androidId,
+      appVersion: device.appVersion, brand: 'zuno'));
   });
 
   for (final (int status, String code, GoldTrialOutcome outcome) in <(int, String, GoldTrialOutcome)>[

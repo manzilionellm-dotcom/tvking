@@ -125,6 +125,9 @@ export interface GoldTrialSettings {
 export interface GoldTrialSnapshot extends GoldTrialSettings {
   integration_ready: boolean;
   recent: GoldTrialEvent[];
+  blockers?: string[];
+  keys?: { id: string; label: string; effective_priority: number; trial_cap_per_day: number | null;
+    trials_today: number; demo_tickets: number | null; contract_verified: boolean }[];
 }
 export const goldTrialApi = {
   snapshot: (signal?: AbortSignal) => request<GoldTrialSnapshot>('/api/v1/gold/trial-control', { signal }),
@@ -133,9 +136,9 @@ export const goldTrialApi = {
   events: (mac: string, before: number | null, signal?: AbortSignal) =>
     request<{ history: GoldTrialEvent[]; next_before: number | null }>(
       `/api/v1/gold/trial-control/history?mac=${encodeURIComponent(mac)}${before ? `&before=${before}` : ''}`, { signal }),
-  history: (mac: string, signal?: AbortSignal) =>
-    request<{ trial_used: boolean; lines: unknown[]; history: unknown[] }>(
-      `/api/v1/gold/history?mac=${encodeURIComponent(mac)}`, { signal }),
+  history: (mac: string, signal?: AbortSignal, before?: string | null) =>
+    request<{ trial_used: boolean; lines: unknown[]; history: unknown[]; next_before?: string | null }>(
+      `/api/v1/gold/history?mac=${encodeURIComponent(mac)}${before ? `&before=${encodeURIComponent(before)}` : ''}`, { signal }),
 };
 
 // =========================================================

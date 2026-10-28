@@ -37,10 +37,12 @@ class GoldTrialIdentity {
     required this.mac,
     required this.androidId,
     required this.appVersion,
+    this.brand = '7motion',
   });
   final String mac;
   final String androidId;
   final String appVersion;
+  final String brand;
 }
 
 class GoldTrialBackend {
@@ -86,6 +88,7 @@ class GoldTrialBackend {
             ...headers,
             'Content-Type': 'application/json',
             'Accept': 'application/json',
+            'X-App-Brand': identity.brand == 'zuno' ? 'zuno' : '7motion',
           },
           body: jsonEncode(<String, String>{
             'mac': mac,

@@ -11,6 +11,7 @@ import { goldTrialAdmin } from '../gold_trial_admin.js';
 function database() {
   const sql = new DatabaseSync(':memory:');
   sql.exec(readFileSync(new URL('../migrations/20261028_gold_trial_policy.sql', import.meta.url), 'utf8'));
+  sql.exec(readFileSync(new URL('../migrations/20261028_gold_trial_runtime.sql', import.meta.url), 'utf8'));
   const db = {
     prepare(query) {
       let args = [];
@@ -43,7 +44,7 @@ function fixture(overrides = {}) {
   const clock = { value: Date.UTC(2026, 9, 28, 12) };
   const created = [], delivered = [];
   const adapters = {
-    verifyDevice: async (req, identity) => identity.android_id === 'android-fixture' && req.headers.get('X-Device-Secret') === 'fixture-device-proof' ? 'ok' : 'device_mismatch',
+    verifyDevice: async (req, identity) => ['android-fixture','android-second'].includes(identity.android_id) && req.headers.get('X-Device-Secret') === 'fixture-device-proof' ? 'ok' : 'device_mismatch',
     eligibility: async () => ({ trial_used: false, already_customer: false }),
     listDemoKeys: async () => [{ label: 'Manzi8', trial_priority: 0 }, { label: 'manzi10', trial_priority: 99 }],
     createDemo24h: async (key, options) => { created.push({ key, options }); return { isDemo: true, paidCreditsUsed: 0, expire: clock.value + 86_400_000, line_id: 'line-fixture' }; },
@@ -70,7 +71,7 @@ test('MAC canonique et ordre manzi10 puis Manzi8, sans modifier les clés', () =
 });
 test('preuve réelle : MAC ↔ Android ID ↔ empreinte du secret, sans réenrôlement', async () => {
   const { db, sql } = database();
-  sql.exec('CREATE TABLE devices(mac TEXT PRIMARY KEY,android_id TEXT,block_status TEXT); CREATE TABLE device_secrets(mac TEXT PRIMARY KEY,android_id TEXT,secret_hash TEXT)');
+  sql.exec('CREATE TABLE devices(mac TEXT PRIMARY KEY,android_id TEXT,block_status TEXT); DROP TABLE device_secrets; CREATE TABLE device_secrets(mac TEXT PRIMARY KEY,android_id TEXT,secret_hash TEXT)');
   const identity = { mac, android_id: 'android-fixture' };
   assert.equal(await verifyTrialDevice(db, request(), identity), 'unknown_device');
   sql.prepare('INSERT INTO devices VALUES (?,?,NULL)').run(mac, identity.android_id);
@@ -123,7 +124,7 @@ test('timeout ambigu : pas de bascule ni de deuxième ligne au prochain clic', a
   assert.equal((await f.handle(request(), f.env)).status, 409); assert.equal(calls, 1);
 });
 test('réponse payante ou durée > 24 h : refus fermé et aucun nouveau fournisseur', async () => {
-  for (const bad of [{ isDemo: false }, { paidCreditsUsed: 1 }, { expire: Date.UTC(2026, 10, 1) }]) {
+  for (const bad of [{ isDemo: false }, { paidCreditsUsed: 1 }, { expire: Date.UTC(2026, 9, 28, 13) }, { expire: Date.UTC(2026, 10, 1) }]) {
     let calls = 0; const f = fixture({ createDemo24h: async () => { calls++; return { isDemo: true, paidCreditsUsed: 0, expire: Date.UTC(2026, 9, 29, 12), line_id: 'bad', ...bad }; } });
     assert.equal((await f.handle(request(), f.env)).status, 409); assert.equal(calls, 1); assert.equal(f.delivered.length, 0);
   }
@@ -155,9 +156,9 @@ test('historique absent ou migration manquante ne sont jamais assimilés à appa
 test('plafond partagé entre MAC, remise à zéro au jour UTC suivant', async () => {
   const f = fixture(); f.sql.exec('UPDATE gold_trial_settings_v2 SET daily_cap=1');
   assert.equal((await f.handle(request(), f.env)).status, 201);
-  assert.equal((await f.handle(request({ mac: 'MK:11:22:33:44:56' }), f.env)).status, 429);
+  assert.equal((await f.handle(request({ mac: 'MK:11:22:33:44:56', androidId: 'android-second' }), f.env)).status, 429);
   f.clock.value += 86_400_000;
-  assert.equal((await f.handle(request({ mac: 'MK:11:22:33:44:56' }), f.env)).status, 201);
+  assert.equal((await f.handle(request({ mac: 'MK:11:22:33:44:56', androidId: 'android-second' }), f.env)).status, 201);
 });
 test('5 requêtes/min/IP, partagées entre MAC et alias ; fenêtre glissante', async () => {
   const f = fixture();

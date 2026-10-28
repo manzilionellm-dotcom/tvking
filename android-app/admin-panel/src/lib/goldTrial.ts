@@ -40,8 +40,8 @@ export function historyRows(values: unknown[], prefix: string): HistoryRow[] {
     const row = value as Record<string, unknown>;
     const text = (v: unknown) => typeof v === 'string' || typeof v === 'number' ? String(v) : '—';
     return [{ key: `${prefix}-${text(row.id)}-${index}`, date: row.created_at ?? row.date,
-      event: text(row.reason ?? row.event ?? row.action ?? row.state ?? row.type),
-      expire: row.expire ?? row.expires_at, line: text(row.line_id),
+      event: text(row.reason ?? row.event ?? row.action ?? row.state ?? (row.kind ? `${row.kind}.${row.status ?? ''}` : row.type)),
+      expire: row.expire ?? row.expires_at, line: text(row.line_id ?? row.gold_line_id ?? row.gold_user_id),
       ip: text(row.ip), version: text(row.app_version) }];
   });
 }

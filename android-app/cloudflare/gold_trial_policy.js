@@ -58,7 +58,7 @@ function reply(code, status, extra = {}) {
 }
 
 // Limite aussi les corps sans Content-Length, avant toute allocation complète.
-async function readSmallJson(request) {
+export async function readSmallJson(request) {
   if (!request.body) return null;
   const reader = request.body.getReader();
   const decoder = new TextDecoder();
@@ -140,26 +140,33 @@ export function createGoldTrialHandler(adapters, { now = Date.now, uuid = () => 
       if (!settings.gold_trial_enabled) return reject('trial_disabled', 403);
       // Obligatoire : conserve les essais effectués AVANT cette migration,
       // avec une autre clé ou une autre application. Une panne ne vaut pas « non ».
-      const eligibility = await adapters.eligibility(row.mac);
+      const eligibility = await adapters.eligibility(row.mac, identity.android_id);
       if (typeof eligibility?.trial_used !== 'boolean' || typeof eligibility?.already_customer !== 'boolean') {
         throw new Error('Unknown historical eligibility');
       }
       if (eligibility.trial_used) return reject('trial_already_used', 409);
       if (eligibility.already_customer) return reject('already_customer', 409);
+      if (eligibility.in_progress) return reject('in_progress', 409);
+      // Le raccordement réel vérifie le contrat fournisseur en code. Mettre
+      // une variable READY=true ou modifier D1 ne contourne jamais ce verrou.
+      if (adapters.isReady && !(await adapters.isReady())) return reject('unavailable', 503);
       const day = Math.floor(row.now / DAY) * DAY; // plafond journalier UTC
+      const legacyUsed = adapters.legacyDailyUsage ? await adapters.legacyDailyUsage(day) : 0;
       // Une seule instruction SQL arbitre doublon, interrupteur et plafond.
       // Aucun SELECT suivi d'un INSERT vulnérable aux appels simultanés.
       const claim = await db.prepare(`INSERT INTO gold_trial_claims_v2
-        (mac,request_id,state,created_at,ip,app_version)
-        SELECT ?,?,'reserved',?,?,? WHERE EXISTS (
+        (mac,request_id,state,created_at,ip,app_version,android_id)
+        SELECT ?,?,'reserved',?,?,?,? WHERE NOT EXISTS (
+          SELECT 1 FROM gold_trial_claims_v2 WHERE android_id=? AND mac!=? AND state!='failed') AND EXISTS (
           SELECT 1 FROM gold_trial_settings_v2 WHERE id=1 AND gold_trial_enabled=1
-          AND (SELECT COUNT(*) FROM gold_trial_claims_v2 WHERE created_at>=? AND state!='failed') < daily_cap)
+          AND (SELECT COUNT(*) FROM gold_trial_claims_v2 WHERE created_at>=? AND state!='failed') + ? < daily_cap)
         ON CONFLICT(mac) DO UPDATE SET request_id=excluded.request_id,state='reserved',
-          created_at=excluded.created_at,ip=excluded.ip,app_version=excluded.app_version
+          created_at=excluded.created_at,ip=excluded.ip,app_version=excluded.app_version,android_id=excluded.android_id
         WHERE gold_trial_claims_v2.state='failed'`)
-        .bind(row.mac, id, row.now, row.ip, row.version, day).run();
+        .bind(row.mac, id, row.now, row.ip, row.version, identity.android_id,identity.android_id,row.mac,day,legacyUsed).run();
       if (!claim.meta.changes) {
-        const existing = await db.prepare('SELECT state FROM gold_trial_claims_v2 WHERE mac=?').bind(row.mac).first();
+        const existing = await db.prepare(`SELECT state FROM gold_trial_claims_v2
+          WHERE (mac=? OR android_id=?) AND state!='failed' LIMIT 1`).bind(row.mac,identity.android_id).first();
         if (existing && existing.state !== 'failed') {
           return reject(['reserved', 'uncertain'].includes(existing.state) ? 'in_progress' : 'trial_already_used', 409);
         }
@@ -174,7 +181,7 @@ export function createGoldTrialHandler(adapters, { now = Date.now, uuid = () => 
         try {
           providerStarted = true;
           result = await adapters.createDemo24h(key, {
-            mac: row.mac, requestId: id, demoOnly: true, durationHours: 24,
+            mac: row.mac, androidId: identity.android_id, requestId: id, demoOnly: true, durationHours: 24,
           });
         } catch (error) {
           if (!(error instanceof DemoUnavailable)) throw error;
@@ -186,8 +193,14 @@ export function createGoldTrialHandler(adapters, { now = Date.now, uuid = () => 
         // vérification préalable de l'API démo. Une réponse ambiguë ne se retente pas.
         if (result?.isDemo !== true || result.paidCreditsUsed !== 0 ||
             !Number.isSafeInteger(result.expire) || !result.line_id ||
-            result.expire <= row.now || result.expire > now() + DAY + 60_000) throw new Error('Invalid demo receipt');
+            result.expire < row.now + DAY - 60_000 || result.expire > now() + DAY + 60_000) throw new Error('Invalid demo receipt');
         const receipt = { expire: result.expire, line_id: String(result.line_id) };
+        // Le reçu et ses accès chiffrés précèdent la tentative de livraison.
+        // Si cette sauvegarde échoue après création, la réservation reste
+        // incertaine et aucun second fournisseur n'est appelé.
+        if (adapters.persistReceipt) await adapters.persistReceipt(row.mac,result,{
+          label: request.headers.get('X-App-Brand') === 'zuno' ? 'Zuno TV Essai' : '7 MOTION Essai',
+        });
         await db.batch([
           db.prepare("UPDATE gold_trial_claims_v2 SET state='created',expire=?,line_id=? WHERE mac=? AND request_id=?")
             .bind(receipt.expire, receipt.line_id, row.mac, id),

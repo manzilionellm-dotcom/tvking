@@ -130,11 +130,15 @@ class GoldTrialController extends ChangeNotifier {
     final String mac = await DeviceIdentity.instance.mac;
     final String androidId = await DeviceIdentity.instance.androidId();
     final PackageInfo package = await PackageInfo.fromPlatform();
+    // Le Worker exporté n'avait pas encore cette route. Le raccordement Gold
+    // l'ajoute sans réattribuer la MAC ; le secret local reste celui des sources.
+    await DeviceSecret.instance.enroll(mac);
     return GoldTrialIdentity(
       mac: mac,
       androidId: androidId,
       // versionName Android : ni versionCode, ni numéro de build humain.
       appVersion: package.version,
+      brand: package.packageName.contains('seven_tv') ? 'zuno' : '7motion',
     );
   }
 

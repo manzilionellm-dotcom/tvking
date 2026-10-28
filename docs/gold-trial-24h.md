@@ -2,17 +2,19 @@
 
 ## État réel au 28 octobre 2026
 
-Cette branche prépare l'application, le panel et une politique Worker additive.
-**Elle ne constitue pas encore une intégration fournisseur déployable.** Le module
-`gold.js` annoncé en production n'est présent ni dans `main`, ni dans la branche
-mobile du 26 octobre. L'accès Cloudflare disponible demande une authentification.
-Le point d'entrée `wrangler.toml` reste inchangé : ne pas déployer le vieux
-`worker.js` sur la production, qui possède des fonctions supplémentaires.
+L'archive `gold-export.zip` a été reçue et ses **11 empreintes vérifiées**.
+Le véritable bundle est conservé dans `android-app/cloudflare/production/` ;
+`gold.js` est maintenant le point d'entrée, avec les adaptateurs vers le schéma
+exporté, le canal source et le contrôle administrateur de production.
 
-La création réelle de tickets démo, les clés AES-GCM et la livraison existante
-doivent être raccordées au module déployé après récupération de ses sources.
-Aucune API fournisseur n'a été inventée. Aucun ticket ni crédit réel n'a été
-utilisé. Aucun compte, aucune donnée D1 ni aucun déploiement de production modifié.
+**La création fournisseur reste bloquée avant tout appel réseau.** L'export ne
+confirme ni le paquet démo 24 h, ni son coût payant nul, ni le format des tickets.
+`sub=99` a été refusé ; aucune valeur alternative n'est inventée. Un booléen
+READY ou un interrupteur forcé en base ne contourne pas ce verrou.
+
+Le détail du raccordement, les migrations, les tests et les prérequis restants
+sont dans [gold-export-integration.md](gold-export-integration.md).
+Aucun ticket, crédit, compte ou déploiement de production n'a été modifié.
 
 ## Bases des derniers builds conservées
 
@@ -56,51 +58,31 @@ attendre une minute, distinctement d'un plafond quotidien atteint.
 le téléchargement du catalogue peuvent prendre davantage. Mesurer séparément
 POST, réception de la source, import et première image sur appareil réel.
 
-## Worker : raccordement obligatoire au module existant
+## Worker : raccordement au bundle vérifié
 
-1. Récupérer tous les modules du Worker actuellement déployé, sa configuration
-   et le schéma réel D1, sans exporter les valeurs de secrets.
-2. Appliquer `20261028_gold_trial_policy.sql` sur une base de staging. La migration
-   ne fait que créer quatre tables et leurs index ; elle laisse l'essai OFF.
-   Ne pas lancer en bloc les anciennes migrations du dépôt sur la production.
-3. Dans le véritable `gold.js`, construire `createGoldTrialHandler(adapters)`.
-   Les fonctions d'adaptateur exigées sont documentées au-dessus de la factory :
-   `eligibility`, `listDemoKeys`, `createDemo24h`, `deliverSource`.
-   `verifyTrialDevice` réutilise `devices` et `device_secrets` du dépôt ; comparer
-   leur schéma à celui de production avant de le raccorder.
-4. `eligibility` doit lire les essais historiques de **toutes** les clés et des
-   deux apps et les abonnements existants. Une lecture incertaine doit échouer.
-   Ne jamais initialiser `trial_used=false` faute d'avoir lu les anciennes tables.
-5. `listDemoKeys` réutilise le pool chiffré existant et retourne des descripteurs
-   avec `label`, `trial_priority`, `enabled`, `demo_tickets` (nombre, si connu).
-   La priorité de `manzi10`, puis `Manzi8` est appliquée sans changer leurs comptes.
-6. `createDemo24h` doit appeler exclusivement l'opération démo réelle de Strong.
-   Vérifier ce contrat dans le `gold.js` réel et la documentation fournisseur :
-   aucun paramètre de durée payante, aucun repli sur achat/crédit. Retourner un
-   reçu normalisé `{isDemo:true,paidCreditsUsed:0,expire:<ms>,line_id}`.
-   Le contrôle du reçu ne peut pas annuler une dépense déjà faite par un mauvais
-   adaptateur ; il ne remplace pas l'audit de l'opération démo avant son appel.
-7. Un rejet confirmé sans création peut lever `DemoUnavailable` pour passer à
-   la clé suivante. Un timeout/5xx ambigu conserve la réservation en `uncertain`
-   et exige une réconciliation en lecture seule : ne pas créer une autre ligne.
-8. `deliverSource` doit réutiliser le canal source existant, être idempotent,
-   conserver le libellé public et reprendre une livraison interrompue avec
-   **la même ligne**, sans aucune nouvelle création fournisseur. Ce raccordement
-   est indispensable pour les états `created`/`delivery_pending`.
-9. Router `/api/gold-trial` et `/api/v1/device/trial` vers ce même handler AVANT
-   l'ancien routeur ; conserver toutes les autres routes du module.
-   Poser les en-têtes CORS de production, dont `X-Device-Secret`.
-10. Reporter les routes `/api/v1/gold/trial-control` et `/history` sous le contrôle
-    JWT existant. Le patch `api_v1.js` montre l'insertion sans toucher aux autres
-    routes. Conserver `/api/v1/gold/history` et ses activations payantes.
-11. Quand ces contrôles et la recette démo sont terminés, seulement alors déclarer
-    `GOLD_TRIAL_POLICY_READY=true`. Le panel refuse une activation avant cette
-    vérification ; la variable ne déploie et ne raccorde rien toute seule.
+- `gold.js` conserve les fonctions payantes et le hook d'activation de l'export.
+  L'ancienne voie de démo `action=new/sub=99` est fermée, y compris côté admin.
+- `gold_trial_runtime.js` lit `gold_lines`, `gold_history`, `devices`,
+  `trial_anchors`, `licenses` et `device_sources`. L'absence d'historique n'est
+  jamais déduite d'une panne. Les créations anciennes et les demandes ambiguës
+  restent bloquantes, y compris avec une autre MAC mais le même Android ID.
+- `gold_trial_device.js` ajoute `/api/device-proof`, compatible avec les apps.
+  Le secret doit correspondre à une liaison Android/MAC déjà enregistrée ;
+  connaître l'Android ID ne permet pas de remplacer une preuve existante.
+- `gold_trial_delivery.js` chiffre les reçus, réutilise le chiffrement source
+  et les notifications du bundle ; un bail D1 sérialise les reprises. Une liste
+  existante ou une suppression concurrente ne peut pas être écrasée.
+- `/api/gold-trial/delivery` et le polling existant peuvent reprendre une même
+  ligne sans aucun appel fournisseur. Une ancienne ligne doit avoir ses accès
+  et une expiration explicite encore valide, sans réinitialiser ses 24 h.
+- `gold_trial_provider.js` bloque la création tant que le contrat démo réel
+  n'est pas fourni et implémenté. Les tests de création utilisent des fixtures.
+- Appliquer uniquement les deux migrations Gold du 28 octobre, dans l'ordre,
+  sur staging. Ne pas exécuter toutes les anciennes migrations du dépôt.
 
-Le registre MAC et le quota sont arbitrés en une instruction SQL. Les refus et
-les créations gardent date, IP, version, id de ligne et expiration. Les traces
-de débit sont temporaires mais aucune purge automatique n'est introduite :
-prévoir leur rétention séparément sans jamais effacer le registre des essais.
+Le registre MAC/Android et le quota sont arbitrés en une instruction SQL.
+Les refus et créations gardent date, IP, version, id de ligne et expiration.
+Aucune purge des essais permanents n'est introduite.
 
 ## Panel
 
@@ -115,7 +97,7 @@ et un échec est affiché, sans le présenter comme une absence d'essais.
 ## Tests automatiques
 
 ```sh
-node --test android-app/cloudflare/tests/gold_trial_policy.test.mjs
+node --test android-app/cloudflare/tests/gold_trial_policy.test.mjs android-app/cloudflare/tests/gold_trial_runtime.test.mjs
 node --test android-app/admin-panel/src/lib/goldTrial.test.ts
 cd android-app/admin-panel
 npm ci --no-audit --no-fund
