@@ -41,7 +41,7 @@ void main() {
     await panel('/__fixture/register', 'POST', <String, String>{'mac': mac, 'androidId': androidId});
     await DeviceSecret.instance.enroll(mac);
     await PlaylistRepository.instance.initialize();
-    await PlaylistRepository.instance.deleteAllPlaylists();
+    expect(PlaylistRepository.instance.currentChannels, isEmpty, reason: 'émulateur de recette neuf');
     await SubscriptionState.instance.initialize();
     final ticket = await panel('/api/v1/rt/ticket', 'POST', <String, Object>{});
     final WebSocket panelSocket = await WebSocket.connect('ws://127.0.0.1:8787/api/v1/rt/ws?ticket=${ticket['ticket']}');

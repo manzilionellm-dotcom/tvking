@@ -167,7 +167,7 @@ export function createRealtimeRoutes({ original, actorFor }) {
       if (!env.RT_HUB) return json({ error: 'unavailable' }, 503);
       return hub(env, PANEL).fetch(request);
     }
-    if (path === '/api/v1/rt/ticket' || path === '/api/v1/boxes/live') {
+    if (path === '/api/v1/rt/ticket' || path === '/api/v1/boxes/live' || path === '/api/v1/online') {
       const actor = await actorFor(request, env, ctx, ['super_admin', 'admin', 'reseller']);
       if (!actor) return json({ error: 'unauthorized' }, 401);
       if (!env.RT_HUB) return json({ error: 'unavailable' }, 503);
@@ -178,14 +178,16 @@ export function createRealtimeRoutes({ original, actorFor }) {
       }
       if (request.method !== 'GET') return json({ error: 'method' }, 405);
       const args = [], where = [];
-      if (actor.role === 'reseller') { where.push('reseller_id=?'); args.push(id); }
+      if (actor.role === 'reseller') { where.push('d.reseller_id=?'); args.push(id); }
       if (url.searchParams.has('mac')) {
         const mac = macOf(url.searchParams.get('mac'));
         if (!mac) return json({ error: 'bad_mac' }, 400);
-        where.push('mac=?'); args.push(mac);
+        where.push('d.mac=?'); args.push(mac);
       }
-      const devices = await env.DB.prepare(`SELECT id,mac,label,block_status FROM devices
-        ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY last_seen_at DESC LIMIT 500`).bind(...args).all();
+      const devices = await env.DB.prepare(`SELECT d.id,d.mac,d.label,d.block_status,
+        COALESCE(p.country,'') AS country,COALESCE(p.ip,'') AS ip,COALESCE(p.channel,'') AS channel
+        FROM devices d LEFT JOIN admin_presence p ON p.mac=d.mac
+        ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY d.last_seen_at DESC LIMIT 500`).bind(...args).all();
       const items = [];
       // Limiter la concurrence D1/DO tout en répondant aux parcs importants.
       for (let start = 0; start < devices.results.length; start += 20) {
@@ -197,7 +199,18 @@ export function createRealtimeRoutes({ original, actorFor }) {
             last_applied: orders.results.find(o => o.state === 'applied') || null, fleet_pending: [], fleet_last_applied: null };
         })));
       }
-      return json({ now: Date.now(), items });
+      if (path === '/api/v1/online') {
+        const online = items.filter(item => item.online);
+        const byCountry = {};
+        for (const item of online) if (item.country) byCountry[item.country] = (byCountry[item.country] || 0) + 1;
+        const today = await env.DB.prepare(`SELECT COUNT(*) AS n FROM devices d WHERE d.last_seen_at>=?
+          ${actor.role === 'reseller' ? 'AND d.reseller_id=?' : ''}`)
+          .bind(Date.now() - 86400_000, ...(actor.role === 'reseller' ? [id] : [])).first();
+        return json({ onlineCount: online.length, todayCount: today.n, byCountry,
+          items: online.map(item => ({ mac: item.mac, ip: item.ip, country: item.country,
+            channel: item.channel, lastSeen: item.last_seen_at })) });
+      }
+      return json({ now: Date.now(), items: items.map(({ country, ip, channel, ...item }) => item) });
     }
     return null;
   };

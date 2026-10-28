@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
 import { onlineApi, type OnlineSnapshot, flagEmoji, ApiError } from '@/lib/api';
+import { panelConnected, subscribePanel } from '@/lib/panelRealtime';
 
 /// Page « En ligne » (owner) — qui utilise l'app en ce moment, depuis où.
-/// Données issues de la présence (heartbeat) : IP + pays fournis par
-/// Cloudflare. « En ligne » = vu il y a moins de 15 min.
+/// Présence issue des sockets du DO ; IP et pays restent ceux du heartbeat.
 
 function ago(ts: number): string {
   if (!ts) return '—';
@@ -19,23 +19,33 @@ export function OnlinePage({ onLogout }: { onLogout: () => void }) {
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  function load() {
-    onlineApi.get()
-      .then(setData)
-      .catch((e: any) => {
-        if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
-        setErr(e instanceof ApiError ? e.message : 'Erreur réseau.');
-      })
-      .finally(() => setLoading(false));
-  }
-
-  // Rafraîchissement auto toutes les 30 s.
   useEffect(() => {
-    load();
-    const t = setInterval(load, 30000);
-    return () => clearInterval(t);
-    /* eslint-disable-next-line */
-  }, []);
+    let stopped = false, busy = false, again = false;
+    async function load() {
+      if (busy) { again = true; return; }
+      busy = true;
+      try {
+        const snapshot = await onlineApi.get();
+        if (!stopped) { setData(snapshot); setErr(null); }
+      } catch (error) {
+        if (stopped) return;
+        if (error instanceof ApiError && error.status === 401) onLogout();
+        else setErr('Présence momentanément indisponible.');
+      } finally {
+        busy = false;
+        if (!stopped) {
+          setLoading(false);
+          if (again) { again = false; void load(); }
+        }
+      }
+    }
+    const unsubscribe = subscribePanel(event => {
+      if (event.type === 'presence' || event.type === 'connection') void load();
+    });
+    void load();
+    const timer = setInterval(() => { if (!panelConnected()) void load(); }, 5000);
+    return () => { stopped = true; clearInterval(timer); unsubscribe(); };
+  }, [onLogout]);
 
   const byCountry = data
     ? Object.entries(data.byCountry).sort((a, b) => b[1] - a[1])

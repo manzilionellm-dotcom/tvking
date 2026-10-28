@@ -50,6 +50,8 @@ jobs:
             sleep 1
           done
           node tests/activation_browser.cjs
+          VITE_API_BASE=http://127.0.0.1:8787 npm run build
+          node tests/realtime_browser.cjs
       - name: Conserver la capture de recette du panel
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9

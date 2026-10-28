@@ -619,7 +619,7 @@ export default {
     const p=new URL(request.url).pathname;
     const own=p.startsWith('/api/v1/gold/') || p.startsWith('/api/gold-trial') ||
       p==='/api/v1/device/trial' || p==='/api/device-proof' || p==='/api/v1/activation-delivery' ||
-      p.startsWith('/api/v1/rt/') || p==='/api/v1/boxes/live' || p.startsWith('/api/box/');
+      p.startsWith('/api/v1/rt/') || p==='/api/v1/boxes/live' || p==='/api/v1/online' || p.startsWith('/api/box/');
     if (own && request.method==='OPTIONS') return cors(request,env,new Response(null,{status:204}));
     try {
       const realtime = await realtimeRoutes(request, env, ctx);

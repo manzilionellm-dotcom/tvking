@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { ApiError, deliveryApi, type ActivationDelivery } from '@/lib/api';
-import { deliveryConfirmed, deliveryLabel, type DeliveryOrder } from '@/lib/deliveryStatus';
+import { deliveryConfirmed, deliveryLabel, mergeDeliveryOrders, type DeliveryOrder } from '@/lib/deliveryStatus';
 import { subscribePanel } from '@/lib/panelRealtime';
 
 export function ActivationDeliveryStatus({ mac, licenseOrder, sourceOrder, trace, manualSources }: {
@@ -40,7 +40,7 @@ export function ActivationDeliveryStatus({ mac, licenseOrder, sourceOrder, trace
         ]);
         if (closed) return;
         if (receipt.status === 'fulfilled') {
-          setOrders(receipt.value.items);
+          setOrders(previous => mergeDeliveryOrders(previous, receipt.value.items));
           setUnavailable(false);
         } else {
           setUnavailable(true);
@@ -66,7 +66,7 @@ export function ActivationDeliveryStatus({ mac, licenseOrder, sourceOrder, trace
     const unsubscribe = subscribePanel(event => {
       if (event.mac !== mac || event.type !== 'receipt' || !event.order_id || !event.state || !event.kind) return;
       const received = event as DeliveryOrder;
-      setOrders(previous => [...previous.filter(row => row.order_id !== received.order_id), received]);
+      setOrders(previous => mergeDeliveryOrders(previous, [received]));
       setUnavailable(false);
       clearTimeout(timer);
       void poll();

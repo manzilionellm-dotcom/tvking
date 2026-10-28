@@ -7,7 +7,7 @@ import {
   type DeviceLicense, type DevicePresence, type BoxLiveRow, ApiError,
 } from '@/lib/api';
 import { liveSummary } from '@/lib/boxLive';
-import { mergeLiveEvent, panelConnected, subscribePanel } from '@/lib/panelRealtime';
+import { mergeLiveEvent, panelConnected, subscribePanel, type PanelEvent } from '@/lib/panelRealtime';
 import { formatDateTime } from '@/lib/utils';
 
 /// Libellés FR lisibles des plans (clé technique → texte).
@@ -45,19 +45,21 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
   }, [load]);
 
   // Le tableau des MAC ne clignote pas : seule la colonne « Direct »
-  // bouge, toutes les 2,5 s.
+  // bouge à réception des événements, avec un repli HTTP à 5 s.
   useEffect(() => {
     let stop = false;
     let busy = false;
+    let duringRead: PanelEvent[] = [];
     async function tick() {
       if (busy) return;
       busy = true;
+      duringRead = [];
       try {
         const r = await boxesApi.live();
         if (stop) return;
         const next: Record<string, BoxLiveRow> = {};
         for (const item of r.items) next[item.mac] = item;
-        setLive(next);
+        setLive(duringRead.reduce(mergeLiveEvent, next));
       } catch (e) {
         if (e instanceof ApiError && e.status === 401) onLogout();
       } finally {
@@ -66,7 +68,10 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
     }
     const unsubscribe = subscribePanel(event => {
       if (event.type === 'connection' && event.online) void tick();
-      else setLive(previous => mergeLiveEvent(previous, event));
+      else {
+        if (busy) duringRead.push(event);
+        setLive(previous => mergeLiveEvent(previous, event));
+      }
     });
     void tick();
     const id = setInterval(() => { if (!panelConnected()) void tick(); }, 5000);

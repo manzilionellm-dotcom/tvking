@@ -1,7 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { ActivationSession } from './activationSession.ts';
-import { deliveryLabel, resolvePanelApiBase } from './deliveryStatus.ts';
+import { deliveryLabel, mergeDeliveryOrders, resolvePanelApiBase } from './deliveryStatus.ts';
+
+test('un ancien polling ne remplace pas un accusé APPLIED reçu par WebSocket', () => {
+  const applied = { order_id: 'ord_live123', kind: 'source', state: 'applied', config_rev: 8, applied_rev: 8 };
+  const merged = mergeDeliveryOrders([applied], [{ ...applied, state: 'sent', applied_rev: null }]);
+  assert.equal(merged[0].state, 'applied');
+  assert.equal(merged[0].applied_rev, 8);
+  assert.equal(mergeDeliveryOrders([{ ...applied, state: 'expired' }], [applied])[0].state, 'applied');
+});
 
 test('Vercel sans variable vise le Worker ; le proxy Vite et la surcharge restent possibles', () => {
   assert.equal(resolvePanelApiBase(undefined, true), 'https://api.zuno8k.com');

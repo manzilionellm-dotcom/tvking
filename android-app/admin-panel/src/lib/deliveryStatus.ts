@@ -14,6 +14,16 @@ export function deliveryConfirmed(order?: DeliveryOrder): boolean {
   return order?.state === 'applied' && (order.config_rev == null ||
     (order.applied_rev != null && order.applied_rev >= order.config_rev));
 }
+// Une lecture HTTP commencée avant un accusé ne doit pas faire reculer l'UI.
+export function mergeDeliveryOrders(previous: DeliveryOrder[], incoming: DeliveryOrder[]): DeliveryOrder[] {
+  const rank: Record<string, number> = { queued: 0, sent: 1, received: 2, expired: 2, failed: 3, applied: 4 };
+  const rows = new Map(previous.map(row => [row.order_id, row]));
+  for (const row of incoming) {
+    const old = rows.get(row.order_id);
+    if (!old || (rank[row.state] ?? 0) >= (rank[old.state] ?? 0)) rows.set(row.order_id, { ...old, ...row });
+  }
+  return [...rows.values()];
+}
 export function deliveryLabel(order?: DeliveryOrder): string {
   if (!order) return 'En attente de confirmation';
   if (order.state === 'applied') {

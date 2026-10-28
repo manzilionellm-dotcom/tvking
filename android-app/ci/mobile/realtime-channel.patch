@@ -1,8 +1,49 @@
 diff --git a/lib/core/app/panel_live_wait.dart b/lib/core/app/panel_live_wait.dart
-index 1802a7f..ecd4d88 100644
+index 1802a7f..2c5cb4a 100644
 --- a/lib/core/app/panel_live_wait.dart
 +++ b/lib/core/app/panel_live_wait.dart
-@@ -40,10 +40,11 @@ import 'package:package_info_plus/package_info_plus.dart';
+@@ -1,35 +1,10 @@
+-// =========================================================
+-//  panel_live_wait.dart — le panel joint le téléphone À L'INSTANT
+-// =========================================================
+-//  POURQUOI CE FICHIER EXISTE (06/10/2026).
+-//
+-//  Mesuré par le propriétaire sur son téléphone (MK:30:70:0E:D7:5B) :
+-//  « Effacer les listes » dans le panel → le serveur ne sert plus aucune
+-//  liste (0/3), mais le téléphone garde ses listes. Ajouter une liste →
+-//  « Pas encore de chaînes ». Le téléphone ne lisait le panel qu'à
+-//  l'ouverture, au réveil (foreground_sync.dart) et toutes les 60 s :
+-//  rien n'était instantané.
+-//
+-//  La box, elle, écoute le serveur en direct. Ici, le même canal en sa
+-//  forme la plus simple : l'ATTENTE LONGUE du Worker
+-//    GET /api/box/wait/<MAC>?after=<dernier numéro>&timeout=25000
+-//  Le serveur garde la requête ouverte jusqu'à 25 s et répond DÈS qu'un
+-//  ordre part pour cette MAC (liste ajoutée, retirée, éteinte, effacée,
+-//  activation…). Le téléphone relit alors ses listes et sa licence tout
+-//  de suite, par le chemin habituel (RemoteSourceRepository.sync, qui
+-//  porte aussi les ordres et l'effacement du panel).
+-//
+-//  Règles :
+-//    • seulement app au premier plan (batterie, données) ;
+-//    • une seule relecture à la fois ; un ordre qui arrive pendant une
+-//      relecture en relance UNE après (rien n'est perdu, pas de rafale) ;
+-//    • serveur sans canal (404) → on s'arrête, le minuteur de 60 s reste ;
+-//    • panne réseau → réessai après 2, 4, 8… 30 s ;
+-//    • aucun secret dans la requête ni dans le journal (MAC + numéro).
+-//  Repli : préférence `zuno.mobile.live_wait_off` = vrai → pas d'écoute.
+-// =========================================================
++// Synchronisation du téléphone : le WebSocket authentifié de RealtimeSyncService
++// et le repli HTTP partagent la même file d'ordres et le même curseur par MAC.
++// Une coupure déclenche une interrogation toutes les 5 s. L'ordre reste
++// rejouable tant que l'état local ET son accusé ne sont pas confirmés.
++// Aucun secret ni identifiant fournisseur dans les trames ou les journaux.
+ import 'dart:async';
+ import 'dart:convert';
+
+ import 'package:flutter/foundation.dart';
+ import 'package:flutter/widgets.dart';
+@@ -40,10 +15,11 @@ import 'package:package_info_plus/package_info_plus.dart';
  import '../../features/device/data/device_identity.dart';
  import '../../features/device/data/device_secret.dart';
  import '../../features/playlists/data/remote_source_repository.dart';
@@ -14,7 +55,7 @@ index 1802a7f..ecd4d88 100644
  const String kLiveWaitOffKey = 'zuno.mobile.live_wait_off';
 
  /// Préfixe du dernier numéro d'ordre traité, propre à CHAQUE MAC.
-@@ -87,11 +88,11 @@ LiveWaitStep readLiveWait(Object? body, int cursor) {
+@@ -87,11 +63,11 @@ LiveWaitStep readLiveWait(Object? body, int cursor) {
  }
 
  /// Délai avant de réessayer après [failures] échecs d'affilée.
@@ -27,7 +68,25 @@ index 1802a7f..ecd4d88 100644
 
  class PanelLiveWait with WidgetsBindingObserver {
    PanelLiveWait._();
-@@ -121,10 +122,45 @@ class PanelLiveWait with WidgetsBindingObserver {
+@@ -105,10 +81,17 @@ class PanelLiveWait with WidgetsBindingObserver {
+
+   static Future<void> _defaultOnChange() async {
+     if (!await SubscriptionState.instance.refreshAfterPanel()) {
+       throw StateError('statut non confirmé après l’ordre');
+     }
++    // Une suspension réussie ferme volontairement la lecture des sources.
++    // Elle doit être accusée après le verrouillage local, sans lire des codes
++    // désormais interdits. Un ordre de liste attendra un accès rétabli.
++    if (SubscriptionState.instance.remote.shouldBlock) {
++      RemoteSourceRepository.lastConfigRev = null;
++      return;
++    }
+     final RemoteSyncResult result = await RemoteSourceRepository.sync();
+     // sync() rend un résultat, elle ne lève pas en cas de panne. Sans
+     // ce contrôle, une suppression reçue pendant une coupure réseau
+     // était marquée « traitée » avant d'avoir été appliquée localement.
+     if (result == RemoteSyncResult.networkError ||
+@@ -121,10 +104,45 @@ class PanelLiveWait with WidgetsBindingObserver {
 
    bool _installed = false;
    bool _running = false;
@@ -73,7 +132,7 @@ index 1802a7f..ecd4d88 100644
    bool _again = false;
 
    /// Accusé du protocole réellement déployé (box_orders), sans identifiants
-@@ -170,11 +206,15 @@ class PanelLiveWait with WidgetsBindingObserver {
+@@ -170,11 +188,19 @@ class PanelLiveWait with WidgetsBindingObserver {
            'received_at': received, 'app_version': version,
          },
        ]));
@@ -82,6 +141,10 @@ index 1802a7f..ecd4d88 100644
 -      await trigger();
 +      final List<dynamic> commands = body is Map && body['box'] is List ? body['box'] as List<dynamic> : <dynamic>[];
 +      if (commands.any((dynamic item) => item is Map && item['kind'] != 'message')) await trigger();
++      if (tracked.any((item) => <String>{'source', 'source_clear', 'reset'}.contains(item['kind'])) &&
++          RemoteSourceRepository.lastConfigRev == null) {
++        throw StateError('révision des listes non appliquée');
++      }
 +      if (commands.any((dynamic item) => item is Map && item['kind'] == 'message')) {
 +        await AnnouncementRepository.refreshFromPanel();
 +      }
@@ -90,7 +153,7 @@ index 1802a7f..ecd4d88 100644
          for (final item in tracked) <String, Object?>{
            'order_id': item['order_id'], 'state': 'applied',
            'received_at': received, 'applied_at': DateTime.now().millisecondsSinceEpoch,
-@@ -213,10 +253,11 @@ class PanelLiveWait with WidgetsBindingObserver {
+@@ -213,10 +239,11 @@ class PanelLiveWait with WidgetsBindingObserver {
      }
    }
 
@@ -102,7 +165,7 @@ index 1802a7f..ecd4d88 100644
      unawaited(_loop(gen));
    }
 
-@@ -255,80 +296,43 @@ class PanelLiveWait with WidgetsBindingObserver {
+@@ -255,80 +282,43 @@ class PanelLiveWait with WidgetsBindingObserver {
        _syncing = null;
      }
    }
@@ -215,9 +278,35 @@ index 1802a7f..ecd4d88 100644
    }
  }
 diff --git a/lib/core/realtime/realtime_sync_service.dart b/lib/core/realtime/realtime_sync_service.dart
-index 8b5cec4..4a695a5 100644
+index 8b5cec4..025f7d7 100644
 --- a/lib/core/realtime/realtime_sync_service.dart
 +++ b/lib/core/realtime/realtime_sync_service.dart
+@@ -4,11 +4,11 @@
+ //  Couche WebSocket « en plus » du polling existant (heartbeat 6 h,
+ //  sync sources 5 min) — JAMAIS « à la place ». Voir le contrat
+ //  complet : docs/REALTIME-PROTOCOL.md (§3 et §6).
+ //
+ //  Rôle :
+-//    1. Ouvrir un WebSocket vers le backend (`/api/rt/device`) avec le
++//    1. Ouvrir un WebSocket vers le backend (`/api/box/ws`) avec le
+ //       MAC virtuel de l'appareil — le panel voit alors l'appareil
+ //       « en ligne » en direct.
+ //    2. Recevoir les ordres `sync` (status / sources / config / all) et
+ //       relancer les fetchs HTTP EXISTANTS correspondants (aucune
+ //       nouvelle route, aucun credential ne transite sur le socket).
+@@ -18,11 +18,11 @@
+ //
+ //  FAIL-OPEN ABSOLU : si le WebSocket est indisponible (binding pas
+ //  déployé, réseau KO, plateforme sans dart:io…), l'app se comporte
+ //  exactement comme avant. Aucune exception ne sort de ce service.
+ //
+-//  Reconnexion : backoff 5 → 10 → 30 → 60 → 120 s (plafond), jitter
++//  Reconnexion : backoff 1 → 2 → 4 → 8 → 16 → 30 s (plafond), jitter
+ //  ±20 %, remise à zéro après 60 s de connexion stable. Sur
+ //  `bye{reason:'replaced'}` (un autre appareil a pris le même MAC),
+ //  on attend directement le backoff MAXIMUM pour ne pas se battre.
+ //
+ //  Aucune nouvelle dépendance : WebSocket de `dart:io` (l'app cible
 @@ -53,10 +53,12 @@ import '../../features/simple_home/data/announcement_repository.dart';
  import '../../features/simple_home/data/home_layout_repository.dart';
  import '../../features/subscription/data/now_playing.dart';
@@ -231,7 +320,7 @@ index 8b5cec4..4a695a5 100644
  import '../profiles/remote_profiles_repository.dart';
  import '../theme/accent_controller.dart';
  import 'device_message_repository.dart';
-@@ -267,11 +269,11 @@ class RealtimeSyncService extends ChangeNotifier with WidgetsBindingObserver {
+@@ -267,14 +269,14 @@ class RealtimeSyncService extends ChangeNotifier with WidgetsBindingObserver {
    // ============================================================
    //  Backoff — exposé en statique PUR pour être testable.
    // ============================================================
@@ -241,9 +330,13 @@ index 8b5cec4..4a695a5 100644
 +  static const List<int> kBackoffSeconds = <int>[1, 2, 4, 8, 16, 30];
 
    /// Durée de connexion au-delà de laquelle on considère la liaison
-   /// « stable » → le prochain incident repart au 1er palier (5 s).
+-  /// « stable » → le prochain incident repart au 1er palier (5 s).
++  /// « stable » → le prochain incident repart au 1er palier (1 s).
    static const Duration kStableAfter = Duration(seconds: 60);
 
+   /// « Activation express » — filet UNIVERSEL (téléphone + tablette + TV)
+   /// qui rend l'activation quasi instantanée MÊME si le WebSocket n'est
+   /// pas disponible (Doze tablette, binding absent, hub occupé).
 @@ -313,11 +315,11 @@ class RealtimeSyncService extends ChangeNotifier with WidgetsBindingObserver {
          : (attempt >= kBackoffSeconds.length
              ? kBackoffSeconds.length - 1
@@ -312,7 +405,7 @@ index 8b5cec4..4a695a5 100644
          onTimeout: () {
            unawaited(pending
                .then((WebSocket late) => late.close(1000, 'connect timeout'))
-@@ -549,10 +556,12 @@ class RealtimeSyncService extends ChangeNotifier with WidgetsBindingObserver {
+@@ -549,16 +556,18 @@ class RealtimeSyncService extends ChangeNotifier with WidgetsBindingObserver {
            throw TimeoutException('connexion WebSocket > 10 s');
          },
        );
@@ -325,6 +418,13 @@ index 8b5cec4..4a695a5 100644
        if (kDebugMode) debugPrint('[Realtime] connecté ($_platform)');
 
        // Après 60 s sans incident, la liaison est jugée stable → le
+-      // prochain souci repartira au 1er palier (5 s).
++      // prochain souci repartira au 1er palier (1 s).
+       _stableTimer?.cancel();
+       _stableTimer = Timer(kStableAfter, () => _attempt = 0);
+
+       // 1re frame obligatoire : `hello` (contrat §3).
+       _sendJson(<String, Object?>{
 @@ -602,10 +611,11 @@ class RealtimeSyncService extends ChangeNotifier with WidgetsBindingObserver {
      _socket = null;
      _stopTimers();
@@ -337,13 +437,16 @@ index 8b5cec4..4a695a5 100644
      if (kDebugMode) debugPrint('[Realtime] déconnecté');
      _scheduleReconnect();
    }
-@@ -633,13 +643,13 @@ class RealtimeSyncService extends ChangeNotifier with WidgetsBindingObserver {
+@@ -631,15 +641,14 @@ class RealtimeSyncService extends ChangeNotifier with WidgetsBindingObserver {
+   //  Timers keepalive + « watching »
+   // ============================================================
 
    void _startTimers() {
      _stopTimers();
-     // Keepalive : frame TEXTE littérale 'ping' toutes les 45 s. Le hub
-     // répond 'pong' sans même se réveiller (setWebSocketAutoResponse).
+-    // Keepalive : frame TEXTE littérale 'ping' toutes les 45 s. Le hub
+-    // répond 'pong' sans même se réveiller (setWebSocketAutoResponse).
 -    _pingTimer = Timer.periodic(const Duration(seconds: 45), (_) {
++    // Battement applicatif toutes les 10 s ; le DO renouvelle la présence.
 +    _pingTimer = Timer.periodic(const Duration(seconds: 10), (_) {
        try {
 -        _socket?.add('ping');
@@ -353,7 +456,7 @@ index 8b5cec4..4a695a5 100644
        }
      });
      // NowPlaying n'est PAS observable (simple porte-état, pas de
-@@ -688,10 +698,20 @@ class RealtimeSyncService extends ChangeNotifier with WidgetsBindingObserver {
+@@ -688,10 +697,20 @@ class RealtimeSyncService extends ChangeNotifier with WidgetsBindingObserver {
 
    void _onFrame(dynamic data) {
      try {
@@ -472,7 +575,7 @@ index 29bcd16..4b1b82f 100644
        if (_announcement != null) setState(() => _announcement = null);
        return;
 diff --git a/test/core/app/panel_live_wait_test.dart b/test/core/app/panel_live_wait_test.dart
-index 45c2430..9a36ecf 100644
+index 45c2430..12b512e 100644
 --- a/test/core/app/panel_live_wait_test.dart
 +++ b/test/core/app/panel_live_wait_test.dart
 @@ -51,14 +51,14 @@ void main() {
@@ -493,7 +596,7 @@ index 45c2430..9a36ecf 100644
    });
 
    group('boucle réelle', () {
-@@ -137,13 +137,13 @@ void main() {
+@@ -137,13 +137,14 @@ void main() {
          return http.Response('{"box":[{"id":12,"kind":"activate","order_id":"ord_fixture1234"}]}',200);
        });
        w.start();
@@ -501,6 +604,7 @@ index 45c2430..9a36ecf 100644
        expect((await SharedPreferences.getInstance()).getInt(_cursorKey('MK:30:70:0E:D7:5B')),isNull);
 -      await completed.future.timeout(const Duration(seconds:4));
 +      await completed.future.timeout(const Duration(seconds:12));
++      await Future<void>.delayed(const Duration(milliseconds: 50));
        expect(cursors,<String>['0','0','12']);
 -      expect(syncs,2);
 +      expect(syncs,3);
@@ -509,7 +613,7 @@ index 45c2430..9a36ecf 100644
      test('« Effacer les listes » au panel → relecture immédiate, pas au bout de 60 s', () async {
        final Completer<void> panelClick = Completer<void>();
        int calls = 0;
-@@ -236,13 +236,13 @@ void main() {
+@@ -236,13 +237,13 @@ void main() {
          expect(
            prefs.getInt(_cursorKey('MK:30:70:0E:D7:5B')),
            isNull,
@@ -525,7 +629,7 @@ index 45c2430..9a36ecf 100644
        },
      );
 
-@@ -274,17 +274,17 @@ void main() {
+@@ -274,17 +275,18 @@ void main() {
            secondIdentitySeen.complete();
            return http.Response('{}', 404);
          });
@@ -533,6 +637,7 @@ index 45c2430..9a36ecf 100644
          w.start();
 -        await secondIdentitySeen.future.timeout(const Duration(seconds: 1));
 +        await secondIdentitySeen.future.timeout(const Duration(seconds: 12));
++        await Future<void>.delayed(const Duration(milliseconds: 50));
          expect(requests, <String>[
            '/api/box/wait/$firstMac?after=500',
            '/api/box/wait/$nextMac?after=0',
@@ -545,7 +650,7 @@ index 45c2430..9a36ecf 100644
        },
      );
 
-@@ -311,21 +311,21 @@ void main() {
+@@ -311,21 +313,21 @@ void main() {
          isNull,
        );
      });

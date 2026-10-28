@@ -8,7 +8,7 @@
 //  la lecture courte.
 //
 //  Reconnexion : 1 s, 2 s, 4 s… plafonné à 30 s.
-//  Un « hello » toutes les 25 s garde le chemin ouvert.
+//  Un « hello » toutes les 10 s garde le chemin ouvert.
 //  Aucun mot de passe n'est écrit dans l'adresse ni dans hello.
 // =========================================================
 
