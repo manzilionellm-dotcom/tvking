@@ -51,6 +51,7 @@ class TvDimens {
   static const double body = 18;
   static const double label = 16;
   static const double caption = 14;
+  static const double icon = 24;
 
   // --- Rayons / élévations ---
   static const double cardRadius = 12;

@@ -121,6 +121,19 @@ jobs:
         flutter test test/features/subscription --reporter expanded
 
         '
+    - name: Vérifier le bouton TV et les calculs de l’accueil
+      run: >-
+        flutter test test/features/tv/home_performance_test.dart
+        test/features/tv/tv_gold_trial_card_test.dart
+        --dart-define=ZUNO_CAPTURE_REVIEW=true --reporter expanded
+    - name: Conserver les rendus du composant TV
+      if: always()
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      with:
+        name: zuno-trial-ui-${{ env.SOURCE_SHA }}
+        path: android-app/build/zuno-trial-review/*.png
+        if-no-files-found: warn
+        retention-days: 14
     - name: Construire le binaire de revue
       run: 'set -euo pipefail
 

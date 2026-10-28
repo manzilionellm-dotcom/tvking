@@ -94,6 +94,17 @@ class HomeShelfModel {
 Map<String, Channel> indexChannelsById(List<Channel> channels) =>
     <String, Channel>{for (final Channel c in channels) c.id: c};
 
+/// L'index appartient au snapshot reçu du dépôt. On le construit seulement
+/// au premier besoin, puis les favoris, rappels et émissions le partagent.
+/// Le prochain événement du dépôt crée un nouveau snapshot, même si les
+/// identifiants sont inchangés : les URL et métadonnées peuvent avoir changé.
+class HomeChannelSnapshot {
+  HomeChannelSnapshot(this.channels);
+
+  final List<Channel> channels;
+  late final Map<String, Channel> byId = indexChannelsById(channels);
+}
+
 /// Chaînes dans l'ordre des [ids] (historique, tendances…). Les ids
 /// inconnus sont ignorés : la playlist a pu changer depuis.
 List<Channel> channelsInIdOrder(

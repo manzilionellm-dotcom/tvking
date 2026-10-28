@@ -29,7 +29,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../../subscription/data/gold_trial_controller.dart';
-import '../../subscription/presentation/gold_trial_card.dart';
+import 'tv_gold_trial_card.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart' show DateFormat;
 
@@ -77,12 +77,15 @@ import '../../time_picks/data/time_pick_log.dart';
 import '../../subscription/data/remote_activation_watch.dart';
 import '../../subscription/data/subscription_state.dart';
 import '../core/resume_zap.dart';
+import '../core/tv_activity.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_content_refresh.dart';
 import '../core/tv_tokens.dart';
 import '../data/greeting_repository.dart';
 import '../data/home_shelves.dart';
+import '../data/home_source_label.dart';
+import '../data/home_work_queue.dart';
 import '../data/startup_preference.dart';
 import '../../voice/presentation/voice_navigation.dart';
 import 'tv_app.dart';
@@ -108,7 +111,13 @@ class TvHubScreen extends StatefulWidget {
   State<TvHubScreen> createState() => _TvHubScreenState();
 }
 
-class _TvHubScreenState extends State<TvHubScreen> {
+class _TvHubScreenState extends State<TvHubScreen> with WidgetsBindingObserver {
+  final HomeWorkQueue _work = HomeWorkQueue(onError: (_, _) {
+    BlackBox.instance.info('ACCUEIL', 'Actualisation différée indisponible');
+  });
+  bool _routeCurrent = true;
+  bool _appResumed = true;
+  bool get _homeVisible => _routeCurrent && _appResumed && !TvActivity.isBusy;
   late final GoldTrialController _goldTrial;
   // Barre du haut : heure/date (tick 20 s) + réseau.
   Timer? _clock;
@@ -154,7 +163,8 @@ class _TvHubScreenState extends State<TvHubScreen> {
   // ----- Rangées « pour revenir » (voir home_shelves.dart) -----
   // On ne recalcule pas dans build() : un import de playlist peut émettre
   // souvent, et on ne veut qu'UN assemblage après une courte pause.
-  List<Channel> _channels = const <Channel>[];
+  HomeChannelSnapshot _catalog = HomeChannelSnapshot(const <Channel>[]);
+  List<Channel> get _channels => _catalog.channels;
   Set<String> _favIds = <String>{};
   List<String> _recentIds = const <String>[];
   List<String> _trending = const <String>[];
@@ -185,7 +195,6 @@ class _TvHubScreenState extends State<TvHubScreen> {
   // annuler la réponse en vol du favori du jour (et inversement).
   int _featuredGen = 0;
   int _promoGen = 0;
-  Timer? _panelDebounce;
   bool _noticeOn = true;
   bool _featuredOn = true;
   bool _promoOn = true;
@@ -199,8 +208,6 @@ class _TvHubScreenState extends State<TvHubScreen> {
   // la dernière chaîne par-dessus.
   bool _deferredLiveOpen = false;
   int _popularGen = 0;
-  Timer? _shelfDebounce;
-  Timer? _popularDebounce;
   StreamSubscription<Set<String>>? _favSub;
   StreamSubscription<List<String>>? _trendSub;
   StreamSubscription<List<String>>? _recentSub;
@@ -208,10 +215,14 @@ class _TvHubScreenState extends State<TvHubScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    TvActivity.addListener(_syncVisibility);
+    _appResumed = WidgetsBinding.instance.lifecycleState == null ||
+        WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
     _goldTrial = widget.trialController ?? GoldTrialController();
     if (widget.trialController == null) _goldTrial.initialize();
     _clock = Timer.periodic(const Duration(seconds: 20), (_) {
-      if (!mounted) return;
+      if (!mounted || !_homeVisible) return;
       _now = DateTime.now();
       // Le texte « dans 4 minutes » se met à jour sans relire
       // le guide. La lecture du guide, elle, attend une minute.
@@ -244,7 +255,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
     });
     // Ce qu'on a DÉJÀ en mémoire (le boot a chargé la playlist). Les dépôts
     // finissent de s'ouvrir dans _prepareEngagement, sans bloquer le 1er cadre.
-    _channels = PlaylistRepository.instance.currentChannels;
+    _catalog = HomeChannelSnapshot(PlaylistRepository.instance.currentChannels);
     // Déjà des chaînes en mémoire : une source est là, pas de QR.
     // Sinon on lit les playlists (une source peut exister avant
     // que ses chaînes soient chargées).
@@ -278,6 +289,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
     WatchProgressRepository.instance.addListener(_scheduleShelves);
     ProgramReminderRepository.instance.addListener(_scheduleShelves);
     ParentalControls.instance.kidsMode.addListener(_scheduleShelves);
+    ParentalControls.instance.kidsMode.addListener(_schedulePopular);
     TimePickLog.instance.listenable.addListener(_onTimePicks);
     timePicksFlag.changes.addListener(_onTimeFlag);
     FollowedLog.instance.listenable.addListener(_onFollowed);
@@ -291,6 +303,42 @@ class _TvHubScreenState extends State<TvHubScreen> {
     promoBannerFlag.changes.addListener(_onPanelFlags);
     unawaited(_prepareEngagement());
     unawaited(_preparePanelBoard());
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Le Navigator nous prévient aussi au retour d'un écran ou d'un dialogue.
+    _routeCurrent = ModalRoute.of(context)?.isCurrent ?? true;
+    _syncVisibility();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _appResumed = state == AppLifecycleState.resumed;
+    _syncVisibility();
+  }
+
+  void _syncVisibility() {
+    if (!mounted) return;
+    final bool paused = !_homeVisible;
+    final bool wasPaused = _work.paused;
+    _work.paused = paused;
+    if (paused && !wasPaused) {
+      _showGen++;
+      _popularGen++;
+      _featuredGen++;
+      _promoGen++;
+    } else if (!paused && wasPaused) {
+      _now = DateTime.now();
+      _promo = null; // relancer une recherche interrompue en quittant l'accueil
+      // Une seule passe au retour : les événements accumulés sont fusionnés.
+      _scheduleShelves();
+      _schedulePopular();
+      unawaited(_reloadGuide());
+      _work.schedule('featured', _onFeatured);
+      _work.schedule('panel', _replanPanel);
+    }
   }
 
   // ---------------------------------------------------------------------
@@ -365,6 +413,10 @@ class _TvHubScreenState extends State<TvHubScreen> {
   /// (hors fil UI si elle est grosse). Liste changée → on recherche.
   void _onFeatured() {
     if (!mounted) return;
+    if (!_homeVisible) {
+      _work.schedule('featured', _onFeatured);
+      return;
+    }
     final FeaturedRepository f = FeaturedRepository.instance;
     final int gen = ++_featuredGen;
     _featuredNote = f.note;
@@ -385,6 +437,10 @@ class _TvHubScreenState extends State<TvHubScreen> {
   /// qui est à l'écran (pas si l'émission suivie passe devant).
   void _replanPanel() {
     if (!mounted) return;
+    if (!_homeVisible) {
+      _work.schedule('panel', _replanPanel);
+      return;
+    }
     final int nowMs = _now.millisecondsSinceEpoch;
     final PromoBannerRepository repo = PromoBannerRepository.instance;
     final List<PromoBanner> eligible = _promoOn
@@ -512,14 +568,15 @@ class _TvHubScreenState extends State<TvHubScreen> {
       _hasLocalSource = null;
       unawaited(_lookForLocalSource());
     }
-    _channels = channels;
+    _catalog = HomeChannelSnapshot(channels);
+    _showGen++; // un ancien guide ne doit pas repeupler la nouvelle liste
+    unawaited(_reloadGuide());
     _scheduleShelves();
     _schedulePopular();
     // Le favori du jour et la chaîne d'une bannière se cherchent par nom
     // dans la liste : liste changée, on recherche — après une courte
     // pause, car un import émet souvent (même idée que _scheduleShelves).
-    _panelDebounce?.cancel();
-    _panelDebounce = Timer(const Duration(milliseconds: 400), () {
+    _work.schedule('panelChannels', () {
       if (!mounted) return;
       _onFeatured();
       final PromoBanner? promo = _promo;
@@ -527,7 +584,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
         _promo = null;
         _replanPanel();
       }
-    });
+    }, delay: const Duration(milliseconds: 400));
     _onChange();
     if (!firstArrival || _autoOpened || !mounted) return;
     final ModalRoute<Object?>? route = ModalRoute.of(context);
@@ -664,26 +721,25 @@ class _TvHubScreenState extends State<TvHubScreen> {
   }
 
   void _scheduleShelves() {
-    _shelfDebounce?.cancel();
-    _shelfDebounce = Timer(const Duration(milliseconds: 150), () {
-      if (!mounted) return;
-      _rebuildShelves();
-      _schedulePopular();
-    });
+    _work.schedule('shelves', () {
+      if (mounted) _rebuildShelves();
+    }, delay: const Duration(milliseconds: 150));
   }
 
   void _schedulePopular() {
-    _popularDebounce?.cancel();
-    _popularDebounce = Timer(const Duration(milliseconds: 400), () {
-      if (mounted) unawaited(_refreshPopular());
-    });
+    _work.schedule('popular', _refreshPopular,
+        delay: const Duration(milliseconds: 400));
   }
 
   /// Assemble les rangées à partir des listes déjà en mémoire.
   /// [notify] à false pendant initState / avant le premier cadre.
   void _rebuildShelves({bool notify = true}) {
+    if (notify && !_homeVisible) {
+      _scheduleShelves();
+      return;
+    }
     final bool kids = ParentalControls.instance.kidsMode.value;
-    final Map<String, Channel> byId = indexChannelsById(_channels);
+    final Map<String, Channel> byId = _catalog.byId;
     bool hide(Channel c) => hiddenForKids(c);
     final bool Function(Channel)? kidsHide = kids ? hide : null;
     final int now = DateTime.now().millisecondsSinceEpoch;
@@ -763,7 +819,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
       channels: _channels,
       kidsMode: kids,
     );
-    if (!mounted || gen != _popularGen) return;
+    if (!mounted || !_homeVisible || gen != _popularGen) return;
     _popularIds = ids;
     _rebuildShelves();
   }
@@ -779,6 +835,10 @@ class _TvHubScreenState extends State<TvHubScreen> {
   /// (une épingle ne doit pas attendre une minute).
   void _onFollowed() {
     if (!mounted) return;
+    if (!_homeVisible) {
+      _work.schedule('followed', _onFollowed);
+      return;
+    }
     final Set<String> keys = followedKeys(FollowedLog.instance.book, _favIds);
     final bool changed =
         keys.length != _followedNow.length || !keys.containsAll(_followedNow);
@@ -840,7 +900,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
 
   bool _rewindReady(ShowCue? cue) {
     if (cue == null || !cue.canRewind) return false;
-    final Channel? channel = indexChannelsById(_channels)[cue.channelId];
+    final Channel? channel = _catalog.byId[cue.channelId];
     if (channel == null) return false;
     final String? url = CatchupUrlBuilder.build(
       channel: channel,
@@ -858,6 +918,12 @@ class _TvHubScreenState extends State<TvHubScreen> {
   /// s'il y a déjà une émission suivie. Guide vide ou base
   /// en erreur : liste vide, l'accueil continue.
   Future<void> _reloadGuide() async {
+    _work.schedule('guide', _loadGuide,
+        delay: const Duration(milliseconds: 400));
+  }
+
+  Future<void> _loadGuide() async {
+    if (!mounted || !_homeVisible) return;
     final int gen = ++_showGen;
     try {
       await followedFlag.load();
@@ -872,7 +938,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
         return;
       }
       await FollowedLog.instance.reload();
-      if (gen != _showGen || !mounted) return;
+      if (gen != _showGen || !mounted || !_homeVisible) return;
       final Set<String> keys = followedKeys(FollowedLog.instance.book, _favIds);
       if (keys.isEmpty) {
         _guide = const <GuideSlot>[];
@@ -907,14 +973,14 @@ class _TvHubScreenState extends State<TvHubScreen> {
         FollowedLog.instance.book,
         _favIds,
       )) {
-        if (gen != _showGen) return;
+        if (gen != _showGen || !mounted || !_homeVisible) return;
         try {
           take(await EpgRepository.instance.programsBetween(id, from, to));
         } catch (_) {}
       }
-      if (gen != _showGen || !mounted) return;
+      if (gen != _showGen || !mounted || !_homeVisible) return;
       final bool kids = ParentalControls.instance.kidsMode.value;
-      final Map<String, Channel> byId = indexChannelsById(_channels);
+      final Map<String, Channel> byId = _catalog.byId;
       final List<GuideSlot> slots = <GuideSlot>[];
       for (final EpgProgram program in found) {
         final Channel? channel = byId[program.channelId];
@@ -943,7 +1009,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
       _replanShows();
       if (mounted) setState(() {});
     } catch (_) {
-      if (gen != _showGen || !mounted) return;
+      if (gen != _showGen || !mounted || !_homeVisible) return;
       _guide = const <GuideSlot>[];
       _replanShows();
       setState(() {});
@@ -951,7 +1017,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
   }
 
   void _openShow(ShowCue cue, {bool fromStart = false, bool replay = false}) {
-    final Map<String, Channel> byId = indexChannelsById(_channels);
+    final Map<String, Channel> byId = _catalog.byId;
     final String id = replay
         ? (cue.replayChannelId ?? cue.channelId)
         : cue.channelId;
@@ -1009,7 +1075,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
   /// Un rappel ouvre la CHAÎNE (on ne peut pas jouer une émission future).
   /// Le zap Haut/Bas reste sur les chaînes des rappels affichés.
   void _playReminder(ProgramReminder reminder) {
-    final Map<String, Channel> byId = indexChannelsById(_channels);
+    final Map<String, Channel> byId = _catalog.byId;
     final Channel? target = byId[reminder.channelId];
     if (target == null) return;
     final List<Channel> shelf = <Channel>[
@@ -1076,12 +1142,13 @@ class _TvHubScreenState extends State<TvHubScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    TvActivity.removeListener(_syncVisibility);
+    _work.dispose();
     if (widget.trialController == null) _goldTrial.dispose();
     _clock?.cancel();
     _connSub?.cancel();
     _srcSub?.cancel();
-    _shelfDebounce?.cancel();
-    _popularDebounce?.cancel();
     _favSub?.cancel();
     _trendSub?.cancel();
     _recentSub?.cancel();
@@ -1091,13 +1158,13 @@ class _TvHubScreenState extends State<TvHubScreen> {
     WatchProgressRepository.instance.removeListener(_scheduleShelves);
     ProgramReminderRepository.instance.removeListener(_scheduleShelves);
     ParentalControls.instance.kidsMode.removeListener(_scheduleShelves);
+    ParentalControls.instance.kidsMode.removeListener(_schedulePopular);
     TimePickLog.instance.listenable.removeListener(_onTimePicks);
     timePicksFlag.changes.removeListener(_onTimeFlag);
     FollowedLog.instance.listenable.removeListener(_onFollowed);
     followedFlag.changes.removeListener(_onFollowedFlag);
     _featuredGen++;
     _promoGen++;
-    _panelDebounce?.cancel();
     AnnouncementRepository.latest.removeListener(_onNotice);
     FeaturedRepository.instance.removeListener(_onFeatured);
     PromoBannerRepository.instance.removeListener(_replanPanel);
@@ -1149,23 +1216,8 @@ class _TvHubScreenState extends State<TvHubScreen> {
     }
   }
 
-  String get _activeSource {
-    try {
-      final List<Playlist> all = PlaylistRepository.instance.currentPlaylists;
-      if (all.isEmpty) return '';
-      final Playlist p = all.firstWhere(
-        (Playlist x) => x.isActive,
-        orElse: () => all.first,
-      );
-      final String user = (p.xtreamUsername ?? '').trim();
-      final String one = user.isEmpty ? p.name : '$user · ${p.name}';
-      // Mode fusion (TV) : toutes les listes sont affichées ensemble → on
-      // l'indique sobrement (« … +2 ») sans changer la mise en page.
-      return all.length > 1 ? '$one +${all.length - 1}' : one;
-    } catch (_) {
-      return '';
-    }
-  }
+  String get _activeSource =>
+      homeSourceLabel(PlaylistRepository.instance.currentPlaylists);
 
   void _openTile(_Tile t) {
     Widget page;
@@ -1380,7 +1432,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
                         ),
                       ),
                     ],
-                    GoldTrialCard(controller: _goldTrial),
+                    TvGoldTrialCard(controller: _goldTrial),
                     // ---------- RANGÉES + TUILES ----------
                     // Avec du contenu personnel, les rangées prennent la place et
                     // les tuiles se font plus petites en bas. Sans historique, les

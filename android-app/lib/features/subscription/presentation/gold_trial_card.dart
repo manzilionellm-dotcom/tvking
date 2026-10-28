@@ -7,6 +7,22 @@ import '../../../core/theme/app_text_styles.dart';
 import '../data/gold_trial_backend.dart';
 import '../data/gold_trial_controller.dart';
 
+/// Même texte public sur téléphone et box ; jamais une exception fournisseur.
+String? goldTrialPublicMessage(GoldTrialResult result) => result.message ?? switch (result.outcome) {
+            GoldTrialOutcome.activated => 'Essai activé ✔',
+            GoldTrialOutcome.alreadyUsed =>
+              'Vous avez déjà utilisé votre essai gratuit',
+            GoldTrialOutcome.inProgress =>
+              'Activation en cours, patiente quelques secondes.',
+            GoldTrialOutcome.disabled => 'Les essais sont fermés pour le moment.',
+            GoldTrialOutcome.dailyCap =>
+              "Plus d'essais disponibles aujourd'hui, reviens demain.",
+            GoldTrialOutcome.rateLimited =>
+              'Trop de demandes. Patientez une minute avant de réessayer.',
+            GoldTrialOutcome.error => 'Erreur, réessaie.',
+            _ => null,
+          };
+
 /// Affiche le message public du Worker ; les détails techniques restent
 /// dans le serveur. Les textes locaux couvrent les pannes et anciens serveurs.
 class GoldTrialCard extends StatelessWidget {
@@ -24,20 +40,7 @@ class GoldTrialCard extends StatelessWidget {
           }
           final colors = AppColors.lumiere(context);
           final GoldTrialOutcome outcome = controller.result.outcome;
-          final String? message = controller.result.message ?? switch (outcome) {
-            GoldTrialOutcome.activated => 'Essai activé ✔',
-            GoldTrialOutcome.alreadyUsed =>
-              'Vous avez déjà utilisé votre essai gratuit',
-            GoldTrialOutcome.inProgress =>
-              'Activation en cours, patiente quelques secondes.',
-            GoldTrialOutcome.disabled => 'Les essais sont fermés pour le moment.',
-            GoldTrialOutcome.dailyCap =>
-              "Plus d'essais disponibles aujourd'hui, reviens demain.",
-            GoldTrialOutcome.rateLimited =>
-              'Trop de demandes. Patientez une minute avant de réessayer.',
-            GoldTrialOutcome.error => 'Erreur, réessaie.',
-            _ => null,
-          };
+          final String? message = goldTrialPublicMessage(controller.result);
           final bool showWhatsApp = outcome == GoldTrialOutcome.alreadyUsed ||
               outcome == GoldTrialOutcome.disabled || outcome == GoldTrialOutcome.dailyCap;
           final DateTime? expire = controller.result.expire;

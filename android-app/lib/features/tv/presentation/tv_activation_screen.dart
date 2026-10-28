@@ -8,7 +8,8 @@
 // =========================================================
 import 'package:flutter/material.dart';
 import '../../subscription/data/gold_trial_controller.dart';
-import '../../subscription/presentation/gold_trial_card.dart';
+import 'tv_gold_trial_card.dart';
+import 'tv_activation_frame.dart';
 import 'package:flutter/services.dart';
 
 import '../../device/domain/display_mac.dart';
@@ -43,6 +44,7 @@ class _TvActivationScreenState extends State<TvActivationScreen> {
   void initState() {
     super.initState();
     _goldTrial = widget.trialController ?? GoldTrialController();
+    _goldTrial.addListener(_onSub);
     if (widget.trialController == null) _goldTrial.initialize();
     DeviceIdentity.instance.mac.then((String m) {
       if (mounted) setState(() => _mac = m);
@@ -58,6 +60,7 @@ class _TvActivationScreenState extends State<TvActivationScreen> {
 
   @override
   void dispose() {
+    _goldTrial.removeListener(_onSub);
     if (widget.trialController == null) _goldTrial.dispose();
     SubscriptionState.instance.removeListener(_onSub);
     super.dispose();
@@ -65,9 +68,12 @@ class _TvActivationScreenState extends State<TvActivationScreen> {
 
   Future<void> _check() async {
     setState(() => _busy = true);
-    await SubscriptionState.instance.syncWithBackend();
-    RemoteActivationWatch.instance.nudge();
-    if (mounted) setState(() => _busy = false);
+    try {
+      await SubscriptionState.instance.syncWithBackend();
+      RemoteActivationWatch.instance.nudge();
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   void _copy() {
@@ -84,37 +90,17 @@ class _TvActivationScreenState extends State<TvActivationScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Le design est pensé à une taille FIXE puis MIS À L'ÉCHELLE pour tenir
-    // dans n'importe quel écran TV (720p → 4K, overscan inclus). FittedBox =
-    // jamais de débordement, jamais « trop zoomé ». On neutralise aussi le
-    // textScale système (certaines box TV le poussent à 1.3-1.5).
     return MediaQuery.withNoTextScaling(
-      child: Center(
-        child: FittedBox(
-          fit: BoxFit.contain,
-          child: SizedBox(
-            // Largeurs complètes, textes compris : 540 + 48 + 250 + 40 + 322.
-            // Le FittedBox adapte cet ensemble à la zone sûre de la télévision.
-            width: 1200,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: <Widget>[
-                // ----- Colonne gauche : marque + code + CTA -----
-                SizedBox(width: 540, child: _activationColumn(context)),
-                const SizedBox(width: 48),
-                // ----- Droite : DEUX grands QR (demande du 04/10/2026) -----
-                //  1. WhatsApp du revendeur, code MAC déjà dans le message :
-                //     la personne qui vient d'installer l'app te contacte.
-                //  2. Page « Mon espace » : elle ajoute SA propre liste
-                //     depuis son téléphone (la mention « ne vend aucune
-                //     chaîne » est au-dessus du QR, dans TvOwnSourceQr).
-                TvWhatsAppQr(mac: _mac, size: 210),
-                const SizedBox(width: 40),
-                TvPhoneSourceQr(mac: _mac, qrSize: 210),
-              ],
-            ),
-          ),
+      child: TvActivationFrame(
+        activation: _activationColumn(context),
+        help: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: <Widget>[
+            TvWhatsAppQr(mac: _mac, size: 210),
+            const SizedBox(width: 40),
+            TvPhoneSourceQr(mac: _mac, qrSize: 210),
+          ],
         ),
       ),
     );
@@ -131,8 +117,8 @@ class _TvActivationScreenState extends State<TvActivationScreen> {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
-        const TvLogo(width: 240),
-        GoldTrialCard(controller: _goldTrial),
+        const TvLogo(width: 180),
+        TvGoldTrialCard(controller: _goldTrial, autofocus: true),
         const SizedBox(height: 26),
         Text(
           context.l10n.tvActivationTagline,
@@ -186,7 +172,8 @@ class _TvActivationScreenState extends State<TvActivationScreen> {
 
         TvCtaButton(
           label: _busy ? context.l10n.tvChecking : context.l10n.tvPaidCheck,
-          autofocus: true,
+          autofocus: _goldTrial.ready && !_goldTrial.visible &&
+              !_goldTrial.showConfirmation,
           onSelect: _busy ? null : _check,
         ),
         if (hint != null) ...<Widget>[
