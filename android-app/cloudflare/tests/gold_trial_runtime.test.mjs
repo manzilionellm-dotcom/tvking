@@ -247,6 +247,25 @@ test('panne pendant livraison puis récupération : une seule ligne, même reçu
   assert.equal(f.sql.prepare('SELECT COUNT(*) AS n FROM gold_trial_receipts_v2').get().n,1);
   assert.equal(f.sql.prepare('SELECT delivery_attempts FROM gold_trial_receipts_v2').get().delivery_attempts,2);
 });
+test('panne après publication de source : reprise sans nouvelle révision ni bail bloqué 30 s',async()=>{
+  const f=fixture();await receipt(f);let clock=now(),batches=0;
+  const realBatch=f.db.batch.bind(f.db);
+  f.db.batch=async statements=>{if(++batches===2)throw new Error('temporary receipt write failure');return realBatch(statements);};
+  const delivery=createTrialDelivery(bridge,{now:()=>clock});
+  await assert.rejects(delivery(f.env,f.ctx,mac));
+  assert.equal(f.sql.prepare('SELECT COUNT(*) AS n FROM device_sources').get().n,1);
+  assert.equal(f.sql.prepare('SELECT delivered_at FROM gold_trial_receipts_v2').get().delivered_at,null);
+  clock+=3100;assert.equal(await delivery(f.env,f.ctx,mac),true);
+  assert.equal(f.sql.prepare('SELECT COUNT(*) AS n FROM source_revisions').get().n,1);
+});
+test('notification lente : le reçu et le droit de lecture sont finalisés sans attendre le push',async()=>{
+  const f=fixture();await receipt(f);let release,background;
+  const push=new Promise(r=>{release=r;});
+  const delivery=createTrialDelivery({...bridge,notifyBox:()=>push});
+  assert.equal(await delivery(f.env,{waitUntil(p){background=p;}},mac),true);
+  assert.ok(f.sql.prepare('SELECT delivered_at FROM gold_trial_receipts_v2').get().delivered_at);
+  release();await background;
+});
 test('deux reprises concurrentes : un bail et une seule révision',async()=>{
   const f=fixture();await receipt(f);let release;
   const gate=new Promise(resolve=>{release=resolve;});let entered=false;

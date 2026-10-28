@@ -54,7 +54,7 @@ export function createTrialDelivery({ sealSource, openSourceList, notifyBox }, {
       WHERE mac=? AND delivered_at IS NULL AND lease_until<=?`)
       .bind(at+30_000,token,mac,at).run();
     if (!lease.meta.changes) return false;
-    let delivered = false;
+    let delivered = false, finalized = false, notification = null;
     try {
       const creds = await openTrialReceipt(env,row);
       const source = { type:'xtream',label:row.label,...creds,origin:'panel' };
@@ -79,8 +79,7 @@ export function createTrialDelivery({ sealSource, openSourceList, notifyBox }, {
       if (out[0].meta.changes===1) {
         // Une panne de notification n'annule pas la source : le polling existant
         // la lit immédiatement. Aucun nouvel achat ne répare cette notification.
-        try { await notifyBox(protectedEnv,mac,'source',{ configRev:out[1].results?.[0]?.rev,traceId:`trial:${row.line_id}` }); }
-        catch { /* Livraison par polling. */ }
+        notification = { configRev:out[1].results?.[0]?.rev,traceId:`trial:${row.line_id}` };
         delivered = true;
       } else {
         const stored = await env.DB.prepare('SELECT * FROM device_sources WHERE mac=?').bind(mac).first();
@@ -107,9 +106,16 @@ export function createTrialDelivery({ sealSource, openSourceList, notifyBox }, {
           SELECT mac,'delivery_recovered',?,expire,line_id,ip,app_version FROM gold_trial_claims_v2 WHERE mac=?`)
           .bind(at,mac),
       ]);
+      finalized=delivered;
+      if (notification) {
+        // L'app n'attend pas le réseau du Durable Object : la source et son
+        // droit d'accès sont déjà durables, lisibles par le polling immédiat.
+        const pushed=Promise.resolve().then(()=>notifyBox(protectedEnv,mac,'source',notification)).catch(()=>{});
+        if (ctx?.waitUntil) ctx.waitUntil(pushed); else await pushed;
+      }
       return delivered;
     } finally {
-      if (!delivered) await env.DB.prepare(`UPDATE gold_trial_receipts_v2 SET lease_until=?,lease_token=NULL
+      if (!finalized) await env.DB.prepare(`UPDATE gold_trial_receipts_v2 SET lease_until=?,lease_token=NULL
         WHERE mac=? AND lease_token=?`).bind(now()+3_000,mac,token).run();
     }
   };
