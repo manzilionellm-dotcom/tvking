@@ -28,6 +28,8 @@ import 'dart:io' show Platform, exit;
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import '../../subscription/data/gold_trial_controller.dart';
+import '../../subscription/presentation/gold_trial_card.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart' show DateFormat;
 
@@ -100,12 +102,14 @@ import 'tv_sources_screen.dart';
 enum _Tile { live, films, series, server, settings }
 
 class TvHubScreen extends StatefulWidget {
-  const TvHubScreen({super.key});
+  const TvHubScreen({super.key, this.trialController});
+  final GoldTrialController? trialController;
   @override
   State<TvHubScreen> createState() => _TvHubScreenState();
 }
 
 class _TvHubScreenState extends State<TvHubScreen> {
+  late final GoldTrialController _goldTrial;
   // Barre du haut : heure/date (tick 20 s) + réseau.
   Timer? _clock;
   DateTime _now = DateTime.now();
@@ -204,6 +208,8 @@ class _TvHubScreenState extends State<TvHubScreen> {
   @override
   void initState() {
     super.initState();
+    _goldTrial = widget.trialController ?? GoldTrialController();
+    if (widget.trialController == null) _goldTrial.initialize();
     _clock = Timer.periodic(const Duration(seconds: 20), (_) {
       if (!mounted) return;
       _now = DateTime.now();
@@ -1070,6 +1076,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
 
   @override
   void dispose() {
+    if (widget.trialController == null) _goldTrial.dispose();
     _clock?.cancel();
     _connSub?.cancel();
     _srcSub?.cancel();
@@ -1373,6 +1380,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
                         ),
                       ),
                     ],
+                    GoldTrialCard(controller: _goldTrial),
                     // ---------- RANGÉES + TUILES ----------
                     // Avec du contenu personnel, les rangées prennent la place et
                     // les tuiles se font plus petites en bas. Sans historique, les

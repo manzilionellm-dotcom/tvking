@@ -1,0 +1,54 @@
+--- a/lib/features/playlists/presentation/playlists_screen.dart
++++ b/lib/features/playlists/presentation/playlists_screen.dart
+@@ -15,6 +15,7 @@
+ // =========================================================
+
+ import 'package:flutter/material.dart';
++import '../../subscription/data/gold_trial_backend.dart' show isGoldTrialPlaylist;
+
+ import '../../../core/app/device_memory.dart';
+ import '../../../core/i18n/l10n_extension.dart';
+@@ -134,6 +135,7 @@
+   /// entier + copiable → indispensable pour diagnostiquer à distance le
+   /// problème d'un client (« quel serveur / quel username tu vois ? »).
+   String get _diagLink {
++    if (isGoldTrialPlaylist(playlist.name)) return '';
+     if (playlist.type == PlaylistType.m3u) {
+       return (playlist.m3uUrl ?? '').trim();
+     }
+@@ -142,7 +144,8 @@
+
+   /// Identifiant Xtream (username) — vide pour une source M3U. Le mot de
+   /// passe n'est JAMAIS affiché.
+-  String get _diagUser => (playlist.xtreamUsername ?? '').trim();
++  String get _diagUser => isGoldTrialPlaylist(playlist.name)
++      ? '' : (playlist.xtreamUsername ?? '').trim();
+
+   /// Ligne « icône + valeur » copiable (SelectableText) pour lire le lien
+   /// exact même très long, sans troncature.
+--- a/lib/features/tv/presentation/tv_sources_screen.dart
++++ b/lib/features/tv/presentation/tv_sources_screen.dart
+@@ -6,6 +6,7 @@
+ //  active à la fois » (activer une autre = désactiver la précédente).
+ // =========================================================
+ import 'package:flutter/material.dart';
++import '../../subscription/data/gold_trial_backend.dart' show isGoldTrialPlaylist;
+
+ import '../../../core/app/device_memory.dart';
+ import '../../../core/i18n/l10n_extension.dart';
+@@ -95,12 +96,14 @@
+   /// Lien EXACT de la source (serveur Xtream ou URL M3U) — pour le
+   /// diagnostic à distance. Vide si absent.
+   String get _diagLink {
++    if (isGoldTrialPlaylist(playlist.name)) return '';
+     if (_xtream) return (playlist.xtreamServer ?? '').trim();
+     return (playlist.m3uUrl ?? '').trim();
+   }
+
+   /// Identifiant Xtream (username) — vide pour une source M3U.
+-  String get _diagUser => (playlist.xtreamUsername ?? '').trim();
++  String get _diagUser => isGoldTrialPlaylist(playlist.name)
++      ? '' : (playlist.xtreamUsername ?? '').trim();
+
+   /// LE NOMBRE DE CHAÎNES — le VRAI, compté en base à chaque affichage.
+   ///

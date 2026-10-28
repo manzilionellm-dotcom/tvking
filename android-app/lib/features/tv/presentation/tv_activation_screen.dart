@@ -7,6 +7,8 @@
 //  dès que le revendeur active la MAC, la TV se débloque.
 // =========================================================
 import 'package:flutter/material.dart';
+import '../../subscription/data/gold_trial_controller.dart';
+import '../../subscription/presentation/gold_trial_card.dart';
 import 'package:flutter/services.dart';
 
 import '../../device/domain/display_mac.dart';
@@ -24,13 +26,15 @@ import 'tv_phone_source_qr.dart';
 import 'tv_shell.dart';
 
 class TvActivationScreen extends StatefulWidget {
-  const TvActivationScreen({super.key});
+  const TvActivationScreen({super.key, this.trialController});
+  final GoldTrialController? trialController;
 
   @override
   State<TvActivationScreen> createState() => _TvActivationScreenState();
 }
 
 class _TvActivationScreenState extends State<TvActivationScreen> {
+  late final GoldTrialController _goldTrial;
   String _mac = '…';
   bool _busy = false;
   bool _copied = false;
@@ -38,6 +42,8 @@ class _TvActivationScreenState extends State<TvActivationScreen> {
   @override
   void initState() {
     super.initState();
+    _goldTrial = widget.trialController ?? GoldTrialController();
+    if (widget.trialController == null) _goldTrial.initialize();
     DeviceIdentity.instance.mac.then((String m) {
       if (mounted) setState(() => _mac = m);
     });
@@ -52,6 +58,7 @@ class _TvActivationScreenState extends State<TvActivationScreen> {
 
   @override
   void dispose() {
+    if (widget.trialController == null) _goldTrial.dispose();
     SubscriptionState.instance.removeListener(_onSub);
     super.dispose();
   }
@@ -125,6 +132,7 @@ class _TvActivationScreenState extends State<TvActivationScreen> {
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
         const TvLogo(width: 240),
+        GoldTrialCard(controller: _goldTrial),
         const SizedBox(height: 26),
         Text(
           context.l10n.tvActivationTagline,

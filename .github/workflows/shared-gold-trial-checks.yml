@@ -1,0 +1,28 @@
+name: Essai partagé 24 h — Worker et panel
+on:
+  push:
+    branches: ['feature/shared-trial-24h-20261028']
+  pull_request:
+    paths:
+      - 'android-app/cloudflare/gold_trial*.js'
+      - 'android-app/cloudflare/tests/**'
+      - 'android-app/cloudflare/migrations/20261028_gold_trial_policy.sql'
+      - 'android-app/admin-panel/**'
+      - '.github/workflows/shared-gold-trial-checks.yml'
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '24.21.0'
+          package-manager-cache: false
+      - run: node --test android-app/cloudflare/tests/gold_trial_policy.test.mjs android-app/admin-panel/src/lib/goldTrial.test.ts
+      - run: npm ci --no-audit --no-fund && npm run build
+        working-directory: android-app/admin-panel

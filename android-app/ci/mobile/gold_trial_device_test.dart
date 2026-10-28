@@ -1,0 +1,151 @@
+// Vrai Android : ANDROID_ID natif, versionName, HTTP local et SQLite réels.
+// Le serveur de fixture ne contient aucun flux ni compte de production.
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:integration_test/integration_test.dart';
+import 'package:package_info_plus/package_info_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:tv_king/core/backend/backend_hosts.dart';
+import 'package:tv_king/core/flavor/flavor.dart';
+import 'package:tv_king/core/theme/app_theme.dart';
+import 'package:tv_king/features/device/data/device_identity.dart';
+import 'package:tv_king/features/playlists/data/playlist_repository.dart';
+import 'package:tv_king/features/playlists/domain/playlist.dart';
+import 'package:tv_king/features/subscription/data/gold_trial_backend.dart';
+import 'package:tv_king/features/subscription/data/gold_trial_controller.dart';
+import 'package:tv_king/features/subscription/presentation/gold_trial_card.dart';
+
+void main() {
+  IntegrationTestWidgetsFlutterBinding.ensureInitialized();
+  testWidgets('Android : Je teste → identité native → import automatique SQLite', (tester) async {
+    FlavorConfig.setCurrent(FlavorConfig.sevenMotion);
+    final HttpServer server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    final String fixture = 'http://127.0.0.1:${server.port}';
+    final String oldHost = BackendHosts.current;
+    BackendHosts.current = fixture;
+    int posts = 0;
+    int sourceReads = 0;
+    int activationStatus = 201;
+    Map<String, dynamic>? payload;
+    final String mac = await DeviceIdentity.instance.mac;
+    final String androidId = await DeviceIdentity.instance.androidId();
+    final PackageInfo package = await PackageInfo.fromPlatform();
+    expect(androidId, isNotEmpty, reason: 'ANDROID_ID lu via le plugin Android réel');
+    expect(mac, matches(RegExp(r'^MK(?::[0-9A-F]{2}){5}$')));
+    final StreamSubscription<HttpRequest> requests = server.listen((request) async {
+      final String path = request.uri.path;
+      request.response.headers.contentType = ContentType.json;
+      if (path == '/api/gold-trial' && request.method == 'POST') {
+        posts++;
+        payload = jsonDecode(await utf8.decoder.bind(request).join()) as Map<String, dynamic>;
+        request.response.statusCode = activationStatus;
+        request.response.write(activationStatus == 403
+            ? '{"error":"trial_disabled"}' : jsonEncode(<String, Object>{
+          'ok': true, 'expire': DateTime.now().toUtc().add(const Duration(hours: 24)).toIso8601String(),
+          'message': 'Votre essai gratuit est activé.',
+        }));
+      } else if (path.startsWith('/api/device-source/')) {
+        sourceReads++;
+        request.response.write(jsonEncode(<String, Object>{'source': <String, Object>{
+          'type': 'm3u', 'label': kGoldTrialPlaylistName, 'm3u_url': '$fixture/trial.m3u',
+        }}));
+      } else if (path == '/trial.m3u') {
+        request.response.headers.contentType = ContentType.text;
+        request.response.write('#EXTM3U\n#EXTINF:-1 tvg-id="fixture" group-title="Test",Chaîne locale de test\n$fixture/fixture.ts\n');
+      } else {
+        request.response.write('{"ok":true}');
+      }
+      await request.response.close();
+    });
+    await PlaylistRepository.instance.initialize();
+    await PlaylistRepository.instance.deleteAllPlaylists();
+    GoldTrialController controller = GoldTrialController(
+      backend: GoldTrialBackend(baseUrl: fixture), hasSubscription: () => false,
+    );
+    try {
+      await controller.initialize();
+      await tester.pumpWidget(MaterialApp(theme: AppTheme.cinema,
+        home: Scaffold(body: SingleChildScrollView(child: Column(children: <Widget>[
+          GoldTrialCard(controller: controller),
+          ListenableBuilder(listenable: controller, builder: (context, _) => Column(children: <Widget>[
+            for (final p in PlaylistRepository.instance.currentPlaylists) Text(p.name),
+          ])),
+        ])))));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Je teste'));
+      await tester.pump();
+      // Les vraies E/S Android restent asynchrones ; attendre les frames
+      // avec un plafond, sans jamais avancer une horloge fictive serveur.
+      for (int n=0; n<180 && !controller.sourceLoaded; n++) {
+        await Future<void>.delayed(const Duration(milliseconds: 200));
+        await tester.pump();
+      }
+      expect(posts, 1);
+      expect(payload, <String, String>{'mac':mac, 'android_id':androidId, 'app_version':package.version});
+      expect(sourceReads, greaterThanOrEqualTo(2));
+      expect(controller.sourceLoaded, isTrue);
+      expect(PlaylistRepository.instance.currentChannels, isNotEmpty);
+      expect(find.text(kGoldTrialPlaylistName), findsOneWidget);
+      expect(find.text('Votre essai gratuit est activé.'), findsOneWidget);
+      expect(find.textContaining('cms-8k'), findsNothing);
+
+      // Reproduit la capture du client : licence du lecteur non payante,
+      // réponse « essais fermés », puis véritable abonnement M3U en SQLite.
+      controller.dispose();
+      await PlaylistRepository.instance.deleteAllPlaylists();
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      await prefs.remove('gold_trial.$mac.expire');
+      activationStatus = 403;
+      controller = GoldTrialController(
+        backend: GoldTrialBackend(baseUrl: fixture), hasSubscription: () => false,
+      );
+      await controller.initialize();
+      await tester.pumpWidget(MaterialApp(theme: AppTheme.cinema,
+        home: Scaffold(body: GoldTrialCard(controller: controller))));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Je teste'));
+      await tester.pump();
+      for (int n=0; n<100 && controller.requesting; n++) {
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+        await tester.pump();
+      }
+      expect(find.text('Les essais sont fermés pour le moment.'), findsOneWidget);
+      expect(find.text('S’abonner sur WhatsApp'), findsOneWidget);
+      await PlaylistRepository.instance.addM3uPlaylist(
+        name: 'Mon abonnement', url: '$fixture/trial.m3u',
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Je teste'), findsNothing);
+      expect(find.text('Les essais sont fermés pour le moment.'), findsNothing);
+      expect(find.text('S’abonner sur WhatsApp'), findsNothing);
+      await controller.request();
+      expect(posts, 2);
+
+      // Le retour sur l'accueil relit la base réelle, même avant le cache
+      // des chaînes. Aucun nouvel essai n'est proposé à ce client existant.
+      controller.dispose();
+      PlaylistRepository.instance.debugSeedPlaylists(const <Playlist>[]);
+      controller = GoldTrialController(
+        backend: GoldTrialBackend(baseUrl: fixture), hasSubscription: () => false,
+      );
+      await controller.initialize();
+      await tester.pumpWidget(MaterialApp(theme: AppTheme.cinema,
+        home: Scaffold(body: GoldTrialCard(controller: controller))));
+      await tester.pumpAndSettle();
+      expect(find.text('Je teste'), findsNothing);
+      await controller.request();
+      expect(posts, 2);
+    } finally {
+      controller.dispose();
+      await tester.pumpWidget(const SizedBox.shrink());
+      await PlaylistRepository.instance.deleteAllPlaylists();
+      BackendHosts.current = oldHost;
+      await requests.cancel();
+      await server.close(force: true);
+    }
+  });
+}

@@ -5,9 +5,12 @@ name: 7 MOTION — APK corrigé de test
   push:
     branches:
     - feature/7motion-gold-trial-20261026
+    - feature/shared-trial-24h-20261028
     paths:
     - .github/workflows/build-7motion-gold-trial-apk.yml
-    - android-app/ci/mobile/gold-trial.patch
+    - android-app/ci/mobile/**
+    - android-app/lib/features/subscription/**
+    - android-app/test/features/subscription/**
     - android-app/ci/mobile/prepare-gold-trial-test.sh
 permissions:
   contents: read
@@ -20,7 +23,7 @@ jobs:
   phone:
     name: APK de test installable à côté de 7 MOTION
     if: github.repository == 'manzilionellm-dotcom/tvking' && github.actor == github.repository_owner && github.triggering_actor
-      == github.repository_owner && github.event_name == 'push' && github.ref == 'refs/heads/feature/7motion-gold-trial-20261026'
+      == github.repository_owner && github.event_name == 'push' && (github.ref == 'refs/heads/feature/7motion-gold-trial-20261026' || github.ref == 'refs/heads/feature/shared-trial-24h-20261028')
     runs-on: ubuntu-latest
     timeout-minutes: 45
     defaults:
@@ -101,6 +104,7 @@ jobs:
         git apply --check ../mission/android-app/ci/mobile/gold-trial.patch
 
         git apply ../mission/android-app/ci/mobile/gold-trial.patch
+        bash ../mission/android-app/ci/mobile/apply-shared-gold-trial.sh
 
         git diff --check
 

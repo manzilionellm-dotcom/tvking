@@ -62,6 +62,7 @@ export class ApiError extends Error {
 }
 
 interface RequestOpts {
+  signal?: AbortSignal;
   method?: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
   body?: unknown;
   /// Si true, n'attache pas le token (utilise par /auth/login).
@@ -80,6 +81,7 @@ async function request<T = unknown>(
     if (token) headers.Authorization = `Bearer ${token}`;
   }
   const resp = await fetch(`${API_BASE}${path}`, {
+    signal: opts.signal,
     method: opts.method || 'GET',
     headers,
     body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
@@ -100,6 +102,41 @@ async function request<T = unknown>(
   }
   return json as T;
 }
+
+// Contrôle additif de l'essai. L'historique historique reste lu via gold.js.
+export interface GoldTrialEvent {
+  id?: number;
+  mac?: string;
+  event?: string;
+  reason?: string | null;
+  state?: string;
+  created_at: number;
+  expire?: number | null;
+  line_id?: string | null;
+  ip?: string;
+  app_version?: string;
+}
+export interface GoldTrialSettings {
+  gold_trial_enabled: boolean;
+  daily_cap: number;
+  revision: number;
+  updated_at: number;
+}
+export interface GoldTrialSnapshot extends GoldTrialSettings {
+  integration_ready: boolean;
+  recent: GoldTrialEvent[];
+}
+export const goldTrialApi = {
+  snapshot: (signal?: AbortSignal) => request<GoldTrialSnapshot>('/api/v1/gold/trial-control', { signal }),
+  save: (settings: Pick<GoldTrialSettings, 'gold_trial_enabled' | 'daily_cap' | 'revision'>) =>
+    request<GoldTrialSettings>('/api/v1/gold/trial-control', { method: 'PUT', body: settings }),
+  events: (mac: string, before: number | null, signal?: AbortSignal) =>
+    request<{ history: GoldTrialEvent[]; next_before: number | null }>(
+      `/api/v1/gold/trial-control/history?mac=${encodeURIComponent(mac)}${before ? `&before=${before}` : ''}`, { signal }),
+  history: (mac: string, signal?: AbortSignal) =>
+    request<{ trial_used: boolean; lines: unknown[]; history: unknown[] }>(
+      `/api/v1/gold/history?mac=${encodeURIComponent(mac)}`, { signal }),
+};
 
 // =========================================================
 //  Endpoints typees

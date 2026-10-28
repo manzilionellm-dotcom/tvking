@@ -21,3 +21,5 @@ do
   git apply "$mission_dir/$patch"
 done
 git diff --check
+
+bash "$mission_dir/android-app/ci/mobile/apply-shared-gold-trial.sh"

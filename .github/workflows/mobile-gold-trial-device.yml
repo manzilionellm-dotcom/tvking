@@ -2,10 +2,12 @@ name: 7 MOTION — essai sur Android virtuel
 
 on:
   push:
-    branches: ['feature/7motion-gold-trial-20261026']
+    branches: ['feature/7motion-gold-trial-20261026', 'feature/shared-trial-24h-20261028']
   pull_request:
     paths:
-      - 'android-app/ci/mobile/gold-trial.patch'
+      - 'android-app/ci/mobile/**'
+      - 'android-app/lib/features/subscription/**'
+      - 'android-app/test/features/subscription/**'
       - 'android-app/ci/mobile/prepare-gold-trial-test.sh'
       - '.github/workflows/mobile-gold-trial-device.yml'
 

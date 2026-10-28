@@ -2,7 +2,7 @@ name: 7 MOTION mobile — régressions du téléphone
 
 on:
   push:
-    branches: ['feature/7motion-panel-sync', 'feature/7motion-foot-upcoming-20261020', 'feature/7motion-player-zap-20261020', 'feature/playlist-delete-definitive-20261026', 'feature/7motion-gold-trial-20261026']
+    branches: ['feature/7motion-panel-sync', 'feature/7motion-foot-upcoming-20261020', 'feature/7motion-player-zap-20261020', 'feature/playlist-delete-definitive-20261026', 'feature/7motion-gold-trial-20261026', 'feature/shared-trial-24h-20261028']
   pull_request:
     paths:
       - 'patches/mobile-panel-sync.patch'
@@ -65,6 +65,7 @@ jobs:
           git apply ../mission/android-app/ci/mobile/library-user-actions.patch
           git apply --check ../mission/android-app/ci/mobile/gold-trial.patch
           git apply ../mission/android-app/ci/mobile/gold-trial.patch
+          bash ../mission/android-app/ci/mobile/apply-shared-gold-trial.sh
           git diff --check
           flutter pub get
           flutter gen-l10n
