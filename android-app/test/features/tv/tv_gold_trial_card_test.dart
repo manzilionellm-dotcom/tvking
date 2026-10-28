@@ -34,14 +34,14 @@ void main() {
     final font = File('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf');
     if (await font.exists()) {
       final bytes = ByteData.sublistView(await font.readAsBytes());
-      final families = <String?>{
-        TvTokens.ui(18).fontFamily,
-        TvTokens.ui(18, weight: FontWeight.w600).fontFamily,
-        TvTokens.ui(18, weight: FontWeight.w700).fontFamily,
-        TvTokens.display(40).fontFamily,
-        TvTokens.mono(30).fontFamily,
+      // Noms des familles générés par google_fonts 6.x. Ne pas appeler
+      // TvTokens ici : cela déclencherait un chargement réseau/asset hors
+      // du contexte contrôlé d'un testWidgets avant le premier rendu.
+      const families = <String>{
+        'Inter_regular', 'Inter_600', 'Inter_700', 'Oswald_600',
+        'JetBrainsMono_600',
       };
-      for (final family in families.whereType<String>()) {
+      for (final family in families) {
         await (FontLoader(family)..addFont(Future.value(bytes))).load();
       }
     }
