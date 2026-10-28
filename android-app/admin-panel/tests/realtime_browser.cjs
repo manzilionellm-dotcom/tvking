@@ -67,7 +67,7 @@ const assert = require('node:assert/strict');
     if (process.env.PANEL_CAPTURE_DIR) await page.screenshot({ path: `${process.env.PANEL_CAPTURE_DIR}/panel-realtime.png`, fullPage: true });
     console.log(JSON.stringify({ passed: true, appliedMs, offlineMs, errors }));
   } finally {
-    device?.close();
+    try { device?.close(); } catch { /* Déjà fermée par la recette hors ligne. */ }
     await browser.close();
     await fixture.close();
   }
