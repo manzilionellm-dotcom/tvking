@@ -124,6 +124,7 @@ jobs:
     - name: Vérifier le bouton TV et les calculs de l’accueil
       run: >-
         flutter test test/features/tv/home_performance_test.dart
+        test/features/tv/channel_cache_refresh_test.dart
         test/features/tv/tv_gold_trial_card_test.dart
         --dart-define=ZUNO_CAPTURE_REVIEW=true --reporter expanded
     - name: Conserver les rendus du composant TV

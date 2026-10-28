@@ -76,14 +76,14 @@ void main() {
       await pending.future;
       steps.add('end');
     });
-    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 1));
     queue.schedule('guide', () { steps.add('obsolete'); });
     queue.schedule('guide', () { steps.add('latest'); });
     await tester.pump(const Duration(seconds: 60));
     expect(steps, <String>['start']);
     pending.complete();
-    await tester.pump();
-    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 1));
+    await tester.pump(const Duration(milliseconds: 1));
     expect(steps, <String>['start', 'end', 'latest']);
   });
 
@@ -92,7 +92,7 @@ void main() {
     final pending = Completer<void>();
     int repeats = 0;
     queue.schedule('guide', () => pending.future);
-    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 1));
     queue.schedule('guide', () { repeats++; });
     queue.dispose();
     pending.complete();
@@ -106,10 +106,10 @@ void main() {
     final queue = HomeWorkQueue(onError: (error, _) => errors.add(error));
     addTearDown(queue.dispose);
     queue.schedule('guide', () => throw StateError('base momentanément indisponible'));
-    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 1));
     int completed = 0;
     queue.schedule('guide', () { completed++; });
-    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 1));
     expect(errors, hasLength(1));
     expect(completed, 1);
   });

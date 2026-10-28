@@ -12,6 +12,7 @@ Aucun chiffre de FPS, de mémoire ou de temps de démarrage matériel n'est inve
 | Accueil derrière un lecteur | Le tick de 20 s, les événements de progression et les notifications lançaient encore des calculs non visibles. | Mise en attente quand un autre écran est devant, pendant la lecture et en arrière-plan ; fusion des demandes et reprise au retour. Le canal d'activation et de livraison reste actif. |
 | Guide lent | Plusieurs relectures pouvaient se chevaucher. Le compteur de génération empêchait seulement l'affichage de certaines réponses. | Une seule lecture en vol ; dernière demande conservée, anciennes réponses invalidées au changement de source ou à la sortie de l'accueil. |
 | Tendances | Chaque modification de progression VOD ou de favoris pouvait relancer une recherche sur tout le catalogue. | Recherche seulement après changement des chaînes, des tendances, du mode enfants ou retour à l'accueil. |
+| Cache des chaînes | Un ID réutilisé gardait l'ancien nom, genre, pays et qualité ; les résultats orphelins restaient dans les maps statiques. | Clé incluant playlist et métadonnées, réutilisation des entrées inchangées, références faibles par objet et nettoyage global à chaque snapshot/suppression. Un résultat de calcul annulé n'est plus publié. |
 | Confidentialité | La barre d'accueil concaténait encore l'identifiant Xtream de la source d'essai. | Libellé public seul pour les essais des deux marques. |
 | Activation | Ajouter une confirmation allongeait la colonne et rétrécissait tout le panneau via FittedBox. | Cadre de taille stable, colonnes défilantes au D-pad et disposition verticale sur écran portrait. |
 | Essai sur box | Petit bouton mobile et ouverture WhatsApp dépendante d'une application externe. | Carte Zuno or/noir, mention 24 H, focus à la télécommande, attente, expiration, reprise du chargement et QR WhatsApp. |
@@ -26,12 +27,15 @@ pas une promesse d'accélération de toute l'application.
 Les tests couvrent aussi les rafales de 100 notifications, la pause/reprise,
 une lecture du guide lente, les erreurs, la destruction de l'écran, le remplacement
 des métadonnées à identifiant constant et le masquage des références d'essai.
+`channel_cache_refresh_test.dart` vérifie aussi un changement vers une catégorie
+adulte, des playlists distinctes, la libération du cache et l'annulation d'un lot.
 
 `tv_gold_trial_card_test.dart` vérifie OK maintenu/double clic, message public,
 expiration, refus, QR WhatsApp et fermeture au D-pad, client existant, messages
 longs en 540p/1080p/portrait, ainsi que le défilement vers les dernières commandes.
 Le workflow d'APK de revue conserve des rendus du composant en 720p : disponible,
-chargement et confirmation. Ce sont des fixtures, sans compte fournisseur.
+chargement et confirmation. Ce sont des fixtures, sans compte fournisseur, avec
+une police locale de test pour éviter les blocs Ahem des tests Flutter.
 
 Les résultats effectifs des suites Flutter et de compilation sont consignés
 dans la PR et les workflows GitHub Actions du commit, après leur exécution.

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -24,7 +25,35 @@ const _previewKey = ValueKey<String>('tv-trial-preview');
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
-  setUpAll(() => GoogleFonts.config.allowRuntimeFetching = false);
+  setUpAll(() async {
+    GoogleFonts.config.allowRuntimeFetching = false;
+    if (!_capture) return;
+    // Les tests Flutter dessinent normalement des blocs Ahem. Pour les
+    // captures de revue uniquement, charger une police locale lisible sans
+    // téléchargement réseau ni modification des polices de l'application.
+    final font = File('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf');
+    if (await font.exists()) {
+      final bytes = ByteData.sublistView(await font.readAsBytes());
+      final families = <String?>{
+        TvTokens.ui(18).fontFamily,
+        TvTokens.ui(18, weight: FontWeight.w600).fontFamily,
+        TvTokens.ui(18, weight: FontWeight.w700).fontFamily,
+        TvTokens.display(40).fontFamily,
+        TvTokens.mono(30).fontFamily,
+      };
+      for (final family in families.whereType<String>()) {
+        await (FontLoader(family)..addFont(Future.value(bytes))).load();
+      }
+    }
+    final root = Platform.environment['FLUTTER_ROOT'];
+    if (root != null) {
+      final icons = File('$root/bin/cache/artifacts/material_fonts/MaterialIcons-Regular.otf');
+      if (await icons.exists()) {
+        await (FontLoader('MaterialIcons')..addFont(Future.value(
+            ByteData.sublistView(await icons.readAsBytes())))).load();
+      }
+    }
+  });
   setUp(() => SharedPreferences.setMockInitialValues(<String, Object>{}));
 
   GoldTrialController create(Future<http.Response> Function(http.Request) handler,
@@ -70,6 +99,12 @@ void main() {
       )),
     ));
     await tester.pumpAndSettle();
+    if (_capture) {
+      await tester.runAsync(() => precacheImage(
+          const AssetImage('assets/branding/zuno_logo.png'),
+          tester.element(find.byType(TvLogo))));
+      await tester.pumpAndSettle();
+    }
   }
 
   Future<void> capture(WidgetTester tester, String name) async {
@@ -150,7 +185,7 @@ void main() {
 
   for (final size in <Size>[const Size(960, 540), const Size(1920, 1080), const Size(720, 1280)]) {
     testWidgets('mise en page $size : message long sans débordement', (tester) async {
-      final controller = create((_) async => http.Response('{"error":"trial_disabled","message":"Les essais sont temporairement fermés. Vous pouvez contacter notre service pour découvrir les abonnements disponibles et recevoir de l’aide pour votre activation."}', 403));
+      final controller = create((_) async => http.Response('{"error":"trial_disabled","message":"Les essais sont temporairement fermés. Vous pouvez contacter notre service pour découvrir les abonnements disponibles et recevoir de l’aide pour votre activation."}', 403, headers: <String, String>{'content-type': 'application/json; charset=utf-8'}));
       addTearDown(controller.dispose);
       await show(tester, controller, size: size);
       await tester.sendKeyEvent(LogicalKeyboardKey.select);

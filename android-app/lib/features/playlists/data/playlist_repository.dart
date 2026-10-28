@@ -700,6 +700,7 @@ class PlaylistRepository {
         .toList();
     _playlistsCache = remainingPlaylists;
     _channelsCache = remainingChannels;
+    ChannelPrecompute.retainSnapshot(remainingChannels);
     if (!_playlistsController.isClosed) {
       _playlistsController.add(remainingPlaylists);
     }
@@ -1171,6 +1172,7 @@ class PlaylistRepository {
     // Met à jour les caches synchrones avant d'émettre
     // (`currentChannels` est ainsi cohérent avec le dernier event).
     _channelsCache = channels;
+    ChannelPrecompute.retainSnapshot(channels);
     _playlistsCache = playlists;
     if (!_channelsController.isClosed) {
       _channelsController.add(channels);
