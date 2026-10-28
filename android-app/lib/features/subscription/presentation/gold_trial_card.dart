@@ -89,7 +89,7 @@ class GoldTrialCard extends StatelessWidget {
                 if (showWhatsApp) OutlinedButton.icon(
                   onPressed: () => _openWhatsApp(context),
                   icon: const Icon(Icons.chat_outlined),
-                  label: const Text('WhatsApp'),
+                  label: const Text('S’abonner sur WhatsApp'),
                 ),
               ],
             ),

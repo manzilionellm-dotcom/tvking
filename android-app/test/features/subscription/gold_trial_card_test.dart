@@ -24,7 +24,8 @@ void main() {
           if (pending != null) return await pending.future;
           return http.Response(body, status);
         })),
-        loadIdentity: () async => const GoldTrialIdentity(mac:'MK:11:22:33:44:55', androidId:'test', appVersion:'1'),
+        sourceHeaders: () async => <String, String>{'X-Device-Secret': 'fixture'},
+      loadIdentity: () async => const GoldTrialIdentity(mac:'MK:11:22:33:44:55', androidId:'test', appVersion:'1'),
         hasSubscription: () => customer,
         hasLoadedTrial: () => true,
         loadPlaylists: () async => const <Playlist>[],
@@ -102,6 +103,7 @@ void main() {
         posts++;
         return http.Response('{"error":"trial_disabled"}', 403);
       })),
+      sourceHeaders: () async => <String, String>{'X-Device-Secret': 'fixture'},
       loadIdentity: () async => const GoldTrialIdentity(mac:'MK:11:22:33:44:55', androidId:'test', appVersion:'1'),
       hasSubscription: () => false,
       loadPlaylists: () async => const <Playlist>[],
