@@ -74,9 +74,23 @@ export async function legacyHistory(request,env) {
   try { before=pageCursor(url.searchParams.get('before')); } catch {return json({error:'invalid_cursor'},400);}
   const lines = (await env.DB.prepare(`SELECT id,id AS line_id,mac,kind,status,gold_user_id,sub,expire,ip,app_version,created_at,updated_at
     FROM gold_lines WHERE UPPER(mac)=? ORDER BY created_at DESC`).bind(mac).all()).results;
-  const events = (await env.DB.prepare(`SELECT id,mac,event,gold_line_id AS line_id,gold_user_id,sub,expire,ip,app_version,actor,created_at
-    FROM gold_history WHERE UPPER(mac)=? AND (created_at<? OR (created_at=? AND id<?))
-    ORDER BY created_at DESC,id DESC LIMIT 101`).bind(mac,before?.at??Number.MAX_SAFE_INTEGER,before?.at??Number.MAX_SAFE_INTEGER,before?.id??'~').all()).results;
+  // Les activations antérieures au wrapper Gold existent dans audit_logs.
+  // Projection de champs explicites : aucun before_json/after_json brut.
+  const events = (await env.DB.prepare(`WITH events AS (
+    SELECT id,mac,event,gold_line_id AS line_id,gold_user_id,sub,expire,ip,app_version,actor,created_at
+      FROM gold_history WHERE UPPER(mac)=?
+    UNION ALL
+    SELECT 'audit_'||a.id AS id,? AS mac,a.action AS event,a.target_id AS line_id,
+      NULL AS gold_user_id,NULL AS sub,
+      json_extract(CASE WHEN json_valid(a.after_json) THEN a.after_json ELSE '{}' END,'$.expires_at') AS expire,
+      a.ip,NULL AS app_version,a.actor_id AS actor,a.created_at
+      FROM audit_logs a WHERE a.action IN ('activate.create','activate.renew','license.create','license.update')
+      AND (UPPER(json_extract(CASE WHEN json_valid(a.after_json) THEN a.after_json ELSE '{}' END,'$.mac'))=?
+        OR (a.target_type='license' AND a.target_id IN (
+          SELECT l.id FROM licenses l JOIN devices d ON d.id=l.device_id WHERE d.mac=?))))
+    SELECT * FROM events WHERE (created_at<? OR (created_at=? AND id<?))
+    ORDER BY created_at DESC,id DESC LIMIT 101`).bind(mac,mac,mac,mac,
+      before?.at??Number.MAX_SAFE_INTEGER,before?.at??Number.MAX_SAFE_INTEGER,before?.id??'~').all()).results;
   const history=events.slice(0,100), last=history.at(-1);
   const device=await env.DB.prepare('SELECT android_id FROM devices WHERE mac=?').bind(mac).first();
   const eligibility=await historicalEligibility(env.DB,mac,device?.android_id || '');

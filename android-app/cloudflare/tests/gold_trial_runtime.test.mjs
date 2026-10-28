@@ -172,6 +172,24 @@ test('historique paginé stable sur dates identiques, IP/version/ligne, pas de s
   }while(cursor);
   assert.equal(all.length,205);assert.equal(new Set(all.map(r=>r.id)).size,205);assert.equal(all[0].line_id,'fixture-line');
 });
+test('activations payantes avant Gold : audit existant avec date, expiration, IP, sans JSON privé',async()=>{
+  const f=fixture();
+  for(let n=0;n<105;n++) f.sql.prepare(`INSERT INTO audit_logs
+    (id,actor_type,actor_id,action,target_type,target_id,ip,after_json,created_at)
+    VALUES (?,'admin','admin','activate.renew','license','lic-fixture','192.0.2.9',?,2)`)
+    .run(`old_${String(n).padStart(3,'0')}`,JSON.stringify({mac,expires_at:1794000000000,password:'DO_NOT_EXPOSE'}));
+  const first=await (await legacyHistory(req(`/api/v1/gold/history?mac=${mac}`,{method:'GET'}),f.env)).json();
+  const next=await (await legacyHistory(req(`/api/v1/gold/history?mac=${mac}&before=${first.next_before}`,{method:'GET'}),f.env)).json();
+  assert.equal(first.history.length+next.history.length,105);
+  assert.equal(first.history[0].expire,1794000000000);assert.equal(first.history[0].ip,'192.0.2.9');
+  assert.doesNotMatch(JSON.stringify(first),/DO_NOT_EXPOSE/);
+});
+test('JSON d’audit invalide ne casse pas la recherche et ne fuit pas dans la réponse',async()=>{
+  const f=fixture();
+  f.sql.exec("INSERT INTO audit_logs(id,actor_type,action,target_type,target_id,after_json,created_at) VALUES ('bad','admin','activate.create','license','missing','{invalid secret',2)");
+  const response=await legacyHistory(req(`/api/v1/gold/history?mac=${mac}`,{method:'GET'}),f.env);
+  assert.equal(response.status,200);assert.doesNotMatch(await response.text(),/invalid secret/);
+});
 test('reçu AES-GCM lié à la MAC et ligne ; mauvais secret et substitution sont refusés',async()=>{
   const f=fixture(),result=await receipt(f),row=f.sql.prepare('SELECT * FROM gold_trial_receipts_v2').get();
   assert.doesNotMatch(JSON.stringify(row),/source\.example|fixture-user|fixture-line-password/);

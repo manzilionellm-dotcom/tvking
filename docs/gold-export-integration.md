@@ -57,7 +57,8 @@ n'est remplacée par la lignée plus ancienne présente dans le dépôt.
 - Le panel utilise les vrais JWT de production, les rôles admin/super_admin,
   CORS pour atlas-console, une pagination stable des anciens événements et
   l'historique récent actualisé toutes les 1,5 seconde. La réponse admin ne
-  contient pas les accès de ligne ni le JSON fournisseur brut.
+  contient pas les accès de ligne ni le JSON fournisseur brut. Les anciennes
+  activations payantes dans `audit_logs`, antérieures à Gold, sont incluses.
 - L'app envoie la marque en `X-App-Brand`, sans changer les trois champs POST.
   Le label peut donc être « Zuno TV Essai » ou « 7 MOTION Essai ».
 
