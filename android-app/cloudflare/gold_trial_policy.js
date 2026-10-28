@@ -27,7 +27,8 @@ export function normalizeTrialMac(value) {
 
 export function orderDemoKeys(keys) {
   const rank = key => ({ manzi10: 0, manzi8: 1 })[String(key.label).trim().toLowerCase()] ?? 2;
-  return keys.filter(k => k.enabled !== false && k.demo_tickets !== 0)
+  return keys.filter(k => k.enabled !== false && k.enabled !== 0 && k.enabled !== '0' &&
+      (k.demo_tickets == null || Number(k.demo_tickets) > 0))
     .slice().sort((a, b) => rank(a) - rank(b) ||
       (Number(a.trial_priority) || 0) - (Number(b.trial_priority) || 0));
 }
@@ -54,6 +55,25 @@ function reply(code, status, extra = {}) {
   return Response.json({ ...extra, ...(status < 400 ? { ok: true } : { error: code }), message: messages[code] }, {
     status, headers: { 'Cache-Control': 'no-store' },
   });
+}
+
+// Limite aussi les corps sans Content-Length, avant toute allocation complète.
+async function readSmallJson(request) {
+  if (!request.body) return null;
+  const reader = request.body.getReader();
+  const decoder = new TextDecoder();
+  let text = '', size = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > 4096) { await reader.cancel(); return null; }
+      text += decoder.decode(value, { stream: true });
+    }
+    return JSON.parse(text + decoder.decode());
+  } catch { return null; }
+  finally { reader.releaseLock(); }
 }
 
 async function record(db, row, event, reason = null, result = {}) {
@@ -104,11 +124,8 @@ export function createGoldTrialHandler(adapters, { now = Date.now, uuid = () => 
       const rate = await db.prepare(`INSERT INTO gold_trial_rate_v2(request_id,ip,at)
         SELECT ?,?,? WHERE (SELECT COUNT(*) FROM gold_trial_rate_v2 WHERE ip=? AND at>?) < 5`)
         .bind(id, row.ip, row.now, row.ip, row.now - 60_000).run();
-      // Bornage avant décodage pour ne pas accepter un corps arbitrairement gros.
-      const raw = await request.text();
-      if (raw.length > 4096) return reject('invalid_request', 400);
-      let body;
-      try { body = JSON.parse(raw); } catch { return reject('invalid_request', 400); }
+      const body = await readSmallJson(request);
+      if (!body) return reject(rate.meta.changes ? 'invalid_request' : 'rate_limited', rate.meta.changes ? 400 : 429);
       row.mac = normalizeTrialMac(body?.mac);
       row.version = typeof body?.app_version === 'string' ? body.app_version.trim().slice(0, 100) : '';
       if (!rate.meta.changes) return reject('rate_limited', 429);
@@ -146,8 +163,9 @@ export function createGoldTrialHandler(adapters, { now = Date.now, uuid = () => 
         if (existing && existing.state !== 'failed') {
           return reject(['reserved', 'uncertain'].includes(existing.state) ? 'in_progress' : 'trial_already_used', 409);
         }
-        return reject((await trialSettings(db)).gold_trial_enabled ? 'daily_cap_reached' : 'trial_disabled',
-          (await trialSettings(db)).gold_trial_enabled ? 429 : 403);
+        const latest = await trialSettings(db);
+        return reject(latest.gold_trial_enabled ? 'daily_cap_reached' : 'trial_disabled',
+          latest.gold_trial_enabled ? 429 : 403);
       }
       reserved = true;
       await record(db, row, 'requested');

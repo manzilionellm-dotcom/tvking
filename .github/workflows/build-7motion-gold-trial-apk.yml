@@ -104,6 +104,7 @@ jobs:
         git apply --check ../mission/android-app/ci/mobile/gold-trial.patch
 
         git apply ../mission/android-app/ci/mobile/gold-trial.patch
+
         bash ../mission/android-app/ci/mobile/apply-shared-gold-trial.sh
 
         git diff --check

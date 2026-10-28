@@ -131,7 +131,7 @@ export function GoldTrialsPage({ onLogout }: { onLogout: () => void }) {
             {before ? <button className="underline" onClick={() => setBefore(null)}>Événements récents</button> : null}
             {nextBefore ? <button className="underline" onClick={() => setBefore(nextBefore)}>Événements plus anciens</button> : null}
           </div>
-          <h3 className="mt-4">Historique précédent et lignes payantes</h3>
+          <h3 className="mt-4">Historique précédent et lignes existantes</h3>
           {legacyError ? <p role="alert">{legacyError}</p> : <HistoryTable rows={legacyRows} />}
         </> : null}
       </section>

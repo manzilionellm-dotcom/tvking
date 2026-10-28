@@ -64,9 +64,9 @@ test('MAC canonique et ordre manzi10 puis Manzi8, sans modifier les clés', () =
   assert.equal(normalizeTrialMac(' mk-11-22-33-44-55 '), mac);
   assert.equal(normalizeTrialMac('01:23:45:67:89:AB'), '01:23:45:67:89:AB');
   assert.equal(normalizeTrialMac('invalid'), null);
-  const keys = [{ label: 'Manzi8' }, { label: 'other', demo_tickets: 0 }, { label: 'manzi10' }];
+  const keys = [{ label: 'Manzi8' }, { label: 'other', demo_tickets: 0 }, { label: 'manzi10' }, { label: 'disabled', enabled: 0 }, { label: 'empty', demo_tickets: '0' }];
   assert.deepEqual(orderDemoKeys(keys).map(x => x.label), ['manzi10', 'Manzi8']);
-  assert.equal(keys.length, 3);
+  assert.equal(keys.length, 5);
 });
 test('preuve réelle : MAC ↔ Android ID ↔ empreinte du secret, sans réenrôlement', async () => {
   const { db, sql } = database();
@@ -191,4 +191,16 @@ test('panel : derniers essais et historique MAC avec IP, version, ligne, expirat
   assert.equal(data.history[1].line_id, 'line-fixture'); assert.equal(data.history[1].expire, f.clock.value + 86_400_000);
   const recent = await goldTrialAdmin(new Request('https://worker.example/api/v1/gold/trial-control'), f.env, { role: 'admin' });
   assert.equal((await recent.json()).recent.length, 1);
+});
+
+test('corps surdimensionné : lecture arrêtée et aucun appel fournisseur', async () => {
+  const f = fixture(); let cancelled = false;
+  const body = new ReadableStream({
+    start(controller) { controller.enqueue(new Uint8Array(4097)); },
+    cancel() { cancelled = true; },
+  });
+  const req = new Request('https://worker.example/api/gold-trial', { method: 'POST', body,
+    duplex: 'half', headers: { 'CF-Connecting-IP': '192.0.2.1' } });
+  assert.equal((await f.handle(req, f.env)).status, 400);
+  assert.equal(cancelled, true); assert.equal(f.created.length, 0);
 });

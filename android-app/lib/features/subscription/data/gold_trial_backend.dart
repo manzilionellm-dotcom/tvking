@@ -165,7 +165,9 @@ class GoldTrialBackend {
     if (text.isEmpty || text.length > 240 ||
         RegExp(r'[<>\x00-\x1f]').hasMatch(text) ||
         RegExp(r'(https?://|www\.|@|strong|cms-8k|manzi|lionel|password|api.?key|secret|provider|[a-z0-9-]+\.(?:net|com|ru|org|dev)\b|\b\d{1,3}(?:\.\d{1,3}){3}\b)',
-            caseSensitive: false).hasMatch(text)) return null;
+            caseSensitive: false).hasMatch(text)) {
+      return null;
+    }
     return text;
   }
 
