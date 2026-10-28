@@ -18,9 +18,6 @@ jobs:
         app: [zuno, 7motion]
     runs-on: ubuntu-latest
     timeout-minutes: 50
-    env:
-      # avdmanager et emulator doivent résoudre le même dossier, quel que soit XDG.
-      ANDROID_AVD_HOME: ${{ runner.temp }}/realtime-avd
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -78,7 +75,11 @@ jobs:
           python "$GITHUB_WORKSPACE/mission/android-app/ci/prepare-realtime-android.py"
           flutter build apk --debug --target-platform android-x64 --target=integration_test/realtime_device_test.dart --dart-define=BACKEND_URL=http://127.0.0.1:8787 --dart-define=REALTIME_VARIANT=${{ matrix.app }}
       - name: Démarrer l’émulateur Android 35
+        env:
+          # avdmanager et emulator doivent résoudre le même dossier, quel que soit XDG.
+          ANDROID_AVD_HOME: ${{ runner.temp }}/realtime-avd
         run: |
+          echo "ANDROID_AVD_HOME=$ANDROID_AVD_HOME" >> "$GITHUB_ENV"
           yes | sdkmanager --licenses > /dev/null || true
           sdkmanager 'platform-tools' 'emulator' 'platforms;android-35' 'system-images;android-35;google_apis;x86_64'
           mkdir -p "$ANDROID_AVD_HOME"
