@@ -27,13 +27,13 @@ class GoldTrialController extends ChangeNotifier {
     Future<List<Playlist>> Function()? loadPlaylists,
     Stream<List<Playlist>>? playlistChanges,
   })  : _backend = backend ?? GoldTrialBackend(),
-        _loadIdentity = loadIdentity ?? _deviceIdentity,
         _sourceHeaders = sourceHeaders ?? DeviceSecret.instance.headers,
         _importSource = importSource ?? RemoteSourceRepository.sync,
         _hasSubscription = hasSubscription ?? _deviceHasSubscription,
         _hasLoadedTrial = hasLoadedTrial ?? _deviceHasTrial,
         _subscriptionChanges = subscriptionChanges ?? SubscriptionState.instance,
         _sourceChanges = sourceChanges ?? SubscriptionState.instance {
+    _loadIdentity = loadIdentity ?? _deviceIdentity;
     _loadPlaylists = loadPlaylists ?? PlaylistRepository.instance.getAllPlaylists;
     _subscriptionChanges.addListener(_changed);
     _sourceChanges.addListener(_sourcePushed);
@@ -42,7 +42,8 @@ class GoldTrialController extends ChangeNotifier {
   }
 
   final GoldTrialBackend _backend;
-  final Future<GoldTrialIdentity> Function() _loadIdentity;
+  late final Future<GoldTrialIdentity> Function() _loadIdentity;
+  Future<void> Function()? _prepareDevice;
   final Future<Map<String, String>> Function() _sourceHeaders;
   final Future<RemoteSyncResult> Function() _importSource;
   final bool Function() _hasSubscription;
@@ -126,13 +127,13 @@ class GoldTrialController extends ChangeNotifier {
       PlaylistRepository.instance.currentPlaylists.any((p) =>
           isGoldTrialPlaylist(p.name) && p.channelCount > 0);
 
-  static Future<GoldTrialIdentity> _deviceIdentity() async {
+  Future<GoldTrialIdentity> _deviceIdentity() async {
     final String mac = await DeviceIdentity.instance.mac;
     final String androidId = await DeviceIdentity.instance.androidId();
     final PackageInfo package = await PackageInfo.fromPlatform();
-    // Le Worker exporté n'avait pas encore cette route. Le raccordement Gold
-    // l'ajoute sans réattribuer la MAC ; le secret local reste celui des sources.
-    await DeviceSecret.instance.enroll(mac);
+    // Préparer l'identité ne doit pas ajouter de réseau au démarrage de la TV.
+    // La preuve est réannoncée au clic, sous le loader, avant la création.
+    _prepareDevice = () => DeviceSecret.instance.enroll(mac);
     return GoldTrialIdentity(
       mac: mac,
       androidId: androidId,
@@ -185,6 +186,8 @@ class GoldTrialController extends ChangeNotifier {
       // Revalider juste avant le POST si une source est arrivée pendant
       // l'attente d'identité, même avant son premier affichage à l'accueil.
       await _readPlaylists();
+      if (_disposed || !visible) return;
+      await _prepareDevice?.call();
       if (_disposed || !visible) return;
       final Map<String, String> headers = await _sourceHeaders();
       if (_disposed || !visible) return;
