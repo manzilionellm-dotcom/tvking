@@ -50,7 +50,7 @@ abstract final class OrderAckClient {
           if (status == 200) {
             final Object? decoded = jsonDecode(resp.body);
             if (decoded is Map && decoded['results'] is List) {
-              final List results = decoded['results'] as List;
+              final List<dynamic> results = decoded['results'] as List<dynamic>;
               final bool confirmed = orders.every((order) => results.any((result) =>
                 result is Map && result['order_id'] == order['order_id'] &&
                 result['status'] == 200 && result['error'] == null &&

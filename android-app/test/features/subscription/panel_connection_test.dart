@@ -49,8 +49,8 @@ void main() {
           request.response.statusCode=404;request.response.write('{}');
         }
       } else if(request.uri.path.startsWith('/api/box/ack/')) {
-        final Map body=jsonDecode(await utf8.decoder.bind(request).join()) as Map;
-        final List orders=body['orders'] is List ? body['orders'] as List : <Object>[];
+        final Map<String,dynamic> body=jsonDecode(await utf8.decoder.bind(request).join()) as Map<String,dynamic>;
+        final List<dynamic> orders=body['orders'] is List ? body['orders'] as List<dynamic> : <Object>[];
         final results=<Map<String,Object?>>[];
         for(final order in orders) {
           final bool finalAck=order['state']=='applied';

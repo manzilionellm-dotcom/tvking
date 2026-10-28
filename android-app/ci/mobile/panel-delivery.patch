@@ -52,7 +52,7 @@ diff --git a/lib/core/app/panel_live_wait.dart b/lib/core/app/panel_live_wait.da
 +      if (response.statusCode != 200) return false;
 +      final Object? decoded = jsonDecode(response.body);
 +      if (decoded is! Map || decoded['results'] is! List) return false;
-+      final List results = decoded['results'] as List;
++      final List<dynamic> results = decoded['results'] as List<dynamic>;
 +      return orders.every((order) => results.any((result) => result is Map &&
 +        result['order_id'] == order['order_id'] && result['status'] == 200 &&
 +        result['error'] == null && (result['state'] == order['state'] ||
