@@ -15,7 +15,7 @@ import { formatDateTime } from '@/lib/utils';
 
 /// Page ACTIVATION — TOUT-EN-UN (demande client : « un seul qui regroupe
 /// tout »). Une MAC → on pose la licence ET on pousse un TRIO de sources
-/// (0 à 6). Le client est débloqué et configuré automatiquement à
+/// (0 à 3). Le client est débloqué et configuré automatiquement à
 /// distance. La page « Pousser une playlist » est fusionnée ici.
 
 type SrcDraft = {
@@ -45,7 +45,7 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
   const [apps, setApps] = useState<App[]>([]);
   const [costs, setCosts] = useState<PlanCost[]>([]);
   const [balance, setBalance] = useState<number | null>(null);
-  // TRIO : 0 à 6 sources poussées avec l'activation (optionnel).
+  // TRIO : 0 à 3 sources poussées avec l'activation (optionnel).
   // Plus de menu « Serveur 1 » : on écrit l'adresse.
   const [items, setItems] = useState<SrcDraft[]>([]);
 
@@ -302,7 +302,7 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
             />
           </div>
 
-          {/* ===== TRIO de sources (0 à 6) — masqué si niveau insuffisant ===== */}
+          {/* ===== TRIO de sources (0 à 3) — masqué si niveau insuffisant ===== */}
           {canPushSources && (
           <div className="rounded-lg border border-white/5 bg-slate/40 p-3">
             <label className="mb-2 block text-[10px] uppercase tracking-widest text-ink-tertiary">

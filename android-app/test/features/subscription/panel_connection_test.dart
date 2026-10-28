@@ -30,8 +30,8 @@ void main() {
     HttpOverrides.global=_RealHttp();
     final HttpServer server=await HttpServer.bind(InternetAddress.loopbackIPv4,18789);
     final Completer<void> click=Completer<void>();
-    bool paid=false,frozen=false, sent=false;
-    int statusReads=0;
+    bool paid=false,frozen=false, finalSaved=false;
+    int statusReads=0, finalAttempts=0;
     SharedPreferences.setMockInitialValues(<String,Object>{
       'device.virtual_mac.v1':'MK:11:22:33:44:55',
       'zuno.signal.box_after.v1':900, // Ancienne MAC : ne masque pas le nouveau n°1.
@@ -41,10 +41,25 @@ void main() {
     server.listen((request) async {
       request.response.headers.contentType=ContentType.json;
       if(request.uri.path.startsWith('/api/box/wait/')) {
-        if(!sent) {
-          await click.future; sent=true;
-          request.response.write('{"box":[{"id":1,"kind":"activate"}],"fleet":[]}');
-        } else {request.response.statusCode=404;request.response.write('{}');}
+        await click.future;
+        if((int.tryParse(request.uri.queryParameters['after'] ?? '') ?? 0)<1) {
+          request.response.write('{"box":[{"id":1,"kind":"activate","order_id":"ord_connection123"}],"fleet":[]}');
+        } else {
+          expect(finalSaved,isTrue,reason:'curseur avancé avant confirmation du serveur');
+          request.response.statusCode=404;request.response.write('{}');
+        }
+      } else if(request.uri.path.startsWith('/api/box/ack/')) {
+        final Map body=jsonDecode(await utf8.decoder.bind(request).join()) as Map;
+        final List orders=body['orders'] is List ? body['orders'] as List : <Object>[];
+        final results=<Map<String,Object?>>[];
+        for(final order in orders) {
+          final bool finalAck=order['state']=='applied';
+          final bool refused=finalAck && ++finalAttempts==1;
+          if(finalAck && !refused)finalSaved=true;
+          results.add(<String,Object?>{'order_id':order['order_id'],'status':refused?500:200,
+            'state':refused?'received':order['state'],'error':refused?'temporary':null});
+        }
+        request.response.write(jsonEncode(<String,Object>{'ok':true,'results':results}));
       } else if(request.uri.path.startsWith('/api/status/') || request.uri.path=='/api/heartbeat') {
         statusReads++;
         request.response.write(jsonEncode(<String,Object>{
@@ -61,6 +76,8 @@ void main() {
       await _until(()=>statusReads>0);
       paid=true;click.complete();
       await _until(()=>SubscriptionState.instance.remote.paid);
+      await _until(()=>finalSaved);
+      expect(finalAttempts,2);
       frozen=true; // Aucun second ordre : le filet doit sauver ce changement.
       await _until(()=>SubscriptionState.instance.remote.frozen);
       expect(statusReads,greaterThanOrEqualTo(3));

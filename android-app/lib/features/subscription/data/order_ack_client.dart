@@ -25,7 +25,7 @@ abstract final class OrderAckClient {
     Duration(seconds: 9),
   ];
 
-  /// Rend vrai si le serveur a confirmé (200).
+  /// Confirme chaque ordre : HTTP 200 peut contenir des refus individuels.
   static Future<bool> send(
     String mac,
     List<Map<String, Object?>> orders, {
@@ -47,7 +47,20 @@ abstract final class OrderAckClient {
               )
               .timeout(const Duration(seconds: 8));
           status = resp.statusCode;
-          if (status == 200) return true;
+          if (status == 200) {
+            final Object? decoded = jsonDecode(resp.body);
+            if (decoded is Map && decoded['results'] is List) {
+              final List results = decoded['results'] as List;
+              final bool confirmed = orders.every((order) => results.any((result) =>
+                result is Map && result['order_id'] == order['order_id'] &&
+                result['status'] == 200 && result['error'] == null &&
+                (result['state'] == order['state'] ||
+                  (order['state'] == 'received' && result['state'] == 'applied'))));
+              if (confirmed) return true;
+            }
+            // Le Worker peut refuser un élément tout en répondant HTTP 200.
+            // Conserver le curseur tant que l'accusé final n'est pas écrit.
+          }
           if (status >= 400 && status < 500) {
             BlackBox.instance.warn('PANEL', 'accusé refusé par le serveur (HTTP $status)');
             return false;

@@ -14,6 +14,9 @@ pas la création fournisseur ni le chargement des chaînes.
 - Le client WebSocket avançait son numéro avant de savoir si l'ordre avait
   été appliqué. Il ne le valide plus en cas de panne et ferme les connexions
   muettes / retardataires. La preuve appareil reste dans les en-têtes.
+- Zuno attend également la confirmation de chaque accusé final, y compris
+  dans une réponse HTTP 200 contenant plusieurs résultats. Une réponse
+  perdue ou un refus individuel ne fait plus oublier l'ordre au panel.
 - Les curseurs Zuno sont associés à leur MAC. Les anciens curseurs globaux
   ne peuvent pas masquer les premiers ordres d'une autre MAC.
 - Le téléphone recevait déjà les ordres par attente longue, mais ne renvoyait
@@ -63,6 +66,9 @@ une préparation échouée d'une liste écrite mais encore non confirmée.
   avec `RUN_PANEL_CONNECTION=true` et `BACKEND_URL=http://127.0.0.1:18789`.
 - Téléphone : reçus avant/après import, révision, preuve en en-tête,
   maintien du curseur quand le serveur refuse un accusé.
+- Chrome sur le panel compilé : panne de source après activation, reprise
+  sans deuxième débit, révision confirmée, arrêt du suivi, formulaire
+  suivant et affichage mobile sans débordement. Toutes les API sont simulées.
 
 ## Vérification en ligne restant nécessaire
 

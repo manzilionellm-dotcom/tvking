@@ -99,6 +99,21 @@ test('suivi fournisseur : un résultat final gagne sur preparing à la même mil
   assert.equal((await activationDeliveryState(f.env,mac,trace)).stage,'failed');
 });
 
+test('suivi d’activation : le revendeur ne peut lire que son propre appareil',async()=>{
+  const f=fixture();
+  f.sql.exec("INSERT INTO resellers(id,email,password_hash,status,created_at) VALUES ('admin','reseller@example.invalid','unused','active',1)");
+  const path=`/api/v1/activation-delivery?mac=${mac}&trace=trace-fixture123`;
+  const request=()=>req(path,{method:'GET',headers:{Authorization:`Bearer ${jwt('reseller')}`}});
+  assert.equal((await gold.fetch(request(),f.env,f.ctx)).status,403);
+  f.sql.exec("UPDATE devices SET reseller_id='admin'");
+  assert.equal((await gold.fetch(request(),f.env,f.ctx)).status,200);
+  f.sql.exec("INSERT INTO resellers(id,email,password_hash,status,created_at) VALUES ('another-reseller','other@example.invalid','unused','active',1)");
+  f.sql.exec("UPDATE devices SET reseller_id='another-reseller'");
+  assert.equal((await gold.fetch(request(),f.env,f.ctx)).status,403);
+  f.sql.exec("UPDATE resellers SET status='suspended'");
+  assert.equal((await gold.fetch(request(),f.env,f.ctx)).status,401);
+});
+
 test('export complet : trois empreintes exactes et runtime limité à trois exports',()=>{
   const meta=JSON.parse(file('../production/provenance.json'));
   for(const [name,hash] of Object.entries(meta.sha256)) assert.equal(createHash('sha256').update(file(`../production/${name}`)).digest('hex'),hash);

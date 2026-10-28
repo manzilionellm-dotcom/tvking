@@ -24,6 +24,7 @@ const List<Duration> kNoDelay = <Duration>[Duration.zero, Duration.zero, Duratio
 final List<Map<String, Object?>> kOrders = <Map<String, Object?>>[
   <String, Object?>{'order_id': 'ord_12345678-aaaa', 'state': 'received', 'received_at': 1791300000000},
 ];
+const String kConfirmed = '{"ok":true,"results":[{"order_id":"ord_12345678-aaaa","status":200,"state":"received"}]}';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -48,7 +49,7 @@ void main() {
     late http.Request seen;
     final MockClient c = MockClient((http.Request r) async {
       seen = r;
-      return http.Response('{"ok":true}', 200);
+      return http.Response(kConfirmed, 200);
     });
     expect(await OrderAckClient.send(kMac, kOrders, client: c, delays: kNoDelay), isTrue);
     expect(seen.method, 'POST');
@@ -62,7 +63,7 @@ void main() {
       calls++;
       if (calls == 1) return http.Response('busy', 503);
       if (calls == 2) throw const SocketException('coupure injectée');
-      return http.Response('{"ok":true}', 200);
+      return http.Response(kConfirmed, 200);
     });
     expect(await OrderAckClient.send(kMac, kOrders, client: c, delays: kNoDelay), isTrue);
     expect(calls, 3);
@@ -76,6 +77,37 @@ void main() {
     });
     expect(await OrderAckClient.send(kMac, kOrders, client: c, delays: kNoDelay), isFalse);
     expect(calls, 4);
+  });
+
+  test('HTTP 200 avec refus individuel : réessai avant confirmation', () async {
+    int calls = 0;
+    final MockClient c = MockClient((http.Request r) async {
+      if (++calls == 1) {
+        return http.Response('{"results":[{"order_id":"ord_12345678-aaaa","status":500,"error":"temporary"}]}', 200);
+      }
+      return http.Response(kConfirmed, 200);
+    });
+    expect(await OrderAckClient.send(kMac, kOrders, client: c, delays: kNoDelay), isTrue);
+    expect(calls, 2);
+  });
+
+  test('aucune confirmation pour une réponse vide, un autre ordre ou un état antérieur', () async {
+    for (final String body in <String>[
+      '{"ok":true}',
+      '{"results":[{"order_id":"other_order","status":200,"state":"applied"}]}',
+      kConfirmed,
+    ]) {
+      final MockClient c = MockClient((_) async => http.Response(body, 200));
+      expect(await OrderAckClient.send(kMac, <Map<String, Object?>>[
+        <String, Object?>{'order_id':'ord_12345678-aaaa','state':'applied'},
+      ], client: c, delays: const <Duration>[]), isFalse);
+    }
+  });
+
+  test('RECEIVED tardif après APPLIED : confirmation idempotente acceptée', () async {
+    final MockClient c = MockClient((_) async => http.Response(
+      kConfirmed.replaceAll('received', 'applied'), 200));
+    expect(await OrderAckClient.send(kMac, kOrders, client: c, delays: kNoDelay), isTrue);
   });
 
   test('repli zuno.ack.off : aucun envoi ; liste vide : aucun envoi', () async {

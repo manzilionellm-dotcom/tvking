@@ -576,7 +576,12 @@ class RemoteActivationWatch {
           outcome: out,
         ));
       }
-      unawaited(OrderAckClient.send(ackMac, finals));
+      if (finals.isNotEmpty && !RepairFlags.orderAckOff &&
+          !await OrderAckClient.send(ackMac, finals)) {
+        // Ne pas oublier l'ordre si seul l'envoi de son résultat échoue.
+        // L'API accepte le renvoi du même accusé après reconnexion.
+        retry = true;
+      }
     }
     if (retry) return false;
     for (final Map<String, Object?> m in freshBox) {
