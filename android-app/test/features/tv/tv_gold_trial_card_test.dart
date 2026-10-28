@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -25,35 +24,7 @@ const _previewKey = ValueKey<String>('tv-trial-preview');
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
-  setUpAll(() async {
-    GoogleFonts.config.allowRuntimeFetching = false;
-    if (!_capture) return;
-    // Les tests Flutter dessinent normalement des blocs Ahem. Pour les
-    // captures de revue uniquement, charger une police locale lisible sans
-    // téléchargement réseau ni modification des polices de l'application.
-    final font = File('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf');
-    if (await font.exists()) {
-      final bytes = ByteData.sublistView(await font.readAsBytes());
-      // Noms des familles générés par google_fonts 6.x. Ne pas appeler
-      // TvTokens ici : cela déclencherait un chargement réseau/asset hors
-      // du contexte contrôlé d'un testWidgets avant le premier rendu.
-      const families = <String>{
-        'Inter_regular', 'Inter_600', 'Inter_700', 'Oswald_600',
-        'JetBrainsMono_600',
-      };
-      for (final family in families) {
-        await (FontLoader(family)..addFont(Future.value(bytes))).load();
-      }
-    }
-    final root = Platform.environment['FLUTTER_ROOT'];
-    if (root != null) {
-      final icons = File('$root/bin/cache/artifacts/material_fonts/MaterialIcons-Regular.otf');
-      if (await icons.exists()) {
-        await (FontLoader('MaterialIcons')..addFont(Future.value(
-            ByteData.sublistView(await icons.readAsBytes())))).load();
-      }
-    }
-  });
+  setUpAll(() => GoogleFonts.config.allowRuntimeFetching = false);
   setUp(() => SharedPreferences.setMockInitialValues(<String, Object>{}));
 
   GoldTrialController create(Future<http.Response> Function(http.Request) handler,
@@ -99,12 +70,7 @@ void main() {
       )),
     ));
     await tester.pumpAndSettle();
-    if (_capture) {
-      await tester.runAsync(() => precacheImage(
-          const AssetImage('assets/branding/zuno_logo.png'),
-          tester.element(find.byType(TvLogo))));
-      await tester.pumpAndSettle();
-    }
+
   }
 
   Future<void> capture(WidgetTester tester, String name) async {

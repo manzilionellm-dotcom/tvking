@@ -34,8 +34,9 @@ adulte, des playlists distinctes, la libération du cache et l'annulation d'un l
 expiration, refus, QR WhatsApp et fermeture au D-pad, client existant, messages
 longs en 540p/1080p/portrait, ainsi que le défilement vers les dernières commandes.
 Le workflow d'APK de revue conserve des rendus du composant en 720p : disponible,
-chargement et confirmation. Ce sont des fixtures, sans compte fournisseur, avec
-une police locale de test pour éviter les blocs Ahem des tests Flutter.
+chargement et confirmation. Ce sont des fixtures sans compte fournisseur. Les
+captures utilisent les glyphes Ahem du moteur de test : elles contrôlent la
+disposition et les états, pas le rendu typographique final sur une télévision.
 
 Les résultats effectifs des suites Flutter et de compilation sont consignés
 dans la PR et les workflows GitHub Actions du commit, après leur exécution.
