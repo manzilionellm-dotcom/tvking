@@ -38,13 +38,10 @@ void main() {
   setUpAll(() => GoogleFonts.config.allowRuntimeFetching = false);
   const capability = MethodChannel('com.sevenmotion.zuno/cast-capability');
   setUp(() async {
-    debugDefaultTargetPlatformOverride = TargetPlatform.android;
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(capability, (_) async => true);
-    await CastPlatform.initializeZuno();
   });
   tearDown(() {
-    debugDefaultTargetPlatformOverride = null;
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(capability, null);
   });
@@ -52,6 +49,7 @@ void main() {
   for (final accept in [true, false]) {
     testWidgets(accept ? 'Cast mobile ferme le local avant le récepteur puis reprend au stop' :
         'Fermer le sélecteur reprend le mobile sans lecture distante', (tester) async {
+      await CastPlatform.initializeZuno();
       final events = <String>[];
       final local = LocalPlayer(events);
       final receiver = Receiver(events);
@@ -83,6 +81,6 @@ void main() {
         expect(events, ['local-stop', 'local-resume']);
       }
       await tester.pumpWidget(const SizedBox());
-    });
+    }, variant: TargetPlatformVariant.only(TargetPlatform.android));
   }
 }

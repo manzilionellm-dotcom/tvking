@@ -19,7 +19,7 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     kotlinOptions { jvmTarget = "17" }
-    sourceSets.main.java.srcDir(layout.buildDirectory.dir("generated/sharedCast"))
+    sourceSets.main.java.srcDir(layout.buildDirectory.dir("generated/sharedCast").get().asFile)
 }
 tasks.configureEach {
     if (name == "preBuild" || name.startsWith("compile") && name.endsWith("Kotlin")) dependsOn(sharedCast)
