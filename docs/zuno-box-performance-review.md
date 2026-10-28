@@ -55,7 +55,9 @@ dans la PR et les workflows GitHub Actions du commit, après leur exécution.
 ## Recette sur une vraie box
 
 1. Comparer deux APK **profile ou release**, de même configuration, sur la même
-   box et le même réseau. Ne pas conclure à partir de l'APK de revue debug.
+   box et le même réseau. Le nouvel APK de revue est compilé en release optimisée, avec une signature
+   de développement séparée, pour ARM 32 et 64 bits. Les anciennes revues debug
+   ne permettent pas de comparer la fluidité avec un APK client optimisé.
 2. Démarrage à froid puis à chaud ; accueil vide et listes 1 000 / 10 000 /
    50 000 chaînes. Relever premier écran utilisable, PSS mémoire et temps de frame
    dans Flutter DevTools/Perfetto. Conserver médiane et p95 avec modèle/Android.

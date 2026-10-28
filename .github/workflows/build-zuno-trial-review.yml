@@ -1,5 +1,6 @@
 # Revue isolée : aucun secret, aucune release, aucune signature de production.
 # Réutilise les préparations du dernier constructeur Zuno 109.
+# APK optimisé pour tester la fluidité, compatible ARM 32 et 64 bits.
 name: Zuno — APK de revue essai 24 h
 'on':
   push:
@@ -24,7 +25,7 @@ env:
   ZUNO_APP_LABEL: Zuno Essai Test
 jobs:
   review:
-    name: APK séparé, signature de développement
+    name: APK optimisé séparé, signature de développement
     runs-on: ubuntu-latest
     timeout-minutes: 45
     if: github.repository == 'manzilionellm-dotcom/tvking' && github.actor == github.repository_owner && github.triggering_actor
@@ -142,16 +143,20 @@ jobs:
 
         BUILD_NUMBER=$(date +%s)
 
-        flutter build apk --debug --target=lib/main_tv.dart --target-platform android-arm64 --android-skip-build-dependency-validation
+        flutter build apk --release --target=lib/main_tv.dart --target-platform android-arm,android-arm64 --android-skip-build-dependency-validation
         --build-number="$BUILD_NUMBER" --build-name="109-trial-review" --dart-define=APP_BUILD_TS="$BUILD_NUMBER" --dart-define=GIT_SHA="$SOURCE_SHA"
 
-        cp build/app/outputs/flutter-apk/app-debug.apk build/app/outputs/flutter-apk/zuno-trial-review.apk
+        cp build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/zuno-trial-review.apk
 
         BUILD_TOOLS=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)
 
         "$BUILD_TOOLS/aapt" dump badging build/app/outputs/flutter-apk/zuno-trial-review.apk > build/trial-review-manifest.txt
 
         grep -F "name=''com.sevenmotion.tv.seven_tv.trialreview''" build/trial-review-manifest.txt
+
+        grep -F "armeabi-v7a" build/trial-review-manifest.txt
+
+        grep -F "arm64-v8a" build/trial-review-manifest.txt
 
         sha256sum build/app/outputs/flutter-apk/zuno-trial-review.apk > build/trial-review-sha256.txt
 
