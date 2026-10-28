@@ -33,10 +33,9 @@ adulte, des playlists distinctes, la libération du cache et l'annulation d'un l
 `tv_gold_trial_card_test.dart` vérifie OK maintenu/double clic, message public,
 expiration, refus, QR WhatsApp et fermeture au D-pad, client existant, messages
 longs en 540p/1080p/portrait, ainsi que le défilement vers les dernières commandes.
-Le workflow d'APK de revue conserve des rendus du composant en 720p : disponible,
-chargement et confirmation. Ce sont des fixtures sans compte fournisseur. Les
-captures utilisent les glyphes Ahem du moteur de test : elles contrôlent la
-disposition et les états, pas le rendu typographique final sur une télévision.
+Le workflow d'APK de revue exécute ces contrôles avant compilation, avec des
+données fictives et sans compte fournisseur. La lisibilité des polices et du QR
+à distance reste incluse dans la recette sur une télévision réelle.
 
 Les résultats effectifs des suites Flutter et de compilation sont consignés
 dans la PR et les workflows GitHub Actions du commit, après leur exécution.

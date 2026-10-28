@@ -1,9 +1,6 @@
 import 'dart:async';
-import 'dart:io';
-import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -19,7 +16,6 @@ import 'package:tv_king/features/tv/presentation/tv_activation_frame.dart';
 import 'package:tv_king/features/tv/presentation/tv_components.dart';
 import 'package:tv_king/features/tv/presentation/tv_gold_trial_card.dart';
 
-const _capture = bool.fromEnvironment('ZUNO_CAPTURE_REVIEW');
 const _previewKey = ValueKey<String>('tv-trial-preview');
 
 void main() {
@@ -73,22 +69,6 @@ void main() {
 
   }
 
-  Future<void> capture(WidgetTester tester, String name) async {
-    if (!_capture) return;
-    final boundary = tester.renderObject<RenderRepaintBoundary>(find.byKey(_previewKey));
-    await tester.runAsync(() async {
-      final image = await boundary.toImage(pixelRatio: 1);
-      try {
-        final data = await image.toByteData(format: ui.ImageByteFormat.png);
-        final file = File('build/zuno-trial-review/$name.png');
-        await file.parent.create(recursive: true);
-        await file.writeAsBytes(data!.buffer.asUint8List());
-      } finally {
-        image.dispose();
-      }
-    });
-  }
-
   testWidgets('télécommande : focus, OK maintenu, double clic et message public', (tester) async {
     int posts = 0;
     final pending = Completer<http.Response>();
@@ -97,7 +77,6 @@ void main() {
     await show(tester, controller);
     expect(find.text('Je teste'), findsOneWidget);
     expect(find.text('24 H'), findsOneWidget);
-    await capture(tester, '01-ready-720p');
     await tester.sendKeyDownEvent(LogicalKeyboardKey.select);
     await tester.sendKeyRepeatEvent(LogicalKeyboardKey.select);
     await tester.sendKeyUpEvent(LogicalKeyboardKey.select);
@@ -107,14 +86,12 @@ void main() {
     await tester.sendKeyEvent(LogicalKeyboardKey.select);
     await tester.pump();
     expect(posts, 1, reason: 'pas de deuxième demande pendant le POST');
-    await capture(tester, '02-loading-720p');
     pending.complete(http.Response('{"ok":true,"expire":"2030-10-29T12:00:00Z","message":"Votre essai est prêt."}', 201));
     await tester.pumpAndSettle();
     expect(find.text('Votre essai est prêt.'), findsOneWidget);
     expect(find.textContaining('29/10/2030'), findsOneWidget);
     expect(find.text('Je teste'), findsNothing);
     expect(tester.takeException(), isNull);
-    await capture(tester, '03-success-720p');
   });
 
   testWidgets('essai utilisé : QR WhatsApp et retour à la télécommande', (tester) async {
