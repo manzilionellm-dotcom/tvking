@@ -76,6 +76,15 @@ class MulticastLockBridge(
         }
     }
 
+    /** Aucun verrou Wi-Fi ne survit à l'activité qui l'a acquis. */
+    @Synchronized
+    fun dispose() {
+        channel.setMethodCallHandler(null)
+        refCount = 0
+        if (lock?.isHeld == true) lock?.release()
+        lock = null
+    }
+
     @Synchronized
     private fun acquire(): Boolean {
         return try {

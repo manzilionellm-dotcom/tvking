@@ -1,5 +1,5 @@
 // Le sélecteur, la découverte et les transports sont ceux de 7 MOTION.
-// Cette petite adaptation relie leur session au lecteur ZUNO de Windows.
+// Cette petite adaptation relie leur session aux lecteurs Zuno du PC et du téléphone Android.
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:native_video_player/native_video_player.dart';
@@ -11,21 +11,28 @@ import '../core/tv_dimens.dart';
 import '../core/tv_tokens.dart';
 import 'media_kit_video_backend.dart';
 
+typedef ZunoCastPicker = Future<void> Function(BuildContext context, {
+  required String streamUrl, required String title, String? imageUrl,
+});
+
 class DesktopCastControls extends StatefulWidget {
   const DesktopCastControls({super.key, required this.controller,
     required this.streamUrl, required this.title, this.imageUrl,
-    this.onHandoffChanged});
+    this.onHandoffChanged, this.manager, this.picker});
   final NativeVideoController controller;
   final String streamUrl;
   final String title;
   final String? imageUrl;
   final ValueChanged<bool>? onHandoffChanged;
+  // Injection pour tester annulation / passation sans récepteur physique.
+  final CastManager? manager;
+  final ZunoCastPicker? picker;
   @override
   State<DesktopCastControls> createState() => DesktopCastControlsState();
 }
 
 class DesktopCastControlsState extends State<DesktopCastControls> {
-  final CastManager _manager = CastManager.instance;
+  late final CastManager _manager = widget.manager ?? CastManager.instance;
   bool _owns = false;
   bool _busy = false;
   bool _dead = false;
@@ -43,7 +50,7 @@ class DesktopCastControlsState extends State<DesktopCastControls> {
     if (_dead || !mounted) return;
     if (_owns && !_busy && (_manager.state == CastState.idle || _manager.state == CastState.error)) {
       _owns = false;
-      MediaKitVideoBackend.resumeAfterCast(widget.controller);
+      _resumeLocal();
       widget.onHandoffChanged?.call(false);
     }
     setState(() {});
@@ -59,7 +66,7 @@ class DesktopCastControlsState extends State<DesktopCastControls> {
     } catch (_) {
       if (mounted && ticket == _revision) {
         _owns = false;
-        MediaKitVideoBackend.resumeAfterCast(widget.controller);
+        _resumeLocal();
         widget.onHandoffChanged?.call(false);
       }
     } finally {
@@ -75,9 +82,9 @@ class DesktopCastControlsState extends State<DesktopCastControls> {
     // Fermer le flux local avant le Cast évite de consommer deux connexions
     // chez les fournisseurs qui n’en autorisent qu’une. Le film garde sa position.
     try {
-      await MediaKitVideoBackend.suspendForCast(widget.controller);
+      await _suspendLocal();
       if (!mounted || ticket != _revision) return;
-      await showCastPicker(context, streamUrl: widget.streamUrl,
+      await (widget.picker ?? showCastPicker)(context, streamUrl: widget.streamUrl,
           title: widget.title, imageUrl: widget.imageUrl);
       if (!mounted || ticket != _revision) return;
       _owns = _manager.isCasting;
@@ -95,11 +102,23 @@ class DesktopCastControlsState extends State<DesktopCastControls> {
     } finally {
       if (mounted && ticket == _revision) {
         if (!_owns) {
-          MediaKitVideoBackend.resumeAfterCast(widget.controller);
+          _resumeLocal();
           widget.onHandoffChanged?.call(false);
         }
         setState(() => _busy = false);
       }
+    }
+  }
+
+  Future<void> _suspendLocal() => CastPlatform.isWindows
+      ? MediaKitVideoBackend.suspendForCast(widget.controller)
+      : widget.controller.suspendForCast();
+
+  void _resumeLocal() {
+    if (CastPlatform.isWindows) {
+      MediaKitVideoBackend.resumeAfterCast(widget.controller);
+    } else {
+      unawaited(widget.controller.resumeAfterCast());
     }
   }
 
@@ -117,11 +136,15 @@ class DesktopCastControlsState extends State<DesktopCastControls> {
     if (_busy) return;
     ++_revision;
     setState(() { _busy = true; _owns = false; });
-    await _manager.disconnect();
-    if (!mounted) return;
-    MediaKitVideoBackend.resumeAfterCast(widget.controller);
-    widget.onHandoffChanged?.call(false);
-    setState(() => _busy = false);
+    try {
+      await _manager.disconnect();
+    } finally {
+      if (mounted) {
+        _resumeLocal();
+        widget.onHandoffChanged?.call(false);
+        setState(() => _busy = false);
+      }
+    }
   }
   @override
   void dispose() {
@@ -133,7 +156,7 @@ class DesktopCastControlsState extends State<DesktopCastControls> {
   }
   @override
   Widget build(BuildContext context) {
-    if (!CastPlatform.isWindows || !widget.streamUrl.startsWith(RegExp(r'https?://'))) return const SizedBox.shrink();
+    if (!CastPlatform.canSendFromZuno || !widget.streamUrl.startsWith(RegExp(r'https?://'))) return const SizedBox.shrink();
     return Container(
       decoration: BoxDecoration(color: TvTokens.panel,
         borderRadius: BorderRadius.circular(TvTokens.rButton),

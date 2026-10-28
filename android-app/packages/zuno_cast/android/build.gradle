@@ -1,0 +1,33 @@
+group = "com.sevenmotion.zuno_cast"
+version = "1.0"
+apply plugin: "com.android.library"
+apply plugin: "kotlin-android"
+
+// Ces trois fichiers sont EXACTEMENT ceux compilés par 7 MOTION. Ne pas
+// copier son MainActivity : Zuno conserve son cycle de vie et son lecteur.
+def sharedCast = tasks.register("syncSharedCast", Sync) {
+    from "../../../android_overlay/google_cast"
+    include "GoogleCastApi.kt", "CastOptionsProviderImpl.kt", "MulticastLockBridge.kt"
+    into layout.buildDirectory.dir("generated/sharedCast")
+}
+android {
+    namespace = "com.sevenmotion.zuno_cast"
+    compileSdk = 35
+    defaultConfig { minSdk = 21 }
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+    kotlinOptions { jvmTarget = "17" }
+    sourceSets.main.java.srcDir(layout.buildDirectory.dir("generated/sharedCast"))
+}
+tasks.configureEach {
+    if (name == "preBuild" || name.startsWith("compile") && name.endsWith("Kotlin")) dependsOn(sharedCast)
+}
+dependencies {
+    // Versions déjà utilisées par le build 7 MOTION, sans montée de SDK.
+    implementation "com.google.android.gms:play-services-cast-framework:21.5.0"
+    implementation "androidx.mediarouter:mediarouter:1.6.0"
+    implementation "androidx.appcompat:appcompat:1.7.0"
+    implementation "androidx.fragment:fragment:1.6.2"
+}

@@ -146,6 +146,13 @@ class GoogleCastApi(
         }
     }
 
+    /** Détache les listeners quand l'activité Zuno change ou est détruite. */
+    fun dispose() {
+        detachMediaCallback()
+        sessionManager?.removeSessionManagerListener(sessionListener, CastSession::class.java)
+        channel.setMethodCallHandler(null)
+    }
+
     private fun attachMediaCallback() {
         val client = remoteMediaClient() ?: return
         try {

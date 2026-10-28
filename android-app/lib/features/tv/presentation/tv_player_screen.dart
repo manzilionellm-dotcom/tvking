@@ -1,3 +1,4 @@
+import '../../cast/data/cast_platform.dart';
 // =========================================================
 //  tv_player_screen.dart — Lecteur plein écran TV (SurfaceView natif)
 // =========================================================
@@ -100,6 +101,7 @@ class TvPlayerScreen extends StatefulWidget {
 class _TvPlayerScreenState extends State<TvPlayerScreen>
     with WidgetsBindingObserver {
   late final NativeVideoController _controller;
+  bool _casting = false;
   final GlobalKey<DesktopCastControlsState> _desktopCastKey = GlobalKey<DesktopCastControlsState>();
   final FocusNode _focus = FocusNode();
 
@@ -294,7 +296,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     // l'infini. Désormais chaque tentative ratée en relance une autre 15 s
     // plus tard, jusqu'au budget, puis l'écran « Réessayer ».)
     _watchdog = Timer.periodic(_watchEvery, (_) {
-      if (!_appActive) {
+      if (!_appActive || _casting) {
         _lastProgress = DateTime.now(); // pause voulue : pas un gel
         return;
       }
@@ -619,7 +621,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   }
 
   void _recover() {
-    if (_fatal || _zapHolding || _recoverArmed) return;
+    if (_casting || _fatal || _zapHolding || _recoverArmed) return;
     // Dehors : pas de second flux. Le natif refuse aussi, au cas où.
     if (NativeVideoController.blocksReopenInBackground) {
       _noteBackgroundRefusal();
@@ -1472,7 +1474,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
                   // Le temps que l'image arrive (ou qu'on lâche Haut/Bas), on dit
                   // QUELLE chaîne est visée. Un logo seul ne permettait pas de
                   // zapper « à l'aveugle » sans se perdre.
-                  if (_zapHolding || (_buffering && !_fatal)) _loadingCard(),
+                  if (!_casting && (_zapHolding || (_buffering && !_fatal))) _loadingCard(),
                   if (_missed != null)
                     Align(
                       alignment: Alignment.topCenter,
@@ -1487,7 +1489,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
                   // Retour quitte. Masqué pendant un zap : la personne est déjà
                   // en train d'en choisir une autre. Le texte (chaîne coupée ou
                   // chaîne vide) reste celui des traductions, lisible à 3 m.
-                  if (_fatal && !_zapHolding) _errorCard(),
+                  if (!_casting && _fatal && !_zapHolding) _errorCard(),
                   // Panneau de lecture (façon YouTube / Netflix) : glisse depuis le
                   // bas + fondu, masqué automatiquement après 5 s. Contient l'info
                   // chaîne + tous les contrôles (dont REC et ❤ en bas).
@@ -1544,10 +1546,16 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
                       ),
                     ),
                   ),
-                  if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows)
+                  if (CastPlatform.canSendFromZuno)
                     Positioned(top: TvDimens.safeV, right: TvDimens.safeH,
                       child: DesktopCastControls(key: _desktopCastKey,
-                        controller: _controller, streamUrl: _playingUrl, title: _current.name, imageUrl: _current.logoUrl)),
+                        controller: _controller, streamUrl: _playingUrl, title: _current.name, imageUrl: _current.logoUrl,
+                        onHandoffChanged: (bool active) {
+                          if (!mounted) return;
+                          _cancelRecover();
+                          _lastProgress = DateTime.now();
+                          setState(() => _casting = active);
+                        })),
                   // Numéro saisi à la télécommande (coin haut-droit).
                   if (_numBuffer.isNotEmpty)
                     Positioned(

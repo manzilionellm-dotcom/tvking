@@ -1,3 +1,4 @@
+import '../../cast/data/cast_platform.dart';
 // =========================================================
 //  tv_vod_player_screen.dart — Lecteur Films / Épisodes (télécommande)
 // =========================================================
@@ -898,7 +899,7 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
                   if (!_desktopCasting && _nextCard && _next != null) _buildNextCard(context),
                   if (!_desktopCasting && _tracksOpen) _buildTracks(context),
                   if (!_desktopCasting && _fatal) _buildError(context),
-                  if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows)
+                  if (CastPlatform.canSendFromZuno)
                     Positioned(top: TvDimens.safeV, right: TvDimens.safeH,
                       child: DesktopCastControls(key: _desktopCastKey,
                         controller: _c, streamUrl: _playingUrl ?? _item.url,

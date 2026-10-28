@@ -711,6 +711,22 @@ class NativeVideoController extends ChangeNotifier {
 
   void pause() => _backend != null ? _backend!.pause() : _channel?.invokeMethod<void>('pause');
 
+  /// Passation volontaire au Cast : ferme le flux local même si l'app reste
+  /// au premier plan. Ce verrou est distinct du cycle de vie Home/retour.
+  Future<void> suspendForCast() async {
+    if (_disposed) throw StateError('Lecteur fermé');
+    final MethodChannel? channel = _channel;
+    if (channel == null) throw StateError('Lecteur pas encore prêt');
+    await channel.invokeMethod<void>('suspendForCast');
+    isPlaying = false;
+    if (!_disposed) notifyListeners();
+  }
+
+  Future<void> resumeAfterCast() async {
+    if (_disposed) return;
+    await _channel?.invokeMethod<void>('resumeAfterCast');
+  }
+
   /// App en arrière-plan (Home, multitâche) : ARRÊT, pas pause. Le natif
   /// rend le décodeur, l'AudioTrack et le focus audio. Hors Android, une
   /// pause suffit.

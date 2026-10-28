@@ -8,6 +8,10 @@ name: Zuno — APK de revue essai 24 h
     paths:
     - android-app/lib/**
     - android-app/test/**
+    - android-app/packages/**
+    - android-app/android/**
+    - android-app/android_overlay/**
+    - android-app/pubspec.yaml
     - .github/workflows/build-zuno-trial-review.yml
 permissions:
   contents: read
