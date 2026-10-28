@@ -15,3 +15,5 @@ done
 cp "$mission_dir/android-app/ci/mobile/gold_trial_device_test.dart.template" integration_test/gold_trial_device_test.dart
 git apply --check "$mission_dir/android-app/ci/mobile/trial-source-privacy.patch"
 git apply "$mission_dir/android-app/ci/mobile/trial-source-privacy.patch"
+git apply --check "$mission_dir/android-app/ci/mobile/panel-delivery.patch"
+git apply "$mission_dir/android-app/ci/mobile/panel-delivery.patch"

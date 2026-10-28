@@ -8,6 +8,7 @@ import { historicalEligibility,trialKeyMetadata,legacyHistory,legacyExpiration }
 import { enrollProductionDevice,verifyProductionDevice } from '../gold_trial_device.js';
 import { createTrialDelivery,saveTrialReceipt,openTrialReceipt } from '../gold_trial_delivery.js';
 import { createGoldTrialHandler } from '../gold_trial_policy.js';
+import { activationDeliveryState } from '../gold_activation_delivery.js';
 const production=await import('../production/worker.runtime.js');
 const gold=(await import('../gold.js')).default;
 const mac='MK:11:22:33:44:55',secondMac='MK:11:22:33:44:66';
@@ -72,6 +73,31 @@ async function receipt(f,{label='Zuno TV Essai'}={}) {
   return result;
 }
 const bridge={sealSource:production.goldSealSource,openSourceList:production.goldOpenSourceList,notifyBox:async()=>{}};
+
+test('suivi d’activation : authentification, isolation MAC/trace et aucune donnée fournisseur',async()=>{
+  const f=fixture(),trace='trace-fixture123';
+  f.sql.prepare(`INSERT INTO gold_history(id,mac,event,detail_json,created_at) VALUES (?,?,?, ?,?)`)
+    .run('h1',mac,'activation.delivery',JSON.stringify({trace_id:trace,stage:'source_saved',order_id:'ord_fixture123',password:'must-not-leak',message:'private-provider-response'}),now());
+  const path=`/api/v1/activation-delivery?mac=${mac}&trace=${trace}`;
+  assert.equal((await gold.fetch(req(path,{method:'GET'}),f.env,f.ctx)).status,401);
+  const r=await gold.fetch(req(path,{method:'GET',headers:{Authorization:`Bearer ${jwt()}`,Origin:'https://atlas-console-k7q2.vercel.app'}}),f.env,f.ctx);
+  assert.equal(r.status,200);
+  assert.equal(r.headers.get('Access-Control-Allow-Origin'),'https://atlas-console-k7q2.vercel.app');
+  const value=await r.json();
+  assert.equal(value.stage,'source_saved');assert.equal(value.order_id,'ord_fixture123');
+  assert.doesNotMatch(JSON.stringify(value),/must-not-leak|private-provider|password/);
+  assert.equal((await activationDeliveryState(f.env,secondMac,trace)).stage,'waiting');
+  assert.equal((await activationDeliveryState(f.env,mac,'other-trace')).stage,'waiting');
+});
+
+test('suivi fournisseur : un résultat final gagne sur preparing à la même milliseconde',async()=>{
+  const f=fixture(),trace='trace-fixture123',at=now();
+  for(const [id,stage] of [['z-preparing','preparing'],['a-final','failed']]) {
+    f.sql.prepare('INSERT INTO gold_history(id,mac,event,detail_json,created_at) VALUES (?,?,?,?,?)')
+      .run(id,mac,'activation.delivery',JSON.stringify({trace_id:trace,stage}),at);
+  }
+  assert.equal((await activationDeliveryState(f.env,mac,trace)).stage,'failed');
+});
 
 test('export complet : trois empreintes exactes et runtime limité à trois exports',()=>{
   const meta=JSON.parse(file('../production/provenance.json'));

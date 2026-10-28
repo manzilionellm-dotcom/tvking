@@ -26,6 +26,6 @@ jobs:
         with:
           node-version: '24.21.0'
           package-manager-cache: false
-      - run: node --test android-app/cloudflare/tests/gold_trial_policy.test.mjs android-app/cloudflare/tests/gold_trial_runtime.test.mjs android-app/admin-panel/src/lib/goldTrial.test.ts
+      - run: node --test android-app/cloudflare/tests/gold_trial_policy.test.mjs android-app/cloudflare/tests/gold_trial_runtime.test.mjs android-app/admin-panel/src/lib/goldTrial.test.ts android-app/admin-panel/src/lib/deliveryStatus.test.ts
       - run: npm ci --no-audit --no-fund && npm run build
         working-directory: android-app/admin-panel

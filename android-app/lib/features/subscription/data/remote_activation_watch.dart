@@ -78,6 +78,7 @@ class RemoteActivationWatch {
   bool _versionTried = false;
   final Set<int> _seenBox = <int>{};
   final Set<int> _seenFleet = <int>{};
+  Future<void> _ordersTail = Future<void>.value();
 
   /// Dernier corps reçu sur le canal (tests : pas de mot de passe).
   @visibleForTesting
@@ -87,8 +88,10 @@ class RemoteActivationWatch {
   /// en base à chaque lecture de statut.
   static const Duration _heartbeatWhileWaiting = Duration(seconds: 60);
 
-  static const String _kBoxCursor = 'zuno.signal.box_after.v1';
-  static const String _kFleetCursor = 'zuno.signal.fleet_after.v1';
+  static const String _kBoxCursor = 'zuno.signal.box_after.v2';
+  static const String _kFleetCursor = 'zuno.signal.fleet_after.v2';
+  String? _cursorMac;
+  Future<void>? _cursorLoading;
 
   /// À appeler une fois le boot lancé. [allowSourceImport] est faux
   /// en mode sans échec : on lit quand même la licence (la box peut
@@ -97,11 +100,12 @@ class RemoteActivationWatch {
     _allowSourceImport = allowSourceImport;
     if (_run) return;
     _run = true;
+    _cursorsLoaded = false;
     // Le démarrage vient de faire un heartbeat. On ne le double pas.
     _lastHeartbeat = DateTime.now();
-    _arm(ActivationPace.fast);
     _generation++;
     final int generation = _generation;
+    _arm(Duration.zero);
     unawaited(_signalLoop(generation));
     // WebSocket d'abord. S'il ne tient pas, l'attente longue
     // (déjà dans _signalLoop) prend le relais. L'interrupteur
@@ -112,10 +116,18 @@ class RemoteActivationWatch {
   /// « J'ai payé — Vérifier », ou juste après un changement de
   /// licence : on regarde tout de suite, sans attendre le délai.
   void nudge() {
+    if (!_run) return;
     _nudge = true;
     if (_tickBusy) return;
     _timer?.cancel();
     _arm(Duration.zero);
+  }
+
+  void _setChannelUp(bool value) {
+    if (_channelUp == value) return;
+    _channelUp = value;
+    // Une perte du canal ne doit pas attendre un minuteur déjà garé à 25 s.
+    if (!value) nudge();
   }
 
   /// Arrête la veille (téléphone passé en arrière-plan). [start] la
@@ -143,9 +155,12 @@ class RemoteActivationWatch {
 
   void _arm(Duration delay) {
     _timer?.cancel();
+    final int generation = _generation;
     _timer = Timer(delay, () async {
-      await _tick();
-      if (!_run) return;
+      if (!_run || generation != _generation) return;
+      try { await _tick(); }
+      catch (_) { _failures++; }
+      if (!_run || generation != _generation) return;
       if (_nudge) {
         _nudge = false;
         _arm(Duration.zero);
@@ -172,8 +187,8 @@ class RemoteActivationWatch {
   /// [sourceOrdered] : un ordre « source » / « source_clear » vient
   /// d'arriver du panel. Les listes sont relues tout de suite, même
   /// si une chaîne joue (sauf repli `zuno.source.order_waits_idle`).
-  Future<void> _tick({bool sourceOrdered = false}) async {
-    if (_tickBusy) return;
+  Future<bool> _tick({bool sourceOrdered = false}) async {
+    if (_tickBusy || !_run) return false;
     _tickBusy = true;
     try {
       final bool waiting = _isWaiting;
@@ -182,13 +197,13 @@ class RemoteActivationWatch {
       final RemoteSyncOutcome outcome = heartbeatDue
           ? await SubscriptionState.instance.syncWithBackend()
           : await SubscriptionState.instance.refreshRemote();
-      if (outcome == RemoteSyncOutcome.busy) return;
+      if (outcome == RemoteSyncOutcome.busy) return false;
       if (heartbeatDue && outcome == RemoteSyncOutcome.applied) {
         _lastHeartbeat = DateTime.now();
       }
       if (outcome != RemoteSyncOutcome.applied) {
         _failures++;
-        return;
+        return false;
       }
       _failures = 0;
       // Remise à neuf demandée depuis le panel (« Réinitialiser la box ») :
@@ -203,6 +218,7 @@ class RemoteActivationWatch {
         await RemoteSourceRepository.applyRevocations(snapOf().revoked);
       }
       await _maybeImportSource(ordered: sourceOrdered);
+      return true;
     } finally {
       _tickBusy = false;
     }
@@ -288,6 +304,8 @@ class RemoteActivationWatch {
       final BoxChannelSession session = BoxChannelSession(
         mac: mac,
         alive: () => _run && generation == _generation,
+        headers: () => DeviceSecret.instance.headers(),
+        onConnected: nudge,
         onFrame: (BoxChannelFrame frame) async {
           // Le Durable Object renvoie le DERNIER ordre à chaque ouverture
           // de la prise. Même numéro que l'attente longue : on lit le
@@ -300,7 +318,7 @@ class RemoteActivationWatch {
                 'PANEL',
                 'ordre ${frame.type} n°${frame.seq} déjà traité : ignoré (renvoyé à la reconnexion)',
               );
-              return;
+              return true;
             }
           }
           // Le statut, l'annonce, le thème : la veille les connaît
@@ -322,6 +340,7 @@ class RemoteActivationWatch {
             _boxCursor = frame.seq;
             await _saveCursors();
           }
+          return applied;
         },
       );
       _session = session;
@@ -339,7 +358,7 @@ class RemoteActivationWatch {
         // Prise ouverte : on ne double pas avec l'attente longue.
         // Elle reprend toute seule dès que la prise tombe.
         if (_session?.open == true) {
-          _channelUp = true;
+          _setChannelUp(true);
           await _pause(const Duration(seconds: 2), generation);
           continue;
         }
@@ -362,7 +381,7 @@ class RemoteActivationWatch {
         if (result.unauthorized || result.rateLimited) {
           // Ancien Worker, secret refusé, ou trop d'ouvertures :
           // la lecture courte continue. On réessaie le canal plus tard.
-          _channelUp = false;
+          _setChannelUp(false);
           await _pause(const Duration(seconds: 30), generation);
           continue;
         }
@@ -370,7 +389,7 @@ class RemoteActivationWatch {
           // Reprise courte : 1 s, puis 2, 4… plafonné à 30 s.
           // On ne martèle pas le réseau, et un retour de Wi-Fi
           // n'attend pas le plafond de 45 s de la lecture courte.
-          _channelUp = false;
+          _setChannelUp(false);
           _signalFailures++;
           final int shift = _signalFailures > 5 ? 5 : _signalFailures;
           final int seconds = 1 << (shift - 1);
@@ -380,7 +399,7 @@ class RemoteActivationWatch {
           );
           continue;
         }
-        _channelUp = true;
+        _setChannelUp(true);
         _signalFailures = 0;
         lastSignalBody = result.raw;
         if (result.orders.isEmpty) continue;
@@ -431,6 +450,30 @@ class RemoteActivationWatch {
   /// « attente ») : la boîte noire horodate la réception, ce qui
   /// permet de mesurer le délai clic du panel → box.
   Future<bool> _applyOrders(List<BoxOrder> orders, {String via = ''}) async {
+    // La prise et une attente longue déjà en vol peuvent recevoir le même
+    // ordre ensemble. Une seule application, puis déduplication du suivant.
+    final int generation = _generation;
+    final Future<void> previous = _ordersTail;
+    final Completer<void> finished = Completer<void>();
+    _ordersTail = finished.future;
+    await previous;
+    try {
+      if (!_run || generation != _generation) return false;
+      return await _applyOrdersSerial(orders, via: via);
+    } catch (_) {
+      _failures++;
+      return false;
+    } finally {
+      finished.complete();
+      // Le traitement annulait le minuteur sans jamais le réarmer.
+      // Après le premier ordre, une perte du push supprimait tout filet.
+      if (_run && generation == _generation) {
+        _arm(signalPace(channelUp: _channelUp, waiting: _isWaiting, failures: _failures));
+      }
+    }
+  }
+
+  Future<bool> _applyOrdersSerial(List<BoxOrder> orders, {String via = ''}) async {
     final List<Map<String, Object?>> boxMaps = <Map<String, Object?>>[
       for (final BoxOrder o in orders)
         if (!o.fleet) <String, Object?>{'id': o.id, 'kind': o.kind},
@@ -489,8 +532,7 @@ class RemoteActivationWatch {
         await Future<void>.delayed(const Duration(milliseconds: 40));
       }
       _timer?.cancel();
-      await _tick(sourceOrdered: sourceOrdered);
-      if (SubscriptionState.instance.syncHint == 'offline') return false;
+      if (!await _tick(sourceOrdered: sourceOrdered)) return false;
     }
     final Map<String, bool> sideOk = <String, bool>{};
     for (final String kind in kinds) {
@@ -499,6 +541,7 @@ class RemoteActivationWatch {
     }
     // Issue RÉELLE de chaque ordre suivi : APPLIED ou FAILED, avec le
     // résultat, l'erreur et la révision de listes effectivement appliquée.
+    bool retry = sourceOrdered && RemoteSourceRepository.lastReport?.result == 'networkError';
     if (tracked.isNotEmpty) {
       final bool statusRead = SubscriptionState.instance.syncHint != 'offline';
       final int doneAt = DateTime.now().millisecondsSinceEpoch;
@@ -511,6 +554,12 @@ class RemoteActivationWatch {
           sideEffectOk: sideOk[o.kind] ?? true,
           report: RemoteSourceRepository.lastReport,
         );
+        if (!out.applied && const <String>{'network', 'not_run', 'status_unreachable'}.contains(out.result)) {
+          // FAILED est définitif sur ce Worker. Une panne récupérable
+          // reste RECEIVED ; le même ordre pourra ensuite devenir APPLIED.
+          retry = true;
+          continue;
+        }
         BlackBox.instance.info(
           'PANEL',
           'ordre ${o.kind} n°${o.id} ${out.applied ? 'appliqué' : 'en échec'} : ${out.result}'
@@ -529,6 +578,7 @@ class RemoteActivationWatch {
       }
       unawaited(OrderAckClient.send(ackMac, finals));
     }
+    if (retry) return false;
     for (final Map<String, Object?> m in freshBox) {
       _seenBox.add(m['id']! as int);
     }
@@ -603,22 +653,33 @@ class RemoteActivationWatch {
   bool _cursorsLoaded = false;
 
   Future<void> _loadCursors() async {
-    _cursorsLoaded = true;
+    if (_cursorLoading != null) return _cursorLoading!;
+    final Future<void> operation = _readCursors();
+    _cursorLoading = operation;
+    try { await operation; } finally { _cursorLoading = null; }
+  }
+
+  Future<void> _readCursors() async {
+    final String mac = await DeviceIdentity.instance.mac;
+    if (_cursorMac != mac) { _seenBox.clear(); _seenFleet.clear(); }
+    _cursorMac = mac;
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
-      _boxCursor = prefs.getInt(_kBoxCursor) ?? 0;
-      _fleetCursor = prefs.getInt(_kFleetCursor) ?? 0;
+      _boxCursor = prefs.getInt('$_kBoxCursor.$mac') ?? 0;
+      _fleetCursor = prefs.getInt('$_kFleetCursor.$mac') ?? 0;
     } catch (_) {
       _boxCursor = 0;
       _fleetCursor = 0;
     }
+    _cursorsLoaded = true;
   }
 
   Future<void> _saveCursors() async {
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
-      await prefs.setInt(_kBoxCursor, _boxCursor);
-      await prefs.setInt(_kFleetCursor, _fleetCursor);
+      if (_cursorMac == null) return;
+      await prefs.setInt('$_kBoxCursor.$_cursorMac', _boxCursor);
+      await prefs.setInt('$_kFleetCursor.$_cursorMac', _fleetCursor);
     } catch (_) {
       // Le numéro reste en mémoire jusqu'au prochain redémarrage.
     }

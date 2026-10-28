@@ -2,6 +2,7 @@
 // Main module: wraps the unchanged production bundle (./worker.js).
 import orig, { goldSealSource, goldOpenSourceList, goldNotifyBox } from './production/worker.runtime.js';
 export { RealtimeHub } from './production/worker.runtime.js';
+import { activationDeliveryState } from './gold_activation_delivery.js';
 import { createTrialRuntime } from './gold_trial_runtime.js';
 import { sourceEncryptionEnv } from './gold_trial_delivery.js';
 
@@ -213,9 +214,10 @@ async function internalAdminToken(env) {
   return `${h}.${p}.${sig}`;
 }
 
-async function deliverToDevice(env, ctx, mac, creds, label) {
+async function deliverToDevice(env, ctx, mac, creds, label, traceId) {
   const token = await internalAdminToken(env);
   const auth = { Authorization: `Bearer ${token}`, 'content-type': 'application/json' };
+  if (typeof traceId === 'string' && /^[A-Za-z0-9_.:-]{8,64}$/.test(traceId)) auth['X-Request-Id'] = traceId;
   const path = `https://internal/api/v1/sources/${encodeURIComponent(mac)}`;
   let keep = [];
   try {
@@ -351,7 +353,7 @@ async function provision(env, ctx, o) {
     await env.DB.prepare('UPDATE gold_keys SET last_error=? WHERE id=?').bind('ALERT: trial spent credits', used.id).run();
     await audit(env, 'system', 'gold.alert.trial_spent_credits', mac, { spent, key_id: used.id });
   }
-  const delivery = await deliverToDevice(env, ctx, mac, creds, kind === 'paid' ? '7 MOTION' : '7 MOTION Essai').catch((e) => ({ ok: false, error: String(e.message) }));
+  const delivery = await deliverToDevice(env, ctx, mac, creds, kind === 'paid' ? '7 MOTION' : '7 MOTION Essai', o.traceId).catch((e) => ({ ok: false, error: String(e.message) }));
   await audit(env, actor, `gold.${kind}.create`, mac, { line_id: id, gold_user_id: res.user_id, sub, expire, credits_before: before.credits, credits_after: after && after.credits, delivered: delivery.ok });
   await history(env, mac, `${kind}.create`, { line_id: id, gold_user_id: res.user_id, sub, expire, ip: o.ip, app_version: o.appVersion, actor,
     detail: { key_id: used.id, reseller: used.reseller, attempts, credits_before: before.credits, credits_after: after && after.credits, delivered: delivery.ok, order_id: delivery.order_id } });
@@ -557,20 +559,35 @@ const trialRuntime = createTrialRuntime({ authenticate: adminActor, sealSource: 
 
 // Paid activation hook: runs after the original /api/v1/activate succeeded.
 async function afterActivate(env, ctx, request, reqBody, resp) {
+  let mac, trace;
+  const progress = (stage, orderId = null) => history(env, mac, 'activation.delivery', {
+    detail: { trace_id: trace, stage, order_id: orderId }, actor: 'system',
+  });
   try {
     await ensureTables(env);
     const out = await resp.clone().json().catch(() => null);
     if (!out || !out.ok || !out.mac) return;
-    const mac = normMac(out.mac);
+    mac = normMac(out.mac);
+    trace = out.trace_id || resp.headers.get('X-Request-Id') || request.headers.get('X-Request-Id');
     const user = await adminActor(request, env, ctx);
     const cfg = await getConfig(env);
     await history(env, mac, 'activation', { actor: user ? user.sub : 'reseller', detail: { plan: out.plan, expires_at: out.expires_at, license_id: out.license_id, credits_charged: out.credits_charged } });
-    if (!shouldAutoProvision(out.plan, user && user.role, cfg.gold_enabled)) return;
+    if (!shouldAutoProvision(out.plan, user && user.role, cfg.gold_enabled)) { await progress('skipped'); return; }
+    await progress('preparing');
     const existing = await env.DB.prepare("SELECT id FROM gold_lines WHERE mac=? AND kind='paid' AND status='active'").bind(mac).first();
-    if (existing) { const r = await renew(env, ctx, mac, 12, user.sub); await audit(env, user.sub, 'gold.hook.renew', mac, r); return; }
-    const r = await provision(env, ctx, { kind: 'paid', mac, sub: 12, actor: user.sub });
+    if (existing) {
+      const r = await renew(env, ctx, mac, 12, user.sub);
+      await audit(env, user.sub, 'gold.hook.renew', mac, r);
+      await progress(r.renewed ? 'renewed' : 'failed');
+      return;
+    }
+    const r = await provision(env, ctx, { kind: 'paid', mac, sub: 12, actor: user.sub, traceId: trace });
     await audit(env, user.sub, 'gold.hook.provision', mac, { http: r.http, error: r.error, created: r.created });
-  } catch (e) { console.log('gold.hook_failed', String(e && e.message)); }
+    await progress(r.delivery?.ok ? 'source_saved' : 'failed', r.delivery?.order_id);
+  } catch {
+    if (mac && trace) await progress('failed');
+    console.log('gold.hook_failed');
+  }
 }
 
 // CORS explicite pour le panel existant et les en-têtes des deux applications.
@@ -598,9 +615,21 @@ export default {
       [rawEnv.PANEL_ORIGINS,'https://atlas-console-k7q2.vercel.app'].filter(Boolean).join(',')});
     const p=new URL(request.url).pathname;
     const own=p.startsWith('/api/v1/gold/') || p.startsWith('/api/gold-trial') ||
-      p==='/api/v1/device/trial' || p==='/api/device-proof';
+      p==='/api/v1/device/trial' || p==='/api/device-proof' || p==='/api/v1/activation-delivery';
     if (own && request.method==='OPTIONS') return cors(request,env,new Response(null,{status:204}));
     try {
+      if (p==='/api/v1/activation-delivery' && request.method==='GET') {
+        const actor=await adminActor(request,env,ctx,['super_admin','admin','reseller']);
+        if (!actor) return cors(request,env,J({error:'unauthorized'},401));
+        const url=new URL(request.url), mac=normMac(url.searchParams.get('mac'));
+        const trace=url.searchParams.get('trace')||'';
+        if (!mac || !/^[A-Za-z0-9_.:-]{8,80}$/.test(trace)) return cors(request,env,J({error:'bad_query'},400));
+        if (actor.role==='reseller') {
+          const device=await env.DB.prepare('SELECT reseller_id FROM devices WHERE mac=?').bind(mac).first();
+          if (!device || device.reseller_id!==(actor.sub||actor.id)) return cors(request,env,J({error:'forbidden'},403));
+        }
+        return cors(request,env,J(await activationDeliveryState(env,mac,trace)));
+      }
       const routed=await trialRuntime(request,env,ctx);
       if (routed) return cors(request,env,routed);
       if (p.startsWith('/api/v1/gold/')) {
@@ -611,6 +640,15 @@ export default {
         const raw=await request.text(), fwd=new Request(request,{body:raw});
         const resp=await orig.fetch(fwd,env,ctx);
         if (resp.ok) ctx.waitUntil(afterActivate(env,ctx,request,raw,resp.clone()));
+        if (resp.ok) {
+          // Les réponses « déjà à vie » n'avaient pas trace_id dans le JSON.
+          // On expose seulement l'identifiant de suivi, jamais le JWT interne.
+          const body=await resp.clone().json().catch(()=>null);
+          if (body && !body.trace_id && resp.headers.get('X-Request-Id')) {
+            const headers=new Headers(resp.headers);headers.delete('Content-Length');
+            return new Response(JSON.stringify({...body,trace_id:resp.headers.get('X-Request-Id')}),{status:resp.status,headers});
+          }
+        }
         return resp;
       }
     } catch {

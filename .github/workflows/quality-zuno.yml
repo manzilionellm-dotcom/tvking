@@ -110,6 +110,9 @@ jobs:
       - name: Run tests
         run: flutter test --reporter expanded
 
+      - name: Vérifier la reprise panel → app après coupure du canal
+        run: flutter test --reporter expanded --dart-define=RUN_PANEL_CONNECTION=true --dart-define=BACKEND_URL=http://127.0.0.1:18789 test/features/subscription/panel_connection_test.dart
+
   worker:
     name: tests Worker (sécurité)
     runs-on: ubuntu-latest

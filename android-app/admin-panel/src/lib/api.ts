@@ -13,17 +13,15 @@
 //  partageront le meme domaine racine (Phase 2).
 // =========================================================
 
+import { resolvePanelApiBase, type DeliveryOrder } from './deliveryStatus';
+
 const TOKEN_KEY = 'auth_token';
 
 /// URL de base de l'API. En production le panel est servi par
 /// Cloudflare Pages sur un sous-domaine (ex: admin.7themotion.com)
 /// et l'API tourne sur seven-motion-backend.workers.dev. On garde
 /// la config configurable via VITE_API_BASE.
-const API_BASE: string =
-  (import.meta.env.VITE_API_BASE as string | undefined) ||
-  // Defaut prod : meme origin (si le Worker sert aussi le panel)
-  // ou un domaine connu. En dev le proxy Vite redirige /api → :8787.
-  '';
+const API_BASE = resolvePanelApiBase(import.meta.env.VITE_API_BASE, import.meta.env.PROD);
 
 /// Lien de TÉLÉCHARGEMENT de l'app à donner au client. Domaine propre
 /// dédié (app.7themotion.com → route /vip du Worker, proxy du dernier
@@ -80,14 +78,26 @@ async function request<T = unknown>(
     const token = getToken();
     if (token) headers.Authorization = `Bearer ${token}`;
   }
-  const resp = await fetch(`${API_BASE}${path}`, {
-    signal: opts.signal,
-    method: opts.method || 'GET',
-    headers,
-    body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
-  });
-
-  const text = await resp.text();
+  const controller = new AbortController();
+  const cancel = () => controller.abort();
+  if (opts.signal?.aborted) cancel();
+  else opts.signal?.addEventListener('abort', cancel, { once: true });
+  // Une réponse perdue ne doit ni laisser le formulaire figé indéfiniment,
+  // ni provoquer une répétition automatique d'une opération payante.
+  const timeout = setTimeout(cancel, opts.method && opts.method !== 'GET' ? 60_000 : 15_000);
+  let resp: Response;
+  let text: string;
+  try {
+    resp = await fetch(`${API_BASE}${path}`, {
+      cache: 'no-store', signal: controller.signal,
+      method: opts.method || 'GET', headers,
+      body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
+    });
+    text = await resp.text();
+  } finally {
+    clearTimeout(timeout);
+    opts.signal?.removeEventListener('abort', cancel);
+  }
   let json: any = null;
   try { json = text ? JSON.parse(text) : null; } catch { /* non-JSON */ }
 
@@ -99,6 +109,9 @@ async function request<T = unknown>(
       setToken(null);
     }
     throw new ApiError(resp.status, code, msg);
+  }
+  if (json === null) {
+    throw new ApiError(502, 'invalid_api_response', 'Le panel ne reçoit pas la réponse de l’API. Vérifiez sa connexion au serveur.');
   }
   return json as T;
 }
@@ -557,6 +570,8 @@ export const creditsApi = {
 };
 
 export interface ActivateResult {
+  order_id?: string | null;
+  trace_id?: string | null;
   ok: boolean;
   license_id: string;
   device_id: string;
@@ -582,6 +597,28 @@ export interface DeviceSource extends DeviceSourceInput {
   mac?: string;
   updated_at?: number;
 }
+
+export interface SourceWriteResult {
+  ok: boolean;
+  mac: string;
+  count?: number;
+  rev?: number;
+  order_id?: string | null;
+  trace_id?: string | null;
+}
+
+export interface ActivationDelivery {
+  stage: 'waiting' | 'preparing' | 'source_saved' | 'renewed' | 'skipped' | 'failed';
+  order_id?: string | null;
+  message: string;
+}
+
+export const deliveryApi = {
+  orders: (mac: string, signal?: AbortSignal) =>
+    request<{ items: DeliveryOrder[] }>(`/api/v1/orders?mac=${encodeURIComponent(mac)}`, { signal }),
+  activation: (mac: string, trace: string, signal?: AbortSignal) =>
+    request<ActivationDelivery>(`/api/v1/activation-delivery?mac=${encodeURIComponent(mac)}&trace=${encodeURIComponent(trace)}`, { signal }),
+};
 
 export const activateApi = {
   // Active une MAC (owner ou revendeur). Cree/renouvelle la licence et
@@ -618,7 +655,7 @@ export const sourcesApi = {
   // TRIO : pousse 1 à 3 sources d'un coup sur une même MAC. Le client
   // les charge toutes et bascule entre elles dans l'app.
   setMany: (mac: string, sources: DeviceSourceInput[]) =>
-    request<{ ok: boolean; mac: string; count: number }>(
+    request<SourceWriteResult>(
       `/api/v1/sources/${encodeURIComponent(mac)}`,
       { method: 'PUT', body: { sources } },
     ),
