@@ -1,10 +1,32 @@
 // Entrée EXCLUSIVEMENT locale. wrangler.toml reste sur gold.js.
 import gold from '../gold.js';
-export { RealtimeHub } from '../gold.js';
+import { RealtimeHub as ApplicationHub } from '../gold.js';
+
+export class RealtimeHub extends ApplicationHub {
+  async fetch(request) {
+    if (new URL(request.url).pathname === '/__fixture/close') {
+      for (const socket of this.ctx.getWebSockets()) socket.close(1012, 'fixture outage');
+      await this.publishPresence();
+      return Response.json({ ok: true });
+    }
+    return super.fetch(request);
+  }
+}
 
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
+    if (url.pathname === '/__fixture/socket-mode' && request.method === 'POST') {
+      const { mac, blocked } = await request.json();
+      await env.DB.prepare('INSERT INTO app_config(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value')
+        .bind(`fixture.socket.${mac}`, blocked ? '1' : '0').run();
+      if (blocked) await env.RT_HUB.get(env.RT_HUB.idFromName(mac)).fetch('https://hub/__fixture/close');
+      return Response.json({ ok: true });
+    }
+    if (url.pathname === '/api/box/ws') {
+      const flag = await env.DB.prepare('SELECT value FROM app_config WHERE key=?').bind(`fixture.socket.${url.searchParams.get('mac')}`).first();
+      if (flag?.value === '1') return new Response('fixture outage', { status: 503 });
+    }
     if (url.pathname === '/__fixture/info') return Response.json({ token: env.FIXTURE_TOKEN });
     if (url.pathname === '/__fixture/register' && request.method === 'POST') {
       const { mac, androidId } = await request.json();

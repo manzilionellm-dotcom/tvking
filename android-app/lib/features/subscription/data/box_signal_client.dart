@@ -97,7 +97,7 @@ abstract final class BoxSignalClient {
       );
       final http.Response resp = await client
           .get(uri, headers: headers)
-          .timeout(clientTimeout);
+          .timeout(timeoutMs <= 1000 ? const Duration(seconds: 5) : clientTimeout);
       return _read(resp.statusCode, resp.body);
     } catch (e) {
       if (kDebugMode) debugPrint('[Signal] attente : $e');

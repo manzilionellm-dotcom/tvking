@@ -1,5 +1,5 @@
 import { API_BASE, boxesApi, getToken, type BoxLiveRow } from './api';
-import type { DeliveryOrder } from './deliveryStatus';
+import { deliveryConfirmed, type DeliveryOrder } from './deliveryStatus';
 
 export interface PanelEvent extends Partial<DeliveryOrder> {
   type: string;
@@ -34,6 +34,7 @@ async function connect(gen: number) {
     const opening = setTimeout(() => ws.close(), 8000);
     ws.onopen = () => {
       clearTimeout(opening);
+      if (gen !== generation || !listeners.size) { ws.close(); return; }
       lastSeen = Date.now();
       emit({ type: 'connection', online: true });
       ws.send(JSON.stringify({ type: 'hello' }));
@@ -95,7 +96,8 @@ export function mergeLiveEvent(previous: Record<string, BoxLiveRow>, event: Pane
   const pending = row.pending.filter(order => order.id !== event.order_id);
   const order = { id: event.order_id, kind: event.kind || event.type,
     created_at: event.at, applied_at: event.applied_srv || undefined };
-  if (event.type !== 'receipt' || !['applied', 'failed', 'expired'].includes(event.state || '')) pending.push(order);
+  const applied = event.state === 'applied' && deliveryConfirmed(event as DeliveryOrder);
+  if (event.type !== 'receipt' || (!applied && !['failed', 'expired'].includes(event.state || ''))) pending.push(order);
   return { ...previous, [mac]: { ...row, pending,
-    last_applied: event.state === 'applied' ? order : row.last_applied } };
+    last_applied: applied ? order : row.last_applied } };
 }

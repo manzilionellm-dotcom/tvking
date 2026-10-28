@@ -81,7 +81,7 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 500));
 
       Future<void> action(String name, String path, String method, Object? body,
-          String kind, bool Function() applied, {Finder? visible}) async {
+          String kind, bool Function() applied, {Finder? visible, int limit = 2000}) async {
         final int first = events.length;
         final watch = Stopwatch()..start();
         await panel(path, method, body);
@@ -90,7 +90,7 @@ void main() {
         if (visible != null) expect(visible, findsOneWidget);
         final int elapsed = watch.elapsedMilliseconds;
         debugPrint('RT_LATENCY ${jsonEncode(<String, Object>{'app': variant, 'action': name, 'milliseconds': elapsed})}');
-        expect(elapsed, lessThan(2000), reason: '$name : application ET accusé panel');
+        expect(elapsed, lessThan(limit), reason: '$name : application ET accusé panel');
       }
       await action('essai', '/api/v1/trial-extend', 'POST', <String, Object>{'mac': mac, 'days': 1}, 'license',
         () => SubscriptionState.instance.remote.trialUntil > DateTime.now().millisecondsSinceEpoch);
@@ -107,6 +107,16 @@ void main() {
         () => !SubscriptionState.instance.remote.frozen);
       await action('retrait de liste', '/api/v1/sources/$mac', 'DELETE', null, 'source_clear',
         () => PlaylistRepository.instance.currentChannels.isEmpty, visible: find.text('channels=0'));
+      final int cut = events.length;
+      await panel('/__fixture/socket-mode', 'POST', <String, Object>{'mac': mac, 'blocked': true});
+      await until(() => events.skip(cut).any((e) => e['type'] == 'presence' && e['online'] == false));
+      await action('repli HTTP socket coupé', '/api/v1/devices/fixture-$mac', 'PATCH',
+        <String, Object>{'block_status': 'frozen'}, 'suspend', () => SubscriptionState.instance.remote.frozen, limit: 7000);
+      final int restored = events.length;
+      await panel('/__fixture/socket-mode', 'POST', <String, Object>{'mac': mac, 'blocked': false});
+      await until(() => events.skip(restored).any((e) => e['type'] == 'presence' && e['online'] == true), limit: 35000);
+      await action('ordre après reconnexion', '/api/v1/devices/fixture-$mac', 'PATCH',
+        <String, Object>{'block_status': 'active'}, 'resume', () => !SubscriptionState.instance.remote.frozen);
     } finally {
       // ADAPTER_STOP
       keepalive.cancel();

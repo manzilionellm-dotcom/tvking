@@ -193,10 +193,12 @@ export function createRealtimeRoutes({ original, actorFor }) {
       for (let start = 0; start < devices.results.length; start += 20) {
         items.push(...await Promise.all(devices.results.slice(start, start + 20).map(async device => {
           const presence = await (await hub(env, device.mac).fetch('https://hub/presence')).json();
-          const orders = await env.DB.prepare(`SELECT order_id AS id,kind,created_at,applied_srv AS applied_at,state
+          const orders = await env.DB.prepare(`SELECT order_id AS id,kind,created_at,applied_srv AS applied_at,state,config_rev,applied_rev
             FROM box_orders WHERE mac=? ORDER BY created_at DESC LIMIT 20`).bind(device.mac).all();
-          return { ...device, ...presence, pending: orders.results.filter(o => ['queued', 'sent', 'received'].includes(o.state)),
-            last_applied: orders.results.find(o => o.state === 'applied') || null, fleet_pending: [], fleet_last_applied: null };
+          const applied = order => order.state === 'applied' && (order.config_rev == null ||
+            (order.applied_rev != null && order.applied_rev >= order.config_rev));
+          return { ...device, ...presence, pending: orders.results.filter(o => ['queued', 'sent', 'received'].includes(o.state) || (o.state === 'applied' && !applied(o))),
+            last_applied: orders.results.find(applied) || null, fleet_pending: [], fleet_last_applied: null };
         })));
       }
       if (path === '/api/v1/online') {
