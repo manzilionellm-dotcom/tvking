@@ -18,6 +18,9 @@ jobs:
         app: [zuno, 7motion]
     runs-on: ubuntu-latest
     timeout-minutes: 50
+    env:
+      # avdmanager et emulator doivent résoudre le même dossier, quel que soit XDG.
+      ANDROID_AVD_HOME: ${{ runner.temp }}/realtime-avd
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -73,27 +76,33 @@ jobs:
           cd "$APP_DIR"
           flutter create . --platforms=android --org com.manzilionellm.tvking --project-name tv_king
           python "$GITHUB_WORKSPACE/mission/android-app/ci/prepare-realtime-android.py"
-          flutter build apk --debug --target=integration_test/realtime_device_test.dart --dart-define=BACKEND_URL=http://127.0.0.1:8787 --dart-define=REALTIME_VARIANT=${{ matrix.app }}
+          flutter build apk --debug --target-platform android-x64 --target=integration_test/realtime_device_test.dart --dart-define=BACKEND_URL=http://127.0.0.1:8787 --dart-define=REALTIME_VARIANT=${{ matrix.app }}
       - name: Démarrer l’émulateur Android 35
         run: |
           yes | sdkmanager --licenses > /dev/null || true
           sdkmanager 'platform-tools' 'emulator' 'platforms;android-35' 'system-images;android-35;google_apis;x86_64'
-          echo no | avdmanager create avd --name realtime --package 'system-images;android-35;google_apis;x86_64' --force
+          mkdir -p "$ANDROID_AVD_HOME"
+          echo no | avdmanager create avd --name realtime --path "$ANDROID_AVD_HOME/realtime.avd" --package 'system-images;android-35;google_apis;x86_64' --device pixel_2 --force
+          test -f "$ANDROID_AVD_HOME/realtime.ini"
+          "$ANDROID_HOME/emulator/emulator" -list-avds
           sudo chmod 666 /dev/kvm
-          "$ANDROID_HOME/emulator/emulator" -avd realtime -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect > "$RUNNER_TEMP/realtime-emulator.log" 2>&1 &
-          timeout 180 adb wait-for-device
-          for attempt in $(seq 1 120); do
-            if [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = 1 ]; then break; fi
+          "$ANDROID_HOME/emulator/emulator" -avd realtime -no-window -no-audio -no-boot-anim -no-snapshot -no-metrics -gpu swiftshader_indirect > "$RUNNER_TEMP/realtime-emulator.log" 2>&1 &
+          realtime_emulator_pid=$!
+          adb start-server
+          for attempt in $(seq 1 180); do
+            if ! kill -0 "$realtime_emulator_pid" 2>/dev/null; then cat "$RUNNER_TEMP/realtime-emulator.log"; exit 1; fi
+            if [ "$(timeout 5 adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = 1 ]; then break; fi
             sleep 2
           done
-          test "$(adb shell getprop sys.boot_completed | tr -d '\r')" = 1
+          if [ "$(timeout 5 adb shell getprop sys.boot_completed | tr -d '\r')" != 1 ]; then cat "$RUNNER_TEMP/realtime-emulator.log"; exit 1; fi
           adb reverse tcp:8787 tcp:8787
           adb shell input keyevent 82
       - name: Mesurer les actions appliquées et affichées
         run: |
           cd "$APP_DIR"
           set -o pipefail
-          flutter test integration_test/realtime_device_test.dart -d emulator-5554 --reporter expanded --dart-define=BACKEND_URL=http://127.0.0.1:8787 --dart-define=REALTIME_VARIANT=${{ matrix.app }} 2>&1 | tee "$RUNNER_TEMP/realtime-device.log"
+          adb logcat -v threadtime > "$RUNNER_TEMP/realtime-logcat.log" 2>&1 &
+          timeout --signal=INT --kill-after=20s 480s flutter test integration_test/realtime_device_test.dart -d emulator-5554 --reporter expanded --verbose --dart-define=BACKEND_URL=http://127.0.0.1:8787 --dart-define=REALTIME_VARIANT=${{ matrix.app }} 2>&1 | tee "$RUNNER_TEMP/realtime-device.log"
       - name: Conserver mesures et diagnostics
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
