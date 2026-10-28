@@ -34,6 +34,9 @@ void main() {
       expect(request.headers.value('X-Device-Secret'), 'fixture-proof');
       final socket = await WebSocketTransformer.upgrade(request);
       sockets.add(socket);
+      // Lire la prise permet aussi de traiter ping/pong et la fermeture :
+      // sans écoute, le faux serveur laisse le client attendre la poignée.
+      socket.listen((_) {});
       socket.add('{"v":1,"seq":7,"type":"source","mac":"$mac"}');
     });
     late BoxChannelSession session;
@@ -63,6 +66,7 @@ void main() {
     server.listen((request) async {
       final socket = await WebSocketTransformer.upgrade(request);
       sockets.add(socket);
+      socket.listen((_) {});
       for (final frame in <String>[
         '{"seq":"bad","type":"source","mac":"$mac"}',
         '{"seq":6,"type":"source","mac":"MK:00:00:00:00:00"}',
