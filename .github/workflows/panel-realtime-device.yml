@@ -84,6 +84,7 @@ jobs:
           "$ANDROID_HOME/emulator/emulator" -avd realtime -no-window -no-audio -no-boot-anim -no-snapshot -no-metrics -gpu swiftshader_indirect > "$RUNNER_TEMP/realtime-emulator.log" 2>&1 &
           realtime_emulator_pid=$!
           adb start-server
+          timeout 180 adb wait-for-device
           for attempt in $(seq 1 180); do
             if ! kill -0 "$realtime_emulator_pid" 2>/dev/null; then cat "$RUNNER_TEMP/realtime-emulator.log"; exit 1; fi
             if [ "$(timeout 5 adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = 1 ]; then break; fi
@@ -106,6 +107,8 @@ jobs:
         run: |
           cd "$APP_DIR"
           set -o pipefail
+          timeout 180 adb wait-for-device
+          test "$(adb shell getprop sys.boot_completed | tr -d '\r')" = 1
           adb logcat -v threadtime > "$RUNNER_TEMP/realtime-logcat.log" 2>&1 &
           timeout --signal=INT --kill-after=20s 480s flutter test integration_test/realtime_device_test.dart -d emulator-5554 --reporter expanded --verbose --dart-define=BACKEND_URL=http://127.0.0.1:8787 --dart-define=REALTIME_VARIANT=${{ matrix.app }} 2>&1 | tee "$RUNNER_TEMP/realtime-device.log"
       - name: Conserver mesures et diagnostics
