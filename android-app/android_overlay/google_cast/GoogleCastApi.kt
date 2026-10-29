@@ -41,6 +41,9 @@ import com.google.android.gms.common.GoogleApiAvailability
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
+import java.lang.ref.WeakReference
+import java.util.concurrent.Executor
+import java.util.concurrent.Executors
 
 class GoogleCastApi(
     messenger: BinaryMessenger,
@@ -50,31 +53,22 @@ class GoogleCastApi(
     companion object {
         private const val TAG = "GoogleCastApi"
         private const val CHANNEL = "com.manzilionellm.tvking/cast"
+        // Le SDK est un singleton d'application : son chargeur survit aux rotations.
+        private val castExecutor: Executor = Executors.newSingleThreadExecutor()
     }
 
     private val channel: MethodChannel = MethodChannel(messenger, CHANNEL).apply {
         setMethodCallHandler(this@GoogleCastApi)
     }
 
-    /**
-     * Init lazy du Cast SDK. On wrap en try/catch parce que sur les
-     * phones sans Google Play Services (Huawei récents, custom ROMs
-     * sans GMS), `getSharedInstance` lève. Dans ce cas castContext
-     * reste null et isCastAvailable() renvoie false côté Dart.
-     */
-    private val castContext: CastContext? = try {
-        if (isGmsAvailable(activity)) {
-            CastContext.getSharedInstance(activity)
-        } else {
-            Log.w(TAG, "Google Play Services indisponibles — Cast SDK désactivé")
-            null
-        }
-    } catch (e: Exception) {
-        Log.w(TAG, "Cast SDK init failed: ${e.message}")
-        null
-    }
-
-    private val sessionManager: SessionManager? = castContext?.sessionManager
+    // Ces champs et les appels MethodChannel restent sur le thread principal.
+    // null pendant le chargement ne signifie pas encore « Cast indisponible ».
+    private var castContext: CastContext? = null
+    private var sessionManager: SessionManager? = null
+    private var initializationComplete = false
+    private var disposed = false
+    private val pendingCalls = mutableListOf<Pair<MethodCall, MethodChannel.Result>>()
+    private var attachedMediaClient: RemoteMediaClient? = null
 
     /**
      * Phase 1+/G2 — Synchronisation bidirectionnelle.
@@ -94,7 +88,8 @@ class GoogleCastApi(
      */
     private val remoteMediaCallback = object : RemoteMediaClient.Callback() {
         override fun onStatusUpdated() {
-            val client = remoteMediaClient() ?: return
+            if (disposed) return
+            val client = attachedMediaClient ?: return
             emitMediaState(client)
         }
     }
@@ -128,35 +123,107 @@ class GoogleCastApi(
     }
 
     init {
-        // Branchement du listener sessions des le construction. Le SDK
-        // est responsable de la lifecycle — pas besoin de detacher
-        // manuellement, l'Activity Flutter persiste tant que l'app
-        // tourne.
-        sessionManager?.addSessionManagerListener(
-            sessionListener,
-            CastSession::class.java,
-        )
-        // Si une session existait deja (ex. resume apres reboot Dart
-        // via setResumeSavedSession), on s'accroche tout de suite.
-        if (sessionManager?.currentCastSession?.isConnected == true) {
-            attachMediaCallback()
-            // Et on emet un evenement immediat pour que Dart sache
-            // qu'on est connecte.
-            emitSessionEvent("resumed_at_boot")
+        activity.runOnUiThread { initializeCastContext() }
+    }
+
+    /**
+     * L'appel au SDK reste sur main, mais la surcharge asynchrone charge son
+     * module sur l'Executor. Le constructeur du plugin ne bloque donc plus
+     * le démarrage de Flutter pendant le chargement de CastDynamite.
+     */
+    private fun initializeCastContext() {
+        if (disposed) return
+        try {
+            val context = activity.applicationContext
+            if (!isGmsAvailable(context)) {
+                Log.w(TAG, "Google Play Services indisponibles — Cast SDK désactivé")
+                completeInitialization(null)
+                return
+            }
+            // Ne pas retenir une ancienne Activity si le chargement tarde.
+            val owner = WeakReference(this)
+            CastContext.getSharedInstance(context, castExecutor).addOnCompleteListener { task ->
+                val bridge = owner.get() ?: return@addOnCompleteListener
+                if (bridge.disposed) return@addOnCompleteListener
+                // Sans Activity passée au listener : retour sur main même si
+                // onStop est passé, avec notre propre garde de détachement.
+                if (task.isSuccessful) {
+                    bridge.completeInitialization(task.result)
+                } else {
+                    Log.w(TAG, "Cast SDK init failed: ${task.exception}")
+                    bridge.completeInitialization(null)
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Cast SDK init failed: ${e.message}")
+            completeInitialization(null)
+        }
+    }
+
+    /** Les appels en attente ne repartent qu'après le vrai résultat du SDK. */
+    private fun completeInitialization(context: CastContext?) {
+        if (disposed || initializationComplete) return
+        try {
+            castContext = context
+            sessionManager = context?.sessionManager
+            sessionManager?.addSessionManagerListener(sessionListener, CastSession::class.java)
+            // Une session déjà ouverte reste observable après recréation du bridge.
+            if (sessionManager?.currentCastSession?.isConnected == true) {
+                attachMediaCallback()
+                emitSessionEvent("resumed_at_boot")
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Cast SDK session init failed: $e")
+            detachSessionListeners()
+            castContext = null
+        }
+        initializationComplete = true
+        drainPendingCalls()
+    }
+
+    private fun drainPendingCalls() {
+        val waiting = pendingCalls.toList()
+        pendingCalls.clear()
+        for ((call, result) in waiting) {
+            try {
+                onMethodCall(call, result)
+            } catch (e: Exception) {
+                // Un moteur déjà détaché ne doit pas empêcher les autres réponses.
+                Log.w(TAG, "Cast pending result unavailable: $e")
+            }
         }
     }
 
     /** Détache les listeners quand l'activité Zuno change ou est détruite. */
     fun dispose() {
-        detachMediaCallback()
-        sessionManager?.removeSessionManagerListener(sessionListener, CastSession::class.java)
+        if (disposed) return
+        disposed = true
+        initializationComplete = true
         channel.setMethodCallHandler(null)
+        detachSessionListeners()
+        castContext = null
+        // Résout une seule fois les attentes ; un résultat SDK tardif est ignoré.
+        drainPendingCalls()
+    }
+
+    private fun detachSessionListeners() {
+        detachMediaCallback()
+        try {
+            sessionManager?.removeSessionManagerListener(sessionListener, CastSession::class.java)
+        } catch (e: Exception) {
+            Log.w(TAG, "removeSessionManagerListener failed: $e")
+        }
+        sessionManager = null
     }
 
     private fun attachMediaCallback() {
+        if (disposed) return
         val client = remoteMediaClient() ?: return
+        if (attachedMediaClient === client) return
+        detachMediaCallback()
         try {
             client.registerCallback(remoteMediaCallback)
+            attachedMediaClient = client
             // Emission immediate du state courant pour que Dart se
             // synchronise sans attendre le 1er status update.
             emitMediaState(client)
@@ -166,7 +233,9 @@ class GoogleCastApi(
     }
 
     private fun detachMediaCallback() {
-        val client = remoteMediaClient() ?: return
+        // La session peut déjà être terminée : retirer le callback du vrai client.
+        val client = attachedMediaClient ?: return
+        attachedMediaClient = null
         try {
             client.unregisterCallback(remoteMediaCallback)
         } catch (e: Exception) {
@@ -179,6 +248,7 @@ class GoogleCastApi(
      * (one-way). Dart ignore les evenements inconnus.
      */
     private fun emitSessionEvent(event: String, errorCode: Int = 0) {
+        if (disposed) return
         try {
             channel.invokeMethod(
                 "onSessionEvent",
@@ -195,6 +265,7 @@ class GoogleCastApi(
      * cast_manager.dart).
      */
     private fun emitMediaState(client: RemoteMediaClient) {
+        if (disposed) return
         try {
             val playerState = when (client.playerState) {
                 MediaStatus.PLAYER_STATE_PLAYING -> "playing"
@@ -232,6 +303,18 @@ class GoogleCastApi(
     }
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
+        if (disposed) {
+            result.error("CAST_DISPOSED", "Activité Cast détachée", null)
+            return
+        }
+        if (!initializationComplete) {
+            when (call.method) {
+                "isCastAvailable", "hasActiveSession", "showRoutePicker", "loadMedia",
+                "play", "pause", "stop", "disconnect" -> pendingCalls.add(call to result)
+                else -> result.notImplemented()
+            }
+            return
+        }
         try {
             when (call.method) {
                 "isCastAvailable" -> result.success(castContext != null)
