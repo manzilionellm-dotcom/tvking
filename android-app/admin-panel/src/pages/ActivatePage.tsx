@@ -1,6 +1,8 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { AppLayout } from '@/components/AppLayout';
+import { MacInput, initialMac } from '@/components/MacInput';
+import { formatMacAddress } from '@/lib/mac';
 import { CopyLink } from '@/components/CopyLink';
 import {
   activateApi, appsApi, planCostsApi, meApi, serversApi, sourcesApi,
@@ -37,7 +39,7 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
 
   // MAC pré-remplie si on arrive depuis la fiche appareil (?mac=…).
   const [sp] = useSearchParams();
-  const [mac, setMac] = useState(sp.get('mac') || 'MK:');
+  const [mac, setMac] = useState(initialMac(sp.get('mac'), 'MK:'));
   const [plan, setPlan] = useState(isReseller ? 'yearly' : 'monthly');
   const [customerName, setCustomerName] = useState('');
   const [apps, setApps] = useState<App[]>([]);
@@ -134,7 +136,7 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
     setBusy(true);
     setErr(null);
     setResult(null);
-    const m = mac.trim().toUpperCase();
+    const m = formatMacAddress(mac);
     if (!/^MK(?::[0-9A-F]{2}){5}$/i.test(m)) {
       setErr('MAC invalide. Format attendu : MK:XX:XX:XX:XX:XX');
       setBusy(false);
@@ -209,11 +211,12 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
             <label className="mb-1.5 block text-[10px] uppercase tracking-widest text-ink-tertiary">
               Adresse MAC de l'appareil
             </label>
-            <input
+            <MacInput
               value={mac}
-              onChange={(e) => setMac(e.target.value)}
+              onValueChange={setMac}
               autoFocus
               placeholder="MK:1A:2B:3C:4D:5E"
+              aria-label="Adresse MAC de l'appareil"
               className={inputCls + ' font-mono'}
             />
           </div>
