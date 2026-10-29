@@ -56,17 +56,11 @@ jobs:
           flutter pub get
           flutter gen-l10n
           flutter analyze --no-fatal-infos --no-fatal-warnings integration_test/realtime_device_test.dart
-      - name: Démarrer le vrai Worker et les DO locaux
+      - name: Vérifier le vrai Worker et les DO locaux
         working-directory: mission/android-app/cloudflare
         run: |
           npm ci --no-audit --no-fund
           node --test tests/gold_realtime.test.mjs
-          node tests/realtime_fixture.mjs > "$RUNNER_TEMP/realtime-worker.log" 2>&1 &
-          for n in $(seq 1 30); do
-            if curl -fsS http://127.0.0.1:8787/__fixture/info > /dev/null; then break; fi
-            sleep 1
-          done
-          curl -fsS http://127.0.0.1:8787/__fixture/info > /dev/null
       - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
       - name: Préparer Android sans signature de production
         run: |
@@ -98,6 +92,16 @@ jobs:
           if [ "$(timeout 5 adb shell getprop sys.boot_completed | tr -d '\r')" != 1 ]; then cat "$RUNNER_TEMP/realtime-emulator.log"; exit 1; fi
           adb reverse tcp:8787 tcp:8787
           adb shell input keyevent 82
+      - name: Démarrer la fixture après la compilation Android
+        working-directory: mission/android-app/cloudflare
+        run: |
+          node tests/realtime_fixture.mjs > "$RUNNER_TEMP/realtime-worker.log" 2>&1 &
+          for n in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8787/__fixture/info > /dev/null; then break; fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:8787/__fixture/info > /dev/null
+          adb reverse tcp:8787 tcp:8787
       - name: Mesurer les actions appliquées et affichées
         run: |
           cd "$APP_DIR"

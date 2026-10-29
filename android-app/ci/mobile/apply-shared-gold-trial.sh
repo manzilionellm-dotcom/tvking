@@ -8,7 +8,8 @@ for file in \
   lib/features/subscription/presentation/gold_trial_card.dart \
   test/features/subscription/gold_trial_backend_test.dart \
   test/features/subscription/gold_trial_controller_test.dart \
-  test/features/subscription/gold_trial_card_test.dart
+  test/features/subscription/gold_trial_card_test.dart \
+  test/features/subscription/panel_settings_refresh_test.dart
 do
   cp "$mission_dir/android-app/$file" "$file"
 done
@@ -27,3 +28,4 @@ cp "$mission_dir/android-app/test/core/app/backend_url_test.dart" test/core/app/
 git apply --check "$mission_dir/android-app/ci/mobile/realtime-channel.patch"
 git apply "$mission_dir/android-app/ci/mobile/realtime-channel.patch"
 python3 "$mission_dir/android-app/ci/mobile/sanitize-source-logs.py"
+python3 "$mission_dir/android-app/ci/mobile/apply-panel-settings.py" "$mission_dir/android-app"

@@ -51,6 +51,11 @@ que la publication serveur est terminée. La reprise « livraison uniquement »
 ne contacte jamais Strong. Les lectures des accès d'une ligne Golden exigent
 le secret appareil, en plus de sa MAC et de l'identité enregistrée.
 
+Les réglages globaux (thème, accueil, tarifs, mise en avant, publicité, invitation
+d’avis, serveurs et seuil de mise à jour) publient aussi un ordre par appareil.
+Les relectures réseau de réglage ne peuvent plus confirmer un ancien cache en cas
+d’échec HTTP. Le téléphone applique maintenant chaque réglage ciblé avant son accusé.
+
 Le canal partagé conserve heartbeat, reconnexion 1 à 30 s et repli HTTP toutes
 les 5 s. L'import réel d'un catalogue dépend aussi du serveur M3U et de sa taille :
 les mesures de recette ne constituent pas une garantie pour tout catalogue réel.

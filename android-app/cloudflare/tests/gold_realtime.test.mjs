@@ -47,7 +47,19 @@ test('Worker + vrais DO : preuve, présence, reprise, actions et accusés isolé
       [`/api/v1/sources/${mac}`, 'DELETE', undefined, 'source_clear'],
       [`/api/v1/devices/fixture-${mac}`, 'PATCH', { block_status: 'frozen' }, 'suspend'],
       ['/api/v1/announcements', 'POST', { title: 'Recette temps réel', body: 'Message local' }, 'message'],
+      ['/api/v1/theme','PUT',{appName:'Nom RT',accent:'#884422',bg:'dark'},'theme'],
+      ['/api/v1/pricing','PUT',{currency:'€',lifetime:'15',yearly:'7',trialDays:0,promoEnabled:false,promoMessage:''},'pricing'],
+      ['/api/v1/home-layout','PUT',{items:[{key:'recent',position:0,enabled:1,ribbon:'COUPE DU MONDE',featured:0}]},'home'],
+      ['/api/v1/featured','POST',{name:'Chaîne RT',note:'Recette'},'featured'],
+      ['/api/v1/ad','PUT',{enabled:false,url:'',skip:5,freq:'daily'},'ad'],
+      ['/api/v1/feedback-prompt','PUT',{enabled:true,message:'Recette RT'},'feedback'],
+      ['/api/v1/force-update','POST',{action:'disable'},'force_update'],
+      ['/api/v1/servers','POST',{label:'Serveur fixture',url:'https://fixture.example.invalid',enabled:true},'servers'],
     ];
+    // Une erreur d'autorisation ne doit créer aucun ordre ni informer la flotte.
+    const beforeDenied=orders.length;
+    const denied=await f.mf.dispatchFetch(`${f.origin}/api/v1/theme`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({appName:'Interdit'})});
+    assert.equal(denied.status,401);assert.equal(orders.length,beforeDenied);
     for (const [path, method, body, kind] of actions) {
       const start = Date.now(), index = orders.length;
       await request(path, method, body);
@@ -64,6 +76,11 @@ test('Worker + vrais DO : preuve, présence, reprise, actions et accusés isolé
       assert.equal(ackBody.results[0].state, 'applied', JSON.stringify(ackBody));
       await until(() => events.some(event => event.type === 'receipt' && event.order_id === order.order_id && event.state === 'applied'));
     }
+    const license=await f.db.prepare('SELECT id FROM licenses WHERE device_id=?').bind(`fixture-${mac}`).first();
+    const licenseIndex=orders.length;
+    await request(`/api/v1/licenses/${license.id}`,'PATCH',{status:'suspended'});
+    await until(()=>orders.slice(licenseIndex).some(item=>item.type==='license'));
+    await request(`/api/v1/licenses/${license.id}`,'PATCH',{status:'active'});
     await request(`/api/v1/devices/fixture-${mac}`,'PATCH',{block_status:'active'});
     const quote=await request('/api/v1/gold/golden/quote','POST',{mac,sub:1,bouquet_id:'84802'});
     assert.equal(f.providerCalls.filter(call=>call.action==='new').length,0);

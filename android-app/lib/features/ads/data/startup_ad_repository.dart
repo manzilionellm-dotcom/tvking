@@ -42,14 +42,20 @@ class StartupAdRepository {
   AdConfig get config => _config;
 
   /// Récupère la config distante. Retourne la config (mise en cache).
-  Future<AdConfig> fetch() async {
+  Future<AdConfig> fetch({bool strict = false}) async {
     try {
       final http.Response resp = await http
           .get(Uri.parse('$kSubscriptionBaseUrl/api/ad'))
           .timeout(const Duration(seconds: 5));
-      if (resp.statusCode != 200) return _config;
+      if (resp.statusCode != 200) {
+        if (strict) throw StateError('Réglage distant non confirmé');
+        return _config;
+      }
       final Object? d = jsonDecode(resp.body);
-      if (d is! Map) return _config;
+      if (d is! Map) {
+        if (strict) throw StateError('Réglage distant non confirmé');
+        return _config;
+      }
       final String url = (d['url'] ?? '').toString();
       final Object? rawSkip = d['skip'];
       final int skip = rawSkip is int
@@ -62,7 +68,8 @@ class StartupAdRepository {
         freq: (d['freq'] ?? 'always').toString(),
       );
     } catch (e) {
-      if (kDebugMode) debugPrint('[StartupAd] $e');
+      if (strict) rethrow;
+      if (kDebugMode) debugPrint('[StartupAd] ${e.runtimeType}');
     }
     return _config;
   }

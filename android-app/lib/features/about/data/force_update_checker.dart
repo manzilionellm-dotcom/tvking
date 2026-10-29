@@ -38,7 +38,7 @@ class ForceUpdateChecker {
 
   /// `true` si l'app installée doit être mise à jour de force.
   Future<bool> mustUpdate(
-      {Duration timeout = const Duration(seconds: 6)}) async {
+      {Duration timeout = const Duration(seconds: 6), bool strict = false}) async {
     // Play Store : la mise à jour forcée passe par le Store, pas par
     // le sideload GitHub. On ne déclenche jamais ce flux côté Play.
     if (kIsPlayBuild) return false;
@@ -49,16 +49,23 @@ class ForceUpdateChecker {
         '&platform=${AppPlatform.id}',
       );
       final http.Response resp = await http.get(uri).timeout(timeout);
-      if (resp.statusCode != 200) return false;
+      if (resp.statusCode != 200) {
+        if (strict) throw StateError('Seuil de mise à jour non confirmé');
+        return false;
+      }
       final Object? decoded = jsonDecode(resp.body);
-      if (decoded is! Map) return false;
+      if (decoded is! Map) {
+        if (strict) throw StateError('Seuil de mise à jour invalide');
+        return false;
+      }
       final Object? raw = decoded['minBuildTs'];
       final int minBuildTs =
           raw is int ? raw : int.tryParse('${raw ?? 0}') ?? 0;
       // Obsolète UNIQUEMENT si l'admin a posé un seuil ET qu'on est avant.
       return minBuildTs > 0 && kBuildTs < minBuildTs;
     } catch (e) {
-      if (kDebugMode) debugPrint('[ForceUpdate] $e');
+      if (strict) rethrow;
+      if (kDebugMode) debugPrint('[ForceUpdate] ${e.runtimeType}');
       return false; // fail-open
     }
   }

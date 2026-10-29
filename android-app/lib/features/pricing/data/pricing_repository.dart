@@ -75,14 +75,20 @@ abstract final class PricingRepository {
   static PricingConfig get current => notifier.value;
 
   /// Récupère les tarifs distants et met à jour [notifier]. Best-effort.
-  static Future<void> fetch() async {
+  static Future<void> fetch({bool strict = false}) async {
     try {
       final http.Response resp = await http
           .get(Uri.parse('$kSubscriptionBaseUrl/api/pricing'))
           .timeout(const Duration(seconds: 6));
-      if (resp.statusCode != 200) return;
+      if (resp.statusCode != 200) {
+        if (strict) throw StateError('Réglage distant non confirmé');
+        return;
+      }
       final Object? decoded = jsonDecode(resp.body);
-      if (decoded is! Map) return;
+      if (decoded is! Map) {
+        if (strict) throw StateError('Réglage distant non confirmé');
+        return;
+      }
 
       String str(String key, String fallback) {
         final String v = (decoded[key] ?? '').toString().trim();
@@ -102,7 +108,8 @@ abstract final class PricingRepository {
         promoMessage: (decoded['promoMessage'] ?? '').toString(),
       );
     } catch (e) {
-      if (kDebugMode) debugPrint('[Pricing] $e');
+      if (strict) rethrow;
+      if (kDebugMode) debugPrint('[Pricing] ${e.runtimeType}');
     }
   }
 }

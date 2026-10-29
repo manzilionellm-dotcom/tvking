@@ -2,7 +2,7 @@
 // Main module: wraps the unchanged production bundle (./worker.js).
 import orig, { goldSealSource, goldOpenSourceList, goldNotifyBox } from './production/worker.runtime.js';
 export { RealtimeHub } from './gold_realtime.js';
-import { createRealtimeRoutes, pushAnnouncementChange } from './gold_realtime.js';
+import { createRealtimeRoutes, globalPanelChange, pushPanelSettingChange } from './gold_realtime.js';
 import { activationDeliveryState } from './gold_activation_delivery.js';
 import { createTrialRuntime } from './gold_trial_runtime.js';
 import { sourceEncryptionEnv } from './gold_trial_delivery.js';
@@ -671,9 +671,19 @@ export default {
       }
       const realtime = await realtimeRoutes(request, env, ctx);
       if (realtime) return realtime.status === 101 ? realtime : cors(request, env, realtime);
-      if (p.startsWith('/api/v1/announcements') && ['POST','PATCH','PUT','DELETE'].includes(request.method)) {
+      if (/^\/api\/v1\/licenses(?:\/[^/]+(?:\/renew)?)?$/.test(p) && ['POST','PATCH'].includes(request.method)) {
+        const response=await orig.fetch(request,env,ctx);
+        if (response.ok) {
+          const id=p.split('/')[4] || (await response.clone().json()).id;
+          const device=await env.DB.prepare(`SELECT d.mac FROM licenses l JOIN devices d ON d.id=l.device_id WHERE l.id=?`).bind(id).first();
+          if (device) ctx.waitUntil(goldNotifyBox(env,device.mac,'license'));
+        }
+        return response;
+      }
+      const settingKind=globalPanelChange(p);
+      if (settingKind && ['POST','PATCH','PUT','DELETE'].includes(request.method)) {
         const response = await orig.fetch(request, env, ctx);
-        if (response.ok) ctx.waitUntil(pushAnnouncementChange(env));
+        if (response.ok) ctx.waitUntil(pushPanelSettingChange(env,settingKind));
         return response;
       }
       if (p==='/api/v1/activation-delivery' && request.method==='GET') {

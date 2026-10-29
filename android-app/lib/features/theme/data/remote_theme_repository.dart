@@ -25,16 +25,22 @@ import '../../subscription/data/subscription_backend.dart';
 
 abstract final class RemoteThemeRepository {
   /// Récupère le thème distant et l'applique (nom + couleur d'accent).
-  static Future<void> fetchAndApply() async {
+  static Future<void> fetchAndApply({bool strict = false}) async {
     try {
       // Thème PAR PLATEFORME : le mobile lit le thème mobile, DeFew TV
       // lit le thème TV (?platform=tv).
       final http.Response resp = await http
           .get(Uri.parse('$kSubscriptionBaseUrl/api/theme?platform=${AppPlatform.id}'))
           .timeout(const Duration(seconds: 6));
-      if (resp.statusCode != 200) return;
+      if (resp.statusCode != 200) {
+        if (strict) throw StateError('Réglage distant non confirmé');
+        return;
+      }
       final Object? decoded = jsonDecode(resp.body);
-      if (decoded is! Map) return;
+      if (decoded is! Map) {
+        if (strict) throw StateError('Réglage distant non confirmé');
+        return;
+      }
 
       // Nom affiché ('' = on garde le nom du flavor).
       final String name = (decoded['appName'] ?? '').toString();
@@ -46,7 +52,8 @@ abstract final class RemoteThemeRepository {
         AccentController.instance.applyCustom(accent);
       }
     } catch (e) {
-      if (kDebugMode) debugPrint('[RemoteTheme] $e');
+      if (strict) rethrow;
+      if (kDebugMode) debugPrint('[RemoteTheme] ${e.runtimeType}');
     }
   }
 

@@ -8,6 +8,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:integration_test/integration_test.dart';
 import 'package:tv_king/core/flavor/flavor.dart';
+import 'package:tv_king/core/app/app_platform.dart';
+import 'package:tv_king/core/branding/brand_config.dart';
+import 'package:tv_king/features/pricing/data/pricing_repository.dart';
+import 'package:tv_king/features/simple_home/data/home_layout_repository.dart';
+import 'package:tv_king/features/country_home/data/featured_repository.dart';
+import 'package:tv_king/features/ads/data/startup_ad_repository.dart';
+import 'package:tv_king/features/feedback/data/feedback_repository.dart';
 import 'package:tv_king/features/device/data/device_identity.dart';
 import 'package:tv_king/features/device/data/device_secret.dart';
 import 'package:tv_king/features/playlists/data/playlist_repository.dart';
@@ -62,6 +69,12 @@ void main() {
         )),
         StreamBuilder(stream: PlaylistRepository.instance.channelsStream,
           builder: (_, __) => Text('channels=${PlaylistRepository.instance.currentChannels.length}')),
+        AnimatedBuilder(animation: BrandConfig.instance, builder: (_, __) => Text(BrandConfig.instance.appName)),
+        ValueListenableBuilder<PricingConfig>(valueListenable: PricingRepository.notifier,
+          builder: (_, value, __) => Text(value.yearlyLabel)),
+        AnimatedBuilder(animation: HomeLayoutRepository.instance, builder: (_, __) =>
+          Text(HomeLayoutRepository.instance.config('recent')?.ribbon ?? '')),
+        AnimatedBuilder(animation: FeaturedRepository.instance, builder: (_, __) => Text(FeaturedRepository.instance.note)),
       ])),
     ));
     // ADAPTER_START
@@ -101,6 +114,21 @@ void main() {
       }, 'source', () => PlaylistRepository.instance.currentChannels.isNotEmpty, visible: find.text('channels=1'));
       await action('message', '/api/v1/announcements', 'POST', <String, Object>{'title': 'Message RT Android', 'body': 'Reçu sans redémarrer'},
         'message', () => find.text('Message RT Android').evaluate().isNotEmpty, visible: find.text('Message RT Android'));
+      await action('thème', '/api/v1/theme?platform=${AppPlatform.id}', 'PUT', <String, Object>{
+        'appName': 'Nom RT Android', 'accent': '#884422', 'bg': 'dark',
+      }, 'theme', () => BrandConfig.instance.appName == 'Nom RT Android', visible: find.text('Nom RT Android'));
+      await action('tarifs', '/api/v1/pricing', 'PUT', <String, Object>{
+        'currency': '€', 'lifetime': '15', 'yearly': '7', 'trialDays': 0, 'promoEnabled': false, 'promoMessage': '',
+      }, 'pricing', () => PricingRepository.current.yearly == '7', visible: find.text('7 €'));
+      await action('accueil', '/api/v1/home-layout', 'PUT', <String, Object>{'items': <Object>[
+        <String, Object>{'key': 'recent', 'position': 0, 'enabled': 1, 'ribbon': 'COUPE DU MONDE', 'featured': 0},
+      ]}, 'home', () => HomeLayoutRepository.instance.config('recent')?.ribbon == 'COUPE DU MONDE', visible: find.text('COUPE DU MONDE'));
+      await action('mise en avant', '/api/v1/featured', 'POST', <String, Object>{'name': 'Chaîne RT', 'note': 'Vedette RT'},
+        'featured', () => FeaturedRepository.instance.note == 'Vedette RT', visible: find.text('Vedette RT'));
+      await action('publicité configurée', '/api/v1/ad', 'PUT', <String, Object>{'enabled': false, 'url': '', 'skip': 9, 'freq': 'daily'},
+        'ad', () => StartupAdRepository.instance.config.skip == 9);
+      await action('invitation avis', '/api/v1/feedback-prompt', 'PUT', <String, Object>{'enabled': true, 'message': 'Avis RT'},
+        'feedback', () => FeedbackRepository.instance.message == 'Avis RT');
       await action('suspension', '/api/v1/devices/fixture-$mac', 'PATCH', <String, Object>{'block_status': 'frozen'}, 'suspend',
         () => SubscriptionState.instance.remote.frozen);
       expect(PlaylistRepository.instance.currentChannels.length, 1,

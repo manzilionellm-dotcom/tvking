@@ -218,15 +218,23 @@ export function createRealtimeRoutes({ original, actorFor }) {
   };
 }
 
-// Les annonces sont globales dans le panel existant. Chaque appareil reçoit
-// son propre ordre durable et son propre accusé, y compris après reconnexion.
-export async function pushAnnouncementChange(env) {
+// Seules les routes de réglage effectivement présentes dans le panel sont
+// diffusées. L'autorisation et la validation restent celles du Worker exporté.
+export function globalPanelChange(path) {
+  const route=/^\/api\/v1\/([^/]+)(?:\/.*)?$/.exec(path)?.[1];
+  return ({announcements:'message','home-layout':'home','force-update':'force_update',
+    featured:'featured',theme:'theme',ad:'ad',pricing:'pricing',
+    'feedback-prompt':'feedback',servers:'servers','grant-trial-all':'license'})[route] || null;
+}
+
+// Chaque appareil reçoit son ordre durable et son accusé, même hors ligne.
+export async function pushPanelSettingChange(env,kind) {
   let after = '';
   while (true) {
     const rows = await env.DB.prepare('SELECT mac FROM devices WHERE mac>? ORDER BY mac LIMIT 100').bind(after).all();
     if (!rows.results.length) return;
     for (let start = 0; start < rows.results.length; start += 20) {
-      await Promise.all(rows.results.slice(start, start + 20).map(row => goldNotifyBox(env, row.mac, 'message')));
+      await Promise.all(rows.results.slice(start, start + 20).map(row => goldNotifyBox(env, row.mac, kind)));
     }
     after = rows.results.at(-1).mac;
   }

@@ -605,13 +605,13 @@ class RemoteActivationWatch {
         await AnnouncementRepository.fetchLatest(strict: true);
       }
       if (plan.contains(SignalRefresh.theme)) {
-        await RemoteThemeRepository.fetchAndApply();
+        await RemoteThemeRepository.fetchAndApply(strict: true);
       }
       if (plan.contains(SignalRefresh.home)) {
-        await HomeLayoutRepository.instance.refresh();
+        await HomeLayoutRepository.instance.refresh(strict: true);
       }
       if (plan.contains(SignalRefresh.forceUpdate)) {
-        final bool must = await ForceUpdateChecker.instance.mustUpdate();
+        final bool must = await ForceUpdateChecker.instance.mustUpdate(strict: true);
         SignalInbox.instance.setForceBlocked(must);
         // Le panel vient de publier une version : la box la télécharge
         // et ouvre l'installateur sans attendre le prochain tour (30 min).
@@ -620,19 +620,19 @@ class RemoteActivationWatch {
         );
       }
       if (plan.contains(SignalRefresh.featured)) {
-        await FeaturedRepository.instance.refresh();
+        await FeaturedRepository.instance.refresh(strict: true);
       }
       if (plan.contains(SignalRefresh.ad)) {
-        await StartupAdRepository.instance.fetch();
+        await StartupAdRepository.instance.fetch(strict: true);
       }
       if (plan.contains(SignalRefresh.pricing)) {
-        await PricingRepository.fetch();
+        await PricingRepository.fetch(strict: true);
       }
       if (plan.contains(SignalRefresh.feedback)) {
-        await FeedbackRepository.instance.reload();
+        await FeedbackRepository.instance.reload(strict: true);
       }
       if (plan.contains(SignalRefresh.servers)) {
-        await DefaultServersApi.fetch(forceRefresh: true);
+        await DefaultServersApi.fetch(forceRefresh: true, strict: true);
       }
       if (plan.contains(SignalRefresh.banner)) {
         await PromoBannerRepository.instance.refresh();
