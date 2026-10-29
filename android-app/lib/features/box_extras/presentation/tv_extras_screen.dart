@@ -9,6 +9,8 @@
 
 import 'package:flutter/material.dart';
 
+import '../../../core/i18n/l10n_extension.dart';
+
 import '../../../core/blackbox/black_box_upload_flag.dart';
 import '../box_flag.dart';
 import '../../followed/data/followed_flag.dart';
@@ -25,7 +27,6 @@ import '../../subtitles/data/subtitle_flag.dart';
 import '../../tv/core/tv_dimens.dart';
 import '../../tv/core/tv_focusable.dart';
 import '../../tv/core/tv_tokens.dart';
-import '../box_text.dart';
 
 class TvExtrasScreen extends StatefulWidget {
   const TvExtrasScreen({super.key});
@@ -151,16 +152,16 @@ class _TvExtrasScreenState extends State<TvExtrasScreen> {
     final bool boxOn = blackBoxUploadFlag.value;
     final bool fpsOn = ImagePrefs.frameRateMatch;
     final String engine = switch (ImagePrefs.engine) {
-      ImageEngine.software => 'Logiciel',
+      ImageEngine.software => context.l10n.tvSoftware,
       ImageEngine.ffmpeg => 'FFmpeg',
-      ImageEngine.hardware => 'Matériel',
+      ImageEngine.hardware => context.l10n.tvHardware,
     };
     final bool followOn = followedFlag.value;
     final String code = Localizations.localeOf(context).languageCode;
     return ListView(
       children: <Widget>[
         Text(
-          boxText(context, 'En plus', 'Extras'),
+          context.l10n.tvExtras,
           style: TextStyle(
             fontSize: TvDimens.displayM,
             fontWeight: FontWeight.w800,
@@ -169,44 +170,22 @@ class _TvExtrasScreenState extends State<TvExtrasScreen> {
         ),
         const SizedBox(height: 8),
         Text(
-          boxText(
-            context,
-            'Chaque fonction se coupe seule. Aucune ne bloque une chaîne.',
-            'Each feature turns off on its own. None of them blocks a channel.',
-          ),
+          context.l10n.tvExtrasHelp,
           style: TextStyle(fontSize: TvDimens.body, color: TvTokens.muted),
         ),
         const SizedBox(height: 18),
         ExtrasRow(
           autofocus: true,
-          title: boxText(context, 'En retard', 'Running late'),
-          subtitle: on
-              ? boxText(
-                  context,
-                  'Le guide dit ce que tu as raté. OK pour couper. Le direct ne recule pas tout seul.',
-                  'The guide says what you missed. OK to turn off. Live never rewinds on its own.',
-                )
-              : boxText(
-                  context,
-                  'Coupé. OK pour rallumer. Une chaîne ne sera pas rembobinée.',
-                  'Off. OK to turn on. A channel will not be rewound.',
-                ),
+          title: context.l10n.tvMissedTitle,
+          subtitle: on ? context.l10n.tvMissedOn : context.l10n.tvMissedOff,
           onSelect: _toggleMissed,
         ),
         const SizedBox(height: 4),
         ExtrasRow(
-          title: boxText(context, 'À cette heure', 'At this hour'),
+          title: context.l10n.tvAtThisHour,
           subtitle: timeOn
-              ? boxText(
-                  context,
-                  'Propose les chaînes que tu ouvres souvent à ce moment. OK pour couper. Rien ne se lance tout seul.',
-                  'Suggests channels you often open at this time. OK to turn off. Nothing starts on its own.',
-                )
-              : boxText(
-                  context,
-                  'Coupé. OK pour rallumer. On ne compte plus, et la rangée disparaît.',
-                  'Off. OK to turn on. We stop counting, and the row goes away.',
-                ),
+              ? context.l10n.tvTimePicksOn
+              : context.l10n.tvTimePicksOff,
           onSelect: _toggleTime,
         ),
         ExtrasRow(
@@ -222,126 +201,62 @@ class _TvExtrasScreenState extends State<TvExtrasScreen> {
           onSelect: _cycleLead,
         ),
         ExtrasRow(
-          title: boxText(context, 'Annonces du service', 'Service notices'),
+          title: context.l10n.tvServiceNotices,
           subtitle: panelNoticeFlag.value
-              ? boxText(
-                  context,
-                  'Une carte sur l\'accueil quand ton revendeur publie une info (maintenance, nouveauté). OK pour couper. Jamais sur l\'image.',
-                  'A card on the home screen when your provider posts a notice (maintenance, news). OK to turn off. Never over the picture.',
-                )
-              : boxText(
-                  context,
-                  'Coupé. OK pour rallumer. Les annonces ne s\'affichent plus.',
-                  'Off. OK to turn on. Notices are no longer shown.',
-                ),
+              ? context.l10n.tvNoticesOn
+              : context.l10n.tvNoticesOff,
           onSelect: () => _togglePanel(panelNoticeFlag),
         ),
         ExtrasRow(
-          title: boxText(context, 'Favori du jour', 'Pick of the day'),
+          title: context.l10n.tvPickOfDay,
           subtitle: featuredFlag.value
-              ? boxText(
-                  context,
-                  'La chaîne mise en avant par ton revendeur, si elle est dans ta liste. OK pour couper. Rien ne se lance tout seul.',
-                  'The channel your provider highlights, if it is in your list. OK to turn off. Nothing starts on its own.',
-                )
-              : boxText(
-                  context,
-                  'Coupé. OK pour rallumer. La carte disparaît de l\'accueil.',
-                  'Off. OK to turn on. The card leaves the home screen.',
-                ),
+              ? context.l10n.tvFeaturedOn
+              : context.l10n.tvFeaturedOff,
           onSelect: () => _togglePanel(featuredFlag),
         ),
         ExtrasRow(
-          title: boxText(context, 'Bannières', 'Banners'),
+          title: context.l10n.tvBanners,
           subtitle: promoBannerFlag.value
-              ? boxText(
-                  context,
-                  'Une image à la fois sur l\'accueil, toujours marquée « Publicité ». Fermer = 7 jours sans elle. OK pour couper. Jamais de son, jamais sur l\'image.',
-                  'One picture at a time on the home screen, always labelled "Ad". Close = 7 days without it. OK to turn off. Never sound, never over the picture.',
-                )
-              : boxText(
-                  context,
-                  'Coupé. OK pour rallumer. Plus aucune bannière.',
-                  'Off. OK to turn on. No more banners.',
-                ),
+              ? context.l10n.tvBannersOn
+              : context.l10n.tvBannersOff,
           onSelect: () => _togglePanel(promoBannerFlag),
         ),
         ExtrasRow(
-          title: boxText(context, 'Sous-titres', 'Subtitles'),
+          title: context.l10n.tracksSubtitles,
           subtitle: subsOn
-              ? boxText(
-                  context,
-                  'Affiche la piste déjà dans le flux, dans ta langue. OK pour couper. Rien n\'est traduit, rien n\'est téléchargé.',
-                  'Shows the track already in the stream, in your language. OK to turn off. Nothing is translated or downloaded.',
-                )
-              : boxText(
-                  context,
-                  'Coupé. OK pour rallumer. Le direct ne change pas de flux.',
-                  'Off. OK to turn on. Live does not switch streams.',
-                ),
+              ? context.l10n.tvSubtitlesOnHelp
+              : context.l10n.tvSubtitlesOffHelp,
           onSelect: _toggleSubs,
         ),
         ExtrasRow(
-          title: boxText(context, 'Voix claire', 'Clear voice'),
+          title: context.l10n.tvClearVoice,
           subtitle: voiceOn
-              ? boxText(
-                  context,
-                  'Allumé. Les voix fortes sont un peu baissées (mode nuit). OK pour couper. Le son cinéma surround n\'est pas modifié.',
-                  'On. Loud voices are eased a bit (night mode). OK to turn off. Surround passthrough is left as it is.',
-                )
-              : boxText(
-                  context,
-                  'Coupé, c\'est le réglage d\'origine. OK pour baisser un peu les voix trop fortes. Le son surround envoyé tel quel à la barre de son ne change pas.',
-                  'Off, which is the original setting. OK to ease voices that are too loud. Surround sent as-is to a soundbar does not change.',
-                ),
+              ? context.l10n.tvClearVoiceOn
+              : context.l10n.tvClearVoiceOff,
           onSelect: _toggleVoice,
         ),
         ExtrasRow(
-          title: boxText(context, 'Journal au support', 'Log to support'),
+          title: context.l10n.tvLogToSupport,
           subtitle: boxOn
-              ? boxText(
-                  context,
-                  'Le journal de la Boîte noire peut partir au support, sans adresse de flux ni mot de passe. OK pour couper.',
-                  'The Black box log may be sent to support, with no stream address and no password. OK to turn off.',
-                )
-              : boxText(
-                  context,
-                  'Coupé. Le journal reste sur la box. OK pour le renvoyer au support.',
-                  'Off. The log stays on the box. OK to send it to support again.',
-                ),
+              ? context.l10n.tvLogToSupportOn
+              : context.l10n.tvLogToSupportOff,
           onSelect: _toggleBlackBox,
         ),
         ExtrasRow(
-          title: boxText(context, 'Moteur image', 'Picture engine'),
-          subtitle: boxText(
-            context,
-            'Maintenant : $engine. OK pour changer. Matériel = la box (réglage d\'origine). Logiciel = si l\'image est noire. FFmpeg vidéo n\'est pas dans cette version : OK le saute.',
-            'Now: $engine. OK to change. Hardware = the box (original). Software = if the picture stays black. FFmpeg video is not in this version: OK skips it.',
-          ),
+          title: context.l10n.tvPictureEngine,
+          subtitle: context.l10n.tvPictureEngineHelp(engine),
           onSelect: _cycleEngine,
         ),
         ExtrasRow(
-          title: boxText(context, 'Fréquence de l\'écran', 'Screen refresh'),
+          title: context.l10n.tvScreenRefresh,
           subtitle: fpsOn
-              ? boxText(
-                  context,
-                  'Allumé. L\'écran peut passer en 24, 50 ou 60 Hz selon le flux. OK pour couper. Sur certaines box ça coupe l\'image une seconde : si ça arrive, coupe.',
-                  'On. The screen may switch to 24, 50 or 60 Hz to match the stream. OK to turn off. On some boxes the picture drops for a second: if it does, turn it off.',
-                )
-              : boxText(
-                  context,
-                  'Coupé, c\'est le réglage d\'origine. OK pour caler l\'écran sur 24 / 25 / 30 / 50 / 60 images par seconde. On ne le fait pas tout seul.',
-                  'Off, which is the original setting. OK to match the screen to 24 / 25 / 30 / 50 / 60 frames per second. It never turns on by itself.',
-                ),
+              ? context.l10n.tvScreenRefreshOn
+              : context.l10n.tvScreenRefreshOff,
           onSelect: _toggleFps,
         ),
         ExtrasRow(
-          title: boxText(context, 'Contraste', 'Contrast'),
-          subtitle: boxText(
-            context,
-            'Pas disponible. Le seul filtre Android quitte l\'image directe et a déjà fait des écrans noirs. On ne l\'allume pas.',
-            'Not available. The only Android filter leaves the direct picture path and has made black screens before. It stays off.',
-          ),
+          title: context.l10n.tvContrast,
+          subtitle: context.l10n.tvContrastUnavailable,
           onSelect: () {},
         ),
       ],
@@ -391,8 +306,10 @@ class ExtrasRow extends StatelessWidget {
               const SizedBox(height: 4),
               Text(
                 subtitle,
-                style:
-                    TextStyle(fontSize: TvDimens.label, color: TvTokens.muted),
+                style: TextStyle(
+                  fontSize: TvDimens.label,
+                  color: TvTokens.muted,
+                ),
               ),
             ],
           ),

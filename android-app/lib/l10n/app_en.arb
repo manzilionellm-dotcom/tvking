@@ -582,20 +582,56 @@
   "tvMyM3uList": "My M3U list",
   "tvBlackBoxTitle": "Black box",
   "tvBlackBoxSubtitle": "Technical log of the app (v{version}). If the app closed unexpectedly, the reason is here.",
-  "@tvBlackBoxSubtitle": {"placeholders": {"version": {"type": "String"}}},
+  "@tvBlackBoxSubtitle": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
   "tvBlackBoxFirstRun": "First launch: no previous session.",
   "tvBlackBoxCleanExit": "Last session ended normally.",
   "tvBlackBoxBrutal": "UNEXPECTED SHUTDOWN · {reason}",
-  "@tvBlackBoxBrutal": {"placeholders": {"reason": {"type": "String"}}},
+  "@tvBlackBoxBrutal": {
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
   "tvBlackBoxUnknownReason": "unknown reason (Android < 11)",
   "tvBlackBoxMemory": "memory {mb} MB",
-  "@tvBlackBoxMemory": {"placeholders": {"mb": {"type": "String"}}},
+  "@tvBlackBoxMemory": {
+    "placeholders": {
+      "mb": {
+        "type": "String"
+      }
+    }
+  },
   "tvBlackBoxWhen": "When: {when}",
-  "@tvBlackBoxWhen": {"placeholders": {"when": {"type": "String"}}},
+  "@tvBlackBoxWhen": {
+    "placeholders": {
+      "when": {
+        "type": "String"
+      }
+    }
+  },
   "tvBlackBoxLastAction": "Last action: {action}",
-  "@tvBlackBoxLastAction": {"placeholders": {"action": {"type": "String"}}},
+  "@tvBlackBoxLastAction": {
+    "placeholders": {
+      "action": {
+        "type": "String"
+      }
+    }
+  },
   "tvBlackBoxDetail": "Android detail: {detail}",
-  "@tvBlackBoxDetail": {"placeholders": {"detail": {"type": "String"}}},
+  "@tvBlackBoxDetail": {
+    "placeholders": {
+      "detail": {
+        "type": "String"
+      }
+    }
+  },
   "tvRefresh": "Refresh",
   "tvCopy": "Copy",
   "tvCopied": "Copied",
@@ -624,13 +660,17 @@
   "tvReminderSet": "Reminder set: a notification 5 min before \"{title}\", and it stays on home.",
   "@tvReminderSet": {
     "placeholders": {
-      "title": {"type": "String"}
+      "title": {
+        "type": "String"
+      }
     }
   },
   "tvReminderSavedOnly": "\"{title}\" is on home. The TV notification could not be turned on.",
   "@tvReminderSavedOnly": {
     "placeholders": {
-      "title": {"type": "String"}
+      "title": {
+        "type": "String"
+      }
     }
   },
   "tvReminderCleared": "Reminder removed.",
@@ -639,26 +679,39 @@
   "tvReminderInMinutes": "In {minutes} min",
   "@tvReminderInMinutes": {
     "placeholders": {
-      "minutes": {"type": "int"}
+      "minutes": {
+        "type": "int"
+      }
     }
   },
   "tvReminderInHours": "In {hours} h",
   "@tvReminderInHours": {
     "placeholders": {
-      "hours": {"type": "int"}
+      "hours": {
+        "type": "int"
+      }
     }
   },
   "tvReminderInHoursMinutes": "In {hours} h {minutes}",
   "@tvReminderInHoursMinutes": {
     "placeholders": {
-      "hours": {"type": "int"},
-      "minutes": {"type": "int"}
+      "hours": {
+        "type": "int"
+      },
+      "minutes": {
+        "type": "int"
+      }
     }
   },
   "tvResumeLabel": "RESUME",
   "tvNowPlayingPrefix": "NOW · {title}",
-  "@tvNowPlayingPrefix": {"placeholders": {"title": {"type": "String"}}},
-  "tvLiveBadge": "LIVE",
+  "@tvNowPlayingPrefix": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
   "tvPinUpdated": "Parental code updated ✔",
   "tvParentalTitle": "Parental controls",
   "tvKidsMode": "Kids mode",
@@ -682,7 +735,13 @@
   "tvMyRecordings": "My recordings",
   "tvDeleteQuestion": "Delete?",
   "tvDeleteRecordingConfirm": "Permanently delete “{name}”?",
-  "@tvDeleteRecordingConfirm": {"placeholders": {"name": {"type": "String"}}},
+  "@tvDeleteRecordingConfirm": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "tvCancel": "Cancel",
   "tvDelete": "Delete",
   "tvSettingsSources": "My sources (add / activate / delete)",
@@ -691,21 +750,51 @@
   "tvSettingsLegal": "Legal notice & Terms of use",
   "tvUpdateChecking": "Update: checking…",
   "tvUpdateUpToDate": "Update: up to date (version {version}) — OK to check again",
-  "@tvUpdateUpToDate": {"placeholders": {"version": {"type": "String"}}},
+  "@tvUpdateUpToDate": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
   "tvUpdateUpToDateNoVersion": "Update: up to date — OK to check again",
   "tvUpdateAvailable": "New version {version} available — OK to install",
-  "@tvUpdateAvailable": {"placeholders": {"version": {"type": "String"}}},
+  "@tvUpdateAvailable": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
   "tvUpdateDownloading": "Downloading the update… {pct} %",
-  "@tvUpdateDownloading": {"placeholders": {"pct": {"type": "String"}}},
+  "@tvUpdateDownloading": {
+    "placeholders": {
+      "pct": {
+        "type": "String"
+      }
+    }
+  },
   "tvUpdateFailed": "Update: failed (network or installer) — OK to retry",
   "tvMySources": "My sources",
   "tvAddXtream": "Add Xtream",
   "tvAddM3u": "Add M3U",
   "tvDeleteSourceConfirm": "Delete the source “{name}”?",
-  "@tvDeleteSourceConfirm": {"placeholders": {"name": {"type": "String"}}},
-  "tvDeletePanelSourceConfirm": "“{name}” is sent by your reseller. Deleted here, it no longer comes back on this TV unless your reseller sends it again from the panel.",
-  "@tvDeletePanelSourceConfirm": {"placeholders": {"name": {"type": "String"}}},
-  "tvDeleteSourceFailed": "Could not delete: no connection to the server. Nothing was removed, try again in a moment.",
+  "@tvDeleteSourceConfirm": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "tvDeletePanelSourceConfirm": "“{name}” will be deleted from this TV. Syncing or resending it from the panel will not restore it. To restore it, add it again in the app.",
+  "@tvDeletePanelSourceConfirm": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "tvDeleteSourceFailed": "Local deletion failed. Please try again in a moment.",
   "tvActivate": "Activate",
   "tvMyTeams": "My teams",
   "tvAdd": "Add",
@@ -721,21 +810,72 @@
   "tvImpConnecting": "Connecting to the server…",
   "tvImpCategories": "Reading categories…",
   "tvImpDownloading": "Downloading… {mb} MB",
-  "@tvImpDownloading": {"placeholders": {"mb": {"type": "String"}}},
+  "@tvImpDownloading": {
+    "placeholders": {
+      "mb": {
+        "type": "String"
+      }
+    }
+  },
   "tvImpDecoding": "Analyzing {mb} MB…",
-  "@tvImpDecoding": {"placeholders": {"mb": {"type": "String"}}},
+  "@tvImpDecoding": {
+    "placeholders": {
+      "mb": {
+        "type": "String"
+      }
+    }
+  },
   "tvImpCategory": "Category {i}/{total} · {found} channels found",
-  "@tvImpCategory": {"placeholders": {"i": {"type": "String"}, "total": {"type": "String"}, "found": {"type": "String"}}},
+  "@tvImpCategory": {
+    "placeholders": {
+      "i": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      },
+      "found": {
+        "type": "String"
+      }
+    }
+  },
   "tvImpFound": "{count} channels found",
-  "@tvImpFound": {"placeholders": {"count": {"type": "String"}}},
+  "@tvImpFound": {
+    "placeholders": {
+      "count": {
+        "type": "String"
+      }
+    }
+  },
   "tvImpSaving": "Saving {done} / {total} channels",
-  "@tvImpSaving": {"placeholders": {"done": {"type": "String"}, "total": {"type": "String"}}},
+  "@tvImpSaving": {
+    "placeholders": {
+      "done": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      }
+    }
+  },
   "tvImpDone": "{count} channels ready",
-  "@tvImpDone": {"placeholders": {"count": {"type": "String"}}},
+  "@tvImpDone": {
+    "placeholders": {
+      "count": {
+        "type": "String"
+      }
+    }
+  },
   "tvLanguage": "Language",
   "tvLanguageAuto": "Automatic (TV language)",
   "tvSettingsLanguage": "Language: {value}",
-  "@tvSettingsLanguage": {"placeholders": {"value": {"type": "String"}}},
+  "@tvSettingsLanguage": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
   "tvEpgNow": "Now",
   "tvEpgNext": "Up next",
   "tvEnterParentalCode": "Enter the parental code",
@@ -748,7 +888,13 @@
   "tvRecordingStarted": "Recording…",
   "tvRecordingError": "Recording error",
   "tvRecordingSaved": "Recording saved ({size})",
-  "@tvRecordingSaved": {"placeholders": {"size": {"type": "String"}}},
+  "@tvRecordingSaved": {
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
   "tvRecordingEmpty": "Empty recording",
   "tvRemovedFromFavorites": "Removed from favorites",
   "tvAddedToFavorites": "Added to favorites ❤",
@@ -756,61 +902,163 @@
   "tvCinemaAudio": "Audio",
   "tvCinemaAudioSubs": "Audio & subtitles",
   "tvCinemaCast": "Starring {names}",
-  "@tvCinemaCast": {"placeholders": {"names": {"type": "String"}}},
+  "@tvCinemaCast": {
+    "placeholders": {
+      "names": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaContinue": "Continue watching",
   "tvCinemaDeleteDownload": "Delete download",
   "tvCinemaDirector": "Director: {names}",
-  "@tvCinemaDirector": {"placeholders": {"names": {"type": "String"}}},
+  "@tvCinemaDirector": {
+    "placeholders": {
+      "names": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaDownload": "Download",
   "tvCinemaDownloadError": "Download failed",
   "tvCinemaDownloadPaused": "Paused · {pct} %",
-  "@tvCinemaDownloadPaused": {"placeholders": {"pct": {"type": "String"}}},
+  "@tvCinemaDownloadPaused": {
+    "placeholders": {
+      "pct": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaDownloaded": "Downloaded",
   "tvCinemaDownloading": "Downloading · {pct} %",
-  "@tvCinemaDownloading": {"placeholders": {"pct": {"type": "String"}}},
+  "@tvCinemaDownloading": {
+    "placeholders": {
+      "pct": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaDownloads": "My downloads",
   "tvCinemaEmptyCategory": "Nothing here yet.",
   "tvCinemaEpisode": "Episode {n}",
-  "@tvCinemaEpisode": {"placeholders": {"n": {"type": "String"}}},
+  "@tvCinemaEpisode": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaFromStart": "From the beginning",
   "tvCinemaIndexing": "Preparing search across the whole catalog…",
   "tvCinemaLanguage": "Language: {value}",
-  "@tvCinemaLanguage": {"placeholders": {"value": {"type": "String"}}},
+  "@tvCinemaLanguage": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaLoading": "Loading…",
   "tvCinemaMinutes": "{n} min",
-  "@tvCinemaMinutes": {"placeholders": {"n": {"type": "String"}}},
+  "@tvCinemaMinutes": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaNextEpisode": "Next episode",
   "tvCinemaNextHint": "OK: now · Back: stay",
   "tvCinemaNextIn": "Next episode in {s} s",
-  "@tvCinemaNextIn": {"placeholders": {"s": {"type": "String"}}},
+  "@tvCinemaNextIn": {
+    "placeholders": {
+      "s": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaNoEpisodes": "No episodes available.",
   "tvCinemaNoSource": "No movies or series yet",
   "tvCinemaNoSourceBody": "Movies and series come from your Xtream subscription. Add it in Server, or ask your reseller to activate it.",
   "tvCinemaNoSpace": "Not enough space on the box ({free} GB free).",
-  "@tvCinemaNoSpace": {"placeholders": {"free": {"type": "String"}}},
+  "@tvCinemaNoSpace": {
+    "placeholders": {
+      "free": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaPauseDownload": "Pause",
   "tvCinemaPlay": "Play",
   "tvCinemaPlayEpisode": "Play S{s} · E{e}",
-  "@tvCinemaPlayEpisode": {"placeholders": {"s": {"type": "String"}, "e": {"type": "String"}}},
+  "@tvCinemaPlayEpisode": {
+    "placeholders": {
+      "s": {
+        "type": "String"
+      },
+      "e": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaRecent": "Recently added",
   "tvCinemaRestart": "Restart",
   "tvCinemaResumeAt": "Resume at {time}",
-  "@tvCinemaResumeAt": {"placeholders": {"time": {"type": "String"}}},
+  "@tvCinemaResumeAt": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaResumeDownload": "Resume download",
   "tvCinemaResumeEpisode": "Resume S{s} · E{e}",
-  "@tvCinemaResumeEpisode": {"placeholders": {"s": {"type": "String"}, "e": {"type": "String"}}},
+  "@tvCinemaResumeEpisode": {
+    "placeholders": {
+      "s": {
+        "type": "String"
+      },
+      "e": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaResumedAt": "Resuming at {time}",
-  "@tvCinemaResumedAt": {"placeholders": {"time": {"type": "String"}}},
+  "@tvCinemaResumedAt": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaSearch": "Search",
   "tvCinemaSeason": "Season {n}",
-  "@tvCinemaSeason": {"placeholders": {"n": {"type": "String"}}},
+  "@tvCinemaSeason": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaSeasons": "{n} seasons",
-  "@tvCinemaSeasons": {"placeholders": {"n": {"type": "String"}}},
+  "@tvCinemaSeasons": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaSpecials": "Specials",
   "tvCinemaSubtitles": "Subtitles",
   "tvCinemaSubtitlesOff": "Off",
   "tvCinemaTrackUnknown": "Track {n}",
-  "@tvCinemaTrackUnknown": {"placeholders": {"n": {"type": "String"}}},
+  "@tvCinemaTrackUnknown": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
   "tvUpdatingContent": "Updating…",
   "tvDeactivate": "Deactivate",
   "tvSourceActive": "active",
@@ -847,7 +1095,13 @@
   "tvRemoteStop": "Stop",
   "tvRemoteStart": "Turn on",
   "tvRemoteLeft": "Expires in {time}",
-  "@tvRemoteLeft": {"placeholders": {"time": {"type": "String"}}},
+  "@tvRemoteLeft": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
   "tvRemoteUrlHelp": "If the scan fails, open this address in the phone browser.",
   "tvVoiceMic": "Mic",
   "tvVoiceListening": "Speak now…",
@@ -865,4 +1119,331 @@
   "tvVoiceRemoteAiOff": "Off",
   "tvVoiceRemoteAiHelp": "Off by default. No key in the app. “Tonight” is read from your guide, on the box. If the service does not answer, Zuno searches your list.",
   "tvVoiceCinemaHint": "Open Movies or Series once: search will find them afterwards, without using the network while you watch.",
-  "tvVoiceOnChannel": "On {channel}"}
+  "tvVoiceOnChannel": "On {channel}",
+  "sportsTimeout": "The sports service is taking too long. Try again.",
+  "sportsNetworkError": "Unable to connect to the sports service.",
+  "sportsHttpError": "Sports service unavailable (HTTP {status}).",
+  "sportsInvalidResponse": "Unreadable response from the sports service.",
+  "sportsUnavailable": "Unable to load sports data.",
+  "sportsLoading": "Loading matches…",
+  "sportsRetry": "Try again",
+  "@sportsHttpError": {
+    "placeholders": {
+      "status": {
+        "type": "int"
+      }
+    }
+  },
+  "sportsFootballTitle": "Scores and fixtures",
+  "sportsRefresh": "Refresh",
+  "sportsCommunityNotice": "Community scores and goals · delays possible · refresh every 60 s.",
+  "sportsCalendarNotice": "Fixtures and delayed results · OpenFootball does not provide live scores.",
+  "sportsRetrievedAt": "Retrieved at {time}",
+  "sportsUpcoming": "Upcoming",
+  "sportsRecent": "Recent matches",
+  "sportsFinished": "Finished",
+  "@sportsRetrievedAt": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "tvProgramStartedMinutesAgo": "Program started {minutes} min ago",
+  "@tvProgramStartedMinutesAgo": {
+    "description": "Notification brève du guide : temps écoulé depuis le début du programme.",
+    "placeholders": {
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
+  "tvProfiles": "Profiles",
+  "tvKidsProfile": "Kids profile",
+  "tvNewProfile": "New profile",
+  "tvChildren": "Kids",
+  "tvKidsExists": "A kids profile already exists.",
+  "tvProfileAddFailed": "Could not add the profile.",
+  "tvKidsReady": "Kids profile ready. Kids mode stays on.",
+  "tvRename": "Rename",
+  "tvNameInvalid": "Name is empty or too long.",
+  "tvProfileDeleteBody": "Its favourites, history, resume positions, reminders and PIN will be erased. Channels and profile 1 stay.",
+  "tvProfileDeleteFailed": "This profile cannot be deleted.",
+  "tvProfilesHelp": "Up to 4 profiles. Separate favourites, history, resume positions, reminders and PINs. Channels are shared.",
+  "tvDefaultPinWarning": "The PIN is still 0000. Change it in Parental controls.",
+  "tvAskProfileOn": "Choose profile at startup: on",
+  "tvAskProfileOff": "Choose profile at startup: off",
+  "tvProfileStartupSingle": "The startup chooser appears with 2 or more profiles. With one profile, the app opens directly.",
+  "tvProfileStartupHelp": "When off, the last profile opens directly. You can still switch here or on the home screen.",
+  "tvKidsProfileHelp": "Kids mode is locked. Leaving requires this profile’s PIN. Adult content is hidden. Profile 1 keeps your previous data.",
+  "tvOriginProfileHelp": "Original profile: your previous favourites, history, resume positions and PIN are here. It cannot be deleted.",
+  "tvSeparateProfileHelp": "Separate profile. Deleting it does not erase profile 1.",
+  "tvProfileActive": "Active",
+  "tvProfileCreated": "Profile “{name}” created.",
+  "tvProfileDeleteTitle": "Delete “{name}”?",
+  "tvWhoWatching": "Who’s watching?",
+  "tvProfilePickerHelp": "Each person has their own favourites, history and PIN. Channels stay the same.",
+  "tvLater": "Later",
+  "tvNameMum": "Mum",
+  "tvNameDad": "Dad",
+  "tvNameGuest": "Guest",
+  "tvNameLivingRoom": "Living room",
+  "tvNameLimit": "18 characters maximum.",
+  "tvFirstName": "First name",
+  "tvListRemoved": "List removed",
+  "tvListRemovedBody": "Your provider removed this list. Its channels are no longer available.",
+  "tvKidsCannotDisable": "Kids mode stays on for the kids profile. Switch profiles with the PIN to see all channels.",
+  "tvKidsAlwaysOn": "Kids profile: kids mode stays on. Non-adult channels remain available.",
+  "tvKidsOn": "On — adult content is hidden.",
+  "tvKidsOff": "Off — all channels are visible.",
+  "tvChooseSecurePin": "Choose a PIN before enabling kids mode. 0000 is no longer accepted.",
+  "tvPinWait": "Too many attempts. Try again in a few minutes.",
+  "tvEnabled": "On",
+  "tvDisabled": "Off",
+  "tvProfilePinHelp": "PIN for “{name}”. Kids mode hides adult channels. Disabling it or changing the PIN requires this PIN. Each profile has its own.",
+  "tvPinWaitMinutes": "Too many attempts. Try again in {minutes} min.",
+  "tvExtras": "Extras",
+  "tvExtrasHelp": "Features you can turn off one by one. None of them blocks a channel.",
+  "tvMissedTitle": "Running late",
+  "tvMissedOn": "The guide says what you missed. OK to turn off. Live never rewinds on its own.",
+  "tvMissedOff": "Off. OK to turn on. A channel will not be rewound.",
+  "tvAtThisHour": "At this hour",
+  "tvTimePicksOn": "Suggests channels you often open at this time. OK to turn off. Nothing starts on its own.",
+  "tvTimePicksOff": "Off. OK to turn on. We stop counting, and the row goes away.",
+  "tvServiceNotices": "Service notices",
+  "tvNoticesOn": "A card on the home screen when your provider posts a notice (maintenance, news). OK to turn off. Never over the picture.",
+  "tvNoticesOff": "Off. OK to turn on. Notices are no longer shown.",
+  "tvPickOfDay": "Pick of the day",
+  "tvFeaturedOn": "The channel your provider highlights, if it is in your list. OK to turn off. Nothing starts on its own.",
+  "tvFeaturedOff": "Off. OK to turn on. The card leaves the home screen.",
+  "tvBanners": "Banners",
+  "tvBannersOn": "One picture at a time on the home screen, always labelled \"Ad\". Close = 7 days without it. OK to turn off. Never sound, never over the picture.",
+  "tvBannersOff": "Off. OK to turn on. No more banners.",
+  "tvSubtitlesOnHelp": "Shows the track already in the stream, in your language. OK to turn off. Nothing is translated or downloaded.",
+  "tvSubtitlesOffHelp": "Off. OK to turn on. Live does not switch streams.",
+  "tvClearVoice": "Clear voice",
+  "tvClearVoiceOn": "On. Loud voices are eased a bit (night mode). OK to turn off. Surround passthrough is left as it is.",
+  "tvClearVoiceOff": "Off, which is the original setting. OK to ease voices that are too loud. Surround sent as-is to a soundbar does not change.",
+  "tvLogToSupport": "Log to support",
+  "tvLogToSupportOn": "The Black box log may be sent to support, with no stream address and no password. OK to turn off.",
+  "tvLogToSupportOff": "Off. The log stays on the box. OK to send it to support again.",
+  "tvPictureEngine": "Picture engine",
+  "tvPictureEngineHelp": "Now: {engine}. OK to change. Hardware = the box (original). Software = if the picture stays black. FFmpeg video is not in this version: OK skips it.",
+  "tvScreenRefresh": "Screen refresh",
+  "tvScreenRefreshOn": "On. The screen may switch to 24, 50 or 60 Hz to match the stream. OK to turn off. On some boxes the picture drops for a second: if it does, turn it off.",
+  "tvScreenRefreshOff": "Off, which is the original setting. OK to match the screen to 24 / 25 / 30 / 50 / 60 frames per second. It never turns on by itself.",
+  "tvContrast": "Contrast",
+  "tvContrastUnavailable": "Not available. The only Android filter leaves the direct picture path and has made black screens before. It stays off.",
+  "tvUpdateAllowInstall": "Allow Zuno to install apps (Android has opened the screen: turn on \"Zuno\"), then come back and press OK. The update is already downloaded.",
+  "tvFfmpegKeepDecoder": "FFmpeg video is not in this version. Staying on the current decoder.",
+  "tvFfmpegBoxDecoder": "FFmpeg video is not in this version. Back to the box decoder.",
+  "tvFfmpegUnavailable": "FFmpeg video is not in this version.",
+  "tvEngineSelected": "Engine: {engine}",
+  "tvOnYourPhone": "On your phone",
+  "tvGotIt": "Got it",
+  "tvClose": "Close",
+  "tvPhone": "Phone",
+  "tvSoftware": "Software",
+  "tvHardware": "Hardware",
+  "tvProfilesSettingsHelp": "Up to 4 profiles with separate favourites, history, resume positions, reminders and PINs.",
+  "tvAudioDiagnostic": "Sound diagnostics",
+  "tvAudioDiagnosticHelp": "Local report for each channel. Nothing is sent. Test options are off by default.",
+  "tvPlayerDisclaimer": "This app is a media PLAYER. It does not sell, provide or host channels, streams or M3U links. Content comes from the user, who is responsible for its legality.",
+  "tvActivationDisclaimer": "Media player — does not sell or provide channels or M3U links. Content is supplied by the user. Terms: app.7themotion.com/terms",
+  "tvSourcePasteHelp": "Paste your link or credentials. Any M3U or Xtream provider.",
+  "tvTrending": "🔥 Trending",
+  "tvRecent": "🕒 Recent",
+  "tvForYou": "✨ For you",
+  "tvOther": "Other",
+  "tvNetworkUnavailable": "No network",
+  "tvNetworkUnavailableHelp": "The TV cannot reach the server. Check the connection and try again.",
+  "tvListRejected": "List rejected",
+  "tvListRejectedHelp": "The provider rejected this list. Check your credentials.",
+  "tvCodeInactive": "Code not activated",
+  "tvCodeInactiveHelp": "This TV’s code is not activated. Activate it in the panel, then wait a few seconds.",
+  "tvSourcesEmpty": "No sources yet.\nAdd an M3U link, Xtream account or player link.",
+  "tvRecordingCloseFailed": "The recording could not be closed. The file may be incomplete.",
+  "tvFromStart": "From start",
+  "tvFollow": "Follow",
+  "tvChooseTeamHelp": "Choose a team below, or enter a name…",
+  "tvTeamNotFound": "“{name}” not found — try searching.",
+  "tvCatchupHelp": "From the start of the show. Right, then OK: back to live.",
+  "tvMissedRewindHint": "Right, then OK: from the start.",
+  "tvMissedNoReplayHint": "The guide has the text, not the video. Live stays as it is.",
+  "tvSourceNeedUrl": "Paste an address beginning with http:// or https://.",
+  "tvSourceNeedXtream": "Enter the server address, username and password.",
+  "tvSourceNeedCredentials": "This player link is missing a username or password. Paste the full link or fill in all three Xtream fields.",
+  "tvSourceBadScheme": "This address cannot be used. An http or https link is required.",
+  "tvPlayerLink": "Player link",
+  "tvAdvertisement": "Advertisement",
+  "tvSponsored": "Sponsored",
+  "tvInformation": "Information",
+  "tvSportFootball": "Football",
+  "tvSportBasketball": "Basketball (NBA)",
+  "tvSportRugby": "Rugby",
+  "tvDataAttribution": "Data: {source}",
+  "tvLegalLead": "This app is a player. It does not sell or provide channels or links. Up/down to scroll, Back to exit.",
+  "tvAudioSpectrumOn": "Spectrum: measured",
+  "tvAudioSpectrumOff": "Spectrum: off",
+  "tvAudioFfmpegRetry": "FFmpeg: retry",
+  "tvAudioFfmpegDefault": "FFmpeg: default",
+  "tvAudioAacTest": "Box AAC: test",
+  "tvAudioAacOff": "Box AAC: off",
+  "tvAudioFallbackSession": "Fallback: whole session",
+  "tvAudioFallbackChannel": "Fallback: per channel",
+  "tvAudioFocusAndroid": "Audio focus: Android",
+  "tvAudioFocusZuno": "Audio focus: Zuno",
+  "tvAudioBackgroundPause": "Outside app: pause",
+  "tvAudioBackgroundStop": "Outside app: stop",
+  "tvAudioHomeLegacy": "Home: legacy",
+  "tvAudioHomeNative": "Home: native stop",
+  "tvAudioHandoffNow": "Switch: immediately",
+  "tvAudioHandoffWait": "Switch: wait",
+  "tvAudioOutput48k": "Output: 48 kHz",
+  "tvAudioOutputStream": "Output: stream rate",
+  "tvAudioWitnessStop": "Test sound: stop",
+  "tvAudioWitnessPreparing": "Test sound: preparing",
+  "tvAudioWitnessPlay": "Play test sound",
+  "tvAudioScrollHelp": "UP/DOWN: scroll · CH+/CH−: page",
+  "tvAudioTestSound": "Test sound",
+  "tvDiagCaptive": "1. Captive portal (204)",
+  "tvDiagDns": "2. IPTV host DNS lookup",
+  "tvDiagStream": "3. Stream reachability (HTTP / 456)",
+  "tvDiagSource": "4. Assigned source (device-source)",
+  "tvDiagPlayer": "5. ExoPlayer / Media3 probe",
+  "tvDiagRequest": "Requesting generate_204…",
+  "tvDiagInternetOk": "HTTP 204 (Internet access available)",
+  "tvDiagTimeout": "No response within 8 s",
+  "tvDiagNoHost": "No channel loaded → host UNKNOWN",
+  "tvDiagNoUrl": "No channel loaded → URL UNKNOWN",
+  "tvDiagStreamHead": "Stream HEAD request…",
+  "tvDiagIpBlocked": "HTTP 456 — provider blocks this IP",
+  "tvDiagReadingMac": "Reading MAC…",
+  "tvDiagSourceAssigned": "HTTP 200 — source assigned",
+  "tvDiagNoSource": "HTTP 200 — no source assigned",
+  "tvDiagPlayerBusy": "Fullscreen playback active: probe skipped (one player only)",
+  "tvDiagPlayerOpening": "Opening ExoPlayer probe…",
+  "tvDiagFrameOk": "First frame decoded and displayed",
+  "tvDiagPlayerError": "ExoPlayer returned an error",
+  "tvDiagFrameTimeout": "No frame within 8 s",
+  "tvDiagRunning": "DIAGNOSTICS RUNNING…",
+  "tvDiagPassed": "ON-DEVICE PLAYBACK VERIFIED",
+  "tvDiagNetworkBlocked": "NETWORK BLOCKAGE",
+  "tvDiagPlayerFailed": "PLAYER ERROR",
+  "tvDiagPartial": "PARTIAL DIAGNOSTICS",
+  "tvDiagTitle": "ON-DEVICE DIAGNOSTICS — Zuno",
+  "tvDiagHelp": "Tests whether the TV can play the stream from its own IP address.",
+  "tvBackToExit": "BACK to exit",
+  "tvDiagCaptiveLikely": "HTTP {status}, {bytes} bytes → possible captive portal",
+  "tvDiagLookup": "Looking up {host}…",
+  "tvDiagNoIp": "{host} → no IP address",
+  "tvDiagDnsTimeout": "{host}: no DNS response within 8 s",
+  "tvDiagStreamOk": "HTTP {status} (stream reachable)",
+  "tvDiagUnknownMac": "UNKNOWN MAC ({mac})",
+  "tvSizeBytes": "{size} B",
+  "tvSizeKb": "{size} KB",
+  "tvSizeMb": "{size} MB",
+  "tvSizeGb": "{size} GB",
+  "tvDurationHm": "{hours} h {minutes} min",
+  "tvCinemaOfflineTitle": "Catalogue unavailable",
+  "tvCinemaOfflineBody": "Nothing is saved on the TV, and the server is not responding. Check the connection and try again.",
+  "tvCinemaRetry": "Retry",
+  "moviesRetry": "Retry",
+  "tvCinemaUpdated": "Updated {when}",
+  "tvCinemaAgeJustNow": "just now",
+  "tvCinemaAgeMinutes": "{n} min ago",
+  "tvCinemaAgeHours": "{n} h ago",
+  "tvCinemaAgeDays": "{n} d ago",
+  "tvCinemaCategoryFailed": "This category could not be loaded.",
+  "tvLegalSection1Title": "1. Nature of the application — a PLAYER only",
+  "tvLegalSection1Body": "This application is a media PLAYER for playing audio/video streams supplied by the user. It DOES NOT PROVIDE, SELL, HOST, BROADCAST or INDEX ANY television channels, streams, audiovisual content, playlists (M3U) or portal credentials (Xtream). No content is included, preloaded or sold with the application.",
+  "tvLegalSection2Title": "2. User-supplied content",
+  "tvLegalSection2Body": "Users supply their own sources (M3U links / Xtream credentials), obtained from their own provider. Users are SOLELY responsible for content they add, play or broadcast, and for holding the necessary rights, licences and subscriptions.",
+  "tvLegalSection3Title": "3. Subscription = SOFTWARE, not content",
+  "tvLegalSection3Body": "Any payment or subscription pays ONLY for use of the application (the player and its features: interface, favourites, local recording, EPG…). It NEVER constitutes the purchase, sale, rental or provision of channels, streams or content.",
+  "tvLegalSection4Title": "4. Lawful use",
+  "tvLegalSection4Body": "Users agree to use the application in accordance with the laws of their country and not to use it to access illegal or copyright-infringing content. Unlawful use is strictly prohibited and is solely the user’s responsibility.",
+  "tvLegalSection5Title": "5. Third-party content — no liability",
+  "tvLegalSection5Body": "The publisher has no control over third-party content accessible through user-supplied sources and cannot be held responsible for it. It does not guarantee the availability, legality or quality of that content.",
+  "tvLegalSection6Title": "6. Intellectual property and complaints",
+  "tvLegalSection6Body": "All trademarks, logos and content belong to their respective owners. As the application hosts no content, copyright complaints must be addressed to the provider of the source concerned.",
+  "tvLegalSection7Title": "7. Provided “as is”",
+  "tvLegalSection7Body": "The application is provided “as is”, without any guarantee of continuous availability or absence of errors. The publisher may change or suspend some or all features.",
+  "tvLegalSection8Title": "8. Personal data",
+  "tvLegalSection8Body": "A technical device identifier is used for licence/trial management and support. Details: app.7themotion.com/privacy.",
+  "tvLegalSection9Title": "9. Acceptance",
+  "tvLegalSection9Body": "By installing or using this application, users acknowledge that they have read and accepted these terms. Full version online: app.7themotion.com/terms",
+  "tvAudioWitnessHelp": "Test sound playing (10 s): voice, then noise. Same player as the channels. Muffled noise → device. Clear noise → channel.",
+  "tvAudioNoReports": "No reports. Open a channel: the player records the codec, decoder and output. The spectrum is measured only when enabled.",
+  "tvAudioOptionsHelp": "Spectrum: on the next channel, measures four points (decoder, clear voice, silence, AudioTrack) without changing the sound. FFmpeg: retries the software decoder; if it does not start within 8 s, the box takes over. Box AAC: on the next channel, AAC uses the box decoder (like ExoPlayer). If it fails, FFmpeg takes over this opening. Fallback: “per channel” (default) sends only the affected channel to the box after an FFmpeg failure; “whole session” is the previous behaviour, sending every channel to the box after one failure. Audio focus: “Zuno” (default) never reduces volume when another app or a beep requests audio; “Android” is the previous behaviour (volume drops to 20%). Outside app: “stop” (default) stops and releases audio when leaving the app, then reopens the channel on return; “pause” is the previous behaviour. Home: “native stop” (default) stops at onPause and nothing reopens outside the app; “legacy” waits for Flutter. Switch: “wait” (default) opens the next channel only after the previous AudioTrack is released, avoiding overlapping sound after many channel changes; “immediately” is the previous behaviour. Output: “stream rate” (default) uses the stream’s sample rate (44.1 kHz for many channels), with conversion by the box; “48 kHz” resamples in the app before output. Try it if sound is poor with a 44.1 kHz report. Test sound: 10 s of voice then noise, played by the same player. Enables measurement without changing the sound. Muffled noise → device. Clear noise → channel.",
+  "tvWhatsAppActivationRequest": "Hello, I would like to activate Zuno.",
+  "castErrorTimeoutRetry": "The TV is taking too long to respond. Try again or pick another TV.",
+  "castProgressRelay": "Preparing the relay…",
+  "castFriendlyNetworkFail": "Couldn't connect to the TV.",
+  "castFriendlyTvTimeout": "The TV isn't responding. Check the WiFi.",
+  "castFriendlyBadFormat": "Your TV doesn't accept this format. Try another channel.",
+  "castProgressLive": "Now streaming to the TV",
+  "castFriendlyAuthExpired": "Stream access denied — your subscription may have expired.",
+  "castFriendlyTvRefused": "This TV didn't accept this stream. Try another channel.",
+  "castProgressConnectingAttempt": "Connecting to the TV ({attempt}/{total})…",
+  "castFriendlyGenericFail": "Cast failed. Try again.",
+  "castProgressWebFallback": "Switching to universal mode (QR code)…",
+  "castFriendlyTvUnreachable": "The TV is not responding. Check that it is switched on and connected to the same private network as this device.",
+  "castProgressDetecting": "Detecting the TV…",
+  "castDlnaReceiverFallback": "DLNA receiver",
+  "castErrorApIsolation": "The TV cannot reach this device. Connect both to the same private network, without a guest network.",
+  "castProgressRetrying": "Retrying in compatibility mode ({attempt}/{total})…",
+  "castFriendlyTvStuck": "Your TV is stuck on a previous cast. Turn it off for a few seconds, turn it back on and try again.",
+  "castErrorReceiverRejected": "The TV rejected this stream — the format is probably not supported by this receiver. Try another channel.",
+  "castProgressConnecting": "Connecting to the TV…",
+  "castFriendlyNoGms": "Official Chromecast needs Google Play services, which are missing on this phone. You can still cast to a Smart TV (DLNA) or a Roku from the list.",
+  "castErrorTimeout": "Cast took too long — the TV or the network isn't responding",
+  "castFriendlyDnsUnstable": "Unstable internet or DNS. Try again in a few seconds.",
+  "castFriendlyProviderLimit": "Your IPTV provider is refusing an extra connection (limit reached). Close another app that's watching and try again.",
+  "castProgressValidating": "Checking the stream…",
+  "castWindowsHelp": "Connect your PC and TV to the same private network (Wi-Fi or Ethernet). Choose a DLNA TV or Roku. Google Cast-only receivers are not supported on Windows. Use the TV remote for audio tracks and seeking.",
+  "vipCountriesTitle": "My countries · VIP",
+  "vipCountriesHint": "Choose up to 10 countries. Their order is saved for this profile; all others remain available.",
+  "vipCountriesOrder": "My order",
+  "vipCountriesEmpty": "No country found in the available channels.",
+  "vipCountriesSaveError": "Could not save. Try again.",
+  "vipCountriesMoveUp": "Move up",
+  "vipCountriesMoveDown": "Move down",
+  "vipCountriesRemove": "Remove",
+  "vipCountryRs": "Serbia",
+  "vipCountryFr": "France",
+  "vipCountryUs": "United States",
+  "vipCountryUk": "United Kingdom",
+  "vipCountryDe": "Germany",
+  "vipCountryIt": "Italy",
+  "vipCountryEs": "Spain",
+  "vipCountryPt": "Portugal",
+  "vipCountryBe": "Belgium",
+  "vipCountryCh": "Switzerland",
+  "vipCountryCa": "Canada",
+  "vipCountryBr": "Brazil",
+  "vipCountryMx": "Mexico",
+  "vipCountryAr": "Argentina",
+  "vipCountrySa": "Saudi Arabia",
+  "vipCountryTr": "Türkiye",
+  "vipCountryGr": "Greece",
+  "vipCountryPl": "Poland",
+  "vipCountryRu": "Russia",
+  "vipCountryNl": "Netherlands",
+  "vipCountryJp": "Japan",
+  "vipCountryKr": "South Korea",
+  "vipCountryCn": "China",
+  "vipCountryIn": "India",
+  "vipCountryAu": "Australia",
+  "vipCountrySe": "Sweden",
+  "vipCountryNo": "Norway",
+  "vipCountryDk": "Denmark",
+  "vipCountryFi": "Finland",
+  "vipCountryMa": "Morocco",
+  "vipCountryDz": "Algeria",
+  "vipCountryTn": "Tunisia",
+  "vipCountryEg": "Egypt",
+  "libraryRefreshRunning": "Refreshing…",
+  "libraryRefreshIncomplete": "Refresh incomplete. Some sources are unavailable. Try again."
+
+}

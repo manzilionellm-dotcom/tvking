@@ -10,6 +10,8 @@
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/material.dart';
 
+import '../../../core/i18n/l10n_extension.dart';
+
 import '../../playlists/data/removed_list_notice.dart';
 import 'tv_add_source_screen.dart';
 import 'tv_shell.dart';
@@ -64,11 +66,8 @@ class _RemovedListPromptState extends State<RemovedListPrompt> {
       barrierDismissible: false,
       builder: (BuildContext ctx) {
         return AlertDialog(
-          title: const Text('Liste retirée'),
-          content: const Text(
-            'Ton revendeur a retiré cette liste. '
-            'Les chaînes de cette liste ne sont plus là.',
-          ),
+          title: Text(ctx.l10n.tvListRemoved),
+          content: Text(ctx.l10n.tvListRemovedBody),
           actions: <Widget>[
             TextButton(
               onPressed: () {
@@ -81,7 +80,7 @@ class _RemovedListPromptState extends State<RemovedListPrompt> {
                   ),
                 );
               },
-              child: const Text('Continuer'),
+              child: Text(ctx.l10n.buttonContinue),
             ),
           ],
         );

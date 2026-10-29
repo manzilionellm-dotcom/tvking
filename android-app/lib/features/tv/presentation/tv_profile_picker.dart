@@ -10,6 +10,9 @@
 
 import 'package:flutter/material.dart';
 
+import '../../../core/i18n/l10n_extension.dart';
+import 'tv_profile_label.dart';
+
 import '../../profiles/data/profile_repository.dart';
 import '../../profiles/domain/family_profile.dart';
 import '../../profiles/domain/profile_policies.dart';
@@ -72,12 +75,16 @@ class TvProfilePickerScreen extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
-              Text('Qui regarde ?',
-                  style: TvTokens.display(TvDimens.displayS, color: TvTokens.text)),
+              Text(
+                context.l10n.tvWhoWatching,
+                style: TvTokens.display(
+                  TvDimens.displayS,
+                  color: TvTokens.text,
+                ),
+              ),
               const SizedBox(height: 8),
               Text(
-                'Chacun a ses favoris, son historique et son code. '
-                'Les chaînes restent les mêmes.',
+                context.l10n.tvProfilePickerHelp,
                 style: TvTokens.ui(TvDimens.body, color: TvTokens.muted),
               ),
               const SizedBox(height: 28),
@@ -103,18 +110,29 @@ class TvProfilePickerScreen extends StatelessWidget {
                 child: TvFocusBuilder(
                   onSelect: () => Navigator.of(context).pop(false),
                   builder: (BuildContext context, bool focused) {
-                    final Color fg = focused ? TvTokens.onAccent : TvTokens.text;
+                    final Color fg = focused
+                        ? TvTokens.onAccent
+                        : TvTokens.text;
                     return Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 28,
+                        vertical: 14,
+                      ),
                       decoration: BoxDecoration(
                         color: focused ? TvTokens.accent : TvTokens.card,
                         borderRadius: BorderRadius.circular(TvTokens.rButton),
                         border: Border.all(
-                            color: focused ? TvTokens.accent : TvTokens.line),
+                          color: focused ? TvTokens.accent : TvTokens.line,
+                        ),
                       ),
-                      child: Text('Plus tard',
-                          style: TvTokens.ui(TvDimens.title,
-                              weight: FontWeight.w700, color: fg)),
+                      child: Text(
+                        context.l10n.tvLater,
+                        style: TvTokens.ui(
+                          TvDimens.title,
+                          weight: FontWeight.w700,
+                          color: fg,
+                        ),
+                      ),
                     );
                   },
                 ),
@@ -186,19 +204,35 @@ class _ProfileCard extends StatelessWidget {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: <Widget>[
-              Icon(ProfileLooks.icon(profile),
-                  size: 64,
-                  color: focused ? TvTokens.onAccent : ProfileLooks.color(profile)),
+              Icon(
+                ProfileLooks.icon(profile),
+                size: 64,
+                color: focused
+                    ? TvTokens.onAccent
+                    : ProfileLooks.color(profile),
+              ),
               const SizedBox(height: 16),
-              Text(profile.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TvTokens.ui(TvDimens.title, weight: FontWeight.w700, color: fg)),
+              Text(
+                tvProfileLabel(context, profile),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TvTokens.ui(
+                  TvDimens.title,
+                  weight: FontWeight.w700,
+                  color: fg,
+                ),
+              ),
               const SizedBox(height: 6),
               Text(
-                profile.isKids ? 'Enfants' : (active ? 'En cours' : 'Profil'),
-                style: TvTokens.ui(TvDimens.caption,
-                    color: focused ? TvTokens.onAccent : TvTokens.muted),
+                profile.isKids
+                    ? context.l10n.tvChildren
+                    : (active
+                          ? context.l10n.tvProfileActive
+                          : context.l10n.navProfile),
+                style: TvTokens.ui(
+                  TvDimens.caption,
+                  color: focused ? TvTokens.onAccent : TvTokens.muted,
+                ),
               ),
             ],
           ),
@@ -234,14 +268,16 @@ class _NameScreen extends StatefulWidget {
 }
 
 class _NameScreenState extends State<_NameScreen> {
-  late final TextEditingController _text = TextEditingController(text: widget.initial);
+  late final TextEditingController _text = TextEditingController(
+    text: widget.initial,
+  );
 
-  static const List<String> _ideas = <String>[
-    'Maman',
-    'Papa',
-    'Enfants',
-    'Invité',
-    'Salon',
+  List<String> get _ideas => <String>[
+    context.l10n.tvNameMum,
+    context.l10n.tvNameDad,
+    context.l10n.tvChildren,
+    context.l10n.tvNameGuest,
+    context.l10n.tvNameLivingRoom,
   ];
 
   @override
@@ -265,11 +301,15 @@ class _NameScreenState extends State<_NameScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
-            Text(widget.title,
-                style: TvTokens.display(TvDimens.displayS, color: TvTokens.text)),
+            Text(
+              widget.title,
+              style: TvTokens.display(TvDimens.displayS, color: TvTokens.text),
+            ),
             const SizedBox(height: 8),
-            Text('18 lettres maximum.',
-                style: TvTokens.ui(TvDimens.body, color: TvTokens.muted)),
+            Text(
+              context.l10n.tvNameLimit,
+              style: TvTokens.ui(TvDimens.body, color: TvTokens.muted),
+            ),
             const SizedBox(height: 18),
             TextField(
               controller: _text,
@@ -278,9 +318,15 @@ class _NameScreenState extends State<_NameScreen> {
               cursorColor: TvTokens.accent,
               maxLength: 18,
               decoration: InputDecoration(
-                counterStyle: TvTokens.ui(TvDimens.caption, color: TvTokens.mutedDim),
-                hintText: 'Prénom',
-                hintStyle: TvTokens.ui(TvDimens.title, color: TvTokens.mutedDim),
+                counterStyle: TvTokens.ui(
+                  TvDimens.caption,
+                  color: TvTokens.mutedDim,
+                ),
+                hintText: context.l10n.tvFirstName,
+                hintStyle: TvTokens.ui(
+                  TvDimens.title,
+                  color: TvTokens.mutedDim,
+                ),
                 filled: true,
                 fillColor: TvTokens.card,
                 enabledBorder: OutlineInputBorder(
@@ -289,7 +335,10 @@ class _NameScreenState extends State<_NameScreen> {
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(TvTokens.rButton),
-                  borderSide: const BorderSide(color: TvTokens.accent, width: 2),
+                  borderSide: const BorderSide(
+                    color: TvTokens.accent,
+                    width: 2,
+                  ),
                 ),
               ),
               onSubmitted: (_) => _save(),
@@ -304,16 +353,26 @@ class _NameScreenState extends State<_NameScreen> {
                     autofocus: idea == widget.initial,
                     onSelect: () => setState(() => _text.text = idea),
                     builder: (BuildContext context, bool focused) {
-                      final Color fg = focused ? TvTokens.onAccent : TvTokens.text;
+                      final Color fg = focused
+                          ? TvTokens.onAccent
+                          : TvTokens.text;
                       return Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 10,
+                        ),
                         decoration: BoxDecoration(
                           color: focused ? TvTokens.accent : TvTokens.sel,
                           borderRadius: BorderRadius.circular(TvTokens.rButton),
                         ),
-                        child: Text(idea,
-                            style: TvTokens.ui(TvDimens.label,
-                                weight: FontWeight.w600, color: fg)),
+                        child: Text(
+                          idea,
+                          style: TvTokens.ui(
+                            TvDimens.label,
+                            weight: FontWeight.w600,
+                            color: fg,
+                          ),
+                        ),
                       );
                     },
                   ),
@@ -324,17 +383,14 @@ class _NameScreenState extends State<_NameScreen> {
               children: <Widget>[
                 TvFocusBuilder(
                   onSelect: _save,
-                  builder: (BuildContext context, bool focused) => _btn(
-                    'Enregistrer',
-                    focused,
-                    primary: true,
-                  ),
+                  builder: (BuildContext context, bool focused) =>
+                      _btn(context.l10n.buttonSave, focused, primary: true),
                 ),
                 const SizedBox(width: 12),
                 TvFocusBuilder(
                   onSelect: () => Navigator.of(context).pop(),
                   builder: (BuildContext context, bool focused) =>
-                      _btn('Annuler', focused),
+                      _btn(context.l10n.buttonCancel, focused),
                 ),
               ],
             ),
@@ -355,8 +411,10 @@ class _NameScreenState extends State<_NameScreen> {
         borderRadius: BorderRadius.circular(TvTokens.rButton),
         border: Border.all(color: focused ? TvTokens.accent : TvTokens.line),
       ),
-      child: Text(label,
-          style: TvTokens.ui(TvDimens.title, weight: FontWeight.w700, color: fg)),
+      child: Text(
+        label,
+        style: TvTokens.ui(TvDimens.title, weight: FontWeight.w700, color: fg),
+      ),
     );
   }
 }

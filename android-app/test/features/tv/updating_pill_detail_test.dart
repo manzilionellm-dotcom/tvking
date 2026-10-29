@@ -9,9 +9,18 @@ import 'package:tv_king/features/tv/presentation/tv_app.dart';
 void main() {
   test('hors import ou sans chiffre : rien', () {
     expect(updatingPillDetail(null), '');
-    expect(updatingPillDetail(const ImportProgress(ImportStage.connecting)), '');
-    expect(updatingPillDetail(const ImportProgress(ImportStage.categories)), '');
-    expect(updatingPillDetail(const ImportProgress(ImportStage.downloading)), '');
+    expect(
+      updatingPillDetail(const ImportProgress(ImportStage.connecting)),
+      '',
+    );
+    expect(
+      updatingPillDetail(const ImportProgress(ImportStage.categories)),
+      '',
+    );
+    expect(
+      updatingPillDetail(const ImportProgress(ImportStage.downloading)),
+      '',
+    );
     expect(updatingPillDetail(const ImportProgress(ImportStage.saving)), '');
   });
 
@@ -20,13 +29,13 @@ void main() {
       updatingPillDetail(
         const ImportProgress(ImportStage.downloading, bytes: 13002342),
       ),
-      '12.4 Mo',
+      '12.4 MB',
     );
     expect(
       updatingPillDetail(
         const ImportProgress(ImportStage.decoding, bytes: 1048576),
       ),
-      '1.0 Mo',
+      '1.0 MB',
     );
   });
 
@@ -43,7 +52,12 @@ void main() {
     );
     expect(
       updatingPillDetail(
-        const ImportProgress(ImportStage.category, index: 3, total: 40, count: 900),
+        const ImportProgress(
+          ImportStage.category,
+          index: 3,
+          total: 40,
+          count: 900,
+        ),
       ),
       '3 / 40',
     );

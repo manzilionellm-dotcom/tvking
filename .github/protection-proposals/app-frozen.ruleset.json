@@ -1,0 +1,17 @@
+{
+  "name": "Zuno - apps gelees apres validation",
+  "target": "branch",
+  "enforcement": "active",
+  "bypass_actors": [],
+  "conditions": {
+    "ref_name": {
+      "include": ["refs/heads/ccr-b93e1afd-gwirw0"],
+      "exclude": []
+    }
+  },
+  "rules": [
+    {"type": "deletion"},
+    {"type": "non_fast_forward"},
+    {"type": "update"}
+  ]
+}

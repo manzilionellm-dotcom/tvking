@@ -80,14 +80,16 @@ void main() {
   });
 
   test('compteurs du jour et fermeture 7 jours, persistants', () async {
-    final DateTime d1 = DateTime(2026, 10, 4, 20);
+    // initialize() purge les fermetures expirées selon l’heure réelle.
+    // Le scénario doit rester valable après octobre 2026.
+    final DateTime d1 = DateTime.now().subtract(const Duration(days: 1));
     await repo.noteShown('a', now: d1);
     await repo.noteShown('a', now: d1);
     expect(repo.shownToday(d1)['a'], 2);
     // Le lendemain, les compteurs repartent.
     expect(repo.shownToday(d1.add(const Duration(days: 1)))['a'], isNull);
 
-    final DateTime d2 = DateTime(2026, 10, 5, 9);
+    final DateTime d2 = d1.add(const Duration(days: 1));
     await repo.dismiss('b', now: d2);
     expect(repo.dismissedAt(d2.millisecondsSinceEpoch), <String>{'b'});
     expect(

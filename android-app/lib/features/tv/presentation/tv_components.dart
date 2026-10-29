@@ -10,6 +10,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import '../../device/domain/display_mac.dart';
 import '../../../core/app/repair_flags.dart';
 import '../../../core/i18n/l10n_extension.dart';
+import '../../../l10n/generated/app_localizations.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
@@ -27,12 +28,16 @@ const String kWhatsAppPhone = '447307410512';
 
 /// Construit le lien wa.me avec un message pré-rempli (code MAC inclus,
 /// sans « MK: » : le panel le remet tout seul, voir display_mac.dart).
-String tvWhatsAppUrl(String mac) {
+String tvWhatsAppUrl(String mac, AppLocalizations l10n) {
   final String code = (mac == '…' || mac.isEmpty)
       ? ''
       : displayMac(mac, showPrefix: RepairFlags.macShowPrefix);
-  final String msg = Uri.encodeComponent('Bonjour, je souhaite activer Zuno.'
-      '${code.isEmpty ? '' : ' Mon code : $code'}');
+  // La phrase suit la langue TV. La MAC reste seule sur une ligne commençant
+  // par un sigle latin : Unicode conserve ainsi l'ordre de tous ses groupes,
+  // même dans un message arabe. Aucun caractère invisible dans le code copié.
+  final String msg = Uri.encodeComponent(
+    '${l10n.tvWhatsAppActivationRequest}${code.isEmpty ? '' : '\nMAC: $code'}',
+  );
   return 'https://wa.me/$kWhatsAppPhone?text=$msg';
 }
 
@@ -46,49 +51,68 @@ class TvWhatsAppQr extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: <Widget>[
-        // QR sur fond clair (un QR se scanne en sombre-sur-clair).
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(TvTokens.rCard),
-            border: Border.all(color: TvTokens.accent, width: 2),
-          ),
-          child: QrImageView(
-            data: tvWhatsAppUrl(mac),
-            version: QrVersions.auto,
-            size: size,
-            backgroundColor: Colors.white,
-            eyeStyle: const QrEyeStyle(
-                eyeShape: QrEyeShape.square, color: Color(0xFF0B0B0B)),
-            dataModuleStyle: const QrDataModuleStyle(
+    return SizedBox(
+      width: size + 40,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          // QR sur fond clair (un QR se scanne en sombre-sur-clair).
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(TvTokens.rCard),
+              border: Border.all(color: TvTokens.accent, width: 2),
+            ),
+            child: QrImageView(
+              data: tvWhatsAppUrl(mac, context.l10n),
+              version: QrVersions.auto,
+              size: size,
+              backgroundColor: Colors.white,
+              eyeStyle: const QrEyeStyle(
+                eyeShape: QrEyeShape.square,
+                color: Color(0xFF0B0B0B),
+              ),
+              dataModuleStyle: const QrDataModuleStyle(
                 dataModuleShape: QrDataModuleShape.square,
-                color: Color(0xFF0B0B0B)),
+                color: Color(0xFF0B0B0B),
+              ),
+            ),
           ),
-        ),
-        const SizedBox(height: 16),
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            const Icon(Icons.qr_code_scanner_rounded,
-                color: TvTokens.accentBright, size: 22),
-            const SizedBox(width: 10),
-            Text(context.l10n.tvScanToActivate,
-                style: TvTokens.ui(18,
-                    weight: FontWeight.w700, color: TvTokens.accentBright)),
-          ],
-        ),
-        const SizedBox(height: 6),
-        SizedBox(
-          width: size + 40,
-          child: Text(context.l10n.tvScanHelp,
+          const SizedBox(height: 16),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              const Icon(
+                Icons.qr_code_scanner_rounded,
+                color: TvTokens.accentBright,
+                size: 22,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  context.l10n.tvScanToActivate,
+                  textAlign: TextAlign.center,
+                  style: TvTokens.ui(
+                    18,
+                    weight: FontWeight.w700,
+                    color: TvTokens.accentBright,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          SizedBox(
+            width: size + 40,
+            child: Text(
+              context.l10n.tvScanHelp,
               textAlign: TextAlign.center,
-              style: TvTokens.ui(13, color: TvTokens.mutedDim)),
-        ),
-      ],
+              style: TvTokens.ui(13, color: TvTokens.mutedDim),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

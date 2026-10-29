@@ -1,0 +1,1435 @@
+diff --git a/lib/core/widgets/settled_page_view.dart b/lib/core/widgets/settled_page_view.dart
+new file mode 100644
+index 0000000..9333981
+--- /dev/null
++++ b/lib/core/widgets/settled_page_view.dart
+@@ -0,0 +1,71 @@
++import 'package:flutter/material.dart';
++
++/// Le geste reste purement visuel. Le lecteur n'est averti qu'une fois la
++/// page arrêtée : franchir cinq pages ne lance pas cinq ouvertures réseau.
++/// Seules la page visible et ses voisines sont construites, même à 25 000.
++class SettledPageView extends StatefulWidget {
++  const SettledPageView({super.key, required this.controller,
++    required this.itemCount, required this.itemBuilder, required this.onSettled,
++    this.onUserScrollStart});
++  final PageController controller;
++  final int itemCount;
++  final IndexedWidgetBuilder itemBuilder;
++  final ValueChanged<int> onSettled;
++  final VoidCallback? onUserScrollStart;
++
++  @override
++  State<SettledPageView> createState() => _SettledPageViewState();
++}
++
++class _SettledPageViewState extends State<SettledPageView> {
++  late int _page;
++  late int _committed;
++  int _intent = 0;
++
++  @override
++  void initState() {
++    super.initState();
++    // Initialisation immédiate : une valeur late calculée au premier arrêt
++    // prendrait déjà la nouvelle page et ferait disparaître le premier zap.
++    _page = widget.controller.initialPage;
++    _committed = _page;
++  }
++
++  bool _onScroll(ScrollNotification notification) {
++    if (notification.depth != 0) return false;
++    if (notification is ScrollStartNotification) {
++      ++_intent;
++      if (notification.dragDetails != null) widget.onUserScrollStart?.call();
++    }
++    if (notification is ScrollEndNotification) {
++      final int intent = ++_intent;
++      // Éviter de reconstruire/déplacer une texture vidéo pendant le layout
++      // du défilement. Une nouvelle intention invalide ce rappel tardif.
++      WidgetsBinding.instance.addPostFrameCallback((_) {
++        if (!mounted || intent != _intent || _page == _committed ||
++            _page < 0 || _page >= widget.itemCount) return;
++        _committed = _page;
++        widget.onSettled(_page);
++      });
++      // ScrollEnd peut arriver dans les rappels de fin de frame. Sans
++      // nouvelle frame, le dernier choix resterait en attente indéfiniment.
++      WidgetsBinding.instance.ensureVisualUpdate();
++    }
++    return false;
++  }
++
++  @override
++  Widget build(BuildContext context) => NotificationListener<ScrollNotification>(
++    onNotification: _onScroll,
++    child: PageView.builder(
++      controller: widget.controller,
++      scrollDirection: Axis.vertical,
++      physics: const BouncingScrollPhysics(),
++      allowImplicitScrolling: true,
++      onPageChanged: (int page) => _page = page,
++      itemCount: widget.itemCount,
++      itemBuilder: (BuildContext context, int index) =>
++        RepaintBoundary(child: widget.itemBuilder(context, index)),
++    ),
++  );
++}
+diff --git a/lib/features/player/presentation/video_player_screen.dart b/lib/features/player/presentation/video_player_screen.dart
+index b82fc47..0030a17 100644
+--- a/lib/features/player/presentation/video_player_screen.dart
++++ b/lib/features/player/presentation/video_player_screen.dart
+@@ -40,6 +40,7 @@ import '../../../core/observability/structured_logger.dart';
+ import '../../../core/theme/app_colors.dart';
+ import '../../../core/theme/app_text_styles.dart';
+ import '../../../core/widgets/live_badge.dart';
++import '../../../core/widgets/settled_page_view.dart';
+ import '../../cast/data/cast_manager.dart';
+ import '../../cast/data/cast_url_resolver.dart';
+ import '../../cast/data/local_cast_server.dart';
+@@ -434,6 +435,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+   /// tour tire `onPageChanged`. Pour éviter de re-traiter le swipe
+   /// déjà appliqué (double `_player.open`), on flag pendant l'animation.
+   bool _zapAnimating = false;
++  int _zapNavigationGeneration = 0;
++  final GlobalKey _playbackSurfaceKey = GlobalKey(debugLabel: 'mobile-playback-surface');
++  List<Channel>? _indexedZapPlaylist;
++  Map<String, int> _zapPositions = const <String, int>{};
++  int _logoWarmGeneration = 0;
+ 
+   @override
+   void initState() {
+@@ -1102,9 +1108,17 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+   bool get _isTvUi => DeviceClassRepository.instance.isTvFor(context);
+ 
+   int get _zapIndex {
+-    if (widget.zapPlaylist == null) return -1;
+-    return widget.zapPlaylist!
+-        .indexWhere((Channel c) => c.id == _currentChannel.id);
++    final List<Channel>? list = widget.zapPlaylist;
++    if (list == null) return -1;
++    if (!identical(list, _indexedZapPlaylist)) {
++      _indexedZapPlaylist = list;
++      _zapPositions = <String, int>{};
++      for (int i = 0; i < list.length; i++) {
++        _zapPositions.putIfAbsent(list[i].id, () => i);
++      }
++    }
++    // Aucun parcours de 25 000 chaînes à chaque reconstruction du lecteur.
++    return _zapPositions[_currentChannel.id] ?? -1;
+   }
+ 
+   /// Zap à un index donné. Appelé depuis :
+@@ -1120,6 +1134,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+     final List<Channel> list = widget.zapPlaylist!;
+     if (list.isEmpty) return;
+     final int wrapped = ((newIndex % list.length) + list.length) % list.length;
++    final int navigation = ++_zapNavigationGeneration;
+ 
+     if (_zapPageController != null && _zapPageController!.hasClients) {
+       // Animation fluide TikTok-style. `_zapAnimating` empêche le
+@@ -1130,6 +1145,14 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+       // On ignore donc les pages traversées et on applique le zap
+       // UNE seule fois, à la fin de l'animation.
+       _zapAnimating = true;
++      final int visible = _zapPageController!.page?.round() ?? _zapIndex;
++      if ((wrapped - visible).abs() > 1) {
++        // Le passage première ↔ dernière chaîne ne traverse pas 25 000 pages.
++        _zapPageController!.jumpToPage(wrapped);
++        _zapAnimating = false;
++        _applyZap(wrapped);
++        return;
++      }
+       _zapPageController!
+           .animateToPage(
+             wrapped,
+@@ -1137,6 +1160,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+             curve: Curves.easeOutCubic,
+           )
+           .whenComplete(() {
++            if (!mounted || navigation != _zapNavigationGeneration) return;
+             _zapAnimating = false;
+             _applyZap(wrapped);
+           });
+@@ -1149,7 +1173,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+   /// Applique réellement le changement de chaîne. Tirée par `_zapTo`
+   /// directement (mode TV) ou par `onPageChanged` du PageView après
+   /// le snap d'un swipe utilisateur.
+-  void _applyZap(int newIndex) {
++  void _applyZap(int newIndex, {Duration settleDelay = const Duration(milliseconds: 400)}) {
+     if (widget.zapPlaylist == null) return;
+     final List<Channel> list = widget.zapPlaylist!;
+     if (newIndex < 0 || newIndex >= list.length) return;
+@@ -1227,7 +1251,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+     // S3 : la session de métriques de l'ANCIENNE chaîne est résumée
+     // (boîte noire), une neuve démarre pour la chaîne visée.
+     _startStatsSession();
+-    _zapDebounce = Timer(const Duration(milliseconds: 400), () {
++    _zapDebounce = Timer(settleDelay, () {
+       _pendingZapChannel = null;
+       if (!mounted || _currentChannel.id != next.id) return;
+       // Seule la chaîne FINALE est rapportée au panel « En ligne »
+@@ -1888,7 +1912,31 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+   /// `whenComplete` de l'animation (cf. `_zapTo`).
+   void _onZapPageChanged(int newIndex) {
+     if (_zapAnimating) return;
+-    _applyZap(newIndex);
++    // Le pager garantit déjà l'arrêt du geste : délai réduit, sans ouvrir
++    // les chaînes traversées ni multiplier les connexions fournisseur.
++    _applyZap(newIndex, settleDelay: const Duration(milliseconds: 120));
++    _warmZapLogos(newIndex);
++  }
++
++  void _onUserSwipeStart() {
++    ++_zapNavigationGeneration;
++    _zapAnimating = false;
++  }
++
++  Future<void> _warmZapLogos(int index) async {
++    final int generation = ++_logoWarmGeneration;
++    final List<Channel>? list = widget.zapPlaylist;
++    if (list == null) return;
++    // Uniquement les deux logos voisins, jamais leurs flux vidéo.
++    for (final int neighbor in <int>[index + 1, index - 1]) {
++      if (!mounted || generation != _logoWarmGeneration) return;
++      if (neighbor < 0 || neighbor >= list.length) continue;
++      final String? logo = list[neighbor].logoUrl;
++      if (logo == null || logo.isEmpty) continue;
++      await precacheImage(ResizeImage.resizeIfNeeded(360, null,
++        CachedNetworkImageProvider(logo)), context,
++        onError: (Object _, StackTrace? __) {});
++    }
+   }
+ 
+   void _zapNext() => _zapTo(_zapIndex + 1);
+@@ -3507,6 +3555,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+     if (useTikTokSwipe && _zapPageController == null) {
+       final int initial = _zapIndex.clamp(0, widget.zapPlaylist!.length - 1);
+       _zapPageController = PageController(initialPage: initial);
++      WidgetsBinding.instance.addPostFrameCallback((_) {
++        if (mounted) unawaited(_warmZapLogos(initial));
++      });
+     }
+ 
+     // Le `Focus` parent reçoit les touches télécommande qui n'ont
+@@ -3536,20 +3587,19 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+   /// + nom) pour la transition fluide pendant le swipe.
+   Widget _buildTikTokPageView() {
+     final List<Channel> list = widget.zapPlaylist!;
+-    return PageView.builder(
+-      scrollDirection: Axis.vertical,
+-      controller: _zapPageController,
++    return SettledPageView(
++      controller: _zapPageController!,
+       // Physics élastique — donne le rebond doux qu'on attend d'un
+       // feed TikTok / Reels au lieu du clamp brutal par défaut.
+-      physics: const BouncingScrollPhysics(),
+-      onPageChanged: _onZapPageChanged,
++      onSettled: _onZapPageChanged,
++      onUserScrollStart: _onUserSwipeStart,
+       itemCount: list.length,
+       itemBuilder: (BuildContext context, int i) {
+         final bool isCurrent = list[i].id == _currentChannel.id;
+         return GestureDetector(
+           onTap: _toggleOverlay,
+           child: isCurrent
+-              ? _buildPlayerSurface()
++              ? KeyedSubtree(key: _playbackSurfaceKey, child: _buildPlayerSurface())
+               : _ZapPreviewPage(channel: list[i]),
+         );
+       },
+diff --git a/lib/features/playlists/data/library_refresh.dart b/lib/features/playlists/data/library_refresh.dart
+new file mode 100644
+index 0000000..b0aa918
+--- /dev/null
++++ b/lib/features/playlists/data/library_refresh.dart
+@@ -0,0 +1,42 @@
++import '../../vod/data/series_repository.dart';
++import '../../vod/data/vod_repository.dart';
++import 'playlist_repository.dart';
++import 'remote_source_repository.dart';
++
++/// Résultat du travail réellement terminé, jamais un simple délai d'animation.
++class LibraryRefreshResult {
++  const LibraryRefreshResult({required this.channels, required this.movies,
++    required this.series, required this.incomplete});
++  final int channels;
++  final int movies;
++  final int series;
++  final bool incomplete;
++}
++
++/// Un seul bouton logique pour l'accueil, le Cinéma et le geste d'actualisation.
++/// Le panel est relu sans lever les suppressions, les fichiers M3U sont
++/// retéléchargés, puis les API films/séries sont interrogées sans leur cache.
++abstract final class LibraryRefresh {
++  static Future<LibraryRefreshResult>? _work;
++
++  static Future<LibraryRefreshResult> refresh() =>
++      _work ??= _refresh().whenComplete(() => _work = null);
++
++  static Future<LibraryRefreshResult> _refresh() async {
++    final RemoteSyncResult sync = await RemoteSourceRepository.sync();
++    final int expected = (await PlaylistRepository.instance.getAllPlaylists()).length;
++    final int updated = await PlaylistRepository.instance.refreshAll();
++    // Les émissions SQLite ont fini avant la nouvelle génération de catalogue.
++    final movies = await VodRepository.instance.fetchMovies(forceRefresh: true);
++    final series = await SeriesRepository.instance.fetchSeries(forceRefresh: true);
++    return LibraryRefreshResult(
++      channels: (await PlaylistRepository.instance.getAllChannels()).length,
++      movies: movies.length,
++      series: series.length,
++      incomplete: sync == RemoteSyncResult.networkError ||
++          sync == RemoteSyncResult.sourceFailed || updated < expected ||
++          VodRepository.instance.lastRefreshFailureCount > 0 ||
++          SeriesRepository.instance.lastRefreshFailureCount > 0,
++    );
++  }
++}
+diff --git a/lib/features/playlists/data/playlist_repository.dart b/lib/features/playlists/data/playlist_repository.dart
+index 492f13a..de4c5b3 100644
+--- a/lib/features/playlists/data/playlist_repository.dart
++++ b/lib/features/playlists/data/playlist_repository.dart
+@@ -172,9 +172,23 @@ class PlaylistRepository {
+     // Prépare la clé de chiffrement AVANT toute lecture (déchiffrement des
+     // mots de passe Xtream). Fail-open : si indisponible, lecture en clair.
+     await SecretCipher.instance.ensureReady();
++    await _completePendingDeletions();
+     await _emitCurrentState();
+   }
+ 
++  /// Termine les effacements interrompus par la fermeture de l'application.
++  /// La décision est enregistrée avant le gros DELETE des chaînes : même si
++  /// Android tue le processus, cette source ne sera pas republiée au démarrage.
++  Future<void> _completePendingDeletions() async {
++    final Set<String> deleted = await SourceOptOuts.read();
++    if (deleted.isEmpty) return;
++    final Database db = await PlaylistDatabase.instance.database;
++    for (final Map<String, Object?> row in await db.query('playlists')) {
++      final List<String> keys = await SourceOptOuts.hashes(SourceOptOuts.identities(row));
++      if (keys.any(deleted.contains)) await _deletePlaylist(row['id'] as int);
++    }
++  }
++
+   /// Construit une [Playlist] depuis une ligne SQLite en DÉCHIFFRANT le mot de
+   /// passe Xtream (les anciennes valeurs en clair sont renvoyées telles quelles
+   /// par le cipher). Point UNIQUE de lecture → l'objet en mémoire a toujours le
+@@ -1332,6 +1346,15 @@ class PlaylistRepository {
+   // ============================================================
+ 
+   Future<void> deletePlaylist(int playlistId, {bool rememberDeletion = true}) async {
++    if (rememberDeletion) {
++      final Database db = await PlaylistDatabase.instance.database;
++      final List<Map<String, Object?>> rows = await db.query(
++        'playlists', where: 'id = ?', whereArgs: <Object>[playlistId], limit: 1,
++      );
++      // Valider le refus sur disque AVANT de faire disparaître la ligne à
++      // l'écran. L'effacement de 25 000 chaînes peut ensuite être interrompu.
++      if (rows.isNotEmpty) await SourceOptOuts.rememberSource(rows.single);
++    }
+     ++_emitRevision;
+     // Vidage SYNCHRONE du cache mémoire + émission immédiate d'une
+     // liste vide AVANT le DELETE SQL. Sur grosses playlists (20k+
+@@ -1375,6 +1398,10 @@ class PlaylistRepository {
+       for (final Map<String, Object?> row in await tx.query('playlists')) {
+         await SourceOptOuts.rememberHashes(tx, await SourceOptOuts.hashes(SourceOptOuts.identities(row)));
+       }
++    });
++    // Transaction distincte : une interruption du nettoyage ne peut plus
++    // annuler les décisions de suppression déjà validées ci-dessus.
++    await db.transaction((Transaction tx) async {
+       await tx.delete('channels');
+       await tx.delete('playlists');
+     });
+@@ -1400,12 +1427,15 @@ class PlaylistRepository {
+   // timer 24 h et l'auto-refresh — sans verrou, deux passes pouvaient se
+   // chevaucher et DOUBLER le pic mémoire (suspect OOM). On garantit une seule
+   // passe à la fois.
+-  bool _refreshingAll = false;
++  Future<int>? _refreshAllWork;
++  @visibleForTesting
++  http.Client Function()? refreshClientForTesting;
+ 
+-  Future<int> refreshAll() async {
+-    if (_refreshingAll) return 0; // une passe déjà en cours → on ne double pas
+-    _refreshingAll = true;
+-    try {
++  /// Deux boutons pressés ensemble attendent la même vraie actualisation.
++  Future<int> refreshAll() => _refreshAllWork ??=
++      _refreshAllOnce().whenComplete(() => _refreshAllWork = null);
++
++  Future<int> _refreshAllOnce() async {
+       final List<Playlist> all = await getAllPlaylists();
+       int ok = 0;
+       for (final Playlist p in all) {
+@@ -1430,9 +1460,6 @@ class PlaylistRepository {
+       // plus de chaîne) pour ne pas laisser de playlist morte traîner.
+       await pruneEmptyPlaylists();
+       return ok;
+-    } finally {
+-      _refreshingAll = false;
+-    }
+   }
+ 
+   /// Supprime les playlists DÉJÀ synchronisées qui n'ont AUCUNE chaîne
+@@ -1507,7 +1534,7 @@ class PlaylistRepository {
+     final Database db = await PlaylistDatabase.instance.database;
+ 
+     if (playlist.type == PlaylistType.m3u && playlist.m3uUrl != null) {
+-      final http.Client client = http.Client();
++      final http.Client client = refreshClientForTesting?.call() ?? http.Client();
+       try {
+         // Même fetcher robuste qu'à l'ajout initial (Latin-1 fallback,
+         // User-Agent navigateur, strip BOM, timeout 90s).
+@@ -1560,6 +1587,7 @@ class PlaylistRepository {
+         serverUrl: playlist.xtreamServer!,
+         username: playlist.xtreamUsername!,
+         password: playlist.xtreamPassword!,
++        httpClient: refreshClientForTesting?.call(),
+       );
+       try {
+         await xtream.verifyCredentials();
+diff --git a/lib/features/playlists/presentation/import_progress_screen.dart b/lib/features/playlists/presentation/import_progress_screen.dart
+index 616a499..bb57fe9 100644
+--- a/lib/features/playlists/presentation/import_progress_screen.dart
++++ b/lib/features/playlists/presentation/import_progress_screen.dart
+@@ -50,7 +50,9 @@ Future<ImportOutcome<T>> runImportWithProgress<T>(
+   required String title,
+   required Future<T> Function(ImportProgressCallback onProgress) task,
+   double scale = 1.0,
++  bool waitForConfirmation = false,
+ }) async {
++  ImportOutcome<T>? completed;
+   final ImportOutcome<T>? outcome =
+       await Navigator.of(context).push<ImportOutcome<T>>(
+     PageRouteBuilder<ImportOutcome<T>>(
+@@ -58,13 +60,15 @@ Future<ImportOutcome<T>> runImportWithProgress<T>(
+       barrierColor: AppColors.background,
+       transitionDuration: const Duration(milliseconds: 220),
+       pageBuilder: (_, __, ___) =>
+-          ImportProgressScreen<T>(title: title, task: task, scale: scale),
++          ImportProgressScreen<T>(title: title, task: task, scale: scale,
++            waitForConfirmation: waitForConfirmation,
++            onFinished: (ImportOutcome<T> value) => completed = value),
+       transitionsBuilder: (_, Animation<double> anim, __, Widget child) =>
+           FadeTransition(opacity: anim, child: child),
+     ),
+   );
+   // Route fermée par un imprévu (rare) → considéré comme un échec neutre.
+-  return outcome ?? ImportOutcome<T>.failure(null);
++  return outcome ?? completed ?? ImportOutcome<T>.failure(null);
+ }
+ 
+ class ImportProgressScreen<T> extends StatefulWidget {
+@@ -73,6 +77,8 @@ class ImportProgressScreen<T> extends StatefulWidget {
+     required this.title,
+     required this.task,
+     this.scale = 1.0,
++    this.waitForConfirmation = false,
++    this.onFinished,
+   });
+ 
+   final String title;
+@@ -80,6 +86,8 @@ class ImportProgressScreen<T> extends StatefulWidget {
+ 
+   /// Facteur d'échelle (téléphone = 1.0 ; TV 10-foot ≈ 1.6).
+   final double scale;
++  final bool waitForConfirmation;
++  final ValueChanged<ImportOutcome<T>>? onFinished;
+ 
+   @override
+   State<ImportProgressScreen<T>> createState() =>
+@@ -96,6 +104,9 @@ class _ImportProgressScreenState<T> extends State<ImportProgressScreen<T>>
+   Timer? _clock;
+   Duration _elapsed = Duration.zero;
+   bool _finished = false;
++  bool _closing = false;
++  ImportOutcome<T>? _outcome;
++  Timer? _autoClose;
+ 
+   @override
+   void initState() {
+@@ -116,22 +127,38 @@ class _ImportProgressScreenState<T> extends State<ImportProgressScreen<T>>
+       final T result = await widget.task((ImportProgress p) {
+         if (mounted && !_finished) _progress.value = p;
+       });
+-      _finished = true;
++      if (!mounted) return;
++      final ImportOutcome<T> outcome = ImportOutcome<T>.success(result);
++      setState(() { _finished = true; _outcome = outcome; });
++      _clock?.cancel();
++      _pulse.stop();
++      widget.onFinished?.call(outcome);
+       _progress.value = _progress.value.copyWith(phase: ImportPhase.done);
+-      // Petit temps de « victoire » : le client voit le total prêt.
+-      await Future<void>.delayed(const Duration(milliseconds: 650));
+-      if (mounted) {
+-        Navigator.of(context).pop(ImportOutcome<T>.success(result));
++      // L'ajout manuel attend le bouton Retour ; une synchronisation du
++      // panel garde sa fermeture automatique et n'exige aucun geste.
++      if (!widget.waitForConfirmation) {
++        _autoClose = Timer(const Duration(milliseconds: 650), _complete);
+       }
+     } catch (e) {
+-      _finished = true;
+-      if (mounted) Navigator.of(context).pop(ImportOutcome<T>.failure(e));
++      if (!mounted) return;
++      final ImportOutcome<T> outcome = ImportOutcome<T>.failure(e);
++      setState(() { _finished = true; _outcome = outcome; });
++      widget.onFinished?.call(outcome);
++      _complete();
+     }
+   }
+ 
++  void _complete() {
++    if (!mounted || _closing || _outcome == null ||
++        ModalRoute.of(context)?.isCurrent != true) return;
++    _closing = true;
++    Navigator.of(context).pop(_outcome);
++  }
++
+   @override
+   void dispose() {
+     _clock?.cancel();
++    _autoClose?.cancel();
+     _pulse.dispose();
+     _progress.dispose();
+     super.dispose();
+@@ -149,14 +176,14 @@ class _ImportProgressScreenState<T> extends State<ImportProgressScreen<T>>
+           child: Center(
+             child: ConstrainedBox(
+               constraints: BoxConstraints(maxWidth: 420 * widget.scale),
+-              child: Padding(
++              child: SingleChildScrollView(child: Padding(
+                 padding: const EdgeInsets.symmetric(horizontal: 28),
+                 child: ValueListenableBuilder<ImportProgress>(
+                   valueListenable: _progress,
+                   builder: (BuildContext context, ImportProgress p, _) =>
+                       _content(p),
+                 ),
+-              ),
++              )),
+             ),
+           ),
+         ),
+@@ -213,6 +240,16 @@ class _ImportProgressScreenState<T> extends State<ImportProgressScreen<T>>
+             color: AppColors.textMuted,
+           ),
+         ),
++        if (_outcome?.ok == true) ...<Widget>[
++          SizedBox(height: 22 * _s),
++          FilledButton.icon(
++            key: const ValueKey<String>('import-return'),
++            onPressed: _complete,
++            icon: const Icon(Icons.arrow_back_rounded),
++            label: Text(context.l10n.importBackToChannels,
++                style: AppTextStyles.bodyMedium.copyWith(color: AppColors.onAccent)),
++          ),
++        ],
+       ],
+     );
+   }
+diff --git a/lib/features/playlists/presentation/m3u_login_sheet.dart b/lib/features/playlists/presentation/m3u_login_sheet.dart
+index b7914e6..5648eaa 100644
+--- a/lib/features/playlists/presentation/m3u_login_sheet.dart
++++ b/lib/features/playlists/presentation/m3u_login_sheet.dart
+@@ -131,6 +131,7 @@ class _M3uLoginSheetState extends State<_M3uLoginSheet> {
+         await runImportWithProgress<Playlist>(
+       context,
+       title: 'IMPORT DE TA SOURCE',
++      waitForConfirmation: true,
+       task: task,
+     );
+     if (!mounted) return;
+diff --git a/lib/features/playlists/presentation/widgets/library_refresh_button.dart b/lib/features/playlists/presentation/widgets/library_refresh_button.dart
+new file mode 100644
+index 0000000..24136fa
+--- /dev/null
++++ b/lib/features/playlists/presentation/widgets/library_refresh_button.dart
+@@ -0,0 +1,47 @@
++import 'package:flutter/material.dart';
++
++import '../../../../core/i18n/l10n_extension.dart';
++import '../../../../core/theme/app_colors.dart';
++import '../../data/library_refresh.dart';
++
++/// Le bouton reste occupé jusqu'à la fin des vraies requêtes fournisseur.
++class LibraryRefreshButton extends StatefulWidget {
++  const LibraryRefreshButton({super.key, this.onComplete});
++  final VoidCallback? onComplete;
++
++  @override
++  State<LibraryRefreshButton> createState() => _LibraryRefreshButtonState();
++}
++
++class _LibraryRefreshButtonState extends State<LibraryRefreshButton> {
++  bool _busy = false;
++
++  Future<void> _refresh() async {
++    if (_busy) return;
++    setState(() => _busy = true);
++    try {
++      final LibraryRefreshResult result = await LibraryRefresh.refresh();
++      if (!mounted) return;
++      widget.onComplete?.call();
++      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
++        result.incomplete ? context.l10n.libraryRefreshIncomplete :
++          context.l10n.libraryRefreshDone(result.channels, result.movies, result.series),
++      )));
++    } catch (_) {
++      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
++        SnackBar(content: Text(context.l10n.libraryRefreshIncomplete)));
++    } finally {
++      if (mounted) setState(() => _busy = false);
++    }
++  }
++
++  @override
++  Widget build(BuildContext context) => IconButton(
++    key: const ValueKey<String>('library-refresh'),
++    tooltip: _busy ? context.l10n.libraryRefreshRunning : context.l10n.libraryRefreshAction,
++    onPressed: _busy ? null : _refresh,
++    icon: _busy ? const SizedBox.square(dimension: 20,
++      child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.accent)) :
++      const Icon(Icons.sync_rounded),
++  );
++}
+diff --git a/lib/features/playlists/presentation/widgets/xtream_login_form.dart b/lib/features/playlists/presentation/widgets/xtream_login_form.dart
+index 81266d8..d6de1e7 100644
+--- a/lib/features/playlists/presentation/widgets/xtream_login_form.dart
++++ b/lib/features/playlists/presentation/widgets/xtream_login_form.dart
+@@ -148,6 +148,7 @@ class _XtreamLoginFormState extends State<XtreamLoginForm> {
+         await runImportWithProgress<Playlist>(
+       context,
+       title: 'IMPORT DE TA SOURCE',
++      waitForConfirmation: true,
+       task: task,
+     );
+     if (!mounted) return;
+diff --git a/lib/features/simple_home/presentation/simple_home_screen.dart b/lib/features/simple_home/presentation/simple_home_screen.dart
+index f1b500b..2a90504 100644
+--- a/lib/features/simple_home/presentation/simple_home_screen.dart
++++ b/lib/features/simple_home/presentation/simple_home_screen.dart
+@@ -22,6 +22,7 @@
+ // =========================================================
+ 
+ import 'dart:async';
++import '../../playlists/presentation/widgets/library_refresh_button.dart';
+ 
+ import 'package:flutter/material.dart';
+ 
+@@ -417,6 +418,7 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
+               icon: Icon(Icons.layers_outlined, color: colors.textPrimary),
+               onPressed: () => _showSourceSwitcher(context),
+             ),
++          const LibraryRefreshButton(),
+           // Le compte est une destination stable. L'invitation conserve son
+           // accès dans le contenu, sans deuxième icône concurrente en haut.
+           IconButton.filledTonal(
+diff --git a/lib/features/simple_home/presentation/widgets/category_browser_view.dart b/lib/features/simple_home/presentation/widgets/category_browser_view.dart
+index f2b6553..487ab0d 100644
+--- a/lib/features/simple_home/presentation/widgets/category_browser_view.dart
++++ b/lib/features/simple_home/presentation/widgets/category_browser_view.dart
+@@ -50,7 +50,7 @@ import '../../../player/presentation/play_channel.dart';
+ import '../../../playlists/data/favorites_repository.dart';
+ import '../../../security/data/parental_controls.dart';
+ import '../../../playlists/data/playlist_repository.dart';
+-import '../../../playlists/data/remote_source_repository.dart';
++import '../../../playlists/data/library_refresh.dart';
+ import '../../../vod/data/playback_position_repository.dart';
+ import '../../../vod/presentation/cinema_screen.dart';
+ import '../../../vod/domain/content_partition.dart';
+@@ -483,8 +483,7 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
+   Future<void> _refreshData() async {
+     // sync() ne throw jamais (renvoie un résultat) ; refreshAll est
+     // best-effort par playlist et possède son propre verrou anti-doublon.
+-    await RemoteSourceRepository.sync();
+-    await PlaylistRepository.instance.refreshAll();
++    await LibraryRefresh.refresh();
+   }
+ 
+   /// Cache MAC id→chaîne pour le rail « Récemment regardées ». Reconstruit
+diff --git a/lib/features/vod/data/series_repository.dart b/lib/features/vod/data/series_repository.dart
+index 3b187cd..e4d9dda 100644
+--- a/lib/features/vod/data/series_repository.dart
++++ b/lib/features/vod/data/series_repository.dart
+@@ -50,20 +50,32 @@ String encodeSeriesCatalog((List<VodSeries>, String) input) =>
+ 
+ class SeriesRepository extends ChangeNotifier {
+   SeriesRepository._() {
++    _playlistSignature = CatalogSource.signature(PlaylistRepository.instance.currentPlaylists);
+     PlaylistRepository.instance.playlistsStream.listen((List<Playlist> rows) {
+       final String signature = CatalogSource.signature(rows);
+       if (signature == _playlistSignature) return;
+       _playlistSignature = signature;
+       _invalidate();
+     });
+-    PlaylistRepository.instance.channelsStream.listen((_) => _invalidate());
++    PlaylistRepository.instance.channelsStream.listen((_) => _invalidateM3u());
+   }
+   static final SeriesRepository instance = SeriesRepository._();
+ 
+   int _revision = 0;
++
++  /// Échecs de la dernière lecture réseau, pour un bilan honnête du bouton.
++  int lastRefreshFailureCount = 0;
+   String? _playlistSignature;
+   String? _cacheKey;
+ 
++  void _invalidateM3u() {
++    ++_revision;
++    _m3uSeries = null;
++    _m3uEpisodeChannels = null;
++    _refreshing = false;
++    notifyListeners();
++  }
++
+   void _invalidate() {
+     ++_revision;
+     _cache = null;
+@@ -96,6 +108,12 @@ class SeriesRepository extends ChangeNotifier {
+   /// (épisodes de la playlist regroupés par nom de série).
+   /// Mémoire → disque (instantané + refresh silencieux) → réseau.
+   Future<List<VodSeries>> fetchSeries({bool forceRefresh = false}) async {
++    if (forceRefresh) {
++      lastRefreshFailureCount = 0;
++      ++_revision;
++      _refreshing = false;
++      _m3uEpisodeChannels = null;
++    }
+     // Les événements SQLite sont livrés en microtâche. Un écran ouvert
+     // juste après une activation peut démarrer avant le dernier événement.
+     // Reprendre une fois avec l'état courant évite un premier catalogue vide,
+@@ -166,7 +184,9 @@ class SeriesRepository extends ChangeNotifier {
+     if (revision != _revision || _cacheKey != sourceKey) return const <VodSeries>[];
+     _cache = keepPreviousWhenEmpty<VodSeries>(incoming: fresh,
+         previous: _cache ?? const <VodSeries>[], disk: disk ?? const <VodSeries>[]);
+-    if (fresh.isNotEmpty) unawaited(_disk.save(fresh, sourceKey));
++    if (fresh.isNotEmpty) await _disk.save(fresh, sourceKey);
++    if (revision != _revision || _cacheKey != sourceKey) return const <VodSeries >[];
++    if (forceRefresh) notifyListeners();
+     return _cache!;
+   }
+ 
+@@ -177,6 +197,7 @@ class SeriesRepository extends ChangeNotifier {
+   Future<List<VodSeries>> _fetchFromNetwork(List<CatalogSource> sources,
+       {List<VodSeries> previous = const <VodSeries>[]}) async {
+     if (sources.isEmpty) return const <VodSeries>[];
++    int failed = 0;
+     // Deux téléchargements de métadonnées au maximum ; le quota mémoire
+     // reste global. Un fournisseur lent ne sérialise pas les dix comptes.
+     final int quota = (DeviceMemory.channelCap ~/ sources.length).clamp(1, DeviceMemory.channelCap).toInt();
+@@ -191,6 +212,7 @@ class SeriesRepository extends ChangeNotifier {
+         try {
+           final List<VodSeries> items = await client.fetchSeries();
+           if (revision != _revision) return;
++          if (items.isEmpty && previous.any((VodSeries item) => source.owns(item.id))) failed++;
+           final Iterable<VodSeries> selected = items.isEmpty
+               ? previous.where((VodSeries item) => source.owns(item.id))
+               : items.map((VodSeries item) => VodSeries.fromJson(
+@@ -198,12 +220,14 @@ class SeriesRepository extends ChangeNotifier {
+           parts[slot] = selected.take(quota).toList(growable: false);
+         } catch (_) {
+           if (revision != _revision) return;
++          failed++;
+           parts[slot] = previous.where((VodSeries item) => source.owns(item.id)).take(quota).toList(growable: false);
+           _diag('Catalogue temporairement indisponible pour une source activée', level: 'warn');
+         } finally { client.dispose(); }
+       }
+     }
+     await Future.wait(<Future<void>>[worker(), if (sources.length > 1) worker()]);
++    if (revision == _revision) lastRefreshFailureCount = failed;
+     return revision == _revision ? parts.expand((List<VodSeries> part) => part).toList(growable: false) : const <VodSeries>[];
+   }
+ 
+diff --git a/lib/features/vod/data/vod_repository.dart b/lib/features/vod/data/vod_repository.dart
+index 847ce16..a2dda01 100644
+--- a/lib/features/vod/data/vod_repository.dart
++++ b/lib/features/vod/data/vod_repository.dart
+@@ -64,20 +64,34 @@ String encodeVodCatalog((List<VodMovie>, String) input) =>
+ 
+ class VodRepository extends ChangeNotifier {
+   VodRepository._() {
++    _playlistSignature = CatalogSource.signature(PlaylistRepository.instance.currentPlaylists);
+     PlaylistRepository.instance.playlistsStream.listen((List<Playlist> rows) {
+       final String signature = CatalogSource.signature(rows);
+       if (signature == _playlistSignature) return;
+       _playlistSignature = signature;
+       _invalidate();
+     });
+-    PlaylistRepository.instance.channelsStream.listen((_) => _invalidate());
++    PlaylistRepository.instance.channelsStream.listen((_) => _invalidateM3u());
+   }
+   static final VodRepository instance = VodRepository._();
+ 
+   int _revision = 0;
++
++  /// Échecs de la dernière lecture réseau, pour un bilan honnête du bouton.
++  int lastRefreshFailureCount = 0;
+   String? _playlistSignature;
+   String? _cacheKey;
+ 
++  /// Relire le Direct/M3U ne détruit pas le dernier catalogue Xtream fiable.
++  /// Il servira de repli si la vraie actualisation films rencontre une panne.
++  void _invalidateM3u() {
++    ++_revision;
++    _m3uMovies = null;
++    _refreshing = false;
++    _flight = SingleFlight<List<VodMovie>>();
++    notifyListeners();
++  }
++
+   void _invalidate() {
+     ++_revision;
+     _cache = null;
+@@ -129,7 +143,15 @@ class VodRepository extends ChangeNotifier {
+   Future<List<VodMovie>> fetchMovies({bool forceRefresh = false}) {
+     // Un rafraîchissement FORCÉ (tirer pour recharger) doit vraiment
+     // re-taper le serveur : il ne s'accroche pas à un chargement en cours.
+-    if (forceRefresh) return _fetchMoviesOnce(forceRefresh: true);
++    if (forceRefresh) {
++      lastRefreshFailureCount = 0;
++      // Une réponse lancée AVANT le bouton ne peut écraser le catalogue neuf.
++      ++_revision;
++      _refreshing = false;
++      _infoCache.clear();
++      _flight = SingleFlight<List<VodMovie>>();
++      return _fetchMoviesOnce(forceRefresh: true);
++    }
+     return _flight.run(_fetchMoviesOnce);
+   }
+ 
+@@ -203,7 +225,9 @@ class VodRepository extends ChangeNotifier {
+     if (revision != _revision || _cacheKey != sourceKey) return const <VodMovie>[];
+     _cache = keepPreviousWhenEmpty<VodMovie>(incoming: fresh,
+         previous: _cache ?? const <VodMovie>[], disk: disk ?? const <VodMovie>[]);
+-    if (fresh.isNotEmpty) unawaited(_disk.save(fresh, sourceKey));
++    if (fresh.isNotEmpty) await _disk.save(fresh, sourceKey);
++    if (revision != _revision || _cacheKey != sourceKey) return const <VodMovie >[];
++    if (forceRefresh) notifyListeners();
+     return _cache!;
+   }
+ 
+@@ -220,6 +244,7 @@ class VodRepository extends ChangeNotifier {
+   Future<List<VodMovie>> _fetchFromNetwork(List<CatalogSource> sources,
+       {List<VodMovie> previous = const <VodMovie>[]}) async {
+     if (sources.isEmpty) return const <VodMovie>[];
++    int failed = 0;
+     // Deux téléchargements de métadonnées au maximum ; le quota mémoire
+     // reste global. Un fournisseur lent ne sérialise pas les dix comptes.
+     final int quota = (DeviceMemory.channelCap ~/ sources.length).clamp(1, DeviceMemory.channelCap).toInt();
+@@ -234,6 +259,7 @@ class VodRepository extends ChangeNotifier {
+         try {
+           final List<VodMovie> items = await client.fetchVodMovies();
+           if (revision != _revision) return;
++          if (items.isEmpty && previous.any((VodMovie item) => source.owns(item.id))) failed++;
+           final Iterable<VodMovie> selected = items.isEmpty
+               ? previous.where((VodMovie item) => source.owns(item.id))
+               : items.map((VodMovie item) => VodMovie.fromJson(
+@@ -241,12 +267,14 @@ class VodRepository extends ChangeNotifier {
+           parts[slot] = selected.take(quota).toList(growable: false);
+         } catch (_) {
+           if (revision != _revision) return;
++          failed++;
+           parts[slot] = previous.where((VodMovie item) => source.owns(item.id)).take(quota).toList(growable: false);
+           _diag('Catalogue temporairement indisponible pour une source activée', level: 'warn');
+         } finally { client.dispose(); }
+       }
+     }
+     await Future.wait(<Future<void>>[worker(), if (sources.length > 1) worker()]);
++    if (revision == _revision) lastRefreshFailureCount = failed;
+     return revision == _revision ? parts.expand((List<VodMovie> part) => part).toList(growable: false) : const <VodMovie>[];
+   }
+ 
+diff --git a/lib/features/vod/presentation/cinema_screen.dart b/lib/features/vod/presentation/cinema_screen.dart
+index f971751..147bc2f 100644
+--- a/lib/features/vod/presentation/cinema_screen.dart
++++ b/lib/features/vod/presentation/cinema_screen.dart
+@@ -25,6 +25,7 @@ import '../../../core/app/device_memory.dart';
+ import '../../../core/curation/title_curator.dart';
+ import '../../../core/i18n/l10n_extension.dart';
+ import '../../../core/theme/app_colors.dart';
++import '../../playlists/presentation/widgets/library_refresh_button.dart';
+ import '../../channels/domain/channel.dart';
+ import '../../player/presentation/play_channel.dart';
+ import '../data/playback_position_repository.dart';
+@@ -90,6 +91,7 @@ class _CinemaScreenState extends State<CinemaScreen>
+   /// Squelette PROPRE à l'onglet Séries : les films s'affichent sans
+   /// l'attendre (cf. [_load]), donc les deux états sont désormais distincts.
+   bool _seriesLoading = true;
++  int _loadRevision = 0;
+   // NOUVEAUTÉS (parité TV) : ids films/séries apparus depuis la dernière
+   // visite → rangée « Nouveautés » + pastille NOUVEAU.
+   Set<String> _newMovieIds = <String>{};
+@@ -143,6 +145,7 @@ class _CinemaScreenState extends State<CinemaScreen>
+   /// se posent ensuite toutes seules, sans spinner — l'onglet Séries garde
+   /// son propre squelette le temps qu'elles arrivent.
+   Future<void> _load({bool silent = false}) async {
++    final int revision = ++_loadRevision;
+     if (mounted && !silent) {
+       setState(() {
+         _loading = true;
+@@ -155,7 +158,7 @@ class _CinemaScreenState extends State<CinemaScreen>
+     final Future<void> positionsFuture =
+         PlaybackPositionRepository.instance.ensureLoaded();
+     final List<VodMovie> movies = await VodRepository.instance.fetchMovies();
+-    if (!mounted || (widget.adultOnly && (!_adultAccessValid || ParentalControls.instance.kidsMode.value))) return;
++    if (!mounted || revision != _loadRevision || (widget.adultOnly && (!_adultAccessValid || ParentalControls.instance.kidsMode.value))) return;
+     // 1er rendu dès les FILMS : l'onglet ouvert n'attend plus les séries.
+     setState(() {
+       _movies = movies.where((VodMovie m) => ContentPartition.visible(m.name, m.category, adultOnly: widget.adultOnly)).toList(growable: false);
+@@ -181,7 +184,7 @@ class _CinemaScreenState extends State<CinemaScreen>
+     } catch (_) {
+       // idem : les reprises manquantes ne bloquent pas l'affichage.
+     }
+-    if (!mounted || (widget.adultOnly && (!_adultAccessValid || ParentalControls.instance.kidsMode.value))) return;
++    if (!mounted || revision != _loadRevision || (widget.adultOnly && (!_adultAccessValid || ParentalControls.instance.kidsMode.value))) return;
+     setState(() {
+       _series = series.where((VodSeries item) => ContentPartition.visible(item.name, item.category, adultOnly: widget.adultOnly)).toList(growable: false);
+       _seriesLoading = false;
+@@ -202,6 +205,7 @@ class _CinemaScreenState extends State<CinemaScreen>
+       backgroundColor: AppColors.background,
+       appBar: AppBar(
+         backgroundColor: AppColors.background,
++        actions: <Widget>[LibraryRefreshButton(onComplete: _reload)],
+         title: Text(widget.adultOnly ? context.l10n.homeTabAdult : context.l10n.catFilterMovies,
+             style: const TextStyle(
+                 fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
+diff --git a/lib/l10n/app_ar.arb b/lib/l10n/app_ar.arb
+index fd6c441..6b62ef5 100644
+--- a/lib/l10n/app_ar.arb
++++ b/lib/l10n/app_ar.arb
+@@ -2383,5 +2383,25 @@
+   "homeAdultConfirmTitle": "مساحة مخصصة.",
+   "homeAdultConfirmHint": "أكّد أن عمرك 18 عامًا أو أكثر للدخول إلى هذه المساحة.",
+   "homeAdultConfirmButton": "عمري 18 عامًا أو أكثر",
+-  "playlistsCombinedHint": "فعّل عدة مصادر M3U أو Xtream لعرض محتواها معًا. يمكنك إبقاء 10 مصادر على الأقل مفعّلة."
++  "playlistsCombinedHint": "فعّل عدة مصادر M3U أو Xtream لعرض محتواها معًا. يمكنك إبقاء 10 مصادر على الأقل مفعّلة.",
++  "importBackToChannels": "العودة إلى القنوات",
++  "libraryRefreshAction": "تحديث الكل",
++  "libraryRefreshRunning": "جارٍ التحديث…",
++  "libraryRefreshDone": "تم التحديث: {channels} قناة، {movies} فيلم، {series} مسلسل.",
++  "libraryRefreshIncomplete": "التحديث غير مكتمل. بعض المصادر غير متاحة. حاول مجددًا.",
++  "@libraryRefreshDone": {
++    "description": "Bilan après la fin des requêtes réelles d’actualisation.",
++    "placeholders": {
++      "channels": {
++        "type": "int"
++      },
++      "movies": {
++        "type": "int"
++      },
++      "series": {
++        "type": "int"
++      }
++    }
++  }
++
+ }
+diff --git a/lib/l10n/app_da.arb b/lib/l10n/app_da.arb
+index 4603a8d..a0eff7e 100644
+--- a/lib/l10n/app_da.arb
++++ b/lib/l10n/app_da.arb
+@@ -2383,5 +2383,25 @@
+   "homeAdultConfirmTitle": "Et forbeholdt område.",
+   "homeAdultConfirmHint": "Bekræft, at du er 18 år eller ældre, for at åbne dette område.",
+   "homeAdultConfirmButton": "Jeg er 18 år eller ældre",
+-  "playlistsCombinedHint": "Aktivér flere M3U- eller Xtream-kilder for at samle deres indhold. Mindst 10 kilder kan være aktive."
++  "playlistsCombinedHint": "Aktivér flere M3U- eller Xtream-kilder for at samle deres indhold. Mindst 10 kilder kan være aktive.",
++  "importBackToChannels": "Tilbage til kanalerne",
++  "libraryRefreshAction": "Opdater alt",
++  "libraryRefreshRunning": "Opdaterer…",
++  "libraryRefreshDone": "Opdateret: {channels} kanaler, {movies} film, {series} serier.",
++  "libraryRefreshIncomplete": "Opdateringen er ufuldstændig. Nogle kilder er utilgængelige. Prøv igen.",
++  "@libraryRefreshDone": {
++    "description": "Bilan après la fin des requêtes réelles d’actualisation.",
++    "placeholders": {
++      "channels": {
++        "type": "int"
++      },
++      "movies": {
++        "type": "int"
++      },
++      "series": {
++        "type": "int"
++      }
++    }
++  }
++
+ }
+diff --git a/lib/l10n/app_en.arb b/lib/l10n/app_en.arb
+index b3f13fb..1066413 100644
+--- a/lib/l10n/app_en.arb
++++ b/lib/l10n/app_en.arb
+@@ -2706,5 +2706,25 @@
+   "homeAdultConfirmTitle": "A reserved space.",
+   "homeAdultConfirmHint": "Confirm that you are 18 or older to enter this space.",
+   "homeAdultConfirmButton": "I am 18 or older",
+-  "playlistsCombinedHint": "Enable several M3U or Xtream sources to browse their content together. At least 10 sources can stay enabled."
++  "playlistsCombinedHint": "Enable several M3U or Xtream sources to browse their content together. At least 10 sources can stay enabled.",
++  "importBackToChannels": "Back to channels",
++  "libraryRefreshAction": "Refresh everything",
++  "libraryRefreshRunning": "Refreshing…",
++  "libraryRefreshDone": "Updated: {channels} channels, {movies} movies, {series} series.",
++  "libraryRefreshIncomplete": "Refresh incomplete. Some sources are unavailable. Try again.",
++  "@libraryRefreshDone": {
++    "description": "Bilan après la fin des requêtes réelles d’actualisation.",
++    "placeholders": {
++      "channels": {
++        "type": "int"
++      },
++      "movies": {
++        "type": "int"
++      },
++      "series": {
++        "type": "int"
++      }
++    }
++  }
++
+ }
+diff --git a/lib/l10n/app_es.arb b/lib/l10n/app_es.arb
+index 1dba021..995399f 100644
+--- a/lib/l10n/app_es.arb
++++ b/lib/l10n/app_es.arb
+@@ -2383,5 +2383,25 @@
+   "homeAdultConfirmTitle": "Un espacio reservado.",
+   "homeAdultConfirmHint": "Confirma que tienes 18 años o más para entrar en este espacio.",
+   "homeAdultConfirmButton": "Tengo 18 años o más",
+-  "playlistsCombinedHint": "Activa varias fuentes M3U o Xtream para reunir su contenido. Puedes mantener al menos 10 fuentes activas."
++  "playlistsCombinedHint": "Activa varias fuentes M3U o Xtream para reunir su contenido. Puedes mantener al menos 10 fuentes activas.",
++  "importBackToChannels": "Volver a los canales",
++  "libraryRefreshAction": "Actualizar todo",
++  "libraryRefreshRunning": "Actualizando…",
++  "libraryRefreshDone": "Actualizado: {channels} canales, {movies} películas, {series} series.",
++  "libraryRefreshIncomplete": "Actualización incompleta. Algunas fuentes no están disponibles. Inténtalo de nuevo.",
++  "@libraryRefreshDone": {
++    "description": "Bilan après la fin des requêtes réelles d’actualisation.",
++    "placeholders": {
++      "channels": {
++        "type": "int"
++      },
++      "movies": {
++        "type": "int"
++      },
++      "series": {
++        "type": "int"
++      }
++    }
++  }
++
+ }
+diff --git a/lib/l10n/app_fr.arb b/lib/l10n/app_fr.arb
+index cc2e3a9..214f67b 100644
+--- a/lib/l10n/app_fr.arb
++++ b/lib/l10n/app_fr.arb
+@@ -5567,5 +5567,25 @@
+   "@homeAdultConfirmHint": {"description": "Confirmation 18+ en un geste sur l’accueil"},
+   "homeAdultConfirmButton": "J’ai 18 ans ou plus",
+   "@homeAdultConfirmButton": {"description": "Confirmation 18+ en un geste sur l’accueil"},
+-  "playlistsCombinedHint": "Activez plusieurs sources M3U ou Xtream : leurs contenus apparaissent ensemble. Au moins 10 sources peuvent rester actives."
++  "playlistsCombinedHint": "Activez plusieurs sources M3U ou Xtream : leurs contenus apparaissent ensemble. Au moins 10 sources peuvent rester actives.",
++  "importBackToChannels": "Retour aux chaînes",
++  "libraryRefreshAction": "Tout actualiser",
++  "libraryRefreshRunning": "Actualisation…",
++  "libraryRefreshDone": "Actualisé : {channels} chaînes, {movies} films, {series} séries.",
++  "libraryRefreshIncomplete": "Actualisation incomplète : certaines sources sont indisponibles. Réessaie.",
++  "@libraryRefreshDone": {
++    "description": "Bilan après la fin des requêtes réelles d’actualisation.",
++    "placeholders": {
++      "channels": {
++        "type": "int"
++      },
++      "movies": {
++        "type": "int"
++      },
++      "series": {
++        "type": "int"
++      }
++    }
++  }
++
+ }
+diff --git a/lib/l10n/app_nb.arb b/lib/l10n/app_nb.arb
+index 3ca799c..0c72fac 100644
+--- a/lib/l10n/app_nb.arb
++++ b/lib/l10n/app_nb.arb
+@@ -2383,5 +2383,25 @@
+   "homeAdultConfirmTitle": "Et reservert område.",
+   "homeAdultConfirmHint": "Bekreft at du er 18 år eller eldre for å åpne dette området.",
+   "homeAdultConfirmButton": "Jeg er 18 år eller eldre",
+-  "playlistsCombinedHint": "Aktiver flere M3U- eller Xtream-kilder for å samle innholdet. Minst 10 kilder kan være aktive."
++  "playlistsCombinedHint": "Aktiver flere M3U- eller Xtream-kilder for å samle innholdet. Minst 10 kilder kan være aktive.",
++  "importBackToChannels": "Tilbake til kanalene",
++  "libraryRefreshAction": "Oppdater alt",
++  "libraryRefreshRunning": "Oppdaterer…",
++  "libraryRefreshDone": "Oppdatert: {channels} kanaler, {movies} filmer, {series} serier.",
++  "libraryRefreshIncomplete": "Oppdateringen er ufullstendig. Noen kilder er utilgjengelige. Prøv igjen.",
++  "@libraryRefreshDone": {
++    "description": "Bilan après la fin des requêtes réelles d’actualisation.",
++    "placeholders": {
++      "channels": {
++        "type": "int"
++      },
++      "movies": {
++        "type": "int"
++      },
++      "series": {
++        "type": "int"
++      }
++    }
++  }
++
+ }
+diff --git a/lib/l10n/app_sv.arb b/lib/l10n/app_sv.arb
+index a6b0539..cfb169b 100644
+--- a/lib/l10n/app_sv.arb
++++ b/lib/l10n/app_sv.arb
+@@ -2383,5 +2383,25 @@
+   "homeAdultConfirmTitle": "Ett reserverat utrymme.",
+   "homeAdultConfirmHint": "Bekräfta att du är 18 år eller äldre för att öppna det här utrymmet.",
+   "homeAdultConfirmButton": "Jag är 18 år eller äldre",
+-  "playlistsCombinedHint": "Aktivera flera M3U- eller Xtream-källor för att samla deras innehåll. Minst 10 källor kan vara aktiva."
++  "playlistsCombinedHint": "Aktivera flera M3U- eller Xtream-källor för att samla deras innehåll. Minst 10 källor kan vara aktiva.",
++  "importBackToChannels": "Tillbaka till kanalerna",
++  "libraryRefreshAction": "Uppdatera allt",
++  "libraryRefreshRunning": "Uppdaterar…",
++  "libraryRefreshDone": "Uppdaterat: {channels} kanaler, {movies} filmer, {series} serier.",
++  "libraryRefreshIncomplete": "Uppdateringen är ofullständig. Vissa källor är inte tillgängliga. Försök igen.",
++  "@libraryRefreshDone": {
++    "description": "Bilan après la fin des requêtes réelles d’actualisation.",
++    "placeholders": {
++      "channels": {
++        "type": "int"
++      },
++      "movies": {
++        "type": "int"
++      },
++      "series": {
++        "type": "int"
++      }
++    }
++  }
++
+ }
+diff --git a/lib/l10n/app_sw.arb b/lib/l10n/app_sw.arb
+index 6a54960..1e10509 100644
+--- a/lib/l10n/app_sw.arb
++++ b/lib/l10n/app_sw.arb
+@@ -2648,5 +2648,25 @@
+   "homeAdultConfirmTitle": "Sehemu maalum.",
+   "homeAdultConfirmHint": "Thibitisha kuwa una miaka 18 au zaidi ili kuingia sehemu hii.",
+   "homeAdultConfirmButton": "Nina miaka 18 au zaidi",
+-  "playlistsCombinedHint": "Washa vyanzo kadhaa vya M3U au Xtream ili kuona maudhui pamoja. Angalau vyanzo 10 vinaweza kubaki vimewashwa."
++  "playlistsCombinedHint": "Washa vyanzo kadhaa vya M3U au Xtream ili kuona maudhui pamoja. Angalau vyanzo 10 vinaweza kubaki vimewashwa.",
++  "importBackToChannels": "Rudi kwenye vituo",
++  "libraryRefreshAction": "Sasisha vyote",
++  "libraryRefreshRunning": "Inasasisha…",
++  "libraryRefreshDone": "Imesasishwa: vituo {channels}, filamu {movies}, tamthilia {series}.",
++  "libraryRefreshIncomplete": "Usasishaji haujakamilika. Baadhi ya vyanzo havipatikani. Jaribu tena.",
++  "@libraryRefreshDone": {
++    "description": "Bilan après la fin des requêtes réelles d’actualisation.",
++    "placeholders": {
++      "channels": {
++        "type": "int"
++      },
++      "movies": {
++        "type": "int"
++      },
++      "series": {
++        "type": "int"
++      }
++    }
++  }
++
+ }
+diff --git a/test/core/settled_page_view_test.dart b/test/core/settled_page_view_test.dart
+new file mode 100644
+index 0000000..bbe42ac
+--- /dev/null
++++ b/test/core/settled_page_view_test.dart
+@@ -0,0 +1,53 @@
++import 'package:flutter/material.dart';
++import 'package:flutter_test/flutter_test.dart';
++import 'package:tv_king/core/widgets/settled_page_view.dart';
++
++void main() {
++  testWidgets('25 000 pages : construction bornée et aucune ouverture pendant le geste', (WidgetTester tester) async {
++    final PageController controller = PageController();
++    final Set<int> built = <int>{};
++    final List<int> opened = <int>[];
++    await tester.pumpWidget(MaterialApp(home: Scaffold(body: SettledPageView(
++      controller: controller,
++      itemCount: 25000,
++      itemBuilder: (_, int i) { built.add(i); return Center(child: Text('Chaîne $i')); },
++      onSettled: opened.add,
++    ))));
++    final TestGesture gesture = await tester.startGesture(tester.getCenter(find.byType(PageView)));
++    await gesture.moveBy(const Offset(0, -20));
++    await tester.pump(const Duration(milliseconds: 16));
++    await gesture.moveBy(const Offset(0, -400));
++    await tester.pump(const Duration(milliseconds: 50));
++    expect(opened, isEmpty, reason: 'la texture et le réseau ne changent pas en plein glissé');
++    await gesture.moveBy(const Offset(0, -500));
++    await tester.pump(const Duration(milliseconds: 50));
++    expect(opened, isEmpty);
++    await gesture.up();
++    await tester.pumpAndSettle();
++    expect(controller.page!.round(), greaterThan(0));
++    expect(opened, hasLength(1));
++    expect(opened.single, controller.page!.round());
++    expect(built.length, lessThan(12), reason: 'le catalogue entier ne doit jamais devenir des widgets');
++    await tester.pumpWidget(const SizedBox.shrink());
++    controller.dispose();
++  });
++
++  testWidgets('un geste annulé ne redémarre pas la chaîne courante', (WidgetTester tester) async {
++    final PageController controller = PageController();
++    final List<int> opened = <int>[];
++    await tester.pumpWidget(MaterialApp(home: Scaffold(body: SettledPageView(
++      controller: controller, itemCount: 25000,
++      itemBuilder: (_, int i) => Text('$i'), onSettled: opened.add,
++    ))));
++    final TestGesture gesture = await tester.startGesture(tester.getCenter(find.byType(PageView)));
++    await gesture.moveBy(const Offset(0, -40));
++    await tester.pump(const Duration(milliseconds: 300));
++    await gesture.moveBy(const Offset(0, 40));
++    await tester.pump(const Duration(milliseconds: 300));
++    await gesture.up();
++    await tester.pumpAndSettle();
++    expect(opened, isEmpty);
++    await tester.pumpWidget(const SizedBox.shrink());
++    controller.dispose();
++  });
++}
+diff --git a/test/features/playlists/import_return_test.dart b/test/features/playlists/import_return_test.dart
+new file mode 100644
+index 0000000..ad249c6
+--- /dev/null
++++ b/test/features/playlists/import_return_test.dart
+@@ -0,0 +1,56 @@
++import 'dart:async';
++
++import 'package:flutter/material.dart';
++import 'package:flutter_test/flutter_test.dart';
++import 'package:google_fonts/google_fonts.dart';
++import 'package:tv_king/l10n/generated/app_localizations.dart';
++import 'package:tv_king/features/playlists/data/import_progress.dart';
++import 'package:tv_king/features/playlists/presentation/import_progress_screen.dart';
++
++void main() {
++  GoogleFonts.config.allowRuntimeFetching = false;
++
++  for (final bool systemBack in <bool>[false, true]) {
++    testWidgets('import manuel : succès conservé avec ${systemBack ? 'le retour système' : 'le bouton Retour'}', (WidgetTester tester) async {
++      final Completer<int> done = Completer<int>();
++      ImportOutcome<int>? result;
++      late ImportProgressCallback progress;
++      await tester.pumpWidget(MaterialApp(
++        locale: const Locale('fr'),
++        localizationsDelegates: AppLocalizations.localizationsDelegates,
++        supportedLocales: AppLocalizations.supportedLocales,
++        home: Builder(builder: (BuildContext context) => Scaffold(body: TextButton(
++          onPressed: () async {
++            result = await runImportWithProgress<int>(context, title: 'Import',
++              waitForConfirmation: true,
++              task: (ImportProgressCallback p) { progress = p; return done.future; });
++          }, child: const Text('Ajouter'),
++        ))),
++      ));
++      await tester.tap(find.text('Ajouter'));
++      await tester.pump();
++      await tester.pump(const Duration(milliseconds: 300));
++      await tester.binding.handlePopRoute();
++      expect(find.byType(ImportProgressScreen<int>), findsOneWidget);
++      // La phase "done" ne suffit pas : le vrai travail doit être terminé.
++      progress(const ImportProgress(phase: ImportPhase.done, channelsFound: 25000));
++      await tester.pump();
++      expect(find.byKey(const ValueKey<String>('import-return')), findsNothing);
++      done.complete(25000);
++      await tester.pump();
++      await tester.pump(const Duration(seconds: 2));
++      expect(find.text('Retour aux chaînes'), findsOneWidget);
++      if (systemBack) {
++        await tester.binding.handlePopRoute();
++      } else {
++        await tester.ensureVisible(find.byKey(const ValueKey<String>('import-return')));
++        await tester.tap(find.byKey(const ValueKey<String>('import-return')));
++      }
++      await tester.pumpAndSettle();
++      expect(result?.ok, isTrue);
++      expect(result?.value, 25000);
++      expect(find.text('Ajouter'), findsOneWidget);
++      expect(tester.takeException(), isNull);
++    });
++  }
++}
+diff --git a/test/features/playlists/library_refresh_test.dart b/test/features/playlists/library_refresh_test.dart
+new file mode 100644
+index 0000000..e5475e5
+--- /dev/null
++++ b/test/features/playlists/library_refresh_test.dart
+@@ -0,0 +1,163 @@
++import 'dart:async';
++import 'dart:convert';
++import 'dart:io';
++
++import 'package:flutter_test/flutter_test.dart';
++import 'package:http/http.dart' as http;
++import 'package:http/testing.dart';
++// ignore: depend_on_referenced_packages
++import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
++import 'package:shared_preferences/shared_preferences.dart';
++import 'package:sqflite_common_ffi/sqflite_ffi.dart';
++import 'package:tv_king/core/flavor/flavor.dart';
++import 'package:tv_king/features/playlists/data/library_refresh.dart';
++import 'package:tv_king/features/playlists/data/playlist_database.dart';
++import 'package:tv_king/features/playlists/data/playlist_repository.dart';
++import 'package:tv_king/features/playlists/data/source_opt_outs.dart';
++import 'package:tv_king/features/playlists/domain/playlist.dart';
++import 'package:tv_king/features/vod/data/catalog_source.dart';
++import 'package:tv_king/features/vod/data/vod_repository.dart';
++import 'package:tv_king/features/vod/data/series_repository.dart';
++
++class _Paths extends PathProviderPlatform {
++  _Paths(this.path);
++  final String path;
++  @override Future<String?> getApplicationDocumentsPath() async => path;
++  @override Future<String?> getApplicationSupportPath() async => path;
++  @override Future<String?> getTemporaryPath() async => path;
++}
++
++void main() {
++  TestWidgetsFlutterBinding.ensureInitialized();
++  sqfliteFfiInit();
++  databaseFactory = databaseFactoryFfiNoIsolate;
++  FlavorConfig.setCurrent(FlavorConfig.sevenMotion);
++  final Directory dir = Directory.systemTemp.createTempSync('library-refresh-');
++  PathProviderPlatform.instance = _Paths(dir.path);
++  const Playlist source = Playlist(id: null, name: 'Test', type: PlaylistType.xtream,
++    xtreamServer: 'http://catalog.invalid', xtreamUsername: 'test', xtreamPassword: 'test', createdAt: 1);
++  int count = 1;
++  int movieRequests = 0;
++  bool fail = false;
++  bool serveDeleted = false;
++  late int id;
++
++  http.Client client() => MockClient((http.Request request) async {
++    if (request.url.path.startsWith('/api/device-source/')) {
++      return http.Response(jsonEncode(<String, Object>{'sources': <Object>[
++        if (serveDeleted) <String, Object>{'type':'xtream', 'server_url':'http://catalog.invalid', 'username':'test', 'password':'test'},
++      ]}), 200);
++    }
++    if (request.url.path.startsWith('/api/')) return http.Response('{}', 404);
++    final String? action = request.url.queryParameters['action'];
++    if (action == 'get_vod_streams') movieRequests++;
++    if (fail) return http.Response('offline', 503);
++    if (action == 'get_live_categories' || action == 'get_vod_categories' || action == 'get_series_categories') {
++      return http.Response('[{"category_id":"1","category_name":"FR Test"}]', 200);
++    }
++    if (action == 'get_live_streams' || action == 'get_vod_streams' || action == 'get_series') {
++      return http.Response(jsonEncode(<Object>[
++        for (int n=1;n<=count;n++) <String, Object>{'stream_id':n, 'series_id':n,
++          'name': action == 'get_vod_streams' ? 'Film $n' : 'Titre $n', 'category_id':'1', 'container_extension':'mp4'},
++      ]), 200);
++    }
++    return http.Response('{"user_info":{"auth":1,"status":"Active"}}', 200);
++  });
++
++  setUp(() async {
++    SharedPreferences.setMockInitialValues(<String, Object>{'device.virtual_mac.v1':'MK:11:22:33:44:55'});
++    count=1; movieRequests=0; fail=false; serveDeleted=false;
++    CatalogSource.httpForTesting=client;
++    PlaylistRepository.instance.refreshClientForTesting=client;
++    await PlaylistRepository.instance.deleteAllPlaylists();
++    final Database db=await PlaylistDatabase.instance.database;
++    await db.delete('deleted_sources');
++    id=await db.insert('playlists',source.toMap());
++    await PlaylistRepository.instance.setActivePlaylist(id);
++  });
++  tearDown(() {
++    CatalogSource.httpForTesting=null;
++    PlaylistRepository.instance.refreshClientForTesting=null;
++  });
++
++  test('un seul nouveau film dans une catégorie existante apparaît après Tout actualiser', () async {
++    await http.runWithClient(() async {
++      final movies=VodRepository.instance;
++      expect(await movies.fetchMovies(),hasLength(1));
++      final int before=movieRequests;
++      count=2;
++      final LibraryRefreshResult result=await LibraryRefresh.refresh();
++      expect(result.movies,2);
++      expect(result.series,2);
++      expect(result.incomplete,isFalse);
++      expect(movieRequests,greaterThan(before));
++      expect((await movies.fetchMovies()).map((m)=>m.name),contains('Film 2'));
++    },client);
++  });
++
++  test('deux demandes simultanées attendent la même fin réelle', () async {
++    await http.runWithClient(() async {
++      final Future<LibraryRefreshResult> first=LibraryRefresh.refresh();
++      final Future<LibraryRefreshResult> second=LibraryRefresh.refresh();
++      expect(identical(first,second),isTrue);
++      expect((await second).movies,1);
++      expect((await first).movies,1);
++    },client);
++  });
++
++  test('une réponse ancienne lente ne remplace pas le catalogue forcé plus récent', () async {
++    final Completer<void> started=Completer<void>();
++    final Completer<void> release=Completer<void>();
++    int requestNumber=0;
++    CatalogSource.httpForTesting=()=>MockClient((http.Request request) async {
++      if (request.url.queryParameters['action']!='get_vod_streams') return http.Response('[]',200);
++      final int number=++requestNumber;
++      if (number==1) { started.complete(); await release.future; }
++      return http.Response(jsonEncode(<Object>[
++        for (int n=1;n<=(number==1?1:2);n++) <String,Object>{'stream_id':n,'name':'Film $n','category_id':'1','container_extension':'mp4'},
++      ]),200);
++    });
++    final old=VodRepository.instance.fetchMovies(forceRefresh:true);
++    await started.future.timeout(const Duration(seconds: 10));
++    expect(await VodRepository.instance.fetchMovies(forceRefresh:true),hasLength(2));
++    release.complete();
++    await old;
++    expect(await VodRepository.instance.fetchMovies(),hasLength(2));
++  });
++
++  test('une panne garde le dernier catalogue et ne prétend pas avoir tout actualisé', () async {
++    await http.runWithClient(() async {
++      expect(await VodRepository.instance.fetchMovies(),hasLength(1));
++      expect(await SeriesRepository.instance.fetchSeries(),hasLength(1));
++      // Ne pas retélécharger le Direct : les catalogues gardent leur repli.
++      fail=true;
++      expect(await VodRepository.instance.fetchMovies(forceRefresh:true),hasLength(1));
++      expect(VodRepository.instance.lastRefreshFailureCount,greaterThan(0));
++      expect(await SeriesRepository.instance.fetchSeries(forceRefresh:true),hasLength(1));
++      expect(SeriesRepository.instance.lastRefreshFailureCount,greaterThan(0));
++    },client);
++  });
++
++  test('suppression interrompue : terminer le nettoyage avant le premier affichage', () async {
++    final Playlist deleted=(await PlaylistRepository.instance.getAllPlaylists()).single;
++    // État exact laissé par une coupure après le refus, avant le gros DELETE.
++    await SourceOptOuts.markDeleted(deleted);
++    final Database db=await PlaylistDatabase.instance.database;
++    await db.close();
++    PlaylistDatabase.instance.debugUseDatabase(null);
++    await PlaylistRepository.instance.initialize();
++    expect(PlaylistRepository.instance.currentPlaylists,isEmpty);
++    expect(await PlaylistRepository.instance.getAllChannels(),isEmpty);
++  });
++
++  test('Tout actualiser ne restaure jamais une source effacée encore envoyée par le panel', () async {
++    await http.runWithClient(() async {
++      serveDeleted=true;
++      await PlaylistRepository.instance.deletePlaylist(id);
++      await LibraryRefresh.refresh();
++      expect(await PlaylistRepository.instance.getAllPlaylists(),isEmpty);
++      expect(await VodRepository.instance.fetchMovies(),isEmpty);
++      expect(movieRequests,0);
++    },client);
++  });
++}

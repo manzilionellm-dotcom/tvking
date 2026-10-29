@@ -57,7 +57,11 @@
   "playerVideo": "视频",
   "playerUpNextIn": "{seconds} 秒后播放下一个",
   "@playerUpNextIn": {
-    "placeholders": { "seconds": { "type": "int" } }
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
   },
   "playerUpNextCancel": "取消",
   "playerUpNextPlay": "播放",
@@ -2016,20 +2020,56 @@
   "tvMyM3uList": "我的 M3U 列表",
   "tvBlackBoxTitle": "黑匣子",
   "tvBlackBoxSubtitle": "应用技术日志（v{version}）。如果应用意外关闭，原因会记录在这里。",
-  "@tvBlackBoxSubtitle": {"placeholders": {"version": {"type": "String"}}},
+  "@tvBlackBoxSubtitle": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
   "tvBlackBoxFirstRun": "首次启动：没有上一次会话记录。",
   "tvBlackBoxCleanExit": "上次会话正常结束。",
   "tvBlackBoxBrutal": "异常关闭 · {reason}",
-  "@tvBlackBoxBrutal": {"placeholders": {"reason": {"type": "String"}}},
+  "@tvBlackBoxBrutal": {
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
   "tvBlackBoxUnknownReason": "原因未知（Android < 11）",
   "tvBlackBoxMemory": "内存 {mb} MB",
-  "@tvBlackBoxMemory": {"placeholders": {"mb": {"type": "String"}}},
+  "@tvBlackBoxMemory": {
+    "placeholders": {
+      "mb": {
+        "type": "String"
+      }
+    }
+  },
   "tvBlackBoxWhen": "时间：{when}",
-  "@tvBlackBoxWhen": {"placeholders": {"when": {"type": "String"}}},
+  "@tvBlackBoxWhen": {
+    "placeholders": {
+      "when": {
+        "type": "String"
+      }
+    }
+  },
   "tvBlackBoxLastAction": "最后操作：{action}",
-  "@tvBlackBoxLastAction": {"placeholders": {"action": {"type": "String"}}},
+  "@tvBlackBoxLastAction": {
+    "placeholders": {
+      "action": {
+        "type": "String"
+      }
+    }
+  },
   "tvBlackBoxDetail": "Android 详情：{detail}",
-  "@tvBlackBoxDetail": {"placeholders": {"detail": {"type": "String"}}},
+  "@tvBlackBoxDetail": {
+    "placeholders": {
+      "detail": {
+        "type": "String"
+      }
+    }
+  },
   "tvRefresh": "刷新",
   "tvCopy": "复制",
   "tvCopied": "已复制",
@@ -2038,7 +2078,7 @@
   "tvBlackBoxHelp": "上/下：滚动 · CH+/CH−：翻页 · 复制 = 剪贴板（可粘贴到 WhatsApp 发给客服）。 此日志可能会发送给支持人员。可在设置中关闭发送。",
   "tvNavServer": "服务器",
   "tvLegalTitle": "法律声明与使用条款",
-    "tvHelloMorning": "早上好",
+  "tvHelloMorning": "早上好",
   "tvHelloAfternoon": "下午好",
   "tvHelloEvening": "晚上好",
   "tvHomeInvite": "你的频道、影片和提醒会出现在这里。",
@@ -2063,10 +2103,15 @@
   "tvReminderInMinutes": "{minutes} 分钟后",
   "tvReminderInHours": "{hours} 小时后",
   "tvReminderInHoursMinutes": "{hours} 小时 {minutes} 分钟后",
-"tvResumeLabel": "继续观看",
+  "tvResumeLabel": "继续观看",
   "tvNowPlayingPrefix": "正在播放 · {title}",
-  "@tvNowPlayingPrefix": {"placeholders": {"title": {"type": "String"}}},
-  "tvLiveBadge": "直播",
+  "@tvNowPlayingPrefix": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
   "tvPinUpdated": "家长控制密码已更新 ✔",
   "tvParentalTitle": "家长控制",
   "tvKidsMode": "儿童模式",
@@ -2090,7 +2135,13 @@
   "tvMyRecordings": "我的录制",
   "tvDeleteQuestion": "确定删除？",
   "tvDeleteRecordingConfirm": "永久删除“{name}”？",
-  "@tvDeleteRecordingConfirm": {"placeholders": {"name": {"type": "String"}}},
+  "@tvDeleteRecordingConfirm": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "tvCancel": "取消",
   "tvDelete": "删除",
   "tvSettingsSources": "我的源（添加 / 启用 / 删除）",
@@ -2099,18 +2150,42 @@
   "tvSettingsLegal": "法律声明与使用条款",
   "tvUpdateChecking": "更新：正在检查…",
   "tvUpdateUpToDate": "更新：已是最新（版本 {version}）— 按 OK 重新检查",
-  "@tvUpdateUpToDate": {"placeholders": {"version": {"type": "String"}}},
+  "@tvUpdateUpToDate": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
   "tvUpdateUpToDateNoVersion": "更新：已是最新 — 按 OK 重新检查",
   "tvUpdateAvailable": "新版本 {version} 可用 — 按 OK 安装",
-  "@tvUpdateAvailable": {"placeholders": {"version": {"type": "String"}}},
+  "@tvUpdateAvailable": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
   "tvUpdateDownloading": "正在下载更新… {pct} %",
-  "@tvUpdateDownloading": {"placeholders": {"pct": {"type": "String"}}},
+  "@tvUpdateDownloading": {
+    "placeholders": {
+      "pct": {
+        "type": "String"
+      }
+    }
+  },
   "tvUpdateFailed": "更新：失败（网络或安装程序问题）— 按 OK 重试",
   "tvMySources": "我的源",
   "tvAddXtream": "添加 Xtream",
   "tvAddM3u": "添加 M3U",
   "tvDeleteSourceConfirm": "删除源“{name}”？",
-  "@tvDeleteSourceConfirm": {"placeholders": {"name": {"type": "String"}}},
+  "@tvDeleteSourceConfirm": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "tvActivate": "启用",
   "tvMyTeams": "我的球队",
   "tvAdd": "添加",
@@ -2126,21 +2201,72 @@
   "tvImpConnecting": "正在连接服务器…",
   "tvImpCategories": "正在读取分类…",
   "tvImpDownloading": "下载中… {mb} MB",
-  "@tvImpDownloading": {"placeholders": {"mb": {"type": "String"}}},
+  "@tvImpDownloading": {
+    "placeholders": {
+      "mb": {
+        "type": "String"
+      }
+    }
+  },
   "tvImpDecoding": "正在解析 {mb} MB…",
-  "@tvImpDecoding": {"placeholders": {"mb": {"type": "String"}}},
+  "@tvImpDecoding": {
+    "placeholders": {
+      "mb": {
+        "type": "String"
+      }
+    }
+  },
   "tvImpCategory": "分类 {i}/{total} · 已找到 {found} 个频道",
-  "@tvImpCategory": {"placeholders": {"i": {"type": "String"}, "total": {"type": "String"}, "found": {"type": "String"}}},
+  "@tvImpCategory": {
+    "placeholders": {
+      "i": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      },
+      "found": {
+        "type": "String"
+      }
+    }
+  },
   "tvImpFound": "已找到 {count} 个频道",
-  "@tvImpFound": {"placeholders": {"count": {"type": "String"}}},
+  "@tvImpFound": {
+    "placeholders": {
+      "count": {
+        "type": "String"
+      }
+    }
+  },
   "tvImpSaving": "正在保存 {done} / {total} 个频道",
-  "@tvImpSaving": {"placeholders": {"done": {"type": "String"}, "total": {"type": "String"}}},
+  "@tvImpSaving": {
+    "placeholders": {
+      "done": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      }
+    }
+  },
   "tvImpDone": "{count} 个频道已就绪",
-  "@tvImpDone": {"placeholders": {"count": {"type": "String"}}},
+  "@tvImpDone": {
+    "placeholders": {
+      "count": {
+        "type": "String"
+      }
+    }
+  },
   "tvLanguage": "语言",
   "tvLanguageAuto": "自动（跟随电视语言）",
   "tvSettingsLanguage": "语言：{value}",
-  "@tvSettingsLanguage": {"placeholders": {"value": {"type": "String"}}},
+  "@tvSettingsLanguage": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
   "tvEnterParentalCode": "请输入家长控制密码",
   "tvCurrentCode": "当前密码",
   "tvConfirmCode": "确认密码",
@@ -2151,7 +2277,13 @@
   "tvRecordingStarted": "录制中…",
   "tvRecordingError": "录制错误",
   "tvRecordingSaved": "录制已保存（{size}）",
-  "@tvRecordingSaved": {"placeholders": {"size": {"type": "String"}}},
+  "@tvRecordingSaved": {
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
   "tvRecordingEmpty": "录制为空",
   "tvRemovedFromFavorites": "已从收藏中移除",
   "tvAddedToFavorites": "已添加到收藏 ❤",
@@ -2159,61 +2291,163 @@
   "tvCinemaAudio": "音频",
   "tvCinemaAudioSubs": "音频和字幕",
   "tvCinemaCast": "主演：{names}",
-  "@tvCinemaCast": {"placeholders": {"names": {"type": "String"}}},
+  "@tvCinemaCast": {
+    "placeholders": {
+      "names": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaContinue": "继续观看",
   "tvCinemaDeleteDownload": "删除下载",
   "tvCinemaDirector": "导演：{names}",
-  "@tvCinemaDirector": {"placeholders": {"names": {"type": "String"}}},
+  "@tvCinemaDirector": {
+    "placeholders": {
+      "names": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaDownload": "下载",
   "tvCinemaDownloadError": "下载失败",
   "tvCinemaDownloadPaused": "已暂停 · {pct}%",
-  "@tvCinemaDownloadPaused": {"placeholders": {"pct": {"type": "String"}}},
+  "@tvCinemaDownloadPaused": {
+    "placeholders": {
+      "pct": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaDownloaded": "已下载",
   "tvCinemaDownloading": "正在下载 · {pct}%",
-  "@tvCinemaDownloading": {"placeholders": {"pct": {"type": "String"}}},
+  "@tvCinemaDownloading": {
+    "placeholders": {
+      "pct": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaDownloads": "我的下载",
   "tvCinemaEmptyCategory": "这里还没有内容。",
   "tvCinemaEpisode": "第 {n} 集",
-  "@tvCinemaEpisode": {"placeholders": {"n": {"type": "String"}}},
+  "@tvCinemaEpisode": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaFromStart": "从头开始",
   "tvCinemaIndexing": "正在准备全目录搜索…",
   "tvCinemaLanguage": "语言：{value}",
-  "@tvCinemaLanguage": {"placeholders": {"value": {"type": "String"}}},
+  "@tvCinemaLanguage": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaLoading": "加载中…",
   "tvCinemaMinutes": "{n} 分钟",
-  "@tvCinemaMinutes": {"placeholders": {"n": {"type": "String"}}},
+  "@tvCinemaMinutes": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaNextEpisode": "下一集",
   "tvCinemaNextHint": "OK：立即播放 · 返回：留在本集",
   "tvCinemaNextIn": "{s} 秒后播放下一集",
-  "@tvCinemaNextIn": {"placeholders": {"s": {"type": "String"}}},
+  "@tvCinemaNextIn": {
+    "placeholders": {
+      "s": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaNoEpisodes": "暂无可播放的剧集。",
   "tvCinemaNoSource": "暂时没有电影或剧集",
   "tvCinemaNoSourceBody": "电影和剧集来自你的 Xtream 订阅。请在“服务器”中添加，或联系经销商开通。",
   "tvCinemaNoSpace": "盒子存储空间不足（剩余 {free} GB）。",
-  "@tvCinemaNoSpace": {"placeholders": {"free": {"type": "String"}}},
+  "@tvCinemaNoSpace": {
+    "placeholders": {
+      "free": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaPauseDownload": "暂停",
   "tvCinemaPlay": "播放",
   "tvCinemaPlayEpisode": "播放 第{s}季 · 第{e}集",
-  "@tvCinemaPlayEpisode": {"placeholders": {"s": {"type": "String"}, "e": {"type": "String"}}},
+  "@tvCinemaPlayEpisode": {
+    "placeholders": {
+      "s": {
+        "type": "String"
+      },
+      "e": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaRecent": "最近添加",
   "tvCinemaRestart": "重新播放",
   "tvCinemaResumeAt": "从 {time} 继续",
-  "@tvCinemaResumeAt": {"placeholders": {"time": {"type": "String"}}},
+  "@tvCinemaResumeAt": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaResumeDownload": "继续下载",
   "tvCinemaResumeEpisode": "继续 第{s}季 · 第{e}集",
-  "@tvCinemaResumeEpisode": {"placeholders": {"s": {"type": "String"}, "e": {"type": "String"}}},
+  "@tvCinemaResumeEpisode": {
+    "placeholders": {
+      "s": {
+        "type": "String"
+      },
+      "e": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaResumedAt": "从 {time} 继续播放",
-  "@tvCinemaResumedAt": {"placeholders": {"time": {"type": "String"}}},
+  "@tvCinemaResumedAt": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaSearch": "搜索",
   "tvCinemaSeason": "第 {n} 季",
-  "@tvCinemaSeason": {"placeholders": {"n": {"type": "String"}}},
+  "@tvCinemaSeason": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaSeasons": "共 {n} 季",
-  "@tvCinemaSeasons": {"placeholders": {"n": {"type": "String"}}},
+  "@tvCinemaSeasons": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
   "tvCinemaSpecials": "特别篇",
   "tvCinemaSubtitles": "字幕",
   "tvCinemaSubtitlesOff": "关闭",
   "tvCinemaTrackUnknown": "音轨 {n}",
-  "@tvCinemaTrackUnknown": {"placeholders": {"n": {"type": "String"}}},
+  "@tvCinemaTrackUnknown": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
   "tvUpdatingContent": "正在更新…",
   "tvDeactivate": "停用",
   "tvSourceActive": "已启用",
@@ -2250,4 +2484,328 @@
   "tvVoiceRemoteAiOff": "已关闭",
   "tvVoiceRemoteAiHelp": "默认关闭。应用里没有密钥。「今晚」从盒子上的节目单读取。如果服务没有回应，Zuno 会在你的列表里搜索。",
   "tvVoiceCinemaHint": "先打开一次电影或剧集：之后搜索就能找到它们，观看时不用联网。",
-  "tvVoiceOnChannel": "在 {channel}"}
+  "tvVoiceOnChannel": "在 {channel}",
+  "tvDeletePanelSourceConfirm": "“{name}”将从此电视中删除。同步或从面板重新发送不会将其恢复。如需恢复，请在应用中重新添加。",
+  "tvDeleteSourceFailed": "本地删除失败。请稍后重试。",
+  "tvCinemaOfflineTitle": "目录暂不可用",
+  "tvCinemaOfflineBody": "电视上没有已保存的内容，服务器也未响应。请检查连接后重试。",
+  "tvCinemaRetry": "重试",
+  "tvCinemaUpdated": "更新于{when}",
+  "tvCinemaAgeJustNow": "刚刚",
+  "tvCinemaAgeMinutes": "{n}分钟前",
+  "tvCinemaAgeHours": "{n}小时前",
+  "tvCinemaAgeDays": "{n}天前",
+  "tvCinemaCategoryFailed": "无法加载此分类。",
+  "moviesRetry": "重试",
+  "tvRemoteTitle": "遥控器",
+  "tvSettingsRemote": "手机连接同一 Wi-Fi 后即可用作遥控器，无需安装应用。",
+  "tvRemoteLead": "使用手机相机扫描二维码，无需安装应用。",
+  "tvRemoteWarn": "任何看到此码的人都能在其过期前控制设备。仅限一部手机。二维码会自动失效。",
+  "tvRemoteKeep": "返回可离开此页面，手机仍可控制设备，直到二维码过期。关闭可立即停止。",
+  "tvRemoteStarting": "正在准备…",
+  "tvRemoteWaiting": "等待手机连接…",
+  "tvRemotePaired": "手机已连接",
+  "tvRemoteExpired": "二维码已过期",
+  "tvRemoteStopped": "遥控器已关闭",
+  "tvRemoteNoLan": "未连接本地网络。请将设备和手机连接到同一 Wi-Fi。",
+  "tvRemoteError": "无法启动遥控器。",
+  "tvRemoteNewCode": "生成新码",
+  "tvRemoteStop": "关闭",
+  "tvRemoteStart": "开启",
+  "tvRemoteLeft": "将在{time}后过期",
+  "tvRemoteUrlHelp": "如果扫描失败，请在手机浏览器中打开此地址。",
+  "sportsTimeout": "体育服务响应超时，请重试。",
+  "sportsNetworkError": "无法连接体育服务。",
+  "sportsHttpError": "体育服务不可用（HTTP {status}）。",
+  "sportsInvalidResponse": "无法读取体育服务的响应。",
+  "sportsUnavailable": "无法加载体育数据。",
+  "sportsLoading": "正在加载比赛…",
+  "sportsRetry": "重试",
+  "sportsFootballTitle": "比分与赛程",
+  "sportsRefresh": "刷新",
+  "sportsCommunityNotice": "社区提供的比分和进球信息 · 可能有延迟 · 每60秒刷新。",
+  "sportsCalendarNotice": "赛程与延迟结果 · OpenFootball 不提供实时比分。",
+  "sportsRetrievedAt": "获取时间：{time}",
+  "sportsUpcoming": "即将开始",
+  "sportsRecent": "最近比赛",
+  "sportsFinished": "已结束",
+  "tvProgramStartedMinutesAgo": "节目已开始{minutes}分钟",
+  "tvProfiles": "个人资料",
+  "tvKidsProfile": "儿童资料",
+  "tvNewProfile": "新建资料",
+  "tvChildren": "儿童",
+  "tvKidsExists": "已存在儿童资料。",
+  "tvProfileAddFailed": "无法添加资料。",
+  "tvKidsReady": "儿童资料已准备好，儿童模式保持开启。",
+  "tvRename": "重命名",
+  "tvNameInvalid": "名称为空或过长。",
+  "tvProfileDeleteBody": "此资料的收藏、历史记录、播放进度、提醒和 PIN 码将被删除。频道和资料1将保留。",
+  "tvProfileDeleteFailed": "无法删除此资料。",
+  "tvProfilesHelp": "最多4个资料。各自拥有收藏、历史记录、播放进度、提醒和 PIN 码，频道共享。",
+  "tvDefaultPinWarning": "PIN 码仍为0000，请在家长控制中修改。",
+  "tvAskProfileOn": "启动时选择资料：开",
+  "tvAskProfileOff": "启动时选择资料：关",
+  "tvProfileStartupSingle": "拥有至少2个资料时才显示启动选择。有一个资料时，应用直接打开。",
+  "tvProfileStartupHelp": "关闭后直接打开上次使用的资料。您仍可在此处或首页切换。",
+  "tvKidsProfileHelp": "儿童模式已锁定，退出需要此资料的 PIN 码。成人内容已隐藏。资料1保留您之前的数据。",
+  "tvOriginProfileHelp": "初始资料：您之前的收藏、历史记录、播放进度和 PIN 码都在这里，无法删除。",
+  "tvSeparateProfileHelp": "独立资料。删除此资料不会删除资料1。",
+  "tvProfileActive": "使用中",
+  "tvProfileCreated": "已创建“{name}”资料。",
+  "tvProfileDeleteTitle": "删除“{name}”？",
+  "tvWhoWatching": "谁在观看？",
+  "tvProfilePickerHelp": "每个人都有自己的收藏、历史记录和 PIN 码，频道保持相同。",
+  "tvLater": "稍后",
+  "tvNameMum": "妈妈",
+  "tvNameDad": "爸爸",
+  "tvNameGuest": "访客",
+  "tvNameLivingRoom": "客厅",
+  "tvNameLimit": "最多18个字符。",
+  "tvFirstName": "名字",
+  "tvListRemoved": "列表已移除",
+  "tvListRemovedBody": "您的服务商已移除此列表，其中的频道不再可用。",
+  "tvKidsCannotDisable": "儿童资料中的儿童模式始终开启。请使用 PIN 码切换资料，以查看所有频道。",
+  "tvKidsAlwaysOn": "儿童资料：儿童模式保持开启，非成人频道仍可观看。",
+  "tvKidsOn": "已开启 — 成人内容已隐藏。",
+  "tvKidsOff": "已关闭 — 所有频道均可见。",
+  "tvChooseSecurePin": "开启儿童模式前请设置 PIN 码，不再接受0000。",
+  "tvPinWait": "尝试次数过多，请几分钟后重试。",
+  "tvEnabled": "开",
+  "tvDisabled": "关",
+  "tvProfilePinHelp": "“{name}”的 PIN 码。儿童模式隐藏成人频道，关闭此模式或修改 PIN 码都需要此码。每个资料有自己的 PIN 码。",
+  "tvPinWaitMinutes": "尝试次数过多，请{minutes}分钟后重试。",
+  "tvExtras": "更多功能",
+  "tvExtrasHelp": "可以单独关闭各项功能，任何一项都不会阻止频道播放。",
+  "tvMissedTitle": "错过开头",
+  "tvMissedOn": "节目指南显示您错过的内容。按 OK 关闭。直播不会自动倒回。",
+  "tvMissedOff": "已关闭。按 OK 开启。频道不会倒回。",
+  "tvAtThisHour": "这个时间",
+  "tvTimePicksOn": "推荐您经常在此时打开的频道。按 OK 关闭。不会自动播放。",
+  "tvTimePicksOff": "已关闭。按 OK 开启。不再记录观看习惯，该行也会消失。",
+  "tvServiceNotices": "服务通知",
+  "tvNoticesOn": "服务商发布维护或新消息时，在首页显示卡片。按 OK 关闭。不会覆盖视频。",
+  "tvNoticesOff": "已关闭。按 OK 开启。不再显示通知。",
+  "tvPickOfDay": "今日推荐",
+  "tvFeaturedOn": "显示服务商推荐的频道，前提是该频道在您的列表中。按 OK 关闭。不会自动播放。",
+  "tvFeaturedOff": "已关闭。按 OK 开启。卡片从首页消失。",
+  "tvBanners": "广告横幅",
+  "tvBannersOn": "首页每次显示一张图片，始终标注“广告”。关闭后隐藏7天。按 OK 停用。无声音，不覆盖视频。",
+  "tvBannersOff": "已关闭。按 OK 开启。不再显示横幅。",
+  "tvSubtitlesOnHelp": "显示节目流中已有的、符合您语言的字幕轨道。按 OK 关闭。不会翻译或下载内容。",
+  "tvSubtitlesOffHelp": "已关闭。按 OK 开启。直播不会切换节目流。",
+  "tvClearVoice": "清晰人声",
+  "tvClearVoiceOn": "已开启。夜间模式会稍微降低过响的人声。按 OK 关闭。直通的环绕声保持不变。",
+  "tvClearVoiceOff": "已关闭，这是初始设置。按 OK 可降低过响的人声。直接传送到音响的环绕声保持不变。",
+  "tvLogToSupport": "向支持人员发送日志",
+  "tvLogToSupportOn": "诊断日志可发送给支持人员，不包含节目流地址或密码。按 OK 关闭。",
+  "tvLogToSupportOff": "已关闭。日志保留在设备上。按 OK 可恢复向支持人员发送。",
+  "tvPictureEngine": "视频解码引擎",
+  "tvPictureEngineHelp": "当前：{engine}。按 OK 切换。硬件＝设备解码，为初始设置；软件＝画面一直黑屏时使用。此版本不含 FFmpeg 视频解码，会跳过该选项。",
+  "tvScreenRefresh": "屏幕刷新率",
+  "tvScreenRefreshOn": "已开启。屏幕可按节目流切换到24、50或60 Hz。按 OK 关闭。部分设备可能短暂黑屏一秒；如发生，请关闭。",
+  "tvScreenRefreshOff": "已关闭，这是初始设置。按 OK 可让屏幕匹配每秒24 / 25 / 30 / 50 / 60帧，不会自动开启。",
+  "tvContrast": "对比度",
+  "tvContrastUnavailable": "不可用。Android 滤镜会离开直接显示通道，且曾导致黑屏，因此保持关闭。",
+  "tvUpdateAllowInstall": "请允许 Zuno 安装应用：在 Android 打开的页面中启用“Zuno”，然后返回并按 OK。更新已下载完成。",
+  "tvFfmpegKeepDecoder": "此版本不含 FFmpeg 视频解码，继续使用当前解码器。",
+  "tvFfmpegBoxDecoder": "此版本不含 FFmpeg 视频解码，返回设备解码器。",
+  "tvFfmpegUnavailable": "此版本不含 FFmpeg 视频解码。",
+  "tvEngineSelected": "引擎：{engine}",
+  "tvOnYourPhone": "在您的手机上",
+  "tvGotIt": "知道了",
+  "tvClose": "关闭",
+  "tvPhone": "手机",
+  "tvSoftware": "软件",
+  "tvHardware": "硬件",
+  "tvProfilesSettingsHelp": "最多4个资料，各自拥有收藏、历史记录、播放进度、提醒和 PIN 码。",
+  "tvAudioDiagnostic": "声音诊断",
+  "tvAudioDiagnosticHelp": "每个频道生成本地报告，不发送数据。测试选项默认关闭。",
+  "tvPlayerDisclaimer": "本应用是媒体播放器，不销售、提供或托管任何频道、节目流或 M3U 链接。内容由用户提供，用户负责其合法性。",
+  "tvActivationDisclaimer": "媒体播放器 — 不销售或提供频道及 M3U 链接。内容由用户提供。条款：app.7themotion.com/terms",
+  "tvSourcePasteHelp": "粘贴链接或登录凭据。支持任意 M3U 或 Xtream 服务商。",
+  "tvTrending": "🔥 热门",
+  "tvRecent": "🕒 最近",
+  "tvForYou": "✨ 为您推荐",
+  "tvOther": "其他",
+  "tvNetworkUnavailable": "无网络",
+  "tvNetworkUnavailableHelp": "电视无法连接服务器，请检查连接后重试。",
+  "tvListRejected": "列表被拒绝",
+  "tvListRejectedHelp": "服务商拒绝了此列表，请检查登录凭据。",
+  "tvCodeInactive": "激活码未激活",
+  "tvCodeInactiveHelp": "这台电视的激活码尚未激活。请在管理面板中激活后等待几秒。",
+  "tvSourcesEmpty": "尚无来源。\n请添加 M3U 链接、Xtream 账户或播放器链接。",
+  "tvRecordingCloseFailed": "无法结束录制，文件可能不完整。",
+  "tvFromStart": "从头开始",
+  "tvFollow": "关注",
+  "tvChooseTeamHelp": "选择下方球队，或输入名称…",
+  "tvTeamNotFound": "未找到“{name}”，请尝试搜索。",
+  "tvCatchupHelp": "从节目开头播放。按右键，再按 OK：返回直播。",
+  "tvMissedRewindHint": "按右键，再按 OK：从头开始。",
+  "tvMissedNoReplayHint": "节目指南只有文本，没有视频。直播保持不变。",
+  "tvSourceNeedUrl": "粘贴以 http:// 或 https:// 开头的地址。",
+  "tvSourceNeedXtream": "请输入服务器地址、用户名和密码。",
+  "tvSourceNeedCredentials": "此播放器链接缺少用户名或密码。请粘贴完整链接，或填写全部三个 Xtream 字段。",
+  "tvSourceBadScheme": "此地址无法使用，需要 http 或 https 链接。",
+  "tvPlayerLink": "播放器链接",
+  "tvAdvertisement": "广告",
+  "tvSponsored": "赞助内容",
+  "tvInformation": "信息",
+  "tvSportFootball": "足球",
+  "tvSportBasketball": "篮球（NBA）",
+  "tvSportRugby": "橄榄球",
+  "tvDataAttribution": "数据：{source}",
+  "tvLegalSection1Title": "1. 应用性质 — 仅为播放器",
+  "tvLegalSection1Body": "本应用是用于播放用户提供的音频及视频流的媒体播放器。它不提供、销售、托管、广播或索引任何电视频道、节目流、视听内容、播放列表（M3U）或门户凭据（Xtream）。应用不包含、不预装，也不随附销售任何内容。",
+  "tvLegalSection2Title": "2. 用户提供的内容",
+  "tvLegalSection2Body": "用户自行提供从其服务商取得的来源（M3U 链接／Xtream 凭据）。用户独自负责其添加、播放或广播的内容，并须持有必要的权利、许可和订阅。",
+  "tvLegalSection3Title": "3. 订阅针对软件，而非内容",
+  "tvLegalSection3Body": "任何付款或订阅仅用于支付应用的使用，包括播放器及界面、收藏、本地录制、EPG 等功能。绝不构成对频道、节目流或内容的购买、销售、租赁或提供。",
+  "tvLegalSection4Title": "4. 合法使用",
+  "tvLegalSection4Body": "用户承诺遵守所在国家的法律，不使用本应用访问非法或侵犯版权的内容。任何非法使用均被严格禁止，并由用户独自负责。",
+  "tvLegalSection5Title": "5. 第三方内容 — 不承担责任",
+  "tvLegalSection5Body": "发布者无法控制通过用户来源访问的第三方内容，也不对其负责。发布者不保证这些内容的可用性、合法性或质量。",
+  "tvLegalSection6Title": "6. 知识产权与投诉",
+  "tvLegalSection6Body": "所有商标、标志和内容均归各自所有者所有。由于本应用不托管任何内容，版权投诉应提交给相关来源的服务商。",
+  "tvLegalSection7Title": "7. 按现状提供",
+  "tvLegalSection7Body": "本应用按现状提供，不保证持续可用或完全无错误。发布者可更改或暂停部分或全部功能。",
+  "tvLegalSection8Title": "8. 个人数据",
+  "tvLegalSection8Body": "技术设备标识符用于管理许可、试用期及支持服务。详情：app.7themotion.com/privacy。",
+  "tvLegalSection9Title": "9. 接受条款",
+  "tvLegalSection9Body": "安装或使用本应用即表示用户确认已阅读并接受这些条款。完整版本：app.7themotion.com/terms",
+  "tvLegalLead": "本应用是播放器，不销售或提供频道及链接。按上／下滚动，按返回退出。",
+  "tvAudioSpectrumOn": "频谱：测量中",
+  "tvAudioSpectrumOff": "频谱：关闭",
+  "tvAudioFfmpegRetry": "FFmpeg：重试",
+  "tvAudioFfmpegDefault": "FFmpeg：默认",
+  "tvAudioAacTest": "设备 AAC：测试",
+  "tvAudioAacOff": "设备 AAC：关闭",
+  "tvAudioFallbackSession": "后备解码：整个会话",
+  "tvAudioFallbackChannel": "后备解码：按频道",
+  "tvAudioFocusAndroid": "音频焦点：Android",
+  "tvAudioFocusZuno": "音频焦点：Zuno",
+  "tvAudioBackgroundPause": "离开应用：暂停",
+  "tvAudioBackgroundStop": "离开应用：停止",
+  "tvAudioHomeLegacy": "主页键：旧模式",
+  "tvAudioHomeNative": "主页键：原生停止",
+  "tvAudioHandoffNow": "切换：立即",
+  "tvAudioHandoffWait": "切换：等待",
+  "tvAudioOutput48k": "输出：48 kHz",
+  "tvAudioOutputStream": "输出：节目流频率",
+  "tvAudioWitnessStop": "测试音：停止",
+  "tvAudioWitnessPreparing": "测试音：准备中",
+  "tvAudioWitnessPlay": "播放测试音",
+  "tvAudioScrollHelp": "上／下：滚动 · CH+/CH−：翻页",
+  "tvAudioWitnessHelp": "测试音播放10秒：先人声，后噪声。使用与频道相同的播放器。噪声低沉→设备问题；噪声清晰→频道问题。",
+  "tvAudioOptionsHelp": "频谱：在下一个频道测量四处信号（解码器、清晰人声、静音、AudioTrack），不改变声音。FFmpeg：重试软件解码器；8秒内未启动则由设备接管。设备 AAC：下一个频道使用设备的 AAC 解码器，与 ExoPlayer 类似。若失败，本次打开由 FFmpeg 接管。后备解码：“按频道”为默认，仅把 FFmpeg 出错的频道交给设备；“整个会话”为旧行为，一次出错后所有频道都交给设备。音频焦点：“Zuno”为默认，其他应用或提示音请求音频时不降低音量；“Android”为旧行为，降低到20%。离开应用：“停止”为默认，退出时停止并释放音频，返回时重新打开频道；“暂停”为旧行为。主页键：“原生停止”为默认，在 onPause 时停止，应用处于后台时不重新打开；“旧模式”等待 Flutter。切换：“等待”为默认，前一个 AudioTrack 释放后才打开下一频道，避免频繁换台后声音重叠；“立即”为旧行为。输出：“节目流频率”为默认，采用节目流的采样率（很多频道为44.1 kHz），由设备转换；“48 kHz”在输出前由应用重采样。如果报告为44.1 kHz且声音不好，可尝试此项。测试音：同一播放器播放10秒人声和噪声，开启测量但不改变声音。噪声低沉→设备问题；噪声清晰→频道问题。",
+  "tvAudioNoReports": "暂无报告。打开一个频道后，播放器会记录编解码格式、解码器和输出。只有开启选项时才测量频谱。",
+  "tvAudioTestSound": "测试音",
+  "tvDiagCaptive": "1. 网络登录门户（204）",
+  "tvDiagDns": "2. IPTV 主机 DNS 解析",
+  "tvDiagStream": "3. 节目流可达性（HTTP / 456）",
+  "tvDiagSource": "4. 已分配来源（device-source）",
+  "tvDiagPlayer": "5. ExoPlayer / Media3 测试",
+  "tvDiagRequest": "正在请求 generate_204…",
+  "tvDiagInternetOk": "HTTP 204（互联网访问正常）",
+  "tvDiagTimeout": "8秒内无响应",
+  "tvDiagNoHost": "未加载频道→主机未知",
+  "tvDiagNoUrl": "未加载频道→URL未知",
+  "tvDiagStreamHead": "正在发送节目流 HEAD 请求…",
+  "tvDiagIpBlocked": "HTTP 456 — 服务商屏蔽此 IP",
+  "tvDiagReadingMac": "正在读取 MAC…",
+  "tvDiagSourceAssigned": "HTTP 200 — 已分配来源",
+  "tvDiagNoSource": "HTTP 200 — 未分配来源",
+  "tvDiagPlayerBusy": "正在全屏播放：跳过测试，仅使用一个播放器",
+  "tvDiagPlayerOpening": "正在启动 ExoPlayer 测试…",
+  "tvDiagFrameOk": "已解码并显示第一帧",
+  "tvDiagPlayerError": "ExoPlayer 返回错误",
+  "tvDiagFrameTimeout": "8秒内无画面",
+  "tvDiagRunning": "正在诊断…",
+  "tvDiagPassed": "设备端播放已验证",
+  "tvDiagNetworkBlocked": "网络阻断",
+  "tvDiagPlayerFailed": "播放器错误",
+  "tvDiagPartial": "部分诊断完成",
+  "tvDiagTitle": "设备端诊断 — Zuno",
+  "tvDiagHelp": "测试电视能否通过自己的 IP 地址播放节目流。",
+  "tvBackToExit": "按返回退出",
+  "tvDiagCaptiveLikely": "HTTP {status}，{bytes}字节→可能需要网络登录",
+  "tvDiagLookup": "正在解析{host}…",
+  "tvDiagNoIp": "{host}→无 IP 地址",
+  "tvDiagDnsTimeout": "{host}：8秒内无 DNS 响应",
+  "tvDiagStreamOk": "HTTP {status}（节目流可达）",
+  "tvDiagUnknownMac": "MAC未知（{mac}）",
+  "tvSizeBytes": "{size}字节",
+  "tvSizeKb": "{size} KB",
+  "tvSizeMb": "{size} MB",
+  "tvSizeGb": "{size} GB",
+  "tvDurationHm": "{hours}小时{minutes}分钟",
+  "tvWhatsAppActivationRequest": "您好，我想激活 Zuno。",
+  "castErrorTimeoutRetry": "电视响应时间过长。请重试或选择其他电视。",
+  "castProgressRelay": "正在准备中继…",
+  "castFriendlyNetworkFail": "无法连接电视。",
+  "castFriendlyTvTimeout": "电视未响应。请检查 Wi-Fi。",
+  "castFriendlyBadFormat": "不支持此格式。请尝试其他频道。",
+  "castProgressLive": "正在电视上播放",
+  "castFriendlyAuthExpired": "流访问被拒绝。请检查您的访问权限。",
+  "castFriendlyTvRefused": "电视拒绝了此流。请尝试其他频道。",
+  "castProgressConnectingAttempt": "正在连接电视（{attempt}/{total}）…",
+  "castFriendlyGenericFail": "投屏失败。请重试。",
+  "castProgressWebFallback": "正在切换到浏览器模式（二维码）…",
+  "castFriendlyTvUnreachable": "请确认电视已开启，并连接到同一个私人网络。",
+  "castProgressDetecting": "正在检测电视…",
+  "castDlnaReceiverFallback": "DLNA 接收器",
+  "castErrorApIsolation": "电视无法连接此设备。请将两者连接到同一个私人网络。",
+  "castProgressRetrying": "正在以兼容模式重试（{attempt}/{total}）…",
+  "castFriendlyTvStuck": "电视卡在之前的会话中。请重启电视。",
+  "castErrorReceiverRejected": "电视可能不支持此流。请尝试其他频道。",
+  "castProgressConnecting": "正在连接电视…",
+  "castFriendlyNoGms": "Google Cast 需要 Android SDK。请使用 DLNA 或 Roku 接收器。",
+  "castErrorTimeout": "投屏超时",
+  "castFriendlyDnsUnstable": "互联网或 DNS 不稳定。请稍后重试。",
+  "castFriendlyProviderLimit": "来源不允许更多连接。请停止另一个播放会话。",
+  "castProgressValidating": "正在检查流…",
+  "castWindowsHelp": "将电脑和电视连接到同一个专用网络（Wi-Fi 或以太网），选择 DLNA 电视或 Roku。Windows 不支持仅使用 Google Cast 的接收设备。请使用电视遥控器选择音轨和快进。",
+  "vipCountriesTitle": "我的国家 · VIP",
+  "vipCountriesHint": "最多选择10个国家。此资料将保存排列顺序，其他国家仍可访问。",
+  "vipCountriesOrder": "我的顺序",
+  "vipCountriesEmpty": "可用频道中未找到国家。",
+  "vipCountriesSaveError": "无法保存，请重试。",
+  "vipCountriesMoveUp": "上移",
+  "vipCountriesMoveDown": "下移",
+  "vipCountriesRemove": "移除",
+  "vipCountryRs": "塞尔维亚",
+  "vipCountryFr": "法国",
+  "vipCountryUs": "美国",
+  "vipCountryUk": "英国",
+  "vipCountryDe": "德国",
+  "vipCountryIt": "意大利",
+  "vipCountryEs": "西班牙",
+  "vipCountryPt": "葡萄牙",
+  "vipCountryBe": "比利时",
+  "vipCountryCh": "瑞士",
+  "vipCountryCa": "加拿大",
+  "vipCountryBr": "巴西",
+  "vipCountryMx": "墨西哥",
+  "vipCountryAr": "阿根廷",
+  "vipCountrySa": "沙特阿拉伯",
+  "vipCountryTr": "土耳其",
+  "vipCountryGr": "希腊",
+  "vipCountryPl": "波兰",
+  "vipCountryRu": "俄罗斯",
+  "vipCountryNl": "荷兰",
+  "vipCountryJp": "日本",
+  "vipCountryKr": "韩国",
+  "vipCountryCn": "中国",
+  "vipCountryIn": "印度",
+  "vipCountryAu": "澳大利亚",
+  "vipCountrySe": "瑞典",
+  "vipCountryNo": "挪威",
+  "vipCountryDk": "丹麦",
+  "vipCountryFi": "芬兰",
+  "vipCountryMa": "摩洛哥",
+  "vipCountryDz": "阿尔及利亚",
+  "vipCountryTn": "突尼斯",
+  "vipCountryEg": "埃及",
+  "libraryRefreshRunning": "正在刷新…",
+  "libraryRefreshIncomplete": "刷新未完成。部分来源不可用，请重试。"
+
+}

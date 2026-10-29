@@ -15,6 +15,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
+import 'tv_localized_format.dart';
 
 import '../../../core/blackbox/black_box.dart';
 import '../../../core/blackbox/black_box_upload.dart';
@@ -84,14 +85,20 @@ class _TvBlackBoxScreenState extends State<TvBlackBoxScreen> {
 
   void _scrollBy(double px) {
     if (!_scroll.hasClients) return;
-    final double target = (_scroll.offset + px)
-        .clamp(0.0, _scroll.position.maxScrollExtent);
-    _scroll.animateTo(target,
-        duration: const Duration(milliseconds: 120), curve: Curves.easeOut);
+    final double target = (_scroll.offset + px).clamp(
+      0.0,
+      _scroll.position.maxScrollExtent,
+    );
+    _scroll.animateTo(
+      target,
+      duration: const Duration(milliseconds: 120),
+      curve: Curves.easeOut,
+    );
   }
 
   KeyEventResult _onKey(FocusNode node, KeyEvent e) {
-    if (e is! KeyDownEvent && e is! KeyRepeatEvent) return KeyEventResult.ignored;
+    if (e is! KeyDownEvent && e is! KeyRepeatEvent)
+      return KeyEventResult.ignored;
     final LogicalKeyboardKey k = e.logicalKey;
     if (k == LogicalKeyboardKey.arrowDown) {
       _scrollBy(_kRow * 3);
@@ -104,7 +111,8 @@ class _TvBlackBoxScreenState extends State<TvBlackBoxScreen> {
       _scrollBy(-_kRow * 3);
       return KeyEventResult.handled;
     }
-    if (k == LogicalKeyboardKey.pageDown || k == LogicalKeyboardKey.channelDown) {
+    if (k == LogicalKeyboardKey.pageDown ||
+        k == LogicalKeyboardKey.channelDown) {
       _scrollBy(_kRow * 15);
       return KeyEventResult.handled;
     }
@@ -122,11 +130,14 @@ class _TvBlackBoxScreenState extends State<TvBlackBoxScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        Text(context.l10n.tvBlackBoxTitle,
-            style: TextStyle(
-                fontSize: TvDimens.displayM,
-                fontWeight: FontWeight.w800,
-                color: TvTokens.text)),
+        Text(
+          context.l10n.tvBlackBoxTitle,
+          style: TextStyle(
+            fontSize: TvDimens.displayM,
+            fontWeight: FontWeight.w800,
+            color: TvTokens.text,
+          ),
+        ),
         const SizedBox(height: 6),
         Text(
           context.l10n.tvBlackBoxSubtitle(BlackBox.instance.appVersion),
@@ -141,7 +152,9 @@ class _TvBlackBoxScreenState extends State<TvBlackBoxScreen> {
           decoration: BoxDecoration(
             color: TvTokens.card,
             borderRadius: BorderRadius.circular(TvDimens.cardRadius),
-            border: Border.all(color: brutal ? TvTokens.live : TvTokens.lineSoft),
+            border: Border.all(
+              color: brutal ? TvTokens.live : TvTokens.lineSoft,
+            ),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -151,24 +164,40 @@ class _TvBlackBoxScreenState extends State<TvBlackBoxScreen> {
                     ? context.l10n.tvBlackBoxFirstRun
                     : _headline(context, x),
                 style: TextStyle(
-                    fontSize: TvDimens.title,
-                    fontWeight: FontWeight.w700,
-                    color: brutal ? TvTokens.live : TvTokens.text),
+                  fontSize: TvDimens.title,
+                  fontWeight: FontWeight.w700,
+                  color: brutal ? TvTokens.live : TvTokens.text,
+                ),
               ),
               if (x != null && x.at != null) ...<Widget>[
                 const SizedBox(height: 6),
-                Text(context.l10n.tvBlackBoxWhen(_fmt(x.at!)),
-                    style: TextStyle(fontSize: TvDimens.body, color: TvTokens.muted)),
+                Text(
+                  context.l10n.tvBlackBoxWhen(_fmt(x.at!)),
+                  style: TextStyle(
+                    fontSize: TvDimens.body,
+                    color: TvTokens.muted,
+                  ),
+                ),
               ],
               if (x != null && x.lastAction.isNotEmpty) ...<Widget>[
                 const SizedBox(height: 6),
-                Text(context.l10n.tvBlackBoxLastAction(x.lastAction),
-                    style: TextStyle(fontSize: TvDimens.body, color: TvTokens.muted)),
+                Text(
+                  context.l10n.tvBlackBoxLastAction(x.lastAction),
+                  style: TextStyle(
+                    fontSize: TvDimens.body,
+                    color: TvTokens.muted,
+                  ),
+                ),
               ],
               if (x != null && x.nativeDescription.isNotEmpty) ...<Widget>[
                 const SizedBox(height: 6),
-                Text(context.l10n.tvBlackBoxDetail(x.nativeDescription),
-                    style: TextStyle(fontSize: TvDimens.label, color: TvTokens.mutedDim)),
+                Text(
+                  context.l10n.tvBlackBoxDetail(x.nativeDescription),
+                  style: TextStyle(
+                    fontSize: TvDimens.label,
+                    color: TvTokens.mutedDim,
+                  ),
+                ),
               ],
             ],
           ),
@@ -178,14 +207,24 @@ class _TvBlackBoxScreenState extends State<TvBlackBoxScreen> {
         // ----- Boutons -----
         Row(
           children: <Widget>[
-            _Btn(icon: Icons.refresh_rounded, label: context.l10n.tvRefresh, autofocus: true, onSelect: _load),
+            _Btn(
+              icon: Icons.refresh_rounded,
+              label: context.l10n.tvRefresh,
+              autofocus: true,
+              onSelect: _load,
+            ),
             const SizedBox(width: 12),
             _Btn(
-                icon: _copied ? Icons.check_rounded : Icons.copy_rounded,
-                label: _copied ? context.l10n.tvCopied : context.l10n.tvCopy,
-                onSelect: _copy),
+              icon: _copied ? Icons.check_rounded : Icons.copy_rounded,
+              label: _copied ? context.l10n.tvCopied : context.l10n.tvCopy,
+              onSelect: _copy,
+            ),
             const SizedBox(width: 12),
-            _Btn(icon: Icons.delete_outline_rounded, label: context.l10n.tvClear, onSelect: _clear),
+            _Btn(
+              icon: Icons.delete_outline_rounded,
+              label: context.l10n.tvClear,
+              onSelect: _clear,
+            ),
           ],
         ),
         const SizedBox(height: 14),
@@ -194,49 +233,64 @@ class _TvBlackBoxScreenState extends State<TvBlackBoxScreen> {
         Expanded(
           child: Focus(
             onKeyEvent: _onKey,
-            child: Builder(builder: (BuildContext context) {
-              final bool focused = Focus.of(context).hasFocus;
-              return Container(
-                width: double.infinity,
-                padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
-                decoration: BoxDecoration(
-                  color: TvTokens.card.withValues(alpha: 0.55),
-                  borderRadius: BorderRadius.circular(TvDimens.cardRadius),
-                  border: Border.all(
-                      color: focused ? TvTokens.accent : TvTokens.lineSoft),
-                ),
-                child: _loading
-                    ? Center(
-                        child: Text(context.l10n.tvReading,
+            child: Builder(
+              builder: (BuildContext context) {
+                final bool focused = Focus.of(context).hasFocus;
+                return Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+                  decoration: BoxDecoration(
+                    color: TvTokens.card.withValues(alpha: 0.55),
+                    borderRadius: BorderRadius.circular(TvDimens.cardRadius),
+                    border: Border.all(
+                      color: focused ? TvTokens.accent : TvTokens.lineSoft,
+                    ),
+                  ),
+                  child: _loading
+                      ? Center(
+                          child: Text(
+                            context.l10n.tvReading,
                             style: TextStyle(
-                                fontSize: TvDimens.body, color: TvTokens.mutedDim)))
-                    : ListView.builder(
-                        controller: _scroll,
-                        itemExtent: _kRow,
-                        itemCount: _lines.length,
-                        itemBuilder: (BuildContext context, int i) {
-                          final String l = _lines[i];
-                          final Color c = l.contains(' F [')
-                              ? TvTokens.live
-                              : l.contains(' E [')
-                                  ? TvTokens.live
-                                  : l.contains(' W [')
-                                      ? TvTokens.accentBright
-                                      : TvTokens.muted;
-                          return Text(l,
+                              fontSize: TvDimens.body,
+                              color: TvTokens.mutedDim,
+                            ),
+                          ),
+                        )
+                      : ListView.builder(
+                          controller: _scroll,
+                          itemExtent: _kRow,
+                          itemCount: _lines.length,
+                          itemBuilder: (BuildContext context, int i) {
+                            final String l = _lines[i];
+                            final Color c = l.contains(' F [')
+                                ? TvTokens.live
+                                : l.contains(' E [')
+                                ? TvTokens.live
+                                : l.contains(' W [')
+                                ? TvTokens.accentBright
+                                : TvTokens.muted;
+                            return Text(
+                              l,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: TvTokens.mono(13,
-                                  weight: FontWeight.w400, color: c));
-                        },
-                      ),
-              );
-            }),
+                              style: TvTokens.mono(
+                                13,
+                                weight: FontWeight.w400,
+                                color: c,
+                              ),
+                            );
+                          },
+                        ),
+                );
+              },
+            ),
           ),
         ),
         const SizedBox(height: 8),
-        Text(context.l10n.tvBlackBoxHelp,
-            style: TextStyle(fontSize: TvDimens.label, color: TvTokens.mutedDim)),
+        Text(
+          context.l10n.tvBlackBoxHelp,
+          style: TextStyle(fontSize: TvDimens.label, color: TvTokens.mutedDim),
+        ),
       ],
     );
   }
@@ -248,15 +302,13 @@ class _TvBlackBoxScreenState extends State<TvBlackBoxScreen> {
     final String r = x.nativeReason.isEmpty
         ? context.l10n.tvBlackBoxUnknownReason
         : x.nativeReason;
-    final String mem =
-        x.pssMb > 0 ? ' · ${context.l10n.tvBlackBoxMemory(x.pssMb.toString())}' : '';
+    final String mem = x.pssMb > 0
+        ? ' · ${context.l10n.tvBlackBoxMemory(x.pssMb.toString())}'
+        : '';
     return context.l10n.tvBlackBoxBrutal('$r$mem');
   }
 
-  static String _fmt(DateTime d) {
-    String two(int n) => n.toString().padLeft(2, '0');
-    return '${two(d.day)}/${two(d.month)}/${d.year} ${two(d.hour)}:${two(d.minute)}';
-  }
+  String _fmt(DateTime d) => tvDateTime(context, d);
 }
 
 /// Bouton pilule identique à ceux de l'écran Réglages.
@@ -283,18 +335,23 @@ class _Btn extends StatelessWidget {
         final Color fg = focused ? TvTokens.onAccent : TvTokens.accentBright;
         return Container(
           decoration: BoxDecoration(
-              color: bg, borderRadius: BorderRadius.circular(TvDimens.cardRadius)),
+            color: bg,
+            borderRadius: BorderRadius.circular(TvDimens.cardRadius),
+          ),
           padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
               Icon(icon, color: fg, size: 24),
               const SizedBox(width: 10),
-              Text(label,
-                  style: TextStyle(
-                      fontSize: TvDimens.title,
-                      fontWeight: FontWeight.w700,
-                      color: fg)),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: TvDimens.title,
+                  fontWeight: FontWeight.w700,
+                  color: fg,
+                ),
+              ),
             ],
           ),
         );

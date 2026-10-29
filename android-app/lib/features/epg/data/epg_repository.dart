@@ -26,6 +26,7 @@ import '../../../core/app/repair_flags.dart';
 import '../../../core/blackbox/black_box.dart';
 import '../../playlists/data/playlist_database.dart';
 import '../domain/epg_program.dart';
+import 'epg_batch_pipe.dart';
 import 'epg_fetch.dart';
 
 class EpgRepository {
@@ -108,12 +109,15 @@ class EpgRepository {
     if (_syncing) return 0;
     _syncing = true;
     final Stopwatch sw = Stopwatch()..start();
+    _RowSink? staging;
     try {
       await initialize();
       // On purge d'abord les vieux programmes pour faire de la place.
       await purgeStale();
       final Database db = await PlaylistDatabase.instance.database;
       final _RowSink sink = _RowSink(db);
+      staging = sink;
+      await sink.begin();
       final bool isolate =
           inIsolate ?? (httpClient == null && !RepairFlags.epgInlineParse);
       int total;
@@ -144,7 +148,7 @@ class EpgRepository {
           if (httpClient == null) client.close();
         }
       }
-      await sink.flush();
+      await sink.publish();
       BlackBox.instance.info(
         'EPG',
         'guide : $total programmes pour ${sink.channels} chaîne(s) '
@@ -156,7 +160,11 @@ class EpgRepository {
       }
       return total;
     } finally {
-      _syncing = false;
+      try {
+        await staging?.close();
+      } finally {
+        _syncing = false;
+      }
     }
   }
 
@@ -209,14 +217,13 @@ class EpgRepository {
           }
           throw Exception(msg.startsWith('error:') ? msg.substring(6) : msg);
         }
+        if (msg is EpgRowBatch) {
+          await sink.addRows(msg.rows);
+          // Le producteur attend cette écriture : au plus un lot en vol.
+          msg.acknowledge.send(null);
+          continue;
+        }
         if (msg is List) {
-          if (msg.isNotEmpty && msg.first is Map) {
-            await sink.addRows(<Map<String, Object?>>[
-              for (final Object? m in msg)
-                if (m is Map) m.cast<String, Object?>(),
-            ]);
-            continue;
-          }
           // onError : [erreur, pile].
           throw Exception('EPG : ${msg.isEmpty ? 'erreur' : msg.first}');
         }
@@ -360,12 +367,15 @@ class EpgRepository {
   }
 }
 
-/// Insère les rangées par lots de 500. À la première apparition d'une
-/// chaîne dans CET import, ses programmes encore en base sont retirés
-/// dans le même lot, AVANT ses nouvelles lignes (pas de clé unique dans
-/// la table ; une chaîne absente du fichier garde son ancien guide).
+/// Prépare le nouveau guide sur disque, puis le publie atomiquement.
+/// Une panne réseau après plusieurs lots ne doit pas effacer l'ancien
+/// guide. Aucune transaction n'est gardée ouverte pendant le réseau :
+/// les écrans peuvent continuer de lire le dernier guide complet.
 class _RowSink {
   _RowSink(this.db);
+  static const String _table = 'epg_import_stage';
+  static const String _columns =
+      'channel_id, start_time, stop_time, title, description, category, icon_url';
   final Database db;
   Batch? _batch;
   int _pending = 0;
@@ -373,18 +383,22 @@ class _RowSink {
 
   int get channels => _refreshed.length;
 
+  Future<void> begin() async {
+    // Table sur disque : même les gros guides ne deviennent pas un tampon
+    // Dart. Une interruption du processus laisse au pire cette table privée,
+    // qui est recréée au prochain import ; le guide publié reste intact.
+    await db.execute('DROP TABLE IF EXISTS $_table');
+    await db.execute(
+      'CREATE TABLE $_table AS SELECT $_columns FROM epg_programs WHERE 0',
+    );
+  }
+
   Future<void> addRows(List<Map<String, Object?>> rows) async {
     for (final Map<String, Object?> row in rows) {
       final Batch batch = _batch ??= db.batch();
       final String channelId = row['channel_id'] as String;
-      if (_refreshed.add(channelId)) {
-        batch.delete(
-          'epg_programs',
-          where: 'channel_id = ?',
-          whereArgs: <Object>[channelId],
-        );
-      }
-      batch.insert('epg_programs', row);
+      _refreshed.add(channelId);
+      batch.insert(_table, row);
       _pending++;
       if (_pending >= 500) await flush();
     }
@@ -396,6 +410,25 @@ class _RowSink {
     _batch = null;
     _pending = 0;
     await batch.commit(noResult: true);
+  }
+
+  Future<void> publish() async {
+    await flush();
+    await db.transaction((Transaction txn) async {
+      await txn.execute(
+        'DELETE FROM epg_programs WHERE channel_id IN '
+        '(SELECT DISTINCT channel_id FROM $_table)',
+      );
+      await txn.execute(
+        'INSERT INTO epg_programs ($_columns) SELECT $_columns FROM $_table',
+      );
+    });
+  }
+
+  Future<void> close() async {
+    _batch = null;
+    _pending = 0;
+    await db.execute('DROP TABLE IF EXISTS $_table');
   }
 }
 
@@ -435,7 +468,7 @@ Future<void> _epgWorker(_EpgJob job) async {
       connectTimeout: Duration(milliseconds: job.connectTimeoutMs),
       idleTimeout: Duration(milliseconds: job.idleTimeoutMs),
       onProgress: (int bytes) => job.port.send(bytes),
-      onRows: (List<Map<String, Object?>> rows) async => job.port.send(rows),
+      onRows: (List<Map<String, Object?>> rows) => sendEpgRows(job.port, rows),
       gzipByHeader: job.gzipByHeader,
     );
     job.port.send('done:$total');

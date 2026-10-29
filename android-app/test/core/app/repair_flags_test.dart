@@ -12,6 +12,26 @@ void main() {
 
   tearDown(RepairFlags.debugReset);
 
+  test('notification du guide : repli absent, activé, illisible et remise à zéro',
+      () async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    await RepairFlags.load();
+    expect(RepairFlags.missedNoticeLegacy, isFalse);
+    expect(RepairFlags.missedNoticeLegacyKey, 'zuno.guide.notice_legacy');
+    SharedPreferences.setMockInitialValues(<String, Object>{
+      RepairFlags.missedNoticeLegacyKey: true,
+    });
+    await RepairFlags.load();
+    expect(RepairFlags.missedNoticeLegacy, isTrue);
+    RepairFlags.debugReset();
+    expect(RepairFlags.missedNoticeLegacy, isFalse);
+    SharedPreferences.setMockInitialValues(<String, Object>{
+      RepairFlags.missedNoticeLegacyKey: 'valeur invalide',
+    });
+    await RepairFlags.load();
+    expect(RepairFlags.missedNoticeLegacy, isFalse);
+  });
+
   test('ordre du panel : import immédiat par défaut, repli par la clé',
       () async {
     SharedPreferences.setMockInitialValues(<String, Object>{});
@@ -85,3 +105,4 @@ void main() {
     expect(RepairFlags.importFirstBatchOff, isFalse);
   });
 }
+

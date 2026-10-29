@@ -402,6 +402,13 @@ class NativeVideoController extends ChangeNotifier {
   /// Applique un événement d'état (natif Android OU moteur PC).
   void applyBackendEvent(String method, Object? arguments) {
     if (_disposed) return;
+    // Le cycle de vie concerne l'application, pas le flux. Pendant un zap
+    // l'ack peut être différé jusqu'au retour au premier plan : filtrer ce
+    // message laisserait le verrou d'arrière-plan collé sur l'ancien état.
+    if (method == 'appBackground') {
+      appInBackground = arguments == true;
+      return;
+    }
     // Accusé du setUrl en cours. Un ack d'un zap déjà remplacé est ignoré,
     // sinon les événements de l'ancienne chaîne passeraient.
     if (method == 'ack') {
@@ -488,11 +495,6 @@ class NativeVideoController extends ChangeNotifier {
         // change rien à l'état du lecteur, on le passe à l'app (boîte noire).
         final String line = (call.arguments as String?) ?? '';
         if (line.isNotEmpty) onAudioDiagnostic?.call(line);
-        return;
-      case 'appBackground':
-        // L'activité a coupé (vrai) ou est revenue (faux). Pas un état
-        // d'image : on ne notifie pas l'écran.
-        appInBackground = call.arguments == true;
         return;
     }
     if (!_disposed) notifyListeners();

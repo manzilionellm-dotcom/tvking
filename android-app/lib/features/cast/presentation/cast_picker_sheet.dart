@@ -24,6 +24,7 @@ import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../data/cast_manager.dart';
+import '../data/cast_platform.dart';
 import '../domain/cast_device.dart';
 
 /// Ouvre le picker en mode "envoyer ce flux maintenant".
@@ -286,6 +287,9 @@ class _CastPickerSheetState extends State<CastPickerSheet> {
                               ),
                             ),
                           ],
+                          if (CastPlatform.isWindows)
+                            Text(context.l10n.castWindowsHelp,
+                                style: AppTextStyles.bodyMedium),
                           if (active != null) ...<Widget>[
                             const SizedBox(height: 14),
                             _ActiveSessionBanner(
