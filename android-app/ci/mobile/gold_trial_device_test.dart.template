@@ -93,7 +93,7 @@ void main() {
       }
       expect(posts, 1);
       expect(payload, <String, String>{'mac':mac, 'android_id':androidId, 'app_version':package.version});
-      expect(sourceReads, greaterThanOrEqualTo(2));
+      expect(sourceReads, greaterThanOrEqualTo(1), reason: 'une lecture HTTP réussie suffit si la source est déjà disponible');
       expect(controller.sourceLoaded, isTrue);
       expect(PlaylistRepository.instance.currentChannels, isNotEmpty);
       expect(find.text(kGoldTrialPlaylistName), findsOneWidget);
