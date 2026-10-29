@@ -30,7 +30,7 @@ n'est remplacée par la lignée plus ancienne présente dans le dépôt.
   Les anciens essais/démos sont lus dans toutes les clés et toutes les apps.
   Un ancien échec ambigu bloque une nouvelle création ; un refus de paquet
   explicite observé dans l'export n'est pas assimilé à une création réussie.
-- L'ordre effectif est manzi10, puis Manzi8. Le compte manzi10 sans libellé est
+- L'ordre effectif demandé le 29 octobre est **Manzi8, puis manzi10**. Le compte manzi10 sans libellé est
   identifié par l'ID attesté dans le rapport d'export. Aucun compte, clé, plafond
   propre ou réglage payant du pool n'est modifié. Le panel affiche les tickets
   comme **non vérifiés**, sans confondre le plafond local et les tickets réels.
@@ -66,14 +66,21 @@ n'est remplacée par la lignée plus ancienne présente dans le dépôt.
 
 **Aucun essai réel ne peut être créé par cette révision.**
 
-L'export ne confirme pas le code de paquet démo, son coût nul en crédits,
-les champs de quota ni les réponses qui prouvent un rejet sans création.
-`gold_trial_provider.js` refuse donc avant réseau, déchiffrement de clé ou
-consommation. L'ancien endpoint admin de démo est également fermé. Modifier
-`gold_trial_sub`, forcer ON dans D1 ou définir `GOLD_TRIAL_POLICY_READY=true`
-ne constitue pas une validation et ne contourne pas ce verrou.
+Faits confirmés par le propriétaire le 29 octobre, sans nouvel appel de notre
+part : l'API v1.81 n'accepte que `sub=1,3,6,12` (mois), refuse `sub=99` et
+n'expose pas de lecture des tickets démo. Aucun appel API démo 24 h n'est
+documenté. Une ligne M3U « 1 Day », « Price: Free », créée par le formulaire
+web `/addnew?t=lines` a coûté un ticket démo et zéro crédit sur manzi10 :
+crédits 84 → 84, démos 9 → 8. Ce résultat web ne prouve pas un contrat API.
 
-À obtenir du fournisseur pour **chacun** des deux comptes, sans créer de ligne :
+`gold_trial_enabled` reste à 0. `gold_trial_provider.js` refuse avant réseau,
+déchiffrement de clé ou consommation. L'ancien endpoint admin de démo reste
+fermé. Ni un paramètre supposé, ni une automatisation du formulaire, ni ON
+dans D1, ni `GOLD_TRIAL_POLICY_READY=true` ne remplace la confirmation écrite
+de Strong de l'appel API exact d'une démo 24 h.
+
+À obtenir **par écrit de Strong** avant de rouvrir le développement fournisseur,
+pour **chacun** des deux comptes, sans créer de ligne :
 
 1. Contrat exact de création **démo 24 h uniquement**, code/action et paramètres.
 2. Confirmation que cette opération ne peut pas utiliser des crédits payants,
@@ -87,6 +94,11 @@ création, appliquer le plafond propre de la clé atomiquement et tester les
 fixtures de réponses. Un timeout reste incertain : jamais de bascule aveugle.
 Le test actuel de bascule valide la politique sur fournisseur simulé ; il ne
 prouve pas la disponibilité des tickets Strong ni une gratuité réelle.
+
+Le bouton des deux apps affiche désormais « Essai bientôt disponible » dès
+l'accueil et reste inactif, sans activation réseau ni chargement. Un ancien
+serveur répondant `trial_disabled` affiche aussi ce texte. Les migrations D1,
+la livraison de sources existantes et le temps réel continuent indépendamment.
 
 ## Migration et déploiement
 

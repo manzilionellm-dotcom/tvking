@@ -9,7 +9,7 @@ const messages = {
   trial_already_used: 'Vous avez déjà utilisé votre essai gratuit',
   already_customer: 'Votre appareil possède déjà un abonnement.',
   in_progress: 'Activation de votre essai…',
-  trial_disabled: 'Les essais gratuits sont désactivés pour le moment.',
+  trial_disabled: 'Essai bientôt disponible',
   unknown_device: 'Votre appareil doit terminer son inscription. Réessayez dans un instant.',
   device_mismatch: 'Cet appareil ne peut pas être vérifié. Contactez notre assistance.',
   daily_cap_reached: 'Le plafond des essais du jour est atteint. Réessayez demain.',
@@ -26,7 +26,7 @@ export function normalizeTrialMac(value) {
 }
 
 export function orderDemoKeys(keys) {
-  const rank = key => ({ manzi10: 0, manzi8: 1 })[String(key.label).trim().toLowerCase()] ?? 2;
+  const rank = key => ({ manzi8: 0, manzi10: 1 })[String(key.label).trim().toLowerCase()] ?? 2;
   return keys.filter(k => k.enabled !== false && k.enabled !== 0 && k.enabled !== '0' &&
       (k.demo_tickets == null || Number(k.demo_tickets) > 0))
     .slice().sort((a, b) => rank(a) - rank(b) ||

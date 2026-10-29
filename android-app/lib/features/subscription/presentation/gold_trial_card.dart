@@ -7,14 +7,20 @@ import '../../../core/theme/app_text_styles.dart';
 import '../data/gold_trial_backend.dart';
 import '../data/gold_trial_controller.dart';
 
+const String kGoldTrialComingSoonMessage = 'Essai bientôt disponible';
+
 /// Même texte public sur téléphone et box ; jamais une exception fournisseur.
-String? goldTrialPublicMessage(GoldTrialResult result) => result.message ?? switch (result.outcome) {
+/// Le refus d'un ancien serveur reçoit aussi le nouveau texte, sans attendre
+/// son déploiement et sans proposer une nouvelle activation vouée au refus.
+String? goldTrialPublicMessage(GoldTrialResult result) =>
+    result.outcome == GoldTrialOutcome.disabled
+        ? kGoldTrialComingSoonMessage
+        : result.message ?? switch (result.outcome) {
             GoldTrialOutcome.activated => 'Essai activé ✔',
             GoldTrialOutcome.alreadyUsed =>
               'Vous avez déjà utilisé votre essai gratuit',
             GoldTrialOutcome.inProgress =>
               'Activation en cours, patiente quelques secondes.',
-            GoldTrialOutcome.disabled => 'Les essais sont fermés pour le moment.',
             GoldTrialOutcome.dailyCap =>
               "Plus d'essais disponibles aujourd'hui, reviens demain.",
             GoldTrialOutcome.rateLimited =>
@@ -40,7 +46,8 @@ class GoldTrialCard extends StatelessWidget {
           }
           final colors = AppColors.lumiere(context);
           final GoldTrialOutcome outcome = controller.result.outcome;
-          final String? message = goldTrialPublicMessage(controller.result);
+          final String? message = controller.comingSoon
+              ? kGoldTrialComingSoonMessage : goldTrialPublicMessage(controller.result);
           final bool showWhatsApp = outcome == GoldTrialOutcome.alreadyUsed ||
               outcome == GoldTrialOutcome.disabled || outcome == GoldTrialOutcome.dailyCap;
           final DateTime? expire = controller.result.expire;

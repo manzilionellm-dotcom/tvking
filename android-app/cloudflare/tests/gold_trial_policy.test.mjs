@@ -61,12 +61,12 @@ test('migration additive répétable, essai OFF par défaut', () => {
   sql.exec(readFileSync(new URL('../migrations/20261028_gold_trial_policy.sql', import.meta.url), 'utf8'));
   assert.equal(sql.prepare('SELECT gold_trial_enabled FROM gold_trial_settings_v2').get().gold_trial_enabled, 0);
 });
-test('MAC canonique et ordre manzi10 puis Manzi8, sans modifier les clés', () => {
+test('MAC canonique et ordre Manzi8 puis manzi10, sans modifier les clés', () => {
   assert.equal(normalizeTrialMac(' mk-11-22-33-44-55 '), mac);
   assert.equal(normalizeTrialMac('01:23:45:67:89:AB'), '01:23:45:67:89:AB');
   assert.equal(normalizeTrialMac('invalid'), null);
-  const keys = [{ label: 'Manzi8' }, { label: 'other', demo_tickets: 0 }, { label: 'manzi10' }, { label: 'disabled', enabled: 0 }, { label: 'empty', demo_tickets: '0' }];
-  assert.deepEqual(orderDemoKeys(keys).map(x => x.label), ['manzi10', 'Manzi8']);
+  const keys = [{ label: 'manzi10', trial_priority: 0 }, { label: 'other', demo_tickets: 0 }, { label: 'Manzi8', trial_priority: 99 }, { label: 'disabled', enabled: 0 }, { label: 'empty', demo_tickets: '0' }];
+  assert.deepEqual(orderDemoKeys(keys).map(x => x.label), ['Manzi8', 'manzi10']);
   assert.equal(keys.length, 5);
 });
 test('preuve réelle : MAC ↔ Android ID ↔ empreinte du secret, sans réenrôlement', async () => {
@@ -88,7 +88,7 @@ test('nouvel appareil : uniquement démo 24 h, source et message publics', async
   const f = fixture(); const response = await f.handle(request(), f.env); const body = await response.json();
   assert.equal(response.status, 201); assert.equal(body.delivered, true);
   assert.equal(body.expire, new Date(f.clock.value + 86_400_000).toISOString());
-  assert.equal(f.created[0].key.label, 'manzi10');
+  assert.equal(f.created[0].key.label, 'Manzi8');
   assert.equal(f.created[0].options.demoOnly, true); assert.equal(f.created[0].options.durationHours, 24);
   assert.equal(f.delivered.length, 1);
   assert.doesNotMatch(JSON.stringify(body), /manzi|strong|cms-8k|line-fixture|secret|password/i);
@@ -111,10 +111,10 @@ test('clé sans ticket confirmé : bascule, jamais de création payante', async 
   const keys = [];
   const f = fixture({ createDemo24h: async (key, options) => {
     assert.equal(options.demoOnly, true); keys.push(key.label);
-    if (key.label === 'manzi10') throw new DemoUnavailable('empty');
+    if (key.label === 'Manzi8') throw new DemoUnavailable('empty');
     return { isDemo: true, paidCreditsUsed: 0, expire: Date.UTC(2026, 9, 29, 12), line_id: 'second' };
   } });
-  assert.equal((await f.handle(request(), f.env)).status, 201); assert.deepEqual(keys, ['manzi10', 'Manzi8']);
+  assert.equal((await f.handle(request(), f.env)).status, 201); assert.deepEqual(keys, ['Manzi8', 'manzi10']);
 });
 test('timeout ambigu : pas de bascule ni de deuxième ligne au prochain clic', async () => {
   let calls = 0;
@@ -140,7 +140,13 @@ test('interrupteur OFF, plafond zéro, appareil inconnu ou incohérent : zéro a
     [f => f.sql.exec('UPDATE gold_trial_settings_v2 SET daily_cap=0'), 'daily_cap_reached'],
     [f => f.adapters.verifyDevice = async () => 'unknown_device', 'unknown_device'],
     [f => f.adapters.verifyDevice = async () => 'device_mismatch', 'device_mismatch'],
-  ]) { const f = fixture(); setup(f); assert.equal((await (await f.handle(request(), f.env)).json()).error, expected); assert.equal(f.created.length, 0); }
+  ]) {
+    const f = fixture(); setup(f);
+    const body = await (await f.handle(request(), f.env)).json();
+    assert.equal(body.error, expected);
+    if (expected === 'trial_disabled') assert.equal(body.message, 'Essai bientôt disponible');
+    assert.equal(f.created.length, 0);
+  }
 });
 test('historique ancien et abonnement existant bloquent avant toute clé', async () => {
   for (const [field, code] of [['trial_used', 'trial_already_used'], ['already_customer', 'already_customer']]) {

@@ -1,15 +1,15 @@
-// Aucun code de paquet démo ni format de quota n'est confirmé dans l'export.
-// sub=99 a été refusé. Une simple variable d'environnement ne constitue PAS
-// une preuve de gratuité et ne doit jamais ouvrir action=new par accident.
-// Remplacer ce verrou uniquement avec le contrat officiel de ce fournisseur,
-// des fixtures anonymisées et un contrôle AVANT création : tickets uniquement,
-// durée 24 h, refus certain sans création et preuve de coût payant nul.
+// Constat fourni par le propriétaire le 29 octobre 2026 : le formulaire web
+// « 1 Day / Price: Free » consomme un ticket démo, aucun crédit payant.
+// Cela ne prouve aucun appel API : v1.81 accepte sub=1,3,6,12, refuse sub=99
+// et ne propose pas de lecture des tickets démo. Aucun paramètre à deviner.
+// Garder ce verrou fermé jusqu'à confirmation ÉCRITE de Strong de l'appel
+// exact de création d'une démo de 24 h. Un interrupteur ou READY ne suffit pas.
 import { DemoUnavailable } from './gold_trial_policy.js';
 
 export const demoContract = Object.freeze({
   verified: false,
   code: 'demo_contract_unverified',
-  message: 'Le paquet démo de 24 h, son coût nul et les tickets disponibles restent à confirmer.',
+  message: 'Essais automatiques fermés : confirmation écrite de Strong attendue pour l’appel API exact de démo 24 h.',
 });
 
 export async function createVerifiedDemo24h() {

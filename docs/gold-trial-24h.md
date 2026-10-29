@@ -1,16 +1,21 @@
 # Essai partagé 24 h — état et recette
 
-## État réel au 28 octobre 2026
+## État réel au 29 octobre 2026
 
 L'archive `gold-export.zip` a été reçue et ses **11 empreintes vérifiées**.
 Le véritable bundle est conservé dans `android-app/cloudflare/production/` ;
 `gold.js` est maintenant le point d'entrée, avec les adaptateurs vers le schéma
 exporté, le canal source et le contrôle administrateur de production.
 
-**La création fournisseur reste bloquée avant tout appel réseau.** L'export ne
-confirme ni le paquet démo 24 h, ni son coût payant nul, ni le format des tickets.
-`sub=99` a été refusé ; aucune valeur alternative n'est inventée. Un booléen
-READY ou un interrupteur forcé en base ne contourne pas ce verrou.
+**La création fournisseur reste bloquée avant tout appel réseau.** Selon les
+faits confirmés par le propriétaire, l'API Strong v1.81 accepte uniquement
+`sub=1,3,6,12` (mois), refuse `sub=99` et n'expose aucune lecture des tickets.
+Le formulaire web `/addnew?t=lines`, option M3U « 1 Day / Price: Free », a
+consommé un ticket et zéro crédit sur manzi10 : crédits 84 → 84, démos 9 → 8.
+Ce constat web n'établit aucun appel API. Aucun essai de paramètre au hasard,
+aucune automatisation du formulaire : attendre la confirmation écrite de
+Strong de l'appel API exact d'une démo 24 h. `gold_trial_enabled` reste à 0 et
+`createVerifiedDemo24h` fermé ; READY ne contourne pas ce verrou.
 
 Le détail du raccordement, les migrations, les tests et les prérequis restants
 sont dans [gold-export-integration.md](gold-export-integration.md).
@@ -38,6 +43,13 @@ Aucun ticket, crédit, compte ou déploiement de production n'a été modifié.
 `GoldTrialBackend`, `GoldTrialController`, `GoldTrialCard` sont communs aux deux
 compilations. Le composant est ajouté à l'accueil et à l'activation Zuno ; les
 points d'insertion du dernier téléphone sont conservés.
+
+L'offre est fermée par défaut dans les deux apps : « Je teste » est inactif,
+« Essai bientôt disponible » s'affiche immédiatement et aucun POST d'activation
+ni enrôlement d'essai ne part au clic. Le chargement n'est pas lancé. Les tests
+de parcours activent explicitement le contrôleur contre leur serveur fictif.
+Le même message remplace l'ancien texte d'un refus `trial_disabled`, qui rend
+le bouton inactif. La récupération d'un essai déjà créé reste possible.
 
 Le corps du POST reste exactement `{mac, android_id, app_version}`. Le secret
 local existant est envoyé dans `X-Device-Secret`. Seul le champ public `message`
@@ -116,10 +128,11 @@ commit de la PR. L'environnement local ne contient pas de SDK Flutter.
 | Nouvel appareil sans abonnement | Un POST, loader, une démo de 24 h, date affichée, source importée automatiquement |
 | Même MAC, autre clé ou autre app, après expiration/réinstallation | 409, aucun appel de création, message français et WhatsApp |
 | Deux requêtes concurrentes sur la même MAC | Une seule ligne ; l'autre requête reçoit `in_progress` |
-| manzi10 sans tickets démo, Manzi8 disponible | Bascule après rejet certain ; compteur de crédits payants inchangé sur les deux comptes |
+| Manzi8 sans tickets démo, manzi10 disponible | Bascule après rejet certain ; compteur de crédits payants inchangé sur les deux comptes |
 | Toutes les clés sans tickets | Aucun crédit débité ; message d'indisponibilité |
 | Timeout fournisseur après réception possible | Pas de nouvelle création ; réconcilier la même opération |
-| Interrupteur OFF | Aucun appel fournisseur ; message de fermeture dans les deux apps |
+| Offre fermée par défaut dans l'APK | « Essai bientôt disponible » immédiatement ; « Je teste » inactif ; aucun POST ni loader |
+| Interrupteur OFF / ancien serveur | Aucun appel fournisseur ; même message ; aucun second POST après le refus |
 | Plafond journalier atteint / sixième requête en une minute | 429 approprié ; refus journalisé |
 | Android ID d'une autre MAC / secret manquant, faux ou appareil banni | 403 avant toute création |
 | Licence ou source déjà enregistrée | Offre cachée ; refus serveur d'un appel forgé |

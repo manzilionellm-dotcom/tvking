@@ -25,6 +25,7 @@ void main() {
 
   GoldTrialController create(Future<http.Response> Function(http.Request) handler,
       {bool customer = false}) => GoldTrialController(
+    trialRequestsEnabled: true,
     backend: GoldTrialBackend(clientFactory: () => MockClient(handler)),
     sourceHeaders: () async => <String, String>{'X-Device-Secret': 'fixture'},
     loadIdentity: () async => const GoldTrialIdentity(mac: 'MK:11:22:33:44:55',
@@ -68,6 +69,34 @@ void main() {
     await tester.pumpAndSettle();
 
   }
+
+  testWidgets('offre fermée par défaut : OK ne lance aucun appel ni loader', (tester) async {
+    int posts = 0;
+    final controller = GoldTrialController(
+      backend: GoldTrialBackend(clientFactory: () => MockClient((_) async {
+        posts++;
+        return http.Response('{}', 500);
+      })),
+      sourceHeaders: () async => <String, String>{},
+      loadIdentity: () async => const GoldTrialIdentity(
+          mac: 'MK:11:22:33:44:55', androidId: 'fixture', appVersion: '109-review'),
+      hasSubscription: () => false,
+      loadPlaylists: () async => const <Playlist>[],
+      playlistChanges: const Stream<List<Playlist>>.empty(),
+    );
+    addTearDown(controller.dispose);
+    await show(tester, controller);
+    expect(find.text('Je teste'), findsOneWidget);
+    expect(find.text('Essai bientôt disponible'), findsOneWidget);
+    await tester.sendKeyEvent(LogicalKeyboardKey.select);
+    await controller.request();
+    await tester.pump(const Duration(seconds: 35));
+    expect(controller.canRequest, isFalse);
+    expect(controller.busy, isFalse);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(find.byType(LinearProgressIndicator), findsNothing);
+    expect(posts, 0);
+  });
 
   testWidgets('télécommande : focus, OK maintenu, double clic et message public', (tester) async {
     int posts = 0;
@@ -117,7 +146,7 @@ void main() {
     await show(tester, controller);
     await tester.sendKeyEvent(LogicalKeyboardKey.select);
     await tester.pumpAndSettle();
-    expect(find.text('Les essais sont fermés pour le moment.'), findsOneWidget);
+    expect(find.text('Essai bientôt disponible'), findsOneWidget);
     expect(find.textContaining('cms-8k'), findsNothing);
     final customer = create((_) async => http.Response('{}', 500), customer: true);
     addTearDown(customer.dispose);

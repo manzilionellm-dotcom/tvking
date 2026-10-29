@@ -34,7 +34,8 @@ class TvGoldTrialCard extends StatelessWidget {
       final bool used = outcome == GoldTrialOutcome.alreadyUsed;
       final bool contact = used || outcome == GoldTrialOutcome.disabled ||
           outcome == GoldTrialOutcome.dailyCap;
-      final String? message = goldTrialPublicMessage(controller.result);
+      final String? message = controller.comingSoon
+          ? kGoldTrialComingSoonMessage : goldTrialPublicMessage(controller.result);
       final DateTime? expire = controller.result.expire;
       final bool busy = controller.busy;
       return Padding(

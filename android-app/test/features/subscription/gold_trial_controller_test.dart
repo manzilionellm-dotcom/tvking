@@ -31,6 +31,7 @@ void main() {
   Completer<http.Response>? pending;
 
   GoldTrialController create() => GoldTrialController(
+    trialRequestsEnabled: true,
     backend: GoldTrialBackend(clientFactory: () => MockClient((request) async {
       if (request.method == 'POST') {
         posts++;

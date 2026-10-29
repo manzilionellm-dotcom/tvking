@@ -164,13 +164,13 @@ test('licence payante et source préexistante bloquent ; absence Android ID ne r
   g.sql.exec("INSERT INTO licenses(id,customer_id,device_id,app_id,status,plan,started_at,created_at,updated_at) VALUES ('paid','customer','device','app','active','yearly',1,1,1)");
   assert.equal((await historicalEligibility(g.db,mac,androidId)).already_customer,true);
 });
-test('manzi10 NULL dans l’export passe avant Manzi8, métadonnées sans déchiffrement',async()=>{
+test('Manzi8 passe avant manzi10 NULL dans l’export, métadonnées sans déchiffrement',async()=>{
   const f=fixture();f.sql.exec(`INSERT INTO gold_keys(id,enc,fp,reseller,trial_priority,created_at) VALUES
-    ('gk_mvpkambcp22tk5','not-decryptable','fp10',NULL,20,1),('key8','not-decryptable','fp8','Manzi8',1,1)`);
+    ('gk_mvpkambcp22tk5','not-decryptable','fp10',NULL,20,1),('key8','not-decryptable','fp8','Manzi8',99,1)`);
   const rows=await trialKeyMetadata(f.db);
-  assert.deepEqual(rows.map(r=>r.label),['manzi10','Manzi8']);
+  assert.deepEqual(rows.map(r=>r.label),['Manzi8','manzi10']);
   assert.ok(rows.every(r=>r.demo_tickets===null && !('enc' in r)));
-  assert.equal(f.sql.prepare("SELECT trial_priority FROM gold_keys WHERE id='key8'").get().trial_priority,1);
+  assert.equal(f.sql.prepare("SELECT trial_priority FROM gold_keys WHERE id='key8'").get().trial_priority,99);
 });
 test('routes réelles : contrat non vérifié bloque même READY=true et interrupteur forcé',async t=>{
   const f=fixture();await enroll(f);f.sql.exec('UPDATE gold_trial_settings_v2 SET gold_trial_enabled=1');

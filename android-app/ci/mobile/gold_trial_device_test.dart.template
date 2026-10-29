@@ -70,6 +70,7 @@ void main() {
     await PlaylistRepository.instance.initialize();
     await PlaylistRepository.instance.deleteAllPlaylists();
     GoldTrialController controller = GoldTrialController(
+      trialRequestsEnabled: true,
       backend: GoldTrialBackend(baseUrl: fixture), hasSubscription: () => false,
     );
     try {
@@ -107,6 +108,7 @@ void main() {
       await prefs.remove('gold_trial.$mac.expire');
       activationStatus = 403;
       controller = GoldTrialController(
+        trialRequestsEnabled: true,
         backend: GoldTrialBackend(baseUrl: fixture), hasSubscription: () => false,
       );
       await controller.initialize();
@@ -119,14 +121,14 @@ void main() {
         await Future<void>.delayed(const Duration(milliseconds: 100));
         await tester.pump();
       }
-      expect(find.text('Les essais sont fermés pour le moment.'), findsOneWidget);
+      expect(find.text('Essai bientôt disponible'), findsOneWidget);
       expect(find.text('S’abonner sur WhatsApp'), findsOneWidget);
       await PlaylistRepository.instance.addM3uPlaylist(
         name: 'Mon abonnement', url: '$fixture/trial.m3u',
       );
       await tester.pumpAndSettle();
       expect(find.text('Je teste'), findsNothing);
-      expect(find.text('Les essais sont fermés pour le moment.'), findsNothing);
+      expect(find.text('Essai bientôt disponible'), findsNothing);
       expect(find.text('S’abonner sur WhatsApp'), findsNothing);
       await controller.request();
       expect(posts, 2);
@@ -136,6 +138,7 @@ void main() {
       controller.dispose();
       PlaylistRepository.instance.debugSeedPlaylists(const <Playlist>[]);
       controller = GoldTrialController(
+        trialRequestsEnabled: true,
         backend: GoldTrialBackend(baseUrl: fixture), hasSubscription: () => false,
       );
       await controller.initialize();

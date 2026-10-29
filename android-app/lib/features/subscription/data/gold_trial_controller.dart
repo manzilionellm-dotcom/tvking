@@ -16,6 +16,7 @@ import 'subscription_state.dart';
 /// chaînes remplace l'écran vide. Un double clic ne crée jamais deux POST.
 class GoldTrialController extends ChangeNotifier {
   GoldTrialController({
+    bool trialRequestsEnabled = false,
     GoldTrialBackend? backend,
     Future<GoldTrialIdentity> Function()? loadIdentity,
     Future<Map<String, String>> Function()? sourceHeaders,
@@ -26,7 +27,8 @@ class GoldTrialController extends ChangeNotifier {
     Listenable? sourceChanges,
     Future<List<Playlist>> Function()? loadPlaylists,
     Stream<List<Playlist>>? playlistChanges,
-  })  : _backend = backend ?? GoldTrialBackend(),
+  })  : _trialRequestsEnabled = trialRequestsEnabled,
+        _backend = backend ?? GoldTrialBackend(),
         _sourceHeaders = sourceHeaders ?? DeviceSecret.instance.headers,
         _importSource = importSource ?? RemoteSourceRepository.sync,
         _hasSubscription = hasSubscription ?? _deviceHasSubscription,
@@ -41,6 +43,10 @@ class GoldTrialController extends ChangeNotifier {
         .listen(_playlistsChanged);
   }
 
+  // L'offre reste fermée dans les apps jusqu'à confirmation écrite de l'API
+  // démo Strong. Seules les recettes sur serveur fictif activent ce paramètre.
+  // Aucun dart-define ne peut ouvrir cette offre dans un APK de production.
+  final bool _trialRequestsEnabled;
   final GoldTrialBackend _backend;
   late final Future<GoldTrialIdentity> Function() _loadIdentity;
   Future<void> Function()? _prepareDevice;
@@ -78,7 +84,9 @@ class GoldTrialController extends ChangeNotifier {
   // Les radios et le sport gratuits n'utilisent pas ce dépôt de playlists.
   bool get visible => ready && _playlistsReady && _playlists.isEmpty && !_hasSubscription() &&
       result.outcome != GoldTrialOutcome.alreadyCustomer;
-  bool get canRequest => visible && !busy &&
+  bool get comingSoon => result.outcome == GoldTrialOutcome.disabled ||
+      (!_trialRequestsEnabled && result.outcome == GoldTrialOutcome.idle);
+  bool get canRequest => _trialRequestsEnabled && visible && !busy && !comingSoon &&
       result.outcome != GoldTrialOutcome.activated &&
       result.outcome != GoldTrialOutcome.alreadyUsed;
   // Un heartbeat peut confirmer la licence AVANT la réponse 201. Le
