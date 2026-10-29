@@ -3,6 +3,7 @@ import {
   type ChangeEvent, type InputHTMLAttributes, type KeyboardEvent,
 } from 'react';
 import { applyMacEdit, formatMacAddress, MAC_DISPLAY_LENGTH, type MacDeleteDirection } from '@/lib/mac-format/mac';
+import { applyMacSearchEdit, macSearchDisplay } from '@/lib/mac-format/mac-search';
 
 // =========================================================
 //  MacInput — champ MAC qui ajoute les « : » tout seul
@@ -18,16 +19,19 @@ type NativeInputProps = Omit<InputHTMLAttributes<HTMLInputElement>, 'value' | 'o
 export interface MacInputProps extends NativeInputProps {
   value: string;
   onValueChange: (value: string) => void;
+  /** Recherche mixte : affichage MAC, mais callback brut et texte libre sans limite MAC. */
+  mode?: 'mac' | 'search';
 }
 
 export const MacInput = forwardRef<HTMLInputElement, MacInputProps>(function MacInput(
-  { value, onValueChange, onKeyDown, ...rest },
+  { value, onValueChange, onKeyDown, mode = 'mac', ...rest },
   ref,
 ) {
   const inputRef = useRef<HTMLInputElement>(null);
   useImperativeHandle(ref, () => inputRef.current as HTMLInputElement);
   const pendingCaret = useRef<number | null>(null);
   const direction = useRef<MacDeleteDirection>('backward');
+  const displayValue = mode === 'search' ? macSearchDisplay(value) : value;
 
   // Les claviers mobiles n'envoient pas toujours la touche (keyCode 229) :
   // on lit le sens de suppression via l'événement natif `beforeinput`.
@@ -50,18 +54,20 @@ export const MacInput = forwardRef<HTMLInputElement, MacInputProps>(function Mac
 
   const handleChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
     const el = e.target;
-    const res = applyMacEdit(el.value, el.selectionStart, value, direction.current);
+    const res = mode === 'search'
+      ? applyMacSearchEdit(el.value, el.selectionStart, value, direction.current)
+      : applyMacEdit(el.value, el.selectionStart, value, direction.current);
     direction.current = 'backward';
     pendingCaret.current = res.caret;
     if (res.value === value) {
       // React ne re-rend pas : on remet la valeur et le curseur nous-mêmes.
-      el.value = res.value;
+      el.value = mode === 'search' ? macSearchDisplay(res.value) : res.value;
       try { el.setSelectionRange(res.caret, res.caret); } catch { /* input non focus */ }
       pendingCaret.current = null;
       return;
     }
     onValueChange(res.value);
-  }, [value, onValueChange]);
+  }, [value, onValueChange, mode]);
 
   useLayoutEffect(() => {
     const el = inputRef.current;
@@ -75,16 +81,16 @@ export const MacInput = forwardRef<HTMLInputElement, MacInputProps>(function Mac
     <input
       {...rest}
       ref={inputRef}
-      type="text"
-      value={value}
+      type={mode === 'search' ? 'search' : 'text'}
+      value={displayValue}
       onChange={handleChange}
       onKeyDown={handleKeyDown}
       inputMode="text"
-      autoCapitalize="characters"
+      autoCapitalize={mode === 'search' ? 'none' : 'characters'}
       autoCorrect="off"
       autoComplete="off"
       spellCheck={false}
-      maxLength={MAC_DISPLAY_LENGTH + 8 /* marge pour un collage avec espaces */}
+      maxLength={mode === 'search' ? undefined : MAC_DISPLAY_LENGTH + 8 /* marge pour un collage avec espaces */}
       data-mac-input=""
     />
   );
