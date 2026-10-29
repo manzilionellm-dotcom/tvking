@@ -45,9 +45,9 @@ on:
       cible:
         description: 'Quoi déployer'
         required: true
-        default: 'worker-puis-panel'
+        default: 'worker-seul'
         type: choice
-        options: ['worker-puis-panel', 'worker-seul', 'panel-seul']
+        options: ['worker-seul']
       mac_reference:
         description: 'MAC déjà activée, relue avant/après (lecture seule)'
         required: true
@@ -62,7 +62,8 @@ concurrency:
 
 env:
   WORKER_NAME: seven-motion-backend
-  WORKER_URL: https://app.7themotion.com
+  WORKER_URL: https://api.zuno8k.com
+  PANEL_URL: https://atlas-console-k7q2.vercel.app
   PAGES_PROJECT: tvking-admin
   PAGES_URL: https://tvking-admin.pages.dev
   WRANGLER_VERSION: '4.149.0'
@@ -83,6 +84,10 @@ jobs:
         env:
           PANEL_CONFIRMATION: ${{ inputs.confirme }}
         run: node .github/panel-deploy-guard.mjs
+      - name: Publication limitée au Worker ; panel Vercel séparé
+        env:
+          TARGET: ${{ inputs.cible }}
+        run: test "$TARGET" = "worker-seul"
 
   stabilite:
     name: Stabilité panel et Worker
@@ -97,6 +102,14 @@ jobs:
           node-version: '24.21.0'
       - name: Protections et invariants avant/après
         run: node --test .github/panel-*.test.mjs .github/security-config.test.mjs .github/app-release-guard.test.mjs .github/release-cleanup.test.mjs
+      - name: Wrapper Gold — schémas, export historique et vrais Durable Objects
+        working-directory: android-app/cloudflare
+        run: |
+          npm ci --no-audit --no-fund
+          node prepare_gold_runtime.mjs
+          node --test tests/*.test.mjs
+      - name: Précontrôle en lecture seule — tests sans accès production
+        run: node --test .github/backend-release-preflight.test.mjs
       - name: Worker — pannes, suppressions, canaux, isolation et CORS
         working-directory: android-app/cloudflare
         run: |
@@ -111,7 +124,7 @@ jobs:
           npm run build
 
   worker:
-    name: 1) Worker → app.7themotion.com
+    name: 1) Worker Gold → api.zuno8k.com
     needs: [validation, stabilite]
     if: needs.validation.result == 'success' && needs.stabilite.result == 'success' && github.event.inputs.cible != 'panel-seul'
     environment: zuno-panel-production
@@ -121,6 +134,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24.21.0'
+          package-manager-cache: false
 
       - name: Secrets présents ?
         env:
@@ -135,6 +153,8 @@ jobs:
         working-directory: android-app/cloudflare
         run: |
           set -e
+          node prepare_gold_runtime.mjs
+          node --check gold.js
           node --check worker.js && node --check api_v1.js && node --check trial_access.js
           if grep -q "TRIAL_ENFORCEMENT" wrangler.toml; then
             echo "::error::TRIAL_ENFORCEMENT ne doit pas être dans wrangler.toml"; exit 1; fi
@@ -160,6 +180,12 @@ jobs:
           workingDirectory: android-app/cloudflare
           command: deployments list --name seven-motion-backend
 
+      - name: AVANT — version active, namespace/type DO et quatre migrations D1
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: node .github/backend-release-preflight.mjs before
+
       - name: DÉPLOYER le Worker
         uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4.1.3
         with:
@@ -167,7 +193,13 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           wranglerVersion: ${{ env.WRANGLER_VERSION }}
           workingDirectory: android-app/cloudflare
-          command: deploy
+          command: deploy --keep-vars
+
+      - name: APRÈS — même namespace, même base et mêmes domaines
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: node .github/backend-release-preflight.mjs after backend-before.json
 
       - name: APRÈS — versions du Worker
         uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4.1.3
@@ -192,10 +224,10 @@ jobs:
           # trial-extend existe (nouvelle route) : sans jeton → 401, pas 404.
           code=$(curl -sS -m 30 -o /dev/null -w "%{http_code}" -X POST "$WORKER_URL/api/v1/trial-extend" -H "Content-Type: application/json" -d '{"mac":"MK:00:00:00:00:01","days":7}')
           [ "$code" = "401" ] || { echo "::error::trial-extend sans jeton → $code (attendu 401 : route absente ?)"; exit 1; }
-          # CORS pour le panel Pages.
+          # CORS pour le panel Vercel actif.
           curl -sS -m 30 -D - -o /dev/null -X OPTIONS "$WORKER_URL/api/v1/auth/login" \
-            -H "Origin: $PAGES_URL" -H "Access-Control-Request-Method: POST" | grep -i "access-control-allow-origin" \
-            || { echo "::error::pas d en-tête CORS pour $PAGES_URL"; exit 1; }
+            -H "Origin: $PANEL_URL" -H "Access-Control-Request-Method: POST" | grep -i "access-control-allow-origin" \
+            || { echo "::error::pas d en-tête CORS pour $PANEL_URL"; exit 1; }
           echo "✓ Worker en ligne : activate 401, trial-extend 401, CORS ok"
 
   panel:

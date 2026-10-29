@@ -40,6 +40,12 @@ jobs:
         with:
           node-version: '24.21.0'
 
+      - name: Dépendances et bundle vérifié du Worker
+        working-directory: android-app/cloudflare
+        run: |
+          npm ci --no-audit --no-fund
+          node prepare_gold_runtime.mjs
+
       - name: Dépendances du panel
         working-directory: android-app/admin-panel
         run: npm ci
@@ -55,4 +61,5 @@ jobs:
       - name: Parcours
         working-directory: android-app/e2e/panel-box
         run: npm run e2e
+
 
