@@ -17,9 +17,9 @@ database_id = "67303737-a50b-4258-86de-662fb9aba6e7"
 name = "RT_HUB"
 class_name = "RealtimeHub"
 
-[[migrations]]
-tag = "v1-rt-hub"
-new_classes = ["RealtimeHub"]   # type exact (new_classes vs new_sqlite_classes) NON vérifiable via l'API
+# RT_HUB existe déjà. Le type historique de migration n'est pas confirmé
+# dans l'export : ne pas rejouer une création de classe sur cet environnement.
+# La configuration reconstituée d'origine reste dans config/ sans modification.
 
 # Secrets (noms seulement): ADMIN_SECRET, CAST_PROXY_SECRET, GOLD_PANEL_API_KEY, MISTRAL_API_KEY, SPORTSDB_KEY, TMDB_API_KEY
 # Aucun cron (schedules = []).
