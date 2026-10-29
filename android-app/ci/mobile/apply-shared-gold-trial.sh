@@ -33,5 +33,7 @@ git apply --check "$mission_dir/android-app/ci/mobile/source-protocol-fallback.p
 git apply "$mission_dir/android-app/ci/mobile/source-protocol-fallback.patch"
 git apply --check "$mission_dir/android-app/ci/mobile/video-quality-confirmation.patch"
 git apply "$mission_dir/android-app/ci/mobile/video-quality-confirmation.patch"
+git apply --check "$mission_dir/android-app/ci/mobile/phone-update-channel.patch"
+git apply "$mission_dir/android-app/ci/mobile/phone-update-channel.patch"
 python3 "$mission_dir/android-app/ci/mobile/sanitize-source-logs.py"
 python3 "$mission_dir/android-app/ci/mobile/apply-panel-settings.py" "$mission_dir/android-app"

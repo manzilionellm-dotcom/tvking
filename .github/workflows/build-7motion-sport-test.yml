@@ -1,10 +1,24 @@
-# Base mobile validée et patch isolé : aucune fusion ni publication clients.
-name: APK mobile Radios et Sport (test uniquement)
+# Même base mobile et mêmes correctifs pour la revue et la livraison clients.
+# Les clients exigent un lancement manuel revu et leur environnement protégé.
+name: APK mobile corrigé (revue ou livraison autorisée)
 'on':
   workflow_call:
     inputs:
       play_aab:
         description: 'Préparer un bundle Play pour revue (aucune publication)'
+        type: boolean
+        default: false
+        required: false
+      client_release:
+        description: 'Construire et publier le vrai APK clients après revue'
+        type: boolean
+        default: false
+        required: false
+      confirmation:
+        type: string
+        default: ''
+        required: false
+      mandatory:
         type: boolean
         default: false
         required: false
@@ -30,12 +44,13 @@ jobs:
     outputs:
       version-code: ${{ env.PHONE_VERSION_CODE }}
       build-label: ${{ env.PHONE_BUILD_LABEL }}
+      version-name: ${{ env.PHONE_VERSION_NAME }}
       apk-sha: ${{ env.APK_SHA256 }}
       aab-sha: ${{ env.PLAY_AAB_SHA256 }}
-    environment: zuno-app-test
+    environment: ${{ inputs.client_release && 'zuno-app-production' || 'zuno-app-test' }}
     name: 'Téléphone : tests et APK Radios du monde'
-    # La PR conserve son APK de test. Le lancement manuel ne prépare que des
-    # artefacts, sur la branche et avec le propriétaire admis par la garde.
+    # La PR conserve son APK de test. La livraison clients est explicite,
+    # manuelle et garde la branche et l'environnement protégés.
     if: >-
       github.repository == 'manzilionellm-dotcom/tvking' &&
       github.actor == github.repository_owner &&
@@ -46,7 +61,9 @@ jobs:
         github.event.pull_request.head.ref == 'ccr-b93e1afd-gwirw0' &&
         github.event.pull_request.base.ref == 'ccr-sport-preuve-20261008') ||
        (github.event_name == 'workflow_dispatch' &&
-        github.ref == 'refs/heads/ccr-b93e1afd-gwirw0' && inputs.play_aab))
+        github.ref == 'refs/heads/ccr-b93e1afd-gwirw0' &&
+        ((inputs.play_aab && !inputs.client_release) ||
+         (inputs.client_release && !inputs.play_aab && inputs.confirmation == 'PUBLIER_APP'))))
     runs-on: ubuntu-latest
     timeout-minutes: 45
     defaults:
@@ -63,8 +80,9 @@ jobs:
       working-directory: mission
       env:
         APP_OPERATION: build
-        APP_PUBLISH: 'false'
-        APP_TEST_BOX: 'true'
+        APP_PUBLISH: ${{ inputs.client_release && 'true' || 'false' }}
+        APP_TEST_BOX: ${{ inputs.client_release && 'false' || 'true' }}
+        APP_CONFIRMATION: ${{ inputs.confirmation }}
         APP_PLAY_AAB: ${{ inputs.play_aab && 'true' || 'false' }}
       run: node .github/app-release-guard.mjs
     - name: Récupérer la base mobile validée sans fusion
@@ -516,18 +534,27 @@ jobs:
         print('PROUVÉ : le même test HTTP échoue sur le repli Radio réel')
         PYRADIO
         flutter test --reporter expanded
+        flutter test --reporter expanded --dart-define=PHONE_UPDATE_TAG=phone-channel-ci test/core/update/phone_update_channel_test.dart
         dart run ci/radio_catalog_probe.dart
-    - name: Construire l’APK mobile de test, une seule tentative
+    - name: Construire l’APK mobile signé, une seule tentative
       id: apk_build
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        CLIENT_RELEASE: ${{ inputs.client_release && 'true' || 'false' }}
       run: |-
         set -euo pipefail
         BUILD_TS=$(date +%s)
-        BUILD_LABEL=$(ci/build_label.sh "$GITHUB_REPOSITORY" 7motion-test)
+        CHANNEL=7motion-test
+        VERSION_NAME="0.3.7-stability-test.${{ github.run_number }}"
+        if [ "$CLIENT_RELEASE" = "true" ]; then
+          CHANNEL=phone-latest
+          VERSION_NAME=0.3.8
+        fi
+        BUILD_LABEL=$(ci/build_label.sh "$GITHUB_REPOSITORY" "$CHANNEL")
         echo "PHONE_BUILD_LABEL=$BUILD_LABEL" >> "$GITHUB_ENV"
+        echo "PHONE_VERSION_NAME=$VERSION_NAME" >> "$GITHUB_ENV"
         flutter build apk --release --no-tree-shake-icons --split-per-abi --target-platform android-arm64 \
-          --build-number="$BUILD_TS" --build-name="0.3.7-stability-test.${{ github.run_number }}" \
+          --build-number="$BUILD_TS" --build-name="$VERSION_NAME" \
           --obfuscate --split-debug-info=build/symbols \
           --dart-define=APP_BUILD_TS="$BUILD_TS" --dart-define=APP_BUILD_LABEL="$BUILD_LABEL" \
           --dart-define=GIT_SHA=${{ env.SOURCE_SHA }} \
@@ -555,7 +582,9 @@ jobs:
         [ "$SDK" = "24" ] || { echo "::error::minSdk attendu 24, reçu $SDK"; exit 1; }
         PKG=$(sed -n "s/^package: name='\([^']*\)'.*/\1/p" "$RUNNER_TEMP/badging.txt")
         CODE=$(sed -n "s/.*versionCode='\([0-9]*\)'.*/\1/p" "$RUNNER_TEMP/badging.txt")
+        VERSION=$(sed -n "s/.*versionName='\([^']*\)'.*/\1/p" "$RUNNER_TEMP/badging.txt")
         [ "$PKG" = "com.manzilionellm.tvking.tv_king" ]
+        [ "$VERSION" = "$PHONE_VERSION_NAME" ]
         "$RUNNER_TEMP/mobile-audit/bin/python" ../mission/android-app/ci/mobile/verify_apk.py "$APK"
         for TAG in 7motion-test phone-latest; do
           gh release download "$TAG" -R "$GITHUB_REPOSITORY" -p 7motion.apk -O "$RUNNER_TEMP/previous-$TAG.apk"
@@ -564,6 +593,8 @@ jobs:
           [ "$PREV_CERT" = "$CERT" ]
           "$BT/aapt2" dump badging "$RUNNER_TEMP/previous-$TAG.apk" > "$RUNNER_TEMP/prev-badging.txt"
           PREV_CODE=$(sed -n "s/.*versionCode='\([0-9]*\)'.*/\1/p" "$RUNNER_TEMP/prev-badging.txt")
+          PREV_PKG=$(sed -n "s/^package: name='\([^']*\)'.*/\1/p" "$RUNNER_TEMP/prev-badging.txt")
+          [ "$PREV_PKG" = "$PKG" ]
           [ "$CODE" -gt "$PREV_CODE" ]
           echo "versionCode précédent $PREV_CODE < nouveau $CODE"
         done
@@ -690,7 +721,7 @@ jobs:
   publish:
     name: Livrer le téléphone après les contrôles
     needs: [phone]
-    # Le lancement manuel s'arrête aux artefacts : aucune release n'est écrite.
+    # Ce publisher reste réservé à la PR de test et à son seul canal.
     if: github.event_name == 'pull_request' && needs.phone.result == 'success' && github.actor == github.repository_owner && github.triggering_actor == github.repository_owner && github.repository == 'manzilionellm-dotcom/tvking'
     environment: zuno-app-test
     runs-on: ubuntu-latest
@@ -793,4 +824,80 @@ jobs:
           print('PROUVÉ : phone-latest identique avant et après')
           PYCHECK
 
-
+  publish-client:
+    name: Livrer le même APK signé aux téléphones clients
+    needs: [phone]
+    if: >-
+      needs.phone.result == 'success' &&
+      github.event_name == 'workflow_dispatch' &&
+      github.ref == 'refs/heads/ccr-b93e1afd-gwirw0' &&
+      github.repository == 'manzilionellm-dotcom/tvking' &&
+      github.actor == github.repository_owner &&
+      github.triggering_actor == github.repository_owner &&
+      inputs.client_release && !inputs.play_aab && inputs.confirmation == 'PUBLIER_APP'
+    environment: zuno-app-production
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      PHONE_VERSION_CODE: ${{ needs.phone.outputs.version-code }}
+      PHONE_VERSION_NAME: ${{ needs.phone.outputs.version-name }}
+      PHONE_BUILD_LABEL: ${{ needs.phone.outputs.build-label }}
+      APK_SHA256: ${{ needs.phone.outputs.apk-sha }}
+      MANDATORY: ${{ inputs.mandatory && 'true' || 'false' }}
+      APK_PATH: phone/build/app/outputs/flutter-apk/7motion.apk
+      CLIENT_BEFORE: phone/build/mobile-proof/client-before.json
+      CLIENT_CURRENT: phone/build/mobile-proof/client-current.json
+      CLIENT_PUBLISHED: phone/build/mobile-proof/client-published.json
+      PHONE_RELEASE_DIR: phone/build/client-release
+    steps:
+      - name: Relire la garde du commit construit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+          persist-credentials: false
+      - name: Exiger la revue et la confirmation clients
+        env:
+          APP_OPERATION: client
+          APP_PUBLISH: 'true'
+          APP_TEST_BOX: 'false'
+          APP_PLAY_AAB: 'false'
+          APP_CONFIRMATION: ${{ inputs.confirmation }}
+        run: node .github/app-release-guard.mjs
+      - name: Télécharger l’APK contrôlé de ce lancement
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: 7motion-sport-test-${{ env.SOURCE_SHA }}
+          path: phone/build/app/outputs/flutter-apk
+      - name: Télécharger la référence clients de ce lancement
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: 7motion-client-reference-${{ env.SOURCE_SHA }}
+          path: phone/build/mobile-proof
+      - name: Vérifier les octets et préparer leur manifeste
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          printf '%s  %s\n' "$APK_SHA256" "$APK_PATH" | sha256sum -c -
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/phone-latest" > "$CLIENT_CURRENT"
+          node .github/phone-client-release.mjs prepare
+      - name: Publier uniquement phone-latest puis relire les empreintes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release upload phone-latest "$APK_PATH" "$PHONE_RELEASE_DIR/version.json" --clobber -R "$GITHUB_REPOSITORY"
+          gh release edit phone-latest --notes-file "$PHONE_RELEASE_DIR/notes.md" -R "$GITHUB_REPOSITORY"
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/phone-latest" > "$CLIENT_PUBLISHED"
+          node .github/phone-client-release.mjs verify
+      - name: Conserver le manifeste et la preuve publiés
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: 7motion-client-release-${{ env.SOURCE_SHA }}
+          path: |
+            phone/build/client-release
+            phone/build/mobile-proof/client-published.json
+          if-no-files-found: error
+          retention-days: 30

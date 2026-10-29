@@ -43,6 +43,12 @@ class RecentlyWatchedRepository {
   Database? _initializedFor;
   bool get _initialized => _initializedFor != null;
   bool _listening = false;
+  int _revision = 0;
+
+  /// Même barrière de recette que les favoris : une ancienne requête
+  /// ne doit jamais republier l'historique après une suppression.
+  @visibleForTesting
+  Future<void> Function()? debugBeforeCachePublication;
 
   List<String> get current => List<String>.unmodifiable(_cache);
 
@@ -109,6 +115,7 @@ class RecentlyWatchedRepository {
   Future<void> _reload() async {
     final Database db = await PlaylistDatabase.instance.database;
     for (int attempt = 0; attempt < 2; attempt++) {
+      final int revision = _revision;
       final String id = ActiveProfile.instance.id;
       final List<Map<String, Object?>> rows = await db.query(
         _kScoped,
@@ -118,7 +125,9 @@ class RecentlyWatchedRepository {
         orderBy: 'last_watched_at DESC',
         limit: _kMaxEntries,
       );
-      if (id != ActiveProfile.instance.id) continue;
+      final Future<void> Function()? barrier = debugBeforeCachePublication;
+      if (kDebugMode && barrier != null) await barrier();
+      if (id != ActiveProfile.instance.id || revision != _revision) continue;
       _cache = rows
           .map((Map<String, Object?> r) => r['channel_id'] as String)
           .toList(growable: false);
@@ -202,34 +211,49 @@ class RecentlyWatchedRepository {
 
   /// Retire ces chaînes de l'historique de TOUS les profils, et de
   /// l'ancienne table. Le reste de l'historique reste.
-  Future<void> forgetChannels(Iterable<String> channelIds) async {
+  Future<void> forgetChannels(Iterable<String> channelIds, {bool onlyUnreferenced = false}) async {
     final List<String> ids = channelIds
         .map((String id) => id.trim())
         .where((String id) => id.isNotEmpty)
         .toSet()
         .toList();
     if (ids.isEmpty) return;
-    await initialize();
     final Database db = await PlaylistDatabase.instance.database;
-    const int chunk = 400;
-    for (int i = 0; i < ids.length; i += chunk) {
-      final List<String> part = ids.sublist(
-        i,
-        i + chunk > ids.length ? ids.length : i + chunk,
+    _revision++;
+    // Le retrait doit fonctionner aussi avant le premier accès à
+    // l'historique, sans créer/migrer ses tables sur le chemin de l'accusé.
+    // Le schéma observé et ses suppressions forment une seule transaction.
+    await db.transaction((Transaction txn) async {
+      final List<Map<String, Object?>> tables = await txn.query(
+        'sqlite_master', columns: const <String>['name'],
+        where: 'type = ? AND name IN (?, ?)',
+        whereArgs: <Object>['table', 'recently_watched', _kScoped],
       );
-      final String marks = List<String>.filled(part.length, '?').join(',');
-      await db.delete(
-        'recently_watched',
-        where: 'channel_id IN ($marks)',
-        whereArgs: part,
-      );
-      await db.delete(
-        _kScoped,
-        where: 'channel_id IN ($marks)',
-        whereArgs: part,
-      );
+      if (tables.isEmpty) return;
+      final Batch batch = txn.batch();
+      const int chunk = 400;
+      for (int i = 0; i < ids.length; i += chunk) {
+        final List<String> part = ids.sublist(
+          i, i + chunk > ids.length ? ids.length : i + chunk,
+        );
+        final String marks = List<String>.filled(part.length, '?').join(',');
+        for (final Map<String, Object?> table in tables) {
+          final String name = table['name'] as String;
+          final String guard = onlyUnreferenced ? ' AND NOT EXISTS '
+            '(SELECT 1 FROM channels WHERE external_id = $name.channel_id)' : '';
+          batch.delete(name,
+            where: 'channel_id IN ($marks)$guard', whereArgs: part);
+        }
+      }
+      await batch.commit(noResult: true);
+    });
+    _revision++;
+    if (identical(_initializedFor, db)) {
+      await _reload();
+    } else {
+      _cache = <String>[];
+      if (!_controller.isClosed) _controller.add(_cache);
     }
-    await _reload();
   }
 
   /// Vide l'historique du profil en cours seulement.

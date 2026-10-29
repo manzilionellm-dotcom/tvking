@@ -291,7 +291,7 @@ jobs:
         required=['Expected: <1>', 'Actual: <0>',\n          'Le catalogue actif doit livrer une station du vrai\
         \ serveur HTTP.',\n          'Some tests failed.']\nif not all(value in proof for value in required):\n\
         \    raise SystemExit('NON PROUVÉ : échec différent du repli Radio attendu')\nprint('PROUVÉ : le même test\
-        \ HTTP échoue sur le repli Radio réel')\nPYRADIO\nflutter test --reporter expanded\n# Disponibilité externe\
+        \ HTTP échoue sur le repli Radio réel')\nPYRADIO\nflutter test --reporter expanded\nflutter test --reporter expanded --dart-define=PHONE_UPDATE_TAG=phone-channel-ci test/core/update/phone_update_channel_test.dart\n# Disponibilité externe\
         \ informative pour cet APK de test.\ndart run ci/radio_catalog_probe.dart || echo \"::warning::Radio Browser\
         \ hors ligne : disponibilité des radios non vérifiée.\""
     - name: Construire l’application optimisée de test (ARM64)

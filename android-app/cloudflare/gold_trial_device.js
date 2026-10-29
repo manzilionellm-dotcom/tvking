@@ -4,6 +4,32 @@ import { normalizeTrialMac, readSmallJson } from './gold_trial_policy.js';
 const json = (body, status = 200) => Response.json(body, { status, headers: { 'Cache-Control': 'no-store' } });
 const denied = () => json({ error: 'device_mismatch', message: 'Cet appareil ne peut pas être vérifié. Contactez notre assistance.' }, 403);
 
+// Deux migrations additives historiques ont donné deux noms différents aux
+// horodatages. On lit uniquement le schéma et on conserve les colonnes et
+// preuves présentes ; aucune DDL, rotation implicite ou remise à zéro.
+const secretSchemas = new WeakMap();
+async function secretTimestamps(db) {
+  let pending = secretSchemas.get(db);
+  if (!pending) {
+    pending = (async () => {
+      const result = await db.prepare('PRAGMA table_info(device_secrets)').all();
+      const columns = new Set(result.results.map(row => row.name));
+      if (!['mac', 'android_id', 'secret_hash'].every(name => columns.has(name)) ||
+          !(columns.has('updated_at') || columns.has('enrolled_at'))) {
+        throw new Error('device_secret_schema_unknown');
+      }
+      return {
+        insert: ['updated_at', 'enrolled_at'].filter(name => columns.has(name)),
+        rotate: ['updated_at', 'rotated_at'].filter(name => columns.has(name)),
+      };
+    })();
+    secretSchemas.set(db, pending);
+    // Un schéma incomplet ne reste pas mémorisé après une migration revue.
+    pending.catch(() => { if (secretSchemas.get(db) === pending) secretSchemas.delete(db); });
+  }
+  return pending;
+}
+
 // Le premier enregistrement doit retrouver le même Android ID dans devices
 // ET dans l'ancre durable. Cette liaison est ensuite indépendante du heartbeat.
 // Ce n'est pas une attestation matérielle : un Android ID seul est déclaratif.
@@ -51,11 +77,14 @@ export async function enrollProductionDevice(request, env) {
       !(await secretMatches(body.secret,existing.secret_hash) ||
         await secretMatches(request.headers.get('X-Device-Secret'),existing.secret_hash)))) return denied();
   if (!existing) {
-    await env.DB.prepare(`INSERT INTO device_secrets(mac,android_id,secret_hash,updated_at)
-      VALUES (?,?,?,?) ON CONFLICT(mac) DO NOTHING`).bind(mac,androidId,hash,at).run();
+    const times = (await secretTimestamps(env.DB)).insert;
+    await env.DB.prepare(`INSERT INTO device_secrets(mac,android_id,secret_hash,${times.join(',')})
+      VALUES (?,?,?,${times.map(() => '?').join(',')}) ON CONFLICT(mac) DO NOTHING`)
+      .bind(mac,androidId,hash,...times.map(() => at)).run();
   } else if (hash !== existing.secret_hash) {
-    await env.DB.prepare(`UPDATE device_secrets SET secret_hash=?,updated_at=?
-      WHERE mac=? AND secret_hash=?`).bind(hash,at,mac,existing.secret_hash).run();
+    const times = (await secretTimestamps(env.DB)).rotate;
+    await env.DB.prepare(`UPDATE device_secrets SET secret_hash=?${times.map(name => `,${name}=?`).join('')}
+      WHERE mac=? AND secret_hash=?`).bind(hash,...times.map(() => at),mac,existing.secret_hash).run();
   }
   const saved = await env.DB.prepare('SELECT android_id,secret_hash FROM device_secrets WHERE mac=?').bind(mac).first();
   return saved?.android_id===androidId && await secretMatches(body.secret,saved.secret_hash)

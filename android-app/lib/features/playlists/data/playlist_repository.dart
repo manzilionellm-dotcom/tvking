@@ -728,15 +728,32 @@ class PlaylistRepository {
   /// Écrit dans la boîte noire : le 05/10/2026, une liste a disparu
   /// PENDANT son import (« FOREIGN KEY constraint failed ») sans qu'aucune
   /// ligne ne dise qui l'avait supprimée.
-  Future<void> deletePlaylist(int playlistId, {String reason = 'client'}) async {
+  Future<void> deletePlaylist(
+    int playlistId, {
+    String reason = 'client',
+    Iterable<String> additionalFingerprints = const <String>[],
+  }) async {
+    // L'objet encore affiché connaît la source même si une autre tâche a
+    // déjà effacé sa ligne. Cette copie reste un refus à persister, jamais
+    // une permission de contourner la transaction.
+    final Set<String> fingerprints = additionalFingerprints.toSet();
     final Database db = await PlaylistDatabase.instance.database;
-    final List<Map<String, Object?>> rows = await db.query(
-      'playlists', where: 'id = ?', whereArgs: <Object>[playlistId], limit: 1,
-    );
-    if (rows.isNotEmpty) {
-      // Petite écriture validée avant de vider l'écran et avant le gros DELETE.
-      await DeletedSources.remember(SourceFingerprint.ofPlaylist(await _playlistFromRow(rows.single)));
-    }
+    // Lire la ligne et mémoriser ses identités dans la même transaction
+    // ferme la course avec une actualisation qui change l'URL effective.
+    // Cette petite transaction reste validée AVANT le vidage de l'écran.
+    await db.transaction((Transaction txn) async {
+      final List<Map<String, Object?>> rows = await txn.query(
+        'playlists', where: 'id = ?', whereArgs: <Object>[playlistId], limit: 1,
+      );
+      if (rows.isNotEmpty) {
+        fingerprints.addAll(SourceFingerprint.ofPlaylist(await _playlistFromRow(rows.single)));
+      }
+      // Même si le statut a déjà annoncé le refus, le réaffirmer ici
+      // atomiquement protège d'un réajout commencé avant CETTE suppression.
+      // Tous les alias sont inclus, y compris un get.php converti en Xtream.
+      final List<String> keys = await DeletedSources.hashes(fingerprints);
+      await DeletedSources.rememberHashes(txn, keys);
+    });
     // Une relecture déjà en vol ne doit pas republier l'ancien cache après
     // la suppression immédiate affichée ci-dessous.
     _stateRevision++;
@@ -766,7 +783,9 @@ class PlaylistRepository {
 
     // Maintenant le DELETE SQL réel (peut prendre du temps sur
     // grosses playlists, mais l'UI est déjà à jour).
-    await _deletePlaylist(playlistId, rememberDeletion: true);
+    // Le refus durable est déjà validé. Le réécrire et déchiffrer la même
+    // ligne une troisième fois retardait inutilement l'accusé du panel.
+    await _deletePlaylist(playlistId);
     // Re-émet l'état "officiel" depuis la DB pour rester cohérent
     // en cas d'incohérence (rare).
     await _emitCurrentState();
@@ -1037,19 +1056,13 @@ class PlaylistRepository {
     });
   }
 
-  Future<void> _deletePlaylist(int id, {bool rememberDeletion = false}) async {
+  Future<void> _deletePlaylist(int id) async {
     BlackBox.instance.breadcrumb('Suppression de la liste $id');
     final Database db = await PlaylistDatabase.instance.database;
-    final List<Map<String, Object?>> source = await db.query(
-      'playlists', where: 'id = ?', whereArgs: <Object>[id], limit: 1,
-    );
-    final List<String> keys = rememberDeletion && source.isNotEmpty
-        ? await DeletedSources.hashes(SourceFingerprint.ofPlaylist(await _playlistFromRow(source.first)))
-        : <String>[];
-    // Le refus durable et l'effacement sont validés ensemble : une coupure
-    // au milieu ne laisse pas une source supprimée sans sa mémoire de refus.
+    // Toute suppression volontaire a déjà persisté son refus. Les autres
+    // appelants annulent un import échoué ou purgent un refus au démarrage.
+    // Attendre cette transaction reste obligatoire avant tout accusé APPLIED.
     await db.transaction((Transaction txn) async {
-      await DeletedSources.rememberHashes(txn, keys);
       // Phase 1+/Multi-serveurs : si on delete l'active, on promeut la
       // plus ancienne playlist restante comme nouvelle active. Comme ca
       // l'user n'a pas a aller manuellement reactiver une autre source

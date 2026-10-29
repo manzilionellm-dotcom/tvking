@@ -1,0 +1,134 @@
+diff --git a/lib/core/update/build_flags.dart b/lib/core/update/build_flags.dart
+--- a/lib/core/update/build_flags.dart
++++ b/lib/core/update/build_flags.dart
+@@ -21,3 +21,11 @@
+ /// `--dart-define=PLAY_BUILD=true`). `false` pour l'APK sideload GitHub.
+ const bool kIsPlayBuild =
+     bool.fromEnvironment('PLAY_BUILD', defaultValue: false);
++
++/// Canal du téléphone installé depuis l'APK signé. Le Store conserve son
++/// parcours distinct grâce à [kIsPlayBuild]. Les deux écrans de mise à jour
++/// doivent consommer le même canal que le constructeur de cet APK.
++const String kPhoneUpdateTag = String.fromEnvironment(
++  'PHONE_UPDATE_TAG',
++  defaultValue: 'phone-latest',
++);
+diff --git a/lib/core/update/update_service.dart b/lib/core/update/update_service.dart
+--- a/lib/core/update/update_service.dart
++++ b/lib/core/update/update_service.dart
+@@ -117,22 +117,11 @@
+   static const String _tvUpdateTag =
+       String.fromEnvironment('TV_UPDATE_TAG', defaultValue: 'seventv-latest');
+
+-  /// Canal du TÉLÉPHONE — VOLONTAIREMENT SANS MANIFESTE.
+-  ///
+-  /// Vérifié le 10/09/2026 : aucune release `prod` n'existe dans le
+-  /// dépôt, ce canal répond 404, et c'est VOULU. Décision du
+-  /// propriétaire du 22/08 : « efface tous les builds téléphone, on
+-  /// laisse celui qui est activé sur le Play Store, que tout pointe
+-  /// dessus ». Un téléphone reçoit donc ses mises à jour du Store, pas
+-  /// d'ici — le sideload a été retiré exprès.
+-  ///
+-  /// NE LE FAIS PAS POINTER SUR `phone-latest` en croyant réparer une
+-  /// panne : tu rallumerais le sideload que le propriétaire a éteint, et
+-  /// tu désaccorderais l'app du panel (`cloudflare/app_versions.js`
+-  /// garde `mobile: 'prod'` pour viser EXACTEMENT le même canal). Le
+-  /// jour où un manifeste téléphone repart, les deux se rallument
+-  /// ensemble, en changeant les deux fichiers.
+-  static const String _phoneUpdateTag = 'prod';
++  /// Le propriétaire autorise désormais la livraison de l'APK signé.
++  /// Consommer réellement le define transmis par ce constructeur ; une
++  /// constante « prod » ignorait ce define et cherchait un canal retiré.
++  /// Aucun seuil de mise à jour forcée n'est modifié ici.
++  static const String _phoneUpdateTag = kPhoneUpdateTag;
+
+   /// Canal du PC.
+   ///
+diff --git a/lib/features/about/data/update_checker.dart b/lib/features/about/data/update_checker.dart
+--- a/lib/features/about/data/update_checker.dart
++++ b/lib/features/about/data/update_checker.dart
+@@ -79,9 +79,8 @@
+       final PackageInfo pkg = await PackageInfo.fromPlatform();
+       final String current = pkg.version;
+
+-      // Produit unique (mobile 7 MOTION) : MAISON MÈRE → release « prod »
+-      // (canal protégé), APK 7motion.apk.
+-      const String tag = 'prod';
++      // Même canal signé que le manifeste consommé par UpdateService.
++      const String tag = kPhoneUpdateTag;
+       const String apk = '7motion.apk';
+
+       final Uri uri = Uri.parse(
+diff --git a/test/core/update/phone_update_channel_test.dart b/test/core/update/phone_update_channel_test.dart
+new file mode 100644
+--- /dev/null
++++ b/test/core/update/phone_update_channel_test.dart
+@@ -0,0 +1,68 @@
++import 'dart:convert';
++
++import 'package:flutter_test/flutter_test.dart';
++import 'package:http/http.dart' as http;
++import 'package:http/testing.dart';
++import 'package:package_info_plus/package_info_plus.dart';
++import 'package:shared_preferences/shared_preferences.dart';
++import 'package:tv_king/core/app/app_platform.dart';
++import 'package:tv_king/core/update/update_service.dart';
++import 'package:tv_king/features/about/data/update_checker.dart';
++
++void main() {
++  TestWidgetsFlutterBinding.ensureInitialized();
++  const String expectedTag = String.fromEnvironment(
++    'PHONE_UPDATE_TAG',
++    defaultValue: 'phone-latest',
++  );
++
++  setUp(() {
++    AppPlatform.isTv = false;
++    AppPlatform.isWindows = false;
++    SharedPreferences.setMockInitialValues(<String, Object>{});
++    PackageInfo.setMockInitialValues(
++      appName: '7 MOTION',
++      packageName: 'com.manzilionellm.tvking.tv_king',
++      version: '0.3.8',
++      buildNumber: '1',
++      buildSignature: '',
++    );
++  });
++
++  test('le manifeste utilise le canal réellement configuré au build', () {
++    expect(
++      UpdateService.manifestUrl,
++      'https://github.com/manzilionellm-dotcom/tvking/releases/download/'
++      '$expectedTag/version.json',
++    );
++  });
++
++  test('le contrôle manuel vise la même release et le même APK', () async {
++    final List<Uri> requests = <Uri>[];
++    final String apkUrl =
++        'https://github.com/manzilionellm-dotcom/tvking/releases/download/'
++        '$expectedTag/7motion.apk';
++    final info = await http.runWithClient(
++      () => UpdateChecker.instance.check(),
++      () => MockClient((request) async {
++        requests.add(request.url);
++        return http.Response(jsonEncode(<String, Object>{
++          'assets': <Object>[
++            <String, Object>{
++              'name': '7motion.apk',
++              'browser_download_url': apkUrl,
++              'updated_at': '2026-10-29T00:00:00Z',
++            },
++          ],
++        }), 200);
++      }),
++    );
++    expect(requests, <Uri>[
++      Uri.parse('https://api.github.com/repos/manzilionellm-dotcom/'
++          'tvking/releases/tags/$expectedTag'),
++    ]);
++    expect(info, isNotNull);
++    expect(info!.releaseUrl, apkUrl);
++    expect(info.hasUpdate, isFalse, reason: 'Le premier contrôle reste silencieux.');
++  });
++}

@@ -203,8 +203,10 @@ abstract final class RemoteSourceRepository {
     final int? id = playlist.id;
     if (id == null) return false;
     try {
-      await DeletedSources.remember(SourceFingerprint.ofPlaylist(playlist));
-      await PlaylistRepository.instance.deletePlaylist(id);
+      // deletePlaylist persiste déjà tous les alias de la ligne avant le
+      // vidage de l'écran. Ne pas refaire une transaction identique ici.
+      await PlaylistRepository.instance.deletePlaylist(id,
+        additionalFingerprints: SourceFingerprint.ofPlaylist(playlist));
     } catch (e) {
       BlackBox.instance.warn('SOURCE', 'suppression locale impossible : ${e.runtimeType}');
       return false;
@@ -812,9 +814,11 @@ abstract final class RemoteSourceRepository {
   /// Renvoie le nombre de listes vraiment retirées.
   static Future<int> _wipeFingerprints(Set<String> drop) async {
     if (drop.isEmpty) return 0;
+    final Stopwatch watch = Stopwatch()..start();
     // Même si la liste n'a pas fini de se charger ou n'existe plus en DB,
     // une vieille sauvegarde / réponse réseau ne doit pas la recréer.
     await DeletedSources.remember(drop);
+    final int refusedAt = watch.elapsedMilliseconds;
     final List<Playlist> playlists =
         await PlaylistRepository.instance.getAllPlaylists();
     int removed = 0;
@@ -830,23 +834,59 @@ abstract final class RemoteSourceRepository {
       await PlaylistRepository.instance.deletePlaylist(
         id,
         reason: 'plus envoyée par le panel',
+        additionalFingerprints: SourceFingerprint.ofPlaylist(playlist),
       );
       removed++;
     }
+    final int deletedAt = watch.elapsedMilliseconds;
     if (channelIds.isNotEmpty) {
-      await FavoritesRepository.instance.forgetChannels(channelIds);
-      await RecentlyWatchedRepository.instance.forgetChannels(channelIds);
-      await _forgetSessions(channelIds);
+      // Un même identifiant peut exister dans une autre liste conservée.
+      // Ses favoris/récents/sessions restent alors utiles et doivent rester.
+      final List<String> gone = await _unreferencedChannelIds(channelIds);
+      if (gone.isNotEmpty) {
+        // Dépôts indépendants ; toutes les transactions restent attendues
+        // avant que l'ordre puisse être accusé APPLIED.
+        await Future.wait<void>(<Future<void>>[
+          FavoritesRepository.instance.forgetChannels(gone, onlyUnreferenced: true),
+          RecentlyWatchedRepository.instance.forgetChannels(gone, onlyUnreferenced: true),
+          _forgetSessions(gone),
+        ]);
+      }
     }
     if (removed > 0) {
-      final List<Playlist> left =
-          await PlaylistRepository.instance.getAllPlaylists();
+      final Database db = await PlaylistDatabase.instance.database;
+      final List<Map<String, Object?>> left = await db.query(
+        'playlists', columns: const <String>['id'], limit: 1,
+      );
       RemovedListNotice.instance.signal(
         removed: removed,
         noneLeft: left.isEmpty,
       );
+      BlackBox.instance.info('SOURCE',
+        'suppression durable : $removed liste(s), refus ${refusedAt}ms, '
+        'SQLite/cache ${deletedAt - refusedAt}ms, '
+        'références ${watch.elapsedMilliseconds - deletedAt}ms');
     }
     return removed;
+  }
+
+  static Future<List<String>> _unreferencedChannelIds(List<String> ids) async {
+    final Set<String> gone = ids.toSet();
+    final List<String> unique = gone.toList();
+    final Database db = await PlaylistDatabase.instance.database;
+    const int chunk = 400;
+    for (int i = 0; i < unique.length; i += chunk) {
+      final List<String> part = unique.sublist(
+        i, i + chunk > unique.length ? unique.length : i + chunk,
+      );
+      final String marks = List<String>.filled(part.length, '?').join(',');
+      final List<Map<String, Object?>> rows = await db.query(
+        'channels', columns: const <String>['external_id'], distinct: true,
+        where: 'external_id IN ($marks)', whereArgs: part,
+      );
+      gone.removeAll(rows.map((Map<String, Object?> row) => row['external_id'] as String));
+    }
+    return gone.toList();
   }
 
   static Future<List<String>> _channelIdsOf(int playlistId) async {
@@ -874,7 +914,8 @@ abstract final class RemoteSourceRepository {
       final String marks = List<String>.filled(part.length, '?').join(',');
       await db.delete(
         'watch_sessions',
-        where: 'channel_id IN ($marks)',
+        where: 'channel_id IN ($marks) AND NOT EXISTS '
+          '(SELECT 1 FROM channels WHERE external_id = watch_sessions.channel_id)',
         whereArgs: part,
       );
     }

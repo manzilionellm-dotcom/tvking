@@ -39,6 +39,12 @@ class FavoritesRepository {
   Database? _initializedFor;
   bool get _initialized => _initializedFor != null;
   bool _listening = false;
+  int _revision = 0;
+
+  /// Barrière de recette : simule une lecture SQLite retardée juste avant
+  /// publication, pour prouver qu'une suppression concurrente gagne.
+  @visibleForTesting
+  Future<void> Function()? debugBeforeCachePublication;
 
   Stream<Set<String>> get favoritesStream => _controller.stream;
   Set<String> get current => _cache;
@@ -104,6 +110,7 @@ class FavoritesRepository {
     // Deux essais : si l'utilisateur change de profil pendant la
     // lecture, on ne publie pas le tiroir du précédent.
     for (int attempt = 0; attempt < 2; attempt++) {
+      final int revision = _revision;
       final String id = ActiveProfile.instance.id;
       final List<Map<String, Object?>> rows = await db.query(
         _kScoped,
@@ -111,7 +118,9 @@ class FavoritesRepository {
         where: 'profile_id = ?',
         whereArgs: <String>[id],
       );
-      if (id != ActiveProfile.instance.id) continue;
+      final Future<void> Function()? barrier = debugBeforeCachePublication;
+      if (kDebugMode && barrier != null) await barrier();
+      if (id != ActiveProfile.instance.id || revision != _revision) continue;
       _cache = rows
           .map((Map<String, Object?> r) => r['channel_id'] as String)
           .toSet();
@@ -151,34 +160,53 @@ class FavoritesRepository {
 
   /// Retire ces chaînes des favoris de TOUS les profils, et de
   /// l'ancienne table. Les autres chaînes restent.
-  Future<void> forgetChannels(Iterable<String> channelIds) async {
+  Future<void> forgetChannels(Iterable<String> channelIds, {bool onlyUnreferenced = false}) async {
     final List<String> ids = channelIds
         .map((String id) => id.trim())
         .where((String id) => id.isNotEmpty)
         .toSet()
         .toList();
     if (ids.isEmpty) return;
-    await initialize();
     final Database db = await PlaylistDatabase.instance.database;
-    const int chunk = 400;
-    for (int i = 0; i < ids.length; i += chunk) {
-      final List<String> part = ids.sublist(
-        i,
-        i + chunk > ids.length ? ids.length : i + chunk,
+    _revision++;
+    // Supprimer ne doit pas créer les tables d'une fonction encore jamais
+    // utilisée ni démarrer sa migration. La lecture du schéma et les DELETE
+    // partagent une transaction : une migration concurrente voit soit les
+    // anciennes lignes déjà supprimées, soit ses tables nettoyées ensemble.
+    await db.transaction((Transaction txn) async {
+      final List<Map<String, Object?>> tables = await txn.query(
+        'sqlite_master', columns: const <String>['name'],
+        where: 'type = ? AND name IN (?, ?)',
+        whereArgs: <Object>['table', 'favorites', _kScoped],
       );
-      final String marks = List<String>.filled(part.length, '?').join(',');
-      await db.delete(
-        'favorites',
-        where: 'channel_id IN ($marks)',
-        whereArgs: part,
-      );
-      await db.delete(
-        _kScoped,
-        where: 'channel_id IN ($marks)',
-        whereArgs: part,
-      );
+      if (tables.isEmpty) return;
+      final Batch batch = txn.batch();
+      const int chunk = 400;
+      for (int i = 0; i < ids.length; i += chunk) {
+        final List<String> part = ids.sublist(
+          i, i + chunk > ids.length ? ids.length : i + chunk,
+        );
+        final String marks = List<String>.filled(part.length, '?').join(',');
+        for (final Map<String, Object?> table in tables) {
+          final String name = table['name'] as String;
+          // L'import d'une autre liste peut avoir publié le même ID
+          // depuis la prélecture du synchroniseur. Vérifier dans le DELETE.
+          final String guard = onlyUnreferenced ? ' AND NOT EXISTS '
+            '(SELECT 1 FROM channels WHERE external_id = $name.channel_id)' : '';
+          batch.delete(name,
+            where: 'channel_id IN ($marks)$guard', whereArgs: part);
+        }
+      }
+      await batch.commit(noResult: true);
+    });
+    // Invalide également une relecture lancée PENDANT la transaction.
+    _revision++;
+    if (identical(_initializedFor, db)) {
+      await _reload();
+    } else {
+      _cache = <String>{};
+      if (!_controller.isClosed) _controller.add(<String>{});
     }
-    await _reload();
   }
 
   /// Oublie les favoris d'un profil supprimé. Jamais le profil 1 :

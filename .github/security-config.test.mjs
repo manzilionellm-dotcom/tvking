@@ -130,14 +130,61 @@ test('le parcours Play manuel prépare un artefact et ne publie aucune release',
   assert.match(dispatcher, /play_aab: true/);
   assert.doesNotMatch(dispatcher, /gh release|run-id:|APP_OPERATION: client/);
   const build = phone.match(/^  phone:\n([\s\S]*?)(?=^  [a-z][\w-]*:|$(?![\s\S]))/m)?.[1];
-  const publish = phone.match(/^  publish:\n([\s\S]*)/m)?.[1];
+  const publish = phone.match(/^  publish:\n([\s\S]*?)(?=^  [a-z][\w-]*:|$(?![\s\S]))/m)?.[1];
   assert.ok(build && publish);
   assert.match(build, /github\.event_name == 'workflow_dispatch'/);
-  assert.match(build, /github\.ref == 'refs\/heads\/ccr-b93e1afd-gwirw0' && inputs\.play_aab/);
+  assert.match(build, /github\.ref == 'refs\/heads\/ccr-b93e1afd-gwirw0'/);
+  assert.match(build, /inputs\.play_aab && !inputs\.client_release/);
   assert.match(build, /APP_PLAY_AAB: \$\{\{ inputs\.play_aab && 'true' \|\| 'false' \}\}/);
-  assert.match(build, /environment: zuno-app-test/);
+  assert.match(build, /environment: \$\{\{ inputs\.client_release && 'zuno-app-production' \|\| 'zuno-app-test' \}\}/);
   assert.match(publish, /^    if: github\.event_name == 'pull_request' && needs\.phone\.result == 'success'/m);
   assert.equal(JSON.parse(read('app-production.json')).mode, 'frozen');
+});
+
+test('le téléphone clients exige un lancement manuel protégé et les artefacts du même commit', () => {
+  const dispatcher = read('workflows/publish-phone-update.yml');
+  assert.match(dispatcher, /workflow_dispatch:/);
+  assert.doesNotMatch(dispatcher, /^  (?:push|pull_request):/m);
+  assert.match(dispatcher, /inputs\.confirme == 'PUBLIER_APP'/);
+  assert.match(dispatcher, /github\.ref == 'refs\/heads\/ccr-b93e1afd-gwirw0'/);
+  assert.match(dispatcher, /github\.triggering_actor == github\.repository_owner/);
+  assert.match(dispatcher, /uses: \.\/\.github\/workflows\/build-7motion-sport-test\.yml/);
+  assert.match(dispatcher, /client_release: true/);
+  assert.match(dispatcher, /play_aab: false/);
+  assert.doesNotMatch(dispatcher, /run-id:|gh release|phone-test/);
+  const client = phone.match(/^  publish-client:\n([\s\S]*)/m)?.[1];
+  assert.ok(client);
+  assert.match(client, /needs\.phone\.result == 'success'/);
+  assert.match(client, /github\.event_name == 'workflow_dispatch'/);
+  assert.match(client, /github\.ref == 'refs\/heads\/ccr-b93e1afd-gwirw0'/);
+  assert.match(client, /inputs\.client_release && !inputs\.play_aab && inputs\.confirmation == 'PUBLIER_APP'/);
+  assert.match(client, /environment: zuno-app-production/);
+  assert.match(client, /APP_OPERATION: client/);
+  assert.match(client, /run: node \.github\/app-release-guard\.mjs/);
+  assert.match(client, /name: 7motion-sport-test-\$\{\{ env\.SOURCE_SHA \}\}/);
+  assert.doesNotMatch(client, /run-id:|gh release (?:delete|create)|git push/);
+  assert.match(client, /sha256sum -c -/);
+  assert.match(client, /node \.github\/phone-client-release\.mjs prepare/);
+  assert.match(client, /gh release upload phone-latest/);
+  assert.match(client, /node \.github\/phone-client-release\.mjs verify/);
+});
+
+test('Zuno publie le binaire contrôlé et refuse une référence clients inconnue ou remplacée', () => {
+  const build = tv.match(/^  build-tv:\n([\s\S]*?)(?=^  [a-z][\w-]*:|$(?![\s\S]))/m)?.[1];
+  const publish = tv.match(/^  publish:\n([\s\S]*)/m)?.[1];
+  assert.ok(build && publish);
+  assert.match(build, /apk-sha: \$\{\{ env\.ZUNO_APK_SHA256 \}\}/);
+  assert.match(build, /\[ "\$ACTUAL_CODE" = "\$TV_BUILD_NUMBER" \]/);
+  assert.match(build, /\[ "\$ACTUAL_NAME" = "\$TV_VERSION_NAME" \]/);
+  assert.match(build, /node \.\.\/\.github\/zuno-client-release\.mjs reference/);
+  assert.match(publish, /ZUNO_APK_SHA256: \$\{\{ needs\.build-tv\.outputs\.apk-sha \}\}/);
+  assert.match(publish, /name: zuno-client-reference-\$\{\{ env\.SOURCE_SHA \}\}/);
+  const client = publish.split('- name: Publier sur la release zuno-tv')[1]?.split('- name: Conserver le manifeste')[0];
+  assert.ok(client);
+  assert.match(client, /if: env\.PUBLIER == 'true'/);
+  assert.match(client, /node \.\.\/\.github\/zuno-client-release\.mjs prepare/);
+  assert.match(client, /node \.\.\/\.github\/zuno-client-release\.mjs verify/);
+  assert.doesNotMatch(client, /PREV_VC=|exit 0|gh release (?:create|delete)|\|\| true/);
 });
 
 test('le bundle Play emporte la preuve du commit et des logos réellement compilés', () => {
