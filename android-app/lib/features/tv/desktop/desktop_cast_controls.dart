@@ -36,41 +36,86 @@ class DesktopCastControlsState extends State<DesktopCastControls> {
   bool _owns = false;
   bool _busy = false;
   bool _dead = false;
+  bool _pickerPending = false;
+  bool _pickerStartedPlayback = false;
+  bool _localHandoff = false;
+  Future<void> _localTail = Future<void>.value();
   int _revision = 0;
   bool get ownsSession => _owns;
 
   @override
-  void initState() { super.initState(); _manager.addListener(_changed); }
+  void initState() {
+    super.initState();
+    _manager.addListener(_changed);
+    if (_manager.hasActiveSession) {
+      // Le Cast appartient au moteur partagé, pas à cette route. Un lecteur
+      // ouvert pendant sa session ferme son flux local, sans envoyer une
+      // nouvelle URL au récepteur. Le natif mémorise ce verrou avant attach.
+      _owns = true;
+      _localHandoff = true;
+      _localTail = _suspendLocal(widget.controller).catchError((Object _) {});
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _localHandoff) widget.onHandoffChanged?.call(true);
+      });
+    }
+  }
   @override
   void didUpdateWidget(DesktopCastControls oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller && _localHandoff) {
+      _localTail = _suspendLocal(widget.controller).catchError((Object _) {});
+    }
     if (_owns && oldWidget.streamUrl != widget.streamUrl) unawaited(_changeStream());
   }
   void _changed() {
     if (_dead || !mounted) return;
-    if (_owns && !_busy && (_manager.state == CastState.idle || _manager.state == CastState.error)) {
-      _owns = false;
-      _resumeLocal();
-      widget.onHandoffChanged?.call(false);
-    }
+    if (_pickerPending && _manager.isCasting) _pickerStartedPlayback = true;
+    if (!_busy) _syncSession();
     setState(() {});
   }
+
+  void _syncSession() {
+    _owns = _manager.hasActiveSession;
+    unawaited(_setLocalHandoff(_owns).catchError((Object _) {}));
+  }
+
+  Future<void> _setLocalHandoff(bool active) {
+    if (_localHandoff == active) return _localTail;
+    _localHandoff = active;
+    widget.onHandoffChanged?.call(active);
+    final NativeVideoController controller = widget.controller;
+    // Une reprise devenue périmée ne doit pas rouvrir le téléphone après
+    // une reconnexion du récepteur. Les commandes natives gardent leur ordre.
+    final Future<void> operation = _localTail.then((_) async {
+      if (_dead || !identical(controller, widget.controller)) return;
+      if (_localHandoff) {
+        await _suspendLocal(controller);
+      } else {
+        await _resumeLocal(controller);
+      }
+    });
+    _localTail = operation.catchError((Object _) {});
+    return operation;
+  }
+
   Future<void> _changeStream() async {
     final device = _manager.device;
     if (device == null) return;
     final int ticket = ++_revision;
     _busy = true;
     try {
+      await _localTail;
+      if (!mounted || ticket != _revision) return;
       await _manager.castTo(device, streamUrl: widget.streamUrl,
           title: widget.title, imageUrl: widget.imageUrl);
     } catch (_) {
-      if (mounted && ticket == _revision) {
-        _owns = false;
-        _resumeLocal();
-        widget.onHandoffChanged?.call(false);
-      }
+      // Le moteur partagé expose l'issue ; le finally réconcilie le local.
     } finally {
-      if (mounted && ticket == _revision) { _busy = false; setState(() {}); }
+      if (mounted && ticket == _revision) {
+        _busy = false;
+        _syncSession();
+        setState(() {});
+      }
     }
   }
   Future<void> _pick() async {
@@ -78,16 +123,18 @@ class DesktopCastControlsState extends State<DesktopCastControls> {
     final int ticket = ++_revision;
     final String requestedUrl = widget.streamUrl;
     setState(() => _busy = true);
-    widget.onHandoffChanged?.call(true);
+    _pickerPending = true;
+    _pickerStartedPlayback = false;
     // Fermer le flux local avant le Cast évite de consommer deux connexions
     // chez les fournisseurs qui n’en autorisent qu’une. Le film garde sa position.
     try {
-      await _suspendLocal();
+      await _setLocalHandoff(true);
       if (!mounted || ticket != _revision) return;
       await (widget.picker ?? showCastPicker)(context, streamUrl: widget.streamUrl,
           title: widget.title, imageUrl: widget.imageUrl);
       if (!mounted || ticket != _revision) return;
-      _owns = _manager.isCasting;
+      _owns = _manager.hasActiveSession &&
+          (_manager.isCasting || _pickerStartedPlayback);
       if (!_owns) {
         // Fermer le sélecteur pendant une connexion annule aussi celle-ci :
         // une réponse tardive ne doit pas démarrer la TV après le retour au PC.
@@ -95,30 +142,32 @@ class DesktopCastControlsState extends State<DesktopCastControls> {
       } else if (requestedUrl != widget.streamUrl && _manager.device != null) {
         await _manager.castTo(_manager.device!, streamUrl: widget.streamUrl,
             title: widget.title, imageUrl: widget.imageUrl);
-        if (mounted && ticket == _revision) _owns = _manager.isCasting;
+        if (mounted && ticket == _revision) _owns = _manager.hasActiveSession;
       }
     } catch (_) {
-      if (mounted && ticket == _revision) _owns = false;
+      if (mounted && ticket == _revision &&
+          !_manager.isCasting && !_pickerStartedPlayback) {
+        await _manager.disconnect();
+      }
     } finally {
       if (mounted && ticket == _revision) {
-        if (!_owns) {
-          _resumeLocal();
-          widget.onHandoffChanged?.call(false);
-        }
-        setState(() => _busy = false);
+        _pickerPending = false;
+        _busy = false;
+        _syncSession();
+        setState(() {});
       }
     }
   }
 
-  Future<void> _suspendLocal() => CastPlatform.isWindows
-      ? MediaKitVideoBackend.suspendForCast(widget.controller)
-      : widget.controller.suspendForCast();
+  Future<void> _suspendLocal(NativeVideoController controller) => CastPlatform.isWindows
+      ? MediaKitVideoBackend.suspendForCast(controller)
+      : controller.suspendForCast();
 
-  void _resumeLocal() {
+  Future<void> _resumeLocal(NativeVideoController controller) async {
     if (CastPlatform.isWindows) {
-      MediaKitVideoBackend.resumeAfterCast(widget.controller);
+      MediaKitVideoBackend.resumeAfterCast(controller);
     } else {
-      unawaited(widget.controller.resumeAfterCast());
+      await controller.resumeAfterCast();
     }
   }
 
@@ -128,7 +177,13 @@ class DesktopCastControlsState extends State<DesktopCastControls> {
     try {
       if (_manager.state == CastState.paused) { await _manager.resume(); }
       else { await _manager.pause(); }
-    } finally { if (mounted) setState(() => _busy = false); }
+    } finally {
+      if (mounted) {
+        _busy = false;
+        _syncSession();
+        setState(() {});
+      }
+    }
   }
   Future<void> pause() async { if (_owns && !_busy) await _manager.pause(); }
   Future<void> resume() async { if (_owns && !_busy) await _manager.resume(); }
@@ -140,9 +195,9 @@ class DesktopCastControlsState extends State<DesktopCastControls> {
       await _manager.disconnect();
     } finally {
       if (mounted) {
-        _resumeLocal();
-        widget.onHandoffChanged?.call(false);
-        setState(() => _busy = false);
+        _busy = false;
+        _syncSession();
+        setState(() {});
       }
     }
   }
@@ -150,8 +205,12 @@ class DesktopCastControlsState extends State<DesktopCastControls> {
   void dispose() {
     _dead = true; ++_revision;
     _manager.removeListener(_changed);
-    // Quitter le lecteur ne laisse jamais un relais orphelin derrière soi.
-    if (_owns || _busy) unawaited(_manager.disconnect());
+    // Comme dans 7 MOTION, une session établie survit à la route. Seul un
+    // choix encore en attente est annulé : il ne doit pas démarrer plus tard
+    // après la fermeture de son sélecteur. Le moteur possède ses relais.
+    final bool established = _manager.hasActiveSession &&
+        (_manager.isCasting || _pickerStartedPlayback || _owns);
+    if (_pickerPending && !established) unawaited(_manager.disconnect());
     super.dispose();
   }
   @override

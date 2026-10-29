@@ -28,6 +28,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
+import '../../../core/i18n/l10n_now.dart';
+
 /// État du PiP côté natif. Stream pour permettre aux widgets de
 /// rebuild quand on entre / sort du PiP.
 class PipService extends ChangeNotifier {
@@ -137,16 +139,40 @@ class PipService extends ChangeNotifier {
     }
   }
 
-  /// Démarre le service audio de fond (notification + locks). `title`
-  /// s'affiche dans la notification (nom de la chaîne en cours).
-  Future<void> startBackgroundAudio(String title) async {
+  /// Démarre le service de fond (notification + wakelock + wifilock).
+  /// `title` s'affiche dans la notification (nom de la chaîne).
+  /// `body` remplace la 2e ligne (« Lecture audio en arrière-plan »
+  /// par défaut) — utilisé par le CAST RELAIS : le téléphone alimente
+  /// la TV et doit rester réveillé même écran éteint / app en fond.
+  /// Renvoie `true` si le service a démarré, `false` sur échec (le
+  /// CAST RELAIS s'en sert pour JOURNALISER un keep-alive raté — sinon
+  /// « le cast coupe écran éteint » restait invisible au diagnostic).
+  Future<bool> startBackgroundAudio(String title, {String? body}) async {
     try {
-      await _channel.invokeMethod<void>(
+      // Le natif renvoie désormais le résultat RÉEL de
+      // startForegroundService (false si Android a refusé le démarrage,
+      // ex. relance depuis l'arrière-plan sur Android 12+). Avant, on
+      // renvoyait `true` dès que l'appel MethodChannel aboutissait —
+      // le keep-alive du cast relais paraissait toujours réussi et la
+      // boîte noire était aveugle. `?? false` : un natif qui ne renvoie
+      // rien (ancienne version, autre plateforme) est traité comme un
+      // échec, jamais comme un faux succès.
+      final bool? started = await _channel.invokeMethod<bool>(
         'startBackgroundAudio',
-        <String, Object>{'title': title},
+        <String, Object>{
+          'title': title,
+          // i18n : corps par défaut, bouton « Arrêter » et canal de
+          // notification localisés (langue de l'app au moment du start).
+          'body': body ?? l10nNow.playbackNotifDefaultBody,
+          'stopLabel': l10nNow.castStop,
+          'channelName': l10nNow.playbackNotifChannelName,
+          'channelDesc': l10nNow.playbackNotifChannelDesc,
+        },
       );
+      return started ?? false;
     } catch (e) {
       if (kDebugMode) debugPrint('[PiP] startBackgroundAudio failed: $e');
+      return false;
     }
   }
 

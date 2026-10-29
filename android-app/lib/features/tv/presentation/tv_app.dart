@@ -202,7 +202,8 @@ class _RestartWidgetState extends State<RestartWidget> {
               builder: (BuildContext context, _) => AnimatedOpacity(
                 opacity:
                     (TvContentRefresh.running.value ||
-                        RemoteSourceRepository.importing.value)
+                        (RemoteSourceRepository.importing.value &&
+                            !RepairFlags.syncPillOff))
                     ? 1
                     : 0,
                 duration: const Duration(milliseconds: 250),

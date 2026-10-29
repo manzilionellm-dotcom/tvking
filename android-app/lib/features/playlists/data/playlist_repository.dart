@@ -663,11 +663,11 @@ class PlaylistRepository {
       playlistId = await _insertPlaylist(newPlaylist,
         additionalFingerprints: requestedFingerprints);
 
-      // 3) Récupère catégories + chaînes
-      final Map<String, String> cats = await xtream.fetchLiveCategories();
+      // 3) Récupère catégories + chaînes en parallèle borné dans le client.
+      // Ne pas précharger les catégories ici : cela remettrait les deux
+      // attentes réseau en série, alors que les identifiants sont validés.
       final List<Channel> channels = await xtream.fetchLiveChannels(
         playlistId: playlistId,
-        categories: cats,
       );
 
       if (channels.isEmpty) {
@@ -976,10 +976,8 @@ class PlaylistRepository {
       );
       try {
         await xtream.verifyCredentials();
-        final Map<String, String> cats = await xtream.fetchLiveCategories();
         final List<Channel> channels = await xtream.fetchLiveChannels(
           playlistId: playlist.id!,
-          categories: cats,
         );
         if (channels.isEmpty) {
           throw Exception('Aucune chaîne live disponible.');

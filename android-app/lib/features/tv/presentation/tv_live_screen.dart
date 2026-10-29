@@ -38,10 +38,10 @@ import '../../playlists/data/playlist_repository.dart';
 import '../../playlists/data/remote_source_repository.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
-import 'tv_add_source_screen.dart';
 import 'tv_components.dart';
+import 'tv_channel_loading_status.dart';
 import 'tv_live_preview.dart';
-import 'tv_phone_source_qr.dart';
+import 'tv_source_setup.dart';
 import 'tv_player_screen.dart';
 import 'tv_shell.dart';
 import 'tv_vip_countries_screen.dart';
@@ -661,10 +661,13 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     return out;
   }
 
-  Future<void> _kickSourceSync() async {
-    if (_syncing) return;
+  Future<void> _kickSourceSync({bool force = false}) async {
+    // La passe du démarrage ou du canal temps réel alimente déjà l'écran.
+    // Ne pas lui ajouter une seconde lecture en file depuis ce bouton/timer.
+    if (_syncing || RemoteSourceRepository.syncing.value ||
+        RemoteSourceRepository.manualImporting.value) return;
     if (mounted) setState(() => _syncing = true);
-    final RemoteSyncResult r = await RemoteSourceRepository.sync();
+    final RemoteSyncResult r = await RemoteSourceRepository.sync(force: force);
     if (!mounted) return;
     setState(() {
       _syncing = false;
@@ -780,137 +783,70 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
   @override
   Widget build(BuildContext context) {
     if (_all.isEmpty) {
-      // États PRÉCIS au lieu d'un « écran mort » :
-      //  • en cours / réseau → « Recherche de tes chaînes… »
-      //  • source refusée     → identifiants invalides côté panel
-      //  • rien d'assigné     → message d'activation habituel
-      // Trois phrases, plus une recherche sans fin :
-      // pas de réseau, code pas activé, liste refusée.
-      final bool searching = _syncing || _lastSync == null;
-      final String title;
-      final String subtitle;
-      if (searching) {
-        title = context.l10n.tvSearchingChannels;
-        subtitle = context.l10n.tvNoChannelsHelp;
-      } else if (_lastSync == RemoteSyncResult.networkError) {
-        title = context.l10n.tvNetworkUnavailable;
-        subtitle = context.l10n.tvNetworkUnavailableHelp;
-      } else if (_lastSync == RemoteSyncResult.sourceFailed) {
-        title = context.l10n.tvListRejected;
-        subtitle = context.l10n.tvListRejectedHelp;
-      } else {
-        title = context.l10n.tvCodeInactive;
-        subtitle = context.l10n.tvCodeInactiveHelp;
-      }
-      return Center(
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: <Widget>[
-            // ===== Gauche : message + MAC + actions =====
-            SizedBox(
-              width: 560,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Icon(
-                    searching ? Icons.wifi_find_rounded : Icons.live_tv_rounded,
-                    size: 52,
-                    color: TvTokens.mutedDim,
-                  ),
-                  const SizedBox(height: 14),
-                  Text(
-                    title,
-                    style: TvTokens.display(30, color: TvTokens.text),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    subtitle,
-                    style: TvTokens.ui(15, color: TvTokens.mutedDim),
+      // La saisie reste stable pendant la recherche du panel. Les compteurs
+      // fréquents reconstruisent uniquement leur carte, jamais les champs.
+      return ListenableBuilder(
+        listenable: Listenable.merge(<Listenable>[
+          RemoteSourceRepository.syncing,
+          RemoteSourceRepository.importing,
+          RemoteSourceRepository.manualImporting,
+          RemoteSourceRepository.lastResult,
+        ]),
+        builder: (BuildContext context, _) {
+          final bool busy = _syncing || RemoteSourceRepository.syncing.value ||
+              RemoteSourceRepository.manualImporting.value;
+          final bool importing = RemoteSourceRepository.importing.value ||
+              RemoteSourceRepository.manualImporting.value;
+          return TvSourceSetup(
+            details: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                // La progression de l'import apparaît près du formulaire.
+                // Ici, seul le résultat de la recherche distante est affiché.
+                if (!importing) ...<Widget>[
+                  TvChannelLoadingStatus(
+                    checking: busy,
+                    importing: false,
+                    result: RemoteSourceRepository.lastResult.value ?? _lastSync,
                   ),
                   const SizedBox(height: 18),
-                  // ----- Adresse de CET appareil (MAC) -----
-                  // Visible ICI car l'écran d'activation ne s'affiche plus
-                  // (déjà activé) : le client/revendeur a besoin de la MAC.
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 22,
-                      vertical: 14,
-                    ),
-                    decoration: BoxDecoration(
-                      color: TvTokens.card,
-                      borderRadius: BorderRadius.circular(TvTokens.rCard),
-                      border: Border.all(color: TvTokens.lineSoft),
-                    ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: <Widget>[
-                        Text(
-                          context.l10n.tvDeviceAddress.toUpperCase(),
-                          style: TvTokens.ui(
-                            12,
-                            weight: FontWeight.w600,
-                            color: TvTokens.mutedDim,
-                            spacing: 2,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          displayMac(
-                            _mac,
-                            showPrefix: RepairFlags.macShowPrefix,
-                          ),
-                          // Même ordre que le QR et le panel, y compris en arabe.
-                          textDirection: TextDirection.ltr,
-                          style: TvTokens.mono(
-                            28,
-                            color: TvTokens.accentBright,
-                            spacing: 2,
-                          ),
-                        ),
-                      ],
-                    ),
+                ],
+                Container(
+                  padding: const EdgeInsets.all(18),
+                  decoration: BoxDecoration(
+                    color: TvTokens.card,
+                    borderRadius: BorderRadius.circular(TvTokens.rCard),
+                    border: Border.all(color: TvTokens.lineSoft),
                   ),
-                  const SizedBox(height: 18),
-                  // ----- Actions : Réessayer + Ajouter sa propre liste -----
-                  Wrap(
-                    spacing: 12,
-                    runSpacing: 12,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: <Widget>[
-                      _ActionPill(
-                        icon: Icons.refresh_rounded,
-                        label: _syncing
-                            ? context.l10n.tvSearchingChannels
-                            : context.l10n.tvRetry,
-                        autofocus: true,
-                        onSelect: _syncing ? null : _kickSourceSync,
+                      Text(
+                        context.l10n.tvDeviceAddress,
+                        style: TvTokens.ui(12, color: TvTokens.muted),
                       ),
-                      _ActionPill(
-                        icon: Icons.playlist_add_rounded,
-                        label: context.l10n.tvAddOwnList,
-                        onSelect: () => Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (_) =>
-                                const TvShell(child: TvAddSourceScreen()),
-                          ),
-                        ),
+                      const SizedBox(height: 8),
+                      SelectableText(
+                        displayMac(_mac, showPrefix: RepairFlags.macShowPrefix),
+                        textDirection: TextDirection.ltr,
+                        style: TvTokens.mono(22, color: TvTokens.accentBright),
                       ),
                     ],
                   ),
-                ],
-              ),
+                ),
+                const SizedBox(height: 18),
+                _ActionPill(
+                  icon: Icons.refresh_rounded,
+                  label: busy ? context.l10n.tvSearchingChannels
+                      : context.l10n.tvRetry,
+                  onSelect: busy ? null : () => _kickSourceSync(force: true),
+                ),
+              ],
             ),
-            const SizedBox(width: 36),
-            // ===== Droite : QR WhatsApp (contacter le revendeur) + QR
-            // « Mon espace » (ajouter sa propre liste depuis le téléphone),
-            // les deux visibles tant qu'aucune chaîne n'est là (04/10/2026).
-            TvWhatsAppQr(mac: _mac, size: 190),
-            const SizedBox(width: 24),
-            TvPhoneSourceQr(mac: _mac, qrSize: 150),
-          ],
-        ),
+          );
+        },
       );
     }
 
@@ -1965,12 +1901,14 @@ class _ActionPill extends StatelessWidget {
             children: <Widget>[
               Icon(icon, size: 20, color: fg),
               const SizedBox(width: 9),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: TvDimens.titleS,
-                  fontWeight: FontWeight.w700,
-                  color: fg,
+              Flexible(
+                child: Text(
+                  label,
+                  style: TvTokens.ui(
+                    TvDimens.titleS,
+                    weight: FontWeight.w700,
+                    color: fg,
+                  ),
                 ),
               ),
             ],

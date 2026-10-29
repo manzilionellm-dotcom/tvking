@@ -1164,10 +1164,25 @@ class NativeVideoView(
                     result.error("no_url", "setUrl appelé sans url", null)
                     return
                 }
+                // Garder aussi les langues quand le Cast ou Home retarde
+                // l'ouverture. Ce réglage ne prépare aucun flux. Une seule
+                // définition, appelée après restorePreferredEngine en lecture
+                // normale : ce dernier peut reconstruire le lecteur.
+                fun applyPreferredTracks() {
+                    prefAudio = call.argument<String>("preferredAudio")
+                    val prefText = call.argument<String>("preferredText")
+                    if (prefAudio != null || prefText != null) {
+                        val b = player.trackSelectionParameters.buildUpon()
+                        if (prefAudio != null) b.setPreferredAudioLanguage(prefAudio)
+                        if (prefText != null) b.setPreferredTextLanguage(prefText)
+                        player.trackSelectionParameters = b.build()
+                    }
+                }
                 // Dehors : on garde l'adresse pour le retour, sans prepare.
                 // Un essai déjà armé est annulé, sinon il rouvrirait le flux.
                 if (castSuspended || !AppForeground.allowsReopen()) {
                     cancelRetry()
+                    applyPreferredTracks()
                     currentUrl = url
                     vodMode = call.argument<Boolean>("vod") ?: false
                     val startMs = (call.argument<Number>("startMs"))?.toLong() ?: 0L
@@ -1236,14 +1251,7 @@ class NativeVideoView(
                 lastDiagText = null
                 // Langue audio / sous-titres préférée (langue de l'app) : si le
                 // film propose la piste, ExoPlayer la choisit d'office.
-                prefAudio = call.argument<String>("preferredAudio")
-                val prefText = call.argument<String>("preferredText")
-                if (prefAudio != null || prefText != null) {
-                    val b = player.trackSelectionParameters.buildUpon()
-                    if (prefAudio != null) b.setPreferredAudioLanguage(prefAudio)
-                    if (prefText != null) b.setPreferredTextLanguage(prefText)
-                    player.trackSelectionParameters = b.build()
-                }
+                applyPreferredTracks()
                 openCurrent(if (vodMode && startMs > 0L) startMs else null)
                 // 8 s pour que FFmpeg prouve qu'il sait lire CE flux. Sinon on
                 // revient à la box (voir [armFfmpegReadyWatchdog]).

@@ -3,8 +3,16 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <application>
         <meta-data android:name="com.google.android.gms.cast.framework.OPTIONS_PROVIDER_CLASS_NAME"
             android:value="com.manzilionellm.tvking.CastOptionsProviderImpl" />
+        <!-- Même service que 7 MOTION, seulement lancé pour un relais actif. -->
+        <service android:name="com.manzilionellm.tvking.PlaybackForegroundService"
+            android:foregroundServiceType="mediaPlayback"
+            android:exported="false" />
     </application>
 </manifest>

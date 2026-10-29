@@ -164,10 +164,6 @@ class XtreamClient {
     required int playlistId,
     Map<String, String>? categories,
   }) async {
-    // Si on n'a pas reçu les catégories, on les récupère maintenant
-    final Map<String, String> cats =
-        categories ?? await fetchLiveCategories();
-
     final String host = Uri.tryParse(_baseUrl)?.host ?? _baseUrl;
     final String prefix = '$_baseUrl/$username/$password/';
     epgChannelIds.clear();
@@ -186,11 +182,43 @@ class XtreamClient {
     // lecteurs natifs qui lisent le JSON en flux).
     BlackBox.instance.breadcrumb('Import Xtream $host : téléchargement de la liste');
     await BlackBox.instance.logMemory('avant import Xtream');
-    final Uint8List? whole = await _getBytes(
-      _buildUri(action: 'get_live_streams'),
-      softMax: kXtreamSingleShotBytes,
-      onBytes: ImportProgressBus.downloading,
-    );
+    // Les catégories et le catalogue live sont deux lectures indépendantes.
+    // Les lancer ensemble retire une attente réseau entière avant la première
+    // chaîne, sans multiplier les requêtes : deux au maximum, puis le repli
+    // par catégorie conserve sa propre borne. Les identifiants sont toujours
+    // vérifiés par l'appelant AVANT ce chargement.
+    //
+    // Future.wait installe les gestionnaires des DEUX réponses immédiatement :
+    // si l'une échoue, l'autre ne laisse pas d'erreur asynchrone non traitée.
+    // Le client propriétaire est fermé dans le finally de l'appelant ; les
+    // plafonds d'octets et délais existants bornent aussi la seconde lecture.
+    // fetchLiveCategories publie son étape au départ uniquement : elle ne
+    // réécrit pas « catégories » après la progression du téléchargement.
+    bool receivingCatalog = true;
+    late final List<Object?> catalog;
+    try {
+      catalog = await Future.wait<Object?>(
+        <Future<Object?>>[
+          categories == null
+              ? fetchLiveCategories()
+              : Future<Map<String, String>>.value(categories),
+          _getBytes(
+            _buildUri(action: 'get_live_streams'),
+            softMax: kXtreamSingleShotBytes,
+            onBytes: (int bytes) {
+              if (receivingCatalog) ImportProgressBus.downloading(bytes);
+            },
+          ),
+        ],
+        eagerError: true,
+      );
+    } finally {
+      // Une réponse tardive ne doit pas repeindre « téléchargement » après
+      // l'erreur de l'autre requête, notamment avec un client HTTP injecté.
+      receivingCatalog = false;
+    }
+    final Map<String, String> cats = catalog[0]! as Map<String, String>;
+    final Uint8List? whole = catalog[1] as Uint8List?;
 
     List<Channel> channels;
     if (whole != null) {
@@ -230,7 +258,9 @@ class XtreamClient {
         final int remaining = kMaxChannelsPerImport - channels.length;
         BlackBox.instance.breadcrumb(
             'Import Xtream $host : catégories ${start + 1}-$end/${list.length}');
-        ImportProgressBus.category(end, list.length, channels.length);
+        // Le compteur décrit les catégories TERMINÉES : annoncer « end »
+        // avant les réponses ferait progresser l'écran sans chaînes reçues.
+        ImportProgressBus.category(start, list.length, channels.length);
         final List<_LiveStreamsResult?> parts = await Future.wait(<Future<_LiveStreamsResult?>>[
           for (int k = start; k < end; k++)
             _fetchCategory(list[k], cats, playlistId, prefix, remaining),
@@ -244,6 +274,7 @@ class XtreamClient {
           }
           epgChannelIds.addAll(mapped.epgIds);
         }
+        ImportProgressBus.category(end, list.length, channels.length);
       }
     }
 

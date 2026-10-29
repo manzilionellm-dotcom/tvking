@@ -201,6 +201,7 @@ class CastManager extends ChangeNotifier {
     );
     switch (evt.kind) {
       case 'ended':
+        _nativeSessionSuspended = false;
         ++_sessionSeq;
         // Le SDK signale la fin DEFINITIVE de la session — on aligne
         // notre etat. ATTENTION : ne pas appeler disconnect() ici
@@ -245,13 +246,17 @@ class CastManager extends ChangeNotifier {
         // peut la reprendre tout seul (`resumed`). On reflete juste
         // l'etat sans jeter device/cible — comportement historique.
         if (_state == CastState.casting || _state == CastState.paused) {
+          _nativeSessionSuspended = true;
           _state = CastState.idle;
           _setProgress(CastProgress.idle);
         }
         break;
+      case 'resumed':
       case 'resumed_at_boot':
-        // Le SDK a restaure une session via setResumeSavedSession au
-        // boot — on n'a pas de _device/_transport associes cote Dart,
+        _nativeSessionSuspended = false;
+        // Le SDK a repris le Wi-Fi, ou restauré une session via
+        // setResumeSavedSession au boot — dans ce second cas, on n'a
+        // pas de _device/_transport associés côté Dart,
         // mais on doit refleter qu'une session est techniquement
         // active. L'utilisateur peut casser cette session via
         // disconnect() depuis l'UI ou le picker.
@@ -260,7 +265,33 @@ class CastManager extends ChangeNotifier {
           _setProgress(CastProgress.live);
         }
         break;
+      case 'resume_failed':
+        // La reprise Wi-Fi a échoué définitivement. Une simple suspension
+        // conservait le relais et la passation locale ; il faut les libérer
+        // ici même si le SDK n'envoie pas ensuite de callback « ended ».
+        if (_nativeSessionSuspended || isCasting) {
+          _nativeSessionSuspended = false;
+          ++_sessionSeq;
+          _transport = null;
+          _device = null;
+          _currentTitle = null;
+          if (_selectedDevice?.kind == CastDeviceKind.chromecast ||
+              _selectedDevice?.kind == CastDeviceKind.googleCast) {
+            _selectedDevice = null;
+          }
+          _stopRelayKeepAlive();
+          if (_currentRelayUrl != null) {
+            LocalCastServer.instance.clearRelay(_currentRelayUrl!);
+            _currentRelayUrl = null;
+          }
+          _state = CastState.error;
+          _errorMessage = l10nNow.castFriendlyGenericFail;
+          _setProgress(CastProgress.failure(_errorMessage!));
+        }
+        break;
       case 'load_failed':
+        final bool wasSuspended = _nativeSessionSuspended;
+        _nativeSessionSuspended = false;
         // Le recepteur a REFUSE le media APRES coup (le load reussit
         // cote SDK mais la TV rejette le flux quelques secondes plus
         // tard — typiquement codec/conteneur non supporte par le
@@ -274,7 +305,7 @@ class CastManager extends ChangeNotifier {
         );
         if (_state == CastState.connecting ||
             _state == CastState.casting ||
-            _state == CastState.paused) {
+            _state == CastState.paused || wasSuspended) {
           _state = CastState.error;
           _errorMessage = l10nNow.castErrorReceiverRejected;
           _setProgress(CastProgress.failure(_errorMessage!));
@@ -347,6 +378,9 @@ class CastManager extends ChangeNotifier {
   CastState _state = CastState.idle;
   CastDevice? _device;
   CastTransport? _transport;
+  // Une perte Wi-Fi temporaire ne rend pas le créneau IPTV au téléphone.
+  // Le SDK conserve sa session et peut la reprendre sans nouvel appairage.
+  bool _nativeSessionSuspended = false;
   String? _currentTitle;
 
   /// Phase 1+/B5 (2026-06-01) — Annulation cooperative du `_castToInner`.
@@ -469,6 +503,11 @@ class CastManager extends ChangeNotifier {
 
   bool get isCasting =>
       _state == CastState.casting || _state == CastState.paused;
+
+  /// Session qui réserve la lecture distante, même pendant une suspension
+  /// SDK. À distinguer de la simple cible mémorisée ou d'une lecture finie.
+  bool get hasActiveSession =>
+      isCasting || _state == CastState.connecting || _nativeSessionSuspended;
 
   /// `true` dès qu'un device est prêt à recevoir un flux — qu'il
   /// soit déjà en train de caster ou simplement "connecté en attente".
@@ -618,6 +657,7 @@ class CastManager extends ChangeNotifier {
     String? imageUrl,
   }) async {
     final int mySeq = ++_sessionSeq;
+    _nativeSessionSuspended = false;
     final Duration timeout = _testTimeout ?? (device.kind == CastDeviceKind.dlna ? kCastTotalTimeoutDlna : kCastTotalTimeout);
     try {
       await _castToInner(device, mySeq: mySeq, streamUrl: streamUrl,
@@ -2092,10 +2132,14 @@ class CastManager extends ChangeNotifier {
   /// est accordée on re-poste la notification (idempotent) pour la
   /// rendre visible.
   Future<void> _startRelayKeepAlive(String title) async {
-    await PipService.instance.startBackgroundAudio(title);
-    StructuredLogger.instance.info(
-      domain: 'cast', event: 'relay.keepalive_requested',
+    final bool started = await PipService.instance.startBackgroundAudio(
+      title, body: l10nNow.castNotifRelayBody,
     );
+    if (started) {
+      StructuredLogger.instance.info(domain: 'cast', event: 'relay.keepalive_started');
+    } else {
+      StructuredLogger.instance.warn(domain: 'cast', event: 'relay.keepalive_failed');
+    }
     // Android 13+ : sans POST_NOTIFICATIONS, la notification du service
     // est INVISIBLE → kill OEM probable écran éteint. On la demande en
     // arrière-plan (jamais bloquant pour le cast), une seule fois.
@@ -2112,7 +2156,7 @@ class CastManager extends ChangeNotifier {
           // (ACTION_START met à jour, ne redémarre pas le service).
           if (granted && _relayKeepAliveActive) {
             unawaited(PipService.instance
-                .startBackgroundAudio(title));
+                .startBackgroundAudio(title, body: l10nNow.castNotifRelayBody));
           }
         }).catchError((Object _) {
           // Best-effort : sur Android < 13 il n'y a rien à demander.
@@ -2128,6 +2172,7 @@ class CastManager extends ChangeNotifier {
   }
 
   Future<void> disconnect() async {
+    _nativeSessionSuspended = false;
     ++_sessionSeq;
     final CastTransport? previous = _transport;
     final String? relay = _currentRelayUrl;

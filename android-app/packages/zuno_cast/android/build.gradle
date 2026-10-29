@@ -3,11 +3,12 @@ version = "1.0"
 apply plugin: "com.android.library"
 apply plugin: "kotlin-android"
 
-// Ces trois fichiers sont EXACTEMENT ceux compilés par 7 MOTION. Ne pas
+// Ces fichiers sont ceux compilés par 7 MOTION. Le service garde le relais
+// réseau actif écran éteint avec les mêmes verrous CPU et Wi-Fi. Ne pas
 // copier son MainActivity : Zuno conserve son cycle de vie et son lecteur.
 def sharedCast = tasks.register("syncSharedCast", Sync) {
     from "../../../android_overlay/google_cast"
-    include "GoogleCastApi.kt", "CastOptionsProviderImpl.kt", "MulticastLockBridge.kt"
+    include "GoogleCastApi.kt", "CastOptionsProviderImpl.kt", "MulticastLockBridge.kt", "PlaybackForegroundService.kt"
     into layout.buildDirectory.dir("generated/sharedCast")
 }
 android {

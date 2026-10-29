@@ -100,6 +100,31 @@ abstract final class RemoteSourceRepository {
   /// téléchargement. Faux si la liste est déjà là (rien à charger).
   static final ValueNotifier<bool> importing = ValueNotifier<bool>(false);
 
+  /// État réel de la passe, y compris quand elle vient du WebSocket plutôt
+  /// que du bouton. L'écran vide ne doit ni figer une ancienne erreur ni
+  /// annoncer une activation manquante quand seule la liste est absente.
+  static final ValueNotifier<bool> syncing = ValueNotifier<bool>(false);
+  static final ValueNotifier<RemoteSyncResult?> lastResult =
+      ValueNotifier<RemoteSyncResult?>(null);
+
+  /// Un formulaire et un ordre du panel partagent le même importeur et le
+  /// même compteur. Cette file évite que l'un efface la progression de
+  /// l'autre. Les révocations restent immédiates, hors de cette file.
+  static final ValueNotifier<bool> manualImporting = ValueNotifier<bool>(false);
+
+  static Future<T> runUserImport<T>(Future<T> Function() job) => _serial(() async {
+    ImportProgressBus.clear();
+    manualImporting.value = true;
+    try {
+      return await job();
+    } finally {
+      // Toujours nettoyer AVANT de libérer la file : une réponse UI tardive
+      // ne doit pas remettre à zéro la liste suivante venue du panel.
+      ImportProgressBus.clear();
+      manualImporting.value = false;
+    }
+  });
+
   /// Entoure le chargement d'une nouvelle liste : pastille à l'écran et
   /// durée réelle dans la boîte noire (« liste du panel chargée en 12,4 s
   /// (18 230 chaînes) »). [job] rend le nombre de chaînes importées et
@@ -107,7 +132,8 @@ abstract final class RemoteSourceRepository {
   /// 0 chaîne) : la raison, expurgée, suit la durée. C'est la ligne que
   /// le propriétaire lit pour départager « ordre jamais arrivé »,
   /// « import lent » et « import refusé ».
-  /// Repli `zuno.sync.pill_off` : pas de pastille, la mesure reste.
+  /// Repli `zuno.sync.pill_off` : la pastille est masquée dans son widget ;
+  /// la mesure et la progression du premier chargement restent disponibles.
   static Future<RemoteSyncResult> _timedImport(
     String kind,
     Future<int> Function() job,
@@ -116,7 +142,9 @@ abstract final class RemoteSourceRepository {
     // La pastille affiche le détail chiffré du bus de progression : on
     // repart de zéro pour ne pas montrer le compte d'un import précédent.
     ImportProgressBus.clear();
-    if (!RepairFlags.syncPillOff) importing.value = true;
+    // L'état décrit le travail, indépendamment de la visibilité de la
+    // pastille de diagnostic. L'écran d'attente en a également besoin.
+    importing.value = true;
     BlackBox.instance.info('SOURCE', 'nouvelle liste $kind reçue du panel : chargement');
     try {
       final int channels = await job();
@@ -289,19 +317,27 @@ abstract final class RemoteSourceRepository {
     // l'attente de la file. Un redémarrage repart toujours d'un ensemble vide.
     final Set<String> appliedRevocations = Set<String>.of(alreadyRevoked);
     return _serial(() async {
-      _lastConfigRev = null;
-      _lastError = null;
-      _lastKeptPrevious = false;
-      final RemoteSyncResult r = await _syncBody(force: force, alreadyRevoked: appliedRevocations);
-      // Rapport de CETTE lecture, lu par l'accusé de l'ordre (order_ack.dart).
-      lastReport = SourceSyncReport(
-        result: r.name,
-        atMs: DateTime.now().millisecondsSinceEpoch,
-        configRev: _lastConfigRev,
-        error: _lastError,
-        keptPrevious: _lastKeptPrevious,
-      );
-      return r;
+      // Efface les chiffres d'une précédente liste AVANT d'annoncer la passe.
+      ImportProgressBus.clear();
+      syncing.value = true;
+      try {
+        _lastConfigRev = null;
+        _lastError = null;
+        _lastKeptPrevious = false;
+        final RemoteSyncResult r = await _syncBody(force: force, alreadyRevoked: appliedRevocations);
+        // Rapport de CETTE lecture, lu par l'accusé de l'ordre (order_ack.dart).
+        lastReport = SourceSyncReport(
+          result: r.name,
+          atMs: DateTime.now().millisecondsSinceEpoch,
+          configRev: _lastConfigRev,
+          error: _lastError,
+          keptPrevious: _lastKeptPrevious,
+        );
+        lastResult.value = r;
+        return r;
+      } finally {
+        syncing.value = false;
+      }
     });
   }
 

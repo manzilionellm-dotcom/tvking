@@ -1,37 +1,17 @@
 // =========================================================
-//  tv_add_source_screen.dart — « J'ajoute ma propre source »
+//  Écran dédié à l'ajout d'une source personnelle.
 // =========================================================
-//  Plus de pastilles « Serveur 1 / Serveur 2 ». La personne choisit
-//  comment elle apporte SA source, chez n'importe quel fournisseur :
-//    • Xtream Codes (adresse, nom, mot de passe) ;
-//    • une adresse M3U ou M3U8, avec ou sans identifiants ;
-//    • une adresse de lecteur (get.php).
-//
-//  Les champs sont de vrais TextField : télécommande de la box,
-//  clavier, copier-coller, et le téléphone déjà appairé (le texte
-//  du QR « Télécommande » remplit le champ qui a le focus — voir
-//  remote_actions.dart). On ne refait pas ce mécanisme ici.
-//
-//  Plusieurs sources : cet écran en ajoute une. Les autres restent.
-//  Une liste déjà en base n'est pas touchée.
-// =========================================================
+//  Le même formulaire est disponible directement sur l'accueil sans liste.
+//  Ici seulement, un ajout réussi ferme la route et revient à l'appelant.
 import 'package:flutter/material.dart';
 
-import '../../../core/blackbox/black_box.dart';
-import '../../../core/i18n/l10n_extension.dart';
-import '../../playlists/data/import_progress.dart';
-import '../../playlists/data/playlist_repository.dart';
 import '../../playlists/domain/open_source_input.dart';
-import '../core/tv_focusable.dart';
-import '../core/tv_tokens.dart';
-import 'tv_components.dart';
-import 'tv_import_progress_label.dart';
-import 'tv_source_error_text.dart';
+import 'tv_source_entry_form.dart';
 
 class TvAddSourceScreen extends StatefulWidget {
   const TvAddSourceScreen({super.key, this.initialMode = OpenEntryMode.xtream});
 
-  /// Onglet ouvert en premier. Les trois restent accessibles.
+  /// Le raccourci historique player reste accepté et ouvre maintenant M3U.
   final OpenEntryMode initialMode;
 
   @override
@@ -39,292 +19,30 @@ class TvAddSourceScreen extends StatefulWidget {
 }
 
 class _TvAddSourceScreenState extends State<TvAddSourceScreen> {
-  final TextEditingController _serverC = TextEditingController();
-  final TextEditingController _userC = TextEditingController();
-  final TextEditingController _passC = TextEditingController();
-  final TextEditingController _linkC = TextEditingController();
-
-  late OpenEntryMode _mode;
-  bool _busy = false;
-  String? _error;
-
   @override
-  void initState() {
-    super.initState();
-    _mode = widget.initialMode;
-  }
-
-  @override
-  void dispose() {
-    _serverC.dispose();
-    _userC.dispose();
-    _passC.dispose();
-    _linkC.dispose();
-    super.dispose();
-  }
-
-  Future<void> _validate() async {
-    final OpenSourceParse parsed = switch (_mode) {
-      OpenEntryMode.xtream => OpenSourceInput.xtream(
-        server: _serverC.text,
-        username: _userC.text,
-        password: _passC.text,
-      ),
-      OpenEntryMode.m3u => OpenSourceInput.playlistLink(_linkC.text),
-      OpenEntryMode.player => OpenSourceInput.playerLink(_linkC.text),
-    };
-    if (!parsed.isValid || parsed.draft == null) {
-      setState(() => _error = parsed.error ?? OpenSourceInput.errNeedUrl);
-      return;
-    }
-    final OpenSourceDraft draft = parsed.draft!;
-    setState(() {
-      _busy = true;
-      _error = null;
-    });
-    ImportProgressBus.clear();
-    // Pas d'adresse ni de mot de passe dans le journal : seulement le mode.
-    BlackBox.instance.breadcrumb('Ajout source ouverte (${_mode.name})');
-    try {
-      final String name = context.l10n.tvMyListHint;
-      if (draft.kind == OpenSourceKind.xtream) {
-        await PlaylistRepository.instance.addXtreamPlaylist(
-          allowHttpCompatibility: true,
-          name: name,
-          serverUrl: draft.serverUrl!,
-          username: draft.username!,
-          password: draft.password!,
-        );
-      } else {
-        await PlaylistRepository.instance.addM3uPlaylist(
-          allowHttpCompatibility: true,
-          name: name,
-          url: draft.m3uUrl!,
-        );
-      }
-      BlackBox.instance.breadcrumb('');
-      BlackBox.instance.info('SOURCE', 'source ouverte ajoutée');
-      ImportProgressBus.clear();
-      if (mounted) Navigator.of(context).pop();
-    } catch (e) {
-      BlackBox.instance.error('SOURCE', 'ajout source ouverte ÉCHEC', e);
-      BlackBox.instance.breadcrumb('');
-      ImportProgressBus.clear();
-      if (mounted) {
-        setState(() {
-          _busy = false;
-          _error = 'connect_failed';
-        });
-      }
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
+  Widget build(BuildContext context) => Padding(
+    // Le shell TV ne redimensionne pas son contenu quand le clavier mobile
+    // s'ouvre. L'inset garde la validation accessible dans cette route aussi.
+    padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+    child: Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 760),
         child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: <Widget>[
-              // Titre traduit (clé tvAddListTitle, « Ajouter ma source » en
-              // français) : un texte en dur cassait les autres langues et le
-              // test removed_list_prompt_test (retour après une liste retirée).
-              Text(
-                context.l10n.tvAddListTitle,
-                style: TvTokens.display(34, color: TvTokens.text),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                context.l10n.tvSourcePasteHelp,
-                style: TvTokens.ui(16, color: TvTokens.mutedDim),
-              ),
-              const SizedBox(height: 18),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: <Widget>[
-                  _ModeChip(
-                    label: context.l10n.playlistTypeXtream,
-                    selected: _mode == OpenEntryMode.xtream,
-                    onSelect: () => _select(OpenEntryMode.xtream),
-                  ),
-                  _ModeChip(
-                    label: context.l10n.playlistTypeM3u,
-                    selected: _mode == OpenEntryMode.m3u,
-                    onSelect: () => _select(OpenEntryMode.m3u),
-                  ),
-                  _ModeChip(
-                    label: context.l10n.tvPlayerLink,
-                    selected: _mode == OpenEntryMode.player,
-                    onSelect: () => _select(OpenEntryMode.player),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              if (_mode == OpenEntryMode.xtream) ...<Widget>[
-                _TextField(
-                  controller: _serverC,
-                  label: context.l10n.tvFieldServer,
-                  hint: 'http://exemple.test:8080',
-                  autofocus: true,
-                  keyboardType: TextInputType.url,
-                ),
-                const SizedBox(height: 10),
-                _TextField(controller: _userC, label: context.l10n.tvFieldUser),
-                const SizedBox(height: 10),
-                _TextField(
-                  controller: _passC,
-                  label: context.l10n.tvFieldPass,
-                  obscure: true,
-                ),
-              ] else ...<Widget>[
-                _TextField(
-                  controller: _linkC,
-                  label: _mode == OpenEntryMode.player
-                      ? context.l10n.tvPlayerLink
-                      : context.l10n.tvFieldM3uUrl,
-                  hint: _mode == OpenEntryMode.player
-                      ? 'http://exemple.test:8080/get.php?username=…&password=…'
-                      : 'http://exemple.test/liste.m3u',
-                  autofocus: true,
-                  keyboardType: TextInputType.url,
-                ),
-              ],
-              const SizedBox(height: 10),
-              Text(
-                context.l10n.tvKeyboardHint,
-                style: TvTokens.ui(12, color: TvTokens.mutedDim),
-              ),
-              if (_error != null) ...<Widget>[
-                const SizedBox(height: 8),
-                Text(
-                  sourceErrorText(context, _error!),
-                  style: TvTokens.ui(14, color: TvTokens.live),
-                ),
-              ],
-              const SizedBox(height: 20),
-              ValueListenableBuilder<ImportProgress?>(
-                valueListenable: ImportProgressBus.current,
-                builder: (BuildContext context, ImportProgress? p, Widget? _) {
-                  final String label = !_busy
-                      ? context.l10n.tvAddListValidate
-                      : (p == null
-                            ? context.l10n.tvConnecting
-                            : importProgressLabel(context, p));
-                  return TvCtaButton(
-                    label: label,
-                    onSelect: _busy ? null : _validate,
-                  );
-                },
-              ),
-            ],
+          padding: const EdgeInsets.all(12),
+          child: TvSourceEntryForm(
+            initialMode: widget.initialMode,
+            autofocus: true,
+            onAdded: () {
+              // Un dialogue peut s'être ouvert pendant l'import. Ne pas le
+              // fermer à la place de la route qui a lancé cet ajout.
+              if (ModalRoute.of(context)?.isCurrent == true &&
+                  Navigator.of(context).canPop()) {
+                Navigator.of(context).pop();
+              }
+            },
           ),
         ),
       ),
-    );
-  }
-
-  void _select(OpenEntryMode mode) {
-    setState(() {
-      _mode = mode;
-      _error = null;
-    });
-  }
-}
-
-/// Champ texte. Un vrai TextField : clavier de la box, clavier
-/// physique, copier-coller, et saisie venue du téléphone appairé.
-class _TextField extends StatelessWidget {
-  const _TextField({
-    required this.controller,
-    required this.label,
-    this.hint,
-    this.obscure = false,
-    this.autofocus = false,
-    this.keyboardType,
-  });
-  final TextEditingController controller;
-  final String label;
-  final String? hint;
-  final bool obscure;
-  final bool autofocus;
-  final TextInputType? keyboardType;
-
-  @override
-  Widget build(BuildContext context) {
-    OutlineInputBorder border(Color c, double w) => OutlineInputBorder(
-      borderRadius: BorderRadius.circular(TvTokens.rButton),
-      borderSide: BorderSide(color: c, width: w),
-    );
-    return TextField(
-      controller: controller,
-      autofocus: autofocus,
-      obscureText: obscure,
-      keyboardType: keyboardType,
-      autocorrect: false,
-      enableSuggestions: false,
-      cursorColor: TvTokens.accent,
-      style: TvTokens.ui(18, weight: FontWeight.w500, color: TvTokens.text),
-      decoration: InputDecoration(
-        labelText: label,
-        hintText: hint,
-        labelStyle: TvTokens.ui(13, color: TvTokens.muted),
-        hintStyle: TvTokens.ui(14, color: TvTokens.mutedDim),
-        floatingLabelStyle: TvTokens.ui(13, color: TvTokens.accentBright),
-        filled: true,
-        fillColor: TvTokens.card,
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 18,
-          vertical: 16,
-        ),
-        enabledBorder: border(TvTokens.line, 1),
-        focusedBorder: border(TvTokens.accent, 2),
-      ),
-    );
-  }
-}
-
-class _ModeChip extends StatelessWidget {
-  const _ModeChip({
-    required this.label,
-    required this.selected,
-    required this.onSelect,
-  });
-  final String label;
-  final bool selected;
-  final VoidCallback onSelect;
-
-  @override
-  Widget build(BuildContext context) {
-    return TvFocusBuilder(
-      scale: TvFocusScale.medium,
-      onSelect: onSelect,
-      builder: (BuildContext context, bool focused) {
-        final bool hl = focused || selected;
-        return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
-          decoration: BoxDecoration(
-            color: focused
-                ? TvTokens.accent
-                : (selected ? TvTokens.sel : Colors.transparent),
-            borderRadius: BorderRadius.circular(TvTokens.rButton),
-            border: Border.all(color: hl ? TvTokens.accent : TvTokens.line),
-          ),
-          child: Text(
-            label,
-            style: TvTokens.ui(
-              15,
-              weight: FontWeight.w600,
-              color: focused
-                  ? TvTokens.onAccent
-                  : (selected ? TvTokens.accentBright : TvTokens.muted),
-            ),
-          ),
-        );
-      },
-    );
-  }
+    ),
+  );
 }
