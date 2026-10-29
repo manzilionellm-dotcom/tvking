@@ -14,12 +14,7 @@ import 'package:tv_king/l10n/generated/app_localizations.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUpAll(() => GoogleFonts.config.allowRuntimeFetching = false);
-  setUp(() {
-    ImportProgressBus.clear();
-    // Chaque testWidgets a sa FakeAsyncZone. La file reste réelle dans le
-    // scénario, mais ne doit pas conserver la zone d'un scénario terminé.
-    RemoteSourceRepository.resetImportQueueForTesting();
-  });
+  setUp(ImportProgressBus.clear);
 
   Finder field(String name) => find.descendant(
     of: find.byKey(ValueKey<String>('tv-source-$name')),
@@ -30,6 +25,10 @@ void main() {
   );
   Future<void> show(WidgetTester tester, TvSourceEntryForm form,
       {double width = 760, double scale = 1}) async {
+    // La Future initiale doit naître DANS la FakeAsyncZone du testWidgets,
+    // pas dans setUp qui s'exécute avant l'installation de cette zone.
+    // La sérialisation réelle et ses assertions restent actives ensuite.
+    RemoteSourceRepository.resetImportQueueForTesting();
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = Size(width, 900);
     addTearDown(tester.view.resetPhysicalSize);
