@@ -40,6 +40,22 @@ test('Worker + vrais DO : preuve, présence, reprise, actions et accusés isolé
     const orders = messages(device);
     await until(() => events.some(event => event.type === 'presence' && event.online));
     assert.equal((await request(`/api/v1/boxes/live?mac=${mac}`)).items[0].online, true);
+    // Le heartbeat de l'app écrit presence, pas l'ancienne admin_presence.
+    // Une valeur historique contradictoire ne doit jamais masquer la chaîne actuelle.
+    await f.db.prepare('INSERT INTO admin_presence(mac,ip,country,last_seen,channel) VALUES (?,?,?,?,?)')
+      .bind(mac, '203.0.113.99', 'ZZ', 1, 'Ancienne chaîne à ignorer').run();
+    const heartbeat = await f.mf.dispatchFetch(`${f.origin}/api/heartbeat`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json',
+        'X-Device-Secret': secret, 'CF-Connecting-IP': '192.0.2.10' },
+      body: JSON.stringify({ mac, androidId: 'fixture-android', model: 'simulateur',
+        platform: 'tv', appVersion: 'test', channel: 'Chaîne courante de la box' }),
+    });
+    assert.equal(heartbeat.status, 200);
+    const online = (await request('/api/v1/online')).items.find(item => item.mac === mac);
+    assert.ok(online, 'la socket authentifiée doit garder la box en ligne');
+    assert.equal(online.channel, 'Chaîne courante de la box', 'chaîne du vrai heartbeat HTTP');
+    assert.equal(online.ip, '192.0.2.10', 'IP du vrai heartbeat HTTP');
+    assert.notEqual(online.country, 'ZZ', 'ne pas relire la table admin_presence historique');
     const actions = [
       ['/api/v1/trial-extend', 'POST', { mac, days: 1 }, 'license'],
       ['/api/v1/activate', 'POST', { mac, plan: 'yearly' }, 'activate'],

@@ -186,7 +186,7 @@ export function createRealtimeRoutes({ original, actorFor }) {
       }
       const devices = await env.DB.prepare(`SELECT d.id,d.mac,d.label,d.block_status,
         COALESCE(p.country,'') AS country,COALESCE(p.ip,'') AS ip,COALESCE(p.channel,'') AS channel
-        FROM devices d LEFT JOIN admin_presence p ON p.mac=d.mac
+        FROM devices d LEFT JOIN presence p ON p.mac=d.mac
         ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY d.last_seen_at DESC LIMIT 500`).bind(...args).all();
       const items = [];
       // Limiter la concurrence D1/DO tout en répondant aux parcs importants.
