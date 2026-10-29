@@ -1,0 +1,21 @@
+name: Gold — vérification de l’import de production
+on:
+  pull_request:
+    paths:
+      - 'android-app/cloudflare/gold/**'
+      - '.github/workflows/gold-production-import.yml'
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '24.21.0'
+          package-manager-cache: false
+      - run: node android-app/cloudflare/gold/verify-import.mjs
