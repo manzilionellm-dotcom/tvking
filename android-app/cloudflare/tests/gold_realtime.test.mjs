@@ -64,6 +64,25 @@ test('Worker + vrais DO : preuve, présence, reprise, actions et accusés isolé
       assert.equal(ackBody.results[0].state, 'applied', JSON.stringify(ackBody));
       await until(() => events.some(event => event.type === 'receipt' && event.order_id === order.order_id && event.state === 'applied'));
     }
+    await request(`/api/v1/devices/fixture-${mac}`,'PATCH',{block_status:'active'});
+    const quote=await request('/api/v1/gold/golden/quote','POST',{mac,sub:1,bouquet_id:'84802'});
+    assert.equal(f.providerCalls.filter(call=>call.action==='new').length,0);
+    const goldenStart=Date.now();
+    const {order:golden}=await request('/api/v1/gold/golden/confirm','POST',{
+      quote_id:quote.order.id,confirmed:true,confirmed_cost:quote.order.cost});
+    assert.equal(golden.state,'delivered');
+    for(const id of [golden.license_order_id,golden.source_order_id]) {
+      await until(()=>orders.some(item=>item.order_id===id));
+      const command=orders.find(item=>item.order_id===id);
+      const ack=await f.mf.dispatchFetch(`${f.origin}/api/box/ack/${encodeURIComponent(mac)}`,{
+        method:'POST',headers:{'X-Device-Secret':secret,'Content-Type':'application/json'},body:JSON.stringify({orders:[{
+          order_id:id,state:'applied',result:'refreshed',applied_at:Date.now(),config_rev:command.config_rev}]}),
+      });
+      assert.equal(ack.status,200);
+      await until(()=>events.some(item=>item.type==='receipt'&&item.order_id===id&&item.state==='applied'));
+    }
+    assert.ok(Date.now()-goldenStart<2000,'Golden : création simulée et deux accusés sous 2 s');
+    assert.deepEqual(f.providerCalls.filter(call=>call.action==='new'),[{action:'new',sub:'1',key:'Manzi8'}]);
     const cursor = orders.filter(event => event.seq).at(-1).seq;
     device.close(1000, 'test');
     await until(() => events.some(event => event.type === 'presence' && event.online === false));

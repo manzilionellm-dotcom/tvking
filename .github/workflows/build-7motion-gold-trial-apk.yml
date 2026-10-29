@@ -315,7 +315,7 @@ jobs:
         apk=APK(str(path))\nassert apk.get_package()=='com.manzilionellm.tvking.tv_king.realtimereview'\nassert apk.get_min_sdk_version()=='24'\n\
         assert 'com.manzilionellm.tvking.tv_king.MainActivity'==apk.get_main_activity()\nassert 'CN=Android Debug'\
         \ in Path(sys.argv[2]).read_text()\nwith zipfile.ZipFile(path) as z:\n data=z.read('lib/arm64-v8a/libapp.so')\n\
-        \ for marker in [b'Je teste',b'/api/gold-trial',b'7 MOTION Essai',b'android_id',b'app_version',b'https://api.zuno8k.com',b'/api/box/ws',b'/api/box/ack/']:\n  assert\
+        \ for marker in [b'https://api.zuno8k.com',b'/api/box/ws',b'/api/box/ack/']:\n  assert\
         \ marker in data, 'Correctif absent du binaire: '+repr(marker)\nprint(json.dumps({'package':apk.get_package(),'versionName':apk.get_androidversion_name(),'versionCode':apk.get_androidversion_code(),'minSdk':apk.get_min_sdk_version(),'sha256':hashlib.sha256(path.read_bytes()).hexdigest(),'signature':'Android\
         \ Debug','entrypoint':'lib/main.dart','mode':'release-optimized-test'},ensure_ascii=False))\nPYAUDIT\nSHA=$(sha256sum\
         \ \"$APK\" | cut -d' ' -f1)\necho \"APK_SHA256=$SHA\" >> \"$GITHUB_ENV\"\necho \"SHA-256 $SHA\"\n"

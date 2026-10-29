@@ -82,7 +82,10 @@ class GoldTrialController extends ChangeNotifier {
   // Une liste déjà enregistrée (panel ou ajout manuel) suffit à masquer
   // l'offre, même hors ligne, désactivée ou sans chaînes dans le cache RAM.
   // Les radios et le sport gratuits n'utilisent pas ce dépôt de playlists.
-  bool get visible => ready && _playlistsReady && _playlists.isEmpty && !_hasSubscription() &&
+  // L'offre est actuellement invisible dans les deux apps ; Golden reste
+  // une action administrateur. Les tests de contrat peuvent ouvrir la carte.
+  bool get visible => _trialRequestsEnabled && ready && _playlistsReady &&
+      _playlists.isEmpty && !_hasSubscription() &&
       result.outcome != GoldTrialOutcome.alreadyCustomer;
   bool get comingSoon => result.outcome == GoldTrialOutcome.disabled ||
       (!_trialRequestsEnabled && result.outcome == GoldTrialOutcome.idle);

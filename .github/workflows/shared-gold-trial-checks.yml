@@ -10,6 +10,7 @@ on:
       - 'android-app/cloudflare/wrangler.toml'
       - 'android-app/cloudflare/tests/**'
       - 'android-app/cloudflare/migrations/20261028_gold_trial*.sql'
+      - 'android-app/cloudflare/migrations/20261029_golden_admin.sql'
       - 'android-app/admin-panel/**'
       - '.github/workflows/shared-gold-trial-checks.yml'
 permissions:
@@ -26,7 +27,7 @@ jobs:
         with:
           node-version: '24.21.0'
           package-manager-cache: false
-      - run: node --test android-app/cloudflare/tests/gold_trial_policy.test.mjs android-app/cloudflare/tests/gold_trial_runtime.test.mjs android-app/admin-panel/src/lib/goldTrial.test.ts android-app/admin-panel/src/lib/deliveryStatus.test.ts
+      - run: node --test android-app/cloudflare/tests/gold_trial_policy.test.mjs android-app/cloudflare/tests/gold_trial_runtime.test.mjs android-app/cloudflare/tests/golden_admin.test.mjs android-app/admin-panel/src/lib/goldTrial.test.ts android-app/admin-panel/src/lib/deliveryStatus.test.ts
       - name: Vérifier les vrais Durable Objects locaux
         working-directory: android-app/cloudflare
         run: |

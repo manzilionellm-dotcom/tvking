@@ -6,6 +6,8 @@ import { createRealtimeRoutes, pushAnnouncementChange } from './gold_realtime.js
 import { activationDeliveryState } from './gold_activation_delivery.js';
 import { createTrialRuntime } from './gold_trial_runtime.js';
 import { sourceEncryptionEnv } from './gold_trial_delivery.js';
+import { createGoldenRoutes, goldenTemplates, protectGoldenSource } from './gold_golden.js';
+import { createGoldenDelivery } from './gold_golden_delivery.js';
 
 const GOLD_BASE = 'https://cms-8k.net/api/api.php';
 const ALL_PACKS = '84802,84803,84804,84805,84806,84807,84808,84810,84811,84813,84814,84815,84816';
@@ -169,14 +171,15 @@ const publicKey = (r, extra = {}) => ({ id: r.id, reseller: r.reseller, masked: 
   use_for_paid: !!r.use_for_paid, trial_cap_per_day: r.trial_cap_per_day, pack: r.pack, enabled: !!r.enabled,
   last_error: r.last_error, last_used_at: r.last_used_at, ...extra });
 
-async function goldCall(env, params, keyOverride) {
+async function goldCall(env, params, keyOverride, timeoutMs = 45000) {
   const key = keyOverride || await getKey(env);
   if (!key) throw new Error('gold_key_missing');
   const qs = new URLSearchParams({ ...params, api_key: key });
   const ctl = new AbortController();
-  const t = setTimeout(() => ctl.abort(), 45000);
+  const t = setTimeout(() => ctl.abort(), timeoutMs);
   try {
     const r = await fetch(`${GOLD_BASE}?${qs}`, { signal: ctl.signal, headers: { accept: 'application/json' } });
+    if (!r.ok) throw new Error('gold_http_error');
     const txt = await r.text();
     let data; try { data = JSON.parse(txt); } catch (_) { throw new Error('gold_bad_json'); }
     return data;
@@ -418,9 +421,9 @@ async function adminActor(request, env, ctx, roles = ['super_admin']) {
 
 // Paid-activation hook decision (pure): admin only, paid plan, flag on.
 export function shouldAutoProvision(plan, role, enabled) {
-  if (enabled !== '1' || role !== 'super_admin') return false;
-  if (typeof plan !== 'string' || plan.startsWith('trial')) return false;
-  return plan === 'yearly' || plan === 'lifetime';
+  // La création Strong passe exclusivement par le devis Golden confirmé.
+  // Une activation classique de licence ne dépense plus de crédits Strong.
+  return false;
 }
 
 async function handleGoldAdmin(request, env, ctx, parts) {
@@ -527,6 +530,8 @@ async function handleGoldAdmin(request, env, ctx, parts) {
   }
   if (p === 'provision' && request.method === 'POST') {
     const kind = body.demo === true ? 'demo' : 'paid';
+    if (kind === 'paid' && body.dry_run !== true) return J({error:'golden_confirmation_required',
+      message:'Utilisez Golden et confirmez son devis avant de créer une ligne.'},409);
     return send(await provision(env, ctx, { kind, mac: body.mac, sub: body.sub, actor, dryRun: body.dry_run === true }));
   }
   if (p === 'renew' && request.method === 'POST') return send(await renew(env, ctx, body.mac, body.sub, actor));
@@ -609,6 +614,41 @@ function cors(request,env,response) {
 }
 
 const realtimeRoutes = createRealtimeRoutes({ original: orig, actorFor: adminActor });
+const goldenRoutes = createGoldenRoutes({
+  authenticate: adminActor,
+  config: async env => {
+    const cfg=await getConfig(env);
+    // Aucun prix par défaut supposé pour un achat : le tarif doit avoir été
+    // renseigné explicitement par l'administrateur dans la configuration.
+    const tariff=await env.DB.prepare("SELECT value FROM app_config WHERE key='gold_cost_per_month'").first();
+    return {...cfg,gold_cost_per_month:tariff?.value??''};
+  },
+  keys: env => poolKeys(env,'paid'),
+  balance: async (env,key) => {
+    const data=first(await goldCall(env,{action:'reseller'},key.key,8000));
+    const credits=Number(data.credits);
+    if (!ok(data)||data.credits==null||!Number.isFinite(credits)||credits<0) throw new Error('gold_balance_unavailable');
+    return credits;
+  },
+  templates: async (env,key) => goldenTemplates(await goldCall(env,{action:'bouquet'},key.key,8000)),
+  create: async (env,key,order) => {
+    const data=first(await goldCall(env,{action:'new',type:'m3u',sub:String(order.sub),
+      pack:order.bouquet,note:`Golden ${order.id} ${order.mac}`},key.key));
+    const credentials=ok(data)?parseLineUrl(data.url):null;
+    if (!credentials||!['http:','https:'].includes(new URL(credentials.server_url).protocol))
+      throw new Error('gold_creation_uncertain');
+    // Réutiliser l'URL M3U fournie par Strong telle quelle : aucune URL de
+    // catalogue inventée et un seul téléchargement pour l'import initial.
+    return {user_id:data.user_id,credentials:{m3u_url:String(data.url)}};
+  },
+  seal: async (env,credentials) => {
+    const source={type:'m3u',label:'Golden',origin:'panel',...credentials};
+    const sealed=await goldSealSource(env,source);
+    if (!sealed.m3u_url?.startsWith('enc1.')||sealed.m3u_url===credentials.m3u_url) throw new Error('gold_encryption_unavailable');
+    return sealed;
+  },
+  deliver: createGoldenDelivery({original:orig,tokenFor:internalAdminToken,notifyBox:goldNotifyBox}),
+});
 
 export default {
   ...orig,
@@ -622,6 +662,13 @@ export default {
       p.startsWith('/api/v1/rt/') || p==='/api/v1/boxes/live' || p==='/api/v1/online' || p.startsWith('/api/box/');
     if (own && request.method==='OPTIONS') return cors(request,env,new Response(null,{status:204}));
     try {
+      const goldenProtected=await protectGoldenSource(request,env);
+      if (goldenProtected) return cors(request,env,goldenProtected);
+      if (p.startsWith('/api/v1/gold/golden')) {
+        // Même point d'entrée Gold et même authentification de production.
+        await ensureTables(env);
+        return cors(request,env,await goldenRoutes(request,env,ctx));
+      }
       const realtime = await realtimeRoutes(request, env, ctx);
       if (realtime) return realtime.status === 101 ? realtime : cors(request, env, realtime);
       if (p.startsWith('/api/v1/announcements') && ['POST','PATCH','PUT','DELETE'].includes(request.method)) {

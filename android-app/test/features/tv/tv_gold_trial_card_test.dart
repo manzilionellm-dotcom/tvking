@@ -70,7 +70,7 @@ void main() {
 
   }
 
-  testWidgets('offre fermée par défaut : OK ne lance aucun appel ni loader', (tester) async {
+  testWidgets('offre fermée par défaut : carte invisible, OK ne lance aucun appel ni loader', (tester) async {
     int posts = 0;
     final controller = GoldTrialController(
       backend: GoldTrialBackend(clientFactory: () => MockClient((_) async {
@@ -86,8 +86,8 @@ void main() {
     );
     addTearDown(controller.dispose);
     await show(tester, controller);
-    expect(find.text('Je teste'), findsOneWidget);
-    expect(find.text('Essai bientôt disponible'), findsOneWidget);
+    expect(find.text('Je teste'), findsNothing);
+    expect(find.text('Essai bientôt disponible'), findsNothing);
     await tester.sendKeyEvent(LogicalKeyboardKey.select);
     await controller.request();
     await tester.pump(const Duration(seconds: 35));

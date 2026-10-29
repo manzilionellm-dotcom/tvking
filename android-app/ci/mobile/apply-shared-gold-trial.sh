@@ -26,3 +26,4 @@ mkdir -p test/core/app
 cp "$mission_dir/android-app/test/core/app/backend_url_test.dart" test/core/app/backend_url_test.dart
 git apply --check "$mission_dir/android-app/ci/mobile/realtime-channel.patch"
 git apply "$mission_dir/android-app/ci/mobile/realtime-channel.patch"
+python3 "$mission_dir/android-app/ci/mobile/sanitize-source-logs.py"

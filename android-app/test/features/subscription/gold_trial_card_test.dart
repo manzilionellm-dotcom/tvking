@@ -40,7 +40,7 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('offre fermée par défaut : message immédiat, zéro réseau et aucun loader', (tester) async {
+  testWidgets('offre fermée par défaut : carte invisible, zéro réseau et aucun loader', (tester) async {
     int posts = 0;
     int proofs = 0;
     // Aucun paramètre d'ouverture : c'est la configuration réelle de l'APK.
@@ -58,10 +58,9 @@ void main() {
     );
     addTearDown(controller.dispose);
     await show(tester, controller);
-    expect(find.text('Je teste'), findsOneWidget);
-    expect(find.text('Essai bientôt disponible'), findsOneWidget);
-    expect(tester.widget<FilledButton>(find.byType(FilledButton)).onPressed, isNull);
-    await tester.tap(find.text('Je teste'));
+    expect(find.text('Je teste'), findsNothing);
+    expect(find.text('Essai bientôt disponible'), findsNothing);
+    expect(find.byType(FilledButton), findsNothing);
     await controller.request();
     await tester.pump(const Duration(seconds: 35));
     expect(controller.busy, isFalse);

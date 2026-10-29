@@ -408,7 +408,7 @@ class PlaylistRepository {
       //    (User-Agent navigateur + UTF-8 / Latin-1 fallback +
       //    strip BOM + timeout 90s — gère les serveurs paranos
       //    ou les exports Windows-1252 mal étiquetés).
-      if (kDebugMode) debugPrint('[Repo] GET $url');
+      if (kDebugMode) debugPrint('[Repo] Téléchargement de la playlist');
       // Octets bruts : décodage ET parsing dans l'isolate (le fil UI ne
       // touche jamais au contenu, même pour un fichier de 60 Mo).
       final Uint8List body = await M3uFetcher.fetchBytes(url, httpClient: client);
@@ -498,7 +498,7 @@ class PlaylistRepository {
       );
     } catch (e) {
       // L'EPG est optionnel : la liste reste utilisable. La trace sert au support.
-      BlackBox.instance.warn('EPG', 'guide non importé : $e');
+      BlackBox.instance.warn('EPG', 'guide non importé : ${e.runtimeType}');
     }
   }
 

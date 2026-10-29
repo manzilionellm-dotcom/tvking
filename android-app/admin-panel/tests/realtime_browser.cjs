@@ -22,15 +22,22 @@ const assert = require('node:assert/strict');
     await call('/api/device-proof', 'POST', { mac, androidId: 'browser-fixture', secret });
     let applied = false;
     let appError;
+    let releaseGolden;
+    const goldenAckGate=new Promise(resolve=>{releaseGolden=resolve;});
     const onDeviceMessage = event => {
       void (async () => {
         const order = JSON.parse(event.data);
-        if (order.type !== 'suspend') return;
-        const status = await call(`/api/status/${mac}`, 'GET', undefined, true);
-        assert.equal(status.frozen, true);
-        applied = true;
+        if (!['suspend','resume','activate','renew','source'].includes(order.type)) return;
+        if(order.type==='source') {
+          const source=await call(`/api/device-source/${mac}`,'GET',undefined,true);
+          assert.match(JSON.stringify(source),/golden\.m3u/);
+          await goldenAckGate;
+        } else {
+          const status = await call(`/api/status/${mac}`, 'GET', undefined, true);
+          if(order.type==='suspend'){assert.equal(status.frozen,true);applied=true;}
+        }
         await call(`/api/box/ack/${mac}`, 'POST', { orders: [{
-          order_id: order.order_id, state: 'applied', result: 'refreshed', applied_at: Date.now(),
+          order_id: order.order_id, state: 'applied', result: 'refreshed', applied_at: Date.now(),applied_rev:order.config_rev,
         }] }, true);
       })().catch(error => { appError = error; });
     };
@@ -95,6 +102,25 @@ const assert = require('node:assert/strict');
     assert.ifError(appError);
     assert.equal(applied, true);
     assert.ok(appliedMs < 2000, `clic → accusé visible ${appliedMs} ms`);
+    await call(`/api/v1/devices/fixture-${mac}`,'PATCH',{block_status:'active'});
+    await row.getByRole('button',{name:'Golden',exact:true}).click();
+    const dialog=page.getByRole('dialog',{name:'Golden'});
+    await dialog.getByLabel('Template Strong').selectOption('84802');
+    await dialog.getByLabel('Durée',{exact:true}).selectOption('3');
+    await dialog.getByRole('button',{name:'Golden',exact:true}).click();
+    await dialog.getByText('Coût prévu : 3 crédit(s)',{exact:true}).waitFor();
+    assert.equal(fixture.providerCalls.filter(c=>c.action==='new').length,0,'aucune création au devis');
+    await dialog.getByRole('button',{name:'Annuler',exact:true}).click();
+    assert.equal(fixture.providerCalls.filter(c=>c.action==='new').length,0,'annulation sans achat');
+    await dialog.getByRole('button',{name:'Golden',exact:true}).click();
+    await dialog.getByRole('button',{name:'Confirmer et dépenser 3 crédit(s)',exact:true}).click();
+    await dialog.getByText('Ligne créée. En attente de l’application sur l’appareil.',{exact:true}).waitFor();
+    assert.equal(await dialog.getByText('Golden appliqué sur l’appareil',{exact:true}).count(),0,'pas de succès avant ACK source');
+    const ackAt=Date.now();releaseGolden();
+    await dialog.getByText('Golden appliqué sur l’appareil',{exact:true}).waitFor();
+    const goldenAckMs=Date.now()-ackAt;assert.ok(goldenAckMs<2000,`ACK Golden visible ${goldenAckMs}ms`);
+    assert.equal(fixture.providerCalls.filter(c=>c.action==='new').length,1);
+    await dialog.getByRole('button',{name:'Fermer',exact:true}).click();
     const disconnect = Date.now();
     device.close(1000, 'test');
     await row.getByText(/hors ligne/).waitFor();
@@ -104,7 +130,7 @@ const assert = require('node:assert/strict');
     assert.ok(sockets.every(url => !url.includes(fixture.token) && !url.includes(secret)));
     assert.deepEqual(errors, []);
     if (process.env.PANEL_CAPTURE_DIR) await page.screenshot({ path: `${process.env.PANEL_CAPTURE_DIR}/panel-realtime.png`, fullPage: true });
-    console.log(JSON.stringify({ passed: true, initialSnapshotReconciled: true, appliedMs, offlineMs, errors }));
+    console.log(JSON.stringify({ passed: true, initialSnapshotReconciled: true, appliedMs, goldenAckMs, offlineMs, errors }));
   } finally {
     try { device?.close(); } catch { /* Déjà fermée par la recette hors ligne. */ }
     await browser.close();

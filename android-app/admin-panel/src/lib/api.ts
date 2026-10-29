@@ -154,6 +154,23 @@ export const goldTrialApi = {
       `/api/v1/gold/history?mac=${encodeURIComponent(mac)}${before ? `&before=${encodeURIComponent(before)}` : ''}`, { signal }),
 };
 
+export interface GoldenOrder {
+  id: string; mac: string; sub: number; bouquet_id: string; bouquet_name: string;
+  key_label: string; cost: number; credits_before: number; credits_after: number | null;
+  quote_until: number; state: 'quoted' | 'preparing' | 'creating' | 'uncertain' | 'created' | 'delivering' | 'delivered' | 'refused';
+  provider_created_at: number | null; delivered_at: number | null;
+  source_order_id: string | null; license_order_id: string | null; error_code: string | null;
+}
+export const goldenApi = {
+  templates: (signal?: AbortSignal) => request<{items:{id:string;name:string}[]}>('/api/v1/gold/golden/templates',{signal}),
+  status: (mac: string,signal?: AbortSignal) => request<{order:GoldenOrder|null}>(`/api/v1/gold/golden?mac=${encodeURIComponent(mac)}`,{signal}),
+  quote: (mac: string,sub: number,bouquet_id: string) => request<{order:GoldenOrder}>('/api/v1/gold/golden/quote',
+    {method:'POST',body:{mac,sub,bouquet_id}}),
+  confirm: (quote: GoldenOrder) => request<{order:GoldenOrder}>('/api/v1/gold/golden/confirm',
+    {method:'POST',body:{quote_id:quote.id,confirmed:true,confirmed_cost:quote.cost}}),
+  deliver: (id: string) => request<{order:GoldenOrder}>('/api/v1/gold/golden/deliver',{method:'POST',body:{order_id:id}}),
+};
+
 // =========================================================
 //  Endpoints typees
 // =========================================================

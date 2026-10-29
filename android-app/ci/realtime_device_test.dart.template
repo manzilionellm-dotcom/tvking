@@ -109,6 +109,26 @@ void main() {
         () => !SubscriptionState.instance.remote.frozen);
       await action('retrait de liste', '/api/v1/sources/$mac', 'DELETE', null, 'source_clear',
         () => PlaylistRepository.instance.currentChannels.isEmpty, visible: find.text('channels=0'));
+      // Strong est simulé dans la fixture. Le devis ne crée rien ; seul ce
+      // clic de confirmation doit livrer la licence et importer la vraie M3U.
+      final quote = (await panel('/api/v1/gold/golden/quote', 'POST', <String, Object>{
+        'mac': mac, 'sub': 1, 'bouquet_id': '84802',
+      }))['order'] as Map;
+      expect(quote['cost'], 1);
+      expect(quote['key_label'], 'Manzi8');
+      final goldenWatch = Stopwatch()..start();
+      final golden = (await panel('/api/v1/gold/golden/confirm', 'POST', <String, Object>{
+        'quote_id': quote['id'], 'confirmed': true, 'confirmed_cost': quote['cost'],
+      }))['order'] as Map;
+      expect(golden['state'], 'delivered');
+      final goldenOrders = <dynamic>[golden['source_order_id'], golden['license_order_id']];
+      await until(() => PlaylistRepository.instance.currentChannels.isNotEmpty &&
+        SubscriptionState.instance.remote.paid && goldenOrders.every((id) => events.any((e) =>
+          e['type'] == 'receipt' && e['order_id'] == id && e['state'] == 'applied')));
+      expect(find.text('channels=1'), findsOneWidget);
+      final goldenElapsed = goldenWatch.elapsedMilliseconds;
+      debugPrint('RT_LATENCY ${jsonEncode(<String, Object>{'app': variant, 'action': 'Golden confirmé', 'milliseconds': goldenElapsed})}');
+      expect(goldenElapsed, lessThan(2000), reason: 'Golden : création simulée, import SQLite et deux accusés panel');
       final int cut = events.length;
       await panel('/__fixture/socket-mode', 'POST', <String, Object>{'mac': mac, 'blocked': true});
       await until(() => events.skip(cut).any((e) => e['type'] == 'presence' && e['online'] == false));

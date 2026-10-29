@@ -137,7 +137,7 @@ class CloudBackupRepository {
         debugPrint('[Backup] upload OK (${playlists.length} playlist(s))');
       }
     } catch (e) {
-      if (kDebugMode) debugPrint('[Backup] upload error: $e');
+      if (kDebugMode) debugPrint('[Backup] upload error: ${e.runtimeType}');
     }
   }
 
@@ -205,7 +205,7 @@ class CloudBackupRepository {
             restored++;
           }
         } catch (e) {
-          if (kDebugMode) debugPrint('[Backup] restore playlist "$name": $e');
+          if (kDebugMode) debugPrint('[Backup] restore playlist "$name": ${e.runtimeType}');
         }
       }
 
@@ -231,7 +231,7 @@ class CloudBackupRepository {
         }
       }
     } catch (e) {
-      if (kDebugMode) debugPrint('[Backup] restore error: $e');
+      if (kDebugMode) debugPrint('[Backup] restore error: ${e.runtimeType}');
     }
   }
 }

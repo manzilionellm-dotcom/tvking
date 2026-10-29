@@ -95,8 +95,8 @@ fixtures de réponses. Un timeout reste incertain : jamais de bascule aveugle.
 Le test actuel de bascule valide la politique sur fournisseur simulé ; il ne
 prouve pas la disponibilité des tickets Strong ni une gratuité réelle.
 
-Le bouton des deux apps affiche désormais « Essai bientôt disponible » dès
-l'accueil et reste inactif, sans activation réseau ni chargement. Un ancien
+Le bouton « Je teste » est désormais entièrement masqué dans les deux apps,
+sans activation réseau ni chargement. Un ancien
 serveur répondant `trial_disabled` affiche aussi ce texte. Les migrations D1,
 la livraison de sources existantes et le temps réel continuent indépendamment.
 
@@ -153,3 +153,6 @@ Restent à vérifier sur staging/appareil réel : contrat fournisseur, délai ju
 la première image, Cast sur récepteur physique, qualité 4K/HDR et débit. L'Android
 ID reste déclaratif sans attestation matérielle ; le secret protège la liaison
 après enrôlement mais ne prouve pas, à lui seul, un appareil physique unique.
+
+La création payante passe désormais uniquement par Golden confirmé dans le panel ;
+voir [golden-admin.md](golden-admin.md). L’activation classique ne crée plus de ligne Strong.

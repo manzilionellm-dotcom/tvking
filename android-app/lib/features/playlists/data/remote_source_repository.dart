@@ -136,7 +136,7 @@ abstract final class RemoteSourceRepository {
         'SOURCE',
         'liste $kind du panel refusée après $secs s : ${shortReason(e)}',
       );
-      if (kDebugMode) debugPrint('[RemoteSource] $kind KO: $e');
+      if (kDebugMode) debugPrint('[RemoteSource] $kind KO: ${e.runtimeType}');
       return RemoteSyncResult.sourceFailed;
     } finally {
       importing.value = false;
@@ -206,7 +206,7 @@ abstract final class RemoteSourceRepository {
       await DeletedSources.remember(SourceFingerprint.ofPlaylist(playlist));
       await PlaylistRepository.instance.deletePlaylist(id);
     } catch (e) {
-      BlackBox.instance.warn('SOURCE', 'suppression locale impossible : $e');
+      BlackBox.instance.warn('SOURCE', 'suppression locale impossible : ${e.runtimeType}');
       return false;
     }
     await _serial(() => _deleteFromTv(playlist, client: client));
@@ -271,7 +271,7 @@ abstract final class RemoteSourceRepository {
           return true;
       }
     } catch (e) {
-      BlackBox.instance.warn('SOURCE', 'copie serveur non retirée ; suppression locale conservée : $e');
+      BlackBox.instance.warn('SOURCE', 'copie serveur non retirée ; suppression locale conservée : ${e.runtimeType}');
       return false;
     } finally {
       if (client == null) c.close();
@@ -487,8 +487,8 @@ abstract final class RemoteSourceRepository {
       }
       return outcome;
     } catch (e) {
-      if (kDebugMode) debugPrint('[RemoteSource] sync error: $e');
-      BlackBox.instance.warn('PANEL', 'device-source injoignable : $e');
+      if (kDebugMode) debugPrint('[RemoteSource] sync error: ${e.runtimeType}');
+      BlackBox.instance.warn('PANEL', 'device-source injoignable : ${e.runtimeType}');
       return RemoteSyncResult.networkError;
     }
   }
@@ -537,7 +537,7 @@ abstract final class RemoteSourceRepository {
         await RecentlyWatchedRepository.instance.seedIfEmpty(ids);
       }
     } catch (e) {
-      if (kDebugMode) debugPrint('[RemoteSource] history sync error: $e');
+      if (kDebugMode) debugPrint('[RemoteSource] history sync error: ${e.runtimeType}');
     }
   }
 

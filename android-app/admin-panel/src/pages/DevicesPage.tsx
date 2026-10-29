@@ -1,8 +1,9 @@
 import { ReactNode, useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AppLayout } from '@/components/AppLayout';
+import { GoldenModal } from '@/components/GoldenModal';
 import {
-  devicesApi, boxesApi, activateApi, flagEmoji,
+  devicesApi, boxesApi, activateApi, flagEmoji, getCurrentUser,
   type Device, type DeviceSource, type DeviceOverview, type DeviceLocalSource,
   type DeviceLicense, type DevicePresence, type BoxLiveRow, ApiError,
 } from '@/lib/api';
@@ -23,6 +24,8 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
   const [err, setErr] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [activateFor, setActivateFor] = useState<Device | null>(null);
+  const [goldenFor, setGoldenFor] = useState<Device | null>(null);
+  const canGolden = getCurrentUser()?.role === 'super_admin';
   // Appareil dont on affiche la « fiche complète » (infos + M-Trio).
   const [detailFor, setDetailFor] = useState<Device | null>(null);
   // État en direct, rafraîchi sans recharger la page.
@@ -179,6 +182,7 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
                     <div className="flex flex-wrap justify-end gap-1.5">
                       <ActionBtn busy={busy} onClick={() => setDetailFor(d)} title="Fiche complète : M-Trio + infos appareil">Détails</ActionBtn>
                       <ActionBtn busy={busy} primary onClick={() => setActivateFor(d)} title="Activer / prolonger (le client a payé)">Activer</ActionBtn>
+                      {canGolden && <ActionBtn busy={busy} onClick={() => setGoldenFor(d)} title="Créer une ligne Strong après confirmation du coût">Golden</ActionBtn>}
                       {st !== 'frozen' && (
                         <ActionBtn busy={busy} onClick={() => setBlock(d, 'frozen')} title="Geler (rappel de paiement)">Geler</ActionBtn>
                       )}
@@ -197,6 +201,8 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
           </tbody>
         </table>
       </div>
+
+      {goldenFor && <GoldenModal initialMac={goldenFor.mac} onClose={() => { setGoldenFor(null); load(); }} />}
 
       {activateFor && (
         <ActivatePlanModal

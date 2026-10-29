@@ -44,8 +44,8 @@ Aucun ticket, crédit, compte ou déploiement de production n'a été modifié.
 compilations. Le composant est ajouté à l'accueil et à l'activation Zuno ; les
 points d'insertion du dernier téléphone sont conservés.
 
-L'offre est fermée par défaut dans les deux apps : « Je teste » est inactif,
-« Essai bientôt disponible » s'affiche immédiatement et aucun POST d'activation
+L'offre est fermée et entièrement masquée par défaut dans les deux apps : ni
+« Je teste » ni le message d'attente ne sont affichés. Aucun POST d'activation
 ni enrôlement d'essai ne part au clic. Le chargement n'est pas lancé. Les tests
 de parcours activent explicitement le contrôleur contre leur serveur fictif.
 Le même message remplace l'ancien texte d'un refus `trial_disabled`, qui rend
@@ -131,7 +131,7 @@ commit de la PR. L'environnement local ne contient pas de SDK Flutter.
 | Manzi8 sans tickets démo, manzi10 disponible | Bascule après rejet certain ; compteur de crédits payants inchangé sur les deux comptes |
 | Toutes les clés sans tickets | Aucun crédit débité ; message d'indisponibilité |
 | Timeout fournisseur après réception possible | Pas de nouvelle création ; réconcilier la même opération |
-| Offre fermée par défaut dans l'APK | « Essai bientôt disponible » immédiatement ; « Je teste » inactif ; aucun POST ni loader |
+| Offre fermée par défaut dans l'APK | Carte invisible, aucun POST ni loader ; Golden réservé au panel admin |
 | Interrupteur OFF / ancien serveur | Aucun appel fournisseur ; même message ; aucun second POST après le refus |
 | Plafond journalier atteint / sixième requête en une minute | 429 approprié ; refus journalisé |
 | Android ID d'une autre MAC / secret manquant, faux ou appareil banni | 403 avant toute création |

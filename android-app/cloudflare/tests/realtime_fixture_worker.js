@@ -40,8 +40,8 @@ export default {
       ]);
       return Response.json({ ok: true, id: `fixture-${mac}` });
     }
-    if (url.pathname === '/__fixture/list.m3u') return new Response(
-      `#EXTM3U\n#EXTINF:-1 tvg-id="realtime" group-title="Recette",Chaîne RT locale\n${url.origin}/__fixture/stream.ts\n`,
+    if (['/__fixture/list.m3u','/__fixture/golden.m3u'].includes(url.pathname)) return new Response(
+      `#EXTM3U\n#EXTINF:-1 tvg-id="realtime" group-title="Recette",${url.pathname.includes('golden')?'Chaîne Golden locale':'Chaîne RT locale'}\n${url.origin}/__fixture/stream.ts\n`,
       { headers: { 'Content-Type': 'audio/x-mpegurl' } });
     return gold.fetch(request, env, ctx);
   },

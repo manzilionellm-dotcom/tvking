@@ -639,7 +639,7 @@ class RemoteActivationWatch {
       }
       return true;
     } catch (e) {
-      if (kDebugMode) debugPrint('[Signal] effet $kind : $e');
+      if (kDebugMode) debugPrint('[Signal] effet $kind : ${e.runtimeType}');
       BlackBox.instance.warn('PANEL', 'ordre $kind : relecture en échec');
       return false;
     }
