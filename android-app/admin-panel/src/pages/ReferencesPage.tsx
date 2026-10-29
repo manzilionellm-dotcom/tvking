@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
 import { ListPager } from '@/components/ListPager';
+import { MacInput } from '@/components/MacInput';
 import { referencesApi, type ActivationReference, ApiError, isAbortError } from '@/lib/api';
 import { formatDateTime } from '@/lib/utils';
 import { macMatches } from '@/lib/mac-format/mac';
@@ -96,9 +97,10 @@ export function ReferencesPage({ onLogout }: { onLogout: () => void }) {
       )}
 
       <div className="mb-4 flex items-center justify-between gap-3">
-        <input
+        <MacInput
+          mode="search"
           value={q}
-          onChange={(e) => setQ(e.target.value)}
+          onValueChange={setQ}
           placeholder="Rechercher une MAC, un username, un serveur ou un client…"
           className="w-full max-w-md rounded-md border border-white/10 bg-slate px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-accent"
         />

@@ -9,7 +9,7 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "test": "node --experimental-strip-types --test src/lib/robust.test.ts src/lib/mac.test.ts src/lib/sources.test.ts src/lib/box-channel.test.ts src/lib/plans.test.ts src/lib/blackbox.test.ts src/lib/instant.test.ts src/lib/idempotency.test.ts src/lib/timeline.test.ts src/lib/activation.test.ts src/lib/delivery.test.ts",
-    "test:mac-format": "vitest run src/lib/mac-format/mac.test.ts src/components/MacInput.test.tsx",
+    "test:mac-format": "vitest run src/lib/mac-format/mac.test.ts src/lib/mac-format/mac-search.test.ts src/components/MacInput.test.tsx src/pages/DevicesPage.search.test.tsx",
     "test:realtime": "vitest run src/lib/box-channel.lifecycle.test.ts",
     "test:device-delivery": "vitest run src/pages/DevicesPage.delivery.test.tsx"
   },

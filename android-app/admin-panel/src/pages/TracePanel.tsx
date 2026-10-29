@@ -8,6 +8,7 @@
 // =========================================================
 import { FormEvent, useState } from 'react';
 import { Alert } from '@/components/ui';
+import { MacInput } from '@/components/MacInput';
 import {
   ApiError, getCurrentUser, isOwnerRole, traceApi,
   type LatencyResult, type TimelineResult,
@@ -52,10 +53,11 @@ export function TracePanel({ initialQuery = '' }: { initialQuery?: string }) {
     <section className="mt-6 space-y-4 rounded-xl border border-white/10 bg-midnight p-4 sm:p-6">
       <h2 className="text-base font-semibold">Chronologie : de l’action du panel jusqu’à la box</h2>
       <form onSubmit={search} className="flex flex-col gap-2 sm:flex-row">
-        <input
+        <MacInput
+          mode="search"
           aria-label="Recherche chronologie"
           value={q}
-          onChange={(e) => setQ(e.target.value)}
+          onValueChange={setQ}
           placeholder="MAC, e-mail client, id client, id appareil ou trace"
           className="min-w-0 flex-1 rounded-md border border-white/10 bg-slate px-3 py-2.5 text-sm outline-none focus:border-accent/60"
         />
