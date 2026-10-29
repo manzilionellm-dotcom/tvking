@@ -16,11 +16,14 @@ let up = false;
 let attempt = 0;
 let timer = 0;
 let stopped = true;
+// Chaque ouverture de session possède ses callbacks et son arrêt. Une
+// fermeture réseau peut arriver après la connexion de la session suivante.
+let generation = 0;
 const listeners = new Set<Listener>();
 const states = new Set<StateListener>();
 
 function apiBase(): string {
-  const configured = (import.meta.env.VITE_API_BASE as string | undefined) || '';
+  const configured = "https://seven-motion-backend.manzilionel-lm.workers.dev";
   if (configured) return configured.replace(/\/$/, '');
   if (typeof window !== 'undefined') return window.location.origin;
   return '';
@@ -54,15 +57,19 @@ export function onPanelChannelState(fn: StateListener): () => void {
   return () => states.delete(fn);
 }
 
-function schedule() {
-  if (stopped) return;
-  const wait = Math.min(30_000, 1000 * (2 ** Math.min(attempt, 5)));
-  window.clearTimeout(timer);
-  timer = window.setTimeout(connect, wait);
+function isActive(owner: number): boolean {
+  return !stopped && owner === generation;
 }
 
-function connect() {
-  if (stopped || REALTIME_POLL_LEGACY) return;
+function schedule(owner: number) {
+  if (!isActive(owner)) return;
+  const wait = Math.min(30_000, 1000 * (2 ** Math.min(attempt, 5)));
+  window.clearTimeout(timer);
+  timer = window.setTimeout(() => connect(owner), wait);
+}
+
+function connect(owner: number) {
+  if (!isActive(owner) || REALTIME_POLL_LEGACY) return;
   const token = getToken();
   if (!token) return;
   let opened: WebSocket;
@@ -70,26 +77,31 @@ function connect() {
     opened = new WebSocket(wsUrl(token));
   } catch {
     attempt += 1;
-    schedule();
+    schedule(owner);
     return;
   }
   socket = opened;
+  const isCurrent = () => isActive(owner) && socket === opened;
   opened.onopen = () => {
+    if (!isCurrent()) return;
     attempt = 0;
     setUp(true);
   };
   opened.onmessage = (ev) => {
+    if (!isCurrent()) return;
     const event = parseChannelEvent(String(ev.data ?? ''));
     if (!event) return;
     for (const fn of listeners) fn(event);
   };
   opened.onclose = () => {
-    if (socket === opened) socket = null;
+    if (!isCurrent()) return;
+    socket = null;
     setUp(false);
     attempt += 1;
-    schedule();
+    schedule(owner);
   };
   opened.onerror = () => {
+    if (!isCurrent()) return;
     try { opened.close(); } catch { /* déjà fermé */ }
   };
 }
@@ -97,15 +109,25 @@ function connect() {
 /// À appeler une fois la session ouverte. Le retour ferme le socket
 /// (déconnexion).
 export function startPanelChannel(): () => void {
+  const owner = ++generation;
   stopped = false;
   attempt = 0;
-  connect();
+  window.clearTimeout(timer);
+  const previous = socket;
+  socket = null;
+  setUp(false);
+  try { previous?.close(); } catch { /* déjà fermé */ }
+  connect(owner);
   return () => {
+    // Le cleanup d'un ancien effet React ne doit jamais arrêter la
+    // session créée entre-temps par un nouvel appel à startPanelChannel.
+    if (!isActive(owner)) return;
     stopped = true;
     window.clearTimeout(timer);
-    setUp(false);
-    try { socket?.close(); } catch { /* déjà fermé */ }
+    const closing = socket;
     socket = null;
+    setUp(false);
+    try { closing?.close(); } catch { /* déjà fermé */ }
   };
 }
 
@@ -124,7 +146,12 @@ export function bindPanelRefresh(refresh: () => void): () => void {
   };
   arm();
   const offEvent = onPanelChannel(() => refresh());
-  const offState = onPanelChannelState(() => arm());
+  const offState = onPanelChannelState((connected) => {
+    arm();
+    // Le canal ne rejoue pas ici les événements manqués. Dès la première
+    // ouverture et chaque reconnexion, on relit donc l'état du serveur.
+    if (connected && !dead) refresh();
+  });
   return () => {
     dead = true;
     window.clearTimeout(timerId);

@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { AppLayout } from '@/components/AppLayout';
+import { MacInput, initialMac } from '@/components/MacInput';
 import { Alert } from '@/components/ui';
 import { PlanPicker } from '@/components/PlanPicker';
 import {
@@ -44,7 +45,7 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
   // ?mac=… : la fiche appareil, les clients et l'ancienne adresse
   // /activation-distance pré-remplissent la MAC.
   const [sp] = useSearchParams();
-  const [mac, setMac] = useState(sp.get('mac') || '');
+  const [mac, setMac] = useState(initialMac(sp.get('mac')));
   const [plan, setPlan] = useState(DEFAULT_PLAN);
   const [customerName, setCustomerName] = useState('');
   const [apps, setApps] = useState<App[]>([]);
@@ -132,10 +133,10 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
           <label htmlFor="act-mac" className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-ink-secondary">
             Adresse MAC (comme sur la box)
           </label>
-          <input
+          <MacInput
             id="act-mac"
             value={mac}
-            onChange={(e) => changeMac(e.target.value)}
+            onValueChange={changeMac}
             onBlur={() => setMac((v) => (v.trim() ? normalizeMac(v) : v))}
             autoFocus
             autoComplete="off"

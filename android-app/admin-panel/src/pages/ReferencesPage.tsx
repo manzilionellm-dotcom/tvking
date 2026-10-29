@@ -3,6 +3,7 @@ import { AppLayout } from '@/components/AppLayout';
 import { ListPager } from '@/components/ListPager';
 import { referencesApi, type ActivationReference, ApiError, isAbortError } from '@/lib/api';
 import { formatDateTime } from '@/lib/utils';
+import { macMatches } from '@/lib/mac-format/mac';
 import {
   LIST_PAGE_SIZE, createAbortBag, createGeneration, readListPage, referenceMatches,
 } from '@/lib/robust';
@@ -73,7 +74,7 @@ export function ReferencesPage({ onLogout }: { onLogout: () => void }) {
 
   // Filtre : MAC, username ou nom du client (recherche support).
   const filtered = useMemo(
-    () => items.filter((it) => referenceMatches(it, q)),
+    () => items.filter((it) => referenceMatches(it, q) || macMatches(it?.mac, q)),
     [items, q],
   );
 
