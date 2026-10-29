@@ -5,7 +5,7 @@ name = "seven-motion-backend"
 main = "gold.js"
 compatibility_date = "2025-05-01"
 workers_dev = true
-routes = [{ pattern = "app.7themotion.com", custom_domain = true }]
+routes = [{ pattern = "api.zuno8k.com", custom_domain = true }]
 
 [build]
 command = "node prepare_gold_runtime.mjs"
