@@ -457,18 +457,14 @@ class PlaylistRepository {
       // L’adresse de compatibilité n’est mémorisée qu’après un vrai import.
       await _updatePlaylistMetrics(
         saved,
+        activate: true,
         importedM3uUrl: connection.url != url ? connection.url : null,
         additionalFingerprints: SourceFingerprint.ofM3uUrl(url),
       );
 
-      // CORRECTIF « les chaînes n'arrivent jamais » : on ACTIVE la
-      // playlist qu'on vient d'ajouter. Sans ça, seule la TOUTE 1re
-      // playlist était auto-active (cf. _insertPlaylist) ; un 2e ajout
-      // (nouveau code, nouvelle tentative, source poussée…) restait
-      // `is_active=0` → `getAllChannels` filtrait ses chaînes et l'accueil
-      // affichait l'ancienne source (ou rien) malgré le « connecté ».
-      // setActivePlaylist ré-émet l'état → l'accueil bascule aussitôt.
-      await setActivePlaylist(playlistId);
+      // Métriques et activation sont maintenant validées ensemble.
+      // Attendre encore la lecture/UI avant de déclarer l'import terminé.
+      await _emitCurrentState();
       ImportProgressBus.done(parsed.channels.length);
 
       // Si une URL EPG est fournie → on déclenche la sync en
@@ -685,13 +681,11 @@ class PlaylistRepository {
         lastSyncedAt: DateTime.now().millisecondsSinceEpoch,
       );
       await _updatePlaylistMetrics(saved,
+        activate: true,
         additionalFingerprints: requestedFingerprints);
 
-      // CORRECTIF « les chaînes n'arrivent jamais » : on ACTIVE la
-      // playlist Xtream qu'on vient d'ajouter (même raison que pour le
-      // M3U). Sans ça, un 2e compte ajouté restait invisible car
-      // `getAllChannels` ne renvoie que les chaînes de la playlist active.
-      await setActivePlaylist(playlistId);
+      // Même finalisation atomique que pour le M3U, suivie de l'état UI.
+      await _emitCurrentState();
       ImportProgressBus.done(channels.length);
 
       // EPG auto en arrière-plan (Xtream a sa propre URL XMLTV), apparié
@@ -1224,8 +1218,8 @@ class PlaylistRepository {
     }
     // ANTI-OOM (P1-3) : on N'ÉMET PLUS d'état ICI — ni par tranche, ni à la
     // fin. Chaque appelant ré-émet l'état UNE seule fois APRÈS l'insertion
-    // (addM3u/addXtream → setActivePlaylist ; refreshPlaylist →
-    // _emitCurrentState). Avant, `_emitCurrentState()` relisait TOUTE la base
+    // (ajout → métriques et activation atomiques, puis _emitCurrentState ;
+    // refreshPlaylist → _emitCurrentState). Avant, la lecture relisait TOUTE la base
     // (jusqu'à 50k Channel) pendant l'import → une matérialisation complète
     // supplémentaire EN PLUS de `parsed.channels` déjà en RAM = pic mémoire qui
     // faisait planter les box faibles. On lit la base une seule fois, à la fin.
@@ -1235,6 +1229,7 @@ class PlaylistRepository {
 
   Future<void> _updatePlaylistMetrics(
     Playlist playlist, {
+    bool activate = false,
     String? importedM3uUrl,
     Iterable<String> additionalFingerprints = const <String>[],
   }) async {
@@ -1246,6 +1241,7 @@ class PlaylistRepository {
     final Map<String, Object?> values = <String, Object?>{
       'last_synced_at': playlist.lastSyncedAt,
       'channel_count': playlist.channelCount,
+      if (activate) 'is_active': 1,
       if (importedM3uUrl != null)
         'm3u_url': await PlaylistSecret.seal(importedM3uUrl),
     };
@@ -1262,6 +1258,14 @@ class PlaylistRepository {
       final int updated = await txn.update('playlists', values,
         where: 'id = ?', whereArgs: <Object>[playlist.id!]);
       if (updated == 0) throw const PlaylistDeletedException();
+      if (activate) {
+        // Une suppression entre deux transactions ne doit pas désactiver
+        // les autres listes alors que la cible a disparu. Les vérifications,
+        // métriques et sélection restent dans cette seule transaction.
+        // Une simple actualisation garde activate=false et sa sélection.
+        await txn.update('playlists', <String, Object?>{'is_active': 0},
+          where: 'id != ?', whereArgs: <Object>[playlist.id!]);
+      }
     });
   }
 

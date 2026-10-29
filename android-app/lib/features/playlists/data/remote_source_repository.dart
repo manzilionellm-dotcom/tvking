@@ -339,11 +339,16 @@ abstract final class RemoteSourceRepository {
     Map<String, SourceFailure> failures,
   ) async {
     try {
+      final String? previous = prefs.getString(failuresKey);
+      // Absence et chaîne vide sont déjà lues comme « aucun échec ».
+      // Ne pas bloquer le premier import sain sur un commit natif de '{}'.
+      // Une ancienne carte non vide doit en revanche être vraiment vidée.
+      if (failures.isEmpty && (previous == null || previous.isEmpty)) return;
       final String next = jsonEncode(<String, Object?>{
           for (final MapEntry<String, SourceFailure> e in failures.entries)
             e.key: e.value.toJson(),
         });
-      if (prefs.getString(failuresKey) != next) {
+      if (previous != next) {
         await prefs.setString(failuresKey, next);
       }
     } catch (_) {
@@ -801,8 +806,14 @@ abstract final class RemoteSourceRepository {
       }
     }
     try {
+      final String? previous = prefs.getString(panelOffKey);
+      // Sans ancien masquage, rien n'a changé : l'absence signifie déjà
+      // une carte vide. Après un vrai rallumage, persister son effacement.
+      if (plan.nextApplied.isEmpty && (previous == null || previous.isEmpty)) {
+        return;
+      }
       final String next = jsonEncode(plan.nextApplied);
-      if (prefs.getString(panelOffKey) != next) {
+      if (previous != next) {
         await prefs.setString(panelOffKey, next);
       }
     } catch (_) {}
