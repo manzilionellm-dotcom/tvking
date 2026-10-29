@@ -356,10 +356,16 @@ class SubscriptionState extends ChangeNotifier {
       try {
         final SharedPreferences prefs = await SharedPreferences.getInstance();
         _blockCache = snap.banned ? 'banned' : (snap.frozen ? 'frozen' : '');
-        await prefs.setString(_kBlockKey, _blockCache);
+        // L'état reste durable avant l'accusé, mais un statut identique
+        // n'impose plus plusieurs écritures natives à chaque ordre reçu.
+        if (prefs.getString(_kBlockKey) != _blockCache) {
+          await prefs.setString(_kBlockKey, _blockCache);
+        }
         if (snap.trialUntil > 0) {
           _trialUntilCache = snap.trialUntil;
-          await prefs.setInt(_kTrialUntilKey, snap.trialUntil);
+          if (prefs.getInt(_kTrialUntilKey) != snap.trialUntil) {
+            await prefs.setInt(_kTrialUntilKey, snap.trialUntil);
+          }
         }
         final int nowMs = DateTime.now().millisecondsSinceEpoch;
         if (nowMs > _hwmMs) {

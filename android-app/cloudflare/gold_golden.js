@@ -28,10 +28,12 @@ const reject = (code,status=409) => json({error:code,message:errors[code] || err
 const label = key => String(key.reseller || key.label ||
   (key.id==='gk_mvpkambcp22tk5'?'manzi10':'')).trim();
 export function orderedGoldenKeys(keys) {
-  const rank = key => ({manzi8:0,manzi10:1})[label(key).toLowerCase()];
-  return keys.filter(k=>rank(k)!==undefined && k.enabled!==false && Number(k.enabled??1)!==0 &&
-    k.use_for_paid!==false && Number(k.use_for_paid??1)!==0)
-    .slice().sort((a,b)=>rank(a)-rank(b));
+  // Golden payant est réservé au seul compte manzi10. Un solde insuffisant,
+  // une panne ou une création incertaine ne doit jamais sélectionner manzi8.
+  // La même sélection est relue à la confirmation, y compris pour un ancien devis.
+  return keys.filter(k=>label(k).toLowerCase()==='manzi10' &&
+    k.enabled!==false && Number(k.enabled??1)!==0 &&
+    k.use_for_paid!==false && Number(k.use_for_paid??1)!==0);
 }
 
 // Accepte les listes et dictionnaires renvoyés par action=bouquet, mais jamais

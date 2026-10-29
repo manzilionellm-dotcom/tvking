@@ -21,8 +21,10 @@ explicitement : aucun prix par défaut n'autorise un achat. Ce n'est pas un devi
 tarifaire signé par Strong ; aucun endpoint de tarification n'a été inventé.
 Le solde est lu avant la création et le plancher `gold_min_credits` est respecté.
 
-Manzi8 est choisi en premier, puis manzi10 seulement pendant les vérifications
-avant achat. Une fois le devis confirmé, la clé ne change plus. L'unique création
+Le compte manzi10 est le seul compte autorisé pour Golden payant. Un solde
+insuffisant, une désactivation ou une erreur ne provoque aucun repli vers Manzi8.
+Un ancien devis lié à Manzi8 est refusé avant tout achat. Une fois le devis
+confirmé, la clé ne change plus. L'unique création
 réutilise l'appel présent dans le wrapper exporté : `action=new`, `type=m3u`,
 `sub=1|3|6|12`, `pack=<template choisi>`, `note=<identifiant de suivi>`.
 
@@ -67,7 +69,8 @@ les mesures de recette ne constituent pas une garantie pour tout catalogue réel
 Aucune migration n'est exécutée automatiquement en production.
 
 Les tests utilisent des clés et réponses fictives, jamais de création Strong
-réelle : coût/confirmation, ordre des comptes, double clic, incertitude durable,
+réelle : coût/confirmation, compte manzi10 exclusif, ancien devis Manzi8 refusé,
+double clic, incertitude durable,
 tarif modifié, identité réattribuée, listes concurrentes, licence à vie,
 chiffrement, lecture protégée et suppression sans résurrection.
 
@@ -82,3 +85,4 @@ l'accusé source pour prouver que le succès n'apparaît pas prématurément. La
 Android exécute le transport, SQLite et les widgets des deux apps ; le seuil de
 2 000 ms comprend la confirmation simulée, l'import et les deux accusés. Strong
 est simulé dans ces tests, l'API de production n'est pas appelée.
+

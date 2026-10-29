@@ -170,8 +170,26 @@ class CinemaRepository {
 
   /// Bouton explicite : attendre le fournisseur, même avec un catalogue
   /// récent en mémoire. Un ancien staging partiel ne vaut pas une relecture.
+  final Map<CinemaKind, Future<bool>> _manualRefreshInFlight =
+      <CinemaKind, Future<bool>>{};
+
   Future<bool> refreshNow(CinemaKind kind) async {
+    // sources() peut appeler clear() : reconnaître le fournisseur courant
+    // AVANT d'enregistrer la passe partagée pour ne pas l'invalider nous-mêmes.
     await sources();
+    final Future<bool>? current = _manualRefreshInFlight[kind];
+    if (current != null) return current;
+    late final Future<bool> work;
+    work = _refreshNow(kind).whenComplete(() {
+      if (identical(_manualRefreshInFlight[kind], work)) {
+        _manualRefreshInFlight.remove(kind);
+      }
+    });
+    _manualRefreshInFlight[kind] = work;
+    return work;
+  }
+
+  Future<bool> _refreshNow(CinemaKind kind) async {
     if (_sources.isEmpty) return false;
     final Future<void>? previous = _refreshInFlight[kind];
     if (previous != null) {
@@ -794,6 +812,7 @@ class CinemaRepository {
     _updatedAt.clear();
     _persisted.clear();
     _refreshInFlight.clear();
+    _manualRefreshInFlight.clear();
     _refreshStartedAt = null;
     _catalogGen++;
     indexVersion.value++;

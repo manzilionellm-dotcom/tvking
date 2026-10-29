@@ -46,6 +46,7 @@ import 'import_progress.dart';
 import 'm3u_parser.dart';
 import 'playlist_database.dart';
 import 'xtream_client.dart';
+import 'source_protocol_fallback.dart';
 
 /// Résultat individuel d'un import en lot.
 class BatchImportResult {
@@ -384,8 +385,15 @@ class PlaylistRepository {
     String? epgUrl,
     http.Client? httpClient,
     bool restoreDeleted = true,
+    bool allowHttpCompatibility = false,
   }) async {
-    if (restoreDeleted) await DeletedSources.restoreManually(SourceFingerprint.ofM3uUrl(url));
+    if (restoreDeleted) {
+      await DeletedSources.restoreManually(<String>[
+        for (final String candidate in SourceProtocolFallback.possibleUrls(
+          url, allowHttpCompatibility: allowHttpCompatibility,
+        )) ...SourceFingerprint.ofM3uUrl(candidate),
+      ]);
+    }
     final http.Client client = httpClient ?? http.Client();
     // On insère la playlist AVANT le download (le parser a besoin de son
     // id pour rattacher les chaînes). MAIS : si une étape échoue ensuite
@@ -411,7 +419,17 @@ class PlaylistRepository {
       if (kDebugMode) debugPrint('[Repo] Téléchargement de la playlist');
       // Octets bruts : décodage ET parsing dans l'isolate (le fil UI ne
       // touche jamais au contenu, même pour un fichier de 60 Mo).
-      final Uint8List body = await M3uFetcher.fetchBytes(url, httpClient: client);
+      final SourceProtocolResult<Uint8List> connection =
+          await SourceProtocolFallback.connect<Uint8List>(
+        url: url,
+        allowHttpCompatibility: allowHttpCompatibility,
+        attempt: (String candidate, bool singleAttempt) => M3uFetcher.fetchBytes(
+          candidate,
+          httpClient: client,
+          singleAttempt: singleAttempt,
+        ),
+      );
+      final Uint8List body = connection.value;
 
       // 3) Parse (dans un ISOLATE → pas de gel UI) + insertion en batch
       final M3uParseResult parsed =
@@ -432,10 +450,16 @@ class PlaylistRepository {
       await _insertChannels(parsed.channels);
       final Playlist saved = newPlaylist.copyWith(
         id: playlistId,
+        m3uUrl: connection.url,
         channelCount: parsed.channels.length,
         lastSyncedAt: DateTime.now().millisecondsSinceEpoch,
       );
-      await _updatePlaylistMetrics(saved);
+      // L’adresse de compatibilité n’est mémorisée qu’après un vrai import.
+      await _updatePlaylistMetrics(
+        saved,
+        importedM3uUrl: connection.url != url ? connection.url : null,
+        additionalFingerprints: SourceFingerprint.ofM3uUrl(url),
+      );
 
       // CORRECTIF « les chaînes n'arrivent jamais » : on ACTIVE la
       // playlist qu'on vient d'ajouter. Sans ça, seule la TOUTE 1re
@@ -573,25 +597,52 @@ class PlaylistRepository {
     String? originM3uUrl,
     http.Client? httpClient,
     bool restoreDeleted = true,
+    bool allowHttpCompatibility = false,
   }) async {
     if (restoreDeleted) {
       await DeletedSources.restoreManually(<String>[
-        ...SourceFingerprint.xtreamAliases(serverUrl, username),
-        ...SourceFingerprint.ofM3uUrl(originM3uUrl),
+        for (final String candidate in SourceProtocolFallback.possibleUrls(
+          serverUrl, allowHttpCompatibility: allowHttpCompatibility,
+        )) ...SourceFingerprint.xtreamAliases(candidate, username),
+        for (final String candidate in SourceProtocolFallback.possibleUrls(
+          originM3uUrl ?? '', allowHttpCompatibility: allowHttpCompatibility,
+        )) ...SourceFingerprint.ofM3uUrl(candidate),
       ]);
     }
+    final List<String> requestedFingerprints = <String>[
+      ...SourceFingerprint.xtreamAliases(serverUrl, username),
+      ...SourceFingerprint.ofM3uUrl(originM3uUrl),
+    ];
     // 1) Vérifie d'abord les credentials, avant de polluer la base
-    final XtreamClient xtream = XtreamClient(
-      serverUrl: serverUrl,
-      username: username,
-      password: password,
-      httpClient: httpClient,
-    );
+    XtreamClient? xtream;
     // Orpheline : si une étape échoue APRÈS insertion, on la supprime
     // (cf. `catch`) → on ne stocke QUE les comptes valides.
     int? playlistId;
+    bool usedHttpCompatibility = false;
     try {
-      await xtream.verifyCredentials();
+      final SourceProtocolResult<XtreamClient> connection =
+          await SourceProtocolFallback.connect<XtreamClient>(
+        url: serverUrl,
+        allowHttpCompatibility: allowHttpCompatibility,
+        attempt: (String candidateUrl, bool singleAttempt) async {
+          final XtreamClient candidate = XtreamClient(
+            serverUrl: candidateUrl,
+            username: username,
+            password: password,
+            httpClient: httpClient,
+          );
+          try {
+            await candidate.verifyCredentials(singleAttempt: singleAttempt);
+            return candidate;
+          } catch (_) {
+            if (httpClient == null) candidate.dispose();
+            rethrow;
+          }
+        },
+      );
+      xtream = connection.value;
+      final String effectiveServer = connection.url;
+      usedHttpCompatibility = effectiveServer != serverUrl;
 
       // 2) Crée la playlist en base (avec EPG URL auto-générée)
       final Playlist newPlaylist = Playlist(
@@ -599,17 +650,18 @@ class PlaylistRepository {
         name: name,
         type: PlaylistType.xtream,
         m3uUrl: originM3uUrl,
-        xtreamServer: serverUrl,
+        xtreamServer: effectiveServer,
         xtreamUsername: username,
         xtreamPassword: password,
         epgUrl: xtreamEpgUrl(
-          serverUrl: serverUrl,
+          serverUrl: effectiveServer,
           username: username,
           password: password,
         ),
         createdAt: DateTime.now().millisecondsSinceEpoch,
       );
-      playlistId = await _insertPlaylist(newPlaylist);
+      playlistId = await _insertPlaylist(newPlaylist,
+        additionalFingerprints: requestedFingerprints);
 
       // 3) Récupère catégories + chaînes
       final Map<String, String> cats = await xtream.fetchLiveCategories();
@@ -632,7 +684,8 @@ class PlaylistRepository {
         channelCount: channels.length,
         lastSyncedAt: DateTime.now().millisecondsSinceEpoch,
       );
-      await _updatePlaylistMetrics(saved);
+      await _updatePlaylistMetrics(saved,
+        additionalFingerprints: requestedFingerprints);
 
       // CORRECTIF « les chaînes n'arrivent jamais » : on ACTIVE la
       // playlist Xtream qu'on vient d'ajouter (même raison que pour le
@@ -651,16 +704,19 @@ class PlaylistRepository {
         ));
       }
       return saved;
-    } catch (_) {
+    } catch (error) {
       // ÉCHEC après insertion (fetch catégories/chaînes, 0 chaîne) → on
       // retire la playlist orpheline : on ne garde QUE le valide.
       if (playlistId != null) {
         BlackBox.instance.info('DB', 'liste $playlistId supprimée (import Xtream échoué)');
         await _deletePlaylist(playlistId);
       }
+      if (usedHttpCompatibility) {
+        throw SourceProtocolFallbackFailure(error);
+      }
       rethrow;
     } finally {
-      if (httpClient == null) xtream.dispose();
+      if (httpClient == null) xtream?.dispose();
     }
   }
 
@@ -730,7 +786,8 @@ class PlaylistRepository {
   // timer 24 h et l'auto-refresh — sans verrou, deux passes pouvaient se
   // chevaucher et DOUBLER le pic mémoire (suspect OOM). On garantit une seule
   // passe à la fois.
-  bool _refreshingAll = false;
+  Future<int>? _refreshAllWork;
+  bool _refreshAllSkipsRecent = false;
 
   /// Message à montrer si la dernière actualisation a laissé une
   /// liste de côté. `null` quand tout a réussi.
@@ -742,47 +799,60 @@ class PlaylistRepository {
   /// inutile de la re-télécharger une 2e fois dans la foulée).
   /// Les sources DÉSACTIVÉES ne sont pas re-téléchargées (économie réseau et
   /// mémoire) : elles le seront à leur réactivation au prochain passage.
-  Future<int> refreshAll({Duration? skipSyncedWithin}) async {
-    if (_refreshingAll) return 0; // une passe déjà en cours → on ne double pas
-    _refreshingAll = true;
-    try {
-      final List<Playlist> all = await getAllPlaylists();
-      final int? freshAfter = skipSyncedWithin == null
-          ? null
-          : DateTime.now().subtract(skipSyncedWithin).millisecondsSinceEpoch;
-      int ok = 0;
-      int failed = 0;
-      for (final Playlist p in all) {
-        if (!shouldRefreshPlaylist(
-          p,
-          freshAfter: freshAfter,
-          pendingLegacy: RepairFlags.refreshPendingLegacy,
-        )) {
-          continue;
-        }
-        try {
-          final bool result = await refreshPlaylist(p);
-          if (result) {
-            ok++;
-          } else {
-            failed++;
-          }
-        } catch (_) {
-          // On n'arrête pas les autres listes, mais on retient l'échec
-          // pour le dire à l'écran (avant, c'était silencieux).
+  Future<int> refreshAll({Duration? skipSyncedWithin}) {
+    final Future<int>? current = _refreshAllWork;
+    if (current != null) {
+      // Une demande manuelle complète attend la passe automatique puis
+      // relit aussi les sources récentes que celle-ci avait ignorées.
+      if (skipSyncedWithin == null && _refreshAllSkipsRecent) {
+        return current.then((_) => refreshAll());
+      }
+      return current;
+    }
+    _refreshAllSkipsRecent = skipSyncedWithin != null;
+    late final Future<int> work;
+    work = _refreshAllOnce(skipSyncedWithin: skipSyncedWithin).whenComplete(() {
+      if (identical(_refreshAllWork, work)) _refreshAllWork = null;
+    });
+    _refreshAllWork = work;
+    return work;
+  }
+
+  Future<int> _refreshAllOnce({Duration? skipSyncedWithin}) async {
+    final List<Playlist> all = await getAllPlaylists();
+    final int? freshAfter = skipSyncedWithin == null
+        ? null
+        : DateTime.now().subtract(skipSyncedWithin).millisecondsSinceEpoch;
+    int ok = 0;
+    int failed = 0;
+    for (final Playlist p in all) {
+      if (!shouldRefreshPlaylist(
+        p,
+        freshAfter: freshAfter,
+        pendingLegacy: RepairFlags.refreshPendingLegacy,
+      )) {
+        continue;
+      }
+      try {
+        final bool result = await refreshPlaylist(p);
+        if (result) {
+          ok++;
+        } else {
           failed++;
         }
+      } catch (_) {
+        // On n'arrête pas les autres listes, mais on retient l'échec
+        // pour le dire à l'écran (avant, c'était silencieux).
+        failed++;
       }
-      refreshWarning.value = failed > 0
-          ? 'Une liste n\'a pas pu être actualisée. Les autres sont à jour.'
-          : null;
-      // Nettoyage : retire toute source qui s'est vidée (code qui n'a
-      // plus de chaîne) pour ne pas laisser de playlist morte traîner.
-      await pruneEmptyPlaylists();
-      return ok;
-    } finally {
-      _refreshingAll = false;
     }
+    refreshWarning.value = failed > 0
+        ? 'Une liste n\'a pas pu être actualisée. Les autres sont à jour.'
+        : null;
+    // Nettoyage : retire toute source qui s'est vidée (code qui n'a
+    // plus de chaîne) pour ne pas laisser de playlist morte traîner.
+    await pruneEmptyPlaylists();
+    return ok;
   }
 
   /// Supprime les playlists DÉJÀ synchronisées qui n'ont AUCUNE chaîne
@@ -927,7 +997,9 @@ class PlaylistRepository {
   //  Helpers SQLite internes
   // ============================================================
 
-  Future<int> _insertPlaylist(Playlist playlist) async {
+  Future<int> _insertPlaylist(Playlist playlist, {
+    Iterable<String> additionalFingerprints = const <String>[],
+  }) async {
     await DeletedSources.migrateLegacy();
     final Database db = await PlaylistDatabase.instance.database;
     // Phase 1+/Multi-serveurs : si c'est la PREMIERE playlist (la
@@ -949,7 +1021,9 @@ class PlaylistRepository {
     map['xtream_password'] =
         await PlaylistSecret.seal(map['xtream_password'] as String?);
     map['m3u_url'] = await PlaylistSecret.seal(map['m3u_url'] as String?);
-    final List<String> keys = await DeletedSources.hashes(SourceFingerprint.ofPlaylist(playlist));
+    final List<String> keys = await DeletedSources.hashes(<String>[
+      ...SourceFingerprint.ofPlaylist(playlist), ...additionalFingerprints,
+    ]);
     return db.transaction((Transaction txn) async {
       for (final String key in keys) {
         final List<Map<String, Object?>> deleted = await txn.query(
@@ -1146,18 +1220,36 @@ class PlaylistRepository {
     // (emitFirstChunk), où la relecture ne peut ramener que ce lot.
   }
 
-  Future<void> _updatePlaylistMetrics(Playlist playlist) async {
+  Future<void> _updatePlaylistMetrics(
+    Playlist playlist, {
+    String? importedM3uUrl,
+    Iterable<String> additionalFingerprints = const <String>[],
+  }) async {
     if (playlist.id == null) return;
     final Database db = await PlaylistDatabase.instance.database;
-    await db.update(
-      'playlists',
-      <String, Object?>{
-        'last_synced_at': playlist.lastSyncedAt,
-        'channel_count': playlist.channelCount,
-      },
-      where: 'id = ?',
-      whereArgs: <Object>[playlist.id!],
-    );
+    final List<String> keys = await DeletedSources.hashes(<String>[
+      ...SourceFingerprint.ofPlaylist(playlist), ...additionalFingerprints,
+    ]);
+    final Map<String, Object?> values = <String, Object?>{
+      'last_synced_at': playlist.lastSyncedAt,
+      'channel_count': playlist.channelCount,
+      if (importedM3uUrl != null)
+        'm3u_url': await PlaylistSecret.seal(importedM3uUrl),
+    };
+    // La ligne peut encore porter HTTPS alors que la réponse arrive de HTTP.
+    // Vérifier les deux identités dans la transaction qui publie l'adresse
+    // effective : une révocation reçue pendant le réseau doit gagner.
+    await db.transaction((Transaction txn) async {
+      for (final String key in keys) {
+        final List<Map<String, Object?>> deleted = await txn.query(
+          'deleted_sources', where: 'fingerprint = ?', whereArgs: <Object>[key], limit: 1,
+        );
+        if (deleted.isNotEmpty) throw const PlaylistDeletedException();
+      }
+      final int updated = await txn.update('playlists', values,
+        where: 'id = ?', whereArgs: <Object>[playlist.id!]);
+      if (updated == 0) throw const PlaylistDeletedException();
+    });
   }
 
   int _stateRevision = 0;

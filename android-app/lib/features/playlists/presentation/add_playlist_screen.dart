@@ -64,12 +64,14 @@ class _AddPlaylistScreenState extends State<AddPlaylistScreen> {
     try {
       final Playlist saved = draft.kind == OpenSourceKind.xtream
           ? await PlaylistRepository.instance.addXtreamPlaylist(
+              allowHttpCompatibility: true,
               name: context.l10n.tvMyListHint,
               serverUrl: draft.serverUrl!,
               username: draft.username!,
               password: draft.password!,
             )
           : await PlaylistRepository.instance.addM3uPlaylist(
+              allowHttpCompatibility: true,
               name: context.l10n.tvMyListHint,
               url: draft.m3uUrl!,
             );

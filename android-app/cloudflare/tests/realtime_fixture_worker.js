@@ -16,6 +16,27 @@ export class RealtimeHub extends ApplicationHub {
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
+    if (url.pathname === '/__fixture/orders' && request.method === 'GET') {
+      const mac = url.searchParams.get('mac');
+      if (!/^MK(?::[A-F0-9]{2}){5}$/.test(mac || '')) return new Response('bad mac', { status: 400 });
+      const rows = await env.DB.prepare('SELECT order_id,kind,config_rev FROM box_orders WHERE mac=? AND kind=? ORDER BY created_at DESC')
+        .bind(mac, url.searchParams.get('kind')).all();
+      return Response.json({ items: rows.results });
+    }
+    if (url.pathname === '/__fixture/stale-source' && request.method === 'POST') {
+      const { mac, enabled } = await request.json();
+      if (!/^MK(?::[A-F0-9]{2}){5}$/.test(mac || '')) return new Response('bad mac', { status: 400 });
+      await env.DB.prepare('INSERT INTO app_config(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value')
+        .bind(`fixture.stale-source.${mac}`, enabled ? '1' : '0').run();
+      return Response.json({ ok: true });
+    }
+    if (url.pathname.startsWith('/api/device-source/')) {
+      const mac = decodeURIComponent(url.pathname.slice('/api/device-source/'.length));
+      const flag = await env.DB.prepare('SELECT value FROM app_config WHERE key=?').bind(`fixture.stale-source.${mac}`).first();
+      if (flag?.value === '1') return Response.json({ rev: 1, sources: [{
+        type: 'm3u', label: 'Ancienne réponse de recette', m3u_url: `${url.origin}/__fixture/list.m3u`,
+      }] });
+    }
     if (url.pathname === '/__fixture/socket-mode' && request.method === 'POST') {
       const { mac, blocked } = await request.json();
       await env.DB.prepare('INSERT INTO app_config(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value')

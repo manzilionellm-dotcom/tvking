@@ -35,6 +35,7 @@ import '../../../core/blackbox/black_box.dart';
 import 'm3u_parser.dart' show M3uParser;
 import 'import_progress.dart';
 import 'playlist_import_limits.dart';
+import 'source_protocol_fallback.dart';
 
 abstract final class M3uFetcher {
   /// UA « navigateur » historique, gardé comme DERNIER recours dans la
@@ -136,6 +137,7 @@ abstract final class M3uFetcher {
     http.Client? httpClient,
     String? preferredUserAgent,
     FetchTimeouts? timeouts,
+    bool singleAttempt = false,
   }) async {
     final http.Client client = httpClient ?? http.Client();
     final bool owns = httpClient == null;
@@ -146,7 +148,10 @@ abstract final class M3uFetcher {
     ImportProgressBus.connecting();
 
     try {
-      final List<String> userAgents = _candidateUserAgents(preferredUserAgent);
+      final List<String> candidates = _candidateUserAgents(preferredUserAgent);
+      final List<String> userAgents = singleAttempt
+          ? candidates.take(1).toList(growable: false)
+          : candidates;
       // Mémorise la dernière erreur la plus parlante pour le message final.
       Object? lastError;
 
@@ -263,6 +268,9 @@ abstract final class M3uFetcher {
           );
           break;
         } on Exception catch (e) {
+          // Garder le type TLS pour la seule compatibilité autorisée à
+          // l’import manuel ; changer de signature ne répare pas le protocole.
+          if (SourceProtocolFallback.isProtocolMismatch(e)) rethrow;
           // Connexion coupée / reset : peut dépendre de l'UA (certains
           // serveurs ferment la connexion selon la signature) → on tente
           // la signature suivante.

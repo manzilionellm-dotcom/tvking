@@ -1,0 +1,223 @@
+diff --git a/lib/features/player/domain/video_quality_selection.dart b/lib/features/player/domain/video_quality_selection.dart
+new file mode 100644
+--- /dev/null
++++ b/lib/features/player/domain/video_quality_selection.dart
+@@ -0,0 +1,32 @@
++/// Une qualité n'est confirmée qu'après l'acceptation du lecteur.
++/// Le verrou évite deux commandes concurrentes et la fermeture de la feuille
++/// invalide une réponse tardive, sans interrompre le flux en cours.
++class VideoQualitySelection {
++  VideoQualitySelection({
++    required Future<void> Function(String? id) apply,
++    String? initialId,
++  }) : _apply = apply, selectedId = initialId;
++
++  final Future<void> Function(String? id) _apply;
++  String? selectedId;
++  bool busy = false;
++  bool _disposed = false;
++
++  Future<bool> select(String? id) async {
++    if (busy || _disposed) return false;
++    busy = true;
++    try {
++      await _apply(id);
++      if (_disposed) return false;
++      selectedId = id;
++      return true;
++    } catch (_) {
++      // L'ancienne sélection reste affichée : l'échec n'est pas une HD reçue.
++      return false;
++    } finally {
++      busy = false;
++    }
++  }
++
++  void dispose() => _disposed = true;
++}
+diff --git a/lib/features/player/presentation/widgets/player_settings_sheet.dart b/lib/features/player/presentation/widgets/player_settings_sheet.dart
+--- a/lib/features/player/presentation/widgets/player_settings_sheet.dart
++++ b/lib/features/player/presentation/widgets/player_settings_sheet.dart
+@@ -21,6 +21,7 @@
+ import '../../../../core/theme/app_text_styles.dart';
+ import '../../data/player_settings.dart';
+ import '../../domain/image_engine.dart';
++import '../../domain/video_quality_selection.dart';
+ import '../aspect_mode_label.dart';
+ 
+ class PlayerSettingsSheet extends StatefulWidget {
+@@ -58,15 +59,45 @@
+ class _PlayerSettingsSheetState extends State<PlayerSettingsSheet> {
+   late double _speed;
+ 
+-  /// Choix de qualité local à la feuille (surligne la puce active tout de
+-  /// suite, sans attendre la ré-émission du track-list par mpv).
++  /// Choix confirmé par le lecteur ; une commande refusée ne devient jamais
++  /// une qualité affichée comme active.
+   String? _videoTrackId;
++  late final VideoQualitySelection _videoSelection;
++  bool _qualityFailed = false;
+ 
+   @override
+   void initState() {
+     super.initState();
+     _speed = widget.currentSpeed;
+     _videoTrackId = widget.videoTrackId;
++    _videoSelection = VideoQualitySelection(
++      initialId: widget.videoTrackId,
++      apply: (String? id) async {
++        final VideoTrack track = id == null
++            ? VideoTrack.auto()
++            : widget.player.state.tracks.video.firstWhere((t) => t.id == id);
++        await widget.player.setVideoTrack(track);
++      },
++    );
++  }
++
++  @override
++  void dispose() {
++    _videoSelection.dispose();
++    super.dispose();
++  }
++
++  Future<void> _changeVideoTrack(String? id) async {
++    if (_videoSelection.busy) return;
++    final Future<bool> selection = _videoSelection.select(id);
++    setState(() => _qualityFailed = false);
++    final bool applied = await selection;
++    if (!mounted) return;
++    setState(() {
++      _qualityFailed = !applied;
++      _videoTrackId = _videoSelection.selectedId;
++    });
++    if (applied) widget.onVideoTrackChanged(_videoTrackId);
+   }
+ 
+   @override
+@@ -358,23 +389,18 @@
+                 _qualityChip(
+                   label: context.l10n.deviceAuto,
+                   selected: _videoTrackId == null,
+-                  onSelected: () {
+-                    widget.player.setVideoTrack(VideoTrack.auto());
+-                    setState(() => _videoTrackId = null);
+-                    widget.onVideoTrackChanged(null);
+-                  },
++                  onSelected: () => unawaited(_changeVideoTrack(null)),
+                 ),
+                 ...real.map((VideoTrack t) => _qualityChip(
+                       label: _videoTrackLabel(context, t),
+                       selected: _videoTrackId == t.id,
+-                      onSelected: () {
+-                        widget.player.setVideoTrack(t);
+-                        setState(() => _videoTrackId = t.id);
+-                        widget.onVideoTrackChanged(t.id);
+-                      },
++                      onSelected: () => unawaited(_changeVideoTrack(t.id)),
+                     )),
+               ],
+             ),
++            if (_qualityFailed)
++              Text('${context.l10n.detailQuality} — ${context.l10n.castDiagFailed}',
++                  style: AppTextStyles.bodyMedium),
+             const SizedBox(height: 22),
+           ],
+         );
+@@ -391,7 +417,7 @@
+       label: Text(label),
+       selected: selected,
+       showCheckmark: false,
+-      onSelected: (bool v) {
++      onSelected: _videoSelection.busy ? null : (bool v) {
+         if (!v) return;
+         onSelected();
+       },
+diff --git a/lib/features/player/presentation/video_player_screen.dart b/lib/features/player/presentation/video_player_screen.dart
+--- a/lib/features/player/presentation/video_player_screen.dart
++++ b/lib/features/player/presentation/video_player_screen.dart
+@@ -3280,6 +3280,7 @@
+ 
+   Future<void> _openSettings() async {
+     _hideOverlayTimer?.cancel();
++    final Player settingsPlayer = _player;
+     await showModalBottomSheet<void>(
+       context: context,
+       backgroundColor: Colors.transparent,
+@@ -3287,13 +3288,16 @@
+       builder: (_) => PlayerSettingsSheet(
+         currentSpeed: _player.state.rate,
+         onSpeedChange: (double s) => _player.setRate(s),
+-        player: _player,
++        player: settingsPlayer,
+         videoTrackId: _sessionVideoTrackId,
+         // Choix de qualité (variante HLS) : mémorisé pour la SESSION de
+         // lecture seulement — réappliqué après les réouvertures
+         // silencieuses (instance mpv jetable, cf. _recyclePlayer), remis
+         // à Auto au zap (les variantes appartiennent à l'ancien flux).
+         onVideoTrackChanged: (String? id) {
++          // Une réouverture peut remplacer mpv pendant que la feuille est
++          // visible : son ancien résultat ne doit pas modifier la session neuve.
++          if (!_screenActive || !identical(settingsPlayer, _player)) return;
+           _sessionVideoTrackId = id;
+           // La feuille vient de l'appliquer sur l'instance courante : la
+           // réapplication ne concerne que les prochaines réouvertures.
+diff --git a/test/features/player/video_quality_selection_test.dart b/test/features/player/video_quality_selection_test.dart
+new file mode 100644
+--- /dev/null
++++ b/test/features/player/video_quality_selection_test.dart
+@@ -0,0 +1,55 @@
++import 'dart:async';
++
++import 'package:flutter_test/flutter_test.dart';
++import 'package:tv_king/features/player/domain/video_quality_selection.dart';
++
++void main() {
++  test('la HD attend la confirmation du lecteur et Auto reste disponible', () async {
++    final ready = Completer<void>();
++    final calls = <String?>[];
++    final selection = VideoQualitySelection(apply: (id) {
++      calls.add(id);
++      return calls.length == 1 ? ready.future : Future<void>.value();
++    });
++    final pending = selection.select('1080');
++    expect(selection.busy, isTrue);
++    expect(selection.selectedId, isNull);
++    expect(await selection.select('2160'), isFalse);
++    expect(calls, <String?>['1080']);
++    ready.complete();
++    expect(await pending, isTrue);
++    expect(selection.selectedId, '1080');
++    expect(selection.busy, isFalse);
++    expect(await selection.select(null), isTrue);
++    expect(selection.selectedId, isNull);
++    expect(calls, <String?>['1080', null]);
++  });
++
++  test('un refus du décodeur conserve la dernière qualité confirmée', () async {
++    int calls = 0;
++    final selection = VideoQualitySelection(initialId: '720', apply: (id) async {
++      if (++calls == 1) throw StateError('piste indisponible');
++    });
++    expect(await selection.select('2160'), isFalse);
++    expect(selection.selectedId, '720');
++    expect(selection.busy, isFalse);
++    expect(await selection.select('1080'), isTrue);
++    expect(selection.selectedId, '1080');
++  });
++
++  test('quitter pendant la sélection invalide la confirmation tardive', () async {
++    final ready = Completer<void>();
++    int calls = 0;
++    final selection = VideoQualitySelection(initialId: '720', apply: (id) {
++      calls++;
++      return ready.future;
++    });
++    final pending = selection.select('1080');
++    selection.dispose();
++    ready.complete();
++    expect(await pending, isFalse);
++    expect(selection.selectedId, '720');
++    expect(await selection.select(null), isFalse);
++    expect(calls, 1);
++  });
++}

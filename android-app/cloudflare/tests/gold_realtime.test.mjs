@@ -67,6 +67,17 @@ test('Worker + vrais DO : preuve, présence, reprise, actions et accusés isolé
       const order = orders.slice(index).find(event => event.type === kind);
       assert.ok(Date.now() - start < 2000, `${kind}: poussé sous 2 s`);
       assert.ok(order.order_id);
+      const durable = await request(`/__fixture/orders?mac=${encodeURIComponent(mac)}&kind=${kind}`);
+      assert.ok(durable.items.some(row=>row.order_id===order.order_id && row.kind===kind));
+      if (kind==='source_clear') {
+        await request('/__fixture/stale-source','POST',{mac,enabled:true});
+        try {
+          const stale=await f.mf.dispatchFetch(`${f.origin}/api/device-source/${mac}`,{headers:{'X-Device-Secret':secret}});
+          const snapshot=await stale.json();assert.equal(snapshot.rev,1);assert.equal(snapshot.sources.length,1);
+        } finally {
+          await request('/__fixture/stale-source','POST',{mac,enabled:false});
+        }
+      }
       const ack = await f.mf.dispatchFetch(`${f.origin}/api/box/ack/${encodeURIComponent(mac)}`, {
         method: 'POST', headers: { 'X-Device-Secret': secret, 'Content-Type': 'application/json' },
         body: JSON.stringify({ orders: [{ order_id: order.order_id, state: 'applied', result: 'refreshed', applied_at: Date.now() }] }),
@@ -105,7 +116,8 @@ test('Worker + vrais DO : preuve, présence, reprise, actions et accusés isolé
       if(appliedRev)assert.ok(events.find(item=>item.type==='receipt'&&item.order_id===id&&item.state==='applied').applied_rev>=appliedRev);
     }
     assert.ok(Date.now()-goldenStart<2000,'Golden : création simulée et deux accusés sous 2 s');
-    assert.deepEqual(f.providerCalls.filter(call=>call.action==='new'),[{action:'new',sub:'1',key:'Manzi8'}]);
+    assert.deepEqual(f.providerCalls.filter(call=>call.action==='new'),[{action:'new',sub:'1',key:'manzi10'}]);
+    assert.equal(f.providerCalls.some(call=>call.key==='Manzi8'),false);
     const cursor = orders.filter(event => event.seq).at(-1).seq;
     device.close(1000, 'test');
     await until(() => events.some(event => event.type === 'presence' && event.online === false));

@@ -15,6 +15,13 @@ import 'package:tv_king/features/tv/presentation/tv_add_source_screen.dart';
 import 'package:tv_king/l10n/generated/app_localizations.dart';
 
 void main() {
+  test('un lien collé perd les caractères invisibles et conserve HTTPS', () {
+    final OpenSourceParse parsed = OpenSourceInput.playlistLink(
+      '\uFEFFhttps://source.invalid/li\u200Bst.m3u?token=a%2Bb\u2060',
+    );
+    expect(parsed.draft!.m3uUrl, 'https://source.invalid/list.m3u?token=a%2Bb');
+  });
+
   test('M3U et M3U8 : avec ou sans identifiants, n\'importe quel hôte', () {
     final OpenSourceParse plain =
         OpenSourceInput.playlistLink('https://fournisseur.invalid/liste.m3u');

@@ -51,8 +51,8 @@
 #       forcée » pilotée par le panel.
 #    7. Artefact du run TOUJOURS ; PUBLICATION sur la release zuno-tv
 #       uniquement après dégel revu, lancement manuel par le propriétaire,
-#       publish=true et confirmation PUBLIER_APP. Un push compile et vérifie,
-#       mais n'écrase PAS le lien donné aux clients.
+#       publish=true et confirmation PUBLIER_APP. Les pushes sont compilés
+#       sans secrets par build-zuno-trial-review.yml, dans un paquet séparé.
 #       Le job de build reste en lecture seule ; le canal de preuve utilise
 #       test_box=true, publish=false et le publisher séparé zuno-tv-test.
 #
@@ -62,19 +62,6 @@
 name: Build Zuno TV (APK → release zuno-tv)
 
 on:
-  push:
-    branches: ['main', 'claude/**', 'feature/**']
-    paths:
-      - 'android-app/lib/**'
-      - 'android-app/packages/**'
-      - 'android-app/assets/**'
-      - 'android-app/android/**'
-      - 'android-app/ci/**'
-      - 'android-app/pubspec.yaml'
-      - 'android-app/l10n.yaml'
-      - 'android-app/analysis_options.yaml'
-      - 'android-app/flutter_launcher_icons_zuno_tv.yaml'
-      - '.github/workflows/build-zuno-tv.yml'
   workflow_dispatch:
     inputs:
       confirme:

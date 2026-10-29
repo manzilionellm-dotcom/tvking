@@ -46,13 +46,14 @@ class _Server {
     <String, Object?>{'type': 'm3u', 'm3u_url': 'http://client-b.invalid/l.m3u', 'origin': 'self', 'id': 'self-b-1'},
   ];
   final List<String> deletes = <String>[];
+  List<Map<String, Object?>> revoked = <Map<String, Object?>>[];
   bool down = false;
 
   http.Client client() => MockClient((http.Request r) async {
         if (down && r.url.path.startsWith('/api/')) throw const SocketException('serveur coupé (injecté)');
         final String path = r.url.path;
         if (path.startsWith('/api/device-source/')) {
-          return http.Response(jsonEncode(<String, Object?>{'mac': kMac, 'sources': served}), 200);
+          return http.Response(jsonEncode(<String, Object?>{'mac': kMac, 'sources': served, 'revoked': revoked}), 200);
         }
         if (path.startsWith('/api/self-source/') && r.method == 'DELETE') {
           final String id = r.url.queryParameters['id'] ?? '';
@@ -128,6 +129,34 @@ void main() {
     expect(_has(await _lists(), 'client-b.invalid'), isTrue);
     await _sync(s);
     expect(_has(await _lists(), 'panel-a.invalid'), isFalse);
+  });
+
+  test('révocations déjà appliquées : les nouveaux retraits restent durables après reprise', () async {
+    final _Server s = _Server();
+    await _sync(s);
+    final List<Map<String, Object?>> oldSnapshot = List<Map<String, Object?>>.of(s.served);
+    final List<Playlist> before = await _lists();
+    final Set<String> completed = SourceFingerprint.ofPlaylist(_find(before, 'panel-a.invalid')).toSet();
+    await RemoteSourceRepository.applyRevocations(completed.toList());
+    s.revoked = oldSnapshot;
+    s.served = <Map<String, Object?>>[];
+    final Future<RemoteSyncResult> syncing = http.runWithClient(
+      () => RemoteSourceRepository.sync(force: true, alreadyRevoked: completed), s.client);
+    // Le lot est capturé au moment de l'appel : une modification ultérieure
+    // ne doit pas faire sauter la suppression de la seconde liste.
+    completed.addAll(SourceFingerprint.ofPlaylist(_find(before, 'client-b.invalid')));
+    expect(await syncing, RemoteSyncResult.noSource);
+    expect(await _lists(), isEmpty);
+    expect(await PlaylistRepository.instance.getAllChannels(), isEmpty);
+    expect(await DeletedSources.read(), hasLength(2));
+
+    await PlaylistDatabase.instance.closeForTesting();
+    await PlaylistRepository.instance.initialize();
+    s.served = oldSnapshot;
+    s.revoked = <Map<String, Object?>>[];
+    await _sync(s);
+    expect(await _lists(), isEmpty, reason: 'ancienne réponse après réouverture SQLite');
+    expect(await DeletedSources.read(), hasLength(2));
   });
 
   test('M3U saisi à la main puis effacé : ne revient pas sous sa forme Xtream', () async {

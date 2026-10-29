@@ -278,12 +278,19 @@ abstract final class RemoteSourceRepository {
     }
   }
 
-  static Future<RemoteSyncResult> sync({bool force = false}) {
+  static Future<RemoteSyncResult> sync({
+    bool force = false,
+    Set<String> alreadyRevoked = const <String>{},
+  }) {
+    // Uniquement les suppressions achevées dans la même passe de statut.
+    // Copie immédiate : l'appelant ne peut modifier cette preuve pendant
+    // l'attente de la file. Un redémarrage repart toujours d'un ensemble vide.
+    final Set<String> appliedRevocations = Set<String>.of(alreadyRevoked);
     return _serial(() async {
       _lastConfigRev = null;
       _lastError = null;
       _lastKeptPrevious = false;
-      final RemoteSyncResult r = await _syncBody(force: force);
+      final RemoteSyncResult r = await _syncBody(force: force, alreadyRevoked: appliedRevocations);
       // Rapport de CETTE lecture, lu par l'accusé de l'ordre (order_ack.dart).
       lastReport = SourceSyncReport(
         result: r.name,
@@ -330,13 +337,13 @@ abstract final class RemoteSourceRepository {
     Map<String, SourceFailure> failures,
   ) async {
     try {
-      await prefs.setString(
-        failuresKey,
-        jsonEncode(<String, Object?>{
+      final String next = jsonEncode(<String, Object?>{
           for (final MapEntry<String, SourceFailure> e in failures.entries)
             e.key: e.value.toJson(),
-        }),
-      );
+        });
+      if (prefs.getString(failuresKey) != next) {
+        await prefs.setString(failuresKey, next);
+      }
     } catch (_) {
       // La mémoire reste celle du tour précédent.
     }
@@ -353,7 +360,10 @@ abstract final class RemoteSourceRepository {
     return _wipeFingerprints(revoked.toSet());
   }
 
-  static Future<RemoteSyncResult> _syncBody({bool force = false}) async {
+  static Future<RemoteSyncResult> _syncBody({
+    bool force = false,
+    Set<String> alreadyRevoked = const <String>{},
+  }) async {
     try {
       final String mac = await DeviceIdentity.instance.mac;
       if (!mac.startsWith('MK:')) return RemoteSyncResult.noSource;
@@ -392,9 +402,10 @@ abstract final class RemoteSourceRepository {
       final _ReconcilePlan reconcile = await _planReconcile(body);
       // Une révocation explicite prime sur la conservation de l'ancienne
       // liste quand sa remplaçante échoue. Elle part avant tout téléchargement.
-      await _wipeFingerprints(reconcile.revoked);
+      await _wipeFingerprints(reconcile.revoked.difference(alreadyRevoked));
+      final Set<String> alreadyRemoved = <String>{...alreadyRevoked, ...reconcile.revoked};
       final bool dropFirst = RepairFlags.sourceDropFirstLegacy;
-      if (dropFirst) await _finishReconcile(reconcile, keepOld: false);
+      if (dropFirst) await _finishReconcile(reconcile, keepOld: false, alreadyRemoved: alreadyRemoved);
       int servedCount = 0;
       bool anyLoaded = false;
       RemoteSyncResult outcome = RemoteSyncResult.noSource;
@@ -477,6 +488,7 @@ abstract final class RemoteSourceRepository {
       if (!dropFirst) {
         await _finishReconcile(
           reconcile,
+          alreadyRemoved: alreadyRemoved,
           keepOld: keepOldLists(
             dropCount: reconcile.drop.length,
             servedCount: servedCount,
@@ -497,6 +509,7 @@ abstract final class RemoteSourceRepository {
   static Future<List<Map<String, dynamic>>> _withoutRefused(
     List<Map<String, dynamic>> served,
   ) async {
+    if (served.isEmpty) return const <Map<String, dynamic>>[];
     final Set<String> deleted = await DeletedSources.read();
     final List<Map<String, dynamic>> kept = <Map<String, dynamic>>[];
     for (final Map<String, dynamic> item in served) {
@@ -713,6 +726,7 @@ abstract final class RemoteSourceRepository {
   static Future<void> _finishReconcile(
     _ReconcilePlan plan, {
     required bool keepOld,
+    Set<String> alreadyRemoved = const <String>{},
   }) async {
     if (keepOld) {
       _lastKeptPrevious = true;
@@ -722,8 +736,12 @@ abstract final class RemoteSourceRepository {
         'refusée, nouvel essai au tour suivant',
       );
     } else {
-      await _wipeFingerprints(plan.drop);
-      await plan.prefs.setStringList(rememberedKey, plan.current.toList());
+      await _wipeFingerprints(plan.drop.difference(alreadyRemoved));
+      final Set<String> remembered =
+          (plan.prefs.getStringList(rememberedKey) ?? const <String>[]).toSet();
+      if (!setEquals(remembered, plan.current)) {
+        await plan.prefs.setStringList(rememberedKey, plan.current.toList());
+      }
     }
     if (!RepairFlags.panelVisibilityOff) {
       await _applyPanelVisibility(plan.prefs, plan.currentMaps);
@@ -781,7 +799,10 @@ abstract final class RemoteSourceRepository {
       }
     }
     try {
-      await prefs.setString(panelOffKey, jsonEncode(plan.nextApplied));
+      final String next = jsonEncode(plan.nextApplied);
+      if (prefs.getString(panelOffKey) != next) {
+        await prefs.setString(panelOffKey, next);
+      }
     } catch (_) {}
   }
 

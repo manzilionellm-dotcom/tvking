@@ -14,9 +14,8 @@
 //       l'étape qui manquait. Avant, « Redémarrer » ne relisait que le cache
 //       local → une chaîne ajoutée chez le fournisseur n'entrait jamais
 //       avant 24 h ;
-//    3. (redémarrage seulement) demande un nouveau passage Films / Séries.
-//       La mémoire est vidée, le catalogue DÉJÀ sur la box reste. Il est
-//       remplacé seulement quand le nouveau téléchargement est complet.
+//    3. (redémarrage seulement) attend une nouvelle publication Films /
+//       Séries. Le catalogue DÉJÀ sur la box reste utilisable en cas de panne.
 //
 //  [status] permet à l'interface d'afficher « Mise à jour… » pendant la
 //  passe, puis de l'effacer. Une seule passe à la fois (garde interne +
@@ -28,6 +27,7 @@ import '../../../core/app/boot_guard.dart';
 import '../../../core/app/repair_flags.dart';
 import '../../../core/blackbox/black_box.dart';
 import '../../cinema/data/cinema_repository.dart';
+import '../../cinema/domain/cinema_models.dart';
 import '../../playlists/data/import_progress.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../../playlists/data/remote_source_repository.dart';
@@ -36,6 +36,9 @@ import 'tv_activity.dart';
 abstract final class TvContentRefresh {
   /// Vrai pendant qu'une passe de mise à jour tourne (affichage discret).
   static final ValueNotifier<bool> running = ValueNotifier<bool>(false);
+  static Future<void>? _work;
+  static bool _workAutomatic = false;
+  static bool _workIncludesCinema = false;
 
   /// Phrase à montrer si une liste n'a pas pu être actualisée.
   /// `null` quand tout va bien.
@@ -69,8 +72,8 @@ abstract final class TvContentRefresh {
   /// [waitIdle] : attendre que le client ait quitté Direct / le lecteur
   /// (TvActivity) — re-parser 30 000 chaînes pendant qu'il zappe figeait la
   /// box. Le bouton Redémarrer ne l'utilise pas : il ramène déjà à l'accueil.
-  /// [clearCinema] : vider le cache Films / Séries (redémarrage uniquement,
-  /// pour ne jamais vider un écran que le client est en train de parcourir).
+  /// [clearCinema] : forcer puis attendre Films / Séries (demande manuelle),
+  /// sans effacer le dernier catalogue exploitable en cas de panne.
   /// [automatic] : passe lancée par l'app (2 min / 6 h) et non par le
   /// bouton ; par défaut égal à [waitIdle], qui ne vaut vrai que pour elle.
   static Future<void> run({
@@ -79,7 +82,6 @@ abstract final class TvContentRefresh {
     bool? automatic,
   }) async {
     if (BootGuard.instance.safeMode) return;
-    if (running.value) return; // une passe à la fois
     final bool auto = automatic ?? waitIdle;
     final Duration skip = skipWindow(
       automatic: auto,
@@ -91,38 +93,78 @@ abstract final class TvContentRefresh {
       }
       if (TvActivity.isBusy) return; // toujours occupé → prochain passage
     }
+    final Future<void>? current = _work;
+    if (current != null) {
+      final bool mustForce = !auto &&
+          (_workAutomatic || (clearCinema && !_workIncludesCinema));
+      await current;
+      if (mustForce) {
+        await run(clearCinema: clearCinema, automatic: false);
+      }
+      return;
+    }
+    _workAutomatic = auto;
+    _workIncludesCinema = clearCinema;
+    late final Future<void> work;
+    work = _runOnce(
+      automatic: auto,
+      clearCinema: clearCinema,
+      skip: skip,
+    ).whenComplete(() {
+      if (identical(_work, work)) _work = null;
+    });
+    _work = work;
+    await work;
+  }
+
+  static Future<void> _runOnce({
+    required bool automatic,
+    required bool clearCinema,
+    required Duration skip,
+  }) async {
+    final bool auto = automatic;
     // La pastille « Mise à jour… » affiche le détail du bus de progression :
     // on efface celui d'un import précédent avant de commencer.
     ImportProgressBus.clear();
     running.value = true;
+    notice.value = null;
     final Stopwatch sw = Stopwatch()..start();
     try {
       // 1) Nouvelle source posée dans le panel ? Le bouton Redémarrer
       //    retente aussi les listes mises de côté après un refus.
-      await RemoteSourceRepository.sync(force: !auto);
-      // 2) Nouvelles chaînes chez le fournisseur ? Une source installée à
-      //    l'instant par l'étape 1 n'est pas re-téléchargée une 2e fois ;
-      //    en passe automatique, une liste à jour depuis moins de 6 h non
-      //    plus (voir skipWindow).
+      final RemoteSyncResult sync =
+          await RemoteSourceRepository.sync(force: !auto);
+      // 2) Une demande manuelle relit vraiment les chaînes, même récentes.
+      //    Seule la passe automatique utilise sa fenêtre d’économie réseau.
       final int ok = await PlaylistRepository.instance
-          .refreshAll(skipSyncedWithin: skip);
+          .refreshAll(skipSyncedWithin: auto ? skip : null);
       notice.value = PlaylistRepository.instance.refreshWarning.value;
-      // 3) Nouveaux films / séries. On vide seulement la MÉMOIRE : le
-      //    catalogue déjà sur la box reste affiché, et un passage en
-      //    arrière-plan le remplace quand le nouveau est complet.
+      if (sync == RemoteSyncResult.networkError ||
+          sync == RemoteSyncResult.sourceFailed) {
+        notice.value = 'Actualisation incomplète : une source n’a pas répondu.';
+      }
+      // Le bouton attend une publication réelle des films et séries,
+      // même si le cache est récent. Le dernier catalogue reste disponible
+      // si le fournisseur échoue ; aucune fausse fin « à jour ».
       if (clearCinema) {
-        CinemaRepository.instance.clear();
-        CinemaRepository.instance.requestRefresh();
+        final CinemaRepository cinema = CinemaRepository.instance;
+        if ((await cinema.sources()).isNotEmpty) {
+          final bool movies = await cinema.refreshNow(CinemaKind.movie);
+          final bool series = await cinema.refreshNow(CinemaKind.series);
+          if (!movies || !series) {
+            notice.value = 'Actualisation incomplète du cinéma. Réessaie plus tard.';
+          }
+        }
       }
       BlackBox.instance.info(
         'SYNC',
         'mise à jour ${auto ? 'automatique' : 'demandée'} : $ok source(s) '
         'actualisée(s) en ${sw.elapsedMilliseconds} ms '
-        '(déjà à jour si < ${skip.inMinutes} min ignorées)',
+        '(sources récentes ignorées : ${auto ? skip.inMinutes : 0} min)',
       );
     } catch (e) {
-      // Silencieux pour le client : la mise à jour est un confort, jamais
-      // une cause de panne. La trace reste dans la boîte noire.
+      // Garder le dernier contenu utilisable, mais afficher l’échec réel.
+      notice.value = 'Actualisation incomplète. Réessaie plus tard.';
       BlackBox.instance.warn('SYNC', 'mise à jour interrompue : $e');
     } finally {
       running.value = false;

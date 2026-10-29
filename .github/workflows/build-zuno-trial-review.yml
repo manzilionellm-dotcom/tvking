@@ -5,16 +5,24 @@ name: Zuno — APK de revue essai 24 h
 'on':
   push:
     branches:
-    - feature/shared-trial-24h-20261028
-    - feature/panel-app-realtime-20261028
+    - main
+    - 'claude/**'
+    - 'feature/**'
+    - ccr-b93e1afd-gwirw0
     paths:
     - android-app/lib/**
     - android-app/test/**
     - android-app/packages/**
+    - android-app/assets/**
     - android-app/android/**
     - android-app/android_overlay/**
+    - android-app/ci/**
     - android-app/pubspec.yaml
+    - android-app/l10n.yaml
+    - android-app/analysis_options.yaml
+    - android-app/flutter_launcher_icons_zuno_tv.yaml
     - .github/workflows/build-zuno-trial-review.yml
+    - .github/workflows/build-zuno-tv.yml
 permissions:
   contents: read
 concurrency:

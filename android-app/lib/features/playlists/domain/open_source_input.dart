@@ -201,7 +201,7 @@ abstract final class OpenSourceInput {
   /// Ajoute http:// si la personne a oublié le schéma. Ne touche pas
   /// à un schéma déjà présent (même s'il est refusé plus loin).
   static String? _normalize(String raw) {
-    final String s = raw.trim();
+    final String s = raw.replaceAll(RegExp(r'[\u200B-\u200D\u2060\uFEFF]'), '').trim();
     if (s.isEmpty) return null;
     final String lower = s.toLowerCase();
     if (lower.startsWith('http://') || lower.startsWith('https://')) {

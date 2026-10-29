@@ -58,15 +58,16 @@ async function fixture(t) {
   return {sql,env,ctx,request,quote,confirm,calls,balances,setFailCreate(value){failCreate=value;},setAfterCreate(fn){afterCreate=fn;},flush:()=>Promise.all(pending)};
 }
 
-test('Golden : devis sans achat, confirmation précise, Manzi8 prioritaire, stockage chiffré et deux ordres',async t=>{
-  const f=await fixture(t),q=await f.quote();assert.equal(q.status,200);assert.equal(q.order.cost,3);assert.equal(q.order.key_label,'Manzi8');
+test('Golden : devis sans achat, confirmation précise, manzi10 exclusif, stockage chiffré et deux ordres',async t=>{
+  const f=await fixture(t),q=await f.quote();assert.equal(q.status,200);assert.equal(q.order.cost,3);assert.equal(q.order.key_label,'manzi10');
   assert.equal(f.calls.filter(c=>c.action==='new').length,0);
   assert.equal((await f.confirm(q.order,{confirmed:false})).status,400);
   assert.equal((await f.confirm(q.order,{confirmed_cost:4})).status,400);
   const result=await f.confirm(q.order);assert.equal(result.status,201);
   assert.equal(result.order.state,'delivered');
   assert.ok(result.order.source_order_id);assert.ok(result.order.license_order_id);
-  assert.deepEqual(f.calls.filter(c=>c.action==='new'),[{key:'key8',action:'new',sub:'3',pack:'84802'}]);
+  assert.deepEqual(f.calls.filter(c=>c.action==='new'),[{key:'key10',action:'new',sub:'3',pack:'84802'}]);
+  assert.equal(f.calls.some(c=>c.key==='key8'),false, 'aucun appel, même de solde, au compte exclu');
   assert.doesNotMatch(JSON.stringify(result),/fixture-password|fixture-user|api_key|private-provider/);
   const row=f.sql.prepare('SELECT * FROM golden_orders').get();assert.doesNotMatch(row.source_enc,/fixture-password|provider\.example/);
   assert.match(JSON.parse(row.source_enc).m3u_url,/^enc1\./);
@@ -79,10 +80,22 @@ test('Golden : devis sans achat, confirmation précise, Manzi8 prioritaire, stoc
   await f.flush();
 });
 
-test('Golden : manzi10 uniquement si Manzi8 manque de crédits avant création',async t=>{
-  const f=await fixture(t);f.balances.key8=7;const q=await f.quote();assert.equal(q.order.key_label,'manzi10');
-  assert.equal((await f.confirm(q.order)).order.state,'delivered');
-  assert.deepEqual(f.calls.filter(c=>c.action==='new').map(c=>c.key),['key10']);await f.flush();
+test('Golden : aucun repli vers Manzi8 si manzi10 manque de crédits ou est désactivé',async t=>{
+  const f=await fixture(t);f.balances.key10=7;
+  assert.equal((await f.quote()).error,'no_key_available');
+  f.balances.key10=100;f.sql.exec("UPDATE gold_keys SET use_for_paid=0 WHERE id='key10'");
+  assert.equal((await f.quote()).error,'no_key_available');
+  assert.equal(f.calls.some(c=>c.key==='key8'),false);
+  assert.equal(f.calls.filter(c=>c.action==='new').length,0);
+});
+
+test('Golden : un ancien devis Manzi8 est refusé avant tout achat',async t=>{
+  const f=await fixture(t),q=await f.quote();
+  f.sql.prepare("UPDATE golden_orders SET key_id='key8',key_label='Manzi8' WHERE id=?").run(q.order.id);
+  const result=await f.confirm(q.order);
+  assert.equal(result.order.state,'refused');assert.equal(result.order.error_code,'preflight_failed');
+  assert.equal(f.calls.some(c=>c.key==='key8'),false);
+  assert.equal(f.calls.filter(c=>c.action==='new').length,0);
 });
 
 test('Golden : résultat incertain bloque définitivement la MAC et la clé, sans deuxième achat',async t=>{

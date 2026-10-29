@@ -212,10 +212,14 @@ class RemoteActivationWatch {
       }
       // Tombstones du statut : on efface même si le lecteur est
       // ouvert (on n'importe pas une grosse liste à ce moment-là).
-      if (snapOf().revoked.isNotEmpty) {
-        await RemoteSourceRepository.applyRevocations(snapOf().revoked);
+      final Set<String> revoked = snapOf().revoked.toSet();
+      if (revoked.isNotEmpty) {
+        await RemoteSourceRepository.applyRevocations(revoked.toList());
       }
-      await _maybeImportSource(ordered: sourceOrdered);
+      // Cette passe a déjà persisté et effacé ces empreintes. La lecture
+      // device-source doit encore vérifier sa révision et les autres listes,
+      // mais ne doit pas refaire les mêmes transactions avant l'accusé.
+      await _maybeImportSource(ordered: sourceOrdered, alreadyRevoked: revoked);
       return true;
     } finally {
       _tickBusy = false;
@@ -227,7 +231,10 @@ class RemoteActivationWatch {
   /// Télécharge la source si la décision pure dit oui. Un échec
   /// réseau ne mémorise pas le numéro : on réessaiera au prochain
   /// tour, sans couper ce qui joue déjà.
-  Future<void> _maybeImportSource({bool ordered = false}) async {
+  Future<void> _maybeImportSource({
+    bool ordered = false,
+    Set<String> alreadyRevoked = const <String>{},
+  }) async {
     if (!_allowSourceImport) return;
     final RemoteSubscriptionStatus snap = SubscriptionState.instance.remote;
     // Le statut verrouille déjà l'app. Une suspension ne doit pas convertir
@@ -275,7 +282,7 @@ class RemoteActivationWatch {
     // le maître). Voir tv_delete.dart.
     if (ordered) RemoteSourceRepository.notePanelResend();
     final RemoteSyncResult result =
-        await RemoteSourceRepository.sync(force: ordered);
+        await RemoteSourceRepository.sync(force: ordered, alreadyRevoked: alreadyRevoked);
     if (result == RemoteSyncResult.networkError) return;
     if (snap.sourceRev != null) _lastSourceRev = snap.sourceRev;
     // Ordre du panel appliqué : on remonte l'inventaire tout de suite

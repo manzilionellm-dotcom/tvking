@@ -6,8 +6,6 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:http/http.dart' as http;
-import 'package:http/io_client.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -22,19 +20,19 @@ import 'package:tv_king/features/subscription/data/subscription_backend.dart';
 import 'package:tv_king/features/subscription/presentation/gold_trial_card.dart';
 
 void main() {
-  late Uri fixtureOrigin;
-  // Toute la liaison Flutter et le test sont inscrits dans la même zone.
-  // Seul le client du test redirige l'API vers le vrai serveur HTTP local :
-  // aucune adresse mutable ni préférence de secours dans l'application.
-  http.runWithClient<void>(() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
   testWidgets('Android : Je teste → identité native → import automatique SQLite', (tester) async {
+    // Les callbacks Flutter ne conservent pas nécessairement une Zone HTTP.
+    // Le paquet de recette reçoit donc son adresse immuable à la compilation,
+    // comme la recette temps réel. Cette assertion interdit de lancer le test
+    // avec le backend client ; aucune préférence ni URL de production ne change.
+    expect(kSubscriptionBaseUrl, 'http://127.0.0.1:18787');
     FlavorConfig.setCurrent(FlavorConfig.sevenMotion);
-    final HttpServer server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    final HttpServer server = await HttpServer.bind(InternetAddress.loopbackIPv4, 18787);
     final String fixture = 'http://127.0.0.1:${server.port}';
-    fixtureOrigin = Uri.parse(fixture);
     int posts = 0;
     int sourceReads = 0;
+    int playlistReads = 0;
     int activationStatus = 201;
     Map<String, dynamic>? payload;
     final String mac = await DeviceIdentity.instance.mac;
@@ -60,6 +58,7 @@ void main() {
           'type': 'm3u', 'label': kGoldTrialPlaylistName, 'm3u_url': '$fixture/trial.m3u',
         }}));
       } else if (path == '/trial.m3u') {
+        playlistReads++;
         request.response.headers.contentType = ContentType.text;
         request.response.write('#EXTM3U\n#EXTINF:-1 tvg-id="fixture" group-title="Test",Chaîne locale de test\n$fixture/fixture.ts\n');
       } else {
@@ -94,7 +93,12 @@ void main() {
       expect(posts, 1);
       expect(payload, <String, String>{'mac':mac, 'android_id':androidId, 'app_version':package.version});
       expect(sourceReads, greaterThanOrEqualTo(1), reason: 'une lecture HTTP réussie suffit si la source est déjà disponible');
-      expect(controller.sourceLoaded, isTrue);
+      expect(controller.sourceLoaded, isTrue,
+          reason: 'import normal terminé : sourceReads=$sourceReads, '
+              'playlistReads=$playlistReads, sourceFailed=${controller.sourceFailed}, '
+              'waiting=${controller.waitingForSource}, importing=${controller.importing}');
+      expect(playlistReads, greaterThanOrEqualTo(1),
+          reason: 'le parcours doit télécharger la vraie playlist HTTP locale');
       expect(PlaylistRepository.instance.currentChannels, isNotEmpty);
       expect(find.text(kGoldTrialPlaylistName), findsOneWidget);
       expect(find.text('Votre essai gratuit est activé.'), findsOneWidget);
@@ -156,37 +160,4 @@ void main() {
       await server.close(force: true);
     }
   });
-  }, () => _LocalFixtureClient(fixtureOrigin));
-}
-
-/// Garde les échanges HTTP réels et refuse toute destination externe au test.
-/// L'identité Android, l'import normal du panel et SQLite restent inchangés.
-class _LocalFixtureClient extends http.BaseClient {
-  _LocalFixtureClient(this.fixture);
-
-  final Uri fixture;
-  final http.Client _inner = IOClient();
-
-  @override
-  Future<http.StreamedResponse> send(http.BaseRequest request) async {
-    final Uri uri = request.url;
-    final bool backend = uri.origin == Uri.parse(kSubscriptionBaseUrl).origin;
-    if (!backend && uri.origin != fixture.origin) {
-      throw StateError('Le test Android interdit les appels réseau externes.');
-    }
-    final Uri target = backend
-        ? uri.replace(scheme: fixture.scheme, host: fixture.host, port: fixture.port)
-        : uri;
-    final List<int> body = await request.finalize().toBytes();
-    final http.Request forwarded = http.Request(request.method, target)
-      ..bodyBytes = body
-      ..headers.addAll(request.headers)
-      ..followRedirects = request.followRedirects
-      ..maxRedirects = request.maxRedirects
-      ..persistentConnection = request.persistentConnection;
-    return _inner.send(forwarded);
-  }
-
-  @override
-  void close() => _inner.close();
 }

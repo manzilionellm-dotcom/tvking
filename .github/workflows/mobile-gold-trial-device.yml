@@ -101,7 +101,7 @@ jobs:
       - name: Exécuter le vrai parcours sur l'appareil Android virtuel
         run: |
           set -o pipefail
-          flutter test integration_test/gold_trial_device_test.dart -d emulator-5554 --reporter expanded 2>&1 | tee gold-trial-device.log
+          flutter test integration_test/gold_trial_device_test.dart -d emulator-5554 --dart-define=BACKEND_URL=http://127.0.0.1:18787 --reporter expanded 2>&1 | tee gold-trial-device.log
       - name: Conserver les diagnostics du test Android
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9

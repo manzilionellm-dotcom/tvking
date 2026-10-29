@@ -157,6 +157,7 @@ class Playlist {
 
   Playlist copyWith({
     int? id,
+    String? m3uUrl,
     int? lastSyncedAt,
     int? channelCount,
     bool? isActive,
@@ -166,7 +167,7 @@ class Playlist {
       name: name,
       type: type,
       createdAt: createdAt,
-      m3uUrl: m3uUrl,
+      m3uUrl: m3uUrl ?? this.m3uUrl,
       xtreamServer: xtreamServer,
       xtreamUsername: xtreamUsername,
       xtreamPassword: xtreamPassword,
