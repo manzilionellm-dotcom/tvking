@@ -43,7 +43,7 @@ void main() {
     };
     await http.runWithClient(() async {
       for (final reader in readers.values) { await reader(); }
-    }, () => MockClient((request) async => http.Response(jsonEncode(data[request.url.path]),200)));
+    }, () => MockClient((request) async => http.Response.bytes(utf8.encode(jsonEncode(data[request.url.path])), 200, headers: {'content-type': 'application/json; charset=utf-8'})));
     expect(BrandConfig.instance.appName,'Nom du panel');
     expect(PricingRepository.current.yearly,'7');
     expect(HomeLayoutRepository.instance.config('recent')?.ribbon,'Nouveau');
