@@ -193,6 +193,18 @@ abstract final class RemoteSourceRepository {
 
   static Future<void> _queue = Future<void>.value();
 
+  /// Les tests de widgets ont chacun leur propre horloge/microtask queue.
+  /// Une Future terminée dans le test précédent appartient encore à sa
+  /// zone ; la réutiliser ferait attendre le test suivant indéfiniment.
+  /// Ne réinitialiser qu'entre scénarios, après tous les imports en cours.
+  @visibleForTesting
+  static void resetImportQueueForTesting() {
+    if (importing.value || syncing.value || manualImporting.value) {
+      throw StateError('Un import est encore en cours.');
+    }
+    _queue = Future<void>.value();
+  }
+
   /// Une seule synchro à la fois. La suivante attend la fin de
   /// la précédente, sans en lancer une deuxième en parallèle.
   static Future<T> _serial<T>(Future<T> Function() job) {

@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../../playlists/data/import_progress.dart';
 import '../../playlists/data/remote_source_repository.dart';
+import '../core/tv_dimens.dart';
 import '../core/tv_tokens.dart';
 import 'tv_import_progress_label.dart';
 
@@ -87,7 +88,10 @@ class TvChannelLoadingStatus extends StatelessWidget {
     return Container(
       key: const ValueKey<String>('tv-channel-loading-status'),
       width: double.infinity,
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.symmetric(
+        horizontal: TvDimens.rowGap * 4,
+        vertical: TvDimens.rowGap * 3,
+      ),
       decoration: BoxDecoration(
         color: TvTokens.card,
         borderRadius: BorderRadius.circular(TvTokens.rCard),

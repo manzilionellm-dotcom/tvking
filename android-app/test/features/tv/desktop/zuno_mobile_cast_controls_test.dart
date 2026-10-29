@@ -272,43 +272,65 @@ void main() {
       final probe = Completer<StreamProbeResult>();
       final closePicker = Completer<void>();
       final manager = managerFor(receiver, probe: (_) => probe.future);
-      Future<void>? attempt;
-      addTearDown(() async {
-        if (!probe.isCompleted) probe.complete(StreamProbeResult(
+      bool attemptStarted = false;
+      bool attemptCompleted = false;
+      Future<void> drainAttempt() async {
+        // Le Future naît dans le callback UI, sous l'horloge fakeAsync.
+        // Le drainer ici évite de l'attendre dans addTearDown, après la fin
+        // du pompage. Pas d'avance d'une seconde : le timeout du manager
+        // ne doit pas se substituer à la vraie annulation attendue.
+        for (int i = 0; i < 10 && attemptStarted && !attemptCompleted; i++) {
+          await tester.pump();
+        }
+      }
+
+      try {
+        await showControls(tester, local: local, manager: manager,
+          picker: (context, {required streamUrl, required title, imageUrl}) {
+            attemptStarted = true;
+            unawaited(manager.castTo(google, streamUrl: streamUrl, title: title)
+                .then<void>((_) {
+                      attemptCompleted = true;
+                    },
+                    onError: (Object _, StackTrace __) {
+                      attemptCompleted = true;
+                    }));
+            return closePicker.future;
+          },
+        );
+        await tester.tap(find.byType(TextButton));
+        await tester.pump();
+        expect(manager.state, CastState.connecting);
+        expect(events, <String>['local-stop']);
+        if (removeRoute) await tester.pumpWidget(const SizedBox());
+        closePicker.complete();
+        await tester.pump();
+        expect(manager.hasActiveSession, isFalse);
+        expect(events, removeRoute
+            ? <String>['local-stop']
+            : <String>['local-stop', 'local-resume']);
+
+        probe.complete(const StreamProbeResult(
+            originalUrl: originalUrl, finalUrl: originalUrl, success: true));
+        await drainAttempt();
+        expect(attemptCompleted, isTrue,
+            reason: 'la réponse tardive doit terminer la tentative annulée, sans attendre son timeout');
+        expect(receiver.urls, isEmpty,
+            reason: 'la réponse tardive du réseau ne doit pas lancer le récepteur');
+        expect(manager.hasActiveSession, isFalse);
+        expect(tester.takeException(), isNull);
+      } finally {
+        // Même une assertion ratée libère les portes et leurs microtâches
+        // dans le test courant ; la variante suivante reçoit une zone saine.
+        await manager.disconnect();
+        if (!probe.isCompleted) probe.complete(const StreamProbeResult(
             originalUrl: originalUrl, finalUrl: originalUrl, success: true));
         if (!closePicker.isCompleted) closePicker.complete();
-        await attempt;
-        await manager.disconnect();
+        await drainAttempt();
+        await tester.pumpWidget(const SizedBox());
         manager.dispose();
         local.dispose();
-      });
-      await showControls(tester, local: local, manager: manager,
-        picker: (context, {required streamUrl, required title, imageUrl}) {
-          attempt = manager.castTo(google, streamUrl: streamUrl, title: title)
-              .catchError((Object _) {});
-          return closePicker.future;
-        },
-      );
-      await tester.tap(find.byType(TextButton));
-      await tester.pump();
-      expect(manager.state, CastState.connecting);
-      expect(events, <String>['local-stop']);
-      if (removeRoute) await tester.pumpWidget(const SizedBox());
-      closePicker.complete();
-      await tester.pump();
-      expect(manager.hasActiveSession, isFalse);
-      expect(events, removeRoute
-          ? <String>['local-stop']
-          : <String>['local-stop', 'local-resume']);
-
-      probe.complete(StreamProbeResult(
-          originalUrl: originalUrl, finalUrl: originalUrl, success: true));
-      await tester.pumpAndSettle();
-      await attempt;
-      expect(receiver.urls, isEmpty,
-          reason: 'la réponse tardive du réseau ne doit pas lancer le récepteur');
-      expect(manager.hasActiveSession, isFalse);
-      await tester.pumpWidget(const SizedBox());
+      }
       expect(tester.takeException(), isNull);
     }, variant: TargetPlatformVariant.only(TargetPlatform.android));
   }
