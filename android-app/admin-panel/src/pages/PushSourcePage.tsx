@@ -1,4 +1,6 @@
 import { FormEvent, useEffect, useState } from 'react';
+import { MacInput } from '@/components/MacInput';
+import { formatMacAddress } from '@/lib/mac';
 import { AppLayout } from '@/components/AppLayout';
 import {
   sourcesApi, serversApi,
@@ -84,7 +86,7 @@ export function PushSourcePage({ onLogout }: { onLogout: () => void }) {
   async function submit(e: FormEvent) {
     e.preventDefault();
     setBusy(true); setErr(null); setOk(null);
-    const m = mac.trim().toUpperCase();
+    const m = formatMacAddress(mac);
     if (!/^MK(?::[0-9A-F]{2}){5}$/i.test(m)) {
       setErr('MAC invalide. Format attendu : MK:XX:XX:XX:XX:XX');
       setBusy(false);
@@ -132,9 +134,10 @@ export function PushSourcePage({ onLogout }: { onLogout: () => void }) {
           <label className="mb-1.5 block text-[10px] uppercase tracking-widest text-ink-tertiary">
             Adresse MAC de l'appareil
           </label>
-          <input
+          <MacInput
             value={mac}
-            onChange={(e) => setMac(e.target.value)}
+            onValueChange={setMac}
+            aria-label="Adresse MAC de l'appareil"
             autoFocus
             placeholder="MK:1A:2B:3C:4D:5E"
             className={inputCls + ' font-mono'}

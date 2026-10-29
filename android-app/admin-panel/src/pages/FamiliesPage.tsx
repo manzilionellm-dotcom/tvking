@@ -1,5 +1,7 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
+import { MacInput } from '@/components/MacInput';
+import { formatMacAddress } from '@/lib/mac';
 import {
   familiesApi, m3uLinkUrl, ApiError,
   type Family, type FamilyMember, type FamilySource, type FamilyLink,
@@ -105,7 +107,7 @@ export function FamiliesPage({ onLogout }: { onLogout: () => void }) {
   async function addMember(e: FormEvent) {
     e.preventDefault();
     if (!selected) return;
-    const m = mMac.trim().toUpperCase();
+    const m = formatMacAddress(mMac);
     if (!/^MK(?::[0-9A-F]{2}){5}$/i.test(m)) {
       setErr('MAC invalide. Format : MK:XX:XX:XX:XX:XX');
       return;
@@ -229,7 +231,7 @@ export function FamiliesPage({ onLogout }: { onLogout: () => void }) {
                 <p className="text-[10px] uppercase tracking-widest text-ink-tertiary">
                   Ajouter un appareil
                 </p>
-                <input value={mMac} onChange={(e) => setMMac(e.target.value)}
+                <MacInput value={mMac} onValueChange={setMMac} aria-label="MAC de l'appareil"
                   placeholder="MK:1A:2B:3C:4D:5E" className={inputCls + ' font-mono'} />
                 <input value={mLabel} onChange={(e) => setMLabel(e.target.value)}
                   placeholder="Étiquette (ex. Salon, Chambre, Enfant)" className={inputCls} />

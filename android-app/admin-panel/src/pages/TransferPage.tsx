@@ -1,6 +1,8 @@
 import { FormEvent, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { AppLayout } from '@/components/AppLayout';
+import { MacInput, initialMac } from '@/components/MacInput';
+import { formatMacAddress } from '@/lib/mac';
 import { transferApi, ApiError } from '@/lib/api';
 
 // =========================================================
@@ -17,7 +19,7 @@ const MAC_RX = /^MK(?::[0-9A-Fa-f]{2}){5}$/;
 export function TransferPage({ onLogout }: { onLogout: () => void }) {
   // Ancienne MAC pré-remplie si on arrive depuis la fiche appareil (?mac=…).
   const [sp] = useSearchParams();
-  const [oldMac, setOldMac] = useState(sp.get('mac') || '');
+  const [oldMac, setOldMac] = useState(initialMac(sp.get('mac')));
   const [newMac, setNewMac] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -26,8 +28,8 @@ export function TransferPage({ onLogout }: { onLogout: () => void }) {
   async function submit(e: FormEvent) {
     e.preventDefault();
     setErr(null); setOk(null);
-    const o = oldMac.trim().toUpperCase();
-    const n = newMac.trim().toUpperCase();
+    const o = formatMacAddress(oldMac);
+    const n = formatMacAddress(newMac);
     if (!MAC_RX.test(o)) { setErr('Ancienne MAC invalide (format MK:XX:XX:XX:XX:XX).'); return; }
     if (!MAC_RX.test(n)) { setErr('Nouvelle MAC invalide (format MK:XX:XX:XX:XX:XX).'); return; }
     if (o === n) { setErr('Les deux MAC sont identiques.'); return; }
@@ -68,9 +70,10 @@ export function TransferPage({ onLogout }: { onLogout: () => void }) {
             <label className="mb-1.5 block text-[10px] uppercase tracking-widest text-ink-tertiary">
               Ancienne MAC (l'appareil/abonnement actuel)
             </label>
-            <input
+            <MacInput
               value={oldMac}
-              onChange={(e) => setOldMac(e.target.value)}
+              onValueChange={setOldMac}
+              aria-label="Ancienne MAC"
               placeholder="MK:XX:XX:XX:XX:XX"
               className={inputCls}
               autoFocus
@@ -81,9 +84,10 @@ export function TransferPage({ onLogout }: { onLogout: () => void }) {
             <label className="mb-1.5 block text-[10px] uppercase tracking-widest text-ink-tertiary">
               Nouvelle MAC (le nouvel appareil du client)
             </label>
-            <input
+            <MacInput
               value={newMac}
-              onChange={(e) => setNewMac(e.target.value)}
+              onValueChange={setNewMac}
+              aria-label="Nouvelle MAC"
               placeholder="MK:XX:XX:XX:XX:XX"
               className={inputCls}
             />

@@ -7,6 +7,7 @@ import {
   type DeviceLicense, type DevicePresence, ApiError,
 } from '@/lib/api';
 import { formatDateTime } from '@/lib/utils';
+import { formatMacAddress, looksLikeMac } from '@/lib/mac';
 
 /// Libellés FR lisibles des plans (clé technique → texte).
 const PLAN_LABELS: Record<string, string> = {
@@ -26,8 +27,22 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
 
   const load = useCallback(() => {
     setLoading(true);
-    devicesApi.list(q)
-      .then((r) => { setItems(r.items); setErr(null); })
+    // Recherche MAC tolérante : « mkfb88052b68 » ou « mk-fb-88 » trouvent
+    // aussi « MK:FB:88:05:2B:68 ». On envoie la saisie telle quelle (labels,
+    // clients…) ET, si elle ressemble à une MAC, sa version formatée ; les
+    // résultats sont fusionnés. Aucune route API modifiée.
+    const term = q.trim();
+    const macTerm = looksLikeMac(term) ? formatMacAddress(term) : '';
+    Promise.all([
+      devicesApi.list(q),
+      macTerm && macTerm !== term ? devicesApi.list(macTerm).catch(() => null) : Promise.resolve(null),
+    ])
+      .then(([r, rMac]) => {
+        const seen = new Set(r.items.map((d) => d.id));
+        const extra = (rMac?.items || []).filter((d) => !seen.has(d.id));
+        setItems([...r.items, ...extra]);
+        setErr(null);
+      })
       .catch((e) => {
         if (e instanceof ApiError && e.status === 401) onLogout();
         else setErr(e.message);
@@ -65,6 +80,9 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
         type="search"
         value={q}
         onChange={(e) => setQ(e.target.value)}
+        autoCapitalize="none"
+        autoCorrect="off"
+        spellCheck={false}
         placeholder="Recherche par MAC, label, client…"
         className="mb-4 w-full max-w-md rounded-md border border-white/5 bg-midnight px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-accent"
       />

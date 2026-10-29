@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
+import { macMatches } from '@/lib/mac';
 import { referencesApi, type ActivationReference, ApiError } from '@/lib/api';
 
 // =========================================================
@@ -60,6 +61,7 @@ export function ReferencesPage({ onLogout }: { onLogout: () => void }) {
     if (!t) return items;
     return items.filter((it) =>
       it.mac.toLowerCase().includes(t)
+      || macMatches(it.mac, t) // « mkfb88 », « fb-88-05 » trouvent MK:FB:88:05:…
       || (it.customer_name || '').toLowerCase().includes(t)
       || it.usernames.some((u) => u.toLowerCase().includes(t))
       || it.servers.some((s) => s.toLowerCase().includes(t)),
