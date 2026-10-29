@@ -31,6 +31,10 @@ git apply "$mission_dir/android-app/ci/mobile/realtime-channel.patch"
 # compilé. Les journaux sont nettoyés après application, comme auparavant.
 git apply --check "$mission_dir/android-app/ci/mobile/source-protocol-fallback.patch"
 git apply "$mission_dir/android-app/ci/mobile/source-protocol-fallback.patch"
+# Un fichier M3U protégé par des identifiants reste un fichier M3U :
+# aucune requête Xtream inventée avant son import ou sa déduplication.
+git apply --check "$mission_dir/android-app/ci/mobile/source-endpoint-detection.patch"
+git apply "$mission_dir/android-app/ci/mobile/source-endpoint-detection.patch"
 git apply --check "$mission_dir/android-app/ci/mobile/video-quality-confirmation.patch"
 git apply "$mission_dir/android-app/ci/mobile/video-quality-confirmation.patch"
 git apply --check "$mission_dir/android-app/ci/mobile/phone-update-channel.patch"

@@ -1,0 +1,335 @@
+diff --git a/lib/features/playlists/data/source_link_utils.dart b/lib/features/playlists/data/source_link_utils.dart
+index 2f4783f7e4e2ff91486c53c761cc3dabe0d97eca..66a1d5e9ff97ec515e7dfbcebf8eaf3e333cc698 100644
+--- a/lib/features/playlists/data/source_link_utils.dart
++++ b/lib/features/playlists/data/source_link_utils.dart
+@@ -120,6 +120,30 @@
+     return '${uri.scheme}://${uri.host}$portSuffix$path';
+   }
+ 
++  /// Reconnaît les liens qui autorisent une promotion AUTOMATIQUE vers
++  /// l'API Xtream. Des paramètres username/password protègent aussi de
++  /// vrais fichiers M3U : ils ne prouvent pas que player_api.php existe.
++  /// Sans endpoint connu, le chemin et la query du fournisseur restent
++  /// ceux de la playlist, sans tentative d'API avant chaque relecture.
++  static ({String server, String username, String password})?
++      tryExtractXtreamPlaylistCredentials(String raw) {
++    final String normalized = ensureScheme(raw);
++    final Uri? uri = Uri.tryParse(normalized);
++    if (uri == null ||
++        uri.host.isEmpty ||
++        !_allowedSourceSchemes.contains(uri.scheme.toLowerCase()) ||
++        uri.pathSegments.isEmpty) {
++      return null;
++    }
++    const Set<String> endpoints = <String>{
++      'get.php',
++      'player_api.php',
++      'panel_api.php',
++    };
++    if (!endpoints.contains(uri.pathSegments.last.toLowerCase())) return null;
++    return tryExtractXtreamCredentials(normalized);
++  }
++
+   /// Détecte un lien Xtream/M3U COMPLET (ex. celui donné pour VLC/Smarters :
+   /// `http://serveur.com:8080/get.php?username=X&password=Y&type=m3u_plus`)
+   /// collé par erreur dans le champ « serveur » Xtream (au lieu des 3
+diff --git a/lib/features/playlists/data/source_input_normalizer.dart b/lib/features/playlists/data/source_input_normalizer.dart
+index bf2f6b3d8b166c61940d650704153fd079253830..a22d13ff6b3593324ba4733499395757efe8e6f4 100644
+--- a/lib/features/playlists/data/source_input_normalizer.dart
++++ b/lib/features/playlists/data/source_input_normalizer.dart
+@@ -230,10 +230,10 @@
+           kind: SourceInputKind.unknown, url: '', fixes: n.fixes);
+     }
+ 
+-    // 1) Lien Xtream COMPLET (get.php?username=X&password=Y…) : on
+-    //    réutilise l'extracteur existant → les 3 champs déjà séparés.
++    // 1) Endpoint Xtream connu avec identifiants : les 3 champs séparés.
++    //    Une vraie playlist .m3u avec les mêmes paramètres reste M3U.
+     final ({String server, String username, String password})? creds =
+-        SourceLinkUtils.tryExtractXtreamCredentials(url);
++        SourceLinkUtils.tryExtractXtreamPlaylistCredentials(url);
+     if (creds != null) {
+       return SourceInputAnalysis(
+         kind: SourceInputKind.xtream,
+diff --git a/lib/features/playlists/data/playlist_repository.dart b/lib/features/playlists/data/playlist_repository.dart
+index 045034ade4457bd3c13bbef50c962fa703cdbfff..9f41f6e07c723ff4102b23127dd2fda099dc7fa0 100644
+--- a/lib/features/playlists/data/playlist_repository.dart
++++ b/lib/features/playlists/data/playlist_repository.dart
+@@ -723,8 +723,8 @@
+   /// Ajout d'un lien M3U avec REPLI Xtream automatique (terrain
+   /// 2026-07-08).
+   ///
+-  /// STRATÉGIE (identique à IBO/Smarters) : si le lien porte des
+-  /// identifiants (get.php?username=…&password=…), on passe par l'API
++  /// STRATÉGIE (identique à IBO/Smarters) : si un endpoint Xtream connu
++  /// porte des identifiants (get.php?username=…&password=…), on passe par l'API
+   /// XTREAM EN PRIORITÉ, PAS par le téléchargement du fichier M3U.
+   /// Pourquoi : un `type=m3u_plus` renvoie TOUT le catalogue (live + VOD
+   /// + séries) en un seul fichier souvent > 60 Mo — long à télécharger
+@@ -734,12 +734,12 @@
+   /// taille). Ça résout d'un coup les deux échecs terrain : get.php en
+   /// 503/refus de signature, ET M3U trop volumineux.
+   ///
+-  /// 1. lien AVEC identifiants → API Xtream d'abord ; si elle échoue,
++  /// 1. endpoint Xtream AVEC identifiants → API d'abord ; si elle échoue,
+   ///    repli sur le téléchargement M3U brut (certains panels ont
+   ///    player_api coupé mais get.php ouvert) ; si les deux échouent,
+   ///    on renvoie l'erreur XTREAM (la plus parlante — compte/DNS) ;
+-  /// 2. lien SANS identifiants (vraie playlist .m3u statique) →
+-  ///    téléchargement M3U direct, seul chemin possible.
++  /// 2. autre lien M3U, même protégé par username/password →
++  ///    téléchargement direct, sans inventer un endpoint d'API.
+   Future<Playlist> addM3uPlaylistSmart({
+     required String name,
+     required String url,
+@@ -760,9 +760,9 @@
+       );
+     }
+     final ({String server, String username, String password})? creds =
+-        SourceLinkUtils.tryExtractXtreamCredentials(url);
+-
+-    // Vraie playlist M3U (pas d'identifiants) : un seul chemin possible.
++        SourceLinkUtils.tryExtractXtreamPlaylistCredentials(url);
++
++    // Vraie playlist M3U : conserver son chemin et ses paramètres.
+     if (creds == null) {
+       return addM3uPlaylist(
+           allowHttpCompatibility: allowHttpCompatibility,
+diff --git a/lib/features/playlists/data/remote_source_repository.dart b/lib/features/playlists/data/remote_source_repository.dart
+index d7a1be2e7fb6dfca8ded7e076ffa2d3b8431e6d3..944f7a5d8d2a73e41498b066e1785c8080b2b1d3 100644
+--- a/lib/features/playlists/data/remote_source_repository.dart
++++ b/lib/features/playlists/data/remote_source_repository.dart
+@@ -709,7 +709,7 @@
+       final ({String server, String username, String password})? creds =
+           m3uLinkAsM3u
+               ? null
+-              : SourceLinkUtils.tryExtractXtreamCredentials(m3u);
++              : SourceLinkUtils.tryExtractXtreamPlaylistCredentials(m3u);
+       if (creds != null) {
+         final RemoteSyncResult? viaApi = await _applyGetPhpAsXtream(
+           src: src,
+diff --git a/test/features/playlists/source_endpoint_detection_test.dart b/test/features/playlists/source_endpoint_detection_test.dart
+new file mode 100644
+index 0000000..5503aeffdb7af1387dd050e42b6de21f1a63fbd6
+--- /dev/null
++++ b/test/features/playlists/source_endpoint_detection_test.dart
+@@ -0,0 +1,73 @@
++import 'package:flutter_test/flutter_test.dart';
++import 'package:tv_king/features/playlists/data/source_input_normalizer.dart';
++import 'package:tv_king/features/playlists/data/source_link_utils.dart';
++
++void main() {
++  test('un vrai fichier M3U protégé reste M3U avec son chemin et sa query', () {
++    for (final String extension in <String>['m3u', 'm3u8']) {
++      final String url = 'https://source.invalid/catalogue.$extension'
++          '?username=viewer&password=p%2Bass%26word&token=a%2Bb%3Dc';
++      final SourceInputAnalysis input = SourceInputNormalizer.analyze(url);
++      expect(input.kind, SourceInputKind.m3u);
++      expect(input.url, url);
++      expect(input.hasXtreamCredentials, isFalse);
++      expect(SourceLinkUtils.tryExtractXtreamPlaylistCredentials(url), isNull);
++    }
++  });
++
++  test('les paramètres seuls ne créent pas un endpoint Xtream', () {
++    for (final String path in <String>[
++      '/',
++      '/catalogue',
++      '/get.php/catalogue.m3u',
++      '/catalogue.m3u/player_api.php.backup',
++    ]) {
++      expect(
++        SourceLinkUtils.tryExtractXtreamPlaylistCredentials(
++          'https://source.invalid$path?username=viewer&password=pass',
++        ),
++        isNull,
++      );
++    }
++  });
++
++  test('les vrais endpoints gardent serveur, sous-chemin et identifiants', () {
++    for (final String endpoint in <String>[
++      'get.php',
++      'PLAYER_API.PHP',
++      'panel_api.php',
++    ]) {
++      final String url = 'https://source.invalid:8443/xtream/$endpoint'
++          '?username=viewer&password=p%2Bass%26word';
++      final credentials =
++          SourceLinkUtils.tryExtractXtreamPlaylistCredentials(url);
++      expect(credentials, isNotNull);
++      expect(credentials!.server, 'https://source.invalid:8443/xtream');
++      expect(credentials.username, 'viewer');
++      expect(credentials.password, 'p+ass&word');
++      final SourceInputAnalysis input = SourceInputNormalizer.analyze(url);
++      expect(input.kind, SourceInputKind.xtream);
++      expect(input.xtreamPassword, 'p+ass&word');
++    }
++  });
++
++  test('une promotion Xtream exige HTTP(S) et les deux identifiants', () {
++    for (final String url in <String>[
++      'file://source.invalid/get.php?username=viewer&password=pass',
++      'rtmp://source.invalid/get.php?username=viewer&password=pass',
++      'https://source.invalid/get.php?username=viewer',
++      'https://source.invalid/get.php?username=&password=pass',
++    ]) {
++      expect(SourceLinkUtils.tryExtractXtreamPlaylistCredentials(url), isNull);
++    }
++  });
++
++  test('le champ serveur explicite conserve son extraction générique', () {
++    final credentials = SourceLinkUtils.tryExtractXtreamCredentials(
++      'https://source.invalid/catalogue.m3u?username=viewer&password=pass',
++    );
++    expect(credentials, isNotNull);
++    expect(credentials!.username, 'viewer');
++    expect(credentials.password, 'pass');
++  });
++}
+diff --git a/test/features/playlists/m3u_credentials_import_test.dart b/test/features/playlists/m3u_credentials_import_test.dart
+new file mode 100644
+index 0000000..5b1e090ed56ee1c59e5412c3b76f5247a78ce1f2
+--- /dev/null
++++ b/test/features/playlists/m3u_credentials_import_test.dart
+@@ -0,0 +1,140 @@
++import 'dart:io';
++
++import 'package:flutter_test/flutter_test.dart';
++// ignore: depend_on_referenced_packages
++import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
++import 'package:shared_preferences/shared_preferences.dart';
++import 'package:sqflite_common_ffi/sqflite_ffi.dart';
++import 'package:tv_king/core/flavor/flavor.dart';
++import 'package:tv_king/features/playlists/data/playlist_database.dart';
++import 'package:tv_king/features/playlists/data/playlist_repository.dart';
++import 'package:tv_king/features/playlists/data/remote_source_repository.dart';
++import 'package:tv_king/features/playlists/domain/playlist.dart';
++
++class _Paths extends PathProviderPlatform {
++  _Paths(this.root);
++  final String root;
++  @override
++  Future<String?> getApplicationDocumentsPath() async => root;
++  @override
++  Future<String?> getApplicationSupportPath() async => root;
++  @override
++  Future<String?> getTemporaryPath() async => root;
++}
++
++// Hérite du vrai client Dart : une surcharge null reprendrait la surcharge
++// globale de Flutter et ne garantirait pas la connexion au serveur local.
++class _RealHttpOverrides extends HttpOverrides {}
++
++/// Vrai serveur HTTP local : la query protège un fichier, sans API Xtream.
++/// Toute tentative d'API est enregistrée, puis refusée ; un repli qui finit
++/// par réussir ne peut donc pas masquer le détour réseau dans le test.
++class _M3uServer {
++  _M3uServer(this.server) {
++    server.listen((HttpRequest request) async {
++      requests.add(request.uri);
++      if (request.uri.toString() == target) {
++        request.response.headers.contentType =
++            ContentType('audio', 'x-mpegurl', charset: 'utf-8');
++        request.response.write('#EXTM3U\n'
++            '#EXTINF:-1 group-title="Test",Chaîne test\n'
++            'http://stream.invalid/test.ts\n');
++      } else {
++        request.response.statusCode = HttpStatus.notFound;
++      }
++      await request.response.close();
++    });
++  }
++
++  final HttpServer server;
++  final List<Uri> requests = <Uri>[];
++  static const String target = '/catalogue.m3u'
++      '?username=viewer&password=p%2Bass%26word&token=a%2Bb%3Dc';
++  String get url => 'http://127.0.0.1:${server.port}$target';
++
++  static Future<_M3uServer> start() async =>
++      _M3uServer(await HttpServer.bind(InternetAddress.loopbackIPv4, 0));
++}
++
++void main() {
++  TestWidgetsFlutterBinding.ensureInitialized();
++  sqfliteFfiInit();
++  databaseFactory = databaseFactoryFfiNoIsolate;
++  FlavorConfig.setCurrent(FlavorConfig.sevenMotion);
++  PathProviderPlatform.instance =
++      _Paths(Directory.systemTemp.createTempSync('m3u-credentials-').path);
++
++  setUp(() async {
++    SharedPreferences.setMockInitialValues(<String, Object>{});
++    RemoteSourceRepository.storeBuild = false;
++    RemoteSourceRepository.m3uLinkAsM3u = false;
++    RemoteSourceRepository.xtreamHttpForTest = null;
++    final Database db = await PlaylistDatabase.instance.database;
++    await db.delete('channels');
++    await db.delete('playlists');
++    await db.delete('deleted_sources');
++    await PlaylistRepository.instance.initialize();
++  });
++
++  test('deux ordres panel importent le M3U une seule fois, sans appel API', () async {
++    // Le binding Flutter simule HTTP par défaut : utiliser ici le vrai
++    // transport local, pour exercer le chemin réseau de production.
++    await HttpOverrides.runWithHttpOverrides(() async {
++      final _M3uServer provider = await _M3uServer.start();
++      addTearDown(() => provider.server.close(force: true));
++      final List<Map<String, dynamic>> sources = <Map<String, dynamic>>[
++        <String, dynamic>{
++          'type': 'm3u',
++          'label': 'Liste protégée',
++          'm3u_url': provider.url,
++        },
++      ];
++
++      expect(await RemoteSourceRepository.applySources(sources),
++          RemoteSyncResult.loaded);
++      final Database db = await PlaylistDatabase.instance.database;
++      expect(await db.query('channels'), hasLength(1),
++          reason: 'le résultat attend la véritable écriture SQLite');
++      expect(await PlaylistRepository.instance.getAllChannels(), hasLength(1));
++
++      // Golden envoie renouvellement puis source : la seconde application
++      // retrouve la liste réelle et ne sonde aucun endpoint inventé.
++      expect(await RemoteSourceRepository.applySources(sources),
++          RemoteSyncResult.loaded);
++      final Playlist saved =
++          (await PlaylistRepository.instance.getAllPlaylists()).single;
++      expect(saved.type, PlaylistType.m3u);
++      expect(saved.m3uUrl, provider.url);
++      expect(provider.requests.map((Uri uri) => uri.toString()).toList(),
++          <String>[_M3uServer.target]);
++
++      // Les anciens alias de suppression restent valables : aucun push
++      // ne ressuscite cette même URL après son retrait volontaire.
++      await PlaylistRepository.instance.deletePlaylist(saved.id!);
++      expect(await db.query('deleted_sources'), isNotEmpty);
++      expect(await RemoteSourceRepository.applySources(sources),
++          RemoteSyncResult.noSource);
++      expect(await PlaylistRepository.instance.getAllPlaylists(), isEmpty);
++      expect(await db.query('channels'), isEmpty);
++      expect(provider.requests, hasLength(1));
++    }, _RealHttpOverrides());
++  });
++
++  test('un M3U personnel protégé garde son URL sans essai Xtream', () async {
++    await HttpOverrides.runWithHttpOverrides(() async {
++      final _M3uServer provider = await _M3uServer.start();
++      addTearDown(() => provider.server.close(force: true));
++      final Playlist saved =
++          await PlaylistRepository.instance.addM3uPlaylistSmart(
++        name: 'Liste personnelle',
++        url: provider.url,
++        allowHttpCompatibility: true,
++      );
++      expect(saved.type, PlaylistType.m3u);
++      expect(saved.m3uUrl, provider.url);
++      expect(saved.channelCount, 1);
++      expect(provider.requests.map((Uri uri) => uri.toString()).toList(),
++          <String>[_M3uServer.target]);
++    }, _RealHttpOverrides());
++  });
++}
