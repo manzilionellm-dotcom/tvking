@@ -151,6 +151,7 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
       onLogout={onLogout}
     >
       <SearchField
+        macSearch
         label="Rechercher un appareil"
         value={q}
         onChange={(value) => { setQ(value); setOffset(0); }}

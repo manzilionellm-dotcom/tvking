@@ -6,6 +6,7 @@ import {
 } from '@/components/ui';
 import { onlineApi, flagEmoji, ApiError, isAbortError } from '@/lib/api';
 import { PANEL_POLL_MS, shouldApplyPollResult } from '@/lib/live-sync';
+import { macSearchMatches } from '@/lib/mac-format/mac-search';
 import {
   LIST_PAGE_SIZE, agoLabel, createAbortBag, createGeneration, onlineView,
   type OnlineView,
@@ -55,6 +56,7 @@ export function OnlinePage({ onLogout }: { onLogout: () => void }) {
   const byCountry = data ? data.byCountry : [];
   const table = useClientTable(data?.items ?? [], {
     textOf: (d) => [d.country, d.ip, d.mac, d.channel].filter(Boolean).join(' '),
+    matchAlso: (d, query) => macSearchMatches(d.mac, query),
     valueOf: (d, key) => {
       if (key === 'country') return d.country || '';
       if (key === 'ip') return d.ip || '';
@@ -130,6 +132,7 @@ export function OnlinePage({ onLogout }: { onLogout: () => void }) {
           )}
 
           <SearchField
+            macSearch
             label="Rechercher parmi les appareils en ligne"
             value={table.query}
             onChange={table.setQuery}
