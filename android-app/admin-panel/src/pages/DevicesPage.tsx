@@ -19,6 +19,7 @@ import {
 import { shouldApplyPollResult } from '@/lib/live-sync';
 import { bindPanelRefresh } from '@/lib/box-channel';
 import { formatDateTime } from '@/lib/utils';
+import { formatMacAddress, looksLikeMac } from '@/lib/mac-format/mac';
 import { isClientList, isListOn, planRemoveSource, planToggleSource, toSourceInput } from '@/lib/sources';
 import { INSTANT_GIVE_UP_MS, INSTANT_POLL_MS, allOnTv, instantLabel, type InventoryLike } from '@/lib/instant';
 import {
@@ -51,6 +52,19 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
     const signal = aborts.current.next();
     if (!opts?.silent) setLoading(true);
     devicesApi.list(q, { limit: LIST_PAGE_SIZE, offset }, signal)
+      .then((r) => {
+        // La recherche libre garde la priorité. Une MAC sans séparateurs
+        // ne sert de repli que si le serveur confirme zéro résultat : une
+        // seule page fournit alors son total exact, sans fusion de listes.
+        const term = q.trim();
+        const macTerm = looksLikeMac(term) ? formatMacAddress(term) : '';
+        if (gen.current.isCurrent(id) && !signal.aborted
+          && 'total' in r && r.total === 0 && Array.isArray(r.items) && r.items.length === 0
+          && macTerm && macTerm !== term) {
+          return devicesApi.list(macTerm, { limit: LIST_PAGE_SIZE, offset }, signal);
+        }
+        return r;
+      })
       .then((r) => {
         if (!gen.current.isCurrent(id) || !shouldApplyPollResult(id, appliedSeq.current)) return;
         appliedSeq.current = id;

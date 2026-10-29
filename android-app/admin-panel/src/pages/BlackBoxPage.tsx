@@ -12,6 +12,7 @@ import { TracePanel } from './TracePanel';
 import { FormEvent, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { AppLayout } from '@/components/AppLayout';
+import { MacInput, initialMac } from '@/components/MacInput';
 import { ApiError, blackboxApi } from '@/lib/api';
 import {
   BLACKBOX_POLL_MS,
@@ -21,7 +22,7 @@ import {
 
 export function BlackBoxPage({ onLogout }: { onLogout: () => void }) {
   const [sp] = useSearchParams();
-  const [mac, setMac] = useState(sp.get('mac') || 'MK:');
+  const [mac, setMac] = useState(initialMac(sp.get('mac'), 'MK:'));
   const [active, setActive] = useState<string | null>(null);
   const [text, setText] = useState('');
   const [updatedAt, setUpdatedAt] = useState(0);
@@ -124,9 +125,9 @@ export function BlackBoxPage({ onLogout }: { onLogout: () => void }) {
           <label className="mb-1.5 block text-[10px] uppercase tracking-widest text-ink-tertiary">
             Adresse MAC de la box
           </label>
-          <input
+          <MacInput
             value={mac}
-            onChange={(e) => setMac(e.target.value)}
+            onValueChange={setMac}
             autoFocus
             placeholder="MK:1A:2B:3C:4D:5E"
             className={inputCls + ' font-mono'}

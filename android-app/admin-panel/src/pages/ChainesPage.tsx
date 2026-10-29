@@ -1,6 +1,7 @@
 import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { AppLayout } from '@/components/AppLayout';
+import { MacInput, initialMac } from '@/components/MacInput';
 import { confirmAction } from '@/components/confirm';
 import { Alert } from '@/components/ui';
 import {
@@ -38,7 +39,7 @@ export function ChainesPage({ onLogout }: { onLogout: () => void }) {
   const canPush = userCan(getCurrentUser(), 'sources');
   const [sp] = useSearchParams();
   // Même saisie que « Activer une box » : MAC comme sur la box, « MK: » ajouté seul.
-  const [mac, setMac] = useState(sp.get('mac') || '');
+  const [mac, setMac] = useState(initialMac(sp.get('mac')));
   const [link, setLink] = useState('');
   // Toutes les listes de la box, telles que le serveur les sert. Gardées en
   // mémoire pour les renvoyer intactes ; seul le nom (libellé ou hôte) est
@@ -257,10 +258,10 @@ export function ChainesPage({ onLogout }: { onLogout: () => void }) {
             <label htmlFor="chaines-mac" className="mb-1.5 block text-xs font-medium text-ink-secondary">
               Adresse MAC (comme sur la box)
             </label>
-            <input
+            <MacInput
               id="chaines-mac"
               value={mac}
-              onChange={(e) => { setMac(e.target.value); setDelivery(null); }}
+              onValueChange={(v) => { setMac(v); setDelivery(null); }}
               onBlur={() => setMac((v) => (v.trim() ? normalizeMac(v) : v))}
               autoFocus
               autoComplete="off"
