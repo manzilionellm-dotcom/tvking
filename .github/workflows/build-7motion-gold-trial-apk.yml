@@ -6,6 +6,7 @@ name: 7 MOTION — APK corrigé de test
     branches:
     - feature/7motion-gold-trial-20261026
     - feature/shared-trial-24h-20261028
+    - feature/panel-app-realtime-20261028
     paths:
     - .github/workflows/build-7motion-gold-trial-apk.yml
     - android-app/ci/mobile/**
@@ -23,7 +24,7 @@ jobs:
   phone:
     name: APK de test installable à côté de 7 MOTION
     if: github.repository == 'manzilionellm-dotcom/tvking' && github.actor == github.repository_owner && github.triggering_actor
-      == github.repository_owner && github.event_name == 'push' && (github.ref == 'refs/heads/feature/7motion-gold-trial-20261026' || github.ref == 'refs/heads/feature/shared-trial-24h-20261028')
+      == github.repository_owner && github.event_name == 'push' && (github.ref == 'refs/heads/feature/7motion-gold-trial-20261026' || github.ref == 'refs/heads/feature/shared-trial-24h-20261028' || github.ref == 'refs/heads/feature/panel-app-realtime-20261028')
     runs-on: ubuntu-latest
     timeout-minutes: 45
     defaults:
@@ -143,7 +144,7 @@ jobs:
 
         assert ''defaultConfig {'' in s
 
-        s=s.replace(''defaultConfig {'',''defaultConfig {\n        applicationIdSuffix = ".sharedtrialreview"'',1)
+        s=s.replace(''defaultConfig {'',''defaultConfig {\n        applicationIdSuffix = ".realtimereview"'',1)
 
         p.write_text(s)
 
@@ -162,7 +163,7 @@ jobs:
         \ \"w\").write(s)\nprint(\"minSdk -> 24 dans\", f)\nPYEOF\n"
     - name: Harmoniser le nom Android 7 MOTION
       run: "MANIFEST=android/app/src/main/AndroidManifest.xml\nif [ -f \"$MANIFEST\" ]; then\n  sed -i 's|android:label=\"\
-        tv_king\"|android:label=\"7 MOTION Essai Test\"|g' \"$MANIFEST\"\n  echo \"--- Patched manifest ---\"\n  grep\
+        tv_king\"|android:label=\"7 MOTION Test RT\"|g' \"$MANIFEST\"\n  echo \"--- Patched manifest ---\"\n  grep\
         \ 'android:label' \"$MANIFEST\" || true\nfi\n"
     - name: Patch AndroidManifest for network (cleartext HTTP + INTERNET)
       run: "set -e\nMANIFEST=android/app/src/main/AndroidManifest.xml\nif [ ! -f \"$MANIFEST\" ]; then\n  echo \"\
@@ -299,9 +300,9 @@ jobs:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: "set -euo pipefail\nBUILD_TS=$(date +%s)\nBUILD_LABEL=$(ci/build_label.sh \"$GITHUB_REPOSITORY\" 7motion-test)\n\
         echo \"PHONE_BUILD_LABEL=$BUILD_LABEL\" >> \"$GITHUB_ENV\"\nflutter build apk --release --no-tree-shake-icons\
-        \ --split-per-abi --target-platform android-arm64 \\\n  --build-number=\"$BUILD_TS\" --build-name=\"0.3.7-gold-trial-test.${{\
+        \ --split-per-abi --target-platform android-arm64 \\\n  --build-number=\"$BUILD_TS\" --build-name=\"0.3.7-realtime-test.${{\
         \ github.run_number }}\" \\\n  --dart-define=APP_BUILD_TS=\"$BUILD_TS\" --dart-define=APP_BUILD_LABEL=\"\
-        $BUILD_LABEL\" \\\n  --dart-define=GIT_SHA=${{ env.SOURCE_SHA }} \\\n  --dart-define=PHONE_UPDATE_TAG=gold-trial-review\
+        $BUILD_LABEL\" \\\n  --dart-define=GIT_SHA=${{ env.SOURCE_SHA }} \\\n  --dart-define=PHONE_UPDATE_TAG=realtime-review\
         \ --target=lib/main.dart\ncp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk build/app/outputs/flutter-apk/7motion.apk"
     - name: Vérifier le vrai APK de test et ses correctifs
       env:
@@ -311,10 +312,10 @@ jobs:
         \n\"$BT/aapt2\" dump badging \"$APK\" > \"$RUNNER_TEMP/badging.txt\"\nhead -1 \"$RUNNER_TEMP/badging.txt\"\
         \n\"$RUNNER_TEMP/mobile-audit/bin/python\" - \"$APK\" \"$RUNNER_TEMP/signature.txt\" <<'PYAUDIT'\nimport\
         \ hashlib,json,sys,zipfile\nfrom pathlib import Path\nfrom androguard.core.apk import APK\npath=Path(sys.argv[1])\n\
-        apk=APK(str(path))\nassert apk.get_package()=='com.manzilionellm.tvking.tv_king.sharedtrialreview'\nassert apk.get_min_sdk_version()=='24'\n\
+        apk=APK(str(path))\nassert apk.get_package()=='com.manzilionellm.tvking.tv_king.realtimereview'\nassert apk.get_min_sdk_version()=='24'\n\
         assert 'com.manzilionellm.tvking.tv_king.MainActivity'==apk.get_main_activity()\nassert 'CN=Android Debug'\
         \ in Path(sys.argv[2]).read_text()\nwith zipfile.ZipFile(path) as z:\n data=z.read('lib/arm64-v8a/libapp.so')\n\
-        \ for marker in [b'Je teste',b'/api/gold-trial',b'7 MOTION Essai',b'android_id',b'app_version']:\n  assert\
+        \ for marker in [b'Je teste',b'/api/gold-trial',b'7 MOTION Essai',b'android_id',b'app_version',b'https://api.zuno8k.com',b'/api/box/ws',b'/api/box/ack/']:\n  assert\
         \ marker in data, 'Correctif absent du binaire: '+repr(marker)\nprint(json.dumps({'package':apk.get_package(),'versionName':apk.get_androidversion_name(),'versionCode':apk.get_androidversion_code(),'minSdk':apk.get_min_sdk_version(),'sha256':hashlib.sha256(path.read_bytes()).hexdigest(),'signature':'Android\
         \ Debug','entrypoint':'lib/main.dart','mode':'release-optimized-test'},ensure_ascii=False))\nPYAUDIT\nSHA=$(sha256sum\
         \ \"$APK\" | cut -d' ' -f1)\necho \"APK_SHA256=$SHA\" >> \"$GITHUB_ENV\"\necho \"SHA-256 $SHA\"\n"

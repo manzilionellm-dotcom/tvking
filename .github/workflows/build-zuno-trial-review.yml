@@ -6,6 +6,7 @@ name: Zuno — APK de revue essai 24 h
   push:
     branches:
     - feature/shared-trial-24h-20261028
+    - feature/panel-app-realtime-20261028
     paths:
     - android-app/lib/**
     - android-app/test/**
@@ -21,8 +22,8 @@ concurrency:
   cancel-in-progress: true
 env:
   SOURCE_SHA: ${{ github.sha }}
-  ZUNO_APP_ID: com.sevenmotion.tv.seven_tv.trialreview
-  ZUNO_APP_LABEL: Zuno Essai Test
+  ZUNO_APP_ID: com.sevenmotion.tv.seven_tv.realtimereview
+  ZUNO_APP_LABEL: Zuno Test RT
 jobs:
   review:
     name: APK optimisé séparé, signature de développement
@@ -137,7 +138,7 @@ jobs:
         BUILD_NUMBER=$(date +%s)
 
         flutter build apk --release --target=lib/main_tv.dart --target-platform android-arm,android-arm64 --android-skip-build-dependency-validation
-        --build-number="$BUILD_NUMBER" --build-name="109-trial-review" --dart-define=APP_BUILD_TS="$BUILD_NUMBER" --dart-define=GIT_SHA="$SOURCE_SHA"
+        --build-number="$BUILD_NUMBER" --build-name="109-realtime-review" --dart-define=APP_BUILD_TS="$BUILD_NUMBER" --dart-define=GIT_SHA="$SOURCE_SHA"
 
         cp build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/zuno-trial-review.apk
 
@@ -145,7 +146,7 @@ jobs:
 
         "$BUILD_TOOLS/aapt" dump badging build/app/outputs/flutter-apk/zuno-trial-review.apk > build/trial-review-manifest.txt
 
-        grep -F "name=''com.sevenmotion.tv.seven_tv.trialreview''" build/trial-review-manifest.txt
+        grep -F "name=''com.sevenmotion.tv.seven_tv.realtimereview''" build/trial-review-manifest.txt
 
         grep -F "armeabi-v7a" build/trial-review-manifest.txt
 
@@ -154,6 +155,17 @@ jobs:
         sha256sum build/app/outputs/flutter-apk/zuno-trial-review.apk > build/trial-review-sha256.txt
 
         '
+    - name: Vérifier le backend et le canal dans le vrai APK
+      run: |
+        python3 - <<'PYAPK'
+        from zipfile import ZipFile
+        with ZipFile('build/app/outputs/flutter-apk/zuno-trial-review.apk') as apk:
+            for abi in ['armeabi-v7a', 'arm64-v8a']:
+                binary = apk.read(f'lib/{abi}/libapp.so')
+                for marker in [b'https://api.zuno8k.com', b'/api/box/ws', b'/api/box/ack/']:
+                    assert marker in binary, f'Correctif absent pour {abi}: {marker!r}'
+        print('Backend api.zuno8k.com et canal authentifié présents pour ARM32/64')
+        PYAPK
     - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
       with:
         name: zuno-trial-review-${{ env.SOURCE_SHA }}
