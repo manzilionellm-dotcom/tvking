@@ -118,7 +118,7 @@ void main() {
       expect(quote['key_label'], 'Manzi8');
       final goldenWatch = Stopwatch()..start();
       final golden = (await panel('/api/v1/gold/golden/confirm', 'POST', <String, Object>{
-        'quote_id': quote['id'], 'confirmed': true, 'confirmed_cost': quote['cost'],
+        'quote_id': quote['id'] as String, 'confirmed': true, 'confirmed_cost': quote['cost'] as num,
       }))['order'] as Map;
       expect(golden['state'], 'delivered');
       final goldenOrders = <dynamic>[golden['source_order_id'], golden['license_order_id']];

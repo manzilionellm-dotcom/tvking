@@ -28,16 +28,18 @@ const assert = require('node:assert/strict');
       void (async () => {
         const order = JSON.parse(event.data);
         if (!['suspend','resume','activate','renew','source'].includes(order.type)) return;
+        let appliedRev;
         if(order.type==='source') {
           const source=await call(`/api/device-source/${mac}`,'GET',undefined,true);
           assert.match(JSON.stringify(source),/golden\.m3u/);
+          appliedRev=source.rev;assert.ok(appliedRev>0);
           await goldenAckGate;
         } else {
           const status = await call(`/api/status/${mac}`, 'GET', undefined, true);
           if(order.type==='suspend'){assert.equal(status.frozen,true);applied=true;}
         }
         await call(`/api/box/ack/${mac}`, 'POST', { orders: [{
-          order_id: order.order_id, state: 'applied', result: 'refreshed', applied_at: Date.now(),applied_rev:order.config_rev,
+          order_id: order.order_id, state: 'applied', result: 'refreshed', applied_at: Date.now(),config_rev:appliedRev,
         }] }, true);
       })().catch(error => { appError = error; });
     };

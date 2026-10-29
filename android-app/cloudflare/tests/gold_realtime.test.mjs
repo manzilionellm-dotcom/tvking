@@ -74,12 +74,18 @@ test('Worker + vrais DO : preuve, présence, reprise, actions et accusés isolé
     for(const id of [golden.license_order_id,golden.source_order_id]) {
       await until(()=>orders.some(item=>item.order_id===id));
       const command=orders.find(item=>item.order_id===id);
+      let appliedRev;
+      if(command.type==='source') {
+        const source=await f.mf.dispatchFetch(`${f.origin}/api/device-source/${mac}`,{headers:{'X-Device-Secret':secret}});
+        appliedRev=(await source.json()).rev;assert.ok(appliedRev>0);
+      }
       const ack=await f.mf.dispatchFetch(`${f.origin}/api/box/ack/${encodeURIComponent(mac)}`,{
         method:'POST',headers:{'X-Device-Secret':secret,'Content-Type':'application/json'},body:JSON.stringify({orders:[{
-          order_id:id,state:'applied',result:'refreshed',applied_at:Date.now(),config_rev:command.config_rev}]}),
+          order_id:id,state:'applied',result:'refreshed',applied_at:Date.now(),config_rev:appliedRev}]}),
       });
       assert.equal(ack.status,200);
       await until(()=>events.some(item=>item.type==='receipt'&&item.order_id===id&&item.state==='applied'));
+      if(appliedRev)assert.ok(events.find(item=>item.type==='receipt'&&item.order_id===id&&item.state==='applied').applied_rev>=appliedRev);
     }
     assert.ok(Date.now()-goldenStart<2000,'Golden : création simulée et deux accusés sous 2 s');
     assert.deepEqual(f.providerCalls.filter(call=>call.action==='new'),[{action:'new',sub:'1',key:'Manzi8'}]);
