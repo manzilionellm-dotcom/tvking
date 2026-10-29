@@ -20,7 +20,7 @@ const listeners = new Set<Listener>();
 const states = new Set<StateListener>();
 
 function apiBase(): string {
-  const configured = (import.meta.env.VITE_API_BASE as string | undefined) || '';
+  const configured = "https://seven-motion-backend.manzilionel-lm.workers.dev";
   if (configured) return configured.replace(/\/$/, '');
   if (typeof window !== 'undefined') return window.location.origin;
   return '';
