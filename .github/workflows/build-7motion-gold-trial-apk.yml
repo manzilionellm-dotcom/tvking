@@ -1,4 +1,6 @@
 # APK de test optimisé : signature Android Debug, aucune clé de production.
+# Revue 31/10/2026 : reconstruire le candidat 7 MOTION du dernier commit.
+# Aucun déploiement Play, aucune écriture sur phone-latest, aucun secret d'upload.
 # Installation séparée ; commandes natives et correctifs du dernier téléphone.
 name: 7 MOTION — APK corrigé de test
 'on':
