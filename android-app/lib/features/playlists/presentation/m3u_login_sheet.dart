@@ -125,10 +125,20 @@ class _M3uLoginSheetState extends State<_M3uLoginSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final double bottomInset = MediaQuery.of(context).viewInsets.bottom;
-    return Padding(
+    // La fenêtre du clavier réduit l'espace utile : la feuille reste
+    // bornée à la zone visible et son contenu peut toujours défiler.
+    final MediaQueryData media = MediaQuery.of(context);
+    final double bottomInset = media.viewInsets.bottom;
+    final double availableHeight =
+        (media.size.height - bottomInset - media.padding.top - 12)
+            .clamp(0.0, media.size.height)
+            .toDouble();
+    return AnimatedPadding(
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeOutCubic,
       padding: EdgeInsets.only(bottom: bottomInset),
       child: Container(
+        constraints: BoxConstraints(maxHeight: availableHeight),
         decoration: const BoxDecoration(
           color: AppColors.background,
           borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
@@ -136,6 +146,7 @@ class _M3uLoginSheetState extends State<_M3uLoginSheet> {
         child: SafeArea(
           top: false,
           child: SingleChildScrollView(
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
             padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
             physics: const BouncingScrollPhysics(),
             child: Column(
