@@ -3,13 +3,9 @@
 // =========================================================
 //  4 slides avec PageView :
 //    1. Bienvenue + identité de marque
-//    2. Identifiant The Few (MAC) + envoi WhatsApp au revendeur
-//       — c'est LA slide critique pour les utilisateurs qui
-//       passent par un revendeur. Ils voient leur ID, l'envoient
-//       par WhatsApp en 2 taps, puis attendent que leurs chaînes
-//       arrivent automatiquement.
-//    3. Charger une playlist manuellement (optionnel)
-//    4. Découvrir l'expérience premium
+//    2. Ajouter une source personnelle (M3U ou Xtream)
+//    3. Identifiant appareil (MAC) + contact du support
+//    4. Fonctionnalités du lecteur (sans promesse d'essai non disponible)
 //
 //  À la fin → flag `OnboardingState.markCompleted()` + push
 //  vers HomeScreen.
@@ -39,49 +35,34 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   final PageController _controller = PageController();
   int _page = 0;
 
-  /// Slides d'onboarding.
-  ///
-  /// Note : on PASSE de `static const` a un getter parce que la
-  /// premiere slide doit afficher le nom du flavor courant (The Few
-  /// ou Red Room) lu via `FlavorConfig.current.appName` qui n'est
-  /// pas connu a la compilation. La perf reste OK : 5 elements
-  /// crees a chaque acces du getter, negligeable.
-  ///
-  /// Plus de slide « choisis ton serveur ». La personne ajoute
-  /// sa source (M3U, Xtream ou lien lecteur), ou envoie son code.
-  static List<_OnboardingPage> get _pages {
+  /// Les textes proviennent tous de la langue choisie par Flutter
+  /// (préférence explicite ou langue du système). La marque reste un nom
+  /// propre. On n'annonce pas d'essai 7 jours : le fournisseur n'offre
+  /// actuellement aucun essai activable depuis cette application.
+  List<_OnboardingPage> get _pages {
     final String appName = FlavorConfig.current.appName;
+    final l10n = context.l10n;
     return <_OnboardingPage>[
       _OnboardingPage(
         icon: Icons.local_movies_rounded,
-        title: 'Bienvenue sur $appName',
-        description:
-            'Cinéma sans limites. Conçu pour la TV, optimisé pour ton téléphone, beau partout.',
+        title: l10n.onboardingWelcomeTitle.replaceAll('The Few', appName),
+        description: l10n.onboardingWelcomeDesc,
       ),
-      const _OnboardingPage(
+      _OnboardingPage(
         icon: Icons.cloud_upload_outlined,
-        title: 'Charge tes chaînes',
-        description:
-            'Ajoute ta source : adresse M3U, identifiants Xtream, ou lien lecteur. N\'importe quel fournisseur.',
+        title: l10n.onboardingLoadTitle,
+        description: l10n.onboardingLoadDesc,
       ),
-      const _OnboardingPage(
+      _OnboardingPage(
         icon: Icons.fingerprint_rounded,
-        title: 'Active tes chaînes',
-        description:
-            'Cet identifiant unique permet d\'activer ton compte à distance. Envoie-le en 1 tap, notre équipe configure ton accès en quelques minutes.',
+        title: l10n.activateAtHomeTitle,
+        description: l10n.activateAtHomeDesc,
         isMacSlide: true,
       ),
-      const _OnboardingPage(
+      _OnboardingPage(
         icon: Icons.workspace_premium_rounded,
-        title: 'Tout ce qu\'il te faut',
-        description:
-            'Sans publicité. Cast vers TV, ordi, tablette. Enregistrement en parallèle. Lecteur 4K/8K. QR-cast. Recherche instantanée.',
-      ),
-      const _OnboardingPage(
-        icon: Icons.celebration_outlined,
-        title: 'Essai gratuit 7 jours',
-        description:
-            'Profite de toutes les fonctions pendant 7 jours. Ensuite 5 €/an ou 9,90 € à vie sur tous tes appareils — paiement sécurisé (jamais in-app).',
+        title: l10n.onboardingVipTitle,
+        description: l10n.onboardingVipDesc,
       ),
     ];
   }
