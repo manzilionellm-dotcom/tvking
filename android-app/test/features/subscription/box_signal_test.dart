@@ -3,22 +3,22 @@ import 'package:tv_king/features/subscription/domain/activation_pace.dart';
 import 'package:tv_king/features/subscription/domain/box_signal.dart';
 
 void main() {
-  test('canal ouvert : filet 25 s ; coupé : rythme 103', () {
+  test('canal ouvert : filet 25 s ; coupé : repli 5 s même après des échecs', () {
     expect(
       signalPace(channelUp: true, waiting: false, failures: 0),
       ActivationPace.parked,
     );
     expect(
       signalPace(channelUp: false, waiting: true, failures: 0),
-      const Duration(seconds: 3),
+      const Duration(seconds: 5),
     );
     expect(
       signalPace(channelUp: false, waiting: false, failures: 0),
-      const Duration(seconds: 4),
+      const Duration(seconds: 5),
     );
     expect(
       signalPace(channelUp: true, waiting: false, failures: 2),
-      const Duration(seconds: 16),
+      const Duration(seconds: 5),
     );
   });
 

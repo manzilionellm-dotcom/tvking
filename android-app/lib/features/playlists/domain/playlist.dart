@@ -92,6 +92,10 @@ class Playlist {
   ///  • M3U    : paramètre `username=` de l'URL s'il existe + hôte.
   /// Jamais le mot de passe, jamais l'URL complète (elle le contient souvent).
   ({String? user, String? host}) get reference {
+    // Les accès d'un essai géré restent privés, même dans l'écran Sources.
+    if (name == '7 MOTION Essai' || name == 'Zuno TV Essai') {
+      return (user: null, host: null);
+    }
     String? host;
     String? user;
     final String raw =
@@ -153,6 +157,7 @@ class Playlist {
 
   Playlist copyWith({
     int? id,
+    String? m3uUrl,
     int? lastSyncedAt,
     int? channelCount,
     bool? isActive,
@@ -162,7 +167,7 @@ class Playlist {
       name: name,
       type: type,
       createdAt: createdAt,
-      m3uUrl: m3uUrl,
+      m3uUrl: m3uUrl ?? this.m3uUrl,
       xtreamServer: xtreamServer,
       xtreamUsername: xtreamUsername,
       xtreamPassword: xtreamPassword,

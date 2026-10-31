@@ -1,12 +1,14 @@
 import { ReactNode, useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AppLayout } from '@/components/AppLayout';
+import { GoldenModal } from '@/components/GoldenModal';
 import {
-  devicesApi, boxesApi, activateApi, flagEmoji,
+  devicesApi, boxesApi, activateApi, flagEmoji, getCurrentUser,
   type Device, type DeviceSource, type DeviceOverview, type DeviceLocalSource,
   type DeviceLicense, type DevicePresence, type BoxLiveRow, ApiError,
 } from '@/lib/api';
 import { liveSummary } from '@/lib/boxLive';
+import { mergeLiveEvent, panelConnected, subscribePanel, type PanelEvent } from '@/lib/panelRealtime';
 import { formatDateTime } from '@/lib/utils';
 
 /// Libellés FR lisibles des plans (clé technique → texte).
@@ -22,6 +24,8 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
   const [err, setErr] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [activateFor, setActivateFor] = useState<Device | null>(null);
+  const [goldenFor, setGoldenFor] = useState<Device | null>(null);
+  const canGolden = getCurrentUser()?.role === 'super_admin';
   // Appareil dont on affiche la « fiche complète » (infos + M-Trio).
   const [detailFor, setDetailFor] = useState<Device | null>(null);
   // État en direct, rafraîchi sans recharger la page.
@@ -44,23 +48,39 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
   }, [load]);
 
   // Le tableau des MAC ne clignote pas : seule la colonne « Direct »
-  // bouge, toutes les 2,5 s.
+  // bouge à réception des événements, avec un repli HTTP à 5 s.
   useEffect(() => {
     let stop = false;
+    let busy = false;
+    let again = false;
+    let duringRead: PanelEvent[] = [];
     async function tick() {
+      if (busy) { again = true; return; }
+      busy = true;
+      duringRead = [];
       try {
         const r = await boxesApi.live();
         if (stop) return;
         const next: Record<string, BoxLiveRow> = {};
         for (const item of r.items) next[item.mac] = item;
-        setLive(next);
+        setLive(duringRead.reduce(mergeLiveEvent, next));
       } catch (e) {
         if (e instanceof ApiError && e.status === 401) onLogout();
+      } finally {
+        busy = false;
+        if (again && !stop) { again = false; void tick(); }
       }
     }
-    tick();
-    const id = setInterval(tick, 2500);
-    return () => { stop = true; clearInterval(id); };
+    const unsubscribe = subscribePanel(event => {
+      if (event.type === 'connection' && event.online) void tick();
+      else {
+        if (busy) duringRead.push(event);
+        setLive(previous => mergeLiveEvent(previous, event));
+      }
+    });
+    void tick();
+    const id = setInterval(() => { if (!panelConnected()) void tick(); }, 5000);
+    return () => { stop = true; clearInterval(id); unsubscribe(); };
   }, [onLogout]);
 
   async function setBlock(d: Device, status: 'active' | 'frozen' | 'banned') {
@@ -162,6 +182,7 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
                     <div className="flex flex-wrap justify-end gap-1.5">
                       <ActionBtn busy={busy} onClick={() => setDetailFor(d)} title="Fiche complète : M-Trio + infos appareil">Détails</ActionBtn>
                       <ActionBtn busy={busy} primary onClick={() => setActivateFor(d)} title="Activer / prolonger (le client a payé)">Activer</ActionBtn>
+                      {canGolden && <ActionBtn busy={busy} onClick={() => setGoldenFor(d)} title="Créer une ligne Strong après confirmation du coût">Golden</ActionBtn>}
                       {st !== 'frozen' && (
                         <ActionBtn busy={busy} onClick={() => setBlock(d, 'frozen')} title="Geler (rappel de paiement)">Geler</ActionBtn>
                       )}
@@ -180,6 +201,8 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
           </tbody>
         </table>
       </div>
+
+      {goldenFor && <GoldenModal initialMac={goldenFor.mac} onClose={() => { setGoldenFor(null); load(); }} />}
 
       {activateFor && (
         <ActivatePlanModal

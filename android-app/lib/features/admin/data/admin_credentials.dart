@@ -6,7 +6,7 @@
 //
 //    - PIN admin (4 chiffres) qui protège l'accès au dashboard
 //      sur le téléphone admin
-//    - URL du Worker (https://seven-motion-backend.X.workers.dev)
+//    - URL du Worker (https://api.zuno8k.com)
 //    - Secret admin (envoyé en header X-Admin-Secret aux endpoints
 //      /admin/* du Worker)
 //

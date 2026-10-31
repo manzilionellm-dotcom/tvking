@@ -23,6 +23,7 @@ on:
     paths:
       - 'android-app/lib/**'
       - 'android-app/test/**'
+      - 'android-app/packages/native_video_player/**'
       - 'android-app/pubspec.yaml'
       - 'android-app/pubspec.lock'
       - 'android-app/analysis_options.yaml'
@@ -41,6 +42,26 @@ permissions:
   contents: read
 
 jobs:
+  video_logic:
+    name: Vidéo native — définition, proportions et reprise
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
+        with:
+          gradle-version: '8.11.1'
+          cache-read-only: true
+      - name: Tester la logique du lecteur sans flux fournisseur
+        working-directory: android-app/packages/native_video_player/logic-test
+        run: gradle test --no-daemon
+
   configuration:
     name: Protections de configuration
     runs-on: ubuntu-latest
@@ -53,7 +74,7 @@ jobs:
         with:
           node-version: '24.21.0'
           package-manager-cache: false
-      - run: node --test .github/security-config.test.mjs .github/app-release-guard.test.mjs .github/release-cleanup.test.mjs
+      - run: node --test .github/security-config.test.mjs .github/app-release-guard.test.mjs .github/release-cleanup.test.mjs .github/phone-client-release.test.mjs .github/zuno-client-release.test.mjs
       - name: Vérifier le patch additif de passation sur le vrai document
         run: git apply --unidiff-zero --check docs/patches/handoff-securite-20261010.patch
 
@@ -88,6 +109,9 @@ jobs:
 
       - name: Run tests
         run: flutter test --reporter expanded
+
+      - name: Vérifier la reprise panel → app après coupure du canal
+        run: flutter test --reporter expanded --dart-define=RUN_PANEL_CONNECTION=true --dart-define=BACKEND_URL=http://127.0.0.1:18789 test/features/subscription/panel_connection_test.dart
 
   worker:
     name: tests Worker (sécurité)

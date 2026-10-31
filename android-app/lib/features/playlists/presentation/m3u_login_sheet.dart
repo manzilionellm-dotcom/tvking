@@ -77,6 +77,7 @@ class _M3uLoginSheetState extends State<_M3uLoginSheet> {
     final OpenSourceDraft draft = parsed.draft!;
     if (draft.kind == OpenSourceKind.xtream) {
       await _run(() => PlaylistRepository.instance.addXtreamPlaylist(
+            allowHttpCompatibility: true,
             name: name,
             serverUrl: draft.serverUrl!,
             username: draft.username!,
@@ -84,6 +85,7 @@ class _M3uLoginSheetState extends State<_M3uLoginSheet> {
           ));
     } else {
       await _run(() => PlaylistRepository.instance.addM3uPlaylist(
+            allowHttpCompatibility: true,
             name: name,
             url: draft.m3uUrl!,
           ));

@@ -103,12 +103,12 @@ bool kindNeedsStatus(String kind) {
 }
 
 /// Canal ouvert : on ne relit le statut que toutes les 25 s
-/// (filet). Canal coupé : on revient au rythme 3 s / 4 s de la 103.
+/// (filet). Canal coupé : interrogation toutes les 5 s, même après échec.
 Duration signalPace({
   required bool channelUp,
   required bool waiting,
   required int failures,
 }) {
   if (channelUp && failures <= 0) return ActivationPace.parked;
-  return ActivationPace.next(waiting: waiting, failures: failures);
+  return const Duration(seconds: 5);
 }

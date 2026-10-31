@@ -78,10 +78,15 @@ abstract final class DeletedSources {
   }
 
   static Future<void> rememberHashes(DatabaseExecutor db, List<String> keys) async {
+    if (keys.isEmpty) return;
+    // Un seul aller-retour natif pour les alias de la source. Le batch
+    // reste dans la transaction de l'appelant lorsqu'il reçoit un txn.
+    final Batch batch = db.batch();
     for (final String key in keys) {
-      await db.insert('deleted_sources', <String, Object?>{'fingerprint': key},
+      batch.insert('deleted_sources', <String, Object?>{'fingerprint': key},
           conflictAlgorithm: ConflictAlgorithm.ignore);
     }
+    await batch.commit(noResult: true);
   }
 }
 

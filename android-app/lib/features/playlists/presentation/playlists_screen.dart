@@ -15,6 +15,7 @@
 // =========================================================
 
 import 'package:flutter/material.dart';
+import '../../subscription/data/gold_trial_backend.dart' show isGoldTrialPlaylist;
 
 import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/theme/app_colors.dart';
@@ -123,6 +124,7 @@ class _PlaylistTile extends StatelessWidget {
       : context.l10n.playlistTypeXtream;
 
   String get _sourceLine {
+    if (isGoldTrialPlaylist(playlist.name)) return '';
     if (playlist.type == PlaylistType.m3u) {
       return playlist.m3uUrl ?? '';
     }

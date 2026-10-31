@@ -135,22 +135,32 @@ class HomeLayoutRepository extends ChangeNotifier {
   }
 
   /// Va chercher la config distante. Silencieux en cas d'échec.
-  Future<void> refresh() async {
+  Future<void> refresh({bool strict = false}) async {
     try {
       final http.Response resp = await http
           .get(Uri.parse('$kSubscriptionBaseUrl/api/home-layout'))
           .timeout(const Duration(seconds: 6));
-      if (resp.statusCode != 200) return;
+      if (resp.statusCode != 200) {
+        if (strict) throw StateError('Réglage distant non confirmé');
+        return;
+      }
       final Object? decoded = jsonDecode(resp.body);
-      if (decoded is! Map<String, dynamic>) return;
+      if (decoded is! Map<String, dynamic>) {
+        if (strict) throw StateError('Réglage distant non confirmé');
+        return;
+      }
       final Object? items = decoded['items'];
-      if (items is! List) return;
+      if (items is! List) {
+        if (strict) throw StateError('Réglage distant non confirmé');
+        return;
+      }
       _applyJsonList(items);
       // Mémorise la dernière config valide.
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       await prefs.setString(_cacheKey, jsonEncode(items));
     } catch (e) {
-      if (kDebugMode) debugPrint('[HomeLayout] refresh: $e');
+      if (strict) rethrow;
+      if (kDebugMode) debugPrint('[HomeLayout] refresh: ${e.runtimeType}');
     }
   }
 
@@ -163,7 +173,6 @@ class HomeLayoutRepository extends ChangeNotifier {
         if (c != null) next[c.key] = c;
       }
     }
-    if (next.isEmpty) return;
     _byKey = next;
     notifyListeners();
   }

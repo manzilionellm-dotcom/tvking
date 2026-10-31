@@ -98,14 +98,14 @@ abstract final class AnnouncementRepository {
   /// Récupère la dernière annonce publiée, ou `null` si aucune / erreur
   /// réseau. On reste SILENCIEUX en cas d'échec : une annonce est un
   /// bonus, jamais bloquant.
-  static Future<Announcement?> fetchLatest() async {
+  static Future<Announcement?> fetchLatest({bool strict = false}) async {
     try {
       final http.Response resp = await http
           .get(Uri.parse('$kSubscriptionBaseUrl/api/announcement'))
           .timeout(const Duration(seconds: 6));
-      if (resp.statusCode != 200) return null;
+      if (resp.statusCode != 200) throw StateError('annonce indisponible');
       final Object? decoded = jsonDecode(resp.body);
-      if (decoded is! Map<String, dynamic>) return null;
+      if (decoded is! Map<String, dynamic>) throw StateError('annonce invalide');
       final Announcement? parsed = Announcement.fromJson(decoded);
       _lastFetchMs = DateTime.now().millisecondsSinceEpoch;
       if (parsed?.id != latest.value?.id ||
@@ -115,6 +115,7 @@ abstract final class AnnouncementRepository {
       }
       return parsed;
     } catch (e) {
+      if (strict) rethrow;
       if (kDebugMode) debugPrint('[Announcement] fetch: $e');
       return null;
     }

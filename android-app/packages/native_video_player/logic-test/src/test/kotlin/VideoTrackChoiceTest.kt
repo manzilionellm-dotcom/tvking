@@ -110,4 +110,38 @@ class VideoTrackChoiceTest {
             VideoTrackChoice.bandwidthForChoice(4_000_000, bytesLoaded = 200_000),
         )
     }
+
+    @Test
+    fun maximumEpingleLa4kMemeQuandLeDebitMesureEstBas() {
+        val pick = VideoTrackChoice.pick(
+            listOf(v(0, 720, 2_000_000, adaptive = true),
+                v(1, 2160, 15_000_000, adaptive = true, selected = true)),
+            bandwidthBps = 3_000_000, screenHeightPx = 1080, preferMaximum = true,
+        )
+        assertEquals(2160, pick?.height)
+        assertEquals(1, pick?.index)
+    }
+
+    @Test
+    fun autoNeRemplacePasUnLadderParDeuxPistesFixesMoinsBonnes() {
+        assertNull(VideoTrackChoice.pick(
+            listOf(v(0, 2160, 15_000_000, adaptive = true),
+                v(0, 480, 1_000_000, group = 1), v(0, 720, 2_000_000, group = 2)),
+            bandwidthBps = 0, screenHeightPx = 2160,
+        ))
+    }
+
+    @Test
+    fun maximumSurUneSourceSdNePretendPasCreerDeLaHd() {
+        assertEquals(480, VideoTrackChoice.pick(listOf(v(0, 480, 1_000_000)),
+            bandwidthBps = 0, screenHeightPx = 2160, preferMaximum = true)?.height)
+        assertNull(VideoTrackChoice.pick(emptyList(), 0, 2160, preferMaximum = true))
+    }
+
+    @Test
+    fun resolutionEgalePrefereLaCadencePuisLeDebit() {
+        val low = v(0, 1080, 5_000_000)
+        val high = v(1, 1080, 5_000_000).copy(frameRate = 50f)
+        assertEquals(1, VideoTrackChoice.pick(listOf(low, high), 0, 1080, true)?.index)
+    }
 }

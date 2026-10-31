@@ -1,0 +1,239 @@
+// Recette Android : Worker/DO locaux réels, plugins natifs, SQLite et widgets.
+// Le transport, les synchroniseurs et les accusés sont ceux de l'application.
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:integration_test/integration_test.dart';
+import 'package:sqflite/sqflite.dart' as sqlite;
+import 'package:tv_king/core/flavor/flavor.dart';
+import 'package:tv_king/core/app/app_platform.dart';
+import 'package:tv_king/core/branding/brand_config.dart';
+import 'package:tv_king/features/pricing/data/pricing_repository.dart';
+import 'package:tv_king/features/simple_home/data/home_layout_repository.dart';
+import 'package:tv_king/features/country_home/data/featured_repository.dart';
+import 'package:tv_king/features/ads/data/startup_ad_repository.dart';
+import 'package:tv_king/features/feedback/data/feedback_repository.dart';
+import 'package:tv_king/features/device/data/device_identity.dart';
+import 'package:tv_king/features/device/data/device_secret.dart';
+import 'package:tv_king/features/playlists/data/playlist_repository.dart';
+import 'package:tv_king/features/playlists/data/playlist_database.dart';
+import 'package:tv_king/features/playlists/data/remote_source_repository.dart';
+import 'package:tv_king/features/subscription/data/subscription_backend.dart';
+import 'package:tv_king/features/subscription/data/subscription_state.dart';
+import 'package:tv_king/features/simple_home/presentation/widgets/announcement_banner.dart';
+import 'package:tv_king/l10n/generated/app_localizations.dart';
+// ADAPTER_IMPORTS
+
+void main() {
+  IntegrationTestWidgetsFlutterBinding.ensureInitialized();
+  testWidgets('panel → WebSocket → état, SQLite, écran et APPLIED sous 2 s', (tester) async {
+    const String variant = String.fromEnvironment('REALTIME_VARIANT');
+    FlavorConfig.setCurrent(FlavorConfig.sevenMotion);
+    expect(kSubscriptionBaseUrl, 'http://127.0.0.1:8787');
+    final String mac = await DeviceIdentity.instance.mac;
+    final String androidId = await DeviceIdentity.instance.androidId();
+    expect(androidId, isNotEmpty);
+    final info = jsonDecode((await http.get(Uri.parse('$kSubscriptionBaseUrl/__fixture/info'))).body) as Map;
+    final Map<String, String> adminHeaders = <String, String>{
+      'Authorization': 'Bearer ${info['token']}', 'Content-Type': 'application/json',
+    };
+    Future<Map<String, dynamic>> panel(String path, String method, [Object? body]) async {
+      final request = http.Request(method, Uri.parse('$kSubscriptionBaseUrl$path'));
+      request.headers.addAll(adminHeaders);
+      if (body != null) request.body = jsonEncode(body);
+      final response = await http.Response.fromStream(await request.send());
+      expect(response.statusCode, inInclusiveRange(200, 299), reason: '$path: ${response.body}');
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    }
+    await panel('/__fixture/register', 'POST', <String, String>{'mac': mac, 'androidId': androidId});
+    await DeviceSecret.instance.enroll(mac);
+    await PlaylistRepository.instance.initialize();
+    expect(PlaylistRepository.instance.currentChannels, isEmpty, reason: 'émulateur de recette neuf');
+    await SubscriptionState.instance.initialize();
+    final ticket = await panel('/api/v1/rt/ticket', 'POST', <String, Object>{});
+    final WebSocket panelSocket = await WebSocket.connect('ws://127.0.0.1:8787/api/v1/rt/ws?ticket=${ticket['ticket']}');
+    final List<Map<String, dynamic>> events = <Map<String, dynamic>>[];
+    final listener = panelSocket.listen((dynamic raw) {
+      events.add(jsonDecode(raw as String) as Map<String, dynamic>);
+    });
+    final keepalive = Timer.periodic(const Duration(seconds: 10), (_) {
+      panelSocket.add('{"type":"hello"}');
+    });
+    await tester.pumpWidget(MaterialApp(
+      locale: const Locale('fr'), localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      home: Scaffold(body: Column(children: <Widget>[
+        const AnnouncementBanner(),
+        AnimatedBuilder(animation: SubscriptionState.instance, builder: (_, __) => Text(
+          'paid=${SubscriptionState.instance.remote.paid}; frozen=${SubscriptionState.instance.remote.frozen}',
+        )),
+        StreamBuilder(stream: PlaylistRepository.instance.channelsStream,
+          builder: (_, __) => Text('channels=${PlaylistRepository.instance.currentChannels.length}')),
+        AnimatedBuilder(animation: BrandConfig.instance, builder: (_, __) => Text(BrandConfig.instance.appName)),
+        ValueListenableBuilder<PricingConfig>(valueListenable: PricingRepository.notifier,
+          builder: (_, value, __) => Text(value.yearlyLabel)),
+        AnimatedBuilder(animation: HomeLayoutRepository.instance, builder: (_, __) =>
+          Text(HomeLayoutRepository.instance.config('recent')?.ribbon ?? '')),
+        AnimatedBuilder(animation: FeaturedRepository.instance, builder: (_, __) => Text(FeaturedRepository.instance.note)),
+      ])),
+    ));
+    // ADAPTER_START
+    Future<void> until(bool Function() condition, {int limit = 10000}) async {
+      final watch = Stopwatch()..start();
+      while (!condition() && watch.elapsedMilliseconds < limit) {
+        await Future<void>.delayed(const Duration(milliseconds: 15));
+        await tester.pump();
+      }
+      expect(condition(), isTrue, reason: 'condition non réalisée en ${limit}ms');
+    }
+    try {
+      await until(() => events.any((e) => e['type'] == 'presence' && e['mac'] == mac && e['online'] == true));
+      final live = await panel('/api/v1/boxes/live?mac=$mac', 'GET');
+      expect((live['items'] as List).single['online'], isTrue);
+      // Laisser se terminer le contrôle initial avant la première action mesurée.
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+
+      Future<void> action(String name, String path, String method, Object? body,
+          String kind, bool Function() applied, {Finder? visible, int limit = 2000}) async {
+        final String ordersPath = '/__fixture/orders?mac=${Uri.encodeComponent(mac)}&kind=${Uri.encodeComponent(kind)}';
+        final before = await panel(ordersPath, 'GET');
+        final Set<Object?> known = <Object?>{
+          for (final row in before['items'] as List) (row as Map)['order_id'],
+        };
+        final priorReceipts = events.where((e) => e['type'] == 'receipt' &&
+          e['kind'] == kind && e['state'] == 'applied' && e['mac'] == mac).toList();
+        final int first = events.length;
+        final watch = Stopwatch()..start();
+        final mutation = await panel(path, method, body);
+        String? orderId = mutation['order_id'] as String?;
+        int? revision = (mutation['rev'] as num?)?.toInt();
+        // Certaines routes de configuration diffusent un ordre par appareil
+        // sans renvoyer son ID. La fixture relit alors l'ordre durable créé
+        // par CE clic, jamais le premier reçu du même type dans le socket.
+        while (orderId == null && watch.elapsedMilliseconds < 10000) {
+          final after = await panel(ordersPath, 'GET');
+          final created = (after['items'] as List).where((row) => !known.contains((row as Map)['order_id'])).toList();
+          expect(created.length, lessThanOrEqualTo(1), reason: 'un seul ordre $kind pour ce clic et cet appareil');
+          if (created.isNotEmpty) {
+            final row = created.single as Map;
+            orderId = row['order_id'] as String;
+            revision = (row['config_rev'] as num?)?.toInt();
+          } else {
+            await Future<void>.delayed(const Duration(milliseconds: 15));
+          }
+        }
+        expect(orderId, isNotNull, reason: 'ordre durable absent après $name');
+        expect(known.contains(orderId), isFalse, reason: 'nouvel identifiant exigé pour $name');
+        // Reproduire un vieux reçu retardé. La suppression répétée garde
+        // déjà un écran vide : ce reçu ne doit surtout pas valider le clic.
+        if (priorReceipts.isNotEmpty) events.add(priorReceipts.last);
+        await until(() => applied() && events.skip(first).any((e) =>
+          e['type'] == 'receipt' && e['order_id'] == orderId && e['kind'] == kind &&
+          e['state'] == 'applied' && e['mac'] == mac &&
+          (revision == null || e['applied_rev'] is num && (e['applied_rev'] as num) >= revision!)), limit: 10000);
+        if (visible != null) expect(visible, findsOneWidget);
+        final int elapsed = watch.elapsedMilliseconds;
+        debugPrint('RT_LATENCY ${jsonEncode(<String, Object>{'app': variant, 'action': name, 'order_id': orderId!, 'milliseconds': elapsed})}');
+        expect(elapsed, lessThan(limit), reason: '$name : application ET accusé panel');
+      }
+      await action('essai', '/api/v1/trial-extend', 'POST', <String, Object>{'mac': mac, 'days': 1}, 'license',
+        () => SubscriptionState.instance.remote.trialUntil > DateTime.now().millisecondsSinceEpoch);
+      await action('activation', '/api/v1/activate', 'POST', <String, Object>{'mac': mac, 'plan': 'yearly'}, 'activate',
+        () => SubscriptionState.instance.remote.paid, visible: find.text('paid=true; frozen=false'));
+      await action('ajout de liste', '/api/v1/sources/$mac', 'PUT', <String, Object>{
+        'type': 'm3u', 'label': 'Recette RT', 'm3u_url': '$kSubscriptionBaseUrl/__fixture/list.m3u',
+      }, 'source', () => PlaylistRepository.instance.currentChannels.isNotEmpty, visible: find.text('channels=1'));
+      await action('message', '/api/v1/announcements', 'POST', <String, Object>{'title': 'Message RT Android', 'body': 'Reçu sans redémarrer'},
+        'message', () => find.text('Message RT Android').evaluate().isNotEmpty, visible: find.text('Message RT Android'));
+      await action('thème', '/api/v1/theme?platform=${AppPlatform.id}', 'PUT', <String, Object>{
+        'appName': 'Nom RT Android', 'accent': '#884422', 'bg': 'dark',
+      }, 'theme', () => BrandConfig.instance.appName == 'Nom RT Android', visible: find.text('Nom RT Android'));
+      await action('tarifs', '/api/v1/pricing', 'PUT', <String, Object>{
+        'currency': '€', 'lifetime': '15', 'yearly': '7', 'trialDays': 0, 'promoEnabled': false, 'promoMessage': '',
+      }, 'pricing', () => PricingRepository.current.yearly == '7', visible: find.text('7 €'));
+      await action('accueil', '/api/v1/home-layout', 'PUT', <String, Object>{'items': <Object>[
+        <String, Object>{'key': 'recent', 'position': 0, 'enabled': 1, 'ribbon': 'COUPE DU MONDE', 'featured': 0},
+      ]}, 'home', () => HomeLayoutRepository.instance.config('recent')?.ribbon == 'COUPE DU MONDE', visible: find.text('COUPE DU MONDE'));
+      await action('mise en avant', '/api/v1/featured', 'POST', <String, Object>{'name': 'Chaîne RT', 'note': 'Vedette RT'},
+        'featured', () => FeaturedRepository.instance.note == 'Vedette RT', visible: find.text('Vedette RT'));
+      await action('publicité configurée', '/api/v1/ad', 'PUT', <String, Object>{'enabled': false, 'url': '', 'skip': 9, 'freq': 'daily'},
+        'ad', () => StartupAdRepository.instance.config.skip == 9);
+      await action('invitation avis', '/api/v1/feedback-prompt', 'PUT', <String, Object>{'enabled': true, 'message': 'Avis RT'},
+        'feedback', () => FeedbackRepository.instance.message == 'Avis RT');
+      await action('suspension', '/api/v1/devices/fixture-$mac', 'PATCH', <String, Object>{'block_status': 'frozen'}, 'suspend',
+        () => SubscriptionState.instance.remote.frozen);
+      expect(PlaylistRepository.instance.currentChannels.length, 1,
+        reason: 'une suspension verrouille l’accès sans supprimer la liste');
+      await action('réactivation', '/api/v1/devices/fixture-$mac', 'PATCH', <String, Object>{'block_status': 'active'}, 'resume',
+        () => !SubscriptionState.instance.remote.frozen);
+      await action('retrait de liste', '/api/v1/sources/$mac', 'DELETE', null, 'source_clear',
+        () => PlaylistRepository.instance.currentChannels.isEmpty, visible: find.text('channels=0'));
+      await action('retrait répété, ancien reçu ignoré', '/api/v1/sources/$mac', 'DELETE', null, 'source_clear',
+        () => PlaylistRepository.instance.currentChannels.isEmpty, visible: find.text('channels=0'));
+      // Une nouvelle connexion SQLite lit le fichier persistant, pas les
+      // collections Dart affichées à l'écran. La mémoire de suppression
+      // et le nettoyage doivent déjà être validés lorsque APPLIED arrive.
+      final String databasePath = (await PlaylistDatabase.instance.database).path;
+      final persisted = await sqlite.openDatabase(databasePath, readOnly: true, singleInstance: false);
+      try {
+        expect(await persisted.query('playlists'), isEmpty);
+        expect(await persisted.query('channels'), isEmpty);
+        expect(await persisted.query('deleted_sources'), isNotEmpty);
+      } finally {
+        await persisted.close();
+      }
+      await panel('/__fixture/stale-source', 'POST', <String, Object>{'mac': mac, 'enabled': true});
+      try {
+        await RemoteSourceRepository.sync();
+        expect(PlaylistRepository.instance.currentChannels, isEmpty,
+          reason: 'une ancienne réponse fournisseur ne restaure pas une liste supprimée');
+        expect(await PlaylistRepository.instance.getAllPlaylists(), isEmpty);
+      } finally {
+        await panel('/__fixture/stale-source', 'POST', <String, Object>{'mac': mac, 'enabled': false});
+      }
+      // Strong est simulé dans la fixture. Le devis ne crée rien ; seul ce
+      // clic de confirmation doit livrer la licence et importer la vraie M3U.
+      final quote = (await panel('/api/v1/gold/golden/quote', 'POST', <String, Object>{
+        'mac': mac, 'sub': 1, 'bouquet_id': '84802',
+      }))['order'] as Map;
+      expect(quote['cost'], 1);
+      expect(quote['key_label'], 'manzi10');
+      final goldenWatch = Stopwatch()..start();
+      final golden = (await panel('/api/v1/gold/golden/confirm', 'POST', <String, Object>{
+        'quote_id': quote['id'] as String, 'confirmed': true, 'confirmed_cost': quote['cost'] as num,
+      }))['order'] as Map;
+      expect(golden['state'], 'delivered');
+      final goldenOrders = <dynamic>[golden['source_order_id'], golden['license_order_id']];
+      await until(() => PlaylistRepository.instance.currentChannels.isNotEmpty &&
+        SubscriptionState.instance.remote.paid && goldenOrders.every((id) => events.any((e) =>
+          e['type'] == 'receipt' && e['order_id'] == id && e['state'] == 'applied')));
+      expect(find.text('channels=1'), findsOneWidget);
+      final goldenElapsed = goldenWatch.elapsedMilliseconds;
+      debugPrint('RT_LATENCY ${jsonEncode(<String, Object>{'app': variant, 'action': 'Golden confirmé', 'milliseconds': goldenElapsed})}');
+      expect(goldenElapsed, lessThan(2000), reason: 'Golden : création simulée, import SQLite et deux accusés panel');
+      expect((await PlaylistRepository.instance.getAllPlaylists()).length, 1,
+        reason: 'seule la nouvelle source Golden existe ; l’ancienne reste supprimée');
+      final int cut = events.length;
+      await panel('/__fixture/socket-mode', 'POST', <String, Object>{'mac': mac, 'blocked': true});
+      await until(() => events.skip(cut).any((e) => e['type'] == 'presence' && e['online'] == false));
+      await action('repli HTTP socket coupé', '/api/v1/devices/fixture-$mac', 'PATCH',
+        <String, Object>{'block_status': 'frozen'}, 'suspend', () => SubscriptionState.instance.remote.frozen, limit: 7000);
+      final int restored = events.length;
+      await panel('/__fixture/socket-mode', 'POST', <String, Object>{'mac': mac, 'blocked': false});
+      await until(() => events.skip(restored).any((e) => e['type'] == 'presence' && e['online'] == true), limit: 35000);
+      await action('ordre après reconnexion', '/api/v1/devices/fixture-$mac', 'PATCH',
+        <String, Object>{'block_status': 'active'}, 'resume', () => !SubscriptionState.instance.remote.frozen);
+      expect((await PlaylistRepository.instance.getAllPlaylists()).length, 1,
+        reason: 'la reconnexion ne restaure pas la liste supprimée avant Golden');
+    } finally {
+      // ADAPTER_STOP
+      keepalive.cancel();
+      await listener.cancel();
+      await panelSocket.close();
+      await tester.pumpWidget(const SizedBox.shrink());
+    }
+  }, timeout: const Timeout(Duration(minutes: 3)));
+}

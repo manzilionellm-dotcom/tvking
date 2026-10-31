@@ -2806,6 +2806,10 @@
   "vipCountryTn": "Tunesië",
   "vipCountryEg": "Egypte",
   "libraryRefreshRunning": "Bijwerken…",
-  "libraryRefreshIncomplete": "Bijwerken niet voltooid. Sommige bronnen zijn niet beschikbaar. Probeer het opnieuw."
-
+  "libraryRefreshIncomplete": "Bijwerken niet voltooid. Sommige bronnen zijn niet beschikbaar. Probeer het opnieuw.",
+  "tvVideoQuality": "Videokwaliteit",
+  "tvVideoQualityAuto": "Automatisch",
+  "tvVideoQualityMaximum": "Maximale resolutie",
+  "tvVideoQualityAutoHelp": "Past de kwaliteit aan de verbinding aan. Druk op OK voor maximale resolutie.",
+  "tvVideoQualityMaximumHelp": "Kiest het beste ondersteunde videospoor van de bron. Vereist meer bandbreedte; druk bij haperingen op OK om terug te gaan naar Automatisch."
 }

@@ -1,0 +1,1037 @@
+diff --git a/lib/features/playlists/data/m3u_fetcher.dart b/lib/features/playlists/data/m3u_fetcher.dart
+index 08afcdf..b68e1c9 100644
+--- a/lib/features/playlists/data/m3u_fetcher.dart
++++ b/lib/features/playlists/data/m3u_fetcher.dart
+@@ -36,6 +36,7 @@ import '../../player/data/player_settings.dart';
+ import 'iptv_http.dart';
+ import 'playlist_import_limits.dart';
+ import 'source_link_utils.dart';
++import 'source_protocol_fallback.dart';
+ 
+ abstract final class M3uFetcher {
+   /// UA « navigateur » historique, gardé comme DERNIER recours dans la
+@@ -90,6 +91,7 @@ abstract final class M3uFetcher {
+     http.Client? httpClient,
+     String? preferredUserAgent,
+     void Function(int received, int? total)? onBytes,
++    bool singleAttempt = false,
+   }) async {
+     // Filet défensif : complète http:// si absent (le schéma est
+     // normalement déjà garanti par l'appelant via `SourceLinkUtils`, cf.
+@@ -104,7 +106,10 @@ abstract final class M3uFetcher {
+     final bool owns = httpClient == null;
+ 
+     try {
+-      final List<String> userAgents = _candidateUserAgents(preferredUserAgent);
++      final List<String> candidates = _candidateUserAgents(preferredUserAgent);
++      final List<String> userAgents = singleAttempt
++          ? candidates.take(1).toList(growable: false)
++          : candidates;
+       // Mémorise la dernière erreur la plus parlante pour le message final.
+       Object? lastError;
+ 
+@@ -199,6 +204,7 @@ abstract final class M3uFetcher {
+           lastError = e;
+           break;
+         } on Exception catch (e) {
++          if (SourceProtocolFallback.isProtocolMismatch(e)) rethrow;
+           // Connexion coupée / reset : peut dépendre de l'UA (certains
+           // serveurs ferment la connexion selon la signature) → on tente
+           // la signature suivante.
+diff --git a/lib/features/playlists/data/playlist_repository.dart b/lib/features/playlists/data/playlist_repository.dart
+index de4c5b3..045034a 100644
+--- a/lib/features/playlists/data/playlist_repository.dart
++++ b/lib/features/playlists/data/playlist_repository.dart
+@@ -50,6 +50,7 @@ import 'playlist_database.dart';
+ import 'source_opt_outs.dart';
+ import 'source_link_utils.dart';
+ import 'xtream_client.dart';
++import 'source_protocol_fallback.dart';
+ 
+ /// Résultat individuel d'un import en lot.
+ class BatchImportResult {
+@@ -744,11 +745,19 @@ class PlaylistRepository {
+     required String url,
+     String? epgUrl,
+     bool restoreDeleted = true,
++    bool allowHttpCompatibility = false,
+     http.Client? httpClient,
+     ImportProgressCallback? onProgress,
+   }) async {
++    url = SourceLinkUtils.ensureScheme(url);
+     if (restoreDeleted) {
+-      await SourceOptOuts.restoreManually(<String, Object?>{'m3u_url': url});
++      await SourceOptOuts.restoreManually(<String, Object?>{'m3u_url': url},
++        aliases: <Map<String, Object?>>[
++          for (final String candidate in SourceProtocolFallback.possibleUrls(
++            url, allowHttpCompatibility: allowHttpCompatibility,
++          ).skip(1)) <String, Object?>{'m3u_url': candidate},
++        ],
++      );
+     }
+     final ({String server, String username, String password})? creds =
+         SourceLinkUtils.tryExtractXtreamCredentials(url);
+@@ -756,6 +765,7 @@ class PlaylistRepository {
+     // Vraie playlist M3U (pas d'identifiants) : un seul chemin possible.
+     if (creds == null) {
+       return addM3uPlaylist(
++          allowHttpCompatibility: allowHttpCompatibility,
+           restoreDeleted: false,
+           name: name,
+           url: url,
+@@ -767,6 +777,7 @@ class PlaylistRepository {
+     // Lien Xtream : l'API d'abord (voie royale, anti-OOM, rapide).
+     try {
+       return await addXtreamPlaylist(
++        allowHttpCompatibility: allowHttpCompatibility,
+         restoreDeleted: false,
+           name: name,
+         serverUrl: creds.server,
+@@ -777,12 +788,18 @@ class PlaylistRepository {
+       );
+     } on PlaylistDeletedException {
+       rethrow;
++    } on SourceProtocolFallbackFailure {
++      // Le budget de compatibilité HTTP est déjà consommé.
++      rethrow;
++    } on XtreamAuthException {
++      rethrow;
+     } on Object catch (xtErr) {
+       if (kDebugMode) {
+         debugPrint('[Repo] API Xtream KO → repli sur le M3U brut : $xtErr');
+       }
+       try {
+         return await addM3uPlaylist(
++            allowHttpCompatibility: allowHttpCompatibility,
+             restoreDeleted: false,
+           name: name,
+             url: url,
+@@ -813,6 +830,7 @@ class PlaylistRepository {
+     // mais ne doit PAS voler l'écran à l'abonnement réel.
+     bool makeActive = true,
+     bool restoreDeleted = true,
++    bool allowHttpCompatibility = false,
+   }) async {
+     // NORMALISATION : complète http:// si l'utilisateur/le panel admin a
+     // donné juste un domaine (« serveur.com/playlist.m3u ») sans schéma —
+@@ -824,7 +842,13 @@ class PlaylistRepository {
+       epgUrl = SourceLinkUtils.ensureScheme(epgUrl);
+     }
+     if (restoreDeleted) {
+-      await SourceOptOuts.restoreManually(<String, Object?>{'m3u_url': url});
++      await SourceOptOuts.restoreManually(<String, Object?>{'m3u_url': url},
++        aliases: <Map<String, Object?>>[
++          for (final String candidate in SourceProtocolFallback.possibleUrls(
++            url, allowHttpCompatibility: allowHttpCompatibility,
++          ).skip(1)) <String, Object?>{'m3u_url': candidate},
++        ],
++      );
+     }
+     final http.Client client = httpClient ?? http.Client();
+     // On insère la playlist AVANT le download (le parser a besoin de son
+@@ -852,8 +876,13 @@ class PlaylistRepository {
+       //    ou les exports Windows-1252 mal étiquetés).
+       //    La progression (octets reçus) alimente la barre vivante.
+       if (kDebugMode) debugPrint('[Repo] GET $url');
+-      final String body = await M3uFetcher.fetch(
+-        url,
++      final SourceProtocolResult<String> connection =
++          await SourceProtocolFallback.connect<String>(
++        url: url,
++        allowHttpCompatibility: allowHttpCompatibility,
++        attempt: (String candidate, bool singleAttempt) => M3uFetcher.fetch(
++        candidate,
++        singleAttempt: singleAttempt,
+         httpClient: client,
+         onBytes: onProgress == null
+             ? null
+@@ -862,7 +891,9 @@ class PlaylistRepository {
+                   bytesReceived: received,
+                   totalBytes: total,
+                 )),
++        ),
+       );
++      final String body = connection.value;
+ 
+       // 3) Parse (dans un ISOLATE → pas de gel UI) + insertion en batch.
+       //    Plafond chaînes ADAPTÉ À LA RAM passé à l'isolate (anti-OOM).
+@@ -908,10 +939,15 @@ class PlaylistRepository {
+       }
+       final Playlist saved = newPlaylist.copyWith(
+         id: playlistId,
++        m3uUrl: connection.url,
+         channelCount: parsed.channels.length,
+         lastSyncedAt: DateTime.now().millisecondsSinceEpoch,
+       );
+-      await _updatePlaylistMetrics(saved);
++      await _updatePlaylistMetrics(
++        saved,
++        importedM3uUrl: connection.url != url ? connection.url : null,
++        additionalFingerprints: SourceOptOuts.identities(<String, Object?>{'m3u_url': url}),
++      );
+       onProgress?.call(ImportProgress(
+         phase: ImportPhase.done,
+         channelsFound: parsed.channels.length,
+@@ -1208,6 +1244,7 @@ class PlaylistRepository {
+     // l'abonnement déjà actif (sources du Labo du Maître).
+     bool makeActive = true,
+     bool restoreDeleted = true,
++    bool allowHttpCompatibility = false,
+   }) async {
+     // NORMALISATION CENTRALE (tous les points d'entrée passent ici —
+     // panneaux mobile/TV, panel admin via push MAC, restauration cloud) :
+@@ -1224,38 +1261,66 @@ class PlaylistRepository {
+     if (restoreDeleted) {
+       await SourceOptOuts.restoreManually(<String, Object?>{
+         'xtream_server': serverUrl, 'xtream_username': username,
+-      });
++      }, aliases: <Map<String, Object?>>[
++        for (final String candidate in SourceProtocolFallback.possibleUrls(
++          serverUrl, allowHttpCompatibility: allowHttpCompatibility,
++        ).skip(1)) <String, Object?>{
++          'xtream_server': candidate, 'xtream_username': username,
++        },
++      ]);
+     }
++    final Set<String> requestedFingerprints = SourceOptOuts.identities(<String, Object?>{
++      'xtream_server': serverUrl, 'xtream_username': username,
++    });
+     // 1) Vérifie d'abord les credentials, avant de polluer la base
+-    final XtreamClient xtream = XtreamClient(
+-      serverUrl: serverUrl,
+-      username: username,
+-      password: password,
+-      httpClient: httpClient,
+-    );
++    XtreamClient? xtream;
+     // Orpheline : si une étape échoue APRÈS insertion, on la supprime
+     // (cf. `catch`) → on ne stocke QUE les comptes valides.
+     int? playlistId;
++    bool usedHttpCompatibility = false;
+     try {
+       onProgress?.call(const ImportProgress(phase: ImportPhase.connecting));
+-      await xtream.verifyCredentials();
++      final SourceProtocolResult<XtreamClient> connection =
++          await SourceProtocolFallback.connect<XtreamClient>(
++        url: serverUrl,
++        allowHttpCompatibility: allowHttpCompatibility,
++        attempt: (String candidateUrl, bool singleAttempt) async {
++          final XtreamClient candidate = XtreamClient(
++            serverUrl: candidateUrl,
++            username: username,
++            password: password,
++            httpClient: httpClient,
++          );
++          try {
++            await candidate.verifyCredentials(singleAttempt: singleAttempt);
++            return candidate;
++          } catch (_) {
++            if (httpClient == null) candidate.dispose();
++            rethrow;
++          }
++        },
++      );
++      xtream = connection.value;
++      final String effectiveServer = connection.url;
++      usedHttpCompatibility = effectiveServer != serverUrl;
+ 
+       // 2) Crée la playlist en base (avec EPG URL auto-générée)
+       final Playlist newPlaylist = Playlist(
+         id: null,
+         name: name,
+         type: PlaylistType.xtream,
+-        xtreamServer: serverUrl,
++        xtreamServer: effectiveServer,
+         xtreamUsername: username,
+         xtreamPassword: password,
+         epgUrl: xtreamEpgUrl(
+-          serverUrl: serverUrl,
++          serverUrl: effectiveServer,
+           username: username,
+           password: password,
+         ),
+         createdAt: DateTime.now().millisecondsSinceEpoch,
+       );
+-      playlistId = await _insertPlaylist(newPlaylist);
++      playlistId = await _insertPlaylist(newPlaylist,
++        additionalFingerprints: requestedFingerprints);
+ 
+       // 3) IMPORT EN FLUX (anti-OOM) : catégorie par catégorie, chaque petit
+       //    lot inséré IMMÉDIATEMENT en base puis jeté → on ne tient JAMAIS la
+@@ -1306,7 +1371,8 @@ class PlaylistRepository {
+         channelCount: count,
+         lastSyncedAt: DateTime.now().millisecondsSinceEpoch,
+       );
+-      await _updatePlaylistMetrics(saved);
++      await _updatePlaylistMetrics(saved,
++        additionalFingerprints: requestedFingerprints);
+       onProgress?.call(
+           ImportProgress(phase: ImportPhase.done, channelsFound: count));
+ 
+@@ -1329,15 +1395,18 @@ class PlaylistRepository {
+         unawaited(_syncEpgForIds(epgIds, newPlaylist.epgUrl!));
+       }
+       return saved;
+-    } catch (_) {
++    } catch (error) {
+       // ÉCHEC après insertion (fetch catégories/chaînes, 0 chaîne) → on
+       // retire la playlist orpheline : on ne garde QUE le valide.
+       if (playlistId != null) {
+         await _deletePlaylist(playlistId);
+       }
++      if (usedHttpCompatibility) {
++        throw SourceProtocolFallbackFailure(error);
++      }
+       rethrow;
+     } finally {
+-      if (httpClient == null) xtream.dispose();
++      if (httpClient == null) xtream?.dispose();
+     }
+   }
+ 
+@@ -1634,9 +1703,13 @@ class PlaylistRepository {
+   //  Helpers SQLite internes
+   // ============================================================
+ 
+-  Future<int> _insertPlaylist(Playlist playlist) async {
++  Future<int> _insertPlaylist(Playlist playlist, {
++    Iterable<String> additionalFingerprints = const <String>[],
++  }) async {
+     await SourceOptOuts.migrateLegacy();
+-    final List<String> keys = await SourceOptOuts.hashes(SourceOptOuts.identities(playlist.toMap()));
++    final List<String> keys = await SourceOptOuts.hashes(<String>[
++      ...SourceOptOuts.identities(playlist.toMap()), ...additionalFingerprints,
++    ]);
+     final Database db = await PlaylistDatabase.instance.database;
+     // Phase 1+/Multi-serveurs : si c'est la PREMIERE playlist (la
+     // table etait vide), on la marque auto-active. Sinon, les
+@@ -1721,19 +1794,34 @@ class PlaylistRepository {
+     // faisait planter les box faibles. On lit la base une seule fois, à la fin.
+   }
+ 
+-  Future<void> _updatePlaylistMetrics(Playlist playlist) async {
++  Future<void> _updatePlaylistMetrics(
++    Playlist playlist, {
++    String? importedM3uUrl,
++    Iterable<String> additionalFingerprints = const <String>[],
++  }) async {
+     if (playlist.id == null) return;
+     final Database db = await PlaylistDatabase.instance.database;
+-    final int count = await db.update(
+-      'playlists',
+-      <String, Object?>{
+-        'last_synced_at': playlist.lastSyncedAt,
+-        'channel_count': playlist.channelCount,
+-      },
+-      where: 'id = ?',
+-      whereArgs: <Object>[playlist.id!],
+-    );
+-    if (count == 0) throw const PlaylistDeletedException();
++    final List<String> keys = await SourceOptOuts.hashes(<String>[
++      ...SourceOptOuts.identities(playlist.toMap()), ...additionalFingerprints,
++    ]);
++    // L'identité effective et celle demandée restent protégées jusqu'à la
++    // publication atomique ; aucune levée de refus après le téléchargement.
++    await db.transaction((Transaction tx) async {
++      if (await SourceOptOuts.containsHashes(tx, keys)) {
++        throw const PlaylistDeletedException();
++      }
++      final int count = await tx.update(
++        'playlists',
++        <String, Object?>{
++          'last_synced_at': playlist.lastSyncedAt,
++          'channel_count': playlist.channelCount,
++          if (importedM3uUrl != null) 'm3u_url': importedM3uUrl,
++        },
++        where: 'id = ?',
++        whereArgs: <Object>[playlist.id!],
++      );
++      if (count == 0) throw const PlaylistDeletedException();
++    });
+   }
+ 
+   Future<void> _emitCurrentState() async {
+diff --git a/lib/features/playlists/data/source_opt_outs.dart b/lib/features/playlists/data/source_opt_outs.dart
+index 35ad952..49a6617 100644
+--- a/lib/features/playlists/data/source_opt_outs.dart
++++ b/lib/features/playlists/data/source_opt_outs.dart
+@@ -119,9 +119,14 @@ abstract final class SourceOptOuts {
+ 
+   /// Appelé au DÉBUT d'un ajout volontaire, avant le réseau : une suppression
+   /// ultérieure gagne donc contre un téléchargement encore en cours.
+-  static Future<void> restoreManually(Map<String, Object?> source) async {
++  static Future<void> restoreManually(Map<String, Object?> source, {
++    Iterable<Map<String, Object?>> aliases = const <Map<String, Object?>>[],
++  }) async {
+     await migrateLegacy();
+-    final List<String> keys = await hashes(identities(source));
++    final List<String> keys = await hashes(<String>[
++      ...identities(source),
++      for (final Map<String, Object?> alias in aliases) ...identities(alias),
++    ]);
+     final Database db = await PlaylistDatabase.instance.database;
+     await db.transaction((Transaction tx) async {
+       for (final String key in keys) {
+diff --git a/lib/features/playlists/data/source_protocol_fallback.dart b/lib/features/playlists/data/source_protocol_fallback.dart
+new file mode 100644
+index 0000000..701a5f9
+--- /dev/null
++++ b/lib/features/playlists/data/source_protocol_fallback.dart
+@@ -0,0 +1,90 @@
++// Compatibilité des liens collés par le client. Le protocole HTTPS reste
++// prioritaire ; seul un échec de négociation qui indique explicitement un
++// service HTTP autorise une tentative HTTP, sur la même adresse.
++import 'dart:io';
++
++import 'package:http/http.dart' as http;
++
++class SourceProtocolResult<T> {
++  const SourceProtocolResult(this.url, this.value);
++
++  final String url;
++  final T value;
++}
++
++/// Marque une tentative de compatibilité déjà consommée. Le chemin « get.php
++/// vers Xtream puis M3U » doit la propager, sans lancer une seconde tentative.
++class SourceProtocolFallbackFailure implements Exception {
++  const SourceProtocolFallbackFailure(this.cause);
++
++  final Object cause;
++
++  @override
++  String toString() =>
++      'La connexion HTTP de compatibilité a échoué. Vérifie le lien fourni.';
++}
++
++abstract final class SourceProtocolFallback {
++  /// Identités que l'ajout MANUEL peut rétablir, en une transaction avant
++  /// le réseau. Cette liste n'autorise pas à changer de protocole sans
++  /// erreur TLS, ni à lever une suppression reçue pendant le téléchargement.
++  static List<String> possibleUrls(String url, {bool allowHttpCompatibility = false}) {
++    final Uri? parsed = Uri.tryParse(url);
++    return <String>[
++      url,
++      if (allowHttpCompatibility && parsed != null &&
++          parsed.scheme.toLowerCase() == 'https' && parsed.host.isNotEmpty)
++        'http${url.substring(5)}',
++    ];
++  }
++
++  /// Une erreur de certificat, un délai dépassé, une réponse HTTP ou un
++  /// contenu invalide ne prouvent jamais que le fournisseur exige HTTP.
++  static bool isProtocolMismatch(Object error) {
++    final String message;
++    if (error is HandshakeException) {
++      message = '${error.message} ${error.osError?.message ?? ''}';
++    } else if (error is http.ClientException &&
++        error.message.toLowerCase().contains('handshakeexception')) {
++      message = error.message;
++    } else {
++      return false;
++    }
++    final String normalized = message.toUpperCase().replaceAll(' ', '_');
++    return normalized.contains('WRONG_VERSION_NUMBER') &&
++        !normalized.contains('CERTIFICATE');
++  }
++
++  /// [singleAttempt] est vrai uniquement pour la connexion HTTP de repli :
++  /// l'appelant désactive alors sa rotation de signatures User-Agent.
++  /// Les imports automatiques/panel restent exclus par défaut.
++  static Future<SourceProtocolResult<T>> connect<T>({
++    required String url,
++    required Future<T> Function(String url, bool singleAttempt) attempt,
++    bool allowHttpCompatibility = false,
++  }) async {
++    try {
++      return SourceProtocolResult<T>(url, await attempt(url, false));
++    } catch (error) {
++      final Uri? parsed = Uri.tryParse(url);
++      if (!allowHttpCompatibility ||
++          parsed == null ||
++          parsed.scheme.toLowerCase() != 'https' ||
++          parsed.host.isEmpty ||
++          !isProtocolMismatch(error)) {
++        rethrow;
++      }
++      // Remplacer uniquement le préfixe conserve exactement le port écrit,
++      // le chemin, l'encodage et les paramètres (dont les identifiants).
++      final String httpUrl = 'http${url.substring(5)}';
++      try {
++        return SourceProtocolResult<T>(
++          httpUrl,
++          await attempt(httpUrl, true),
++        );
++      } catch (fallbackError) {
++        throw SourceProtocolFallbackFailure(fallbackError);
++      }
++    }
++  }
++}
+diff --git a/lib/features/playlists/data/xtream_client.dart b/lib/features/playlists/data/xtream_client.dart
+index 95d3fc2..0cb19ce 100644
+--- a/lib/features/playlists/data/xtream_client.dart
++++ b/lib/features/playlists/data/xtream_client.dart
+@@ -53,6 +53,7 @@ import '../../vod/domain/vod_series.dart';
+ import 'iptv_http.dart';
+ import 'playlist_import_limits.dart';
+ import 'source_link_utils.dart';
++import 'source_protocol_fallback.dart';
+ 
+ /// Exception métier pour signaler une erreur Xtream lisible
+ /// (login refusé, serveur HS, réponse non-JSON, etc.).
+@@ -64,6 +65,11 @@ class XtreamException implements Exception {
+   String toString() => 'XtreamException: $message';
+ }
+ 
++/// Refus explicite : le chemin get.php ne doit pas tenter le M3U ensuite.
++class XtreamAuthException extends XtreamException {
++  XtreamAuthException(super.message);
++}
++
+ /// Photo de l'état d'un compte Xtream, extraite du `user_info` de
+ /// player_api.php. Sert au diagnostic « code mort vs mauvais format
+ /// d'URL » : un statut ≠ Active ou une date passée explique 100 % des
+@@ -142,8 +148,9 @@ class XtreamClient {
+ 
+   /// Vérifie que les identifiants sont valides.
+   /// Lance une `XtreamException` si KO.
+-  Future<void> verifyCredentials() async {
+-    final Map<String, dynamic> data = await _callApi(action: null);
++  Future<void> verifyCredentials({bool singleAttempt = false}) async {
++    final Map<String, dynamic> data =
++        await _callApi(action: null, singleAttempt: singleAttempt);
+     final Map<String, dynamic>? userInfo =
+         data['user_info'] as Map<String, dynamic>?;
+     if (userInfo == null) {
+@@ -168,7 +175,7 @@ class XtreamClient {
+     final String auth =
+         userInfo['auth']?.toString().trim().toLowerCase() ?? '';
+     if (auth == '0' || auth == 'false') {
+-      throw XtreamException(l10nNow.xtreamCredentialsRefused);
++      throw XtreamAuthException(l10nNow.xtreamCredentialsRefused);
+     }
+     // Statut : on ne refuse que les états clairement BLOQUANTS connus.
+     // Un statut exotique inconnu (« Enabled », « Trial », vide…) passe —
+@@ -179,7 +186,7 @@ class XtreamClient {
+       'banned', 'disabled', 'expired', 'suspended', 'blocked', 'inactive',
+     };
+     if (blocked.contains(status)) {
+-      throw XtreamException(l10nNow.xtreamAccountInactive(status));
++      throw XtreamAuthException(l10nNow.xtreamAccountInactive(status));
+     }
+     // FORMAT DE SORTIE LIVE : les serveurs déclarent les conteneurs
+     // autorisés dans `allowed_output_formats` (ex. ["m3u8"] seulement sur
+@@ -827,9 +834,12 @@ class XtreamClient {
+   /// [TransferableTypedData]. Aucun décodage String sur le main isolate :
+   /// un `utf8.decode` de 40-80 Mo y gelait l'UI 300 ms-1,5 s à chaque
+   /// import/refresh de source (spinner figé, risque d'ANR).
+-  Future<Uint8List> _getBodyBytes(Uri uri) async {
++  Future<Uint8List> _getBodyBytes(Uri uri, {bool singleAttempt = false}) async {
+     Object? lastError;
+-    for (final String ua in _candidateUserAgents()) {
++    final List<String> candidates = _candidateUserAgents();
++    final Iterable<String> userAgents =
++        singleAttempt ? candidates.take(1) : candidates;
++    for (final String ua in userAgents) {
+       try {
+         final http.Request req = http.Request('GET', uri)
+           ..followRedirects = true
+@@ -862,6 +872,7 @@ class XtreamClient {
+         lastError = e;
+         break;
+       } on Exception catch (e) {
++        if (SourceProtocolFallback.isProtocolMismatch(e)) rethrow;
+         lastError = e;
+       }
+     }
+@@ -911,10 +922,12 @@ class XtreamClient {
+       {required String? action,
+       String? seriesId,
+       String? vodId,
+-      String? streamId}) async {
++      String? streamId,
++      bool singleAttempt = false}) async {
+     final Uri uri = _buildUri(
+         action: action, seriesId: seriesId, vodId: vodId, streamId: streamId);
+-    final Uint8List bodyBytes = await _getBodyBytes(uri);
++    final Uint8List bodyBytes =
++        await _getBodyBytes(uri, singleAttempt: singleAttempt);
+     try {
+       final dynamic decoded = await compute(
+         _decodeJsonBytesInIsolate,
+diff --git a/lib/features/playlists/domain/playlist.dart b/lib/features/playlists/domain/playlist.dart
+index 9d1b6f8..1a44891 100644
+--- a/lib/features/playlists/domain/playlist.dart
++++ b/lib/features/playlists/domain/playlist.dart
+@@ -119,6 +119,7 @@ class Playlist {
+ 
+   Playlist copyWith({
+     int? id,
++    String? m3uUrl,
+     int? lastSyncedAt,
+     int? channelCount,
+     bool? isActive,
+@@ -130,7 +131,7 @@ class Playlist {
+       name: name,
+       type: type,
+       createdAt: createdAt,
+-      m3uUrl: m3uUrl,
++      m3uUrl: m3uUrl ?? this.m3uUrl,
+       xtreamServer: xtreamServer,
+       xtreamUsername: xtreamUsername,
+       xtreamPassword: xtreamPassword ?? this.xtreamPassword,
+diff --git a/lib/features/playlists/presentation/m3u_login_sheet.dart b/lib/features/playlists/presentation/m3u_login_sheet.dart
+index 5648eaa..9012b87 100644
+--- a/lib/features/playlists/presentation/m3u_login_sheet.dart
++++ b/lib/features/playlists/presentation/m3u_login_sheet.dart
+@@ -80,7 +80,7 @@ class _M3uLoginSheetState extends State<_M3uLoginSheet> {
+       // « Smart » : repli automatique get.php → API Xtream si le
+       // téléchargement M3U est refusé (cf. addM3uPlaylistSmart).
+       await _run((ImportProgressCallback op) => PlaylistRepository.instance
+-          .addM3uPlaylistSmart(name: name, url: url, onProgress: op));
++          .addM3uPlaylistSmart(allowHttpCompatibility: true, name: name, url: url, onProgress: op));
+     } else {
+       String server = SourceLinkUtils.ensureScheme(_serverCtrl.text);
+       String user = _userCtrl.text.trim();
+@@ -109,6 +109,7 @@ class _M3uLoginSheetState extends State<_M3uLoginSheet> {
+       }
+       await _run((ImportProgressCallback op) =>
+           PlaylistRepository.instance.addXtreamPlaylist(
++            allowHttpCompatibility: true,
+             name: name,
+             serverUrl: server,
+             username: user,
+diff --git a/lib/features/playlists/presentation/widgets/xtream_login_form.dart b/lib/features/playlists/presentation/widgets/xtream_login_form.dart
+index d6de1e7..29a9489 100644
+--- a/lib/features/playlists/presentation/widgets/xtream_login_form.dart
++++ b/lib/features/playlists/presentation/widgets/xtream_login_form.dart
+@@ -91,6 +91,7 @@ class _XtreamLoginFormState extends State<XtreamLoginForm> {
+           messenger,
+           (ImportProgressCallback op) => PlaylistRepository.instance
+               .addM3uPlaylistSmart(
++                  allowHttpCompatibility: true,
+                   name: context.l10n.playlistDefaultSubscription, url: url, onProgress: op));
+       return;
+     }
+@@ -126,6 +127,7 @@ class _XtreamLoginFormState extends State<XtreamLoginForm> {
+         messenger,
+         (ImportProgressCallback op) =>
+             PlaylistRepository.instance.addXtreamPlaylist(
++              allowHttpCompatibility: true,
+               name: context.l10n.playlistDefaultSubscription,
+               serverUrl: server,
+               username: user,
+diff --git a/test/features/playlists/source_protocol_fallback_test.dart b/test/features/playlists/source_protocol_fallback_test.dart
+new file mode 100644
+index 0000000..e64cbef
+--- /dev/null
++++ b/test/features/playlists/source_protocol_fallback_test.dart
+@@ -0,0 +1,111 @@
++import 'dart:async';
++import 'dart:io';
++
++import 'package:flutter_test/flutter_test.dart';
++import 'package:http/http.dart' as http;
++import 'package:tv_king/features/playlists/data/source_protocol_fallback.dart';
++
++void main() {
++  const String https =
++      'https://provider.invalid:443/get.php?username=a%2Bb&password=c%26d&type=m3u_plus';
++  const String plain =
++      'http://provider.invalid:443/get.php?username=a%2Bb&password=c%26d&type=m3u_plus';
++
++  for (final String url in <String>[https, plain]) {
++    test('un lien fonctionnel garde exactement son protocole : $url', () async {
++      final List<String> calls = <String>[];
++      final result = await SourceProtocolFallback.connect<String>(
++        url: url,
++        allowHttpCompatibility: true,
++        attempt: (String candidate, bool singleAttempt) async {
++          calls.add(candidate);
++          expect(singleAttempt, isFalse);
++          return 'catalogue';
++        },
++      );
++      expect(calls, <String>[url]);
++      expect(result.url, url);
++      expect(result.value, 'catalogue');
++    });
++  }
++
++  test('une incompatibilité TLS autorise une seule connexion HTTP exacte', () async {
++    final List<String> calls = <String>[];
++    final List<bool> single = <bool>[];
++    final result = await SourceProtocolFallback.connect<int>(
++      url: https,
++      allowHttpCompatibility: true,
++      attempt: (String candidate, bool singleAttempt) async {
++        calls.add(candidate);
++        single.add(singleAttempt);
++        if (candidate == https) {
++          throw const HandshakeException('WRONG_VERSION_NUMBER');
++        }
++        return 2;
++      },
++    );
++    expect(calls, <String>[https, plain]);
++    expect(single, <bool>[false, true]);
++    expect(result.url, plain);
++    expect(result.value, 2);
++  });
++
++  test('les imports automatiques ne changent pas de protocole', () async {
++    int attempts = 0;
++    await expectLater(SourceProtocolFallback.connect<void>(
++      url: https,
++      attempt: (_, __) async {
++        attempts++;
++        throw const HandshakeException('WRONG_VERSION_NUMBER');
++      },
++    ), throwsA(isA<HandshakeException>()));
++    expect(attempts, 1);
++  });
++
++  final List<Object> denied = <Object>[
++    const HandshakeException('CERTIFICATE_VERIFY_FAILED'),
++    const HandshakeException('WRONG_VERSION_NUMBER CERTIFICATE_VERIFY_FAILED'),
++    TimeoutException('délai dépassé'),
++    http.ClientException('Connection reset'),
++    Exception('HTTP 401'),
++    Exception('HTTP 403'),
++    const FormatException('playlist invalide'),
++    Exception('WRONG_VERSION_NUMBER'),
++  ];
++  for (int index = 0; index < denied.length; index++) {
++    test('aucun repli pour un certificat, refus ou contenu invalide #$index', () async {
++      int attempts = 0;
++      await expectLater(SourceProtocolFallback.connect<void>(
++        url: https,
++        allowHttpCompatibility: true,
++        attempt: (_, __) async {
++          attempts++;
++          throw denied[index];
++        },
++      ), throwsA(same(denied[index])));
++      expect(attempts, 1);
++    });
++  }
++
++  test('une erreur TLS typée conservée par http.Client reste reconnue', () {
++    expect(SourceProtocolFallback.isProtocolMismatch(http.ClientException(
++      'HandshakeException: Handshake error (WRONG_VERSION_NUMBER)',
++    )), isTrue);
++  });
++
++  test('un échec HTTP est terminal et empêche un deuxième repli get.php', () async {
++    final List<String> calls = <String>[];
++    await expectLater(SourceProtocolFallback.connect<void>(
++      url: https,
++      allowHttpCompatibility: true,
++      attempt: (String candidate, _) async {
++        calls.add(candidate);
++        if (candidate == https) {
++          throw const HandshakeException('WRONG_VERSION_NUMBER');
++        }
++        throw Exception('HTTP 403');
++      },
++    ), throwsA(isA<SourceProtocolFallbackFailure>()));
++    expect(calls, <String>[https, plain]);
++  });
++}
+diff --git a/test/features/playlists/source_protocol_import_test.dart b/test/features/playlists/source_protocol_import_test.dart
+new file mode 100644
+index 0000000..7dfc8d2
+--- /dev/null
++++ b/test/features/playlists/source_protocol_import_test.dart
+@@ -0,0 +1,290 @@
++import 'dart:convert';
++import 'dart:io';
++
++import 'package:flutter_test/flutter_test.dart';
++import 'package:http/http.dart' as http;
++import 'package:http/testing.dart';
++// ignore: depend_on_referenced_packages
++import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
++import 'package:shared_preferences/shared_preferences.dart';
++import 'package:sqflite_common_ffi/sqflite_ffi.dart';
++import 'package:tv_king/core/flavor/flavor.dart';
++import 'package:tv_king/features/playlists/data/source_opt_outs.dart';
++
++import 'package:tv_king/features/playlists/data/playlist_database.dart';
++import 'package:tv_king/features/playlists/data/playlist_repository.dart';
++import 'package:tv_king/features/playlists/data/source_protocol_fallback.dart';
++import 'package:tv_king/features/playlists/domain/playlist.dart';
++
++class _Paths extends PathProviderPlatform {
++  _Paths(this.root);
++  final String root;
++  @override
++  Future<String?> getApplicationDocumentsPath() async => root;
++  @override
++  Future<String?> getApplicationSupportPath() async => root;
++  @override
++  Future<String?> getTemporaryPath() async => root;
++}
++
++const String _m3u = '#EXTM3U\n#EXTINF:-1 group-title="Test",Test\n'
++    'http://stream.invalid/test.ts\n';
++const String _url = 'https://source.invalid:8080/list.m3u?token=a%2Bb%26c';
++const String _plain = 'http://source.invalid:8080/list.m3u?token=a%2Bb%26c';
++const String _getPhp =
++    'https://source.invalid:8080/get.php?username=viewer&password=test&type=m3u_plus';
++
++Future<Playlist> _importGetPhp(http.Client client) =>
++    PlaylistRepository.instance.addM3uPlaylistSmart(
++      name: 'Compte test',
++      url: _getPhp,
++      allowHttpCompatibility: true,
++      httpClient: client,
++    );
++
++http.Response _xtreamResponse(http.Request request, {bool emptyLive = false}) {
++  if (request.url.path.endsWith('xmltv.php')) {
++    return http.Response('<?xml version="1.0"?><tv></tv>', 200);
++  }
++  switch (request.url.queryParameters['action']) {
++    case 'get_live_categories':
++      return http.Response('[{"category_id":"1","category_name":"Test"}]', 200);
++    case 'get_live_streams':
++      return http.Response(emptyLive ? '[]' : jsonEncode(<Object>[
++        <String, Object>{'stream_id': 1, 'name': 'Test', 'category_id': '1',
++          'stream_type': 'live', 'container_extension': 'ts'},
++      ]), 200);
++    default:
++      return http.Response('{"user_info":{"auth":1,"status":"Active"}}', 200);
++  }
++}
++
++Future<void> _rememberM3u(String url) =>
++    SourceOptOuts.rememberSource(<String, Object?>{'m3u_url': url});
++Future<void> _rememberXtream(String server) =>
++    SourceOptOuts.rememberSource(<String, Object?>{
++      'xtream_server': server, 'xtream_username': 'viewer',
++    });
++Future<void> _restartSourceStore() async {
++  final Database db = await PlaylistDatabase.instance.database;
++  await db.close();
++  PlaylistDatabase.instance.debugUseDatabase(null);
++  await PlaylistRepository.instance.initialize();
++}
++
++void main() {
++  TestWidgetsFlutterBinding.ensureInitialized();
++  sqfliteFfiInit();
++  databaseFactory = databaseFactoryFfiNoIsolate;
++  FlavorConfig.setCurrent(FlavorConfig.sevenMotion);
++  final Directory dir = Directory.systemTemp.createTempSync('source-protocol-');
++  PathProviderPlatform.instance = _Paths(dir.path);
++
++  setUp(() async {
++    SharedPreferences.setMockInitialValues(<String, Object>{});
++    final Database db = await PlaylistDatabase.instance.database;
++    await db.delete('channels');
++    await db.delete('playlists');
++    await db.delete('deleted_sources');
++    await PlaylistRepository.instance.initialize();
++  });
++
++  test('M3U : une erreur TLS de protocole importe et mémorise le lien HTTP', () async {
++    final List<String> calls = <String>[];
++    final http.Client client = MockClient((http.Request request) async {
++      calls.add(request.url.toString());
++      if (request.url.scheme == 'https') {
++        throw const HandshakeException('WRONG_VERSION_NUMBER');
++      }
++      return http.Response(_m3u, 200);
++    });
++    final Playlist saved = await PlaylistRepository.instance.addM3uPlaylist(
++      name: 'Liste test', url: _url, allowHttpCompatibility: true, httpClient: client,
++    );
++    expect(calls, <String>[_url, _plain]);
++    expect(saved.m3uUrl, _plain);
++    expect(saved.channelCount, 1);
++    expect((await PlaylistRepository.instance.getAllPlaylists()).single.m3uUrl, _plain);
++  });
++
++  test('M3U : HTTPS fonctionnel reste HTTPS', () async {
++    final List<String> schemes = <String>[];
++    final http.Client client = MockClient((http.Request request) async {
++      schemes.add(request.url.scheme);
++      return http.Response(_m3u, 200);
++    });
++    final Playlist saved = await PlaylistRepository.instance.addM3uPlaylist(
++      name: 'Liste test', url: _url, allowHttpCompatibility: true, httpClient: client,
++    );
++    expect(schemes, <String>['https']);
++    expect(saved.m3uUrl, _url);
++  });
++
++  for (final int status in <int>[401, 403]) {
++    test('M3U : HTTP $status ne provoque aucun passage en HTTP', () async {
++      final List<String> schemes = <String>[];
++      final http.Client client = MockClient((http.Request request) async {
++        schemes.add(request.url.scheme);
++        return http.Response('Refus', status);
++      });
++      await expectLater(PlaylistRepository.instance.addM3uPlaylist(
++        name: 'Liste test', url: _url, allowHttpCompatibility: true, httpClient: client,
++      ), throwsException);
++      expect(schemes, isNotEmpty);
++      expect(schemes.toSet(), <String>{'https'});
++      expect(await PlaylistRepository.instance.getAllPlaylists(), isEmpty);
++    });
++  }
++
++  test('M3U : le certificat refusé reste un échec HTTPS', () async {
++    final List<String> schemes = <String>[];
++    final http.Client client = MockClient((http.Request request) async {
++      schemes.add(request.url.scheme);
++      throw const HandshakeException('CERTIFICATE_VERIFY_FAILED');
++    });
++    await expectLater(PlaylistRepository.instance.addM3uPlaylist(
++      name: 'Liste test', url: _url, allowHttpCompatibility: true, httpClient: client,
++    ), throwsException);
++    expect(schemes.toSet(), <String>{'https'});
++    expect(await PlaylistRepository.instance.getAllPlaylists(), isEmpty);
++  });
++
++  test('M3U : un repli HTTP invalide ne tourne pas en boucle et ne reste pas en base', () async {
++    final List<String> schemes = <String>[];
++    final http.Client client = MockClient((http.Request request) async {
++      schemes.add(request.url.scheme);
++      if (request.url.scheme == 'https') {
++        throw const HandshakeException('WRONG_VERSION_NUMBER');
++      }
++      return http.Response('<html>Refus</html>', 200);
++    });
++    await expectLater(PlaylistRepository.instance.addM3uPlaylist(
++      name: 'Liste test', url: _url, allowHttpCompatibility: true, httpClient: client,
++    ), throwsA(isA<SourceProtocolFallbackFailure>()));
++    expect(schemes, <String>['https', 'http']);
++    expect(await PlaylistRepository.instance.getAllPlaylists(), isEmpty);
++  });
++
++  test('get.php passe par Xtream et conserve le serveur HTTP validé', () async {
++    final List<Uri> calls = <Uri>[];
++    final http.Client client = MockClient((http.Request request) async {
++      calls.add(request.url);
++      if (request.url.scheme == 'https') {
++        throw const HandshakeException('WRONG_VERSION_NUMBER');
++      }
++      return _xtreamResponse(request);
++    });
++    final Playlist saved = await http.runWithClient(() => _importGetPhp(client), () => client);
++    expect(saved.xtreamServer, 'http://source.invalid:8080');
++    expect(saved.channelCount, 1);
++    expect(calls.where((Uri u) => u.scheme == 'https'), hasLength(1));
++    expect(calls.where((Uri u) => u.path.endsWith('get.php')), isEmpty);
++    expect((await PlaylistRepository.instance.getAllPlaylists()).single.xtreamServer,
++      'http://source.invalid:8080');
++  });
++
++  test('get.php : un repli HTTP refusé ne lance pas ensuite un import M3U', () async {
++    final List<Uri> calls = <Uri>[];
++    final http.Client client = MockClient((http.Request request) async {
++      calls.add(request.url);
++      if (request.url.scheme == 'https') {
++        throw const HandshakeException('WRONG_VERSION_NUMBER');
++      }
++      return http.Response('Refus', 403);
++    });
++    await expectLater(_importGetPhp(client), throwsA(isA<SourceProtocolFallbackFailure>()));
++    expect(calls, hasLength(2));
++    expect(calls.where((Uri u) => u.path.endsWith('get.php')), isEmpty);
++    expect(await PlaylistRepository.instance.getAllPlaylists(), isEmpty);
++  });
++
++  test('get.php : le budget HTTP reste consommé si les chaînes sont vides', () async {
++    final List<Uri> calls = <Uri>[];
++    final http.Client client = MockClient((http.Request request) async {
++      calls.add(request.url);
++      if (request.url.scheme == 'https') {
++        throw const HandshakeException('WRONG_VERSION_NUMBER');
++      }
++      return _xtreamResponse(request, emptyLive: true);
++    });
++    await expectLater(_importGetPhp(client), throwsA(isA<SourceProtocolFallbackFailure>()));
++    expect(calls.where((Uri u) => u.scheme == 'https'), hasLength(1));
++    expect(calls.where((Uri u) => u.path.endsWith('get.php')), isEmpty);
++    expect(await PlaylistRepository.instance.getAllPlaylists(), isEmpty);
++  });
++
++  for (final String revoked in <String>[_plain, _url]) {
++    test('une suppression de l’identité $revoked pendant le repli gagne', () async {
++      // Un ancien refus peut être levé par ce nouvel ajout volontaire.
++      // Le retrait suivant, pendant le réseau, doit rester définitif.
++      await _rememberM3u(_plain);
++      final http.Client client = MockClient((http.Request request) async {
++        if (request.url.scheme == 'https') {
++          throw const HandshakeException('WRONG_VERSION_NUMBER');
++        }
++        await _rememberM3u(revoked);
++        return http.Response(_m3u, 200);
++      });
++      await expectLater(PlaylistRepository.instance.addM3uPlaylist(
++        name: 'Liste test', url: _url, allowHttpCompatibility: true, httpClient: client,
++      ), throwsA(isA<PlaylistDeletedException>()));
++      expect(await PlaylistRepository.instance.getAllPlaylists(), isEmpty);
++      expect(await PlaylistRepository.instance.getAllChannels(), isEmpty);
++      await _restartSourceStore();
++      expect(await PlaylistRepository.instance.getAllPlaylists(), isEmpty);
++    });
++  }
++
++  test('un réajout volontaire HTTPS vers HTTP reste présent au redémarrage', () async {
++    await _rememberM3u(_plain);
++    // La levée est limitée aux alias de la demande, jamais aux autres listes.
++    await _rememberM3u('http://other.invalid/private.m3u');
++    final http.Client client = MockClient((http.Request request) async {
++      if (request.url.scheme == 'https') {
++        throw const HandshakeException('WRONG_VERSION_NUMBER');
++      }
++      return http.Response(_m3u, 200);
++    });
++    final Playlist saved = await PlaylistRepository.instance.addM3uPlaylist(
++      name: 'Liste test', url: _url, allowHttpCompatibility: true, httpClient: client,
++    );
++    expect(saved.m3uUrl, _plain);
++    await _restartSourceStore();
++    expect((await PlaylistRepository.instance.getAllPlaylists()).single.m3uUrl, _plain);
++    final Database db = await PlaylistDatabase.instance.database;
++    expect(await db.query('deleted_sources'), hasLength(1));
++  });
++
++  test('un retrait Xtream HTTP pendant la vérification interdit l’insertion', () async {
++    await _rememberXtream('http://source.invalid:8080');
++    final List<Uri> calls = <Uri>[];
++    final http.Client client = MockClient((http.Request request) async {
++      calls.add(request.url);
++      if (request.url.scheme == 'https') {
++        throw const HandshakeException('WRONG_VERSION_NUMBER');
++      }
++      await _rememberXtream('http://source.invalid:8080');
++      return _xtreamResponse(request);
++    });
++    await expectLater(_importGetPhp(client), throwsA(isA<SourceProtocolFallbackFailure>()
++      .having((SourceProtocolFallbackFailure e) => e.cause, 'cause', isA<PlaylistDeletedException>())));
++    expect(calls, hasLength(2));
++    expect(await PlaylistRepository.instance.getAllPlaylists(), isEmpty);
++    await _restartSourceStore();
++    expect(await PlaylistRepository.instance.getAllPlaylists(), isEmpty);
++  });
++
++  test('un compte Xtream HTTP supprimé peut être réajouté via son lien HTTPS', () async {
++    await _rememberXtream('http://source.invalid:8080');
++    final http.Client client = MockClient((http.Request request) async {
++      if (request.url.scheme == 'https') {
++        throw const HandshakeException('WRONG_VERSION_NUMBER');
++      }
++      return _xtreamResponse(request);
++    });
++    await http.runWithClient(() => _importGetPhp(client), () => client);
++    await _restartSourceStore();
++    expect((await PlaylistRepository.instance.getAllPlaylists()).single.xtreamServer,
++      'http://source.invalid:8080');
++  });
++}

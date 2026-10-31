@@ -40,14 +40,20 @@ class FeaturedRepository extends ChangeNotifier {
     unawaited(refresh());
   }
 
-  Future<void> refresh() async {
+  Future<void> refresh({bool strict = false}) async {
     try {
       final http.Response resp = await http
           .get(Uri.parse('$kSubscriptionBaseUrl/api/featured'))
           .timeout(const Duration(seconds: 6));
-      if (resp.statusCode != 200) return;
+      if (resp.statusCode != 200) {
+        if (strict) throw StateError('Réglage distant non confirmé');
+        return;
+      }
       final Object? decoded = jsonDecode(resp.body);
-      if (decoded is! Map) return;
+      if (decoded is! Map) {
+        if (strict) throw StateError('Réglage distant non confirmé');
+        return;
+      }
       final String name = (decoded['name'] ?? '').toString();
       final String note = (decoded['note'] ?? '').toString();
       if (name != _name || note != _note) {
@@ -56,7 +62,8 @@ class FeaturedRepository extends ChangeNotifier {
         notifyListeners();
       }
     } catch (e) {
-      if (kDebugMode) debugPrint('[Featured] $e');
+      if (strict) rethrow;
+      if (kDebugMode) debugPrint('[Featured] ${e.runtimeType}');
     }
   }
 }

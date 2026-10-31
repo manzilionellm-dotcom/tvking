@@ -87,7 +87,8 @@ BoxChannelFrame? parseBoxChannelFrame(String raw) {
   if (_hasSecretKey(decoded)) return null;
   final Object? typeRaw = decoded['type'];
   if (typeRaw == 'hello') return null;
-  final int seq = (decoded['seq'] as num?)?.toInt() ?? 0;
+  final Object? seqRaw = decoded['seq'];
+  final int seq = seqRaw is num ? seqRaw.toInt() : 0;
   final String type = typeRaw is String ? typeRaw : '';
   final String mac = decoded['mac'] is String ? decoded['mac'] as String : '';
   if (seq <= 0 || type.isEmpty || !mac.startsWith('MK:')) return null;
@@ -107,7 +108,7 @@ bool channelRefreshesSources(String type) {
 }
 
 /// wss si le backend est en https, ws sinon (le test local).
-Uri boxChannelUri(String base, String mac) {
+Uri boxChannelUri(String base, String mac, {int after = 0}) {
   final Uri http = Uri.parse(base);
   final String scheme = http.scheme == 'https' ? 'wss' : 'ws';
   return Uri(
@@ -115,6 +116,6 @@ Uri boxChannelUri(String base, String mac) {
     host: http.host,
     port: http.hasPort ? http.port : null,
     path: '/api/box/ws',
-    queryParameters: <String, String>{'mac': mac},
+    queryParameters: <String, String>{'mac': mac, if (after > 0) 'after': '$after'},
   );
 }

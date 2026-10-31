@@ -51,7 +51,18 @@ object VideoTrackChoice {
         tracks: List<VideoCandidate>,
         bandwidthBps: Long,
         screenHeightPx: Int,
+        preferMaximum: Boolean = false,
     ): VideoCandidate? {
+        if (tracks.isEmpty()) return null
+        if (preferMaximum) {
+            // Choix explicite : la meilleure définition réellement décodable.
+            // Même déjà sélectionnée, elle doit être épinglée si le groupe est
+            // adaptatif ; sinon Media3 pourrait la redescendre immédiatement.
+            return bestQuality(tracks)
+        }
+        // Un ladder adaptatif accompagné de pistes fixes ne doit jamais être
+        // remplacé par une petite piste annexe. Media3 arbitre alors le flux.
+        if (tracks.any { it.adaptive }) return null
         val fixed = tracks.filter { !it.adaptive }
         if (fixed.size < 2) return null
         val onScreen = fixed.filter { fits(it.height, screenHeightPx) }
@@ -78,7 +89,13 @@ object VideoTrackChoice {
     }
 
     private fun bestQuality(tracks: List<VideoCandidate>): VideoCandidate {
-        return tracks.maxWith(compareBy<VideoCandidate> { it.height }.thenBy { it.bitrate })
+        return tracks.maxWith(
+            compareBy<VideoCandidate> { it.width.toLong() * it.height }
+                .thenBy { it.height }
+                .thenBy { it.frameRate }
+                .thenBy { it.bitrate }
+                .thenBy { it.selected },
+        )
     }
 
     /** La plus légère. Un débit inconnu passe après un débit connu. */

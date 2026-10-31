@@ -40,6 +40,7 @@ import '../../channels/domain/channel.dart';
 import '../../device/data/device_identity.dart';
 import '../../device/data/device_secret.dart';
 import '../../playlists/data/playlist_repository.dart';
+import '../../subscription/data/gold_trial_backend.dart' show isGoldTrialPlaylist;
 import '../core/tv_back_guard.dart';
 import '../../subscription/data/subscription_backend.dart'
     show kSubscriptionBaseUrl;
@@ -113,8 +114,21 @@ class _TvDiagnosticScreenState extends State<TvDiagnosticScreen> {
     if (!mounted) return;
     c.stat = s;
     c.detail = detail;
-    _log('${_glyph(s)} ${c.name(context)} — ${detail(context)}');
+    _log('${_glyph(s)} ${c.name(context)} — ${_publicDetail(c)}');
     if (mounted) setState(() {});
+  }
+
+  // Les sondes gardent leurs détails pour le verdict. Une source d'essai
+  // ne dévoile ni son hôte DNS, ni son IP, ni une exception au client/log.
+  String _publicDetail(_Check check) {
+    if (!PlaylistRepository.instance.currentPlaylists
+        .any((p) => isGoldTrialPlaylist(p.name))) return check.detail(context);
+    return switch (check.stat) {
+      _Stat.ok => 'Vérification réussie.',
+      _Stat.running => 'Vérification en cours…',
+      _Stat.pending => 'En attente.',
+      _ => 'Vérification indisponible.',
+    };
   }
 
   String _glyph(_Stat s) {
@@ -568,7 +582,7 @@ class _TvDiagnosticScreenState extends State<TvDiagnosticScreen> {
                                 ),
                                 const SizedBox(height: 2),
                                 Text(
-                                  c.detail(context),
+                                  _publicDetail(c),
                                   style: TextStyle(
                                     color: _statColor(c.stat),
                                     fontSize: 19,

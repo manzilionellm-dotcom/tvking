@@ -136,7 +136,7 @@ abstract final class RemoteSourceRepository {
         'SOURCE',
         'liste $kind du panel refusée après $secs s : ${shortReason(e)}',
       );
-      if (kDebugMode) debugPrint('[RemoteSource] $kind KO: $e');
+      if (kDebugMode) debugPrint('[RemoteSource] $kind KO: ${e.runtimeType}');
       return RemoteSyncResult.sourceFailed;
     } finally {
       importing.value = false;
@@ -203,10 +203,12 @@ abstract final class RemoteSourceRepository {
     final int? id = playlist.id;
     if (id == null) return false;
     try {
-      await DeletedSources.remember(SourceFingerprint.ofPlaylist(playlist));
-      await PlaylistRepository.instance.deletePlaylist(id);
+      // deletePlaylist persiste déjà tous les alias de la ligne avant le
+      // vidage de l'écran. Ne pas refaire une transaction identique ici.
+      await PlaylistRepository.instance.deletePlaylist(id,
+        additionalFingerprints: SourceFingerprint.ofPlaylist(playlist));
     } catch (e) {
-      BlackBox.instance.warn('SOURCE', 'suppression locale impossible : $e');
+      BlackBox.instance.warn('SOURCE', 'suppression locale impossible : ${e.runtimeType}');
       return false;
     }
     await _serial(() => _deleteFromTv(playlist, client: client));
@@ -271,19 +273,26 @@ abstract final class RemoteSourceRepository {
           return true;
       }
     } catch (e) {
-      BlackBox.instance.warn('SOURCE', 'copie serveur non retirée ; suppression locale conservée : $e');
+      BlackBox.instance.warn('SOURCE', 'copie serveur non retirée ; suppression locale conservée : ${e.runtimeType}');
       return false;
     } finally {
       if (client == null) c.close();
     }
   }
 
-  static Future<RemoteSyncResult> sync({bool force = false}) {
+  static Future<RemoteSyncResult> sync({
+    bool force = false,
+    Set<String> alreadyRevoked = const <String>{},
+  }) {
+    // Uniquement les suppressions achevées dans la même passe de statut.
+    // Copie immédiate : l'appelant ne peut modifier cette preuve pendant
+    // l'attente de la file. Un redémarrage repart toujours d'un ensemble vide.
+    final Set<String> appliedRevocations = Set<String>.of(alreadyRevoked);
     return _serial(() async {
       _lastConfigRev = null;
       _lastError = null;
       _lastKeptPrevious = false;
-      final RemoteSyncResult r = await _syncBody(force: force);
+      final RemoteSyncResult r = await _syncBody(force: force, alreadyRevoked: appliedRevocations);
       // Rapport de CETTE lecture, lu par l'accusé de l'ordre (order_ack.dart).
       lastReport = SourceSyncReport(
         result: r.name,
@@ -330,13 +339,18 @@ abstract final class RemoteSourceRepository {
     Map<String, SourceFailure> failures,
   ) async {
     try {
-      await prefs.setString(
-        failuresKey,
-        jsonEncode(<String, Object?>{
+      final String? previous = prefs.getString(failuresKey);
+      // Absence et chaîne vide sont déjà lues comme « aucun échec ».
+      // Ne pas bloquer le premier import sain sur un commit natif de '{}'.
+      // Une ancienne carte non vide doit en revanche être vraiment vidée.
+      if (failures.isEmpty && (previous == null || previous.isEmpty)) return;
+      final String next = jsonEncode(<String, Object?>{
           for (final MapEntry<String, SourceFailure> e in failures.entries)
             e.key: e.value.toJson(),
-        }),
-      );
+        });
+      if (previous != next) {
+        await prefs.setString(failuresKey, next);
+      }
     } catch (_) {
       // La mémoire reste celle du tour précédent.
     }
@@ -353,7 +367,10 @@ abstract final class RemoteSourceRepository {
     return _wipeFingerprints(revoked.toSet());
   }
 
-  static Future<RemoteSyncResult> _syncBody({bool force = false}) async {
+  static Future<RemoteSyncResult> _syncBody({
+    bool force = false,
+    Set<String> alreadyRevoked = const <String>{},
+  }) async {
     try {
       final String mac = await DeviceIdentity.instance.mac;
       if (!mac.startsWith('MK:')) return RemoteSyncResult.noSource;
@@ -392,9 +409,10 @@ abstract final class RemoteSourceRepository {
       final _ReconcilePlan reconcile = await _planReconcile(body);
       // Une révocation explicite prime sur la conservation de l'ancienne
       // liste quand sa remplaçante échoue. Elle part avant tout téléchargement.
-      await _wipeFingerprints(reconcile.revoked);
+      await _wipeFingerprints(reconcile.revoked.difference(alreadyRevoked));
+      final Set<String> alreadyRemoved = <String>{...alreadyRevoked, ...reconcile.revoked};
       final bool dropFirst = RepairFlags.sourceDropFirstLegacy;
-      if (dropFirst) await _finishReconcile(reconcile, keepOld: false);
+      if (dropFirst) await _finishReconcile(reconcile, keepOld: false, alreadyRemoved: alreadyRemoved);
       int servedCount = 0;
       bool anyLoaded = false;
       RemoteSyncResult outcome = RemoteSyncResult.noSource;
@@ -477,6 +495,7 @@ abstract final class RemoteSourceRepository {
       if (!dropFirst) {
         await _finishReconcile(
           reconcile,
+          alreadyRemoved: alreadyRemoved,
           keepOld: keepOldLists(
             dropCount: reconcile.drop.length,
             servedCount: servedCount,
@@ -487,8 +506,8 @@ abstract final class RemoteSourceRepository {
       }
       return outcome;
     } catch (e) {
-      if (kDebugMode) debugPrint('[RemoteSource] sync error: $e');
-      BlackBox.instance.warn('PANEL', 'device-source injoignable : $e');
+      if (kDebugMode) debugPrint('[RemoteSource] sync error: ${e.runtimeType}');
+      BlackBox.instance.warn('PANEL', 'device-source injoignable : ${e.runtimeType}');
       return RemoteSyncResult.networkError;
     }
   }
@@ -497,6 +516,7 @@ abstract final class RemoteSourceRepository {
   static Future<List<Map<String, dynamic>>> _withoutRefused(
     List<Map<String, dynamic>> served,
   ) async {
+    if (served.isEmpty) return const <Map<String, dynamic>>[];
     final Set<String> deleted = await DeletedSources.read();
     final List<Map<String, dynamic>> kept = <Map<String, dynamic>>[];
     for (final Map<String, dynamic> item in served) {
@@ -537,7 +557,7 @@ abstract final class RemoteSourceRepository {
         await RecentlyWatchedRepository.instance.seedIfEmpty(ids);
       }
     } catch (e) {
-      if (kDebugMode) debugPrint('[RemoteSource] history sync error: $e');
+      if (kDebugMode) debugPrint('[RemoteSource] history sync error: ${e.runtimeType}');
     }
   }
 
@@ -713,6 +733,7 @@ abstract final class RemoteSourceRepository {
   static Future<void> _finishReconcile(
     _ReconcilePlan plan, {
     required bool keepOld,
+    Set<String> alreadyRemoved = const <String>{},
   }) async {
     if (keepOld) {
       _lastKeptPrevious = true;
@@ -722,8 +743,12 @@ abstract final class RemoteSourceRepository {
         'refusée, nouvel essai au tour suivant',
       );
     } else {
-      await _wipeFingerprints(plan.drop);
-      await plan.prefs.setStringList(rememberedKey, plan.current.toList());
+      await _wipeFingerprints(plan.drop.difference(alreadyRemoved));
+      final Set<String> remembered =
+          (plan.prefs.getStringList(rememberedKey) ?? const <String>[]).toSet();
+      if (!setEquals(remembered, plan.current)) {
+        await plan.prefs.setStringList(rememberedKey, plan.current.toList());
+      }
     }
     if (!RepairFlags.panelVisibilityOff) {
       await _applyPanelVisibility(plan.prefs, plan.currentMaps);
@@ -781,7 +806,16 @@ abstract final class RemoteSourceRepository {
       }
     }
     try {
-      await prefs.setString(panelOffKey, jsonEncode(plan.nextApplied));
+      final String? previous = prefs.getString(panelOffKey);
+      // Sans ancien masquage, rien n'a changé : l'absence signifie déjà
+      // une carte vide. Après un vrai rallumage, persister son effacement.
+      if (plan.nextApplied.isEmpty && (previous == null || previous.isEmpty)) {
+        return;
+      }
+      final String next = jsonEncode(plan.nextApplied);
+      if (previous != next) {
+        await prefs.setString(panelOffKey, next);
+      }
     } catch (_) {}
   }
 
@@ -791,9 +825,11 @@ abstract final class RemoteSourceRepository {
   /// Renvoie le nombre de listes vraiment retirées.
   static Future<int> _wipeFingerprints(Set<String> drop) async {
     if (drop.isEmpty) return 0;
+    final Stopwatch watch = Stopwatch()..start();
     // Même si la liste n'a pas fini de se charger ou n'existe plus en DB,
     // une vieille sauvegarde / réponse réseau ne doit pas la recréer.
     await DeletedSources.remember(drop);
+    final int refusedAt = watch.elapsedMilliseconds;
     final List<Playlist> playlists =
         await PlaylistRepository.instance.getAllPlaylists();
     int removed = 0;
@@ -809,23 +845,59 @@ abstract final class RemoteSourceRepository {
       await PlaylistRepository.instance.deletePlaylist(
         id,
         reason: 'plus envoyée par le panel',
+        additionalFingerprints: SourceFingerprint.ofPlaylist(playlist),
       );
       removed++;
     }
+    final int deletedAt = watch.elapsedMilliseconds;
     if (channelIds.isNotEmpty) {
-      await FavoritesRepository.instance.forgetChannels(channelIds);
-      await RecentlyWatchedRepository.instance.forgetChannels(channelIds);
-      await _forgetSessions(channelIds);
+      // Un même identifiant peut exister dans une autre liste conservée.
+      // Ses favoris/récents/sessions restent alors utiles et doivent rester.
+      final List<String> gone = await _unreferencedChannelIds(channelIds);
+      if (gone.isNotEmpty) {
+        // Dépôts indépendants ; toutes les transactions restent attendues
+        // avant que l'ordre puisse être accusé APPLIED.
+        await Future.wait<void>(<Future<void>>[
+          FavoritesRepository.instance.forgetChannels(gone, onlyUnreferenced: true),
+          RecentlyWatchedRepository.instance.forgetChannels(gone, onlyUnreferenced: true),
+          _forgetSessions(gone),
+        ]);
+      }
     }
     if (removed > 0) {
-      final List<Playlist> left =
-          await PlaylistRepository.instance.getAllPlaylists();
+      final Database db = await PlaylistDatabase.instance.database;
+      final List<Map<String, Object?>> left = await db.query(
+        'playlists', columns: const <String>['id'], limit: 1,
+      );
       RemovedListNotice.instance.signal(
         removed: removed,
         noneLeft: left.isEmpty,
       );
+      BlackBox.instance.info('SOURCE',
+        'suppression durable : $removed liste(s), refus ${refusedAt}ms, '
+        'SQLite/cache ${deletedAt - refusedAt}ms, '
+        'références ${watch.elapsedMilliseconds - deletedAt}ms');
     }
     return removed;
+  }
+
+  static Future<List<String>> _unreferencedChannelIds(List<String> ids) async {
+    final Set<String> gone = ids.toSet();
+    final List<String> unique = gone.toList();
+    final Database db = await PlaylistDatabase.instance.database;
+    const int chunk = 400;
+    for (int i = 0; i < unique.length; i += chunk) {
+      final List<String> part = unique.sublist(
+        i, i + chunk > unique.length ? unique.length : i + chunk,
+      );
+      final String marks = List<String>.filled(part.length, '?').join(',');
+      final List<Map<String, Object?>> rows = await db.query(
+        'channels', columns: const <String>['external_id'], distinct: true,
+        where: 'external_id IN ($marks)', whereArgs: part,
+      );
+      gone.removeAll(rows.map((Map<String, Object?> row) => row['external_id'] as String));
+    }
+    return gone.toList();
   }
 
   static Future<List<String>> _channelIdsOf(int playlistId) async {
@@ -853,7 +925,8 @@ abstract final class RemoteSourceRepository {
       final String marks = List<String>.filled(part.length, '?').join(',');
       await db.delete(
         'watch_sessions',
-        where: 'channel_id IN ($marks)',
+        where: 'channel_id IN ($marks) AND NOT EXISTS '
+          '(SELECT 1 FROM channels WHERE external_id = watch_sessions.channel_id)',
         whereArgs: part,
       );
     }

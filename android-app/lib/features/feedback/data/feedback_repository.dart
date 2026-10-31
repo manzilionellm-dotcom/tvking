@@ -34,23 +34,30 @@ class FeedbackRepository {
 
   /// Relit l'invitation. Appelé quand le panel vient d'en poser une,
   /// sans attendre le prochain démarrage de l'app.
-  Future<void> reload() async {
+  Future<void> reload({bool strict = false}) async {
     _initialized = true;
-    await _fetch();
+    await _fetch(strict: strict);
   }
 
-  Future<void> _fetch() async {
+  Future<void> _fetch({bool strict = false}) async {
     try {
       final http.Response resp = await http
           .get(Uri.parse('$kSubscriptionBaseUrl/api/feedback-prompt'))
           .timeout(const Duration(seconds: 5));
-      if (resp.statusCode != 200) return;
+      if (resp.statusCode != 200) {
+        if (strict) throw StateError('Réglage distant non confirmé');
+        return;
+      }
       final Object? d = jsonDecode(resp.body);
-      if (d is! Map) return;
+      if (d is! Map) {
+        if (strict) throw StateError('Réglage distant non confirmé');
+        return;
+      }
       _enabled = d['enabled'] == true;
       _message = (d['message'] ?? '').toString();
     } catch (e) {
-      if (kDebugMode) debugPrint('[Feedback] $e');
+      if (strict) rethrow;
+      if (kDebugMode) debugPrint('[Feedback] ${e.runtimeType}');
     }
   }
 

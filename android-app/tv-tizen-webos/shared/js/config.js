@@ -2,14 +2,14 @@
 //  config.js — Configuration globale de DeFew TV (Tizen / webOS)
 // =========================================================
 //  App web pour Samsung (Tizen) et LG (webOS). MÊME backend que les apps
-//  Android (app.7themotion.com) : activation par MAC, source poussée par le
+//  Android (api.zuno8k.com) : activation par MAC, source poussée par le
 //  panel, statut d'abonnement. Aucune URL IPTV en dur (règle AGENTS.md).
 // =========================================================
 window.DFT = window.DFT || {};
 
 DFT.config = {
   // Backend Cloudflare — IDENTIQUE aux apps mobiles/TV Android.
-  apiBase: 'https://app.7themotion.com',
+  apiBase: 'https://api.zuno8k.com',
   appName: 'DeFew TV',
   // Extension des flux Xtream Live. La plupart des serveurs servent du MPEG-TS
   // (.ts) ; certains préfèrent le HLS (.m3u8). Si l'image ne démarre pas,

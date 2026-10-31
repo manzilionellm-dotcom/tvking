@@ -13,17 +13,15 @@
 //  partageront le meme domaine racine (Phase 2).
 // =========================================================
 
+import { resolvePanelApiBase, type DeliveryOrder } from './deliveryStatus';
+
 const TOKEN_KEY = 'auth_token';
 
 /// URL de base de l'API. En production le panel est servi par
 /// Cloudflare Pages sur un sous-domaine (ex: admin.7themotion.com)
 /// et l'API tourne sur seven-motion-backend.workers.dev. On garde
 /// la config configurable via VITE_API_BASE.
-const API_BASE: string =
-  (import.meta.env.VITE_API_BASE as string | undefined) ||
-  // Defaut prod : meme origin (si le Worker sert aussi le panel)
-  // ou un domaine connu. En dev le proxy Vite redirige /api → :8787.
-  '';
+export const API_BASE = resolvePanelApiBase(import.meta.env.VITE_API_BASE, import.meta.env.PROD);
 
 /// Lien de TÉLÉCHARGEMENT de l'app à donner au client. Domaine propre
 /// dédié (app.7themotion.com → route /vip du Worker, proxy du dernier
@@ -62,6 +60,7 @@ export class ApiError extends Error {
 }
 
 interface RequestOpts {
+  signal?: AbortSignal;
   method?: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
   body?: unknown;
   /// Si true, n'attache pas le token (utilise par /auth/login).
@@ -79,13 +78,26 @@ async function request<T = unknown>(
     const token = getToken();
     if (token) headers.Authorization = `Bearer ${token}`;
   }
-  const resp = await fetch(`${API_BASE}${path}`, {
-    method: opts.method || 'GET',
-    headers,
-    body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
-  });
-
-  const text = await resp.text();
+  const controller = new AbortController();
+  const cancel = () => controller.abort();
+  if (opts.signal?.aborted) cancel();
+  else opts.signal?.addEventListener('abort', cancel, { once: true });
+  // Une réponse perdue ne doit ni laisser le formulaire figé indéfiniment,
+  // ni provoquer une répétition automatique d'une opération payante.
+  const timeout = setTimeout(cancel, opts.method && opts.method !== 'GET' ? 60_000 : 15_000);
+  let resp: Response;
+  let text: string;
+  try {
+    resp = await fetch(`${API_BASE}${path}`, {
+      cache: 'no-store', signal: controller.signal,
+      method: opts.method || 'GET', headers,
+      body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
+    });
+    text = await resp.text();
+  } finally {
+    clearTimeout(timeout);
+    opts.signal?.removeEventListener('abort', cancel);
+  }
   let json: any = null;
   try { json = text ? JSON.parse(text) : null; } catch { /* non-JSON */ }
 
@@ -98,8 +110,66 @@ async function request<T = unknown>(
     }
     throw new ApiError(resp.status, code, msg);
   }
+  if (json === null) {
+    throw new ApiError(502, 'invalid_api_response', 'Le panel ne reçoit pas la réponse de l’API. Vérifiez sa connexion au serveur.');
+  }
   return json as T;
 }
+
+// Contrôle additif de l'essai. L'historique historique reste lu via gold.js.
+export interface GoldTrialEvent {
+  id?: number;
+  mac?: string;
+  event?: string;
+  reason?: string | null;
+  state?: string;
+  created_at: number;
+  expire?: number | null;
+  line_id?: string | null;
+  ip?: string;
+  app_version?: string;
+}
+export interface GoldTrialSettings {
+  gold_trial_enabled: boolean;
+  daily_cap: number;
+  revision: number;
+  updated_at: number;
+}
+export interface GoldTrialSnapshot extends GoldTrialSettings {
+  integration_ready: boolean;
+  recent: GoldTrialEvent[];
+  blockers?: string[];
+  keys?: { id: string; label: string; effective_priority: number; trial_cap_per_day: number | null;
+    trials_today: number; demo_tickets: number | null; contract_verified: boolean }[];
+}
+export const goldTrialApi = {
+  snapshot: (signal?: AbortSignal) => request<GoldTrialSnapshot>('/api/v1/gold/trial-control', { signal }),
+  save: (settings: Pick<GoldTrialSettings, 'gold_trial_enabled' | 'daily_cap' | 'revision'>) =>
+    request<GoldTrialSettings>('/api/v1/gold/trial-control', { method: 'PUT', body: settings }),
+  events: (mac: string, before: number | null, signal?: AbortSignal) =>
+    request<{ history: GoldTrialEvent[]; next_before: number | null }>(
+      `/api/v1/gold/trial-control/history?mac=${encodeURIComponent(mac)}${before ? `&before=${before}` : ''}`, { signal }),
+  history: (mac: string, signal?: AbortSignal, before?: string | null) =>
+    request<{ trial_used: boolean; lines: unknown[]; history: unknown[]; next_before?: string | null }>(
+      `/api/v1/gold/history?mac=${encodeURIComponent(mac)}${before ? `&before=${encodeURIComponent(before)}` : ''}`, { signal }),
+};
+
+export interface GoldenOrder {
+  id: string; mac: string; sub: number; bouquet_id: string; bouquet_name: string;
+  key_label: string; cost: number; credits_before: number; credits_after: number | null;
+  quote_until: number; state: 'quoted' | 'preparing' | 'creating' | 'uncertain' | 'created' | 'delivering' | 'delivered' | 'refused';
+  provider_created_at: number | null; delivered_at: number | null;
+  source_order_id: string | null; license_order_id: string | null; error_code: string | null;
+}
+export const goldenApi = {
+  templates: (signal?: AbortSignal) => request<{items:{id:string;name:string}[]}>('/api/v1/gold/golden/templates',{signal}),
+  status: (mac: string,signal?: AbortSignal) => request<{order:GoldenOrder|null}>(`/api/v1/gold/golden?mac=${encodeURIComponent(mac)}`,{signal}),
+  quote: (mac: string,sub: number,bouquet_id: string) => request<{order:GoldenOrder}>('/api/v1/gold/golden/quote',
+    {method:'POST',body:{mac,sub,bouquet_id}}),
+  confirm: (quote: GoldenOrder) => request<{order:GoldenOrder}>('/api/v1/gold/golden/confirm',
+    {method:'POST',body:{quote_id:quote.id,confirmed:true,confirmed_cost:quote.cost}}),
+  deliver: (id: string) => request<{order:GoldenOrder}>('/api/v1/gold/golden/deliver',{method:'POST',body:{order_id:id}}),
+};
 
 // =========================================================
 //  Endpoints typees
@@ -377,7 +447,7 @@ export const devicesApi = {
 };
 
 export interface BoxLiveOrder {
-  id: number;
+  id: number | string;
   kind: string;
   created_at?: number;
   applied_at?: number;
@@ -398,6 +468,7 @@ export interface BoxLiveRow {
 }
 /// État en direct, sans recharger la page. Le JWT du panel est exigé.
 export const boxesApi = {
+  ticket: () => request<{ ticket: string }>('/api/v1/rt/ticket', { method: 'POST' }),
   live: (mac?: string) =>
     request<{ now: number; items: BoxLiveRow[] }>(
       `/api/v1/boxes/live${mac ? `?mac=${encodeURIComponent(mac)}` : ''}`,
@@ -517,6 +588,8 @@ export const creditsApi = {
 };
 
 export interface ActivateResult {
+  order_id?: string | null;
+  trace_id?: string | null;
   ok: boolean;
   license_id: string;
   device_id: string;
@@ -542,6 +615,28 @@ export interface DeviceSource extends DeviceSourceInput {
   mac?: string;
   updated_at?: number;
 }
+
+export interface SourceWriteResult {
+  ok: boolean;
+  mac: string;
+  count?: number;
+  rev?: number;
+  order_id?: string | null;
+  trace_id?: string | null;
+}
+
+export interface ActivationDelivery {
+  stage: 'waiting' | 'preparing' | 'source_saved' | 'renewed' | 'skipped' | 'failed';
+  order_id?: string | null;
+  message: string;
+}
+
+export const deliveryApi = {
+  orders: (mac: string, signal?: AbortSignal) =>
+    request<{ items: DeliveryOrder[] }>(`/api/v1/orders?mac=${encodeURIComponent(mac)}`, { signal }),
+  activation: (mac: string, trace: string, signal?: AbortSignal) =>
+    request<ActivationDelivery>(`/api/v1/activation-delivery?mac=${encodeURIComponent(mac)}&trace=${encodeURIComponent(trace)}`, { signal }),
+};
 
 export const activateApi = {
   // Active une MAC (owner ou revendeur). Cree/renouvelle la licence et
@@ -578,7 +673,7 @@ export const sourcesApi = {
   // TRIO : pousse 1 à 3 sources d'un coup sur une même MAC. Le client
   // les charge toutes et bascule entre elles dans l'app.
   setMany: (mac: string, sources: DeviceSourceInput[]) =>
-    request<{ ok: boolean; mac: string; count: number }>(
+    request<SourceWriteResult>(
       `/api/v1/sources/${encodeURIComponent(mac)}`,
       { method: 'PUT', body: { sources } },
     ),

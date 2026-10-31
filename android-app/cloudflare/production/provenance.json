@@ -1,0 +1,10 @@
+{
+  "archive_sha256": "a59522fba4e2c4bfb289fff04c8b8cff837ac23273dd86ffc5c7daca22155de9",
+  "version": "a3f55171-173c-4a91-bfa9-1a347db085a4",
+  "deployed_at": "2026-10-26T17:59:53Z",
+  "sha256": {
+    "gold.original.js": "ff9cd709565169eef17a0b14ec7138f580bcf1e99e6fb838bfa1f3ebf38e6f96",
+    "worker.js": "ad08c5e6516c5741b686661e8ed35d16c1f9d1b20aadc164e14dc9a49628f71c",
+    "schema.sql": "3512f4d72437043398ad83fc141008f42e087bd696c0fe4b038676e6081c0ae6"
+  }
+}

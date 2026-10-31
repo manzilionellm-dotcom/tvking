@@ -1,3 +1,4 @@
+import 'features/cast/data/cast_platform.dart';
 // =========================================================
 //  main_tv.dart — Point d'entrée DeFew TV (Android TV / Fire TV)
 // =========================================================
@@ -110,6 +111,7 @@ Future<void> bootstrapZunoTv({Widget Function(Widget app)? wrap}) async {
   // Cette app est la version TÉLÉVISION → le heartbeat enverra
   // platform='tv' et le panel l'affichera comme 📺 (vs 📱 mobile).
   AppPlatform.isTv = true;
+  await CastPlatform.initializeZuno();
 
   // MISE À JOUR IN-APP : la TV ne regarde QUE sa propre release (zuno-tv),
   // publiée par build-zuno-tv.yml (version.json + zuno-tv.apk). Même clé de

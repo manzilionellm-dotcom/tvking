@@ -447,7 +447,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             keyboardType: TextInputType.url,
             autocorrect: false,
             decoration: const InputDecoration(
-              hintText: 'https://seven-motion-backend.X.workers.dev',
+              hintText: 'https://api.zuno8k.com',
             ),
           ),
           const SizedBox(height: 10),

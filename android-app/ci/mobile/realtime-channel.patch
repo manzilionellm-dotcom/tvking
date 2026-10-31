@@ -1,0 +1,742 @@
+diff --git a/lib/core/app/panel_live_wait.dart b/lib/core/app/panel_live_wait.dart
+index 1802a7f..2c5cb4a 100644
+--- a/lib/core/app/panel_live_wait.dart
++++ b/lib/core/app/panel_live_wait.dart
+@@ -1,35 +1,10 @@
+-// =========================================================
+-//  panel_live_wait.dart — le panel joint le téléphone À L'INSTANT
+-// =========================================================
+-//  POURQUOI CE FICHIER EXISTE (06/10/2026).
+-//
+-//  Mesuré par le propriétaire sur son téléphone (MK:30:70:0E:D7:5B) :
+-//  « Effacer les listes » dans le panel → le serveur ne sert plus aucune
+-//  liste (0/3), mais le téléphone garde ses listes. Ajouter une liste →
+-//  « Pas encore de chaînes ». Le téléphone ne lisait le panel qu'à
+-//  l'ouverture, au réveil (foreground_sync.dart) et toutes les 60 s :
+-//  rien n'était instantané.
+-//
+-//  La box, elle, écoute le serveur en direct. Ici, le même canal en sa
+-//  forme la plus simple : l'ATTENTE LONGUE du Worker
+-//    GET /api/box/wait/<MAC>?after=<dernier numéro>&timeout=25000
+-//  Le serveur garde la requête ouverte jusqu'à 25 s et répond DÈS qu'un
+-//  ordre part pour cette MAC (liste ajoutée, retirée, éteinte, effacée,
+-//  activation…). Le téléphone relit alors ses listes et sa licence tout
+-//  de suite, par le chemin habituel (RemoteSourceRepository.sync, qui
+-//  porte aussi les ordres et l'effacement du panel).
+-//
+-//  Règles :
+-//    • seulement app au premier plan (batterie, données) ;
+-//    • une seule relecture à la fois ; un ordre qui arrive pendant une
+-//      relecture en relance UNE après (rien n'est perdu, pas de rafale) ;
+-//    • serveur sans canal (404) → on s'arrête, le minuteur de 60 s reste ;
+-//    • panne réseau → réessai après 2, 4, 8… 30 s ;
+-//    • aucun secret dans la requête ni dans le journal (MAC + numéro).
+-//  Repli : préférence `zuno.mobile.live_wait_off` = vrai → pas d'écoute.
+-// =========================================================
++// Synchronisation du téléphone : le WebSocket authentifié de RealtimeSyncService
++// et le repli HTTP partagent la même file d'ordres et le même curseur par MAC.
++// Une coupure déclenche une interrogation toutes les 5 s. L'ordre reste
++// rejouable tant que l'état local ET son accusé ne sont pas confirmés.
++// Aucun secret ni identifiant fournisseur dans les trames ou les journaux.
+ import 'dart:async';
+ import 'dart:convert';
+
+ import 'package:flutter/foundation.dart';
+ import 'package:flutter/widgets.dart';
+@@ -40,10 +15,11 @@ import 'package:package_info_plus/package_info_plus.dart';
+ import '../../features/device/data/device_identity.dart';
+ import '../../features/device/data/device_secret.dart';
+ import '../../features/playlists/data/remote_source_repository.dart';
+ import '../../features/subscription/data/subscription_backend.dart';
+ import '../../features/subscription/data/subscription_state.dart';
++import '../../features/simple_home/data/announcement_repository.dart';
+
+ /// Préférence de repli : vrai = pas d'écoute en direct (ancien comportement).
+ const String kLiveWaitOffKey = 'zuno.mobile.live_wait_off';
+
+ /// Préfixe du dernier numéro d'ordre traité, propre à CHAQUE MAC.
+@@ -87,11 +63,11 @@ LiveWaitStep readLiveWait(Object? body, int cursor) {
+ }
+
+ /// Délai avant de réessayer après [failures] échecs d'affilée.
+ Duration liveWaitBackoff(int failures) {
+   if (failures <= 0) return Duration.zero;
+-  final int s = 1 << (failures.clamp(1, 5)); // 2, 4, 8, 16, 32
++  final int s = 1 << (failures.clamp(1, 6) - 1); // 1, 2, 4, 8, 16, 30
+   return Duration(seconds: s > 30 ? 30 : s);
+ }
+
+ class PanelLiveWait with WidgetsBindingObserver {
+   PanelLiveWait._();
+@@ -105,10 +81,17 @@ class PanelLiveWait with WidgetsBindingObserver {
+
+   static Future<void> _defaultOnChange() async {
+     if (!await SubscriptionState.instance.refreshAfterPanel()) {
+       throw StateError('statut non confirmé après l’ordre');
+     }
++    // Une suspension réussie ferme volontairement la lecture des sources.
++    // Elle doit être accusée après le verrouillage local, sans lire des codes
++    // désormais interdits. Un ordre de liste attendra un accès rétabli.
++    if (SubscriptionState.instance.remote.shouldBlock) {
++      RemoteSourceRepository.lastConfigRev = null;
++      return;
++    }
+     final RemoteSyncResult result = await RemoteSourceRepository.sync();
+     // sync() rend un résultat, elle ne lève pas en cas de panne. Sans
+     // ce contrôle, une suppression reçue pendant une coupure réseau
+     // était marquée « traitée » avant d'avoir été appliquée localement.
+     if (result == RemoteSyncResult.networkError ||
+@@ -121,10 +104,45 @@ class PanelLiveWait with WidgetsBindingObserver {
+
+   bool _installed = false;
+   bool _running = false;
+   int _generation = 0;
+   http.Client? _client;
++  bool socketOnline = false;
++  int _cursor = 0;
++  String? _cursorMac;
++  Future<void> _ordersTail = Future<void>.value();
++
++  Future<int> cursorFor(String mac) async {
++    if (_cursorMac != mac) {
++      _cursorMac = mac;
++      _cursor = (await SharedPreferences.getInstance()).getInt(liveWaitCursorKey(mac)) ?? 0;
++    }
++    return _cursor;
++  }
++
++  /// Le WebSocket et le repli partagent UNE file et UN curseur durable.
++  Future<void> acceptSocketFrame(Map<String, dynamic> frame) async {
++    final String mac = await DeviceIdentity.instance.mac;
++    if (frame['mac'] != mac || frame['seq'] is! num) return;
++    await _consume(<String, Object?>{'box': <Object?>[<String, Object?>{
++      'id': frame['seq'], 'kind': frame['type'], 'order_id': frame['order_id'],
++    }]}, mac, _generation);
++  }
++
++  Future<void> _consume(Object? body, String mac, int gen) {
++    final Future<void> operation = _ordersTail.then((_) async {
++      final int cursor = await cursorFor(mac);
++      final LiveWaitStep step = readLiveWait(body, cursor);
++      if (!step.changed || gen != _generation) return;
++      await _applyTracked(body, cursor, mac, gen);
++      if (gen != _generation || await DeviceIdentity.instance.mac != mac) return;
++      _cursor = step.cursor;
++      await (await SharedPreferences.getInstance()).setInt(liveWaitCursorKey(mac), _cursor);
++    });
++    _ordersTail = operation.then<void>((_) {}, onError: (Object _, StackTrace __) {});
++    return operation;
++  }
+
+   Future<void>? _syncing;
+   bool _again = false;
+
+   /// Accusé du protocole réellement déployé (box_orders), sans identifiants
+@@ -170,11 +188,19 @@ class PanelLiveWait with WidgetsBindingObserver {
+           'received_at': received, 'app_version': version,
+         },
+       ]));
+     }
+     try {
+-      await trigger();
++      final List<dynamic> commands = body is Map && body['box'] is List ? body['box'] as List<dynamic> : <dynamic>[];
++      if (commands.any((dynamic item) => item is Map && item['kind'] != 'message')) await trigger();
++      if (tracked.any((item) => <String>{'source', 'source_clear', 'reset'}.contains(item['kind'])) &&
++          RemoteSourceRepository.lastConfigRev == null) {
++        throw StateError('révision des listes non appliquée');
++      }
++      if (commands.any((dynamic item) => item is Map && item['kind'] == 'message')) {
++        await AnnouncementRepository.refreshFromPanel();
++      }
+       if (gen != _generation) throw StateError('veille arrêtée');
+       final bool confirmed = await _ack(mac, <Map<String, Object?>>[
+         for (final item in tracked) <String, Object?>{
+           'order_id': item['order_id'], 'state': 'applied',
+           'received_at': received, 'applied_at': DateTime.now().millisecondsSinceEpoch,
+@@ -213,10 +239,11 @@ class PanelLiveWait with WidgetsBindingObserver {
+     }
+   }
+
+   void start() {
+     if (_running) return;
++    _cursorMac = null;
+     _running = true;
+     final int gen = ++_generation;
+     unawaited(_loop(gen));
+   }
+
+@@ -255,80 +282,43 @@ class PanelLiveWait with WidgetsBindingObserver {
+       _syncing = null;
+     }
+   }
+
+   Future<void> _loop(int gen) async {
+-    int failures = 0;
+-    int cursor = 0;
+-    String? cursorMac;
+     while (_running && gen == _generation) {
+-      final String mac = await DeviceIdentity.instance.mac;
+-      if (gen != _generation) return;
+-      if (!mac.startsWith('MK:')) {
+-        _running = false;
+-        return;
+-      }
+-      if (cursorMac != mac) {
+-        cursorMac = mac;
+-        cursor = 0;
+-        failures = 0;
++      final DateTime next = DateTime.now().add(const Duration(seconds: 5));
++      if (!socketOnline) {
++        final http.Client client = clientFactory();
++        _client = client;
++        bool received = false;
+         try {
+-          cursor =
+-              (await SharedPreferences.getInstance()).getInt(
+-                liveWaitCursorKey(mac),
+-              ) ??
+-              0;
+-        } catch (_) {}
+-        if (gen != _generation) return;
+-      }
+-      final http.Client client = clientFactory();
+-      _client = client;
+-      try {
+-        final Uri uri = Uri.parse(
+-          '$kSubscriptionBaseUrl/api/box/wait/$mac?after=$cursor&timeout=25000',
+-        );
+-        final http.Response resp = await client
+-            .get(
+-              uri,
+-              headers: await DeviceSecret.instance.headers(),
+-            )
+-            .timeout(const Duration(seconds: 40));
+-        if (gen != _generation) return;
+-        if (resp.statusCode == 404) {
+-          // Serveur sans canal : le minuteur de 60 s reste le filet.
+-          if (kDebugMode) debugPrint('[PanelLiveWait] pas de canal (404)');
+-          _running = false;
+-          return;
+-        }
+-        if (resp.statusCode != 200) throw StateError('HTTP ${resp.statusCode}');
+-        final Object? body = jsonDecode(resp.body);
+-        final LiveWaitStep step = readLiveWait(body, cursor);
+-        // Le serveur conserve le signal dans son anneau. On attend la
+-        // vraie relecture AVANT d'avancer le curseur : un échec rejoue
+-        // le même ordre après backoff au lieu de le perdre jusqu'au poll.
+-        if (step.changed) await _applyTracked(body, cursor, mac, gen);
+-        if (gen != _generation) return;
+-        final String currentMac = await DeviceIdentity.instance.mac;
+-        if (gen != _generation) return;
+-        if (currentMac != mac) continue;
+-        failures = 0;
+-        if (step.cursor != cursor) {
+-          cursor = step.cursor;
+-          try {
+-            await (await SharedPreferences.getInstance()).setInt(
+-              liveWaitCursorKey(mac),
+-              cursor,
+-            );
+-          } catch (_) {}
++          final String mac = await DeviceIdentity.instance.mac;
++          final int cursor = await cursorFor(mac);
++          await DeviceSecret.instance.enroll(mac);
++          final http.Response response = await client.get(
++            Uri.parse('$kSubscriptionBaseUrl/api/box/wait/$mac?after=$cursor&timeout=200'),
++            headers: await DeviceSecret.instance.headers(),
++          ).timeout(const Duration(seconds: 5));
++          if (gen != _generation) return;
++          if (response.statusCode == 200) {
++            final Object? body = jsonDecode(response.body);
++            received = readLiveWait(body, cursor).changed;
++            await _consume(body, mac, gen);
++          }
++          // Même sans canal serveur, le statut et les listes restent sondés.
++          if (!socketOnline && !received) await trigger();
++        } catch (_) {
++          if (gen != _generation) return;
++          if (!received) {
++            try { await trigger(); } catch (_) { /* Le prochain tour réessaie. */ }
++          }
++        } finally {
++          client.close();
++          if (identical(_client, client)) _client = null;
+         }
+-      } catch (e) {
+-        if (gen != _generation) return;
+-        failures++;
+-        if (kDebugMode) debugPrint('[PanelLiveWait] attente : $e');
+-        await Future<void>.delayed(liveWaitBackoff(failures));
+-      } finally {
+-        client.close();
+-        if (identical(_client, client)) _client = null;
++      }
++      while (_running && gen == _generation && DateTime.now().isBefore(next)) {
++        await Future<void>.delayed(const Duration(milliseconds: 100));
+       }
+     }
+   }
+ }
+diff --git a/lib/core/realtime/realtime_sync_service.dart b/lib/core/realtime/realtime_sync_service.dart
+index 8b5cec4..025f7d7 100644
+--- a/lib/core/realtime/realtime_sync_service.dart
++++ b/lib/core/realtime/realtime_sync_service.dart
+@@ -4,11 +4,11 @@
+ //  Couche WebSocket « en plus » du polling existant (heartbeat 6 h,
+ //  sync sources 5 min) — JAMAIS « à la place ». Voir le contrat
+ //  complet : docs/REALTIME-PROTOCOL.md (§3 et §6).
+ //
+ //  Rôle :
+-//    1. Ouvrir un WebSocket vers le backend (`/api/rt/device`) avec le
++//    1. Ouvrir un WebSocket vers le backend (`/api/box/ws`) avec le
+ //       MAC virtuel de l'appareil — le panel voit alors l'appareil
+ //       « en ligne » en direct.
+ //    2. Recevoir les ordres `sync` (status / sources / config / all) et
+ //       relancer les fetchs HTTP EXISTANTS correspondants (aucune
+ //       nouvelle route, aucun credential ne transite sur le socket).
+@@ -18,11 +18,11 @@
+ //
+ //  FAIL-OPEN ABSOLU : si le WebSocket est indisponible (binding pas
+ //  déployé, réseau KO, plateforme sans dart:io…), l'app se comporte
+ //  exactement comme avant. Aucune exception ne sort de ce service.
+ //
+-//  Reconnexion : backoff 5 → 10 → 30 → 60 → 120 s (plafond), jitter
++//  Reconnexion : backoff 1 → 2 → 4 → 8 → 16 → 30 s (plafond), jitter
+ //  ±20 %, remise à zéro après 60 s de connexion stable. Sur
+ //  `bye{reason:'replaced'}` (un autre appareil a pris le même MAC),
+ //  on attend directement le backoff MAXIMUM pour ne pas se battre.
+ //
+ //  Aucune nouvelle dépendance : WebSocket de `dart:io` (l'app cible
+@@ -53,10 +53,12 @@ import '../../features/simple_home/data/announcement_repository.dart';
+ import '../../features/simple_home/data/home_layout_repository.dart';
+ import '../../features/subscription/data/now_playing.dart';
+ import '../../features/subscription/data/subscription_state.dart';
+ import '../../features/theme/data/remote_theme_repository.dart';
+ import '../app/boot_guard.dart';
++import '../app/panel_live_wait.dart';
++import '../../features/device/data/device_secret.dart';
+ import '../app/build_info.dart';
+ import '../backend/backend_hosts.dart';
+ import '../profiles/remote_profiles_repository.dart';
+ import '../theme/accent_controller.dart';
+ import 'device_message_repository.dart';
+@@ -267,14 +269,14 @@ class RealtimeSyncService extends ChangeNotifier with WidgetsBindingObserver {
+   // ============================================================
+   //  Backoff — exposé en statique PUR pour être testable.
+   // ============================================================
+
+   /// Paliers de reconnexion (secondes) — contrat §6.
+-  static const List<int> kBackoffSeconds = <int>[5, 10, 30, 60, 120];
++  static const List<int> kBackoffSeconds = <int>[1, 2, 4, 8, 16, 30];
+
+   /// Durée de connexion au-delà de laquelle on considère la liaison
+-  /// « stable » → le prochain incident repart au 1er palier (5 s).
++  /// « stable » → le prochain incident repart au 1er palier (1 s).
+   static const Duration kStableAfter = Duration(seconds: 60);
+
+   /// « Activation express » — filet UNIVERSEL (téléphone + tablette + TV)
+   /// qui rend l'activation quasi instantanée MÊME si le WebSocket n'est
+   /// pas disponible (Doze tablette, binding absent, hub occupé).
+@@ -313,11 +315,11 @@ class RealtimeSyncService extends ChangeNotifier with WidgetsBindingObserver {
+         : (attempt >= kBackoffSeconds.length
+             ? kBackoffSeconds.length - 1
+             : attempt);
+     final double j = jitter.clamp(-0.2, 0.2).toDouble();
+     final int ms = (kBackoffSeconds[idx] * 1000 * (1 + j)).round();
+-    return Duration(milliseconds: ms);
++    return Duration(milliseconds: ms.clamp(1000, 30000));
+   }
+
+   // ============================================================
+   //  État interne
+   // ============================================================
+@@ -414,10 +416,11 @@ class RealtimeSyncService extends ChangeNotifier with WidgetsBindingObserver {
+     // tout de suite, sans attendre l'établissement du socket.
+     _armActivationFastSync();
+     // Boîte de réception persistante : relève les messages déposés depuis
+     // le panel (livrés même si l'appareil était hors ligne à l'envoi).
+     unawaited(DeviceMessageRepository.fetchAndShow());
++    await PanelLiveWait.instance.install();
+     await _connect();
+   }
+
+   // ============================================================
+   //  Activation express — filet universel (voir kActivationInterval)
+@@ -497,10 +500,11 @@ class RealtimeSyncService extends ChangeNotifier with WidgetsBindingObserver {
+         // raison même de cette reconnexion forcée.
+       }
+     }
+     if (_connected) {
+       _connected = false;
++      PanelLiveWait.instance.socketOnline = false;
+       notifyListeners();
+     }
+     await _connect();
+   }
+
+@@ -521,13 +525,14 @@ class RealtimeSyncService extends ChangeNotifier with WidgetsBindingObserver {
+       final String base = BackendHosts.current
+           .replaceFirst('https://', 'wss://')
+           .replaceFirst('http://', 'ws://');
+       // `Uri.replace(queryParameters:)` encode tout proprement
+       // (les ':' du MAC deviennent %3A, comme attendu par le worker).
+-      final Uri uri = Uri.parse('$base/api/rt/device').replace(
++      final Uri uri = Uri.parse('$base/api/box/ws').replace(
+         queryParameters: <String, String>{
+           'mac': mac,
++          'after': '${await PanelLiveWait.instance.cursorFor(mac)}',
+           'platform': _platform,
+           'v': version,
+           'b': '$kBuildTs',
+           'model': model,
+         },
+@@ -537,11 +542,13 @@ class RealtimeSyncService extends ChangeNotifier with WidgetsBindingObserver {
+       // Sans le `onTimeout` ci-dessous, un connect qui aboutit à 12 s
+       // (timeout à 10 s) laisserait un socket fantôme : jamais assigné,
+       // jamais écouté, jamais fermé — et l'appareil apparaîtrait « en
+       // ligne » en double sur le hub jusqu'au bye{replaced}. On garde la
+       // Future d'origine pour FERMER proprement ce socket retardataire.
+-      final Future<WebSocket> pending = WebSocket.connect(uri.toString());
++      await DeviceSecret.instance.enroll(mac);
++      final Future<WebSocket> pending = WebSocket.connect(uri.toString(),
++          headers: await DeviceSecret.instance.headers());
+       final WebSocket ws = await pending.timeout(
+         const Duration(seconds: 10),
+         onTimeout: () {
+           unawaited(pending
+               .then((WebSocket late) => late.close(1000, 'connect timeout'))
+@@ -549,16 +556,18 @@ class RealtimeSyncService extends ChangeNotifier with WidgetsBindingObserver {
+           throw TimeoutException('connexion WebSocket > 10 s');
+         },
+       );
+       _socket = ws;
+       _connected = true;
++      PanelLiveWait.instance.socketOnline = true;
++      ws.pingInterval = const Duration(seconds: 10);
+       _connecting = false;
+       notifyListeners();
+       if (kDebugMode) debugPrint('[Realtime] connecté ($_platform)');
+
+       // Après 60 s sans incident, la liaison est jugée stable → le
+-      // prochain souci repartira au 1er palier (5 s).
++      // prochain souci repartira au 1er palier (1 s).
+       _stableTimer?.cancel();
+       _stableTimer = Timer(kStableAfter, () => _attempt = 0);
+
+       // 1re frame obligatoire : `hello` (contrat §3).
+       _sendJson(<String, Object?>{
+@@ -602,10 +611,11 @@ class RealtimeSyncService extends ChangeNotifier with WidgetsBindingObserver {
+     _socket = null;
+     _stopTimers();
+     _stableTimer?.cancel(); // (déjà tiré si la liaison était stable)
+     if (_connected) {
+       _connected = false;
++      PanelLiveWait.instance.socketOnline = false;
+       notifyListeners();
+     }
+     if (kDebugMode) debugPrint('[Realtime] déconnecté');
+     _scheduleReconnect();
+   }
+@@ -631,15 +641,14 @@ class RealtimeSyncService extends ChangeNotifier with WidgetsBindingObserver {
+   //  Timers keepalive + « watching »
+   // ============================================================
+
+   void _startTimers() {
+     _stopTimers();
+-    // Keepalive : frame TEXTE littérale 'ping' toutes les 45 s. Le hub
+-    // répond 'pong' sans même se réveiller (setWebSocketAutoResponse).
+-    _pingTimer = Timer.periodic(const Duration(seconds: 45), (_) {
++    // Battement applicatif toutes les 10 s ; le DO renouvelle la présence.
++    _pingTimer = Timer.periodic(const Duration(seconds: 10), (_) {
+       try {
+-        _socket?.add('ping');
++        _socket?.add('{"v":1,"type":"hello"}');
+       } catch (e) {
+         if (kDebugMode) debugPrint('[Realtime] ping: $e');
+       }
+     });
+     // NowPlaying n'est PAS observable (simple porte-état, pas de
+@@ -688,10 +697,20 @@ class RealtimeSyncService extends ChangeNotifier with WidgetsBindingObserver {
+
+   void _onFrame(dynamic data) {
+     try {
+       if (data is! String) return; // frames binaires : hors contrat
+       if (data == 'pong') return; // réponse au keepalive
++      final Object? decoded = jsonDecode(data);
++      if (decoded is Map<String, dynamic>) {
++        if (decoded['type'] == 'hello') { _attempt = 0; return; }
++        if (decoded['seq'] is num && decoded['mac'] is String) {
++          unawaited(PanelLiveWait.instance.acceptSocketFrame(decoded).then((_) {
++            notifyListeners();
++          }).catchError((Object _) { unawaited(forceReconnect()); }));
++          return;
++        }
++      }
+       final RtEvent? event = RtEvent.parse(data);
+       if (event == null) return; // non-JSON / type inconnu → silencieux
+       switch (event.type) {
+         case 'sync':
+           // Async : on ack quand les re-fetchs sont terminés (le panel
+diff --git a/lib/features/simple_home/data/announcement_repository.dart b/lib/features/simple_home/data/announcement_repository.dart
+index 373efb1..36a7dc2 100644
+--- a/lib/features/simple_home/data/announcement_repository.dart
++++ b/lib/features/simple_home/data/announcement_repository.dart
+@@ -91,32 +91,43 @@ abstract final class AnnouncementRepository {
+   /// le temps réel (RealtimeSyncService, évènement `sync config`) quand
+   /// l'admin publie/retire une annonce depuis le panel. La bannière
+   /// d'accueil l'écoute et re-fetch aussitôt : l'annonce apparaît en
+   /// direct, sans attendre un remontage du widget ni un redémarrage.
+   static final ValueNotifier<int> revision = ValueNotifier<int>(0);
++  static Announcement? latest;
++  static bool hasLatest = false;
++
++  /// L'annonce est chargée avant APPLIED ; la bannière utilise ce résultat.
++  static Future<void> refreshFromPanel() async {
++    await fetchLatest(strict: true);
++    notifyChanged();
++  }
+
+   /// À appeler quand le serveur signale un changement de config.
+   static void notifyChanged() => revision.value++;
+
+   /// Récupère la dernière annonce publiée, ou `null` si aucune / erreur
+   /// réseau. On reste SILENCIEUX en cas d'échec : une annonce est un
+   /// bonus, jamais bloquant.
+-  static Future<Announcement?> fetchLatest() async {
++  static Future<Announcement?> fetchLatest({bool strict = false}) async {
+     try {
+       // LANGUE DU CLIENT : le revendeur écrit son annonce dans UNE langue ;
+       // le backend la traduit (et la met en cache) dans celle de l'app.
+       // Sans ce paramètre, un client arabophone recevait le texte français.
+       final String lang = l10nNow.localeName.split('_').first;
+       final http.Response resp = await http
+           .get(Uri.parse(
+               '$kSubscriptionBaseUrl/api/announcement?lang=$lang'))
+           .timeout(const Duration(seconds: 6));
+-      if (resp.statusCode != 200) return null;
++      if (resp.statusCode != 200) throw StateError('annonce indisponible');
+       final Object? decoded = jsonDecode(resp.body);
+-      if (decoded is! Map<String, dynamic>) return null;
+-      return Announcement.fromJson(decoded);
++      if (decoded is! Map<String, dynamic>) throw StateError('annonce invalide');
++      latest = Announcement.fromJson(decoded);
++      hasLatest = true;
++      return latest;
+     } catch (e) {
++      if (strict) rethrow;
+       if (kDebugMode) debugPrint('[Announcement] fetch: $e');
+       return null;
+     }
+   }
+
+diff --git a/lib/features/simple_home/presentation/widgets/announcement_banner.dart b/lib/features/simple_home/presentation/widgets/announcement_banner.dart
+index 29bcd16..4b1b82f 100644
+--- a/lib/features/simple_home/presentation/widgets/announcement_banner.dart
++++ b/lib/features/simple_home/presentation/widgets/announcement_banner.dart
+@@ -17,10 +17,11 @@
+ //
+ //  Couleurs/typo : uniquement AppColors / AppTextStyles (convention).
+ //  Aucune dépendance au cast.
+ // =========================================================
+
++import 'dart:async';
+ import 'package:flutter/material.dart';
+ import 'package:url_launcher/url_launcher.dart';
+
+ import '../../../../core/i18n/l10n_extension.dart';
+ import '../../../../core/theme/app_colors.dart';
+@@ -74,21 +75,24 @@ class _AnnouncementBannerState extends State<AnnouncementBanner> {
+   void initState() {
+     super.initState();
+     _load();
+     // Temps réel : quand l'admin publie/retire une annonce, le
+     // RealtimeSyncService incrémente `revision` → on re-fetch aussitôt.
+-    AnnouncementRepository.revision.addListener(_load);
++    AnnouncementRepository.revision.addListener(_loadPanel);
+   }
+
+   @override
+   void dispose() {
+-    AnnouncementRepository.revision.removeListener(_load);
++    AnnouncementRepository.revision.removeListener(_loadPanel);
+     super.dispose();
+   }
+
+-  Future<void> _load() async {
+-    final Announcement? a = await AnnouncementRepository.fetchLatest();
++  void _loadPanel() { unawaited(_load(fromPanel: true)); }
++
++  Future<void> _load({bool fromPanel = false}) async {
++    final Announcement? a = fromPanel && AnnouncementRepository.hasLatest
++        ? AnnouncementRepository.latest : await AnnouncementRepository.fetchLatest();
+     if (!mounted) return;
+     if (a == null) {
+       // Annonce retirée par l'admin → on efface le bandeau en direct.
+       if (_announcement != null) setState(() => _announcement = null);
+       return;
+diff --git a/test/core/app/panel_live_wait_test.dart b/test/core/app/panel_live_wait_test.dart
+index 45c2430..12b512e 100644
+--- a/test/core/app/panel_live_wait_test.dart
++++ b/test/core/app/panel_live_wait_test.dart
+@@ -51,14 +51,14 @@ void main() {
+       expect(old.changed, isFalse);
+       expect(old.cursor, 4, reason: 'le curseur ne recule jamais');
+       expect(readLiveWait('pas du json', 4).changed, isFalse);
+     });
+
+-    test('réessai : 2, 4, 8, 16, 30 s au plus', () {
++    test('réessai : 1, 2, 4, 8, 16, 30 s au plus', () {
+       expect(liveWaitBackoff(0), Duration.zero);
+-      expect(liveWaitBackoff(1), const Duration(seconds: 2));
+-      expect(liveWaitBackoff(3), const Duration(seconds: 8));
++      expect(liveWaitBackoff(1), const Duration(seconds: 1));
++      expect(liveWaitBackoff(3), const Duration(seconds: 4));
+       expect(liveWaitBackoff(9), const Duration(seconds: 30));
+     });
+   });
+
+   group('boucle réelle', () {
+@@ -137,13 +137,14 @@ void main() {
+         return http.Response('{"box":[{"id":12,"kind":"activate","order_id":"ord_fixture1234"}]}',200);
+       });
+       w.start();
+       await firstAck.future.timeout(const Duration(seconds:1));
+       expect((await SharedPreferences.getInstance()).getInt(_cursorKey('MK:30:70:0E:D7:5B')),isNull);
+-      await completed.future.timeout(const Duration(seconds:4));
++      await completed.future.timeout(const Duration(seconds:12));
++      await Future<void>.delayed(const Duration(milliseconds: 50));
+       expect(cursors,<String>['0','0','12']);
+-      expect(syncs,2);
++      expect(syncs,3);
+     });
+
+     test('« Effacer les listes » au panel → relecture immédiate, pas au bout de 60 s', () async {
+       final Completer<void> panelClick = Completer<void>();
+       int calls = 0;
+@@ -236,13 +237,13 @@ void main() {
+         expect(
+           prefs.getInt(_cursorKey('MK:30:70:0E:D7:5B')),
+           isNull,
+           reason: 'recevoir un ordre ne prouve pas son application',
+         );
+-        await retried.future.timeout(const Duration(seconds: 4));
++        await retried.future.timeout(const Duration(seconds: 7));
+         await Future<void>.delayed(const Duration(milliseconds: 50));
+-        expect(afters, <String>['0', '0', '12']);
++        expect(afters, <String>['0', '0']);
+         expect(syncs, 2);
+         expect(prefs.getInt(_cursorKey('MK:30:70:0E:D7:5B')), 12);
+       },
+     );
+
+@@ -274,17 +275,18 @@ void main() {
+           secondIdentitySeen.complete();
+           return http.Response('{}', 404);
+         });
+
+         w.start();
+-        await secondIdentitySeen.future.timeout(const Duration(seconds: 1));
++        await secondIdentitySeen.future.timeout(const Duration(seconds: 12));
++        await Future<void>.delayed(const Duration(milliseconds: 50));
+         expect(requests, <String>[
+           '/api/box/wait/$firstMac?after=500',
+           '/api/box/wait/$nextMac?after=0',
+           '/api/box/wait/$nextMac?after=1',
+         ]);
+-        expect(syncs, 2);
++        expect(syncs, 3);
+         expect(prefs.getInt(_cursorKey(nextMac)), 1);
+         expect(prefs.getInt(_cursorKey(firstMac)), 500);
+       },
+     );
+
+@@ -311,21 +313,21 @@ void main() {
+         isNull,
+       );
+     });
+
+     test(
+-      'serveur sans canal (404) : l’écoute s’arrête, pas de boucle',
++      'serveur sans canal (404) : le repli lit encore le statut',
+       () async {
+         int calls = 0;
+         w.clientFactory = () => MockClient((http.Request r) async {
+           calls++;
+           return http.Response('{}', 404);
+         });
+         w.start();
+         await Future<void>.delayed(const Duration(milliseconds: 200));
+         expect(calls, 1);
+-        expect(syncs, 0);
++        expect(syncs, 1);
+       },
+     );
+
+     test('ordres pendant une relecture : une seule relance, jamais deux en parallèle', () async {
+       int inFlight = 0;
+diff --git a/test/realtime_sync_service_test.dart b/test/realtime_sync_service_test.dart
+index 7152277..2b76e6b 100644
+--- a/test/realtime_sync_service_test.dart
++++ b/test/realtime_sync_service_test.dart
+@@ -11,52 +11,19 @@
+ // =========================================================
+ import 'package:flutter_test/flutter_test.dart';
+ import 'package:tv_king/core/realtime/realtime_sync_service.dart';
+
+ void main() {
+-  group('computeBackoff', () {
+-    test('séquence nominale 5 → 10 → 30 → 60 → 120 s (jitter 0)', () {
+-      expect(RealtimeSyncService.computeBackoff(0),
+-          const Duration(seconds: 5));
+-      expect(RealtimeSyncService.computeBackoff(1),
+-          const Duration(seconds: 10));
+-      expect(RealtimeSyncService.computeBackoff(2),
+-          const Duration(seconds: 30));
+-      expect(RealtimeSyncService.computeBackoff(3),
+-          const Duration(seconds: 60));
+-      expect(RealtimeSyncService.computeBackoff(4),
+-          const Duration(seconds: 120));
+-    });
+-
+-    test('plafonné à 120 s au-delà du dernier palier', () {
+-      expect(RealtimeSyncService.computeBackoff(5),
+-          const Duration(seconds: 120));
+-      expect(RealtimeSyncService.computeBackoff(42),
+-          const Duration(seconds: 120));
+-    });
+-
+-    test('un attempt négatif retombe sur le 1er palier', () {
+-      expect(RealtimeSyncService.computeBackoff(-3),
+-          const Duration(seconds: 5));
+-    });
+-
+-    test('jitter ±20 % appliqué proportionnellement', () {
+-      expect(RealtimeSyncService.computeBackoff(0, jitter: 0.2),
+-          const Duration(seconds: 6)); // 5 s +20 %
+-      expect(RealtimeSyncService.computeBackoff(0, jitter: -0.2),
+-          const Duration(seconds: 4)); // 5 s −20 %
+-      expect(RealtimeSyncService.computeBackoff(4, jitter: 0.1),
+-          const Duration(seconds: 132)); // 120 s +10 %
+-    });
+-
+-    test('jitter hors bornes ramené dans [−0.2, +0.2]', () {
+-      // Un jitter aberrant (bug d'appelant) ne doit JAMAIS produire un
+-      // délai nul ou démesuré : il est borné à ±20 %.
+-      expect(RealtimeSyncService.computeBackoff(0, jitter: 5.0),
+-          const Duration(seconds: 6));
+-      expect(RealtimeSyncService.computeBackoff(0, jitter: -5.0),
+-          const Duration(seconds: 4));
++  group('computeBackoff — reconnexion 1 à 30 s', () {
++    test('séquence et plafond, même avec jitter', () {
++      for (final MapEntry<int, int> item in <int>[1, 2, 4, 8, 16, 30, 30].asMap().entries) {
++        expect(RealtimeSyncService.computeBackoff(item.key), Duration(seconds: item.value));
++      }
++      expect(RealtimeSyncService.computeBackoff(-1), const Duration(seconds: 1));
++      expect(RealtimeSyncService.computeBackoff(999, jitter: 0.2), const Duration(seconds: 30));
++      expect(RealtimeSyncService.computeBackoff(0, jitter: -5), const Duration(seconds: 1));
++      expect(RealtimeSyncService.computeBackoff(1, jitter: 5), const Duration(milliseconds: 2400));
+     });
+   });
+
+   group('activationPollDelay — filet tablette / TV (backoff)', () {
+     test('premiers ticks à 8 s, puis 20 s, puis plafond 45 s', () {

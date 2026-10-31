@@ -1,0 +1,186 @@
+# Revue isolée : aucun secret, aucune release, aucune signature de production.
+# Réutilise les préparations du dernier constructeur Zuno 109.
+# APK optimisé pour tester la fluidité, compatible ARM 32 et 64 bits.
+name: Zuno — APK de revue essai 24 h
+'on':
+  push:
+    branches:
+    - main
+    - 'claude/**'
+    - 'feature/**'
+    - ccr-b93e1afd-gwirw0
+    paths:
+    - android-app/lib/**
+    - android-app/test/**
+    - android-app/packages/**
+    - android-app/assets/**
+    - android-app/android/**
+    - android-app/android_overlay/**
+    - android-app/ci/**
+    - android-app/pubspec.yaml
+    - android-app/l10n.yaml
+    - android-app/analysis_options.yaml
+    - android-app/flutter_launcher_icons_zuno_tv.yaml
+    - .github/workflows/build-zuno-trial-review.yml
+    - .github/workflows/build-zuno-tv.yml
+permissions:
+  contents: read
+concurrency:
+  group: zuno-trial-review-${{ github.ref }}
+  cancel-in-progress: true
+env:
+  SOURCE_SHA: ${{ github.sha }}
+  ZUNO_APP_ID: com.sevenmotion.tv.seven_tv.realtimereview
+  ZUNO_APP_LABEL: Zuno Test RT
+jobs:
+  review:
+    name: APK optimisé séparé, signature de développement
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    if: github.repository == 'manzilionellm-dotcom/tvking' && github.actor == github.repository_owner && github.triggering_actor
+      == github.repository_owner
+    defaults:
+      run:
+        working-directory: android-app
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        persist-credentials: false
+        ref: ${{ env.SOURCE_SHA }}
+    - name: Vérifier le périmètre de compilation
+      working-directory: .
+      env:
+        APP_OPERATION: build
+        APP_PUBLISH: 'false'
+        APP_TEST_BOX: 'false'
+        APP_PLAY_AAB: 'false'
+      run: node .github/app-release-guard.mjs
+    - name: Setup Java 17 (Temurin)
+      uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+      with:
+        distribution: temurin
+        java-version: '17'
+    - name: Setup Flutter (stable)
+      uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+      with:
+        flutter-version: 3.47.7
+        channel: stable
+        cache: false
+        pub-cache: false
+    - name: Setup Android SDK
+      id: setup_android
+      uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+      continue-on-error: true
+    - name: Setup Android SDK (retry après échec transitoire)
+      if: steps.setup_android.outcome == 'failure'
+      uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+      continue-on-error: true
+    - name: Accept Android licenses
+      run: yes | sdkmanager --licenses >/dev/null 2>&1 || true
+    - name: Patch manifest (Zuno, Leanback, réseau, compat box)
+      run: python3 ci/tv/patch_manifest.py android/app/src/main/AndroidManifest.xml
+    - name: Patch build.gradle.kts (applicationId TV, signature, R8)
+      run: 'set -e
+
+        cp ci/proguard-rules.pro android/app/proguard-rules.pro
+
+        python3 ci/tv/patch_gradle.py android/app/build.gradle.kts
+
+        '
+    - name: Préserver les préférences sur les box Android 5
+      run: "# La version 2.5.1 impose DataStore 1.2.1 (Android 6 minimum).\n# La box conserve Android 5 et la version 2.5.0\
+        \ du build signé\n# du 19/10/2026. Ce pin local au runner ne touche pas le mobile.\npython3 - <<'PYEOF'\nfrom pathlib\
+        \ import Path\npath = Path('pubspec.yaml')\nsource = path.read_text(encoding='utf-8')\nanchor = '  shared_preferences:\
+        \ ^2.3.4\\n'\nif source.count(anchor) != 1 or '  shared_preferences_android:' in source:\n    raise SystemExit('Contrainte\
+        \ SharedPreferences inattendue : vérifier le pin TV.')\nsource = source.replace(anchor, anchor + '  shared_preferences_android:\
+        \ 2.5.0\\n', 1)\npath.write_text(source, encoding='utf-8')\nPYEOF\n"
+    - name: Flutter pub get
+      run: flutter pub get
+    - name: Patch screen_brightness_android build.gradle (si nécessaire)
+      run: "set -e\nFILE=$(find ~/.pub-cache/hosted/pub.dev -path \"*/screen_brightness_android-*/android/build.gradle\" 2>/dev/null\
+        \ | head -1)\nif [ -z \"$FILE\" ]; then\n  echo \"⊙ screen_brightness_android pas dans pub-cache, skip\"\n  exit 0\n\
+        fi\nexport PATCH_FILE=\"$FILE\"\npython3 - <<'PYEOF'\nimport os, re\nfile = os.environ['PATCH_FILE']\nlines = open(file).readlines()\n\
+        out, in_kotlin, depth, removed = [], False, 0, 0\nfor line in lines:\n    if not in_kotlin:\n        if re.match(r'^\\\
+        s*kotlin\\s*\\{', line):\n            in_kotlin = True\n            depth = line.count('{') - line.count('}')\n  \
+        \          removed += 1\n            if depth <= 0:\n                in_kotlin = False\n            continue\n   \
+        \     out.append(line)\n    else:\n        depth += line.count('{') - line.count('}')\n        removed += 1\n    \
+        \    if depth <= 0:\n            in_kotlin = False\nif removed:\n    open(file, 'w').writelines(out)\n    print(f'retiré\
+        \ {removed} ligne(s) kotlin{{}}')\nelse:\n    print('aucun bloc kotlin{} (déjà propre)')\nPYEOF\n"
+    - name: Generate AppLocalizations (.arb → Dart)
+      run: flutter gen-l10n
+    - name: Icône launcher (logo Zuno)
+      run: dart run flutter_launcher_icons -f flutter_launcher_icons_zuno_tv.yaml
+    - name: Bannière Android TV + écran de lancement sombre
+      run: "set -e\nRES=android/app/src/main/res\nmkdir -p \"$RES/drawable\" \"$RES/drawable-v21\" \"$RES/drawable-xhdpi\"\
+        \ \"$RES/drawable-xxhdpi\" \"$RES/values\" \"$RES/values-night\"\n# Bannière Leanback (spec Android TV : 320×180 en\
+        \ xhdpi).\ncp assets/branding/zuno_tv_banner.png    \"$RES/drawable/tv_banner.png\"\ncp assets/branding/zuno_tv_banner.png\
+        \    \"$RES/drawable-xhdpi/tv_banner.png\"\ncp assets/branding/zuno_tv_banner_2x.png \"$RES/drawable-xxhdpi/tv_banner.png\"\
+        \n# Splash sombre avec le logo centré (remplace le fond blanc du template).\nfor DIR in drawable drawable-v21; do\n\
+        \  cat > \"$RES/$DIR/launch_background.xml\" <<'XML'\n<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<layer-list xmlns:android=\"\
+        http://schemas.android.com/apk/res/android\">\n    <item>\n        <shape android:shape=\"rectangle\">\n         \
+        \   <solid android:color=\"#FF050505\" />\n        </shape>\n    </item>\n    <item>\n        <bitmap\n          \
+        \  android:gravity=\"center\"\n            android:src=\"@drawable/tv_banner\" />\n    </item>\n</layer-list>\nXML\n\
+        done\nfor DIR in values values-night; do\n  cat > \"$RES/$DIR/styles.xml\" <<'XML'\n<?xml version=\"1.0\" encoding=\"\
+        utf-8\"?>\n<resources>\n    <style name=\"LaunchTheme\" parent=\"@android:style/Theme.Black.NoTitleBar\">\n      \
+        \  <item name=\"android:windowBackground\">@drawable/launch_background</item>\n    </style>\n    <style name=\"NormalTheme\"\
+        \ parent=\"@android:style/Theme.Black.NoTitleBar\">\n        <item name=\"android:windowBackground\">@drawable/launch_background</item>\n\
+        \    </style>\n</resources>\nXML\ndone\necho \"✓ bannière + splash sombre en place\"\n"
+    - name: Vérifier le composant partagé
+      run: 'flutter analyze --no-fatal-infos --no-fatal-warnings
+
+        flutter test test/features/subscription --reporter expanded
+
+        '
+    - name: Vérifier le bouton TV et les calculs de l’accueil
+      run: >-
+        flutter test test/features/tv/home_performance_test.dart
+        test/features/tv/channel_cache_refresh_test.dart
+        test/features/tv/tv_gold_trial_card_test.dart
+        test/features/player/video_quality_test.dart
+        --reporter expanded
+    - name: Construire le binaire de revue
+      run: 'set -euo pipefail
+
+        [ ! -e android/key.properties ]
+
+        BUILD_NUMBER=$(date +%s)
+
+        flutter build apk --release --target=lib/main_tv.dart --target-platform android-arm,android-arm64 --android-skip-build-dependency-validation
+        --build-number="$BUILD_NUMBER" --build-name="109-realtime-review" --dart-define=APP_BUILD_TS="$BUILD_NUMBER" --dart-define=GIT_SHA="$SOURCE_SHA"
+
+        cp build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/zuno-trial-review.apk
+
+        BUILD_TOOLS=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)
+
+        "$BUILD_TOOLS/aapt" dump badging build/app/outputs/flutter-apk/zuno-trial-review.apk > build/trial-review-manifest.txt
+
+        grep -F "name=''com.sevenmotion.tv.seven_tv.realtimereview''" build/trial-review-manifest.txt
+
+        grep -F "armeabi-v7a" build/trial-review-manifest.txt
+
+        grep -F "arm64-v8a" build/trial-review-manifest.txt
+
+        sha256sum build/app/outputs/flutter-apk/zuno-trial-review.apk > build/trial-review-sha256.txt
+
+        '
+    - name: Vérifier le backend et le canal dans le vrai APK
+      run: |
+        python3 - <<'PYAPK'
+        from zipfile import ZipFile
+        with ZipFile('build/app/outputs/flutter-apk/zuno-trial-review.apk') as apk:
+            for abi in ['armeabi-v7a', 'arm64-v8a']:
+                binary = apk.read(f'lib/{abi}/libapp.so')
+                for marker in [b'https://api.zuno8k.com', b'/api/box/ws', b'/api/box/ack/']:
+                    assert marker in binary, f'Correctif absent pour {abi}: {marker!r}'
+        print('Backend api.zuno8k.com et canal authentifié présents pour ARM32/64')
+        PYAPK
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      with:
+        name: zuno-trial-review-${{ env.SOURCE_SHA }}
+        path: 'android-app/build/app/outputs/flutter-apk/zuno-trial-review.apk
+
+          android-app/build/trial-review-manifest.txt
+
+          android-app/build/trial-review-sha256.txt'
+        if-no-files-found: error
+        retention-days: 14

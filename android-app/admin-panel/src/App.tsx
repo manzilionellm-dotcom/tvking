@@ -28,6 +28,7 @@ import { ReferencesPage } from '@/pages/ReferencesPage';
 import { TransferPage } from '@/pages/TransferPage';
 import { FamiliesPage } from '@/pages/FamiliesPage';
 import { BlackBoxPage } from '@/pages/BlackBoxPage';
+import { GoldTrialsPage } from '@/pages/GoldTrialsPage';
 
 /// Etats possibles de l'app :
 ///   - bootstrapping : on verifie si le token est encore valide
@@ -111,6 +112,7 @@ export default function App() {
       <Route path="/customers"   element={<CustomersPage   onLogout={handleLogout} />} />
       <Route path="/devices"     element={<DevicesPage     onLogout={handleLogout} />} />
       <Route path="/blackbox"   element={<BlackBoxPage    onLogout={handleLogout} />} />
+      <Route path="/gold-trials" element={<GoldTrialsPage onLogout={handleLogout} />} />
       <Route path="/apps"        element={<AppsPage        onLogout={handleLogout} />} />
       {/* Ancienne page « Serveurs » : plus de catalogue à l'écran. */}
       <Route path="/servers"     element={<Navigate to="/" replace />} />

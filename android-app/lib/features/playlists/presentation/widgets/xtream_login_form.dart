@@ -81,6 +81,7 @@ class _XtreamLoginFormState extends State<XtreamLoginForm> {
     });
     try {
       await PlaylistRepository.instance.addXtreamPlaylist(
+        allowHttpCompatibility: true,
         name: 'Mon abonnement',
         serverUrl: draft.serverUrl!,
         username: draft.username!,

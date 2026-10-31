@@ -89,6 +89,7 @@ class _TvAddSourceScreenState extends State<TvAddSourceScreen> {
       final String name = context.l10n.tvMyListHint;
       if (draft.kind == OpenSourceKind.xtream) {
         await PlaylistRepository.instance.addXtreamPlaylist(
+          allowHttpCompatibility: true,
           name: name,
           serverUrl: draft.serverUrl!,
           username: draft.username!,
@@ -96,6 +97,7 @@ class _TvAddSourceScreenState extends State<TvAddSourceScreen> {
         );
       } else {
         await PlaylistRepository.instance.addM3uPlaylist(
+          allowHttpCompatibility: true,
           name: name,
           url: draft.m3uUrl!,
         );

@@ -1,19 +1,21 @@
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { AppLayout } from '@/components/AppLayout';
 import { CopyLink } from '@/components/CopyLink';
+import { ActivationDeliveryStatus } from '@/components/ActivationDeliveryStatus';
+import { ActivationSession } from '@/lib/activationSession';
 import {
   activateApi, appsApi, planCostsApi, meApi, sourcesApi,
   getCurrentUser, isOwnerRole, userCan, DOWNLOAD_URL, DOWNLOADER_CODE,
   type App, type PlanCost, type ActivateResult,
-  type DeviceSourceInput, ApiError,
+  type DeviceSourceInput, type SourceWriteResult, ApiError,
 } from '@/lib/api';
 import { buildPushedSource, type OpenPanelKind } from '@/lib/openSource';
 import { formatDateTime } from '@/lib/utils';
 
 /// Page ACTIVATION — TOUT-EN-UN (demande client : « un seul qui regroupe
 /// tout »). Une MAC → on pose la licence ET on pousse un TRIO de sources
-/// (0 à 6). Le client est débloqué et configuré automatiquement à
+/// (0 à 3). Le client est débloqué et configuré automatiquement à
 /// distance. La page « Pousser une playlist » est fusionnée ici.
 
 type SrcDraft = {
@@ -27,7 +29,7 @@ const blankSrc = (): SrcDraft => ({
   type: 'xtream', serverUrl: '',
   xtUser: '', xtPass: '', m3uUrl: '',
 });
-const MAX_SOURCES = 6; // aligné sur MAX_SOURCES_PER_DEVICE du Worker (api_v1.js)
+const MAX_SOURCES = 3; // Contrat du véritable bundle de production exporté.
 
 export function ActivatePage({ onLogout }: { onLogout: () => void }) {
   const user = getCurrentUser();
@@ -43,13 +45,18 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
   const [apps, setApps] = useState<App[]>([]);
   const [costs, setCosts] = useState<PlanCost[]>([]);
   const [balance, setBalance] = useState<number | null>(null);
-  // TRIO : 0 à 6 sources poussées avec l'activation (optionnel).
+  // TRIO : 0 à 3 sources poussées avec l'activation (optionnel).
   // Plus de menu « Serveur 1 » : on écrit l'adresse.
   const [items, setItems] = useState<SrcDraft[]>([]);
 
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [result, setResult] = useState<ActivateResult | null>(null);
+  const [sourceResult, setSourceResult] = useState<SourceWriteResult | null>(null);
+  const [submittedSources, setSubmittedSources] = useState(0);
+  const session = useRef<ActivationSession<ActivateResult, SourceWriteResult> | null>(null);
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
 
   // UN SEUL produit : on filtre les autres applis (NOVA+, Red Room, TV…)
   // — le client n'a qu'une app. On prend la 1re « vraie » appli.
@@ -106,6 +113,7 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
 
   async function submit(e: FormEvent) {
     e.preventDefault();
+    if (session.current || busy) return;
     setBusy(true);
     setErr(null);
     setResult(null);
@@ -129,22 +137,38 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
       sources.push(s);
     }
     try {
-      // 1) Licence (débloque l'app). 2) Trio de sources (auto-chargé).
-      const res = await activateApi.activate({
-        mac: m, plan, app_id: appId,
-        customer_name: customerName.trim() || undefined,
+      setSubmittedSources(sources.length);
+      session.current = new ActivationSession({
+        activate: () => activateApi.activate({
+          mac: m, plan, app_id: appId,
+          customer_name: customerName.trim() || undefined,
+        }),
+        sendSources: sources.length ? () => sourcesApi.setMany(m, sources) : undefined,
+        onLicense: (res) => {
+          if (!mounted.current) return;
+          setResult(res);
+          if (res.credit_balance !== null) setBalance(res.credit_balance);
+        },
+        onSources: (res) => { if (mounted.current) setSourceResult(res); },
       });
-      if (sources.length > 0) {
-        await sourcesApi.setMany(m, sources);
-      }
-      setResult(res);
-      if (res.credit_balance !== null) setBalance(res.credit_balance);
+      await session.current.run();
     } catch (e: any) {
       if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
-      setErr(e instanceof ApiError ? e.message : 'Activation impossible.');
+      if (mounted.current) setErr(session.current?.license
+        ? 'Licence enregistrée. L’envoi des listes a échoué ; réessayez uniquement cet envoi ci-contre.'
+        : 'Activation non confirmée. Vérifiez la fiche appareil avant de recommencer.');
     } finally {
-      setBusy(false);
+      if (mounted.current) setBusy(false);
     }
+  }
+
+  async function retrySources() {
+    if (busy || !session.current?.license) return;
+    setBusy(true);
+    setErr(null);
+    try { await session.current.run(); }
+    catch { if (mounted.current) setErr('L’envoi des listes a échoué. La licence reste enregistrée.'); }
+    finally { if (mounted.current) setBusy(false); }
   }
 
   const PLANS = isReseller
@@ -176,6 +200,7 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
       <div className="grid max-w-4xl gap-6 md:grid-cols-2">
         {/* ===== Formulaire ===== */}
         <form onSubmit={submit} className="space-y-4 rounded-xl border border-white/5 bg-midnight p-6">
+          <fieldset disabled={busy || session.current !== null} className="space-y-4 disabled:opacity-70">
           <div>
             <label className="mb-1.5 block text-[10px] uppercase tracking-widest text-ink-tertiary">
               Adresse MAC de l'appareil
@@ -277,11 +302,11 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
             />
           </div>
 
-          {/* ===== TRIO de sources (0 à 6) — masqué si niveau insuffisant ===== */}
+          {/* ===== TRIO de sources (0 à 3) — masqué si niveau insuffisant ===== */}
           {canPushSources && (
           <div className="rounded-lg border border-white/5 bg-slate/40 p-3">
             <label className="mb-2 block text-[10px] uppercase tracking-widest text-ink-tertiary">
-              Sources du client — chargées automatiquement (jusqu'à 6)
+              Sources du client — chargées automatiquement (jusqu'à 3)
             </label>
 
             {items.map((it, i) => (
@@ -362,6 +387,8 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
                   ? 'Activer (gratuit)'
                   : `Activer (${costFor(plan) ?? '?'} crédits)`}
           </button>
+          </fieldset>
+          {session.current && <p className="text-xs text-ink-tertiary">Cette demande est conservée pour éviter une double activation. <a href="/devices" className="text-accent-bright underline">Vérifier la fiche appareil</a></p>}
         </form>
 
         {/* ===== Résultat ===== */}
@@ -375,7 +402,7 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
           {result && (
             <div className="space-y-3 text-sm">
               <div className="inline-flex rounded-full bg-success/15 px-3 py-1 text-xs font-semibold text-success">
-                {result.renewed ? 'Licence renouvelée' : 'Appareil activé'}
+                {result.renewed ? 'Renouvellement enregistré' : 'Licence enregistrée'}
               </div>
               <Row k="MAC" v={result.mac} mono />
               <Row k="Plan" v={result.plan} />
@@ -384,7 +411,16 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
               {result.credit_balance !== null && (
                 <Row k="Solde restant" v={String(result.credit_balance)} />
               )}
-              {items.length > 0 && <Row k="Sources poussées" v={String(items.length)} />}
+              {sourceResult && <Row k="Sources enregistrées" v={String(sourceResult.count ?? submittedSources)} />}
+              {submittedSources > 0 && !sourceResult && <button type="button" disabled={busy} onClick={retrySources} className="rounded-md bg-accent px-3 py-2 text-black disabled:opacity-50">Réessayer uniquement l’envoi des listes</button>}
+              <ActivationDeliveryStatus key={result.mac + (result.trace_id || result.license_id)} mac={result.mac}
+                licenseOrder={result.order_id} sourceOrder={sourceResult?.order_id} trace={result.trace_id}
+                manualSources={submittedSources > 0} />
+              <button type="button" disabled={busy} className="text-accent-bright underline disabled:opacity-50" onClick={() => {
+                session.current = null;
+                setResult(null); setSourceResult(null); setErr(null);
+                setMac('MK:'); setItems([]); setSubmittedSources(0);
+              }}>Activer un autre appareil</button>
             </div>
           )}
         </div>

@@ -9,9 +9,9 @@
 //  à jour, pas à une désinstallation), et on l'envoie au Worker
 //  avec l'identifiant Android. Le Worker n'en garde que l'empreinte.
 //
-//  Après une réinstallation, l'identifiant Android est le même :
-//  le Worker accepte le nouveau secret. Quelqu'un qui n'a vu que
-//  la MAC ne peut pas le faire.
+//  Le raccordement Gold refuse une rotation sans ancienne preuve valide.
+//  Après désinstallation, la récupération passe donc par l'assistance ;
+//  connaître l'identifiant Android ne suffit pas à remplacer un secret.
 // =========================================================
 
 import 'dart:convert';

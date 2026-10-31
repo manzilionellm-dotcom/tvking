@@ -45,6 +45,7 @@ import 'import_progress.dart';
 import '../../player/data/player_settings.dart';
 import '../../vod/domain/vod_movie.dart';
 import 'playlist_import_limits.dart';
+import 'source_protocol_fallback.dart';
 
 /// Exception métier pour signaler une erreur Xtream lisible
 /// (login refusé, serveur HS, réponse non-JSON, etc.).
@@ -111,9 +112,10 @@ class XtreamClient {
 
   /// Vérifie que les identifiants sont valides.
   /// Lance une `XtreamException` si KO.
-  Future<void> verifyCredentials() async {
+  Future<void> verifyCredentials({bool singleAttempt = false}) async {
     ImportProgressBus.connecting();
-    final Map<String, dynamic> data = await _callApi(action: null);
+    final Map<String, dynamic> data =
+        await _callApi(action: null, singleAttempt: singleAttempt);
     final Map<String, dynamic>? userInfo =
         data['user_info'] as Map<String, dynamic>?;
     if (userInfo == null) {
@@ -400,8 +402,9 @@ class XtreamClient {
   /// JSON Xtream géant d'un bloc en RAM (cause racine OOM box faibles). Mémorise
   /// la signature gagnante. Lève une [XtreamException] si aucune signature n'a
   /// 200, ou [PlaylistImportTooLarge] si la réponse dépasse le plafond.
-  Future<String> _getBody(Uri uri) async {
-    final Uint8List bytes = (await _getBytes(uri))!; // null impossible sans softMax
+  Future<String> _getBody(Uri uri, {bool singleAttempt = false}) async {
+    final Uint8List bytes =
+        (await _getBytes(uri, singleAttempt: singleAttempt))!; // null impossible sans softMax
     // Xtream sert du JSON (UTF-8). allowMalformed pour ne jamais planter
     // sur un octet douteux d'un backend exotique.
     return utf8.decode(bytes, allowMalformed: true);
@@ -415,9 +418,14 @@ class XtreamClient {
   /// renvoie `null` (l'appelant bascule sur un import par catégorie). Sans
   /// [softMax], seul le plafond dur [kMaxXtreamJsonBytes] s'applique (erreur).
   Future<Uint8List?> _getBytes(Uri uri,
-      {int? softMax, void Function(int received)? onBytes}) async {
+      {int? softMax,
+      void Function(int received)? onBytes,
+      bool singleAttempt = false}) async {
     Object? lastError;
-    for (final String ua in _candidateUserAgents()) {
+    final List<String> candidates = _candidateUserAgents();
+    final Iterable<String> userAgents =
+        singleAttempt ? candidates.take(1) : candidates;
+    for (final String ua in userAgents) {
       try {
         final http.Request req = http.Request('GET', uri)
           ..followRedirects = true
@@ -452,6 +460,7 @@ class XtreamClient {
         lastError = e;
         break;
       } on Exception catch (e) {
+        if (SourceProtocolFallback.isProtocolMismatch(e)) rethrow;
         lastError = e;
       }
     }
@@ -484,9 +493,12 @@ class XtreamClient {
   }
 
   /// Appel API qui retourne une Map JSON (cas verifyCredentials).
-  Future<Map<String, dynamic>> _callApi({required String? action}) async {
+  Future<Map<String, dynamic>> _callApi({
+    required String? action,
+    bool singleAttempt = false,
+  }) async {
     final Uri uri = _buildUri(action: action);
-    final String body = await _getBody(uri);
+    final String body = await _getBody(uri, singleAttempt: singleAttempt);
     try {
       final dynamic decoded = jsonDecode(body);
       if (decoded is Map<String, dynamic>) return decoded;

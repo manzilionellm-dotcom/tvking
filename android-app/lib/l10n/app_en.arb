@@ -1444,6 +1444,10 @@
   "vipCountryTn": "Tunisia",
   "vipCountryEg": "Egypt",
   "libraryRefreshRunning": "Refreshing…",
-  "libraryRefreshIncomplete": "Refresh incomplete. Some sources are unavailable. Try again."
-
+  "libraryRefreshIncomplete": "Refresh incomplete. Some sources are unavailable. Try again.",
+  "tvVideoQuality": "Video quality",
+  "tvVideoQualityAuto": "Auto",
+  "tvVideoQualityMaximum": "Maximum resolution",
+  "tvVideoQualityAutoHelp": "Adapts quality to your connection. Press OK to prefer maximum resolution.",
+  "tvVideoQualityMaximumHelp": "Selects the best supported track provided by the source. Needs more bandwidth; if playback buffers, press OK to return to Auto."
 }

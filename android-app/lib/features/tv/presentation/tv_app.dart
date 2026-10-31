@@ -11,6 +11,7 @@ import 'dart:io' show Platform, exit;
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../../subscription/data/gold_trial_controller.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
@@ -432,11 +433,14 @@ class TvGate extends StatefulWidget {
 }
 
 class _TvGateState extends State<TvGate> {
+  // Survit au passage activation → accueil pendant que le POST se termine.
+  final GoldTrialController _goldTrial = GoldTrialController();
   StreamSubscription<List<Channel>>? _sub;
 
   @override
   void initState() {
     super.initState();
+    _goldTrial.initialize();
     SubscriptionState.instance.addListener(_onChange);
     _sub = PlaylistRepository.instance.channelsStream.listen(
       (_) => _onChange(),
@@ -445,6 +449,7 @@ class _TvGateState extends State<TvGate> {
 
   @override
   void dispose() {
+    _goldTrial.dispose();
     SubscriptionState.instance.removeListener(_onChange);
     _sub?.cancel();
     super.dispose();
@@ -482,8 +487,8 @@ class _TvGateState extends State<TvGate> {
     // source une fois l'essai expiré).
     final bool showHome = active || (hasOwnList && !mustBlock);
     final Widget home = showHome
-        ? const TvHubScreen()
-        : const TvShell(child: TvActivationScreen());
+        ? TvHubScreen(trialController: _goldTrial)
+        : TvShell(child: TvActivationScreen(trialController: _goldTrial));
     // Retour : sur l'ACCUEIL, c'est TvHomeScreen qui gère (contenu → menu →
     // boîte Quitter au dernier niveau). Ce PopScope racine (même route) ne
     // garde donc la boîte QUE pour l'écran d'activation ; sinon il laisse

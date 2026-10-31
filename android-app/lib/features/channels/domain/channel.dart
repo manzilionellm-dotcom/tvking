@@ -15,7 +15,7 @@
 //  rebuilds Flutter.
 // =========================================================
 
-import 'package:flutter/foundation.dart' show compute;
+import 'package:flutter/foundation.dart' show compute, visibleForTesting;
 import 'package:flutter/material.dart';
 
 import '../../../core/curation/title_curator.dart';
@@ -117,7 +117,7 @@ class Channel {
   /// Le `name` brut reste accessible via `name` directement —
   /// utile pour la recherche, l'EPG, le matching de favoris.
   ///
-  /// **Caché par `id`** (comme [genre]/[country]/[quality]) : `curate()` est
+  /// **Caché par identité et métadonnées** (comme [genre]/[country]/[quality]) : `curate()` est
   /// une passe de DIZAINES de RegExp. Sans ce cache, chaque accès la relançait —
   /// et le cache interne de `TitleCurator` (8000 entrées) THRASHE dès qu'une
   /// playlist dépasse 8000 chaînes (le cas réel : 50 000+), si bien que presque
@@ -125,10 +125,8 @@ class Channel {
   /// SHIELD) : `_recompute` saturait le fil UI à 100 % pendant ~3,7 s → ANR
   /// (« Waited 5000ms for KeyEvent »). Mémoïsé par chaîne, c'est UNE curation
   /// par chaîne sur toute la session, puis O(1) — quelle que soit la taille.
-  String get cleanName => _ChannelComputedCache.cleanNames.putIfAbsent(
-        id,
-        () => TitleCurator.curate(name),
-      );
+  String get cleanName => _ChannelComputedCache.forChannel(this).cleanName ??=
+      TitleCurator.curate(name);
 
   /// Catégorie présentable à l'écran. Passe par le dictionnaire
   /// éditorial du [TitleCurator] (ex: "ADULT" → "After Dark",
@@ -142,22 +140,21 @@ class Channel {
   /// Genre détecté. **Caché** dans une Map statique car appelé
   /// à chaque rebuild sur 20 000+ chaînes — sans cache, les regex
   /// du classifier saturaient le main thread et l'UI laguait.
-  ChannelGenre get genre => _ChannelComputedCache.genres.putIfAbsent(
-        id,
-        () => ChannelClassifier.classifyGenre(name, category),
-      );
+  ChannelGenre get genre => _ChannelComputedCache.forChannel(this).genre ??=
+      ChannelClassifier.classifyGenre(name, category);
 
-  /// Pays détecté (caché — voir [genre]).
-  CountryInfo? get country => _ChannelComputedCache.countries.putIfAbsent(
-        id,
-        () => ChannelClassifier.detectCountry(name, category),
-      );
+  /// Un pays absent est aussi un résultat : ne pas relancer le classificateur.
+  CountryInfo? get country {
+    final _ChannelComputed entry = _ChannelComputedCache.forChannel(this);
+    if (!entry.countryKnown) {
+      entry.country = ChannelClassifier.detectCountry(name, category);
+      entry.countryKnown = true;
+    }
+    return entry.country;
+  }
 
-  /// Qualité détectée (cachée — voir [genre]).
-  ChannelQuality get quality => _ChannelComputedCache.qualities.putIfAbsent(
-        id,
-        () => ChannelClassifier.detectQuality(name),
-      );
+  ChannelQuality get quality => _ChannelComputedCache.forChannel(this).quality ??=
+      ChannelClassifier.detectQuality(name);
 
   /// Indique si la chaîne a un logo distant utilisable.
   bool get hasLogo => logoUrl != null && logoUrl!.trim().isNotEmpty;
@@ -180,32 +177,47 @@ class Channel {
   List<Color>? get gradientColors => null;
 }
 
-/// Cache statique pour les valeurs calculées (genre / pays / qualité).
-///
-/// Pourquoi : la classification (regex) est coûteuse. Sur 20 000
-/// chaînes parcourues plusieurs fois par build (Home calcule 9
-/// listes filtrées), on saturait le thread UI. Le cache mémoire
-/// transforme 20 000 regex en 20 000 lookups O(1).
-///
-/// Limite : la Map vit pendant toute la session — ~50 octets par
-/// chaîne soit ~1 Mo pour 20 000 entrées, négligeable.
-abstract final class _ChannelComputedCache {
-  static final Map<String, ChannelGenre> genres = <String, ChannelGenre>{};
-  static final Map<String, CountryInfo?> countries = <String, CountryInfo?>{};
-  static final Map<String, ChannelQuality> qualities =
-      <String, ChannelQuality>{};
-  // Nom curé (présentable) caché par id — voir Channel.cleanName.
-  static final Map<String, String> cleanNames = <String, String>{};
+/// Un même identifiant peut changer de nom, de catégorie ou de playlist.
+/// La clé décrit donc aussi les métadonnées classées. Une ancienne réponse
+/// d'isolate ne peut plus attribuer son genre à une nouvelle chaîne.
+typedef _ChannelCacheKey = (String, int?, String, String);
 
-  /// À appeler quand on supprime une playlist : on nettoie les
-  /// entrées orphelines pour ne pas faire de fuite mémoire.
-  static void invalidate(Iterable<String> idsToRemove) {
-    for (final String id in idsToRemove) {
-      genres.remove(id);
-      countries.remove(id);
-      qualities.remove(id);
-      cleanNames.remove(id);
-    }
+class _ChannelComputed {
+  String? cleanName;
+  ChannelGenre? genre;
+  CountryInfo? country;
+  bool countryKnown = false;
+  ChannelQuality? quality;
+}
+
+abstract final class _ChannelComputedCache {
+  static final Map<_ChannelCacheKey, _ChannelComputed> _entries =
+      <_ChannelCacheKey, _ChannelComputed>{};
+  // Accès répété au même objet : pas de tuple ni de recherche dans une grosse
+  // Map à chaque rendu. L'Expando ne retient pas les anciennes chaînes en vie.
+  static final Expando<_ChannelComputed> _attached = Expando<_ChannelComputed>();
+
+  static _ChannelCacheKey _key(Channel c) => (c.id, c.playlistId, c.name, c.category);
+
+  static _ChannelComputed? peek(Channel c) {
+    final _ChannelComputed? attached = _attached[c];
+    if (attached != null) return attached;
+    final _ChannelComputed? shared = _entries[_key(c)];
+    if (shared != null) _attached[c] = shared;
+    return shared;
+  }
+
+  static _ChannelComputed forChannel(Channel c) => _attached[c] ??=
+      _entries.putIfAbsent(_key(c), _ChannelComputed.new);
+
+  /// Après un import/suppression, seuls les résultats encore utiles restent
+  /// retenus globalement. Un ancien lecteur peut garder son propre objet
+  /// jusqu'à sa fermeture, sans contaminer les métadonnées de la nouvelle liste.
+  static void retain(List<Channel> channels) {
+    final Set<_ChannelCacheKey> active = <_ChannelCacheKey>{
+      for (final Channel channel in channels) _key(channel),
+    };
+    _entries.removeWhere((key, value) => !active.contains(key));
   }
 }
 
@@ -228,27 +240,23 @@ abstract final class ChannelPrecompute {
   static const int _kChunk = 2000;
 
   /// Vrai si les valeurs de [c] sont déjà en cache (nom curé + genre).
-  static bool isDone(Channel c) =>
-      _ChannelComputedCache.cleanNames.containsKey(c.id) &&
-      _ChannelComputedCache.genres.containsKey(c.id);
-
-  /// Genre déjà calculé, ou `null` s'il n'est pas encore en cache. Permet à
-  /// un filtre (Mode Enfants) de décider SANS déclencher le calcul lourd.
-  static ChannelGenre? cachedGenre(Channel c) =>
-      _ChannelComputedCache.genres[c.id];
-
-  /// Nom curé déjà calculé, ou `null` (jamais de calcul ici). Même rôle que
-  /// [cachedGenre] pour Tendances (06/10/2026 : 50 000 noms curés d'un coup
-  /// sur le fil UI = ANR mesuré sur la SHIELD).
-  static String? cachedCleanName(Channel c) =>
-      _ChannelComputedCache.cleanNames[c.id];
-
-  /// Pays déjà calculé : `known` faux s'il n'est pas encore en cache (le
-  /// pays lui-même peut valoir `null` = aucun pays détecté).
-  static ({bool known, CountryInfo? country}) cachedCountry(Channel c) {
-    final bool known = _ChannelComputedCache.countries.containsKey(c.id);
-    return (known: known, country: known ? _ChannelComputedCache.countries[c.id] : null);
+  static bool isDone(Channel c) {
+    final _ChannelComputed? entry = _ChannelComputedCache.peek(c);
+    return entry?.cleanName != null && entry?.genre != null;
   }
+
+  /// Ces trois lectures ne déclenchent aucun classificateur sur le fil UI.
+  static ChannelGenre? cachedGenre(Channel c) => _ChannelComputedCache.peek(c)?.genre;
+  static String? cachedCleanName(Channel c) => _ChannelComputedCache.peek(c)?.cleanName;
+  static ({bool known, CountryInfo? country}) cachedCountry(Channel c) {
+    final _ChannelComputed? entry = _ChannelComputedCache.peek(c);
+    return (known: entry?.countryKnown ?? false, country: entry?.country);
+  }
+
+  static void retainSnapshot(List<Channel> channels) => _ChannelComputedCache.retain(channels);
+
+  @visibleForTesting
+  static int get retainedEntryCount => _ChannelComputedCache._entries.length;
 
   /// Pré-calcule nom curé / genre / pays / qualité pour toutes les chaînes
   /// pas encore en cache, par tranches de [_kChunk] dans un isolate.
@@ -271,15 +279,18 @@ abstract final class ChannelPrecompute {
       } catch (_) {
         return; // best-effort : les getters à la demande prennent le relais
       }
-      for (final List<String> row in out) {
-        final String id = row[0];
-        _ChannelComputedCache.cleanNames.putIfAbsent(id, () => row[1]);
-        _ChannelComputedCache.genres
-            .putIfAbsent(id, () => ChannelGenre.values[int.parse(row[2])]);
-        _ChannelComputedCache.countries.putIfAbsent(
-            id, () => row[3].isEmpty ? null : ChannelClassifier.countryForKey(row[3]));
-        _ChannelComputedCache.qualities
-            .putIfAbsent(id, () => ChannelQuality.values[int.parse(row[4])]);
+      // L'écran peut avoir disparu PENDANT compute, même dans le dernier lot.
+      if (cancelled?.call() ?? false) return;
+      for (int j = 0; j < out.length; j++) {
+        final List<String> row = out[j];
+        final _ChannelComputed entry = _ChannelComputedCache.forChannel(pending[i + j]);
+        entry.cleanName ??= row[1];
+        entry.genre ??= ChannelGenre.values[int.parse(row[2])];
+        if (!entry.countryKnown) {
+          entry.country = row[3].isEmpty ? null : ChannelClassifier.countryForKey(row[3]);
+          entry.countryKnown = true;
+        }
+        entry.quality ??= ChannelQuality.values[int.parse(row[4])];
       }
     }
   }

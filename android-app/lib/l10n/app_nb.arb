@@ -1376,6 +1376,10 @@
   "vipCountryTn": "Tunisia",
   "vipCountryEg": "Egypt",
   "libraryRefreshRunning": "Oppdaterer…",
-  "libraryRefreshIncomplete": "Oppdateringen er ufullstendig. Noen kilder er utilgjengelige. Prøv igjen."
-
+  "libraryRefreshIncomplete": "Oppdateringen er ufullstendig. Noen kilder er utilgjengelige. Prøv igjen.",
+  "tvVideoQuality": "Videokvalitet",
+  "tvVideoQualityAuto": "Auto",
+  "tvVideoQualityMaximum": "Høyeste oppløsning",
+  "tvVideoQualityAutoHelp": "Tilpasser kvaliteten til tilkoblingen. Trykk OK for å prioritere høyeste oppløsning.",
+  "tvVideoQualityMaximumHelp": "Velger det beste støttede sporet fra kilden. Krever mer båndbredde; trykk OK for å gå tilbake til Auto hvis avspillingen hakker."
 }

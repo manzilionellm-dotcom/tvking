@@ -89,8 +89,8 @@ abstract final class DefaultServersApi {
   ///
   /// Ne throw jamais : en dernier recours renvoie une liste vide,
   /// et l'UI affiche un message « serveurs indisponibles, réessaie ».
-  static Future<List<DefaultServer>> fetch({bool forceRefresh = false}) async {
-    if (!forceRefresh && _memoryCache != null) {
+  static Future<List<DefaultServer>> fetch({bool forceRefresh = false, bool strict = false}) async {
+    if (!forceRefresh && !strict && _memoryCache != null) {
       return _memoryCache!;
     }
 
@@ -100,6 +100,8 @@ abstract final class DefaultServersApi {
       await _writeCache(network);
       return network;
     }
+
+    if (strict) throw StateError('Liste des serveurs non confirmée');
 
     // Réseau KO → on retombe sur le dernier cache disque connu.
     final List<DefaultServer> disk = await _readCache();
@@ -123,8 +125,8 @@ abstract final class DefaultServersApi {
       }
       final Map<String, dynamic> body =
           jsonDecode(resp.body) as Map<String, dynamic>;
-      final List<dynamic> raw =
-          (body['servers'] as List<dynamic>?) ?? const <dynamic>[];
+      if (body['servers'] is! List) return null;
+      final List<dynamic> raw = body['servers'] as List<dynamic>;
       final List<DefaultServer> servers = raw
           .whereType<Map<String, dynamic>>()
           .map(DefaultServer.fromJson)
