@@ -38,6 +38,7 @@ class LocaleRepository extends ChangeNotifier {
     Locale('nb'), // Norsk bokmål
     Locale('ar'), // العربية (RTL)
     Locale('sw'), // Kiswahili
+    // Add further locales only after complete, validated ARB translations exist.
   ];
 
   /// Label humain pour le picker — affiché dans la langue native
