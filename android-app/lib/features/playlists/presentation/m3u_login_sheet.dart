@@ -168,9 +168,14 @@ class _M3uLoginSheetState extends State<_M3uLoginSheet> {
                   children: <Widget>[
                     Icon(Icons.link_rounded, color: AppColors.accent, size: 22),
                     const SizedBox(width: 10),
-                    Text(context.l10n.loginMySourcePerso,
-                        style:
-                            AppTextStyles.headlineLarge.copyWith(fontSize: 22)),
+                    Expanded(
+                      child: Text(
+                        context.l10n.loginMySourcePerso,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTextStyles.headlineLarge.copyWith(fontSize: 22),
+                      ),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 14),
@@ -305,12 +310,17 @@ class _M3uLoginSheetState extends State<_M3uLoginSheet> {
               width: selected ? 1.4 : 1,
             ),
           ),
-          child: Text(
-            label,
-            style: AppTextStyles.bodyLarge.copyWith(
-              fontSize: 15,
-              fontWeight: FontWeight.w700,
-              color: selected ? AppColors.accent : AppColors.textSecondary,
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              label,
+              maxLines: 1,
+              style: AppTextStyles.bodyLarge.copyWith(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                color: selected ? AppColors.accent : AppColors.textSecondary,
+              ),
             ),
           ),
         ),
