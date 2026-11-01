@@ -48,7 +48,8 @@ abstract final class VipSupport {
         : _defaultPrefill;
     final String name = appName.trim().isEmpty ? 'ZUNO' : appName.trim();
     final String device = mac.trim().isEmpty ? 'indisponible' : mac.trim();
-    final String build = version.trim().isEmpty ? 'indisponible' : version.trim();
+    final String build =
+        version.trim().isEmpty ? 'indisponible' : version.trim();
     final String code = status.trim().isEmpty ? 'non vérifié' : status.trim();
     // Évite de répéter la MAC si l'écran d'activation l'a déjà ajoutée.
     final String macLine = intro.contains(device) ? '' : '\nMAC : $device';
@@ -59,9 +60,15 @@ abstract final class VipSupport {
   /// On lit l'état serveur déjà connu de l'application, sans lancer une
   /// activation, un achat, un appel réseau supplémentaire ni une collecte.
   static Future<String> _messageForCurrentDevice(String? customMessage) async {
-    String appName = AppPlatform.isTv ? 'ZUNO' : 'Application';
+    String appName = AppPlatform.isZuno
+        ? AppPlatform.zunoEditionName
+        : AppPlatform.isTv
+            ? 'ZUNO'
+            : 'Application';
     try {
-      if (!AppPlatform.isTv) appName = BrandConfig.instance.appName;
+      if (!AppPlatform.isZuno && !AppPlatform.isTv) {
+        appName = BrandConfig.instance.appName;
+      }
     } catch (_) {
       // Aucun nom distant n'est obligatoire pour contacter le support.
     }
@@ -83,7 +90,8 @@ abstract final class VipSupport {
                     ? 'payant'
                     : remote.expired
                         ? 'expiré'
-                        : remote.trialUntil > DateTime.now().millisecondsSinceEpoch
+                        : remote.trialUntil >
+                                DateTime.now().millisecondsSinceEpoch
                             ? 'test'
                             : 'non actif';
 

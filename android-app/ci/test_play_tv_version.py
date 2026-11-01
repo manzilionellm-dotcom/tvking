@@ -29,6 +29,19 @@ class PlayTvVersionTest(unittest.TestCase):
             "versionCode": 21, "versionName": "109",
         }), (21, "109"))
 
+    def test_inactive_higher_upload_still_sets_the_next_code(self):
+        # Console vérifiée le 31/10/2026 : 109 est publiée, mais l'ancien
+        # bundle 107 inactif a déjà consommé un code plus élevé. On ne le
+        # réutilise pas et on ne prétend pas qu'il est devenu la production.
+        data = {
+            "lastPublishedVersionCode": 1791125397,
+            "lastUploadedVersionCode": 1792394391,
+            "versionCode": 1792394392,
+            "versionName": "110",
+        }
+        self.assertEqual(validate_version(data), (1792394392, "110"))
+        self.assertEqual(data["lastPublishedVersionCode"], 1791125397)
+
     def test_rejects_reuse_or_jump_after_unpublished_upload(self):
         for current in (1791125395, 1791125396, 1791125398):
             with self.subTest(current=current):

@@ -31,8 +31,15 @@ class ZunoCastPlugin : FlutterPlugin, ActivityAware {
         this.binding = binding
         val context = binding.applicationContext
         val mode = context.getSystemService(Context.UI_MODE_SERVICE) as UiModeManager
-        handset = mode.currentModeType != Configuration.UI_MODE_TYPE_TELEVISION &&
-            !context.packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK)
+        // Une box AOSP peut n'annoncer ni le mode TV ni Leanback. L'absence
+        // de ces deux signaux ne suffit donc pas à en faire un téléphone :
+        // le Cast émetteur exige aussi un véritable écran tactile déclaré.
+        // TV et Leanback restent prioritaires, même sur un écran tactile.
+        handset = ZunoDeviceCapabilities.isHandset(
+            mode.currentModeType == Configuration.UI_MODE_TYPE_TELEVISION,
+            context.packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK),
+            context.packageManager.hasSystemFeature(PackageManager.FEATURE_TOUCHSCREEN),
+        )
         capability = MethodChannel(binding.binaryMessenger, "com.sevenmotion.zuno/cast-capability").apply {
             setMethodCallHandler { call, result ->
                 if (call.method == "isHandset") result.success(handset) else result.notImplemented()
