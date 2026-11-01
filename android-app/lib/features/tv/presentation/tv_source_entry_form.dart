@@ -146,10 +146,12 @@ class _TvSourceEntryFormState extends State<TvSourceEntryForm> {
       if (mounted) setState(() => _error = 'connect_failed');
     } finally {
       // Le wrapper du dépôt a déjà nettoyé le bus AVANT de libérer la file.
-      if (mounted) setState(() {
-        _busy = false;
-        _importStarted = false;
-      });
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _importStarted = false;
+        });
+      }
     }
     if (mounted && added) widget.onAdded?.call();
   }
@@ -323,6 +325,10 @@ class _SourceField extends StatelessWidget {
       textInputAction: textInputAction,
       onSubmitted: enabled ? onSubmitted : null,
       autocorrect: false, enableSuggestions: false,
+      // Les codes et URL gardent leur ordre même dans une interface arabe.
+      // Le clavier ne doit pas apprendre les identifiants de connexion.
+      textDirection: TextDirection.ltr,
+      enableIMEPersonalizedLearning: false,
       textCapitalization: TextCapitalization.none,
       smartDashesType: SmartDashesType.disabled,
       smartQuotesType: SmartQuotesType.disabled,

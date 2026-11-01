@@ -33,11 +33,13 @@ import '../data/startup_preference.dart';
 import 'tv_audio_diagnostic_screen.dart';
 import 'tv_black_box_screen.dart';
 import 'tv_profiles_screen.dart';
+import 'tv_profile_label.dart';
 import 'tv_legal_screen.dart';
 import 'tv_parental_screen.dart';
 import 'tv_recordings_screen.dart';
 import 'tv_shell.dart';
 import 'tv_sources_screen.dart';
+import 'tv_source_setup.dart' show TvWhatsAppSupportButton;
 
 class TvSettingsScreen extends StatefulWidget {
   const TvSettingsScreen({super.key});
@@ -171,7 +173,7 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
   }
 
   Future<void> _nextLanguage() async {
-    final List<Locale> all = LocaleRepository.supportedLocales;
+    const List<Locale> all = LocaleRepository.supportedLocales;
     final Locale? cur = LocaleRepository.instance.locale;
     Locale? next;
     if (cur == null) {
@@ -321,7 +323,7 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
       _SettingEntry(
         icon: Icons.switch_account_rounded,
         title: context.l10n.tvProfiles,
-        value: ProfileRepository.instance.active.name,
+        value: tvProfileLabel(context, ProfileRepository.instance.active),
         description: context.l10n.tvProfilesSettingsHelp,
         onSelect: () => open(const TvProfilesScreen()),
       ),
@@ -411,7 +413,7 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
           children: <Widget>[
             Text(
               context.l10n.tvNavSettings,
-              style: TextStyle(
+              style: const TextStyle(
                 fontSize: TvDimens.displayM,
                 fontWeight: FontWeight.w800,
                 color: TvTokens.text,
@@ -430,6 +432,12 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
               ),
             ),
           ],
+        ),
+        // Le contact reste accessible après l'activation, sans chercher une
+        // rubrique dans l'anneau ni recopier la MAC depuis un autre écran.
+        const Align(
+          alignment: AlignmentDirectional.centerEnd,
+          child: TvWhatsAppSupportButton(),
         ),
         Expanded(
           child: Center(

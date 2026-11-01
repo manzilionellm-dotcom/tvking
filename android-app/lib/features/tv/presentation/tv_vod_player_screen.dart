@@ -25,6 +25,7 @@ import '../../cast/data/cast_platform.dart';
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import '../desktop/desktop_cast_controls.dart';
+import '../data/zuno_pip_service.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -78,6 +79,11 @@ enum _Zone { timeline, buttons }
 class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
     with WidgetsBindingObserver {
   late NativeVideoController _c;
+  late final ZunoPipPlayback _pip;
+  bool _closeAfterPip = false;
+  bool _appActive = true;
+  int _startRevision = 0;
+  Future<void> Function()? _pendingStart;
   final GlobalKey<DesktopCastControlsState> _desktopCastKey = GlobalKey<DesktopCastControlsState>();
   bool _desktopCasting = false;
   String? _playingUrl;
@@ -131,6 +137,34 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
     ForegroundPlayback.lock();
     _item = widget.item;
     _c = NativeVideoController()..addListener(_onPlayer);
+    _pip = ZunoPipService.instance.acquire(
+      onSuspend: (bool forceStop) {
+        _appActive = false;
+        _vodTimer?.cancel();
+        _vodTimer = null;
+        _vodArmed = false;
+        _seekTimer?.cancel();
+        if (NativeVideoController.backgroundPauseOnly && !forceStop) {
+          _c.pause();
+        } else {
+          _c.suspendForBackground();
+        }
+        _saveProgress(flush: true);
+      },
+      onResume: () {
+        // Écran éteint puis rallumé sur la mini-fenêtre : reprendre dedans.
+        // Hors PiP, on conserve la reprise manuelle historique du cinéma.
+        _appActive = true;
+        if (_pip.isInPipMode) {
+          if (!_resumePendingStart()) _c.resumeFromBackground();
+        }
+      },
+      onModeChanged: _onPipState,
+      onVisibilityChanged: (bool visible) {
+        _appActive = visible;
+        _finishAfterPip();
+      },
+    );
     unawaited(
       ClearVoiceFlag.load().then((_) {
         if (mounted) _c.setClearVoice(ClearVoiceFlag.value);
@@ -197,26 +231,45 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    switch (state) {
-      case AppLifecycleState.paused:
-      case AppLifecycleState.hidden:
-      case AppLifecycleState.detached:
-        // Même règle que le direct : rien ne joue hors de l'app. Le natif
-        // garde la position ; « OK » au retour rouvre le film à cet endroit.
-        if (NativeVideoController.backgroundPauseOnly) {
-          _c.pause();
-        } else {
-          _c.suspendForBackground();
-        }
-        _saveProgress(flush: true);
-      case AppLifecycleState.resumed:
-      case AppLifecycleState.inactive:
-        break; // reprise manuelle (OK) : pas de son surprise au retour
-    }
+    unawaited(_pip.onLifecycle(state));
   }
+
+  void _onPipState() {
+    if (mounted) setState(() {});
+    _finishAfterPip();
+  }
+
+  void _finishAfterPip() {
+    if (!_closeAfterPip || _pip.isInPipMode || !_pip.isVisible) return;
+    _closeAfterPip = false;
+    Future<void>.microtask(() {
+      if (!mounted) return;
+      if (_pip.isInPipMode || !_appActive || !_pip.isVisible) {
+        _closeAfterPip = true;
+        return;
+      }
+      Navigator.of(context).pop();
+    });
+  }
+
+  bool _resumePendingStart() {
+    final Future<void> Function()? pending = _pendingStart;
+    if (pending == null || !_appActive) return false;
+    _pendingStart = null;
+    unawaited(pending());
+    return true;
+  }
+
+  void _updatePip() => _pip.update(
+        playing: _c.isPlaying,
+        casting: _desktopCasting,
+        width: _c.videoWidth,
+        height: _c.videoHeight,
+      );
 
   @override
   void dispose() {
+    _pip.dispose();
     _saveProgress(flush: true);
     WidgetsBinding.instance.removeObserver(this);
     TvActivity.leave();
@@ -246,9 +299,17 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
     String? local,
     bool keepPicture = false,
   }) async {
+    final int revision = ++_startRevision;
     final String? audioPref = await CinemaTrackPrefs.audio();
     final String? textPref = await CinemaTrackPrefs.text();
-    if (!mounted) return;
+    if (!mounted || revision != _startRevision) return;
+    if (!_appActive) {
+      // Préférences lues trop tard après Home : reprendre seulement sur
+      // demande visible, jamais ouvrir une nouvelle connexion hors écran.
+      _pendingStart = () => _start(item, startAt, local: local, keepPicture: keepPicture);
+      return;
+    }
+    _pendingStart = null;
     final String appLang = Localizations.localeOf(context).languageCode;
     BlackBox.instance.breadcrumb(
       'Cinéma : lecture ${item.title} ${item.subtitle ?? ''}',
@@ -281,6 +342,7 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
   }
 
   Future<void> _playNext() async {
+    if (!_appActive) return;
     final CinemaEpisode? n = _next;
     final CinemaTitle? st = widget.seriesTitle;
     if (n == null || st == null) return;
@@ -293,6 +355,10 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
     final WatchEntry? prev = WatchProgressRepository.instance.get(ni.id);
     final String? local = await offlinePathFor(ni.id);
     if (!mounted) return;
+    if (!_appActive) {
+      _pendingStart = _playNext;
+      return;
+    }
     setState(() {
       _item = ni;
       _next = _computeNext();
@@ -316,6 +382,7 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
 
   void _onPlayer() {
     if (!mounted) return;
+    _updatePip();
     // Moteur épuisé (matériel, logiciel, FFmpeg) : plus de tentative.
     // Une erreur de flux, elle, attend 1 s, 2 s, 4 s, 8 s et garde
     // l'image. Le message « lecture impossible » part quand ce budget
@@ -363,9 +430,8 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
       _saveProgress(flush: true, ended: true);
       if (_next == null || _nextDismissed) {
         // Fin d'un film (ou de la série) : on sort proprement.
-        Future<void>.microtask(() {
-          if (mounted) Navigator.of(context).pop();
-        });
+        _closeAfterPip = true;
+        _finishAfterPip();
       }
     }
     setState(() {});
@@ -373,6 +439,7 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
 
   /// Même seconde, attente 1 s puis 2 s, 4 s, 8 s. L'image reste.
   void _armVodRetry() {
+    if (!_appActive) return;
     if (_vodAttempts >= ReconnectPlan.maxSilent) {
       BlackBox.instance.warn('CINEMA', 'lecture impossible ${_item.id}');
       _fatal = true;
@@ -393,7 +460,7 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
     _vodTimer = Timer(Duration(milliseconds: delay), () {
       _vodTimer = null;
       _vodArmed = false;
-      if (!mounted || _fatal) return;
+      if (!mounted || !_appActive || _fatal) return;
       if (ReconnectPlan.letNativeOwnRetry(_c.nativeRetrying)) return;
       unawaited(
         _start(
@@ -412,6 +479,7 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
     _countdownTimer?.cancel();
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (Timer t) {
       if (!mounted) return t.cancel();
+      if (!_appActive) return; // le décompte reprend avec l'image visible
       if (_c.isPlaying || _c.isEnded) {
         setState(() => _countdown--);
       }
@@ -515,6 +583,8 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
   }
 
   void _togglePlay() {
+    if (!_appActive) return;
+    if (_resumePendingStart()) return;
     if (_desktopCasting && _desktopCastKey.currentState?.ownsSession != true) return;
     if (_desktopCastKey.currentState?.ownsSession == true) {
       unawaited(_desktopCastKey.currentState!.togglePause());
@@ -897,21 +967,35 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
                 children: <Widget>[
                   Center(
                     child: AspectRatio(
-                      aspectRatio: 16 / 9,
+                      aspectRatio: _pip.isInPipMode &&
+                              _c.videoWidth > 0 && _c.videoHeight > 0
+                          ? _c.videoWidth / _c.videoHeight
+                          : 16 / 9,
                       child: NativeVideoView(controller: _c),
                     ),
                   ),
-                  if (!_desktopCasting && !_c.firstFrame && !_fatal && !_c.holdFrame)
+                  if (!_pip.isInPipMode &&
+                      !_desktopCasting && !_c.firstFrame && !_fatal && !_c.holdFrame)
                     _buildLoading(),
                   if (!_desktopCasting && _c.cues.isNotEmpty) _buildSubtitles(),
-                  if (!_desktopCasting && (_overlay || _fatal)) _buildOverlay(context),
-                  if (_toast != null) _buildToast(),
-                  if (!_desktopCasting && _nextCard && _next != null) _buildNextCard(context),
-                  if (!_desktopCasting && _tracksOpen) _buildTracks(context),
-                  if (!_desktopCasting && _fatal) _buildError(context),
+                  if (!_pip.isInPipMode &&
+                      !_desktopCasting &&
+                      (_overlay || _fatal))
+                    _buildOverlay(context),
+                  if (!_pip.isInPipMode && _toast != null) _buildToast(),
+                  if (!_pip.isInPipMode &&
+                      !_desktopCasting &&
+                      _nextCard &&
+                      _next != null)
+                    _buildNextCard(context),
+                  if (!_pip.isInPipMode && !_desktopCasting && _tracksOpen)
+                    _buildTracks(context),
+                  if (!_pip.isInPipMode && !_desktopCasting && _fatal) _buildError(context),
                   if (CastPlatform.canSendFromZuno)
                     Positioned(top: TvDimens.safeV, right: TvDimens.safeH,
-                      child: DesktopCastControls(key: _desktopCastKey,
+                      child: Offstage(
+                        offstage: _pip.isInPipMode,
+                        child: DesktopCastControls(key: _desktopCastKey,
                         controller: _c, streamUrl: _playingUrl ?? _item.url,
                         title: _item.title, imageUrl: null,
                         onHandoffChanged: (bool active) {
@@ -922,7 +1006,8 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
                             _seekTarget = null;
                             _tracksOpen = false;
                           });
-                        })),
+                          _updatePip();
+                        }))),
                 ],
               ),
             ),

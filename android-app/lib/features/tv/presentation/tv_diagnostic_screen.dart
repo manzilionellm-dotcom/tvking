@@ -124,10 +124,10 @@ class _TvDiagnosticScreenState extends State<TvDiagnosticScreen> {
     if (!PlaylistRepository.instance.currentPlaylists
         .any((p) => isGoldTrialPlaylist(p.name))) return check.detail(context);
     return switch (check.stat) {
-      _Stat.ok => 'Vérification réussie.',
-      _Stat.running => 'Vérification en cours…',
-      _Stat.pending => 'En attente.',
-      _ => 'Vérification indisponible.',
+      _Stat.ok => context.l10n.tvCheckPassed,
+      _Stat.running => context.l10n.tvCheckRunning,
+      _Stat.pending => context.l10n.tvCheckPending,
+      _ => context.l10n.tvCheckUnavailable,
     };
   }
 

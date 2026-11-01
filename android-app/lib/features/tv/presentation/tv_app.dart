@@ -1,3 +1,4 @@
+import '../../../core/i18n/somali_localizations.dart';
 // =========================================================
 //  tv_app.dart — Racine de DeFew TV (MaterialApp 10-foot)
 // =========================================================
@@ -48,6 +49,7 @@ import 'tv_search_screen.dart';
 import 'tv_settings_screen.dart';
 import 'tv_sports_screen.dart';
 import 'tv_shell.dart';
+import 'tv_scaled_viewport.dart';
 
 /// Largeur LOGIQUE de référence du design TV. Toute l'app est rendue comme
 /// si l'écran faisait cette largeur, puis mise à l'échelle vers l'écran réel
@@ -81,7 +83,10 @@ class TvApp extends StatelessWidget {
         // --- Internationalisation (16 langues, RTL auto pour l'arabe) ---
         locale: LocaleRepository.instance.locale, // null = langue de la TV
         supportedLocales: AppLocalizations.supportedLocales,
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        localizationsDelegates: const [
+          ...somaliLocalizationsDelegates,
+          ...AppLocalizations.localizationsDelegates,
+        ],
         // Langue de la TV → langue de l'app (toutes les préférences système,
         // code langue seul, repli anglais). Voir LocaleRepository.resolve.
         localeListResolutionCallback: LocaleRepository.resolve,
@@ -104,23 +109,11 @@ class TvApp extends StatelessWidget {
         // relative, quelle que soit la TV. On neutralise aussi le textScale
         // système (certaines box le poussent à 1,3-1,5).
         builder: (BuildContext context, Widget? child) {
-          final MediaQueryData mq = MediaQuery.of(context);
-          final Size screen = mq.size;
-          if (child == null || screen.width <= 0 || screen.height <= 0) {
-            return child ?? const SizedBox.shrink();
-          }
-          const double designW = kTvDesignWidth;
-          final double designH = designW * screen.height / screen.width;
+          if (child == null) return const SizedBox.shrink();
           return VoiceHotkey(
-            child: MediaQuery(
-              data: mq.copyWith(
-                size: Size(designW, designH),
-                textScaler: TextScaler.noScaling,
-              ),
-              child: FittedBox(
-                fit: BoxFit.fill,
-                child: SizedBox(width: designW, height: designH, child: child),
-              ),
+            child: TvScaledViewport(
+              designWidth: kTvDesignWidth,
+              child: child,
             ),
           );
         },

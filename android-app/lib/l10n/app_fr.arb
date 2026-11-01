@@ -3142,5 +3142,35 @@
   "playbackNotifDefaultBody": "Lecture audio en arrière-plan",
   "playbackNotifChannelName": "Lecture audio",
   "playbackNotifChannelDesc": "Lecture audio en arrière-plan (mode Écouteurs)",
-  "castNotifRelayBody": "Diffusion sur la TV — garde le téléphone sur ce WiFi"
+  "castNotifRelayBody": "Diffusion sur la TV — garde le téléphone sur ce WiFi",
+  "trialTitle": "Votre essai gratuit",
+  "trialDurationBadge": "24 H",
+  "trialDiscover": "Découvrez Zuno pendant 24 heures.",
+  "trialActivating": "Activation de votre essai…",
+  "trialStart": "Je teste",
+  "trialAutomatic": "Sans saisie · Activation automatique",
+  "trialExpires": "Expiration : {date}",
+  "trialComingSoon": "Essai bientôt disponible",
+  "trialActivated": "Essai activé ✔",
+  "trialAlreadyUsed": "Vous avez déjà utilisé votre essai gratuit",
+  "trialInProgress": "Activation en cours, patientez quelques secondes.",
+  "trialDailyCap": "Plus d’essais disponibles aujourd’hui. Revenez demain.",
+  "trialRateLimited": "Trop de demandes. Patientez une minute avant de réessayer.",
+  "trialError": "Une erreur est survenue. Réessayez.",
+  "trialInterrupted": "Le chargement de votre liste a été interrompu.",
+  "trialRetryLoading": "Réessayer le chargement",
+  "trialSubscribe": "S’abonner sur WhatsApp",
+  "trialScanHelp": "Scannez ce code avec votre téléphone.",
+  "tvM3uLinkHelp": "Adresse .m3u, .m3u8 ou lien get.php, avec ou sans identifiants.",
+  "tvCheckPassed": "Vérification réussie.",
+  "tvCheckRunning": "Vérification en cours…",
+  "tvCheckPending": "En attente.",
+  "tvCheckUnavailable": "Vérification indisponible.",
+  "@trialExpires": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  }
 }

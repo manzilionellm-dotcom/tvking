@@ -8,6 +8,8 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:tv_king/core/theme/app_theme.dart';
+import 'package:tv_king/core/i18n/somali_localizations.dart';
+import 'package:tv_king/l10n/generated/app_localizations.dart';
 import 'package:tv_king/features/playlists/domain/playlist.dart';
 import 'package:tv_king/features/subscription/data/gold_trial_backend.dart';
 import 'package:tv_king/features/subscription/data/gold_trial_controller.dart';
@@ -23,63 +25,107 @@ void main() {
   setUpAll(() => GoogleFonts.config.allowRuntimeFetching = false);
   setUp(() => SharedPreferences.setMockInitialValues(<String, Object>{}));
 
-  GoldTrialController create(Future<http.Response> Function(http.Request) handler,
-      {bool customer = false}) => GoldTrialController(
-    trialRequestsEnabled: true,
-    backend: GoldTrialBackend(clientFactory: () => MockClient(handler)),
-    sourceHeaders: () async => <String, String>{'X-Device-Secret': 'fixture'},
-    loadIdentity: () async => const GoldTrialIdentity(mac: 'MK:11:22:33:44:55',
-        androidId: 'fixture', appVersion: '109-review'),
-    hasSubscription: () => customer,
-    hasLoadedTrial: () => true,
-    loadPlaylists: () async => const <Playlist>[],
-    playlistChanges: const Stream<List<Playlist>>.empty(),
-  );
+  GoldTrialController create(
+          Future<http.Response> Function(http.Request) handler,
+          {bool customer = false}) =>
+      GoldTrialController(
+        trialRequestsEnabled: true,
+        backend: GoldTrialBackend(clientFactory: () => MockClient(handler)),
+        sourceHeaders: () async =>
+            <String, String>{'X-Device-Secret': 'fixture'},
+        loadIdentity: () async => const GoldTrialIdentity(
+            mac: 'MK:11:22:33:44:55',
+            androidId: 'fixture',
+            appVersion: '109-review'),
+        hasSubscription: () => customer,
+        hasLoadedTrial: () => true,
+        loadPlaylists: () async => const <Playlist>[],
+        playlistChanges: const Stream<List<Playlist>>.empty(),
+      );
 
   Future<void> show(WidgetTester tester, GoldTrialController controller,
-      {Size size = const Size(1280, 720)}) async {
+      {Size size = const Size(1280, 720),
+      Locale locale = const Locale('fr')}) async {
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = size;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
     await controller.initialize();
-    await tester.pumpWidget(MaterialApp(theme: AppTheme.cinema,
-      home: Scaffold(backgroundColor: TvTokens.bg, body: RepaintBoundary(
-        key: _previewKey,
-        child: Padding(padding: const EdgeInsets.all(24), child: TvActivationFrame(
-          activation: Column(mainAxisSize: MainAxisSize.min, children: <Widget>[
-            const TvLogo(width: 180),
-            TvGoldTrialCard(controller: controller, autofocus: true),
-            const SizedBox(height: 24),
-            Text('Votre code d’activation', style: TvTokens.ui(18)),
-            Text('11:22:33:44:55', style: TvTokens.mono(30)),
-            const SizedBox(height: 24),
-            TvCtaButton(label: 'J’ai payé — Vérifier', onSelect: () {}),
-          ]),
-          help: Column(mainAxisSize: MainAxisSize.min, children: <Widget>[
-            const Icon(Icons.live_tv_rounded, size: 80, color: TvTokens.accentBright),
-            const SizedBox(height: 24),
-            Text('Zuno TV', style: TvTokens.display(40)),
-            const SizedBox(height: 12),
-            Text('Votre télévision, simplement.', style: TvTokens.ui(22, color: TvTokens.muted)),
-          ]),
-        )),
-      )),
+    await tester.pumpWidget(MaterialApp(
+      theme: AppTheme.cinema,
+      locale: locale,
+      supportedLocales: AppLocalizations.supportedLocales,
+      localizationsDelegates: const [
+        ...somaliLocalizationsDelegates,
+        ...AppLocalizations.localizationsDelegates,
+      ],
+      home: Scaffold(
+          backgroundColor: TvTokens.bg,
+          body: RepaintBoundary(
+            key: _previewKey,
+            child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: TvActivationFrame(
+                  activation:
+                      Column(mainAxisSize: MainAxisSize.min, children: <Widget>[
+                    const TvLogo(width: 180),
+                    TvGoldTrialCard(controller: controller, autofocus: true),
+                    const SizedBox(height: 24),
+                    Text('Votre code d’activation', style: TvTokens.ui(18)),
+                    Text('11:22:33:44:55', style: TvTokens.mono(30)),
+                    const SizedBox(height: 24),
+                    TvCtaButton(label: 'J’ai payé — Vérifier', onSelect: () {}),
+                  ]),
+                  help:
+                      Column(mainAxisSize: MainAxisSize.min, children: <Widget>[
+                    const Icon(Icons.live_tv_rounded,
+                        size: 80, color: TvTokens.accentBright),
+                    const SizedBox(height: 24),
+                    Text('Zuno TV', style: TvTokens.display(40)),
+                    const SizedBox(height: 12),
+                    Text('Votre télévision, simplement.',
+                        style: TvTokens.ui(22, color: TvTokens.muted)),
+                  ]),
+                )),
+          )),
     ));
     await tester.pumpAndSettle();
-
   }
 
-  testWidgets('offre fermée par défaut : carte invisible, OK ne lance aucun appel ni loader', (tester) async {
+  for (final code in ['sv', 'ar', 'so', 'en']) {
+    testWidgets('essai et réponse française affichés en $code', (tester) async {
+      final locale = Locale(code);
+      final words = await AppLocalizations.delegate.load(locale);
+      final controller = create((_) async => http.Response(
+          '{"ok":true,"expire":"2030-10-29T12:00:00Z","message":"Votre essai est prêt."}',
+          201));
+      addTearDown(controller.dispose);
+      await show(tester, controller, locale: locale);
+      expect(find.text(words.trialTitle), findsOneWidget);
+      expect(find.text(words.trialStart), findsOneWidget);
+      await tester.tap(find.text(words.trialStart));
+      await tester.pumpAndSettle();
+      expect(find.text(words.trialActivated), findsOneWidget);
+      expect(find.text('Votre essai est prêt.'), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets(
+      'offre fermée par défaut : carte invisible, OK ne lance aucun appel ni loader',
+      (tester) async {
     int posts = 0;
     final controller = GoldTrialController(
-      backend: GoldTrialBackend(clientFactory: () => MockClient((_) async {
-        posts++;
-        return http.Response('{}', 500);
-      })),
+      backend: GoldTrialBackend(
+          clientFactory: () => MockClient((_) async {
+                posts++;
+                return http.Response('{}', 500);
+              })),
       sourceHeaders: () async => <String, String>{},
       loadIdentity: () async => const GoldTrialIdentity(
-          mac: 'MK:11:22:33:44:55', androidId: 'fixture', appVersion: '109-review'),
+          mac: 'MK:11:22:33:44:55',
+          androidId: 'fixture',
+          appVersion: '109-review'),
       hasSubscription: () => false,
       loadPlaylists: () async => const <Playlist>[],
       playlistChanges: const Stream<List<Playlist>>.empty(),
@@ -98,10 +144,15 @@ void main() {
     expect(posts, 0);
   });
 
-  testWidgets('télécommande : focus, OK maintenu, double clic et message public', (tester) async {
+  testWidgets(
+      'télécommande : focus, OK maintenu, double clic et message public',
+      (tester) async {
     int posts = 0;
     final pending = Completer<http.Response>();
-    final controller = create((_) { posts++; return pending.future; });
+    final controller = create((_) {
+      posts++;
+      return pending.future;
+    });
     addTearDown(controller.dispose);
     await show(tester, controller);
     expect(find.text('Je teste'), findsOneWidget);
@@ -115,49 +166,72 @@ void main() {
     await tester.sendKeyEvent(LogicalKeyboardKey.select);
     await tester.pump();
     expect(posts, 1, reason: 'pas de deuxième demande pendant le POST');
-    pending.complete(http.Response('{"ok":true,"expire":"2030-10-29T12:00:00Z","message":"Votre essai est prêt."}', 201));
+    pending.complete(http.Response(
+        '{"ok":true,"expire":"2030-10-29T12:00:00Z","message":"Votre essai est prêt."}',
+        201));
     await tester.pumpAndSettle();
-    expect(find.text('Votre essai est prêt.'), findsOneWidget);
-    expect(find.textContaining('29/10/2030'), findsOneWidget);
+    expect(find.text('Essai activé ✔'), findsOneWidget);
+    expect(find.text('Votre essai est prêt.'), findsNothing);
+    expect(find.textContaining('29 oct. 2030'), findsOneWidget);
     expect(find.text('Je teste'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('essai utilisé : QR WhatsApp et retour à la télécommande', (tester) async {
-    final controller = create((_) async => http.Response('{"error":"trial_already_used"}', 409));
+  testWidgets('essai utilisé : QR WhatsApp et retour à la télécommande',
+      (tester) async {
+    final controller = create(
+        (_) async => http.Response('{"error":"trial_already_used"}', 409));
     addTearDown(controller.dispose);
     await show(tester, controller);
     await tester.sendKeyEvent(LogicalKeyboardKey.select);
     await tester.pumpAndSettle();
-    expect(find.text('Vous avez déjà utilisé votre essai gratuit'), findsOneWidget);
+    expect(find.text('Vous avez déjà utilisé votre essai gratuit'),
+        findsOneWidget);
     expect(find.text('Je teste'), findsNothing);
     await tester.tap(find.text('S’abonner sur WhatsApp'));
     await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey<String>('tv-trial-whatsapp-qr')), findsOneWidget);
+    expect(find.byKey(const ValueKey<String>('tv-trial-whatsapp-qr')),
+        findsOneWidget);
     await tester.sendKeyEvent(LogicalKeyboardKey.select);
     await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey<String>('tv-trial-whatsapp-qr')), findsNothing);
+    expect(find.byKey(const ValueKey<String>('tv-trial-whatsapp-qr')),
+        findsNothing);
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('OFF : message sûr et abonnement ; client existant : carte masquée', (tester) async {
-    final controller = create((_) async => http.Response('{"error":"trial_disabled","message":"cms-8k.net private-provider-secret"}', 403));
+  testWidgets(
+      'OFF : message sûr et abonnement ; client existant : carte masquée',
+      (tester) async {
+    final controller = create((_) async => http.Response(
+        '{"error":"trial_disabled","message":"cms-8k.net private-provider-secret"}',
+        403));
     addTearDown(controller.dispose);
     await show(tester, controller);
     await tester.sendKeyEvent(LogicalKeyboardKey.select);
     await tester.pumpAndSettle();
     expect(find.text('Essai bientôt disponible'), findsOneWidget);
     expect(find.textContaining('cms-8k'), findsNothing);
-    final customer = create((_) async => http.Response('{}', 500), customer: true);
+    final customer =
+        create((_) async => http.Response('{}', 500), customer: true);
     addTearDown(customer.dispose);
     await show(tester, customer);
     expect(find.text('Je teste'), findsNothing);
     expect(find.text('Votre essai gratuit'), findsNothing);
   });
 
-  for (final size in <Size>[const Size(960, 540), const Size(1920, 1080), const Size(720, 1280)]) {
-    testWidgets('mise en page $size : message long sans débordement', (tester) async {
-      final controller = create((_) async => http.Response('{"error":"trial_disabled","message":"Les essais sont temporairement fermés. Vous pouvez contacter notre service pour découvrir les abonnements disponibles et recevoir de l’aide pour votre activation."}', 403, headers: <String, String>{'content-type': 'application/json; charset=utf-8'}));
+  for (final size in <Size>[
+    const Size(960, 540),
+    const Size(1920, 1080),
+    const Size(720, 1280)
+  ]) {
+    testWidgets('mise en page $size : message long sans débordement',
+        (tester) async {
+      final controller = create((_) async => http.Response(
+              '{"error":"trial_disabled","message":"Les essais sont temporairement fermés. Vous pouvez contacter notre service pour découvrir les abonnements disponibles et recevoir de l’aide pour votre activation."}',
+              403,
+              headers: <String, String>{
+                'content-type': 'application/json; charset=utf-8'
+              }));
       addTearDown(controller.dispose);
       await show(tester, controller, size: size);
       await tester.sendKeyEvent(LogicalKeyboardKey.select);
@@ -167,19 +241,28 @@ void main() {
     });
   }
 
-  testWidgets('activation longue : les dernières commandes restent accessibles au D-pad', (tester) async {
+  testWidgets(
+      'activation longue : les dernières commandes restent accessibles au D-pad',
+      (tester) async {
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = const Size(960, 540);
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
     int selected = -1;
-    await tester.pumpWidget(MaterialApp(home: Scaffold(body: TvActivationFrame(
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: TvActivationFrame(
       activation: Column(children: <Widget>[
-        for (int i = 0; i < 12; i++) Padding(
-          padding: const EdgeInsets.all(12),
-          child: TvCtaButton(label: 'Commande $i', autofocus: i == 0,
-              onSelect: () { selected = i; }),
-        ),
+        for (int i = 0; i < 12; i++)
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: TvCtaButton(
+                label: 'Commande $i',
+                autofocus: i == 0,
+                onSelect: () {
+                  selected = i;
+                }),
+          ),
       ]),
       help: const SizedBox.shrink(),
     ))));
@@ -191,7 +274,8 @@ void main() {
     await tester.sendKeyEvent(LogicalKeyboardKey.select);
     await tester.pumpAndSettle();
     expect(selected, 11);
-    expect(tester.getCenter(find.text('Commande 11')).dy, inInclusiveRange(0, 540));
+    expect(tester.getCenter(find.text('Commande 11')).dy,
+        inInclusiveRange(0, 540));
     expect(tester.takeException(), isNull);
   });
 }

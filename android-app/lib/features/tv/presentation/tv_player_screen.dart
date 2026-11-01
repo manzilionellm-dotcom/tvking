@@ -27,6 +27,7 @@ import '../../cast/data/cast_platform.dart';
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import '../desktop/desktop_cast_controls.dart';
+import '../data/zuno_pip_service.dart';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
@@ -102,6 +103,7 @@ class TvPlayerScreen extends StatefulWidget {
 class _TvPlayerScreenState extends State<TvPlayerScreen>
     with WidgetsBindingObserver {
   late final NativeVideoController _controller;
+  late final ZunoPipPlayback _pip;
   bool _casting = false;
   final GlobalKey<DesktopCastControlsState> _desktopCastKey = GlobalKey<DesktopCastControlsState>();
   final FocusNode _focus = FocusNode();
@@ -264,6 +266,17 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
       _playingUrl = LiveFallback.preferred(_current.streamUrl);
     }
     _controller = NativeVideoController(initialUrl: _playingUrl);
+    _pip = ZunoPipService.instance.acquire(
+      onSuspend: _suspendOutside,
+      onResume: _resumeInside,
+      onModeChanged: () {
+        if (mounted) setState(() {});
+      },
+      onVisibilityChanged: (bool visible) {
+        _appActive = visible;
+        _lastProgress = DateTime.now();
+      },
+    );
     unawaited(
       ClearVoiceFlag.load().then((_) {
         if (mounted) _controller.setClearVoice(ClearVoiceFlag.value);
@@ -340,53 +353,49 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     _controller.setFrameRateMatch(ImagePrefs.frameRateMatch);
   }
 
-  // Quitter / minimiser l'app (Home, multitâche) : AUCUNE lecture hors de
-  // l'app. Avant, on mettait en pause : le décodeur, la sortie son et le
-  // focus audio restaient vivants pendant que la box faisait autre chose,
-  // et au retour la voix sonnait « dans un trou ». Maintenant on ARRÊTE
-  // (décodeur et sortie son rendus) et on rouvre au retour, comme un zap.
-  // Réglage de repli « Hors app : pause » = ancien comportement.
+  // Une mini-fenêtre est encore une image visible. Le pont Android décide
+  // quand l'activité est vraiment cachée ; la TV garde son ancien cycle.
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    switch (state) {
-      case AppLifecycleState.paused:
-      case AppLifecycleState.hidden:
-      case AppLifecycleState.detached:
-        if (!_appActive) break; // déjà fait (hidden suit paused)
-        _appActive = false;
-        if (NativeVideoController.backgroundPauseOnly) {
-          BlackBox.instance.info(
-            'SON',
-            'app en arrière-plan : pause (réglage de repli)',
-          );
-          _controller.pause();
-        } else {
-          BlackBox.instance.info(
-            'SON',
-            'app en arrière-plan : lecture arrêtée, rien ne joue hors de l\'app',
-          );
-          _controller.suspendForBackground();
-        }
-      case AppLifecycleState.resumed:
-        if (_appActive) break;
-        _appActive = true;
-        _lastProgress = DateTime.now();
-        if (NativeVideoController.backgroundPauseOnly) {
-          _controller.play();
-        } else {
-          BlackBox.instance.info(
-            'SON',
-            'retour dans l\'app : chaîne rouverte au direct',
-          );
-          _controller.resumeFromBackground();
-        }
-      case AppLifecycleState.inactive:
-        break; // transitions brèves (dialogue…) → on ne coupe pas
+    unawaited(_pip.onLifecycle(state));
+  }
+
+  void _suspendOutside(bool forceStop) {
+    _appActive = false;
+    _cancelRecover();
+    _zapSettle?.cancel();
+    if (NativeVideoController.backgroundPauseOnly && !forceStop) {
+      _controller.pause();
+    } else {
+      _controller.suspendForBackground();
     }
   }
 
+  void _resumeInside() {
+    _appActive = true;
+    _lastProgress = DateTime.now();
+    if (_zapHolding) {
+      _zapHolding = false;
+      _open();
+      return;
+    }
+    if (NativeVideoController.backgroundPauseOnly) {
+      _controller.play();
+    } else {
+      _controller.resumeFromBackground();
+    }
+  }
+
+  void _updatePip() => _pip.update(
+        playing: _controller.isPlaying,
+        casting: _casting,
+        width: _controller.videoWidth,
+        height: _controller.videoHeight,
+      );
+
   @override
   void dispose() {
+    _pip.dispose();
     TvActivity.leave();
     WidgetsBinding.instance.removeObserver(this);
     // On quitte sur cette chaîne : si une image a été vue, elle compte
@@ -434,6 +443,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   // Écoute l'état du lecteur natif : progression (anti-gel), buffering (logo),
   // erreurs.
   void _onPlayer() {
+    _updatePip();
     // Pendant un zap maintenu, le flux encore ouvert n'est PAS la chaîne
     // affichée. On ignore ses erreurs / sa première image, sinon l'écran
     // croirait que la mauvaise chaîne est prête et lancerait une
@@ -636,7 +646,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   }
 
   void _recover() {
-    if (_casting || _fatal || _zapHolding || _recoverArmed) return;
+    if (!_appActive || _casting || _fatal || _zapHolding || _recoverArmed) return;
     // Dehors : pas de second flux. Le natif refuse aussi, au cas où.
     if (NativeVideoController.blocksReopenInBackground) {
       _noteBackgroundRefusal();
@@ -668,7 +678,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     _recoverTimer = Timer(Duration(milliseconds: delay), () {
       _recoverTimer = null;
       _recoverArmed = false;
-      if (!mounted || _fatal || _zapHolding) return;
+      if (!mounted || !_appActive || _fatal || _zapHolding) return;
       if (NativeVideoController.blocksReopenInBackground) {
         _noteBackgroundRefusal();
         return;
@@ -681,6 +691,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   /// Ouvre à nouveau, après l'attente. Même adresse si l'image avait
   /// déjà été vue (on garde cette image). Sinon, adresse de secours.
   void _reopenAfterFailure() {
+    if (!_appActive) return;
     if (_relayPlayUrl != null) {
       _controller.setUrl(_relayPlayUrl!, keepPicture: _everShownFrame);
       return;
@@ -1482,15 +1493,21 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
                   // Vidéo SurfaceView native plein écran (16:9 centré sur TV 16:9).
                   Center(
                     child: AspectRatio(
-                      aspectRatio: 16 / 9,
+                      aspectRatio: _pip.isInPipMode &&
+                              _controller.videoWidth > 0 && _controller.videoHeight > 0
+                          ? _controller.videoWidth / _controller.videoHeight
+                          : 16 / 9,
                       child: NativeVideoView(controller: _controller),
                     ),
                   ),
                   // Le temps que l'image arrive (ou qu'on lâche Haut/Bas), on dit
                   // QUELLE chaîne est visée. Un logo seul ne permettait pas de
                   // zapper « à l'aveugle » sans se perdre.
-                  if (!_casting && (_zapHolding || (_buffering && !_fatal))) _loadingCard(),
-                  if (_missed != null)
+                  if (!_pip.isInPipMode &&
+                      !_casting &&
+                      (_zapHolding || (_buffering && !_fatal)))
+                    _loadingCard(),
+                  if (!_pip.isInPipMode && _missed != null)
                     Align(
                       alignment: Alignment.topCenter,
                       child: MissedNotice(
@@ -1504,21 +1521,22 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
                   // Retour quitte. Masqué pendant un zap : la personne est déjà
                   // en train d'en choisir une autre. Le texte (chaîne coupée ou
                   // chaîne vide) reste celui des traductions, lisible à 3 m.
-                  if (!_casting && _fatal && !_zapHolding) _errorCard(),
+                  if (!_pip.isInPipMode && !_casting && _fatal && !_zapHolding) _errorCard(),
                   // Panneau de lecture (façon YouTube / Netflix) : glisse depuis le
                   // bas + fondu, masqué automatiquement après 5 s. Contient l'info
                   // chaîne + tous les contrôles (dont REC et ❤ en bas).
                   Align(
                     alignment: Alignment.bottomCenter,
                     child: AnimatedSlide(
-                      offset: _overlay ? Offset.zero : const Offset(0, 0.28),
+                      offset: _overlay && !_pip.isInPipMode
+                          ? Offset.zero : const Offset(0, 0.28),
                       duration: TvDimens.focusAnim,
                       curve: Curves.easeOutCubic,
                       child: AnimatedOpacity(
-                        opacity: _overlay ? 1 : 0,
+                        opacity: _overlay && !_pip.isInPipMode ? 1 : 0,
                         duration: TvDimens.focusAnim,
                         child: IgnorePointer(
-                          ignoring: !_overlay,
+                          ignoring: !_overlay || _pip.isInPipMode,
                           child: _ControlsBar(
                             channel: _current,
                             index: _index,
@@ -1564,16 +1582,19 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
                   ),
                   if (CastPlatform.canSendFromZuno)
                     Positioned(top: TvDimens.safeV, right: TvDimens.safeH,
-                      child: DesktopCastControls(key: _desktopCastKey,
+                      child: Offstage(
+                        offstage: _pip.isInPipMode,
+                        child: DesktopCastControls(key: _desktopCastKey,
                         controller: _controller, streamUrl: _playingUrl, title: _current.name, imageUrl: _current.logoUrl,
                         onHandoffChanged: (bool active) {
                           if (!mounted) return;
                           _cancelRecover();
                           _lastProgress = DateTime.now();
                           setState(() => _casting = active);
-                        })),
+                          _updatePip();
+                        }))),
                   // Numéro saisi à la télécommande (coin haut-droit).
-                  if (_numBuffer.isNotEmpty)
+                  if (!_pip.isInPipMode && _numBuffer.isNotEmpty)
                     Positioned(
                       top: TvDimens.safeV + 8,
                       right: TvDimens.safeH,
@@ -1600,7 +1621,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
                     ),
                   // Pastille « ● REC » visible en permanence pendant l'enregistrement
                   // (même quand la barre est masquée).
-                  if (_isRecording)
+                  if (!_pip.isInPipMode && _isRecording)
                     Positioned(
                       top: TvDimens.safeV + 8,
                       left: TvDimens.safeH,
@@ -1637,7 +1658,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
                       ),
                     ),
                   // Message éphémère (sauvegardé / vide / échec).
-                  if (_toastMsg != null)
+                  if (!_pip.isInPipMode && _toastMsg != null)
                     Positioned(
                       left: 0,
                       right: 0,

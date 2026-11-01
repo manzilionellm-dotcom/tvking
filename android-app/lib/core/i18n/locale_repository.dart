@@ -17,6 +17,9 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'locale_resolver.dart';
+import 'somali_formats.dart';
+
 class LocaleRepository extends ChangeNotifier with WidgetsBindingObserver {
   LocaleRepository._();
   static final LocaleRepository instance = LocaleRepository._();
@@ -38,6 +41,7 @@ class LocaleRepository extends ChangeNotifier with WidgetsBindingObserver {
     Locale('nb'), // Norsk bokmål
     Locale('ar'), // العربية (RTL)
     Locale('sw'), // Kiswahili
+    Locale('so'), // Soomaali — catalogue complet et widgets système adaptés
     // --- Ajoutées le 25/09/2026 (Zuno TV : « toutes les langues courantes ») ---
     Locale('de'), // Deutsch
     Locale('it'), // Italiano
@@ -61,6 +65,7 @@ class LocaleRepository extends ChangeNotifier with WidgetsBindingObserver {
     'nb': 'Norsk',
     'ar': 'العربية',
     'sw': 'Kiswahili',
+    'so': 'Soomaali',
     'de': 'Deutsch',
     'it': 'Italiano',
     'pt': 'Português',
@@ -80,17 +85,10 @@ class LocaleRepository extends ChangeNotifier with WidgetsBindingObserver {
   /// « no » → `nb`). Rien ne correspond → anglais (langue la plus comprise),
   /// jamais le français par accident.
   static Locale resolve(List<Locale>? system, Iterable<Locale> supported) {
-    final List<Locale> choices = supported.toList();
-    assert(choices.isNotEmpty);
-    for (final Locale l in system ?? const <Locale>[]) {
-      final String code = _languageCode(l.languageCode);
-      for (final Locale choice in choices) {
-        if (choice.languageCode == code) return choice;
-      }
-    }
-    return choices.firstWhere(
-      (l) => l.languageCode == 'en',
-      orElse: () => choices.first,
+    return resolveAppLocale(
+      forced: null,
+      preferred: system ?? const <Locale>[],
+      supported: supported.toList(),
     );
   }
 
@@ -126,6 +124,7 @@ class LocaleRepository extends ChangeNotifier with WidgetsBindingObserver {
       );
 
   Future<void> initialize() async {
+    initializeSomaliFormats();
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     final String? stored = prefs.getString(_kKey);
     _locale = _supportedChoice(stored);

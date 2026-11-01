@@ -30,8 +30,10 @@ concurrency:
   cancel-in-progress: true
 env:
   SOURCE_SHA: ${{ github.sha }}
-  ZUNO_APP_ID: com.sevenmotion.tv.seven_tv.realtimereview
-  ZUNO_APP_LABEL: Zuno Test RT
+  # Installation à côté du test Cast déjà validé : sa clé debug jetable
+  # ne permet pas une mise à jour signée par un nouveau runner.
+  ZUNO_APP_ID: com.sevenmotion.tv.seven_tv.mobilepreview20261101
+  ZUNO_APP_LABEL: Zuno Mobile Test
 jobs:
   review:
     name: APK optimisé séparé, signature de développement
@@ -146,7 +148,7 @@ jobs:
         BUILD_NUMBER=$(date +%s)
 
         flutter build apk --release --target=lib/main_tv.dart --target-platform android-arm,android-arm64 --android-skip-build-dependency-validation
-        --build-number="$BUILD_NUMBER" --build-name="109-realtime-review" --dart-define=APP_BUILD_TS="$BUILD_NUMBER" --dart-define=GIT_SHA="$SOURCE_SHA"
+        --build-number="$BUILD_NUMBER" --build-name="110-mobile-review" --dart-define=APP_BUILD_TS="$BUILD_NUMBER" --dart-define=GIT_SHA="$SOURCE_SHA"
 
         cp build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/zuno-trial-review.apk
 
@@ -154,7 +156,15 @@ jobs:
 
         "$BUILD_TOOLS/aapt" dump badging build/app/outputs/flutter-apk/zuno-trial-review.apk > build/trial-review-manifest.txt
 
-        grep -F "name=''com.sevenmotion.tv.seven_tv.realtimereview''" build/trial-review-manifest.txt
+        "$BUILD_TOOLS/aapt" dump xmltree build/app/outputs/flutter-apk/zuno-trial-review.apk AndroidManifest.xml > build/trial-review-activity-manifest.txt
+
+        grep -E "supportsPictureInPicture.*0xffffffff" build/trial-review-activity-manifest.txt
+
+        grep -E "resizeableActivity.*0xffffffff" build/trial-review-activity-manifest.txt
+
+        "$BUILD_TOOLS/apksigner" verify --verbose --print-certs build/app/outputs/flutter-apk/zuno-trial-review.apk > build/trial-review-signature.txt
+
+        grep -F "name=''$ZUNO_APP_ID''" build/trial-review-manifest.txt
 
         grep -F "armeabi-v7a" build/trial-review-manifest.txt
 
@@ -172,6 +182,10 @@ jobs:
                 binary = apk.read(f'lib/{abi}/libapp.so')
                 for marker in [b'https://api.zuno8k.com', b'/api/box/ws', b'/api/box/ack/']:
                     assert marker in binary, f'Correctif absent pour {abi}: {marker!r}'
+            # Vérifier aussi le pont natif réellement livré, distinct du Cast.
+            dex = b''.join(apk.read(name) for name in apk.namelist() if name.endswith('.dex'))
+            for marker in [b'com.sevenmotion.zuno/pip', b'getPipState', b'onPipModeChanged']:
+                assert marker in dex, f'PiP natif absent : {marker!r}'
         print('Backend api.zuno8k.com et canal authentifié présents pour ARM32/64')
         PYAPK
     - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
@@ -180,6 +194,10 @@ jobs:
         path: 'android-app/build/app/outputs/flutter-apk/zuno-trial-review.apk
 
           android-app/build/trial-review-manifest.txt
+
+          android-app/build/trial-review-activity-manifest.txt
+
+          android-app/build/trial-review-signature.txt
 
           android-app/build/trial-review-sha256.txt'
         if-no-files-found: error
