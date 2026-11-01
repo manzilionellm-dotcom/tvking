@@ -15,6 +15,7 @@ import 'package:tv_king/core/app/repair_flags.dart';
 import 'package:tv_king/features/tv/presentation/tv_activation_screen.dart';
 import 'package:tv_king/features/tv/presentation/tv_components.dart';
 import 'package:tv_king/features/tv/presentation/tv_phone_source_qr.dart';
+import 'package:tv_king/features/tv/presentation/tv_source_entry_form.dart';
 import 'package:tv_king/l10n/generated/app_localizations.dart';
 
 const _mac = 'MK:12:34:AB:CD:56';
@@ -161,7 +162,7 @@ void main() {
     painter.dispose();
   });
 
-  testWidgets('en arabe, écran réel, QR et copie gardent la même MAC', (
+  testWidgets('en arabe, accueil sans QR : affichage et copie gardent la même MAC', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(1280, 720);
@@ -186,7 +187,7 @@ void main() {
     );
     await tester.pumpAndSettle();
     // Les appels HTTP des widget tests reçoivent 400 ; aucun Worker réel n'est
-    // contacté. Le délai couvre aussi le repli du QR « Mon espace ».
+    // contacté. Le statut distant ne doit pas faire réapparaître les QR.
     await tester.pump(const Duration(seconds: 9));
     await tester.pumpAndSettle();
     expect(
@@ -200,24 +201,23 @@ void main() {
     final paragraph = tester.renderObject<RenderParagraph>(richText);
     expect(visualOrder(_display, paragraph.getBoxesForSelection), _display);
 
-    await expectQrData(
-      tester,
-      find.byType(TvWhatsAppQr),
-      expectedWhatsApp('مرحبًا، أود تفعيل Zuno.\nMAC: $_display'),
-    );
-    final portal = Uri.parse(
-      tester.widget<TvOwnSourceQr>(find.byType(TvOwnSourceQr)).url!,
-    );
-    expect(Uri.splitQueryString(portal.fragment)['mac'], _mac);
-    await expectQrData(tester, find.byType(TvOwnSourceQr), portal.toString());
+    expect(find.byType(TvSourceEntryForm), findsOneWidget);
+    expect(find.byKey(const ValueKey<String>('tv-source-server')), findsOneWidget);
+    expect(find.byKey(const ValueKey<String>('tv-source-user')), findsOneWidget);
+    expect(find.byKey(const ValueKey<String>('tv-source-password')), findsOneWidget);
+    expect(find.byType(TvWhatsAppQr), findsNothing);
+    expect(find.byType(TvPhoneSourceQr), findsNothing);
+    expect(find.byType(TvOwnSourceQr), findsNothing);
+    expect(find.byType(QrImageView), findsNothing);
 
+    await tester.ensureVisible(find.byIcon(Icons.copy_rounded));
     await tester.tap(find.byIcon(Icons.copy_rounded));
     await tester.pump(const Duration(seconds: 3));
     expect(copied, _display);
     final prefs = await SharedPreferences.getInstance();
     expect(prefs.getString('device.virtual_mac.v1'), _mac);
     expect(tester.takeException(), isNull);
-    // Libère le minuteur de renouvellement du QR, sans altérer le réseau app.
+    // Libère les contrôleurs d'activation et du formulaire.
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pumpAndSettle();
   });

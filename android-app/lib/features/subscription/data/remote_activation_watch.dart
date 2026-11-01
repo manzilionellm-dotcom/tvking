@@ -118,6 +118,14 @@ class RemoteActivationWatch {
     _arm(Duration.zero);
   }
 
+  void _setChannelUp(bool value) {
+    if (_channelUp == value) return;
+    _channelUp = value;
+    // Une perte du canal ne doit pas attendre le filet garé à 25 s.
+    // Le garde empêche un ancien appel réseau de relancer une veille arrêtée.
+    if (!value && _run) nudge();
+  }
+
   /// Arrête la veille (téléphone passé en arrière-plan). [start] la
   /// relance ; les ordres envoyés pendant la pause attendent sur le serveur
   /// et sont lus à la reprise (curseur gardé).
@@ -288,6 +296,9 @@ class RemoteActivationWatch {
       final BoxChannelSession session = BoxChannelSession(
         mac: mac,
         alive: () => _run && generation == _generation,
+        onConnectionChanged: (bool connected) {
+          if (_run && generation == _generation) _setChannelUp(connected);
+        },
         onFrame: (BoxChannelFrame frame) async {
           // Le Durable Object renvoie le DERNIER ordre à chaque ouverture
           // de la prise. Même numéro que l'attente longue : on lit le
@@ -339,7 +350,7 @@ class RemoteActivationWatch {
         // Prise ouverte : on ne double pas avec l'attente longue.
         // Elle reprend toute seule dès que la prise tombe.
         if (_session?.open == true) {
-          _channelUp = true;
+          _setChannelUp(true);
           await _pause(const Duration(seconds: 2), generation);
           continue;
         }
@@ -362,7 +373,9 @@ class RemoteActivationWatch {
         if (result.unauthorized || result.rateLimited) {
           // Ancien Worker, secret refusé, ou trop d'ouvertures :
           // la lecture courte continue. On réessaie le canal plus tard.
-          _channelUp = false;
+          // L'attente HTTP peut avoir commencé avant l'ouverture du push.
+          // Son refus tardif ne signifie pas que la prise WebSocket est tombée.
+          _setChannelUp(_session?.open == true);
           await _pause(const Duration(seconds: 30), generation);
           continue;
         }
@@ -370,7 +383,7 @@ class RemoteActivationWatch {
           // Reprise courte : 1 s, puis 2, 4… plafonné à 30 s.
           // On ne martèle pas le réseau, et un retour de Wi-Fi
           // n'attend pas le plafond de 45 s de la lecture courte.
-          _channelUp = false;
+          _setChannelUp(_session?.open == true);
           _signalFailures++;
           final int shift = _signalFailures > 5 ? 5 : _signalFailures;
           final int seconds = 1 << (shift - 1);
@@ -380,7 +393,7 @@ class RemoteActivationWatch {
           );
           continue;
         }
-        _channelUp = true;
+        _setChannelUp(true);
         _signalFailures = 0;
         lastSignalBody = result.raw;
         if (result.orders.isEmpty) continue;
@@ -489,7 +502,20 @@ class RemoteActivationWatch {
         await Future<void>.delayed(const Duration(milliseconds: 40));
       }
       _timer?.cancel();
-      await _tick(sourceOrdered: sourceOrdered);
+      final int generation = _generation;
+      try {
+        await _tick(sourceOrdered: sourceOrdered);
+      } finally {
+        // L'ordre utilise le même synchroniseur que le filet HTTP. Son
+        // traitement ne doit pas supprimer ce filet après le premier clic.
+        if (_run && generation == _generation) {
+          _arm(signalPace(
+            channelUp: _channelUp,
+            waiting: _isWaiting,
+            failures: _failures,
+          ));
+        }
+      }
       if (SubscriptionState.instance.syncHint == 'offline') return false;
     }
     final Map<String, bool> sideOk = <String, bool>{};

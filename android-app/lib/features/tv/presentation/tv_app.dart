@@ -1,3 +1,4 @@
+import '../../../core/i18n/somali_localizations.dart';
 // =========================================================
 //  tv_app.dart — Racine de DeFew TV (MaterialApp 10-foot)
 // =========================================================
@@ -78,10 +79,13 @@ class TvApp extends StatelessWidget {
         navigatorKey: VoiceNavigation.navigatorKey,
         title: kAppName,
         debugShowCheckedModeBanner: false,
-        // --- Internationalisation (16 langues, RTL auto pour l'arabe) ---
+        // --- Internationalisation (17 langues, RTL auto pour l'arabe) ---
         locale: LocaleRepository.instance.locale, // null = langue de la TV
         supportedLocales: AppLocalizations.supportedLocales,
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        localizationsDelegates: const [
+          ...somaliLocalizationsDelegates,
+          ...AppLocalizations.localizationsDelegates,
+        ],
         // Langue de la TV → langue de l'app (toutes les préférences système,
         // code langue seul, repli anglais). Voir LocaleRepository.resolve.
         localeListResolutionCallback: LocaleRepository.resolve,
@@ -190,7 +194,8 @@ class _RestartWidgetState extends State<RestartWidget> {
               builder: (BuildContext context, _) => AnimatedOpacity(
                 opacity:
                     (TvContentRefresh.running.value ||
-                        RemoteSourceRepository.importing.value)
+                        (RemoteSourceRepository.importing.value &&
+                            !RepairFlags.syncPillOff))
                     ? 1
                     : 0,
                 duration: const Duration(milliseconds: 250),

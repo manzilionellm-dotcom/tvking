@@ -26,6 +26,23 @@ def read(path):
     return json.loads(path.read_text(encoding='utf-8'), object_pairs_hook=unique_object)
 
 
+
+def static_widget_labels(source):
+    """Repère les libellés statiques oubliés dans les widgets Zuno.
+
+    Les interpolations et le contenu distant restent hors de ce contrôle :
+    il ne prétend pas traduire les programmes ni les journaux techniques.
+    """
+    patterns = [
+        r"\bText\s*\(\s*(['\"])((?:\\.|(?!\1).)*)\1",
+        r"\b(?:label|tooltip|hintText|helperText|title)\s*:\s*(['\"])((?:\\.|(?!\1).)*)\1",
+    ]
+    for pattern in patterns:
+        for match in re.finditer(pattern, source, re.S):
+            value = match.group(2)
+            if '$' not in value and re.search(r'[A-Za-zÀ-ÿ]', value):
+                yield value
+
 def check():
     template = read(ARB / 'app_fr.arb')
     keys = {key for key in template if not key.startswith('@')}
@@ -51,6 +68,9 @@ def check():
     for path in (ROOT / 'lib').rglob('*.dart'):
         if 'generated' not in path.parts and re.search(r'\bboxText\s*\(', path.read_text()):
             errors.append(f'{path.relative_to(ROOT)}: retour du sélecteur bilingue boxText')
+    for path in (ROOT / 'lib/features/tv/presentation').glob('*.dart'):
+        for value in static_widget_labels(path.read_text(encoding='utf-8')):
+            errors.append(f'{path.relative_to(ROOT)}: libellé statique à traduire : {value}')
     if errors:
         raise ValueError('\n'.join(errors))
     return f'{len(paths)} langues × {len(keys)} messages : complets, paramètres vérifiés.'

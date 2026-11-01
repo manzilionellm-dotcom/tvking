@@ -45,6 +45,26 @@ permissions:
   contents: read
 
 jobs:
+  video_logic:
+    name: Vidéo native — logique et reprise
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
+        with:
+          gradle-version: '8.11.1'
+          cache-read-only: true
+      - name: Tester la logique native sans flux fournisseur
+        working-directory: android-app/packages/native_video_player/logic-test
+        run: gradle test --no-daemon
+
   zuno_device_capabilities:
     name: ZUNO — séparation Cast téléphone et TV
     runs-on: ubuntu-latest
@@ -107,6 +127,12 @@ jobs:
 
       - name: Run tests
         run: flutter test --reporter expanded
+
+      - name: Vérifier la connexion au panel sur un serveur local
+        run: flutter test --reporter expanded --dart-define=RUN_PANEL_CONNECTION=true --dart-define=BACKEND_URL=http://127.0.0.1:18789 test/features/subscription/panel_connection_test.dart
+
+      - name: Mesurer le push par défaut et la reprise après coupure
+        run: flutter test --reporter expanded --dart-define=RUN_PANEL_CONNECTION=true --dart-define=BACKEND_URL=http://127.0.0.1:18789 test/features/subscription/panel_connection_websocket_test.dart
 
   worker:
     name: tests Worker (sécurité)

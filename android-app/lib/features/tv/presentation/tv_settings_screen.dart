@@ -33,6 +33,7 @@ import '../data/startup_preference.dart';
 import 'tv_audio_diagnostic_screen.dart';
 import 'tv_black_box_screen.dart';
 import 'tv_profiles_screen.dart';
+import 'tv_profile_label.dart';
 import 'tv_legal_screen.dart';
 import 'tv_parental_screen.dart';
 import 'tv_recordings_screen.dart';
@@ -322,7 +323,7 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
       _SettingEntry(
         icon: Icons.switch_account_rounded,
         title: context.l10n.tvProfiles,
-        value: ProfileRepository.instance.active.name,
+        value: tvProfileLabel(context, ProfileRepository.instance.active),
         description: context.l10n.tvProfilesSettingsHelp,
         onSelect: () => open(const TvProfilesScreen()),
       ),

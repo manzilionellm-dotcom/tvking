@@ -6,6 +6,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:tv_king/core/i18n/locale_repository.dart';
+import 'package:tv_king/core/i18n/locale_resolver.dart';
+import 'package:tv_king/core/i18n/somali_localizations.dart';
 import 'package:tv_king/features/profiles/domain/family_profile.dart';
 import 'package:tv_king/features/tv/presentation/tv_add_source_screen.dart';
 import 'package:tv_king/features/tv/presentation/tv_audio_diagnostic_screen.dart';
@@ -31,6 +33,29 @@ void main() {
       AppLocalizations.supportedLocales.map((l) => l.languageCode).toSet(),
       LocaleRepository.supportedLocales.map((l) => l.languageCode).toSet(),
     );
+  });
+
+  test('la première préférence régionale gagne aussi hors widget', () {
+    for (final code in ['sv', 'ar', 'so', 'fr']) {
+      final expected = Locale(code);
+      final preferred = [Locale(code, 'XX'), const Locale('en')];
+      expect(
+          resolveAppLocale(
+              forced: null,
+              preferred: preferred,
+              supported: LocaleRepository.supportedLocales),
+          expected);
+      expect(
+          LocaleRepository.resolve(
+              preferred, LocaleRepository.supportedLocales),
+          expected);
+      expect(
+          resolveAppLocale(
+              forced: const Locale('de'),
+              preferred: preferred,
+              supported: LocaleRepository.supportedLocales),
+          const Locale('de'));
+    }
   });
 
   test('régions, alias norvégiens, liste de préférences et repli anglais', () {
@@ -115,12 +140,15 @@ void main() {
   );
 
   Widget app(Widget child, {Locale? locale}) => MaterialApp(
-    locale: locale,
-    supportedLocales: AppLocalizations.supportedLocales,
-    localizationsDelegates: AppLocalizations.localizationsDelegates,
-    localeListResolutionCallback: LocaleRepository.resolve,
-    home: Scaffold(body: child),
-  );
+        locale: locale,
+        supportedLocales: AppLocalizations.supportedLocales,
+        localizationsDelegates: const [
+          ...somaliLocalizationsDelegates,
+          ...AppLocalizations.localizationsDelegates,
+        ],
+        localeListResolutionCallback: LocaleRepository.resolve,
+        home: Scaffold(body: child),
+      );
 
   testWidgets(
     'la TV suédoise ouvre en suédois ; une erreur ouverte passe en arabe',

@@ -15,14 +15,10 @@ import '../../../core/i18n/l10n_extension.dart';
 import '../../device/data/device_identity.dart';
 import '../../subscription/data/remote_activation_watch.dart';
 import '../../subscription/data/subscription_state.dart';
-import '../../playlists/domain/open_source_input.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
-import 'tv_add_source_screen.dart';
 import 'tv_components.dart';
-import 'tv_phone_source_qr.dart';
-import 'tv_shell.dart';
-import 'tv_whatsapp_support_button.dart';
+import 'tv_source_setup.dart';
 
 class TvActivationScreen extends StatefulWidget {
   const TvActivationScreen({super.key});
@@ -59,9 +55,12 @@ class _TvActivationScreenState extends State<TvActivationScreen> {
 
   Future<void> _check() async {
     setState(() => _busy = true);
-    await SubscriptionState.instance.syncWithBackend();
-    RemoteActivationWatch.instance.nudge();
-    if (mounted) setState(() => _busy = false);
+    try {
+      await SubscriptionState.instance.syncWithBackend();
+      RemoteActivationWatch.instance.nudge();
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   void _copy() {
@@ -78,40 +77,10 @@ class _TvActivationScreenState extends State<TvActivationScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Le design est pensé à une taille FIXE puis MIS À L'ÉCHELLE pour tenir
-    // dans n'importe quel écran TV (720p → 4K, overscan inclus). FittedBox =
-    // jamais de débordement, jamais « trop zoomé ». On neutralise aussi le
-    // textScale système (certaines box TV le poussent à 1.3-1.5).
-    return MediaQuery.withNoTextScaling(
-      child: Center(
-        child: FittedBox(
-          fit: BoxFit.contain,
-          child: SizedBox(
-            // Largeurs complètes, textes compris : 540 + 48 + 250 + 40 + 322.
-            // Le FittedBox adapte cet ensemble à la zone sûre de la télévision.
-            width: 1200,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: <Widget>[
-                // ----- Colonne gauche : marque + code + CTA -----
-                SizedBox(width: 540, child: _activationColumn(context)),
-                const SizedBox(width: 48),
-                // ----- Droite : DEUX grands QR (demande du 04/10/2026) -----
-                //  1. WhatsApp du revendeur, code MAC déjà dans le message :
-                //     la personne qui vient d'installer l'app te contacte.
-                //  2. Page « Mon espace » : elle ajoute SA propre liste
-                //     depuis son téléphone (la mention « ne vend aucune
-                //     chaîne » est au-dessus du QR, dans TvOwnSourceQr).
-                TvWhatsAppQr(mac: _mac, size: 210),
-                const SizedBox(width: 40),
-                TvPhoneSourceQr(mac: _mac, qrSize: 210),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
+    // Le formulaire est visible dès le premier lancement. Les informations
+    // d'activation restent à côté ; seul TvGate décide ensuite de l'accès.
+    // Aucun QR ni changement de route n'est nécessaire pour saisir sa liste.
+    return TvSourceSetup(details: _activationColumn(context));
   }
 
   Widget _activationColumn(BuildContext context) {
@@ -125,7 +94,7 @@ class _TvActivationScreenState extends State<TvActivationScreen> {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
-        const TvLogo(width: 240),
+        const TvLogo(width: 180),
         const SizedBox(height: 26),
         Text(
           context.l10n.tvActivationTagline,
@@ -133,7 +102,32 @@ class _TvActivationScreenState extends State<TvActivationScreen> {
           style: TvTokens.ui(19, color: TvTokens.muted),
         ),
         const SizedBox(height: 22),
-        TvPricePill(label: context.l10n.tvLifetime, amount: '9,99 \$'),
+        // La colonne d'aide est plus étroite que l'ancien écran TV. Le prix
+        // passe à la ligne si le texte est agrandi, sans réduire sa lisibilité.
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 10),
+          decoration: BoxDecoration(
+            gradient: TvTokens.pillGradient,
+            border: Border.all(color: TvTokens.line),
+            borderRadius: BorderRadius.circular(TvTokens.rCard),
+          ),
+          child: Wrap(
+            alignment: WrapAlignment.center,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 12,
+            runSpacing: 6,
+            children: <Widget>[
+              Text(context.l10n.tvLifetime.toUpperCase(),
+                  style: TvTokens.ui(15,
+                      weight: FontWeight.w600,
+                      color: TvTokens.accent,
+                      spacing: 2)),
+              Text('9,99 \$',
+                  style: TvTokens.display(26,
+                      weight: FontWeight.w600, color: TvTokens.accentBright)),
+            ],
+          ),
+        ),
         const SizedBox(height: 38),
 
         // ----- Carte code d'activation -----
@@ -179,7 +173,6 @@ class _TvActivationScreenState extends State<TvActivationScreen> {
 
         TvCtaButton(
           label: _busy ? context.l10n.tvChecking : context.l10n.tvPaidCheck,
-          autofocus: true,
           onSelect: _busy ? null : _check,
         ),
         if (hint != null) ...<Widget>[
@@ -190,70 +183,6 @@ class _TvActivationScreenState extends State<TvActivationScreen> {
             style: TvTokens.ui(16, color: TvTokens.live),
           ),
         ],
-        // Le téléphone contacte directement le support ; la TV conserve
-        // aussi son QR existant. Aucun statut d'abonnement n'est modifié.
-        const TvWhatsAppSupportButton(),
-        const SizedBox(height: 22),
-        // ----- CONNEXION : l'utilisateur apporte sa propre source -----
-        //  Trois entrées, sans liste de serveurs : Xtream (adresse +
-        //  nom + mot de passe), lien M3U/M3U8, ou lien lecteur get.php.
-        //  N'importe quel fournisseur. La licence (code MAC + « J'ai
-        //  payé ») reste le verrou : sans essai ni abonnement valide,
-        //  l'accueil ne s'ouvre pas, même après avoir saisi une source.
-        Text(
-          context.l10n.sourceOwnSub.toUpperCase(),
-          style: TvTokens.ui(
-            11,
-            weight: FontWeight.w600,
-            color: TvTokens.mutedDim,
-            spacing: 2,
-          ),
-        ),
-        const SizedBox(height: 12),
-        SizedBox(
-          width: double.infinity,
-          child: _ConnectButton(
-            icon: Icons.vpn_key_rounded,
-            label: context.l10n.playlistTypeXtream,
-            onSelect: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (_) => const TvShell(
-                  child: TvAddSourceScreen(initialMode: OpenEntryMode.xtream),
-                ),
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(height: 10),
-        SizedBox(
-          width: double.infinity,
-          child: _ConnectButton(
-            icon: Icons.link_rounded,
-            label: context.l10n.playlistTypeM3u,
-            onSelect: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (_) => const TvShell(
-                  child: TvAddSourceScreen(initialMode: OpenEntryMode.m3u),
-                ),
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(height: 10),
-        SizedBox(
-          width: double.infinity,
-          child: _ConnectButton(
-            icon: Icons.play_circle_outline_rounded,
-            label: OpenSourceInput.playerLabel,
-            onSelect: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (_) => const TvShell(
-                  child: TvAddSourceScreen(initialMode: OpenEntryMode.player),
-                ),
-              ),
-            ),
-          ),
-        ),
         const SizedBox(height: 18),
         Text(
           context.l10n.tvActivationFooter,
@@ -264,66 +193,16 @@ class _TvActivationScreenState extends State<TvActivationScreen> {
         SizedBox(
           width: 540,
           child: Text(
-            context.l10n.tvActivationDisclaimer,
+            // Le lien affiché migre sans modifier les catalogues de traduction.
+            context.l10n.tvActivationDisclaimer.replaceFirst(
+              RegExp(r'[A-Za-z0-9.-]+/terms\b'),
+              'api.zuno8k.com/terms',
+            ),
             textAlign: TextAlign.center,
             style: TvTokens.ui(12, color: TvTokens.mutedDim),
           ),
         ),
       ],
-    );
-  }
-}
-
-/// Bouton de CONNEXION (Xtream / M3U) sur le gate : icône + libellé, bordure
-/// braise au focus, remplissage discret. Même langage visuel que le reste du
-/// design system TV (aucune couleur en dur — tout via TvTokens).
-class _ConnectButton extends StatelessWidget {
-  const _ConnectButton({
-    required this.icon,
-    required this.label,
-    required this.onSelect,
-  });
-  final IconData icon;
-  final String label;
-  final VoidCallback onSelect;
-
-  @override
-  Widget build(BuildContext context) {
-    return TvFocusBuilder(
-      scale: TvFocusScale.large,
-      onSelect: onSelect,
-      builder: (BuildContext context, bool focused) => Container(
-        alignment: Alignment.center,
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(TvTokens.rButton),
-          border: Border.all(color: focused ? TvTokens.accent : TvTokens.line),
-          color: focused ? TvTokens.sel : TvTokens.card,
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            Icon(
-              icon,
-              size: 22,
-              color: focused ? TvTokens.accentBright : TvTokens.accent,
-            ),
-            const SizedBox(width: 10),
-            Flexible(
-              child: Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TvTokens.ui(
-                  18,
-                  weight: FontWeight.w600,
-                  color: focused ? TvTokens.accentBright : TvTokens.text,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }

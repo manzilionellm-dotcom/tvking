@@ -337,6 +337,11 @@ class NativeVideoController extends ChangeNotifier {
   /// Nom du décodeur vidéo créé (pour l'écran, pas une mesure de qualité).
   String videoDecoderName = '';
 
+  /// Dimensions reçues du décodeur, pour donner à la fenêtre PiP le ratio
+  /// réel du flux. Aucune piste ni qualité vidéo n'est changée par ce relevé.
+  int videoWidth = 0;
+  int videoHeight = 0;
+
   String _imageEngine = 'hardware';
   bool _frameRateMatch = false;
 
@@ -435,6 +440,17 @@ class NativeVideoController extends ChangeNotifier {
     if (!_acceptEvents) return;
     final _Ev call = _Ev(method, arguments);
     switch (call.method) {
+      case 'videoFormat':
+        if (call.arguments is Map) {
+          final Map<Object?, Object?> data =
+              call.arguments as Map<Object?, Object?>;
+          int dimension(Object? value) =>
+              value is num && value.isFinite && value > 0 && value <= 32768
+                  ? value.toInt()
+                  : 0;
+          videoWidth = dimension(data['width']);
+          videoHeight = dimension(data['height']);
+        }
       case 'buffering':
         isBuffering = call.arguments as bool;
       case 'playing':
@@ -573,6 +589,8 @@ class NativeVideoController extends ChangeNotifier {
     }
     final String? lang = _preferredAudio ?? appAudioLanguage;
     hasError = false;
+    videoWidth = 0;
+    videoHeight = 0;
     engineExhausted = false;
     engineRejectedFfmpeg = false;
     isEnded = false;

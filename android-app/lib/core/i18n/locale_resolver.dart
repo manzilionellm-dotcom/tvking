@@ -85,14 +85,11 @@ Locale resolveAppLocale({
   //    correctif Windows : s'arrêter au premier élément revenait à
   //    lire le clavier au lieu de la langue d'affichage.
   //
-  //    Deux passes, et pas une seule : on veut que « pt-BR » choisisse
-  //    le portugais du Brésil s'il existe, plutôt que le portugais tout
-  //    court croisé plus tôt dans la liste.
+  //    Chaque préférence est résolue avant la suivante : « sv-SE, en »
+  //    doit rester suédois, même si seul l'anglais a une égalité exacte.
   for (final Locale p in preferred) {
     final Locale? exact = _findExact(p, supported);
     if (exact != null) return exact;
-  }
-  for (final Locale p in preferred) {
     final Locale? parLangue = _findByLanguage(p, supported);
     if (parLangue != null) return parLangue;
   }
@@ -105,7 +102,7 @@ Locale resolveAppLocale({
 /// Correspondance stricte : même langue ET même pays.
 Locale? _findExact(Locale wanted, List<Locale> supported) {
   for (final Locale s in supported) {
-    if (s.languageCode == wanted.languageCode &&
+    if (_languageCode(s.languageCode) == _languageCode(wanted.languageCode) &&
         s.countryCode == wanted.countryCode) {
       return s;
     }
@@ -117,7 +114,18 @@ Locale? _findExact(Locale wanted, List<Locale> supported) {
 /// C'est le cas courant — on ne livre que des langues sans pays.
 Locale? _findByLanguage(Locale wanted, List<Locale> supported) {
   for (final Locale s in supported) {
-    if (s.languageCode == wanted.languageCode) return s;
+    if (_languageCode(s.languageCode) == _languageCode(wanted.languageCode))
+      return s;
   }
   return null;
+}
+
+String _languageCode(String value) {
+  final code = value.toLowerCase().split(RegExp('[-_]')).first;
+  return switch (code) {
+    'no' || 'nn' => 'nb',
+    'iw' => 'he',
+    'in' => 'id',
+    _ => code,
+  };
 }

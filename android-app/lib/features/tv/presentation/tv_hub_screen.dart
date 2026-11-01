@@ -66,7 +66,7 @@ import '../../simple_home/data/announcement_repository.dart';
 import '../../playlists/data/favorites_repository.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../../playlists/domain/playlist.dart';
-import 'tv_phone_source_qr.dart';
+import 'tv_source_setup.dart';
 import '../../profiles/data/profile_repository.dart';
 import '../../profiles/domain/profile_policies.dart';
 import '../../security/data/parental_controls.dart';
@@ -1257,6 +1257,56 @@ class _TvHubScreenState extends State<TvHubScreen> {
     return KeyEventResult.ignored;
   }
 
+  /// Informations secondaires du démarrage vide. La saisie reste à gauche
+  /// (ou en premier en portrait), tandis que MAC, licence et navigation
+  /// restent accessibles sans imposer un détour par un QR ou un sous-écran.
+  Widget _sourceSetupDetails(BuildContext context) {
+    final ({String label, Color color}) license = _license(context);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        const TvLogo(width: 150),
+        const SizedBox(height: TvDimens.gutter),
+        Text(context.l10n.tvActivationCodeLabel,
+            style: TvTokens.ui(TvDimens.caption, color: TvTokens.muted)),
+        const SizedBox(height: TvDimens.rowGap),
+        Text(
+          displayMac(_mac, showPrefix: RepairFlags.macShowPrefix),
+          textDirection: TextDirection.ltr,
+          style: TvTokens.mono(TvDimens.title, color: TvTokens.accentBright),
+        ),
+        if (license.label.isNotEmpty) ...<Widget>[
+          const SizedBox(height: TvDimens.gutter),
+          Text(license.label,
+              style: TvTokens.ui(TvDimens.label, color: license.color)),
+        ],
+        if (_refreshNotice != null && _refreshNotice!.isNotEmpty) ...<Widget>[
+          const SizedBox(height: TvDimens.gutter),
+          Text(_refreshNotice!,
+              style: TvTokens.ui(TvDimens.caption, color: TvTokens.live)),
+        ],
+        const SizedBox(height: TvDimens.gutter),
+        Wrap(
+          spacing: TvDimens.rowGap,
+          runSpacing: TvDimens.rowGap,
+          children: <Widget>[
+            for (final _Tile tile in _Tile.values)
+              TextButton.icon(
+                onPressed: () => _openTile(tile),
+                icon: Icon(_tileMeta(context, tile).icon, size: TvDimens.title),
+                label: Text(_tileMeta(context, tile).label),
+                style: TextButton.styleFrom(
+                  foregroundColor: TvTokens.accentBright,
+                  textStyle: TvTokens.ui(TvDimens.caption),
+                ),
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+
   String get _time =>
       '${_now.hour.toString().padLeft(2, '0')}:${_now.minute.toString().padLeft(2, '0')}';
 
@@ -1294,7 +1344,18 @@ class _TvHubScreenState extends State<TvHubScreen> {
           // Fond PLEIN ÉCRAN (image de marque, cf. pubspec) + voile sombre pour
           // garder les textes lisibles, puis le contenu dans les marges TV.
           applySafeArea: false,
-          child: Stack(
+          // Premier démarrage sans source : le formulaire passe avant les
+          // tuiles. Le PopScope, le focus et l'ouverture automatique du Direct
+          // restent communs ; cette branche ne décide jamais de la licence.
+          child: _hasLocalSource == false
+              ? Padding(
+                  padding: const EdgeInsets.all(TvDimens.gutter),
+                  child: TvSourceSetup(
+                    details: _sourceSetupDetails(context),
+                    onAdded: () => unawaited(_lookForLocalSource()),
+                  ),
+                )
+              : Stack(
             fit: StackFit.expand,
             children: <Widget>[
               Image.asset(
@@ -1401,22 +1462,6 @@ class _TvHubScreenState extends State<TvHubScreen> {
                                 ),
                                 const SizedBox(height: 8),
                                 _tileRow(context, compact: true),
-                              ],
-                            )
-                          // Aucune playlist sur la box : tuiles un peu plus petites,
-                          // et à droite le QR que le téléphone photographie
-                          // pour ouvrir « Mon espace » (lien M3U ou Xtream).
-                          : _hasLocalSource == false
-                          ? Row(
-                              crossAxisAlignment: CrossAxisAlignment.center,
-                              children: <Widget>[
-                                Expanded(
-                                  child: Center(
-                                    child: _tileRow(context, compact: true),
-                                  ),
-                                ),
-                                const SizedBox(width: 24),
-                                TvPhoneSourceQr(mac: _mac),
                               ],
                             )
                           : Center(child: _tileRow(context, compact: false)),

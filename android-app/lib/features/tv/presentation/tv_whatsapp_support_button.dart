@@ -52,7 +52,7 @@ class _TvWhatsAppSupportButtonState extends State<TvWhatsAppSupportButton> {
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
           TextButton.icon(
-            key: const ValueKey<String>('tv-whatsapp-support'),
+            key: const ValueKey<String>('source-whatsapp-support'),
             onPressed: _opening ? null : _open,
             icon: const Icon(Icons.chat_bubble_outline_rounded,
                 size: TvDimens.title),
@@ -61,6 +61,7 @@ class _TvWhatsAppSupportButtonState extends State<TvWhatsAppSupportButton> {
             style: TextButton.styleFrom(
               foregroundColor: TvTokens.accentBright,
               textStyle: TvTokens.ui(TvDimens.caption, weight: FontWeight.w600),
+              minimumSize: const Size(48, 48),
             ),
           ),
           if (_unavailable) ...<Widget>[

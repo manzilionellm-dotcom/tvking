@@ -145,10 +145,18 @@ void main() {
     expect(find.text('Serveur 1'), findsNothing);
     expect(find.text('Choisis ton serveur'), findsNothing);
     expect(find.text('Ajouter ma source'), findsOneWidget);
-    expect(find.text('Lien lecteur'), findsOneWidget);
+    expect(find.text('Lien lecteur'), findsNothing);
+    expect(find.text('Xtream Codes'), findsOneWidget);
+    expect(find.text('M3U / URL'), findsOneWidget);
+    // À l'ouverture, les trois champs Xtream sont vides : aucun fournisseur
+    // prérempli et aucun lien imposé au client.
+    expect(find.byType(TextField), findsNWidgets(3));
+    for (final field in tester.widgetList<TextField>(find.byType(TextField))) {
+      expect(field.controller!.text, isEmpty);
+    }
 
     // Validation avant tout réseau : phrase française, pas d'appel.
-    await tester.tap(find.text('Valider et charger ma liste'));
+    await tester.tap(find.text('Se connecter et charger'));
     await tester.pump();
     expect(find.text(OpenSourceInput.errNeedXtream), findsOneWidget);
   });

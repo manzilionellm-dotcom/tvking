@@ -13,8 +13,7 @@
 //  fait :
 //    1. langue forcée dans Réglages (LocaleRepository.locale),
 //    2. sinon langue du téléphone (PlatformDispatcher),
-//    3. si non supportée → français (langue par défaut de l'app,
-//       première de `supportedLocales`).
+//    3. si aucune préférence n’est traduite → anglais.
 //
 //  ATTENTION : contrairement à `context.l10n`, une chaîne prise
 //  via `l10nNow` n'est PAS re-rendue quand la langue change —

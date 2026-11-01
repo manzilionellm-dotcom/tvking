@@ -101,8 +101,7 @@ class _TvAddM3uScreenState extends State<TvAddM3uScreen> {
             ),
             const SizedBox(height: 6),
             Text(
-              'Adresse .m3u, .m3u8, ou lien de lecteur get.php. '
-              'Avec ou sans identifiants.',
+              context.l10n.tvM3uLinkHelp,
               style: TextStyle(fontSize: TvDimens.body, color: TvTokens.muted),
             ),
             const SizedBox(height: 22),

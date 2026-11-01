@@ -1705,6 +1705,12 @@ class NativeVideoView(
         decoderReuseEvaluation: DecoderReuseEvaluation?,
     ) {
         if (!fresh(eventTime)) return
+        // Mesure seulement : le canal PiP adapte sa fenêtre à la vidéo,
+        // sans modifier le flux, sa piste, ni la session Cast éventuelle.
+        emit("videoFormat", mapOf(
+            "width" to positive(format.width),
+            "height" to positive(format.height),
+        ))
         val fps = format.frameRate
         if (fps > 0f) {
             contentFps = fps
