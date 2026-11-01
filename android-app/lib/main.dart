@@ -1,3 +1,4 @@
+import 'core/i18n/somali_localizations.dart';
 // =========================================================
 //  main.dart — Point d'entrée unique de l'application
 // =========================================================
@@ -336,10 +337,12 @@ class TvKingApp extends StatelessWidget {
           // Internationalisation — la liste des langues supportées
           // sort de `LocaleRepository`. Quand l'utilisateur choisit
           // "Système" (locale=null), Flutter retombe sur la langue
-          // de l'OS s'il y a un .arb correspondant, sinon sur fr.
+          // de l'OS si elle est traduite, sinon sur l'anglais.
           locale: LocaleRepository.instance.locale,
           supportedLocales: LocaleRepository.supportedLocales,
+          localeListResolutionCallback: LocaleRepository.resolve,
           localizationsDelegates: const <LocalizationsDelegate<dynamic>>[
+            ...somaliLocalizationsDelegates,
             AppLocalizations.delegate,
             GlobalMaterialLocalizations.delegate,
             GlobalWidgetsLocalizations.delegate,

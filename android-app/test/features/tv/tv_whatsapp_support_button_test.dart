@@ -12,7 +12,7 @@ import 'package:tv_king/l10n/generated/app_localizations.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
-  final support = find.byKey(const ValueKey<String>('tv-whatsapp-support'));
+  final support = find.byKey(const ValueKey<String>('source-whatsapp-support'));
 
   // Les polices de production restent inchangées. Comme les autres tests TV,
   // on fournit Ahem du SDK sous les noms attendus, sans accès au réseau.

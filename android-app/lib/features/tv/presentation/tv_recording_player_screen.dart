@@ -33,6 +33,7 @@ import '../../player/data/image_prefs.dart';
 
 import '../../recordings/domain/recording.dart';
 import '../core/tv_tokens.dart';
+import '../data/zuno_pip_service.dart';
 
 class TvRecordingPlayerScreen extends StatefulWidget {
   const TvRecordingPlayerScreen({super.key, required this.recording});
@@ -47,6 +48,9 @@ class TvRecordingPlayerScreen extends StatefulWidget {
 class _TvRecordingPlayerScreenState extends State<TvRecordingPlayerScreen>
     with WidgetsBindingObserver {
   NativeVideoController? _controller;
+  late final ZunoPipPlayback _pip;
+  bool _appActive = true;
+  bool _pendingOpen = false;
   final FocusNode _focus = FocusNode();
 
   bool _buffering = true;
@@ -61,6 +65,29 @@ class _TvRecordingPlayerScreenState extends State<TvRecordingPlayerScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     ForegroundPlayback.lock();
+    _pip = ZunoPipService.instance.acquire(
+      onSuspend: (bool forceStop) {
+        final NativeVideoController? c = _controller;
+        if (NativeVideoController.backgroundPauseOnly && !forceStop) {
+          c?.pause();
+        } else {
+          c?.suspendForBackground();
+        }
+      },
+      onResume: () {
+        _appActive = true;
+        if (_pendingOpen) {
+          _pendingOpen = false;
+          unawaited(_verifyThenOpen());
+          return;
+        }
+        // Rallumer la mini-fenêtre reprend le fichier. Un retour normal
+        // dans l'app garde la reprise manuelle, comme auparavant.
+        if (_pip.isInPipMode) _controller?.resumeFromBackground();
+      },
+      onModeChanged: () { if (mounted) setState(() {}); },
+      onVisibilityChanged: (bool visible) => _appActive = visible,
+    );
     ClearVoiceFlag.changes.addListener(_onClearVoice);
     _verifyThenOpen();
   }
@@ -80,6 +107,10 @@ class _TvRecordingPlayerScreenState extends State<TvRecordingPlayerScreen>
       ok = false;
     }
     if (!mounted) return;
+    if (!_appActive) {
+      _pendingOpen = true;
+      return;
+    }
     if (!ok) {
       setState(() {
         _missing = true;
@@ -109,6 +140,8 @@ class _TvRecordingPlayerScreenState extends State<TvRecordingPlayerScreen>
   void _onPlayer() {
     final NativeVideoController? c = _controller;
     if (c == null || !mounted) return;
+    _pip.update(playing: c.isPlaying, casting: false,
+      width: c.videoWidth, height: c.videoHeight);
     final bool buffering = c.isBuffering || !c.firstFrame;
     if (buffering != _buffering) setState(() => _buffering = buffering);
     if (c.isPlaying != _playing) setState(() => _playing = c.isPlaying);
@@ -124,26 +157,10 @@ class _TvRecordingPlayerScreenState extends State<TvRecordingPlayerScreen>
     }
   }
 
-  // Home : même arrêt que le direct. « OK » rappelle play(), qui rouvre
-  // le fichier à la position (vod). Pas de reprise automatique : pas de
-  // son surprise en revenant sur l'écran.
+  // PiP reste visible ; Home sans PiP conserve l'arrêt historique.
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    final NativeVideoController? c = _controller;
-    if (c == null) return;
-    switch (state) {
-      case AppLifecycleState.paused:
-      case AppLifecycleState.hidden:
-      case AppLifecycleState.detached:
-        if (NativeVideoController.backgroundPauseOnly) {
-          c.pause();
-        } else {
-          c.suspendForBackground();
-        }
-      case AppLifecycleState.resumed:
-      case AppLifecycleState.inactive:
-        break;
-    }
+    unawaited(_pip.onLifecycle(state));
   }
 
   void _togglePlay() {
@@ -173,6 +190,7 @@ class _TvRecordingPlayerScreenState extends State<TvRecordingPlayerScreen>
 
   @override
   void dispose() {
+    _pip.dispose();
     WidgetsBinding.instance.removeObserver(this);
     ClearVoiceFlag.changes.removeListener(_onClearVoice);
     _controller?.removeListener(_onPlayer);
@@ -203,7 +221,7 @@ class _TvRecordingPlayerScreenState extends State<TvRecordingPlayerScreen>
               NativeVideoView(controller: _controller!),
 
             // ----- Spinner de chargement -----
-            if (_buffering && !_missing && !_error)
+            if (!_pip.isInPipMode && _buffering && !_missing && !_error)
               const Center(
                 child: SizedBox(
                   width: 56,
@@ -214,7 +232,7 @@ class _TvRecordingPlayerScreenState extends State<TvRecordingPlayerScreen>
               ),
 
             // ----- États d'échec EXPLICITES -----
-            if (_missing || _error)
+            if (!_pip.isInPipMode && (_missing || _error))
               _Message(
                 icon: Icons.error_outline_rounded,
                 title: _missing
@@ -226,7 +244,7 @@ class _TvRecordingPlayerScreenState extends State<TvRecordingPlayerScreen>
               ),
 
             // ----- Fin de lecture -----
-            if (_ended && !_missing && !_error)
+            if (!_pip.isInPipMode && _ended && !_missing && !_error)
               _Message(
                 icon: Icons.check_circle_outline_rounded,
                 title: context.l10n.tvPlaybackFinished,
@@ -234,7 +252,7 @@ class _TvRecordingPlayerScreenState extends State<TvRecordingPlayerScreen>
               ),
 
             // ----- Bandeau titre (haut) -----
-            Positioned(
+            if (!_pip.isInPipMode) Positioned(
               top: 0,
               left: 0,
               right: 0,

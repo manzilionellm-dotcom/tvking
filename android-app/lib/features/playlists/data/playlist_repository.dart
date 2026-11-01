@@ -611,11 +611,9 @@ class PlaylistRepository {
       );
       playlistId = await _insertPlaylist(newPlaylist);
 
-      // 3) Récupère catégories + chaînes
-      final Map<String, String> cats = await xtream.fetchLiveCategories();
+      // 3) Les catégories et chaînes sont chargées ensemble par le client.
       final List<Channel> channels = await xtream.fetchLiveChannels(
         playlistId: playlistId,
-        categories: cats,
       );
 
       if (channels.isEmpty) {
@@ -886,10 +884,8 @@ class PlaylistRepository {
       );
       try {
         await xtream.verifyCredentials();
-        final Map<String, String> cats = await xtream.fetchLiveCategories();
         final List<Channel> channels = await xtream.fetchLiveChannels(
           playlistId: playlist.id!,
-          categories: cats,
         );
         if (channels.isEmpty) {
           throw Exception('Aucune chaîne live disponible.');
