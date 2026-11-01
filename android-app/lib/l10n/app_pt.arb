@@ -1,4 +1,11 @@
 {
+  "tvSupportWhatsApp": "Suporte pelo WhatsApp",
+  "tvSupportHello": "Olá, preciso de ajuda com o Zuno.",
+  "tvSupportUnavailable": "Não é possível abrir o WhatsApp neste dispositivo. Entre em contato pelo número abaixo.",
+  "playbackNotifDefaultBody": "Reprodução de áudio em segundo plano",
+  "playbackNotifChannelName": "Reprodução de áudio",
+  "playbackNotifChannelDesc": "Reprodução de áudio em segundo plano (modo Fones de ouvido)",
+  "castNotifRelayBody": "Transmitindo para a TV — mantenha o telefone conectado a este WiFi",
   "@@locale": "pt",
   "appName": "The Few",
   "@appName": {

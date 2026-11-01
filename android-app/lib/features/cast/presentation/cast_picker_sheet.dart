@@ -38,6 +38,8 @@ Future<void> showCastPicker(
   required String title,
   String? imageUrl,
 }) {
+  final ScaffoldState? noticeHost = Scaffold.maybeOf(context);
+  final ScaffoldMessengerState? noticeMessenger = ScaffoldMessenger.maybeOf(context);
   return showModalBottomSheet<void>(
     context: context,
     backgroundColor: Colors.transparent,
@@ -47,6 +49,8 @@ Future<void> showCastPicker(
       streamUrl: streamUrl,
       title: title,
       imageUrl: imageUrl,
+      noticeHost: noticeHost,
+      noticeMessenger: noticeMessenger,
     ),
   );
 }
@@ -56,12 +60,17 @@ Future<void> showCastPicker(
 ///   Ensuite, dès que l'utilisateur tape sur une chaîne, le flux part
 ///   automatiquement vers la TV (modèle YouTube/Netflix).
 Future<void> showCastPickerGlobal(BuildContext context) {
+  final ScaffoldState? noticeHost = Scaffold.maybeOf(context);
+  final ScaffoldMessengerState? noticeMessenger = ScaffoldMessenger.maybeOf(context);
   return showModalBottomSheet<void>(
     context: context,
     backgroundColor: Colors.transparent,
     isScrollControlled: true,
     useSafeArea: true,
-    builder: (_) => const CastPickerSheet(),
+    builder: (_) => CastPickerSheet(
+      noticeHost: noticeHost,
+      noticeMessenger: noticeMessenger,
+    ),
   );
 }
 
@@ -70,6 +79,8 @@ class CastPickerSheet extends StatefulWidget {
     this.streamUrl,
     this.title,
     this.imageUrl,
+    this.noticeHost,
+    this.noticeMessenger,
     super.key,
   });
 
@@ -81,6 +92,13 @@ class CastPickerSheet extends StatefulWidget {
   /// Logo de la chaine — sera affiche sur le recepteur (idle +
   /// overlay) via les metadonnees Cast. Phase 1+/G1.
   final String? imageUrl;
+
+  // Le shell Zuno n'a pas de Scaffold. Un message facultatif ne doit
+  // jamais transformer un Cast réussi en échec ni rouvrir le flux local.
+  // Les références viennent de l'appelant, pas du contexte de la sheet
+  // déjà retirée après Navigator.pop (même ordre que dans 7 MOTION).
+  final ScaffoldState? noticeHost;
+  final ScaffoldMessengerState? noticeMessenger;
 
   @override
   State<CastPickerSheet> createState() => _CastPickerSheetState();
@@ -118,10 +136,10 @@ class _CastPickerSheetState extends State<CastPickerSheet> {
     if (_isGlobalMode) {
       mgr.selectDevice(device);
       if (!mounted) return;
+      final String message = context.l10n.castConnectedTapChannel(device.displayName);
       Navigator.of(context).pop();
       _toast(
-        context,
-        context.l10n.castConnectedTapChannel(device.displayName),
+        message,
         accent: true,
       );
       return;
@@ -140,9 +158,9 @@ class _CastPickerSheetState extends State<CastPickerSheet> {
         imageUrl: widget.imageUrl,
       );
       if (!mounted) return;
+      final String message = context.l10n.castSendingTo(device.displayName);
       Navigator.of(context).pop();
-      _toast(context, context.l10n.castSendingTo(device.displayName),
-          accent: true);
+      _toast(message, accent: true);
     } on Exception catch (_) {
       if (!mounted) return;
       // Le CastManager a déjà transformé l'exception en message friendly
@@ -150,7 +168,7 @@ class _CastPickerSheetState extends State<CastPickerSheet> {
       final String friendly = mgr.progress.message.isNotEmpty
           ? mgr.progress.message
           : context.l10n.castFailedRetry;
-      _toast(context, friendly, error: true);
+      _toast(friendly, error: true);
     }
   }
 
@@ -169,13 +187,15 @@ class _CastPickerSheetState extends State<CastPickerSheet> {
   Future<void> _disconnect() async {
     await CastManager.instance.disconnect();
     if (!mounted) return;
-    _toast(context, context.l10n.castSessionStopped);
+    _toast(context.l10n.castSessionStopped);
   }
 
-  void _toast(BuildContext context, String message,
+  void _toast(String message,
       {bool error = false, bool accent = false}) {
-    ScaffoldMessenger.of(context).clearSnackBars();
-    ScaffoldMessenger.of(context).showSnackBar(
+    final ScaffoldMessengerState? messenger = widget.noticeMessenger;
+    if (widget.noticeHost?.mounted != true || messenger == null || !messenger.mounted) return;
+    messenger.clearSnackBars();
+    messenger.showSnackBar(
       SnackBar(
         behavior: SnackBarBehavior.floating,
         backgroundColor: error

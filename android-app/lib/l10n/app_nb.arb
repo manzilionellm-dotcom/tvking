@@ -1,4 +1,11 @@
 {
+  "tvSupportWhatsApp": "WhatsApp-støtte",
+  "tvSupportHello": "Hei, jeg trenger hjelp med Zuno.",
+  "tvSupportUnavailable": "WhatsApp kan ikke åpnes på denne enheten. Kontakt oss på nummeret nedenfor.",
+  "playbackNotifDefaultBody": "Lydavspilling i bakgrunnen",
+  "playbackNotifChannelName": "Lydavspilling",
+  "playbackNotifChannelDesc": "Lydavspilling i bakgrunnen (hodetelefonmodus)",
+  "castNotifRelayBody": "Strømmer til TV-en — hold telefonen på dette WiFi-et",
   "@@locale": "nb",
   "appName": "The Few",
   "appTagline": "Kino uten grenser",

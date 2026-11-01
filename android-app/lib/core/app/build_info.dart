@@ -28,4 +28,4 @@ const String kDownloaderCode = '7988141';
 
 /// Lien de téléchargement anonyme (domaine de marque, proxy de l'APK).
 /// Affiché pour le téléphone (ouverture navigateur).
-const String kDownloadUrl = 'https://app.7themotion.com/vip';
+const String kDownloadUrl = 'https://api.zuno8k.com/vip';

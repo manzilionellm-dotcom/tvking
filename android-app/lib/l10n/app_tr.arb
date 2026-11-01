@@ -1,4 +1,11 @@
 {
+  "tvSupportWhatsApp": "WhatsApp desteği",
+  "tvSupportHello": "Merhaba, Zuno için yardıma ihtiyacım var.",
+  "tvSupportUnavailable": "Bu cihazda WhatsApp açılamıyor. Aşağıdaki numaradan bize ulaşın.",
+  "playbackNotifDefaultBody": "Arka planda ses çalınıyor",
+  "playbackNotifChannelName": "Ses oynatma",
+  "playbackNotifChannelDesc": "Arka planda ses oynatma (Kulaklık modu)",
+  "castNotifRelayBody": "TV'ye yayın yapılıyor — telefonunuzu bu WiFi ağına bağlı tutun",
   "@@locale": "tr",
   "appName": "The Few",
   "@appName": {

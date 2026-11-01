@@ -1,4 +1,11 @@
 {
+  "tvSupportWhatsApp": "Поддержка в WhatsApp",
+  "tvSupportHello": "Здравствуйте, мне нужна помощь с Zuno.",
+  "tvSupportUnavailable": "Не удалось открыть WhatsApp на этом устройстве. Свяжитесь с нами по номеру ниже.",
+  "playbackNotifDefaultBody": "Аудио воспроизводится в фоновом режиме",
+  "playbackNotifChannelName": "Воспроизведение аудио",
+  "playbackNotifChannelDesc": "Воспроизведение аудио в фоновом режиме (режим наушников)",
+  "castNotifRelayBody": "Трансляция на телевизор — оставьте телефон подключённым к этой сети WiFi",
   "@@locale": "ru",
   "appName": "The Few",
   "@appName": {

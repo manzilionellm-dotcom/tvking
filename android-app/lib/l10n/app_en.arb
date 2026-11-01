@@ -1,4 +1,11 @@
 {
+  "tvSupportWhatsApp": "WhatsApp support",
+  "tvSupportHello": "Hello, I need help with Zuno.",
+  "tvSupportUnavailable": "WhatsApp cannot open on this device. Contact us at the number below.",
+  "playbackNotifDefaultBody": "Audio playing in the background",
+  "playbackNotifChannelName": "Audio playback",
+  "playbackNotifChannelDesc": "Background audio playback (Headphones mode)",
+  "castNotifRelayBody": "Streaming to the TV — keep your phone on this WiFi",
   "@@locale": "en",
   "appName": "The Few",
   "appTagline": "Cinema without limits",

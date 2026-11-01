@@ -1,4 +1,11 @@
 {
+  "tvSupportWhatsApp": "WhatsApp सहायता",
+  "tvSupportHello": "नमस्ते, मुझे Zuno के लिए मदद चाहिए।",
+  "tvSupportUnavailable": "इस डिवाइस पर WhatsApp नहीं खुल सकता। नीचे दिए नंबर पर हमसे संपर्क करें।",
+  "playbackNotifDefaultBody": "बैकग्राउंड में ऑडियो चल रहा है",
+  "playbackNotifChannelName": "ऑडियो प्लेबैक",
+  "playbackNotifChannelDesc": "बैकग्राउंड में ऑडियो प्लेबैक (हेडफ़ोन मोड)",
+  "castNotifRelayBody": "टीवी पर स्ट्रीमिंग हो रही है — अपने फ़ोन को इसी WiFi से कनेक्ट रखें",
   "@@locale": "hi",
   "appName": "The Few",
   "@appName": {

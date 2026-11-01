@@ -40,12 +40,9 @@ import 'now_playing.dart';
 /// l'app lit un autre serveur que celui où le panel écrit les
 /// activations/sources → « l'app ne se connecte pas avec le panel ».
 ///
-/// Historique du bug : l'app a pointé sur `99999.7themotion.com` (ancien
-/// worker) PUIS sur `seven-motion-backend.manzilionel-lm.workers.dev`
-/// (sous-domaine workers.dev INJOIGNABLE → l'activation du panel ne
-/// descendait jamais dans l'app). On aligne désormais sur le Custom
-/// Domain FIABLE `app.7themotion.com` (= le worker que le panel utilise
-/// aussi). Résultat : l'activation panel → app redevient automatique.
+/// Le domaine de production actuel est `api.zuno8k.com`. Les anciens
+/// domaines ne répondent plus correctement ; conserver une seule constante
+/// évite que le statut, le thème et le Cast interrogent des serveurs différents.
 ///
 /// Surcharge possible AU BUILD, sans toucher au code, pour viser un autre
 /// Worker (staging, second panel, test) :
@@ -55,7 +52,7 @@ import 'now_playing.dart';
 /// d'environnement à l'exécution, aucun coût, et la constante reste `const`.
 const String kSubscriptionBaseUrl = String.fromEnvironment(
   'BACKEND_URL',
-  defaultValue: 'https://app.7themotion.com',
+  defaultValue: 'https://api.zuno8k.com',
 );
 
 /// Snapshot de l'état renvoyé par le serveur. Immuable.

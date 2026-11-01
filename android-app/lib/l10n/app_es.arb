@@ -1,4 +1,11 @@
 {
+  "tvSupportWhatsApp": "Soporte por WhatsApp",
+  "tvSupportHello": "Hola, necesito ayuda con Zuno.",
+  "tvSupportUnavailable": "No se puede abrir WhatsApp en este dispositivo. Contáctanos en el número siguiente.",
+  "playbackNotifDefaultBody": "Reproducción de audio en segundo plano",
+  "playbackNotifChannelName": "Reproducción de audio",
+  "playbackNotifChannelDesc": "Reproducción de audio en segundo plano (modo Auriculares)",
+  "castNotifRelayBody": "Transmitiendo a la TV — mantén el teléfono en este WiFi",
   "@@locale": "es",
   "appName": "The Few",
   "appTagline": "Cine sin límites",

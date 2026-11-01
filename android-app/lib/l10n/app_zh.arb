@@ -1,4 +1,11 @@
 {
+  "tvSupportWhatsApp": "WhatsApp 客服",
+  "tvSupportHello": "您好，我需要 Zuno 的帮助。",
+  "tvSupportUnavailable": "此设备无法打开 WhatsApp。请通过以下号码联系我们。",
+  "playbackNotifDefaultBody": "正在后台播放音频",
+  "playbackNotifChannelName": "音频播放",
+  "playbackNotifChannelDesc": "后台音频播放（耳机模式）",
+  "castNotifRelayBody": "正在投放到电视 — 请保持手机连接此 WiFi",
   "@@locale": "zh",
   "appName": "The Few",
   "@appName": {

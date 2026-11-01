@@ -23,6 +23,10 @@ on:
     paths:
       - 'android-app/lib/**'
       - 'android-app/test/**'
+      - 'android-app/packages/native_video_player/**'
+      - 'android-app/packages/zuno_cast/**'
+      - 'android-app/android_overlay/google_cast/**'
+      - 'android-app/ci/test-zuno-device-capabilities.sh'
       - 'android-app/pubspec.yaml'
       - 'android-app/pubspec.lock'
       - 'android-app/analysis_options.yaml'
@@ -41,6 +45,21 @@ permissions:
   contents: read
 
 jobs:
+  zuno_device_capabilities:
+    name: ZUNO — séparation Cast téléphone et TV
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Vérifier le matériel sans appareil ni réseau fournisseur
+        run: bash android-app/ci/test-zuno-device-capabilities.sh
+
   configuration:
     name: Protections de configuration
     runs-on: ubuntu-latest

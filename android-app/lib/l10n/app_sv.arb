@@ -1,4 +1,11 @@
 {
+  "tvSupportWhatsApp": "WhatsApp-support",
+  "tvSupportHello": "Hej, jag behöver hjälp med Zuno.",
+  "tvSupportUnavailable": "WhatsApp kan inte öppnas på den här enheten. Kontakta oss på numret nedan.",
+  "playbackNotifDefaultBody": "Ljuduppspelning i bakgrunden",
+  "playbackNotifChannelName": "Ljuduppspelning",
+  "playbackNotifChannelDesc": "Ljuduppspelning i bakgrunden (hörlursläge)",
+  "castNotifRelayBody": "Castar till TV:n — håll telefonen kvar på detta WiFi",
   "@@locale": "sv",
   "appName": "The Few",
   "appTagline": "Bio utan gränser",

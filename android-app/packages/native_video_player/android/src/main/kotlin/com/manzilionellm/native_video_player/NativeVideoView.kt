@@ -291,6 +291,9 @@ class NativeVideoView(
      * décodeur et AudioTrack rendus, focus abandonné. « play » ou « resume »
      * rouvre la chaîne au direct (ou le film à sa position).
      */
+    // Le Cast garde le flux fermé, y compris lors d'un retour au premier plan.
+    // Home / onResume ne doivent jamais voler la connexion du récepteur.
+    private var castSuspended = false
     private var suspended = false
 
     /** Autres lectures audio actives sur la box (API 26+), pour la fiche. */
@@ -799,6 +802,7 @@ class NativeVideoView(
      * Écrit une seule ligne [SON] pour tout le séjour dehors.
      */
     private fun refuseReopen(): Boolean {
+        if (castSuspended) return true
         if (AppForeground.allowsReopen()) return false
         AppForeground.noteRefuse()?.let { emit("audioDiag", it) }
         return true
@@ -840,7 +844,7 @@ class NativeVideoView(
 
     /** Retour au premier plan : on rouvre, comme un zap (direct au bord du direct). */
     private fun resumeFromBackground() {
-        if (released || !suspended) return
+        if (released || !suspended || castSuspended) return
         suspended = false
         if (currentUrl == null) return
         // Ligne d'avant, gardée. La suivante précise film (position) ou direct.
@@ -1147,10 +1151,25 @@ class NativeVideoView(
                     result.error("no_url", "setUrl appelé sans url", null)
                     return
                 }
+                // Garder aussi les langues quand le Cast ou Home retarde
+                // l'ouverture. Ce réglage ne prépare aucun flux. Une seule
+                // définition, appelée après restorePreferredEngine en lecture
+                // normale : ce dernier peut reconstruire le lecteur.
+                fun applyPreferredTracks() {
+                    prefAudio = call.argument<String>("preferredAudio")
+                    val prefText = call.argument<String>("preferredText")
+                    if (prefAudio != null || prefText != null) {
+                        val b = player.trackSelectionParameters.buildUpon()
+                        if (prefAudio != null) b.setPreferredAudioLanguage(prefAudio)
+                        if (prefText != null) b.setPreferredTextLanguage(prefText)
+                        player.trackSelectionParameters = b.build()
+                    }
+                }
                 // Dehors : on garde l'adresse pour le retour, sans prepare.
                 // Un essai déjà armé est annulé, sinon il rouvrirait le flux.
-                if (!AppForeground.allowsReopen()) {
+                if (castSuspended || !AppForeground.allowsReopen()) {
                     cancelRetry()
+                    applyPreferredTracks()
                     currentUrl = url
                     vodMode = call.argument<Boolean>("vod") ?: false
                     val startMs = (call.argument<Number>("startMs"))?.toLong() ?: 0L
@@ -1217,14 +1236,7 @@ class NativeVideoView(
                 lastDiagText = null
                 // Langue audio / sous-titres préférée (langue de l'app) : si le
                 // film propose la piste, ExoPlayer la choisit d'office.
-                prefAudio = call.argument<String>("preferredAudio")
-                val prefText = call.argument<String>("preferredText")
-                if (prefAudio != null || prefText != null) {
-                    val b = player.trackSelectionParameters.buildUpon()
-                    if (prefAudio != null) b.setPreferredAudioLanguage(prefAudio)
-                    if (prefText != null) b.setPreferredTextLanguage(prefText)
-                    player.trackSelectionParameters = b.build()
-                }
+                applyPreferredTracks()
                 openCurrent(if (vodMode && startMs > 0L) startMs else null)
                 // 8 s pour que FFmpeg prouve qu'il sait lire CE flux. Sinon on
                 // revient à la box (voir [armFfmpegReadyWatchdog]).
@@ -1303,6 +1315,17 @@ class NativeVideoView(
                 // Repli : vrai = Media3 reprend le focus (avec sa baisse à 20 %).
                 // Pris en compte à la prochaine ouverture.
                 AudioFixes.androidFocus = call.arguments == true
+                result.success(null)
+            }
+            "suspendForCast" -> {
+                castSuspended = true
+                cancelRetry()
+                suspendForBackground()
+                result.success(null)
+            }
+            "resumeAfterCast" -> {
+                castSuspended = false
+                if (!refuseReopen()) resumeFromBackground()
                 result.success(null)
             }
             "suspend" -> {

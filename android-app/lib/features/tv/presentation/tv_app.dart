@@ -41,6 +41,7 @@ import 'tv_diagnostic_screen.dart';
 import 'tv_hub_screen.dart';
 import 'tv_live_screen.dart';
 import 'tv_recordings_screen.dart';
+import 'tv_scaled_viewport.dart';
 import '../../voice/presentation/voice_hotkey.dart';
 import '../../voice/presentation/voice_navigation.dart';
 import 'tv_search_screen.dart';
@@ -103,23 +104,11 @@ class TvApp extends StatelessWidget {
         // relative, quelle que soit la TV. On neutralise aussi le textScale
         // système (certaines box le poussent à 1,3-1,5).
         builder: (BuildContext context, Widget? child) {
-          final MediaQueryData mq = MediaQuery.of(context);
-          final Size screen = mq.size;
-          if (child == null || screen.width <= 0 || screen.height <= 0) {
-            return child ?? const SizedBox.shrink();
-          }
-          const double designW = kTvDesignWidth;
-          final double designH = designW * screen.height / screen.width;
+          if (child == null) return const SizedBox.shrink();
           return VoiceHotkey(
-            child: MediaQuery(
-              data: mq.copyWith(
-                size: Size(designW, designH),
-                textScaler: TextScaler.noScaling,
-              ),
-              child: FittedBox(
-                fit: BoxFit.fill,
-                child: SizedBox(width: designW, height: designH, child: child),
-              ),
+            child: TvScaledViewport(
+              designWidth: kTvDesignWidth,
+              child: child,
             ),
           );
         },

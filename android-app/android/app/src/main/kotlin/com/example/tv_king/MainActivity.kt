@@ -1,7 +1,7 @@
 package com.example.tv_king
 
 import com.manzilionellm.native_video_player.logic.AppForeground
-import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.android.FlutterFragmentActivity
 
 /**
  * Activité TV. Le son s'arrête ici, dans le cycle Android, sans attendre
@@ -9,7 +9,7 @@ import io.flutter.embedding.android.FlutterActivity
  *
  * La règle (dialogue / overlay / Home) est dans [AppForeground].
  */
-class MainActivity : FlutterActivity() {
+class MainActivity : FlutterFragmentActivity() {
     override fun onUserLeaveHint() {
         // Home, avant onPause. Un dialogue système ne passe pas ici.
         AppForeground.onUserLeaveHint()
