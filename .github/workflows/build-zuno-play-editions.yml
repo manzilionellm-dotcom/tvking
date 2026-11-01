@@ -2,7 +2,11 @@
 name: ZUNO — AAB Mobile Cast et TV séparés
 on:
   push:
-    branches: ['feature/zuno-separate-play-editions-20261101']
+    branches: ['feature/zuno-separate-play-editions-20261101', 'ccr-b93e1afd-gwirw0']
+    paths:
+      - '.github/workflows/build-zuno-play-editions.yml'
+      - '.github/security-config.test.mjs'
+      - 'android-app/**'
   workflow_dispatch: {}
 permissions:
   contents: read
@@ -52,7 +56,8 @@ jobs:
   bundles:
     name: AAB ZUNO ${{ matrix.edition }}
     needs: verify
-    if: github.actor == github.repository_owner && github.triggering_actor == github.repository_owner && github.repository == 'manzilionellm-dotcom/tvking'
+    # Les clés restent réservées à la branche de livraison protégée.
+    if: github.ref == 'refs/heads/ccr-b93e1afd-gwirw0' && github.actor == github.repository_owner && github.triggering_actor == github.repository_owner && github.repository == 'manzilionellm-dotcom/tvking'
     environment: zuno-app-production
     strategy:
       fail-fast: false
@@ -94,9 +99,8 @@ jobs:
         run: python3 ci/play_editions/prepare.py --edition '${{ matrix.edition }}'
       - name: Conserver SharedPreferences déjà validé dans le bundle officiel
         run: |
-          # La version 2.5.1 impose DataStore 1.2.1 (Android 6 minimum).
-          # La box conserve Android 5 et la version 2.5.0 du build signé
-          # du 19/10/2026. Ce pin local au runner ne touche pas le mobile.
+          # Les deux éditions reprennent la version 2.5.0 déjà validée
+          # dans le bundle signé. Ce pin reste local au runner.
           python3 - <<'PYEOF'
           from pathlib import Path
           path = Path('pubspec.yaml')

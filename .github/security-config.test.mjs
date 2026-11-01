@@ -15,6 +15,7 @@ test('les deux bundles ZUNO restent des artefacts sans publication et avec garde
   assert.doesNotMatch(editions, /contents: write|gh release|APP_OPERATION: client/);
   assert.match(editions, /edition: \[tv, mobile\]/);
   assert.match(editions, /environment: zuno-app-production/);
+  assert.match(editions, /bundles:[\s\S]*?if: github\.ref == 'refs\/heads\/ccr-b93e1afd-gwirw0'/);
   assert.match(editions, /github\.triggering_actor == github\.repository_owner/);
   assert.ok(editions.indexOf('run: node .github/app-release-guard.mjs') < editions.indexOf('KS_B64:'));
   assert.match(editions, /test "\$SIGNING" = release/);
