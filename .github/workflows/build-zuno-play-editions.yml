@@ -2,7 +2,7 @@
 name: ZUNO — mise à jour Play téléphone et TV
 on:
   push:
-    branches: ['feature/zuno-existing-play-update-20261101', 'ccr-b93e1afd-gwirw0']
+    branches: ['feature/zuno-existing-play-update-20261101', 'feature/zuno-play-update-button-20261101', 'ccr-b93e1afd-gwirw0']
     paths:
       - '.github/workflows/build-zuno-play-editions.yml'
       - '.github/security-config.test.mjs'
@@ -49,6 +49,8 @@ jobs:
       - run: flutter gen-l10n
       - run: flutter analyze --no-fatal-infos --no-fatal-warnings
       - run: flutter test --reporter expanded
+      - name: Vérifier le bouton de mise à jour du build Google Play
+        run: flutter test --reporter expanded --dart-define=PLAY_BUILD=true test/core/update/play_store_update_ui_test.dart
       - name: Vérifier la connexion temps réel et sa reprise
         run: |
           flutter test --reporter expanded --dart-define=RUN_PANEL_CONNECTION=true --dart-define=BACKEND_URL=http://127.0.0.1:18789 test/features/subscription/panel_connection_test.dart

@@ -4,6 +4,34 @@ from play_tv_version import validate_version
 
 
 class PlayTvVersionTest(unittest.TestCase):
+    def test_play_update_also_exceeds_the_latest_signed_apk(self):
+        # Run 41333117873, APK du 01/11 : même paquet, compteur supérieur
+        # aux AAB 111/112. Il ne faut plus produire une mise à jour plus basse.
+        data = {
+            "lastPublishedVersionCode": 1791125397,
+            "lastUploadedVersionCode": 1792394394,
+            "lastSignedApkVersionCode": 1793555494,
+            "versionCode": 1793555495,
+            "versionName": "113",
+        }
+        self.assertEqual(validate_version(data), (1793555495, "113"))
+        for code in (1792394395, 1793555494):
+            with self.subTest(code=code), self.assertRaises(ValueError):
+                validate_version({**data, "versionCode": code})
+
+    def test_apk_reference_does_not_allow_an_arbitrary_counter(self):
+        for apk in (-1, True, "20", 20.0, None, 2100000000):
+            with self.subTest(apk=apk), self.assertRaises(ValueError):
+                validate_version({"lastPublishedVersionCode": 10,
+                                  "lastUploadedVersionCode": 11,
+                                  "lastSignedApkVersionCode": apk,
+                                  "versionCode": 21, "versionName": "113"})
+        with self.assertRaises(ValueError):
+            validate_version({"lastPublishedVersionCode": 10,
+                              "lastUploadedVersionCode": 11,
+                              "lastSignedApkVersionCode": 20,
+                              "versionCode": 22, "versionName": "113"})
+
     def test_increment_from_existing_play_release(self):
         # Compatibilité d'un manifeste antérieur au suivi des imports.
         self.assertEqual(validate_version({
