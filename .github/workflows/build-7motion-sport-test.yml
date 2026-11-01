@@ -73,35 +73,18 @@ jobs:
         ref: 37fdf3305c5de9d35e20fd6567df38008fc7a7ee
         path: phone
         persist-credentials: false
+    - name: Récupérer le candidat mobile déjà testé sur Android
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        ref: 69eee01d24f50d5e516935b94a189f791de0837c
+        path: mobile-reviewed
+        persist-credentials: false
     - name: Appliquer le patch Sport et relever la release clients
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |-
         set -euo pipefail
-        [ "$(git rev-parse HEAD)" = "37fdf3305c5de9d35e20fd6567df38008fc7a7ee" ]
-        git apply --check ../mission/patches/mobile-sport-gratuit.patch
-        git apply ../mission/patches/mobile-sport-gratuit.patch
-        git apply --check ../mission/patches/mobile-radio.patch
-        git apply ../mission/patches/mobile-radio.patch
-        git apply --check ../mission/patches/mobile-panel-sync.patch
-        git apply ../mission/patches/mobile-panel-sync.patch
-        git apply --check ../mission/patches/mobile-identity.patch
-        git apply ../mission/patches/mobile-identity.patch
-        git apply --check ../mission/patches/mobile-stability.patch
-        git apply ../mission/patches/mobile-stability.patch
-        git apply --check ../mission/android-app/ci/mobile/adult-classification.patch
-        git apply ../mission/android-app/ci/mobile/adult-classification.patch
-        git apply --check ../mission/android-app/ci/mobile/player-terminal-fallback.patch
-        git apply ../mission/android-app/ci/mobile/player-terminal-fallback.patch
-        git apply --check ../mission/android-app/ci/mobile/mobile-back-gestures.patch
-        git apply ../mission/android-app/ci/mobile/mobile-back-gestures.patch
-        git apply --check ../mission/android-app/ci/mobile/football-upcoming.patch
-        git apply ../mission/android-app/ci/mobile/football-upcoming.patch
-        git apply --check ../mission/android-app/ci/mobile/player-session-handoff.patch
-        git apply ../mission/android-app/ci/mobile/player-session-handoff.patch
-        git apply --check ../mission/android-app/ci/mobile/library-user-actions.patch
-        git apply ../mission/android-app/ci/mobile/library-user-actions.patch
-        git diff --check
+        bash ../mission/android-app/ci/mobile/prepare-reviewed-source.sh ../mobile-reviewed
         gh api "repos/$GITHUB_REPOSITORY/releases/tags/phone-latest" > "$RUNNER_TEMP/client-before.json"
     - name: Setup Java 17 (Temurin)
       uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
@@ -583,7 +566,7 @@ jobs:
         # PHONE_VERSION_CODE est déjà vérifié supérieur aux versions publiées.
         PLAY_VERSION_CODE="$PHONE_VERSION_CODE"
         flutter build appbundle --release --no-tree-shake-icons \
-          --build-number="$PLAY_VERSION_CODE" --build-name=0.3.7 \
+          --build-number="$PLAY_VERSION_CODE" --build-name=0.3.8 \
           --obfuscate --split-debug-info=build/play-symbols \
           --dart-define=APP_BUILD_TS="$PHONE_VERSION_CODE" --dart-define=APP_BUILD_LABEL="$PHONE_BUILD_LABEL" \
           --dart-define=GIT_SHA=${{ env.SOURCE_SHA }} \
@@ -633,6 +616,8 @@ jobs:
                 logos[name]=shipped
         proof={
             "sourceSha": source,
+            "mobileSourceSha": subprocess.check_output(["git", "-C", "../mobile-reviewed", "rev-parse", "HEAD"], text=True).strip(),
+            "backendUrl": "https://api.zuno8k.com",
             "sourceTree": subprocess.check_output(["git", "-C", "../mission", "rev-parse", "HEAD^{tree}"], text=True).strip(),
             "mobileBaseSha": "37fdf3305c5de9d35e20fd6567df38008fc7a7ee",
             "package": report["package"], "versionCode": int(report["versionCode"]),

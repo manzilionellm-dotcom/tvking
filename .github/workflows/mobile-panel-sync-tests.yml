@@ -2,7 +2,7 @@ name: 7 MOTION mobile — régressions du téléphone
 
 on:
   push:
-    branches: ['feature/7motion-panel-sync', 'feature/7motion-foot-upcoming-20261020', 'feature/7motion-player-zap-20261020', 'feature/playlist-delete-definitive-20261026']
+    branches: ['feature/7motion-panel-sync', 'feature/7motion-foot-upcoming-20261020', 'feature/7motion-player-zap-20261020', 'feature/playlist-delete-definitive-20261026', 'feature/7motion-play-panel-update-20261101']
   pull_request:
     paths:
       - 'patches/mobile-panel-sync.patch'
@@ -36,6 +36,12 @@ jobs:
           ref: 37fdf3305c5de9d35e20fd6567df38008fc7a7ee
           path: phone
           persist-credentials: false
+      - name: Récupérer le candidat mobile déjà testé sur Android
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 69eee01d24f50d5e516935b94a189f791de0837c
+          path: mobile-reviewed
+          persist-credentials: false
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
         with:
           flutter-version: '3.47.7'
@@ -43,27 +49,7 @@ jobs:
       - name: Préparer le code mobile sans fusionner la lignée TV
         working-directory: phone
         run: |
-          git apply ../mission/patches/mobile-sport-gratuit.patch
-          git apply ../mission/patches/mobile-radio.patch
-          git apply --check ../mission/patches/mobile-panel-sync.patch
-          git apply ../mission/patches/mobile-panel-sync.patch
-          git apply --check ../mission/patches/mobile-identity.patch
-          git apply ../mission/patches/mobile-identity.patch
-          git apply --check ../mission/patches/mobile-stability.patch
-          git apply ../mission/patches/mobile-stability.patch
-          git apply --check ../mission/android-app/ci/mobile/adult-classification.patch
-          git apply ../mission/android-app/ci/mobile/adult-classification.patch
-          git apply --check ../mission/android-app/ci/mobile/player-terminal-fallback.patch
-          git apply ../mission/android-app/ci/mobile/player-terminal-fallback.patch
-          git apply --check ../mission/android-app/ci/mobile/mobile-back-gestures.patch
-          git apply ../mission/android-app/ci/mobile/mobile-back-gestures.patch
-          git apply --check ../mission/android-app/ci/mobile/football-upcoming.patch
-          git apply ../mission/android-app/ci/mobile/football-upcoming.patch
-          git apply --check ../mission/android-app/ci/mobile/player-session-handoff.patch
-          git apply ../mission/android-app/ci/mobile/player-session-handoff.patch
-          git apply --check ../mission/android-app/ci/mobile/library-user-actions.patch
-          git apply ../mission/android-app/ci/mobile/library-user-actions.patch
-          git diff --check
+          bash ../mission/android-app/ci/mobile/prepare-reviewed-source.sh ../mobile-reviewed
           flutter pub get
           flutter gen-l10n
       - name: Vérifier la numérotation des APK publiés
