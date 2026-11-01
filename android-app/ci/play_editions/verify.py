@@ -30,14 +30,17 @@ def verify_manifest(source, edition):
     assert features['android.software.leanback'] == str(edition == 'tv').lower()
     assert features['android.hardware.touchscreen'] == str(edition == 'mobile').lower()
     categories = {x.get(A + 'name') for x in activity.findall('intent-filter/category')}
-    assert ('android.intent.category.LEANBACK_LAUNCHER' in categories) == (edition == 'tv')
-    assert activity.get(A + 'supportsPictureInPicture') == str(edition == 'mobile').lower()
+    assert ('android.intent.category.LEANBACK_LAUNCHER' in categories) == (edition != 'mobile')
+    assert 'android.intent.category.LAUNCHER' in categories, 'Launcher téléphone absent'
+    assert activity.get(A + 'supportsPictureInPicture') == str(edition != 'tv').lower()
     services = {x.get(A + 'name') for x in app.findall('service')}
-    assert (CAST_KEY in metadata) == (edition == 'mobile'), 'Configuration Cast incorrecte'
-    assert (CAST_SERVICE in services) == (edition == 'mobile'), 'Service Cast incorrect'
+    assert (CAST_KEY in metadata) == (edition != 'tv'), 'Configuration Cast incorrecte'
+    assert (CAST_SERVICE in services) == (edition != 'tv'), 'Service Cast incorrect'
     return {'edition': edition, 'package': PACKAGES[edition], 'version_code': code,
-            'version_name': name, 'cast_sender': edition == 'mobile',
-            'picture_in_picture': edition == 'mobile', 'min_sdk': 24}
+            'version_name': name, 'cast_sender': edition != 'tv',
+            'picture_in_picture': edition != 'tv',
+            'sender_device_scope': 'handset-only' if edition != 'tv' else 'none',
+            'min_sdk': 24}
 
 
 if __name__ == '__main__':

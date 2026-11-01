@@ -9,11 +9,11 @@ const phone = read('workflows/build-7motion-sport-test.yml');
 const quality = read('workflows/quality-zuno.yml');
 const cleanup = read('workflows/cleanup-old-apks.yml');
 
-test('les deux bundles ZUNO restent des artefacts sans publication et avec garde de signature', () => {
+test('la mise à jour ZUNO produit seulement le paquet adaptatif protégé, sans publication', () => {
   const editions = read('workflows/build-zuno-play-editions.yml');
   assert.match(editions, /^permissions:\n  contents: read/m);
   assert.doesNotMatch(editions, /contents: write|gh release|APP_OPERATION: client/);
-  assert.match(editions, /edition: \[tv, mobile\]/);
+  assert.match(editions, /edition: \[auto\]/);
   assert.match(editions, /environment: zuno-app-production/);
   assert.match(editions, /bundles:[\s\S]*?if: github\.ref == 'refs\/heads\/ccr-b93e1afd-gwirw0'/);
   assert.match(editions, /github\.triggering_actor == github\.repository_owner/);

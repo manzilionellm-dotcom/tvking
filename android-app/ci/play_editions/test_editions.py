@@ -1,4 +1,4 @@
-"""Contrats d'installation et détection d'un mélange entre les deux produits."""
+"""Contrats de mise à jour et compatibilité du paquet Play existant."""
 from pathlib import Path
 import unittest
 import xml.etree.ElementTree as ET
@@ -28,7 +28,7 @@ class EditionTests(unittest.TestCase):
         sdk = root.find('uses-sdk')
         sdk.set(A + 'minSdkVersion', '24')
         sdk.set(A + 'targetSdkVersion', '36')
-        if edition == 'mobile':
+        if edition != 'tv':
             app = root.find('application')
             ET.SubElement(app, 'meta-data', {A + 'name': CAST_KEY, A + 'value': 'provider'})
             ET.SubElement(app, 'service', {A + 'name': CAST_SERVICE})
@@ -44,8 +44,27 @@ class EditionTests(unittest.TestCase):
         for edition in PACKAGES:
             root = self.merged(edition)
             report = verify_manifest(ET.tostring(root), edition)
-            self.assertEqual(report['cast_sender'], edition == 'mobile')
-            self.assertEqual(report['picture_in_picture'], edition == 'mobile')
+            self.assertEqual(report['cast_sender'], edition != 'tv')
+            self.assertEqual(report['picture_in_picture'], edition != 'tv')
+
+    def test_auto_updates_existing_package_without_excluding_phone_or_tv(self):
+        root = self.merged('auto')
+        self.assertEqual(root.get('package'), 'com.sevenmotion.tv.seven_tv')
+        self.assertEqual(version_for('auto'), version_for('tv'))
+        features = {x.get(A + 'name'): x.get(A + 'required')
+                    for x in root.findall('uses-feature')}
+        self.assertEqual(features['android.software.leanback'], 'false')
+        self.assertEqual(features['android.hardware.touchscreen'], 'false')
+        report = verify_manifest(ET.tostring(root), 'auto')
+        self.assertEqual(report['sender_device_scope'], 'handset-only')
+
+    def test_auto_cannot_silently_filter_out_existing_phone_installs(self):
+        root = self.merged('auto')
+        for feature in root.findall('uses-feature'):
+            if feature.get(A + 'name') == 'android.software.leanback':
+                feature.set(A + 'required', 'true')
+        with self.assertRaises(AssertionError):
+            verify_manifest(ET.tostring(root), 'auto')
 
     def test_mobile_has_no_tv_launcher(self):
         self.assertNotIn('LEANBACK_LAUNCHER', self.source('mobile'))
