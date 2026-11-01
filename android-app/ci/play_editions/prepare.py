@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Prépare deux produits Play indépendants, sans modifier les builds historiques.
+"""Prépare la mise à jour Play adaptative et les variantes de contrôle.
 
-Le paquet TV conserve sa signature/identité pour les abonnements existants.
-Le paquet mobile est nouveau et possède son propre compteur Play. Tous deux
-utilisent le même code ZUNO, le même panel et l'entrée main_tv.dart validée.
+L'édition auto conserve le paquet, la signature et l'identité historiques sur
+téléphone comme sur TV. Le plugin décide des capacités selon le matériel.
+Les variantes explicites restent testables, mais ne sont plus construites par
+le workflow de livraison. Toutes utilisent l'entrée main_tv.dart validée.
 """
 import argparse
 import importlib.util
@@ -22,8 +23,9 @@ T = '{' + TOOLS + '}'
 EDITION_KEY = 'com.sevenmotion.zuno.EDITION'
 CAST_KEY = 'com.google.android.gms.cast.framework.OPTIONS_PROVIDER_CLASS_NAME'
 CAST_SERVICE = 'com.manzilionellm.tvking.PlaybackForegroundService'
-PACKAGES = {'tv': 'com.sevenmotion.tv.seven_tv', 'mobile': 'com.sevenmotion.zuno.mobile'}
-LABELS = {'tv': 'ZUNO TV', 'mobile': 'ZUNO Mobile'}
+PACKAGES = {'auto': 'com.sevenmotion.tv.seven_tv',
+            'tv': 'com.sevenmotion.tv.seven_tv', 'mobile': 'com.sevenmotion.zuno.mobile'}
+LABELS = {'auto': 'ZUNO', 'tv': 'ZUNO TV', 'mobile': 'ZUNO Mobile'}
 ET.register_namespace('android', ANDROID)
 ET.register_namespace('tools', TOOLS)
 
@@ -36,9 +38,9 @@ def load_module(name, path):
 
 
 def version_for(edition):
-    path = APP / 'ci' / ('play-tv-version.json' if edition == 'tv' else 'play-mobile-version.json')
+    path = APP / 'ci' / ('play-mobile-version.json' if edition == 'mobile' else 'play-tv-version.json')
     data = json.loads(path.read_text())
-    if edition == 'tv':
+    if edition != 'mobile':
         validator = load_module('play_tv_version', APP / 'ci/play_tv_version.py')
         return validator.validate_version(data)
     previous, uploaded, code = (data[k] for k in (
@@ -77,14 +79,16 @@ def edition_manifest(source, edition):
     # Le bundle ne télécharge ni n'installe d'autre exécutable : mises à jour Play.
     set_named(root, 'uses-permission', 'android.permission.REQUEST_INSTALL_PACKAGES',
               **{T + 'node': 'remove'})
-    activity.set(A + 'supportsPictureInPicture', str(edition == 'mobile').lower())
+    # Dans le paquet adaptatif, le PiP est déclaré pour les téléphones ;
+    # le code natif refuse son activation sur TV et box.
+    activity.set(A + 'supportsPictureInPicture', str(edition != 'tv').lower())
     if edition == 'mobile':
         application.attrib.pop(A + 'banner', None)
         for intent in activity.findall('intent-filter'):
             for category in list(intent.findall('category')):
                 if category.get(A + 'name') == 'android.intent.category.LEANBACK_LAUNCHER':
                     intent.remove(category)
-    else:
+    elif edition == 'tv':
         # Élimine également la configuration et le service de l'émetteur du
         # manifeste fusionné ; le plugin refuse le Cast avant toute initialisation.
         set_named(application, 'meta-data', CAST_KEY, **{T + 'node': 'remove'})
@@ -107,7 +111,7 @@ def prepare(edition):
     gradle.write_text(code)
     shutil.copyfile(APP / 'ci/proguard-rules.pro', APP / 'android/app/proguard-rules.pro')
     res = APP / 'android/app/src/main/res'
-    # Identité ZUNO commune ; les libellés du launcher distinguent les deux apps.
+    # L'édition auto conserve la même identité ZUNO sur les deux types d'écran.
     for directory, asset in [('drawable', 'zuno_tv_banner.png'),
                              ('drawable-xhdpi', 'zuno_tv_banner.png'),
                              ('drawable-xxhdpi', 'zuno_tv_banner_2x.png')]:

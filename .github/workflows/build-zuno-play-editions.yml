@@ -1,8 +1,8 @@
-# Deux fichiers Play distincts, construits depuis le même SHA, sans publication.
-name: ZUNO — AAB Mobile Cast et TV séparés
+# Une mise à jour de la fiche existante, adaptée au matériel, sans publication.
+name: ZUNO — mise à jour Play téléphone et TV
 on:
   push:
-    branches: ['feature/zuno-separate-play-editions-20261101', 'ccr-b93e1afd-gwirw0']
+    branches: ['feature/zuno-existing-play-update-20261101', 'ccr-b93e1afd-gwirw0']
     paths:
       - '.github/workflows/build-zuno-play-editions.yml'
       - '.github/security-config.test.mjs'
@@ -18,7 +18,7 @@ env:
   EXPECTED_CERT: 5145b8e019f6d5fb96a207f2e73673fd954f799966fd598889211556cbdf9e61
 jobs:
   verify:
-    name: Valider la séparation Mobile et TV
+    name: Valider la mise à jour et les capacités téléphone et TV
     if: github.actor == github.repository_owner && github.triggering_actor == github.repository_owner && github.repository == 'manzilionellm-dotcom/tvking'
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -62,7 +62,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        edition: [tv, mobile]
+        edition: [auto]
     runs-on: ubuntu-latest
     timeout-minutes: 60
     defaults:
@@ -99,7 +99,7 @@ jobs:
         run: python3 ci/play_editions/prepare.py --edition '${{ matrix.edition }}'
       - name: Conserver SharedPreferences déjà validé dans le bundle officiel
         run: |
-          # Les deux éditions reprennent la version 2.5.0 déjà validée
+          # La mise à jour reprend la version 2.5.0 déjà validée
           # dans le bundle signé. Ce pin reste local au runner.
           python3 - <<'PYEOF'
           from pathlib import Path
