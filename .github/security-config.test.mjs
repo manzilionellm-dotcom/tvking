@@ -9,6 +9,22 @@ const phone = read('workflows/build-7motion-sport-test.yml');
 const quality = read('workflows/quality-zuno.yml');
 const cleanup = read('workflows/cleanup-old-apks.yml');
 
+test('7 MOTION : le bundle et ses tests utilisent la même recette mobile revue', () => {
+  const source = JSON.parse(read('../android-app/ci/mobile/reviewed-source.json'));
+  assert.match(source.sourceSha, /^[a-f0-9]{40}$/);
+  assert.equal(source.package, 'com.manzilionellm.tvking');
+  assert.equal(source.backendUrl, 'https://api.zuno8k.com');
+  for (const workflow of [phone, read('workflows/mobile-panel-sync-tests.yml')]) {
+    assert.ok(workflow.includes(`ref: ${source.sourceSha}`));
+    assert.ok(workflow.includes('prepare-reviewed-source.sh ../mobile-reviewed'));
+  }
+  assert.ok(phone.includes(`--build-name=${source.versionName}`));
+  assert.match(phone, /"mobileSourceSha": subprocess.check_output/);
+  const prepare = read('../android-app/ci/mobile/prepare-reviewed-source.sh');
+  assert.match(prepare, /assert actual == expected\['sourceSha'\]/);
+  assert.match(prepare, /assert base == expected\['mobileBaseSha'\]/);
+});
+
 test('la mise à jour ZUNO produit seulement le paquet adaptatif protégé, sans publication', () => {
   const editions = read('workflows/build-zuno-play-editions.yml');
   assert.match(editions, /^permissions:\n  contents: read/m);
