@@ -22,6 +22,7 @@ import 'tv_add_source_screen.dart';
 import 'tv_components.dart';
 import 'tv_phone_source_qr.dart';
 import 'tv_shell.dart';
+import 'tv_whatsapp_support_button.dart';
 
 class TvActivationScreen extends StatefulWidget {
   const TvActivationScreen({super.key});
@@ -189,6 +190,9 @@ class _TvActivationScreenState extends State<TvActivationScreen> {
             style: TvTokens.ui(16, color: TvTokens.live),
           ),
         ],
+        // Le téléphone contacte directement le support ; la TV conserve
+        // aussi son QR existant. Aucun statut d'abonnement n'est modifié.
+        const TvWhatsAppSupportButton(),
         const SizedBox(height: 22),
         // ----- CONNEXION : l'utilisateur apporte sa propre source -----
         //  Trois entrées, sans liste de serveurs : Xtream (adresse +

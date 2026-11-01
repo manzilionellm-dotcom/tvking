@@ -1,4 +1,11 @@
 {
+  "tvSupportWhatsApp": "WhatsApp-support",
+  "tvSupportHello": "Hej, jeg har brug for hjælp med Zuno.",
+  "tvSupportUnavailable": "WhatsApp kan ikke åbnes på denne enhed. Kontakt os på nummeret nedenfor.",
+  "playbackNotifDefaultBody": "Lydafspilning i baggrunden",
+  "playbackNotifChannelName": "Lydafspilning",
+  "playbackNotifChannelDesc": "Lydafspilning i baggrunden (hovedtelefon-tilstand)",
+  "castNotifRelayBody": "Caster til tv'et — hold telefonen på dette WiFi",
   "@@locale": "da",
   "appName": "The Few",
   "appTagline": "Biograf uden grænser",

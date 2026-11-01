@@ -1,4 +1,11 @@
 {
+  "tvSupportWhatsApp": "WhatsApp-ondersteuning",
+  "tvSupportHello": "Hallo, ik heb hulp nodig met Zuno.",
+  "tvSupportUnavailable": "WhatsApp kan niet worden geopend op dit apparaat. Neem contact op via het onderstaande nummer.",
+  "playbackNotifDefaultBody": "Audio wordt op de achtergrond afgespeeld",
+  "playbackNotifChannelName": "Audioweergave",
+  "playbackNotifChannelDesc": "Audioweergave op de achtergrond (hoofdtelefoonmodus)",
+  "castNotifRelayBody": "Streamen naar de tv — houd je telefoon verbonden met dit wifi-netwerk",
   "@@locale": "nl",
   "appName": "The Few",
   "@appName": {

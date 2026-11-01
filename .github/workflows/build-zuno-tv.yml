@@ -15,7 +15,7 @@
 #  POURQUOI CE WORKFLOW (24/09/2026). Le 4K Player rebrandé est un binaire
 #  tiers fermé (sans code source ici) : il s'active sur le serveur de son
 #  fournisseur, pas sur notre panel. L'app Flutter `main_tv.dart`, elle, est
-#  câblée sur le MÊME Worker que le panel (https://app.7themotion.com) :
+#  câblée sur le MÊME Worker que le panel (https://api.zuno8k.com) :
 #  heartbeat au démarrage (platform=tv), licence essai/payé, sources
 #  Xtream/M3U saisies par le client OU poussées par le panel
 #  (/api/device-source), thème, annonces, historique multi-box.
@@ -101,7 +101,7 @@ on:
         type: choice
         options: ['false', 'true']
       backend_url:
-        description: 'Worker/panel visé (vide = https://app.7themotion.com)'
+        description: 'Worker/panel visé (vide = https://api.zuno8k.com)'
         required: false
         default: ''
         type: string
@@ -547,7 +547,7 @@ jobs:
           # code AOT (libapp.so, toutes ABIs). Si elle manque, l'app ne parle
           # PAS au panel.
           WANT="${{ inputs.backend_url }}"
-          WANT="${WANT:-https://app.7themotion.com}"
+          WANT="${WANT:-https://api.zuno8k.com}"
           unzip -p "$APK" 'lib/*/libapp.so' | grep -aq "$WANT" \
             || { echo "❌ backend $WANT introuvable dans l'APK"; exit 1; }
           echo "✓ APK vérifié : $ZUNO_APP_ID ($ZUNO_APP_LABEL), Leanback, backend $WANT"
@@ -773,7 +773,7 @@ jobs:
           }
           JSON
           cat version.json
-          NOTES="Zuno — app box Android TV / Fire TV (Flutter, lib/main_tv.dart) reliée au panel admin (https://app.7themotion.com) : activation par MAC, essai 7 jours puis licence payée, sources Xtream/M3U saisies par le client ou poussées par le panel, thème noir & or Zuno.
+          NOTES="Zuno — app box Android TV / Fire TV (Flutter, lib/main_tv.dart) reliée au panel admin (https://api.zuno8k.com) : activation par MAC, essai 7 jours puis licence payée, sources Xtream/M3U saisies par le client ou poussées par le panel, thème noir & or Zuno.
 
           Lien direct : https://github.com/$REPO/releases/download/$RELEASE_TAG/$APK_NAME
 
@@ -887,7 +887,7 @@ jobs:
             echo "## Zuno TV"
             echo "- applicationId : \`$ZUNO_APP_ID\` · nom : \`$ZUNO_APP_LABEL\`"
             echo "- version visible : \`${TV_VERSION_NAME:-?}\` · versionCode : \`${TV_BUILD_NUMBER:-?}\` · signature : \`${SIGNING:-?}\`"
-            echo "- backend : \`${{ inputs.backend_url || 'https://app.7themotion.com' }}\`"
+            echo "- backend : \`${{ inputs.backend_url || 'https://api.zuno8k.com' }}\`"
             if [ "$PUBLIER" = "true" ]; then
               echo "- publié : https://github.com/${{ github.repository }}/releases/download/$RELEASE_TAG/$APK_NAME"
             else

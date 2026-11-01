@@ -1,3 +1,4 @@
+import 'features/cast/data/cast_platform.dart';
 // =========================================================
 //  main_tv.dart — Point d'entrée DeFew TV (Android TV / Fire TV)
 // =========================================================
@@ -107,9 +108,11 @@ Future<void> bootstrapZunoTv({Widget Function(Widget app)? wrap}) async {
   // distant plus bas → la boucle est cassée. Voir core/app/boot_guard.dart.
   await BootGuard.instance.beginBoot();
 
-  // Cette app est la version TÉLÉVISION → le heartbeat enverra
-  // platform='tv' et le panel l'affichera comme 📺 (vs 📱 mobile).
-  AppPlatform.isTv = true;
+  // Le paquet ZUNO est également distribué sur téléphone. On distingue
+  // le matériel AVANT les services et le diagnostic, sans changer la MAC,
+  // la licence ni le namespace historique « tv » de ZUNO dans le panel.
+  await CastPlatform.initializeZuno();
+  AppPlatform.configureZuno(isAndroidHandset: CastPlatform.isAndroidHandset);
 
   // MISE À JOUR IN-APP : la TV ne regarde QUE sa propre release (zuno-tv),
   // publiée par build-zuno-tv.yml (version.json + zuno-tv.apk). Même clé de
@@ -129,7 +132,7 @@ Future<void> bootstrapZunoTv({Widget Function(Widget app)? wrap}) async {
   // BOÎTE NOIRE (enregistreur de vol) : le plus tôt possible, pour que tout le
   // démarrage soit journalisé et que la raison de la DERNIÈRE fermeture soit
   // lue (Android 11+). Best-effort : ne bloque jamais le boot.
-  await BlackBox.instance.initialize(flavor: 'Zuno TV');
+  await BlackBox.instance.initialize(flavor: AppPlatform.zunoEditionName);
   _wireAudioDiagnostic();
   // Le journal part vers le panel (même Worker, même MAC). L'envoi
   // est coupé par l'interrupteur « En plus ». Rien ici ne touche au son.

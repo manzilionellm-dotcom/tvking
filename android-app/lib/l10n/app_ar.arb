@@ -1,4 +1,11 @@
 {
+  "tvSupportWhatsApp": "الدعم عبر واتساب",
+  "tvSupportHello": "مرحبًا، أحتاج إلى مساعدة مع Zuno.",
+  "tvSupportUnavailable": "لا يمكن فتح واتساب على هذا الجهاز. تواصل معنا على الرقم أدناه.",
+  "playbackNotifDefaultBody": "تشغيل الصوت في الخلفية",
+  "playbackNotifChannelName": "تشغيل الصوت",
+  "playbackNotifChannelDesc": "تشغيل الصوت في الخلفية (وضع السماعات)",
+  "castNotifRelayBody": "جارٍ البث على التلفاز — أبقِ الهاتف على شبكة WiFi هذه",
   "@@locale": "ar",
   "appName": "The Few",
   "appTagline": "سينما بلا حدود",

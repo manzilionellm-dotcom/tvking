@@ -242,6 +242,11 @@ class NativeVideoController extends ChangeNotifier {
   bool _attached = false;
   bool _disposed = false;
 
+  /// Une session Cast peut déjà jouer quand une nouvelle vue locale est
+  /// construite. Garder le verrou avant l'arrivée de sa PlatformView évite
+  /// d'ouvrir brièvement une seconde connexion au fournisseur.
+  bool _castSuspended = false;
+
   /// Génération du dernier [setUrl]. Les événements natifs d'une génération
   /// précédente (zap très rapide) sont ignorés jusqu'à l'accusé `ack`.
   /// Sans ça, la position de l'ancienne chaîne faisait croire que la nouvelle
@@ -346,6 +351,10 @@ class NativeVideoController extends ChangeNotifier {
     _channel = ch;
     ch.setMethodCallHandler(_onNativeCall);
     _audioFlagChannels.add(ch);
+    // Le canal livre ses messages dans l'ordre. Le natif pose ce verrou
+    // dès la réception de suspendForCast : l'URL ci-dessous sera mémorisée
+    // pour le retour local, sans préparer ni ouvrir son flux pendant le Cast.
+    if (_castSuspended) ch.invokeMethod<void>('suspendForCast');
     // Avant l'URL : le premier décodeur est déjà le bon (pas un
     // second démarrage si le choix n'est pas le matériel).
     ch.invokeMethod<void>('setEngine', _imageEngine);
@@ -710,6 +719,35 @@ class NativeVideoController extends ChangeNotifier {
   void play() => _backend != null ? _backend!.play() : _channel?.invokeMethod<void>('play');
 
   void pause() => _backend != null ? _backend!.pause() : _channel?.invokeMethod<void>('pause');
+
+  /// Passation volontaire au Cast : ferme le flux local même si l'app reste
+  /// au premier plan. Ce verrou est distinct du cycle de vie Home/retour.
+  Future<void> suspendForCast() async {
+    if (_disposed) throw StateError('Lecteur fermé');
+    final MethodChannel? channel = _channel;
+    if (channel == null) {
+      // Le moteur PC conserve sa passation propre ; ce verrou est celui
+      // de la vue Android qui n'a pas encore rejoint son controller.
+      if (_backend != null) throw StateError('Lecteur pas encore prêt');
+      _castSuspended = true;
+      isPlaying = false;
+      // Aucun flux local n'existe encore. Pas de notification synchrone :
+      // l'appel est autorisé depuis initState, avant la création de la vue.
+      return;
+    }
+    _castSuspended = true;
+    await channel.invokeMethod<void>('suspendForCast');
+    isPlaying = false;
+    if (!_disposed) notifyListeners();
+  }
+
+  Future<void> resumeAfterCast() async {
+    if (_disposed) return;
+    // Si le Cast finit avant l'attachement, la première URL doit retrouver
+    // le chemin local normal et aucun ancien verrou ne doit être rejoué.
+    _castSuspended = false;
+    await _channel?.invokeMethod<void>('resumeAfterCast');
+  }
 
   /// App en arrière-plan (Home, multitâche) : ARRÊT, pas pause. Le natif
   /// rend le décodeur, l'AudioTrack et le focus audio. Hors Android, une

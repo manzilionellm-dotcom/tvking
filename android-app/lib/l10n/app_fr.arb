@@ -1,4 +1,11 @@
 {
+  "tvSupportWhatsApp": "Support WhatsApp",
+  "tvSupportHello": "Bonjour, j’ai besoin d’aide avec Zuno.",
+  "tvSupportUnavailable": "WhatsApp ne peut pas s’ouvrir sur cet appareil. Contactez-nous au numéro ci-dessous.",
+  "playbackNotifDefaultBody": "Lecture audio en arrière-plan",
+  "playbackNotifChannelName": "Lecture audio",
+  "playbackNotifChannelDesc": "Lecture audio en arrière-plan (mode Écouteurs)",
+  "castNotifRelayBody": "Diffusion sur la TV — garde le téléphone sur ce WiFi",
   "@@locale": "fr",
   "@@x-template": true,
   "@@x-description": "Template canonique — toutes les autres langues s'alignent sur ces clefs.",

@@ -1,4 +1,11 @@
 {
+  "tvSupportWhatsApp": "Msaada wa WhatsApp",
+  "tvSupportHello": "Habari, nahitaji msaada kuhusu Zuno.",
+  "tvSupportUnavailable": "WhatsApp haiwezi kufunguliwa kwenye kifaa hiki. Wasiliana nasi kwa nambari iliyo hapa chini.",
+  "playbackNotifDefaultBody": "Sauti inacheza chinichini",
+  "playbackNotifChannelName": "Ucheza wa sauti",
+  "playbackNotifChannelDesc": "Sauti inacheza chinichini (hali ya Sauti pekee)",
+  "castNotifRelayBody": "Inatangaza kwenye TV — weka simu kwenye WiFi hii",
   "@@locale": "sw",
   "appName": "The Few",
   "appTagline": "Sinema bila mipaka",

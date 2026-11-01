@@ -38,6 +38,7 @@ import 'tv_parental_screen.dart';
 import 'tv_recordings_screen.dart';
 import 'tv_shell.dart';
 import 'tv_sources_screen.dart';
+import 'tv_whatsapp_support_button.dart';
 
 class TvSettingsScreen extends StatefulWidget {
   const TvSettingsScreen({super.key});
@@ -486,6 +487,9 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
           ),
         ),
         const SizedBox(height: 8),
+        // Le contact reste accessible après activation, sans ouvrir un
+        // diagnostic ni recopier les identifiants de la liste du client.
+        const TvWhatsAppSupportButton(),
         // ----- Avertissement « lecteur » toujours visible (bas de page) -----
         Text(
           context.l10n.tvPlayerDisclaimer,

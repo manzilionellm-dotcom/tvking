@@ -119,7 +119,7 @@ class _TvAddSourceScreenState extends State<TvAddSourceScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
+    final Widget content = Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 760),
         child: SingleChildScrollView(
@@ -222,6 +222,16 @@ class _TvAddSourceScreenState extends State<TvAddSourceScreen> {
           ),
         ),
       ),
+    );
+
+    // TvShell fournit le fond et un Material, mais ne réduit pas sa hauteur
+    // quand le clavier s'ouvre. Ce Scaffold local réserve l'espace déjà
+    // converti par TvScaledViewport : le défilement révèle alors le champ
+    // focalisé. Clavier fermé, contenu et fond restent strictement les mêmes.
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      resizeToAvoidBottomInset: true,
+      body: content,
     );
   }
 

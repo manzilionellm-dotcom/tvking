@@ -23,7 +23,7 @@
 //  Le Default Media Receiver (CC1AD845) ne décode PAS le MPEG-TS brut des
 //  flux IPTV. On charge donc le récepteur custom (5BDFD969, mpegts.js) qui
 //  décode le TS sur la TV, et on lui envoie l'URL HTTPS de MÊME origine
-//  https://app.7themotion.com/cast-proxy?u=… (signée par le Worker) : cela
+//  https://api.zuno8k.com/cast-proxy?u=… (signée par le Worker) : cela
 //  lève le blocage contenu mixte / CORS du fetch depuis la page récepteur.
 //  Repli si le proxy est injoignable : le RELAIS HLS du téléphone
 //  (registerRelay/wrapInHls). Le DLNA (LG/Samsung) n'est PAS concerné — il
@@ -39,6 +39,8 @@ import 'package:flutter/foundation.dart';
 import '../../../core/observability/structured_logger.dart';
 import '../domain/cast_device.dart';
 import '../../player/data/xtream_url_variants.dart';
+import '../../subscription/data/subscription_backend.dart'
+    show kSubscriptionBaseUrl;
 import 'cast_session_diagnostic.dart' show redactStreamUrl;
 import 'cast_transport.dart';
 import 'dlna_profiles.dart';
@@ -53,7 +55,7 @@ import 'local_cast_server.dart';
 ///   telephone ou VPS.
 ///
 /// `true` : le custom receiver `5BDFD969` (page mpegts.js servie par le
-///   Worker à `https://app.7themotion.com/cast-receiver`) decode le MPEG-TS
+///   Worker à `https://api.zuno8k.com/cast-receiver`) decode le MPEG-TS
 ///   LUI-MEME sur la TV → on envoie l'URL Xtream .ts DIRECTE (sans VPS).
 ///
 /// kCastUseCustomReceiver (ici) et USE_CUSTOM_RECEIVER
@@ -61,14 +63,14 @@ import 'local_cast_server.dart';
 ///    TOUJOURS valoir LA MÊME CHOSE. Les desynchroniser = ECRAN NOIR.
 ///
 /// ACTIVÉ (2026-06-25) : `5BDFD969` est desormais PUBLISHED (Custom
-///    Receiver → https://app.7themotion.com/cast-receiver). Le receiver
+///    Receiver → https://api.zuno8k.com/cast-receiver). Le receiver
 ///    mpegts.js decode le MPEG-TS sur la TV → on envoie le .ts DIRECT, sans
 ///    VPS, et la box reapparait dans le picker (le filtre par app id publie
 ///    ne cache plus les appareils).
 ///
 /// REACTIVÉ (2026-07-01) — le blocage CORS / contenu mixte du 2026-06-29 est
 ///    RESOLU. On n'envoie plus le .ts HTTP brut au custom receiver : on envoie
-///    l'URL HTTPS `https://app.7themotion.com/cast-proxy?u=…` (MÊME origine que
+///    l'URL HTTPS `https://api.zuno8k.com/cast-proxy?u=…` (MÊME origine que
 ///    la page receiver, en-tetes CORS ouverts, re-type video/mp2t). Le LOAD
 ///    interceptor du receiver route video/mp2t vers mpegts.js, qui fetch cette
 ///    URL HTTPS sans contenu mixte ni CORS → la TV decode le TS elle-meme et le
@@ -109,7 +111,7 @@ const bool kCastDebugOverlay = false;
 /// Base du Worker (même domaine que le récepteur Cast custom) qui signe et sert
 /// le proxy Cast. Le secret HMAC vit UNIQUEMENT côté Worker : l'app demande une
 /// URL signée à `/cast-sign`, elle n'embarque aucun secret.
-const String _kCastProxyBase = 'https://app.7themotion.com';
+const String _kCastProxyBase = kSubscriptionBaseUrl;
 
 /// Mémo du verdict `/cast-proxy` PAR HÔTE UPSTREAM (fluidité 2026-07-10).
 ///
