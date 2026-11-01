@@ -24,6 +24,8 @@ on:
       - 'android-app/lib/**'
       - 'android-app/test/**'
       - 'android-app/packages/native_video_player/**'
+      - 'android-app/packages/zuno_cast/**'
+      - 'android-app/ci/test-zuno-device-capabilities.sh'
       - 'android-app/pubspec.yaml'
       - 'android-app/pubspec.lock'
       - 'android-app/analysis_options.yaml'
@@ -61,6 +63,8 @@ jobs:
       - name: Tester la logique du lecteur sans flux fournisseur
         working-directory: android-app/packages/native_video_player/logic-test
         run: gradle test --no-daemon
+      - name: Vérifier la séparation Cast téléphone / TV et box
+        run: bash android-app/ci/test-zuno-device-capabilities.sh
 
   configuration:
     name: Protections de configuration
