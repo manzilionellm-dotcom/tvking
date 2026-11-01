@@ -27,6 +27,8 @@ import 'dart:math';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../domain/device_identity_seed.dart';
+
 class DeviceIdentity {
   DeviceIdentity._();
   static final DeviceIdentity instance = DeviceIdentity._();
@@ -79,7 +81,9 @@ class DeviceIdentity {
         info['sdk'] ?? '',
       ].where((String s) => s.trim().isNotEmpty).join('|').trim();
     }
-    final String derived = seed.isNotEmpty ? _macFromSeed(seed) : _generate();
+    final String derived = seed.isNotEmpty
+        ? _macFromSeed(deviceIdentitySeed(seed))
+        : _generate();
     await prefs.setString(_kKey, derived);
     _cached = derived;
     return derived;

@@ -13,6 +13,15 @@ public final class ZunoDeviceCapabilities {
     /** TV et Leanback interdisent toujours l'émission, même avec du tactile. */
     public static boolean isHandset(
             boolean televisionMode, boolean leanback, boolean touchscreen) {
-        return !televisionMode && !leanback && touchscreen;
+        return isHandset("auto", televisionMode, leanback, touchscreen);
+    }
+
+    /** L'édition TV ne devient jamais un émetteur, même installée sur téléphone. */
+    public static boolean isHandset(
+            String edition, boolean televisionMode, boolean leanback, boolean touchscreen) {
+        // Une valeur inconnue échoue fermée. L'absence de métadonnée conserve
+        // uniquement le comportement des anciens paquets adaptatifs.
+        boolean senderEdition = "auto".equals(edition) || "mobile".equals(edition);
+        return senderEdition && !televisionMode && !leanback && touchscreen;
     }
 }

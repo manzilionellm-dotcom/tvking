@@ -16,8 +16,9 @@ abstract final class CastPlatform {
       _androidHandset);
   static bool get canSendFromZuno => isWindows || isAndroidHandset;
 
-  /// Le même paquet ZUNO peut être installé sur téléphone ou télévision.
-  /// Le plugin décide si l'appareil peut émettre ; sa MAC reste inchangée.
+  /// Le plugin croise le matériel avec l'édition signée du paquet :
+  /// ZUNO TV ne peut jamais émettre ; ZUNO Mobile garde le Cast tactile.
+  /// Les anciens paquets adaptatifs conservent leur détection matérielle.
   static Future<void> initializeZuno() async {
     _androidHandset = false;
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;

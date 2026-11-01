@@ -28,8 +28,16 @@ public final class ZunoDeviceCapabilitiesTest {
                                 + ", Leanback=" + row[1] + ", tactile=" + row[2]
                                 + ", attendu=" + row[3] + ", obtenu=" + actual);
             }
+            for (String edition : new String[] {"tv", "mobile", "unknown"}) {
+                boolean expected = "mobile".equals(edition) && row[3];
+                boolean editionResult = ZunoDeviceCapabilities.isHandset(
+                        edition, row[0], row[1], row[2]);
+                if (editionResult != expected) {
+                    throw new AssertionError("Édition " + edition + ", combinaison " + index);
+                }
+            }
         }
 
-        System.out.println("ZunoDeviceCapabilities : 8 combinaisons validées");
+        System.out.println("ZunoDeviceCapabilities : 32 combinaisons matériel/édition validées");
     }
 }

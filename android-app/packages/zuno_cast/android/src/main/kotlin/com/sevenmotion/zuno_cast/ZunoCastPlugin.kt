@@ -35,7 +35,17 @@ class ZunoCastPlugin : FlutterPlugin, ActivityAware {
         // de ces deux signaux ne suffit donc pas à en faire un téléphone :
         // le Cast émetteur exige aussi un véritable écran tactile déclaré.
         // TV et Leanback restent prioritaires, même sur un écran tactile.
+        // Les deux fiches Play ont une édition figée dans le manifeste signé.
+        // Ce contrôle natif précède la création du SDK Cast et de son service.
+        val edition = try {
+            context.packageManager.getApplicationInfo(
+                context.packageName, PackageManager.GET_META_DATA,
+            ).metaData?.getString("com.sevenmotion.zuno.EDITION") ?: "auto"
+        } catch (_: Exception) {
+            "unknown"
+        }
         handset = ZunoDeviceCapabilities.isHandset(
+            edition,
             mode.currentModeType == Configuration.UI_MODE_TYPE_TELEVISION,
             context.packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK),
             context.packageManager.hasSystemFeature(PackageManager.FEATURE_TOUCHSCREEN),

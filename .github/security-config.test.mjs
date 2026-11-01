@@ -9,6 +9,24 @@ const phone = read('workflows/build-7motion-sport-test.yml');
 const quality = read('workflows/quality-zuno.yml');
 const cleanup = read('workflows/cleanup-old-apks.yml');
 
+test('les deux bundles ZUNO restent des artefacts sans publication et avec garde de signature', () => {
+  const editions = read('workflows/build-zuno-play-editions.yml');
+  assert.match(editions, /^permissions:\n  contents: read/m);
+  assert.doesNotMatch(editions, /contents: write|gh release|APP_OPERATION: client/);
+  assert.match(editions, /edition: \[tv, mobile\]/);
+  assert.match(editions, /environment: zuno-app-production/);
+  assert.match(editions, /bundles:[\s\S]*?if: github\.ref == 'refs\/heads\/ccr-b93e1afd-gwirw0'/);
+  assert.match(editions, /github\.triggering_actor == github\.repository_owner/);
+  assert.ok(editions.indexOf('run: node .github/app-release-guard.mjs') < editions.indexOf('KS_B64:'));
+  assert.match(editions, /test "\$SIGNING" = release/);
+  assert.match(editions, /test "\$CERT" = "\$EXPECTED_CERT"/);
+  assert.match(editions, /--dart-define=ZUNO_EDITION="\$ZUNO_EDITION"/);
+  assert.match(editions, /ci\/play_editions\/verify\.py/);
+  for (const [, action] of editions.matchAll(/\buses:\s*([^\s#]+)/g)) {
+    assert.match(action, /^[\w-]+\/[\w.-]+@[a-f0-9]{40}$/);
+  }
+});
+
 for (const [name, content] of [['box', tv], ['mobile', phone], ['qualité', quality]]) {
   test(`${name} : les actions sont figées par commit complet`, () => {
     for (const [, action] of content.matchAll(/\buses:\s*([^\s#]+)/g)) {
