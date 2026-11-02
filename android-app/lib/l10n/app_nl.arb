@@ -2857,5 +2857,8 @@
   "tvCheckPassed": "Controle geslaagd.",
   "tvCheckRunning": "Controleren…",
   "tvCheckPending": "Wachten.",
-  "tvCheckUnavailable": "Controle niet beschikbaar."
+  "tvCheckUnavailable": "Controle niet beschikbaar.",
+  "updateOpenPlayStore": "Google Play openen",
+  "updatePlayStoreHelp": "Zoek naar updates en installeer ze via Google Play.",
+  "updatePlayStoreUnavailable": "Google Play kan niet worden geopend. Probeer het opnieuw of open de Store op je apparaat."
 }

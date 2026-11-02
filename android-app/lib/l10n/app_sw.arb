@@ -1427,5 +1427,8 @@
   "tvCheckPassed": "Ukaguzi umefaulu.",
   "tvCheckRunning": "Inakagua…",
   "tvCheckPending": "Inasubiri.",
-  "tvCheckUnavailable": "Ukaguzi haupatikani."
+  "tvCheckUnavailable": "Ukaguzi haupatikani.",
+  "updateOpenPlayStore": "Fungua Google Play",
+  "updatePlayStoreHelp": "Tafuta na usakinishe masasisho kupitia Google Play.",
+  "updatePlayStoreUnavailable": "Imeshindikana kufungua Google Play. Jaribu tena au fungua duka kwenye kifaa chako."
 }
