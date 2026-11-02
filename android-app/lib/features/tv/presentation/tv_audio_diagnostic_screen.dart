@@ -25,7 +25,7 @@ import '../../../features/player/data/audio_report_store.dart';
 import '../../../features/player/domain/audio_report_book.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
-import '../core/tv_tokens.dart';
+import '../core/tv_app_tokens.dart';
 
 class TvAudioDiagnosticScreen extends StatefulWidget {
   const TvAudioDiagnosticScreen({super.key});
@@ -249,13 +249,16 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
           style: TextStyle(
             fontSize: TvDimens.displayM,
             fontWeight: FontWeight.w800,
-            color: TvTokens.text,
+            color: TvAppTokens.of(context).text,
           ),
         ),
         const SizedBox(height: 6),
         Text(
           context.l10n.tvAudioDiagnosticHelp,
-          style: TextStyle(fontSize: TvDimens.body, color: TvTokens.muted),
+          style: TextStyle(
+            fontSize: TvDimens.body,
+            color: TvAppTokens.of(context).muted,
+          ),
         ),
         const SizedBox(height: 16),
         Wrap(
@@ -362,7 +365,7 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
             context.l10n.tvAudioWitnessHelp,
             style: TextStyle(
               fontSize: TvDimens.label,
-              color: TvTokens.mutedDim,
+              color: TvAppTokens.of(context).mutedDim,
             ),
           ),
           const SizedBox(height: 4),
@@ -386,7 +389,9 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
                 return DecoratedBox(
                   decoration: BoxDecoration(
                     border: Border.all(
-                      color: focused ? TvTokens.accent : Colors.transparent,
+                      color: focused
+                          ? TvAppTokens.of(context).accent
+                          : Colors.transparent,
                     ),
                     borderRadius: BorderRadius.circular(TvDimens.cardRadius),
                   ),
@@ -401,7 +406,7 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
                           context.l10n.tvAudioOptionsHelp,
                           style: TextStyle(
                             fontSize: TvDimens.label,
-                            color: TvTokens.mutedDim,
+                            color: TvAppTokens.of(context).mutedDim,
                           ),
                         );
                       }
@@ -414,7 +419,7 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
                                     : ''),
                           style: TextStyle(
                             fontSize: TvDimens.body,
-                            color: TvTokens.muted,
+                            color: TvAppTokens.of(context).muted,
                           ),
                         );
                       }
@@ -423,7 +428,7 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
                         width: double.infinity,
                         padding: const EdgeInsets.all(14),
                         decoration: BoxDecoration(
-                          color: TvTokens.card,
+                          color: TvAppTokens.of(context).card,
                           borderRadius: BorderRadius.circular(
                             TvDimens.cardRadius,
                           ),
@@ -431,8 +436,8 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
                           // défilent, CH+/CH− changent de page.
                           border: Border.all(
                             color: focused
-                                ? TvTokens.accent
-                                : TvTokens.lineSoft,
+                                ? TvAppTokens.of(context).accent
+                                : TvAppTokens.of(context).lineSoft,
                           ),
                         ),
                         child: Column(
@@ -445,16 +450,16 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
                               style: TextStyle(
                                 fontSize: TvDimens.title,
                                 fontWeight: FontWeight.w700,
-                                color: TvTokens.text,
+                                color: TvAppTokens.of(context).text,
                               ),
                             ),
                             const SizedBox(height: 6),
                             Text(
                               e.body,
-                              style: TvTokens.mono(
+                              style: TvAppTokens.of(context).mono(
                                 TvDimens.caption,
                                 weight: FontWeight.w400,
-                                color: TvTokens.muted,
+                                color: TvAppTokens.of(context).muted,
                               ),
                             ),
                           ],
@@ -470,7 +475,10 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
         const SizedBox(height: 6),
         Text(
           context.l10n.tvAudioScrollHelp,
-          style: TextStyle(fontSize: TvDimens.label, color: TvTokens.mutedDim),
+          style: TextStyle(
+            fontSize: TvDimens.label,
+            color: TvAppTokens.of(context).mutedDim,
+          ),
         ),
       ],
     );
@@ -500,15 +508,19 @@ class _Toggle extends StatelessWidget {
       },
       builder: (BuildContext context, bool focused) {
         final Color bg = focused
-            ? TvTokens.accent
-            : (on ? TvTokens.sel : TvTokens.card);
-        final Color fg = focused ? TvTokens.onAccent : TvTokens.accentBright;
+            ? TvAppTokens.of(context).accent
+            : (on ? TvAppTokens.of(context).sel : TvAppTokens.of(context).card);
+        final Color fg = focused
+            ? TvAppTokens.of(context).onAccent
+            : TvAppTokens.of(context).accentBright;
         return Container(
           decoration: BoxDecoration(
             color: bg,
             borderRadius: BorderRadius.circular(TvDimens.cardRadius),
             border: Border.all(
-              color: focused ? TvTokens.accent : TvTokens.lineSoft,
+              color: focused
+                  ? TvAppTokens.of(context).accent
+                  : TvAppTokens.of(context).lineSoft,
             ),
           ),
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),

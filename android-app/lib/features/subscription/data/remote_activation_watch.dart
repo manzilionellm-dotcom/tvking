@@ -83,6 +83,12 @@ class RemoteActivationWatch {
   @visibleForTesting
   String lastSignalBody = '';
 
+  /// Exerce le véritable traitement et les accusés avec un client HTTP de
+  /// test, sans ouvrir les boucles permanentes de présence/WebSocket.
+  @visibleForTesting
+  Future<bool> applyOrdersForTesting(List<BoxOrder> orders) =>
+      _applyOrders(orders, via: 'test');
+
   /// Présence panel pendant l'attente. Assez lent pour ne pas écrire
   /// en base à chaque lecture de statut.
   static const Duration _heartbeatWhileWaiting = Duration(seconds: 60);
@@ -521,7 +527,7 @@ class RemoteActivationWatch {
     final Map<String, bool> sideOk = <String, bool>{};
     for (final String kind in kinds) {
       sideOk[kind] = await _sideEffect(kind);
-      SignalInbox.instance.note(kind);
+      if (sideOk[kind] == true) SignalInbox.instance.note(kind);
     }
     // Issue RÉELLE de chaque ordre suivi : APPLIED ou FAILED, avec le
     // résultat, l'erreur et la révision de listes effectivement appliquée.
@@ -569,16 +575,17 @@ class RemoteActivationWatch {
     final Set<SignalRefresh> plan = refreshesFor(kind);
     try {
       if (plan.contains(SignalRefresh.announcement)) {
-        await AnnouncementRepository.fetchLatest();
+        await AnnouncementRepository.fetchLatest(strict: true);
       }
       if (plan.contains(SignalRefresh.theme)) {
-        await RemoteThemeRepository.fetchAndApply();
+        await RemoteThemeRepository.fetchAndApply(strict: true);
       }
       if (plan.contains(SignalRefresh.home)) {
-        await HomeLayoutRepository.instance.refresh();
+        await HomeLayoutRepository.instance.refresh(strict: true);
       }
       if (plan.contains(SignalRefresh.forceUpdate)) {
-        final bool must = await ForceUpdateChecker.instance.mustUpdate();
+        final bool must =
+            await ForceUpdateChecker.instance.mustUpdate(strict: true);
         SignalInbox.instance.setForceBlocked(must);
         // Le panel vient de publier une version : la box la télécharge
         // et ouvre l'installateur sans attendre le prochain tour (30 min).
@@ -587,26 +594,26 @@ class RemoteActivationWatch {
         );
       }
       if (plan.contains(SignalRefresh.featured)) {
-        await FeaturedRepository.instance.refresh();
+        await FeaturedRepository.instance.refresh(strict: true);
       }
       if (plan.contains(SignalRefresh.ad)) {
-        await StartupAdRepository.instance.fetch();
+        await StartupAdRepository.instance.fetch(strict: true);
       }
       if (plan.contains(SignalRefresh.pricing)) {
-        await PricingRepository.fetch();
+        await PricingRepository.fetch(strict: true);
       }
       if (plan.contains(SignalRefresh.feedback)) {
-        await FeedbackRepository.instance.reload();
+        await FeedbackRepository.instance.reload(strict: true);
       }
       if (plan.contains(SignalRefresh.servers)) {
-        await DefaultServersApi.fetch(forceRefresh: true);
+        await DefaultServersApi.fetch(forceRefresh: true, strict: true);
       }
       if (plan.contains(SignalRefresh.banner)) {
-        await PromoBannerRepository.instance.refresh();
+        await PromoBannerRepository.instance.refresh(strict: true);
       }
       return true;
     } catch (e) {
-      if (kDebugMode) debugPrint('[Signal] effet $kind : $e');
+      if (kDebugMode) debugPrint('[Signal] effet $kind : ${e.runtimeType}');
       BlackBox.instance.warn('PANEL', 'ordre $kind : relecture en échec');
       return false;
     }

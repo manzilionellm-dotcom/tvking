@@ -6,7 +6,7 @@ import '../../channels/domain/channel.dart';
 import '../../profiles/data/active_profile.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_search_text.dart';
-import '../core/tv_tokens.dart';
+import '../core/tv_app_tokens.dart';
 import '../data/vip_countries_repository.dart';
 import '../domain/vip_countries.dart';
 import 'tv_components.dart';
@@ -108,12 +108,13 @@ class _TvVipCountriesScreenState extends State<TvVipCountriesScreen> {
             Expanded(
               child: Text(
                 l.vipCountriesTitle,
-                style: TvTokens.ui(28, weight: FontWeight.w700),
+                style: TvAppTokens.of(context).ui(28, weight: FontWeight.w700),
               ),
             ),
             Text(
               '${_selected.length} / ${VipCountries.limit}',
-              style: TvTokens.ui(20, color: TvTokens.accentBright),
+              style: TvAppTokens.of(context)
+                  .ui(20, color: TvAppTokens.of(context).accentBright),
             ),
             const SizedBox(width: 24),
             TvCtaButton(
@@ -129,11 +130,16 @@ class _TvVipCountriesScreenState extends State<TvVipCountriesScreen> {
           ],
         ),
         const SizedBox(height: 12),
-        Text(l.vipCountriesHint, style: TvTokens.ui(17, color: TvTokens.muted)),
+        Text(
+          l.vipCountriesHint,
+          style: TvAppTokens.of(context)
+              .ui(17, color: TvAppTokens.of(context).muted),
+        ),
         if (_failed)
           Text(
             l.vipCountriesSaveError,
-            style: TvTokens.ui(17, color: TvTokens.accentBright),
+            style: TvAppTokens.of(context)
+                .ui(17, color: TvAppTokens.of(context).accentBright),
           ),
         const SizedBox(height: 20),
         Expanded(
@@ -156,7 +162,7 @@ class _TvVipCountriesScreenState extends State<TvVipCountriesScreen> {
                           ? Center(
                               child: Text(
                                 l.vipCountriesEmpty,
-                                style: TvTokens.ui(18),
+                                style: TvAppTokens.of(context).ui(18),
                               ),
                             )
                           : ListView.builder(
@@ -186,14 +192,16 @@ class _TvVipCountriesScreenState extends State<TvVipCountriesScreen> {
                                           Expanded(
                                             child: Text(
                                               vipCountryName(l, code),
-                                              style: TvTokens.ui(20),
+                                              style: TvAppTokens.of(context)
+                                                  .ui(20),
                                             ),
                                           ),
                                           Text(
                                             '${widget.available[code] ?? 0}',
-                                            style: TvTokens.ui(
+                                            style: TvAppTokens.of(context).ui(
                                               17,
-                                              color: TvTokens.muted,
+                                              color: TvAppTokens.of(context)
+                                                  .muted,
                                             ),
                                           ),
                                           const SizedBox(width: 16),
@@ -220,7 +228,8 @@ class _TvVipCountriesScreenState extends State<TvVipCountriesScreen> {
                   children: [
                     Text(
                       l.vipCountriesOrder,
-                      style: TvTokens.ui(20, weight: FontWeight.w600),
+                      style: TvAppTokens.of(context)
+                          .ui(20, weight: FontWeight.w600),
                     ),
                     const SizedBox(height: 12),
                     Expanded(
@@ -235,9 +244,9 @@ class _TvVipCountriesScreenState extends State<TvVipCountriesScreen> {
                               children: [
                                 Text(
                                   '${index + 1}',
-                                  style: TvTokens.ui(
+                                  style: TvAppTokens.of(context).ui(
                                     20,
-                                    color: TvTokens.accentBright,
+                                    color: TvAppTokens.of(context).accentBright,
                                   ),
                                 ),
                                 const SizedBox(width: 12),
@@ -246,7 +255,7 @@ class _TvVipCountriesScreenState extends State<TvVipCountriesScreen> {
                                 Expanded(
                                   child: Text(
                                     vipCountryName(l, code),
-                                    style: TvTokens.ui(18),
+                                    style: TvAppTokens.of(context).ui(18),
                                   ),
                                 ),
                                 _orderButton(
@@ -310,7 +319,9 @@ class _TvVipCountriesScreenState extends State<TvVipCountriesScreen> {
               padding: const EdgeInsets.all(12),
               child: Icon(
                 icon,
-                color: action == null ? TvTokens.mutedDim : TvTokens.text,
+                color: action == null
+                    ? TvAppTokens.of(context).mutedDim
+                    : TvAppTokens.of(context).text,
               ),
             ),
           ),
@@ -329,10 +340,12 @@ class VipCountryFlag extends StatelessWidget {
     child: CachedNetworkImage(
       imageUrl: 'https://flagcdn.com/w80/${code == 'uk' ? 'gb' : code}.png',
       fit: BoxFit.contain,
-      placeholder: (context, url) =>
-          Center(child: Text(code.toUpperCase(), style: TvTokens.ui(14))),
-      errorWidget: (context, url, error) =>
-          Center(child: Text(code.toUpperCase(), style: TvTokens.ui(14))),
+      placeholder: (context, url) => Center(
+        child: Text(code.toUpperCase(), style: TvAppTokens.of(context).ui(14)),
+      ),
+      errorWidget: (context, url, error) => Center(
+        child: Text(code.toUpperCase(), style: TvAppTokens.of(context).ui(14)),
+      ),
     ),
   );
 }

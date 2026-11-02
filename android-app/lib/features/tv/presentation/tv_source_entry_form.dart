@@ -13,8 +13,10 @@ import '../../playlists/data/import_progress.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../../playlists/data/remote_source_repository.dart';
 import '../../playlists/domain/open_source_input.dart';
+import '../../playlists/presentation/widgets/configured_servers_picker.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
+import '../core/tv_app_tokens.dart';
 import 'source_http_input_formatter.dart';
 import 'tv_channel_loading_status.dart';
 import 'tv_components.dart';
@@ -101,7 +103,8 @@ class _TvSourceEntryFormState extends State<TvSourceEntryForm> {
         ? OpenSourceInput.xtream(
             server: _server.text,
             username: _username.text,
-            password: _password.text)
+            password: _password.text,
+          )
         : OpenSourceInput.playlistLink(_link.text);
     if (!parsed.isValid || parsed.draft == null) {
       setState(() => _error = parsed.error ?? OpenSourceInput.errNeedUrl);
@@ -143,8 +146,10 @@ class _TvSourceEntryFormState extends State<TvSourceEntryForm> {
     } catch (error) {
       // Une exception fournisseur peut contenir des identifiants dans l'URL.
       // Seul son type est journalisé ; le message public reste traduit.
-      BlackBox.instance
-          .warn('SOURCE', 'ajout source ouverte échoué (${error.runtimeType})');
+      BlackBox.instance.warn(
+        'SOURCE',
+        'ajout source ouverte échoué (${error.runtimeType})',
+      );
       if (mounted) setState(() => _error = 'connect_failed');
     } finally {
       // Le wrapper du dépôt a déjà nettoyé le bus AVANT de libérer la file.
@@ -167,41 +172,59 @@ class _TvSourceEntryFormState extends State<TvSourceEntryForm> {
         key: const ValueKey<String>('tv-source-entry-form'),
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: TvTokens.panel,
+          color: TvAppTokens.of(context).panel,
           borderRadius: BorderRadius.circular(TvTokens.rCard),
-          border: Border.all(color: TvTokens.accentDeep),
+          border: Border.all(color: TvAppTokens.of(context).accentDeep),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
-            Text(l10n.tvAddListTitle,
-                style: TvTokens.display(28, color: TvTokens.text)),
+            Text(
+              l10n.tvAddListTitle,
+              style: TvAppTokens.of(context)
+                  .display(28, color: TvAppTokens.of(context).text),
+            ),
             const SizedBox(height: 6),
-            Text(l10n.tvSourcePasteHelp,
-                style: TvTokens.ui(13, color: TvTokens.muted)),
+            Text(
+              l10n.tvSourcePasteHelp,
+              style: TvAppTokens.of(context)
+                  .ui(13, color: TvAppTokens.of(context).muted),
+            ),
             const SizedBox(height: 18),
-            Row(children: <Widget>[
-              Expanded(
+            Row(
+              children: <Widget>[
+                Expanded(
                   child: _ModeChip(
-                key: const ValueKey<String>('tv-source-mode-xtream'),
-                label: l10n.playlistTypeXtream,
-                selected: _mode == OpenEntryMode.xtream,
-                enabled: !_blocked,
-                onSelect: () => _select(OpenEntryMode.xtream),
-              )),
-              const SizedBox(width: 8),
-              Expanded(
+                    key: const ValueKey<String>('tv-source-mode-xtream'),
+                    label: l10n.playlistTypeXtream,
+                    selected: _mode == OpenEntryMode.xtream,
+                    enabled: !_blocked,
+                    onSelect: () => _select(OpenEntryMode.xtream),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
                   child: _ModeChip(
-                key: const ValueKey<String>('tv-source-mode-m3u'),
-                label: l10n.playlistTypeM3u,
-                selected: _mode == OpenEntryMode.m3u,
-                enabled: !_blocked,
-                onSelect: () => _select(OpenEntryMode.m3u),
-              )),
-            ]),
+                    key: const ValueKey<String>('tv-source-mode-m3u'),
+                    label: l10n.playlistTypeM3u,
+                    selected: _mode == OpenEntryMode.m3u,
+                    enabled: !_blocked,
+                    onSelect: () => _select(OpenEntryMode.m3u),
+                  ),
+                ),
+              ],
+            ),
             const SizedBox(height: 16),
             if (_mode == OpenEntryMode.xtream) ...<Widget>[
+              ConfiguredServersPicker(
+                serverController: _server,
+                enabled: !_blocked,
+                normalizeUrl: (url) => const SourceHttpInputFormatter()
+                    .formatEditUpdate(
+                        TextEditingValue.empty, TextEditingValue(text: url))
+                    .text,
+              ),
               _SourceField(
                 key: const ValueKey<String>('tv-source-server'),
                 controller: _server,
@@ -244,13 +267,15 @@ class _TvSourceEntryFormState extends State<TvSourceEntryForm> {
                       : l10n.tvShowPassword,
                   onPressed: _busy
                       ? null
-                      : () =>
-                          setState(() => _passwordVisible = !_passwordVisible),
+                      : () => setState(
+                            () => _passwordVisible = !_passwordVisible,
+                          ),
                   icon: Icon(
-                      _passwordVisible
-                          ? Icons.visibility_off_rounded
-                          : Icons.visibility_rounded,
-                      color: TvTokens.accentBright),
+                    _passwordVisible
+                        ? Icons.visibility_off_rounded
+                        : Icons.visibility_rounded,
+                    color: TvAppTokens.of(context).accentBright,
+                  ),
                 ),
               ),
             ] else
@@ -272,12 +297,14 @@ class _TvSourceEntryFormState extends State<TvSourceEntryForm> {
             if (_error != null) ...<Widget>[
               const SizedBox(height: 12),
               Semantics(
-                  liveRegion: true,
-                  child: Text(
-                    sourceErrorText(context, _error!),
-                    key: const ValueKey<String>('tv-source-error'),
-                    style: TvTokens.ui(14, color: TvTokens.live),
-                  )),
+                liveRegion: true,
+                child: Text(
+                  sourceErrorText(context, _error!),
+                  key: const ValueKey<String>('tv-source-error'),
+                  style: TvAppTokens.of(context)
+                      .ui(14, color: TvAppTokens.of(context).live),
+                ),
+              ),
             ],
             if (_busy) ...<Widget>[
               const SizedBox(height: 16),
@@ -296,18 +323,19 @@ class _TvSourceEntryFormState extends State<TvSourceEntryForm> {
             // Le bouton conserve le comportement TV. Focus et toucher sont
             // aussi désactivés pendant un import, pas seulement le callback.
             ExcludeFocus(
-                excluding: _blocked,
-                child: IgnorePointer(
-                  ignoring: _blocked,
-                  child: Opacity(
-                    opacity: _blocked ? 0.55 : 1,
-                    child: TvCtaButton(
-                      key: const ValueKey<String>('tv-source-submit'),
-                      label: _busy ? l10n.tvConnecting : l10n.loginConnectLoad,
-                      onSelect: _blocked ? null : _submit,
-                    ),
+              excluding: _blocked,
+              child: IgnorePointer(
+                ignoring: _blocked,
+                child: Opacity(
+                  opacity: _blocked ? 0.55 : 1,
+                  child: TvCtaButton(
+                    key: const ValueKey<String>('tv-source-submit'),
+                    label: _busy ? l10n.tvConnecting : l10n.loginConnectLoad,
+                    onSelect: _blocked ? null : _submit,
                   ),
-                )),
+                ),
+              ),
+            ),
           ],
         ),
       ),
@@ -353,12 +381,17 @@ class _SourceField extends StatelessWidget {
           borderSide: BorderSide(color: color, width: width),
         );
     return TextField(
-      controller: controller, focusNode: focusNode, enabled: enabled,
-      autofocus: autofocus, obscureText: obscure, keyboardType: keyboardType,
+      controller: controller,
+      focusNode: focusNode,
+      enabled: enabled,
+      autofocus: autofocus,
+      obscureText: obscure,
+      keyboardType: keyboardType,
       inputFormatters: inputFormatters,
       textInputAction: textInputAction,
       onSubmitted: enabled ? onSubmitted : null,
-      autocorrect: false, enableSuggestions: false,
+      autocorrect: false,
+      enableSuggestions: false,
       // Les codes et URL gardent leur ordre même dans une interface arabe.
       // Le clavier ne doit pas apprendre les identifiants de connexion.
       textDirection: TextDirection.ltr,
@@ -366,34 +399,41 @@ class _SourceField extends StatelessWidget {
       textCapitalization: TextCapitalization.none,
       smartDashesType: SmartDashesType.disabled,
       smartQuotesType: SmartQuotesType.disabled,
-      cursorColor: TvTokens.accent,
-      style: TvTokens.ui(17, weight: FontWeight.w500, color: TvTokens.text),
+      cursorColor: TvAppTokens.of(context).accent,
+      style: TvAppTokens.of(context)
+          .ui(17, weight: FontWeight.w500, color: TvAppTokens.of(context).text),
       decoration: InputDecoration(
         labelText: label,
         hintText: hint,
         suffixIcon: suffix,
-        labelStyle: TvTokens.ui(13, color: TvTokens.muted),
-        hintStyle: TvTokens.ui(14, color: TvTokens.mutedDim),
-        floatingLabelStyle: TvTokens.ui(13, color: TvTokens.accentBright),
+        labelStyle: TvAppTokens.of(context)
+            .ui(13, color: TvAppTokens.of(context).muted),
+        hintStyle: TvAppTokens.of(context)
+            .ui(14, color: TvAppTokens.of(context).mutedDim),
+        floatingLabelStyle: TvAppTokens.of(context)
+            .ui(13, color: TvAppTokens.of(context).accentBright),
         filled: true,
-        fillColor: TvTokens.card,
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-        enabledBorder: border(TvTokens.line, 1),
-        disabledBorder: border(TvTokens.lineSoft, 1),
-        focusedBorder: border(TvTokens.accent, 2),
+        fillColor: TvAppTokens.of(context).card,
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 16,
+        ),
+        enabledBorder: border(TvAppTokens.of(context).line, 1),
+        disabledBorder: border(TvAppTokens.of(context).lineSoft, 1),
+        focusedBorder: border(TvAppTokens.of(context).accent, 2),
       ),
     );
   }
 }
 
 class _ModeChip extends StatelessWidget {
-  const _ModeChip(
-      {required this.label,
-      required this.selected,
-      required this.enabled,
-      required this.onSelect,
-      super.key});
+  const _ModeChip({
+    required this.label,
+    required this.selected,
+    required this.enabled,
+    required this.onSelect,
+    super.key,
+  });
 
   final String label;
   final bool selected;
@@ -413,25 +453,28 @@ class _ModeChip extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
             decoration: BoxDecoration(
               color: focused
-                  ? TvTokens.accent
+                  ? TvAppTokens.of(context).accent
                   : selected
-                      ? TvTokens.sel
-                      : TvTokens.panel,
+                      ? TvAppTokens.of(context).sel
+                      : TvAppTokens.of(context).panel,
               borderRadius: BorderRadius.circular(TvTokens.rButton),
               border: Border.all(
-                  color: focused || selected ? TvTokens.accent : TvTokens.line),
+                color: focused || selected
+                    ? TvAppTokens.of(context).accent
+                    : TvAppTokens.of(context).line,
+              ),
             ),
             child: Text(
               label,
               textAlign: TextAlign.center,
-              style: TvTokens.ui(
+              style: TvAppTokens.of(context).ui(
                 15,
                 weight: FontWeight.w600,
                 color: focused
-                    ? TvTokens.onAccent
+                    ? TvAppTokens.of(context).onAccent
                     : selected
-                        ? TvTokens.accentBright
-                        : TvTokens.muted,
+                        ? TvAppTokens.of(context).accentBright
+                        : TvAppTokens.of(context).muted,
               ),
             ),
           ),

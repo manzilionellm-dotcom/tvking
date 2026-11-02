@@ -21,7 +21,7 @@ import '../../recordings/data/recording_repository.dart';
 import '../../recordings/domain/recording.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
-import '../core/tv_tokens.dart';
+import '../core/tv_app_tokens.dart';
 import 'tv_components.dart';
 import 'tv_recording_player_screen.dart';
 
@@ -52,7 +52,7 @@ class TvRecordingsScreen extends StatelessWidget {
                 style: TextStyle(
                   fontSize: TvDimens.displayS,
                   fontWeight: FontWeight.w800,
-                  color: TvTokens.text,
+                  color: TvAppTokens.of(context).text,
                 ),
               ),
             ),
@@ -93,28 +93,28 @@ class _RecordingRow extends StatelessWidget {
     final bool? ok = await showDialog<bool>(
       context: context,
       builder: (BuildContext ctx) => AlertDialog(
-        backgroundColor: TvTokens.card,
+        backgroundColor: TvAppTokens.of(context).card,
         title: Text(
           context.l10n.tvDeleteQuestion,
-          style: TextStyle(color: TvTokens.text),
+          style: TextStyle(color: TvAppTokens.of(context).text),
         ),
         content: Text(
           context.l10n.tvDeleteRecordingConfirm(rec.channelName),
-          style: TextStyle(color: TvTokens.muted),
+          style: TextStyle(color: TvAppTokens.of(context).muted),
         ),
         actions: <Widget>[
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
             child: Text(
               context.l10n.tvCancel,
-              style: TextStyle(color: TvTokens.muted),
+              style: TextStyle(color: TvAppTokens.of(context).muted),
             ),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
             child: Text(
               context.l10n.tvDelete,
-              style: TextStyle(color: TvTokens.live),
+              style: TextStyle(color: TvAppTokens.of(context).live),
             ),
           ),
         ],
@@ -142,15 +142,15 @@ class _RecordingRow extends StatelessWidget {
           child: TvFocusable(
             autofocus: autofocus,
             scale: TvFocusScale.medium,
-            baseColor: TvTokens.card,
+            baseColor: TvAppTokens.of(context).card,
             onSelect: () => _play(context),
             child: Padding(
               padding: const EdgeInsets.all(14),
               child: Row(
                 children: <Widget>[
-                  const Icon(
+                  Icon(
                     Icons.play_circle_fill_rounded,
-                    color: TvTokens.accent,
+                    color: TvAppTokens.of(context).accent,
                     size: 38,
                   ),
                   const SizedBox(width: 16),
@@ -166,7 +166,7 @@ class _RecordingRow extends StatelessWidget {
                           style: TextStyle(
                             fontSize: TvDimens.title,
                             fontWeight: FontWeight.w700,
-                            color: TvTokens.text,
+                            color: TvAppTokens.of(context).text,
                           ),
                         ),
                         const SizedBox(height: 4),
@@ -176,7 +176,7 @@ class _RecordingRow extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             fontSize: TvDimens.label,
-                            color: TvTokens.muted,
+                            color: TvAppTokens.of(context).muted,
                           ),
                         ),
                       ],
@@ -190,13 +190,13 @@ class _RecordingRow extends StatelessWidget {
         const SizedBox(width: 12),
         TvFocusable(
           scale: TvFocusScale.small,
-          baseColor: TvTokens.card,
+          baseColor: TvAppTokens.of(context).card,
           onSelect: () => _delete(context),
-          child: const Padding(
+          child: Padding(
             padding: EdgeInsets.all(16),
             child: Icon(
               Icons.delete_outline_rounded,
-              color: TvTokens.muted,
+              color: TvAppTokens.of(context).muted,
               size: 28,
             ),
           ),

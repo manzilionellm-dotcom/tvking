@@ -14,6 +14,7 @@ import 'package:flutter/material.dart';
 import '../../tv/core/tv_dimens.dart';
 import '../../tv/core/tv_focusable.dart';
 import '../../tv/core/tv_tokens.dart';
+import '../../tv/core/tv_app_tokens.dart';
 import '../domain/show_clock.dart';
 import '../domain/show_lines.dart';
 
@@ -71,9 +72,9 @@ class ShowBanner extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 12),
       child: DecoratedBox(
         decoration: BoxDecoration(
-          color: TvTokens.card,
+          color: TvAppTokens.of(context).card,
           borderRadius: BorderRadius.circular(TvTokens.rCard),
-          border: Border.all(color: TvTokens.line),
+          border: Border.all(color: TvAppTokens.of(context).line),
         ),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -85,10 +86,10 @@ class ShowBanner extends StatelessWidget {
                 cueLine(languageCode, cue),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style: TvTokens.ui(
+                style: TvAppTokens.of(context).ui(
                   TvDimens.titleS,
                   weight: FontWeight.w800,
-                  color: TvTokens.text,
+                  color: TvAppTokens.of(context).text,
                 ),
               ),
               if (cue.channelName.trim().isNotEmpty) ...<Widget>[
@@ -97,7 +98,9 @@ class ShowBanner extends StatelessWidget {
                   cue.channelName.trim(),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TvTokens.ui(TvDimens.caption, color: TvTokens.muted),
+                  style: TvAppTokens.of(
+                    context,
+                  ).ui(TvDimens.caption, color: TvAppTokens.of(context).muted),
                 ),
               ],
               const SizedBox(height: 10),
@@ -124,16 +127,16 @@ class _BannerButton extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         decoration: BoxDecoration(
-          color: TvTokens.sel,
+          color: TvAppTokens.of(context).sel,
           borderRadius: BorderRadius.circular(TvTokens.rButton),
-          border: Border.all(color: TvTokens.line),
+          border: Border.all(color: TvAppTokens.of(context).line),
         ),
         child: Text(
           label,
-          style: TvTokens.ui(
+          style: TvAppTokens.of(context).ui(
             TvDimens.label,
             weight: FontWeight.w700,
-            color: TvTokens.text,
+            color: TvAppTokens.of(context).text,
           ),
         ),
       ),

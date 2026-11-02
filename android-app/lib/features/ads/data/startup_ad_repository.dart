@@ -30,39 +30,69 @@ class AdConfig {
   final int skip; // secondes avant que « Passer » apparaisse
   final String freq; // 'always' | 'daily'
 
-  static const AdConfig none =
-      AdConfig(enabled: false, url: '', skip: 5, freq: 'always');
+  static const AdConfig none = AdConfig(
+    enabled: false,
+    url: '',
+    skip: 5,
+    freq: 'always',
+  );
 }
 
 class StartupAdRepository {
   StartupAdRepository._();
   static final StartupAdRepository instance = StartupAdRepository._();
 
+  /// Injections de tests : aucun serveur ou flux client n'est appelé.
+  @visibleForTesting
+  http.Client? client;
+  @visibleForTesting
+  String? baseUrl;
+  @visibleForTesting
+  DateTime Function()? clock;
+
   AdConfig _config = AdConfig.none;
   AdConfig get config => _config;
 
   /// Récupère la config distante. Retourne la config (mise en cache).
-  Future<AdConfig> fetch() async {
+  Future<AdConfig> fetch({bool strict = false}) async {
+    final http.Client c = client ?? http.Client();
+    final bool owned = client == null;
     try {
-      final http.Response resp = await http
-          .get(Uri.parse('$kSubscriptionBaseUrl/api/ad'))
+      final http.Response resp = await c
+          .get(Uri.parse('${baseUrl ?? kSubscriptionBaseUrl}/api/ad'))
           .timeout(const Duration(seconds: 5));
-      if (resp.statusCode != 200) return _config;
+      if (resp.statusCode != 200) {
+        throw StateError('Publicité : HTTP ${resp.statusCode}');
+      }
       final Object? d = jsonDecode(resp.body);
-      if (d is! Map) return _config;
-      final String url = (d['url'] ?? '').toString();
+      if (d is! Map || d['enabled'] is! bool) {
+        throw const FormatException('Configuration de publicité invalide');
+      }
+      final String url = (d['url'] ?? '').toString().trim();
+      final Uri? uri = Uri.tryParse(url);
+      final bool validUrl =
+          uri != null &&
+          uri.hasAuthority &&
+          <String>['http', 'https'].contains(uri.scheme);
+      if (d['enabled'] == true && !validUrl) {
+        throw const FormatException('URL de publicité invalide');
+      }
       final Object? rawSkip = d['skip'];
       final int skip = rawSkip is int
           ? rawSkip
           : (int.tryParse('${rawSkip ?? ''}') ?? 5);
       _config = AdConfig(
-        enabled: d['enabled'] == true && url.isNotEmpty,
+        enabled: d['enabled'] == true && validUrl,
         url: url,
         skip: skip.clamp(0, 60),
-        freq: (d['freq'] ?? 'always').toString(),
+        freq: d['freq'] == 'daily' ? 'daily' : 'always',
       );
     } catch (e) {
+      if (strict) rethrow;
       if (kDebugMode) debugPrint('[StartupAd] $e');
+      _config = AdConfig.none;
+    } finally {
+      if (owned) c.close();
     }
     return _config;
   }
@@ -88,8 +118,16 @@ class StartupAdRepository {
     } catch (_) {}
   }
 
+  @visibleForTesting
+  void resetForTesting() {
+    _config = AdConfig.none;
+    client = null;
+    baseUrl = null;
+    clock = null;
+  }
+
   String _dayKey() {
-    final DateTime n = DateTime.now();
+    final DateTime n = clock?.call() ?? DateTime.now();
     return '${n.year}-${n.month}-${n.day}';
   }
 }

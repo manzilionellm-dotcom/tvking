@@ -1,4 +1,5 @@
 import '../../cast/data/cast_platform.dart';
+
 // =========================================================
 //  tv_player_screen.dart — Lecteur plein écran TV (SurfaceView natif)
 // =========================================================
@@ -25,6 +26,7 @@ import '../../cast/data/cast_platform.dart';
 //  enchaîner 20 setUrl gelait la box.
 // =========================================================
 import 'dart:async';
+
 import '../desktop/desktop_cast_controls.dart';
 import '../data/zuno_pip_service.dart';
 
@@ -48,6 +50,7 @@ import '../core/history_policy.dart';
 import '../core/tv_activity.dart';
 import '../core/tv_back_guard.dart';
 import '../core/tv_tokens.dart';
+import '../core/tv_app_tokens.dart';
 import '../../channels/data/recently_watched_repository.dart';
 import '../../channels/domain/channel.dart';
 import '../../epg/data/epg_repository.dart';
@@ -103,7 +106,8 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   late final NativeVideoController _controller;
   late final ZunoPipPlayback _pip;
   bool _casting = false;
-  final GlobalKey<DesktopCastControlsState> _desktopCastKey = GlobalKey<DesktopCastControlsState>();
+  final GlobalKey<DesktopCastControlsState> _desktopCastKey =
+      GlobalKey<DesktopCastControlsState>();
   final FocusNode _focus = FocusNode();
 
   late int _index = widget.startIndex;
@@ -164,7 +168,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   Recording? _activeRecording;
   bool get _isRecording => _activeRecording != null;
   String?
-  _relayPlayUrl; // URL locale 127.0.0.1 utilisée pendant l'enregistrement
+      _relayPlayUrl; // URL locale 127.0.0.1 utilisée pendant l'enregistrement
   String? _toastMsg; // petit message éphémère (sauvegardé / vide / échec)
 
   // ----- Favoris -----
@@ -493,8 +497,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     // Panneau opaque seulement s'il n'y a pas d'image à garder.
     // holdFrame = le natif montre la dernière image : un panneau
     // par-dessus ferait un écran noir le temps de revenir.
-    final bool buffering =
-        !_controller.holdFrame &&
+    final bool buffering = !_controller.holdFrame &&
         (_controller.isBuffering || !_controller.firstFrame);
     if (mounted && buffering != _buffering) {
       setState(() => _buffering = buffering);
@@ -630,7 +633,8 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   }
 
   void _recover() {
-    if (!_appActive || _casting || _fatal || _zapHolding || _recoverArmed) return;
+    if (!_appActive || _casting || _fatal || _zapHolding || _recoverArmed)
+      return;
     // Dehors : pas de second flux. Le natif refuse aussi, au cas où.
     if (NativeVideoController.blocksReopenInBackground) {
       _noteBackgroundRefusal();
@@ -653,11 +657,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     BlackBox.instance.warn(
       'PLAYER',
       'reconnexion dans ${delay}ms (tentative $next/$_maxRecover)'
-          '${_controller.hasError
-              ? ' après erreur ExoPlayer'
-              : _controller.isEnded
-              ? ' après fin de flux'
-              : ' après gel 15 s'}',
+          '${_controller.hasError ? ' après erreur ExoPlayer' : _controller.isEnded ? ' après fin de flux' : ' après gel 15 s'}',
     );
     _recoverTimer = Timer(Duration(milliseconds: delay), () {
       _recoverTimer = null;
@@ -925,16 +925,16 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   }
 
   int _engineBtn(BuildContext context) => LiveBarSlots.engine(
-    showStart: _showStart,
-    showSubs: _subsBtn(context) != null,
-    showFollow: _canFollow,
-  );
+        showStart: _showStart,
+        showSubs: _subsBtn(context) != null,
+        showFollow: _canFollow,
+      );
 
   int _btnCount(BuildContext context) => LiveBarSlots.count(
-    showStart: _showStart,
-    showSubs: _subsBtn(context) != null,
-    showFollow: _canFollow,
-  );
+        showStart: _showStart,
+        showSubs: _subsBtn(context) != null,
+        showFollow: _canFollow,
+      );
 
   int? _subsBtn(BuildContext context) {
     if (!_subsOn || !_subsReady) return null;
@@ -1030,9 +1030,8 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     if (!_subsReady || !_subsOn || !mounted) return;
     final List<NativeTrack> tracks = _controller.tracks;
     if (identical(_appliedTracks, tracks)) return;
-    final List<NativeTrack> texts = tracks
-        .where((NativeTrack t) => !t.isAudio)
-        .toList();
+    final List<NativeTrack> texts =
+        tracks.where((NativeTrack t) => !t.isAudio).toList();
     if (texts.isEmpty) return;
     final List<NativeTrack> mine = _userTextTracks(context);
     if (_subsWant == null) {
@@ -1144,8 +1143,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
         try {
           await missedShowFlag.load();
           if (missedShowFlag.value && !_catchup && gen == _missedGen) {
-            final bool declared =
-                channel.catchupSupported ||
+            final bool declared = channel.catchupSupported ||
                 (channel.catchupSource != null &&
                     channel.catchupSource!.isNotEmpty);
             final String? url = declared && program != null
@@ -1214,17 +1212,17 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     unawaited(
       Navigator.of(context)
           .push(
-            MaterialPageRoute<void>(
-              builder: (_) => TvChannelGuideScreen(
-                channel: _current,
-                currentSummary: _missed,
-              ),
-            ),
-          )
+        MaterialPageRoute<void>(
+          builder: (_) => TvChannelGuideScreen(
+            channel: _current,
+            currentSummary: _missed,
+          ),
+        ),
+      )
           .then((_) {
-            // Au retour, le focus clavier était parti avec la route du guide.
-            if (mounted) _focus.requestFocus();
-          }),
+        // Au retour, le focus clavier était parti avec la route du guide.
+        if (mounted) _focus.requestFocus();
+      }),
     );
     _showOverlayTemporarily();
   }
@@ -1478,7 +1476,8 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
                   Center(
                     child: AspectRatio(
                       aspectRatio: _pip.isInPipMode &&
-                              _controller.videoWidth > 0 && _controller.videoHeight > 0
+                              _controller.videoWidth > 0 &&
+                              _controller.videoHeight > 0
                           ? _controller.videoWidth / _controller.videoHeight
                           : 16 / 9,
                       child: NativeVideoView(controller: _controller),
@@ -1505,7 +1504,8 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
                   // Retour quitte. Masqué pendant un zap : la personne est déjà
                   // en train d'en choisir une autre. Le texte (chaîne coupée ou
                   // chaîne vide) reste celui des traductions, lisible à 3 m.
-                  if (!_pip.isInPipMode && !_casting && _fatal && !_zapHolding) _errorCard(),
+                  if (!_pip.isInPipMode && !_casting && _fatal && !_zapHolding)
+                    _errorCard(),
                   // Panneau de lecture (façon YouTube / Netflix) : glisse depuis le
                   // bas + fondu, masqué automatiquement après 5 s. Contient l'info
                   // chaîne + tous les contrôles (dont REC et ❤ en bas).
@@ -1513,7 +1513,8 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
                     alignment: Alignment.bottomCenter,
                     child: AnimatedSlide(
                       offset: _overlay && !_pip.isInPipMode
-                          ? Offset.zero : const Offset(0, 0.28),
+                          ? Offset.zero
+                          : const Offset(0, 0.28),
                       duration: TvDimens.focusAnim,
                       curve: Curves.easeOutCubic,
                       child: AnimatedOpacity(
@@ -1564,18 +1565,27 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
                     ),
                   ),
                   if (CastPlatform.canSendFromZuno)
-                    Positioned(top: TvDimens.safeV, right: TvDimens.safeH,
+                    Positioned(
+                      top: TvDimens.safeV,
+                      right: TvDimens.safeH,
                       child: Offstage(
                         offstage: _pip.isInPipMode,
-                        child: DesktopCastControls(key: _desktopCastKey,
-                        controller: _controller, streamUrl: _playingUrl, title: _current.name, imageUrl: _current.logoUrl,
-                        onHandoffChanged: (bool active) {
-                          if (!mounted) return;
-                          _cancelRecover();
-                          _lastProgress = DateTime.now();
-                          setState(() => _casting = active);
-                          _updatePip();
-                        }))),
+                        child: DesktopCastControls(
+                          key: _desktopCastKey,
+                          controller: _controller,
+                          streamUrl: _playingUrl,
+                          title: _current.name,
+                          imageUrl: _current.logoUrl,
+                          onHandoffChanged: (bool active) {
+                            if (!mounted) return;
+                            _cancelRecover();
+                            _lastProgress = DateTime.now();
+                            setState(() => _casting = active);
+                            _updatePip();
+                          },
+                        ),
+                      ),
+                    ),
                   // Numéro saisi à la télécommande (coin haut-droit).
                   if (!_pip.isInPipMode && _numBuffer.isNotEmpty)
                     Positioned(
@@ -1616,14 +1626,16 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
                         decoration: BoxDecoration(
                           color: Colors.black.withValues(alpha: 0.6),
                           borderRadius: BorderRadius.circular(100),
-                          border: Border.all(color: TvTokens.live),
+                          border: Border.all(
+                            color: TvAppTokens.playbackOf(context).live,
+                          ),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: <Widget>[
                             Icon(
                               Icons.fiber_manual_record_rounded,
-                              color: TvTokens.live,
+                              color: TvAppTokens.playbackOf(context).live,
                               size: 16,
                             ),
                             const SizedBox(width: 8),
@@ -1633,7 +1645,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
                                 fontSize: 15,
                                 fontWeight: FontWeight.w800,
                                 letterSpacing: 2,
-                                color: TvTokens.text,
+                                color: TvAppTokens.playbackOf(context).text,
                               ),
                             ),
                           ],
@@ -1662,7 +1674,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
                             style: TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.w700,
-                              color: TvTokens.text,
+                              color: TvAppTokens.playbackOf(context).text,
                             ),
                           ),
                         ),
@@ -1683,7 +1695,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   Widget _loadingCard() {
     final Channel c = _current;
     return ColoredBox(
-      color: TvTokens.bg,
+      color: TvAppTokens.playbackOf(context).bg,
       child: Center(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 48),
@@ -1692,9 +1704,9 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
             children: <Widget>[
               Text(
                 '${_index + 1}',
-                style: TvTokens.display(
+                style: TvAppTokens.playbackOf(context).display(
                   TvDimens.displayL,
-                  color: TvTokens.accentBright,
+                  color: TvAppTokens.playbackOf(context).accentBright,
                 ),
               ),
               const SizedBox(height: 8),
@@ -1703,37 +1715,41 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
                 textAlign: TextAlign.center,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style: TvTokens.display(
+                style: TvAppTokens.playbackOf(context).display(
                   TvDimens.headline,
-                  color: TvTokens.text,
+                  color: TvAppTokens.playbackOf(context).text,
                 ),
               ),
               if (_isFavorite) ...<Widget>[
                 const SizedBox(height: 8),
-                const Icon(
+                Icon(
                   Icons.favorite_rounded,
-                  color: TvTokens.accent,
+                  color: TvAppTokens.playbackOf(context).accent,
                   size: 22,
                 ),
               ],
               const SizedBox(height: 22),
-              const SizedBox(
+              SizedBox(
                 width: 36,
                 height: 36,
                 child: CircularProgressIndicator(
                   strokeWidth: 3,
-                  color: TvTokens.accent,
+                  color: TvAppTokens.playbackOf(context).accent,
                 ),
               ),
               const SizedBox(height: 16),
               Text(
                 context.l10n.tvPlayerLoading,
-                style: TvTokens.ui(TvDimens.body, color: TvTokens.muted),
+                style: TvAppTokens.playbackOf(context).ui(TvDimens.body,
+                    color: TvAppTokens.playbackOf(context).muted),
               ),
               const SizedBox(height: 6),
               Text(
                 context.l10n.tvZapHint,
-                style: TvTokens.ui(TvDimens.label, color: TvTokens.mutedDim),
+                style: TvAppTokens.playbackOf(
+                  context,
+                ).ui(TvDimens.label,
+                    color: TvAppTokens.playbackOf(context).mutedDim),
               ),
             ],
           ),
@@ -1745,24 +1761,24 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   /// Erreur claire : ce qui s'est passé, et les trois touches utiles.
   Widget _errorCard() {
     return ColoredBox(
-      color: TvTokens.bg,
+      color: TvAppTokens.playbackOf(context).bg,
       child: Center(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 48),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
-              const Icon(
+              Icon(
                 Icons.error_outline_rounded,
-                color: TvTokens.accentBright,
+                color: TvAppTokens.playbackOf(context).accentBright,
                 size: 56,
               ),
               const SizedBox(height: 12),
               Text(
                 '${_index + 1}',
-                style: TvTokens.display(
+                style: TvAppTokens.playbackOf(context).display(
                   TvDimens.displayM,
-                  color: TvTokens.accentBright,
+                  color: TvAppTokens.playbackOf(context).accentBright,
                 ),
               ),
               const SizedBox(height: 6),
@@ -1771,7 +1787,10 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
                 textAlign: TextAlign.center,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style: TvTokens.display(TvDimens.title, color: TvTokens.text),
+                style: TvAppTokens.playbackOf(
+                  context,
+                ).display(TvDimens.title,
+                    color: TvAppTokens.playbackOf(context).text),
               ),
               const SizedBox(height: 10),
               Text(
@@ -1779,7 +1798,8 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
                     ? context.l10n.tvPlayerFatalDown
                     : context.l10n.tvPlayerFatalEmpty,
                 textAlign: TextAlign.center,
-                style: TvTokens.ui(TvDimens.body, color: TvTokens.muted),
+                style: TvAppTokens.playbackOf(context).ui(TvDimens.body,
+                    color: TvAppTokens.playbackOf(context).muted),
               ),
               const SizedBox(height: 20),
               Container(
@@ -1788,26 +1808,27 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
                   vertical: 12,
                 ),
                 decoration: BoxDecoration(
-                  color: TvTokens.sel,
+                  color: TvAppTokens.playbackOf(context).sel,
                   borderRadius: BorderRadius.circular(TvTokens.rButton),
                   border: Border.all(
-                    color: TvTokens.accent,
+                    color: TvAppTokens.playbackOf(context).accent,
                     width: TvDimens.focusOutline,
                   ),
                 ),
                 child: Text(
                   context.l10n.tvPlayerFatalHint,
-                  style: TvTokens.ui(
+                  style: TvAppTokens.playbackOf(context).ui(
                     TvDimens.titleS,
                     weight: FontWeight.w700,
-                    color: TvTokens.accentBright,
+                    color: TvAppTokens.playbackOf(context).accentBright,
                   ),
                 ),
               ),
               const SizedBox(height: 10),
               Text(
                 context.l10n.tvPlayerFatalNav,
-                style: TvTokens.ui(TvDimens.label, color: TvTokens.muted),
+                style: TvAppTokens.playbackOf(context).ui(TvDimens.label,
+                    color: TvAppTokens.playbackOf(context).muted),
               ),
             ],
           ),
@@ -1875,7 +1896,8 @@ class _LiveEpgLineState extends State<_LiveEpgLine> {
         '${context.l10n.tvEpgNow}  ·  ${p.title}',
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
-        style: TvTokens.ui(TvDimens.label, color: TvTokens.accentBright),
+        style: TvAppTokens.playbackOf(context).ui(TvDimens.label,
+            color: TvAppTokens.playbackOf(context).accentBright),
       ),
     );
   }
@@ -1972,11 +1994,11 @@ class _ControlsBar extends StatelessWidget {
           // ---- Ligne info chaîne ----
           Row(
             children: <Widget>[
-              _logo(),
+              _logo(context),
               const SizedBox(width: 16),
               Expanded(child: _info(context)),
               const SizedBox(width: 12),
-              _channelNumber(),
+              _channelNumber(context),
             ],
           ),
           if (engineNote != null && engineNote!.isNotEmpty) ...<Widget>[
@@ -1986,7 +2008,7 @@ class _ControlsBar extends StatelessWidget {
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: TvDimens.label,
-                color: TvTokens.accentBright,
+                color: TvAppTokens.playbackOf(context).accentBright,
               ),
             ),
           ],
@@ -2010,7 +2032,7 @@ class _ControlsBar extends StatelessWidget {
                     : Icons.fiber_manual_record_rounded,
                 label: isRecording ? context.l10n.tvStop : context.l10n.tvRec,
                 onTap: onRecord,
-                accent: TvTokens.live,
+                accent: TvAppTokens.playbackOf(context).live,
                 active: isRecording,
                 focused: focusedIndex == 1,
               ),
@@ -2021,7 +2043,7 @@ class _ControlsBar extends StatelessWidget {
                     : Icons.favorite_border_rounded,
                 label: context.l10n.tvFavoriteBtn,
                 onTap: onFavorite,
-                accent: TvTokens.accent,
+                accent: TvAppTokens.playbackOf(context).accent,
                 active: isFavorite,
                 focused: focusedIndex == 2,
               ),
@@ -2033,7 +2055,7 @@ class _ControlsBar extends StatelessWidget {
                       : Icons.bookmark_border_rounded,
                   label: followLabel ?? context.l10n.tvFollow,
                   onTap: onFollow!,
-                  accent: TvTokens.accent,
+                  accent: TvAppTokens.playbackOf(context).accent,
                   active: followOn,
                   focused: focusedIndex == followIndex,
                 ),
@@ -2073,111 +2095,115 @@ class _ControlsBar extends StatelessWidget {
     );
   }
 
-  Widget _logo() => SizedBox(
-    width: 56,
-    height: 56,
-    child: (channel.logoUrl != null && channel.logoUrl!.isNotEmpty)
-        ? CachedNetworkImage(
-            imageUrl: channel.logoUrl!,
-            fit: BoxFit.contain,
-            memCacheWidth: 160,
-            fadeInDuration: const Duration(milliseconds: 150),
-            placeholder: (_, __) => _initials(),
-            errorWidget: (_, __, ___) => _initials(),
-          )
-        : _initials(),
-  );
+  Widget _logo(BuildContext context) => SizedBox(
+        width: 56,
+        height: 56,
+        child: (channel.logoUrl != null && channel.logoUrl!.isNotEmpty)
+            ? CachedNetworkImage(
+                imageUrl: channel.logoUrl!,
+                fit: BoxFit.contain,
+                memCacheWidth: 160,
+                fadeInDuration: const Duration(milliseconds: 150),
+                placeholder: (_, __) => _initials(context),
+                errorWidget: (_, __, ___) => _initials(context),
+              )
+            : _initials(context),
+      );
 
-  Widget _initials() => Center(
-    child: Text(
-      channel.initials,
-      style: TextStyle(
-        fontSize: TvDimens.title,
-        fontWeight: FontWeight.w800,
-        color: TvTokens.muted,
-      ),
-    ),
-  );
+  Widget _initials(BuildContext context) => Center(
+        child: Text(
+          channel.initials,
+          style: TextStyle(
+            fontSize: TvDimens.title,
+            fontWeight: FontWeight.w800,
+            color: TvAppTokens.playbackOf(context).muted,
+          ),
+        ),
+      );
 
   Widget _info(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    mainAxisSize: MainAxisSize.min,
-    children: <Widget>[
-      Text(
-        channel.cleanName,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: TextStyle(
-          fontSize: TvDimens.headline,
-          fontWeight: FontWeight.w800,
-          color: TvTokens.text,
-        ),
-      ),
-      // Programme en cours, sous le nom : le guide sans quitter l'image.
-      _LiveEpgLine(channelId: channel.id),
-      const SizedBox(height: 6),
-      Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: <Widget>[
-          if (channel.isLive) ...<Widget>[
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
-              decoration: BoxDecoration(
-                color: TvTokens.live,
-                borderRadius: BorderRadius.circular(5),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: <Widget>[
-                  const Icon(
-                    Icons.fiber_manual_record_rounded,
-                    color: Colors.white,
-                    size: 11,
-                  ),
-                  const SizedBox(width: 5),
-                  Text(
-                    context.l10n.tvLiveBadge,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w800,
-                      color: Colors.white,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 12),
-          ],
-          Flexible(
-            child: Text(
-              channel.category.trim().isEmpty
-                  ? context.l10n.tvOthers
-                  : channel.category.trim(),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: TvDimens.label, color: TvTokens.muted),
+          Text(
+            channel.cleanName,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: TvDimens.headline,
+              fontWeight: FontWeight.w800,
+              color: TvAppTokens.playbackOf(context).text,
             ),
           ),
+          // Programme en cours, sous le nom : le guide sans quitter l'image.
+          _LiveEpgLine(channelId: channel.id),
+          const SizedBox(height: 6),
+          Row(
+            children: <Widget>[
+              if (channel.isLive) ...<Widget>[
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: TvAppTokens.playbackOf(context).live,
+                    borderRadius: BorderRadius.circular(5),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      const Icon(
+                        Icons.fiber_manual_record_rounded,
+                        color: Colors.white,
+                        size: 11,
+                      ),
+                      const SizedBox(width: 5),
+                      Text(
+                        context.l10n.tvLiveBadge,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+              ],
+              Flexible(
+                child: Text(
+                  channel.category.trim().isEmpty
+                      ? context.l10n.tvOthers
+                      : channel.category.trim(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: TvDimens.label,
+                    color: TvAppTokens.playbackOf(context).muted,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ],
-      ),
-    ],
-  );
+      );
 
-  Widget _channelNumber() => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-    decoration: BoxDecoration(
-      color: Colors.white.withValues(alpha: 0.08),
-      borderRadius: BorderRadius.circular(10),
-      border: Border.all(color: Colors.white24),
-    ),
-    child: Text(
-      '${index + 1} / $total',
-      style: TextStyle(
-        fontSize: TvDimens.label,
-        fontWeight: FontWeight.w800,
-        color: TvTokens.text,
-      ),
-    ),
-  );
+  Widget _channelNumber(BuildContext context) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: Colors.white24),
+        ),
+        child: Text(
+          '${index + 1} / $total',
+          style: TextStyle(
+            fontSize: TvDimens.label,
+            fontWeight: FontWeight.w800,
+            color: TvAppTokens.playbackOf(context).text,
+          ),
+        ),
+      );
 }
 
 /// Bouton de commande « verre » avec animation d'appui (scale), façon lecteur
@@ -2210,23 +2236,24 @@ class _CtrlButtonState extends State<_CtrlButton> {
   @override
   Widget build(BuildContext context) {
     final double d = widget.primary ? 76 : 62;
-    final Color accent = widget.accent ?? TvTokens.accent;
+    final Color accent =
+        widget.accent ?? TvAppTokens.playbackOf(context).accent;
     // Surlignage D-pad = anneau OR épais + halo : visible sur N'IMPORTE quelle
     // télécommande (le repère « où je suis »).
     final Color borderColor = widget.focused
-        ? TvTokens.accent
+        ? TvAppTokens.playbackOf(context).accent
         : (widget.active ? accent : Colors.white24);
     final Color bg = widget.focused
-        ? TvTokens.accent.withValues(alpha: 0.28)
+        ? TvAppTokens.playbackOf(context).accent.withValues(alpha: 0.28)
         : (widget.active
-              ? accent.withValues(alpha: 0.22)
-              : Colors.black.withValues(alpha: 0.42));
+            ? accent.withValues(alpha: 0.22)
+            : Colors.black.withValues(alpha: 0.42));
     final Color iconColor = widget.focused
-        ? TvTokens.accent
-        : (widget.active ? accent : TvTokens.text);
+        ? TvAppTokens.playbackOf(context).accent
+        : (widget.active ? accent : TvAppTokens.playbackOf(context).text);
     final Color labelColor = widget.focused
-        ? TvTokens.accent
-        : (widget.active ? accent : TvTokens.muted);
+        ? TvAppTokens.playbackOf(context).accent
+        : (widget.active ? accent : TvAppTokens.playbackOf(context).muted);
 
     final double scale = _down ? 0.9 : (widget.focused ? 1.12 : 1.0);
 
@@ -2256,7 +2283,9 @@ class _CtrlButtonState extends State<_CtrlButton> {
                 boxShadow: widget.focused
                     ? <BoxShadow>[
                         BoxShadow(
-                          color: TvTokens.accent.withValues(alpha: 0.45),
+                          color: TvAppTokens.playbackOf(context)
+                              .accent
+                              .withValues(alpha: 0.45),
                           blurRadius: 24,
                           spreadRadius: -2,
                         ),

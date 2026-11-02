@@ -21,7 +21,7 @@ import '../../../core/blackbox/black_box.dart';
 import '../../../core/blackbox/black_box_upload.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
-import '../core/tv_tokens.dart';
+import '../core/tv_app_tokens.dart';
 
 class TvBlackBoxScreen extends StatefulWidget {
   const TvBlackBoxScreen({super.key});
@@ -135,13 +135,16 @@ class _TvBlackBoxScreenState extends State<TvBlackBoxScreen> {
           style: TextStyle(
             fontSize: TvDimens.displayM,
             fontWeight: FontWeight.w800,
-            color: TvTokens.text,
+            color: TvAppTokens.of(context).text,
           ),
         ),
         const SizedBox(height: 6),
         Text(
           context.l10n.tvBlackBoxSubtitle(BlackBox.instance.appVersion),
-          style: TextStyle(fontSize: TvDimens.body, color: TvTokens.muted),
+          style: TextStyle(
+            fontSize: TvDimens.body,
+            color: TvAppTokens.of(context).muted,
+          ),
         ),
         const SizedBox(height: 18),
 
@@ -150,10 +153,12 @@ class _TvBlackBoxScreenState extends State<TvBlackBoxScreen> {
           width: double.infinity,
           padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
-            color: TvTokens.card,
+            color: TvAppTokens.of(context).card,
             borderRadius: BorderRadius.circular(TvDimens.cardRadius),
             border: Border.all(
-              color: brutal ? TvTokens.live : TvTokens.lineSoft,
+              color: brutal
+                  ? TvAppTokens.of(context).live
+                  : TvAppTokens.of(context).lineSoft,
             ),
           ),
           child: Column(
@@ -166,7 +171,9 @@ class _TvBlackBoxScreenState extends State<TvBlackBoxScreen> {
                 style: TextStyle(
                   fontSize: TvDimens.title,
                   fontWeight: FontWeight.w700,
-                  color: brutal ? TvTokens.live : TvTokens.text,
+                  color: brutal
+                      ? TvAppTokens.of(context).live
+                      : TvAppTokens.of(context).text,
                 ),
               ),
               if (x != null && x.at != null) ...<Widget>[
@@ -175,7 +182,7 @@ class _TvBlackBoxScreenState extends State<TvBlackBoxScreen> {
                   context.l10n.tvBlackBoxWhen(_fmt(x.at!)),
                   style: TextStyle(
                     fontSize: TvDimens.body,
-                    color: TvTokens.muted,
+                    color: TvAppTokens.of(context).muted,
                   ),
                 ),
               ],
@@ -185,7 +192,7 @@ class _TvBlackBoxScreenState extends State<TvBlackBoxScreen> {
                   context.l10n.tvBlackBoxLastAction(x.lastAction),
                   style: TextStyle(
                     fontSize: TvDimens.body,
-                    color: TvTokens.muted,
+                    color: TvAppTokens.of(context).muted,
                   ),
                 ),
               ],
@@ -195,7 +202,7 @@ class _TvBlackBoxScreenState extends State<TvBlackBoxScreen> {
                   context.l10n.tvBlackBoxDetail(x.nativeDescription),
                   style: TextStyle(
                     fontSize: TvDimens.label,
-                    color: TvTokens.mutedDim,
+                    color: TvAppTokens.of(context).mutedDim,
                   ),
                 ),
               ],
@@ -240,10 +247,12 @@ class _TvBlackBoxScreenState extends State<TvBlackBoxScreen> {
                   width: double.infinity,
                   padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
                   decoration: BoxDecoration(
-                    color: TvTokens.card.withValues(alpha: 0.55),
+                    color: TvAppTokens.of(context).card.withValues(alpha: 0.55),
                     borderRadius: BorderRadius.circular(TvDimens.cardRadius),
                     border: Border.all(
-                      color: focused ? TvTokens.accent : TvTokens.lineSoft,
+                      color: focused
+                          ? TvAppTokens.of(context).accent
+                          : TvAppTokens.of(context).lineSoft,
                     ),
                   ),
                   child: _loading
@@ -252,7 +261,7 @@ class _TvBlackBoxScreenState extends State<TvBlackBoxScreen> {
                             context.l10n.tvReading,
                             style: TextStyle(
                               fontSize: TvDimens.body,
-                              color: TvTokens.mutedDim,
+                              color: TvAppTokens.of(context).mutedDim,
                             ),
                           ),
                         )
@@ -263,21 +272,18 @@ class _TvBlackBoxScreenState extends State<TvBlackBoxScreen> {
                           itemBuilder: (BuildContext context, int i) {
                             final String l = _lines[i];
                             final Color c = l.contains(' F [')
-                                ? TvTokens.live
+                                ? TvAppTokens.of(context).live
                                 : l.contains(' E [')
-                                ? TvTokens.live
+                                ? TvAppTokens.of(context).live
                                 : l.contains(' W [')
-                                ? TvTokens.accentBright
-                                : TvTokens.muted;
+                                ? TvAppTokens.of(context).accentBright
+                                : TvAppTokens.of(context).muted;
                             return Text(
                               l,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: TvTokens.mono(
-                                13,
-                                weight: FontWeight.w400,
-                                color: c,
-                              ),
+                              style: TvAppTokens.of(context)
+                                  .mono(13, weight: FontWeight.w400, color: c),
                             );
                           },
                         ),
@@ -289,7 +295,10 @@ class _TvBlackBoxScreenState extends State<TvBlackBoxScreen> {
         const SizedBox(height: 8),
         Text(
           context.l10n.tvBlackBoxHelp,
-          style: TextStyle(fontSize: TvDimens.label, color: TvTokens.mutedDim),
+          style: TextStyle(
+            fontSize: TvDimens.label,
+            color: TvAppTokens.of(context).mutedDim,
+          ),
         ),
       ],
     );
@@ -331,8 +340,12 @@ class _Btn extends StatelessWidget {
       scale: TvFocusScale.large,
       onSelect: onSelect,
       builder: (BuildContext context, bool focused) {
-        final Color bg = focused ? TvTokens.accent : TvTokens.sel;
-        final Color fg = focused ? TvTokens.onAccent : TvTokens.accentBright;
+        final Color bg = focused
+            ? TvAppTokens.of(context).accent
+            : TvAppTokens.of(context).sel;
+        final Color fg = focused
+            ? TvAppTokens.of(context).onAccent
+            : TvAppTokens.of(context).accentBright;
         return Container(
           decoration: BoxDecoration(
             color: bg,

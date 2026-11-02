@@ -1,4 +1,5 @@
 import '../../../core/i18n/somali_localizations.dart';
+
 // =========================================================
 //  tv_app.dart — Racine de DeFew TV (MaterialApp 10-foot)
 // =========================================================
@@ -17,6 +18,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/app/repair_flags.dart';
+import '../../theme/data/remote_theme_repository.dart';
 import '../../playlists/data/import_progress.dart';
 import '../../playlists/data/remote_source_repository.dart';
 import '../../../core/i18n/l10n_extension.dart';
@@ -27,6 +29,7 @@ import '../../channels/domain/channel.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../../about/data/force_update_checker.dart';
 import '../../about/presentation/forced_update_screen.dart';
+import '../../ads/presentation/tv_startup_ad_gate.dart';
 import '../../subscription/data/signal_inbox.dart';
 import '../../subscription/data/subscription_state.dart';
 import '../core/tv_content_refresh.dart';
@@ -34,6 +37,7 @@ import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_page_transitions.dart';
 import '../core/tv_tokens.dart';
+import '../core/tv_app_tokens.dart';
 import '../data/greeting_repository.dart';
 import 'removed_list_prompt.dart';
 import 'tv_activation_screen.dart';
@@ -60,64 +64,82 @@ class TvApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final ThemeData base = ThemeData(
-      brightness: Brightness.dark,
-      scaffoldBackgroundColor: TvTokens.bg,
-      colorScheme: const ColorScheme.dark(
-        surface: TvTokens.card,
-        primary: TvTokens.accent,
-      ),
-      useMaterial3: true,
-    );
     // On écoute LocaleRepository : `locale == null` => l'app SUIT la langue
     // de la TV (Android system locale). Si la télé est en espagnol, l'app
     // s'affiche en espagnol toute seule. Un changement manuel (Réglages)
     // reconstruit l'app via ce ListenableBuilder.
     return ListenableBuilder(
-      listenable: LocaleRepository.instance,
-      builder: (BuildContext context, _) => MaterialApp(
-        navigatorKey: VoiceNavigation.navigatorKey,
-        title: kAppName,
-        debugShowCheckedModeBanner: false,
-        // --- Internationalisation (17 langues, RTL auto pour l'arabe) ---
-        locale: LocaleRepository.instance.locale, // null = langue de la TV
-        supportedLocales: AppLocalizations.supportedLocales,
-        localizationsDelegates: const [
-          ...somaliLocalizationsDelegates,
-          ...AppLocalizations.localizationsDelegates,
-        ],
-        // Langue de la TV → langue de l'app (toutes les préférences système,
-        // code langue seul, repli anglais). Voir LocaleRepository.resolve.
-        localeListResolutionCallback: LocaleRepository.resolve,
-        theme: base.copyWith(
-          // Police par défaut = Inter (Maison Noir) sur TOUT le texte.
-          textTheme: GoogleFonts.interTextTheme(base.textTheme)
-              .apply(bodyColor: TvTokens.text, displayColor: TvTokens.text),
-          // Coupe TOUT effet tactile (hover/splash souris) — D-pad only.
-          splashFactory: NoSplash.splashFactory,
-          hoverColor: Colors.transparent,
-          // Retour sans « flash » : fondu court, sans capture d'écran
-          // (voir tv_page_transitions.dart).
-          pageTransitionsTheme: kTvPageTransitions,
-        ),
-        // CANEVAS TV FIXE : on rend TOUTE l'app comme un écran logique de
-        // largeur `kTvDesignWidth`, puis on met à l'échelle uniforme vers
-        // l'écran réel. Beaucoup de box Android TV / Fire TV rapportent une
-        // résolution logique trop petite (ex. 960×540) → l'UI paraît
-        // « zoomée ». Avec ce canevas fixe, l'app a TOUJOURS la même taille
-        // relative, quelle que soit la TV. On neutralise aussi le textScale
-        // système (certaines box le poussent à 1,3-1,5).
-        builder: (BuildContext context, Widget? child) {
-          if (child == null) return const SizedBox.shrink();
-          return VoiceHotkey(
-            child: TvScaledViewport(
-              designWidth: kTvDesignWidth,
-              child: child,
-            ),
-          );
-        },
-        home: const RestartWidget(child: RemovedListPrompt(child: TvGate())),
-      ),
+      listenable: Listenable.merge(<Listenable>[
+        LocaleRepository.instance,
+        RemoteThemeRepository.current,
+      ]),
+      builder: (BuildContext context, _) {
+        final settings = RemoteThemeRepository.current.value;
+        final palette = TvAppTokens(
+          light: settings.mode == ThemeMode.light,
+          remoteAccent: settings.accent,
+        );
+        final scheme = palette.light
+            ? ColorScheme.light(
+                surface: palette.card,
+                primary: palette.accent,
+                onPrimary: palette.onAccent,
+                onSurface: palette.text,
+              )
+            : ColorScheme.dark(surface: palette.card, primary: palette.accent);
+        final base = ThemeData(
+          brightness: palette.light ? Brightness.light : Brightness.dark,
+          scaffoldBackgroundColor: palette.bg,
+          colorScheme: settings.accent == null
+              ? scheme
+              : scheme.copyWith(onPrimary: palette.onAccent),
+          extensions: <ThemeExtension<dynamic>>[palette],
+          useMaterial3: true,
+        );
+        return MaterialApp(
+          navigatorKey: VoiceNavigation.navigatorKey,
+          title: settings.appName.isEmpty ? kAppName : settings.appName,
+          debugShowCheckedModeBanner: false,
+          // --- Internationalisation (17 langues, RTL auto pour l'arabe) ---
+          locale: LocaleRepository.instance.locale, // null = langue de la TV
+          supportedLocales: AppLocalizations.supportedLocales,
+          localizationsDelegates: const [
+            ...somaliLocalizationsDelegates,
+            ...AppLocalizations.localizationsDelegates,
+          ],
+          // Langue de la TV → langue de l'app (toutes les préférences système,
+          // code langue seul, repli anglais). Voir LocaleRepository.resolve.
+          localeListResolutionCallback: LocaleRepository.resolve,
+          theme: base.copyWith(
+            // Police par défaut = Inter (Maison Noir) sur TOUT le texte.
+            textTheme: GoogleFonts.interTextTheme(base.textTheme)
+                .apply(bodyColor: palette.text, displayColor: palette.text),
+            // Coupe TOUT effet tactile (hover/splash souris) — D-pad only.
+            splashFactory: NoSplash.splashFactory,
+            hoverColor: Colors.transparent,
+            // Retour sans « flash » : fondu court, sans capture d'écran
+            // (voir tv_page_transitions.dart).
+            pageTransitionsTheme: kTvPageTransitions,
+          ),
+          // CANEVAS TV FIXE : on rend TOUTE l'app comme un écran logique de
+          // largeur `kTvDesignWidth`, puis on met à l'échelle uniforme vers
+          // l'écran réel. Beaucoup de box Android TV / Fire TV rapportent une
+          // résolution logique trop petite (ex. 960×540) → l'UI paraît
+          // « zoomée ». Avec ce canevas fixe, l'app a TOUJOURS la même taille
+          // relative, quelle que soit la TV. On neutralise aussi le textScale
+          // système (certaines box le poussent à 1,3-1,5).
+          builder: (BuildContext context, Widget? child) {
+            if (child == null) return const SizedBox.shrink();
+            return VoiceHotkey(
+              child: TvScaledViewport(
+                designWidth: kTvDesignWidth,
+                child: child,
+              ),
+            );
+          },
+          home: const RestartWidget(child: RemovedListPrompt(child: TvGate())),
+        );
+      },
     );
   }
 }
@@ -247,19 +269,21 @@ class _UpdatingPill extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
       decoration: BoxDecoration(
-        color: TvTokens.surface3,
+        color: TvAppTokens.of(context).surface3,
         borderRadius: BorderRadius.circular(TvTokens.rButton),
-        border: Border.all(color: TvTokens.accent.withValues(alpha: 0.5)),
+        border: Border.all(
+          color: TvAppTokens.of(context).accent.withValues(alpha: 0.5),
+        ),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
-          const SizedBox(
+          SizedBox(
             width: 14,
             height: 14,
             child: CircularProgressIndicator(
               strokeWidth: 2,
-              color: TvTokens.accentBright,
+              color: TvAppTokens.of(context).accentBright,
             ),
           ),
           const SizedBox(width: 10),
@@ -274,10 +298,10 @@ class _UpdatingPill extends StatelessWidget {
                 detail.isEmpty
                     ? context.l10n.tvUpdatingContent
                     : '${context.l10n.tvUpdatingContent} · $detail',
-                style: TvTokens.ui(
+                style: TvAppTokens.of(context).ui(
                   TvDimens.caption,
                   weight: FontWeight.w600,
-                  color: TvTokens.text,
+                  color: TvAppTokens.of(context).text,
                 ),
               );
             },
@@ -316,9 +340,9 @@ class _ExitDialog extends StatelessWidget {
         width: 560,
         padding: const EdgeInsets.all(32),
         decoration: BoxDecoration(
-          color: TvTokens.card,
+          color: TvAppTokens.of(context).card,
           borderRadius: BorderRadius.circular(TvTokens.rCard),
-          border: Border.all(color: TvTokens.line),
+          border: Border.all(color: TvAppTokens.of(context).line),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -326,13 +350,15 @@ class _ExitDialog extends StatelessWidget {
             Text(
               context.l10n.tvQuitTitle,
               textAlign: TextAlign.center,
-              style: TvTokens.display(28, color: TvTokens.text),
+              style: TvAppTokens.of(context)
+                  .display(28, color: TvAppTokens.of(context).text),
             ),
             const SizedBox(height: 10),
             Text(
               context.l10n.tvQuitMessage,
               textAlign: TextAlign.center,
-              style: TvTokens.ui(15, color: TvTokens.mutedDim),
+              style: TvAppTokens.of(context)
+                  .ui(15, color: TvAppTokens.of(context).mutedDim),
             ),
             const SizedBox(height: 26),
             _DialogBtn(
@@ -383,18 +409,22 @@ class _DialogBtn extends StatelessWidget {
       onSelect: onSelect,
       builder: (BuildContext context, bool focused) {
         final Color fg = focused
-            ? TvTokens.onAccent
-            : (primary ? TvTokens.accentBright : TvTokens.text);
+            ? TvAppTokens.of(context).onAccent
+            : (primary
+                  ? TvAppTokens.of(context).accentBright
+                  : TvAppTokens.of(context).text);
         return Container(
           width: double.infinity,
           padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
           decoration: BoxDecoration(
             color: focused
-                ? TvTokens.accent
-                : (primary ? TvTokens.sel : Colors.transparent),
+                ? TvAppTokens.of(context).accent
+                : (primary ? TvAppTokens.of(context).sel : Colors.transparent),
             borderRadius: BorderRadius.circular(TvTokens.rButton),
             border: Border.all(
-              color: focused ? TvTokens.accent : TvTokens.line,
+              color: focused
+                  ? TvAppTokens.of(context).accent
+                  : TvAppTokens.of(context).line,
             ),
           ),
           child: Row(
@@ -404,7 +434,8 @@ class _DialogBtn extends StatelessWidget {
               const SizedBox(width: 10),
               Text(
                 label,
-                style: TvTokens.ui(18, weight: FontWeight.w700, color: fg),
+                style: TvAppTokens.of(context)
+                    .ui(18, weight: FontWeight.w700, color: fg),
               ),
             ],
           ),
@@ -476,7 +507,7 @@ class _TvGateState extends State<TvGate> {
     // source une fois l'essai expiré).
     final bool showHome = active || (hasOwnList && !mustBlock);
     final Widget home = showHome
-        ? const TvHubScreen()
+        ? const TvStartupAdGate(child: TvHubScreen())
         : const TvShell(child: TvActivationScreen());
     // Retour : sur l'ACCUEIL, c'est TvHomeScreen qui gère (contenu → menu →
     // boîte Quitter au dernier niveau). Ce PopScope racine (même route) ne
@@ -762,15 +793,16 @@ class _HomeHeaderState extends State<_HomeHeader> {
       alignment: Alignment.centerRight,
       child: Text.rich(
         TextSpan(
-          style: TvTokens.ui(18, color: TvTokens.mutedDim),
+          style: TvAppTokens.of(context)
+              .ui(18, color: TvAppTokens.of(context).mutedDim),
           children: <InlineSpan>[
             if (g != null && g.city.isNotEmpty) ...<InlineSpan>[
               TextSpan(
                 text: g.city,
-                style: TvTokens.ui(
+                style: TvAppTokens.of(context).ui(
                   18,
                   weight: FontWeight.w600,
-                  color: TvTokens.muted,
+                  color: TvAppTokens.of(context).muted,
                 ),
               ),
               const TextSpan(text: '   ·   '),
@@ -811,7 +843,9 @@ class _NavRail extends StatelessWidget {
           // Branding : logo réduit en mode replié (rentre dans 96 px).
           Container(
             padding: const EdgeInsets.fromLTRB(10, 2, 10, 10),
-            decoration: const BoxDecoration(gradient: TvTokens.brandGlow),
+            decoration: BoxDecoration(
+              gradient: TvAppTokens.of(context).brandGlow,
+            ),
             child: Align(
               alignment: Alignment.centerLeft,
               child: TvLogo(width: expanded ? 140 : 60),
@@ -873,11 +907,13 @@ class _NavItem extends StatelessWidget {
         // Maison Noir : fond `--sel` au focus/actif, barre OR à gauche si
         // actif, texte or. JAMAIS de bloc blanc plein.
         final bool hl = focused || selected;
-        final Color fg = hl ? TvTokens.accentBright : TvTokens.muted;
+        final Color fg = hl
+            ? TvAppTokens.of(context).accentBright
+            : TvAppTokens.of(context).muted;
         return Container(
           height: 54,
           decoration: BoxDecoration(
-            color: hl ? TvTokens.sel : Colors.transparent,
+            color: hl ? TvAppTokens.of(context).sel : Colors.transparent,
             borderRadius: BorderRadius.circular(TvTokens.rMenuItem),
           ),
           child: Row(
@@ -887,7 +923,9 @@ class _NavItem extends StatelessWidget {
                 width: 3,
                 margin: const EdgeInsets.symmetric(vertical: 14),
                 decoration: BoxDecoration(
-                  color: selected ? TvTokens.accent : Colors.transparent,
+                  color: selected
+                      ? TvAppTokens.of(context).accent
+                      : Colors.transparent,
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -906,7 +944,7 @@ class _NavItem extends StatelessWidget {
                     maxLines: 1,
                     softWrap: false,
                     overflow: TextOverflow.fade,
-                    style: TvTokens.ui(
+                    style: TvAppTokens.of(context).ui(
                       19,
                       weight: selected ? FontWeight.w600 : FontWeight.w500,
                       color: fg,

@@ -27,6 +27,7 @@ import '../../subtitles/data/subtitle_flag.dart';
 import '../../tv/core/tv_dimens.dart';
 import '../../tv/core/tv_focusable.dart';
 import '../../tv/core/tv_tokens.dart';
+import '../../tv/core/tv_app_tokens.dart';
 
 class TvExtrasScreen extends StatefulWidget {
   const TvExtrasScreen({super.key});
@@ -165,13 +166,16 @@ class _TvExtrasScreenState extends State<TvExtrasScreen> {
           style: TextStyle(
             fontSize: TvDimens.displayM,
             fontWeight: FontWeight.w800,
-            color: TvTokens.text,
+            color: TvAppTokens.of(context).text,
           ),
         ),
         const SizedBox(height: 8),
         Text(
           context.l10n.tvExtrasHelp,
-          style: TextStyle(fontSize: TvDimens.body, color: TvTokens.muted),
+          style: TextStyle(
+            fontSize: TvDimens.body,
+            color: TvAppTokens.of(context).muted,
+          ),
         ),
         const SizedBox(height: 18),
         ExtrasRow(
@@ -289,7 +293,7 @@ class ExtrasRow extends StatelessWidget {
           width: double.infinity,
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
           decoration: BoxDecoration(
-            color: TvTokens.card,
+            color: TvAppTokens.of(context).card,
             borderRadius: BorderRadius.circular(TvTokens.rCard),
           ),
           child: Column(
@@ -300,7 +304,7 @@ class ExtrasRow extends StatelessWidget {
                 style: TextStyle(
                   fontSize: TvDimens.titleS,
                   fontWeight: FontWeight.w700,
-                  color: TvTokens.text,
+                  color: TvAppTokens.of(context).text,
                 ),
               ),
               const SizedBox(height: 4),
@@ -308,7 +312,7 @@ class ExtrasRow extends StatelessWidget {
                 subtitle,
                 style: TextStyle(
                   fontSize: TvDimens.label,
-                  color: TvTokens.muted,
+                  color: TvAppTokens.of(context).muted,
                 ),
               ),
             ],

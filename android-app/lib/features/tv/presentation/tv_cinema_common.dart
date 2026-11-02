@@ -28,6 +28,7 @@ import '../../vod/domain/vod_movie.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
+import '../core/tv_app_tokens.dart';
 import 'tv_vod_player_screen.dart';
 
 // =========================================================
@@ -69,17 +70,18 @@ class VodPlayItem {
   final int? episode;
 
   factory VodPlayItem.movie(CinemaTitle t) => VodPlayItem(
-        id: t.id,
-        isEpisode: false,
-        title: t.name,
-        url: t.streamUrl ?? '',
-        posterUrl: t.posterUrl,
-        containerExt: t.containerExt,
-        sourceKey: t.sourceKey,
-        remoteId: t.remoteId,
-      );
+    id: t.id,
+    isEpisode: false,
+    title: t.name,
+    url: t.streamUrl ?? '',
+    posterUrl: t.posterUrl,
+    containerExt: t.containerExt,
+    sourceKey: t.sourceKey,
+    remoteId: t.remoteId,
+  );
 
-  factory VodPlayItem.episode(CinemaEpisode e, CinemaTitle series) => VodPlayItem(
+  factory VodPlayItem.episode(CinemaEpisode e, CinemaTitle series) =>
+      VodPlayItem(
         id: e.id,
         isEpisode: true,
         title: series.name,
@@ -95,47 +97,47 @@ class VodPlayItem {
       );
 
   factory VodPlayItem.entry(WatchEntry e) => VodPlayItem(
-        id: e.id,
-        isEpisode: e.isEpisode,
-        title: e.title,
-        subtitle: e.subtitle,
-        url: e.streamUrl,
-        posterUrl: e.posterUrl,
-        containerExt: e.containerExt,
-        sourceKey: e.sourceKey,
-        remoteId: e.remoteId,
-        seriesId: e.seriesId,
-        season: e.season,
-        episode: e.episode,
-      );
+    id: e.id,
+    isEpisode: e.isEpisode,
+    title: e.title,
+    subtitle: e.subtitle,
+    url: e.streamUrl,
+    posterUrl: e.posterUrl,
+    containerExt: e.containerExt,
+    sourceKey: e.sourceKey,
+    remoteId: e.remoteId,
+    seriesId: e.seriesId,
+    season: e.season,
+    episode: e.episode,
+  );
 
   WatchEntry toEntry({required int posMs, required int durMs}) => WatchEntry(
-        id: id,
-        isEpisode: isEpisode,
-        title: title,
-        subtitle: subtitle,
-        posterUrl: posterUrl,
-        streamUrl: url,
-        containerExt: containerExt,
-        sourceKey: sourceKey,
-        remoteId: remoteId,
-        seriesId: seriesId,
-        season: season,
-        episode: episode,
-        posMs: posMs,
-        durMs: durMs,
-        updatedAt: DateTime.now().millisecondsSinceEpoch,
-      );
+    id: id,
+    isEpisode: isEpisode,
+    title: title,
+    subtitle: subtitle,
+    posterUrl: posterUrl,
+    streamUrl: url,
+    containerExt: containerExt,
+    sourceKey: sourceKey,
+    remoteId: remoteId,
+    seriesId: seriesId,
+    season: season,
+    episode: episode,
+    posMs: posMs,
+    durMs: durMs,
+    updatedAt: DateTime.now().millisecondsSinceEpoch,
+  );
 
   /// Pour le moteur de téléchargement (un épisode se télécharge comme un film).
   VodMovie toVodMovie() => VodMovie(
-        id: id,
-        name: subtitle == null ? title : '$title · $subtitle',
-        category: isEpisode ? 'series' : 'movie',
-        streamUrl: url,
-        containerExt: containerExt,
-        posterUrl: posterUrl,
-      );
+    id: id,
+    name: subtitle == null ? title : '$title · $subtitle',
+    category: isEpisode ? 'series' : 'movie',
+    streamUrl: url,
+    containerExt: containerExt,
+    posterUrl: posterUrl,
+  );
 }
 
 /// « S1 · E3 · Titre » (ou « S1 · E3 » si l'épisode n'a pas de titre propre).
@@ -167,8 +169,10 @@ Future<void> openVod(
   await WatchProgressRepository.instance.load();
   final WatchEntry? prev = WatchProgressRepository.instance.get(item.id);
   // Même règle pour la rangée « Reprendre », la fiche, et « Depuis le début ».
-  final Duration startAt =
-      ResumeStart.decide(entry: prev, fromStart: fromStart).at;
+  final Duration startAt = ResumeStart.decide(
+    entry: prev,
+    fromStart: fromStart,
+  ).at;
   final String? local = await offlinePathFor(item.id);
   if (!context.mounted) return;
   await Navigator.of(context).push(
@@ -256,11 +260,15 @@ class CinemaPill extends StatelessWidget {
       scale: TvFocusScale.large,
       onSelect: onSelect,
       builder: (BuildContext context, bool focused) {
-        final Color fg = focused ? TvTokens.onAccent : TvTokens.accentBright;
+        final Color fg = focused
+            ? TvAppTokens.of(context).onAccent
+            : TvAppTokens.of(context).accentBright;
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 13),
           decoration: BoxDecoration(
-            color: focused ? TvTokens.accent : TvTokens.sel,
+            color: focused
+                ? TvAppTokens.of(context).accent
+                : TvAppTokens.of(context).sel,
             borderRadius: BorderRadius.circular(TvTokens.rButton),
           ),
           child: Row(
@@ -268,11 +276,14 @@ class CinemaPill extends StatelessWidget {
             children: <Widget>[
               Icon(icon, size: 20, color: fg),
               const SizedBox(width: 9),
-              Text(label,
-                  style: TextStyle(
-                      fontSize: TvDimens.titleS,
-                      fontWeight: FontWeight.w700,
-                      color: fg)),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: TvDimens.titleS,
+                  fontWeight: FontWeight.w700,
+                  color: fg,
+                ),
+              ),
             ],
           ),
         );
@@ -312,16 +323,23 @@ class CinemaRailRow extends StatelessWidget {
         builder: (BuildContext context, bool focused) {
           if (focused) onFocused?.call();
           final bool active = selected && !focused;
-          final Color bg = (focused || active) ? TvTokens.sel : Colors.transparent;
+          final Color bg = (focused || active)
+              ? TvAppTokens.of(context).sel
+              : Colors.transparent;
           final Color fg = focused
-              ? TvTokens.accentBright
-              : (active ? TvTokens.text : TvTokens.muted);
+              ? TvAppTokens.of(context).accentBright
+              : (active
+                    ? TvAppTokens.of(context).text
+                    : TvAppTokens.of(context).muted);
           return Container(
             decoration: BoxDecoration(
               color: bg,
               borderRadius: BorderRadius.circular(TvTokens.rMenuItem),
               border: focused
-                  ? Border.all(color: TvTokens.accent, width: TvDimens.focusOutline)
+                  ? Border.all(
+                      color: TvAppTokens.of(context).accent,
+                      width: TvDimens.focusOutline,
+                    )
                   : null,
             ),
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -337,18 +355,26 @@ class CinemaRailRow extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                        fontSize: TvDimens.body,
-                        fontWeight: (focused || active) ? FontWeight.w700 : FontWeight.w600,
-                        color: fg),
+                      fontSize: TvDimens.body,
+                      fontWeight: (focused || active)
+                          ? FontWeight.w700
+                          : FontWeight.w600,
+                      color: fg,
+                    ),
                   ),
                 ),
                 if (count != null) ...<Widget>[
                   const SizedBox(width: 10),
-                  Text('$count',
-                      style: TextStyle(
-                          fontSize: TvDimens.label,
-                          fontWeight: FontWeight.w700,
-                          color: focused ? TvTokens.accentBright : TvTokens.mutedDim)),
+                  Text(
+                    '$count',
+                    style: TextStyle(
+                      fontSize: TvDimens.label,
+                      fontWeight: FontWeight.w700,
+                      color: focused
+                          ? TvAppTokens.of(context).accentBright
+                          : TvAppTokens.of(context).mutedDim,
+                    ),
+                  ),
                 ],
               ],
             ),
@@ -402,10 +428,12 @@ class CinemaPoster extends StatelessWidget {
             Expanded(
               child: Container(
                 decoration: BoxDecoration(
-                  color: TvTokens.tile,
+                  color: TvAppTokens.of(context).tile,
                   borderRadius: BorderRadius.circular(TvDimens.cardRadius),
                   border: Border.all(
-                    color: focused ? TvTokens.accent : TvTokens.tileBorder,
+                    color: focused
+                        ? TvAppTokens.of(context).accent
+                        : TvAppTokens.of(context).tileBorder,
                     width: focused ? TvDimens.focusOutline : 1,
                   ),
                 ),
@@ -417,8 +445,12 @@ class CinemaPoster extends StatelessWidget {
                     if (locked)
                       ColoredBox(
                         color: Colors.black.withValues(alpha: 0.7),
-                        child: const Center(
-                          child: Icon(Icons.lock_rounded, color: TvTokens.accentBright, size: 34),
+                        child: Center(
+                          child: Icon(
+                            Icons.lock_rounded,
+                            color: TvAppTokens.of(context).accentBright,
+                            size: 34,
+                          ),
                         ),
                       ),
                     if (downloaded)
@@ -427,10 +459,15 @@ class CinemaPoster extends StatelessWidget {
                         right: 6,
                         child: Container(
                           padding: const EdgeInsets.all(4),
-                          decoration: const BoxDecoration(
-                              color: TvTokens.accent, shape: BoxShape.circle),
-                          child: const Icon(Icons.download_done_rounded,
-                              size: 16, color: TvTokens.onAccent),
+                          decoration: BoxDecoration(
+                            color: TvAppTokens.of(context).accent,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            Icons.download_done_rounded,
+                            size: 16,
+                            color: TvAppTokens.of(context).onAccent,
+                          ),
                         ),
                       ),
                     if (progress != null && progress! > 0)
@@ -444,7 +481,9 @@ class CinemaPoster extends StatelessWidget {
                           alignment: Alignment.centerLeft,
                           child: FractionallySizedBox(
                             widthFactor: progress!.clamp(0.0, 1.0),
-                            child: Container(color: TvTokens.accent),
+                            child: Container(
+                              color: TvAppTokens.of(context).accent,
+                            ),
                           ),
                         ),
                       ),
@@ -453,17 +492,27 @@ class CinemaPoster extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 6),
-            Text(title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                    fontSize: TvDimens.caption,
-                    fontWeight: FontWeight.w700,
-                    color: focused ? TvTokens.accentBright : TvTokens.text)),
-            Text(caption ?? '',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 12, color: TvTokens.mutedDim)),
+            Text(
+              title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: TvDimens.caption,
+                fontWeight: FontWeight.w700,
+                color: focused
+                    ? TvAppTokens.of(context).accentBright
+                    : TvAppTokens.of(context).text,
+              ),
+            ),
+            Text(
+              caption ?? '',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 12,
+                color: TvAppTokens.of(context).mutedDim,
+              ),
+            ),
           ],
         );
       },
@@ -481,11 +530,14 @@ class _PosterImage extends StatelessWidget {
     final Widget fallback = Center(
       child: Padding(
         padding: const EdgeInsets.all(10),
-        child: Text(title,
-            textAlign: TextAlign.center,
-            maxLines: 4,
-            overflow: TextOverflow.ellipsis,
-            style: TvTokens.display(18, color: TvTokens.muted)),
+        child: Text(
+          title,
+          textAlign: TextAlign.center,
+          maxLines: 4,
+          overflow: TextOverflow.ellipsis,
+          style: TvAppTokens.of(context)
+              .display(18, color: TvAppTokens.of(context).muted),
+        ),
       ),
     );
     if (url == null || url!.isEmpty) return fallback;
@@ -512,14 +564,22 @@ class CinemaLoading extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
-          const SizedBox(
+          SizedBox(
             width: 22,
             height: 22,
-            child: CircularProgressIndicator(strokeWidth: 2.5, color: TvTokens.accent),
+            child: CircularProgressIndicator(
+              strokeWidth: 2.5,
+              color: TvAppTokens.of(context).accent,
+            ),
           ),
           const SizedBox(width: 14),
-          Text(label ?? context.l10n.tvCinemaLoading,
-              style: const TextStyle(fontSize: TvDimens.body, color: TvTokens.mutedDim)),
+          Text(
+            label ?? context.l10n.tvCinemaLoading,
+            style: TextStyle(
+              fontSize: TvDimens.body,
+              color: TvAppTokens.of(context).mutedDim,
+            ),
+          ),
         ],
       ),
     );
@@ -545,46 +605,50 @@ Future<void> showCinemaSheet(
   required String title,
   required List<CinemaSheetAction> actions,
 }) async {
-  final CinemaSheetAction? chosen = await Navigator.of(context).push<CinemaSheetAction>(
-    PageRouteBuilder<CinemaSheetAction>(
-      opaque: false,
-      barrierDismissible: true,
-      barrierColor: Colors.black.withValues(alpha: 0.6),
-      pageBuilder: (BuildContext ctx, _, __) => Material(
-        type: MaterialType.transparency,
-        child: Center(
-          child: Container(
-            width: 460,
-            padding: const EdgeInsets.all(26),
-            decoration: BoxDecoration(
-              color: TvTokens.surface3,
-              borderRadius: BorderRadius.circular(TvTokens.rCard),
-              border: Border.all(color: TvTokens.line),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: <Widget>[
-                Text(title,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TvTokens.display(26, color: TvTokens.text)),
-                const SizedBox(height: 18),
-                for (int i = 0; i < actions.length; i++) ...<Widget>[
-                  CinemaPill(
-                    icon: actions[i].icon,
-                    label: actions[i].label,
-                    autofocus: i == 0,
-                    onSelect: () => Navigator.of(ctx).pop(actions[i]),
-                  ),
-                  const SizedBox(height: 10),
-                ],
-              ],
+  final CinemaSheetAction? chosen = await Navigator.of(context)
+      .push<CinemaSheetAction>(
+        PageRouteBuilder<CinemaSheetAction>(
+          opaque: false,
+          barrierDismissible: true,
+          barrierColor: Colors.black.withValues(alpha: 0.6),
+          pageBuilder: (BuildContext ctx, _, __) => Material(
+            type: MaterialType.transparency,
+            child: Center(
+              child: Container(
+                width: 460,
+                padding: const EdgeInsets.all(26),
+                decoration: BoxDecoration(
+                  color: TvAppTokens.of(context).surface3,
+                  borderRadius: BorderRadius.circular(TvTokens.rCard),
+                  border: Border.all(color: TvAppTokens.of(context).line),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: <Widget>[
+                    Text(
+                      title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TvAppTokens.of(context)
+                          .display(26, color: TvAppTokens.of(context).text),
+                    ),
+                    const SizedBox(height: 18),
+                    for (int i = 0; i < actions.length; i++) ...<Widget>[
+                      CinemaPill(
+                        icon: actions[i].icon,
+                        label: actions[i].label,
+                        autofocus: i == 0,
+                        onSelect: () => Navigator.of(ctx).pop(actions[i]),
+                      ),
+                      const SizedBox(height: 10),
+                    ],
+                  ],
+                ),
+              ),
             ),
           ),
         ),
-      ),
-    ),
-  );
+      );
   if (chosen != null) await chosen.run();
 }

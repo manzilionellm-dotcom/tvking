@@ -26,6 +26,7 @@ import android.content.res.Configuration
 import android.os.Build
 import android.util.Log
 import android.util.Rational
+import com.manzilionellm.tvking_device.DeviceHardwareInfo
 import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -112,15 +113,9 @@ class MainActivity : FlutterFragmentActivity() {
                     // Android où l'app est installée (même partagée).
                     "getDeviceInfo" -> {
                         try {
-                            result.success(
-                                hashMapOf(
-                                    "model" to Build.MODEL,
-                                    "manufacturer" to Build.MANUFACTURER,
-                                    "release" to Build.VERSION.RELEASE,
-                                    "sdk" to Build.VERSION.SDK_INT.toString(),
-                                    "build" to Build.DISPLAY,
-                                ),
-                            )
+                            // Même contrat que le plugin auto-enregistré : cet
+                            // ancien handler ne doit pas masquer deviceKind.
+                            result.success(DeviceHardwareInfo.read(applicationContext))
                         } catch (e: Exception) {
                             result.success(null)
                         }

@@ -4,14 +4,10 @@
 import 'package:flutter/material.dart';
 
 import '../core/tv_dimens.dart';
-import '../core/tv_tokens.dart';
+import '../core/tv_app_tokens.dart';
 
 class TvShell extends StatelessWidget {
-  const TvShell({
-    super.key,
-    required this.child,
-    this.applySafeArea = true,
-  });
+  const TvShell({super.key, required this.child, this.applySafeArea = true});
 
   final Widget child;
   final bool applySafeArea;
@@ -20,7 +16,10 @@ class TvShell extends StatelessWidget {
   Widget build(BuildContext context) {
     return DecoratedBox(
       // Fond FULL-BLEED : radial or très sombre sur noir profond.
-      decoration: const BoxDecoration(color: TvTokens.bg, gradient: TvTokens.bgGradient),
+      decoration: BoxDecoration(
+        color: TvAppTokens.of(context).bg,
+        gradient: TvAppTokens.of(context).bgGradient,
+      ),
       // Material TRANSPARENT obligatoire : sans un Material ancêtre, Flutter
       // dessine chaque Text avec un double soulignement jaune (debug). On le
       // met en transparence pour laisser voir le dégradé Maison Noir.

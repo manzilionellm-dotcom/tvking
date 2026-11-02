@@ -20,9 +20,10 @@ import '../../../core/i18n/locale_repository.dart';
 import '../../../core/update/build_flags.dart';
 import '../../../core/update/play_store_update.dart';
 import '../../../core/update/update_service.dart';
-import '../core/tv_tokens.dart';
+import '../core/tv_app_tokens.dart';
 import '../../device/data/device_identity.dart';
 import '../../subscription/data/subscription_state.dart';
+import '../../pricing/presentation/tv_pricing_card.dart';
 import '../core/tv_dimens.dart';
 import '../../carousel/domain/carousel_config.dart';
 import '../../carousel/presentation/zuno_ring_carousel.dart';
@@ -272,7 +273,7 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
           color: const Color(0xFFFF5A4A),
         );
       case SubscriptionStatus.unknown:
-        return (label: context.l10n.tvStatusUnknown, color: TvTokens.mutedDim);
+        return (label: context.l10n.tvStatusUnknown, color: TvAppTokens.of(context).mutedDim);
     }
   }
 
@@ -302,11 +303,18 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
         value: _mac,
         mono: true,
         value2: _busy ? context.l10n.tvChecking : st.label,
-        value2Color: _busy ? TvTokens.muted : st.color,
+        value2Color: _busy ? TvAppTokens.of(context).muted : st.color,
         description:
             '${context.l10n.tvDeviceAddressHelp}  ·  OK = ${context.l10n.tvRefreshStatus}',
         onSelect: _busy ? () {} : _refresh,
       ),
+      if (!kIsPlayBuild)
+        _SettingEntry(
+          icon: Icons.local_offer_outlined,
+          title: context.l10n.pricingOffersTitle,
+          description: context.l10n.pricingOffersTitle,
+          onSelect: () => open(const TvPricingScreen()),
+        ),
       _SettingEntry(
         icon: Icons.settings_remote_rounded,
         title: context.l10n.tvRemoteTitle,
@@ -364,7 +372,7 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
             ? context.l10n.updateOpenPlayStore
             : context.l10n.tvUpdateTitle,
         value: _updateShort(),
-        value2Color: _upd == _UpdState.available ? TvTokens.accentBright : null,
+        value2Color: _upd == _UpdState.available ? TvAppTokens.of(context).accentBright : null,
         description: _updateLabel(context),
         onSelect: _onUpdatePressed,
       ),
@@ -381,7 +389,7 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
         value: _remoteAi
             ? context.l10n.tvVoiceRemoteAiOn
             : context.l10n.tvVoiceRemoteAiOff,
-        value2Color: _remoteAi ? TvTokens.accentBright : TvTokens.mutedDim,
+        value2Color: _remoteAi ? TvAppTokens.of(context).accentBright : TvAppTokens.of(context).mutedDim,
         description: context.l10n.tvVoiceRemoteAiHelp,
         onSelect: _toggleRemoteAi,
       ),
@@ -444,7 +452,7 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
               style: TextStyle(
                 fontSize: TvDimens.displayM,
                 fontWeight: FontWeight.w800,
-                color: TvTokens.text,
+                color: TvAppTokens.of(context).text,
               ),
             ),
             const Spacer(),
@@ -452,9 +460,9 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
               padding: const EdgeInsets.only(bottom: 8),
               child: Text(
                 context.l10n.tvRingHint,
-                style: TvTokens.ui(
+                style: TvAppTokens.of(context).ui(
                   TvDimens.caption,
-                  color: TvTokens.mutedDim,
+                  color: TvAppTokens.of(context).mutedDim,
                   spacing: 0.6,
                 ),
               ),
@@ -494,7 +502,7 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
                   cur.title,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TvTokens.display(
+                  style: TvAppTokens.of(context).display(
                     TvDimens.headline,
                     weight: FontWeight.w500,
                     spacing: 0.4,
@@ -506,9 +514,9 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
                   textAlign: TextAlign.center,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: TvTokens.ui(
+                  style: TvAppTokens.of(context).ui(
                     TvDimens.body,
-                    color: TvTokens.muted,
+                    color: TvAppTokens.of(context).muted,
                   ).copyWith(height: 1.35),
                 ),
               ],
@@ -524,9 +532,9 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
           context.l10n.tvPlayerDisclaimer,
           textAlign: TextAlign.center,
           maxLines: 2,
-          style: TvTokens.ui(
+          style: TvAppTokens.of(context).ui(
             TvDimens.caption,
-            color: TvTokens.mutedDim,
+            color: TvAppTokens.of(context).mutedDim,
           ).copyWith(height: 1.4),
         ),
       ],
@@ -584,7 +592,7 @@ class _SettingCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final Color top = Color.lerp(TvTokens.card, TvTokens.accentDeep, 0.12)!;
+    final Color top = Color.lerp(TvAppTokens.of(context).card, TvAppTokens.of(context).accentDeep, 0.12)!;
     final String? value = entry.value;
     final String? value2 = entry.value2;
     return Container(
@@ -595,9 +603,9 @@ class _SettingCard extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: <Color>[top, TvTokens.bg],
+          colors: <Color>[top, TvAppTokens.of(context).bg],
         ),
-        border: Border.all(color: TvTokens.tileBorder),
+        border: Border.all(color: TvAppTokens.of(context).tileBorder),
         boxShadow: elevated
             ? <BoxShadow>[
                 BoxShadow(
@@ -609,9 +617,9 @@ class _SettingCard extends StatelessWidget {
             : null,
       ),
       child: DecoratedBox(
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           borderRadius: _radius,
-          gradient: TvTokens.brandGlow,
+          gradient: TvAppTokens.of(context).brandGlow,
         ),
         child: Padding(
           padding: const EdgeInsets.all(TvDimens.gutter),
@@ -624,20 +632,20 @@ class _SettingCard extends StatelessWidget {
                 height: 52,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: TvTokens.accent.withValues(alpha: 0.12),
+                  color: TvAppTokens.of(context).accent.withValues(alpha: 0.12),
                   border: Border.all(
-                    color: TvTokens.accent.withValues(alpha: 0.35),
+                    color: TvAppTokens.of(context).accent.withValues(alpha: 0.35),
                   ),
                 ),
-                child: Icon(entry.icon, size: 26, color: TvTokens.accentBright),
+                child: Icon(entry.icon, size: 26, color: TvAppTokens.of(context).accentBright),
               ),
               const Spacer(),
-              const SizedBox(
+              SizedBox(
                 width: 28,
                 height: 2,
                 child: DecoratedBox(
                   decoration: BoxDecoration(
-                    color: TvTokens.accent,
+                    color: TvAppTokens.of(context).accent,
                     borderRadius: BorderRadius.all(Radius.circular(1)),
                   ),
                 ),
@@ -649,7 +657,7 @@ class _SettingCard extends StatelessWidget {
                 // « MENTIONS LÉGALES & CONDITIONS ») tiennent en entier.
                 maxLines: 3,
                 overflow: TextOverflow.ellipsis,
-                style: TvTokens.display(
+                style: TvAppTokens.of(context).display(
                   TvDimens.titleS,
                   weight: FontWeight.w500,
                   spacing: 0.6,
@@ -664,18 +672,18 @@ class _SettingCard extends StatelessWidget {
                   // La valeur monospace est la MAC : son ordre est invariant.
                   textDirection: entry.mono ? TextDirection.ltr : null,
                   style: entry.mono
-                      ? TvTokens.mono(
+                      ? TvAppTokens.of(context).mono(
                           TvDimens.caption,
-                          color: TvTokens.text,
+                          color: TvAppTokens.of(context).text,
                           spacing: 0.5,
                         )
-                      : TvTokens.ui(
+                      : TvAppTokens.of(context).ui(
                           TvDimens.caption,
                           weight: FontWeight.w500,
                           color:
                               entry.value2 == null && entry.value2Color != null
                               ? entry.value2Color!
-                              : TvTokens.muted,
+                              : TvAppTokens.of(context).muted,
                           spacing: 0.4,
                         ),
                 ),
@@ -686,10 +694,10 @@ class _SettingCard extends StatelessWidget {
                   value2,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TvTokens.ui(
+                  style: TvAppTokens.of(context).ui(
                     TvDimens.caption,
                     weight: FontWeight.w600,
-                    color: entry.value2Color ?? TvTokens.muted,
+                    color: entry.value2Color ?? TvAppTokens.of(context).muted,
                   ),
                 ),
               ],

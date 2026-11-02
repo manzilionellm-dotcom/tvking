@@ -17,6 +17,7 @@ import '../../sports/domain/sport_models.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
+import '../core/tv_app_tokens.dart';
 import 'tv_sports_status.dart';
 
 /// Catalogue VIP : les grandes équipes par sport. On stocke des NOMS ; au clic,
@@ -207,7 +208,7 @@ class _TvTeamPickerScreenState extends State<TvTeamPickerScreen> {
                   vertical: 14,
                 ),
                 decoration: BoxDecoration(
-                  color: TvTokens.card,
+                  color: TvAppTokens.of(context).card,
                   borderRadius: BorderRadius.circular(TvDimens.cardRadius),
                 ),
                 child: Text(
@@ -217,7 +218,9 @@ class _TvTeamPickerScreenState extends State<TvTeamPickerScreen> {
                   style: TextStyle(
                     fontSize: TvDimens.title,
                     fontWeight: FontWeight.w700,
-                    color: _q.isEmpty ? TvTokens.mutedDim : TvTokens.text,
+                    color: _q.isEmpty
+                        ? TvAppTokens.of(context).mutedDim
+                        : TvAppTokens.of(context).text,
                   ),
                 ),
               ),
@@ -230,7 +233,7 @@ class _TvTeamPickerScreenState extends State<TvTeamPickerScreen> {
                     style: TextStyle(
                       fontSize: TvDimens.label,
                       fontWeight: FontWeight.w600,
-                      color: TvTokens.live,
+                      color: TvAppTokens.of(context).live,
                     ),
                   ),
                 ),
@@ -244,13 +247,13 @@ class _TvTeamPickerScreenState extends State<TvTeamPickerScreen> {
 
   Widget _resultsView() {
     if (_resolving) {
-      return const Center(
+      return Center(
         child: SizedBox(
           width: 40,
           height: 40,
           child: CircularProgressIndicator(
             strokeWidth: 3,
-            color: TvTokens.accent,
+            color: TvAppTokens.of(context).accent,
           ),
         ),
       );
@@ -258,13 +261,13 @@ class _TvTeamPickerScreenState extends State<TvTeamPickerScreen> {
     // Requête vide → CATALOGUE VIP : on choisit une grande équipe en 1 clic.
     if (_q.trim().isEmpty) return _catalogView();
     if (_loading && _results.isEmpty) {
-      return const Center(
+      return Center(
         child: SizedBox(
           width: 38,
           height: 38,
           child: CircularProgressIndicator(
             strokeWidth: 3,
-            color: TvTokens.accent,
+            color: TvAppTokens.of(context).accent,
           ),
         ),
       );
@@ -277,7 +280,10 @@ class _TvTeamPickerScreenState extends State<TvTeamPickerScreen> {
       return Center(
         child: Text(
           context.l10n.tvNoTeamFound,
-          style: TextStyle(fontSize: TvDimens.body, color: TvTokens.mutedDim),
+          style: TextStyle(
+            fontSize: TvDimens.body,
+            color: TvAppTokens.of(context).mutedDim,
+          ),
         ),
       );
     }
@@ -290,7 +296,7 @@ class _TvTeamPickerScreenState extends State<TvTeamPickerScreen> {
         return TvFocusable(
           autofocus: i == 0,
           scale: TvFocusScale.medium,
-          baseColor: TvTokens.card,
+          baseColor: TvAppTokens.of(context).card,
           onSelect: () => Navigator.of(context).pop(t),
           child: Padding(
             padding: const EdgeInsets.all(12),
@@ -305,16 +311,19 @@ class _TvTeamPickerScreenState extends State<TvTeamPickerScreen> {
                           fit: BoxFit.contain,
                           memCacheWidth: 120,
                           fadeInDuration: const Duration(milliseconds: 150),
-                          placeholder: (_, __) => const Icon(
+                          placeholder: (_, __) => Icon(
                             Icons.shield_rounded,
-                            color: TvTokens.muted,
+                            color: TvAppTokens.of(context).muted,
                           ),
-                          errorWidget: (_, __, ___) => const Icon(
+                          errorWidget: (_, __, ___) => Icon(
                             Icons.shield_rounded,
-                            color: TvTokens.muted,
+                            color: TvAppTokens.of(context).muted,
                           ),
                         )
-                      : const Icon(Icons.shield_rounded, color: TvTokens.muted),
+                      : Icon(
+                          Icons.shield_rounded,
+                          color: TvAppTokens.of(context).muted,
+                        ),
                 ),
                 const SizedBox(width: 14),
                 Expanded(
@@ -329,7 +338,7 @@ class _TvTeamPickerScreenState extends State<TvTeamPickerScreen> {
                         style: TextStyle(
                           fontSize: TvDimens.title,
                           fontWeight: FontWeight.w700,
-                          color: TvTokens.text,
+                          color: TvAppTokens.of(context).text,
                         ),
                       ),
                       const SizedBox(height: 2),
@@ -342,7 +351,7 @@ class _TvTeamPickerScreenState extends State<TvTeamPickerScreen> {
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           fontSize: TvDimens.label,
-                          color: TvTokens.muted,
+                          color: TvAppTokens.of(context).muted,
                         ),
                       ),
                     ],
@@ -372,10 +381,10 @@ class _TvTeamPickerScreenState extends State<TvTeamPickerScreen> {
               'Rugby' => context.l10n.tvSportRugby,
               _ => sport,
             }).toUpperCase(),
-            style: TvTokens.ui(
+            style: TvAppTokens.of(context).ui(
               14,
               weight: FontWeight.w700,
-              color: TvTokens.mutedDim,
+              color: TvAppTokens.of(context).mutedDim,
               spacing: 1.5,
             ),
           ),
@@ -404,10 +413,14 @@ class _TvTeamPickerScreenState extends State<TvTeamPickerScreen> {
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           decoration: BoxDecoration(
-            color: focused ? TvTokens.accent : TvTokens.card,
+            color: focused
+                ? TvAppTokens.of(context).accent
+                : TvAppTokens.of(context).card,
             borderRadius: BorderRadius.circular(TvTokens.rButton),
             border: Border.all(
-              color: focused ? TvTokens.accent : TvTokens.lineSoft,
+              color: focused
+                  ? TvAppTokens.of(context).accent
+                  : TvAppTokens.of(context).lineSoft,
             ),
           ),
           child: Text(
@@ -415,7 +428,9 @@ class _TvTeamPickerScreenState extends State<TvTeamPickerScreen> {
             style: TextStyle(
               fontSize: TvDimens.titleS,
               fontWeight: FontWeight.w700,
-              color: focused ? TvTokens.onAccent : TvTokens.text,
+              color: focused
+                  ? TvAppTokens.of(context).onAccent
+                  : TvAppTokens.of(context).text,
             ),
           ),
         );
@@ -483,7 +498,7 @@ class _PickerKeyboard extends StatelessWidget {
           style: TextStyle(
             fontSize: TvDimens.displayS,
             fontWeight: FontWeight.w800,
-            color: TvTokens.text,
+            color: TvAppTokens.of(context).text,
           ),
         ),
         const SizedBox(height: 16),
@@ -528,7 +543,9 @@ class _Key extends StatelessWidget {
           return Container(
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: focused ? TvTokens.accent : TvTokens.sel,
+              color: focused
+                  ? TvAppTokens.of(context).accent
+                  : TvAppTokens.of(context).sel,
               borderRadius: BorderRadius.circular(TvDimens.cardRadius),
             ),
             child: Text(
@@ -536,7 +553,9 @@ class _Key extends StatelessWidget {
               style: TextStyle(
                 fontSize: TvDimens.title,
                 fontWeight: FontWeight.w700,
-                color: focused ? TvTokens.onAccent : TvTokens.text,
+                color: focused
+                    ? TvAppTokens.of(context).onAccent
+                    : TvAppTokens.of(context).text,
               ),
             ),
           );

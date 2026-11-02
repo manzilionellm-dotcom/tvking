@@ -18,6 +18,7 @@ import '../../../core/i18n/l10n_extension.dart';
 
 import '../../tv/core/tv_dimens.dart';
 import '../../tv/core/tv_tokens.dart';
+import '../../tv/core/tv_app_tokens.dart';
 import '../domain/panel_board.dart';
 import 'panel_button.dart';
 
@@ -63,9 +64,10 @@ class TvPromoBanner extends StatelessWidget {
                 fit: BoxFit.cover,
                 memCacheWidth: 1280,
                 fadeInDuration: const Duration(milliseconds: 200),
-                placeholder: (_, __) => const ColoredBox(color: TvTokens.card),
+                placeholder: (_, __) =>
+                    ColoredBox(color: TvAppTokens.of(context).card),
                 errorWidget: (_, __, ___) =>
-                    const ColoredBox(color: TvTokens.card),
+                    ColoredBox(color: TvAppTokens.of(context).card),
               ),
               // Voile gauche → droite pour garder les textes lisibles.
               const DecoratedBox(
@@ -91,9 +93,9 @@ class TvPromoBanner extends StatelessWidget {
                     vertical: 4,
                   ),
                   decoration: BoxDecoration(
-                    color: TvTokens.bg.withValues(alpha: 0.7),
+                    color: TvAppTokens.of(context).bg.withValues(alpha: 0.7),
                     borderRadius: BorderRadius.circular(TvTokens.rSmall),
-                    border: Border.all(color: TvTokens.line),
+                    border: Border.all(color: TvAppTokens.of(context).line),
                   ),
                   child: Text(
                     (switch (banner.label) {
@@ -102,10 +104,10 @@ class TvPromoBanner extends StatelessWidget {
                       'Info' => context.l10n.tvInformation,
                       _ => banner.label,
                     }).toUpperCase(),
-                    style: TvTokens.ui(
+                    style: TvAppTokens.of(context).ui(
                       TvDimens.caption,
                       weight: FontWeight.w700,
-                      color: TvTokens.muted,
+                      color: TvAppTokens.of(context).muted,
                     ),
                   ),
                 ),
@@ -123,10 +125,10 @@ class TvPromoBanner extends StatelessWidget {
                         banner.title,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: TvTokens.ui(
+                        style: TvAppTokens.of(context).ui(
                           TvDimens.title,
                           weight: FontWeight.w800,
-                          color: TvTokens.text,
+                          color: TvAppTokens.of(context).text,
                         ),
                       ),
                     if (banner.subtitle.isNotEmpty) ...<Widget>[
@@ -135,9 +137,9 @@ class TvPromoBanner extends StatelessWidget {
                         banner.subtitle,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: TvTokens.ui(
+                        style: TvAppTokens.of(context).ui(
                           TvDimens.label,
-                          color: TvTokens.muted,
+                          color: TvAppTokens.of(context).muted,
                         ),
                       ),
                     ],
@@ -171,9 +173,9 @@ class TvPromoBanner extends StatelessWidget {
                     children: <Widget>[
                       Text(
                         context.l10n.tvPhone,
-                        style: TvTokens.ui(
+                        style: TvAppTokens.of(context).ui(
                           TvDimens.caption,
-                          color: TvTokens.mutedDim,
+                          color: TvAppTokens.of(context).mutedDim,
                         ),
                       ),
                       const SizedBox(width: 10),

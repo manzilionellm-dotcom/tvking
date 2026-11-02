@@ -11,6 +11,18 @@ on:
       - 'patches/mobile-identity.patch'
       - 'patches/mobile-stability.patch'
       - 'android-app/ci/mobile/**'
+      - 'android-app/lib/features/ads/**'
+      - 'android-app/lib/features/simple_home/data/announcement_repository.dart'
+      - 'android-app/lib/features/simple_home/presentation/widgets/announcement*'
+      - 'android-app/lib/features/device/data/device_identity.dart'
+      - 'android-app/lib/features/subscription/data/subscription_backend.dart'
+      - 'android-app/lib/main.dart'
+      - 'android-app/packages/tvking_device/**'
+      - 'android-app/android_overlay/google_cast/MainActivity.kt'
+      - 'android-app/test/features/ads/**'
+      - 'android-app/test/features/simple_home/**'
+      - 'android-app/test/features/device/device_info_retry_test.dart'
+      - 'android-app/test/features/subscription/heartbeat_device_kind_test.dart'
       - '.github/workflows/mobile-panel-sync-tests.yml'
 
 # Tests du vrai code mobile préparé par la chaîne de livraison. Aucun
@@ -55,6 +67,9 @@ jobs:
       - name: Vérifier la numérotation des APK publiés
         working-directory: phone
         run: bash ci/build_label_test.sh
+      - name: Vérifier la classification du matériel sans appareil client
+        working-directory: phone
+        run: bash ci/test-device-hardware-kind.sh
       - name: Analyser le code mobile complet
         working-directory: phone
         run: flutter analyze --no-fatal-infos --no-fatal-warnings

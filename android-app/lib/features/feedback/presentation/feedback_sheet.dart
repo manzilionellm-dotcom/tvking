@@ -9,6 +9,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_colors.dart';
+import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../data/feedback_repository.dart';
 
@@ -35,8 +36,10 @@ class _FeedbackSheet extends StatefulWidget {
 
 class _FeedbackSheetState extends State<_FeedbackSheet> {
   final TextEditingController _ctrl = TextEditingController();
+  final String _prompt = FeedbackRepository.instance.message;
   int _rating = 0;
   bool _busy = false;
+  bool _failed = false;
 
   @override
   void dispose() {
@@ -50,17 +53,22 @@ class _FeedbackSheetState extends State<_FeedbackSheet> {
       Navigator.of(context).pop();
       return;
     }
-    setState(() => _busy = true);
-    final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
-    await FeedbackRepository.instance.submit(text: text, rating: _rating);
+    if (_busy) return;
+    setState(() {
+      _busy = true;
+      _failed = false;
+    });
+    final sent = await FeedbackRepository.instance
+        .submit(text: text, rating: _rating, prompt: _prompt);
     if (!mounted) return;
-    Navigator.of(context).pop();
-    messenger.showSnackBar(
-      const SnackBar(
-        behavior: SnackBarBehavior.floating,
-        content: Text('Merci pour ton avis 🙏'),
-      ),
-    );
+    if (sent) {
+      Navigator.of(context).pop();
+    } else {
+      setState(() {
+        _busy = false;
+        _failed = true;
+      });
+    }
   }
 
   @override
@@ -94,7 +102,7 @@ class _FeedbackSheetState extends State<_FeedbackSheet> {
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  FeedbackRepository.instance.message,
+                  _prompt,
                   style: AppTextStyles.headlineMedium.copyWith(fontSize: 17),
                 ),
                 const SizedBox(height: 14),
@@ -120,8 +128,10 @@ class _FeedbackSheetState extends State<_FeedbackSheet> {
                   controller: _ctrl,
                   maxLines: 4,
                   maxLength: 800,
-                  decoration: const InputDecoration(
-                    hintText: 'Écris ton avis ou comment améliorer l\'app…',
+                  enabled: !_busy,
+                  decoration: InputDecoration(
+                    hintText: _prompt,
+                    errorText: _failed ? context.l10n.buttonRetry : null,
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -137,7 +147,9 @@ class _FeedbackSheetState extends State<_FeedbackSheet> {
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
                         : const Icon(Icons.send_rounded, size: 18),
-                    label: const Text('Envoyer'),
+                    label: Text(_failed
+                        ? context.l10n.buttonRetry
+                        : context.l10n.buttonSend),
                   ),
                 ),
                 SizedBox(
@@ -146,10 +158,11 @@ class _FeedbackSheetState extends State<_FeedbackSheet> {
                     onPressed: _busy
                         ? null
                         : () {
-                            FeedbackRepository.instance.markDone();
+                            FeedbackRepository.instance
+                                .markDone(prompt: _prompt);
                             Navigator.of(context).pop();
                           },
-                    child: const Text('Plus tard'),
+                    child: Text(context.l10n.tvLater),
                   ),
                 ),
               ],

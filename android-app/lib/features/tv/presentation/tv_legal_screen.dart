@@ -20,7 +20,7 @@ import '../../../core/i18n/l10n_extension.dart';
 import 'package:flutter/services.dart';
 
 import '../core/tv_dimens.dart';
-import '../core/tv_tokens.dart';
+import '../core/tv_app_tokens.dart';
 
 class TvLegalScreen extends StatefulWidget {
   const TvLegalScreen({super.key});
@@ -92,7 +92,7 @@ class _TvLegalScreenState extends State<TvLegalScreen> {
               style: TextStyle(
                 fontSize: TvDimens.displayM,
                 fontWeight: FontWeight.w800,
-                color: TvTokens.text,
+                color: TvAppTokens.of(context).text,
               ),
             ),
             const SizedBox(height: 8),
@@ -100,7 +100,7 @@ class _TvLegalScreenState extends State<TvLegalScreen> {
               context.l10n.tvLegalLead,
               style: TextStyle(
                 fontSize: TvDimens.body,
-                color: TvTokens.mutedDim,
+                color: TvAppTokens.of(context).mutedDim,
               ),
             ),
             const SizedBox(height: 24),
@@ -110,7 +110,7 @@ class _TvLegalScreenState extends State<TvLegalScreen> {
                 style: TextStyle(
                   fontSize: TvDimens.title,
                   fontWeight: FontWeight.w800,
-                  color: TvTokens.accentBright,
+                  color: TvAppTokens.of(context).accentBright,
                 ),
               ),
               const SizedBox(height: 8),
@@ -121,7 +121,7 @@ class _TvLegalScreenState extends State<TvLegalScreen> {
                   style: TextStyle(
                     fontSize: TvDimens.body,
                     height: 1.5,
-                    color: TvTokens.muted,
+                    color: TvAppTokens.of(context).muted,
                   ),
                 ),
               ),

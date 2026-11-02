@@ -46,7 +46,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../tv/core/tv_dimens.dart';
-import '../../tv/core/tv_tokens.dart';
+import '../../tv/core/tv_app_tokens.dart';
 import '../domain/carousel_config.dart';
 import '../domain/carousel_item.dart';
 import 'carousel_controller.dart';
@@ -55,7 +55,10 @@ import 'carousel_sound.dart';
 
 /// Construit la carte n° [index]. [selected] = carte au centre.
 typedef RingCardBuilder = Widget Function(
-    BuildContext context, int index, bool selected);
+  BuildContext context,
+  int index,
+  bool selected,
+);
 
 class ZunoRingCarousel extends StatefulWidget {
   /// Anneau d'AFFICHES (films / séries).
@@ -68,25 +71,25 @@ class ZunoRingCarousel extends StatefulWidget {
     this.focusNode,
     ValueChanged<CarouselItem>? onSelected,
     ValueChanged<CarouselItem>? onFocusChanged,
-  })  : itemCount = items.length,
-        cardBuilder = ((BuildContext c, int i, bool sel) => CarouselPosterCard(
-              item: items[i],
-              width: config.cardWidth,
-              height: config.cardHeight,
-              elevated: sel,
-            )),
-        semanticLabel = ((int i) => items[i].title),
-        onSelectedIndex = onSelected == null
-            ? null
-            : ((int i) {
-                onSelected(items[i]);
-              }),
-        onFocusIndex = onFocusChanged == null
-            ? null
-            : ((int i) {
-                onFocusChanged(items[i]);
-              }),
-        cardKey = ((int i) => items[i].id);
+  }) : itemCount = items.length,
+       cardBuilder = ((BuildContext c, int i, bool sel) => CarouselPosterCard(
+         item: items[i],
+         width: config.cardWidth,
+         height: config.cardHeight,
+         elevated: sel,
+       )),
+       semanticLabel = ((int i) => items[i].title),
+       onSelectedIndex = onSelected == null
+           ? null
+           : ((int i) {
+               onSelected(items[i]);
+             }),
+       onFocusIndex = onFocusChanged == null
+           ? null
+           : ((int i) {
+               onFocusChanged(items[i]);
+             }),
+       cardKey = ((int i) => items[i].id);
 
   /// Anneau de cartes LIBRES (ex. Réglages).
   const ZunoRingCarousel.builder({
@@ -165,15 +168,17 @@ class _ZunoRingCarouselState extends State<ZunoRingCarousel>
     _focusT = AnimationController(vsync: this, duration: TvDimens.focusAnim);
     _idle = AnimationController(vsync: this, duration: _cfg.idlePeriod);
     _idleIn = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 900));
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    );
     _focus.addListener(_onFocusChange);
     _scheduleIdle();
   }
 
   ZunoCarouselController _newController() => ZunoCarouselController(
-        count: math.max(1, widget.itemCount),
-        initialIndex: widget.initialIndex,
-      );
+    count: math.max(1, widget.itemCount),
+    initialIndex: widget.initialIndex,
+  );
 
   @override
   void didUpdateWidget(covariant ZunoRingCarousel old) {
@@ -230,8 +235,9 @@ class _ZunoRingCarouselState extends State<ZunoRingCarousel>
   void _go(int delta) {
     if (widget.itemCount < 2 || delta == 0) return;
     _touch();
-    final double base =
-        _snap.isAnimating ? _to : _ctrl.position.roundToDouble();
+    final double base = _snap.isAnimating
+        ? _to
+        : _ctrl.position.roundToDouble();
     _animateTo(base + delta);
   }
 
@@ -382,8 +388,12 @@ class _ZunoRingCarouselState extends State<ZunoRingCarousel>
               child: ClipRect(
                 clipBehavior: Clip.hardEdge,
                 child: AnimatedBuilder(
-                  animation: Listenable.merge(
-                      <Listenable>[_ctrl, _focusT, _idle, _idleIn]),
+                  animation: Listenable.merge(<Listenable>[
+                    _ctrl,
+                    _focusT,
+                    _idle,
+                    _idleIn,
+                  ]),
                   builder: (BuildContext context, _) => _buildRing(context),
                 ),
               ),
@@ -400,7 +410,8 @@ class _ZunoRingCarouselState extends State<ZunoRingCarousel>
     final double reach = cfg.visibleSide + 1.0;
 
     // Respiration : sinusoïde douce, en fondu d'entrée.
-    final double breath = math.sin(_idle.value * 2 * math.pi) *
+    final double breath =
+        math.sin(_idle.value * 2 * math.pi) *
         Curves.easeInOut.transform(_idleIn.value);
     final double idleTheta = breath * cfg.idleAmplitudeDeg * math.pi / 180;
 
@@ -439,13 +450,27 @@ class _ZunoRingCarouselState extends State<ZunoRingCarousel>
         ),
         for (final _Placed p in placed)
           _buildCard(
-              context, p.index, p.d, angleStep, reach, idleTheta, breath),
+            context,
+            p.index,
+            p.d,
+            angleStep,
+            reach,
+            idleTheta,
+            breath,
+          ),
       ],
     );
   }
 
-  Widget _buildCard(BuildContext context, int index, double d, double angleStep,
-      double reach, double idleTheta, double breath) {
+  Widget _buildCard(
+    BuildContext context,
+    int index,
+    double d,
+    double angleStep,
+    double reach,
+    double idleTheta,
+    double breath,
+  ) {
     final CarouselConfig cfg = _cfg;
     final double t = d.abs();
     final double theta = -d * angleStep + idleTheta;
@@ -458,8 +483,10 @@ class _ZunoRingCarouselState extends State<ZunoRingCarousel>
     scale *= 1 + (cfg.selectedScale - 1) * focusT * centerness;
     scale *= 1 + cfg.idleScaleAmplitude * breath * centerness;
 
-    final double visible =
-        math.max(cfg.sideMinOpacity, 1 - cfg.sideOpacityStep * t);
+    final double visible = math.max(
+      cfg.sideMinOpacity,
+      1 - cfg.sideOpacityStep * t,
+    );
     final double edge = (reach - t).clamp(0.0, 1.0);
     final double veil = (1 - visible * edge).clamp(0.0, 1.0);
     final double glow = cfg.glowOpacity * focusT * centerness;
@@ -472,8 +499,9 @@ class _ZunoRingCarouselState extends State<ZunoRingCarousel>
       ..scaleByDouble(scale, scale, 1, 1);
 
     final bool center = t < 0.5;
-    const BorderRadius radius =
-        BorderRadius.all(Radius.circular(TvDimens.cardRadius));
+    const BorderRadius radius = BorderRadius.all(
+      Radius.circular(TvDimens.cardRadius),
+    );
     return Transform(
       key: ValueKey<String>(widget.cardKey?.call(index) ?? 'c$index'),
       alignment: Alignment.center,
@@ -506,8 +534,8 @@ class _ZunoRingCarouselState extends State<ZunoRingCarousel>
                           borderRadius: radius,
                           boxShadow: <BoxShadow>[
                             BoxShadow(
-                              color:
-                                  TvTokens.accentBright.withValues(alpha: glow),
+                              color: TvAppTokens.of(context).accentBright
+                                  .withValues(alpha: glow),
                               blurRadius: cfg.glowBlur,
                               spreadRadius: TvDimens.focusGlowSpread,
                             ),
@@ -529,7 +557,7 @@ class _ZunoRingCarouselState extends State<ZunoRingCarousel>
                         decoration: BoxDecoration(
                           borderRadius: radius,
                           border: Border.all(
-                            color: TvTokens.accentBright
+                            color: TvAppTokens.of(context).accentBright
                                 .withValues(alpha: focusT * centerness),
                             width: TvDimens.focusOutline,
                           ),
@@ -542,7 +570,8 @@ class _ZunoRingCarouselState extends State<ZunoRingCarousel>
                     child: IgnorePointer(
                       child: DecoratedBox(
                         decoration: BoxDecoration(
-                          color: TvTokens.bg.withValues(alpha: veil),
+                          color: TvAppTokens.of(context).bg
+                              .withValues(alpha: veil),
                           borderRadius: radius,
                         ),
                       ),

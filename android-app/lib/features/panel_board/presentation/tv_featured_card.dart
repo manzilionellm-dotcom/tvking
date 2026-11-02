@@ -15,6 +15,7 @@ import '../../../core/i18n/l10n_extension.dart';
 import '../../channels/domain/channel.dart';
 import '../../tv/core/tv_dimens.dart';
 import '../../tv/core/tv_tokens.dart';
+import '../../tv/core/tv_app_tokens.dart';
 import 'panel_button.dart';
 
 class TvFeaturedCard extends StatelessWidget {
@@ -36,9 +37,9 @@ class TvFeaturedCard extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 12),
       child: DecoratedBox(
         decoration: BoxDecoration(
-          color: TvTokens.card,
+          color: TvAppTokens.of(context).card,
           borderRadius: BorderRadius.circular(TvTokens.rCard),
-          border: Border.all(color: TvTokens.line),
+          border: Border.all(color: TvAppTokens.of(context).line),
         ),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -65,18 +66,18 @@ class TvFeaturedCard extends StatelessWidget {
                   children: <Widget>[
                     Row(
                       children: <Widget>[
-                        const Icon(
+                        Icon(
                           Icons.star_rounded,
                           size: 16,
-                          color: TvTokens.accentBright,
+                          color: TvAppTokens.of(context).accentBright,
                         ),
                         const SizedBox(width: 6),
                         Text(
                           context.l10n.tvPickOfDay.toUpperCase(),
-                          style: TvTokens.ui(
+                          style: TvAppTokens.of(context).ui(
                             TvDimens.caption,
                             weight: FontWeight.w700,
-                            color: TvTokens.accentBright,
+                            color: TvAppTokens.of(context).accentBright,
                           ),
                         ),
                       ],
@@ -86,10 +87,10 @@ class TvFeaturedCard extends StatelessWidget {
                       channel.cleanName,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TvTokens.ui(
+                      style: TvAppTokens.of(context).ui(
                         TvDimens.titleS,
                         weight: FontWeight.w800,
-                        color: TvTokens.text,
+                        color: TvAppTokens.of(context).text,
                       ),
                     ),
                     if (note.trim().isNotEmpty) ...<Widget>[
@@ -98,9 +99,9 @@ class TvFeaturedCard extends StatelessWidget {
                         note.trim(),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                        style: TvTokens.ui(
+                        style: TvAppTokens.of(context).ui(
                           TvDimens.label,
-                          color: TvTokens.muted,
+                          color: TvAppTokens.of(context).muted,
                         ),
                       ),
                     ],
@@ -129,16 +130,16 @@ class _Initials extends StatelessWidget {
   Widget build(BuildContext context) {
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: TvTokens.tile,
+        color: TvAppTokens.of(context).tile,
         borderRadius: BorderRadius.circular(TvTokens.rSmall),
       ),
       child: Center(
         child: Text(
           channel.initials,
-          style: TvTokens.ui(
+          style: TvAppTokens.of(context).ui(
             TvDimens.label,
             weight: FontWeight.w800,
-            color: TvTokens.muted,
+            color: TvAppTokens.of(context).muted,
           ),
         ),
       ),

@@ -217,8 +217,8 @@ abstract final class SubscriptionBackend {
     try {
       // Infos appareil → le panel recense chaque Android où l'app tourne
       // (même partagée via WhatsApp), avec son modèle + numéro de build.
-      final Map<String, String> info =
-          await DeviceIdentity.instance.deviceInfo();
+      final Map<String, String> info = await DeviceIdentity.instance
+          .deviceInfo();
       // ANDROID_ID brut (graine de la MAC) + version lisible de l'app : le
       // panel pro peut ainsi rechercher/vérifier par identifiant Android réel
       // et afficher la version installée.
@@ -231,12 +231,23 @@ abstract final class SubscriptionBackend {
         'android': info['release'] ?? '',
         'sdk': info['sdk'] ?? '',
         'build': info['build'] ?? '',
+        // Matériel réel, indépendant du produit `platform` et de la capacité
+        // Cast. Un ancien binaire sans ce champ reste explicitement inconnu.
+        'deviceKind':
+            const <String>{
+              'android_tv',
+              'fire_tv',
+              'android_phone',
+              'android_tablet',
+            }.contains(info['deviceKind'])
+            ? info['deviceKind']
+            : 'unknown',
         'androidId': androidId,
         'appVersion': appVersion,
         'appBuild': kBuildTs,
         // Chaîne en cours de visionnage (vide si rien) → panel « En ligne ».
         'channel': NowPlaying.instance.current,
-        // 📱 mobile / 📺 tv → le panel distingue les deux apps.
+        // Namespace PRODUIT inchangé : mobile = 7 MOTION, tv = ZUNO.
         'platform': AppPlatform.id,
         // INVENTAIRE des sources réellement présentes sur l'appareil (celles
         // poussées par le panel ET celles que le client a ajoutées lui-même).
@@ -284,8 +295,7 @@ abstract final class SubscriptionBackend {
   /// gardé dans un try/catch pour ne jamais faire échouer le heartbeat.
   static List<Map<String, Object?>> _sourcesInventory() {
     try {
-      final List<Playlist> all =
-          PlaylistRepository.instance.currentPlaylists;
+      final List<Playlist> all = PlaylistRepository.instance.currentPlaylists;
       return all.take(5).map((Playlist p) {
         final bool xtream = p.type == PlaylistType.xtream;
         return <String, Object?>{
@@ -329,9 +339,7 @@ abstract final class SubscriptionBackend {
       final http.Response resp = await http
           .get(
             Uri.parse('$kSubscriptionBaseUrl/api/status/$mac'),
-            headers: const <String, String>{
-              'Accept': 'application/json',
-            },
+            headers: const <String, String>{'Accept': 'application/json'},
           )
           .timeout(const Duration(seconds: 6));
       if (resp.statusCode != 200) return RemoteStatusRead.offline;

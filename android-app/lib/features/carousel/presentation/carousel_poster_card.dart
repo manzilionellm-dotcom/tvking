@@ -24,7 +24,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../../tv/core/tv_dimens.dart';
-import '../../tv/core/tv_tokens.dart';
+import '../../tv/core/tv_app_tokens.dart';
 import '../domain/carousel_item.dart';
 
 class CarouselPosterCard extends StatelessWidget {
@@ -43,8 +43,9 @@ class CarouselPosterCard extends StatelessWidget {
   /// Carte centrale : reçoit l'ombre portée qui la « soulève » du fond.
   final bool elevated;
 
-  static const BorderRadius _radius =
-      BorderRadius.all(Radius.circular(TvDimens.cardRadius));
+  static const BorderRadius _radius = BorderRadius.all(
+    Radius.circular(TvDimens.cardRadius),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -56,7 +57,7 @@ class CarouselPosterCard extends StatelessWidget {
       child: DecoratedBox(
         decoration: BoxDecoration(
           borderRadius: _radius,
-          color: TvTokens.card,
+          color: TvAppTokens.of(context).card,
           boxShadow: elevated
               ? <BoxShadow>[
                   BoxShadow(
@@ -76,7 +77,7 @@ class CarouselPosterCard extends StatelessWidget {
             position: DecorationPosition.foreground,
             decoration: BoxDecoration(
               borderRadius: _radius,
-              border: Border.all(color: TvTokens.tileBorder),
+              border: Border.all(color: TvAppTokens.of(context).tileBorder),
             ),
             child: url == null || url.isEmpty
                 ? generated
@@ -112,18 +113,21 @@ class _GeneratedPoster extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final Color top = Color.lerp(
-        TvTokens.card, TvTokens.accentDeep, _tintFor(item.category))!;
+      TvAppTokens.of(context).card,
+      TvAppTokens.of(context).accentDeep,
+      _tintFor(item.category),
+    )!;
     return DecoratedBox(
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: <Color>[top, TvTokens.bg],
+          colors: <Color>[top, TvAppTokens.of(context).bg],
         ),
       ),
       child: DecoratedBox(
         // Lumière lointaine en haut (même halo que le branding Zuno).
-        decoration: const BoxDecoration(gradient: TvTokens.brandGlow),
+        decoration: BoxDecoration(gradient: TvAppTokens.of(context).brandGlow),
         child: Padding(
           padding: const EdgeInsets.all(TvDimens.gutter),
           child: Column(
@@ -131,12 +135,12 @@ class _GeneratedPoster extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
               // Filet or : signature discrète, rappel du logo.
-              const SizedBox(
+              SizedBox(
                 width: 28,
                 height: 2,
                 child: DecoratedBox(
                   decoration: BoxDecoration(
-                    color: TvTokens.accent,
+                    color: TvAppTokens.of(context).accent,
                     borderRadius: BorderRadius.all(Radius.circular(1)),
                   ),
                 ),
@@ -146,26 +150,30 @@ class _GeneratedPoster extends StatelessWidget {
                 item.title.toUpperCase(),
                 maxLines: 3,
                 overflow: TextOverflow.ellipsis,
-                style: TvTokens.display(
-                  TvDimens.title,
-                  weight: FontWeight.w500,
-                  spacing: 0.6,
-                ).copyWith(height: 1.12),
+                style: TvAppTokens.of(context)
+                    .display(
+                      TvDimens.title,
+                      weight: FontWeight.w500,
+                      spacing: 0.6,
+                    )
+                    .copyWith(height: 1.12),
               ),
               if (item.year != null) ...<Widget>[
                 const SizedBox(height: 8),
                 Text(
                   '${item.year}',
-                  style: TvTokens.ui(
-                    TvDimens.caption,
-                    weight: FontWeight.w500,
-                    color: TvTokens.muted,
-                    spacing: 1.2,
-                  ).copyWith(
-                    fontFeatures: const <FontFeature>[
-                      FontFeature.tabularFigures()
-                    ],
-                  ),
+                  style: TvAppTokens.of(context)
+                      .ui(
+                        TvDimens.caption,
+                        weight: FontWeight.w500,
+                        color: TvAppTokens.of(context).muted,
+                        spacing: 1.2,
+                      )
+                      .copyWith(
+                        fontFeatures: const <FontFeature>[
+                          FontFeature.tabularFigures(),
+                        ],
+                      ),
                 ),
               ],
             ],

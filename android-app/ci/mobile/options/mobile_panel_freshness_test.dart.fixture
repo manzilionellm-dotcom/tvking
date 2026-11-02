@@ -1,0 +1,178 @@
+// Vrai traitement WebSocket téléphone : un ACK attend la lecture post-ordre.
+import 'dart:async';
+import 'dart:convert';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:package_info_plus/package_info_plus.dart';
+import 'package:tv_king/core/app/panel_live_wait.dart';
+import 'package:tv_king/features/device/data/device_identity.dart';
+import 'package:tv_king/features/simple_home/data/announcement_repository.dart';
+import 'package:tv_king/features/simple_home/data/home_layout_repository.dart';
+import 'package:tv_king/features/country_home/data/featured_repository.dart';
+import 'package:tv_king/features/pricing/data/pricing_repository.dart';
+import 'package:tv_king/features/playlists/data/default_servers.dart';
+
+void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  const mac = 'MK:11:22:33:44:55';
+  final phone = PanelLiveWait.instance;
+  var sequence = 10000;
+  setUp(() {
+    phone.stop();
+    SharedPreferences.setMockInitialValues({
+      'device.virtual_mac.v1': mac,
+      'device.secret.v1': 'synthetic-fixture-secret-at-least-32-characters',
+    });
+    DeviceIdentity.instance.debugResetCache();
+    PackageInfo.setMockInitialValues(
+        appName: '7 MOTION',
+        packageName: 'com.manzilionellm.tvking',
+        version: '0.3.8',
+        buildNumber: '38',
+        buildSignature: '');
+    AnnouncementRepository.resetForTesting();
+    PricingRepository.resetForTesting();
+    DefaultServersApi.resetForTesting();
+  });
+  tearDown(() {
+    phone.stop();
+    AnnouncementRepository.resetForTesting();
+    PricingRepository.resetForTesting();
+    DefaultServersApi.resetForTesting();
+  });
+  const freshness = <String, (String, String, String)>{
+    'message': (
+      '/api/announcement',
+      '{"id":72,"title":"old","body":"Texte"}',
+      '{"id":73,"title":"new","body":"Texte"}'
+    ),
+    'home': (
+      '/api/home-layout',
+      '{"items":[{"key":"recent","ribbon":"old"}]}',
+      '{"items":[{"key":"recent","ribbon":"new"}]}'
+    ),
+    'featured': (
+      '/api/featured',
+      '{"name":"old","note":""}',
+      '{"name":"new","note":""}'
+    ),
+    'pricing': (
+      '/api/pricing',
+      '{"configured":true,"currency":"EUR","lifetime":"10"}',
+      '{"configured":true,"currency":"EUR","lifetime":"20"}'
+    ),
+    'servers': (
+      '/api/servers',
+      '{"servers":[{"id":"1","label":"old","url":"https://old.invalid"}]}',
+      '{"servers":[{"id":"1","label":"new","url":"https://new.invalid"}]}'
+    ),
+  };
+
+  Future<void> uiRead(String kind) async {
+    switch (kind) {
+      case 'message':
+        await AnnouncementRepository.fetchLatest();
+      case 'home':
+        await HomeLayoutRepository.instance.refresh();
+      case 'featured':
+        await FeaturedRepository.instance.refresh();
+      case 'pricing':
+        await PricingRepository.fetch();
+      case 'servers':
+        await DefaultServersApi.fetch(forceRefresh: true);
+    }
+  }
+
+  String currentValue(String kind) => switch (kind) {
+        'message' => AnnouncementRepository.latest.value!.title,
+        'home' => HomeLayoutRepository.instance.config('recent')!.ribbon,
+        'featured' => FeaturedRepository.instance.name,
+        'pricing' => PricingRepository.current.lifetime,
+        'servers' => DefaultServersApi.current.value.single.label,
+        _ => throw StateError('type de recette inconnu'),
+      };
+
+  for (final entry in freshness.entries) {
+    for (final status in [200, 503]) {
+      test(
+          'téléphone ${entry.key} : pas de APPLIED sur une lecture pré-ordre, HTTP $status',
+          () async {
+        final oldStarted = Completer<void>();
+        final newStarted = Completer<void>();
+        final received = Completer<void>();
+        final oldResponse = Completer<http.Response>();
+        final newResponse = Completer<http.Response>();
+        final states = <String>[];
+        var reads = 0;
+        phone.clientFactory = () => MockClient((request) async {
+              expect(request.method, 'POST');
+              expect(request.url.path, '/api/box/ack/$mac');
+              final body = jsonDecode(request.body) as Map<String, dynamic>;
+              final ack =
+                  (body['orders'] as List).single as Map<String, dynamic>;
+              states.add(ack['state'] as String);
+              if (ack['state'] == 'received') received.complete();
+              return http.Response(
+                  jsonEncode({
+                    'results': [
+                      {
+                        'order_id': ack['order_id'],
+                        'status': 200,
+                        'state': ack['state']
+                      },
+                    ]
+                  }),
+                  200);
+            });
+        await http.runWithClient(() async {
+          final ui = uiRead(entry.key);
+          await oldStarted.future.timeout(const Duration(seconds: 2));
+          final seq = ++sequence;
+          final processing = phone.acceptSocketFrame({
+            'mac': mac,
+            'seq': seq,
+            'type': entry.key,
+            'order_id': 'mobile_fresh_$seq',
+          });
+          final result = expectLater(
+              processing, status == 200 ? completes : throwsA(anything));
+          await received.future.timeout(const Duration(seconds: 2));
+          oldResponse.complete(http.Response(entry.value.$2, 200));
+          await ui;
+          await newStarted.future.timeout(const Duration(seconds: 2));
+          expect(reads, 2);
+          expect(states, ['received']);
+          expect(
+              currentValue(entry.key), entry.key == 'pricing' ? '10' : 'old');
+          newResponse.complete(http.Response(
+              status == 200 ? entry.value.$3 : 'unavailable', status));
+          await result;
+          expect(
+              states, status == 200 ? ['received', 'applied'] : ['received']);
+          expect(
+              currentValue(entry.key),
+              status == 200
+                  ? (entry.key == 'pricing' ? '20' : 'new')
+                  : (entry.key == 'pricing' ? '10' : 'old'));
+          final prefs = await SharedPreferences.getInstance();
+          expect(prefs.getInt('zuno.mobile.live_wait_cursor.v2.$mac'),
+              status == 200 ? seq : null);
+        },
+            () => MockClient((request) async {
+                  expect(request.method, 'GET');
+                  expect(request.url.path, entry.value.$1);
+                  reads++;
+                  if (reads == 1) {
+                    oldStarted.complete();
+                    return oldResponse.future;
+                  }
+                  expect(reads, 2);
+                  newStarted.complete();
+                  return newResponse.future;
+                }));
+      });
+    }
+  }
+}

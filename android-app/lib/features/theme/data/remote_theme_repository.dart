@@ -7,57 +7,59 @@
 //    - couleur d'accent (hex) → AccentController.applyCustom
 //
 //  Best-effort : si le réseau échoue ou que rien n'est configuré, l'app
-//  garde ses défauts (The Few, braise). Le fond clair/blanc (`bg`)
-//  est lu mais pas encore appliqué (l'app est conçue en sombre — étape
-//  suivante). Aucune dépendance au cast.
+//  garde le dernier thème valide. Les parcours TV utilisent désormais la
+//  palette contextuelle (clair/sombre compris), sans recolorer le Cast.
 // =========================================================
 
 import 'dart:convert';
 
-import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../../../core/app/app_platform.dart';
 import '../../../core/branding/brand_config.dart';
 import '../../../core/theme/accent_controller.dart';
+import '../../../core/theme/remote_theme_settings.dart';
+import '../../../core/theme/theme_mode_repository.dart';
 import '../../subscription/data/subscription_backend.dart';
 
 abstract final class RemoteThemeRepository {
-  /// Récupère le thème distant et l'applique (nom + couleur d'accent).
-  static Future<void> fetchAndApply() async {
+  static final ValueNotifier<RemoteThemeSettings> current =
+      ValueNotifier<RemoteThemeSettings>(const RemoteThemeSettings());
+  static int _request = 0;
+
+  /// Récupère le thème distant. Une réponse ancienne ne peut pas annuler
+  /// une modification plus récente reçue sur le canal du panel.
+  static Future<void> fetchAndApply({bool strict = false}) async {
+    final request = ++_request;
     try {
       // Thème PAR PLATEFORME : le mobile lit le thème mobile, DeFew TV
       // lit le thème TV (?platform=tv).
       final http.Response resp = await http
-          .get(Uri.parse('$kSubscriptionBaseUrl/api/theme?platform=${AppPlatform.id}'))
+          .get(
+            Uri.parse(
+              '$kSubscriptionBaseUrl/api/theme?platform=${AppPlatform.id}',
+            ),
+          )
           .timeout(const Duration(seconds: 6));
-      if (resp.statusCode != 200) return;
+      if (resp.statusCode != 200)
+        throw StateError('theme_http_${resp.statusCode}');
+      if (request != _request) throw StateError('theme_request_superseded');
       final Object? decoded = jsonDecode(resp.body);
-      if (decoded is! Map) return;
-
-      // Nom affiché ('' = on garde le nom du flavor).
-      final String name = (decoded['appName'] ?? '').toString();
-      BrandConfig.instance.setOverrideName(name);
-
-      // Couleur d'accent (#RRGGBB). Invalide/vide = on garde la braise.
-      final Color? accent = _parseHex((decoded['accent'] ?? '').toString());
-      if (accent != null) {
+      final settings = RemoteThemeSettings.parse(decoded);
+      if (settings == null)
+        throw const FormatException('Invalid theme response');
+      BrandConfig.instance.setOverrideName(settings.appName);
+      if (settings.accent case final accent?) {
         AccentController.instance.applyCustom(accent);
+      } else {
+        AccentController.instance.clearCustom();
       }
+      ThemeModeRepository.instance.applyRemoteMode(settings.mode);
+      current.value = settings;
     } catch (e) {
+      if (strict) rethrow;
       if (kDebugMode) debugPrint('[RemoteTheme] $e');
     }
-  }
-
-  /// Parse un hex `#RRGGBB` (ou `RRGGBB`) en Color opaque. `null` si invalide.
-  static Color? _parseHex(String hex) {
-    String h = hex.trim();
-    if (h.isEmpty) return null;
-    if (h.startsWith('#')) h = h.substring(1);
-    if (h.length != 6) return null;
-    final int? v = int.tryParse(h, radix: 16);
-    if (v == null) return null;
-    return Color(0xFF000000 | v);
   }
 }

@@ -1,0 +1,15 @@
+  static const LumiereColors daylight = LumiereColors(
+    canvas: Color(0xFFF6F7F8), voidSurface: Color(0xFF000000),
+    elevated: Color(0xFFFFFFFF), glass: Color(0xFFF0F1F3),
+    overcast: Color(0xFFE7E9EC), accentEmber: Color(0xFF202124),
+    emberGlow: Color(0xFF30343B), emberDeep: Color(0xFF16181C),
+    emberHalo: Color(0xFF202124), textPrimary: Color(0xFF17191D),
+    textSecondary: Color(0xFF444950), textTertiary: Color(0xFF505760),
+    textMuted: Color(0xFF59616B), statusSuccess: Color(0xFF1A6137),
+    statusWarning: Color(0xFF725000), statusError: Color(0xFF9D2525),
+    statusInfo: Color(0xFF315C85), border: Color(0xFFCDD1D6),
+    scrim: Color(0x99000000),
+    canvasGradient: LinearGradient(colors: [Color(0xFFF6F7F8), Color(0xFFF6F7F8)]),
+    heroScrim: LinearGradient(colors: [Color(0x00000000), Color(0xCC000000)],
+      begin: Alignment.topCenter, end: Alignment.bottomCenter),
+  );

@@ -22,6 +22,7 @@ import '../../security/data/app_pin_settings.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
+import '../core/tv_app_tokens.dart';
 import 'tv_profile_picker.dart';
 
 class TvProfilesScreen extends StatefulWidget {
@@ -172,9 +173,9 @@ class _TvProfilesScreenState extends State<TvProfilesScreen> {
             width: 560,
             padding: const EdgeInsets.all(28),
             decoration: BoxDecoration(
-              color: TvTokens.card,
+              color: TvAppTokens.of(context).card,
               borderRadius: BorderRadius.circular(TvTokens.rCard),
-              border: Border.all(color: TvTokens.line),
+              border: Border.all(color: TvAppTokens.of(context).line),
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -182,16 +183,17 @@ class _TvProfilesScreenState extends State<TvProfilesScreen> {
                 Text(
                   title,
                   textAlign: TextAlign.center,
-                  style: TvTokens.display(
+                  style: TvAppTokens.of(context).display(
                     TvDimens.headline,
-                    color: TvTokens.text,
+                    color: TvAppTokens.of(context).text,
                   ),
                 ),
                 const SizedBox(height: 10),
                 Text(
                   body,
                   textAlign: TextAlign.center,
-                  style: TvTokens.ui(TvDimens.body, color: TvTokens.muted),
+                  style: TvAppTokens.of(context)
+                      .ui(TvDimens.body, color: TvAppTokens.of(context).muted),
                 ),
                 const SizedBox(height: 20),
                 _DialogBtn(
@@ -228,12 +230,14 @@ class _TvProfilesScreenState extends State<TvProfilesScreen> {
       children: <Widget>[
         Text(
           context.l10n.tvProfiles,
-          style: TvTokens.display(TvDimens.displayM, color: TvTokens.text),
+          style: TvAppTokens.of(context)
+              .display(TvDimens.displayM, color: TvAppTokens.of(context).text),
         ),
         const SizedBox(height: 6),
         Text(
           context.l10n.tvProfilesHelp,
-          style: TvTokens.ui(TvDimens.body, color: TvTokens.muted),
+          style: TvAppTokens.of(context)
+              .ui(TvDimens.body, color: TvAppTokens.of(context).muted),
         ),
         const SizedBox(height: 18),
         for (final FamilyProfile p in cat.profiles) ...<Widget>[
@@ -249,16 +253,17 @@ class _TvProfilesScreenState extends State<TvProfilesScreen> {
         const SizedBox(height: 8),
         Text(
           tvProfileLabel(context, focused),
-          style: TvTokens.ui(
+          style: TvAppTokens.of(context).ui(
             TvDimens.title,
             weight: FontWeight.w700,
-            color: TvTokens.text,
+            color: TvAppTokens.of(context).text,
           ),
         ),
         const SizedBox(height: 4),
         Text(
           _detail(focused, origin),
-          style: TvTokens.ui(TvDimens.label, color: TvTokens.muted),
+          style: TvAppTokens.of(context)
+              .ui(TvDimens.label, color: TvAppTokens.of(context).muted),
         ),
         if (focused.isKids &&
             focused.id == cat.activeId &&
@@ -266,10 +271,10 @@ class _TvProfilesScreenState extends State<TvProfilesScreen> {
           const SizedBox(height: 6),
           Text(
             context.l10n.tvDefaultPinWarning,
-            style: TvTokens.ui(
+            style: TvAppTokens.of(context).ui(
               TvDimens.label,
               weight: FontWeight.w600,
-              color: TvTokens.accentBright,
+              color: TvAppTokens.of(context).accentBright,
             ),
           ),
         ],
@@ -315,7 +320,8 @@ class _TvProfilesScreenState extends State<TvProfilesScreen> {
           cat.profiles.length < 2
               ? context.l10n.tvProfileStartupSingle
               : context.l10n.tvProfileStartupHelp,
-          style: TvTokens.ui(TvDimens.caption, color: TvTokens.mutedDim),
+          style: TvAppTokens.of(context)
+              .ui(TvDimens.caption, color: TvAppTokens.of(context).mutedDim),
         ),
       ],
     );
@@ -353,18 +359,24 @@ class _Row extends StatelessWidget {
       autofocus: autofocus,
       onSelect: onSelect,
       builder: (BuildContext context, bool focused) {
-        final Color fg = focused ? TvTokens.onAccent : TvTokens.text;
+        final Color fg = focused
+            ? TvAppTokens.of(context).onAccent
+            : TvAppTokens.of(context).text;
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
           decoration: BoxDecoration(
             color: focused
-                ? TvTokens.accent
-                : (selected ? TvTokens.sel : TvTokens.card),
+                ? TvAppTokens.of(context).accent
+                : (selected
+                      ? TvAppTokens.of(context).sel
+                      : TvAppTokens.of(context).card),
             borderRadius: BorderRadius.circular(TvTokens.rButton),
             border: Border.all(
               color: focused
-                  ? TvTokens.accent
-                  : (active ? TvTokens.accentBright : TvTokens.line),
+                  ? TvAppTokens.of(context).accent
+                  : (active
+                        ? TvAppTokens.of(context).accentBright
+                        : TvAppTokens.of(context).line),
             ),
           ),
           child: Row(
@@ -373,36 +385,37 @@ class _Row extends StatelessWidget {
                 ProfileLooks.icon(profile),
                 size: 28,
                 color: focused
-                    ? TvTokens.onAccent
-                    : ProfileLooks.color(profile),
+                    ? TvAppTokens.of(context).onAccent
+                    : ProfileLooks.color(profile, context: context),
               ),
               const SizedBox(width: 14),
               Expanded(
                 child: Text(
                   tvProfileLabel(context, profile),
-                  style: TvTokens.ui(
-                    TvDimens.title,
-                    weight: FontWeight.w700,
-                    color: fg,
-                  ),
+                  style: TvAppTokens.of(context)
+                      .ui(TvDimens.title, weight: FontWeight.w700, color: fg),
                 ),
               ),
               if (profile.isKids)
                 Text(
                   context.l10n.tvChildren,
-                  style: TvTokens.ui(
+                  style: TvAppTokens.of(context).ui(
                     TvDimens.caption,
-                    color: focused ? TvTokens.onAccent : TvTokens.success,
+                    color: focused
+                        ? TvAppTokens.of(context).onAccent
+                        : TvAppTokens.of(context).success,
                   ),
                 ),
               if (active) ...<Widget>[
                 const SizedBox(width: 12),
                 Text(
                   context.l10n.tvProfileActive,
-                  style: TvTokens.ui(
+                  style: TvAppTokens.of(context).ui(
                     TvDimens.caption,
                     weight: FontWeight.w700,
-                    color: focused ? TvTokens.onAccent : TvTokens.accentBright,
+                    color: focused
+                        ? TvAppTokens.of(context).onAccent
+                        : TvAppTokens.of(context).accentBright,
                   ),
                 ),
               ],
@@ -429,14 +442,20 @@ class _Action extends StatelessWidget {
     return TvFocusBuilder(
       onSelect: onSelect,
       builder: (BuildContext context, bool focused) {
-        final Color fg = focused ? TvTokens.onAccent : TvTokens.text;
+        final Color fg = focused
+            ? TvAppTokens.of(context).onAccent
+            : TvAppTokens.of(context).text;
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           decoration: BoxDecoration(
-            color: focused ? TvTokens.accent : TvTokens.card,
+            color: focused
+                ? TvAppTokens.of(context).accent
+                : TvAppTokens.of(context).card,
             borderRadius: BorderRadius.circular(TvTokens.rButton),
             border: Border.all(
-              color: focused ? TvTokens.accent : TvTokens.line,
+              color: focused
+                  ? TvAppTokens.of(context).accent
+                  : TvAppTokens.of(context).line,
             ),
           ),
           child: Row(
@@ -446,11 +465,8 @@ class _Action extends StatelessWidget {
               const SizedBox(width: 8),
               Text(
                 label,
-                style: TvTokens.ui(
-                  TvDimens.label,
-                  weight: FontWeight.w700,
-                  color: fg,
-                ),
+                style: TvAppTokens.of(context)
+                    .ui(TvDimens.label, weight: FontWeight.w700, color: fg),
               ),
             ],
           ),
@@ -478,27 +494,28 @@ class _DialogBtn extends StatelessWidget {
       autofocus: autofocus,
       onSelect: onSelect,
       builder: (BuildContext context, bool focused) {
-        final Color fg = focused ? TvTokens.onAccent : TvTokens.text;
+        final Color fg = focused
+            ? TvAppTokens.of(context).onAccent
+            : TvAppTokens.of(context).text;
         return Container(
           width: double.infinity,
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
           decoration: BoxDecoration(
             color: focused
-                ? TvTokens.accent
-                : (primary ? TvTokens.sel : Colors.transparent),
+                ? TvAppTokens.of(context).accent
+                : (primary ? TvAppTokens.of(context).sel : Colors.transparent),
             borderRadius: BorderRadius.circular(TvTokens.rButton),
             border: Border.all(
-              color: focused ? TvTokens.accent : TvTokens.line,
+              color: focused
+                  ? TvAppTokens.of(context).accent
+                  : TvAppTokens.of(context).line,
             ),
           ),
           child: Text(
             label,
             textAlign: TextAlign.center,
-            style: TvTokens.ui(
-              TvDimens.title,
-              weight: FontWeight.w700,
-              color: fg,
-            ),
+            style: TvAppTokens.of(context)
+                .ui(TvDimens.title, weight: FontWeight.w700, color: fg),
           ),
         );
       },

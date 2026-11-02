@@ -28,6 +28,7 @@ import '../../vod/data/download_repository.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
+import '../core/tv_app_tokens.dart';
 import 'tv_cinema_common.dart';
 
 // =========================================================
@@ -100,17 +101,18 @@ class _Header extends StatelessWidget {
           title,
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
-          style: TvTokens.display(TvDimens.displayL, color: TvTokens.text),
+          style: TvAppTokens.of(context)
+              .display(TvDimens.displayL, color: TvAppTokens.of(context).text),
         ),
         if (meta.isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(top: 6),
             child: Text(
               meta.join('  ·  '),
-              style: TvTokens.ui(
+              style: TvAppTokens.of(context).ui(
                 TvDimens.body,
                 weight: FontWeight.w600,
-                color: TvTokens.accentBright,
+                color: TvAppTokens.of(context).accentBright,
               ),
             ),
           ),
@@ -121,7 +123,8 @@ class _Header extends StatelessWidget {
               plot!,
               maxLines: 4,
               overflow: TextOverflow.ellipsis,
-              style: TvTokens.ui(TvDimens.body, color: TvTokens.text),
+              style: TvAppTokens.of(context)
+                  .ui(TvDimens.body, color: TvAppTokens.of(context).text),
             ),
           ),
         for (final String line in extra ?? const <String>[])
@@ -131,7 +134,8 @@ class _Header extends StatelessWidget {
               line,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: TvTokens.ui(TvDimens.label, color: TvTokens.mutedDim),
+              style: TvAppTokens.of(context)
+                  .ui(TvDimens.label, color: TvAppTokens.of(context).mutedDim),
             ),
           ),
       ],
@@ -252,7 +256,9 @@ class _DownloadPillState extends State<_DownloadPill> {
           width: 56,
           height: 56,
           decoration: BoxDecoration(
-            color: focused ? TvTokens.accent : TvTokens.sel,
+            color: focused
+                ? TvAppTokens.of(context).accent
+                : TvAppTokens.of(context).sel,
             borderRadius: BorderRadius.circular(TvTokens.rButton),
           ),
           child: Stack(
@@ -265,13 +271,17 @@ class _DownloadPillState extends State<_DownloadPill> {
                   child: CircularProgressIndicator(
                     value: d.progress > 0 ? d.progress : null,
                     strokeWidth: 3,
-                    color: focused ? TvTokens.onAccent : TvTokens.accent,
+                    color: focused
+                        ? TvAppTokens.of(context).onAccent
+                        : TvAppTokens.of(context).accent,
                   ),
                 ),
               Icon(
                 icon,
                 size: 24,
-                color: focused ? TvTokens.onAccent : TvTokens.accentBright,
+                color: focused
+                    ? TvAppTokens.of(context).onAccent
+                    : TvAppTokens.of(context).accentBright,
               ),
             ],
           ),
@@ -292,7 +302,8 @@ class _DownloadPillState extends State<_DownloadPill> {
             padding: const EdgeInsets.only(top: 8),
             child: Text(
               _msg!,
-              style: TvTokens.ui(TvDimens.caption, color: TvTokens.live),
+              style: TvAppTokens.of(context)
+                  .ui(TvDimens.caption, color: TvAppTokens.of(context).live),
             ),
           ),
       ],
@@ -383,14 +394,14 @@ class _TvMovieDetailScreenState extends State<TvMovieDetailScreen> {
                   ],
                 ),
                 if (_d == null)
-                  const Padding(
+                  Padding(
                     padding: EdgeInsets.only(top: 18),
                     child: SizedBox(
                       width: 22,
                       height: 22,
                       child: CircularProgressIndicator(
                         strokeWidth: 2.5,
-                        color: TvTokens.accent,
+                        color: TvAppTokens.of(context).accent,
                       ),
                     ),
                   ),
@@ -405,8 +416,8 @@ class _TvMovieDetailScreenState extends State<TvMovieDetailScreen> {
                         child: LinearProgressIndicator(
                           value: w.fraction,
                           minHeight: 5,
-                          color: TvTokens.accent,
-                          backgroundColor: TvTokens.line,
+                          color: TvAppTokens.of(context).accent,
+                          backgroundColor: TvAppTokens.of(context).line,
                         ),
                       ),
                     ),
@@ -637,9 +648,9 @@ class _TvSeriesScreenState extends State<TvSeriesScreen> {
       return Center(
         child: Text(
           context.l10n.tvCinemaNoEpisodes,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: TvDimens.body,
-            color: TvTokens.mutedDim,
+            color: TvAppTokens.of(context).mutedDim,
           ),
         ),
       );
@@ -724,11 +735,13 @@ class _EpisodeRow extends StatelessWidget {
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
                   color: focused
-                      ? TvTokens.sel
-                      : TvTokens.card.withValues(alpha: 0.6),
+                      ? TvAppTokens.of(context).sel
+                      : TvAppTokens.of(context).card.withValues(alpha: 0.6),
                   borderRadius: BorderRadius.circular(TvDimens.cardRadius),
                   border: Border.all(
-                    color: focused ? TvTokens.accent : TvTokens.lineSoft,
+                    color: focused
+                        ? TvAppTokens.of(context).accent
+                        : TvAppTokens.of(context).lineSoft,
                     width: focused ? TvDimens.focusOutline : 1,
                   ),
                 ),
@@ -743,20 +756,20 @@ class _EpisodeRow extends StatelessWidget {
                           fit: StackFit.expand,
                           children: <Widget>[
                             ColoredBox(
-                              color: TvTokens.tile,
+                              color: TvAppTokens.of(context).tile,
                               child: (e.stillUrl ?? series.posterUrl) == null
-                                  ? const Icon(
+                                  ? Icon(
                                       Icons.movie_rounded,
-                                      color: TvTokens.mutedDim,
+                                      color: TvAppTokens.of(context).mutedDim,
                                     )
                                   : CachedNetworkImage(
                                       imageUrl:
                                           (e.stillUrl ?? series.posterUrl)!,
                                       fit: BoxFit.cover,
                                       memCacheWidth: 240,
-                                      errorWidget: (_, __, ___) => const Icon(
+                                      errorWidget: (_, __, ___) => Icon(
                                         Icons.movie_rounded,
-                                        color: TvTokens.mutedDim,
+                                        color: TvAppTokens.of(context).mutedDim,
                                       ),
                                     ),
                             ),
@@ -768,7 +781,7 @@ class _EpisodeRow extends StatelessWidget {
                                 child: LinearProgressIndicator(
                                   value: progress,
                                   minHeight: 4,
-                                  color: TvTokens.accent,
+                                  color: TvAppTokens.of(context).accent,
                                   backgroundColor: Colors.black.withValues(
                                     alpha: 0.6,
                                   ),
@@ -791,21 +804,21 @@ class _EpisodeRow extends StatelessWidget {
                                   title,
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
-                                  style: TvTokens.ui(
+                                  style: TvAppTokens.of(context).ui(
                                     TvDimens.titleS,
                                     weight: FontWeight.w700,
                                     color: focused
-                                        ? TvTokens.accentBright
-                                        : TvTokens.text,
+                                        ? TvAppTokens.of(context).accentBright
+                                        : TvAppTokens.of(context).text,
                                   ),
                                 ),
                               ),
                               if (dur != null)
                                 Text(
                                   dur,
-                                  style: TvTokens.ui(
+                                  style: TvAppTokens.of(context).ui(
                                     TvDimens.caption,
-                                    color: TvTokens.mutedDim,
+                                    color: TvAppTokens.of(context).mutedDim,
                                   ),
                                 ),
                             ],
@@ -817,9 +830,9 @@ class _EpisodeRow extends StatelessWidget {
                                 e.plot!,
                                 maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
-                                style: TvTokens.ui(
+                                style: TvAppTokens.of(context).ui(
                                   TvDimens.caption,
-                                  color: TvTokens.muted,
+                                  color: TvAppTokens.of(context).muted,
                                 ),
                               ),
                             ),

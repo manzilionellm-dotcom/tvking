@@ -1,0 +1,83 @@
+import 'dart:convert';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:tv_king/core/app/app_platform.dart';
+import 'package:tv_king/core/theme/app_colors.dart';
+import 'package:tv_king/core/theme/app_theme.dart';
+import 'package:tv_king/core/theme/lumiere_tokens.dart';
+import 'package:tv_king/core/theme/accent_controller.dart';
+import 'package:tv_king/core/theme/theme_mode_repository.dart';
+import 'package:tv_king/features/theme/data/remote_theme_repository.dart';
+
+void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  setUp(() async {
+    SharedPreferences.setMockInitialValues({});
+    AppPlatform.isTv = false;
+    AccentController.instance.clearCustom();
+    ThemeModeRepository.instance.applyRemoteMode(null);
+    await ThemeModeRepository.instance.initialize();
+  });
+
+  testWidgets(
+      'la commande mobile change le fond réellement rendu et conserve le Cast sombre',
+      (tester) async {
+    Future<void> panel(String bg) => http.runWithClient(
+        () => RemoteThemeRepository.fetchAndApply(strict: true),
+        () => MockClient((request) async {
+              expect(request.url.queryParameters['platform'], 'mobile');
+              return http.Response(
+                  jsonEncode(
+                      {'bg': bg, 'accent': '#2E7DD6', 'appName': 'Salon'}),
+                  200);
+            }));
+    await tester.pumpWidget(ListenableBuilder(
+      listenable: Listenable.merge(
+          [ThemeModeRepository.instance, AccentController.instance]),
+      builder: (context, _) => MaterialApp(
+        theme: AppTheme.daylight,
+        darkTheme: AppTheme.cinema,
+        themeMode: ThemeModeRepository.instance.mode,
+        home: Builder(
+            builder: (context) => ColoredBox(
+                key: const ValueKey('page'),
+                color: LumiereColors.of(context).canvas,
+                child: Text('visible',
+                    style: TextStyle(
+                        color: LumiereColors.of(context).textPrimary)))),
+      ),
+    ));
+    await panel('light');
+    await tester.pumpAndSettle();
+    final page = tester.widget<ColoredBox>(find.byKey(const ValueKey('page')));
+    expect(page.color.computeLuminance(), greaterThan(.8));
+    final text = tester.widget<Text>(find.text('visible'));
+    expect(text.style!.color!.computeLuminance(), lessThan(.1));
+    final scheme = Theme.of(tester.element(find.text('visible'))).colorScheme;
+    expect(scheme.primary, const Color(0xFF2E7DD6));
+    final luminances = [
+      scheme.primary.computeLuminance(),
+      scheme.onPrimary.computeLuminance()
+    ]..sort();
+    expect((luminances.last + .05) / (luminances.first + .05),
+        greaterThanOrEqualTo(4.5));
+    expect(AppColors.background, Colors.black);
+    expect(AppColors.accent, Colors.white);
+    await panel('dark');
+    await tester.pumpAndSettle();
+    expect(tester.widget<ColoredBox>(find.byKey(const ValueKey('page'))).color,
+        Colors.black);
+  });
+
+  test('réponse refusée conserve le dernier thème au lieu d’un faux succès',
+      () async {
+    await http.runWithClient(() async {
+      await expectLater(
+          RemoteThemeRepository.fetchAndApply(strict: true), throwsStateError);
+    }, () => MockClient((_) async => http.Response('{}', 503)));
+    expect(ThemeModeRepository.instance.mode, ThemeMode.dark);
+  });
+}
