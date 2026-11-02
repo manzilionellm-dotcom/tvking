@@ -32,6 +32,8 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart' show DateFormat;
 
 import '../../device/domain/display_mac.dart';
+import '../../feedback/data/feedback_repository.dart';
+import '../../feedback/presentation/tv_feedback_card.dart';
 import '../../../core/app/repair_flags.dart';
 import '../../../core/app/boot_guard.dart';
 import '../../../core/blackbox/black_box.dart';
@@ -85,6 +87,7 @@ import '../core/tv_app_tokens.dart';
 import '../data/greeting_repository.dart';
 import '../data/home_shelves.dart';
 import '../data/tv_home_layout.dart';
+import '../data/tv_home_genres.dart';
 import '../data/startup_preference.dart';
 import '../../voice/presentation/voice_navigation.dart';
 import 'tv_app.dart';
@@ -190,7 +193,12 @@ class _TvHubScreenState extends State<TvHubScreen> {
   bool _noticeOn = true;
   bool _featuredOn = true;
   bool _promoOn = true;
+  bool _feedbackAvailable = false;
+  int _feedbackGeneration = 0;
   HomeShelfModel _shelves = const HomeShelfModel();
+  Map<String, List<Channel>> _genreShelves = const {};
+  int _genreGeneration = 0;
+  Timer? _genreDebounce;
   HomeShelfKind? _initialShelf;
   bool _prefsReady = false;
   bool _resumedThisVisit = false;
@@ -244,6 +252,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
     // Ce qu'on a DÉJÀ en mémoire (le boot a chargé la playlist). Les dépôts
     // finissent de s'ouvrir dans _prepareEngagement, sans bloquer le 1er cadre.
     _channels = PlaylistRepository.instance.currentChannels;
+    _scheduleGenreShelves();
     // Déjà des chaînes en mémoire : une source est là, pas de QR.
     // Sinon on lit les playlists (une source peut exister avant
     // que ses chaînes soient chargées).
@@ -284,6 +293,8 @@ class _TvHubScreenState extends State<TvHubScreen> {
     AnnouncementRepository.latest.addListener(_onNotice);
     FeaturedRepository.instance.addListener(_onFeatured);
     HomeLayoutRepository.instance.addListener(_onHomeLayout);
+    FeedbackRepository.instance.addListener(_onFeedback);
+    unawaited(FeedbackRepository.instance.reload());
     PromoBannerRepository.instance.addListener(_replanPanel);
     ParentalControls.instance.kidsMode.addListener(_replanPanel);
     panelNoticeFlag.changes.addListener(_onPanelFlags);
@@ -297,10 +308,17 @@ class _TvHubScreenState extends State<TvHubScreen> {
   }
 
   Map<String, HomeSectionConfig> get _homeLayout => <String, HomeSectionConfig>{
-    for (final String key in kTvManagedHomeSections)
-      if (HomeLayoutRepository.instance.config(key) case final config?)
-        key: config,
-  };
+        for (final String key in kTvManagedHomeSections)
+          if (HomeLayoutRepository.instance.config(key) case final config?)
+            key: config,
+      };
+
+  Future<void> _onFeedback() async {
+    final generation = ++_feedbackGeneration;
+    final available = await FeedbackRepository.instance.shouldPrompt();
+    if (!mounted || generation != _feedbackGeneration) return;
+    setState(() => _feedbackAvailable = available);
+  }
 
   void _onHomeLayout() {
     if (mounted) setState(() {});
@@ -433,12 +451,12 @@ class _TvHubScreenState extends State<TvHubScreen> {
   }
 
   HeaderCard get _headerCard => pickHeaderCard(
-    hasShow: _banner != null,
-    hasNotice: _noticeVisible,
-    hasPromo: _promo != null,
-    hasFeatured: _featuredOn && _featuredChannel != null,
-    tick: _panelTick,
-  );
+        hasShow: _banner != null,
+        hasNotice: _noticeVisible,
+        hasPromo: _promo != null,
+        hasFeatured: _featuredOn && _featuredChannel != null,
+        tick: _panelTick,
+      );
 
   void _closePromo() {
     final PromoBanner? b = _promo;
@@ -527,6 +545,9 @@ class _TvHubScreenState extends State<TvHubScreen> {
       unawaited(_lookForLocalSource());
     }
     _channels = channels;
+    _genreGeneration++;
+    _genreShelves = const {}; // aucune carte de la source retirée
+    _scheduleGenreShelves();
     _scheduleShelves();
     _schedulePopular();
     // Le favori du jour et la chaîne d'une bannière se cherchent par nom
@@ -675,6 +696,22 @@ class _TvHubScreenState extends State<TvHubScreen> {
     final Greeting? g = await GreetingRepository.instance.fetch();
     if (!mounted || g == null) return;
     setState(() => _greeting = g);
+  }
+
+  void _scheduleGenreShelves() {
+    _genreDebounce?.cancel();
+    _genreDebounce = Timer(const Duration(milliseconds: 400), () async {
+      final generation = ++_genreGeneration;
+      final channels = _channels;
+      try {
+        final shelves = await tvGenreShelves(channels);
+        if (!mounted || generation != _genreGeneration) return;
+        setState(() => _genreShelves = shelves);
+      } catch (_) {
+        // Le Direct reste disponible si une box ne peut pas lancer l'isolate.
+        // Aucun repli sur des chaînes non classées dans les rangées enfants.
+      }
+    });
   }
 
   void _scheduleShelves() {
@@ -937,8 +974,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
             (hiddenForKids(channel) || roughLooksAdult(program.title))) {
           continue;
         }
-        final bool declared =
-            channel.catchupSupported ||
+        final bool declared = channel.catchupSupported ||
             (channel.catchupSource != null &&
                 channel.catchupSource!.isNotEmpty);
         slots.add(
@@ -966,9 +1002,8 @@ class _TvHubScreenState extends State<TvHubScreen> {
 
   void _openShow(ShowCue cue, {bool fromStart = false, bool replay = false}) {
     final Map<String, Channel> byId = indexChannelsById(_channels);
-    final String id = replay
-        ? (cue.replayChannelId ?? cue.channelId)
-        : cue.channelId;
+    final String id =
+        replay ? (cue.replayChannelId ?? cue.channelId) : cue.channelId;
     final Channel? target = byId[id];
     unawaited(FollowedLog.instance.markSeen(cue.alertKey));
     setState(() => _banner = null);
@@ -1058,11 +1093,10 @@ class _TvHubScreenState extends State<TvHubScreen> {
   /// qui a déjà sa source.
   Future<void> _lookForLocalSource() async {
     try {
-      final List<Playlist> lists = await PlaylistRepository.instance
-          .getAllPlaylists();
+      final List<Playlist> lists =
+          await PlaylistRepository.instance.getAllPlaylists();
       if (!mounted) return;
-      final bool has =
-          lists.isNotEmpty ||
+      final bool has = lists.isNotEmpty ||
           PlaylistRepository.instance.currentChannels.isNotEmpty;
       setState(() => _hasLocalSource = has);
     } catch (_) {
@@ -1091,6 +1125,8 @@ class _TvHubScreenState extends State<TvHubScreen> {
   @override
   void dispose() {
     _clock?.cancel();
+    _genreDebounce?.cancel();
+    _genreGeneration++;
     _connSub?.cancel();
     _srcSub?.cancel();
     _shelfDebounce?.cancel();
@@ -1114,6 +1150,8 @@ class _TvHubScreenState extends State<TvHubScreen> {
     AnnouncementRepository.latest.removeListener(_onNotice);
     FeaturedRepository.instance.removeListener(_onFeatured);
     HomeLayoutRepository.instance.removeListener(_onHomeLayout);
+    FeedbackRepository.instance.removeListener(_onFeedback);
+    _feedbackGeneration++;
     PromoBannerRepository.instance.removeListener(_replanPanel);
     ParentalControls.instance.kidsMode.removeListener(_replanPanel);
     panelNoticeFlag.changes.removeListener(_onPanelFlags);
@@ -1261,8 +1299,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
     final LogicalKeyboardKey k = event.logicalKey;
     final bool up =
         k == LogicalKeyboardKey.arrowUp || k == LogicalKeyboardKey.channelUp;
-    final bool down =
-        k == LogicalKeyboardKey.arrowDown ||
+    final bool down = k == LogicalKeyboardKey.arrowDown ||
         k == LogicalKeyboardKey.channelDown;
     if (!up && !down) {
       if (_diagBuf.isNotEmpty) _diagBuf.clear();
@@ -1360,6 +1397,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
     final bool hasVisibleShelves = hasVisibleTvHomeShelves(
       _shelves,
       homeLayout,
+      genreShelves: _genreShelves,
     );
     // Le focus automatique des rangées ne doit jouer qu'UNE fois (à leur
     // apparition). Le laisser à true réclamerait le focus à chaque cadre.
@@ -1373,9 +1411,17 @@ class _TvHubScreenState extends State<TvHubScreen> {
     final ({String label, Color color}) lic = _license(context);
     final String src = _activeSource;
     final String lang = Localizations.localeOf(context).languageCode;
-    final Widget? header = _panelHeader(lang);
-    final bool hasPersonal =
-        hasVisibleShelves ||
+    final Widget? panelHeader = _panelHeader(lang);
+    final Widget? header =
+        _feedbackAvailable && !ParentalControls.instance.kidsMode.value
+            ? Column(mainAxisSize: MainAxisSize.min, children: <Widget>[
+                if (panelHeader != null) panelHeader,
+                if (panelHeader != null)
+                  const SizedBox(height: TvDimens.gutter),
+                TvFeedbackCard(message: FeedbackRepository.instance.message),
+              ])
+            : panelHeader;
+    final bool hasPersonal = hasVisibleShelves ||
         _timePicks.isNotEmpty ||
         _showCards.isNotEmpty ||
         header != null;
@@ -1415,7 +1461,8 @@ class _TvHubScreenState extends State<TvHubScreen> {
                       ),
                       DecoratedBox(
                         decoration: BoxDecoration(
-                          color: TvAppTokens.of(context).bg
+                          color: TvAppTokens.of(context)
+                              .bg
                               .withValues(alpha: 0.35),
                         ),
                       ),
@@ -1508,6 +1555,8 @@ class _TvHubScreenState extends State<TvHubScreen> {
                                           child: TvHomeRails(
                                             model: _shelves,
                                             layout: homeLayout,
+                                            genreShelves: _genreShelves,
+                                            autofocusGenres: _pendingShelfFocus,
                                             nowMs: _now.millisecondsSinceEpoch,
                                             initialShelf: _pendingShelfFocus
                                                 ? _initialShelf

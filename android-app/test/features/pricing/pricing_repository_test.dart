@@ -75,8 +75,8 @@ void main() {
     final Completer<http.Response> response = Completer<http.Response>();
     int calls = 0;
     PricingRepository.client = MockClient((_) { calls++; return response.future; });
-    final Future<void> first = PricingRepository.fetch(strict: true);
-    final Future<void> second = PricingRepository.fetch(strict: true);
+    final Future<void> first = PricingRepository.fetch();
+    final Future<void> second = PricingRepository.fetch();
     await Future<void>.delayed(Duration.zero);
     expect(calls, 1);
     PricingRepository.resetForTesting();

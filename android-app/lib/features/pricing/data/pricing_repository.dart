@@ -102,9 +102,23 @@ abstract final class PricingRepository {
   @visibleForTesting
   static http.Client? client;
 
-  // Une même lecture peut être demandée par l'écran et le signal temps réel.
+  // Les lectures UI partagent une requête ; chaque ordre strict relit ensuite.
   // Le mode strict ne transforme jamais une panne en accusé « appliqué ».
   static Future<void> fetch({bool strict = false}) async {
+    // Une lecture partie avant l'ordre peut encore contenir l'ancienne valeur.
+    // Le strict attend sa fin, puis démarre sa propre lecture après l'ordre.
+    // La boucle sérialise aussi plusieurs ordres stricts sans réponse tardive.
+    if (strict) {
+      while (_flight != null) {
+        final previous = _flight!;
+        try {
+          await previous;
+        } catch (_) {
+          // Seule la nouvelle lecture décide du succès de cet ordre.
+        }
+        if (identical(_flight, previous)) _flight = null;
+      }
+    }
     final Future<void> flight = _flight ??= _read();
     try { await flight; }
     catch (error) {

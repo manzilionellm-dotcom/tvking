@@ -15,6 +15,10 @@ import 'package:tv_king/core/app/app_platform.dart';
 import 'package:tv_king/core/app/repair_flags.dart';
 import 'package:tv_king/core/flavor/flavor.dart';
 import 'package:tv_king/features/ads/data/startup_ad_repository.dart';
+import 'package:tv_king/features/country_home/data/featured_repository.dart';
+import 'package:tv_king/features/simple_home/data/home_layout_repository.dart';
+import 'package:tv_king/features/pricing/data/pricing_repository.dart';
+import 'package:tv_king/features/playlists/data/default_servers.dart';
 import 'package:tv_king/features/simple_home/data/announcement_repository.dart';
 import 'package:tv_king/features/subscription/data/box_signal_client.dart';
 import 'package:tv_king/features/subscription/data/remote_activation_watch.dart';
@@ -55,12 +59,16 @@ void main() {
     RemoteActivationWatch.instance.stopForTesting();
     SignalInbox.instance.resetForTesting();
     AnnouncementRepository.resetForTesting();
+    PricingRepository.resetForTesting();
+    DefaultServersApi.resetForTesting();
     StartupAdRepository.instance.resetForTesting();
   });
 
   tearDown(() {
     RemoteActivationWatch.instance.stopForTesting();
     AnnouncementRepository.resetForTesting();
+    PricingRepository.resetForTesting();
+    DefaultServersApi.resetForTesting();
     StartupAdRepository.instance.resetForTesting();
     SignalInbox.instance.resetForTesting();
     RepairFlags.orderAckOff = false;
@@ -189,6 +197,137 @@ void main() {
           expect(StartupAdRepository.instance.config.enabled, isFalse);
           expect(RemoteThemeRepository.current.value, previousTheme);
         }
+      });
+    }
+  }
+
+  // Ces lectures UI partent avant l'ordre. Leurs anciennes réponses ne doivent
+  // donc pas suffire à l'ACK, même lorsqu'elles sont parfaitement valides.
+  const freshness = <String, (String, String, String)>{
+    'message': (
+      '/api/announcement',
+      '{"id":72,"title":"old","body":"Texte"}',
+      '{"id":73,"title":"new","body":"Texte"}'
+    ),
+    'home': (
+      '/api/home-layout',
+      '{"items":[{"key":"recent","ribbon":"old"}]}',
+      '{"items":[{"key":"recent","ribbon":"new"}]}'
+    ),
+    'featured': (
+      '/api/featured',
+      '{"name":"old","note":""}',
+      '{"name":"new","note":""}'
+    ),
+    'pricing': (
+      '/api/pricing',
+      '{"configured":true,"currency":"EUR","lifetime":"10"}',
+      '{"configured":true,"currency":"EUR","lifetime":"20"}'
+    ),
+    'servers': (
+      '/api/servers',
+      '{"servers":[{"id":"1","label":"old","url":"https://old.invalid"}]}',
+      '{"servers":[{"id":"1","label":"new","url":"https://new.invalid"}]}'
+    ),
+  };
+
+  Future<void> uiRead(String kind) async {
+    switch (kind) {
+      case 'message':
+        await AnnouncementRepository.fetchLatest();
+      case 'home':
+        await HomeLayoutRepository.instance.refresh();
+      case 'featured':
+        await FeaturedRepository.instance.refresh();
+      case 'pricing':
+        await PricingRepository.fetch();
+      case 'servers':
+        await DefaultServersApi.fetch(forceRefresh: true);
+    }
+  }
+
+  String currentValue(String kind) => switch (kind) {
+        'message' => AnnouncementRepository.latest.value!.title,
+        'home' => HomeLayoutRepository.instance.config('recent')!.ribbon,
+        'featured' => FeaturedRepository.instance.name,
+        'pricing' => PricingRepository.current.lifetime,
+        'servers' => DefaultServersApi.current.value.single.label,
+        _ => throw StateError('type de recette inconnu'),
+      };
+
+  for (final entry in freshness.entries) {
+    for (final status in [200, 503]) {
+      test('${entry.key} : ACK attend la lecture post-ordre HTTP $status',
+          () async {
+        final id = ++nextOrder;
+        final oldStarted = Completer<void>();
+        final newStarted = Completer<void>();
+        final received = Completer<void>();
+        final finished = Completer<void>();
+        final oldResponse = Completer<http.Response>();
+        final newResponse = Completer<http.Response>();
+        final states = <String>[];
+        int reads = 0;
+        await http.runWithClient(() async {
+          final ui = uiRead(entry.key);
+          await oldStarted.future.timeout(const Duration(seconds: 2));
+          final processing =
+              RemoteActivationWatch.instance.applyOrdersForTesting([
+            BoxOrder(
+                id: id,
+                kind: entry.key,
+                fleet: false,
+                orderId: 'fresh_order_$id',
+                traceId: 'fresh_trace_$id'),
+          ]);
+          await received.future.timeout(const Duration(seconds: 2));
+          expect(states, ['received']);
+          oldResponse.complete(http.Response(entry.value.$2, 200));
+          await ui;
+          await newStarted.future.timeout(const Duration(seconds: 2));
+          expect(reads, 2);
+          expect(states, ['received']);
+          expect(SignalInbox.instance.appliedKinds, isEmpty);
+          expect(
+              currentValue(entry.key), entry.key == 'pricing' ? '10' : 'old');
+          newResponse.complete(http.Response(
+              status == 200 ? entry.value.$3 : '{"error":"unavailable"}',
+              status));
+          expect(await processing, isTrue);
+          await finished.future.timeout(const Duration(seconds: 2));
+          expect(states, ['received', status == 200 ? 'applied' : 'failed']);
+          expect(
+              currentValue(entry.key),
+              status == 200
+                  ? (entry.key == 'pricing' ? '20' : 'new')
+                  : (entry.key == 'pricing' ? '10' : 'old'));
+        },
+            () => MockClient((request) async {
+                  if (request.method == 'POST' &&
+                      request.url.path ==
+                          '/api/box/ack/${Uri.encodeComponent(_mac)}') {
+                    final body =
+                        jsonDecode(request.body) as Map<String, dynamic>;
+                    final ack =
+                        (body['orders'] as List).single as Map<String, dynamic>;
+                    states.add(ack['state'] as String);
+                    if (ack['state'] == 'received')
+                      received.complete();
+                    else
+                      finished.complete();
+                    return http.Response('{"ok":true}', 200);
+                  }
+                  expect(request.method, 'GET');
+                  expect(request.url.path, entry.value.$1);
+                  reads++;
+                  if (reads == 1) {
+                    oldStarted.complete();
+                    return oldResponse.future;
+                  }
+                  expect(reads, 2);
+                  newStarted.complete();
+                  return newResponse.future;
+                }));
       });
     }
   }

@@ -16,13 +16,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../device/data/device_identity.dart';
 import '../../subscription/data/subscription_backend.dart';
 
-class FeedbackRepository {
+class FeedbackRepository extends ChangeNotifier {
   FeedbackRepository._();
   static final FeedbackRepository instance = FeedbackRepository._();
 
   bool _enabled = false;
   String _message = '';
   bool _initialized = false;
+  int _request = 0;
 
   String get message => _message;
 
@@ -40,24 +41,28 @@ class FeedbackRepository {
   }
 
   Future<void> _fetch({bool strict = false}) async {
+    final request = ++_request;
     try {
       final http.Response resp = await http
           .get(Uri.parse('$kSubscriptionBaseUrl/api/feedback-prompt'))
           .timeout(const Duration(seconds: 5));
       if (resp.statusCode != 200) throw StateError('Invitation non confirmée');
+      if (request != _request) throw StateError('Invitation remplacée');
       final Object? d = jsonDecode(resp.body);
       if (d is! Map || d['enabled'] is! bool || d['message'] is! String) {
         throw const FormatException('Invitation invalide');
       }
       _enabled = d['enabled'] == true;
       _message = (d['message'] ?? '').toString();
+      notifyListeners();
     } catch (e) {
       if (strict) rethrow;
       if (kDebugMode) debugPrint('[Feedback] ${e.runtimeType}');
     }
   }
 
-  String get _key => 'fb_done_${_message.hashCode}';
+  String _keyFor(String message) => 'fb_done_${message.hashCode}';
+  String get _key => _keyFor(_message);
 
   /// Faut-il inviter le client maintenant ? (activé + message non vide +
   /// pas déjà répondu à ce message)
@@ -71,16 +76,23 @@ class FeedbackRepository {
     }
   }
 
-  Future<void> markDone() async {
+  Future<void> markDone({String? prompt}) async {
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
-      await prefs.setBool(_key, true);
+      await prefs.setBool(_keyFor(prompt ?? _message), true);
+      notifyListeners();
     } catch (_) {}
   }
 
-  /// Envoie l'avis. Marque comme répondu (qu'on retente ou non).
-  Future<bool> submit({required String text, int rating = 0}) async {
-    await markDone();
+  /// Envoie seulement sur action du client. Un échec reste réessayable ;
+  /// une invitation arrivée pendant la requête ne doit pas être acquittée.
+  Future<bool> submit(
+      {required String text, int rating = 0, String? prompt}) async {
+    final value = text.trim();
+    if (value.isEmpty || value.length > 2000 || rating < 0 || rating > 5) {
+      return false;
+    }
+    final answeredPrompt = prompt ?? _message;
     try {
       final String mac = await DeviceIdentity.instance.mac;
       final http.Response resp = await http
@@ -92,11 +104,15 @@ class FeedbackRepository {
             body: jsonEncode(<String, Object?>{
               'mac': mac,
               'rating': rating,
-              'message': text,
+              'message': value,
             }),
           )
           .timeout(const Duration(seconds: 8));
-      return resp.statusCode == 200;
+      if (resp.statusCode != 200) return false;
+      final Object? decoded = jsonDecode(resp.body);
+      if (decoded is! Map || decoded['ok'] != true) return false;
+      await markDone(prompt: answeredPrompt);
+      return true;
     } catch (e) {
       if (kDebugMode) debugPrint('[Feedback submit] $e');
       return false;

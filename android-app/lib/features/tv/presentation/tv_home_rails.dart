@@ -34,6 +34,7 @@ import '../core/tv_tokens.dart';
 import '../core/tv_app_tokens.dart';
 import '../data/home_shelves.dart';
 import '../data/tv_home_layout.dart';
+import '../data/tv_home_genres.dart';
 
 class TvHomeRails extends StatelessWidget {
   const TvHomeRails({
@@ -51,6 +52,8 @@ class TvHomeRails extends StatelessWidget {
     this.onPlayShow,
     this.header,
     this.layout = const <String, HomeSectionConfig>{},
+    this.genreShelves = const <String, List<Channel>>{},
+    this.autofocusGenres = false,
   });
 
   final HomeShelfModel model;
@@ -80,6 +83,8 @@ class TvHomeRails extends StatelessWidget {
 
   /// Réglages du panel pour les rangées compatibles de cet accueil.
   final Map<String, HomeSectionConfig> layout;
+  final Map<String, List<Channel>> genreShelves;
+  final bool autofocusGenres;
 
   @override
   Widget build(BuildContext context) {
@@ -187,6 +192,39 @@ class TvHomeRails extends StatelessWidget {
           channel: timePicks[i],
           autofocus: onlyThis && focusShelf == null && i == 0,
           onSelect: () => onPlayChannel(timePicks, i),
+        ),
+      );
+    }
+
+    final labels = <String, String>{
+      HomeSectionKey.sport: context.l10n.sectionSportsLive,
+      HomeSectionKey.entertainment: context.l10n.sectionEntertainment,
+      HomeSectionKey.info: context.l10n.sectionNews,
+      HomeSectionKey.kids: context.l10n.sectionKids,
+      HomeSectionKey.general: context.l10n.sectionOthers,
+      HomeSectionKey.cinema:
+          '${context.l10n.sectionMovies} · ${context.l10n.navDirect}',
+    };
+    final visibleGenres = tvHomeSectionOrder(
+        kTvGenreHomeSections
+            .where((key) => genreShelves[key]?.isNotEmpty ?? false),
+        layout);
+    for (final key in visibleGenres) {
+      final channels = genreShelves[key]!;
+      rails[key] = _Rail(
+        key: ValueKey<String>('home-section-$key'),
+        config: layout[key],
+        label: labels[key]!,
+        count: channels.length,
+        itemBuilder: (context, i) => _ChannelCard(
+          channel: channels[i],
+          autofocus: autofocusGenres &&
+              !hasVisibleModel &&
+              shows.isEmpty &&
+              timePicks.isEmpty &&
+              key == visibleGenres.first &&
+              i == 0,
+          onSelect: () => onPlayChannel(channels, i),
         ),
       );
     }

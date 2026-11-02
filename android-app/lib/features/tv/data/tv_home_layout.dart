@@ -1,13 +1,16 @@
 // Contrat entre l'ancien gestionnaire d'accueil et les rangées ZUNO.
-// Seules les sections réellement équivalentes sont pilotées : « recent »
-// correspond aux dernières chaînes et « favorites » aux favoris. Le cinéma,
+// Les huit sections pilotent les rangées présentes : historique, favoris et
+// genres du Direct. Le cinéma désigne les chaînes cinéma ; les reprises VOD,
 // les rappels et la navigation gardent leurs propres règles d'accès.
 import '../../simple_home/data/home_layout_repository.dart';
+import '../../channels/domain/channel.dart';
 import 'home_shelves.dart';
+import 'tv_home_genres.dart';
 
 const Set<String> kTvManagedHomeSections = <String>{
   HomeSectionKey.recent,
   HomeSectionKey.favorites,
+  ...kTvGenreHomeSections,
 };
 
 bool tvHomeSectionVisible(String key, Map<String, HomeSectionConfig> layout) =>
@@ -23,12 +26,10 @@ List<String> tvHomeSectionOrder(
   final List<String> visible = available
       .where((String key) => tvHomeSectionVisible(key, layout))
       .toList();
-  final List<String> managed = visible
-      .where(kTvManagedHomeSections.contains)
-      .toList();
+  final List<String> managed =
+      visible.where(kTvManagedHomeSections.contains).toList();
   final Map<String, int> defaults = <String, int>{
-    HomeSectionKey.recent: 0,
-    HomeSectionKey.favorites: 1,
+    for (int i = 0; i < kDefaultHomeOrder.length; i++) kDefaultHomeOrder[i]: i,
   };
   managed.sort((String a, String b) {
     final int comparison = (layout[a]?.position ?? defaults[a]!).compareTo(
@@ -48,8 +49,11 @@ List<String> tvHomeSectionOrder(
 /// accessibles, exactement comme sur un accueil sans historique.
 bool hasVisibleTvHomeShelves(
   HomeShelfModel model,
-  Map<String, HomeSectionConfig> layout,
-) =>
+  Map<String, HomeSectionConfig> layout, {
+  Map<String, List<Channel>> genreShelves = const <String, List<Channel>>{},
+}) =>
+    genreShelves.entries.any((entry) =>
+        entry.value.isNotEmpty && tvHomeSectionVisible(entry.key, layout)) ||
     model.reminders.isNotEmpty ||
     model.continueWatching.isNotEmpty ||
     model.popular.isNotEmpty ||
@@ -66,11 +70,9 @@ HomeShelfKind? visibleTvInitialShelf(
   Map<String, HomeSectionConfig> layout,
 ) {
   if (requested == null) return null;
-  final bool resume =
-      model.resume.isNotEmpty &&
+  final bool resume = model.resume.isNotEmpty &&
       tvHomeSectionVisible(HomeSectionKey.recent, layout);
-  final bool favorites =
-      model.favorites.isNotEmpty &&
+  final bool favorites = model.favorites.isNotEmpty &&
       tvHomeSectionVisible(HomeSectionKey.favorites, layout);
   if (requested == HomeShelfKind.resume && !resume ||
       requested == HomeShelfKind.favorites && !favorites) {

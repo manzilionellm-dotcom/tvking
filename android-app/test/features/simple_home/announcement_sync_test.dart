@@ -15,15 +15,16 @@ Map<String, Object> notice({
   String url = '',
   String cta = '',
   int expires = 0,
-}) => <String, Object>{
-  'id': 41,
-  'title': 'Annonce du panel',
-  'body': 'Message',
-  'kind': 'info',
-  'url': url,
-  'cta': cta,
-  'expires_at': expires,
-};
+}) =>
+    <String, Object>{
+      'id': 41,
+      'title': 'Annonce du panel',
+      'body': 'Message',
+      'kind': 'info',
+      'url': url,
+      'cta': cta,
+      'expires_at': expires,
+    };
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -34,6 +35,60 @@ void main() {
     AnnouncementRepository.baseUrl = 'https://fixture.invalid';
   });
   tearDown(AnnouncementRepository.resetForTesting);
+
+  test('liens annonce : HTTP(S) absolu seulement, texte toujours conservé', () {
+    for (final link in [
+      'https://fixture.invalid/a?ref=panel#contact',
+      'http://fixture.invalid:8080/a',
+    ]) {
+      expect(Announcement.fromJson(notice(url: '  $link  '))!.url, link);
+    }
+    for (final link in [
+      '',
+      '/contact',
+      '//fixture.invalid/contact',
+      'https:contact',
+      'https://',
+      'javascript:alert(1)',
+      'data:text/html,hello',
+      'mailto:a@fixture.invalid',
+      'intent://contact',
+      'ftp://fixture.invalid/a',
+      'https://user:password@fixture.invalid/a',
+      'https://fixture.invalid:bad/a',
+      'https://bad host.invalid/a',
+      'https://fixture.invalid/\ncontact',
+    ]) {
+      final announcement =
+          Announcement.fromJson(notice(url: link, cta: 'Ouvrir'))!;
+      expect(announcement.url, isEmpty, reason: link);
+      expect(announcement.title, 'Annonce du panel');
+      expect(announcement.body, 'Message');
+    }
+    const direct = Announcement(
+        id: 42,
+        title: 'Titre',
+        body: 'Texte',
+        url: 'https://user:secret@fixture.invalid',
+        kind: '',
+        cta: '',
+        createdAt: 0);
+    expect(direct.url, isEmpty);
+  });
+
+  testWidgets('lien invalide : le message reste visible sans bouton trompeur',
+      (tester) async {
+    AnnouncementRepository.client = MockClient((_) async => http.Response(
+        jsonEncode(notice(url: 'intent://hidden', cta: 'Action du panel')),
+        200));
+    await tester.pumpWidget(
+        const MaterialApp(home: Scaffold(body: AnnouncementBanner())));
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('Annonce du panel'), findsOneWidget);
+    expect(find.text('Action du panel'), findsNothing);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
 
   test(
     'le changement de lien et CTA est diffusé, sans nouvel identifiant',
@@ -90,7 +145,7 @@ void main() {
   });
 
   test(
-    'un poll UI simultané ne transforme pas l’échec strict en succès',
+    'un ordre relit après le poll UI et propage aussi le nouvel échec',
     () async {
       final completer = Completer<http.Response>();
       var calls = 0;
@@ -106,7 +161,7 @@ void main() {
       completer.complete(http.Response('indisponible', 503));
       await strict;
       expect(await ui, isNull);
-      expect(calls, 1);
+      expect(calls, 2);
     },
   );
 

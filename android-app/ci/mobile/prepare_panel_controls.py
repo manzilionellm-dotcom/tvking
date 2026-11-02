@@ -12,6 +12,8 @@ import argparse
 from pathlib import Path
 import re
 
+import mobile_controls_options
+
 
 class OverlayError(ValueError):
     pass
@@ -217,6 +219,7 @@ def plan(source: Path, target: Path) -> dict[str, str]:
     files[legacy_test] = once(dst(legacy_test), 'throwsA(isA<StateError>())',
                              'throwsA(anyOf(isA<StateError>(), isA<FormatException>()))',
                              'le contrat exige un échec, y compris JSON malformé')
+    mobile_controls_options.extend(source, target, files, once)
     return files
 
 

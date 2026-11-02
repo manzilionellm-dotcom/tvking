@@ -32,12 +32,12 @@ class Announcement {
     required this.id,
     required this.title,
     required this.body,
-    required this.url,
+    required String url,
     required this.kind,
     required this.cta,
     required this.createdAt,
     this.expiresAt = 0,
-  });
+  }) : _url = url;
 
   /// Identifiant unique côté serveur (auto-incrément). Sert à savoir si
   /// l'utilisateur a déjà fermé CETTE annonce.
@@ -45,8 +45,25 @@ class Announcement {
   final String title;
   final String body;
 
-  /// Lien optionnel (ex. page promo). Vide si absent.
-  final String url;
+  final String _url;
+
+  /// Une seule règle pour le bouton mobile et le QR d'annonce TV : seulement
+  /// un lien HTTP(S) absolu, avec hôte et sans identifiants. Un lien invalide
+  /// devient vide ; le titre et le message restent lisibles, sans fausse action.
+  /// Le getter protège aussi les annonces créées directement par du code local.
+  String get url {
+    final value = _url.trim();
+    if (value.isEmpty || RegExp(r'[\s\\]').hasMatch(value)) return '';
+    final uri = Uri.tryParse(value);
+    if (uri == null ||
+        !<String>['http', 'https'].contains(uri.scheme) ||
+        !uri.hasAuthority ||
+        uri.host.isEmpty ||
+        uri.userInfo.isNotEmpty) {
+      return '';
+    }
+    return uri.toString();
+  }
 
   /// Catégorie : `nouveaute` | `promo` | `info` | `maintenance` (ou vide).
   /// Pilote l'icône + la couleur du bandeau (cf. AnnouncementBanner).
@@ -116,10 +133,25 @@ abstract final class AnnouncementRepository {
   @visibleForTesting
   static String? baseUrl;
 
-  /// Une seule requête part même si le signal et l'accueil se réveillent
-  /// ensemble. Une réponse 200 vide retire l'annonce ; une panne conserve
-  /// l'annonce précédente jusqu'à sa date d'expiration.
+  /// Les lectures UI simultanées partagent une requête. Un ordre strict
+  /// attend puis relit pour ne jamais confirmer une réponse partie avant lui.
+  /// Une réponse 200 vide retire l'annonce ; une panne conserve la précédente
+  /// jusqu'à sa date d'expiration.
   static Future<Announcement?> fetchLatest({bool strict = false}) async {
+    // Une lecture partie avant l'ordre peut encore contenir l'ancienne valeur.
+    // Le strict attend sa fin, puis démarre sa propre lecture après l'ordre.
+    // La boucle sérialise aussi plusieurs ordres stricts sans réponse tardive.
+    if (strict) {
+      while (_pending != null) {
+        final previous = _pending!;
+        try {
+          await previous;
+        } catch (_) {
+          // Seule la nouvelle lecture décide du succès de cet ordre.
+        }
+        if (identical(_pending, previous)) _pending = null;
+      }
+    }
     final int generation = _generation;
     final Future<Announcement?> request = _pending ??= _fetch().whenComplete(
       () {

@@ -13,6 +13,7 @@ import '../../playlists/data/import_progress.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../../playlists/data/remote_source_repository.dart';
 import '../../playlists/domain/open_source_input.dart';
+import '../../playlists/presentation/widgets/configured_servers_picker.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
 import '../core/tv_app_tokens.dart';
@@ -41,7 +42,7 @@ class TvSourceEntryForm extends StatefulWidget {
 
   /// Frontière de test, sans fournisseur ni identifiants réels enregistrés.
   final Future<void> Function(OpenSourceDraft draft, String name)?
-  submitForTesting;
+      submitForTesting;
 
   @override
   State<TvSourceEntryForm> createState() => _TvSourceEntryFormState();
@@ -216,6 +217,14 @@ class _TvSourceEntryFormState extends State<TvSourceEntryForm> {
             ),
             const SizedBox(height: 16),
             if (_mode == OpenEntryMode.xtream) ...<Widget>[
+              ConfiguredServersPicker(
+                serverController: _server,
+                enabled: !_blocked,
+                normalizeUrl: (url) => const SourceHttpInputFormatter()
+                    .formatEditUpdate(
+                        TextEditingValue.empty, TextEditingValue(text: url))
+                    .text,
+              ),
               _SourceField(
                 key: const ValueKey<String>('tv-source-server'),
                 controller: _server,
@@ -259,8 +268,8 @@ class _TvSourceEntryFormState extends State<TvSourceEntryForm> {
                   onPressed: _busy
                       ? null
                       : () => setState(
-                          () => _passwordVisible = !_passwordVisible,
-                        ),
+                            () => _passwordVisible = !_passwordVisible,
+                          ),
                   icon: Icon(
                     _passwordVisible
                         ? Icons.visibility_off_rounded
@@ -368,9 +377,9 @@ class _SourceField extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     OutlineInputBorder border(Color color, double width) => OutlineInputBorder(
-      borderRadius: BorderRadius.circular(TvTokens.rButton),
-      borderSide: BorderSide(color: color, width: width),
-    );
+          borderRadius: BorderRadius.circular(TvTokens.rButton),
+          borderSide: BorderSide(color: color, width: width),
+        );
     return TextField(
       controller: controller,
       focusNode: focusNode,
@@ -433,42 +442,42 @@ class _ModeChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Semantics(
-    button: true,
-    selected: selected,
-    enabled: enabled,
-    child: TvFocusBuilder(
-      enabled: enabled,
-      scale: TvFocusScale.none,
-      onSelect: enabled ? onSelect : null,
-      builder: (context, focused) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
-        decoration: BoxDecoration(
-          color: focused
-              ? TvAppTokens.of(context).accent
-              : selected
-              ? TvAppTokens.of(context).sel
-              : TvAppTokens.of(context).panel,
-          borderRadius: BorderRadius.circular(TvTokens.rButton),
-          border: Border.all(
-            color: focused || selected
-                ? TvAppTokens.of(context).accent
-                : TvAppTokens.of(context).line,
+        button: true,
+        selected: selected,
+        enabled: enabled,
+        child: TvFocusBuilder(
+          enabled: enabled,
+          scale: TvFocusScale.none,
+          onSelect: enabled ? onSelect : null,
+          builder: (context, focused) => Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+            decoration: BoxDecoration(
+              color: focused
+                  ? TvAppTokens.of(context).accent
+                  : selected
+                      ? TvAppTokens.of(context).sel
+                      : TvAppTokens.of(context).panel,
+              borderRadius: BorderRadius.circular(TvTokens.rButton),
+              border: Border.all(
+                color: focused || selected
+                    ? TvAppTokens.of(context).accent
+                    : TvAppTokens.of(context).line,
+              ),
+            ),
+            child: Text(
+              label,
+              textAlign: TextAlign.center,
+              style: TvAppTokens.of(context).ui(
+                15,
+                weight: FontWeight.w600,
+                color: focused
+                    ? TvAppTokens.of(context).onAccent
+                    : selected
+                        ? TvAppTokens.of(context).accentBright
+                        : TvAppTokens.of(context).muted,
+              ),
+            ),
           ),
         ),
-        child: Text(
-          label,
-          textAlign: TextAlign.center,
-          style: TvAppTokens.of(context).ui(
-            15,
-            weight: FontWeight.w600,
-            color: focused
-                ? TvAppTokens.of(context).onAccent
-                : selected
-                ? TvAppTokens.of(context).accentBright
-                : TvAppTokens.of(context).muted,
-          ),
-        ),
-      ),
-    ),
-  );
+      );
 }

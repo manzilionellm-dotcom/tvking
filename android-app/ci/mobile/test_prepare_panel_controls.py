@@ -27,7 +27,14 @@ HEARTBEAT = 'lib/features/subscription/data/subscription_backend.dart'
 PLUGIN = 'packages/tvking_device/android/src/main/kotlin/com/manzilionellm/tvking_device/TvkingDevicePlugin.kt'
 ACTIVITY = 'android_overlay/google_cast/MainActivity.kt'
 LEGACY_TEST = 'test/features/subscription/panel_settings_refresh_test.dart'
-OLD_READS = ['lib/main.dart', AD, BANNER, IDENTITY, HEARTBEAT, PLUGIN, ACTIVITY, LEGACY_TEST]
+OLD_READS = ['lib/main.dart', AD, BANNER, IDENTITY, HEARTBEAT, PLUGIN, ACTIVITY, LEGACY_TEST,
+    'lib/core/theme/accent_controller.dart', 'lib/core/theme/lumiere_tokens.dart',
+    'lib/core/theme/app_theme.dart', 'lib/features/simple_home/presentation/widgets/category_browser_view.dart',
+    'lib/features/playlists/presentation/widgets/xtream_login_form.dart',
+    'lib/features/playlists/presentation/m3u_login_sheet.dart',
+    'lib/features/simple_home/presentation/simple_home_screen.dart',
+    'lib/features/profile/presentation/profile_screen.dart',
+    'test/features/simple_home/premium_home_visual_test.dart']
 
 
 def old(path: str) -> str:
@@ -48,6 +55,24 @@ class MobileOverlayTest(unittest.TestCase):
             'test/features/subscription/heartbeat_mobile_device_kind_test.dart',
             'test/features/simple_home/announcement_sync_test.dart',
             'test/features/subscription/mobile_panel_controls_contract_test.dart',
+            'lib/core/theme/theme_mode_repository.dart', 'lib/core/theme/remote_theme_settings.dart',
+            'lib/features/theme/data/remote_theme_repository.dart',
+            'lib/features/simple_home/data/home_layout_repository.dart',
+            'lib/features/country_home/data/featured_repository.dart',
+            'lib/features/simple_home/presentation/widgets/mobile_panel_sections.dart',
+            'test/features/simple_home/mobile_panel_sections_test.dart',
+            'test/core/theme/accent_controller_test.dart',
+            'test/features/theme/mobile_remote_theme_test.dart',
+            'lib/features/feedback/data/feedback_repository.dart',
+            'lib/features/feedback/presentation/feedback_sheet.dart',
+            'lib/features/playlists/data/default_servers.dart',
+            'lib/features/pricing/data/pricing_repository.dart',
+            'test/features/pricing/pricing_repository_test.dart',
+            'lib/features/pricing/presentation/pricing_banner.dart',
+            'test/features/pricing/mobile_pricing_test.dart',
+            'test/features/subscription/mobile_panel_freshness_test.dart',
+            'lib/features/playlists/presentation/widgets/configured_servers_picker.dart',
+            'test/features/playlists/configured_servers_picker_test.dart',
         }
         self.assertEqual(set(FILES), expected)
         self.assertNotIn('pubspec.yaml', FILES)
@@ -58,6 +83,8 @@ class MobileOverlayTest(unittest.TestCase):
         # On retire uniquement les ajouts annoncés ; tout le reste doit retrouver
         # exactement la recette déjà revue, y compris gestes, abonnement et PiP.
         text = FILES['lib/main.dart']
+        text = text.replace('theme: AppTheme.daylight,', 'theme: AppTheme.cinema,', 1)
+        text = text.replace('themeMode: ThemeModeRepository.instance.mode,', 'themeMode: ThemeMode.dark,', 1)
         start = '  Future<void> _resolveAd() async {'
         end = '  /// MISE À JOUR FORCÉE — pilotée à distance depuis le panel.'
         text = overlay.replace_section(text, old('lib/main.dart'), start, end, 'inverse résolution')
@@ -68,6 +95,7 @@ class MobileOverlayTest(unittest.TestCase):
         text = overlay.once(text, overlay.section(text, helper_start, helper_end, 'garde Cast'), '', 'garde Cast')
         text = overlay.once(text, '                onDone: () {\n                  if (mounted)',
                             '                onDone: () {\n                  StartupAdRepository.instance.markShown();\n                  if (mounted)', 'ancien comptage')
+        text = overlay.replace_section(text, old('lib/main.dart'), '          // Thème ', '          // Internationalisation', 'thème explicite')
         self.assertEqual(text, old('lib/main.dart'))
         self.assertIn('if (mounted && !_adResolved)', FILES['lib/main.dart'])
         self.assertIn('CastManager.instance.state == CastState.connecting', FILES['lib/main.dart'])

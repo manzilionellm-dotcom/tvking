@@ -47,6 +47,20 @@ class FeaturedRepository extends ChangeNotifier {
 
   Future<void> refresh({bool strict = false}) async {
     try {
+      // Une lecture partie avant l'ordre peut encore contenir l'ancienne valeur.
+      // Le strict attend sa fin, puis démarre sa propre lecture après l'ordre.
+      // La boucle sérialise aussi plusieurs ordres stricts sans réponse tardive.
+      if (strict) {
+        while (_pending != null) {
+          final previous = _pending!;
+          try {
+            await previous;
+          } catch (_) {
+            // Seule la nouvelle lecture décide du succès de cet ordre.
+          }
+          if (identical(_pending, previous)) _pending = null;
+        }
+      }
       final Future<void> pending = _pending ??= _fetchAndApply();
       try {
         await pending;
