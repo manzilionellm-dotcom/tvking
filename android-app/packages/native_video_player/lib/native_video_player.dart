@@ -96,8 +96,8 @@ abstract class NativeVideoBackend {
   /// Caler la fréquence de l'écran sur le flux. Ignoré hors Android.
   void setFrameRateMatch(bool enabled) {}
 
-  /// Contraste léger. Ignoré hors Android, et refusé sur la box tant
-  /// que le filtre quitterait la Surface.
+  /// Contraste léger. Le moteur Android applique un véritable effet vidéo ;
+  /// les autres moteurs peuvent ne pas proposer ce réglage.
   void setLightContrast(bool enabled) {}
 
   /// Le widget qui affiche la vidéo.
@@ -130,6 +130,10 @@ class NativeVideoController extends ChangeNotifier {
 
   /// Fabrique du moteur hors Android (null sur la box : lecteur natif).
   static NativeVideoBackend Function()? backendFactory;
+
+  /// Préférence chargée au démarrage, avant de créer le premier lecteur.
+  /// Android l'applique ; les autres moteurs déclarent leurs propres capacités.
+  static bool defaultLightContrast = true;
 
   /// Langue audio de l'application (« fr », « en »…). Lue à chaque
   /// ouverture si l'appelant n'en passe pas une plus précise (film).
@@ -319,9 +323,12 @@ class NativeVideoController extends ChangeNotifier {
   /// Le .so sait décoder la vidéo. Faux avec le binaire audio de la v104.
   bool ffmpegVideoReady = false;
 
-  /// Le matériel accepte un filtre de contraste sans quitter la Surface.
-  /// Faux dans cette version.
+  /// Capacité annoncée par le moteur. Inconnue avant sa première réponse.
   bool contrastHardware = false;
+
+  /// État du traitement confirmé par le natif, distinct de la préférence.
+  bool contrastApplied = false;
+  String? contrastReason;
 
   /// Dernier appui « FFmpeg » refusé parce que la vidéo n'est pas dans le .so.
   bool engineRejectedFfmpeg = false;
@@ -344,6 +351,7 @@ class NativeVideoController extends ChangeNotifier {
 
   String _imageEngine = 'hardware';
   bool _frameRateMatch = false;
+  bool _lightContrast = defaultLightContrast;
 
   // Paramètres du dernier setUrl (rejoués si la vue native arrive après).
   Map<String, dynamic>? _pendingArgs;
@@ -364,6 +372,7 @@ class NativeVideoController extends ChangeNotifier {
     // second démarrage si le choix n'est pas le matériel).
     ch.invokeMethod<void>('setEngine', _imageEngine);
     ch.invokeMethod<void>('setFrameRateMatch', _frameRateMatch);
+    ch.invokeMethod<void>('setContrast', _lightContrast);
     // Diagnostic audio. Tout est faux par défaut : sonde inactive,
     // AAC toujours sur FFmpeg, pas d'essai du décodeur de la box.
     ch.invokeMethod<void>('setAudioProbe', audioProbeEnabled);
@@ -432,7 +441,17 @@ class NativeVideoController extends ChangeNotifier {
     }
     // Ces messages décrivent le moteur, pas une image de l'ancienne
     // chaîne : on les prend même entre deux zap.
-    if (method == 'engine' || method == 'imageCaps' || method == 'contrast') {
+    if (method == 'contrast' || method == 'contrastReason') {
+      if (method == 'contrast') {
+        contrastApplied = arguments == true;
+        if (contrastApplied) contrastReason = null;
+      } else {
+        contrastReason = arguments is String ? arguments : null;
+      }
+      if (!_disposed) notifyListeners();
+      return;
+    }
+    if (method == 'engine' || method == 'imageCaps') {
       _readEngine(arguments);
       if (!_disposed) notifyListeners();
       return;
@@ -700,6 +719,7 @@ class NativeVideoController extends ChangeNotifier {
   }
 
   void setLightContrast(bool enabled) {
+    _lightContrast = enabled;
     if (_backend != null) {
       _backend!.setLightContrast(enabled);
       return;

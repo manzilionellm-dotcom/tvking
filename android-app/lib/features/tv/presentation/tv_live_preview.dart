@@ -131,6 +131,7 @@ class _TvLivePreviewState extends State<TvLivePreview> {
       ImagePrefs.load().then((_) {
         created.setImageEngine(ImagePrefs.engine.wire);
         created.setFrameRateMatch(ImagePrefs.frameRateMatch);
+        created.setLightContrast(ImagePrefs.lightContrast);
       }),
     );
   }

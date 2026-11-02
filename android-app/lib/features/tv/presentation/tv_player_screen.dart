@@ -344,6 +344,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   void _onImagePrefs() {
     _controller.setImageEngine(ImagePrefs.engine.wire);
     _controller.setFrameRateMatch(ImagePrefs.frameRateMatch);
+    _controller.setLightContrast(ImagePrefs.lightContrast);
   }
 
   // Une mini-fenêtre est encore une image visible. Le pont Android décide

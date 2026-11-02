@@ -23,6 +23,7 @@ import android.widget.ImageView
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.Format
 import androidx.media3.common.C
+import androidx.media3.common.ColorInfo
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
@@ -435,6 +436,13 @@ class NativeVideoView(
     // FFmpeg vidéo EN PREMIER. Faux au démarrage : même liste qu'en v104.
     private var installFfmpegVideo: Boolean = false
     private var ffmpegRendererInstalled: Boolean = false
+
+    // Contraste réellement traité par Media3. Le choix reste allumé par
+    // défaut ; un repli ne change que CETTE adresse, jamais la préférence.
+    private var contrastRequested: Boolean = PictureTune.DEFAULT_ENABLED
+    private var contrastPipelineInstalled: Boolean = false
+    private var contrastBypassReason: String? = null
+    private var contrastFallbackPosted: Boolean = false
 
     // Relu à chaque demande de décodeur. Le logiciel passe devant seulement
     // quand [videoEngine] est SOFTWARE.
@@ -1152,6 +1160,13 @@ class NativeVideoView(
                     result.error("no_url", "setUrl appelé sans url", null)
                     return
                 }
+                if (url != currentUrl) {
+                    // Même si Home/Cast retarde l'ouverture : un autre flux
+                    // a droit au contraste par défaut. Le rendu sera aligné
+                    // juste avant sa prochaine ouverture au premier plan.
+                    contrastBypassReason = null
+                    contrastFallbackPosted = false
+                }
                 // Garder aussi les langues quand le Cast ou Home retarde
                 // l'ouverture. Ce réglage ne prépare aucun flux. Une seule
                 // définition, appelée après restorePreferredEngine en lecture
@@ -1275,16 +1290,17 @@ class NativeVideoView(
                 result.success(null)
             }
             "setContrast" -> {
-                // Le filtre OpenGL quitterait la Surface. On ne l'allume
-                // pas : hardwareAllows reste faux, la fonction testée
-                // renvoie donc faux. LIGHT_CONTRAST n'est pas appliqué.
-                val requested = call.arguments == true
-                val applied = PictureTune.resolve(requested, hardwareAllows = false)
-                emit("contrast", applied)
-                if (requested && !applied) {
-                    emit("contrastReason", "surface")
+                contrastRequested = call.arguments == true
+                if (contrastPipelineInstalled) {
+                    // Le pipeline est installé AVANT prepare. Une liste
+                    // vide coupe le filtre, mais conserve le pipeline GL :
+                    // on ne prétend pas revenir au chemin Surface direct.
+                    player.setVideoEffects(
+                        VideoContrastEffects.create(contrastRequested, contrastAvailable()),
+                    )
                 }
-                result.success(applied)
+                emitImageCaps()
+                result.success(contrastApplied())
             }
             "setClearVoice" -> {
                 val on = call.arguments == true
@@ -1584,6 +1600,19 @@ class NativeVideoView(
     /** Pistes disponibles → Dart, puis choix de la voix (une fois). */
     override fun onTracksChanged(eventTime: AnalyticsListener.EventTime, tracks: Tracks) {
         if (!fresh(eventTime)) return
+        // Sur le HDR et le DRM, conserver le chemin natif direct. Le GL
+        // Media3 1.5.1 ne sait notamment pas sortir du PQ avant Android 13.
+        // Regarder uniquement la vidéo sélectionnée, pas une piste inactive.
+        if (contrastPipelineInstalled) {
+            for (group in tracks.groups) {
+                if (group.type != C.TRACK_TYPE_VIDEO) continue
+                for (i in 0 until group.length) {
+                    if (!group.isTrackSelected(i)) continue
+                    val reason = contrastDirectReason(group.getTrackFormat(i))
+                    if (reason != null && requestContrastDirectFallback(reason)) return
+                }
+            }
+        }
         val out = ArrayList<Map<String, Any?>>()
         val audio = ArrayList<SpokenCandidate>()
         tracks.groups.forEachIndexed { gi, g ->
@@ -1706,6 +1735,8 @@ class NativeVideoView(
         decoderReuseEvaluation: DecoderReuseEvaluation?,
     ) {
         if (!fresh(eventTime)) return
+        val directReason = contrastDirectReason(format)
+        if (directReason != null && requestContrastDirectFallback(directReason)) return
         // Mesure seulement : le canal PiP adapte sa fenêtre à la vidéo,
         // sans modifier le flux, sa piste, ni la session Cast éventuelle.
         emit("videoFormat", mapOf(
@@ -1745,6 +1776,16 @@ class NativeVideoView(
         if (refuseReopen()) return
         val token = sessions.generation
         val exo = error as? ExoPlaybackException
+        // Une panne du processeur de trames n'est pas une panne du serveur.
+        // Au maximum un repli direct par adresse, sans changer de décodeur.
+        val contrastReason = exo?.rendererFormat?.let(::contrastDirectReason)
+        if (contrastPipelineInstalled &&
+            (contrastReason != null ||
+                error.errorCode == PlaybackException.ERROR_CODE_VIDEO_FRAME_PROCESSOR_INIT_FAILED ||
+                error.errorCode == PlaybackException.ERROR_CODE_VIDEO_FRAME_PROCESSING_FAILED)
+        ) {
+            if (requestContrastDirectFallback(contrastReason ?: "processing_error")) return
+        }
         val signal = DecoderFallback.classify(error.errorCode, exo?.rendererName)
         // Vidéo seulement. Une erreur audio FFmpeg garde son propre repli
         // (plus bas) et ne doit pas changer le décodeur d'image.
@@ -1829,6 +1870,7 @@ class NativeVideoView(
         if (released) return
         pausedByFocus = false
         sessions.open()
+        contrastFallbackPosted = false
         sessionOpenedAt = SystemClock.elapsedRealtime()
         audioChosenForSession = false
         videoChosenForSession = false
@@ -1875,6 +1917,13 @@ class NativeVideoView(
         if (currentUrl == null || released) return
         // Dehors : pas de nouveau décodeur, pas de nouvel AudioTrack.
         if (refuseReopen()) return
+        // Un repli peut avoir été décidé juste avant Home/Cast. Son callback
+        // annulé ne doit pas laisser le processeur GL actif au retour. Même
+        // règle pour un nouveau flux choisi pendant l'arrière-plan.
+        if (contrastPipelineInstalled != useContrastPipeline(installFfmpegVideo)) {
+            rebuildPlayer()
+            emitImageCaps()
+        }
         // Avant stop() : la copie couvre la surface, qui va se vider.
         if (sawFrame && heldBitmap != null) showHeldFrame()
         if (playerKey >= 0) owners.claim(playerKey)
@@ -2727,6 +2776,15 @@ class NativeVideoView(
      * on ne rogne pas.
      */
     private fun attachToSurface(target: ExoPlayer) {
+        // Cet appel précède TOUT prepare, y compris après un changement de
+        // moteur. Media3 installe alors son processeur de trames. Ne jamais
+        // appeler setVideoEffects (même vide) pour le chemin direct de repli.
+        contrastPipelineInstalled = useContrastPipeline(installFfmpegVideo)
+        if (contrastPipelineInstalled) {
+            target.setVideoEffects(
+                VideoContrastEffects.create(contrastRequested, hardwareAllows = true),
+            )
+        }
         target.setVideoScalingMode(C.VIDEO_SCALING_MODE_SCALE_TO_FIT)
         target.setVideoSurfaceView(surfaceView)
         target.addAnalyticsListener(this)
@@ -2742,9 +2800,68 @@ class NativeVideoView(
             mapOf(
                 "ffmpegVideo" to ffmpegVideoReady,
                 "engine" to videoEngine.wire,
-                "contrastHardware" to false,
+                // Nom historique du contrat Dart : capacité du chemin de
+                // rendu, pas preuve que le décodeur utilise la puce matérielle.
+                "contrastHardware" to contrastAvailable(),
+                "contrastRequested" to contrastRequested,
+                "contrastApplied" to contrastApplied(),
+                "contrastReason" to contrastReason(),
             ),
         )
+        emit("contrast", contrastApplied())
+        emit("contrastReason", contrastReason())
+    }
+
+    private fun useContrastPipeline(ffmpegVideo: Boolean): Boolean =
+        !ffmpegVideo && contrastBypassReason == null
+
+    private fun contrastAvailable(): Boolean =
+        contrastPipelineInstalled && contrastBypassReason == null
+
+    private fun contrastApplied(): Boolean =
+        PictureTune.resolve(contrastRequested, contrastAvailable())
+
+    private fun contrastReason(): String? = when {
+        contrastBypassReason != null -> contrastBypassReason
+        ffmpegRendererInstalled -> "ffmpeg"
+        !contrastRequested -> "disabled"
+        else -> null
+    }
+
+    /** Le contraste SDR n'impose aucune conversion ou perte de métadonnées HDR. */
+    private fun contrastDirectReason(format: Format): String? = when {
+        format.drmInitData != null -> "drm"
+        ColorInfo.isTransferHdr(format.colorInfo) -> "hdr"
+        else -> null
+    }
+
+    /**
+     * Reconstruit réellement sans GL ; vider les effets laisserait le même
+     * processeur en place. Une seule tentative par URL, annulée si la personne
+     * zappe, quitte l'app ou donne la lecture au Cast pendant le callback.
+     */
+    private fun requestContrastDirectFallback(reason: String): Boolean {
+        if (!contrastPipelineInstalled) return false
+        if (contrastFallbackPosted) return true
+        if (contrastBypassReason != null || released || currentUrl == null) return false
+        if (!AppForeground.allowsReopen() || castSuspended) return false
+        contrastBypassReason = reason
+        contrastFallbackPosted = true
+        emitImageCaps()
+        val token = sessions.generation
+        val source = currentUrl
+        val resumeAt = if (vodMode) player.currentPosition.coerceAtLeast(lastKnownPos) else 0L
+        handler.post {
+            if (released || token != sessions.generation || source != currentUrl) return@post
+            contrastFallbackPosted = false
+            if (!AppForeground.allowsReopen() || castSuspended) return@post
+            cancelRetry()
+            emit("reopen", null)
+            if (vodMode) lastKnownPos = resumeAt
+            rebuildPlayer()
+            openCurrent(if (vodMode) resumeAt else null)
+        }
+        return true
     }
 
     private fun emitEngine(rejected: String? = null) {
@@ -2759,18 +2876,24 @@ class NativeVideoView(
     private fun restorePreferredEngine() {
         if (videoEngine == preferredEngine &&
             preferSoftwareVideo == (preferredEngine == VideoEngine.SOFTWARE) &&
-            ffmpegRendererInstalled == (preferredEngine == VideoEngine.FFMPEG && ffmpegVideoReady)
+            ffmpegRendererInstalled == (preferredEngine == VideoEngine.FFMPEG && ffmpegVideoReady) &&
+            contrastPipelineInstalled == useContrastPipeline(
+                preferredEngine == VideoEngine.FFMPEG && ffmpegVideoReady,
+            )
         ) {
             return
         }
         videoEngine = preferredEngine
         preferSoftwareVideo = preferredEngine == VideoEngine.SOFTWARE
         val wantFfmpeg = preferredEngine == VideoEngine.FFMPEG && ffmpegVideoReady
-        if (wantFfmpeg != ffmpegRendererInstalled) {
+        if (wantFfmpeg != ffmpegRendererInstalled ||
+            contrastPipelineInstalled != useContrastPipeline(wantFfmpeg)
+        ) {
             installFfmpegVideo = wantFfmpeg
             rebuildPlayer()
         }
         emitEngine()
+        emitImageCaps()
     }
 
     /**
@@ -2792,6 +2915,7 @@ class NativeVideoView(
             rebuildPlayer()
         }
         emitEngine()
+        emitImageCaps()
         if (reopen && changed && currentUrl != null && !released) {
             emit("reopen", null)
             if (vodMode && player.currentPosition > 0) lastKnownPos = player.currentPosition
@@ -2800,9 +2924,8 @@ class NativeVideoView(
     }
 
     /**
-     * Nouveau lecteur, MÊME surface. On ne le fait que pour entrer ou
-     * sortir de FFmpeg vidéo : le matériel et le logiciel partagent
-     * le même lecteur, seul l'ordre des codecs change.
+     * Nouveau lecteur, MÊME surface : FFmpeg vidéo ou sortie du pipeline
+     * de contraste. Matériel et logiciel Android partagent le même rendu.
      */
     private fun rebuildPlayer() {
         if (!::player.isInitialized) return
@@ -2839,7 +2962,7 @@ class NativeVideoView(
     }
 
     private fun considerPictureFallback() {
-        if (released || videoGaveUp || videoFallbackPosted) return
+        if (released || videoGaveUp || videoFallbackPosted || contrastFallbackPosted) return
         if (!::player.isInitialized) return
         // Dehors, l'image est partie : ce n'est pas un décodeur à changer.
         if (!AppForeground.allowsReopen()) return
@@ -2860,7 +2983,13 @@ class NativeVideoView(
             buffering = buffering,
             msSinceLastFrame = if (lastFrameAtMs == 0L) 0L else now - lastFrameAtMs,
         )
-        if (black || frozen) takeVideoFallback(PictureSignal.BLACK_OR_FROZEN)
+        if (black || frozen) {
+            // Une texture GL bloquée doit d'abord pouvoir rendre la main
+            // au chemin direct, avant d'accuser le décodeur de la box.
+            if (!requestContrastDirectFallback("no_frames")) {
+                takeVideoFallback(PictureSignal.BLACK_OR_FROZEN)
+            }
+        }
     }
 
     /**

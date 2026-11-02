@@ -195,6 +195,7 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
   void _onImagePrefs() {
     _c.setImageEngine(ImagePrefs.engine.wire);
     _c.setFrameRateMatch(ImagePrefs.frameRateMatch);
+    _c.setLightContrast(ImagePrefs.lightContrast);
   }
 
   void _cycleEngine() {
