@@ -41,7 +41,7 @@ try {
         throw 'Manifestes Windows incohérents avec le commit compilé.'
     }
     Assert-FileHash $setup $manifest.sha256
-    if ((Get-Item $setup).Length -ne $manifest.size) { throw 'Taille de l’installeur incohérente.' }
+    if ((Get-Item $setup).Length -ne $manifest.size) { throw "Taille de l'installeur incohérente." }
     foreach ($entry in $proof.files) {
         if ($entry.name -notin @('Zuno-Setup.exe', 'zuno-windows.zip')) { throw 'Nom de fichier inattendu.' }
         Assert-FileHash (Join-Path $dist $entry.name) $entry.sha256
@@ -78,7 +78,7 @@ try {
         try {
             $stream.Position = 4096
             $byte = $stream.ReadByte()
-            if ($byte -lt 0) { throw 'Binaire trop court pour le contrôle d’intégrité.' }
+            if ($byte -lt 0) { throw "Binaire trop court pour le contrôle d'intégrité." }
             $stream.Position = 4096
             $stream.WriteByte([byte]($byte -bxor 1))
         } finally { $stream.Dispose() }
@@ -93,9 +93,9 @@ try {
     $process = Start-Process $setup -ArgumentList $arguments -PassThru
     if (!$process.WaitForExit(120000)) {
         $process.Kill($true)
-        throw 'L’installation Windows a dépassé deux minutes.'
+        throw "L'installation Windows a dépassé deux minutes."
     }
-    if ($process.ExitCode -ne 0) { throw 'L’installation Windows a échoué.' }
+    if ($process.ExitCode -ne 0) { throw "L'installation Windows a échoué." }
     foreach ($file in Get-ChildItem $portable -File -Recurse) {
         $relative = [IO.Path]::GetRelativePath($portable, $file.FullName)
         Assert-FileHash (Join-Path $install $relative) (Get-FileHash $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
