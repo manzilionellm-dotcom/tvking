@@ -7,6 +7,8 @@ import {
 import { onlineApi, flagEmoji, ApiError, isAbortError } from '@/lib/api';
 import { PANEL_POLL_MS, shouldApplyPollResult } from '@/lib/live-sync';
 import { macSearchMatches } from '@/lib/mac-format/mac-search';
+import { normalizeOnlineMac, summaryForOnlineDevice } from '@/lib/online-device';
+import { useOnlineDeviceMetadata } from '@/lib/use-online-device-metadata';
 import {
   LIST_PAGE_SIZE, agoLabel, createAbortBag, createGeneration, onlineView,
   type OnlineView,
@@ -54,13 +56,19 @@ export function OnlinePage({ onLogout }: { onLogout: () => void }) {
   }, [load]);
 
   const byCountry = data ? data.byCountry : [];
-  const table = useClientTable(data?.items ?? [], {
-    textOf: (d) => [d.country, d.ip, d.mac, d.channel].filter(Boolean).join(' '),
+  const metadata = useOnlineDeviceMetadata((data?.items ?? []).map((d) => d.mac), onLogout);
+  const rows = (data?.items ?? []).map((d) => ({
+    ...d,
+    device: summaryForOnlineDevice(d, metadata.devices.get(normalizeOnlineMac(d.mac))),
+  }));
+  const table = useClientTable(rows, {
+    textOf: (d) => [d.country, d.ip, d.mac, d.channel, d.device.label, d.device.model, d.device.os].filter(Boolean).join(' '),
     matchAlso: (d, query) => macSearchMatches(d.mac, query),
     valueOf: (d, key) => {
       if (key === 'country') return d.country || '';
       if (key === 'ip') return d.ip || '';
       if (key === 'mac') return d.mac;
+      if (key === 'device') return `${d.device.label} ${d.device.model}`;
       if (key === 'channel') return d.channel || '';
       if (key === 'seen') return d.lastSeen || 0;
       return '';
@@ -136,13 +144,20 @@ export function OnlinePage({ onLogout }: { onLogout: () => void }) {
             label="Rechercher parmi les appareils en ligne"
             value={table.query}
             onChange={table.setQuery}
-            placeholder="Pays, adresse IP, MAC…"
+            placeholder="Appareil, modèle, pays, adresse IP, MAC…"
           />
+
+          {metadata.unavailable && (
+            <p role="status" className="mb-3 text-xs text-ink-tertiary">
+              Certaines informations d’appareil sont indisponibles. La présence continue à s’actualiser.
+            </p>
+          )}
 
           <TableFrame label="Appareils en ligne">
               <thead className="bg-midnight text-left">
                 <tr>
                   <th scope="col" className="px-4 py-3 text-[10px] font-semibold uppercase tracking-widest text-ink-secondary">État</th>
+                  <SortTh label="Appareil" column="device" sortKey={table.sortKey} dir={table.dir} onSort={table.toggleSort} />
                   <SortTh label="Pays" column="country" sortKey={table.sortKey} dir={table.dir} onSort={table.toggleSort} />
                   <SortTh label="Adresse IP" column="ip" sortKey={table.sortKey} dir={table.dir} onSort={table.toggleSort} />
                   <SortTh label="MAC" column="mac" sortKey={table.sortKey} dir={table.dir} onSort={table.toggleSort} />
@@ -154,6 +169,19 @@ export function OnlinePage({ onLogout }: { onLogout: () => void }) {
                 {table.rows.map((d) => (
                   <tr key={d.mac} className="border-t border-white/5">
                     <td className="px-4 py-2.5"><StatusBadge status="online" /></td>
+                    <td className="min-w-48 max-w-72 px-4 py-2.5">
+                      <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-midnight px-2 py-1 text-xs font-medium text-ink-primary">
+                        <span aria-hidden="true">{d.device.kind === 'android_tv' || d.device.kind === 'fire_tv' ? '📺' : d.device.kind === 'android_phone' || d.device.kind === 'android_tablet' ? '📱' : '▣'}</span>
+                        {d.device.label}
+                      </span>
+                      {d.device.model && <div className="mt-1 break-words text-xs text-ink-secondary">{d.device.model}</div>}
+                      {d.device.os && <div className="mt-0.5 text-[10px] text-ink-tertiary">{d.device.os}</div>}
+                      {!d.device.model && !d.device.os && (
+                        <div className="mt-1 text-[10px] text-ink-tertiary">
+                          {metadata.loading ? 'Lecture des informations…' : 'Modèle non communiqué'}
+                        </div>
+                      )}
+                    </td>
                     <td className="px-4 py-2.5">
                       <span className="mr-1.5">{flagEmoji(d.country)}</span>
                       {d.country || '—'}
@@ -170,10 +198,10 @@ export function OnlinePage({ onLogout }: { onLogout: () => void }) {
                 ))}
                 {table.total === 0 && (
                   <tr>
-                    <td colSpan={6}>
+                    <td colSpan={7}>
                       <EmptyState
                         title={table.query ? `Personne ne correspond à « ${table.query} ».` : 'Personne en ligne.'}
-                        hint={table.query ? 'Essaie une autre MAC ou un autre pays.' : 'Aucun appareil vu dans les 15 dernières minutes.'}
+                        hint={table.query ? 'Essaie un modèle, une MAC ou un pays.' : 'Aucun appareil vu dans les 15 dernières minutes.'}
                       />
                     </td>
                   </tr>

@@ -1084,6 +1084,13 @@ export interface OnlineDevice {
   country: string;
   lastSeen: number;
   channel?: string;   // chaîne en cours de visionnage (vide si rien)
+  // Facultatif : certains serveurs enrichissent déjà la présence. Le panel
+  // sait aussi lire ces informations dans le registre existant des appareils.
+  deviceKind?: string;
+  deviceModel?: string;
+  manufacturer?: string;
+  androidRelease?: string;
+  appVersion?: string;
 }
 export interface OnlineSnapshot {
   onlineCount: number;

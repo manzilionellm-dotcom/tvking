@@ -1,0 +1,42 @@
+# Vérifie le panel uniquement. Aucun APK, secret ou déploiement de production.
+name: Panel — appareils connectés
+
+on:
+  pull_request:
+    paths:
+      - 'android-app/admin-panel/**'
+      - '.github/workflows/panel-online-device.yml'
+  push:
+    branches: ['feature/panel-connected-device-*']
+    paths:
+      - 'android-app/admin-panel/**'
+      - '.github/workflows/panel-online-device.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: panel-online-device-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  panel:
+    name: Métadonnées, interface et build du panel
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: android-app/admin-panel
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '24.21.0'
+          cache: npm
+          cache-dependency-path: android-app/admin-panel/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npm run test:online-device
+      - run: npm run build
