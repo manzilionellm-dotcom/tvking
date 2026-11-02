@@ -94,7 +94,6 @@ import 'tv_app.dart';
 import 'tv_cinema_common.dart';
 import 'tv_cinema_screen.dart';
 import 'tv_components.dart';
-import 'tv_diagnostic_screen.dart';
 import 'tv_home_rails.dart';
 import 'tv_live_screen.dart';
 import 'tv_player_screen.dart';
@@ -148,11 +147,6 @@ class _TvHubScreenState extends State<TvHubScreen> {
   // l'écran du dessus parte.
   bool _pendingAutoOpen = false;
   bool _wasActive = false;
-
-  // Accès CACHÉ au diagnostic : séquence D-pad HAUT-HAUT-BAS-BAS.
-  static const List<bool> _diagSeq = <bool>[true, true, false, false];
-  final List<bool> _diagBuf = <bool>[];
-  bool _diagOpen = false;
 
   // ----- Rangées « pour revenir » (voir home_shelves.dart) -----
   // On ne recalcule pas dans build() : un import de playlist peut émettre
@@ -1294,39 +1288,6 @@ class _TvHubScreenState extends State<TvHubScreen> {
     }
   }
 
-  KeyEventResult _onKey(FocusNode node, KeyEvent event) {
-    if (event is! KeyDownEvent) return KeyEventResult.ignored;
-    final LogicalKeyboardKey k = event.logicalKey;
-    final bool up =
-        k == LogicalKeyboardKey.arrowUp || k == LogicalKeyboardKey.channelUp;
-    final bool down = k == LogicalKeyboardKey.arrowDown ||
-        k == LogicalKeyboardKey.channelDown;
-    if (!up && !down) {
-      if (_diagBuf.isNotEmpty) _diagBuf.clear();
-      return KeyEventResult.ignored;
-    }
-    _diagBuf.add(up);
-    if (_diagBuf.length > _diagSeq.length) _diagBuf.removeAt(0);
-    bool match = _diagBuf.length == _diagSeq.length;
-    for (int i = 0; match && i < _diagSeq.length; i++) {
-      if (_diagBuf[i] != _diagSeq[i]) match = false;
-    }
-    if (match) {
-      _diagBuf.clear();
-      if (!_diagOpen) {
-        _diagOpen = true;
-        Navigator.of(context)
-            .push<void>(
-              MaterialPageRoute<void>(
-                builder: (_) => const TvDiagnosticScreen(),
-              ),
-            )
-            .then((_) => _diagOpen = false);
-      }
-    }
-    return KeyEventResult.ignored;
-  }
-
   /// Informations secondaires du démarrage vide. La saisie reste à gauche
   /// (ou en premier en portrait), tandis que MAC, licence et navigation
   /// restent accessibles sans imposer un détour par un QR ou un sous-écran.
@@ -1436,7 +1397,6 @@ class _TvHubScreenState extends State<TvHubScreen> {
         child: Focus(
           canRequestFocus: false,
           skipTraversal: true,
-          onKeyEvent: _onKey,
           child: TvShell(
             // Fond PLEIN ÉCRAN (image de marque, cf. pubspec) + voile sombre pour
             // garder les textes lisibles, puis le contenu dans les marges TV.
