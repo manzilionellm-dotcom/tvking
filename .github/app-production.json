@@ -1,13 +1,4 @@
 {
-  "mode": "frozen",
-  "zunoTvReview": {
-    "scope": "zuno-tv",
-    "reviewedBy": "manzilionellm-dotcom",
-    "reviewedAt": "2026-11-02T22:29:52.816Z",
-    "expiresAt": "2026-11-03T02:29:52.816Z",
-    "reason": "Demande explicite du propriétaire dans cette conversation : publier et signer la dernière version Zuno sur le lien existant https://zuno8k.com/apk pour Downloader. Candidat Android validé par le run 41534304459, APK de test 114-test.440 signé et contrôlé. Revue limitée à cet arbre Android et au constructeur Zuno existant ; à retirer après la publication.",
-    "sourceCommit": "54aee779d12d85f907a3b8b95efe6c93b4a9efe0",
-    "androidTree": "765e5976999ae2dd8290433ac128e97a98c86fcc",
-    "workflowBlob": "add54cb14b91b64d79be4b51b8adce9c3467a1e4"
-  }
+  "mode": "frozen"
 }
+
