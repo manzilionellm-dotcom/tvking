@@ -19,13 +19,13 @@ function fixture() {
   const token = `${h}.${p}.${createHmac('sha256', secret).update(`${h}.${p}`).digest('base64url')}`;
   const tasks = [], ctx = { waitUntil: promise => tasks.push(promise) };
   const env = { DB: f.DB, ADMIN_SECRET: secret };
-  async function call(path, method = 'GET', body, auth = false) {
+  async function call(path, method = 'GET', body, auth = false, allowFailure = false) {
     const response = await gold.fetch(new Request(`https://fixture.example${path}`, {
       method, headers: { 'Content-Type': 'application/json', 'CF-IPCountry': 'SE',
         ...(auth ? { Authorization: `Bearer ${token}` } : {}) },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     }), env, ctx);
-    assert.ok(response.ok, `${path}: ${response.status}`);
+    if (!allowFailure) assert.ok(response.ok, `${path}: ${response.status}`);
     return { response, body: await response.json() };
   }
   return { ...f, call, async close() { await Promise.allSettled(tasks); f.db.close(); } };
@@ -69,13 +69,13 @@ test('annonces : interrupteur OFF, suppression et absence d’expiration restent
   } finally { await f.close(); }
 });
 
-test('une panne de la métadonnée expiration conserve la réponse historique valide', async () => {
+test('une panne de la métadonnée expiration est explicite puis la lecture suivante récupère', async () => {
   const f = fixture();
   try {
     const created = (await f.call('/api/v1/announcements', 'POST', { title: 'Toujours lisible', durationMin: 30 }, true)).body;
     f.faults.add({ match: /SELECT id,expires_at FROM app_broadcasts/, times: 1 });
-    const before = (await f.call('/api/announcement')).body;
-    assert.equal(before.id, created.id); assert.equal(before.expires_at, undefined);
+    const before = await f.call('/api/announcement', 'GET', undefined, false, true);
+    assert.equal(before.response.status, 503); assert.equal(before.body.error, 'configuration_unavailable');
     assert.ok((await f.call('/api/announcement')).body.expires_at > Date.now());
   } finally { await f.close(); }
 });

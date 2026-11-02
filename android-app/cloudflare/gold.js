@@ -11,6 +11,13 @@ import { createGoldenDelivery } from './gold_golden_delivery.js';
 import { recordDeviceMetadata } from './gold_device_metadata.js';
 import { attachAnnouncementExpiry } from './gold_announcement_expiry.js';
 import { attachPublicPricing } from './gold_public_pricing.js';
+import { attachAdminPricing, prepareAdminPricingWrite } from './gold_admin_pricing.js';
+import { attachPublicServers } from './gold_public_servers.js';
+import { publicConfigPaths, strictConfigRead } from './gold_config_reads.js';
+import { createForceUpdateRoutes } from './gold_force_update.js';
+import { validAnnouncementUrl } from './gold_announcement_url.js';
+
+const forceUpdateRoutes = createForceUpdateRoutes({ original: orig, notify: pushPanelSettingChange });
 
 const GOLD_BASE = 'https://cms-8k.net/api/api.php';
 const ALL_PACKS = '84802,84803,84804,84805,84806,84807,84808,84810,84811,84813,84814,84815,84816';
@@ -674,11 +681,38 @@ export default {
       }
       const realtime = await realtimeRoutes(request, env, ctx);
       if (realtime) return realtime.status === 101 ? realtime : cors(request, env, realtime);
-      if (p === '/api/announcement' && request.method === 'GET') {
-        return attachAnnouncementExpiry(env, await orig.fetch(request, env, ctx));
+      const version = await forceUpdateRoutes(request, env, ctx);
+      if (version) return cors(request, env, version);
+      if (request.method === 'GET' && publicConfigPaths.has(p)) {
+        return cors(request, env, await strictConfigRead(env, async observed => {
+          const response = await orig.fetch(request, observed, ctx);
+          if (p === '/api/announcement') return attachAnnouncementExpiry(observed, response);
+          if (p === '/api/pricing') return attachPublicPricing(observed, response);
+          return response;
+        }));
       }
-      if (p === '/api/pricing' && request.method === 'GET') {
-        return attachPublicPricing(env, await orig.fetch(request, env, ctx));
+      if (p === '/api/v1/pricing' && ['GET', 'PUT'].includes(request.method)) {
+        const body = request.method === 'PUT' ? await request.clone().json().catch(() => null) : undefined;
+        const pricingRequest = prepareAdminPricingWrite(request, body);
+        const response = await attachAdminPricing(env, await orig.fetch(pricingRequest, env, ctx), body);
+        if (request.method === 'PUT' && response.ok) ctx.waitUntil(pushPanelSettingChange(env, 'pricing'));
+        return response;
+      }
+      if (p === '/api/servers' && request.method === 'GET') {
+        return attachPublicServers(env, await orig.fetch(request, env, ctx));
+      }
+      if (p === '/api/v1/announcements' && request.method === 'POST') {
+        const body = await request.clone().json().catch(() => null);
+        if (body && !validAnnouncementUrl(body)) {
+          // Ne dévoiler aucune validation à un appel non autorisé : l'original
+          // garde ses droits propriétaire, avant le refus du lien dangereux.
+          const authorized = await orig.fetch(new Request(request.url, {
+            method: 'GET', headers: request.headers,
+          }), env, ctx);
+          if (!authorized.ok) return authorized;
+          return cors(request, env, J({ error: 'invalid_announcement_url',
+            message: 'Le lien doit être une adresse HTTP ou HTTPS valide, sans identifiants.' }, 400));
+        }
       }
       if (p === '/api/heartbeat' && request.method === 'POST') {
         const body = await request.clone().json().catch(() => null);

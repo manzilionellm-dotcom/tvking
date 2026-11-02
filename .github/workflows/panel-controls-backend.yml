@@ -31,6 +31,8 @@ jobs:
           android-app/cloudflare/tests/gold_device_metadata.test.mjs
           android-app/cloudflare/tests/gold_announcement_expiry.test.mjs
           android-app/cloudflare/tests/gold_public_pricing.test.mjs
+          android-app/cloudflare/tests/gold_public_servers.test.mjs
+          android-app/cloudflare/tests/gold_config_guard.test.mjs
           android-app/cloudflare/tests/device_secret_schema.test.mjs
           android-app/cloudflare/tests/gold_trial_policy.test.mjs
           android-app/cloudflare/tests/gold_trial_runtime.test.mjs
