@@ -1,13 +1,3 @@
 {
-  "mode": "frozen",
-  "zunoTvReview": {
-    "scope": "zuno-tv",
-    "reviewedBy": "manzilionellm-dotcom",
-    "reviewedAt": "2026-11-02T23:23:43.985Z",
-    "expiresAt": "2026-11-03T03:23:43.985Z",
-    "reason": "Demande explicite du propriétaire : supprimer définitivement l'écran de diagnostic qui s'ouvre pendant la navigation sur la box cliente et livrer le correctif sur le lien Downloader existant. Deux raccourcis locaux retirés ; journaux par client conservés dans le panel. Revue limitée à cet arbre Android et au constructeur existant, à retirer après publication.",
-    "sourceCommit": "e503fdb5e79724f9faff2e7997ba8423479adc1d",
-    "androidTree": "10883e5a1a2d36ab01edb4a475da7239cb644147",
-    "workflowBlob": "add54cb14b91b64d79be4b51b8adce9c3467a1e4"
-  }
+  "mode": "frozen"
 }
