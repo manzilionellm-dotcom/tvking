@@ -12,7 +12,8 @@ const MONTHS_FR = [
 // =========================================================
 //  L'owner change le NOM de l'app (ex. « WorldCup2026 ») et sa COULEUR
 //  d'accent, avec un APERÇU LIVE du téléphone. À l'enregistrement, l'app
-//  compatible lit /api/theme au démarrage et lors des commandes. Le fond clair est pris en charge par ZUNO, pas par 7 MOTION.
+//  compatible lit /api/theme au démarrage et lors des commandes. Les nouveaux
+//  APK ZUNO et 7 MOTION appliquent le fond clair ; lecteur et Cast restent fixes.
 // =========================================================
 
 const DEFAULT_ACCENT = '#D63A30'; // braise (défaut historique)
@@ -71,6 +72,7 @@ export function ThemePage({ onLogout }: { onLogout: () => void }) {
     themeApi.get(platform)
       .then((r) => {
         if (!active) return;
+        if (typeof r.appName !== 'string' || typeof r.accent !== 'string' || typeof r.bg !== 'string') throw new Error('Thème invalide');
         setKnownPlatform(platform);
         setAppName(r.appName || '');
         setAccent(r.accent || '');
@@ -90,7 +92,7 @@ export function ThemePage({ onLogout }: { onLogout: () => void }) {
       : DEFAULT_ACCENT;
   }, [accent]);
   const effName = (appName.trim() || (platform === 'tv' ? 'ZUNO' : DEFAULT_NAME));
-  const light = platform === 'tv' && bg === 'light';
+  const light = bg === 'light';
   const locked = busy || knownPlatform !== platform;
 
   async function save(e: FormEvent) {
@@ -104,7 +106,8 @@ export function ThemePage({ onLogout }: { onLogout: () => void }) {
     writing.current = true;
     setBusy(true); setErr(null); setOk(null);
     try {
-      await themeApi.save({ appName: appName.trim(), accent: a, bg }, platform);
+      const saved = await themeApi.save({ appName: appName.trim(), accent: a, bg }, platform);
+      if (saved.ok !== true) throw new Error('Thème non confirmé');
       const who = platform === 'tv' ? 'ZUNO' : '7 MOTION';
       setOk(`Thème ${who} enregistré. L’application compatible le relit à l’ouverture ou à la réception de la commande.`);
     } catch (e) { fail(e); } finally { writing.current = false; setBusy(false); }
@@ -115,7 +118,8 @@ export function ThemePage({ onLogout }: { onLogout: () => void }) {
     writing.current = true;
     setBusy(true); setErr(null); setOk(null);
     try {
-      await themeApi.save({ appName: '', accent: '', bg: 'dark' }, platform);
+      const saved = await themeApi.save({ appName: '', accent: '', bg: 'dark' }, platform);
+      if (saved.ok !== true) throw new Error('Réinitialisation non confirmée');
       setAppName(''); setAccent(''); setBg('dark');
       setOk('Thème réinitialisé.');
     } catch (e) { fail(e); } finally { writing.current = false; setBusy(false); }
@@ -149,7 +153,7 @@ export function ThemePage({ onLogout }: { onLogout: () => void }) {
         ))}
       </div>
 
-      <p className="mb-4 text-xs text-ink-secondary">Choisis l’application, quel que soit son appareil. ZUNO prend en charge le thème clair dans le nouvel APK ; 7 MOTION garde son interface sombre. Le nom modifié est affiché dans l’app, pas sous l’icône Android.</p>
+      <p className="mb-4 text-xs text-ink-secondary">Choisis l’application, quel que soit son appareil. Les nouveaux APK ZUNO et 7 MOTION appliquent le thème clair ou sombre à leur interface ; le lecteur et les commandes Cast gardent leur présentation. Le nom modifié est affiché dans l’app, pas sous l’icône Android.</p>
       {err && (
         <div className="mb-4 max-w-3xl rounded-md border border-accent/30 bg-accent/10 px-3 py-2 text-xs text-accent-bright">
           {err}
@@ -181,8 +185,7 @@ export function ThemePage({ onLogout }: { onLogout: () => void }) {
                     <button
                       type="button"
                       key={p.key}
-                      disabled={platform === 'mobile' && p.bg === 'light'}
-                      onClick={() => { setAccent(p.accent); if (platform === 'tv') setBg(p.bg); }}
+                      onClick={() => { setAccent(p.accent); setBg(p.bg); }}
                       className={
                         'flex items-center gap-1 rounded-full border px-3 py-1.5 text-xs transition ' +
                         (active
@@ -263,7 +266,6 @@ export function ThemePage({ onLogout }: { onLogout: () => void }) {
               <div className="flex gap-2">
                 <button
                   type="button"
-                  disabled={platform === 'mobile'}
                   onClick={() => setBg('dark')}
                   className={
                     'flex-1 rounded-md border px-3 py-2 text-sm transition ' +
@@ -276,7 +278,6 @@ export function ThemePage({ onLogout }: { onLogout: () => void }) {
                 </button>
                 <button
                   type="button"
-                  disabled={platform === 'mobile'}
                   onClick={() => setBg('light')}
                   className={
                     'flex-1 rounded-md border px-3 py-2 text-sm transition ' +
@@ -349,7 +350,10 @@ function ThemeAutomations(
     let active = true;
     setLoading(true); setKnown(false);
     themeApi.getAutomations(platform)
-      .then((r) => { if (active) { setRules(r.rules || []); setKnown(true); } })
+      .then((r) => { if (active) {
+        if (!Array.isArray(r.rules)) throw new Error('Règles invalides');
+        setRules(r.rules); setKnown(true);
+      } })
       .catch((e) => { if (!active) return; if (e instanceof ApiError && e.status === 401) onLogout(); else setErr('Règles non chargées. Recharge cette page avant de les modifier.'); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; onBusy(false); };
@@ -375,7 +379,8 @@ function ThemeAutomations(
     setBusy(true); setErr(null); setOk(null);
     try {
       const r = await themeApi.saveAutomations(rules, platform);
-      setRules(r.rules || []);
+      if (r.ok !== true || !Array.isArray(r.rules)) throw new Error('Règles non confirmées');
+      setRules(r.rules);
       setOk('Règles enregistrées. Elles sont évaluées en UTC à la prochaine lecture du thème par l’application.');
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : 'Erreur réseau.');
@@ -443,13 +448,13 @@ function ThemeAutomations(
                 value={presetOptions.find((p) => p.accent.toUpperCase() === (r.accent || '').toUpperCase() && p.bg === r.bg)?.key || ''}
                 onChange={(e) => {
                   const p = presetOptions.find((x) => x.key === e.target.value);
-                  if (p && (platform === 'tv' || p.bg !== 'light')) patch(i, { accent: p.accent, bg: platform === 'tv' ? p.bg : r.bg, label: r.label || p.label });
+                  if (p) patch(i, { accent: p.accent, bg: p.bg, label: r.label || p.label });
                 }}
                 className={sel}
               >
                 <option value="">— Look —</option>
                 {presetOptions.map((p) => (
-                  <option key={p.key} value={p.key} disabled={platform === 'mobile' && p.bg === 'light'}>{p.emoji} {p.label}</option>
+                  <option key={p.key} value={p.key}>{p.emoji} {p.label}</option>
                 ))}
               </select>
               <input

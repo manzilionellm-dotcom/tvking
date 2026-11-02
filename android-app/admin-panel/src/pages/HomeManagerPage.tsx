@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
 import { confirmAction } from '@/components/confirm';
 import {
@@ -8,7 +8,7 @@ import {
 import { formatDateTime } from '@/lib/utils';
 
 /// Page « Accueil » (Centre de contrôle, Module 1/8) — owner uniquement.
-/// Pilote en TEMPS RÉEL l'accueil de l'app, sans mise à jour de store :
+/// Pilote les accueils des APK compatibles à leur prochaine lecture de configuration :
 ///   - réordonner les sections par glisser-déposer (ou flèches) ;
 ///   - afficher / masquer une section ;
 ///   - mettre une section en vedette ;
@@ -32,7 +32,7 @@ function ribbonColor(r: string): string {
   }
 }
 
-const MANAGED_SECTIONS = new Set(['recent', 'favorites']);
+const MANAGED_SECTIONS = new Set(['recent', 'favorites', 'sport', 'entertainment', 'info', 'kids', 'general', 'cinema']);
 
 export function HomeManagerPage({ onLogout }: { onLogout: () => void }) {
   const [items, setItems] = useState<HomeSection[]>([]);
@@ -40,6 +40,7 @@ export function HomeManagerPage({ onLogout }: { onLogout: () => void }) {
   const [loading, setLoading] = useState(true);
   const [known, setKnown] = useState(false);
   const [busy, setBusy] = useState(false);
+  const writing = useRef(false);
   const [dirty, setDirty] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
@@ -51,12 +52,15 @@ export function HomeManagerPage({ onLogout }: { onLogout: () => void }) {
   }
 
   function load() {
-    setLoading(true); setKnown(false);
+    setLoading(true); setKnown(false); setErr(null);
     homeLayoutApi.get()
-      .then((r) => { setItems(r.items); setKnown(true); })
+      .then((r) => {
+        if (!Array.isArray(r.items)) throw new Error('Sections invalides');
+        setItems(r.items); setKnown(true);
+      })
       .catch(fail)
       .finally(() => setLoading(false));
-    homeLayoutApi.history().then((r) => setHistory(r.items)).catch(() => {});
+    homeLayoutApi.history().then((r) => { if (Array.isArray(r.items)) setHistory(r.items); }).catch(() => {});
   }
 
   useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
@@ -98,44 +102,49 @@ export function HomeManagerPage({ onLogout }: { onLogout: () => void }) {
   }
 
   async function publish() {
-    if (busy || loading || !known || !dirty) return;
+    if (writing.current || loading || !known || !dirty) return;
+    writing.current = true;
     setBusy(true); setErr(null); setOk(null);
     try {
       const r = await homeLayoutApi.save(items, 'Disposition accueil');
+      if (r.ok !== true || !Array.isArray(r.items)) throw new Error('Disposition non confirmée');
       setItems(r.items);
       setDirty(false);
       setOk('Disposition enregistrée. Les accueils compatibles la relisent automatiquement.');
-      homeLayoutApi.history().then((h) => setHistory(h.items)).catch(() => {});
-    } catch (e) { fail(e); } finally { setBusy(false); }
+      homeLayoutApi.history().then((h) => { if (Array.isArray(h.items)) setHistory(h.items); }).catch(() => {});
+    } catch (e) { fail(e); } finally { writing.current = false; setBusy(false); }
   }
 
   async function restore(id: number) {
-    const ok = await confirmAction({
-      title: 'Restaurer cette version ?',
-      message: 'L’accueil publié sera remplacé par cette version archivée.',
-      confirmLabel: 'Restaurer',
-      danger: true,
-    });
-    if (!ok) return;
-    setBusy(true); setErr(null); setOk(null);
+    if (writing.current || loading || !known) return;
+    writing.current = true; setBusy(true);
     try {
-      await homeLayoutApi.restore(id);
+      const confirmed = await confirmAction({
+        title: 'Restaurer cette version ?',
+        message: 'L’accueil publié sera remplacé par cette version archivée.',
+        confirmLabel: 'Restaurer',
+        danger: true,
+      });
+      if (!confirmed) return;
+      setErr(null); setOk(null);
+      const restored = await homeLayoutApi.restore(id);
+      if (restored.ok !== true) throw new Error('Restauration non confirmée');
       setOk('Version restaurée ✅');
       load();
       setDirty(false);
-    } catch (e) { fail(e); } finally { setBusy(false); }
+    } catch (e) { fail(e); } finally { writing.current = false; setBusy(false); }
   }
 
   return (
     <AppLayout
       title="Accueil"
-      subtitle="Pilote les rangées compatibles de l’accueil ZUNO : dernières chaînes et favoris"
+      subtitle="Ordre, visibilité, rubans et vedettes des rangées de l’accueil"
       onLogout={onLogout}
     >
       <p className="mb-4 rounded-lg border border-white/10 p-3 text-xs text-ink-secondary">
-        Le nouvel APK ZUNO applique les réglages des deux rangées « Récentes » et « Favoris ».
-        Les six autres sections restent conservées en lecture seule : elles n’existent pas sur cet accueil.
-        L’accueil par catégories de 7 MOTION ne prend pas encore en charge cette disposition.
+        Les huit rangées des nouveaux accueils ZUNO et 7 MOTION utilisent les chaînes déjà ajoutées par le client.
+        Une rubrique sans chaîne correspondante reste vide ; « Cinéma » désigne les chaînes cinéma en direct.
+        Masquer une rangée ne supprime aucune liste ni aucun accès aux films et séries.
       </p>
       {err && (
         <div className="mb-4 rounded-md border border-accent/30 bg-accent/10 px-3 py-2 text-xs text-accent-bright">
@@ -167,6 +176,8 @@ export function HomeManagerPage({ onLogout }: { onLogout: () => void }) {
 
           {loading ? (
             <div className="text-sm text-ink-tertiary">Chargement…</div>
+          ) : !known ? (
+            <button onClick={load} className="rounded-md border border-white/10 px-4 py-2 text-sm">Réessayer le chargement</button>
           ) : (
             <ul className="space-y-2">
               {items.map((it, i) => (
@@ -287,7 +298,7 @@ export function HomeManagerPage({ onLogout }: { onLogout: () => void }) {
                   <button
                     type="button"
                     onClick={() => restore(h.id)}
-                    disabled={busy}
+                    disabled={busy || loading || !known}
                     className="shrink-0 rounded-md border border-white/10 px-2.5 py-1 text-[11px] text-ink-secondary transition hover:border-accent/40 hover:text-accent-bright disabled:opacity-40"
                   >
                     Restaurer

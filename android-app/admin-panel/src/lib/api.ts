@@ -777,7 +777,7 @@ export const HOME_SECTION_LABELS: Record<string, string> = {
   info: 'Info',
   kids: 'Enfants',
   general: 'Général',
-  cinema: 'Cinéma & Séries (verrouillé)',
+  cinema: 'Cinéma · Direct',
 };
 export const homeLayoutApi = {
   get: () =>
@@ -800,11 +800,11 @@ export const homeLayoutApi = {
 //  MISE À JOUR FORCÉE (bouton du panel)
 // =========================================================
 //  « Forcer » bloque toutes les apps PLUS ANCIENNES que le dernier
-//  build connu, jusqu'à ce qu'elles se mettent à jour. minBuildTs en
+//  build publié vérifié, jusqu'à ce qu'elles se mettent à jour. minBuildTs en
 //  secondes ; 0 = désactivé.
 export const forceUpdateApi = {
   get: (platform?: string) =>
-    request<{ minBuildTs: number; latestBuildTs: number }>(`/api/v1/force-update${_plat(platform)}`),
+    request<{ minBuildTs: number; latestBuildTs: number; configuredMinBuildTs?: number; publishedBuildTs?: number; observedLatestBuildTs?: number; canForce?: boolean; blockedReason?: string }>(`/api/v1/force-update${_plat(platform)}`),
   force: (platform?: string) =>
     request<{ ok: boolean; minBuildTs: number }>(`/api/v1/force-update${_plat(platform)}`, {
       method: 'POST',

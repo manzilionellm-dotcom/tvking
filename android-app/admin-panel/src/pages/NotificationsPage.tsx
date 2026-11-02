@@ -139,12 +139,24 @@ export function NotificationsPage({ onLogout }: { onLogout: () => void }) {
       setErr('Écris au moins un titre ou un message.');
       return;
     }
+    const actionUrl = url.trim();
+    if (actionUrl) {
+      try {
+        const parsed = new URL(actionUrl);
+        if (!/^https?:\/\/[^/\\\s?#]/i.test(actionUrl) || actionUrl.includes('\\') ||
+            !['http:', 'https:'].includes(parsed.protocol) || !parsed.hostname ||
+            parsed.username || parsed.password) throw new Error('Lien invalide');
+      } catch {
+        setErr('Le lien doit être une adresse HTTP ou HTTPS complète, sans identifiants.');
+        return;
+      }
+    }
     if (!beginAction()) return;
     try {
       const r = await announcementsApi.create({
         title: title.trim(),
         body: body.trim(),
-        url: url.trim(),
+        url: actionUrl,
         kind,
         cta: cta.trim(),
         country,
@@ -353,10 +365,11 @@ export function NotificationsPage({ onLogout }: { onLogout: () => void }) {
 
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
-              <label className="mb-1.5 block text-[10px] uppercase tracking-widest text-ink-tertiary">
+              <label htmlFor="ann-url" className="mb-1.5 block text-[10px] uppercase tracking-widest text-ink-tertiary">
                 Lien (optionnel)
               </label>
               <input
+                id="ann-url"
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
                 maxLength={300}

@@ -129,6 +129,32 @@ describe('annonces : état serveur et écritures sérialisées', () => {
     expect(mocks.setSettings).not.toHaveBeenCalled();
   });
 
+  it.each([
+    'pas un lien', '/offres', 'javascript:alert(1)', 'mailto:client@example.test',
+    'ftp://example.test/offres', 'https://', 'http:/example.test/offres',
+    'https://user:secret@example.test/offres', 'http://user@example.test/offres',
+  ])('refuse un lien d’annonce non ouvrable ou contenant des identifiants : %s', async (url) => {
+    await mount(); edit('input[maxlength="120"]', 'Offre'); edit('#ann-url', url);
+    await submit();
+    expect(mocks.create).not.toHaveBeenCalled();
+    expect(text()).toContain('adresse HTTP ou HTTPS complète, sans identifiants');
+    expect((host.querySelector('#ann-url') as HTMLInputElement).value).toBe(url);
+  });
+
+  it.each(['https://example.test/offres?ref=annonce#details', 'http://example.test:8080/info'])(
+    'conserve le protocole et le lien d’annonce valide sans conversion IPTV : %s', async (url) => {
+      await mount(); edit('input[maxlength="120"]', 'Offre'); edit('#ann-url', ` ${url} `);
+      await submit();
+      expect(mocks.create).toHaveBeenCalledTimes(1);
+      expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({url}));
+    },
+  );
+
+  it('permet une annonce sans lien optionnel', async () => {
+    await mount(); edit('input[maxlength="120"]', 'Information'); edit('#ann-url', '   ');
+    await submit(); expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({url:''}));
+  });
+
   it('bloque les doubles clics et les mutations concurrentes, puis applique la réponse serveur', async () => {
     const pending = deferred<{ ok: boolean; enabled: boolean }>();
     mocks.setSettings.mockReturnValue(pending.promise);

@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useRef, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
 import { featuredApi, ApiError } from '@/lib/api';
 
@@ -11,6 +11,8 @@ export function FeaturedPage({ onLogout }: { onLogout: () => void }) {
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [known, setKnown] = useState(false);
+  const writing = useRef(false);
   const [err, setErr] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
 
@@ -19,32 +21,43 @@ export function FeaturedPage({ onLogout }: { onLogout: () => void }) {
     setErr(e instanceof ApiError ? e.message : 'Erreur réseau.');
   }
 
-  useEffect(() => {
+  function load() {
+    setLoading(true); setKnown(false); setErr(null);
     featuredApi.get()
-      .then((r) => { setName(r.name || ''); setNote(r.note || ''); })
+      .then((r) => {
+        if (typeof r.name !== 'string' || typeof r.note !== 'string') throw new Error('Réponse invalide');
+        setName(r.name); setNote(r.note); setKnown(true);
+      })
       .catch(fail)
       .finally(() => setLoading(false));
-    /* eslint-disable-next-line */
-  }, []);
+  }
+
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
 
   async function save(e: FormEvent) {
     e.preventDefault();
+    if (writing.current || !known || loading) return;
+    writing.current = true;
     setBusy(true); setErr(null); setOk(null);
     try {
-      await featuredApi.set(name.trim(), note.trim());
+      const saved = await featuredApi.set(name.trim(), note.trim());
+      if (saved.ok !== true) throw new Error('Enregistrement non confirmé');
       setOk(name.trim()
-        ? `✅ « ${name.trim()} » est le favori du jour. Enregistré pour les accueils ZUNO compatibles, si cette chaîne est disponible et la carte activée.`
+        ? `✅ « ${name.trim()} » est le favori du jour. Enregistré pour les accueils compatibles ZUNO et 7 MOTION, si cette chaîne est disponible et la carte activée.`
         : 'Favori du jour retiré. L\'app affiche son accueil normal.');
-    } catch (e) { fail(e); } finally { setBusy(false); }
+    } catch (e) { fail(e); } finally { writing.current = false; setBusy(false); }
   }
 
   async function clear() {
-    setName(''); setNote('');
+    if (writing.current || !known || loading) return;
+    writing.current = true;
     setBusy(true); setErr(null); setOk(null);
     try {
-      await featuredApi.set('', '');
+      const saved = await featuredApi.set('', '');
+      if (saved.ok !== true) throw new Error('Suppression non confirmée');
+      setName(''); setNote('');
       setOk('Favori du jour retiré.');
-    } catch (e) { fail(e); } finally { setBusy(false); }
+    } catch (e) { fail(e); } finally { writing.current = false; setBusy(false); }
   }
 
   const inputCls =
@@ -53,7 +66,7 @@ export function FeaturedPage({ onLogout }: { onLogout: () => void }) {
   return (
     <AppLayout
       title="Favori du jour"
-      subtitle="Carte de l’accueil ZUNO compatible — non affichée dans le navigateur de catégories 7 MOTION"
+      subtitle="Mise en avant sur les nouveaux accueils ZUNO et 7 MOTION, à partir des chaînes déjà ajoutées par le client"
       onLogout={onLogout}
     >
       {err && (
@@ -69,8 +82,11 @@ export function FeaturedPage({ onLogout }: { onLogout: () => void }) {
 
       {loading ? (
         <div className="text-sm text-ink-tertiary">Chargement…</div>
+      ) : !known ? (
+        <button onClick={load} className="rounded-md border border-white/10 px-4 py-2 text-sm">Réessayer le chargement</button>
       ) : (
         <form onSubmit={save} className="max-w-lg space-y-4 rounded-xl border border-white/5 bg-midnight p-6">
+          <fieldset disabled={busy} className="space-y-4">
           <div>
             <label className="mb-1.5 block text-[10px] uppercase tracking-widest text-ink-tertiary">
               Nom de la chaîne à mettre en avant
@@ -119,6 +135,7 @@ export function FeaturedPage({ onLogout }: { onLogout: () => void }) {
               Retirer
             </button>
           </div>
+          </fieldset>
         </form>
       )}
     </AppLayout>

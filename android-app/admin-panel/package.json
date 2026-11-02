@@ -14,7 +14,7 @@
     "test:device-delivery": "vitest run src/pages/DevicesPage.delivery.test.tsx",
     "test:online-device": "vitest run src/pages/OnlinePage.device.test.tsx",
     "test:broadcasts": "vitest run src/pages/BroadcastPages.test.tsx",
-    "test:controls": "vitest run src/pages/ControlsCompatibility.test.tsx"
+    "test:controls": "vitest run src/pages/ControlsCompatibility.test.tsx src/pages/PanelContentActions.test.tsx"
   },
   "dependencies": {
     "react": "^18.3.1",
