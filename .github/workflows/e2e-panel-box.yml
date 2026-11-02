@@ -29,7 +29,9 @@ concurrency:
 jobs:
   e2e:
     name: wrangler local + panel + box simulée
-    runs-on: ubuntu-latest
+    # Playwright 1.55.1 du lockfile sait installer Chromium sur Ubuntu 24.04.
+    # ubuntu-latest est passé à 26.04, encore incompatible avec cette version.
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
