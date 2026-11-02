@@ -5,7 +5,10 @@ const channels = {
   tv: { tag: 'zuno-tv', apk: 'zuno-tv.apk', packageName: 'com.sevenmotion.tv.seven_tv' },
   // APK sideload historique ; prepare_play.py change uniquement l'AAB Play
   // vers com.manzilionellm.tvking. Les deux produits ne sont pas interchangeables.
-  mobile: { tag: 'latest', apk: '7motion.apk', packageName: 'com.manzilionellm.tvking.tv_king' },
+  // La vraie recette mobile compile PHONE_UPDATE_TAG=phone-latest ; le
+  // UpdateService reconstruit ensuite son URL depuis ce define. « latest »
+  // dans le tronc partagé n'est pas le canal de cet APK préparé.
+  mobile: { tag: 'phone-latest', apk: '7motion.apk', packageName: 'com.manzilionellm.tvking.tv_king' },
 };
 const ttl = 5 * 60_000;
 const cache = new Map();
