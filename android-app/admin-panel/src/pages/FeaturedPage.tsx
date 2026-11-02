@@ -33,7 +33,7 @@ export function FeaturedPage({ onLogout }: { onLogout: () => void }) {
     try {
       await featuredApi.set(name.trim(), note.trim());
       setOk(name.trim()
-        ? `✅ « ${name.trim()} » est le favori du jour. Visible dans l'app à la prochaine ouverture.`
+        ? `✅ « ${name.trim()} » est le favori du jour. Enregistré pour les accueils ZUNO compatibles, si cette chaîne est disponible et la carte activée.`
         : 'Favori du jour retiré. L\'app affiche son accueil normal.');
     } catch (e) { fail(e); } finally { setBusy(false); }
   }
@@ -53,7 +53,7 @@ export function FeaturedPage({ onLogout }: { onLogout: () => void }) {
   return (
     <AppLayout
       title="Favori du jour"
-      subtitle="Mets une chaîne en avant chaque jour — l'app vit au quotidien"
+      subtitle="Carte de l’accueil ZUNO compatible — non affichée dans le navigateur de catégories 7 MOTION"
       onLogout={onLogout}
     >
       {err && (

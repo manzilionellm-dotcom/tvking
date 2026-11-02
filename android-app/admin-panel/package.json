@@ -2,7 +2,7 @@
   "name": "tvking-admin-panel",
   "private": true,
   "version": "0.1.0",
-  "description": "App Licensing Platform — Super Admin dashboard (React + Vite + Tailwind, deploy on Cloudflare Pages)",
+  "description": "App Licensing Platform \u2014 Super Admin dashboard (React + Vite + Tailwind, deploy on Cloudflare Pages)",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -12,7 +12,9 @@
     "test:mac-format": "vitest run src/lib/mac-format/mac.test.ts src/lib/mac-format/mac-search.test.ts src/components/MacInput.test.tsx src/pages/DevicesPage.search.test.tsx",
     "test:realtime": "vitest run src/lib/box-channel.lifecycle.test.ts",
     "test:device-delivery": "vitest run src/pages/DevicesPage.delivery.test.tsx",
-    "test:online-device": "vitest run src/pages/OnlinePage.device.test.tsx"
+    "test:online-device": "vitest run src/pages/OnlinePage.device.test.tsx",
+    "test:broadcasts": "vitest run src/pages/BroadcastPages.test.tsx",
+    "test:controls": "vitest run src/pages/ControlsCompatibility.test.tsx"
   },
   "dependencies": {
     "react": "^18.3.1",

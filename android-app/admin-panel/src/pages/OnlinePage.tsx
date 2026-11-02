@@ -56,7 +56,9 @@ export function OnlinePage({ onLogout }: { onLogout: () => void }) {
   }, [load]);
 
   const byCountry = data ? data.byCountry : [];
-  const metadata = useOnlineDeviceMetadata((data?.items ?? []).map((d) => d.mac), onLogout);
+  const metadata = useOnlineDeviceMetadata((data?.items ?? [])
+    .filter((d) => !d.deviceModel && !d.androidRelease && !d.deviceKind)
+    .map((d) => d.mac), onLogout);
   const rows = (data?.items ?? []).map((d) => ({
     ...d,
     device: summaryForOnlineDevice(d, metadata.devices.get(normalizeOnlineMac(d.mac))),

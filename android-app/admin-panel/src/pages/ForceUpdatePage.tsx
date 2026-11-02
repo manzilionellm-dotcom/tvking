@@ -43,7 +43,7 @@ export function ForceUpdatePage({ onLogout }: { onLogout: () => void }) {
   async function doForce() {
     const ok = await confirmAction({
       title: 'Forcer la mise à jour ?',
-      message: 'Tous les utilisateurs sur une version plus ancienne que la dernière verront un écran les obligeant à télécharger la nouvelle version. Les utilisateurs déjà à jour ne sont pas affectés.',
+      message: 'Les APK compatibles installés directement proposeront la version requise. Les versions Google Play et les utilisateurs déjà à jour ne sont pas concernés.',
       confirmLabel: 'Forcer la mise à jour',
       danger: true,
     });
@@ -71,7 +71,7 @@ export function ForceUpdatePage({ onLogout }: { onLogout: () => void }) {
   return (
     <AppLayout
       title="Mise à jour forcée"
-      subtitle="Oblige tous les utilisateurs à installer la dernière version — en un clic"
+      subtitle="Mise à jour des APK installés directement — les versions Play restent gérées par Google Play"
       onLogout={onLogout}
     >
       {/* Bascule 📱 Mobile / 📺 TV : forçage indépendant par app. */}
@@ -80,6 +80,7 @@ export function ForceUpdatePage({ onLogout }: { onLogout: () => void }) {
           <button
             key={p}
             onClick={() => setPlatform(p)}
+            disabled={busy}
             className={
               'rounded-md px-4 py-2 text-sm font-semibold transition ' +
               (platform === p ? 'bg-accent text-black' : 'text-ink-secondary hover:text-ink-primary')
@@ -140,7 +141,7 @@ export function ForceUpdatePage({ onLogout }: { onLogout: () => void }) {
               <button
                 type="button"
                 onClick={doForce}
-                disabled={busy}
+                disabled={busy || loading || !!err || latestBuildTs <= 0}
                 className="flex-1 rounded-md bg-accent px-4 py-2.5 text-sm font-semibold text-black transition hover:bg-accent-bright disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {busy ? '…' : 'Forcer la mise à jour'}
@@ -148,7 +149,7 @@ export function ForceUpdatePage({ onLogout }: { onLogout: () => void }) {
               <button
                 type="button"
                 onClick={doDisable}
-                disabled={busy || !active}
+                disabled={busy || loading || !!err || !active}
                 className="rounded-md border border-white/10 px-4 py-2.5 text-sm text-ink-secondary transition hover:bg-white/5 disabled:opacity-40"
               >
                 Désactiver

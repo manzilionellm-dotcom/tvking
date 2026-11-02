@@ -20,6 +20,7 @@ import {
   listQuery,
   networkFailureMessage,
 } from './robust';
+import { API_BASE } from './backend-target';
 
 const TOKEN_KEY = 'auth_token';
 
@@ -29,16 +30,6 @@ export { isAbortError };
 export function flagEmoji(code: string): string {
   return flagEmojiSafe(code);
 }
-
-/// URL de base de l'API. En production le panel est servi par
-/// Cloudflare Pages sur un sous-domaine (ex: admin.7themotion.com)
-/// et l'API tourne sur seven-motion-backend.workers.dev. On garde
-/// la config configurable via VITE_API_BASE.
-const API_BASE: string =
-  (import.meta.env.VITE_API_BASE as string | undefined) ||
-  // Defaut prod : meme origin (si le Worker sert aussi le panel)
-  // ou un domaine connu. En dev le proxy Vite redirige /api → :8787.
-  '';
 
 /// Lien de TÉLÉCHARGEMENT de l'app à donner au client. Domaine propre
 /// dédié (app.7themotion.com → route /vip du Worker, proxy du dernier
@@ -329,10 +320,12 @@ export interface Device {
   customer_email?: string | null;
   // Infos appareil remontées par le heartbeat (recensement parc).
   device_model?: string | null;
+  device_kind?: string | null;
+  device_manufacturer?: string | null;
   android_build?: string | null;
   android_release?: string | null;
   app_build?: number | null;
-  platform?: string | null;   // 'tv' (DeFew TV) | 'mobile' (The Few)
+  platform?: string | null;   // Produit 'tv' (Zuno) | 'mobile' (7 MOTION), pas le matériel.
   // Pastille d'accès calculée par le serveur (essai / expiré / activé).
   access?: 'trial' | 'expired' | 'activated' | 'lifetime' | 'frozen' | 'banned' | string;
   access_label?: string;

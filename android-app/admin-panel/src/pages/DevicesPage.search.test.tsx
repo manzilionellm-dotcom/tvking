@@ -72,6 +72,20 @@ afterEach(() => {
 });
 
 describe('recherche mixte réelle des appareils', () => {
+  it('affiche le matériel mesuré sans confondre Zuno sur téléphone avec une TV', async () => {
+    mocks.list.mockResolvedValue(page(2, [
+      { ...device, device_kind: 'android_phone', platform: 'tv', device_model: 'Samsung SM-S938B' },
+      { ...device, id: 'box', mac: 'MK:11:22:33:44:55', device_kind: 'android_tv', device_model: 'Box Android' },
+    ]));
+    await mount();
+    const rows = [...host.querySelectorAll('tbody tr')];
+    const phone = rows.find(row => row.textContent?.includes('Samsung'))!;
+    expect(phone.textContent).toContain('Téléphone Android');
+    expect(phone.textContent).not.toContain('Android TV');
+    expect(rows.find(row => row.textContent?.includes('Box Android'))?.textContent).toContain('Android TV');
+    expect(text()).toContain('Client conservé');
+  });
+
   it('capture utilisateur : 5454 devient 54:54 tout en cherchant le brut en premier', async () => {
     await mount();
     for (const [key, expected] of [['5', '5'], ['4', '54'], ['5', '54:5'], ['4', '54:54']]) {

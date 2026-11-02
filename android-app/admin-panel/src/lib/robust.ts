@@ -253,6 +253,17 @@ export function interpretHttpResult(status: number, text: string): HttpRead {
       json: null,
     };
   }
+  // Certaines routes historiques répondent HTTP 200 même si l'action a
+  // été refusée. Aucun bouton ne doit transformer ce refus en confirmation.
+  if (obj && (obj.ok === false || (typeof obj.error === 'string' && obj.error))) {
+    return {
+      ok: false, status,
+      code: typeof obj.error === 'string' && obj.error ? obj.error : 'request_rejected',
+      message: typeof obj.message === 'string' && obj.message
+        ? obj.message : 'Le serveur n’a pas confirmé cette action.',
+      clearToken: false, json,
+    };
+  }
   return { ok: true, status, code: '', message: '', clearToken: false, json };
 }
 

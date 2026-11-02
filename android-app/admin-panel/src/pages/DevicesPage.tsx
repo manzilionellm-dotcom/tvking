@@ -19,6 +19,7 @@ import {
 import { shouldApplyPollResult } from '@/lib/live-sync';
 import { bindPanelRefresh } from '@/lib/box-channel';
 import { formatDateTime } from '@/lib/utils';
+import { summaryForOnlineDevice } from '@/lib/online-device';
 import { formatMacAddress, looksLikeMac } from '@/lib/mac-format/mac';
 import { isClientList, isListOn, planRemoveSource, planToggleSource, toSourceInput } from '@/lib/sources';
 import { useOrderDelivery, type OrderDelivery } from '@/lib/use-order-delivery';
@@ -103,7 +104,7 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
     valueOf: (d, key) => {
       if (key === 'mac') return d.mac;
       if (key === 'client') return d.customer_name || d.customer_email || '';
-      if (key === 'device') return d.device_model || d.platform || '';
+      if (key === 'device') return `${summaryForOnlineDevice(d).label} ${d.device_model || ''}`;
       if (key === 'status') return d.block_status || 'active';
       if (key === 'seen') return d.last_seen_at || 0;
       return '';
@@ -521,7 +522,8 @@ function DeviceDetailModal({
         {/* ----- Infos appareil (le « ventre ») ----- */}
         <div className="mb-5 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
           <InfoRow label="Client" value={device.customer_name || device.customer_email || '—'} />
-          <InfoRow label="Plateforme" value={device.platform === 'tv' ? '📺 TV' : device.platform === 'mobile' ? '📱 Mobile' : '—'} />
+          <InfoRow label="Appareil" value={summaryForOnlineDevice(device).label} />
+          <InfoRow label="Application" value={device.platform === 'tv' ? 'Zuno' : device.platform === 'mobile' ? '7 MOTION' : '—'} />
           <InfoRow label="Modèle" value={device.device_model || '—'} />
           <InfoRow label="Android" value={device.android_release ? `Android ${device.android_release}` : '—'} />
           <InfoRow label="Build Android" value={device.android_build || '—'} />
@@ -904,14 +906,11 @@ function ActivatePlanModal({
   );
 }
 
-/// Pastille 📱 Mobile / 📺 TV. Priorité au champ `platform` (rapporté par
-/// l'app) ; à défaut, heuristique sur le modèle (box TV connues).
+/// Même type physique que dans En ligne ; le produit Zuno n'est pas une
+/// preuve de télévision, puisqu'il s'installe aussi sur téléphone.
 function PlatformChip({ device }: { device: Device }) {
-  const isTv =
-    device.platform === 'tv' ||
-    /\btv\b|aftt|aftb|aftm|afts|fire\s*tv|firetv|shield|bravia|chromecast|google\s*tv|mibox|mi\s*box|adt-|homatics|formuler|dune|nvidia/i.test(
-      device.device_model || '',
-    );
+  const info = summaryForOnlineDevice(device);
+  const isTv = info.kind === 'android_tv' || info.kind === 'fire_tv';
   return (
     <span
       className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold"
@@ -920,7 +919,7 @@ function PlatformChip({ device }: { device: Device }) {
         color: isTv ? '#8FB4D6' : '#B6B0A8',
       }}
     >
-      {isTv ? '📺 TV' : '📱 Mobile'}
+      {isTv ? '📺 ' : info.kind === 'android_phone' || info.kind === 'android_tablet' ? '📱 ' : ''}{info.label}
     </span>
   );
 }

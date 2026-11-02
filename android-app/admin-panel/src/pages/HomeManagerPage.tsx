@@ -32,10 +32,13 @@ function ribbonColor(r: string): string {
   }
 }
 
+const MANAGED_SECTIONS = new Set(['recent', 'favorites']);
+
 export function HomeManagerPage({ onLogout }: { onLogout: () => void }) {
   const [items, setItems] = useState<HomeSection[]>([]);
   const [history, setHistory] = useState<HomeLayoutSnapshot[]>([]);
   const [loading, setLoading] = useState(true);
+  const [known, setKnown] = useState(false);
   const [busy, setBusy] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -48,9 +51,9 @@ export function HomeManagerPage({ onLogout }: { onLogout: () => void }) {
   }
 
   function load() {
-    setLoading(true);
+    setLoading(true); setKnown(false);
     homeLayoutApi.get()
-      .then((r) => setItems(r.items))
+      .then((r) => { setItems(r.items); setKnown(true); })
       .catch(fail)
       .finally(() => setLoading(false));
     homeLayoutApi.history().then((r) => setHistory(r.items)).catch(() => {});
@@ -59,38 +62,49 @@ export function HomeManagerPage({ onLogout }: { onLogout: () => void }) {
   useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
 
   function mutate(next: HomeSection[]) {
-    setItems(next.map((it, i) => ({ ...it, position: i })));
+    setItems(next);
     setDirty(true);
     setOk(null);
   }
 
+  function managedNeighbour(from: number, direction: number) {
+    for (let i = from + direction; i >= 0 && i < items.length; i += direction) {
+      if (MANAGED_SECTIONS.has(items[i].key)) return i;
+    }
+    return -1;
+  }
+
   function move(from: number, to: number) {
-    if (to < 0 || to >= items.length || from === to) return;
+    if (busy || to < 0 || to >= items.length || from === to ||
+        !MANAGED_SECTIONS.has(items[from].key) || !MANAGED_SECTIONS.has(items[to].key)) return;
     const next = [...items];
-    const [moved] = next.splice(from, 1);
-    next.splice(to, 0, moved);
+    next[from] = { ...items[to], position: items[from].position };
+    next[to] = { ...items[from], position: items[to].position };
     mutate(next);
   }
 
   function toggle(i: number, field: 'enabled' | 'featured') {
+    if (busy || !MANAGED_SECTIONS.has(items[i].key)) return;
     const next = [...items];
     next[i] = { ...next[i], [field]: next[i][field] ? 0 : 1 };
     mutate(next);
   }
 
   function setRibbon(i: number, ribbon: string) {
+    if (busy || !MANAGED_SECTIONS.has(items[i].key)) return;
     const next = [...items];
     next[i] = { ...next[i], ribbon };
     mutate(next);
   }
 
   async function publish() {
+    if (busy || loading || !known || !dirty) return;
     setBusy(true); setErr(null); setOk(null);
     try {
       const r = await homeLayoutApi.save(items, 'Disposition accueil');
       setItems(r.items);
       setDirty(false);
-      setOk('Accueil publié ✅ — visible dans l\'app en quelques secondes.');
+      setOk('Disposition enregistrée. Les accueils compatibles la relisent automatiquement.');
       homeLayoutApi.history().then((h) => setHistory(h.items)).catch(() => {});
     } catch (e) { fail(e); } finally { setBusy(false); }
   }
@@ -115,9 +129,14 @@ export function HomeManagerPage({ onLogout }: { onLogout: () => void }) {
   return (
     <AppLayout
       title="Accueil"
-      subtitle="Réorganise les sections de l'app en temps réel — ordre, visibilité, rubans, vedette (sans mise à jour du store)"
+      subtitle="Pilote les rangées compatibles de l’accueil ZUNO : dernières chaînes et favoris"
       onLogout={onLogout}
     >
+      <p className="mb-4 rounded-lg border border-white/10 p-3 text-xs text-ink-secondary">
+        Le nouvel APK ZUNO applique les réglages des deux rangées « Récentes » et « Favoris ».
+        Les six autres sections restent conservées en lecture seule : elles n’existent pas sur cet accueil.
+        L’accueil par catégories de 7 MOTION ne prend pas encore en charge cette disposition.
+      </p>
       {err && (
         <div className="mb-4 rounded-md border border-accent/30 bg-accent/10 px-3 py-2 text-xs text-accent-bright">
           {err}
@@ -139,10 +158,10 @@ export function HomeManagerPage({ onLogout }: { onLogout: () => void }) {
             <button
               type="button"
               onClick={publish}
-              disabled={busy || !dirty}
+              disabled={busy || loading || !known || !dirty}
               className="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-black transition hover:bg-accent-bright disabled:cursor-not-allowed disabled:opacity-40"
             >
-              {busy ? 'Publication…' : dirty ? 'Publier' : 'Publié ✓'}
+              {busy ? 'Enregistrement…' : 'Enregistrer'}
             </button>
           </div>
 
@@ -153,7 +172,7 @@ export function HomeManagerPage({ onLogout }: { onLogout: () => void }) {
               {items.map((it, i) => (
                 <li
                   key={it.key}
-                  draggable
+                  draggable={!busy && MANAGED_SECTIONS.has(it.key)}
                   onDragStart={() => setDragIdx(i)}
                   onDragOver={(e) => e.preventDefault()}
                   onDrop={() => {
@@ -166,10 +185,10 @@ export function HomeManagerPage({ onLogout }: { onLogout: () => void }) {
                 >
                   {/* Poignée + flèches */}
                   <div className="flex flex-col items-center gap-0.5 text-ink-tertiary">
-                    <button type="button" onClick={() => move(i, i - 1)} disabled={i === 0}
+                    <button type="button" onClick={() => move(i, managedNeighbour(i, -1))} disabled={busy || !MANAGED_SECTIONS.has(it.key) || managedNeighbour(i, -1) < 0}
                       className="hover:text-ink-primary disabled:opacity-30" title="Monter" aria-label="Monter">▲</button>
                     <span className="cursor-grab select-none text-base leading-none" title="Glisser">⋮⋮</span>
-                    <button type="button" onClick={() => move(i, i + 1)} disabled={i === items.length - 1}
+                    <button type="button" onClick={() => move(i, managedNeighbour(i, 1))} disabled={busy || !MANAGED_SECTIONS.has(it.key) || managedNeighbour(i, 1) < 0}
                       className="hover:text-ink-primary disabled:opacity-30" title="Descendre" aria-label="Descendre">▼</button>
                   </div>
 
@@ -181,6 +200,7 @@ export function HomeManagerPage({ onLogout }: { onLogout: () => void }) {
                     <div className="truncate text-sm font-semibold text-ink-primary">
                       {HOME_SECTION_LABELS[it.key] ?? it.key}
                     </div>
+                    {!MANAGED_SECTIONS.has(it.key) && <div className="text-[10px] text-ink-tertiary">Sans effet sur les accueils actuels — lecture seule</div>}
                     {it.ribbon && (
                       <span
                         className="mt-1 inline-block rounded px-1.5 py-0.5 text-[9px] font-black tracking-wide"
@@ -197,6 +217,7 @@ export function HomeManagerPage({ onLogout }: { onLogout: () => void }) {
                   {/* Ruban */}
                   <select
                     aria-label={`Ruban — ${HOME_SECTION_LABELS[it.key] ?? it.key}`}
+                    disabled={busy || !MANAGED_SECTIONS.has(it.key)}
                     value={it.ribbon || ''}
                     onChange={(e) => setRibbon(i, e.target.value)}
                     className="rounded-md border border-white/10 bg-slate px-2 py-1.5 text-xs outline-none focus:ring-1 focus:ring-accent"
@@ -209,6 +230,8 @@ export function HomeManagerPage({ onLogout }: { onLogout: () => void }) {
                   {/* Vedette */}
                   <button
                     type="button"
+                    disabled={busy || !MANAGED_SECTIONS.has(it.key)}
+                    aria-label={`Vedette — ${it.key}`}
                     onClick={() => toggle(i, 'featured')}
                     title="Mettre en vedette"
                     className={`rounded-md px-2 py-1.5 text-sm transition ${
@@ -221,6 +244,8 @@ export function HomeManagerPage({ onLogout }: { onLogout: () => void }) {
                   {/* Visible / masqué */}
                   <button
                     type="button"
+                    disabled={busy || !MANAGED_SECTIONS.has(it.key)}
+                    aria-label={`Visibilité — ${it.key}`}
                     onClick={() => toggle(i, 'enabled')}
                     title={it.enabled ? 'Masquer' : 'Afficher'}
                     className={`rounded-md border px-2.5 py-1.5 text-xs font-medium transition ${

@@ -61,10 +61,12 @@ export function ServersPage({ onLogout }: { onLogout: () => void }) {
   return (
     <AppLayout
       title="Serveurs"
-      subtitle="Serveurs proposés dans l'app (« Serveur 1, 2, 3… »). Le client choisit et saisit juste son code — l'URL reste cachée."
+      subtitle="Catalogue historique en lecture seule. Les apps actuelles utilisent la source du client ou celle envoyée à son appareil ; elles n’affichent plus ce sélecteur."
       onLogout={onLogout}
       actions={
         <button
+          disabled
+          title="Sans sélecteur dans les apps actuelles"
           onClick={() => setShowCreate(true)}
           className="rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-black hover:bg-accent-bright"
         >
@@ -97,25 +99,31 @@ export function ServersPage({ onLogout }: { onLogout: () => void }) {
                         s.enabled ? 'bg-accent/20 text-accent' : 'bg-white/5 text-ink-tertiary'
                       }`}
                     >
-                      {s.enabled ? 'Visible' : 'Masqué'}
+                      {s.enabled ? 'Actif dans le catalogue historique' : 'Inactif dans le catalogue historique'}
                     </span>
                   </div>
                   <p className="mt-1 truncate font-mono text-[11px] text-ink-tertiary">{s.url}</p>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
                   <button
+                    disabled
+                    title="Catalogue historique conservé en lecture seule"
                     onClick={() => toggleEnabled(s)}
                     className="rounded-md border border-white/10 px-2.5 py-1.5 text-xs text-ink-secondary hover:bg-white/5 hover:text-ink-primary"
                   >
                     {s.enabled ? 'Masquer' : 'Afficher'}
                   </button>
                   <button
+                    disabled
+                    title="Catalogue historique conservé en lecture seule"
                     onClick={() => setEditing(s)}
                     className="rounded-md border border-white/10 px-2.5 py-1.5 text-xs text-ink-secondary hover:bg-white/5 hover:text-ink-primary"
                   >
                     Modifier
                   </button>
                   <button
+                    disabled
+                    title="Catalogue historique conservé en lecture seule"
                     onClick={() => remove(s)}
                     className="rounded-md border border-accent/30 px-2.5 py-1.5 text-xs text-accent hover:bg-accent/10"
                   >
@@ -127,7 +135,7 @@ export function ServersPage({ onLogout }: { onLogout: () => void }) {
           ))}
           {items.length === 0 && (
             <div className="rounded-xl border border-dashed border-white/10 p-8 text-center text-sm text-ink-tertiary">
-              Aucun serveur. Clique « + Nouveau serveur » pour en ajouter un.
+              Aucun serveur historique.
             </div>
           )}
         </div>

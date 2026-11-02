@@ -47,7 +47,7 @@ export function ReviewsPage({ onLogout }: { onLogout: () => void }) {
     try {
       await feedbackApi.savePrompt({ enabled, message: message.trim() });
       setOk(enabled
-        ? '✅ Invitation active — les clients verront le message à l\'ouverture.'
+        ? 'Invitation enregistrée pour l’accueil 7 MOTION compatible, si le client n’a pas déjà répondu. L’accueil ZUNO n’affiche pas cette invitation.'
         : 'Invitation désactivée.');
     } catch (e) { fail(e); } finally { setBusy(false); }
   }
@@ -64,7 +64,7 @@ export function ReviewsPage({ onLogout }: { onLogout: () => void }) {
   return (
     <AppLayout
       title="Avis clients"
-      subtitle="Invite les clients à donner leur avis — et lis leurs réponses"
+      subtitle="Invitation dans 7 MOTION compatible ; réponses clients. Invitation non affichée sur l’accueil ZUNO."
       onLogout={onLogout}
     >
       {err && (

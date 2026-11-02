@@ -39,4 +39,7 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run test:online-device
+      - run: npm run test:broadcasts
+      - run: npm run test:controls
+      - run: npm run test:realtime
       - run: npm run build

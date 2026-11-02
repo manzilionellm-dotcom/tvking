@@ -19,9 +19,9 @@ interface Mod {
 
 const MODULES: Mod[] = [
   { n: 1, emoji: '🏠', title: 'Accueil dynamique', status: 'active', to: '/home-manager',
-    desc: 'Ordre, visibilité, rubans et vedette des sections — en direct.' },
+    desc: 'Dernières chaînes et Favoris du nouvel accueil ZUNO : ordre, visibilité et rubans.' },
   { n: 8, emoji: '🎛️', title: 'Live Control', status: 'active', to: '/home-manager',
-    desc: 'Activer / masquer / réordonner une section instantanément.' },
+    desc: 'Activer, masquer ou réordonner les sections prises en charge par l’accueil.' },
   { n: 4, emoji: '📣', title: 'Annonces & Notifications', status: 'active', to: '/notifications',
     desc: 'Nouveautés, promos, infos — diffusées à tous ou ciblées par pays.' },
   { n: 5, emoji: '📊', title: 'Analytics — En ligne', status: 'active', to: '/online',
@@ -29,15 +29,15 @@ const MODULES: Mod[] = [
   { n: 10, emoji: '🛡️', title: 'Admin Experience', status: 'partial', phase: 'En partie',
     desc: 'Multilingue, dark mode, historique des modifications (rollback).' },
   { n: 11, emoji: '⬆️', title: 'Mise à jour forcée', status: 'active', to: '/force-update',
-    desc: 'Oblige tous les utilisateurs à installer la dernière version.' },
+    desc: 'Seuil de version pour les installations APK compatibles. Les versions Play utilisent le Store.' },
   { n: 2, emoji: '🖼️', title: 'Bannières', status: 'soon', phase: 'Phase 2',
     desc: 'Carrousel image / vidéo, dates de diffusion, bouton et lien.' },
   { n: 3, emoji: '🎨', title: 'Thèmes dynamiques', status: 'active', to: '/theme',
-    desc: 'Nom, couleurs et presets (Gold, Platinum, World Cup, Noël) — en direct.' },
+    desc: 'Nom et accent par application ; fond clair pris en charge par le nouvel APK ZUNO.' },
   { n: 6, emoji: '⭐', title: 'Favori du jour', status: 'active', to: '/featured',
-    desc: 'Mets une chaîne en avant chaque jour (HERO de l\'accueil).' },
+    desc: 'Met une chaîne présente dans la liste du client en avant sur l’accueil ZUNO compatible.' },
   { n: 7, emoji: '⚙️', title: 'Automatisation', status: 'active', to: '/theme',
-    desc: 'Le thème bascule seul aux dates prévues (ex. décembre → Noël).' },
+    desc: 'Règles de dates UTC évaluées quand l’application relit son thème.' },
   { n: 9, emoji: '🧪', title: 'A/B Testing', status: 'soon', phase: 'Phase 5',
     desc: 'Tester accueils, couleurs, bannières — mesurer clics / conversion.' },
 ];
@@ -103,7 +103,7 @@ export function ControlCenterPage({ onLogout }: { onLogout: () => void }) {
     >
       <div className="mb-5 rounded-xl border border-accent/20 bg-accent/[0.06] px-4 py-3 text-xs text-ink-secondary">
         <span className="font-semibold text-ink-primary">{active} modules actifs</span>{' '}
-        sur {MODULES.length}. Les modifications sont instantanées et réversibles.
+        sur {MODULES.length}. Les réglages sont transmis aux applications compatibles ; leur affichage dépend de la version installée.
         Les modules « Bientôt » arrivent par phases (voir la feuille de route).
       </div>
 

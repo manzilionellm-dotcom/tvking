@@ -79,6 +79,18 @@ afterEach(() => {
 });
 
 describe('appareil connecté dans la page En ligne', () => {
+  it('affiche immédiatement les métadonnées reçues avec la présence sans relire tout le registre', async () => {
+    mocks.online.mockResolvedValue({ ...onlineSnapshot(), items: [{
+      ...onlineRow(TV_MAC), deviceKind: 'android_tv',
+      deviceModel: 'Box de recette', androidRelease: '12',
+    }] });
+    await mount();
+    expect(deviceText(TV_MAC)).toContain('Android TV');
+    expect(deviceText(TV_MAC)).toContain('Box de recette');
+    expect(deviceText(TV_MAC)).toContain('Android 12');
+    expect(mocks.devices).not.toHaveBeenCalled();
+  });
+
   it('rapproche le modèle par MAC malgré l’ordre inversé et la casse du registre', async () => {
     await mount();
     expect(rows()).toHaveLength(2);

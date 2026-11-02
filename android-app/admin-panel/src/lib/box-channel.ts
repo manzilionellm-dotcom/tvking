@@ -5,6 +5,7 @@
 // Un Worker sans endpoint ticket conserve le sondage de secours.
 
 import { getToken } from '@/lib/api';
+import { API_BASE, realtimeBackend } from '@/lib/backend-target';
 import { isChannelHello, parseChannelEvent, type ChannelEvent } from '@/lib/box-channel-core';
 import { panelPollInterval, REALTIME_POLL_LEGACY } from '@/lib/live-sync';
 
@@ -32,15 +33,8 @@ let generation = 0;
 const listeners = new Set<Listener>();
 const states = new Set<StateListener>();
 
-function apiBase(): string {
-  const configured = "https://seven-motion-backend.manzilionel-lm.workers.dev";
-  if (configured) return configured.replace(/\/$/, '');
-  if (typeof window !== 'undefined') return window.location.origin;
-  return '';
-}
-
 function wsUrl(ticket: string): string {
-  const http = apiBase();
+  const http = realtimeBackend();
   const ws = http.replace(/^http/i, 'ws');
   const url = new URL(`${ws}/api/v1/rt/ws`);
   url.searchParams.set('ticket', ticket);
@@ -109,7 +103,7 @@ async function connect(owner: number) {
   try {
     // Même proxy HTTP que les pages du panel, même Worker que wsUrl.
     // Aucun cache ni redirection de la requête Authorization.
-    const response = await fetch('/api/v1/rt/ticket', {
+    const response = await fetch(`${API_BASE}/api/v1/rt/ticket`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
       credentials: 'same-origin', cache: 'no-store', redirect: 'error',
