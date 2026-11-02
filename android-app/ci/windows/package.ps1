@@ -99,7 +99,7 @@ try {
         $compilerArgs += @('/DUseAuthenticode=1', "/Szuno=$command")
     }
     & $iscc @compilerArgs "$PSScriptRoot/zuno.iss"
-    if ($LASTEXITCODE -ne 0) { throw 'Compilation de l’installeur impossible.' }
+    if ($LASTEXITCODE -ne 0) { throw "Compilation de l'installeur impossible." }
     $setup = Join-Path $dist 'Zuno-Setup.exe'
     if ($signed) { Assert-Signature $setup }
 
