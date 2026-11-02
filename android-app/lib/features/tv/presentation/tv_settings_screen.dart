@@ -17,6 +17,8 @@ import 'package:package_info_plus/package_info_plus.dart';
 import '../../../core/blackbox/black_box.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/i18n/locale_repository.dart';
+import '../../../core/update/build_flags.dart';
+import '../../../core/update/play_store_update.dart';
 import '../../../core/update/update_service.dart';
 import '../core/tv_tokens.dart';
 import '../../device/data/device_identity.dart';
@@ -104,6 +106,13 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
       final PackageInfo p = await PackageInfo.fromPlatform();
       _current = p.version; // numéro visible (88, 89, 90…)
     } catch (_) {}
+    if (!mounted) return;
+    // L'updater APK est volontairement désactivé dans un AAB. Son résultat
+    // null ne signifie donc PAS « à jour » : la vérification revient au Store.
+    if (kIsPlayBuild) {
+      setState(() => _upd = _UpdState.playStore);
+      return;
+    }
     final UpdateInfo? u = await UpdateService.instance.check();
     if (!mounted) return;
     setState(() {
@@ -118,6 +127,16 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
 
   Future<void> _onUpdatePressed() async {
     switch (_upd) {
+      case _UpdState.playStore:
+      case _UpdState.playStoreUnavailable:
+        setState(() => _upd = _UpdState.checking);
+        final bool opened = await openPlayStoreUpdate();
+        if (mounted) {
+          setState(() => _upd = opened
+              ? _UpdState.playStore
+              : _UpdState.playStoreUnavailable);
+        }
+        return;
       case _UpdState.checking:
       case _UpdState.downloading:
         return; // déjà en cours
@@ -197,6 +216,10 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
 
   String _updateLabel(BuildContext context) {
     switch (_upd) {
+      case _UpdState.playStore:
+        return context.l10n.updatePlayStoreHelp;
+      case _UpdState.playStoreUnavailable:
+        return context.l10n.updatePlayStoreUnavailable;
       case _UpdState.checking:
         return context.l10n.tvUpdateChecking;
       case _UpdState.upToDate:
@@ -337,7 +360,9 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
         icon: _upd == _UpdState.available
             ? Icons.system_update_rounded
             : Icons.update_rounded,
-        title: context.l10n.tvUpdateTitle,
+        title: kIsPlayBuild
+            ? context.l10n.updateOpenPlayStore
+            : context.l10n.tvUpdateTitle,
         value: _updateShort(),
         value2Color: _upd == _UpdState.available ? TvTokens.accentBright : null,
         description: _updateLabel(context),
@@ -385,6 +410,9 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
   /// seulement (rien à traduire) — le texte complet est sous l'anneau.
   String _updateShort() {
     switch (_upd) {
+      case _UpdState.playStore:
+      case _UpdState.playStoreUnavailable:
+        return _current.isEmpty ? 'Google Play' : 'v$_current';
       case _UpdState.checking:
         return '…';
       case _UpdState.upToDate:
@@ -675,6 +703,8 @@ class _SettingCard extends StatelessWidget {
 
 /// États du bouton de mise à jour des Réglages.
 enum _UpdState {
+  playStore,
+  playStoreUnavailable,
   checking,
   upToDate,
   available,

@@ -1427,5 +1427,8 @@
   "tvCheckPassed": "Kontrollen er fullført.",
   "tvCheckRunning": "Kontrollerer…",
   "tvCheckPending": "Venter.",
-  "tvCheckUnavailable": "Kontroll utilgjengelig."
+  "tvCheckUnavailable": "Kontroll utilgjengelig.",
+  "updateOpenPlayStore": "Åpne Google Play",
+  "updatePlayStoreHelp": "Se etter og installer oppdateringer fra Google Play.",
+  "updatePlayStoreUnavailable": "Kunne ikke åpne Google Play. Prøv igjen, eller åpne butikken på enheten din."
 }

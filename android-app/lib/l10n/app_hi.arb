@@ -2857,5 +2857,8 @@
   "tvCheckPassed": "जाँच सफल रही।",
   "tvCheckRunning": "जाँच हो रही है…",
   "tvCheckPending": "प्रतीक्षा में।",
-  "tvCheckUnavailable": "जाँच उपलब्ध नहीं है।"
+  "tvCheckUnavailable": "जाँच उपलब्ध नहीं है।",
+  "updateOpenPlayStore": "Google Play खोलें",
+  "updatePlayStoreHelp": "Google Play पर अपडेट देखें और इंस्टॉल करें।",
+  "updatePlayStoreUnavailable": "Google Play नहीं खुल सका। फिर से कोशिश करें या अपने डिवाइस पर स्टोर खोलें।"
 }

@@ -1427,5 +1427,8 @@
   "tvCheckPassed": "نجح الفحص.",
   "tvCheckRunning": "جارٍ الفحص…",
   "tvCheckPending": "في الانتظار.",
-  "tvCheckUnavailable": "الفحص غير متاح."
+  "tvCheckUnavailable": "الفحص غير متاح.",
+  "updateOpenPlayStore": "فتح Google Play",
+  "updatePlayStoreHelp": "ابحث عن التحديثات وثبّتها من Google Play.",
+  "updatePlayStoreUnavailable": "تعذّر فتح Google Play. أعد المحاولة أو افتح المتجر على جهازك."
 }

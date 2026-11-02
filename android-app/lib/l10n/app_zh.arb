@@ -2857,5 +2857,8 @@
   "tvCheckPassed": "检查通过。",
   "tvCheckRunning": "正在检查…",
   "tvCheckPending": "等待中。",
-  "tvCheckUnavailable": "无法进行检查。"
+  "tvCheckUnavailable": "无法进行检查。",
+  "updateOpenPlayStore": "打开 Google Play",
+  "updatePlayStoreHelp": "通过 Google Play 检查并安装更新。",
+  "updatePlayStoreUnavailable": "无法打开 Google Play。请重试，或在设备上打开应用商店。"
 }

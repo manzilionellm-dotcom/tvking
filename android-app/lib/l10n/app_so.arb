@@ -3170,5 +3170,8 @@
         "type": "String"
       }
     }
-  }
+  },
+  "updateOpenPlayStore": "Fur Google Play",
+  "updatePlayStoreHelp": "Ka hubi Google Play cusboonaysiinta oo rakib.",
+  "updatePlayStoreUnavailable": "Google Play lama furi karin. Mar kale isku day ama ka fur dukaanka qalabkaaga."
 }

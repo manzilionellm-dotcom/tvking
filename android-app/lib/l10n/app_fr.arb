@@ -3172,5 +3172,8 @@
         "type": "String"
       }
     }
-  }
+  },
+  "updateOpenPlayStore": "Ouvrir Google Play",
+  "updatePlayStoreHelp": "Vérifie et installe les mises à jour depuis Google Play.",
+  "updatePlayStoreUnavailable": "Impossible d’ouvrir Google Play. Réessaie ou ouvre le Store depuis ton appareil."
 }

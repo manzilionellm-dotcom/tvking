@@ -2857,5 +2857,8 @@
   "tvCheckPassed": "Verifica riuscita.",
   "tvCheckRunning": "Verifica in corso…",
   "tvCheckPending": "In attesa.",
-  "tvCheckUnavailable": "Verifica non disponibile."
+  "tvCheckUnavailable": "Verifica non disponibile.",
+  "updateOpenPlayStore": "Apri Google Play",
+  "updatePlayStoreHelp": "Cerca e installa gli aggiornamenti da Google Play.",
+  "updatePlayStoreUnavailable": "Impossibile aprire Google Play. Riprova o apri lo Store sul tuo dispositivo."
 }
