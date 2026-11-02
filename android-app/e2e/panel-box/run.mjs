@@ -17,7 +17,8 @@
 
 import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { mkdirSync, writeFileSync, rmSync, existsSync } from 'node:fs';
+import { mkdirSync, writeFileSync, readFileSync, rmSync, existsSync } from 'node:fs';
+import WebSocket from 'ws';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -26,7 +27,8 @@ import { chromium } from 'playwright';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const CLOUDFLARE = resolve(HERE, '../../cloudflare');
 const PANEL = resolve(HERE, '../../admin-panel');
-const WRANGLER = resolve(HERE, 'node_modules/wrangler/bin/wrangler.js');
+// Même Wrangler verrouillé que le wrapper Gold testé.
+const WRANGLER = resolve(CLOUDFLARE, 'node_modules/wrangler/bin/wrangler.js');
 const VITE = resolve(PANEL, 'node_modules/vite/bin/vite.js');
 
 const WORKER_PORT = 8787;
@@ -47,6 +49,8 @@ const CUSTOMER = 'Client Essai Local';
 const secret = randomBytes(24).toString('hex');
 const failures = [];
 const children = [];
+const boxProofs = new Map();
+const boxConnections = [];
 
 function redact(text) {
   let s = String(text);
@@ -124,6 +128,10 @@ function start(cmd, args, cwd, label) {
 }
 
 function stopAll() {
+  for (const { socket, heartbeat } of boxConnections) {
+    clearInterval(heartbeat);
+    try { socket.terminate(); } catch { /* déjà arrêtée */ }
+  }
   for (const child of children) {
     if (child.exitCode == null && child.pid) {
       try { child.kill('SIGTERM'); } catch { /* déjà arrêté */ }
@@ -186,8 +194,41 @@ async function panel(page, path, opts = {}) {
 
 /// Client box : mêmes routes publiques que l'app Flutter.
 async function box(method, path, body) {
-  return jsonFetch(WORKER + path, { method, body });
+  const mac = body?.mac || /MK(?::[0-9A-F]{2}){5}/.exec(decodeURIComponent(new URL(path,WORKER).pathname))?.[0];
+  const proof = boxProofs.get(mac);
+  return jsonFetch(WORKER + path, { method, body, headers: {
+    'CF-Connecting-IP':'192.0.2.10', ...(proof ? {'X-Device-Secret':proof.secret} : {}),
+  } });
 }
+
+// La présence du nouveau Worker correspond à une socket vivante. Le même
+// secret accompagne l’enrôlement, l’attente, les sources et les accusés.
+async function connectBox(mac) {
+  const androidId = 'e2e-' + mac.replace(/:/g,'');
+  const deviceSecret = randomBytes(32).toString('base64url');
+  const heartbeat = await box('POST','/api/heartbeat',{mac,androidId,model:'simulateur-e2e',platform:'tv',appVersion:'e2e'});
+  if (heartbeat.status !== 200) throw new Error('Heartbeat préalable refusé');
+  boxProofs.set(mac,{androidId,secret:deviceSecret});
+  const proof = await box('POST','/api/device-proof',{mac,androidId,secret:deviceSecret});
+  if (proof.status !== 200 || !proof.json?.enrolled) throw new Error('Preuve appareil refusée');
+  const socket = new WebSocket(WORKER.replace(/^http/,'ws') + '/api/box/ws?mac=' + encodeURIComponent(mac), {
+    headers:{'X-Device-Secret':deviceSecret,'CF-Connecting-IP':'192.0.2.10'},
+  });
+  const record={socket,heartbeat:null};boxConnections.push(record);
+  await new Promise((done,reject)=>{
+    const timer=setTimeout(()=>reject(new Error('Hello de la box absent')),8000);
+    socket.once('open',()=>socket.send('{"v":1,"type":"hello"}'));
+    socket.once('error',error=>{clearTimeout(timer);reject(error);});
+    socket.on('message',raw=>{
+      let frame;try{frame=JSON.parse(String(raw));}catch{return;}
+      if(frame.v===1 && frame.type==='hello'){clearTimeout(timer);done();}
+    });
+  });
+  record.heartbeat=setInterval(()=>{
+    if(socket.readyState===WebSocket.OPEN)socket.send('{"v":1,"type":"hello"}');
+  },10000);
+}
+
 
 async function applySchema() {
   // Base neuve à chaque lancement : sinon le client du run précédent
@@ -196,12 +237,20 @@ async function applySchema() {
   mkdirSync(PERSIST, { recursive: true });
   const devVars = resolve(CLOUDFLARE, '.dev.vars');
   writeFileSync(devVars, `ADMIN_SECRET=${secret}\n`, { mode: 0o600 });
-  log('SCHEMA  application de schema.sql sur le D1 local (sortie masquée)');
+  // Les 61 tables exportées et seulement les quatre migrations additives
+  // de ce lot sont chargées dans une base locale neuve. Jamais --remote.
+  const files=['production/schema.sql','migrations/20261028_gold_trial_policy.sql',
+    'migrations/20261028_gold_trial_runtime.sql','migrations/20261029_device_secrets.sql',
+    'migrations/20261029_golden_admin.sql'];
+  const localSchema=resolve(PERSIST,'schema-gold-local.sql');
+  writeFileSync(localSchema, files.map(name=>readFileSync(resolve(CLOUDFLARE,name),'utf8')).join('\n') +
+    "\nINSERT INTO apps(id,name,package_name,created_at,updated_at) VALUES ('app_7motion','Fixture locale','fixture.local',1,1);\n");
+  log('SCHEMA  export vérifié + quatre migrations sur le D1 local (sortie masquée)');
   await new Promise((resolvePromise, reject) => {
     const child = spawn(process.execPath, [
       WRANGLER, 'd1', 'execute', 'tvking_licensing',
       '--local', '--persist-to', PERSIST,
-      '--file', 'schema.sql',
+      '--file', localSchema,
     ], { cwd: CLOUDFLARE, env: childEnv(), stdio: ['ignore', 'pipe', 'pipe'] });
     let out = '';
     child.stdout.on('data', (b) => { out += b.toString(); });
@@ -215,7 +264,7 @@ async function applySchema() {
 
 async function run() {
   if (!existsSync(WRANGLER)) {
-    throw new Error('wrangler absent. Lance npm install dans android-app/e2e/panel-box.');
+    throw new Error('wrangler absent. Lance npm ci dans android-app/cloudflare.');
   }
   if (!existsSync(VITE)) {
     throw new Error('vite absent. Lance npm ci dans android-app/admin-panel.');
@@ -277,7 +326,7 @@ async function run() {
 
 const LIMITES = [
   'La vraie box (APK / Android TV) n\'a pas tourné : pas de lecture vidéo, pas de décodage M3U, pas de cache local effacé à l\'écran.',
-  'Le code de l\'app (remote_source_repository.dart) garde la liste déjà en mémoire quand le serveur renvoie source=null. L\'effacement prouvé ici est celui du serveur, pas celui de l\'écran.',
+  'L\'effacement prouvé ici est celui du serveur. La suppression SQLite et l\'écran de l\'app sont vérifiés par la recette Android distincte.',
   'Le pays, l\'IP Cloudflare et le ciblage géographique des annonces ne sont pas fournis par miniflare.',
   'L\'expiration est provoquée en écrivant expires_at dans le passé (PATCH licence). On n\'a pas attendu l\'horloge réelle.',
   'Aucun flux et aucune playlist n\'ont été contactés. Le panel public en ligne n\'a pas été ouvert.',
@@ -325,6 +374,7 @@ async function parcours(page) {
   await page.getByRole('button', { name: 'Activer', exact: true }).click();
   await page.getByRole('status').getByText(/Activée jusqu’au/).waitFor();
   check('écran d\'activation : appareil créé sans source', true, mac);
+  await connectBox(mac);
 
   await page.goto(PANEL_ORIGIN + '/customers');
   await page.getByPlaceholder('Nom, e-mail, téléphone…').fill(CUSTOMER);
@@ -533,6 +583,7 @@ async function parcours(page) {
     created.status === 201 && created.json && created.json.license_id && typeof created.json.expires_at === 'number',
     `HTTP ${created.status} plan=${created.json && created.json.plan}`,
   );
+  await connectBox(macExpire);
   const putExp = await panel(page, '/api/v1/sources/' + encodeURIComponent(macExpire), {
     method: 'PUT',
     body: { source: { type: 'm3u', m3u_url: M3U_A, label: 'Liste echeance' } },

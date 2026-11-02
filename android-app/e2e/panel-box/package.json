@@ -2,13 +2,14 @@
   "name": "panel-box-e2e",
   "private": true,
   "version": "0.1.0",
-  "description": "Parcours local panel admin + Worker (wrangler/miniflare) + box simulée. Aucun déploiement.",
+  "description": "Parcours local panel admin + Worker (wrangler/miniflare) + box simul\u00e9e. Aucun d\u00e9ploiement.",
   "type": "module",
   "scripts": {
     "e2e": "node run.mjs"
   },
   "devDependencies": {
     "playwright": "1.55.1",
-    "wrangler": "3.90.0"
+    "wrangler": "3.90.0",
+    "ws": "8.22.0"
   }
 }

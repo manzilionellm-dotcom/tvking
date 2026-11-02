@@ -1,0 +1,39 @@
+# Vérifications locales uniquement : aucune écriture sur un client réel.
+name: Backend — appareils et commandes du panel
+on:
+  push:
+    branches: ['feature/panel-controls-backend-*']
+  pull_request:
+    paths:
+      - 'android-app/cloudflare/**'
+      - '.github/workflows/panel-controls-backend.yml'
+permissions:
+  contents: read
+concurrency:
+  group: panel-controls-backend-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  contract:
+    name: Heartbeat, annonces et publicité sur le vrai Worker
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '24.21.0'
+          package-manager-cache: false
+      - name: Métadonnées, ciblage et compatibilité des clients existants
+        run: >-
+          node --test
+          android-app/cloudflare/tests/gold_device_metadata.test.mjs
+          android-app/cloudflare/tests/gold_announcement_expiry.test.mjs
+          android-app/cloudflare/tests/gold_public_pricing.test.mjs
+          android-app/cloudflare/tests/gold_public_servers.test.mjs
+          android-app/cloudflare/tests/gold_config_guard.test.mjs
+          android-app/cloudflare/tests/device_secret_schema.test.mjs
+          android-app/cloudflare/tests/gold_trial_policy.test.mjs
+          android-app/cloudflare/tests/gold_trial_runtime.test.mjs
+          android-app/cloudflare/tests/golden_admin.test.mjs
