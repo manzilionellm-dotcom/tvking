@@ -2,6 +2,7 @@
 // Les sockets ne transportent que des signaux ; les secrets restent en HTTP.
 import { RealtimeHub as ExportedHub, goldNotifyBox } from './production/worker.runtime.js';
 import { secretMatches } from './device_guard.js';
+import { ensureDeviceMetadataSchema, publicDeviceMetadata } from './gold_device_metadata.js';
 
 const PANEL = 'panel-v1';
 const LEASE_MS = 35_000;
@@ -184,7 +185,13 @@ export function createRealtimeRoutes({ original, actorFor }) {
         if (!mac) return json({ error: 'bad_mac' }, 400);
         where.push('d.mac=?'); args.push(mac);
       }
+      const metadataReady = await ensureDeviceMetadataSchema(env);
+      // Si l'ajout facultatif échoue, la présence reste lisible. Les modèles
+      // historiques restent disponibles ; le type inconnu n'est pas inventé.
+      const hardware = metadataReady ? 'd.device_kind,d.device_manufacturer'
+        : 'NULL AS device_kind,NULL AS device_manufacturer';
       const devices = await env.DB.prepare(`SELECT d.id,d.mac,d.label,d.block_status,
+        d.device_model,d.android_release,d.app_version,${hardware},
         COALESCE(p.country,'') AS country,COALESCE(p.ip,'') AS ip,COALESCE(p.channel,'') AS channel
         FROM devices d LEFT JOIN presence p ON p.mac=d.mac
         ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY d.last_seen_at DESC LIMIT 500`).bind(...args).all();
@@ -210,7 +217,7 @@ export function createRealtimeRoutes({ original, actorFor }) {
           .bind(Date.now() - 86400_000, ...(actor.role === 'reseller' ? [id] : [])).first();
         return json({ onlineCount: online.length, todayCount: today.n, byCountry,
           items: online.map(item => ({ mac: item.mac, ip: item.ip, country: item.country,
-            channel: item.channel, lastSeen: item.last_seen_at })) });
+            channel: item.channel, lastSeen: item.last_seen_at, ...publicDeviceMetadata(item) })) });
       }
       return json({ now: Date.now(), items: items.map(({ country, ip, channel, ...item }) => item) });
     }

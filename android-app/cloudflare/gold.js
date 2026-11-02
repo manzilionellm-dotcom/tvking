@@ -8,6 +8,9 @@ import { createTrialRuntime } from './gold_trial_runtime.js';
 import { sourceEncryptionEnv } from './gold_trial_delivery.js';
 import { createGoldenRoutes, goldenTemplates, protectGoldenSource } from './gold_golden.js';
 import { createGoldenDelivery } from './gold_golden_delivery.js';
+import { recordDeviceMetadata } from './gold_device_metadata.js';
+import { attachAnnouncementExpiry } from './gold_announcement_expiry.js';
+import { attachPublicPricing } from './gold_public_pricing.js';
 
 const GOLD_BASE = 'https://cms-8k.net/api/api.php';
 const ALL_PACKS = '84802,84803,84804,84805,84806,84807,84808,84810,84811,84813,84814,84815,84816';
@@ -671,6 +674,22 @@ export default {
       }
       const realtime = await realtimeRoutes(request, env, ctx);
       if (realtime) return realtime.status === 101 ? realtime : cors(request, env, realtime);
+      if (p === '/api/announcement' && request.method === 'GET') {
+        return attachAnnouncementExpiry(env, await orig.fetch(request, env, ctx));
+      }
+      if (p === '/api/pricing' && request.method === 'GET') {
+        return attachPublicPricing(env, await orig.fetch(request, env, ctx));
+      }
+      if (p === '/api/heartbeat' && request.method === 'POST') {
+        const body = await request.clone().json().catch(() => null);
+        const response = await orig.fetch(request, env, ctx);
+        // Le Worker original valide et enregistre d'abord l'appareil. Une
+        // métadonnée facultative ne doit jamais casser sa présence/licence.
+        if (response.ok && body) {
+          try { await recordDeviceMetadata(env, body); } catch { /* prochain heartbeat */ }
+        }
+        return response;
+      }
       if (/^\/api\/v1\/licenses(?:\/[^/]+(?:\/renew)?)?$/.test(p) && ['POST','PATCH'].includes(request.method)) {
         const response=await orig.fetch(request,env,ctx);
         if (response.ok) {
