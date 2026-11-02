@@ -12,6 +12,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tv_king/features/channels/domain/channel.dart';
 import 'package:tv_king/features/playlists/data/m3u_parser.dart';
+import 'package:tv_king/features/playlists/data/playlist_import_limits.dart';
 
 String _m3u(List<String> lines) => lines.join('\n');
 
@@ -76,6 +77,17 @@ void main() {
       );
       expect(r.channels, hasLength(1));
       expect(r.channels.first.name, 'A');
+    });
+
+    test('CR, LF, CRLF mélangés et dernière URL sans retour à la ligne', () {
+      final M3uParseResult r = M3uParser.parse(
+        '\uFEFF#EXTM3U\r#EXTINF:-1,A\r\nhttp://h/a.ts\n\n'
+        '#EXTGRP:Informations\r#EXTINF:-1,B\nhttp://h/b.ts',
+        playlistId: 1,
+      );
+      expect(r.channels.map((Channel c) => c.name), <String>['A', 'B']);
+      expect(r.channels.last.category, 'Informations');
+      expect(r.warnings, isEmpty);
     });
 
     test('#EXTGRP: sur ligne séparée → catégorie de la chaîne suivante', () {
@@ -154,6 +166,22 @@ void main() {
     test('Contenu vide → 0 chaîne, ne jette pas', () {
       final M3uParseResult r = M3uParser.parse('', playlistId: 1);
       expect(r.channels, isEmpty);
+    });
+
+    test('plafond : conserve les premières chaînes et ignore la fin du fichier',
+        () {
+      final StringBuffer body = StringBuffer('#EXTM3U\r\n');
+      for (int i = 0; i < kMaxChannelsPerImport; i++) {
+        body.writeln('http://127.0.0.1/$i.ts\r');
+      }
+      body.write('http://127.0.0.1/surplus.ts\rtexte ignoré');
+      final M3uParseResult r = M3uParser.parse(body.toString(), playlistId: 3);
+      expect(r.channels, hasLength(kMaxChannelsPerImport));
+      expect(r.channels.first.streamUrl, 'http://127.0.0.1/0.ts');
+      expect(r.channels.last.streamUrl,
+          'http://127.0.0.1/${kMaxChannelsPerImport - 1}.ts');
+      expect(r.warnings, hasLength(1));
+      expect(r.warnings.single, contains('Limite atteinte'));
     });
   });
 }

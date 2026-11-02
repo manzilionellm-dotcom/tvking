@@ -466,6 +466,7 @@ class NativeVideoView(
     private var contentFps: Float = 0f
     private var frameRateMatchEnabled: Boolean = false
     private var frameRateModeApplied: Boolean = false
+    private var previousPreferredDisplayModeId: Int = 0
     private var bytesLoaded: Long = 0L
     private var bitrateEstimate: Long = 0L
     private var videoChosenForSession: Boolean = false
@@ -2912,7 +2913,9 @@ class NativeVideoView(
         val videos = ArrayList<VideoCandidate>()
         tracks.groups.forEachIndexed { gi, g ->
             if (g.type != C.TRACK_TYPE_VIDEO) return@forEachIndexed
-            val adaptive = g.length > 1
+            // Plusieurs pistes ne signifient pas que le décodeur peut
+            // basculer entre elles de manière adaptative.
+            val adaptive = g.isAdaptiveSupported
             for (i in 0 until g.length) {
                 if (!g.isTrackSupported(i)) continue
                 val f = g.getTrackFormat(i)
@@ -2946,10 +2949,14 @@ class NativeVideoView(
         handler.post {
             if (released || token != sessions.generation) return@post
             val groups = player.currentTracks.groups
+            if (groups.any { it.type == C.TRACK_TYPE_VIDEO && it.isAdaptiveSupported && it.isSelected }) {
+                return@post
+            }
             if (pick.group < 0 || pick.group >= groups.size) return@post
             val g = groups[pick.group]
-            if (g.type != C.TRACK_TYPE_VIDEO) return@post
+            if (g.type != C.TRACK_TYPE_VIDEO || g.isAdaptiveSupported) return@post
             if (pick.index < 0 || pick.index >= g.length) return@post
+            if (!g.isTrackSupported(pick.index)) return@post
             player.trackSelectionParameters = player.trackSelectionParameters
                 .buildUpon()
                 .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, false)
@@ -2961,9 +2968,21 @@ class NativeVideoView(
     private fun positive(value: Int): Int = if (value > 0) value else 0
 
     private fun screenHeightPx(): Int {
-        val fromView = surfaceView.height
-        if (fromView > 0) return fromView
-        return appContext.resources.displayMetrics.heightPixels
+        val fallback = surfaceView.height.takeIf { it > 0 }
+            ?: appContext.resources.displayMetrics.heightPixels
+        return try {
+            // Media3 traite aussi les TV dont l'interface est en 1080p
+            // alors que la SurfaceView peut réellement sortir en 4K.
+            val display = surfaceView.display
+            val size = if (display != null) {
+                Util.getCurrentDisplayModeSize(appContext, display)
+            } else {
+                Util.getCurrentDisplayModeSize(appContext)
+            }
+            VideoTrackChoice.landscapeDisplayHeight(size.x, size.y, fallback)
+        } catch (_: RuntimeException) {
+            fallback
+        }
     }
 
     @Suppress("DEPRECATION") // defaultDisplay : lu seulement pour la liste des modes
@@ -2972,13 +2991,19 @@ class NativeVideoView(
         val activity = findActivity(appContext) ?: return
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return
         val display = surfaceView.display ?: activity.windowManager.defaultDisplay
-        val modes = display.supportedModes.map { DisplayModeOption(it.modeId, it.refreshRate) }
-        val current = activity.window.attributes.preferredDisplayModeId
+        val modes = display.supportedModes.map {
+            DisplayModeOption(it.modeId, it.refreshRate, it.physicalWidth, it.physicalHeight)
+        }
+        // preferredDisplayModeId vaut souvent 0 (automatique), même si
+        // la TV est déjà à la bonne cadence. Comparer le mode réel.
+        val current = display.mode.modeId
         val pick = FrameRateMatch.pick(true, fps, modes, current) ?: return
         try {
             val attrs = activity.window.attributes
+            val previous = attrs.preferredDisplayModeId
             attrs.preferredDisplayModeId = pick.id
             activity.window.attributes = attrs
+            if (!frameRateModeApplied) previousPreferredDisplayModeId = previous
             frameRateModeApplied = true
         } catch (_: RuntimeException) {
             return
@@ -3003,7 +3028,7 @@ class NativeVideoView(
         val activity = findActivity(appContext) ?: return
         try {
             val attrs = activity.window.attributes
-            attrs.preferredDisplayModeId = 0
+            attrs.preferredDisplayModeId = previousPreferredDisplayModeId
             activity.window.attributes = attrs
         } catch (_: RuntimeException) {
             // On note quand même que ce n'est plus notre mode.

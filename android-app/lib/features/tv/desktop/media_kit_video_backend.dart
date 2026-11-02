@@ -3,7 +3,7 @@
 // =========================================================
 //  Sur la box, NativeVideoController pilote ExoPlayer (Android). Sur PC, ce
 //  fichier fournit le MÊME contrat avec media_kit (libmpv, le moteur de
-//  VLC / mpv), décodage matériel (D3D11) : Direct, Films, Séries, reprise,
+//  mpv), décodage matériel si disponible : Direct, Films, Séries, reprise,
 //  audio, sous-titres, épisode suivant fonctionnent sans changer une ligne
 //  des écrans.
 //
@@ -26,6 +26,7 @@ import 'package:media_kit_video/media_kit_video.dart';
 import 'package:native_video_player/native_video_player.dart';
 
 import '../../../core/blackbox/black_box.dart';
+import 'desktop_image_settings.dart';
 import 'desktop_playback_queue.dart';
 
 class MediaKitVideoBackend implements NativeVideoBackend {
@@ -44,13 +45,17 @@ class MediaKitVideoBackend implements NativeVideoBackend {
         enableHardwareAcceleration: true,
       ),
     );
-    unawaited(_configure());
+    // VideoController termine sa création sur une image Flutter. La file
+    // attend ses propriétés natives avant toute ouverture, sans bloquer l'UI.
+    unawaited(_queue.configure(_configure));
   }
 
   // Registre limité aux lecteurs vivants : aucune URL n’est exposée hors du PC.
   static final Map<NativeVideoController, MediaKitVideoBackend> _bound = {};
   bool _castSuspended = false;
   final DesktopPlaybackQueue _queue = DesktopPlaybackQueue();
+  final DesktopImageSettings _imageSettings = DesktopImageSettings();
+  bool _disposed = false;
   Map<String, dynamic>? _lastOpenArgs;
   String? _suspendedUrl;
   int _suspendedPosition = 0;
@@ -72,7 +77,8 @@ class MediaKitVideoBackend implements NativeVideoBackend {
     backend._castSuspended = false;
     final Map<String, dynamic>? args = backend._lastOpenArgs;
     if (args == null) return;
-    backend.open({...args,
+    backend.open({
+      ...args,
       if (args['vod'] == true && args['url'] == backend._suspendedUrl)
         'startMs': backend._suspendedPosition,
     });
@@ -81,8 +87,10 @@ class MediaKitVideoBackend implements NativeVideoBackend {
   final Player _player;
   late final VideoController _video;
   NativeVideoController? _c;
-  final List<StreamSubscription<Object?>> _subs = <StreamSubscription<Object?>>[];
-  final FocusNode _noFocus = FocusNode(skipTraversal: true, canRequestFocus: false);
+  final List<StreamSubscription<Object?>> _subs =
+      <StreamSubscription<Object?>>[];
+  final FocusNode _noFocus =
+      FocusNode(skipTraversal: true, canRequestFocus: false);
 
   // Correspondance index de piste « NativeTrack » ↔ piste media_kit.
   List<AudioTrack> _audio = const <AudioTrack>[];
@@ -95,8 +103,8 @@ class MediaKitVideoBackend implements NativeVideoBackend {
       try {
         await p.setProperty('user-agent', 'VLC/3.0.20 LibVLC/3.0.20');
         // Reconnexion réseau automatique (coupure brève du serveur IPTV).
-        await p.setProperty(
-            'stream-lavf-o', 'reconnect=1,reconnect_streamed=1,reconnect_delay_max=5');
+        await p.setProperty('stream-lavf-o',
+            'reconnect=1,reconnect_streamed=1,reconnect_delay_max=5');
       } catch (e) {
         BlackBox.instance.warn('PC', 'réglages libmpv : $e');
       }
@@ -109,7 +117,8 @@ class MediaKitVideoBackend implements NativeVideoBackend {
     _bound[controller] = this;
     final PlayerStream s = _player.stream;
     _subs
-      ..add(s.position.listen((Duration d) => _emit('position', d.inMilliseconds)))
+      ..add(s.position
+          .listen((Duration d) => _emit('position', d.inMilliseconds)))
       ..add(s.duration.listen((Duration d) {
         if (d > Duration.zero) _emit('duration', d.inMilliseconds);
       }))
@@ -128,22 +137,33 @@ class MediaKitVideoBackend implements NativeVideoBackend {
           _emit('firstFrame', null);
         }
       }))
-      ..add(s.subtitle.listen((List<String> lines) =>
-          _emit('cues', lines.where((String l) => l.trim().isNotEmpty).join('\n'))))
+      ..add(s.videoParams.listen((VideoParams params) {
+        // Dimensions réellement décodées, sans inventer de label 4K/HDR.
+        _emit('videoFormat', <String, int>{
+          'width': params.w ?? 0,
+          'height': params.h ?? 0,
+        });
+      }))
+      ..add(s.subtitle.listen((List<String> lines) => _emit(
+          'cues', lines.where((String l) => l.trim().isNotEmpty).join('\n'))))
       ..add(s.tracks.listen((_) => _publishTracks()))
       ..add(s.track.listen((_) => _publishTracks()));
   }
 
   void _emit(String event, Object? value) {
-    if (!_castSuspended) _c?.applyBackendEvent(event, value);
+    if (!_disposed && !_castSuspended) _c?.applyBackendEvent(event, value);
   }
 
   void _publishTracks() {
     final Tracks all = _player.state.tracks;
     final Track cur = _player.state.track;
     // « auto » et « no » sont des pseudo-pistes de mpv : on ne les liste pas.
-    _audio = all.audio.where((AudioTrack t) => t.id != 'auto' && t.id != 'no').toList();
-    _texts = all.subtitle.where((SubtitleTrack t) => t.id != 'auto' && t.id != 'no').toList();
+    _audio = all.audio
+        .where((AudioTrack t) => t.id != 'auto' && t.id != 'no')
+        .toList();
+    _texts = all.subtitle
+        .where((SubtitleTrack t) => t.id != 'auto' && t.id != 'no')
+        .toList();
     _emit('tracks', <Map<String, Object?>>[
       for (int i = 0; i < _audio.length; i++)
         <String, Object?>{
@@ -171,18 +191,20 @@ class MediaKitVideoBackend implements NativeVideoBackend {
   @override
   void open(Map<String, dynamic> args) {
     final String url = (args['url'] as String?) ?? '';
-    if (url.isEmpty) return;
+    if (_disposed || url.isEmpty) return;
     _lastOpenArgs = Map<String, dynamic>.of(args);
     if (_castSuspended) return;
     _firstFrame = false;
-    // Un zap remet le volume : silence() l'avait coupé pour qu'un autre
-    // lecteur ne se mélange pas à celui-ci.
-    unawaited(_player.setVolume(100));
     final int startMs = (args['startMs'] as num?)?.toInt() ?? 0;
     final String? prefAudio = args['preferredAudio'] as String?;
     final String? prefText = args['preferredText'] as String?;
     unawaited(_queue.replace(() async {
       if (_castSuspended) return;
+      await _player.open(
+        Media(url, start: startMs > 0 ? Duration(milliseconds: startMs) : null),
+        play: true,
+      );
+    }, prepare: () async {
       final PlatformPlayer? p = _player.platform;
       if (p is NativePlayer) {
         try {
@@ -190,17 +212,19 @@ class MediaKitVideoBackend implements NativeVideoBackend {
           if (prefText != null) await p.setProperty('slang', prefText);
         } catch (_) {}
       }
-      await _player.open(
-        Media(url, start: startMs > 0 ? Duration(milliseconds: startMs) : null),
-        play: true,
-      );
+      // Un zap remet le volume : silence() l'avait coupé pour qu'un autre
+      // lecteur ne se mélange pas à celui-ci. La file revalide ensuite le
+      // zap : un arrêt demandé pendant les préparatifs n'ouvre aucun flux.
+      await _player.setVolume(100);
     }).catchError((Object error, StackTrace stack) {
       _emit('error', 'La lecture locale n’a pas pu démarrer.');
     }));
   }
 
   @override
-  void play() { if (!_castSuspended) unawaited(_player.play()); }
+  void play() {
+    if (!_castSuspended) unawaited(_player.play());
+  }
 
   @override
   void pause() => unawaited(_player.pause());
@@ -217,7 +241,23 @@ class MediaKitVideoBackend implements NativeVideoBackend {
   void setClearVoice(bool enabled) {}
 
   @override
-  void setImageEngine(String engine) {}
+  void setImageEngine(String engine) {
+    if (_disposed) return;
+    unawaited(_queue.configure(() async {
+      final PlatformPlayer? p = _player.platform;
+      if (p is! NativePlayer) return;
+      try {
+        await _imageSettings.apply(
+          engine,
+          setProperty: p.setProperty,
+          getProperty: p.getProperty,
+        );
+      } catch (e) {
+        BlackBox.instance.warn('PC', 'choix du décodeur : $e');
+      }
+      _emit('engine', _imageSettings.capabilities);
+    }));
+  }
 
   @override
   void setFrameRateMatch(bool enabled) {}
@@ -240,15 +280,21 @@ class MediaKitVideoBackend implements NativeVideoBackend {
   }
 
   @override
-  void disableSubtitles() => unawaited(_player.setSubtitleTrack(SubtitleTrack.no()));
+  void disableSubtitles() =>
+      unawaited(_player.setSubtitleTrack(SubtitleTrack.no()));
 
   @override
   Widget buildView(BuildContext context) => Video(
         controller: _video,
         // Aucune commande media_kit : ce sont celles de Zuno (mêmes que la box).
         controls: null,
+        // La texture conserve sa résolution source. Le filtre intermédiaire
+        // recommandé par Flutter préserve mieux les réductions (aperçu,
+        // fenêtre redimensionnée), sans ajouter de netteté artificielle.
+        filterQuality: FilterQuality.medium,
         // Les sous-titres sont dessinés par l'app (même rendu que la box).
-        subtitleViewConfiguration: const SubtitleViewConfiguration(visible: false),
+        subtitleViewConfiguration:
+            const SubtitleViewConfiguration(visible: false),
         // Ne jamais voler le focus clavier aux écrans de Zuno.
         focusNode: _noFocus,
         fill: Colors.black,
@@ -256,6 +302,8 @@ class MediaKitVideoBackend implements NativeVideoBackend {
 
   @override
   void dispose() {
+    if (_disposed) return;
+    _disposed = true;
     for (final StreamSubscription<Object?> s in _subs) {
       unawaited(s.cancel());
     }

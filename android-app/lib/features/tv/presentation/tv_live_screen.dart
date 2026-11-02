@@ -30,6 +30,7 @@ import '../../channels/data/recently_watched_repository.dart';
 import '../../channels/data/trending_repository.dart';
 import '../../channels/domain/channel.dart';
 import '../domain/live_shelves.dart';
+import '../domain/live_catalog_index.dart';
 import '../domain/vip_channel_groups.dart';
 import '../../device/data/device_identity.dart';
 import '../../epg/data/epg_repository.dart';
@@ -345,10 +346,11 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
   // compteur sans rescanner _all à chaque ligne. Les pseudo-catégories
   // (Tendances/Favoris/…) comptent via la longueur de leur liste dérivée.
   Map<String, int> _realCatCounts = const <String, int>{};
-  // Index id -> chaîne, construit UNE fois par changement de source (dans
-  // _recompute), réutilisé par les récents et « dernière vue ». Évite des
+  // Index id -> chaîne, construit UNE fois par lot reçu dans _ingest,
+  // réutilisé par les récents et « dernière vue ». Évite des
   // scans O(n) répétés dans build() (jank sur les très grandes listes).
   Map<String, Channel> _byId = const <String, Channel>{};
+  LiveCatalogIndex _catalogIndex = LiveCatalogIndex(const <Channel>[]);
   // Dernière chaîne vue (alimente le hero « Continuer »), calculée dans
   // _recompute (pas dans build).
   Channel? _lastWatchedCh;
@@ -362,9 +364,12 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
   /// Recalcule TOUT l'état dérivé à partir des sources. Appelé UNIQUEMENT quand
   /// une source change — jamais dans build().
   void _recompute() {
-    // Index id -> chaîne (réutilisé : récents + « dernière vue »). Construit
-    // ICI (changement de source) et pas dans build() → zéro scan par frame.
-    _byId = <String, Channel>{for (final Channel c in _all) c.id: c};
+    // Un favori ou une tendance ne change pas les chaînes : les tables du lot
+    // sont conservées jusqu'au prochain _ingest (ou filtre Mode Enfants).
+    _byId = _catalogIndex.byId;
+    if (_precomputed && !RepairFlags.liveShelvesLegacy) {
+      _catalogIndex.completeCuration();
+    }
     // Favoris (ordre playlist).
     _favCh = _favIds.isEmpty
         ? const <Channel>[]
@@ -387,7 +392,7 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     if (!RepairFlags.liveShelvesLegacy) {
       _trendCh = (_trending.isEmpty || _all.isEmpty || !_precomputed)
           ? const <Channel>[]
-          : trendingFromCache(_all, _trending);
+          : _catalogIndex.trending(_trending);
       _forYouCh = (_recentIds.isEmpty || _all.isEmpty || !_precomputed)
           ? const <Channel>[]
           : forYouFromCache(
@@ -468,7 +473,11 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     }
     // Groupes pays construits UNE FOIS par lot, à partir du cache calculé
     // en isolate. Jamais de regex sur toutes les chaînes au déplacement D-pad.
-    _countryChannels = _precomputed ? vipChannelGroups(_all) : const {};
+    _countryChannels = !_precomputed
+        ? const {}
+        : RepairFlags.liveShelvesLegacy
+            ? vipChannelGroups(_all)
+            : _catalogIndex.byCountry;
     if (_selectedCat?.startsWith(_vipPrefix) == true &&
         !VipCountriesRepository.instance.current.contains(
           _selectedCat!.substring(_vipPrefix.length),
@@ -572,8 +581,10 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     // plus. (Placé AVANT le court-circuit pour s'appliquer même si la chaîne est
     // identique au précédent aperçu.)
     _catDebounce?.cancel();
-    if (_previewCh.value?.id == c.id) return;
     _previewDebounce?.cancel();
+    // A → B → A avant le délai : le retour sur A doit aussi annuler B.
+    // Sinon un aperçu décalé démarre alors que le focus est déjà revenu.
+    if (_previewCh.value?.id == c.id) return;
     _previewDebounce = Timer(const Duration(milliseconds: 120), () {
       if (mounted && _previewCh.value?.id != c.id) {
         _previewCh.value = c; // seule la colonne de droite se reconstruit
@@ -618,8 +629,10 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
   /// focus se pose ~220 ms avant le _recompute O(n) → plus de jank/ANR quand
   /// l'utilisateur traverse rapidement les catégories à la télécommande.
   void _selectDebounced(String cat) {
-    if (_selectedCat == cat) return;
     _catDebounce?.cancel();
+    // Même règle que pour l'aperçu : un retour rapide sur la catégorie
+    // courante invalide toute sélection intermédiaire encore en attente.
+    if (_selectedCat == cat) return;
     _catDebounce = Timer(const Duration(milliseconds: 220), () {
       if (mounted) _select(cat);
     });
@@ -737,6 +750,7 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     }
     setState(() {
       _all = live;
+      _catalogIndex = LiveCatalogIndex(live);
       _categoryIndex = categoryIndex;
       _cats = cats;
       _realCatCounts = counts;
