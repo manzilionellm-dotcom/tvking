@@ -2,6 +2,50 @@
 import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { execFileSync } from 'node:child_process';
+
+// Revue ponctuelle de l'APK Zuno : le gel commun reste actif. La preuve porte
+// sur les objets Git réellement extraits, pas sur un nom d'app fourni en entrée.
+function hasMatchingZunoTvReview(ctx) {
+  const review = ctx.zunoTvReview;
+  const sha = /^[0-9a-f]{40}$/;
+  const workflow = 'manzilionellm-dotcom/tvking/.github/workflows/build-zuno-tv.yml@refs/heads/ccr-b93e1afd-gwirw0';
+  if (!review || review.scope !== 'zuno-tv' || review.reviewedBy !== 'manzilionellm-dotcom' ||
+      typeof review.reason !== 'string' || !review.reason.trim() ||
+      !sha.test(review.sourceCommit ?? '') || !sha.test(review.androidTree ?? '') ||
+      !sha.test(review.workflowBlob ?? '')) return false;
+  const reviewedAt = Date.parse(review.reviewedAt);
+  const expiresAt = Date.parse(review.expiresAt);
+  const now = ctx.now ?? Date.now();
+  if (![reviewedAt, expiresAt, now].every(Number.isFinite) ||
+      reviewedAt > now || expiresAt <= now || expiresAt <= reviewedAt ||
+      expiresAt - reviewedAt > 24 * 60 * 60 * 1000) return false;
+  return ['build', 'client'].includes(ctx.operation) &&
+    ctx.publish === 'true' && ctx.testBox === 'false' && ctx.playAab === 'false' &&
+    ctx.variant === 'box' && ctx.backendUrl === '' &&
+    ctx.workflowRef === workflow && sha.test(ctx.sourceSha ?? '') &&
+    ctx.workflowSha === ctx.sourceSha && ctx.checkout?.head === ctx.sourceSha &&
+    ctx.checkout?.androidTree === review.androidTree &&
+    ctx.checkout?.workflowBlob === review.workflowBlob;
+}
+
+// Ces trois objets sont présents même avec fetch-depth: 1. Une erreur Git
+// ferme cette autorisation ponctuelle ; elle ne désactive jamais le gel.
+function readReviewCheckout() {
+  try {
+    const cwd = join(dirname(fileURLToPath(import.meta.url)), '..');
+    const read = ref => execFileSync('git', ['rev-parse', '--verify', ref], {
+      cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
+    const dirty = execFileSync('git', ['status', '--porcelain', '--untracked-files=all',
+      '--', 'android-app', '.github/workflows/build-zuno-tv.yml'], {
+      cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
+    if (dirty) return null;
+    return { head: read('HEAD'), androidTree: read('HEAD:android-app'),
+      workflowBlob: read('HEAD:.github/workflows/build-zuno-tv.yml') };
+  } catch { return null; }
+}
 
 export function assertAppOperationAllowed(ctx) {
   if (ctx.repository !== 'manzilionellm-dotcom/tvking') throw new Error('Dépôt non autorisé');
@@ -35,7 +79,9 @@ export function assertAppOperationAllowed(ctx) {
     return;
   }
   if (ctx.operation === 'build' && ctx.publish !== 'true') return;
-  if (ctx.mode !== 'reviewed') throw new Error('Apps clients gelées : publication ou suppression bloquée');
+  if (ctx.mode !== 'reviewed' && !hasMatchingZunoTvReview(ctx)) {
+    throw new Error('Apps clients gelées : publication ou suppression bloquée');
+  }
   const expected = ctx.operation === 'cleanup' ? 'NETTOYER_RELEASES' : 'PUBLIER_APP';
   if (ctx.confirmation !== expected) throw new Error('Confirmation explicite du propriétaire obligatoire');
 }
@@ -49,6 +95,11 @@ export function appEnvironmentContext(operation = process.env.APP_OPERATION || '
       actor: process.env.GITHUB_ACTOR, triggeringActor: process.env.GITHUB_TRIGGERING_ACTOR,
       ref: process.env.GITHUB_REF, event: process.env.GITHUB_EVENT_NAME, pr: event.pull_request,
       operation, mode: manifest.mode,
+      zunoTvReview: manifest.zunoTvReview,
+      workflowRef: process.env.GITHUB_WORKFLOW_REF,
+      workflowSha: process.env.GITHUB_WORKFLOW_SHA,
+      sourceSha: process.env.GITHUB_SHA,
+      checkout: manifest.zunoTvReview ? readReviewCheckout() : null,
       publish: process.env.APP_PUBLISH ?? input.publish ?? 'false',
       testBox: process.env.APP_TEST_BOX ?? input.test_box ?? 'false',
       playAab: process.env.APP_PLAY_AAB ?? input.play_aab ?? 'false',
@@ -68,3 +119,4 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     process.exitCode = 1;
   }
 }
+
