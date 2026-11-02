@@ -9,6 +9,7 @@
 //  RemoteSourceRepository). États vides PROFESSIONNELS (pas d'écran mort).
 // =========================================================
 import 'dart:async';
+
 import '../../channels/domain/channel_category_index.dart';
 
 import 'package:cached_network_image/cached_network_image.dart';
@@ -24,6 +25,7 @@ import '../../../core/i18n/l10n_extension.dart';
 import '../core/tv_activity.dart';
 import '../core/tv_sync_policy.dart';
 import '../core/tv_tokens.dart';
+import '../core/tv_app_tokens.dart';
 import '../../channels/data/recently_watched_repository.dart';
 import '../../channels/data/trending_repository.dart';
 import '../../channels/domain/channel.dart';
@@ -367,8 +369,8 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     _favCh = _favIds.isEmpty
         ? const <Channel>[]
         : _all
-              .where((Channel c) => _favIds.contains(c.id))
-              .toList(growable: false);
+            .where((Channel c) => _favIds.contains(c.id))
+            .toList(growable: false);
     // Récemment regardées (ordre historique).
     if (_recentIds.isEmpty || _all.isEmpty) {
       _recentCh = const <Channel>[];
@@ -511,7 +513,7 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     if (_selectedCat?.startsWith(_vipPrefix) == true) {
       _shownList =
           _countryChannels[_selectedCat!.substring(_vipPrefix.length)] ??
-          const [];
+              const [];
     } else if (_selectedCat == _kTrendCat) {
       _shownList = _trendCh;
     } else if (_selectedCat == _kFavCat) {
@@ -664,7 +666,8 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
   Future<void> _kickSourceSync({bool force = false}) async {
     // La passe du démarrage ou du canal temps réel alimente déjà l'écran.
     // Ne pas lui ajouter une seconde lecture en file depuis ce bouton/timer.
-    if (_syncing || RemoteSourceRepository.syncing.value ||
+    if (_syncing ||
+        RemoteSourceRepository.syncing.value ||
         RemoteSourceRepository.manualImporting.value) return;
     if (mounted) setState(() => _syncing = true);
     final RemoteSyncResult r = await RemoteSourceRepository.sync(force: force);
@@ -704,16 +707,17 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     // ne s'applique QUE si le parent l'a activé (défaut : désactivé → aucun
     // changement). Détection via le classifieur existant (mots-clés robustes).
     final bool kids = ParentalControls.instance.kidsMode.value;
-    final List<Channel> live = channels
-        .where((Channel c) {
-          if (!c.isLive) return false;
-          if (kids && _hideForKids(c)) return false;
-          return true;
-        })
-        .toList(growable: false);
+    final List<Channel> live = channels.where((Channel c) {
+      if (!c.isLive) return false;
+      if (kids && _hideForKids(c)) return false;
+      return true;
+    }).toList(growable: false);
     // Ordre des catégories = ordre d'APPARITION ; dédup via Set (O(1)) pour
     // rester rapide même sur de très grandes listes (évite un contains O(n²)).
-    final ChannelCategoryIndex categoryIndex = ChannelCategoryIndex(live, categoryOf: _catOf);
+    final ChannelCategoryIndex categoryIndex = ChannelCategoryIndex(
+      live,
+      categoryOf: _catOf,
+    );
     final List<String> cats = categoryIndex.categories;
     // Compteur par catégorie calculé ICI, dans la MÊME passe O(n) (pas par ligne
     // de la C-List) → affichage du compteur sans rescanner _all.
@@ -793,7 +797,8 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
           RemoteSourceRepository.lastResult,
         ]),
         builder: (BuildContext context, _) {
-          final bool busy = _syncing || RemoteSourceRepository.syncing.value ||
+          final bool busy = _syncing ||
+              RemoteSourceRepository.syncing.value ||
               RemoteSourceRepository.manualImporting.value;
           final bool importing = RemoteSourceRepository.importing.value ||
               RemoteSourceRepository.manualImporting.value;
@@ -808,16 +813,17 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
                   TvChannelLoadingStatus(
                     checking: busy,
                     importing: false,
-                    result: RemoteSourceRepository.lastResult.value ?? _lastSync,
+                    result:
+                        RemoteSourceRepository.lastResult.value ?? _lastSync,
                   ),
                   const SizedBox(height: 18),
                 ],
                 Container(
                   padding: const EdgeInsets.all(18),
                   decoration: BoxDecoration(
-                    color: TvTokens.card,
+                    color: TvAppTokens.of(context).card,
                     borderRadius: BorderRadius.circular(TvTokens.rCard),
-                    border: Border.all(color: TvTokens.lineSoft),
+                    border: Border.all(color: TvAppTokens.of(context).lineSoft),
                   ),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
@@ -825,13 +831,16 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
                     children: <Widget>[
                       Text(
                         context.l10n.tvDeviceAddress,
-                        style: TvTokens.ui(12, color: TvTokens.muted),
+                        style: TvAppTokens.of(context)
+                            .ui(12, color: TvAppTokens.of(context).muted),
                       ),
                       const SizedBox(height: 8),
                       SelectableText(
                         displayMac(_mac, showPrefix: RepairFlags.macShowPrefix),
                         textDirection: TextDirection.ltr,
-                        style: TvTokens.mono(22, color: TvTokens.accentBright),
+                        style: TvAppTokens.of(
+                          context,
+                        ).mono(22, color: TvAppTokens.of(context).accentBright),
                       ),
                     ],
                   ),
@@ -839,7 +848,8 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
                 const SizedBox(height: 18),
                 _ActionPill(
                   icon: Icons.refresh_rounded,
-                  label: busy ? context.l10n.tvSearchingChannels
+                  label: busy
+                      ? context.l10n.tvSearchingChannels
                       : context.l10n.tvRetry,
                   onSelect: busy ? null : () => _kickSourceSync(force: true),
                 ),
@@ -955,9 +965,9 @@ class _CategoryRail extends StatelessWidget {
     final int visible = cats.length < _kMaxVisible ? cats.length : _kMaxVisible;
     return Container(
       decoration: BoxDecoration(
-        color: TvTokens.card.withValues(alpha: 0.55),
+        color: TvAppTokens.of(context).card.withValues(alpha: 0.55),
         borderRadius: BorderRadius.circular(TvTokens.rCard),
-        border: Border.all(color: TvTokens.lineSoft),
+        border: Border.all(color: TvAppTokens.of(context).lineSoft),
       ),
       padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
       child: Column(
@@ -970,10 +980,10 @@ class _CategoryRail extends StatelessWidget {
               context.l10n.tvNavLive.toUpperCase(),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: TvTokens.ui(
+              style: TvAppTokens.of(context).ui(
                 12,
                 weight: FontWeight.w700,
-                color: TvTokens.mutedDim,
+                color: TvAppTokens.of(context).mutedDim,
                 spacing: 2,
               ),
             ),
@@ -1044,18 +1054,20 @@ class _CRow extends StatelessWidget {
           // catégorie active-mais-pas-focus = gris discret (jamais d'or).
           final bool active = selected && !focused;
           final Color bg = (focused || active)
-              ? TvTokens.sel
+              ? TvAppTokens.of(context).sel
               : Colors.transparent;
           final Color fg = focused
-              ? TvTokens.accentBright
-              : (active ? TvTokens.text : TvTokens.muted);
+              ? TvAppTokens.of(context).accentBright
+              : (active
+                  ? TvAppTokens.of(context).text
+                  : TvAppTokens.of(context).muted);
           return Container(
             decoration: BoxDecoration(
               color: bg,
               borderRadius: BorderRadius.circular(TvTokens.rMenuItem),
               border: focused
                   ? Border.all(
-                      color: TvTokens.accent,
+                      color: TvAppTokens.of(context).accent,
                       width: TvDimens.focusOutline,
                     )
                   : null,
@@ -1084,7 +1096,9 @@ class _CRow extends StatelessWidget {
                   style: TextStyle(
                     fontSize: TvDimens.label,
                     fontWeight: FontWeight.w700,
-                    color: focused ? TvTokens.accentBright : TvTokens.mutedDim,
+                    color: focused
+                        ? TvAppTokens.of(context).accentBright
+                        : TvAppTokens.of(context).mutedDim,
                   ),
                 ),
               ],
@@ -1123,10 +1137,10 @@ class _ResumeRail extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(4, 0, 4, 10),
           child: Text(
             context.l10n.tvResumeLabel,
-            style: TvTokens.ui(
+            style: TvAppTokens.of(context).ui(
               13,
               weight: FontWeight.w800,
-              color: TvTokens.mutedDim,
+              color: TvAppTokens.of(context).mutedDim,
               spacing: 2,
             ),
           ),
@@ -1196,7 +1210,7 @@ class _ResumeCardState extends State<_ResumeCard> {
       child: TvFocusable(
         focusNode: _node,
         scale: TvFocusScale.small,
-        baseColor: TvTokens.card,
+        baseColor: TvAppTokens.of(context).card,
         onSelect: widget.onPlay,
         child: Padding(
           padding: const EdgeInsets.all(12),
@@ -1213,7 +1227,7 @@ class _ResumeCardState extends State<_ResumeCard> {
                     fontSize: 18,
                     height: 1.15,
                     fontWeight: FontWeight.w600,
-                    color: TvTokens.text,
+                    color: TvAppTokens.of(context).text,
                   ),
                 ),
               ),
@@ -1274,7 +1288,7 @@ class _LiveHeroState extends State<_LiveHero> {
     return TvFocusable(
       autofocus: widget.autofocus,
       scale: TvFocusScale.large,
-      baseColor: TvTokens.card,
+      baseColor: TvAppTokens.of(context).card,
       onSelect: _play,
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -1285,9 +1299,9 @@ class _LiveHeroState extends State<_LiveHero> {
               width: 132,
               height: 132,
               decoration: BoxDecoration(
-                color: TvTokens.tile,
+                color: TvAppTokens.of(context).tile,
                 borderRadius: BorderRadius.circular(TvTokens.rCard),
-                border: Border.all(color: TvTokens.tileBorder),
+                border: Border.all(color: TvAppTokens.of(context).tileBorder),
               ),
               padding: const EdgeInsets.all(14),
               child: _Logo(channel: c),
@@ -1307,7 +1321,7 @@ class _LiveHeroState extends State<_LiveHero> {
                     style: TextStyle(
                       fontSize: TvDimens.headline,
                       fontWeight: FontWeight.w800,
-                      color: TvTokens.text,
+                      color: TvAppTokens.of(context).text,
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -1315,95 +1329,94 @@ class _LiveHeroState extends State<_LiveHero> {
                   // repli sur la catégorie si pas d'EPG → jamais de ligne vide.
                   FutureBuilder<EpgProgram?>(
                     future: _epg,
-                    builder:
-                        (
-                          BuildContext context,
-                          AsyncSnapshot<EpgProgram?> snap,
-                        ) {
-                          final EpgProgram? p = snap.data;
-                          // FALLBACK (pas d'EPG) : on reste COMPACT — juste la
-                          // catégorie (ou rien), jamais de grand vide.
-                          if (p == null) {
-                            final String cat = c.category.trim();
-                            if (cat.isEmpty) return const SizedBox.shrink();
-                            return Text(
-                              _tvPretty(cat),
-                              maxLines: 1,
+                    builder: (
+                      BuildContext context,
+                      AsyncSnapshot<EpgProgram?> snap,
+                    ) {
+                      final EpgProgram? p = snap.data;
+                      // FALLBACK (pas d'EPG) : on reste COMPACT — juste la
+                      // catégorie (ou rien), jamais de grand vide.
+                      if (p == null) {
+                        final String cat = c.category.trim();
+                        if (cat.isEmpty) return const SizedBox.shrink();
+                        return Text(
+                          _tvPretty(cat),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: TvDimens.body,
+                            color: TvAppTokens.of(context).muted,
+                          ),
+                        );
+                      }
+                      // EPG dispo : titre + barre de progression + horaires
+                      // (+ synopsis si présent).
+                      final int now = DateTime.now().millisecondsSinceEpoch;
+                      final int span = p.stopTime - p.startTime;
+                      final double prog = span > 0
+                          ? ((now - p.startTime) / span)
+                              .clamp(0.0, 1.0)
+                              .toDouble()
+                          : 0.0;
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: <Widget>[
+                          Text(
+                            context.l10n.tvNowPlayingPrefix(p.title),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: TvDimens.body,
+                              fontWeight: FontWeight.w600,
+                              color: TvAppTokens.of(context).text,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Row(
+                            children: <Widget>[
+                              Expanded(
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(2),
+                                  child: SizedBox(
+                                    height: 4,
+                                    child: LinearProgressIndicator(
+                                      value: prog,
+                                      backgroundColor: TvAppTokens.of(
+                                        context,
+                                      ).line,
+                                      valueColor: AlwaysStoppedAnimation<Color>(
+                                          TvAppTokens.of(context).accent),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Text(
+                                p.timeRangeShort,
+                                style: TextStyle(
+                                  fontSize: TvDimens.label,
+                                  color: TvAppTokens.of(context).mutedDim,
+                                ),
+                              ),
+                            ],
+                          ),
+                          if (p.description != null &&
+                              p.description!.trim().isNotEmpty) ...<Widget>[
+                            const SizedBox(height: 8),
+                            Text(
+                              p.description!.trim(),
+                              maxLines: 2,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
-                                fontSize: TvDimens.body,
-                                color: TvTokens.muted,
+                                fontSize: TvDimens.label,
+                                color: TvAppTokens.of(context).muted,
                               ),
-                            );
-                          }
-                          // EPG dispo : titre + barre de progression + horaires
-                          // (+ synopsis si présent).
-                          final int now = DateTime.now().millisecondsSinceEpoch;
-                          final int span = p.stopTime - p.startTime;
-                          final double prog = span > 0
-                              ? ((now - p.startTime) / span)
-                                    .clamp(0.0, 1.0)
-                                    .toDouble()
-                              : 0.0;
-                          return Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: <Widget>[
-                              Text(
-                                context.l10n.tvNowPlayingPrefix(p.title),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontSize: TvDimens.body,
-                                  fontWeight: FontWeight.w600,
-                                  color: TvTokens.text,
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              Row(
-                                children: <Widget>[
-                                  Expanded(
-                                    child: ClipRRect(
-                                      borderRadius: BorderRadius.circular(2),
-                                      child: SizedBox(
-                                        height: 4,
-                                        child: LinearProgressIndicator(
-                                          value: prog,
-                                          backgroundColor: TvTokens.line,
-                                          valueColor:
-                                              const AlwaysStoppedAnimation<
-                                                Color
-                                              >(TvTokens.accent),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Text(
-                                    p.timeRangeShort,
-                                    style: TextStyle(
-                                      fontSize: TvDimens.label,
-                                      color: TvTokens.mutedDim,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              if (p.description != null &&
-                                  p.description!.trim().isNotEmpty) ...<Widget>[
-                                const SizedBox(height: 8),
-                                Text(
-                                  p.description!.trim(),
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    fontSize: TvDimens.label,
-                                    color: TvTokens.muted,
-                                  ),
-                                ),
-                              ],
-                            ],
-                          );
-                        },
+                            ),
+                          ],
+                        ],
+                      );
+                    },
                   ),
                 ],
               ),
@@ -1446,7 +1459,7 @@ class _LivePillState extends State<_LivePill>
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color: TvTokens.live.withValues(alpha: 0.16),
+        color: TvAppTokens.of(context).live.withValues(alpha: 0.16),
         borderRadius: BorderRadius.circular(TvTokens.rSmall),
       ),
       child: Row(
@@ -1457,8 +1470,8 @@ class _LivePillState extends State<_LivePill>
             child: Container(
               width: 8,
               height: 8,
-              decoration: const BoxDecoration(
-                color: TvTokens.live,
+              decoration: BoxDecoration(
+                color: TvAppTokens.of(context).live,
                 shape: BoxShape.circle,
               ),
             ),
@@ -1470,7 +1483,7 @@ class _LivePillState extends State<_LivePill>
               fontSize: 13,
               fontWeight: FontWeight.w800,
               letterSpacing: 1.2,
-              color: TvTokens.live,
+              color: TvAppTokens.of(context).live,
             ),
           ),
         ],
@@ -1527,7 +1540,10 @@ class _ChannelGridState extends State<_ChannelGrid> {
       return Center(
         child: Text(
           context.l10n.tvNoChannelInCategory,
-          style: TextStyle(fontSize: TvDimens.body, color: TvTokens.mutedDim),
+          style: TextStyle(
+            fontSize: TvDimens.body,
+            color: TvAppTokens.of(context).mutedDim,
+          ),
         ),
       );
     }
@@ -1618,9 +1634,9 @@ class _ChannelCardState extends State<_ChannelCard> {
     // PREMIUM (réf. design) : on retire le jargon codec (RAW/HEVC/60FPS/VIP/LIVE)
     // qui faisait « IPTV brut » et on ne garde qu'UN chip qualité (4K/FHD/HD).
     final String? quality = p.badges.cast<String?>().firstWhere(
-      (String? b) => b == '4K' || b == 'FHD' || b == 'HD',
-      orElse: () => null,
-    );
+          (String? b) => b == '4K' || b == 'FHD' || b == 'HD',
+          orElse: () => null,
+        );
     // RESTAURATION DU FOCUS au retour du lecteur (déterministe) : quand l'écran
     // nous DÉSIGNE (restoreFocusId == notre id), on (re)prend le focus en
     // post-frame puis on libère le drapeau. Déclenché par un rebuild explicite
@@ -1641,7 +1657,7 @@ class _ChannelCardState extends State<_ChannelCard> {
       // La carte EST la surface (card au repos, sel au focus) → le focus se
       // marque par bordure or + ombre + scale + lueur (cf. tv_focusable). Le
       // contenu est posé PAR-DESSUS via un Stack.
-      baseColor: TvTokens.card,
+      baseColor: TvAppTokens.of(context).card,
       // Survol → hero du haut + index focus de la grille (atténuation voisines).
       onFocusChange: (bool f) {
         if (f) {
@@ -1663,13 +1679,13 @@ class _ChannelCardState extends State<_ChannelCard> {
             Positioned(top: 12, right: 12, child: _TagBadge(label: quality)),
           // Favori discret en bas-droite.
           if (fav)
-            const Positioned(
+            Positioned(
               right: 12,
               bottom: 12,
               child: Icon(
                 Icons.favorite_rounded,
                 size: 16,
-                color: TvTokens.accent,
+                color: TvAppTokens.of(context).accent,
               ),
             ),
           // NOM DOMINANT en bas-gauche : c'est lui qui « porte » la carte.
@@ -1685,7 +1701,7 @@ class _ChannelCardState extends State<_ChannelCard> {
                 fontSize: 22,
                 height: 1.1,
                 fontWeight: FontWeight.w600,
-                color: TvTokens.text,
+                color: TvAppTokens.of(context).text,
               ),
             ),
           ),
@@ -1703,7 +1719,7 @@ class _ChannelCardState extends State<_ChannelCard> {
                       curve: TvDimens.focusCurve,
                       decoration: BoxDecoration(
                         color: dim
-                            ? TvTokens.bg.withValues(alpha: 0.45)
+                            ? TvAppTokens.of(context).bg.withValues(alpha: 0.45)
                             : Colors.transparent,
                         borderRadius: BorderRadius.circular(
                           TvDimens.cardRadius,
@@ -1788,7 +1804,7 @@ class _TagBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
-        color: TvTokens.badgeBg,
+        color: TvAppTokens.of(context).badgeBg,
         borderRadius: BorderRadius.circular(TvTokens.rSmall),
       ),
       child: Text(
@@ -1797,7 +1813,7 @@ class _TagBadge extends StatelessWidget {
           fontSize: 10,
           fontWeight: FontWeight.w700,
           letterSpacing: 0.4,
-          color: TvTokens.accent,
+          color: TvAppTokens.of(context).accent,
         ),
       ),
     );
@@ -1819,7 +1835,7 @@ class _LogoChip extends StatelessWidget {
       decoration: BoxDecoration(
         color: const Color(0xD9141210), // rgba(20,18,16,.85)
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: TvTokens.line),
+        border: Border.all(color: TvAppTokens.of(context).line),
       ),
       padding: const EdgeInsets.all(7),
       child: _Logo(channel: channel),
@@ -1836,15 +1852,15 @@ class _Logo extends StatelessWidget {
     // Repli PARESSEUX : `initials` (regex + split) n'est calculé que si le logo
     // manque ou échoue — pas pour chaque ligne qui a un logo.
     Widget fallback() => Center(
-      child: Text(
-        channel.initials,
-        style: TextStyle(
-          fontSize: TvDimens.title,
-          fontWeight: FontWeight.w800,
-          color: TvTokens.muted,
-        ),
-      ),
-    );
+          child: Text(
+            channel.initials,
+            style: TextStyle(
+              fontSize: TvDimens.title,
+              fontWeight: FontWeight.w800,
+              color: TvAppTokens.of(context).muted,
+            ),
+          ),
+        );
     final String? url = channel.logoUrl;
     if (url == null || url.isEmpty) return fallback();
     // CACHE DISQUE + mémoire (cached_network_image) : après le 1er affichage,
@@ -1889,11 +1905,15 @@ class _ActionPill extends StatelessWidget {
       scale: TvFocusScale.large,
       onSelect: onSelect,
       builder: (BuildContext context, bool focused) {
-        final Color fg = focused ? TvTokens.onAccent : TvTokens.accentBright;
+        final Color fg = focused
+            ? TvAppTokens.of(context).onAccent
+            : TvAppTokens.of(context).accentBright;
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 13),
           decoration: BoxDecoration(
-            color: focused ? TvTokens.accent : TvTokens.sel,
+            color: focused
+                ? TvAppTokens.of(context).accent
+                : TvAppTokens.of(context).sel,
             borderRadius: BorderRadius.circular(TvTokens.rButton),
           ),
           child: Row(
@@ -1904,11 +1924,8 @@ class _ActionPill extends StatelessWidget {
               Flexible(
                 child: Text(
                   label,
-                  style: TvTokens.ui(
-                    TvDimens.titleS,
-                    weight: FontWeight.w700,
-                    color: fg,
-                  ),
+                  style: TvAppTokens.of(context)
+                      .ui(TvDimens.titleS, weight: FontWeight.w700, color: fg),
                 ),
               ),
             ],
@@ -1951,12 +1968,17 @@ class _ChannelList extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
-            const Icon(Icons.live_tv_rounded, size: 48, color: TvTokens.muted),
+            Icon(
+              Icons.live_tv_rounded,
+              size: 48,
+              color: TvAppTokens.of(context).muted,
+            ),
             const SizedBox(height: 12),
             Text(
               context.l10n.tvNoChannelInCategory,
               textAlign: TextAlign.center,
-              style: TvTokens.ui(TvDimens.titleS, color: TvTokens.text),
+              style: TvAppTokens.of(context)
+                  .ui(TvDimens.titleS, color: TvAppTokens.of(context).text),
             ),
           ],
         ),
@@ -1964,9 +1986,9 @@ class _ChannelList extends StatelessWidget {
     }
     return Container(
       decoration: BoxDecoration(
-        color: TvTokens.card.withValues(alpha: 0.55),
+        color: TvAppTokens.of(context).card.withValues(alpha: 0.55),
         borderRadius: BorderRadius.circular(TvTokens.rCard),
-        border: Border.all(color: TvTokens.lineSoft),
+        border: Border.all(color: TvAppTokens.of(context).lineSoft),
       ),
       padding: const EdgeInsets.all(8),
       child: ListView.builder(
@@ -2028,9 +2050,9 @@ class _ChannelRowState extends State<_ChannelRow> {
     // la carte de grille — on l'appelle par sa classe.
     final _ParsedName p = _ChannelCardState._parseName(channel);
     final String? quality = p.badges.cast<String?>().firstWhere(
-      (String? b) => b == '4K' || b == 'FHD' || b == 'HD',
-      orElse: () => null,
-    );
+          (String? b) => b == '4K' || b == 'FHD' || b == 'HD',
+          orElse: () => null,
+        );
     if (widget.restoreFocusId != null && widget.restoreFocusId == channel.id) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
@@ -2069,9 +2091,11 @@ class _ChannelRowState extends State<_ChannelRow> {
                   child: Text(
                     '${widget.index + 1}',
                     textAlign: TextAlign.right,
-                    style: TvTokens.mono(
+                    style: TvAppTokens.of(context).mono(
                       TvDimens.label,
-                      color: focused ? TvTokens.accentBright : TvTokens.muted,
+                      color: focused
+                          ? TvAppTokens.of(context).accentBright
+                          : TvAppTokens.of(context).muted,
                     ),
                   ),
                 ),
@@ -2087,19 +2111,21 @@ class _ChannelRowState extends State<_ChannelRow> {
                     p.name,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TvTokens.ui(
+                    style: TvAppTokens.of(context).ui(
                       TvDimens.titleS,
                       weight: FontWeight.w600,
-                      color: focused ? TvTokens.accentBright : TvTokens.text,
+                      color: focused
+                          ? TvAppTokens.of(context).accentBright
+                          : TvAppTokens.of(context).text,
                     ),
                   ),
                 ),
                 if (fav) ...<Widget>[
                   const SizedBox(width: 8),
-                  const Icon(
+                  Icon(
                     Icons.favorite_rounded,
                     size: 18,
-                    color: TvTokens.accent,
+                    color: TvAppTokens.of(context).accent,
                   ),
                 ],
                 if (quality != null) ...<Widget>[
@@ -2137,15 +2163,15 @@ class _PreviewPanel extends StatelessWidget {
           child: (c == null || suspended)
               ? Container(
                   decoration: BoxDecoration(
-                    color: TvTokens.tile,
+                    color: TvAppTokens.of(context).tile,
                     borderRadius: BorderRadius.circular(TvTokens.rCard),
-                    border: Border.all(color: TvTokens.lineSoft),
+                    border: Border.all(color: TvAppTokens.of(context).lineSoft),
                   ),
                   alignment: Alignment.center,
-                  child: const Icon(
+                  child: Icon(
                     Icons.live_tv_rounded,
                     size: 56,
-                    color: TvTokens.mutedDim,
+                    color: TvAppTokens.of(context).mutedDim,
                   ),
                 )
               : TvLivePreview(channel: c),
@@ -2169,9 +2195,9 @@ class _PreviewInfoState extends State<_PreviewInfo> {
   late Future<List<EpgProgram?>> _epg = _load();
 
   Future<List<EpgProgram?>> _load() => Future.wait(<Future<EpgProgram?>>[
-    EpgRepository.instance.currentProgram(widget.channel.id),
-    EpgRepository.instance.nextProgram(widget.channel.id),
-  ]);
+        EpgRepository.instance.currentProgram(widget.channel.id),
+        EpgRepository.instance.nextProgram(widget.channel.id),
+      ]);
 
   @override
   void didUpdateWidget(covariant _PreviewInfo old) {
@@ -2190,9 +2216,9 @@ class _PreviewInfoState extends State<_PreviewInfo> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: TvTokens.card.withValues(alpha: 0.55),
+        color: TvAppTokens.of(context).card.withValues(alpha: 0.55),
         borderRadius: BorderRadius.circular(TvTokens.rCard),
-        border: Border.all(color: TvTokens.lineSoft),
+        border: Border.all(color: TvAppTokens.of(context).lineSoft),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2201,123 +2227,127 @@ class _PreviewInfoState extends State<_PreviewInfo> {
             _tvPretty(c.cleanName),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: TvTokens.display(22, color: TvTokens.text),
+            style: TvAppTokens.of(context)
+                .display(22, color: TvAppTokens.of(context).text),
           ),
           const SizedBox(height: 10),
           FutureBuilder<List<EpgProgram?>>(
             future: _epg,
             builder:
                 (BuildContext context, AsyncSnapshot<List<EpgProgram?>> snap) {
-                  // Tant que la base n'a pas répondu, on ne montre PAS la
-                  // catégorie : elle clignotait puis était remplacée par le
-                  // programme, et on croyait qu'il n'y avait pas de guide.
-                  if (snap.connectionState == ConnectionState.waiting) {
-                    return Text(
-                      context.l10n.tvGuideLoading,
-                      style: TvTokens.ui(TvDimens.body, color: TvTokens.muted),
-                    );
-                  }
-                  final EpgProgram? now =
-                      (snap.data != null && snap.data!.isNotEmpty)
+              // Tant que la base n'a pas répondu, on ne montre PAS la
+              // catégorie : elle clignotait puis était remplacée par le
+              // programme, et on croyait qu'il n'y avait pas de guide.
+              if (snap.connectionState == ConnectionState.waiting) {
+                return Text(
+                  context.l10n.tvGuideLoading,
+                  style: TvAppTokens.of(
+                    context,
+                  ).ui(TvDimens.body, color: TvAppTokens.of(context).muted),
+                );
+              }
+              final EpgProgram? now =
+                  (snap.data != null && snap.data!.isNotEmpty)
                       ? snap.data![0]
                       : null;
-                  final EpgProgram? next =
-                      (snap.data != null && snap.data!.length > 1)
+              final EpgProgram? next =
+                  (snap.data != null && snap.data!.length > 1)
                       ? snap.data![1]
                       : null;
-                  if (snap.hasError || now == null) {
-                    final String cat = c.category.trim();
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: <Widget>[
-                        Text(
-                          cat.isEmpty ? context.l10n.tvNavLive : _tvPretty(cat),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TvTokens.ui(
-                            TvDimens.body,
-                            color: TvTokens.muted,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          context.l10n.tvNoEpg,
-                          style: TvTokens.ui(
-                            TvDimens.label,
-                            color: TvTokens.mutedDim,
-                          ),
-                        ),
-                      ],
-                    );
-                  }
-                  final int nowMs = DateTime.now().millisecondsSinceEpoch;
-                  final int span = now.stopTime - now.startTime;
-                  final double prog = span > 0
-                      ? ((nowMs - now.startTime) / span).clamp(0.0, 1.0)
-                      : 0.0;
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      Text(
-                        context.l10n.tvEpgNow.toUpperCase(),
-                        style: TvTokens.ui(
-                          TvDimens.caption,
-                          weight: FontWeight.w700,
-                          color: TvTokens.accentBright,
-                          spacing: 2,
-                        ),
+              if (snap.hasError || now == null) {
+                final String cat = c.category.trim();
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      cat.isEmpty ? context.l10n.tvNavLive : _tvPretty(cat),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TvAppTokens.of(context).ui(
+                        TvDimens.body,
+                        color: TvAppTokens.of(context).muted,
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        now.title,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: TvTokens.ui(
-                          TvDimens.titleS,
-                          weight: FontWeight.w600,
-                          color: TvTokens.text,
-                        ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      context.l10n.tvNoEpg,
+                      style: TvAppTokens.of(context).ui(
+                        TvDimens.label,
+                        color: TvAppTokens.of(context).mutedDim,
                       ),
-                      const SizedBox(height: 8),
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(TvTokens.rSmall),
-                        child: LinearProgressIndicator(
-                          value: prog,
-                          minHeight: 4,
-                          backgroundColor: TvTokens.line,
-                          color: TvTokens.accent,
-                        ),
+                    ),
+                  ],
+                );
+              }
+              final int nowMs = DateTime.now().millisecondsSinceEpoch;
+              final int span = now.stopTime - now.startTime;
+              final double prog = span > 0
+                  ? ((nowMs - now.startTime) / span).clamp(0.0, 1.0)
+                  : 0.0;
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    context.l10n.tvEpgNow.toUpperCase(),
+                    style: TvAppTokens.of(context).ui(
+                      TvDimens.caption,
+                      weight: FontWeight.w700,
+                      color: TvAppTokens.of(context).accentBright,
+                      spacing: 2,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    now.title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TvAppTokens.of(context).ui(
+                      TvDimens.titleS,
+                      weight: FontWeight.w600,
+                      color: TvAppTokens.of(context).text,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(TvTokens.rSmall),
+                    child: LinearProgressIndicator(
+                      value: prog,
+                      minHeight: 4,
+                      backgroundColor: TvAppTokens.of(context).line,
+                      color: TvAppTokens.of(context).accent,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    '${_hm(now.startTime)} – ${_hm(now.stopTime)}',
+                    style: TvAppTokens.of(context)
+                        .ui(13, color: TvAppTokens.of(context).mutedDim),
+                  ),
+                  if (next != null) ...<Widget>[
+                    const SizedBox(height: 12),
+                    Text(
+                      context.l10n.tvEpgNext.toUpperCase(),
+                      style: TvAppTokens.of(context).ui(
+                        TvDimens.caption,
+                        weight: FontWeight.w700,
+                        color: TvAppTokens.of(context).muted,
+                        spacing: 2,
                       ),
-                      const SizedBox(height: 6),
-                      Text(
-                        '${_hm(now.startTime)} – ${_hm(now.stopTime)}',
-                        style: TvTokens.ui(13, color: TvTokens.mutedDim),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${_hm(next.startTime)}  ${next.title}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TvAppTokens.of(context).ui(
+                        TvDimens.body,
+                        color: TvAppTokens.of(context).text,
                       ),
-                      if (next != null) ...<Widget>[
-                        const SizedBox(height: 12),
-                        Text(
-                          context.l10n.tvEpgNext.toUpperCase(),
-                          style: TvTokens.ui(
-                            TvDimens.caption,
-                            weight: FontWeight.w700,
-                            color: TvTokens.muted,
-                            spacing: 2,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          '${_hm(next.startTime)}  ${next.title}',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TvTokens.ui(
-                            TvDimens.body,
-                            color: TvTokens.text,
-                          ),
-                        ),
-                      ],
-                    ],
-                  );
-                },
+                    ),
+                  ],
+                ],
+              );
+            },
           ),
         ],
       ),

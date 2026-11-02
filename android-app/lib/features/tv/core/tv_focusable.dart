@@ -19,7 +19,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'tv_dimens.dart';
-import 'tv_tokens.dart';
+import 'tv_app_tokens.dart';
 
 /// Intensité du grossissement au focus selon la taille de l'élément.
 /// [none] : listes serrées (chaînes, catégories, guide). Un zoom y
@@ -133,12 +133,13 @@ class _TvFocusableState extends State<TvFocusable> {
   Widget build(BuildContext context) {
     final BorderRadius radius =
         widget.borderRadius ?? BorderRadius.circular(TvDimens.cardRadius);
-    final Color focusBg = widget.focusColor ?? TvTokens.sel;
+    final Color focusBg = widget.focusColor ?? TvAppTokens.of(context).sel;
     final bool active = _focused && widget.enabled;
 
     // Échelle : un poil moins quand on enfonce OK (effet "pressé").
-    final double targetScale =
-        active ? (_pressed ? _scaleValue * 0.97 : _scaleValue) : 1.0;
+    final double targetScale = active
+        ? (_pressed ? _scaleValue * 0.97 : _scaleValue)
+        : 1.0;
 
     // TACTILE (TV/tablette à écran tactile) : on rend l'élément cliquable au
     // doigt EN PLUS du D-pad. Comme TOUTE l'UI TV passe par TvFocusable, ce
@@ -190,12 +191,16 @@ class _TvFocusableState extends State<TvFocusable> {
                 // Signal 2 : COULEUR de surface (tonale, Maison Noir).
                 color: active
                     ? focusBg
-                    : (widget.selected ? TvTokens.sel : widget.baseColor),
+                    : (widget.selected
+                          ? TvAppTokens.of(context).sel
+                          : widget.baseColor),
                 borderRadius: radius,
                 // Signal 4 : CONTOUR OR au focus (visible partout, §5 spec).
                 border: (widget.showOutline && (active || widget.selected))
                     ? Border.all(
-                        color: active ? TvTokens.accent : TvTokens.line,
+                        color: active
+                            ? TvAppTokens.of(context).accent
+                            : TvAppTokens.of(context).line,
                         width: TvDimens.focusOutline,
                       )
                     : null,
@@ -210,7 +215,8 @@ class _TvFocusableState extends State<TvFocusable> {
                           offset: const Offset(0, TvDimens.focusElevDy),
                         ),
                         BoxShadow(
-                          color: TvTokens.accent.withValues(alpha: 0.30),
+                          color: TvAppTokens.of(context).accent
+                              .withValues(alpha: 0.30),
                           blurRadius: TvDimens.focusGlowBlur,
                           spreadRadius: TvDimens.focusGlowSpread,
                         ),

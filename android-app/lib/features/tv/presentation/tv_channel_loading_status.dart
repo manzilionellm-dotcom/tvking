@@ -11,6 +11,7 @@ import '../../playlists/data/import_progress.dart';
 import '../../playlists/data/remote_source_repository.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_tokens.dart';
+import '../core/tv_app_tokens.dart';
 import 'tv_import_progress_label.dart';
 
 class TvChannelLoadingStatus extends StatelessWidget {
@@ -72,14 +73,17 @@ class TvChannelLoadingStatus extends StatelessWidget {
     final bool finished = importing && stage == ImportStage.done;
     // La fraction décrit UNIQUEMENT les écritures locales. Aucun temps
     // écoulé ni nombre de tentatives réseau n'est converti en progression.
-    final double? fraction = current != null &&
+    final double? fraction =
+        current != null &&
             current.stage == ImportStage.saving &&
             current.total > 0
         ? (current.index / current.total).clamp(0.0, 1.0).toDouble()
         : null;
     final String? detail = importing
         ? importProgressLabel(
-            context, current ?? const ImportProgress(ImportStage.connecting))
+            context,
+            current ?? const ImportProgress(ImportStage.connecting),
+          )
         : null;
     final int found = current?.stage == ImportStage.saving
         ? current!.total
@@ -93,10 +97,12 @@ class TvChannelLoadingStatus extends StatelessWidget {
         vertical: TvDimens.rowGap * 3,
       ),
       decoration: BoxDecoration(
-        color: TvTokens.card,
+        color: TvAppTokens.of(context).card,
         borderRadius: BorderRadius.circular(TvTokens.rCard),
         border: Border.all(
-          color: active ? TvTokens.accentDeep : TvTokens.lineSoft,
+          color: active
+              ? TvAppTokens.of(context).accentDeep
+              : TvAppTokens.of(context).lineSoft,
         ),
       ),
       // Pas de hauteur fixe : le texte agrandi et les traductions longues
@@ -108,16 +114,23 @@ class TvChannelLoadingStatus extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
-              Icon(icon, color: TvTokens.accentBright, size: 28),
+              Icon(icon, color: TvAppTokens.of(context).accentBright, size: 28),
               const SizedBox(width: 10),
               Expanded(
-                child: Text(title,
-                    style: TvTokens.display(25, color: TvTokens.text)),
+                child: Text(
+                  title,
+                  style: TvAppTokens.of(context)
+                      .display(25, color: TvAppTokens.of(context).text),
+                ),
               ),
             ],
           ),
           const SizedBox(height: 8),
-          Text(help, style: TvTokens.ui(13, color: TvTokens.muted)),
+          Text(
+            help,
+            style: TvAppTokens.of(context)
+                .ui(13, color: TvAppTokens.of(context).muted),
+          ),
           if (active) ...<Widget>[
             const SizedBox(height: 12),
             Wrap(
@@ -147,12 +160,20 @@ class TvChannelLoadingStatus extends StatelessWidget {
               // libellé traduit. Pendant saving, le total est le nombre
               // réellement analysé, et index le nombre déjà enregistré.
               if (found > 0 && stage == ImportStage.saving)
-                Text(l10n.tvImpFound(ImportProgressBus.n(found)),
-                    style: TvTokens.ui(15,
-                        weight: FontWeight.w600, color: TvTokens.accentBright)),
-              Text(detail,
-                  key: const ValueKey<String>('tv-channel-import-detail'),
-                  style: TvTokens.ui(13, color: TvTokens.text)),
+                Text(
+                  l10n.tvImpFound(ImportProgressBus.n(found)),
+                  style: TvAppTokens.of(context).ui(
+                    15,
+                    weight: FontWeight.w600,
+                    color: TvAppTokens.of(context).accentBright,
+                  ),
+                ),
+              Text(
+                detail,
+                key: const ValueKey<String>('tv-channel-import-detail'),
+                style: TvAppTokens.of(context)
+                    .ui(13, color: TvAppTokens.of(context).text),
+              ),
             ],
             if (!finished) ...<Widget>[
               const SizedBox(height: 10),
@@ -162,8 +183,8 @@ class TvChannelLoadingStatus extends StatelessWidget {
                   key: const ValueKey<String>('tv-channel-import-progress'),
                   value: fraction,
                   minHeight: 4,
-                  color: TvTokens.accentBright,
-                  backgroundColor: TvTokens.line,
+                  color: TvAppTokens.of(context).accentBright,
+                  backgroundColor: TvAppTokens.of(context).line,
                 ),
               ),
             ],
@@ -187,8 +208,9 @@ class _LoadingStep extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final Color color =
-        selected || completed ? TvTokens.accentBright : TvTokens.muted;
+    final Color color = selected || completed
+        ? TvAppTokens.of(context).accentBright
+        : TvAppTokens.of(context).muted;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
@@ -196,13 +218,18 @@ class _LoadingStep extends StatelessWidget {
           completed
               ? Icons.check_circle_rounded
               : selected
-                  ? Icons.radio_button_checked_rounded
-                  : Icons.radio_button_unchecked_rounded,
+              ? Icons.radio_button_checked_rounded
+              : Icons.radio_button_unchecked_rounded,
           size: 14,
           color: color,
         ),
         const SizedBox(width: 5),
-        Flexible(child: Text(label, style: TvTokens.ui(11, color: color))),
+        Flexible(
+          child: Text(
+            label,
+            style: TvAppTokens.of(context).ui(11, color: color),
+          ),
+        ),
       ],
     );
   }

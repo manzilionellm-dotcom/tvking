@@ -25,8 +25,10 @@ on:
       - 'android-app/test/**'
       - 'android-app/packages/native_video_player/**'
       - 'android-app/packages/zuno_cast/**'
+      - 'android-app/packages/tvking_device/**'
       - 'android-app/android_overlay/google_cast/**'
       - 'android-app/ci/test-zuno-device-capabilities.sh'
+      - 'android-app/ci/test-device-hardware-kind.sh'
       - 'android-app/pubspec.yaml'
       - 'android-app/pubspec.lock'
       - 'android-app/analysis_options.yaml'
@@ -79,6 +81,8 @@ jobs:
           java-version: '17'
       - name: Vérifier le matériel sans appareil ni réseau fournisseur
         run: bash android-app/ci/test-zuno-device-capabilities.sh
+      - name: Vérifier le type physique transmis au panel
+        run: bash android-app/ci/test-device-hardware-kind.sh
 
   configuration:
     name: Protections de configuration

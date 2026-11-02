@@ -27,10 +27,13 @@ import '../../cinema/data/watch_progress.dart';
 import '../../epg/domain/program_reminder.dart';
 import '../../followed/domain/show_clock.dart';
 import '../../followed/domain/show_lines.dart';
+import '../../simple_home/data/home_layout_repository.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
+import '../core/tv_app_tokens.dart';
 import '../data/home_shelves.dart';
+import '../data/tv_home_layout.dart';
 
 class TvHomeRails extends StatelessWidget {
   const TvHomeRails({
@@ -47,6 +50,7 @@ class TvHomeRails extends StatelessWidget {
     this.showsLabel = '',
     this.onPlayShow,
     this.header,
+    this.layout = const <String, HomeSectionConfig>{},
   });
 
   final HomeShelfModel model;
@@ -74,115 +78,129 @@ class TvHomeRails extends StatelessWidget {
   /// pour que Haut/Bas l'atteigne. Pas de focus automatique.
   final Widget? header;
 
+  /// Réglages du panel pour les rangées compatibles de cet accueil.
+  final Map<String, HomeSectionConfig> layout;
+
   @override
   Widget build(BuildContext context) {
-    final List<Widget> rails = <Widget>[];
+    final Map<String, Widget> rails = <String, Widget>{};
     final String code = Localizations.localeOf(context).languageCode;
+    final HomeShelfKind? focusShelf = visibleTvInitialShelf(
+      initialShelf,
+      model,
+      layout,
+    );
+    final bool hasVisibleModel = hasVisibleTvHomeShelves(model, layout);
 
     if (shows.isNotEmpty && onPlayShow != null) {
-      rails.add(_Rail(
+      rails['shows'] = _Rail(
         label: showsLabel,
         count: shows.length,
         itemBuilder: (BuildContext context, int i) {
           final ShowCue cue = shows[i];
-          final bool onlyThis = !model.hasAny && timePicks.isEmpty;
+          final bool onlyThis = !hasVisibleModel && timePicks.isEmpty;
           return _TextCard(
-            autofocus: onlyThis && initialShelf == null && i == 0,
+            autofocus: onlyThis && focusShelf == null && i == 0,
             icon: Icons.live_tv_rounded,
             title: cue.title,
             subtitle: rowSubtitle(code, cue),
             onSelect: () => onPlayShow!(cue),
           );
         },
-      ));
+      );
     }
 
     if (model.reminders.isNotEmpty) {
-      rails.add(_Rail(
+      rails['reminders'] = _Rail(
         label: context.l10n.tvHomeReminders,
         count: model.reminders.length,
         itemBuilder: (BuildContext context, int i) {
           final ProgramReminder r = model.reminders[i];
           return _TextCard(
-            autofocus: initialShelf == HomeShelfKind.reminders && i == 0,
+            autofocus: focusShelf == HomeShelfKind.reminders && i == 0,
             icon: Icons.alarm_rounded,
             title: r.title,
             subtitle: _reminderSubtitle(context, r),
             onSelect: () => onPlayReminder(r),
           );
         },
-      ));
+      );
     }
     if (model.resume.isNotEmpty) {
-      rails.add(_Rail(
+      rails[HomeSectionKey.recent] = _Rail(
+        key: const ValueKey<String>('home-section-recent'),
+        config: layout[HomeSectionKey.recent],
         label: context.l10n.tvHomeResume,
         count: model.resume.length,
         itemBuilder: (BuildContext context, int i) => _ChannelCard(
           channel: model.resume[i],
-          autofocus: initialShelf == HomeShelfKind.resume && i == 0,
+          autofocus: focusShelf == HomeShelfKind.resume && i == 0,
           onSelect: () => onPlayChannel(model.resume, i),
         ),
-      ));
+      );
     }
     if (model.continueWatching.isNotEmpty) {
-      rails.add(_Rail(
+      rails['continue-watching'] = _Rail(
         label: context.l10n.sectionResumeWhereYouLeftOff,
         count: model.continueWatching.length,
         itemBuilder: (BuildContext context, int i) {
           final WatchEntry e = model.continueWatching[i];
           return _ContinueCard(
             entry: e,
-            autofocus: initialShelf == HomeShelfKind.continueWatching && i == 0,
+            autofocus: focusShelf == HomeShelfKind.continueWatching && i == 0,
             upNextLabel: context.l10n.tvEpgNext,
             onSelect: () => onPlayContinue(e),
           );
         },
-      ));
+      );
     }
     if (model.favorites.isNotEmpty) {
-      rails.add(_Rail(
+      rails[HomeSectionKey.favorites] = _Rail(
+        key: const ValueKey<String>('home-section-favorites'),
+        config: layout[HomeSectionKey.favorites],
         label: context.l10n.tvHomeFavorites,
         count: model.favorites.length,
         itemBuilder: (BuildContext context, int i) => _ChannelCard(
           channel: model.favorites[i],
-          autofocus: initialShelf == HomeShelfKind.favorites && i == 0,
+          autofocus: focusShelf == HomeShelfKind.favorites && i == 0,
           onSelect: () => onPlayChannel(model.favorites, i),
         ),
-      ));
+      );
     }
     if (model.popular.isNotEmpty) {
-      rails.add(_Rail(
+      rails['popular'] = _Rail(
         label: context.l10n.tvHomePopular,
         count: model.popular.length,
         itemBuilder: (BuildContext context, int i) => _ChannelCard(
           channel: model.popular[i],
-          autofocus: initialShelf == HomeShelfKind.popular && i == 0,
+          autofocus: focusShelf == HomeShelfKind.popular && i == 0,
           onSelect: () => onPlayChannel(model.popular, i),
         ),
-      ));
+      );
     }
     if (timePicks.isNotEmpty) {
-      final bool onlyThis = !model.hasAny;
-      rails.add(_Rail(
+      final bool onlyThis = !hasVisibleModel;
+      rails['time-picks'] = _Rail(
         label: timePicksLabel,
         count: timePicks.length,
         itemBuilder: (BuildContext context, int i) => _ChannelCard(
           channel: timePicks[i],
-          autofocus: onlyThis && initialShelf == null && i == 0,
+          autofocus: onlyThis && focusShelf == null && i == 0,
           onSelect: () => onPlayChannel(timePicks, i),
         ),
-      ));
+      );
     }
 
-    if (rails.isEmpty && header == null) return const SizedBox.shrink();
+    final List<String> order = tvHomeSectionOrder(rails.keys, layout);
+    if (order.isEmpty && header == null) return const SizedBox.shrink();
 
     return ListView(
       padding: const EdgeInsets.only(top: 8, bottom: 8),
       children: <Widget>[
         if (header != null) header!,
-        for (int i = 0; i < rails.length; i++) ...<Widget>[
+        for (int i = 0; i < order.length; i++) ...<Widget>[
           if (header != null || i != 0) const SizedBox(height: 14),
-          rails[i],
+          rails[order[i]]!,
         ],
       ],
     );
@@ -210,14 +228,17 @@ String _whenLabel(BuildContext context, int startMs, int nowMs) {
 
 class _Rail extends StatelessWidget {
   const _Rail({
+    super.key,
     required this.label,
     required this.count,
     required this.itemBuilder,
+    this.config,
   });
 
   final String label;
   final int count;
   final Widget Function(BuildContext context, int index) itemBuilder;
+  final HomeSectionConfig? config;
 
   @override
   Widget build(BuildContext context) {
@@ -225,14 +246,48 @@ class _Rail extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        Text(
-          label.toUpperCase(),
-          style: TvTokens.ui(
-            TvDimens.caption,
-            weight: FontWeight.w800,
-            color: TvTokens.mutedDim,
-            spacing: 1.4,
-          ),
+        Wrap(
+          spacing: TvDimens.rowGap,
+          runSpacing: TvDimens.rowGap,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: <Widget>[
+            if (config?.featured == true)
+              Icon(
+                Icons.star_rounded,
+                size: TvDimens.title,
+                color: TvAppTokens.of(context).accentBright,
+              ),
+            Text(
+              label.toUpperCase(),
+              style: TvAppTokens.of(context).ui(
+                TvDimens.caption,
+                weight: FontWeight.w800,
+                color: config?.featured == true
+                    ? TvAppTokens.of(context).accentBright
+                    : TvAppTokens.of(context).mutedDim,
+                spacing: 1.4,
+              ),
+            ),
+            if (config?.ribbon.trim().isNotEmpty == true)
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: TvDimens.rowGap,
+                  vertical: TvDimens.rowGap / 2,
+                ),
+                decoration: BoxDecoration(
+                  color: TvAppTokens.of(context).accent.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(TvTokens.rSmall),
+                ),
+                child: Text(
+                  config!.ribbon.trim(),
+                  style: TvAppTokens.of(context).ui(
+                    TvDimens.caption,
+                    color: TvAppTokens.of(context).accentBright,
+                    weight: FontWeight.w700,
+                  ),
+                ),
+              ),
+          ],
         ),
         const SizedBox(height: 8),
         SizedBox(
@@ -311,16 +366,22 @@ class _ChannelCard extends StatelessWidget {
         scale: TvFocusScale.small,
         onSelect: onSelect,
         builder: (BuildContext context, bool focused) {
-          final Color fg = focused ? TvTokens.onAccent : TvTokens.text;
+          final Color fg = focused
+              ? TvAppTokens.of(context).onAccent
+              : TvAppTokens.of(context).text;
           return _KeepInView(
             focused: focused,
             child: Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: focused ? TvTokens.accent : TvTokens.card,
+                color: focused
+                    ? TvAppTokens.of(context).accent
+                    : TvAppTokens.of(context).card,
                 borderRadius: BorderRadius.circular(TvTokens.rCard),
                 border: Border.all(
-                  color: focused ? TvTokens.accent : TvTokens.line,
+                  color: focused
+                      ? TvAppTokens.of(context).accent
+                      : TvAppTokens.of(context).line,
                   width: focused ? TvDimens.focusOutline : 1,
                 ),
               ),
@@ -333,11 +394,9 @@ class _ChannelCard extends StatelessWidget {
                       channel.cleanName,
                       maxLines: 3,
                       overflow: TextOverflow.ellipsis,
-                      style: TvTokens.ui(
-                        TvDimens.body,
-                        weight: FontWeight.w600,
-                        color: fg,
-                      ),
+                      style: TvAppTokens.of(
+                        context,
+                      ).ui(TvDimens.body, weight: FontWeight.w600, color: fg),
                     ),
                   ),
                 ],
@@ -374,17 +433,25 @@ class _ContinueCard extends StatelessWidget {
         scale: TvFocusScale.small,
         onSelect: onSelect,
         builder: (BuildContext context, bool focused) {
-          final Color fg = focused ? TvTokens.onAccent : TvTokens.text;
-          final Color subFg = focused ? TvTokens.onAccent : TvTokens.muted;
+          final Color fg = focused
+              ? TvAppTokens.of(context).onAccent
+              : TvAppTokens.of(context).text;
+          final Color subFg = focused
+              ? TvAppTokens.of(context).onAccent
+              : TvAppTokens.of(context).muted;
           return _KeepInView(
             focused: focused,
             child: Container(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                color: focused ? TvTokens.accent : TvTokens.card,
+                color: focused
+                    ? TvAppTokens.of(context).accent
+                    : TvAppTokens.of(context).card,
                 borderRadius: BorderRadius.circular(TvTokens.rCard),
                 border: Border.all(
-                  color: focused ? TvTokens.accent : TvTokens.line,
+                  color: focused
+                      ? TvAppTokens.of(context).accent
+                      : TvAppTokens.of(context).line,
                   width: focused ? TvDimens.focusOutline : 1,
                 ),
               ),
@@ -401,7 +468,7 @@ class _ContinueCard extends StatelessWidget {
                           entry.title,
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
-                          style: TvTokens.ui(
+                          style: TvAppTokens.of(context).ui(
                             TvDimens.label,
                             weight: FontWeight.w700,
                             color: fg,
@@ -413,13 +480,15 @@ class _ContinueCard extends StatelessWidget {
                             entry.upNext ? '$upNextLabel · $sub' : sub,
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
-                            style: TvTokens.ui(TvDimens.caption, color: subFg),
+                            style: TvAppTokens.of(context)
+                                .ui(TvDimens.caption, color: subFg),
                           ),
                         ] else if (entry.upNext) ...<Widget>[
                           const SizedBox(height: 4),
                           Text(
                             upNextLabel,
-                            style: TvTokens.ui(TvDimens.caption, color: subFg),
+                            style: TvAppTokens.of(context)
+                                .ui(TvDimens.caption, color: subFg),
                           ),
                         ],
                         if (!entry.upNext && entry.fraction > 0) ...<Widget>[
@@ -464,18 +533,28 @@ class _TextCard extends StatelessWidget {
         scale: TvFocusScale.small,
         onSelect: onSelect,
         builder: (BuildContext context, bool focused) {
-          final Color fg = focused ? TvTokens.onAccent : TvTokens.text;
-          final Color subFg = focused ? TvTokens.onAccent : TvTokens.muted;
-          final Color iconFg = focused ? TvTokens.onAccent : TvTokens.accent;
+          final Color fg = focused
+              ? TvAppTokens.of(context).onAccent
+              : TvAppTokens.of(context).text;
+          final Color subFg = focused
+              ? TvAppTokens.of(context).onAccent
+              : TvAppTokens.of(context).muted;
+          final Color iconFg = focused
+              ? TvAppTokens.of(context).onAccent
+              : TvAppTokens.of(context).accent;
           return _KeepInView(
             focused: focused,
             child: Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: focused ? TvTokens.accent : TvTokens.card,
+                color: focused
+                    ? TvAppTokens.of(context).accent
+                    : TvAppTokens.of(context).card,
                 borderRadius: BorderRadius.circular(TvTokens.rCard),
                 border: Border.all(
-                  color: focused ? TvTokens.accent : TvTokens.line,
+                  color: focused
+                      ? TvAppTokens.of(context).accent
+                      : TvAppTokens.of(context).line,
                   width: focused ? TvDimens.focusOutline : 1,
                 ),
               ),
@@ -492,7 +571,7 @@ class _TextCard extends StatelessWidget {
                           title,
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
-                          style: TvTokens.ui(
+                          style: TvAppTokens.of(context).ui(
                             TvDimens.label,
                             weight: FontWeight.w700,
                             color: fg,
@@ -503,7 +582,8 @@ class _TextCard extends StatelessWidget {
                           subtitle,
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
-                          style: TvTokens.ui(TvDimens.caption, color: subFg),
+                          style: TvAppTokens.of(context)
+                              .ui(TvDimens.caption, color: subFg),
                         ),
                       ],
                     ),
@@ -535,14 +615,16 @@ class _Progress extends StatelessWidget {
           children: <Widget>[
             ColoredBox(
               color: focused
-                  ? TvTokens.onAccent.withValues(alpha: 0.25)
-                  : TvTokens.line,
+                  ? TvAppTokens.of(context).onAccent.withValues(alpha: 0.25)
+                  : TvAppTokens.of(context).line,
             ),
             FractionallySizedBox(
               alignment: Alignment.centerLeft,
               widthFactor: f,
               child: ColoredBox(
-                color: focused ? TvTokens.onAccent : TvTokens.accentBright,
+                color: focused
+                    ? TvAppTokens.of(context).onAccent
+                    : TvAppTokens.of(context).accentBright,
               ),
             ),
           ],
@@ -565,7 +647,9 @@ class _Logo extends StatelessWidget {
       child: Container(
         width: TvDimens.channelLogo,
         height: TvDimens.channelLogo,
-        color: focused ? TvTokens.accentBright : TvTokens.tile,
+        color: focused
+            ? TvAppTokens.of(context).accentBright
+            : TvAppTokens.of(context).tile,
         padding: const EdgeInsets.all(4),
         child: url != null && url.isNotEmpty
             ? CachedNetworkImage(
@@ -598,7 +682,9 @@ class _Poster extends StatelessWidget {
       child: Container(
         width: 52,
         height: 78,
-        color: focused ? TvTokens.accentBright : TvTokens.tile,
+        color: focused
+            ? TvAppTokens.of(context).accentBright
+            : TvAppTokens.of(context).tile,
         child: u != null && u.isNotEmpty
             ? CachedNetworkImage(
                 imageUrl: u,
@@ -607,12 +693,16 @@ class _Poster extends StatelessWidget {
                 memCacheWidth: 156,
                 errorWidget: (_, __, ___) => Icon(
                   Icons.movie_rounded,
-                  color: focused ? TvTokens.onAccent : TvTokens.accent,
+                  color: focused
+                      ? TvAppTokens.of(context).onAccent
+                      : TvAppTokens.of(context).accent,
                 ),
               )
             : Icon(
                 Icons.movie_rounded,
-                color: focused ? TvTokens.onAccent : TvTokens.accent,
+                color: focused
+                    ? TvAppTokens.of(context).onAccent
+                    : TvAppTokens.of(context).accent,
               ),
       ),
     );
@@ -629,10 +719,12 @@ class _Initials extends StatelessWidget {
     return Center(
       child: Text(
         channel.initials,
-        style: TvTokens.ui(
+        style: TvAppTokens.of(context).ui(
           TvDimens.caption,
           weight: FontWeight.w800,
-          color: focused ? TvTokens.onAccent : TvTokens.accentBright,
+          color: focused
+              ? TvAppTokens.of(context).onAccent
+              : TvAppTokens.of(context).accentBright,
         ),
       ),
     );

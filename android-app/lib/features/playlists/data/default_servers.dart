@@ -89,12 +89,13 @@ abstract final class DefaultServersApi {
   ///
   /// Ne throw jamais : en dernier recours renvoie une liste vide,
   /// et l'UI affiche un message « serveurs indisponibles, réessaie ».
-  static Future<List<DefaultServer>> fetch({bool forceRefresh = false}) async {
-    if (!forceRefresh && _memoryCache != null) {
+  static Future<List<DefaultServer>> fetch(
+      {bool forceRefresh = false, bool strict = false}) async {
+    if (!forceRefresh && !strict && _memoryCache != null) {
       return _memoryCache!;
     }
 
-    final List<DefaultServer>? network = await _fetchFromNetwork();
+    final List<DefaultServer>? network = await _fetchFromNetwork(strict: strict);
     if (network != null) {
       _memoryCache = network;
       await _writeCache(network);
@@ -107,7 +108,7 @@ abstract final class DefaultServersApi {
     return disk;
   }
 
-  static Future<List<DefaultServer>?> _fetchFromNetwork() async {
+  static Future<List<DefaultServer>?> _fetchFromNetwork({bool strict = false}) async {
     try {
       final http.Response resp = await http
           .get(
@@ -116,6 +117,7 @@ abstract final class DefaultServersApi {
           )
           .timeout(const Duration(seconds: 8));
       if (resp.statusCode != 200) {
+        if (strict) throw StateError('Catalogue distant non confirmé');
         if (kDebugMode) {
           debugPrint('[DefaultServers] HTTP ${resp.statusCode}');
         }
@@ -123,6 +125,10 @@ abstract final class DefaultServersApi {
       }
       final Map<String, dynamic> body =
           jsonDecode(resp.body) as Map<String, dynamic>;
+      if (body['servers'] is! List ||
+          (body['servers'] as List).any((row) => row is! Map<String, dynamic>)) {
+        throw const FormatException('Catalogue distant invalide');
+      }
       final List<dynamic> raw =
           (body['servers'] as List<dynamic>?) ?? const <dynamic>[];
       final List<DefaultServer> servers = raw
@@ -132,7 +138,8 @@ abstract final class DefaultServersApi {
           .toList();
       return servers;
     } catch (e) {
-      if (kDebugMode) debugPrint('[DefaultServers] fetch error: $e');
+      if (strict) rethrow;
+      if (kDebugMode) debugPrint('[DefaultServers] fetch error: ${e.runtimeType}');
       return null;
     }
   }

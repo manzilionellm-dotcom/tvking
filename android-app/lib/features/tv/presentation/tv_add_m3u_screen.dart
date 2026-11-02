@@ -16,7 +16,7 @@ import '../../playlists/domain/open_source_input.dart';
 import 'tv_import_progress_label.dart';
 import 'tv_source_error_text.dart';
 import '../core/tv_dimens.dart';
-import '../core/tv_tokens.dart';
+import '../core/tv_app_tokens.dart';
 import 'tv_components.dart';
 
 class TvAddM3uScreen extends StatefulWidget {
@@ -96,13 +96,16 @@ class _TvAddM3uScreenState extends State<TvAddM3uScreen> {
               style: TextStyle(
                 fontSize: TvDimens.displayS,
                 fontWeight: FontWeight.w800,
-                color: TvTokens.text,
+                color: TvAppTokens.of(context).text,
               ),
             ),
             const SizedBox(height: 6),
             Text(
               context.l10n.tvM3uLinkHelp,
-              style: TextStyle(fontSize: TvDimens.body, color: TvTokens.muted),
+              style: TextStyle(
+                fontSize: TvDimens.body,
+                color: TvAppTokens.of(context).muted,
+              ),
             ),
             const SizedBox(height: 22),
             _Field(
@@ -129,7 +132,7 @@ class _TvAddM3uScreenState extends State<TvAddM3uScreen> {
                 style: TextStyle(
                   fontSize: TvDimens.label,
                   fontWeight: FontWeight.w600,
-                  color: TvTokens.live,
+                  color: TvAppTokens.of(context).live,
                 ),
               ),
             ],
@@ -172,33 +175,39 @@ class _Field extends StatelessWidget {
           style: TextStyle(
             fontSize: TvDimens.label,
             fontWeight: FontWeight.w600,
-            color: TvTokens.mutedDim,
+            color: TvAppTokens.of(context).mutedDim,
           ),
         ),
         const SizedBox(height: 6),
         TextField(
           controller: controller,
-          style: TextStyle(fontSize: TvDimens.title, color: TvTokens.text),
-          cursorColor: TvTokens.accent,
+          style: TextStyle(
+            fontSize: TvDimens.title,
+            color: TvAppTokens.of(context).text,
+          ),
+          cursorColor: TvAppTokens.of(context).accent,
           keyboardType: TextInputType.url,
           autocorrect: false,
           enableSuggestions: false,
           decoration: InputDecoration(
             hintText: hint,
-            hintStyle: TextStyle(color: TvTokens.mutedDim),
+            hintStyle: TextStyle(color: TvAppTokens.of(context).mutedDim),
             filled: true,
-            fillColor: TvTokens.card,
+            fillColor: TvAppTokens.of(context).card,
             contentPadding: const EdgeInsets.symmetric(
               horizontal: 16,
               vertical: 14,
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(TvDimens.cardRadius),
-              borderSide: BorderSide(color: TvTokens.lineSoft),
+              borderSide: BorderSide(color: TvAppTokens.of(context).lineSoft),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(TvDimens.cardRadius),
-              borderSide: const BorderSide(color: TvTokens.accent, width: 2),
+              borderSide: BorderSide(
+                color: TvAppTokens.of(context).accent,
+                width: 2,
+              ),
             ),
           ),
         ),

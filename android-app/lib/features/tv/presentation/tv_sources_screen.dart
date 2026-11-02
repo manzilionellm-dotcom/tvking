@@ -25,6 +25,7 @@ import '../../playlists/domain/playlist.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
+import '../core/tv_app_tokens.dart';
 import 'tv_add_source_screen.dart';
 import 'tv_shell.dart';
 
@@ -51,7 +52,7 @@ class TvSourcesScreen extends StatelessWidget {
               style: TextStyle(
                 fontSize: TvDimens.displayS,
                 fontWeight: FontWeight.w800,
-                color: TvTokens.text,
+                color: TvAppTokens.of(context).text,
               ),
             ),
             const Spacer(),
@@ -90,7 +91,7 @@ class TvSourcesScreen extends StatelessWidget {
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           fontSize: TvDimens.body,
-                          color: TvTokens.mutedDim,
+                          color: TvAppTokens.of(context).mutedDim,
                         ),
                       ),
                     );
@@ -126,28 +127,28 @@ class _SourceRow extends StatelessWidget {
     final bool? ok = await showDialog<bool>(
       context: context,
       builder: (BuildContext ctx) => AlertDialog(
-        backgroundColor: TvTokens.card,
+        backgroundColor: TvAppTokens.of(context).card,
         title: Text(
           context.l10n.tvDeleteQuestion,
-          style: TextStyle(color: TvTokens.text),
+          style: TextStyle(color: TvAppTokens.of(context).text),
         ),
         content: Text(
           context.l10n.tvDeleteSourceConfirm(playlist.name),
-          style: TextStyle(color: TvTokens.muted),
+          style: TextStyle(color: TvAppTokens.of(context).muted),
         ),
         actions: <Widget>[
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
             child: Text(
               context.l10n.tvCancel,
-              style: TextStyle(color: TvTokens.muted),
+              style: TextStyle(color: TvAppTokens.of(context).muted),
             ),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
             child: Text(
               context.l10n.tvDelete,
-              style: TextStyle(color: TvTokens.live),
+              style: TextStyle(color: TvAppTokens.of(context).live),
             ),
           ),
         ],
@@ -166,15 +167,19 @@ class _SourceRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final Color badge = _xtream ? TvTokens.accent : const Color(0xFF5AA0E8);
+    final Color badge = _xtream
+        ? TvAppTokens.of(context).accent
+        : const Color(0xFF5AA0E8);
     final ({String? user, String? host}) ref = playlist.reference;
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
       decoration: BoxDecoration(
-        color: TvTokens.panel,
+        color: TvAppTokens.of(context).panel,
         borderRadius: BorderRadius.circular(TvTokens.rCard),
         border: Border.all(
-          color: _on ? TvTokens.accent : TvTokens.lineSoft,
+          color: _on
+              ? TvAppTokens.of(context).accent
+              : TvAppTokens.of(context).lineSoft,
           width: _on ? 1.5 : 1,
         ),
       ),
@@ -209,7 +214,7 @@ class _SourceRow extends StatelessWidget {
                   style: TextStyle(
                     fontSize: TvDimens.title,
                     fontWeight: FontWeight.w700,
-                    color: TvTokens.text,
+                    color: TvAppTokens.of(context).text,
                   ),
                 ),
                 if (ref.user != null || ref.host != null) ...<Widget>[
@@ -223,7 +228,9 @@ class _SourceRow extends StatelessWidget {
                   '${_on ? '✓ ${context.l10n.tvSourceActive}' : context.l10n.tvSourceInactive}',
                   style: TextStyle(
                     fontSize: TvDimens.label,
-                    color: _on ? TvTokens.accent : TvTokens.mutedDim,
+                    color: _on
+                        ? TvAppTokens.of(context).accent
+                        : TvAppTokens.of(context).mutedDim,
                   ),
                 ),
               ],
@@ -272,15 +279,15 @@ class _Reference extends StatelessWidget {
     final TextStyle st = TextStyle(
       fontSize: TvDimens.label,
       fontWeight: FontWeight.w600,
-      color: TvTokens.text,
+      color: TvAppTokens.of(context).text,
     );
     return Row(
       children: <Widget>[
         if (user != null) ...<Widget>[
-          const Icon(
+          Icon(
             Icons.person_outline_rounded,
             size: 18,
-            color: TvTokens.muted,
+            color: TvAppTokens.of(context).muted,
           ),
           const SizedBox(width: 6),
           Flexible(
@@ -294,7 +301,11 @@ class _Reference extends StatelessWidget {
         ],
         if (user != null && host != null) const SizedBox(width: 16),
         if (host != null) ...<Widget>[
-          const Icon(Icons.dns_outlined, size: 18, color: TvTokens.muted),
+          Icon(
+            Icons.dns_outlined,
+            size: 18,
+            color: TvAppTokens.of(context).muted,
+          ),
           const SizedBox(width: 6),
           Flexible(
             child: Text(
@@ -303,7 +314,7 @@ class _Reference extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
               style: st.copyWith(
                 fontWeight: FontWeight.w400,
-                color: TvTokens.muted,
+                color: TvAppTokens.of(context).muted,
               ),
             ),
           ),
@@ -332,11 +343,15 @@ class _Pill extends StatelessWidget {
       scale: TvFocusScale.medium,
       onSelect: onSelect,
       builder: (BuildContext context, bool focused) {
-        final Color fg = focused ? TvTokens.onAccent : TvTokens.accentBright;
+        final Color fg = focused
+            ? TvAppTokens.of(context).onAccent
+            : TvAppTokens.of(context).accentBright;
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
           decoration: BoxDecoration(
-            color: focused ? TvTokens.accent : TvTokens.sel,
+            color: focused
+                ? TvAppTokens.of(context).accent
+                : TvAppTokens.of(context).sel,
             borderRadius: BorderRadius.circular(TvTokens.rButton),
           ),
           child: Row(
@@ -374,13 +389,13 @@ class _IconBtn extends StatelessWidget {
         return Container(
           padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
-            color: focused ? TvTokens.live : Colors.transparent,
+            color: focused ? TvAppTokens.of(context).live : Colors.transparent,
             shape: BoxShape.circle,
           ),
           child: Icon(
             icon,
             size: 24,
-            color: focused ? Colors.white : TvTokens.muted,
+            color: focused ? Colors.white : TvAppTokens.of(context).muted,
           ),
         );
       },

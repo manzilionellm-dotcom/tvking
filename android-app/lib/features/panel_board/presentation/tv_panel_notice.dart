@@ -18,6 +18,7 @@ import '../../../core/i18n/l10n_extension.dart';
 import '../../simple_home/data/announcement_repository.dart';
 import '../../tv/core/tv_dimens.dart';
 import '../../tv/core/tv_tokens.dart';
+import '../../tv/core/tv_app_tokens.dart';
 import 'panel_button.dart';
 
 class TvPanelNotice extends StatelessWidget {
@@ -30,22 +31,35 @@ class TvPanelNotice extends StatelessWidget {
 
   /// Icône et couleur selon la catégorie posée au panel
   /// (`nouveaute` | `promo` | `info` | `maintenance`).
-  static ({IconData icon, Color color}) styleFor(String kind) {
+  static ({IconData icon, Color color}) styleFor(String kind,
+      {BuildContext? context}) {
+    final palette =
+        context == null ? const TvAppTokens() : TvAppTokens.of(context);
     switch (kind) {
       case 'nouveaute':
-        return (icon: Icons.auto_awesome_rounded, color: TvTokens.accentBright);
+        return (
+          icon: Icons.auto_awesome_rounded,
+          color: palette.accentBright,
+        );
       case 'promo':
-        return (icon: Icons.local_offer_rounded, color: TvTokens.accentBright);
+        return (
+          icon: Icons.local_offer_rounded,
+          color: palette.accentBright,
+        );
       case 'maintenance':
-        return (icon: Icons.build_rounded, color: TvTokens.live);
+        return (icon: Icons.build_rounded, color: palette.live);
       default:
-        return (icon: Icons.info_outline_rounded, color: TvTokens.muted);
+        return (
+          icon: Icons.info_outline_rounded,
+          color: palette.muted,
+        );
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final ({IconData icon, Color color}) style = styleFor(notice.kind);
+    final ({IconData icon, Color color}) style =
+        styleFor(notice.kind, context: context);
     final bool hasLink = notice.url.isNotEmpty;
     final String linkLabel = notice.cta.trim().isNotEmpty
         ? notice.cta.trim()
@@ -55,9 +69,9 @@ class TvPanelNotice extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 12),
       child: DecoratedBox(
         decoration: BoxDecoration(
-          color: TvTokens.card,
+          color: TvAppTokens.of(context).card,
           borderRadius: BorderRadius.circular(TvTokens.rCard),
-          border: Border.all(color: TvTokens.line),
+          border: Border.all(color: TvAppTokens.of(context).line),
         ),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -76,10 +90,10 @@ class TvPanelNotice extends StatelessWidget {
                         notice.title.trim(),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: TvTokens.ui(
+                        style: TvAppTokens.of(context).ui(
                           TvDimens.titleS,
                           weight: FontWeight.w800,
-                          color: TvTokens.text,
+                          color: TvAppTokens.of(context).text,
                         ),
                       ),
                     if (notice.body.trim().isNotEmpty) ...<Widget>[
@@ -88,9 +102,9 @@ class TvPanelNotice extends StatelessWidget {
                         notice.body.trim(),
                         maxLines: 3,
                         overflow: TextOverflow.ellipsis,
-                        style: TvTokens.ui(
+                        style: TvAppTokens.of(context).ui(
                           TvDimens.label,
-                          color: TvTokens.muted,
+                          color: TvAppTokens.of(context).muted,
                         ),
                       ),
                     ],
@@ -104,17 +118,17 @@ class TvPanelNotice extends StatelessWidget {
                         ),
                         if (hasLink) ...<Widget>[
                           const SizedBox(width: 14),
-                          const Icon(
+                          Icon(
                             Icons.qr_code_scanner_rounded,
                             size: 18,
-                            color: TvTokens.mutedDim,
+                            color: TvAppTokens.of(context).mutedDim,
                           ),
                           const SizedBox(width: 6),
                           Text(
                             linkLabel,
-                            style: TvTokens.ui(
+                            style: TvAppTokens.of(context).ui(
                               TvDimens.caption,
-                              color: TvTokens.mutedDim,
+                              color: TvAppTokens.of(context).mutedDim,
                             ),
                           ),
                         ],

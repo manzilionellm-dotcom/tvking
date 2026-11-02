@@ -33,6 +33,7 @@ import 'package:native_video_player/playback_lease.dart';
 import '../../player/data/image_prefs.dart';
 import '../../channels/domain/channel.dart';
 import '../core/tv_tokens.dart';
+import '../core/tv_app_tokens.dart';
 
 class TvLivePreview extends StatefulWidget {
   const TvLivePreview({
@@ -122,12 +123,16 @@ class _TvLivePreviewState extends State<TvLivePreview> {
     final String url = widget.channel.streamUrl;
     if (url.isEmpty) return;
     _stop();
-    final NativeVideoController created = NativeVideoController(initialUrl: url);
+    final NativeVideoController created = NativeVideoController(
+      initialUrl: url,
+    );
     setState(() => _ctrl = created);
-    unawaited(ImagePrefs.load().then((_) {
-      created.setImageEngine(ImagePrefs.engine.wire);
-      created.setFrameRateMatch(ImagePrefs.frameRateMatch);
-    }));
+    unawaited(
+      ImagePrefs.load().then((_) {
+        created.setImageEngine(ImagePrefs.engine.wire);
+        created.setFrameRateMatch(ImagePrefs.frameRateMatch);
+      }),
+    );
   }
 
   @override
@@ -145,7 +150,7 @@ class _TvLivePreviewState extends State<TvLivePreview> {
     return ClipRRect(
       borderRadius: BorderRadius.circular(TvTokens.rCard),
       child: ColoredBox(
-        color: TvTokens.bg,
+        color: TvAppTokens.playbackOf(context).bg,
         child: c == null
             // Défilement / attente : AUCUNE vue native, juste le logo.
             ? _LogoFallback(channel: widget.channel)
@@ -179,10 +184,14 @@ class _LogoFallback extends StatelessWidget {
   Widget build(BuildContext context) {
     final String? url = channel.logoUrl;
     return ColoredBox(
-      color: TvTokens.tile,
+      color: TvAppTokens.playbackOf(context).tile,
       child: Center(
         child: (url == null || url.isEmpty)
-            ? const Icon(Icons.live_tv_rounded, size: 56, color: TvTokens.mutedDim)
+            ? Icon(
+                Icons.live_tv_rounded,
+                size: 56,
+                color: TvAppTokens.playbackOf(context).mutedDim,
+              )
             : Padding(
                 padding: const EdgeInsets.all(28),
                 child: Image.network(
@@ -191,8 +200,11 @@ class _LogoFallback extends StatelessWidget {
                   // Décodage borné (l'aperçu fait ~470×265 px à l'écran) :
                   // un logo 2000×2000 ne coûte plus 16 Mo de RAM.
                   cacheWidth: 480,
-                  errorBuilder: (_, __, ___) => const Icon(Icons.live_tv_rounded,
-                      size: 56, color: TvTokens.mutedDim),
+                  errorBuilder: (_, __, ___) => Icon(
+                    Icons.live_tv_rounded,
+                    size: 56,
+                    color: TvAppTokens.playbackOf(context).mutedDim,
+                  ),
                 ),
               ),
       ),

@@ -21,6 +21,7 @@ import '../../security/data/parental_controls.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
+import '../core/tv_app_tokens.dart';
 import 'tv_shell.dart';
 
 class TvParentalScreen extends StatefulWidget {
@@ -128,13 +129,16 @@ class _TvParentalScreenState extends State<TvParentalScreen> {
             style: TextStyle(
               fontSize: TvDimens.displayM,
               fontWeight: FontWeight.w800,
-              color: TvTokens.text,
+              color: TvAppTokens.of(context).text,
             ),
           ),
           const SizedBox(height: 6),
           Text(
             context.l10n.tvProfilePinHelp(who),
-            style: TextStyle(fontSize: TvDimens.body, color: TvTokens.muted),
+            style: TextStyle(
+              fontSize: TvDimens.body,
+              color: TvAppTokens.of(context).muted,
+            ),
           ),
           if (kidsProfile) ...<Widget>[
             const SizedBox(height: 8),
@@ -143,7 +147,7 @@ class _TvParentalScreenState extends State<TvParentalScreen> {
               style: TextStyle(
                 fontSize: TvDimens.label,
                 fontWeight: FontWeight.w600,
-                color: TvTokens.accentBright,
+                color: TvAppTokens.of(context).accentBright,
               ),
             ),
           ],
@@ -155,7 +159,9 @@ class _TvParentalScreenState extends State<TvParentalScreen> {
               children: <Widget>[
                 Icon(
                   Icons.child_care_rounded,
-                  color: kids ? TvTokens.accent : TvTokens.muted,
+                  color: kids
+                      ? TvAppTokens.of(context).accent
+                      : TvAppTokens.of(context).muted,
                   size: 30,
                 ),
                 const SizedBox(width: 14),
@@ -169,7 +175,7 @@ class _TvParentalScreenState extends State<TvParentalScreen> {
                         style: TextStyle(
                           fontSize: TvDimens.title,
                           fontWeight: FontWeight.w700,
-                          color: TvTokens.text,
+                          color: TvAppTokens.of(context).text,
                         ),
                       ),
                       const SizedBox(height: 2),
@@ -177,7 +183,9 @@ class _TvParentalScreenState extends State<TvParentalScreen> {
                         kids ? context.l10n.tvKidsOn : context.l10n.tvKidsOff,
                         style: TextStyle(
                           fontSize: TvDimens.label,
-                          color: kids ? TvTokens.accent : TvTokens.muted,
+                          color: kids
+                              ? TvAppTokens.of(context).accent
+                              : TvAppTokens.of(context).muted,
                         ),
                       ),
                     ],
@@ -201,14 +209,18 @@ class _TvParentalScreenState extends State<TvParentalScreen> {
               children: <Widget>[
                 Row(
                   children: <Widget>[
-                    Icon(Icons.lock_rounded, color: TvTokens.muted, size: 26),
+                    Icon(
+                      Icons.lock_rounded,
+                      color: TvAppTokens.of(context).muted,
+                      size: 26,
+                    ),
                     const SizedBox(width: 12),
                     Text(
                       context.l10n.tvParentalCode,
                       style: TextStyle(
                         fontSize: TvDimens.title,
                         fontWeight: FontWeight.w700,
-                        color: TvTokens.text,
+                        color: TvAppTokens.of(context).text,
                       ),
                     ),
                   ],
@@ -220,7 +232,7 @@ class _TvParentalScreenState extends State<TvParentalScreen> {
                     style: TextStyle(
                       fontSize: TvDimens.label,
                       fontWeight: FontWeight.w600,
-                      color: TvTokens.live,
+                      color: TvAppTokens.of(context).live,
                     ),
                   )
                 else
@@ -228,7 +240,7 @@ class _TvParentalScreenState extends State<TvParentalScreen> {
                     context.l10n.tvCustomPinInPlace,
                     style: TextStyle(
                       fontSize: TvDimens.label,
-                      color: TvTokens.muted,
+                      color: TvAppTokens.of(context).muted,
                     ),
                   ),
                 const SizedBox(height: 16),
@@ -236,10 +248,12 @@ class _TvParentalScreenState extends State<TvParentalScreen> {
                   scale: TvFocusScale.large,
                   onSelect: _changePin,
                   builder: (BuildContext context, bool focused) {
-                    final Color bg = focused ? TvTokens.accent : TvTokens.sel;
+                    final Color bg = focused
+                        ? TvAppTokens.of(context).accent
+                        : TvAppTokens.of(context).sel;
                     final Color fg = focused
-                        ? TvTokens.onAccent
-                        : TvTokens.accentBright;
+                        ? TvAppTokens.of(context).onAccent
+                        : TvAppTokens.of(context).accentBright;
                     return Container(
                       decoration: BoxDecoration(
                         color: bg,
@@ -438,14 +452,17 @@ class _PinPadScreenState extends State<_PinPadScreen> {
               style: TextStyle(
                 fontSize: TvDimens.displayS,
                 fontWeight: FontWeight.w800,
-                color: TvTokens.text,
+                color: TvAppTokens.of(context).text,
               ),
             ),
             const SizedBox(height: 8),
             Text(
               widget.subtitle,
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: TvDimens.body, color: TvTokens.muted),
+              style: TextStyle(
+                fontSize: TvDimens.body,
+                color: TvAppTokens.of(context).muted,
+              ),
             ),
             const SizedBox(height: 22),
             // Points indiquant le nombre de chiffres saisis.
@@ -460,9 +477,12 @@ class _PinPadScreenState extends State<_PinPadScreen> {
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       color: i < _entry.length
-                          ? TvTokens.accent
+                          ? TvAppTokens.of(context).accent
                           : Colors.transparent,
-                      border: Border.all(color: TvTokens.accent, width: 2),
+                      border: Border.all(
+                        color: TvAppTokens.of(context).accent,
+                        width: 2,
+                      ),
                     ),
                   ),
               ],
@@ -477,7 +497,7 @@ class _PinPadScreenState extends State<_PinPadScreen> {
                       style: TextStyle(
                         fontSize: TvDimens.label,
                         fontWeight: FontWeight.w600,
-                        color: TvTokens.live,
+                        color: TvAppTokens.of(context).live,
                       ),
                     ),
             ),
@@ -545,8 +565,12 @@ class _PadButton extends StatelessWidget {
         scale: TvFocusScale.large,
         onSelect: onSelect,
         builder: (BuildContext context, bool focused) {
-          final Color bg = focused ? TvTokens.accent : TvTokens.card;
-          final Color fg = focused ? TvTokens.onAccent : TvTokens.text;
+          final Color bg = focused
+              ? TvAppTokens.of(context).accent
+              : TvAppTokens.of(context).card;
+          final Color fg = focused
+              ? TvAppTokens.of(context).onAccent
+              : TvAppTokens.of(context).text;
           return Container(
             width: 84,
             height: 64,
@@ -554,7 +578,7 @@ class _PadButton extends StatelessWidget {
             decoration: BoxDecoration(
               color: bg,
               borderRadius: BorderRadius.circular(TvDimens.cardRadius),
-              border: Border.all(color: TvTokens.lineSoft),
+              border: Border.all(color: TvAppTokens.of(context).lineSoft),
             ),
             child: icon != null
                 ? Icon(icon, color: fg, size: 28)
@@ -584,9 +608,9 @@ class _Card extends StatelessWidget {
       width: 760,
       padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
-        color: TvTokens.card,
+        color: TvAppTokens.of(context).card,
         borderRadius: BorderRadius.circular(TvDimens.panelRadius),
-        border: Border.all(color: TvTokens.lineSoft),
+        border: Border.all(color: TvAppTokens.of(context).lineSoft),
       ),
       child: child,
     );
@@ -611,13 +635,17 @@ class _TogglePill extends StatelessWidget {
       scale: TvFocusScale.medium,
       onSelect: onSelect,
       builder: (BuildContext context, bool focused) {
-        final Color fg = focused ? TvTokens.onAccent : TvTokens.accentBright;
+        final Color fg = focused
+            ? TvAppTokens.of(context).onAccent
+            : TvAppTokens.of(context).accentBright;
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
           decoration: BoxDecoration(
             color: focused
-                ? TvTokens.accent
-                : (on ? TvTokens.accent.withValues(alpha: 0.18) : TvTokens.sel),
+                ? TvAppTokens.of(context).accent
+                : (on
+                      ? TvAppTokens.of(context).accent.withValues(alpha: 0.18)
+                      : TvAppTokens.of(context).sel),
             borderRadius: BorderRadius.circular(TvTokens.rButton),
           ),
           child: Row(
@@ -626,7 +654,11 @@ class _TogglePill extends StatelessWidget {
               Icon(
                 on ? Icons.toggle_on_rounded : Icons.toggle_off_rounded,
                 size: 22,
-                color: focused ? fg : (on ? TvTokens.accent : TvTokens.muted),
+                color: focused
+                    ? fg
+                    : (on
+                          ? TvAppTokens.of(context).accent
+                          : TvAppTokens.of(context).muted),
               ),
               const SizedBox(width: 8),
               Text(
@@ -636,7 +668,9 @@ class _TogglePill extends StatelessWidget {
                   fontWeight: FontWeight.w700,
                   color: focused
                       ? fg
-                      : (on ? TvTokens.accentBright : TvTokens.muted),
+                      : (on
+                            ? TvAppTokens.of(context).accentBright
+                            : TvAppTokens.of(context).muted),
                 ),
               ),
             ],

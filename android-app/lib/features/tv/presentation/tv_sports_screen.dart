@@ -19,6 +19,7 @@ import '../../sports/domain/sport_models.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
+import '../core/tv_app_tokens.dart';
 import 'tv_shell.dart';
 import 'tv_team_picker_screen.dart';
 import 'tv_sports_status.dart';
@@ -40,7 +41,9 @@ class _TvSportsScreenState extends State<TvSportsScreen> {
   void initState() {
     super.initState();
     SportsRepository.instance.initialize();
-    _favSub = SportsRepository.instance.favoritesStream.listen((List<SportTeam> t) {
+    _favSub = SportsRepository.instance.favoritesStream.listen((
+      List<SportTeam> t,
+    ) {
       if (mounted) setState(() => _favs = t);
     });
     _changeSub = SportsRepository.instance.changesStream.listen((_) {
@@ -65,7 +68,9 @@ class _TvSportsScreenState extends State<TvSportsScreen> {
   }
 
   Future<void> _openScores() => Navigator.of(context).push<void>(
-    MaterialPageRoute<void>(builder: (_) => const TvShell(child: TvFootballScoresScreen())),
+    MaterialPageRoute<void>(
+      builder: (_) => const TvShell(child: TvFootballScoresScreen()),
+    ),
   );
 
   @override
@@ -86,17 +91,26 @@ class _TvSportsScreenState extends State<TvSportsScreen> {
         if (tickerItems.isNotEmpty) const SizedBox(height: 16),
         Row(
           children: <Widget>[
-            Text(context.l10n.tvMyTeams,
-                style: TextStyle(
-                    fontSize: TvDimens.displayS,
-                    fontWeight: FontWeight.w800,
-                    color: TvTokens.text)),
+            Text(
+              context.l10n.tvMyTeams,
+              style: TextStyle(
+                fontSize: TvDimens.displayS,
+                fontWeight: FontWeight.w800,
+                color: TvAppTokens.of(context).text,
+              ),
+            ),
             const Spacer(),
             if (!RepairFlags.sportsCommunityOff)
-              _PillButton(icon: Icons.scoreboard_outlined,
-                  label: context.l10n.sportsFootballTitle, onSelect: _openScores),
+              _PillButton(
+                icon: Icons.scoreboard_outlined,
+                label: context.l10n.sportsFootballTitle,
+                onSelect: _openScores,
+              ),
             _PillButton(
-                icon: Icons.add_rounded, label: context.l10n.tvAdd, onSelect: _addTeam),
+              icon: Icons.add_rounded,
+              label: context.l10n.tvAdd,
+              onSelect: _addTeam,
+            ),
           ],
         ),
         const SizedBox(height: 14),
@@ -122,34 +136,46 @@ class _TvSportsScreenState extends State<TvSportsScreen> {
   }
 
   Widget _emptyState() => Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            const Icon(Icons.sports_soccer_rounded, size: 64, color: TvTokens.mutedDim),
-            const SizedBox(height: 16),
-            Text(context.l10n.tvPickTeamsTitle,
-                style: TvTokens.display(32, color: TvTokens.text)),
-            const SizedBox(height: 8),
-            SizedBox(
-              width: 560,
-              child: Text(
-                context.l10n.tvPickTeamsBody,
-                textAlign: TextAlign.center,
-                style: TvTokens.ui(16, color: TvTokens.mutedDim),
-              ),
-            ),
-            const SizedBox(height: 22),
-            _PillButton(
-                icon: Icons.add_rounded,
-                label: context.l10n.tvPickMyTeam,
-                autofocus: true,
-                onSelect: _addTeam),
-            if (!RepairFlags.sportsCommunityOff)
-              _PillButton(icon: Icons.scoreboard_outlined,
-                  label: context.l10n.sportsFootballTitle, onSelect: _openScores),
-          ],
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        Icon(
+          Icons.sports_soccer_rounded,
+          size: 64,
+          color: TvAppTokens.of(context).mutedDim,
         ),
-      );
+        const SizedBox(height: 16),
+        Text(
+          context.l10n.tvPickTeamsTitle,
+          style: TvAppTokens.of(context)
+              .display(32, color: TvAppTokens.of(context).text),
+        ),
+        const SizedBox(height: 8),
+        SizedBox(
+          width: 560,
+          child: Text(
+            context.l10n.tvPickTeamsBody,
+            textAlign: TextAlign.center,
+            style: TvAppTokens.of(context)
+                .ui(16, color: TvAppTokens.of(context).mutedDim),
+          ),
+        ),
+        const SizedBox(height: 22),
+        _PillButton(
+          icon: Icons.add_rounded,
+          label: context.l10n.tvPickMyTeam,
+          autofocus: true,
+          onSelect: _addTeam,
+        ),
+        if (!RepairFlags.sportsCommunityOff)
+          _PillButton(
+            icon: Icons.scoreboard_outlined,
+            label: context.l10n.sportsFootballTitle,
+            onSelect: _openScores,
+          ),
+      ],
+    ),
+  );
 }
 
 class _TeamSection extends StatelessWidget {
@@ -171,9 +197,9 @@ class _TeamSection extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: TvTokens.panel,
+        color: TvAppTokens.of(context).panel,
         borderRadius: BorderRadius.circular(TvTokens.rCard),
-        border: Border.all(color: TvTokens.lineSoft),
+        border: Border.all(color: TvAppTokens.of(context).lineSoft),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -190,44 +216,62 @@ class _TeamSection extends StatelessWidget {
                         fit: BoxFit.contain,
                         memCacheWidth: 120,
                         fadeInDuration: const Duration(milliseconds: 150),
-                        placeholder: (_, __) =>
-                            const Icon(Icons.shield_rounded, color: TvTokens.muted),
-                        errorWidget: (_, __, ___) =>
-                            const Icon(Icons.shield_rounded, color: TvTokens.muted))
-                    : const Icon(Icons.shield_rounded, color: TvTokens.muted),
+                        placeholder: (_, __) => Icon(
+                          Icons.shield_rounded,
+                          color: TvAppTokens.of(context).muted,
+                        ),
+                        errorWidget: (_, __, ___) => Icon(
+                          Icons.shield_rounded,
+                          color: TvAppTokens.of(context).muted,
+                        ),
+                      )
+                    : Icon(
+                        Icons.shield_rounded,
+                        color: TvAppTokens.of(context).muted,
+                      ),
               ),
               const SizedBox(width: 14),
               Expanded(
-                child: Text(team.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                        fontSize: TvDimens.title,
-                        fontWeight: FontWeight.w800,
-                        color: TvTokens.text)),
+                child: Text(
+                  team.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: TvDimens.title,
+                    fontWeight: FontWeight.w800,
+                    color: TvAppTokens.of(context).text,
+                  ),
+                ),
               ),
               _IconBtn(
-                  icon: Icons.delete_outline_rounded,
-                  autofocus: autofocus,
-                  onSelect: onRemove),
+                icon: Icons.delete_outline_rounded,
+                autofocus: autofocus,
+                onSelect: onRemove,
+              ),
             ],
           ),
           const SizedBox(height: 14),
           if (events.loading || events.failure != null)
-            TvSportsStatus(loading: events.loading, failure: events.failure, onRetry: onRetry),
+            TvSportsStatus(
+              loading: events.loading,
+              failure: events.failure,
+              onRetry: onRetry,
+            ),
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
               Expanded(
                 child: _MatchCard(
-                    title: context.l10n.tvLastMatch,
-                    event: events.last.isNotEmpty ? events.last.first : null),
+                  title: context.l10n.tvLastMatch,
+                  event: events.last.isNotEmpty ? events.last.first : null,
+                ),
               ),
               const SizedBox(width: TvDimens.gutter),
               Expanded(
                 child: _MatchCard(
-                    title: context.l10n.tvNextMatch,
-                    event: events.next.isNotEmpty ? events.next.first : null),
+                  title: context.l10n.tvNextMatch,
+                  event: events.next.isNotEmpty ? events.next.first : null,
+                ),
               ),
             ],
           ),
@@ -283,9 +327,9 @@ class _TickerState extends State<_Ticker> {
     return Container(
       height: 46,
       decoration: BoxDecoration(
-        color: TvTokens.card,
+        color: TvAppTokens.of(context).card,
         borderRadius: BorderRadius.circular(TvDimens.cardRadius),
-        border: Border.all(color: TvTokens.lineSoft),
+        border: Border.all(color: TvAppTokens.of(context).lineSoft),
       ),
       child: Row(
         children: <Widget>[
@@ -293,18 +337,21 @@ class _TickerState extends State<_Ticker> {
             padding: const EdgeInsets.symmetric(horizontal: 14),
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: TvTokens.live,
+              color: TvAppTokens.of(context).live,
               borderRadius: const BorderRadius.only(
                 topLeft: Radius.circular(TvDimens.cardRadius),
                 bottomLeft: Radius.circular(TvDimens.cardRadius),
               ),
             ),
-            child: Text(context.l10n.tvNewsTicker,
-                style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 1.5,
-                    color: Colors.white)),
+            child: Text(
+              context.l10n.tvNewsTicker,
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 1.5,
+                color: Colors.white,
+              ),
+            ),
           ),
           Expanded(
             child: SingleChildScrollView(
@@ -315,14 +362,20 @@ class _TickerState extends State<_Ticker> {
                 children: <Widget>[
                   const SizedBox(width: 16),
                   for (final String it in widget.items) ...<Widget>[
-                    Text(it,
-                        style: TextStyle(
-                            fontSize: 17,
-                            fontWeight: FontWeight.w600,
-                            color: TvTokens.text)),
-                    const Padding(
+                    Text(
+                      it,
+                      style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w600,
+                        color: TvAppTokens.of(context).text,
+                      ),
+                    ),
+                    Padding(
                       padding: EdgeInsets.symmetric(horizontal: 16),
-                      child: Text('•', style: TextStyle(color: TvTokens.accent)),
+                      child: Text(
+                        '•',
+                        style: TextStyle(color: TvAppTokens.of(context).accent),
+                      ),
                     ),
                   ],
                 ],
@@ -345,53 +398,72 @@ class _MatchCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: TvTokens.card,
+        color: TvAppTokens.of(context).card,
         borderRadius: BorderRadius.circular(TvDimens.cardRadius),
-        border: Border.all(color: TvTokens.lineSoft),
+        border: Border.all(color: TvAppTokens.of(context).lineSoft),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
-          Text(title.toUpperCase(),
-              style: TvTokens.ui(12,
-                  weight: FontWeight.w700, color: TvTokens.mutedDim, spacing: 1.2)),
+          Text(
+            title.toUpperCase(),
+            style: TvAppTokens.of(context).ui(
+              12,
+              weight: FontWeight.w700,
+              color: TvAppTokens.of(context).mutedDim,
+              spacing: 1.2,
+            ),
+          ),
           const SizedBox(height: 12),
           if (event == null)
-            Text(context.l10n.tvNoData,
-                style: TextStyle(fontSize: TvDimens.label, color: TvTokens.mutedDim))
+            Text(
+              context.l10n.tvNoData,
+              style: TextStyle(
+                fontSize: TvDimens.label,
+                color: TvAppTokens.of(context).mutedDim,
+              ),
+            )
           else ...<Widget>[
             Row(
               children: <Widget>[
                 Expanded(
-                  child: Text(event!.home,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      textAlign: TextAlign.right,
-                      style: TextStyle(
-                          fontSize: TvDimens.titleS,
-                          fontWeight: FontWeight.w700,
-                          color: TvTokens.text)),
+                  child: Text(
+                    event!.home,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.right,
+                    style: TextStyle(
+                      fontSize: TvDimens.titleS,
+                      fontWeight: FontWeight.w700,
+                      color: TvAppTokens.of(context).text,
+                    ),
+                  ),
                 ),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 12),
                   child: Text(
-                      event!.hasScore
-                          ? '${event!.homeScore} – ${event!.awayScore}'
-                          : 'vs',
-                      style: TextStyle(
-                          fontSize: event!.hasScore ? 28 : 18,
-                          fontWeight: FontWeight.w800,
-                          color: TvTokens.accentBright)),
+                    event!.hasScore
+                        ? '${event!.homeScore} – ${event!.awayScore}'
+                        : 'vs',
+                    style: TextStyle(
+                      fontSize: event!.hasScore ? 28 : 18,
+                      fontWeight: FontWeight.w800,
+                      color: TvAppTokens.of(context).accentBright,
+                    ),
+                  ),
                 ),
                 Expanded(
-                  child: Text(event!.away,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                          fontSize: TvDimens.titleS,
-                          fontWeight: FontWeight.w700,
-                          color: TvTokens.text)),
+                  child: Text(
+                    event!.away,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: TvDimens.titleS,
+                      fontWeight: FontWeight.w700,
+                      color: TvAppTokens.of(context).text,
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -406,7 +478,10 @@ class _MatchCard extends StatelessWidget {
               ].join('  ·  '),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: TvDimens.caption, color: TvTokens.muted),
+              style: TextStyle(
+                fontSize: TvDimens.caption,
+                color: TvAppTokens.of(context).muted,
+              ),
             ),
           ],
         ],
@@ -416,7 +491,11 @@ class _MatchCard extends StatelessWidget {
 }
 
 class _IconBtn extends StatelessWidget {
-  const _IconBtn({required this.icon, required this.onSelect, this.autofocus = false});
+  const _IconBtn({
+    required this.icon,
+    required this.onSelect,
+    this.autofocus = false,
+  });
   final IconData icon;
   final VoidCallback onSelect;
   final bool autofocus;
@@ -431,11 +510,18 @@ class _IconBtn extends StatelessWidget {
         return Container(
           padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
-            color: focused ? TvTokens.accent : Colors.transparent,
+            color: focused
+                ? TvAppTokens.of(context).accent
+                : Colors.transparent,
             shape: BoxShape.circle,
           ),
-          child: Icon(icon,
-              size: 24, color: focused ? TvTokens.onAccent : TvTokens.muted),
+          child: Icon(
+            icon,
+            size: 24,
+            color: focused
+                ? TvAppTokens.of(context).onAccent
+                : TvAppTokens.of(context).muted,
+          ),
         );
       },
     );
@@ -443,11 +529,12 @@ class _IconBtn extends StatelessWidget {
 }
 
 class _PillButton extends StatelessWidget {
-  const _PillButton(
-      {required this.icon,
-      required this.label,
-      required this.onSelect,
-      this.autofocus = false});
+  const _PillButton({
+    required this.icon,
+    required this.label,
+    required this.onSelect,
+    this.autofocus = false,
+  });
   final IconData icon;
   final String label;
   final VoidCallback onSelect;
@@ -460,11 +547,15 @@ class _PillButton extends StatelessWidget {
       scale: TvFocusScale.medium,
       onSelect: onSelect,
       builder: (BuildContext context, bool focused) {
-        final Color fg = focused ? TvTokens.onAccent : TvTokens.accentBright;
+        final Color fg = focused
+            ? TvAppTokens.of(context).onAccent
+            : TvAppTokens.of(context).accentBright;
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 13),
           decoration: BoxDecoration(
-            color: focused ? TvTokens.accent : TvTokens.sel,
+            color: focused
+                ? TvAppTokens.of(context).accent
+                : TvAppTokens.of(context).sel,
             borderRadius: BorderRadius.circular(TvTokens.rButton),
           ),
           child: Row(
@@ -472,11 +563,14 @@ class _PillButton extends StatelessWidget {
             children: <Widget>[
               Icon(icon, size: 20, color: fg),
               const SizedBox(width: 9),
-              Text(label,
-                  style: TextStyle(
-                      fontSize: TvDimens.titleS,
-                      fontWeight: FontWeight.w700,
-                      color: fg)),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: TvDimens.titleS,
+                  fontWeight: FontWeight.w700,
+                  color: fg,
+                ),
+              ),
             ],
           ),
         );

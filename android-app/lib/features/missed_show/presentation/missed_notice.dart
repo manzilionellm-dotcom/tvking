@@ -11,7 +11,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../domain/missed_summary.dart';
 import '../../tv/core/tv_dimens.dart';
-import '../../tv/core/tv_tokens.dart';
+import '../../tv/core/tv_app_tokens.dart';
 
 class MissedNotice extends StatefulWidget {
   const MissedNotice({
@@ -111,7 +111,7 @@ class _MissedNoticeState extends State<MissedNotice> {
           decoration: BoxDecoration(
             color: const Color(0xE6141418),
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: TvTokens.line),
+            border: Border.all(color: TvAppTokens.of(context).line),
           ),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
@@ -126,7 +126,7 @@ class _MissedNoticeState extends State<MissedNotice> {
                   style: TextStyle(
                     fontSize: TvDimens.titleS,
                     fontWeight: FontWeight.w800,
-                    color: TvTokens.text,
+                    color: TvAppTokens.of(context).text,
                   ),
                 ),
                 const SizedBox(height: 4),
@@ -135,7 +135,7 @@ class _MissedNoticeState extends State<MissedNotice> {
                   style: TextStyle(
                     fontSize: TvDimens.label,
                     fontWeight: FontWeight.w700,
-                    color: TvTokens.accentBright,
+                    color: TvAppTokens.of(context).accentBright,
                   ),
                 ),
                 if (missed.description != null) ...<Widget>[
@@ -146,7 +146,7 @@ class _MissedNoticeState extends State<MissedNotice> {
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       fontSize: TvDimens.label,
-                      color: TvTokens.muted,
+                      color: TvAppTokens.of(context).muted,
                     ),
                   ),
                 ],
@@ -155,7 +155,7 @@ class _MissedNoticeState extends State<MissedNotice> {
                   hint,
                   style: TextStyle(
                     fontSize: TvDimens.label,
-                    color: TvTokens.muted,
+                    color: TvAppTokens.of(context).muted,
                   ),
                 ),
               ],

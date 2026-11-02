@@ -1,0 +1,72 @@
+import 'dart:async';
+import 'dart:convert';
+
+import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:tv_king/features/ads/data/startup_ad_repository.dart';
+import 'package:tv_king/features/simple_home/data/announcement_repository.dart';
+
+// Contrats propres au téléphone figé : les méthodes utilisées par son temps
+// réel doivent garder les erreurs strictes, la langue et la lecture effective.
+void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  setUp(() {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    AnnouncementRepository.resetForTesting();
+    StartupAdRepository.instance.resetForTesting();
+  });
+  tearDown(() {
+    AnnouncementRepository.resetForTesting();
+    StartupAdRepository.instance.resetForTesting();
+  });
+
+  test('un poll et un ordre panel partagent le réseau sans transformer une panne en APPLIED', () async {
+    AnnouncementRepository.client = MockClient((_) async => http.Response(
+      jsonEncode(<String, Object>{'id': 12, 'title': 'Annonce conservée'}), 200));
+    await AnnouncementRepository.fetchLatest();
+    final pending = Completer<http.Response>();
+    int requests = 0;
+    AnnouncementRepository.client = MockClient((_) { requests++; return pending.future; });
+    final poll = AnnouncementRepository.fetchLatest();
+    final order = expectLater(AnnouncementRepository.refreshFromPanel(), throwsA(isA<StateError>()));
+    pending.complete(http.Response('indisponible', 503));
+    await order;
+    expect((await poll)?.id, 12);
+    expect(AnnouncementRepository.latest.value?.id, 12);
+    expect(requests, 1);
+  });
+
+  test('le signal historique relit dans la langue de l’app et le retrait confirmé efface', () async {
+    final arrived = Completer<void>();
+    AnnouncementRepository.client = MockClient((request) async {
+      expect(request.url.path, '/api/announcement');
+      expect(request.url.queryParameters['lang'], isNotEmpty);
+      arrived.complete();
+      return http.Response('{"id":13,"title":"Nouvelle annonce"}', 200);
+    });
+    AnnouncementRepository.notifyChanged();
+    await arrived.future;
+    await AnnouncementRepository.fetchLatest();
+    expect(AnnouncementRepository.latest.value?.id, 13);
+    AnnouncementRepository.client = MockClient((_) async => http.Response('{}', 200));
+    await AnnouncementRepository.refreshFromPanel();
+    expect(AnnouncementRepository.latest.value, isNull);
+  });
+
+  test('un échec pub ne vaut pas APPLIED et le démarrage relit avant de jouer', () async {
+    final repo = StartupAdRepository.instance;
+    repo.client = MockClient((_) async => http.Response(
+      '{"enabled":true,"url":"https://fixture.invalid/promo.mp4","skip":0,"freq":"daily"}', 200));
+    await repo.fetch(strict: true);
+    expect(await repo.shouldShow(), isTrue);
+    repo.client = MockClient((_) async => http.Response('[]', 200));
+    await expectLater(repo.fetch(strict: true), throwsA(isA<FormatException>()));
+    // La lecture stricte conserve le cache comme les autres réglages du panel.
+    // Le démarrage relit en best-effort : une panne doit alors libérer l'accueil.
+    await repo.fetch();
+    expect(await repo.shouldShow(), isFalse);
+    expect((await SharedPreferences.getInstance()).getString('ad_last_day'), isNull);
+  });
+}

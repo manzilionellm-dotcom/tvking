@@ -25,6 +25,7 @@ class FeaturedRepository extends ChangeNotifier {
   String _name = '';
   String _note = '';
   bool _initialized = false;
+  Future<void>? _pending;
 
   /// Nom de la chaîne mise en avant ('' = aucune).
   String get name => _name;
@@ -34,29 +35,48 @@ class FeaturedRepository extends ChangeNotifier {
 
   bool get hasFeatured => _name.trim().isNotEmpty;
 
-  Future<void> initialize() async {
-    if (_initialized) return;
+  Future<void> initialize({bool strict = false}) async {
+    if (_initialized && !strict) return;
     _initialized = true;
-    unawaited(refresh());
+    if (strict) {
+      await refresh(strict: true);
+    } else {
+      unawaited(refresh());
+    }
   }
 
-  Future<void> refresh() async {
+  Future<void> refresh({bool strict = false}) async {
     try {
+      final Future<void> pending = _pending ??= _fetchAndApply();
+      try {
+        await pending;
+      } finally {
+        if (identical(_pending, pending)) _pending = null;
+      }
+    } catch (e) {
+      if (strict) rethrow;
+      if (kDebugMode) debugPrint('[Featured] ${e.runtimeType}');
+    }
+  }
+
+  Future<void> _fetchAndApply() async {
       final http.Response resp = await http
           .get(Uri.parse('$kSubscriptionBaseUrl/api/featured'))
           .timeout(const Duration(seconds: 6));
-      if (resp.statusCode != 200) return;
+      if (resp.statusCode != 200) {
+        throw StateError('Favori distant non confirmé');
+      }
       final Object? decoded = jsonDecode(resp.body);
-      if (decoded is! Map) return;
-      final String name = (decoded['name'] ?? '').toString();
-      final String note = (decoded['note'] ?? '').toString();
+      if (decoded is! Map<String, dynamic> ||
+          decoded['name'] is! String || decoded['note'] is! String) {
+        throw const FormatException('Favori distant invalide');
+      }
+      final String name = decoded['name'] as String;
+      final String note = decoded['note'] as String;
       if (name != _name || note != _note) {
         _name = name;
         _note = note;
         notifyListeners();
       }
-    } catch (e) {
-      if (kDebugMode) debugPrint('[Featured] $e');
-    }
   }
 }

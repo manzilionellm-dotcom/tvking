@@ -24,6 +24,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
+
 import 'package:flutter/services.dart';
 import 'package:native_video_player/native_video_player.dart';
 import 'package:native_video_player/playback_lease.dart';
@@ -32,7 +33,7 @@ import '../../player/data/clear_voice_flag.dart';
 import '../../player/data/image_prefs.dart';
 
 import '../../recordings/domain/recording.dart';
-import '../core/tv_tokens.dart';
+import '../core/tv_app_tokens.dart';
 import '../data/zuno_pip_service.dart';
 
 class TvRecordingPlayerScreen extends StatefulWidget {
@@ -85,7 +86,9 @@ class _TvRecordingPlayerScreenState extends State<TvRecordingPlayerScreen>
         // dans l'app garde la reprise manuelle, comme auparavant.
         if (_pip.isInPipMode) _controller?.resumeFromBackground();
       },
-      onModeChanged: () { if (mounted) setState(() {}); },
+      onModeChanged: () {
+        if (mounted) setState(() {});
+      },
       onVisibilityChanged: (bool visible) => _appActive = visible,
     );
     ClearVoiceFlag.changes.addListener(_onClearVoice);
@@ -127,21 +130,29 @@ class _TvRecordingPlayerScreenState extends State<TvRecordingPlayerScreen>
       openAsVod: true,
     )..addListener(_onPlayer);
     setState(() => _controller = c);
-    unawaited(ClearVoiceFlag.load().then((_) {
-      if (mounted) c.setClearVoice(ClearVoiceFlag.value);
-    }));
-    unawaited(ImagePrefs.load().then((_) {
-      if (!mounted) return;
-      c.setImageEngine(ImagePrefs.engine.wire);
-      c.setFrameRateMatch(ImagePrefs.frameRateMatch);
-    }));
+    unawaited(
+      ClearVoiceFlag.load().then((_) {
+        if (mounted) c.setClearVoice(ClearVoiceFlag.value);
+      }),
+    );
+    unawaited(
+      ImagePrefs.load().then((_) {
+        if (!mounted) return;
+        c.setImageEngine(ImagePrefs.engine.wire);
+        c.setFrameRateMatch(ImagePrefs.frameRateMatch);
+      }),
+    );
   }
 
   void _onPlayer() {
     final NativeVideoController? c = _controller;
     if (c == null || !mounted) return;
-    _pip.update(playing: c.isPlaying, casting: false,
-      width: c.videoWidth, height: c.videoHeight);
+    _pip.update(
+      playing: c.isPlaying,
+      casting: false,
+      width: c.videoWidth,
+      height: c.videoHeight,
+    );
     final bool buffering = c.isBuffering || !c.firstFrame;
     if (buffering != _buffering) setState(() => _buffering = buffering);
     if (c.isPlaying != _playing) setState(() => _playing = c.isPlaying);
@@ -204,9 +215,9 @@ class _TvRecordingPlayerScreenState extends State<TvRecordingPlayerScreen>
   Widget build(BuildContext context) {
     final String title =
         (widget.recording.programTitle != null &&
-                widget.recording.programTitle!.isNotEmpty)
-            ? '${widget.recording.channelName} · ${widget.recording.programTitle}'
-            : widget.recording.channelName;
+            widget.recording.programTitle!.isNotEmpty)
+        ? '${widget.recording.channelName} · ${widget.recording.programTitle}'
+        : widget.recording.channelName;
 
     return Focus(
       focusNode: _focus,
@@ -222,12 +233,14 @@ class _TvRecordingPlayerScreenState extends State<TvRecordingPlayerScreen>
 
             // ----- Spinner de chargement -----
             if (!_pip.isInPipMode && _buffering && !_missing && !_error)
-              const Center(
+              Center(
                 child: SizedBox(
                   width: 56,
                   height: 56,
                   child: CircularProgressIndicator(
-                      strokeWidth: 3, color: TvTokens.accent),
+                    strokeWidth: 3,
+                    color: TvAppTokens.playbackOf(context).accent,
+                  ),
                 ),
               ),
 
@@ -252,40 +265,49 @@ class _TvRecordingPlayerScreenState extends State<TvRecordingPlayerScreen>
               ),
 
             // ----- Bandeau titre (haut) -----
-            if (!_pip.isInPipMode) Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              child: Container(
-                padding: const EdgeInsets.fromLTRB(28, 22, 28, 28),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: <Color>[
-                      Colors.black.withValues(alpha: 0.65),
-                      Colors.transparent,
-                    ],
+            if (!_pip.isInPipMode)
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: Container(
+                  padding: const EdgeInsets.fromLTRB(28, 22, 28, 28),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: <Color>[
+                        Colors.black.withValues(alpha: 0.65),
+                        Colors.transparent,
+                      ],
+                    ),
                   ),
-                ),
-                child: Row(
-                  children: <Widget>[
-                    Icon(_playing ? Icons.play_arrow_rounded : Icons.pause_rounded,
-                        color: TvTokens.accent, size: 28),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(title,
+                  child: Row(
+                    children: <Widget>[
+                      Icon(
+                        _playing
+                            ? Icons.play_arrow_rounded
+                            : Icons.pause_rounded,
+                        color: TvAppTokens.playbackOf(context).accent,
+                        size: 28,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          title,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 22,
-                              fontWeight: FontWeight.w700)),
-                    ),
-                  ],
+                            color: Colors.white,
+                            fontSize: 22,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            ),
           ],
         ),
       ),
@@ -305,17 +327,25 @@ class _Message extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
-          Icon(icon, color: TvTokens.mutedDim, size: 52),
+          Icon(icon, color: TvAppTokens.playbackOf(context).mutedDim, size: 52),
           const SizedBox(height: 14),
-          Text(title,
-              style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 26,
-                  fontWeight: FontWeight.w800)),
+          Text(
+            title,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 26,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
           const SizedBox(height: 8),
-          Text(body,
-              textAlign: TextAlign.center,
-              style: TextStyle(color: TvTokens.mutedDim, fontSize: 16)),
+          Text(
+            body,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: TvAppTokens.playbackOf(context).mutedDim,
+              fontSize: 16,
+            ),
+          ),
         ],
       ),
     );

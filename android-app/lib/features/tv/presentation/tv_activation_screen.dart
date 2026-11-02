@@ -15,8 +15,10 @@ import '../../../core/i18n/l10n_extension.dart';
 import '../../device/data/device_identity.dart';
 import '../../subscription/data/remote_activation_watch.dart';
 import '../../subscription/data/subscription_state.dart';
+import '../../pricing/presentation/tv_pricing_card.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
+import '../core/tv_app_tokens.dart';
 import 'tv_components.dart';
 import 'tv_source_setup.dart';
 
@@ -99,34 +101,13 @@ class _TvActivationScreenState extends State<TvActivationScreen> {
         Text(
           context.l10n.tvActivationTagline,
           textAlign: TextAlign.center,
-          style: TvTokens.ui(19, color: TvTokens.muted),
+          style: TvAppTokens.of(context).ui(19, color: TvAppTokens.of(context).muted),
         ),
         const SizedBox(height: 22),
-        // La colonne d'aide est plus étroite que l'ancien écran TV. Le prix
-        // passe à la ligne si le texte est agrandi, sans réduire sa lisibilité.
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 10),
-          decoration: BoxDecoration(
-            gradient: TvTokens.pillGradient,
-            border: Border.all(color: TvTokens.line),
-            borderRadius: BorderRadius.circular(TvTokens.rCard),
-          ),
-          child: Wrap(
-            alignment: WrapAlignment.center,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            spacing: 12,
-            runSpacing: 6,
-            children: <Widget>[
-              Text(context.l10n.tvLifetime.toUpperCase(),
-                  style: TvTokens.ui(15,
-                      weight: FontWeight.w600,
-                      color: TvTokens.accent,
-                      spacing: 2)),
-              Text('9,99 \$',
-                  style: TvTokens.display(26,
-                      weight: FontWeight.w600, color: TvTokens.accentBright)),
-            ],
-          ),
+        // Le panel fournit les vrais tarifs. Sans configuration confirmée,
+        // rien n'est affiché ; le statut serveur décide toujours de l'accès.
+        TvPricingCard(
+          showBlockCopy: SubscriptionState.instance.status == SubscriptionStatus.trialExpired,
         ),
         const SizedBox(height: 38),
 
@@ -148,9 +129,9 @@ class _TvActivationScreenState extends State<TvActivationScreen> {
                         // Une MAC reste gauche → droite, même dans une UI arabe.
                         // Sinon Unicode déplace ses premiers groupes chiffrés.
                         textDirection: TextDirection.ltr,
-                        style: TvTokens.mono(
+                        style: TvAppTokens.of(context).mono(
                           38,
-                          color: TvTokens.accentBright,
+                          color: TvAppTokens.of(context).accentBright,
                           spacing: 2,
                         ),
                       ),
@@ -164,7 +145,7 @@ class _TvActivationScreenState extends State<TvActivationScreen> {
               Text(
                 context.l10n.tvActivationCodeHelp,
                 textAlign: TextAlign.center,
-                style: TvTokens.ui(16, color: TvTokens.mutedDim),
+                style: TvAppTokens.of(context).ui(16, color: TvAppTokens.of(context).mutedDim),
               ),
             ],
           ),
@@ -180,13 +161,13 @@ class _TvActivationScreenState extends State<TvActivationScreen> {
           Text(
             hint,
             textAlign: TextAlign.center,
-            style: TvTokens.ui(16, color: TvTokens.live),
+            style: TvAppTokens.of(context).ui(16, color: TvAppTokens.of(context).live),
           ),
         ],
         const SizedBox(height: 18),
         Text(
           context.l10n.tvActivationFooter,
-          style: TvTokens.ui(13, color: TvTokens.mutedDim, spacing: 0.5),
+          style: TvAppTokens.of(context).ui(13, color: TvAppTokens.of(context).mutedDim, spacing: 0.5),
         ),
         const SizedBox(height: 10),
         // Positionnement « lecteur » (bouclier juridique) visible dès le gate.
@@ -199,7 +180,7 @@ class _TvActivationScreenState extends State<TvActivationScreen> {
               'api.zuno8k.com/terms',
             ),
             textAlign: TextAlign.center,
-            style: TvTokens.ui(12, color: TvTokens.mutedDim),
+            style: TvAppTokens.of(context).ui(12, color: TvAppTokens.of(context).mutedDim),
           ),
         ),
       ],
@@ -222,14 +203,14 @@ class _CopyButton extends StatelessWidget {
         height: 44,
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: TvTokens.card,
-          border: Border.all(color: focused ? TvTokens.accent : TvTokens.line),
+          color: TvAppTokens.of(context).card,
+          border: Border.all(color: focused ? TvAppTokens.of(context).accent : TvAppTokens.of(context).line),
           borderRadius: BorderRadius.circular(TvTokens.rSmall),
         ),
         child: Icon(
           copied ? Icons.check_rounded : Icons.copy_rounded,
           size: 22,
-          color: copied ? const Color(0xFF5FA975) : TvTokens.accent,
+          color: copied ? const Color(0xFF5FA975) : TvAppTokens.of(context).accent,
         ),
       ),
     );

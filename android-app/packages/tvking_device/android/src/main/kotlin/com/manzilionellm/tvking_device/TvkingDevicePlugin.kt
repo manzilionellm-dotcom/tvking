@@ -109,15 +109,7 @@ class TvkingDevicePlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Activ
                 result.success(free)
             }
             "getDeviceInfo" -> {
-                result.success(
-                    hashMapOf(
-                        "model" to Build.MODEL,
-                        "manufacturer" to Build.MANUFACTURER,
-                        "release" to Build.VERSION.RELEASE,
-                        "sdk" to Build.VERSION.SDK_INT.toString(),
-                        "build" to Build.DISPLAY,
-                    ),
-                )
+                result.success(DeviceHardwareInfo.read(appContext))
             }
             // RAM de l'appareil → permet à l'app d'ADAPTER son empreinte
             // (cache d'images) : petite box = léger, grande box = pleine qualité.
