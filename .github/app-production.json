@@ -1,14 +1,4 @@
 {
-  "mode": "frozen",
-  "zunoTvReview": {
-    "scope": "zuno-tv",
-    "reviewedBy": "manzilionellm-dotcom",
-    "reviewedAt": "2026-11-02T09:22:56Z",
-    "expiresAt": "2026-11-03T09:22:56Z",
-    "reason": "Demande explicite du propriétaire : signer le dernier Zuno et publier son APK sur le lien du domaine pour Downloader. Cette revue ne couvre ni 7 MOTION, ni les nettoyages, ni les autres publications.",
-    "sourceCommit": "53a10171c340d301b8ffff201a030b9a97536ca7",
-    "androidTree": "6c96e8979b14c9c7261a8bbbff508588e04ec992",
-    "workflowBlob": "add54cb14b91b64d79be4b51b8adce9c3467a1e4"
-  }
+  "mode": "frozen"
 }
 
