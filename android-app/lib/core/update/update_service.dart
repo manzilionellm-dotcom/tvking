@@ -37,6 +37,11 @@ import '../app/repair_flags.dart';
 import '../blackbox/black_box.dart';
 import 'build_flags.dart';
 import 'update_manifest.dart';
+import 'update_check.dart';
+import 'update_download_queue.dart';
+import 'update_file_integrity.dart';
+
+export 'update_check.dart' show UpdateCheckResult, UpdateCheckStatus;
 
 class UpdateInfo {
   const UpdateInfo({
@@ -47,6 +52,15 @@ class UpdateInfo {
     required this.sizeBytes,
     this.mandatory = false,
   });
+
+  factory UpdateInfo.fromManifest(UpdateManifest manifest) => UpdateInfo(
+        versionCode: manifest.versionCode,
+        versionName: manifest.versionName,
+        url: manifest.url,
+        sha256: manifest.sha256,
+        sizeBytes: manifest.sizeBytes,
+        mandatory: manifest.mandatory,
+      );
 
   final int versionCode;
   final String versionName;
@@ -103,68 +117,59 @@ class UpdateService {
   static const MethodChannel _device =
       MethodChannel('com.manzilionellm.tvking/device');
 
-  /// Retourne les infos de MAJ si une version PLUS RECENTE est dispo,
-  /// sinon `null`. Fail-open : toute erreur → `null`.
-  Future<UpdateInfo?> check() async {
-    // Play Store : les MAJ viennent du Store, jamais du sideload GitHub.
-    if (kIsPlayBuild) return null;
-    // PC (Zuno Windows) : sa propre release (installeur .exe), sinon rien.
-    if (!Platform.isAndroid && !_isWindowsUpdater) return null;
-    try {
-      final int current;
-      if (Platform.isWindows) {
-        current = _winBuild;
-      } else {
-        final PackageInfo info = await PackageInfo.fromPlatform();
-        current = int.tryParse(info.buildNumber) ?? 0;
-      }
+  Future<UpdateCheckResult>? _checkInFlight;
 
-      // Chaque manifeste est lu séparément : une release injoignable ne
-      // cache pas l'autre. Repli `zuno.update.legacy` : un seul manifeste.
+  /// Compatibilité des vérifications silencieuses au démarrage.
+  /// L'écran Réglages utilise [checkDetailed] pour distinguer une panne réseau
+  /// d'une version réellement à jour.
+  Future<UpdateInfo?> check() async {
+    final UpdateManifest? manifest = (await checkDetailed()).manifest;
+    return manifest == null ? null : UpdateInfo.fromManifest(manifest);
+  }
+
+  Future<UpdateCheckResult> checkDetailed() {
+    final Future<UpdateCheckResult>? pending = _checkInFlight;
+    if (pending != null) return pending;
+    late final Future<UpdateCheckResult> work;
+    work = _check().whenComplete(() {
+      if (identical(_checkInFlight, work)) _checkInFlight = null;
+    });
+    _checkInFlight = work;
+    return work;
+  }
+
+  Future<UpdateCheckResult> _check() async {
+    if (kIsPlayBuild || (!Platform.isAndroid && !_isWindowsUpdater)) {
+      return const UpdateCheckResult(UpdateCheckStatus.unsupported);
+    }
+    try {
+      final int current = Platform.isWindows
+          ? _winBuild
+          : int.tryParse((await PackageInfo.fromPlatform()).buildNumber) ?? 0;
+      if (current <= 0) {
+        return const UpdateCheckResult(UpdateCheckStatus.unavailable);
+      }
       final List<String> urls = Platform.isWindows
           ? <String>[windowsManifestUrl]
           : <String>[
               manifestUrl,
               if (!RepairFlags.updateLegacy) ...extraManifestUrls,
             ];
-      final List<Object?> decodedList = <Object?>[];
-      for (final String url in urls) {
-        decodedList.add(await _readManifest(url));
-      }
-      final UpdateManifest? manifest =
-          pickNewestManifest(decodedList, currentBuild: current);
-      int announced = 0;
-      for (final Object? decoded in decodedList) {
-        final int code = decoded is Map
-            ? ((decoded['versionCode'] as num?)?.toInt() ?? 0)
-            : 0;
-        if (code > announced) announced = code;
-      }
-      BlackBox.instance.info('MAJ',
-          'installee $current · disponible $announced (${urls.length} source(s))');
-      if (manifest == null) {
-        // Plus récent mais sans empreinte, ou déjà à jour, ou JSON cassé.
-        if (announced > current) {
-          BlackBox.instance.warn(
-            'MAJ',
-            'manifeste sans empreinte ou sans taille — mise à jour refusée',
-          );
-        }
-        return null;
-      }
-
-      return UpdateInfo(
-        versionCode: manifest.versionCode,
-        versionName: manifest.versionName,
-        url: manifest.url,
-        sha256: manifest.sha256,
-        sizeBytes: manifest.sizeBytes,
-        mandatory: manifest.mandatory,
+      final UpdateCheckResult result = await checkUpdateManifests(
+        urls: urls,
+        currentBuild: current,
+        read: _readManifest,
       );
+      BlackBox.instance.info(
+          'MAJ',
+          'installée $current · ${result.status.name}'
+              '${result.manifest == null ? '' : ' · build ${result.manifest!.versionCode}'}'
+              ' (${urls.toSet().length} source(s))');
+      return result;
     } catch (e) {
       if (kDebugMode) debugPrint('[Update] check error: $e');
-      BlackBox.instance.warn('MAJ', 'verification impossible : $e');
-      return null;
+      BlackBox.instance.warn('MAJ', 'vérification impossible');
+      return const UpdateCheckResult(UpdateCheckStatus.unavailable);
     }
   }
 
@@ -173,7 +178,9 @@ class UpdateService {
   Future<Object?> _readManifest(String url) async {
     try {
       final http.Response r =
-          await http.get(Uri.parse(url)).timeout(const Duration(seconds: 8));
+          await http.get(Uri.parse(url), headers: const <String, String>{
+        'Cache-Control': 'no-cache',
+      }).timeout(const Duration(seconds: 8));
       if (r.statusCode != 200) return null;
       return jsonDecode(r.body);
     } catch (e) {
@@ -202,8 +209,7 @@ class UpdateService {
   /// Progression du téléchargement en cours (0..1), `null` si aucun.
   final ValueNotifier<double?> progress = ValueNotifier<double?>(null);
 
-  Future<File?>? _inflight;
-  int? _inflightCode;
+  final UpdateDownloadQueue<File?> _downloads = UpdateDownloadQueue<File?>();
 
   Future<File> _apkFile(int versionCode) async {
     final Directory dir = await getTemporaryDirectory();
@@ -219,11 +225,11 @@ class UpdateService {
   Future<File?> readyApk(UpdateInfo update) async {
     try {
       final File f = await _apkFile(update.versionCode);
-      // La taille doit être EXACTEMENT celle du manifeste. Un fichier
-      // coupé, même au-dessus de 1 Mo, n'est pas une mise à jour.
-      if (await f.exists() && await f.length() == update.sizeBytes) {
+      if (await updateFileMatches(f,
+          sizeBytes: update.sizeBytes, sha256: update.sha256)) {
         return f;
       }
+      if (await f.exists()) await f.delete();
     } catch (_) {}
     return null;
   }
@@ -235,15 +241,10 @@ class UpdateService {
     final bool allowed =
         (Platform.isAndroid && !kIsPlayBuild) || _isWindowsUpdater;
     if (!allowed) return Future<File?>.value(null);
-    final Future<File?>? cur = _inflight;
-    if (cur != null && _inflightCode == update.versionCode) return cur;
-    final Future<File?> f = _download(update).whenComplete(() {
-      _inflight = null;
-      _inflightCode = null;
-    });
-    _inflight = f;
-    _inflightCode = update.versionCode;
-    return f;
+    return _downloads.run(
+      '${update.versionCode}:${update.sha256}:${update.sizeBytes}:${update.url}',
+      () => _download(update),
+    );
   }
 
   Future<File?> _download(UpdateInfo update) async {
@@ -251,9 +252,10 @@ class UpdateService {
     if (ready != null) return ready;
     http.Client? client;
     IOSink? sink;
+    File? part;
     try {
       final File file = await _apkFile(update.versionCode);
-      final File part = File('${file.path}.part');
+      part = File('${file.path}.part');
       await _purgeOld(file);
       BlackBox.instance.breadcrumb(
           'Mise a jour : telechargement build ${update.versionCode}');
@@ -264,8 +266,9 @@ class UpdateService {
       // Nouveau : on abandonne si rien n'arrive pendant 45 s, ou après
       // 20 min. Un débit lent mais régulier va au bout (box en Wi-Fi
       // faible). Repli : 3 minutes au total, comme avant.
-      final Duration total =
-          legacy ? UpdateDownloadLimits.legacyTotal : UpdateDownloadLimits.total;
+      final Duration total = legacy
+          ? UpdateDownloadLimits.legacyTotal
+          : UpdateDownloadLimits.total;
       final Duration idle =
           legacy ? UpdateDownloadLimits.legacyTotal : UpdateDownloadLimits.idle;
       final http.StreamedResponse resp = await client
@@ -276,6 +279,11 @@ class UpdateService {
         return null;
       }
       final int? announcedLength = resp.contentLength;
+      if (announcedLength != null &&
+          announcedLength > 0 &&
+          announcedLength != update.sizeBytes) {
+        throw const FormatException('taille annoncée différente du manifeste');
+      }
       int received = 0;
       sink = part.openWrite();
       // Empreinte calculée au fil de l'eau : on ne recharge pas
@@ -286,9 +294,12 @@ class UpdateService {
         if (watch.elapsed > total) {
           throw TimeoutException('téléchargement trop long');
         }
+        received += chunk.length;
+        if (received > update.sizeBytes) {
+          throw const FormatException('fichier plus grand que le manifeste');
+        }
         sink.add(chunk);
         hasher.add(chunk);
-        received += chunk.length;
         progress.value = received / update.sizeBytes;
       }
       await sink.flush();
@@ -310,9 +321,8 @@ class UpdateService {
         return null;
       }
       final Hash hash = await hasher.hash();
-      final String got = hash.bytes
-          .map((int b) => b.toRadixString(16).padLeft(2, '0'))
-          .join();
+      final String got =
+          hash.bytes.map((int b) => b.toRadixString(16).padLeft(2, '0')).join();
       if (got != update.sha256) {
         BlackBox.instance.warn('MAJ', 'empreinte différente — fichier refusé');
         try {
@@ -321,6 +331,7 @@ class UpdateService {
         return null;
       }
       final File done = await part.rename(file.path);
+      part = null;
       BlackBox.instance.info('MAJ',
           'APK pret (${(received / (1024 * 1024)).toStringAsFixed(1)} Mo) · build ${update.versionCode}');
       return done;
@@ -333,23 +344,34 @@ class UpdateService {
         await sink?.close();
       } catch (_) {}
       client?.close();
+      // Réseau coupé, réponse incorrecte ou empreinte refusée : ne conserver
+      // aucun fichier partiel qui pourrait encombrer la box au redémarrage.
+      try {
+        if (part != null && await part.exists()) await part.delete();
+      } catch (_) {}
       progress.value = null;
       BlackBox.instance.breadcrumb('');
     }
   }
 
-  /// Supprime les APK / fichiers partiels des AUTRES versions.
+  /// Supprime les anciens caches des autres versions. Un fichier récent peut
+  /// encore être lu par l'installateur système : ne pas le retirer sous lui.
   Future<void> _purgeOld(File keep) async {
     try {
       final Directory dir = keep.parent;
       await for (final FileSystemEntity e in dir.list()) {
         final String name =
             e.uri.pathSegments.isEmpty ? '' : e.uri.pathSegments.last;
-        if (!name.startsWith('$apkPrefix-') && !name.startsWith('zuno-setup-')) {
+        if (!name.startsWith('$apkPrefix-') &&
+            !name.startsWith('zuno-setup-')) {
           continue;
         }
         if (e.path == keep.path || e.path == '${keep.path}.part') continue;
         try {
+          final DateTime modified = (await e.stat()).modified;
+          if (DateTime.now().difference(modified) < const Duration(days: 1)) {
+            continue;
+          }
           await e.delete();
         } catch (_) {}
       }
@@ -409,7 +431,8 @@ class UpdateService {
       final File? file = await prefetch(u);
       if (file == null) return;
       if (RepairFlags.autoInstallOff) {
-        BlackBox.instance.info('MAJ', 'APK prêt, installation auto coupée (repli)');
+        BlackBox.instance
+            .info('MAJ', 'APK prêt, installation auto coupée (repli)');
         return;
       }
       // Attend l'accueil : on n'ouvre pas une fenêtre sur une chaîne.
@@ -438,7 +461,7 @@ class UpdateService {
         BlackBox.instance.info(
           'MAJ',
           'APK ${u.versionCode} prêt, installateur non ouvert '
-          '(${busy() ? 'lecture en cours' : !canInstall ? 'autorisation absente' : 'déjà proposé'})',
+              '(${busy() ? 'lecture en cours' : !canInstall ? 'autorisation absente' : 'déjà proposé'})',
         );
         return;
       }
@@ -447,12 +470,14 @@ class UpdateService {
             prefs?.getStringList(autoPromptedKey) ?? <String>[];
         await prefs?.setStringList(
           autoPromptedKey,
-          <String>[...done.where((String v) => v != '${u.versionCode}'), '${u.versionCode}']
-              .take(5)
-              .toList(),
+          <String>[
+            ...done.where((String v) => v != '${u.versionCode}'),
+            '${u.versionCode}'
+          ].take(5).toList(),
         );
       } catch (_) {}
-      BlackBox.instance.info('MAJ', 'installation automatique → build ${u.versionCode}');
+      BlackBox.instance
+          .info('MAJ', 'installation automatique → build ${u.versionCode}');
       await downloadAndInstall(u);
     } catch (e) {
       BlackBox.instance.warn('MAJ', 'mise à jour automatique interrompue : $e');
@@ -475,6 +500,7 @@ class UpdateService {
     }
 
     progress.addListener(relay);
+    relay(); // Un téléchargement déjà avancé doit l'afficher immédiatement.
     needsInstallPermission = false;
     try {
       final File? file = await prefetch(update);
@@ -490,7 +516,8 @@ class UpdateService {
           kWindowsInstallerArgs,
           mode: ProcessStartMode.detached,
         );
-        unawaited(Future<void>.delayed(const Duration(seconds: 1), () => exit(0)));
+        unawaited(
+            Future<void>.delayed(const Duration(seconds: 1), () => exit(0)));
         return true;
       }
       // Android 8+ : sans l'autorisation « applications inconnues » pour

@@ -817,8 +817,15 @@ class PlaylistRepository {
         DateTime.now().subtract(staleness).millisecondsSinceEpoch;
     int ok = 0;
     for (final Playlist p in all) {
-      final int? last = p.lastSyncedAt;
-      if (last != null && last > cutoff) continue;
+      // Même garde qu'une actualisation manuelle : ne pas télécharger une
+      // liste cachée ou déjà en cours d'ajout au démarrage (double mémoire).
+      if (!shouldRefreshPlaylist(
+        p,
+        freshAfter: cutoff,
+        pendingLegacy: RepairFlags.refreshPendingLegacy,
+      )) {
+        continue;
+      }
       try {
         if (await refreshPlaylist(p)) ok++;
       } catch (_) {}
@@ -1108,6 +1115,15 @@ class PlaylistRepository {
     bool emitFirstChunk = false,
   }) async {
     const int chunkSize = 1000;
+    // 90 lignes × 10 colonnes = 900 paramètres : sous la limite historique
+    // SQLite de 999, y compris sur les anciennes box Android. Un seul INSERT
+    // par ligne créait 50 000 opérations à encoder/envoyer au moteur natif.
+    // On garde les lots visibles de 1 000 et la transaction du remplacement.
+    const int rowsPerStatement = 90;
+    const String rowParameters = '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)';
+    const String insertPrefix = 'INSERT INTO channels '
+        '(playlist_id, external_id, name, category, stream_url, logo_url, '
+        'is_live, catchup_supported, catchup_days, catchup_source) VALUES ';
     // Dans une transaction, les lots DOIVENT passer par la transaction :
     // un `db.batch()` y resterait bloqué (verrou de sqflite).
     final DatabaseExecutor db =
@@ -1117,8 +1133,33 @@ class PlaylistRepository {
           ? channels.length
           : i + chunkSize;
       final Batch batch = db.batch();
-      for (int j = i; j < end; j++) {
-        batch.insert('channels', _channelToMap(channels[j]));
+      for (int j = i; j < end; j += rowsPerStatement) {
+        final int statementEnd = (j + rowsPerStatement > end)
+            ? end
+            : j + rowsPerStatement;
+        final List<Object?> values = <Object?>[];
+        for (int row = j; row < statementEnd; row++) {
+          final Channel ch = channels[row];
+          values.addAll(<Object?>[
+            ch.playlistId,
+            ch.id,
+            ch.name,
+            ch.category,
+            ch.streamUrl,
+            ch.logoUrl,
+            ch.isLive ? 1 : 0,
+            ch.catchupSupported ? 1 : 0,
+            ch.catchupDays,
+            ch.catchupSource,
+          ]);
+        }
+        // Les données restent liées : apostrophes, Unicode et URL ne sont
+        // jamais concaténés dans le SQL. Une erreur annule le lot entier.
+        batch.rawInsert(
+          insertPrefix +
+              List<String>.filled(statementEnd - j, rowParameters).join(', '),
+          values,
+        );
       }
       await batch.commit(noResult: true);
       ImportProgressBus.saving(end, channels.length);
@@ -1179,21 +1220,6 @@ class PlaylistRepository {
   // ============================================================
   //  Mapping Channel ↔ SQLite
   // ============================================================
-
-  Map<String, Object?> _channelToMap(Channel ch) {
-    return <String, Object?>{
-      'playlist_id': ch.playlistId,
-      'external_id': ch.id,
-      'name': ch.name,
-      'category': ch.category,
-      'stream_url': ch.streamUrl,
-      'logo_url': ch.logoUrl,
-      'is_live': ch.isLive ? 1 : 0,
-      'catchup_supported': ch.catchupSupported ? 1 : 0,
-      'catchup_days': ch.catchupDays,
-      'catchup_source': ch.catchupSource,
-    };
-  }
 
   Channel _channelFromMap(Map<String, Object?> map) {
     return Channel(

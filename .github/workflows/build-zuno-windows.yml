@@ -31,6 +31,9 @@ on:
       - 'android-app/lib/main_windows.dart'
       - 'android-app/lib/features/tv/desktop/**'
       - 'android-app/lib/features/cast/**'
+      - 'android-app/lib/core/update/**'
+      - 'android-app/test/core/update/**'
+      - 'android-app/test/features/tv/desktop/**'
       - 'android-app/ci/windows/**'
   workflow_dispatch:
     inputs:
@@ -64,6 +67,7 @@ jobs:
       build: ${{ env.WIN_BUILD }}
       setup-sha: ${{ env.SETUP_SHA }}
       setup-size: ${{ env.SETUP_SIZE }}
+      signed: ${{ env.WINDOWS_SIGNED }}
     if: github.actor == github.repository_owner && github.triggering_actor == github.repository_owner && github.repository == 'manzilionellm-dotcom/tvking'
     environment: zuno-app-production
     name: Build Zuno Windows
@@ -85,6 +89,23 @@ jobs:
         env:
           APP_PUBLISH: ${{ inputs.publish || 'false' }}
         run: node .github/app-release-guard.mjs
+
+      - name: Préflight signature et script Windows
+        shell: pwsh
+        env:
+          PUBLISH_REQUESTED: ${{ inputs.publish || 'false' }}
+          CERTIFICATE_CONFIGURED: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE_BASE64 != '' && vars.WINDOWS_SIGNING_CERTIFICATE_THUMBPRINT != '' }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tokens = $null
+          $errors = $null
+          foreach ($script in 'ci/windows/package.ps1', 'ci/windows/verify-package.ps1') {
+            [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $script), [ref]$tokens, [ref]$errors) | Out-Null
+            if ($errors.Count -ne 0) { throw 'Script de paquet Windows invalide.' }
+          }
+          if ($env:PUBLISH_REQUESTED -eq 'true' -and $env:CERTIFICATE_CONFIGURED -ne 'true') {
+            throw 'Publication Windows refusée : certificat Authenticode et empreinte attendue non configurés.'
+          }
 
       - name: Setup Flutter (stable)
         uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
@@ -156,7 +177,7 @@ jobs:
         run: |
           set -e
           flutter analyze --no-fatal-infos --no-fatal-warnings
-          flutter test test/features/cast test/features/tv/desktop --reporter expanded
+          flutter test test/features/cast test/features/tv/desktop test/core/update --reporter expanded
 
       - name: Numéro de version (celui de la box + n° de build PC)
         shell: bash
@@ -202,26 +223,27 @@ jobs:
           if (($vi.ProductName -as [string]).Trim() -ne 'Zuno') { throw "ProductName ≠ Zuno" }
           Write-Host "✓ binaire complet (exe + moteur + libmpv : $($mpv.Name -join ', '))"
 
-      - name: Paquets (zip portable + installeur)
+      - name: Paquets complets et signature Authenticode si configurée
+        shell: pwsh
+        env:
+          WINDOWS_SIGNING_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE_BASE64 }}
+          WINDOWS_SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE_PASSWORD }}
+          WINDOWS_SIGNING_CERTIFICATE_THUMBPRINT: ${{ vars.WINDOWS_SIGNING_CERTIFICATE_THUMBPRINT }}
+          PUBLISH_REQUESTED: ${{ inputs.publish || 'false' }}
+        run: |
+          ./ci/windows/package.ps1 -Version $env:WIN_VERSION -Build $env:WIN_BUILD `
+            -Commit '${{ github.sha }}' -RequireSignature:($env:PUBLISH_REQUESTED -eq 'true')
+
+      - name: Vérifier le paquet et installer puis désinstaller sans lancer l'app
+        shell: pwsh
+        run: ./ci/windows/verify-package.ps1 -Commit '${{ github.sha }}'
+
+      - name: Résultat de la compilation Windows
         shell: pwsh
         run: |
-          $ErrorActionPreference = 'Stop'
-          $rel = (Resolve-Path 'build/windows/x64/runner/Release').Path
-          New-Item -ItemType Directory -Force -Path dist | Out-Null
-          Compress-Archive -Path "$rel/*" -DestinationPath dist/zuno-windows.zip -Force
-          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
-          if (!(Test-Path $iscc)) {
-            choco install innosetup -y --no-progress | Out-Null
-          }
-          if (!(Test-Path $iscc)) { throw "Inno Setup introuvable" }
-          & $iscc "/DAppVersion=$env:WIN_VERSION" "/DSourceDir=$rel" "/O$((Resolve-Path dist).Path)" ci/windows/zuno.iss
-          if ($LASTEXITCODE -ne 0) { throw "ISCC a échoué ($LASTEXITCODE)" }
-          Get-ChildItem dist | Select-Object Name, Length | Format-Table -AutoSize
-          foreach ($f in 'dist/Zuno-Setup.exe', 'dist/zuno-windows.zip') { if (!(Test-Path $f)) { throw "manquant : $f" } }
-          $sha = (Get-FileHash dist/Zuno-Setup.exe -Algorithm SHA256).Hash.ToLower()
-          "SETUP_SHA=$sha" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          $size = (Get-Item dist/Zuno-Setup.exe).Length
-          "SETUP_SIZE=$size" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          $state = if ($env:WINDOWS_SIGNED -eq 'true') { 'Authenticode vérifié (app et installeur)' } else { 'NON SIGNÉ — artefact de revue, non publiable' }
+          @("Zuno Windows $env:WIN_VERSION", '', "Commit : ${{ github.sha }}", "Signature : $state", "SHA-256 : $env:SETUP_SHA", '', 'Aucun essai physique PC ou Cast réalisé par ce workflow.') |
+            Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
 
       - name: Artefact
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -230,6 +252,9 @@ jobs:
           path: |
             android-app/dist/Zuno-Setup.exe
             android-app/dist/zuno-windows.zip
+            android-app/dist/version.json
+            android-app/dist/build-manifest.json
+            android-app/dist/SHA256SUMS.txt
           retention-days: 30
           if-no-files-found: error
 
@@ -248,6 +273,7 @@ jobs:
       WIN_BUILD: ${{ needs.build.outputs.build }}
       SETUP_SHA: ${{ needs.build.outputs.setup-sha }}
       SETUP_SIZE: ${{ needs.build.outputs.setup-size }}
+      WINDOWS_SIGNED: ${{ needs.build.outputs.signed }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -263,7 +289,22 @@ jobs:
           path: android-app/dist
       - name: Vérifier le fichier repris sans reconstruire
         run: |
+          set -e
+          test "$WINDOWS_SIGNED" = true
           printf '%s  %s\n' "$SETUP_SHA" dist/Zuno-Setup.exe | sha256sum -c -
+          (cd dist && sha256sum -c SHA256SUMS.txt)
+          python3 - <<'PYEOF'
+          import json, os
+          from pathlib import Path
+          manifest = json.loads(Path('dist/version.json').read_text())
+          proof = json.loads(Path('dist/build-manifest.json').read_text())
+          assert proof['signed'] is True and manifest['authenticode'] is True
+          assert proof['commit'] == manifest['commit'] == os.environ['GITHUB_SHA']
+          assert manifest['sha256'] == os.environ['SETUP_SHA']
+          assert manifest['size'] == Path('dist/Zuno-Setup.exe').stat().st_size == int(os.environ['SETUP_SIZE'])
+          assert manifest['versionCode'] == int(os.environ['WIN_BUILD'])
+          assert manifest['versionName'] == os.environ['WIN_VERSION']
+          PYEOF
       - name: Publier sur la release zuno-windows
         shell: bash
         env:
@@ -284,20 +325,7 @@ jobs:
           else
             gh release create "$RELEASE_TAG" -R "$REPO" --prerelease --title "Zuno — PC Windows" --notes "$NOTES"
           fi
-          # Manifeste lu par le bouton « Mise à jour » de Zuno PC
-          # (lib/core/update/update_service.dart) : même format que la box,
-          # versionCode = numéro de run (compilé dans l'app, ZUNO_WIN_BUILD).
-          cat > dist/version.json <<JSON
-          {
-            "versionCode": ${WIN_BUILD},
-            "versionName": "${WIN_VERSION}",
-            "url": "https://github.com/$REPO/releases/download/$RELEASE_TAG/Zuno-Setup.exe",
-            "sha256": "${SETUP_SHA}",
-            "size": ${SETUP_SIZE},
-            "mandatory": false
-          }
-          JSON
-          python3 -c "import json; d=json.load(open('dist/version.json')); assert d['versionCode']>0 and len(d['sha256'])==64 and d['size']>0, d"
-          gh release upload "$RELEASE_TAG" dist/Zuno-Setup.exe dist/zuno-windows.zip dist/version.json --clobber -R "$REPO"
+          # Publier les fichiers déjà contrôlés, sans recréer le manifeste après coup.
+          gh release upload "$RELEASE_TAG" dist/Zuno-Setup.exe dist/zuno-windows.zip dist/version.json dist/build-manifest.json dist/SHA256SUMS.txt --clobber -R "$REPO"
           echo "✓ https://github.com/$REPO/releases/download/$RELEASE_TAG/Zuno-Setup.exe"
 

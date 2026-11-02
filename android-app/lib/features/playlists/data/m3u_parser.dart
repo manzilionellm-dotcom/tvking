@@ -114,18 +114,16 @@ abstract final class M3uParser {
       content = content.substring(1);
     }
 
-    // Normaliser les sauts de ligne (\r\n, \r → \n)
-    final List<String> lines = content
-        .replaceAll('\r\n', '\n')
-        .replaceAll('\r', '\n')
-        .split('\n');
-
-    if (lines.isEmpty) {
+    // Parcours paresseux : LineSplitter reconnaît LF, CRLF et CR sans
+    // recopier tout le fichier ni matérialiser toutes ses lignes. Le plafond
+    // de chaînes arrête donc aussi la découpe d'une très grosse playlist.
+    final Iterator<String> lines = LineSplitter.split(content).iterator;
+    if (!lines.moveNext()) {
       warnings.add('Fichier vide.');
       return M3uParseResult(channels: channels, warnings: warnings);
     }
     final bool hasHeader =
-        lines.first.trim().toUpperCase().startsWith('#EXTM3U');
+        lines.current.trim().toUpperCase().startsWith('#EXTM3U');
     if (!hasHeader) {
       warnings.add(
         'Pas de #EXTM3U au début — on tente quand même de parser.',
@@ -138,8 +136,8 @@ abstract final class M3uParser {
     String? pendingName;
     String? pendingGroup; // #EXTGRP: hors EXTINF
 
-    for (int i = 0; i < lines.length; i++) {
-      final String raw = lines[i];
+    do {
+      final String raw = lines.current;
       final String line = raw.trim();
 
       if (line.isEmpty) continue;
@@ -258,7 +256,7 @@ abstract final class M3uParser {
       pendingAttrs = null;
       pendingName = null;
       pendingGroup = null;
-    }
+    } while (lines.moveNext());
 
     if (kDebugMode) {
       debugPrint(

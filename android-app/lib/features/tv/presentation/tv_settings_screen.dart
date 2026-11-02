@@ -114,11 +114,21 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
       setState(() => _upd = _UpdState.playStore);
       return;
     }
-    final UpdateInfo? u = await UpdateService.instance.check();
+    final UpdateCheckResult result =
+        await UpdateService.instance.checkDetailed();
+    final UpdateInfo? u = result.manifest == null
+        ? null
+        : UpdateInfo.fromManifest(result.manifest!);
     if (!mounted) return;
     setState(() {
       _updInfo = u;
-      _upd = u == null ? _UpdState.upToDate : _UpdState.available;
+      _upd = switch (result.status) {
+        UpdateCheckStatus.available => _UpdState.available,
+        UpdateCheckStatus.upToDate => _UpdState.upToDate,
+        UpdateCheckStatus.unavailable ||
+        UpdateCheckStatus.unsupported =>
+          _UpdState.failed,
+      };
     });
     // Nouvelle version : on commence le téléchargement TOUT DE SUITE, en
     // arrière-plan (s'il n'est pas déjà fait au démarrage de la box). Quand
@@ -144,6 +154,9 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
       case _UpdState.upToDate:
       case _UpdState.failed:
         await _checkUpdate(); // re-vérifie à la demande
+        // L'appui est une demande de mise à jour : si une nouvelle version
+        // vient d'être trouvée, continuer sans exiger un deuxième appui.
+        if (mounted && _upd == _UpdState.available) await _onUpdatePressed();
         return;
       // Autorisation donnée dans Android : OK relance l'installateur
       // avec l'APK déjà téléchargé et vérifié.
