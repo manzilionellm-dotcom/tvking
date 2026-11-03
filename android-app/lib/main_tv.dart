@@ -25,6 +25,7 @@ import 'features/player/data/audio_report_store.dart';
 import 'features/player/domain/audio_report_book.dart';
 import 'core/update/update_service.dart';
 import 'core/app/boot_guard.dart';
+import 'core/app/startup_trace.dart';
 import 'core/app/guarded_main.dart';
 import 'core/app/repair_flags.dart';
 import 'core/flavor/flavor.dart';
@@ -107,12 +108,12 @@ Future<void> bootstrapZunoTv({Widget Function(Widget app)? wrap}) async {
   // plusieurs fois de suite (crash natif type mémoire en ré-important une
   // grosse source), on passe en MODE SANS ÉCHEC et on saute le ré-import
   // distant plus bas → la boucle est cassée. Voir core/app/boot_guard.dart.
-  await BootGuard.instance.beginBoot();
+  await StartupTrace.step('bootGuard', BootGuard.instance.beginBoot);
 
   // Le paquet ZUNO est également distribué sur téléphone. On distingue
   // le matériel AVANT les services et le diagnostic, sans changer la MAC,
   // la licence ni le namespace historique « tv » de ZUNO dans le panel.
-  await CastPlatform.initializeZuno();
+  await StartupTrace.step('castPlatform', CastPlatform.initializeZuno);
   AppPlatform.configureZuno(isAndroidHandset: CastPlatform.isAndroidHandset);
 
   // MISE À JOUR IN-APP : la TV ne regarde QUE sa propre release (zuno-tv),
@@ -133,18 +134,19 @@ Future<void> bootstrapZunoTv({Widget Function(Widget app)? wrap}) async {
   // BOÎTE NOIRE (enregistreur de vol) : le plus tôt possible, pour que tout le
   // démarrage soit journalisé et que la raison de la DERNIÈRE fermeture soit
   // lue (Android 11+). Best-effort : ne bloque jamais le boot.
-  await BlackBox.instance.initialize(flavor: AppPlatform.zunoEditionName);
+  await StartupTrace.step('blackBox', () =>
+      BlackBox.instance.initialize(flavor: AppPlatform.zunoEditionName));
   _wireAudioDiagnostic();
   // Le journal part vers le panel (même Worker, même MAC). L'envoi
   // est coupé par l'interrupteur « En plus ». Rien ici ne touche au son.
   BlackBoxUpload.instance.start();
   // Réglages du diagnostic son. Défaut faux : ne change pas le lecteur.
-  await AudioDiagPrefs.load();
+  await StartupTrace.step('audioPreferences', AudioDiagPrefs.load);
   // Avant les aperçus/publicités : un contraste explicitement coupé ne doit
   // pas s'allumer brièvement au premier affichage de la vue native.
-  await ImagePrefs.load();
+  await StartupTrace.step('imagePreferences', ImagePrefs.load);
   // Interrupteurs de repli des correctifs de l'audit (défaut faux).
-  await RepairFlags.load();
+  await StartupTrace.step('repairFlags', RepairFlags.load);
   if (BootGuard.instance.safeMode) {
     BlackBox.instance.warn(
       'BOOT',
@@ -171,7 +173,7 @@ Future<void> bootstrapZunoTv({Widget Function(Widget app)? wrap}) async {
   // Langue de l'app : on charge le choix mémorisé (ou « Système » =>
   // l'app suit la langue de la TV). BLOQUANT et rapide : garantit que le
   // 1er rendu est déjà dans la bonne langue (pas de flash en français).
-  await LocaleRepository.instance.initialize();
+  await StartupTrace.step('locale', LocaleRepository.instance.initialize);
   // Langue des pistes audio (direct, aperçu, film). On la relit si
   // la personne change la langue dans Réglages : le prochain zap
   // prend la nouvelle, sans rouvrir la chaîne en cours.
@@ -202,10 +204,12 @@ Future<void> bootstrapZunoTv({Widget Function(Widget app)? wrap}) async {
   //    TV = TOUTES les listes fusionnées (Xtream + M3U, jusqu'à 4-5 sources
   //    posées par le client ou le panel) affichées ensemble, façon TiviMate.
   PlaylistRepository.mergeAllPlaylists = true;
+  StartupTrace.mark('playlists.begin');
   await PlaylistRepository.instance.initialize().timeout(
     const Duration(seconds: 6),
     onTimeout: () {},
   );
+  StartupTrace.mark('playlists.end');
   //    La source distante se (re)synchronise après, sans bloquer : si on a
   //    déjà des chaînes en cache, ça reste SILENCIEUX (pas d'écran « Recherche »).
   //    MODE SANS ÉCHEC : on SAUTE ce ré-import — c'est l'étape la plus
@@ -292,11 +296,13 @@ Future<void> bootstrapZunoTv({Widget Function(Widget app)? wrap}) async {
   //    s'il tarde, l'app démarre quand même — une chaîne n'est jamais
   //    bloquée parce qu'aucun profil n'a été choisi. Le choix à l'écran,
   //    s'il est activé, arrive APRÈS l'accueil (voir TvHubScreen).
+  StartupTrace.mark('profile.begin');
   await ProfileRepository.instance.load().timeout(
     const Duration(milliseconds: 500),
     onTimeout: () {},
   );
 
+  StartupTrace.mark('profile.end');
   // 7) Favoris du profil en cours : préchargés pour que le cœur ❤
   //    du lecteur affiche le bon état dès la 1re ouverture.
   unawaited(FavoritesRepository.instance.initialize());
@@ -317,6 +323,13 @@ Future<void> bootstrapZunoTv({Widget Function(Widget app)? wrap}) async {
     }),
   );
 
+  StartupTrace.mark('runApp');
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    StartupTrace.mark('frame.submitted');
+  });
+  unawaited(WidgetsBinding.instance.waitUntilFirstFrameRasterized.then((_) {
+    StartupTrace.mark('frame.rasterized');
+  }));
   runApp(wrap == null ? const TvApp() : wrap(const TvApp()));
 
   // L'app est lancée : si elle tient quelques secondes, on efface l'historique

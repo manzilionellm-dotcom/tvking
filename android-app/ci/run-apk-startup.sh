@@ -86,8 +86,29 @@ adb -s "$startup_serial" shell settings put global transition_animation_scale 0
 adb -s "$startup_serial" shell settings put global animator_duration_scale 0
 adb -s "$startup_serial" shell svc power stayon true
 adb -s "$startup_serial" shell input keyevent 82
+# Les commandes svc peuvent précéder l'initialisation du modem (API 35 :
+# le réseau 101 revenait après le premier relevé « none »). Le mode avion
+# coupe les transports ; un pare-feu IPv4 ET IPv6 rend l'absence d'accès
+# indépendante de cette course. ADB utilise le transport de l'émulateur.
+adb -s "$startup_serial" root > "$startup_out/adb-root.txt" 2>&1
+adb -s "$startup_serial" wait-for-device
+test "$(adb -s "$startup_serial" shell id -u | tr -d '\r')" = 0
+adb -s "$startup_serial" shell settings put global airplane_mode_on 1
+adb -s "$startup_serial" shell am broadcast -a android.intent.action.AIRPLANE_MODE --ez state true
 adb -s "$startup_serial" shell svc wifi disable
 adb -s "$startup_serial" shell svc data disable
+for startup_firewall in iptables ip6tables; do
+  adb -s "$startup_serial" shell "$startup_firewall" -w -I OUTPUT 1 '!' -o lo -j REJECT
+done
+startup_assert_offline() {
+  local startup_label="$1"
+  for startup_firewall in iptables ip6tables; do
+    adb -s "$startup_serial" shell "$startup_firewall" -w -C OUTPUT '!' -o lo -j REJECT
+    adb -s "$startup_serial" shell "$startup_firewall" -w -S OUTPUT \
+      > "$startup_out/$startup_label-$startup_firewall.txt"
+  done
+}
+startup_assert_offline before-install
 # Attendre réellement la disparition du réseau par défaut avant tout lancement.
 for ((startup_attempt=0; startup_attempt<15; startup_attempt++)); do
   adb -s "$startup_serial" shell dumpsys connectivity > "$startup_out/connectivity.txt"
@@ -119,6 +140,7 @@ startup_dump_ui() {
 startup_open() {
   local startup_phase_out="$startup_out/$1" startup_first_pid startup_current_pid
   mkdir -p "$startup_phase_out"
+  startup_assert_offline "$1-before"
   adb -s "$startup_serial" shell am start -W -n "$startup_component" > "$startup_phase_out/start.txt" 2>&1
   grep -q '^Status: ok' "$startup_phase_out/start.txt"
   startup_first_pid="$(adb -s "$startup_serial" shell pidof "$startup_package" | tr -d '\r')"
@@ -126,6 +148,7 @@ startup_open() {
   # Un crash suivi d'un redémarrage ne peut passer grâce à une capture tardive.
   for ((startup_sample=0; startup_sample<15; startup_sample++)); do
     sleep 2
+    startup_assert_offline "$1-sample-$startup_sample"
     startup_current_pid="$(adb -s "$startup_serial" shell pidof "$startup_package" | tr -d '\r')"
     test "$startup_current_pid" = "$startup_first_pid"
     adb -s "$startup_serial" shell dumpsys activity activities > "$startup_phase_out/activities.txt"
@@ -160,6 +183,7 @@ adb -s "$startup_serial" exec-out screencap -p > "$startup_out/after-back.png"
 startup_open reopen
 # Collecte obligatoire ici : une erreur adb n'est jamais « aucun crash ».
 startup_collect
+startup_assert_offline final
 python3 "$startup_verifier" evidence "$startup_out"
 if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
   cat "$startup_out/summary.md" >> "$GITHUB_STEP_SUMMARY"

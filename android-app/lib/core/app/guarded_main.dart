@@ -30,6 +30,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
+import 'startup_trace.dart';
 import '../crash/crash_reporting.dart';
 import '../crash/crash_reporting_firebase.dart';
 
@@ -88,6 +89,7 @@ void runGuarded(Future<void> Function() body) {
   runZonedGuarded<Future<void>>(
     () async {
       WidgetsFlutterBinding.ensureInitialized();
+      StartupTrace.mark('binding.ready');
 
       // ANTI-OOM IMAGES (P0-6) — PARTAGÉ par tous les flavors (mobile/TV/Privé).
       //  Symptôme : en défilant (D-pad haut/bas) la grille de chaînes, l'app se
@@ -128,13 +130,13 @@ void runGuarded(Future<void> Function() body) {
       };
 
       // Collecteur prêt AVANT le boot : toute erreur de démarrage est captée.
-      await CrashReporting.instance.initialize();
+      await StartupTrace.step('crashReporting', CrashReporting.instance.initialize);
 
       // Crashlytics si (et seulement si) le projet est configuré. Best-effort,
       // jamais bloquant ni fatal : sans google-services.json, no-op silencieux.
-      await attachCrashlytics();
+      await StartupTrace.step('crashlytics', attachCrashlytics);
 
-      await body();
+      await StartupTrace.step('bootstrap', body);
     },
     // 4) Filet ultime.
     (Object error, StackTrace stack) {
