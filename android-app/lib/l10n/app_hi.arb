@@ -2868,5 +2868,12 @@
   "tvQualitySource": "स्रोत फ़ॉर्मैट: {codec} · {range}",
   "tvQualityCodecUnknown": "अज्ञात कोडेक",
   "tvQualityRangeUnknown": "HDR/SDR निर्दिष्ट नहीं",
-  "tvQualityCadence": "डिकोडर आउटपुट: {fps} फ़्रेम/सेकंड · {seconds} सेकंड में {dropped} छूटे"
+  "tvQualityCadence": "डिकोडर आउटपुट: {fps} फ़्रेम/सेकंड · {seconds} सेकंड में {dropped} छूटे",
+  "tvAiActive": "AI ×2",
+  "tvAiNative": "मूल रेंडरिंग",
+  "tvAiUnknown": "AI: स्थिति अज्ञात",
+  "tvAiReasonFluidity": "सुचारु प्लेबैक को प्राथमिकता।",
+  "tvAiReasonSource": "यह फ़ॉर्मैट मूल रेंडरिंग बनाए रखता है।",
+  "tvAiReasonVerification": "प्रोसेसिंग क्षमता की पुष्टि नहीं हुई है।",
+  "tvAiReasonUnavailable": "इस प्लेबैक के लिए सुधार उपलब्ध नहीं है।"
 }

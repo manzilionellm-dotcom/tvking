@@ -1438,5 +1438,12 @@
   "tvQualitySource": "تنسيق المصدر: {codec} · {range}",
   "tvQualityCodecUnknown": "ترميز غير معروف",
   "tvQualityRangeUnknown": "HDR/SDR غير محدد",
-  "tvQualityCadence": "خرج فك الترميز: {fps} إطار/ث · {dropped} إطار مفقود خلال {seconds} ث"
+  "tvQualityCadence": "خرج فك الترميز: {fps} إطار/ث · {dropped} إطار مفقود خلال {seconds} ث",
+  "tvAiActive": "ذكاء اصطناعي ×2",
+  "tvAiNative": "عرض أصلي",
+  "tvAiUnknown": "الذكاء الاصطناعي: حالة غير معروفة",
+  "tvAiReasonFluidity": "الأولوية لسلاسة التشغيل.",
+  "tvAiReasonSource": "يحتفظ هذا التنسيق بالعرض الأصلي.",
+  "tvAiReasonVerification": "قدرة المعالجة غير مؤكدة.",
+  "tvAiReasonUnavailable": "التحسين غير متاح لهذا التشغيل."
 }

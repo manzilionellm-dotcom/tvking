@@ -56,6 +56,22 @@ class TvPlaybackQuality extends StatelessWidget {
     final NativeVideoCadence? cadence = quality.cadence;
     final NumberFormat decimal =
         NumberFormat('0.0', Localizations.localeOf(context).toString());
+    final NativeAiPictureStatus? ai = quality.aiPicture;
+    final String aiLabel = ai == null
+        ? l.tvAiUnknown
+        : ai.active ? l.tvAiActive : l.tvAiNative;
+    final String? aiReason = ai == null || ai.active
+        ? null
+        : switch (ai.fallback) {
+            NativeAiFallback.fluidity => l.tvAiReasonFluidity,
+            NativeAiFallback.source => l.tvAiReasonSource,
+            NativeAiFallback.verification => l.tvAiReasonVerification,
+            NativeAiFallback.unavailable => l.tvAiReasonUnavailable,
+          };
+    final Widget aiText = Text(
+      aiLabel,
+      style: palette.ui(TvDimens.caption, color: palette.muted),
+    );
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -79,6 +95,7 @@ class TvPlaybackQuality extends StatelessWidget {
             ),
             style: palette.ui(TvDimens.caption, color: palette.muted),
           ),
+        if (aiReason == null) aiText else Tooltip(message: aiReason, child: aiText),
       ],
     );
   }

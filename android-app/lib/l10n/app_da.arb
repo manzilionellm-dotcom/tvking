@@ -1438,5 +1438,12 @@
   "tvQualitySource": "Kildeformat: {codec} · {range}",
   "tvQualityCodecUnknown": "ukendt codec",
   "tvQualityRangeUnknown": "HDR/SDR ikke angivet",
-  "tvQualityCadence": "Decoderudgang: {fps} billeder/s · {dropped} tabte / {seconds} s"
+  "tvQualityCadence": "Decoderudgang: {fps} billeder/s · {dropped} tabte / {seconds} s",
+  "tvAiActive": "AI ×2",
+  "tvAiNative": "Oprindelig gengivelse",
+  "tvAiUnknown": "AI: ukendt status",
+  "tvAiReasonFluidity": "Jævn afspilning prioriteres.",
+  "tvAiReasonSource": "Dette format bevarer den oprindelige gengivelse.",
+  "tvAiReasonVerification": "Behandlingskapaciteten er ikke bekræftet.",
+  "tvAiReasonUnavailable": "Forbedring er ikke tilgængelig for denne afspilning."
 }

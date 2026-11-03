@@ -3216,5 +3216,12 @@
         "type": "String"
       }
     }
-  }
+  },
+  "tvAiActive": "IA ×2",
+  "tvAiNative": "Rendu natif",
+  "tvAiUnknown": "IA : état inconnu",
+  "tvAiReasonFluidity": "Priorité à la fluidité.",
+  "tvAiReasonSource": "Ce format conserve le rendu d’origine.",
+  "tvAiReasonVerification": "Capacité de traitement non confirmée.",
+  "tvAiReasonUnavailable": "Amélioration indisponible pour cette lecture."
 }

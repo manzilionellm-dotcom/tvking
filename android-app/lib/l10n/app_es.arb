@@ -1438,5 +1438,12 @@
   "tvQualitySource": "Formato de origen: {codec} · {range}",
   "tvQualityCodecUnknown": "códec desconocido",
   "tvQualityRangeUnknown": "HDR/SDR sin especificar",
-  "tvQualityCadence": "Salida del decodificador: {fps} imágenes/s · {dropped} descartadas / {seconds} s"
+  "tvQualityCadence": "Salida del decodificador: {fps} imágenes/s · {dropped} descartadas / {seconds} s",
+  "tvAiActive": "IA ×2",
+  "tvAiNative": "Renderizado nativo",
+  "tvAiUnknown": "IA: estado desconocido",
+  "tvAiReasonFluidity": "Se prioriza la reproducción fluida.",
+  "tvAiReasonSource": "Este formato conserva el renderizado original.",
+  "tvAiReasonVerification": "La capacidad de procesamiento no está confirmada.",
+  "tvAiReasonUnavailable": "La mejora no está disponible para esta reproducción."
 }

@@ -2868,5 +2868,12 @@
   "tvQualitySource": "Формат источника: {codec} · {range}",
   "tvQualityCodecUnknown": "неизвестный кодек",
   "tvQualityRangeUnknown": "HDR/SDR не указан",
-  "tvQualityCadence": "Выход декодера: {fps} кадров/с · пропущено {dropped} за {seconds} с"
+  "tvQualityCadence": "Выход декодера: {fps} кадров/с · пропущено {dropped} за {seconds} с",
+  "tvAiActive": "ИИ ×2",
+  "tvAiNative": "Исходное отображение",
+  "tvAiUnknown": "ИИ: статус неизвестен",
+  "tvAiReasonFluidity": "Приоритет — плавное воспроизведение.",
+  "tvAiReasonSource": "Этот формат сохраняет исходное отображение.",
+  "tvAiReasonVerification": "Возможность обработки не подтверждена.",
+  "tvAiReasonUnavailable": "Улучшение недоступно для этого воспроизведения."
 }

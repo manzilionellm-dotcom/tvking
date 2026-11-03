@@ -2868,5 +2868,12 @@
   "tvQualitySource": "Quellformat: {codec} · {range}",
   "tvQualityCodecUnknown": "Codec unbekannt",
   "tvQualityRangeUnknown": "HDR/SDR nicht angegeben",
-  "tvQualityCadence": "Decoderausgabe: {fps} Bilder/s · {dropped} verworfen / {seconds} s"
+  "tvQualityCadence": "Decoderausgabe: {fps} Bilder/s · {dropped} verworfen / {seconds} s",
+  "tvAiActive": "KI ×2",
+  "tvAiNative": "Native Darstellung",
+  "tvAiUnknown": "KI: Status unbekannt",
+  "tvAiReasonFluidity": "Flüssige Wiedergabe hat Vorrang.",
+  "tvAiReasonSource": "Dieses Format behält die ursprüngliche Darstellung.",
+  "tvAiReasonVerification": "Die Verarbeitungsleistung ist nicht bestätigt.",
+  "tvAiReasonUnavailable": "Bildverbesserung ist für diese Wiedergabe nicht verfügbar."
 }

@@ -418,6 +418,7 @@ class NativeVideoController extends ChangeNotifier {
     if (_disposed) return;
     audible = false;
     _epoch++;
+    videoQuality = videoQuality.withAiPicture(null).withCadence(null);
     _backend?.silence();
     _channel?.invokeMethod<void>('silence');
     if (!_disposed) notifyListeners();
@@ -465,6 +466,19 @@ class NativeVideoController extends ChangeNotifier {
     if (!_acceptEvents) return;
     final _Ev call = _Ev(method, arguments);
     switch (call.method) {
+      case 'aiPicture':
+        // L'événement natif active l'IA seulement après une vraie image
+        // traitée. Une erreur/une copie figée/un autre lecteur invalide cette
+        // preuve ; un callback tardif ne peut pas la rallumer dans cet état.
+        final NativeAiPictureStatus? previous = videoQuality.aiPicture;
+        final NativeAiPictureStatus? status =
+            !audible || _castSuspended || hasError || holdFrame ||
+                    nativeRetrying || isEnded || engineExhausted
+                ? null
+                : NativeAiPictureStatus.read(call.arguments);
+        videoQuality = videoQuality.withAiPicture(status);
+        if (identical(previous, status) ||
+            (status != null && status.hasSamePresentation(previous))) return;
       case 'videoSize':
         videoQuality = videoQuality.withVideoSize(call.arguments);
         videoWidth = videoQuality.outputWidth;
@@ -517,20 +531,26 @@ class NativeVideoController extends ChangeNotifier {
         nativeRetrying = false;
       case 'ended':
         isEnded = true;
+        videoQuality = videoQuality.withAiPicture(null);
       case 'error':
         hasError = true;
         nativeRetrying = false;
-        videoQuality = videoQuality.withCadence(null);
+        videoQuality = videoQuality.withAiPicture(null).withCadence(null);
       case 'holdFrame':
         holdFrame = call.arguments == true;
-        if (holdFrame) isBuffering = false;
+        if (holdFrame) {
+          isBuffering = false;
+          videoQuality = videoQuality.withAiPicture(null).withCadence(null);
+        }
       case 'reconnecting':
         nativeRetrying = call.arguments == true;
+        if (nativeRetrying) videoQuality = videoQuality.withAiPicture(null);
       case 'duration':
         duration = Duration(milliseconds: call.arguments as int);
       case 'cues':
         cues = (call.arguments as String?) ?? '';
       case 'reopen':
+        videoQuality = videoQuality.withAiPicture(null);
         firstFrame = false;
         isBuffering = true;
         hasError = false;
@@ -538,6 +558,7 @@ class NativeVideoController extends ChangeNotifier {
       case 'engineExhausted':
         engineExhausted = true;
         isBuffering = false;
+        videoQuality = videoQuality.withAiPicture(null);
       case 'videoDecoder':
         videoDecoderName = (call.arguments as String?) ?? '';
       case 'tracks':
@@ -786,6 +807,7 @@ class NativeVideoController extends ChangeNotifier {
   /// au premier plan. Ce verrou est distinct du cycle de vie Home/retour.
   Future<void> suspendForCast() async {
     if (_disposed) throw StateError('Lecteur fermé');
+    videoQuality = videoQuality.withAiPicture(null).withCadence(null);
     final MethodChannel? channel = _channel;
     if (channel == null) {
       // Le moteur PC conserve sa passation propre ; ce verrou est celui

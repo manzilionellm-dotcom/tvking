@@ -2868,5 +2868,12 @@
   "tvQualitySource": "Bronformaat: {codec} · {range}",
   "tvQualityCodecUnknown": "onbekende codec",
   "tvQualityRangeUnknown": "HDR/SDR niet opgegeven",
-  "tvQualityCadence": "Decoderuitvoer: {fps} beelden/s · {dropped} overgeslagen / {seconds} s"
+  "tvQualityCadence": "Decoderuitvoer: {fps} beelden/s · {dropped} overgeslagen / {seconds} s",
+  "tvAiActive": "AI ×2",
+  "tvAiNative": "Oorspronkelijke weergave",
+  "tvAiUnknown": "AI: status onbekend",
+  "tvAiReasonFluidity": "Vloeiend afspelen heeft voorrang.",
+  "tvAiReasonSource": "Dit formaat behoudt de oorspronkelijke weergave.",
+  "tvAiReasonVerification": "De verwerkingscapaciteit is niet bevestigd.",
+  "tvAiReasonUnavailable": "Verbetering is niet beschikbaar voor deze weergave."
 }

@@ -60,6 +60,7 @@ import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
 import androidx.media3.exoplayer.video.VideoFrameMetadataListener
 import androidx.media3.exoplayer.video.VideoRendererEventListener
+import com.manzilionellm.native_video_player.ai.AiPictureEngine
 import com.manzilionellm.native_video_player.logic.AppForeground
 import com.manzilionellm.native_video_player.logic.AudioDiagnosis
 import com.manzilionellm.native_video_player.logic.BackgroundGate
@@ -95,6 +96,7 @@ import com.manzilionellm.native_video_player.logic.SpokenTrackChoice
 import com.manzilionellm.native_video_player.logic.VideoCandidate
 import com.manzilionellm.native_video_player.logic.VideoCadenceWindow
 import com.manzilionellm.native_video_player.logic.VideoEngine
+import com.manzilionellm.native_video_player.logic.VideoRelease
 import com.manzilionellm.native_video_player.logic.MeasuredVideoSize
 import com.manzilionellm.native_video_player.logic.VideoOutputMeasurement
 import com.manzilionellm.native_video_player.logic.VideoTrackChoice
@@ -227,6 +229,18 @@ class NativeVideoView(
     private val channel = MethodChannel(messenger, "native_video_player/$id")
     private lateinit var player: ExoPlayer
     private val handler = Handler(Looper.getMainLooper())
+
+    // Le bail reste pris du premier prepare jusqu'à release : stop() est
+    // asynchrone et ne prouve pas que le GPU du décodeur est déjà libre.
+    // Les aperçus et le plein écran possèdent chacun leur propre bail.
+    private val aiPicture = AiPictureEngine.get(context.applicationContext)
+    private val aiLeaseOwner = Any()
+    private var aiPlaybackLease: AutoCloseable? = null
+    @Volatile private var aiSessionId = 0
+    @Volatile private var aiSourceKnown = false
+    @Volatile private var aiHdrOrDrm = true
+    @Volatile private var aiTargetWidth = 0
+    @Volatile private var aiTargetHeight = 0
 
     private var currentUrl: String? = null
 
@@ -491,7 +505,7 @@ class NativeVideoView(
     }
     private var videoDecoderReady: Boolean = false
     private var decoderReadyAtMs: Long = 0L
-    private var contentFps: Float = 0f
+    @Volatile private var contentFps: Float = 0f
     private var frameRateMatchEnabled: Boolean = false
     private var frameRateModeApplied: Boolean = false
     private var previousPreferredDisplayModeId: Int = 0
@@ -1285,6 +1299,11 @@ class NativeVideoView(
                     return
                 }
                 if (url != currentUrl) {
+                    // Tant que le nouveau format n'est pas identifié, aucun
+                    // réseau neuronal ne touche les pixels de cette source.
+                    aiSourceKnown = false
+                    aiHdrOrDrm = true
+                    contentFps = 0f
                     // Un numéro de groupe appartient à UNE source. On efface
                     // les choix explicites au vrai zap, jamais à une simple
                     // reprise technique du même film/de la même chaîne.
@@ -1736,6 +1755,7 @@ class NativeVideoView(
                 for (i in 0 until group.length) {
                     if (!group.isTrackSelected(i)) continue
                     val reason = contrastDirectReason(group.getTrackFormat(i))
+                    if (reason != null) aiHdrOrDrm = true
                     if (reason != null && requestContrastDirectFallback(reason)) return
                 }
             }
@@ -1844,6 +1864,7 @@ class NativeVideoView(
         emit("buffering", false)
         unmuteIfThisSession()
         emit("firstFrame", null)
+        emitNativeAiStatus()
         // Une copie tôt : si la coupure arrive dans les secondes qui
         // suivent, on a déjà une image à montrer.
         handler.postDelayed({
@@ -1871,6 +1892,8 @@ class NativeVideoView(
     ) {
         if (!fresh(eventTime)) return
         val directReason = contrastDirectReason(format)
+        aiHdrOrDrm = directReason != null
+        aiSourceKnown = true
         if (directReason != null && requestContrastDirectFallback(directReason)) return
         resetVideoCadence()
         outputSizeSession.set(currentUrl?.let {
@@ -2028,6 +2051,7 @@ class NativeVideoView(
         if (released) return
         pausedByFocus = false
         sessions.open()
+        aiSessionId = sessions.generation
         contrastFallbackPosted = false
         sessionOpenedAt = SystemClock.elapsedRealtime()
         audioChosenForSession = false
@@ -2164,6 +2188,9 @@ class NativeVideoView(
         // Ce 0 n'est pas la baisse à 20 % : c'est le silence de passage.
         reconnect.armMute()
         player.volume = AudioHandoff.VOLUME_SILENT
+        // Aucun benchmark ne doit se poursuivre pendant le décodage, même
+        // si le lecteur est préparé en pause ou si sa première image tarde.
+        if (aiPlaybackLease == null) aiPlaybackLease = aiPicture.acquirePlayback(owner = aiLeaseOwner)
         player.prepare()
         // Perte de focus pendant le zap : on ne repart pas tant que GAIN
         // n'est pas revenu (ou qu'un nouveau zap n'a pas redemandé le focus).
@@ -2942,17 +2969,17 @@ class NativeVideoView(
         } catch (_: RuntimeException) {
             // Déjà détaché : on continue la libération.
         }
-        try {
-            // stop() avant la surface : le codec arrête d'écrire, puis on
-            // détache. L'ordre inverse laisse parfois une image verte et
-            // un décodeur qui ne se rend jamais (chaîne suivante noire).
-            player.clearVideoSurface()
-            player.release()
-        } catch (_: RuntimeException) {
-            // Une libération ratée ne doit pas tuer l'app : la chaîne
-            // suivante doit pouvoir créer SON lecteur.
-        }
+        // Même si la surface est déjà perdue, release doit être tenté. Un
+        // décodeur dont la libération est incertaine interdit le préflight.
+        val playerReleaseConfirmed = VideoRelease.attempt(
+            clearSurface = { player.clearVideoSurface() },
+            releasePlayer = { player.release() },
+        )
         PlayerCensus.playerReleased()
+        if (playerReleaseConfirmed) aiPlaybackLease?.close()
+        // Sur échec, le moteur conserve seulement le petit jeton opaque du
+        // bail, jamais la vue/activité. Plus de benchmark avant redémarrage.
+        aiPlaybackLease = null
         channel.setMethodCallHandler(null)
         val pending = disposeResult
         disposeResult = null
@@ -2975,7 +3002,28 @@ class NativeVideoView(
         contrastPipelineInstalled = useContrastPipeline(installFfmpegVideo)
         if (contrastPipelineInstalled) {
             contrastEffect.setEnabled(contrastRequested, hardwareAllows = true)
-            target.setVideoEffects(listOf(contrastEffect))
+            val aiEffect = aiPicture.newEffect(
+                hdrOrDrm = { aiHdrOrDrm },
+                framesPerSecond = { contentFps.toDouble() },
+                sessionId = { aiSessionId },
+                sourceKnown = { aiSourceKnown },
+                // Seule une surface réellement plus grande justifie le ×2.
+                // Un aperçu ou une géométrie inconnue restent en natif.
+                allowUpscale = { width, height ->
+                    aiTargetWidth > width && aiTargetHeight > height
+                },
+                onStatus = { status ->
+                    handler.post {
+                        if (!released && !disposeStarted && contrastPipelineInstalled &&
+                            status.sessionId == aiSessionId) {
+                            emit("aiPicture", status.toMap())
+                        }
+                    }
+                },
+            )
+            // L'IA reçoit le SDR BT.709 du lecteur ; le contraste s'applique
+            // seulement après son débruitage et son éventuel agrandissement.
+            target.setVideoEffects(listOf(aiEffect, contrastEffect))
         }
         updateContrastSurfaceSize()
         target.setVideoScalingMode(C.VIDEO_SCALING_MODE_SCALE_TO_FIT)
@@ -3021,6 +3069,20 @@ class NativeVideoView(
         else -> null
     }
 
+    /** Le chemin HDR/DRM direct n'a aucun shader pour annoncer son repli. */
+    private fun emitNativeAiStatus() {
+        if (contrastPipelineInstalled || released || disposeStarted || !sawFrame) return
+        val reason = when (contrastBypassReason) {
+            "hdr", "drm" -> "HDR_OR_DRM"
+            "processing_error", "no_frames" -> "GL_FAILURE"
+            else -> "NATIVE_RENDERER"
+        }
+        // Preuve d'inactivité seulement, après une vraie première image. Les
+        // mesures source/sortie restent dans leurs événements indépendants.
+        emit("aiPicture", mapOf("sessionId" to aiSessionId, "active" to false,
+            "reason" to reason, "scale" to 1))
+    }
+
     /** Le contraste SDR n'impose aucune conversion ou perte de métadonnées HDR. */
     private fun contrastDirectReason(format: Format): String? = PictureTune.directReason(
         isHdr = ColorInfo.isTransferHdr(format.colorInfo),
@@ -3053,6 +3115,8 @@ class NativeVideoView(
         } catch (_: RuntimeException) {
             null
         } else null
+        aiTargetWidth = size?.width ?: surfaceView.width
+        aiTargetHeight = size?.height ?: surfaceView.height
         if (size == contrastSurfaceBuffer) return
         contrastSurfaceBuffer = size
         if (size == null) surfaceView.holder.setSizeFromLayout()
@@ -3070,6 +3134,7 @@ class NativeVideoView(
         if (contrastBypassReason != null || released || currentUrl == null) return false
         if (!AppForeground.allowsReopen() || castSuspended) return false
         contrastBypassReason = reason
+        aiHdrOrDrm = true
         contrastFallbackPosted = true
         emitImageCaps()
         val token = sessions.generation

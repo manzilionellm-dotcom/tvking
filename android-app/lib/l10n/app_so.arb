@@ -3181,5 +3181,12 @@
   "tvQualitySource": "Qaabka isha: {codec} · {range}",
   "tvQualityCodecUnknown": "kodeeg aan la aqoon",
   "tvQualityRangeUnknown": "HDR/SDR lama sheegin",
-  "tvQualityCadence": "Soo-saarka furfuraha: {fps} sawir/s · {dropped} lumay / {seconds} s"
+  "tvQualityCadence": "Soo-saarka furfuraha: {fps} sawir/s · {dropped} lumay / {seconds} s",
+  "tvAiActive": "AI ×2",
+  "tvAiNative": "Muuqaalka asalka ah",
+  "tvAiUnknown": "AI: xaalad aan la aqoon",
+  "tvAiReasonFluidity": "Ciyaarid habsami leh ayaa mudnaan leh.",
+  "tvAiReasonSource": "Qaabkani wuxuu hayaa muuqaalka asalka ah.",
+  "tvAiReasonVerification": "Awoodda habaynta lama xaqiijin.",
+  "tvAiReasonUnavailable": "Hagaajintu diyaar uma aha ciyaariddan."
 }

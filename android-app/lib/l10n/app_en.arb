@@ -1506,5 +1506,12 @@
   "tvQualitySource": "Source format: {codec} · {range}",
   "tvQualityCodecUnknown": "unknown codec",
   "tvQualityRangeUnknown": "HDR/SDR unspecified",
-  "tvQualityCadence": "Decoder output: {fps} frames/s · {dropped} dropped / {seconds} s"
+  "tvQualityCadence": "Decoder output: {fps} frames/s · {dropped} dropped / {seconds} s",
+  "tvAiActive": "AI ×2",
+  "tvAiNative": "Native rendering",
+  "tvAiUnknown": "AI: status unknown",
+  "tvAiReasonFluidity": "Smooth playback takes priority.",
+  "tvAiReasonSource": "This format keeps the original rendering.",
+  "tvAiReasonVerification": "Processing capability has not been confirmed.",
+  "tvAiReasonUnavailable": "Enhancement is unavailable for this playback."
 }

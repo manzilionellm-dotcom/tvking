@@ -1438,5 +1438,12 @@
   "tvQualitySource": "Källformat: {codec} · {range}",
   "tvQualityCodecUnknown": "okänd kodek",
   "tvQualityRangeUnknown": "HDR/SDR inte angivet",
-  "tvQualityCadence": "Avkodarutgång: {fps} bilder/s · {dropped} tappade / {seconds} s"
+  "tvQualityCadence": "Avkodarutgång: {fps} bilder/s · {dropped} tappade / {seconds} s",
+  "tvAiActive": "AI ×2",
+  "tvAiNative": "Ursprunglig återgivning",
+  "tvAiUnknown": "AI: okänd status",
+  "tvAiReasonFluidity": "Jämn uppspelning prioriteras.",
+  "tvAiReasonSource": "Det här formatet behåller den ursprungliga återgivningen.",
+  "tvAiReasonVerification": "Bearbetningskapaciteten är inte bekräftad.",
+  "tvAiReasonUnavailable": "Förbättring är inte tillgänglig för den här uppspelningen."
 }

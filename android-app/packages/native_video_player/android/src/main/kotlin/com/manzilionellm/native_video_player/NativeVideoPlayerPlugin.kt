@@ -1,5 +1,6 @@
 package com.manzilionellm.native_video_player
 
+import com.manzilionellm.native_video_player.ai.AiPictureEngine
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 
 /**
@@ -10,6 +11,10 @@ import io.flutter.embedding.engine.plugins.FlutterPlugin
  */
 class NativeVideoPlayerPlugin : FlutterPlugin {
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
+        // Mesures locales pendant l'accueil, avant tout prepare vidéo. Le
+        // moteur annule ce travail dès qu'un lecteur prend son bail : une
+        // première chaîne n'attend jamais la fin du benchmark.
+        AiPictureEngine.get(binding.applicationContext).startPreflight()
         binding
             .platformViewRegistry
             .registerViewFactory(

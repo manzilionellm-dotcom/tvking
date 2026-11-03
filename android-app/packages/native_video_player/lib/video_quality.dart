@@ -1,3 +1,7 @@
+import 'ai_picture_status.dart';
+
+export 'ai_picture_status.dart';
+
 /// Informations provenant du lecteur courant, jamais du nom de la chaîne.
 ///
 /// La taille est celle annoncée par la sortie vidéo, après les éventuels
@@ -15,6 +19,7 @@ class NativeVideoQuality {
     this.sourceDynamicRange,
     this.sourceFrameRate,
     this.cadence,
+    this.aiPicture,
   });
 
   final int outputWidth;
@@ -25,6 +30,7 @@ class NativeVideoQuality {
   final String? sourceDynamicRange;
   final double? sourceFrameRate;
   final NativeVideoCadence? cadence;
+  final NativeAiPictureStatus? aiPicture;
 
   bool get hasOutputSize => outputWidth > 0 && outputHeight > 0;
 
@@ -39,6 +45,7 @@ class NativeVideoQuality {
       sourceDynamicRange: sourceDynamicRange,
       sourceFrameRate: sourceFrameRate,
       cadence: cadence,
+      aiPicture: aiPicture,
     );
   }
 
@@ -75,6 +82,22 @@ class NativeVideoQuality {
         sourceDynamicRange: sourceDynamicRange,
         sourceFrameRate: sourceFrameRate,
         cadence: NativeVideoCadence.read(raw),
+        aiPicture: aiPicture,
+      );
+
+  /// Le diagnostic IA ne remplace jamais les mesures source/sortie reçues
+  /// de Media3. Les dimensions du shader restent dans son propre état.
+  NativeVideoQuality withAiPicture(NativeAiPictureStatus? status) =>
+      NativeVideoQuality(
+        outputWidth: outputWidth,
+        outputHeight: outputHeight,
+        sourceWidth: sourceWidth,
+        sourceHeight: sourceHeight,
+        sourceMimeType: sourceMimeType,
+        sourceDynamicRange: sourceDynamicRange,
+        sourceFrameRate: sourceFrameRate,
+        cadence: cadence,
+        aiPicture: status,
       );
 
   static Map<Object?, Object?> _data(Object? raw) =>
