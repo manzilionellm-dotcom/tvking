@@ -1,3 +1,13 @@
 {
-  "mode": "frozen"
+  "mode": "frozen",
+  "zunoTvReview": {
+    "scope": "zuno-tv",
+    "reviewedBy": "manzilionellm-dotcom",
+    "reviewedAt": "2026-11-03T11:42:10Z",
+    "expiresAt": "2026-11-03T17:42:10Z",
+    "reason": "Autorisation du propriétaire dans cette conversation : signer le candidat Zuno, puis rendre sa mise à jour disponible directement dans les réglages de l’application. Cette autorisation de livraison porte sur le candidat Android 3ddd4d077f5cf966cee5ceadd09dcbbf58253d6c (contraste, stabilité, traitement neuronal et contrôle de démarrage de l’APK signé). Elle ne prétend ni à une revue humaine indépendante du code, ni à un essai sur la box physique. La publication reste soumise aux contrôles du constructeur et aux deux démarrages du même APK signé ; aucun autre canal ni nettoyage n’est autorisé.",
+    "sourceCommit": "3ddd4d077f5cf966cee5ceadd09dcbbf58253d6c",
+    "androidTree": "3c833aae2e9b00093824a518794c67eab8782ce8",
+    "workflowBlob": "7ec9212118b9cc1737fdb797639c00c3de3e4639"
+  }
 }
