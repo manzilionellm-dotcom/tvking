@@ -28,7 +28,16 @@ def verify(output: Path, mode: str) -> None:
         if mode == "baseline" and failure is not None:
             raise SystemExit(f"Test de rendu non réussi : {case.get('name', '?')}")
         if mode == "mutation" and case.get("name") == PIXEL_METHOD:
-            if failure is None or "AssertionError" not in failure.get("type", ""):
+            if failure is None:
+                raise SystemExit("La mutation doit échouer sur une assertion des pixels.")
+            failure_type = failure.get("type", "").strip()
+            if not failure_type:
+                # AGP place l'exception en tête du texte de <failure>, sans
+                # attribut type. Ne lire que cette tête : une cause imbriquée
+                # ou un marqueur cité dans une autre erreur ne prouve rien.
+                lines = (failure.text or "").lstrip().splitlines()
+                failure_type = lines[0].partition(":")[0].strip() if lines else ""
+            if failure_type not in ("AssertionError", "java.lang.AssertionError"):
                 raise SystemExit("La mutation doit échouer sur une assertion des pixels.")
             detail = failure.get("message", "") + " " + (failure.text or "")
             if MUTATION_MARKER not in detail:

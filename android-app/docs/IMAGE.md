@@ -1,6 +1,7 @@
 # Image — Zuno TV
 
-État du candidat Android au 3 novembre 2026, après la révision `c3809be4`.
+État du candidat Android au 3 novembre 2026, après la révision `40f847cd`
+et la correction du lecteur de rapports Android.
 Cette fiche décrit le code et sépare les vérifications de logique des essais
 sur un appareil. La présence du code ne prouve pas sa publication ni son
 rendu sur une box cliente. Le Worker, le lecteur Windows et le binaire tiers
@@ -129,12 +130,27 @@ Le test de canal utilise un transport Flutter simulé : il vérifie notamment
 que la préférence arrive avant l'URL, pas que les pixels changent. Les tests
 JVM n'exécutent ni le décodeur Android ni OpenGL.
 
-`NativeContrastPixelTest` et le workflow de rendu de la PR 183 sont prévus pour
-lire une mire synthétique, comparer les pixels avec et sans contraste et
-vérifier le retour au rendu sans effet. À la rédaction de cette fiche, cet
-essai Android est en cours : aucun résultat de pixels réussi n'est annoncé.
-Même un résultat sur émulateur ne validerait pas toutes les box, les flux
-entrelacés, les contenus HDR/DRM, les sorties HDMI ou le rendu physique 4K.
+`NativeContrastPixelTest` lit une mire synthétique, compare les pixels avec et
+sans contraste et vérifie le retour au rendu sans effet. Dans le
+[run 41551529426](https://github.com/manzilionellm-dotcom/tvking/actions/runs/41551529426),
+au commit `40f847cd`, les deux émulateurs Android API 29 et 35 ont réussi ce
+premier passage. La plage sombre mesure 34,33 avec contraste et 48,33 sans ;
+la plage claire mesure 241 avec contraste et 224 sans. Les retours ON et OFF
+reproduisent chacun leur première image : différence RGB moyenne nulle.
+Les valeurs sont celles de cette mire, pas une note de qualité universelle.
+
+La contre-épreuve réintroduisant le refus permanent du contraste a bien
+échoué sur `PIXEL_CONTRAST_NOT_APPLIED` sur les deux API. Le job complet est
+cependant rouge : son vérificateur attendait `AssertionError` dans l'attribut
+XML `type`, alors qu'AGP l'écrit au début du texte de `<failure>`. Le lecteur
+de rapports accepte maintenant ces deux formes, exige toujours le marqueur
+de pixels, refuse les erreurs différentes, les tests ignorés et les captures
+absentes. Onze tests Python couvrent ce contrat. Le workflow doit être rejoué
+sur le commit corrigé avant intégration ; les mesures archivées ne remplacent
+pas ce nouveau contrôle.
+
+Ces résultats d'émulateur ne valident pas toutes les box, les flux entrelacés,
+les contenus HDR/DRM, les sorties HDMI ou le rendu physique 4K.
 
 Avant de conclure sur un appareil, comparer une même source SDR fixe avec et
 sans contraste, vérifier que la désactivation survit au redémarrage, puis

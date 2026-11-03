@@ -50,6 +50,9 @@ jobs:
       - name: Vérifier la provenance du code
         run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
 
+      - name: Vérifier le contrat des rapports Android
+        run: python3 -m unittest discover -s android-app/ci -p test_contrast_results.py -v
+
       - name: Java 17
         uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
         with:
