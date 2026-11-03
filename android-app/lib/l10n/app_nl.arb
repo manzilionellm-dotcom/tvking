@@ -2862,5 +2862,11 @@
   "tvCheckUnavailable": "Controle niet beschikbaar.",
   "updateOpenPlayStore": "Google Play openen",
   "updatePlayStoreHelp": "Zoek naar updates en installeer ze via Google Play.",
-  "updatePlayStoreUnavailable": "Google Play kan niet worden geopend. Probeer het opnieuw of open de Store op je apparaat."
+  "updatePlayStoreUnavailable": "Google Play kan niet worden geopend. Probeer het opnieuw of open de Store op je apparaat.",
+  "tvQualityOutput": "Speleruitvoer: {size}",
+  "tvQualityUnknown": "meting niet beschikbaar",
+  "tvQualitySource": "Bronformaat: {codec} · {range}",
+  "tvQualityCodecUnknown": "onbekende codec",
+  "tvQualityRangeUnknown": "HDR/SDR niet opgegeven",
+  "tvQualityCadence": "Decoderuitvoer: {fps} beelden/s · {dropped} overgeslagen / {seconds} s"
 }

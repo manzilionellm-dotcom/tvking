@@ -2862,5 +2862,11 @@
   "tvCheckUnavailable": "जाँच उपलब्ध नहीं है।",
   "updateOpenPlayStore": "Google Play खोलें",
   "updatePlayStoreHelp": "Google Play पर अपडेट देखें और इंस्टॉल करें।",
-  "updatePlayStoreUnavailable": "Google Play नहीं खुल सका। फिर से कोशिश करें या अपने डिवाइस पर स्टोर खोलें।"
+  "updatePlayStoreUnavailable": "Google Play नहीं खुल सका। फिर से कोशिश करें या अपने डिवाइस पर स्टोर खोलें।",
+  "tvQualityOutput": "प्लेयर आउटपुट: {size}",
+  "tvQualityUnknown": "माप उपलब्ध नहीं",
+  "tvQualitySource": "स्रोत फ़ॉर्मैट: {codec} · {range}",
+  "tvQualityCodecUnknown": "अज्ञात कोडेक",
+  "tvQualityRangeUnknown": "HDR/SDR निर्दिष्ट नहीं",
+  "tvQualityCadence": "डिकोडर आउटपुट: {fps} फ़्रेम/सेकंड · {seconds} सेकंड में {dropped} छूटे"
 }

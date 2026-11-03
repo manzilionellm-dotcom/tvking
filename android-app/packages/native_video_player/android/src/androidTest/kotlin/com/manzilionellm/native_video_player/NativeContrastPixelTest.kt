@@ -114,7 +114,7 @@ class NativeContrastPixelTest {
             }
             invoke("setUrl", mapOf("url" to Uri.fromFile(fixture).toString(), "vod" to true, "epoch" to 1))
             await("première image native") { activity.messenger.events.any { it.method == "firstFrame" } }
-            await("dimensions vidéo réelles") { activity.messenger.events.any { it.method == "videoFormat" } }
+            await("dimensions de sortie vidéo réelles") { activity.messenger.events.any { it.method == "videoSize" } }
 
             val defaultOn = captureWhen("01-default-on") { it.visible() }
             invoke("setContrast", false)
@@ -143,10 +143,16 @@ class NativeContrastPixelTest {
             assertTrue("ON reproduit le rendu par défaut : $onDifference", onDifference <= 2.0)
             assertTrue("OFF restaure la même image : $offDifference", offDifference <= 2.0)
             assertNoPlayerFailure()
-            val formats = activity.messenger.events.filter { it.method == "videoFormat" }
+            val sizes = activity.messenger.events.filter { it.method == "videoSize" }
                 .mapNotNull { it.arguments as? Map<*, *> }
-            assertTrue("la mire décodée garde ses 256 × 144 pixels", formats.any {
+            assertTrue("la sortie de la mire garde ses 256 × 144 pixels", sizes.any {
                 (it["width"] as? Number)?.toInt() == 256 && (it["height"] as? Number)?.toInt() == 144
+            })
+            val sources = activity.messenger.events.filter { it.method == "videoSource" }
+                .mapNotNull { it.arguments as? Map<*, *> }
+            assertTrue("le format source reste une information distincte de la sortie", sources.any {
+                (it["width"] as? Number)?.toInt() == 256 &&
+                    (it["height"] as? Number)?.toInt() == 144 && it["mimeType"] == "video/avc"
             })
             measures.put("passed", true)
         } finally {

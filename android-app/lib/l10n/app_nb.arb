@@ -1432,5 +1432,11 @@
   "tvCheckUnavailable": "Kontroll utilgjengelig.",
   "updateOpenPlayStore": "Åpne Google Play",
   "updatePlayStoreHelp": "Se etter og installer oppdateringer fra Google Play.",
-  "updatePlayStoreUnavailable": "Kunne ikke åpne Google Play. Prøv igjen, eller åpne butikken på enheten din."
+  "updatePlayStoreUnavailable": "Kunne ikke åpne Google Play. Prøv igjen, eller åpne butikken på enheten din.",
+  "tvQualityOutput": "Spillerutgang: {size}",
+  "tvQualityUnknown": "måling utilgjengelig",
+  "tvQualitySource": "Kildeformat: {codec} · {range}",
+  "tvQualityCodecUnknown": "ukjent kodek",
+  "tvQualityRangeUnknown": "HDR/SDR ikke oppgitt",
+  "tvQualityCadence": "Dekoderutgang: {fps} bilder/s · {dropped} tapte / {seconds} s"
 }

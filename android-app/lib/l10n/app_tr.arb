@@ -2862,5 +2862,11 @@
   "tvCheckUnavailable": "Kontrol kullanılamıyor.",
   "updateOpenPlayStore": "Google Play’i aç",
   "updatePlayStoreHelp": "Google Play üzerinden güncellemeleri kontrol edin ve yükleyin.",
-  "updatePlayStoreUnavailable": "Google Play açılamadı. Tekrar deneyin veya cihazınızdaki mağazayı açın."
+  "updatePlayStoreUnavailable": "Google Play açılamadı. Tekrar deneyin veya cihazınızdaki mağazayı açın.",
+  "tvQualityOutput": "Oynatıcı çıkışı: {size}",
+  "tvQualityUnknown": "ölçüm kullanılamıyor",
+  "tvQualitySource": "Kaynak biçimi: {codec} · {range}",
+  "tvQualityCodecUnknown": "bilinmeyen kodek",
+  "tvQualityRangeUnknown": "HDR/SDR belirtilmemiş",
+  "tvQualityCadence": "Çözücü çıkışı: {fps} kare/sn · {seconds} sn içinde {dropped} kayıp"
 }

@@ -31,6 +31,7 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Tracks
+import androidx.media3.common.VideoSize
 import androidx.media3.common.text.CueGroup
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.common.util.Util
@@ -76,6 +77,7 @@ import com.manzilionellm.native_video_player.logic.CodecOrder
 import com.manzilionellm.native_video_player.logic.DecoderFallback
 import com.manzilionellm.native_video_player.logic.DisplayModeOption
 import com.manzilionellm.native_video_player.logic.ExclusiveAudio
+import com.manzilionellm.native_video_player.logic.FrameCopyGate
 import com.manzilionellm.native_video_player.logic.FrameRateMatch
 import com.manzilionellm.native_video_player.logic.HeldFrame
 import com.manzilionellm.native_video_player.logic.NamedCodec
@@ -91,6 +93,7 @@ import com.manzilionellm.native_video_player.logic.ReconnectPlan
 import com.manzilionellm.native_video_player.logic.SpokenCandidate
 import com.manzilionellm.native_video_player.logic.SpokenTrackChoice
 import com.manzilionellm.native_video_player.logic.VideoCandidate
+import com.manzilionellm.native_video_player.logic.VideoCadenceWindow
 import com.manzilionellm.native_video_player.logic.VideoEngine
 import com.manzilionellm.native_video_player.logic.VideoTrackChoice
 import com.manzilionellm.native_video_player.logic.VideoSurfaceBuffer
@@ -236,7 +239,11 @@ class NativeVideoView(
 
     // Dernière image copiée. null = on n'a encore rien de montrable.
     private var heldBitmap: Bitmap? = null
-    private var copyInFlight = false
+    private val frameCopies = FrameCopyGate()
+    // finishDispose retire les tâches du handler principal du lecteur.
+    // Le callback de copie doit encore passer pour recycler son bitmap,
+    // uniquement une fois que PixelCopy a fini d'y écrire.
+    private val frameCopyHandler = Handler(Looper.getMainLooper())
     private var lastCopyAt = 0L
     private var sawFrame = false
 
@@ -461,8 +468,9 @@ class NativeVideoView(
     private var videoGaveUp: Boolean = false
     private var videoFallbackPosted: Boolean = false
 
-    // Trames vraiment envoyées à l'écran. Le compteur est touché sur le
-    // fil de lecture, lu sur le fil principal.
+    // Notifications AVANT rendu : servent au watchdog, pas à annoncer la
+    // cadence réellement affichée. Le compteur est touché sur le fil de
+    // lecture, lu sur le fil principal.
     private val renderedFrames = AtomicInteger(0)
 
     @Volatile
@@ -486,6 +494,9 @@ class NativeVideoView(
     private var bytesLoaded: Long = 0L
     private var bitrateEstimate: Long = 0L
     private var videoChosenForSession: Boolean = false
+    private val videoCadenceWindow = VideoCadenceWindow()
+    private var lastVideoCadencePollMs = 0L
+    private var videoCadencePublished = false
 
     private val positionPump = object : Runnable {
         override fun run() {
@@ -496,6 +507,7 @@ class NativeVideoView(
                 emit("position", pos)
                 maybeCopyFrame()
             }
+            sampleVideoCadence()
             // Filet : la copie de la dernière image est retirée dès qu'une
             // trame a été rendue APRÈS son affichage, sans attendre le
             // signal « première image » (absent sur certaines box quand la
@@ -544,6 +556,56 @@ class NativeVideoView(
             lastSentDuration = d
             emit("duration", d)
         }
+    }
+
+    /** Mesure passive : aucune modification du flux, des pistes ou du rendu. */
+    private fun sampleVideoCadence() {
+        if (!player.isPlaying || player.playbackState != Player.STATE_READY ||
+            !AppForeground.allowsReopen()
+        ) {
+            resetVideoCadence()
+            return
+        }
+        val now = SystemClock.elapsedRealtime()
+        if (now >= lastVideoCadencePollMs &&
+            now - lastVideoCadencePollMs < VideoCadenceWindow.MIN_WINDOW_MS
+        ) return
+        lastVideoCadencePollMs = now
+        val counters = player.videoDecoderCounters
+        if (counters == null) {
+            resetVideoCadence()
+            return
+        }
+        // Barrière mémoire prescrite par Media3 : le fil de lecture écrit
+        // les compteurs, le fil principal ne doit pas lire un état périmé.
+        counters.ensureUpdated()
+        val sample = videoCadenceWindow.sample(
+            counters = counters,
+            nowMs = now,
+            rendered = counters.renderedOutputBufferCount.toLong(),
+            dropped = counters.droppedBufferCount.toLong(),
+            playing = true,
+        )
+        if (sample == null) {
+            if (videoCadencePublished) emit("videoCadence", null)
+            videoCadencePublished = false
+            return
+        }
+        videoCadencePublished = true
+        // Sortie du décodeur seulement. Les pertes éventuelles dans le GL,
+        // le compositeur Android ou la dalle ne sont pas mesurées ici.
+        emit("videoCadence", mapOf(
+            "renderedFrames" to sample.renderedFrames,
+            "droppedFrames" to sample.droppedFrames,
+            "windowMs" to sample.windowMs,
+        ))
+    }
+
+    private fun resetVideoCadence() {
+        videoCadenceWindow.reset()
+        lastVideoCadencePollMs = 0L
+        if (videoCadencePublished) emit("videoCadence", null)
+        videoCadencePublished = false
     }
 
     init {
@@ -1599,6 +1661,7 @@ class NativeVideoView(
 
     override fun onIsPlayingChanged(eventTime: AnalyticsListener.EventTime, isPlaying: Boolean) {
         if (!fresh(eventTime)) return
+        if (!isPlaying) resetVideoCadence()
         emit("playing", isPlaying)
         // Le son de CETTE session seulement. Avant, le volume remontait
         // juste après prepare() : le tampon HDMI de l'ancienne chaîne
@@ -1744,6 +1807,7 @@ class NativeVideoView(
         initializationDurationMs: Long,
     ) {
         if (!fresh(eventTime)) return
+        resetVideoCadence()
         videoDecoderReady = true
         decoderReadyAtMs = SystemClock.elapsedRealtime()
         emit("videoDecoder", decoderName)
@@ -1757,17 +1821,38 @@ class NativeVideoView(
         if (!fresh(eventTime)) return
         val directReason = contrastDirectReason(format)
         if (directReason != null && requestContrastDirectFallback(directReason)) return
-        // Mesure seulement : le canal PiP adapte sa fenêtre à la vidéo,
-        // sans modifier le flux, sa piste, ni la session Cast éventuelle.
-        emit("videoFormat", mapOf(
+        resetVideoCadence()
+        // Métadonnées du flux : elles ne prouvent ni la taille de l'image
+        // décodée, ni la cadence réelle, ni le mode HDR de la sortie HDMI.
+        val dynamicRange = when {
+            format.sampleMimeType == MimeTypes.VIDEO_DOLBY_VISION -> "dolbyVision"
+            format.colorInfo?.colorTransfer == C.COLOR_TRANSFER_ST2084 -> "pq"
+            format.colorInfo?.colorTransfer == C.COLOR_TRANSFER_HLG -> "hlg"
+            format.colorInfo?.colorTransfer == C.COLOR_TRANSFER_SDR -> "sdr"
+            else -> null
+        }
+        emit("videoSource", mapOf(
             "width" to positive(format.width),
             "height" to positive(format.height),
+            "mimeType" to format.sampleMimeType,
+            "dynamicRange" to dynamicRange,
+            "frameRate" to format.frameRate.takeIf { it.isFinite() && it > 0f },
         ))
         val fps = format.frameRate
         if (fps > 0f) {
             contentFps = fps
             applyFrameRate(fps)
         }
+    }
+
+    override fun onVideoSizeChanged(eventTime: AnalyticsListener.EventTime, videoSize: VideoSize) {
+        if (!fresh(eventTime)) return
+        // Taille confirmée par le renderer avant la première image et à
+        // chaque changement. Le téléviseur peut encore la mettre à l'échelle.
+        emit("videoSize", mapOf(
+            "width" to positive(videoSize.width),
+            "height" to positive(videoSize.height),
+        ))
     }
 
     override fun onBandwidthEstimate(
@@ -2289,13 +2374,20 @@ class NativeVideoView(
         }
     }
 
+    // READY autorise aussi une image volontairement mise en pause, mais
+    // pas la surface arrêtée par Retour ni celle d'une reconnexion.
+    private fun canCopyCurrentFrame(): Boolean =
+        !released && !disposeStarted && !suspended && !castSuspended &&
+            AppForeground.allowsReopen() && sawFrame && holdView.visibility != View.VISIBLE &&
+            player.playbackState == Player.STATE_READY
+
     /**
      * Copie une petite image de la surface pendant que ça joue.
      * On ne copie pas pendant la coupure : on remplacerait la bonne
      * image par du noir. Au plus une copie à la fois, toutes les 4 s.
      */
     private fun maybeCopyFrame(force: Boolean = false) {
-        if (released || copyInFlight || !sawFrame) return
+        if (!canCopyCurrentFrame() || frameCopies.inFlight) return
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return
         val now = SystemClock.elapsedRealtime()
         if (!force && now - lastCopyAt < 4_000L) return
@@ -2308,23 +2400,35 @@ class NativeVideoView(
         val top = (h - rh) / 2
         val rect = Rect(left, top, left + rw, top + rh)
         val bmp = Bitmap.createBitmap(rw, rh, Bitmap.Config.RGB_565)
-        copyInFlight = true
+        val ticket = frameCopies.begin(sessions.generation, currentUrl)
+        if (ticket == null) {
+            bmp.recycle()
+            return
+        }
         lastCopyAt = now
         try {
             PixelCopy.request(surfaceView, rect, bmp, { code ->
-                copyInFlight = false
-                val keep = !released && code == PixelCopy.SUCCESS && sawFrame &&
-                    holdView.visibility != View.VISIBLE
+                val completion = frameCopies.finish(
+                    ticket, sessions.generation, currentUrl, canCopyCurrentFrame(),
+                )
+                val keep = completion == FrameCopyGate.Completion.KEEP &&
+                    code == PixelCopy.SUCCESS
                 // Une copie noire n'est pas une image : on garde la
                 // précédente (ou rien, et le carton de chaîne prendra la place).
                 if (!keep || copyLooksBlank(bmp)) {
-                    bmp.recycle()
-                    return@request
+                    if (!bmp.isRecycled) bmp.recycle()
+                } else {
+                    stashFrame(bmp)
                 }
-                stashFrame(bmp)
-            }, handler)
+                if (completion == FrameCopyGate.Completion.REFRESH_CURRENT) {
+                    // A vient de finir après la première image de B :
+                    // B n'hérite ni du bitmap de A ni de son délai de 4 s.
+                    lastCopyAt = 0L
+                    handler.post { maybeCopyFrame(force = true) }
+                }
+            }, frameCopyHandler)
         } catch (_: RuntimeException) {
-            copyInFlight = false
+            frameCopies.finish(ticket, sessions.generation, currentUrl, false)
             if (!bmp.isRecycled) bmp.recycle()
         }
     }
@@ -3031,6 +3135,8 @@ class NativeVideoView(
     }
 
     private fun resetPictureClock() {
+        resetVideoCadence()
+        emit("videoQualityReset", null)
         renderedFrames.set(0)
         lastFrameAtMs = 0L
         videoDecoderReady = false

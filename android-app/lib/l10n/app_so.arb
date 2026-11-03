@@ -3175,5 +3175,11 @@
   },
   "updateOpenPlayStore": "Fur Google Play",
   "updatePlayStoreHelp": "Ka hubi Google Play cusboonaysiinta oo rakib.",
-  "updatePlayStoreUnavailable": "Google Play lama furi karin. Mar kale isku day ama ka fur dukaanka qalabkaaga."
+  "updatePlayStoreUnavailable": "Google Play lama furi karin. Mar kale isku day ama ka fur dukaanka qalabkaaga.",
+  "tvQualityOutput": "Soo-saarka ciyaariyaha: {size}",
+  "tvQualityUnknown": "cabbir lama heli karo",
+  "tvQualitySource": "Qaabka isha: {codec} · {range}",
+  "tvQualityCodecUnknown": "kodeeg aan la aqoon",
+  "tvQualityRangeUnknown": "HDR/SDR lama sheegin",
+  "tvQualityCadence": "Soo-saarka furfuraha: {fps} sawir/s · {dropped} lumay / {seconds} s"
 }

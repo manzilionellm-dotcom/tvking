@@ -2862,5 +2862,11 @@
   "tvCheckUnavailable": "Verificação indisponível.",
   "updateOpenPlayStore": "Abrir o Google Play",
   "updatePlayStoreHelp": "Procure e instale atualizações através do Google Play.",
-  "updatePlayStoreUnavailable": "Não foi possível abrir o Google Play. Tente novamente ou abra a loja no seu dispositivo."
+  "updatePlayStoreUnavailable": "Não foi possível abrir o Google Play. Tente novamente ou abra a loja no seu dispositivo.",
+  "tvQualityOutput": "Saída do leitor: {size}",
+  "tvQualityUnknown": "medição indisponível",
+  "tvQualitySource": "Formato de origem: {codec} · {range}",
+  "tvQualityCodecUnknown": "codec desconhecido",
+  "tvQualityRangeUnknown": "HDR/SDR não especificado",
+  "tvQualityCadence": "Saída do descodificador: {fps} imagens/s · {dropped} descartadas / {seconds} s"
 }

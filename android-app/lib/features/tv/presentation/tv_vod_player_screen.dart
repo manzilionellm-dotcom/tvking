@@ -50,6 +50,7 @@ import '../core/tv_dimens.dart';
 import '../core/tv_tokens.dart';
 import '../core/tv_app_tokens.dart';
 import 'tv_cinema_common.dart';
+import 'tv_playback_quality.dart';
 
 class TvVodPlayerScreen extends StatefulWidget {
   const TvVodPlayerScreen({
@@ -1105,6 +1106,10 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
                       context,
                     ).ui(TvDimens.title, color: TvAppTokens.playbackOf(context).muted),
                   ),
+                if (!_desktopCasting) ...<Widget>[
+                  const SizedBox(height: TvDimens.rowGap),
+                  TvPlaybackQuality(quality: _c.videoQuality),
+                ],
               ],
             ),
           ),

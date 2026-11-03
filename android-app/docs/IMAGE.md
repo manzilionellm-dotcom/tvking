@@ -86,6 +86,35 @@ Les tests JVM prouvent les dimensions calculées, notamment le cas d'une UI
 1080p sur une sortie 4K. Ils ne prouvent ni l'allocation réelle du tampon sur
 une TV, ni la résolution HDMI finale, ni un gain de netteté mesuré.
 
+## Indicateur de qualité fondé sur la lecture
+
+Les cartes et lignes du Direct ne transforment plus les mentions 4K/FHD/HD
+du nom de chaîne en badges techniques. L'aperçu et les commandes de lecture
+affichent les dimensions numériques reçues du lecteur courant.
+
+- **Format source** : dimensions, codec et transfert colorimétrique du format
+  sélectionné transmis par Media3. HDR/SDR reste inconnu si cette information
+  manque ; ce libellé ne garantit pas un mode HDR sur la dalle.
+- **Sortie lecteur** : dimensions du callback `onVideoSizeChanged`, distinctes
+  de celles du format source et de la résolution HDMI. Un effet qui agrandit
+  la sortie ne transforme pas ces dimensions en preuve de détail 4K natif.
+- **Sortie décodeur** : deltas réels de `DecoderCounters` pendant 2 à 5 secondes
+  de lecture continue. La cadence déclarée par le fichier n'est jamais utilisée
+  à sa place. Pause, tampon, changement de décodeur ou fenêtre invalide effacent
+  la mesure. Ces compteurs ne mesurent pas les pertes après le traitement GL,
+  le compositeur Android ou la dalle.
+
+Le PC publie les dimensions déjà rapportées par `VideoParams`; codec, HDR et
+cadence restent inconnus tant que son moteur ne les fournit pas. Aucun score
+de qualité ni état « IA active » n'est inventé. Les données d'une ancienne
+chaîne sont effacées au zap et lors d'une reconstruction du lecteur.
+
+Les tests ajoutés couvrent source/sortie différentes, nom commercial 4K/60/IA
+avec une lecture 720 et 24 images/s comptées, informations inconnues, pause,
+zap et invalidation des fenêtres. Le test Android de pixels vérifie séparément
+les événements source et sortie réels de la mire 256 × 144. L'exécution de
+ces nouvelles assertions dépend de la CI du candidat qui les intègre.
+
 ## Autres mécanismes conservés
 
 - Décodage matériel en premier, avec repli vidéo ciblé vers les codecs logiciels
