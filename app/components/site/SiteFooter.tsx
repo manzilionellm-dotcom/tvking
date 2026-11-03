@@ -42,6 +42,8 @@ export default function SiteFooter() {
           <p className="mb-1 font-semibold text-white/70">Infos</p>
           <Link href="/faq" className="text-white/45 hover:text-white">FAQ</Link>
           <Link href="/guides/installer-zuno" className="text-white/45 hover:text-white">Guide d&apos;installation</Link>
+          <Link href="/guides/ajouter-playlist-m3u-xtream-zuno" className="text-white/45 hover:text-white">Ajouter une playlist</Link>
+          <Link href="/guides/zuno-coupures-erreurs-lecture" className="text-white/45 hover:text-white">Coupures et erreurs</Link>
           <Link href="/legal" className="text-white/45 hover:text-white">Mentions légales</Link>
           <Link href="/connexion" className="text-white/45 hover:text-white">Connexion</Link>
         </div>
