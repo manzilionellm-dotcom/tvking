@@ -5,9 +5,9 @@
     "reviewedBy": "manzilionellm-dotcom",
     "reviewedAt": "2026-11-03T11:42:10Z",
     "expiresAt": "2026-11-03T17:42:10Z",
-    "reason": "Autorisation du propriétaire dans cette conversation : signer le candidat Zuno, puis rendre sa mise à jour disponible directement dans les réglages de l’application. Cette autorisation de livraison porte sur le candidat Android 3ddd4d077f5cf966cee5ceadd09dcbbf58253d6c (contraste, stabilité, traitement neuronal et contrôle de démarrage de l’APK signé). Elle ne prétend ni à une revue humaine indépendante du code, ni à un essai sur la box physique. La publication reste soumise aux contrôles du constructeur et aux deux démarrages du même APK signé ; aucun autre canal ni nettoyage n’est autorisé.",
-    "sourceCommit": "3ddd4d077f5cf966cee5ceadd09dcbbf58253d6c",
-    "androidTree": "3c833aae2e9b00093824a518794c67eab8782ce8",
-    "workflowBlob": "7ec9212118b9cc1737fdb797639c00c3de3e4639"
+    "reason": "Autorisation du propriétaire dans cette conversation : signer Zuno, puis rendre sa mise à jour disponible directement dans les réglages de l’application. Le candidat 2f11db8200d30488b254d657f8ae7b36926f2065 conserve le code applicatif image du build signé 299 et corrige uniquement les dépendances Linux de ses contrôles Android. Le build 299 a vérifié le binaire et sa signature, mais pas son ouverture : libpulse manquait avant le lancement des émulateurs. La publication exige les deux démarrages réussis du nouvel APK signé. Cette autorisation ne prétend ni à une revue humaine indépendante du code ni à un essai sur la box physique ; aucun autre canal ni nettoyage n’est autorisé.",
+    "sourceCommit": "2f11db8200d30488b254d657f8ae7b36926f2065",
+    "androidTree": "00d623209aad0182332160a7e633c18c794b525a",
+    "workflowBlob": "49dd7691767eeb16dedba3368d05ad2b7e5f099a"
   }
 }
