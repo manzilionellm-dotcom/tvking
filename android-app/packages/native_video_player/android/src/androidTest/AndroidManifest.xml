@@ -1,5 +1,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <application android:theme="@android:style/Theme.Material.Light.NoActionBar">
+    <!-- Le serveur des régressions HTTP écoute uniquement dans l'émulateur. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <application android:theme="@android:style/Theme.Material.Light.NoActionBar"
+        android:usesCleartextTraffic="true">
         <!-- Hôte de test seulement : aucune activité ajoutée à l'application publiée. -->
         <activity
             android:name="com.manzilionellm.native_video_player.ContrastTestActivity"

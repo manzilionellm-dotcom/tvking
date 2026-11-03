@@ -20,6 +20,9 @@ import 'package:flutter/widgets.dart';
 
 import 'playback_lease.dart';
 import 'spoken_track.dart';
+import 'video_quality.dart';
+
+export 'video_quality.dart';
 
 /// Une piste audio ou de sous-titres proposée par le fichier en cours.
 @immutable
@@ -344,10 +347,13 @@ class NativeVideoController extends ChangeNotifier {
   /// Nom du décodeur vidéo créé (pour l'écran, pas une mesure de qualité).
   String videoDecoderName = '';
 
-  /// Dimensions reçues du décodeur, pour donner à la fenêtre PiP le ratio
+  /// Dimensions reçues de la sortie vidéo, pour donner à la fenêtre PiP le ratio
   /// réel du flux. Aucune piste ni qualité vidéo n'est changée par ce relevé.
   int videoWidth = 0;
   int videoHeight = 0;
+
+  /// Mesures du décodeur et métadonnées source, sans estimation par le nom.
+  NativeVideoQuality videoQuality = const NativeVideoQuality();
 
   String _imageEngine = 'hardware';
   bool _frameRateMatch = false;
@@ -412,6 +418,7 @@ class NativeVideoController extends ChangeNotifier {
     if (_disposed) return;
     audible = false;
     _epoch++;
+    videoQuality = videoQuality.withAiPicture(null).withCadence(null);
     _backend?.silence();
     _channel?.invokeMethod<void>('silence');
     if (!_disposed) notifyListeners();
@@ -459,7 +466,34 @@ class NativeVideoController extends ChangeNotifier {
     if (!_acceptEvents) return;
     final _Ev call = _Ev(method, arguments);
     switch (call.method) {
+      case 'aiPicture':
+        // L'événement natif active l'IA seulement après une vraie image
+        // traitée. Une erreur/une copie figée/un autre lecteur invalide cette
+        // preuve ; un callback tardif ne peut pas la rallumer dans cet état.
+        final NativeAiPictureStatus? previous = videoQuality.aiPicture;
+        final NativeAiPictureStatus? status =
+            !audible || _castSuspended || hasError || holdFrame ||
+                    nativeRetrying || isEnded || engineExhausted
+                ? null
+                : NativeAiPictureStatus.read(call.arguments);
+        videoQuality = videoQuality.withAiPicture(status);
+        if (identical(previous, status) ||
+            (status != null && status.hasSamePresentation(previous))) return;
+      case 'videoSize':
+        videoQuality = videoQuality.withVideoSize(call.arguments);
+        videoWidth = videoQuality.outputWidth;
+        videoHeight = videoQuality.outputHeight;
+      case 'videoSource':
+        videoQuality = videoQuality.withSourceFormat(call.arguments);
+      case 'videoCadence':
+        videoQuality = videoQuality.withCadence(call.arguments);
+      case 'videoQualityReset':
+        videoQuality = const NativeVideoQuality();
+        videoWidth = 0;
+        videoHeight = 0;
       case 'videoFormat':
+        // Compatibilité avec les moteurs plus anciens. Un format déclaré
+        // suffit au ratio PiP, mais ne devient pas une mesure de qualité.
         if (call.arguments is Map) {
           final Map<Object?, Object?> data =
               call.arguments as Map<Object?, Object?>;
@@ -472,8 +506,10 @@ class NativeVideoController extends ChangeNotifier {
         }
       case 'buffering':
         isBuffering = call.arguments as bool;
+        if (isBuffering) videoQuality = videoQuality.withCadence(null);
       case 'playing':
         isPlaying = call.arguments as bool;
+        if (!isPlaying) videoQuality = videoQuality.withCadence(null);
       case 'position':
         {
           // Certaines box ne rappellent pas « firstFrame » quand on réutilise
@@ -495,19 +531,26 @@ class NativeVideoController extends ChangeNotifier {
         nativeRetrying = false;
       case 'ended':
         isEnded = true;
+        videoQuality = videoQuality.withAiPicture(null);
       case 'error':
         hasError = true;
         nativeRetrying = false;
+        videoQuality = videoQuality.withAiPicture(null).withCadence(null);
       case 'holdFrame':
         holdFrame = call.arguments == true;
-        if (holdFrame) isBuffering = false;
+        if (holdFrame) {
+          isBuffering = false;
+          videoQuality = videoQuality.withAiPicture(null).withCadence(null);
+        }
       case 'reconnecting':
         nativeRetrying = call.arguments == true;
+        if (nativeRetrying) videoQuality = videoQuality.withAiPicture(null);
       case 'duration':
         duration = Duration(milliseconds: call.arguments as int);
       case 'cues':
         cues = (call.arguments as String?) ?? '';
       case 'reopen':
+        videoQuality = videoQuality.withAiPicture(null);
         firstFrame = false;
         isBuffering = true;
         hasError = false;
@@ -515,6 +558,7 @@ class NativeVideoController extends ChangeNotifier {
       case 'engineExhausted':
         engineExhausted = true;
         isBuffering = false;
+        videoQuality = videoQuality.withAiPicture(null);
       case 'videoDecoder':
         videoDecoderName = (call.arguments as String?) ?? '';
       case 'tracks':
@@ -610,6 +654,7 @@ class NativeVideoController extends ChangeNotifier {
     hasError = false;
     videoWidth = 0;
     videoHeight = 0;
+    videoQuality = const NativeVideoQuality();
     engineExhausted = false;
     engineRejectedFfmpeg = false;
     isEnded = false;
@@ -762,6 +807,7 @@ class NativeVideoController extends ChangeNotifier {
   /// au premier plan. Ce verrou est distinct du cycle de vie Home/retour.
   Future<void> suspendForCast() async {
     if (_disposed) throw StateError('Lecteur fermé');
+    videoQuality = videoQuality.withAiPicture(null).withCadence(null);
     final MethodChannel? channel = _channel;
     if (channel == null) {
       // Le moteur PC conserve sa passation propre ; ce verrou est celui

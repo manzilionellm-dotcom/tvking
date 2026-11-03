@@ -1500,5 +1500,18 @@
   "tvCheckUnavailable": "Check unavailable.",
   "updateOpenPlayStore": "Open Google Play",
   "updatePlayStoreHelp": "Check for and install updates from Google Play.",
-  "updatePlayStoreUnavailable": "Could not open Google Play. Try again or open the Store on your device."
+  "updatePlayStoreUnavailable": "Could not open Google Play. Try again or open the Store on your device.",
+  "tvQualityOutput": "Player output: {size}",
+  "tvQualityUnknown": "measurement unavailable",
+  "tvQualitySource": "Source format: {codec} · {range}",
+  "tvQualityCodecUnknown": "unknown codec",
+  "tvQualityRangeUnknown": "HDR/SDR unspecified",
+  "tvQualityCadence": "Decoder output: {fps} frames/s · {dropped} dropped / {seconds} s",
+  "tvAiActive": "AI ×2",
+  "tvAiNative": "Native rendering",
+  "tvAiUnknown": "AI: status unknown",
+  "tvAiReasonFluidity": "Smooth playback takes priority.",
+  "tvAiReasonSource": "This format keeps the original rendering.",
+  "tvAiReasonVerification": "Processing capability has not been confirmed.",
+  "tvAiReasonUnavailable": "Enhancement is unavailable for this playback."
 }

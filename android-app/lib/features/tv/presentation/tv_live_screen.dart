@@ -1644,13 +1644,9 @@ class _ChannelCardState extends State<_ChannelCard> {
   Widget build(BuildContext context) {
     final Channel channel = widget.channel;
     final bool fav = FavoritesRepository.instance.current.contains(channel.id);
-    final _ParsedName p = _parseName(channel);
-    // PREMIUM (réf. design) : on retire le jargon codec (RAW/HEVC/60FPS/VIP/LIVE)
-    // qui faisait « IPTV brut » et on ne garde qu'UN chip qualité (4K/FHD/HD).
-    final String? quality = p.badges.cast<String?>().firstWhere(
-          (String? b) => b == '4K' || b == 'FHD' || b == 'HD',
-          orElse: () => null,
-        );
+    final String name = _parseName(channel);
+    // Les mentions 4K/HD du nom sont des promesses de la playlist. Aucune
+    // carte n'en fait un badge technique : seule la lecture mesure l'image.
     // RESTAURATION DU FOCUS au retour du lecteur (déterministe) : quand l'écran
     // nous DÉSIGNE (restoreFocusId == notre id), on (re)prend le focus en
     // post-frame puis on libère le drapeau. Déclenché par un rebuild explicite
@@ -1688,9 +1684,6 @@ class _ChannelCardState extends State<_ChannelCard> {
           // LOGO PETIT en chip haut-gauche (normalisé) : quand des chaînes
           // partagent le même logo, c'est le NOM qui distingue (réf. design).
           Positioned(top: 10, left: 10, child: _LogoChip(channel: channel)),
-          // Chip qualité discret en haut-droite.
-          if (quality != null)
-            Positioned(top: 12, right: 12, child: _TagBadge(label: quality)),
           // Favori discret en bas-droite.
           if (fav)
             Positioned(
@@ -1708,7 +1701,7 @@ class _ChannelCardState extends State<_ChannelCard> {
             right: 40,
             bottom: 12,
             child: Text(
-              p.name,
+              name,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
@@ -1749,40 +1742,36 @@ class _ChannelCardState extends State<_ChannelCard> {
     );
   }
 
-  /// Extrait les tags du nom (qualité + VIP/RAW/60 FPS/HEVC/LIVE) en casse
-  /// uniforme et renvoie le nom NETTOYÉ + la liste des badges.
+  /// Nettoie les mentions commerciales de la playlist, sans les transformer
+  /// en mesures : une chaîne nommée « 4K » peut très bien livrer du 720p.
   ///
   /// PERF FLUIDITÉ : regex COMPILÉES UNE FOIS (statique) + résultat MÉMOÏSÉ par
   /// nom. Avant : 8 RegExp recompilées + exécutées à CHAQUE carte entrant à
   /// l'écran → pic CPU à chaque frame de scroll. Maintenant : 0 recompile, 0
   /// recalcul pour un nom déjà vu. (Aucun impact mémoire/démarrage : pas de
   /// pré-chargement, juste du calcul évité.)
-  static final List<(String, RegExp)> _badgeRules = <(String, RegExp)>[
-    ('4K', RegExp(r'\b(4K|UHD|2160P?)\b', caseSensitive: false)),
-    ('FHD', RegExp(r'\b(FHD|1080P?)\b', caseSensitive: false)),
-    ('HD', RegExp(r'\bHD\b', caseSensitive: false)),
-    ('HEVC', RegExp(r'\b(HEVC|H\.?265)\b', caseSensitive: false)),
-    ('60 FPS', RegExp(r'\b60\s?FPS\b', caseSensitive: false)),
-    ('VIP', RegExp(r'\bVIP\b', caseSensitive: false)),
-    ('RAW', RegExp(r'\bRAW\b', caseSensitive: false)),
-    ('LIVE', RegExp(r'\bLIVE\b', caseSensitive: false)),
+  static final List<RegExp> _nameTags = <RegExp>[
+    RegExp(r'\b(4K|UHD|2160P?)\b', caseSensitive: false),
+    RegExp(r'\b(FHD|1080P?)\b', caseSensitive: false),
+    RegExp(r'\bHD\b', caseSensitive: false),
+    RegExp(r'\b(HEVC|H\.?265)\b', caseSensitive: false),
+    RegExp(r'\b60\s?FPS\b', caseSensitive: false),
+    RegExp(r'\bVIP\b', caseSensitive: false),
+    RegExp(r'\bRAW\b', caseSensitive: false),
+    RegExp(r'\bLIVE\b', caseSensitive: false),
   ];
   static final RegExp _multiSpace = RegExp(r'\s{2,}');
   static final RegExp _leadSep = RegExp(r'^[\s|·\-–]+');
   static final RegExp _trailSep = RegExp(r'[\s|·\-–]+$');
-  static final Map<String, _ParsedName> _nameMemo = <String, _ParsedName>{};
+  static final Map<String, String> _nameMemo = <String, String>{};
 
-  static _ParsedName _parseName(Channel c) {
+  static String _parseName(Channel c) {
     final String key = c.cleanName;
-    final _ParsedName? hit = _nameMemo[key];
+    final String? hit = _nameMemo[key];
     if (hit != null) return hit;
     String n = key;
-    final List<String> badges = <String>[];
-    for (final (String label, RegExp re) in _badgeRules) {
-      if (re.hasMatch(n)) {
-        badges.add(label);
-        n = n.replaceAll(re, ' ');
-      }
+    for (final RegExp re in _nameTags) {
+      n = n.replaceAll(re, ' ');
     }
     n = n
         .replaceAll(_multiSpace, ' ')
@@ -1791,46 +1780,12 @@ class _ChannelCardState extends State<_ChannelCard> {
         .trim();
     n = _tvPretty(n); // « Prime: 13e Rue » → « Prime · 13e Rue » (TV-only)
     if (n.isEmpty) n = key; // garde-fou : jamais de nom vide
-    final _ParsedName result = _ParsedName(n, badges);
     // Garde-fou mémoire LARGE : à 4000 le mémo se vidait en plein défilement
     // d'une grosse liste et chaque ligne repassait par les regex. 60 000 entrées
     // ≈ quelques Mo, couvre le plafond de chaînes chargées en mémoire.
     if (_nameMemo.length > 60000) _nameMemo.clear();
-    _nameMemo[key] = result;
-    return result;
-  }
-}
-
-/// Nom de chaîne nettoyé + ses badges extraits.
-class _ParsedName {
-  const _ParsedName(this.name, this.badges);
-  final String name;
-  final List<String> badges;
-}
-
-/// Petit badge discret (or sur fond or ~12 %), placé APRÈS le nom.
-class _TagBadge extends StatelessWidget {
-  const _TagBadge({required this.label});
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      decoration: BoxDecoration(
-        color: TvAppTokens.of(context).badgeBg,
-        borderRadius: BorderRadius.circular(TvTokens.rSmall),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          fontSize: 10,
-          fontWeight: FontWeight.w700,
-          letterSpacing: 0.4,
-          color: TvAppTokens.of(context).accent,
-        ),
-      ),
-    );
+    _nameMemo[key] = n;
+    return n;
   }
 }
 
@@ -2060,13 +2015,8 @@ class _ChannelRowState extends State<_ChannelRow> {
   @override
   Widget build(BuildContext context) {
     final Channel channel = widget.channel;
-    // Analyse du nom (badges 4K/FHD/HD) : helper statique mémoïsé partagé avec
-    // la carte de grille — on l'appelle par sa classe.
-    final _ParsedName p = _ChannelCardState._parseName(channel);
-    final String? quality = p.badges.cast<String?>().firstWhere(
-          (String? b) => b == '4K' || b == 'FHD' || b == 'HD',
-          orElse: () => null,
-        );
+    // Même nom nettoyé que la grille, sans qualité déduite de la playlist.
+    final String name = _ChannelCardState._parseName(channel);
     if (widget.restoreFocusId != null && widget.restoreFocusId == channel.id) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
@@ -2122,7 +2072,7 @@ class _ChannelRowState extends State<_ChannelRow> {
                 const SizedBox(width: 14),
                 Expanded(
                   child: Text(
-                    p.name,
+                    name,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TvAppTokens.of(context).ui(
@@ -2141,10 +2091,6 @@ class _ChannelRowState extends State<_ChannelRow> {
                     size: 18,
                     color: TvAppTokens.of(context).accent,
                   ),
-                ],
-                if (quality != null) ...<Widget>[
-                  const SizedBox(width: 10),
-                  _TagBadge(label: quality),
                 ],
               ],
             ),

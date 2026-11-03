@@ -2862,5 +2862,18 @@
   "tvCheckUnavailable": "无法进行检查。",
   "updateOpenPlayStore": "打开 Google Play",
   "updatePlayStoreHelp": "通过 Google Play 检查并安装更新。",
-  "updatePlayStoreUnavailable": "无法打开 Google Play。请重试，或在设备上打开应用商店。"
+  "updatePlayStoreUnavailable": "无法打开 Google Play。请重试，或在设备上打开应用商店。",
+  "tvQualityOutput": "播放器输出：{size}",
+  "tvQualityUnknown": "暂无测量数据",
+  "tvQualitySource": "源格式：{codec} · {range}",
+  "tvQualityCodecUnknown": "未知编解码器",
+  "tvQualityRangeUnknown": "未指定 HDR/SDR",
+  "tvQualityCadence": "解码器输出：{fps} 帧/秒 · {seconds} 秒内丢弃 {dropped} 帧",
+  "tvAiActive": "AI ×2",
+  "tvAiNative": "原生渲染",
+  "tvAiUnknown": "AI：状态未知",
+  "tvAiReasonFluidity": "优先保证播放流畅。",
+  "tvAiReasonSource": "此格式保留原始渲染效果。",
+  "tvAiReasonVerification": "尚未确认处理能力。",
+  "tvAiReasonUnavailable": "此次播放无法使用画质增强。"
 }

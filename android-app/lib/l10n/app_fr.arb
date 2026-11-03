@@ -3177,5 +3177,51 @@
   },
   "updateOpenPlayStore": "Ouvrir Google Play",
   "updatePlayStoreHelp": "Vérifie et installe les mises à jour depuis Google Play.",
-  "updatePlayStoreUnavailable": "Impossible d’ouvrir Google Play. Réessaie ou ouvre le Store depuis ton appareil."
+  "updatePlayStoreUnavailable": "Impossible d’ouvrir Google Play. Réessaie ou ouvre le Store depuis ton appareil.",
+  "tvQualityOutput": "Sortie lecteur : {size}",
+  "tvQualityUnknown": "mesure indisponible",
+  "tvQualitySource": "Format source : {codec} · {range}",
+  "tvQualityCodecUnknown": "codec inconnu",
+  "tvQualityRangeUnknown": "HDR/SDR non renseigné",
+  "tvQualityCadence": "Sortie décodeur : {fps} images/s · {dropped} perdues / {seconds} s",
+  "@tvQualityOutput": {
+    "description": "Taille de sortie vidéo mesurée, jamais le nom de chaîne ni la résolution du téléviseur.",
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "@tvQualitySource": {
+    "description": "Métadonnées du flux sélectionné, pas mode HDR HDMI garanti.",
+    "placeholders": {
+      "codec": {
+        "type": "String"
+      },
+      "range": {
+        "type": "String"
+      }
+    }
+  },
+  "@tvQualityCadence": {
+    "description": "Compteurs de sortie du décodeur sur une fenêtre réelle, pas cadence du fichier ou de la dalle.",
+    "placeholders": {
+      "fps": {
+        "type": "String"
+      },
+      "dropped": {
+        "type": "int"
+      },
+      "seconds": {
+        "type": "String"
+      }
+    }
+  },
+  "tvAiActive": "IA ×2",
+  "tvAiNative": "Rendu natif",
+  "tvAiUnknown": "IA : état inconnu",
+  "tvAiReasonFluidity": "Priorité à la fluidité.",
+  "tvAiReasonSource": "Ce format conserve le rendu d’origine.",
+  "tvAiReasonVerification": "Capacité de traitement non confirmée.",
+  "tvAiReasonUnavailable": "Amélioration indisponible pour cette lecture."
 }

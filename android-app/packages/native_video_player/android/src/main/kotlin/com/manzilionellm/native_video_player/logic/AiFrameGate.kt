@@ -23,6 +23,8 @@ enum class AiBypassReason {
     BENCHMARK_OTHER_MODEL, BENCHMARK_OTHER_DRIVER, BENCHMARK_OTHER_SIZE,
     BENCHMARK_INCOMPLETE, NUMERICAL_CHECK_FAILED, TOO_SLOW,
     INFERENCE_FAILED, FRAME_DEADLINE, MARGIN_LOST, PLAYBACK_STARTED,
+    FLOAT_TEXTURE_UNSUPPORTED, SHADER_PRECISION_UNSUPPORTED, MODEL_INTEGRITY,
+    GL_FAILURE, GEOMETRY_CHANGED, UPSCALE_NOT_USEFUL, NATIVE_4K, SOURCE_UNKNOWN, CADENCE_CHANGED,
 }
 
 data class AiFrameDecision(
@@ -65,9 +67,11 @@ class AiFrameGate(
     private var height = 0
     private var scale = 0
     private var frameBudgetNs = 1_000_000_000.0 / 60.0
+    private var admittedFps = 60.0
     private var configurationRefusal: AiBypassReason? = AiBypassReason.NOT_CONFIGURED
     private var report: AiBenchmarkReport? = null
     private var runtimeRefusal: AiBypassReason? = null
+    private var playbackStarted = false
     private val recentFrames = ArrayDeque<Long>()
 
     var decision = AiFrameDecision(false, AiBypassReason.NOT_CONFIGURED, null, null)
@@ -90,6 +94,7 @@ class AiFrameGate(
         this.scale = scale
         // Une cadence inconnue n'est jamais remplacée par une cadence plus facile.
         val fps = framesPerSecond.takeIf { it.isFinite() && it in 1.0..240.0 } ?: 60.0
+        admittedFps = fps
         frameBudgetNs = 1_000_000_000.0 / fps
         recentFrames.clear()
         configurationRefusal = when {
@@ -108,8 +113,22 @@ class AiFrameGate(
     }
 
     fun loadBenchmark(value: AiBenchmarkReport?) {
+        // Le résultat d'un travail de fond ne modifie jamais une lecture en cours.
+        if (playbackStarted) return
         report = value
         evaluate()
+    }
+
+    /** Figer l'admission avant la première image ; pas d'activation tardive. */
+    fun beginPlayback() {
+        playbackStarted = true
+        if (!decision.active) runtimeRefusal = decision.reason ?: AiBypassReason.PLAYBACK_STARTED
+    }
+
+    /** Une piste 30→60 i/s ne garde jamais le budget de la piste précédente. */
+    fun updateFramesPerSecond(value: Double) {
+        val fps = value.takeIf { it.isFinite() && it in 1.0..240.0 } ?: 60.0
+        if (playbackStarted && decision.active && fps > admittedFps + 0.001) disable(AiBypassReason.CADENCE_CHANGED)
     }
 
     fun shouldProcess(): Boolean = decision.active

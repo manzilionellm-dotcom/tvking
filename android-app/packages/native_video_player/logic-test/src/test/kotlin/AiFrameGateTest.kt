@@ -43,6 +43,54 @@ class AiFrameGateTest {
     }
 
     @Test
+    fun uneLectureCommenceeSansRapportNeSactiveJamaisEnRetard() {
+        val policy = gate()
+        policy.beginPlayback()
+        policy.loadBenchmark(report())
+        assertFalse(policy.shouldProcess())
+        assertEquals(AiBypassReason.BENCHMARK_MISSING, policy.decision.reason)
+        // Le flush du renderer crée une NOUVELLE politique pour la prochaine URL.
+        val nextSession = gate()
+        nextSession.loadBenchmark(report())
+        nextSession.beginPlayback()
+        assertTrue(nextSession.shouldProcess())
+    }
+
+    @Test
+    fun uneHausseDeCadenceEnLectureRefuseLeBudgetDeLaPistePrecedente() {
+        val policy = gate(30.0)
+        policy.loadBenchmark(report(12_000_000))
+        policy.beginPlayback()
+        policy.record(12_000_000, true)
+        assertTrue(policy.shouldProcess())
+        policy.updateFramesPerSecond(60.0)
+        assertFalse(policy.shouldProcess())
+        assertEquals(AiBypassReason.CADENCE_CHANGED, policy.decision.reason)
+        policy.updateFramesPerSecond(24.0)
+        policy.loadBenchmark(report())
+        assertFalse(policy.shouldProcess())
+    }
+
+    @Test
+    fun laCadenceNeMasquePasUnRefusDeMemoireOuDeSource() {
+        val policy = gate(30.0, memory = 100L)
+        policy.beginPlayback()
+        policy.updateFramesPerSecond(60.0)
+        assertEquals(AiBypassReason.MEMORY_LOW, policy.decision.reason)
+    }
+
+    @Test
+    fun leTempsDeLaPremiereAllocationCompteDansLaDeadline() {
+        val policy = gate()
+        policy.loadBenchmark(report())
+        policy.beginPlayback()
+        // Allocation 20ms + traitement 1ms : interdire de chronométrer seulement 1ms.
+        policy.record(20_000_000L + 1_000_000L, true)
+        assertFalse(policy.shouldProcess())
+        assertEquals(AiBypassReason.FRAME_DEADLINE, policy.decision.reason)
+    }
+
+    @Test
     fun uneMesurePour30ImagesSecondeNeSuffitPasPour60() {
         val thirty = gate(fps = 30.0)
         val sixty = gate(fps = 60.0)

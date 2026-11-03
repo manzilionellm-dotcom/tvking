@@ -1,6 +1,7 @@
 # Image — Zuno TV
 
-État du candidat Android au 3 novembre 2026, après la révision `c3809be4`.
+État du candidat Android au 3 novembre 2026, après la révision `40f847cd`
+et la correction du lecteur de rapports Android.
 Cette fiche décrit le code et sépare les vérifications de logique des essais
 sur un appareil. La présence du code ne prouve pas sa publication ni son
 rendu sur une box cliente. Le Worker, le lecteur Windows et le binaire tiers
@@ -85,6 +86,40 @@ Les tests JVM prouvent les dimensions calculées, notamment le cas d'une UI
 1080p sur une sortie 4K. Ils ne prouvent ni l'allocation réelle du tampon sur
 une TV, ni la résolution HDMI finale, ni un gain de netteté mesuré.
 
+## Indicateur de qualité fondé sur la lecture
+
+Les cartes et lignes du Direct ne transforment plus les mentions 4K/FHD/HD
+du nom de chaîne en badges techniques. L'aperçu et les commandes de lecture
+affichent les dimensions numériques reçues du lecteur courant.
+
+- **Format source** : dimensions, codec et transfert colorimétrique du format
+  sélectionné transmis par Media3. HDR/SDR reste inconnu si cette information
+  manque ; ce libellé ne garantit pas un mode HDR sur la dalle.
+- **Sortie lecteur** : dimensions du callback `onVideoSizeChanged` en rendu
+  direct. Media3 1.5.1 supprime ce callback sur le chemin GL (b/292111083) :
+  dans ce cas, le relevé vient exclusivement du format `video/raw` de sortie
+  fourni par `PlaybackVideoGraphWrapper` au callback de trame. Ce format est
+  construit depuis la taille de sortie mesurée par le graphe, pas depuis le
+  format AVC/HEVC d'entrée. L'événement garde l'origine `gl_output` dans les
+  preuves. Ces dimensions restent distinctes du format source et du HDMI ;
+  un agrandissement ne prouve pas du détail 4K natif.
+- **Sortie décodeur** : deltas réels de `DecoderCounters` pendant 2 à 5 secondes
+  de lecture continue. La cadence déclarée par le fichier n'est jamais utilisée
+  à sa place. Pause, tampon, changement de décodeur ou fenêtre invalide effacent
+  la mesure. Ces compteurs ne mesurent pas les pertes après le traitement GL,
+  le compositeur Android ou la dalle.
+
+Le PC publie les dimensions déjà rapportées par `VideoParams`; codec, HDR et
+cadence restent inconnus tant que son moteur ne les fournit pas. Aucun score
+de qualité ni état « IA active » n'est inventé. Les données d'une ancienne
+chaîne sont effacées au zap et lors d'une reconstruction du lecteur.
+
+Les tests ajoutés couvrent source/sortie différentes, nom commercial 4K/60/IA
+avec une lecture 720 et 24 images/s comptées, informations inconnues, pause,
+zap et invalidation des fenêtres. Le test Android de pixels vérifie séparément
+les événements source et sortie réels de la mire 256 × 144. L'exécution de
+ces nouvelles assertions dépend de la CI du candidat qui les intègre.
+
 ## Autres mécanismes conservés
 
 - Décodage matériel en premier, avec repli vidéo ciblé vers les codecs logiciels
@@ -129,12 +164,27 @@ Le test de canal utilise un transport Flutter simulé : il vérifie notamment
 que la préférence arrive avant l'URL, pas que les pixels changent. Les tests
 JVM n'exécutent ni le décodeur Android ni OpenGL.
 
-`NativeContrastPixelTest` et le workflow de rendu de la PR 183 sont prévus pour
-lire une mire synthétique, comparer les pixels avec et sans contraste et
-vérifier le retour au rendu sans effet. À la rédaction de cette fiche, cet
-essai Android est en cours : aucun résultat de pixels réussi n'est annoncé.
-Même un résultat sur émulateur ne validerait pas toutes les box, les flux
-entrelacés, les contenus HDR/DRM, les sorties HDMI ou le rendu physique 4K.
+`NativeContrastPixelTest` lit une mire synthétique, compare les pixels avec et
+sans contraste et vérifie le retour au rendu sans effet. Dans le
+[run 41551529426](https://github.com/manzilionellm-dotcom/tvking/actions/runs/41551529426),
+au commit `40f847cd`, les deux émulateurs Android API 29 et 35 ont réussi ce
+premier passage. La plage sombre mesure 34,33 avec contraste et 48,33 sans ;
+la plage claire mesure 241 avec contraste et 224 sans. Les retours ON et OFF
+reproduisent chacun leur première image : différence RGB moyenne nulle.
+Les valeurs sont celles de cette mire, pas une note de qualité universelle.
+
+La contre-épreuve réintroduisant le refus permanent du contraste a bien
+échoué sur `PIXEL_CONTRAST_NOT_APPLIED` sur les deux API. Le job complet est
+cependant rouge : son vérificateur attendait `AssertionError` dans l'attribut
+XML `type`, alors qu'AGP l'écrit au début du texte de `<failure>`. Le lecteur
+de rapports accepte maintenant ces deux formes, exige toujours le marqueur
+de pixels, refuse les erreurs différentes, les tests ignorés et les captures
+absentes. Onze tests Python couvrent ce contrat. Le workflow doit être rejoué
+sur le commit corrigé avant intégration ; les mesures archivées ne remplacent
+pas ce nouveau contrôle.
+
+Ces résultats d'émulateur ne valident pas toutes les box, les flux entrelacés,
+les contenus HDR/DRM, les sorties HDMI ou le rendu physique 4K.
 
 Avant de conclure sur un appareil, comparer une même source SDR fixe avec et
 sans contraste, vérifier que la désactivation survit au redémarrage, puis

@@ -1432,5 +1432,18 @@
   "tvCheckUnavailable": "Kontrollen är inte tillgänglig.",
   "updateOpenPlayStore": "Öppna Google Play",
   "updatePlayStoreHelp": "Sök efter och installera uppdateringar via Google Play.",
-  "updatePlayStoreUnavailable": "Det gick inte att öppna Google Play. Försök igen eller öppna butiken på din enhet."
+  "updatePlayStoreUnavailable": "Det gick inte att öppna Google Play. Försök igen eller öppna butiken på din enhet.",
+  "tvQualityOutput": "Spelarutgång: {size}",
+  "tvQualityUnknown": "mätning saknas",
+  "tvQualitySource": "Källformat: {codec} · {range}",
+  "tvQualityCodecUnknown": "okänd kodek",
+  "tvQualityRangeUnknown": "HDR/SDR inte angivet",
+  "tvQualityCadence": "Avkodarutgång: {fps} bilder/s · {dropped} tappade / {seconds} s",
+  "tvAiActive": "AI ×2",
+  "tvAiNative": "Ursprunglig återgivning",
+  "tvAiUnknown": "AI: okänd status",
+  "tvAiReasonFluidity": "Jämn uppspelning prioriteras.",
+  "tvAiReasonSource": "Det här formatet behåller den ursprungliga återgivningen.",
+  "tvAiReasonVerification": "Bearbetningskapaciteten är inte bekräftad.",
+  "tvAiReasonUnavailable": "Förbättring är inte tillgänglig för den här uppspelningen."
 }

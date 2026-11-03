@@ -1432,5 +1432,18 @@
   "tvCheckUnavailable": "Ukaguzi haupatikani.",
   "updateOpenPlayStore": "Fungua Google Play",
   "updatePlayStoreHelp": "Tafuta na usakinishe masasisho kupitia Google Play.",
-  "updatePlayStoreUnavailable": "Imeshindikana kufungua Google Play. Jaribu tena au fungua duka kwenye kifaa chako."
+  "updatePlayStoreUnavailable": "Imeshindikana kufungua Google Play. Jaribu tena au fungua duka kwenye kifaa chako.",
+  "tvQualityOutput": "Toleo la kichezaji: {size}",
+  "tvQualityUnknown": "kipimo hakipatikani",
+  "tvQualitySource": "Umbizo la chanzo: {codec} · {range}",
+  "tvQualityCodecUnknown": "kodeki haijulikani",
+  "tvQualityRangeUnknown": "HDR/SDR haijabainishwa",
+  "tvQualityCadence": "Toleo la kisimbuzi: fremu {fps}/s · {dropped} zilizopotea / s {seconds}",
+  "tvAiActive": "AI ×2",
+  "tvAiNative": "Uonyeshaji wa asili",
+  "tvAiUnknown": "AI: hali haijulikani",
+  "tvAiReasonFluidity": "Uchezaji laini unapewa kipaumbele.",
+  "tvAiReasonSource": "Umbizo hili linahifadhi uonyeshaji wa asili.",
+  "tvAiReasonVerification": "Uwezo wa uchakataji haujathibitishwa.",
+  "tvAiReasonUnavailable": "Uboreshaji haupatikani kwa uchezaji huu."
 }

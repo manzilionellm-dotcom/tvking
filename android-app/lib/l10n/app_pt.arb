@@ -2862,5 +2862,18 @@
   "tvCheckUnavailable": "Verificação indisponível.",
   "updateOpenPlayStore": "Abrir o Google Play",
   "updatePlayStoreHelp": "Procure e instale atualizações através do Google Play.",
-  "updatePlayStoreUnavailable": "Não foi possível abrir o Google Play. Tente novamente ou abra a loja no seu dispositivo."
+  "updatePlayStoreUnavailable": "Não foi possível abrir o Google Play. Tente novamente ou abra a loja no seu dispositivo.",
+  "tvQualityOutput": "Saída do leitor: {size}",
+  "tvQualityUnknown": "medição indisponível",
+  "tvQualitySource": "Formato de origem: {codec} · {range}",
+  "tvQualityCodecUnknown": "codec desconhecido",
+  "tvQualityRangeUnknown": "HDR/SDR não especificado",
+  "tvQualityCadence": "Saída do descodificador: {fps} imagens/s · {dropped} descartadas / {seconds} s",
+  "tvAiActive": "IA ×2",
+  "tvAiNative": "Renderização nativa",
+  "tvAiUnknown": "IA: estado desconhecido",
+  "tvAiReasonFluidity": "A fluidez da reprodução tem prioridade.",
+  "tvAiReasonSource": "Este formato mantém a renderização original.",
+  "tvAiReasonVerification": "A capacidade de processamento não está confirmada.",
+  "tvAiReasonUnavailable": "A melhoria não está disponível para esta reprodução."
 }
