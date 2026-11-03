@@ -458,7 +458,7 @@ jobs:
           # les publications suivantes restent calculées depuis la release.
           # Le versionCode (secondes epoch) reste strictement croissant.
           # version.json n'est écrit que si PUBLIER est vrai.
-          FLOOR_VN=113
+          FLOOR_VN=116
           if [ "$PUBLIER" = "true" ]; then NEW_VN=$((PREV_VN + 1)); else NEW_VN=$PREV_VN; fi
           if [ "$NEW_VN" -lt "$FLOOR_VN" ]; then NEW_VN=$FLOOR_VN; fi
           # Build de TEST : son propre numéro, lisible sur la box (Réglages,

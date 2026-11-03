@@ -5,6 +5,7 @@ import android.content.Context
 import android.opengl.GLES20
 import android.os.Process
 import android.os.SystemClock
+import android.util.Log
 import androidx.media3.effect.GlEffect
 import com.manzilionellm.native_video_player.logic.AiBenchmarkReport
 import com.manzilionellm.native_video_player.logic.AiBypassReason
@@ -48,6 +49,7 @@ class AiPictureEngine internal constructor(context: Context) {
         attempts.incrementAndGet()
         val leaseGeneration = leases.generation
         executor.execute {
+            Log.i("ZunoStartup", "ai.preflight.begin")
             Process.setThreadPriority(Process.THREAD_PRIORITY_BACKGROUND)
             val deadline = SystemClock.elapsedRealtime() + 2500
             val cancelled = { leases.hasActive || leases.generation != leaseGeneration || SystemClock.elapsedRealtime() >= deadline }
@@ -104,6 +106,7 @@ class AiPictureEngine internal constructor(context: Context) {
                     AiBypassReason.FLOAT_TEXTURE_UNSUPPORTED else AiBypassReason.GL_FAILURE
                 permanentlyRefused = true
             } finally {
+                Log.i("ZunoStartup", "ai.preflight.end")
                 synchronized(wanted) { retryPending = retry || wanted.isNotEmpty() }
                 running.set(false)
                 if (retryPending && !leases.hasActive) startPreflight()

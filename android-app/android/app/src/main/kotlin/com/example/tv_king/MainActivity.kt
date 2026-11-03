@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.os.Build
+import android.util.Log
 import android.util.Rational
 import com.manzilionellm.native_video_player.logic.AppForeground
 import io.flutter.embedding.android.FlutterFragmentActivity
@@ -29,7 +30,9 @@ class MainActivity : FlutterFragmentActivity() {
     private var videoRatio = Rational(16, 9)
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
+        Log.i("ZunoStartup", "native.plugins.begin")
         super.configureFlutterEngine(flutterEngine)
+        Log.i("ZunoStartup", "native.plugins.end")
         pipChannel = MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
             "com.sevenmotion.zuno/pip",
@@ -66,6 +69,11 @@ class MainActivity : FlutterFragmentActivity() {
                 }
             }
         }
+    }
+
+    override fun onFlutterUiDisplayed() {
+        super.onFlutterUiDisplayed()
+        Log.i("ZunoStartup", "native.flutterUiDisplayed")
     }
 
     override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {
