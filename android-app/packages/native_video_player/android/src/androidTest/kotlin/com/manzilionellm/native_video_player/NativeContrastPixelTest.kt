@@ -114,7 +114,11 @@ class NativeContrastPixelTest {
             }
             invoke("setUrl", mapOf("url" to Uri.fromFile(fixture).toString(), "vod" to true, "epoch" to 1))
             await("première image native") { activity.messenger.events.any { it.method == "firstFrame" } }
-            await("dimensions de sortie vidéo réelles") { activity.messenger.events.any { it.method == "videoSize" } }
+            await("dimensions de sortie GL réelles") {
+                activity.messenger.events.any {
+                    it.method == "videoSize" && (it.arguments as? Map<*, *>)?.get("origin") == "gl_output"
+                }
+            }
 
             val defaultOn = captureWhen("01-default-on") { it.visible() }
             invoke("setContrast", false)
@@ -146,7 +150,8 @@ class NativeContrastPixelTest {
             val sizes = activity.messenger.events.filter { it.method == "videoSize" }
                 .mapNotNull { it.arguments as? Map<*, *> }
             assertTrue("la sortie de la mire garde ses 256 × 144 pixels", sizes.any {
-                (it["width"] as? Number)?.toInt() == 256 && (it["height"] as? Number)?.toInt() == 144
+                (it["width"] as? Number)?.toInt() == 256 &&
+                    (it["height"] as? Number)?.toInt() == 144 && it["origin"] == "gl_output"
             })
             val sources = activity.messenger.events.filter { it.method == "videoSource" }
                 .mapNotNull { it.arguments as? Map<*, *> }

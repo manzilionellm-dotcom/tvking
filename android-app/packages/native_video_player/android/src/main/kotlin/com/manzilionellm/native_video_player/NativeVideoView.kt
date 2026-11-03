@@ -95,10 +95,13 @@ import com.manzilionellm.native_video_player.logic.SpokenTrackChoice
 import com.manzilionellm.native_video_player.logic.VideoCandidate
 import com.manzilionellm.native_video_player.logic.VideoCadenceWindow
 import com.manzilionellm.native_video_player.logic.VideoEngine
+import com.manzilionellm.native_video_player.logic.MeasuredVideoSize
+import com.manzilionellm.native_video_player.logic.VideoOutputMeasurement
 import com.manzilionellm.native_video_player.logic.VideoTrackChoice
 import com.manzilionellm.native_video_player.logic.VideoSurfaceBuffer
 import com.manzilionellm.native_video_player.logic.VideoSurfaceSize
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReference
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
@@ -481,9 +484,10 @@ class NativeVideoView(
      * [ExoPlayer.clearVideoFrameMetadataListener] ne retire le
      * compteur que si on lui rend le même objet.
      */
-    private val frameClock = VideoFrameMetadataListener { _, _, _, _ ->
+    private val frameClock = VideoFrameMetadataListener { _, _, outputFormat, _ ->
         renderedFrames.incrementAndGet()
         lastFrameAtMs = SystemClock.elapsedRealtime()
+        observeGlOutputSize(outputFormat)
     }
     private var videoDecoderReady: Boolean = false
     private var decoderReadyAtMs: Long = 0L
@@ -497,6 +501,22 @@ class NativeVideoView(
     private val videoCadenceWindow = VideoCadenceWindow()
     private var lastVideoCadencePollMs = 0L
     private var videoCadencePublished = false
+
+    // Contexte créé UNIQUEMENT sur le fil principal, après validation du
+    // format de cette session. Le fil vidéo lit cet instantané immuable et
+    // n'appelle aucune méthode du lecteur. Une ancienne observation ne peut
+    // donc pas publier ses dimensions après un zap/rebuild/silence.
+    private class OutputSizeSession(
+        val generation: Int,
+        val url: String,
+        val owner: ExoPlayer,
+        val glPipeline: Boolean,
+    )
+    private data class ObservedOutputSize(val session: OutputSizeSession, val size: MeasuredVideoSize)
+    private val outputSizeSession = AtomicReference<OutputSizeSession?>(null)
+    private val postedOutputSize = AtomicReference<ObservedOutputSize?>(null)
+    private var lastReportedOutputSize: MeasuredVideoSize? = null
+    private var lastReportedOutputOrigin: String? = null
 
     private val positionPump = object : Runnable {
         override fun run() {
@@ -606,6 +626,37 @@ class NativeVideoView(
         lastVideoCadencePollMs = 0L
         if (videoCadencePublished) emit("videoCadence", null)
         videoCadencePublished = false
+    }
+
+    private fun observeGlOutputSize(outputFormat: Format) {
+        val session = outputSizeSession.get() ?: return
+        val size = VideoOutputMeasurement.fromGlFrame(
+            session.glPipeline, outputFormat.sampleMimeType, outputFormat.width, outputFormat.height,
+        ) ?: return
+        val observed = ObservedOutputSize(session, size)
+        // Une géométrie identique ne poste pas un callback UI à chaque image.
+        if (postedOutputSize.getAndSet(observed) == observed) return
+        handler.post {
+            if (released || disposeStarted || suspended || castSuspended || !::player.isInitialized) return@post
+            if (outputSizeSession.get() !== session || player !== session.owner ||
+                sessions.generation != session.generation || currentUrl != session.url
+            ) return@post
+            emitMeasuredOutputSize(size, "gl_output")
+        }
+    }
+
+    private fun emitMeasuredOutputSize(size: MeasuredVideoSize, origin: String) {
+        if (size == lastReportedOutputSize && origin == lastReportedOutputOrigin) return
+        lastReportedOutputSize = size
+        lastReportedOutputOrigin = origin
+        emit("videoSize", mapOf("width" to size.width, "height" to size.height, "origin" to origin))
+    }
+
+    private fun resetOutputSizeMeasurement() {
+        outputSizeSession.set(null)
+        postedOutputSize.set(null)
+        lastReportedOutputSize = null
+        lastReportedOutputOrigin = null
     }
 
     init {
@@ -1822,6 +1873,9 @@ class NativeVideoView(
         val directReason = contrastDirectReason(format)
         if (directReason != null && requestContrastDirectFallback(directReason)) return
         resetVideoCadence()
+        outputSizeSession.set(currentUrl?.let {
+            OutputSizeSession(sessions.generation, it, player, contrastPipelineInstalled)
+        })
         // Métadonnées du flux : elles ne prouvent ni la taille de l'image
         // décodée, ni la cadence réelle, ni le mode HDR de la sortie HDMI.
         val dynamicRange = when {
@@ -1849,10 +1903,9 @@ class NativeVideoView(
         if (!fresh(eventTime)) return
         // Taille confirmée par le renderer avant la première image et à
         // chaque changement. Le téléviseur peut encore la mettre à l'échelle.
-        emit("videoSize", mapOf(
-            "width" to positive(videoSize.width),
-            "height" to positive(videoSize.height),
-        ))
+        emitMeasuredOutputSize(
+            MeasuredVideoSize(positive(videoSize.width), positive(videoSize.height)), "renderer_callback",
+        )
     }
 
     override fun onBandwidthEstimate(
@@ -2873,6 +2926,7 @@ class NativeVideoView(
             )
         }
         released = true
+        resetOutputSizeMeasurement()
         handler.removeCallbacksAndMessages(null)
         if (foregroundId >= 0) {
             AppForeground.unwatch(foregroundId)
@@ -3135,6 +3189,7 @@ class NativeVideoView(
     }
 
     private fun resetPictureClock() {
+        resetOutputSizeMeasurement()
         resetVideoCadence()
         emit("videoQualityReset", null)
         renderedFrames.set(0)

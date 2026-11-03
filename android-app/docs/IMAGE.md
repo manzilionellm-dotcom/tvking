@@ -95,9 +95,14 @@ affichent les dimensions numériques reçues du lecteur courant.
 - **Format source** : dimensions, codec et transfert colorimétrique du format
   sélectionné transmis par Media3. HDR/SDR reste inconnu si cette information
   manque ; ce libellé ne garantit pas un mode HDR sur la dalle.
-- **Sortie lecteur** : dimensions du callback `onVideoSizeChanged`, distinctes
-  de celles du format source et de la résolution HDMI. Un effet qui agrandit
-  la sortie ne transforme pas ces dimensions en preuve de détail 4K natif.
+- **Sortie lecteur** : dimensions du callback `onVideoSizeChanged` en rendu
+  direct. Media3 1.5.1 supprime ce callback sur le chemin GL (b/292111083) :
+  dans ce cas, le relevé vient exclusivement du format `video/raw` de sortie
+  fourni par `PlaybackVideoGraphWrapper` au callback de trame. Ce format est
+  construit depuis la taille de sortie mesurée par le graphe, pas depuis le
+  format AVC/HEVC d'entrée. L'événement garde l'origine `gl_output` dans les
+  preuves. Ces dimensions restent distinctes du format source et du HDMI ;
+  un agrandissement ne prouve pas du détail 4K natif.
 - **Sortie décodeur** : deltas réels de `DecoderCounters` pendant 2 à 5 secondes
   de lecture continue. La cadence déclarée par le fichier n'est jamais utilisée
   à sa place. Pause, tampon, changement de décodeur ou fenêtre invalide effacent
