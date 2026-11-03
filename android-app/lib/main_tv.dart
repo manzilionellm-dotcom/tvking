@@ -28,6 +28,7 @@ import 'core/app/boot_guard.dart';
 import 'core/app/startup_trace.dart';
 import 'core/app/guarded_main.dart';
 import 'core/app/repair_flags.dart';
+import 'core/theme/bundled_fonts.dart';
 import 'core/flavor/flavor.dart';
 import 'core/i18n/locale_repository.dart';
 import 'features/tv/core/tv_back_guard.dart';
@@ -97,6 +98,11 @@ void _wireAudioDiagnostic() {
 /// d'ajouter ses raccourcis clavier (Échap = Retour, F11 = plein écran)
 /// autour de l'app, sans rien changer sur la box.
 Future<void> bootstrapZunoTv({Widget Function(Widget app)? wrap}) async {
+  // Inter/Oswald/JetBrains Mono et les styles partagés sont embarqués.
+  // Posé avant toute UI : les polices de la première ouverture ne dépendent
+  // plus du réseau, même si aucun cache n'existe encore sur l'appareil.
+  configureTvFontLoading();
+
   // RETOUR « UN À UN » : un appui Retour ne recule que d'UN écran (voir
   // tv_back_guard.dart). Inscrit avant runApp → consulté avant le Navigator.
   TvBackGuard.install();

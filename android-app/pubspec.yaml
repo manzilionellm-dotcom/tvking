@@ -39,8 +39,10 @@ dependencies:
   # Icônes style iOS (incluses par défaut dans Flutter)
   cupertino_icons: ^1.0.8
 
-  # Police "Inter" via google_fonts (téléchargement + cache automatique)
-  google_fonts: ^6.2.1
+  # Catalogue fixé à celui des fontes embarquées : mêmes fichiers et métriques.
+  # La TV les charge hors ligne ; provenance/licences dans assets/fonts/.
+  # 6.3.3 requiert Flutter >= 3.35 / Dart >= 3.9 (CI : Flutter 3.47.7).
+  google_fonts: 6.3.3
 
   # --- Phase 1.1 / 1.2 ---
 
@@ -260,6 +262,10 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
 
+  # Interface déjà utilisée par path_provider ; explicite ici pour les tests
+  # de fontes, afin qu'aucun cache disque de la machine ne masque un asset absent.
+  path_provider_platform_interface: ^2.1.2
+
   # Règles de lint officielles Flutter
   flutter_lints: ^4.0.0
 
@@ -303,6 +309,11 @@ flutter:
   # Logo officiel 7 MOTION, utilisé dans le splash, l'AppBar de
   # l'accueil et l'écran "À propos".
   assets:
+    # Fichiers statiques exacts du catalogue google_fonts 6.3.3. Déclarés
+    # comme assets, pas comme familles Flutter : google_fonts les reconnaît
+    # par Family-Weight.ttf et garde ses noms/métriques historiques.
+    - assets/fonts/
+    - assets/fonts/licenses/
     - assets/branding/logo_black7royal.png
     - assets/branding/logo_7motion.jpg
     - assets/branding/thefew_tv_icon.png
