@@ -2786,7 +2786,9 @@
   "tvScreenRefreshOn": "Allumé. L'écran peut passer en 24, 50 ou 60 Hz selon le flux. OK pour couper. Sur certaines box ça coupe l'image une seconde : si ça arrive, coupe.",
   "tvScreenRefreshOff": "Coupé, c'est le réglage d'origine. OK pour caler l'écran sur 24 / 25 / 30 / 50 / 60 images par seconde. On ne le fait pas tout seul.",
   "tvContrast": "Contraste",
-  "tvContrastUnavailable": "Pas disponible. Le seul filtre Android quitte l'image directe et a déjà fait des écrans noirs. On ne l'allume pas.",
+  "tvContrastOn": "Activé pour les vidéos SDR compatibles. Le HDR garde son rendu d’origine.",
+  "tvContrastOff": "Désactivé. L’image conserve son contraste d’origine.",
+  "tvContrastUnavailable": "Ce lecteur ne prend pas en charge ce réglage.",
   "tvUpdateAllowInstall": "Autorise Zuno à installer des applications (écran ouvert par Android : active « Zuno »), puis reviens et appuie OK. La mise à jour est déjà téléchargée.",
   "tvFfmpegKeepDecoder": "FFmpeg vidéo n'est pas dans cette version. On reste sur le décodeur actuel.",
   "tvFfmpegBoxDecoder": "FFmpeg vidéo n'est pas dans cette version. Retour au décodeur de la box.",
@@ -3175,5 +3177,44 @@
   },
   "updateOpenPlayStore": "Ouvrir Google Play",
   "updatePlayStoreHelp": "Vérifie et installe les mises à jour depuis Google Play.",
-  "updatePlayStoreUnavailable": "Impossible d’ouvrir Google Play. Réessaie ou ouvre le Store depuis ton appareil."
+  "updatePlayStoreUnavailable": "Impossible d’ouvrir Google Play. Réessaie ou ouvre le Store depuis ton appareil.",
+  "tvQualityOutput": "Sortie lecteur : {size}",
+  "tvQualityUnknown": "mesure indisponible",
+  "tvQualitySource": "Format source : {codec} · {range}",
+  "tvQualityCodecUnknown": "codec inconnu",
+  "tvQualityRangeUnknown": "HDR/SDR non renseigné",
+  "tvQualityCadence": "Sortie décodeur : {fps} images/s · {dropped} perdues / {seconds} s",
+  "@tvQualityOutput": {
+    "description": "Taille de sortie vidéo mesurée, jamais le nom de chaîne ni la résolution du téléviseur.",
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "@tvQualitySource": {
+    "description": "Métadonnées du flux sélectionné, pas mode HDR HDMI garanti.",
+    "placeholders": {
+      "codec": {
+        "type": "String"
+      },
+      "range": {
+        "type": "String"
+      }
+    }
+  },
+  "@tvQualityCadence": {
+    "description": "Compteurs de sortie du décodeur sur une fenêtre réelle, pas cadence du fichier ou de la dalle.",
+    "placeholders": {
+      "fps": {
+        "type": "String"
+      },
+      "dropped": {
+        "type": "int"
+      },
+      "seconds": {
+        "type": "String"
+      }
+    }
+  }
 }

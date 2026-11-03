@@ -140,6 +140,7 @@ class _TvRecordingPlayerScreenState extends State<TvRecordingPlayerScreen>
         if (!mounted) return;
         c.setImageEngine(ImagePrefs.engine.wire);
         c.setFrameRateMatch(ImagePrefs.frameRateMatch);
+        c.setLightContrast(ImagePrefs.lightContrast);
       }),
     );
   }

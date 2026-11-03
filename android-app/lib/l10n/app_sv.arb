@@ -1175,7 +1175,9 @@
   "tvScreenRefreshOn": "På. Skärmen kan växla till 24, 50 eller 60 Hz efter strömmen. OK för att stänga av. På vissa boxar försvinner bilden en sekund. Stäng av om det händer.",
   "tvScreenRefreshOff": "Av, vilket är grundinställningen. OK för att anpassa skärmen till 24 / 25 / 30 / 50 / 60 bilder per sekund. Aktiveras aldrig automatiskt.",
   "tvContrast": "Kontrast",
-  "tvContrastUnavailable": "Inte tillgängligt. Android-filtret lämnar den direkta bildvägen och har orsakat svart bild. Det förblir avstängt.",
+  "tvContrastOn": "Aktiverat för kompatibel SDR-video. HDR behåller sin ursprungliga återgivning.",
+  "tvContrastOff": "Avaktiverat. Bilden behåller sin ursprungliga kontrast.",
+  "tvContrastUnavailable": "Den här spelaren stöder inte den här inställningen.",
   "tvUpdateAllowInstall": "Tillåt Zuno att installera appar: aktivera ”Zuno” på skärmen som Android har öppnat. Gå sedan tillbaka och tryck OK. Uppdateringen är redan nedladdad.",
   "tvFfmpegKeepDecoder": "FFmpeg-video ingår inte i denna version. Nuvarande avkodare behålls.",
   "tvFfmpegBoxDecoder": "FFmpeg-video ingår inte i denna version. Återgår till boxens avkodare.",
@@ -1430,5 +1432,11 @@
   "tvCheckUnavailable": "Kontrollen är inte tillgänglig.",
   "updateOpenPlayStore": "Öppna Google Play",
   "updatePlayStoreHelp": "Sök efter och installera uppdateringar via Google Play.",
-  "updatePlayStoreUnavailable": "Det gick inte att öppna Google Play. Försök igen eller öppna butiken på din enhet."
+  "updatePlayStoreUnavailable": "Det gick inte att öppna Google Play. Försök igen eller öppna butiken på din enhet.",
+  "tvQualityOutput": "Spelarutgång: {size}",
+  "tvQualityUnknown": "mätning saknas",
+  "tvQualitySource": "Källformat: {codec} · {range}",
+  "tvQualityCodecUnknown": "okänd kodek",
+  "tvQualityRangeUnknown": "HDR/SDR inte angivet",
+  "tvQualityCadence": "Avkodarutgång: {fps} bilder/s · {dropped} tappade / {seconds} s"
 }

@@ -7,6 +7,7 @@
 //  redouble pas ici.
 // =========================================================
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
@@ -120,6 +121,12 @@ class _TvExtrasScreenState extends State<TvExtrasScreen> {
     if (mounted) setState(() {});
   }
 
+  Future<void> _toggleContrast() async {
+    await ImagePrefs.load();
+    await ImagePrefs.setLightContrast(!ImagePrefs.lightContrast);
+    if (mounted) setState(() {});
+  }
+
   Future<void> _toggleVoice() async {
     await ClearVoiceFlag.load();
     await ClearVoiceFlag.set(!ClearVoiceFlag.value);
@@ -152,6 +159,8 @@ class _TvExtrasScreenState extends State<TvExtrasScreen> {
     final bool voiceOn = ClearVoiceFlag.value;
     final bool boxOn = blackBoxUploadFlag.value;
     final bool fpsOn = ImagePrefs.frameRateMatch;
+    final bool contrastAvailable =
+        !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
     final String engine = switch (ImagePrefs.engine) {
       ImageEngine.software => context.l10n.tvSoftware,
       ImageEngine.ffmpeg => 'FFmpeg',
@@ -260,8 +269,12 @@ class _TvExtrasScreenState extends State<TvExtrasScreen> {
         ),
         ExtrasRow(
           title: context.l10n.tvContrast,
-          subtitle: context.l10n.tvContrastUnavailable,
-          onSelect: () {},
+          subtitle: !contrastAvailable
+              ? context.l10n.tvContrastUnavailable
+              : ImagePrefs.lightContrast
+                  ? context.l10n.tvContrastOn
+                  : context.l10n.tvContrastOff,
+          onSelect: contrastAvailable ? _toggleContrast : () {},
         ),
       ],
     );

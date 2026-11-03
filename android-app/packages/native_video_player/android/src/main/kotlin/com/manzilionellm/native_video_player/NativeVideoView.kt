@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.ContextWrapper
 import android.graphics.Bitmap
 import android.graphics.PixelFormat
+import android.graphics.Point
 import android.graphics.Rect
 import android.media.AudioFocusRequest
 import android.media.AudioManager
@@ -23,12 +24,14 @@ import android.widget.ImageView
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.Format
 import androidx.media3.common.C
+import androidx.media3.common.ColorInfo
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Tracks
+import androidx.media3.common.VideoSize
 import androidx.media3.common.text.CueGroup
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.common.util.Util
@@ -74,6 +77,7 @@ import com.manzilionellm.native_video_player.logic.CodecOrder
 import com.manzilionellm.native_video_player.logic.DecoderFallback
 import com.manzilionellm.native_video_player.logic.DisplayModeOption
 import com.manzilionellm.native_video_player.logic.ExclusiveAudio
+import com.manzilionellm.native_video_player.logic.FrameCopyGate
 import com.manzilionellm.native_video_player.logic.FrameRateMatch
 import com.manzilionellm.native_video_player.logic.HeldFrame
 import com.manzilionellm.native_video_player.logic.NamedCodec
@@ -89,9 +93,15 @@ import com.manzilionellm.native_video_player.logic.ReconnectPlan
 import com.manzilionellm.native_video_player.logic.SpokenCandidate
 import com.manzilionellm.native_video_player.logic.SpokenTrackChoice
 import com.manzilionellm.native_video_player.logic.VideoCandidate
+import com.manzilionellm.native_video_player.logic.VideoCadenceWindow
 import com.manzilionellm.native_video_player.logic.VideoEngine
+import com.manzilionellm.native_video_player.logic.MeasuredVideoSize
+import com.manzilionellm.native_video_player.logic.VideoOutputMeasurement
 import com.manzilionellm.native_video_player.logic.VideoTrackChoice
+import com.manzilionellm.native_video_player.logic.VideoSurfaceBuffer
+import com.manzilionellm.native_video_player.logic.VideoSurfaceSize
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReference
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
@@ -102,8 +112,8 @@ import io.flutter.plugin.platform.PlatformView
  * jamais » (façon YouTube / Netflix).
  *
  * RENDU : la vidéo est dessinée dans une vraie [SurfaceView] Android pilotée
- * par Media3 (ExoPlayer). MediaCodec décode le HEVC en matériel et écrit
- * directement sur la Surface : la trame ne passe JAMAIS par une texture Flutter
+ * par Media3 (ExoPlayer). Le contraste SDR passe par le processeur GL de Media3 ;
+ * HDR, DRM et replis gardent la sortie directe. La trame ne passe jamais par une texture Flutter
  * (le chemin qui restait noir avec mpv et libVLC sur cette box).
  *
  * DÉMARRAGE RAPIDE : tampon de lecture court (≈1 s) + priorité au temps plutôt
@@ -185,6 +195,7 @@ class NativeVideoView(
 
     private val appContext: Context = context
     private val surfaceView = SurfaceView(context)
+    private var contrastSurfaceBuffer: VideoSurfaceBuffer? = null
 
     /**
      * Dernière image, posée PAR-DESSUS la surface pendant une coupure.
@@ -231,7 +242,11 @@ class NativeVideoView(
 
     // Dernière image copiée. null = on n'a encore rien de montrable.
     private var heldBitmap: Bitmap? = null
-    private var copyInFlight = false
+    private val frameCopies = FrameCopyGate()
+    // finishDispose retire les tâches du handler principal du lecteur.
+    // Le callback de copie doit encore passer pour recycler son bitmap,
+    // uniquement une fois que PixelCopy a fini d'y écrire.
+    private val frameCopyHandler = Handler(Looper.getMainLooper())
     private var lastCopyAt = 0L
     private var sawFrame = false
 
@@ -282,6 +297,9 @@ class NativeVideoView(
     private var focusRequest: AudioFocusRequest? = null
     private var focusHeld = false
     private var pausedByFocus = false
+    // Intention conservée jusqu'au prepare différé : un repli purement
+    // technique ne doit pas annuler une pause utilisateur ou une perte de focus.
+    private var preparePlayRequested = true
     private val focusListener = AudioManager.OnAudioFocusChangeListener { change ->
         handler.post { onAudioFocusChange(change) }
     }
@@ -436,6 +454,14 @@ class NativeVideoView(
     private var installFfmpegVideo: Boolean = false
     private var ffmpegRendererInstalled: Boolean = false
 
+    // Contraste réellement traité par Media3. Le choix reste allumé par
+    // défaut ; un repli ne change que CETTE adresse, jamais la préférence.
+    private var contrastRequested: Boolean = PictureTune.DEFAULT_ENABLED
+    private val contrastEffect = VideoContrastEffects()
+    private var contrastPipelineInstalled: Boolean = false
+    private var contrastBypassReason: String? = null
+    private var contrastFallbackPosted: Boolean = false
+
     // Relu à chaque demande de décodeur. Le logiciel passe devant seulement
     // quand [videoEngine] est SOFTWARE.
     @Volatile
@@ -445,8 +471,9 @@ class NativeVideoView(
     private var videoGaveUp: Boolean = false
     private var videoFallbackPosted: Boolean = false
 
-    // Trames vraiment envoyées à l'écran. Le compteur est touché sur le
-    // fil de lecture, lu sur le fil principal.
+    // Notifications AVANT rendu : servent au watchdog, pas à annoncer la
+    // cadence réellement affichée. Le compteur est touché sur le fil de
+    // lecture, lu sur le fil principal.
     private val renderedFrames = AtomicInteger(0)
 
     @Volatile
@@ -457,9 +484,10 @@ class NativeVideoView(
      * [ExoPlayer.clearVideoFrameMetadataListener] ne retire le
      * compteur que si on lui rend le même objet.
      */
-    private val frameClock = VideoFrameMetadataListener { _, _, _, _ ->
+    private val frameClock = VideoFrameMetadataListener { _, _, outputFormat, _ ->
         renderedFrames.incrementAndGet()
         lastFrameAtMs = SystemClock.elapsedRealtime()
+        observeGlOutputSize(outputFormat)
     }
     private var videoDecoderReady: Boolean = false
     private var decoderReadyAtMs: Long = 0L
@@ -470,6 +498,25 @@ class NativeVideoView(
     private var bytesLoaded: Long = 0L
     private var bitrateEstimate: Long = 0L
     private var videoChosenForSession: Boolean = false
+    private val videoCadenceWindow = VideoCadenceWindow()
+    private var lastVideoCadencePollMs = 0L
+    private var videoCadencePublished = false
+
+    // Contexte créé UNIQUEMENT sur le fil principal, après validation du
+    // format de cette session. Le fil vidéo lit cet instantané immuable et
+    // n'appelle aucune méthode du lecteur. Une ancienne observation ne peut
+    // donc pas publier ses dimensions après un zap/rebuild/silence.
+    private class OutputSizeSession(
+        val generation: Int,
+        val url: String,
+        val owner: ExoPlayer,
+        val glPipeline: Boolean,
+    )
+    private data class ObservedOutputSize(val session: OutputSizeSession, val size: MeasuredVideoSize)
+    private val outputSizeSession = AtomicReference<OutputSizeSession?>(null)
+    private val postedOutputSize = AtomicReference<ObservedOutputSize?>(null)
+    private var lastReportedOutputSize: MeasuredVideoSize? = null
+    private var lastReportedOutputOrigin: String? = null
 
     private val positionPump = object : Runnable {
         override fun run() {
@@ -480,6 +527,7 @@ class NativeVideoView(
                 emit("position", pos)
                 maybeCopyFrame()
             }
+            sampleVideoCadence()
             // Filet : la copie de la dernière image est retirée dès qu'une
             // trame a été rendue APRÈS son affichage, sans attendre le
             // signal « première image » (absent sur certaines box quand la
@@ -530,6 +578,87 @@ class NativeVideoView(
         }
     }
 
+    /** Mesure passive : aucune modification du flux, des pistes ou du rendu. */
+    private fun sampleVideoCadence() {
+        if (!player.isPlaying || player.playbackState != Player.STATE_READY ||
+            !AppForeground.allowsReopen()
+        ) {
+            resetVideoCadence()
+            return
+        }
+        val now = SystemClock.elapsedRealtime()
+        if (now >= lastVideoCadencePollMs &&
+            now - lastVideoCadencePollMs < VideoCadenceWindow.MIN_WINDOW_MS
+        ) return
+        lastVideoCadencePollMs = now
+        val counters = player.videoDecoderCounters
+        if (counters == null) {
+            resetVideoCadence()
+            return
+        }
+        // Barrière mémoire prescrite par Media3 : le fil de lecture écrit
+        // les compteurs, le fil principal ne doit pas lire un état périmé.
+        counters.ensureUpdated()
+        val sample = videoCadenceWindow.sample(
+            counters = counters,
+            nowMs = now,
+            rendered = counters.renderedOutputBufferCount.toLong(),
+            dropped = counters.droppedBufferCount.toLong(),
+            playing = true,
+        )
+        if (sample == null) {
+            if (videoCadencePublished) emit("videoCadence", null)
+            videoCadencePublished = false
+            return
+        }
+        videoCadencePublished = true
+        // Sortie du décodeur seulement. Les pertes éventuelles dans le GL,
+        // le compositeur Android ou la dalle ne sont pas mesurées ici.
+        emit("videoCadence", mapOf(
+            "renderedFrames" to sample.renderedFrames,
+            "droppedFrames" to sample.droppedFrames,
+            "windowMs" to sample.windowMs,
+        ))
+    }
+
+    private fun resetVideoCadence() {
+        videoCadenceWindow.reset()
+        lastVideoCadencePollMs = 0L
+        if (videoCadencePublished) emit("videoCadence", null)
+        videoCadencePublished = false
+    }
+
+    private fun observeGlOutputSize(outputFormat: Format) {
+        val session = outputSizeSession.get() ?: return
+        val size = VideoOutputMeasurement.fromGlFrame(
+            session.glPipeline, outputFormat.sampleMimeType, outputFormat.width, outputFormat.height,
+        ) ?: return
+        val observed = ObservedOutputSize(session, size)
+        // Une géométrie identique ne poste pas un callback UI à chaque image.
+        if (postedOutputSize.getAndSet(observed) == observed) return
+        handler.post {
+            if (released || disposeStarted || suspended || castSuspended || !::player.isInitialized) return@post
+            if (outputSizeSession.get() !== session || player !== session.owner ||
+                sessions.generation != session.generation || currentUrl != session.url
+            ) return@post
+            emitMeasuredOutputSize(size, "gl_output")
+        }
+    }
+
+    private fun emitMeasuredOutputSize(size: MeasuredVideoSize, origin: String) {
+        if (size == lastReportedOutputSize && origin == lastReportedOutputOrigin) return
+        lastReportedOutputSize = size
+        lastReportedOutputOrigin = origin
+        emit("videoSize", mapOf("width" to size.width, "height" to size.height, "origin" to origin))
+    }
+
+    private fun resetOutputSizeMeasurement() {
+        outputSizeSession.set(null)
+        postedOutputSize.set(null)
+        lastReportedOutputSize = null
+        lastReportedOutputOrigin = null
+    }
+
     init {
         channel.setMethodCallHandler(this)
 
@@ -542,6 +671,9 @@ class NativeVideoView(
         // translucide et affichent un écran VERT à la place de la vidéo.
         // Opaque = le décodeur écrit des pixels réels, pas « du vide ».
         surfaceView.holder.setFormat(PixelFormat.OPAQUE)
+        surfaceView.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+            updateContrastSurfaceSize()
+        }
 
         player = buildConfiguredPlayer()
         PlayerCensus.playerCreated()
@@ -1152,6 +1284,18 @@ class NativeVideoView(
                     result.error("no_url", "setUrl appelé sans url", null)
                     return
                 }
+                if (url != currentUrl) {
+                    // Un numéro de groupe appartient à UNE source. On efface
+                    // les choix explicites au vrai zap, jamais à une simple
+                    // reprise technique du même film/de la même chaîne.
+                    player.trackSelectionParameters = player.trackSelectionParameters
+                        .buildUpon().clearOverrides().build()
+                    // Même si Home/Cast retarde l'ouverture : un autre flux
+                    // a droit au contraste par défaut. Le rendu sera aligné
+                    // juste avant sa prochaine ouverture au premier plan.
+                    contrastBypassReason = null
+                    contrastFallbackPosted = false
+                }
                 // Garder aussi les langues quand le Cast ou Home retarde
                 // l'ouverture. Ce réglage ne prépare aucun flux. Une seule
                 // définition, appelée après restorePreferredEngine en lecture
@@ -1275,16 +1419,12 @@ class NativeVideoView(
                 result.success(null)
             }
             "setContrast" -> {
-                // Le filtre OpenGL quitterait la Surface. On ne l'allume
-                // pas : hardwareAllows reste faux, la fonction testée
-                // renvoie donc faux. LIGHT_CONTRAST n'est pas appliqué.
-                val requested = call.arguments == true
-                val applied = PictureTune.resolve(requested, hardwareAllows = false)
-                emit("contrast", applied)
-                if (requested && !applied) {
-                    emit("contrastReason", "surface")
-                }
-                result.success(applied)
+                contrastRequested = call.arguments == true
+                // Le shader relit cette valeur pour chaque image. Ne pas
+                // réenregistrer le flux GL lors d'un simple ON/OFF.
+                contrastEffect.setEnabled(contrastRequested, contrastAvailable())
+                emitImageCaps()
+                result.success(contrastApplied())
             }
             "setClearVoice" -> {
                 val on = call.arguments == true
@@ -1513,6 +1653,7 @@ class NativeVideoView(
                 // ici ferait ressortir l'ancien tampon. La nouvelle session
                 // le remonte toute seule (unmuteIfThisSession).
                 pausedByFocus = false
+                preparePlayRequested = true
                 requestOwnFocus()
                 if (!reconnect.holdMute && !pausedByFocus) {
                     player.volume = AudioHandoff.VOLUME_FULL
@@ -1522,6 +1663,7 @@ class NativeVideoView(
             }
             "pause" -> {
                 pausedByFocus = false
+                preparePlayRequested = false
                 player.pause()
                 result.success(null)
             }
@@ -1570,6 +1712,7 @@ class NativeVideoView(
 
     override fun onIsPlayingChanged(eventTime: AnalyticsListener.EventTime, isPlaying: Boolean) {
         if (!fresh(eventTime)) return
+        if (!isPlaying) resetVideoCadence()
         emit("playing", isPlaying)
         // Le son de CETTE session seulement. Avant, le volume remontait
         // juste après prepare() : le tampon HDMI de l'ancienne chaîne
@@ -1584,6 +1727,19 @@ class NativeVideoView(
     /** Pistes disponibles → Dart, puis choix de la voix (une fois). */
     override fun onTracksChanged(eventTime: AnalyticsListener.EventTime, tracks: Tracks) {
         if (!fresh(eventTime)) return
+        // Sur le HDR et le DRM, conserver le chemin natif direct. Le GL
+        // Media3 1.5.1 ne sait notamment pas sortir du PQ avant Android 13.
+        // Regarder uniquement la vidéo sélectionnée, pas une piste inactive.
+        if (contrastPipelineInstalled) {
+            for (group in tracks.groups) {
+                if (group.type != C.TRACK_TYPE_VIDEO) continue
+                for (i in 0 until group.length) {
+                    if (!group.isTrackSelected(i)) continue
+                    val reason = contrastDirectReason(group.getTrackFormat(i))
+                    if (reason != null && requestContrastDirectFallback(reason)) return
+                }
+            }
+        }
         val out = ArrayList<Map<String, Any?>>()
         val audio = ArrayList<SpokenCandidate>()
         tracks.groups.forEachIndexed { gi, g ->
@@ -1637,6 +1793,13 @@ class NativeVideoView(
         emit("tracks", out)
         maybeChooseVideo(tracks)
         if (audioChosenForSession) return
+        // Une reprise ou une reconstruction peut remettre ce drapeau à zéro.
+        // Le choix explicite reste prioritaire si son TrackGroup existe encore.
+        if (tracks.groups.any { it.type == C.TRACK_TYPE_AUDIO &&
+                player.trackSelectionParameters.overrides.containsKey(it.mediaTrackGroup) }) {
+            audioChosenForSession = true
+            return
+        }
         val pick = SpokenTrackChoice.pick(audio, prefAudio) ?: return
         audioChosenForSession = true
         val token = sessions.generation
@@ -1695,6 +1858,7 @@ class NativeVideoView(
         initializationDurationMs: Long,
     ) {
         if (!fresh(eventTime)) return
+        resetVideoCadence()
         videoDecoderReady = true
         decoderReadyAtMs = SystemClock.elapsedRealtime()
         emit("videoDecoder", decoderName)
@@ -1706,17 +1870,42 @@ class NativeVideoView(
         decoderReuseEvaluation: DecoderReuseEvaluation?,
     ) {
         if (!fresh(eventTime)) return
-        // Mesure seulement : le canal PiP adapte sa fenêtre à la vidéo,
-        // sans modifier le flux, sa piste, ni la session Cast éventuelle.
-        emit("videoFormat", mapOf(
+        val directReason = contrastDirectReason(format)
+        if (directReason != null && requestContrastDirectFallback(directReason)) return
+        resetVideoCadence()
+        outputSizeSession.set(currentUrl?.let {
+            OutputSizeSession(sessions.generation, it, player, contrastPipelineInstalled)
+        })
+        // Métadonnées du flux : elles ne prouvent ni la taille de l'image
+        // décodée, ni la cadence réelle, ni le mode HDR de la sortie HDMI.
+        val dynamicRange = when {
+            format.sampleMimeType == MimeTypes.VIDEO_DOLBY_VISION -> "dolbyVision"
+            format.colorInfo?.colorTransfer == C.COLOR_TRANSFER_ST2084 -> "pq"
+            format.colorInfo?.colorTransfer == C.COLOR_TRANSFER_HLG -> "hlg"
+            format.colorInfo?.colorTransfer == C.COLOR_TRANSFER_SDR -> "sdr"
+            else -> null
+        }
+        emit("videoSource", mapOf(
             "width" to positive(format.width),
             "height" to positive(format.height),
+            "mimeType" to format.sampleMimeType,
+            "dynamicRange" to dynamicRange,
+            "frameRate" to format.frameRate.takeIf { it.isFinite() && it > 0f },
         ))
         val fps = format.frameRate
         if (fps > 0f) {
             contentFps = fps
             applyFrameRate(fps)
         }
+    }
+
+    override fun onVideoSizeChanged(eventTime: AnalyticsListener.EventTime, videoSize: VideoSize) {
+        if (!fresh(eventTime)) return
+        // Taille confirmée par le renderer avant la première image et à
+        // chaque changement. Le téléviseur peut encore la mettre à l'échelle.
+        emitMeasuredOutputSize(
+            MeasuredVideoSize(positive(videoSize.width), positive(videoSize.height)), "renderer_callback",
+        )
     }
 
     override fun onBandwidthEstimate(
@@ -1745,6 +1934,16 @@ class NativeVideoView(
         if (refuseReopen()) return
         val token = sessions.generation
         val exo = error as? ExoPlaybackException
+        // Une panne du processeur de trames n'est pas une panne du serveur.
+        // Au maximum un repli direct par adresse, sans changer de décodeur.
+        val contrastReason = exo?.rendererFormat?.let(::contrastDirectReason)
+        if (contrastPipelineInstalled &&
+            (contrastReason != null ||
+                error.errorCode == PlaybackException.ERROR_CODE_VIDEO_FRAME_PROCESSOR_INIT_FAILED ||
+                error.errorCode == PlaybackException.ERROR_CODE_VIDEO_FRAME_PROCESSING_FAILED)
+        ) {
+            if (requestContrastDirectFallback(contrastReason ?: "processing_error")) return
+        }
         val signal = DecoderFallback.classify(error.errorCode, exo?.rendererName)
         // Vidéo seulement. Une erreur audio FFmpeg garde son propre repli
         // (plus bas) et ne doit pas changer le décodeur d'image.
@@ -1829,6 +2028,7 @@ class NativeVideoView(
         if (released) return
         pausedByFocus = false
         sessions.open()
+        contrastFallbackPosted = false
         sessionOpenedAt = SystemClock.elapsedRealtime()
         audioChosenForSession = false
         videoChosenForSession = false
@@ -1871,14 +2071,27 @@ class NativeVideoView(
      * [startPositionMs] > 0 : reprise d'un film. Le direct passe null
      * et repart du bord du direct, pas d'une image figée.
      */
-    private fun openCurrent(startPositionMs: Long?) {
-        if (currentUrl == null || released) return
+    private fun openCurrent(
+        startPositionMs: Long?,
+        preservePlayRequested: Boolean? = null,
+        preserveFocusPause: Boolean = false,
+    ) {
+        if (currentUrl == null || released || disposeStarted) return
         // Dehors : pas de nouveau décodeur, pas de nouvel AudioTrack.
         if (refuseReopen()) return
+        // Un repli peut avoir été décidé juste avant Home/Cast. Son callback
+        // annulé ne doit pas laisser le processeur GL actif au retour. Même
+        // règle pour un nouveau flux choisi pendant l'arrière-plan.
+        if (contrastPipelineInstalled != useContrastPipeline(installFfmpegVideo)) {
+            rebuildPlayer()
+            emitImageCaps()
+        }
         // Avant stop() : la copie couvre la surface, qui va se vider.
         if (sawFrame && heldBitmap != null) showHeldFrame()
         if (playerKey >= 0) owners.claim(playerKey)
         silenceForHandoff()
+        preparePlayRequested = preservePlayRequested ?: true
+        pausedByFocus = preserveFocusPause
         val token = sessions.generation
         dartEpoch?.let { emit("ack", it) }
         if (holdView.visibility == View.VISIBLE) emit("holdFrame", true)
@@ -1890,7 +2103,8 @@ class NativeVideoView(
             AudioFocusPolicy.media3HandlesFocus(AudioFixes.androidFocus),
         )
         if (AudioFocusPolicy.media3HandlesFocus(AudioFixes.androidFocus)) abandonOwnFocus()
-        else requestOwnFocus()
+        else if (preparePlayRequested && !pausedByFocus) requestOwnFocus()
+        if (preserveFocusPause) pausedByFocus = true
         suspended = false
         clearVoiceProcessor.enabled = clearVoiceEnabled
         setProbeEnabled(AudioFixes.probe)
@@ -1930,10 +2144,10 @@ class NativeVideoView(
         val url = currentUrl ?: return
         if (released || disposeStarted) return
         val token = sessions.generation
-        // L'override audio de la chaîne précédente ne doit pas choisir
-        // une piste au hasard sur la nouvelle.
+        // Les overrides d'une autre URL ont déjà été effacés dans setUrl.
+        // Ici la même source peut être reprise après réseau/GL : conserver
+        // la piste choisie, la langue et « sous-titres désactivés ».
         val params = player.trackSelectionParameters.buildUpon()
-            .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
             .setPreferredAudioRoleFlags(C.ROLE_FLAG_MAIN)
         val lang = prefAudio
         if (!lang.isNullOrBlank()) params.setPreferredAudioLanguage(lang)
@@ -1953,7 +2167,7 @@ class NativeVideoView(
         player.prepare()
         // Perte de focus pendant le zap : on ne repart pas tant que GAIN
         // n'est pas revenu (ou qu'un nouveau zap n'a pas redemandé le focus).
-        player.playWhenReady = !pausedByFocus
+        player.playWhenReady = preparePlayRequested && !pausedByFocus
         armVolumeTrace()
     }
 
@@ -2114,8 +2328,10 @@ class NativeVideoView(
         // [ReconnectGate.onFailure] vient de poser : le runnable
         // ci-dessous doit être le seul à pouvoir repartir.
         cancelRetry(clearGate = false)
+        val source = currentUrl
         val r = Runnable {
-            if (released || token != sessions.generation) return@Runnable
+            if (released || disposeStarted || token != sessions.generation ||
+                source != currentUrl || castSuspended) return@Runnable
             // Parti pendant l'attente : on n'ouvre pas dans le dos de l'utilisateur.
             if (!AppForeground.allowsReopen()) {
                 refuseReopen()
@@ -2127,7 +2343,13 @@ class NativeVideoView(
             // un gel. La copie, elle, reste jusqu'à la nouvelle trame.
             emit("reconnecting", false)
             // Film : [lastKnownPos] a été figé dans onPlayerError, avant stop().
-            openCurrent(if (vodMode) lastKnownPos else null)
+            // Lire l'intention AU FEU du délai : la personne peut avoir mis
+            // en pause pendant la panne. L'ouverture par défaut repart à true.
+            openCurrent(
+                if (vodMode) lastKnownPos else null,
+                preservePlayRequested = preparePlayRequested,
+                preserveFocusPause = pausedByFocus,
+            )
         }
         pendingRetry = r
         handler.postDelayed(r, delayMs)
@@ -2205,13 +2427,20 @@ class NativeVideoView(
         }
     }
 
+    // READY autorise aussi une image volontairement mise en pause, mais
+    // pas la surface arrêtée par Retour ni celle d'une reconnexion.
+    private fun canCopyCurrentFrame(): Boolean =
+        !released && !disposeStarted && !suspended && !castSuspended &&
+            AppForeground.allowsReopen() && sawFrame && holdView.visibility != View.VISIBLE &&
+            player.playbackState == Player.STATE_READY
+
     /**
      * Copie une petite image de la surface pendant que ça joue.
      * On ne copie pas pendant la coupure : on remplacerait la bonne
      * image par du noir. Au plus une copie à la fois, toutes les 4 s.
      */
     private fun maybeCopyFrame(force: Boolean = false) {
-        if (released || copyInFlight || !sawFrame) return
+        if (!canCopyCurrentFrame() || frameCopies.inFlight) return
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return
         val now = SystemClock.elapsedRealtime()
         if (!force && now - lastCopyAt < 4_000L) return
@@ -2224,23 +2453,35 @@ class NativeVideoView(
         val top = (h - rh) / 2
         val rect = Rect(left, top, left + rw, top + rh)
         val bmp = Bitmap.createBitmap(rw, rh, Bitmap.Config.RGB_565)
-        copyInFlight = true
+        val ticket = frameCopies.begin(sessions.generation, currentUrl)
+        if (ticket == null) {
+            bmp.recycle()
+            return
+        }
         lastCopyAt = now
         try {
             PixelCopy.request(surfaceView, rect, bmp, { code ->
-                copyInFlight = false
-                val keep = !released && code == PixelCopy.SUCCESS && sawFrame &&
-                    holdView.visibility != View.VISIBLE
+                val completion = frameCopies.finish(
+                    ticket, sessions.generation, currentUrl, canCopyCurrentFrame(),
+                )
+                val keep = completion == FrameCopyGate.Completion.KEEP &&
+                    code == PixelCopy.SUCCESS
                 // Une copie noire n'est pas une image : on garde la
                 // précédente (ou rien, et le carton de chaîne prendra la place).
                 if (!keep || copyLooksBlank(bmp)) {
-                    bmp.recycle()
-                    return@request
+                    if (!bmp.isRecycled) bmp.recycle()
+                } else {
+                    stashFrame(bmp)
                 }
-                stashFrame(bmp)
-            }, handler)
+                if (completion == FrameCopyGate.Completion.REFRESH_CURRENT) {
+                    // A vient de finir après la première image de B :
+                    // B n'hérite ni du bitmap de A ni de son délai de 4 s.
+                    lastCopyAt = 0L
+                    handler.post { maybeCopyFrame(force = true) }
+                }
+            }, frameCopyHandler)
         } catch (_: RuntimeException) {
-            copyInFlight = false
+            frameCopies.finish(ticket, sessions.generation, currentUrl, false)
             if (!bmp.isRecycled) bmp.recycle()
         }
     }
@@ -2685,6 +2926,7 @@ class NativeVideoView(
             )
         }
         released = true
+        resetOutputSizeMeasurement()
         handler.removeCallbacksAndMessages(null)
         if (foregroundId >= 0) {
             AppForeground.unwatch(foregroundId)
@@ -2727,6 +2969,15 @@ class NativeVideoView(
      * on ne rogne pas.
      */
     private fun attachToSurface(target: ExoPlayer) {
+        // Cet appel précède TOUT prepare, y compris après un changement de
+        // moteur. Media3 installe alors son processeur de trames. Ne jamais
+        // appeler setVideoEffects (même vide) pour le chemin direct de repli.
+        contrastPipelineInstalled = useContrastPipeline(installFfmpegVideo)
+        if (contrastPipelineInstalled) {
+            contrastEffect.setEnabled(contrastRequested, hardwareAllows = true)
+            target.setVideoEffects(listOf(contrastEffect))
+        }
+        updateContrastSurfaceSize()
         target.setVideoScalingMode(C.VIDEO_SCALING_MODE_SCALE_TO_FIT)
         target.setVideoSurfaceView(surfaceView)
         target.addAnalyticsListener(this)
@@ -2742,9 +2993,105 @@ class NativeVideoView(
             mapOf(
                 "ffmpegVideo" to ffmpegVideoReady,
                 "engine" to videoEngine.wire,
-                "contrastHardware" to false,
+                // Nom historique du contrat Dart : capacité du chemin de
+                // rendu, pas preuve que le décodeur utilise la puce matérielle.
+                "contrastHardware" to contrastAvailable(),
+                "contrastRequested" to contrastRequested,
+                "contrastApplied" to contrastApplied(),
+                "contrastReason" to contrastReason(),
             ),
         )
+        emit("contrast", contrastApplied())
+        emit("contrastReason", contrastReason())
+    }
+
+    private fun useContrastPipeline(ffmpegVideo: Boolean): Boolean =
+        !ffmpegVideo && contrastBypassReason == null
+
+    private fun contrastAvailable(): Boolean =
+        contrastPipelineInstalled && contrastBypassReason == null
+
+    private fun contrastApplied(): Boolean =
+        PictureTune.resolve(contrastRequested, contrastAvailable())
+
+    private fun contrastReason(): String? = when {
+        contrastBypassReason != null -> contrastBypassReason
+        ffmpegRendererInstalled -> "ffmpeg"
+        !contrastRequested -> "disabled"
+        else -> null
+    }
+
+    /** Le contraste SDR n'impose aucune conversion ou perte de métadonnées HDR. */
+    private fun contrastDirectReason(format: Format): String? = PictureTune.directReason(
+        isHdr = ColorInfo.isTransferHdr(format.colorInfo),
+        hasDrm = format.drmInitData != null,
+    )
+
+    /** Ne pas limiter une sortie GL 4K à la résolution logique d'une interface TV. */
+    @Suppress("DEPRECATION") // getRealSize garde l'écran logique entier, même en PiP.
+    private fun updateContrastSurfaceSize() {
+        if (released || disposeStarted) return
+        val size = if (contrastPipelineInstalled) try {
+            val display = surfaceView.display ?: findActivity(appContext)?.windowManager?.defaultDisplay
+            val logical = Point()
+            if (display != null) display.getRealSize(logical)
+            else {
+                logical.x = appContext.resources.displayMetrics.widthPixels
+                logical.y = appContext.resources.displayMetrics.heightPixels
+            }
+            val physical = if (display != null) Util.getCurrentDisplayModeSize(appContext, display)
+                else Util.getCurrentDisplayModeSize(appContext)
+            VideoSurfaceSize.forContrast(
+                pipelineInstalled = true,
+                viewWidth = surfaceView.width,
+                viewHeight = surfaceView.height,
+                logicalWidth = logical.x,
+                logicalHeight = logical.y,
+                physicalWidth = physical.x,
+                physicalHeight = physical.y,
+            )
+        } catch (_: RuntimeException) {
+            null
+        } else null
+        if (size == contrastSurfaceBuffer) return
+        contrastSurfaceBuffer = size
+        if (size == null) surfaceView.holder.setSizeFromLayout()
+        else surfaceView.holder.setFixedSize(size.width, size.height)
+    }
+
+    /**
+     * Reconstruit réellement sans GL ; vider les effets laisserait le même
+     * processeur en place. Une seule tentative par URL, annulée si la personne
+     * zappe, quitte l'app ou donne la lecture au Cast pendant le callback.
+     */
+    private fun requestContrastDirectFallback(reason: String): Boolean {
+        if (!contrastPipelineInstalled || released || disposeStarted) return false
+        if (contrastFallbackPosted) return true
+        if (contrastBypassReason != null || released || currentUrl == null) return false
+        if (!AppForeground.allowsReopen() || castSuspended) return false
+        contrastBypassReason = reason
+        contrastFallbackPosted = true
+        emitImageCaps()
+        val token = sessions.generation
+        val source = currentUrl
+        handler.post {
+            if (released || disposeStarted || token != sessions.generation || source != currentUrl) return@post
+            contrastFallbackPosted = false
+            if (!AppForeground.allowsReopen() || castSuspended) return@post
+            cancelRetry()
+            val focusPause = pausedByFocus
+            val playRequested = player.playWhenReady || focusPause
+            val resumeAt = if (vodMode) player.currentPosition.coerceAtLeast(lastKnownPos) else 0L
+            emit("reopen", null)
+            if (vodMode) lastKnownPos = resumeAt
+            rebuildPlayer()
+            openCurrent(
+                if (vodMode) resumeAt else null,
+                preservePlayRequested = playRequested,
+                preserveFocusPause = focusPause,
+            )
+        }
+        return true
     }
 
     private fun emitEngine(rejected: String? = null) {
@@ -2759,18 +3106,24 @@ class NativeVideoView(
     private fun restorePreferredEngine() {
         if (videoEngine == preferredEngine &&
             preferSoftwareVideo == (preferredEngine == VideoEngine.SOFTWARE) &&
-            ffmpegRendererInstalled == (preferredEngine == VideoEngine.FFMPEG && ffmpegVideoReady)
+            ffmpegRendererInstalled == (preferredEngine == VideoEngine.FFMPEG && ffmpegVideoReady) &&
+            contrastPipelineInstalled == useContrastPipeline(
+                preferredEngine == VideoEngine.FFMPEG && ffmpegVideoReady,
+            )
         ) {
             return
         }
         videoEngine = preferredEngine
         preferSoftwareVideo = preferredEngine == VideoEngine.SOFTWARE
         val wantFfmpeg = preferredEngine == VideoEngine.FFMPEG && ffmpegVideoReady
-        if (wantFfmpeg != ffmpegRendererInstalled) {
+        if (wantFfmpeg != ffmpegRendererInstalled ||
+            contrastPipelineInstalled != useContrastPipeline(wantFfmpeg)
+        ) {
             installFfmpegVideo = wantFfmpeg
             rebuildPlayer()
         }
         emitEngine()
+        emitImageCaps()
     }
 
     /**
@@ -2792,6 +3145,7 @@ class NativeVideoView(
             rebuildPlayer()
         }
         emitEngine()
+        emitImageCaps()
         if (reopen && changed && currentUrl != null && !released) {
             emit("reopen", null)
             if (vodMode && player.currentPosition > 0) lastKnownPos = player.currentPosition
@@ -2800,14 +3154,17 @@ class NativeVideoView(
     }
 
     /**
-     * Nouveau lecteur, MÊME surface. On ne le fait que pour entrer ou
-     * sortir de FFmpeg vidéo : le matériel et le logiciel partagent
-     * le même lecteur, seul l'ordre des codecs change.
+     * Nouveau lecteur, MÊME surface : FFmpeg vidéo ou sortie du pipeline
+     * de contraste. Matériel et logiciel Android partagent le même rendu.
      */
     private fun rebuildPlayer() {
-        if (!::player.isInitialized) return
+        if (!::player.isInitialized || released || disposeStarted) return
         val old = player
         val next = buildConfiguredPlayer()
+        // Paramètres immuables de la lecture en cours : le repli HDR/DRM/GL
+        // ne doit pas perdre les langues, les pistes ou leur désactivation.
+        // setUrl a déjà retiré les overrides si l'adresse a réellement changé.
+        next.trackSelectionParameters = old.trackSelectionParameters
         PlayerCensus.playerCreated()
         player = next
         attachToSurface(next)
@@ -2832,6 +3189,9 @@ class NativeVideoView(
     }
 
     private fun resetPictureClock() {
+        resetOutputSizeMeasurement()
+        resetVideoCadence()
+        emit("videoQualityReset", null)
         renderedFrames.set(0)
         lastFrameAtMs = 0L
         videoDecoderReady = false
@@ -2839,7 +3199,7 @@ class NativeVideoView(
     }
 
     private fun considerPictureFallback() {
-        if (released || videoGaveUp || videoFallbackPosted) return
+        if (released || videoGaveUp || videoFallbackPosted || contrastFallbackPosted) return
         if (!::player.isInitialized) return
         // Dehors, l'image est partie : ce n'est pas un décodeur à changer.
         if (!AppForeground.allowsReopen()) return
@@ -2860,7 +3220,13 @@ class NativeVideoView(
             buffering = buffering,
             msSinceLastFrame = if (lastFrameAtMs == 0L) 0L else now - lastFrameAtMs,
         )
-        if (black || frozen) takeVideoFallback(PictureSignal.BLACK_OR_FROZEN)
+        if (black || frozen) {
+            // Une texture GL bloquée doit d'abord pouvoir rendre la main
+            // au chemin direct, avant d'accuser le décodeur de la box.
+            if (!requestContrastDirectFallback("no_frames")) {
+                takeVideoFallback(PictureSignal.BLACK_OR_FROZEN)
+            }
+        }
     }
 
     /**
@@ -2910,6 +3276,11 @@ class NativeVideoView(
      */
     private fun maybeChooseVideo(tracks: Tracks) {
         if (videoChosenForSession) return
+        if (tracks.groups.any { it.type == C.TRACK_TYPE_VIDEO &&
+                player.trackSelectionParameters.overrides.containsKey(it.mediaTrackGroup) }) {
+            videoChosenForSession = true
+            return
+        }
         val videos = ArrayList<VideoCandidate>()
         tracks.groups.forEachIndexed { gi, g ->
             if (g.type != C.TRACK_TYPE_VIDEO) return@forEachIndexed

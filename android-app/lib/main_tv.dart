@@ -20,6 +20,7 @@ import 'core/app/app_platform.dart';
 import 'core/blackbox/black_box.dart';
 import 'core/blackbox/black_box_upload.dart';
 import 'features/player/data/audio_diag_prefs.dart';
+import 'features/player/data/image_prefs.dart';
 import 'features/player/data/audio_report_store.dart';
 import 'features/player/domain/audio_report_book.dart';
 import 'core/update/update_service.dart';
@@ -139,6 +140,9 @@ Future<void> bootstrapZunoTv({Widget Function(Widget app)? wrap}) async {
   BlackBoxUpload.instance.start();
   // Réglages du diagnostic son. Défaut faux : ne change pas le lecteur.
   await AudioDiagPrefs.load();
+  // Avant les aperçus/publicités : un contraste explicitement coupé ne doit
+  // pas s'allumer brièvement au premier affichage de la vue native.
+  await ImagePrefs.load();
   // Interrupteurs de repli des correctifs de l'audit (défaut faux).
   await RepairFlags.load();
   if (BootGuard.instance.safeMode) {

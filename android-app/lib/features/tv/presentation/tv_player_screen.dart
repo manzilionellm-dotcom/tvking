@@ -45,6 +45,7 @@ import '../../player/domain/reconnect_plan.dart';
 import '../../../core/app/repair_flags.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import 'tv_localized_format.dart';
+import 'tv_playback_quality.dart';
 import '../../../core/blackbox/black_box.dart';
 import '../core/history_policy.dart';
 import '../core/tv_activity.dart';
@@ -344,6 +345,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   void _onImagePrefs() {
     _controller.setImageEngine(ImagePrefs.engine.wire);
     _controller.setFrameRateMatch(ImagePrefs.frameRateMatch);
+    _controller.setLightContrast(ImagePrefs.lightContrast);
   }
 
   // Une mini-fenêtre est encore une image visible. Le pont Android décide
@@ -1524,6 +1526,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
                           ignoring: !_overlay || _pip.isInPipMode,
                           child: _ControlsBar(
                             channel: _current,
+                            qualityController: _casting ? null : _controller,
                             index: _index,
                             total: widget.channels.length,
                             isRecording: _isRecording,
@@ -1911,6 +1914,7 @@ class _LiveEpgLineState extends State<_LiveEpgLine> {
 class _ControlsBar extends StatelessWidget {
   const _ControlsBar({
     required this.channel,
+    this.qualityController,
     required this.index,
     required this.total,
     required this.isRecording,
@@ -1937,6 +1941,7 @@ class _ControlsBar extends StatelessWidget {
   });
 
   final Channel channel;
+  final NativeVideoController? qualityController;
   final int index;
   final int total;
   final bool isRecording;
@@ -2001,6 +2006,20 @@ class _ControlsBar extends StatelessWidget {
               _channelNumber(context),
             ],
           ),
+          if (qualityController != null) ...<Widget>[
+            const SizedBox(height: TvDimens.rowGap),
+            Align(
+              alignment: AlignmentDirectional.centerStart,
+              // Le direct ne reconstruit pas toute sa barre sur chaque
+              // événement : seules ces mesures suivent le notifier.
+              child: ListenableBuilder(
+                listenable: qualityController!,
+                builder: (context, _) => TvPlaybackQuality(
+                  quality: qualityController!.videoQuality,
+                ),
+              ),
+            ),
+          ],
           if (engineNote != null && engineNote!.isNotEmpty) ...<Widget>[
             const SizedBox(height: 10),
             Text(

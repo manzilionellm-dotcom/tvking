@@ -2605,7 +2605,9 @@
   "tvScreenRefreshOn": "Açık. Ekran yayına göre 24, 50 veya 60 Hz’e geçebilir. Kapatmak için OK. Bazı cihazlarda görüntü bir saniye kesilebilir; olursa kapatın.",
   "tvScreenRefreshOff": "Kapalı, başlangıç ayarı. Ekranı saniyede 24 / 25 / 30 / 50 / 60 kareye uyarlamak için OK. Kendiliğinden açılmaz.",
   "tvContrast": "Kontrast",
-  "tvContrastUnavailable": "Kullanılamıyor. Android filtresi doğrudan görüntü yolundan çıkar ve daha önce siyah ekrana yol açmıştır. Kapalı kalır.",
+  "tvContrastOn": "Uyumlu SDR videolar için etkin. HDR, özgün görüntüsünü korur.",
+  "tvContrastOff": "Devre dışı. Görüntü özgün kontrastını korur.",
+  "tvContrastUnavailable": "Bu oynatıcı bu ayarı desteklemiyor.",
   "tvUpdateAllowInstall": "Zuno’nun uygulama yüklemesine izin verin: Android’in açtığı ekranda “Zuno”yu etkinleştirin. Sonra geri dönüp OK’ye basın. Güncelleme zaten indirildi.",
   "tvFfmpegKeepDecoder": "Bu sürümde FFmpeg video yok. Mevcut kod çözücü korunuyor.",
   "tvFfmpegBoxDecoder": "Bu sürümde FFmpeg video yok. Cihazın kod çözücüsüne dönülüyor.",
@@ -2860,5 +2862,11 @@
   "tvCheckUnavailable": "Kontrol kullanılamıyor.",
   "updateOpenPlayStore": "Google Play’i aç",
   "updatePlayStoreHelp": "Google Play üzerinden güncellemeleri kontrol edin ve yükleyin.",
-  "updatePlayStoreUnavailable": "Google Play açılamadı. Tekrar deneyin veya cihazınızdaki mağazayı açın."
+  "updatePlayStoreUnavailable": "Google Play açılamadı. Tekrar deneyin veya cihazınızdaki mağazayı açın.",
+  "tvQualityOutput": "Oynatıcı çıkışı: {size}",
+  "tvQualityUnknown": "ölçüm kullanılamıyor",
+  "tvQualitySource": "Kaynak biçimi: {codec} · {range}",
+  "tvQualityCodecUnknown": "bilinmeyen kodek",
+  "tvQualityRangeUnknown": "HDR/SDR belirtilmemiş",
+  "tvQualityCadence": "Çözücü çıkışı: {fps} kare/sn · {seconds} sn içinde {dropped} kayıp"
 }

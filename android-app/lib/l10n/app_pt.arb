@@ -2605,7 +2605,9 @@
   "tvScreenRefreshOn": "Ativado. O ecrã pode mudar para 24, 50 ou 60 Hz conforme a transmissão. OK para desativar. Alguns dispositivos perdem a imagem por um segundo; se acontecer, desativa.",
   "tvScreenRefreshOff": "Desativado, a definição original. OK para ajustar o ecrã a 24 / 25 / 30 / 50 / 60 imagens por segundo. Nunca se ativa sozinho.",
   "tvContrast": "Contraste",
-  "tvContrastUnavailable": "Indisponível. O filtro Android sai do percurso direto da imagem e já causou ecrãs pretos. Mantém-se desativado.",
+  "tvContrastOn": "Ativado para vídeos SDR compatíveis. O conteúdo HDR mantém a apresentação original.",
+  "tvContrastOff": "Desativado. A imagem mantém o contraste original.",
+  "tvContrastUnavailable": "Este leitor não suporta esta definição.",
   "tvUpdateAllowInstall": "Permite que o Zuno instale aplicações: ativa «Zuno» no ecrã aberto pelo Android. Depois volta e prime OK. A atualização já foi descarregada.",
   "tvFfmpegKeepDecoder": "Esta versão não inclui vídeo FFmpeg. Mantém-se o descodificador atual.",
   "tvFfmpegBoxDecoder": "Esta versão não inclui vídeo FFmpeg. Regresso ao descodificador do dispositivo.",
@@ -2860,5 +2862,11 @@
   "tvCheckUnavailable": "Verificação indisponível.",
   "updateOpenPlayStore": "Abrir o Google Play",
   "updatePlayStoreHelp": "Procure e instale atualizações através do Google Play.",
-  "updatePlayStoreUnavailable": "Não foi possível abrir o Google Play. Tente novamente ou abra a loja no seu dispositivo."
+  "updatePlayStoreUnavailable": "Não foi possível abrir o Google Play. Tente novamente ou abra a loja no seu dispositivo.",
+  "tvQualityOutput": "Saída do leitor: {size}",
+  "tvQualityUnknown": "medição indisponível",
+  "tvQualitySource": "Formato de origem: {codec} · {range}",
+  "tvQualityCodecUnknown": "codec desconhecido",
+  "tvQualityRangeUnknown": "HDR/SDR não especificado",
+  "tvQualityCadence": "Saída do descodificador: {fps} imagens/s · {dropped} descartadas / {seconds} s"
 }

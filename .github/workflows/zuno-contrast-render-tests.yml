@@ -1,0 +1,110 @@
+# Preuve visuelle : un vrai décodeur et le rendu Android lisent une mire locale.
+# Ce workflow ne possède ni clé de signature ni droit de publication.
+name: Zuno — contraste mesuré sur Android
+
+on:
+  push:
+    branches: [main, 'feature/**', 'claude/**', ccr-b93e1afd-gwirw0]
+    paths:
+      - 'android-app/packages/native_video_player/**'
+      - 'android-app/android/**'
+      - 'android-app/pubspec.yaml'
+      - 'android-app/pubspec.lock'
+      - 'android-app/ci/*contrast*'
+      - '.github/workflows/zuno-contrast-render-tests.yml'
+  pull_request:
+    paths:
+      - 'android-app/packages/native_video_player/**'
+      - 'android-app/android/**'
+      - 'android-app/pubspec.yaml'
+      - 'android-app/pubspec.lock'
+      - 'android-app/ci/*contrast*'
+      - '.github/workflows/zuno-contrast-render-tests.yml'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: zuno-contrast-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pixels:
+    name: Pixels Android API ${{ matrix.api }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        api: [29, 35]
+    env:
+      SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - name: Extraire exactement le commit à vérifier
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+          persist-credentials: false
+
+      - name: Vérifier la provenance du code
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+
+      - name: Vérifier le contrat des rapports Android
+        run: python3 -m unittest discover -s android-app/ci -p test_contrast_results.py -v
+
+      - name: Java 17
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Flutter stable validé par le dépôt
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+        with:
+          flutter-version: '3.47.7'
+          channel: stable
+          cache: false
+          pub-cache: false
+
+      - name: SDK Android
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+
+      - name: Préparer KVM et le générateur de mire
+        run: |
+          set -euo pipefail
+          test -c /dev/kvm
+          # Permission limitée au runner éphémère ; aucun repli lent ne masque
+          # l'absence d'accélération de la machine virtuelle.
+          sudo chmod a+rw /dev/kvm
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg
+
+      - name: Préparer uniquement les outils Android de debug
+        working-directory: android-app
+        run: |
+          set -euo pipefail
+          # Génère le wrapper/local.properties absents de Git, sans refaire
+          # le code du plugin ni appliquer les patches de publication APK.
+          flutter create . --platforms=android --no-pub --project-name tv_king
+          flutter pub get
+          python3 ci/generate-contrast-fixture.py
+
+      - name: Vérifier les pixels puis prouver que l’ancien défaut est détecté
+        env:
+          CONTRAST_API_LEVEL: ${{ matrix.api }}
+        run: bash android-app/ci/run-contrast-render-tests.sh
+
+      - name: Conserver les images, mesures et rapports même en cas d’échec
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: zuno-contrast-api-${{ matrix.api }}-${{ env.SOURCE_SHA }}
+          path: |
+            artifacts/contrast-api-${{ matrix.api }}/
+            android-app/build/native_video_player/reports/androidTests/
+            android-app/build/native_video_player/outputs/androidTest-results/
+            android-app/packages/native_video_player/android/build/reports/androidTests/
+            android-app/packages/native_video_player/android/build/outputs/androidTest-results/
+          if-no-files-found: error
+          retention-days: 14

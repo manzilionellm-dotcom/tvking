@@ -34,6 +34,8 @@ import '../../player/data/image_prefs.dart';
 import '../../channels/domain/channel.dart';
 import '../core/tv_tokens.dart';
 import '../core/tv_app_tokens.dart';
+import '../core/tv_dimens.dart';
+import 'tv_playback_quality.dart';
 
 class TvLivePreview extends StatefulWidget {
   const TvLivePreview({
@@ -131,6 +133,7 @@ class _TvLivePreviewState extends State<TvLivePreview> {
       ImagePrefs.load().then((_) {
         created.setImageEngine(ImagePrefs.engine.wire);
         created.setFrameRateMatch(ImagePrefs.frameRateMatch);
+        created.setLightContrast(ImagePrefs.lightContrast);
       }),
     );
   }
@@ -165,7 +168,18 @@ class _TvLivePreviewState extends State<TvLivePreview> {
                       final bool showLogo = !c.firstFrame || c.hasError;
                       return showLogo
                           ? _LogoFallback(channel: widget.channel)
-                          : const SizedBox.shrink();
+                          : Align(
+                              alignment: AlignmentDirectional.bottomStart,
+                              child: Container(
+                                padding: const EdgeInsets.all(TvDimens.rowGap),
+                                color: TvAppTokens.playbackOf(context)
+                                    .bg.withValues(alpha: 0.85),
+                                child: TvPlaybackQuality(
+                                  quality: c.videoQuality,
+                                  compact: true,
+                                ),
+                              ),
+                            );
                     },
                   ),
                 ],

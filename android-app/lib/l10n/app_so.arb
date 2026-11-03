@@ -2784,7 +2784,9 @@
   "tvScreenRefreshOn": "Shidan. Shaashaddu waxay u beddelmi kartaa 24, 50 ama 60 Hz si ay ula jaanqaaddo qulqulka. OK si aad u damiso. Box-yada qaarkood sawirku ilbiriqsi ayuu go'aa: haddii ay dhacdo, dami.",
   "tvScreenRefreshOff": "Deman, taas oo ah dejinta asalka ah. OK si aad shaashadda ula jaanqaaddo 24 / 25 / 30 / 50 / 60 sawir ilbiriqsikii. Iskeed uma shidanto.",
   "tvContrast": "Kala-duwanaanta iftiinka",
-  "tvContrastUnavailable": "Lama heli karo. Shaandhada Android ee keliya waxay ka baxdaa dariiqa sawirka tooska ah, waxayna hore u keentay shaashado madow. Way demanaanaysaa.",
+  "tvContrastOn": "Waxaa loo daaray fiidiyowyada SDR ee ku habboon. HDR wuxuu haystaa muuqaalkiisii asalka ahaa.",
+  "tvContrastOff": "Waa deman. Sawirku wuxuu haystaa kala-duwanaantiisii iftiinka ee asalka ahayd.",
+  "tvContrastUnavailable": "Ciyaariyahani ma taageero dejintan.",
   "tvUpdateAllowInstall": "U oggolow Zuno inuu ababka rakibo (Android ayaa furay shaashadda: shid \"Zuno\"), kadib soo noqo oo riix OK. Cusboonaysiinta hore ayaa loo soo dejiyey.",
   "tvFfmpegKeepDecoder": "Muuqaalka FFmpeg kuma jiro noocan. Waxaa la sii isticmaalayaa furfuraha hadda jira.",
   "tvFfmpegBoxDecoder": "Muuqaalka FFmpeg kuma jiro noocan. Waxaa lagu noqonayaa furfuraha box-ka.",
@@ -3173,5 +3175,11 @@
   },
   "updateOpenPlayStore": "Fur Google Play",
   "updatePlayStoreHelp": "Ka hubi Google Play cusboonaysiinta oo rakib.",
-  "updatePlayStoreUnavailable": "Google Play lama furi karin. Mar kale isku day ama ka fur dukaanka qalabkaaga."
+  "updatePlayStoreUnavailable": "Google Play lama furi karin. Mar kale isku day ama ka fur dukaanka qalabkaaga.",
+  "tvQualityOutput": "Soo-saarka ciyaariyaha: {size}",
+  "tvQualityUnknown": "cabbir lama heli karo",
+  "tvQualitySource": "Qaabka isha: {codec} · {range}",
+  "tvQualityCodecUnknown": "kodeeg aan la aqoon",
+  "tvQualityRangeUnknown": "HDR/SDR lama sheegin",
+  "tvQualityCadence": "Soo-saarka furfuraha: {fps} sawir/s · {dropped} lumay / {seconds} s"
 }

@@ -20,6 +20,9 @@ import 'package:flutter/widgets.dart';
 
 import 'playback_lease.dart';
 import 'spoken_track.dart';
+import 'video_quality.dart';
+
+export 'video_quality.dart';
 
 /// Une piste audio ou de sous-titres proposée par le fichier en cours.
 @immutable
@@ -96,8 +99,8 @@ abstract class NativeVideoBackend {
   /// Caler la fréquence de l'écran sur le flux. Ignoré hors Android.
   void setFrameRateMatch(bool enabled) {}
 
-  /// Contraste léger. Ignoré hors Android, et refusé sur la box tant
-  /// que le filtre quitterait la Surface.
+  /// Contraste léger. Le moteur Android applique un véritable effet vidéo ;
+  /// les autres moteurs peuvent ne pas proposer ce réglage.
   void setLightContrast(bool enabled) {}
 
   /// Le widget qui affiche la vidéo.
@@ -130,6 +133,10 @@ class NativeVideoController extends ChangeNotifier {
 
   /// Fabrique du moteur hors Android (null sur la box : lecteur natif).
   static NativeVideoBackend Function()? backendFactory;
+
+  /// Préférence chargée au démarrage, avant de créer le premier lecteur.
+  /// Android l'applique ; les autres moteurs déclarent leurs propres capacités.
+  static bool defaultLightContrast = true;
 
   /// Langue audio de l'application (« fr », « en »…). Lue à chaque
   /// ouverture si l'appelant n'en passe pas une plus précise (film).
@@ -319,9 +326,12 @@ class NativeVideoController extends ChangeNotifier {
   /// Le .so sait décoder la vidéo. Faux avec le binaire audio de la v104.
   bool ffmpegVideoReady = false;
 
-  /// Le matériel accepte un filtre de contraste sans quitter la Surface.
-  /// Faux dans cette version.
+  /// Capacité annoncée par le moteur. Inconnue avant sa première réponse.
   bool contrastHardware = false;
+
+  /// État du traitement confirmé par le natif, distinct de la préférence.
+  bool contrastApplied = false;
+  String? contrastReason;
 
   /// Dernier appui « FFmpeg » refusé parce que la vidéo n'est pas dans le .so.
   bool engineRejectedFfmpeg = false;
@@ -337,13 +347,17 @@ class NativeVideoController extends ChangeNotifier {
   /// Nom du décodeur vidéo créé (pour l'écran, pas une mesure de qualité).
   String videoDecoderName = '';
 
-  /// Dimensions reçues du décodeur, pour donner à la fenêtre PiP le ratio
+  /// Dimensions reçues de la sortie vidéo, pour donner à la fenêtre PiP le ratio
   /// réel du flux. Aucune piste ni qualité vidéo n'est changée par ce relevé.
   int videoWidth = 0;
   int videoHeight = 0;
 
+  /// Mesures du décodeur et métadonnées source, sans estimation par le nom.
+  NativeVideoQuality videoQuality = const NativeVideoQuality();
+
   String _imageEngine = 'hardware';
   bool _frameRateMatch = false;
+  bool _lightContrast = defaultLightContrast;
 
   // Paramètres du dernier setUrl (rejoués si la vue native arrive après).
   Map<String, dynamic>? _pendingArgs;
@@ -364,6 +378,7 @@ class NativeVideoController extends ChangeNotifier {
     // second démarrage si le choix n'est pas le matériel).
     ch.invokeMethod<void>('setEngine', _imageEngine);
     ch.invokeMethod<void>('setFrameRateMatch', _frameRateMatch);
+    ch.invokeMethod<void>('setContrast', _lightContrast);
     // Diagnostic audio. Tout est faux par défaut : sonde inactive,
     // AAC toujours sur FFmpeg, pas d'essai du décodeur de la box.
     ch.invokeMethod<void>('setAudioProbe', audioProbeEnabled);
@@ -432,7 +447,17 @@ class NativeVideoController extends ChangeNotifier {
     }
     // Ces messages décrivent le moteur, pas une image de l'ancienne
     // chaîne : on les prend même entre deux zap.
-    if (method == 'engine' || method == 'imageCaps' || method == 'contrast') {
+    if (method == 'contrast' || method == 'contrastReason') {
+      if (method == 'contrast') {
+        contrastApplied = arguments == true;
+        if (contrastApplied) contrastReason = null;
+      } else {
+        contrastReason = arguments is String ? arguments : null;
+      }
+      if (!_disposed) notifyListeners();
+      return;
+    }
+    if (method == 'engine' || method == 'imageCaps') {
       _readEngine(arguments);
       if (!_disposed) notifyListeners();
       return;
@@ -440,7 +465,21 @@ class NativeVideoController extends ChangeNotifier {
     if (!_acceptEvents) return;
     final _Ev call = _Ev(method, arguments);
     switch (call.method) {
+      case 'videoSize':
+        videoQuality = videoQuality.withVideoSize(call.arguments);
+        videoWidth = videoQuality.outputWidth;
+        videoHeight = videoQuality.outputHeight;
+      case 'videoSource':
+        videoQuality = videoQuality.withSourceFormat(call.arguments);
+      case 'videoCadence':
+        videoQuality = videoQuality.withCadence(call.arguments);
+      case 'videoQualityReset':
+        videoQuality = const NativeVideoQuality();
+        videoWidth = 0;
+        videoHeight = 0;
       case 'videoFormat':
+        // Compatibilité avec les moteurs plus anciens. Un format déclaré
+        // suffit au ratio PiP, mais ne devient pas une mesure de qualité.
         if (call.arguments is Map) {
           final Map<Object?, Object?> data =
               call.arguments as Map<Object?, Object?>;
@@ -453,8 +492,10 @@ class NativeVideoController extends ChangeNotifier {
         }
       case 'buffering':
         isBuffering = call.arguments as bool;
+        if (isBuffering) videoQuality = videoQuality.withCadence(null);
       case 'playing':
         isPlaying = call.arguments as bool;
+        if (!isPlaying) videoQuality = videoQuality.withCadence(null);
       case 'position':
         {
           // Certaines box ne rappellent pas « firstFrame » quand on réutilise
@@ -479,6 +520,7 @@ class NativeVideoController extends ChangeNotifier {
       case 'error':
         hasError = true;
         nativeRetrying = false;
+        videoQuality = videoQuality.withCadence(null);
       case 'holdFrame':
         holdFrame = call.arguments == true;
         if (holdFrame) isBuffering = false;
@@ -591,6 +633,7 @@ class NativeVideoController extends ChangeNotifier {
     hasError = false;
     videoWidth = 0;
     videoHeight = 0;
+    videoQuality = const NativeVideoQuality();
     engineExhausted = false;
     engineRejectedFfmpeg = false;
     isEnded = false;
@@ -700,6 +743,7 @@ class NativeVideoController extends ChangeNotifier {
   }
 
   void setLightContrast(bool enabled) {
+    _lightContrast = enabled;
     if (_backend != null) {
       _backend!.setLightContrast(enabled);
       return;

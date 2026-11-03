@@ -139,7 +139,7 @@ class MediaKitVideoBackend implements NativeVideoBackend {
       }))
       ..add(s.videoParams.listen((VideoParams params) {
         // Dimensions réellement décodées, sans inventer de label 4K/HDR.
-        _emit('videoFormat', <String, int>{
+        _emit('videoSize', <String, int>{
           'width': params.w ?? 0,
           'height': params.h ?? 0,
         });

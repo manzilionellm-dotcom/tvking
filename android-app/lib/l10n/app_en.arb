@@ -1233,7 +1233,9 @@
   "tvScreenRefreshOn": "On. The screen may switch to 24, 50 or 60 Hz to match the stream. OK to turn off. On some boxes the picture drops for a second: if it does, turn it off.",
   "tvScreenRefreshOff": "Off, which is the original setting. OK to match the screen to 24 / 25 / 30 / 50 / 60 frames per second. It never turns on by itself.",
   "tvContrast": "Contrast",
-  "tvContrastUnavailable": "Not available. The only Android filter leaves the direct picture path and has made black screens before. It stays off.",
+  "tvContrastOn": "Enabled for compatible SDR video. HDR keeps its original rendering.",
+  "tvContrastOff": "Disabled. The image keeps its original contrast.",
+  "tvContrastUnavailable": "This player does not support this setting.",
   "tvUpdateAllowInstall": "Allow Zuno to install apps (Android has opened the screen: turn on \"Zuno\"), then come back and press OK. The update is already downloaded.",
   "tvFfmpegKeepDecoder": "FFmpeg video is not in this version. Staying on the current decoder.",
   "tvFfmpegBoxDecoder": "FFmpeg video is not in this version. Back to the box decoder.",
@@ -1498,5 +1500,11 @@
   "tvCheckUnavailable": "Check unavailable.",
   "updateOpenPlayStore": "Open Google Play",
   "updatePlayStoreHelp": "Check for and install updates from Google Play.",
-  "updatePlayStoreUnavailable": "Could not open Google Play. Try again or open the Store on your device."
+  "updatePlayStoreUnavailable": "Could not open Google Play. Try again or open the Store on your device.",
+  "tvQualityOutput": "Player output: {size}",
+  "tvQualityUnknown": "measurement unavailable",
+  "tvQualitySource": "Source format: {codec} · {range}",
+  "tvQualityCodecUnknown": "unknown codec",
+  "tvQualityRangeUnknown": "HDR/SDR unspecified",
+  "tvQualityCadence": "Decoder output: {fps} frames/s · {dropped} dropped / {seconds} s"
 }
