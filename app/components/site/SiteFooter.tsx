@@ -41,6 +41,7 @@ export default function SiteFooter() {
         <div className="flex flex-col gap-2 text-sm">
           <p className="mb-1 font-semibold text-white/70">Infos</p>
           <Link href="/faq" className="text-white/45 hover:text-white">FAQ</Link>
+          <Link href="/guides/installer-zuno" className="text-white/45 hover:text-white">Guide d&apos;installation</Link>
           <Link href="/legal" className="text-white/45 hover:text-white">Mentions légales</Link>
           <Link href="/connexion" className="text-white/45 hover:text-white">Connexion</Link>
         </div>

@@ -9,6 +9,7 @@ const paths = [
   "/activer",
   "/connexion",
   "/faq",
+  "/guides/installer-zuno",
   "/legal",
   "/revendeur",
   "/start",
