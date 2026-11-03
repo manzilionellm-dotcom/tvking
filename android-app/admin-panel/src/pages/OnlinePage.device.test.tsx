@@ -91,6 +91,28 @@ describe('appareil connecté dans la page En ligne', () => {
     expect(mocks.devices).not.toHaveBeenCalled();
   });
 
+  it.each([
+    { live: { deviceKind: 'android_phone' }, storedKind: 'android_tv', model: phone.device_model, os: 'Android 17' },
+    { live: { androidRelease: '18' }, storedKind: 'android_phone', model: phone.device_model, os: 'Android 18' },
+    { live: { deviceModel: 'Modèle du heartbeat' }, storedKind: 'android_phone', model: 'Modèle du heartbeat', os: 'Android 17' },
+  ])('complète une présence partielle sans remplacer ses champs actuels : $live', async ({ live, storedKind, model, os }) => {
+    mocks.online.mockResolvedValue({ ...onlineSnapshot(), items: [{ ...onlineRow(PHONE_MAC), ...live }] });
+    mocks.devices.mockResolvedValue(devicePage([
+      { ...tv, device_kind: 'android_tv' },
+      { ...phone, device_kind: storedKind },
+    ]));
+    await mount();
+    expect(deviceText(PHONE_MAC)).toContain('Téléphone Android');
+    expect(deviceText(PHONE_MAC)).toContain(model);
+    expect(deviceText(PHONE_MAC)).toContain(os);
+    expect(deviceText(PHONE_MAC)).not.toContain('NVIDIA');
+    expect(rows()).toHaveLength(1);
+    expect(mocks.devices).toHaveBeenCalledTimes(1);
+    // La présence fréquente ne relance pas le parcours du registre.
+    await advance(4_000);
+    expect(mocks.devices).toHaveBeenCalledTimes(1);
+  });
+
   it('rapproche le modèle par MAC malgré l’ordre inversé et la casse du registre', async () => {
     await mount();
     expect(rows()).toHaveLength(2);
@@ -165,6 +187,21 @@ describe('appareil connecté dans la page En ligne', () => {
     expect(mocks.online).toHaveBeenCalledTimes(31);
     expect(deviceText(PHONE_MAC)).toContain('Samsung SM-S938B');
     expect(deviceText(TV_MAC)).toContain('NVIDIA SHIELD Android TV');
+    expect(text()).toContain('informations d’appareil sont indisponibles');
+  });
+
+  it('conserve les champs connus lorsque le registre renvoie une fiche partielle puis échoue', async () => {
+    await mount();
+    mocks.devices.mockResolvedValueOnce({
+      items: [{ mac: PHONE_MAC, device_kind: 'android_phone' }], total: 2,
+    }).mockRejectedValueOnce(new Error('Deuxième page indisponible'));
+    await advance(60_000);
+    expect(mocks.devices).toHaveBeenCalledTimes(3);
+    expect(deviceText(PHONE_MAC)).toContain('Téléphone Android');
+    expect(deviceText(PHONE_MAC)).toContain('Samsung SM-S938B');
+    expect(deviceText(PHONE_MAC)).toContain('Android 17');
+    expect(deviceText(TV_MAC)).toContain('NVIDIA SHIELD Android TV');
+    expect(deviceText(TV_MAC)).toContain('Android 11');
     expect(text()).toContain('informations d’appareil sont indisponibles');
   });
 

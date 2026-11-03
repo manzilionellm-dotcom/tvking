@@ -47,7 +47,22 @@ export function useOnlineDeviceMetadata(macs: readonly string[], onLogout: () =>
         // Une erreur transitoire ne remplace pas un modèle connu par du vide.
         setDevices((previous) => {
           if (result.complete && !result.failed) return result.devices;
-          return new Map([...previous, ...result.devices]);
+          const merged = new Map(previous);
+          for (const [mac, incoming] of result.devices) {
+            const known = previous.get(mac);
+            // Un parcours interrompu peut avoir reçu une fiche incomplète.
+            // Garder chaque champ connu de cette même MAC et accepter les
+            // valeurs nouvelles, sans toucher aux autres appareils présents.
+            merged.set(mac, known ? {
+              mac,
+              deviceKind: incoming.deviceKind || known.deviceKind,
+              deviceModel: incoming.deviceModel || known.deviceModel,
+              manufacturer: incoming.manufacturer || known.manufacturer,
+              androidRelease: incoming.androidRelease || known.androidRelease,
+              appVersion: incoming.appVersion || known.appVersion,
+            } : incoming);
+          }
+          return merged;
         });
         setUnavailable(result.failed || !result.complete);
       } catch {

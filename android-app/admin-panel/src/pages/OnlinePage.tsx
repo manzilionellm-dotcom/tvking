@@ -57,7 +57,9 @@ export function OnlinePage({ onLogout }: { onLogout: () => void }) {
 
   const byCountry = data ? data.byCountry : [];
   const metadata = useOnlineDeviceMetadata((data?.items ?? [])
-    .filter((d) => !d.deviceModel && !d.androidRelease && !d.deviceKind)
+    // Certains heartbeats ne donnent que le type ou la version Android.
+    // Compléter leurs champs absents ; une ligne complète évite le registre.
+    .filter((d) => !d.deviceModel?.trim() || !d.androidRelease?.trim() || !d.deviceKind?.trim())
     .map((d) => d.mac), onLogout);
   const rows = (data?.items ?? []).map((d) => ({
     ...d,
