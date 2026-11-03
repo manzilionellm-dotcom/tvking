@@ -10,7 +10,7 @@ import androidx.media3.effect.GlEffect
 import com.manzilionellm.native_video_player.logic.AiBenchmarkReport
 import com.manzilionellm.native_video_player.logic.AiBypassReason
 import com.manzilionellm.native_video_player.logic.AiFrameGate
-import com.manzilionellm.native_video_player.logic.AiPlaybackLeases
+import com.manzilionellm.native_video_player.logic.AiPreflightGate
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
@@ -28,7 +28,7 @@ class AiPictureEngine internal constructor(context: Context) {
     private val attempts = AtomicInteger()
     @Volatile private var retryPending = true
     @Volatile private var permanentlyRefused = false
-    private val leases = AiPlaybackLeases { if (retryPending) startPreflight() }
+    private val admission = AiPreflightGate { if (retryPending) startPreflight() }
     private val wanted = LinkedHashMap<String, Pair<Int, Int>>()
     private val seenRequests = HashSet<String>()
     private val reports = ConcurrentHashMap<String, AiBenchmarkReport>()
@@ -41,18 +41,22 @@ class AiPictureEngine internal constructor(context: Context) {
         private set
 
     /** Une lease par décodeur : fermer l'aperçu A ne libère jamais la lecture B. */
-    fun acquirePlayback(owner: Any): AutoCloseable = leases.acquire(owner)
+    fun acquirePlayback(owner: Any): AutoCloseable = admission.acquirePlayback(owner)
+
+    fun attachFlutterUi(): AiPreflightGate.UiRegistration = admission.attachUi()
 
     fun startPreflight() {
-        if (permanentlyRefused || !retryPending || attempts.get() >= 2 || leases.hasActive) return
+        if (permanentlyRefused || !retryPending || attempts.get() >= 2 || !admission.canRun) return
         if (!running.compareAndSet(false, true)) return
         attempts.incrementAndGet()
-        val leaseGeneration = leases.generation
+        val leaseGeneration = admission.playbackGeneration
+        val uiGeneration = admission.uiGeneration
         executor.execute {
             Log.i("ZunoStartup", "ai.preflight.begin")
             Process.setThreadPriority(Process.THREAD_PRIORITY_BACKGROUND)
             val deadline = SystemClock.elapsedRealtime() + 2500
-            val cancelled = { leases.hasActive || leases.generation != leaseGeneration || SystemClock.elapsedRealtime() >= deadline }
+            val cancelled = { !admission.canRun || admission.playbackGeneration != leaseGeneration ||
+                admission.uiGeneration != uiGeneration || SystemClock.elapsedRealtime() >= deadline }
             var retry = false
             try {
                 if (cancelled()) throw AiWorkCancelled()
@@ -99,7 +103,8 @@ class AiPictureEngine internal constructor(context: Context) {
                 }
             } catch (_: AiWorkCancelled) {
                 retry = true
-                preflightRefusal = AiBypassReason.PLAYBACK_STARTED.takeIf { leases.hasActive || leases.generation != leaseGeneration }
+                preflightRefusal = AiBypassReason.PLAYBACK_STARTED.takeIf {
+                    admission.hasPlayback || admission.playbackGeneration != leaseGeneration }
             } catch (_: OutOfMemoryError) { preflightRefusal = AiBypassReason.MEMORY_LOW }
             catch (error: Exception) {
                 preflightRefusal = if (error.message?.contains("FLOAT_FRAMEBUFFER_UNSUPPORTED") == true)
@@ -109,7 +114,7 @@ class AiPictureEngine internal constructor(context: Context) {
                 Log.i("ZunoStartup", "ai.preflight.end")
                 synchronized(wanted) { retryPending = retry || wanted.isNotEmpty() }
                 running.set(false)
-                if (retryPending && !leases.hasActive) startPreflight()
+                if (retryPending && admission.canRun) startPreflight()
             }
         }
     }
@@ -196,7 +201,7 @@ class AiPictureEngine internal constructor(context: Context) {
     }
 
     /** Test réel de tous les shaders, comparé à ONNX Runtime CPU indépendant. */
-    internal fun referenceCheck(loaded: ArtCnnAssets, es3: Boolean, programs: ArtCnnPrograms? = null, cancelled: () -> Boolean = { leases.hasActive }): Boolean {
+    internal fun referenceCheck(loaded: ArtCnnAssets, es3: Boolean, programs: ArtCnnPrograms? = null, cancelled: () -> Boolean = { admission.hasPlayback }): Boolean {
         if (cancelled()) return false
         val input = AiGl.texture(ArtCnnAssets.REFERENCE_WIDTH, ArtCnnAssets.REFERENCE_HEIGHT, false, es3)
         try {

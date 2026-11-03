@@ -335,10 +335,9 @@ Future<void> bootstrapZunoTv({Widget Function(Widget app)? wrap}) async {
   });
   unawaited(WidgetsBinding.instance.waitUntilFirstFrameRasterized.then((_) {
     StartupTrace.mark('frame.rasterized');
+    // Une boucle Dart vivante sur le splash n'est pas un démarrage réussi.
+    // Le délai de stabilité commence seulement après la première image réelle.
+    BootGuard.instance.scheduleStableReset();
   }));
   runApp(wrap == null ? const TvApp() : wrap(const TvApp()));
-
-  // L'app est lancée : si elle tient quelques secondes, on efface l'historique
-  // de boucle (un démarrage réussi « pardonne » les crashs précédents).
-  BootGuard.instance.scheduleStableReset();
 }

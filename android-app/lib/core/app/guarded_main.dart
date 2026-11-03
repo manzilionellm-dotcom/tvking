@@ -31,8 +31,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
 import 'startup_trace.dart';
+import 'startup_services.dart';
 import '../crash/crash_reporting.dart';
-import '../crash/crash_reporting_firebase.dart';
 import '../theme/bundled_fonts.dart';
 
 /// Channel natif (plugin tvking_device) — sert ici à lire la RAM de l'appareil
@@ -131,14 +131,9 @@ void runGuarded(Future<void> Function() body) {
         return true;
       };
 
-      // Collecteur prêt AVANT le boot : toute erreur de démarrage est captée.
-      await StartupTrace.step('crashReporting', CrashReporting.instance.initialize);
-
-      // Crashlytics si (et seulement si) le projet est configuré. Best-effort,
-      // jamais bloquant ni fatal : sans google-services.json, no-op silencieux.
-      await StartupTrace.step('crashlytics', attachCrashlytics);
-
-      await StartupTrace.step('bootstrap', body);
+      // Collecteur local prêt AVANT le boot. Firebase sera attaché après la
+      // première image rasterisée, sans attendre sa réponse pour lancer l'UI.
+      await startWithLocalCrashReporting(body);
     },
     // 4) Filet ultime.
     (Object error, StackTrace stack) {
