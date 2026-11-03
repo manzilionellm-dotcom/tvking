@@ -11,9 +11,9 @@ rendu sur une box cliente. Le Worker, le lecteur Windows et le binaire tiers
 Le lecteur Android utilise Media3 / ExoPlayer 1.5.1 et une `SurfaceView` native,
 sans texture vidéo Flutter. Pour les vidéos SDR compatibles décodées par
 MediaCodec, il installe maintenant un processeur de trames OpenGL Media3 avant
-la surface. `VideoContrastEffects.create` fournit un véritable effet
-`androidx.media3.effect.Contrast(0.08f)` à `ExoPlayer.setVideoEffects` avant
-`prepare`. Ce n'est donc plus uniquement un réglage d'interface.
+la surface. `VideoContrastEffects` fournit une matrice RGB dynamique, calculée par
+`androidx.media3.effect.Contrast(0.08f)`, installée une seule fois dans
+`ExoPlayer.setVideoEffects` avant `prepare`. Ce n'est donc plus uniquement un réglage d'interface.
 
 `0.08` est le paramètre de l'effet Media3, pas une promesse de « 8 % de netteté »
 ou de luminosité. Le traitement modifie le contraste des pixels. Il n'ajoute
@@ -33,8 +33,10 @@ lecture courant et l'effet annoncé comme appliqué par le natif. L'état de
 préférence ne suffit pas à prouver que le traitement s'applique à chaque flux.
 Le lecteur Windows ne prend pas en charge ce réglage et l'indique dans l'UI.
 
-Couper le réglage retire l'effet de contraste, mais conserve le processeur GL
-avec une liste d'effets vide. Cela ne signifie pas « retour au rendu direct ».
+Couper le réglage choisit une matrice identité exacte, relue à chaque trame.
+La liste d'effets reste identique : remplacer cette liste pendant la lecture
+réenregistre le flux dans Media3 1.5.1 et a figé l'image lors du test Android.
+Le processeur GL reste installé ; ce n'est pas un retour au rendu direct.
 
 ## HDR, DRM et repli sans GL
 

@@ -447,6 +447,7 @@ class NativeVideoView(
     // Contraste réellement traité par Media3. Le choix reste allumé par
     // défaut ; un repli ne change que CETTE adresse, jamais la préférence.
     private var contrastRequested: Boolean = PictureTune.DEFAULT_ENABLED
+    private val contrastEffect = VideoContrastEffects()
     private var contrastPipelineInstalled: Boolean = false
     private var contrastBypassReason: String? = null
     private var contrastFallbackPosted: Boolean = false
@@ -1301,14 +1302,9 @@ class NativeVideoView(
             }
             "setContrast" -> {
                 contrastRequested = call.arguments == true
-                if (contrastPipelineInstalled) {
-                    // Le pipeline est installé AVANT prepare. Une liste
-                    // vide coupe le filtre, mais conserve le pipeline GL :
-                    // on ne prétend pas revenir au chemin Surface direct.
-                    player.setVideoEffects(
-                        VideoContrastEffects.create(contrastRequested, contrastAvailable()),
-                    )
-                }
+                // Le shader relit cette valeur pour chaque image. Ne pas
+                // réenregistrer le flux GL lors d'un simple ON/OFF.
+                contrastEffect.setEnabled(contrastRequested, contrastAvailable())
                 emitImageCaps()
                 result.success(contrastApplied())
             }
@@ -2800,9 +2796,8 @@ class NativeVideoView(
         // appeler setVideoEffects (même vide) pour le chemin direct de repli.
         contrastPipelineInstalled = useContrastPipeline(installFfmpegVideo)
         if (contrastPipelineInstalled) {
-            target.setVideoEffects(
-                VideoContrastEffects.create(contrastRequested, hardwareAllows = true),
-            )
+            contrastEffect.setEnabled(contrastRequested, hardwareAllows = true)
+            target.setVideoEffects(listOf(contrastEffect))
         }
         updateContrastSurfaceSize()
         target.setVideoScalingMode(C.VIDEO_SCALING_MODE_SCALE_TO_FIT)
