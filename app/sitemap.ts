@@ -10,6 +10,8 @@ const paths = [
   "/connexion",
   "/faq",
   "/guides/installer-zuno",
+  "/guides/ajouter-playlist-m3u-xtream-zuno",
+  "/guides/zuno-coupures-erreurs-lecture",
   "/legal",
   "/revendeur",
   "/start",
