@@ -117,6 +117,110 @@ test('la preuve de signature réellement mesurée par le build traverse les jobs
   assert.match(publish, /\[ "\$\{APK_CERT:-\}" = "\$EXPECTED_CERT" \]/);
 });
 
+function tvJob(name) {
+  const body = tv.match(new RegExp(
+    '^  ' + name + ':\\n([\\s\\S]*?)(?=^  [a-z][\\w-]*:|$(?![\\s\\S]))', 'm'))?.[1];
+  assert.ok(body, 'job TV absent : ' + name);
+  return body;
+}
+
+function tvJobCondition(name) {
+  const body = tvJob(name);
+  const header = body.match(/^    if: ([^\n]*)\n/m);
+  assert.ok(header, 'condition TV absente : ' + name);
+  if (header[1] !== '>-') return header[1];
+  const rest = body.slice(header.index + header[0].length);
+  return rest.match(/^(?:      [^\n]*\n)+/)[0].trim();
+}
+
+// On évalue les VRAIES conditions du YAML, pas une seconde règle codée à la
+// main. Ce sous-ensemble (&&, ||, ==, !cancelled) a le même sens en JS/GitHub.
+// Sans fonction de statut, GitHub ajoute implicitement success() : c'est
+// précisément le piège d'un besoin volontairement skipped pour le téléphone.
+function tvJobAllowed(name, { variant = 'box', build = 'success', startup = 'success',
+                             cancelled = false, publish = 'true', testBox = 'false',
+                             event = 'workflow_dispatch', owner = true } = {}) {
+  const body = tvJob(name);
+  const expression = tvJobCondition(name).replaceAll('needs.build-tv', 'needs.build_tv');
+  const results = { 'build-tv': build, startup };
+  const dependencies = body.match(/^    needs: \[([^\]]+)\]/m)[1].split(',').map(x => x.trim());
+  if (!/\b(?:always|cancelled|failure|success)\(/.test(expression) &&
+      dependencies.some(dependency => results[dependency] !== 'success')) return false;
+  const evaluate = new Function('needs', 'inputs', 'github', 'cancelled',
+    'return !!(' + expression + ')');
+  return evaluate(
+    { build_tv: { result: build }, startup: { result: startup } },
+    { variante: variant, publish, test_box: testBox },
+    { actor: owner ? 'manzilionellm-dotcom' : 'other', triggering_actor: 'manzilionellm-dotcom',
+      repository_owner: 'manzilionellm-dotcom', repository: 'manzilionellm-dotcom/tvking',
+      event_name: event }, () => cancelled);
+}
+
+test('la publication box exige réellement le succès du smoke dans le même run', () => {
+  assert.match(tvJob('publish'), /needs: \[build-tv, startup\]/);
+  for (const variant of ['box', '', 'inconnue']) {
+    assert.equal(tvJobAllowed('publish', { variant }), true, variant);
+    for (const startup of ['failure', 'cancelled', 'skipped', '']) {
+      assert.equal(tvJobAllowed('publish', { variant, startup }), false, variant + '/' + startup);
+    }
+    for (const build of ['failure', 'cancelled', 'skipped', '']) {
+      assert.equal(tvJobAllowed('publish', { variant, build }), false, variant + '/' + build);
+    }
+  }
+  assert.equal(tvJobAllowed('publish', { cancelled: true }), false);
+  assert.equal(tvJobAllowed('publish', { owner: false }), false);
+  assert.equal(tvJobAllowed('publish', { event: 'push' }), false);
+  assert.equal(tvJobAllowed('publish', { publish: 'false' }), false);
+  assert.equal(tvJobAllowed('publish', { publish: 'false', testBox: 'true' }), true);
+});
+
+test('la variante téléphone conserve son parcours sans autoriser un skip box', () => {
+  assert.equal(tvJobAllowed('startup', { variant: 'telephone' }), false);
+  assert.equal(tvJobAllowed('publish', { variant: 'telephone', startup: 'skipped',
+    publish: 'false', testBox: 'true' }), true);
+  for (const startup of ['success', 'failure', 'cancelled', '']) {
+    assert.equal(tvJobAllowed('publish', { variant: 'telephone', startup,
+      publish: 'false', testBox: 'true' }), false, startup);
+  }
+  assert.equal(tvJobAllowed('publish', { variant: 'telephone', startup: 'skipped',
+    publish: 'false', testBox: 'true', cancelled: true }), false);
+});
+
+test('les deux API testent aussi le premier build box sans publication, sans secret', () => {
+  const startup = tvJob('startup');
+  assert.match(startup, /api: \[29, 35\]/);
+  assert.match(startup, /fail-fast: false/);
+  assert.match(startup, /permissions:\n      contents: read/);
+  assert.doesNotMatch(startup, /\bsecrets\.|environment:|contents: write|gh release/);
+  assert.equal(tvJobAllowed('startup', { publish: 'false', testBox: 'false' }), true);
+  assert.equal(tvJobAllowed('startup', { publish: 'false', testBox: 'true' }), true);
+  for (const build of ['failure', 'cancelled', 'skipped', '']) {
+    assert.equal(tvJobAllowed('startup', { build }), false, build);
+  }
+});
+
+test('le smoke et le publisher utilisent l’ID exact et les empreintes émises avant upload', () => {
+  const build = tvJob('build-tv');
+  const startup = tvJob('startup');
+  const publish = tvJob('publish');
+  assert.match(build, /apk-artifact-id: \$\{\{ steps\.apk-upload\.outputs\.artifact-id \}\}/);
+  assert.match(build, /apk-artifact-digest: \$\{\{ steps\.apk-upload\.outputs\.artifact-digest \}\}/);
+  assert.match(build, /apk-sha256: \$\{\{ steps\.apk-identity\.outputs\.sha256 \}\}/);
+  assert.match(build, /apk-size: \$\{\{ steps\.apk-identity\.outputs\.size \}\}/);
+  assert.match(build, /build-attempt: \$\{\{ steps\.apk-identity\.outputs\.build-attempt \}\}/);
+  assert.ok(build.indexOf('sha256sum "$APK"') < build.indexOf('id: apk-upload'));
+  for (const consumer of [startup, publish]) {
+    assert.match(consumer, /artifact-ids: \$\{\{ needs\.build-tv\.outputs\.apk-artifact-id \}\}/);
+    assert.match(consumer, /needs\.build-tv\.outputs\.apk-sha256/);
+    assert.match(consumer, /needs\.build-tv\.outputs\.apk-size/);
+  }
+  assert.match(startup, /STARTUP_BUILD_ATTEMPT: \$\{\{ needs\.build-tv\.outputs\.build-attempt \}\}/);
+  assert.match(startup, /STARTUP_APK_CERT: \$\{\{ needs\.build-tv\.outputs\.apk-cert \}\}/);
+  assert.match(publish, /verify_apk_startup\.py bytes/);
+  assert.ok(publish.indexOf('APP_OPERATION:') < publish.indexOf('artifact-ids:'));
+  assert.ok(publish.indexOf('verify_apk_startup.py bytes') < publish.indexOf('gh release'));
+});
+
 test('le build mobile ne peut modifier aucune release', () => {
   const build = phone.match(/^  phone:\n([\s\S]*?)(?=^  [a-z][\w-]*:|$(?![\s\S]))/m)?.[1];
   assert.ok(build);
