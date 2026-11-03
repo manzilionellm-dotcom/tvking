@@ -17,4 +17,11 @@ object PictureTune {
 
     fun resolve(requested: Boolean, hardwareAllows: Boolean): Boolean =
         requested && hardwareAllows
+
+    /** HDR et DRM gardent le rendu direct, sans conversion par le filtre SDR. */
+    fun directReason(isHdr: Boolean, hasDrm: Boolean): String? = when {
+        hasDrm -> "drm"
+        isHdr -> "hdr"
+        else -> null
+    }
 }

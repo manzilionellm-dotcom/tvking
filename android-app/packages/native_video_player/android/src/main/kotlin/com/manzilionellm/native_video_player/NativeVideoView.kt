@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.ContextWrapper
 import android.graphics.Bitmap
 import android.graphics.PixelFormat
+import android.graphics.Point
 import android.graphics.Rect
 import android.media.AudioFocusRequest
 import android.media.AudioManager
@@ -92,6 +93,8 @@ import com.manzilionellm.native_video_player.logic.SpokenTrackChoice
 import com.manzilionellm.native_video_player.logic.VideoCandidate
 import com.manzilionellm.native_video_player.logic.VideoEngine
 import com.manzilionellm.native_video_player.logic.VideoTrackChoice
+import com.manzilionellm.native_video_player.logic.VideoSurfaceBuffer
+import com.manzilionellm.native_video_player.logic.VideoSurfaceSize
 import java.util.concurrent.atomic.AtomicInteger
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodCall
@@ -103,8 +106,8 @@ import io.flutter.plugin.platform.PlatformView
  * jamais » (façon YouTube / Netflix).
  *
  * RENDU : la vidéo est dessinée dans une vraie [SurfaceView] Android pilotée
- * par Media3 (ExoPlayer). MediaCodec décode le HEVC en matériel et écrit
- * directement sur la Surface : la trame ne passe JAMAIS par une texture Flutter
+ * par Media3 (ExoPlayer). Le contraste SDR passe par le processeur GL de Media3 ;
+ * HDR, DRM et replis gardent la sortie directe. La trame ne passe jamais par une texture Flutter
  * (le chemin qui restait noir avec mpv et libVLC sur cette box).
  *
  * DÉMARRAGE RAPIDE : tampon de lecture court (≈1 s) + priorité au temps plutôt
@@ -186,6 +189,7 @@ class NativeVideoView(
 
     private val appContext: Context = context
     private val surfaceView = SurfaceView(context)
+    private var contrastSurfaceBuffer: VideoSurfaceBuffer? = null
 
     /**
      * Dernière image, posée PAR-DESSUS la surface pendant une coupure.
@@ -283,6 +287,9 @@ class NativeVideoView(
     private var focusRequest: AudioFocusRequest? = null
     private var focusHeld = false
     private var pausedByFocus = false
+    // Intention conservée jusqu'au prepare différé : un repli purement
+    // technique ne doit pas annuler une pause utilisateur ou une perte de focus.
+    private var preparePlayRequested = true
     private val focusListener = AudioManager.OnAudioFocusChangeListener { change ->
         handler.post { onAudioFocusChange(change) }
     }
@@ -550,6 +557,9 @@ class NativeVideoView(
         // translucide et affichent un écran VERT à la place de la vidéo.
         // Opaque = le décodeur écrit des pixels réels, pas « du vide ».
         surfaceView.holder.setFormat(PixelFormat.OPAQUE)
+        surfaceView.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+            updateContrastSurfaceSize()
+        }
 
         player = buildConfiguredPlayer()
         PlayerCensus.playerCreated()
@@ -1529,6 +1539,7 @@ class NativeVideoView(
                 // ici ferait ressortir l'ancien tampon. La nouvelle session
                 // le remonte toute seule (unmuteIfThisSession).
                 pausedByFocus = false
+                preparePlayRequested = true
                 requestOwnFocus()
                 if (!reconnect.holdMute && !pausedByFocus) {
                     player.volume = AudioHandoff.VOLUME_FULL
@@ -1538,6 +1549,7 @@ class NativeVideoView(
             }
             "pause" -> {
                 pausedByFocus = false
+                preparePlayRequested = false
                 player.pause()
                 result.success(null)
             }
@@ -1913,8 +1925,12 @@ class NativeVideoView(
      * [startPositionMs] > 0 : reprise d'un film. Le direct passe null
      * et repart du bord du direct, pas d'une image figée.
      */
-    private fun openCurrent(startPositionMs: Long?) {
-        if (currentUrl == null || released) return
+    private fun openCurrent(
+        startPositionMs: Long?,
+        preservePlayRequested: Boolean? = null,
+        preserveFocusPause: Boolean = false,
+    ) {
+        if (currentUrl == null || released || disposeStarted) return
         // Dehors : pas de nouveau décodeur, pas de nouvel AudioTrack.
         if (refuseReopen()) return
         // Un repli peut avoir été décidé juste avant Home/Cast. Son callback
@@ -1928,6 +1944,8 @@ class NativeVideoView(
         if (sawFrame && heldBitmap != null) showHeldFrame()
         if (playerKey >= 0) owners.claim(playerKey)
         silenceForHandoff()
+        preparePlayRequested = preservePlayRequested ?: true
+        pausedByFocus = preserveFocusPause
         val token = sessions.generation
         dartEpoch?.let { emit("ack", it) }
         if (holdView.visibility == View.VISIBLE) emit("holdFrame", true)
@@ -1939,7 +1957,8 @@ class NativeVideoView(
             AudioFocusPolicy.media3HandlesFocus(AudioFixes.androidFocus),
         )
         if (AudioFocusPolicy.media3HandlesFocus(AudioFixes.androidFocus)) abandonOwnFocus()
-        else requestOwnFocus()
+        else if (preparePlayRequested && !pausedByFocus) requestOwnFocus()
+        if (preserveFocusPause) pausedByFocus = true
         suspended = false
         clearVoiceProcessor.enabled = clearVoiceEnabled
         setProbeEnabled(AudioFixes.probe)
@@ -2002,7 +2021,7 @@ class NativeVideoView(
         player.prepare()
         // Perte de focus pendant le zap : on ne repart pas tant que GAIN
         // n'est pas revenu (ou qu'un nouveau zap n'a pas redemandé le focus).
-        player.playWhenReady = !pausedByFocus
+        player.playWhenReady = preparePlayRequested && !pausedByFocus
         armVolumeTrace()
     }
 
@@ -2785,6 +2804,7 @@ class NativeVideoView(
                 VideoContrastEffects.create(contrastRequested, hardwareAllows = true),
             )
         }
+        updateContrastSurfaceSize()
         target.setVideoScalingMode(C.VIDEO_SCALING_MODE_SCALE_TO_FIT)
         target.setVideoSurfaceView(surfaceView)
         target.addAnalyticsListener(this)
@@ -2829,10 +2849,41 @@ class NativeVideoView(
     }
 
     /** Le contraste SDR n'impose aucune conversion ou perte de métadonnées HDR. */
-    private fun contrastDirectReason(format: Format): String? = when {
-        format.drmInitData != null -> "drm"
-        ColorInfo.isTransferHdr(format.colorInfo) -> "hdr"
-        else -> null
+    private fun contrastDirectReason(format: Format): String? = PictureTune.directReason(
+        isHdr = ColorInfo.isTransferHdr(format.colorInfo),
+        hasDrm = format.drmInitData != null,
+    )
+
+    /** Ne pas limiter une sortie GL 4K à la résolution logique d'une interface TV. */
+    @Suppress("DEPRECATION") // getRealSize garde l'écran logique entier, même en PiP.
+    private fun updateContrastSurfaceSize() {
+        if (released || disposeStarted) return
+        val size = if (contrastPipelineInstalled) try {
+            val display = surfaceView.display ?: findActivity(appContext)?.windowManager?.defaultDisplay
+            val logical = Point()
+            if (display != null) display.getRealSize(logical)
+            else {
+                logical.x = appContext.resources.displayMetrics.widthPixels
+                logical.y = appContext.resources.displayMetrics.heightPixels
+            }
+            val physical = if (display != null) Util.getCurrentDisplayModeSize(appContext, display)
+                else Util.getCurrentDisplayModeSize(appContext)
+            VideoSurfaceSize.forContrast(
+                pipelineInstalled = true,
+                viewWidth = surfaceView.width,
+                viewHeight = surfaceView.height,
+                logicalWidth = logical.x,
+                logicalHeight = logical.y,
+                physicalWidth = physical.x,
+                physicalHeight = physical.y,
+            )
+        } catch (_: RuntimeException) {
+            null
+        } else null
+        if (size == contrastSurfaceBuffer) return
+        contrastSurfaceBuffer = size
+        if (size == null) surfaceView.holder.setSizeFromLayout()
+        else surfaceView.holder.setFixedSize(size.width, size.height)
     }
 
     /**
@@ -2841,7 +2892,7 @@ class NativeVideoView(
      * zappe, quitte l'app ou donne la lecture au Cast pendant le callback.
      */
     private fun requestContrastDirectFallback(reason: String): Boolean {
-        if (!contrastPipelineInstalled) return false
+        if (!contrastPipelineInstalled || released || disposeStarted) return false
         if (contrastFallbackPosted) return true
         if (contrastBypassReason != null || released || currentUrl == null) return false
         if (!AppForeground.allowsReopen() || castSuspended) return false
@@ -2850,16 +2901,22 @@ class NativeVideoView(
         emitImageCaps()
         val token = sessions.generation
         val source = currentUrl
-        val resumeAt = if (vodMode) player.currentPosition.coerceAtLeast(lastKnownPos) else 0L
         handler.post {
-            if (released || token != sessions.generation || source != currentUrl) return@post
+            if (released || disposeStarted || token != sessions.generation || source != currentUrl) return@post
             contrastFallbackPosted = false
             if (!AppForeground.allowsReopen() || castSuspended) return@post
             cancelRetry()
+            val focusPause = pausedByFocus
+            val playRequested = player.playWhenReady || focusPause
+            val resumeAt = if (vodMode) player.currentPosition.coerceAtLeast(lastKnownPos) else 0L
             emit("reopen", null)
             if (vodMode) lastKnownPos = resumeAt
             rebuildPlayer()
-            openCurrent(if (vodMode) resumeAt else null)
+            openCurrent(
+                if (vodMode) resumeAt else null,
+                preservePlayRequested = playRequested,
+                preserveFocusPause = focusPause,
+            )
         }
         return true
     }
@@ -2928,7 +2985,7 @@ class NativeVideoView(
      * de contraste. Matériel et logiciel Android partagent le même rendu.
      */
     private fun rebuildPlayer() {
-        if (!::player.isInitialized) return
+        if (!::player.isInitialized || released || disposeStarted) return
         val old = player
         val next = buildConfiguredPlayer()
         PlayerCensus.playerCreated()
