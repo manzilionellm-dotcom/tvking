@@ -57,7 +57,9 @@ sdkmanager platform-tools emulator 'build-tools;35.0.0' "$startup_image" \
   > "$startup_out/signature.txt" 2>&1
 "$startup_sdk/build-tools/35.0.0/aapt" dump badging "$startup_apk" > "$startup_out/apk-badging.txt"
 python3 "$startup_verifier" metadata "$startup_out"
-"$startup_sdk/emulator/emulator" -version > "$startup_out/emulator-version.txt" 2>&1
+# Ce vrai lancement vérifie aussi les bibliothèques du binaire QEMU. pipefail
+# conserve son échec ; tee rend la cause visible sans devoir ouvrir l'artefact.
+"$startup_sdk/emulator/emulator" -version 2>&1 | tee "$startup_out/emulator-version.txt"
 "$startup_sdk/emulator/emulator" -accel-check > "$startup_out/kvm.txt" 2>&1
 printf 'no\n' | avdmanager create avd --force --name "$startup_avd" \
   --package "$startup_image" --device pixel_2 > "$startup_out/avd-create.txt" 2>&1

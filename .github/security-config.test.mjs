@@ -192,6 +192,14 @@ test('les deux API testent aussi le premier build box sans publication, sans sec
   assert.match(startup, /fail-fast: false/);
   assert.match(startup, /permissions:\n      contents: read/);
   assert.doesNotMatch(startup, /\bsecrets\.|environment:|contents: write|gh release/);
+  // Les deux runners ont échoué avant Android faute de libpulse.so.0.
+  // La préparation de cette dépendance doit être obligatoire avant le smoke.
+  const runtime = startup.match(/      - name: Préparer les bibliothèques Linux de l'émulateur\n([\s\S]*?)(?=\n      - name:)/)?.[1];
+  assert.ok(runtime);
+  assert.match(runtime, /set -euo pipefail/);
+  assert.match(runtime, /sudo apt-get install -y --no-install-recommends libpulse0/);
+  assert.doesNotMatch(runtime, /if:|continue-on-error:|\|\| true/);
+  assert.ok(startup.indexOf(runtime) < startup.indexOf('run: bash android-app/ci/run-apk-startup.sh'));
   assert.equal(tvJobAllowed('startup', { publish: 'false', testBox: 'false' }), true);
   assert.equal(tvJobAllowed('startup', { publish: 'false', testBox: 'true' }), true);
   for (const build of ['failure', 'cancelled', 'skipped', '']) {
