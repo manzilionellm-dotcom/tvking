@@ -16,6 +16,8 @@ verifier = runpy.run_path(str(Path(__file__).with_name("verify-contrast-results.
 verify = verifier["verify"]
 PIXEL_METHOD = verifier["PIXEL_METHOD"]
 MUTATION_MARKER = verifier["MUTATION_MARKER"]
+RECOVERY_METHODS = verifier["RECOVERY_METHODS"]
+RECOVERY_PROOFS = verifier["RECOVERY_PROOFS"]
 
 
 class ContrastResultsTest(unittest.TestCase):
@@ -35,6 +37,10 @@ class ContrastResultsTest(unittest.TestCase):
         for name in ("01-default-on", "02-off", "03-on-again", "04-off-again"):
             (captures / f"{name}.png").write_bytes(png)
         (captures / "measurements.json").write_text(json.dumps({"passed": True}))
+        recovery = captures / "recovery"
+        recovery.mkdir()
+        for name in RECOVERY_PROOFS:
+            (recovery / f"{name}.json").write_text(json.dumps({"passed": True}))
 
     def report(self, failure_type=None, failure_text=None, failure_message=None, status=None):
         suite = ET.Element("testsuite")
@@ -51,6 +57,11 @@ class ContrastResultsTest(unittest.TestCase):
             failure.text = failure_text
         if status is not None:
             ET.SubElement(case, status)
+        for method in RECOVERY_METHODS:
+            ET.SubElement(suite, "testcase", {
+                "name": method,
+                "classname": "com.manzilionellm.native_video_player.NativeRecoveryPlaybackTest",
+            })
         ET.ElementTree(suite).write(self.output / "junit" / "TEST-render.xml")
 
     def check(self, mode):
@@ -121,6 +132,34 @@ class ContrastResultsTest(unittest.TestCase):
     def test_failed_baseline_cannot_validate_the_render(self):
         self.report(failure_type="java.lang.AssertionError", failure_message=MUTATION_MARKER)
         with self.assertRaisesRegex(SystemExit, "non réussi"):
+            self.check("baseline")
+
+    def test_baseline_requires_actual_recovery_test_execution(self):
+        self.report()
+        report = self.output / "junit" / "TEST-render.xml"
+        tree = ET.parse(report)
+        for case in list(tree.getroot()):
+            if case.get("name") in RECOVERY_METHODS:
+                tree.getroot().remove(case)
+        tree.write(report)
+        with self.assertRaisesRegex(SystemExit, "reprise non exécutées"):
+            self.check("baseline")
+
+    def test_failed_or_skipped_recovery_is_not_green(self):
+        for status in ("failure", "skipped", "error"):
+            self.report()
+            report = self.output / "junit" / "TEST-render.xml"
+            tree = ET.parse(report)
+            case = next(case for case in tree.getroot() if case.get("name") in RECOVERY_METHODS)
+            ET.SubElement(case, status)
+            tree.write(report)
+            with self.assertRaisesRegex(SystemExit, "reprise échouée ou ignorée"):
+                self.check("baseline")
+
+    def test_successful_junit_without_recovery_evidence_is_not_green(self):
+        self.report()
+        (self.output / "contrast-pixels" / "recovery" / "pause-502.json").write_text('{"passed": false}')
+        with self.assertRaisesRegex(SystemExit, "Preuve de reprise absente ou échouée"):
             self.check("baseline")
 
 

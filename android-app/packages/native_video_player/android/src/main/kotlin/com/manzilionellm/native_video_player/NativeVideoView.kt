@@ -1172,6 +1172,11 @@ class NativeVideoView(
                     return
                 }
                 if (url != currentUrl) {
+                    // Un numéro de groupe appartient à UNE source. On efface
+                    // les choix explicites au vrai zap, jamais à une simple
+                    // reprise technique du même film/de la même chaîne.
+                    player.trackSelectionParameters = player.trackSelectionParameters
+                        .buildUpon().clearOverrides().build()
                     // Même si Home/Cast retarde l'ouverture : un autre flux
                     // a droit au contraste par défaut. Le rendu sera aligné
                     // juste avant sa prochaine ouverture au premier plan.
@@ -1674,6 +1679,13 @@ class NativeVideoView(
         emit("tracks", out)
         maybeChooseVideo(tracks)
         if (audioChosenForSession) return
+        // Une reprise ou une reconstruction peut remettre ce drapeau à zéro.
+        // Le choix explicite reste prioritaire si son TrackGroup existe encore.
+        if (tracks.groups.any { it.type == C.TRACK_TYPE_AUDIO &&
+                player.trackSelectionParameters.overrides.containsKey(it.mediaTrackGroup) }) {
+            audioChosenForSession = true
+            return
+        }
         val pick = SpokenTrackChoice.pick(audio, prefAudio) ?: return
         audioChosenForSession = true
         val token = sessions.generation
@@ -1994,10 +2006,10 @@ class NativeVideoView(
         val url = currentUrl ?: return
         if (released || disposeStarted) return
         val token = sessions.generation
-        // L'override audio de la chaîne précédente ne doit pas choisir
-        // une piste au hasard sur la nouvelle.
+        // Les overrides d'une autre URL ont déjà été effacés dans setUrl.
+        // Ici la même source peut être reprise après réseau/GL : conserver
+        // la piste choisie, la langue et « sous-titres désactivés ».
         val params = player.trackSelectionParameters.buildUpon()
-            .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
             .setPreferredAudioRoleFlags(C.ROLE_FLAG_MAIN)
         val lang = prefAudio
         if (!lang.isNullOrBlank()) params.setPreferredAudioLanguage(lang)
@@ -2178,8 +2190,10 @@ class NativeVideoView(
         // [ReconnectGate.onFailure] vient de poser : le runnable
         // ci-dessous doit être le seul à pouvoir repartir.
         cancelRetry(clearGate = false)
+        val source = currentUrl
         val r = Runnable {
-            if (released || token != sessions.generation) return@Runnable
+            if (released || disposeStarted || token != sessions.generation ||
+                source != currentUrl || castSuspended) return@Runnable
             // Parti pendant l'attente : on n'ouvre pas dans le dos de l'utilisateur.
             if (!AppForeground.allowsReopen()) {
                 refuseReopen()
@@ -2191,7 +2205,13 @@ class NativeVideoView(
             // un gel. La copie, elle, reste jusqu'à la nouvelle trame.
             emit("reconnecting", false)
             // Film : [lastKnownPos] a été figé dans onPlayerError, avant stop().
-            openCurrent(if (vodMode) lastKnownPos else null)
+            // Lire l'intention AU FEU du délai : la personne peut avoir mis
+            // en pause pendant la panne. L'ouverture par défaut repart à true.
+            openCurrent(
+                if (vodMode) lastKnownPos else null,
+                preservePlayRequested = preparePlayRequested,
+                preserveFocusPause = pausedByFocus,
+            )
         }
         pendingRetry = r
         handler.postDelayed(r, delayMs)
@@ -2983,6 +3003,10 @@ class NativeVideoView(
         if (!::player.isInitialized || released || disposeStarted) return
         val old = player
         val next = buildConfiguredPlayer()
+        // Paramètres immuables de la lecture en cours : le repli HDR/DRM/GL
+        // ne doit pas perdre les langues, les pistes ou leur désactivation.
+        // setUrl a déjà retiré les overrides si l'adresse a réellement changé.
+        next.trackSelectionParameters = old.trackSelectionParameters
         PlayerCensus.playerCreated()
         player = next
         attachToSurface(next)
@@ -3091,6 +3115,11 @@ class NativeVideoView(
      */
     private fun maybeChooseVideo(tracks: Tracks) {
         if (videoChosenForSession) return
+        if (tracks.groups.any { it.type == C.TRACK_TYPE_VIDEO &&
+                player.trackSelectionParameters.overrides.containsKey(it.mediaTrackGroup) }) {
+            videoChosenForSession = true
+            return
+        }
         val videos = ArrayList<VideoCandidate>()
         tracks.groups.forEachIndexed { gi, g ->
             if (g.type != C.TRACK_TYPE_VIDEO) return@forEachIndexed

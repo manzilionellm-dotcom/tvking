@@ -13,6 +13,7 @@ contrast_avd="zuno_contrast_api_$contrast_api"
 contrast_serial=emulator-5554
 contrast_pid=''
 contrast_phase=baseline
+contrast_test_classes=com.manzilionellm.native_video_player.NativeContrastPixelTest,com.manzilionellm.native_video_player.NativeRecoveryPlaybackTest
 contrast_gate="$contrast_repo/android-app/packages/native_video_player/android/src/main/kotlin/com/manzilionellm/native_video_player/logic/PictureTune.kt"
 contrast_original=''
 mkdir -p "$contrast_out"
@@ -98,7 +99,8 @@ adb -s "$contrast_serial" shell settings put global transition_animation_scale 0
 adb -s "$contrast_serial" shell settings put global animator_duration_scale 0
 adb -s "$contrast_serial" shell svc power stayon true
 adb -s "$contrast_serial" shell input keyevent 82
-# La mire est embarquée dans l'APK de test. Le test n'a besoin d'aucun réseau.
+# La mire est embarquée ; les erreurs HTTP viennent seulement de 127.0.0.1.
+# Aucun réseau extérieur ni fournisseur n'est nécessaire aux deux classes.
 adb -s "$contrast_serial" shell svc wifi disable
 adb -s "$contrast_serial" shell svc data disable
 adb -s "$contrast_serial" shell getprop ro.build.version.sdk > "$contrast_out/api.txt"
@@ -109,7 +111,7 @@ export ANDROID_SERIAL="$contrast_serial"
 contrast_run() {
   mkdir -p "$contrast_out/$contrast_phase"
   ./gradlew :native_video_player:connectedDebugAndroidTest \
-    -Pandroid.testInstrumentationRunnerArguments.class=com.manzilionellm.native_video_player.NativeContrastPixelTest \
+    "-Pandroid.testInstrumentationRunnerArguments.class=$contrast_test_classes" \
     -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true \
     '-Dorg.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g' \
     --max-workers=2 --no-daemon --stacktrace "$@" 2>&1 | tee "$contrast_out/$contrast_phase/gradle.txt"
@@ -138,6 +140,7 @@ gate.write_text(source.replace(before, after, 1))
 PY
 git -C "$contrast_repo" diff -- "$contrast_gate" > "$contrast_out/mutation.patch"
 contrast_phase=mutation
+contrast_test_classes=com.manzilionellm.native_video_player.NativeContrastPixelTest
 # Aucun XML ni PNG du premier passage ne doit pouvoir valider le second.
 rm -rf "$contrast_repo/android-app/build/native_video_player/outputs/androidTest-results" \
   "$contrast_repo/android-app/build/native_video_player/reports/androidTests" \
