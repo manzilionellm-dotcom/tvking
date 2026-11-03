@@ -780,6 +780,14 @@ jobs:
       - name: SDK Android
         uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
 
+      - name: Préparer les bibliothèques Linux de l'émulateur
+        run: |
+          set -euo pipefail
+          # Même avec -no-audio, le binaire de l'émulateur charge libpulse.
+          # Sa présence n'est pas garantie sur le runner Ubuntu 24.04.
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libpulse0
+
       - name: Accélération de l'émulateur éphémère
         run: |
           set -euo pipefail
