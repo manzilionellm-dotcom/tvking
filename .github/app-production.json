@@ -3,11 +3,11 @@
   "zunoTvReview": {
     "scope": "zuno-tv",
     "reviewedBy": "manzilionellm-dotcom",
-    "reviewedAt": "2026-11-03T11:42:10Z",
-    "expiresAt": "2026-11-03T17:42:10Z",
-    "reason": "Autorisation du propriétaire dans cette conversation : signer Zuno, puis rendre sa mise à jour disponible directement dans les réglages de l’application. Le candidat 2f11db8200d30488b254d657f8ae7b36926f2065 conserve le code applicatif image du build signé 299 et corrige uniquement les dépendances Linux de ses contrôles Android. Le build 299 a vérifié le binaire et sa signature, mais pas son ouverture : libpulse manquait avant le lancement des émulateurs. La publication exige les deux démarrages réussis du nouvel APK signé. Cette autorisation ne prétend ni à une revue humaine indépendante du code ni à un essai sur la box physique ; aucun autre canal ni nettoyage n’est autorisé.",
-    "sourceCommit": "2f11db8200d30488b254d657f8ae7b36926f2065",
-    "androidTree": "00d623209aad0182332160a7e633c18c794b525a",
+    "reviewedAt": "2026-11-03T16:44:33Z",
+    "expiresAt": "2026-11-03T17:42:00Z",
+    "reason": "Autorisation explicite du propriétaire dans cette conversation : signer Zuno et rendre la version 116 disponible dans Réglages → Mise à jour. La revue automatique du candidat f45bc4dbb446c1d3ff809640f00b43f2513593ac couvre les polices embarquées, la première image prioritaire, Crashlytics et la préparation IA différés, et le focus de la télécommande. Le diagnostic 308 (run 41672613496) a vérifié le même APK signé, artefact 13249009465, buildAttempt 1, SHA-256 384cf78b2c8795262aa401fb6502a447a2ee4829bfc812d4bedc9818b484882a, sur API 29 et API 35 : ouverture hors réseau, stabilité, vraie sortie et réouverture. API 35 a été relancée après un téléchargement SDK corrompu avant tout lancement APK. Le certificat client attendu et les 14 polices sont vérifiés. Le futur APK 116 doit réussir ses propres deux contrôles stricts sur le même binaire avant publication. Cette autorisation reprend la demande de livraison du propriétaire ; elle ne prétend ni à une revue humaine indépendante du code ni à un essai sur box physique. Le gel commun reste actif, aucun autre canal ni nettoyage n’est autorisé, et la fenêtre se termine à 17:42 UTC sans prolongation.",
+    "sourceCommit": "f45bc4dbb446c1d3ff809640f00b43f2513593ac",
+    "androidTree": "7ced95991f009fc80d218ddc0844d725e00f4fa5",
     "workflowBlob": "49dd7691767eeb16dedba3368d05ad2b7e5f099a"
   }
 }
