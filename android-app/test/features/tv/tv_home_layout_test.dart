@@ -131,6 +131,19 @@ void main() {
   }) async {
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = const Size(1280, 900);
+    // Les vrais assets se chargent hors de l'horloge simulée. Stabiliser leurs
+    // métriques avant de comparer deux layouts, sans remplacer les polices ni
+    // ignorer les erreurs de rendu que le test vérifie plus bas.
+    await tester.runAsync(() => GoogleFonts.pendingFonts(<TextStyle>[
+          for (final weight in const <FontWeight>[
+            FontWeight.w400,
+            FontWeight.w500,
+            FontWeight.w600,
+            FontWeight.w700,
+            FontWeight.w800,
+          ])
+            GoogleFonts.inter(fontWeight: weight),
+        ]));
     await tester.pumpWidget(
       MaterialApp(
         locale: const Locale('fr'),

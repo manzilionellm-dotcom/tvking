@@ -33,6 +33,7 @@ import 'package:flutter/widgets.dart';
 import 'startup_trace.dart';
 import '../crash/crash_reporting.dart';
 import '../crash/crash_reporting_firebase.dart';
+import '../theme/bundled_fonts.dart';
 
 /// Channel natif (plugin tvking_device) — sert ici à lire la RAM de l'appareil
 /// pour ADAPTER le cache d'images (petites box ⇄ grandes box).
@@ -89,6 +90,7 @@ void runGuarded(Future<void> Function() body) {
   runZonedGuarded<Future<void>>(
     () async {
       WidgetsFlutterBinding.ensureInitialized();
+      registerBundledFontLicenses();
       StartupTrace.mark('binding.ready');
 
       // ANTI-OOM IMAGES (P0-6) — PARTAGÉ par tous les flavors (mobile/TV/Privé).
