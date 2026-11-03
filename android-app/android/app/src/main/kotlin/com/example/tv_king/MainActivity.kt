@@ -11,6 +11,7 @@ import android.util.Rational
 import com.manzilionellm.native_video_player.logic.AppForeground
 import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.embedding.engine.renderer.FlutterUiDisplayListener
 import io.flutter.plugin.common.MethodChannel
 import kotlin.math.roundToInt
 
@@ -28,10 +29,19 @@ class MainActivity : FlutterFragmentActivity() {
     private var playbackActive = false
     private var activityVisible = false
     private var videoRatio = Rational(16, 9)
+    private val startupUiListener = object : FlutterUiDisplayListener {
+        override fun onFlutterUiDisplayed() {
+            Log.i("ZunoStartup", "native.flutterUiDisplayed")
+        }
+        override fun onFlutterUiNoLongerDisplayed() {
+            Log.i("ZunoStartup", "native.flutterUiHidden")
+        }
+    }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         Log.i("ZunoStartup", "native.plugins.begin")
         super.configureFlutterEngine(flutterEngine)
+        flutterEngine.renderer.addIsDisplayingFlutterUiListener(startupUiListener)
         Log.i("ZunoStartup", "native.plugins.end")
         pipChannel = MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
@@ -71,12 +81,8 @@ class MainActivity : FlutterFragmentActivity() {
         }
     }
 
-    override fun onFlutterUiDisplayed() {
-        super.onFlutterUiDisplayed()
-        Log.i("ZunoStartup", "native.flutterUiDisplayed")
-    }
-
     override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {
+        flutterEngine.renderer.removeIsDisplayingFlutterUiListener(startupUiListener)
         // Ne jamais retirer le canal historique du service Cast.
         pipChannel?.setMethodCallHandler(null)
         pipChannel = null
