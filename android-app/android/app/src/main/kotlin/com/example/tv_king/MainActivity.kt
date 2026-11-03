@@ -9,7 +9,9 @@ import android.os.Build
 import android.util.Log
 import android.util.Rational
 import com.manzilionellm.native_video_player.logic.AppForeground
+import io.flutter.embedding.android.FlutterFragment
 import io.flutter.embedding.android.FlutterFragmentActivity
+import io.flutter.embedding.android.FlutterView
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.embedding.engine.renderer.FlutterUiDisplayListener
 import io.flutter.plugin.common.MethodChannel
@@ -29,11 +31,15 @@ class MainActivity : FlutterFragmentActivity() {
     private var playbackActive = false
     private var activityVisible = false
     private var videoRatio = Rational(16, 9)
+    private var flutterUiDisplayed = false
     private val startupUiListener = object : FlutterUiDisplayListener {
         override fun onFlutterUiDisplayed() {
+            flutterUiDisplayed = true
             Log.i("ZunoStartup", "native.flutterUiDisplayed")
+            focusFlutterViewIfNeeded()
         }
         override fun onFlutterUiNoLongerDisplayed() {
+            flutterUiDisplayed = false
             Log.i("ZunoStartup", "native.flutterUiHidden")
         }
     }
@@ -83,11 +89,28 @@ class MainActivity : FlutterFragmentActivity() {
 
     override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {
         flutterEngine.renderer.removeIsDisplayingFlutterUiListener(startupUiListener)
+        flutterUiDisplayed = false
         // Ne jamais retirer le canal historique du service Cast.
         pipChannel?.setMethodCallHandler(null)
         pipChannel = null
         playbackActive = false
         super.cleanUpFlutterEngine(flutterEngine)
+    }
+
+    private fun focusFlutterViewIfNeeded() {
+        // Le focus Dart d'un bouton ne donne pas le focus à sa vue Android.
+        // Sans cible native, Android consomme la première flèche pour choisir
+        // cette vue : Bas/Bas/OK peut atteindre Redémarrer au lieu de Quitter.
+        // Ne jamais prendre le focus d'une autre vue ni pendant une lecture.
+        if (!flutterUiDisplayed || !hasWindowFocus() || currentFocus != null ||
+            playbackActive || physicalPipMode() || isFinishing || isDestroyed
+        ) return
+        val flutterView = findViewById<FlutterView>(FlutterFragment.FLUTTER_VIEW_ID)
+            ?: return
+        if (!flutterView.isAttachedToWindow || !flutterView.isShown) return
+        if (flutterView.requestFocus()) {
+            Log.i("ZunoStartup", "native.flutterViewFocused")
+        }
     }
 
     private fun supportsPhonePip(): Boolean {
@@ -192,5 +215,7 @@ class MainActivity : FlutterFragmentActivity() {
         super.onWindowFocusChanged(hasFocus)
         // Focus perdu seul = overlay encore sur l'app. On ne coupe pas.
         AppForeground.onWindowFocus(hasFocus)
+        // La fenêtre peut obtenir son focus après la première image Flutter.
+        if (hasFocus) focusFlutterViewIfNeeded()
     }
 }

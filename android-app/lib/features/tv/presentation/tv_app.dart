@@ -18,6 +18,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/app/repair_flags.dart';
+import '../../../core/app/startup_trace.dart';
 import '../../theme/data/remote_theme_repository.dart';
 import '../../playlists/data/import_progress.dart';
 import '../../playlists/data/remote_source_repository.dart';
@@ -313,12 +314,20 @@ class _UpdatingPill extends StatelessWidget {
 
 /// Dialogue Back/Exit : Continuer / Redémarrer / Quitter. Renvoie
 /// 'restart', 'quit', ou null (continuer). Navigable à la télécommande.
-Future<String?> showExitDialog(BuildContext context) {
-  return showDialog<String>(
+Future<String?> showExitDialog(BuildContext context) async {
+  final String? action = await showDialog<String>(
     context: context,
     barrierColor: Colors.black.withValues(alpha: 0.86),
     builder: (BuildContext ctx) => const _ExitDialog(),
   );
+  // Trois valeurs fixes seulement : aucune donnée de l'utilisateur.
+  final String outcome = switch (action) {
+    'quit' => 'quit',
+    'restart' => 'restart',
+    _ => 'stay',
+  };
+  StartupTrace.mark('exitDialog.$outcome');
+  return action;
 }
 
 class _ExitDialog extends StatelessWidget {
