@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useRef, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
 import { feedbackApi, flagEmoji, type FeedbackItem, ApiError } from '@/lib/api';
 
@@ -17,6 +17,8 @@ export function ReviewsPage({ onLogout }: { onLogout: () => void }) {
   const [items, setItems] = useState<FeedbackItem[]>([]);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [known, setKnown] = useState(false);
+  const writing = useRef(false);
   const [err, setErr] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
 
@@ -26,30 +28,40 @@ export function ReviewsPage({ onLogout }: { onLogout: () => void }) {
   }
 
   function loadList() {
-    feedbackApi.list().then((r) => setItems(r.items || [])).catch(fail);
+    feedbackApi.list().then((r) => {
+      if (!Array.isArray(r.items)) throw new Error('Liste des avis invalide');
+      setItems(r.items);
+    }).catch(fail);
   }
 
-  useEffect(() => {
+  function load() {
+    setLoading(true); setKnown(false); setErr(null);
     Promise.all([feedbackApi.getPrompt(), feedbackApi.list()])
       .then(([p, l]) => {
+        if (typeof p.enabled !== 'boolean' || typeof p.message !== 'string' || !Array.isArray(l.items)) throw new Error('Réponse invalide');
+        setKnown(true);
         setEnabled(!!p.enabled);
         setMessage(p.message || '');
         setItems(l.items || []);
       })
       .catch(fail)
       .finally(() => setLoading(false));
-    /* eslint-disable-next-line */
-  }, []);
+  }
+
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
 
   async function savePrompt(e: FormEvent) {
     e.preventDefault();
+    if (writing.current || !known || loading) return;
+    writing.current = true;
     setBusy(true); setErr(null); setOk(null);
     try {
-      await feedbackApi.savePrompt({ enabled, message: message.trim() });
+      const saved = await feedbackApi.savePrompt({ enabled, message: message.trim() });
+      if (saved.ok !== true) throw new Error('Invitation non confirmée');
       setOk(enabled
-        ? '✅ Invitation active — les clients verront le message à l\'ouverture.'
+        ? 'Invitation enregistrée pour les accueils compatibles ZUNO et 7 MOTION, si le client n’a pas déjà répondu.'
         : 'Invitation désactivée.');
-    } catch (e) { fail(e); } finally { setBusy(false); }
+    } catch (e) { fail(e); } finally { writing.current = false; setBusy(false); }
   }
 
   const inputCls =
@@ -64,7 +76,7 @@ export function ReviewsPage({ onLogout }: { onLogout: () => void }) {
   return (
     <AppLayout
       title="Avis clients"
-      subtitle="Invite les clients à donner leur avis — et lis leurs réponses"
+      subtitle="Invitation facultative sur les nouveaux accueils ZUNO et 7 MOTION ; réponses envoyées volontairement par les clients."
       onLogout={onLogout}
     >
       {err && (
@@ -76,10 +88,13 @@ export function ReviewsPage({ onLogout }: { onLogout: () => void }) {
 
       {loading ? (
         <div className="text-sm text-ink-tertiary">Chargement…</div>
+      ) : !known ? (
+        <button onClick={load} className="rounded-md border border-white/10 px-4 py-2 text-sm">Réessayer le chargement</button>
       ) : (
         <div className="space-y-8">
           {/* ===== Invitation ===== */}
           <form onSubmit={savePrompt} className="max-w-2xl space-y-4 rounded-xl border border-white/5 bg-midnight p-6">
+            <fieldset disabled={busy} className="space-y-4">
             <h3 className="text-sm font-semibold">Message d'invitation</h3>
             <label className="flex items-center justify-between gap-3">
               <span className="text-sm">Afficher l'invitation dans l'app</span>
@@ -113,6 +128,7 @@ export function ReviewsPage({ onLogout }: { onLogout: () => void }) {
             >
               {busy ? '…' : 'Enregistrer l\'invitation'}
             </button>
+            </fieldset>
           </form>
 
           {/* ===== Avis reçus ===== */}

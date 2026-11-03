@@ -20,6 +20,7 @@ import {
   listQuery,
   networkFailureMessage,
 } from './robust';
+import { API_BASE } from './backend-target';
 
 const TOKEN_KEY = 'auth_token';
 
@@ -29,16 +30,6 @@ export { isAbortError };
 export function flagEmoji(code: string): string {
   return flagEmojiSafe(code);
 }
-
-/// URL de base de l'API. En production le panel est servi par
-/// Cloudflare Pages sur un sous-domaine (ex: admin.7themotion.com)
-/// et l'API tourne sur seven-motion-backend.workers.dev. On garde
-/// la config configurable via VITE_API_BASE.
-const API_BASE: string =
-  (import.meta.env.VITE_API_BASE as string | undefined) ||
-  // Defaut prod : meme origin (si le Worker sert aussi le panel)
-  // ou un domaine connu. En dev le proxy Vite redirige /api → :8787.
-  '';
 
 /// Lien de TÉLÉCHARGEMENT de l'app à donner au client. Domaine propre
 /// dédié (app.7themotion.com → route /vip du Worker, proxy du dernier
@@ -329,10 +320,12 @@ export interface Device {
   customer_email?: string | null;
   // Infos appareil remontées par le heartbeat (recensement parc).
   device_model?: string | null;
+  device_kind?: string | null;
+  device_manufacturer?: string | null;
   android_build?: string | null;
   android_release?: string | null;
   app_build?: number | null;
-  platform?: string | null;   // 'tv' (DeFew TV) | 'mobile' (The Few)
+  platform?: string | null;   // Produit 'tv' (Zuno) | 'mobile' (7 MOTION), pas le matériel.
   // Pastille d'accès calculée par le serveur (essai / expiré / activé).
   access?: 'trial' | 'expired' | 'activated' | 'lifetime' | 'frozen' | 'banned' | string;
   access_label?: string;
@@ -784,7 +777,7 @@ export const HOME_SECTION_LABELS: Record<string, string> = {
   info: 'Info',
   kids: 'Enfants',
   general: 'Général',
-  cinema: 'Cinéma & Séries (verrouillé)',
+  cinema: 'Cinéma · Direct',
 };
 export const homeLayoutApi = {
   get: () =>
@@ -807,11 +800,11 @@ export const homeLayoutApi = {
 //  MISE À JOUR FORCÉE (bouton du panel)
 // =========================================================
 //  « Forcer » bloque toutes les apps PLUS ANCIENNES que le dernier
-//  build connu, jusqu'à ce qu'elles se mettent à jour. minBuildTs en
+//  build publié vérifié, jusqu'à ce qu'elles se mettent à jour. minBuildTs en
 //  secondes ; 0 = désactivé.
 export const forceUpdateApi = {
   get: (platform?: string) =>
-    request<{ minBuildTs: number; latestBuildTs: number }>(`/api/v1/force-update${_plat(platform)}`),
+    request<{ minBuildTs: number; latestBuildTs: number; configuredMinBuildTs?: number; publishedBuildTs?: number; observedLatestBuildTs?: number; canForce?: boolean; blockedReason?: string }>(`/api/v1/force-update${_plat(platform)}`),
   force: (platform?: string) =>
     request<{ ok: boolean; minBuildTs: number }>(`/api/v1/force-update${_plat(platform)}`, {
       method: 'POST',
@@ -1084,6 +1077,13 @@ export interface OnlineDevice {
   country: string;
   lastSeen: number;
   channel?: string;   // chaîne en cours de visionnage (vide si rien)
+  // Facultatif : certains serveurs enrichissent déjà la présence. Le panel
+  // sait aussi lire ces informations dans le registre existant des appareils.
+  deviceKind?: string;
+  deviceModel?: string;
+  manufacturer?: string;
+  androidRelease?: string;
+  appVersion?: string;
 }
 export interface OnlineSnapshot {
   onlineCount: number;

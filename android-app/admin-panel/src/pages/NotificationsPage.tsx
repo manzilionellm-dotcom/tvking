@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useRef, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
 import { confirmAction } from '@/components/confirm';
 import {
@@ -49,114 +49,160 @@ export function NotificationsPage({ onLogout }: { onLogout: () => void }) {
   const [ok, setOk] = useState<string | null>(null);
   const [recent, setRecent] = useState<Announcement[]>([]);
   // Interrupteur GLOBAL : coupe / réactive toutes les notifications.
-  const [notifsOn, setNotifsOn] = useState(true);
+  const [notifsOn, setNotifsOn] = useState<boolean | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [ready, setReady] = useState(false);
+  const mounted = useRef(false);
+  const loadGeneration = useRef(0);
+  // Le ref ferme aussi la fenêtre entre deux clics avant le rendu React.
+  const writing = useRef(false);
 
-  function load() {
-    announcementsApi.list()
-      .then((r) => setRecent(r.items))
-      .catch(() => {});
+  function fail(e: unknown) {
+    if (!mounted.current) return;
+    if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
+    setErr(e instanceof ApiError ? e.message : 'Impossible de joindre le serveur. Réessaie.');
+  }
+
+  function requireSaved(r: { ok: boolean }) {
+    if (r?.ok !== true) throw new ApiError(502, 'bad_response', 'Enregistrement non confirmé par le serveur.');
+  }
+
+  async function load() {
+    const generation = ++loadGeneration.current;
+    setLoading(true); setReady(false); setErr(null);
+    const [list, settings] = await Promise.allSettled([
+      announcementsApi.list(), announcementsApi.getSettings(),
+    ]);
+    if (!mounted.current || generation !== loadGeneration.current) return;
+    let valid = true;
+    if (list.status === 'fulfilled' && Array.isArray(list.value?.items)) {
+      setRecent(list.value.items);
+    } else {
+      valid = false;
+      fail(list.status === 'rejected' ? list.reason : new ApiError(502, 'bad_response', 'Liste des annonces invalide. Réessaie.'));
+    }
+    if (settings.status === 'fulfilled' && typeof settings.value?.enabled === 'boolean') {
+      setNotifsOn(settings.value.enabled);
+    } else {
+      valid = false; setNotifsOn(null);
+      fail(settings.status === 'rejected' ? settings.reason : new ApiError(502, 'bad_response', 'État des notifications illisible. Réessaie.'));
+    }
+    setReady(valid); setLoading(false);
   }
 
   useEffect(() => {
-    load();
-    announcementsApi.getSettings()
-      .then((r) => setNotifsOn(r.enabled))
-      .catch(() => {});
+    mounted.current = true;
+    void load();
+    return () => { mounted.current = false; loadGeneration.current++; };
   }, []);
 
+  function beginAction() {
+    if (!ready || writing.current) return false;
+    writing.current = true; setBusy(true); setErr(null); setOk(null);
+    return true;
+  }
+
+  function endAction() {
+    writing.current = false;
+    if (mounted.current) setBusy(false);
+  }
+
   async function toggleGlobal() {
+    if (notifsOn === null || !beginAction()) return;
     const next = !notifsOn;
-    setNotifsOn(next);
     try {
-      await announcementsApi.setSettings(next);
-    } catch (e: any) {
-      setNotifsOn(!next);
-      if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
-      setErr('Échec du changement.');
-    }
+      const r = await announcementsApi.setSettings(next);
+      requireSaved(r);
+      if (typeof r.enabled !== 'boolean') throw new ApiError(502, 'bad_response', 'État des notifications non confirmé.');
+      if (mounted.current) setNotifsOn(r.enabled);
+    } catch (e) { fail(e); } finally { endAction(); }
   }
 
   async function toggleActive(id: number, active: boolean) {
+    if (!beginAction()) return;
     try {
-      await announcementsApi.setActive(id, active);
+      const r = await announcementsApi.setActive(id, active);
+      requireSaved(r);
+      if (typeof r.active !== 'boolean') throw new ApiError(502, 'bad_response', 'État de l’annonce non confirmé.');
+      if (!mounted.current) return;
       setRecent((list) =>
-        list.map((x) => (x.id === id ? { ...x, active: active ? 1 : 0 } : x)));
-    } catch (e: any) {
-      if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
-      setErr('Échec du changement.');
-    }
+        list.map((x) => (x.id === id ? { ...x, active: r.active ? 1 : 0 } : x)));
+    } catch (e) { fail(e); } finally { endAction(); }
   }
 
   async function submit(e: FormEvent) {
     e.preventDefault();
+    if (!ready || writing.current) return;
     setErr(null);
     setOk(null);
     if (!title.trim() && !body.trim()) {
       setErr('Écris au moins un titre ou un message.');
       return;
     }
-    setBusy(true);
+    const actionUrl = url.trim();
+    if (actionUrl) {
+      try {
+        const parsed = new URL(actionUrl);
+        if (!/^https?:\/\/[^/\\\s?#]/i.test(actionUrl) || actionUrl.includes('\\') ||
+            !['http:', 'https:'].includes(parsed.protocol) || !parsed.hostname ||
+            parsed.username || parsed.password) throw new Error('Lien invalide');
+      } catch {
+        setErr('Le lien doit être une adresse HTTP ou HTTPS complète, sans identifiants.');
+        return;
+      }
+    }
+    if (!beginAction()) return;
     try {
-      await announcementsApi.create({
+      const r = await announcementsApi.create({
         title: title.trim(),
         body: body.trim(),
-        url: url.trim(),
+        url: actionUrl,
         kind,
         cta: cta.trim(),
         country,
         durationMin,
       });
+      requireSaved(r);
+      if (!mounted.current) return;
       setOk(
-        country
-          ? `Annonce publiée pour ${flagEmoji(country)} ${country}. Les `
-            + 'utilisateurs de ce pays la verront à la prochaine ouverture.'
-          : 'Annonce publiée pour TOUT LE MONDE. Visible à la prochaine '
-            + "ouverture de l'app.",
+        !notifsOn
+          ? 'Annonce enregistrée. La diffusion est désactivée : réactive les notifications pour la rendre disponible.'
+          : `Annonce enregistrée${country ? ` pour ${flagEmoji(country)} ${country}` : ' pour tous les pays'}. La réception par les applications n’est pas encore confirmée.`,
       );
       setTitle('');
       setBody('');
       setUrl('');
       setCta('');
-      load();
-    } catch (e: any) {
-      if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
-      setErr(e instanceof ApiError ? e.message : "Échec de la publication.");
-    } finally {
-      setBusy(false);
-    }
+      const list = await announcementsApi.list();
+      if (!Array.isArray(list?.items)) throw new ApiError(502, 'bad_response', 'Annonce enregistrée, mais la liste n’a pas pu être actualisée.');
+      if (mounted.current) setRecent(list.items);
+    } catch (e) { fail(e); } finally { endAction(); }
   }
 
   async function clearAll() {
-    const ok = await confirmAction({
-      title: 'Retirer toutes les annonces ?',
-      message: 'Les applications n’afficheront plus aucune annonce.',
-      confirmLabel: 'Tout retirer',
-      danger: true,
-    });
-    if (!ok) return;
-    setBusy(true);
-    setErr(null);
-    setOk(null);
+    if (!beginAction()) return;
     try {
-      await announcementsApi.clear();
-      setOk('Toutes les annonces ont été retirées.');
-      load();
-    } catch (e: any) {
-      if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
-      setErr(e instanceof ApiError ? e.message : 'Échec.');
-    } finally {
-      setBusy(false);
-    }
+      const confirmed = await confirmAction({
+        title: 'Retirer toutes les annonces ?',
+        message: 'Les annonces seront retirées du serveur. Les applications seront actualisées à leur prochaine synchronisation.',
+        confirmLabel: 'Tout retirer',
+        danger: true,
+      });
+      if (!confirmed || !mounted.current) return;
+      requireSaved(await announcementsApi.clear());
+      if (!mounted.current) return;
+      setOk('Toutes les annonces ont été retirées du serveur.');
+      setRecent([]);
+    } catch (e) { fail(e); } finally { endAction(); }
   }
 
   async function removeOne(id: number) {
+    if (!beginAction()) return;
     try {
-      await announcementsApi.remove(id);
+      requireSaved(await announcementsApi.remove(id));
+      if (!mounted.current) return;
       setRecent((list) => list.filter((x) => x.id !== id));
-    } catch (e: any) {
-      if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
-      setErr(e instanceof ApiError ? e.message : 'Échec de la suppression.');
-    }
+    } catch (e) { fail(e); } finally { endAction(); }
   }
 
   const inputCls =
@@ -177,23 +223,33 @@ export function NotificationsPage({ onLogout }: { onLogout: () => void }) {
       <div className="mb-5 flex max-w-2xl items-center justify-between gap-4 rounded-xl border border-white/5 bg-midnight px-5 py-4">
         <div>
           <div className="text-sm font-semibold">
-            Notifications {notifsOn ? 'activées' : 'désactivées'}
+            {notifsOn === null ? 'État des notifications inconnu' : `Notifications ${notifsOn ? 'activées' : 'désactivées'}`}
           </div>
           <div className="text-[11px] text-ink-tertiary">
-            {notifsOn
-              ? "Les annonces actives s'affichent dans l'app."
-              : "Coupées : AUCUNE annonce ne s'affiche, peu importe lesquelles sont actives."}
+            {notifsOn === null ? 'Lecture de la configuration serveur nécessaire.' : notifsOn
+              ? 'Les annonces actives sont disponibles pour les applications.'
+              : 'Diffusion coupée. Les applications retireront les annonces à leur prochaine synchronisation.'}
           </div>
         </div>
         <button
           type="button"
           onClick={toggleGlobal}
+          disabled={busy || !ready}
+          aria-label="Activer les notifications"
+          aria-pressed={notifsOn ?? false}
           title={notifsOn ? 'Tout désactiver' : 'Réactiver'}
-          className={'relative h-7 w-12 shrink-0 rounded-full transition ' + (notifsOn ? 'bg-accent' : 'bg-white/15')}
+          className={'relative h-7 w-12 shrink-0 rounded-full transition disabled:opacity-50 ' + (notifsOn ? 'bg-accent' : 'bg-white/15')}
         >
           <span className={'absolute top-0.5 h-6 w-6 rounded-full bg-white transition ' + (notifsOn ? 'left-[22px]' : 'left-0.5')} />
         </button>
       </div>
+
+      {loading && <p role="status" className="mb-4 text-sm text-ink-secondary">Chargement des annonces et de la configuration…</p>}
+      {!loading && !ready && (
+        <button type="button" onClick={() => void load()} className="mb-4 rounded-md border border-white/10 px-4 py-2 text-sm">
+          Réessayer le chargement
+        </button>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
         {/* ===== Formulaire ===== */}
@@ -201,6 +257,7 @@ export function NotificationsPage({ onLogout }: { onLogout: () => void }) {
           onSubmit={submit}
           className="space-y-4 rounded-xl border border-white/5 bg-midnight p-6"
         >
+          <fieldset disabled={busy || !ready} className="min-w-0 space-y-4">
           {/* Catégorie */}
           <div>
             <label className="mb-1.5 block text-[10px] uppercase tracking-widest text-ink-tertiary">
@@ -308,10 +365,11 @@ export function NotificationsPage({ onLogout }: { onLogout: () => void }) {
 
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
-              <label className="mb-1.5 block text-[10px] uppercase tracking-widest text-ink-tertiary">
+              <label htmlFor="ann-url" className="mb-1.5 block text-[10px] uppercase tracking-widest text-ink-tertiary">
                 Lien (optionnel)
               </label>
               <input
+                id="ann-url"
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
                 maxLength={300}
@@ -348,20 +406,21 @@ export function NotificationsPage({ onLogout }: { onLogout: () => void }) {
           <div className="flex gap-2">
             <button
               type="submit"
-              disabled={busy}
+              disabled={busy || !ready}
               className="flex-1 rounded-md bg-accent px-4 py-2.5 text-sm font-semibold text-black transition hover:bg-accent-bright disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {busy ? 'Publication…' : 'Publier à tous'}
+              {busy ? 'Enregistrement…' : 'Publier à tous'}
             </button>
             <button
               type="button"
               onClick={clearAll}
-              disabled={busy}
+              disabled={busy || !ready}
               className="rounded-md border border-white/10 px-4 py-2.5 text-sm text-ink-secondary transition hover:bg-white/5 disabled:opacity-50"
             >
               Tout retirer
             </button>
           </div>
+          </fieldset>
         </form>
 
         {/* ===== Aperçu en direct (rendu côté app) ===== */}
@@ -458,6 +517,7 @@ export function NotificationsPage({ onLogout }: { onLogout: () => void }) {
                   <button
                     type="button"
                     onClick={() => toggleActive(aRow.id, aRow.active === 0)}
+                    disabled={busy || !ready}
                     title={aRow.active === 0 ? 'Activer' : 'Désactiver'}
                     className={'relative mt-0.5 h-5 w-9 shrink-0 rounded-full transition '
                       + (aRow.active === 0 ? 'bg-white/15' : 'bg-accent')}
@@ -468,6 +528,7 @@ export function NotificationsPage({ onLogout }: { onLogout: () => void }) {
                   <button
                     type="button"
                     onClick={() => removeOne(aRow.id)}
+                    disabled={busy || !ready}
                     title="Supprimer cette annonce"
                     className="shrink-0 rounded-md border border-white/10 px-2 py-1 text-xs text-ink-tertiary transition hover:border-accent/40 hover:text-accent-bright"
                   >

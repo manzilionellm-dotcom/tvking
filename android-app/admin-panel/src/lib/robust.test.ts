@@ -113,6 +113,16 @@ test('interpretHttpResult : 200 vide ou HTML n est pas un succes', () => {
   assert.equal(ok.ok, true);
 });
 
+test('un refus métier HTTP 200 reste une erreur pour les boutons du panel', () => {
+  const refused = interpretHttpResult(200, '{"ok":false,"message":"Commande refusée"}');
+  assert.equal(refused.ok, false);
+  assert.equal(refused.message, 'Commande refusée');
+  assert.equal(refused.clearToken, false);
+  assert.equal(interpretHttpResult(200, '{"error":"not_applied"}').ok, false);
+  assert.equal(interpretHttpResult(200, '{"ok":true}').ok, true);
+  assert.equal(interpretHttpResult(200, '{"enabled":false}').ok, true);
+});
+
 test('generation : une reponse tardive est perimee', () => {
   const g = createGeneration();
   const first = g.next();

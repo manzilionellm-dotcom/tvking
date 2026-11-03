@@ -1,7 +1,7 @@
 {
   "cleanUrls": false,
   "rewrites": [
-    { "source": "/api/:path*", "destination": "https://seven-motion-backend.manzilionel-lm.workers.dev/api/:path*" },
+    { "source": "/api/:path*", "destination": "https://api.zuno8k.com/api/:path*" },
     { "source": "/((?!api/|assets/).*)", "destination": "/index.html" }
   ],
   "headers": [
@@ -11,7 +11,7 @@
       { "key": "Referrer-Policy", "value": "no-referrer" },
       { "key": "X-Robots-Tag", "value": "noindex, nofollow" },
       { "key": "Permissions-Policy", "value": "camera=(), microphone=(), geolocation=()" },
-      { "key": "Content-Security-Policy", "value": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' wss://seven-motion-backend.manzilionel-lm.workers.dev https://seven-motion-backend.manzilionel-lm.workers.dev; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" }
+      { "key": "Content-Security-Policy", "value": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; media-src 'self' https: blob:; font-src 'self' data:; connect-src 'self' wss://api.zuno8k.com https://api.zuno8k.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" }
     ]},
     { "source": "/api/(.*)", "headers": [
       { "key": "Cache-Control", "value": "no-store, private" },

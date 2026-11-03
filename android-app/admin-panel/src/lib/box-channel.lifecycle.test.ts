@@ -66,6 +66,8 @@ function deferredResponse() {
 
 beforeEach(async () => {
   vi.resetModules();
+  vi.stubEnv('DEV', false);
+  vi.stubEnv('VITE_API_BASE', '');
   vi.useFakeTimers();
   vi.stubGlobal('WebSocket', ControlledWebSocket);
   ControlledWebSocket.instances = [];
@@ -82,6 +84,7 @@ afterEach(() => {
   vi.clearAllTimers();
   vi.useRealTimers();
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
 });
 
 describe('cycle de vie du canal panel', () => {
@@ -194,6 +197,25 @@ describe('cycle de vie du canal panel', () => {
 });
 
 describe('tickets HTTP et transition du Worker', () => {
+  it('une API configurée reçoit le ticket et la socket sur le même serveur', async () => {
+    vi.stubEnv('VITE_API_BASE', 'https://worker-test.example/');
+    vi.resetModules();
+    channel = await import('./box-channel');
+    const current = await start();
+    expect(fetchTicket.mock.calls[0][0]).toBe('https://worker-test.example/api/v1/rt/ticket');
+    expect(new URL(current.socket.url).origin).toBe('wss://worker-test.example');
+  });
+
+  it('le développement utilise le proxy local pour HTTP et WebSocket', async () => {
+    vi.stubEnv('DEV', true);
+    vi.resetModules();
+    channel = await import('./box-channel');
+    const current = await start();
+    expect(fetchTicket.mock.calls[0][0]).toBe('/api/v1/rt/ticket');
+    expect(new URL(current.socket.url).origin).toBe(window.location.origin.replace(/^http/, 'ws'));
+    expect(current.socket.url).not.toContain('api.zuno8k.com');
+  });
+
   it('envoie le JWT par Authorization et un nouveau ticket à chaque reconnexion', async () => {
     const first = await start();
     const [path, options] = fetchTicket.mock.calls[0];
@@ -204,7 +226,7 @@ describe('tickets HTTP et transition du Worker', () => {
     });
     expect(options.signal.aborted).toBe(false);
     const firstUrl = new URL(first.socket.url);
-    expect(firstUrl.origin).toBe('wss://seven-motion-backend.manzilionel-lm.workers.dev');
+    expect(firstUrl.origin).toBe('wss://api.zuno8k.com');
     expect(firstUrl.pathname).toBe('/api/v1/rt/ws');
     expect(firstUrl.searchParams.has('token')).toBe(false);
     expect(first.socket.url).not.toContain('jeton-de-test');

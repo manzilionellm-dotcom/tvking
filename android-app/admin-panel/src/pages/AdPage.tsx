@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useRef, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
 import { adApi, ApiError } from '@/lib/api';
 
@@ -17,36 +17,78 @@ export function AdPage({ onLogout }: { onLogout: () => void }) {
   const [freq, setFreq] = useState<'always' | 'daily'>('always');
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [ready, setReady] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
+  const mounted = useRef(false);
+  const loadGeneration = useRef(0);
+  const writing = useRef(false);
 
   function fail(e: any) {
+    if (!mounted.current) return;
     if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
     setErr(e instanceof ApiError ? e.message : 'Erreur réseau.');
   }
 
+  async function load() {
+    const generation = ++loadGeneration.current;
+    setLoading(true); setReady(false); setErr(null);
+    try {
+      const r = await adApi.get();
+      if (!mounted.current || generation !== loadGeneration.current) return;
+      if (typeof r?.enabled !== 'boolean' || typeof r?.url !== 'string') throw new ApiError(502, 'bad_response', 'Configuration vidéo illisible. Réessaie.');
+      setEnabled(r.enabled);
+      setUrl(r.url);
+      setSkip(Number.isFinite(r.skip) ? r.skip : 5);
+      setFreq(r.freq === 'daily' ? 'daily' : 'always');
+      setReady(true);
+    } catch (e) {
+      if (generation === loadGeneration.current) fail(e);
+    } finally {
+      if (mounted.current && generation === loadGeneration.current) setLoading(false);
+    }
+  }
+
   useEffect(() => {
-    adApi.get()
-      .then((r) => {
-        setEnabled(!!r.enabled);
-        setUrl(r.url || '');
-        setSkip(Number.isFinite(r.skip) ? r.skip : 5);
-        setFreq(r.freq === 'daily' ? 'daily' : 'always');
-      })
-      .catch(fail)
-      .finally(() => setLoading(false));
+    mounted.current = true;
+    void load();
+    return () => { mounted.current = false; loadGeneration.current++; };
     /* eslint-disable-next-line */
   }, []);
 
   async function save(e: FormEvent) {
     e.preventDefault();
+    if (!ready || writing.current) return;
+    setErr(null); setOk(null);
+    if (enabled) {
+      try {
+        const video = new URL(url.trim());
+        if (!['http:', 'https:'].includes(video.protocol) || !video.hostname) throw new Error();
+        if (/(^|\.)(youtube\.com|youtu\.be|youtube-nocookie\.com)$/i.test(video.hostname)) {
+          setErr('Utilise un lien direct vers une vidéo, pas une page YouTube.');
+          return;
+        }
+      } catch (_) {
+        setErr('Indique une URL vidéo complète commençant par http:// ou https://.');
+        return;
+      }
+    }
+    writing.current = true;
     setBusy(true); setErr(null); setOk(null);
     try {
-      await adApi.save({ enabled, url: url.trim(), skip, freq });
-      setOk(enabled && url.trim()
-        ? '✅ Pub vidéo active — elle se jouera au démarrage de l\'app.'
-        : 'Pub vidéo désactivée.');
-    } catch (e) { fail(e); } finally { setBusy(false); }
+      const r = await adApi.save({ enabled, url: url.trim(), skip, freq });
+      if (r?.ok !== true || typeof r.enabled !== 'boolean' || typeof r.url !== 'string') throw new ApiError(502, 'bad_response', 'Enregistrement non confirmé par le serveur.');
+      if (!mounted.current) return;
+      setEnabled(r.enabled); setUrl(r.url);
+      setSkip(Number.isFinite(r.skip) ? r.skip : 5);
+      setFreq(r.freq === 'daily' ? 'daily' : 'always');
+      setOk(r.enabled && r.url
+        ? 'Configuration vidéo enregistrée. La lecture au prochain démarrage dépend de la compatibilité de l’app et du lien vidéo ; elle n’est pas encore confirmée.'
+        : 'Pub vidéo désactivée sur le serveur.');
+    } catch (e) { fail(e); } finally {
+      writing.current = false;
+      if (mounted.current) setBusy(false);
+    }
   }
 
   const inputCls =
@@ -68,9 +110,12 @@ export function AdPage({ onLogout }: { onLogout: () => void }) {
 
       {loading ? (
         <div className="text-sm text-ink-tertiary">Chargement…</div>
+      ) : !ready ? (
+        <button type="button" onClick={() => void load()} className="rounded-md border border-white/10 px-4 py-2 text-sm">Réessayer le chargement</button>
       ) : (
         <div className="grid max-w-4xl grid-cols-1 gap-6 md:grid-cols-2">
           <form onSubmit={save} className="space-y-5 rounded-xl border border-white/5 bg-midnight p-6">
+            <fieldset disabled={busy} className="min-w-0 space-y-5">
             <label className="flex items-center justify-between gap-3">
               <span className="text-sm">Activer la pub au démarrage</span>
               <button
@@ -85,11 +130,15 @@ export function AdPage({ onLogout }: { onLogout: () => void }) {
             </label>
 
             <div>
-              <label className="mb-1.5 block text-[10px] uppercase tracking-widest text-ink-tertiary">
+              <label htmlFor="ad-url" className="mb-1.5 block text-[10px] uppercase tracking-widest text-ink-tertiary">
                 URL de la vidéo (fichier .mp4 / .m3u8)
               </label>
               <input
+                id="ad-url"
                 value={url}
+                inputMode="url"
+                autoCapitalize="none"
+                spellCheck={false}
                 onChange={(e) => setUrl(e.target.value)}
                 placeholder="https://…/promo.mp4"
                 className={`${inputCls} font-mono`}
@@ -136,6 +185,7 @@ export function AdPage({ onLogout }: { onLogout: () => void }) {
             >
               {busy ? '…' : 'Enregistrer'}
             </button>
+            </fieldset>
           </form>
 
           {/* Aperçu vidéo */}

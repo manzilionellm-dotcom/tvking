@@ -137,6 +137,11 @@ export interface OnlineItem {
   country: string;
   lastSeen: number;
   channel: string;
+  deviceKind?: string;
+  deviceModel?: string;
+  manufacturer?: string;
+  androidRelease?: string;
+  appVersion?: string;
 }
 
 export interface OnlineView {
@@ -171,6 +176,13 @@ export function onlineView(raw: unknown): OnlineView {
       country,
       lastSeen: toEpochMs(row.lastSeen) || 0,
       channel: row.channel == null ? '' : String(row.channel),
+      // Les anciennes API n'ont pas ces champs. Ne jamais convertir un objet
+      // inattendu en texte affichable, ni supprimer les données déjà fournies.
+      deviceKind: typeof row.deviceKind === 'string' ? row.deviceKind.slice(0, 40) : undefined,
+      deviceModel: typeof row.deviceModel === 'string' ? row.deviceModel.slice(0, 160) : undefined,
+      manufacturer: typeof row.manufacturer === 'string' ? row.manufacturer.slice(0, 80) : undefined,
+      androidRelease: typeof row.androidRelease === 'string' ? row.androidRelease.slice(0, 40) : undefined,
+      appVersion: typeof row.appVersion === 'string' ? row.appVersion.slice(0, 40) : undefined,
     };
   });
   return {
@@ -239,6 +251,17 @@ export function interpretHttpResult(status: number, text: string): HttpRead {
       message: 'Réponse du serveur illisible.',
       clearToken: false,
       json: null,
+    };
+  }
+  // Certaines routes historiques répondent HTTP 200 même si l'action a
+  // été refusée. Aucun bouton ne doit transformer ce refus en confirmation.
+  if (obj && (obj.ok === false || (typeof obj.error === 'string' && obj.error))) {
+    return {
+      ok: false, status,
+      code: typeof obj.error === 'string' && obj.error ? obj.error : 'request_rejected',
+      message: typeof obj.message === 'string' && obj.message
+        ? obj.message : 'Le serveur n’a pas confirmé cette action.',
+      clearToken: false, json,
     };
   }
   return { ok: true, status, code: '', message: '', clearToken: false, json };

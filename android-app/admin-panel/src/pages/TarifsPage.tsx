@@ -2,7 +2,6 @@ import { FormEvent, useEffect, useRef, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
 import { confirmAction } from '@/components/confirm';
 import { pricingApi, ApiError } from '@/lib/api';
-import { createSingleFlight } from '@/lib/robust';
 
 // =========================================================
 //  TarifsPage — prix affichés dans l'app + essai + promo (owner)
@@ -15,8 +14,8 @@ import { createSingleFlight } from '@/lib/robust';
 
 export function TarifsPage({ onLogout }: { onLogout: () => void }) {
   const [currency, setCurrency] = useState('€');
-  const [lifetime, setLifetime] = useState('9,9');
-  const [yearly, setYearly] = useState('4,9');
+  const [lifetime, setLifetime] = useState('');
+  const [yearly, setYearly] = useState('');
   const [trialDays, setTrialDays] = useState(7);
   const [promoEnabled, setPromoEnabled] = useState(false);
   const [promoMessage, setPromoMessage] = useState('');
@@ -28,34 +27,38 @@ export function TarifsPage({ onLogout }: { onLogout: () => void }) {
   const [trialEnforced, setTrialEnforced] = useState(false);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [known, setKnown] = useState(false);
+  const writing = useRef(false);
   const [err, setErr] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
   const [grantBusy, setGrantBusy] = useState(false);
-  const grantFlight = useRef(createSingleFlight());
 
   async function grantTrialAll() {
-    await grantFlight.current.run(async () => {
-    const ans = window.prompt(
-      'Donner combien de jours à TOUS les appareils actifs ? '
-      + 'Passé ce délai, le paiement revient automatiquement.',
-      '7',
-    );
-    if (ans == null) return;
-    const days = parseInt(ans, 10);
-    if (!Number.isFinite(days) || days <= 0) { setErr('Nombre de jours invalide.'); return; }
-    const ok = await confirmAction({
-      title: 'Appliquer ces jours à tout le monde ?',
-      message: `Confirmer : ${days} jours pour tous les appareils actifs.`,
-      confirmLabel: 'Appliquer',
-      danger: true,
-    });
-    if (!ok) return;
+    if (writing.current || busy || loading || !known) return;
+    writing.current = true;
     setGrantBusy(true); setErr(null); setOk(null);
     try {
+      const ans = window.prompt(
+        'Donner combien de jours à TOUS les appareils actifs ? '
+        + 'Passé ce délai, le paiement revient automatiquement.',
+        '7',
+      );
+      if (ans == null) return;
+      const days = Number(ans.trim());
+      if (!/^\d+$/.test(ans.trim()) || !Number.isInteger(days) || days <= 0 || days > 365) {
+        setErr('Nombre de jours invalide.'); return;
+      }
+      const confirmed = await confirmAction({
+        title: 'Appliquer ces jours à tout le monde ?',
+        message: `Confirmer : ${days} jours pour tous les appareils actifs.`,
+        confirmLabel: 'Appliquer',
+        danger: true,
+      });
+      if (!confirmed) return;
       const r = await pricingApi.grantTrialAll(days);
+      if (r.ok !== true || !Number.isFinite(r.updated) || !Number.isFinite(r.days)) throw new Error('Prolongation non confirmée');
       setOk(`✅ ${r.updated} appareil(s) mis à ${r.days} jours. Le paiement reviendra ensuite.`);
-    } catch (e) { fail(e); } finally { setGrantBusy(false); }
-    });
+    } catch (e) { fail(e); } finally { writing.current = false; setGrantBusy(false); }
   }
 
   function fail(e: any) {
@@ -63,12 +66,15 @@ export function TarifsPage({ onLogout }: { onLogout: () => void }) {
     setErr(e instanceof ApiError ? e.message : 'Erreur réseau.');
   }
 
-  useEffect(() => {
+  function load() {
+    setLoading(true); setKnown(false); setErr(null);
     pricingApi.get()
       .then((r) => {
+        if (typeof r.currency !== 'string' || typeof r.lifetime !== 'string' || typeof r.yearly !== 'string') throw new Error('Tarifs invalides');
+        setKnown(true);
         setCurrency(r.currency || '€');
-        setLifetime(r.lifetime || '9,9');
-        setYearly(r.yearly || '4,9');
+        setLifetime(r.lifetime);
+        setYearly(r.yearly);
         setTrialDays(Number.isFinite(r.trialDays) ? r.trialDays : 7);
         setPromoEnabled(!!r.promoEnabled);
         setPromoMessage(r.promoMessage || '');
@@ -81,17 +87,25 @@ export function TarifsPage({ onLogout }: { onLogout: () => void }) {
       })
       .catch(fail)
       .finally(() => setLoading(false));
-    /* eslint-disable-next-line */
-  }, []);
+  }
+
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
 
   async function save(e: FormEvent) {
     e.preventDefault();
+    if (writing.current || loading || !known || grantBusy) return;
+    const payment = payUrl.trim();
+    if (payment) {
+      try { const url = new URL(payment); if (url.protocol !== 'https:' || url.username || url.password) throw new Error(); }
+      catch { setErr('Le lien de paiement doit être une adresse HTTPS sans identifiants.'); return; }
+    }
+    writing.current = true;
     setBusy(true); setErr(null); setOk(null);
     try {
-      await pricingApi.save({
+      const saved = await pricingApi.save({
         currency: currency.trim() || '€',
-        lifetime: lifetime.trim() || '9,9',
-        yearly: yearly.trim() || '4,9',
+        lifetime: lifetime.trim(),
+        yearly: yearly.trim(),
         trialDays,
         promoEnabled,
         promoMessage: promoMessage.trim(),
@@ -101,8 +115,10 @@ export function TarifsPage({ onLogout }: { onLogout: () => void }) {
         blockBodyEn: blockBodyEn.trim(),
         payUrl: payUrl.trim(),
       });
-      setOk('✅ Tarifs enregistrés — l\'app les affiche dès le prochain lancement.');
-    } catch (e) { fail(e); } finally { setBusy(false); }
+      if (saved.ok !== true || typeof saved.lifetime !== 'string' || typeof saved.yearly !== 'string') throw new Error('Tarifs non confirmés');
+      setLifetime(saved.lifetime); setYearly(saved.yearly);
+      setOk('Tarifs enregistrés pour les applications compatibles hors Play. Une offre vide est retirée.');
+    } catch (e) { fail(e); } finally { writing.current = false; setBusy(false); }
   }
 
   const inputCls =
@@ -122,8 +138,10 @@ export function TarifsPage({ onLogout }: { onLogout: () => void }) {
         >
           {loading ? (
             <p className="text-sm text-ink-tertiary">Chargement…</p>
+          ) : !known ? (
+            <div className="space-y-3"><p className="text-xs text-accent-bright">{err || 'Tarifs non chargés.'}</p><button type="button" onClick={load} className="rounded-md border border-white/10 px-4 py-2 text-sm">Réessayer le chargement</button></div>
           ) : (
-            <>
+            <fieldset disabled={busy || grantBusy} className="space-y-4">
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="mb-1.5 block text-[10px] uppercase tracking-widest text-ink-tertiary">
@@ -132,7 +150,7 @@ export function TarifsPage({ onLogout }: { onLogout: () => void }) {
                   <input
                     value={lifetime}
                     onChange={(e) => setLifetime(e.target.value)}
-                    placeholder="9,9"
+                    placeholder="Vide = offre masquée" maxLength={12} aria-label="Prix à vie"
                     className={inputCls + ' font-mono'}
                   />
                 </div>
@@ -143,7 +161,7 @@ export function TarifsPage({ onLogout }: { onLogout: () => void }) {
                   <input
                     value={yearly}
                     onChange={(e) => setYearly(e.target.value)}
-                    placeholder="4,9"
+                    placeholder="Vide = offre masquée" maxLength={12} aria-label="Prix 1 an"
                     className={inputCls + ' font-mono'}
                   />
                 </div>
@@ -232,39 +250,39 @@ export function TarifsPage({ onLogout }: { onLogout: () => void }) {
               >
                 {busy ? 'Enregistrement…' : 'Enregistrer les tarifs'}
               </button>
-            </>
+            </fieldset>
           )}
         </form>
 
         {/* ===== Aperçu (comme dans l'app) ===== */}
         <div className="rounded-xl border border-white/5 bg-obsidian p-6">
           <p className="mb-4 text-[10px] uppercase tracking-widest text-ink-tertiary">
-            Aperçu « Nos offres » (app)
+            Aperçu des offres configurées (hors Play)
           </p>
-          <div className="rounded-2xl border border-white/10 bg-midnight p-4">
+          {!known ? <p className="text-sm text-ink-tertiary">En attente de la configuration serveur.</p> : <div className="rounded-2xl border border-white/10 bg-midnight p-4">
             <div className="grid grid-cols-2 gap-3">
               <div className="rounded-xl border border-accent/40 bg-accent/10 p-3 text-center">
                 <div className="text-[10px] uppercase tracking-widest text-ink-tertiary">À vie</div>
                 <div className="mt-1 text-2xl font-extrabold text-accent-bright">
-                  {lifetime || '9,9'} {currency || '€'}
+                  {lifetime ? `${lifetime} ${currency || '€'}` : 'Non proposée'}
                 </div>
               </div>
               <div className="rounded-xl border border-white/10 bg-slate p-3 text-center">
                 <div className="text-[10px] uppercase tracking-widest text-ink-tertiary">1 an</div>
                 <div className="mt-1 text-2xl font-extrabold text-ink-primary">
-                  {yearly || '4,9'} {currency || '€'}
+                  {yearly ? `${yearly} ${currency || '€'}` : 'Non proposée'}
                 </div>
               </div>
             </div>
             <div className="mt-3 text-center text-xs text-ink-secondary">
-              🎁 Essai gratuit {trialDays} jours
+              La durée d’accès affichée au client vient du statut de son appareil.
             </div>
             {promoEnabled && promoMessage.trim() && (
               <div className="mt-3 rounded-lg border border-accent/40 bg-accent/10 px-3 py-2 text-center text-xs font-semibold text-accent-bright">
                 🏷️ {promoMessage}
               </div>
             )}
-          </div>
+          </div>}
         </div>
       </div>
 
@@ -282,7 +300,7 @@ export function TarifsPage({ onLogout }: { onLogout: () => void }) {
         <button
           type="button"
           onClick={grantTrialAll}
-          disabled={grantBusy}
+          disabled={grantBusy || busy || loading || !known}
           className="mt-3 rounded-md border border-accent/50 bg-accent/10 px-4 py-2 text-sm font-semibold text-accent-bright transition hover:bg-accent/20 disabled:opacity-50"
         >
           {grantBusy ? 'Application…' : 'Donner 7 jours à tous les appareils actifs'}
@@ -309,9 +327,12 @@ export function TarifsPage({ onLogout }: { onLogout: () => void }) {
               </code>
               <button
                 type="button"
-                onClick={() => {
-                  navigator.clipboard?.writeText(l.url);
-                  setOk(`✅ ${l.label} — lien copié.`);
+                onClick={async () => {
+                  try {
+                    if (!navigator.clipboard) throw new Error('Copie indisponible');
+                    await navigator.clipboard.writeText(l.url);
+                    setOk(`${l.label} — lien copié.`); setErr(null);
+                  } catch { setErr('Copie impossible. Sélectionne le lien pour le copier manuellement.'); setOk(null); }
                 }}
                 className="rounded-md border border-white/10 bg-slate px-3 py-2 text-xs transition hover:bg-white/5"
               >
