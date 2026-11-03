@@ -1,0 +1,36 @@
+# Diagnostic signé après intégration par PR sur la branche autorisée.
+# Le constructeur et son environnement protégé restent inchangés.
+# Aucun canal de publication, même de test, n'est activé ici.
+name: Zuno — diagnostic du démarrage sans publication
+
+on:
+  push:
+    branches: ['ccr-b93e1afd-gwirw0']
+    paths:
+      - 'android-app/lib/**'
+      - 'android-app/android/**'
+      - 'android-app/packages/**'
+      - 'android-app/ci/**'
+      - '.github/workflows/zuno-startup-diagnostic.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  startup:
+    if: >-
+      github.repository == 'manzilionellm-dotcom/tvking' &&
+      github.actor == github.repository_owner &&
+      github.triggering_actor == github.repository_owner
+    uses: ./.github/workflows/build-zuno-tv.yml
+    with:
+      publish: 'false'
+      test_box: 'false'
+      play_aab: 'false'
+      backend_url: ''
+      variante: 'box'
+    secrets:
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
