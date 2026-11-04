@@ -411,9 +411,12 @@ class _DialogBtn extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final BorderRadius radius = BorderRadius.circular(TvTokens.rButton);
     return TvFocusBuilder(
       autofocus: autofocus,
       scale: TvFocusScale.large,
+      borderRadius: radius,
+      showGlow: false,
       onSelect: onSelect,
       builder: (BuildContext context, bool focused) {
         final Color fg = focused
@@ -428,7 +431,7 @@ class _DialogBtn extends StatelessWidget {
             color: focused
                 ? TvAppTokens.of(context).accent
                 : (primary ? TvAppTokens.of(context).sel : Colors.transparent),
-            borderRadius: BorderRadius.circular(TvTokens.rButton),
+            borderRadius: radius,
             border: Border.all(
               color: focused
                   ? TvAppTokens.of(context).accent

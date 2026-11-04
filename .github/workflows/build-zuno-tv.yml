@@ -350,43 +350,15 @@ jobs:
         run: |
           set -e
           RES=android/app/src/main/res
-          mkdir -p "$RES/drawable" "$RES/drawable-v21" "$RES/drawable-xhdpi" "$RES/drawable-xxhdpi" "$RES/values" "$RES/values-night"
+          mkdir -p "$RES/drawable" "$RES/drawable-xhdpi" "$RES/drawable-xxhdpi"
           # Bannière Leanback (spec Android TV : 320×180 en xhdpi).
           cp assets/branding/zuno_tv_banner.png    "$RES/drawable/tv_banner.png"
           cp assets/branding/zuno_tv_banner.png    "$RES/drawable-xhdpi/tv_banner.png"
           cp assets/branding/zuno_tv_banner_2x.png "$RES/drawable-xxhdpi/tv_banner.png"
-          # Splash sombre avec le logo centré (remplace le fond blanc du template).
-          for DIR in drawable drawable-v21; do
-            cat > "$RES/$DIR/launch_background.xml" <<'XML'
-          <?xml version="1.0" encoding="utf-8"?>
-          <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-              <item>
-                  <shape android:shape="rectangle">
-                      <solid android:color="#FF050505" />
-                  </shape>
-              </item>
-              <item>
-                  <bitmap
-                      android:gravity="center"
-                      android:src="@drawable/tv_banner" />
-              </item>
-          </layer-list>
-          XML
-          done
-          for DIR in values values-night; do
-            cat > "$RES/$DIR/styles.xml" <<'XML'
-          <?xml version="1.0" encoding="utf-8"?>
-          <resources>
-              <style name="LaunchTheme" parent="@android:style/Theme.Black.NoTitleBar">
-                  <item name="android:windowBackground">@drawable/launch_background</item>
-              </style>
-              <style name="NormalTheme" parent="@android:style/Theme.Black.NoTitleBar">
-                  <item name="android:windowBackground">@drawable/launch_background</item>
-              </style>
-          </resources>
-          XML
-          done
-          echo "✓ bannière + splash sombre en place"
+          # Splash = calligraphie transparente sur TvTokens.bg (#070708).
+          # Le thème de marche reste un aplat : le logo ne reste pas derrière.
+          python3 ci/tv/apply_splash.py
+          python3 ci/tv/apply_splash_test.py
 
       # ------------------------------------------------------------------
       #  SIGNATURE STABLE (voir en-tête, point 4)
@@ -434,6 +406,7 @@ jobs:
       # ------------------------------------------------------------------
       - name: Quality gate (analyze + tests)
         run: |
+          python3 ci/tv/apply_splash_test.py
           flutter analyze --no-fatal-infos --no-fatal-warnings
           flutter test --reporter expanded
 
