@@ -24,7 +24,7 @@ DFT.api = (function () {
         done = true;
         if (xhr.status >= 200 && xhr.status < 300) {
           try { resolve(JSON.parse(xhr.responseText || 'null')); }
-          catch (e) { resolve(null); }
+          catch (e) { reject(new Error('Réponse serveur invalide')); }
         } else {
           reject(new Error('HTTP ' + xhr.status));
         }

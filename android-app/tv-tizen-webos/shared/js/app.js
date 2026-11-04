@@ -1,5 +1,5 @@
 // =========================================================
-//  app.js — Orchestration + écrans DeFew TV (Tizen / webOS)
+//  app.js — Orchestration + écrans ZUNO (Tizen / webOS)
 // =========================================================
 //  Flux : boot → MAC stable → heartbeat + statut.
 //    • Abonnement inactif (essai expiré / gelé / banni) → écran ACTIVATION
@@ -37,14 +37,17 @@ DFT.ui = (function () {
 })();
 
 DFT.app = (function () {
+  var currentScreen = 'boot';
+  var previousScreen = 'activation';
   var mac = '…';
   var channels = [];
-  var byCat = {};       // catégorie -> [channels]
+  var byCat = Object.create(null);       // catégorie -> [channels]
   var cats = [];        // ordre des catégories
   var currentCat = null;
 
   function screen(name) {
-    var ids = ['screen-boot', 'screen-activation', 'screen-live', 'screen-player'];
+    currentScreen = name;
+    var ids = ['screen-boot', 'screen-activation', 'screen-live', 'screen-player', 'screen-about', 'screen-exit'];
     for (var i = 0; i < ids.length; i++) {
       var e = DFT.ui.el(ids[i]);
       if (e) e.style.display = (ids[i] === 'screen-' + name) ? 'flex' : 'none';
@@ -55,13 +58,21 @@ DFT.app = (function () {
   function boot() {
     DFT.platform && DFT.registerKeys();
     DFT.nav.init();
+    DFT.nav.onBack(requestExit);
+    // Le gel ou retrait d’une licence doit aussi être respecté pendant la lecture.
+    window.setInterval(function () {
+      if (mac === '…' || document.hidden || (currentScreen !== 'live' && currentScreen !== 'player')) return;
+      DFT.api.status(mac).then(function (status) {
+        if (!canUse(status)) { DFT.player.stop(); channels = []; showActivation(status); }
+      }).catch(function () { /* conserver l’écran actuel lors d’une panne passagère */ });
+    }, 60000);
     screen('boot');
     DFT.device.getMac(function (m) {
       mac = m;
       DFT.ui.setText('act-mac', mac);
       var info = DFT.device.info();
       DFT.api.heartbeat(mac, info).then(check).catch(function () {
-        // Hors-ligne : on tente quand même la source (cache éventuel côté CDN).
+        // Hors-ligne : écran réseau avec possibilité de réessayer.
         check(null);
       });
     });
@@ -69,9 +80,9 @@ DFT.app = (function () {
 
   // ---------- Vérifie le statut puis route ----------
   function check(hb) {
-    var active = hb && (hb.paid === true ||
-      hb.status === 'active' || hb.status === 'trialActive' ||
-      (hb.trial_until && hb.trial_until > Date.now()));
+    // Un statut « active » peut aussi accompagner un essai expiré : les
+    // blocages explicites doivent toujours primer sur le champ paid/status.
+    var active = canUse(hb);
     if (active) {
       loadSource();
     } else {
@@ -79,8 +90,14 @@ DFT.app = (function () {
     }
   }
 
+  function canUse(hb) {
+    return !!hb && !hb.banned && !hb.frozen &&
+      hb.status !== 'banned' && hb.status !== 'frozen' &&
+      (hb.paid === true || (hb.expired !== true && Number(hb.trial_until) > Date.now()));
+  }
+
   function showActivation(hb) {
-    var msg = 'Donne cette adresse à ton revendeur pour activer ton abonnement.';
+    var msg = hb ? 'Associez cet identifiant à votre licence et à vos propres sources depuis le panel.' : 'Connexion au service impossible. Vérifiez le réseau puis réessayez.';
     if (hb) {
       if (hb.banned) msg = 'Cet appareil est bloqué. Contacte ton revendeur.';
       else if (hb.frozen) msg = 'Abonnement en pause. Contacte ton revendeur.';
@@ -88,7 +105,7 @@ DFT.app = (function () {
     }
     DFT.ui.setText('act-msg', msg);
     screen('activation');
-    DFT.nav.onBack(function () { /* écran racine : rien */ });
+    DFT.nav.onBack(requestExit);
     DFT.nav.focusFirst();
   }
 
@@ -99,20 +116,30 @@ DFT.app = (function () {
     DFT.api.deviceSource(mac).then(function (res) {
       var list = (res && res.sources && res.sources.length)
         ? res.sources : (res && res.source ? [res.source] : []);
-      if (!list.length) { showActivation({ expired: false }); return; }
-      var src = list[0];
-      var loader = (src.type === 'm3u') ? DFT.m3u.load(src) : DFT.xtream.load(src);
+      if (!list.length) {
+        showActivation({});
+        DFT.ui.setText('act-msg', res && res.blocked ? 'Licence indisponible : ' + res.blocked : 'Aucune source assignée. Ajoutez votre source personnelle dans le panel.');
+        return;
+      }
+      // Charger toutes les sources du panel ; une panne isolée ne masque pas les autres.
+      var loader = Promise.all(list.map(function (src) {
+        var task = src.type === 'm3u' ? DFT.m3u.load(src) :
+          src.type === 'xtream' ? DFT.xtream.load(src) : Promise.reject(new Error('Type inconnu'));
+        return task.catch(function () { return { channels: [] }; });
+      })).then(function (results) {
+        return { channels: [].concat.apply([], results.map(function (result) { return result.channels || []; })) };
+      });
       loader.then(function (out) {
         channels = (out && out.channels) || [];
         if (!channels.length) {
           DFT.ui.setText('act-msg', 'Source vide ou injoignable. Vérifie avec ton revendeur.');
-          screen('activation'); DFT.nav.focusFirst(); return;
+          screen('activation'); DFT.nav.onBack(requestExit); DFT.nav.focusFirst(); return;
         }
         indexChannels();
         renderLive();
       }).catch(function () {
         DFT.ui.setText('act-msg', 'Impossible de charger la source. Réessaie plus tard.');
-        screen('activation'); DFT.nav.focusFirst();
+        screen('activation'); DFT.nav.onBack(requestExit); DFT.nav.focusFirst();
       });
     }).catch(function () {
       showActivation(null);
@@ -120,7 +147,7 @@ DFT.app = (function () {
   }
 
   function indexChannels() {
-    byCat = {}; cats = [];
+    byCat = Object.create(null); cats = [];
     for (var i = 0; i < channels.length; i++) {
       var c = channels[i].category || 'Autres';
       if (!byCat[c]) { byCat[c] = []; cats.push(c); }
@@ -139,7 +166,7 @@ DFT.app = (function () {
       catBox.appendChild(catRow(cats[i]));
     }
     renderGrid();
-    DFT.nav.onBack(function () { screen('live'); });
+    DFT.nav.onBack(requestExit);
     DFT.nav.focusFirst();
   }
 
@@ -147,6 +174,7 @@ DFT.app = (function () {
     var d = document.createElement('div');
     d.className = 'cat focusable' + (name === currentCat ? ' active' : '');
     d.textContent = name;
+    d.tabIndex = 0; d.setAttribute('role', 'button');
     d.onclick = function () {
       currentCat = name;
       var all = document.querySelectorAll('#cat-list .cat');
@@ -169,10 +197,19 @@ DFT.app = (function () {
   function chanTile(ch) {
     var d = document.createElement('div');
     d.className = 'tile focusable';
-    var logo = ch.logo
-      ? '<div class="tile-logo" style="background-image:url(\'' + ch.logo.replace(/'/g, '') + '\')"></div>'
-      : '<div class="tile-logo tile-logo-empty">' + (ch.name || '?').charAt(0) + '</div>';
-    d.innerHTML = logo + '<div class="tile-name">' + escapeHtml(ch.name) + '</div>';
+    d.tabIndex = 0; d.setAttribute('role', 'button');
+    // Aucune donnée de playlist n’est injectée comme HTML (nom/logo non fiables).
+    var logo = document.createElement('div');
+    logo.className = 'tile-logo tile-logo-empty';
+    logo.textContent = (ch.name || '?').charAt(0);
+    if (/^https?:\/\//i.test(ch.logo || '')) {
+      logo.className = 'tile-logo';
+      logo.style.backgroundImage = 'url(' + JSON.stringify(ch.logo) + ')';
+      logo.textContent = '';
+    }
+    var name = document.createElement('div');
+    name.className = 'tile-name'; name.textContent = ch.name || 'Chaîne';
+    d.appendChild(logo); d.appendChild(name);
     d.onclick = function () { openPlayer(ch); };
     return d;
   }
@@ -190,12 +227,6 @@ DFT.app = (function () {
     });
   }
 
-  function escapeHtml(s) {
-    return String(s || '').replace(/[&<>"']/g, function (c) {
-      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
-    });
-  }
-
   // Bouton « rafraîchir » de l'écran activation.
   function refresh() {
     screen('boot');
@@ -203,7 +234,32 @@ DFT.app = (function () {
     DFT.api.heartbeat(mac, DFT.device.info()).then(check).catch(function () { check(null); });
   }
 
-  return { boot: boot, refresh: refresh };
+  function requestExit() {
+    previousScreen = currentScreen;
+    screen('exit'); DFT.nav.onBack(cancelExit); DFT.nav.focusFirst();
+  }
+  function cancelExit() {
+    screen(previousScreen);
+    DFT.nav.onBack(previousScreen === 'player' ? function () { DFT.player.stop(); renderLive(); } : requestExit);
+    DFT.nav.focusFirst();
+  }
+  function exit() {
+    DFT.player.stop();
+    if (DFT.platform === 'tizen') tizen.application.getCurrentApplication().exit();
+    else cancelExit();
+  }
+  function showAbout() { screen('about'); DFT.nav.onBack(closeAbout); DFT.nav.focusFirst(); }
+  function closeAbout() { showActivation({}); }
+  // Arrêt au passage en arrière-plan : pas de son invisible ni reprise imposée.
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) {
+      DFT.player.stop();
+      if (currentScreen === 'player' || (currentScreen === 'exit' && previousScreen === 'player')) renderLive();
+    }
+  });
+  return { boot: boot, refresh: refresh, canUse: canUse, showAbout: showAbout,
+    closeAbout: closeAbout, cancelExit: cancelExit, exit: exit };
+
 })();
 
 window.addEventListener('load', function () { DFT.app.boot(); });

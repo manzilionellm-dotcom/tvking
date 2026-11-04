@@ -27,6 +27,7 @@ DFT.nav = (function () {
     if (current && current !== el) current.classList.remove('focused');
     current = el;
     el.classList.add('focused');
+    if (el.focus) el.focus();
     if (el.scrollIntoView) {
       try { el.scrollIntoView({ block: 'nearest', inline: 'nearest' }); } catch (e) { el.scrollIntoView(); }
     }
@@ -71,6 +72,10 @@ DFT.nav = (function () {
       e.preventDefault();
       if (backHandler) backHandler();
       return;
+    }
+    if ([415, 19, 413, 10252].indexOf(k) !== -1 &&
+        document.getElementById('screen-player').style.display !== 'none') {
+      e.preventDefault(); DFT.player.media(k); return;
     }
     switch (k) {
       case DFT.keys.LEFT:  e.preventDefault(); move('left'); break;

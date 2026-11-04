@@ -8,11 +8,14 @@
 #    • LG      : ares-package (webOS CLI)    → .ipk
 #  Les SDK ne sont PAS inclus ici (voir README pour l'installation).
 # =========================================================
-set -e
+set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 SHARED="$ROOT/shared"
 BUILD="$ROOT/build"
 
+# Une icône absente est une erreur de construction, pas un paquet publiable.
+test -s "$ROOT/platform/tizen/icon.png"
+for script in "$SHARED"/js/*.js; do node --check "$script"; done
 echo "==> Nettoyage"
 rm -rf "$BUILD"
 mkdir -p "$BUILD/tizen" "$BUILD/webos"
@@ -34,3 +37,9 @@ echo "  Tizen : $BUILD/tizen   → packager :  tizen package -t wgt -s <profil> 
 echo "  webOS : $BUILD/webos   → packager :  ares-package $BUILD/webos"
 echo
 echo "(Voir README.md pour signer et soumettre aux stores.)"
+
+# La signature reste explicite et locale : ne jamais commiter le certificat.
+if [ -n "${TIZEN_PROFILE:-}" ]; then
+  command -v tizen >/dev/null || { echo "Tizen CLI absent" >&2; exit 1; }
+  tizen package -t wgt -s "$TIZEN_PROFILE" -- "$BUILD/tizen"
+fi
