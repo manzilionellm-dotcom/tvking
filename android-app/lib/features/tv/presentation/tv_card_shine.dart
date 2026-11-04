@@ -82,8 +82,8 @@ class _ShinePainter extends CustomPainter {
       final Paint glow = Paint()
         ..shader = RadialGradient(
           colors: <Color>[
-            TvGhost.chromeBright.withValues(alpha: 0.28 * (1 - pulse)),
-            const Color(0x00F4F6F8),
+            TvGhost.ice.withValues(alpha: 0.32 * (1 - pulse)),
+            const Color(0x00B7D4FF),
           ],
         ).createShader(Rect.fromCircle(center: size.center(Offset.zero), radius: radius));
       canvas.drawCircle(size.center(Offset.zero), radius, glow);

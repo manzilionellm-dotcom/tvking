@@ -70,7 +70,7 @@ class TvCinematicHome extends StatelessWidget {
             onPlay: board.hero == null ? null : () => onPlay(board.hero!),
           ),
         ),
-        const SizedBox(width: 22),
+        const SizedBox(width: 18),
         Expanded(
           flex: 6,
           child: _RailColumn(
@@ -85,6 +85,15 @@ class TvCinematicHome extends StatelessWidget {
             onPlay: onPlay,
           ),
         ),
+        if (TvAppTokens.of(context).ghost) ...<Widget>[
+          const SizedBox(width: 10),
+          _IconRail(
+            onLive: onLive,
+            onFilms: onFilms,
+            onSeries: onSeries,
+            onSettings: onSettings,
+          ),
+        ],
       ],
     );
   }
@@ -175,6 +184,17 @@ class _Hero extends StatelessWidget {
               ),
             ),
           ],
+          if (TvAppTokens.of(context).ghost && onPlay != null) ...<Widget>[
+            const SizedBox(height: 10),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: _PlatinumPill(
+                label: context.l10n.moviesPlayTooltip,
+                autofocus: false,
+                onSelect: onPlay!,
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -195,15 +215,18 @@ class _PlayButton extends StatelessWidget {
       borderRadius: BorderRadius.circular(40),
       onSelect: onSelect,
       builder: (BuildContext context, bool focused) {
+        final bool phantom = TvAppTokens.of(context).ghost;
         return Container(
           width: 64,
           height: 64,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: _metal(context).withValues(alpha: focused ? 0.95 : 0.82),
+            color: phantom
+                ? const Color(0xFF2A2E34)
+                : _metal(context).withValues(alpha: focused ? 0.95 : 0.82),
             border: Border.all(
               color: focused ? _metalBright(context) : _metal(context),
-              width: focused ? 2 : 1,
+              width: phantom ? 1 : (focused ? 2 : 1),
             ),
             boxShadow: <BoxShadow>[
               BoxShadow(
@@ -216,7 +239,7 @@ class _PlayButton extends StatelessWidget {
           child: Icon(
             Icons.play_arrow_rounded,
             size: 36,
-            color: _onMetal(context),
+            color: phantom ? _metalBright(context) : _onMetal(context),
           ),
         );
       },
@@ -561,6 +584,111 @@ class _Monogram extends StatelessWidget {
             color: _metalBright(context),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _PlatinumPill extends StatelessWidget {
+  const _PlatinumPill({
+    required this.label,
+    required this.onSelect,
+    this.autofocus = false,
+  });
+  final String label;
+  final VoidCallback onSelect;
+  final bool autofocus;
+
+  @override
+  Widget build(BuildContext context) {
+    return TvFocusBuilder(
+      autofocus: autofocus,
+      scale: TvFocusScale.small,
+      showGlow: false,
+      borderRadius: BorderRadius.circular(20),
+      onSelect: onSelect,
+      builder: (BuildContext context, bool focused) {
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: focused ? _metalBright(context) : _metal(context),
+              width: 1,
+            ),
+            color: focused
+                ? _metal(context).withValues(alpha: 0.16)
+                : const Color(0x00000000),
+          ),
+          child: Text(
+            label,
+            style: TvAppTokens.of(context).ui(
+              TvDimens.caption,
+              weight: FontWeight.w500,
+              color: _metalBright(context),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// Rail d'icônes à droite, comme la maquette. Pas de libellé :
+/// le focus allume le filet platine.
+class _IconRail extends StatelessWidget {
+  const _IconRail({
+    required this.onLive,
+    required this.onFilms,
+    required this.onSeries,
+    required this.onSettings,
+  });
+  final VoidCallback onLive;
+  final VoidCallback onFilms;
+  final VoidCallback onSeries;
+  final VoidCallback onSettings;
+
+  @override
+  Widget build(BuildContext context) {
+    final List<(IconData, VoidCallback)> items = <(IconData, VoidCallback)>[
+      (Icons.live_tv_rounded, onLive),
+      (Icons.movie_rounded, onFilms),
+      (Icons.video_library_rounded, onSeries),
+      (Icons.settings_rounded, onSettings),
+    ];
+    return SizedBox(
+      width: 52,
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: <Widget>[
+          for (final (IconData icon, VoidCallback action) in items)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: TvFocusBuilder(
+                scale: TvFocusScale.small,
+                showGlow: false,
+                borderRadius: BorderRadius.circular(12),
+                onSelect: action,
+                builder: (BuildContext context, bool focused) {
+                  return Container(
+                    width: 44,
+                    height: 44,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: focused
+                            ? _metalBright(context)
+                            : _metal(context).withValues(alpha: 0.35),
+                        width: 1,
+                      ),
+                    ),
+                    child: Icon(icon, size: 22, color: _metalBright(context)),
+                  );
+                },
+              ),
+            ),
+        ],
       ),
     );
   }

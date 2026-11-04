@@ -119,9 +119,7 @@ class _StageState extends State<_Stage> {
                 fit: StackFit.expand,
                 children: <Widget>[
                   const ColoredBox(color: TvGhost.bg),
-                  const Positioned.fill(
-                    child: GhostStarfield(animate: true),
-                  ),
+                  const Positioned.fill(child: PhantomWeave()),
                   Padding(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 48,

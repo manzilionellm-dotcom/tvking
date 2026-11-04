@@ -17,6 +17,31 @@ import 'package:flutter/material.dart';
 
 import '../core/tv_ghost.dart';
 
+/// Trame 32×32 répétée. Toujours immobile : sur une box ≤ 2 Go
+/// comme sur une grande. Le fichier pèse moins de 2 Ko.
+class PhantomWeave extends StatelessWidget {
+  const PhantomWeave({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const IgnorePointer(
+      child: Opacity(
+        opacity: 0.55,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            image: DecorationImage(
+              image: AssetImage('assets/branding/phantom_weave.png'),
+              repeat: ImageRepeat.repeat,
+              filterQuality: FilterQuality.none,
+              alignment: Alignment.topLeft,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class GhostStarfield extends StatelessWidget {
   const GhostStarfield({super.key, required this.animate});
 

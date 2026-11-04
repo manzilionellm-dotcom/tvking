@@ -93,7 +93,6 @@ import 'tv_app.dart';
 import 'tv_cinema_common.dart';
 import 'tv_cinema_screen.dart';
 import 'tv_components.dart';
-import '../../../core/app/box_memory_budget.dart';
 import 'tv_cinematic_home.dart';
 import 'tv_glass.dart';
 import 'tv_starfield.dart';
@@ -1410,11 +1409,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
                         ),
                       ),
                       if (TvAppTokens.of(context).ghost)
-                        Positioned.fill(
-                          child: GhostStarfield(
-                            animate: BoxMemoryBudget.paintFocusGlow,
-                          ),
-                        ),
+                        const Positioned.fill(child: PhantomWeave()),
                       Padding(
                         padding: const EdgeInsets.symmetric(
                           horizontal: TvDimens.safeH,

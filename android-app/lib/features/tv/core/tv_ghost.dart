@@ -29,8 +29,9 @@
 import 'package:flutter/material.dart';
 
 abstract final class TvGhost {
-  /// Un cran sous le Maison Noir #070708, au-dessus du noir pur.
-  static const Color bg = Color(0xFF050506);
+  /// Obsidienne. Le #000 pur bande sur OLED ; la trame posée
+  /// dessus casse l'aplat. Plus profond que #070708 et que #121212.
+  static const Color bg = Color(0xFF010102);
   static const Color panel = Color(0xFF0C0C0E);
   static const Color card = Color(0xFF141416);
   static const Color tile = Color(0xFF18181B);
@@ -48,6 +49,10 @@ abstract final class TvGhost {
   static const Color chromeBright = Color(0xFFF4F6F8);
   static const Color chromeDeep = Color(0xFF6E737C);
   static const Color onChrome = Color(0xFF121418);
+
+  /// Filet platine, un pixel. Lueur glace, jamais un néon.
+  static const Color platinum = Color(0xFFE6EBF2);
+  static const Color ice = Color(0xFFB7D4FF);
 
   /// Durée du balayage et de l'onde. Sous 300 ms.
   static const Duration shine = Duration(milliseconds: 240);

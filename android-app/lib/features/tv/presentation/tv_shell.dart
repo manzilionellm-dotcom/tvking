@@ -3,7 +3,6 @@
 // =========================================================
 import 'package:flutter/material.dart';
 
-import '../../../core/app/box_memory_budget.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_app_tokens.dart';
 import 'tv_starfield.dart';
@@ -29,9 +28,7 @@ class TvShell extends StatelessWidget {
         fit: StackFit.expand,
         children: <Widget>[
           if (TvAppTokens.of(context).ghost)
-            Positioned.fill(
-              child: GhostStarfield(animate: BoxMemoryBudget.paintFocusGlow),
-            ),
+            const Positioned.fill(child: PhantomWeave()),
           Material(
             type: MaterialType.transparency,
             child: applySafeArea

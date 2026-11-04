@@ -63,6 +63,41 @@ String _minutes(int ms) {
   return '$min min';
 }
 
+/// 4K / HDR seulement si le nom de la source le dit vraiment.
+/// « VIP » ou un chiffre inventé ne comptent pas.
+String? streamQualityLabel(String raw) {
+  final String t = raw.toLowerCase();
+  final bool k4 =
+      RegExp(r'(^|[^a-z0-9])(4k|uhd|2160p)([^a-z0-9]|$)').hasMatch(t);
+  final bool hdr = RegExp(r'(^|[^a-z0-9])hdr([^a-z0-9]|$)').hasMatch(t);
+  if (k4 && hdr) return '4K HDR';
+  if (k4) return '4K';
+  if (hdr) return 'HDR';
+  return null;
+}
+
+/// Note 0–10 venue de la fiche. Hors de là, ou absente : rien.
+String? ratingLabel(double? rating) {
+  if (rating == null || rating <= 0 || rating > 10) return null;
+  return rating.toStringAsFixed(1);
+}
+
+String joinCrispMeta({
+  String duration = '',
+  String? quality,
+  String? year,
+  double? rating,
+}) {
+  final String? note = ratingLabel(rating);
+  final List<String> parts = <String>[
+    if (year != null && year.trim().isNotEmpty) year.trim(),
+    if (duration.isNotEmpty) duration,
+    if (quality != null) quality,
+    if (note != null) note,
+  ];
+  return parts.join(' · ');
+}
+
 /// Choisit le héros et deux rangées courtes. Pur : pas de réseau.
 TonightBoard composeTonight({
   required List<WatchEntry> watching,
@@ -96,7 +131,10 @@ TonightBoard composeTonight({
     hero = TonightPiece(
       title: w.title.trim(),
       artworkUrl: _httpArt(w.posterUrl),
-      meta: _minutes(w.durMs),
+      meta: joinCrispMeta(
+        duration: _minutes(w.durMs),
+        quality: streamQualityLabel(w.title),
+      ),
       watch: w,
     );
     detail = (w.subtitle ?? '').trim();
@@ -105,7 +143,10 @@ TonightBoard composeTonight({
     hero = TonightPiece(
       title: onNow.title.trim(),
       artworkUrl: _httpArt(channel?.logoUrl),
-      meta: _minutes(onNow.stopMs - onNow.startMs),
+      meta: joinCrispMeta(
+        duration: _minutes(onNow.stopMs - onNow.startMs),
+        quality: streamQualityLabel(channel?.name ?? ''),
+      ),
       channel: channel,
     );
     detail = onNow.channelName.trim();
@@ -115,6 +156,7 @@ TonightBoard composeTonight({
     hero = TonightPiece(
       title: reminder.title.trim(),
       artworkUrl: _httpArt(channel?.logoUrl),
+      meta: joinCrispMeta(quality: streamQualityLabel(channel?.name ?? '')),
       channel: channel,
     );
     detail = reminder.channelName.trim();
@@ -123,6 +165,7 @@ TonightBoard composeTonight({
     hero = TonightPiece(
       title: channel.cleanName,
       artworkUrl: _httpArt(channel.logoUrl),
+      meta: joinCrispMeta(quality: streamQualityLabel(channel.name)),
       channel: channel,
     );
   } else if (resume.isNotEmpty) {
@@ -130,6 +173,7 @@ TonightBoard composeTonight({
     hero = TonightPiece(
       title: channel.cleanName,
       artworkUrl: _httpArt(channel.logoUrl),
+      meta: joinCrispMeta(quality: streamQualityLabel(channel.name)),
       channel: channel,
     );
   }
@@ -141,12 +185,16 @@ TonightBoard composeTonight({
   TonightPiece pieceWatch(WatchEntry w) => TonightPiece(
         title: w.title.trim(),
         artworkUrl: _httpArt(w.posterUrl),
-        meta: _minutes(w.durMs),
+        meta: joinCrispMeta(
+        duration: _minutes(w.durMs),
+        quality: streamQualityLabel(w.title),
+      ),
         watch: w,
       );
   TonightPiece pieceChannel(Channel c) => TonightPiece(
         title: c.cleanName,
         artworkUrl: _httpArt(c.logoUrl),
+        meta: joinCrispMeta(quality: streamQualityLabel(c.name)),
         channel: c,
       );
 
