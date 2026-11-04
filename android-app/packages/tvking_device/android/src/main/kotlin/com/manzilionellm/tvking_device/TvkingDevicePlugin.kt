@@ -19,6 +19,7 @@ import io.flutter.embedding.engine.plugins.activity.ActivityAware
 import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
+import io.flutter.plugin.common.PluginRegistry
 
 /**
  * Enregistre le channel `com.manzilionellm.tvking/device` (le MÊME que le code
@@ -56,6 +57,10 @@ class TvkingDevicePlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Activ
     private var channel: MethodChannel? = null
     private var appContext: Context? = null
     private var activity: Activity? = null
+    private var activityBinding: ActivityPluginBinding? = null
+    private val m3uResults = PluginRegistry.ActivityResultListener { request, code, data ->
+        M3uDocumentPick.onActivityResult(appContext, request, code, data)
+    }
 
     // Touches que la télécommande du téléphone a le droit d'envoyer.
     // Pas de volume ici : le volume est le cran système (remoteVolume),
@@ -216,6 +221,8 @@ class TvkingDevicePlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Activ
             // Ouvre l'écran où l'on autorise Zuno à installer des applications.
             // Repli : les réglages de sécurité (anciennes box, Fire TV).
             "openInstallPermission" -> result.success(openInstallPermission())
+            // Fichier M3U déjà sur la box. N'ouvre pas l'activation.
+            "pickLocalM3u" -> M3uDocumentPick.start(activity, result)
             else -> result.notImplemented()
         }
     }
@@ -250,18 +257,27 @@ class TvkingDevicePlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Activ
     }
 
     override fun onAttachedToActivity(binding: ActivityPluginBinding) {
+        activityBinding?.removeActivityResultListener(m3uResults)
+        activityBinding = binding
         activity = binding.activity
+        binding.addActivityResultListener(m3uResults)
     }
 
     override fun onDetachedFromActivityForConfigChanges() {
+        activityBinding?.removeActivityResultListener(m3uResults)
+        activityBinding = null
         activity = null
     }
 
     override fun onReattachedToActivityForConfigChanges(binding: ActivityPluginBinding) {
+        activityBinding = binding
         activity = binding.activity
+        binding.addActivityResultListener(m3uResults)
     }
 
     override fun onDetachedFromActivity() {
+        activityBinding?.removeActivityResultListener(m3uResults)
+        activityBinding = null
         activity = null
     }
 
