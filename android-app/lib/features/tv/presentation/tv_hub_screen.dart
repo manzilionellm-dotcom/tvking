@@ -54,7 +54,6 @@ import '../../followed/data/followed_flag.dart';
 import '../../followed/data/followed_lead.dart';
 import '../../followed/data/followed_log.dart';
 import '../../followed/domain/show_clock.dart';
-import '../../followed/domain/show_lines.dart';
 import '../../followed/domain/show_taste.dart';
 import '../../followed/presentation/show_banner.dart';
 import '../../country_home/data/featured_repository.dart';
@@ -94,7 +93,9 @@ import 'tv_app.dart';
 import 'tv_cinema_common.dart';
 import 'tv_cinema_screen.dart';
 import 'tv_components.dart';
-import 'tv_home_rails.dart';
+import 'tv_cinematic_home.dart';
+import 'tv_glass.dart';
+import 'tv_tonight.dart';
 import 'tv_live_screen.dart';
 import 'tv_player_screen.dart';
 import 'tv_profile_picker.dart';
@@ -230,6 +231,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
       if (mounted) setState(() => _mac = m);
     });
     BlackBox.instance.info('SCREEN', 'Accueil');
+    unawaited(TvGlass.detect());
     _hadChannels = PlaylistRepository.instance.currentChannels.isNotEmpty;
     _wasActive = _isActive(SubscriptionState.instance.status);
     SubscriptionState.instance.addListener(_onLicenseChange);
@@ -1049,23 +1051,6 @@ class _TvHubScreenState extends State<TvHubScreen> {
     openVod(context, VodPlayItem.entry(entry));
   }
 
-  /// Un rappel ouvre la CHAÎNE (on ne peut pas jouer une émission future).
-  /// Le zap Haut/Bas reste sur les chaînes des rappels affichés.
-  void _playReminder(ProgramReminder reminder) {
-    final Map<String, Channel> byId = indexChannelsById(_channels);
-    final Channel? target = byId[reminder.channelId];
-    if (target == null) return;
-    final List<Channel> shelf = <Channel>[
-      for (final ProgramReminder item in _shelves.reminders)
-        if (byId[item.channelId] != null) byId[item.channelId]!,
-    ];
-    final int index = shelf.indexWhere((Channel c) => c.id == target.id);
-    _playShelf(
-      shelf.isEmpty ? <Channel>[target] : shelf,
-      index < 0 ? 0 : index,
-    );
-  }
-
   String _hello(BuildContext context) {
     final String hello = switch (homeDayPart(_now.hour)) {
       HomeDayPart.morning => context.l10n.tvHelloMorning,
@@ -1243,24 +1228,6 @@ class _TvHubScreenState extends State<TvHubScreen> {
         .push(MaterialPageRoute<void>(builder: (_) => TvShell(child: page)));
   }
 
-  Widget _tileRow(BuildContext context, {required bool compact}) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: <Widget>[
-        for (int i = 0; i < _Tile.values.length; i++) ...<Widget>[
-          _HubTile(
-            meta: _tileMeta(context, _Tile.values[i]),
-            autofocus: !compact && i == 0,
-            compact: compact,
-            onSelect: () => _openTile(_Tile.values[i]),
-          ),
-          if (i != _Tile.values.length - 1) SizedBox(width: compact ? 12 : 22),
-        ],
-      ],
-    );
-  }
-
   ({IconData icon, String label}) _tileMeta(BuildContext c, _Tile t) {
     switch (t) {
       case _Tile.live:
@@ -1415,15 +1382,20 @@ class _TvHubScreenState extends State<TvHubScreen> {
                 : Stack(
                     fit: StackFit.expand,
                     children: <Widget>[
-                      Image.asset(
-                        'assets/branding/tv_hub_background.jpg',
-                        fit: BoxFit.cover,
-                      ),
+                      // Obsidienne de la maquette, pas le gris confort
+                      // #121212 : ce fond-là seulement. Le cuivre est
+                      // l'accent déjà choisi, très dilué (soirée).
+                      const ColoredBox(color: TvTokens.bg),
                       DecoratedBox(
                         decoration: BoxDecoration(
-                          color: TvAppTokens.of(context)
-                              .bg
-                              .withValues(alpha: 0.35),
+                          gradient: RadialGradient(
+                            center: const Alignment(-0.72, -0.55),
+                            radius: 1.15,
+                            colors: <Color>[
+                              TvTokens.accent.withValues(alpha: 0.07),
+                              TvTokens.bg,
+                            ],
+                          ),
                         ),
                       ),
                       Padding(
@@ -1503,46 +1475,45 @@ class _TvHubScreenState extends State<TvHubScreen> {
                                 ),
                               ),
                             ],
-                            // ---------- RANGÉES + TUILES ----------
-                            // Avec du contenu personnel, les rangées prennent la place et
-                            // les tuiles se font plus petites en bas. Sans historique, les
-                            // tuiles restent grandes et centrées (l'accueil d'origine).
+                            if (header != null) ...<Widget>[
+                              header,
+                              const SizedBox(height: 8),
+                            ],
                             Expanded(
-                              child: hasPersonal
-                                  ? Column(
-                                      children: <Widget>[
-                                        Expanded(
-                                          child: TvHomeRails(
-                                            model: _shelves,
-                                            layout: homeLayout,
-                                            genreShelves: _genreShelves,
-                                            autofocusGenres: _pendingShelfFocus,
-                                            nowMs: _now.millisecondsSinceEpoch,
-                                            initialShelf: _pendingShelfFocus
-                                                ? _initialShelf
-                                                : null,
-                                            timePicks: _timePicks,
-                                            timePicksLabel:
-                                                context.l10n.tvAtThisHour,
-                                            shows: _showCards,
-                                            showsLabel: followedWord(
-                                              lang,
-                                              'row',
-                                            ),
-                                            onPlayShow: _openShow,
-                                            header: header,
-                                            onPlayChannel: _playShelf,
-                                            onPlayContinue: _playContinue,
-                                            onPlayReminder: _playReminder,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 8),
-                                        _tileRow(context, compact: true),
-                                      ],
-                                    )
-                                  : Center(
-                                      child: _tileRow(context, compact: false),
-                                    ),
+                              child: ValueListenableBuilder<bool>(
+                                valueListenable: TvGlass.blur,
+                                builder: (BuildContext context, bool blur, _) {
+                                  final TonightBoard board = composeTonight(
+                                    watching: _shelves.continueWatching,
+                                    favorites: _shelves.favorites,
+                                    popular: _shelves.popular,
+                                    resume: _shelves.resume,
+                                    guide: _guide,
+                                    reminders: _shelves.reminders,
+                                    also: _timePicks,
+                                    nowMs: _now.millisecondsSinceEpoch,
+                                    channelsById: indexChannelsById(_channels),
+                                  );
+                                  return TvCinematicHome(
+                                    board: board,
+                                    blur: blur,
+                                    onPlay: (TonightPiece piece) {
+                                      final WatchEntry? watch = piece.watch;
+                                      final Channel? channel = piece.channel;
+                                      if (watch != null) {
+                                        _playContinue(watch);
+                                      } else if (channel != null) {
+                                        _playShelf(<Channel>[channel], 0);
+                                      }
+                                    },
+                                    onLive: () => _openTile(_Tile.live),
+                                    onFilms: () => _openTile(_Tile.films),
+                                    onSeries: () => _openTile(_Tile.series),
+                                    onServer: () => _openTile(_Tile.server),
+                                    onSettings: () => _openTile(_Tile.settings),
+                                  );
+                                },
+                              ),
                             ),
                             if (_refreshNotice != null &&
                                 _refreshNotice!.isNotEmpty)
@@ -1726,77 +1697,3 @@ class _ProfileChip extends StatelessWidget {
   }
 }
 
-/// Une tuile carrée focusable (icône + libellé). Focus = fond or, sans
-/// second halo : le remplissage porte déjà le regard à 3 m.
-class _HubTile extends StatelessWidget {
-  const _HubTile({
-    required this.meta,
-    required this.onSelect,
-    this.autofocus = false,
-    this.compact = false,
-  });
-  final ({IconData icon, String label}) meta;
-  final VoidCallback onSelect;
-  final bool autofocus;
-
-  /// Vrai quand les rangées sont là : la tuile laisse la place au contenu.
-  final bool compact;
-
-  @override
-  Widget build(BuildContext context) {
-    final double side = compact ? 124 : 190;
-    final double icon = compact ? 36 : 64;
-    final double gap = compact ? 8 : 18;
-    final BorderRadius radius = BorderRadius.circular(TvTokens.rCard);
-    return TvFocusBuilder(
-      autofocus: autofocus,
-      scale: compact ? TvFocusScale.small : TvFocusScale.large,
-      borderRadius: radius,
-      showGlow: false,
-      onSelect: onSelect,
-      builder: (BuildContext context, bool focused) {
-        final Color fg = focused
-            ? TvAppTokens.of(context).onAccent
-            : TvAppTokens.of(context).text;
-        return Container(
-          width: side,
-          height: side,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: focused
-                ? TvAppTokens.of(context).accent
-                : TvAppTokens.of(context).card,
-            borderRadius: radius,
-            border: Border.all(
-              color: focused
-                  ? TvAppTokens.of(context).accent
-                  : TvAppTokens.of(context).line,
-              width: focused ? 2 : 1,
-            ),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              Icon(
-                meta.icon,
-                size: icon,
-                color: focused
-                    ? TvAppTokens.of(context).onAccent
-                    : TvAppTokens.of(context).accent,
-              ),
-              SizedBox(height: gap),
-              Text(
-                meta.label,
-                style: TvAppTokens.of(context).ui(
-                  compact ? TvDimens.label : TvDimens.titleS,
-                  weight: FontWeight.w700,
-                  color: fg,
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-}
