@@ -10,6 +10,7 @@ import android.graphics.Rect
 import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.media.AudioPlaybackConfiguration
+import android.media.MediaFormat
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -17,8 +18,10 @@ import android.os.Process
 import android.os.SystemClock
 import android.view.PixelCopy
 import android.view.Surface
+import android.view.SurfaceHolder
 import android.view.SurfaceView
 import android.view.View
+import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.ImageView
 import androidx.media3.common.AudioAttributes
@@ -52,6 +55,7 @@ import androidx.media3.exoplayer.audio.AudioRendererEventListener
 import androidx.media3.exoplayer.audio.AudioCapabilities
 import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.audio.DefaultAudioSink
+import androidx.media3.exoplayer.mediacodec.MediaCodecAdapter
 import androidx.media3.exoplayer.mediacodec.MediaCodecInfo
 import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
@@ -80,6 +84,8 @@ import com.manzilionellm.native_video_player.logic.DisplayModeOption
 import com.manzilionellm.native_video_player.logic.ExclusiveAudio
 import com.manzilionellm.native_video_player.logic.FrameCopyGate
 import com.manzilionellm.native_video_player.logic.FrameRateMatch
+import com.manzilionellm.native_video_player.logic.GlSurfaceGate
+import com.manzilionellm.native_video_player.logic.HdrToneMap
 import com.manzilionellm.native_video_player.logic.HeldFrame
 import com.manzilionellm.native_video_player.logic.NamedCodec
 import com.manzilionellm.native_video_player.logic.PictureHealth
@@ -117,6 +123,13 @@ import io.flutter.plugin.platform.PlatformView
  * par Media3 (ExoPlayer). Le contraste SDR passe par le processeur GL de Media3 ;
  * HDR, DRM et replis gardent la sortie directe. La trame ne passe jamais par une texture Flutter
  * (le chemin qui restait noir avec mpv et libVLC sur cette box).
+ *
+ * Le graphe GL de Media3 1.5.1 fige sa taille de sortie au prepare(). Sous
+ * Flutter la SurfaceView n'a souvent pas encore de surface (0×0) à cet
+ * instant : le son démarre, l'image reste noire, et un setFixedSize plus
+ * tard détruit la surface sans que le graphe se rebranche. On n'installe
+ * donc les effets QUE sur une surface valide et non nulle. Si elle n'arrive
+ * pas, on prépare SANS effet : MediaCodec dessine dès que la surface existe.
  *
  * DÉMARRAGE RAPIDE : tampon de lecture court (≈1 s) + priorité au temps plutôt
  * qu'à la taille → la 1re image arrive le plus vite possible. Ces durées ne
@@ -472,9 +485,41 @@ class NativeVideoView(
     // défaut ; un repli ne change que CETTE adresse, jamais la préférence.
     private var contrastRequested: Boolean = PictureTune.DEFAULT_ENABLED
     private val contrastEffect = VideoContrastEffects()
+    @Volatile
     private var contrastPipelineInstalled: Boolean = false
     private var contrastBypassReason: String? = null
     private var contrastFallbackPosted: Boolean = false
+
+    // Graphe GL installé sur CE lecteur. Tant que c'est faux, on peut
+    // encore choisir la taille du tampon. Après, on n'y touche plus.
+    private var glBound = false
+    private var glBindBroken = false
+    private var bindingGl = false
+    private var outputReady = false
+    private var prepareQueued = false
+    private var queuedStartMs: Long? = null
+    private var surfaceWaitToken = 0
+    private var boundWidth = 0
+    private var boundHeight = 0
+    private var glZeroSinceMs = 0L
+
+    /**
+     * La surface Flutter naît après le lecteur, souvent à 0×0, puis
+     * est recréée quand la vue entre dans la fenêtre. On ne prépare le
+     * GL qu'une fois la taille réelle connue.
+     */
+    private val surfaceCallback = object : SurfaceHolder.Callback {
+        override fun surfaceCreated(holder: SurfaceHolder) = onOutputSurfaceChanged()
+        override fun surfaceChanged(
+            holder: SurfaceHolder,
+            format: Int,
+            width: Int,
+            height: Int,
+        ) = onOutputSurfaceChanged()
+        override fun surfaceDestroyed(holder: SurfaceHolder) {
+            outputReady = false
+        }
+    }
 
     // Relu à chaque demande de décodeur. Le logiciel passe devant seulement
     // quand [videoEngine] est SOFTWARE.
@@ -499,8 +544,27 @@ class NativeVideoView(
      * compteur que si on lui rend le même objet.
      */
     private val frameClock = VideoFrameMetadataListener { _, _, outputFormat, _ ->
+        val now = SystemClock.elapsedRealtime()
+        val visible = GlSurfaceGate.countsAsVisibleFrame(
+            contrastPipelineInstalled,
+            outputFormat.sampleMimeType,
+            outputFormat.width,
+            outputFormat.height,
+        )
+        if (!visible) {
+            // Sortie GL 0×0 : ne pas faire croire que l'image est là
+            // (sinon le repli « écran noir » ne part jamais).
+            if (glZeroSinceMs == 0L) glZeroSinceMs = now
+            if (GlSurfaceGate.abandonZeroOutput(now - glZeroSinceMs)) {
+                handler.post {
+                    if (!released && !disposeStarted) requestContrastDirectFallback("no_frames")
+                }
+            }
+            return@VideoFrameMetadataListener
+        }
+        glZeroSinceMs = 0L
         renderedFrames.incrementAndGet()
-        lastFrameAtMs = SystemClock.elapsedRealtime()
+        lastFrameAtMs = now
         observeGlOutputSize(outputFormat)
     }
     private var videoDecoderReady: Boolean = false
@@ -684,6 +748,7 @@ class NativeVideoView(
         // OPAQUE : certaines puces (Amlogic & co.) laissent la surface
         // translucide et affichent un écran VERT à la place de la vidéo.
         // Opaque = le décodeur écrit des pixels réels, pas « du vide ».
+        surfaceView.holder.addCallback(surfaceCallback)
         surfaceView.holder.setFormat(PixelFormat.OPAQUE)
         surfaceView.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
             updateContrastSurfaceSize()
@@ -2066,6 +2131,10 @@ class NativeVideoView(
         audioGate.cancel()
         openDeferred = false
         waitToken++
+        // Une surface qui arrive après le silence ne doit pas prepare()
+        // l'ancienne session (le graphe aurait la mauvaise chaîne).
+        prepareQueued = false
+        surfaceWaitToken++
         // Les « Seconde N » de l'ancienne chaîne ne s'écrivent plus.
         volumeTraceToken++
         resetPictureClock()
@@ -2191,11 +2260,9 @@ class NativeVideoView(
         // Aucun benchmark ne doit se poursuivre pendant le décodage, même
         // si le lecteur est préparé en pause ou si sa première image tarde.
         if (aiPlaybackLease == null) aiPlaybackLease = aiPicture.acquirePlayback(owner = aiLeaseOwner)
-        player.prepare()
-        // Perte de focus pendant le zap : on ne repart pas tant que GAIN
-        // n'est pas revenu (ou qu'un nouveau zap n'a pas redemandé le focus).
-        player.playWhenReady = preparePlayRequested && !pausedByFocus
-        armVolumeTrace()
+        // GL : on attend une surface non nulle. Direct : prepare tout de
+        // suite, Media3 branchera la surface quand elle naîtra.
+        queueOrPrepare(startPositionMs)
     }
 
     /**
@@ -2954,6 +3021,7 @@ class NativeVideoView(
         }
         released = true
         resetOutputSizeMeasurement()
+        surfaceView.holder.removeCallback(surfaceCallback)
         handler.removeCallbacksAndMessages(null)
         if (foregroundId >= 0) {
             AppForeground.unwatch(foregroundId)
@@ -2997,35 +3065,20 @@ class NativeVideoView(
      */
     private fun attachToSurface(target: ExoPlayer) {
         // Cet appel précède TOUT prepare, y compris après un changement de
-        // moteur. Media3 installe alors son processeur de trames. Ne jamais
-        // appeler setVideoEffects (même vide) pour le chemin direct de repli.
+        // moteur. On branche la SurfaceView tout de suite (Media3 attend
+        // surfaceCreated), MAIS on n'appelle PAS setVideoEffects ici :
+        // sous Flutter la surface est encore absente ou 0×0, et Media3
+        // 1.5.1 figerait le graphe GL sur cette taille (son sans image).
+        // Les effets partent dans [bindGlIfNeeded], juste avant prepare,
+        // une fois la surface réelle connue. Ne jamais appeler
+        // setVideoEffects (même vide) pour le chemin direct de repli.
         contrastPipelineInstalled = useContrastPipeline(installFfmpegVideo)
-        if (contrastPipelineInstalled) {
-            contrastEffect.setEnabled(contrastRequested, hardwareAllows = true)
-            val aiEffect = aiPicture.newEffect(
-                hdrOrDrm = { aiHdrOrDrm },
-                framesPerSecond = { contentFps.toDouble() },
-                sessionId = { aiSessionId },
-                sourceKnown = { aiSourceKnown },
-                // Seule une surface réellement plus grande justifie le ×2.
-                // Un aperçu ou une géométrie inconnue restent en natif.
-                allowUpscale = { width, height ->
-                    aiTargetWidth > width && aiTargetHeight > height
-                },
-                onStatus = { status ->
-                    handler.post {
-                        if (!released && !disposeStarted && contrastPipelineInstalled &&
-                            status.sessionId == aiSessionId) {
-                            emit("aiPicture", status.toMap())
-                        }
-                    }
-                },
-            )
-            // L'IA reçoit le SDR BT.709 du lecteur ; le contraste s'applique
-            // seulement après son débruitage et son éventuel agrandissement.
-            target.setVideoEffects(listOf(aiEffect, contrastEffect))
-        }
-        updateContrastSurfaceSize()
+        glBound = false
+        glBindBroken = false
+        bindingGl = false
+        prepareQueued = false
+        boundWidth = 0
+        boundHeight = 0
         target.setVideoScalingMode(C.VIDEO_SCALING_MODE_SCALE_TO_FIT)
         target.setVideoSurfaceView(surfaceView)
         target.addAnalyticsListener(this)
@@ -3033,6 +3086,169 @@ class NativeVideoView(
         target.skipSilenceEnabled = false
         target.playWhenReady = true
         ffmpegRendererInstalled = installFfmpegVideo
+        refreshOutputReady()
+    }
+
+    /**
+     * Installe le contraste + l'IA sur une surface déjà mesurable.
+     * @return true si l'appelant peut prepare() maintenant.
+     */
+    private fun bindGlIfNeeded(): Boolean {
+        if (glBound || !contrastPipelineInstalled || glBindBroken) return !glBindBroken
+        if (!refreshOutputReady()) return false
+        contrastEffect.setEnabled(contrastRequested, hardwareAllows = true)
+        val aiEffect = aiPicture.newEffect(
+            hdrOrDrm = { aiHdrOrDrm },
+            framesPerSecond = { contentFps.toDouble() },
+            sessionId = { aiSessionId },
+            sourceKnown = { aiSourceKnown },
+            // Seule une surface réellement plus grande justifie le ×2.
+            // Un aperçu ou une géométrie inconnue restent en natif.
+            allowUpscale = { width, height ->
+                aiTargetWidth > width && aiTargetHeight > height
+            },
+            onStatus = { status ->
+                handler.post {
+                    if (!released && !disposeStarted && contrastPipelineInstalled &&
+                        status.sessionId == aiSessionId) {
+                        emit("aiPicture", status.toMap())
+                    }
+                }
+            },
+        )
+        bindingGl = true
+        try {
+            // Surface déjà posée par [attachToSurface]. Les effets
+            // ensuite, jamais l'inverse : sinon la résolution de sortie
+            // reste 0 (issue Media3, écran noir, audio seul).
+            player.setVideoEffects(listOf(aiEffect, contrastEffect))
+        } catch (_: RuntimeException) {
+            bindingGl = false
+            glBindBroken = true
+            handler.post {
+                if (!released && !disposeStarted) requestContrastDirectFallback("processing_error")
+            }
+            return false
+        }
+        bindingGl = false
+        glBound = true
+        val frame = surfaceView.holder.surfaceFrame
+        boundWidth = frame.width()
+        boundHeight = frame.height()
+        return true
+    }
+
+    /** true si la surface courante peut recevoir le graphe GL. */
+    private fun refreshOutputReady(): Boolean {
+        val holder = surfaceView.holder
+        val frame = holder.surfaceFrame
+        val surface = holder.surface
+        outputReady = GlSurfaceGate.effectsReady(
+            surfaceValid = surface != null && surface.isValid,
+            width = frame.width(),
+            height = frame.height(),
+        )
+        return outputReady
+    }
+
+    private fun onOutputSurfaceChanged() {
+        if (released || disposeStarted || bindingGl || !::player.isInitialized) return
+        // Posté : le callback Media3 (enregistré après le nôtre) doit
+        // d'abord recevoir la surface et sa taille. Préparer dans CE
+        // callback installerait le GL avant que le lecteur ait une sortie.
+        handler.post {
+            if (released || disposeStarted || !::player.isInitialized) return@post
+            if (!refreshOutputReady()) return@post
+            if (glBound) {
+                val frame = surfaceView.holder.surfaceFrame
+                // Taille différente de celle figée dans le graphe : la sortie
+                // GL 1.5.1 reste noire. On laisse MediaCodec dessiner en direct.
+                if (frame.width() != boundWidth || frame.height() != boundHeight) {
+                    requestContrastDirectFallback("surface")
+                }
+                return@post
+            }
+            // Tampon 4K éventuel AVANT le graphe. setFixedSize recrée la
+            // surface : on attend le callback suivant pour préparer.
+            if (applyPendingBufferSize()) return@post
+            if (prepareQueued) flushQueuedPrepare()
+        }
+    }
+
+    /**
+     * @return true si le tampon vient de changer : la surface va être
+     * recréée, il ne faut pas préparer sur l'ancienne.
+     */
+    private fun applyPendingBufferSize(): Boolean {
+        if (GlSurfaceGate.resizeWouldBlank(glBound)) return false
+        val before = contrastSurfaceBuffer
+        updateContrastSurfaceSize()
+        return contrastSurfaceBuffer != before && contrastSurfaceBuffer != null
+    }
+
+    private fun queueOrPrepare(startPositionMs: Long?) {
+        if (released || disposeStarted) return
+        queuedStartMs = startPositionMs
+        if (contrastPipelineInstalled && !glBound && !glBindBroken) {
+            prepareQueued = true
+            if (!refreshOutputReady() || applyPendingBufferSize()) {
+                armSurfaceTimeout()
+                return
+            }
+            flushQueuedPrepare()
+            return
+        }
+        prepareQueued = false
+        surfaceWaitToken++
+        finishPrepare()
+    }
+
+    private fun flushQueuedPrepare() {
+        if (!prepareQueued || released || disposeStarted) return
+        if (contrastPipelineInstalled && !glBound && !refreshOutputReady()) return
+        prepareQueued = false
+        surfaceWaitToken++
+        if (!bindGlIfNeeded()) {
+            // Surface repartie entre-temps : on réarme l'attente.
+            // Graphe refusé : le repli direct reconstruit le lecteur.
+            if (!glBindBroken && contrastPipelineInstalled && !glBound) {
+                prepareQueued = true
+                armSurfaceTimeout()
+            }
+            return
+        }
+        finishPrepare()
+    }
+
+    private fun armSurfaceTimeout() {
+        val token = ++surfaceWaitToken
+        val session = sessions.generation
+        handler.postDelayed({
+            if (token != surfaceWaitToken || !prepareQueued || released || disposeStarted) return@postDelayed
+            if (session != sessions.generation) return@postDelayed
+            if (refreshOutputReady()) {
+                flushQueuedPrepare()
+                return@postDelayed
+            }
+            // Toujours pas de surface : préparer QUAND MÊME, sans GL.
+            // Le décodeur écrit dès que la SurfaceView se crée. Le graphe
+            // GL, lui, serait resté à 0×0 pour toute la lecture.
+            prepareQueued = false
+            if (contrastPipelineInstalled) {
+                contrastBypassReason = contrastBypassReason ?: "surface"
+                contrastPipelineInstalled = false
+                emitImageCaps()
+            }
+            finishPrepare()
+        }, GlSurfaceGate.SURFACE_WAIT_MS)
+    }
+
+    /** prepare() + playWhenReady. Le média est déjà posé par [prepareCurrent]. */
+    private fun finishPrepare() {
+        if (released || disposeStarted || !::player.isInitialized) return
+        player.prepare()
+        player.playWhenReady = preparePlayRequested && !pausedByFocus
+        armVolumeTrace()
     }
 
     private fun emitImageCaps() {
@@ -3092,7 +3308,9 @@ class NativeVideoView(
     /** Ne pas limiter une sortie GL 4K à la résolution logique d'une interface TV. */
     @Suppress("DEPRECATION") // getRealSize garde l'écran logique entier, même en PiP.
     private fun updateContrastSurfaceSize() {
-        if (released || disposeStarted) return
+        // Après le graphe, setFixedSize détruit la surface et l'image
+        // ne revient pas (Media3 1.5.1). On garde le tampon déjà choisi.
+        if (released || disposeStarted || GlSurfaceGate.resizeWouldBlank(glBound)) return
         val size = if (contrastPipelineInstalled) try {
             val display = surfaceView.display ?: findActivity(appContext)?.windowManager?.defaultDisplay
             val logical = Point()
@@ -3254,6 +3472,7 @@ class NativeVideoView(
     }
 
     private fun resetPictureClock() {
+        glZeroSinceMs = 0L
         resetOutputSizeMeasurement()
         resetVideoCadence()
         emit("videoQualityReset", null)
@@ -3549,6 +3768,33 @@ class NativeVideoView(
 }
 
 /**
+ * Vrai si le panneau déclare au moins un mode HDR. Inconnu (pas d'écran
+ * encore) : on répond vrai pour NE PAS aplatir un vrai flux HDR.
+ */
+@Suppress("DEPRECATION")
+private fun panelSupportsHdr(context: Context): Boolean {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return false
+    return try {
+        var current: Context? = context
+        var activity: Activity? = null
+        while (current is android.content.ContextWrapper) {
+            if (current is Activity) {
+                activity = current
+                break
+            }
+            current = current.baseContext
+        }
+        val display = activity?.windowManager?.defaultDisplay
+            ?: (context.getSystemService(Context.WINDOW_SERVICE) as? WindowManager)?.defaultDisplay
+        if (display == null) return true
+        val types = display.hdrCapabilities?.supportedHdrTypes
+        types != null && types.isNotEmpty()
+    } catch (_: RuntimeException) {
+        true
+    }
+}
+
+/**
  * Fabrique de rendus : identique à Media3, SAUF pour la vidéo.
  *
  * Par défaut [installFfmpegVideo] est faux : la vidéo reste sur
@@ -3560,9 +3806,35 @@ class NativeVideoView(
  */
 @UnstableApi
 private open class TvVideoRenderersFactory(
-    context: Context,
+    private val appContext: Context,
     private val installFfmpegVideo: Boolean,
-) : DefaultRenderersFactory(context) {
+) : DefaultRenderersFactory(appContext) {
+    // Figé à la construction du lecteur : un écran HDR ne doit pas
+    // perdre ses métadonnées au milieu d'une chaîne.
+    private val toneMapHdrToSdr = !panelSupportsHdr(appContext)
+
+    override fun getCodecAdapterFactory(): MediaCodecAdapter.Factory {
+        val base = super.getCodecAdapterFactory()
+        if (!toneMapHdrToSdr) return base
+        return MediaCodecAdapter.Factory { configuration ->
+            val format = configuration.format
+            if (HdrToneMap.requestSdr(
+                    displaySupportsHdr = false,
+                    sdkInt = Build.VERSION.SDK_INT,
+                    transferIsHdr = format.colorInfo?.let { ColorInfo.isTransferHdr(it) } == true,
+                )
+            ) {
+                // Android 12+ : le décodeur convertit PQ/HLG vers le SDR
+                // au lieu de sortir du noir sur un panneau non HDR.
+                configuration.mediaFormat.setInteger(
+                    MediaFormat.KEY_COLOR_TRANSFER_REQUEST,
+                    MediaFormat.COLOR_TRANSFER_SDR_VIDEO,
+                )
+            }
+            base.createAdapter(configuration)
+        }
+    }
+
     @Suppress("UNUSED_PARAMETER") // le mode extension est forcé à OFF plus bas
     override fun buildVideoRenderers(
         context: Context,
