@@ -1,0 +1,155 @@
+{
+  "date": "2026-10-19",
+  "packageName": "com.sevenmotion.tv.seven_tv",
+  "sourceCommit": "649b967d5a7649ec6dafa6c3b5d0aa738ece326b",
+  "playVersionName": "108",
+  "playVersionCode": 1791125396,
+  "lastPublishedPlayVersionCode": 1791125395,
+  "buildRunId": 39217573754,
+  "submissionStatus": "not_submitted",
+  "managedPublishing": false,
+  "productionWasInactive": true,
+  "storeListingLocales": [
+    "fr-FR",
+    "en-US"
+  ],
+  "listingSnapshot": "zuno-play-listing-20261019.json",
+  "category": "Lecteurs et éditeurs vidéo",
+  "tags": [
+    "Lecteur vidéo",
+    "Lecteurs et outils de montage vidéo",
+    "Programme télé",
+    "Streaming vidéo",
+    "Télévision en direct"
+  ],
+  "countriesSaved": {
+    "namedCountriesAndRegions": 177,
+    "restOfWorld": true
+  },
+  "androidTv": {
+    "active": true,
+    "sharedReleaseTrack": true
+  },
+  "adsDeclaration": true,
+  "dataSafety": {
+    "status": "saved_for_review",
+    "collected": true,
+    "sharingDeclared": false,
+    "sharingBasis": "Les transferts observés relèvent des prestataires de service ou des fournisseurs choisis par l’utilisateur ; les exceptions Google ont été examinées.",
+    "encryptedInTransit": true,
+    "encryptionScope": "Backend de première partie en HTTPS ; exception Google pour les services tiers choisis par l’utilisateur, dont les listes peuvent utiliser HTTP.",
+    "inAppAccountCreation": false,
+    "usesExternalAccounts": true,
+    "deletionRequestUrl": "https://app.7themotion.com/privacy",
+    "types": [
+      {
+        "type": "Device or other IDs",
+        "optional": false,
+        "ephemeral": false,
+        "purposes": [
+          "App functionality",
+          "Analytics",
+          "Fraud prevention, security, and compliance"
+        ]
+      },
+      {
+        "type": "User IDs",
+        "optional": true,
+        "ephemeral": false,
+        "purposes": [
+          "App functionality"
+        ]
+      },
+      {
+        "type": "Approximate location",
+        "optional": false,
+        "ephemeral": false,
+        "purposes": [
+          "App functionality",
+          "Advertising or marketing",
+          "Personalization"
+        ]
+      },
+      {
+        "type": "Crash logs",
+        "optional": true,
+        "ephemeral": false,
+        "purposes": [
+          "Analytics"
+        ]
+      },
+      {
+        "type": "Diagnostics",
+        "optional": false,
+        "ephemeral": false,
+        "purposes": [
+          "App functionality",
+          "Analytics"
+        ]
+      },
+      {
+        "type": "App interactions",
+        "optional": false,
+        "ephemeral": false,
+        "purposes": [
+          "App functionality",
+          "Analytics",
+          "Personalization"
+        ]
+      },
+      {
+        "type": "In-app search history",
+        "optional": true,
+        "ephemeral": false,
+        "purposes": [
+          "App functionality"
+        ]
+      },
+      {
+        "type": "Other user-generated content",
+        "optional": true,
+        "ephemeral": false,
+        "purposes": [
+          "App functionality",
+          "Analytics"
+        ]
+      }
+    ],
+    "sourceEvidence": [
+      "android-app/lib/features/subscription/data/subscription_backend.dart",
+      "android-app/lib/core/blackbox/black_box_upload.dart",
+      "android-app/lib/features/tv/presentation/tv_app.dart",
+      "android-app/cloudflare/api_v1.js@fb0277e1f5476db3400100c4fe4163b1b9ef1fe3"
+    ]
+  },
+  "appContent": {
+    "processedDeclarations": 11,
+    "attentionRequired": 0
+  },
+  "reviewAccess": {
+    "status": "blocked_obsolete_instructions",
+    "reason": "Le code GPLAYREVIEW, le bouton Demo mode et le parcours I have a code décrits dans Play Console ne sont pas implémentés dans la variante TV actuelle. Le verrou d’abonnement s’applique après expiration de l’essai.",
+    "required": "Accès autonome et durable à toutes les fonctions, avec source d’essai autorisée, et instructions exactes en anglais. Les essais temporaires ne sont pas admis par le formulaire Google."
+  },
+  "additionalReviewItems": [
+    "Prix et QR WhatsApp d’activation externe dans la variante Play : vérifier l’éligibilité au programme applicable ou adapter le parcours de consultation avant diffusion mondiale.",
+    "Politique de confidentialité encore nommée The Few : aligner la marque et les traitements documentés dans le circuit de déploiement du panel."
+  ],
+  "notClaimed": [
+    "Publication en production",
+    "Disponibilité sur chaque modèle de projecteur",
+    "Tests physiques d’endurance",
+    "Persistance locale après suppression de toutes les données sans révocation serveur"
+  ],
+  "buildStatus": "success",
+  "aabArtifactId": 12170826809,
+  "aabSizeBytes": 90887816,
+  "aabSha256": "0848be88024365029ef31e8edb46b2188a224fb5378cbcc17c4b2d8dfe78d74f",
+  "artifactZipSha256": "ef1a84e87bd18ca3f3d09d683b5e02692838c15f07132f85e1beb4f8c994b9ea",
+  "certificateSha256": "5145b8e019f6d5fb96a207f2e73673fd954f799966fd598889211556cbdf9e61",
+  "minSdk": 24,
+  "targetSdk": 36,
+  "playImportStatus": "imported_and_optimized",
+  "playReleaseSaveStatus": "blocked_version_code_confirmation",
+  "playValidationError": "Google conserve un avertissement de code de version nettement supérieur malgré 1791125396 = 1791125395 + 1. Confirmation non acceptée."
+}

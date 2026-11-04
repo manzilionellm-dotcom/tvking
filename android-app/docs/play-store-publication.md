@@ -1,5 +1,13 @@
 # Publier The Few sur le Play Store (et ailleurs) — guide + protections anti-ban
 
+> **Document historique — état ZUNO vérifié le 19 octobre 2026 :** consulter
+> [l’audit et le suivi de publication](AUDIT-STABILITE-ZUNO-20261019.md).
+> Les anciens noms, liens, exemples de réponses et mentions de code démo
+> ci-dessous ne décrivent pas intégralement le build TV actuel. Ne pas recopier
+> ces réponses dans Play Console sans les confronter au code et au service en
+> production. Le parcours `GPLAYREVIEW` décrit dans la console n’est pas
+> implémenté dans cette variante et ne constitue pas un accès de test valide.
+
 > ⚠️ **Privé (édition 18+) ne peut PAS aller sur le Play Store** : Google interdit
 > le contenu adulte/pornographique (règle « Contenu sexuel explicite »). Privé
 > reste en **sideload** (lien `prive-latest`) ou sur un store adulte. Ce guide
