@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tv_king/core/app/box_memory_budget.dart';
+import 'package:tv_king/features/tv/core/tv_ambient.dart';
 import 'package:tv_king/features/tv/core/tv_app_tokens.dart';
 import 'package:tv_king/features/tv/core/tv_comfort.dart';
 import 'package:tv_king/features/tv/core/tv_ghost.dart';
 import 'package:tv_king/features/tv/core/tv_look.dart';
 import 'package:tv_king/features/tv/core/tv_focusable.dart';
 import 'package:tv_king/features/tv/core/tv_tokens.dart';
+import 'package:tv_king/features/tv/presentation/tv_shell.dart';
+import 'package:tv_king/features/tv/presentation/tv_starfield.dart';
 
 void main() {
   test('Ghost est plus profond que le confort et le chrome se lit', () {
@@ -91,5 +94,54 @@ void main() {
     await tester.pump(const Duration(milliseconds: 80));
     await tester.pump(TvGhost.shine);
     expect(find.byType(TvFocusable), findsOneWidget);
+  });
+
+  test('Phantom Black garde son verre et son fond, le confort les siens', () {
+    const TvAppTokens ghost = TvAppTokens(ghost: true);
+    const TvAppTokens comfort = TvAppTokens();
+    final TvComfortPalette evening =
+        TvComfortPalette.of(TvComfortPeriod.evening);
+    expect(ghost.glassFill, TvGhost.card);
+    expect(comfort.glassFill, evening.glassFill);
+    expect(
+      (ghost.bgGradient as RadialGradient).colors,
+      <Color>[TvGhost.sel, TvGhost.bg],
+    );
+    expect(comfort.bgGradient, evening.ambient);
+  });
+
+  testWidgets('sous Phantom Black, TvShell ne peint pas le halo du soir',
+      (WidgetTester tester) async {
+    Future<Gradient?> shellGradient(TvAppTokens palette) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          themeAnimationDuration: Duration.zero,
+          theme: ThemeData(extensions: <ThemeExtension<dynamic>>[palette]),
+          home: const TvShell(child: SizedBox.expand()),
+        ),
+      );
+      final DecoratedBox box = tester.widget<DecoratedBox>(
+        find
+            .descendant(
+              of: find.byType(TvShell),
+              matching: find.byType(DecoratedBox),
+            )
+            .first,
+      );
+      return (box.decoration as BoxDecoration).gradient;
+    }
+
+    const TvAppTokens ghost = TvAppTokens(ghost: true);
+    expect(await shellGradient(ghost), ghost.bgGradient);
+    expect(find.byType(PhantomWeave), findsOneWidget);
+
+    const TvAppTokens comfort = TvAppTokens();
+    final TvComfortPalette evening =
+        TvComfortPalette.of(TvComfortPeriod.evening);
+    expect(
+      await shellGradient(comfort),
+      TvAmbientLook(peak: evening.ambientPeak, bg: comfort.bg).gradient,
+    );
+    expect(find.byType(PhantomWeave), findsNothing);
   });
 }
