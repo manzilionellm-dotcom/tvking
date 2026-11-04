@@ -94,6 +94,7 @@ import 'tv_app.dart';
 import 'tv_cinema_common.dart';
 import 'tv_cinema_screen.dart';
 import 'tv_components.dart';
+import 'tv_epg_preview_screen.dart';
 import 'tv_home_rails.dart';
 import 'tv_live_screen.dart';
 import 'tv_player_screen.dart';
@@ -102,8 +103,8 @@ import 'tv_settings_screen.dart';
 import 'tv_shell.dart';
 import 'tv_sources_screen.dart';
 
-/// Les 5 tuiles de l'accueil, de gauche à droite.
-enum _Tile { live, films, series, server, settings }
+/// Les tuiles de l'accueil, de gauche à droite.
+enum _Tile { live, films, series, guide, server, settings }
 
 class TvHubScreen extends StatefulWidget {
   const TvHubScreen({super.key});
@@ -1238,6 +1239,8 @@ class _TvHubScreenState extends State<TvHubScreen> {
         page = const TvCinemaScreen(kind: CinemaKind.movie);
       case _Tile.series:
         page = const TvCinemaScreen(kind: CinemaKind.series);
+      case _Tile.guide:
+        page = const TvEpgPreviewScreen();
     }
     Navigator.of(context)
         .push(MaterialPageRoute<void>(builder: (_) => TvShell(child: page)));
@@ -1269,6 +1272,8 @@ class _TvHubScreenState extends State<TvHubScreen> {
         return (icon: Icons.movie_rounded, label: c.l10n.tvNavFilms);
       case _Tile.series:
         return (icon: Icons.video_library_rounded, label: c.l10n.tvNavSeries);
+      case _Tile.guide:
+        return (icon: Icons.grid_view_rounded, label: c.l10n.tvNavGuide);
       case _Tile.server:
         return (icon: Icons.dns_rounded, label: c.l10n.tvNavServer);
       case _Tile.settings:
