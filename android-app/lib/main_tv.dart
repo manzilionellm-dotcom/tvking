@@ -17,6 +17,7 @@ import 'package:flutter/services.dart';
 import 'package:native_video_player/native_video_player.dart';
 
 import 'core/app/app_platform.dart';
+import 'core/app/box_memory_budget.dart';
 import 'core/blackbox/black_box.dart';
 import 'core/blackbox/black_box_upload.dart';
 import 'features/player/data/audio_diag_prefs.dart';
@@ -115,6 +116,23 @@ Future<void> bootstrapZunoTv({Widget Function(Widget app)? wrap}) async {
   // grosse source), on passe en MODE SANS ÉCHEC et on saute le ré-import
   // distant plus bas → la boucle est cassée. Voir core/app/boot_guard.dart.
   await StartupTrace.step('bootGuard', BootGuard.instance.beginBoot);
+
+  // RAM de la box AVANT le premier écran : le focus, les logos et le
+  // fond lisent ce palier. 300 ms maximum — un binder lent ne retient
+  // pas le démarrage (on reste alors au palier prudent). Le PC n'a pas
+  // le plugin : palier large, comme l'index Cinéma.
+  if (Platform.isAndroid) {
+    await StartupTrace.step(
+      'memoryBudget',
+      () => BoxMemoryBudget.load().timeout(
+        const Duration(milliseconds: 300),
+        onTimeout: () {},
+      ),
+    );
+  } else {
+    BoxMemoryBudget.useDesktop();
+    StartupTrace.mark('memoryBudget.desktop');
+  }
 
   // Le paquet ZUNO est également distribué sur téléphone. On distingue
   // le matériel AVANT les services et le diagnostic, sans changer la MAC,

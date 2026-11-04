@@ -34,6 +34,7 @@ import 'package:intl/intl.dart' show DateFormat;
 import '../../device/domain/display_mac.dart';
 import '../../feedback/data/feedback_repository.dart';
 import '../../feedback/presentation/tv_feedback_card.dart';
+import '../../../core/app/box_memory_budget.dart';
 import '../../../core/app/repair_flags.dart';
 import '../../../core/app/boot_guard.dart';
 import '../../../core/blackbox/black_box.dart';
@@ -1415,9 +1416,15 @@ class _TvHubScreenState extends State<TvHubScreen> {
                 : Stack(
                     fit: StackFit.expand,
                     children: <Widget>[
+                      // JPEG 1920×1080 : décodé entier, ~8 Mo. Sur ≤ 2 Go on
+                      // le décode à la largeur du canevas (ou à la moitié
+                      // en dessous de 1 Go). Le voile sombre couvre la
+                      // différence. Palier large : taille du fichier.
                       Image.asset(
                         'assets/branding/tv_hub_background.jpg',
                         fit: BoxFit.cover,
+                        filterQuality: BoxMemoryBudget.hubBackgroundFilter,
+                        cacheWidth: BoxMemoryBudget.hubBackgroundCacheWidth,
                       ),
                       DecoratedBox(
                         decoration: BoxDecoration(

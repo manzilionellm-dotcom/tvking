@@ -21,6 +21,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
+import '../../../core/app/box_memory_budget.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../../channels/domain/channel.dart';
 import '../../cinema/data/watch_progress.dart';
@@ -696,6 +697,12 @@ class _Logo extends StatelessWidget {
                 // Décodage borné : un logo de 2 000 px coûtait 16 Mo en
                 // RAM pour une case de 56 px. ×3 = net même sur un 4K.
                 memCacheWidth: (TvDimens.channelLogo * 3).round(),
+                fadeInDuration: BoxMemoryBudget.logoFade(
+                  const Duration(milliseconds: 500),
+                ),
+                fadeOutDuration: BoxMemoryBudget.logoFade(
+                  const Duration(milliseconds: 1000),
+                ),
                 placeholder: (_, __) =>
                     _Initials(channel: channel, focused: focused),
                 errorWidget: (_, __, ___) =>
@@ -729,6 +736,12 @@ class _Poster extends StatelessWidget {
                 fit: BoxFit.cover,
                 // Affiche 52×78 : décodée à ×3 au plus (pas en pleine taille).
                 memCacheWidth: 156,
+                fadeInDuration: BoxMemoryBudget.logoFade(
+                  const Duration(milliseconds: 500),
+                ),
+                fadeOutDuration: BoxMemoryBudget.logoFade(
+                  const Duration(milliseconds: 1000),
+                ),
                 errorWidget: (_, __, ___) => Icon(
                   Icons.movie_rounded,
                   color: focused
