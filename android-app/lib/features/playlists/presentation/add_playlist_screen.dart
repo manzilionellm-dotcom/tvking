@@ -235,6 +235,10 @@ class _AddPlaylistScreenState extends State<AddPlaylistScreen> {
       obscureText: obscureText,
       autocorrect: false,
       enableSuggestions: false,
+      enableIMEPersonalizedLearning: false,
+      textCapitalization: TextCapitalization.none,
+      smartDashesType: SmartDashesType.disabled,
+      smartQuotesType: SmartQuotesType.disabled,
       style: AppTextStyles.bodyLarge,
       decoration: InputDecoration(
         hintText: hint,

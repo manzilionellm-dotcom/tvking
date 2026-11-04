@@ -70,7 +70,7 @@ void main() {
     button(tester).onSelect!();
     await tester.pumpAndSettle();
     expect(draft!.kind, OpenSourceKind.xtream);
-    expect(draft!.serverUrl, 'http://provider.invalid:8080');
+    expect(draft!.serverUrl, 'https://provider.invalid:8080');
     expect(draft!.username, 'fixture-user');
     expect(draft!.password, 'fixture-password');
     expect(name, isNotEmpty);
@@ -97,9 +97,9 @@ void main() {
       await tester.pumpAndSettle();
       expect(received!.kind, entry.value);
       if (entry.value == OpenSourceKind.m3u) {
-        expect(received!.m3uUrl, entry.key.replaceFirst('https://', 'http://'));
+        expect(received!.m3uUrl, entry.key);
       } else {
-        expect(received!.serverUrl, 'http://provider.invalid');
+        expect(received!.serverUrl, 'https://provider.invalid');
         expect(received!.username, 'fixture');
         expect(received!.password, 'pass');
       }
@@ -122,13 +122,13 @@ void main() {
     await tester.tap(find.byKey(const ValueKey<String>('tv-source-mode-xtream')));
     await tester.pump();
     expect(tester.widget<TextField>(field('server')).controller!.text,
-        'http://provider.invalid:8080');
+        'https://provider.invalid:8080');
     expect(tester.widget<TextField>(field('user')).controller!.text, 'fixture-user');
     expect(tester.widget<TextField>(field('password')).controller!.text, 'fixture-password');
     await tester.tap(find.byKey(const ValueKey<String>('tv-source-mode-m3u')));
     await tester.pump();
     expect(tester.widget<TextField>(field('m3u')).controller!.text,
-        'http://provider.invalid/list.m3u');
+        'https://provider.invalid/list.m3u');
   });
 
   testWidgets('D-pad sur les onglets et action Suivant du clavier', (tester) async {
@@ -145,39 +145,91 @@ void main() {
     expect(field('server'), findsNothing);
   });
 
-  testWidgets('conversion HTTP immédiate limitée aux champs URL, identifiants et URL imbriquée intacts', (tester) async {
+  testWidgets('le schéma saisi reste intact, http:// seulement si aucun schéma', (tester) async {
     final drafts = <OpenSourceDraft>[];
     await show(tester, TvSourceEntryForm(
       submitForTesting: (draft, _) async { drafts.add(draft); },
     ));
+    final TextField server = tester.widget<TextField>(field('server'));
+    expect(server.keyboardType, TextInputType.url);
+    expect(server.autocorrect, isFalse);
+    expect(server.enableSuggestions, isFalse);
+    expect(server.smartDashesType, SmartDashesType.disabled);
+    expect(server.smartQuotesType, SmartQuotesType.disabled);
+    expect(server.enableIMEPersonalizedLearning, isFalse);
+
     await tester.enterText(field('server'), 'https://provider.invalid:8080');
     await tester.enterText(field('user'), 'https://username.invalid/account');
     await tester.enterText(field('password'), 'https://password.invalid/secret');
     expect(tester.widget<TextField>(field('server')).controller!.text,
-        'http://provider.invalid:8080');
+        'https://provider.invalid:8080');
     expect(tester.widget<TextField>(field('user')).controller!.text,
         'https://username.invalid/account');
     expect(tester.widget<TextField>(field('password')).controller!.text,
         'https://password.invalid/secret');
     button(tester).onSelect!();
     await tester.pumpAndSettle();
-    expect(drafts.single.serverUrl, 'http://provider.invalid:8080');
+    expect(drafts.single.serverUrl, 'https://provider.invalid:8080');
     expect(drafts.single.username, 'https://username.invalid/account');
     expect(drafts.single.password, 'https://password.invalid/secret');
 
     await tester.tap(find.byKey(const ValueKey<String>('tv-source-mode-m3u')));
     await tester.pump();
+    final TextField m3u = tester.widget<TextField>(field('m3u'));
+    expect(m3u.keyboardType, TextInputType.url);
+    expect(m3u.autocorrect, isFalse);
+    expect(m3u.enableSuggestions, isFalse);
     const pasted = 'https://provider.invalid/list.m3u?next=https://nested.invalid/stream&token=a%2Bb';
-    const corrected = 'http://provider.invalid/list.m3u?next=https://nested.invalid/stream&token=a%2Bb';
     await tester.enterText(field('m3u'), pasted);
-    expect(tester.widget<TextField>(field('m3u')).controller!.text, corrected,
-        reason: 'la correction est visible avant la validation');
+    expect(tester.widget<TextField>(field('m3u')).controller!.text, pasted,
+        reason: 'le collage ne change pas le schéma');
     button(tester).onSelect!();
     await tester.pumpAndSettle();
     expect(drafts, hasLength(2));
     expect(drafts.last.kind, OpenSourceKind.m3u);
-    expect(drafts.last.m3uUrl, corrected,
-        reason: 'le lien HTTPS imbriqué et le token restent inchangés');
+    expect(drafts.last.m3uUrl, pasted);
+
+    await tester.tap(find.byKey(const ValueKey<String>('tv-source-mode-xtream')));
+    await tester.pump();
+    await tester.enterText(field('server'), 'panel.invalid:8080');
+    expect(tester.widget<TextField>(field('server')).controller!.text,
+        'panel.invalid:8080',
+        reason: 'aucun schéma n’est inventé pendant la frappe');
+    button(tester).onSelect!();
+    await tester.pumpAndSettle();
+    expect(drafts, hasLength(3));
+    expect(drafts.last.serverUrl, 'http://panel.invalid:8080');
+  });
+
+  testWidgets('coller et taper http:// ne devient jamais https://', (tester) async {
+    await show(tester, const TvSourceEntryForm());
+    const pasted = 'http://panel.invalid:8080/live';
+    await tester.enterText(field('server'), pasted);
+    expect(tester.widget<TextField>(field('server')).controller!.text, pasted);
+
+    await tester.tap(field('server'));
+    await tester.pump();
+    await tester.showKeyboard(field('server'));
+    const typed = 'http://autre.invalid';
+    final buffer = StringBuffer();
+    for (final int code in typed.codeUnits) {
+      buffer.writeCharCode(code);
+      final String soFar = buffer.toString();
+      tester.testTextInput.updateEditingValue(TextEditingValue(
+        text: soFar,
+        selection: TextSelection.collapsed(offset: soFar.length),
+      ));
+      await tester.pump();
+      expect(tester.widget<TextField>(field('server')).controller!.text, soFar,
+          reason: 'après « $soFar »');
+      expect(soFar.contains('https'), isFalse);
+    }
+
+    await tester.tap(find.byKey(const ValueKey<String>('tv-source-mode-m3u')));
+    await tester.pump();
+    const httpsPaste = 'https://panel.invalid/liste.m3u';
+    await tester.enterText(field('m3u'), httpsPaste);
+    expect(tester.widget<TextField>(field('m3u')).controller!.text, httpsPaste);
   });
 
   testWidgets('double-clic et IME : un import, progression réelle puis callback', (tester) async {

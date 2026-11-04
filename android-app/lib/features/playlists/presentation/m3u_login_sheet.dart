@@ -181,6 +181,11 @@ class _M3uLoginSheetState extends State<_M3uLoginSheet> {
                     controller: _urlCtrl,
                     keyboardType: TextInputType.url,
                     autocorrect: false,
+                    enableSuggestions: false,
+                    enableIMEPersonalizedLearning: false,
+                    textCapitalization: TextCapitalization.none,
+                    smartDashesType: SmartDashesType.disabled,
+                    smartQuotesType: SmartQuotesType.disabled,
                     decoration: InputDecoration(
                       hintText: _mode == 'player'
                           ? 'http://exemple.test:8080/get.php?username=…&password=…'
@@ -193,6 +198,11 @@ class _M3uLoginSheetState extends State<_M3uLoginSheet> {
                     controller: _serverCtrl,
                     keyboardType: TextInputType.url,
                     autocorrect: false,
+                    enableSuggestions: false,
+                    enableIMEPersonalizedLearning: false,
+                    textCapitalization: TextCapitalization.none,
+                    smartDashesType: SmartDashesType.disabled,
+                    smartQuotesType: SmartQuotesType.disabled,
                     decoration: const InputDecoration(
                       hintText: 'http://exemple.test:8080',
                     ),

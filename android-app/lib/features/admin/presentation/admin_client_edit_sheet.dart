@@ -234,6 +234,11 @@ class _AdminClientEditSheetState extends State<AdminClientEditSheet> {
                     controller: _m3uUrlCtrl,
                     keyboardType: TextInputType.url,
                     autocorrect: false,
+                    enableSuggestions: false,
+                    enableIMEPersonalizedLearning: false,
+                    textCapitalization: TextCapitalization.none,
+                    smartDashesType: SmartDashesType.disabled,
+                    smartQuotesType: SmartQuotesType.disabled,
                     decoration: const InputDecoration(
                       hintText:
                           'http://serveur.com/get.php?username=…&type=m3u_plus',
@@ -245,6 +250,11 @@ class _AdminClientEditSheetState extends State<AdminClientEditSheet> {
                     controller: _epgUrlCtrl,
                     keyboardType: TextInputType.url,
                     autocorrect: false,
+                    enableSuggestions: false,
+                    enableIMEPersonalizedLearning: false,
+                    textCapitalization: TextCapitalization.none,
+                    smartDashesType: SmartDashesType.disabled,
+                    smartQuotesType: SmartQuotesType.disabled,
                     decoration: const InputDecoration(
                       hintText: 'http://serveur.com/xmltv.php?…',
                     ),
@@ -255,6 +265,11 @@ class _AdminClientEditSheetState extends State<AdminClientEditSheet> {
                     controller: _serverCtrl,
                     keyboardType: TextInputType.url,
                     autocorrect: false,
+                    enableSuggestions: false,
+                    enableIMEPersonalizedLearning: false,
+                    textCapitalization: TextCapitalization.none,
+                    smartDashesType: SmartDashesType.disabled,
+                    smartQuotesType: SmartQuotesType.disabled,
                     decoration: const InputDecoration(
                       hintText: 'http://serveur.com:8080',
                     ),
