@@ -1,0 +1,23 @@
+{
+  "account_id": "94955b1a70aea559b29313248856ee2e",
+  "script": "seven-motion-backend",
+  "active_deployment": {
+    "id": "ec596eac-eee0-4ce4-b586-ff6420363195",
+    "created_on_utc": "2026-10-26T17:59:53.575896Z",
+    "created_on_stockholm": "2026-10-26 18:59:53 (UTC+1)",
+    "source": "api",
+    "message": "gold-integration v2 key-pool",
+    "versions": [{ "version_id": "a3f55171-173c-4a91-bfa9-1a347db085a4", "number": 313, "percentage": 100,
+                   "uploaded_utc": "2026-10-26T17:59:52.967127Z", "tag": "gold-v1",
+                   "message": "gold-integration v2 key-pool (wrapper, prod bundle unchanged)" }]
+  },
+  "last_wrangler_version_before_gold": { "version_id": "25a59e0c-c568-423c-8647-a050a6baa3d9", "number": 306, "uploaded_utc": "2026-10-06T08:56:11.015199Z" },
+  "content_etag": "54a270f347d222c83fa0acc6b5135570aadd9b9d17f136e7e07583a59ea0c1d5",
+  "modules": [
+    { "name": "gold.js", "role": "main_module", "type": "application/javascript+module", "sha256": "ff9cd709565169eef17a0b14ec7138f580bcf1e99e6fb838bfa1f3ebf38e6f96" },
+    { "name": "worker.js", "role": "bundle esbuild de prod importé par gold.js", "type": "application/javascript+module", "sha256": "ad08c5e6516c5741b686661e8ed35d16c1f9d1b20aadc164e14dc9a49628f71c" }
+  ],
+  "handlers": ["fetch"],
+  "exports": ["default", "RealtimeHub", "normMac", "shouldAutoProvision"],
+  "durable_object_migration_tag": "v1-rt-hub"
+}

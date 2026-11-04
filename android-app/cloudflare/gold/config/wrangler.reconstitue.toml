@@ -1,0 +1,25 @@
+# Reconstitué depuis l'API Cloudflare (pas un fichier déployé). Secrets: wrangler secret put (valeurs non fournies).
+name = "seven-motion-backend"
+main = "gold.js"            # gold.js importe ./worker.js (bundle de prod inchangé)
+compatibility_date = "2025-05-01"
+workers_dev = true
+routes = [{ pattern = "app.7themotion.com", custom_domain = true }]
+
+[vars]
+DEFAULT_SERVERS = "[]"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "tvking_licensing"
+database_id = "67303737-a50b-4258-86de-662fb9aba6e7"
+
+[[durable_objects.bindings]]
+name = "RT_HUB"
+class_name = "RealtimeHub"
+
+[[migrations]]
+tag = "v1-rt-hub"
+new_classes = ["RealtimeHub"]   # type exact (new_classes vs new_sqlite_classes) NON vérifiable via l'API
+
+# Secrets (noms seulement): ADMIN_SECRET, CAST_PROXY_SECRET, GOLD_PANEL_API_KEY, MISTRAL_API_KEY, SPORTSDB_KEY, TMDB_API_KEY
+# Aucun cron (schedules = []).

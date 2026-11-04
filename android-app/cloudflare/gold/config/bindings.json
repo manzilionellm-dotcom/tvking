@@ -1,0 +1,23 @@
+{
+  "compatibility_date": "2025-05-01",
+  "compatibility_flags": [],
+  "usage_model": "standard",
+  "placement": {},
+  "logpush": false,
+  "tail_consumers": [],
+  "bindings": [
+    { "name": "DB", "type": "d1", "database_name": "tvking_licensing", "database_id": "67303737-a50b-4258-86de-662fb9aba6e7" },
+    { "name": "RT_HUB", "type": "durable_object_namespace", "class_name": "RealtimeHub", "namespace_id": "84eeb39bf95349e89723c18ca26d03f8" },
+    { "name": "DEFAULT_SERVERS", "type": "plain_text", "value": "[]" },
+    { "name": "ADMIN_SECRET", "type": "secret_text", "value": "<<SECRET_REDACTED:ADMIN_SECRET>>" },
+    { "name": "CAST_PROXY_SECRET", "type": "secret_text", "value": "<<SECRET_REDACTED:CAST_PROXY_SECRET>>" },
+    { "name": "GOLD_PANEL_API_KEY", "type": "secret_text", "value": "<<SECRET_REDACTED:GOLD_PANEL_API_KEY>>" },
+    { "name": "MISTRAL_API_KEY", "type": "secret_text", "value": "<<SECRET_REDACTED:MISTRAL_API_KEY>>" },
+    { "name": "SPORTSDB_KEY", "type": "secret_text", "value": "<<SECRET_REDACTED:SPORTSDB_KEY>>" },
+    { "name": "TMDB_API_KEY", "type": "secret_text", "value": "<<SECRET_REDACTED:TMDB_API_KEY>>" }
+  ],
+  "routes": [],
+  "custom_domains": [{ "hostname": "app.7themotion.com", "zone": "7themotion.com", "environment": "production" }],
+  "workers_dev": { "enabled": true, "url": "https://seven-motion-backend.manzilionel-lm.workers.dev", "previews_enabled": false },
+  "crons": []
+}
