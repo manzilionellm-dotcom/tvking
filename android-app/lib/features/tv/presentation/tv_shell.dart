@@ -3,8 +3,10 @@
 // =========================================================
 import 'package:flutter/material.dart';
 
+import '../../../core/app/box_memory_budget.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_app_tokens.dart';
+import 'tv_starfield.dart';
 
 class TvShell extends StatelessWidget {
   const TvShell({super.key, required this.child, this.applySafeArea = true});
@@ -23,17 +25,26 @@ class TvShell extends StatelessWidget {
       // Material TRANSPARENT obligatoire : sans un Material ancêtre, Flutter
       // dessine chaque Text avec un double soulignement jaune (debug). On le
       // met en transparence pour laisser voir le dégradé Maison Noir.
-      child: Material(
-        type: MaterialType.transparency,
-        child: applySafeArea
-            ? Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: TvDimens.safeH,
-                  vertical: TvDimens.safeV,
-                ),
-                child: child,
-              )
-            : child,
+      child: Stack(
+        fit: StackFit.expand,
+        children: <Widget>[
+          if (TvAppTokens.of(context).ghost)
+            Positioned.fill(
+              child: GhostStarfield(animate: BoxMemoryBudget.paintFocusGlow),
+            ),
+          Material(
+            type: MaterialType.transparency,
+            child: applySafeArea
+                ? Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: TvDimens.safeH,
+                      vertical: TvDimens.safeV,
+                    ),
+                    child: child,
+                  )
+                : child,
+          ),
+        ],
       ),
     );
   }

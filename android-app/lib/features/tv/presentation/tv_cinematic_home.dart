@@ -3,7 +3,7 @@
 // =========================================================
 //  Gauche : une carte verre, le programme ou le film déjà sur la
 //  box, bouton lecture. Droite : le Direct, puis deux rangées
-//  horizontales. Fond obsidienne (#070708, TvTokens.bg), plus
+//  horizontales. Fond obsidienne (#070708, _field(context)), plus
 //  profond que le gris confort #121212 : la maquette gagne sur
 //  CE fond seulement. Le texte et le cuivre restent les jetons
 //  du thème (lisible le soir, pas un néon).
@@ -21,6 +21,17 @@ import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
 import 'tv_glass.dart';
 import 'tv_tonight.dart';
+
+Color _field(BuildContext context) =>
+    TvAppTokens.of(context).ghost ? TvAppTokens.of(context).bg : TvTokens.bg;
+Color _metal(BuildContext context) =>
+    TvAppTokens.of(context).ghost ? TvAppTokens.of(context).accent : TvTokens.accent;
+Color _metalBright(BuildContext context) => TvAppTokens.of(context).ghost
+    ? TvAppTokens.of(context).accentBright
+    : TvTokens.accentBright;
+Color _onMetal(BuildContext context) =>
+    TvAppTokens.of(context).ghost ? TvAppTokens.of(context).onAccent : TvTokens.onAccent;
+
 
 class TvCinematicHome extends StatelessWidget {
   const TvCinematicHome({
@@ -108,7 +119,7 @@ class _Hero extends StatelessWidget {
             style: TvAppTokens.of(context).ui(
               TvDimens.label,
               weight: FontWeight.w700,
-              color: TvTokens.accentBright,
+              color: _metalBright(context),
             ),
           ),
           if (detail.isNotEmpty) ...<Widget>[
@@ -189,14 +200,14 @@ class _PlayButton extends StatelessWidget {
           height: 64,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: TvTokens.accent.withValues(alpha: focused ? 0.95 : 0.82),
+            color: _metal(context).withValues(alpha: focused ? 0.95 : 0.82),
             border: Border.all(
-              color: focused ? TvTokens.accentBright : TvTokens.accent,
+              color: focused ? _metalBright(context) : _metal(context),
               width: focused ? 2 : 1,
             ),
             boxShadow: <BoxShadow>[
               BoxShadow(
-                color: TvTokens.accent.withValues(alpha: focused ? 0.35 : 0.12),
+                color: _metal(context).withValues(alpha: focused ? 0.35 : 0.12),
                 blurRadius: focused ? 16 : 8,
                 spreadRadius: -2,
               ),
@@ -205,7 +216,7 @@ class _PlayButton extends StatelessWidget {
           child: Icon(
             Icons.play_arrow_rounded,
             size: 36,
-            color: TvTokens.onAccent,
+            color: _onMetal(context),
           ),
         );
       },
@@ -336,7 +347,7 @@ class _WideAction extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
           child: Row(
             children: <Widget>[
-              Icon(icon, color: TvTokens.accentBright, size: 26),
+              Icon(icon, color: _metalBright(context), size: 26),
               const SizedBox(width: 14),
               Expanded(
                 child: Text(
@@ -372,18 +383,18 @@ class _Chip extends StatelessWidget {
         borderRadius: BorderRadius.circular(14),
         onSelect: onSelect,
         builder: (BuildContext context, bool focused) {
-          final Color fg = focused ? TvTokens.onAccent : TvAppTokens.of(context).text;
+          final Color fg = focused ? _onMetal(context) : TvAppTokens.of(context).text;
           return Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
               color: focused
-                  ? TvTokens.accent
-                  : TvTokens.bg.withValues(alpha: 0.72),
+                  ? _metal(context)
+                  : _field(context).withValues(alpha: 0.72),
               borderRadius: BorderRadius.circular(14),
               border: Border.all(
                 color: focused
-                    ? TvTokens.accentBright
-                    : TvTokens.accent.withValues(alpha: 0.28),
+                    ? _metalBright(context)
+                    : _metal(context).withValues(alpha: 0.28),
               ),
             ),
             child: Row(
@@ -462,8 +473,8 @@ class _PosterCardState extends State<_PosterCard> {
             borderRadius: BorderRadius.circular(14),
             border: Border.all(
               color: focused
-                  ? TvTokens.accentBright
-                  : TvTokens.accent.withValues(alpha: 0.22),
+                  ? _metalBright(context)
+                  : _metal(context).withValues(alpha: 0.22),
               width: focused ? 2 : 1,
             ),
           ),
@@ -478,7 +489,7 @@ class _PosterCardState extends State<_PosterCard> {
                 ),
               ),
               Container(
-                color: TvTokens.bg.withValues(alpha: 0.88),
+                color: _field(context).withValues(alpha: 0.88),
                 padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
                 child: Text(
                   widget.piece.title,
@@ -537,8 +548,8 @@ class _Monogram extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: <Color>[
-            TvTokens.accent.withValues(alpha: 0.22),
-            TvTokens.bg,
+            _metal(context).withValues(alpha: 0.22),
+            _field(context),
           ],
         ),
       ),
@@ -547,7 +558,7 @@ class _Monogram extends StatelessWidget {
           letter,
           style: TvAppTokens.of(context).display(
             42,
-            color: TvTokens.accentBright,
+            color: _metalBright(context),
           ),
         ),
       ),

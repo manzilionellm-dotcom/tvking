@@ -22,6 +22,7 @@ import '../../../core/update/play_store_update.dart';
 import '../../../core/update/update_service.dart';
 import '../core/tv_app_tokens.dart';
 import '../core/tv_comfort_schedule.dart';
+import '../core/tv_look.dart';
 import '../../device/data/device_identity.dart';
 import '../../subscription/data/subscription_state.dart';
 import '../../pricing/presentation/tv_pricing_card.dart';
@@ -408,6 +409,17 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
             : null,
         description: _updateLabel(context),
         onSelect: _onUpdatePressed,
+      ),
+      _SettingEntry(
+        icon: Icons.auto_awesome_outlined,
+        title: context.l10n.tvLookTitle,
+        value: TvLook.instance.ghost
+            ? context.l10n.tvLookGhost
+            : context.l10n.tvLookComfort,
+        description: context.l10n.tvLookHelp,
+        onSelect: () {
+          unawaited(TvLook.instance.toggle());
+        },
       ),
       _SettingEntry(
         icon: Icons.bedtime_outlined,
