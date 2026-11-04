@@ -17,6 +17,8 @@
 // =========================================================
 
 import 'package:flutter/material.dart';
+
+import '../../tv/core/tv_field_keys.dart';
 import 'package:flutter/services.dart';
 
 import '../../../core/theme/app_colors.dart';
@@ -442,22 +444,26 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           ),
           const SizedBox(height: 12),
           _label('URL du serveur'),
-          TextField(
+          TvFieldKeys(
+            child: TextField(
             controller: _urlCtrl,
             keyboardType: TextInputType.url,
             autocorrect: false,
             decoration: const InputDecoration(
               hintText: 'https://seven-motion-backend.X.workers.dev',
             ),
+            ),
           ),
           const SizedBox(height: 10),
           _label('Secret admin'),
-          TextField(
+          TvFieldKeys(
+            child: TextField(
             controller: _secretCtrl,
             obscureText: true,
             autocorrect: false,
             decoration: const InputDecoration(
               hintText: 'Celui défini avec `wrangler secret put ADMIN_SECRET`',
+            ),
             ),
           ),
           const SizedBox(height: 10),

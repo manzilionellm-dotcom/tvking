@@ -18,6 +18,7 @@ import '../../profiles/domain/family_profile.dart';
 import '../../profiles/domain/profile_policies.dart';
 import '../../security/data/app_pin_settings.dart';
 import '../core/tv_dimens.dart';
+import '../core/tv_field_keys.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
 import '../core/tv_app_tokens.dart';
@@ -327,7 +328,8 @@ class _NameScreenState extends State<_NameScreen> {
                   .ui(TvDimens.body, color: TvAppTokens.of(context).muted),
             ),
             const SizedBox(height: 18),
-            TextField(
+            TvFieldKeys(
+              child: TextField(
               controller: _text,
               autofocus: widget.initial.isEmpty,
               style: TvAppTokens.of(context)
@@ -357,6 +359,7 @@ class _NameScreenState extends State<_NameScreen> {
                 ),
               ),
               onSubmitted: (_) => _save(),
+              ),
             ),
             const SizedBox(height: 8),
             Wrap(
