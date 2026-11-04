@@ -2875,5 +2875,11 @@
   "tvAiReasonFluidity": "Flüssige Wiedergabe hat Vorrang.",
   "tvAiReasonSource": "Dieses Format behält die ursprüngliche Darstellung.",
   "tvAiReasonVerification": "Die Verarbeitungsleistung ist nicht bestätigt.",
-  "tvAiReasonUnavailable": "Bildverbesserung ist für diese Wiedergabe nicht verfügbar."
+  "tvAiReasonUnavailable": "Bildverbesserung ist für diese Wiedergabe nicht verfügbar.",
+  "tvComfortTitle": "Komfort",
+  "tvComfortHelp": "Wärmt die Oberfläche je nach Uhrzeit etwas. Das Bild bleibt unverändert.",
+  "tvComfortDay": "Tag",
+  "tvComfortEvening": "Abend",
+  "tvComfortNight": "Nacht",
+  "tvComfortAuto": "Nach Uhrzeit"
 }

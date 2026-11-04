@@ -2169,10 +2169,10 @@ class _ControlsBar extends StatelessWidget {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: <Widget>[
-                      const Icon(
+                      Icon(
                         Icons.fiber_manual_record_rounded,
-                        color: Colors.white,
-                        size: 11,
+                        color: TvAppTokens.playbackOf(context).onLive,
+                        size: 12,
                       ),
                       const SizedBox(width: 5),
                       Text(
@@ -2180,8 +2180,9 @@ class _ControlsBar extends StatelessWidget {
                         style: TvAppTokens.playbackOf(context).ui(
                           TvDimens.caption,
                           weight: FontWeight.w700,
-                          color: Colors.white,
+                          height: 1,
                           spacing: 0.5,
+                          color: TvAppTokens.playbackOf(context).onLive,
                         ),
                       ),
                     ],

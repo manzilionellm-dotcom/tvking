@@ -1,9 +1,10 @@
 // =========================================================
 //  tv_tokens.dart — Design System « Maison Noir » Zuno (TV)
 // =========================================================
-//  Source de vérité UNIQUE des couleurs, rayons, dégradés et styles de
-//  texte de Zuno TV. AUCUNE couleur en dur dans les écrans : tout passe
-//  par ici (règle n°5 d'AGENTS.md).
+//  Couleurs historiques Maison Noir, figées pour les commandes Cast.
+//  L'interface de la box lit `TvAppTokens` / `TvComfortPalette` : le soir
+//  confort reprend l'or et l'ivoire d'ici, sur un fond relevé. Les écrans
+//  ne posent pas de `Color(0xFF…)` (règle n°5 d'AGENTS.md).
 //
 //  ADN visuel (25/09/2026) : le logo Zuno est une calligraphie OR brossé
 //  sur noir. L'interface prolonge ce logo : noir profond, or champagne,

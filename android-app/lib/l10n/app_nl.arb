@@ -2875,5 +2875,11 @@
   "tvAiReasonFluidity": "Vloeiend afspelen heeft voorrang.",
   "tvAiReasonSource": "Dit formaat behoudt de oorspronkelijke weergave.",
   "tvAiReasonVerification": "De verwerkingscapaciteit is niet bevestigd.",
-  "tvAiReasonUnavailable": "Verbetering is niet beschikbaar voor deze weergave."
+  "tvAiReasonUnavailable": "Verbetering is niet beschikbaar voor deze weergave.",
+  "tvComfortTitle": "Comfort",
+  "tvComfortHelp": "Verwarmt de interface een beetje naargelang het uur. Het beeld verandert niet.",
+  "tvComfortDay": "Dag",
+  "tvComfortEvening": "Avond",
+  "tvComfortNight": "Nacht",
+  "tvComfortAuto": "Volgens het uur"
 }

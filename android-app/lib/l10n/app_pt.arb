@@ -2875,5 +2875,11 @@
   "tvAiReasonFluidity": "A fluidez da reprodução tem prioridade.",
   "tvAiReasonSource": "Este formato mantém a renderização original.",
   "tvAiReasonVerification": "A capacidade de processamento não está confirmada.",
-  "tvAiReasonUnavailable": "A melhoria não está disponível para esta reprodução."
+  "tvAiReasonUnavailable": "A melhoria não está disponível para esta reprodução.",
+  "tvComfortTitle": "Conforto",
+  "tvComfortHelp": "Aquece um pouco a interface conforme a hora. A imagem não muda.",
+  "tvComfortDay": "Dia",
+  "tvComfortEvening": "Entardecer",
+  "tvComfortNight": "Noite",
+  "tvComfortAuto": "Conforme a hora"
 }

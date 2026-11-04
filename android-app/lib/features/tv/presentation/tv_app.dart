@@ -38,6 +38,7 @@ import '../core/tv_focusable.dart';
 import '../core/tv_page_transitions.dart';
 import '../core/tv_tokens.dart';
 import '../core/tv_app_tokens.dart';
+import '../core/tv_comfort_schedule.dart';
 import '../core/tv_type.dart';
 import '../data/greeting_repository.dart';
 import 'removed_list_prompt.dart';
@@ -72,12 +73,16 @@ class TvApp extends StatelessWidget {
       listenable: Listenable.merge(<Listenable>[
         LocaleRepository.instance,
         RemoteThemeRepository.current,
+        // Le moment (soir fixe, ou l'heure si la personne l'a demandé)
+        // recolore les surfaces. Pas la vidéo.
+        TvComfortSchedule.instance,
       ]),
       builder: (BuildContext context, _) {
         final settings = RemoteThemeRepository.current.value;
         final palette = TvAppTokens(
           light: settings.mode == ThemeMode.light,
           remoteAccent: settings.accent,
+          period: TvComfortSchedule.instance.period,
         );
         final scheme = palette.light
             ? ColorScheme.light(

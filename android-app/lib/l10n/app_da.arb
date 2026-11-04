@@ -1445,5 +1445,11 @@
   "tvAiReasonFluidity": "Jævn afspilning prioriteres.",
   "tvAiReasonSource": "Dette format bevarer den oprindelige gengivelse.",
   "tvAiReasonVerification": "Behandlingskapaciteten er ikke bekræftet.",
-  "tvAiReasonUnavailable": "Forbedring er ikke tilgængelig for denne afspilning."
+  "tvAiReasonUnavailable": "Forbedring er ikke tilgængelig for denne afspilning.",
+  "tvComfortTitle": "Komfort",
+  "tvComfortHelp": "Varmer grænsefladen lidt efter tidspunktet. Billedet ændres ikke.",
+  "tvComfortDay": "Dag",
+  "tvComfortEvening": "Aften",
+  "tvComfortNight": "Nat",
+  "tvComfortAuto": "Efter klokken"
 }

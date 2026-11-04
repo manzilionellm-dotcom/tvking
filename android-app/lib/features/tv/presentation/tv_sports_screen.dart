@@ -349,7 +349,7 @@ class _TickerState extends State<_Ticker> {
                 TvDimens.caption,
                 weight: FontWeight.w700,
                 spacing: 0.5,
-                color: Colors.white,
+                color: TvAppTokens.of(context).onLive,
               ),
             ),
           ),

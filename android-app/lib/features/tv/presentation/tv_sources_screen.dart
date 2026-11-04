@@ -167,10 +167,10 @@ class _SourceRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Deux ors, pas un bleu étranger au reste de la Maison Noir.
+    // Le mot distingue M3U et Xtream. Pas de bleu, pas d'or criard le soir.
     final Color badge = _xtream
         ? TvAppTokens.of(context).accent
-        : TvAppTokens.of(context).accentBright;
+        : TvAppTokens.of(context).muted;
     final ({String? user, String? host}) ref = playlist.reference;
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
