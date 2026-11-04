@@ -1496,9 +1496,14 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
                   // Le temps que l'image arrive (ou qu'on lâche Haut/Bas), on dit
                   // QUELLE chaîne est visée. Un logo seul ne permettait pas de
                   // zapper « à l'aveugle » sans se perdre.
+                  // Carton opaque SEULEMENT tant qu'aucune image de CETTE
+                  // chaîne n'a été vue (ou pendant un zap, pour lire le
+                  // nom). Le remettre à chaque tampon recouvrait l'image
+                  // déjà à l'écran : écran noir, le son continuait.
                   if (!_pip.isInPipMode &&
                       !_casting &&
-                      (_zapHolding || (_buffering && !_fatal)))
+                      (_zapHolding ||
+                          (_buffering && !_fatal && !_everShownFrame)))
                     _loadingCard(),
                   if (!_pip.isInPipMode && _missed != null)
                     Align(
