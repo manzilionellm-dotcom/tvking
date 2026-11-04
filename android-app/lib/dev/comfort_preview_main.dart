@@ -63,6 +63,8 @@ class _HistoricalTokens extends TvAppTokens {
   Gradient get bgGradient => TvTokens.bgGradient;
   @override
   Gradient get ctaGradient => TvTokens.ctaGradient;
+  @override
+  Color get glassEdge => TvTokens.line;
 }
 
 class ComfortPreviewApp extends StatelessWidget {
@@ -192,7 +194,9 @@ class _Stage extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         Text(
-          historical ? 'Avant  ·  Maison Noir' : 'Après  ·  Confort du soir',
+          historical
+              ? 'Avant  ·  Maison Noir'
+              : 'Après  ·  Obsidienne et verre',
           style:
               palette.ui(TvDimens.caption, color: palette.muted, spacing: 1.2),
         ),
@@ -205,7 +209,7 @@ class _Stage extends StatelessWidget {
         SizedBox(
           width: 640,
           child: Text(
-            'Fond gris chaud, or calme, texte ivoire. Lisible à trois mètres.',
+            'Obsidienne, halo cuivré, verre sans flou.',
             style: palette.ui(TvDimens.body, color: palette.muted),
           ),
         ),
@@ -289,7 +293,7 @@ class _Card extends StatelessWidget {
         color: focused ? palette.sel : palette.card,
         borderRadius: BorderRadius.circular(TvTokens.rCard),
         border: Border.all(
-          color: focused ? palette.accentBright : palette.lineSoft,
+          color: focused ? palette.accentBright : palette.glassEdge,
           width: focused ? TvDimens.focusOutline : 1,
         ),
       ),

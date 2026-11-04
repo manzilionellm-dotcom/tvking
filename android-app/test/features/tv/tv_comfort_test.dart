@@ -5,42 +5,54 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tv_king/features/tv/core/tv_app_tokens.dart';
 import 'package:tv_king/features/tv/core/tv_comfort.dart';
 import 'package:tv_king/features/tv/core/tv_comfort_schedule.dart';
+import 'package:tv_king/features/tv/core/tv_glass.dart';
 import 'package:tv_king/features/tv/core/tv_tokens.dart';
 
 void main() {
-  test(
-      'le jour est le gris Material, le soir est plus chaud, la nuit plus sombre',
-      () {
+  test('le fond est une obsidienne, le halo cuivré reste local', () {
     final day = TvComfortPalette.of(TvComfortPeriod.day);
     final evening = TvComfortPalette.of(TvComfortPeriod.evening);
     final night = TvComfortPalette.of(TvComfortPeriod.night);
+    const Color materialGray = Color(0xFF121212);
 
-    expect(day.bg, const Color(0xFF121212));
     expect(day.bg.r, day.bg.g);
     expect(day.bg.g, day.bg.b);
+    expect(day.bg, isNot(const Color(0xFF000000)));
+    expect(
+        day.bg.computeLuminance(), lessThan(materialGray.computeLuminance()));
 
     expect(evening.bg.r, greaterThan(evening.bg.b));
-    expect(
-        evening.bg.computeLuminance(), greaterThan(day.bg.computeLuminance()));
-    expect(evening.bg.computeLuminance(), lessThan(0.03));
-
-    final Color warmStop = (TvTokens.bgGradient as RadialGradient).colors.first;
-    expect(night.bg, warmStop);
-    expect(night.bg.b / night.bg.r, lessThan(evening.bg.b / evening.bg.r));
+    expect(evening.bg, isNot(const Color(0xFF000000)));
+    expect(evening.bg.computeLuminance(),
+        lessThan(materialGray.computeLuminance()));
+    expect(evening.card.a, lessThan(1));
+    expect(evening.glassFill, evening.card);
+    // Le centre du halo est plus clair que l'obsidienne, et plus chaud.
+    expect(evening.ambientPeak.computeLuminance(),
+        greaterThan(evening.bg.computeLuminance()));
+    expect(evening.ambientPeak.r, greaterThan(evening.ambientPeak.b));
+    expect(evening.ambientPeak.computeLuminance(), lessThan(0.04));
+    expect(night.ambientPeak.computeLuminance(),
+        lessThan(evening.ambientPeak.computeLuminance()));
     expect(
         night.bg.computeLuminance(), lessThan(evening.bg.computeLuminance()));
-    expect(night.bg, isNot(const Color(0xFF000000)));
   });
 
   test('texte, accent et direct passent WCAG sur chaque moment', () {
     for (final TvComfortPeriod period in TvComfortPeriod.values) {
       final palette = TvAppTokens(period: period);
+      final Color peak = TvComfortPalette.of(period).ambientPeak;
+      // Le verre est translucide : on mesure ce qu'on voit sur le halo,
+      // pas la couleur avant mélange (son alpha fausse la luminance).
       final List<Color> surfaces = <Color>[
         palette.bg,
-        palette.panel,
-        palette.card,
-        palette.sel,
-        palette.surface3,
+        for (final Color glass in <Color>[
+          palette.panel,
+          palette.card,
+          palette.sel,
+          palette.surface3,
+        ])
+          TvComfortPalette.seen(glass, peak),
       ];
       for (final Color surface in surfaces) {
         expect(
@@ -127,6 +139,40 @@ void main() {
     expect(schedule.period, TvComfortPeriod.evening);
   });
 
+  testWidgets('le verre ne floute pas tant que la box est lente',
+      (tester) async {
+    TvGlassPolicy.debugSetCapable(false);
+    addTearDown(() => TvGlassPolicy.debugSetCapable(false));
+    await tester.pumpWidget(MaterialApp(
+      theme: ThemeData(extensions: const <ThemeExtension<dynamic>>[
+        TvAppTokens(),
+      ]),
+      home: const TvGlass(child: Text('Ce soir')),
+    ));
+    expect(find.byType(BackdropFilter), findsNothing);
+    expect(find.text('Ce soir'), findsOneWidget);
+
+    TvGlassPolicy.debugSetCapable(true);
+    await tester.pumpWidget(MaterialApp(
+      theme: ThemeData(extensions: const <ThemeExtension<dynamic>>[
+        TvAppTokens(),
+      ]),
+      home: const MediaQuery(
+        data: MediaQueryData(disableAnimations: true),
+        child: TvGlass(child: Text('Ce soir')),
+      ),
+    ));
+    expect(find.byType(BackdropFilter), findsNothing);
+
+    await tester.pumpWidget(MaterialApp(
+      theme: ThemeData(extensions: const <ThemeExtension<dynamic>>[
+        TvAppTokens(),
+      ]),
+      home: const TvGlass(child: Text('Ce soir')),
+    ));
+    expect(find.byType(BackdropFilter), findsOneWidget);
+  });
+
   test('le puits vidéo reste noir pur et sans filtre de couleur', () {
     final String player = File(
       'lib/features/tv/presentation/tv_player_screen.dart',
@@ -134,9 +180,9 @@ void main() {
     expect(player, contains('color: Colors.black'));
     expect(player, isNot(contains('ColorFiltered')));
     expect(player, isNot(contains('ImageFilter')));
-    final String comfort =
-        File('lib/features/tv/core/tv_comfort.dart').readAsStringSync();
-    expect(comfort, isNot(contains('BackdropFilter')));
-    expect(comfort, isNot(contains('ImageFilter')));
+    final String glass =
+        File('lib/features/tv/core/tv_glass.dart').readAsStringSync();
+    expect(glass, contains('allowsBlur'));
+    expect(glass, contains('if (!frost) return pane'));
   });
 }

@@ -94,13 +94,16 @@ class TvAppTokens extends ThemeExtension<TvAppTokens> {
 
   Color get success => light ? const Color(0xFF207A4D) : TvTokens.success;
 
+  /// Verre des cartes (voile translucide). Le layout VIP le pose sur
+  /// le halo ; les écrans déjà écrits lisent [card], qui est ce verre.
+  Color get glassFill =>
+      light ? card.withValues(alpha: 0.92) : _comfort.glassFill;
+
+  /// Filet cuivré du verre. Suit l'accent du panel. Doux : pas un néon.
+  Color get glassEdge => light ? line : accent.withValues(alpha: 0.42);
+
   Gradient get bgGradient => !light && remoteAccent == null
-      ? RadialGradient(
-          center: const Alignment(0.56, -.40),
-          radius: 1.3,
-          colors: <Color>[sel, bg],
-          stops: const <double>[0, .6],
-        )
+      ? _comfort.ambient
       : RadialGradient(
           center: const Alignment(0.56, -.40),
           radius: 1.3,

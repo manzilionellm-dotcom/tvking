@@ -35,23 +35,25 @@
 //     principal (1.4.6), 3:1 pour un composant d'interface (1.4.11).
 //     https://www.w3.org/TR/WCAG22/#contrast-minimum
 //
-//  Trois moments, même recette, pour pouvoir évoluer sans casser
-//  les écrans :
-//    - jour    : pile Material neutre (#121212 + voiles). Contraste
-//                un peu plus haut si la pièce n'est pas noire.
-//    - soir    : la même pile, teintée avec l'or du halo déjà dessiné
-//                (`TvTokens.brandGlow`). C'est le défaut : on regarde
-//                la télé le soir, dans le noir.
-//    - nuit    : la base n'est plus #121212 mais la première couleur
-//                du dégradé déjà écrit (plus chaude, encore foncée).
-//                Les mêmes voiles d'élévation s'appliquent dessus.
+//  Le fond n'est pas un aplat brun. C'est une obsidienne profonde
+//  (jamais #000000 : le noir pur fatigue le texte clair, Material)
+//  avec un halo cuivré LOCAL — l'or déjà choisi, en dégradé court,
+//  comme la lumière ambiante du modèle. Les cartes sont un verre
+//  teinté (voile sombre translucide) : le halo passe au travers
+//  sans `BackdropFilter`. Le flou « givre » est un plus, coupé sur
+//  les box lentes (`TvGlassPolicy`).
+//
+//  Trois moments, même verre, halo plus ou moins fort :
+//    - jour    : obsidienne neutre, halo discret.
+//    - soir    : obsidienne chaude + halo cuivré. Défaut.
+//    - nuit    : encore plus sombre, halo plus faible.
 //
 //  L'IMAGE de la chaîne n'entre pas dans cette palette. Le lecteur
 //  la pose sur un noir pur (`Colors.black`) pour ne pas teinter
 //  les bandes ni les pixels.
 //
-//  Calcul une fois, puis lecture. Aucun flou, aucun filtre, aucune
-//  animation : une box lente ne repeint que des aplats.
+//  Calcul une fois, puis lecture. Le chemin par défaut ne floute
+//  rien : une box lente ne repeint que des aplats translucides.
 // =========================================================
 
 import 'dart:math' as math;
@@ -80,6 +82,8 @@ class TvComfortPalette {
     required this.muted,
     required this.mutedDim,
     required this.live,
+    required this.ambientPeak,
+    required this.ambient,
   });
 
   final Color bg;
@@ -99,19 +103,30 @@ class TvComfortPalette {
   /// pas un blanc pur (le blanc ne tient pas le 4,5:1).
   final Color live;
 
-  static const Color _materialBase = Color(0xFF121212);
+  /// Centre du halo cuivré (or de marque posé sur l'obsidienne).
+  /// C'est le fond le plus clair : le contraste s'y mesure.
+  final Color ambientPeak;
 
-  /// dp des rôles, du plus enfoncé au plus haut. L'ordre suit la pile
-  /// historique (fond < panneau < carte < sélection < menu).
-  static const Map<String, double> _dp = <String, double>{
-    'bg': 0,
-    'panel': 1,
-    'lineSoft': 2,
-    'card': 3,
-    'tile': 4,
-    'sel': 6,
-    'surface3': 8,
-    'line': 12,
+  /// Halo local. Les bords retombent sur l'obsidienne. Dégradé court
+  /// (Android TV : éviter le banding des grands fondus).
+  final Gradient ambient;
+
+  /// Verre des cartes. Même valeur que [card] : un voile, pas un aplat.
+  Color get glassFill => card;
+
+  static const Color _obsidianDay = Color(0xFF0E0E0E);
+  static const Color _obsidianEvening = Color(0xFF0C0A08);
+  static const Color _obsidianNight = Color(0xFF0A0806);
+  static const Color _glassRgb = Color(0xFF241E18);
+
+  /// Opacité du voile de verre. Plus le rôle est « devant », plus
+  /// il couvre le halo — sans jamais devenir un aplat opaque.
+  static const Map<String, double> _glassAlpha = <String, double>{
+    'panel': 0.42,
+    'card': 0.58,
+    'tile': 0.64,
+    'sel': 0.70,
+    'surface3': 0.78,
   };
 
   static final Map<TvComfortPeriod, TvComfortPalette> _cached =
@@ -153,37 +168,45 @@ class TvComfortPalette {
     return (hi + 0.05) / (lo + 0.05);
   }
 
-  static TvComfortPalette _build(TvComfortPeriod period) {
-    final Color base = switch (period) {
-      TvComfortPeriod.day => _materialBase,
-      TvComfortPeriod.evening => _materialBase,
-      // Première couleur du dégradé Maison Noir : déjà chaude, déjà
-      // dans le fichier, plus foncée qu'un or dilué.
-      TvComfortPeriod.night =>
-        (TvTokens.bgGradient as RadialGradient).colors.first,
-    };
-    final double tint = period == TvComfortPeriod.evening ? _brandGlowAlpha : 0;
-    Color lift(String role) {
-      final Color elevated = _elevation(base, _dp[role]!);
-      if (tint == 0) return elevated;
-      return Color.alphaBlend(
-          TvTokens.accent.withValues(alpha: tint), elevated);
-    }
+  /// Ce qu'on voit vraiment : le verre posé sur un fond opaque.
+  /// `computeLuminance` ignore l'alpha, donc le contraste se mesure ici.
+  static Color seen(Color glass, Color behind) =>
+      Color.alphaBlend(glass, behind);
 
-    final Color bg = lift('bg');
-    final Color panel = lift('panel');
-    final Color card = lift('card');
-    final Color tile = lift('tile');
-    final Color sel = lift('sel');
-    final Color surface3 = lift('surface3');
-    final Color line = lift('line');
-    final Color lineSoft = lift('lineSoft');
+  static TvComfortPalette _build(TvComfortPeriod period) {
+    final Color bg = switch (period) {
+      TvComfortPeriod.day => _obsidianDay,
+      TvComfortPeriod.evening => _obsidianEvening,
+      TvComfortPeriod.night => _obsidianNight,
+    };
+    // Soir = le modèle (halo visible, pas un projecteur). Jour et
+    // nuit restent sous ce plafond pour ne pas éclairer la pièce.
+    final double glow = switch (period) {
+      TvComfortPeriod.day => 0.08,
+      TvComfortPeriod.evening => 0.20,
+      TvComfortPeriod.night => 0.10,
+    };
+    final Color peak =
+        Color.alphaBlend(TvTokens.accent.withValues(alpha: glow), bg);
+    Color veil(String role) => _glassRgb.withValues(alpha: _glassAlpha[role]!);
+    final Color panel = veil('panel');
+    final Color card = veil('card');
+    final Color tile = veil('tile');
+    final Color sel = veil('sel');
+    final Color surface3 = veil('surface3');
+    final List<Color> seenOnPeak = <Color>[
+      for (final Color glass in <Color>[panel, card, tile, sel, surface3])
+        seen(glass, peak),
+    ];
+    Color lightest = seenOnPeak.first;
+    for (final Color surface in seenOnPeak.skip(1)) {
+      if (surface.computeLuminance() > lightest.computeLuminance()) {
+        lightest = surface;
+      }
+    }
     final Color text = _ink(TvTokens.text, bg, 0.87);
-    final Color muted = _ink(TvTokens.text, card, 0.60);
-    // Plancher WCAG sur la surface de menu (la plus claire des grands
-    // aplats). On ne descend pas sous le « muted », pour garder
-    // l'ordre : principal > secondaire > tertiaire.
-    Color mutedDim = _floorInk(TvTokens.text, surface3, 4.5);
+    final Color muted = _ink(TvTokens.text, lightest, 0.72);
+    Color mutedDim = _floorInk(TvTokens.text, lightest, 4.5);
     if (mutedDim.computeLuminance() > muted.computeLuminance()) {
       mutedDim = muted;
     }
@@ -194,24 +217,29 @@ class TvComfortPalette {
       tile: tile,
       sel: sel,
       surface3: surface3,
-      line: line,
-      lineSoft: lineSoft,
+      // Filet cuivré doux (bord de verre), pas un néon plein.
+      line: TvTokens.accent.withValues(alpha: 0.42),
+      lineSoft: TvTokens.text.withValues(alpha: 0.14),
       text: text,
       muted: muted,
       mutedDim: mutedDim,
-      live: _liveAgainst(<Color>[bg, panel, card, tile, sel, surface3]),
+      live: _liveAgainst(<Color>[bg, ...seenOnPeak]),
+      ambientPeak: peak,
+      ambient: RadialGradient(
+        // Le cercle est plus grand que l'écran. L'obsidienne est
+        // atteinte vers le tiers du rayon, donc le bord du dégradé
+        // ne tombe pas dans l'image (banding, Android TV).
+        center: const Alignment(0.1, -0.15),
+        radius: 2.4,
+        colors: <Color>[
+          peak,
+          Color.lerp(peak, bg, 0.45)!,
+          Color.lerp(peak, bg, 0.8)!,
+          bg,
+        ],
+        stops: const <double>[0, 0.1, 0.22, 0.38],
+      ),
     );
-  }
-
-  /// Alpha du premier stop de `TvTokens.brandGlow` (0x18 aujourd'hui).
-  /// Si le halo de marque change, le soir suit.
-  static double get _brandGlowAlpha =>
-      (TvTokens.brandGlow as RadialGradient).colors.first.a;
-
-  static Color _elevation(Color base, double dp) {
-    if (dp <= 0) return base;
-    final double alpha = (4.5 * math.log(1 + dp) + 2) / 100;
-    return Color.alphaBlend(Colors.white.withValues(alpha: alpha), base);
   }
 
   /// Encre = ivoire de marque posé à `opacity` sur la surface, comme
@@ -241,7 +269,9 @@ class TvComfortPalette {
         hardest = surface;
       }
     }
-    if (contrast(TvTokens.live, hardest) >= 4.5) return TvTokens.live;
+    // Toujours plafonner la saturation à celle de l'or, même si le
+    // rouge vif passerait le contraste sur une obsidienne très sombre :
+    // un rouge saturé vibre (Material) et les TV le rendent criard.
     final HSLColor src = HSLColor.fromColor(TvTokens.live);
     final double cap = HSLColor.fromColor(TvTokens.accent).saturation;
     final double saturation = math.min(src.saturation, cap);
