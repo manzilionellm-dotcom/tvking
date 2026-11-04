@@ -2188,7 +2188,11 @@ class NativeVideoView(
         // Un repli peut avoir été décidé juste avant Home/Cast. Son callback
         // annulé ne doit pas laisser le processeur GL actif au retour. Même
         // règle pour un nouveau flux choisi pendant l'arrière-plan.
-        if (contrastPipelineInstalled != useContrastPipeline(installFfmpegVideo)) {
+        // Graphe GL déjà utilisé par ce lecteur : mesuré sur API 29 en fin
+        // de flux direct, stop() puis un second prepare du même lecteur ne
+        // recréent jamais le décodeur, l'image gardée reste figée. Chaque
+        // ouverture GL repart d'un lecteur et d'une surface neufs.
+        if (contrastPipelineInstalled != useContrastPipeline(installFfmpegVideo) || glBound) {
             rebuildPlayer()
             emitImageCaps()
         }
