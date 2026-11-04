@@ -64,6 +64,8 @@ import {
   kindForAdminAction,
   signalMac,
 } from './box_signal.js';
+// Bannières image : même JSON que la box lit déjà (GET /api/banners).
+import { BANNERS_KEY, sanitizeBanners } from './banners.js';
 // Migration KV → D1 (cf. cloudflare/migrate_kv_to_d1.js) — exposee
 // via POST /admin/migrate-to-d1 et protegee par X-Admin-Secret.
 import { runMigration } from './migrate_kv_to_d1.js';
@@ -1904,6 +1906,27 @@ function pickActiveThemeRule(rules, now) {
     }
   }
   return null;
+}
+
+// GET /api/banners (public) — images de l'accueil. Liste vide si rien
+// n'est publié : la box retire les bannières, elle ne garde pas l'ancienne
+// à cause d'un 404.
+async function handleGetBanners(env) {
+  const empty = { version: 0, items: [] };
+  if (!env.DB) return json(empty);
+  try {
+    await ensureAppConfigTable(env);
+    const row = await env.DB
+      .prepare('SELECT value FROM app_config WHERE key = ?')
+      .bind(BANNERS_KEY)
+      .first();
+    const raw = row && row.value != null ? String(row.value) : '';
+    if (!raw) return json(empty);
+    const clean = sanitizeBanners(raw);
+    return json({ version: clean.version, items: clean.items });
+  } catch (_) {
+    return json(empty);
+  }
 }
 
 // GET /api/ad (public) — vidéo publicitaire jouée au démarrage de l'app.
@@ -4092,6 +4115,13 @@ async function handleRequest(request, env, ctx) {
         return await handleGetFeatured(env);
       }
       return badRequest('only GET supported on /api/featured');
+    }
+
+    // /api/banners — images promo de l'accueil. GET public. Le panel
+    // écrit /api/v1/banners puis prévient le parc (ordre banner).
+    if (segments[0] === 'api' && segments[1] === 'banners' && segments.length === 2) {
+      if (request.method === 'GET') return await handleGetBanners(env);
+      return badRequest('only GET supported on /api/banners');
     }
 
     // /admin/panel — page HTML du panel admin (auth via input dans la page)

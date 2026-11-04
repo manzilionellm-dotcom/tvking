@@ -53,6 +53,31 @@ class StartupAdRepository {
   AdConfig _config = AdConfig.none;
   AdConfig get config => _config;
 
+  /// Les écrans écoutent ce compteur. Il avance à chaque lecture
+  /// réussie du panel (même si l'URL n'a pas changé : un second
+  /// enregistrement doit réveiller la box). Le cache local, lui,
+  /// ne l'avance pas.
+  final ValueNotifier<int> revision = ValueNotifier<int>(0);
+
+  static const String _kCache = 'zuno.ad.cache.v1';
+  static const String _kLastUrl = 'ad_last_url';
+
+  /// Dernière pub déjà lue, sans réseau. Faux si rien n'est en cache.
+  /// L'ouverture n'attend plus le Worker pour décider.
+  Future<bool> warmFromCache() async {
+    try {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      final String raw = prefs.getString(_kCache) ?? '';
+      if (raw.isEmpty) return false;
+      final Object? decoded = jsonDecode(raw);
+      if (decoded is! Map) return false;
+      _config = _parse(decoded);
+      return _config.enabled;
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// Récupère la config distante. Retourne la config (mise en cache).
   Future<AdConfig> fetch({bool strict = false}) async {
     final http.Client c = client ?? http.Client();
@@ -68,25 +93,23 @@ class StartupAdRepository {
       if (d is! Map || d['enabled'] is! bool) {
         throw const FormatException('Configuration de publicité invalide');
       }
-      final String url = (d['url'] ?? '').toString().trim();
-      final Uri? uri = Uri.tryParse(url);
-      final bool validUrl =
-          uri != null &&
-          uri.hasAuthority &&
-          <String>['http', 'https'].contains(uri.scheme);
-      if (d['enabled'] == true && !validUrl) {
-        throw const FormatException('URL de publicité invalide');
+      _config = _parse(d);
+      revision.value = revision.value + 1;
+      try {
+        final SharedPreferences prefs = await SharedPreferences.getInstance();
+        await prefs.setString(
+          _kCache,
+          jsonEncode(<String, Object>{
+            'enabled': _config.enabled,
+            'url': _config.url,
+            'skip': _config.skip,
+            'freq': _config.freq,
+          }),
+        );
+      } catch (_) {
+        // Le cache sert à la prochaine ouverture. La pub de cette
+        // lecture est déjà dans [config].
       }
-      final Object? rawSkip = d['skip'];
-      final int skip = rawSkip is int
-          ? rawSkip
-          : (int.tryParse('${rawSkip ?? ''}') ?? 5);
-      _config = AdConfig(
-        enabled: d['enabled'] == true && validUrl,
-        url: url,
-        skip: skip.clamp(0, 60),
-        freq: d['freq'] == 'daily' ? 'daily' : 'always',
-      );
     } catch (e) {
       if (strict) rethrow;
       if (kDebugMode) debugPrint('[StartupAd] $e');
@@ -97,14 +120,39 @@ class StartupAdRepository {
     return _config;
   }
 
+  AdConfig _parse(Map<dynamic, dynamic> d) {
+    final String url = (d['url'] ?? '').toString().trim();
+    final Uri? uri = Uri.tryParse(url);
+    final bool validUrl =
+        uri != null &&
+        uri.hasAuthority &&
+        <String>['http', 'https'].contains(uri.scheme);
+    if (d['enabled'] == true && !validUrl) {
+      throw const FormatException('URL de publicité invalide');
+    }
+    final Object? rawSkip = d['skip'];
+    final int skip = rawSkip is int
+        ? rawSkip
+        : (int.tryParse('${rawSkip ?? ''}') ?? 5);
+    return AdConfig(
+      enabled: d['enabled'] == true && validUrl,
+      url: url,
+      skip: skip.clamp(0, 60),
+      freq: d['freq'] == 'daily' ? 'daily' : 'always',
+    );
+  }
+
   /// Faut-il montrer la pub maintenant ? (selon enabled + fréquence)
+  /// Une pub quotidienne déjà vue aujourd'hui reste cachée, sauf si
+  /// le panel a changé l'adresse : c'est une autre publicité.
   Future<bool> shouldShow() async {
     final AdConfig c = _config;
     if (!c.enabled || c.url.isEmpty) return false;
     if (c.freq != 'daily') return true; // 'always' = à chaque ouverture
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
-      return prefs.getString('ad_last_day') != _dayKey();
+      if (prefs.getString('ad_last_day') != _dayKey()) return true;
+      return prefs.getString(_kLastUrl) != c.url;
     } catch (_) {
       return true;
     }
@@ -115,6 +163,7 @@ class StartupAdRepository {
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       await prefs.setString('ad_last_day', _dayKey());
+      await prefs.setString(_kLastUrl, _config.url);
     } catch (_) {}
   }
 
@@ -124,6 +173,7 @@ class StartupAdRepository {
     client = null;
     baseUrl = null;
     clock = null;
+    if (revision.value != 0) revision.value = 0;
   }
 
   String _dayKey() {

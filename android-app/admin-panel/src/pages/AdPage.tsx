@@ -44,7 +44,7 @@ export function AdPage({ onLogout }: { onLogout: () => void }) {
     try {
       await adApi.save({ enabled, url: url.trim(), skip, freq });
       setOk(enabled && url.trim()
-        ? '✅ Pub vidéo active — elle se jouera au démarrage de l\'app.'
+        ? '✅ Pub envoyée. Une box déjà ouverte la joue dès l’ordre (1–2 s), sinon à la prochaine ouverture.'
         : 'Pub vidéo désactivée.');
     } catch (e) { fail(e); } finally { setBusy(false); }
   }
