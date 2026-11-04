@@ -7,7 +7,7 @@ import sys
 import xml.etree.ElementTree as ET
 
 
-PIXEL_METHOD = "defaultOn_changesRealPixels_andOffOnOffRestoresTheSameFrame"
+PIXEL_METHOD = "defaultOff_directPixels_onChangesRealPixels_offRestoresTheSameFrame"
 MUTATION_MARKER = "PIXEL_CONTRAST_NOT_APPLIED"
 RECOVERY_METHODS = {
     "pauseDuringHttp502Retry_staysPausedAndKeepsVodPosition",
@@ -55,9 +55,9 @@ def verify(output: Path, mode: str) -> None:
             if MUTATION_MARKER not in detail:
                 raise SystemExit("Échec différent de la régression de contraste recherchée.")
     captures = output / "contrast-pixels"
-    images = ["01-default-on.png", "02-off.png"]
+    images = ["01-default-off.png", "02-on.png"]
     if mode == "baseline":
-        images.extend(["03-on-again.png", "04-off-again.png"])
+        images.extend(["03-off-again.png", "04-on-again.png"])
     for image in images:
         if not (captures / image).is_file():
             raise SystemExit(f"Capture du test absente : {image}")

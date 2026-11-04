@@ -34,7 +34,7 @@ class ContrastResultsTest(unittest.TestCase):
             "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk"
             "+A8AAQUBAScY42YAAAAASUVORK5CYII="
         )
-        for name in ("01-default-on", "02-off", "03-on-again", "04-off-again"):
+        for name in ("01-default-off", "02-on", "03-off-again", "04-on-again"):
             (captures / f"{name}.png").write_bytes(png)
         (captures / "measurements.json").write_text(json.dumps({"passed": True}))
         recovery = captures / "recovery"
@@ -125,7 +125,7 @@ class ContrastResultsTest(unittest.TestCase):
 
     def test_missing_capture_cannot_validate_the_mutation(self):
         self.report(failure_type="java.lang.AssertionError", failure_message=MUTATION_MARKER)
-        (self.output / "contrast-pixels" / "02-off.png").unlink()
+        (self.output / "contrast-pixels" / "02-on.png").unlink()
         with self.assertRaisesRegex(SystemExit, "Capture du test absente"):
             self.check("mutation")
 

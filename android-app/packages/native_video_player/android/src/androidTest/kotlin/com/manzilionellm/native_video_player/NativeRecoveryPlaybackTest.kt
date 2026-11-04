@@ -120,6 +120,9 @@ class NativeRecoveryPlaybackTest {
 
     @Test
     fun sameSourceDirectRebuild_keepsTrackPreferences_newUrlClearsOverrides() = withPlayer("track-rebuild") { proof ->
+        // Le repli GL → direct n'existe que contraste allumé (graphe GL
+        // installé) ; sans lui, la sortie est déjà directe.
+        invoke("setContrast", true)
         open(Uri.fromFile(fixture).toString(), audio = "sv", text = "fr")
         await("première image et pistes vidéo") {
             activity.messenger.events.any { it.method == "firstFrame" } &&

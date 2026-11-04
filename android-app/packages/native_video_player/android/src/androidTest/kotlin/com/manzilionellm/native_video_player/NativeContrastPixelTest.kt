@@ -87,7 +87,10 @@ class ContrastTestActivity : Activity() {
 
 /**
  * Régression du chemin de production, pas de la valeur d'un interrupteur.
- * Le premier rendu est capturé SANS setContrast(true). Un retour au vieux
+ * Le premier rendu est capturé SANS setContrast : sortie directe du
+ * décodeur, aucun graphe GL. Allumer le contraste rouvre la chaîne avec le
+ * graphe GL et doit changer les vrais pixels ; le couper rouvre en direct
+ * et rend la même image qu'au départ. Un retour au vieux
  * hardwareAllows=false laisse ON et OFF identiques et fait échouer ce test.
  */
 @UnstableApi
@@ -100,8 +103,12 @@ class NativeContrastPixelTest {
     private lateinit var evidence: File
     private val measures = JSONObject()
 
+    // Chaque bascule du graphe GL rouvre la chaîne une fois. Un repli
+    // (graphe bloqué, image noire) ajouterait une réouverture de plus.
+    private var expectedReopens = 0
+
     @Test
-    fun defaultOn_changesRealPixels_andOffOnOffRestoresTheSameFrame() {
+    fun defaultOff_directPixels_onChangesRealPixels_offRestoresTheSameFrame() {
         val intent = Intent(instrumentation.context, ContrastTestActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         val scenario = ActivityScenario.launch<ContrastTestActivity>(intent)
@@ -114,45 +121,51 @@ class NativeContrastPixelTest {
             }
             invoke("setUrl", mapOf("url" to Uri.fromFile(fixture).toString(), "vod" to true, "epoch" to 1))
             await("première image native") { activity.messenger.events.any { it.method == "firstFrame" } }
-            await("dimensions de sortie GL réelles") {
-                activity.messenger.events.any {
-                    it.method == "videoSize" && (it.arguments as? Map<*, *>)?.get("origin") == "gl_output"
-                }
-            }
+            await("dimensions du décodeur en sortie directe") { sizeOriginSince(0, "renderer_callback") }
+            assertFalse("sortie directe par défaut, sans graphe GL", glPipelineInstalled())
 
-            val defaultOn = captureWhen("01-default-on") { it.visible() }
-            invoke("setContrast", false)
+            val defaultOff = captureWhen("01-default-off") { it.visible() }
+            assertFalse("aucune sortie GL sans contraste", sizeOriginSince(0, "gl_output"))
+
+            val onAt = switchContrast(true)
+            await("dimensions de sortie GL réelles") { sizeOriginSince(onAt, "gl_output") }
             // Le contraste positif assombrit les basses lumières et éclaircit les hautes.
             // Aucun calcul reproduisant la matrice Media3 : on mesure les pixels affichés.
-            val off = captureWhen("02-off", failureLabel = "PIXEL_CONTRAST_NOT_APPLIED") {
-                it.visible() && defaultOn.dark < it.dark - 2.0 && defaultOn.bright > it.bright + 2.0
+            val on = captureWhen("02-on", failureLabel = "PIXEL_CONTRAST_NOT_APPLIED") {
+                it.visible() && it.dark < defaultOff.dark - 2.0 && it.bright > defaultOff.bright + 2.0
             }
-            invoke("setContrast", true)
-            val onAgain = captureWhen("03-on-again") {
-                it.visible() && it.dark < off.dark - 2.0 && it.bright > off.bright + 2.0
+            val offAt = switchContrast(false)
+            await("dimensions du décodeur après retour direct") { sizeOriginSince(offAt, "renderer_callback") }
+            val offAgain = captureWhen("03-off-again") {
+                it.visible() && it.dark > on.dark + 2.0 && it.bright < on.bright - 2.0
             }
-            invoke("setContrast", false)
-            val offAgain = captureWhen("04-off-again") {
-                it.visible() && it.dark > onAgain.dark + 2.0 && it.bright < onAgain.bright - 2.0
+            val onAgainAt = switchContrast(true)
+            await("dimensions de sortie GL après rallumage") { sizeOriginSince(onAgainAt, "gl_output") }
+            val onAgain = captureWhen("04-on-again") {
+                it.visible() && it.dark < offAgain.dark - 2.0 && it.bright > offAgain.bright + 2.0
             }
 
-            listOf(off, onAgain, offAgain).forEach {
-                assertEquals("largeur conservée", defaultOn.bitmap.width, it.bitmap.width)
-                assertEquals("hauteur conservée", defaultOn.bitmap.height, it.bitmap.height)
+            listOf(on, offAgain, onAgain).forEach {
+                assertEquals("largeur conservée", defaultOff.bitmap.width, it.bitmap.width)
+                assertEquals("hauteur conservée", defaultOff.bitmap.height, it.bitmap.height)
             }
-            val onDifference = averageDifference(defaultOn.bitmap, onAgain.bitmap)
-            val offDifference = averageDifference(off.bitmap, offAgain.bitmap)
-            measures.put("default_on_vs_on_again_mean_absolute_rgb", onDifference)
-            measures.put("off_vs_off_again_mean_absolute_rgb", offDifference)
-            assertTrue("ON reproduit le rendu par défaut : $onDifference", onDifference <= 2.0)
-            assertTrue("OFF restaure la même image : $offDifference", offDifference <= 2.0)
+            val offDifference = averageDifference(defaultOff.bitmap, offAgain.bitmap)
+            val onDifference = averageDifference(on.bitmap, onAgain.bitmap)
+            measures.put("default_off_vs_off_again_mean_absolute_rgb", offDifference)
+            measures.put("on_vs_on_again_mean_absolute_rgb", onDifference)
+            assertTrue("OFF restaure l'image directe de départ : $offDifference", offDifference <= 2.0)
+            assertTrue("ON reproduit le premier rendu contrasté : $onDifference", onDifference <= 2.0)
             assertNoPlayerFailure()
+            assertEquals("une réouverture par bascule du graphe GL", expectedReopens,
+                activity.messenger.events.count { it.method == "reopen" })
             val sizes = activity.messenger.events.filter { it.method == "videoSize" }
                 .mapNotNull { it.arguments as? Map<*, *> }
-            assertTrue("la sortie de la mire garde ses 256 × 144 pixels", sizes.any {
-                (it["width"] as? Number)?.toInt() == 256 &&
-                    (it["height"] as? Number)?.toInt() == 144 && it["origin"] == "gl_output"
-            })
+            for (origin in listOf("renderer_callback", "gl_output")) {
+                assertTrue("la sortie $origin de la mire garde ses 256 × 144 pixels", sizes.any {
+                    (it["width"] as? Number)?.toInt() == 256 &&
+                        (it["height"] as? Number)?.toInt() == 144 && it["origin"] == origin
+                })
+            }
             val sources = activity.messenger.events.filter { it.method == "videoSource" }
                 .mapNotNull { it.arguments as? Map<*, *> }
             assertTrue("le format source reste une information distincte de la sortie", sources.any {
@@ -193,10 +206,39 @@ class NativeContrastPixelTest {
 
     private fun assertNoPlayerFailure() {
         val failures = activity.messenger.events.filter {
-            it.method == "error" || it.method == "engineExhausted" || it.method == "reopen" ||
+            it.method == "error" || it.method == "engineExhausted" ||
                 (it.method == "reconnecting" && it.arguments == true)
         }
-        assertTrue("aucune erreur/reconnexion/reconstruction : ${failures.map { it.method to it.arguments }}", failures.isEmpty())
+        assertTrue("aucune erreur/reconnexion : ${failures.map { it.method to it.arguments }}", failures.isEmpty())
+        val reopens = activity.messenger.events.count { it.method == "reopen" }
+        assertTrue("reconstruction imprévue : $reopens pour $expectedReopens bascules", reopens <= expectedReopens)
+    }
+
+    /** @return l'index des événements à partir duquel lire le nouveau lecteur. */
+    private fun switchContrast(enabled: Boolean): Int {
+        val from = activity.messenger.events.size
+        expectedReopens++
+        invoke("setContrast", enabled)
+        await("lecteur rouvert ${if (enabled) "avec" else "sans"} graphe GL") {
+            activity.messenger.events.drop(from).any { it.method == "reopen" } &&
+                glPipelineInstalled() == enabled
+        }
+        return from
+    }
+
+    private fun sizeOriginSince(from: Int, origin: String): Boolean =
+        activity.messenger.events.drop(from).any {
+            it.method == "videoSize" && (it.arguments as? Map<*, *>)?.get("origin") == origin
+        }
+
+    private fun glPipelineInstalled(): Boolean {
+        var installed = false
+        instrumentation.runOnMainSync {
+            val field = NativeVideoView::class.java.getDeclaredField("contrastPipelineInstalled")
+            field.isAccessible = true
+            installed = field.getBoolean(activity.nativeView)
+        }
+        return installed
     }
 
     private fun await(label: String, condition: () -> Boolean) {
