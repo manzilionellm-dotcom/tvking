@@ -3453,6 +3453,7 @@ class NativeVideoView(
     private fun rebuildPlayer() {
         if (!::player.isInitialized || released || disposeStarted) return
         val old = player
+        val oldUsedGl = contrastPipelineInstalled
         val next = buildConfiguredPlayer()
         // Paramètres immuables de la lecture en cours : le repli HDR/DRM/GL
         // ne doit pas perdre les langues, les pistes ou leur désactivation.
@@ -3460,7 +3461,6 @@ class NativeVideoView(
         next.trackSelectionParameters = old.trackSelectionParameters
         PlayerCensus.playerCreated()
         player = next
-        attachToSurface(next)
         // L'ancien lecteur va perdre son écouteur : son onAudioTrackReleased
         // n'arriverait plus. On solde le compteur maintenant. Un callback
         // en retard est ignoré (piste « due »).
@@ -3472,6 +3472,8 @@ class NativeVideoView(
             old.clearVideoFrameMetadataListener(frameClock)
         } catch (_: RuntimeException) {
         }
+        // L'ancien lecteur lâche la SurfaceView AVANT que le nouveau s'y
+        // branche.
         try {
             old.stop()
             old.clearVideoSurface()
@@ -3479,6 +3481,22 @@ class NativeVideoView(
         } catch (_: RuntimeException) {
         }
         PlayerCensus.playerReleased()
+        // Un graphe GL bloqué garde la file d'images de la SurfaceView même
+        // après release() (délais de libération Media3 dépassés). Mesuré sur
+        // API 29 : le décodeur du lecteur suivant reçoit alors « connect:
+        // already connected », Decoder init failed, et la chaîne tombe en
+        // erreur. Masquer puis réafficher la vue détruit cette surface et en
+        // crée une neuve, sans producteur (surfaceDestroyed / surfaceCreated
+        // de la doc SurfaceView).
+        if (oldUsedGl) renewVideoSurface()
+        attachToSurface(next)
+    }
+
+    /** Nouvelle surface (nouvelle file d'images) pour la même SurfaceView. */
+    private fun renewVideoSurface() {
+        if (surfaceView.visibility != View.VISIBLE) return
+        surfaceView.visibility = View.GONE
+        surfaceView.visibility = View.VISIBLE
     }
 
     private fun resetPictureClock() {
