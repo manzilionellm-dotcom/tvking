@@ -46,6 +46,8 @@ import 'tv_components.dart';
 import 'tv_hub_screen.dart';
 import 'tv_live_screen.dart';
 import 'tv_recordings_screen.dart';
+import 'tv_player_probe.dart';
+import 'tv_player_screen.dart';
 import 'tv_scaled_viewport.dart';
 import '../../voice/presentation/voice_hotkey.dart';
 import '../../voice/presentation/voice_navigation.dart';
@@ -137,7 +139,22 @@ class TvApp extends StatelessWidget {
               ),
             );
           },
-          home: const RestartWidget(child: RemovedListPrompt(child: TvGate())),
+          // Sonde d'image : seulement si le build passe une URL publique.
+          // Les APK clients n'ont pas ce define → accueil inchangé.
+          home: kZunoPlayerProbeUrl.isEmpty
+              ? const RestartWidget(child: RemovedListPrompt(child: TvGate()))
+              : TvPlayerScreen(
+                  channels: <Channel>[
+                    Channel(
+                      id: 'probe',
+                      name: 'Essai image',
+                      category: 'Essai',
+                      streamUrl: kZunoPlayerProbeUrl,
+                      isLive: true,
+                    ),
+                  ],
+                  startIndex: 0,
+                ),
         );
       },
     );

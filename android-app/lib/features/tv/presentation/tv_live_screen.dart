@@ -15,6 +15,7 @@ import '../../channels/domain/channel_category_index.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 
 import '../../device/domain/display_mac.dart';
 import '../../../core/app/boot_guard.dart';
@@ -1017,6 +1018,9 @@ class _CategoryRail extends StatelessWidget {
     return ListView.builder(
       padding: EdgeInsets.zero,
       itemExtent: _kRowExtent,
+      // Une page de catégories est déjà construite : le D-pad
+      // n'attend pas le constructeur de la ligne suivante.
+      scrollCacheExtent: ScrollCacheExtent.pixels(_kRowExtent * 16),
       itemCount: cats.length,
       itemBuilder: (BuildContext context, int i) {
         final String cat = cats[i];
@@ -1572,6 +1576,9 @@ class _ChannelGridState extends State<_ChannelGrid> {
         padding: const EdgeInsets.only(top: 4, bottom: 8),
         // Mémoire bornée au scroll : on ne garde PAS les cartes hors écran en vie.
         addAutomaticKeepAlives: false,
+        // Deux rangées hors écran : le défilement D-pad ne crée pas
+        // la carte au moment où elle entre.
+        scrollCacheExtent: const ScrollCacheExtent.pixels(600),
         // Cartes PAYSAGE ~16:9 (réf. design).
         gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
           maxCrossAxisExtent: 300,
@@ -1963,6 +1970,10 @@ class _ChannelList extends StatelessWidget {
       child: ListView.builder(
         padding: EdgeInsets.zero,
         itemExtent: _kRowExtent,
+        // Même idée que la colonne des catégories : le zap visuel
+        // (la liste, pas le flux) ne construit pas la ligne au moment
+        // où le focus arrive.
+        scrollCacheExtent: ScrollCacheExtent.pixels(_kRowExtent * 12),
         itemCount: channels.length,
         itemBuilder: (BuildContext context, int i) => _ChannelRow(
           channel: channels[i],

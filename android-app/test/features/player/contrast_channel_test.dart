@@ -67,7 +67,7 @@ void main() {
         for (final channel in channels) {
           messenger.setMockMethodCallHandler(channel, null);
         }
-        NativeVideoController.defaultLightContrast = true;
+        NativeVideoController.defaultLightContrast = false;
       }
     });
   }

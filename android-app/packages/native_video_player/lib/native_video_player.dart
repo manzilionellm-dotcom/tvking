@@ -136,7 +136,8 @@ class NativeVideoController extends ChangeNotifier {
 
   /// Préférence chargée au démarrage, avant de créer le premier lecteur.
   /// Android l'applique ; les autres moteurs déclarent leurs propres capacités.
-  static bool defaultLightContrast = true;
+  /// Coupé par défaut : sortie directe du décodeur, sans passe OpenGL.
+  static bool defaultLightContrast = false;
 
   /// Langue audio de l'application (« fr », « en »…). Lue à chaque
   /// ouverture si l'appelant n'en passe pas une plus précise (film).

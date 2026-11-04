@@ -6,7 +6,7 @@ import {
   type Device, type DeviceSource, type DeviceOverview, type DeviceLocalSource,
   type DeviceLicense, type DevicePresence, type BoxLiveRow, ApiError,
 } from '@/lib/api';
-import { liveSummary } from '@/lib/boxLive';
+import { liveSummary, PANEL_LIVE_MS } from '@/lib/boxLive';
 import { formatDateTime } from '@/lib/utils';
 
 /// Libellés FR lisibles des plans (clé technique → texte).
@@ -44,7 +44,7 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
   }, [load]);
 
   // Le tableau des MAC ne clignote pas : seule la colonne « Direct »
-  // bouge, toutes les 2,5 s.
+  // bouge. 1 s : un accusé de la box est visible avant 2 s.
   useEffect(() => {
     let stop = false;
     async function tick() {
@@ -59,7 +59,7 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
       }
     }
     tick();
-    const id = setInterval(tick, 2500);
+    const id = setInterval(tick, PANEL_LIVE_MS);
     return () => { stop = true; clearInterval(id); };
   }, [onLogout]);
 

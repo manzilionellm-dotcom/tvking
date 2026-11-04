@@ -154,6 +154,11 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   // nouvel appui). Un seul setUrl au lieu d'un par répétition de touche.
   Timer? _zapSettle;
   bool _zapHolding = false;
+
+  /// Même instance pendant toute la vie du lecteur. Un zap ne fait
+  /// qu'un setState pour le bandeau : reconstruire [NativeVideoView]
+  /// recréait le lien de la vue plateforme à chaque touche.
+  late final Widget _stableVideo;
   String _numBuffer = ''; // saisie d'un numéro de chaîne (touches 0-9)
   // Une fois par minute, tant que l'image tourne : on note le
   // programme du guide. Pas à chaque image (ça chaufferait la box).
@@ -268,6 +273,9 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
       _playingUrl = LiveFallback.preferred(_current.streamUrl);
     }
     _controller = NativeVideoController(initialUrl: _playingUrl);
+    // Identique d'un build à l'autre : Flutter ne redessine pas la
+    // SurfaceView quand le bandeau ou le numéro de chaîne change.
+    _stableVideo = NativeVideoView(controller: _controller);
     _pip = ZunoPipService.instance.acquire(
       onSuspend: _suspendOutside,
       onResume: _resumeInside,
@@ -1482,15 +1490,20 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
                               _controller.videoHeight > 0
                           ? _controller.videoWidth / _controller.videoHeight
                           : 16 / 9,
-                      child: NativeVideoView(controller: _controller),
+                      child: _stableVideo,
                     ),
                   ),
                   // Le temps que l'image arrive (ou qu'on lâche Haut/Bas), on dit
                   // QUELLE chaîne est visée. Un logo seul ne permettait pas de
                   // zapper « à l'aveugle » sans se perdre.
+                  // Carton opaque SEULEMENT tant qu'aucune image de CETTE
+                  // chaîne n'a été vue (ou pendant un zap, pour lire le
+                  // nom). Le remettre à chaque tampon recouvrait l'image
+                  // déjà à l'écran : écran noir, le son continuait.
                   if (!_pip.isInPipMode &&
                       !_casting &&
-                      (_zapHolding || (_buffering && !_fatal)))
+                      (_zapHolding ||
+                          (_buffering && !_fatal && !_everShownFrame)))
                     _loadingCard(),
                   if (!_pip.isInPipMode && _missed != null)
                     Align(

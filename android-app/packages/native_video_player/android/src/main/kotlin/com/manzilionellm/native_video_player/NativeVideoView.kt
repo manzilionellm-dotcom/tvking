@@ -120,16 +120,19 @@ import io.flutter.plugin.platform.PlatformView
  * jamais » (façon YouTube / Netflix).
  *
  * RENDU : la vidéo est dessinée dans une vraie [SurfaceView] Android pilotée
- * par Media3 (ExoPlayer). Le contraste SDR passe par le processeur GL de Media3 ;
- * HDR, DRM et replis gardent la sortie directe. La trame ne passe jamais par une texture Flutter
- * (le chemin qui restait noir avec mpv et libVLC sur cette box).
+ * par Media3 (ExoPlayer). Par défaut, MediaCodec écrit DIRECTEMENT dans la
+ * SurfaceView : aucune passe OpenGL, aucune retouche des pixels. Le processeur
+ * GL de Media3 (contraste SDR + traitement IA) n'est installé que si la
+ * personne a allumé le contraste. HDR, DRM et replis gardent la sortie
+ * directe. La trame ne passe jamais par une texture Flutter (le chemin qui
+ * restait noir avec mpv et libVLC sur cette box).
  *
- * Le graphe GL de Media3 1.5.1 fige sa taille de sortie au prepare(). Sous
- * Flutter la SurfaceView n'a souvent pas encore de surface (0×0) à cet
- * instant : le son démarre, l'image reste noire, et un setFixedSize plus
- * tard détruit la surface sans que le graphe se rebranche. On n'installe
- * donc les effets QUE sur une surface valide et non nulle. Si elle n'arrive
- * pas, on prépare SANS effet : MediaCodec dessine dès que la surface existe.
+ * Avec le contraste allumé, Flutter crée souvent la SurfaceView sans surface
+ * (0×0) au moment où le lecteur est prêt. On n'installe les effets que sur
+ * une surface valide et non nulle ; si elle n'arrive pas, on prépare SANS
+ * effet : MediaCodec dessine dès que la surface existe. (La Javadoc Media3
+ * de setVideoEffects indique que la taille d'une SurfaceView est ensuite
+ * transmise automatiquement au graphe.)
  *
  * DÉMARRAGE RAPIDE : tampon de lecture court (≈1 s) + priorité au temps plutôt
  * qu'à la taille → la 1re image arrive le plus vite possible. Ces durées ne
@@ -1510,6 +1513,13 @@ class NativeVideoView(
                 // Le shader relit cette valeur pour chaque image. Ne pas
                 // réenregistrer le flux GL lors d'un simple ON/OFF.
                 contrastEffect.setEnabled(contrastRequested, contrastAvailable())
+                // Le graphe GL n'existe que contraste allumé : l'ajouter ou
+                // le retirer demande un nouveau lecteur. openCurrent le
+                // reconstruit. Sans chaîne ouverte (appel d'avant setUrl),
+                // la prochaine ouverture s'en charge.
+                if (contrastPipelineInstalled != useContrastPipeline(installFfmpegVideo)) {
+                    reopenForContrastPipeline()
+                }
                 emitImageCaps()
                 result.success(contrastApplied())
             }
@@ -2178,7 +2188,11 @@ class NativeVideoView(
         // Un repli peut avoir été décidé juste avant Home/Cast. Son callback
         // annulé ne doit pas laisser le processeur GL actif au retour. Même
         // règle pour un nouveau flux choisi pendant l'arrière-plan.
-        if (contrastPipelineInstalled != useContrastPipeline(installFfmpegVideo)) {
+        // Graphe GL déjà utilisé par ce lecteur : mesuré sur API 29 en fin
+        // de flux direct, stop() puis un second prepare du même lecteur ne
+        // recréent jamais le décodeur, l'image gardée reste figée. Chaque
+        // ouverture GL repart d'un lecteur et d'une surface neufs.
+        if (contrastPipelineInstalled != useContrastPipeline(installFfmpegVideo) || glBound) {
             rebuildPlayer()
             emitImageCaps()
         }
@@ -3070,11 +3084,10 @@ class NativeVideoView(
         // Cet appel précède TOUT prepare, y compris après un changement de
         // moteur. On branche la SurfaceView tout de suite (Media3 attend
         // surfaceCreated), MAIS on n'appelle PAS setVideoEffects ici :
-        // sous Flutter la surface est encore absente ou 0×0, et Media3
-        // 1.5.1 figerait le graphe GL sur cette taille (son sans image).
-        // Les effets partent dans [bindGlIfNeeded], juste avant prepare,
-        // une fois la surface réelle connue. Ne jamais appeler
-        // setVideoEffects (même vide) pour le chemin direct de repli.
+        // sous Flutter la surface est encore absente ou 0×0. Les effets
+        // (contraste allumé seulement) partent dans [bindGlIfNeeded], juste
+        // avant prepare, une fois la surface réelle connue. Ne jamais
+        // appeler setVideoEffects (même vide) pour le chemin direct.
         contrastPipelineInstalled = useContrastPipeline(installFfmpegVideo)
         glBound = false
         glBindBroken = false
@@ -3279,8 +3292,14 @@ class NativeVideoView(
         emit("contrastReason", contrastReason())
     }
 
+    /**
+     * Le graphe GL n'existe que si la personne a demandé le contraste.
+     * Contraste coupé = sortie directe MediaCodec → SurfaceView : même
+     * une matrice identité dans le GL coûte une passe GPU par image, des
+     * images perdues, et la reprise directe en cas de blocage.
+     */
     private fun useContrastPipeline(ffmpegVideo: Boolean): Boolean =
-        !ffmpegVideo && contrastBypassReason == null
+        !ffmpegVideo && contrastRequested && contrastBypassReason == null
 
     private fun contrastAvailable(): Boolean =
         contrastPipelineInstalled && contrastBypassReason == null
@@ -3387,6 +3406,29 @@ class NativeVideoView(
         return true
     }
 
+    /**
+     * Contraste changé pendant une lecture : rouvrir la même chaîne pour
+     * que openCurrent reconstruise le lecteur avec (ou sans) le graphe GL.
+     * Même garde que le repli : pas dehors, pas pendant le Cast. Un lecteur
+     * encore IDLE (ouverture différée, erreur) sera aligné à sa réouverture.
+     */
+    private fun reopenForContrastPipeline() {
+        if (!::player.isInitialized || released || disposeStarted || currentUrl == null) return
+        if (player.playbackState == Player.STATE_IDLE) return
+        if (!AppForeground.allowsReopen() || castSuspended) return
+        cancelRetry()
+        val focusPause = pausedByFocus
+        val playRequested = player.playWhenReady || focusPause
+        val resumeAt = if (vodMode) player.currentPosition.coerceAtLeast(lastKnownPos) else 0L
+        emit("reopen", null)
+        if (vodMode) lastKnownPos = resumeAt
+        openCurrent(
+            if (vodMode) resumeAt else null,
+            preservePlayRequested = playRequested,
+            preserveFocusPause = focusPause,
+        )
+    }
+
     private fun emitEngine(rejected: String? = null) {
         val payload = HashMap<String, Any?>()
         payload["name"] = videoEngine.wire
@@ -3453,6 +3495,7 @@ class NativeVideoView(
     private fun rebuildPlayer() {
         if (!::player.isInitialized || released || disposeStarted) return
         val old = player
+        val oldUsedGl = contrastPipelineInstalled
         val next = buildConfiguredPlayer()
         // Paramètres immuables de la lecture en cours : le repli HDR/DRM/GL
         // ne doit pas perdre les langues, les pistes ou leur désactivation.
@@ -3460,7 +3503,6 @@ class NativeVideoView(
         next.trackSelectionParameters = old.trackSelectionParameters
         PlayerCensus.playerCreated()
         player = next
-        attachToSurface(next)
         // L'ancien lecteur va perdre son écouteur : son onAudioTrackReleased
         // n'arriverait plus. On solde le compteur maintenant. Un callback
         // en retard est ignoré (piste « due »).
@@ -3472,6 +3514,8 @@ class NativeVideoView(
             old.clearVideoFrameMetadataListener(frameClock)
         } catch (_: RuntimeException) {
         }
+        // L'ancien lecteur lâche la SurfaceView AVANT que le nouveau s'y
+        // branche.
         try {
             old.stop()
             old.clearVideoSurface()
@@ -3479,6 +3523,22 @@ class NativeVideoView(
         } catch (_: RuntimeException) {
         }
         PlayerCensus.playerReleased()
+        // Un graphe GL bloqué garde la file d'images de la SurfaceView même
+        // après release() (délais de libération Media3 dépassés). Mesuré sur
+        // API 29 : le décodeur du lecteur suivant reçoit alors « connect:
+        // already connected », Decoder init failed, et la chaîne tombe en
+        // erreur. Masquer puis réafficher la vue détruit cette surface et en
+        // crée une neuve, sans producteur (surfaceDestroyed / surfaceCreated
+        // de la doc SurfaceView).
+        if (oldUsedGl) renewVideoSurface()
+        attachToSurface(next)
+    }
+
+    /** Nouvelle surface (nouvelle file d'images) pour la même SurfaceView. */
+    private fun renewVideoSurface() {
+        if (surfaceView.visibility != View.VISIBLE) return
+        surfaceView.visibility = View.GONE
+        surfaceView.visibility = View.VISIBLE
     }
 
     private fun resetPictureClock() {
