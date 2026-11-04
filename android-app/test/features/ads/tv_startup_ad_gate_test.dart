@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -142,6 +143,56 @@ void main() {
       await tester.pumpWidget(const SizedBox.shrink());
     },
   );
+
+  testWidgets('l’accueil est visible pendant l’attente, sans écran vide', (
+    tester,
+  ) async {
+    final pending = Completer<http.Response>();
+    repo.client = MockClient((_) => pending.future);
+    await mount(tester);
+    expect(find.text('Accueil'), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    pending.complete(
+      http.Response('{"enabled":false,"url":"","skip":5,"freq":"always"}', 200),
+    );
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('Accueil'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('un ordre du panel affiche la pub sans redémarrer', (
+    tester,
+  ) async {
+    repo.client = MockClient((_) async {
+      requests++;
+      return http.Response(
+        '{"enabled":false,"url":"","skip":5,"freq":"always"}',
+        200,
+      );
+    });
+    await mount(tester);
+    await tester.pump();
+    expect(find.text('Accueil'), findsOneWidget);
+    final Stopwatch watch = Stopwatch()..start();
+    repo.client = MockClient((_) async {
+      return http.Response(
+        jsonEncode(<String, Object>{
+          'enabled': true,
+          'url': 'https://fixture.invalid/promo.mp4',
+          'skip': 1,
+          'freq': 'always',
+        }),
+        200,
+      );
+    });
+    await repo.fetch();
+    await tester.pump();
+    expect(find.text('Vidéo native'), findsOneWidget);
+    expect(watch.elapsedMilliseconds, lessThan(2000));
+    debugPrint('MESURE ad_push_ms=${watch.elapsedMilliseconds}');
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
 
   testWidgets('réponse lente ne recouvre jamais l’accueil déjà ouvert', (
     tester,

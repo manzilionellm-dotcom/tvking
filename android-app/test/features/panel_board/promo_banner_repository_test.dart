@@ -6,6 +6,7 @@
 // =========================================================
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -107,5 +108,14 @@ void main() {
     repo.client = MockClient((_) async => http.Response('x', 404));
     await repo.initialize();
     expect(repo.dismissedAt(d2.millisecondsSinceEpoch), <String>{'b'});
+  });
+
+  test('une bannière publiée est dans la liste dès la réponse', () async {
+    repo.client = MockClient((_) async => http.Response(_body(<String>['promo']), 200));
+    final Stopwatch watch = Stopwatch()..start();
+    await repo.refresh();
+    expect(repo.banners.single.id, 'promo');
+    expect(watch.elapsedMilliseconds, lessThan(2000));
+    debugPrint('MESURE banner_apply_ms=${watch.elapsedMilliseconds}');
   });
 }

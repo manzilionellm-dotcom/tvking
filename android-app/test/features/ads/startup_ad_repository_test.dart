@@ -39,6 +39,27 @@ void main() {
     expect(await repo.shouldShow(), isFalse);
   });
 
+  test('une autre pub le même jour n’est pas la quotidienne déjà vue', () async {
+    var url = 'https://fixture.invalid/ad.mp4';
+    repo.client = MockClient((_) async {
+      return http.Response(
+        jsonEncode(<String, Object>{
+          'enabled': true,
+          'url': url,
+          'freq': 'daily',
+          'skip': 1,
+        }),
+        200,
+      );
+    });
+    await repo.fetch();
+    await repo.markShown();
+    expect(await repo.shouldShow(), isFalse);
+    url = 'https://fixture.invalid/autre.mp4';
+    await repo.fetch();
+    expect(await repo.shouldShow(), isTrue);
+  });
+
   test(
     'URL non HTTP rejetée, délai borné et erreur sans ancienne pub',
     () async {

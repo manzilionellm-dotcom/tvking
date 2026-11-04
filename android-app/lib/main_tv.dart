@@ -146,13 +146,15 @@ Future<void> bootstrapZunoTv({Widget Function(Widget app)? wrap}) async {
   // Le journal part vers le panel (même Worker, même MAC). L'envoi
   // est coupé par l'interrupteur « En plus ». Rien ici ne touche au son.
   BlackBoxUpload.instance.start();
-  // Réglages du diagnostic son. Défaut faux : ne change pas le lecteur.
-  await StartupTrace.step('audioPreferences', AudioDiagPrefs.load);
-  // Avant les aperçus/publicités : un contraste explicitement coupé ne doit
-  // pas s'allumer brièvement au premier affichage de la vue native.
-  await StartupTrace.step('imagePreferences', ImagePrefs.load);
-  // Interrupteurs de repli des correctifs de l'audit (défaut faux).
-  await StartupTrace.step('repairFlags', RepairFlags.load);
+  // Trois lectures disque indépendantes. Les enchaîner ajoutait leur
+  // durée au premier écran ; elles partent ensemble. Le contraste est
+  // quand même connu avant les aperçus : on attend la fin du trio
+  // avant runApp.
+  await Future.wait(<Future<void>>[
+    StartupTrace.step('audioPreferences', AudioDiagPrefs.load),
+    StartupTrace.step('imagePreferences', ImagePrefs.load),
+    StartupTrace.step('repairFlags', RepairFlags.load),
+  ]);
   if (BootGuard.instance.safeMode) {
     BlackBox.instance.warn(
       'BOOT',
@@ -335,6 +337,7 @@ Future<void> bootstrapZunoTv({Widget Function(Widget app)? wrap}) async {
   });
   unawaited(WidgetsBinding.instance.waitUntilFirstFrameRasterized.then((_) {
     StartupTrace.mark('frame.rasterized');
+    StartupTrace.watchFrames();
     // Une boucle Dart vivante sur le splash n'est pas un démarrage réussi.
     // Le délai de stabilité commence seulement après la première image réelle.
     BootGuard.instance.scheduleStableReset();
