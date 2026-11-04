@@ -16,6 +16,7 @@ import '../../device/data/device_identity.dart';
 import '../../subscription/data/remote_activation_watch.dart';
 import '../../subscription/data/subscription_state.dart';
 import '../../pricing/presentation/tv_pricing_card.dart';
+import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
 import '../core/tv_app_tokens.dart';
@@ -167,7 +168,11 @@ class _TvActivationScreenState extends State<TvActivationScreen> {
         const SizedBox(height: 18),
         Text(
           context.l10n.tvActivationFooter,
-          style: TvAppTokens.of(context).ui(13, color: TvAppTokens.of(context).mutedDim, spacing: 0.5),
+          style: TvAppTokens.of(context).ui(
+            TvDimens.caption,
+            color: TvAppTokens.of(context).mutedDim,
+            spacing: 0.5,
+          ),
         ),
         const SizedBox(height: 10),
         // Positionnement « lecteur » (bouclier juridique) visible dès le gate.

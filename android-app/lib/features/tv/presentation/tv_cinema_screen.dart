@@ -633,13 +633,12 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
           Padding(
             padding: const EdgeInsets.fromLTRB(6, 2, 6, 8),
             child: Text(
-              (_movies ? context.l10n.tvNavFilms : context.l10n.tvNavSeries)
-                  .toUpperCase(),
+              _movies ? context.l10n.tvNavFilms : context.l10n.tvNavSeries,
               style: TvAppTokens.of(context).ui(
-                12,
-                weight: FontWeight.w700,
+                TvDimens.caption,
+                weight: FontWeight.w500,
                 color: TvAppTokens.of(context).mutedDim,
-                spacing: 2,
+                spacing: 0.5,
               ),
             ),
           ),

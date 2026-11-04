@@ -6,7 +6,8 @@
 //    • l'affiche a une URL → image réelle, recadrée « cover » ;
 //    • pas d'URL (démo, hors ligne, image cassée) → affiche GÉNÉRÉE dans
 //      la charte Maison Noir : dégradé noir → or très sourd, filet or, titre
-//      en capitales Oswald, année en Inter. Aucun texte à traduire : le
+//      en capitales (même grotesque que le reste de la TV), année en
+//      chiffres tabulaires. Aucun texte à traduire : le
 //      titre est un nom propre, l'année un nombre.
 //
 //  CHARTE « APAISER LA VISION » (appliquée ici au pixel près) :

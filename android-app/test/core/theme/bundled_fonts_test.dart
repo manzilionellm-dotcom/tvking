@@ -19,6 +19,7 @@ import 'package:path_provider_platform_interface/path_provider_platform_interfac
 import 'package:tv_king/core/theme/app_text_styles.dart';
 import 'package:tv_king/core/theme/bundled_fonts.dart';
 import 'package:tv_king/features/tv/core/tv_app_tokens.dart';
+import 'package:tv_king/features/tv/core/tv_type.dart';
 
 class _NoFontHttpClient extends http.BaseClient {
   int requests = 0;
@@ -104,6 +105,9 @@ void main() {
       }
 
       const palette = TvAppTokens();
+      // L'inventaire embarqué reste chargé fichier par fichier : les rôles
+      // TV ne demandent plus Oswald ni les graisses 600/800 d'Inter, mais
+      // ces fichiers doivent encore s'ouvrir hors ligne.
       styles = <TextStyle>[
         for (final weight in const <FontWeight>[
           FontWeight.w400,
@@ -112,17 +116,42 @@ void main() {
           FontWeight.w700,
           FontWeight.w800,
         ])
-          palette.ui(20, weight: weight),
-        palette.display(20, weight: FontWeight.w500),
-        palette.display(20),
-        palette.mono(20, weight: FontWeight.w400),
-        palette.mono(20),
+          GoogleFonts.inter(fontSize: 20, fontWeight: weight),
+        GoogleFonts.oswald(fontSize: 20, fontWeight: FontWeight.w500),
+        GoogleFonts.oswald(fontSize: 20, fontWeight: FontWeight.w600),
+        GoogleFonts.jetBrainsMono(fontSize: 20, fontWeight: FontWeight.w400),
+        GoogleFonts.jetBrainsMono(fontSize: 20, fontWeight: FontWeight.w600),
         AppTextStyles.maisonSection,
         AppTextStyles.maisonHeroTitle,
         AppTextStyles.maisonProgram,
         AppTextStyles.maisonChannelName,
         AppTextStyles.maisonCta,
       ];
+      final TextStyle display = palette.display(48);
+      final TextStyle uiBold = palette.ui(48, weight: FontWeight.w700);
+      expect(display.fontFamily, uiBold.fontFamily);
+      expect(display.fontWeight, FontWeight.w700);
+      expect(display.height, 1.25);
+      expect(display.letterSpacing, 0);
+      final TextStyle medium = palette.ui(20, weight: FontWeight.w500);
+      final TextStyle semi = palette.ui(20, weight: FontWeight.w600);
+      expect(semi.fontWeight, FontWeight.w500);
+      expect(semi.fontFamily, medium.fontFamily);
+      expect(palette.ui(20, weight: FontWeight.w800).fontWeight, FontWeight.w700);
+      final TextStyle clock = palette.figure(20);
+      expect(clock.fontFamily, medium.fontFamily);
+      expect(
+        clock.fontFeatures,
+        contains(const FontFeature.tabularFigures()),
+      );
+      expect(palette.mono(20).fontWeight, FontWeight.w600);
+      expect(palette.mono(13).fontSize, 14);
+      final TextTheme theme = TvType.material(const Color(0xFFF0EDE9));
+      expect(theme.bodySmall!.fontSize, greaterThanOrEqualTo(14));
+      expect(theme.labelSmall!.fontSize, greaterThanOrEqualTo(14));
+      expect(theme.bodyLarge!.letterSpacing, 0);
+      expect(theme.bodyLarge!.height, 24 / 16);
+      expect(theme.labelSmall!.letterSpacing, 0.5);
       // Même construction que le thème TV ; elle ne doit demander aucune
       // variante cachée qui aurait été oubliée dans l'inventaire ci-dessus.
       GoogleFonts.interTextTheme(ThemeData(useMaterial3: true).textTheme);

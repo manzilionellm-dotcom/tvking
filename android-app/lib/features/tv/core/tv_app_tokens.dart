@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import 'tv_tokens.dart';
+import 'tv_type.dart';
 
 /// Palette de l'interface pilotée par le panel. Les TvTokens historiques
 /// restent figés pour les commandes Cast : leur apparence est conservée.
@@ -115,12 +115,12 @@ class TvAppTokens extends ThemeExtension<TvAppTokens> {
 
   TextStyle display(
     double size, {
-    FontWeight weight = FontWeight.w600,
+    FontWeight weight = FontWeight.w700,
     Color? color,
     double spacing = 0,
-  }) => GoogleFonts.oswald(
-    fontSize: size,
-    fontWeight: weight,
+  }) => TvType.display(
+    size,
+    weight: weight,
     color: color ?? text,
     letterSpacing: spacing,
   );
@@ -129,20 +129,30 @@ class TvAppTokens extends ThemeExtension<TvAppTokens> {
     FontWeight weight = FontWeight.w400,
     Color? color,
     double spacing = 0,
-  }) => GoogleFonts.inter(
-    fontSize: size,
-    fontWeight: weight,
+  }) => TvType.ui(
+    size,
+    weight: weight,
     color: color ?? text,
     letterSpacing: spacing,
   );
+  TextStyle body(
+    double size, {
+    FontWeight weight = FontWeight.w400,
+    Color? color,
+  }) => TvType.body(size, weight: weight, color: color ?? text);
+  TextStyle figure(
+    double size, {
+    FontWeight weight = FontWeight.w500,
+    Color? color,
+  }) => TvType.figure(size, weight: weight, color: color ?? text);
   TextStyle mono(
     double size, {
     FontWeight weight = FontWeight.w600,
     Color? color,
     double spacing = 0,
-  }) => GoogleFonts.jetBrainsMono(
-    fontSize: size,
-    fontWeight: weight,
+  }) => TvType.code(
+    size,
+    weight: weight,
     color: color ?? accentBright,
     letterSpacing: spacing,
   );

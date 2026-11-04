@@ -1951,7 +1951,7 @@
   "tvNavGuide": "Телегид",
   "tvNavSearch": "Поиск",
   "tvNavSettings": "Настройки",
-  "tvComingSoon": "Скоро. Этот раздел появится совсем скоро.",
+  "tvComingSoon": "Этот раздел уже в пути.",
   "tvEpgNow": "Сейчас",
   "@tvEpgNow": {
     "description": "Étiquette du programme en cours (aperçu Direct)"
@@ -1993,11 +1993,11 @@
   "tvFieldUser": "Логин",
   "tvFieldPass": "Пароль",
   "tvAddListError": "Заполни сервер, логин и пароль.",
-  "tvConnectError": "Не удалось подключиться. Проверь данные.",
+  "tvConnectError": "Источник не открывается. Проверь адрес и попробуй снова.",
   "tvConnecting": "Подключение…",
   "tvAddListValidate": "Подтвердить и загрузить список",
   "tvSearchingChannels": "Ищем твои каналы…",
-  "tvRetry": "Повторить",
+  "tvRetry": "Попробовать снова",
   "tvSourceInvalid": "Подписка получена, но отклонена — проверь данные в панели.",
   "tvQuitTitle": "Выйти из Zuno?",
   "tvQuitMessage": "Перезапусти, чтобы обновить каналы, или выйди из приложения.",
@@ -2016,7 +2016,7 @@
   "tvAddM3uBusy": "Добавление…",
   "tvAddM3uValidate": "Добавить список",
   "tvAddM3uInvalidUrl": "Введи корректный URL M3U (http…).",
-  "tvAddM3uFailed": "Ошибка: список недоступен или пуст.",
+  "tvAddM3uFailed": "Список не открывается. Адрес может быть недоступен, или файл пуст.",
   "tvMyM3uList": "Мой список M3U",
   "tvBlackBoxTitle": "Чёрный ящик",
   "tvBlackBoxSubtitle": "Технический журнал приложения (v{version}). Если приложение неожиданно закрылось, причина здесь.",
@@ -2275,7 +2275,7 @@
   "tvRecordingNotFoundBody": "Файл этой записи отсутствует или пуст.",
   "tvPlaybackImpossibleBody": "Не удалось декодировать этот файл.",
   "tvRecordingStarted": "Идёт запись…",
-  "tvRecordingError": "Ошибка записи",
+  "tvRecordingError": "Запись не началась.",
   "tvRecordingSaved": "Запись сохранена ({size})",
   "@tvRecordingSaved": {
     "placeholders": {
@@ -2284,7 +2284,7 @@
       }
     }
   },
-  "tvRecordingEmpty": "Пустая запись",
+  "tvRecordingEmpty": "В этой записи пока нет изображения.",
   "tvRemovedFromFavorites": "Удалено из избранного",
   "tvAddedToFavorites": "Добавлено в избранное ❤",
   "tvCinemaAllLanguages": "Все языки",
@@ -2309,7 +2309,7 @@
     }
   },
   "tvCinemaDownload": "Скачать",
-  "tvCinemaDownloadError": "Ошибка загрузки",
+  "tvCinemaDownloadError": "Загрузка не завершилась.",
   "tvCinemaDownloadPaused": "Пауза · {pct} %",
   "@tvCinemaDownloadPaused": {
     "placeholders": {
@@ -2328,7 +2328,7 @@
     }
   },
   "tvCinemaDownloads": "Мои загрузки",
-  "tvCinemaEmptyCategory": "Здесь пока ничего нет.",
+  "tvCinemaEmptyCategory": "В этом ряду пока ничего нет.",
   "tvCinemaEpisode": "Серия {n}",
   "@tvCinemaEpisode": {
     "placeholders": {
@@ -2461,7 +2461,7 @@
   "tvCinemaSeasonQueue": "{count, plural, =0{Сезон загружается} =1{1 серия в очереди} few{{count} серии в очереди} many{{count} серий в очереди} other{{count} серии в очереди}}",
   "tvPlayerLoading": "Загрузка канала…",
   "tvPlayerFatalDown": "Канал сейчас не отвечает.",
-  "tvPlayerFatalEmpty": "Канал пустой или заблокирован источником.",
+  "tvPlayerFatalEmpty": "Этот канал сейчас недоступен у источника.",
   "tvPlayerFatalNav": "Вверх / Вниз: другой канал",
   "tvSearchPrompt": "Введи название клавиатурой. Стрелка вправо: результаты.",
   "tvSearchCount": "{count, plural, =1{1 результат} few{{count} результата} many{{count} результатов} other{{count} результата}}",
@@ -2475,7 +2475,7 @@
   "tvVoiceFailed": "Я не расслышал. Повтори или набери на клавиатуре.",
   "tvVoiceBusy": "Микрофон уже занят. Повтори через мгновение.",
   "tvVoiceTonightTitle": "Сегодня вечером по телевизору",
-  "tvVoiceTonightEmpty": "В программе передач ничего на этот вечер. Добавь адрес EPG в список и повтори.",
+  "tvVoiceTonightEmpty": "На этот вечер ничего не объявлено. Добавь адрес программы передач в этот список и попробуй снова.",
   "tvVoiceKindChannel": "Канал",
   "tvVoiceKindMovie": "Фильм",
   "tvVoiceKindSeries": "Сериал",
@@ -2489,7 +2489,7 @@
   "tvDeleteSourceFailed": "Не удалось удалить локально. Повторите попытку чуть позже.",
   "tvCinemaOfflineTitle": "Каталог недоступен",
   "tvCinemaOfflineBody": "На телевизоре ничего не сохранено, а сервер не отвечает. Проверьте соединение и повторите попытку.",
-  "tvCinemaRetry": "Повторить",
+  "tvCinemaRetry": "Попробовать снова",
   "tvCinemaUpdated": "Обновлено {when}",
   "tvCinemaAgeJustNow": "только что",
   "tvCinemaAgeMinutes": "{n} мин назад",
@@ -2635,7 +2635,7 @@
   "tvListRejectedHelp": "Поставщик отклонил этот список. Проверьте данные входа.",
   "tvCodeInactive": "Код не активирован",
   "tvCodeInactiveHelp": "Код этого телевизора не активирован. Активируйте его в панели и подождите несколько секунд.",
-  "tvSourcesEmpty": "Источников пока нет.\nДобавьте M3U-ссылку, учётную запись Xtream или ссылку плеера.",
+  "tvSourcesEmpty": "Источника пока нет.\nДобавьте ссылку M3U, учётную запись Xtream или ссылку плеера.",
   "tvRecordingCloseFailed": "Не удалось завершить запись. Файл может быть неполным.",
   "tvFromStart": "С начала",
   "tvFollow": "Следить",
@@ -2677,7 +2677,7 @@
   "tvLegalLead": "Это приложение — плеер. Оно не продаёт и не предоставляет каналы или ссылки. Вверх/вниз — прокрутка, Назад — выход.",
   "tvAudioSpectrumOn": "Спектр: измерение включено",
   "tvAudioSpectrumOff": "Спектр: выключен",
-  "tvAudioFfmpegRetry": "FFmpeg: повторить",
+  "tvAudioFfmpegRetry": "Попробовать изображение снова",
   "tvAudioFfmpegDefault": "FFmpeg: по умолчанию",
   "tvAudioAacTest": "AAC приставки: тест",
   "tvAudioAacOff": "AAC приставки: выключен",
@@ -2719,7 +2719,7 @@
   "tvDiagPlayerBusy": "Полноэкранное воспроизведение активно: проверка пропущена, только один плеер",
   "tvDiagPlayerOpening": "Запуск проверки ExoPlayer…",
   "tvDiagFrameOk": "Первый кадр декодирован и показан",
-  "tvDiagPlayerError": "ExoPlayer вернул ошибку",
+  "tvDiagPlayerError": "Воспроизведение остановилось на этом потоке.",
   "tvDiagFrameTimeout": "Нет кадра за 8 с",
   "tvDiagRunning": "ВЫПОЛНЯЕТСЯ ДИАГНОСТИКА…",
   "tvDiagPassed": "ВОСПРОИЗВЕДЕНИЕ НА УСТРОЙСТВЕ ПОДТВЕРЖДЕНО",
@@ -2820,8 +2820,8 @@
   "tvChannelLoadingHelp": "Каналы появятся после завершения загрузки.",
   "tvChannelWaitingTitle": "Ожидаем ваш список",
   "tvChannelWaitingHelp": "Добавьте свой список или попросите поставщика отправить его на это устройство.",
-  "tvChannelEmptyTitle": "Каналы не отображаются",
-  "tvChannelEmptyHelp": "Список загружен. Проверьте фильтры или откройте Фильмы/Сериалы.",
+  "tvChannelEmptyTitle": "В этом виде нет каналов",
+  "tvChannelEmptyHelp": "Список на месте. Измени фильтры или открой «Фильмы» и «Сериалы».",
   "tvChannelSourceFailedTitle": "Не удалось загрузить список",
   "tvChannelSourceFailedHelp": "Проверьте ссылку или данные доступа к списку и повторите попытку.",
   "tvChannelNetworkHelp": "Не удалось связаться с сервером. Проверьте подключение и повторите попытку.",
