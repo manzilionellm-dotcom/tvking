@@ -1,3 +1,13 @@
 {
-  "mode": "frozen"
+  "mode": "frozen",
+  "zunoTvReview": {
+    "scope": "zuno-tv",
+    "reviewedBy": "manzilionellm-dotcom",
+    "reviewedAt": "2026-11-04T21:08:54Z",
+    "expiresAt": "2026-11-05T18:00:00Z",
+    "reason": "Autorisation explicite du propriétaire, relayée par GROK_BOT dans cette conversation : fusionner les PR Zuno dans l’ordre, publier la version 117 et fournir le lien Downloader. Le candidat 49ce365aedcc81b4fdd23c5f257b397da23d5282 fusionne, dans cet ordre, #194, #195, #208 (qui porte #205 et #198), #207, #196, #197, #199, #200, #201, #204 et #202 ; #203, #209 et #210 sont retenues car leurs propres tests échouent. Après chaque fusion, la suite locale qui rejoue la CI (l10n, analyse sans erreur, 946 à 987 tests Flutter, tests Worker, gardes de configuration et scripts CI) est passée. La PR #211 est verte sur ce commit, pixels API 29 et API 35 compris. Un APK de contrôle signé debug, construit localement depuis ce commit, a réussi run-apk-startup.sh sur API 29 et API 35 : ouverture hors réseau, stabilité, vraie sortie et réouverture. Le futur APK 117 signé client doit réussir ses propres deux contrôles stricts sur le même binaire avant publication. Cette autorisation reprend la demande de livraison du propriétaire ; elle ne prétend ni à une revue humaine indépendante du code ni à un essai sur box physique. Le gel commun reste actif, aucun autre canal ni nettoyage n’est autorisé, et la fenêtre se termine le 5 novembre 2026 à 18:00 UTC sans prolongation.",
+    "sourceCommit": "49ce365aedcc81b4fdd23c5f257b397da23d5282",
+    "androidTree": "6122991c0d3f751283dcb13d2e0f091a908e8e61",
+    "workflowBlob": "fe125745e59bf72cff31b99a2708693463e72f5a"
+  }
 }
