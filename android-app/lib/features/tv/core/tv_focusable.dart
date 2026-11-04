@@ -18,6 +18,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../core/app/box_memory_budget.dart';
 import 'tv_dimens.dart';
 import 'tv_app_tokens.dart';
 
@@ -207,7 +208,12 @@ class _TvFocusableState extends State<TvFocusable> {
                 // Signal 3 : ÉLÉVATION (ombre portée) + lueur champagne. C'est
                 // l'ombre profonde — pas la bordure — qui « soulève » l'élément
                 // façon Apple TV+ ; la lueur or signe la marque.
-                boxShadow: (widget.showGlow && active)
+                // Sur une box ≤ 2 Go on ne la peint pas : deux flous (32 et
+                // 40 px) refont un calque à chaque flèche. Le contour or
+                // (signal 4) reste, c'est lui qui se lit à distance.
+                boxShadow: (widget.showGlow &&
+                        active &&
+                        BoxMemoryBudget.paintFocusGlow)
                     ? <BoxShadow>[
                         BoxShadow(
                           color: const Color(0x99000000), // noir 60 %
@@ -223,7 +229,9 @@ class _TvFocusableState extends State<TvFocusable> {
                       ]
                     : null,
               ),
-              child: widget.child,
+              // Le contenu (logo, texte) ne se redessine pas quand seule
+              // la bordure ou l'échelle bouge.
+              child: RepaintBoundary(child: widget.child),
             ),
           ),
         ),

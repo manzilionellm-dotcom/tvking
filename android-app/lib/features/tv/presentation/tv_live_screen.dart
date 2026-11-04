@@ -18,6 +18,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 
 import '../../device/domain/display_mac.dart';
+import '../../../core/app/box_memory_budget.dart';
 import '../../../core/app/boot_guard.dart';
 import '../../../core/app/repair_flags.dart';
 import '../../../core/blackbox/black_box.dart';
@@ -1576,9 +1577,14 @@ class _ChannelGridState extends State<_ChannelGrid> {
         padding: const EdgeInsets.only(top: 4, bottom: 8),
         // Mémoire bornée au scroll : on ne garde PAS les cartes hors écran en vie.
         addAutomaticKeepAlives: false,
-        // Deux rangées hors écran : le défilement D-pad ne crée pas
-        // la carte au moment où elle entre.
-        scrollCacheExtent: const ScrollCacheExtent.pixels(600),
+        // Au-dessus de 2 Go, deux rangées hors écran : le défilement D-pad
+        // ne crée pas la carte au moment où elle entre. Sur ≤ 2 Go, moins
+        // de cartes pré-construites (logos décodés en avance).
+        scrollCacheExtent: ScrollCacheExtent.pixels(
+          BoxMemoryBudget.current == BoxRamTier.roomy
+              ? 600
+              : BoxMemoryBudget.liveListCacheExtent,
+        ),
         // Cartes PAYSAGE ~16:9 (réf. design).
         gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
           maxCrossAxisExtent: 300,
@@ -1854,8 +1860,14 @@ class _Logo extends StatelessWidget {
       // → 4× moins de mémoire par logo qu'à 200 px, rendu identique à l'œil.
       memCacheWidth: 96,
       memCacheHeight: 96,
-      fadeInDuration: const Duration(milliseconds: 180),
-      fadeOutDuration: const Duration(milliseconds: 120),
+      // 180 / 120 ms au-dessus de 2 Go (comme avant). En dessous,
+      // apparition nette : le fondu ajoutait une couche par logo.
+      fadeInDuration: BoxMemoryBudget.logoFade(
+        const Duration(milliseconds: 180),
+      ),
+      fadeOutDuration: BoxMemoryBudget.logoFade(
+        const Duration(milliseconds: 120),
+      ),
     );
   }
 }
@@ -1972,8 +1984,12 @@ class _ChannelList extends StatelessWidget {
         itemExtent: _kRowExtent,
         // Même idée que la colonne des catégories : le zap visuel
         // (la liste, pas le flux) ne construit pas la ligne au moment
-        // où le focus arrive.
-        scrollCacheExtent: ScrollCacheExtent.pixels(_kRowExtent * 12),
+        // où le focus arrive. Sur ≤ 2 Go, la marge du palier mémoire.
+        scrollCacheExtent: ScrollCacheExtent.pixels(
+          BoxMemoryBudget.current == BoxRamTier.roomy
+              ? _kRowExtent * 12
+              : BoxMemoryBudget.liveListCacheExtent,
+        ),
         itemCount: channels.length,
         itemBuilder: (BuildContext context, int i) => _ChannelRow(
           channel: channels[i],
