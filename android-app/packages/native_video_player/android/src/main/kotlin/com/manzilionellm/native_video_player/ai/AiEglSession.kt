@@ -3,7 +3,10 @@ package com.manzilionellm.native_video_player.ai
 import android.opengl.EGL14
 import android.opengl.EGLConfig
 
-/** Même choix que Media3 1.5.1 : GLES3 si possible, sinon GLES2. Contexte privé. */
+/**
+ * Même choix que Media3 1.5.1 : GLES3 si possible, sinon GLES2.
+ * Contexte privé, mais display PARTAGÉ avec Flutter et le lecteur.
+ */
 internal class AiEglSession : AutoCloseable {
     private val display = EGL14.eglGetDisplay(EGL14.EGL_DEFAULT_DISPLAY)
     private var surface = EGL14.EGL_NO_SURFACE
@@ -48,10 +51,18 @@ internal class AiEglSession : AutoCloseable {
         if (closed) return
         closed = true
         if (display == EGL14.EGL_NO_DISPLAY || !initialized) return
+        // Le préflight image (ArtCNN) ouvre ce display au premier écran, puis
+        // le referme. eglTerminate sur EGL_DEFAULT_DISPLAY ne détruit pas
+        // seulement CE contexte : il marque toutes les ressources EGL du
+        // processus. Flutter et le processeur GL de Media3 (contraste, activé
+        // par défaut) s'en servent aussi. Sur les GPU des box, leurs contextes
+        // ne se recréent pas : la surface vidéo reste noire, le son continue.
+        // On détruit uniquement notre pbuffer et notre contexte, puis on
+        // détache le fil. Le display reste initialisé pour les autres.
         EGL14.eglMakeCurrent(display, EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_CONTEXT)
         if (surface != EGL14.EGL_NO_SURFACE) EGL14.eglDestroySurface(display, surface)
         if (context != EGL14.EGL_NO_CONTEXT) EGL14.eglDestroyContext(display, context)
-        EGL14.eglTerminate(display)
+        EGL14.eglReleaseThread()
         surface = EGL14.EGL_NO_SURFACE
         context = EGL14.EGL_NO_CONTEXT
     }
