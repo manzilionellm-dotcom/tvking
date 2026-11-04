@@ -167,9 +167,10 @@ class _SourceRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // M3U et Xtream se distinguent par le mot, pas par un bleu vif.
     final Color badge = _xtream
         ? TvAppTokens.of(context).accent
-        : const Color(0xFF5AA0E8);
+        : TvAppTokens.of(context).muted;
     final ({String? user, String? host}) ref = playlist.reference;
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
@@ -193,10 +194,10 @@ class _SourceRow extends StatelessWidget {
             ),
             child: Text(
               _xtream ? 'XTREAM' : 'M3U',
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 0.5,
+              style: TvAppTokens.of(context).ui(
+                TvDimens.caption,
+                weight: FontWeight.w800,
+                spacing: 0.5,
                 color: badge,
               ),
             ),

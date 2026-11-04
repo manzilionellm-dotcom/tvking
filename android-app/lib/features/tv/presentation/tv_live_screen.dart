@@ -1498,10 +1498,10 @@ class _LivePillState extends State<_LivePill>
           const SizedBox(width: 7),
           Text(
             context.l10n.tvLiveBadge,
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 1.2,
+            style: TvAppTokens.of(context).ui(
+              TvDimens.caption,
+              weight: FontWeight.w800,
+              spacing: 1.2,
               color: TvAppTokens.of(context).live,
             ),
           ),

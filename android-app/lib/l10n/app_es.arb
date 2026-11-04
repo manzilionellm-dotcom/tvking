@@ -1445,5 +1445,15 @@
   "tvAiReasonFluidity": "Se prioriza la reproducción fluida.",
   "tvAiReasonSource": "Este formato conserva el renderizado original.",
   "tvAiReasonVerification": "La capacidad de procesamiento no está confirmada.",
-  "tvAiReasonUnavailable": "La mejora no está disponible para esta reproducción."
+  "tvAiReasonUnavailable": "La mejora no está disponible para esta reproducción.",
+  "tvComfortTitle": "Confort",
+  "tvComfortHelp": "Calienta un poco la interfaz según la hora. La imagen no cambia.",
+  "tvComfortDay": "Día",
+  "tvComfortEvening": "Tarde",
+  "tvComfortNight": "Noche",
+  "tvComfortAuto": "Según la hora",
+  "tvAmbientTitle": "Halo",
+  "tvAmbientHelp": "Sigue la película o el partido alrededor de la imagen. La imagen no cambia. En una box pequeña el halo queda fijo.",
+  "tvAmbientAuto": "Auto",
+  "tvAmbientOff": "Apagado"
 }

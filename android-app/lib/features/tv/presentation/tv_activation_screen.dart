@@ -210,7 +210,9 @@ class _CopyButton extends StatelessWidget {
         child: Icon(
           copied ? Icons.check_rounded : Icons.copy_rounded,
           size: 22,
-          color: copied ? const Color(0xFF5FA975) : TvAppTokens.of(context).accent,
+          color: copied
+              ? TvAppTokens.of(context).success
+              : TvAppTokens.of(context).accent,
         ),
       ),
     );

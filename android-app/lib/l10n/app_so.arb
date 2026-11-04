@@ -3188,5 +3188,15 @@
   "tvAiReasonFluidity": "Ciyaarid habsami leh ayaa mudnaan leh.",
   "tvAiReasonSource": "Qaabkani wuxuu hayaa muuqaalka asalka ah.",
   "tvAiReasonVerification": "Awoodda habaynta lama xaqiijin.",
-  "tvAiReasonUnavailable": "Hagaajintu diyaar uma aha ciyaariddan."
+  "tvAiReasonUnavailable": "Hagaajintu diyaar uma aha ciyaariddan.",
+  "tvComfortTitle": "Raaxo",
+  "tvComfortHelp": "Waxay yar u kululayso shaashadda marka loo eego saacadda. Sawirku ma beddelmo.",
+  "tvComfortDay": "Maalin",
+  "tvComfortEvening": "Fiid",
+  "tvComfortNight": "Habeen",
+  "tvComfortAuto": "Sida saacadda",
+  "tvAmbientTitle": "Iftiin",
+  "tvAmbientHelp": "Waxay raacdaa filimka ama ciyaarta agagaarka sawirka. Sawirku ma beddelmo. Sanduuq yar ayaa iftiinka ku haya mid go'an.",
+  "tvAmbientAuto": "Toos",
+  "tvAmbientOff": "Dami"
 }

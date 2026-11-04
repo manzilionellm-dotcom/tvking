@@ -52,6 +52,7 @@ import '../core/tv_activity.dart';
 import '../core/tv_back_guard.dart';
 import '../core/tv_tokens.dart';
 import '../core/tv_app_tokens.dart';
+import '../core/tv_ambient_director.dart';
 import '../../channels/data/recently_watched_repository.dart';
 import '../../channels/domain/channel.dart';
 import '../../epg/data/epg_repository.dart';
@@ -269,6 +270,9 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     super.initState();
     TvActivity.enter();
     BlackBox.instance.info('SCREEN', 'Lecteur ouvert');
+    // Halo autour de l'image, selon le genre de la chaîne.
+    // Aucun pixel de la vidéo n'est relu ni recoloré.
+    TvAmbientDirector.instance.show(_current.genre);
     // Tant que ce plein écran vit, l'aperçu ne crée pas un second lecteur.
     ForegroundPlayback.lock();
     WidgetsBinding.instance.addObserver(this);
@@ -416,6 +420,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   void dispose() {
     _pip.dispose();
     TvActivity.leave();
+    TvAmbientDirector.instance.clear();
     WidgetsBinding.instance.removeObserver(this);
     // On quitte sur cette chaîne : si une image a été vue, elle compte
     // (même sans les 20 s), sinon rien n'est écrit.
@@ -635,6 +640,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
       () {
         if (!mounted) return;
         _zapHolding = false;
+        TvAmbientDirector.instance.show(_current.genre);
         _open();
       },
     );
@@ -1949,6 +1955,7 @@ class _LiveEpgLineState extends State<_LiveEpgLine> {
     EpgRepository.instance.currentProgram(id).then((EpgProgram? p) {
       if (!mounted || widget.channelId != id) return;
       setState(() => _shown = p);
+      TvAmbientDirector.instance.noteEpg(p?.category);
     }, onError: (Object _) {});
   }
 
@@ -2266,18 +2273,19 @@ class _ControlsBar extends StatelessWidget {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: <Widget>[
-                      const Icon(
+                      Icon(
                         Icons.fiber_manual_record_rounded,
-                        color: Colors.white,
-                        size: 11,
+                        color: TvAppTokens.playbackOf(context).onLive,
+                        size: 12,
                       ),
                       const SizedBox(width: 5),
                       Text(
                         context.l10n.tvLiveBadge,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w800,
-                          color: Colors.white,
+                        style: TvAppTokens.playbackOf(context).ui(
+                          TvDimens.caption,
+                          weight: FontWeight.w800,
+                          height: 1,
+                          color: TvAppTokens.playbackOf(context).onLive,
                         ),
                       ),
                     ],
@@ -2417,10 +2425,10 @@ class _CtrlButtonState extends State<_CtrlButton> {
               const SizedBox(height: 7),
               Text(
                 widget.label!,
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.5,
+                style: TvAppTokens.playbackOf(context).ui(
+                  TvDimens.caption,
+                  weight: FontWeight.w700,
+                  spacing: 0.5,
                   color: labelColor,
                 ),
               ),

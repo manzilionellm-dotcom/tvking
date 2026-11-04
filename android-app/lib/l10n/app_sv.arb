@@ -1445,5 +1445,15 @@
   "tvAiReasonFluidity": "Jämn uppspelning prioriteras.",
   "tvAiReasonSource": "Det här formatet behåller den ursprungliga återgivningen.",
   "tvAiReasonVerification": "Bearbetningskapaciteten är inte bekräftad.",
-  "tvAiReasonUnavailable": "Förbättring är inte tillgänglig för den här uppspelningen."
+  "tvAiReasonUnavailable": "Förbättring är inte tillgänglig för den här uppspelningen.",
+  "tvComfortTitle": "Komfort",
+  "tvComfortHelp": "Värmer gränssnittet lite efter tid på dygnet. Bilden ändras inte.",
+  "tvComfortDay": "Dag",
+  "tvComfortEvening": "Kväll",
+  "tvComfortNight": "Natt",
+  "tvComfortAuto": "Efter klockan",
+  "tvAmbientTitle": "Sken",
+  "tvAmbientHelp": "Följer filmen eller matchen runt bilden. Bilden ändras inte. På en liten box är skenet fast.",
+  "tvAmbientAuto": "Auto",
+  "tvAmbientOff": "Av"
 }

@@ -1445,5 +1445,15 @@
   "tvAiReasonFluidity": "Jevn avspilling prioriteres.",
   "tvAiReasonSource": "Dette formatet beholder den opprinnelige gjengivelsen.",
   "tvAiReasonVerification": "Behandlingskapasiteten er ikke bekreftet.",
-  "tvAiReasonUnavailable": "Forbedring er ikke tilgjengelig for denne avspillingen."
+  "tvAiReasonUnavailable": "Forbedring er ikke tilgjengelig for denne avspillingen.",
+  "tvComfortTitle": "Komfort",
+  "tvComfortHelp": "Varmer grensesnittet litt etter tid på døgnet. Bildet endres ikke.",
+  "tvComfortDay": "Dag",
+  "tvComfortEvening": "Kveld",
+  "tvComfortNight": "Natt",
+  "tvComfortAuto": "Etter klokken",
+  "tvAmbientTitle": "Glød",
+  "tvAmbientHelp": "Følger filmen eller kampen rundt bildet. Bildet endres ikke. På en liten boks er gløden fast.",
+  "tvAmbientAuto": "Auto",
+  "tvAmbientOff": "Av"
 }

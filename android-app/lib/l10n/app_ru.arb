@@ -2875,5 +2875,15 @@
   "tvAiReasonFluidity": "Приоритет — плавное воспроизведение.",
   "tvAiReasonSource": "Этот формат сохраняет исходное отображение.",
   "tvAiReasonVerification": "Возможность обработки не подтверждена.",
-  "tvAiReasonUnavailable": "Улучшение недоступно для этого воспроизведения."
+  "tvAiReasonUnavailable": "Улучшение недоступно для этого воспроизведения.",
+  "tvComfortTitle": "Комфорт",
+  "tvComfortHelp": "Слегка согревает интерфейс по времени суток. Картинка не меняется.",
+  "tvComfortDay": "День",
+  "tvComfortEvening": "Вечер",
+  "tvComfortNight": "Ночь",
+  "tvComfortAuto": "По времени",
+  "tvAmbientTitle": "Свечение",
+  "tvAmbientHelp": "Следует за фильмом или матчем вокруг картинки. Картинка не меняется. На маленькой приставке свечение фиксировано.",
+  "tvAmbientAuto": "Авто",
+  "tvAmbientOff": "Выкл"
 }
