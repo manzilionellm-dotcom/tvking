@@ -44,6 +44,7 @@ import 'removed_list_prompt.dart';
 import 'tv_activation_screen.dart';
 import 'tv_components.dart';
 import 'tv_hub_screen.dart';
+import 'tv_light_intro.dart';
 import 'tv_live_screen.dart';
 import 'tv_recordings_screen.dart';
 import 'tv_scaled_viewport.dart';
@@ -521,21 +522,23 @@ class _TvGateState extends State<TvGate> {
     // boîte Quitter au dernier niveau). Ce PopScope racine (même route) ne
     // garde donc la boîte QUE pour l'écran d'activation ; sinon il laisse
     // faire l'accueil (sans ça, la boîte s'afficherait à chaque Retour).
-    return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (bool didPop, Object? _) async {
-        if (didPop) return;
-        if (showHome) return; // géré par TvHomeScreen
-        final String? action = await showExitDialog(context);
-        if (!context.mounted) return;
-        if (action == 'restart') {
-          RestartWidget.restart(context);
-        } else if (action == 'quit') {
-          if (!Platform.isAndroid) exit(0); // PC : fermer la fenêtre
-          await SystemNavigator.pop();
-        }
-      },
-      child: home,
+    return TvLightIntro(
+      child: PopScope(
+        canPop: false,
+        onPopInvokedWithResult: (bool didPop, Object? _) async {
+          if (didPop) return;
+          if (showHome) return; // géré par TvHomeScreen
+          final String? action = await showExitDialog(context);
+          if (!context.mounted) return;
+          if (action == 'restart') {
+            RestartWidget.restart(context);
+          } else if (action == 'quit') {
+            if (!Platform.isAndroid) exit(0); // PC : fermer la fenêtre
+            await SystemNavigator.pop();
+          }
+        },
+        child: home,
+      ),
     );
   }
 }
