@@ -1,0 +1,15 @@
+name: seven_motion_ios
+description: Pont iOS privé de 7 MOTION pour la session audio et le trousseau.
+version: 1.0.0
+publish_to: none
+environment:
+  sdk: ^3.5.0
+  flutter: '>=3.24.0'
+dependencies:
+  flutter:
+    sdk: flutter
+flutter:
+  plugin:
+    platforms:
+      ios:
+        pluginClass: SevenMotionIOSPlugin

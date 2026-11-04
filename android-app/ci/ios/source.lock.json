@@ -1,0 +1,53 @@
+{
+  "product": "7 MOTION iPhone",
+  "version": "0.3.7",
+  "source_release": "7motion-1988121",
+  "source_release_commit": "8ea5a55075d8b5ad334643b780067c486a917f61",
+  "mobile_base_commit": "37fdf3305c5de9d35e20fd6567df38008fc7a7ee",
+  "source_build_label": "1988121",
+  "flutter_version": "3.47.7",
+  "bundle_id": "com.manzilionellm.sevenmotion",
+  "deployment_target": "15.0",
+  "patches": [
+    {
+      "path": "patches/mobile-sport-gratuit.patch",
+      "git_blob": "2a411bcfe8ef6792768fcdfd32520bece36627f7"
+    },
+    {
+      "path": "patches/mobile-radio.patch",
+      "git_blob": "ba055062fadce3e7ec6c5f85f6f069df18279932"
+    },
+    {
+      "path": "patches/mobile-panel-sync.patch",
+      "git_blob": "e228daf80f36b4202ce89856ebb8beb1e57b7fce"
+    },
+    {
+      "path": "patches/mobile-identity.patch",
+      "git_blob": "8a67e5a923d5f74dbbd4528fa6484240f39a3a3b"
+    },
+    {
+      "path": "patches/mobile-stability.patch",
+      "git_blob": "3a4eeda1f3ef7f205743b6a014b5209ac8449653"
+    },
+    {
+      "path": "android-app/ci/mobile/adult-classification.patch",
+      "git_blob": "b0b6ec93e052dc09dfc12c72d8c1b3055b72b7d6"
+    },
+    {
+      "path": "android-app/ci/mobile/player-terminal-fallback.patch",
+      "git_blob": "eb2901ee3ecc8a26c502d7ada9cb779a30213e6d"
+    },
+    {
+      "path": "android-app/ci/mobile/mobile-back-gestures.patch",
+      "git_blob": "272287f2df9f0b8eb9d888de5350e8f16457bdd4"
+    },
+    {
+      "path": "android-app/ci/mobile/football-upcoming.patch",
+      "git_blob": "d2d21c7ef5aa4ab1424b5aad958358b54a1531dc"
+    },
+    {
+      "path": "android-app/ci/mobile/player-session-handoff.patch",
+      "git_blob": "34f1b9d62f7dcfdeafe12236c3f1fe636ee6c065"
+    }
+  ]
+}
