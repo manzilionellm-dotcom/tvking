@@ -1519,5 +1519,9 @@
   "tvComfortDay": "Day",
   "tvComfortEvening": "Evening",
   "tvComfortNight": "Night",
-  "tvComfortAuto": "By time of day"
+  "tvComfortAuto": "By time of day",
+  "tvAmbientTitle": "Glow",
+  "tvAmbientHelp": "Follows the film or the match around the picture. The picture does not change. On a small box the glow stays fixed.",
+  "tvAmbientAuto": "Auto",
+  "tvAmbientOff": "Off"
 }

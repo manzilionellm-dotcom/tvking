@@ -1451,5 +1451,9 @@
   "tvComfortDay": "نهار",
   "tvComfortEvening": "مساء",
   "tvComfortNight": "ليل",
-  "tvComfortAuto": "حسب الساعة"
+  "tvComfortAuto": "حسب الساعة",
+  "tvAmbientTitle": "هالة",
+  "tvAmbientHelp": "تتبع الفيلم أو المباراة حول الصورة. الصورة لا تتغير. على صندوق صغير تبقى الهالة ثابتة.",
+  "tvAmbientAuto": "تلقائي",
+  "tvAmbientOff": "إيقاف"
 }

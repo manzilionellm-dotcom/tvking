@@ -1451,5 +1451,9 @@
   "tvComfortDay": "Mchana",
   "tvComfortEvening": "Jioni",
   "tvComfortNight": "Usiku",
-  "tvComfortAuto": "Kulingana na saa"
+  "tvComfortAuto": "Kulingana na saa",
+  "tvAmbientTitle": "Mwanga",
+  "tvAmbientHelp": "Hufuata filamu au mechi kuzunguka picha. Picha haibadiliki. Kwenye kisanduku kidogo mwanga hubaki tuli.",
+  "tvAmbientAuto": "Otomatiki",
+  "tvAmbientOff": "Zima"
 }

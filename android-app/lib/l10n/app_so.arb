@@ -3194,5 +3194,9 @@
   "tvComfortDay": "Maalin",
   "tvComfortEvening": "Fiid",
   "tvComfortNight": "Habeen",
-  "tvComfortAuto": "Sida saacadda"
+  "tvComfortAuto": "Sida saacadda",
+  "tvAmbientTitle": "Iftiin",
+  "tvAmbientHelp": "Waxay raacdaa filimka ama ciyaarta agagaarka sawirka. Sawirku ma beddelmo. Sanduuq yar ayaa iftiinka ku haya mid go'an.",
+  "tvAmbientAuto": "Toos",
+  "tvAmbientOff": "Dami"
 }

@@ -1451,5 +1451,9 @@
   "tvComfortDay": "Dag",
   "tvComfortEvening": "Aften",
   "tvComfortNight": "Nat",
-  "tvComfortAuto": "Efter klokken"
+  "tvComfortAuto": "Efter klokken",
+  "tvAmbientTitle": "Glød",
+  "tvAmbientHelp": "Følger filmen eller kampen omkring billedet. Billedet ændres ikke. På en lille boks bliver gløden fast.",
+  "tvAmbientAuto": "Auto",
+  "tvAmbientOff": "Fra"
 }

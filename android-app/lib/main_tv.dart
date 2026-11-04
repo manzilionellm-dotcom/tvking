@@ -32,6 +32,7 @@ import 'core/theme/bundled_fonts.dart';
 import 'core/flavor/flavor.dart';
 import 'core/i18n/locale_repository.dart';
 import 'features/tv/core/tv_back_guard.dart';
+import 'features/tv/core/tv_ambient_director.dart';
 import 'features/tv/core/tv_comfort_schedule.dart';
 import 'features/tv/core/tv_glass.dart';
 import 'core/notifications/notification_service.dart';
@@ -186,6 +187,7 @@ Future<void> bootstrapZunoTv({Widget Function(Widget app)? wrap}) async {
   // Palette confort : préférence locale (soir par défaut). Lecture
   // disque seulement, avant le premier cadre, pour éviter un flash.
   await StartupTrace.step('comfort', TvComfortSchedule.instance.load);
+  await StartupTrace.step('ambient', TvAmbientDirector.instance.load);
   // Flou du verre : seulement si la box a de la RAM. Sinon le voile
   // translucide suffit (pas de BackdropFilter).
   await StartupTrace.step('glass', TvGlassPolicy.load);

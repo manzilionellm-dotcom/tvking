@@ -2881,5 +2881,9 @@
   "tvComfortDay": "Dia",
   "tvComfortEvening": "Entardecer",
   "tvComfortNight": "Noite",
-  "tvComfortAuto": "Conforme a hora"
+  "tvComfortAuto": "Conforme a hora",
+  "tvAmbientTitle": "Halo",
+  "tvAmbientHelp": "Segue o filme ou o jogo à volta da imagem. A imagem não muda. Numa box pequena o halo fica fixo.",
+  "tvAmbientAuto": "Auto",
+  "tvAmbientOff": "Desligado"
 }

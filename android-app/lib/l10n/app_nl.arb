@@ -2881,5 +2881,9 @@
   "tvComfortDay": "Dag",
   "tvComfortEvening": "Avond",
   "tvComfortNight": "Nacht",
-  "tvComfortAuto": "Volgens het uur"
+  "tvComfortAuto": "Volgens het uur",
+  "tvAmbientTitle": "Gloed",
+  "tvAmbientHelp": "Volgt de film of de wedstrijd rond het beeld. Het beeld verandert niet. Op een kleine box blijft de gloed vast.",
+  "tvAmbientAuto": "Auto",
+  "tvAmbientOff": "Uit"
 }

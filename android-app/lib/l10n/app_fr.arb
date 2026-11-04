@@ -3229,5 +3229,9 @@
   "tvComfortDay": "Jour",
   "tvComfortEvening": "Soir",
   "tvComfortNight": "Nuit",
-  "tvComfortAuto": "Selon l'heure"
+  "tvComfortAuto": "Selon l'heure",
+  "tvAmbientTitle": "Halo",
+  "tvAmbientHelp": "Suit le film ou le match autour de l'image. L'image ne change pas. Sur une petite box, le halo reste fixe.",
+  "tvAmbientAuto": "Auto",
+  "tvAmbientOff": "Arrêt"
 }

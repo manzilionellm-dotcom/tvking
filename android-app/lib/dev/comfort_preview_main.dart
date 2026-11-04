@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../core/theme/bundled_fonts.dart';
+import '../features/tv/core/tv_ambient.dart';
 import '../features/tv/core/tv_app_tokens.dart';
 import '../features/tv/core/tv_comfort.dart';
 import '../features/tv/core/tv_dimens.dart';
@@ -15,6 +16,50 @@ import '../features/tv/core/tv_tokens.dart';
 
 const String _mode =
     String.fromEnvironment('COMFORT_PREVIEW', defaultValue: 'after');
+
+/// `cinema` ou `sport` : le même calcul que le lecteur, sur une
+/// petite image (affiche de nuit / pelouse). Vide = halo du soir.
+const String _ambient = String.fromEnvironment('AMBIENT', defaultValue: '');
+
+const List<int> _filmFrame = <int>[
+  140,
+  62,
+  36,
+  96,
+  44,
+  28,
+  8,
+  6,
+  5,
+  250,
+  250,
+  250
+];
+const List<int> _pitchFrame = <int>[
+  36,
+  130,
+  48,
+  24,
+  150,
+  64,
+  4,
+  6,
+  4,
+  248,
+  248,
+  248
+];
+
+Gradient _backdrop(TvAppTokens palette) {
+  if (_ambient != 'cinema' && _ambient != 'sport') return palette.bgGradient;
+  final TvAmbientLook look = TvAmbientMath.look(
+    mood: _ambient == 'sport' ? TvAmbientMood.sport : TvAmbientMood.cinema,
+    seed: TvAmbientMath.averageRgb(
+        _ambient == 'sport' ? _pitchFrame : _filmFrame),
+    evening: TvComfortPalette.of(TvComfortPeriod.evening),
+  );
+  return look.gradient;
+}
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -101,7 +146,7 @@ class ComfortPreview extends StatelessWidget {
     return Scaffold(
       backgroundColor: c.bg,
       body: DecoratedBox(
-        decoration: BoxDecoration(gradient: c.bgGradient),
+        decoration: BoxDecoration(gradient: _backdrop(c)),
         child: Padding(
           padding: const EdgeInsets.symmetric(
               horizontal: TvDimens.safeH, vertical: TvDimens.safeV),
@@ -194,9 +239,13 @@ class _Stage extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         Text(
-          historical
-              ? 'Avant  ·  Maison Noir'
-              : 'Après  ·  Obsidienne et verre',
+          _ambient == 'cinema'
+              ? 'Film  ·  halo bas et chaud'
+              : _ambient == 'sport'
+                  ? 'Football  ·  halo plus vif'
+                  : historical
+                      ? 'Avant  ·  Maison Noir'
+                      : 'Après  ·  Obsidienne et verre',
           style:
               palette.ui(TvDimens.caption, color: palette.muted, spacing: 1.2),
         ),
@@ -209,7 +258,11 @@ class _Stage extends StatelessWidget {
         SizedBox(
           width: 640,
           child: Text(
-            'Obsidienne, halo cuivré, verre sans flou.',
+            _ambient == 'cinema'
+                ? 'Autour de l\'image seulement. Le film reste tel quel.'
+                : _ambient == 'sport'
+                    ? 'Autour de l\'image seulement. Le match reste tel quel.'
+                    : 'Obsidienne, halo cuivré, verre sans flou.',
             style: palette.ui(TvDimens.body, color: palette.muted),
           ),
         ),

@@ -22,6 +22,7 @@ import '../../../core/update/play_store_update.dart';
 import '../../../core/update/update_service.dart';
 import '../core/tv_app_tokens.dart';
 import '../core/tv_comfort_schedule.dart';
+import '../core/tv_ambient_director.dart';
 import '../../device/data/device_identity.dart';
 import '../../subscription/data/subscription_state.dart';
 import '../../pricing/presentation/tv_pricing_card.dart';
@@ -222,6 +223,12 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
     if (mounted) setState(() {});
   }
 
+  String _ambientLabel(BuildContext context) {
+    return TvAmbientDirector.instance.choice == TvAmbientChoice.auto
+        ? context.l10n.tvAmbientAuto
+        : context.l10n.tvAmbientOff;
+  }
+
   String _comfortLabel(BuildContext context) {
     switch (TvComfortSchedule.instance.choice) {
       case TvComfortChoice.day:
@@ -405,6 +412,17 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
             : null,
         description: _updateLabel(context),
         onSelect: _onUpdatePressed,
+      ),
+      _SettingEntry(
+        icon: Icons.wb_twilight_rounded,
+        title: context.l10n.tvAmbientTitle,
+        value: _ambientLabel(context),
+        description: context.l10n.tvAmbientHelp,
+        onSelect: () {
+          unawaited(TvAmbientDirector.instance.cycle().then((_) {
+            if (mounted) setState(() {});
+          }));
+        },
       ),
       _SettingEntry(
         icon: Icons.bedtime_outlined,

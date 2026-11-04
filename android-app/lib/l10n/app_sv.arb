@@ -1451,5 +1451,9 @@
   "tvComfortDay": "Dag",
   "tvComfortEvening": "Kväll",
   "tvComfortNight": "Natt",
-  "tvComfortAuto": "Efter klockan"
+  "tvComfortAuto": "Efter klockan",
+  "tvAmbientTitle": "Sken",
+  "tvAmbientHelp": "Följer filmen eller matchen runt bilden. Bilden ändras inte. På en liten box är skenet fast.",
+  "tvAmbientAuto": "Auto",
+  "tvAmbientOff": "Av"
 }

@@ -2881,5 +2881,9 @@
   "tvComfortDay": "白天",
   "tvComfortEvening": "傍晚",
   "tvComfortNight": "夜晚",
-  "tvComfortAuto": "按时间"
+  "tvComfortAuto": "按时间",
+  "tvAmbientTitle": "光晕",
+  "tvAmbientHelp": "光晕随电影或比赛变化，画面本身不变。小盒子上光晕保持固定。",
+  "tvAmbientAuto": "自动",
+  "tvAmbientOff": "关闭"
 }
