@@ -32,6 +32,7 @@ import 'core/theme/bundled_fonts.dart';
 import 'core/flavor/flavor.dart';
 import 'core/i18n/locale_repository.dart';
 import 'features/tv/core/tv_back_guard.dart';
+import 'features/tv/core/tv_comfort_schedule.dart';
 import 'core/notifications/notification_service.dart';
 import 'features/channels/data/recently_watched_repository.dart';
 import 'features/device/data/device_identity.dart';
@@ -180,6 +181,9 @@ Future<void> bootstrapZunoTv({Widget Function(Widget app)? wrap}) async {
   // l'app suit la langue de la TV). BLOQUANT et rapide : garantit que le
   // 1er rendu est déjà dans la bonne langue (pas de flash en français).
   await StartupTrace.step('locale', LocaleRepository.instance.initialize);
+  // Palette confort : préférence locale (soir par défaut). Lecture
+  // disque seulement, avant le premier cadre, pour éviter un flash.
+  await StartupTrace.step('comfort', TvComfortSchedule.instance.load);
   // Langue des pistes audio (direct, aperçu, film). On la relit si
   // la personne change la langue dans Réglages : le prochain zap
   // prend la nouvelle, sans rouvrir la chaîne en cours.

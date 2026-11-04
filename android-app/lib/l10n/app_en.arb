@@ -1513,5 +1513,11 @@
   "tvAiReasonFluidity": "Smooth playback takes priority.",
   "tvAiReasonSource": "This format keeps the original rendering.",
   "tvAiReasonVerification": "Processing capability has not been confirmed.",
-  "tvAiReasonUnavailable": "Enhancement is unavailable for this playback."
+  "tvAiReasonUnavailable": "Enhancement is unavailable for this playback.",
+  "tvComfortTitle": "Comfort",
+  "tvComfortHelp": "Warms the interface a little by time of day. The picture does not change.",
+  "tvComfortDay": "Day",
+  "tvComfortEvening": "Evening",
+  "tvComfortNight": "Night",
+  "tvComfortAuto": "By time of day"
 }

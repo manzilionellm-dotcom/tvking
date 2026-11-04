@@ -345,11 +345,11 @@ class _TickerState extends State<_Ticker> {
             ),
             child: Text(
               context.l10n.tvNewsTicker,
-              style: const TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 1.5,
-                color: Colors.white,
+              style: TvAppTokens.of(context).ui(
+                TvDimens.caption,
+                weight: FontWeight.w800,
+                spacing: 1.5,
+                color: TvAppTokens.of(context).onLive,
               ),
             ),
           ),

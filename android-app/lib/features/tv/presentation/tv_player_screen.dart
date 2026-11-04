@@ -2170,18 +2170,19 @@ class _ControlsBar extends StatelessWidget {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: <Widget>[
-                      const Icon(
+                      Icon(
                         Icons.fiber_manual_record_rounded,
-                        color: Colors.white,
-                        size: 11,
+                        color: TvAppTokens.playbackOf(context).onLive,
+                        size: 12,
                       ),
                       const SizedBox(width: 5),
                       Text(
                         context.l10n.tvLiveBadge,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w800,
-                          color: Colors.white,
+                        style: TvAppTokens.playbackOf(context).ui(
+                          TvDimens.caption,
+                          weight: FontWeight.w800,
+                          height: 1,
+                          color: TvAppTokens.playbackOf(context).onLive,
                         ),
                       ),
                     ],
@@ -2321,10 +2322,10 @@ class _CtrlButtonState extends State<_CtrlButton> {
               const SizedBox(height: 7),
               Text(
                 widget.label!,
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.5,
+                style: TvAppTokens.playbackOf(context).ui(
+                  TvDimens.caption,
+                  weight: FontWeight.w700,
+                  spacing: 0.5,
                   color: labelColor,
                 ),
               ),

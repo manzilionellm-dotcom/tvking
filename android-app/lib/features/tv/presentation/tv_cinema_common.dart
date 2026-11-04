@@ -508,8 +508,8 @@ class CinemaPoster extends StatelessWidget {
               caption ?? '',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 12,
+              style: TvAppTokens.of(context).ui(
+                TvDimens.caption,
                 color: TvAppTokens.of(context).mutedDim,
               ),
             ),

@@ -21,6 +21,7 @@ import '../../../core/update/build_flags.dart';
 import '../../../core/update/play_store_update.dart';
 import '../../../core/update/update_service.dart';
 import '../core/tv_app_tokens.dart';
+import '../core/tv_comfort_schedule.dart';
 import '../../device/data/device_identity.dart';
 import '../../subscription/data/subscription_state.dart';
 import '../../pricing/presentation/tv_pricing_card.dart';
@@ -143,9 +144,8 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
         setState(() => _upd = _UpdState.checking);
         final bool opened = await openPlayStoreUpdate();
         if (mounted) {
-          setState(() => _upd = opened
-              ? _UpdState.playStore
-              : _UpdState.playStoreUnavailable);
+          setState(() => _upd =
+              opened ? _UpdState.playStore : _UpdState.playStoreUnavailable);
         }
         return;
       case _UpdState.checking:
@@ -186,8 +186,8 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
           () => _upd = ok
               ? _UpdState.available
               : (UpdateService.instance.needsInstallPermission
-                    ? _UpdState.permission
-                    : _UpdState.failed),
+                  ? _UpdState.permission
+                  : _UpdState.failed),
         );
         return;
     }
@@ -220,6 +220,19 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
     BlackBox.instance.info('LANGUE', 'choix : ${next?.languageCode ?? 'auto'}');
     await LocaleRepository.instance.setLocale(next);
     if (mounted) setState(() {});
+  }
+
+  String _comfortLabel(BuildContext context) {
+    switch (TvComfortSchedule.instance.choice) {
+      case TvComfortChoice.day:
+        return context.l10n.tvComfortDay;
+      case TvComfortChoice.evening:
+        return context.l10n.tvComfortEvening;
+      case TvComfortChoice.night:
+        return context.l10n.tvComfortNight;
+      case TvComfortChoice.auto:
+        return context.l10n.tvComfortAuto;
+    }
   }
 
   Future<void> _toggleRemoteAi() async {
@@ -262,31 +275,34 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
       case SubscriptionStatus.paid:
         return (
           label: context.l10n.tvStatusPaid,
-          color: const Color(0xFF3FBE7C),
+          color: TvAppTokens.of(context).success,
         );
       case SubscriptionStatus.trialActive:
         final int d = SubscriptionState.instance.trialDaysRemaining;
         return (
           label: context.l10n.tvStatusTrial(d),
-          color: const Color(0xFF5AA0E8),
+          color: TvAppTokens.of(context).accent,
         );
       case SubscriptionStatus.trialExpired:
         return (
           label: context.l10n.tvStatusTrialExpired,
-          color: const Color(0xFFE8B23A),
+          color: TvAppTokens.of(context).accent,
         );
       case SubscriptionStatus.frozen:
         return (
           label: context.l10n.tvStatusFrozen,
-          color: const Color(0xFFE8B23A),
+          color: TvAppTokens.of(context).accent,
         );
       case SubscriptionStatus.banned:
         return (
           label: context.l10n.tvStatusBanned,
-          color: const Color(0xFFFF5A4A),
+          color: TvAppTokens.of(context).live,
         );
       case SubscriptionStatus.unknown:
-        return (label: context.l10n.tvStatusUnknown, color: TvAppTokens.of(context).mutedDim);
+        return (
+          label: context.l10n.tvStatusUnknown,
+          color: TvAppTokens.of(context).mutedDim
+        );
     }
   }
 
@@ -303,12 +319,11 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
   List<_SettingEntry> _entries(BuildContext context) {
     final ({String label, Color color}) st = _statusOf(context);
     final int channels = PlaylistRepository.instance.currentChannels.length;
-    void open(Widget page) =>
-        Navigator.of(context)
+    void open(Widget page) => Navigator.of(context)
             .push(MaterialPageRoute<void>(builder: (_) => TvShell(child: page)))
             .then((_) {
-              if (mounted) setState(() {}); // compteurs à jour au retour
-            });
+          if (mounted) setState(() {}); // compteurs à jour au retour
+        });
     return <_SettingEntry>[
       _SettingEntry(
         icon: Icons.tv_rounded,
@@ -385,9 +400,20 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
             ? context.l10n.updateOpenPlayStore
             : context.l10n.tvUpdateTitle,
         value: _updateShort(),
-        value2Color: _upd == _UpdState.available ? TvAppTokens.of(context).accentBright : null,
+        value2Color: _upd == _UpdState.available
+            ? TvAppTokens.of(context).accentBright
+            : null,
         description: _updateLabel(context),
         onSelect: _onUpdatePressed,
+      ),
+      _SettingEntry(
+        icon: Icons.bedtime_outlined,
+        title: context.l10n.tvComfortTitle,
+        value: _comfortLabel(context),
+        description: context.l10n.tvComfortHelp,
+        onSelect: () {
+          unawaited(TvComfortSchedule.instance.cycle());
+        },
       ),
       _SettingEntry(
         icon: Icons.language_rounded,
@@ -402,7 +428,9 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
         value: _remoteAi
             ? context.l10n.tvVoiceRemoteAiOn
             : context.l10n.tvVoiceRemoteAiOff,
-        value2Color: _remoteAi ? TvAppTokens.of(context).accentBright : TvAppTokens.of(context).mutedDim,
+        value2Color: _remoteAi
+            ? TvAppTokens.of(context).accentBright
+            : TvAppTokens.of(context).mutedDim,
         description: context.l10n.tvVoiceRemoteAiHelp,
         onSelect: _toggleRemoteAi,
       ),
@@ -495,11 +523,11 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
               onSelectedIndex: (int i) => entries[i].onSelect(),
               cardBuilder: (BuildContext c, int i, bool selected) =>
                   _SettingCard(
-                    entry: entries[i],
-                    width: cfg.cardWidth,
-                    height: cfg.cardHeight,
-                    elevated: selected,
-                  ),
+                entry: entries[i],
+                width: cfg.cardWidth,
+                height: cfg.cardHeight,
+                elevated: selected,
+              ),
             ),
           ),
         ),
@@ -527,10 +555,12 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
                   textAlign: TextAlign.center,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: TvAppTokens.of(context).ui(
-                    TvDimens.body,
-                    color: TvAppTokens.of(context).muted,
-                  ).copyWith(height: 1.35),
+                  style: TvAppTokens.of(context)
+                      .ui(
+                        TvDimens.body,
+                        color: TvAppTokens.of(context).muted,
+                      )
+                      .copyWith(height: 1.35),
                 ),
               ],
             ),
@@ -545,10 +575,12 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
           context.l10n.tvPlayerDisclaimer,
           textAlign: TextAlign.center,
           maxLines: 2,
-          style: TvAppTokens.of(context).ui(
-            TvDimens.caption,
-            color: TvAppTokens.of(context).mutedDim,
-          ).copyWith(height: 1.4),
+          style: TvAppTokens.of(context)
+              .ui(
+                TvDimens.caption,
+                color: TvAppTokens.of(context).mutedDim,
+              )
+              .copyWith(height: 1.4),
         ),
       ],
     );
@@ -605,7 +637,8 @@ class _SettingCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final Color top = Color.lerp(TvAppTokens.of(context).card, TvAppTokens.of(context).accentDeep, 0.12)!;
+    final Color top = Color.lerp(TvAppTokens.of(context).card,
+        TvAppTokens.of(context).accentDeep, 0.12)!;
     final String? value = entry.value;
     final String? value2 = entry.value2;
     return Container(
@@ -647,10 +680,12 @@ class _SettingCard extends StatelessWidget {
                   shape: BoxShape.circle,
                   color: TvAppTokens.of(context).accent.withValues(alpha: 0.12),
                   border: Border.all(
-                    color: TvAppTokens.of(context).accent.withValues(alpha: 0.35),
+                    color:
+                        TvAppTokens.of(context).accent.withValues(alpha: 0.35),
                   ),
                 ),
-                child: Icon(entry.icon, size: 26, color: TvAppTokens.of(context).accentBright),
+                child: Icon(entry.icon,
+                    size: 26, color: TvAppTokens.of(context).accentBright),
               ),
               const Spacer(),
               SizedBox(
@@ -670,11 +705,13 @@ class _SettingCard extends StatelessWidget {
                 // « MENTIONS LÉGALES & CONDITIONS ») tiennent en entier.
                 maxLines: 3,
                 overflow: TextOverflow.ellipsis,
-                style: TvAppTokens.of(context).display(
-                  TvDimens.titleS,
-                  weight: FontWeight.w500,
-                  spacing: 0.6,
-                ).copyWith(height: 1.12),
+                style: TvAppTokens.of(context)
+                    .display(
+                      TvDimens.titleS,
+                      weight: FontWeight.w500,
+                      spacing: 0.6,
+                    )
+                    .copyWith(height: 1.12),
               ),
               if (value != null) ...<Widget>[
                 const SizedBox(height: 8),
@@ -695,8 +732,8 @@ class _SettingCard extends StatelessWidget {
                           weight: FontWeight.w500,
                           color:
                               entry.value2 == null && entry.value2Color != null
-                              ? entry.value2Color!
-                              : TvAppTokens.of(context).muted,
+                                  ? entry.value2Color!
+                                  : TvAppTokens.of(context).muted,
                           spacing: 0.4,
                         ),
                 ),

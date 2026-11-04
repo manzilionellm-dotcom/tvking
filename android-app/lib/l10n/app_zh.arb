@@ -2875,5 +2875,11 @@
   "tvAiReasonFluidity": "优先保证播放流畅。",
   "tvAiReasonSource": "此格式保留原始渲染效果。",
   "tvAiReasonVerification": "尚未确认处理能力。",
-  "tvAiReasonUnavailable": "此次播放无法使用画质增强。"
+  "tvAiReasonUnavailable": "此次播放无法使用画质增强。",
+  "tvComfortTitle": "舒适",
+  "tvComfortHelp": "按时间略微调暖界面。画面本身不变。",
+  "tvComfortDay": "白天",
+  "tvComfortEvening": "傍晚",
+  "tvComfortNight": "夜晚",
+  "tvComfortAuto": "按时间"
 }

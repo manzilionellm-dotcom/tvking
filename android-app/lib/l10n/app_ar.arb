@@ -1445,5 +1445,11 @@
   "tvAiReasonFluidity": "الأولوية لسلاسة التشغيل.",
   "tvAiReasonSource": "يحتفظ هذا التنسيق بالعرض الأصلي.",
   "tvAiReasonVerification": "قدرة المعالجة غير مؤكدة.",
-  "tvAiReasonUnavailable": "التحسين غير متاح لهذا التشغيل."
+  "tvAiReasonUnavailable": "التحسين غير متاح لهذا التشغيل.",
+  "tvComfortTitle": "راحة",
+  "tvComfortHelp": "يدفئ الواجهة قليلاً حسب الساعة. الصورة لا تتغير.",
+  "tvComfortDay": "نهار",
+  "tvComfortEvening": "مساء",
+  "tvComfortNight": "ليل",
+  "tvComfortAuto": "حسب الساعة"
 }
