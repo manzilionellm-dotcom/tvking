@@ -27,9 +27,12 @@ class GlSurfaceGateTest {
 
     @Test
     fun onAbandonneUneSortieResteeAZero() {
-        assertFalse(GlSurfaceGate.abandonZeroOutput(0))
-        assertFalse(GlSurfaceGate.abandonZeroOutput(GlSurfaceGate.ZERO_OUTPUT_MS - 1))
-        assertTrue(GlSurfaceGate.abandonZeroOutput(GlSurfaceGate.ZERO_OUTPUT_MS))
+        assertFalse(GlSurfaceGate.abandonZeroOutput(0, sawPositiveFrame = false))
+        assertFalse(GlSurfaceGate.abandonZeroOutput(GlSurfaceGate.ZERO_OUTPUT_MS - 1, sawPositiveFrame = false))
+        assertTrue(GlSurfaceGate.abandonZeroOutput(GlSurfaceGate.ZERO_OUTPUT_MS, sawPositiveFrame = false))
+        // Une image déjà vue : un trou court (changement de qualité) ne coupe pas.
+        assertFalse(GlSurfaceGate.abandonZeroOutput(GlSurfaceGate.ZERO_OUTPUT_MS, sawPositiveFrame = true))
+        assertTrue(GlSurfaceGate.abandonZeroOutput(8_000L, sawPositiveFrame = true))
     }
 
     @Test

@@ -45,7 +45,14 @@ object GlSurfaceGate {
         height: Int,
     ): Boolean = glPipeline && mimeType == "video/raw" && (width <= 0 || height <= 0)
 
-    fun abandonZeroOutput(zeroForMs: Long): Boolean = zeroForMs >= ZERO_OUTPUT_MS
+    /**
+     * Au démarrage, une sortie restée à 0 est un graphe figé : on lâche
+     * vite. Après une vraie image, un 0 bref est le changement de piste
+     * HLS (la taille n'est pas encore redite). On attend le même délai
+     * que l'image figée, pour ne pas jeter un décodeur qui affichait.
+     */
+    fun abandonZeroOutput(zeroForMs: Long, sawPositiveFrame: Boolean): Boolean =
+        zeroForMs >= if (sawPositiveFrame) 8_000L else ZERO_OUTPUT_MS
 
     /** Vrai : retoucher le tampon casserait le graphe déjà en place. */
     fun resizeWouldBlank(graphBound: Boolean): Boolean = graphBound

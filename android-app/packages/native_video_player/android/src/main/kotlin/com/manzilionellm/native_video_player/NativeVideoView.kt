@@ -552,10 +552,13 @@ class NativeVideoView(
             outputFormat.height,
         )
         if (!visible) {
-            // Sortie GL 0×0 : ne pas faire croire que l'image est là
-            // (sinon le repli « écran noir » ne part jamais).
+            // Sortie GL sans taille : ne pas compter ça comme une image.
+            // Avant la première vraie trame on lâche vite (graphe figé).
+            // Après, un 0 court est souvent le changement de qualité HLS :
+            // couper là jetait le décodeur qui affichait déjà.
             if (glZeroSinceMs == 0L) glZeroSinceMs = now
-            if (GlSurfaceGate.abandonZeroOutput(now - glZeroSinceMs)) {
+            val sawPositive = renderedFrames.get() > 0
+            if (GlSurfaceGate.abandonZeroOutput(now - glZeroSinceMs, sawPositive)) {
                 handler.post {
                     if (!released && !disposeStarted) requestContrastDirectFallback("no_frames")
                 }
@@ -3121,6 +3124,13 @@ class NativeVideoView(
             // Surface déjà posée par [attachToSurface]. Les effets
             // ensuite, jamais l'inverse : sinon la résolution de sortie
             // reste 0 (issue Media3, écran noir, audio seul).
+            // Pas de LanczosResample ici. Mesure API 29 (flux Mux, piste
+            // 1920×1080) : l'ajouter faisait perdre la surface au décodeur
+            // matériel (nativeWindowConnect -22) et basculait sur le
+            // décodeur logiciel, image rognée. Le scaleToFit de Media3
+            // reste disponible ; ce graphe-ci ne le supporte pas sans
+            // dégrader. L'échelle reste celle de la surface (SCALE_TO_FIT,
+            // sans rognage).
             player.setVideoEffects(listOf(aiEffect, contrastEffect))
         } catch (_: RuntimeException) {
             bindingGl = false
