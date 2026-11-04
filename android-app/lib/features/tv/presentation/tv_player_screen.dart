@@ -2251,9 +2251,8 @@ class _ControlsBar extends StatelessWidget {
             channel.cleanName,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: TvDimens.headline,
-              fontWeight: FontWeight.w800,
+            style: TvAppTokens.playbackOf(context).display(
+              TvDimens.headline,
               color: TvAppTokens.playbackOf(context).text,
             ),
           ),
@@ -2283,8 +2282,9 @@ class _ControlsBar extends StatelessWidget {
                         context.l10n.tvLiveBadge,
                         style: TvAppTokens.playbackOf(context).ui(
                           TvDimens.caption,
-                          weight: FontWeight.w800,
+                          weight: FontWeight.w700,
                           height: 1,
+                          spacing: 0.5,
                           color: TvAppTokens.playbackOf(context).onLive,
                         ),
                       ),
@@ -2320,9 +2320,8 @@ class _ControlsBar extends StatelessWidget {
         ),
         child: Text(
           '${index + 1} / $total',
-          style: TextStyle(
-            fontSize: TvDimens.label,
-            fontWeight: FontWeight.w800,
+          style: TvAppTokens.playbackOf(context).figure(
+            TvDimens.label,
             color: TvAppTokens.playbackOf(context).text,
           ),
         ),
@@ -2427,8 +2426,7 @@ class _CtrlButtonState extends State<_CtrlButton> {
                 widget.label!,
                 style: TvAppTokens.playbackOf(context).ui(
                   TvDimens.caption,
-                  weight: FontWeight.w700,
-                  spacing: 0.5,
+                  weight: FontWeight.w500,
                   color: labelColor,
                 ),
               ),

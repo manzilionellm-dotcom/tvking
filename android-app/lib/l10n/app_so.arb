@@ -1951,7 +1951,7 @@
   "tvNavGuide": "Hagaha",
   "tvNavSearch": "Raadi",
   "tvNavSettings": "Dejinta",
-  "tvComingSoon": "Dhawaan ayaa imanaysa. Qaybtan waa la diyaarinayaa.",
+  "tvComingSoon": "Qaybtan waa socotaa.",
   "tvEpgNow": "Hadda",
   "@tvEpgNow": {
     "description": "Étiquette du programme en cours (aperçu Direct)"
@@ -1993,7 +1993,7 @@
   "tvFieldUser": "Magaca isticmaalaha",
   "tvFieldPass": "Erayga sirta ah",
   "tvAddListError": "Buuxi adeegaha, magaca isticmaalaha iyo erayga sirta ah.",
-  "tvConnectError": "Lama xiriiri karo. Hubi xogtaada.",
+  "tvConnectError": "Ilahan lama furi karin. Hubi cinwaanka, kadib mar kale isku day.",
   "tvConnecting": "Waa la xiriirinayaa…",
   "tvAddListValidate": "Xaqiiji oo soo rar liiskayga",
   "tvSearchingChannels": "Kanaalladaada ayaa la raadinayaa…",
@@ -2016,7 +2016,7 @@
   "tvAddM3uBusy": "Waa lagu darayaa…",
   "tvAddM3uValidate": "Ku dar liiska",
   "tvAddM3uInvalidUrl": "Geli URL sax ah oo M3U ah (http…).",
-  "tvAddM3uFailed": "Way fashilantay: liiska lama gaari karo ama wuu madhan yahay.",
+  "tvAddM3uFailed": "Liiskani ma furmin. Cinwaanka lama gaari karo, ama faylku waa madhan yahay.",
   "tvMyM3uList": "Liiskayga M3U",
   "tvBlackBoxTitle": "Sanduuqa madow",
   "tvBlackBoxSubtitle": "Diiwaanka farsamo ee abka (v{version}). Haddii abku si lama filaan ah u xirmay, sababtu halkan ayay ku jirtaa.",
@@ -2336,7 +2336,7 @@
   "tvRecordingNotFoundBody": "Faylka duubistan wuu maqan yahay ama wuu madhan yahay.",
   "tvPlaybackImpossibleBody": "Faylkan lama furfuri karin.",
   "tvRecordingStarted": "Waa la duubayaa…",
-  "tvRecordingError": "Khalad duubis",
+  "tvRecordingError": "Duubisku ma bilaaban.",
   "tvRecordingSaved": "Duubista waa la kaydiyey ({size})",
   "@tvRecordingSaved": {
     "placeholders": {
@@ -2345,7 +2345,7 @@
       }
     }
   },
-  "tvRecordingEmpty": "Duubis madhan",
+  "tvRecordingEmpty": "Duubiskan weli sawir ma leh.",
   "tvRemovedFromFavorites": "Waxaa laga saaray kuwa aan jeclahay",
   "tvAddedToFavorites": "Waxaa lagu daray kuwa aan jeclahay ❤",
   "tvCinemaAllLanguages": "Dhammaan luuqadaha",
@@ -2370,7 +2370,7 @@
     }
   },
   "tvCinemaDownload": "Soo deji",
-  "tvCinemaDownloadError": "Soo-dejintu way fashilantay",
+  "tvCinemaDownloadError": "Soo-dejintu ma dhammaan.",
   "tvCinemaDownloadPaused": "Waa la hakiyey · {pct} %",
   "@tvCinemaDownloadPaused": {
     "placeholders": {
@@ -2389,7 +2389,7 @@
     }
   },
   "tvCinemaDownloads": "Soo-dejinnadayda",
-  "tvCinemaEmptyCategory": "Weli waxba halkan ma jiraan.",
+  "tvCinemaEmptyCategory": "Safka weli waa madhan yahay.",
   "tvCinemaEpisode": "Dhacdada {n}",
   "@tvCinemaEpisode": {
     "placeholders": {
@@ -2574,7 +2574,7 @@
   },
   "tvPlayerLoading": "Kanaalka ayaa la rarayaa…",
   "tvPlayerFatalDown": "Kanaalkani hadda kama jawaabayo.",
-  "tvPlayerFatalEmpty": "Kanaalkani wuu madhan yahay ama isha ayaa xannibtay.",
+  "tvPlayerFatalEmpty": "Kanaalkani hadda kama la heli karo isha.",
   "tvPlayerFatalNav": "Kor / Hoos: kanaal kale",
   "tvSearchPrompt": "Magac ku qor kiiboodhka. Fallaarta midig: natiijooyinka.",
   "tvSearchCount": "{count, plural, =1{1 natiijo} other{{count} natiijo}}",
@@ -2619,7 +2619,7 @@
   "tvVoiceFailed": "Ma fahmin. Mar kale isku day ama isticmaal kiiboodhka.",
   "tvVoiceBusy": "Makarafoonka hadda ayaa la isticmaalayaa. Wax yar kadib mar kale isku day.",
   "tvVoiceTonightTitle": "TV-ga caawa",
-  "tvVoiceTonightEmpty": "Haguhu caawa waxba ma hayo. Ku dar cinwaan EPG liiskaaga, kadib mar kale isku day.",
+  "tvVoiceTonightEmpty": "Caawa wax lama shaacin. Ku dar cinwaanka hagaha liiskan, kadib mar kale isku day.",
   "tvVoiceKindChannel": "Kanaal",
   "tvVoiceKindMovie": "Filim",
   "tvVoiceKindSeries": "Taxane",
@@ -2821,7 +2821,7 @@
   "tvListRejectedHelp": "Bixiyaha ayaa diiday liiskan. Hubi aqoonsiyadaada.",
   "tvCodeInactive": "Koodhka lama hawlgelin",
   "tvCodeInactiveHelp": "Koodhka TV-gan lama hawlgelin. Ku hawlgeli guddiga maamul, kadib sug dhowr ilbiriqsi.",
-  "tvSourcesEmpty": "Weli ilo ma jiraan.\nKu dar xiriiriye M3U, koonto Xtream ama xiriiriyaha ciyaariyaha.",
+  "tvSourcesEmpty": "Weli ilo ma jirto.\nKu dar xiriiriye M3U, akoon Xtream ama xiriiriyaha ciyaariyaha.",
   "tvRecordingCloseFailed": "Duubista lama xiri karin. Faylku waxaa laga yaabaa inuusan dhammaystirnayn.",
   "tvFromStart": "Bilowga",
   "tvFollow": "La soco",
@@ -2877,7 +2877,7 @@
   "tvLegalLead": "Abkani waa ciyaariye. Ma iibiyo mana bixiyo kanaallo ama xiriiriyeyaal. Kor/hoos si aad u rogto, Dib si aad uga baxdo.",
   "tvAudioSpectrumOn": "Baaxadda codka: waa la cabbiray",
   "tvAudioSpectrumOff": "Baaxadda codka: deman",
-  "tvAudioFfmpegRetry": "FFmpeg: mar kale isku day",
+  "tvAudioFfmpegRetry": "Sawirka mar kale isku day",
   "tvAudioFfmpegDefault": "FFmpeg: caadi",
   "tvAudioAacTest": "AAC-ga box-ka: tijaabo",
   "tvAudioAacOff": "AAC-ga box-ka: deman",
@@ -2919,7 +2919,7 @@
   "tvDiagPlayerBusy": "Daawashada shaashad buuxda way socotaa: tijaabada waa laga booday (hal ciyaariye oo keliya)",
   "tvDiagPlayerOpening": "Tijaabada ExoPlayer ayaa la furayaa…",
   "tvDiagFrameOk": "Sawirkii koowaad waa la furfuray waana la muujiyey",
-  "tvDiagPlayerError": "ExoPlayer wuxuu soo celiyey khalad",
+  "tvDiagPlayerError": "Ciyaartu way istaagtay qulqulkan.",
   "tvDiagFrameTimeout": "Sawir ma iman 8 ilbiriqsi gudahood",
   "tvDiagRunning": "BAARITAANKU WUU SOCDAA…",
   "tvDiagPassed": "DAAWASHADA QALABKA WAA LA XAQIIJIYEY",
@@ -3126,8 +3126,8 @@
   "tvChannelLoadingHelp": "Kanaalladaadu waxay soo muuqan doonaan marka raristu dhammaato.",
   "tvChannelWaitingTitle": "Liiskaaga ayaa la sugayaa",
   "tvChannelWaitingHelp": "Ku dar liiskaaga ama ka codso bixiyahaaga inuu u soo diro qalabkan.",
-  "tvChannelEmptyTitle": "Kanaallo lama soo bandhigin",
-  "tvChannelEmptyHelp": "Liiska waa la soo raray. Hubi shaandhooyinkaaga ama fur Filimada/Taxanayaasha.",
+  "tvChannelEmptyTitle": "Muuqaalkan kanaal ma leh",
+  "tvChannelEmptyHelp": "Liisku waa halkan. Hagaaji shaandhooyinka, ama fur Filimada iyo Taxanayaasha.",
   "tvChannelSourceFailedTitle": "Liiskan lama soo rari karo",
   "tvChannelSourceFailedHelp": "Hubi xiriiriyaha liiskaaga ama aqoonsiyadaada, kadib mar kale isku day.",
   "tvChannelNetworkHelp": "Adeegaha lama gaari karo. Hubi xiriirkaaga oo mar kale isku day.",

@@ -1951,7 +1951,7 @@
   "tvNavGuide": "节目单",
   "tvNavSearch": "搜索",
   "tvNavSettings": "设置",
-  "tvComingSoon": "即将上线。此板块很快就来。",
+  "tvComingSoon": "此板块即将到来。",
   "tvEpgNow": "正在播放",
   "@tvEpgNow": {
     "description": "Étiquette du programme en cours (aperçu Direct)"
@@ -1993,11 +1993,11 @@
   "tvFieldUser": "用户名",
   "tvFieldPass": "密码",
   "tvAddListError": "请填写服务器、用户名和密码。",
-  "tvConnectError": "无法连接。请检查信息是否正确。",
+  "tvConnectError": "无法打开此来源。请核对地址后再试一次。",
   "tvConnecting": "正在连接…",
   "tvAddListValidate": "确认并加载我的列表",
   "tvSearchingChannels": "正在查找你的频道…",
-  "tvRetry": "重试",
+  "tvRetry": "再试一次",
   "tvSourceInvalid": "已收到订阅但被拒绝 — 请在管理面板中检查账号。",
   "tvQuitTitle": "退出 Zuno？",
   "tvQuitMessage": "重启以刷新频道，或退出应用。",
@@ -2016,7 +2016,7 @@
   "tvAddM3uBusy": "添加中…",
   "tvAddM3uValidate": "添加列表",
   "tvAddM3uInvalidUrl": "请输入有效的 M3U 链接（http…）。",
-  "tvAddM3uFailed": "失败：列表无法访问或为空。",
+  "tvAddM3uFailed": "这份列表没有打开。地址可能无法访问，或文件是空的。",
   "tvMyM3uList": "我的 M3U 列表",
   "tvBlackBoxTitle": "黑匣子",
   "tvBlackBoxSubtitle": "应用技术日志（v{version}）。如果应用意外关闭，原因会记录在这里。",
@@ -2275,7 +2275,7 @@
   "tvRecordingNotFoundBody": "此录制的文件缺失或为空。",
   "tvPlaybackImpossibleBody": "无法解码此文件。",
   "tvRecordingStarted": "录制中…",
-  "tvRecordingError": "录制错误",
+  "tvRecordingError": "录制没有开始。",
   "tvRecordingSaved": "录制已保存（{size}）",
   "@tvRecordingSaved": {
     "placeholders": {
@@ -2284,7 +2284,7 @@
       }
     }
   },
-  "tvRecordingEmpty": "录制为空",
+  "tvRecordingEmpty": "这段录制还没有画面。",
   "tvRemovedFromFavorites": "已从收藏中移除",
   "tvAddedToFavorites": "已添加到收藏 ❤",
   "tvCinemaAllLanguages": "全部语言",
@@ -2309,7 +2309,7 @@
     }
   },
   "tvCinemaDownload": "下载",
-  "tvCinemaDownloadError": "下载失败",
+  "tvCinemaDownloadError": "下载没有完成。",
   "tvCinemaDownloadPaused": "已暂停 · {pct}%",
   "@tvCinemaDownloadPaused": {
     "placeholders": {
@@ -2328,7 +2328,7 @@
     }
   },
   "tvCinemaDownloads": "我的下载",
-  "tvCinemaEmptyCategory": "这里还没有内容。",
+  "tvCinemaEmptyCategory": "这一行还没有内容。",
   "tvCinemaEpisode": "第 {n} 集",
   "@tvCinemaEpisode": {
     "placeholders": {
@@ -2461,7 +2461,7 @@
   "tvCinemaSeasonQueue": "{count, plural, =0{本季下载中} =1{1 集排队中} other{{count} 集排队中}}",
   "tvPlayerLoading": "正在加载频道…",
   "tvPlayerFatalDown": "此频道暂时无响应。",
-  "tvPlayerFatalEmpty": "此频道没有信号，或被片源拦截。",
+  "tvPlayerFatalEmpty": "此频道此刻无法从片源播放。",
   "tvPlayerFatalNav": "上 / 下：换一个频道",
   "tvSearchPrompt": "用键盘输入名称。右方向键：查看结果。",
   "tvSearchCount": "{count, plural, other{{count} 个结果}}",
@@ -2475,7 +2475,7 @@
   "tvVoiceFailed": "没听清。请重试，或用键盘输入。",
   "tvVoiceBusy": "麦克风正忙。请稍后再试。",
   "tvVoiceTonightTitle": "今晚电视上",
-  "tvVoiceTonightEmpty": "节目单里没有今晚的内容。请在列表里加上 EPG 地址后再试。",
+  "tvVoiceTonightEmpty": "今晚没有排期。请在此列表中加入节目指南地址后再试。",
   "tvVoiceKindChannel": "频道",
   "tvVoiceKindMovie": "电影",
   "tvVoiceKindSeries": "剧集",
@@ -2489,7 +2489,7 @@
   "tvDeleteSourceFailed": "本地删除失败。请稍后重试。",
   "tvCinemaOfflineTitle": "目录暂不可用",
   "tvCinemaOfflineBody": "电视上没有已保存的内容，服务器也未响应。请检查连接后重试。",
-  "tvCinemaRetry": "重试",
+  "tvCinemaRetry": "再试一次",
   "tvCinemaUpdated": "更新于{when}",
   "tvCinemaAgeJustNow": "刚刚",
   "tvCinemaAgeMinutes": "{n}分钟前",
@@ -2635,7 +2635,7 @@
   "tvListRejectedHelp": "服务商拒绝了此列表，请检查登录凭据。",
   "tvCodeInactive": "激活码未激活",
   "tvCodeInactiveHelp": "这台电视的激活码尚未激活。请在管理面板中激活后等待几秒。",
-  "tvSourcesEmpty": "尚无来源。\n请添加 M3U 链接、Xtream 账户或播放器链接。",
+  "tvSourcesEmpty": "还没有来源。\n请添加 M3U 链接、Xtream 账户或播放器链接。",
   "tvRecordingCloseFailed": "无法结束录制，文件可能不完整。",
   "tvFromStart": "从头开始",
   "tvFollow": "关注",
@@ -2677,7 +2677,7 @@
   "tvLegalLead": "本应用是播放器，不销售或提供频道及链接。按上／下滚动，按返回退出。",
   "tvAudioSpectrumOn": "频谱：测量中",
   "tvAudioSpectrumOff": "频谱：关闭",
-  "tvAudioFfmpegRetry": "FFmpeg：重试",
+  "tvAudioFfmpegRetry": "重新尝试画面",
   "tvAudioFfmpegDefault": "FFmpeg：默认",
   "tvAudioAacTest": "设备 AAC：测试",
   "tvAudioAacOff": "设备 AAC：关闭",
@@ -2719,7 +2719,7 @@
   "tvDiagPlayerBusy": "正在全屏播放：跳过测试，仅使用一个播放器",
   "tvDiagPlayerOpening": "正在启动 ExoPlayer 测试…",
   "tvDiagFrameOk": "已解码并显示第一帧",
-  "tvDiagPlayerError": "ExoPlayer 返回错误",
+  "tvDiagPlayerError": "播放停在了这条流上。",
   "tvDiagFrameTimeout": "8秒内无画面",
   "tvDiagRunning": "正在诊断…",
   "tvDiagPassed": "设备端播放已验证",
@@ -2820,8 +2820,8 @@
   "tvChannelLoadingHelp": "加载完成后，频道将会显示。",
   "tvChannelWaitingTitle": "正在等待您的列表",
   "tvChannelWaitingHelp": "添加您自己的列表，或请提供商将列表发送到此设备。",
-  "tvChannelEmptyTitle": "未显示任何频道",
-  "tvChannelEmptyHelp": "列表已加载。请检查筛选条件或打开电影/剧集。",
+  "tvChannelEmptyTitle": "此视图中没有频道",
+  "tvChannelEmptyHelp": "列表已经在。请调整筛选，或打开电影与剧集。",
   "tvChannelSourceFailedTitle": "无法加载此列表",
   "tvChannelSourceFailedHelp": "请检查列表链接或登录信息，然后重试。",
   "tvChannelNetworkHelp": "无法连接到服务器。请检查网络连接，然后重试。",

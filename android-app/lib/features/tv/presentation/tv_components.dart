@@ -222,18 +222,20 @@ class TvCard extends StatelessWidget {
   }
 }
 
-/// Libellé de section : Inter 600, letterspaced, majuscules, gris.
+/// Libellé de section. Taille plancher 14 (Fire TV), graisse 500,
+/// interlettrage 0,5 px (label Material 3). On garde la casse du texte :
+/// un titre de rangée n'est pas crié en capitales.
 class TvSectionLabel extends StatelessWidget {
   const TvSectionLabel(this.text, {super.key});
   final String text;
   @override
   Widget build(BuildContext context) => Text(
-    text.toUpperCase(),
+    text,
     style: TvAppTokens.of(context).ui(
-      10.5,
-      weight: FontWeight.w600,
+      TvDimens.caption,
+      weight: FontWeight.w500,
       color: TvAppTokens.of(context).mutedDim,
-      spacing: 2.8,
+      spacing: 0.5,
     ),
   );
 }
@@ -259,10 +261,10 @@ class TvPricePill extends StatelessWidget {
           Text(
             label.toUpperCase(),
             style: TvAppTokens.of(context).ui(
-              15,
-              weight: FontWeight.w600,
+              TvDimens.caption,
+              weight: FontWeight.w500,
               color: TvAppTokens.of(context).accent,
-              spacing: 2,
+              spacing: 0.5,
             ),
           ),
           const SizedBox(width: 12),
@@ -340,7 +342,7 @@ class TvCtaButton extends StatelessWidget {
   }
 }
 
-/// État vide soigné : carré or léger + titre Oswald + sous-texte gris.
+/// État vide : titre de l'échelle display, sous-texte en corps 24/16.
 class TvEmptyState extends StatelessWidget {
   const TvEmptyState({
     super.key,
@@ -385,7 +387,7 @@ class TvEmptyState extends StatelessWidget {
               subtitle,
               textAlign: TextAlign.center,
               style: TvAppTokens.of(context)
-                  .ui(16, color: TvAppTokens.of(context).mutedDim),
+                  .body(TvDimens.label, color: TvAppTokens.of(context).mutedDim),
             ),
           ),
           if (footer != null) ...<Widget>[const SizedBox(height: 22), footer!],

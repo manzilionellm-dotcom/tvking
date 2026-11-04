@@ -1951,7 +1951,7 @@
   "tvNavGuide": "Rehber",
   "tvNavSearch": "Ara",
   "tvNavSettings": "Ayarlar",
-  "tvComingSoon": "Çok yakında. Bu bölüm kısa süre içinde geliyor.",
+  "tvComingSoon": "Bu bölüm yolda.",
   "tvEpgNow": "Şimdi",
   "@tvEpgNow": {
     "description": "Étiquette du programme en cours (aperçu Direct)"
@@ -1993,11 +1993,11 @@
   "tvFieldUser": "Kullanıcı adı",
   "tvFieldPass": "Şifre",
   "tvAddListError": "Sunucu, kullanıcı adı ve şifreyi doldur.",
-  "tvConnectError": "Bağlanılamadı. Bilgileri kontrol et.",
+  "tvConnectError": "Bu kaynak açılmadı. Adresi kontrol et, sonra yeniden dene.",
   "tvConnecting": "Bağlanıyor…",
   "tvAddListValidate": "Onayla ve listemi yükle",
   "tvSearchingChannels": "Kanalların aranıyor…",
-  "tvRetry": "Tekrar dene",
+  "tvRetry": "Yeniden dene",
   "tvSourceInvalid": "Abonelik alındı ama reddedildi — paneldeki bilgileri kontrol et.",
   "tvQuitTitle": "Zuno'dan çıkılsın mı?",
   "tvQuitMessage": "Kanallarını yenilemek için yeniden başlat ya da uygulamadan çık.",
@@ -2016,7 +2016,7 @@
   "tvAddM3uBusy": "Ekleniyor…",
   "tvAddM3uValidate": "Listeyi ekle",
   "tvAddM3uInvalidUrl": "Geçerli bir M3U URL'si gir (http…).",
-  "tvAddM3uFailed": "Başarısız: listeye ulaşılamıyor ya da liste boş.",
+  "tvAddM3uFailed": "Bu liste açılmadı. Adrese ulaşılamıyor olabilir ya da dosya boş olabilir.",
   "tvMyM3uList": "M3U listem",
   "tvBlackBoxTitle": "Kara kutu",
   "tvBlackBoxSubtitle": "Uygulamanın teknik günlüğü (v{version}). Beklenmedik bir kapanma olursa nedeni burada.",
@@ -2275,7 +2275,7 @@
   "tvRecordingNotFoundBody": "Bu kaydın dosyası eksik veya boş.",
   "tvPlaybackImpossibleBody": "Bu dosyanın kodu çözülemedi.",
   "tvRecordingStarted": "Kaydediliyor…",
-  "tvRecordingError": "Kayıt hatası",
+  "tvRecordingError": "Kayıt başlamadı.",
   "tvRecordingSaved": "Kayıt kaydedildi ({size})",
   "@tvRecordingSaved": {
     "placeholders": {
@@ -2284,7 +2284,7 @@
       }
     }
   },
-  "tvRecordingEmpty": "Boş kayıt",
+  "tvRecordingEmpty": "Bu kayıtta henüz görüntü yok.",
   "tvRemovedFromFavorites": "Favorilerden kaldırıldı",
   "tvAddedToFavorites": "Favorilere eklendi ❤",
   "tvCinemaAllLanguages": "Tüm diller",
@@ -2309,7 +2309,7 @@
     }
   },
   "tvCinemaDownload": "İndir",
-  "tvCinemaDownloadError": "İndirme başarısız",
+  "tvCinemaDownloadError": "İndirme tamamlanmadı.",
   "tvCinemaDownloadPaused": "Duraklatıldı · %{pct}",
   "@tvCinemaDownloadPaused": {
     "placeholders": {
@@ -2328,7 +2328,7 @@
     }
   },
   "tvCinemaDownloads": "İndirdiklerim",
-  "tvCinemaEmptyCategory": "Burada henüz bir şey yok.",
+  "tvCinemaEmptyCategory": "Bu satır henüz boş.",
   "tvCinemaEpisode": "{n}. bölüm",
   "@tvCinemaEpisode": {
     "placeholders": {
@@ -2461,7 +2461,7 @@
   "tvCinemaSeasonQueue": "{count, plural, =0{Sezon indiriliyor} =1{1 bölüm sırada} other{{count} bölüm sırada}}",
   "tvPlayerLoading": "Kanal yükleniyor…",
   "tvPlayerFatalDown": "Bu kanal şu anda yanıt vermiyor.",
-  "tvPlayerFatalEmpty": "Bu kanal boş veya kaynak tarafından engellenmiş.",
+  "tvPlayerFatalEmpty": "Bu kanal şu anda kaynaktan oynatılamıyor.",
   "tvPlayerFatalNav": "Yukarı / Aşağı: başka kanal",
   "tvSearchPrompt": "Adı klavyeyle yaz. Sağ ok: sonuçlar.",
   "tvSearchCount": "{count, plural, =1{1 sonuç} other{{count} sonuç}}",
@@ -2475,7 +2475,7 @@
   "tvVoiceFailed": "Anlayamadım. Tekrar dene veya klavyeyle yaz.",
   "tvVoiceBusy": "Mikrofon zaten kullanımda. Birazdan tekrar dene.",
   "tvVoiceTonightTitle": "Bu akşam televizyonda",
-  "tvVoiceTonightEmpty": "Rehberde bu akşam için bir şey yok. Listene bir EPG adresi ekle ve yeniden dene.",
+  "tvVoiceTonightEmpty": "Bu akşam için bir yayın yok. Bu listeye bir rehber adresi ekle, sonra yeniden dene.",
   "tvVoiceKindChannel": "Kanal",
   "tvVoiceKindMovie": "Film",
   "tvVoiceKindSeries": "Dizi",
@@ -2635,7 +2635,7 @@
   "tvListRejectedHelp": "Sağlayıcı bu listeyi reddetti. Giriş bilgilerini kontrol edin.",
   "tvCodeInactive": "Kod etkin değil",
   "tvCodeInactiveHelp": "Bu TV’nin kodu etkin değil. Panelde etkinleştirip birkaç saniye bekleyin.",
-  "tvSourcesEmpty": "Henüz kaynak yok.\nM3U bağlantısı, Xtream hesabı veya oynatıcı bağlantısı ekleyin.",
+  "tvSourcesEmpty": "Henüz kaynak yok.\nBir M3U bağlantısı, Xtream hesabı veya oynatıcı bağlantısı ekle.",
   "tvRecordingCloseFailed": "Kayıt kapatılamadı. Dosya eksik olabilir.",
   "tvFromStart": "Baştan",
   "tvFollow": "Takip et",
@@ -2677,7 +2677,7 @@
   "tvLegalLead": "Bu uygulama bir oynatıcıdır. Kanal veya bağlantı satmaz ya da sağlamaz. Kaydırmak için yukarı/aşağı, çıkmak için Geri.",
   "tvAudioSpectrumOn": "Spektrum: ölçüm açık",
   "tvAudioSpectrumOff": "Spektrum: kapalı",
-  "tvAudioFfmpegRetry": "FFmpeg: yeniden dene",
+  "tvAudioFfmpegRetry": "Görüntüyü yeniden dene",
   "tvAudioFfmpegDefault": "FFmpeg: varsayılan",
   "tvAudioAacTest": "Cihaz AAC: test",
   "tvAudioAacOff": "Cihaz AAC: kapalı",
@@ -2719,7 +2719,7 @@
   "tvDiagPlayerBusy": "Tam ekran oynatma etkin: test atlandı, yalnızca bir oynatıcı",
   "tvDiagPlayerOpening": "ExoPlayer testi açılıyor…",
   "tvDiagFrameOk": "İlk kare çözüldü ve gösterildi",
-  "tvDiagPlayerError": "ExoPlayer hata döndürdü",
+  "tvDiagPlayerError": "Oynatma bu akışta durdu.",
   "tvDiagFrameTimeout": "8 saniyede görüntü yok",
   "tvDiagRunning": "TANILAMA SÜRÜYOR…",
   "tvDiagPassed": "CİHAZDA OYNATMA DOĞRULANDI",
@@ -2820,8 +2820,8 @@
   "tvChannelLoadingHelp": "Yükleme tamamlandığında kanallar görünecek.",
   "tvChannelWaitingTitle": "Listeniz bekleniyor",
   "tvChannelWaitingHelp": "Listenizi ekleyin veya sağlayıcınızdan bu cihaza göndermesini isteyin.",
-  "tvChannelEmptyTitle": "Hiçbir kanal gösterilmiyor",
-  "tvChannelEmptyHelp": "Liste yüklendi. Filtreleri kontrol edin veya Filmler/Diziler bölümünü açın.",
+  "tvChannelEmptyTitle": "Bu görünümde kanal yok",
+  "tvChannelEmptyHelp": "Liste burada. Filtreleri ayarla veya Filmler ve Diziler'i aç.",
   "tvChannelSourceFailedTitle": "Bu liste yüklenemedi",
   "tvChannelSourceFailedHelp": "Listenizin bağlantısını veya giriş bilgilerini kontrol edip tekrar deneyin.",
   "tvChannelNetworkHelp": "Sunucuya ulaşılamıyor. Bağlantınızı kontrol edip tekrar deneyin.",

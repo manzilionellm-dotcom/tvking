@@ -528,7 +528,7 @@
   "tvNavGuide": "Guide",
   "tvNavSearch": "Søk",
   "tvNavSettings": "Innstillinger",
-  "tvComingSoon": "Kommer snart. Denne delen er på vei.",
+  "tvComingSoon": "Denne delen er på vei.",
   "tvHello": "Hei",
   "tvNoChannels": "Ingen kanaler ennå",
   "tvNoChannelsHelp": "Aktiver denne enheten i panelet ditt, og send en kilde. Kanalene vises her automatisk.",
@@ -555,7 +555,7 @@
   "tvFieldUser": "Brukernavn",
   "tvFieldPass": "Passord",
   "tvAddListError": "Fyll inn server, brukernavn og passord.",
-  "tvConnectError": "Får ikke kontakt. Sjekk opplysningene.",
+  "tvConnectError": "Kilden lot seg ikke åpne. Sjekk adressen, og prøv igjen.",
   "tvConnecting": "Kobler til…",
   "tvAddListValidate": "Bekreft og last inn listen min",
   "tvSearchingChannels": "Søker etter kanalene dine…",
@@ -586,7 +586,7 @@
   "tvAddM3uBusy": "Legger til…",
   "tvAddM3uValidate": "Legg til listen",
   "tvAddM3uInvalidUrl": "Skriv inn en gyldig M3U-URL (http…).",
-  "tvAddM3uFailed": "Mislyktes: listen er utilgjengelig eller tom.",
+  "tvAddM3uFailed": "Listen lot seg ikke åpne. Adressen svarer kanskje ikke, eller filen er tom.",
   "tvMyM3uList": "Min M3U-liste",
   "tvBlackBoxTitle": "Svart boks",
   "tvBlackBoxSubtitle": "Teknisk logg for appen (v{version}). Hvis appen ble lukket uventet, finner du årsaken her.",
@@ -845,7 +845,7 @@
   "tvRecordingNotFoundBody": "Filen til dette opptaket mangler eller er tom.",
   "tvPlaybackImpossibleBody": "Denne filen kunne ikke dekodes.",
   "tvRecordingStarted": "Tar opp…",
-  "tvRecordingError": "Opptaksfeil",
+  "tvRecordingError": "Opptaket startet ikke.",
   "tvRecordingSaved": "Opptak lagret ({size})",
   "@tvRecordingSaved": {
     "placeholders": {
@@ -854,7 +854,7 @@
       }
     }
   },
-  "tvRecordingEmpty": "Tomt opptak",
+  "tvRecordingEmpty": "Dette opptaket har ikke noe bilde ennå.",
   "tvRemovedFromFavorites": "Fjernet fra favoritter",
   "tvAddedToFavorites": "Lagt til i favoritter ❤",
   "tvCinemaAllLanguages": "Alle språk",
@@ -879,7 +879,7 @@
     }
   },
   "tvCinemaDownload": "Last ned",
-  "tvCinemaDownloadError": "Nedlastingen mislyktes",
+  "tvCinemaDownloadError": "Nedlastingen ble ikke fullført.",
   "tvCinemaDownloadPaused": "På pause · {pct} %",
   "@tvCinemaDownloadPaused": {
     "placeholders": {
@@ -898,7 +898,7 @@
     }
   },
   "tvCinemaDownloads": "Mine nedlastinger",
-  "tvCinemaEmptyCategory": "Ingenting her ennå.",
+  "tvCinemaEmptyCategory": "Denne raden er fortsatt tom.",
   "tvCinemaEpisode": "Episode {n}",
   "@tvCinemaEpisode": {
     "placeholders": {
@@ -1031,7 +1031,7 @@
   "tvCinemaSeasonQueue": "{count, plural, =0{Sesong lastes ned} =1{1 episode i kø} other{{count} episoder i kø}}",
   "tvPlayerLoading": "Laster kanalen…",
   "tvPlayerFatalDown": "Kanalen svarer ikke akkurat nå.",
-  "tvPlayerFatalEmpty": "Kanalen er tom eller blokkert av kilden.",
+  "tvPlayerFatalEmpty": "Kanalen er ikke tilgjengelig fra kilden akkurat nå.",
   "tvPlayerFatalNav": "Opp / Ned: en annen kanal",
   "tvSearchPrompt": "Skriv et navn med tastaturet. Høyre pil: resultatene.",
   "tvSearchCount": "{count, plural, =1{1 treff} other{{count} treff}}",
@@ -1045,7 +1045,7 @@
   "tvVoiceFailed": "Jeg fikk det ikke med meg. Prøv igjen, eller skriv.",
   "tvVoiceBusy": "Mikrofonen er allerede i bruk. Prøv igjen om litt.",
   "tvVoiceTonightTitle": "På TV i kveld",
-  "tvVoiceTonightEmpty": "Guiden har ingenting for i kveld. Legg til en EPG-adresse i listen og prøv igjen.",
+  "tvVoiceTonightEmpty": "Ingenting står på programmet i kveld. Legg til en guideadresse i listen og prøv igjen.",
   "tvVoiceKindChannel": "Kanal",
   "tvVoiceKindMovie": "Film",
   "tvVoiceKindSeries": "Serie",
@@ -1205,7 +1205,7 @@
   "tvListRejectedHelp": "Leverandøren avviste listen. Sjekk innloggingsopplysningene.",
   "tvCodeInactive": "Koden er ikke aktivert",
   "tvCodeInactiveHelp": "TV-ens kode er ikke aktivert. Aktiver den i panelet og vent noen sekunder.",
-  "tvSourcesEmpty": "Ingen kilder ennå.\nLegg til en M3U-lenke, en Xtream-konto eller en spillerlenke.",
+  "tvSourcesEmpty": "Ingen kilde ennå.\nLegg til en M3U-lenke, en Xtream-konto eller en spillerlenke.",
   "tvRecordingCloseFailed": "Opptaket kunne ikke avsluttes. Filen kan være ufullstendig.",
   "tvFromStart": "Fra starten",
   "tvFollow": "Følg",
@@ -1247,7 +1247,7 @@
   "tvLegalLead": "Appen er en spiller. Den selger eller leverer ingen kanaler eller lenker. Opp/ned for å bla, Tilbake for å avslutte.",
   "tvAudioSpectrumOn": "Spektrum: måles",
   "tvAudioSpectrumOff": "Spektrum: av",
-  "tvAudioFfmpegRetry": "FFmpeg: prøv igjen",
+  "tvAudioFfmpegRetry": "Prøv bildet igjen",
   "tvAudioFfmpegDefault": "FFmpeg: standard",
   "tvAudioAacTest": "Boks AAC: test",
   "tvAudioAacOff": "Boks AAC: av",
@@ -1289,7 +1289,7 @@
   "tvDiagPlayerBusy": "Fullskjermavspilling pågår: testen hoppes over, bare én spiller",
   "tvDiagPlayerOpening": "Åpner ExoPlayer-test…",
   "tvDiagFrameOk": "Første bilde dekodet og vist",
-  "tvDiagPlayerError": "ExoPlayer returnerte en feil",
+  "tvDiagPlayerError": "Avspillingen stoppet på denne strømmen.",
   "tvDiagFrameTimeout": "Intet bilde innen 8 s",
   "tvDiagRunning": "DIAGNOSTIKK PÅGÅR…",
   "tvDiagPassed": "AVSPILLING PÅ ENHETEN BEKREFTET",
@@ -1390,8 +1390,8 @@
   "tvChannelLoadingHelp": "Kanalene vises når innlastingen er ferdig.",
   "tvChannelWaitingTitle": "Venter på listen din",
   "tvChannelWaitingHelp": "Legg til listen din, eller be leverandøren sende den til denne enheten.",
-  "tvChannelEmptyTitle": "Ingen kanaler vises",
-  "tvChannelEmptyHelp": "Listen er lastet inn. Kontroller filtrene, eller åpne Filmer/Serier.",
+  "tvChannelEmptyTitle": "Ingen kanaler i denne visningen",
+  "tvChannelEmptyHelp": "Listen er her. Juster filtrene, eller åpne Filmer og Serier.",
   "tvChannelSourceFailedTitle": "Kan ikke laste inn denne listen",
   "tvChannelSourceFailedHelp": "Kontroller listens lenke eller påloggingsopplysninger, og prøv igjen.",
   "tvChannelNetworkHelp": "Kan ikke nå serveren. Kontroller tilkoblingen, og prøv igjen.",

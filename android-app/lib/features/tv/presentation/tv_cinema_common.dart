@@ -354,11 +354,11 @@ class CinemaRailRow extends StatelessWidget {
                     label,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: TvDimens.body,
-                      fontWeight: (focused || active)
+                    style: TvAppTokens.of(context).ui(
+                      TvDimens.body,
+                      weight: (focused || active)
                           ? FontWeight.w700
-                          : FontWeight.w600,
+                          : FontWeight.w500,
                       color: fg,
                     ),
                   ),
@@ -496,9 +496,9 @@ class CinemaPoster extends StatelessWidget {
               title,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: TvDimens.caption,
-                fontWeight: FontWeight.w700,
+              style: TvAppTokens.of(context).ui(
+                TvDimens.caption,
+                weight: FontWeight.w700,
                 color: focused
                     ? TvAppTokens.of(context).accentBright
                     : TvAppTokens.of(context).text,

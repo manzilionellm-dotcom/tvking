@@ -1951,7 +1951,7 @@
   "tvNavGuide": "गाइड",
   "tvNavSearch": "खोजें",
   "tvNavSettings": "सेटिंग्स",
-  "tvComingSoon": "जल्द आ रहा है। यह सेक्शन बहुत जल्द उपलब्ध होगा।",
+  "tvComingSoon": "यह अनुभाग आ रहा है।",
   "tvEpgNow": "अभी",
   "@tvEpgNow": {
     "description": "Étiquette du programme en cours (aperçu Direct)"
@@ -1993,11 +1993,11 @@
   "tvFieldUser": "यूज़रनेम",
   "tvFieldPass": "पासवर्ड",
   "tvAddListError": "सर्वर, यूज़रनेम और पासवर्ड भरें।",
-  "tvConnectError": "कनेक्ट नहीं हो सका। जानकारी जाँचें।",
+  "tvConnectError": "यह स्रोत नहीं खुला। पता जाँचकर फिर कोशिश करें।",
   "tvConnecting": "कनेक्ट हो रहा है…",
   "tvAddListValidate": "कन्फ़र्म करें और मेरी लिस्ट लोड करें",
   "tvSearchingChannels": "आपके चैनल खोजे जा रहे हैं…",
-  "tvRetry": "फिर कोशिश करें",
+  "tvRetry": "फिर से कोशिश करें",
   "tvSourceInvalid": "सब्सक्रिप्शन मिला लेकिन अस्वीकार हुआ — पैनल में लॉगिन जानकारी जाँचें।",
   "tvQuitTitle": "Zuno से बाहर निकलें?",
   "tvQuitMessage": "चैनल रीफ़्रेश करने के लिए रीस्टार्ट करें, या ऐप से बाहर निकलें।",
@@ -2016,7 +2016,7 @@
   "tvAddM3uBusy": "जोड़ा जा रहा है…",
   "tvAddM3uValidate": "लिस्ट जोड़ें",
   "tvAddM3uInvalidUrl": "एक मान्य M3U URL डालें (http…)।",
-  "tvAddM3uFailed": "फ़ेल: लिस्ट तक पहुँच नहीं या खाली है।",
+  "tvAddM3uFailed": "यह सूची नहीं खुली। पता उपलब्ध नहीं हो सकता, या फ़ाइल खाली हो सकती है।",
   "tvMyM3uList": "मेरी M3U लिस्ट",
   "tvBlackBoxTitle": "ब्लैक बॉक्स",
   "tvBlackBoxSubtitle": "ऐप का तकनीकी लॉग (v{version})। अगर ऐप अचानक बंद हुआ हो, तो उसकी वजह यहाँ मिलेगी।",
@@ -2275,7 +2275,7 @@
   "tvRecordingNotFoundBody": "इस रिकॉर्डिंग की फ़ाइल मौजूद नहीं है या खाली है।",
   "tvPlaybackImpossibleBody": "यह फ़ाइल डिकोड नहीं हो सकी।",
   "tvRecordingStarted": "रिकॉर्डिंग चल रही है…",
-  "tvRecordingError": "रिकॉर्डिंग में त्रुटि",
+  "tvRecordingError": "रिकॉर्डिंग शुरू नहीं हुई।",
   "tvRecordingSaved": "रिकॉर्डिंग सहेजी गई ({size})",
   "@tvRecordingSaved": {
     "placeholders": {
@@ -2284,7 +2284,7 @@
       }
     }
   },
-  "tvRecordingEmpty": "खाली रिकॉर्डिंग",
+  "tvRecordingEmpty": "इस रिकॉर्डिंग में अभी कोई चित्र नहीं है।",
   "tvRemovedFromFavorites": "पसंदीदा से हटाया गया",
   "tvAddedToFavorites": "पसंदीदा में जोड़ा गया ❤",
   "tvCinemaAllLanguages": "सभी भाषाएँ",
@@ -2309,7 +2309,7 @@
     }
   },
   "tvCinemaDownload": "डाउनलोड करें",
-  "tvCinemaDownloadError": "डाउनलोड विफल",
+  "tvCinemaDownloadError": "डाउनलोड पूरा नहीं हुआ।",
   "tvCinemaDownloadPaused": "रुका हुआ · {pct} %",
   "@tvCinemaDownloadPaused": {
     "placeholders": {
@@ -2328,7 +2328,7 @@
     }
   },
   "tvCinemaDownloads": "मेरे डाउनलोड",
-  "tvCinemaEmptyCategory": "यहाँ अभी कुछ नहीं है।",
+  "tvCinemaEmptyCategory": "इस पंक्ति में अभी कुछ नहीं है।",
   "tvCinemaEpisode": "एपिसोड {n}",
   "@tvCinemaEpisode": {
     "placeholders": {
@@ -2461,7 +2461,7 @@
   "tvCinemaSeasonQueue": "{count, plural, =0{सीज़न डाउनलोड हो रहा है} =1{1 एपिसोड कतार में} other{{count} एपिसोड कतार में}}",
   "tvPlayerLoading": "चैनल लोड हो रहा है…",
   "tvPlayerFatalDown": "यह चैनल अभी जवाब नहीं दे रहा।",
-  "tvPlayerFatalEmpty": "यह चैनल खाली है या स्रोत ने रोक दिया है।",
+  "tvPlayerFatalEmpty": "यह चैनल अभी स्रोत पर उपलब्ध नहीं है।",
   "tvPlayerFatalNav": "ऊपर / नीचे: दूसरा चैनल",
   "tvSearchPrompt": "कीबोर्ड से नाम लिखें। दायाँ तीर: परिणाम।",
   "tvSearchCount": "{count, plural, =1{1 परिणाम} other{{count} परिणाम}}",
@@ -2475,7 +2475,7 @@
   "tvVoiceFailed": "समझ नहीं आया। फिर कोशिश करें, या कीबोर्ड से लिखें।",
   "tvVoiceBusy": "माइक पहले से उपयोग में है। थोड़ी देर बाद कोशिश करें।",
   "tvVoiceTonightTitle": "आज रात टीवी पर",
-  "tvVoiceTonightEmpty": "गाइड में आज रात के लिए कुछ नहीं है। अपनी सूची में EPG पता जोड़कर फिर कोशिश करें।",
+  "tvVoiceTonightEmpty": "आज रात के लिए कुछ सूचीबद्ध नहीं है। इस सूची में गाइड का पता जोड़कर फिर कोशिश करें।",
   "tvVoiceKindChannel": "चैनल",
   "tvVoiceKindMovie": "फ़िल्म",
   "tvVoiceKindSeries": "सीरीज़",
@@ -2489,7 +2489,7 @@
   "tvDeleteSourceFailed": "स्थानीय रूप से हटाया नहीं जा सका। कृपया थोड़ी देर में फिर से कोशिश करें।",
   "tvCinemaOfflineTitle": "कैटलॉग उपलब्ध नहीं है",
   "tvCinemaOfflineBody": "टीवी पर कुछ भी सहेजा नहीं गया है और सर्वर जवाब नहीं दे रहा। कनेक्शन जाँचकर फिर कोशिश करें।",
-  "tvCinemaRetry": "फिर कोशिश करें",
+  "tvCinemaRetry": "फिर से कोशिश करें",
   "tvCinemaUpdated": "अपडेट किया गया: {when}",
   "tvCinemaAgeJustNow": "अभी",
   "tvCinemaAgeMinutes": "{n} मिनट पहले",
@@ -2677,7 +2677,7 @@
   "tvLegalLead": "यह ऐप एक प्लेयर है। यह चैनल या लिंक बेचता या प्रदान नहीं करता। स्क्रॉल करने के लिए ऊपर/नीचे, बाहर जाने के लिए वापस दबाएँ।",
   "tvAudioSpectrumOn": "स्पेक्ट्रम: मापन चालू",
   "tvAudioSpectrumOff": "स्पेक्ट्रम: बंद",
-  "tvAudioFfmpegRetry": "FFmpeg: फिर कोशिश करें",
+  "tvAudioFfmpegRetry": "चित्र फिर से आज़माएँ",
   "tvAudioFfmpegDefault": "FFmpeg: डिफ़ॉल्ट",
   "tvAudioAacTest": "डिवाइस AAC: परीक्षण",
   "tvAudioAacOff": "डिवाइस AAC: बंद",
@@ -2719,7 +2719,7 @@
   "tvDiagPlayerBusy": "पूरे पर्दे पर प्लेबैक चालू है: परीक्षण छोड़ा गया, केवल एक प्लेयर",
   "tvDiagPlayerOpening": "ExoPlayer परीक्षण खुल रहा है…",
   "tvDiagFrameOk": "पहला फ़्रेम डिकोड करके दिखाया गया",
-  "tvDiagPlayerError": "ExoPlayer ने त्रुटि दी",
+  "tvDiagPlayerError": "प्लेबैक इस स्ट्रीम पर रुक गया।",
   "tvDiagFrameTimeout": "8 सेकंड में कोई चित्र नहीं",
   "tvDiagRunning": "जाँच चल रही है…",
   "tvDiagPassed": "डिवाइस पर प्लेबैक सत्यापित",
@@ -2820,8 +2820,8 @@
   "tvChannelLoadingHelp": "लोडिंग पूरी होने पर चैनल दिखाई देंगे।",
   "tvChannelWaitingTitle": "आपकी सूची का इंतज़ार है",
   "tvChannelWaitingHelp": "अपनी सूची जोड़ें या प्रदाता से उसे इस डिवाइस पर भेजने के लिए कहें।",
-  "tvChannelEmptyTitle": "कोई चैनल नहीं दिख रहा",
-  "tvChannelEmptyHelp": "सूची लोड हो गई है। फ़िल्टर जाँचें या फ़िल्में/सीरीज़ खोलें।",
+  "tvChannelEmptyTitle": "इस दृश्य में कोई चैनल नहीं",
+  "tvChannelEmptyHelp": "सूची यहाँ है। फ़िल्टर बदलें, या फ़िल्में और सीरीज़ खोलें।",
   "tvChannelSourceFailedTitle": "यह सूची लोड नहीं हो सकी",
   "tvChannelSourceFailedHelp": "सूची का लिंक या लॉगिन विवरण जाँचें, फिर कोशिश करें।",
   "tvChannelNetworkHelp": "सर्वर से संपर्क नहीं हो सका। कनेक्शन जाँचें, फिर कोशिश करें।",

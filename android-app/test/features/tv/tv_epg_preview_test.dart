@@ -35,7 +35,9 @@ void main() {
     }
 
     await load('Inter_regular', 'assets/fonts/Inter-Regular.ttf');
+    await load('Inter_500', 'assets/fonts/Inter-Medium.ttf');
     await load('Inter_600', 'assets/fonts/Inter-SemiBold.ttf');
+    await load('Inter_700', 'assets/fonts/Inter-Bold.ttf');
   });
 
   testWidgets('le guide montre le programme et l\'aperçu de la chaîne', (

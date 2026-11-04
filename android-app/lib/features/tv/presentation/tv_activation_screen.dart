@@ -168,7 +168,11 @@ class _TvActivationScreenState extends State<TvActivationScreen> {
         const SizedBox(height: 18),
         Text(
           context.l10n.tvActivationFooter,
-          style: TvAppTokens.of(context).ui(13, color: TvAppTokens.of(context).mutedDim, spacing: 0.5),
+          style: TvAppTokens.of(context).ui(
+            TvDimens.caption,
+            color: TvAppTokens.of(context).mutedDim,
+            spacing: 0.5,
+          ),
         ),
         const SizedBox(height: 10),
         // Positionnement « lecteur » (bouclier juridique) visible dès le gate.

@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import 'tv_comfort.dart';
 import 'tv_tokens.dart';
+import 'tv_type.dart';
 
 /// Palette de l'interface pilotée par le panel. Les TvTokens historiques
 /// restent figés pour les commandes Cast : leur apparence est conservée.
@@ -162,44 +162,49 @@ class TvAppTokens extends ThemeExtension<TvAppTokens> {
   /// sans doubler la hauteur des lignes déjà serrées de la grille TV.
   TextStyle display(
     double size, {
-    FontWeight weight = FontWeight.w600,
+    FontWeight weight = FontWeight.w700,
     Color? color,
     double spacing = 0,
-    double height = 1.15,
-  }) =>
-      GoogleFonts.oswald(
-        fontSize: size,
-        fontWeight: weight,
-        color: color ?? text,
-        letterSpacing: spacing,
-        height: height,
-      );
+  }) => TvType.display(
+    size,
+    weight: weight,
+    color: color ?? text,
+    letterSpacing: spacing,
+  );
   TextStyle ui(
     double size, {
     FontWeight weight = FontWeight.w400,
     Color? color,
     double spacing = 0,
-    double height = 1.3,
-  }) =>
-      GoogleFonts.inter(
-        fontSize: size,
-        fontWeight: weight,
-        color: color ?? text,
-        letterSpacing: spacing,
-        height: height,
-      );
+    double? height,
+  }) => TvType.ui(
+    size,
+    weight: weight,
+    color: color ?? text,
+    letterSpacing: spacing,
+    height: height,
+  );
+  TextStyle body(
+    double size, {
+    FontWeight weight = FontWeight.w400,
+    Color? color,
+  }) => TvType.body(size, weight: weight, color: color ?? text);
+  TextStyle figure(
+    double size, {
+    FontWeight weight = FontWeight.w500,
+    Color? color,
+  }) => TvType.figure(size, weight: weight, color: color ?? text);
   TextStyle mono(
     double size, {
     FontWeight weight = FontWeight.w600,
     Color? color,
     double spacing = 0,
-  }) =>
-      GoogleFonts.jetBrainsMono(
-        fontSize: size,
-        fontWeight: weight,
-        color: color ?? accentBright,
-        letterSpacing: spacing,
-      );
+  }) => TvType.code(
+    size,
+    weight: weight,
+    color: color ?? accentBright,
+    letterSpacing: spacing,
+  );
 
   static double contrast(Color a, Color b) => TvComfortPalette.contrast(a, b);
 

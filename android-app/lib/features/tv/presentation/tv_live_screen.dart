@@ -847,8 +847,10 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
                     children: <Widget>[
                       Text(
                         context.l10n.tvDeviceAddress,
-                        style: TvAppTokens.of(context)
-                            .ui(12, color: TvAppTokens.of(context).muted),
+                        style: TvAppTokens.of(context).ui(
+                          TvDimens.caption,
+                          color: TvAppTokens.of(context).muted,
+                        ),
                       ),
                       const SizedBox(height: 8),
                       SelectableText(
@@ -993,14 +995,14 @@ class _CategoryRail extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.fromLTRB(6, 2, 6, 8),
             child: Text(
-              context.l10n.tvNavLive.toUpperCase(),
+              context.l10n.tvNavLive,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TvAppTokens.of(context).ui(
-                12,
-                weight: FontWeight.w700,
+                TvDimens.caption,
+                weight: FontWeight.w500,
                 color: TvAppTokens.of(context).mutedDim,
-                spacing: 2,
+                spacing: 0.5,
               ),
             ),
           ),
@@ -1099,11 +1101,11 @@ class _CRow extends StatelessWidget {
                     label,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: TvDimens.body,
-                      fontWeight: (focused || active)
+                    style: TvAppTokens.of(context).ui(
+                      TvDimens.body,
+                      weight: (focused || active)
                           ? FontWeight.w700
-                          : FontWeight.w600,
+                          : FontWeight.w500,
                       color: fg,
                     ),
                   ),
@@ -1500,8 +1502,8 @@ class _LivePillState extends State<_LivePill>
             context.l10n.tvLiveBadge,
             style: TvAppTokens.of(context).ui(
               TvDimens.caption,
-              weight: FontWeight.w800,
-              spacing: 1.2,
+              weight: FontWeight.w700,
+              spacing: 0.5,
               color: TvAppTokens.of(context).live,
             ),
           ),
@@ -2082,7 +2084,7 @@ class _ChannelRowState extends State<_ChannelRow> {
                   child: Text(
                     '${widget.index + 1}',
                     textAlign: TextAlign.right,
-                    style: TvAppTokens.of(context).mono(
+                    style: TvAppTokens.of(context).figure(
                       TvDimens.label,
                       color: focused
                           ? TvAppTokens.of(context).accentBright

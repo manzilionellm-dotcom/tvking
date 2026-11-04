@@ -196,7 +196,7 @@ class _SourceRow extends StatelessWidget {
               _xtream ? 'XTREAM' : 'M3U',
               style: TvAppTokens.of(context).ui(
                 TvDimens.caption,
-                weight: FontWeight.w800,
+                weight: FontWeight.w700,
                 spacing: 0.5,
                 color: badge,
               ),

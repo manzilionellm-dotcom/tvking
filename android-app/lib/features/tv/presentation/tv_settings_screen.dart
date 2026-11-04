@@ -637,7 +637,7 @@ class _SettingEntry {
 }
 
 /// Carte d'une rubrique — même charte que les affiches du carrousel :
-/// dégradé noir → or très sourd, filet or, titre Oswald en capitales.
+/// dégradé noir → or très sourd, filet or, titre en capitales.
 class _SettingCard extends StatelessWidget {
   const _SettingCard({
     required this.entry,

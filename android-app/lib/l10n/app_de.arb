@@ -1951,7 +1951,7 @@
   "tvNavGuide": "TV-Guide",
   "tvNavSearch": "Suche",
   "tvNavSettings": "Einstellungen",
-  "tvComingSoon": "Bald verfügbar. Dieser Bereich kommt sehr bald.",
+  "tvComingSoon": "Dieser Bereich ist unterwegs.",
   "tvEpgNow": "Jetzt",
   "@tvEpgNow": {
     "description": "Étiquette du programme en cours (aperçu Direct)"
@@ -1993,11 +1993,11 @@
   "tvFieldUser": "Benutzername",
   "tvFieldPass": "Passwort",
   "tvAddListError": "Fülle Server, Benutzername und Passwort aus.",
-  "tvConnectError": "Verbindung nicht möglich. Prüfe die Angaben.",
+  "tvConnectError": "Diese Quelle lässt sich nicht öffnen. Prüfe die Adresse und versuche es erneut.",
   "tvConnecting": "Verbinden…",
   "tvAddListValidate": "Bestätigen und meine Liste laden",
   "tvSearchingChannels": "Suche deine Sender…",
-  "tvRetry": "Erneut versuchen",
+  "tvRetry": "Noch einmal versuchen",
   "tvSourceInvalid": "Abo empfangen, aber abgelehnt — prüfe die Zugangsdaten im Panel.",
   "tvQuitTitle": "Zuno beenden?",
   "tvQuitMessage": "Starte neu, um deine Sender zu aktualisieren, oder beende die App.",
@@ -2016,7 +2016,7 @@
   "tvAddM3uBusy": "Wird hinzugefügt…",
   "tvAddM3uValidate": "Liste hinzufügen",
   "tvAddM3uInvalidUrl": "Gib eine gültige M3U-URL ein (http…).",
-  "tvAddM3uFailed": "Fehlgeschlagen: Liste nicht erreichbar oder leer.",
+  "tvAddM3uFailed": "Diese Liste lässt sich nicht öffnen. Die Adresse ist vielleicht nicht erreichbar, oder die Datei ist leer.",
   "tvMyM3uList": "Meine M3U-Liste",
   "tvBlackBoxTitle": "Blackbox",
   "tvBlackBoxSubtitle": "Technisches Protokoll der App (v{version}). Bei einem unerwarteten Absturz steht der Grund hier.",
@@ -2275,7 +2275,7 @@
   "tvRecordingNotFoundBody": "Die Datei dieser Aufnahme fehlt oder ist leer.",
   "tvPlaybackImpossibleBody": "Diese Datei konnte nicht dekodiert werden.",
   "tvRecordingStarted": "Aufnahme läuft…",
-  "tvRecordingError": "Aufnahmefehler",
+  "tvRecordingError": "Die Aufnahme hat nicht begonnen.",
   "tvRecordingSaved": "Aufnahme gespeichert ({size})",
   "@tvRecordingSaved": {
     "placeholders": {
@@ -2284,7 +2284,7 @@
       }
     }
   },
-  "tvRecordingEmpty": "Leere Aufnahme",
+  "tvRecordingEmpty": "Diese Aufnahme hat noch kein Bild.",
   "tvRemovedFromFavorites": "Aus Favoriten entfernt",
   "tvAddedToFavorites": "Zu Favoriten hinzugefügt ❤",
   "tvCinemaAllLanguages": "Alle Sprachen",
@@ -2309,7 +2309,7 @@
     }
   },
   "tvCinemaDownload": "Herunterladen",
-  "tvCinemaDownloadError": "Download fehlgeschlagen",
+  "tvCinemaDownloadError": "Der Download wurde nicht abgeschlossen.",
   "tvCinemaDownloadPaused": "Pausiert · {pct} %",
   "@tvCinemaDownloadPaused": {
     "placeholders": {
@@ -2328,7 +2328,7 @@
     }
   },
   "tvCinemaDownloads": "Meine Downloads",
-  "tvCinemaEmptyCategory": "Hier ist noch nichts.",
+  "tvCinemaEmptyCategory": "In dieser Reihe ist noch nichts.",
   "tvCinemaEpisode": "Folge {n}",
   "@tvCinemaEpisode": {
     "placeholders": {
@@ -2461,7 +2461,7 @@
   "tvCinemaSeasonQueue": "{count, plural, =0{Staffel wird geladen} =1{1 Folge in Warteschlange} other{{count} Folgen in Warteschlange}}",
   "tvPlayerLoading": "Sender wird geladen…",
   "tvPlayerFatalDown": "Dieser Sender antwortet gerade nicht.",
-  "tvPlayerFatalEmpty": "Dieser Sender ist leer oder von der Quelle blockiert.",
+  "tvPlayerFatalEmpty": "Dieser Sender ist bei der Quelle gerade nicht verfügbar.",
   "tvPlayerFatalNav": "Hoch / Runter: anderer Sender",
   "tvSearchPrompt": "Namen mit der Tastatur eingeben. Pfeil rechts: die Ergebnisse.",
   "tvSearchCount": "{count, plural, =1{1 Ergebnis} other{{count} Ergebnisse}}",
@@ -2475,7 +2475,7 @@
   "tvVoiceFailed": "Ich habe das nicht verstanden. Nochmal, oder tippe auf der Tastatur.",
   "tvVoiceBusy": "Das Mikrofon ist schon aktiv. Gleich noch einmal.",
   "tvVoiceTonightTitle": "Heute Abend im Fernsehen",
-  "tvVoiceTonightEmpty": "Der Guide hat heute Abend nichts. Füge eine EPG-Adresse zu deiner Liste hinzu und versuche es erneut.",
+  "tvVoiceTonightEmpty": "Für heute Abend ist nichts angekündigt. Füge dieser Liste eine Guide-Adresse hinzu und versuche es erneut.",
   "tvVoiceKindChannel": "Sender",
   "tvVoiceKindMovie": "Film",
   "tvVoiceKindSeries": "Serie",
@@ -2489,7 +2489,7 @@
   "tvDeleteSourceFailed": "Lokales Löschen fehlgeschlagen. Versuche es gleich noch einmal.",
   "tvCinemaOfflineTitle": "Katalog nicht verfügbar",
   "tvCinemaOfflineBody": "Auf dem Fernseher ist nichts gespeichert und der Server antwortet nicht. Prüfe die Verbindung und versuche es erneut.",
-  "tvCinemaRetry": "Erneut versuchen",
+  "tvCinemaRetry": "Noch einmal versuchen",
   "tvCinemaUpdated": "Aktualisiert {when}",
   "tvCinemaAgeJustNow": "gerade eben",
   "tvCinemaAgeMinutes": "vor {n} Min.",
@@ -2635,7 +2635,7 @@
   "tvListRejectedHelp": "Der Anbieter hat diese Liste abgelehnt. Prüfe die Zugangsdaten.",
   "tvCodeInactive": "Code nicht aktiviert",
   "tvCodeInactiveHelp": "Der Code dieses Fernsehers ist nicht aktiviert. Aktiviere ihn im Panel und warte einige Sekunden.",
-  "tvSourcesEmpty": "Noch keine Quellen.\nFüge einen M3U-Link, ein Xtream-Konto oder einen Player-Link hinzu.",
+  "tvSourcesEmpty": "Noch keine Quelle.\nFüge einen M3U-Link, ein Xtream-Konto oder einen Player-Link hinzu.",
   "tvRecordingCloseFailed": "Die Aufnahme konnte nicht abgeschlossen werden. Die Datei ist möglicherweise unvollständig.",
   "tvFromStart": "Von Anfang an",
   "tvFollow": "Folgen",
@@ -2677,7 +2677,7 @@
   "tvLegalLead": "Diese App ist ein Player. Sie verkauft oder liefert keine Sender oder Links. Auf/Ab zum Scrollen, Zurück zum Verlassen.",
   "tvAudioSpectrumOn": "Spektrum: Messung an",
   "tvAudioSpectrumOff": "Spektrum: aus",
-  "tvAudioFfmpegRetry": "FFmpeg: erneut versuchen",
+  "tvAudioFfmpegRetry": "Bild erneut versuchen",
   "tvAudioFfmpegDefault": "FFmpeg: Standard",
   "tvAudioAacTest": "Box-AAC: Test",
   "tvAudioAacOff": "Box-AAC: aus",
@@ -2719,7 +2719,7 @@
   "tvDiagPlayerBusy": "Vollbildwiedergabe aktiv: Test übersprungen, nur ein Player",
   "tvDiagPlayerOpening": "ExoPlayer-Test wird geöffnet…",
   "tvDiagFrameOk": "Erstes Bild decodiert und angezeigt",
-  "tvDiagPlayerError": "ExoPlayer hat einen Fehler gemeldet",
+  "tvDiagPlayerError": "Die Wiedergabe ist bei diesem Stream stehen geblieben.",
   "tvDiagFrameTimeout": "Kein Bild binnen 8 s",
   "tvDiagRunning": "DIAGNOSE LÄUFT…",
   "tvDiagPassed": "WIEDERGABE AUF DEM GERÄT BESTÄTIGT",
@@ -2820,8 +2820,8 @@
   "tvChannelLoadingHelp": "Die Sender erscheinen, sobald das Laden abgeschlossen ist.",
   "tvChannelWaitingTitle": "Warten auf deine Liste",
   "tvChannelWaitingHelp": "Füge deine Liste hinzu oder bitte deinen Anbieter, sie an dieses Gerät zu senden.",
-  "tvChannelEmptyTitle": "Keine Sender angezeigt",
-  "tvChannelEmptyHelp": "Die Liste wurde geladen. Prüfe die Filter oder öffne Filme/Serien.",
+  "tvChannelEmptyTitle": "Keine Sender in dieser Ansicht",
+  "tvChannelEmptyHelp": "Die Liste ist da. Passe die Filter an, oder öffne Filme und Serien.",
   "tvChannelSourceFailedTitle": "Diese Liste kann nicht geladen werden",
   "tvChannelSourceFailedHelp": "Prüfe den Link oder die Zugangsdaten deiner Liste und versuche es erneut.",
   "tvChannelNetworkHelp": "Der Server ist nicht erreichbar. Prüfe die Verbindung und versuche es erneut.",

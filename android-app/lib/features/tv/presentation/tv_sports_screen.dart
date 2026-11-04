@@ -347,8 +347,8 @@ class _TickerState extends State<_Ticker> {
               context.l10n.tvNewsTicker,
               style: TvAppTokens.of(context).ui(
                 TvDimens.caption,
-                weight: FontWeight.w800,
-                spacing: 1.5,
+                weight: FontWeight.w700,
+                spacing: 0.5,
                 color: TvAppTokens.of(context).onLive,
               ),
             ),
