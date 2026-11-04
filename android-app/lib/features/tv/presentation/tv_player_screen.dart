@@ -79,6 +79,7 @@ import '../../recordings/domain/recording.dart';
 import '../../subscription/data/now_playing.dart';
 import '../../subscription/data/subscription_state.dart';
 import '../core/tv_dimens.dart';
+import '../core/tv_remote_map.dart';
 import '../core/tv_zap.dart';
 import 'tv_channel_guide_screen.dart';
 import 'tv_cinema_common.dart';
@@ -239,31 +240,6 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   }
 
   Channel get _current => widget.channels[_index];
-
-  static const List<LogicalKeyboardKey> _digits = <LogicalKeyboardKey>[
-    LogicalKeyboardKey.digit0,
-    LogicalKeyboardKey.digit1,
-    LogicalKeyboardKey.digit2,
-    LogicalKeyboardKey.digit3,
-    LogicalKeyboardKey.digit4,
-    LogicalKeyboardKey.digit5,
-    LogicalKeyboardKey.digit6,
-    LogicalKeyboardKey.digit7,
-    LogicalKeyboardKey.digit8,
-    LogicalKeyboardKey.digit9,
-  ];
-  static const List<LogicalKeyboardKey> _numpad = <LogicalKeyboardKey>[
-    LogicalKeyboardKey.numpad0,
-    LogicalKeyboardKey.numpad1,
-    LogicalKeyboardKey.numpad2,
-    LogicalKeyboardKey.numpad3,
-    LogicalKeyboardKey.numpad4,
-    LogicalKeyboardKey.numpad5,
-    LogicalKeyboardKey.numpad6,
-    LogicalKeyboardKey.numpad7,
-    LogicalKeyboardKey.numpad8,
-    LogicalKeyboardKey.numpad9,
-  ];
 
   @override
   void initState() {
@@ -1395,24 +1371,17 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     _open();
   }
 
-  bool _isPrev(LogicalKeyboardKey k) =>
-      k == LogicalKeyboardKey.arrowUp ||
-      k == LogicalKeyboardKey.channelUp ||
-      k == LogicalKeyboardKey.pageUp ||
-      k == LogicalKeyboardKey.mediaTrackPrevious;
-  bool _isNext(LogicalKeyboardKey k) =>
-      k == LogicalKeyboardKey.arrowDown ||
-      k == LogicalKeyboardKey.channelDown ||
-      k == LogicalKeyboardKey.pageDown ||
-      k == LogicalKeyboardKey.mediaTrackNext;
-  // OK / centre du D-pad — toutes les variantes de télécommandes. (Gauche/
-  // Droite ne sont PLUS « OK » : ils déplacent le surlignage entre boutons.)
-  bool _isOk(LogicalKeyboardKey k) =>
-      k == LogicalKeyboardKey.select ||
-      k == LogicalKeyboardKey.enter ||
-      k == LogicalKeyboardKey.numpadEnter ||
-      k == LogicalKeyboardKey.gameButtonA ||
-      k == LogicalKeyboardKey.space;
+  /// Retour / avance de 30 s, seulement en rattrapage : le direct
+  /// ne garde pas les images déjà jouées.
+  void _seekMedia(int seconds) {
+    if (!_catchup) {
+      _showOverlayTemporarily();
+      return;
+    }
+    final Duration next = _controller.position + Duration(seconds: seconds);
+    _controller.seekTo(next < Duration.zero ? Duration.zero : next);
+    _showOverlayTemporarily();
+  }
 
   // Télécommandes universelles : toutes les variantes mènent à l'action.
   KeyEventResult _onKey(FocusNode node, KeyEvent event) {
@@ -1422,27 +1391,19 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
       return KeyEventResult.ignored;
     }
     final LogicalKeyboardKey k = event.logicalKey;
+    final TvRemoteEvent? remote = readTvRemoteKey(k);
 
-    // ÉCRAN D'ERREUR (P1-6) : OK = Réessayer ; le Retour reste géré plus bas
-    // (quitter le lecteur). On capte OK ici pour ne pas ouvrir la barre.
-    if (_fatal && _isOk(k)) {
+    // ÉCRAN D'ERREUR : OK = Réessayer. Le Retour quitte le lecteur.
+    if (_fatal && remote?.action == TvRemoteAction.select) {
       _manualRetry();
       return KeyEventResult.handled;
     }
 
-    // BACK / Retour télécommande (toutes variantes) → quitter le lecteur,
-    // retour à la liste. On gère explicitement pour ne jamais rester coincé.
-    if (k == LogicalKeyboardKey.goBack ||
-        k == LogicalKeyboardKey.escape ||
-        k == LogicalKeyboardKey.browserBack ||
-        k == LogicalKeyboardKey.exit) {
-      // Retour = quitter le lecteur (convention YouTube/Netflix). La
-      // navigation des boutons se fait à Gauche/Droite + OK.
-      // markHandled : le « retour système » du MÊME appui ne doit pas
-      // fermer aussi la liste Direct (retour un à un).
-      // Un seul pas par appui : la RÉPÉTITION d'une touche maintenue ne
-      // doit pas dépiler aussi la liste Direct (le lecteur est déjà parti
-      // au premier appui, le second maybePop fermait l'écran du dessous).
+    // BACK, Échap, BUTTON_B, Stop : quitter. markHandled évite que le
+    // retour système du même appui ferme aussi l'écran du dessous.
+    // Une touche maintenue ne dépile qu'une fois.
+    if (remote?.action == TvRemoteAction.back ||
+        remote?.action == TvRemoteAction.stop) {
       if (event is KeyDownEvent) {
         TvBackGuard.markHandled();
         Navigator.of(context).maybePop();
@@ -1450,41 +1411,60 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
       return KeyEventResult.handled;
     }
 
-    int di = _digits.indexOf(k);
-    if (di < 0) di = _numpad.indexOf(k);
-    if (di >= 0) {
-      _onDigit(di);
+    if (remote?.action == TvRemoteAction.digit && remote!.digit != null) {
+      _onDigit(remote.digit!);
       return KeyEventResult.handled;
     }
 
-    // Haut/Bas (et Ch+/Ch-) = zap direct, même quand la barre est ouverte.
-    if (_isPrev(k)) {
+    if (remote?.action == TvRemoteAction.up ||
+        remote?.action == TvRemoteAction.channelUp ||
+        remote?.action == TvRemoteAction.pageUp) {
       _zap(-1);
       return KeyEventResult.handled;
     }
-    if (_isNext(k)) {
+    if (remote?.action == TvRemoteAction.down ||
+        remote?.action == TvRemoteAction.channelDown ||
+        remote?.action == TvRemoteAction.pageDown) {
       _zap(1);
       return KeyEventResult.handled;
     }
 
-    // Gauche/Droite = déplacer le surlignage entre les boutons de la barre.
-    if (k == LogicalKeyboardKey.arrowLeft) {
+    if (remote?.action == TvRemoteAction.left) {
       _navBtn(-1);
       return KeyEventResult.handled;
     }
-    if (k == LogicalKeyboardKey.arrowRight) {
+    if (remote?.action == TvRemoteAction.right) {
       _navBtn(1);
       return KeyEventResult.handled;
     }
 
-    if (k == LogicalKeyboardKey.mediaPlayPause ||
-        k == LogicalKeyboardKey.mediaPlay ||
-        k == LogicalKeyboardKey.mediaPause) {
+    if (remote?.action == TvRemoteAction.playPause) {
       _togglePlayPause();
       return KeyEventResult.handled;
     }
-    if (k == LogicalKeyboardKey.mediaStop) {
-      Navigator.of(context).maybePop();
+    if (remote?.action == TvRemoteAction.play) {
+      if (!_controller.isPlaying) _togglePlayPause();
+      return KeyEventResult.handled;
+    }
+    if (remote?.action == TvRemoteAction.pause) {
+      if (_controller.isPlaying) _togglePlayPause();
+      return KeyEventResult.handled;
+    }
+    if (remote?.action == TvRemoteAction.rewind) {
+      _seekMedia(-30);
+      return KeyEventResult.handled;
+    }
+    if (remote?.action == TvRemoteAction.fastForward) {
+      _seekMedia(30);
+      return KeyEventResult.handled;
+    }
+    if (remote?.action == TvRemoteAction.guide) {
+      if (event is KeyDownEvent) _openGuide();
+      return KeyEventResult.handled;
+    }
+    if (remote?.action == TvRemoteAction.info ||
+        remote?.action == TvRemoteAction.menu) {
+      if (event is KeyDownEvent) _toggleOverlay();
       return KeyEventResult.handled;
     }
     if (k == LogicalKeyboardKey.mediaRecord || k == LogicalKeyboardKey.keyR) {
@@ -1499,7 +1479,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
       _cycleSubtitles();
       return KeyEventResult.handled;
     }
-    if (_isOk(k)) {
+    if (remote?.action == TvRemoteAction.select) {
       _okPressed();
       return KeyEventResult.handled;
     }

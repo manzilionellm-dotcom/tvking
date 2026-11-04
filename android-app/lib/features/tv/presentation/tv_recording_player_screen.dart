@@ -34,6 +34,7 @@ import '../../player/data/image_prefs.dart';
 
 import '../../recordings/domain/recording.dart';
 import '../core/tv_app_tokens.dart';
+import '../core/tv_remote_map.dart';
 import '../data/zuno_pip_service.dart';
 
 class TvRecordingPlayerScreen extends StatefulWidget {
@@ -188,12 +189,11 @@ class _TvRecordingPlayerScreenState extends State<TvRecordingPlayerScreen>
   KeyEventResult _onKey(FocusNode node, KeyEvent event) {
     if (event is! KeyDownEvent) return KeyEventResult.ignored;
     final LogicalKeyboardKey k = event.logicalKey;
-    if (k == LogicalKeyboardKey.select ||
-        k == LogicalKeyboardKey.enter ||
-        k == LogicalKeyboardKey.numpadEnter ||
-        k == LogicalKeyboardKey.gameButtonA ||
-        k == LogicalKeyboardKey.space ||
-        k == LogicalKeyboardKey.mediaPlayPause) {
+    final TvRemoteAction? action = readTvRemoteKey(k)?.action;
+    if (action == TvRemoteAction.select ||
+        action == TvRemoteAction.playPause ||
+        action == TvRemoteAction.play ||
+        action == TvRemoteAction.pause) {
       _togglePlay();
       return KeyEventResult.handled;
     }

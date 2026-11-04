@@ -45,6 +45,7 @@ import '../../cinema/data/watch_progress.dart';
 import '../../cinema/domain/cinema_language.dart';
 import '../../cinema/domain/cinema_models.dart';
 import '../core/tv_activity.dart';
+import '../core/tv_remote_map.dart';
 import '../core/tv_back_guard.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_tokens.dart';
@@ -747,17 +748,10 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
   // ---------------------------------------------------------
 
   static bool _isOk(LogicalKeyboardKey k) =>
-      k == LogicalKeyboardKey.select ||
-      k == LogicalKeyboardKey.enter ||
-      k == LogicalKeyboardKey.numpadEnter ||
-      k == LogicalKeyboardKey.space ||
-      k == LogicalKeyboardKey.gameButtonA;
+      readTvRemoteKey(k)?.action == TvRemoteAction.select;
 
   static bool _isBack(LogicalKeyboardKey k) =>
-      k == LogicalKeyboardKey.goBack ||
-      k == LogicalKeyboardKey.escape ||
-      k == LogicalKeyboardKey.browserBack ||
-      k == LogicalKeyboardKey.exit;
+      readTvRemoteKey(k)?.action == TvRemoteAction.back;
 
   void _handleBack() {
     final DateTime now = DateTime.now();
