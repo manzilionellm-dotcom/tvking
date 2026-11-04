@@ -2,8 +2,10 @@
 //  image_prefs.dart — choix d'image mémorisés
 // =========================================================
 //  Matériel et cadence inchangés. Le contraste vidéo Android est
-//  actif par défaut ; une désactivation explicite reste mémorisée.
-//  La capacité et le repli HDR sont décidés par le vrai lecteur natif.
+//  COUPÉ par défaut : l'image sort telle que le décodeur la livre
+//  (aucune passe OpenGL). Un choix explicite (allumé ou coupé) reste
+//  mémorisé. La capacité et le repli HDR sont décidés par le vrai
+//  lecteur natif.
 // =========================================================
 
 import 'package:flutter/foundation.dart';
@@ -21,7 +23,7 @@ class ImagePrefs {
 
   static ImageEngine _engine = ImageEngine.hardware;
   static bool _frameRateMatch = false;
-  static bool _lightContrast = true;
+  static bool _lightContrast = false;
   static bool _loaded = false;
 
   static ImageEngine get engine => _engine;
@@ -36,11 +38,11 @@ class ImagePrefs {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       _engine = ImageEngine.fromWire(prefs.getString(engineKey));
       _frameRateMatch = prefs.getBool(frameRateKey) ?? false;
-      _lightContrast = prefs.getBool(contrastKey) ?? true;
+      _lightContrast = prefs.getBool(contrastKey) ?? false;
     } catch (_) {
       _engine = ImageEngine.hardware;
       _frameRateMatch = false;
-      _lightContrast = true;
+      _lightContrast = false;
     }
     NativeVideoController.defaultLightContrast = _lightContrast;
     _loaded = true;
@@ -88,8 +90,8 @@ class ImagePrefs {
   static void resetForTesting() {
     _engine = ImageEngine.hardware;
     _frameRateMatch = false;
-    _lightContrast = true;
+    _lightContrast = false;
     _loaded = false;
-    NativeVideoController.defaultLightContrast = true;
+    NativeVideoController.defaultLightContrast = false;
   }
 }
