@@ -356,6 +356,10 @@ jobs:
           cp assets/branding/zuno_tv_banner.png    "$RES/drawable-xhdpi/tv_banner.png"
           cp assets/branding/zuno_tv_banner_2x.png "$RES/drawable-xxhdpi/tv_banner.png"
           # Splash sombre avec le logo centré (remplace le fond blanc du template).
+          # Le logo ne reste QUE sur LaunchTheme. NormalTheme est un aplat :
+          # un windowBackground en layer-list + bitmap reste derrière Flutter
+          # toute la session et peut couvrir la SurfaceView (rectangle noir,
+          # ou le logo figé à la place de l'image).
           for DIR in drawable drawable-v21; do
             cat > "$RES/$DIR/launch_background.xml" <<'XML'
           <?xml version="1.0" encoding="utf-8"?>
@@ -372,6 +376,12 @@ jobs:
               </item>
           </layer-list>
           XML
+            cat > "$RES/$DIR/window_background.xml" <<'XML'
+          <?xml version="1.0" encoding="utf-8"?>
+          <shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+              <solid android:color="#FF050505" />
+          </shape>
+          XML
           done
           for DIR in values values-night; do
             cat > "$RES/$DIR/styles.xml" <<'XML'
@@ -381,7 +391,7 @@ jobs:
                   <item name="android:windowBackground">@drawable/launch_background</item>
               </style>
               <style name="NormalTheme" parent="@android:style/Theme.Black.NoTitleBar">
-                  <item name="android:windowBackground">@drawable/launch_background</item>
+                  <item name="android:windowBackground">@drawable/window_background</item>
               </style>
           </resources>
           XML

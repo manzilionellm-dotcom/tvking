@@ -17,6 +17,7 @@ import android.os.Process
 import android.os.SystemClock
 import android.view.PixelCopy
 import android.view.Surface
+import android.view.SurfaceHolder
 import android.view.SurfaceView
 import android.view.View
 import android.widget.FrameLayout
@@ -100,6 +101,7 @@ import com.manzilionellm.native_video_player.logic.VideoRelease
 import com.manzilionellm.native_video_player.logic.MeasuredVideoSize
 import com.manzilionellm.native_video_player.logic.VideoOutputMeasurement
 import com.manzilionellm.native_video_player.logic.VideoTrackChoice
+import com.manzilionellm.native_video_player.logic.VideoSurfaceBinding
 import com.manzilionellm.native_video_player.logic.VideoSurfaceBuffer
 import com.manzilionellm.native_video_player.logic.VideoSurfaceSize
 import java.util.concurrent.atomic.AtomicInteger
@@ -198,6 +200,19 @@ class NativeVideoView(
     private val appContext: Context = context
     private val surfaceView = SurfaceView(context)
     private var contrastSurfaceBuffer: VideoSurfaceBuffer? = null
+
+    /**
+     * On n'appelle setVideoSurfaceView que lorsque [VideoSurfaceBinding]
+     * voit une surface valide. Avant ça, le graphe GL du contraste reste
+     * noir sous Flutter.
+     */
+    private val surfaceBinding = VideoSurfaceBinding()
+
+    /** setFixedSize fait par nous ne doit pas relancer le branchement. */
+    private var bindingOutput = false
+
+    /** Une seule relance : la surface et la taille n'arrivent pas ensemble. */
+    private var bindRetryPosted = false
 
     /**
      * Dernière image, posée PAR-DESSUS la surface pendant une coupure.
@@ -673,6 +688,38 @@ class NativeVideoView(
         lastReportedOutputOrigin = null
     }
 
+    /**
+     * Flutter détruit la surface en reparentant la vue. On lâche
+     * l'ancienne, puis on rebranche quand la nouvelle a une taille.
+     * Un setFixedSize déclenché par nous est ignoré.
+     */
+    private val outputSurfaceCallback = object : SurfaceHolder.Callback {
+        override fun surfaceCreated(holder: SurfaceHolder) {
+            bindOutputIfReady()
+        }
+
+        override fun surfaceDestroyed(holder: SurfaceHolder) {
+            if (bindingOutput) return
+            surfaceBinding.onSurfaceDestroyed()
+            if (released || disposeStarted || !::player.isInitialized) return
+            try {
+                player.clearVideoSurface()
+            } catch (_: RuntimeException) {
+                // Déjà libéré.
+            }
+        }
+
+        override fun surfaceChanged(
+            holder: SurfaceHolder,
+            format: Int,
+            width: Int,
+            height: Int,
+        ) {
+            // width/height = tampon, pas la vue. On relit la vue.
+            bindOutputIfReady()
+        }
+    }
+
     init {
         channel.setMethodCallHandler(this)
 
@@ -685,8 +732,13 @@ class NativeVideoView(
         // translucide et affichent un écran VERT à la place de la vidéo.
         // Opaque = le décodeur écrit des pixels réels, pas « du vide ».
         surfaceView.holder.setFormat(PixelFormat.OPAQUE)
+        // Avant le lecteur : Flutter crée la surface après, et la recrée
+        // en déplaçant la vue. Le callback doit déjà être enregistré.
+        surfaceView.holder.addCallback(outputSurfaceCallback)
         surfaceView.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
-            updateContrastSurfaceSize()
+            // Pas de setFixedSize ici. Une fois le graphe GL accroché,
+            // changer le tampon détruit la surface et l'image reste noire.
+            bindOutputIfReady()
         }
 
         player = buildConfiguredPlayer()
@@ -2996,19 +3048,67 @@ class NativeVideoView(
      * on ne rogne pas.
      */
     private fun attachToSurface(target: ExoPlayer) {
-        // Cet appel précède TOUT prepare, y compris après un changement de
-        // moteur. Media3 installe alors son processeur de trames. Ne jamais
-        // appeler setVideoEffects (même vide) pour le chemin direct de repli.
+        // Cet appel précède TOUT prepare. On n'attache PAS la surface ici
+        // si elle n'a pas encore de taille : Flutter ne l'a souvent pas
+        // encore mise dans la fenêtre. Ne jamais appeler setVideoEffects
+        // (même vide) pour le chemin direct de repli.
+        surfaceBinding.onPlayerReplaced()
         contrastPipelineInstalled = useContrastPipeline(installFfmpegVideo)
-        if (contrastPipelineInstalled) {
+        target.setVideoScalingMode(C.VIDEO_SCALING_MODE_SCALE_TO_FIT)
+        target.addAnalyticsListener(this)
+        target.setVideoFrameMetadataListener(frameClock)
+        target.skipSilenceEnabled = false
+        target.playWhenReady = true
+        ffmpegRendererInstalled = installFfmpegVideo
+        bindOutputIfReady()
+    }
+
+    /**
+     * Pose les effets (lecteur encore idle) PUIS la surface, seulement
+     * quand la vue a une vraie taille. Après prepare, on redonne la
+     * surface sans reconstruire le graphe.
+     */
+    private fun bindOutputIfReady() {
+        if (bindingOutput || released || disposeStarted || !::player.isInitialized) return
+        val valid = try {
+            surfaceView.holder.surface?.isValid == true
+        } catch (_: RuntimeException) {
+            false
+        }
+        if (!surfaceBinding.onSurfaceReady(valid, surfaceView.width, surfaceView.height)) {
+            // Déjà branché : on ne boucle pas. Pas encore : la taille et
+            // la surface n'arrivent pas dans le même tour. Sans relance,
+            // le son part et l'image non.
+            if (!surfaceBinding.bound && !bindRetryPosted && !released && !disposeStarted) {
+                bindRetryPosted = true
+                handler.postDelayed({
+                    bindRetryPosted = false
+                    bindOutputIfReady()
+                }, 32)
+            }
+            return
+        }
+        bindingOutput = true
+        try {
+            installVideoOutput(player)
+        } finally {
+            bindingOutput = false
+        }
+    }
+
+    private fun installVideoOutput(target: ExoPlayer) {
+        // Taille du tampon AVANT d'accrocher le graphe. Plus tard,
+        // setFixedSize détruirait la surface et l'image resterait noire.
+        updateContrastSurfaceSize()
+        val canInstallEffects = contrastPipelineInstalled &&
+            target.playbackState == Player.STATE_IDLE
+        if (canInstallEffects) {
             contrastEffect.setEnabled(contrastRequested, hardwareAllows = true)
             val aiEffect = aiPicture.newEffect(
                 hdrOrDrm = { aiHdrOrDrm },
                 framesPerSecond = { contentFps.toDouble() },
                 sessionId = { aiSessionId },
                 sourceKnown = { aiSourceKnown },
-                // Seule une surface réellement plus grande justifie le ×2.
-                // Un aperçu ou une géométrie inconnue restent en natif.
                 allowUpscale = { width, height ->
                     aiTargetWidth > width && aiTargetHeight > height
                 },
@@ -3021,18 +3121,9 @@ class NativeVideoView(
                     }
                 },
             )
-            // L'IA reçoit le SDR BT.709 du lecteur ; le contraste s'applique
-            // seulement après son débruitage et son éventuel agrandissement.
             target.setVideoEffects(listOf(aiEffect, contrastEffect))
         }
-        updateContrastSurfaceSize()
-        target.setVideoScalingMode(C.VIDEO_SCALING_MODE_SCALE_TO_FIT)
         target.setVideoSurfaceView(surfaceView)
-        target.addAnalyticsListener(this)
-        target.setVideoFrameMetadataListener(frameClock)
-        target.skipSilenceEnabled = false
-        target.playWhenReady = true
-        ffmpegRendererInstalled = installFfmpegVideo
     }
 
     private fun emitImageCaps() {
