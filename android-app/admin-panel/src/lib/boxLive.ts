@@ -27,6 +27,11 @@ export interface BoxLive {
   fleet_last_applied?: LiveOrder | null;
 }
 
+/// Même consigne que le journal (1 à 2 s) : la colonne « Direct »
+/// et la page « En ligne » relisent l'état déjà écrit par la box.
+/// 1,5 s, comme BLACKBOX_POLL_MS. Une seule page ouverte, pas le parc.
+export const BOX_LIVE_POLL_MS = 1500;
+
 export const KIND_LABEL: Record<string, string> = {
   activate: 'activation',
   renew: 'renouvellement',

@@ -1,7 +1,7 @@
 // Preuve du texte affiché dans le panel, sans navigateur.
 //   node --experimental-strip-types src/lib/boxLive.test.ts
 import assert from 'node:assert/strict';
-import { appliedPhrase, indexByMac, liveSummary } from './boxLive.ts';
+import { appliedPhrase, BOX_LIVE_POLL_MS, indexByMac, liveSummary } from './boxLive.ts';
 
 const clock = () => '12:03:04';
 
@@ -35,5 +35,8 @@ const indexed = indexByMac([
 ]);
 assert.equal(indexed['MK:AA:BB:CC:DD:02'].online, false);
 assert.equal(Object.keys(indexed).length, 2);
+
+assert.ok(BOX_LIVE_POLL_MS >= 1000 && BOX_LIVE_POLL_MS <= 2000);
+assert.equal(BOX_LIVE_POLL_MS, 1500);
 
 console.log('PASS panel boxLive');

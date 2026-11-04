@@ -16,11 +16,14 @@
 //  pour permettre la révocation et la prolongation à distance.
 // =========================================================
 
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../device/data/device_identity.dart';
 import '../domain/activation_pace.dart';
+import '../domain/heartbeat_coalesce.dart';
 import 'subscription_backend.dart';
 
 /// Résultat d'une synchro avec le Worker.
@@ -106,9 +109,11 @@ class SubscriptionState extends ChangeNotifier {
   /// réponse ne l'efface pas : on garde ce snapshot (voir [_absorb]).
   RemoteSubscriptionStatus _remote = RemoteSubscriptionStatus.unknown;
 
-  /// Une seule lecture réseau à la fois. La veille (toutes les 3 s)
-  /// et le bouton « Vérifier » ne doivent pas s'empiler.
-  bool _netBusy = false;
+  /// Une seule lecture réseau à la fois. La veille et le bouton
+  /// « Vérifier » ne doivent pas s'empiler. Un heartbeat arrivé
+  /// pendant cette lecture (changement de chaîne) est renvoyé
+  /// une fois à la fin, pas jeté.
+  final HeartbeatCoalesce _net = HeartbeatCoalesce();
 
   bool get isLoaded => _loaded;
   DateTime? get firstLaunchAt => _firstLaunchAt;
@@ -169,8 +174,7 @@ class SubscriptionState extends ChangeNotifier {
     if (_blockCache == 'frozen') return SubscriptionStatus.frozen;
 
     // 2) Abonnement payant connu (cache local, tolérance hors-ligne).
-    if (_paidUntil != null &&
-        _paidUntil!.millisecondsSinceEpoch > nowMs) {
+    if (_paidUntil != null && _paidUntil!.millisecondsSinceEpoch > nowMs) {
       return SubscriptionStatus.paid;
     }
 
@@ -181,8 +185,7 @@ class SubscriptionState extends ChangeNotifier {
     //    repli sur « firstLaunch + durée d'essai ».
     final int deadline = _trialUntilCache > 0
         ? _trialUntilCache
-        : _firstLaunchAt!.millisecondsSinceEpoch +
-            kTrialDurationDays * _kDayMs;
+        : _firstLaunchAt!.millisecondsSinceEpoch + kTrialDurationDays * _kDayMs;
     return nowMs < deadline
         ? SubscriptionStatus.trialActive
         : SubscriptionStatus.trialExpired;
@@ -195,8 +198,7 @@ class SubscriptionState extends ChangeNotifier {
     final int nowMs = _effectiveNowMs;
     final int deadline = _trialUntilCache > 0
         ? _trialUntilCache
-        : _firstLaunchAt!.millisecondsSinceEpoch +
-            kTrialDurationDays * _kDayMs;
+        : _firstLaunchAt!.millisecondsSinceEpoch + kTrialDurationDays * _kDayMs;
     final int remaining = ((deadline - nowMs) / _kDayMs).ceil();
     return remaining > 0 ? remaining : 0;
   }
@@ -279,16 +281,16 @@ class SubscriptionState extends ChangeNotifier {
   ///      pas besoin d'un GET séparé.
   ///   3. On stocke en `_remote` et on notifie pour rebuild les UI.
   ///
-  /// À appeler au boot, au bouton « Vérifier », et au plus une fois
-  /// par minute pendant l'attente d'activation. La veille rapide
-  /// (toutes les 3 s) passe par [refreshRemote] : lecture seule.
+  /// À appeler au boot, au bouton « Vérifier », à chaque chaîne
+  /// ouverte, et au plus une fois par minute pendant l'attente
+  /// d'activation. La veille rapide (1 s puis 2 s) passe par
+  /// [refreshRemote] : lecture seule.
   ///
   /// Si le réseau est down, `_remote` N'EST PAS remplacé : le calcul
   /// garde le dernier statut (ou le trial local au tout premier boot).
   /// L'app reste utilisable hors-ligne, une chaîne en cours continue.
   Future<RemoteSyncOutcome> syncWithBackend() async {
-    if (_netBusy) return RemoteSyncOutcome.busy;
-    _netBusy = true;
+    if (!_net.start()) return RemoteSyncOutcome.busy;
     try {
       final String mac = await DeviceIdentity.instance.mac;
       final RemoteStatusRead read = await SubscriptionBackend.heartbeat(mac);
@@ -299,7 +301,9 @@ class SubscriptionState extends ChangeNotifier {
       notifyListeners();
       return RemoteSyncOutcome.offline;
     } finally {
-      _netBusy = false;
+      // La chaîne a pu changer pendant ce POST. Un seul renvoi,
+      // qui lira NowPlaying au moment de partir.
+      if (_net.finish()) unawaited(syncWithBackend());
     }
   }
 
@@ -307,8 +311,7 @@ class SubscriptionState extends ChangeNotifier {
   /// C'est la veille « le panel vient-il d'activer ? ». Même règle
   /// qu'au-dessus : un échec réseau ne change pas l'accès déjà ouvert.
   Future<RemoteSyncOutcome> refreshRemote() async {
-    if (_netBusy) return RemoteSyncOutcome.busy;
-    _netBusy = true;
+    if (!_net.start()) return RemoteSyncOutcome.busy;
     try {
       final String mac = await DeviceIdentity.instance.mac;
       final RemoteStatusRead read = await SubscriptionBackend.getStatus(mac);
@@ -319,7 +322,9 @@ class SubscriptionState extends ChangeNotifier {
       notifyListeners();
       return RemoteSyncOutcome.offline;
     } finally {
-      _netBusy = false;
+      // Un zap pendant la lecture de statut veut un heartbeat
+      // (la réponse heartbeat contient aussi le statut).
+      if (_net.finish()) unawaited(syncWithBackend());
     }
   }
 

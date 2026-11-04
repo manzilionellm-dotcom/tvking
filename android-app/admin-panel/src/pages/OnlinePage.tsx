@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
 import { onlineApi, type OnlineSnapshot, flagEmoji, ApiError } from '@/lib/api';
+import { BOX_LIVE_POLL_MS } from '@/lib/boxLive';
 
 /// Page « En ligne » (owner) — qui utilise l'app en ce moment, depuis où.
 /// Données issues de la présence (heartbeat) : IP + pays fournis par
@@ -29,10 +30,11 @@ export function OnlinePage({ onLogout }: { onLogout: () => void }) {
       .finally(() => setLoading(false));
   }
 
-  // Rafraîchissement auto toutes les 30 s.
+  // La chaîne en cours arrive par le heartbeat. On la relit dans
+  // la même fenêtre de 1 à 2 s que la colonne « Direct ».
   useEffect(() => {
     load();
-    const t = setInterval(load, 30000);
+    const t = setInterval(load, BOX_LIVE_POLL_MS);
     return () => clearInterval(t);
     /* eslint-disable-next-line */
   }, []);
