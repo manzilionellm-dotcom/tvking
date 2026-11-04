@@ -57,6 +57,7 @@ import '../../channels/domain/channel.dart';
 import '../../epg/data/epg_repository.dart';
 import '../../epg/data/catchup_url_builder.dart';
 import '../../epg/domain/epg_program.dart';
+import '../../epg/domain/timeshift_pause.dart';
 import '../../followed/data/followed_flag.dart';
 import '../../followed/data/followed_log.dart';
 import '../../followed/domain/show_lines.dart';
@@ -129,8 +130,17 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   bool get _canFollow =>
       _followOn && _guideTitle != null && _guideTitle!.trim().isNotEmpty;
   bool get _showStart => _missed?.canRewind == true || _catchup;
-  int? get _followBtn => LiveBarSlots.follow(_canFollow);
-  int? get _startBtn => LiveBarSlots.start(_showStart, showFollow: _canFollow);
+  bool _canTimeshift = false;
+  DateTime? _livePausedAt;
+  bool get _showPause => _canTimeshift && !_catchup;
+  int? get _pauseBtn => LiveBarSlots.pause(_showPause);
+  int? get _followBtn =>
+      LiveBarSlots.follow(_canFollow, showPause: _showPause);
+  int? get _startBtn => LiveBarSlots.start(
+        _showStart,
+        showFollow: _canFollow,
+        showPause: _showPause,
+      );
   MissedSummary? _missed;
   bool _catchup = false;
   int _missedGen = 0;
@@ -315,6 +325,12 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     _watchdog = Timer.periodic(_watchEvery, (_) {
       if (!_appActive || _casting) {
         _lastProgress = DateTime.now(); // pause voulue : pas un gel
+        return;
+      }
+      // Pause du direct en attente de timeshift : le flux ne progresse
+      // plus, ce n'est pas un gel. On ne rouvre pas le direct par-dessus.
+      if (_livePausedAt != null && _canTimeshift) {
+        _lastProgress = DateTime.now();
         return;
       }
       if (DateTime.now().difference(_lastProgress) > _frozen) {
@@ -506,6 +522,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     }
     // Erreur / fin de flux live → reconnexion.
     if (_controller.hasError || _controller.isEnded) {
+      if (_livePausedAt != null && _canTimeshift) return;
       _recover();
     }
     _offerSubtitles();
@@ -526,6 +543,8 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
         _buffering = true;
         _fatal = false;
       });
+    _livePausedAt = null;
+    _canTimeshift = TimeshiftPause.supports(_current);
     if (!reuse) {
       // Nouvelle chaîne → on charge la nouvelle URL dans le MÊME lecteur
       // (dans le format qui a déjà marché sur ce serveur, s'il y en a un).
@@ -588,9 +607,11 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     // On ne peut enregistrer qu'1 chaîne à la fois (1 connexion) : changer de
     // chaîne clôt et SAUVEGARDE l'enregistrement en cours.
     if (_isRecording) _finalizeRecording(resumeDirect: false);
+    _livePausedAt = null;
     setState(() {
       _index = tvNextZapIndex(_index, delta, n);
       _zapHolding = true;
+      _canTimeshift = TimeshiftPause.supports(_current);
     });
     _showOverlayTemporarily();
     // 180 ms : sous le délai d'une vraie image (souvent > 0,5 s), donc un
@@ -635,6 +656,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   }
 
   void _recover() {
+    if (_livePausedAt != null && _canTimeshift) return;
     if (!_appActive || _casting || _fatal || _zapHolding || _recoverArmed)
       return;
     // Dehors : pas de second flux. Le natif refuse aussi, au cas où.
@@ -892,6 +914,10 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
 
   // Exécute l'action du bouton surligné.
   void _activateBtn(int i) {
+    if (_pauseBtn != null && i == _pauseBtn) {
+      _togglePlayPause();
+      return;
+    }
     if (_followBtn != null && i == _followBtn) {
       unawaited(_toggleFollow());
       return;
@@ -930,12 +956,14 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
         showStart: _showStart,
         showSubs: _subsBtn(context) != null,
         showFollow: _canFollow,
+        showPause: _showPause,
       );
 
   int _btnCount(BuildContext context) => LiveBarSlots.count(
         showStart: _showStart,
         showSubs: _subsBtn(context) != null,
         showFollow: _canFollow,
+        showPause: _showPause,
       );
 
   int? _subsBtn(BuildContext context) {
@@ -945,6 +973,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
       showStart: _showStart,
       showSubs: true,
       showFollow: _canFollow,
+      showPause: _showPause,
     );
   }
 
@@ -1191,6 +1220,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   }
 
   void _backToLive() {
+    _livePausedAt = null;
     _catchup = false;
     _playingUrl = LiveFallback.preferred(_current.streamUrl);
     _controller.setUrl(_playingUrl);
@@ -1237,9 +1267,33 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
       return;
     }
     if (_controller.isPlaying) {
+      // On retient l'heure murale. Tant que le tampon (45 s) suffit,
+      // Lecture reprend ce flux. Plus longtemps, et seulement si le
+      // fournisseur a un catch-up, on ouvrira le timeshift.
+      _livePausedAt = DateTime.now();
+      _lastProgress = _livePausedAt!;
       _controller.pause();
     } else {
-      _controller.play();
+      final DateTime? pausedAt = _livePausedAt;
+      _livePausedAt = null;
+      final String? shift = pausedAt == null
+          ? null
+          : TimeshiftPause.resumeUrl(
+              channel: _current,
+              pausedAt: pausedAt,
+              resumedAt: DateTime.now(),
+              live: _current.isLive,
+              alreadyTimeshift: _catchup,
+            );
+      if (shift != null) {
+        _catchup = true;
+        _playingUrl = shift;
+        _controller.setUrl(shift);
+        _flash(context.l10n.tvCatchupHelp);
+      } else {
+        _controller.play();
+        if (_controller.hasError || _controller.isEnded) _recover();
+      }
     }
     _showOverlayTemporarily();
     setState(() {});
@@ -1535,6 +1589,8 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
                             onGuide: _openGuide,
                             onRecord: _toggleRecording,
                             onFavorite: _toggleFavorite,
+                            onPause: _showPause ? _togglePlayPause : null,
+                            pauseIndex: _pauseBtn,
                             onFollow: _canFollow
                                 ? () => unawaited(_toggleFollow())
                                 : null,
@@ -1923,6 +1979,8 @@ class _ControlsBar extends StatelessWidget {
     required this.onGuide,
     required this.onRecord,
     required this.onFavorite,
+    this.onPause,
+    this.pauseIndex,
     this.onFollow,
     this.followLabel,
     this.followOn = false,
@@ -1952,6 +2010,10 @@ class _ControlsBar extends StatelessWidget {
   final VoidCallback onGuide;
   final VoidCallback onRecord;
   final VoidCallback onFavorite;
+
+  /// Pause du direct, seulement si le fournisseur a un timeshift.
+  final VoidCallback? onPause;
+  final int? pauseIndex;
 
   /// Bouton « Suivre », seulement si le guide a un titre.
   final VoidCallback? onFollow;
@@ -2032,8 +2094,10 @@ class _ControlsBar extends StatelessWidget {
             ),
           ],
           const SizedBox(height: 18),
-          // ---- Commandes utiles en DIRECT uniquement : Guide, REC, Favori ----
-          // (Lecture/pause et avance/retour n'ont aucun sens en live → retirés.)
+          // ---- Commandes du direct : Guide, REC, Favori ----
+          // Pause n'est là que si le fournisseur a un timeshift : sinon
+          // une pause ne fait que figer le tampon, puis le direct reprend
+          // au bord. Pas d'avance/retour image (tampon arrière à 0).
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -2066,6 +2130,25 @@ class _ControlsBar extends StatelessWidget {
                 active: isFavorite,
                 focused: focusedIndex == 2,
               ),
+              if (onPause != null && qualityController != null) ...<Widget>[
+                const SizedBox(width: 34),
+                ListenableBuilder(
+                  listenable: qualityController!,
+                  builder: (BuildContext context, Widget? _) {
+                    final bool playing = qualityController!.isPlaying;
+                    return _CtrlButton(
+                      icon: playing
+                          ? Icons.pause_rounded
+                          : Icons.play_arrow_rounded,
+                      label: playing
+                          ? context.l10n.playerPause
+                          : context.l10n.playerPlay,
+                      onTap: onPause!,
+                      focused: focusedIndex == pauseIndex,
+                    );
+                  },
+                ),
+              ],
               if (onFollow != null) ...<Widget>[
                 const SizedBox(width: 34),
                 _CtrlButton(
