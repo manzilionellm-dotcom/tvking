@@ -171,7 +171,7 @@ void main() {
       ),
       language: 'en',
     );
-    expect(find.text('No channels displayed'), findsOneWidget);
+    expect(find.text('No channels in this view'), findsOneWidget);
     expect(find.text('Code not activated'), findsNothing);
     expect(find.byType(LinearProgressIndicator), findsNothing);
   });
