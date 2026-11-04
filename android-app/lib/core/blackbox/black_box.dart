@@ -40,6 +40,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../app/repair_flags.dart';
+import '../crash/crash_device_label.dart';
 import 'black_box_line.dart';
 import 'black_box_redaction.dart';
 
@@ -55,6 +56,7 @@ class BlackBoxLastExit {
     required this.nativeDescription,
     required this.pssMb,
     required this.rssMb,
+    this.deviceLabel = '',
   });
 
   /// Vrai si la session précédente ne s'est PAS terminée proprement.
@@ -72,11 +74,16 @@ class BlackBoxLastExit {
   final int pssMb;
   final int rssMb;
 
+  /// Fabricant, modèle et API. Vide si l'OS ne les a pas donnés.
+  /// Jamais une MAC ni un identifiant de flux.
+  final String deviceLabel;
+
   String get headline {
     if (!brutal) return 'Dernière session terminée normalement.';
     final String r = nativeReason.isEmpty ? 'raison inconnue (Android < 11)' : nativeReason;
     final String mem = pssMb > 0 ? ' · mémoire $pssMb Mo' : '';
-    return 'FERMETURE BRUTALE · $r$mem';
+    final String device = deviceLabel.isEmpty ? '' : ' · $deviceLabel';
+    return 'FERMETURE BRUTALE · $r$mem$device';
   }
 }
 
@@ -213,6 +220,17 @@ class BlackBox {
     String desc = '';
     int pss = 0;
     int rss = 0;
+    String deviceLabel = '';
+    try {
+      final Object? info = await _device.invokeMethod<Object?>('getDeviceInfo');
+      if (info is Map) {
+        deviceLabel = crashDeviceLabel(
+          manufacturer: '${info['manufacturer'] ?? ''}',
+          model: '${info['model'] ?? ''}',
+          sdk: '${info['sdk'] ?? ''}',
+        );
+      }
+    } catch (_) {}
     try {
       final Object? raw = await _device.invokeMethod<Object?>('getLastExitInfo');
       if (raw is List && raw.isNotEmpty) {
@@ -235,6 +253,7 @@ class BlackBox {
       nativeDescription: desc,
       pssMb: pss,
       rssMb: rss,
+      deviceLabel: deviceLabel,
     );
   }
 
