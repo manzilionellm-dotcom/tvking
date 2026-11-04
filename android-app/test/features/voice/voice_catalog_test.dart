@@ -9,7 +9,8 @@ import 'package:tv_king/features/channels/domain/channel.dart';
 import 'package:tv_king/features/cinema/domain/cinema_models.dart';
 import 'package:tv_king/features/voice/domain/voice_catalog.dart';
 
-Channel _ch(String id, String name, {String category = 'Test', bool live = true}) {
+Channel _ch(String id, String name,
+    {String category = 'Test', bool live = true}) {
   return Channel(
     id: id,
     name: name,
@@ -82,6 +83,41 @@ void main() {
     expect(find('grand journal').single.channel?.id, 'grand');
     expect(find('grand journal').map((VoiceHit h) => h.channel?.id),
         isNot(contains('journal')));
+  });
+
+  test('la préparation donne les mêmes chaînes, sans replier à chaque lettre',
+      () {
+    final Map<String, String> hay = <String, String>{};
+    final Set<String> adult = <String>{};
+    for (final Channel c in channels) {
+      prepareChannelSearch(c, hay, adult);
+    }
+    final List<VoiceHit> direct = find('journal');
+    final List<VoiceHit> prepared = searchCatalog(
+      query: 'journal',
+      channels: channels,
+      movies: movies,
+      series: series,
+      channelHay: hay,
+      adultIds: adult,
+    );
+    expect(
+      prepared.map((VoiceHit h) => h.id),
+      direct.map((VoiceHit h) => h.id),
+    );
+    expect(adult, contains('xxx'));
+    expect(
+      searchCatalog(
+        query: 'xxx',
+        channels: channels,
+        movies: const <CinemaTitle>[],
+        series: const <CinemaTitle>[],
+        hideAdult: true,
+        channelHay: hay,
+        adultIds: adult,
+      ),
+      isEmpty,
+    );
   });
 
   test('mode enfants : le contenu adulte disparaît', () {

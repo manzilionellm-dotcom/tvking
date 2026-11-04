@@ -67,6 +67,9 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
   bool _listening = false;
   int _gen = 0;
   Timer? _debounce;
+  int _prepGen = 0;
+  Map<String, String>? _hay;
+  Set<String>? _adultIds;
   late final VoiceSearchHooks _hooks;
   // Une seule fermeture : le hub compare l'identité pour se désinscrire.
   late final bool Function(String text) _remoteTyping = _onRemoteQuery;
@@ -89,11 +92,13 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
     VoiceNavigation.attach(_hooks);
     RemoteTypingHub.instance.register(_remoteTyping);
     _channels = List<Channel>.of(PlaylistRepository.instance.currentChannels);
+    _prepareSearch(_channels);
     _sub = PlaylistRepository.instance.channelsStream.listen((
       List<Channel> ch,
     ) {
       if (!mounted) return;
       _channels = List<Channel>.of(ch);
+      _prepareSearch(_channels);
       if (_q.trim().isNotEmpty) _schedule();
     });
     CinemaRepository.instance.indexVersion.addListener(_onIndex);
@@ -114,6 +119,45 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
     _debounce?.cancel();
     CinemaRepository.instance.indexVersion.removeListener(_onIndex);
     super.dispose();
+  }
+
+  /// Replie les noms une fois, par paquets, pour laisser la
+  /// télécommande respirer. Tant que ce n'est pas fini, la recherche
+  /// calcule au fil de l'eau comme avant.
+  void _prepareSearch(List<Channel> channels) {
+    final int gen = ++_prepGen;
+    _hay = null;
+    _adultIds = null;
+    if (channels.isEmpty) return;
+    unawaited(_prepareSearchLots(channels, gen));
+  }
+
+  Future<void> _prepareSearchLots(List<Channel> channels, int gen) async {
+    final Map<String, String> hay = <String, String>{};
+    final Set<String> adult = <String>{};
+    for (int i = 0; i < channels.length; i++) {
+      if (gen != _prepGen) return;
+      prepareChannelSearch(channels[i], hay, adult);
+      if (i % 400 == 399) {
+        await Future<void>.delayed(Duration.zero);
+        if (!mounted || gen != _prepGen) return;
+      }
+    }
+    if (!mounted || gen != _prepGen) return;
+    setState(() {
+      _hay = hay;
+      _adultIds = adult;
+    });
+    if (_q.trim().isNotEmpty) _schedule();
+  }
+
+  bool _searchReady() {
+    final Map<String, String>? hay = _hay;
+    if (hay == null || _channels.isEmpty) return false;
+    for (final Channel c in _channels) {
+      if (!hay.containsKey(c.id)) return false;
+    }
+    return true;
   }
 
   void _onIndex() {
@@ -225,12 +269,15 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
       if (kDebugMode) debugPrint('[Voix] cinéma : $e');
     }
     final bool kids = ParentalControls.instance.kidsMode.value;
+    final bool ready = _searchReady();
     final List<VoiceHit> local = searchCatalog(
       query: intent.catalogQuery,
       channels: _channels,
       movies: movies,
       series: series,
       hideAdult: kids,
+      channelHay: ready ? _hay : null,
+      adultIds: ready ? _adultIds : null,
     );
     if (!mounted || gen != _gen) return;
     setState(() {
@@ -276,11 +323,11 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
   Future<void> _loadTonight(int gen) async {
     final DateTime now = DateTime.now();
     final EveningWindow window = eveningWindow(now);
-    final List<EpgProgram> programs = await EpgRepository.instance
-        .programsOverlapping(
-          window.start.millisecondsSinceEpoch,
-          window.end.millisecondsSinceEpoch,
-        );
+    final List<EpgProgram> programs =
+        await EpgRepository.instance.programsOverlapping(
+      window.start.millisecondsSinceEpoch,
+      window.end.millisecondsSinceEpoch,
+    );
     if (!mounted || gen != _gen) return;
     // Noms seulement pour les chaînes qui ont un programme ce soir.
     // cleanName lance le curator : on ne le fait pas sur les 50 000
@@ -377,8 +424,7 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
   @override
   Widget build(BuildContext context) {
     final TonightLineup? tonight = _tonight;
-    final bool showCinemaHint =
-        tonight == null &&
+    final bool showCinemaHint = tonight == null &&
         _q.trim().isNotEmpty &&
         _cinemaCold &&
         !_hits.any((VoiceHit h) => h.kind != VoiceHitKind.channel);
