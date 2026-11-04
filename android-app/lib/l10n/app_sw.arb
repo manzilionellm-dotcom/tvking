@@ -528,7 +528,7 @@
   "tvNavGuide": "Mwongozo",
   "tvNavSearch": "Tafuta",
   "tvNavSettings": "Mipangilio",
-  "tvComingSoon": "Inakuja hivi karibuni. Sehemu hii inakuja.",
+  "tvComingSoon": "Sehemu hii iko njiani.",
   "tvHello": "Habari",
   "tvNoChannels": "Hakuna vituo bado",
   "tvNoChannelsHelp": "Washa kifaa hiki kwenye paneli yako, kisha mtumie chanzo. Vituo vitaonekana hapa kiotomatiki.",
@@ -555,7 +555,7 @@
   "tvFieldUser": "Jina la mtumiaji",
   "tvFieldPass": "Nenosiri",
   "tvAddListError": "Jaza seva, jina la mtumiaji na nenosiri.",
-  "tvConnectError": "Imeshindwa kuunganisha. Angalia taarifa.",
+  "tvConnectError": "Chanzo hiki hakikufunguka. Angalia anwani kisha ujaribu tena.",
   "tvConnecting": "Inaunganisha…",
   "tvAddListValidate": "Thibitisha na upakie orodha yangu",
   "tvSearchingChannels": "Inatafuta vituo vyako…",
@@ -586,7 +586,7 @@
   "tvAddM3uBusy": "Inaongeza…",
   "tvAddM3uValidate": "Ongeza orodha",
   "tvAddM3uInvalidUrl": "Weka URL sahihi ya M3U (http…).",
-  "tvAddM3uFailed": "Imeshindikana: orodha haipatikani au ni tupu.",
+  "tvAddM3uFailed": "Orodha hii haikufunguka. Anwani huenda haipatikani, au faili ni tupu.",
   "tvMyM3uList": "Orodha yangu ya M3U",
   "tvBlackBoxTitle": "Sanduku jeusi",
   "tvBlackBoxSubtitle": "Kumbukumbu ya kiufundi ya programu (v{version}). Ikiwa programu ilifungwa ghafla, sababu iko hapa.",
@@ -845,7 +845,7 @@
   "tvRecordingNotFoundBody": "Faili ya rekodi hii haipo au ni tupu.",
   "tvPlaybackImpossibleBody": "Faili hii haikuweza kusomwa.",
   "tvRecordingStarted": "Inarekodi…",
-  "tvRecordingError": "Hitilafu ya kurekodi",
+  "tvRecordingError": "Kurekodi hakuanza.",
   "tvRecordingSaved": "Rekodi imehifadhiwa ({size})",
   "@tvRecordingSaved": {
     "placeholders": {
@@ -854,7 +854,7 @@
       }
     }
   },
-  "tvRecordingEmpty": "Rekodi tupu",
+  "tvRecordingEmpty": "Rekodi hii bado haina picha.",
   "tvRemovedFromFavorites": "Imeondolewa kwenye vipendwa",
   "tvAddedToFavorites": "Imeongezwa kwenye vipendwa ❤",
   "tvCinemaAllLanguages": "Lugha zote",
@@ -879,7 +879,7 @@
     }
   },
   "tvCinemaDownload": "Pakua",
-  "tvCinemaDownloadError": "Upakuaji umeshindwa",
+  "tvCinemaDownloadError": "Upakuaji haukukamilika.",
   "tvCinemaDownloadPaused": "Imesitishwa · {pct} %",
   "@tvCinemaDownloadPaused": {
     "placeholders": {
@@ -898,7 +898,7 @@
     }
   },
   "tvCinemaDownloads": "Vipakuliwa vyangu",
-  "tvCinemaEmptyCategory": "Hakuna kitu hapa bado.",
+  "tvCinemaEmptyCategory": "Mstari huu bado hauna kitu.",
   "tvCinemaEpisode": "Sehemu ya {n}",
   "@tvCinemaEpisode": {
     "placeholders": {
@@ -1031,7 +1031,7 @@
   "tvCinemaSeasonQueue": "{count, plural, =0{Msimu unapakuliwa} =1{Kipindi 1 kinasubiri} other{Vipindi {count} vinasubiri}}",
   "tvPlayerLoading": "Inapakia kituo…",
   "tvPlayerFatalDown": "Kituo hiki hakijibu kwa sasa.",
-  "tvPlayerFatalEmpty": "Kituo hiki tupu au kimezuiwa na chanzo.",
+  "tvPlayerFatalEmpty": "Kituo hiki hakipatikani kutoka chanzo kwa sasa.",
   "tvPlayerFatalNav": "Juu / Chini: kituo kingine",
   "tvSearchPrompt": "Andika jina kwa kibodi. Mshale wa kulia: matokeo.",
   "tvSearchCount": "{count, plural, =1{Tokeo 1} other{Matokeo {count}}}",
@@ -1045,7 +1045,7 @@
   "tvVoiceFailed": "Sikuelewa. Jaribu tena, au andika.",
   "tvVoiceBusy": "Mikrofoni inatumika tayari. Jaribu tena baadaye.",
   "tvVoiceTonightTitle": "Kwenye TV usiku huu",
-  "tvVoiceTonightEmpty": "Mwongozo hauna kitu kwa usiku huu. Ongeza anwani ya EPG kwenye orodha yako kisha ujaribu tena.",
+  "tvVoiceTonightEmpty": "Hakuna kilichoorodheshwa kwa usiku huu. Ongeza anwani ya mwongozo kwenye orodha hii kisha ujaribu tena.",
   "tvVoiceKindChannel": "Kituo",
   "tvVoiceKindMovie": "Filamu",
   "tvVoiceKindSeries": "Mfululizo",
@@ -1205,7 +1205,7 @@
   "tvListRejectedHelp": "Mtoa huduma amekataa orodha hii. Kagua taarifa za kuingia.",
   "tvCodeInactive": "Msimbo haujawashwa",
   "tvCodeInactiveHelp": "Msimbo wa TV hii haujawashwa. Uwashe kwenye paneli kisha usubiri sekunde chache.",
-  "tvSourcesEmpty": "Bado hakuna vyanzo.\nOngeza kiungo cha M3U, akaunti ya Xtream au kiungo cha kichezaji.",
+  "tvSourcesEmpty": "Bado hakuna chanzo.\nOngeza kiungo cha M3U, akaunti ya Xtream au kiungo cha kichezaji.",
   "tvRecordingCloseFailed": "Rekodi haikuweza kufungwa. Faili huenda haijakamilika.",
   "tvFromStart": "Tangu mwanzo",
   "tvFollow": "Fuata",
@@ -1247,7 +1247,7 @@
   "tvLegalLead": "Programu hii ni kichezaji. Haiuzi wala kutoa vituo au viungo. Juu/chini kusogeza, Nyuma kutoka.",
   "tvAudioSpectrumOn": "Wigo: kipimo kimewashwa",
   "tvAudioSpectrumOff": "Wigo: umezimwa",
-  "tvAudioFfmpegRetry": "FFmpeg: jaribu tena",
+  "tvAudioFfmpegRetry": "Jaribu picha tena",
   "tvAudioFfmpegDefault": "FFmpeg: chaguomsingi",
   "tvAudioAacTest": "AAC ya kifaa: jaribio",
   "tvAudioAacOff": "AAC ya kifaa: imezimwa",
@@ -1289,7 +1289,7 @@
   "tvDiagPlayerBusy": "Video inaendelea kwenye skrini nzima: jaribio limerukwa, kichezaji kimoja tu",
   "tvDiagPlayerOpening": "Inafungua jaribio la ExoPlayer…",
   "tvDiagFrameOk": "Fremu ya kwanza imesimbuliwa na kuonyeshwa",
-  "tvDiagPlayerError": "ExoPlayer imerudisha hitilafu",
+  "tvDiagPlayerError": "Uchezaji umesimama kwenye mtiririko huu.",
   "tvDiagFrameTimeout": "Hakuna picha ndani ya sekunde 8",
   "tvDiagRunning": "UCHUNGUZI UNAENDELEA…",
   "tvDiagPassed": "UCHEZAJI KWENYE KIFAA UMETHIBITISHWA",
@@ -1390,8 +1390,8 @@
   "tvChannelLoadingHelp": "Vituo vitaonekana upakiaji utakapokamilika.",
   "tvChannelWaitingTitle": "Tunasubiri orodha yako",
   "tvChannelWaitingHelp": "Ongeza orodha yako au mwombe mtoa huduma aitume kwenye kifaa hiki.",
-  "tvChannelEmptyTitle": "Hakuna vituo vinavyoonyeshwa",
-  "tvChannelEmptyHelp": "Orodha imepakiwa. Kagua vichujio au fungua Filamu/Mfululizo.",
+  "tvChannelEmptyTitle": "Hakuna vituo katika mwonekano huu",
+  "tvChannelEmptyHelp": "Orodha ipo. Rekebisha vichujio, au fungua Filamu na Mifululizo.",
   "tvChannelSourceFailedTitle": "Imeshindikana kupakia orodha hii",
   "tvChannelSourceFailedHelp": "Kagua kiungo au taarifa za kuingia za orodha yako, kisha ujaribu tena.",
   "tvChannelNetworkHelp": "Imeshindikana kuwasiliana na seva. Kagua muunganisho wako, kisha ujaribu tena.",

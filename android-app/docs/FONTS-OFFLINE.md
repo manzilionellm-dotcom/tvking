@@ -15,8 +15,8 @@ copyright conservés. Le total non compressé est de **2 388 328 octets**.
 
 | Famille | Poids normaux embarqués | Version des TTF | Usage |
 | --- | --- | --- | --- |
-| Inter | 400, 500, 600, 700, 800 | 3.019, git `0a5106e0b` | Thème TV, textes, réglages, composants partagés |
-| Oswald | 500, 600 | 4.103 | Titres TV et réglages |
+| Inter | 400, 500, 600, 700, 800 | 3.019, git `0a5106e0b` | Lecture TV (rôles 400, 500, 700) et textes partagés. 600 et 800 restent pour la Maison |
+| Oswald | 500, 600 | 4.103 | Fichiers conservés dans l'inventaire hors ligne. Les titres TV ne le chargent plus : chasse trop étroite à 3 m |
 | JetBrains Mono | 400, 600 | 2.211 | Activation, identifiants et diagnostics TV |
 | Bricolage Grotesque | 700, 800 | 1.001 | Titres Maison Noir partagés |
 | Manrope | 500, 700, 800 | 4.504 | Textes et boutons Maison Noir partagés |

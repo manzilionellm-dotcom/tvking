@@ -2148,9 +2148,8 @@ class _ControlsBar extends StatelessWidget {
             channel.cleanName,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: TvDimens.headline,
-              fontWeight: FontWeight.w800,
+            style: TvAppTokens.playbackOf(context).display(
+              TvDimens.headline,
               color: TvAppTokens.playbackOf(context).text,
             ),
           ),
@@ -2178,10 +2177,11 @@ class _ControlsBar extends StatelessWidget {
                       const SizedBox(width: 5),
                       Text(
                         context.l10n.tvLiveBadge,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w800,
+                        style: TvAppTokens.playbackOf(context).ui(
+                          TvDimens.caption,
+                          weight: FontWeight.w700,
                           color: Colors.white,
+                          spacing: 0.5,
                         ),
                       ),
                     ],
@@ -2216,9 +2216,8 @@ class _ControlsBar extends StatelessWidget {
         ),
         child: Text(
           '${index + 1} / $total',
-          style: TextStyle(
-            fontSize: TvDimens.label,
-            fontWeight: FontWeight.w800,
+          style: TvAppTokens.playbackOf(context).figure(
+            TvDimens.label,
             color: TvAppTokens.playbackOf(context).text,
           ),
         ),
@@ -2321,10 +2320,9 @@ class _CtrlButtonState extends State<_CtrlButton> {
               const SizedBox(height: 7),
               Text(
                 widget.label!,
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.5,
+                style: TvAppTokens.playbackOf(context).ui(
+                  TvDimens.caption,
+                  weight: FontWeight.w500,
                   color: labelColor,
                 ),
               ),

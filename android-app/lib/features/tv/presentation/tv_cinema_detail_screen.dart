@@ -41,37 +41,74 @@ class _Backdrop extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (url == null) return const SizedBox.shrink();
-    return Positioned(
-      right: 0,
+    final Color veil = TvAppTokens.of(context).bg;
+    // Dégradé du fond du thème vers le transparent, côté texte.
+    // Android TV : un voile sur l'affiche, pas le texte posé cru sur l'image.
+    // La couleur vient du thème, y compris le confort des yeux.
+    final Widget scrim = Positioned(
+      left: 0,
       top: 0,
-      width: 820,
-      height: 460,
+      bottom: 0,
+      width: 920,
+      child: IgnorePointer(
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.centerLeft,
+              end: Alignment.centerRight,
+              colors: <Color>[
+                veil,
+                veil.withValues(alpha: 0.82),
+                veil.withValues(alpha: 0),
+              ],
+              stops: const <double>[0, 0.38, 0.78],
+            ),
+          ),
+        ),
+      ),
+    );
+    return Positioned.fill(
+      child: Stack(
+        children: <Widget>[
+          if (url != null)
+            Positioned(
+              right: 0,
+              top: 0,
+              width: 820,
+              height: 460,
+              child: _fadedArt(url!),
+            ),
+          scrim,
+        ],
+      ),
+    );
+  }
+
+  Widget _fadedArt(String url) {
+    // Fondu vers la gauche et vers le bas : le texte reste lisible.
+    return ShaderMask(
+      shaderCallback: (Rect r) => const LinearGradient(
+        begin: Alignment.centerRight,
+        end: Alignment.centerLeft,
+        colors: <Color>[Colors.white, Colors.transparent],
+        stops: <double>[0.45, 1],
+      ).createShader(r),
+      blendMode: BlendMode.dstIn,
       child: ShaderMask(
-        // Fondu vers la gauche et vers le bas : le texte reste lisible.
         shaderCallback: (Rect r) => const LinearGradient(
-          begin: Alignment.centerRight,
-          end: Alignment.centerLeft,
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
           colors: <Color>[Colors.white, Colors.transparent],
-          stops: <double>[0.45, 1],
+          stops: <double>[0.55, 1],
         ).createShader(r),
         blendMode: BlendMode.dstIn,
-        child: ShaderMask(
-          shaderCallback: (Rect r) => const LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: <Color>[Colors.white, Colors.transparent],
-            stops: <double>[0.55, 1],
-          ).createShader(r),
-          blendMode: BlendMode.dstIn,
-          child: Opacity(
-            opacity: 0.55,
-            child: CachedNetworkImage(
-              imageUrl: url!,
-              fit: BoxFit.cover,
-              memCacheWidth: 960,
-              errorWidget: (_, __, ___) => const SizedBox.shrink(),
-            ),
+        child: Opacity(
+          opacity: 0.55,
+          child: CachedNetworkImage(
+            imageUrl: url,
+            fit: BoxFit.cover,
+            memCacheWidth: 960,
+            errorWidget: (_, __, ___) => const SizedBox.shrink(),
           ),
         ),
       ),
@@ -124,7 +161,7 @@ class _Header extends StatelessWidget {
               maxLines: 4,
               overflow: TextOverflow.ellipsis,
               style: TvAppTokens.of(context)
-                  .ui(TvDimens.body, color: TvAppTokens.of(context).text),
+                  .body(TvDimens.body, color: TvAppTokens.of(context).text),
             ),
           ),
         for (final String line in extra ?? const <String>[])

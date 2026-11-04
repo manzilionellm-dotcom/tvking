@@ -528,7 +528,7 @@
   "tvNavGuide": "Guide",
   "tvNavSearch": "Sök",
   "tvNavSettings": "Inställningar",
-  "tvComingSoon": "Kommer snart. Den här delen är på väg.",
+  "tvComingSoon": "Den här delen är på väg.",
   "tvHello": "Hej",
   "tvNoChannels": "Inga kanaler ännu",
   "tvNoChannelsHelp": "Aktivera den här enheten i din panel och skicka en källa. Kanalerna visas här automatiskt.",
@@ -555,7 +555,7 @@
   "tvFieldUser": "Användarnamn",
   "tvFieldPass": "Lösenord",
   "tvAddListError": "Fyll i server, användarnamn och lösenord.",
-  "tvConnectError": "Kan inte ansluta. Kontrollera uppgifterna.",
+  "tvConnectError": "Källan gick inte att öppna. Kontrollera adressen och försök igen.",
   "tvConnecting": "Ansluter…",
   "tvAddListValidate": "Bekräfta och ladda min lista",
   "tvSearchingChannels": "Söker dina kanaler…",
@@ -586,7 +586,7 @@
   "tvAddM3uBusy": "Lägger till…",
   "tvAddM3uValidate": "Lägg till listan",
   "tvAddM3uInvalidUrl": "Ange en giltig M3U-URL (http…).",
-  "tvAddM3uFailed": "Misslyckades: listan går inte att nå eller är tom.",
+  "tvAddM3uFailed": "Listan gick inte att öppna. Adressen kanske inte svarar, eller så är filen tom.",
   "tvMyM3uList": "Min M3U-lista",
   "tvBlackBoxTitle": "Svart låda",
   "tvBlackBoxSubtitle": "Appens tekniska logg (v{version}). Om appen stängdes oväntat hittar du orsaken här.",
@@ -845,7 +845,7 @@
   "tvRecordingNotFoundBody": "Filen för den här inspelningen saknas eller är tom.",
   "tvPlaybackImpossibleBody": "Den här filen kunde inte avkodas.",
   "tvRecordingStarted": "Spelar in…",
-  "tvRecordingError": "Inspelningsfel",
+  "tvRecordingError": "Inspelningen startade inte.",
   "tvRecordingSaved": "Inspelning sparad ({size})",
   "@tvRecordingSaved": {
     "placeholders": {
@@ -854,7 +854,7 @@
       }
     }
   },
-  "tvRecordingEmpty": "Tom inspelning",
+  "tvRecordingEmpty": "Den här inspelningen har ingen bild ännu.",
   "tvRemovedFromFavorites": "Borttagen från favoriter",
   "tvAddedToFavorites": "Tillagd i favoriter ❤",
   "tvCinemaAllLanguages": "Alla språk",
@@ -879,7 +879,7 @@
     }
   },
   "tvCinemaDownload": "Ladda ned",
-  "tvCinemaDownloadError": "Nedladdningen misslyckades",
+  "tvCinemaDownloadError": "Nedladdningen blev inte klar.",
   "tvCinemaDownloadPaused": "Pausad · {pct} %",
   "@tvCinemaDownloadPaused": {
     "placeholders": {
@@ -898,7 +898,7 @@
     }
   },
   "tvCinemaDownloads": "Mina nedladdningar",
-  "tvCinemaEmptyCategory": "Inget här ännu.",
+  "tvCinemaEmptyCategory": "Den här raden är fortfarande tom.",
   "tvCinemaEpisode": "Avsnitt {n}",
   "@tvCinemaEpisode": {
     "placeholders": {
@@ -1031,7 +1031,7 @@
   "tvCinemaSeasonQueue": "{count, plural, =0{Säsong laddas ner} =1{1 avsnitt i kö} other{{count} avsnitt i kö}}",
   "tvPlayerLoading": "Laddar kanalen…",
   "tvPlayerFatalDown": "Kanalen svarar inte just nu.",
-  "tvPlayerFatalEmpty": "Kanalen är tom eller blockerad av källan.",
+  "tvPlayerFatalEmpty": "Kanalen är inte tillgänglig från källan just nu.",
   "tvPlayerFatalNav": "Upp / Ner: en annan kanal",
   "tvSearchPrompt": "Skriv ett namn med tangentbordet. Högerpil: resultaten.",
   "tvSearchCount": "{count, plural, =1{1 träff} other{{count} träffar}}",
@@ -1045,7 +1045,7 @@
   "tvVoiceFailed": "Jag uppfattade inte. Försök igen, eller skriv.",
   "tvVoiceBusy": "Mikrofonen används redan. Försök igen om en stund.",
   "tvVoiceTonightTitle": "På tv i kväll",
-  "tvVoiceTonightEmpty": "Guiden har inget för i kväll. Lägg till en EPG-adress i listan och försök igen.",
+  "tvVoiceTonightEmpty": "Inget står på programmet i kväll. Lägg till en guideadress i listan och försök igen.",
   "tvVoiceKindChannel": "Kanal",
   "tvVoiceKindMovie": "Film",
   "tvVoiceKindSeries": "Serie",
@@ -1205,7 +1205,7 @@
   "tvListRejectedHelp": "Leverantören avvisade listan. Kontrollera inloggningsuppgifterna.",
   "tvCodeInactive": "Koden är inte aktiverad",
   "tvCodeInactiveHelp": "TV:ns kod är inte aktiverad. Aktivera den i panelen och vänta några sekunder.",
-  "tvSourcesEmpty": "Inga källor ännu.\nLägg till en M3U-länk, ett Xtream-konto eller en spelarlänk.",
+  "tvSourcesEmpty": "Ingen källa ännu.\nLägg till en M3U-länk, ett Xtream-konto eller en spelarlänk.",
   "tvRecordingCloseFailed": "Inspelningen kunde inte avslutas. Filen kan vara ofullständig.",
   "tvFromStart": "Från början",
   "tvFollow": "Följ",
@@ -1247,7 +1247,7 @@
   "tvLegalLead": "Appen är en spelare. Den säljer eller tillhandahåller inga kanaler eller länkar. Upp/ned för att bläddra, Tillbaka för att avsluta.",
   "tvAudioSpectrumOn": "Spektrum: mäts",
   "tvAudioSpectrumOff": "Spektrum: av",
-  "tvAudioFfmpegRetry": "FFmpeg: försök igen",
+  "tvAudioFfmpegRetry": "Försök med bilden igen",
   "tvAudioFfmpegDefault": "FFmpeg: standard",
   "tvAudioAacTest": "Box AAC: test",
   "tvAudioAacOff": "Box AAC: av",
@@ -1289,7 +1289,7 @@
   "tvDiagPlayerBusy": "Helskärmsuppspelning pågår: testet hoppas över, endast en spelare",
   "tvDiagPlayerOpening": "Öppnar ExoPlayer-test…",
   "tvDiagFrameOk": "Första bildrutan avkodad och visad",
-  "tvDiagPlayerError": "ExoPlayer gav ett fel",
+  "tvDiagPlayerError": "Uppspelningen stannade på den här strömmen.",
   "tvDiagFrameTimeout": "Ingen bildruta inom 8 s",
   "tvDiagRunning": "DIAGNOSTIK PÅGÅR…",
   "tvDiagPassed": "UPPSPELNING PÅ ENHETEN VERIFIERAD",
@@ -1390,8 +1390,8 @@
   "tvChannelLoadingHelp": "Kanalerna visas när inläsningen är klar.",
   "tvChannelWaitingTitle": "Väntar på din lista",
   "tvChannelWaitingHelp": "Lägg till din lista eller be din leverantör att skicka den till den här enheten.",
-  "tvChannelEmptyTitle": "Inga kanaler visas",
-  "tvChannelEmptyHelp": "Listan har lästs in. Kontrollera filtren eller öppna Filmer/Serier.",
+  "tvChannelEmptyTitle": "Inga kanaler i den här vyn",
+  "tvChannelEmptyHelp": "Listan finns här. Justera filtren, eller öppna Filmer och Serier.",
   "tvChannelSourceFailedTitle": "Det går inte att läsa in listan",
   "tvChannelSourceFailedHelp": "Kontrollera listans länk eller inloggningsuppgifter och försök igen.",
   "tvChannelNetworkHelp": "Det går inte att nå servern. Kontrollera anslutningen och försök igen.",

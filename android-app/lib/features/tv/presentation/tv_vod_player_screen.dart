@@ -1171,7 +1171,7 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
                       d > Duration.zero
                           ? '${formatClock(p)} / ${formatClock(d)}'
                           : formatClock(p),
-                      style: TvAppTokens.playbackOf(context).mono(
+                      style: TvAppTokens.playbackOf(context).figure(
                         18,
                         color: _seekTarget != null
                             ? TvAppTokens.playbackOf(context).accentBright
@@ -1330,12 +1330,12 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
     Widget header(String s) => Padding(
       padding: const EdgeInsets.fromLTRB(6, 14, 6, 8),
       child: Text(
-        s.toUpperCase(),
+        s,
         style: TvAppTokens.playbackOf(context).ui(
-          12,
-          weight: FontWeight.w700,
+          TvDimens.caption,
+          weight: FontWeight.w500,
           color: TvAppTokens.playbackOf(context).mutedDim,
-          spacing: 2,
+          spacing: 0.5,
         ),
       ),
     );

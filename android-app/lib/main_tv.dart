@@ -98,7 +98,8 @@ void _wireAudioDiagnostic() {
 /// d'ajouter ses raccourcis clavier (Échap = Retour, F11 = plein écran)
 /// autour de l'app, sans rien changer sur la box.
 Future<void> bootstrapZunoTv({Widget Function(Widget app)? wrap}) async {
-  // Inter/Oswald/JetBrains Mono et les styles partagés sont embarqués.
+  // Inter, JetBrains Mono et les styles partagés sont embarqués.
+  // Les titres TV utilisent Inter, pas Oswald (chasse trop étroite à 3 m).
   // Posé avant toute UI : les polices de la première ouverture ne dépendent
   // plus du réseau, même si aucun cache n'existe encore sur l'appareil.
   configureTvFontLoading();

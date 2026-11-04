@@ -1951,7 +1951,7 @@
   "tvNavGuide": "Guida",
   "tvNavSearch": "Cerca",
   "tvNavSettings": "Impostazioni",
-  "tvComingSoon": "Presto disponibile. Questa sezione arriva molto presto.",
+  "tvComingSoon": "Questa sezione è in arrivo.",
   "tvEpgNow": "Adesso",
   "@tvEpgNow": {
     "description": "Étiquette du programme en cours (aperçu Direct)"
@@ -1993,7 +1993,7 @@
   "tvFieldUser": "Nome utente",
   "tvFieldPass": "Password",
   "tvAddListError": "Compila server, nome utente e password.",
-  "tvConnectError": "Connessione impossibile. Controlla i dati.",
+  "tvConnectError": "Non riusciamo ad aprire questa fonte. Controlla l'indirizzo e riprova.",
   "tvConnecting": "Connessione…",
   "tvAddListValidate": "Conferma e carica la mia lista",
   "tvSearchingChannels": "Ricerca dei tuoi canali…",
@@ -2016,7 +2016,7 @@
   "tvAddM3uBusy": "Aggiunta…",
   "tvAddM3uValidate": "Aggiungi la lista",
   "tvAddM3uInvalidUrl": "Inserisci un URL M3U valido (http…).",
-  "tvAddM3uFailed": "Errore: lista irraggiungibile o vuota.",
+  "tvAddM3uFailed": "Questa lista non si apre. L'indirizzo potrebbe essere irraggiungibile, o il file vuoto.",
   "tvMyM3uList": "La mia lista M3U",
   "tvBlackBoxTitle": "Scatola nera",
   "tvBlackBoxSubtitle": "Registro tecnico dell'applicazione (v{version}). In caso di chiusura inattesa, il motivo è qui.",
@@ -2275,7 +2275,7 @@
   "tvRecordingNotFoundBody": "Il file di questa registrazione manca o è vuoto.",
   "tvPlaybackImpossibleBody": "Impossibile decodificare questo file.",
   "tvRecordingStarted": "Registrazione in corso…",
-  "tvRecordingError": "Errore di registrazione",
+  "tvRecordingError": "La registrazione non è partita.",
   "tvRecordingSaved": "Registrazione salvata ({size})",
   "@tvRecordingSaved": {
     "placeholders": {
@@ -2284,7 +2284,7 @@
       }
     }
   },
-  "tvRecordingEmpty": "Registrazione vuota",
+  "tvRecordingEmpty": "Questa registrazione non ha ancora un'immagine.",
   "tvRemovedFromFavorites": "Rimosso dai preferiti",
   "tvAddedToFavorites": "Aggiunto ai preferiti ❤",
   "tvCinemaAllLanguages": "Tutte le lingue",
@@ -2309,7 +2309,7 @@
     }
   },
   "tvCinemaDownload": "Scarica",
-  "tvCinemaDownloadError": "Download non riuscito",
+  "tvCinemaDownloadError": "Il download non è terminato.",
   "tvCinemaDownloadPaused": "In pausa · {pct} %",
   "@tvCinemaDownloadPaused": {
     "placeholders": {
@@ -2328,7 +2328,7 @@
     }
   },
   "tvCinemaDownloads": "I miei download",
-  "tvCinemaEmptyCategory": "Ancora niente qui.",
+  "tvCinemaEmptyCategory": "In questa riga non c'è ancora nulla.",
   "tvCinemaEpisode": "Episodio {n}",
   "@tvCinemaEpisode": {
     "placeholders": {
@@ -2461,7 +2461,7 @@
   "tvCinemaSeasonQueue": "{count, plural, =0{Stagione in download} =1{1 episodio in coda} other{{count} episodi in coda}}",
   "tvPlayerLoading": "Caricamento del canale…",
   "tvPlayerFatalDown": "Questo canale non risponde in questo momento.",
-  "tvPlayerFatalEmpty": "Questo canale è vuoto o bloccato dalla sorgente.",
+  "tvPlayerFatalEmpty": "Questo canale non è disponibile dalla fonte in questo momento.",
   "tvPlayerFatalNav": "Su / Giù: un altro canale",
   "tvSearchPrompt": "Scrivi un nome con la tastiera. Freccia destra: i risultati.",
   "tvSearchCount": "{count, plural, =1{1 risultato} other{{count} risultati}}",
@@ -2475,7 +2475,7 @@
   "tvVoiceFailed": "Non ho capito. Riprova, o usa la tastiera.",
   "tvVoiceBusy": "Il microfono è già in uso. Riprova tra un attimo.",
   "tvVoiceTonightTitle": "Stasera in TV",
-  "tvVoiceTonightEmpty": "La guida non ha nulla per stasera. Aggiungi un indirizzo EPG alla lista e riprova.",
+  "tvVoiceTonightEmpty": "Non c'è nulla in programma per stasera. Aggiungi un indirizzo della guida a questa lista e riprova.",
   "tvVoiceKindChannel": "Canale",
   "tvVoiceKindMovie": "Film",
   "tvVoiceKindSeries": "Serie",
@@ -2635,7 +2635,7 @@
   "tvListRejectedHelp": "Il fornitore ha rifiutato questa lista. Controlla le credenziali.",
   "tvCodeInactive": "Codice non attivato",
   "tvCodeInactiveHelp": "Il codice di questa TV non è attivato. Attivalo nel pannello e attendi qualche secondo.",
-  "tvSourcesEmpty": "Ancora nessuna fonte.\nAggiungi un link M3U, un account Xtream o un link del lettore.",
+  "tvSourcesEmpty": "Nessuna fonte per ora.\nAggiungi un link M3U, un account Xtream o un link del lettore.",
   "tvRecordingCloseFailed": "Impossibile chiudere la registrazione. Il file potrebbe essere incompleto.",
   "tvFromStart": "Dall’inizio",
   "tvFollow": "Segui",
@@ -2677,7 +2677,7 @@
   "tvLegalLead": "Questa app è un lettore. Non vende né fornisce canali o link. Su/giù per scorrere, Indietro per uscire.",
   "tvAudioSpectrumOn": "Spettro: misurazione attiva",
   "tvAudioSpectrumOff": "Spettro: disattivato",
-  "tvAudioFfmpegRetry": "FFmpeg: riprova",
+  "tvAudioFfmpegRetry": "Riprova l'immagine",
   "tvAudioFfmpegDefault": "FFmpeg: predefinito",
   "tvAudioAacTest": "AAC dispositivo: prova",
   "tvAudioAacOff": "AAC dispositivo: disattivato",
@@ -2719,7 +2719,7 @@
   "tvDiagPlayerBusy": "Riproduzione a schermo intero attiva: test saltato, un solo lettore",
   "tvDiagPlayerOpening": "Apertura test ExoPlayer…",
   "tvDiagFrameOk": "Primo fotogramma decodificato e visualizzato",
-  "tvDiagPlayerError": "ExoPlayer ha restituito un errore",
+  "tvDiagPlayerError": "La riproduzione si è fermata su questo flusso.",
   "tvDiagFrameTimeout": "Nessun fotogramma entro 8 s",
   "tvDiagRunning": "DIAGNOSTICA IN CORSO…",
   "tvDiagPassed": "RIPRODUZIONE SUL DISPOSITIVO VERIFICATA",
@@ -2820,8 +2820,8 @@
   "tvChannelLoadingHelp": "I canali appariranno al termine del caricamento.",
   "tvChannelWaitingTitle": "In attesa della tua lista",
   "tvChannelWaitingHelp": "Aggiungi la tua lista o chiedi al fornitore di inviarla a questo dispositivo.",
-  "tvChannelEmptyTitle": "Nessun canale visualizzato",
-  "tvChannelEmptyHelp": "La lista è stata caricata. Verifica i filtri o apri Film/Serie.",
+  "tvChannelEmptyTitle": "Nessun canale in questa vista",
+  "tvChannelEmptyHelp": "La lista c'è. Regola i filtri, oppure apri Film e Serie.",
   "tvChannelSourceFailedTitle": "Impossibile caricare questa lista",
   "tvChannelSourceFailedHelp": "Verifica il collegamento o le credenziali della lista e riprova.",
   "tvChannelNetworkHelp": "Impossibile raggiungere il server. Verifica la connessione e riprova.",

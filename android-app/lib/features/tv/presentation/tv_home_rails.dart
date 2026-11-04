@@ -296,14 +296,13 @@ class _Rail extends StatelessWidget {
                 color: TvAppTokens.of(context).accentBright,
               ),
             Text(
-              label.toUpperCase(),
+              label,
               style: TvAppTokens.of(context).ui(
-                TvDimens.caption,
-                weight: FontWeight.w800,
+                TvDimens.titleS,
+                weight: FontWeight.w700,
                 color: config?.featured == true
                     ? TvAppTokens.of(context).accentBright
-                    : TvAppTokens.of(context).mutedDim,
-                spacing: 1.4,
+                    : TvAppTokens.of(context).text,
               ),
             ),
             if (config?.ribbon.trim().isNotEmpty == true)

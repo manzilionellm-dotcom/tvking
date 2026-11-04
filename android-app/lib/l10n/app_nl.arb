@@ -1951,7 +1951,7 @@
   "tvNavGuide": "Gids",
   "tvNavSearch": "Zoeken",
   "tvNavSettings": "Instellingen",
-  "tvComingSoon": "Binnenkort beschikbaar. Deze sectie komt er heel snel aan.",
+  "tvComingSoon": "Deze sectie is onderweg.",
   "tvEpgNow": "Nu",
   "@tvEpgNow": {
     "description": "Étiquette du programme en cours (aperçu Direct)"
@@ -1993,11 +1993,11 @@
   "tvFieldUser": "Gebruikersnaam",
   "tvFieldPass": "Wachtwoord",
   "tvAddListError": "Vul de server, gebruikersnaam en het wachtwoord in.",
-  "tvConnectError": "Verbinden mislukt. Controleer de gegevens.",
+  "tvConnectError": "Deze bron gaat niet open. Controleer het adres en probeer opnieuw.",
   "tvConnecting": "Verbinden…",
   "tvAddListValidate": "Bevestigen en mijn lijst laden",
   "tvSearchingChannels": "Je zenders zoeken…",
-  "tvRetry": "Opnieuw proberen",
+  "tvRetry": "Nog eens proberen",
   "tvSourceInvalid": "Abonnement ontvangen maar geweigerd — controleer de inloggegevens in het panel.",
   "tvQuitTitle": "Zuno afsluiten?",
   "tvQuitMessage": "Herstart om je zenders te vernieuwen, of sluit de app af.",
@@ -2016,7 +2016,7 @@
   "tvAddM3uBusy": "Toevoegen…",
   "tvAddM3uValidate": "Lijst toevoegen",
   "tvAddM3uInvalidUrl": "Voer een geldige M3U-URL in (http…).",
-  "tvAddM3uFailed": "Mislukt: lijst onbereikbaar of leeg.",
+  "tvAddM3uFailed": "Deze lijst gaat niet open. Het adres is misschien onbereikbaar, of het bestand is leeg.",
   "tvMyM3uList": "Mijn M3U-lijst",
   "tvBlackBoxTitle": "Zwarte doos",
   "tvBlackBoxSubtitle": "Technisch logboek van de app (v{version}). Bij een onverwachte afsluiting staat de reden hier.",
@@ -2275,7 +2275,7 @@
   "tvRecordingNotFoundBody": "Het bestand van deze opname ontbreekt of is leeg.",
   "tvPlaybackImpossibleBody": "Dit bestand kon niet worden gedecodeerd.",
   "tvRecordingStarted": "Bezig met opnemen…",
-  "tvRecordingError": "Opnamefout",
+  "tvRecordingError": "De opname is niet gestart.",
   "tvRecordingSaved": "Opname opgeslagen ({size})",
   "@tvRecordingSaved": {
     "placeholders": {
@@ -2284,7 +2284,7 @@
       }
     }
   },
-  "tvRecordingEmpty": "Lege opname",
+  "tvRecordingEmpty": "Deze opname heeft nog geen beeld.",
   "tvRemovedFromFavorites": "Verwijderd uit favorieten",
   "tvAddedToFavorites": "Toegevoegd aan favorieten ❤",
   "tvCinemaAllLanguages": "Alle talen",
@@ -2309,7 +2309,7 @@
     }
   },
   "tvCinemaDownload": "Downloaden",
-  "tvCinemaDownloadError": "Download mislukt",
+  "tvCinemaDownloadError": "De download is niet afgerond.",
   "tvCinemaDownloadPaused": "Gepauzeerd · {pct} %",
   "@tvCinemaDownloadPaused": {
     "placeholders": {
@@ -2328,7 +2328,7 @@
     }
   },
   "tvCinemaDownloads": "Mijn downloads",
-  "tvCinemaEmptyCategory": "Hier is nog niets.",
+  "tvCinemaEmptyCategory": "In deze rij staat nog niets.",
   "tvCinemaEpisode": "Aflevering {n}",
   "@tvCinemaEpisode": {
     "placeholders": {
@@ -2461,7 +2461,7 @@
   "tvCinemaSeasonQueue": "{count, plural, =0{Seizoen wordt gedownload} =1{1 aflevering in wachtrij} other{{count} afleveringen in wachtrij}}",
   "tvPlayerLoading": "Zender laden…",
   "tvPlayerFatalDown": "Deze zender reageert nu niet.",
-  "tvPlayerFatalEmpty": "Deze zender is leeg of geblokkeerd door de bron.",
+  "tvPlayerFatalEmpty": "Deze zender is nu niet beschikbaar bij de bron.",
   "tvPlayerFatalNav": "Omhoog / Omlaag: andere zender",
   "tvSearchPrompt": "Typ een naam met het toetsenbord. Pijl rechts: de resultaten.",
   "tvSearchCount": "{count, plural, =1{1 resultaat} other{{count} resultaten}}",
@@ -2475,7 +2475,7 @@
   "tvVoiceFailed": "Ik heb het niet verstaan. Probeer opnieuw, of typ.",
   "tvVoiceBusy": "De microfoon is al bezig. Probeer zo opnieuw.",
   "tvVoiceTonightTitle": "Vanavond op tv",
-  "tvVoiceTonightEmpty": "De gids heeft vanavond niets. Voeg een EPG-adres toe aan je lijst en probeer opnieuw.",
+  "tvVoiceTonightEmpty": "Er staat niets voor vanavond. Voeg een gidsadres toe aan deze lijst en probeer opnieuw.",
   "tvVoiceKindChannel": "Zender",
   "tvVoiceKindMovie": "Film",
   "tvVoiceKindSeries": "Serie",
@@ -2489,7 +2489,7 @@
   "tvDeleteSourceFailed": "Lokaal verwijderen is mislukt. Probeer het zo opnieuw.",
   "tvCinemaOfflineTitle": "Catalogus niet beschikbaar",
   "tvCinemaOfflineBody": "Er is niets op de tv opgeslagen en de server reageert niet. Controleer de verbinding en probeer het opnieuw.",
-  "tvCinemaRetry": "Opnieuw proberen",
+  "tvCinemaRetry": "Nog eens proberen",
   "tvCinemaUpdated": "Bijgewerkt {when}",
   "tvCinemaAgeJustNow": "zojuist",
   "tvCinemaAgeMinutes": "{n} min geleden",
@@ -2635,7 +2635,7 @@
   "tvListRejectedHelp": "De aanbieder heeft deze lijst geweigerd. Controleer de inloggegevens.",
   "tvCodeInactive": "Code niet geactiveerd",
   "tvCodeInactiveHelp": "De code van deze tv is niet geactiveerd. Activeer die in het paneel en wacht enkele seconden.",
-  "tvSourcesEmpty": "Nog geen bronnen.\nVoeg een M3U-link, Xtream-account of spelerlink toe.",
+  "tvSourcesEmpty": "Nog geen bron.\nVoeg een M3U-link, een Xtream-account of een spelerlink toe.",
   "tvRecordingCloseFailed": "De opname kon niet worden afgesloten. Het bestand is mogelijk onvolledig.",
   "tvFromStart": "Vanaf het begin",
   "tvFollow": "Volgen",
@@ -2677,7 +2677,7 @@
   "tvLegalLead": "Deze app is een speler. Ze verkoopt of levert geen zenders of links. Omhoog/omlaag om te scrollen, Terug om af te sluiten.",
   "tvAudioSpectrumOn": "Spectrum: meting aan",
   "tvAudioSpectrumOff": "Spectrum: uit",
-  "tvAudioFfmpegRetry": "FFmpeg: opnieuw proberen",
+  "tvAudioFfmpegRetry": "Beeld opnieuw proberen",
   "tvAudioFfmpegDefault": "FFmpeg: standaard",
   "tvAudioAacTest": "Apparaat-AAC: test",
   "tvAudioAacOff": "Apparaat-AAC: uit",
@@ -2719,7 +2719,7 @@
   "tvDiagPlayerBusy": "Afspelen op volledig scherm actief: test overgeslagen, één speler",
   "tvDiagPlayerOpening": "ExoPlayer-test openen…",
   "tvDiagFrameOk": "Eerste beeld gedecodeerd en getoond",
-  "tvDiagPlayerError": "ExoPlayer gaf een fout",
+  "tvDiagPlayerError": "Het afspelen is gestopt bij deze stream.",
   "tvDiagFrameTimeout": "Geen beeld binnen 8 s",
   "tvDiagRunning": "DIAGNOSE BEZIG…",
   "tvDiagPassed": "AFSPELEN OP HET APPARAAT BEVESTIGD",
@@ -2820,8 +2820,8 @@
   "tvChannelLoadingHelp": "De zenders verschijnen zodra het laden klaar is.",
   "tvChannelWaitingTitle": "Wachten op je lijst",
   "tvChannelWaitingHelp": "Voeg je lijst toe of vraag je aanbieder deze naar dit apparaat te sturen.",
-  "tvChannelEmptyTitle": "Geen zenders weergegeven",
-  "tvChannelEmptyHelp": "De lijst is geladen. Controleer de filters of open Films/Series.",
+  "tvChannelEmptyTitle": "Geen zenders in deze weergave",
+  "tvChannelEmptyHelp": "De lijst is er. Pas de filters aan, of open Films en Series.",
   "tvChannelSourceFailedTitle": "Deze lijst kan niet worden geladen",
   "tvChannelSourceFailedHelp": "Controleer de link of inloggegevens van je lijst en probeer het opnieuw.",
   "tvChannelNetworkHelp": "De server is niet bereikbaar. Controleer je verbinding en probeer het opnieuw.",

@@ -14,7 +14,6 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/app/repair_flags.dart';
@@ -39,6 +38,7 @@ import '../core/tv_focusable.dart';
 import '../core/tv_page_transitions.dart';
 import '../core/tv_tokens.dart';
 import '../core/tv_app_tokens.dart';
+import '../core/tv_type.dart';
 import '../data/greeting_repository.dart';
 import 'removed_list_prompt.dart';
 import 'tv_activation_screen.dart';
@@ -111,9 +111,8 @@ class TvApp extends StatelessWidget {
           // code langue seul, repli anglais). Voir LocaleRepository.resolve.
           localeListResolutionCallback: LocaleRepository.resolve,
           theme: base.copyWith(
-            // Police par défaut = Inter (Maison Noir) sur TOUT le texte.
-            textTheme: GoogleFonts.interTextTheme(base.textTheme)
-                .apply(bodyColor: palette.text, displayColor: palette.text),
+            // Échelle TV (tv_type.dart), pas le TextTheme Roboto de Material.
+            textTheme: TvType.material(palette.text),
             // Coupe TOUT effet tactile (hover/splash souris) — D-pad only.
             splashFactory: NoSplash.splashFactory,
             hoverColor: Colors.transparent,
@@ -904,7 +903,9 @@ class _NavItem extends StatelessWidget {
                     overflow: TextOverflow.fade,
                     style: TvAppTokens.of(context).ui(
                       19,
-                      weight: selected ? FontWeight.w600 : FontWeight.w500,
+                      // 700 / 500 : les deux graisses lisibles qui restent
+                      // distinctes une fois ramenées à l'échelle 400-500-700.
+                      weight: selected ? FontWeight.w700 : FontWeight.w500,
                       color: fg,
                     ),
                   ),

@@ -1953,7 +1953,7 @@
   "tvNavGuide": "Guide",
   "tvNavSearch": "Recherche",
   "tvNavSettings": "Réglages",
-  "tvComingSoon": "Bientôt disponible. Cette section arrive très vite.",
+  "tvComingSoon": "Cette section arrive.",
   "tvEpgNow": "Maintenant",
   "@tvEpgNow": {
     "description": "Étiquette du programme en cours (aperçu Direct)"
@@ -1995,11 +1995,11 @@
   "tvFieldUser": "Identifiant",
   "tvFieldPass": "Mot de passe",
   "tvAddListError": "Remplis le serveur, l'identifiant et le mot de passe.",
-  "tvConnectError": "Connexion impossible. Vérifie les infos.",
+  "tvConnectError": "Cette source ne s'ouvre pas. Vérifie l'adresse, puis réessaie.",
   "tvConnecting": "Connexion…",
   "tvAddListValidate": "Valider et charger ma liste",
   "tvSearchingChannels": "Recherche de tes chaînes…",
-  "tvRetry": "Réessayer",
+  "tvRetry": "Essayer de nouveau",
   "tvSourceInvalid": "Abonnement reçu mais refusé — vérifie les identifiants dans le panel.",
   "tvQuitTitle": "Quitter Zuno ?",
   "tvQuitMessage": "Redémarre pour rafraîchir tes chaînes, ou quitte l'application.",
@@ -2018,7 +2018,7 @@
   "tvAddM3uBusy": "Ajout…",
   "tvAddM3uValidate": "Ajouter la liste",
   "tvAddM3uInvalidUrl": "Entre une URL M3U valide (http…).",
-  "tvAddM3uFailed": "Échec : liste injoignable ou vide.",
+  "tvAddM3uFailed": "Cette liste ne s'ouvre pas. L'adresse est peut-être injoignable, ou le fichier est vide.",
   "tvMyM3uList": "Ma liste M3U",
   "tvBlackBoxTitle": "Boîte noire",
   "tvBlackBoxSubtitle": "Journal technique de l'application (v{version}). En cas de fermeture inattendue, la raison est ici.",
@@ -2338,7 +2338,7 @@
   "tvRecordingNotFoundBody": "Le fichier de cet enregistrement est introuvable ou vide.",
   "tvPlaybackImpossibleBody": "Ce fichier n'a pas pu être décodé.",
   "tvRecordingStarted": "Enregistrement en cours…",
-  "tvRecordingError": "Erreur enregistrement",
+  "tvRecordingError": "L'enregistrement n'a pas démarré.",
   "tvRecordingSaved": "Enregistrement sauvegardé ({size})",
   "@tvRecordingSaved": {
     "placeholders": {
@@ -2347,7 +2347,7 @@
       }
     }
   },
-  "tvRecordingEmpty": "Enregistrement vide",
+  "tvRecordingEmpty": "Cet enregistrement n'a pas encore d'image.",
   "tvRemovedFromFavorites": "Retiré des favoris",
   "tvAddedToFavorites": "Ajouté aux favoris ❤",
   "tvCinemaAllLanguages": "Toutes les langues",
@@ -2372,7 +2372,7 @@
     }
   },
   "tvCinemaDownload": "Télécharger",
-  "tvCinemaDownloadError": "Échec du téléchargement",
+  "tvCinemaDownloadError": "Le téléchargement ne s'est pas terminé.",
   "tvCinemaDownloadPaused": "En pause · {pct} %",
   "@tvCinemaDownloadPaused": {
     "placeholders": {
@@ -2391,7 +2391,7 @@
     }
   },
   "tvCinemaDownloads": "Mes téléchargements",
-  "tvCinemaEmptyCategory": "Rien ici pour le moment.",
+  "tvCinemaEmptyCategory": "Cette rangée est encore vide.",
   "tvCinemaEpisode": "Épisode {n}",
   "@tvCinemaEpisode": {
     "placeholders": {
@@ -2434,7 +2434,7 @@
   "tvCinemaNoSourceBody": "Les films et séries viennent de ton abonnement Xtream. Ajoute-le dans Serveur, ou demande à ton revendeur de l'activer.",
   "tvCinemaOfflineTitle": "Catalogue indisponible",
   "tvCinemaOfflineBody": "Rien n'est enregistré sur la box, et le serveur ne répond pas. Vérifie la connexion, puis réessaie.",
-  "tvCinemaRetry": "Réessayer",
+  "tvCinemaRetry": "Essayer de nouveau",
   "tvCinemaUpdated": "Mis à jour {when}",
   "@tvCinemaUpdated": {
     "placeholders": {
@@ -2576,7 +2576,7 @@
   },
   "tvPlayerLoading": "Chargement de la chaîne…",
   "tvPlayerFatalDown": "Cette chaîne ne répond pas pour le moment.",
-  "tvPlayerFatalEmpty": "Cette chaîne est vide ou bloquée par la source.",
+  "tvPlayerFatalEmpty": "Cette chaîne n'est pas disponible auprès de la source pour le moment.",
   "tvPlayerFatalNav": "Haut / Bas : une autre chaîne",
   "tvSearchPrompt": "Écris un nom avec le clavier. Flèche droite : les résultats.",
   "tvSearchCount": "{count, plural, =1{1 résultat} other{{count} résultats}}",
@@ -2621,7 +2621,7 @@
   "tvVoiceFailed": "Je n'ai pas compris. Réessaie, ou tape au clavier.",
   "tvVoiceBusy": "Le micro est déjà en cours. Réessaie dans un instant.",
   "tvVoiceTonightTitle": "Ce soir à la télé",
-  "tvVoiceTonightEmpty": "Le guide n'a rien pour ce soir. Ajoute une adresse EPG à ta liste, puis réessaie.",
+  "tvVoiceTonightEmpty": "Rien n'est annoncé pour ce soir. Ajoute une adresse de guide à cette liste, puis réessaie.",
   "tvVoiceKindChannel": "Chaîne",
   "tvVoiceKindMovie": "Film",
   "tvVoiceKindSeries": "Série",
@@ -2823,7 +2823,7 @@
   "tvListRejectedHelp": "Le fournisseur n'accepte pas cette liste. Vérifie les identifiants.",
   "tvCodeInactive": "Code pas activé",
   "tvCodeInactiveHelp": "Le code de cette box n'est pas activé. Active-le dans le panel, puis attends quelques secondes.",
-  "tvSourcesEmpty": "Aucune source pour le moment.\nAjoute un lien M3U, un compte Xtream ou un lien lecteur.",
+  "tvSourcesEmpty": "Aucune source pour l'instant.\nAjoute un lien M3U, un compte Xtream ou un lien de lecteur.",
   "tvRecordingCloseFailed": "L'enregistrement n'a pas pu être fermé. Le fichier peut être incomplet.",
   "tvFromStart": "Début",
   "tvFollow": "Suivre",
@@ -2879,7 +2879,7 @@
   "tvLegalLead": "Cette application est un lecteur. Elle ne vend ni ne fournit aucune chaîne ni lien. Haut/Bas pour faire défiler, Retour pour quitter.",
   "tvAudioSpectrumOn": "Spectre : mesuré",
   "tvAudioSpectrumOff": "Spectre : coupé",
-  "tvAudioFfmpegRetry": "FFmpeg : réessayer",
+  "tvAudioFfmpegRetry": "Relancer l'image",
   "tvAudioFfmpegDefault": "FFmpeg : défaut",
   "tvAudioAacTest": "Box AAC : essai",
   "tvAudioAacOff": "Box AAC : coupé",
@@ -2921,7 +2921,7 @@
   "tvDiagPlayerBusy": "plein écran en cours : sonde non lancée (un seul lecteur)",
   "tvDiagPlayerOpening": "ouverture sonde ExoPlayer…",
   "tvDiagFrameOk": "1re image décodée et affichée",
-  "tvDiagPlayerError": "ExoPlayer a renvoyé une erreur",
+  "tvDiagPlayerError": "La lecture s'est arrêtée sur ce flux.",
   "tvDiagFrameTimeout": "aucune image en 8 s",
   "tvDiagRunning": "DIAGNOSTIC EN COURS…",
   "tvDiagPassed": "PIVOT ON-DEVICE VALIDÉ",
@@ -3128,8 +3128,8 @@
   "tvChannelLoadingHelp": "Les chaînes apparaîtront dès que leur chargement sera terminé.",
   "tvChannelWaitingTitle": "En attente de votre liste",
   "tvChannelWaitingHelp": "Ajoutez votre liste ou demandez à votre fournisseur de l’envoyer à cet appareil.",
-  "tvChannelEmptyTitle": "Aucune chaîne affichée",
-  "tvChannelEmptyHelp": "La liste a été chargée. Vérifiez les filtres ou consultez Films/Séries.",
+  "tvChannelEmptyTitle": "Aucune chaîne dans cette vue",
+  "tvChannelEmptyHelp": "La liste est là. Ajuste les filtres, ou ouvre Films et Séries.",
   "tvChannelSourceFailedTitle": "Impossible de charger cette liste",
   "tvChannelSourceFailedHelp": "Vérifiez le lien ou les identifiants de votre liste, puis réessayez.",
   "tvChannelNetworkHelp": "Impossible de joindre le serveur. Vérifiez votre connexion, puis réessayez.",

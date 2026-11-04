@@ -194,10 +194,10 @@ class _SourceRow extends StatelessWidget {
             ),
             child: Text(
               _xtream ? 'XTREAM' : 'M3U',
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 0.5,
+              style: TvAppTokens.of(context).ui(
+                TvDimens.caption,
+                weight: FontWeight.w700,
+                spacing: 0.5,
                 color: badge,
               ),
             ),
