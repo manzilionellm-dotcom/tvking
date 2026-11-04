@@ -8,6 +8,7 @@ import '../core/tv_ambient_director.dart';
 import '../core/tv_comfort.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_app_tokens.dart';
+import 'tv_starfield.dart';
 
 class TvShell extends StatefulWidget {
   const TvShell({super.key, required this.child, this.applySafeArea = true});
@@ -47,7 +48,9 @@ class _TvShellState extends State<TvShell> with SingleTickerProviderStateMixin {
   }
 
   Gradient _gradient(TvAppTokens palette, double t) {
-    if (palette.light) return palette.bgGradient;
+    // Le halo est calculé sur le soir confort ; Phantom Black garde
+    // son propre fond, sans l'or du soir.
+    if (palette.light || palette.ghost) return palette.bgGradient;
     final TvAmbientLook evening = TvAmbientLook(
       peak: TvComfortPalette.of(palette.period).ambientPeak,
       bg: palette.bg,
@@ -82,17 +85,23 @@ class _TvShellState extends State<TvShell> with SingleTickerProviderStateMixin {
           child: child,
         );
       },
-      child: Material(
-        type: MaterialType.transparency,
-        child: widget.applySafeArea
-            ? Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: TvDimens.safeH,
-                  vertical: TvDimens.safeV,
-                ),
-                child: widget.child,
-              )
-            : widget.child,
+      child: Stack(
+        fit: StackFit.expand,
+        children: <Widget>[
+          if (palette.ghost) const Positioned.fill(child: PhantomWeave()),
+          Material(
+            type: MaterialType.transparency,
+            child: widget.applySafeArea
+                ? Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: TvDimens.safeH,
+                      vertical: TvDimens.safeV,
+                    ),
+                    child: widget.child,
+                  )
+                : widget.child,
+          ),
+        ],
       ),
     );
   }

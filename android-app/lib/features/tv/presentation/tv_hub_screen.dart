@@ -96,6 +96,7 @@ import 'tv_components.dart';
 import 'tv_cinematic_home.dart';
 import 'tv_epg_preview_screen.dart';
 import 'tv_glass.dart';
+import 'tv_starfield.dart';
 import 'tv_tonight.dart';
 import 'tv_live_screen.dart';
 import 'tv_player_screen.dart';
@@ -1390,19 +1391,30 @@ class _TvHubScreenState extends State<TvHubScreen> {
                       // Obsidienne de la maquette, pas le gris confort
                       // #121212 : ce fond-là seulement. Le cuivre est
                       // l'accent déjà choisi, très dilué (soirée).
-                      const ColoredBox(color: TvTokens.bg),
+                      ColoredBox(
+                        color: TvAppTokens.of(context).ghost
+                            ? TvAppTokens.of(context).bg
+                            : TvTokens.bg,
+                      ),
                       DecoratedBox(
                         decoration: BoxDecoration(
                           gradient: RadialGradient(
                             center: const Alignment(-0.72, -0.55),
                             radius: 1.15,
                             colors: <Color>[
-                              TvTokens.accent.withValues(alpha: 0.07),
-                              TvTokens.bg,
+                              (TvAppTokens.of(context).ghost
+                                      ? TvAppTokens.of(context).accent
+                                      : TvTokens.accent)
+                                  .withValues(alpha: 0.06),
+                              TvAppTokens.of(context).ghost
+                                  ? TvAppTokens.of(context).bg
+                                  : TvTokens.bg,
                             ],
                           ),
                         ),
                       ),
+                      if (TvAppTokens.of(context).ghost)
+                        const Positioned.fill(child: PhantomWeave()),
                       Padding(
                         padding: const EdgeInsets.symmetric(
                           horizontal: TvDimens.safeH,

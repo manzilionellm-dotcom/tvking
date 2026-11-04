@@ -39,6 +39,7 @@ import '../core/tv_page_transitions.dart';
 import '../core/tv_tokens.dart';
 import '../core/tv_app_tokens.dart';
 import '../core/tv_comfort_schedule.dart';
+import '../core/tv_look.dart';
 import '../core/tv_type.dart';
 import '../data/greeting_repository.dart';
 import 'removed_list_prompt.dart';
@@ -79,6 +80,7 @@ class TvApp extends StatelessWidget {
         // Le moment (soir fixe, ou l'heure si la personne l'a demandé)
         // recolore les surfaces. Pas la vidéo.
         TvComfortSchedule.instance,
+        TvLook.instance,
       ]),
       builder: (BuildContext context, _) {
         final settings = RemoteThemeRepository.current.value;
@@ -86,6 +88,7 @@ class TvApp extends StatelessWidget {
           light: settings.mode == ThemeMode.light,
           remoteAccent: settings.accent,
           period: TvComfortSchedule.instance.period,
+          ghost: TvLook.instance.ghost,
         );
         final scheme = palette.light
             ? ColorScheme.light(

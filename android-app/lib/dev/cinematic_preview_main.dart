@@ -8,12 +8,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../core/app/box_memory_budget.dart';
 import '../core/theme/bundled_fonts.dart';
 import '../features/channels/domain/channel.dart';
 import '../features/followed/domain/show_clock.dart';
 import '../features/tv/core/tv_app_tokens.dart';
 import '../features/tv/core/tv_dimens.dart';
+import '../features/tv/core/tv_ghost.dart';
 import '../features/tv/core/tv_tokens.dart';
+import '../features/tv/presentation/tv_starfield.dart';
 import '../features/tv/presentation/tv_cinematic_home.dart';
 import '../features/tv/presentation/tv_shell.dart';
 import '../features/tv/presentation/tv_tonight.dart';
@@ -22,6 +25,9 @@ import '../l10n/generated/app_localizations.dart';
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   configureTvFontLoading();
+  // L'aperçu montre le reflet. Les box ≤ 2 Go ne le jouent pas :
+  // le test tv_ghost_test le verrouille.
+  BoxMemoryBudget.tier = BoxRamTier.roomy;
   SystemChrome.setPreferredOrientations(<DeviceOrientation>[
     DeviceOrientation.landscapeLeft,
     DeviceOrientation.landscapeRight,
@@ -103,36 +109,35 @@ class _StageState extends State<_Stage> {
     return Material(
       type: MaterialType.transparency,
       child: _after
-          ? Stack(
-              fit: StackFit.expand,
-              children: <Widget>[
-                const ColoredBox(color: TvTokens.bg),
-                DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: RadialGradient(
-                      center: const Alignment(-0.72, -0.55),
-                      radius: 1.15,
-                      colors: <Color>[
-                        TvTokens.accent.withValues(alpha: 0.07),
-                        TvTokens.bg,
-                      ],
+          ? Theme(
+              data: Theme.of(context).copyWith(
+                extensions: const <ThemeExtension<dynamic>>[
+                  TvAppTokens(ghost: true),
+                ],
+              ),
+              child: Stack(
+                fit: StackFit.expand,
+                children: <Widget>[
+                  const ColoredBox(color: TvGhost.bg),
+                  const Positioned.fill(child: PhantomWeave()),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 48,
+                      vertical: 28,
+                    ),
+                    child: TvCinematicHome(
+                      board: _board,
+                      blur: false,
+                      onPlay: (_) {},
+                      onLive: () {},
+                      onFilms: () {},
+                      onSeries: () {},
+                      onServer: () {},
+                      onSettings: () {},
                     ),
                   ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 28),
-                  child: TvCinematicHome(
-                    board: _board,
-                    blur: false,
-                    onPlay: (_) {},
-                    onLive: () {},
-                    onFilms: () {},
-                    onSeries: () {},
-                    onServer: () {},
-                    onSettings: () {},
-                  ),
-                ),
-              ],
+                ],
+              ),
             )
           : const TvShell(child: _PreviousTiles()),
     );

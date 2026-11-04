@@ -19,7 +19,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../core/app/box_memory_budget.dart';
+import '../presentation/tv_card_shine.dart';
 import 'tv_dimens.dart';
+import 'tv_ghost.dart';
 import 'tv_app_tokens.dart';
 
 /// Intensité du grossissement au focus selon la taille de l'élément.
@@ -73,11 +75,35 @@ class TvFocusable extends StatefulWidget {
   State<TvFocusable> createState() => _TvFocusableState();
 }
 
-class _TvFocusableState extends State<TvFocusable> {
+class _TvFocusableState extends State<TvFocusable>
+    with TickerProviderStateMixin {
   late final FocusNode _node = widget.focusNode ?? FocusNode();
   bool _ownsNode = false;
   bool _focused = false;
   bool _pressed = false;
+  AnimationController? _sweep;
+  AnimationController? _pulse;
+
+  /// Reflet et onde : thème Ghost, et seulement au-dessus de 2 Go.
+  /// En dessous, le contour déjà peint suffit (PR fluidité).
+  bool get _shine {
+    if (!TvAppTokens.of(context).ghost) return false;
+    return BoxMemoryBudget.paintFocusGlow;
+  }
+
+  void _playSweep() {
+    if (!_shine) return;
+    _sweep ??= AnimationController(vsync: this, duration: TvGhost.shine);
+    _sweep!.forward(from: 0);
+    setState(() {});
+  }
+
+  void _playPulse() {
+    if (!_shine) return;
+    _pulse ??= AnimationController(vsync: this, duration: TvGhost.pulse);
+    _pulse!.forward(from: 0);
+    setState(() {});
+  }
 
   @override
   void initState() {
@@ -87,6 +113,8 @@ class _TvFocusableState extends State<TvFocusable> {
 
   @override
   void dispose() {
+    _sweep?.dispose();
+    _pulse?.dispose();
     if (_ownsNode) _node.dispose();
     super.dispose();
   }
@@ -115,7 +143,10 @@ class _TvFocusableState extends State<TvFocusable> {
     if (!widget.enabled) return KeyEventResult.ignored;
     if (!_isSelectKey(event.logicalKey)) return KeyEventResult.ignored;
     if (event is KeyDownEvent) {
-      if (!_pressed) setState(() => _pressed = true);
+      if (!_pressed) {
+        setState(() => _pressed = true);
+        _playPulse();
+      }
       return KeyEventResult.handled;
     }
     if (event is KeyUpEvent) {
@@ -171,10 +202,12 @@ class _TvFocusableState extends State<TvFocusable> {
         canRequestFocus: widget.enabled,
         onKeyEvent: _onKey,
         onFocusChange: (bool f) {
+          final bool gained = f && !_focused;
           setState(() {
             _focused = f;
             if (!f) _pressed = false;
           });
+          if (gained) _playSweep();
           widget.onFocusChange?.call(f);
         },
         child: AnimatedScale(
@@ -240,6 +273,20 @@ class _TvFocusableState extends State<TvFocusable> {
                   // Le contenu (logo, texte) ne se redessine pas quand seule
                   // la bordure ou l'échelle bouge.
                   RepaintBoundary(child: widget.child),
+                  if (_sweep != null || _pulse != null)
+                    Positioned.fill(
+                      child: AnimatedBuilder(
+                        animation: Listenable.merge(<Listenable>[
+                          if (_sweep != null) _sweep!,
+                          if (_pulse != null) _pulse!,
+                        ]),
+                        builder: (BuildContext context, _) => TvCardShine(
+                          sweep: _sweep?.value ?? 0,
+                          pulse: _pulse?.value ?? 0,
+                          radius: radius,
+                        ),
+                      ),
+                    ),
                   if (_pressed && active)
                     Positioned.fill(
                       child: IgnorePointer(

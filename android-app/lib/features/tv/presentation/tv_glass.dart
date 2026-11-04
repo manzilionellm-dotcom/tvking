@@ -15,6 +15,9 @@ import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../core/app/box_memory_budget.dart';
+import '../core/tv_app_tokens.dart';
+import '../core/tv_ghost.dart';
 import '../core/tv_tokens.dart';
 
 const MethodChannel _glassDevice =
@@ -75,7 +78,10 @@ class TvGlassPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final Color edge = TvTokens.accent.withValues(alpha: focused ? 0.72 : 0.26);
+    final bool phantom = TvAppTokens.of(context).ghost;
+    final Color edge = phantom
+        ? TvGhost.platinum.withValues(alpha: focused ? 0.92 : 0.42)
+        : TvTokens.accent.withValues(alpha: focused ? 0.72 : 0.26);
     // Aplat : le flou a besoin de transparence. Sans flou, on
     // couvre plus pour que le texte reste lisible sur l'obsidienne.
     final Color fill = TvTokens.bg.withValues(alpha: blur ? 0.42 : 0.86);
@@ -83,7 +89,16 @@ class TvGlassPanel extends StatelessWidget {
       decoration: BoxDecoration(
         color: fill,
         borderRadius: BorderRadius.circular(radius),
-        border: Border.all(color: edge, width: focused ? 1.5 : 1),
+        border: Border.all(color: edge, width: phantom ? 1 : (focused ? 1.5 : 1)),
+        boxShadow: phantom && focused && BoxMemoryBudget.paintFocusGlow
+            ? <BoxShadow>[
+                BoxShadow(
+                  color: TvGhost.ice.withValues(alpha: 0.22),
+                  blurRadius: 14,
+                  spreadRadius: -4,
+                ),
+              ]
+            : null,
       ),
       child: Padding(padding: padding, child: child),
     );

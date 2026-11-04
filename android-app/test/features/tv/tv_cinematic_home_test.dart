@@ -33,6 +33,20 @@ WatchEntry _watch(String id, String title, {String? poster}) => WatchEntry(
 void main() {
   setUpAll(() => GoogleFonts.config.allowRuntimeFetching = false);
 
+  test('4K et la note n\'apparaissent que s\'ils sont dans la source', () {
+    expect(streamQualityLabel('Info 4K HDR'), '4K HDR');
+    expect(streamQualityLabel('Docu UHD'), '4K');
+    expect(streamQualityLabel('Film HDR'), 'HDR');
+    expect(streamQualityLabel('VIP 9.9'), isNull);
+    expect(ratingLabel(8.4), '8.4');
+    expect(ratingLabel(null), isNull);
+    expect(ratingLabel(99), isNull);
+    expect(
+      joinCrispMeta(duration: '90 min', quality: streamQualityLabel('x 4K')),
+      '90 min · 4K',
+    );
+  });
+
   test('le flou est réservé aux box au-dessus de 2 Go', () {
     expect(tvGlassBlurAllowed(totalMb: 1024, lowRam: false), isFalse);
     expect(tvGlassBlurAllowed(totalMb: 2048, lowRam: false), isFalse);

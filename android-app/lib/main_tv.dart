@@ -36,6 +36,7 @@ import 'features/tv/core/tv_back_guard.dart';
 import 'features/tv/core/tv_ambient_director.dart';
 import 'features/tv/core/tv_comfort_schedule.dart';
 import 'features/tv/core/tv_glass.dart';
+import 'features/tv/core/tv_look.dart';
 import 'core/notifications/notification_service.dart';
 import 'features/channels/data/recently_watched_repository.dart';
 import 'features/device/data/device_identity.dart';
@@ -212,6 +213,7 @@ Future<void> bootstrapZunoTv({Widget Function(Widget app)? wrap}) async {
   // Flou du verre : seulement si la box a de la RAM. Sinon le voile
   // translucide suffit (pas de BackdropFilter).
   await StartupTrace.step('glass', TvGlassPolicy.load);
+  await StartupTrace.step('look', TvLook.instance.load);
   // Langue des pistes audio (direct, aperçu, film). On la relit si
   // la personne change la langue dans Réglages : le prochain zap
   // prend la nouvelle, sans rouvrir la chaîne en cours.
