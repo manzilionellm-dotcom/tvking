@@ -16,6 +16,7 @@ import '../../device/data/device_identity.dart';
 import '../../subscription/data/remote_activation_watch.dart';
 import '../../subscription/data/subscription_state.dart';
 import '../../pricing/presentation/tv_pricing_card.dart';
+import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
 import '../core/tv_app_tokens.dart';
@@ -195,17 +196,25 @@ class _CopyButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final BorderRadius radius = BorderRadius.circular(TvTokens.rSmall);
     return TvFocusBuilder(
       onSelect: onSelect,
       scale: TvFocusScale.small,
+      borderRadius: radius,
+      showGlow: false,
       builder: (BuildContext context, bool focused) => Container(
         width: 44,
         height: 44,
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: TvAppTokens.of(context).card,
-          border: Border.all(color: focused ? TvAppTokens.of(context).accent : TvAppTokens.of(context).line),
-          borderRadius: BorderRadius.circular(TvTokens.rSmall),
+          border: Border.all(
+            color: focused
+                ? TvAppTokens.of(context).accent
+                : TvAppTokens.of(context).line,
+            width: focused ? TvDimens.focusOutline : 1,
+          ),
+          borderRadius: radius,
         ),
         child: Icon(
           copied ? Icons.check_rounded : Icons.copy_rounded,

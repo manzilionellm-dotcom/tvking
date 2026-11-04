@@ -124,26 +124,66 @@ class TvWhatsAppQr extends StatelessWidget {
 }
 
 /// Logo réel « Zuno » (calligraphie or, fond transparent).
-class TvLogo extends StatelessWidget {
+///
+/// Pose courte (échelle 0,985 → 1, opacité pleine) : le mot reste
+/// visible dès la première image, il ne « disparaît » pas après le
+/// splash natif. Transform seulement, 180 ms, coupé si la box demande
+/// moins d'animations.
+class TvLogo extends StatefulWidget {
   const TvLogo({super.key, this.width = 180});
   final double width;
 
   @override
+  State<TvLogo> createState() => _TvLogoState();
+}
+
+class _TvLogoState extends State<TvLogo> with SingleTickerProviderStateMixin {
+  late final AnimationController _settle = AnimationController(
+    vsync: this,
+    duration: TvDimens.focusAnim,
+  );
+  bool _armed = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_armed) return;
+    _armed = true;
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _settle.value = 1;
+    } else {
+      _settle.forward();
+    }
+  }
+
+  @override
+  void dispose() {
+    _settle.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder(
-      valueListenable: RemoteThemeRepository.current,
-      builder: (context, settings, _) => settings.appName.isEmpty
-          ? Image.asset(_kLogoAsset, width: width, fit: BoxFit.contain)
-          : SizedBox(
-              width: width,
-              child: Text(
-                settings.appName,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TvAppTokens.of(context)
-                    .display(28, color: TvAppTokens.of(context).accentBright),
+    final Animation<double> scale = Tween<double>(begin: 0.985, end: 1).animate(
+      CurvedAnimation(parent: _settle, curve: TvDimens.focusCurve),
+    );
+    return ScaleTransition(
+      scale: scale,
+      child: ValueListenableBuilder(
+        valueListenable: RemoteThemeRepository.current,
+        builder: (context, settings, _) => settings.appName.isEmpty
+            ? Image.asset(_kLogoAsset, width: widget.width, fit: BoxFit.contain)
+            : SizedBox(
+                width: widget.width,
+                child: Text(
+                  settings.appName,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TvAppTokens.of(context)
+                      .display(28, color: TvAppTokens.of(context).accentBright),
+                ),
               ),
-            ),
+      ),
     );
   }
 }
@@ -256,9 +296,13 @@ class TvCtaButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final BorderRadius radius = BorderRadius.circular(TvTokens.rButton);
     return TvFocusBuilder(
       autofocus: autofocus,
       scale: TvFocusScale.large,
+      borderRadius: radius,
+      // Le dégradé or EST le focus. Pas de second halo (néon + coût GPU).
+      showGlow: false,
       onSelect: onSelect,
       builder: (BuildContext context, bool focused) {
         return Container(
@@ -267,17 +311,18 @@ class TvCtaButton extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 16),
           decoration: BoxDecoration(
             gradient: TvAppTokens.of(context).ctaGradient,
-            borderRadius: BorderRadius.circular(TvTokens.rButton),
+            borderRadius: radius,
             border: focused
                 ? Border.all(color: TvAppTokens.of(context).text, width: 2)
                 : null,
             boxShadow: <BoxShadow>[
               BoxShadow(
-                color: TvAppTokens.of(context).accent
-                    .withValues(alpha: focused ? 0.55 : 0.35),
-                blurRadius: focused ? 36 : 24,
-                spreadRadius: -10,
-                offset: const Offset(0, 8),
+                color: TvAppTokens.of(context).accent.withValues(
+                      alpha: focused ? 0.40 : 0.16,
+                    ),
+                blurRadius: focused ? 22 : 14,
+                spreadRadius: -8,
+                offset: const Offset(0, 6),
               ),
             ],
           ),

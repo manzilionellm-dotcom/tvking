@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- TvTokens.bg. Le premier cadre Flutter est ce noir : la fenêtre
+         Android doit être la même, sinon un blanc ou un #050505 « saute ». -->
+    <color name="zuno_splash">#FF070708</color>
+</resources>

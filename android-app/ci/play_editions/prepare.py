@@ -118,15 +118,9 @@ def prepare(edition):
         target = res / directory
         target.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(APP / 'assets/branding' / asset, target / 'tv_banner.png')
-    for directory in ('drawable', 'drawable-v21'):
-        target = res / directory
-        target.mkdir(parents=True, exist_ok=True)
-        (target / 'launch_background.xml').write_text('''<?xml version="1.0" encoding="utf-8"?>
-<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-  <item android:drawable="@android:color/black"/>
-  <item><bitmap android:gravity="center" android:src="@drawable/tv_banner"/></item>
-</layer-list>
-''')
+    # Même premier écran que le build box : or transparent sur #070708,
+    # pas la bannière opaque sur noir pur.
+    load_module('zuno_splash', APP / 'ci/tv/apply_splash.py').apply(res)
     version, name = version_for(edition)
     fields = {'ZUNO_EDITION': edition, 'ZUNO_APP_ID': PACKAGES[edition],
               'PLAY_VERSION_CODE': str(version), 'PLAY_VERSION_NAME': name}

@@ -215,8 +215,9 @@ class _TvFocusableState extends State<TvFocusable> {
                         active &&
                         BoxMemoryBudget.paintFocusGlow)
                     ? <BoxShadow>[
-                        BoxShadow(
-                          color: const Color(0x99000000), // noir 60 %
+                        const BoxShadow(
+                          // Élévation noire 60 %. Pas une couleur de marque.
+                          color: Color(0x99000000),
                           blurRadius: TvDimens.focusElevBlur,
                           offset: const Offset(0, TvDimens.focusElevDy),
                         ),
@@ -229,9 +230,29 @@ class _TvFocusableState extends State<TvFocusable> {
                       ]
                     : null,
               ),
-              // Le contenu (logo, texte) ne se redessine pas quand seule
-              // la bordure ou l'échelle bouge.
-              child: RepaintBoundary(child: widget.child),
+              // Pression OK : voile noir seulement PENDANT l'appui.
+              // Pas de calque permanent sur les listes (box lentes).
+              // Clip.none : l'ombre du bouton (CTA) dépasse le rectangle.
+              // Un clip la couperait et le bouton paraîtrait « coupé au cutter ».
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: <Widget>[
+                  // Le contenu (logo, texte) ne se redessine pas quand seule
+                  // la bordure ou l'échelle bouge.
+                  RepaintBoundary(child: widget.child),
+                  if (_pressed && active)
+                    Positioned.fill(
+                      child: IgnorePointer(
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.12),
+                            borderRadius: radius,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
             ),
           ),
         ),
@@ -251,6 +272,8 @@ class TvFocusBuilder extends StatefulWidget {
     this.focusNode,
     this.autofocus = false,
     this.scale = TvFocusScale.medium,
+    this.borderRadius,
+    this.showGlow = true,
     this.enabled = true,
   });
 
@@ -263,6 +286,15 @@ class TvFocusBuilder extends StatefulWidget {
   final FocusNode? focusNode;
   final bool autofocus;
   final TvFocusScale scale;
+
+  /// Rayon du halo. Sans ça, le halo reste à [TvDimens.cardRadius] (12)
+  /// même quand la carte visible est plus ronde (18) : l'ombre ne suit
+  /// pas le contrôle.
+  final BorderRadius? borderRadius;
+
+  /// Faux quand le contenu peint déjà son focus (fond or plein). Un
+  /// second flou de 32 px coûte cher sur les box lentes et fait « néon ».
+  final bool showGlow;
   final bool enabled;
 
   @override
@@ -279,8 +311,10 @@ class _TvFocusBuilderState extends State<TvFocusBuilder> {
       focusNode: widget.focusNode,
       autofocus: widget.autofocus,
       scale: widget.scale,
+      borderRadius: widget.borderRadius,
       enabled: widget.enabled,
       showOutline: false,
+      showGlow: widget.showGlow,
       onFocusChange: (bool f) {
         if (_focused != f) setState(() => _focused = f);
         widget.onFocusChange?.call(f);

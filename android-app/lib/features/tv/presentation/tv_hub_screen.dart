@@ -1634,8 +1634,11 @@ class _HubSearchButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final BorderRadius radius = BorderRadius.circular(TvTokens.rButton);
     return TvFocusBuilder(
       scale: TvFocusScale.small,
+      borderRadius: radius,
+      showGlow: false,
       onSelect: onSelect,
       builder: (BuildContext context, bool focused) {
         final Color fg = focused
@@ -1648,7 +1651,7 @@ class _HubSearchButton extends StatelessWidget {
             color: focused
                 ? TvAppTokens.of(context).accent
                 : TvAppTokens.of(context).card,
-            borderRadius: BorderRadius.circular(TvTokens.rButton),
+            borderRadius: radius,
             border: Border.all(
               color: focused
                   ? TvAppTokens.of(context).accent
@@ -1689,8 +1692,11 @@ class _ProfileChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final profile = ProfileRepository.instance.active;
+    final BorderRadius radius = BorderRadius.circular(TvTokens.rButton);
     return TvFocusBuilder(
       onSelect: onSelect,
+      borderRadius: radius,
+      showGlow: false,
       builder: (BuildContext context, bool focused) {
         final Color fg = focused
             ? TvAppTokens.of(context).onAccent
@@ -1701,7 +1707,7 @@ class _ProfileChip extends StatelessWidget {
             color: focused
                 ? TvAppTokens.of(context).accent
                 : TvAppTokens.of(context).card.withValues(alpha: 0.85),
-            borderRadius: BorderRadius.circular(TvTokens.rButton),
+            borderRadius: radius,
             border: Border.all(
               color: focused
                   ? TvAppTokens.of(context).accent
@@ -1732,7 +1738,8 @@ class _ProfileChip extends StatelessWidget {
   }
 }
 
-/// Une tuile carrée focusable (icône + libellé). Focus = fond braise + lueur.
+/// Une tuile carrée focusable (icône + libellé). Focus = fond or, sans
+/// second halo : le remplissage porte déjà le regard à 3 m.
 class _HubTile extends StatelessWidget {
   const _HubTile({
     required this.meta,
@@ -1752,9 +1759,12 @@ class _HubTile extends StatelessWidget {
     final double side = compact ? 124 : 190;
     final double icon = compact ? 36 : 64;
     final double gap = compact ? 8 : 18;
+    final BorderRadius radius = BorderRadius.circular(TvTokens.rCard);
     return TvFocusBuilder(
       autofocus: autofocus,
       scale: compact ? TvFocusScale.small : TvFocusScale.large,
+      borderRadius: radius,
+      showGlow: false,
       onSelect: onSelect,
       builder: (BuildContext context, bool focused) {
         final Color fg = focused
@@ -1768,7 +1778,7 @@ class _HubTile extends StatelessWidget {
             color: focused
                 ? TvAppTokens.of(context).accent
                 : TvAppTokens.of(context).card,
-            borderRadius: BorderRadius.circular(TvTokens.rCard),
+            borderRadius: radius,
             border: Border.all(
               color: focused
                   ? TvAppTokens.of(context).accent

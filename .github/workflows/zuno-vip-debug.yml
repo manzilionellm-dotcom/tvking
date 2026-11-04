@@ -61,12 +61,22 @@ jobs:
     - name: Icône launcher (logo Zuno)
       run: dart run flutter_launcher_icons -f flutter_launcher_icons_zuno_tv.yaml
     - name: Bannière Android TV + écran de lancement sombre
-      run: "set -e\nRES=android/app/src/main/res\nmkdir -p \"$RES/drawable\" \"$RES/drawable-v21\" \"$RES/drawable-xhdpi\" \"$RES/drawable-xxhdpi\" \"$RES/values\" \"$RES/values-night\"\n# Bannière Leanback (spec Android TV : 320×180 en xhdpi).\ncp assets/branding/zuno_tv_banner.png    \"$RES/drawable/tv_banner.png\"\ncp assets/branding/zuno_tv_banner.png    \"$RES/drawable-xhdpi/tv_banner.png\"\ncp assets/branding/zuno_tv_banner_2x.png \"$RES/drawable-xxhdpi/tv_banner.png\"\n# Splash sombre avec le logo centré (remplace le fond blanc du template).\nfor DIR in drawable drawable-v21; do\n  cat > \"$RES/$DIR/launch_background.xml\" <<'XML'\n<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<layer-list xmlns:android=\"http://schemas.android.com/apk/res/android\">\n    <item>\n        <shape android:shape=\"rectangle\">\n            <solid android:color=\"#FF050505\" />\n        </shape>\n    </item>\n    <item>\n        <bitmap\n            android:gravity=\"center\"\n            android:src=\"@drawable/tv_banner\"\
-        \ />\n    </item>\n</layer-list>\nXML\ndone\nfor DIR in values values-night; do\n  cat > \"$RES/$DIR/styles.xml\" <<'XML'\n<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<resources>\n    <style name=\"LaunchTheme\" parent=\"@android:style/Theme.Black.NoTitleBar\">\n        <item name=\"android:windowBackground\">@drawable/launch_background</item>\n    </style>\n    <style name=\"NormalTheme\" parent=\"@android:style/Theme.Black.NoTitleBar\">\n        <item name=\"android:windowBackground\">@drawable/launch_background</item>\n    </style>\n</resources>\nXML\ndone\necho \"✓ bannière + splash sombre en place\"\n"
+      run: |
+        set -e
+        RES=android/app/src/main/res
+        mkdir -p "$RES/drawable" "$RES/drawable-xhdpi" "$RES/drawable-xxhdpi"
+        cp assets/branding/zuno_tv_banner.png    "$RES/drawable/tv_banner.png"
+        cp assets/branding/zuno_tv_banner.png    "$RES/drawable-xhdpi/tv_banner.png"
+        cp assets/branding/zuno_tv_banner_2x.png "$RES/drawable-xxhdpi/tv_banner.png"
+        python3 ci/tv/apply_splash.py
+        python3 ci/tv/apply_splash_test.py
+
     - name: Quality gate (analyze + tests)
       run: 'set -euo pipefail
 
         python3 tool/check_l10n.py
+
+        python3 ci/tv/apply_splash_test.py
 
         flutter analyze --no-fatal-infos --no-fatal-warnings
 

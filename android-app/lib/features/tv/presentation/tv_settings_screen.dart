@@ -279,6 +279,8 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
 
   ({String label, Color color}) _statusOf(BuildContext context) {
     switch (SubscriptionState.instance.status) {
+      // Mêmes teintes que la barre d'accueil (_license) : le thème
+      // clair du panel les recolore, un vert/bleu/ambre en dur non.
       case SubscriptionStatus.paid:
         return (
           label: context.l10n.tvStatusPaid,
@@ -288,17 +290,17 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
         final int d = SubscriptionState.instance.trialDaysRemaining;
         return (
           label: context.l10n.tvStatusTrial(d),
-          color: TvAppTokens.of(context).accent,
+          color: TvAppTokens.of(context).accentBright,
         );
       case SubscriptionStatus.trialExpired:
         return (
           label: context.l10n.tvStatusTrialExpired,
-          color: TvAppTokens.of(context).accent,
+          color: TvAppTokens.of(context).live,
         );
       case SubscriptionStatus.frozen:
         return (
           label: context.l10n.tvStatusFrozen,
-          color: TvAppTokens.of(context).accent,
+          color: TvAppTokens.of(context).live,
         );
       case SubscriptionStatus.banned:
         return (
