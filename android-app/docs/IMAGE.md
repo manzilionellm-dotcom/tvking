@@ -1,7 +1,7 @@
 # Image — Zuno TV
 
-État du candidat Android au 3 novembre 2026, après la révision `40f847cd`
-et la correction du lecteur de rapports Android.
+État du candidat Android au 4 novembre 2026 : image directe du décodeur par
+défaut, contraste GL seulement à la demande (branche `cursor/zuno-black-screen-qa-394f`).
 Cette fiche décrit le code et sépare les vérifications de logique des essais
 sur un appareil. La présence du code ne prouve pas sa publication ni son
 rendu sur une box cliente. Le Worker, le lecteur Windows et le binaire tiers
@@ -10,11 +10,17 @@ rendu sur une box cliente. Le Worker, le lecteur Windows et le binaire tiers
 ## Traitement de contraste réellement ajouté
 
 Le lecteur Android utilise Media3 / ExoPlayer 1.5.1 et une `SurfaceView` native,
-sans texture vidéo Flutter. Pour les vidéos SDR compatibles décodées par
-MediaCodec, il installe maintenant un processeur de trames OpenGL Media3 avant
+sans texture vidéo Flutter. Par défaut, MediaCodec écrit directement dans la
+`SurfaceView`, sans processeur GL ni `setVideoEffects` : c'est la sortie que la
+page Media3 « Surface types » recommande (cadence exacte, HDR, sortie protégée,
+pleine résolution de l'écran sur les TV qui agrandissent l'interface).
+
+Quand la personne allume le contraste, pour les vidéos SDR compatibles décodées
+par MediaCodec, le lecteur installe un processeur de trames OpenGL Media3 avant
 la surface. `VideoContrastEffects` fournit une matrice RGB dynamique, calculée par
-`androidx.media3.effect.Contrast(0.08f)`, installée une seule fois dans
-`ExoPlayer.setVideoEffects` avant `prepare`. Ce n'est donc plus uniquement un réglage d'interface.
+`androidx.media3.effect.Contrast(0.08f)`, installée dans
+`ExoPlayer.setVideoEffects` avant `prepare`. Le ×2 IA ([AI-IMAGE.md](AI-IMAGE.md))
+vit dans ce même graphe : il ne tourne donc que contraste allumé.
 
 `0.08` est le paramètre de l'effet Media3, pas une promesse de « 8 % de netteté »
 ou de luminosité. Le traitement modifie le contraste des pixels. Il n'ajoute
@@ -22,10 +28,10 @@ ni netteté, ni débruitage, ni désentrelacement, ni super-résolution. Il ne
 reconstitue pas de détails perdus par la compression et ne transforme pas
 une source SD en véritable source 4K.
 
-Le contraste est demandé par défaut, sur installation neuve comme sur mise à
-jour sans préférence. Réglages → En plus → Contraste permet de le couper.
-La préférence `zuno.player.image.contrast.v1` conserve une désactivation
-explicite. Elle est chargée avant la création des premiers lecteurs ; le canal
+Le contraste est coupé par défaut, sur installation neuve comme sur mise à
+jour sans préférence. Réglages → En plus → Contraste permet de l'allumer.
+La préférence `zuno.player.image.contrast.v1` n'est écrite que par ce bouton et
+conserve le choix explicite. Elle est chargée avant la création des premiers lecteurs ; le canal
 Flutter transmet `setContrast` avant la première URL. Direct, films/séries,
 aperçus et enregistrements reprennent ce choix.
 
@@ -34,10 +40,36 @@ lecture courant et l'effet annoncé comme appliqué par le natif. L'état de
 préférence ne suffit pas à prouver que le traitement s'applique à chaque flux.
 Le lecteur Windows ne prend pas en charge ce réglage et l'indique dans l'UI.
 
-Couper le réglage choisit une matrice identité exacte, relue à chaque trame.
-La liste d'effets reste identique : remplacer cette liste pendant la lecture
-réenregistre le flux dans Media3 1.5.1 et a figé l'image lors du test Android.
-Le processeur GL reste installé ; ce n'est pas un retour au rendu direct.
+Changer le réglage pendant une lecture rouvre la même chaîne (position VOD,
+pause et focus conservés) sur un lecteur neuf, avec ou sans le graphe GL. On ne
+remplace jamais la liste d'effets d'un lecteur en cours : dans Media3 1.5.1 cela
+réenregistre le flux et a figé l'image lors du test Android. Chaque ouverture
+avec le graphe GL repart aussi d'une surface neuve : sur API 29, un second
+`prepare` du même lecteur, graphe déjà lié, ne recréait pas le décodeur et
+l'image restait figée.
+
+### Pourquoi le GL n'est plus le défaut (mesures, émulateurs)
+
+Mesures de la v116 (graphe GL toujours installé) contre cette branche, avec
+`dumpsys SurfaceFlinger --latency` et des captures d'écran, sur le flux public
+Mux (H.264 1080p, 60 i/s) et une mire HLS SDR locale (H.264 720p, 25 i/s, BT.709) :
+
+- API 29 : la v116 fige l'image après une quarantaine de trames ; la
+  reconstruction du chien de garde échoue ensuite (`connect: already
+  connected`, `Decoder init failed`) et la chaîne tombe en erreur. Rendu direct :
+  lecture continue à 25 i/s sur la mire, sans erreur.
+- API 35 : la v116 ne livre qu'environ 9 i/s du flux à 60 i/s.
+- Mire SDR : `Contrast(0.08)` donne `sortie = 1,1738 × entrée − 0,0869`, donc
+  tout ce qui est sous 19/255 devient noir et tout ce qui dépasse 236/255
+  devient blanc (détails perdus dans les ombres et les hautes lumières). Écart
+  moyen mesuré 14,2 avec la v116 ; rendu direct : gris de la mire à ±1, image
+  entière, sans rognage.
+
+Un graphe GL bloqué gardait aussi la file d'images de la `SurfaceView` après
+`release()`. `rebuildPlayer` libère donc l'ancien lecteur, puis renouvelle la
+surface (masquer/réafficher la vue) quand l'ancien lecteur utilisait le GL :
+mesuré sur API 29, le repli direct reprend alors l'image au lieu du carton
+d'erreur.
 
 ## HDR, DRM et repli sans GL
 
@@ -46,7 +78,13 @@ détecté, le lecteur demande une reconstruction sans processeur GL et sans
 appel à `setVideoEffects`, même avec une liste vide. Le rendu FFmpeg vidéo,
 s'il devenait disponible, reste également hors de ce traitement.
 
-Le code n'ajoute pas de conversion HDR vers SDR, ne force pas du HDR sur une
+Sur Android 12+ (API 31), quand l'écran n'annonce aucun type HDR, le lecteur
+demande au décodeur une sortie SDR pour les flux PQ/HLG
+(`MediaFormat.KEY_COLOR_TRANSFER_REQUEST`, `HdrToneMap`). C'est une demande :
+un décodeur qui ne sait pas convertir l'ignore. Sur un écran HDR rien n'est
+demandé. L'émulateur API 29 refuse la mire HEVC Main10 PQ
+(`NO_EXCEEDS_CAPABILITIES`, avant comme après) : l'effet se vérifie sur API 31+.
+Le code ne force pas du HDR sur une
 source SDR et ne promet pas un rendu HDR/Dolby Vision/HLG sur tous les appareils.
 Le décodage, l'écran et la chaîne HDMI doivent toujours le prendre en charge.
 La protection HDR/DRM est vérifiée par sa politique de sélection ; son rendu
@@ -164,8 +202,15 @@ Le test de canal utilise un transport Flutter simulé : il vérifie notamment
 que la préférence arrive avant l'URL, pas que les pixels changent. Les tests
 JVM n'exécutent ni le décodeur Android ni OpenGL.
 
-`NativeContrastPixelTest` lit une mire synthétique, compare les pixels avec et
-sans contraste et vérifie le retour au rendu sans effet. Dans le
+`NativeContrastPixelTest.defaultOff_directPixels_onChangesRealPixels_offRestoresTheSameFrame`
+lit une mire synthétique. Il vérifie d'abord le rendu direct par défaut (aucun
+graphe GL, taille d'origine `renderer_callback`), puis allume le contraste
+(réouverture avec graphe GL, origine `gl_output`, ombres plus sombres et clairs
+plus clairs), le coupe (retour direct, même image à ±2 près) et le rallume
+(même image à ±2 près), sans erreur ni réouverture en trop. Ce nouveau
+contrat doit passer dans la CI de la branche avant intégration.
+
+Mesures de l'ancien contrat (contraste par défaut) : dans le
 [run 41551529426](https://github.com/manzilionellm-dotcom/tvking/actions/runs/41551529426),
 au commit `40f847cd`, les deux émulateurs Android API 29 et 35 ont réussi ce
 premier passage. La plage sombre mesure 34,33 avec contraste et 48,33 sans ;
