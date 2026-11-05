@@ -85,4 +85,80 @@ void main() {
     expect(find.textContaining('n\'ouvre pas les fichiers'), findsOneWidget);
     expect(imported, isNull);
   });
+
+  Future<void> showForm(
+    WidgetTester tester, {
+    Future<String?> Function()? readClipboard,
+    Future<LocalM3uPick> Function()? pickLocalFile,
+  }) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1280, 900);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('fr'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: Scaffold(
+          body: TvSourceEntryForm(
+            autofocus: true,
+            readClipboardForTesting: readClipboard,
+            pickLocalFileForTesting: pickLocalFile,
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+  }
+
+  String? focusedKey() {
+    final BuildContext? context = FocusManager.instance.primaryFocus?.context;
+    if (context == null) return null;
+    String? found;
+    context.visitAncestorElements((Element element) {
+      final Key? key = element.widget.key;
+      if (key is ValueKey<String> && key.value.startsWith('tv-source-')) {
+        found = key.value;
+        return false;
+      }
+      return true;
+    });
+    return found;
+  }
+
+  Future<void> press(WidgetTester tester, LogicalKeyboardKey key) async {
+    await tester.sendKeyEvent(key);
+    await tester.pump();
+  }
+
+  testWidgets('Coller et Fichier : au D-pad au-dessus des modes', (
+    WidgetTester tester,
+  ) async {
+    await showForm(
+      tester,
+      readClipboard: () async =>
+          'http://panel.invalid:8080/get.php?username=demo&password=jeton',
+    );
+    expect(focusedKey(), 'tv-source-server');
+
+    await press(tester, LogicalKeyboardKey.arrowUp);
+    expect(focusedKey(), startsWith('tv-source-mode-'));
+
+    await press(tester, LogicalKeyboardKey.arrowUp);
+    expect(
+      <String>['tv-source-paste', 'tv-source-file'],
+      contains(focusedKey()),
+      reason: 'Haut depuis les modes atteint Coller / Fichier',
+    );
+    if (focusedKey() == 'tv-source-file') {
+      await press(tester, LogicalKeyboardKey.arrowLeft);
+    }
+    expect(focusedKey(), 'tv-source-paste');
+
+    await press(tester, LogicalKeyboardKey.enter);
+    await tester.pump();
+    expect(find.text('http://panel.invalid:8080'), findsOneWidget);
+    expect(find.text('demo'), findsOneWidget);
+  });
 }

@@ -297,7 +297,32 @@ class _TvSourceEntryFormState extends State<TvSourceEntryForm> {
               style: TvAppTokens.of(context)
                   .ui(13, color: TvAppTokens.of(context).muted),
             ),
-            const SizedBox(height: 18),
+            const SizedBox(height: 14),
+            // Au-dessus des modes, jamais entre le dernier champ et
+            // Connexion : Bas et Entrée passent du mot de passe (ou du
+            // lien) directement à Connexion (TvFieldKeys).
+            Row(
+              children: <Widget>[
+                Expanded(
+                  child: _SideAction(
+                    key: const ValueKey<String>('tv-source-paste'),
+                    label: l10n.tvPasteClipboard,
+                    enabled: !_blocked,
+                    onSelect: _paste,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _SideAction(
+                    key: const ValueKey<String>('tv-source-file'),
+                    label: l10n.tvPickLocalFile,
+                    enabled: !_blocked,
+                    onSelect: _pickFile,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
             Row(
               children: <Widget>[
                 Expanded(
@@ -425,28 +450,6 @@ class _TvSourceEntryFormState extends State<TvSourceEntryForm> {
                 ),
               ),
             ],
-            const SizedBox(height: 14),
-            Row(
-              children: <Widget>[
-                Expanded(
-                  child: _SideAction(
-                    key: const ValueKey<String>('tv-source-paste'),
-                    label: l10n.tvPasteClipboard,
-                    enabled: !_blocked,
-                    onSelect: _paste,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: _SideAction(
-                    key: const ValueKey<String>('tv-source-file'),
-                    label: l10n.tvPickLocalFile,
-                    enabled: !_blocked,
-                    onSelect: _pickFile,
-                  ),
-                ),
-              ],
-            ),
             const SizedBox(height: 18),
             // Le bouton conserve le comportement TV. Focus et toucher sont
             // aussi désactivés pendant un import, pas seulement le callback.
