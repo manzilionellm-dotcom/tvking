@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
-import { zunoAndroidDownloadUrl } from "../lib/downloads-public";
+import { DEFAULT_ZUNO_ANDROID_DOWNLOAD } from "../lib/downloads-public";
 
-/** Convenience URL used on box browsers: zuno.7themotion.com/apk → official Zuno Android build */
+/** Stable Downloader URL on zuno.7themotion.com/apk → official signed APK release */
 export default function ApkRedirect() {
-  redirect(zunoAndroidDownloadUrl());
+  redirect(DEFAULT_ZUNO_ANDROID_DOWNLOAD);
 }
