@@ -14,6 +14,8 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
+import '../../../core/app/box_memory_budget.dart';
+
 import '../../../core/i18n/l10n_extension.dart';
 import '../core/tv_app_tokens.dart';
 import '../core/tv_dimens.dart';
@@ -488,18 +490,30 @@ class _PosterCardState extends State<_PosterCard> {
         );
       },
       builder: (BuildContext context, bool focused) {
+        final bool phantom = TvAppTokens.of(context).ghost;
         return AnimatedContainer(
           duration: TvDimens.focusAnim,
           curve: TvDimens.focusCurve,
           width: 132,
           decoration: BoxDecoration(
+            color: phantom ? const Color(0xFF101114) : null,
             borderRadius: BorderRadius.circular(14),
             border: Border.all(
               color: focused
                   ? _metalBright(context)
-                  : _metal(context).withValues(alpha: 0.22),
-              width: focused ? 2 : 1,
+                  : _metal(context).withValues(alpha: phantom ? 0.62 : 0.22),
+              width: phantom ? 1 : (focused ? 2 : 1),
             ),
+            // No blurred layer on boxes with <= 2 GB RAM.
+            boxShadow: phantom && focused && BoxMemoryBudget.paintFocusGlow
+                ? <BoxShadow>[
+                    BoxShadow(
+                      color: const Color(0xFFB7D4FF).withValues(alpha: 0.17),
+                      blurRadius: 14,
+                      spreadRadius: -4,
+                    ),
+                  ]
+                : const <BoxShadow>[],
           ),
           clipBehavior: Clip.antiAlias,
           child: Column(
@@ -657,11 +671,20 @@ class _IconRail extends StatelessWidget {
       (Icons.settings_rounded, onSettings),
     ];
     return SizedBox(
-      width: 52,
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: <Widget>[
-          for (final (IconData icon, VoidCallback action) in items)
+      width: 58,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: const Color(0xFF0C0D10).withValues(alpha: 0.94),
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(
+            color: const Color(0xFFE6EBF2).withValues(alpha: 0.45),
+            width: 1,
+          ),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: <Widget>[
+            for (final (IconData icon, VoidCallback action) in items)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 6),
               child: TvFocusBuilder(
@@ -688,7 +711,8 @@ class _IconRail extends StatelessWidget {
                 },
               ),
             ),
-        ],
+          ],
+        ),
       ),
     );
   }
