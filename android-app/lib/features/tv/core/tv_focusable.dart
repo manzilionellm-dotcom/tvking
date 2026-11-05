@@ -176,8 +176,15 @@ class _TvFocusableState extends State<TvFocusable>
     // prend d'abord le focus (le halo suit le doigt), puis relâche = onSelect.
     // Souris air / gyro : le halo suit le pointeur. Le clic valide
     // déjà via onTap. Pas de splash : le D-pad n'en a pas besoin.
+    // onHover, pas onEnter : Flutter rejoue onEnter quand la liste
+    // défile sous un pointeur immobile, et ce pointeur reprendrait
+    // le focus au D-pad à chaque ligne.
     return MouseRegion(
-      onEnter: widget.enabled ? (_) => _node.requestFocus() : null,
+      onHover: widget.enabled
+          ? (_) {
+              if (!_node.hasFocus) _node.requestFocus();
+            }
+          : null,
       child: GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTapDown: widget.enabled
