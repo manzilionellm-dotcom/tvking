@@ -74,6 +74,8 @@ class _TvSourceEntryFormState extends State<TvSourceEntryForm> {
   final FocusNode _usernameFocus = FocusNode();
   final FocusNode _passwordFocus = FocusNode();
   final FocusNode _linkFocus = FocusNode();
+  final FocusNode _fileFocus = FocusNode();
+  final FocusNode _submitFocus = FocusNode();
   late OpenEntryMode _mode;
   bool _busy = false;
   bool _importStarted = false;
@@ -103,7 +105,32 @@ class _TvSourceEntryFormState extends State<TvSourceEntryForm> {
     _usernameFocus.dispose();
     _passwordFocus.dispose();
     _linkFocus.dispose();
+    _fileFocus.dispose();
+    _submitFocus.dispose();
     super.dispose();
+  }
+
+  // Le bouton actionné est exclu du focus pendant l'import : Flutter laisse
+  // alors le focus nulle part, ou sur un autre contrôle désactivé du
+  // formulaire. Après un échec, le bouton le reprend. Un focus parti hors
+  // du formulaire (menu de droite) est un choix de l'utilisateur, respecté.
+  void _refocusAfterFailure(FocusNode node) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final FocusNode? current = FocusManager.instance.primaryFocus;
+      final BuildContext? at = current?.context;
+      if (current is! FocusScopeNode && at != null && !_contains(at)) return;
+      node.requestFocus();
+    });
+  }
+
+  bool _contains(BuildContext descendant) {
+    bool found = false;
+    descendant.visitAncestorElements((Element element) {
+      found = identical(element, context);
+      return !found;
+    });
+    return found;
   }
 
   void _select(OpenEntryMode mode) {
@@ -179,6 +206,7 @@ class _TvSourceEntryFormState extends State<TvSourceEntryForm> {
       }
     }
     if (mounted && added) widget.onAdded?.call();
+    if (mounted && !added) _refocusAfterFailure(_submitFocus);
   }
 
   Future<void> _paste() async {
@@ -275,6 +303,7 @@ class _TvSourceEntryFormState extends State<TvSourceEntryForm> {
       }
     }
     if (mounted && added) widget.onAdded?.call();
+    if (mounted && !added) _refocusAfterFailure(_fileFocus);
   }
 
   @override
@@ -323,6 +352,7 @@ class _TvSourceEntryFormState extends State<TvSourceEntryForm> {
                 Expanded(
                   child: _SideAction(
                     key: const ValueKey<String>('tv-source-file'),
+                    focusNode: _fileFocus,
                     label: l10n.tvPickLocalFile,
                     enabled: !_blocked,
                     onSelect: _pickFile,
@@ -469,6 +499,7 @@ class _TvSourceEntryFormState extends State<TvSourceEntryForm> {
                   opacity: _blocked ? 0.55 : 1,
                   child: TvCtaButton(
                     key: const ValueKey<String>('tv-source-submit'),
+                    focusNode: _submitFocus,
                     label: _busy ? l10n.tvConnecting : l10n.loginConnectLoad,
                     onSelect: _blocked ? null : _submit,
                   ),
@@ -631,17 +662,20 @@ class _SideAction extends StatelessWidget {
     required this.label,
     required this.enabled,
     required this.onSelect,
+    this.focusNode,
   });
 
   final String label;
   final bool enabled;
   final Future<void> Function() onSelect;
+  final FocusNode? focusNode;
 
   @override
   Widget build(BuildContext context) {
     return ExcludeFocus(
       excluding: !enabled,
       child: TvFocusable(
+        focusNode: focusNode,
         enabled: enabled,
         onSelect: enabled ? () => unawaited(onSelect()) : null,
         child: Padding(

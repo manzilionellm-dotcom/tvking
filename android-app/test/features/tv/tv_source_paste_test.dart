@@ -6,6 +6,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:tv_king/features/playlists/data/local_m3u_bytes.dart';
+import 'package:tv_king/features/playlists/data/remote_source_repository.dart';
+import 'package:tv_king/features/playlists/domain/open_source_input.dart';
 import 'package:tv_king/features/tv/data/local_m3u_picker.dart';
 import 'package:tv_king/features/tv/presentation/tv_source_entry_form.dart';
 import 'package:tv_king/l10n/generated/app_localizations.dart';
@@ -91,7 +93,10 @@ void main() {
     WidgetTester tester, {
     Future<String?> Function()? readClipboard,
     Future<LocalM3uPick> Function()? pickLocalFile,
+    Future<void> Function(String path)? importLocalFile,
+    Future<void> Function(OpenSourceDraft draft, String name)? submit,
   }) async {
+    RemoteSourceRepository.resetImportQueueForTesting();
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = const Size(1280, 900);
     addTearDown(tester.view.resetPhysicalSize);
@@ -106,6 +111,8 @@ void main() {
             autofocus: true,
             readClipboardForTesting: readClipboard,
             pickLocalFileForTesting: pickLocalFile,
+            importLocalFileForTesting: importLocalFile,
+            submitForTesting: submit,
           ),
         ),
       ),
@@ -193,5 +200,109 @@ void main() {
     expect(asked, 2, reason: 'une fois la réponse reçue, Fichier rouvre');
     picker.complete(const LocalM3uPick(LocalM3uPickStatus.cancelled));
     await tester.pump();
+  });
+
+  testWidgets('connexion refusée : le focus revient sur Connexion', (
+    WidgetTester tester,
+  ) async {
+    await showForm(
+      tester,
+      readClipboard: () async =>
+          'http://panel.invalid:8080/get.php?username=demo&password=jeton',
+      submit: (OpenSourceDraft draft, String name) async =>
+          throw StateError('refus du fournisseur'),
+    );
+    await tester.tap(find.byKey(const ValueKey<String>('tv-source-paste')));
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey<String>('tv-source-server')));
+    await tester.pump();
+    for (int i = 0; i < 3; i++) {
+      await press(tester, LogicalKeyboardKey.arrowDown);
+    }
+    expect(focusedKey(), 'tv-source-submit');
+
+    await press(tester, LogicalKeyboardKey.enter);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey<String>('tv-source-error')), findsOneWidget);
+    expect(focusedKey(), 'tv-source-submit', reason: 'OK relance, Haut corrige');
+
+    await press(tester, LogicalKeyboardKey.arrowUp);
+    expect(focusedKey(), 'tv-source-password');
+  });
+
+  testWidgets('fichier refusé à l\'import : le focus revient sur Fichier', (
+    WidgetTester tester,
+  ) async {
+    final Completer<void> refused = Completer<void>();
+    await showForm(
+      tester,
+      pickLocalFile: () async =>
+          const LocalM3uPick(LocalM3uPickStatus.ok, path: '/cache/m3u/l.m3u'),
+      importLocalFile: (String path) => refused.future,
+    );
+    await press(tester, LogicalKeyboardKey.arrowUp);
+    await press(tester, LogicalKeyboardKey.arrowUp);
+    if (focusedKey() == 'tv-source-paste') {
+      await press(tester, LogicalKeyboardKey.arrowRight);
+    }
+    expect(focusedKey(), 'tv-source-file');
+
+    await press(tester, LogicalKeyboardKey.enter);
+    await tester.pump();
+    expect(focusedKey(), isNot('tv-source-file'), reason: 'exclu pendant l\'import');
+
+    refused.completeError(StateError('liste illisible'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey<String>('tv-source-error')), findsOneWidget);
+    expect(focusedKey(), 'tv-source-file');
+  });
+
+  testWidgets('focus parti hors du formulaire pendant l\'import : respecté', (
+    WidgetTester tester,
+  ) async {
+    RemoteSourceRepository.resetImportQueueForTesting();
+    final Completer<void> refused = Completer<void>();
+    final FocusNode outside = FocusNode();
+    addTearDown(outside.dispose);
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1280, 900);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('fr'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: Scaffold(
+          body: Row(
+            children: <Widget>[
+              Expanded(
+                child: TvSourceEntryForm(
+                  readClipboardForTesting: () async =>
+                      'http://panel.invalid:8080/get.php?username=demo&password=jeton',
+                  submitForTesting: (OpenSourceDraft draft, String name) =>
+                      refused.future,
+                ),
+              ),
+              Focus(
+                focusNode: outside,
+                child: const SizedBox(width: 40, height: 40),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.byKey(const ValueKey<String>('tv-source-paste')));
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey<String>('tv-source-submit')));
+    await tester.pump();
+    outside.requestFocus();
+    await tester.pump();
+
+    refused.completeError(StateError('refus du fournisseur'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey<String>('tv-source-error')), findsOneWidget);
+    expect(outside.hasPrimaryFocus, isTrue);
   });
 }
