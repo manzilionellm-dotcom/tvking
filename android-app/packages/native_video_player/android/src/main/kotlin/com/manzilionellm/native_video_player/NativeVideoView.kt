@@ -2965,23 +2965,24 @@ class NativeVideoView(
         beginDispose(null)
     }
 
-    /**
-     * Libère le décodeur et la surface, une seule fois. Appelé par Flutter
-     * quand la vue part, ET par le message « dispose » de Dart (aperçu qui
-     * doit rendre le décodeur avant le plein écran). Le second appel ne
-     * fait rien : release() deux fois plante ExoPlayer.
-     *
-     * On ne retire PAS l'écouteur avant le rendu de l'AudioTrack : Media3
-     * 1.5.1 l'envoie après stop(), et le retirer avant faisait croire à
-     * la fiche qu'une piste restait vivante pour toujours. Dart n'est
-     * prévenu qu'à [finishDispose], donc le lecteur suivant n'est pas
-     * créé par-dessus.
-     */
+    /** Both Flutter disposal entry points use the same application-looper gate. */
     private fun releasePlayer() {
         beginDispose(null)
     }
 
     private fun beginDispose(result: MethodChannel.Result?) {
+        val applicationLooper = player.applicationLooper
+        if (Looper.myLooper() !== applicationLooper) {
+            // Do not call ExoPlayer or mutate lifecycle state from a platform thread.
+            // This handler is separate from the playback handler cleared below.
+            val posted = Handler(applicationLooper).postAtFrontOfQueue {
+                beginDispose(result)
+            }
+            if (!posted) {
+                result?.error("dispose_looper_stopped", "Player application looper is stopped", null)
+            }
+            return
+        }
         if (released) {
             result?.success(null)
             return
@@ -2990,55 +2991,42 @@ class NativeVideoView(
             if (result != null) disposeResult = result
             return
         }
+        // All calls are serialized above. Set the guard before any callbacks/stop.
         disposeStarted = true
         disposeResult = result
+        try { player.removeAnalyticsListener(this) } catch (_: RuntimeException) {}
+        try { player.clearVideoFrameMetadataListener(frameClock) } catch (_: RuntimeException) {}
+        cancelRetry()
         audioGate.cancel()
         openDeferred = false
         waitToken++
+        surfaceWaitToken++
+        ffmpegWatchToken++
         abandonOwnFocus()
         unwatchOtherPlaybacks()
-        ffmpegWatchToken++
         clearFrameRateMode()
-        cancelRetry()
         discardHeldFrame()
         try {
             player.volume = AudioHandoff.VOLUME_SILENT
             player.playWhenReady = false
-            // stop() programme le rendu. L'écouteur reste : on compte
-            // onAudioTrackReleased. On ne détache la surface qu'à la fin.
-            player.stop()
-            player.clearMediaItems()
         } catch (_: RuntimeException) {
-            // Un stop raté ne doit pas empêcher la destruction.
+            // Stop/release must still run when muting fails.
         }
-        if (audioTracksHere == 0) {
-            emit("audioDiag", "Libération : aucun AudioTrack vivant, lecteur détruit.")
-            finishDispose()
-            return
-        }
-        emit("audioDiag", "Libération : on attend que l'AudioTrack soit vraiment rendu.")
-        val ticket = ++disposeWaitToken
-        handler.postDelayed({
-            if (ticket != disposeWaitToken || released) return@postDelayed
-            forceCloseOurAudio(
-                "Libération : AudioTrack pas rendu à temps, compté rendu pour ne pas bloquer la chaîne suivante.",
-            )
-            finishDispose()
-        }, AudioHandoff.WAIT_MS)
+        // Do not wait for an analytics callback after unregistering its listener.
+        // release() is the native teardown barrier; counters are settled afterwards.
+        finishDispose()
     }
 
     private fun finishDispose() {
+        check(Looper.myLooper() === player.applicationLooper) {
+            "Player disposal must run on its application looper"
+        }
         if (released) return
         disposeWaitToken++
         PlayerCensus.unwatchTracks(trackWatcher)
-        if (audioDecodersHere > 0 || audioTracksHere > 0) {
-            forceCloseOurAudio(
-                "Libération : décodeur ou AudioTrack encore compté, soldé avant destruction du lecteur.",
-            )
-        }
+        // Block late retries, metadata and deferred fallback callbacks before release.
         released = true
         resetOutputSizeMeasurement()
-        surfaceView.holder.removeCallback(surfaceCallback)
         handler.removeCallbacksAndMessages(null)
         if (foregroundId >= 0) {
             AppForeground.unwatch(foregroundId)
@@ -3048,30 +3036,58 @@ class NativeVideoView(
             owners.unregister(playerKey)
             playerKey = -1
         }
-        try {
-            player.removeAnalyticsListener(this)
-            player.clearVideoFrameMetadataListener(frameClock)
-        } catch (_: RuntimeException) {
-            // Déjà détaché : on continue la libération.
-        }
-        // Même si la surface est déjà perdue, release doit être tenté. Un
-        // décodeur dont la libération est incertaine interdit le préflight.
+        val target = player
+        val applicationLooper = target.applicationLooper
+        val hadVideoEffects = glBound
         val playerReleaseConfirmed = VideoRelease.attempt(
-            clearSurface = { player.clearVideoSurface() },
-            releasePlayer = { player.release() },
+            // Detach the consumer; do NOT release the framework-owned Surface.
+            clearSurface = { target.clearVideoSurface() },
+            releasePlayer = {
+                try {
+                    // Never call setVideoEffects on the direct path: even an empty
+                    // list initializes an effects pipeline. On Android 10 and older,
+                    // clear only an already-installed, now-unused effect chain.
+                    if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.Q && hadVideoEffects) {
+                        try {
+                            target.setVideoEffects(emptyList())
+                        } catch (_: RuntimeException) {
+                            // A failed effect update must not skip stop/release.
+                        }
+                    }
+                    target.stop()
+                } finally {
+                    // Exactly one call, also when stop() throws.
+                    target.release()
+                }
+            },
         )
         PlayerCensus.playerReleased()
-        if (playerReleaseConfirmed) aiPlaybackLease?.close()
-        // Sur échec, le moteur conserve seulement le petit jeton opaque du
-        // bail, jamais la vue/activité. Plus de benchmark avant redémarrage.
+        if (playerReleaseConfirmed && (audioDecodersHere > 0 || audioTracksHere > 0)) {
+            forceCloseOurAudio("Libération native terminée : compteurs audio soldés après release.")
+        }
+        val playbackLease = aiPlaybackLease
         aiPlaybackLease = null
+        // Media3 owns its input SurfaceTexture/EGL objects and releases them on
+        // its internal processor thread. We must never destroy them ourselves.
+        // Defer our UI bookkeeping until release has returned, using a handler
+        // that was NOT emptied by removeCallbacksAndMessages above.
+        Handler(applicationLooper).post {
+            surfaceView.holder.removeCallback(surfaceCallback)
+            if (playerReleaseConfirmed) playbackLease?.close()
+        }
+        // On failure, keep the opaque GPU lease registered in AiPictureEngine.
+        // A failed release must not permit another idle GPU benchmark.
         channel.setMethodCallHandler(null)
         val pending = disposeResult
         disposeResult = null
         try {
-            pending?.success(null)
+            if (playerReleaseConfirmed) {
+                pending?.success(null)
+            } else {
+                pending?.error("player_release_failed", "Native player release was not confirmed", null)
+            }
         } catch (_: RuntimeException) {
-            // Réponse déjà envoyée : on ne plante pas la destruction.
+            // A closed Flutter channel must not cause another native release.
         }
     }
 
