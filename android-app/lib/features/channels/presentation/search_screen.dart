@@ -32,6 +32,8 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+
+import '../../tv/core/tv_field_keys.dart';
 import 'package:flutter/services.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
@@ -438,7 +440,8 @@ class _SearchHeader extends StatelessWidget {
                   ),
                   const SizedBox(width: 10),
                   Expanded(
-                    child: TextField(
+                    child: TvFieldKeys(
+                      child: TextField(
                       controller: controller,
                       focusNode: focusNode,
                       autofocus: true,
@@ -456,6 +459,7 @@ class _SearchHeader extends StatelessWidget {
                           fontSize: 14,
                           color: AppColors.textMuted,
                         ),
+                      ),
                       ),
                     ),
                   ),

@@ -8,6 +8,7 @@ import android.content.res.Configuration
 import android.os.Build
 import android.util.Log
 import android.util.Rational
+import android.view.KeyEvent
 import com.manzilionellm.native_video_player.logic.AppForeground
 import io.flutter.embedding.android.FlutterFragment
 import io.flutter.embedding.android.FlutterFragmentActivity
@@ -49,6 +50,20 @@ class MainActivity : FlutterFragmentActivity() {
         super.configureFlutterEngine(flutterEngine)
         flutterEngine.renderer.addIsDisplayingFlutterUiListener(startupUiListener)
         Log.i("ZunoStartup", "native.plugins.end")
+        FieldKeyNav.channel = MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "com.sevenmotion.zuno/field_keys",
+        ).also { channel ->
+            channel.setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "setArmed" -> {
+                        FieldKeyNav.armed = call.arguments == true
+                        result.success(null)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+        }
         pipChannel = MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
             "com.sevenmotion.zuno/pip",
@@ -87,10 +102,18 @@ class MainActivity : FlutterFragmentActivity() {
         }
     }
 
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (FieldKeyNav.onKey(event)) return true
+        return super.dispatchKeyEvent(event)
+    }
+
     override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {
         flutterEngine.renderer.removeIsDisplayingFlutterUiListener(startupUiListener)
         flutterUiDisplayed = false
         // Ne jamais retirer le canal historique du service Cast.
+        FieldKeyNav.channel?.setMethodCallHandler(null)
+        FieldKeyNav.channel = null
+        FieldKeyNav.armed = false
         pipChannel?.setMethodCallHandler(null)
         pipChannel = null
         playbackActive = false

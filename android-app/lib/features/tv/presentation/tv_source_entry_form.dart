@@ -14,6 +14,7 @@ import '../../playlists/data/playlist_repository.dart';
 import '../../playlists/data/remote_source_repository.dart';
 import '../../playlists/domain/open_source_input.dart';
 import '../../playlists/presentation/widgets/configured_servers_picker.dart';
+import '../core/tv_field_keys.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
 import '../core/tv_app_tokens.dart';
@@ -380,7 +381,8 @@ class _SourceField extends StatelessWidget {
           borderRadius: BorderRadius.circular(TvTokens.rButton),
           borderSide: BorderSide(color: color, width: width),
         );
-    return TextField(
+    return TvFieldKeys(
+      child: TextField(
       controller: controller,
       focusNode: focusNode,
       enabled: enabled,
@@ -405,7 +407,9 @@ class _SourceField extends StatelessWidget {
       decoration: InputDecoration(
         labelText: label,
         hintText: hint,
-        suffixIcon: suffix,
+        suffixIcon: suffix == null
+            ? null
+            : ExcludeFocus(child: suffix!),
         labelStyle: TvAppTokens.of(context)
             .ui(13, color: TvAppTokens.of(context).muted),
         hintStyle: TvAppTokens.of(context)
@@ -421,6 +425,7 @@ class _SourceField extends StatelessWidget {
         enabledBorder: border(TvAppTokens.of(context).line, 1),
         disabledBorder: border(TvAppTokens.of(context).lineSoft, 1),
         focusedBorder: border(TvAppTokens.of(context).accent, 2),
+      ),
       ),
     );
   }

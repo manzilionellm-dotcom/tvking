@@ -14,6 +14,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../data/playlist_repository.dart';
 import '../domain/open_source_input.dart';
+import '../../tv/core/tv_field_keys.dart';
 
 Future<void> showM3uLoginSheet(BuildContext context) {
   return showModalBottomSheet<void>(
@@ -177,43 +178,53 @@ class _M3uLoginSheetState extends State<_M3uLoginSheet> {
                   _label(_mode == 'player'
                       ? OpenSourceInput.playerLabel
                       : context.l10n.loginUrlM3u),
-                  TextField(
-                    controller: _urlCtrl,
-                    keyboardType: TextInputType.url,
-                    autocorrect: false,
-                    decoration: InputDecoration(
-                      hintText: _mode == 'player'
-                          ? 'http://exemple.test:8080/get.php?username=…&password=…'
-                          : 'http://exemple.test/liste.m3u',
+                  TvFieldKeys(
+                    child: TextField(
+                      controller: _urlCtrl,
+                      keyboardType: TextInputType.url,
+                      autocorrect: false,
+                      decoration: InputDecoration(
+                        hintText: _mode == 'player'
+                            ? 'http://exemple.test:8080/get.php?username=…&password=…'
+                            : 'http://exemple.test/liste.m3u',
+                      ),
                     ),
                   ),
                 ] else ...<Widget>[
                   _label(context.l10n.loginServerXtream),
-                  TextField(
-                    controller: _serverCtrl,
-                    keyboardType: TextInputType.url,
-                    autocorrect: false,
-                    decoration: const InputDecoration(
-                      hintText: 'http://exemple.test:8080',
+                  TvFieldKeys(
+                    child: TextField(
+                      controller: _serverCtrl,
+                      keyboardType: TextInputType.url,
+                      autocorrect: false,
+                      decoration: const InputDecoration(
+                        hintText: 'http://exemple.test:8080',
+                      ),
                     ),
                   ),
                   const SizedBox(height: 12),
                   _label(context.l10n.loginUsername),
-                  TextField(controller: _userCtrl, autocorrect: false),
+                  TvFieldKeys(
+                    child: TextField(controller: _userCtrl, autocorrect: false),
+                  ),
                   const SizedBox(height: 12),
                   _label(context.l10n.loginPassword),
-                  TextField(
-                    controller: _passCtrl,
-                    obscureText: true,
-                    autocorrect: false,
+                  TvFieldKeys(
+                    child: TextField(
+                      controller: _passCtrl,
+                      obscureText: true,
+                      autocorrect: false,
+                    ),
                   ),
                 ],
                 const SizedBox(height: 12),
                 _label(context.l10n.loginNameOptional),
-                TextField(
-                  controller: _nameCtrl,
-                  decoration: InputDecoration(
-                    hintText: context.l10n.loginNameHint,
+                TvFieldKeys(
+                  child: TextField(
+                    controller: _nameCtrl,
+                    decoration: InputDecoration(
+                      hintText: context.l10n.loginNameHint,
+                    ),
                   ),
                 ),
                 if (_error != null) ...<Widget>[
