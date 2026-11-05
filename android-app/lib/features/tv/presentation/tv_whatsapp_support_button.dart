@@ -63,12 +63,34 @@ class _TvWhatsAppSupportButtonState extends State<TvWhatsAppSupportButton> {
           context.l10n.tvSupportWhatsApp,
           textAlign: TextAlign.center,
         ),
-        style: TextButton.styleFrom(
-          foregroundColor: TvAppTokens.of(context).accentBright,
-          textStyle: TvAppTokens.of(context)
-              .ui(TvDimens.caption, weight: FontWeight.w600),
-          minimumSize: const Size(48, 48),
-        ),
+        style:
+            TextButton.styleFrom(
+              foregroundColor: TvAppTokens.of(context).accentBright,
+              textStyle: TvAppTokens.of(context)
+                  .ui(TvDimens.caption, weight: FontWeight.w600),
+              minimumSize: const Size(48, 48),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(TvDimens.cardRadius),
+              ),
+            ).copyWith(
+              // Le voile or à 10 % de Material ne se voit pas sur le fond
+              // sombre : au D-pad, le focus semblait disparaître ici.
+              side: WidgetStateProperty.resolveWith(
+                (Set<WidgetState> states) =>
+                    states.contains(WidgetState.focused)
+                    ? BorderSide(
+                        color: TvAppTokens.of(context).accent,
+                        width: TvDimens.focusOutline,
+                      )
+                    : null,
+              ),
+              backgroundColor: WidgetStateProperty.resolveWith(
+                (Set<WidgetState> states) =>
+                    states.contains(WidgetState.focused)
+                    ? TvAppTokens.of(context).sel
+                    : null,
+              ),
+            ),
       ),
       if (_unavailable) ...<Widget>[
         Text(

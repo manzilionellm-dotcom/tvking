@@ -7,6 +7,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:tv_king/core/support/vip_support.dart';
+import 'package:tv_king/features/tv/core/tv_app_tokens.dart';
+import 'package:tv_king/features/tv/core/tv_dimens.dart';
 import 'package:tv_king/features/tv/presentation/tv_whatsapp_support_button.dart';
 import 'package:tv_king/l10n/generated/app_localizations.dart';
 
@@ -127,6 +129,24 @@ void main() {
     await tester.sendKeyEvent(LogicalKeyboardKey.select);
     await tester.pumpAndSettle();
     expect(calls, 1);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('au D-pad, le focus se voit : contour or et fond de sélection',
+      (tester) async {
+    await show(tester, (_) async => true);
+    Material surface() => tester.widget<Material>(
+        find.descendant(of: support, matching: find.byType(Material)));
+    expect((surface().shape! as OutlinedBorder).side, BorderSide.none);
+    expect(surface().color, anyOf(isNull, Colors.transparent));
+    final words = await AppLocalizations.delegate.load(const Locale('fr'));
+    Focus.of(tester.element(find.text(words.tvSupportWhatsApp))).requestFocus();
+    await tester.pumpAndSettle();
+    final TvAppTokens tokens = TvAppTokens.of(tester.element(support));
+    final BorderSide side = (surface().shape! as OutlinedBorder).side;
+    expect(side.color, tokens.accent);
+    expect(side.width, TvDimens.focusOutline);
+    expect(surface().color, tokens.sel);
     expect(tester.takeException(), isNull);
   });
 
