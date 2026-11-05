@@ -4,6 +4,8 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Handler
+import android.os.Looper
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
 import java.io.FileOutputStream
@@ -65,15 +67,25 @@ object M3uDocumentPick {
             callback.success(mapOf("status" to "cancelled"))
             return true
         }
-        callback.success(copy(context, data.data!!))
+        val uri = data.data!!
+        val appContext = context.applicationContext
+        // Jusqu'à 60 Mo depuis une clé USB lente : sur le fil principal,
+        // Android tuerait l'app (ANR). La réponse Flutter, elle, doit
+        // repartir du fil principal.
+        Thread({
+            val outcome = copy(appContext, uri)
+            Handler(Looper.getMainLooper()).post { callback.success(outcome) }
+        }, "zuno-m3u-copy").start()
         return true
     }
 
     private fun copy(context: Context, uri: Uri): Map<String, String> {
+        var partial: File? = null
         return try {
             val dir = File(context.cacheDir, "m3u")
             if (!dir.exists()) dir.mkdirs()
             val out = File(dir, "liste-${System.currentTimeMillis()}.m3u")
+            partial = out
             context.contentResolver.openInputStream(uri).use { input ->
                 if (input == null) return mapOf("status" to "empty")
                 FileOutputStream(out).use { output ->
@@ -98,6 +110,8 @@ object M3uDocumentPick {
                 mapOf("status" to "ok", "path" to out.absolutePath)
             }
         } catch (_: Exception) {
+            // Clé retirée en pleine copie : pas de liste tronquée en cache.
+            partial?.delete()
             mapOf("status" to "unavailable")
         }
     }
