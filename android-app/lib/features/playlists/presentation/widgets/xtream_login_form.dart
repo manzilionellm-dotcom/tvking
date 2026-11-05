@@ -146,6 +146,11 @@ class _XtreamLoginFormState extends State<XtreamLoginForm> {
           child: TextField(
             controller: _serverCtrl,
             autocorrect: false,
+            enableSuggestions: false,
+            enableIMEPersonalizedLearning: false,
+            textCapitalization: TextCapitalization.none,
+            smartDashesType: SmartDashesType.disabled,
+            smartQuotesType: SmartQuotesType.disabled,
             keyboardType: TextInputType.url,
             decoration: const InputDecoration(
               hintText: 'http://exemple.com:8080',

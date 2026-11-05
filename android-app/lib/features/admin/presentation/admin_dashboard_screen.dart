@@ -449,6 +449,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             controller: _urlCtrl,
             keyboardType: TextInputType.url,
             autocorrect: false,
+            enableSuggestions: false,
+            enableIMEPersonalizedLearning: false,
+            textCapitalization: TextCapitalization.none,
+            smartDashesType: SmartDashesType.disabled,
+            smartQuotesType: SmartQuotesType.disabled,
             decoration: const InputDecoration(
               hintText: 'https://seven-motion-backend.X.workers.dev',
             ),

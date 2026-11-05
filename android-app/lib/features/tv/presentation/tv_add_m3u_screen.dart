@@ -191,6 +191,10 @@ class _Field extends StatelessWidget {
           keyboardType: TextInputType.url,
           autocorrect: false,
           enableSuggestions: false,
+          enableIMEPersonalizedLearning: false,
+          textCapitalization: TextCapitalization.none,
+          smartDashesType: SmartDashesType.disabled,
+          smartQuotesType: SmartQuotesType.disabled,
           decoration: InputDecoration(
             hintText: hint,
             hintStyle: TextStyle(color: TvAppTokens.of(context).mutedDim),

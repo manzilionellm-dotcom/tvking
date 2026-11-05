@@ -185,7 +185,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.state(find.byType(TvSourceEntryForm)), same(initialState));
     expect(tester.widget<TextField>(field('m3u')).controller!.text,
-        'http://provider.invalid/list.m3u');
+        'https://provider.invalid/list.m3u');
     tester.view.physicalSize = const Size(400, 900);
     await tester.pumpAndSettle();
     await tester
@@ -193,7 +193,7 @@ void main() {
     await tester.pump();
     expect(tester.state(find.byType(TvSourceEntryForm)), same(initialState));
     expect(tester.widget<TextField>(field('server')).controller!.text,
-        'http://provider.invalid:8080');
+        'https://provider.invalid:8080');
     expect(tester.widget<TextField>(field('user')).controller!.text,
         'fixture-user');
     expect(tester.widget<TextField>(field('password')).controller!.text,
