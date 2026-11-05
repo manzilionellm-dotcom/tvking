@@ -78,6 +78,7 @@ class _TvSourceEntryFormState extends State<TvSourceEntryForm> {
   bool _busy = false;
   bool _importStarted = false;
   bool _passwordVisible = false;
+  bool _picking = false;
   String? _error;
 
   bool get _blocked => _busy || widget.externalBusy;
@@ -214,10 +215,17 @@ class _TvSourceEntryFormState extends State<TvSourceEntryForm> {
   }
 
   Future<void> _pickFile() async {
-    if (_blocked) return;
+    // Le sélecteur met une ou deux secondes à s'ouvrir, puis la copie
+    // depuis une clé USB dure : un second OK ne relance rien.
+    if (_blocked || _picking) return;
+    _picking = true;
     final Future<LocalM3uPick> Function()? fake = widget.pickLocalFileForTesting;
-    final LocalM3uPick pick =
-        fake != null ? await fake() : await LocalM3uPick.ask();
+    final LocalM3uPick pick;
+    try {
+      pick = fake != null ? await fake() : await LocalM3uPick.ask();
+    } finally {
+      _picking = false;
+    }
     if (!mounted || pick.status == LocalM3uPickStatus.cancelled) return;
     if (pick.status != LocalM3uPickStatus.ok || (pick.path ?? '').isEmpty) {
       setState(() => _error = switch (pick.status) {

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -160,5 +161,37 @@ void main() {
     await tester.pump();
     expect(find.text('http://panel.invalid:8080'), findsOneWidget);
     expect(find.text('demo'), findsOneWidget);
+  });
+
+  testWidgets('un second OK sur Fichier ne relance pas le sélecteur', (
+    WidgetTester tester,
+  ) async {
+    int asked = 0;
+    Completer<LocalM3uPick> picker = Completer<LocalM3uPick>();
+    await showForm(
+      tester,
+      pickLocalFile: () {
+        asked++;
+        return picker.future;
+      },
+    );
+
+    final Finder file = find.byKey(const ValueKey<String>('tv-source-file'));
+    await tester.tap(file);
+    await tester.pump();
+    await tester.tap(file);
+    await tester.pump();
+    expect(asked, 1, reason: 'sélecteur ou copie encore en cours');
+
+    picker.complete(const LocalM3uPick(LocalM3uPickStatus.cancelled));
+    await tester.pump();
+    expect(find.byKey(const ValueKey<String>('tv-source-error')), findsNothing);
+
+    picker = Completer<LocalM3uPick>();
+    await tester.tap(file);
+    await tester.pump();
+    expect(asked, 2, reason: 'une fois la réponse reçue, Fichier rouvre');
+    picker.complete(const LocalM3uPick(LocalM3uPickStatus.cancelled));
+    await tester.pump();
   });
 }
