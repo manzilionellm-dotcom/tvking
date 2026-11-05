@@ -131,9 +131,19 @@ class MainActivity : FlutterFragmentActivity() {
         val flutterView = findViewById<FlutterView>(FlutterFragment.FLUTTER_VIEW_ID)
             ?: return
         if (!flutterView.isAttachedToWindow || !flutterView.isShown) return
+        disableNativeFocusHighlight()
         if (flutterView.requestFocus()) {
             Log.i("ZunoStartup", "native.flutterViewFocused")
         }
+    }
+
+    // Flutter dessine son propre focus. Sinon, hors mode tactile, Android
+    // peint autour de toute l'app le liseré de focus du thème (cadre vert
+    // de Theme.Black) dès que la vue Flutter a le focus natif.
+    private fun disableNativeFocusHighlight() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        findViewById<FlutterView>(FlutterFragment.FLUTTER_VIEW_ID)
+            ?.defaultFocusHighlightEnabled = false
     }
 
     private fun supportsPhonePip(): Boolean {
@@ -194,6 +204,9 @@ class MainActivity : FlutterFragmentActivity() {
 
     override fun onStart() {
         super.onStart()
+        // Avant le premier focus natif : au D-pad, Android le donne à la
+        // vue Flutter dès l'ajout de la fenêtre.
+        disableNativeFocusHighlight()
         activityVisible = true
         // Après extinction puis rallumage de l'écran, une fenêtre PiP
         // redevient visible sans recevoir forcément onResume.
