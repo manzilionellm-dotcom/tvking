@@ -7,8 +7,8 @@
 //
 //  Avant le 06/10/2026 : supprimer sur la télé n'effaçait que la copie
 //  locale ; la vérification suivante la réimportait (« si je les efface,
-//  elles reviennent »). Contre-preuve avec le repli
-//  `zuno.source.tv_delete_legacy` : la liste revient.
+//  elles reviennent »). Le refus durable vaut aussi avec l’ancien repli
+//  `zuno.source.tv_delete_legacy`.
 // =========================================================
 import 'dart:convert';
 import 'dart:io';
@@ -23,8 +23,11 @@ import 'package:tv_king/core/flavor/flavor.dart';
 import 'package:tv_king/features/playlists/data/playlist_database.dart';
 import 'package:tv_king/features/playlists/data/playlist_repository.dart';
 import 'package:tv_king/features/playlists/data/remote_source_repository.dart';
+import 'package:tv_king/features/playlists/data/cloud_backup_repository.dart';
+import 'package:tv_king/features/playlists/data/deleted_sources.dart';
 import 'package:tv_king/features/playlists/domain/playlist.dart';
 import 'package:tv_king/features/playlists/domain/tv_delete.dart';
+import 'package:tv_king/features/playlists/domain/source_fingerprint.dart';
 
 const String kMac = 'MK:AA:BB:CC:DD:EE';
 
@@ -113,6 +116,50 @@ void main() {
     expect(_find(ps, 'client-b.invalid').channelCount, 3);
   });
 
+  test('coupure après le refus durable : la ligne restante disparaît au redémarrage', () async {
+    final _Server s = _Server();
+    await _sync(s);
+    final Playlist deleted = _find(await _lists(), 'panel-a.invalid');
+    await DeletedSources.remember(SourceFingerprint.ofPlaylist(deleted));
+    // SQLite garde encore la ligne si le processus est tué pendant le DELETE.
+    await PlaylistDatabase.instance.closeForTesting();
+    await PlaylistRepository.instance.initialize();
+    expect(_has(PlaylistRepository.instance.currentPlaylists, 'panel-a.invalid'), isFalse);
+    expect(_has(await _lists(), 'client-b.invalid'), isTrue);
+    await _sync(s);
+    expect(_has(await _lists(), 'panel-a.invalid'), isFalse);
+  });
+
+  test('M3U saisi à la main puis effacé : ne revient pas sous sa forme Xtream', () async {
+    const String link = 'http://account.invalid/get.php?username=user&password=pass&type=m3u_plus';
+    final http.Client file = MockClient((_) async => http.Response(_m3u('manual', 1), 200));
+    final Playlist playlist = await PlaylistRepository.instance.addM3uPlaylist(name: 'Manuel', url: link, httpClient: file);
+    await PlaylistRepository.instance.deletePlaylist(playlist.id!);
+    final _Server s = _Server()..served = <Map<String, Object?>>[
+      <String, Object?>{'type': 'xtream', 'server_url': 'http://account.invalid', 'username': 'user', 'password': 'pass'},
+    ];
+    await PlaylistDatabase.instance.closeForTesting();
+    await _sync(s);
+    expect(await _lists(), isEmpty);
+    file.close();
+  });
+
+  test('un ajout Xtream lent commencé avant la suppression ne la lève pas à son retour', () async {
+    const Playlist source = Playlist(id: null, name: 'Compte', type: PlaylistType.xtream,
+      xtreamServer: 'http://account.invalid', xtreamUsername: 'user', xtreamPassword: 'pass', createdAt: 1);
+    final Database db = await PlaylistDatabase.instance.database;
+    final int oldId = await db.insert('playlists', source.toMap());
+    final http.Client slow = MockClient((_) async {
+      await PlaylistRepository.instance.deletePlaylist(oldId);
+      return http.Response('{"user_info":{"auth":1,"status":"Active"}}', 200);
+    });
+    await expectLater(PlaylistRepository.instance.addXtreamPlaylist(name: 'En cours',
+      serverUrl: source.xtreamServer!, username: 'user', password: 'pass', httpClient: slow),
+      throwsA(isA<PlaylistDeletedException>()));
+    expect(await _lists(), isEmpty);
+    slow.close();
+  });
+
   test('liste ajoutée par le client : supprimée sur la télé ET sur le serveur, ne revient pas', () async {
     final _Server s = _Server();
     await _sync(s);
@@ -125,7 +172,7 @@ void main() {
     expect(_has(await _lists(), 'panel-a.invalid'), isTrue, reason: 'l’autre liste ne bouge pas');
   });
 
-  test('liste du panel : supprimée sur la télé, plus réimportée ; le panel la renvoie → elle revient', () async {
+  test('liste du panel : ni synchronisation forcée ni renvoi ne ressuscitent la liste', () async {
     final _Server s = _Server();
     await _sync(s);
     expect(await _deleteOnTv(s, 'panel-a.invalid'), isTrue);
@@ -138,25 +185,197 @@ void main() {
     // Le revendeur renvoie la liste depuis le panel (ordre « liste »).
     RemoteSourceRepository.notePanelResend(DateTime.now().millisecondsSinceEpoch + 1);
     await _sync(s);
-    expect(_find(await _lists(), 'panel-a.invalid').channelCount, 4);
+    expect(_has(await _lists(), 'panel-a.invalid'), isFalse);
+    // Redémarrage : la mémoire de suppression est sur disque.
+    await PlaylistDatabase.instance.closeForTesting();
+    await _sync(s);
+    expect(_has(await _lists(), 'panel-a.invalid'), isFalse);
   });
 
-  test('serveur injoignable pour une liste du client : rien n’est effacé, l’écran le dit', () async {
+  test('serveur injoignable : suppression locale durable au retour du réseau', () async {
     final _Server s = _Server();
     await _sync(s);
     s.down = true;
-    expect(await _deleteOnTv(s, 'client-b.invalid'), isFalse);
-    expect(_has(await _lists(), 'client-b.invalid'), isTrue);
+    expect(await _deleteOnTv(s, 'client-b.invalid'), isTrue);
+    expect(_has(await _lists(), 'client-b.invalid'), isFalse);
+    s.down = false;
+    await _sync(s);
+    expect(_has(await _lists(), 'client-b.invalid'), isFalse);
   });
 
-  test('contre-preuve : ancien comportement (repli) → la liste revient', () async {
+  test('le repli historique ne contourne plus la suppression durable', () async {
     final _Server s = _Server();
     await _sync(s);
     RepairFlags.tvDeleteLegacy = true;
     expect(await _deleteOnTv(s, 'panel-a.invalid'), isTrue);
     expect(_has(await _lists(), 'panel-a.invalid'), isFalse);
     await _sync(s);
-    expect(_has(await _lists(), 'panel-a.invalid'), isTrue, reason: 'le défaut d’avant est bien détecté');
+    expect(_has(await _lists(), 'panel-a.invalid'), isFalse);
+  });
+
+  test('suppression manuelle pendant le téléchargement : import annulé', () async {
+    final PlaylistRepository repo = PlaylistRepository.instance;
+    final http.Client client = MockClient((http.Request request) async {
+      final List<Playlist> pending = await _lists();
+      await repo.deletePlaylist(pending.single.id!);
+      return http.Response(_m3u('late', 3), 200);
+    });
+    await expectLater(repo.addM3uPlaylist(
+      name: 'En cours', url: 'http://late.invalid/l.m3u', httpClient: client,
+    ), throwsA(isA<PlaylistDeletedException>()));
+    expect(await _lists(), isEmpty);
+    expect(await repo.getAllChannels(), isEmpty);
+    final http.Client good = MockClient((_) async => http.Response(_m3u('new', 2), 200));
+    await expectLater(repo.addM3uPlaylist(
+      name: 'Restauration', url: 'http://late.invalid/l.m3u', httpClient: good,
+      restoreDeleted: false,
+    ), throwsA(isA<PlaylistDeletedException>()));
+    // Un nouvel ajout volontaire est autorisé, avec un nouvel identifiant.
+    expect((await repo.addM3uPlaylist(
+      name: 'Ajout volontaire', url: 'http://late.invalid/l.m3u', httpClient: good,
+    )).channelCount, 2);
+    client.close();
+    good.close();
+  });
+
+  test('ancienne sauvegarde : les listes supprimées ne sont pas restaurées', () async {
+    final _Server s = _Server();
+    await _sync(s);
+    for (final Playlist p in await _lists()) {
+      await PlaylistRepository.instance.deletePlaylist(p.id!);
+    }
+    await PlaylistDatabase.instance.closeForTesting();
+    int downloads = 0;
+    await http.runWithClient(() => CloudBackupRepository.instance.restoreIfNeeded(),
+      () => MockClient((http.Request r) async {
+        if (r.url.path.startsWith('/api/backup/')) {
+          return http.Response(jsonEncode(<String, Object?>{'data': <String, Object?>{
+            'playlists': <Map<String, Object?>>[
+              <String, Object?>{'type': 'm3u', 'name': 'Ancienne', 'm3u_url': 'http://panel-a.invalid/l.m3u'},
+            ], 'favorites': <String>[],
+          }}), 200);
+        }
+        if (r.url.host == 'panel-a.invalid') downloads++;
+        return http.Response('{}', 404);
+      }),
+    );
+    expect(await _lists(), isEmpty);
+    expect(downloads, 0, reason: 'la source supprimée est refusée avant le réseau');
+    await _sync(s);
+    expect(await _lists(), isEmpty);
+  });
+
+  test('révocation panel pendant une synchro : annule le téléchargement sans attendre', () async {
+    final String url = 'http://pending.invalid/list.m3u';
+    await http.runWithClient(() => RemoteSourceRepository.sync(force: true),
+      () => MockClient((http.Request r) async {
+        if (r.url.path.startsWith('/api/device-source/')) {
+          return http.Response(jsonEncode(<String, Object?>{'sources': <Object>[
+            <String, String>{'type': 'm3u', 'm3u_url': url},
+          ]}), 200);
+        }
+        if (r.url.host == 'pending.invalid') {
+          expect(await RemoteSourceRepository.applyRevocations(<String>['m3u|$url']), 1);
+          return http.Response(_m3u('late', 2), 200);
+        }
+        return http.Response('{}', 404);
+      }),
+    );
+    expect(await _lists(), isEmpty);
+    expect(await PlaylistRepository.instance.getAllChannels(), isEmpty);
+  });
+
+  test('refus du DELETE serveur : le choix local reste durable', () async {
+    final _Server s = _Server();
+    await _sync(s);
+    final Playlist p = _find(await _lists(), 'client-b.invalid');
+    final http.Client good = s.client();
+    final http.Client failing = MockClient((http.Request r) async {
+      if (r.method == 'DELETE') return http.Response('indisponible', 503);
+      return http.Response.fromStream(await good.send(r));
+    });
+    expect(await RemoteSourceRepository.deleteFromTv(p, client: failing), isTrue);
+    await _sync(s);
+    expect(_has(await _lists(), 'client-b.invalid'), isFalse);
+    good.close();
+    failing.close();
+  });
+
+  test('dernière suppression : sauvegarde vide avec refus, restaurable après réinstallation', () async {
+    final _Server s = _Server();
+    await _sync(s);
+    for (final Playlist p in await _lists()) {
+      await PlaylistRepository.instance.deletePlaylist(p.id!);
+    }
+    Map<String, dynamic>? backup;
+    await http.runWithClient(() => CloudBackupRepository.instance.uploadForTesting(),
+      () => MockClient((http.Request r) async {
+        if (r.url.path.startsWith('/api/backup/') && r.method == 'PUT') {
+          backup = (jsonDecode(r.body) as Map<String, dynamic>)['data'] as Map<String, dynamic>;
+          return http.Response('{}', 200);
+        }
+        return http.Response('{}', 404);
+      }),
+    );
+    expect(backup, isNotNull);
+    expect(backup!['playlists'], isEmpty);
+    expect(backup!['deleted_source_hashes'], hasLength(2));
+    expect(jsonEncode(backup), isNot(contains('panel-a.invalid')));
+    // Une installation neuve n'a ni base ni refus locaux.
+    await PlaylistDatabase.instance.closeForTesting();
+    await databaseFactory.deleteDatabase(PlaylistDatabase.debugFilePath!);
+    await http.runWithClient(() => CloudBackupRepository.instance.restoreIfNeeded(),
+      () => MockClient((http.Request r) async => http.Response(
+        r.url.path.startsWith('/api/backup/') ? jsonEncode(<String, Object?>{'data': backup}) : '{}',
+        r.url.path.startsWith('/api/backup/') ? 200 : 404,
+      )),
+    );
+    await _sync(s);
+    expect(await _lists(), isEmpty);
+    expect(await DeletedSources.read(), hasLength(2));
+  });
+
+  test('base neuve vide : ne remplace pas la sauvegarde distante', () async {
+    int uploads = 0;
+    await http.runWithClient(() => CloudBackupRepository.instance.uploadForTesting(),
+      () => MockClient((http.Request r) async {
+        if (r.method == 'PUT') uploads++;
+        return http.Response('{}', 200);
+      }),
+    );
+    expect(uploads, 0);
+  });
+
+  test('ancien refus TV : migration avant restauration, nouvel ajout volontaire possible', () async {
+    const String url = 'http://panel-a.invalid/l.m3u';
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.setString(RemoteSourceRepository.tvRefusedKey,
+        jsonEncode(<String, int>{'m3u|$url': 1}));
+    final http.Client good = MockClient((_) async => http.Response(_m3u('new', 2), 200));
+    await expectLater(PlaylistRepository.instance.addM3uPlaylist(
+      name: 'Automatique', url: url, httpClient: good, restoreDeleted: false,
+    ), throwsA(isA<PlaylistDeletedException>()));
+    expect(prefs.getString(RemoteSourceRepository.tvRefusedKey), isNull);
+    final Playlist added = await PlaylistRepository.instance.addM3uPlaylist(
+      name: 'Volontaire', url: url, httpClient: good,
+    );
+    expect(added.channelCount, 2);
+    expect(await DeletedSources.read(), isEmpty);
+    good.close();
+  });
+
+  test('migration v6 : conserve les listes et ajoute les refus durables', () async {
+    final _Server s = _Server();
+    await _sync(s);
+    final Database db = await PlaylistDatabase.instance.database;
+    await db.execute('DROP TABLE deleted_sources');
+    await db.execute('PRAGMA user_version = 6');
+    await PlaylistDatabase.instance.closeForTesting();
+    expect(await _lists(), hasLength(2));
+    expect(await DeletedSources.read(), isEmpty);
+    await _deleteOnTv(s, 'panel-a.invalid');
+    await _sync(s);
+    expect(_has(await _lists(), 'panel-a.invalid'), isFalse);
   });
 
   test('Désactiver / Activer : immédiat, sans retéléchargement ; une relecture ne rallume pas', () async {
@@ -192,11 +411,11 @@ void main() {
           TvDeleteKind.localOnly);
     });
 
-    test('un refus tombe quand le panel ne sert plus la liste ou la renvoie après', () {
+    test('un refus persiste après absence ou renvoi global du panel', () {
       final Map<String, int> r = <String, int>{'a': 100, 'b': 100};
-      expect(pruneRefused(r, servedFingerprints: <String>{'a'}).keys, <String>['a']);
+      expect(pruneRefused(r, servedFingerprints: <String>{'a'}).keys, <String>['a', 'b']);
       expect(pruneRefused(r, servedFingerprints: <String>{'a', 'b'}, panelResendAtMs: 50).length, 2);
-      expect(pruneRefused(r, servedFingerprints: <String>{'a', 'b'}, panelResendAtMs: 150), isEmpty);
+      expect(pruneRefused(r, servedFingerprints: <String>{'a', 'b'}, panelResendAtMs: 150).length, 2);
       expect(isRefusedOnTv('a', r), isTrue);
       expect(isRefusedOnTv(null, r), isFalse);
     });

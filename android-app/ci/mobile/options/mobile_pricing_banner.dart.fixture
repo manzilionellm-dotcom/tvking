@@ -1,0 +1,157 @@
+// Offres confirmées par le panel : aucune valeur ni durée d'accès inventée.
+// Le Store ne présente pas ce parcours externe. L'ouverture du navigateur
+// exige un geste du client et reste réessayable si aucune app ne répond.
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+import '../../../core/i18n/l10n_extension.dart';
+import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/app_text_styles.dart';
+import '../../../core/update/build_flags.dart';
+import '../data/pricing_repository.dart';
+
+class PricingBanner extends StatefulWidget {
+  const PricingBanner({super.key});
+
+  @override
+  State<PricingBanner> createState() => _PricingBannerState();
+}
+
+class _PricingBannerState extends State<PricingBanner> {
+  bool _opening = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (!kIsPlayBuild) unawaited(PricingRepository.fetch());
+  }
+
+  Future<void> _open(String value) async {
+    if (kIsPlayBuild || _opening) return;
+    final uri = Uri.tryParse(value);
+    if (uri == null ||
+        uri.scheme != 'https' ||
+        uri.host.isEmpty ||
+        uri.userInfo.isNotEmpty) return;
+    setState(() => _opening = true);
+    bool opened = false;
+    try {
+      opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (_) {
+      /* Le client peut installer ou choisir un navigateur ensuite. */
+    }
+    if (!mounted) return;
+    setState(() => _opening = false);
+    if (!opened) {
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(
+        content: Text(context.l10n.subCantOpenUrl(uri.host)),
+      ));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (kIsPlayBuild) return const SizedBox.shrink();
+    return ValueListenableBuilder<PricingConfig>(
+      valueListenable: PricingRepository.notifier,
+      builder: (context, config, _) {
+        final palette = AppColors.lumiere(context);
+        final language = Localizations.localeOf(context).languageCode;
+        final title = config.blockTitle(language);
+        final body = config.blockBody(language);
+        final promo = config.promoEnabled && config.promoMessage.isNotEmpty;
+        final payment = Uri.tryParse(config.payUrl);
+        final canPay = payment != null &&
+            payment.scheme == 'https' &&
+            payment.host.isNotEmpty &&
+            payment.userInfo.isEmpty;
+        if (!config.confirmed ||
+            (!config.hasOffers &&
+                title.isEmpty &&
+                body.isEmpty &&
+                !promo &&
+                !canPay)) return const SizedBox.shrink();
+        return Container(
+          key: const ValueKey('mobile-panel-pricing'),
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: palette.elevated,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: palette.border),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (title.isNotEmpty) ...[
+                Text(title,
+                    textAlign: TextAlign.center,
+                    style: AppTextStyles.headlineMedium
+                        .copyWith(color: palette.textPrimary)),
+                const SizedBox(height: 8),
+              ],
+              if (body.isNotEmpty) ...[
+                Text(body,
+                    textAlign: TextAlign.center,
+                    style: AppTextStyles.bodyMedium
+                        .copyWith(color: palette.textSecondary)),
+                const SizedBox(height: 12),
+              ],
+              if (config.hasOffers) ...[
+                Text(context.l10n.pricingOffersTitle,
+                    textAlign: TextAlign.center,
+                    style: AppTextStyles.labelSmall
+                        .copyWith(color: palette.textSecondary)),
+                const SizedBox(height: 12),
+                Wrap(
+                    alignment: WrapAlignment.center,
+                    spacing: 24,
+                    runSpacing: 12,
+                    children: [
+                      if (config.lifetime.isNotEmpty)
+                        _offer(context, context.l10n.pricingLifetime,
+                            config.lifetimeLabel),
+                      if (config.yearly.isNotEmpty)
+                        _offer(context, context.l10n.pricingYearly,
+                            config.yearlyLabel),
+                    ]),
+              ],
+              if (promo) ...[
+                const SizedBox(height: 12),
+                Text(config.promoMessage,
+                    textAlign: TextAlign.center,
+                    style: AppTextStyles.bodyMedium
+                        .copyWith(color: palette.textPrimary)),
+              ],
+              if (canPay) ...[
+                const SizedBox(height: 12),
+                OutlinedButton.icon(
+                  key: const ValueKey('mobile-panel-pricing-pay'),
+                  onPressed: _opening ? null : () => _open(config.payUrl),
+                  icon: const Icon(Icons.open_in_new_rounded),
+                  label: Text(
+                      '${context.l10n.pricingOffersTitle} · ${payment.host}'),
+                ),
+              ],
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _offer(BuildContext context, String title, String price) {
+    final palette = AppColors.lumiere(context);
+    return Column(mainAxisSize: MainAxisSize.min, children: [
+      Text(title,
+          style:
+              AppTextStyles.labelSmall.copyWith(color: palette.textSecondary)),
+      const SizedBox(height: 6),
+      Text(price,
+          style:
+              AppTextStyles.headlineLarge.copyWith(color: palette.textPrimary)),
+    ]);
+  }
+}

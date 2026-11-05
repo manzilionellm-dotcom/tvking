@@ -1,0 +1,172 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import 'package:tv_king/core/theme/accent_controller.dart';
+import 'package:tv_king/core/theme/app_colors.dart';
+import 'package:tv_king/core/theme/app_text_styles.dart';
+import 'package:tv_king/core/theme/app_theme.dart';
+import 'package:tv_king/core/theme/lumiere_tokens.dart';
+import 'package:tv_king/core/theme/theme_mode_repository.dart';
+import 'package:tv_king/core/theme/tv_palette.dart';
+
+void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  final AccentController controller = AccentController.instance;
+  final ThemeModeRepository modes = ThemeModeRepository.instance;
+
+  setUp(() {
+    controller.clearCustom();
+    modes.applyRemoteMode(null);
+  });
+
+  test(
+      'la nouvelle installation utilise la charte noire et blanche à surfaces étagées',
+      () async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    await controller.initialize();
+    await modes.initialize();
+
+    expect(AppColors.background, const Color(0xFF000000));
+    expect(AppColors.surface, const Color(0xFF121212));
+    expect(AppColors.border, const Color(0xFF303030));
+    expect(AppColors.textPrimary, const Color(0xFFFFFFFF));
+    expect(AppColors.textSecondary, const Color(0xFFC4C4C4));
+    expect(AppColors.accent, Colors.white);
+    expect(AppColors.onAccent, Colors.black);
+    expect(controller.current.id, 'motion');
+    expect(controller.current.accent, Colors.white);
+    expect(controller.isDaily, isFalse);
+    expect(modes.mode, ThemeMode.dark);
+    expect((await SharedPreferences.getInstance()).getKeys(), isEmpty);
+  });
+
+  test('les choix locaux restent conservés et le mode choisi est relu',
+      () async {
+    for (final String oldMode in <String>['light', 'system', 'dark']) {
+      for (final String oldAccentMode in <String>['fixed', 'daily']) {
+        final Map<String, Object> saved = <String, Object>{
+          'accent_theme_id': 'emerald',
+          'accent_mode': oldAccentMode,
+          'theme.mode.v1': oldMode,
+        };
+        SharedPreferences.setMockInitialValues(saved);
+        await controller.initialize();
+        await modes.initialize();
+        controller.refreshDailyIfNeeded();
+
+        expect(controller.current.accent, Colors.white);
+        expect(controller.isDaily, isFalse);
+        expect(
+            modes.mode,
+            {
+              'light': ThemeMode.light,
+              'system': ThemeMode.system,
+              'dark': ThemeMode.dark
+            }[oldMode]);
+        final SharedPreferences prefs = await SharedPreferences.getInstance();
+        for (final MapEntry<String, Object> value in saved.entries) {
+          expect(prefs.get(value.key), value.value);
+        }
+      }
+    }
+  });
+
+  test(
+      'le panel applique puis retire sa surcharge sans toucher aux préférences',
+      () async {
+    SharedPreferences.setMockInitialValues(<String, Object>{
+      'accent_theme_id': 'ocean',
+      'accent_mode': 'daily',
+      'theme.mode.v1': 'dark',
+    });
+    await controller.initialize();
+    await modes.initialize();
+    controller.applyCustom(const Color(0xFF2E7DD6));
+    modes.applyRemoteMode(ThemeMode.light);
+    expect(controller.current.accent, const Color(0xFF2E7DD6));
+    expect(AppTheme.daylight.brightness, Brightness.light);
+    expect(modes.mode, ThemeMode.light);
+    expect(AppTheme.daylight.colorScheme.primary, const Color(0xFF2E7DD6));
+    controller.clearCustom();
+    modes.applyRemoteMode(null);
+    expect(controller.current.accent, Colors.white);
+    expect(modes.mode, ThemeMode.dark);
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getString('accent_theme_id'), 'ocean');
+    expect(prefs.getString('theme.mode.v1'), 'dark');
+  });
+
+  test('Material ne réintroduit pas de tons colorés depuis une graine blanche',
+      () {
+    final ThemeData theme = AppTheme.cinema;
+    final ColorScheme colors = theme.colorScheme;
+    expect(colors.primary, Colors.white);
+    expect(colors.onPrimary, Colors.black);
+    expect(colors.outline, const Color(0xFF303030));
+    expect(colors.onSurfaceVariant, const Color(0xFFC4C4C4));
+    for (final Color color in <Color>[
+      colors.primary,
+      colors.primaryContainer,
+      colors.secondary,
+      colors.secondaryContainer,
+      colors.tertiary,
+      colors.tertiaryContainer,
+      colors.error,
+      colors.errorContainer,
+      colors.surface,
+      colors.surfaceContainer,
+      colors.surfaceContainerHighest,
+      colors.outline,
+    ]) {
+      expect(color.r, color.g);
+      expect(color.g, color.b);
+    }
+    expect(theme.extension<LumiereColors>()!.canvas, AppColors.background);
+    expect((theme.cardTheme.shape! as RoundedRectangleBorder).side,
+        const BorderSide(color: AppColors.border, width: 1));
+    expect(theme.snackBarTheme.contentTextStyle!.color, Colors.black);
+    expect(AppTextStyles.headlineLarge.fontFamily, contains('Inter'));
+    expect(AppTextStyles.maisonHeroTitle.fontFamily, contains('Inter'));
+    expect(AppTextStyles.brandTagline.letterSpacing, 3);
+  });
+
+  test('texte lisible sur toutes les surfaces et tokens cohérents', () {
+    final palette = LumiereColors.cinema;
+    expect(palette.elevated, AppColors.surface);
+    expect(palette.glass, AppColors.surfaceHigh);
+    expect(palette.overcast, AppColors.surfaceOverlay);
+    expect(palette.textSecondary, AppColors.textSecondary);
+    expect(palette.textTertiary, AppColors.textTertiary);
+    expect(palette.textMuted, AppColors.textMuted);
+    expect(palette.border, AppColors.border);
+    expect(AppColors.surface.computeLuminance(),
+        lessThan(AppColors.surfaceHigh.computeLuminance()));
+    expect(AppColors.surfaceHigh.computeLuminance(),
+        lessThan(AppColors.surfaceOverlay.computeLuminance()));
+    for (final background in <Color>[
+      AppColors.background,
+      AppColors.surface,
+      AppColors.surfaceHigh,
+      AppColors.surfaceOverlay
+    ]) {
+      for (final foreground in <Color>[
+        AppColors.textPrimary,
+        AppColors.textSecondary,
+        AppColors.textTertiary,
+        AppColors.textMuted
+      ]) {
+        final contrast = (foreground.computeLuminance() + 0.05) /
+            (background.computeLuminance() + 0.05);
+        expect(contrast, greaterThanOrEqualTo(4.5),
+            reason: '$foreground sur $background');
+      }
+    }
+  });
+
+  test('la palette TV explicite conserve son accent violet', () {
+    expect(AppTheme.tvViolet.colorScheme.primary, TvRoyal.accent);
+    expect(AppTheme.tvViolet.scaffoldBackgroundColor, TvRoyal.background);
+  });
+}

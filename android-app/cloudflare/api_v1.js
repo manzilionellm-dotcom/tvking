@@ -79,6 +79,7 @@ import {
   signalFleet,
   signalMac,
 } from './box_signal.js';
+import { BANNERS_KEY, sanitizeBanners } from './banners.js';
 
 // ---------------------------------------------------------
 //  Helpers reponse
@@ -797,6 +798,17 @@ async function apiV1Inner(request, env) {
     if (parts.length === 1) {
       if (request.method === 'GET') return handleFeaturedGet(env);
       if (request.method === 'POST') return handleFeaturedPost(request, env, actor);
+    }
+  }
+
+  // /banners — images promo de l'accueil. Owner. Écriture = ordre `banner`.
+  if (parts[0] === 'banners') {
+    if (a.user.role !== 'super_admin') {
+      return errResp('forbidden', 'Owner only', 403);
+    }
+    if (parts.length === 1) {
+      if (request.method === 'GET') return handleBannersGet(env);
+      if (request.method === 'PUT') return handleBannersPut(request, env, actor);
     }
   }
 
@@ -1964,6 +1976,35 @@ async function handleFeaturedPost(request, env, actor) {
     { type: 'app_config', id: null }, null, { name, note });
   await signalFleet(env, 'featured');
   return jsonResp({ ok: true, name, note });
+}
+
+// Images promo. Le corps est le même que GET /api/banners (la box).
+async function handleBannersGet(env) {
+  await ensureAppConfigTable(env);
+  const raw = await _cfgGetStr(env, BANNERS_KEY);
+  if (!raw) return jsonResp({ version: 0, items: [] });
+  const clean = sanitizeBanners(raw);
+  return jsonResp({ version: clean.version, items: clean.items });
+}
+
+async function handleBannersPut(request, env, actor) {
+  await ensureAppConfigTable(env);
+  let body;
+  try { body = await request.json(); } catch (_) {
+    return errResp('bad_json', 'Invalid JSON body', 400);
+  }
+  const incoming = body && Array.isArray(body.items) ? body.items : null;
+  if (!incoming) return errResp('bad_banner', 'Liste items requise.', 400);
+  const clean = sanitizeBanners({ items: incoming }, Date.now());
+  if (incoming.length > 0 && clean.items.length === 0) {
+    return errResp('bad_banner', 'Image https et identifiant requis.', 400);
+  }
+  const stored = { version: clean.version, items: clean.items };
+  await _cfgSet(env, BANNERS_KEY, JSON.stringify(stored));
+  await logAudit(env, request, actor, 'banners.save',
+    { type: 'app_config', id: null }, null, { count: clean.items.length });
+  await signalFleet(env, 'banner');
+  return jsonResp({ ok: true, ...stored, dropped: clean.dropped });
 }
 
 // =========================================================

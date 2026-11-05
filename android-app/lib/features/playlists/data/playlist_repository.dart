@@ -38,7 +38,10 @@ import '../../channels/domain/channel_genre.dart';
 import '../../epg/data/epg_repository.dart';
 import '../../epg/data/epg_targets.dart';
 import '../domain/playlist.dart';
+import '../domain/source_fingerprint.dart';
+import 'deleted_sources.dart';
 import 'playlist_secret.dart';
+import 'local_m3u_bytes.dart';
 import 'm3u_fetcher.dart';
 import 'import_progress.dart';
 import 'm3u_parser.dart';
@@ -108,7 +111,21 @@ class PlaylistRepository {
   /// Charge initialement les chaînes depuis la base et émet sur le stream.
   /// À appeler une fois au démarrage de l'app.
   Future<void> initialize() async {
+    await _completePendingDeletions();
     await _emitCurrentState();
+  }
+
+  /// Une coupure peut interrompre le nettoyage des milliers de chaînes,
+  /// jamais le refus déjà enregistré. On termine avant le premier affichage.
+  Future<void> _completePendingDeletions() async {
+    final Set<String> deleted = await DeletedSources.read();
+    if (deleted.isEmpty) return;
+    final Database db = await PlaylistDatabase.instance.database;
+    for (final Map<String, Object?> row in await db.query('playlists')) {
+      final Playlist playlist = await _playlistFromRow(row);
+      final List<String> keys = await DeletedSources.hashes(SourceFingerprint.ofPlaylist(playlist));
+      if (keys.any(deleted.contains)) await _deletePlaylist(playlist.id!);
+    }
   }
 
   // ============================================================
@@ -358,6 +375,23 @@ class PlaylistRepository {
   //  AJOUT PLAYLIST — M3U
   // ============================================================
 
+  /// Fichier déjà copié dans le cache (sélecteur de documents).
+  /// L'adresse enregistrée est `file:`, pour qu'une actualisation
+  /// relise le fichier au lieu d'ouvrir le réseau.
+  Future<Playlist> addM3uFromLocalFile({
+    required String name,
+    required String path,
+  }) {
+    return addM3uPlaylist(name: name, url: Uri.file(path).toString());
+  }
+
+  Future<Uint8List> _loadM3uBody(String url, {http.Client? httpClient}) {
+    if (url.startsWith('file:')) {
+      return readLocalM3uBytes(Uri.parse(url).toFilePath());
+    }
+    return M3uFetcher.fetchBytes(url, httpClient: httpClient);
+  }
+
   /// Télécharge le .m3u puis stocke les chaînes en base.
   ///
   /// Lance une [Exception] si l'URL est invalide ou si le
@@ -367,14 +401,15 @@ class PlaylistRepository {
     required String url,
     String? epgUrl,
     http.Client? httpClient,
+    bool restoreDeleted = true,
   }) async {
+    if (restoreDeleted) await DeletedSources.restoreManually(SourceFingerprint.ofM3uUrl(url));
     final http.Client client = httpClient ?? http.Client();
     // On insère la playlist AVANT le download (le parser a besoin de son
     // id pour rattacher les chaînes). MAIS : si une étape échoue ensuite
     // (download KO, 0 chaîne…), on SUPPRIME cette entrée orpheline dans
     // le `catch` → on ne garde QUE les sources valides (demande client).
     int? playlistId;
-    final Stopwatch sw = Stopwatch()..start();
     try {
       // 1) Insère la playlist (sans channelCount/lastSync)
       final Playlist newPlaylist = Playlist(
@@ -394,7 +429,7 @@ class PlaylistRepository {
       if (kDebugMode) debugPrint('[Repo] GET $url');
       // Octets bruts : décodage ET parsing dans l'isolate (le fil UI ne
       // touche jamais au contenu, même pour un fichier de 60 Mo).
-      final Uint8List body = await M3uFetcher.fetchBytes(url, httpClient: client);
+      final Uint8List body = await _loadM3uBody(url, httpClient: client);
 
       // 3) Parse (dans un ISOLATE → pas de gel UI) + insertion en batch
       final M3uParseResult parsed =
@@ -411,7 +446,7 @@ class PlaylistRepository {
         );
       }
 
-      await _ensurePlaylistRow(playlistId, newPlaylist, sw);
+      await _ensurePlaylistRow(playlistId);
       await _insertChannels(parsed.channels);
       final Playlist saved = newPlaylist.copyWith(
         id: playlistId,
@@ -555,7 +590,14 @@ class PlaylistRepository {
     required String password,
     String? originM3uUrl,
     http.Client? httpClient,
+    bool restoreDeleted = true,
   }) async {
+    if (restoreDeleted) {
+      await DeletedSources.restoreManually(<String>[
+        ...SourceFingerprint.xtreamAliases(serverUrl, username),
+        ...SourceFingerprint.ofM3uUrl(originM3uUrl),
+      ]);
+    }
     // 1) Vérifie d'abord les credentials, avant de polluer la base
     final XtreamClient xtream = XtreamClient(
       serverUrl: serverUrl,
@@ -566,7 +608,6 @@ class PlaylistRepository {
     // Orpheline : si une étape échoue APRÈS insertion, on la supprime
     // (cf. `catch`) → on ne stocke QUE les comptes valides.
     int? playlistId;
-    final Stopwatch sw = Stopwatch()..start();
     try {
       await xtream.verifyCredentials();
 
@@ -588,11 +629,9 @@ class PlaylistRepository {
       );
       playlistId = await _insertPlaylist(newPlaylist);
 
-      // 3) Récupère catégories + chaînes
-      final Map<String, String> cats = await xtream.fetchLiveCategories();
+      // 3) Les catégories et chaînes sont chargées ensemble par le client.
       final List<Channel> channels = await xtream.fetchLiveChannels(
         playlistId: playlistId,
-        categories: cats,
       );
 
       if (channels.isEmpty) {
@@ -602,7 +641,7 @@ class PlaylistRepository {
         );
       }
 
-      await _ensurePlaylistRow(playlistId, newPlaylist, sw);
+      await _ensurePlaylistRow(playlistId);
       await _insertChannels(channels);
       final Playlist saved = newPlaylist.copyWith(
         id: playlistId,
@@ -650,6 +689,17 @@ class PlaylistRepository {
   /// PENDANT son import (« FOREIGN KEY constraint failed ») sans qu'aucune
   /// ligne ne dise qui l'avait supprimée.
   Future<void> deletePlaylist(int playlistId, {String reason = 'client'}) async {
+    final Database db = await PlaylistDatabase.instance.database;
+    final List<Map<String, Object?>> rows = await db.query(
+      'playlists', where: 'id = ?', whereArgs: <Object>[playlistId], limit: 1,
+    );
+    if (rows.isNotEmpty) {
+      // Petite écriture validée avant de vider l'écran et avant le gros DELETE.
+      await DeletedSources.remember(SourceFingerprint.ofPlaylist(await _playlistFromRow(rows.single)));
+    }
+    // Une relecture déjà en vol ne doit pas republier l'ancien cache après
+    // la suppression immédiate affichée ci-dessous.
+    _stateRevision++;
     BlackBox.instance.info('DB', 'liste $playlistId supprimée ($reason)');
     // Vidage SYNCHRONE du cache mémoire + émission immédiate d'une
     // liste vide AVANT le DELETE SQL. Sur grosses playlists (20k+
@@ -675,7 +725,7 @@ class PlaylistRepository {
 
     // Maintenant le DELETE SQL réel (peut prendre du temps sur
     // grosses playlists, mais l'UI est déjà à jour).
-    await _deletePlaylist(playlistId);
+    await _deletePlaylist(playlistId, rememberDeletion: true);
     // Re-émet l'état "officiel" depuis la DB pour rester cohérent
     // en cas d'incohérence (rare).
     await _emitCurrentState();
@@ -785,8 +835,15 @@ class PlaylistRepository {
         DateTime.now().subtract(staleness).millisecondsSinceEpoch;
     int ok = 0;
     for (final Playlist p in all) {
-      final int? last = p.lastSyncedAt;
-      if (last != null && last > cutoff) continue;
+      // Même garde qu'une actualisation manuelle : ne pas télécharger une
+      // liste cachée ou déjà en cours d'ajout au démarrage (double mémoire).
+      if (!shouldRefreshPlaylist(
+        p,
+        freshAfter: cutoff,
+        pendingLegacy: RepairFlags.refreshPendingLegacy,
+      )) {
+        continue;
+      }
       try {
         if (await refreshPlaylist(p)) ok++;
       } catch (_) {}
@@ -806,7 +863,7 @@ class PlaylistRepository {
       try {
         // Même fetcher robuste qu'à l'ajout initial (Latin-1 fallback,
         // User-Agent navigateur, strip BOM, timeout 90s).
-        final Uint8List body = await M3uFetcher.fetchBytes(
+        final Uint8List body = await _loadM3uBody(
           playlist.m3uUrl!,
           httpClient: client,
         );
@@ -852,10 +909,8 @@ class PlaylistRepository {
       );
       try {
         await xtream.verifyCredentials();
-        final Map<String, String> cats = await xtream.fetchLiveCategories();
         final List<Channel> channels = await xtream.fetchLiveChannels(
           playlistId: playlist.id!,
-          categories: cats,
         );
         if (channels.isEmpty) {
           throw Exception('Aucune chaîne live disponible.');
@@ -893,6 +948,7 @@ class PlaylistRepository {
   // ============================================================
 
   Future<int> _insertPlaylist(Playlist playlist) async {
+    await DeletedSources.migrateLegacy();
     final Database db = await PlaylistDatabase.instance.database;
     // Phase 1+/Multi-serveurs : si c'est la PREMIERE playlist (la
     // table etait vide), on la marque auto-active. Sinon, les
@@ -913,69 +969,83 @@ class PlaylistRepository {
     map['xtream_password'] =
         await PlaylistSecret.seal(map['xtream_password'] as String?);
     map['m3u_url'] = await PlaylistSecret.seal(map['m3u_url'] as String?);
-    return db.insert('playlists', map);
+    final List<String> keys = await DeletedSources.hashes(SourceFingerprint.ofPlaylist(playlist));
+    return db.transaction((Transaction txn) async {
+      for (final String key in keys) {
+        final List<Map<String, Object?>> deleted = await txn.query(
+          'deleted_sources', where: 'fingerprint = ?', whereArgs: <Object>[key], limit: 1,
+        );
+        if (deleted.isNotEmpty) {
+          throw const PlaylistDeletedException();
+        }
+      }
+      return txn.insert('playlists', map);
+    });
   }
 
-  Future<void> _deletePlaylist(int id) async {
+  Future<void> _deletePlaylist(int id, {bool rememberDeletion = false}) async {
     BlackBox.instance.breadcrumb('Suppression de la liste $id');
     final Database db = await PlaylistDatabase.instance.database;
-    // Phase 1+/Multi-serveurs : si on delete l'active, on promeut la
-    // plus ancienne playlist restante comme nouvelle active. Comme ca
-    // l'user n'a pas a aller manuellement reactiver une autre source
-    // apres suppression.
-    final List<Map<String, Object?>> wasActive = await db.query(
-      'playlists',
-      columns: <String>['id'],
-      where: 'id = ? AND is_active = 1',
-      whereArgs: <Object>[id],
-      limit: 1,
+    final List<Map<String, Object?>> source = await db.query(
+      'playlists', where: 'id = ?', whereArgs: <Object>[id], limit: 1,
     );
-    // Suppression EXPLICITE des chaînes de cette liste AVANT la liste.
-    // On ne se repose pas sur le seul `ON DELETE CASCADE` : il exige que
-    // `PRAGMA foreign_keys = ON` soit actif (ce qui est désormais le cas,
-    // cf. PlaylistDatabase._onConfigure), mais ce delete direct garantit
-    // le nettoyage même sur d'anciennes bases et purge toute chaîne déjà
-    // orpheline. Sans ça, les chaînes réapparaissaient après suppression.
-    final int channelsGone =
-        await db.delete('channels', where: 'playlist_id = ?', whereArgs: <Object>[id]);
-    final int rowsGone =
-        await db.delete('playlists', where: 'id = ?', whereArgs: <Object>[id]);
-    // Preuve pour la boîte noire : « 0 liste » = la ligne avait DÉJÀ disparu
-    // (mesuré le 06/10/2026 : « FOREIGN KEY constraint failed » à l'écriture
-    // des chaînes, puis suppression d'une liste qui n'existait plus).
-    BlackBox.instance.info(
-        'DB', 'liste $id : $rowsGone ligne(s), $channelsGone chaîne(s) effacée(s)');
-    if (wasActive.isNotEmpty) {
-      final List<Map<String, Object?>> next = await db.query(
+    final List<String> keys = rememberDeletion && source.isNotEmpty
+        ? await DeletedSources.hashes(SourceFingerprint.ofPlaylist(await _playlistFromRow(source.first)))
+        : <String>[];
+    // Le refus durable et l'effacement sont validés ensemble : une coupure
+    // au milieu ne laisse pas une source supprimée sans sa mémoire de refus.
+    await db.transaction((Transaction txn) async {
+      await DeletedSources.rememberHashes(txn, keys);
+      // Phase 1+/Multi-serveurs : si on delete l'active, on promeut la
+      // plus ancienne playlist restante comme nouvelle active. Comme ca
+      // l'user n'a pas a aller manuellement reactiver une autre source
+      // apres suppression.
+      final List<Map<String, Object?>> wasActive = await txn.query(
         'playlists',
         columns: <String>['id'],
-        orderBy: 'created_at ASC',
+        where: 'id = ? AND is_active = 1',
+        whereArgs: <Object>[id],
         limit: 1,
       );
-      if (next.isNotEmpty) {
-        await db.update(
+      // Suppression EXPLICITE des chaînes de cette liste AVANT la liste.
+      // On ne se repose pas sur le seul `ON DELETE CASCADE` : il exige que
+      // `PRAGMA foreign_keys = ON` soit actif (ce qui est désormais le cas,
+      // cf. PlaylistDatabase._onConfigure), mais ce delete direct garantit
+      // le nettoyage même sur d'anciennes bases et purge toute chaîne déjà
+      // orpheline. Sans ça, les chaînes réapparaissaient après suppression.
+      final int channelsGone =
+          await txn.delete('channels', where: 'playlist_id = ?', whereArgs: <Object>[id]);
+      final int rowsGone =
+          await txn.delete('playlists', where: 'id = ?', whereArgs: <Object>[id]);
+      // Preuve pour la boîte noire : « 0 liste » = la ligne avait DÉJÀ disparu
+      // (mesuré le 06/10/2026 : « FOREIGN KEY constraint failed » à l'écriture
+      // des chaînes, puis suppression d'une liste qui n'existait plus).
+      BlackBox.instance.info(
+          'DB', 'liste $id : $rowsGone ligne(s), $channelsGone chaîne(s) effacée(s)');
+      if (wasActive.isNotEmpty) {
+        final List<Map<String, Object?>> next = await txn.query(
           'playlists',
-          <String, Object?>{'is_active': 1},
-          where: 'id = ?',
-          whereArgs: <Object>[next.first['id'] as int],
+          columns: <String>['id'],
+          orderBy: 'created_at ASC',
+          limit: 1,
         );
+        if (next.isNotEmpty) {
+          await txn.update(
+            'playlists',
+            <String, Object?>{'is_active': 1},
+            where: 'id = ?',
+            whereArgs: <Object>[next.first['id'] as int],
+          );
+        }
       }
-    }
+    });
   }
 
-  /// Juste avant d'écrire les chaînes de [playlistId] : la ligne de la liste
-  /// existe-t-elle encore ? Mesuré les 5 et 6 octobre 2026 sur la box de
-  /// test : après 145 s puis 131 s de téléchargement (50 000 chaînes), la
-  /// première écriture échouait « FOREIGN KEY constraint failed » : la ligne
-  /// insérée avant le téléchargement n'était plus là. Ici on le constate, on
-  /// l'écrit dans la boîte noire avec la durée écoulée, et on remet la ligne
-  /// (même id) pour que l'import aboutisse. Repli `zuno.import.reinsert_off`.
+  /// Vérifie qu'un téléchargement terminé est encore demandé. Une liste
+  /// retirée pendant le réseau reste retirée : jamais de réinsertion.
   Future<void> _ensurePlaylistRow(
     int playlistId,
-    Playlist playlist,
-    Stopwatch sinceStart,
   ) async {
-    if (RepairFlags.importReinsertOff) return;
     final Database db = await PlaylistDatabase.instance.database;
     final List<Map<String, Object?>> row = await db.query(
       'playlists',
@@ -985,18 +1055,9 @@ class PlaylistRepository {
       limit: 1,
     );
     if (row.isNotEmpty) return;
-    final double seconds = sinceStart.elapsedMilliseconds / 1000;
-    BlackBox.instance.warn(
-      'DB',
-      'liste $playlistId disparue pendant le téléchargement '
-      '(${seconds.toStringAsFixed(1)} s) : ligne remise avant l\'écriture des chaînes',
-    );
-    final Map<String, Object?> map = playlist.toMap();
-    map['id'] = playlistId;
-    map['xtream_password'] =
-        await PlaylistSecret.seal(map['xtream_password'] as String?);
-    map['m3u_url'] = await PlaylistSecret.seal(map['m3u_url'] as String?);
-    await db.insert('playlists', map);
+    // Une disparition signifie annulation. La recréer ici annulait une
+    // suppression décidée pendant les longues requêtes M3U/Xtream.
+    throw const PlaylistDeletedException();
   }
 
   /// La passe « nouvelles chaînes » doit-elle re-télécharger [playlist] ?
@@ -1072,6 +1133,15 @@ class PlaylistRepository {
     bool emitFirstChunk = false,
   }) async {
     const int chunkSize = 1000;
+    // 90 lignes × 10 colonnes = 900 paramètres : sous la limite historique
+    // SQLite de 999, y compris sur les anciennes box Android. Un seul INSERT
+    // par ligne créait 50 000 opérations à encoder/envoyer au moteur natif.
+    // On garde les lots visibles de 1 000 et la transaction du remplacement.
+    const int rowsPerStatement = 90;
+    const String rowParameters = '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)';
+    const String insertPrefix = 'INSERT INTO channels '
+        '(playlist_id, external_id, name, category, stream_url, logo_url, '
+        'is_live, catchup_supported, catchup_days, catchup_source) VALUES ';
     // Dans une transaction, les lots DOIVENT passer par la transaction :
     // un `db.batch()` y resterait bloqué (verrou de sqflite).
     final DatabaseExecutor db =
@@ -1081,8 +1151,33 @@ class PlaylistRepository {
           ? channels.length
           : i + chunkSize;
       final Batch batch = db.batch();
-      for (int j = i; j < end; j++) {
-        batch.insert('channels', _channelToMap(channels[j]));
+      for (int j = i; j < end; j += rowsPerStatement) {
+        final int statementEnd = (j + rowsPerStatement > end)
+            ? end
+            : j + rowsPerStatement;
+        final List<Object?> values = <Object?>[];
+        for (int row = j; row < statementEnd; row++) {
+          final Channel ch = channels[row];
+          values.addAll(<Object?>[
+            ch.playlistId,
+            ch.id,
+            ch.name,
+            ch.category,
+            ch.streamUrl,
+            ch.logoUrl,
+            ch.isLive ? 1 : 0,
+            ch.catchupSupported ? 1 : 0,
+            ch.catchupDays,
+            ch.catchupSource,
+          ]);
+        }
+        // Les données restent liées : apostrophes, Unicode et URL ne sont
+        // jamais concaténés dans le SQL. Une erreur annule le lot entier.
+        batch.rawInsert(
+          insertPrefix +
+              List<String>.filled(statementEnd - j, rowParameters).join(', '),
+          values,
+        );
       }
       await batch.commit(noResult: true);
       ImportProgressBus.saving(end, channels.length);
@@ -1119,10 +1214,14 @@ class PlaylistRepository {
     );
   }
 
+  int _stateRevision = 0;
+
   Future<void> _emitCurrentState() async {
+    final int revision = ++_stateRevision;
     final Stopwatch sw = Stopwatch()..start();
     final List<Channel> channels = await getAllChannels();
     final List<Playlist> playlists = await getAllPlaylists();
+    if (revision != _stateRevision) return;
     BlackBox.instance.info('DB', 'lecture : ${channels.length} chaînes, ${playlists.length} liste(s) en ${sw.elapsedMilliseconds} ms');
     // Met à jour les caches synchrones avant d'émettre
     // (`currentChannels` est ainsi cohérent avec le dernier event).
@@ -1139,21 +1238,6 @@ class PlaylistRepository {
   // ============================================================
   //  Mapping Channel ↔ SQLite
   // ============================================================
-
-  Map<String, Object?> _channelToMap(Channel ch) {
-    return <String, Object?>{
-      'playlist_id': ch.playlistId,
-      'external_id': ch.id,
-      'name': ch.name,
-      'category': ch.category,
-      'stream_url': ch.streamUrl,
-      'logo_url': ch.logoUrl,
-      'is_live': ch.isLive ? 1 : 0,
-      'catchup_supported': ch.catchupSupported ? 1 : 0,
-      'catchup_days': ch.catchupDays,
-      'catchup_source': ch.catchupSource,
-    };
-  }
 
   Channel _channelFromMap(Map<String, Object?> map) {
     return Channel(

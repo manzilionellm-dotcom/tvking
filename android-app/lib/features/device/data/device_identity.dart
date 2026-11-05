@@ -27,6 +27,8 @@ import 'dart:math';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../domain/device_identity_seed.dart';
+
 class DeviceIdentity {
   DeviceIdentity._();
   static final DeviceIdentity instance = DeviceIdentity._();
@@ -36,8 +38,9 @@ class DeviceIdentity {
 
   /// Channel natif qui expose l'ANDROID_ID (cf. MainActivity.kt). Sert
   /// à dériver une MAC STABLE entre réinstallations.
-  static const MethodChannel _deviceChannel =
-      MethodChannel('com.manzilionellm.tvking/device');
+  static const MethodChannel _deviceChannel = MethodChannel(
+    'com.manzilionellm.tvking/device',
+  );
 
   String? _cached;
 
@@ -79,7 +82,9 @@ class DeviceIdentity {
         info['sdk'] ?? '',
       ].where((String s) => s.trim().isNotEmpty).join('|').trim();
     }
-    final String derived = seed.isNotEmpty ? _macFromSeed(seed) : _generate();
+    final String derived = seed.isNotEmpty
+        ? _macFromSeed(deviceIdentitySeed(seed))
+        : _generate();
     await prefs.setString(_kKey, derived);
     _cached = derived;
     return derived;
@@ -98,8 +103,9 @@ class DeviceIdentity {
           '/v',
           'MachineGuid',
         ]);
-        final RegExpMatch? m = RegExp(r'MachineGuid\s+REG_SZ\s+([0-9A-Fa-f-]{36})')
-            .firstMatch('${r.stdout}');
+        final RegExpMatch? m = RegExp(
+          r'MachineGuid\s+REG_SZ\s+([0-9A-Fa-f-]{36})',
+        ).firstMatch('${r.stdout}');
         if (m != null) return 'win-${m.group(1)!.toLowerCase()}';
       } catch (_) {}
       return null;
@@ -159,18 +165,33 @@ class DeviceIdentity {
   Future<Map<String, String>> deviceInfo() async {
     if (_info != null) return _info!;
     try {
-      final Object? raw =
-          await _deviceChannel.invokeMethod<Object?>('getDeviceInfo');
+      final Object? raw = await _deviceChannel.invokeMethod<Object?>(
+        'getDeviceInfo',
+      );
       if (raw is Map) {
-        _info = raw.map<String, String>((Object? k, Object? v) =>
-            MapEntry<String, String>('$k', '${v ?? ''}'));
-      } else {
-        _info = <String, String>{};
+        final info = raw.map<String, String>(
+          (Object? k, Object? v) =>
+              MapEntry<String, String>('$k', '${v ?? ''}'),
+        );
+        // Un pont indisponible au démarrage pouvait figer une Map vide pendant
+        // toute la session : le panel ne recevait ensuite jamais le modèle.
+        // Seule une vraie fiche matériel est mémorisée ; le heartbeat suivant
+        // peut réessayer après une réponse vide ou une erreur native.
+        if (<String>[
+          'model',
+          'manufacturer',
+          'release',
+          'sdk',
+          'build',
+        ].any((key) => (info[key] ?? '').trim().isNotEmpty)) {
+          _info = info;
+        }
+        return info;
       }
     } catch (_) {
-      _info = <String, String>{};
+      /* Le prochain heartbeat retentera le pont natif. */
     }
-    return _info!;
+    return <String, String>{};
   }
 
   /// Régénère un nouveau MAC (à utiliser uniquement en réglages
@@ -192,7 +213,8 @@ class DeviceIdentity {
     final Random rnd = Random.secure();
     final List<String> octets = List<String>.generate(
       5,
-      (int _) => rnd.nextInt(256).toRadixString(16).padLeft(2, '0').toUpperCase(),
+      (int _) =>
+          rnd.nextInt(256).toRadixString(16).padLeft(2, '0').toUpperCase(),
     );
     return '$_kPrefix:${octets.join(':')}';
   }

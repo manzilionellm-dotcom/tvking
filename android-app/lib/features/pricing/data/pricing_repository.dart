@@ -1,17 +1,7 @@
-// =========================================================
-//  pricing_repository.dart — Tarifs pilotés par le panel
-// =========================================================
-//  Récupère les tarifs distants (`GET /api/pricing`) posés par le panel
-//  « Tarifs » et les expose à l'UI via un ValueNotifier réactif :
-//    - prix à vie / 1 an (chaînes en €, ex. "9,9")
-//    - durée de l'essai gratuit (jours)
-//    - message promo/bonus optionnel (ex. « 1 acheté = 1 offert »).
-//
-//  Best-effort : si le réseau échoue ou que rien n'est configuré, on
-//  garde les valeurs maison par défaut (à vie 9,9 € · 1 an 4,9 € · essai
-//  7 jours). Aucune URL de flux ici (règle AGENTS n°2). Aucun lien au cast.
-// =========================================================
-
+// Tarifs d'affichage pilotés par le panel. Aucun montant, paiement ou durée
+// d'accès n'est inventé localement ; le statut de licence garde son propre
+// serveur et ses règles. Le témoin `configured` distingue une configuration
+// enregistrée des valeurs historiques par défaut d'un ancien Worker.
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -29,80 +19,135 @@ class PricingConfig {
     required this.trialDays,
     required this.promoEnabled,
     required this.promoMessage,
+    this.confirmed = false,
+    this.blockTitleFr = '',
+    this.blockBodyFr = '',
+    this.blockTitleEn = '',
+    this.blockBodyEn = '',
+    this.payUrl = '',
   });
 
-  /// Symbole monétaire (par défaut « € »).
   final String currency;
-
-  /// Prix « à vie » sous forme de chaîne d'affichage (ex. "9,9").
   final String lifetime;
-
-  /// Prix « 1 an » sous forme de chaîne d'affichage (ex. "4,9").
   final String yearly;
-
-  /// Durée de l'essai gratuit, en jours.
   final int trialDays;
-
-  /// Le message promo/bonus est-il actif ?
   final bool promoEnabled;
-
-  /// Message promo/bonus (ex. « 1 acheté = 1 offert pour ta famille »).
   final String promoMessage;
+  final bool confirmed;
+  final String blockTitleFr;
+  final String blockBodyFr;
+  final String blockTitleEn;
+  final String blockBodyEn;
+  final String payUrl;
 
-  /// Valeurs maison par défaut (réseau coupé / rien posé au panel).
+  // « Inconnu » n'est jamais un tarif à facturer ni une promesse d'essai.
   static const PricingConfig fallback = PricingConfig(
-    currency: '€',
-    lifetime: '9,9',
-    yearly: '4,9',
-    trialDays: 7,
-    promoEnabled: false,
-    promoMessage: '',
+    currency: '', lifetime: '', yearly: '', trialDays: 0,
+    promoEnabled: false, promoMessage: '',
   );
 
-  /// « 9,9 € » — prix à vie prêt à afficher.
-  String get lifetimeLabel => '$lifetime $currency';
+  bool get hasOffers => confirmed && currency.isNotEmpty &&
+      (lifetime.isNotEmpty || yearly.isNotEmpty);
+  String get lifetimeLabel => '$lifetime $currency'.trim();
+  String get yearlyLabel => '$yearly $currency'.trim();
+  String blockTitle(String language) => language == 'fr' ? blockTitleFr : blockTitleEn;
+  String blockBody(String language) => language == 'fr' ? blockBodyFr : blockBodyEn;
 
-  /// « 4,9 € » — prix 1 an prêt à afficher.
-  String get yearlyLabel => '$yearly $currency';
+  static String _text(Object? value, int max) {
+    if (value is! String) return '';
+    final String clean = value.replaceAll(RegExp(r'[\x00-\x08\x0b-\x1f\x7f]'), '').trim();
+    return clean.length > max ? clean.substring(0, max) : clean;
+  }
+
+  static String _price(Object? value) {
+    final String price = _text(value, 30);
+    return RegExp(r'^(?:0|[1-9]\d{0,6})(?:[.,]\d{1,2})?$').hasMatch(price) ? price : '';
+  }
+
+  static String _paymentUrl(Object? value) {
+    final String raw = _text(value, 500);
+    final Uri? uri = Uri.tryParse(raw);
+    return uri != null && uri.scheme == 'https' && uri.host.isNotEmpty &&
+        uri.userInfo.isEmpty ? uri.toString() : '';
+  }
+
+  factory PricingConfig.fromJson(Map<dynamic, dynamic> json) {
+    if (json['configured'] != true) return fallback;
+    final String currency = _text(json['currency'], 8);
+    final bool currencyOk = RegExp(r'^[A-Za-z€£$¥₹₩₺₽₫฿₱₦₪₴₡₲₵₸₭₮₼₾₿]{1,8}$').hasMatch(currency);
+    final Object? trial = json['trialDays'];
+    return PricingConfig(
+      confirmed: true,
+      currency: currencyOk ? currency : '',
+      lifetime: _price(json['lifetime']),
+      yearly: _price(json['yearly']),
+      trialDays: trial is int && trial >= 0 && trial <= 365 ? trial : 0,
+      promoEnabled: json['promoEnabled'] == true,
+      promoMessage: _text(json['promoMessage'], 500),
+      blockTitleFr: _text(json['blockTitleFr'], 120),
+      blockBodyFr: _text(json['blockBodyFr'], 500),
+      blockTitleEn: _text(json['blockTitleEn'], 120),
+      blockBodyEn: _text(json['blockBodyEn'], 500),
+      payUrl: _paymentUrl(json['payUrl']),
+    );
+  }
 }
 
 abstract final class PricingRepository {
-  /// Source de vérité réactive : l'UI écoute ce notifier pour se mettre
-  /// à jour dès que les tarifs distants arrivent.
   static final ValueNotifier<PricingConfig> notifier =
       ValueNotifier<PricingConfig>(PricingConfig.fallback);
-
   static PricingConfig get current => notifier.value;
+  static Future<void>? _flight;
+  static int _generation = 0;
+  @visibleForTesting
+  static http.Client? client;
 
-  /// Récupère les tarifs distants et met à jour [notifier]. Best-effort.
-  static Future<void> fetch() async {
-    try {
-      final http.Response resp = await http
-          .get(Uri.parse('$kSubscriptionBaseUrl/api/pricing'))
-          .timeout(const Duration(seconds: 6));
-      if (resp.statusCode != 200) return;
-      final Object? decoded = jsonDecode(resp.body);
-      if (decoded is! Map) return;
-
-      String str(String key, String fallback) {
-        final String v = (decoded[key] ?? '').toString().trim();
-        return v.isEmpty ? fallback : v;
+  // Les lectures UI partagent une requête ; chaque ordre strict relit ensuite.
+  // Le mode strict ne transforme jamais une panne en accusé « appliqué ».
+  static Future<void> fetch({bool strict = false}) async {
+    // Une lecture partie avant l'ordre peut encore contenir l'ancienne valeur.
+    // Le strict attend sa fin, puis démarre sa propre lecture après l'ordre.
+    // La boucle sérialise aussi plusieurs ordres stricts sans réponse tardive.
+    if (strict) {
+      while (_flight != null) {
+        final previous = _flight!;
+        try {
+          await previous;
+        } catch (_) {
+          // Seule la nouvelle lecture décide du succès de cet ordre.
+        }
+        if (identical(_flight, previous)) _flight = null;
       }
-
-      final Object? td = decoded['trialDays'];
-      final int trialDays =
-          td is int ? td : int.tryParse('$td') ?? PricingConfig.fallback.trialDays;
-
-      notifier.value = PricingConfig(
-        currency: str('currency', '€'),
-        lifetime: str('lifetime', '9,9'),
-        yearly: str('yearly', '4,9'),
-        trialDays: trialDays < 0 ? 7 : trialDays,
-        promoEnabled: decoded['promoEnabled'] == true,
-        promoMessage: (decoded['promoMessage'] ?? '').toString(),
-      );
-    } catch (e) {
-      if (kDebugMode) debugPrint('[Pricing] $e');
     }
+    final Future<void> flight = _flight ??= _read();
+    try { await flight; }
+    catch (error) {
+      if (strict) rethrow;
+      if (kDebugMode) debugPrint('[Pricing] lecture indisponible');
+    } finally {
+      if (identical(_flight, flight)) _flight = null;
+    }
+  }
+
+  static Future<void> _read() async {
+    final int generation = _generation;
+    final Uri uri = Uri.parse('$kSubscriptionBaseUrl/api/pricing');
+    final http.Response response = await (client?.get(uri) ?? http.get(uri))
+        .timeout(const Duration(seconds: 6));
+    if (response.statusCode != 200) throw StateError('pricing_http_error');
+    final Object? decoded = jsonDecode(response.body);
+    if (decoded is! Map || decoded['configured'] is! bool) {
+      throw const FormatException('pricing_contract_unavailable');
+    }
+    final PricingConfig config = PricingConfig.fromJson(decoded);
+    if (generation == _generation) notifier.value = config;
+  }
+
+  @visibleForTesting
+  static void resetForTesting() {
+    _generation++;
+    _flight = null;
+    client = null;
+    notifier.value = PricingConfig.fallback;
   }
 }

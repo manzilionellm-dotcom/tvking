@@ -17,14 +17,19 @@ import 'package:package_info_plus/package_info_plus.dart';
 import '../../../core/blackbox/black_box.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/i18n/locale_repository.dart';
+import '../../../core/update/build_flags.dart';
+import '../../../core/update/play_store_update.dart';
 import '../../../core/update/update_service.dart';
-import '../core/tv_tokens.dart';
+import '../core/tv_app_tokens.dart';
+import '../core/tv_comfort_schedule.dart';
+import '../core/tv_ambient_director.dart';
+import '../core/tv_look.dart';
 import '../../device/data/device_identity.dart';
 import '../../subscription/data/subscription_state.dart';
+import '../../pricing/presentation/tv_pricing_card.dart';
 import '../core/tv_dimens.dart';
 import '../../carousel/domain/carousel_config.dart';
 import '../../carousel/presentation/zuno_ring_carousel.dart';
-import '../../box_extras/box_text.dart';
 import '../../box_extras/presentation/tv_extras_screen.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../../profiles/data/profile_repository.dart';
@@ -34,11 +39,13 @@ import '../data/startup_preference.dart';
 import 'tv_audio_diagnostic_screen.dart';
 import 'tv_black_box_screen.dart';
 import 'tv_profiles_screen.dart';
+import 'tv_profile_label.dart';
 import 'tv_legal_screen.dart';
 import 'tv_parental_screen.dart';
 import 'tv_recordings_screen.dart';
 import 'tv_shell.dart';
 import 'tv_sources_screen.dart';
+import 'tv_whatsapp_support_button.dart';
 
 class TvSettingsScreen extends StatefulWidget {
   const TvSettingsScreen({super.key});
@@ -72,9 +79,11 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
       if (mounted) setState(() {});
     });
     ProfileRepository.instance.addListener(_onProfile);
-    unawaited(VoiceRemoteAssist.load().then((bool on) {
-      if (mounted) setState(() => _remoteAi = on);
-    }));
+    unawaited(
+      VoiceRemoteAssist.load().then((bool on) {
+        if (mounted) setState(() => _remoteAi = on);
+      }),
+    );
     _checkUpdate();
   }
 
@@ -90,10 +99,7 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
 
   Future<void> _toggleStartup() async {
     final bool next = !StartupPreference.instance.openLastChannel;
-    BlackBox.instance.info(
-      'DEMARRAGE',
-      next ? 'dernière chaîne' : 'accueil',
-    );
+    BlackBox.instance.info('DEMARRAGE', next ? 'dernière chaîne' : 'accueil');
     await StartupPreference.instance.setOpenLastChannel(next);
     if (mounted) setState(() {});
   }
@@ -104,11 +110,28 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
       final PackageInfo p = await PackageInfo.fromPlatform();
       _current = p.version; // numéro visible (88, 89, 90…)
     } catch (_) {}
-    final UpdateInfo? u = await UpdateService.instance.check();
+    if (!mounted) return;
+    // L'updater APK est volontairement désactivé dans un AAB. Son résultat
+    // null ne signifie donc PAS « à jour » : la vérification revient au Store.
+    if (kIsPlayBuild) {
+      setState(() => _upd = _UpdState.playStore);
+      return;
+    }
+    final UpdateCheckResult result =
+        await UpdateService.instance.checkDetailed();
+    final UpdateInfo? u = result.manifest == null
+        ? null
+        : UpdateInfo.fromManifest(result.manifest!);
     if (!mounted) return;
     setState(() {
       _updInfo = u;
-      _upd = u == null ? _UpdState.upToDate : _UpdState.available;
+      _upd = switch (result.status) {
+        UpdateCheckStatus.available => _UpdState.available,
+        UpdateCheckStatus.upToDate => _UpdState.upToDate,
+        UpdateCheckStatus.unavailable ||
+        UpdateCheckStatus.unsupported =>
+          _UpdState.failed,
+      };
     });
     // Nouvelle version : on commence le téléchargement TOUT DE SUITE, en
     // arrière-plan (s'il n'est pas déjà fait au démarrage de la box). Quand
@@ -118,12 +141,24 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
 
   Future<void> _onUpdatePressed() async {
     switch (_upd) {
+      case _UpdState.playStore:
+      case _UpdState.playStoreUnavailable:
+        setState(() => _upd = _UpdState.checking);
+        final bool opened = await openPlayStoreUpdate();
+        if (mounted) {
+          setState(() => _upd =
+              opened ? _UpdState.playStore : _UpdState.playStoreUnavailable);
+        }
+        return;
       case _UpdState.checking:
       case _UpdState.downloading:
         return; // déjà en cours
       case _UpdState.upToDate:
       case _UpdState.failed:
         await _checkUpdate(); // re-vérifie à la demande
+        // L'appui est une demande de mise à jour : si une nouvelle version
+        // vient d'être trouvée, continuer sans exiger un deuxième appui.
+        if (mounted && _upd == _UpdState.available) await _onUpdatePressed();
         return;
       // Autorisation donnée dans Android : OK relance l'installateur
       // avec l'APK déjà téléchargé et vérifié.
@@ -131,8 +166,10 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
       case _UpdState.available:
         final UpdateInfo? u = _updInfo;
         if (u == null) return;
-        BlackBox.instance
-            .info('MAJ', 'installation demandée → build ${u.versionCode}');
+        BlackBox.instance.info(
+          'MAJ',
+          'installation demandée → build ${u.versionCode}',
+        );
         setState(() {
           _upd = _UpdState.downloading;
           _updPct = 0;
@@ -147,11 +184,13 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
         if (!mounted) return;
         // Si l'installateur s'est ouvert, Android prend la main : l'app sera
         // relancée par le système une fois la mise à jour installée.
-        setState(() => _upd = ok
-            ? _UpdState.available
-            : (UpdateService.instance.needsInstallPermission
-                ? _UpdState.permission
-                : _UpdState.failed));
+        setState(
+          () => _upd = ok
+              ? _UpdState.available
+              : (UpdateService.instance.needsInstallPermission
+                  ? _UpdState.permission
+                  : _UpdState.failed),
+        );
         return;
     }
   }
@@ -175,13 +214,33 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
     if (cur == null) {
       next = all.first;
     } else {
-      final int i =
-          all.indexWhere((Locale l) => l.languageCode == cur.languageCode);
+      final int i = all.indexWhere(
+        (Locale l) => l.languageCode == cur.languageCode,
+      );
       next = (i < 0 || i + 1 >= all.length) ? null : all[i + 1];
     }
     BlackBox.instance.info('LANGUE', 'choix : ${next?.languageCode ?? 'auto'}');
     await LocaleRepository.instance.setLocale(next);
     if (mounted) setState(() {});
+  }
+
+  String _ambientLabel(BuildContext context) {
+    return TvAmbientDirector.instance.choice == TvAmbientChoice.auto
+        ? context.l10n.tvAmbientAuto
+        : context.l10n.tvAmbientOff;
+  }
+
+  String _comfortLabel(BuildContext context) {
+    switch (TvComfortSchedule.instance.choice) {
+      case TvComfortChoice.day:
+        return context.l10n.tvComfortDay;
+      case TvComfortChoice.evening:
+        return context.l10n.tvComfortEvening;
+      case TvComfortChoice.night:
+        return context.l10n.tvComfortNight;
+      case TvComfortChoice.auto:
+        return context.l10n.tvComfortAuto;
+    }
   }
 
   Future<void> _toggleRemoteAi() async {
@@ -192,6 +251,10 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
 
   String _updateLabel(BuildContext context) {
     switch (_upd) {
+      case _UpdState.playStore:
+        return context.l10n.updatePlayStoreHelp;
+      case _UpdState.playStoreUnavailable:
+        return context.l10n.updatePlayStoreUnavailable;
       case _UpdState.checking:
         return context.l10n.tvUpdateChecking;
       case _UpdState.upToDate:
@@ -205,11 +268,7 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
       case _UpdState.failed:
         return context.l10n.tvUpdateFailed;
       case _UpdState.permission:
-        return boxText(
-          context,
-          'Autorise Zuno à installer des applications (écran ouvert par Android : active « Zuno »), puis reviens et appuie OK. La mise à jour est déjà téléchargée.',
-          'Allow Zuno to install apps (Android has opened the screen: turn on "Zuno"), then come back and press OK. The update is already downloaded.',
-        );
+        return context.l10n.tvUpdateAllowInstall;
     }
   }
 
@@ -221,34 +280,39 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
 
   ({String label, Color color}) _statusOf(BuildContext context) {
     switch (SubscriptionState.instance.status) {
+      // Mêmes teintes que la barre d'accueil (_license) : le thème
+      // clair du panel les recolore, un vert/bleu/ambre en dur non.
       case SubscriptionStatus.paid:
         return (
           label: context.l10n.tvStatusPaid,
-          color: const Color(0xFF3FBE7C)
+          color: TvAppTokens.of(context).success,
         );
       case SubscriptionStatus.trialActive:
         final int d = SubscriptionState.instance.trialDaysRemaining;
         return (
           label: context.l10n.tvStatusTrial(d),
-          color: const Color(0xFF5AA0E8)
+          color: TvAppTokens.of(context).accentBright,
         );
       case SubscriptionStatus.trialExpired:
         return (
           label: context.l10n.tvStatusTrialExpired,
-          color: const Color(0xFFE8B23A)
+          color: TvAppTokens.of(context).live,
         );
       case SubscriptionStatus.frozen:
         return (
           label: context.l10n.tvStatusFrozen,
-          color: const Color(0xFFE8B23A)
+          color: TvAppTokens.of(context).live,
         );
       case SubscriptionStatus.banned:
         return (
           label: context.l10n.tvStatusBanned,
-          color: const Color(0xFFFF5A4A)
+          color: TvAppTokens.of(context).live,
         );
       case SubscriptionStatus.unknown:
-        return (label: context.l10n.tvStatusUnknown, color: TvTokens.mutedDim);
+        return (
+          label: context.l10n.tvStatusUnknown,
+          color: TvAppTokens.of(context).mutedDim
+        );
     }
   }
 
@@ -277,11 +341,18 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
         value: _mac,
         mono: true,
         value2: _busy ? context.l10n.tvChecking : st.label,
-        value2Color: _busy ? TvTokens.muted : st.color,
+        value2Color: _busy ? TvAppTokens.of(context).muted : st.color,
         description:
             '${context.l10n.tvDeviceAddressHelp}  ·  OK = ${context.l10n.tvRefreshStatus}',
         onSelect: _busy ? () {} : _refresh,
       ),
+      if (!kIsPlayBuild)
+        _SettingEntry(
+          icon: Icons.local_offer_outlined,
+          title: context.l10n.pricingOffersTitle,
+          description: context.l10n.pricingOffersTitle,
+          onSelect: () => open(const TvPricingScreen()),
+        ),
       _SettingEntry(
         icon: Icons.settings_remote_rounded,
         title: context.l10n.tvRemoteTitle,
@@ -290,12 +361,8 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
       ),
       _SettingEntry(
         icon: Icons.auto_awesome_rounded,
-        title: boxText(context, 'En plus', 'Extras'),
-        description: boxText(
-          context,
-          'Fonctions que tu peux couper une par une. Aucune ne bloque une chaîne.',
-          'Features you can turn off one by one. None of them blocks a channel.',
-        ),
+        title: context.l10n.tvExtras,
+        description: context.l10n.tvExtrasHelp,
         onSelect: () => open(const TvExtrasScreen()),
       ),
       _SettingEntry(
@@ -324,10 +391,9 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
       ),
       _SettingEntry(
         icon: Icons.switch_account_rounded,
-        title: 'Profils',
-        value: ProfileRepository.instance.active.name,
-        description:
-            'Favoris, historique, reprise, rappels et code séparés. Jusqu\'à 4 profils.',
+        title: context.l10n.tvProfiles,
+        value: tvProfileLabel(context, ProfileRepository.instance.active),
+        description: context.l10n.tvProfilesSettingsHelp,
         onSelect: () => open(const TvProfilesScreen()),
       ),
       _SettingEntry(
@@ -340,11 +406,46 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
         icon: _upd == _UpdState.available
             ? Icons.system_update_rounded
             : Icons.update_rounded,
-        title: context.l10n.tvUpdateTitle,
+        title: kIsPlayBuild
+            ? context.l10n.updateOpenPlayStore
+            : context.l10n.tvUpdateTitle,
         value: _updateShort(),
-        value2Color: _upd == _UpdState.available ? TvTokens.accentBright : null,
+        value2Color: _upd == _UpdState.available
+            ? TvAppTokens.of(context).accentBright
+            : null,
         description: _updateLabel(context),
         onSelect: _onUpdatePressed,
+      ),
+      _SettingEntry(
+        icon: Icons.auto_awesome_outlined,
+        title: context.l10n.tvLookTitle,
+        value: TvLook.instance.ghost
+            ? context.l10n.tvLookGhost
+            : context.l10n.tvLookComfort,
+        description: context.l10n.tvLookHelp,
+        onSelect: () {
+          unawaited(TvLook.instance.toggle());
+        },
+      ),
+      _SettingEntry(
+        icon: Icons.wb_twilight_rounded,
+        title: context.l10n.tvAmbientTitle,
+        value: _ambientLabel(context),
+        description: context.l10n.tvAmbientHelp,
+        onSelect: () {
+          unawaited(TvAmbientDirector.instance.cycle().then((_) {
+            if (mounted) setState(() {});
+          }));
+        },
+      ),
+      _SettingEntry(
+        icon: Icons.bedtime_outlined,
+        title: context.l10n.tvComfortTitle,
+        value: _comfortLabel(context),
+        description: context.l10n.tvComfortHelp,
+        onSelect: () {
+          unawaited(TvComfortSchedule.instance.cycle());
+        },
       ),
       _SettingEntry(
         icon: Icons.language_rounded,
@@ -359,7 +460,9 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
         value: _remoteAi
             ? context.l10n.tvVoiceRemoteAiOn
             : context.l10n.tvVoiceRemoteAiOff,
-        value2Color: _remoteAi ? TvTokens.accentBright : TvTokens.mutedDim,
+        value2Color: _remoteAi
+            ? TvAppTokens.of(context).accentBright
+            : TvAppTokens.of(context).mutedDim,
         description: context.l10n.tvVoiceRemoteAiHelp,
         onSelect: _toggleRemoteAi,
       ),
@@ -371,9 +474,8 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
       ),
       _SettingEntry(
         icon: Icons.graphic_eq_rounded,
-        title: 'Diagnostic du son',
-        description:
-            'Rapport local par chaîne. Rien n\'est envoyé. Les correctifs restent coupés.',
+        title: context.l10n.tvAudioDiagnostic,
+        description: context.l10n.tvAudioDiagnosticHelp,
         onSelect: () => open(const TvAudioDiagnosticScreen()),
       ),
       _SettingEntry(
@@ -389,6 +491,9 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
   /// seulement (rien à traduire) — le texte complet est sous l'anneau.
   String _updateShort() {
     switch (_upd) {
+      case _UpdState.playStore:
+      case _UpdState.playStoreUnavailable:
+        return _current.isEmpty ? 'Google Play' : 'v$_current';
       case _UpdState.checking:
         return '…';
       case _UpdState.upToDate:
@@ -415,17 +520,25 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
         Row(
           crossAxisAlignment: CrossAxisAlignment.end,
           children: <Widget>[
-            Text(context.l10n.tvNavSettings,
-                style: TextStyle(
-                    fontSize: TvDimens.displayM,
-                    fontWeight: FontWeight.w800,
-                    color: TvTokens.text)),
+            Text(
+              context.l10n.tvNavSettings,
+              style: TextStyle(
+                fontSize: TvDimens.displayM,
+                fontWeight: FontWeight.w800,
+                color: TvAppTokens.of(context).text,
+              ),
+            ),
             const Spacer(),
             Padding(
               padding: const EdgeInsets.only(bottom: 8),
-              child: Text(context.l10n.tvRingHint,
-                  style: TvTokens.ui(TvDimens.caption,
-                      color: TvTokens.mutedDim, spacing: 0.6)),
+              child: Text(
+                context.l10n.tvRingHint,
+                style: TvAppTokens.of(context).ui(
+                  TvDimens.caption,
+                  color: TvAppTokens.of(context).mutedDim,
+                  spacing: 0.6,
+                ),
+              ),
             ),
           ],
         ),
@@ -458,32 +571,47 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
             child: Column(
               key: ValueKey<int>(_focusIndex),
               children: <Widget>[
-                Text(cur.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TvTokens.display(TvDimens.headline,
-                        weight: FontWeight.w500, spacing: 0.4)),
+                Text(
+                  cur.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TvAppTokens.of(context).display(
+                    TvDimens.headline,
+                    weight: FontWeight.w500,
+                    spacing: 0.4,
+                  ),
+                ),
                 const SizedBox(height: 6),
-                Text(cur.description,
-                    textAlign: TextAlign.center,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TvTokens.ui(TvDimens.body, color: TvTokens.muted)
-                        .copyWith(height: 1.35)),
+                Text(
+                  cur.description,
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TvAppTokens.of(context)
+                      .ui(
+                        TvDimens.body,
+                        color: TvAppTokens.of(context).muted,
+                      )
+                      .copyWith(height: 1.35),
+                ),
               ],
             ),
           ),
         ),
         const SizedBox(height: 8),
+        // Le contact reste accessible après activation, sans ouvrir un
+        // diagnostic ni recopier les identifiants de la liste du client.
+        const TvWhatsAppSupportButton(),
         // ----- Avertissement « lecteur » toujours visible (bas de page) -----
         Text(
-          'Cette application est un LECTEUR multimédia. Elle ne vend, ne '
-          'fournit et n\'héberge aucune chaîne, aucun flux ni aucun lien '
-          'M3U. Le contenu est fourni par l\'utilisateur, seul responsable '
-          'de sa licéité.',
+          context.l10n.tvPlayerDisclaimer,
           textAlign: TextAlign.center,
           maxLines: 2,
-          style: TvTokens.ui(TvDimens.caption, color: TvTokens.mutedDim)
+          style: TvAppTokens.of(context)
+              .ui(
+                TvDimens.caption,
+                color: TvAppTokens.of(context).mutedDim,
+              )
               .copyWith(height: 1.4),
         ),
       ],
@@ -521,7 +649,7 @@ class _SettingEntry {
 }
 
 /// Carte d'une rubrique — même charte que les affiches du carrousel :
-/// dégradé noir → or très sourd, filet or, titre Oswald en capitales.
+/// dégradé noir → or très sourd, filet or, titre en capitales.
 class _SettingCard extends StatelessWidget {
   const _SettingCard({
     required this.entry,
@@ -535,12 +663,14 @@ class _SettingCard extends StatelessWidget {
   final double height;
   final bool elevated;
 
-  static const BorderRadius _radius =
-      BorderRadius.all(Radius.circular(TvDimens.cardRadius));
+  static const BorderRadius _radius = BorderRadius.all(
+    Radius.circular(TvDimens.cardRadius),
+  );
 
   @override
   Widget build(BuildContext context) {
-    final Color top = Color.lerp(TvTokens.card, TvTokens.accentDeep, 0.12)!;
+    final Color top = Color.lerp(TvAppTokens.of(context).card,
+        TvAppTokens.of(context).accentDeep, 0.12)!;
     final String? value = entry.value;
     final String? value2 = entry.value2;
     return Container(
@@ -551,9 +681,9 @@ class _SettingCard extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: <Color>[top, TvTokens.bg],
+          colors: <Color>[top, TvAppTokens.of(context).bg],
         ),
-        border: Border.all(color: TvTokens.tileBorder),
+        border: Border.all(color: TvAppTokens.of(context).tileBorder),
         boxShadow: elevated
             ? <BoxShadow>[
                 BoxShadow(
@@ -565,8 +695,10 @@ class _SettingCard extends StatelessWidget {
             : null,
       ),
       child: DecoratedBox(
-        decoration: const BoxDecoration(
-            borderRadius: _radius, gradient: TvTokens.brandGlow),
+        decoration: BoxDecoration(
+          borderRadius: _radius,
+          gradient: TvAppTokens.of(context).brandGlow,
+        ),
         child: Padding(
           padding: const EdgeInsets.all(TvDimens.gutter),
           child: Column(
@@ -578,19 +710,22 @@ class _SettingCard extends StatelessWidget {
                 height: 52,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: TvTokens.accent.withValues(alpha: 0.12),
+                  color: TvAppTokens.of(context).accent.withValues(alpha: 0.12),
                   border: Border.all(
-                      color: TvTokens.accent.withValues(alpha: 0.35)),
+                    color:
+                        TvAppTokens.of(context).accent.withValues(alpha: 0.35),
+                  ),
                 ),
-                child: Icon(entry.icon, size: 26, color: TvTokens.accentBright),
+                child: Icon(entry.icon,
+                    size: 26, color: TvAppTokens.of(context).accentBright),
               ),
               const Spacer(),
-              const SizedBox(
+              SizedBox(
                 width: 28,
                 height: 2,
                 child: DecoratedBox(
                   decoration: BoxDecoration(
-                    color: TvTokens.accent,
+                    color: TvAppTokens.of(context).accent,
                     borderRadius: BorderRadius.all(Radius.circular(1)),
                   ),
                 ),
@@ -602,8 +737,12 @@ class _SettingCard extends StatelessWidget {
                 // « MENTIONS LÉGALES & CONDITIONS ») tiennent en entier.
                 maxLines: 3,
                 overflow: TextOverflow.ellipsis,
-                style: TvTokens.display(TvDimens.titleS,
-                        weight: FontWeight.w500, spacing: 0.6)
+                style: TvAppTokens.of(context)
+                    .display(
+                      TvDimens.titleS,
+                      weight: FontWeight.w500,
+                      spacing: 0.6,
+                    )
                     .copyWith(height: 1.12),
               ),
               if (value != null) ...<Widget>[
@@ -612,16 +751,23 @@ class _SettingCard extends StatelessWidget {
                   value,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
+                  // La valeur monospace est la MAC : son ordre est invariant.
+                  textDirection: entry.mono ? TextDirection.ltr : null,
                   style: entry.mono
-                      ? TvTokens.mono(TvDimens.caption,
-                          color: TvTokens.text, spacing: 0.5)
-                      : TvTokens.ui(TvDimens.caption,
+                      ? TvAppTokens.of(context).mono(
+                          TvDimens.caption,
+                          color: TvAppTokens.of(context).text,
+                          spacing: 0.5,
+                        )
+                      : TvAppTokens.of(context).ui(
+                          TvDimens.caption,
                           weight: FontWeight.w500,
                           color:
                               entry.value2 == null && entry.value2Color != null
                                   ? entry.value2Color!
-                                  : TvTokens.muted,
-                          spacing: 0.4),
+                                  : TvAppTokens.of(context).muted,
+                          spacing: 0.4,
+                        ),
                 ),
               ],
               if (value2 != null) ...<Widget>[
@@ -630,9 +776,11 @@ class _SettingCard extends StatelessWidget {
                   value2,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TvTokens.ui(TvDimens.caption,
-                      weight: FontWeight.w600,
-                      color: entry.value2Color ?? TvTokens.muted),
+                  style: TvAppTokens.of(context).ui(
+                    TvDimens.caption,
+                    weight: FontWeight.w600,
+                    color: entry.value2Color ?? TvAppTokens.of(context).muted,
+                  ),
                 ),
               ],
             ],
@@ -644,4 +792,13 @@ class _SettingCard extends StatelessWidget {
 }
 
 /// États du bouton de mise à jour des Réglages.
-enum _UpdState { checking, upToDate, available, downloading, failed, permission }
+enum _UpdState {
+  playStore,
+  playStoreUnavailable,
+  checking,
+  upToDate,
+  available,
+  downloading,
+  failed,
+  permission,
+}

@@ -27,7 +27,8 @@ class PlaylistDatabase {
   // v2 ajoute la colonne `epg_url` à la table playlists.
   // v5 ajoute `http_headers` à la table channels (User-Agent/Referer par
   // chaîne, imposés par certains panels IPTV — sinon 403 à la lecture).
-  static const int _kDbVersion = 6;
+  // v7 : suppressions durables, partagées par import panel et restauration.
+  static const int _kDbVersion = 7;
 
   Database? _db;
 
@@ -78,6 +79,7 @@ class PlaylistDatabase {
   }
 
   Future<void> _onCreate(Database db, int version) async {
+    await _createDeletedSources(db);
     await db.execute('''
       CREATE TABLE playlists (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -147,6 +149,7 @@ class PlaylistDatabase {
   }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 7) await _createDeletedSources(db);
     if (kDebugMode) {
       debugPrint('[DB] Migration $oldVersion → $newVersion');
     }
@@ -222,4 +225,7 @@ class PlaylistDatabase {
       );
     }
   }
+
+  Future<void> _createDeletedSources(Database db) => db.execute(
+      'CREATE TABLE IF NOT EXISTS deleted_sources (fingerprint TEXT PRIMARY KEY)');
 }

@@ -30,6 +30,8 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:xml/xml.dart';
 
+import '../../../core/i18n/l10n_now.dart';
+import '../../../core/observability/structured_logger.dart';
 import '../domain/cast_device.dart';
 import 'multicast_lock.dart';
 import 'roku_ecp_transport.dart';
@@ -93,19 +95,71 @@ class SsdpDiscovery {
         'roku:ecp',
         'ssdp:all',
       ];
-      for (final String st in targets) {
-        final String msg = _buildSearchMessage(st);
-        socket.send(
-          msg.codeUnits,
-          InternetAddress(_kMulticastIp),
-          _kSsdpPort,
-        );
+      bool socketClosed = false;
+      bool sendErrorLogged = false;
+      void sendSearches() {
+        if (socketClosed) return;
+        for (final String st in targets) {
+          final String msg = _buildSearchMessage(st);
+          try {
+            socket.send(
+              msg.codeUnits,
+              InternetAddress(_kMulticastIp),
+              _kSsdpPort,
+            );
+          } catch (e) {
+            // Envoi multicast refusé par l'OS (errno 1 réseau tombé /
+            // app restreinte en arrière-plan) ou socket déjà fermée
+            // (course avec la deadline) : on journalise UNE fois en
+            // warn cast au lieu de laisser l'erreur avorter le scan.
+            if (!sendErrorLogged) {
+              sendErrorLogged = true;
+              StructuredLogger.instance.warn(
+                domain: 'cast',
+                event: 'ssdp.send_error',
+                ctx: <String, Object?>{'error': e.toString()},
+              );
+            }
+          }
+        }
       }
 
-      // Yield les devices jusqu'à expiration
+      // SALVES RÉPÉTÉES (2026-07-09) : un M-SEARCH est de l'UDP
+      // multicast — il se PERD facilement (WiFi chargé, téléphone loin
+      // du routeur, TV qui rate une trame). Les control points de
+      // référence (BubbleUPnP, VLC) émettent 2-3 salves espacées ;
+      // on fait pareil pour que la TV apparaisse au premier scan même
+      // en conditions radio médiocres. Coût : ~400 octets de plus.
+      sendSearches();
+      final List<Timer> resendTimers = <Timer>[
+        Timer(const Duration(seconds: 1), sendSearches),
+        Timer(const Duration(milliseconds: 2500), sendSearches),
+      ];
+      // Les timers sont neutralisés à la sortie (socketClosed) — le
+      // `finally` ci-dessous tourne à la deadline OU à l'annulation.
+      controller.done.whenComplete(() {
+        socketClosed = true;
+        for (final Timer t in resendTimers) {
+          t.cancel();
+        }
+      });
+
+      // Yield les devices jusqu'à expiration.
+      //
+      // IMPORTANT : au timeout on FERME le controller, pas juste un
+      // flag. L'ancien `done = true` n'était relu qu'à l'arrivée d'un
+      // NOUVEAU device : sans réponse SSDP après la deadline, le
+      // `await for` bloquait indéfiniment, le `finally` (fermeture
+      // socket + release MulticastLock) ne tournait qu'à l'annulation
+      // par le prochain scan (~60s en warmup). Fermer le stream fait
+      // sortir la boucle immédiatement → socket fermée et lock relâché
+      // à l'heure prévue.
       final Future<void> deadline = Future<void>.delayed(timeout);
       bool done = false;
-      deadline.then((_) => done = true);
+      deadline.then((_) {
+        done = true;
+        if (!controller.isClosed) controller.close();
+      });
 
       await for (final CastDevice device in controller.stream) {
         if (done) break;
@@ -257,8 +311,10 @@ class SsdpDiscovery {
       if (deviceElements.isEmpty) return null;
       final XmlElement device = deviceElements.first;
 
+      // i18n : repli localisé quand la TV n'annonce pas de friendlyName
+      // (recalculé à chaque découverte, donc suit la langue active).
       final String name =
-          _childText(device, 'friendlyName') ?? 'Récepteur DLNA';
+          _childText(device, 'friendlyName') ?? l10nNow.castDlnaReceiverFallback;
       final String? manufacturer = _childText(device, 'manufacturer');
       final String? model = _childText(device, 'modelName');
 

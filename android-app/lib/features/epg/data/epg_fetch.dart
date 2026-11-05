@@ -108,11 +108,13 @@ Future<int> fetchXmltvRows({
         row['channel_id'] = channelId;
         pending.add(row);
         total++;
-      }
-      if (pending.length >= batchSize) {
-        final List<Map<String, Object?>> rows = pending;
-        pending = <Map<String, Object?>>[];
-        await onRows(rows);
+        // Un identifiant XMLTV peut correspondre à beaucoup de chaînes.
+        // La borne s'applique aux rangées, même au milieu de cet éventail.
+        if (pending.length >= batchSize) {
+          final List<Map<String, Object?>> rows = pending;
+          pending = <Map<String, Object?>>[];
+          await onRows(rows);
+        }
       }
     },
   );

@@ -1,0 +1,147 @@
+import 'dart:convert';
+
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+import 'package:tv_king/core/theme/app_theme.dart';
+import 'package:tv_king/core/update/build_flags.dart';
+import 'package:tv_king/features/pricing/data/pricing_repository.dart';
+import 'package:tv_king/features/pricing/presentation/pricing_banner.dart';
+import 'package:tv_king/l10n/generated/app_localizations.dart';
+
+void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  setUpAll(() => GoogleFonts.config.allowRuntimeFetching = false);
+  const channel = MethodChannel('plugins.flutter.io/url_launcher');
+  final valid = <String, Object>{
+    'configured': true,
+    'currency': 'SEK',
+    'lifetime': '99',
+    'yearly': '45,50',
+    'trialDays': 0,
+    'promoEnabled': true,
+    'promoMessage': 'Offre du panel',
+    'blockTitleFr': 'Titre FR',
+    'blockBodyFr': 'Texte FR',
+    'blockTitleEn': 'Title EN',
+    'blockBodyEn': 'Text EN',
+    'payUrl': 'https://fixture.invalid/offers',
+  };
+  late Map<String, Object> payload;
+  late int reads;
+  late List<MethodCall> launches;
+  bool launchResult = true;
+  setUp(() {
+    PricingRepository.resetForTesting();
+    payload = {'configured': false};
+    reads = 0;
+    launches = [];
+    launchResult = true;
+    PricingRepository.client = MockClient((request) async {
+      expect(request.method, 'GET');
+      expect(request.url.path, '/api/pricing');
+      reads++;
+      return http.Response(jsonEncode(payload), 200);
+    });
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+      launches.add(call);
+      return launchResult;
+    });
+  });
+  tearDown(() {
+    PricingRepository.resetForTesting();
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, null);
+  });
+
+  Future<void> show(WidgetTester tester, {String language = 'fr'}) async {
+    await tester.pumpWidget(MaterialApp(
+      locale: Locale(language),
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      theme: AppTheme.daylight,
+      home: const Scaffold(body: SingleChildScrollView(child: PricingBanner())),
+    ));
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('inconnu ou invalide : aucun prix ni paiement inventé',
+      (tester) async {
+    await show(tester);
+    expect(find.byKey(const ValueKey('mobile-panel-pricing')), findsNothing);
+    expect(launches, isEmpty);
+    payload = {
+      'configured': true,
+      'currency': '<bad>',
+      'lifetime': '-12',
+      'payUrl': 'http://fixture.invalid/offers'
+    };
+    await PricingRepository.fetch(strict: true);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('mobile-panel-pricing')), findsNothing);
+  });
+
+  testWidgets('Store : tout est masqué et aucun lecteur réseau de la carte',
+      (tester) async {
+    payload = valid;
+    PricingRepository.notifier.value = PricingConfig.fromJson(valid);
+    await show(tester);
+    expect(find.byKey(const ValueKey('mobile-panel-pricing')),
+        kIsPlayBuild ? findsNothing : findsOneWidget);
+    expect(reads, kIsPlayBuild ? 0 : 1);
+    expect(launches, isEmpty);
+  });
+
+  testWidgets('prix et textes confirmés réactifs, navigateur seulement au clic',
+      (tester) async {
+    payload = valid;
+    await show(tester);
+    if (kIsPlayBuild) {
+      expect(
+          find.byKey(const ValueKey('mobile-panel-pricing-pay')), findsNothing);
+      return;
+    }
+    expect(find.text('Titre FR'), findsOneWidget);
+    expect(find.text('Texte FR'), findsOneWidget);
+    expect(find.text('99 SEK'), findsOneWidget);
+    expect(find.text('45,50 SEK'), findsOneWidget);
+    expect(find.textContaining('Essai gratuit'), findsNothing);
+    expect(launches, isEmpty);
+    await tester.tap(find.byKey(const ValueKey('mobile-panel-pricing-pay')));
+    await tester.pumpAndSettle();
+    expect(launches.single.arguments['url'], 'https://fixture.invalid/offers');
+    expect(launches.single.arguments['useWebView'], isFalse);
+    payload = {...valid, 'lifetime': '120', 'blockTitleFr': 'Nouveau titre'};
+    await PricingRepository.fetch(strict: true);
+    await tester.pumpAndSettle();
+    expect(find.text('99 SEK'), findsNothing);
+    expect(find.text('120 SEK'), findsOneWidget);
+    expect(find.text('Nouveau titre'), findsOneWidget);
+    payload = {'configured': false};
+    await PricingRepository.fetch(strict: true);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('mobile-panel-pricing')), findsNothing);
+  });
+
+  testWidgets('texte anglais et ouverture refusée réessayable', (tester) async {
+    payload = valid;
+    launchResult = false;
+    await show(tester, language: 'en');
+    if (kIsPlayBuild) return;
+    expect(find.text('Title EN'), findsOneWidget);
+    expect(find.text('Text EN'), findsOneWidget);
+    final button = find.byKey(const ValueKey('mobile-panel-pricing-pay'));
+    await tester.tap(button);
+    await tester.pumpAndSettle();
+    expect(launches, hasLength(1));
+    expect(tester.widget<OutlinedButton>(button).onPressed, isNotNull);
+    launchResult = true;
+    await tester.tap(button);
+    await tester.pumpAndSettle();
+    expect(launches, hasLength(2));
+  });
+}

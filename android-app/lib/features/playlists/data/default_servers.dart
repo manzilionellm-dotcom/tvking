@@ -1,14 +1,9 @@
 // =========================================================
-//  default_servers.dart — Ancien catalogue, plus affiché
+//  default_servers.dart — Choix facultatif de serveurs du panel
 // =========================================================
-//  Avant, l'écran de connexion montrait « Serveur 1 », « Serveur 2 »
-//  et cachait l'adresse (GET /api/servers). Cet écran n'existe plus :
-//  la personne saisit sa propre source (voir open_source_input.dart).
-//
-//  On GARDE ce fichier pour une migration douce. Une application déjà
-//  installée, ou une liste enregistrée avec l'identifiant d'un serveur
-//  connu, peut encore retrouver l'adresse via [urlForRegisteredServer]
-//  ou via le cache disque. Rien n'est montré dans l'interface.
+//  Le client peut choisir une adresse configurée par l'administrateur
+//  ou écrire la sienne. Le choix remplit le champ URL visible ; il ne
+//  connecte rien et ne remplace jamais une liste déjà enregistrée.
 //
 //  Aucune URL de flux n'est écrite en dur ici (règle n°2 d'AGENTS.md).
 // =========================================================
@@ -23,8 +18,7 @@ import '../../subscription/data/subscription_backend.dart'
     show kSubscriptionBaseUrl;
 
 /// Un serveur IPTV par défaut tel que renvoyé par le Worker.
-/// Le champ [url] n'est JAMAIS montré au client : il sert seulement
-/// en interne à construire les requêtes Xtream.
+/// L'adresse reste visible et modifiable avant la connexion Xtream.
 @immutable
 class DefaultServer {
   const DefaultServer({
@@ -36,11 +30,10 @@ class DefaultServer {
   /// Identifiant stable (ex. `srv1`). Sert de clé de sélection.
   final String id;
 
-  /// Ancien libellé (« Serveur 1 »). Plus montré. Gardé pour reconnaître
-  /// une ligne déjà enregistrée.
+  /// Libellé configuré dans le panel.
   final String label;
 
-  /// Base du serveur Xtream (ex. `http://exemple:8080`). Caché.
+  /// Base du serveur Xtream, sans identifiants préremplis.
   final String url;
 
   factory DefaultServer.fromJson(Map<String, dynamic> json) {
@@ -59,7 +52,6 @@ class DefaultServer {
 }
 
 /// Adresse d'un serveur DÉJÀ enregistré, retrouvée par son identifiant.
-/// Sert uniquement en interne : on ne construit pas un menu avec.
 /// Inconnu ou adresse vide → null (on n'invente pas de serveur).
 String? urlForRegisteredServer(Iterable<DefaultServer> known, String id) {
   final String key = id.trim();
@@ -79,6 +71,9 @@ abstract final class DefaultServersApi {
   /// Cache mémoire pour éviter de retaper le réseau à chaque
   /// ouverture de l'écran de connexion pendant une session.
   static List<DefaultServer>? _memoryCache;
+  static Future<List<DefaultServer>>? _pending;
+  static final ValueNotifier<List<DefaultServer>> current =
+      ValueNotifier<List<DefaultServer>>(const <DefaultServer>[]);
 
   /// Récupère la liste des serveurs par défaut.
   ///
@@ -87,54 +82,106 @@ abstract final class DefaultServersApi {
   ///   2. Réseau (`GET /api/servers`) → met à jour les deux caches.
   ///   3. Cache disque (si le réseau a échoué).
   ///
-  /// Ne throw jamais : en dernier recours renvoie une liste vide,
-  /// et l'UI affiche un message « serveurs indisponibles, réessaie ».
-  static Future<List<DefaultServer>> fetch({bool forceRefresh = false}) async {
-    if (!forceRefresh && _memoryCache != null) {
+  /// Pour l'UI, une panne conserve le cache ou une liste vide. Le mode strict
+  /// propage au contraire l'échec de sa nouvelle lecture pour l'ACK du panel.
+  static Future<List<DefaultServer>> fetch(
+      {bool forceRefresh = false, bool strict = false}) async {
+    if (!forceRefresh && !strict && _memoryCache != null) {
       return _memoryCache!;
     }
 
-    final List<DefaultServer>? network = await _fetchFromNetwork();
-    if (network != null) {
-      _memoryCache = network;
-      await _writeCache(network);
-      return network;
+    // Une lecture partie avant l'ordre peut encore contenir l'ancienne valeur.
+    // Le strict attend sa fin, puis démarre sa propre lecture après l'ordre.
+    // La boucle sérialise aussi plusieurs ordres stricts sans réponse tardive.
+    if (strict) {
+      while (_pending != null) {
+        final previous = _pending!;
+        try {
+          await previous;
+        } catch (_) {
+          // Seule la nouvelle lecture décide du succès de cet ordre.
+        }
+        if (identical(_pending, previous)) _pending = null;
+      }
     }
-
-    // Réseau KO → on retombe sur le dernier cache disque connu.
-    final List<DefaultServer> disk = await _readCache();
-    _memoryCache = disk;
-    return disk;
+    final pending = _pending ??= _refresh();
+    try {
+      return await pending;
+    } catch (_) {
+      if (strict) rethrow;
+      final disk = _memoryCache ?? await _readCache();
+      _memoryCache ??= disk;
+      current.value = _memoryCache!;
+      return _memoryCache!;
+    } finally {
+      if (identical(_pending, pending)) _pending = null;
+    }
   }
 
-  static Future<List<DefaultServer>?> _fetchFromNetwork() async {
+  static Future<List<DefaultServer>> _refresh() async {
+    final servers = await _fetchFromNetwork();
+    await _writeCache(servers);
+    _memoryCache = servers;
+    current.value = servers;
+    return servers;
+  }
+
+  static Future<List<DefaultServer>> _fetchFromNetwork() async {
     try {
-      final http.Response resp = await http
-          .get(
-            Uri.parse('$kSubscriptionBaseUrl/api/servers'),
-            headers: const <String, String>{'Accept': 'application/json'},
-          )
-          .timeout(const Duration(seconds: 8));
+      final http.Response resp = await http.get(
+        Uri.parse('$kSubscriptionBaseUrl/api/servers'),
+        headers: const <String, String>{'Accept': 'application/json'},
+      ).timeout(const Duration(seconds: 8));
       if (resp.statusCode != 200) {
-        if (kDebugMode) {
-          debugPrint('[DefaultServers] HTTP ${resp.statusCode}');
-        }
-        return null;
+        throw StateError('Catalogue distant non confirmé');
       }
-      final Map<String, dynamic> body =
-          jsonDecode(resp.body) as Map<String, dynamic>;
+      final decoded = jsonDecode(resp.body);
+      if (decoded is! Map<String, dynamic>) {
+        throw const FormatException('Catalogue distant invalide');
+      }
+      final body = decoded;
+      if (body['servers'] is! List ||
+          (body['servers'] as List)
+              .any((row) => row is! Map<String, dynamic>)) {
+        throw const FormatException('Catalogue distant invalide');
+      }
       final List<dynamic> raw =
           (body['servers'] as List<dynamic>?) ?? const <dynamic>[];
-      final List<DefaultServer> servers = raw
-          .whereType<Map<String, dynamic>>()
-          .map(DefaultServer.fromJson)
-          .where((DefaultServer s) => s.url.isNotEmpty)
-          .toList();
-      return servers;
+      return _parseServers(raw);
     } catch (e) {
-      if (kDebugMode) debugPrint('[DefaultServers] fetch error: $e');
-      return null;
+      if (kDebugMode)
+        debugPrint('[DefaultServers] fetch error: ${e.runtimeType}');
+      rethrow;
     }
+  }
+
+  static List<DefaultServer> _parseServers(List<dynamic> rows) {
+    final ids = <String>{};
+    final result = <DefaultServer>[];
+    for (final row in rows.take(100)) {
+      if (row is! Map<String, dynamic> ||
+          row['enabled'] == false ||
+          row['enabled'] == 0) continue;
+      final item = DefaultServer.fromJson(row);
+      final uri = Uri.tryParse(item.url);
+      if (item.id.isEmpty ||
+          !ids.add(item.id) ||
+          uri == null ||
+          !<String>['http', 'https'].contains(uri.scheme) ||
+          uri.host.isEmpty ||
+          uri.userInfo.isNotEmpty ||
+          uri.hasQuery ||
+          uri.hasFragment) continue;
+      result.add(item);
+    }
+    return List<DefaultServer>.unmodifiable(result);
+  }
+
+  @visibleForTesting
+  static void resetForTesting() {
+    _memoryCache = null;
+    _pending = null;
+    current.value = const <DefaultServer>[];
   }
 
   static Future<void> _writeCache(List<DefaultServer> servers) async {
@@ -155,11 +202,7 @@ abstract final class DefaultServersApi {
       final String? raw = prefs.getString(_kCacheKey);
       if (raw == null || raw.isEmpty) return const <DefaultServer>[];
       final List<dynamic> list = jsonDecode(raw) as List<dynamic>;
-      return list
-          .whereType<Map<String, dynamic>>()
-          .map(DefaultServer.fromJson)
-          .where((DefaultServer s) => s.url.isNotEmpty)
-          .toList();
+      return _parseServers(list);
     } catch (_) {
       return const <DefaultServer>[];
     }

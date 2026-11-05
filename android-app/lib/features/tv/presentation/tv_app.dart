@@ -1,3 +1,5 @@
+import '../../../core/i18n/somali_localizations.dart';
+
 // =========================================================
 //  tv_app.dart — Racine de DeFew TV (MaterialApp 10-foot)
 // =========================================================
@@ -12,34 +14,45 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/app/repair_flags.dart';
+import '../../../core/app/startup_trace.dart';
+import '../../theme/data/remote_theme_repository.dart';
 import '../../playlists/data/import_progress.dart';
 import '../../playlists/data/remote_source_repository.dart';
 import '../../../core/i18n/l10n_extension.dart';
+import 'tv_localized_format.dart';
 import '../../../core/i18n/locale_repository.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../channels/domain/channel.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../../about/data/force_update_checker.dart';
 import '../../about/presentation/forced_update_screen.dart';
+import '../../ads/presentation/tv_startup_ad_gate.dart';
 import '../../subscription/data/signal_inbox.dart';
 import '../../subscription/data/subscription_state.dart';
 import '../core/tv_content_refresh.dart';
+import '../core/tv_remote_shortcuts.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_page_transitions.dart';
 import '../core/tv_tokens.dart';
+import '../core/tv_app_tokens.dart';
+import '../core/tv_comfort_schedule.dart';
+import '../core/tv_look.dart';
+import '../core/tv_type.dart';
 import '../data/greeting_repository.dart';
 import 'removed_list_prompt.dart';
 import 'tv_activation_screen.dart';
 import 'tv_components.dart';
-import 'tv_diagnostic_screen.dart';
 import 'tv_hub_screen.dart';
+import 'tv_light_intro.dart';
 import 'tv_live_screen.dart';
 import 'tv_recordings_screen.dart';
+import 'tv_player_probe.dart';
+import 'tv_player_screen.dart';
+import 'tv_scaled_viewport.dart';
 import '../../voice/presentation/voice_hotkey.dart';
 import '../../voice/presentation/voice_navigation.dart';
 import 'tv_search_screen.dart';
@@ -57,76 +70,104 @@ class TvApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final ThemeData base = ThemeData(
-      brightness: Brightness.dark,
-      scaffoldBackgroundColor: TvTokens.bg,
-      colorScheme: const ColorScheme.dark(
-        surface: TvTokens.card,
-        primary: TvTokens.accent,
-      ),
-      useMaterial3: true,
-    );
     // On écoute LocaleRepository : `locale == null` => l'app SUIT la langue
     // de la TV (Android system locale). Si la télé est en espagnol, l'app
     // s'affiche en espagnol toute seule. Un changement manuel (Réglages)
     // reconstruit l'app via ce ListenableBuilder.
     return ListenableBuilder(
-      listenable: LocaleRepository.instance,
-      builder: (BuildContext context, _) => MaterialApp(
-        navigatorKey: VoiceNavigation.navigatorKey,
-        title: kAppName,
-        debugShowCheckedModeBanner: false,
-        // --- Internationalisation (16 langues, RTL auto pour l'arabe) ---
-        locale: LocaleRepository.instance.locale, // null = langue de la TV
-        supportedLocales: AppLocalizations.supportedLocales,
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        // Langue de la TV → langue de l'app (toutes les préférences système,
-        // code langue seul, repli anglais). Voir LocaleRepository.resolve.
-        localeListResolutionCallback: LocaleRepository.resolve,
-        theme: base.copyWith(
-          // Police par défaut = Inter (Maison Noir) sur TOUT le texte.
-          textTheme: GoogleFonts.interTextTheme(base.textTheme)
-              .apply(bodyColor: TvTokens.text, displayColor: TvTokens.text),
-          // Coupe TOUT effet tactile (hover/splash souris) — D-pad only.
-          splashFactory: NoSplash.splashFactory,
-          hoverColor: Colors.transparent,
-          // Retour sans « flash » : fondu court, sans capture d'écran
-          // (voir tv_page_transitions.dart).
-          pageTransitionsTheme: kTvPageTransitions,
-        ),
-        // CANEVAS TV FIXE : on rend TOUTE l'app comme un écran logique de
-        // largeur `kTvDesignWidth`, puis on met à l'échelle uniforme vers
-        // l'écran réel. Beaucoup de box Android TV / Fire TV rapportent une
-        // résolution logique trop petite (ex. 960×540) → l'UI paraît
-        // « zoomée ». Avec ce canevas fixe, l'app a TOUJOURS la même taille
-        // relative, quelle que soit la TV. On neutralise aussi le textScale
-        // système (certaines box le poussent à 1,3-1,5).
-        builder: (BuildContext context, Widget? child) {
-          final MediaQueryData mq = MediaQuery.of(context);
-          final Size screen = mq.size;
-          if (child == null || screen.width <= 0 || screen.height <= 0) {
-            return child ?? const SizedBox.shrink();
-          }
-          const double designW = kTvDesignWidth;
-          final double designH = designW * screen.height / screen.width;
-          return VoiceHotkey(
-            child: MediaQuery(
-              data: mq.copyWith(
-                size: Size(designW, designH),
-                textScaler: TextScaler.noScaling,
+      listenable: Listenable.merge(<Listenable>[
+        LocaleRepository.instance,
+        RemoteThemeRepository.current,
+        // Le moment (soir fixe, ou l'heure si la personne l'a demandé)
+        // recolore les surfaces. Pas la vidéo.
+        TvComfortSchedule.instance,
+        TvLook.instance,
+      ]),
+      builder: (BuildContext context, _) {
+        final settings = RemoteThemeRepository.current.value;
+        final palette = TvAppTokens(
+          light: settings.mode == ThemeMode.light,
+          remoteAccent: settings.accent,
+          period: TvComfortSchedule.instance.period,
+          ghost: TvLook.instance.ghost,
+        );
+        final scheme = palette.light
+            ? ColorScheme.light(
+                surface: palette.card,
+                primary: palette.accent,
+                onPrimary: palette.onAccent,
+                onSurface: palette.text,
+              )
+            : ColorScheme.dark(surface: palette.card, primary: palette.accent);
+        final base = ThemeData(
+          brightness: palette.light ? Brightness.light : Brightness.dark,
+          scaffoldBackgroundColor: palette.bg,
+          colorScheme: settings.accent == null
+              ? scheme
+              : scheme.copyWith(onPrimary: palette.onAccent),
+          extensions: <ThemeExtension<dynamic>>[palette],
+          useMaterial3: true,
+        );
+        return MaterialApp(
+          navigatorKey: VoiceNavigation.navigatorKey,
+          title: settings.appName.isEmpty ? kAppName : settings.appName,
+          debugShowCheckedModeBanner: false,
+          // --- Internationalisation (17 langues, RTL auto pour l'arabe) ---
+          locale: LocaleRepository.instance.locale, // null = langue de la TV
+          supportedLocales: AppLocalizations.supportedLocales,
+          localizationsDelegates: const [
+            ...somaliLocalizationsDelegates,
+            ...AppLocalizations.localizationsDelegates,
+          ],
+          // Langue de la TV → langue de l'app (toutes les préférences système,
+          // code langue seul, repli anglais). Voir LocaleRepository.resolve.
+          localeListResolutionCallback: LocaleRepository.resolve,
+          theme: base.copyWith(
+            // Échelle TV (tv_type.dart), pas le TextTheme Roboto de Material.
+            textTheme: TvType.material(palette.text),
+            // Coupe TOUT effet tactile (hover/splash souris) — D-pad only.
+            splashFactory: NoSplash.splashFactory,
+            hoverColor: Colors.transparent,
+            // Retour sans « flash » : fondu court, sans capture d'écran
+            // (voir tv_page_transitions.dart).
+            pageTransitionsTheme: kTvPageTransitions,
+          ),
+          // CANEVAS TV FIXE : on rend TOUTE l'app comme un écran logique de
+          // largeur `kTvDesignWidth`, puis on met à l'échelle uniforme vers
+          // l'écran réel. Beaucoup de box Android TV / Fire TV rapportent une
+          // résolution logique trop petite (ex. 960×540) → l'UI paraît
+          // « zoomée ». Avec ce canevas fixe, l'app a TOUJOURS la même taille
+          // relative, quelle que soit la TV. On neutralise aussi le textScale
+          // système (certaines box le poussent à 1,3-1,5).
+          builder: (BuildContext context, Widget? child) {
+            if (child == null) return const SizedBox.shrink();
+            return VoiceHotkey(
+              child: TvRemoteShortcuts(
+                child: TvScaledViewport(
+                  designWidth: kTvDesignWidth,
+                  child: child,
+                ),
               ),
-              child: FittedBox(
-                fit: BoxFit.fill,
-                child: SizedBox(
-                    width: designW, height: designH, child: child),
-              ),
-            ),
-          );
-        },
-        home: const RestartWidget(
-          child: RemovedListPrompt(child: TvGate()),
-        ),
-      ),
+            );
+          },
+          // Sonde d'image : seulement si le build passe une URL publique.
+          // Les APK clients n'ont pas ce define → accueil inchangé.
+          home: kZunoPlayerProbeUrl.isEmpty
+              ? const RestartWidget(child: RemovedListPrompt(child: TvGate()))
+              : TvPlayerScreen(
+                  channels: <Channel>[
+                    Channel(
+                      id: 'probe',
+                      name: 'Essai image',
+                      category: 'Essai',
+                      streamUrl: kZunoPlayerProbeUrl,
+                      isLive: true,
+                    ),
+                  ],
+                  startIndex: 0,
+                ),
+        );
+      },
     );
   }
 }
@@ -162,69 +203,73 @@ class _RestartWidgetState extends State<RestartWidget> {
 
   @override
   Widget build(BuildContext context) => Stack(
-        children: <Widget>[
-          KeyedSubtree(key: _key, child: widget.child),
-          // Mise à jour forcée : le panel l'envoie sur le canal.
-          // Tant que la box n'est pas assez récente, cet écran
-          // couvre le reste. Un build local (pas de numéro) ne
-          // se bloque pas.
-          ListenableBuilder(
-            listenable: SignalInbox.instance,
-            builder: (BuildContext context, _) {
-              if (!SignalInbox.instance.forceBlocked) {
-                return const SizedBox.shrink();
-              }
-              return ForcedUpdateScreen(
-                onRetry: () {
-                  unawaited(() async {
-                    final bool still =
-                        await ForceUpdateChecker.instance.mustUpdate();
-                    SignalInbox.instance.setForceBlocked(still);
-                  }());
-                },
-              );
+    children: <Widget>[
+      KeyedSubtree(key: _key, child: widget.child),
+      // Mise à jour forcée : le panel l'envoie sur le canal.
+      // Tant que la box n'est pas assez récente, cet écran
+      // couvre le reste. Un build local (pas de numéro) ne
+      // se bloque pas.
+      ListenableBuilder(
+        listenable: SignalInbox.instance,
+        builder: (BuildContext context, _) {
+          if (!SignalInbox.instance.forceBlocked) {
+            return const SizedBox.shrink();
+          }
+          return ForcedUpdateScreen(
+            onRetry: () {
+              unawaited(() async {
+                final bool still = await ForceUpdateChecker.instance
+                    .mustUpdate();
+                SignalInbox.instance.setForceBlocked(still);
+              }());
             },
-          ),
-          // Pastille « Mise à jour… » pendant une passe ou un import du
-          // panel. CACHÉE par défaut depuis le 05/10/2026 (demande du
-          // propriétaire : rien ne doit se voir, l'import est silencieux ;
-          // la mesure est dans la boîte noire). `zuno.sync.pill_show`
-          // la réaffiche pour un diagnostic sur une box.
-          if (RepairFlags.updatingPillShown)
-            Positioned(
-              top: TvDimens.safeV,
-              right: TvDimens.safeH,
-              child: IgnorePointer(
-                child: ListenableBuilder(
-                  listenable: Listenable.merge(<Listenable>[
-                    TvContentRefresh.running,
-                    RemoteSourceRepository.importing,
-                  ]),
-                  builder: (BuildContext context, _) =>
-                      AnimatedOpacity(
-                    opacity: (TvContentRefresh.running.value ||
-                            RemoteSourceRepository.importing.value)
-                        ? 1
-                        : 0,
-                    duration: const Duration(milliseconds: 250),
-                    child: const _UpdatingPill(),
-                  ),
-                ),
+          );
+        },
+      ),
+      // Pastille « Mise à jour… » pendant une passe ou un import du
+      // panel. CACHÉE par défaut depuis le 05/10/2026 (demande du
+      // propriétaire : rien ne doit se voir, l'import est silencieux ;
+      // la mesure est dans la boîte noire). `zuno.sync.pill_show`
+      // la réaffiche pour un diagnostic sur une box.
+      if (RepairFlags.updatingPillShown)
+        Positioned(
+          top: TvDimens.safeV,
+          right: TvDimens.safeH,
+          child: IgnorePointer(
+            child: ListenableBuilder(
+              listenable: Listenable.merge(<Listenable>[
+                TvContentRefresh.running,
+                RemoteSourceRepository.importing,
+              ]),
+              builder: (BuildContext context, _) => AnimatedOpacity(
+                opacity:
+                    (TvContentRefresh.running.value ||
+                        (RemoteSourceRepository.importing.value &&
+                            !RepairFlags.syncPillOff))
+                    ? 1
+                    : 0,
+                duration: const Duration(milliseconds: 250),
+                child: const _UpdatingPill(),
               ),
             ),
-        ],
-      );
+          ),
+        ),
+    ],
+  );
 }
 
 /// Détail chiffré de l'import en cours, sans mot à traduire : « 12,4 Mo »
 /// pendant le téléchargement, « 18 000 » chaînes trouvées, « 12 000 / 18 000 »
 /// pendant l'enregistrement. Vide hors import. Pur, testé sans écran.
-String updatingPillDetail(ImportProgress? p) {
+String updatingPillDetail(
+  ImportProgress? p, {
+  String Function(int)? formatSize,
+}) {
   if (p == null) return '';
   switch (p.stage) {
     case ImportStage.downloading:
     case ImportStage.decoding:
-      return p.bytes > 0 ? '${p.mb} Mo' : '';
+      return p.bytes > 0 ? (formatSize?.call(p.bytes) ?? '${p.mb} MB') : '';
     case ImportStage.category:
       return p.total > 0 ? '${p.index} / ${p.total}' : '';
     case ImportStage.found:
@@ -252,30 +297,40 @@ class _UpdatingPill extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
       decoration: BoxDecoration(
-        color: TvTokens.surface3,
+        color: TvAppTokens.of(context).surface3,
         borderRadius: BorderRadius.circular(TvTokens.rButton),
-        border: Border.all(color: TvTokens.accent.withValues(alpha: 0.5)),
+        border: Border.all(
+          color: TvAppTokens.of(context).accent.withValues(alpha: 0.5),
+        ),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
-          const SizedBox(
+          SizedBox(
             width: 14,
             height: 14,
             child: CircularProgressIndicator(
-                strokeWidth: 2, color: TvTokens.accentBright),
+              strokeWidth: 2,
+              color: TvAppTokens.of(context).accentBright,
+            ),
           ),
           const SizedBox(width: 10),
           ValueListenableBuilder<ImportProgress?>(
             valueListenable: ImportProgressBus.current,
             builder: (BuildContext context, ImportProgress? p, _) {
-              final String detail = updatingPillDetail(p);
+              final String detail = updatingPillDetail(
+                p,
+                formatSize: (bytes) => tvBytes(context, bytes),
+              );
               return Text(
                 detail.isEmpty
                     ? context.l10n.tvUpdatingContent
                     : '${context.l10n.tvUpdatingContent} · $detail',
-                style: TvTokens.ui(TvDimens.caption,
-                    weight: FontWeight.w600, color: TvTokens.text),
+                style: TvAppTokens.of(context).ui(
+                  TvDimens.caption,
+                  weight: FontWeight.w600,
+                  color: TvAppTokens.of(context).text,
+                ),
               );
             },
           ),
@@ -287,12 +342,20 @@ class _UpdatingPill extends StatelessWidget {
 
 /// Dialogue Back/Exit : Continuer / Redémarrer / Quitter. Renvoie
 /// 'restart', 'quit', ou null (continuer). Navigable à la télécommande.
-Future<String?> showExitDialog(BuildContext context) {
-  return showDialog<String>(
+Future<String?> showExitDialog(BuildContext context) async {
+  final String? action = await showDialog<String>(
     context: context,
     barrierColor: Colors.black.withValues(alpha: 0.86),
     builder: (BuildContext ctx) => const _ExitDialog(),
   );
+  // Trois valeurs fixes seulement : aucune donnée de l'utilisateur.
+  final String outcome = switch (action) {
+    'quit' => 'quit',
+    'restart' => 'restart',
+    _ => 'stay',
+  };
+  StartupTrace.mark('exitDialog.$outcome');
+  return action;
 }
 
 class _ExitDialog extends StatelessWidget {
@@ -304,10 +367,7 @@ class _ExitDialog extends StatelessWidget {
     // SÉPARÉE, hors de TvShell. Sans Material ancêtre, Flutter dessine tout
     // le texte avec son style d'erreur (double soulignement jaune) — c'était
     // le bug visible sur la box (« Quitter … » souligné en jaune).
-    return Material(
-      type: MaterialType.transparency,
-      child: _content(context),
-    );
+    return Material(type: MaterialType.transparency, child: _content(context));
   }
 
   Widget _content(BuildContext context) {
@@ -316,20 +376,26 @@ class _ExitDialog extends StatelessWidget {
         width: 560,
         padding: const EdgeInsets.all(32),
         decoration: BoxDecoration(
-          color: TvTokens.card,
+          color: TvAppTokens.of(context).card,
           borderRadius: BorderRadius.circular(TvTokens.rCard),
-          border: Border.all(color: TvTokens.line),
+          border: Border.all(color: TvAppTokens.of(context).line),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
-            Text(context.l10n.tvQuitTitle,
-                textAlign: TextAlign.center,
-                style: TvTokens.display(28, color: TvTokens.text)),
+            Text(
+              context.l10n.tvQuitTitle,
+              textAlign: TextAlign.center,
+              style: TvAppTokens.of(context)
+                  .display(28, color: TvAppTokens.of(context).text),
+            ),
             const SizedBox(height: 10),
-            Text(context.l10n.tvQuitMessage,
-                textAlign: TextAlign.center,
-                style: TvTokens.ui(15, color: TvTokens.mutedDim)),
+            Text(
+              context.l10n.tvQuitMessage,
+              textAlign: TextAlign.center,
+              style: TvAppTokens.of(context)
+                  .ui(15, color: TvAppTokens.of(context).mutedDim),
+            ),
             const SizedBox(height: 26),
             _DialogBtn(
               icon: Icons.play_arrow_rounded,
@@ -373,32 +439,43 @@ class _DialogBtn extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final BorderRadius radius = BorderRadius.circular(TvTokens.rButton);
     return TvFocusBuilder(
       autofocus: autofocus,
       scale: TvFocusScale.large,
+      borderRadius: radius,
+      showGlow: false,
       onSelect: onSelect,
       builder: (BuildContext context, bool focused) {
         final Color fg = focused
-            ? TvTokens.onAccent
-            : (primary ? TvTokens.accentBright : TvTokens.text);
+            ? TvAppTokens.of(context).onAccent
+            : (primary
+                  ? TvAppTokens.of(context).accentBright
+                  : TvAppTokens.of(context).text);
         return Container(
           width: double.infinity,
           padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
           decoration: BoxDecoration(
             color: focused
-                ? TvTokens.accent
-                : (primary ? TvTokens.sel : Colors.transparent),
-            borderRadius: BorderRadius.circular(TvTokens.rButton),
+                ? TvAppTokens.of(context).accent
+                : (primary ? TvAppTokens.of(context).sel : Colors.transparent),
+            borderRadius: radius,
             border: Border.all(
-                color: focused ? TvTokens.accent : TvTokens.line),
+              color: focused
+                  ? TvAppTokens.of(context).accent
+                  : TvAppTokens.of(context).line,
+            ),
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: <Widget>[
               Icon(icon, size: 22, color: fg),
               const SizedBox(width: 10),
-              Text(label,
-                  style: TvTokens.ui(18, weight: FontWeight.w700, color: fg)),
+              Text(
+                label,
+                style: TvAppTokens.of(context)
+                    .ui(18, weight: FontWeight.w700, color: fg),
+              ),
             ],
           ),
         );
@@ -425,7 +502,9 @@ class _TvGateState extends State<TvGate> {
   void initState() {
     super.initState();
     SubscriptionState.instance.addListener(_onChange);
-    _sub = PlaylistRepository.instance.channelsStream.listen((_) => _onChange());
+    _sub = PlaylistRepository.instance.channelsStream.listen(
+      (_) => _onChange(),
+    );
   }
 
   @override
@@ -447,14 +526,15 @@ class _TvGateState extends State<TvGate> {
     // 24 h / 48 h / 7 j) depuis le panel → la TV doit se débloquer pareil,
     // pas seulement pour un abonnement payant. Ou si le client a apporté sa
     // propre liste (Xtream).
-    final bool active = s == SubscriptionStatus.paid ||
-        s == SubscriptionStatus.trialActive;
+    final bool active =
+        s == SubscriptionStatus.paid || s == SubscriptionStatus.trialActive;
     // VERROU « après 7 jours, paiement obligatoire » : si le SERVEUR a tranché
     // que l'accès est fini (essai expiré) ou coupé (gelé / banni), on BLOQUE —
     // MÊME si des chaînes sont déjà en cache. Sans ça, un client ayant chargé
     // sa source pendant l'essai continuerait à regarder GRATUITEMENT après les
     // 7 jours (les chaînes restaient en base locale). C'est la fuite à fermer.
-    final bool mustBlock = s == SubscriptionStatus.trialExpired ||
+    final bool mustBlock =
+        s == SubscriptionStatus.trialExpired ||
         s == SubscriptionStatus.frozen ||
         s == SubscriptionStatus.banned;
     final bool hasOwnList =
@@ -466,27 +546,29 @@ class _TvGateState extends State<TvGate> {
     // source une fois l'essai expiré).
     final bool showHome = active || (hasOwnList && !mustBlock);
     final Widget home = showHome
-        ? const TvHubScreen()
+        ? const TvStartupAdGate(child: TvHubScreen())
         : const TvShell(child: TvActivationScreen());
     // Retour : sur l'ACCUEIL, c'est TvHomeScreen qui gère (contenu → menu →
     // boîte Quitter au dernier niveau). Ce PopScope racine (même route) ne
     // garde donc la boîte QUE pour l'écran d'activation ; sinon il laisse
     // faire l'accueil (sans ça, la boîte s'afficherait à chaque Retour).
-    return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (bool didPop, Object? _) async {
-        if (didPop) return;
-        if (showHome) return; // géré par TvHomeScreen
-        final String? action = await showExitDialog(context);
-        if (!context.mounted) return;
-        if (action == 'restart') {
-          RestartWidget.restart(context);
-        } else if (action == 'quit') {
-          if (!Platform.isAndroid) exit(0); // PC : fermer la fenêtre
-      await SystemNavigator.pop();
-        }
-      },
-      child: home,
+    return TvLightIntro(
+      child: PopScope(
+        canPop: false,
+        onPopInvokedWithResult: (bool didPop, Object? _) async {
+          if (didPop) return;
+          if (showHome) return; // géré par TvHomeScreen
+          final String? action = await showExitDialog(context);
+          if (!context.mounted) return;
+          if (action == 'restart') {
+            RestartWidget.restart(context);
+          } else if (action == 'quit') {
+            if (!Platform.isAndroid) exit(0); // PC : fermer la fenêtre
+            await SystemNavigator.pop();
+          }
+        },
+        child: home,
+      ),
     );
   }
 }
@@ -501,7 +583,7 @@ extension on TvDest {
       case TvDest.live:
         return context.l10n.tvNavLive;
       case TvDest.news:
-        return 'Actu';
+        return context.l10n.tvNewsTicker;
       case TvDest.films:
         return context.l10n.tvNavFilms;
       case TvDest.series:
@@ -509,7 +591,7 @@ extension on TvDest {
       case TvDest.guide:
         return context.l10n.tvNavGuide;
       case TvDest.recordings:
-        return 'Enregistrements';
+        return context.l10n.settingsRecordings;
       case TvDest.search:
         return context.l10n.tvNavSearch;
       case TvDest.settings:
@@ -555,55 +637,10 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
   final FocusNode _railFocus = FocusNode(debugLabel: 'navRailSelected');
   bool _railHasFocus = false;
 
-  // Accès CACHÉ au diagnostic on-device : séquence D-pad HAUT-HAUT-BAS-BAS sur
-  // l'accueil. Le Focus englobant ci-dessous OBSERVE les touches (il renvoie
-  // toujours `ignored`) → la navigation directionnelle normale n'est jamais
-  // perturbée. On garde seulement les 4 dernières flèches haut/bas.
-  static const List<bool> _diagSeq = <bool>[true, true, false, false]; // H H B B
-  final List<bool> _diagBuf = <bool>[];
-  bool _diagOpen = false;
-
   @override
   void dispose() {
     _railFocus.dispose();
     super.dispose();
-  }
-
-  /// Observateur passif de touches (ne consomme RIEN). Détecte la séquence
-  /// cachée et ouvre l'écran de diagnostic. Renvoie toujours `ignored`.
-  KeyEventResult _onHomeKey(FocusNode node, KeyEvent event) {
-    if (event is! KeyDownEvent) return KeyEventResult.ignored;
-    final LogicalKeyboardKey k = event.logicalKey;
-    final bool up =
-        k == LogicalKeyboardKey.arrowUp || k == LogicalKeyboardKey.channelUp;
-    final bool down =
-        k == LogicalKeyboardKey.arrowDown || k == LogicalKeyboardKey.channelDown;
-    if (!up && !down) {
-      if (_diagBuf.isNotEmpty) _diagBuf.clear();
-      return KeyEventResult.ignored;
-    }
-    _diagBuf.add(up);
-    if (_diagBuf.length > _diagSeq.length) {
-      _diagBuf.removeAt(0);
-    }
-    bool match = _diagBuf.length == _diagSeq.length;
-    for (int i = 0; match && i < _diagSeq.length; i++) {
-      if (_diagBuf[i] != _diagSeq[i]) match = false;
-    }
-    if (match) {
-      _diagBuf.clear();
-      _openDiagnostic();
-    }
-    return KeyEventResult.ignored;
-  }
-
-  Future<void> _openDiagnostic() async {
-    if (_diagOpen) return;
-    _diagOpen = true;
-    await Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(builder: (_) => const TvDiagnosticScreen()),
-    );
-    _diagOpen = false;
   }
 
   // RETOUR (n'importe quelle télécommande) :
@@ -634,60 +671,58 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
         _onBack();
       },
       child: Focus(
-        // OBSERVATEUR de touches uniquement : non focusable, hors traversée,
-        // renvoie toujours `ignored` (cf. _onHomeKey). Sert seulement à capter
-        // la séquence cachée HAUT-HAUT-BAS-BAS sans gêner la navigation.
+        // Les flèches servent uniquement à naviguer. Les tests client
+        // sont demandés depuis le panel, jamais par un raccourci télécommande.
         canRequestFocus: false,
         skipTraversal: true,
-        onKeyEvent: _onHomeKey,
         child: TvShell(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: <Widget>[
-            const _HomeHeader(),
-            const SizedBox(height: 14),
-            Expanded(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: <Widget>[
-                  // ----- Rail de navigation (gauche) -----
-                  // Le Focus englobant (non focusable lui-même) sert juste à
-                  // SAVOIR si le focus est sur le menu, sans piéger la
-                  // navigation directionnelle (ce n'est pas un FocusScope).
-                  // RAIL REPLIABLE (réf. design) : icônes seules au repos
-                  // (96 px) → se DÉPLOIE à 300 px quand le focus y entre (labels
-                  // apparaissent). On réutilise `_railHasFocus` déjà suivi par le
-                  // Focus englobant. Largeur animée (décélérée) ; le contenu à
-                  // droite (grille virtualisée) se ré-agence à coût négligeable.
-                  AnimatedContainer(
-                    duration: const Duration(milliseconds: 220),
-                    curve: const Cubic(0.2, 0.0, 0.0, 1.0),
-                    width: _railHasFocus ? 300 : 96,
-                    child: Focus(
-                      canRequestFocus: false,
-                      skipTraversal: true,
-                      onFocusChange: (bool f) {
-                        if (f != _railHasFocus) {
-                          setState(() => _railHasFocus = f);
-                        }
-                      },
-                      child: _NavRail(
-                        selected: _selected,
-                        expanded: _railHasFocus,
-                        selectedFocusNode: _railFocus,
-                        onSelect: (TvDest d) => setState(() => _selected = d),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              const _HomeHeader(),
+              const SizedBox(height: 14),
+              Expanded(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: <Widget>[
+                    // ----- Rail de navigation (gauche) -----
+                    // Le Focus englobant (non focusable lui-même) sert juste à
+                    // SAVOIR si le focus est sur le menu, sans piéger la
+                    // navigation directionnelle (ce n'est pas un FocusScope).
+                    // RAIL REPLIABLE (réf. design) : icônes seules au repos
+                    // (96 px) → se DÉPLOIE à 300 px quand le focus y entre (labels
+                    // apparaissent). On réutilise `_railHasFocus` déjà suivi par le
+                    // Focus englobant. Largeur animée (décélérée) ; le contenu à
+                    // droite (grille virtualisée) se ré-agence à coût négligeable.
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 220),
+                      curve: const Cubic(0.2, 0.0, 0.0, 1.0),
+                      width: _railHasFocus ? 300 : 96,
+                      child: Focus(
+                        canRequestFocus: false,
+                        skipTraversal: true,
+                        onFocusChange: (bool f) {
+                          if (f != _railHasFocus) {
+                            setState(() => _railHasFocus = f);
+                          }
+                        },
+                        child: _NavRail(
+                          selected: _selected,
+                          expanded: _railHasFocus,
+                          selectedFocusNode: _railFocus,
+                          onSelect: (TvDest d) => setState(() => _selected = d),
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: TvDimens.gutter),
-                  // ----- Panneau de contenu -----
-                  Expanded(child: _ContentPanel(dest: _selected)),
-                ],
+                    const SizedBox(width: TvDimens.gutter),
+                    // ----- Panneau de contenu -----
+                    Expanded(child: _ContentPanel(dest: _selected)),
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
-      ),
       ),
     );
   }
@@ -732,11 +767,13 @@ class _HomeHeaderState extends State<_HomeHeader> {
     // « Lunes » en espagnol, « måndag » en suédois, « الاثنين » en arabe.
     final String localeName = Localizations.localeOf(context).toString();
     final String weekday =
-        toBeginningOfSentenceCase(DateFormat.EEEE(localeName).format(_now)) ?? '';
+        toBeginningOfSentenceCase(DateFormat.EEEE(localeName).format(_now)) ??
+        '';
     // UN SEUL bloc contexte en haut à gauche : salut + (ville · temp météo ·
     // jour · heure) sur 2 lignes. L'heure isolée en haut à droite est retirée.
-    final String temp =
-        (g != null && g.tempC != null) ? '${g.tempC!.round()}° ${g.emoji}' : '';
+    final String temp = (g != null && g.tempC != null)
+        ? '${g.tempC!.round()}° ${g.emoji}'
+        : '';
     final String dayTime = '$weekday · $_time';
     // ÉPURÉ (réf. design) : plus de « Bonjour 👋 ». Un simple cluster
     // ville · météo · jour · heure, DISCRET, aligné EN HAUT À DROITE.
@@ -744,13 +781,18 @@ class _HomeHeaderState extends State<_HomeHeader> {
       alignment: Alignment.centerRight,
       child: Text.rich(
         TextSpan(
-          style: TvTokens.ui(18, color: TvTokens.mutedDim),
+          style: TvAppTokens.of(context)
+              .ui(18, color: TvAppTokens.of(context).mutedDim),
           children: <InlineSpan>[
             if (g != null && g.city.isNotEmpty) ...<InlineSpan>[
               TextSpan(
-                  text: g.city,
-                  style: TvTokens.ui(18,
-                      weight: FontWeight.w600, color: TvTokens.muted)),
+                text: g.city,
+                style: TvAppTokens.of(context).ui(
+                  18,
+                  weight: FontWeight.w600,
+                  color: TvAppTokens.of(context).muted,
+                ),
+              ),
               const TextSpan(text: '   ·   '),
             ],
             if (temp.isNotEmpty) TextSpan(text: '$temp   ·   '),
@@ -763,11 +805,12 @@ class _HomeHeaderState extends State<_HomeHeader> {
 }
 
 class _NavRail extends StatelessWidget {
-  const _NavRail(
-      {required this.selected,
-      required this.onSelect,
-      this.expanded = true,
-      this.selectedFocusNode});
+  const _NavRail({
+    required this.selected,
+    required this.onSelect,
+    this.expanded = true,
+    this.selectedFocusNode,
+  });
 
   final TvDest selected;
   final ValueChanged<TvDest> onSelect;
@@ -788,7 +831,9 @@ class _NavRail extends StatelessWidget {
           // Branding : logo réduit en mode replié (rentre dans 96 px).
           Container(
             padding: const EdgeInsets.fromLTRB(10, 2, 10, 10),
-            decoration: const BoxDecoration(gradient: TvTokens.brandGlow),
+            decoration: BoxDecoration(
+              gradient: TvAppTokens.of(context).brandGlow,
+            ),
             child: Align(
               alignment: Alignment.centerLeft,
               child: TvLogo(width: expanded ? 140 : 60),
@@ -850,11 +895,13 @@ class _NavItem extends StatelessWidget {
         // Maison Noir : fond `--sel` au focus/actif, barre OR à gauche si
         // actif, texte or. JAMAIS de bloc blanc plein.
         final bool hl = focused || selected;
-        final Color fg = hl ? TvTokens.accentBright : TvTokens.muted;
+        final Color fg = hl
+            ? TvAppTokens.of(context).accentBright
+            : TvAppTokens.of(context).muted;
         return Container(
           height: 54,
           decoration: BoxDecoration(
-            color: hl ? TvTokens.sel : Colors.transparent,
+            color: hl ? TvAppTokens.of(context).sel : Colors.transparent,
             borderRadius: BorderRadius.circular(TvTokens.rMenuItem),
           ),
           child: Row(
@@ -864,7 +911,9 @@ class _NavItem extends StatelessWidget {
                 width: 3,
                 margin: const EdgeInsets.symmetric(vertical: 14),
                 decoration: BoxDecoration(
-                  color: selected ? TvTokens.accent : Colors.transparent,
+                  color: selected
+                      ? TvAppTokens.of(context).accent
+                      : Colors.transparent,
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -883,9 +932,13 @@ class _NavItem extends StatelessWidget {
                     maxLines: 1,
                     softWrap: false,
                     overflow: TextOverflow.fade,
-                    style: TvTokens.ui(19,
-                        weight: selected ? FontWeight.w600 : FontWeight.w500,
-                        color: fg),
+                    style: TvAppTokens.of(context).ui(
+                      19,
+                      // 700 / 500 : les deux graisses lisibles qui restent
+                      // distinctes une fois ramenées à l'échelle 400-500-700.
+                      weight: selected ? FontWeight.w700 : FontWeight.w500,
+                      color: fg,
+                    ),
                   ),
                 ),
               ),

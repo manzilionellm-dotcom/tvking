@@ -77,8 +77,28 @@ VoiceHitKind _kindOfChannel(Channel c) {
   return VoiceHitKind.movie;
 }
 
+/// Préparation d'UNE chaîne pour la recherche. Le classement adulte
+/// et la clé sans accents sont faits ici, une fois, pas à chaque
+/// frappe. [searchCatalog] s'en sert si on les lui passe.
+void prepareChannelSearch(
+  Channel channel,
+  Map<String, String> hay,
+  Set<String> adultIds,
+) {
+  hay[channel.id] = CinemaLanguage.searchKey(
+    '${channel.name} ${channel.category}',
+  );
+  if (channel.genre == ChannelGenre.adult) adultIds.add(channel.id);
+}
+
 /// Recherche locale. [hideAdult] masque le contenu adulte (mode enfants) :
 /// on réutilise le même classificateur que le reste de l'app.
+///
+/// [channelHay] et [adultIds], s'ils sont là, évitent de replier
+/// 50 000 noms à chaque lettre. Sans eux, le résultat est le même :
+/// on calcule au fil de l'eau. Dès que les trois casiers sont pleins,
+/// on s'arrête : les chaînes suivantes ne seraient de toute façon
+/// pas affichées.
 List<VoiceHit> searchCatalog({
   required String query,
   required List<Channel> channels,
@@ -86,6 +106,8 @@ List<VoiceHit> searchCatalog({
   required List<CinemaTitle> series,
   bool hideAdult = false,
   int maxPerKind = 24,
+  Map<String, String>? channelHay,
+  Set<String>? adultIds,
 }) {
   final List<String> words = voiceWords(voiceFold(query));
   if (words.isEmpty) return const <VoiceHit>[];
@@ -99,8 +121,20 @@ List<VoiceHit> searchCatalog({
     return true;
   }
 
-  bool adultChannel(Channel c) =>
-      hideAdult && c.genre == ChannelGenre.adult;
+  bool adultChannel(Channel c) {
+    if (!hideAdult) return false;
+    if (adultIds != null) return adultIds.contains(c.id);
+    return c.genre == ChannelGenre.adult;
+  }
+
+  bool channelMatches(Channel c) {
+    final String? prepared = channelHay?[c.id];
+    if (prepared == null) return matches('${c.name} ${c.category}');
+    for (final String w in words) {
+      if (!prepared.contains(w)) return false;
+    }
+    return true;
+  }
 
   bool adultTitle(CinemaTitle t) =>
       hideAdult &&
@@ -114,14 +148,20 @@ List<VoiceHit> searchCatalog({
 
   void add(VoiceHit hit, List<VoiceHit> bucket) {
     if (bucket.length >= cap) return;
-    final String key = '${hit.kind.name}|${CinemaLanguage.searchKey(hit.title)}';
+    final String key =
+        '${hit.kind.name}|${CinemaLanguage.searchKey(hit.title)}';
     if (!seen.add(key)) return;
     bucket.add(hit);
   }
 
   for (final Channel c in channels) {
+    if (channelsOut.length >= cap &&
+        moviesOut.length >= cap &&
+        seriesOut.length >= cap) {
+      break;
+    }
     if (adultChannel(c)) continue;
-    if (!matches('${c.name} ${c.category}')) continue;
+    if (!channelMatches(c)) continue;
     final VoiceHitKind kind = _kindOfChannel(c);
     final List<VoiceHit> bucket = switch (kind) {
       VoiceHitKind.channel => channelsOut,

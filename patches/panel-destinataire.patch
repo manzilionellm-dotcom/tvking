@@ -1,0 +1,455 @@
+diff --git a/android-app/admin-panel/package.json b/android-app/admin-panel/package.json
+index d04145c..a5e6904 100644
+--- a/android-app/admin-panel/package.json
++++ b/android-app/admin-panel/package.json
+@@ -8,7 +8,7 @@
+     "dev": "vite",
+     "build": "tsc -b && vite build",
+     "preview": "vite preview",
+-    "test": "node --experimental-strip-types --test src/lib/robust.test.ts src/lib/mac.test.ts src/lib/sources.test.ts src/lib/box-channel.test.ts src/lib/plans.test.ts src/lib/blackbox.test.ts src/lib/instant.test.ts src/lib/idempotency.test.ts src/lib/timeline.test.ts src/lib/activation.test.ts src/lib/delivery.test.ts"
++    "test": "node --experimental-strip-types --test src/lib/robust.test.ts src/lib/mac.test.ts src/lib/sources.test.ts src/lib/box-channel.test.ts src/lib/plans.test.ts src/lib/blackbox.test.ts src/lib/instant.test.ts src/lib/idempotency.test.ts src/lib/timeline.test.ts src/lib/activation.test.ts src/lib/delivery.test.ts src/lib/box-target.test.ts src/lib/box-target-race.test.mjs"
+   },
+   "dependencies": {
+     "react": "^18.3.1",
+@@ -29,4 +29,3 @@
+     "vite": "^5.4.10"
+   }
+ }
+-
+diff --git a/android-app/admin-panel/src/components/BoxTargetPreview.tsx b/android-app/admin-panel/src/components/BoxTargetPreview.tsx
+new file mode 100644
+index 0000000..40fd494
+--- /dev/null
++++ b/android-app/admin-panel/src/components/BoxTargetPreview.tsx
+@@ -0,0 +1,55 @@
++import { useEffect, useState } from 'react';
++import { ApiError, devicesApi } from '@/lib/api';
++import { describeBoxTarget, sameBoxTarget, type BoxTargetDescription } from '@/lib/box-target';
++import { formatDateTime, isValidMac, normalizeMac } from '@/lib/utils';
++
++// Le modèle et le code sont visibles avant l'envoi. Aucun code proche
++// ne devient automatiquement le destinataire à la place du code saisi.
++export function BoxTargetPreview({ mac }: { mac: string }) {
++  const normalized = normalizeMac(mac);
++  const [info, setInfo] = useState<BoxTargetDescription | null>(null);
++  const [unavailable, setUnavailable] = useState<{ mac: string; text: string } | null>(null);
++
++  useEffect(() => {
++    setInfo(null);
++    setUnavailable(null);
++    if (!isValidMac(normalized)) return;
++    let active = true;
++    const abort = new AbortController();
++    const timer = setTimeout(async () => {
++      try {
++        const result = await devicesApi.list(normalized, { limit: 100, offset: 0 }, abort.signal);
++        if (active) setInfo(describeBoxTarget(normalized, result.items ?? []));
++      } catch (e) {
++        if (active && !abort.signal.aborted) {
++          setUnavailable({ mac: normalized, text: e instanceof ApiError && e.status === 403
++            ? 'Informations appareil non accessibles avec ce compte.'
++            : 'Identification de l’appareil indisponible.' });
++        }
++      }
++    }, 400);
++    return () => { active = false; clearTimeout(timer); abort.abort(); };
++  }, [normalized]);
++
++  if (!isValidMac(normalized)) return null;
++  const current = info && sameBoxTarget(info.mac, normalized) ? info : null;
++  const error = unavailable && sameBoxTarget(unavailable.mac, normalized) ? unavailable.text : null;
++  return (
++    <aside aria-label="Destination de l’envoi" className="space-y-1 rounded-lg border border-white/10 bg-midnight px-3 py-2 text-sm">
++      <p className="text-ink-secondary">Destination : <strong className="font-mono text-ink-primary">{normalized}</strong></p>
++      {current?.kind === 'reported' && (
++        <p className="text-ink-secondary">
++          {current.model ?? 'Appareil identifié'}
++          {current.lastSeen != null && <> · Dernière vue : {formatDateTime(current.lastSeen)}</>}
++        </p>
++      )}
++      {current?.kind === 'unidentified' && (
++        <p className="text-warning">Ce code n’a transmis ni modèle ni version de l’app. Vérifie le code affiché sur la télé.</p>
++      )}
++      {current?.kind === 'missing' && (
++        <p className="text-warning">Aucun appareil enregistré sous ce code. Vérifie le code affiché sur la télé.</p>
++      )}
++      {error && <p className="text-ink-tertiary">{error} Vérifie le code affiché sur l’appareil.</p>}
++    </aside>
++  );
++}
+diff --git a/android-app/admin-panel/src/lib/box-target-race.test.mjs b/android-app/admin-panel/src/lib/box-target-race.test.mjs
+new file mode 100644
+index 0000000..4a8006f
+--- /dev/null
++++ b/android-app/admin-panel/src/lib/box-target-race.test.mjs
+@@ -0,0 +1,139 @@
++// Régression exécutée sur la fonction reload réelle du composant, sans la réécrire.
++// Le serveur HTTP local fournit deux appareils distincts ; les réponses et
++// fins d'envoi sont ordonnées par des promesses, sans temporisation arbitraire.
++import assert from 'node:assert/strict';
++import { test } from 'node:test';
++import { createServer } from 'node:http';
++import { readFile } from 'node:fs/promises';
++import { stripTypeScriptTypes } from 'node:module';
++
++const A = 'MK:AA:BB:CC:DD:01';
++const B = 'MK:AA:BB:CC:DD:02';
++const page = await readFile(new URL('../pages/ChainesPage.tsx', import.meta.url), 'utf8');
++const apiSource = await readFile(new URL('./api.ts', import.meta.url), 'utf8');
++const arrow = page.match(/const reload = useCallback\((async[\s\S]*?\n  \}), \[onLogout\]\);/)?.[1];
++assert.ok(arrow, 'la fonction reload de production reste identifiable');
++const errorClass = apiSource.match(/export class ApiError[\s\S]*?^}/m)?.[0];
++assert.ok(errorClass, 'ApiError est lu depuis le client de production');
++const ApiError = new Function(stripTypeScriptTypes(errorClass.replace('export ', ''), { mode: 'transform' }) + '; return ApiError;')();
++let sameBoxTarget;
++try {
++  ({ sameBoxTarget } = await import('./box-target.ts'));
++} catch (e) {
++  // La version de référence ne possède pas encore ce contrôle. Sa fonction
++  // reload ne l'appelle pas ; aucun contrôle de production n'est simulé.
++  if (e.code !== 'ERR_MODULE_NOT_FOUND') throw e;
++}
++const makeReload = new Function(
++  'sourcesApi', 'setLooking', 'readSeq', 'setSources', 'setErr', 'setLoaded',
++  'onLogout', 'ApiError', 'currentMac', 'sameBoxTarget',
++  stripTypeScriptTypes('const reload = ' + arrow + ';', { mode: 'transform' }) + 'return reload;',
++);
++
++async function fixture(run) {
++  const data = new Map([
++    [A, [{ type: 'm3u', m3u_url: 'https://alpha.invalid/list.m3u' }]],
++    [B, [
++      { type: 'm3u', m3u_url: 'https://beta.invalid/list.m3u' },
++      { type: 'm3u', m3u_url: 'https://gamma.invalid/list.m3u' },
++    ]],
++  ]);
++  const status = new Map();
++  const requests = [];
++  const blocks = new Map();
++  const server = createServer(async (req, res) => {
++    const mac = decodeURIComponent(new URL(req.url, 'http://127.0.0.1').pathname.slice('/sources/'.length));
++    requests.push(mac);
++    if (blocks.has(mac)) await blocks.get(mac);
++    const code = status.get(mac) ?? 200;
++    res.writeHead(code, { 'content-type': 'application/json' });
++    res.end(JSON.stringify(code === 200 ? { sources: data.get(mac) ?? [] } : { error: 'fixture_http' }));
++  });
++  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
++  const base = 'http://127.0.0.1:' + server.address().port;
++  const view = { sources: [], loaded: false, looking: false, err: null, logouts: 0 };
++  const currentMac = { current: A };
++  const readSeq = { current: 0 };
++  const sourcesApi = {
++    async get(mac) {
++      const res = await fetch(base + '/sources/' + encodeURIComponent(mac));
++      if (!res.ok) throw new ApiError(res.status, 'fixture_http', 'Erreur HTTP de la fixture.');
++      return await res.json();
++    },
++  };
++  const reload = makeReload(sourcesApi, v => { view.looking = v; }, readSeq,
++    v => { view.sources = v; }, v => { view.err = v; }, v => { view.loaded = v; },
++    () => { view.logouts++; }, ApiError, currentMac, sameBoxTarget);
++  function select(mac) {
++    currentMac.current = mac;
++    readSeq.current++;
++    view.sources = [];
++    view.loaded = false;
++  }
++  try {
++    await run({ reload, select, view, requests, status, blocks });
++  } finally {
++    server.closeAllConnections();
++    await new Promise(resolve => server.close(resolve));
++  }
++}
++
++test('fin de l’envoi A après sélection de B : les listes restent celles de B', async () => {
++  await fixture(async ({ reload, select, view }) => {
++    await reload(A);
++    select(B);
++    await reload(B);
++    // Même appel que send(A) après le retour tardif du PUT.
++    await reload(A);
++    assert.equal(view.sources.length, 2);
++    assert.equal(view.sources[0].m3u_url, 'https://beta.invalid/list.m3u');
++    assert.equal(view.loaded, true);
++  });
++});
++
++test('une relecture tardive du précédent appareil ne démarre aucun HTTP', async () => {
++  await fixture(async ({ reload, select, requests }) => {
++    select(B);
++    await reload(B);
++    const before = requests.length;
++    await reload(A);
++    assert.equal(requests.length, before);
++  });
++});
++
++test('une ancienne relecture en erreur ne vide pas les listes du code courant', async () => {
++  await fixture(async ({ reload, select, view, status }) => {
++    select(B);
++    await reload(B);
++    status.set(A, 503);
++    await reload(A);
++    assert.equal(view.sources.length, 2);
++    assert.equal(view.loaded, true);
++    assert.equal(view.err, null);
++  });
++});
++
++test('une réponse commencée avant le changement de code est ignorée', async () => {
++  await fixture(async ({ reload, select, view, blocks }) => {
++    let release;
++    blocks.set(A, new Promise(resolve => { release = resolve; }));
++    const old = reload(A);
++    select(B);
++    await reload(B);
++    release();
++    await old;
++    assert.equal(view.sources.length, 2);
++    assert.equal(view.loaded, true);
++    assert.equal(view.looking, false);
++  });
++});
++
++test('404 pour le code courant conserve la possibilité d’ajouter sa première liste', async () => {
++  await fixture(async ({ reload, view, status }) => {
++    status.set(A, 404);
++    await reload(A);
++    assert.equal(view.loaded, true);
++    assert.equal(view.sources.length, 0);
++    assert.equal(view.looking, false);
++  });
++});
+diff --git a/android-app/admin-panel/src/lib/box-target.test.ts b/android-app/admin-panel/src/lib/box-target.test.ts
+new file mode 100644
+index 0000000..4e57ad1
+--- /dev/null
++++ b/android-app/admin-panel/src/lib/box-target.test.ts
+@@ -0,0 +1,36 @@
++import assert from 'node:assert/strict';
++import { test } from 'node:test';
++import { describeBoxTarget, sameBoxTarget } from './box-target.ts';
++
++const A = 'MK:AA:BB:CC:DD:01';
++const B = 'MK:AA:BB:CC:DD:02';
++
++test('normalisation sans substitution : deux codes proches restent deux appareils', () => {
++  assert.equal(sameBoxTarget(A, 'aa-bb-cc-dd-01'), true);
++  assert.equal(sameBoxTarget(A, B), false);
++  assert.equal(sameBoxTarget('', ''), false);
++  assert.equal(sameBoxTarget('incomplet', 'incomplet'), false);
++});
++
++test('une création manuelle avec date et plateforme ne prouve pas un retour appareil', () => {
++  assert.deepEqual(describeBoxTarget(A, [{ mac: A, platform: 'mobile', last_seen_at: 1_791_000_000 }]),
++    { kind: 'unidentified', mac: A });
++});
++
++test('le modèle de l’autre code ne permet pas de déclarer le code sélectionné identifié', () => {
++  assert.deepEqual(describeBoxTarget(A, [{ mac: B, device_model: 'TV de test', app_build: 175 }]),
++    { kind: 'missing', mac: A });
++});
++
++test('le modèle retourné correspond uniquement au code choisi', () => {
++  assert.deepEqual(describeBoxTarget(A, [
++    { mac: B, device_model: 'Autre TV', app_build: 176 },
++    { mac: A, device_model: 'TV de test', app_build: 175, last_seen_at: 1_791_000_000 },
++  ]), { kind: 'reported', mac: A, model: 'TV de test', lastSeen: 1_791_000_000 });
++});
++
++test('les placeholders restent non identifiés ; une version reçue suffit', () => {
++  assert.equal(describeBoxTarget(A, [{ mac: A, device_model: '—', app_build: null }]).kind, 'unidentified');
++  assert.equal(describeBoxTarget(A, [{ mac: A, device_model: ' ', app_build: 0 }]).kind, 'unidentified');
++  assert.equal(describeBoxTarget(A, [{ mac: A, app_build: 175 }]).kind, 'reported');
++});
+diff --git a/android-app/admin-panel/src/lib/box-target.ts b/android-app/admin-panel/src/lib/box-target.ts
+new file mode 100644
+index 0000000..cc0962a
+--- /dev/null
++++ b/android-app/admin-panel/src/lib/box-target.ts
+@@ -0,0 +1,35 @@
++// La réponse et le champ doivent désigner exactement le même appareil.
++// Un code proche ne remplace jamais celui choisi par le revendeur.
++import { isValidMac, normalizeMac } from './mac.ts';
++
++export function sameBoxTarget(requestMac: string, selectedMac: string): boolean {
++  return isValidMac(requestMac) && isValidMac(selectedMac)
++    && normalizeMac(requestMac) === normalizeMac(selectedMac);
++}
++
++export interface BoxIdentity {
++  mac: string;
++  device_model?: string | null;
++  app_build?: number | null;
++  platform?: string | null;
++  last_seen_at?: number | null;
++}
++
++export type BoxTargetDescription =
++  | { kind: 'missing'; mac: string }
++  | { kind: 'unidentified'; mac: string }
++  | { kind: 'reported'; mac: string; model: string | null; lastSeen: number | null };
++
++// La date seule ne prouve pas un retour de l'app : une activation manuelle
++// remplit aussi last_seen_at. Modèle/version proviennent du retour appareil.
++export function describeBoxTarget(mac: string, devices: readonly BoxIdentity[]): BoxTargetDescription {
++  const normalized = normalizeMac(mac);
++  const device = devices.find(d => sameBoxTarget(d.mac, normalized));
++  if (!device) return { kind: 'missing', mac: normalized };
++  const model = (device.device_model ?? '').trim();
++  const knownModel = model && model !== '—' && model !== '-' ? model : null;
++  const knownBuild = Number.isFinite(device.app_build) && Number(device.app_build) > 0;
++  if (!knownModel && !knownBuild) return { kind: 'unidentified', mac: normalized };
++  return { kind: 'reported', mac: normalized, model: knownModel,
++    lastSeen: typeof device.last_seen_at === 'number' ? device.last_seen_at : null };
++}
+diff --git a/android-app/admin-panel/src/pages/ActivatePage.tsx b/android-app/admin-panel/src/pages/ActivatePage.tsx
+index 65dd91e..48b1a17 100644
+--- a/android-app/admin-panel/src/pages/ActivatePage.tsx
++++ b/android-app/admin-panel/src/pages/ActivatePage.tsx
+@@ -1,6 +1,7 @@
+ import { FormEvent, useEffect, useRef, useState } from 'react';
+ import { Link, useSearchParams } from 'react-router-dom';
+ import { AppLayout } from '@/components/AppLayout';
++import { BoxTargetPreview } from '@/components/BoxTargetPreview';
+ import { Alert } from '@/components/ui';
+ import { PlanPicker } from '@/components/PlanPicker';
+ import {
+@@ -135,6 +136,7 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
+           <input
+             id="act-mac"
+             value={mac}
++            disabled={busy}
+             onChange={(e) => changeMac(e.target.value)}
+             onBlur={() => setMac((v) => (v.trim() ? normalizeMac(v) : v))}
+             autoFocus
+@@ -146,6 +148,8 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
+           />
+         </div>
+ 
++        <BoxTargetPreview mac={mac} />
++
+         <div>
+           <label htmlFor="act-name" className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-ink-secondary">
+             Nom du client <span className="normal-case tracking-normal text-ink-tertiary">(optionnel)</span>
+@@ -219,4 +223,3 @@ function CopyLine({ label, url, code }: { label: string; url: string; code: stri
+     </div>
+   );
+ }
+-
+diff --git a/android-app/admin-panel/src/pages/ChainesPage.tsx b/android-app/admin-panel/src/pages/ChainesPage.tsx
+index 883a44d..6ffaad3 100644
+--- a/android-app/admin-panel/src/pages/ChainesPage.tsx
++++ b/android-app/admin-panel/src/pages/ChainesPage.tsx
+@@ -1,6 +1,7 @@
+ import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
+ import { Link, useSearchParams } from 'react-router-dom';
+ import { AppLayout } from '@/components/AppLayout';
++import { BoxTargetPreview } from '@/components/BoxTargetPreview';
+ import { confirmAction } from '@/components/confirm';
+ import { Alert } from '@/components/ui';
+ import {
+@@ -8,6 +9,7 @@ import {
+   type DeviceSource, ApiError,
+ } from '@/lib/api';
+ import { isValidMac, normalizeMac } from '@/lib/utils';
++import { sameBoxTarget } from '@/lib/box-target';
+ import { useT } from '@/lib/i18n';
+ import {
+   isClientList, isListOn, listDisplayName, planAddList, planRemoveSource, planToggleSource,
+@@ -56,22 +58,27 @@ export function ChainesPage({ onLogout }: { onLogout: () => void }) {
+   const [delivery, setDelivery] = useState<Delivery | null>(null);
+   const [order, setOrder] = useState<OrderLike | null>(null);
+   const readSeq = useRef(0);
++  // Une fin d'envoi peut arriver après un changement de destinataire.
++  // Le numéro de lecture seul ne suffit pas : on conserve aussi la MAC.
++  const currentMac = useRef(normalizeMac(mac));
++  currentMac.current = normalizeMac(mac);
+ 
+   const macOk = isValidMac(mac);
+ 
+   // Relit les listes servies à cette box (après chaque envoi aussi : l'écran
+   // montre l'état du serveur, pas une supposition).
+   const reload = useCallback(async (m: string): Promise<void> => {
++    if (!sameBoxTarget(m, currentMac.current)) return;
+     const seq = ++readSeq.current;
+     setLooking(true);
+     try {
+       const r = await sourcesApi.get(m);
+-      if (seq !== readSeq.current) return;
++      if (seq !== readSeq.current || !sameBoxTarget(m, currentMac.current)) return;
+       setSources((r.sources || []) as SourceLike[]);
+       setErr(null);
+       setLoaded(true);
+     } catch (e) {
+-      if (seq !== readSeq.current) return;
++      if (seq !== readSeq.current || !sameBoxTarget(m, currentMac.current)) return;
+       setSources([]);
+       setLoaded(false);
+       if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
+@@ -79,7 +86,7 @@ export function ChainesPage({ onLogout }: { onLogout: () => void }) {
+       if (e instanceof ApiError && e.status === 404) { setLoaded(true); return; }
+       setErr(e instanceof ApiError ? e.message : 'Impossible de lire les listes de cette box.');
+     } finally {
+-      if (seq === readSeq.current) setLooking(false);
++      if (seq === readSeq.current && sameBoxTarget(m, currentMac.current)) setLooking(false);
+     }
+   }, [onLogout]);
+ 
+@@ -123,6 +130,7 @@ export function ChainesPage({ onLogout }: { onLogout: () => void }) {
+   }, [delivery, onLogout, reload]);
+ 
+   function track(m: string, orderId: string | null | undefined, verb: 'load' | 'remove') {
++    if (!sameBoxTarget(m, currentMac.current)) return;
+     setOrder(null);
+     setDelivery(orderId ? { mac: m, orderId, verb, startedAt: Date.now() } : null);
+   }
+@@ -260,7 +268,15 @@ export function ChainesPage({ onLogout }: { onLogout: () => void }) {
+             <input
+               id="chaines-mac"
+               value={mac}
+-              onChange={(e) => { setMac(e.target.value); setDelivery(null); }}
++              onChange={(e) => {
++                currentMac.current = normalizeMac(e.target.value);
++                readSeq.current++;
++                setLoaded(false);
++                setSources([]);
++                setMac(e.target.value);
++                setDelivery(null);
++              }}
++              disabled={busy}
+               onBlur={() => setMac((v) => (v.trim() ? normalizeMac(v) : v))}
+               autoFocus
+               autoComplete="off"
+@@ -269,6 +285,8 @@ export function ChainesPage({ onLogout }: { onLogout: () => void }) {
+             />
+           </div>
+ 
++          <BoxTargetPreview mac={mac} />
++
+           <div>
+             <label htmlFor="chaines-lien" className="mb-1.5 block text-xs font-medium text-ink-secondary">
+               Nouveau lien
+@@ -276,6 +294,7 @@ export function ChainesPage({ onLogout }: { onLogout: () => void }) {
+             <input
+               id="chaines-lien"
+               value={link}
++              disabled={busy}
+               onChange={(e) => setLink(e.target.value)}
+               autoComplete="off"
+               spellCheck={false}
+@@ -288,6 +307,7 @@ export function ChainesPage({ onLogout }: { onLogout: () => void }) {
+             <input
+               type="checkbox"
+               checked={replaceOthers}
++              disabled={busy}
+               onChange={(e) => setReplaceOthers(e.target.checked)}
+               className="mt-0.5"
+             />
+@@ -379,4 +399,3 @@ export function ChainesPage({ onLogout }: { onLogout: () => void }) {
+     </AppLayout>
+   );
+ }
+-

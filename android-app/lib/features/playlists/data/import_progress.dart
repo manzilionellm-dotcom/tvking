@@ -85,7 +85,10 @@ abstract final class ImportProgressBus {
   /// (début / fin d'étape, pour ne jamais rater un jalon).
   static void set(ImportProgress p, {bool force = false}) {
     final DateTime now = DateTime.now();
-    if (!force && now.difference(_lastEmit) < _kMinGap) return;
+    // Le débit peut être limité, pas les changements d'étape : un petit
+    // catalogue ne doit pas sauter « enregistrement » juste après « trouvé ».
+    final bool sameStage = current.value?.stage == p.stage;
+    if (!force && sameStage && now.difference(_lastEmit) < _kMinGap) return;
     _lastEmit = now;
     current.value = p;
   }
@@ -117,13 +120,14 @@ abstract final class ImportProgressBus {
       set(ImportProgress(ImportStage.downloading, bytes: bytes));
   static void decoding(int bytes) =>
       set(ImportProgress(ImportStage.decoding, bytes: bytes), force: true);
-  static void category(int i, int total, int found) => set(ImportProgress(
-      ImportStage.category, index: i, total: total, count: found));
+  static void category(int i, int total, int found) =>
+      set(ImportProgress(ImportStage.category,
+          index: i, total: total, count: found));
   static void found(int count) =>
       set(ImportProgress(ImportStage.found, count: count), force: true);
-  static void saving(int done, int total) => set(
-      ImportProgress(ImportStage.saving, index: done, total: total),
-      force: done >= total);
+  static void saving(int done, int total) =>
+      set(ImportProgress(ImportStage.saving, index: done, total: total),
+          force: done >= total);
   static void done(int count) =>
       set(ImportProgress(ImportStage.done, count: count), force: true);
 }

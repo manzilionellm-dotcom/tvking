@@ -35,7 +35,7 @@ import '../../voice/domain/voice_query.dart';
 import '../../voice/presentation/voice_navigation.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
-import '../core/tv_tokens.dart';
+import '../core/tv_app_tokens.dart';
 import 'tv_cinema_detail_screen.dart';
 import 'tv_player_screen.dart';
 import 'tv_shell.dart';
@@ -67,6 +67,9 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
   bool _listening = false;
   int _gen = 0;
   Timer? _debounce;
+  int _prepGen = 0;
+  Map<String, String>? _hay;
+  Set<String>? _adultIds;
   late final VoiceSearchHooks _hooks;
   // Une seule fermeture : le hub compare l'identité pour se désinscrire.
   late final bool Function(String text) _remoteTyping = _onRemoteQuery;
@@ -89,9 +92,13 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
     VoiceNavigation.attach(_hooks);
     RemoteTypingHub.instance.register(_remoteTyping);
     _channels = List<Channel>.of(PlaylistRepository.instance.currentChannels);
-    _sub = PlaylistRepository.instance.channelsStream.listen((List<Channel> ch) {
+    _prepareSearch(_channels);
+    _sub = PlaylistRepository.instance.channelsStream.listen((
+      List<Channel> ch,
+    ) {
       if (!mounted) return;
       _channels = List<Channel>.of(ch);
+      _prepareSearch(_channels);
       if (_q.trim().isNotEmpty) _schedule();
     });
     CinemaRepository.instance.indexVersion.addListener(_onIndex);
@@ -112,6 +119,45 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
     _debounce?.cancel();
     CinemaRepository.instance.indexVersion.removeListener(_onIndex);
     super.dispose();
+  }
+
+  /// Replie les noms une fois, par paquets, pour laisser la
+  /// télécommande respirer. Tant que ce n'est pas fini, la recherche
+  /// calcule au fil de l'eau comme avant.
+  void _prepareSearch(List<Channel> channels) {
+    final int gen = ++_prepGen;
+    _hay = null;
+    _adultIds = null;
+    if (channels.isEmpty) return;
+    unawaited(_prepareSearchLots(channels, gen));
+  }
+
+  Future<void> _prepareSearchLots(List<Channel> channels, int gen) async {
+    final Map<String, String> hay = <String, String>{};
+    final Set<String> adult = <String>{};
+    for (int i = 0; i < channels.length; i++) {
+      if (gen != _prepGen) return;
+      prepareChannelSearch(channels[i], hay, adult);
+      if (i % 400 == 399) {
+        await Future<void>.delayed(Duration.zero);
+        if (!mounted || gen != _prepGen) return;
+      }
+    }
+    if (!mounted || gen != _prepGen) return;
+    setState(() {
+      _hay = hay;
+      _adultIds = adult;
+    });
+    if (_q.trim().isNotEmpty) _schedule();
+  }
+
+  bool _searchReady() {
+    final Map<String, String>? hay = _hay;
+    if (hay == null || _channels.isEmpty) return false;
+    for (final Channel c in _channels) {
+      if (!hay.containsKey(c.id)) return false;
+    }
+    return true;
   }
 
   void _onIndex() {
@@ -223,12 +269,15 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
       if (kDebugMode) debugPrint('[Voix] cinéma : $e');
     }
     final bool kids = ParentalControls.instance.kidsMode.value;
+    final bool ready = _searchReady();
     final List<VoiceHit> local = searchCatalog(
       query: intent.catalogQuery,
       channels: _channels,
       movies: movies,
       series: series,
       hideAdult: kids,
+      channelHay: ready ? _hay : null,
+      adultIds: ready ? _adultIds : null,
     );
     if (!mounted || gen != _gen) return;
     setState(() {
@@ -316,24 +365,26 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
   void _openHit(VoiceHit hit) {
     final CinemaTitle? cinema = hit.cinema;
     if (cinema != null) {
-      Navigator.of(context).push(MaterialPageRoute<void>(
-        builder: (_) => TvShell(
-          applySafeArea: false,
-          child: cinema.kind == CinemaKind.series
-              ? TvSeriesScreen(title: cinema)
-              : TvMovieDetailScreen(title: cinema),
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => TvShell(
+            applySafeArea: false,
+            child: cinema.kind == CinemaKind.series
+                ? TvSeriesScreen(title: cinema)
+                : TvMovieDetailScreen(title: cinema),
+          ),
         ),
-      ));
+      );
       return;
     }
     final Channel? channel = hit.channel;
     if (channel == null || channel.streamUrl.trim().isEmpty) return;
-    Navigator.of(context).push(MaterialPageRoute<void>(
-      builder: (_) => TvPlayerScreen(
-        channels: <Channel>[channel],
-        startIndex: 0,
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) =>
+            TvPlayerScreen(channels: <Channel>[channel], startIndex: 0),
       ),
-    ));
+    );
   }
 
   void _openSlot(TonightSlot slot) {
@@ -347,9 +398,12 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
     }
     if (channel == null || channel.streamUrl.trim().isEmpty) return;
     final Channel play = channel;
-    Navigator.of(context).push(MaterialPageRoute<void>(
-      builder: (_) => TvPlayerScreen(channels: <Channel>[play], startIndex: 0),
-    ));
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) =>
+            TvPlayerScreen(channels: <Channel>[play], startIndex: 0),
+      ),
+    );
   }
 
   bool get _cinemaCold =>
@@ -390,9 +444,12 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
             children: <Widget>[
               Container(
                 width: double.infinity,
-                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 18,
+                  vertical: 14,
+                ),
                 decoration: BoxDecoration(
-                  color: TvTokens.card,
+                  color: TvAppTokens.of(context).card,
                   borderRadius: BorderRadius.circular(TvDimens.cardRadius),
                 ),
                 child: Text(
@@ -405,8 +462,8 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
                     fontSize: TvDimens.title,
                     fontWeight: FontWeight.w700,
                     color: _q.isEmpty && !_listening
-                        ? TvTokens.mutedDim
-                        : TvTokens.text,
+                        ? TvAppTokens.of(context).mutedDim
+                        : TvAppTokens.of(context).text,
                   ),
                 ),
               ),
@@ -416,7 +473,8 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
                   _banner!,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: TvTokens.ui(TvDimens.body, color: TvTokens.muted),
+                  style: TvAppTokens.of(context)
+                      .ui(TvDimens.body, color: TvAppTokens.of(context).muted),
                 ),
               ],
               const SizedBox(height: 14),
@@ -428,7 +486,10 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
                     context.l10n.tvVoiceCinemaHint,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: TvTokens.ui(TvDimens.caption, color: TvTokens.mutedDim),
+                    style: TvAppTokens.of(context).ui(
+                      TvDimens.caption,
+                      color: TvAppTokens.of(context).mutedDim,
+                    ),
                   ),
                 ),
             ],
@@ -445,18 +506,21 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
           child: Text(
             context.l10n.tvVoiceTonightEmpty,
             textAlign: TextAlign.center,
-            style: TvTokens.ui(TvDimens.body, color: TvTokens.mutedDim),
+            style: TvAppTokens.of(context)
+                .ui(TvDimens.body, color: TvAppTokens.of(context).mutedDim),
           ),
         );
       }
-      final DateFormat hm =
-          DateFormat.Hm(Localizations.localeOf(context).toString());
+      final DateFormat hm = DateFormat.Hm(
+        Localizations.localeOf(context).toString(),
+      );
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Text(
             context.l10n.tvVoiceTonightTitle,
-            style: TvTokens.ui(TvDimens.title, weight: FontWeight.w700),
+            style: TvAppTokens.of(context)
+                .ui(TvDimens.title, weight: FontWeight.w700),
           ),
           const SizedBox(height: 10),
           Expanded(
@@ -465,8 +529,9 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
               separatorBuilder: (_, __) => const SizedBox(height: 8),
               itemBuilder: (BuildContext context, int i) {
                 final TonightSlot slot = tonight.slots[i];
-                final String when =
-                    hm.format(DateTime.fromMillisecondsSinceEpoch(slot.startMs));
+                final String when = hm.format(
+                  DateTime.fromMillisecondsSinceEpoch(slot.startMs),
+                );
                 return _RowTile(
                   autofocus: i == 0,
                   title: slot.title,
@@ -484,7 +549,8 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
       return Center(
         child: Text(
           _q.trim().isEmpty ? '' : context.l10n.tvNoResult,
-          style: TvTokens.ui(TvDimens.body, color: TvTokens.mutedDim),
+          style: TvAppTokens.of(context)
+              .ui(TvDimens.body, color: TvAppTokens.of(context).mutedDim),
         ),
       );
     }
@@ -536,8 +602,11 @@ class _RowTile extends StatelessWidget {
                 badge,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: TvTokens.ui(TvDimens.label,
-                    weight: FontWeight.w700, color: TvTokens.accentBright),
+                style: TvAppTokens.of(context).ui(
+                  TvDimens.label,
+                  weight: FontWeight.w700,
+                  color: TvAppTokens.of(context).accentBright,
+                ),
               ),
             ),
             Expanded(
@@ -548,14 +617,18 @@ class _RowTile extends StatelessWidget {
                     title,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TvTokens.ui(TvDimens.body, weight: FontWeight.w600),
+                    style: TvAppTokens.of(context)
+                        .ui(TvDimens.body, weight: FontWeight.w600),
                   ),
                   if (subtitle.trim().isNotEmpty)
                     Text(
                       subtitle,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TvTokens.ui(TvDimens.caption, color: TvTokens.muted),
+                      style: TvAppTokens.of(context).ui(
+                        TvDimens.caption,
+                        color: TvAppTokens.of(context).muted,
+                      ),
                     ),
                 ],
               ),
@@ -582,11 +655,8 @@ class TvKeyboard extends StatelessWidget {
   final VoidCallback onClear;
 
   @override
-  Widget build(BuildContext context) => _Keyboard(
-        onType: onType,
-        onBackspace: onBackspace,
-        onClear: onClear,
-      );
+  Widget build(BuildContext context) =>
+      _Keyboard(onType: onType, onBackspace: onBackspace, onClear: onClear);
 }
 
 class _Keyboard extends StatelessWidget {
@@ -603,12 +673,42 @@ class _Keyboard extends StatelessWidget {
   final VoidCallback? onMic;
 
   static const List<String> _keys = <String>[
-    'A', 'B', 'C', 'D', 'E', 'F',
-    'G', 'H', 'I', 'J', 'K', 'L',
-    'M', 'N', 'O', 'P', 'Q', 'R',
-    'S', 'T', 'U', 'V', 'W', 'X',
-    'Y', 'Z', '0', '1', '2', '3',
-    '4', '5', '6', '7', '8', '9',
+    'A',
+    'B',
+    'C',
+    'D',
+    'E',
+    'F',
+    'G',
+    'H',
+    'I',
+    'J',
+    'K',
+    'L',
+    'M',
+    'N',
+    'O',
+    'P',
+    'Q',
+    'R',
+    'S',
+    'T',
+    'U',
+    'V',
+    'W',
+    'X',
+    'Y',
+    'Z',
+    '0',
+    '1',
+    '2',
+    '3',
+    '4',
+    '5',
+    '6',
+    '7',
+    '8',
+    '9',
   ];
 
   @override
@@ -617,11 +717,14 @@ class _Keyboard extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        Text(context.l10n.tvNavSearch,
-            style: const TextStyle(
-                fontSize: TvDimens.displayS,
-                fontWeight: FontWeight.w800,
-                color: TvTokens.text)),
+        Text(
+          context.l10n.tvNavSearch,
+          style: TextStyle(
+            fontSize: TvDimens.displayS,
+            fontWeight: FontWeight.w800,
+            color: TvAppTokens.of(context).text,
+          ),
+        ),
         const SizedBox(height: 12),
         if (mic != null) ...<Widget>[
           _Key(label: context.l10n.tvVoiceMic, wide: true, onTap: mic),
@@ -633,9 +736,10 @@ class _Keyboard extends StatelessWidget {
           children: <Widget>[
             for (int i = 0; i < _keys.length; i++)
               _Key(
-                  label: _keys[i],
-                  autofocus: i == 0,
-                  onTap: () => onType(_keys[i])),
+                label: _keys[i],
+                autofocus: i == 0,
+                onTap: () => onType(_keys[i]),
+              ),
             _Key(label: '␣', wide: true, onTap: () => onType(' ')),
             _Key(label: '⌫', onTap: onBackspace),
             _Key(label: '✕', onTap: onClear),
@@ -672,14 +776,21 @@ class _Key extends StatelessWidget {
           return Container(
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: focused ? TvTokens.accent : TvTokens.sel,
+              color: focused
+                  ? TvAppTokens.of(context).accent
+                  : TvAppTokens.of(context).sel,
               borderRadius: BorderRadius.circular(TvDimens.cardRadius),
             ),
-            child: Text(label,
-                style: TextStyle(
-                    fontSize: TvDimens.title,
-                    fontWeight: FontWeight.w700,
-                    color: focused ? TvTokens.onAccent : TvTokens.text)),
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: TvDimens.title,
+                fontWeight: FontWeight.w700,
+                color: focused
+                    ? TvAppTokens.of(context).onAccent
+                    : TvAppTokens.of(context).text,
+              ),
+            ),
           );
         },
       ),

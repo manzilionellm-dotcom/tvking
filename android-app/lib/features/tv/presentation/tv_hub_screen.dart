@@ -29,13 +29,16 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:intl/intl.dart';
+import 'package:intl/intl.dart' show DateFormat;
 
 import '../../device/domain/display_mac.dart';
+import '../../feedback/data/feedback_repository.dart';
+import '../../feedback/presentation/tv_feedback_card.dart';
 import '../../../core/app/repair_flags.dart';
 import '../../../core/app/boot_guard.dart';
 import '../../../core/blackbox/black_box.dart';
 import '../../../core/i18n/l10n_extension.dart';
+import 'tv_profile_label.dart';
 import '../../channels/data/recently_watched_repository.dart';
 import '../../channels/data/trending_repository.dart';
 import '../../channels/domain/channel.dart';
@@ -51,7 +54,6 @@ import '../../followed/data/followed_flag.dart';
 import '../../followed/data/followed_lead.dart';
 import '../../followed/data/followed_log.dart';
 import '../../followed/domain/show_clock.dart';
-import '../../followed/domain/show_lines.dart';
 import '../../followed/domain/show_taste.dart';
 import '../../followed/presentation/show_banner.dart';
 import '../../country_home/data/featured_repository.dart';
@@ -62,13 +64,14 @@ import '../../panel_board/presentation/tv_featured_card.dart';
 import '../../panel_board/presentation/tv_panel_notice.dart';
 import '../../panel_board/presentation/tv_promo_banner.dart';
 import '../../simple_home/data/announcement_repository.dart';
+import '../../simple_home/data/home_layout_repository.dart';
+import '../../simple_home/presentation/widgets/announcement_refresh.dart';
 import '../../playlists/data/favorites_repository.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../../playlists/domain/playlist.dart';
-import 'tv_phone_source_qr.dart';
+import 'tv_source_setup.dart';
 import '../../profiles/data/profile_repository.dart';
 import '../../profiles/domain/profile_policies.dart';
-import '../../box_extras/box_text.dart';
 import '../../security/data/parental_controls.dart';
 import '../../time_picks/data/time_pick_flag.dart';
 import '../../time_picks/data/time_pick_log.dart';
@@ -79,16 +82,22 @@ import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_content_refresh.dart';
 import '../core/tv_tokens.dart';
+import '../core/tv_app_tokens.dart';
 import '../data/greeting_repository.dart';
 import '../data/home_shelves.dart';
+import '../data/tv_home_layout.dart';
+import '../data/tv_home_genres.dart';
 import '../data/startup_preference.dart';
 import '../../voice/presentation/voice_navigation.dart';
 import 'tv_app.dart';
 import 'tv_cinema_common.dart';
 import 'tv_cinema_screen.dart';
 import 'tv_components.dart';
-import 'tv_diagnostic_screen.dart';
-import 'tv_home_rails.dart';
+import 'tv_cinematic_home.dart';
+import 'tv_epg_preview_screen.dart';
+import 'tv_glass.dart';
+import 'tv_starfield.dart';
+import 'tv_tonight.dart';
 import 'tv_live_screen.dart';
 import 'tv_player_screen.dart';
 import 'tv_profile_picker.dart';
@@ -96,8 +105,8 @@ import 'tv_settings_screen.dart';
 import 'tv_shell.dart';
 import 'tv_sources_screen.dart';
 
-/// Les 5 tuiles de l'accueil, de gauche à droite.
-enum _Tile { live, films, series, server, settings }
+/// Les tuiles de l'accueil, de gauche à droite.
+enum _Tile { live, films, series, guide, server, settings }
 
 class TvHubScreen extends StatefulWidget {
   const TvHubScreen({super.key});
@@ -142,11 +151,6 @@ class _TvHubScreenState extends State<TvHubScreen> {
   bool _pendingAutoOpen = false;
   bool _wasActive = false;
 
-  // Accès CACHÉ au diagnostic : séquence D-pad HAUT-HAUT-BAS-BAS.
-  static const List<bool> _diagSeq = <bool>[true, true, false, false];
-  final List<bool> _diagBuf = <bool>[];
-  bool _diagOpen = false;
-
   // ----- Rangées « pour revenir » (voir home_shelves.dart) -----
   // On ne recalcule pas dans build() : un import de playlist peut émettre
   // souvent, et on ne veut qu'UN assemblage après une courte pause.
@@ -182,10 +186,16 @@ class _TvHubScreenState extends State<TvHubScreen> {
   int _featuredGen = 0;
   int _promoGen = 0;
   Timer? _panelDebounce;
+  bool _panelReady = false;
   bool _noticeOn = true;
   bool _featuredOn = true;
   bool _promoOn = true;
+  bool _feedbackAvailable = false;
+  int _feedbackGeneration = 0;
   HomeShelfModel _shelves = const HomeShelfModel();
+  Map<String, List<Channel>> _genreShelves = const {};
+  int _genreGeneration = 0;
+  Timer? _genreDebounce;
   HomeShelfKind? _initialShelf;
   bool _prefsReady = false;
   bool _resumedThisVisit = false;
@@ -223,6 +233,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
       if (mounted) setState(() => _mac = m);
     });
     BlackBox.instance.info('SCREEN', 'Accueil');
+    unawaited(TvGlass.detect());
     _hadChannels = PlaylistRepository.instance.currentChannels.isNotEmpty;
     _wasActive = _isActive(SubscriptionState.instance.status);
     SubscriptionState.instance.addListener(_onLicenseChange);
@@ -239,6 +250,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
     // Ce qu'on a DÉJÀ en mémoire (le boot a chargé la playlist). Les dépôts
     // finissent de s'ouvrir dans _prepareEngagement, sans bloquer le 1er cadre.
     _channels = PlaylistRepository.instance.currentChannels;
+    _scheduleGenreShelves();
     // Déjà des chaînes en mémoire : une source est là, pas de QR.
     // Sinon on lit les playlists (une source peut exister avant
     // que ses chaînes soient chargées).
@@ -251,13 +263,15 @@ class _TvHubScreenState extends State<TvHubScreen> {
     _recentIds = RecentlyWatchedRepository.instance.current;
     _trending = TrendingRepository.instance.current;
     _rebuildShelves(notify: false);
-    _favSub =
-        FavoritesRepository.instance.favoritesStream.listen((Set<String> ids) {
+    _favSub = FavoritesRepository.instance.favoritesStream.listen((
+      Set<String> ids,
+    ) {
       _favIds = ids;
       _scheduleShelves();
     });
-    _recentSub =
-        RecentlyWatchedRepository.instance.stream.listen((List<String> ids) {
+    _recentSub = RecentlyWatchedRepository.instance.stream.listen((
+      List<String> ids,
+    ) {
       _recentIds = ids;
       _scheduleShelves();
     });
@@ -276,6 +290,9 @@ class _TvHubScreenState extends State<TvHubScreen> {
     followedFlag.changes.addListener(_onFollowedFlag);
     AnnouncementRepository.latest.addListener(_onNotice);
     FeaturedRepository.instance.addListener(_onFeatured);
+    HomeLayoutRepository.instance.addListener(_onHomeLayout);
+    FeedbackRepository.instance.addListener(_onFeedback);
+    unawaited(FeedbackRepository.instance.reload());
     PromoBannerRepository.instance.addListener(_replanPanel);
     ParentalControls.instance.kidsMode.addListener(_replanPanel);
     panelNoticeFlag.changes.addListener(_onPanelFlags);
@@ -283,6 +300,26 @@ class _TvHubScreenState extends State<TvHubScreen> {
     promoBannerFlag.changes.addListener(_onPanelFlags);
     unawaited(_prepareEngagement());
     unawaited(_preparePanelBoard());
+    // Cache puis réseau, hors du chemin critique d'affichage. Les ordres
+    // « home » relisent ensuite ce même dépôt et reconstruisent ces rangées.
+    unawaited(HomeLayoutRepository.instance.initialize());
+  }
+
+  Map<String, HomeSectionConfig> get _homeLayout => <String, HomeSectionConfig>{
+        for (final String key in kTvManagedHomeSections)
+          if (HomeLayoutRepository.instance.config(key) case final config?)
+            key: config,
+      };
+
+  Future<void> _onFeedback() async {
+    final generation = ++_feedbackGeneration;
+    final available = await FeedbackRepository.instance.shouldPrompt();
+    if (!mounted || generation != _feedbackGeneration) return;
+    setState(() => _feedbackAvailable = available);
+  }
+
+  void _onHomeLayout() {
+    if (mounted) setState(() {});
   }
 
   // ---------------------------------------------------------------------
@@ -301,6 +338,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
       ]);
     } catch (_) {}
     if (!mounted) return;
+    _panelReady = true;
     _readPanelFlags();
     if (_featuredOn) unawaited(FeaturedRepository.instance.initialize());
     if (_promoOn) unawaited(PromoBannerRepository.instance.initialize());
@@ -364,10 +402,12 @@ class _TvHubScreenState extends State<TvHubScreen> {
       if (_featuredChannel != null) setState(() => _featuredChannel = null);
       return;
     }
-    unawaited(findChannelByName(f.name, _channels).then((Channel? c) {
-      if (!mounted || gen != _featuredGen) return;
-      if (c?.id != _featuredChannel?.id) setState(() => _featuredChannel = c);
-    }));
+    unawaited(
+      findChannelByName(f.name, _channels).then((Channel? c) {
+        if (!mounted || gen != _featuredGen) return;
+        if (c?.id != _featuredChannel?.id) setState(() => _featuredChannel = c);
+      }),
+    );
   }
 
   /// Quelle bannière maintenant (fenêtre, mode enfants, fermée, plafond
@@ -392,10 +432,12 @@ class _TvHubScreenState extends State<TvHubScreen> {
       _promoChannel = null;
       if (next != null && next.channel.isNotEmpty) {
         final int gen = ++_promoGen;
-        unawaited(findChannelByName(next.channel, _channels).then((Channel? c) {
-          if (!mounted || gen != _promoGen || _promo?.id != next.id) return;
-          setState(() => _promoChannel = c);
-        }));
+        unawaited(
+          findChannelByName(next.channel, _channels).then((Channel? c) {
+            if (!mounted || gen != _promoGen || _promo?.id != next.id) return;
+            setState(() => _promoChannel = c);
+          }),
+        );
       }
     }
     final HeaderCard card = _headerCard;
@@ -501,6 +543,9 @@ class _TvHubScreenState extends State<TvHubScreen> {
       unawaited(_lookForLocalSource());
     }
     _channels = channels;
+    _genreGeneration++;
+    _genreShelves = const {}; // aucune carte de la source retirée
+    _scheduleGenreShelves();
     _scheduleShelves();
     _schedulePopular();
     // Le favori du jour et la chaîne d'une bannière se cherchent par nom
@@ -605,8 +650,10 @@ class _TvHubScreenState extends State<TvHubScreen> {
     _resumedThisVisit = true;
     _autoOpened = true;
     _deferredLiveOpen = false;
-    BlackBox.instance
-        .info('ACCUEIL', 'reprise au démarrage : ${zap.first.name}');
+    BlackBox.instance.info(
+      'ACCUEIL',
+      'reprise au démarrage : ${zap.first.name}',
+    );
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       Navigator.of(context).push(
@@ -647,6 +694,22 @@ class _TvHubScreenState extends State<TvHubScreen> {
     final Greeting? g = await GreetingRepository.instance.fetch();
     if (!mounted || g == null) return;
     setState(() => _greeting = g);
+  }
+
+  void _scheduleGenreShelves() {
+    _genreDebounce?.cancel();
+    _genreDebounce = Timer(const Duration(milliseconds: 400), () async {
+      final generation = ++_genreGeneration;
+      final channels = _channels;
+      try {
+        final shelves = await tvGenreShelves(channels);
+        if (!mounted || generation != _genreGeneration) return;
+        setState(() => _genreShelves = shelves);
+      } catch (_) {
+        // Le Direct reste disponible si une box ne peut pas lancer l'isolate.
+        // Aucun repli sur des chaînes non classées dans les rangées enfants.
+      }
+    });
   }
 
   void _scheduleShelves() {
@@ -695,7 +758,8 @@ class _TvHubScreenState extends State<TvHubScreen> {
     if (_initialShelf == null && _shelves.hasAny) {
       _initialShelf = pickInitialShelf(
         hasSoonReminder: _shelves.reminders.any(
-            (ProgramReminder r) => ProgramReminderLog.isSoon(r.startMs, now)),
+          (ProgramReminder r) => ProgramReminderLog.isSoon(r.startMs, now),
+        ),
         hasResume: _shelves.resume.isNotEmpty,
         hasContinue: _shelves.continueWatching.isNotEmpty,
         hasFavorites: _shelves.favorites.isNotEmpty,
@@ -880,14 +944,18 @@ class _TvHubScreenState extends State<TvHubScreen> {
       }
 
       try {
-        take(await EpgRepository.instance.programsOverlapping(
-          from,
-          to,
-          limit: 800,
-        ));
+        take(
+          await EpgRepository.instance.programsOverlapping(
+            from,
+            to,
+            limit: 800,
+          ),
+        );
       } catch (_) {}
-      for (final String id
-          in followedChannelIds(FollowedLog.instance.book, _favIds)) {
+      for (final String id in followedChannelIds(
+        FollowedLog.instance.book,
+        _favIds,
+      )) {
         if (gen != _showGen) return;
         try {
           take(await EpgRepository.instance.programsBetween(id, from, to));
@@ -907,14 +975,16 @@ class _TvHubScreenState extends State<TvHubScreen> {
         final bool declared = channel.catchupSupported ||
             (channel.catchupSource != null &&
                 channel.catchupSource!.isNotEmpty);
-        slots.add(GuideSlot(
-          channelId: channel.id,
-          channelName: channel.cleanName,
-          title: program.title,
-          startMs: program.startTime,
-          stopMs: program.stopTime,
-          catchupDeclared: declared,
-        ));
+        slots.add(
+          GuideSlot(
+            channelId: channel.id,
+            channelName: channel.cleanName,
+            title: program.title,
+            startMs: program.startTime,
+            stopMs: program.stopTime,
+            catchupDeclared: declared,
+          ),
+        );
       }
       _guide = slots;
       _guideAtMs = now;
@@ -983,21 +1053,6 @@ class _TvHubScreenState extends State<TvHubScreen> {
     openVod(context, VodPlayItem.entry(entry));
   }
 
-  /// Un rappel ouvre la CHAÎNE (on ne peut pas jouer une émission future).
-  /// Le zap Haut/Bas reste sur les chaînes des rappels affichés.
-  void _playReminder(ProgramReminder reminder) {
-    final Map<String, Channel> byId = indexChannelsById(_channels);
-    final Channel? target = byId[reminder.channelId];
-    if (target == null) return;
-    final List<Channel> shelf = <Channel>[
-      for (final ProgramReminder item in _shelves.reminders)
-        if (byId[item.channelId] != null) byId[item.channelId]!,
-    ];
-    final int index = shelf.indexWhere((Channel c) => c.id == target.id);
-    _playShelf(
-        shelf.isEmpty ? <Channel>[target] : shelf, index < 0 ? 0 : index);
-  }
-
   String _hello(BuildContext context) {
     final String hello = switch (homeDayPart(_now.hour)) {
       HomeDayPart.morning => context.l10n.tvHelloMorning,
@@ -1036,9 +1091,9 @@ class _TvHubScreenState extends State<TvHubScreen> {
       // Écran déjà parti pendant l'attente : ne pas s'abonner (fuite).
       if (!mounted) return;
       setState(() {});
-      _connSub = Connectivity()
-          .onConnectivityChanged
-          .listen((List<ConnectivityResult> r) {
+      _connSub = Connectivity().onConnectivityChanged.listen((
+        List<ConnectivityResult> r,
+      ) {
         if (mounted) setState(() => _conn = r);
       });
     } catch (_) {}
@@ -1051,6 +1106,8 @@ class _TvHubScreenState extends State<TvHubScreen> {
   @override
   void dispose() {
     _clock?.cancel();
+    _genreDebounce?.cancel();
+    _genreGeneration++;
     _connSub?.cancel();
     _srcSub?.cancel();
     _shelfDebounce?.cancel();
@@ -1073,6 +1130,9 @@ class _TvHubScreenState extends State<TvHubScreen> {
     _panelDebounce?.cancel();
     AnnouncementRepository.latest.removeListener(_onNotice);
     FeaturedRepository.instance.removeListener(_onFeatured);
+    HomeLayoutRepository.instance.removeListener(_onHomeLayout);
+    FeedbackRepository.instance.removeListener(_onFeedback);
+    _feedbackGeneration++;
     PromoBannerRepository.instance.removeListener(_replanPanel);
     ParentalControls.instance.kidsMode.removeListener(_replanPanel);
     panelNoticeFlag.changes.removeListener(_onPanelFlags);
@@ -1103,21 +1163,34 @@ class _TvHubScreenState extends State<TvHubScreen> {
   ({String label, Color color}) _license(BuildContext context) {
     switch (SubscriptionState.instance.status) {
       case SubscriptionStatus.paid:
-        return (label: context.l10n.tvStatusPaid, color: TvTokens.success);
+        return (
+          label: context.l10n.tvStatusPaid,
+          color: TvAppTokens.of(context).success,
+        );
       case SubscriptionStatus.trialActive:
         return (
-          label: context.l10n
-              .tvStatusTrial(SubscriptionState.instance.trialDaysRemaining),
-          color: TvTokens.accentBright,
+          label: context.l10n.tvStatusTrial(
+            SubscriptionState.instance.trialDaysRemaining,
+          ),
+          color: TvAppTokens.of(context).accentBright,
         );
       case SubscriptionStatus.trialExpired:
-        return (label: context.l10n.tvStatusTrialExpired, color: TvTokens.live);
+        return (
+          label: context.l10n.tvStatusTrialExpired,
+          color: TvAppTokens.of(context).live,
+        );
       case SubscriptionStatus.frozen:
-        return (label: context.l10n.tvStatusFrozen, color: TvTokens.live);
+        return (
+          label: context.l10n.tvStatusFrozen,
+          color: TvAppTokens.of(context).live,
+        );
       case SubscriptionStatus.banned:
-        return (label: context.l10n.tvStatusBanned, color: TvTokens.live);
+        return (
+          label: context.l10n.tvStatusBanned,
+          color: TvAppTokens.of(context).live,
+        );
       case SubscriptionStatus.unknown:
-        return (label: '', color: TvTokens.mutedDim);
+        return (label: '', color: TvAppTokens.of(context).mutedDim);
     }
   }
 
@@ -1125,8 +1198,10 @@ class _TvHubScreenState extends State<TvHubScreen> {
     try {
       final List<Playlist> all = PlaylistRepository.instance.currentPlaylists;
       if (all.isEmpty) return '';
-      final Playlist p =
-          all.firstWhere((Playlist x) => x.isActive, orElse: () => all.first);
+      final Playlist p = all.firstWhere(
+        (Playlist x) => x.isActive,
+        orElse: () => all.first,
+      );
       final String user = (p.xtreamUsername ?? '').trim();
       final String one = user.isEmpty ? p.name : '$user · ${p.name}';
       // Mode fusion (TV) : toutes les listes sont affichées ensemble → on
@@ -1150,28 +1225,11 @@ class _TvHubScreenState extends State<TvHubScreen> {
         page = const TvCinemaScreen(kind: CinemaKind.movie);
       case _Tile.series:
         page = const TvCinemaScreen(kind: CinemaKind.series);
+      case _Tile.guide:
+        page = const TvEpgPreviewScreen();
     }
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => TvShell(child: page)),
-    );
-  }
-
-  Widget _tileRow(BuildContext context, {required bool compact}) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: <Widget>[
-        for (int i = 0; i < _Tile.values.length; i++) ...<Widget>[
-          _HubTile(
-            meta: _tileMeta(context, _Tile.values[i]),
-            autofocus: !compact && i == 0,
-            compact: compact,
-            onSelect: () => _openTile(_Tile.values[i]),
-          ),
-          if (i != _Tile.values.length - 1) SizedBox(width: compact ? 12 : 22),
-        ],
-      ],
-    );
+    Navigator.of(context)
+        .push(MaterialPageRoute<void>(builder: (_) => TvShell(child: page)));
   }
 
   ({IconData icon, String label}) _tileMeta(BuildContext c, _Tile t) {
@@ -1182,6 +1240,8 @@ class _TvHubScreenState extends State<TvHubScreen> {
         return (icon: Icons.movie_rounded, label: c.l10n.tvNavFilms);
       case _Tile.series:
         return (icon: Icons.video_library_rounded, label: c.l10n.tvNavSeries);
+      case _Tile.guide:
+        return (icon: Icons.grid_view_rounded, label: c.l10n.tvNavGuide);
       case _Tile.server:
         return (icon: Icons.dns_rounded, label: c.l10n.tvNavServer);
       case _Tile.settings:
@@ -1201,34 +1261,65 @@ class _TvHubScreenState extends State<TvHubScreen> {
     }
   }
 
-  KeyEventResult _onKey(FocusNode node, KeyEvent event) {
-    if (event is! KeyDownEvent) return KeyEventResult.ignored;
-    final LogicalKeyboardKey k = event.logicalKey;
-    final bool up =
-        k == LogicalKeyboardKey.arrowUp || k == LogicalKeyboardKey.channelUp;
-    final bool down = k == LogicalKeyboardKey.arrowDown ||
-        k == LogicalKeyboardKey.channelDown;
-    if (!up && !down) {
-      if (_diagBuf.isNotEmpty) _diagBuf.clear();
-      return KeyEventResult.ignored;
-    }
-    _diagBuf.add(up);
-    if (_diagBuf.length > _diagSeq.length) _diagBuf.removeAt(0);
-    bool match = _diagBuf.length == _diagSeq.length;
-    for (int i = 0; match && i < _diagSeq.length; i++) {
-      if (_diagBuf[i] != _diagSeq[i]) match = false;
-    }
-    if (match) {
-      _diagBuf.clear();
-      if (!_diagOpen) {
-        _diagOpen = true;
-        Navigator.of(context)
-            .push<void>(MaterialPageRoute<void>(
-                builder: (_) => const TvDiagnosticScreen()))
-            .then((_) => _diagOpen = false);
-      }
-    }
-    return KeyEventResult.ignored;
+  /// Informations secondaires du démarrage vide. La saisie reste à gauche
+  /// (ou en premier en portrait), tandis que MAC, licence et navigation
+  /// restent accessibles sans imposer un détour par un QR ou un sous-écran.
+  Widget _sourceSetupDetails(BuildContext context) {
+    final ({String label, Color color}) license = _license(context);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        const TvLogo(width: 150),
+        const SizedBox(height: TvDimens.gutter),
+        Text(
+          context.l10n.tvActivationCodeLabel,
+          style: TvAppTokens.of(context)
+              .ui(TvDimens.caption, color: TvAppTokens.of(context).muted),
+        ),
+        const SizedBox(height: TvDimens.rowGap),
+        Text(
+          displayMac(_mac, showPrefix: RepairFlags.macShowPrefix),
+          textDirection: TextDirection.ltr,
+          style: TvAppTokens.of(
+            context,
+          ).mono(TvDimens.title, color: TvAppTokens.of(context).accentBright),
+        ),
+        if (license.label.isNotEmpty) ...<Widget>[
+          const SizedBox(height: TvDimens.gutter),
+          Text(
+            license.label,
+            style: TvAppTokens.of(context)
+                .ui(TvDimens.label, color: license.color),
+          ),
+        ],
+        if (_refreshNotice != null && _refreshNotice!.isNotEmpty) ...<Widget>[
+          const SizedBox(height: TvDimens.gutter),
+          Text(
+            _refreshNotice!,
+            style: TvAppTokens.of(context)
+                .ui(TvDimens.caption, color: TvAppTokens.of(context).live),
+          ),
+        ],
+        const SizedBox(height: TvDimens.gutter),
+        Wrap(
+          spacing: TvDimens.rowGap,
+          runSpacing: TvDimens.rowGap,
+          children: <Widget>[
+            for (final _Tile tile in _Tile.values)
+              TextButton.icon(
+                onPressed: () => _openTile(tile),
+                icon: Icon(_tileMeta(context, tile).icon, size: TvDimens.title),
+                label: Text(_tileMeta(context, tile).label),
+                style: TextButton.styleFrom(
+                  foregroundColor: TvAppTokens.of(context).accentBright,
+                  textStyle: TvAppTokens.of(context).ui(TvDimens.caption),
+                ),
+              ),
+          ],
+        ),
+      ],
+    );
   }
 
   String get _time =>
@@ -1236,9 +1327,15 @@ class _TvHubScreenState extends State<TvHubScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final Map<String, HomeSectionConfig> homeLayout = _homeLayout;
+    final bool hasVisibleShelves = hasVisibleTvHomeShelves(
+      _shelves,
+      homeLayout,
+      genreShelves: _genreShelves,
+    );
     // Le focus automatique des rangées ne doit jouer qu'UNE fois (à leur
     // apparition). Le laisser à true réclamerait le focus à chaque cadre.
-    if (_pendingShelfFocus && _shelves.hasAny) {
+    if (_pendingShelfFocus && hasVisibleShelves) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _pendingShelfFocus = false;
       });
@@ -1248,177 +1345,254 @@ class _TvHubScreenState extends State<TvHubScreen> {
     final ({String label, Color color}) lic = _license(context);
     final String src = _activeSource;
     final String lang = Localizations.localeOf(context).languageCode;
-    final Widget? header = _panelHeader(lang);
-    final bool hasPersonal = _shelves.hasAny ||
+    final Widget? panelHeader = _panelHeader(lang);
+    final Widget? header =
+        _feedbackAvailable && !ParentalControls.instance.kidsMode.value
+            ? Column(mainAxisSize: MainAxisSize.min, children: <Widget>[
+                if (panelHeader != null) panelHeader,
+                if (panelHeader != null)
+                  const SizedBox(height: TvDimens.gutter),
+                TvFeedbackCard(message: FeedbackRepository.instance.message),
+              ])
+            : panelHeader;
+    final bool hasPersonal = hasVisibleShelves ||
         _timePicks.isNotEmpty ||
         _showCards.isNotEmpty ||
         header != null;
 
-    return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (bool didPop, Object? _) {
-        if (!didPop) _onBack();
-      },
-      child: Focus(
-        canRequestFocus: false,
-        skipTraversal: true,
-        onKeyEvent: _onKey,
-        child: TvShell(
-          // Fond PLEIN ÉCRAN (image de marque, cf. pubspec) + voile sombre pour
-          // garder les textes lisibles, puis le contenu dans les marges TV.
-          applySafeArea: false,
-          child: Stack(
-            fit: StackFit.expand,
-            children: <Widget>[
-              Image.asset('assets/branding/tv_hub_background.jpg',
-                  fit: BoxFit.cover),
-              DecoratedBox(
-                  decoration: BoxDecoration(
-                      color: TvTokens.bg.withValues(alpha: 0.35))),
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: TvDimens.safeH, vertical: TvDimens.safeV),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: <Widget>[
-                    // ---------- BARRE DU HAUT ----------
-                    Row(
-                      children: <Widget>[
-                        const TvLogo(width: 150),
-                        const SizedBox(width: 18),
-                        _ProfileChip(
-                          onSelect: () {
-                            StartupPickerSession.shown = true;
-                            Navigator.of(context)
-                                .push<bool>(MaterialPageRoute<bool>(
-                                    builder: (_) =>
-                                        const TvProfilePickerScreen()))
-                                .then((_) => _openLiveIfPending());
-                          },
-                        ),
-                        const Spacer(),
-                        _HubSearchButton(
-                          label: context.l10n.tvNavSearch,
-                          onSelect: () => VoiceNavigation.openSearch(),
-                        ),
-                        const SizedBox(width: 16),
-                        Icon(_netIcon, size: 22, color: TvTokens.muted),
-                        const SizedBox(width: 16),
-                        Text(_time,
-                            style: TvTokens.display(22, color: TvTokens.text)),
-                        const SizedBox(width: 12),
-                        Text(date,
-                            style: TvTokens.ui(15, color: TvTokens.mutedDim)),
-                      ],
+    return AnnouncementRefresh(
+      enabled: _panelReady && _noticeOn,
+      child: PopScope(
+        canPop: false,
+        onPopInvokedWithResult: (bool didPop, Object? _) {
+          if (!didPop) _onBack();
+        },
+        child: Focus(
+          canRequestFocus: false,
+          skipTraversal: true,
+          child: TvShell(
+            // Fond PLEIN ÉCRAN (image de marque, cf. pubspec) + voile sombre pour
+            // garder les textes lisibles, puis le contenu dans les marges TV.
+            applySafeArea: false,
+            // Premier démarrage sans source : le formulaire passe avant les
+            // tuiles. Le PopScope, le focus et l'ouverture automatique du Direct
+            // restent communs ; cette branche ne décide jamais de la licence.
+            child: _hasLocalSource == false
+                ? Padding(
+                    padding: const EdgeInsets.all(TvDimens.gutter),
+                    child: TvSourceSetup(
+                      details: _sourceSetupDetails(context),
+                      onAdded: () => unawaited(_lookForLocalSource()),
                     ),
-                    const SizedBox(height: 8),
-                    Text(
-                      _hello(context),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TvTokens.display(TvDimens.title,
-                          color: TvTokens.text),
-                    ),
-                    if (!hasPersonal) ...<Widget>[
-                      const SizedBox(height: 4),
-                      Text(
-                        context.l10n.tvHomeInvite,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style:
-                            TvTokens.ui(TvDimens.label, color: TvTokens.muted),
+                  )
+                : Stack(
+                    fit: StackFit.expand,
+                    children: <Widget>[
+                      // Obsidienne de la maquette, pas le gris confort
+                      // #121212 : ce fond-là seulement. Le cuivre est
+                      // l'accent déjà choisi, très dilué (soirée).
+                      ColoredBox(
+                        color: TvAppTokens.of(context).ghost
+                            ? TvAppTokens.of(context).bg
+                            : TvTokens.bg,
                       ),
-                    ],
-                    // ---------- RANGÉES + TUILES ----------
-                    // Avec du contenu personnel, les rangées prennent la place et
-                    // les tuiles se font plus petites en bas. Sans historique, les
-                    // tuiles restent grandes et centrées (l'accueil d'origine).
-                    Expanded(
-                      child: hasPersonal
-                          ? Column(
+                      DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: RadialGradient(
+                            center: const Alignment(-0.72, -0.55),
+                            radius: 1.15,
+                            colors: <Color>[
+                              (TvAppTokens.of(context).ghost
+                                      ? TvAppTokens.of(context).accent
+                                      : TvTokens.accent)
+                                  .withValues(alpha: 0.06),
+                              TvAppTokens.of(context).ghost
+                                  ? TvAppTokens.of(context).bg
+                                  : TvTokens.bg,
+                            ],
+                          ),
+                        ),
+                      ),
+                      if (TvAppTokens.of(context).ghost)
+                        const Positioned.fill(child: PhantomWeave()),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: TvDimens.safeH,
+                          vertical: TvDimens.safeV,
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: <Widget>[
+                            // ---------- BARRE DU HAUT ----------
+                            Row(
                               children: <Widget>[
-                                Expanded(
-                                  child: TvHomeRails(
-                                    model: _shelves,
-                                    nowMs: _now.millisecondsSinceEpoch,
-                                    initialShelf: _pendingShelfFocus
-                                        ? _initialShelf
-                                        : null,
-                                    timePicks: _timePicks,
-                                    timePicksLabel: boxText(
-                                      context,
-                                      'À cette heure',
-                                      'At this hour',
-                                    ),
-                                    shows: _showCards,
-                                    showsLabel: followedWord(lang, 'row'),
-                                    onPlayShow: _openShow,
-                                    header: header,
-                                    onPlayChannel: _playShelf,
-                                    onPlayContinue: _playContinue,
-                                    onPlayReminder: _playReminder,
+                                const TvLogo(width: 150),
+                                const SizedBox(width: 18),
+                                _ProfileChip(
+                                  onSelect: () {
+                                    StartupPickerSession.shown = true;
+                                    Navigator.of(context)
+                                        .push<bool>(
+                                          MaterialPageRoute<bool>(
+                                            builder: (_) =>
+                                                const TvProfilePickerScreen(),
+                                          ),
+                                        )
+                                        .then((_) => _openLiveIfPending());
+                                  },
+                                ),
+                                const Spacer(),
+                                _HubSearchButton(
+                                  label: context.l10n.tvNavSearch,
+                                  onSelect: () => VoiceNavigation.openSearch(),
+                                ),
+                                const SizedBox(width: 16),
+                                Icon(
+                                  _netIcon,
+                                  size: 22,
+                                  color: TvAppTokens.of(context).muted,
+                                ),
+                                const SizedBox(width: 16),
+                                Text(
+                                  _time,
+                                  style: TvAppTokens.of(context).display(
+                                    22,
+                                    color: TvAppTokens.of(context).text,
                                   ),
                                 ),
-                                const SizedBox(height: 8),
-                                _tileRow(context, compact: true),
-                              ],
-                            )
-                          // Aucune playlist sur la box : tuiles un peu plus petites,
-                          // et à droite le QR que le téléphone photographie
-                          // pour ouvrir « Mon espace » (lien M3U ou Xtream).
-                          : _hasLocalSource == false
-                              ? Row(
-                                  crossAxisAlignment: CrossAxisAlignment.center,
-                                  children: <Widget>[
-                                    Expanded(
-                                      child: Center(
-                                        child: _tileRow(
-                                          context,
-                                          compact: true,
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 24),
-                                    TvPhoneSourceQr(mac: _mac),
-                                  ],
-                                )
-                              : Center(
-                                  child: _tileRow(context, compact: false),
+                                const SizedBox(width: 12),
+                                Text(
+                                  date,
+                                  style: TvAppTokens.of(context).ui(
+                                    15,
+                                    color: TvAppTokens.of(context).mutedDim,
+                                  ),
                                 ),
-                    ),
-                    if (_refreshNotice != null && _refreshNotice!.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: Text(
-                          _refreshNotice!,
-                          textAlign: TextAlign.center,
-                          style: TvTokens.ui(14, color: TvTokens.live),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              _hello(context),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TvAppTokens.of(context).display(
+                                TvDimens.title,
+                                color: TvAppTokens.of(context).text,
+                              ),
+                            ),
+                            if (!hasPersonal) ...<Widget>[
+                              const SizedBox(height: 4),
+                              Text(
+                                context.l10n.tvHomeInvite,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: TvAppTokens.of(context).ui(
+                                  TvDimens.label,
+                                  color: TvAppTokens.of(context).muted,
+                                ),
+                              ),
+                            ],
+                            if (header != null) ...<Widget>[
+                              header,
+                              const SizedBox(height: 8),
+                            ],
+                            Expanded(
+                              child: ValueListenableBuilder<bool>(
+                                valueListenable: TvGlass.blur,
+                                builder: (BuildContext context, bool blur, _) {
+                                  final TonightBoard board = composeTonight(
+                                    watching: _shelves.continueWatching,
+                                    favorites: _shelves.favorites,
+                                    popular: _shelves.popular,
+                                    resume: _shelves.resume,
+                                    guide: _guide,
+                                    reminders: _shelves.reminders,
+                                    also: _timePicks,
+                                    nowMs: _now.millisecondsSinceEpoch,
+                                    channelsById: indexChannelsById(_channels),
+                                  );
+                                  return TvCinematicHome(
+                                    board: board,
+                                    blur: blur,
+                                    onPlay: (TonightPiece piece) {
+                                      final WatchEntry? watch = piece.watch;
+                                      final Channel? channel = piece.channel;
+                                      if (watch != null) {
+                                        _playContinue(watch);
+                                      } else if (channel != null) {
+                                        _playShelf(<Channel>[channel], 0);
+                                      }
+                                    },
+                                    onLive: () => _openTile(_Tile.live),
+                                    onFilms: () => _openTile(_Tile.films),
+                                    onSeries: () => _openTile(_Tile.series),
+                                    onServer: () => _openTile(_Tile.server),
+                                    onSettings: () => _openTile(_Tile.settings),
+                                  );
+                                },
+                              ),
+                            ),
+                            if (_refreshNotice != null &&
+                                _refreshNotice!.isNotEmpty)
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 8),
+                                child: Text(
+                                  _refreshNotice!,
+                                  textAlign: TextAlign.center,
+                                  style: TvAppTokens.of(
+                                    context,
+                                  ).ui(14, color: TvAppTokens.of(context).live),
+                                ),
+                              ),
+                            // ---------- BARRE DU BAS ----------
+                            Row(
+                              children: <Widget>[
+                                Text(
+                                  '${context.l10n.tvActivationCodeLabel} : ',
+                                  style: TvAppTokens.of(context).ui(
+                                    14,
+                                    color: TvAppTokens.of(context).mutedDim,
+                                  ),
+                                ),
+                                Text(
+                                  displayMac(
+                                    _mac,
+                                    showPrefix: RepairFlags.macShowPrefix,
+                                  ),
+                                  // Les groupes d'une MAC ne suivent pas le sens de l'UI.
+                                  textDirection: TextDirection.ltr,
+                                  style: TvAppTokens.of(context).mono(
+                                    16,
+                                    color: TvAppTokens.of(context).accentBright,
+                                  ),
+                                ),
+                                const Spacer(),
+                                if (lic.label.isNotEmpty)
+                                  Text(
+                                    lic.label,
+                                    style: TvAppTokens.of(context).ui(
+                                      15,
+                                      weight: FontWeight.w600,
+                                      color: lic.color,
+                                    ),
+                                  ),
+                                if (src.isNotEmpty) ...<Widget>[
+                                  const SizedBox(width: 18),
+                                  Text(
+                                    src,
+                                    style: TvAppTokens.of(context).ui(
+                                      14,
+                                      color: TvAppTokens.of(context).mutedDim,
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ],
                         ),
                       ),
-                    // ---------- BARRE DU BAS ----------
-                    Row(
-                      children: <Widget>[
-                        Text('${context.l10n.tvActivationCodeLabel} : ',
-                            style: TvTokens.ui(14, color: TvTokens.mutedDim)),
-                        Text(displayMac(_mac, showPrefix: RepairFlags.macShowPrefix),
-                            style: TvTokens.mono(16,
-                                color: TvTokens.accentBright)),
-                        const Spacer(),
-                        if (lic.label.isNotEmpty)
-                          Text(lic.label,
-                              style: TvTokens.ui(15,
-                                  weight: FontWeight.w600, color: lic.color)),
-                        if (src.isNotEmpty) ...<Widget>[
-                          const SizedBox(width: 18),
-                          Text(src,
-                              style: TvTokens.ui(14, color: TvTokens.mutedDim)),
-                        ],
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ],
+                    ],
+                  ),
           ),
         ),
       ),
@@ -1436,31 +1610,46 @@ class _HubSearchButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final BorderRadius radius = BorderRadius.circular(TvTokens.rButton);
     return TvFocusBuilder(
       scale: TvFocusScale.small,
+      borderRadius: radius,
+      showGlow: false,
       onSelect: onSelect,
       builder: (BuildContext context, bool focused) {
-        final Color fg = focused ? TvTokens.onAccent : TvTokens.text;
+        final Color fg = focused
+            ? TvAppTokens.of(context).onAccent
+            : TvAppTokens.of(context).text;
         return Container(
           height: 48,
           padding: const EdgeInsets.symmetric(horizontal: 16),
           decoration: BoxDecoration(
-            color: focused ? TvTokens.accent : TvTokens.card,
-            borderRadius: BorderRadius.circular(TvTokens.rButton),
+            color: focused
+                ? TvAppTokens.of(context).accent
+                : TvAppTokens.of(context).card,
+            borderRadius: radius,
             border: Border.all(
-              color: focused ? TvTokens.accent : TvTokens.line,
+              color: focused
+                  ? TvAppTokens.of(context).accent
+                  : TvAppTokens.of(context).line,
             ),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
-              Icon(Icons.mic_none_rounded,
-                  size: 22,
-                  color: focused ? TvTokens.onAccent : TvTokens.accent),
+              Icon(
+                Icons.mic_none_rounded,
+                size: 22,
+                color: focused
+                    ? TvAppTokens.of(context).onAccent
+                    : TvAppTokens.of(context).accent,
+              ),
               const SizedBox(width: 8),
-              Text(label,
-                  style: TvTokens.ui(TvDimens.label,
-                      weight: FontWeight.w700, color: fg)),
+              Text(
+                label,
+                style: TvAppTokens.of(context)
+                    .ui(TvDimens.label, weight: FontWeight.w700, color: fg),
+              ),
             ],
           ),
         );
@@ -1479,32 +1668,44 @@ class _ProfileChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final profile = ProfileRepository.instance.active;
+    final BorderRadius radius = BorderRadius.circular(TvTokens.rButton);
     return TvFocusBuilder(
       onSelect: onSelect,
+      borderRadius: radius,
+      showGlow: false,
       builder: (BuildContext context, bool focused) {
-        final Color fg = focused ? TvTokens.onAccent : TvTokens.text;
+        final Color fg = focused
+            ? TvAppTokens.of(context).onAccent
+            : TvAppTokens.of(context).text;
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
           decoration: BoxDecoration(
             color: focused
-                ? TvTokens.accent
-                : TvTokens.card.withValues(alpha: 0.85),
-            borderRadius: BorderRadius.circular(TvTokens.rButton),
-            border:
-                Border.all(color: focused ? TvTokens.accent : TvTokens.line),
+                ? TvAppTokens.of(context).accent
+                : TvAppTokens.of(context).card.withValues(alpha: 0.85),
+            borderRadius: radius,
+            border: Border.all(
+              color: focused
+                  ? TvAppTokens.of(context).accent
+                  : TvAppTokens.of(context).line,
+            ),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
-              Icon(ProfileLooks.icon(profile),
-                  size: 22,
-                  color: focused
-                      ? TvTokens.onAccent
-                      : ProfileLooks.color(profile)),
+              Icon(
+                ProfileLooks.icon(profile),
+                size: 22,
+                color: focused
+                    ? TvAppTokens.of(context).onAccent
+                    : ProfileLooks.color(profile, context: context),
+              ),
               const SizedBox(width: 8),
-              Text(profile.name,
-                  style: TvTokens.ui(TvDimens.label,
-                      weight: FontWeight.w700, color: fg)),
+              Text(
+                tvProfileLabel(context, profile),
+                style: TvAppTokens.of(context)
+                    .ui(TvDimens.label, weight: FontWeight.w700, color: fg),
+              ),
             ],
           ),
         );
@@ -1513,60 +1714,3 @@ class _ProfileChip extends StatelessWidget {
   }
 }
 
-/// Une tuile carrée focusable (icône + libellé). Focus = fond braise + lueur.
-class _HubTile extends StatelessWidget {
-  const _HubTile({
-    required this.meta,
-    required this.onSelect,
-    this.autofocus = false,
-    this.compact = false,
-  });
-  final ({IconData icon, String label}) meta;
-  final VoidCallback onSelect;
-  final bool autofocus;
-
-  /// Vrai quand les rangées sont là : la tuile laisse la place au contenu.
-  final bool compact;
-
-  @override
-  Widget build(BuildContext context) {
-    final double side = compact ? 124 : 190;
-    final double icon = compact ? 36 : 64;
-    final double gap = compact ? 8 : 18;
-    return TvFocusBuilder(
-      autofocus: autofocus,
-      scale: compact ? TvFocusScale.small : TvFocusScale.large,
-      onSelect: onSelect,
-      builder: (BuildContext context, bool focused) {
-        final Color fg = focused ? TvTokens.onAccent : TvTokens.text;
-        return Container(
-          width: side,
-          height: side,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: focused ? TvTokens.accent : TvTokens.card,
-            borderRadius: BorderRadius.circular(TvTokens.rCard),
-            border: Border.all(
-                color: focused ? TvTokens.accent : TvTokens.line,
-                width: focused ? 2 : 1),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              Icon(meta.icon,
-                  size: icon,
-                  color: focused ? TvTokens.onAccent : TvTokens.accent),
-              SizedBox(height: gap),
-              Text(meta.label,
-                  style: TvTokens.ui(
-                    compact ? TvDimens.label : TvDimens.titleS,
-                    weight: FontWeight.w700,
-                    color: fg,
-                  )),
-            ],
-          ),
-        );
-      },
-    );
-  }
-}

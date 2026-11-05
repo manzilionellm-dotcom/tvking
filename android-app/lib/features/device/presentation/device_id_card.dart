@@ -100,6 +100,7 @@ class _DeviceIdCardState extends State<DeviceIdCard> {
               Expanded(
                 child: SelectableText(
                   display,
+                  textDirection: TextDirection.ltr,
                   style: AppTextStyles.bodyLarge.copyWith(
                     fontFamily: 'monospace',
                     fontSize: 18,

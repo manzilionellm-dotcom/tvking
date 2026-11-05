@@ -15,6 +15,8 @@
 // =========================================================
 
 import 'package:flutter/material.dart';
+
+import '../../tv/core/tv_field_keys.dart';
 import 'package:flutter/services.dart';
 
 import '../../../core/theme/app_colors.dart';
@@ -192,7 +194,8 @@ class _AdminClientEditSheetState extends State<AdminClientEditSheet> {
                 ),
                 const SizedBox(height: 16),
                 _label('MAC du client'),
-                TextField(
+                TvFieldKeys(
+                  child: TextField(
                   controller: _macCtrl,
                   enabled: !_isEdit, // MAC immuable en modif
                   autocorrect: false,
@@ -206,13 +209,16 @@ class _AdminClientEditSheetState extends State<AdminClientEditSheet> {
                   style: AppTextStyles.bodyLarge.copyWith(
                     fontFamily: 'monospace',
                   ),
+                  ),
                 ),
                 const SizedBox(height: 14),
                 _label('Nom du client (optionnel)'),
-                TextField(
-                  controller: _nameCtrl,
-                  decoration: const InputDecoration(
-                    hintText: 'Ex : Lionel, Salon, Maman…',
+                TvFieldKeys(
+                  child: TextField(
+                    controller: _nameCtrl,
+                    decoration: const InputDecoration(
+                      hintText: 'Ex : Lionel, Salon, Maman…',
+                    ),
                   ),
                 ),
                 const SizedBox(height: 20),
@@ -221,56 +227,83 @@ class _AdminClientEditSheetState extends State<AdminClientEditSheet> {
                 _typeSwitcher(),
                 const SizedBox(height: 14),
                 _label('Nom de la playlist (optionnel)'),
-                TextField(
-                  controller: _playlistNameCtrl,
-                  decoration: const InputDecoration(
-                    hintText: 'Défaut : "Abonnement IPTV"',
+                TvFieldKeys(
+                  child: TextField(
+                    controller: _playlistNameCtrl,
+                    decoration: const InputDecoration(
+                      hintText: 'Défaut : "Abonnement IPTV"',
+                    ),
                   ),
                 ),
                 const SizedBox(height: 14),
                 if (_type == 'm3u') ...<Widget>[
                   _label('URL M3U'),
-                  TextField(
+                  TvFieldKeys(
+                    child: TextField(
                     controller: _m3uUrlCtrl,
                     keyboardType: TextInputType.url,
                     autocorrect: false,
+                    enableSuggestions: false,
+                    enableIMEPersonalizedLearning: false,
+                    textCapitalization: TextCapitalization.none,
+                    smartDashesType: SmartDashesType.disabled,
+                    smartQuotesType: SmartQuotesType.disabled,
                     decoration: const InputDecoration(
                       hintText:
                           'http://serveur.com/get.php?username=…&type=m3u_plus',
                     ),
+                    ),
                   ),
                   const SizedBox(height: 12),
                   _label('URL EPG (optionnel)'),
-                  TextField(
+                  TvFieldKeys(
+                    child: TextField(
                     controller: _epgUrlCtrl,
                     keyboardType: TextInputType.url,
                     autocorrect: false,
+                    enableSuggestions: false,
+                    enableIMEPersonalizedLearning: false,
+                    textCapitalization: TextCapitalization.none,
+                    smartDashesType: SmartDashesType.disabled,
+                    smartQuotesType: SmartQuotesType.disabled,
                     decoration: const InputDecoration(
                       hintText: 'http://serveur.com/xmltv.php?…',
+                    ),
                     ),
                   ),
                 ] else ...<Widget>[
                   _label('Serveur Xtream'),
-                  TextField(
+                  TvFieldKeys(
+                    child: TextField(
                     controller: _serverCtrl,
                     keyboardType: TextInputType.url,
                     autocorrect: false,
+                    enableSuggestions: false,
+                    enableIMEPersonalizedLearning: false,
+                    textCapitalization: TextCapitalization.none,
+                    smartDashesType: SmartDashesType.disabled,
+                    smartQuotesType: SmartQuotesType.disabled,
                     decoration: const InputDecoration(
                       hintText: 'http://serveur.com:8080',
+                    ),
                     ),
                   ),
                   const SizedBox(height: 12),
                   _label('Utilisateur'),
-                  TextField(
-                    controller: _usernameCtrl,
-                    autocorrect: false,
+                  TvFieldKeys(
+                    child: TextField(
+                      controller: _usernameCtrl,
+                      autocorrect: false,
+                    ),
                   ),
                   const SizedBox(height: 12),
                   _label('Mot de passe'),
-                  TextField(
-                    controller: _passwordCtrl,
-                    obscureText: true,
-                    autocorrect: false,
+                  TvFieldKeys(
+                    child: TextField(
+                      controller: _passwordCtrl,
+                      obscureText: true,
+                      autocorrect: false,
+                    ),
                   ),
                 ],
                 const SizedBox(height: 28),

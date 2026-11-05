@@ -1,0 +1,1608 @@
+diff --git a/lib/features/channels/domain/channel_genre.dart b/lib/features/channels/domain/channel_genre.dart
+index fc6bbab..5c29fa2 100644
+--- a/lib/features/channels/domain/channel_genre.dart
++++ b/lib/features/channels/domain/channel_genre.dart
+@@ -64,6 +64,14 @@ enum ChannelQuality {
+ }
+ 
+ abstract final class ChannelClassifier {
++  /// Seule une catégorie explicitement réservée aux adultes fait foi.
++  /// Les mots ambigus « sex », « sexy », « vivid », etc. sont exclus.
++  static bool isAdultCategory(String category) {
++    final String normalized = _normalize(category);
++    if (_containsAny(normalized, const <String>['adult swim'])) return false;
++    return _containsAny(normalized, _kAdultKeywords);
++  }
++
+   // -------------------------------------------------------
+   //  GENRE
+   // -------------------------------------------------------
+@@ -74,7 +82,9 @@ abstract final class ChannelClassifier {
+     // Ordre critique : on teste les genres les plus SPÉCIFIQUES
+     // d'abord (sinon "kids" capture des chaînes "kids sport").
+ 
+-    if (_containsAny(text, _kAdultKeywords)) return ChannelGenre.adult;
++    // Le titre d'une œuvre n'est pas une catégorie fournisseur : « Sex
++    // Education », « xXx » et « Adult Swim » ne prouvent aucun contenu adulte.
++    if (isAdultCategory(category)) return ChannelGenre.adult;
+     if (_containsAny(text, _kKidsKeywords)) return ChannelGenre.kids;
+     if (_containsAny(text, _kSportsKeywords)) return ChannelGenre.sports;
+     if (_containsAny(text, _kNewsKeywords)) return ChannelGenre.news;
+@@ -143,8 +153,7 @@ abstract final class ChannelClassifier {
+   // BLOCS PLEINS AJOUTÉS (photo client « #### PRIME ▓▓ 60fps #### ») : les
+   // panels décorent aussi avec des caractères de REMPLISSAGE Unicode
+   // (▓ ▒ ░ █ ▄ ▀ …) que la liste d'origine ne couvrait pas.
+-  static final RegExp _decorations =
+-      RegExp(r'[#*=•‣◆◇■□●○▪▫▓▒░█▄▀▌▐▬▤▥▦▧▨▩]+');
++  static final RegExp _decorations = RegExp(r'[#*=•‣◆◇■□●○▪▫▓▒░█▄▀▌▐▬▤▥▦▧▨▩]+');
+   static final RegExp _spaces = RegExp(r'\s+');
+ 
+   /// Mémo local : les catégories DISTINCTES se comptent en dizaines, mais
+@@ -201,12 +210,28 @@ abstract final class ChannelClassifier {
+   static String _normalize(String s) {
+     String out = s.toLowerCase();
+     const Map<String, String> accents = <String, String>{
+-      'à': 'a', 'á': 'a', 'â': 'a', 'ä': 'a',
+-      'è': 'e', 'é': 'e', 'ê': 'e', 'ë': 'e',
+-      'ì': 'i', 'í': 'i', 'î': 'i', 'ï': 'i',
+-      'ò': 'o', 'ó': 'o', 'ô': 'o', 'ö': 'o',
+-      'ù': 'u', 'ú': 'u', 'û': 'u', 'ü': 'u',
+-      'ç': 'c', 'ñ': 'n',
++      'à': 'a',
++      'á': 'a',
++      'â': 'a',
++      'ä': 'a',
++      'è': 'e',
++      'é': 'e',
++      'ê': 'e',
++      'ë': 'e',
++      'ì': 'i',
++      'í': 'i',
++      'î': 'i',
++      'ï': 'i',
++      'ò': 'o',
++      'ó': 'o',
++      'ô': 'o',
++      'ö': 'o',
++      'ù': 'u',
++      'ú': 'u',
++      'û': 'u',
++      'ü': 'u',
++      'ç': 'c',
++      'ñ': 'n',
+     };
+     accents.forEach((String k, String v) => out = out.replaceAll(k, v));
+     return out;
+@@ -223,8 +248,9 @@ abstract final class ChannelClassifier {
+   /// Évite que "sport" matche dans "transport".
+   static bool _containsAsToken(String text, String needle) {
+     if (needle.isEmpty) return false;
+-    final RegExp pattern =
+-        RegExp(r'(^|[^a-z0-9])' + RegExp.escape(needle) + r'($|[^a-z0-9])');
++    final RegExp pattern = RegExp(
++      r'(^|[^a-z0-9])' + RegExp.escape(needle) + r'($|[^a-z0-9])',
++    );
+     return pattern.hasMatch(text);
+   }
+ 
+@@ -245,80 +271,230 @@ abstract final class ChannelClassifier {
+   //  Tables de mots-clés
+   // -------------------------------------------------------
+ 
+-  // Marqueurs « adulte ». Liste élargie pour que le rayon « Adulte »
+-  // apparaisse vraiment : les fournisseurs étiquettent l'adulte de mille
+-  // façons (« +18 », « XXX », « PORN », marques connues…). On reste sur
+-  // des termes À HAUTE PRÉCISION (recherchés comme tokens, donc bornés
+-  // par des non-lettres) pour ne PAS classer par erreur des chaînes
+-  // normales. Tous ces mots envoient la chaîne dans le rayon Adulte.
++  // Marqueurs de catégories explicites, jamais de titres de films/séries.
+   static const List<String> _kAdultKeywords = <String>[
+-    'xxx', 'adult', 'adulte', 'adultes', 'porn', 'porno',
+-    '18+', '+18', 'x-rated', 'xrated',
+-    'erotic', 'erotik', 'erotica', 'erotique',
+-    'sex', 'sexe', 'sexy', 'sexo',
+-    'playboy', 'penthouse', 'hustler', 'brazzers', 'dorcel',
+-    'vixen', 'vivid', 'redlight', 'colmax', 'pinko', 'naughty', 'nubile',
++    'xxx',
++    'adult',
++    'adults',
++    'adulte',
++    'adultes',
++    'porn',
++    'porno',
++    '18+',
++    '+18',
++    'x-rated',
++    'xrated',
++    'pornography',
++    'erotic',
++    'erotik',
++    'erotica',
++    'erotique',
++    'playboy',
++    'penthouse',
++    'hustler',
++    'brazzers',
++    'dorcel',
+   ];
+ 
+   static const List<String> _kSportsKeywords = <String>[
+-    'sport', 'sports', 'football', 'foot', 'soccer', 'basket',
+-    'basketball', 'nba', 'nfl', 'mlb', 'nhl', 'tennis', 'golf',
+-    'rugby', 'cricket', 'hockey', 'boxe', 'boxing', 'mma', 'ufc',
+-    'wwe', 'wrestling', 'formula', 'formule', 'f1', 'motogp',
+-    'espn', 'bein', 'rmc', 'eurosport', 'sky sport', 'fox sport',
+-    'tnt sport', 'canal+sport', 'canal sport', 'ligue', 'premier league',
+-    'champions', 'uefa', 'fifa', 'nba tv', 'red bull tv',
+-    'olympic', 'olympics', 'jeux olympiques',
++    'sport',
++    'sports',
++    'football',
++    'foot',
++    'soccer',
++    'basket',
++    'basketball',
++    'nba',
++    'nfl',
++    'mlb',
++    'nhl',
++    'tennis',
++    'golf',
++    'rugby',
++    'cricket',
++    'hockey',
++    'boxe',
++    'boxing',
++    'mma',
++    'ufc',
++    'wwe',
++    'wrestling',
++    'formula',
++    'formule',
++    'f1',
++    'motogp',
++    'espn',
++    'bein',
++    'rmc',
++    'eurosport',
++    'sky sport',
++    'fox sport',
++    'tnt sport',
++    'canal+sport',
++    'canal sport',
++    'ligue',
++    'premier league',
++    'champions',
++    'uefa',
++    'fifa',
++    'nba tv',
++    'red bull tv',
++    'olympic',
++    'olympics',
++    'jeux olympiques',
+   ];
+ 
+   static const List<String> _kMoviesKeywords = <String>[
+-    'cinema', 'cinema', 'movie', 'movies', 'film', 'films',
+-    'hbo', 'showtime', 'starz', 'cinemax', 'mgm', 'amc',
+-    'paramount', 'sundance', 'lifetime movie', 'tcm',
+-    'action movies', 'comedy movies', 'horror movies',
+-    'canal+ cinema', 'cinepolis', 'cine',
++    'cinema',
++    'cinema',
++    'movie',
++    'movies',
++    'film',
++    'films',
++    'hbo',
++    'showtime',
++    'starz',
++    'cinemax',
++    'mgm',
++    'amc',
++    'paramount',
++    'sundance',
++    'lifetime movie',
++    'tcm',
++    'action movies',
++    'comedy movies',
++    'horror movies',
++    'canal+ cinema',
++    'cinepolis',
++    'cine',
+   ];
+ 
+   static const List<String> _kSeriesKeywords = <String>[
+-    'series', 'serie', 'tv series', 'drama', 'sitcom',
+-    'netflix', 'amazon', 'hulu', 'paramount+', 'apple tv+',
+-    'show', 'shows', 'showtime series',
++    'series',
++    'serie',
++    'tv series',
++    'drama',
++    'sitcom',
++    'netflix',
++    'amazon',
++    'hulu',
++    'paramount+',
++    'apple tv+',
++    'show',
++    'shows',
++    'showtime series',
+   ];
+ 
+   static const List<String> _kKidsKeywords = <String>[
+-    'kids', 'kid', 'enfant', 'enfants', 'jeunesse',
+-    'cartoon', 'cartoons', 'disney', 'nick', 'nickelodeon',
+-    'boomerang', 'gulli', 'tiji', 'piwi', 'baby',
+-    'junior', 'cbeebies', 'pbs kids', 'duck tv', 'tv ja',
++    'kids',
++    'kid',
++    'enfant',
++    'enfants',
++    'jeunesse',
++    'cartoon',
++    'cartoons',
++    'disney',
++    'nick',
++    'nickelodeon',
++    'boomerang',
++    'gulli',
++    'tiji',
++    'piwi',
++    'baby',
++    'junior',
++    'cbeebies',
++    'pbs kids',
++    'duck tv',
++    'tv ja',
+   ];
+ 
+   static const List<String> _kNewsKeywords = <String>[
+-    'news', 'info', 'bfm', 'cnn', 'fox news', 'bbc',
+-    'sky news', 'msnbc', 'al jazeera', 'aljazeera',
+-    'rt', 'cnbc', 'bloomberg', 'tf1', 'france 2', 'france info',
+-    'france 24', 'i24', 'euronews', 'lci', 'cnews', 'public sénat',
+-    'rtl info', 'la chaîne info',
++    'news',
++    'info',
++    'bfm',
++    'cnn',
++    'fox news',
++    'bbc',
++    'sky news',
++    'msnbc',
++    'al jazeera',
++    'aljazeera',
++    'rt',
++    'cnbc',
++    'bloomberg',
++    'tf1',
++    'france 2',
++    'france info',
++    'france 24',
++    'i24',
++    'euronews',
++    'lci',
++    'cnews',
++    'public sénat',
++    'rtl info',
++    'la chaîne info',
+   ];
+ 
+   static const List<String> _kMusicKeywords = <String>[
+-    'music', 'musique', 'mtv', 'vh1', 'mcm', 'nrj', 'm6 music',
+-    'trace', 'fun radio', 'rfm tv', 'rfm', 'd17', 'cherie',
+-    'mezzo', 'classica', 'hits',
++    'music',
++    'musique',
++    'mtv',
++    'vh1',
++    'mcm',
++    'nrj',
++    'm6 music',
++    'trace',
++    'fun radio',
++    'rfm tv',
++    'rfm',
++    'd17',
++    'cherie',
++    'mezzo',
++    'classica',
++    'hits',
+   ];
+ 
+   static const List<String> _kDocKeywords = <String>[
+-    'doc', 'docu', 'documentary', 'documentaire',
+-    'discovery', 'national geographic', 'nat geo', 'natgeo',
+-    'history', 'animal planet', 'crime', 'investigation',
+-    'planete', 'planete+', 'planete tv', 'arte',
+-    'rmc decouverte', 'rmc story', 'science', 'curiosity',
+-    'travel channel', 'voyage',
++    'doc',
++    'docu',
++    'documentary',
++    'documentaire',
++    'discovery',
++    'national geographic',
++    'nat geo',
++    'natgeo',
++    'history',
++    'animal planet',
++    'crime',
++    'investigation',
++    'planete',
++    'planete+',
++    'planete tv',
++    'arte',
++    'rmc decouverte',
++    'rmc story',
++    'science',
++    'curiosity',
++    'travel channel',
++    'voyage',
+   ];
+ 
+   static const List<String> _kEntertainmentKeywords = <String>[
+-    'entertainment', 'divertissement', 'comedy', 'comedy central',
+-    'tlc', 'reality', 'tf1', 'm6', 'tmc', 'tfx', 'nrj 12',
+-    'c8', 'la 5', 'w9', 'chérie 25',
++    'entertainment',
++    'divertissement',
++    'comedy',
++    'comedy central',
++    'tlc',
++    'reality',
++    'tf1',
++    'm6',
++    'tmc',
++    'tfx',
++    'nrj 12',
++    'c8',
++    'la 5',
++    'w9',
++    'chérie 25',
+   ];
+ 
+   static const Map<String, CountryInfo> _kCountries = <String, CountryInfo>{
+@@ -428,9 +604,33 @@ abstract final class ChannelClassifier {
+   }
+ 
+   static const List<String> _kAllCountryPatterns = <String>[
+-    'usa', 'uk', 'gb', 'france', 'french', 'german', 'italy', 'italia',
+-    'spain', 'spanish', 'portugal', 'brazil', 'brasil', 'arabic', 'arab',
+-    'turkish', 'greek', 'polish', 'russian', 'japan', 'korea', 'chinese',
+-    'indian', 'hindi', 'african', 'latino', 'european', 'asian',
++    'usa',
++    'uk',
++    'gb',
++    'france',
++    'french',
++    'german',
++    'italy',
++    'italia',
++    'spain',
++    'spanish',
++    'portugal',
++    'brazil',
++    'brasil',
++    'arabic',
++    'arab',
++    'turkish',
++    'greek',
++    'polish',
++    'russian',
++    'japan',
++    'korea',
++    'chinese',
++    'indian',
++    'hindi',
++    'african',
++    'latino',
++    'european',
++    'asian',
+   ];
+ }
+diff --git a/lib/features/security/data/age_gate_settings.dart b/lib/features/security/data/age_gate_settings.dart
+index 2411976..f62a81a 100644
+--- a/lib/features/security/data/age_gate_settings.dart
++++ b/lib/features/security/data/age_gate_settings.dart
+@@ -21,25 +21,29 @@ class AgeGateSettings {
+ 
+   static const String _kConfirmedAt = 'security.age_gate_confirmed_at';
+ 
++  // Une confirmation de l'app dédiée ne vaut pas pour tous les profils.
++  String _key(String? profileId) =>
++      profileId == null ? _kConfirmedAt : '$_kConfirmedAt.profile.$profileId';
++
+   /// `true` si l'utilisateur a déjà confirmé avoir 18 ans ou plus.
+-  Future<bool> isConfirmed() async {
++  Future<bool> isConfirmed({String? profileId}) async {
+     final SharedPreferences prefs = await SharedPreferences.getInstance();
+-    return prefs.containsKey(_kConfirmedAt);
++    return prefs.containsKey(_key(profileId));
+   }
+ 
+   /// Mémorise la confirmation. Stocke l'epoch ms pour pouvoir, plus
+   /// tard, forcer une re-confirmation tous les N mois si la loi
+   /// devient plus stricte.
+-  Future<void> markConfirmed() async {
++  Future<void> markConfirmed({String? profileId}) async {
+     final SharedPreferences prefs = await SharedPreferences.getInstance();
+-    await prefs.setInt(_kConfirmedAt, DateTime.now().millisecondsSinceEpoch);
++    await prefs.setInt(_key(profileId), DateTime.now().millisecondsSinceEpoch);
+   }
+ 
+   /// Annule la confirmation. Utilisé si l'utilisateur clique "Non,
+   /// je n'ai pas 18 ans" sur le modal (et qu'on doit le sortir de
+   /// l'app proprement).
+-  Future<void> clear() async {
++  Future<void> clear({String? profileId}) async {
+     final SharedPreferences prefs = await SharedPreferences.getInstance();
+-    await prefs.remove(_kConfirmedAt);
++    await prefs.remove(_key(profileId));
+   }
+ }
+diff --git a/lib/features/simple_home/presentation/widgets/adult_access_dialog.dart b/lib/features/simple_home/presentation/widgets/adult_access_dialog.dart
+index f512725..6e1a523 100644
+--- a/lib/features/simple_home/presentation/widgets/adult_access_dialog.dart
++++ b/lib/features/simple_home/presentation/widgets/adult_access_dialog.dart
+@@ -5,6 +5,8 @@ import '../../../../core/i18n/l10n_extension.dart';
+ import '../../../../core/theme/app_colors.dart';
+ import '../../../../core/theme/app_text_styles.dart';
+ import '../../../security/data/app_pin_settings.dart';
++import '../../../security/data/age_gate_settings.dart';
++import '../../../../core/profiles/profiles_repository.dart';
+ 
+ /// Point d'entrée 18+ de l'accueil.
+ ///
+@@ -15,14 +17,27 @@ import '../../../security/data/app_pin_settings.dart';
+ /// révoqué au changement de profil par l'appelant, qui doit revérifier le
+ /// profil après cet await.
+ Future<bool> requestHomeAdultAccess(BuildContext context) async {
++  final String profileId = ProfilesRepository.instance.active.id;
+   final bool protected = !await AppPinSettings.instance.isUsingDefault();
+   if (!context.mounted) return false;
+-  return await showDialog<bool>(
++  // La déclaration d'âge est mémorisée par profil. Un PIN volontaire reste
++  // demandé ; la confirmation simple ne réapparaît plus à chaque entrée.
++  if (!protected &&
++      await AgeGateSettings.instance.isConfirmed(profileId: profileId)) {
++    return context.mounted;
++  }
++  if (!context.mounted) return false;
++  final bool accepted =
++      await showDialog<bool>(
+         context: context,
+         builder: (_) =>
+             protected ? const _AdultPinDialog() : const _AdultConfirmDialog(),
+       ) ??
+       false;
++  if (accepted && !protected) {
++    await AgeGateSettings.instance.markConfirmed(profileId: profileId);
++  }
++  return accepted;
+ }
+ 
+ /// Confirmation d'âge en un geste : aucun code, aucune saisie.
+@@ -45,18 +60,23 @@ class _AdultConfirmDialog extends StatelessWidget {
+               shape: BoxShape.circle,
+               color: colors.textPrimary,
+             ),
+-            child: Text('18+',
+-                style: AppTextStyles.bodyMedium.copyWith(
+-                    color: colors.canvas, fontWeight: FontWeight.w800)),
++            child: Text(
++              '18+',
++              style: AppTextStyles.bodyMedium.copyWith(
++                color: colors.canvas,
++                fontWeight: FontWeight.w800,
++              ),
++            ),
+           ),
+           const SizedBox(height: 14),
+           Text(l.homeAdultConfirmTitle, textAlign: TextAlign.center),
+         ],
+       ),
+-      content: Text(l.homeAdultConfirmHint,
+-          textAlign: TextAlign.center,
+-          style:
+-              AppTextStyles.bodyMedium.copyWith(color: colors.textSecondary)),
++      content: Text(
++        l.homeAdultConfirmHint,
++        textAlign: TextAlign.center,
++        style: AppTextStyles.bodyMedium.copyWith(color: colors.textSecondary),
++      ),
+       actionsAlignment: MainAxisAlignment.center,
+       actionsOverflowAlignment: OverflowBarAlignment.center,
+       actions: <Widget>[
+@@ -118,42 +138,41 @@ class _AdultPinDialogState extends State<_AdultPinDialog> {
+ 
+   @override
+   Widget build(BuildContext context) => AlertDialog(
+-        scrollable: true,
+-        title: Text(context.l10n.homeTabAdult),
+-        content: Column(
+-          mainAxisSize: MainAxisSize.min,
+-          crossAxisAlignment: CrossAxisAlignment.start,
+-          children: <Widget>[
+-            Text(context.l10n.tvParentalEnterCode,
+-                style: AppTextStyles.bodyMedium),
+-            const SizedBox(height: 12),
+-            TextField(
+-              controller: _pin,
+-              autofocus: true,
+-              obscureText: true,
+-              maxLength: 8,
+-              keyboardType: TextInputType.number,
+-              inputFormatters: <TextInputFormatter>[
+-                FilteringTextInputFormatter.digitsOnly,
+-              ],
+-              decoration: InputDecoration(
+-                labelText: context.l10n.tvParentalEnterCode,
+-                errorText: _error,
+-                errorMaxLines: 3,
+-              ),
+-              onSubmitted: (_) => _verify(),
+-            ),
++    scrollable: true,
++    title: Text(context.l10n.homeTabAdult),
++    content: Column(
++      mainAxisSize: MainAxisSize.min,
++      crossAxisAlignment: CrossAxisAlignment.start,
++      children: <Widget>[
++        Text(context.l10n.tvParentalEnterCode, style: AppTextStyles.bodyMedium),
++        const SizedBox(height: 12),
++        TextField(
++          controller: _pin,
++          autofocus: true,
++          obscureText: true,
++          maxLength: 8,
++          keyboardType: TextInputType.number,
++          inputFormatters: <TextInputFormatter>[
++            FilteringTextInputFormatter.digitsOnly,
+           ],
+-        ),
+-        actions: <Widget>[
+-          TextButton(
+-            onPressed: () => Navigator.of(context).pop(false),
+-            child: Text(context.l10n.buttonCancel),
+-          ),
+-          FilledButton(
+-            onPressed: _checking ? null : _verify,
+-            child: Text(context.l10n.buttonContinue),
++          decoration: InputDecoration(
++            labelText: context.l10n.tvParentalEnterCode,
++            errorText: _error,
++            errorMaxLines: 3,
+           ),
+-        ],
+-      );
++          onSubmitted: (_) => _verify(),
++        ),
++      ],
++    ),
++    actions: <Widget>[
++      TextButton(
++        onPressed: () => Navigator.of(context).pop(false),
++        child: Text(context.l10n.buttonCancel),
++      ),
++      FilledButton(
++        onPressed: _checking ? null : _verify,
++        child: Text(context.l10n.buttonContinue),
++      ),
++    ],
++  );
+ }
+diff --git a/lib/features/simple_home/presentation/widgets/category_browser_view.dart b/lib/features/simple_home/presentation/widgets/category_browser_view.dart
+index fe03b0d..ccf1433 100644
+--- a/lib/features/simple_home/presentation/widgets/category_browser_view.dart
++++ b/lib/features/simple_home/presentation/widgets/category_browser_view.dart
+@@ -105,8 +105,11 @@ enum _Bucket {
+ _Bucket _bucketOfCategory(String category, List<Channel> channels) {
+   // Les VOD sont affichées dans CinemaScreen. Le nom d'un bouquet « cinéma »
+   // ne transforme donc plus ses chaînes en films à la demande.
+-  return channels.any((Channel c) => ContentPartition.isAdult(c.name, c.category))
+-      ? _Bucket.adult : _Bucket.tv;
++  return channels.any(
++        (Channel c) => ContentPartition.isAdult(c.name, c.category),
++      )
++      ? _Bucket.adult
++      : _Bucket.tv;
+ }
+ 
+ class CategoryBrowserView extends StatefulWidget {
+@@ -142,6 +145,7 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
+   // L'autorisation appartient à cet accueil et à son profil courant.
+   // Elle n'est jamais persistée et disparaît au retour vers TV / à la
+   // modification du profil / dès que le Mode Enfants devient actif.
++  static const String _allAdultLive = '\u0000adult-live';
+   bool _adultUnlocked = false;
+   bool _askingAdultAccess = false;
+   int _accessGeneration = 0;
+@@ -160,8 +164,11 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
+       _visibleFor = widget.channels;
+       _visibleAllowsAdult = allow;
+       _visibleCache = widget.channels
+-          .where((Channel c) => ContentPartition.isLive(c) &&
+-              ContentPartition.visible(c.name, c.category, adultOnly: allow))
++          .where(
++            (Channel c) =>
++                ContentPartition.isLive(c) &&
++                ContentPartition.visible(c.name, c.category, adultOnly: allow),
++          )
+           .toList(growable: false);
+     }
+     return _visibleCache!;
+@@ -241,8 +248,9 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
+     //   · rail « Récemment regardées » (exclusions).
+     WatchHistoryRepository.instance.addListener(_onWatchHistoryChanged);
+     PlaybackPositionRepository.instance.addListener(_onForYouSourceChanged);
+-    _forYouRecentSub = RecentlyWatchedRepository.instance.stream
+-        .listen((List<String> _) => _onForYouSourceChanged());
++    _forYouRecentSub = RecentlyWatchedRepository.instance.stream.listen(
++      (List<String> _) => _onForYouSourceChanged(),
++    );
+     // ignore: discarded_futures
+     _recomputeForYou();
+   }
+@@ -323,9 +331,12 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
+                   if (hidden.isEmpty)
+                     Padding(
+                       padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+-                      child: Text(ctx.l10n.homeHiddenCategoriesEmpty,
+-                          style: AppTextStyles.bodyMedium.copyWith(
+-                              color: AppColors.lumiere(context).textSecondary)),
++                      child: Text(
++                        ctx.l10n.homeHiddenCategoriesEmpty,
++                        style: AppTextStyles.bodyMedium.copyWith(
++                          color: AppColors.lumiere(context).textSecondary,
++                        ),
++                      ),
+                     )
+                   else
+                     Flexible(
+@@ -334,17 +345,20 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
+                         children: <Widget>[
+                           for (final String c in hidden)
+                             ListTile(
+-                              leading: Icon(Icons.folder_off_rounded,
+-                                  color:
+-                                      AppColors.lumiere(context).textSecondary,
+-                                  size: 20),
+-                              title: Text(c,
+-                                  maxLines: 1,
+-                                  overflow: TextOverflow.ellipsis,
+-                                  style: AppTextStyles.bodyMedium.copyWith(
+-                                    color: AppColors.lumiere(context)
+-                                        .textSecondary,
+-                                  )),
++                              leading: Icon(
++                                Icons.folder_off_rounded,
++                                color: AppColors.lumiere(context).textSecondary,
++                                size: 20,
++                              ),
++                              title: Text(
++                                c,
++                                maxLines: 1,
++                                overflow: TextOverflow.ellipsis,
++                                style: AppTextStyles.bodyMedium.copyWith(
++                                  color: AppColors.lumiere(context)
++                                      .textSecondary,
++                                ),
++                              ),
+                               trailing: TextButton(
+                                 onPressed: () =>
+                                     HiddenCategoriesStore.instance.unhide(c),
+@@ -386,7 +400,10 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
+ 
+   /// Construit une ligne de groupe réordonnable (capture propre de l'index).
+   Widget _categoryRowWidget(
+-      List<String> cats, int i, Map<String, List<Channel>> grouped) {
++    List<String> cats,
++    int i,
++    Map<String, List<Channel>> grouped,
++  ) {
+     final String cat = cats[i];
+     final bool reordering = _reorderCat == cat;
+     return Padding(
+@@ -420,8 +437,12 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
+   /// espaces vides pour garder des largeurs égales sur la dernière ligne.
+   /// À 1 colonne (téléphone portrait) on rend la tuile telle quelle —
+   /// AUCUN changement visuel par rapport à avant.
+-  Widget _categoryRowsChunk(List<String> cats, int start, int cols,
+-      Map<String, List<Channel>> grouped) {
++  Widget _categoryRowsChunk(
++    List<String> cats,
++    int start,
++    int cols,
++    Map<String, List<Channel>> grouped,
++  ) {
+     if (cols <= 1) return _categoryRowWidget(cats, start, grouped);
+     return Row(
+       crossAxisAlignment: CrossAxisAlignment.start,
+@@ -484,13 +505,21 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
+         final List<PlaybackPosition> items = <PlaybackPosition>[
+           for (final PlaybackPosition p
+               in PlaybackPositionRepository.instance.entries)
+-            if (p.progress > 0.02 && p.progress < 0.95 && p.category != null &&
+-                ContentPartition.visible(p.name, p.category!, adultOnly: false) &&
+-                activeSources.any(p.key.endsWith)) p,
++            if (p.progress > 0.02 &&
++                p.progress < 0.95 &&
++                p.category != null &&
++                ContentPartition.visible(
++                  p.name,
++                  p.category!,
++                  adultOnly: false,
++                ) &&
++                activeSources.any(p.key.endsWith))
++              p,
+         ];
+         if (items.isEmpty) return const SizedBox.shrink();
+-        final List<PlaybackPosition> shown =
+-            items.length > 12 ? items.sublist(0, 12) : items;
++        final List<PlaybackPosition> shown = items.length > 12
++            ? items.sublist(0, 12)
++            : items;
+         return Column(
+           crossAxisAlignment: CrossAxisAlignment.start,
+           children: <Widget>[
+@@ -525,9 +554,10 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
+               ),
+             ),
+             Divider(
+-                height: 1,
+-                thickness: 0.5,
+-                color: AppColors.lumiere(context).elevated),
++              height: 1,
++              thickness: 0.5,
++              color: AppColors.lumiere(context).elevated,
++            ),
+           ],
+         );
+       },
+@@ -582,9 +612,10 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
+               ),
+             ),
+             Divider(
+-                height: 1,
+-                thickness: 0.5,
+-                color: AppColors.lumiere(context).elevated),
++              height: 1,
++              thickness: 0.5,
++              color: AppColors.lumiere(context).elevated,
++            ),
+           ],
+         );
+       },
+@@ -631,8 +662,8 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
+   ///     liste des chaînes.
+   Future<void> _recomputeForYou() async {
+     // Signal minimal : au moins 3 chaînes distinctes regardées sur 30 jours.
+-    final Map<String, int> watchTime =
+-        await WatchHistoryRepository.instance.watchTimeByChannel(days: 30);
++    final Map<String, int> watchTime = await WatchHistoryRepository.instance
++        .watchTimeByChannel(days: 30);
+     int distinct = 0;
+     for (final int v in watchTime.values) {
+       if (v > 0) distinct++;
+@@ -687,8 +718,9 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
+       if (pool.isEmpty) continue;
+       final List<int> idx = List<int>.generate(pool.length, (int i) => i);
+       idx.sort((int a, int b) {
+-        final int byTime =
+-            (watchTime[pool[b].id] ?? 0).compareTo(watchTime[pool[a].id] ?? 0);
++        final int byTime = (watchTime[pool[b].id] ?? 0).compareTo(
++          watchTime[pool[a].id] ?? 0,
++        );
+         return byTime != 0 ? byTime : a.compareTo(b);
+       });
+       for (final int i in idx) {
+@@ -741,9 +773,10 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
+           ),
+         ),
+         Divider(
+-            height: 1,
+-            thickness: 0.5,
+-            color: AppColors.lumiere(context).elevated),
++          height: 1,
++          thickness: 0.5,
++          color: AppColors.lumiere(context).elevated,
++        ),
+       ],
+     );
+   }
+@@ -752,8 +785,9 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
+   /// (la requête SQLite ne dépend pas du filtre courant). En mode Privé
+   /// le tracking est désactivé → ce Future renvoie une map vide et on
+   /// bascule sur le repli « tendances du jour ».
+-  late final Future<Map<String, int>> _topFuture =
+-      WatchHistoryRepository.instance.watchTimeByChannel(days: 30);
++  late final Future<Map<String, int>> _topFuture = WatchHistoryRepository
++      .instance
++      .watchTimeByChannel(days: 30);
+ 
+   /// Sélection personnelle : historique réel complété par une rotation
+   /// des chaînes disponibles. Le titre ne prétend pas mesurer une audience
+@@ -762,8 +796,9 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
+     return FutureBuilder<Map<String, int>>(
+       future: _topFuture,
+       builder: (BuildContext context, AsyncSnapshot<Map<String, int>> snap) {
+-        final List<Channel> top =
+-            _computeTop(snap.data ?? const <String, int>{});
++        final List<Channel> top = _computeTop(
++          snap.data ?? const <String, int>{},
++        );
+         if (top.isEmpty) return const SizedBox.shrink();
+         return Column(
+           crossAxisAlignment: CrossAxisAlignment.start,
+@@ -793,9 +828,10 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
+               ),
+             ),
+             Divider(
+-                height: 1,
+-                thickness: 0.5,
+-                color: AppColors.lumiere(context).elevated),
++              height: 1,
++              thickness: 0.5,
++              color: AppColors.lumiere(context).elevated,
++            ),
+           ],
+         );
+       },
+@@ -811,12 +847,17 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
+     final Set<String> used = <String>{};
+ 
+     // 1) Classement réel par temps de visionnage (quand on a des données).
+-    final List<MapEntry<String, int>> ranked = watchTime.entries
+-        .where(
+-            (MapEntry<String, int> e) => e.value > 0 && byId.containsKey(e.key))
+-        .toList()
+-      ..sort((MapEntry<String, int> a, MapEntry<String, int> b) =>
+-          b.value.compareTo(a.value));
++    final List<MapEntry<String, int>> ranked =
++        watchTime.entries
++            .where(
++              (MapEntry<String, int> e) =>
++                  e.value > 0 && byId.containsKey(e.key),
++            )
++            .toList()
++          ..sort(
++            (MapEntry<String, int> a, MapEntry<String, int> b) =>
++                b.value.compareTo(a.value),
++          );
+     for (final MapEntry<String, int> e in ranked) {
+       top.add(byId[e.key]!);
+       used.add(e.key);
+@@ -856,13 +897,17 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
+       final String cat = raw.isEmpty ? noCat : raw;
+       (map[cat] ??= <Channel>[]).add(c);
+     }
++    // Une destination synthétique pour « Direct », indépendante des
++    // intitulés fournisseur. Elle n'est pas ajoutée aux cartes catégories.
+     return map;
+   }
+ 
+   @override
+   Widget build(BuildContext context) {
+     final Map<String, List<Channel>> grouped = _grouped();
+-    final bool inCategory = _selected != null && grouped.containsKey(_selected);
++    final bool allAdultLive = _selected == _allAdultLive && _canShowAdult;
++    final bool inCategory =
++        allAdultLive || (_selected != null && grouped.containsKey(_selected));
+ 
+     // On intercepte le « retour » système pour remonter d'abord de la
+     // liste des chaînes vers la liste des catégories (au lieu de quitter).
+@@ -872,7 +917,10 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
+         if (!didPop && inCategory) setState(() => _selected = null);
+       },
+       child: inCategory
+-          ? _buildChannelList(_selected!, grouped[_selected]!)
++          ? _buildChannelList(
++              _selected!,
++              allAdultLive ? _visibleChannels : grouped[_selected]!,
++            )
+           : _buildCategoryList(grouped),
+     );
+   }
+@@ -895,8 +943,9 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
+       if (!RepairFlags.mobileRadioLegacy) _Bucket.radio,
+       if (!_kidsMode) _Bucket.adult,
+     ];
+-    final _Bucket effective =
+-        _bucket == _Bucket.adult && _canShowAdult ? _Bucket.adult : _Bucket.tv;
++    final _Bucket effective = _bucket == _Bucket.adult && _canShowAdult
++        ? _Bucket.adult
++        : _Bucket.tv;
+ 
+     // Catégories visibles = celles du rayon actif (plus de « Tout »),
+     // RÉORDONNÉES selon le choix de l'usager, puis les MASQUÉES retirées.
+@@ -932,26 +981,54 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
+             // Parent AlwaysScrollable : le geste « tirer » doit marcher même
+             // quand le contenu tient dans l'écran (petite playlist).
+             physics: const BouncingScrollPhysics(
+-                parent: AlwaysScrollableScrollPhysics()),
++              parent: AlwaysScrollableScrollPhysics(),
++            ),
+             padding: EdgeInsets.only(
+               bottom: 16 + MediaQuery.paddingOf(context).bottom,
+             ),
+             children: <Widget>[
+               _buildFilterBar(ordered, effective),
+-              if (effective == _Bucket.adult) Padding(
+-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+-                child: Wrap(spacing: 12, runSpacing: 8, children: <Widget>[
+-                  Chip(label: Text(context.l10n.navDirect)),
+-                  for (final int tab in <int>[0, 1]) ActionChip(
+-                    label: Text(tab == 0 ? context.l10n.sectionMovies : context.l10n.sectionSeries),
+-                    onPressed: () {
+-                      if (!_canShowAdult) return;
+-                      Navigator.of(context).push<void>(MaterialPageRoute<void>(
+-                        builder: (_) => CinemaScreen(initialTab: tab, adultOnly: true)));
+-                    },
++              if (effective == _Bucket.adult)
++                Padding(
++                  padding: const EdgeInsets.symmetric(
++                    horizontal: 20,
++                    vertical: 12,
+                   ),
+-                ]),
+-              ),
++                  child: Wrap(
++                    spacing: 12,
++                    runSpacing: 8,
++                    children: <Widget>[
++                      ActionChip(
++                        label: Text(context.l10n.navDirect),
++                        onPressed: () {
++                          if (!_canShowAdult) return;
++                          // La liste reste dans cet écran : retour et révocation
++                          // du profil gardent ainsi leur comportement normal.
++                          setState(() => _selected = _allAdultLive);
++                        },
++                      ),
++                      for (final int tab in <int>[0, 1])
++                        ActionChip(
++                          label: Text(
++                            tab == 0
++                                ? context.l10n.sectionMovies
++                                : context.l10n.sectionSeries,
++                          ),
++                          onPressed: () {
++                            if (!_canShowAdult) return;
++                            Navigator.of(context).push<void>(
++                              MaterialPageRoute<void>(
++                                builder: (_) => CinemaScreen(
++                                  initialTab: tab,
++                                  adultOnly: true,
++                                ),
++                              ),
++                            );
++                          },
++                        ),
++                    ],
++                  ),
++                ),
+               if (effective != _Bucket.adult) ...<Widget>[
+                 if (widget.discoveryHeader != null) widget.discoveryHeader!,
+                 ResumeBanner(allowedChannels: _visibleChannels),
+@@ -969,21 +1046,25 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
+                   crossAxisAlignment: CrossAxisAlignment.start,
+                   children: <Widget>[
+                     Text(
+-                        effective == _Bucket.adult
+-                            ? context.l10n.homeTabAdult
+-                            : context.l10n.homeLibraryTitle,
+-                        style: AppTextStyles.headlineMedium.copyWith(
+-                          color: AppColors.lumiere(context).textPrimary,
+-                        )),
++                      effective == _Bucket.adult
++                          ? context.l10n.homeTabAdult
++                          : context.l10n.homeLibraryTitle,
++                      style: AppTextStyles.headlineMedium.copyWith(
++                        color: AppColors.lumiere(context).textPrimary,
++                      ),
++                    ),
+                     const SizedBox(height: 4),
+                     Text(
+-                        context.l10n.channelCount(cats.fold<int>(
+-                            0,
+-                            (int count, String c) =>
+-                                count + grouped[c]!.length)),
+-                        style: AppTextStyles.bodyMedium.copyWith(
+-                          color: AppColors.lumiere(context).textSecondary,
+-                        )),
++                      context.l10n.channelCount(
++                        cats.fold<int>(
++                          0,
++                          (int count, String c) => count + grouped[c]!.length,
++                        ),
++                      ),
++                      style: AppTextStyles.bodyMedium.copyWith(
++                        color: AppColors.lumiere(context).textSecondary,
++                      ),
++                    ),
+                   ],
+                 ),
+               ),
+@@ -995,14 +1076,18 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
+                     alignment: Alignment.centerLeft,
+                     child: TextButton.icon(
+                       onPressed: _openHiddenSheet,
+-                      icon: Icon(Icons.visibility_off_rounded,
+-                          size: 18,
+-                          color: AppColors.lumiere(context).textSecondary),
++                      icon: Icon(
++                        Icons.visibility_off_rounded,
++                        size: 18,
++                        color: AppColors.lumiere(context).textSecondary,
++                      ),
+                       label: Text(
+                         context.l10n.homeHiddenCountManage(
+-                            HiddenCategoriesStore.instance.count),
++                          HiddenCategoriesStore.instance.count,
++                        ),
+                         style: AppTextStyles.labelSmall.copyWith(
+-                            color: AppColors.lumiere(context).textSecondary),
++                          color: AppColors.lumiere(context).textSecondary,
++                        ),
+                       ),
+                     ),
+                   ),
+@@ -1018,7 +1103,8 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
+                           ? context.l10n.catNoneInPlaylist
+                           : context.l10n.catEmptyShelf,
+                       style: AppTextStyles.bodyMedium.copyWith(
+-                          color: AppColors.lumiere(context).textSecondary),
++                        color: AppColors.lumiere(context).textSecondary,
++                      ),
+                     ),
+                   ),
+                 )
+@@ -1049,8 +1135,9 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
+           final _Bucket b = ordered[i];
+           return _FilterChip(
+             label: b.label(context),
+-            semanticsLabel:
+-                b == _Bucket.adult ? context.l10n.homeTabAdult : null,
++            semanticsLabel: b == _Bucket.adult
++                ? context.l10n.homeTabAdult
++                : null,
+             active: b == effective,
+             // CINÉMA (2026-07-17) : les rayons Films et Séries ouvrent le
+             // VRAI Cinéma (catalogue d'affiches, fiches, téléchargements —
+@@ -1058,16 +1145,18 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
+             // Le rayon TV (et Adulte) garde le comportement existant.
+             onTap: () {
+               if (b == _Bucket.films || b == _Bucket.series) {
+-                Navigator.of(context).push(MaterialPageRoute<void>(
+-                  builder: (_) =>
+-                      CinemaScreen(initialTab: b == _Bucket.films ? 0 : 1),
+-                ));
++                Navigator.of(context).push(
++                  MaterialPageRoute<void>(
++                    builder: (_) =>
++                        CinemaScreen(initialTab: b == _Bucket.films ? 0 : 1),
++                  ),
++                );
+                 return;
+               }
+               if (b == _Bucket.radio) {
+-                Navigator.of(context).push<void>(MaterialPageRoute<void>(
+-                  builder: (_) => const RadioScreen(),
+-                ));
++                Navigator.of(context).push<void>(
++                  MaterialPageRoute<void>(builder: (_) => const RadioScreen()),
++                );
+                 return;
+               }
+               if (b == _Bucket.adult) {
+@@ -1089,7 +1178,9 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
+   /// Ne pas jouer la liste capturée par une ancienne tuile : re-résoudre
+   /// l'identifiant dans les autorisations courantes juste avant l'action.
+   Future<void> _playCategoryChannel(String id, String category) async {
+-    final List<Channel> current = _grouped()[category] ?? const <Channel>[];
++    final List<Channel> current = category == _allAdultLive
++        ? (_canShowAdult ? _visibleChannels : const <Channel>[])
++        : (_grouped()[category] ?? const <Channel>[]);
+     final Channel? channel = current
+         .where((Channel c) => c.id == id)
+         .cast<Channel?>()
+@@ -1114,12 +1205,17 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
+               padding: const EdgeInsets.fromLTRB(16, 12, 20, 12),
+               child: Row(
+                 children: <Widget>[
+-                  Icon(Icons.arrow_back_rounded,
+-                      color: AppColors.lumiere(context).textPrimary, size: 22),
++                  Icon(
++                    Icons.arrow_back_rounded,
++                    color: AppColors.lumiere(context).textPrimary,
++                    size: 22,
++                  ),
+                   const SizedBox(width: 6),
+                   Expanded(
+                     child: Text(
+-                      category,
++                      category == _allAdultLive
++                          ? context.l10n.navDirect
++                          : category,
+                       maxLines: 1,
+                       overflow: TextOverflow.ellipsis,
+                       style: AppTextStyles.headlineMedium.copyWith(
+@@ -1131,7 +1227,8 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
+                   Text(
+                     '${channels.length}',
+                     style: AppTextStyles.labelSmall.copyWith(
+-                        color: AppColors.lumiere(context).textSecondary),
++                      color: AppColors.lumiere(context).textSecondary,
++                    ),
+                   ),
+                 ],
+               ),
+@@ -1151,7 +1248,11 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
+               return ListView.separated(
+                 physics: const BouncingScrollPhysics(),
+                 padding: EdgeInsets.fromLTRB(
+-                    10, 6, 10, 16 + MediaQuery.paddingOf(context).bottom),
++                  10,
++                  6,
++                  10,
++                  16 + MediaQuery.paddingOf(context).bottom,
++                ),
+                 itemCount: rowCount,
+                 separatorBuilder: (_, __) => const SizedBox(height: 4),
+                 itemBuilder: (BuildContext context, int r) {
+@@ -1228,11 +1329,13 @@ class _FilterChip extends StatelessWidget {
+             child: Row(
+               mainAxisSize: MainAxisSize.min,
+               children: <Widget>[
+-                Text(label,
+-                    style: AppTextStyles.bodyMedium.copyWith(
+-                      color: active ? AppColors.onAccent : colors.textPrimary,
+-                      fontWeight: active ? FontWeight.w600 : FontWeight.w400,
+-                    )),
++                Text(
++                  label,
++                  style: AppTextStyles.bodyMedium.copyWith(
++                    color: active ? AppColors.onAccent : colors.textPrimary,
++                    fontWeight: active ? FontWeight.w600 : FontWeight.w400,
++                  ),
++                ),
+               ],
+             ),
+           ),
+@@ -1284,25 +1387,38 @@ class _CategoryRowState extends State<_CategoryRow>
+     vsync: this,
+     duration: const Duration(milliseconds: 620),
+   );
+-  late final Animation<double> _bounce =
+-      TweenSequence<double>(<TweenSequenceItem<double>>[
+-    TweenSequenceItem<double>(
+-        tween: Tween<double>(begin: 1.0, end: 1.05)
+-            .chain(CurveTween(curve: Curves.easeOut)),
+-        weight: 28),
+-    TweenSequenceItem<double>(
+-        tween: Tween<double>(begin: 1.05, end: 0.985)
+-            .chain(CurveTween(curve: Curves.easeInOut)),
+-        weight: 26),
+-    TweenSequenceItem<double>(
+-        tween: Tween<double>(begin: 0.985, end: 1.02)
+-            .chain(CurveTween(curve: Curves.easeInOut)),
+-        weight: 24),
+-    TweenSequenceItem<double>(
+-        tween: Tween<double>(begin: 1.02, end: 1.0)
+-            .chain(CurveTween(curve: Curves.easeOut)),
+-        weight: 22),
+-  ]).animate(_bounceCtl);
++  late final Animation<double> _bounce = TweenSequence<double>(
++    <TweenSequenceItem<double>>[
++      TweenSequenceItem<double>(
++        tween: Tween<double>(
++          begin: 1.0,
++          end: 1.05,
++        ).chain(CurveTween(curve: Curves.easeOut)),
++        weight: 28,
++      ),
++      TweenSequenceItem<double>(
++        tween: Tween<double>(
++          begin: 1.05,
++          end: 0.985,
++        ).chain(CurveTween(curve: Curves.easeInOut)),
++        weight: 26,
++      ),
++      TweenSequenceItem<double>(
++        tween: Tween<double>(
++          begin: 0.985,
++          end: 1.02,
++        ).chain(CurveTween(curve: Curves.easeInOut)),
++        weight: 24,
++      ),
++      TweenSequenceItem<double>(
++        tween: Tween<double>(
++          begin: 1.02,
++          end: 1.0,
++        ).chain(CurveTween(curve: Curves.easeOut)),
++        weight: 22,
++      ),
++    ],
++  ).animate(_bounceCtl);
+ 
+   @override
+   void initState() {
+@@ -1352,8 +1468,11 @@ class _CategoryRowState extends State<_CategoryRow>
+                       color: colors.glass,
+                       borderRadius: BorderRadius.circular(12),
+                     ),
+-                    child: Icon(widget.icon,
+-                        color: colors.textSecondary, size: 21),
++                    child: Icon(
++                      widget.icon,
++                      color: colors.textSecondary,
++                      size: 21,
++                    ),
+                   ),
+                   const SizedBox(width: 14),
+                   Expanded(
+@@ -1380,8 +1499,11 @@ class _CategoryRowState extends State<_CategoryRow>
+                     ),
+                   ),
+                   const SizedBox(width: 12),
+-                  Icon(Icons.chevron_right_rounded,
+-                      color: colors.textSecondary, size: 22),
++                  Icon(
++                    Icons.chevron_right_rounded,
++                    color: colors.textSecondary,
++                    size: 22,
++                  ),
+                 ],
+               ),
+               // Les quatre commandes ont leur propre rangée. Elles ne
+@@ -1462,8 +1584,11 @@ class _GroupReorderChevrons extends StatelessWidget {
+ 
+ /// Ligne de chaîne : numéro + logo + nom propre. Tape → lecture.
+ class _ChannelRow extends StatelessWidget {
+-  const _ChannelRow(
+-      {required this.channel, required this.number, required this.onTap});
++  const _ChannelRow({
++    required this.channel,
++    required this.number,
++    required this.onTap,
++  });
+   final Channel channel;
+   final int number;
+   final VoidCallback onTap;
+@@ -1491,7 +1616,8 @@ class _ChannelRow extends StatelessWidget {
+                   '$number',
+                   textAlign: TextAlign.center,
+                   style: AppTextStyles.labelSmall.copyWith(
+-                      color: AppColors.lumiere(context).textSecondary),
++                    color: AppColors.lumiere(context).textSecondary,
++                  ),
+                 ),
+               ),
+               ChannelLogo(channel: channel, size: 44, radius: 10),
+@@ -1514,27 +1640,30 @@ class _ChannelRow extends StatelessWidget {
+                 initialData: FavoritesRepository.instance.current,
+                 builder:
+                     (BuildContext context, AsyncSnapshot<Set<String>> snap) {
+-                  final bool fav = snap.data?.contains(channel.id) ?? false;
+-                  return IconButton(
+-                    tooltip: fav
+-                        ? context.l10n.tooltipRemoveFavorite
+-                        : context.l10n.tooltipAddFavorite,
+-                    icon: Icon(
+-                      fav ? Icons.favorite : Icons.favorite_border,
+-                      color: fav
+-                          ? AppColors.accent
+-                          : AppColors.lumiere(context).textSecondary,
+-                      size: 20,
+-                    ),
+-                    onPressed: () {
+-                      Haptics.light();
+-                      FavoritesRepository.instance.toggle(channel.id);
++                      final bool fav = snap.data?.contains(channel.id) ?? false;
++                      return IconButton(
++                        tooltip: fav
++                            ? context.l10n.tooltipRemoveFavorite
++                            : context.l10n.tooltipAddFavorite,
++                        icon: Icon(
++                          fav ? Icons.favorite : Icons.favorite_border,
++                          color: fav
++                              ? AppColors.accent
++                              : AppColors.lumiere(context).textSecondary,
++                          size: 20,
++                        ),
++                        onPressed: () {
++                          Haptics.light();
++                          FavoritesRepository.instance.toggle(channel.id);
++                        },
++                      );
+                     },
+-                  );
+-                },
+               ),
+-              Icon(Icons.play_arrow_rounded,
+-                  color: AppColors.lumiere(context).textSecondary, size: 22),
++              Icon(
++                Icons.play_arrow_rounded,
++                color: AppColors.lumiere(context).textSecondary,
++                size: 22,
++              ),
+             ],
+           ),
+         ),
+@@ -1577,8 +1706,9 @@ class _ResumeVodCard extends StatelessWidget {
+                   value: progress.clamp(0.0, 1.0),
+                   minHeight: 3,
+                   backgroundColor: AppColors.lumiere(context).elevated,
+-                  valueColor:
+-                      const AlwaysStoppedAnimation<Color>(AppColors.accent),
++                  valueColor: const AlwaysStoppedAnimation<Color>(
++                    AppColors.accent,
++                  ),
+                 ),
+               ),
+               const SizedBox(height: 5),
+@@ -1655,11 +1785,13 @@ class _HomeRailHeading extends StatelessWidget {
+           Icon(icon, size: 20, color: colors.textSecondary),
+           const SizedBox(width: 8),
+           Expanded(
+-            child: Text(title,
+-                style: AppTextStyles.bodyLarge.copyWith(
+-                  fontWeight: FontWeight.w600,
+-                  color: colors.textPrimary,
+-                )),
++            child: Text(
++              title,
++              style: AppTextStyles.bodyLarge.copyWith(
++                fontWeight: FontWeight.w600,
++                color: colors.textPrimary,
++              ),
++            ),
+           ),
+         ],
+       ),
+diff --git a/lib/features/vod/domain/content_partition.dart b/lib/features/vod/domain/content_partition.dart
+index f9f3fdc..d1202fa 100644
+--- a/lib/features/vod/domain/content_partition.dart
++++ b/lib/features/vod/domain/content_partition.dart
+@@ -6,11 +6,16 @@ import 'm3u_vod_classifier.dart';
+ /// jamais le rayon public simplement parce qu'il se trouve dans « Films ».
+ abstract final class ContentPartition {
+   static bool isAdult(String name, String category) =>
+-      ChannelClassifier.classifyGenre(name, category) == ChannelGenre.adult;
++      ChannelClassifier.isAdultCategory(category);
+ 
+-  static bool isLive(Channel channel) => channel.isLive &&
+-      M3uVodClassifier.classify(url: channel.streamUrl, name: channel.name) == M3uVodKind.live;
++  static bool isLive(Channel channel) =>
++      channel.isLive &&
++      M3uVodClassifier.classify(url: channel.streamUrl, name: channel.name) ==
++          M3uVodKind.live;
+ 
+-  static bool visible(String name, String category, {required bool adultOnly}) =>
+-      isAdult(name, category) == adultOnly;
++  static bool visible(
++    String name,
++    String category, {
++    required bool adultOnly,
++  }) => isAdult(name, category) == adultOnly;
+ }
+diff --git a/test/features/security/age_confirmation_test.dart b/test/features/security/age_confirmation_test.dart
+new file mode 100644
+index 0000000..59839b2
+--- /dev/null
++++ b/test/features/security/age_confirmation_test.dart
+@@ -0,0 +1,17 @@
++import 'package:flutter_test/flutter_test.dart';
++import 'package:shared_preferences/shared_preferences.dart';
++import 'package:tv_king/features/security/data/age_gate_settings.dart';
++
++void main() {
++  test('confirmation conservée après relecture et isolée par profil', () async {
++    SharedPreferences.setMockInitialValues({});
++    final settings = AgeGateSettings.instance;
++    expect(await settings.isConfirmed(profileId: 'one'), isFalse);
++    await settings.markConfirmed(profileId: 'one');
++    expect(await settings.isConfirmed(profileId: 'one'), isTrue);
++    expect(await settings.isConfirmed(profileId: 'two'), isFalse);
++    expect(await settings.isConfirmed(), isFalse);
++    await settings.clear(profileId: 'one');
++    expect(await settings.isConfirmed(profileId: 'one'), isFalse);
++  });
++}
+diff --git a/test/features/simple_home/premium_home_visual_test.dart b/test/features/simple_home/premium_home_visual_test.dart
+index 3a20e59..0f69941 100644
+--- a/test/features/simple_home/premium_home_visual_test.dart
++++ b/test/features/simple_home/premium_home_visual_test.dart
+@@ -117,6 +117,14 @@ void main() {
+     await HiddenCategoriesStore.instance.ensureLoaded();
+     await ParentalControls.instance.load();
+   });
++  setUp(() async {
++    // Chaque scénario démarre sans déclaration mémorisée ; un scénario
++    // dédié ci-dessous vérifie plusieurs entrées avec le même profil.
++    final prefs = await SharedPreferences.getInstance();
++    for (final key in prefs.getKeys().where((k) => k.startsWith('security.age_gate_confirmed_at.profile.'))) {
++      await prefs.remove(key);
++    }
++  });
+   tearDownAll(() async {
+     PlaylistDatabase.instance.debugUseDatabase(null);
+     await db.close();
+@@ -283,16 +291,15 @@ void main() {
+         category: 'Mixte',
+         streamUrl: 'https://example.test/fixture-only',
+         isLive: true),
+-    Channel(id: 'adult-film-fixture', name: 'XXX Film Fixture', category: 'Mixte',
++    Channel(id: 'adult-film-fixture', name: 'XXX Film Fixture', category: 'FOR ADULTS',
+         streamUrl: 'https://example.test/movie/fixture.mp4', isLive: false),
+-    Channel(id: 'adult-episode-fixture', name: 'XXX Series Fixture S01E01', category: 'Mixte',
++    Channel(id: 'adult-episode-fixture', name: 'XXX Series Fixture S01E01', category: 'FOR ADULTS',
+         streamUrl: 'https://example.test/series/fixture.mp4', isLive: false),
+-    // Métadonnée de test uniquement : une entrée 18+ parmi trois publiques.
+-    // Elle était auparavant noyée sous le seuil de 40 % de sa catégorie.
++    // Catégorie fournisseur explicite : le titre seul ne prouve pas le 18+.
+     Channel(
+         id: 'restricted',
+         name: 'XXX Test Entry',
+-        category: 'Mixte',
++        category: 'FOR ADULTS',
+         streamUrl: 'https://example.test/fixture-only',
+         isLive: true),
+   ];
+@@ -395,7 +402,7 @@ void main() {
+     await enterParentalPin(tester, '2468');
+     expect(find.byType(AlertDialog), findsNothing);
+     expect(find.text('Adultes 18+'), findsOneWidget);
+-    await tester.tap(find.text('Mixte'));
++    await tester.tap(find.widgetWithText(ActionChip, 'Direct'));
+     await _render(tester);
+     expect(find.text('XXX Test Entry'), findsOneWidget);
+     expect(find.text('XXX Film Fixture'), findsNothing);
+@@ -471,7 +478,7 @@ void main() {
+     await mountParentalHome(tester);
+     await openAdultPrompt(tester);
+     await enterParentalPin(tester, '2468');
+-    await tester.tap(find.text('Mixte'));
++    await tester.tap(find.widgetWithText(ActionChip, 'Direct'));
+     await _render(tester);
+     expect(find.text('XXX Test Entry'), findsOneWidget);
+     expect(find.text('XXX Film Fixture'), findsNothing);
+@@ -499,6 +506,13 @@ void main() {
+     expect(find.byType(AlertDialog), findsNothing);
+     expect(find.text('Adultes 18+'), findsOneWidget);
+     expect(find.text('Public One'), findsNothing);
++    // Retour à TV puis nouvelle entrée : aucune seconde confirmation.
++    await tester.tap(find.text('TV'));
++    await _render(tester);
++    await tester.tap(find.text('18+'));
++    await _render(tester);
++    expect(find.byType(AlertDialog), findsNothing);
++    expect(find.text('Adultes 18+'), findsOneWidget);
+     await tester.pumpWidget(const SizedBox.shrink());
+   });
+ 
+diff --git a/test/features/vod/content_partition_test.dart b/test/features/vod/content_partition_test.dart
+index bc3351b..e37180e 100644
+--- a/test/features/vod/content_partition_test.dart
++++ b/test/features/vod/content_partition_test.dart
+@@ -4,35 +4,95 @@ import 'package:tv_king/features/vod/domain/content_partition.dart';
+ import 'package:tv_king/features/vod/data/m3u_vod_source.dart';
+ 
+ void main() {
+-  Channel channel(String url, {String category = 'Cinéma', int source = 1, String name = 'Cinéma en direct'}) => Channel(
+-      id: '1@p$source', playlistId: source, name: name, category: category, streamUrl: url, isLive: true);
++  test('les titres publics ne déclenchent jamais le filtre adulte', () {
++    for (final name in ['Sex Education', 'Adult Swim', 'xXx', 'Sexy Beast']) {
++      expect(ContentPartition.isAdult(name, 'Séries Netflix'), isFalse);
++      expect(ContentPartition.isAdult(name, 'FR | Films'), isFalse);
++    }
++    expect(ContentPartition.isAdult('Programme', 'US | Adult Swim'), isFalse);
++    expect(ContentPartition.isAdult('Programme', 'FOR ADULTS'), isTrue);
++  });
++
++  Channel channel(
++    String url, {
++    String category = 'Cinéma',
++    int source = 1,
++    String name = 'Cinéma en direct',
++  }) => Channel(
++    id: '1@p$source',
++    playlistId: source,
++    name: name,
++    category: category,
++    streamUrl: url,
++    isLive: true,
++  );
+   test('les API reçoivent le numéro fournisseur sans le suffixe local', () {
+-    const item = Channel(id: 'xtream-42@p7', playlistId: 7, name: 'Test', category: '', streamUrl: '', isLive: true);
++    const item = Channel(
++      id: 'xtream-42@p7',
++      playlistId: 7,
++      name: 'Test',
++      category: '',
++      streamUrl: '',
++      isLive: true,
++    );
+     expect(item.sourceRawId, 'xtream-42');
+     expect(item.sourceScopedId, 'xtream-42@p7');
+   });
+   test('une chaîne cinéma reste du direct ; un fichier film même ancien ne devient pas live', () {
+-    expect(ContentPartition.isLive(channel('https://test.invalid/live/1.ts')), isTrue);
+-    expect(ContentPartition.isLive(channel('https://test.invalid/movie/1.ts')), isFalse);
+-    expect(ContentPartition.isLive(channel('https://test.invalid/film.mp4')), isFalse);
++    expect(
++      ContentPartition.isLive(channel('https://test.invalid/live/1.ts')),
++      isTrue,
++    );
++    expect(
++      ContentPartition.isLive(channel('https://test.invalid/movie/1.ts')),
++      isFalse,
++    );
++    expect(
++      ContentPartition.isLive(channel('https://test.invalid/film.mp4')),
++      isFalse,
++    );
+   });
+   test('adultes et public restent séparés pour chaque type de contenu', () {
+-    for (final String category in <String>['18+', 'ADULT FILMS', 'XXX LIVE', 'Adult Series']) {
+-      expect(ContentPartition.visible('Programme', category, adultOnly: false), isFalse);
+-      expect(ContentPartition.visible('Programme', category, adultOnly: true), isTrue);
++    for (final String category in <String>[
++      '18+',
++      'ADULT FILMS',
++      'XXX LIVE',
++      'Adult Series',
++    ]) {
++      expect(
++        ContentPartition.visible('Programme', category, adultOnly: false),
++        isFalse,
++      );
++      expect(
++        ContentPartition.visible('Programme', category, adultOnly: true),
++        isTrue,
++      );
+     }
+-    expect(ContentPartition.visible('Programme', 'Cinéma', adultOnly: true), isFalse);
+-    expect(ContentPartition.visible('Programme', 'Cinéma', adultOnly: false), isTrue);
+-  });
+-  test('deux séries M3U homonymes gardent leurs épisodes chez le bon fournisseur', () {
+-    final entries = <Channel>[
+-      channel('https://one.invalid/series/1.mp4', name: 'Série Test S01E01'),
+-      channel('https://two.invalid/series/1.mp4', source: 2, name: 'Série Test S01E01'),
+-    ];
+-    final series = groupM3uEpisodesIntoSeries(entries);
+-    expect(series, hasLength(2));
+-    final first = m3uEpisodesForSeries(entries, series.first.id);
+-    expect(first, hasLength(1));
+-    expect(first.single.streamUrl, startsWith('https://one.invalid/'));
++    expect(
++      ContentPartition.visible('Programme', 'Cinéma', adultOnly: true),
++      isFalse,
++    );
++    expect(
++      ContentPartition.visible('Programme', 'Cinéma', adultOnly: false),
++      isTrue,
++    );
+   });
++  test(
++    'deux séries M3U homonymes gardent leurs épisodes chez le bon fournisseur',
++    () {
++      final entries = <Channel>[
++        channel('https://one.invalid/series/1.mp4', name: 'Série Test S01E01'),
++        channel(
++          'https://two.invalid/series/1.mp4',
++          source: 2,
++          name: 'Série Test S01E01',
++        ),
++      ];
++      final series = groupM3uEpisodesIntoSeries(entries);
++      expect(series, hasLength(2));
++      final first = m3uEpisodesForSeries(entries, series.first.id);
++      expect(first, hasLength(1));
++      expect(first.single.streamUrl, startsWith('https://one.invalid/'));
++    },
++  );
+ }

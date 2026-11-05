@@ -1,0 +1,3211 @@
+{
+  "@@locale": "so",
+  "appName": "The Few",
+  "@appName": {
+    "description": "Nom de la marque — ne pas traduire."
+  },
+  "appTagline": "Shineemo aan xad lahayn",
+  "@appTagline": {
+    "description": "Phrase signature affichée sous le logo."
+  },
+  "navHome": "Bogga hore",
+  "navLive": "TV toos ah",
+  "navSearch": "Raadi",
+  "navAi": "AI",
+  "navFavorites": "Kuwa aan jeclahay",
+  "navProfile": "Bogga qofka",
+  "sectionResume": "Sii wad",
+  "sectionFavorites": "Kuwa aan jeclahay",
+  "sectionSportsLive": "Ciyaaraha — Toos",
+  "sectionLiveNow": "Hadda toos u socda",
+  "sectionMovies": "Filimada",
+  "sectionSeries": "Taxanayaasha TV-ga",
+  "sectionKids": "Carruurta",
+  "sectionNews": "Wararka",
+  "sectionMusic": "Muusigga",
+  "sectionDocs": "Dukumentariyada",
+  "sectionDiscover": "Sahamin",
+  "sectionLiveOnFavorites": "Hadda ka socda kanaallada aad jeceshahay",
+  "sectionTonight": "Xulashada caawa",
+  "sectionResumeWhereYouLeftOff": "Ka sii wad halkii aad joogtay",
+  "channelCount": "{count, plural, =0{Kanaallo ma jiraan} =1{1 kanaal} other{{count} kanaal}}",
+  "@channelCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "buttonContinue": "Sii wad",
+  "buttonNext": "Xiga",
+  "buttonSkip": "Ka bood",
+  "buttonStart": "Bilow",
+  "buttonOk": "Hagaag",
+  "buttonCancel": "Ka noqo",
+  "buttonSave": "Kaydi",
+  "buttonDelete": "Tirtir",
+  "buttonRetry": "Mar kale isku day",
+  "buttonResume": "Sii wad",
+  "buttonWatch": "Daawo",
+  "buttonSeeAll": "Dhammaan eeg",
+  "buttonSyncNow": "Hadda waafaji",
+  "playerPause": "Haki",
+  "playerPlay": "Daar",
+  "playerRec": "DUUB",
+  "playerStop": "JOOJI",
+  "playerAudioOnly": "Cod",
+  "playerVideo": "Muuqaal",
+  "playerUpNextIn": "Waxa xiga wuxuu bilaabmaa {seconds} ilbiriqsi kadib",
+  "@playerUpNextIn": {
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
+  "playerUpNextCancel": "Ka noqo",
+  "playerUpNextPlay": "Daar",
+  "playerTracks": "Raadadka",
+  "playerSpeed": "Xawaaraha",
+  "playerRatio": "Saamiga",
+  "playerSettings": "Dejinta",
+  "playerRecording": "Duubistu way socotaa",
+  "castIdle": "U gudbi TV",
+  "castSearching": "Waxaa laga raadinayaa WiFi-gaaga…",
+  "castDevicesHint": "DLNA · Roku · biraawsarka webka.",
+  "castSendTo": "U dir…",
+  "castConnected": "Waxaa laga daawanayaa",
+  "castStop": "Jooji",
+  "castViaBrowser": "Ku gudbi biraawsarka",
+  "castViaBrowserSubtitle": "Wuxuu ka shaqeeyaa TV kasta oo leh biraawsar web. TV-ga ku sawir koodhka QR.",
+  "settingsTitle": "Dejinta",
+  "settingsAppearance": "Muuqaalka",
+  "settingsLanguage": "Luuqadda",
+  "settingsLanguageSystem": "Nidaamka",
+  "settingsPlayer": "Ciyaariyaha muuqaalka",
+  "settingsPlaylists": "Liisaska daawashada",
+  "settingsRecordings": "Duubisyada",
+  "settingsStorage": "Kaydinta",
+  "settingsApp": "Abka",
+  "settingsAbout": "Ku saabsan",
+  "settingsProvisioning": "Dejin meel fog laga sameeyo",
+  "settingsClearHistory": "Tirtir taariikhda daawashada",
+  "themeCinema": "Shineemo",
+  "themeCinemaSubtitle": "Maison Noir",
+  "themeDaylight": "Iftiinka maalinta",
+  "themeDaylightSubtitle": "Muuqaal iftiin leh",
+  "themeAuto": "Toos",
+  "themeAutoSubtitle": "Raac nidaamka",
+  "deviceQuestion": "Qalabkee ayaad isticmaalaysaa?",
+  "deviceHelp": "Waxaan qaabka ugu habbaynaynaa qalabkaaga. Tan mar dambe waad ka beddeli kartaa Dejinta.",
+  "devicePhone": "Telefoon",
+  "devicePhoneSubtitle": "Taleefanka casriga ah, taablet",
+  "devicePhoneDesc": "Qaab taabasho oo kooban. Far-ku-socodka, ciyaariyaha yar iyo shaashadda buuxda ayaa si habsami leh u shaqeeya.",
+  "deviceTv": "Telefishan",
+  "deviceTvSubtitle": "Android TV, Fire TV, Google TV",
+  "deviceTvDesc": "Qaab weyn oo loogu talagalay kontoroolka fog. Meesha la doortay si fog ayay uga muuqataa; cabbir shineemo iyo jid-gaabyo D-pad.",
+  "deviceAuto": "Toos",
+  "deviceAutoSubtitle": "Si toos ah u aqoonso",
+  "deviceAutoDesc": "Waxaan ka qiyaasaynaa shaashaddaada. Ku habboon marka aadan hubin ama aad qalab kala duwan isticmaasho.",
+  "onboardingWelcomeTitle": "Ku soo dhowow The Few",
+  "onboardingWelcomeDesc": "Shineemo aan xad lahayn. Waxaa loo dhisay TV-ga, loogu habeeyey telefoonkaaga, meel kastana qurux badan.",
+  "onboardingLoadTitle": "Soo geli liiskaaga",
+  "onboardingLoadDesc": "Ku dheji URL-ka M3U ama aqoonsiyada Xtream. Kanaalladaadu waxay soo muuqanayaan ilbiriqsiyo gudahood.",
+  "onboardingVipTitle": "Ku raaxayso qaabka VIP",
+  "onboardingVipDesc": "Astaamo HD, hagid Apple TV, raadin degdeg ah iyo ciyaariye 4K/8K.",
+  "emptyNoPlaylist": "Weli liis ma jiro",
+  "emptyAddYourFirst": "Ku dar liiskaaga koowaad ee M3U ama aqoonsiyada Xtream si aad u bilowdo.",
+  "addPlaylist": "Ku dar liis",
+  "resumeBannerTitle": "Sii wad {channel}",
+  "@resumeBannerTitle": {
+    "placeholders": {
+      "channel": {
+        "type": "String"
+      }
+    }
+  },
+  "resumeBannerSubtitle": "Waxaad daawanaysay {minutes} daqiiqo ka hor",
+  "@resumeBannerSubtitle": {
+    "placeholders": {
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
+  "resumeBannerDismiss": "Mar dambe",
+  "detailProgram": "Barnaamijka",
+  "@detailProgram": {
+    "description": "Texte UI : detailProgram"
+  },
+  "detailNowPlaying": "Hadda socda",
+  "@detailNowPlaying": {
+    "description": "Texte UI : detailNowPlaying"
+  },
+  "detailUpNext": "Waxa xiga",
+  "@detailUpNext": {
+    "description": "Texte UI : detailUpNext"
+  },
+  "detailDetails": "Faahfaahin",
+  "@detailDetails": {
+    "description": "Texte UI : detailDetails"
+  },
+  "detailCategory": "Qaybta",
+  "@detailCategory": {
+    "description": "Texte UI : detailCategory"
+  },
+  "detailCountry": "Dalka",
+  "@detailCountry": {
+    "description": "Texte UI : detailCountry"
+  },
+  "detailQuality": "Tayada",
+  "@detailQuality": {
+    "description": "Texte UI : detailQuality"
+  },
+  "detailCatchup": "Dib-u-daawasho",
+  "@detailCatchup": {
+    "description": "Texte UI : detailCatchup"
+  },
+  "detailCatchupAvailable": "Waa la heli karaa · {days} maalmood",
+  "@detailCatchupAvailable": {
+    "description": "Texte UI : detailCatchupAvailable",
+    "placeholders": {
+      "days": {
+        "type": "String"
+      }
+    }
+  },
+  "detailCatchupUnavailable": "Lama heli karo",
+  "@detailCatchupUnavailable": {
+    "description": "Texte UI : detailCatchupUnavailable"
+  },
+  "detailProgramsAndReplay": "Barnaamijyada maanta iyo dib-u-daawashada",
+  "@detailProgramsAndReplay": {
+    "description": "Texte UI : detailProgramsAndReplay"
+  },
+  "badgeLive": "TOOS",
+  "@badgeLive": {
+    "description": "Texte UI : badgeLive"
+  },
+  "badgeReplay": "DIB-U-DAAWASHO",
+  "@badgeReplay": {
+    "description": "Texte UI : badgeReplay"
+  },
+  "badgeSoon": "DHAWAAN",
+  "@badgeSoon": {
+    "description": "Texte UI : badgeSoon"
+  },
+  "viewModeList": "Liis",
+  "@viewModeList": {
+    "description": "Texte UI : viewModeList"
+  },
+  "viewModeGrid": "Shax",
+  "@viewModeGrid": {
+    "description": "Texte UI : viewModeGrid"
+  },
+  "sectionFilterHint": "Ka shaandhee qaybtan...",
+  "@sectionFilterHint": {
+    "description": "Texte UI : sectionFilterHint"
+  },
+  "filterAll": "Dhammaan",
+  "@filterAll": {
+    "description": "Texte UI : filterAll"
+  },
+  "sectionEmptyNoChannel": "Qaybtan kanaallo kuma jiraan",
+  "@sectionEmptyNoChannel": {
+    "description": "Texte UI : sectionEmptyNoChannel"
+  },
+  "searchNoResult": "Wax natiijo ah looma helin \"{query}\"",
+  "@searchNoResult": {
+    "description": "Texte UI : searchNoResult",
+    "placeholders": {
+      "query": {
+        "type": "String"
+      }
+    }
+  },
+  "sectionEmptyAdjustFilters": "Isku day inaad beddesho shaandhooyinka ama raadintaada.",
+  "@sectionEmptyAdjustFilters": {
+    "description": "Texte UI : sectionEmptyAdjustFilters"
+  },
+  "sectionTop10Today": "10-ka ugu sarreeya maanta",
+  "@sectionTop10Today": {
+    "description": "Texte UI : sectionTop10Today"
+  },
+  "sectionEntertainment": "Madadaalo",
+  "@sectionEntertainment": {
+    "description": "Texte UI : sectionEntertainment"
+  },
+  "sectionInternational": "Caalami",
+  "@sectionInternational": {
+    "description": "Texte UI : sectionInternational"
+  },
+  "sectionAdult": "Dadka waaweyn",
+  "@sectionAdult": {
+    "description": "Texte UI : sectionAdult"
+  },
+  "sectionOthers": "Kuwa kale",
+  "@sectionOthers": {
+    "description": "Texte UI : sectionOthers"
+  },
+  "catSport": "Ciyaaraha",
+  "@catSport": {
+    "description": "Texte UI : catSport"
+  },
+  "catInfo": "Wararka",
+  "@catInfo": {
+    "description": "Texte UI : catInfo"
+  },
+  "catKids": "Carruurta",
+  "@catKids": {
+    "description": "Texte UI : catKids"
+  },
+  "catScience": "Sayniska",
+  "@catScience": {
+    "description": "Texte UI : catScience"
+  },
+  "catMovies": "Filimada",
+  "@catMovies": {
+    "description": "Texte UI : catMovies"
+  },
+  "catMusic": "Muusigga",
+  "@catMusic": {
+    "description": "Texte UI : catMusic"
+  },
+  "homeListRefreshed": "Liiska waa la cusboonaysiiyey — kanaallada waa la soo raray",
+  "@homeListRefreshed": {
+    "description": "Texte UI : homeListRefreshed"
+  },
+  "homeListUpToDate": "Liisku waa cusub yahay",
+  "@homeListUpToDate": {
+    "description": "Texte UI : homeListUpToDate"
+  },
+  "tooltipRefreshList": "Cusboonaysii liiska",
+  "@tooltipRefreshList": {
+    "description": "Texte UI : tooltipRefreshList"
+  },
+  "tooltipConnectActivate": "Gal / Hawlgeli",
+  "@tooltipConnectActivate": {
+    "description": "Texte UI : tooltipConnectActivate"
+  },
+  "tooltipSearch": "Raadi",
+  "@tooltipSearch": {
+    "description": "Texte UI : tooltipSearch"
+  },
+  "tooltipFavorites": "Kuwa aan jeclahay",
+  "@tooltipFavorites": {
+    "description": "Texte UI : tooltipFavorites"
+  },
+  "tooltipProfile": "Bogga qofka",
+  "@tooltipProfile": {
+    "description": "Texte UI : tooltipProfile"
+  },
+  "adultAuthCancelled": "Aqoonsiga waa laga noqday — qaybta dadka waaweyn way xiran tahay",
+  "@adultAuthCancelled": {
+    "description": "Texte UI : adultAuthCancelled"
+  },
+  "adultAuthReason": "Gal qaybta dadka waaweyn",
+  "@adultAuthReason": {
+    "description": "Texte UI : adultAuthReason"
+  },
+  "navDirect": "Toos",
+  "@navDirect": {
+    "description": "Texte UI : navDirect"
+  },
+  "navGuide": "Hagaha",
+  "@navGuide": {
+    "description": "Texte UI : navGuide"
+  },
+  "navRefresh": "Cusboonaysii",
+  "@navRefresh": {
+    "description": "Texte UI : navRefresh"
+  },
+  "tvFeatured": "LA XUSHAY",
+  "@tvFeatured": {
+    "description": "Texte UI : tvFeatured"
+  },
+  "refreshNoPlaylist": "Liis la cusboonaysiiyey ma jiro.",
+  "@refreshNoPlaylist": {
+    "description": "Texte UI : refreshNoPlaylist"
+  },
+  "refreshDoneCount": "Waa la cusboonaysiiyey: {count} liis.",
+  "@refreshDoneCount": {
+    "description": "Texte UI : refreshDoneCount",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "errorWithMessage": "Khalad: {error}",
+  "@errorWithMessage": {
+    "description": "Texte UI : errorWithMessage",
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "gridEmptyTitle": "Halkan kanaallo ma jiraan",
+  "@gridEmptyTitle": {
+    "description": "Texte UI : gridEmptyTitle"
+  },
+  "gridEmptySubtitle": "Ku dar liis ama beddel shaandhooyinkaaga.",
+  "@gridEmptySubtitle": {
+    "description": "Texte UI : gridEmptySubtitle"
+  },
+  "categoriesTitle": "Qaybaha",
+  "@categoriesTitle": {
+    "description": "Texte UI : categoriesTitle"
+  },
+  "categoriesEmpty": "Kanaallo ma jiraan — marka hore ku dar liis.",
+  "@categoriesEmpty": {
+    "description": "Texte UI : categoriesEmpty"
+  },
+  "focusedNoChannelFound": "Liisaskaaga lagama helin kanaallada {title}.",
+  "@focusedNoChannelFound": {
+    "description": "Texte UI : focusedNoChannelFound",
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "searchHint": "Raadi kanaal, ciyaar ama filim…",
+  "@searchHint": {
+    "description": "Texte UI : searchHint"
+  },
+  "buttonBack": "Dib u noqo",
+  "@buttonBack": {
+    "description": "Texte UI : buttonBack"
+  },
+  "searchRecent": "Dhawaan",
+  "@searchRecent": {
+    "description": "Texte UI : searchRecent"
+  },
+  "buttonClear": "Nadiifi",
+  "@buttonClear": {
+    "description": "Texte UI : buttonClear"
+  },
+  "searchExploreByCategory": "Qayb-qayb u sahami",
+  "@searchExploreByCategory": {
+    "description": "Texte UI : searchExploreByCategory"
+  },
+  "searchDiscoveryEmpty": "Soo geli liiskaaga koowaad si aad kanaallo u ogaato.",
+  "@searchDiscoveryEmpty": {
+    "description": "Texte UI : searchDiscoveryEmpty"
+  },
+  "searchNoResultHelp": "Hubi higgaadda ama isku day eray kale. Haddii kanaalku halkan ka maqnaado, ka codso iibiyahaaga inuu ku daro.",
+  "@searchNoResultHelp": {
+    "description": "Texte UI : searchNoResultHelp"
+  },
+  "searchTipsToTry": "WAXYAABAHA LA ISKU DAYI KARO",
+  "@searchTipsToTry": {
+    "description": "Texte UI : searchTipsToTry"
+  },
+  "searchEmptyCatalogTitle": "Weli kanaallo ma jiraan",
+  "@searchEmptyCatalogTitle": {
+    "description": "Texte UI : searchEmptyCatalogTitle"
+  },
+  "searchEmptyCatalogHelp": "Iibiyahaagu waa inuu hawlgeliyaa rukumashadaada ka hor intaadan raadin. Ku soo noqo daqiiqado yar kadib.",
+  "@searchEmptyCatalogHelp": {
+    "description": "Texte UI : searchEmptyCatalogHelp"
+  },
+  "navCategories": "Qaybaha",
+  "@navCategories": {
+    "description": "Texte UI : navCategories"
+  },
+  "mySource": "Ishayda",
+  "@mySource": {
+    "description": "Texte UI : mySource"
+  },
+  "sourceQuestion": "Sidee ayaad rabtaa inaad u gasho kanaalladaada?",
+  "@sourceQuestion": {
+    "description": "Texte UI : sourceQuestion"
+  },
+  "sourceLoginCode": "Ku gal koodhkayga",
+  "@sourceLoginCode": {
+    "description": "Texte UI : sourceLoginCode"
+  },
+  "sourceLoginCodeSub": "Geli magaca isticmaalaha iyo erayga sirta ah",
+  "@sourceLoginCodeSub": {
+    "description": "Texte UI : sourceLoginCodeSub"
+  },
+  "sourceOwn": "Waxaan haystaa il ii gaar ah",
+  "@sourceOwn": {
+    "description": "Texte UI : sourceOwn"
+  },
+  "sourceOwnSub": "Xiriiriye M3U / M3U8 ama koodhadhka Xtream",
+  "@sourceOwnSub": {
+    "description": "Texte UI : sourceOwnSub"
+  },
+  "sourceActivate": "Hawlgeli abka",
+  "@sourceActivate": {
+    "description": "Texte UI : sourceActivate"
+  },
+  "sourceActivateSub": "Nala soo xiriir (MAC-gaaga ayaa fariinta hore loogu daray)",
+  "@sourceActivateSub": {
+    "description": "Texte UI : sourceActivateSub"
+  },
+  "activateAtHomeTitle": "Abka guriga ku hawlgeli",
+  "@activateAtHomeTitle": {
+    "description": "Texte UI : activateAtHomeTitle"
+  },
+  "activateAtHomeDesc": "La wadaag aqoonsigan iibiyahaaga si uu meel fog uga hawlgeliyo kanaalladaada.",
+  "@activateAtHomeDesc": {
+    "description": "Texte UI : activateAtHomeDesc"
+  },
+  "buttonCopy": "Nuqul ka samee",
+  "@buttonCopy": {
+    "description": "Texte UI : buttonCopy"
+  },
+  "buttonSend": "Dir",
+  "@buttonSend": {
+    "description": "Texte UI : buttonSend"
+  },
+  "idCopied": "Aqoonsiga waa la koobiyeeyey: {id}",
+  "@idCopied": {
+    "description": "Texte UI : idCopied",
+    "placeholders": {
+      "id": {
+        "type": "String"
+      }
+    }
+  },
+  "resumeEyebrow": "SII WAD",
+  "@resumeEyebrow": {
+    "description": "Texte UI : resumeEyebrow"
+  },
+  "resumeAgoNow": "hadda uun",
+  "@resumeAgoNow": {
+    "description": "Texte UI : resumeAgoNow"
+  },
+  "resumeAgoMinutes": "{minutes} daqiiqo ka hor",
+  "@resumeAgoMinutes": {
+    "description": "Texte UI : resumeAgoMinutes",
+    "placeholders": {
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
+  "resumeWatchingAgo": "Waxaad daawanaysay {ago}",
+  "@resumeWatchingAgo": {
+    "description": "Texte UI : resumeWatchingAgo",
+    "placeholders": {
+      "ago": {
+        "type": "String"
+      }
+    }
+  },
+  "activateSubTitle": "Hawlgeli rukumashadaada",
+  "@activateSubTitle": {
+    "description": "Texte UI : activateSubTitle"
+  },
+  "activateSubDesc": "Ku gal koodhkaaga (magaca isticmaalaha iyo erayga sirta ah), ama sii MAC-gaaga iibiyahaaga si uu meel fog kaaga hawlgeliyo.",
+  "@activateSubDesc": {
+    "description": "Texte UI : activateSubDesc"
+  },
+  "freeTrialBadge": "Tijaabo bilaash ah oo 7 maalmood ah · kadib €5/sannadkii",
+  "@freeTrialBadge": {
+    "description": "Texte UI : freeTrialBadge"
+  },
+  "activateMySub": "Hawlgeli rukumashadayda",
+  "@activateMySub": {
+    "description": "Texte UI : activateMySub"
+  },
+  "remoteActivationByReseller": "Hawlgelin fog oo uu sameeyo iibiyahaagu",
+  "@remoteActivationByReseller": {
+    "description": "Texte UI : remoteActivationByReseller"
+  },
+  "recStartFailed": "Duubista lama bilaabi karin. Mar kale isku day.",
+  "@recStartFailed": {
+    "description": "Texte UI : recStartFailed"
+  },
+  "startFailedWithError": "Lama bilaabi karin: {error}",
+  "@startFailedWithError": {
+    "description": "Texte UI : startFailedWithError",
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "recInProgress": "● Waa la duubayaa — sii daawo, qulqulka waa la kaydinayaa",
+  "@recInProgress": {
+    "description": "Texte UI : recInProgress"
+  },
+  "recEmpty": "Duubistu waa madhan tahay — mar kale isku day oo u daa dhowr ilbiriqsi.",
+  "@recEmpty": {
+    "description": "Texte UI : recEmpty"
+  },
+  "recSaved": "Duubista waa la kaydiyey ({size}) — Duubisyadayda",
+  "@recSaved": {
+    "description": "Texte UI : recSaved",
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "recStopError": "Khalad ayaa ka dhacay joojinta duubista: {error}",
+  "@recStopError": {
+    "description": "Texte UI : recStopError",
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "recTapToStop": "DUUB · taabo si aad u joojiso",
+  "@recTapToStop": {
+    "description": "Texte UI : recTapToStop"
+  },
+  "pipUnavailable": "Daaqadda yar lagama heli karo qalabkan (waxay u baahan tahay Android 8+). Sidoo kale oggolow Sawir-ku-dhex-sawir: Dejinta → Ababka → 7 MOTION → Oggolaanshaha.",
+  "@pipUnavailable": {
+    "description": "Texte UI : pipUnavailable"
+  },
+  "speedToast": "Xawaaraha: {speed}x",
+  "@speedToast": {
+    "description": "Texte UI : speedToast",
+    "placeholders": {
+      "speed": {
+        "type": "String"
+      }
+    }
+  },
+  "tooltipMiniWindow": "Daaqad yar",
+  "@tooltipMiniWindow": {
+    "description": "Texte UI : tooltipMiniWindow"
+  },
+  "tooltipCastingManage": "Gudbintu way socotaa — taabo si aad u maamusho",
+  "@tooltipCastingManage": {
+    "description": "Texte UI : tooltipCastingManage"
+  },
+  "tooltipSendToTv": "U dir TV",
+  "@tooltipSendToTv": {
+    "description": "Texte UI : tooltipSendToTv"
+  },
+  "tooltipReloadStream": "Dib u rar qulqulka",
+  "@tooltipReloadStream": {
+    "description": "Texte UI : tooltipReloadStream"
+  },
+  "seekRewind": "Dib u celi 2 daqiiqo",
+  "@seekRewind": {
+    "description": "Texte UI : seekRewind"
+  },
+  "seekForward": "Hore u wad 2 daqiiqo",
+  "@seekForward": {
+    "description": "Texte UI : seekForward"
+  },
+  "playerCantPlay": "Qulqulkan lama daari karo",
+  "@playerCantPlay": {
+    "description": "Texte UI : playerCantPlay"
+  },
+  "tooltipRemoveFavorite": "Ka saar kuwa aan jeclahay",
+  "@tooltipRemoveFavorite": {
+    "description": "Texte UI : tooltipRemoveFavorite"
+  },
+  "tooltipAddFavorite": "Ku dar kuwa aan jeclahay",
+  "@tooltipAddFavorite": {
+    "description": "Texte UI : tooltipAddFavorite"
+  },
+  "playerSettingsTitle": "Dejinta ciyaariyaha",
+  "@playerSettingsTitle": {
+    "description": "Texte UI : playerSettingsTitle"
+  },
+  "playerSpeedSection": "Xawaaraha daawashada",
+  "@playerSpeedSection": {
+    "description": "Texte UI : playerSpeedSection"
+  },
+  "playerDisplayMode": "Qaabka bandhigga",
+  "@playerDisplayMode": {
+    "description": "Texte UI : playerDisplayMode"
+  },
+  "playerBufferSize": "Cabbirka kaydka sugitaanka",
+  "@playerBufferSize": {
+    "description": "Texte UI : playerBufferSize"
+  },
+  "playerBufferSeconds": "{seconds} ilbiriqsi",
+  "@playerBufferSeconds": {
+    "description": "Texte UI : playerBufferSeconds",
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
+  "playerBufferHelp": "Qiime sare wuxuu ka ilaaliyaa daawashada go'itaanka shabakadda (laakiin wuxuu dib u dhac ku daraa daawashada tooska ah).",
+  "@playerBufferHelp": {
+    "description": "Texte UI : playerBufferHelp"
+  },
+  "playerAntiFreeze": "Ka hortag hakadka",
+  "@playerAntiFreeze": {
+    "description": "Texte UI : playerAntiFreeze"
+  },
+  "playerAntiFreezeHelp": "Haddii xiriirku daciifo, ciyaariyuhu wuxuu adeegsadaa kaydka halkii uu go'i lahaa. Bilowgu wuu yara dheeraanayaa, laakiin daawashadu ma go'do.",
+  "@playerAntiFreezeHelp": {
+    "description": "Texte UI : playerAntiFreezeHelp"
+  },
+  "playerHwDecode": "Furfurid qalabeed",
+  "@playerHwDecode": {
+    "description": "Texte UI : playerHwDecode"
+  },
+  "playerHwDecodeHelp": "Waxay GPU-ga u adeegsataa furfuridda muuqaalka. Muhiim u ah 4K / 8K.",
+  "@playerHwDecodeHelp": {
+    "description": "Texte UI : playerHwDecodeHelp"
+  },
+  "playerShowStats": "Muuji tirakoobka",
+  "@playerShowStats": {
+    "description": "Texte UI : playerShowStats"
+  },
+  "playerShowStatsHelp": "FPS, heerka xogta, xallinta, codec-ga iyo sawirrada lumay.",
+  "@playerShowStatsHelp": {
+    "description": "Texte UI : playerShowStatsHelp"
+  },
+  "tracksTitle": "Raadadka",
+  "@tracksTitle": {
+    "description": "Texte UI : tracksTitle"
+  },
+  "tracksAudio": "Cod",
+  "@tracksAudio": {
+    "description": "Texte UI : tracksAudio"
+  },
+  "tracksSubtitles": "Qoraal-hoosaadyo",
+  "@tracksSubtitles": {
+    "description": "Texte UI : tracksSubtitles"
+  },
+  "tracksNoAudio": "Raad cod ah lama helin.",
+  "@tracksNoAudio": {
+    "description": "Texte UI : tracksNoAudio"
+  },
+  "tracksNoSubtitles": "Qoraal-hoosaadyo ma jiraan. Talo: qulqulka qaarkood way ku jiraan laakiin goor dambe ayaa la aqoonsadaa.",
+  "@tracksNoSubtitles": {
+    "description": "Texte UI : tracksNoSubtitles"
+  },
+  "castToDevice": "U gudbi {device}",
+  "@castToDevice": {
+    "description": "Texte UI : castToDevice",
+    "placeholders": {
+      "device": {
+        "type": "String"
+      }
+    }
+  },
+  "castFailedLocal": "Gudbintu way fashilantay — qalabkan ayuu ka socdaa. ({error})",
+  "@castFailedLocal": {
+    "description": "Texte UI : castFailedLocal",
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "castConnectedTapChannel": "Waxaa lagu xirmay {device}. Taabo kanaal si aad ugu dirto.",
+  "@castConnectedTapChannel": {
+    "description": "Texte UI : castConnectedTapChannel",
+    "placeholders": {
+      "device": {
+        "type": "String"
+      }
+    }
+  },
+  "castSendingTo": "Waxaa loo dirayaa {device}",
+  "@castSendingTo": {
+    "description": "Texte UI : castSendingTo",
+    "placeholders": {
+      "device": {
+        "type": "String"
+      }
+    }
+  },
+  "castFailedRetry": "Gudbintu way fashilantay. Mar kale isku day.",
+  "@castFailedRetry": {
+    "description": "Texte UI : castFailedRetry"
+  },
+  "castSessionStopped": "Fadhigii gudbinta waa la joojiyey",
+  "@castSessionStopped": {
+    "description": "Texte UI : castSessionStopped"
+  },
+  "castRefresh": "Cusboonaysii",
+  "@castRefresh": {
+    "description": "Texte UI : castRefresh"
+  },
+  "castByQr": "Ku gudbi koodhka QR",
+  "@castByQr": {
+    "description": "Texte UI : castByQr"
+  },
+  "castByQrSub": "Wuxuu ka shaqeeyaa TV kasta oo biraawsar leh",
+  "@castByQrSub": {
+    "description": "Texte UI : castByQrSub"
+  },
+  "castSearchingShort": "Waa la raadinayaa...",
+  "@castSearchingShort": {
+    "description": "Texte UI : castSearchingShort"
+  },
+  "castNoReceiver": "Qalab qaata ma jiro. Hubi in TV-gaagu ku jiro isla WiFi-ga iyo in DLNA la hawlgeliyey.",
+  "@castNoReceiver": {
+    "description": "Texte UI : castNoReceiver"
+  },
+  "castInProgress": "WUU SOCDAA",
+  "@castInProgress": {
+    "description": "Texte UI : castInProgress"
+  },
+  "castConnecting": "Waa la xiriirinayaa...",
+  "@castConnecting": {
+    "description": "Texte UI : castConnecting"
+  },
+  "castInProgressTitle": "Gudbinta",
+  "@castInProgressTitle": {
+    "description": "Texte UI : castInProgressTitle"
+  },
+  "castStopTooltip": "Jooji gudbinta",
+  "@castStopTooltip": {
+    "description": "Texte UI : castStopTooltip"
+  },
+  "castPlayDefault": "Wuu socdaa",
+  "@castPlayDefault": {
+    "description": "Texte UI : castPlayDefault"
+  },
+  "webCastTitle": "Ku gudbi biraawsarka",
+  "@webCastTitle": {
+    "description": "Texte UI : webCastTitle"
+  },
+  "webCastDesc": "Wuxuu ka shaqeeyaa TV kasta oo biraawsar leh — Google TV, Samsung, LG, Hisense iyo TV-yada casriga ah ee hore. TV-gaagu waa inuu ku jiraa isla WiFi-ga telefoonka.",
+  "@webCastDesc": {
+    "description": "Texte UI : webCastDesc"
+  },
+  "webCastIpError": "Cinwaanka IP-ga WiFi-gaaga lama aqoonsan karin. Hubi inaad ku xiran tahay WiFi (ee aanad isticmaalayn xogta moobilka).",
+  "@webCastIpError": {
+    "description": "Texte UI : webCastIpError"
+  },
+  "urlCopied": "URL-ka waa la koobiyeeyey: {url}",
+  "@urlCopied": {
+    "description": "Texte UI : urlCopied",
+    "placeholders": {
+      "url": {
+        "type": "String"
+      }
+    }
+  },
+  "webCastTvConnected": "Hagaag, TV-gu wuu xiran yahay",
+  "@webCastTvConnected": {
+    "description": "Texte UI : webCastTvConnected"
+  },
+  "webCastUrlLabel": "Ama ku qor URL-kan biraawsarka TV-ga:",
+  "@webCastUrlLabel": {
+    "description": "Texte UI : webCastUrlLabel"
+  },
+  "webCastStep1": "TV-gaaga ka fur biraawsarkiisa webka",
+  "@webCastStep1": {
+    "description": "Texte UI : webCastStep1"
+  },
+  "webCastStep2": "Sawir koodhka QR ee kore (ama ku qor URL-ka)",
+  "@webCastStep2": {
+    "description": "Texte UI : webCastStep2"
+  },
+  "webCastStep3": "TV-ga ha uga xirin boggan",
+  "@webCastStep3": {
+    "description": "Texte UI : webCastStep3"
+  },
+  "webCastStep4": "Halkan ku soo noqo, taabo kanaal → TV-ga ayuu ka muuqdaa 2 ilbiriqsi gudahood",
+  "@webCastStep4": {
+    "description": "Texte UI : webCastStep4"
+  },
+  "qrCastTitle": "Ku gudbi koodhka QR",
+  "@qrCastTitle": {
+    "description": "Texte UI : qrCastTitle"
+  },
+  "qrCastDesc": "Koodhkan ka sawir qalab kasta (TV, kombiyuutar, taablet ama telefoon kale) — kanaalku si toos ah ayuu uga furmaa biraawsarka.",
+  "@qrCastDesc": {
+    "description": "Texte UI : qrCastDesc"
+  },
+  "qrCastCopied": "Xiriiriyaha waa la koobiyeeyey — ku dheji biraawsar ama VLC",
+  "@qrCastCopied": {
+    "description": "Texte UI : qrCastCopied"
+  },
+  "qrCastCopyLink": "Nuqul ka samee xiriiriyaha",
+  "@qrCastCopyLink": {
+    "description": "Texte UI : qrCastCopyLink"
+  },
+  "qrCastTip": "Talo: fur kamaradda qalabkaaga kale oo ku jeedi QR-kan — xiriiriye ayaa soo baxaya. Taabo, biraawsarkuna si toos ah ayuu kanaalka u bilaabayaa.",
+  "@qrCastTip": {
+    "description": "Texte UI : qrCastTip"
+  },
+  "qrCastDegraded": "Qaab xaddidan: ku fur VLC ama ciyaariye qalabka ku rakiban.",
+  "@qrCastDegraded": {
+    "description": "Texte UI : qrCastDegraded"
+  },
+  "playlistsTitle": "Liisaskayga",
+  "@playlistsTitle": {
+    "description": "Texte UI : playlistsTitle"
+  },
+  "playlistsAddTooltip": "Ku dar liis",
+  "@playlistsAddTooltip": {
+    "description": "Texte UI : playlistsAddTooltip"
+  },
+  "playlistsEmptyTitle": "Liisas ma jiraan",
+  "@playlistsEmptyTitle": {
+    "description": "Texte UI : playlistsEmptyTitle"
+  },
+  "playlistsEmptySubtitle": "Ku dar liiskaaga koowaad si aad u bilowdo.",
+  "@playlistsEmptySubtitle": {
+    "description": "Texte UI : playlistsEmptySubtitle"
+  },
+  "playlistTypeM3u": "M3U / URL",
+  "@playlistTypeM3u": {
+    "description": "Texte UI : playlistTypeM3u"
+  },
+  "playlistTypeXtream": "Xtream Codes",
+  "@playlistTypeXtream": {
+    "description": "Texte UI : playlistTypeXtream"
+  },
+  "playlistNeverSynced": "Weli lama waafajin",
+  "@playlistNeverSynced": {
+    "description": "Texte UI : playlistNeverSynced"
+  },
+  "playlistResyncTooltip": "Dib u waafaji",
+  "@playlistResyncTooltip": {
+    "description": "Texte UI : playlistResyncTooltip"
+  },
+  "playlistDeleteTooltip": "Tirtir",
+  "@playlistDeleteTooltip": {
+    "description": "Texte UI : playlistDeleteTooltip"
+  },
+  "playlistResyncing": "Dib ayaa loo waafajinayaa...",
+  "@playlistResyncing": {
+    "description": "Texte UI : playlistResyncing"
+  },
+  "playlistUpToDate": "Liiska \"{name}\" waa cusub yahay",
+  "@playlistUpToDate": {
+    "description": "Texte UI : playlistUpToDate",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "playlistResyncFailed": "Dib-u-waafajintu way fashilantay",
+  "@playlistResyncFailed": {
+    "description": "Texte UI : playlistResyncFailed"
+  },
+  "playlistDeleteConfirmTitle": "Ma tirtirtaa liiskan?",
+  "@playlistDeleteConfirmTitle": {
+    "description": "Texte UI : playlistDeleteConfirmTitle"
+  },
+  "playlistDeleteConfirmBody": "Dhammaan kanaallada ku xiran \"{name}\" abka ayaa laga saarayaa.",
+  "@playlistDeleteConfirmBody": {
+    "description": "Texte UI : playlistDeleteConfirmBody",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "recordingsTitle": "Duubisyadayda",
+  "@recordingsTitle": {
+    "description": "Texte UI : recordingsTitle"
+  },
+  "recordingsEmptyTitle": "Duubisyo ma jiraan",
+  "@recordingsEmptyTitle": {
+    "description": "Texte UI : recordingsEmptyTitle"
+  },
+  "recordingsEmptySubtitle": "Inta aad daawanayso, taabo DUUB si aad u duubto qulqulka tooska ah.",
+  "@recordingsEmptySubtitle": {
+    "description": "Texte UI : recordingsEmptySubtitle"
+  },
+  "recordingStopped": "Duubista waa la joojiyey — u dhoofi Sawirrada",
+  "@recordingStopped": {
+    "description": "Texte UI : recordingStopped"
+  },
+  "recordingStopError": "Khalad joojin: {error}",
+  "@recordingStopError": {
+    "description": "Texte UI : recordingStopError",
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "recordingExported": "Waxaa loogu dhoofiyey Sawirrada › Filimada magaca \"7MOTION_{name}\"",
+  "@recordingExported": {
+    "description": "Texte UI : recordingExported",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "recordingExportFailed": "Dhoofintu way fashilantay: {error}",
+  "@recordingExportFailed": {
+    "description": "Texte UI : recordingExportFailed",
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "recordingStopTooltip": "Jooji duubista",
+  "@recordingStopTooltip": {
+    "description": "Texte UI : recordingStopTooltip"
+  },
+  "recordingSaveTooltip": "Ku kaydi Sawirrada",
+  "@recordingSaveTooltip": {
+    "description": "Texte UI : recordingSaveTooltip"
+  },
+  "recordingDeleteConfirmTitle": "Ma tirtirtaa duubistan?",
+  "@recordingDeleteConfirmTitle": {
+    "description": "Texte UI : recordingDeleteConfirmTitle"
+  },
+  "recordingDeleteConfirmBody": "Faylka \"{name}\" waa la tirtirayaa.",
+  "@recordingDeleteConfirmBody": {
+    "description": "Texte UI : recordingDeleteConfirmBody",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "recordingUnreadable": "Lama daari karo: duubista lama akhrin karo ama ma dhammaystirna.",
+  "@recordingUnreadable": {
+    "description": "Texte UI : recordingUnreadable"
+  },
+  "recordingEmpty": "Duubis madhan (0 bayt) — waxba lama duubin.",
+  "@recordingEmpty": {
+    "description": "Texte UI : recordingEmpty"
+  },
+  "recordingNotFound": "Faylka lama helin — waxaa laga yaabaa in la tirtiray.",
+  "@recordingNotFound": {
+    "description": "Texte UI : recordingNotFound"
+  },
+  "recordingPlayError": "Lama daari karo: {error}",
+  "@recordingPlayError": {
+    "description": "Texte UI : recordingPlayError",
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "subAccountSuspended": "Koontada waa la hakiyey",
+  "@subAccountSuspended": {
+    "description": "Texte UI : subAccountSuspended"
+  },
+  "subAccountFrozen": "Koontada si ku meel gaar ah ayaa loo xanibay",
+  "@subAccountFrozen": {
+    "description": "Texte UI : subAccountFrozen"
+  },
+  "subUnlockAll": "Fur dhammaan The Few",
+  "@subUnlockAll": {
+    "description": "Texte UI : subUnlockAll"
+  },
+  "subBannedMsg": "Maamulaha ayaa hakiyey koontadaada. Haddii aad u malaynayso inay tani khalad tahay, nala soo xiriir.",
+  "@subBannedMsg": {
+    "description": "Texte UI : subBannedMsg"
+  },
+  "subFrozenMsg": "Koontadaadu way hakad ku jirtaa. La xiriir taageerada si dib loogu hawlgeliyo.",
+  "@subFrozenMsg": {
+    "description": "Texte UI : subFrozenMsg"
+  },
+  "subTrialExpiredMsg": "Tijaabadaada bilaashka ah ee {days} maalmood way dhammaatay. Hawlgeli gelitaankaaga oo ku raaxayso WAX KASTA, xad la'aan:",
+  "@subTrialExpiredMsg": {
+    "description": "Texte UI : subTrialExpiredMsg",
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "subSubscribePrice": "Hadda rukumo",
+  "@subSubscribePrice": {
+    "description": "Texte UI : subSubscribePrice"
+  },
+  "subContactSupport": "La xiriir taageerada",
+  "@subContactSupport": {
+    "description": "Texte UI : subContactSupport"
+  },
+  "subPullToRefresh": "Hadda ma bixisay? Hoos u jiid si aad u cusboonaysiiso.",
+  "@subPullToRefresh": {
+    "description": "Texte UI : subPullToRefresh"
+  },
+  "subBenefitChannels": "Kumanaan kanaal, filim iyo taxane oo dunida oo dhan ka socda",
+  "@subBenefitChannels": {
+    "description": "Texte UI : subBenefitChannels"
+  },
+  "subBenefitSports": "Dhammaan ciyaaraha oo toos ah, HD / 4K, go'itaan la'aan",
+  "@subBenefitSports": {
+    "description": "Texte UI : subBenefitSports"
+  },
+  "subBenefitCast": "U gudbi TV kasta (Chromecast iyo Google TV)",
+  "@subBenefitCast": {
+    "description": "Texte UI : subBenefitCast"
+  },
+  "subBenefitRecord": "Duub bandhigyada, filimada iyo kulammada aad jeceshahay",
+  "@subBenefitRecord": {
+    "description": "Texte UI : subBenefitRecord"
+  },
+  "subBenefitNoAds": "Xayaysiis ma jiro — daawasho habsami leh oo degdeg ah",
+  "@subBenefitNoAds": {
+    "description": "Texte UI : subBenefitNoAds"
+  },
+  "subBenefitDevices": "Dhammaan qalabkaaga: telefoon, taablet iyo TV",
+  "@subBenefitDevices": {
+    "description": "Texte UI : subBenefitDevices"
+  },
+  "subCardBuyExpired": "Ka iibso 7themotion.com",
+  "@subCardBuyExpired": {
+    "description": "Texte UI : subCardBuyExpired"
+  },
+  "subCardSeeOffers": "Ka eeg qorshayaasha 7themotion.com",
+  "@subCardSeeOffers": {
+    "description": "Texte UI : subCardSeeOffers"
+  },
+  "subCardSecurePayment": "Lacag-bixin ammaan ah oo ku taal bogga rasmiga ah — marna Google Play laguma bixiyo.",
+  "@subCardSecurePayment": {
+    "description": "Texte UI : subCardSecurePayment"
+  },
+  "subCantOpenUrl": "Lama furi karo {url}",
+  "@subCantOpenUrl": {
+    "description": "Texte UI : subCantOpenUrl",
+    "placeholders": {
+      "url": {
+        "type": "String"
+      }
+    }
+  },
+  "subActiveTitle": "Rukumasho shaqaynaysa",
+  "@subActiveTitle": {
+    "description": "Texte UI : subActiveTitle"
+  },
+  "subActiveUntil": "Rukumasho shaqaynaysa · waxay dhacaysaa {date}",
+  "@subActiveUntil": {
+    "description": "Texte UI : subActiveUntil",
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "subTrialEnded": "Tijaabadii bilaashka ahayd way dhammaatay",
+  "@subTrialEnded": {
+    "description": "Texte UI : subTrialEnded"
+  },
+  "subTrialOneDayLeft": "Tijaabo bilaash ah · 1 maalin ayaa ka hartay",
+  "@subTrialOneDayLeft": {
+    "description": "Texte UI : subTrialOneDayLeft"
+  },
+  "subTrialDaysLeft": "Tijaabo bilaash ah · {days} maalmood ayaa ka haray",
+  "@subTrialDaysLeft": {
+    "description": "Texte UI : subTrialDaysLeft",
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "subLoading": "Waa la rarayaa…",
+  "@subLoading": {
+    "description": "Texte UI : subLoading"
+  },
+  "subCardSubPaid": "Waad ku mahadsan tahay taageeradaada — dhammaan sifooyinka waa laga furay qalabkan iyo rakibaadahaaga kale ee The Few.",
+  "@subCardSubPaid": {
+    "description": "Texte UI : subCardSubPaid"
+  },
+  "subCardSubExpired": "Tijaabadaada bilaashka ah ee {days} maalmood way dhammaatay. Iska rukumo 7themotion.com: €5/sannadkii ama €9.90 inta aad nooshahay si aad u sii wadato.",
+  "@subCardSubExpired": {
+    "description": "Texte UI : subCardSubExpired",
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "subCardSubTrial": "Ku raaxayso dhammaan sifooyinka gaarka ah inta tijaabadu socoto. Kadib €5/sannadkii ama €9.90 inta aad nooshahay, dhammaan qalabkaaga.",
+  "@subCardSubTrial": {
+    "description": "Texte UI : subCardSubTrial"
+  },
+  "subCardSubFrozen": "Koontadaadu way hakad ku jirtaa. La xiriir taageerada si dib loogu hawlgeliyo.",
+  "@subCardSubFrozen": {
+    "description": "Texte UI : subCardSubFrozen"
+  },
+  "subCardSubBanned": "Maamulaha ayaa hakiyey koontadaada.",
+  "@subCardSubBanned": {
+    "description": "Texte UI : subCardSubBanned"
+  },
+  "aboutTitle": "Ku saabsan",
+  "@aboutTitle": {
+    "description": "Texte UI : aboutTitle"
+  },
+  "aboutPremiumPlayer": "Ciyaariye IPTV heer sare ah",
+  "@aboutPremiumPlayer": {
+    "description": "Texte UI : aboutPremiumPlayer"
+  },
+  "aboutUpdateError": "Lama gaari karin adeegaha cusboonaysiinta. Hubi xiriirkaaga.",
+  "@aboutUpdateError": {
+    "description": "Texte UI : aboutUpdateError"
+  },
+  "aboutMyDevice": "Qalabkayga",
+  "@aboutMyDevice": {
+    "description": "Texte UI : aboutMyDevice"
+  },
+  "aboutUpdates": "Cusboonaysiinta",
+  "@aboutUpdates": {
+    "description": "Texte UI : aboutUpdates"
+  },
+  "aboutNewVersion": "Nooc cusub ayaa diyaar ah",
+  "@aboutNewVersion": {
+    "description": "Texte UI : aboutNewVersion"
+  },
+  "aboutSeeReleaseNotes": "Eeg faahfaahinta nooca cusub",
+  "@aboutSeeReleaseNotes": {
+    "description": "Texte UI : aboutSeeReleaseNotes"
+  },
+  "aboutLatestVersion": "Waxaad haysataa noocii ugu dambeeyey (v{version}).",
+  "@aboutLatestVersion": {
+    "description": "Texte UI : aboutLatestVersion",
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+  "aboutChecking": "Waa la hubinayaa...",
+  "@aboutChecking": {
+    "description": "Texte UI : aboutChecking"
+  },
+  "aboutCheckUpdates": "Raadi cusboonaysiin",
+  "@aboutCheckUpdates": {
+    "description": "Texte UI : aboutCheckUpdates"
+  },
+  "aboutUsefulLinks": "Xiriiriyeyaal waxtar leh",
+  "@aboutUsefulLinks": {
+    "description": "Texte UI : aboutUsefulLinks"
+  },
+  "aboutPrivacyPolicy": "Siyaasadda asturnaanta",
+  "@aboutPrivacyPolicy": {
+    "description": "Texte UI : aboutPrivacyPolicy"
+  },
+  "aboutBuiltWith": "Waxaa lagu dhisay",
+  "@aboutBuiltWith": {
+    "description": "Texte UI : aboutBuiltWith"
+  },
+  "aboutCreditFlutter": "Qaab-dhismeedka muuqaalka ee nidaamyo badan",
+  "@aboutCreditFlutter": {
+    "description": "Texte UI : aboutCreditFlutter"
+  },
+  "aboutCreditMediaKit": "Matoorka muuqaalka (HLS, MPEG-TS, MP4)",
+  "@aboutCreditMediaKit": {
+    "description": "Texte UI : aboutCreditMediaKit"
+  },
+  "aboutCreditSqflite": "Kaydinta liisaska ee qalabka",
+  "@aboutCreditSqflite": {
+    "description": "Texte UI : aboutCreditSqflite"
+  },
+  "aboutCreditCache": "Kaydka astaamaha ee diskiga",
+  "@aboutCreditCache": {
+    "description": "Texte UI : aboutCreditCache"
+  },
+  "aboutCreditFonts": "Far-qoraal heer sare ah",
+  "@aboutCreditFonts": {
+    "description": "Texte UI : aboutCreditFonts"
+  },
+  "aboutLegalNotice": "The Few waa ciyaariye warbaahin guud. Abku wax barnaamij ah kuma jiro. Adiga ayaa mas'uul ka ah ilaha aad ku darto iyo inay waafaqsan yihiin shuruucda dalkaaga.",
+  "@aboutLegalNotice": {
+    "description": "Texte UI : aboutLegalNotice"
+  },
+  "lockPinTooShort": "Geli ugu yaraan 4 lambar.",
+  "@lockPinTooShort": {
+    "description": "Texte UI : lockPinTooShort"
+  },
+  "lockPinWrong": "Koodh khaldan.",
+  "@lockPinWrong": {
+    "description": "Texte UI : lockPinWrong"
+  },
+  "lockUnlockReason": "Fur {app}",
+  "@lockUnlockReason": {
+    "description": "Texte UI : lockUnlockReason",
+    "placeholders": {
+      "app": {
+        "type": "String"
+      }
+    }
+  },
+  "lockAppLocked": "Abku wuu xiran yahay",
+  "@lockAppLocked": {
+    "description": "Texte UI : lockAppLocked"
+  },
+  "lockAuthenticating": "Aqoonsiga ayaa la hubinayaa...",
+  "@lockAuthenticating": {
+    "description": "Texte UI : lockAuthenticating"
+  },
+  "lockFingerprint": "Faraha",
+  "@lockFingerprint": {
+    "description": "Texte UI : lockFingerprint"
+  },
+  "lockValidateCode": "Xaqiiji koodhka",
+  "@lockValidateCode": {
+    "description": "Texte UI : lockValidateCode"
+  },
+  "lockDefaultPin": "Koodhka caadiga ah: {pin}\nWaxaad ka beddeli kartaa Dejinta > Amniga.",
+  "@lockDefaultPin": {
+    "description": "Texte UI : lockDefaultPin",
+    "placeholders": {
+      "pin": {
+        "type": "String"
+      }
+    }
+  },
+  "ageGateTitle": "Waxyaabo dadka waaweyn oo keliya loogu talagalay",
+  "@ageGateTitle": {
+    "description": "Texte UI : ageGateTitle"
+  },
+  "ageGateBody": "Abkani wuxuu baahiyaa barnaamijyo cad oo dadka waaweyn oo keliya loogu talagalay. Markaad sii waddo, waxaad caddeynaysaa inaad gaartay da'da qaangaarka ee sharciga dalkaaga.",
+  "@ageGateBody": {
+    "description": "Texte UI : ageGateBody"
+  },
+  "ageGateEnter": "WAXAAN JIRAA 18 AMA KA WEYN — GAL",
+  "@ageGateEnter": {
+    "description": "Texte UI : ageGateEnter"
+  },
+  "ageGateQuit": "Ka bax",
+  "@ageGateQuit": {
+    "description": "Texte UI : ageGateQuit"
+  },
+  "ageGateLegal": "Haddii xogta la bixiyey been tahay, mas'uuliyadda waxaa leh isticmaalaha oo keliya.",
+  "@ageGateLegal": {
+    "description": "Texte UI : ageGateLegal"
+  },
+  "onboardingSkip": "Ka bood",
+  "@onboardingSkip": {
+    "description": "Texte UI : onboardingSkip"
+  },
+  "onboardingStart": "Bilow",
+  "@onboardingStart": {
+    "description": "Texte UI : onboardingStart"
+  },
+  "onboardingNext": "Xiga",
+  "@onboardingNext": {
+    "description": "Texte UI : onboardingNext"
+  },
+  "onboardingYourId": "AQOONSIGAAGA",
+  "@onboardingYourId": {
+    "description": "Texte UI : onboardingYourId"
+  },
+  "onboardingActivateChannels": "Hawlgeli kanaalladayda",
+  "@onboardingActivateChannels": {
+    "description": "Texte UI : onboardingActivateChannels"
+  },
+  "onboardingCopyId": "Nuqul ka samee aqoonsiga",
+  "@onboardingCopyId": {
+    "description": "Texte UI : onboardingCopyId"
+  },
+  "devicePreparing": "Waa la diyaarinayaa…",
+  "@devicePreparing": {
+    "description": "Texte UI : devicePreparing"
+  },
+  "simpleChooseCountry": "Dooro dal",
+  "@simpleChooseCountry": {
+    "description": "Texte UI : simpleChooseCountry"
+  },
+  "simpleMyAccount": "Koontadayda",
+  "@simpleMyAccount": {
+    "description": "Texte UI : simpleMyAccount"
+  },
+  "simpleRecentlyWatched": "Dhawaan la daawaday",
+  "@simpleRecentlyWatched": {
+    "description": "Texte UI : simpleRecentlyWatched"
+  },
+  "simpleMyFavorites": "Kuwa aan jeclahay",
+  "@simpleMyFavorites": {
+    "description": "Texte UI : simpleMyFavorites"
+  },
+  "simpleSport": "Ciyaaraha",
+  "@simpleSport": {
+    "description": "Texte UI : simpleSport"
+  },
+  "simpleEntertainment": "Madadaalo",
+  "@simpleEntertainment": {
+    "description": "Texte UI : simpleEntertainment"
+  },
+  "simpleInfo": "Wararka",
+  "@simpleInfo": {
+    "description": "Texte UI : simpleInfo"
+  },
+  "simpleKids": "Carruurta",
+  "@simpleKids": {
+    "description": "Texte UI : simpleKids"
+  },
+  "simpleGeneral": "Guud",
+  "@simpleGeneral": {
+    "description": "Texte UI : simpleGeneral"
+  },
+  "simpleLockedTitle": "Filimada iyo taxanayaasha",
+  "@simpleLockedTitle": {
+    "description": "Texte UI : simpleLockedTitle"
+  },
+  "simpleLockedHint": "Taabo si aad u furto (far ama koodh)",
+  "@simpleLockedHint": {
+    "description": "Texte UI : simpleLockedHint"
+  },
+  "simpleUnlockReason": "Fur filimada iyo taxanayaasha",
+  "@simpleUnlockReason": {
+    "description": "Texte UI : simpleUnlockReason"
+  },
+  "simpleAccessCode": "Koodhka gelitaanka",
+  "@simpleAccessCode": {
+    "description": "Texte UI : simpleAccessCode"
+  },
+  "buttonAdd": "Ku dar",
+  "@buttonAdd": {
+    "description": "Texte UI : buttonAdd"
+  },
+  "moviesTitle": "Filimada",
+  "@moviesTitle": {
+    "description": "Texte UI : moviesTitle"
+  },
+  "moviesTabMovies": "Filimada",
+  "@moviesTabMovies": {
+    "description": "Texte UI : moviesTabMovies"
+  },
+  "moviesTabDownloads": "Soo-dejinnada",
+  "@moviesTabDownloads": {
+    "description": "Texte UI : moviesTabDownloads"
+  },
+  "moviesReloadTooltip": "Dib u rar liiska barnaamijyada",
+  "@moviesReloadTooltip": {
+    "description": "Texte UI : moviesReloadTooltip"
+  },
+  "moviesEmptyCatalogue": "Filimo lama heli karo.\nWaxaa laga yaabaa in adeegahaagu uusan lahayn VOD, ama aadan ku xirnayn Xtream.",
+  "@moviesEmptyCatalogue": {
+    "description": "Texte UI : moviesEmptyCatalogue"
+  },
+  "moviesEmptyDownloads": "Wax la soo dejiyey ma jiraan.\nKa soo dejiso filim qaybta « Filimada » si aad u daawato internet la'aan.",
+  "@moviesEmptyDownloads": {
+    "description": "Texte UI : moviesEmptyDownloads"
+  },
+  "moviesPlayTooltip": "Daar",
+  "@moviesPlayTooltip": {
+    "description": "Texte UI : moviesPlayTooltip"
+  },
+  "moviesDownloaded": "Waa la soo dejiyey",
+  "@moviesDownloaded": {
+    "description": "Texte UI : moviesDownloaded"
+  },
+  "moviesDownloading": "Waa la soo dejinayaa…",
+  "@moviesDownloading": {
+    "description": "Texte UI : moviesDownloading"
+  },
+  "moviesDownload": "Soo deji",
+  "@moviesDownload": {
+    "description": "Texte UI : moviesDownload"
+  },
+  "moviesPlayOfflineTooltip": "Daawo internet la'aan",
+  "@moviesPlayOfflineTooltip": {
+    "description": "Texte UI : moviesPlayOfflineTooltip"
+  },
+  "moviesPauseTooltip": "Haki",
+  "@moviesPauseTooltip": {
+    "description": "Texte UI : moviesPauseTooltip"
+  },
+  "moviesResumeTooltip": "Sii wad",
+  "@moviesResumeTooltip": {
+    "description": "Texte UI : moviesResumeTooltip"
+  },
+  "moviesDeleteTooltip": "Tirtir",
+  "@moviesDeleteTooltip": {
+    "description": "Texte UI : moviesDeleteTooltip"
+  },
+  "moviesStatusDownloaded": "Waa la soo dejiyey · {size}",
+  "@moviesStatusDownloaded": {
+    "description": "Texte UI : moviesStatusDownloaded",
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "moviesStatusDownloading": "Waa la soo dejinayaa… {size}",
+  "@moviesStatusDownloading": {
+    "description": "Texte UI : moviesStatusDownloading",
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "moviesStatusPaused": "Waa la hakiyey · {size}",
+  "@moviesStatusPaused": {
+    "description": "Texte UI : moviesStatusPaused",
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "moviesStatusError": "Khalad — taabo si aad u sii waddo",
+  "@moviesStatusError": {
+    "description": "Texte UI : moviesStatusError"
+  },
+  "guideTitle": "Hagaha TV-ga",
+  "@guideTitle": {
+    "description": "Texte UI : guideTitle"
+  },
+  "guideGoToNow": "Tag waqtigan",
+  "@guideGoToNow": {
+    "description": "Texte UI : guideGoToNow"
+  },
+  "guideNoChannel": "Kanaallo ma jiraan",
+  "@guideNoChannel": {
+    "description": "Texte UI : guideNoChannel"
+  },
+  "guideEmptyHint": "Ku dar liis leh hagaha XMLTV EPG si aad u aragto jadwalka.",
+  "@guideEmptyHint": {
+    "description": "Texte UI : guideEmptyHint"
+  },
+  "guideSchedule": "Jadwalka",
+  "@guideSchedule": {
+    "description": "Texte UI : guideSchedule"
+  },
+  "guideCatchupUnavailable": "Dib-u-daawasho lagama heli karo {channel}",
+  "@guideCatchupUnavailable": {
+    "description": "Texte UI : guideCatchupUnavailable",
+    "placeholders": {
+      "channel": {
+        "type": "String"
+      }
+    }
+  },
+  "programsToday": "Barnaamijyada maanta",
+  "@programsToday": {
+    "description": "Texte UI : programsToday"
+  },
+  "programsNoneToday": "Maanta barnaamijyo ma jiraan",
+  "@programsNoneToday": {
+    "description": "Texte UI : programsNoneToday"
+  },
+  "programsNoneHelp": "Hagaha XMLTV EPG ee bixiyahani ma hayo kanaalkan, ama weli lama waafajin.",
+  "@programsNoneHelp": {
+    "description": "Texte UI : programsNoneHelp"
+  },
+  "programsCatchupUnavailable": "Kanaalkan dib-u-daawasho ma leh.",
+  "@programsCatchupUnavailable": {
+    "description": "Texte UI : programsCatchupUnavailable"
+  },
+  "programStartsAt": "{title} wuxuu bilaabmaa {time}.",
+  "@programStartsAt": {
+    "description": "Texte UI : programStartsAt",
+    "placeholders": {
+      "title": {
+        "type": "String"
+      },
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "deviceIdLabel": "AQOONSIGA QALABKA",
+  "@deviceIdLabel": {
+    "description": "Texte UI : deviceIdLabel"
+  },
+  "deviceIdCaption": "Wuxuu aqoonsadaa rakibaaddaada The Few. Koodhkan u hay taageerada farsamo ee abka. Wixii ku saabsan kanaallada, la xiriir bixiyahaaga IPTV.",
+  "@deviceIdCaption": {
+    "description": "Texte UI : deviceIdCaption"
+  },
+  "profileDiscovery": "Sahamin",
+  "@profileDiscovery": {
+    "description": "Texte UI : profileDiscovery"
+  },
+  "profileTvGuide": "Hagaha TV-ga",
+  "@profileTvGuide": {
+    "description": "Texte UI : profileTvGuide"
+  },
+  "profileTvGuideSub": "Barnaamijyada hadda socda iyo kuwa soo socda",
+  "@profileTvGuideSub": {
+    "description": "Texte UI : profileTvGuideSub"
+  },
+  "profileRecordings": "Duubisyadayda",
+  "@profileRecordings": {
+    "description": "Texte UI : profileRecordings"
+  },
+  "profileRecordingsSub": "Duubisyadaada tooska ah",
+  "@profileRecordingsSub": {
+    "description": "Texte UI : profileRecordingsSub"
+  },
+  "profileAccount": "Koontada",
+  "@profileAccount": {
+    "description": "Texte UI : profileAccount"
+  },
+  "profileSettings": "Dejinta",
+  "@profileSettings": {
+    "description": "Texte UI : profileSettings"
+  },
+  "profileSettingsSub": "Daawashada, amniga, luuqadda iyo muuqaalka",
+  "@profileSettingsSub": {
+    "description": "Texte UI : profileSettingsSub"
+  },
+  "profileTheme": "Muuqaalka",
+  "@profileTheme": {
+    "description": "Texte UI : bouton choix du thème de couleur"
+  },
+  "profileThemeSub": "Dooro midabkaaga",
+  "@profileThemeSub": {
+    "description": "Texte UI : sous-titre du bouton Thème"
+  },
+  "themeChooseTitle": "Dooro muuqaalkaaga",
+  "@themeChooseTitle": {
+    "description": "Titre du sélecteur de thème"
+  },
+  "themeChooseSub": "Midabku isla markiiba ayuu uga beddelmaa abka oo dhan",
+  "@themeChooseSub": {
+    "description": "Sous-titre du sélecteur de thème"
+  },
+  "forceUpdateTitle": "Nooc cusub ayaa diyaar ah",
+  "@forceUpdateTitle": {
+    "description": "Titre ecran mise a jour forcee"
+  },
+  "forceUpdateBody": "Noocani wuu duugoobay. Soo dejiso nooca ugu dambeeya si aad u sii isticmaasho abka.",
+  "@forceUpdateBody": {
+    "description": "Corps ecran mise a jour forcee"
+  },
+  "forceUpdateDownloaderHint": "TV / BOX: FUR DOWNLOADER OO GELI KOODHKAN",
+  "@forceUpdateDownloaderHint": {
+    "description": "Aide code Downloader"
+  },
+  "forceUpdateDownloadBtn": "Hadda soo deji",
+  "@forceUpdateDownloadBtn": {
+    "description": "Bouton telecharger"
+  },
+  "forceUpdateRetry": "Waan cusboonaysiiyey — Mar kale isku day",
+  "@forceUpdateRetry": {
+    "description": "Bouton reessayer apres MAJ"
+  },
+  "profileAbout": "Ku saabsan",
+  "@profileAbout": {
+    "description": "Texte UI : profileAbout"
+  },
+  "profileAboutSub": "Nooca, kooxda iyo ogeysiisyada sharci",
+  "@profileAboutSub": {
+    "description": "Texte UI : profileAboutSub"
+  },
+  "profilePremiumAccount": "Koonto heer sare ah",
+  "@profilePremiumAccount": {
+    "description": "Texte UI : profilePremiumAccount"
+  },
+  "profileCastConnected": "Waxaa lagu xirmay {device}",
+  "@profileCastConnected": {
+    "description": "Texte UI : profileCastConnected",
+    "placeholders": {
+      "device": {
+        "type": "String"
+      }
+    }
+  },
+  "profileCastTo": "U gudbi TV",
+  "@profileCastTo": {
+    "description": "Texte UI : profileCastTo"
+  },
+  "profileCast": "Gudbi",
+  "@profileCast": {
+    "description": "Texte UI : profileCast"
+  },
+  "profileDeviceFallback": "qalab",
+  "@profileDeviceFallback": {
+    "description": "Texte UI : profileDeviceFallback"
+  },
+  "supportHowToReach": "Sidee ayaad rabtaa inaad nala soo xiriirto?",
+  "@supportHowToReach": {
+    "description": "Texte UI : supportHowToReach"
+  },
+  "supportPickChannel": "Dooro habka kugu habboon. Kooxdayadu waxay jawaabtaa 7 maalmood toddobaadkii.",
+  "@supportPickChannel": {
+    "description": "Texte UI : supportPickChannel"
+  },
+  "supportInstantMessage": "Fariin degdeg ah",
+  "@supportInstantMessage": {
+    "description": "Texte UI : supportInstantMessage"
+  },
+  "supportInstantMessageSub": "Wada sheekaysi qoraal ah · Celcelis jawaab 15 daqiiqo.",
+  "@supportInstantMessageSub": {
+    "description": "Texte UI : supportInstantMessageSub"
+  },
+  "supportPhoneCall": "Wicitaan telefoon",
+  "@supportPhoneCall": {
+    "description": "Texte UI : supportPhoneCall"
+  },
+  "supportPhoneCallSub": "La hadal la-taliye · {number}",
+  "@supportPhoneCallSub": {
+    "description": "Texte UI : supportPhoneCallSub",
+    "placeholders": {
+      "number": {
+        "type": "String"
+      }
+    }
+  },
+  "supportMessageError": "Abka fariimaha lama furi karin. Isku day inaad wacdo.",
+  "@supportMessageError": {
+    "description": "Texte UI : supportMessageError"
+  },
+  "supportCallError": "Qalabkani wicitaanno ma samayn karo. Isticmaal fariimaha.",
+  "@supportCallError": {
+    "description": "Texte UI : supportCallError"
+  },
+  "favoritesEmptyTitle": "Weli wax aad jeceshahay ma jiraan",
+  "@favoritesEmptyTitle": {
+    "description": "Texte UI : favoritesEmptyTitle"
+  },
+  "favoritesEmptyHint": "Taabo ♥ ee liiska kanaalka si aad halkan ugu haysato.",
+  "@favoritesEmptyHint": {
+    "description": "Texte UI : favoritesEmptyHint"
+  },
+  "focusedResultsCount": "{channels} kanaal · {countries} dal",
+  "@focusedResultsCount": {
+    "description": "Texte UI : focusedResultsCount",
+    "placeholders": {
+      "channels": {
+        "type": "int"
+      },
+      "countries": {
+        "type": "int"
+      }
+    }
+  },
+  "searchResultsCount": "{count} natiijo oo loogu helay \"{query}\"",
+  "@searchResultsCount": {
+    "description": "Texte UI : searchResultsCount",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "query": {
+        "type": "String"
+      }
+    }
+  },
+  "loginInvalidUrl": "URL aan sax ahayn. Waa inuu ku bilaabmaa http:// ama https://",
+  "@loginInvalidUrl": {
+    "description": "Texte UI : loginInvalidUrl"
+  },
+  "loginInvalidServer": "Adeege aan sax ahayn. Qaabka: http://server.com:8080",
+  "@loginInvalidServer": {
+    "description": "Texte UI : loginInvalidServer"
+  },
+  "loginCredsRequired": "Magaca isticmaalaha iyo erayga sirta ah waa loo baahan yahay.",
+  "@loginCredsRequired": {
+    "description": "Texte UI : loginCredsRequired"
+  },
+  "loginServerRequired": "Dooro adeege.",
+  "@loginServerRequired": {
+    "description": "Texte UI : loginServerRequired"
+  },
+  "loginSourceAdded": "Isha waa lagu daray. Kanaalladaada ayaa la rarayaa…",
+  "@loginSourceAdded": {
+    "description": "Texte UI : loginSourceAdded"
+  },
+  "loginConnected": "Waa lagu xirmay. Kanaalladaada ayaa la rarayaa…",
+  "@loginConnected": {
+    "description": "Texte UI : loginConnected"
+  },
+  "loginMySourcePerso": "Ishayda gaarka ah",
+  "@loginMySourcePerso": {
+    "description": "Texte UI : loginMySourcePerso"
+  },
+  "loginUrlM3u": "URL-ka M3U",
+  "@loginUrlM3u": {
+    "description": "Texte UI : loginUrlM3u"
+  },
+  "loginServerXtream": "Adeegaha Xtream",
+  "@loginServerXtream": {
+    "description": "Texte UI : loginServerXtream"
+  },
+  "loginUsername": "Magaca isticmaalaha",
+  "@loginUsername": {
+    "description": "Texte UI : loginUsername"
+  },
+  "loginPassword": "Erayga sirta ah",
+  "@loginPassword": {
+    "description": "Texte UI : loginPassword"
+  },
+  "loginNameOptional": "Magac (ikhtiyaari)",
+  "@loginNameOptional": {
+    "description": "Texte UI : loginNameOptional"
+  },
+  "loginNameHint": "Magaca caadiga ah: \"Ishayda\"",
+  "@loginNameHint": {
+    "description": "Texte UI : loginNameHint"
+  },
+  "loginVerifying": "Waa la xaqiijinayaa…",
+  "@loginVerifying": {
+    "description": "Texte UI : loginVerifying"
+  },
+  "loginLoadChannels": "Soo rar kanaalladayda",
+  "@loginLoadChannels": {
+    "description": "Texte UI : loginLoadChannels"
+  },
+  "loginTitle": "Gal",
+  "@loginTitle": {
+    "description": "Texte UI : loginTitle"
+  },
+  "loginXtreamIntro": "Dooro adeegahaaga kadibna geli koodhka uu iibiyahaagu ku siiyey.\nKanaalladaadu waxay soo rarmayaan dhowr ilbiriqsi gudahood.",
+  "@loginXtreamIntro": {
+    "description": "Texte UI : loginXtreamIntro"
+  },
+  "loginServer": "Adeegaha",
+  "@loginServer": {
+    "description": "Texte UI : loginServer"
+  },
+  "loginConnecting": "Waxaa lagu xirmayaa adeegaha...",
+  "@loginConnecting": {
+    "description": "Texte UI : loginConnecting"
+  },
+  "loginConnectLoad": "Gal oo soo rar",
+  "@loginConnectLoad": {
+    "description": "Texte UI : loginConnectLoad"
+  },
+  "loginLoadingServers": "Adeegayaasha ayaa la rarayaa…",
+  "@loginLoadingServers": {
+    "description": "Texte UI : loginLoadingServers"
+  },
+  "loginServersUnavailable": "Adeegayaasha hadda lama heli karo.",
+  "@loginServersUnavailable": {
+    "description": "Texte UI : loginServersUnavailable"
+  },
+  "loginAddIntro": "Dooro adeegahaaga, kadib geli koodhka uu iibiyahaagu ku siiyey (magaca isticmaalaha iyo erayga sirta ah). Waxaan xaqiijinaynaa koodhka ka hor inta aanan soo rarin kanaalladaada.",
+  "@loginAddIntro": {
+    "description": "Texte UI : loginAddIntro"
+  },
+  "loginUsernameHint": "magaca isticmaalaha",
+  "@loginUsernameHint": {
+    "description": "Texte UI : loginUsernameHint"
+  },
+  "loginPasswordHint": "erayga sirta ah",
+  "@loginPasswordHint": {
+    "description": "Texte UI : loginPasswordHint"
+  },
+  "seeAllOf": "Eeg dhammaan {title}",
+  "@seeAllOf": {
+    "description": "Texte UI : seeAllOf",
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "playlistActiveBadge": "Shaqaynaya",
+  "@playlistActiveBadge": {
+    "description": "Badge sur la playlist actuellement active"
+  },
+  "playlistTapToActivate": "Isticmaal liiskan",
+  "@playlistTapToActivate": {
+    "description": "Action pour activer une playlist"
+  },
+  "playlistNowActive": "\"{name}\" ayaa hadda ah liiska shaqaynaya",
+  "@playlistNowActive": {
+    "description": "Confirmation de bascule de playlist active",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "subActiveLifetime": "Rukumasho nololeed",
+  "@subActiveLifetime": {
+    "description": "Titre carte abonnement quand le plan est à vie"
+  },
+  "activationCheckButton": "Hubi rukumashadayda",
+  "@activationCheckButton": {
+    "description": "Bouton pour revérifier l’abonnement et charger la source"
+  },
+  "activationChecking": "Waa la hubinayaa…",
+  "@activationChecking": {
+    "description": "Snackbar pendant la vérification d’abonnement"
+  },
+  "activationSuccess": "Rukumashada waa la xaqiijiyey — kanaalladaadii waa la soo raray!",
+  "@activationSuccess": {
+    "description": "Snackbar succès vérification (chaînes chargées)"
+  },
+  "activationNoSourceYet": "Weli kanaallo ma jiraan. Haddii iibiyahaagu hadda hawlgeliyey, sug wax yar oo mar kale isku day, ama dib u bilow abka.",
+  "@activationNoSourceYet": {
+    "description": "Snackbar : aucune source encore assignée"
+  },
+  "activationActiveNoSource": "Rukumashadu way shaqaynaysaa ✅ laakiin liis looma qoondeyn MAC-gaaga. Iibiyahaagu waa inuu ku daraa il (Xtream/M3U).",
+  "@activationActiveNoSource": {
+    "description": "Message de diagnostic activation"
+  },
+  "activationDeviceKnownNoSub": "Adeeguhu wuu aqoonsaday qalabka; waxaa la sugayaa in iibiyahaagu hawlgeliyo.",
+  "@activationDeviceKnownNoSub": {
+    "description": "Message de diagnostic activation"
+  },
+  "activationDeviceUnknown": "Adeeguhu weli ma arkin qalabka — hubi xiriirkaaga internetka.",
+  "@activationDeviceUnknown": {
+    "description": "Message de diagnostic activation"
+  },
+  "emptyPremiumTitle": "Koonto heer sare ah",
+  "@emptyPremiumTitle": {
+    "description": "Ecran vide quand abonnement actif"
+  },
+  "emptyPremiumWaiting": "Rukumashadu way shaqaynaysaa — waxaa la sugayaa kanaalladaada. Iibiyahaagu waa inuu kuu qoondeeyaa ishaada (Xtream/M3U).",
+  "@emptyPremiumWaiting": {
+    "description": "Ecran vide quand abonnement actif"
+  },
+  "activationSourceFailed": "Isha waa la helay laakiin 0 kanaal ayaa soo rarmay. Hubi URL-ka / aqoonsiyada bixiyaha (URL buuxa oo M3U ah oo leh get.php, ama isticmaal qaabka Xtream).",
+  "@activationSourceFailed": {
+    "description": "Diagnostic : source assignee mais 0 chaine"
+  },
+  "catFilterAll": "Dhammaan",
+  "@catFilterAll": {
+    "description": "Filtre catégories : tout"
+  },
+  "catFilterTv": "TV",
+  "@catFilterTv": {
+    "description": "Filtre catégories : direct/TV"
+  },
+  "catFilterAdult": "Dadka waaweyn",
+  "@catFilterAdult": {
+    "description": "Filtre catégories : adulte"
+  },
+  "catNoneInPlaylist": "Liiskaaga qaybo kuma jiraan.",
+  "@catNoneInPlaylist": {
+    "description": "Aucune catégorie dans la playlist"
+  },
+  "catEmptyShelf": "Qaybtan waxba kuma jiraan.",
+  "@catEmptyShelf": {
+    "description": "Rien dans ce rayon"
+  },
+  "recordingOpenWith": "Ku fur…",
+  "@recordingOpenWith": {
+    "description": "Enregistrements : ouvrir avec"
+  },
+  "recordingShare": "La wadaag",
+  "@recordingShare": {
+    "description": "Enregistrements : partager"
+  },
+  "recordingNoPlayer": "Ciyaariye ku habboon ma jiro. Ku rakib VLC si aad faylkan u daawato.",
+  "@recordingNoPlayer": {
+    "description": "Enregistrements : aucun lecteur compatible"
+  },
+  "activationRestartTitle": "Hawlgelintu way guulaysatay",
+  "@activationRestartTitle": {
+    "description": "Splash activation : titre"
+  },
+  "activationRestartSubtitle": "Dib ayaa loo bilaabayaa…",
+  "@activationRestartSubtitle": {
+    "description": "Splash activation : sous-titre"
+  },
+  "orSeparator": "ama",
+  "@orSeparator": {
+    "description": "Séparateur « ou »"
+  },
+  "xtreamHaveCode": "Waxaan haystaa koodh Xtream",
+  "@xtreamHaveCode": {
+    "description": "Bouton : j’ai un code Xtream"
+  },
+  "catFilterMovies": "Filimada",
+  "catFilterSeries": "Taxanayaasha",
+  "@catFilterMovies": {
+    "description": "Filtre catégories : cinéma"
+  },
+  "@catFilterSeries": {
+    "description": "Filtre catégories : série"
+  },
+  "pricingOffersTitle": "Qorshayaashayada",
+  "@pricingOffersTitle": {
+    "description": "Titre bloc offres"
+  },
+  "pricingLifetime": "Inta aad nooshahay",
+  "@pricingLifetime": {
+    "description": "Offre à vie"
+  },
+  "pricingYearly": "1 sano",
+  "@pricingYearly": {
+    "description": "Offre 1 an"
+  },
+  "pricingTrialDays": "Tijaabo bilaash ah oo {days} maalmood ah",
+  "@pricingTrialDays": {
+    "description": "Essai gratuit en jours",
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "simpleSwitchSource": "Beddel isha",
+  "@simpleSwitchSource": {
+    "description": "Bouton : changer de source (trio)"
+  },
+  "homeRecentlyWatched": "Dhawaan la daawaday",
+  "@homeRecentlyWatched": {
+    "description": "Titre du rail des dernières chaînes regardées"
+  },
+  "tvActivationTagline": "Gelitaan buuxa, inta aad nooshahay. Hal lacag-bixin.",
+  "tvLifetime": "Inta aad nooshahay",
+  "tvActivationCodeLabel": "Koodhkaaga hawlgelinta",
+  "tvActivationCodeHelp": "Koodhkan sii iibiyahaaga si uu kuu hawlgeliyo. Wuu isku mid ahaanayaa, xitaa kadib dib-u-rakibid.",
+  "tvPaidCheck": "Waan bixiyey — Xaqiiji",
+  "tvChecking": "Waa la hubinayaa…",
+  "tvAddOwnList": "Ku dar liiskayga gaarka ah (Xtream)",
+  "tvActivationFooter": "Lacag-bixinta waa la xaqiijiyey · Hawlgelin degdeg ah",
+  "tvScanToActivate": "I sawir si aad u hawlgeliso",
+  "tvScanHelp": "Fur kamaradda telefoonkaaga oo ku jeedi koodhkan. Wuxuu furayaa WhatsApp iyadoo koodhkaagu diyaar yahay.",
+  "tvNavLive": "Toos",
+  "tvNavFilms": "Filimada",
+  "tvNavSeries": "Taxanayaasha",
+  "tvNavGuide": "Hagaha",
+  "tvNavSearch": "Raadi",
+  "tvNavSettings": "Dejinta",
+  "tvComingSoon": "Qaybtan waa socotaa.",
+  "tvEpgNow": "Hadda",
+  "@tvEpgNow": {
+    "description": "Étiquette du programme en cours (aperçu Direct)"
+  },
+  "tvEpgNext": "Waxa xiga",
+  "@tvEpgNext": {
+    "description": "Étiquette du programme suivant (aperçu Direct)"
+  },
+  "tvHello": "Salaan",
+  "tvNoChannels": "Weli kanaallo ma jiraan",
+  "tvNoChannelsHelp": "Hawlgeli qalabkan guddigaaga maamul, kadibna u dir il. Kanaalladu si toos ah ayay halkan uga muuqanayaan.",
+  "tvContinueWatching": "SII WAD DAAWASHADA",
+  "tvNoChannelInCategory": "Qaybtan kanaallo kuma jiraan.",
+  "tvOthers": "Kuwa kale",
+  "tvSearchHint": "Qor si aad u raadiso…",
+  "tvNoResult": "Natiijooyin ma jiraan.",
+  "tvDeviceAddress": "Cinwaanka qalabkan (MAC)",
+  "tvDeviceAddressHelp": "Cinwaankan sii iibiyahaaga si uu u hawlgeliyo Zuno.",
+  "tvStatus": "Xaaladda",
+  "tvStatusPaid": "Rukumashadu way shaqaynaysaa",
+  "tvStatusTrial": "Tijaabo — {days} maalmood ayaa ka haray",
+  "@tvStatusTrial": {
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "tvStatusTrialExpired": "Tijaabadu way dhammaatay — hawlgeli",
+  "tvStatusFrozen": "Koontada waa la xanibay",
+  "tvStatusBanned": "Koontada waa la mamnuucay",
+  "tvStatusUnknown": "Lama hawlgelin",
+  "tvRefreshStatus": "Cusboonaysii xaaladda",
+  "tvLiveBadge": "TOOS",
+  "tvZapHint": "Kor/Hoos si aad kanaalka u beddesho",
+  "tvAddListTitle": "Ku dar ishayda",
+  "tvAddListSubtitle": "Koodh Xtream — keen liiskaaga gaarka ah.",
+  "tvFieldServer": "Adeegaha",
+  "tvFieldUser": "Magaca isticmaalaha",
+  "tvFieldPass": "Erayga sirta ah",
+  "tvAddListError": "Buuxi adeegaha, magaca isticmaalaha iyo erayga sirta ah.",
+  "tvConnectError": "Ilahan lama furi karin. Hubi cinwaanka, kadib mar kale isku day.",
+  "tvConnecting": "Waa la xiriirinayaa…",
+  "tvAddListValidate": "Xaqiiji oo soo rar liiskayga",
+  "tvSearchingChannels": "Kanaalladaada ayaa la raadinayaa…",
+  "tvRetry": "Mar kale isku day",
+  "tvSourceInvalid": "Rukumashada waa la helay laakiin waa la diiday — hubi aqoonsiyada guddiga maamul.",
+  "tvQuitTitle": "Ma ka baxdaa Zuno?",
+  "tvQuitMessage": "Dib u bilow si aad u cusboonaysiiso kanaalladaada, ama ka bax abka.",
+  "tvRestart": "Dib u bilow",
+  "tvQuit": "Ka bax",
+  "tvStay": "Joog",
+  "tvChooseServer": "Dooro adeegahaaga",
+  "tvManualServer": "URL gacanta lagu geliyo",
+  "tvKeyboardHint": "Talo: waxaad wax ku qori kartaa kiiboodhka abka kontoroolka TV-ga ee telefoonkaaga (koobiyeynta iyo dhejintu way shaqeeyaan).",
+  "tvAddM3uTitle": "Ku dar liis M3U",
+  "tvAddM3uSubtitle": "Ku dheji URL-ka faylkaaga .m3u (iyo EPG haddii aad hayso).",
+  "tvFieldNameOptional": "Magac (ikhtiyaari)",
+  "tvMyListHint": "Liiskayga",
+  "tvFieldM3uUrl": "URL-ka M3U",
+  "tvFieldEpgUrlOptional": "URL-ka EPG (ikhtiyaari)",
+  "tvAddM3uBusy": "Waa lagu darayaa…",
+  "tvAddM3uValidate": "Ku dar liiska",
+  "tvAddM3uInvalidUrl": "Geli URL sax ah oo M3U ah (http…).",
+  "tvAddM3uFailed": "Liiskani ma furmin. Cinwaanka lama gaari karo, ama faylku waa madhan yahay.",
+  "tvMyM3uList": "Liiskayga M3U",
+  "tvBlackBoxTitle": "Sanduuqa madow",
+  "tvBlackBoxSubtitle": "Diiwaanka farsamo ee abka (v{version}). Haddii abku si lama filaan ah u xirmay, sababtu halkan ayay ku jirtaa.",
+  "@tvBlackBoxSubtitle": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+  "tvBlackBoxFirstRun": "Bilowgii koowaad: fadhi hore ma jiro.",
+  "tvBlackBoxCleanExit": "Fadhigii ugu dambeeyey si caadi ah ayuu ku dhammaaday.",
+  "tvBlackBoxBrutal": "XIRMID LAMA FILAAN AH · {reason}",
+  "@tvBlackBoxBrutal": {
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "tvBlackBoxUnknownReason": "sabab aan la garanayn (Android < 11)",
+  "tvBlackBoxMemory": "xusuusta {mb} MB",
+  "@tvBlackBoxMemory": {
+    "placeholders": {
+      "mb": {
+        "type": "String"
+      }
+    }
+  },
+  "tvBlackBoxWhen": "Goorta: {when}",
+  "@tvBlackBoxWhen": {
+    "placeholders": {
+      "when": {
+        "type": "String"
+      }
+    }
+  },
+  "tvBlackBoxLastAction": "Ficilkii ugu dambeeyey: {action}",
+  "@tvBlackBoxLastAction": {
+    "placeholders": {
+      "action": {
+        "type": "String"
+      }
+    }
+  },
+  "tvBlackBoxDetail": "Faahfaahinta Android: {detail}",
+  "@tvBlackBoxDetail": {
+    "placeholders": {
+      "detail": {
+        "type": "String"
+      }
+    }
+  },
+  "tvRefresh": "Cusboonaysii",
+  "tvCopy": "Nuqul ka samee",
+  "tvCopied": "Waa la koobiyeeyey",
+  "tvClear": "Nadiifi",
+  "tvReading": "Waa la akhrinayaa…",
+  "tvBlackBoxHelp": "KOR/HOOS: rog · CH+/CH−: bog · Nuqul = sabuuradda (ku dheji WhatsApp taageerada). Diiwaankan waxaa loo diri karaa taageerada. Waxaad ka damin kartaa dirista Dejinta → Dheeraad.",
+  "tvNavServer": "Adeegaha",
+  "tvLegalTitle": "Ogeysiiska sharci iyo shuruudaha",
+  "tvHelloMorning": "Subax wanaagsan",
+  "tvHelloAfternoon": "Galab wanaagsan",
+  "tvHelloEvening": "Fiid wanaagsan",
+  "tvHomeInvite": "Kanaalladaada, filimadaada iyo xusuusiyeyaashaadu halkan ayay ka muuqan doonaan.",
+  "tvNoChannelsSold": "Abkani ma iibiyo kanaallo. Ku dar rukumashadaada gaarka ah.",
+  "@tvNoChannelsSold": {
+    "description": "Phrase obligatoire affichée tant qu'aucune source n'est ajoutée : l'application ne vend pas de chaînes."
+  },
+  "tvScanSourceHelp": "Koodhkan ku sawir kamaradda telefoonkaaga. Geli xiriiriyahaaga M3U ama xogtaada Xtream: kanaalladu waxay ka muuqanayaan box-kan.",
+  "@tvScanSourceHelp": {
+    "description": "Sous le QR : scanner avec le téléphone pour saisir un lien M3U ou des identifiants Xtream."
+  },
+  "tvScanSourceCode": "Koodhka: {code}",
+  "@tvScanSourceCode": {
+    "description": "Code court affiché sous le QR, lié à cette box pendant quelques minutes.",
+    "placeholders": {
+      "code": {
+        "type": "String"
+      }
+    }
+  },
+  "tvHomeResume": "Sii wad",
+  "tvHomeContinue": "Sii wad daawashada",
+  "tvHomeFavorites": "Kuwa aan jeclahay",
+  "tvHomePopular": "Hadda caan ah",
+  "tvHomeReminders": "Xusuusiyeyaashaada",
+  "tvStartupTitle": "Marka la bilaabayo",
+  "tvStartupHome": "Bogga hore",
+  "tvStartupLast": "Kanaalkii ugu dambeeyey",
+  "tvStartupHelpHome": "Abku wuxuu ka furmaa boggan hore. Riix OK si beddelkeeda loo sii wado kanaalkii ugu dambeeyey. Dib u noqoshu had iyo jeer halkan ayay ku celisaa.",
+  "tvStartupHelpLast": "Abku wuxuu sii wadaa kanaalkii ugu dambeeyey. Dib u noqoshu bogga hore ayay ku celisaa. Riix OK si bilowgu mar kale u furo bogga hore.",
+  "tvReminderSet": "Xusuusiyaha waa la dejiyey: ogeysiis 5 daqiiqo ka hor \"{title}\", wuxuuna ku harayaa bogga hore.",
+  "@tvReminderSet": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "tvReminderSavedOnly": "\"{title}\" wuxuu ku jiraa bogga hore. Ogeysiiska TV-ga lama shidi karin.",
+  "@tvReminderSavedOnly": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "tvReminderCleared": "Xusuusiyaha waa laga saaray.",
+  "tvReminderTooLate": "Waqtigu wuu dhaafay in xusuusiye la dejiyo.",
+  "tvReminderStarted": "Hore ayuu u bilaabmay",
+  "tvReminderInMinutes": "{minutes} daqiiqo kadib",
+  "@tvReminderInMinutes": {
+    "placeholders": {
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
+  "tvReminderInHours": "{hours} saac kadib",
+  "@tvReminderInHours": {
+    "placeholders": {
+      "hours": {
+        "type": "int"
+      }
+    }
+  },
+  "tvReminderInHoursMinutes": "{hours} saac iyo {minutes} daqiiqo kadib",
+  "@tvReminderInHoursMinutes": {
+    "placeholders": {
+      "hours": {
+        "type": "int"
+      },
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
+  "tvResumeLabel": "SII WAD",
+  "tvNowPlayingPrefix": "HADDA · {title}",
+  "@tvNowPlayingPrefix": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "tvPinUpdated": "Koodhka waalidka waa la cusboonaysiiyey ✔",
+  "tvParentalTitle": "Xakamaynta waalidka",
+  "tvKidsMode": "Qaabka carruurta",
+  "tvParentalCode": "Koodhka waalidka",
+  "tvCustomPinInPlace": "Koodh gaar ah ayaa la dejiyey.",
+  "tvChangePin": "Beddel koodhka PIN",
+  "tvPinSubtitle": "Koodh waalid oo 4 lambar ah",
+  "tvNewPin": "Koodh cusub",
+  "tvNewPinSubtitle": "Dooro 4 lambar, kadib xaqiiji",
+  "tvPinWrong": "Koodh khaldan, mar kale isku day.",
+  "tvPinMismatch": "Labada koodh isma laha.",
+  "tvPlayerFatalHint": "OK: Mar kale isku day   ·   Dib: Ka bax",
+  "tvRec": "DUUB",
+  "tvStop": "Jooji",
+  "tvGuideBtn": "Hagaha",
+  "tvFavoriteBtn": "La jecel yahay",
+  "tvPlaybackFinished": "Daawashadu way dhammaatay",
+  "tvPlaybackFinishedBody": "Riix Dib si aad ugu laabato duubisyadaada.",
+  "tvNoRecordings": "Duubisyo ma jiraan",
+  "tvNoRecordingsBody": "Duubisyadaadu halkan ayay ka muuqan doonaan. Markaad kanaal daawanayso, riix DUUB si aad u duubto.",
+  "tvMyRecordings": "Duubisyadayda",
+  "tvDeleteQuestion": "Ma tirtirtaa?",
+  "tvDeleteRecordingConfirm": "Si joogto ah ma u tirtirtaa “{name}”?",
+  "@tvDeleteRecordingConfirm": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "tvCancel": "Ka noqo",
+  "tvDelete": "Tirtir",
+  "tvSettingsSources": "Ilaha aan haysto (ku dar / hawlgeli / tirtir)",
+  "tvSettingsParental": "Xakamaynta waalidka (qaabka carruurta iyo koodhka PIN)",
+  "tvSettingsBlackBox": "Sanduuqa madow (diiwaanka farsamo)",
+  "tvSettingsLegal": "Ogeysiiska sharci iyo shuruudaha isticmaalka",
+  "tvUpdateChecking": "Cusboonaysiinta: waa la hubinayaa…",
+  "tvUpdateUpToDate": "Cusboonaysiinta: waa cusub yahay (nooca {version}) — OK si aad mar kale u hubiso",
+  "@tvUpdateUpToDate": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+  "tvUpdateUpToDateNoVersion": "Cusboonaysiinta: waa cusub yahay — OK si aad mar kale u hubiso",
+  "tvUpdateAvailable": "Nooca cusub {version} ayaa diyaar ah — OK si aad u rakibto",
+  "@tvUpdateAvailable": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+  "tvUpdateDownloading": "Cusboonaysiinta ayaa la soo dejinayaa… {pct} %",
+  "@tvUpdateDownloading": {
+    "placeholders": {
+      "pct": {
+        "type": "String"
+      }
+    }
+  },
+  "tvUpdateFailed": "Cusboonaysiinta: way fashilantay (shabakad ama rakibe) — OK si aad mar kale u isku daydo",
+  "tvMySources": "Ilaha aan haysto",
+  "tvAddXtream": "Ku dar Xtream",
+  "tvAddM3u": "Ku dar M3U",
+  "tvDeleteSourceConfirm": "Ma tirtirtaa isha “{name}”?",
+  "@tvDeleteSourceConfirm": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "tvDeletePanelSourceConfirm": "“{name}” waxaa laga tirtirayaa TV-gan. Waafajinta ama dib uga dirista guddiga maamul ma soo celinayso. Si aad u soo celiso, mar kale ku dar abka.",
+  "@tvDeletePanelSourceConfirm": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "tvDeleteSourceFailed": "Tirtiridda qalabkan way fashilantay. Wax yar kadib mar kale isku day.",
+  "tvActivate": "Hawlgeli",
+  "tvMyTeams": "Kooxahayga",
+  "tvAdd": "Ku dar",
+  "tvPickTeamsTitle": "Dooro kooxaha aad jeceshahay",
+  "tvPickTeamsBody": "Waxaad arki doontaa natiijooyinkooda iyo kulammadooda soo socda, warar socda iyo digniin qiyaastii 1 saac ka hor kulan kasta.",
+  "tvPickMyTeam": "Dooro kooxdayda",
+  "tvLastMatch": "Kulankii ugu dambeeyey",
+  "tvNextMatch": "Kulanka xiga",
+  "tvNewsTicker": "WARARKA",
+  "tvNoData": "Xog ma jirto",
+  "tvNoTeamFound": "Koox lama helin",
+  "tvMyTeam": "Kooxdayda",
+  "tvImpConnecting": "Waxaa lagu xirmayaa adeegaha…",
+  "tvImpCategories": "Qaybaha ayaa la akhrinayaa…",
+  "tvImpDownloading": "Waa la soo dejinayaa… {mb} MB",
+  "@tvImpDownloading": {
+    "placeholders": {
+      "mb": {
+        "type": "String"
+      }
+    }
+  },
+  "tvImpDecoding": "Waxaa la falanqaynayaa {mb} MB…",
+  "@tvImpDecoding": {
+    "placeholders": {
+      "mb": {
+        "type": "String"
+      }
+    }
+  },
+  "tvImpCategory": "Qaybta {i}/{total} · {found} kanaal ayaa la helay",
+  "@tvImpCategory": {
+    "placeholders": {
+      "i": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      },
+      "found": {
+        "type": "String"
+      }
+    }
+  },
+  "tvImpFound": "{count} kanaal ayaa la helay",
+  "@tvImpFound": {
+    "placeholders": {
+      "count": {
+        "type": "String"
+      }
+    }
+  },
+  "tvImpSaving": "Waxaa la kaydinayaa {done} / {total} kanaal",
+  "@tvImpSaving": {
+    "placeholders": {
+      "done": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      }
+    }
+  },
+  "tvImpDone": "{count} kanaal ayaa diyaar ah",
+  "@tvImpDone": {
+    "placeholders": {
+      "count": {
+        "type": "String"
+      }
+    }
+  },
+  "tvLanguage": "Luuqadda",
+  "tvLanguageAuto": "Si toos ah (luuqadda TV-ga)",
+  "tvSettingsLanguage": "Luuqadda: {value}",
+  "@tvSettingsLanguage": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "tvEnterParentalCode": "Geli koodhka waalidka",
+  "tvCurrentCode": "Koodhka hadda jira",
+  "tvConfirmCode": "Xaqiiji koodhka",
+  "tvRecordingNotFound": "Duubista lama helin",
+  "tvPlaybackImpossible": "Lama daari karo",
+  "tvRecordingNotFoundBody": "Faylka duubistan wuu maqan yahay ama wuu madhan yahay.",
+  "tvPlaybackImpossibleBody": "Faylkan lama furfuri karin.",
+  "tvRecordingStarted": "Waa la duubayaa…",
+  "tvRecordingError": "Duubisku ma bilaaban.",
+  "tvRecordingSaved": "Duubista waa la kaydiyey ({size})",
+  "@tvRecordingSaved": {
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "tvRecordingEmpty": "Duubiskan weli sawir ma leh.",
+  "tvRemovedFromFavorites": "Waxaa laga saaray kuwa aan jeclahay",
+  "tvAddedToFavorites": "Waxaa lagu daray kuwa aan jeclahay ❤",
+  "tvCinemaAllLanguages": "Dhammaan luuqadaha",
+  "tvCinemaAudio": "Cod",
+  "tvCinemaAudioSubs": "Codka iyo qoraal-hoosaadyada",
+  "tvCinemaCast": "Waxaa jilaya {names}",
+  "@tvCinemaCast": {
+    "placeholders": {
+      "names": {
+        "type": "String"
+      }
+    }
+  },
+  "tvCinemaContinue": "Sii wad daawashada",
+  "tvCinemaDeleteDownload": "Tirtir soo-dejinta",
+  "tvCinemaDirector": "Agaasime: {names}",
+  "@tvCinemaDirector": {
+    "placeholders": {
+      "names": {
+        "type": "String"
+      }
+    }
+  },
+  "tvCinemaDownload": "Soo deji",
+  "tvCinemaDownloadError": "Soo-dejintu ma dhammaan.",
+  "tvCinemaDownloadPaused": "Waa la hakiyey · {pct} %",
+  "@tvCinemaDownloadPaused": {
+    "placeholders": {
+      "pct": {
+        "type": "String"
+      }
+    }
+  },
+  "tvCinemaDownloaded": "Waa la soo dejiyey",
+  "tvCinemaDownloading": "Waa la soo dejinayaa · {pct} %",
+  "@tvCinemaDownloading": {
+    "placeholders": {
+      "pct": {
+        "type": "String"
+      }
+    }
+  },
+  "tvCinemaDownloads": "Soo-dejinnadayda",
+  "tvCinemaEmptyCategory": "Safka weli waa madhan yahay.",
+  "tvCinemaEpisode": "Dhacdada {n}",
+  "@tvCinemaEpisode": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
+  "tvCinemaFromStart": "Bilowga",
+  "tvCinemaIndexing": "Raadinta liiska barnaamijyada oo dhan ayaa la diyaarinayaa…",
+  "tvCinemaLanguage": "Luuqadda: {value}",
+  "@tvCinemaLanguage": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "tvCinemaLoading": "Waa la rarayaa…",
+  "tvCinemaMinutes": "{n} daqiiqo",
+  "@tvCinemaMinutes": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
+  "tvCinemaNextEpisode": "Dhacdada xigta",
+  "tvCinemaNextHint": "OK: hadda · Dib: joog",
+  "tvCinemaNextIn": "Dhacdada xigta {s} ilbiriqsi kadib",
+  "@tvCinemaNextIn": {
+    "placeholders": {
+      "s": {
+        "type": "String"
+      }
+    }
+  },
+  "tvCinemaNoEpisodes": "Dhacdooyin lama heli karo.",
+  "tvCinemaNoSource": "Weli filimo ama taxanayaal ma jiraan",
+  "tvCinemaNoSourceBody": "Filimada iyo taxanayaashu waxay ka yimaadaan rukumashadaada Xtream. Ku dar qaybta Adeegaha, ama ka codso iibiyahaaga inuu hawlgeliyo.",
+  "tvCinemaOfflineTitle": "Liiska barnaamijyada lama heli karo",
+  "tvCinemaOfflineBody": "TV-ga waxba kuma kaydsana, adeeguhuna kama jawaabayo. Hubi xiriirka oo mar kale isku day.",
+  "tvCinemaRetry": "Mar kale isku day",
+  "tvCinemaUpdated": "La cusboonaysiiyey {when}",
+  "@tvCinemaUpdated": {
+    "placeholders": {
+      "when": {
+        "type": "String"
+      }
+    }
+  },
+  "tvCinemaAgeJustNow": "hadda uun",
+  "tvCinemaAgeMinutes": "{n} daqiiqo ka hor",
+  "@tvCinemaAgeMinutes": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "tvCinemaAgeHours": "{n} saac ka hor",
+  "@tvCinemaAgeHours": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "tvCinemaAgeDays": "{n} maalmood ka hor",
+  "@tvCinemaAgeDays": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "tvCinemaCategoryFailed": "Qaybtan lama soo rari karin.",
+  "moviesRetry": "Mar kale isku day",
+  "tvCinemaNoSpace": "Box-ka boos ku filan kama bannaana ({free} GB ayaa bannaan).",
+  "@tvCinemaNoSpace": {
+    "placeholders": {
+      "free": {
+        "type": "String"
+      }
+    }
+  },
+  "tvCinemaPauseDownload": "Haki",
+  "tvCinemaPlay": "Daar",
+  "tvCinemaPlayEpisode": "Daar X{s} · Dh{e}",
+  "@tvCinemaPlayEpisode": {
+    "placeholders": {
+      "s": {
+        "type": "String"
+      },
+      "e": {
+        "type": "String"
+      }
+    }
+  },
+  "tvCinemaRecent": "Dhawaan lagu daray",
+  "tvCinemaRestart": "Dib u bilow",
+  "tvCinemaResumeAt": "Ka sii wad {time}",
+  "@tvCinemaResumeAt": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "tvCinemaResumeDownload": "Sii wad soo-dejinta",
+  "tvCinemaResumeEpisode": "Sii wad X{s} · Dh{e}",
+  "@tvCinemaResumeEpisode": {
+    "placeholders": {
+      "s": {
+        "type": "String"
+      },
+      "e": {
+        "type": "String"
+      }
+    }
+  },
+  "tvCinemaResumedAt": "Waxaa laga sii wadaa {time}",
+  "@tvCinemaResumedAt": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "tvCinemaSearch": "Raadi",
+  "tvCinemaSeason": "Xilliga {n}",
+  "@tvCinemaSeason": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
+  "tvCinemaSeasons": "{n} xilli",
+  "@tvCinemaSeasons": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
+  "tvCinemaSpecials": "Dhacdooyin gaar ah",
+  "tvCinemaSubtitles": "Qoraal-hoosaadyo",
+  "tvCinemaSubtitlesOff": "Deman",
+  "tvCinemaTrackUnknown": "Raadka {n}",
+  "@tvCinemaTrackUnknown": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
+  "tvUpdatingContent": "Waa la cusboonaysiinayaa…",
+  "tvDeactivate": "Dami",
+  "tvSourceActive": "shaqaynaya",
+  "tvSourceInactive": "la damiyey",
+  "tvSourceChannels": "{count, plural, =1{1 kanaal} other{{count} kanaal}}",
+  "@tvSourceChannels": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "tvDeviceCard": "Qalabkayga",
+  "tvUpdateTitle": "Cusboonaysiinta",
+  "tvSettingsRecordingsHint": "Muuqaallada lagu duubay badhanka DUUB.",
+  "tvRingHint": "◀ ▶  dhex soco   ·   OK  fur",
+  "tvCinemaDownloadSeason": "Soo deji xilliga",
+  "tvCinemaSeasonQueue": "{count, plural, =0{Xilliga ayaa la soo dejinayaa} =1{1 dhacdo ayaa saf ku jirta} other{{count} dhacdo ayaa saf ku jira}}",
+  "@tvCinemaSeasonQueue": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "tvPlayerLoading": "Kanaalka ayaa la rarayaa…",
+  "tvPlayerFatalDown": "Kanaalkani hadda kama jawaabayo.",
+  "tvPlayerFatalEmpty": "Kanaalkani hadda kama la heli karo isha.",
+  "tvPlayerFatalNav": "Kor / Hoos: kanaal kale",
+  "tvSearchPrompt": "Magac ku qor kiiboodhka. Fallaarta midig: natiijooyinka.",
+  "tvSearchCount": "{count, plural, =1{1 natiijo} other{{count} natiijo}}",
+  "tvGuideLoading": "Hagaha ayaa la rarayaa…",
+  "tvGuideHint": "Kor / Hoos: dhex soco · OK ama Dib: xir",
+  "tvNoEpg": "Barnaamij lama sheegin",
+  "@tvSearchCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "tvRemoteTitle": "Kontoroolka fog",
+  "tvSettingsRemote": "Telefoonku wuxuu noqdaa kontoroolka fog, isla Wi-Fi-ga, adigoon wax rakibin.",
+  "tvRemoteLead": "Koodhka QR ku sawir kamaradda telefoonka. Wax rakibid ah looma baahna.",
+  "tvRemoteWarn": "Qof kasta oo arka koodhkan wuxuu maamuli karaa box-ka ilaa uu ka dhacayo. Hal telefoon oo keliya. Koodhku iskii ayuu u dhacayaa.",
+  "tvRemoteKeep": "Dib ayaa looga baxaa shaashaddan: telefoonku wuu sii shaqaynayaa ilaa koodhku dhacayo. Jooji ayaa hadda soo afjaraya.",
+  "tvRemoteStarting": "Waa la bilaabayaa…",
+  "tvRemoteWaiting": "Telefoonka ayaa la sugayaa…",
+  "tvRemotePaired": "Telefoonku wuu xiran yahay",
+  "tvRemoteExpired": "Koodhku wuu dhacay",
+  "tvRemoteStopped": "Kontoroolka fog waa la joojiyey",
+  "tvRemoteNoLan": "Shabakad gudaha ah ma jirto. Ku xir box-ka iyo telefoonka isla Wi-Fi-ga.",
+  "tvRemoteError": "Kontoroolka fog lama bilaabi karin.",
+  "tvRemoteNewCode": "Koodh cusub",
+  "tvRemoteStop": "Jooji",
+  "tvRemoteStart": "Shid",
+  "tvRemoteLeft": "Wuxuu dhacayaa {time} kadib",
+  "@tvRemoteLeft": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "tvRemoteUrlHelp": "Haddii sawiristu fashilanto, cinwaankan ka fur biraawsarka telefoonka.",
+  "tvVoiceMic": "Makarafoon",
+  "tvVoiceListening": "Hadda hadal…",
+  "tvVoiceUnavailable": "Box-kan makarafoon ma leh. Isticmaal kiiboodhka.",
+  "tvVoiceCancelled": "Waa laga noqday. Waxaad ku qori kartaa kiiboodhka.",
+  "tvVoiceFailed": "Ma fahmin. Mar kale isku day ama isticmaal kiiboodhka.",
+  "tvVoiceBusy": "Makarafoonka hadda ayaa la isticmaalayaa. Wax yar kadib mar kale isku day.",
+  "tvVoiceTonightTitle": "TV-ga caawa",
+  "tvVoiceTonightEmpty": "Caawa wax lama shaacin. Ku dar cinwaanka hagaha liiskan, kadib mar kale isku day.",
+  "tvVoiceKindChannel": "Kanaal",
+  "tvVoiceKindMovie": "Filim",
+  "tvVoiceKindSeries": "Taxane",
+  "tvVoiceRemoteAi": "Caawimo cod oo fog",
+  "tvVoiceRemoteAiOn": "Shidan",
+  "tvVoiceRemoteAiOff": "Deman",
+  "tvVoiceRemoteAiHelp": "Caadi ahaan way deman tahay. Abka fure kuma jiro. “Caawa” waxaa laga akhriyaa hagahaaga ee box-ka. Haddii adeeggu jawaabi waayo, Zuno wuxuu ka raadiyaa liiskaaga.",
+  "tvVoiceCinemaHint": "Mar fur Filimada ama Taxanayaasha: raadintu markaas ayay heli doontaa, iyadoon shabakadda la adeegsan markaad daawanayso.",
+  "tvVoiceOnChannel": "Kanaalka {channel}",
+  "@tvVoiceOnChannel": {
+    "placeholders": {
+      "channel": {
+        "type": "String"
+      }
+    }
+  },
+  "sportsTimeout": "Adeegga ciyaaruhu waqti dheer ayuu qaatay. Mar kale isku day.",
+  "sportsNetworkError": "Lama xiriiri karo adeegga ciyaaraha.",
+  "sportsHttpError": "Adeegga ciyaaraha lama heli karo (HTTP {status}).",
+  "sportsInvalidResponse": "Jawaabta adeegga ciyaaraha lama akhrin karo.",
+  "sportsUnavailable": "Xogta ciyaaraha lama soo rari karo.",
+  "sportsLoading": "Kulammada ayaa la rarayaa…",
+  "sportsRetry": "Mar kale isku day",
+  "@sportsHttpError": {
+    "placeholders": {
+      "status": {
+        "type": "int"
+      }
+    }
+  },
+  "sportsFootballTitle": "Natiijooyinka iyo kulammada",
+  "sportsRefresh": "Cusboonaysii",
+  "sportsCommunityNotice": "Natiijooyin iyo goolal bulshadu bixiso · dib u dhac waa suuragal · waxaa la cusboonaysiiyaa 60 ilbiriqsi kasta.",
+  "sportsCalendarNotice": "Jadwal iyo natiijooyin dib u dhacay · OpenFootball ma bixiyo natiijooyin toos ah.",
+  "sportsRetrievedAt": "Waxaa la helay {time}",
+  "sportsUpcoming": "Soo socda",
+  "sportsRecent": "Kulammadii dhawaa",
+  "sportsFinished": "Dhammaaday",
+  "@sportsRetrievedAt": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "tvProgramStartedMinutesAgo": "Barnaamijku wuxuu bilaabmay {minutes} daqiiqo ka hor",
+  "@tvProgramStartedMinutesAgo": {
+    "description": "Notification brève du guide : temps écoulé depuis le début du programme.",
+    "placeholders": {
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
+  "tvProfiles": "Bogagga dadka",
+  "tvKidsProfile": "Bogga carruurta",
+  "tvNewProfile": "Bog qof cusub",
+  "tvChildren": "Carruurta",
+  "tvKidsExists": "Bogga carruurtu hore ayuu u jiraa.",
+  "tvProfileAddFailed": "Bogga qofka laguma dari karin.",
+  "tvKidsReady": "Bogga carruurtu waa diyaar. Qaabka carruurtu wuu shidnaanayaa.",
+  "tvRename": "Magaca beddel",
+  "tvNameInvalid": "Magacu wuu madhan yahay ama aad buu u dheer yahay.",
+  "tvProfileDeleteBody": "Kuwa uu jecel yahay, taariikhda, meelaha la sii wadayo, xusuusiyeyaasha iyo PIN-ka waa la tirtirayaa. Kanaallada iyo bogga 1 way sii joogayaan.",
+  "tvProfileDeleteFailed": "Boggan qofka lama tirtiri karo.",
+  "tvProfilesHelp": "Ilaa 4 bog qof. Mid walba wuxuu leeyahay kuwa uu jecel yahay, taariikh, meelaha la sii wadayo, xusuusiyeyaasha iyo PIN. Kanaallada waa la wadaagaa.",
+  "tvDefaultPinWarning": "PIN-ku weli waa 0000. Ka beddel Xakamaynta waalidka.",
+  "tvAskProfileOn": "Dooro bogga qofka marka la bilaabayo: shidan",
+  "tvAskProfileOff": "Dooro bogga qofka marka la bilaabayo: deman",
+  "tvProfileStartupSingle": "Doorashada bilowgu waxay soo baxdaa marka ay jiraan 2 bog qof ama ka badan. Hal bog marka uu jiro, abku si toos ah ayuu u furmaa.",
+  "tvProfileStartupHelp": "Markay deman tahay, bogii ugu dambeeyey ayaa si toos ah u furma. Weli waad ka beddeli kartaa halkan ama bogga hore.",
+  "tvKidsProfileHelp": "Qaabka carruurtu wuu xiran yahay. Ka bixiddu waxay u baahan tahay PIN-ka boggan. Waxyaabaha dadka waaweyn waa qarsoon yihiin. Bogga 1 wuxuu hayaa xogtaadii hore.",
+  "tvOriginProfileHelp": "Bogga asalka ah: kuwa aad jeclayd, taariikhda, meelaha la sii wadayo iyo PIN-kaagii hore halkan ayay ku jiraan. Lama tirtiri karo.",
+  "tvSeparateProfileHelp": "Bog gaar ah. Tirtiriddiisu ma tirtirayso bogga 1.",
+  "tvProfileActive": "Shaqaynaya",
+  "tvProfileCreated": "Bogga “{name}” waa la sameeyey.",
+  "@tvProfileCreated": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "tvProfileDeleteTitle": "Ma tirtirtaa “{name}”?",
+  "@tvProfileDeleteTitle": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "tvWhoWatching": "Yaa daawanaya?",
+  "tvProfilePickerHelp": "Qof kastaa wuxuu leeyahay kuwa uu jecel yahay, taariikh iyo PIN u gaar ah. Kanaalladu isma beddelaan.",
+  "tvLater": "Mar dambe",
+  "tvNameMum": "Hooyo",
+  "tvNameDad": "Aabbe",
+  "tvNameGuest": "Marti",
+  "tvNameLivingRoom": "Qolka fadhiga",
+  "tvNameLimit": "Ugu badnaan 18 xaraf.",
+  "tvFirstName": "Magaca koowaad",
+  "tvListRemoved": "Liiska waa laga saaray",
+  "tvListRemovedBody": "Bixiyahaaga ayaa ka saaray liiskan. Kanaalladiisa mar dambe lama heli karo.",
+  "tvKidsCannotDisable": "Qaabka carruurtu wuu ku shidnaanayaa bogga carruurta. PIN-ka ku beddel bogga qofka si aad u aragto dhammaan kanaallada.",
+  "tvKidsAlwaysOn": "Bogga carruurta: qaabka carruurtu wuu shidnaanayaa. Kanaallada aan dadka waaweyn gaar u ahayn waa la heli karaa.",
+  "tvKidsOn": "Shidan — waxyaabaha dadka waaweyn waa qarsoon yihiin.",
+  "tvKidsOff": "Deman — dhammaan kanaallada waa muuqdaan.",
+  "tvChooseSecurePin": "Dooro PIN ka hor intaadan shidin qaabka carruurta. 0000 mar dambe lama aqbalo.",
+  "tvPinWait": "Isku dayo aad u badan. Mar kale isku day dhowr daqiiqo kadib.",
+  "tvEnabled": "Shidan",
+  "tvDisabled": "Deman",
+  "tvProfilePinHelp": "PIN-ka “{name}”. Qaabka carruurtu wuxuu qariyaa kanaallada dadka waaweyn. Damintiisa ama beddelidda PIN-ka waxay u baahan tahay PIN-kan. Bog walba wuxuu leeyahay mid u gaar ah.",
+  "@tvProfilePinHelp": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "tvPinWaitMinutes": "Isku dayo aad u badan. Mar kale isku day {minutes} daqiiqo kadib.",
+  "@tvPinWaitMinutes": {
+    "placeholders": {
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
+  "tvExtras": "Dheeraad",
+  "tvExtrasHelp": "Sifooyin aad mid-mid u damin karto. Midkoodna kanaal ma xannibo.",
+  "tvMissedTitle": "Waad soo daahday",
+  "tvMissedOn": "Haguhu wuxuu sheegayaa wixii ku dhaafay. OK si aad u damiso. Daawashada tooska ahi iskeed dib uguma noqoto.",
+  "tvMissedOff": "Deman. OK si aad u shiddo. Kanaal dib looma celinayo.",
+  "tvAtThisHour": "Saacaddan",
+  "tvTimePicksOn": "Wuxuu kuu soo jeediyaa kanaallada aad inta badan furto saacaddan. OK si aad u damiso. Waxba iskood uma bilaabmaan.",
+  "tvTimePicksOff": "Deman. OK si aad u shiddo. Tirinta waan joojinaynaa, safkuna wuu baxayaa.",
+  "tvServiceNotices": "Ogeysiisyada adeegga",
+  "tvNoticesOn": "Kaarka bogga hore marka bixiyahaagu daabaco ogeysiis (dayactir, warar). OK si aad u damiso. Marna laguma dul muujiyo muuqaalka.",
+  "tvNoticesOff": "Deman. OK si aad u shiddo. Ogeysiisyada mar dambe lama muujiyo.",
+  "tvPickOfDay": "Xulashada maalinta",
+  "tvFeaturedOn": "Kanaalka uu bixiyahaagu soo xusho, haddii uu liiskaaga ku jiro. OK si aad u damiso. Waxba iskood uma bilaabmaan.",
+  "tvFeaturedOff": "Deman. OK si aad u shiddo. Kaarku bogga hore ayuu ka baxayaa.",
+  "tvBanners": "Boorarka",
+  "tvBannersOn": "Hal sawir mar kasta bogga hore, had iyo jeer leh summadda \"Xayaysiis\". Xir = 7 maalmood ma soo baxayo. OK si aad u damiso. Cod ma leh, marna muuqaalka laguma dul muujiyo.",
+  "tvBannersOff": "Deman. OK si aad u shiddo. Boorar dambe ma jiraan.",
+  "tvSubtitlesOnHelp": "Wuxuu muujiyaa raadka hore ugu jiray qulqulka, luuqaddaada. OK si aad u damiso. Waxba lama turjumo, lamana soo dejiyo.",
+  "tvSubtitlesOffHelp": "Deman. OK si aad u shiddo. Daawashada tooska ahi ma beddesho qulqulka.",
+  "tvClearVoice": "Cod cad",
+  "tvClearVoiceOn": "Shidan. Codadka dhaadheer wax yar ayaa la dejinayaa (qaabka habeenkii). OK si aad u damiso. Codka wareegsan ee toos loo gudbiyo sidii uu ahaa ayuu ahaanayaa.",
+  "tvClearVoiceOff": "Deman, taas oo ah dejinta asalka ah. OK si aad u dejiso codadka aadka u dheer. Codka wareegsan ee toos loogu dirayo soundbar isma beddelo.",
+  "tvLogToSupport": "Diiwaanka u dir taageerada",
+  "tvLogToSupportOn": "Diiwaanka Sanduuqa madow waxaa loo diri karaa taageerada, isagoo aan lahayn cinwaan qulqul ama eray sir ah. OK si aad u damiso.",
+  "tvLogToSupportOff": "Deman. Diiwaanku wuxuu ku harayaa box-ka. OK si aad mar kale ugu dirto taageerada.",
+  "tvPictureEngine": "Matoorka sawirka",
+  "tvPictureEngineHelp": "Hadda: {engine}. OK si aad u beddesho. Qalabeed = box-ka (asalka). Software = haddii sawirku madow ahaado. Muuqaalka FFmpeg kuma jiro noocan: OK wuu ka boodaa.",
+  "@tvPictureEngineHelp": {
+    "placeholders": {
+      "engine": {
+        "type": "String"
+      }
+    }
+  },
+  "tvScreenRefresh": "Cusboonaysiinta shaashadda",
+  "tvScreenRefreshOn": "Shidan. Shaashaddu waxay u beddelmi kartaa 24, 50 ama 60 Hz si ay ula jaanqaaddo qulqulka. OK si aad u damiso. Box-yada qaarkood sawirku ilbiriqsi ayuu go'aa: haddii ay dhacdo, dami.",
+  "tvScreenRefreshOff": "Deman, taas oo ah dejinta asalka ah. OK si aad shaashadda ula jaanqaaddo 24 / 25 / 30 / 50 / 60 sawir ilbiriqsikii. Iskeed uma shidanto.",
+  "tvContrast": "Kala-duwanaanta iftiinka",
+  "tvContrastOn": "Waxaa loo daaray fiidiyowyada SDR ee ku habboon. HDR wuxuu haystaa muuqaalkiisii asalka ahaa.",
+  "tvContrastOff": "Waa deman. Sawirku wuxuu haystaa kala-duwanaantiisii iftiinka ee asalka ahayd.",
+  "tvContrastUnavailable": "Ciyaariyahani ma taageero dejintan.",
+  "tvUpdateAllowInstall": "U oggolow Zuno inuu ababka rakibo (Android ayaa furay shaashadda: shid \"Zuno\"), kadib soo noqo oo riix OK. Cusboonaysiinta hore ayaa loo soo dejiyey.",
+  "tvFfmpegKeepDecoder": "Muuqaalka FFmpeg kuma jiro noocan. Waxaa la sii isticmaalayaa furfuraha hadda jira.",
+  "tvFfmpegBoxDecoder": "Muuqaalka FFmpeg kuma jiro noocan. Waxaa lagu noqonayaa furfuraha box-ka.",
+  "tvFfmpegUnavailable": "Muuqaalka FFmpeg kuma jiro noocan.",
+  "tvEngineSelected": "Matoorka: {engine}",
+  "@tvEngineSelected": {
+    "placeholders": {
+      "engine": {
+        "type": "String"
+      }
+    }
+  },
+  "tvOnYourPhone": "Telefoonkaaga",
+  "tvGotIt": "Waan fahmay",
+  "tvClose": "Xir",
+  "tvPhone": "Telefoon",
+  "tvSoftware": "Software",
+  "tvHardware": "Qalabeed",
+  "tvProfilesSettingsHelp": "Ilaa 4 bog qof oo kala leh kuwa la jecel yahay, taariikh, meelaha la sii wadayo, xusuusiyeyaasha iyo PIN.",
+  "tvAudioDiagnostic": "Baaritaanka codka",
+  "tvAudioDiagnosticHelp": "Warbixin gudaha qalabka ah oo kanaal kasta u gaar ah. Waxba lama diro. Ikhtiyaarrada tijaabadu caadi ahaan way deman yihiin.",
+  "tvPlayerDisclaimer": "Abkani waa CIYAARIYE warbaahin. Ma iibiyo, ma bixiyo, mana martigeliyo kanaallo, qulqullo ama xiriiriyeyaal M3U. Barnaamijyada waxaa keena isticmaalaha, kaas oo mas'uul ka ah sharciyaddooda.",
+  "tvActivationDisclaimer": "Ciyaariye warbaahin — ma iibiyo mana bixiyo kanaallo ama xiriiriyeyaal M3U. Barnaamijyada waxaa keena isticmaalaha. Shuruudaha: app.7themotion.com/terms",
+  "tvSourcePasteHelp": "Ku dheji xiriiriyahaaga ama aqoonsiyadaada. Bixiye kasta oo M3U ama Xtream ah.",
+  "tvPasteClipboard": "Dheji",
+  "tvPickLocalFile": "Fayl",
+  "tvLocalFileUnavailable": "Box-kan ma furo faylal. Ku dheji xiriiriye http ah.",
+  "tvLocalFileEmpty": "Faylkan kuma jiro liis la akhriyi karo.",
+  "tvLocalFileTooBig": "Faylkan aad buu ugu weyn yahay box-ka.",
+  "tvTrending": "🔥 Caan ah",
+  "tvRecent": "🕒 Dhawaan",
+  "tvForYou": "✨ Adiga laguu xushay",
+  "tvOther": "Kale",
+  "tvNetworkUnavailable": "Shabakad ma jirto",
+  "tvNetworkUnavailableHelp": "TV-gu ma gaari karo adeegaha. Hubi xiriirka oo mar kale isku day.",
+  "tvListRejected": "Liiska waa la diiday",
+  "tvListRejectedHelp": "Bixiyaha ayaa diiday liiskan. Hubi aqoonsiyadaada.",
+  "tvCodeInactive": "Koodhka lama hawlgelin",
+  "tvCodeInactiveHelp": "Koodhka TV-gan lama hawlgelin. Ku hawlgeli guddiga maamul, kadib sug dhowr ilbiriqsi.",
+  "tvSourcesEmpty": "Weli ilo ma jirto.\nKu dar xiriiriye M3U, akoon Xtream ama xiriiriyaha ciyaariyaha.",
+  "tvRecordingCloseFailed": "Duubista lama xiri karin. Faylku waxaa laga yaabaa inuusan dhammaystirnayn.",
+  "tvFromStart": "Bilowga",
+  "tvFollow": "La soco",
+  "tvChooseTeamHelp": "Hoos ka dooro koox, ama geli magac…",
+  "tvTeamNotFound": "“{name}” lama helin — isku day raadinta.",
+  "@tvTeamNotFound": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "tvCatchupHelp": "Laga bilaabo bilowga bandhigga. Midig, kadib OK: ku noqo tooska.",
+  "tvMissedRewindHint": "Midig, kadib OK: laga bilaabo bilowga.",
+  "tvMissedNoReplayHint": "Haguhu wuxuu hayaa qoraalka, ee ma hayo muuqaalka. Toosku siduu yahay ayuu ahaanayaa.",
+  "tvSourceNeedUrl": "Ku dheji cinwaan ku bilaabma http:// ama https://.",
+  "tvSourceNeedXtream": "Geli cinwaanka adeegaha, magaca isticmaalaha iyo erayga sirta ah.",
+  "tvSourceNeedCredentials": "Xiriiriyahan ciyaariyaha waxaa ka maqan magaca isticmaalaha ama erayga sirta ah. Ku dheji xiriiriyaha oo buuxa ama buuxi saddexda meelood ee Xtream.",
+  "tvSourceBadScheme": "Cinwaankan lama adeegsan karo. Waxaa loo baahan yahay xiriiriye http ama https ah.",
+  "tvPlayerLink": "Xiriiriyaha ciyaariyaha",
+  "tvAdvertisement": "Xayaysiis",
+  "tvSponsored": "La kafaala qaaday",
+  "tvInformation": "Macluumaad",
+  "tvSportFootball": "Kubadda cagta",
+  "tvSportBasketball": "Kubadda koleyga (NBA)",
+  "tvSportRugby": "Rugby",
+  "tvDataAttribution": "Xogta: {source}",
+  "@tvDataAttribution": {
+    "placeholders": {
+      "source": {
+        "type": "String"
+      }
+    }
+  },
+  "tvLegalSection1Title": "1. Dabeecadda abka — CIYAARIYE oo keliya",
+  "tvLegalSection1Body": "Abkani waa CIYAARIYE warbaahin oo daariya qulqullada codka/muuqaalka uu isticmaaluhu keeno. MA BIXIYO, MA IIBIYO, MA MARTIGELIYO, MA BAAHIYO, MANA URURIYO TUSMO kanaallo telefishan, qulqullo, barnaamijyo maqal iyo muuqaal ah, liisas (M3U) ama aqoonsiyada adeegga (Xtream). Wax barnaamij ah kuma jiraan, horay looguma soo rarin, lamana iibiyo abka.",
+  "tvLegalSection2Title": "2. Barnaamijyada uu isticmaaluhu keeno",
+  "tvLegalSection2Body": "Isticmaaluhu wuxuu keenaa ilihiisa gaarka ah (xiriiriyeyaasha M3U / aqoonsiyada Xtream), oo uu ka helo bixiyihiisa. Isticmaalaha OO KELIYA ayaa mas'uul ka ah waxyaabaha uu ku daro, daawado ama baahiyo, iyo inuu haysto xuquuqda, rukhsadaha iyo rukumashooyinka loo baahan yahay.",
+  "tvLegalSection3Title": "3. Rukumashadu = SOFTWARE, ma aha barnaamijyada",
+  "tvLegalSection3Body": "Lacag-bixin ama rukumasho kasta waxay KELIYA daboolaysaa isticmaalka abka (ciyaariyaha iyo sifooyinkiisa: muuqaalka, kuwa la jecel yahay, duubista qalabka, EPG…). Marna MA AHA iibsasho, iibin, kireyn ama bixinta kanaallo, qulqullo ama barnaamijyo.",
+  "tvLegalSection4Title": "4. Isticmaal sharci ah",
+  "tvLegalSection4Body": "Isticmaaluhu wuxuu oggolaanayaa inuu abka u isticmaalo si waafaqsan shuruucda dalkiisa, oo uusan ku gelin wax sharci-darro ah ama ku xadgudbaya xuquuqda daabacaadda. Isticmaal sharci-darro ah si adag ayaa loo mamnuucay, mas'uuliyaddiisana waxaa leh isticmaalaha oo keliya.",
+  "tvLegalSection5Title": "5. Waxyaabaha dhinacyada saddexaad — mas'uuliyad ma leh",
+  "tvLegalSection5Body": "Daabacuhu ma xakameeyo waxyaabaha dhinacyada saddexaad ee lagu helo ilaha isticmaaluhu keeno, mas'uulna lagama dhigi karo. Ma dammaanad qaado helitaanka, sharciyadda ama tayada waxyaabahaas.",
+  "tvLegalSection6Title": "6. Hantida aqooneed iyo cabashooyinka",
+  "tvLegalSection6Body": "Dhammaan summadaha ganacsi, astaamaha iyo barnaamijyada waxaa leh milkiilayaashooda. Maadaama abku uusan martigelin wax barnaamij ah, cabashooyinka xuquuqda daabacaadda waa in loo diraa bixiyaha isha ay khusayso.",
+  "tvLegalSection7Title": "7. Waxaa loo bixiyaa “sida uu yahay”",
+  "tvLegalSection7Body": "Abka waxaa loo bixiyaa “sida uu yahay”, iyadoo aan la dammaanad qaadin inuu mar kasta diyaar yahay ama khaladaad ka maran yahay. Daabacuhu wuu beddeli karaa ama hakin karaa qaar ama dhammaan sifooyinka.",
+  "tvLegalSection8Title": "8. Xogta shakhsiga",
+  "tvLegalSection8Body": "Aqoonsi farsamo oo qalabku leeyahay ayaa loo isticmaalaa maamulka rukhsadda/tijaabada iyo taageerada. Faahfaahin: app.7themotion.com/privacy.",
+  "tvLegalSection9Title": "9. Oggolaanshaha",
+  "tvLegalSection9Body": "Marka la rakibo ama la isticmaalo abkan, isticmaaluhu wuxuu qirayaa inuu akhriyey oo aqbalay shuruudahan. Nooca buuxa ee internetka: app.7themotion.com/terms",
+  "tvLegalLead": "Abkani waa ciyaariye. Ma iibiyo mana bixiyo kanaallo ama xiriiriyeyaal. Kor/hoos si aad u rogto, Dib si aad uga baxdo.",
+  "tvAudioSpectrumOn": "Baaxadda codka: waa la cabbiray",
+  "tvAudioSpectrumOff": "Baaxadda codka: deman",
+  "tvAudioFfmpegRetry": "Sawirka mar kale isku day",
+  "tvAudioFfmpegDefault": "FFmpeg: caadi",
+  "tvAudioAacTest": "AAC-ga box-ka: tijaabo",
+  "tvAudioAacOff": "AAC-ga box-ka: deman",
+  "tvAudioFallbackSession": "Beddelka kaydka: fadhiga oo dhan",
+  "tvAudioFallbackChannel": "Beddelka kaydka: kanaal kasta",
+  "tvAudioFocusAndroid": "Mudnaanta codka: Android",
+  "tvAudioFocusZuno": "Mudnaanta codka: Zuno",
+  "tvAudioBackgroundPause": "Abka bannaankiisa: haki",
+  "tvAudioBackgroundStop": "Abka bannaankiisa: jooji",
+  "tvAudioHomeLegacy": "Guriga: qaabkii hore",
+  "tvAudioHomeNative": "Guriga: joojin nidaamka",
+  "tvAudioHandoffNow": "Beddel: isla markiiba",
+  "tvAudioHandoffWait": "Beddel: sug",
+  "tvAudioOutput48k": "Soo-saarka: 48 kHz",
+  "tvAudioOutputStream": "Soo-saarka: heerka qulqulka",
+  "tvAudioWitnessStop": "Codka tijaabada: jooji",
+  "tvAudioWitnessPreparing": "Codka tijaabada: waa la diyaarinayaa",
+  "tvAudioWitnessPlay": "Daar codka tijaabada",
+  "tvAudioScrollHelp": "KOR/HOOS: rog · CH+/CH−: bog",
+  "tvAudioWitnessHelp": "Codka tijaabada ayaa socda (10 ilbiriqsi): hadal, kadibna guux. Waa isla ciyaariyaha kanaallada. Guux xiran → qalabka. Guux cad → kanaalka.",
+  "tvAudioOptionsHelp": "Baaxadda codka: kanaalka xiga waxay cabbirtaa afar meelood (furfuraha, codka cad, aamusnaanta, AudioTrack) iyadoon codka la beddelin. FFmpeg: wuxuu mar kale tijaabiyaa furfuraha software-ka; haddii uusan ku bilaabmin 8 ilbiriqsi, box-ka ayaa la wareega. AAC-ga box-ka: kanaalka xiga, AAC wuxuu adeegsadaa furfuraha box-ka (sida ExoPlayer). Haddii uu fashilmo, FFmpeg ayaa la wareega furitaankaas. Beddelka kaydka: “kanaal kasta” (caadiga) wuxuu kanaalka ay dhibaatadu saameysay oo keliya u diraa box-ka marka FFmpeg fashilmo; “fadhiga oo dhan” waa qaabkii hore, oo kanaal kasta u dira box-ka kadib hal fashil. Mudnaanta codka: “Zuno” (caadiga) marna ma dhimo mugga marka ab kale ama dhawaaq gaaban cod codsado; “Android” waa qaabkii hore (muggu wuxuu u dhacaa 20%). Abka bannaankiisa: “jooji” (caadiga) wuxuu joojiyaa oo sii daayaa codka marka laga baxo abka, kadib kanaalka ayuu dib u furaa marka lagu soo noqdo; “haki” waa qaabkii hore. Guriga: “joojin nidaamka” (caadiga) wuxuu joogsadaa marka onPause dhaco, waxna dib ugama furmaan abka bannaankiisa; “qaabkii hore” wuxuu sugaa Flutter. Beddel: “sug” (caadiga) wuxuu furaa kanaalka xiga kaddib marka AudioTrack-gii hore la sii daayo, si looga fogaado codad is dul saaran kadib beddello badan; “isla markiiba” waa qaabkii hore. Soo-saarka: “heerka qulqulka” (caadiga) wuxuu adeegsadaa heerka muunadaynta ee qulqulka (44.1 kHz kanaallo badan), beddeliddana box-ka ayaa sameeya; “48 kHz” wuxuu dib uga muunadeeyaa abka ka hor soo-saarka. Isku day haddii codku xun yahay iyadoo warbixintu muujinayso 44.1 kHz. Codka tijaabada: 10 ilbiriqsi oo hadal ah kadib guux, isla ciyaariyaha ayaa daariya. Wuxuu suurtageliyaa cabbir iyadoon codka la beddelin. Guux xiran → qalabka. Guux cad → kanaalka.",
+  "tvAudioNoReports": "Warbixinno ma jiraan. Fur kanaal: ciyaariyuhu wuxuu diiwaangeliyaa codec-ga, furfuraha iyo soo-saarka. Baaxadda codka waxaa la cabbiraa oo keliya marka la shido.",
+  "tvAudioTestSound": "Codka tijaabada",
+  "tvDiagCaptive": "1. Bogga gelitaanka shabakadda (204)",
+  "tvDiagDns": "2. Raadinta DNS-ka martigeliyaha IPTV",
+  "tvDiagStream": "3. Helitaanka qulqulka (HTTP / 456)",
+  "tvDiagSource": "4. Isha loo qoondeeyey (device-source)",
+  "tvDiagPlayer": "5. Tijaabada ExoPlayer / Media3",
+  "tvDiagRequest": "Waxaa la codsanayaa generate_204…",
+  "tvDiagInternetOk": "HTTP 204 (internet waa la heli karaa)",
+  "tvDiagTimeout": "Jawaab ma iman 8 ilbiriqsi gudahood",
+  "tvDiagNoHost": "Kanaal lama soo rarin → martigeliyaha LAMA YAQAAN",
+  "tvDiagNoUrl": "Kanaal lama soo rarin → URL-ka LAMA YAQAAN",
+  "tvDiagStreamHead": "Codsiga HEAD ee qulqulka…",
+  "tvDiagIpBlocked": "HTTP 456 — bixiyaha ayaa xannibaya IP-kan",
+  "tvDiagReadingMac": "MAC-ga ayaa la akhrinayaa…",
+  "tvDiagSourceAssigned": "HTTP 200 — il ayaa loo qoondeeyey",
+  "tvDiagNoSource": "HTTP 200 — il looma qoondeyn",
+  "tvDiagPlayerBusy": "Daawashada shaashad buuxda way socotaa: tijaabada waa laga booday (hal ciyaariye oo keliya)",
+  "tvDiagPlayerOpening": "Tijaabada ExoPlayer ayaa la furayaa…",
+  "tvDiagFrameOk": "Sawirkii koowaad waa la furfuray waana la muujiyey",
+  "tvDiagPlayerError": "Ciyaartu way istaagtay qulqulkan.",
+  "tvDiagFrameTimeout": "Sawir ma iman 8 ilbiriqsi gudahood",
+  "tvDiagRunning": "BAARITAANKU WUU SOCDAA…",
+  "tvDiagPassed": "DAAWASHADA QALABKA WAA LA XAQIIJIYEY",
+  "tvDiagNetworkBlocked": "XANNIBAAD SHABAKAD",
+  "tvDiagPlayerFailed": "KHALAD CIYAARIYE",
+  "tvDiagPartial": "BAARITAAN AAN DHAMMAYSTIRNAYN",
+  "tvDiagTitle": "BAARITAANKA QALABKA — Zuno",
+  "tvDiagHelp": "Wuxuu tijaabiyaa in TV-gu ka daari karo qulqulka cinwaankiisa IP-ga.",
+  "tvBackToExit": "DIB si aad uga baxdo",
+  "tvDiagCaptiveLikely": "HTTP {status}, {bytes} bayt → waxaa suuragal ah bog gelitaan shabakad",
+  "@tvDiagCaptiveLikely": {
+    "placeholders": {
+      "status": {
+        "type": "int"
+      },
+      "bytes": {
+        "type": "int"
+      }
+    }
+  },
+  "tvDiagLookup": "Waxaa la raadinayaa {host}…",
+  "@tvDiagLookup": {
+    "placeholders": {
+      "host": {
+        "type": "String"
+      }
+    }
+  },
+  "tvDiagNoIp": "{host} → cinwaan IP ah ma jiro",
+  "@tvDiagNoIp": {
+    "placeholders": {
+      "host": {
+        "type": "String"
+      }
+    }
+  },
+  "tvDiagDnsTimeout": "{host}: DNS jawaab kama iman 8 ilbiriqsi gudahood",
+  "@tvDiagDnsTimeout": {
+    "placeholders": {
+      "host": {
+        "type": "String"
+      }
+    }
+  },
+  "tvDiagStreamOk": "HTTP {status} (qulqulka waa la gaari karaa)",
+  "@tvDiagStreamOk": {
+    "placeholders": {
+      "status": {
+        "type": "int"
+      }
+    }
+  },
+  "tvDiagUnknownMac": "MAC AAN LA AQOON ({mac})",
+  "@tvDiagUnknownMac": {
+    "placeholders": {
+      "mac": {
+        "type": "String"
+      }
+    }
+  },
+  "tvSizeBytes": "{size} B",
+  "@tvSizeBytes": {
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "tvSizeKb": "{size} KB",
+  "@tvSizeKb": {
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "tvSizeMb": "{size} MB",
+  "@tvSizeMb": {
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "tvSizeGb": "{size} GB",
+  "@tvSizeGb": {
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "tvDurationHm": "{hours} saac {minutes} daqiiqo",
+  "@tvDurationHm": {
+    "placeholders": {
+      "hours": {
+        "type": "String"
+      },
+      "minutes": {
+        "type": "String"
+      }
+    }
+  },
+  "tvWhatsAppActivationRequest": "Salaan, waxaan jeclaan lahaa inaan hawlgeliyo Zuno.",
+  "@tvWhatsAppActivationRequest": {
+    "description": "Demande préremplie du QR WhatsApp. La MAC ASCII est ajoutée séparément, sur sa propre ligne, pour conserver son ordre en arabe."
+  },
+  "castErrorTimeoutRetry": "TV-gu waqti dheer ayuu ku qaadanayaa jawaabta. Mar kale isku day ama dooro TV kale.",
+  "castProgressRelay": "Gudbiyaha ayaa la diyaarinayaa…",
+  "castFriendlyNetworkFail": "TV-ga laguma xiriirin karin.",
+  "castFriendlyTvTimeout": "TV-gu kama jawaabayo. Hubi WiFi-ga.",
+  "castFriendlyBadFormat": "TV-gaagu ma aqbalayo qaabkan. Isku day kanaal kale.",
+  "castProgressLive": "Hadda TV-ga ayaa loo gudbinayaa",
+  "castFriendlyAuthExpired": "Gelitaanka qulqulka waa la diiday — rukumashadaadu waxaa laga yaabaa inay dhacday.",
+  "castFriendlyTvRefused": "TV-gani ma aqbalin qulqulkan. Isku day kanaal kale.",
+  "castProgressConnectingAttempt": "Waxaa lagu xirmayaa TV-ga ({attempt}/{total})…",
+  "@castProgressConnectingAttempt": {
+    "placeholders": {
+      "attempt": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "castFriendlyGenericFail": "Gudbintu way fashilantay. Mar kale isku day.",
+  "castProgressWebFallback": "Waxaa loo wareegayaa qaabka guud (koodhka QR)…",
+  "castFriendlyTvUnreachable": "TV-gu kama jawaabayo. Hubi inuu shidan yahay oo ku xiran yahay isla shabakadda gaarka ah ee qalabkan.",
+  "castProgressDetecting": "TV-ga ayaa la aqoonsanayaa…",
+  "castDlnaReceiverFallback": "Qaataha DLNA",
+  "castErrorApIsolation": "TV-gu ma gaari karo qalabkan. Labadaba ku xir isla shabakad gaar ah, adigoon adeegsan shabakad marti.",
+  "castProgressRetrying": "Waxaa mar kale lagu tijaabinayaa qaabka iswaafajinta ({attempt}/{total})…",
+  "@castProgressRetrying": {
+    "placeholders": {
+      "attempt": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "castFriendlyTvStuck": "TV-gaagu wuxuu ku xanniban yahay gudbin hore. Dami dhowr ilbiriqsi, dib u shid oo mar kale isku day.",
+  "castErrorReceiverRejected": "TV-gu wuu diiday qulqulkan — waxay u badan tahay in qaabku uusan la shaqayn qaatahan. Isku day kanaal kale.",
+  "castProgressConnecting": "Waxaa lagu xirmayaa TV-ga…",
+  "castFriendlyNoGms": "Chromecast-ka rasmiga ahi wuxuu u baahan yahay adeegyada Google Play, oo telefoonkan ka maqan. Weli waxaad liiska uga gudbin kartaa Smart TV (DLNA) ama Roku.",
+  "castErrorTimeout": "Gudbintu waqti dheer ayay qaadatay — TV-ga ama shabakadda ayaan jawaabayn",
+  "castFriendlyDnsUnstable": "Internetka ama DNS-ku ma deggana. Mar kale isku day dhowr ilbiriqsi kadib.",
+  "castFriendlyProviderLimit": "Bixiyahaaga IPTV ayaa diidaya xiriir dheeraad ah (xadka ayaa la gaaray). Xir ab kale oo wax daawanaya oo mar kale isku day.",
+  "castProgressValidating": "Qulqulka ayaa la hubinayaa…",
+  "castWindowsHelp": "Ku xir kombiyuutarkaaga iyo TV-gaaga isla shabakad gaar ah (Wi-Fi ama Ethernet). Dooro TV DLNA ah ama Roku. Qaateyaasha Google Cast oo keliya ah kama shaqeeyaan Windows. Adeegso kontoroolka TV-ga si aad u doorato raadadka codka oo aad waqti ugu booddo.",
+  "vipCountriesTitle": "Dalalkayga · VIP",
+  "vipCountriesHint": "Dooro ilaa 10 dal. Kala-horrayntooda waxaa loo kaydiyaa boggan qofka; dalalka kale oo dhan waa la heli karaa.",
+  "vipCountriesOrder": "Kala-horrayntayda",
+  "vipCountriesEmpty": "Dal lagama helin kanaallada la heli karo.",
+  "vipCountriesSaveError": "Lama kaydin karin. Mar kale isku day.",
+  "vipCountriesMoveUp": "Kor u qaad",
+  "vipCountriesMoveDown": "Hoos u dhig",
+  "vipCountriesRemove": "Ka saar",
+  "vipCountryRs": "Seerbiya",
+  "vipCountryFr": "Faransiiska",
+  "vipCountryUs": "Maraykanka",
+  "vipCountryUk": "Boqortooyada Midowday",
+  "vipCountryDe": "Jarmalka",
+  "vipCountryIt": "Talyaaniga",
+  "vipCountryEs": "Isbaanishka",
+  "vipCountryPt": "Boortaqiiska",
+  "vipCountryBe": "Biljimka",
+  "vipCountryCh": "Iswiiska",
+  "vipCountryCa": "Kanada",
+  "vipCountryBr": "Baraasiil",
+  "vipCountryMx": "Meksiko",
+  "vipCountryAr": "Arjantiin",
+  "vipCountrySa": "Sacuudi Carabiya",
+  "vipCountryTr": "Turkiga",
+  "vipCountryGr": "Giriigga",
+  "vipCountryPl": "Booland",
+  "vipCountryRu": "Ruushka",
+  "vipCountryNl": "Nederlaan",
+  "vipCountryJp": "Jabaan",
+  "vipCountryKr": "Kuuriyada Koonfureed",
+  "vipCountryCn": "Shiinaha",
+  "vipCountryIn": "Hindiya",
+  "vipCountryAu": "Awstaraaliya",
+  "vipCountrySe": "Iswiidhan",
+  "vipCountryNo": "Noorweey",
+  "vipCountryDk": "Danmark",
+  "vipCountryFi": "Finland",
+  "vipCountryMa": "Marooko",
+  "vipCountryDz": "Aljeeriya",
+  "vipCountryTn": "Tuniisiya",
+  "vipCountryEg": "Masar",
+  "libraryRefreshRunning": "Waa la cusboonaysiinayaa…",
+  "libraryRefreshIncomplete": "Cusboonaysiintu ma dhammaystirna. Ilaha qaarkood lama heli karo. Mar kale isku day.",
+  "tvVideoQuality": "Tayada muuqaalka",
+  "tvVideoQualityAuto": "Si toos ah",
+  "tvVideoQualityMaximum": "Xallinta ugu sarreysa",
+  "tvVideoQualityAutoHelp": "Waxay tayada la jaanqaaddaa xiriirkaaga. Riix OK si aad u doorbido xallinta ugu sarreysa.",
+  "tvVideoQualityMaximumHelp": "Waxay doorataa raadka ugu fiican ee la taageero ee ay ishu bixiso. Waxay u baahan tahay xog-gudbin badan; haddii daawashadu hakato, riix OK si aad ugu noqoto Si toos ah.",
+  "tvChannelCheckingTitle": "Liiskaaga ayaa la hubinayaa…",
+  "tvChannelCheckingHelp": "Waxaa la hubinayaa in liis loo soo diray qalabkan.",
+  "tvChannelLoadingTitle": "Kanaalladaada ayaa la diyaarinayaa",
+  "tvChannelLoadingHelp": "Kanaalladaadu waxay soo muuqan doonaan marka raristu dhammaato.",
+  "tvChannelWaitingTitle": "Liiskaaga ayaa la sugayaa",
+  "tvChannelWaitingHelp": "Ku dar liiskaaga ama ka codso bixiyahaaga inuu u soo diro qalabkan.",
+  "tvChannelEmptyTitle": "Muuqaalkan kanaal ma leh",
+  "tvChannelEmptyHelp": "Liisku waa halkan. Hagaaji shaandhooyinka, ama fur Filimada iyo Taxanayaasha.",
+  "tvChannelSourceFailedTitle": "Liiskan lama soo rari karo",
+  "tvChannelSourceFailedHelp": "Hubi xiriiriyaha liiskaaga ama aqoonsiyadaada, kadib mar kale isku day.",
+  "tvChannelNetworkHelp": "Adeegaha lama gaari karo. Hubi xiriirkaaga oo mar kale isku day.",
+  "tvChannelStepConnection": "Xiriirka",
+  "tvChannelStepReading": "Akhrinta",
+  "tvChannelStepSaving": "Kaydinta",
+  "tvShowPassword": "Muuji erayga sirta ah",
+  "tvHidePassword": "Qari erayga sirta ah",
+  "tvSupportWhatsApp": "Taageerada WhatsApp",
+  "tvSupportHello": "Salaan, waxaan u baahanahay caawimo Zuno ah.",
+  "tvSupportUnavailable": "WhatsApp kama furmi karo qalabkan. Nagala soo xiriir lambarka hoose.",
+  "playbackNotifDefaultBody": "Codku wuxuu ka socdaa gadaasha",
+  "playbackNotifChannelName": "Daarista codka",
+  "playbackNotifChannelDesc": "Daarista codka ee gadaasha (qaabka sameecadaha dhegaha)",
+  "castNotifRelayBody": "TV-ga ayaa loo gudbinayaa — telefoonkaaga ku hay WiFi-gan",
+  "trialTitle": "Tijaabadaada bilaashka ah",
+  "trialDurationBadge": "24 SAAC",
+  "trialDiscover": "Baro Zuno muddo 24 saac ah.",
+  "trialActivating": "Tijaabadaada waa la hawlgelinayaa…",
+  "trialStart": "Tijaabi",
+  "trialAutomatic": "Qoris la’aan · Hawlgelin toos ah",
+  "trialExpires": "Waxay dhacaysaa: {date}",
+  "trialComingSoon": "Tijaabadu dhowaan ayay diyaar noqonaysaa",
+  "trialActivated": "Tijaabada waa la hawlgeliyey ✔",
+  "trialAlreadyUsed": "Waxaad hore u isticmaashay tijaabadaada bilaashka ah",
+  "trialInProgress": "Hawlgelintu way socotaa. Sug dhowr ilbiriqsi.",
+  "trialDailyCap": "Tijaabooyin dambe maanta ma jiraan. Berri soo noqo.",
+  "trialRateLimited": "Codsiyo aad u badan. Sug hal daqiiqo ka hor intaadan mar kale isku dayin.",
+  "trialError": "Cilad ayaa dhacday. Mar kale isku day.",
+  "trialInterrupted": "Soo dejinta liiskaaga ayaa hakad gashay.",
+  "trialRetryLoading": "Mar kale soo rar",
+  "trialSubscribe": "Iska diiwaangeli WhatsApp",
+  "trialScanHelp": "Koodhkan ku sawir taleefankaaga.",
+  "tvM3uLinkHelp": "Xiriiriye .m3u, .m3u8 ama get.php ah, oo leh ama aan lahayn xogta gelitaanka.",
+  "tvCheckPassed": "Hubintu way guulaysatay.",
+  "tvCheckRunning": "Waa la hubinayaa…",
+  "tvCheckPending": "Sugaya.",
+  "tvCheckUnavailable": "Hubinta lama heli karo.",
+  "@trialExpires": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "updateOpenPlayStore": "Fur Google Play",
+  "updatePlayStoreHelp": "Ka hubi Google Play cusboonaysiinta oo rakib.",
+  "updatePlayStoreUnavailable": "Google Play lama furi karin. Mar kale isku day ama ka fur dukaanka qalabkaaga.",
+  "tvQualityOutput": "Soo-saarka ciyaariyaha: {size}",
+  "tvQualityUnknown": "cabbir lama heli karo",
+  "tvQualitySource": "Qaabka isha: {codec} · {range}",
+  "tvQualityCodecUnknown": "kodeeg aan la aqoon",
+  "tvQualityRangeUnknown": "HDR/SDR lama sheegin",
+  "tvQualityCadence": "Soo-saarka furfuraha: {fps} sawir/s · {dropped} lumay / {seconds} s",
+  "tvAiActive": "AI ×2",
+  "tvAiNative": "Muuqaalka asalka ah",
+  "tvAiUnknown": "AI: xaalad aan la aqoon",
+  "tvAiReasonFluidity": "Ciyaarid habsami leh ayaa mudnaan leh.",
+  "tvAiReasonSource": "Qaabkani wuxuu hayaa muuqaalka asalka ah.",
+  "tvAiReasonVerification": "Awoodda habaynta lama xaqiijin.",
+  "tvAiReasonUnavailable": "Hagaajintu diyaar uma aha ciyaariddan.",
+    "tvLookTitle": "Muuqaal",
+  "tvLookComfort": "Raaxo",
+  "tvLookGhost": "Phantom Black",
+  "tvLookHelp": "Raaxadu waxay diirisaa muuqaalka. Ghost waa madow qoto dheer, dhibco iftiin ah. Sawirku ma beddelmo.",
+"tvComfortTitle": "Raaxo",
+  "tvComfortHelp": "Waxay yar u kululayso shaashadda marka loo eego saacadda. Sawirku ma beddelmo.",
+  "tvComfortDay": "Maalin",
+  "tvComfortEvening": "Fiid",
+  "tvComfortNight": "Habeen",
+  "tvComfortAuto": "Sida saacadda",
+  "tvAmbientTitle": "Iftiin",
+  "tvAmbientHelp": "Waxay raacdaa filimka ama ciyaarta agagaarka sawirka. Sawirku ma beddelmo. Sanduuq yar ayaa iftiinka ku haya mid go'an.",
+  "tvAmbientAuto": "Toos",
+  "tvAmbientOff": "Dami"
+}

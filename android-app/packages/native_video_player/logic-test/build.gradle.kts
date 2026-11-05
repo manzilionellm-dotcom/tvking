@@ -26,6 +26,10 @@ sourceSets {
         kotlin.exclude("**/ClearVoiceProcessor.kt")
         kotlin.exclude("**/AudioProbeProcessor.kt")
         kotlin.exclude("**/ZunoAudioChain.kt")
+        kotlin.exclude("**/VideoContrastEffects.kt")
+        // Le moteur neuronal Android/GLES est vérifié par instrumentation,
+        // la politique pure AiFrameGate reste ici dans le package logic.
+        kotlin.exclude("**/ai/**")
     }
 }
 

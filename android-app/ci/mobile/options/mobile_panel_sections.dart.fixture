@@ -1,0 +1,255 @@
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+
+import '../../../../core/i18n/l10n_extension.dart';
+import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_text_styles.dart';
+import '../../../channels/domain/channel.dart';
+import '../../../channels/data/recently_watched_repository.dart';
+import '../../../channels/data/hidden_categories_store.dart';
+import '../../../playlists/data/favorites_repository.dart';
+import '../../../country_home/data/featured_repository.dart';
+import '../../../feedback/data/feedback_repository.dart';
+import '../../../feedback/presentation/feedback_sheet.dart';
+import '../../../country_home/presentation/widgets/channel_logo.dart';
+import '../../../vod/domain/content_partition.dart';
+import '../../data/home_layout_repository.dart';
+
+/// Les réglages du panel pilotent des rangées de découverte ; ils ne suppriment
+/// jamais les catégories originales du fournisseur ni les choix du profil.
+/// Aucun flux ne démarre avant un geste. Les rangées vides restent absentes.
+class MobilePanelSections extends StatefulWidget {
+  const MobilePanelSections(
+      {super.key,
+      required this.channels,
+      required this.recent,
+      required this.favorites,
+      required this.onChannel});
+  final List<Channel> channels;
+  final Widget recent;
+  final Widget favorites;
+  final ValueChanged<Channel> onChannel;
+
+  @override
+  State<MobilePanelSections> createState() => _MobilePanelSectionsState();
+}
+
+class _MobilePanelSectionsState extends State<MobilePanelSections> {
+  StreamSubscription<List<String>>? _recent;
+  StreamSubscription<Set<String>>? _favorites;
+  final _layout = HomeLayoutRepository.instance;
+  final _featured = FeaturedRepository.instance;
+  List<Channel>? _forChannels;
+  List<Channel>? _safeForChannels;
+  List<Channel> _safeCache = [];
+  Set<String> _safeIds = {};
+  Map<String, List<Channel>> _genres = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _layout.addListener(_refresh);
+    _featured.addListener(_refresh);
+    FeedbackRepository.instance.addListener(_refresh);
+    HiddenCategoriesStore.instance.addListener(_invalidate);
+    _recent =
+        RecentlyWatchedRepository.instance.stream.listen((_) => _refresh());
+    _favorites =
+        FavoritesRepository.instance.favoritesStream.listen((_) => _refresh());
+    unawaited(_layout.initialize());
+    unawaited(_featured.initialize());
+  }
+
+  void _refresh() {
+    if (mounted) setState(() {});
+  }
+
+  void _invalidate() {
+    _forChannels = null;
+    _safeForChannels = null;
+    _refresh();
+  }
+
+  @override
+  void dispose() {
+    _layout.removeListener(_refresh);
+    _featured.removeListener(_refresh);
+    FeedbackRepository.instance.removeListener(_refresh);
+    HiddenCategoriesStore.instance.removeListener(_invalidate);
+    unawaited(_recent?.cancel());
+    unawaited(_favorites?.cancel());
+    super.dispose();
+  }
+
+  List<Channel> _safeChannels() {
+    if (identical(_safeForChannels, widget.channels)) return _safeCache;
+    _safeForChannels = widget.channels;
+    _safeCache = widget.channels
+        .where((c) =>
+            ContentPartition.isLive(c) &&
+            ContentPartition.visible(c.name, c.category, adultOnly: false) &&
+            !HiddenCategoriesStore.instance.isHidden(c.category))
+        .toList(growable: false);
+    _safeIds = _safeCache.map((c) => c.id).toSet();
+    return _safeCache;
+  }
+
+  void _index(List<Channel> safe) {
+    if (identical(_forChannels, widget.channels)) return;
+    _forChannels = widget.channels;
+    _genres = {
+      for (final key in [
+        'sport',
+        'entertainment',
+        'info',
+        'kids',
+        'general',
+        'cinema'
+      ])
+        key: []
+    };
+    for (final channel in safe) {
+      final key = switch (channel.genre) {
+        ChannelGenre.sports => 'sport',
+        ChannelGenre.entertainment ||
+        ChannelGenre.music ||
+        ChannelGenre.documentary ||
+        ChannelGenre.series =>
+          'entertainment',
+        ChannelGenre.movies => 'cinema',
+        ChannelGenre.news => 'info',
+        ChannelGenre.kids => 'kids',
+        ChannelGenre.international || ChannelGenre.other => 'general',
+        ChannelGenre.adult => null,
+      };
+      // Cartes limitées, catalogue complet inchangé en dessous.
+      if (key != null && _genres[key]!.length < 12) _genres[key]!.add(channel);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final safe = _safeChannels();
+    _index(safe);
+    final recent =
+        RecentlyWatchedRepository.instance.current.any(_safeIds.contains);
+    final favorites =
+        FavoritesRepository.instance.current.any(_safeIds.contains);
+    final sections = <Widget>[
+      FutureBuilder<bool>(
+          future: FeedbackRepository.instance.shouldPrompt(),
+          builder: (context, snapshot) => snapshot.data == true
+              ? Card(
+                  key: const ValueKey('mobile-panel-feedback'),
+                  child: ListTile(
+                      leading: const Icon(Icons.feedback_outlined),
+                      title: Text(FeedbackRepository.instance.message),
+                      trailing: const Icon(Icons.chevron_right_rounded),
+                      onTap: () => maybeShowFeedbackSheet(context)),
+                )
+              : const SizedBox.shrink()),
+    ];
+    final name = _featured.name.trim().toLowerCase();
+    Channel? featured;
+    if (name.isNotEmpty) {
+      for (final channel in safe) {
+        if (channel.name.trim().toLowerCase() == name ||
+            channel.cleanName.trim().toLowerCase() == name) {
+          featured = channel;
+          break;
+        }
+      }
+    }
+    if (featured != null) {
+      final channel = featured;
+      sections.add(Card(
+          key: const ValueKey('mobile-panel-featured'),
+          child: ListTile(
+            leading: const Icon(Icons.star_rounded),
+            title: Text('${context.l10n.tvFeatured} · ${channel.cleanName}'),
+            subtitle: _featured.note.isEmpty ? null : Text(_featured.note),
+            onTap: () => widget.onChannel(channel),
+          )));
+    }
+    for (final key in _layout.orderedVisibleKeys(kDefaultHomeOrder)) {
+      final config = _layout.config(key);
+      Widget? child;
+      if (key == 'recent' && recent) child = widget.recent;
+      if (key == 'favorites' && favorites) child = widget.favorites;
+      if (_genres[key]?.isNotEmpty == true)
+        child = _rail(context, key, _genres[key]!);
+      if (child == null) continue;
+      sections.add(Container(
+        key: ValueKey('mobile-panel-section-$key'),
+        decoration: config?.featured == true
+            ? BoxDecoration(
+                border:
+                    Border.all(color: Theme.of(context).colorScheme.primary),
+                borderRadius: BorderRadius.circular(12))
+            : null,
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          if (config?.ribbon.isNotEmpty == true || config?.featured == true)
+            Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                child: Row(children: [
+                  if (config?.featured == true)
+                    const Icon(Icons.star_rounded, size: 18),
+                  if (config?.ribbon.isNotEmpty == true)
+                    Flexible(
+                        child: Text(config!.ribbon,
+                            style: Theme.of(context).textTheme.labelLarge)),
+                ])),
+          child,
+        ]),
+      ));
+    }
+    return Column(mainAxisSize: MainAxisSize.min, children: sections);
+  }
+
+  Widget _rail(BuildContext context, String key, List<Channel> channels) {
+    final title = switch (key) {
+      'sport' => context.l10n.sectionSportsLive,
+      'entertainment' => context.l10n.sectionEntertainment,
+      'info' => context.l10n.sectionNews,
+      'kids' => context.l10n.sectionKids,
+      'cinema' => context.l10n.sectionMovies,
+      _ => context.l10n.sectionOthers,
+    };
+    final palette = AppColors.lumiere(context);
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Text(title,
+              style: AppTextStyles.headlineMedium
+                  .copyWith(color: palette.textPrimary))),
+      SizedBox(
+        height: 88 + MediaQuery.textScalerOf(context).scale(14) * 3,
+        child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            itemCount: channels.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 12),
+            itemBuilder: (context, i) {
+              final channel = channels[i];
+              return SizedBox(
+                  width: 100,
+                  child: InkWell(
+                    onTap: () => widget.onChannel(channel),
+                    child: Column(children: [
+                      ChannelLogo(channel: channel, size: 64),
+                      const SizedBox(height: 8),
+                      Text(channel.cleanName,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.center,
+                          style: AppTextStyles.bodyMedium
+                              .copyWith(color: palette.textPrimary)),
+                    ]),
+                  ));
+            }),
+      ),
+    ]);
+  }
+}

@@ -7,6 +7,7 @@
 // =========================================================
 
 import 'playlist.dart';
+import 'm3u_link.dart';
 
 /// Empreinte stable d'une source IPTV.
 abstract final class SourceFingerprint {
@@ -18,12 +19,41 @@ abstract final class SourceFingerprint {
   static List<String> ofPlaylist(Playlist playlist) {
     final List<String> out = <String>[];
     if (playlist.type == PlaylistType.xtream) {
-      final String? fp = xtream(playlist.xtreamServer, playlist.xtreamUsername);
-      if (fp != null) out.add(fp);
+      out.addAll(xtreamAliases(playlist.xtreamServer, playlist.xtreamUsername));
     }
-    final String? link = m3u(playlist.m3uUrl);
-    if (link != null && !out.contains(link)) out.add(link);
-    return out;
+    out.addAll(ofM3uUrl(playlist.m3uUrl));
+    return out.toSet().toList();
+  }
+
+  /// Le même abonnement peut être saisi en M3U puis servi en Xtream, ou
+  /// inversement. Le refus conserve les deux formes, même après redémarrage.
+  static List<String> ofM3uUrl(String? url) {
+    final String? link = m3u(url);
+    if (link == null) return const <String>[];
+    final XtreamAccount? account = xtreamFromM3uLink(url);
+    return <String>[link, if (account != null)
+      ...xtreamAliases(account.serverUrl, account.username)];
+  }
+
+  /// :80 et l'absence de port désignent le même serveur HTTP (:443 en HTTPS).
+  /// On garde aussi l'ancienne forme pour relire les refus déjà enregistrés.
+  static List<String> xtreamAliases(String? server, String? username) {
+    final String? original = xtream(server, username);
+    if (original == null) return const <String>[];
+    final Uri? uri = Uri.tryParse((server ?? '').trim());
+    if (uri == null || uri.host.isEmpty || !<String>['http', 'https'].contains(uri.scheme)) return <String>[original];
+    final int defaultPort = uri.scheme == 'https' ? 443 : 80;
+    final String port = uri.port == defaultPort ? '' : ':${uri.port}';
+    final String canonical = '${uri.scheme}://${uri.host}$port${uri.path.replaceAll(RegExp(r'/+$'), '')}';
+    final String? normalized = xtream(canonical, username);
+    return <String>{original, if (normalized != null) normalized}.toList();
+  }
+
+  static List<String> allFromMap(Map<String, dynamic> item) {
+    final String? primary = fromMap(item);
+    return <String>{if (primary != null) primary,
+      if (item['type'] == 'xtream') ...xtreamAliases(item['server_url'] as String?, item['username'] as String?),
+      ...ofM3uUrl(item['m3u_url'] as String?)}.toList();
   }
 
   static String? xtream(String? server, String? username) {

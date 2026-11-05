@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
 import { onlineApi, type OnlineSnapshot, flagEmoji, ApiError } from '@/lib/api';
+import { PANEL_LIVE_MS } from '@/lib/boxLive';
 
 /// Page « En ligne » (owner) — qui utilise l'app en ce moment, depuis où.
 /// Données issues de la présence (heartbeat) : IP + pays fournis par
@@ -29,10 +30,12 @@ export function OnlinePage({ onLogout }: { onLogout: () => void }) {
       .finally(() => setLoading(false));
   }
 
-  // Rafraîchissement auto toutes les 30 s.
+  // La présence part avec le heartbeat (ouverture d'une chaîne,
+  // fermeture du lecteur). On la relit chaque seconde : 30 s
+  // laissait le statut hors de la fenêtre 1–2 s.
   useEffect(() => {
     load();
-    const t = setInterval(load, 30000);
+    const t = setInterval(load, PANEL_LIVE_MS);
     return () => clearInterval(t);
     /* eslint-disable-next-line */
   }, []);

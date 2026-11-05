@@ -12,7 +12,7 @@
 //  de contrôle de la TV AVANT de lancer les stratégies. S'il échoue,
 //  on remonte tout de suite une Exception "no route to host" que
 //  friendlyMessageFor traduit en guidance actionnable nommant
-//  l'« Isolation client / AP isolation ».
+//  le réseau privé commun, valable en Wi-Fi comme en Ethernet.
 //
 //  Ces tests verrouillent le message friendly de ce cas. Si un patch
 //  futur casse le routage du message réseau / AP-isolation, on saute
@@ -20,10 +20,22 @@
 // =========================================================
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:tv_king/core/i18n/locale_repository.dart';
 import 'package:tv_king/features/cast/data/cast_manager.dart';
 
 void main() {
   final CastManager m = CastManager.instance;
+
+  // i18n : friendlyMessageFor sort desormais d'AppLocalizations via
+  // l10nNow. On force la langue FR pour garder les assertions
+  // textuelles deterministes.
+  setUpAll(() async {
+    TestWidgetsFlutterBinding.ensureInitialized();
+    SharedPreferences.setMockInitialValues(
+        <String, Object>{'app.locale.v1': 'fr'});
+    await LocaleRepository.instance.initialize();
+  });
 
   group('friendlyMessageFor — TV injoignable (errno 113 / AP isolation)', () {
     test('message du pré-vol TCP est routé vers le hint réseau', () {
@@ -31,10 +43,8 @@ void main() {
         Exception('TV injoignable sur le réseau (192.168.8.4:1178) '
             '— no route to host (pré-vol TCP)'),
       );
-      // Le message dit « …sur le MÊME WiFi… » (casse changée en 2026) →
-      // on compare en minuscules pour rester robuste au wording.
-      expect(msg.toLowerCase(), contains('même wifi'));
-      expect(msg.toLowerCase(), contains('isolation'));
+      expect(msg.toLowerCase(), contains('même réseau privé'));
+      expect(msg, isNot(contains('192.168.8.4')));
     });
 
     test('errno 113 brut (SocketException) → même guidance', () {
@@ -42,23 +52,22 @@ void main() {
         Exception('SocketException: No route to host '
             '(OS Error: No route to host, errno = 113)'),
       );
-      expect(msg.toLowerCase(), contains('isolation'));
-      // Message reformulé (2026) : nomme « AP isolation » au lieu du QR code.
-      expect(msg.toLowerCase(), contains('ap isolation'));
+      expect(msg.toLowerCase(), contains('même réseau privé'));
+      expect(msg, isNot(contains('errno')));
     });
 
     test('errno 101 (network unreachable) → même guidance', () {
       final String msg = m.friendlyMessageFor(
         Exception('SocketException: Network is unreachable (errno = 101)'),
       );
-      expect(msg.toLowerCase(), contains('isolation'));
+      expect(msg.toLowerCase(), contains('même réseau privé'));
     });
 
     test('connection refused (errno 111) → même guidance réseau', () {
       final String msg = m.friendlyMessageFor(
         Exception('SocketException: Connection refused (errno = 111)'),
       );
-      expect(msg.toLowerCase(), contains('isolation'));
+      expect(msg.toLowerCase(), contains('même réseau privé'));
     });
 
     test('NE confond PAS "transition not available" (état TV) avec réseau',
@@ -67,7 +76,7 @@ void main() {
         Exception('UPnP 701: Transition not available'),
       );
       expect(msg, contains('bloquée sur un précédent cast'));
-      expect(msg.toLowerCase(), isNot(contains('isolation')));
+      expect(msg.toLowerCase(), isNot(contains('même réseau privé')));
     });
   });
 }

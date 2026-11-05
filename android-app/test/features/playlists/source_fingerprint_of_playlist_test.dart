@@ -9,11 +9,19 @@ import 'package:tv_king/features/playlists/domain/source_fingerprint.dart';
 void main() {
   const String link = 'http://srv.example.test:80/get.php?username=u1&password=p1';
 
-  test('liste M3U classique : une empreinte, celle du lien', () {
+  test('lien get.php saisi comme M3U : lien et compte Xtream', () {
     const Playlist p = Playlist(
       id: 1, name: 'A', type: PlaylistType.m3u, createdAt: 0, m3uUrl: link,
     );
-    expect(SourceFingerprint.ofPlaylist(p), <String>['m3u|$link']);
+    expect(SourceFingerprint.ofPlaylist(p), contains('m3u|$link'));
+    expect(SourceFingerprint.ofPlaylist(p), contains(SourceFingerprint.xtream('http://srv.example.test', 'u1')));
+  });
+
+  test('M3U statique : ne pas confondre deux fichiers du même hôte', () {
+    expect(SourceFingerprint.ofM3uUrl('https://source.invalid/a.m3u'),
+      <String>['m3u|https://source.invalid/a.m3u']);
+    expect(SourceFingerprint.ofM3uUrl('https://source.invalid/b.m3u'),
+      isNot(contains('m3u|https://source.invalid/a.m3u')));
   });
 
   test('compte Xtream saisi à la main : une empreinte Xtream', () {
@@ -22,7 +30,8 @@ void main() {
       xtreamServer: 'http://srv.example.test:80', xtreamUsername: 'u1',
       xtreamPassword: 'p1',
     );
-    expect(SourceFingerprint.ofPlaylist(p), <String>['xtream|http://srv.example.test:80|u1']);
+    expect(SourceFingerprint.ofPlaylist(p), contains('xtream|http://srv.example.test:80|u1'));
+    expect(SourceFingerprint.ofPlaylist(p), contains('xtream|http://srv.example.test|u1'));
   });
 
   test('compte Xtream issu d\'un lien get.php : les deux empreintes', () {

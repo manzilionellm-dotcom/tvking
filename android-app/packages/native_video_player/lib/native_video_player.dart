@@ -20,6 +20,9 @@ import 'package:flutter/widgets.dart';
 
 import 'playback_lease.dart';
 import 'spoken_track.dart';
+import 'video_quality.dart';
+
+export 'video_quality.dart';
 
 /// Une piste audio ou de sous-titres proposée par le fichier en cours.
 @immutable
@@ -96,8 +99,8 @@ abstract class NativeVideoBackend {
   /// Caler la fréquence de l'écran sur le flux. Ignoré hors Android.
   void setFrameRateMatch(bool enabled) {}
 
-  /// Contraste léger. Ignoré hors Android, et refusé sur la box tant
-  /// que le filtre quitterait la Surface.
+  /// Contraste léger. Le moteur Android applique un véritable effet vidéo ;
+  /// les autres moteurs peuvent ne pas proposer ce réglage.
   void setLightContrast(bool enabled) {}
 
   /// Le widget qui affiche la vidéo.
@@ -130,6 +133,11 @@ class NativeVideoController extends ChangeNotifier {
 
   /// Fabrique du moteur hors Android (null sur la box : lecteur natif).
   static NativeVideoBackend Function()? backendFactory;
+
+  /// Préférence chargée au démarrage, avant de créer le premier lecteur.
+  /// Android l'applique ; les autres moteurs déclarent leurs propres capacités.
+  /// Coupé par défaut : sortie directe du décodeur, sans passe OpenGL.
+  static bool defaultLightContrast = false;
 
   /// Langue audio de l'application (« fr », « en »…). Lue à chaque
   /// ouverture si l'appelant n'en passe pas une plus précise (film).
@@ -242,6 +250,11 @@ class NativeVideoController extends ChangeNotifier {
   bool _attached = false;
   bool _disposed = false;
 
+  /// Une session Cast peut déjà jouer quand une nouvelle vue locale est
+  /// construite. Garder le verrou avant l'arrivée de sa PlatformView évite
+  /// d'ouvrir brièvement une seconde connexion au fournisseur.
+  bool _castSuspended = false;
+
   /// Génération du dernier [setUrl]. Les événements natifs d'une génération
   /// précédente (zap très rapide) sont ignorés jusqu'à l'accusé `ack`.
   /// Sans ça, la position de l'ancienne chaîne faisait croire que la nouvelle
@@ -314,9 +327,12 @@ class NativeVideoController extends ChangeNotifier {
   /// Le .so sait décoder la vidéo. Faux avec le binaire audio de la v104.
   bool ffmpegVideoReady = false;
 
-  /// Le matériel accepte un filtre de contraste sans quitter la Surface.
-  /// Faux dans cette version.
+  /// Capacité annoncée par le moteur. Inconnue avant sa première réponse.
   bool contrastHardware = false;
+
+  /// État du traitement confirmé par le natif, distinct de la préférence.
+  bool contrastApplied = false;
+  String? contrastReason;
 
   /// Dernier appui « FFmpeg » refusé parce que la vidéo n'est pas dans le .so.
   bool engineRejectedFfmpeg = false;
@@ -332,8 +348,17 @@ class NativeVideoController extends ChangeNotifier {
   /// Nom du décodeur vidéo créé (pour l'écran, pas une mesure de qualité).
   String videoDecoderName = '';
 
+  /// Dimensions reçues de la sortie vidéo, pour donner à la fenêtre PiP le ratio
+  /// réel du flux. Aucune piste ni qualité vidéo n'est changée par ce relevé.
+  int videoWidth = 0;
+  int videoHeight = 0;
+
+  /// Mesures du décodeur et métadonnées source, sans estimation par le nom.
+  NativeVideoQuality videoQuality = const NativeVideoQuality();
+
   String _imageEngine = 'hardware';
   bool _frameRateMatch = false;
+  bool _lightContrast = defaultLightContrast;
 
   // Paramètres du dernier setUrl (rejoués si la vue native arrive après).
   Map<String, dynamic>? _pendingArgs;
@@ -346,10 +371,15 @@ class NativeVideoController extends ChangeNotifier {
     _channel = ch;
     ch.setMethodCallHandler(_onNativeCall);
     _audioFlagChannels.add(ch);
+    // Le canal livre ses messages dans l'ordre. Le natif pose ce verrou
+    // dès la réception de suspendForCast : l'URL ci-dessous sera mémorisée
+    // pour le retour local, sans préparer ni ouvrir son flux pendant le Cast.
+    if (_castSuspended) ch.invokeMethod<void>('suspendForCast');
     // Avant l'URL : le premier décodeur est déjà le bon (pas un
     // second démarrage si le choix n'est pas le matériel).
     ch.invokeMethod<void>('setEngine', _imageEngine);
     ch.invokeMethod<void>('setFrameRateMatch', _frameRateMatch);
+    ch.invokeMethod<void>('setContrast', _lightContrast);
     // Diagnostic audio. Tout est faux par défaut : sonde inactive,
     // AAC toujours sur FFmpeg, pas d'essai du décodeur de la box.
     ch.invokeMethod<void>('setAudioProbe', audioProbeEnabled);
@@ -389,6 +419,7 @@ class NativeVideoController extends ChangeNotifier {
     if (_disposed) return;
     audible = false;
     _epoch++;
+    videoQuality = videoQuality.withAiPicture(null).withCadence(null);
     _backend?.silence();
     _channel?.invokeMethod<void>('silence');
     if (!_disposed) notifyListeners();
@@ -402,6 +433,13 @@ class NativeVideoController extends ChangeNotifier {
   /// Applique un événement d'état (natif Android OU moteur PC).
   void applyBackendEvent(String method, Object? arguments) {
     if (_disposed) return;
+    // Le cycle de vie concerne l'application, pas le flux. Pendant un zap
+    // l'ack peut être différé jusqu'au retour au premier plan : filtrer ce
+    // message laisserait le verrou d'arrière-plan collé sur l'ancien état.
+    if (method == 'appBackground') {
+      appInBackground = arguments == true;
+      return;
+    }
     // Accusé du setUrl en cours. Un ack d'un zap déjà remplacé est ignoré,
     // sinon les événements de l'ancienne chaîne passeraient.
     if (method == 'ack') {
@@ -411,7 +449,17 @@ class NativeVideoController extends ChangeNotifier {
     }
     // Ces messages décrivent le moteur, pas une image de l'ancienne
     // chaîne : on les prend même entre deux zap.
-    if (method == 'engine' || method == 'imageCaps' || method == 'contrast') {
+    if (method == 'contrast' || method == 'contrastReason') {
+      if (method == 'contrast') {
+        contrastApplied = arguments == true;
+        if (contrastApplied) contrastReason = null;
+      } else {
+        contrastReason = arguments is String ? arguments : null;
+      }
+      if (!_disposed) notifyListeners();
+      return;
+    }
+    if (method == 'engine' || method == 'imageCaps') {
       _readEngine(arguments);
       if (!_disposed) notifyListeners();
       return;
@@ -419,10 +467,50 @@ class NativeVideoController extends ChangeNotifier {
     if (!_acceptEvents) return;
     final _Ev call = _Ev(method, arguments);
     switch (call.method) {
+      case 'aiPicture':
+        // L'événement natif active l'IA seulement après une vraie image
+        // traitée. Une erreur/une copie figée/un autre lecteur invalide cette
+        // preuve ; un callback tardif ne peut pas la rallumer dans cet état.
+        final NativeAiPictureStatus? previous = videoQuality.aiPicture;
+        final NativeAiPictureStatus? status =
+            !audible || _castSuspended || hasError || holdFrame ||
+                    nativeRetrying || isEnded || engineExhausted
+                ? null
+                : NativeAiPictureStatus.read(call.arguments);
+        videoQuality = videoQuality.withAiPicture(status);
+        if (identical(previous, status) ||
+            (status != null && status.hasSamePresentation(previous))) return;
+      case 'videoSize':
+        videoQuality = videoQuality.withVideoSize(call.arguments);
+        videoWidth = videoQuality.outputWidth;
+        videoHeight = videoQuality.outputHeight;
+      case 'videoSource':
+        videoQuality = videoQuality.withSourceFormat(call.arguments);
+      case 'videoCadence':
+        videoQuality = videoQuality.withCadence(call.arguments);
+      case 'videoQualityReset':
+        videoQuality = const NativeVideoQuality();
+        videoWidth = 0;
+        videoHeight = 0;
+      case 'videoFormat':
+        // Compatibilité avec les moteurs plus anciens. Un format déclaré
+        // suffit au ratio PiP, mais ne devient pas une mesure de qualité.
+        if (call.arguments is Map) {
+          final Map<Object?, Object?> data =
+              call.arguments as Map<Object?, Object?>;
+          int dimension(Object? value) =>
+              value is num && value.isFinite && value > 0 && value <= 32768
+                  ? value.toInt()
+                  : 0;
+          videoWidth = dimension(data['width']);
+          videoHeight = dimension(data['height']);
+        }
       case 'buffering':
         isBuffering = call.arguments as bool;
+        if (isBuffering) videoQuality = videoQuality.withCadence(null);
       case 'playing':
         isPlaying = call.arguments as bool;
+        if (!isPlaying) videoQuality = videoQuality.withCadence(null);
       case 'position':
         {
           // Certaines box ne rappellent pas « firstFrame » quand on réutilise
@@ -444,19 +532,26 @@ class NativeVideoController extends ChangeNotifier {
         nativeRetrying = false;
       case 'ended':
         isEnded = true;
+        videoQuality = videoQuality.withAiPicture(null);
       case 'error':
         hasError = true;
         nativeRetrying = false;
+        videoQuality = videoQuality.withAiPicture(null).withCadence(null);
       case 'holdFrame':
         holdFrame = call.arguments == true;
-        if (holdFrame) isBuffering = false;
+        if (holdFrame) {
+          isBuffering = false;
+          videoQuality = videoQuality.withAiPicture(null).withCadence(null);
+        }
       case 'reconnecting':
         nativeRetrying = call.arguments == true;
+        if (nativeRetrying) videoQuality = videoQuality.withAiPicture(null);
       case 'duration':
         duration = Duration(milliseconds: call.arguments as int);
       case 'cues':
         cues = (call.arguments as String?) ?? '';
       case 'reopen':
+        videoQuality = videoQuality.withAiPicture(null);
         firstFrame = false;
         isBuffering = true;
         hasError = false;
@@ -464,6 +559,7 @@ class NativeVideoController extends ChangeNotifier {
       case 'engineExhausted':
         engineExhausted = true;
         isBuffering = false;
+        videoQuality = videoQuality.withAiPicture(null);
       case 'videoDecoder':
         videoDecoderName = (call.arguments as String?) ?? '';
       case 'tracks':
@@ -488,11 +584,6 @@ class NativeVideoController extends ChangeNotifier {
         // change rien à l'état du lecteur, on le passe à l'app (boîte noire).
         final String line = (call.arguments as String?) ?? '';
         if (line.isNotEmpty) onAudioDiagnostic?.call(line);
-        return;
-      case 'appBackground':
-        // L'activité a coupé (vrai) ou est revenue (faux). Pas un état
-        // d'image : on ne notifie pas l'écran.
-        appInBackground = call.arguments == true;
         return;
     }
     if (!_disposed) notifyListeners();
@@ -562,6 +653,9 @@ class NativeVideoController extends ChangeNotifier {
     }
     final String? lang = _preferredAudio ?? appAudioLanguage;
     hasError = false;
+    videoWidth = 0;
+    videoHeight = 0;
+    videoQuality = const NativeVideoQuality();
     engineExhausted = false;
     engineRejectedFfmpeg = false;
     isEnded = false;
@@ -671,6 +765,7 @@ class NativeVideoController extends ChangeNotifier {
   }
 
   void setLightContrast(bool enabled) {
+    _lightContrast = enabled;
     if (_backend != null) {
       _backend!.setLightContrast(enabled);
       return;
@@ -708,6 +803,36 @@ class NativeVideoController extends ChangeNotifier {
   void play() => _backend != null ? _backend!.play() : _channel?.invokeMethod<void>('play');
 
   void pause() => _backend != null ? _backend!.pause() : _channel?.invokeMethod<void>('pause');
+
+  /// Passation volontaire au Cast : ferme le flux local même si l'app reste
+  /// au premier plan. Ce verrou est distinct du cycle de vie Home/retour.
+  Future<void> suspendForCast() async {
+    if (_disposed) throw StateError('Lecteur fermé');
+    videoQuality = videoQuality.withAiPicture(null).withCadence(null);
+    final MethodChannel? channel = _channel;
+    if (channel == null) {
+      // Le moteur PC conserve sa passation propre ; ce verrou est celui
+      // de la vue Android qui n'a pas encore rejoint son controller.
+      if (_backend != null) throw StateError('Lecteur pas encore prêt');
+      _castSuspended = true;
+      isPlaying = false;
+      // Aucun flux local n'existe encore. Pas de notification synchrone :
+      // l'appel est autorisé depuis initState, avant la création de la vue.
+      return;
+    }
+    _castSuspended = true;
+    await channel.invokeMethod<void>('suspendForCast');
+    isPlaying = false;
+    if (!_disposed) notifyListeners();
+  }
+
+  Future<void> resumeAfterCast() async {
+    if (_disposed) return;
+    // Si le Cast finit avant l'attachement, la première URL doit retrouver
+    // le chemin local normal et aucun ancien verrou ne doit être rejoué.
+    _castSuspended = false;
+    await _channel?.invokeMethod<void>('resumeAfterCast');
+  }
 
   /// App en arrière-plan (Home, multitâche) : ARRÊT, pas pause. Le natif
   /// rend le décodeur, l'AudioTrack et le focus audio. Hors Android, une
