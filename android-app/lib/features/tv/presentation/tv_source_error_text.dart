@@ -11,5 +11,8 @@ String sourceErrorText(BuildContext context, String error) => switch (error) {
   OpenSourceInput.errNeedPlayerCreds => context.l10n.tvSourceNeedCredentials,
   OpenSourceInput.errBadScheme => context.l10n.tvSourceBadScheme,
   'm3u_failed' => context.l10n.tvAddM3uFailed,
+  'local_unavailable' => context.l10n.tvLocalFileUnavailable,
+  'local_empty' => context.l10n.tvLocalFileEmpty,
+  'local_too_big' => context.l10n.tvLocalFileTooBig,
   _ => context.l10n.tvConnectError,
 };

@@ -22,6 +22,7 @@
 // =========================================================
 
 import 'dart:async';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
@@ -41,6 +42,7 @@ import '../domain/playlist.dart';
 import '../domain/source_fingerprint.dart';
 import 'deleted_sources.dart';
 import 'playlist_secret.dart';
+import 'local_m3u_bytes.dart';
 import 'm3u_fetcher.dart';
 import 'import_progress.dart';
 import 'm3u_parser.dart';
@@ -374,6 +376,23 @@ class PlaylistRepository {
   //  AJOUT PLAYLIST — M3U
   // ============================================================
 
+  /// Fichier déjà copié dans le cache (sélecteur de documents).
+  /// L'adresse enregistrée est `file:`, pour qu'une actualisation
+  /// relise le fichier au lieu d'ouvrir le réseau.
+  Future<Playlist> addM3uFromLocalFile({
+    required String name,
+    required String path,
+  }) {
+    return addM3uPlaylist(name: name, url: Uri.file(path).toString());
+  }
+
+  Future<Uint8List> _loadM3uBody(String url, {http.Client? httpClient}) {
+    if (url.startsWith('file:')) {
+      return readLocalM3uBytes(Uri.parse(url).toFilePath());
+    }
+    return M3uFetcher.fetchBytes(url, httpClient: httpClient);
+  }
+
   /// Télécharge le .m3u puis stocke les chaînes en base.
   ///
   /// Lance une [Exception] si l'URL est invalide ou si le
@@ -411,7 +430,7 @@ class PlaylistRepository {
       if (kDebugMode) debugPrint('[Repo] GET $url');
       // Octets bruts : décodage ET parsing dans l'isolate (le fil UI ne
       // touche jamais au contenu, même pour un fichier de 60 Mo).
-      final Uint8List body = await M3uFetcher.fetchBytes(url, httpClient: client);
+      final Uint8List body = await _loadM3uBody(url, httpClient: client);
 
       // 3) Parse (dans un ISOLATE → pas de gel UI) + insertion en batch
       final M3uParseResult parsed =
@@ -845,7 +864,7 @@ class PlaylistRepository {
       try {
         // Même fetcher robuste qu'à l'ajout initial (Latin-1 fallback,
         // User-Agent navigateur, strip BOM, timeout 90s).
-        final Uint8List body = await M3uFetcher.fetchBytes(
+        final Uint8List body = await _loadM3uBody(
           playlist.m3uUrl!,
           httpClient: client,
         );

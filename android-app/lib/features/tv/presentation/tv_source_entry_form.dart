@@ -4,18 +4,22 @@
 //  Les contrôleurs persistent entre onglets et erreurs. Le dépôt sérialise
 //  cet import avec ceux du panel : aucun compteur partagé n'est effacé par
 //  un formulaire qui attend encore son tour.
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../core/blackbox/black_box.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../../playlists/data/import_progress.dart';
+import '../../playlists/data/local_m3u_bytes.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../../playlists/data/remote_source_repository.dart';
 import '../../playlists/domain/open_source_input.dart';
 import '../../playlists/presentation/widgets/configured_servers_picker.dart';
 import '../core/tv_field_keys.dart';
 import '../core/tv_focusable.dart';
+import '../data/local_m3u_picker.dart';
 import '../core/tv_tokens.dart';
 import '../core/tv_app_tokens.dart';
 import 'source_http_input_formatter.dart';
@@ -30,6 +34,9 @@ class TvSourceEntryForm extends StatefulWidget {
     this.autofocus = false,
     this.externalBusy = false,
     this.submitForTesting,
+    this.pickLocalFileForTesting,
+    this.importLocalFileForTesting,
+    this.readClipboardForTesting,
     super.key,
   });
 
@@ -44,6 +51,15 @@ class TvSourceEntryForm extends StatefulWidget {
   /// Frontière de test, sans fournisseur ni identifiants réels enregistrés.
   final Future<void> Function(OpenSourceDraft draft, String name)?
       submitForTesting;
+
+  /// Test : ne lance pas le sélecteur Android.
+  final Future<LocalM3uPick> Function()? pickLocalFileForTesting;
+
+  /// Test : n'écrit pas la liste en base.
+  final Future<void> Function(String path)? importLocalFileForTesting;
+
+  /// Test : ne lit pas le presse-papiers du système.
+  final Future<String?> Function()? readClipboardForTesting;
 
   @override
   State<TvSourceEntryForm> createState() => _TvSourceEntryFormState();
@@ -154,6 +170,95 @@ class _TvSourceEntryFormState extends State<TvSourceEntryForm> {
       if (mounted) setState(() => _error = 'connect_failed');
     } finally {
       // Le wrapper du dépôt a déjà nettoyé le bus AVANT de libérer la file.
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _importStarted = false;
+        });
+      }
+    }
+    if (mounted && added) widget.onAdded?.call();
+  }
+
+  Future<void> _paste() async {
+    if (_blocked) return;
+    final Future<String?> Function()? read = widget.readClipboardForTesting;
+    final String text = (read != null
+            ? (await read())
+            : (await Clipboard.getData(Clipboard.kTextPlain))?.text)
+        ?.trim() ??
+        '';
+    if (!mounted) return;
+    if (text.isEmpty) {
+      setState(() => _error = OpenSourceInput.errNeedUrl);
+      return;
+    }
+    final OpenSourceParse parsed = OpenSourceInput.playlistLink(text);
+    if (!parsed.isValid || parsed.draft == null) {
+      setState(() => _error = parsed.error ?? OpenSourceInput.errNeedUrl);
+      return;
+    }
+    final OpenSourceDraft draft = parsed.draft!;
+    setState(() {
+      _error = null;
+      if (draft.kind == OpenSourceKind.xtream) {
+        _mode = OpenEntryMode.xtream;
+        _server.text = draft.serverUrl ?? '';
+        _username.text = draft.username ?? '';
+        _password.text = draft.password ?? '';
+      } else {
+        _mode = OpenEntryMode.m3u;
+        _link.text = draft.m3uUrl ?? '';
+      }
+    });
+  }
+
+  Future<void> _pickFile() async {
+    if (_blocked) return;
+    final Future<LocalM3uPick> Function()? fake = widget.pickLocalFileForTesting;
+    final LocalM3uPick pick =
+        fake != null ? await fake() : await LocalM3uPick.ask();
+    if (!mounted || pick.status == LocalM3uPickStatus.cancelled) return;
+    if (pick.status != LocalM3uPickStatus.ok || (pick.path ?? '').isEmpty) {
+      setState(() => _error = switch (pick.status) {
+            LocalM3uPickStatus.empty => 'local_empty',
+            LocalM3uPickStatus.tooBig => 'local_too_big',
+            _ => 'local_unavailable',
+          });
+      return;
+    }
+    final String path = pick.path!;
+    final String name = context.l10n.tvMyListHint;
+    final Future<void> Function(String path)? importer =
+        widget.importLocalFileForTesting;
+    setState(() {
+      _busy = true;
+      _importStarted = false;
+      _error = null;
+    });
+    bool added = false;
+    try {
+      if (importer != null) {
+        await importer(path);
+      } else {
+        await RemoteSourceRepository.runUserImport<void>(() async {
+          if (mounted) setState(() => _importStarted = true);
+          await PlaylistRepository.instance.addM3uFromLocalFile(
+            name: name,
+            path: path,
+          );
+        });
+      }
+      added = true;
+    } on LocalM3uRead catch (error) {
+      if (mounted) setState(() => _error = error.code);
+    } catch (error) {
+      BlackBox.instance.warn(
+        'SOURCE',
+        'fichier M3U refusé (${error.runtimeType})',
+      );
+      if (mounted) setState(() => _error = 'm3u_failed');
+    } finally {
       if (mounted) {
         setState(() {
           _busy = false;
@@ -320,6 +425,28 @@ class _TvSourceEntryFormState extends State<TvSourceEntryForm> {
                 ),
               ),
             ],
+            const SizedBox(height: 14),
+            Row(
+              children: <Widget>[
+                Expanded(
+                  child: _SideAction(
+                    key: const ValueKey<String>('tv-source-paste'),
+                    label: l10n.tvPasteClipboard,
+                    enabled: !_blocked,
+                    onSelect: _paste,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _SideAction(
+                    key: const ValueKey<String>('tv-source-file'),
+                    label: l10n.tvPickLocalFile,
+                    enabled: !_blocked,
+                    onSelect: _pickFile,
+                  ),
+                ),
+              ],
+            ),
             const SizedBox(height: 18),
             // Le bouton conserve le comportement TV. Focus et toucher sont
             // aussi désactivés pendant un import, pas seulement le callback.
@@ -485,4 +612,36 @@ class _ModeChip extends StatelessWidget {
           ),
         ),
       );
+}
+
+class _SideAction extends StatelessWidget {
+  const _SideAction({
+    super.key,
+    required this.label,
+    required this.enabled,
+    required this.onSelect,
+  });
+
+  final String label;
+  final bool enabled;
+  final Future<void> Function() onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    return ExcludeFocus(
+      excluding: !enabled,
+      child: TvFocusable(
+        enabled: enabled,
+        onSelect: enabled ? () => unawaited(onSelect()) : null,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+          child: Text(
+            label,
+            textAlign: TextAlign.center,
+            style: TvAppTokens.of(context).ui(16, weight: FontWeight.w600),
+          ),
+        ),
+      ),
+    );
+  }
 }
