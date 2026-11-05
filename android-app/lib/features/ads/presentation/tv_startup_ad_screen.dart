@@ -88,7 +88,12 @@ class _TvStartupAdScreenState extends State<TvStartupAdScreen> {
       backgroundColor: TvAppTokens.of(context).bg,
       body: Stack(
         children: <Widget>[
-          Positioned.fill(child: NativeVideoView(controller: _player)),
+          // La vidéo ne prend pas le focus : sinon le D-pad le lui donnait
+          // (avant « Passer », ou Gauche/Bas depuis lui) et OK ne passait
+          // plus la pub.
+          Positioned.fill(
+            child: ExcludeFocus(child: NativeVideoView(controller: _player)),
+          ),
           Positioned(
             top: TvDimens.safeV,
             left: TvDimens.safeH,
