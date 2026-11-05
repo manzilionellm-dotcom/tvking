@@ -10,6 +10,12 @@
 //  On retient UN seul renvoi, pas une file : le prochain envoi
 //  lit NowPlaying à ce moment-là, donc c'est la dernière chaîne.
 //  Deux écritures ne partent jamais en même temps.
+//
+//  Seul un heartbeat refusé demande ce renvoi. La lecture de statut
+//  repasse d'elle-même (1 à 2 s sans le canal) : si elle en
+//  demandait un, chaque lecture tombée pendant un POST lent
+//  relancerait un POST, et la veille deviendrait une suite
+//  d'écritures sur le Worker.
 // =========================================================
 
 /// Verrou d'une écriture panel, avec au plus un renvoi en attente.
@@ -17,11 +23,13 @@ class HeartbeatCoalesce {
   bool _busy = false;
   bool _again = false;
 
-  /// Vrai : cette tâche peut écrire. Faux : une écriture est déjà
-  /// en vol, celle-ci sera refaite une fois à la fin.
-  bool start() {
+  /// Vrai : cette tâche peut partir. Faux : une lecture ou une
+  /// écriture est déjà en vol. Avec [resend] (heartbeat), elle sera
+  /// refaite une fois à la fin ; sans (lecture de statut), rien
+  /// n'est rejoué.
+  bool start({bool resend = true}) {
     if (_busy) {
-      _again = true;
+      if (resend) _again = true;
       return false;
     }
     _busy = true;

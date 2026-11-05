@@ -19,4 +19,22 @@ void main() {
     expect(gate.finish(), isFalse);
     expect(gate.start(), isTrue);
   });
+
+  test('une lecture de statut refusée ne déclenche pas de heartbeat', () {
+    final HeartbeatCoalesce gate = HeartbeatCoalesce();
+    // POST lent en vol ; la veille (1 à 2 s) relit plusieurs fois.
+    expect(gate.start(), isTrue);
+    expect(gate.start(resend: false), isFalse);
+    expect(gate.start(resend: false), isFalse);
+    // Pas de renvoi : sinon chaque lecture relancerait un POST.
+    expect(gate.finish(), isFalse);
+  });
+
+  test('un zap pendant une lecture de statut garde son heartbeat', () {
+    final HeartbeatCoalesce gate = HeartbeatCoalesce();
+    expect(gate.start(resend: false), isTrue);
+    expect(gate.start(), isFalse);
+    expect(gate.finish(), isTrue);
+    expect(gate.finish(), isFalse);
+  });
 }

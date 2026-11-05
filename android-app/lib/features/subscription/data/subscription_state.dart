@@ -311,7 +311,7 @@ class SubscriptionState extends ChangeNotifier {
   /// C'est la veille « le panel vient-il d'activer ? ». Même règle
   /// qu'au-dessus : un échec réseau ne change pas l'accès déjà ouvert.
   Future<RemoteSyncOutcome> refreshRemote() async {
-    if (!_net.start()) return RemoteSyncOutcome.busy;
+    if (!_net.start(resend: false)) return RemoteSyncOutcome.busy;
     try {
       final String mac = await DeviceIdentity.instance.mac;
       final RemoteStatusRead read = await SubscriptionBackend.getStatus(mac);
