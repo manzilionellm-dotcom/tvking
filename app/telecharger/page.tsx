@@ -26,7 +26,7 @@ export default function TelechargerPage() {
   const CARDS = [
     {
       title: "Box Android TV · Fire TV · Google TV",
-      body: "Téléchargez le fichier Zuno (.aab), installez-le sur la box, ouvrez Zuno, notez votre M2, puis activez avec votre S code. L'app n'inclut aucune chaîne.",
+      body: "Téléchargez le fichier Zuno (.apk) signé, installez-le sur la box, ouvrez Zuno, notez votre M2, puis activez avec votre S code. L'app n'inclut aucune chaîne.",
       primary: { label: "Télécharger Zuno (Android)", href: android },
       note: `Package : ${ZUNO_ANDROID_PACKAGE_ID} · Astuce box : zuno.7themotion.com/apk`,
     },
