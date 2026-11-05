@@ -8,8 +8,6 @@
 
 import 'package:flutter/material.dart';
 
-import '../../tv/core/tv_field_keys.dart';
-
 import '../../../core/theme/app_colors.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/theme/app_text_styles.dart';
@@ -126,8 +124,7 @@ class _FeedbackSheetState extends State<_FeedbackSheet> {
                   ],
                 ),
                 const SizedBox(height: 8),
-                TvFieldKeys(
-                  child: TextField(
+                TextField(
                   controller: _ctrl,
                   maxLines: 4,
                   maxLength: 800,
@@ -135,7 +132,6 @@ class _FeedbackSheetState extends State<_FeedbackSheet> {
                   decoration: InputDecoration(
                     hintText: _prompt,
                     errorText: _failed ? context.l10n.buttonRetry : null,
-                  ),
                   ),
                 ),
                 const SizedBox(height: 12),
