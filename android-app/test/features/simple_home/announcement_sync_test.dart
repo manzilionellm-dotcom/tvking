@@ -15,16 +15,15 @@ Map<String, Object> notice({
   String url = '',
   String cta = '',
   int expires = 0,
-}) =>
-    <String, Object>{
-      'id': 41,
-      'title': 'Annonce du panel',
-      'body': 'Message',
-      'kind': 'info',
-      'url': url,
-      'cta': cta,
-      'expires_at': expires,
-    };
+}) => <String, Object>{
+  'id': 41,
+  'title': 'Annonce du panel',
+  'body': 'Message',
+  'kind': 'info',
+  'url': url,
+  'cta': cta,
+  'expires_at': expires,
+};
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -59,30 +58,37 @@ void main() {
       'https://bad host.invalid/a',
       'https://fixture.invalid/\ncontact',
     ]) {
-      final announcement =
-          Announcement.fromJson(notice(url: link, cta: 'Ouvrir'))!;
+      final announcement = Announcement.fromJson(
+        notice(url: link, cta: 'Ouvrir'),
+      )!;
       expect(announcement.url, isEmpty, reason: link);
       expect(announcement.title, 'Annonce du panel');
       expect(announcement.body, 'Message');
     }
     const direct = Announcement(
-        id: 42,
-        title: 'Titre',
-        body: 'Texte',
-        url: 'https://user:secret@fixture.invalid',
-        kind: '',
-        cta: '',
-        createdAt: 0);
+      id: 42,
+      title: 'Titre',
+      body: 'Texte',
+      url: 'https://user:secret@fixture.invalid',
+      kind: '',
+      cta: '',
+      createdAt: 0,
+    );
     expect(direct.url, isEmpty);
   });
 
-  testWidgets('lien invalide : le message reste visible sans bouton trompeur',
-      (tester) async {
-    AnnouncementRepository.client = MockClient((_) async => http.Response(
+  testWidgets('lien invalide : le message reste visible sans bouton trompeur', (
+    tester,
+  ) async {
+    AnnouncementRepository.client = MockClient(
+      (_) async => http.Response(
         jsonEncode(notice(url: 'intent://hidden', cta: 'Action du panel')),
-        200));
+        200,
+      ),
+    );
     await tester.pumpWidget(
-        const MaterialApp(home: Scaffold(body: AnnouncementBanner())));
+      const MaterialApp(home: Scaffold(body: AnnouncementBanner())),
+    );
     await tester.pump();
     await tester.pump();
     expect(find.text('Annonce du panel'), findsOneWidget);
@@ -218,7 +224,7 @@ void main() {
     );
     await tester.pump();
     expect(calls, 1);
-    await tester.pump(const Duration(seconds: 5));
+    await tester.pump(AnnouncementRefresh.fallbackPeriod);
     expect(calls, 2);
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
     await tester.pump(const Duration(seconds: 10));
