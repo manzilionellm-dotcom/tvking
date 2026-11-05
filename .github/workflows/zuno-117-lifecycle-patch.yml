@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Prepare exact source change without moving any branch
+      - name: Prepare verified native-only commit without moving any branch
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -20,188 +20,59 @@ jobs:
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import base64
-          import difflib
-          import json
-          import os
-          import urllib.parse
-          import urllib.request
-
+          import base64, difflib, json, os, urllib.request
           repo = os.environ['REPO']
-          source_sha = os.environ['SOURCE_SHA']
+          parent_sha = os.environ['SOURCE_SHA']
           assert repo == 'manzilionellm-dotcom/tvking'
           root = 'https://api.github.com/repos/' + repo
-          headers = {
-              'Authorization': 'Bearer ' + os.environ['GH_TOKEN'],
-              'Accept': 'application/vnd.github+json',
-              'X-GitHub-Api-Version': '2022-11-28',
-          }
+          headers = {'Authorization': 'Bearer ' + os.environ['GH_TOKEN'], 'Accept': 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28'}
           def api(path, data=None):
-              request = urllib.request.Request(root + path, headers=headers,
-                  data=None if data is None else json.dumps(data).encode(),
-                  method='GET' if data is None else 'POST')
+              request = urllib.request.Request(root + path, headers=headers, data=None if data is None else json.dumps(data).encode(), method='GET' if data is None else 'POST')
               with urllib.request.urlopen(request, timeout=60) as response:
                   return json.load(response)
-
           path = 'android-app/packages/native_video_player/android/src/main/kotlin/com/manzilionellm/native_video_player/NativeVideoView.kt'
           workflow = '.github/workflows/zuno-117-lifecycle-patch.yml'
-          original = api('/contents/' + path + '?ref=' + source_sha)
-          assert original['sha'] == 'd98772b36d46165a0f948e7ab728b155023e8e50', 'Source changed; do not overwrite concurrent work'
-          text = base64.b64decode(original['content']).decode('utf-8')
-          start = text.index('    // ---- cycle de vie ')
-          end = text.index('    /**\n     * Branche le lecteur sur la surface', start)
-          replacement = '''    // ---- cycle de vie -------------------------------------------------------
-
-              override fun dispose() {
-                  beginDispose(null)
-              }
-
-              /** Both Flutter disposal entry points use the same application-looper gate. */
-              private fun releasePlayer() {
-                  beginDispose(null)
-              }
-
-              private fun beginDispose(result: MethodChannel.Result?) {
-                  val applicationLooper = player.applicationLooper
-                  if (Looper.myLooper() !== applicationLooper) {
-                      // Do not call ExoPlayer or mutate lifecycle state from a platform thread.
-                      // This handler is separate from the playback handler cleared below.
-                      val posted = Handler(applicationLooper).postAtFrontOfQueue {
-                          beginDispose(result)
-                      }
-                      if (!posted) {
-                          result?.error("dispose_looper_stopped", "Player application looper is stopped", null)
-                      }
-                      return
-                  }
-                  if (released) {
-                      result?.success(null)
-                      return
-                  }
-                  if (disposeStarted) {
-                      if (result != null) disposeResult = result
-                      return
-                  }
-                  // All calls are serialized above. Set the guard before any callbacks/stop.
-                  disposeStarted = true
-                  disposeResult = result
-                  try { player.removeAnalyticsListener(this) } catch (_: RuntimeException) {}
-                  try { player.clearVideoFrameMetadataListener(frameClock) } catch (_: RuntimeException) {}
-                  cancelRetry()
-                  audioGate.cancel()
-                  openDeferred = false
-                  waitToken++
-                  surfaceWaitToken++
-                  ffmpegWatchToken++
-                  abandonOwnFocus()
-                  unwatchOtherPlaybacks()
-                  clearFrameRateMode()
-                  discardHeldFrame()
-                  // Do not wait for an analytics callback after unregistering its listener.
-                  // release() is the native teardown barrier; counters are settled afterwards.
-                  finishDispose()
-              }
-
-              private fun finishDispose() {
-                  check(Looper.myLooper() === player.applicationLooper) {
-                      "Player disposal must run on its application looper"
-                  }
-                  if (released) return
-                  disposeWaitToken++
-                  PlayerCensus.unwatchTracks(trackWatcher)
-                  // Block late retries, metadata and deferred fallback callbacks before release.
-                  released = true
-                  resetOutputSizeMeasurement()
-                  handler.removeCallbacksAndMessages(null)
-                  if (foregroundId >= 0) {
-                      AppForeground.unwatch(foregroundId)
-                      foregroundId = -1
-                  }
-                  if (playerKey >= 0) {
-                      owners.unregister(playerKey)
-                      playerKey = -1
-                  }
-                  val target = player
-                  val applicationLooper = target.applicationLooper
-                  val hadVideoEffects = glBound
-                  val playerReleaseConfirmed = VideoRelease.attempt(
-                      // Detach the consumer; do NOT release the framework-owned Surface.
-                      clearSurface = { target.clearVideoSurface() },
-                      releasePlayer = {
-                          try {
-                              // Never call setVideoEffects on the direct path: even an empty
-                              // list initializes an effects pipeline. On Android 10 and older,
-                              // clear only an already-installed, now-unused effect chain.
-                              if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.Q && hadVideoEffects) {
-                                  try {
-                                      target.setVideoEffects(emptyList())
-                                  } catch (_: RuntimeException) {
-                                      // A failed effect update must not skip stop/release.
-                                  }
-                              }
-                              target.stop()
-                          } finally {
-                              // Exactly one call, also when stop() throws.
-                              target.release()
-                          }
-                      },
-                  )
-                  PlayerCensus.playerReleased()
-                  if (playerReleaseConfirmed && (audioDecodersHere > 0 || audioTracksHere > 0)) {
-                      forceCloseOurAudio("Libération native terminée : compteurs audio soldés après release.")
-                  }
-                  val playbackLease = aiPlaybackLease
-                  aiPlaybackLease = null
-                  // Media3 owns its input SurfaceTexture/EGL objects and releases them on
-                  // its internal processor thread. We must never destroy them ourselves.
-                  // Defer our UI bookkeeping until release has returned, using a handler
-                  // that was NOT emptied by removeCallbacksAndMessages above.
-                  Handler(applicationLooper).post {
-                      surfaceView.holder.removeCallback(surfaceCallback)
-                      if (playerReleaseConfirmed) playbackLease?.close()
-                  }
-                  // On failure, keep the opaque GPU lease registered in AiPictureEngine.
-                  // A failed release must not permit another idle GPU benchmark.
-                  channel.setMethodCallHandler(null)
-                  val pending = disposeResult
-                  disposeResult = null
-                  try {
-                      if (playerReleaseConfirmed) {
-                          pending?.success(null)
-                      } else {
-                          pending?.error("player_release_failed", "Native player release was not confirmed", null)
-                      }
+          original = api('/contents/' + path + '?ref=' + parent_sha)
+          assert original['sha'] == 'd98772b36d46165a0f948e7ab728b155023e8e50', 'Source changed; abort instead of overwriting concurrent work'
+          before = base64.b64decode(original['content']).decode('utf-8')
+          prepared = api('/contents/' + path + '?ref=6a3d62b01bbbb26683f7b19acf7d6b9fd3fe58e0')
+          after = base64.b64decode(prepared['content']).decode('utf-8')
+          marker = '    // ---- cycle de vie '
+          tail = '    /**\n     * Branche le lecteur sur la surface'
+          start, end = after.index(marker), after.index(tail)
+          section = after[start:end]
+          fixed = []
+          for line in section.splitlines(keepends=True):
+              count = len(line) - len(line.lstrip(' '))
+              fixed.append(' ' * 10 + line if count % 4 == 2 else line)
+          section = ''.join(fixed)
+          anchor = '        discardHeldFrame()\n'
+          assert section.count(anchor) == 1
+          section = section.replace(anchor, anchor + '''        try {
+                      player.volume = AudioHandoff.VOLUME_SILENT
+                      player.playWhenReady = false
                   } catch (_: RuntimeException) {
-                      // A closed Flutter channel must not cause another native release.
+                      // Stop/release must still run when muting fails.
                   }
-              }
-
-          '''
-          # The triple-quoted block has ten extra spaces after its first line.
-          lines = replacement.splitlines(keepends=True)
-          replacement = lines[0] + ''.join(line[10:] if line.startswith('          ') else line for line in lines[1:])
-          changed = text[:start] + replacement + text[end:]
-          assert changed[:start] == text[:start]
-          assert changed.endswith(text[end:])
-          # No code outside the disposal section, no instrumentation tests, no cast changes.
-          assert 'target.release()' in replacement
-          assert 'Surface.release(' not in replacement and 'surface.release(' not in replacement
-          assert 'SurfaceTexture.release(' not in replacement
-          assert replacement.index('cancelRetry()') < replacement.index('finishDispose()\n')
-          assert replacement.index('target.clearVideoSurface()') < replacement.index('target.stop()') < replacement.index('target.release()')
-          assert replacement.index('target.release()') < replacement.index('Handler(applicationLooper).post {')
-          print(''.join(difflib.unified_diff(text.splitlines(True), changed.splitlines(True), fromfile='a/'+path, tofile='b/'+path)))
-          blob = api('/git/blobs', {'content': changed, 'encoding': 'utf-8'})
-          parent = api('/git/commits/' + source_sha)
+          ''')
+          # YAML already removed its own indentation. The literal above is Kotlin.
+          after = after[:start] + section + after[end:]
+          assert after[:start] == before[:before.index(marker)]
+          assert after[after.index(tail):] == before[before.index(tail):]
+          assert section.count('target.release()') == 1
+          assert section.index('cancelRetry()') < section.index('finishDispose()\n')
+          assert section.index('target.clearVideoSurface()') < section.index('target.stop()') < section.index('target.release()')
+          assert section.index('target.release()') < section.index('Handler(applicationLooper).post {')
+          assert 'surface.release(' not in section and 'surfaceTexture.release(' not in section
+          print(''.join(difflib.unified_diff(before.splitlines(True), after.splitlines(True), fromfile='a/'+path, tofile='b/'+path)))
+          blob = api('/git/blobs', {'content': after, 'encoding': 'utf-8'})
+          parent = api('/git/commits/' + parent_sha)
           tree = api('/git/trees', {'base_tree': parent['tree']['sha'], 'tree': [
               {'path': path, 'mode': '100644', 'type': 'blob', 'sha': blob['sha']},
               {'path': workflow, 'mode': '100644', 'type': 'blob', 'sha': None},
           ]})
-          commit = api('/git/commits', {
-              'message': 'fix(player): serialize disposal and defer surface bookkeeping after Media3 release',
-              'tree': tree['sha'], 'parents': [source_sha],
-          })
+          commit = api('/git/commits', {'message': 'fix(player): serialize disposal and detach surface before Media3 release', 'tree': tree['sha'], 'parents': [parent_sha]})
           print('PREPARED_COMMIT=' + commit['sha'])
-          print('EXPECTED_PARENT=' + source_sha)
-          print('No branch was moved. Review the candidate diff before updating PR 219.')
+          print('EXPECTED_PARENT=' + parent_sha)
+          print('No branch moved; review candidate before updating PR 219.')
           PY
