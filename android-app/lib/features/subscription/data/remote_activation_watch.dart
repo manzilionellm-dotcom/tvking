@@ -7,9 +7,9 @@
 //    2. Si la prise ne tient pas : canal long (GET /api/box/wait).
 //       On accuse réception. Un numéro déjà vu n'est pas rejoué.
 //    3. Si ce canal non plus (ancien Worker, 401, 429, Wi-Fi
-//       coupé) : lecture courte de /api/status, 3 s pendant
-//       l'attente, 4 s ensuite, jusqu'à 45 s si le réseau ne
-//       répond plus. C'est le rythme de la version 103.
+//       coupé) : lecture courte de /api/status, 1 s pendant
+//       l'attente, 2 s ensuite, jusqu'à 45 s si le réseau ne
+//       répond plus. Fenêtre de 1 à 2 s sans le push.
 //    L'interrupteur zuno.channel.legacy (coupé par défaut) saute
 //    l'étape 1 et revient au comportement d'avant.
 //
@@ -165,11 +165,13 @@ class RemoteActivationWatch {
         _arm(Duration.zero);
         return;
       }
-      _arm(signalPace(
-        channelUp: _channelUp,
-        waiting: _isWaiting,
-        failures: _failures,
-      ));
+      _arm(
+        signalPace(
+          channelUp: _channelUp,
+          waiting: _isWaiting,
+          failures: _failures,
+        ),
+      );
     });
   }
 
@@ -177,8 +179,8 @@ class RemoteActivationWatch {
   /// mais qu'aucune chaîne n'est encore en cache.
   bool get _isWaiting {
     final SubscriptionStatus s = SubscriptionState.instance.status;
-    final bool open = s == SubscriptionStatus.paid ||
-        s == SubscriptionStatus.trialActive;
+    final bool open =
+        s == SubscriptionStatus.paid || s == SubscriptionStatus.trialActive;
     final bool has = PlaylistRepository.instance.currentChannels.isNotEmpty;
     return !open || !has;
   }
@@ -191,7 +193,8 @@ class RemoteActivationWatch {
     _tickBusy = true;
     try {
       final bool waiting = _isWaiting;
-      final bool heartbeatDue = waiting &&
+      final bool heartbeatDue =
+          waiting &&
           DateTime.now().difference(_lastHeartbeat) >= _heartbeatWhileWaiting;
       final RemoteSyncOutcome outcome = heartbeatDue
           ? await SubscriptionState.instance.syncWithBackend()
@@ -266,8 +269,9 @@ class RemoteActivationWatch {
     // supprimée sur la télé AVANT cet ordre peut revenir (le panel reste
     // le maître). Voir tv_delete.dart.
     if (ordered) RemoteSourceRepository.notePanelResend();
-    final RemoteSyncResult result =
-        await RemoteSourceRepository.sync(force: ordered);
+    final RemoteSyncResult result = await RemoteSourceRepository.sync(
+      force: ordered,
+    );
     if (result == RemoteSyncResult.networkError) return;
     if (snap.sourceRev != null) _lastSourceRev = snap.sourceRev;
     // Ordre du panel appliqué : on remonte l'inventaire tout de suite
@@ -277,8 +281,8 @@ class RemoteActivationWatch {
     if (ordered &&
         result == RemoteSyncResult.loaded &&
         !RepairFlags.heartbeatAfterImportOff) {
-      final RemoteSyncOutcome hb =
-          await SubscriptionState.instance.syncWithBackend();
+      final RemoteSyncOutcome hb = await SubscriptionState.instance
+          .syncWithBackend();
       if (hb == RemoteSyncOutcome.applied) _lastHeartbeat = DateTime.now();
       BlackBox.instance.info(
         'PANEL',
@@ -335,7 +339,9 @@ class RemoteActivationWatch {
               traceId: frame.traceId,
             ),
           ], via: 'ws');
-          if (applied && !RepairFlags.wsReplayLegacy && frame.seq > _boxCursor) {
+          if (applied &&
+              !RepairFlags.wsReplayLegacy &&
+              frame.seq > _boxCursor) {
             _boxCursor = frame.seq;
             await _saveCursors();
           }
@@ -458,10 +464,14 @@ class RemoteActivationWatch {
       for (final BoxOrder o in orders)
         if (o.fleet) <String, Object?>{'id': o.id, 'kind': o.kind},
     ];
-    final List<Map<String, Object?>> freshBox =
-        freshCommands(boxMaps, _seenBox);
-    final List<Map<String, Object?>> freshFleet =
-        freshCommands(fleetMaps, _seenFleet);
+    final List<Map<String, Object?>> freshBox = freshCommands(
+      boxMaps,
+      _seenBox,
+    );
+    final List<Map<String, Object?>> freshFleet = freshCommands(
+      fleetMaps,
+      _seenFleet,
+    );
     final List<String> kinds = <String>[
       for (final Map<String, Object?> m in freshBox) m['kind']! as String,
       for (final Map<String, Object?> m in freshFleet) m['kind']! as String,
@@ -470,7 +480,9 @@ class RemoteActivationWatch {
     // distingue « envoyé » de « reçu ». La trace du panel suit dans la
     // boîte noire et dans l'accusé.
     final int receivedAt = DateTime.now().millisecondsSinceEpoch;
-    final Set<int> freshIds = <int>{for (final Map<String, Object?> m in freshBox) m['id']! as int};
+    final Set<int> freshIds = <int>{
+      for (final Map<String, Object?> m in freshBox) m['id']! as int,
+    };
     final List<BoxOrder> tracked = <BoxOrder>[
       for (final BoxOrder o in orders)
         if (!o.fleet && o.orderId.isNotEmpty && freshIds.contains(o.id)) o,
@@ -480,23 +492,25 @@ class RemoteActivationWatch {
       BlackBox.instance.info(
         'PANEL',
         'ordre ${o.kind} n°${o.id} reçu'
-        '${via.isEmpty ? '' : ' ($via)'}'
-        '${o.traceId.isEmpty ? '' : ' trace=${o.traceId}'}',
+            '${via.isEmpty ? '' : ' ($via)'}'
+            '${o.traceId.isEmpty ? '' : ' trace=${o.traceId}'}',
       );
     }
     final String appVersion = await _version();
     final String ackMac = await DeviceIdentity.instance.mac;
     if (tracked.isNotEmpty) {
-      unawaited(OrderAckClient.send(ackMac, <Map<String, Object?>>[
-        for (final BoxOrder o in tracked)
-          ackPayload(
-            orderId: o.orderId,
-            state: 'received',
-            traceId: o.traceId,
-            appVersion: appVersion,
-            receivedAtMs: receivedAt,
-          ),
-      ]));
+      unawaited(
+        OrderAckClient.send(ackMac, <Map<String, Object?>>[
+          for (final BoxOrder o in tracked)
+            ackPayload(
+              orderId: o.orderId,
+              state: 'received',
+              traceId: o.traceId,
+              appVersion: appVersion,
+              receivedAtMs: receivedAt,
+            ),
+        ]),
+      );
     }
     final bool needStatus = kinds.any(kindNeedsStatus);
     final bool sourceOrdered = kinds.any(channelRefreshesSources);
@@ -515,11 +529,13 @@ class RemoteActivationWatch {
         // L'ordre utilise le même synchroniseur que le filet HTTP. Son
         // traitement ne doit pas supprimer ce filet après le premier clic.
         if (_run && generation == _generation) {
-          _arm(signalPace(
-            channelUp: _channelUp,
-            waiting: _isWaiting,
-            failures: _failures,
-          ));
+          _arm(
+            signalPace(
+              channelUp: _channelUp,
+              waiting: _isWaiting,
+              failures: _failures,
+            ),
+          );
         }
       }
       if (SubscriptionState.instance.syncHint == 'offline') return false;
@@ -546,18 +562,20 @@ class RemoteActivationWatch {
         BlackBox.instance.info(
           'PANEL',
           'ordre ${o.kind} n°${o.id} ${out.applied ? 'appliqué' : 'en échec'} : ${out.result}'
-          '${out.configRev == null ? '' : ' (révision ${out.configRev})'}'
-          '${o.traceId.isEmpty ? '' : ' trace=${o.traceId}'}',
+              '${out.configRev == null ? '' : ' (révision ${out.configRev})'}'
+              '${o.traceId.isEmpty ? '' : ' trace=${o.traceId}'}',
         );
-        finals.add(ackPayload(
-          orderId: o.orderId,
-          state: out.state,
-          traceId: o.traceId,
-          appVersion: appVersion,
-          receivedAtMs: receivedAt,
-          appliedAtMs: doneAt,
-          outcome: out,
-        ));
+        finals.add(
+          ackPayload(
+            orderId: o.orderId,
+            state: out.state,
+            traceId: o.traceId,
+            appVersion: appVersion,
+            receivedAtMs: receivedAt,
+            appliedAtMs: doneAt,
+            outcome: out,
+          ),
+        );
       }
       unawaited(OrderAckClient.send(ackMac, finals));
     }
@@ -584,8 +602,9 @@ class RemoteActivationWatch {
         await HomeLayoutRepository.instance.refresh(strict: true);
       }
       if (plan.contains(SignalRefresh.forceUpdate)) {
-        final bool must =
-            await ForceUpdateChecker.instance.mustUpdate(strict: true);
+        final bool must = await ForceUpdateChecker.instance.mustUpdate(
+          strict: true,
+        );
         SignalInbox.instance.setForceBlocked(must);
         // Le panel vient de publier une version : la box la télécharge
         // et ouvre l'installateur sans attendre le prochain tour (30 min).

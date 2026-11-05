@@ -13,22 +13,25 @@
 ///
 /// - [waiting] : la box n'a pas encore le droit d'ouvrir l'accueil,
 ///   OU elle l'a mais aucune chaîne n'est encore en cache. On lit
-///   souvent (3 s), le temps que le clic du panel descende.
-/// - Sinon : la box est déjà en service. On lit plus tranquillement
-///   (4 s). Une nouvelle source, ou une liste retirée, arrive dans
-///   la même poignée de secondes, sans noyer le Worker.
+///   toutes les 1 s, pour que le clic du panel soit vu dans la
+///   fenêtre de 1 à 2 s demandée par le propriétaire.
+/// - Sinon : la box est déjà en service. On lit toutes les 2 s.
+///   Une nouvelle source, ou une liste retirée, arrive dans cette
+///   fenêtre. 30 lectures légères par minute, sous le plafond
+///   Worker de 120 sur GET /api/status.
 /// - [failures] : lectures ratées d'affilée (Wi-Fi coupé, Worker
 ///   injoignable). On double l'attente à chaque échec, jusqu'à 45 s.
 ///   Dès qu'une lecture réussit, on revient au rythme normal.
 abstract final class ActivationPace {
   /// En attente d'activation ou de la première source.
-  static const Duration fast = Duration(seconds: 3);
+  /// 60 lectures/min au pire, toujours sous le plafond 120.
+  static const Duration fast = Duration(seconds: 1);
 
   /// Box déjà ouverte, avec des chaînes en cache.
-  /// 4 s : une liste retirée dans le panel disparaît dans la
-  /// même poignée de secondes, et une box ne fait qu'environ
-  /// 15 lectures légères par minute (plafond Worker : 120).
-  static const Duration calm = Duration(seconds: 4);
+  /// 2 s : une liste retirée dans le panel disparaît dans la
+  /// fenêtre demandée, et une box ne fait qu'environ
+  /// 30 lectures légères par minute (plafond Worker : 120).
+  static const Duration calm = Duration(seconds: 2);
 
   /// Canal long ouvert : la box est déjà prévenue dès qu'un ordre
   /// arrive. On ne relit le statut qu'en filet, toutes les 25 s.

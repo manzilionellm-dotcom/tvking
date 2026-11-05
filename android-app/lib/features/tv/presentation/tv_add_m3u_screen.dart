@@ -17,6 +17,7 @@ import 'tv_import_progress_label.dart';
 import 'tv_source_error_text.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_app_tokens.dart';
+import '../core/tv_field_keys.dart';
 import 'tv_components.dart';
 
 class TvAddM3uScreen extends StatefulWidget {
@@ -179,7 +180,8 @@ class _Field extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 6),
-        TextField(
+        TvFieldKeys(
+          child: TextField(
           controller: controller,
           style: TextStyle(
             fontSize: TvDimens.title,
@@ -189,6 +191,10 @@ class _Field extends StatelessWidget {
           keyboardType: TextInputType.url,
           autocorrect: false,
           enableSuggestions: false,
+          enableIMEPersonalizedLearning: false,
+          textCapitalization: TextCapitalization.none,
+          smartDashesType: SmartDashesType.disabled,
+          smartQuotesType: SmartQuotesType.disabled,
           decoration: InputDecoration(
             hintText: hint,
             hintStyle: TextStyle(color: TvAppTokens.of(context).mutedDim),
@@ -209,6 +215,7 @@ class _Field extends StatelessWidget {
                 width: 2,
               ),
             ),
+          ),
           ),
         ),
       ],

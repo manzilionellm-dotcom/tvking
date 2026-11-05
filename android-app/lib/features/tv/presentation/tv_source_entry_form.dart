@@ -4,17 +4,22 @@
 //  Les contrôleurs persistent entre onglets et erreurs. Le dépôt sérialise
 //  cet import avec ceux du panel : aucun compteur partagé n'est effacé par
 //  un formulaire qui attend encore son tour.
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../core/blackbox/black_box.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../../playlists/data/import_progress.dart';
+import '../../playlists/data/local_m3u_bytes.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../../playlists/data/remote_source_repository.dart';
 import '../../playlists/domain/open_source_input.dart';
 import '../../playlists/presentation/widgets/configured_servers_picker.dart';
+import '../core/tv_field_keys.dart';
 import '../core/tv_focusable.dart';
+import '../data/local_m3u_picker.dart';
 import '../core/tv_tokens.dart';
 import '../core/tv_app_tokens.dart';
 import 'source_http_input_formatter.dart';
@@ -29,6 +34,9 @@ class TvSourceEntryForm extends StatefulWidget {
     this.autofocus = false,
     this.externalBusy = false,
     this.submitForTesting,
+    this.pickLocalFileForTesting,
+    this.importLocalFileForTesting,
+    this.readClipboardForTesting,
     super.key,
   });
 
@@ -44,6 +52,15 @@ class TvSourceEntryForm extends StatefulWidget {
   final Future<void> Function(OpenSourceDraft draft, String name)?
       submitForTesting;
 
+  /// Test : ne lance pas le sélecteur Android.
+  final Future<LocalM3uPick> Function()? pickLocalFileForTesting;
+
+  /// Test : n'écrit pas la liste en base.
+  final Future<void> Function(String path)? importLocalFileForTesting;
+
+  /// Test : ne lit pas le presse-papiers du système.
+  final Future<String?> Function()? readClipboardForTesting;
+
   @override
   State<TvSourceEntryForm> createState() => _TvSourceEntryFormState();
 }
@@ -57,10 +74,13 @@ class _TvSourceEntryFormState extends State<TvSourceEntryForm> {
   final FocusNode _usernameFocus = FocusNode();
   final FocusNode _passwordFocus = FocusNode();
   final FocusNode _linkFocus = FocusNode();
+  final FocusNode _fileFocus = FocusNode();
+  final FocusNode _submitFocus = FocusNode();
   late OpenEntryMode _mode;
   bool _busy = false;
   bool _importStarted = false;
   bool _passwordVisible = false;
+  bool _picking = false;
   String? _error;
 
   bool get _blocked => _busy || widget.externalBusy;
@@ -85,7 +105,32 @@ class _TvSourceEntryFormState extends State<TvSourceEntryForm> {
     _usernameFocus.dispose();
     _passwordFocus.dispose();
     _linkFocus.dispose();
+    _fileFocus.dispose();
+    _submitFocus.dispose();
     super.dispose();
+  }
+
+  // Le bouton actionné est exclu du focus pendant l'import : Flutter laisse
+  // alors le focus nulle part, ou sur un autre contrôle désactivé du
+  // formulaire. Après un échec, le bouton le reprend. Un focus parti hors
+  // du formulaire (menu de droite) est un choix de l'utilisateur, respecté.
+  void _refocusAfterFailure(FocusNode node) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final FocusNode? current = FocusManager.instance.primaryFocus;
+      final BuildContext? at = current?.context;
+      if (current is! FocusScopeNode && at != null && !_contains(at)) return;
+      node.requestFocus();
+    });
+  }
+
+  bool _contains(BuildContext descendant) {
+    bool found = false;
+    descendant.visitAncestorElements((Element element) {
+      found = identical(element, context);
+      return !found;
+    });
+    return found;
   }
 
   void _select(OpenEntryMode mode) {
@@ -161,6 +206,104 @@ class _TvSourceEntryFormState extends State<TvSourceEntryForm> {
       }
     }
     if (mounted && added) widget.onAdded?.call();
+    if (mounted && !added) _refocusAfterFailure(_submitFocus);
+  }
+
+  Future<void> _paste() async {
+    if (_blocked) return;
+    final Future<String?> Function()? read = widget.readClipboardForTesting;
+    final String text = (read != null
+            ? (await read())
+            : (await Clipboard.getData(Clipboard.kTextPlain))?.text)
+        ?.trim() ??
+        '';
+    if (!mounted) return;
+    if (text.isEmpty) {
+      setState(() => _error = OpenSourceInput.errNeedUrl);
+      return;
+    }
+    final OpenSourceParse parsed = OpenSourceInput.playlistLink(text);
+    if (!parsed.isValid || parsed.draft == null) {
+      setState(() => _error = parsed.error ?? OpenSourceInput.errNeedUrl);
+      return;
+    }
+    final OpenSourceDraft draft = parsed.draft!;
+    setState(() {
+      _error = null;
+      if (draft.kind == OpenSourceKind.xtream) {
+        _mode = OpenEntryMode.xtream;
+        _server.text = draft.serverUrl ?? '';
+        _username.text = draft.username ?? '';
+        _password.text = draft.password ?? '';
+      } else {
+        _mode = OpenEntryMode.m3u;
+        _link.text = draft.m3uUrl ?? '';
+      }
+    });
+  }
+
+  Future<void> _pickFile() async {
+    // Le sélecteur met une ou deux secondes à s'ouvrir, puis la copie
+    // depuis une clé USB dure : un second OK ne relance rien.
+    if (_blocked || _picking) return;
+    _picking = true;
+    final Future<LocalM3uPick> Function()? fake = widget.pickLocalFileForTesting;
+    final LocalM3uPick pick;
+    try {
+      pick = fake != null ? await fake() : await LocalM3uPick.ask();
+    } finally {
+      _picking = false;
+    }
+    if (!mounted || pick.status == LocalM3uPickStatus.cancelled) return;
+    if (pick.status != LocalM3uPickStatus.ok || (pick.path ?? '').isEmpty) {
+      setState(() => _error = switch (pick.status) {
+            LocalM3uPickStatus.empty => 'local_empty',
+            LocalM3uPickStatus.tooBig => 'local_too_big',
+            _ => 'local_unavailable',
+          });
+      return;
+    }
+    final String path = pick.path!;
+    final String name = context.l10n.tvMyListHint;
+    final Future<void> Function(String path)? importer =
+        widget.importLocalFileForTesting;
+    setState(() {
+      _busy = true;
+      _importStarted = false;
+      _error = null;
+    });
+    bool added = false;
+    try {
+      if (importer != null) {
+        await importer(path);
+      } else {
+        await RemoteSourceRepository.runUserImport<void>(() async {
+          if (mounted) setState(() => _importStarted = true);
+          await PlaylistRepository.instance.addM3uFromLocalFile(
+            name: name,
+            path: path,
+          );
+        });
+      }
+      added = true;
+    } on LocalM3uRead catch (error) {
+      if (mounted) setState(() => _error = error.code);
+    } catch (error) {
+      BlackBox.instance.warn(
+        'SOURCE',
+        'fichier M3U refusé (${error.runtimeType})',
+      );
+      if (mounted) setState(() => _error = 'm3u_failed');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _importStarted = false;
+        });
+      }
+    }
+    if (mounted && added) widget.onAdded?.call();
+    if (mounted && !added) _refocusAfterFailure(_fileFocus);
   }
 
   @override
@@ -191,7 +334,33 @@ class _TvSourceEntryFormState extends State<TvSourceEntryForm> {
               style: TvAppTokens.of(context)
                   .ui(13, color: TvAppTokens.of(context).muted),
             ),
-            const SizedBox(height: 18),
+            const SizedBox(height: 14),
+            // Au-dessus des modes, jamais entre le dernier champ et
+            // Connexion : Bas et Entrée passent du mot de passe (ou du
+            // lien) directement à Connexion (TvFieldKeys).
+            Row(
+              children: <Widget>[
+                Expanded(
+                  child: _SideAction(
+                    key: const ValueKey<String>('tv-source-paste'),
+                    label: l10n.tvPasteClipboard,
+                    enabled: !_blocked,
+                    onSelect: _paste,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _SideAction(
+                    key: const ValueKey<String>('tv-source-file'),
+                    focusNode: _fileFocus,
+                    label: l10n.tvPickLocalFile,
+                    enabled: !_blocked,
+                    onSelect: _pickFile,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
             Row(
               children: <Widget>[
                 Expanded(
@@ -330,6 +499,7 @@ class _TvSourceEntryFormState extends State<TvSourceEntryForm> {
                   opacity: _blocked ? 0.55 : 1,
                   child: TvCtaButton(
                     key: const ValueKey<String>('tv-source-submit'),
+                    focusNode: _submitFocus,
                     label: _busy ? l10n.tvConnecting : l10n.loginConnectLoad,
                     onSelect: _blocked ? null : _submit,
                   ),
@@ -380,7 +550,8 @@ class _SourceField extends StatelessWidget {
           borderRadius: BorderRadius.circular(TvTokens.rButton),
           borderSide: BorderSide(color: color, width: width),
         );
-    return TextField(
+    return TvFieldKeys(
+      child: TextField(
       controller: controller,
       focusNode: focusNode,
       enabled: enabled,
@@ -405,7 +576,9 @@ class _SourceField extends StatelessWidget {
       decoration: InputDecoration(
         labelText: label,
         hintText: hint,
-        suffixIcon: suffix,
+        suffixIcon: suffix == null
+            ? null
+            : ExcludeFocus(child: suffix!),
         labelStyle: TvAppTokens.of(context)
             .ui(13, color: TvAppTokens.of(context).muted),
         hintStyle: TvAppTokens.of(context)
@@ -421,6 +594,7 @@ class _SourceField extends StatelessWidget {
         enabledBorder: border(TvAppTokens.of(context).line, 1),
         disabledBorder: border(TvAppTokens.of(context).lineSoft, 1),
         focusedBorder: border(TvAppTokens.of(context).accent, 2),
+      ),
       ),
     );
   }
@@ -480,4 +654,39 @@ class _ModeChip extends StatelessWidget {
           ),
         ),
       );
+}
+
+class _SideAction extends StatelessWidget {
+  const _SideAction({
+    super.key,
+    required this.label,
+    required this.enabled,
+    required this.onSelect,
+    this.focusNode,
+  });
+
+  final String label;
+  final bool enabled;
+  final Future<void> Function() onSelect;
+  final FocusNode? focusNode;
+
+  @override
+  Widget build(BuildContext context) {
+    return ExcludeFocus(
+      excluding: !enabled,
+      child: TvFocusable(
+        focusNode: focusNode,
+        enabled: enabled,
+        onSelect: enabled ? () => unawaited(onSelect()) : null,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+          child: Text(
+            label,
+            textAlign: TextAlign.center,
+            style: TvAppTokens.of(context).ui(16, weight: FontWeight.w600),
+          ),
+        ),
+      ),
+    );
+  }
 }

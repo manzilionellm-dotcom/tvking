@@ -150,40 +150,48 @@ class _TvLivePreviewState extends State<TvLivePreview> {
   @override
   Widget build(BuildContext context) {
     final NativeVideoController? c = _ctrl;
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(TvTokens.rCard),
-      child: ColoredBox(
-        color: TvAppTokens.playbackOf(context).bg,
-        child: c == null
-            // Défilement / attente : AUCUNE vue native, juste le logo.
-            ? _LogoFallback(channel: widget.channel)
-            : Stack(
-                fit: StackFit.expand,
-                children: <Widget>[
-                  NativeVideoView(controller: c),
-                  // Logo par-dessus tant qu'aucune image n'est rendue (ou en erreur).
-                  ListenableBuilder(
-                    listenable: c,
-                    builder: (BuildContext context, Widget? _) {
-                      final bool showLogo = !c.firstFrame || c.hasError;
-                      return showLogo
-                          ? _LogoFallback(channel: widget.channel)
-                          : Align(
-                              alignment: AlignmentDirectional.bottomStart,
-                              child: Container(
-                                padding: const EdgeInsets.all(TvDimens.rowGap),
-                                color: TvAppTokens.playbackOf(context)
-                                    .bg.withValues(alpha: 0.85),
-                                child: TvPlaybackQuality(
-                                  quality: c.videoQuality,
-                                  compact: true,
+    // Rien ne se pilote dans l'aperçu. Sans ça, la vue native (le
+    // PlatformViewLink porte un Focus) devenait une cible du D-pad : focus
+    // invisible, et Haut/Bas n'en sortaient plus.
+    return ExcludeFocus(
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(TvTokens.rCard),
+        child: ColoredBox(
+          color: TvAppTokens.playbackOf(context).bg,
+          child: c == null
+              // Défilement / attente : AUCUNE vue native, juste le logo.
+              ? _LogoFallback(channel: widget.channel)
+              : Stack(
+                  fit: StackFit.expand,
+                  children: <Widget>[
+                    NativeVideoView(controller: c),
+                    // Logo par-dessus tant qu'aucune image n'est rendue (ou en erreur).
+                    ListenableBuilder(
+                      listenable: c,
+                      builder: (BuildContext context, Widget? _) {
+                        final bool showLogo = !c.firstFrame || c.hasError;
+                        return showLogo
+                            ? _LogoFallback(channel: widget.channel)
+                            : Align(
+                                alignment: AlignmentDirectional.bottomStart,
+                                child: Container(
+                                  padding: const EdgeInsets.all(
+                                    TvDimens.rowGap,
+                                  ),
+                                  color: TvAppTokens.playbackOf(
+                                    context,
+                                  ).bg.withValues(alpha: 0.85),
+                                  child: TvPlaybackQuality(
+                                    quality: c.videoQuality,
+                                    compact: true,
+                                  ),
                                 ),
-                              ),
-                            );
-                    },
-                  ),
-                ],
-              ),
+                              );
+                      },
+                    ),
+                  ],
+                ),
+        ),
       ),
     );
   }

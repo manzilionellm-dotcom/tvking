@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
 import '../../tv/core/tv_app_tokens.dart';
+import '../../tv/core/tv_field_keys.dart';
 import '../../tv/core/tv_dimens.dart';
 import '../data/feedback_repository.dart';
 
@@ -105,7 +106,8 @@ class _TvFeedbackDialogState extends State<_TvFeedbackDialog> {
                       color: palette.accentBright),
                 ),
             ]),
-            TextField(
+            TvFieldKeys(
+              child: TextField(
               key: const ValueKey<String>('tv-feedback-text'),
               autofocus: true,
               enabled: !_busy,
@@ -117,6 +119,7 @@ class _TvFeedbackDialogState extends State<_TvFeedbackDialog> {
               decoration: InputDecoration(
                   labelText: widget.message,
                   errorText: _failed ? context.l10n.buttonRetry : null),
+              ),
             ),
             const SizedBox(height: TvDimens.gutter),
             Wrap(spacing: TvDimens.gutter, children: <Widget>[

@@ -5,14 +5,21 @@ import 'package:flutter/widgets.dart';
 import '../../data/announcement_repository.dart';
 
 /// Repli du canal temps réel : certains anciens serveurs n'émettent pas
-/// encore de signal. L'accueil relit alors l'annonce toutes les cinq secondes,
+/// encore de signal. L'accueil relit alors l'annonce toutes les secondes,
 /// uniquement au premier plan et sur la route visible. Aucun lecteur touché.
+///
+/// 1 s tient dans la fenêtre de 1 à 2 s. Le seau Worker « pub » autorise
+/// 240 lectures/min ; cette page en fait 60 tant qu'elle est visible.
 class AnnouncementRefresh extends StatefulWidget {
   const AnnouncementRefresh({
     super.key,
     required this.child,
     this.enabled = true,
   });
+
+  /// Repli sans signal. Le canal « message », lui, reste immédiat.
+  static const Duration fallbackPeriod = Duration(seconds: 1);
+
   final Widget child;
   final bool enabled;
 
@@ -28,7 +35,10 @@ class _AnnouncementRefreshState extends State<AnnouncementRefresh>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _timer = Timer.periodic(const Duration(seconds: 5), (_) => _refresh());
+    _timer = Timer.periodic(
+      AnnouncementRefresh.fallbackPeriod,
+      (_) => _refresh(),
+    );
     WidgetsBinding.instance.addPostFrameCallback((_) => _refresh());
   }
 

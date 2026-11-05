@@ -17,6 +17,8 @@
 
 import 'package:flutter/material.dart';
 
+import '../../../tv/core/tv_field_keys.dart';
+
 import '../../../../core/i18n/l10n_extension.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
@@ -140,22 +142,37 @@ class _XtreamLoginFormState extends State<XtreamLoginForm> {
         const SizedBox(height: 18),
         // Lien du serveur (URL).
         _label(context.l10n.loginServer),
-        TextField(
-          controller: _serverCtrl,
-          autocorrect: false,
-          keyboardType: TextInputType.url,
-          decoration: const InputDecoration(
-            hintText: 'http://exemple.com:8080',
+        TvFieldKeys(
+          child: TextField(
+            controller: _serverCtrl,
+            autocorrect: false,
+            enableSuggestions: false,
+            enableIMEPersonalizedLearning: false,
+            textCapitalization: TextCapitalization.none,
+            smartDashesType: SmartDashesType.disabled,
+            smartQuotesType: SmartQuotesType.disabled,
+            keyboardType: TextInputType.url,
+            decoration: const InputDecoration(
+              hintText: 'http://exemple.com:8080',
+            ),
           ),
         ),
         const SizedBox(height: 12),
         // Identifiant.
         _label(context.l10n.loginUsername),
-        TextField(controller: _userCtrl, autocorrect: false),
+        TvFieldKeys(
+          child: TextField(controller: _userCtrl, autocorrect: false),
+        ),
         const SizedBox(height: 12),
         // Mot de passe.
         _label(context.l10n.loginPassword),
-        TextField(controller: _passCtrl, obscureText: true, autocorrect: false),
+        TvFieldKeys(
+          child: TextField(
+            controller: _passCtrl,
+            obscureText: true,
+            autocorrect: false,
+          ),
+        ),
         if (_error != null) ...<Widget>[
           const SizedBox(height: 16),
           Container(

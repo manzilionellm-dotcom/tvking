@@ -290,16 +290,19 @@ class TvCtaButton extends StatelessWidget {
     required this.onSelect,
     this.autofocus = false,
     this.expand = true,
+    this.focusNode,
   });
   final String label;
   final VoidCallback? onSelect;
   final bool autofocus;
   final bool expand;
+  final FocusNode? focusNode;
 
   @override
   Widget build(BuildContext context) {
     final BorderRadius radius = BorderRadius.circular(TvTokens.rButton);
     return TvFocusBuilder(
+      focusNode: focusNode,
       autofocus: autofocus,
       scale: TvFocusScale.large,
       borderRadius: radius,

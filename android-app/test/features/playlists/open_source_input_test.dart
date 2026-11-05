@@ -93,6 +93,29 @@ void main() {
     expect(asList.draft!.kind, OpenSourceKind.m3u);
   });
 
+  test('une adresse Xtream est reconnue sans choisir le bon onglet', () {
+    final OpenSourceParse query = OpenSourceInput.playlistLink(
+      'http://panel.invalid:8080/?username=demo&password=jeton',
+    );
+    expect(query.draft!.kind, OpenSourceKind.xtream);
+    expect(query.draft!.serverUrl, 'http://panel.invalid:8080');
+    expect(query.draft!.username, 'demo');
+    expect(query.draft!.password, 'jeton');
+
+    final OpenSourceParse portal = OpenSourceInput.playlistLink(
+      'http://demo:jeton@panel.invalid:8080',
+    );
+    expect(portal.draft!.kind, OpenSourceKind.xtream);
+    expect(portal.draft!.serverUrl, 'http://panel.invalid:8080');
+    expect(portal.draft!.username, 'demo');
+
+    // Une liste .m3u avec un compte dans l'adresse reste une liste.
+    final OpenSourceParse file = OpenSourceInput.playlistLink(
+      'http://demo:jeton@boite.invalid:8080/liste.m3u',
+    );
+    expect(file.draft!.kind, OpenSourceKind.m3u);
+  });
+
   test('adresse vide, schéma interdit, deux sources différentes', () {
     expect(OpenSourceInput.playlistLink('   ').error, OpenSourceInput.errNeedUrl);
     expect(

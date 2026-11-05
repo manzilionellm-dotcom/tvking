@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../../channels/domain/channel.dart';
 import '../../profiles/data/active_profile.dart';
+import '../core/tv_field_keys.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_search_text.dart';
 import '../core/tv_app_tokens.dart';
@@ -149,12 +150,14 @@ class _TvVipCountriesScreenState extends State<TvVipCountriesScreen> {
               Expanded(
                 child: Column(
                   children: [
-                    TextField(
-                      decoration: InputDecoration(
-                        prefixIcon: const Icon(Icons.search),
-                        hintText: l.navSearch,
+                    TvFieldKeys(
+                      child: TextField(
+                        decoration: InputDecoration(
+                          prefixIcon: const Icon(Icons.search),
+                          hintText: l.navSearch,
+                        ),
+                        onChanged: (value) => setState(() => _query = value),
                       ),
-                      onChanged: (value) => setState(() => _query = value),
                     ),
                     const SizedBox(height: 12),
                     Expanded(

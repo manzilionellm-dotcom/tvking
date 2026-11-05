@@ -33,6 +33,7 @@ import '../../ads/presentation/tv_startup_ad_gate.dart';
 import '../../subscription/data/signal_inbox.dart';
 import '../../subscription/data/subscription_state.dart';
 import '../core/tv_content_refresh.dart';
+import '../core/tv_remote_shortcuts.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_page_transitions.dart';
@@ -141,9 +142,11 @@ class TvApp extends StatelessWidget {
           builder: (BuildContext context, Widget? child) {
             if (child == null) return const SizedBox.shrink();
             return VoiceHotkey(
-              child: TvScaledViewport(
-                designWidth: kTvDesignWidth,
-                child: child,
+              child: TvRemoteShortcuts(
+                child: TvScaledViewport(
+                  designWidth: kTvDesignWidth,
+                  child: child,
+                ),
               ),
             );
           },
