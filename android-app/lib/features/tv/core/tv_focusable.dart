@@ -23,6 +23,7 @@ import '../presentation/tv_card_shine.dart';
 import 'tv_dimens.dart';
 import 'tv_ghost.dart';
 import 'tv_app_tokens.dart';
+import 'tv_remote_map.dart';
 
 /// Intensité du grossissement au focus selon la taille de l'élément.
 /// [none] : listes serrées (chaînes, catégories, guide). Un zoom y
@@ -133,11 +134,7 @@ class _TvFocusableState extends State<TvFocusable>
   }
 
   bool _isSelectKey(LogicalKeyboardKey k) =>
-      k == LogicalKeyboardKey.select ||
-      k == LogicalKeyboardKey.enter ||
-      k == LogicalKeyboardKey.numpadEnter ||
-      k == LogicalKeyboardKey.gameButtonA ||
-      k == LogicalKeyboardKey.space;
+      readTvRemoteKey(k)?.action == TvRemoteAction.select;
 
   KeyEventResult _onKey(FocusNode node, KeyEvent event) {
     if (!widget.enabled) return KeyEventResult.ignored;
@@ -177,7 +174,11 @@ class _TvFocusableState extends State<TvFocusable>
     // doigt EN PLUS du D-pad. Comme TOUTE l'UI TV passe par TvFocusable, ce
     // seul GestureDetector rend l'app entière navigable au toucher. Le doigt
     // prend d'abord le focus (le halo suit le doigt), puis relâche = onSelect.
-    return GestureDetector(
+    // Souris air / gyro : le halo suit le pointeur. Le clic valide
+    // déjà via onTap. Pas de splash : le D-pad n'en a pas besoin.
+    return MouseRegion(
+      onEnter: widget.enabled ? (_) => _node.requestFocus() : null,
+      child: GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTapDown: widget.enabled
           ? (_) {
@@ -303,6 +304,7 @@ class _TvFocusableState extends State<TvFocusable>
             ),
           ),
         ),
+      ),
       ),
     );
   }
