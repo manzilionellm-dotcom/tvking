@@ -3,7 +3,7 @@ import 'package:flutter/services.dart';
 import '../domain/cast_device.dart';
 
 /// Le moteur réseau de 7 MOTION fonctionne sur PC. Le pont Google Cast
-/// reste un SDK Android : on ne présente jamais un appareil non pilotable.
+/// utilise le SDK Android sur mobile et Cast v2 sur le bureau.
 abstract final class CastPlatform {
   static bool get isWindows =>
       !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
@@ -32,5 +32,5 @@ abstract final class CastPlatform {
   }
 
   static bool supports(CastDeviceKind kind) =>
-      !isWindows || kind == CastDeviceKind.dlna || kind == CastDeviceKind.roku;
+      true; // Native SDK on Android; pure-Dart protocols on Windows.
 }

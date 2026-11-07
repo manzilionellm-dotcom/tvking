@@ -3076,7 +3076,7 @@
   "castFriendlyDnsUnstable": "Internetka ama DNS-ku ma deggana. Mar kale isku day dhowr ilbiriqsi kadib.",
   "castFriendlyProviderLimit": "Bixiyahaaga IPTV ayaa diidaya xiriir dheeraad ah (xadka ayaa la gaaray). Xir ab kale oo wax daawanaya oo mar kale isku day.",
   "castProgressValidating": "Qulqulka ayaa la hubinayaa…",
-  "castWindowsHelp": "Ku xir kombiyuutarkaaga iyo TV-gaaga isla shabakad gaar ah (Wi-Fi ama Ethernet). Dooro TV DLNA ah ama Roku. Qaateyaasha Google Cast oo keliya ah kama shaqeeyaan Windows. Adeegso kontoroolka TV-ga si aad u doorato raadadka codka oo aad waqti ugu booddo.",
+  "castWindowsHelp": "Ku xir PC iyo TV isla shabakad gaar ah (Wi-Fi ama Ethernet). Dooro Chromecast / Google TV, TV DLNA ama Roku. U oggolow ZUNO Windows firewall shabakadaha gaarka ah. Adeegso kontoroolka TV-ga codka iyo boodista.",
   "vipCountriesTitle": "Dalalkayga · VIP",
   "vipCountriesHint": "Dooro ilaa 10 dal. Kala-horrayntooda waxaa loo kaydiyaa boggan qofka; dalalka kale oo dhan waa la heli karaa.",
   "vipCountriesOrder": "Kala-horrayntayda",

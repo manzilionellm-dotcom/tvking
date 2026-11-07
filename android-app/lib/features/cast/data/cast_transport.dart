@@ -12,9 +12,12 @@
 //  la factory — sans toucher au reste de l'app.
 // =========================================================
 
+import 'dart:io' show Platform;
+
 import '../domain/cast_device.dart';
 import 'cast_platform.dart';
 import 'google_cast_transport.dart';
+import 'cast_v2_transport.dart';
 import 'roku_ecp_transport.dart';
 import 'upnp_av_transport.dart';
 
@@ -63,7 +66,9 @@ abstract class CastTransport {
         // sur JVM target mismatch). Si l'utilisateur n'a pas Google Play
         // Services, GoogleCastTransport lève une exception et le
         // CastManager retombe gracieusement sur le fallback adéquat.
-        return GoogleCastTransport(device);
+        return Platform.isAndroid
+            ? GoogleCastTransport(device)
+            : CastV2Transport(device);
     }
   }
 }

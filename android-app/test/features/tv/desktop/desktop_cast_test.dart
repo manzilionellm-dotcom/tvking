@@ -35,8 +35,8 @@ void main() {
     expect(CastPlatform.isAndroidHandset, isFalse);
     expect(CastPlatform.supports(CastDeviceKind.dlna), isTrue);
     expect(CastPlatform.supports(CastDeviceKind.roku), isTrue);
-    expect(CastPlatform.supports(CastDeviceKind.chromecast), isFalse);
-    expect(CastPlatform.supports(CastDeviceKind.googleCast), isFalse);
+    expect(CastPlatform.supports(CastDeviceKind.chromecast), isTrue);
+    expect(CastPlatform.supports(CastDeviceKind.googleCast), isTrue);
     debugDefaultTargetPlatformOverride = TargetPlatform.android;
     expect(CastPlatform.supports(CastDeviceKind.googleCast), isTrue);
   });

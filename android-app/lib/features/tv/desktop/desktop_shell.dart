@@ -20,6 +20,7 @@ import 'package:flutter/services.dart';
 import 'package:window_manager/window_manager.dart';
 
 import '../../../core/blackbox/black_box.dart';
+import '../../cast/presentation/cast_mini_bar.dart';
 
 /// Fenêtre native (plein écran, titre, taille minimale).
 abstract final class DesktopWindow {
@@ -97,4 +98,22 @@ class DesktopShell extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Même mini-barre Cast que sur mobile, disponible après avoir quitté le
+/// lecteur. Invisible hors session : aucun changement du design au repos.
+/// À placer SOUS MaterialApp pour conserver thème, langue et direction RTL.
+class DesktopCastOverlay extends StatelessWidget {
+  const DesktopCastOverlay({super.key, required this.child});
+  final Widget child;
+  @override
+  Widget build(BuildContext context) => Stack(
+    fit: StackFit.expand,
+    children: <Widget>[
+      child,
+      const Align(alignment: Alignment.bottomCenter,
+        child: SafeArea(child: Material(type: MaterialType.transparency,
+          child: CastMiniBar()))),
+    ],
+  );
 }

@@ -1,3 +1,5 @@
+import '../../cast/data/cast_platform.dart';
+import '../desktop/desktop_shell.dart';
 import '../../../core/i18n/somali_localizations.dart';
 
 // =========================================================
@@ -145,7 +147,9 @@ class TvApp extends StatelessWidget {
               child: TvRemoteShortcuts(
                 child: TvScaledViewport(
                   designWidth: kTvDesignWidth,
-                  child: child,
+                  child: CastPlatform.isWindows
+                      ? DesktopCastOverlay(child: child)
+                      : child,
                 ),
               ),
             );
