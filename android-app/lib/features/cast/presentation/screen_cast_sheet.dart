@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  screen_cast_sheet.dart — « Caster sur un écran » (même Wi-Fi)
 // =========================================================
@@ -101,6 +102,7 @@ class _ScreenCastSheetState extends State<ScreenCastSheet> {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     final double maxH = MediaQuery.of(context).size.height * 0.9;
     return ClipRRect(
       borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
@@ -241,7 +243,7 @@ class _ScreenCastSheetState extends State<ScreenCastSheet> {
               width: double.infinity,
               child: TextButton.icon(
                 onPressed: _stop,
-                icon: Icon(Icons.stop_rounded, color: AppColors.live),
+                icon: const Icon(Icons.stop_rounded, color: AppColors.live),
                 label: Text('Arrêter',
                     style: AppTextStyles.bodyLarge
                         .copyWith(color: AppColors.live)),

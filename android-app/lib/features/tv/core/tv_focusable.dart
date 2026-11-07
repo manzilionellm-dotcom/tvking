@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  tv_focusable.dart — Composant FOCUSABLE réutilisable (§4)
 // =========================================================
@@ -122,6 +123,7 @@ class _TvFocusableState extends State<TvFocusable> {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     final BorderRadius radius =
         widget.borderRadius ?? BorderRadius.circular(TvDimens.cardRadius);
     final Color focusBg = widget.focusColor ?? TvTokens.sel;
@@ -195,10 +197,10 @@ class _TvFocusableState extends State<TvFocusable> {
                 // façon Apple TV+ ; la lueur or signe la marque.
                 boxShadow: (widget.showGlow && active)
                     ? <BoxShadow>[
-                        BoxShadow(
-                          color: const Color(0x99000000), // noir 60 %
+                        const BoxShadow(
+                          color: Color(0x99000000), // noir 60 %
                           blurRadius: TvDimens.focusElevBlur,
-                          offset: const Offset(0, TvDimens.focusElevDy),
+                          offset: Offset(0, TvDimens.focusElevDy),
                         ),
                         BoxShadow(
                           color: TvTokens.gold.withValues(alpha: 0.30),
@@ -246,6 +248,7 @@ class _TvFocusBuilderState extends State<TvFocusBuilder> {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return TvFocusable(
       onSelect: widget.onSelect,
       focusNode: widget.focusNode,

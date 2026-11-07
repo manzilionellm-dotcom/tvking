@@ -169,34 +169,12 @@ test('heartbeat : created seulement à la première fiche', () => {
   assert.equal(heartbeatCreatedFlag(true), false);
 });
 
-test('mesures app : les sondages installés dépassent 2 s (non corrigés ici)', () => {
-  const home = src('android-app/lib/features/simple_home/presentation/simple_home_screen.dart');
-  const empty = src('android-app/lib/features/channels/presentation/widgets/empty_state.dart');
-  const tvAct = src('android-app/lib/features/tv/presentation/tv_activation_screen.dart');
-  const tvLive = src('android-app/lib/features/tv/presentation/tv_live_screen.dart');
-  const main = src('android-app/lib/main.dart');
-  const player = src('android-app/lib/features/player/presentation/video_player_screen.dart');
-  const banner = src('android-app/lib/features/simple_home/presentation/widgets/announcement_banner.dart');
-
-  assert.match(home, /Duration\(seconds: 6\)/);
-  assert.match(empty, /Duration\(seconds: 6\)/);
-  assert.match(tvAct, /Duration\(seconds: 5\)/);
-  assert.match(tvLive, /Duration\(seconds: 12\)/);
-  assert.match(tvLive, /_kSlowSyncEvery = 25/);
-  assert.match(main, /Duration\(hours: 24\)/);
-  assert.match(player, /Duration\(minutes: 3\)/);
-  assert.doesNotMatch(banner, /Timer\.periodic/);
-
-  const budgets = [
-    ['activation téléphone écran vide', 6000],
-    ['activation TV écran vide', 12000],
-    ['source à chaud TV (25 × 12 s)', 25 * 12000],
-    ['re-vérif téléphone avec chaînes', 24 * 3600 * 1000],
-    ['keepalive présence', 3 * 60 * 1000],
-  ];
-  for (const [name, ms] of budgets) {
-    assert.ok(ms > 2000, name);
-  }
+test('app : service temps réel unique, sans sondages activation ou 24 h', () => {
+  const mobile = src('android-app/lib/main.dart');
+  const tv = src('android-app/lib/main_tv.dart');
+  assert.match(mobile, /PanelRealtime.instance.start/);
+  assert.match(tv, /PanelRealtime.instance.start/);
+  assert.doesNotMatch(mobile, /Timer.periodic\(const Duration\(hours: 24\)/);
 });
 
 test('câblage Worker : présence attendue, annonces en file, tombstone', () => {

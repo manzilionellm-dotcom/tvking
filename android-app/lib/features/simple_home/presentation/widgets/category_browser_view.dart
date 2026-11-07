@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  category_browser_view.dart — Navigation par CATÉGORIES
 // =========================================================
@@ -202,7 +203,7 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
                 },
               ),
             ),
-            const Divider(height: 1, thickness: 0.5, color: AppColors.surface),
+             Divider(height: 1, thickness: 0.5, color: AppColors.surface),
           ],
         );
       },
@@ -235,7 +236,7 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
               child: Row(
                 children: <Widget>[
-                  const Icon(Icons.local_fire_department_rounded,
+                   const Icon(Icons.local_fire_department_rounded,
                       size: 16, color: AppColors.live),
                   const SizedBox(width: 6),
                   Text(
@@ -269,7 +270,7 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
                 },
               ),
             ),
-            const Divider(height: 1, thickness: 0.5, color: AppColors.surface),
+             Divider(height: 1, thickness: 0.5, color: AppColors.surface),
           ],
         );
       },
@@ -336,6 +337,7 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     final Map<String, List<Channel>> grouped = _grouped();
     final bool inCategory =
         _selected != null && grouped.containsKey(_selected);
@@ -488,7 +490,7 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
             ),
           ),
         ),
-        const Divider(height: 1, color: AppColors.surface),
+         Divider(height: 1, color: AppColors.surface),
         Expanded(
           child: ListView.separated(
             physics: const BouncingScrollPhysics(),
@@ -527,6 +529,7 @@ class _FilterChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     final Color fg = active ? AppColors.accent : AppColors.textSecondary;
     return Material(
       color: active ? AppColors.accentSurface : AppColors.surface,
@@ -575,6 +578,7 @@ class _CategoryRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Material(
       color: AppColors.surface,
       borderRadius: BorderRadius.circular(14),
@@ -635,6 +639,7 @@ class _ChannelRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -663,7 +668,7 @@ class _ChannelRow extends StatelessWidget {
                   style: AppTextStyles.bodyLarge.copyWith(fontSize: 14),
                 ),
               ),
-              const Icon(Icons.play_arrow_rounded,
+               Icon(Icons.play_arrow_rounded,
                   color: AppColors.textTertiary, size: 22),
             ],
           ),
@@ -683,6 +688,7 @@ class _RecentCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return GestureDetector(
       onTap: onTap,
       child: SizedBox(
@@ -725,6 +731,7 @@ class _TopCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return GestureDetector(
       onTap: onTap,
       child: SizedBox(

@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  popular_card.dart — Carte "Populaires en ce moment"
 // =========================================================
@@ -31,6 +32,7 @@ class PopularCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     final double s = scale;
     return SizedBox(
       width: 132 * s,

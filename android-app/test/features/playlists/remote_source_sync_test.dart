@@ -31,9 +31,8 @@ void main() {
     LocalSourceRef(id: 8, key: keyClient),
   ];
 
-  test('interrupteur livré coupé, sondage à 2 s', () {
-    expect(kHonorRemoteListClear, isFalse);
-    expect(kRemoteClearPollInterval.inSeconds, 2);
+  test('effacement panel activé par défaut', () {
+    expect(kHonorRemoteListClear, isTrue);
   });
 
   test('interrupteur coupé : cleared ne retire rien et garde la mémoire', () {

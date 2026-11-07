@@ -1,3 +1,5 @@
+import { validateWriteBody } from './account_security.js';
+import { attachDeviceToken, deviceRealtimeRoute, writeEvents, publishDeviceEvent } from './device_realtime.js';
 // =========================================================
 //  BLACK7 ROYAL — Cloudflare Worker (backend admin + clients)
 // =========================================================
@@ -54,13 +56,12 @@
 
 // API v1 — App Licensing Platform (cf. cloudflare/api_v1.js)
 // Routee depuis le bas du fetch() en haut de la chaine de match.
-import { apiV1, logAudit, panelActorFromToken } from './api_v1.js';
+import { apiV1, logAudit, panelActorFromToken, originAllowed } from './api_v1.js';
 import { blackboxRequestedAt, saveBlackBox } from './blackbox_journal.js';
 import {
   RealtimeHub,
   handleBoxRoute,
   notifyBox,
-  openPanelSocket,
 } from './box_channel.js';
 export { RealtimeHub };
 import { httpUrlError, sourceTextProblem, sourceUrlProblem } from './source_url.js';
@@ -732,7 +733,7 @@ async function updateDeviceInfo(env, mac, body) {
           "android_build = CASE WHEN ? != '' THEN ? ELSE android_build END, " +
           "android_release = CASE WHEN ? != '' THEN ? ELSE android_release END, " +
           "app_build = CASE WHEN ? != 0 THEN ? ELSE app_build END, " +
-          "android_id = CASE WHEN ? != '' THEN ? ELSE android_id END, " +
+          "android_id = CASE WHEN COALESCE(android_id, '') = '' AND ? != '' THEN ? ELSE android_id END, " +
           "app_version = CASE WHEN ? != '' THEN ? ELSE app_version END, " +
           "platform = CASE WHEN ? != '' THEN ? ELSE platform END, " +
           "local_sources_json = CASE WHEN ? != '' THEN ? ELSE local_sources_json END, " +
@@ -1363,7 +1364,7 @@ const JSON_HEADERS = {
   // à chaque écriture depuis le 06/10/2026 (suivi et anti double débit).
   // Absents ici, le navigateur bloquait la requête : « Connexion
   // impossible » sur toute modification (cors_panel.test.mjs).
-  'Access-Control-Allow-Headers': 'Authorization, X-Admin-Secret, Content-Type, X-Request-Id, X-Client-Sent-At, Idempotency-Key',
+  'Access-Control-Allow-Headers': 'Authorization, X-Admin-Secret, Content-Type, X-Device-Key, X-Device-Id, X-Request-Id, X-Client-Sent-At, Idempotency-Key',
   'Access-Control-Allow-Methods': 'GET,POST,PUT,PATCH,DELETE,OPTIONS',
   'Cache-Control': 'no-store',
   'X-Content-Type-Options': 'nosniff',
@@ -2406,6 +2407,7 @@ async function handleHeartbeat(request, env, _ctx) {
     // Prépare colonnes + index UNE fois par isolate (doit précéder
     // updateDeviceInfo qui écrit dans ces colonnes).
     await ensureScaleSchema(env);
+    const before = await env.DB.prepare('SELECT android_id FROM devices WHERE mac = ?').bind(mac).first();
     const created = await ensureD1Device(env, mac, now);
     // Ancre d'essai : on l'écrit toujours (même interrupteur coupé) pour
     // qu'une réinstallation ne puisse pas, plus tard, relancer les 7 jours.
@@ -2417,7 +2419,7 @@ async function handleHeartbeat(request, env, _ctx) {
     // l'exige (le panel lit la fiche juste après le ping).
     await updateDeviceInfo(env, mac, body);
     const d1 = await d1StatusForMac(env, mac, now);
-    if (d1) return json({ ok: true, created: !!created, ...d1 });
+    if (d1) return json(await attachDeviceToken(env, mac, { ok: true, created: !!created, ...d1 }, request, { created: !!created, previousAndroidId: before?.android_id || '' }));
   }
 
   // --- Repli KV (si D1 pas branchee) ---
@@ -2481,7 +2483,7 @@ async function attachBlackboxPull(env, mac, payload) {
   return out;
 }
 
-async function handlePublicStatus(env, mac) {
+async function handlePublicStatus(env, mac, request) {
   if (!MAC_RX.test(mac)) return badRequest('invalid mac');
   // D1 en priorite. Si la MAC n'est pas encore connue (status appele
   // avant le heartbeat), on la cree pour demarrer l'essai 7 j.
@@ -2494,7 +2496,7 @@ async function handlePublicStatus(env, mac) {
     }
     if (d1) {
       d1.reset_at = await resetAtFor(env, mac);
-      return json(await attachBlackboxPull(env, mac, d1));
+      return json(await attachDeviceToken(env, mac, await attachBlackboxPull(env, mac, d1), request));
     }
   }
   const data = await readClient(env, mac);
@@ -3277,6 +3279,7 @@ async function handlePanelRemoveSelfSource(request, env, mac, id) {
   const m = auth.match(/^Bearer\s+(.+)$/i);
   const user = m ? await panelActorFromToken(env, m[1]) : null;
   if (!user) return json({ error: 'no_auth', message: 'Missing Authorization header' }, 401);
+  if (user.role !== 'super_admin' && !(user.role === 'reseller' && user.permissions?.includes('sources'))) return json({error:'forbidden'},403);
   const MAC = String(mac || '').toUpperCase();
   if (!MAC_RX.test(MAC)) return badRequest('invalid mac');
   if (!env.DB) return json({ error: 'no_db' }, 503);
@@ -3328,6 +3331,7 @@ async function handlePanelResetBox(request, env, mac) {
   const m = auth.match(/^Bearer\s+(.+)$/i);
   const user = m ? await panelActorFromToken(env, m[1]) : null;
   if (!user) return json({ error: 'no_auth', message: 'Missing Authorization header' }, 401);
+  if (user.role !== 'super_admin' && !(user.role === 'reseller' && user.permissions?.includes('sources'))) return json({error:'forbidden'},403);
   const MAC = String(mac || '').toUpperCase();
   if (!MAC_RX.test(MAC)) return badRequest('invalid mac');
   if (!env.DB) return json({ error: 'no_db' }, 503);
@@ -3776,7 +3780,46 @@ export default {
     // côté serveur (visible via `wrangler tail`) et on renvoie un corps
     // générique avec un identifiant de corrélation.
     try {
-      return await handleRequest(request, env, ctx);
+      const url = new URL(request.url);
+      let body = {};
+      const candidates = writeEvents(url.pathname, request.method);
+      if (candidates.length) {
+        try { body = await request.clone().json(); } catch { /* handler validates */ }
+      }
+      const legacyAdmin = url.pathname === '/admin' || url.pathname.startsWith('/admin/');
+      if (legacyAdmin && ['POST','PUT','PATCH','DELETE'].includes(request.method)) {
+        try {
+          const raw = await request.clone().text();
+          if (raw.length > 262144 || !validateWriteBody(raw.trim() ? JSON.parse(raw) : {})) return json({error:'bad_json'},400);
+        } catch { return json({error:'bad_json'},400); }
+      }
+      const result = await handleRequest(request, env, ctx);
+      if (legacyAdmin && result.ok && ['POST','PUT','PATCH','DELETE'].includes(request.method)) {
+        await logAudit(env, request, {type:'admin',id:'legacy_secret'}, 'legacy.' + request.method, {type:'route',id:url.pathname}, null, null);
+      }
+      if (result.ok && candidates.length) {
+        const results = await Promise.all(writeEvents(url.pathname, request.method, body).map(e => publishDeviceEvent(env, e)));
+        // Do not turn a committed write into an apparent failure. A truthful
+        // server log lets support identify push degradation.
+        if (results.some(ok => !ok)) console.warn('[realtime] publish_unavailable');
+      }
+      if (result.status === 101) return result;
+      if (url.pathname.startsWith('/api/') || legacyAdmin) {
+        const headers = new Headers(result.headers);
+        headers.set('Cache-Control', 'no-store, max-age=0');
+        headers.set('Pragma', 'no-cache');
+        if (url.pathname.startsWith('/api/v1/') || legacyAdmin) {
+          headers.delete('Access-Control-Allow-Origin');
+          const origin = request.headers.get('Origin');
+          if (origin && originAllowed(origin, env)) {
+            headers.set('Access-Control-Allow-Origin', origin);
+            headers.set('Access-Control-Allow-Credentials', 'true');
+            headers.set('Vary', 'Origin');
+          }
+        }
+        return new Response(result.body, { status: result.status, statusText: result.statusText, headers });
+      }
+      return result;
     } catch (e) {
       const requestId =
         (globalThis.crypto && crypto.randomUUID && crypto.randomUUID())
@@ -3791,11 +3834,20 @@ export default {
 };
 
 async function handleRequest(request, env, ctx) {
+    const adminRoute = new URL(request.url).pathname;
+    const adminPath = adminRoute.startsWith('/api/v1/') || adminRoute === '/admin' || adminRoute.startsWith('/admin/');
+    if (adminPath && request.headers.get('Origin') && !originAllowed(request.headers.get('Origin'), env)) return json({ error: 'origin_denied' }, 403);
     if (request.method === 'OPTIONS') {
+      if (adminPath) return apiV1(request, env);
       return new Response(null, { status: 204, headers: JSON_HEADERS });
     }
 
     const url = new URL(request.url);
+    if (url.pathname.startsWith('/api/device-rt/')) {
+      if (!(await rateLimitOk(env, request, 'device-rt', 60, 60_000))) return tooManyRequests();
+      const rt = await deviceRealtimeRoute(request, env);
+      if (rt) return rt;
+    }
 
     // ===== Liens de téléchargement « cool » (redirection masquée) =====
     //  Problème résolu : quand on partage l'URL directe GitHub
@@ -3833,15 +3885,20 @@ async function handleRequest(request, env, ctx) {
     // Tout le namespace /api/v1/* part dans le module api_v1.js.
     // Coexiste avec les anciens /admin/* et /api/* qui restent
     // intacts (compat ascendante apps mobiles deployees).
-    // WebSocket du panel. Traité ici, avant apiV1 : la réponse 101
-    // ne doit pas être reconstruite (sinon le socket est perdu).
-    // Le jeton passe en query : le navigateur ne peut pas poser
-    // Authorization sur un WebSocket. On ne journalise pas l'URL.
+    // One-time tickets, never panel JWTs in WebSocket URLs.
+    if (url.pathname === '/api/v1/rt/ticket' && request.method === 'POST') {
+      const user = await panelActorFromToken(env, (request.headers.get('Authorization') || '').replace(/^Bearer /, ''));
+      if (!user?.sid) return json({ error: 'no_auth' }, 401);
+      if (!env.RT_HUB || String(env.REALTIME_PUSH_OFF) === '1') return json({ error: 'unavailable' }, 503);
+      const target = env.RT_HUB.get(env.RT_HUB.idFromName('panel-v1'));
+      return target.fetch('https://hub/panel-ticket', { method: 'POST', body: JSON.stringify({ actor: user, exp: user.exp }) });
+    }
     if (url.pathname === '/api/v1/rt/ws') {
-      const token = url.searchParams.get('token') || '';
-      const user = await panelActorFromToken(env, token);
-      if (!user) return json({ error: 'no_auth' }, 401);
-      return openPanelSocket(request, env, { id: user.sub, role: user.role });
+      if (request.headers.get('Upgrade')?.toLowerCase() !== 'websocket') return json({error:'upgrade_required'},426);
+      const ticket = url.searchParams.get('ticket') || '';
+      if (!/^[a-f0-9-]{36}$/.test(ticket)) return json({ error: 'invalid_ticket' }, 401);
+      if (!env.RT_HUB || String(env.REALTIME_PUSH_OFF) === '1') return json({ error: 'unavailable' }, 503);
+      return env.RT_HUB.get(env.RT_HUB.idFromName('panel-v1')).fetch(new Request('https://hub/panel-ws?ticket=' + ticket, { headers: { Upgrade: 'websocket' } }));
     }
 
     // DELETE /api/v1/sources/:mac/self/:id — traité ici (les lecteurs
@@ -3926,7 +3983,7 @@ async function handleRequest(request, env, ctx) {
       if (request.method !== 'GET') {
         return badRequest('only GET supported on /api/status/:mac');
       }
-      return handlePublicStatus(env, segments[2]);
+      return handlePublicStatus(env, segments[2], request);
     }
 
     // /api/servers — public, l'app récupère les serveurs par défaut

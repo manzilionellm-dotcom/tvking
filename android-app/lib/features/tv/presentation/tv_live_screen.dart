@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  tv_live_screen.dart — Écran DIRECT (Live TV) 10-foot
 // =========================================================
@@ -561,6 +562,7 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     if (_all.isEmpty) {
       // États PRÉCIS au lieu d'un « écran mort » :
       //  • en cours / réseau → « Recherche de tes chaînes… »
@@ -767,6 +769,7 @@ class _CategoryRail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     if (cats.isEmpty) return const SizedBox.shrink();
     final int visible = cats.length < _kMaxVisible ? cats.length : _kMaxVisible;
     return Container(
@@ -839,6 +842,7 @@ class _CRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Padding(
       padding: const EdgeInsets.only(bottom: 4),
       child: TvFocusBuilder(
@@ -916,6 +920,7 @@ class _ResumeRail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     if (channels.isEmpty) return const SizedBox.shrink();
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -977,6 +982,7 @@ class _ResumeCardState extends State<_ResumeCard> {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     final Channel c = widget.channel;
     // Reprise du focus au retour du lecteur (même mécanisme déterministe que la
     // grille) : si l'écran nous désigne, on (re)prend le focus puis on libère.
@@ -1064,6 +1070,7 @@ class _LiveHeroState extends State<_LiveHero> {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     final Channel c = widget.channel;
     return TvFocusable(
       autofocus: widget.autofocus,
@@ -1153,7 +1160,7 @@ class _LiveHeroState extends State<_LiveHero> {
                                       value: prog,
                                       backgroundColor: TvTokens.line,
                                       valueColor:
-                                          const AlwaysStoppedAnimation<Color>(
+                                           AlwaysStoppedAnimation<Color>(
                                               TvTokens.gold),
                                     ),
                                   ),
@@ -1216,6 +1223,7 @@ class _LivePillState extends State<_LivePill>
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
@@ -1230,13 +1238,13 @@ class _LivePillState extends State<_LivePill>
             child: Container(
               width: 8,
               height: 8,
-              decoration: const BoxDecoration(
+              decoration:  const BoxDecoration(
                   color: TvTokens.live, shape: BoxShape.circle),
             ),
           ),
           const SizedBox(width: 7),
-          Text('EN DIRECT',
-              style: TextStyle(
+          const Text('EN DIRECT',
+              style: const TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w800,
                   letterSpacing: 1.2,
@@ -1290,6 +1298,7 @@ class _ChannelGridState extends State<_ChannelGrid> {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     if (widget.channels.isEmpty) {
       return Center(
         child: Text(context.l10n.tvNoChannelInCategory,
@@ -1377,6 +1386,7 @@ class _ChannelCardState extends State<_ChannelCard> {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     final Channel channel = widget.channel;
     final bool fav = FavoritesRepository.instance.current.contains(channel.id);
     final _ParsedName p = _parseName(channel);
@@ -1428,7 +1438,7 @@ class _ChannelCardState extends State<_ChannelCard> {
             Positioned(top: 12, right: 12, child: _TagBadge(label: quality)),
           // Favori discret en bas-droite.
           if (fav)
-            const Positioned(
+             Positioned(
               right: 12,
               bottom: 12,
               child:
@@ -1542,6 +1552,7 @@ class _TagBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
@@ -1567,6 +1578,7 @@ class _LogoChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Container(
       width: 56,
       height: 56,
@@ -1587,6 +1599,7 @@ class _Logo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     final Widget fallback = Center(
       child: Text(channel.initials,
           style: TextStyle(
@@ -1631,6 +1644,7 @@ class _ActionPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return TvFocusBuilder(
       autofocus: autofocus,
       scale: TvFocusScale.large,

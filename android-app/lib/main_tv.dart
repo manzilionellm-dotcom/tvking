@@ -1,3 +1,4 @@
+import 'core/realtime/panel_realtime.dart';
 // =========================================================
 //  main_tv.dart — Point d'entrée DeFew TV (Android TV / Fire TV)
 // =========================================================
@@ -24,7 +25,6 @@ import 'features/device/data/device_identity.dart';
 import 'features/playlists/data/playlist_repository.dart';
 import 'features/playlists/data/favorites_repository.dart';
 import 'features/playlists/data/remote_source_repository.dart';
-import 'features/playlists/data/remote_source_sync.dart';
 import 'features/recordings/data/recording_repository.dart';
 import 'features/security/data/parental_controls.dart';
 import 'features/subscription/data/subscription_state.dart';
@@ -105,16 +105,7 @@ Future<void> _bootstrap() async {
     debugPrint(
         '[main_tv] mode sans échec → ré-import de la source distante sauté.');
   }
-  // Même interrupteur que sur mobile. Coupé par défaut : la box
-  // continue de re-vérifier la source à son rythme actuel (12 s puis
-  // ~5 min). Allumé, elle redemande toutes les 2 s pour qu'un
-  // effacement panel vide l'écran sans attendre ce rythme lent.
-  if (kHonorRemoteListClear) {
-    Timer.periodic(kRemoteClearPollInterval, (_) {
-      if (BootGuard.instance.safeMode) return;
-      unawaited(RemoteSourceRepository.sync());
-    });
-  }
+  // PanelRealtime assure la synchronisation et le repli hors socket.
 
   // 5) Enregistrements : on initialise la base et on finalise les
   //    enregistrements « fantômes » (l'app a pu être tuée par l'OS en plein
@@ -148,6 +139,7 @@ Future<void> _bootstrap() async {
   );
 
   runApp(const TvApp());
+  unawaited(PanelRealtime.instance.start());
 
   // L'app est lancée : si elle tient quelques secondes, on efface l'historique
   // de boucle (un démarrage réussi « pardonne » les crashs précédents).

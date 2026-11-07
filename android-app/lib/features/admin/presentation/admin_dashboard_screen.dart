@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  admin_dashboard_screen.dart — Console admin in-app
 // =========================================================
@@ -281,6 +282,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     final AdminCredentials cred = AdminCredentials.instance;
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -365,7 +367,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       ),
       child: Row(
         children: <Widget>[
-          Icon(Icons.check_circle_rounded,
+          const Icon(Icons.check_circle_rounded,
               color: AppColors.success, size: 18),
           const SizedBox(width: 8),
           Expanded(
@@ -674,7 +676,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       ),
       child: Row(
         children: <Widget>[
-          Icon(Icons.error_outline_rounded,
+          const Icon(Icons.error_outline_rounded,
               color: AppColors.live, size: 20),
           const SizedBox(width: 10),
           Expanded(

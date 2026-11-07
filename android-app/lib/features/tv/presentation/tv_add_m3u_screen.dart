@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  tv_add_m3u_screen.dart — Ajouter une liste M3U (URL)
 // =========================================================
@@ -61,6 +62,7 @@ class _TvAddM3uScreenState extends State<TvAddM3uScreen> {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return SingleChildScrollView(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 760),
@@ -90,7 +92,7 @@ class _TvAddM3uScreenState extends State<TvAddM3uScreen> {
             if (_error != null) ...<Widget>[
               const SizedBox(height: 14),
               Text(_error!,
-                  style: TextStyle(
+                  style: const TextStyle(
                       fontSize: TvDimens.label,
                       fontWeight: FontWeight.w600,
                       color: TvTokens.live)),
@@ -117,6 +119,7 @@ class _Field extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
@@ -146,7 +149,7 @@ class _Field extends StatelessWidget {
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(TvDimens.cardRadius),
-              borderSide: const BorderSide(color: TvTokens.gold, width: 2),
+              borderSide:  BorderSide(color: TvTokens.gold, width: 2),
             ),
           ),
         ),

@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  playlists_screen.dart — Gestion des playlists ajoutées
 // =========================================================
@@ -28,6 +29,7 @@ class PlaylistsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
@@ -138,6 +140,7 @@ class _PlaylistTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -254,7 +257,7 @@ class _PlaylistTile extends StatelessWidget {
             onPressed: () => _refresh(context),
           ),
           IconButton(
-            icon: Icon(
+            icon: const Icon(
               Icons.delete_outline,
               color: AppColors.live,
             ),

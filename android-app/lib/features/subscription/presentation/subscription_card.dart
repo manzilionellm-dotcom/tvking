@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  subscription_card.dart — Carte état essai/abonnement
 // =========================================================
@@ -24,6 +25,7 @@ class SubscriptionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return ListenableBuilder(
       listenable: SubscriptionState.instance,
       builder: (BuildContext context, _) {

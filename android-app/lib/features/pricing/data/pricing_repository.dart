@@ -1,3 +1,4 @@
+import '../../../core/network/api_config.dart';
 // =========================================================
 //  pricing_repository.dart — Tarifs pilotés par le panel
 // =========================================================
@@ -78,7 +79,7 @@ abstract final class PricingRepository {
   static Future<void> fetch() async {
     try {
       final http.Response resp = await http
-          .get(Uri.parse('$kSubscriptionBaseUrl/api/pricing'))
+          .get(Uri.parse('$kSubscriptionBaseUrl/api/pricing'), headers: kNoCacheHeaders)
           .timeout(const Duration(seconds: 6));
       if (resp.statusCode != 200) return;
       final Object? decoded = jsonDecode(resp.body);

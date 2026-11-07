@@ -26,6 +26,7 @@ export function LoginPage({ onLoggedIn }: { onLoggedIn: () => void }) {
   );
   const [email, setEmail] = useState(resellerOnly ? '' : 'admin');
   const [password, setPassword] = useState('');
+  const [code, setCode] = useState('');
   const [name, setName] = useState('');
   // Mode INSCRIPTION (revendeur uniquement) : auto-création de compte.
   const [signup, setSignup] = useState(false);
@@ -54,8 +55,8 @@ export function LoginPage({ onLoggedIn }: { onLoggedIn: () => void }) {
       setBusy(false);
       return;
     }
-    if (mode === 'reseller' && signup && password.length < 4) {
-      setErr('Le mot de passe doit faire au moins 4 caractères.');
+    if (mode === 'reseller' && signup && (password.length < 12 || !/[a-z]/.test(password) || !/[A-Z]/.test(password) || !/[0-9]/.test(password))) {
+      setErr(t('account.pwdShort'));
       setBusy(false);
       return;
     }
@@ -71,8 +72,8 @@ export function LoginPage({ onLoggedIn }: { onLoggedIn: () => void }) {
         return;
       }
       const res = mode === 'reseller'
-        ? await authApi.resellerLogin(email.trim(), password)
-        : await authApi.login(email.trim(), password);
+        ? await authApi.resellerLogin(email.trim(), password, code, code.length === 16)
+        : await authApi.login(email.trim(), password, code, code.length === 16);
       setToken(res.token);
       onLoggedIn();
     } catch (e: any) {
@@ -100,6 +101,11 @@ export function LoginPage({ onLoggedIn }: { onLoggedIn: () => void }) {
           </p>
         </div>
 
+        {/* Nouveau : compatible Google Authenticator, aucune requête à Google. */}
+        <label data-new="2026-11-07" className="is-new block text-xs text-blue-300">
+          {t('security.loginCode')}
+          <input aria-label={t('security.loginCode')} autoComplete="one-time-code" value={code} onChange={e => setCode(e.target.value.trim())} className="mt-1 w-full rounded border border-blue-400/40 bg-slate px-3 py-2 text-white" />
+        </label>
         {/* ===== Choix du rôle : 2 cartes distinctes (Propriétaire vs
              Revendeur), pour bien DIFFÉRENCIER les 2 connexions. Cachées
              sur le lien dédié revendeur (?revendeur). ===== */}

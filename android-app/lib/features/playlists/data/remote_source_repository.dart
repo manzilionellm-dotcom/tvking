@@ -27,6 +27,7 @@
 
 import 'dart:async';
 import 'dart:convert';
+import '../../../core/network/api_config.dart';
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
@@ -85,7 +86,7 @@ abstract final class RemoteSourceRepository {
 
       final http.Response resp = await http.get(
         Uri.parse('$kSubscriptionBaseUrl/api/device-source/$mac'),
-        headers: const <String, String>{'Accept': 'application/json'},
+        headers: kNoCacheHeaders,
       ).timeout(const Duration(seconds: 8));
       if (resp.statusCode != 200) return RemoteSyncResult.networkError;
 
@@ -143,7 +144,7 @@ abstract final class RemoteSourceRepository {
       if (!mac.startsWith('MK:')) return;
       final http.Response resp = await http.get(
         Uri.parse('$kSubscriptionBaseUrl/api/history/$mac'),
-        headers: const <String, String>{'Accept': 'application/json'},
+        headers: kNoCacheHeaders,
       ).timeout(const Duration(seconds: 8));
       if (resp.statusCode != 200) return;
       final Map<String, dynamic> body =

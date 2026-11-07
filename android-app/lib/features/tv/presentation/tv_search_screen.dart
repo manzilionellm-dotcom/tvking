@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  tv_search_screen.dart — Recherche 10-foot (clavier D-pad)
 // =========================================================
@@ -104,6 +105,7 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     final List<Channel> res = _results;
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -220,6 +222,7 @@ class _Keyboard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
@@ -251,6 +254,7 @@ class _Key extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return SizedBox(
       width: wide ? 116 : 54,
       height: 54,

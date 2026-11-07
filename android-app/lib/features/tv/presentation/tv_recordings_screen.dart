@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  tv_recordings_screen.dart — « Mes enregistrements » (10-foot)
 // =========================================================
@@ -27,6 +28,7 @@ class TvRecordingsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return StreamBuilder<List<Recording>>(
       stream: RecordingRepository.instance.stream,
       initialData: RecordingRepository.instance.current,
@@ -98,7 +100,7 @@ class _RecordingRow extends StatelessWidget {
               child: Text('Annuler', style: TextStyle(color: TvTokens.muted))),
           TextButton(
               onPressed: () => Navigator.pop(ctx, true),
-              child: Text('Supprimer', style: TextStyle(color: TvTokens.live))),
+              child: const Text('Supprimer', style: const TextStyle(color: TvTokens.live))),
         ],
       ),
     );
@@ -114,6 +116,7 @@ class _RecordingRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     final String title =
         (rec.programTitle != null && rec.programTitle!.isNotEmpty)
             ? '${rec.channelName} · ${rec.programTitle}'
@@ -130,7 +133,7 @@ class _RecordingRow extends StatelessWidget {
               padding: const EdgeInsets.all(14),
               child: Row(
                 children: <Widget>[
-                  const Icon(Icons.play_circle_fill_rounded,
+                   Icon(Icons.play_circle_fill_rounded,
                       color: TvTokens.gold, size: 38),
                   const SizedBox(width: 16),
                   Expanded(
@@ -166,8 +169,8 @@ class _RecordingRow extends StatelessWidget {
           scale: TvFocusScale.small,
           baseColor: TvTokens.card,
           onSelect: () => _delete(context),
-          child: const Padding(
-            padding: EdgeInsets.all(16),
+          child:  Padding(
+            padding: const EdgeInsets.all(16),
             child: Icon(Icons.delete_outline_rounded,
                 color: TvTokens.muted, size: 28),
           ),

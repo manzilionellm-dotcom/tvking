@@ -1,3 +1,6 @@
+import { useT } from '@/lib/i18n';
+import { getCurrentUser, resellerPolicyApi } from '@/lib/api';
+import { ResellerLimits } from '@/components/ResellerLimits';
 import { FormEvent, ReactNode, useEffect, useRef, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
 import { confirmAction } from '@/components/confirm';
@@ -20,6 +23,13 @@ function resellerSignupLink(): string {
 /// Page REVENDEURS (owner only). Creer des revendeurs, leur emettre
 /// des credits (tokens), voir leur solde et leur volume de ventes.
 export function ResellersPage({ onLogout }: { onLogout: () => void }) {
+  const t = useT();
+  const superAdmin = getCurrentUser()?.role === 'super_admin';
+  const [limitsFor, setLimitsFor] = useState<Reseller | null>(null);
+  async function removeReseller(r: Reseller) {
+    if (!await confirmAction({title:t('limits.delete'),message:t('limits.deleteConfirm')+' '+(r.name||r.email),confirmLabel:t('limits.delete'),danger:true})) return;
+    try { await resellerPolicyApi.remove(r.id); reload(); } catch(e) { setErr(e instanceof ApiError?e.message:t('security.unavailable')); }
+  }
   const [items, setItems] = useState<Reseller[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
@@ -149,6 +159,9 @@ export function ResellersPage({ onLogout }: { onLogout: () => void }) {
                 <td className="px-4 py-3 text-right text-ink-secondary">{r.licenses ?? 0}</td>
                 <td className="px-4 py-3 text-right">
                   <div className="flex justify-end gap-2">
+                    {/* Nouveaux contrôles propriétaire : bleu + danse douce. */}
+                    {superAdmin && <><button data-new="2026-11-07" className="is-new rounded border border-blue-400/40 px-2 py-1 text-xs text-blue-300" onClick={()=>setLimitsFor(r)}>{t('limits.title')}</button><button data-new="2026-11-07" className="is-new rounded border border-blue-400/40 px-2 py-1 text-xs text-blue-300" onClick={()=>void removeReseller(r)}>{t('limits.delete')}</button></>}
+
                     <button
                       onClick={() => setCreditFor(r)}
                       className="rounded-md border border-white/10 px-2.5 py-1 text-xs hover:border-accent hover:text-accent-bright"
@@ -187,6 +200,7 @@ export function ResellersPage({ onLogout }: { onLogout: () => void }) {
         onPage={table.setPage}
       />
 
+      {limitsFor && <ResellerLimits id={limitsFor.id} label={limitsFor.name || limitsFor.email} onClose={()=>setLimitsFor(null)} />}
       {showCreate && (
         <CreateResellerModal
           onClose={() => setShowCreate(false)}
@@ -255,6 +269,8 @@ function PermsCell({
 function CreateResellerModal({
   onClose, onCreated,
 }: { onClose: () => void; onCreated: () => void }) {
+  const t = useT();
+  const [status, setStatus] = useState<'active'|'suspended'>('active');
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
   const [password, setPassword] = useState('');
@@ -269,6 +285,7 @@ function CreateResellerModal({
       await resellersApi.create({
         email: email.trim().toLowerCase(),
         password,
+        status,
         name: name.trim() || undefined,
         credit_balance: parseInt(credits, 10) || 0,
       });
@@ -281,6 +298,7 @@ function CreateResellerModal({
   return (
     <Modal title="Nouveau revendeur" onClose={onClose}>
       <form onSubmit={submit} className="space-y-3">
+        <Field label={t('limits.status')}><select data-new="2026-11-07" className={`${inputCls} border-blue-400/40`} value={status} onChange={e=>setStatus(e.target.value as 'active'|'suspended')}><option value="active">{t('limits.active')}</option><option value="suspended">{t('limits.suspended')}</option></select></Field>
         <Field label="Email"><input value={email} onChange={(e) => setEmail(e.target.value)} className={inputCls} placeholder="revendeur@exemple.com" autoFocus /></Field>
         <Field label="Nom (optionnel)"><input value={name} onChange={(e) => setName(e.target.value)} className={inputCls} placeholder="Karim Reseller" /></Field>
         <Field label="Mot de passe"><input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className={inputCls} placeholder="••••••••" /></Field>
@@ -348,7 +366,7 @@ function PasswordModal({
   const [done, setDone] = useState(false);
 
   async function save() {
-    if (pwd.length < 4) { setErr('Au moins 4 caractères.'); return; }
+    if (pwd.length < 12 || !/[a-z]/.test(pwd) || !/[A-Z]/.test(pwd) || !/[0-9]/.test(pwd)) { setErr('Au moins 12 caractères : majuscule, minuscule et chiffre.'); return; }
     setBusy(true); setErr(null);
     try {
       await resellersApi.update(reseller.id, { password: pwd });
@@ -366,7 +384,7 @@ function PasswordModal({
         il pourra le changer lui-même ensuite dans « Mon compte ».
       </p>
       <Field label="Nouveau mot de passe">
-        <input type="text" value={pwd} onChange={(e) => setPwd(e.target.value)} className={inputCls} autoFocus placeholder="••••••••" />
+        <input type="password" autoComplete="new-password" value={pwd} onChange={(e) => setPwd(e.target.value)} className={inputCls} autoFocus placeholder="••••••••" />
       </Field>
       {err && <div className="mt-2 rounded-md border border-accent/30 bg-accent/10 px-3 py-2 text-xs text-accent-bright">{err}</div>}
       {done && <div className="mt-2 rounded-md border border-success/30 bg-success/10 px-3 py-2 text-xs text-success">Mot de passe mis à jour ✔</div>}

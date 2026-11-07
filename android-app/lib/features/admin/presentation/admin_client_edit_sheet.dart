@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  admin_client_edit_sheet.dart — Formulaire ajout/modif client
 // =========================================================
@@ -156,6 +157,7 @@ class _AdminClientEditSheetState extends State<AdminClientEditSheet> {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     final double bottomInset = MediaQuery.of(context).viewInsets.bottom;
     return Padding(
       padding: EdgeInsets.only(bottom: bottomInset),
@@ -166,10 +168,10 @@ class _AdminClientEditSheetState extends State<AdminClientEditSheet> {
         expand: false,
         builder: (BuildContext context, ScrollController controller) {
           return Container(
-            decoration: const BoxDecoration(
+            decoration:  BoxDecoration(
               color: AppColors.background,
               borderRadius:
-                  BorderRadius.vertical(top: Radius.circular(20)),
+                  const BorderRadius.vertical(top: const Radius.circular(20)),
             ),
             child: ListView(
               controller: controller,
@@ -216,7 +218,7 @@ class _AdminClientEditSheetState extends State<AdminClientEditSheet> {
                   ),
                 ),
                 const SizedBox(height: 20),
-                _SectionDivider(label: 'PLAYLIST'),
+                const _SectionDivider(label: 'PLAYLIST'),
                 const SizedBox(height: 12),
                 _typeSwitcher(),
                 const SizedBox(height: 14),
@@ -382,6 +384,7 @@ class _SectionDivider extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Row(
       children: <Widget>[
         Expanded(child: Divider(color: AppColors.border)),

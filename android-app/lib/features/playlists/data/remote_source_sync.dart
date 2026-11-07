@@ -15,24 +15,16 @@
 //  listes déjà vues comme poussées par le panel, et SEULEMENT quand
 //  le serveur dit `cleared: true` (ou quand il remplace le trio).
 //
-//  INTERRUPTEUR. Coupé par défaut (`false`). Un build normal ne
-//  supprime rien et ne pose pas de minuteur à 2 s. Pour l'allumer
-//  au moment d'un build voulu :
-//    --dart-define=HONOR_REMOTE_LIST_CLEAR=true
-//  Le worker qui envoie `cleared: true` doit AUSSI être déployé,
-//  sinon même l'interrupteur allumé ne voit pas l'effacement.
+//  Activé par défaut : les événements temps réel déclenchent la relecture.
+//  Repli 30 s seulement hors socket, sans minuteur source indépendant.
+//  HONOR_REMOTE_LIST_CLEAR=false reste un coupe-circuit explicite de build.
 // =========================================================
 
-/// Effacement panel → box. `false` dans tout build qui ne passe pas
-/// le `--dart-define` ci-dessus.
+/// Effacement des seules listes distantes effectivement retirées par le panel.
 const bool kHonorRemoteListClear = bool.fromEnvironment(
   'HONOR_REMOTE_LIST_CLEAR',
-  defaultValue: false,
+  defaultValue: true,
 );
-
-/// Quand l'interrupteur est allumé, l'app redemande la source au plus
-/// toutes les 2 s. Le délai réel = attente du prochain tick + réseau.
-const Duration kRemoteClearPollInterval = Duration(seconds: 2);
 
 /// Une playlist déjà en base, réduite à ce qu'il faut pour décider.
 /// [key] est nul si on ne sait pas l'identifier : on ne la supprime pas.

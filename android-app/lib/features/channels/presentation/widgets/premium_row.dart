@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  premium_row.dart — Rangée horizontale style Apple TV
 // =========================================================
@@ -48,6 +49,7 @@ class PremiumRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     if (channels.isEmpty) return const SizedBox.shrink();
 
     return Column(

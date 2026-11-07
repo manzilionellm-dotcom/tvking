@@ -1,3 +1,6 @@
+import 'core/theme/remote_palette.dart';
+import 'core/realtime/panel_control_gate.dart';
+import 'core/realtime/panel_realtime.dart';
 // =========================================================
 //  main.dart — Point d'entrée unique de l'application
 // =========================================================
@@ -21,8 +24,6 @@ import 'core/crash/crash_reporting.dart';
 import 'core/branding/brand_config.dart';
 import 'core/branding/brand_logo.dart';
 import 'core/branding/powered_by_marquee.dart';
-import 'features/ads/data/startup_ad_repository.dart';
-import 'features/ads/presentation/startup_ad_screen.dart';
 import 'features/feedback/data/feedback_repository.dart';
 import 'features/theme/data/remote_theme_repository.dart';
 import 'core/notifications/notification_service.dart';
@@ -34,8 +35,6 @@ import 'core/theme/app_colors.dart';
 import 'core/theme/app_theme.dart';
 import 'core/theme/accent_controller.dart';
 import 'core/theme/theme_mode_repository.dart';
-import 'features/about/data/force_update_checker.dart';
-import 'features/about/presentation/forced_update_screen.dart';
 import 'l10n/generated/app_localizations.dart';
 import 'features/about/data/update_checker.dart';
 import 'features/cast/data/cast_manager.dart';
@@ -56,7 +55,6 @@ import 'features/playlists/data/favorites_repository.dart';
 import 'features/playlists/data/cloud_backup_repository.dart';
 import 'features/playlists/data/playlist_repository.dart';
 import 'features/playlists/data/remote_source_repository.dart';
-import 'features/playlists/data/remote_source_sync.dart';
 import 'features/pricing/data/pricing_repository.dart';
 import 'core/flavor/flavor.dart';
 import 'features/security/data/age_gate_settings.dart';
@@ -220,25 +218,9 @@ Future<void> bootApp() async {
   // les playlists pour récupérer le contenu que le fournisseur a ajouté,
   // et re-vérifie la source poussée par MAC. (À l'ouverture de l'app, le
   // refreshStale ci-dessus couvre déjà le cas "app relancée".) Silencieux.
-  // P1-1 : en MODE SANS ÉCHEC (boucle de redémarrage détectée), on NE relance
-  // PAS ce ré-import lourd (fetch+parse de toute la source = suspect OOM n°1).
-  // refreshAll est par ailleurs protégé contre les passes concurrentes (mutex).
-  Timer.periodic(const Duration(hours: 24), (_) {
-    if (BootGuard.instance.safeMode) return;
-    RemoteSourceRepository.sync();
-    PlaylistRepository.instance.refreshAll();
-  });
-
-  // Effacement panel → box en moins de 2 s. Inerte par défaut :
-  // kHonorRemoteListClear vaut false tant qu'on ne compile pas avec
-  // --dart-define=HONOR_REMOTE_LIST_CLEAR=true. Aucun minuteur, aucun
-  // trafic en plus pour les clients actuels.
-  if (kHonorRemoteListClear) {
-    Timer.periodic(kRemoteClearPollInterval, (_) {
-      if (BootGuard.instance.safeMode) return;
-      unawaited(RemoteSourceRepository.sync());
-    });
-  }
+  // PanelRealtime remplace les anciens minuteurs 24 h / 2 s.
+  // Les imports lourds restent désactivés en mode sans échec ; repli 30 s
+  // uniquement pendant une coupure du socket.
 
   // Choix Cinema / Daylight / System — chargé avant runApp pour
   // éviter un flash de mauvais thème au démarrage.
@@ -252,7 +234,7 @@ Future<void> bootApp() async {
   // « Thème ». Non bloquant : s'applique dès que la réponse arrive et
   // RECONSTRUIT toute l'app (BrandConfig + AccentController sont dans le
   // Listenable racine). Si rien n'est configuré ou réseau KO → défauts.
-  unawaited(RemoteThemeRepository.fetchAndApply());
+  unawaited(RemoteThemeRepository.initialize());
 
   // Tarifs DISTANTS (à vie / 1 an / essai + promo) pilotés par le panel
   // « Tarifs ». Non bloquant : le bloc « Nos offres » se met à jour dès
@@ -294,6 +276,7 @@ Future<void> bootApp() async {
   });
 
   runApp(const TvKingApp());
+  unawaited(PanelRealtime.instance.start());
 
   // App lancée : si elle tient quelques secondes, on efface l'historique de
   // boucle de crash (un démarrage réussi « pardonne » les crashs précédents).
@@ -305,9 +288,11 @@ class TvKingApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return ListenableBuilder(
       listenable: Listenable.merge(<Listenable>[
         ThemeModeRepository.instance,
+        RemotePalette.instance,
         LocaleRepository.instance,
         AccentController.instance,
         BrandConfig.instance,
@@ -326,9 +311,9 @@ class TvKingApp extends StatelessWidget {
           // fonds restés sombres = contenu invisible. On force donc le
           // mode sombre quoi qu'il arrive (y compris si l'OS est en
           // clair) ; le sélecteur Apparence a été retiré des Réglages.
-          theme: AppTheme.cinema,
-          darkTheme: AppTheme.cinema,
-          themeMode: ThemeMode.dark,
+          theme: RemotePalette.instance.decorate(AppTheme.cinema),
+          darkTheme: RemotePalette.instance.decorate(AppTheme.cinema),
+          themeMode: RemotePalette.instance.light ? ThemeMode.light : ThemeMode.dark,
 
           // Internationalisation — la liste des langues supportées
           // sort de `LocaleRepository`. Quand l'utilisateur choisit
@@ -361,7 +346,7 @@ class TvKingApp extends StatelessWidget {
                   maxScaleFactor: 1.25,
                 ),
               ),
-              child: child ?? const SizedBox.shrink(),
+              child: PanelControlGate(child: child ?? const SizedBox.shrink()),
             );
           },
 
@@ -405,50 +390,9 @@ class _AppEntryState extends State<_AppEntry> {
   // boot. Si le flavor n'exige pas le gate, on saute en posant `true`
   // directement dans initState.
   bool? _ageGateConfirmed;
-  // Mise à jour FORCÉE : passe à true si la version installée est jugée
-  // obsolète (cf. _checkForcedUpdate). Tant que false, l'app fonctionne
-  // normalement (fail-open : si la vérif réseau échoue, on ne bloque pas).
-  bool _forceUpdate = false;
-
-  // Pub vidéo de démarrage (pilotée par le panel). `_adResolved` = on sait
-  // s'il y a une pub (fetch terminé ou court délai de secours) ; `_adShow`
-  // = on doit la jouer ; `_adDone` = terminée/passée.
-  bool _adResolved = false;
-  bool _adShow = false;
-  bool _adDone = false;
-
-  /// Résout la pub de démarrage SANS jamais bloquer l'accueil plus de 2,5 s.
-  Future<void> _resolveAd() async {
-    Timer(const Duration(milliseconds: 2500), () {
-      if (mounted && !_adResolved) setState(() => _adResolved = true);
-    });
-    await StartupAdRepository.instance.fetch();
-    final bool show = await StartupAdRepository.instance.shouldShow();
-    if (mounted) {
-      setState(() {
-        _adShow = show;
-        _adResolved = true;
-      });
-    }
-  }
-
-  /// MISE À JOUR FORCÉE — pilotée à distance depuis le panel.
-  ///
-  /// Désactivée par défaut (le serveur renvoie minBuildTs=0). Ne bloque
-  /// QUE si l'admin a appuyé sur « Forcer la mise à jour » ET que cette
-  /// app est plus ancienne que le dernier build (kBuildTs < minBuildTs,
-  /// tout en SECONDES → plus de bug d'unités). Fail-open en cas d'erreur.
-  Future<void> _checkForcedUpdate() async {
-    final bool must = await ForceUpdateChecker.instance.mustUpdate();
-    if (must && mounted) {
-      setState(() => _forceUpdate = true);
-    }
-  }
-
   @override
   void initState() {
     super.initState();
-    _checkForcedUpdate();
     // Mise à jour in-app (sideload) : détection NON bloquante après le
     // 1er frame, avec un léger délai pour ne pas gêner le boot/lock.
     // Fail-open : si rien de neuf ou erreur réseau, ne fait rien.
@@ -457,7 +401,6 @@ class _AppEntryState extends State<_AppEntry> {
         if (mounted) maybePromptUpdate(context);
       });
     });
-    _resolveAd();
     OnboardingState.instance.hasCompleted().then((bool done) {
       if (mounted) {
         setState(() {
@@ -495,23 +438,12 @@ class _AppEntryState extends State<_AppEntry> {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     // Splash tant qu'on n'a pas chargé les flags persistés.
     if (_onboardingDone == null ||
         _lockEnabled == null ||
         _ageGateConfirmed == null) {
       return const _Splash();
-    }
-
-    // 0) MISE À JOUR FORCÉE — prioritaire sur tout le reste. Si la version
-    //    installée est obsolète, on ne laisse RIEN d'autre s'afficher.
-    //    "Réessayer" relance la vérif (utile après réinstallation).
-    if (_forceUpdate) {
-      return ForcedUpdateScreen(
-        onRetry: () {
-          setState(() => _forceUpdate = false);
-          _checkForcedUpdate();
-        },
-      );
     }
 
     // 0a) Gate "j'ai 18 ans" — Red Room uniquement. Le flavor sevenMotion
@@ -574,20 +506,6 @@ class _AppEntryState extends State<_AppEntry> {
         if (SubscriptionState.instance.shouldBlockUser) {
           return const SubscriptionGateScreen();
         }
-        // 3b) PUB VIDÉO de démarrage (pilotée par le panel), juste avant
-        //     l'accueil. Tant qu'on ne sait pas encore (réseau), bref
-        //     splash pour éviter un flash d'accueil avant la pub.
-        if (!_adResolved) return const _Splash();
-        if (_adShow && !_adDone) {
-          return StartupAdScreen(
-            config: StartupAdRepository.instance.config,
-            onDone: () {
-              StartupAdRepository.instance.markShown();
-              if (mounted) setState(() => _adDone = true);
-            },
-          );
-        }
-
         // 4) Home — application MOBILE (7 MOTION). Les variantes TV et
         //    Red Room ont été retirées du projet : il ne reste que le
         //    mobile, piloté par le panel.
@@ -605,6 +523,7 @@ class _Splash extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Scaffold(
       backgroundColor: AppColors.voidSurface,
       body: SafeArea(

@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  recordings_screen.dart — Mes enregistrements
 // =========================================================
@@ -40,6 +41,7 @@ class RecordingsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
@@ -231,7 +233,7 @@ class _RecordingTileState extends State<_RecordingTile> {
         recording.filePath,
         type: 'video/mp2t',
       );
-      if (!mounted) return;
+      if (!mounted || !context.mounted) return;
       // ResultType.done = une app a pris le relais. Sinon (aucune app
       // capable / fichier introuvable) on prévient l'utilisateur.
       if (res.type != ResultType.done) {
@@ -261,6 +263,7 @@ class _RecordingTileState extends State<_RecordingTile> {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     final bool inProgress = recording.endedAt == null;
     return Material(
       color: Colors.transparent,
@@ -356,10 +359,10 @@ class _RecordingTileState extends State<_RecordingTile> {
               if (inProgress)
                 IconButton(
                   icon: _stopping
-                      ? const SizedBox(
+                      ?  const SizedBox(
                           width: 18,
                           height: 18,
-                          child: CircularProgressIndicator(
+                          child: const CircularProgressIndicator(
                             strokeWidth: 2,
                             color: AppColors.live,
                           ),
@@ -587,6 +590,7 @@ class _RecordingPlayerState extends State<_RecordingPlayer> {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
@@ -723,6 +727,7 @@ class _RecordingThumbState extends State<_RecordingThumb>
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     final String? logo = widget.logoUrl;
     final bool hasLogo = logo != null && logo.isNotEmpty;
     return SizedBox(

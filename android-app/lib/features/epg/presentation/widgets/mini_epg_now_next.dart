@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  mini_epg_now_next.dart — Mini-guide « En ce moment / Ensuite »
 // =========================================================
@@ -76,6 +77,7 @@ class _MiniEpgNowNextState extends State<MiniEpgNowNext> {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     final EpgProgram? now = _now;
     // Pas de donnée EPG → invisible, zéro encombrement.
     if (now == null) return const SizedBox.shrink();

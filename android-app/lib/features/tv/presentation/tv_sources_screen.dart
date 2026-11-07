@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  tv_sources_screen.dart — « Mes sources » (gérer M3U / Xtream)
 // =========================================================
@@ -21,6 +22,7 @@ class TvSourcesScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
@@ -106,7 +108,7 @@ class _SourceRow extends StatelessWidget {
               child: Text('Annuler', style: TextStyle(color: TvTokens.muted))),
           TextButton(
               onPressed: () => Navigator.pop(ctx, true),
-              child: Text('Supprimer', style: TextStyle(color: TvTokens.live))),
+              child: const Text('Supprimer', style: const TextStyle(color: TvTokens.live))),
         ],
       ),
     );
@@ -118,6 +120,7 @@ class _SourceRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     final Color badge = _xtream ? TvTokens.gold : const Color(0xFF5AA0E8);
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
@@ -198,6 +201,7 @@ class _Pill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return TvFocusBuilder(
       autofocus: autofocus,
       scale: TvFocusScale.medium,
@@ -235,6 +239,7 @@ class _IconBtn extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return TvFocusBuilder(
       scale: TvFocusScale.small,
       onSelect: onSelect,

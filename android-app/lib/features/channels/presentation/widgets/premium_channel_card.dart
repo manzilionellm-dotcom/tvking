@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  premium_channel_card.dart — Vignette landscape style Apple TV
 // =========================================================
@@ -77,6 +78,7 @@ class _PremiumChannelCardState extends State<PremiumChannelCard> {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     final Channel ch = widget.channel;
 
     // `FocusableActionDetector` (vs `Focus` seul) mappe nativement la
@@ -237,6 +239,7 @@ class _LivePill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(

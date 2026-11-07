@@ -22,6 +22,7 @@
 // =========================================================
 
 import 'dart:convert';
+import '../network/api_config.dart';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -285,7 +286,7 @@ class NotificationService {
     try {
       if (!await isEnabled(prefAnnouncements)) return;
       final http.Response resp = await http
-          .get(Uri.parse('$kSubscriptionBaseUrl/api/announcement'))
+          .get(Uri.parse('$kSubscriptionBaseUrl/api/announcement'), headers: kNoCacheHeaders)
           .timeout(const Duration(seconds: 8));
       if (resp.statusCode != 200) return;
       final Object? decoded = jsonDecode(resp.body);

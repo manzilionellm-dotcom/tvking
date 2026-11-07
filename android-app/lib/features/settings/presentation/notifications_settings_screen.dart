@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  notifications_settings_screen.dart — Réglages des notifications
 // =========================================================
@@ -66,6 +67,7 @@ class _NotificationsSettingsScreenState
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
@@ -136,6 +138,7 @@ class _NotifSwitch extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     final bool v = value ?? false;
     return Container(
       margin: const EdgeInsets.only(bottom: 8),

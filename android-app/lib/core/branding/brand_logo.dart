@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  brand_logo.dart — Logo officiel The Few
 // =========================================================
@@ -129,6 +130,7 @@ class BrandLogo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     final LumiereColors palette = LumiereColors.of(context);
     final bool isLight = Theme.of(context).brightness == Brightness.light;
 

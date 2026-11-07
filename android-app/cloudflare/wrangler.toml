@@ -6,7 +6,7 @@
 # =========================================================
 
 name = "seven-motion-backend"
-main = "worker.js"
+main = "gold.js"
 compatibility_date = "2025-05-01"
 
 # =========================================================
@@ -135,3 +135,14 @@ new_sqlite_classes = ["RealtimeHub"]
 # 32 bytes minimum, par exemple : openssl rand -base64 32
 # Tant que le secret n'est pas posé, les nouvelles sources restent
 # en clair (compatibilité). Le poser active le chiffrement.
+
+# Device sessions (new secure socket only; legacy builds remain compatible).
+# Provision separately with `wrangler secret put DEVICE_TOKEN_SECRET`.
+# Random >=32 characters. Never put its value in git or public Vercel variables.
+# Missing secret => no device session issued; the app uses HTTP fallback.
+
+# Sécurité comptes (valeurs uniquement via secret bindings, jamais dans [vars]):
+# ACCOUNT_ENCRYPTION_KEY : clé stable AES-GCM des secrets Google Authenticator.
+# Si absente, repli ADMIN_SECRET ; fournir une clé dédiée AVANT tout enrôlement.
+# PANEL_ORIGINS : allowlist exacte, défaut https://atlas-console-k7q2.vercel.app.
+# D1 : migrations 010, 011, 012 ; 003 doit déjà être appliquée.

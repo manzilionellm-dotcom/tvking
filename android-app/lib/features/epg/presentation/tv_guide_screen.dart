@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  tv_guide_screen.dart — Guide TV (grille EPG)
 // =========================================================
@@ -120,6 +121,7 @@ class _TvGuideScreenState extends State<TvGuideScreen> {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
@@ -207,6 +209,7 @@ class _TimeRuler extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Container(
       decoration: BoxDecoration(
         color: AppColors.surface,
@@ -342,6 +345,7 @@ class _GuideBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return ListView.builder(
       controller: verticalController,
       itemCount: channels.length,
@@ -472,6 +476,7 @@ class _ChannelCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Material(
       color: AppColors.background,
       child: InkWell(
@@ -538,6 +543,7 @@ class _ProgramsRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return FutureBuilder<List<EpgProgram>>(
       future: EpgRepository.instance.programsBetween(
         channelId,
@@ -609,6 +615,7 @@ class _ProgramCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Material(
       color: Colors.transparent,
       child: InkWell(

@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  cast_mini_bar.dart — Mini-barre "Cast en cours"
 // =========================================================
@@ -21,6 +22,7 @@ class CastMiniBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return ListenableBuilder(
       listenable: CastManager.instance,
       builder: (BuildContext context, _) {
@@ -111,7 +113,7 @@ class CastMiniBar extends StatelessWidget {
                 },
               ),
               IconButton(
-                icon: Icon(
+                icon: const Icon(
                   Icons.close_rounded,
                   color: AppColors.live,
                 ),

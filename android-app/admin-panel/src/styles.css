@@ -65,3 +65,8 @@ html, body, #root {
     scroll-behavior: auto !important;
   }
 }
+
+/* Nouveaux contrôles Lionel : bleu + danse douce, accessible. */
+@keyframes new-control-dance { 50% { transform: translateY(-1px); } }
+.is-new { border-color: #60a5fa; animation: new-control-dance 2.8s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .is-new { animation: none; } }

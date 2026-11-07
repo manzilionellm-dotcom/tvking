@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  source_choice_sheet.dart — Feuille "Ma source" (accueil)
 // =========================================================
@@ -47,6 +48,7 @@ class _SourceChoiceSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     // TÉLÉPHONE : activation par code MAC UNIQUEMENT (ni M3U, ni serveur,
     // ni identifiant) — demande explicite et répétée du client. La TV
     // garde ses options d'ajout (elle a son propre écran dédié,
@@ -187,6 +189,7 @@ class _SourceTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Material(
       color: AppColors.surfaceHigh,
       borderRadius: BorderRadius.circular(14),
@@ -265,6 +268,7 @@ class _ActivationSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return SafeArea(
       top: false,
       child: Padding(

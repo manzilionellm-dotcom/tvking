@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  tv_team_picker_screen.dart — Choisir SON équipe préférée (10-foot)
 // =========================================================
@@ -141,6 +142,7 @@ class _TvTeamPickerScreenState extends State<TvTeamPickerScreen> {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
@@ -172,7 +174,7 @@ class _TvTeamPickerScreenState extends State<TvTeamPickerScreen> {
                 Padding(
                   padding: const EdgeInsets.only(bottom: 10),
                   child: Text(_msg!,
-                      style: TextStyle(
+                      style: const TextStyle(
                           fontSize: TvDimens.label,
                           fontWeight: FontWeight.w600,
                           color: TvTokens.live)),
@@ -187,7 +189,7 @@ class _TvTeamPickerScreenState extends State<TvTeamPickerScreen> {
 
   Widget _resultsView() {
     if (_resolving) {
-      return const Center(
+      return  Center(
         child: SizedBox(
             width: 40,
             height: 40,
@@ -197,7 +199,7 @@ class _TvTeamPickerScreenState extends State<TvTeamPickerScreen> {
     // Requête vide → CATALOGUE VIP : on choisit une grande équipe en 1 clic.
     if (_q.trim().isEmpty) return _catalogView();
     if (_loading && _results.isEmpty) {
-      return const Center(
+      return  Center(
         child: SizedBox(
             width: 38,
             height: 38,
@@ -233,11 +235,11 @@ class _TvTeamPickerScreenState extends State<TvTeamPickerScreen> {
                           imageUrl: t.badge,
                           fit: BoxFit.contain, memCacheWidth: 120,
                           fadeInDuration: const Duration(milliseconds: 150),
-                          placeholder: (_, __) => const Icon(
+                          placeholder: (_, __) =>  Icon(
                               Icons.shield_rounded, color: TvTokens.muted),
-                          errorWidget: (_, __, ___) => const Icon(
+                          errorWidget: (_, __, ___) =>  Icon(
                               Icons.shield_rounded, color: TvTokens.muted))
-                      : const Icon(Icons.shield_rounded, color: TvTokens.muted),
+                      :  Icon(Icons.shield_rounded, color: TvTokens.muted),
                 ),
                 const SizedBox(width: 14),
                 Expanded(
@@ -340,6 +342,7 @@ class _PickerKeyboard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
@@ -375,6 +378,7 @@ class _Key extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return SizedBox(
       width: wide ? 116 : 54,
       height: 54,

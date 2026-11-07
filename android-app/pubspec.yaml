@@ -44,6 +44,7 @@ dependencies:
   # Client HTTP officiel Flutter. Sert à :
   #   - télécharger les fichiers .m3u depuis une URL
   #   - causer avec l'API Xtream Codes (player_api.php)
+  flutter_secure_storage: ^9.2.4
   http: ^1.2.2
 
   # SQLite pour Flutter. Permet de stocker localement :
@@ -212,6 +213,7 @@ dependency_overrides:
   screen_brightness_android: 2.1.4
 
 dev_dependencies:
+  fake_async: ^1.3.3
   flutter_test:
     sdk: flutter
 

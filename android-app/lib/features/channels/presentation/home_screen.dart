@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  home_screen.dart — Accueil "TV King" v1.4 (premium)
 // =========================================================
@@ -232,6 +233,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Scaffold(
       extendBodyBehindAppBar: true,
       extendBody: true,
@@ -750,6 +752,7 @@ class _HomeScreenState extends State<HomeScreen> {
   /// biométrique réussie. Sinon toast d'erreur et abandon.
   Future<void> _openAdultGuarded() async {
     final bool supported = await BiometricAuth.instance.isSupported();
+    if (!mounted) return;
     if (!supported) {
       // Device sans capteur ni PIN système (très rare) : on tolère
       // l'accès sans bloquer — c'est le comportement local_auth par
@@ -891,11 +894,12 @@ class _BackgroundLayer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const DecoratedBox(
+    RemotePalette.watch(context);
+    return  DecoratedBox(
       decoration: BoxDecoration(
         gradient: AppColors.backgroundGradient,
       ),
-      child: SizedBox.expand(),
+      child: const SizedBox.expand(),
     );
   }
 }

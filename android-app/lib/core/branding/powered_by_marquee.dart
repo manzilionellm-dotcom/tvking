@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  powered_by_marquee.dart — Bandeau défilant signature
 // =========================================================
@@ -67,6 +68,7 @@ class _PoweredByMarqueeState extends State<PoweredByMarquee>
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     final bool reduceMotion = MediaQuery.disableAnimationsOf(context);
     final TextStyle style = AppTextStyles.labelSmall.copyWith(
       color: AppColors.accent,
@@ -225,6 +227,7 @@ class _BrandSignatureState extends State<BrandSignature>
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     final bool reduceMotion = MediaQuery.disableAnimationsOf(context);
     final TextStyle style = AppTextStyles.labelSmall.merge(_baseStyle);
 

@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  cast_picker_sheet.dart — Sheet de sélection (refonte v2)
 // =========================================================
@@ -130,6 +131,7 @@ class _CastPickerSheetState extends State<CastPickerSheet> {
     if (mgr.isCasting && mgr.device?.id != device.id) {
       await mgr.disconnect();
     }
+    if (!mounted) return;
 
     try {
       await mgr.castTo(
@@ -195,6 +197,7 @@ class _CastPickerSheetState extends State<CastPickerSheet> {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     final double maxH = MediaQuery.of(context).size.height * 0.8;
 
     return ClipRRect(
@@ -392,6 +395,7 @@ class _DeviceTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     final _BrandInfo brand = _brandFor(device);
     return Material(
       color: Colors.transparent,
@@ -498,6 +502,7 @@ class _BrandMonogram extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Container(
       width: 48,
       height: 48,
@@ -542,6 +547,7 @@ class _ActiveSessionBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(

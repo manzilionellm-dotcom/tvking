@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  tv_focusable.dart — Wrapper focus-aware pour TV / D-pad
 // =========================================================
@@ -130,6 +131,7 @@ class _TvFocusableState extends State<TvFocusable> {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     final bool reduceMotion = MediaQuery.disableAnimationsOf(context);
     final Duration animDuration =
         reduceMotion ? Duration.zero : const Duration(milliseconds: 180);

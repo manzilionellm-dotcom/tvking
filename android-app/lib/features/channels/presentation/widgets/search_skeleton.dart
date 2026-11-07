@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  search_skeleton.dart — Placeholders shimmer pour la recherche
 // =========================================================
@@ -45,6 +46,7 @@ class _SearchSkeletonState extends State<SearchSkeleton>
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     final bool reduceMotion = MediaQuery.disableAnimationsOf(context);
     return LayoutBuilder(
       builder: (BuildContext context, BoxConstraints cons) {
@@ -89,6 +91,7 @@ class _SkeletonCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return AnimatedBuilder(
       animation: controller,
       builder: (BuildContext context, Widget? child) {

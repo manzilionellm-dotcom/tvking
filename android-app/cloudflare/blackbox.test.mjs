@@ -75,7 +75,7 @@ async function login(env) {
 
 async function makeReseller(env, admin, perms) {
   const email = `r-${crypto.randomUUID()}@example.test`;
-  const password = crypto.randomUUID();
+  const password = 'Test9Aa!' + crypto.randomUUID();
   const created = await api(env, 'POST', '/api/v1/resellers', {
     token: admin,
     body: { email, password, name: 'Revendeur test', credit_balance: 5 },

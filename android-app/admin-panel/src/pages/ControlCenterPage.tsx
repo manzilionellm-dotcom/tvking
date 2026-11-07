@@ -1,3 +1,4 @@
+import { useT } from '@/lib/i18n';
 import { Link } from 'react-router-dom';
 import { AppLayout } from '@/components/AppLayout';
 
@@ -20,11 +21,11 @@ interface Mod {
 const MODULES: Mod[] = [
   { n: 1, emoji: '🏠', title: 'Accueil dynamique', status: 'active', to: '/home-manager',
     desc: 'Ordre, visibilité, rubans et vedette des sections — en direct.' },
-  { n: 8, emoji: '🎛️', title: 'Live Control', status: 'active', to: '/home-manager',
+  { n: 8, emoji: '🎛️', title: 'control.live', status: 'active', to: '/home-manager',
     desc: 'Activer / masquer / réordonner une section instantanément.' },
   { n: 4, emoji: '📣', title: 'Annonces & Notifications', status: 'active', to: '/notifications',
     desc: 'Nouveautés, promos, infos — diffusées à tous ou ciblées par pays.' },
-  { n: 5, emoji: '📊', title: 'Analytics — En ligne', status: 'active', to: '/online',
+  { n: 5, emoji: '📊', title: 'control.analytics', status: 'active', to: '/online',
     desc: 'Utilisateurs connectés, pays et IP en temps réel.' },
   { n: 10, emoji: '🛡️', title: 'Admin Experience', status: 'partial', phase: 'En partie',
     desc: 'Multilingue, dark mode, historique des modifications (rollback).' },
@@ -65,6 +66,7 @@ function StatusChip({ m }: { m: Mod }) {
 }
 
 function Card({ m }: { m: Mod }) {
+  const t = useT();
   const inner = (
     <div
       className={`flex h-full flex-col gap-2 rounded-xl border bg-midnight p-4 transition ${
@@ -77,7 +79,7 @@ function Card({ m }: { m: Mod }) {
         <span className="text-2xl leading-none">{m.emoji}</span>
         <StatusChip m={m} />
       </div>
-      <div className="text-sm font-semibold text-ink-primary">{m.title}</div>
+      <div className="text-sm font-semibold text-ink-primary">{m.title.startsWith('control.') ? t(m.title) : m.title}</div>
       <div className="text-xs leading-relaxed text-ink-secondary">{m.desc}</div>
       {m.to && (
         <div className="mt-auto pt-1 text-[11px] font-semibold text-accent-bright">

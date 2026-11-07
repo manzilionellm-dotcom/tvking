@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  xtream_login_form.dart — Formulaire de connexion Xtream
 // =========================================================
@@ -122,6 +123,7 @@ class _XtreamLoginFormState extends State<XtreamLoginForm> {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
@@ -176,7 +178,7 @@ class _XtreamLoginFormState extends State<XtreamLoginForm> {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                Icon(Icons.error_outline_rounded,
+                const Icon(Icons.error_outline_rounded,
                     color: AppColors.live, size: 18),
                 const SizedBox(width: 8),
                 Expanded(

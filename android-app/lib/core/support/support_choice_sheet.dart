@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  support_choice_sheet.dart — Bottom sheet 2 choix contact
 // =========================================================
@@ -54,12 +55,13 @@ class _SupportChoiceSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return SafeArea(
       top: false,
       child: Container(
-        decoration: const BoxDecoration(
+        decoration:  BoxDecoration(
           color: AppColors.surfaceHigh,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+          borderRadius: const BorderRadius.vertical(top: const Radius.circular(22)),
         ),
         padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
         child: Column(
@@ -167,6 +169,7 @@ class _ChoiceCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return TvFocusable(
       onTap: onTap,
       borderRadius: BorderRadius.circular(14),
