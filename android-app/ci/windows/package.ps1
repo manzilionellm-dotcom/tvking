@@ -76,8 +76,24 @@ try {
             !($certificate.EnhancedKeyUsageList | Where-Object { $_.ObjectId.Value -eq '1.3.6.1.5.5.7.3.3' })) {
             throw 'Certificat de signature de code valide avec clé privée requis.'
         }
-        & $signtool sign /sha1 $thumbprint /s My /fd SHA256 /tr $timestamp /td SHA256 "$rel/tv_king.exe"
-        if ($LASTEXITCODE -ne 0) { throw 'Signature de Zuno impossible.' }
+        # Smart App Control vérifie aussi les DLL chargées par l'exécutable.
+        # Garder les signatures tierces valides (Microsoft/Flutter), et signer
+        # les modules PE encore inconnus avec le certificat de l'éditeur.
+        $peFiles = @(Get-ChildItem $rel -Recurse -File | Where-Object { $_.Extension -in '.exe', '.dll' })
+        if (!$peFiles) { throw 'Aucun module Windows à signer.' }
+        foreach ($file in $peFiles) {
+            $existingSignature = Get-AuthenticodeSignature -FilePath $file.FullName
+            $keepTrusted = $file.Name -ne 'tv_king.exe' -and
+                $existingSignature.Status -eq 'Valid' -and
+                $null -ne $existingSignature.TimeStamperCertificate
+            if ($keepTrusted) {
+                & $signtool verify /pa /all /tw $file.FullName
+                if ($LASTEXITCODE -eq 0) { continue }
+            }
+            & $signtool sign /sha1 $thumbprint /s My /fd SHA256 /tr $timestamp /td SHA256 $file.FullName
+            if ($LASTEXITCODE -ne 0) { throw 'Signature d un module Windows impossible.' }
+            Assert-Signature $file.FullName
+        }
         Assert-Signature "$rel/tv_king.exe"
         $signed = $true
     }
