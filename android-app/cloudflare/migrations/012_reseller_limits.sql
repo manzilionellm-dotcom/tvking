@@ -1,0 +1,13 @@
+-- Pré-requis : migration 003 (parent_reseller_id). Contraintes atomiques.
+CREATE TABLE IF NOT EXISTS reseller_limits (reseller_id TEXT PRIMARY KEY, max_activations INTEGER, allowed_plans TEXT NOT NULL DEFAULT '["yearly","lifetime","trial","trial_2h","trial_24h","trial_3d","trial_7d","trial_30d"]', expires_at INTEGER, max_sub_resellers INTEGER NOT NULL DEFAULT 0);
+CREATE TRIGGER IF NOT EXISTS reseller_limit_insert BEFORE INSERT ON licenses WHEN NEW.reseller_id IS NOT NULL AND NEW.status='active' BEGIN
+    SELECT CASE WHEN EXISTS (SELECT 1 FROM reseller_limits r WHERE r.reseller_id=NEW.reseller_id AND r.expires_at IS NOT NULL AND r.expires_at <= unixepoch()*1000) THEN RAISE(ABORT, 'reseller_expired') END;
+    SELECT CASE WHEN EXISTS (SELECT 1 FROM reseller_limits r WHERE r.reseller_id=NEW.reseller_id AND NOT EXISTS(SELECT 1 FROM json_each(r.allowed_plans) WHERE value=NEW.plan)) THEN RAISE(ABORT, 'reseller_plan_limit') END;
+    SELECT CASE WHEN EXISTS (SELECT 1 FROM reseller_limits r WHERE r.reseller_id=NEW.reseller_id AND r.max_activations IS NOT NULL AND (SELECT COUNT(*) FROM licenses l WHERE l.reseller_id=NEW.reseller_id AND l.status='active' AND (l.expires_at IS NULL OR l.expires_at > unixepoch()*1000) AND l.id!=NEW.id) >= r.max_activations) THEN RAISE(ABORT, 'reseller_activation_limit') END;
+   END;
+CREATE TRIGGER IF NOT EXISTS reseller_limit_update BEFORE UPDATE ON licenses WHEN NEW.reseller_id IS NOT NULL AND NEW.status='active' BEGIN
+    SELECT CASE WHEN EXISTS (SELECT 1 FROM reseller_limits r WHERE r.reseller_id=NEW.reseller_id AND r.expires_at IS NOT NULL AND r.expires_at <= unixepoch()*1000) THEN RAISE(ABORT, 'reseller_expired') END;
+    SELECT CASE WHEN EXISTS (SELECT 1 FROM reseller_limits r WHERE r.reseller_id=NEW.reseller_id AND NOT EXISTS(SELECT 1 FROM json_each(r.allowed_plans) WHERE value=NEW.plan)) THEN RAISE(ABORT, 'reseller_plan_limit') END;
+    SELECT CASE WHEN EXISTS (SELECT 1 FROM reseller_limits r WHERE r.reseller_id=NEW.reseller_id AND r.max_activations IS NOT NULL AND (SELECT COUNT(*) FROM licenses l WHERE l.reseller_id=NEW.reseller_id AND l.status='active' AND (l.expires_at IS NULL OR l.expires_at > unixepoch()*1000) AND l.id!=NEW.id) >= r.max_activations) THEN RAISE(ABORT, 'reseller_activation_limit') END;
+   END;
+CREATE TRIGGER IF NOT EXISTS reseller_limit_children BEFORE INSERT ON resellers WHEN NEW.parent_reseller_id IS NOT NULL BEGIN SELECT CASE WHEN (SELECT COUNT(*) FROM resellers WHERE parent_reseller_id=NEW.parent_reseller_id) >= COALESCE((SELECT max_sub_resellers FROM reseller_limits WHERE reseller_id=NEW.parent_reseller_id),0) THEN RAISE(ABORT,'reseller_child_limit') END; END;

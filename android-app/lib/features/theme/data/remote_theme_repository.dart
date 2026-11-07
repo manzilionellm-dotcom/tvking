@@ -13,6 +13,7 @@
 // =========================================================
 
 import 'dart:convert';
+import '../../../core/network/api_config.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
@@ -30,7 +31,7 @@ abstract final class RemoteThemeRepository {
       // Thème PAR PLATEFORME : le mobile lit le thème mobile, DeFew TV
       // lit le thème TV (?platform=tv).
       final http.Response resp = await http
-          .get(Uri.parse('$kSubscriptionBaseUrl/api/theme?platform=${AppPlatform.id}'))
+          .get(Uri.parse('$kSubscriptionBaseUrl/api/theme?platform=${AppPlatform.id}'), headers: kNoCacheHeaders)
           .timeout(const Duration(seconds: 6));
       if (resp.statusCode != 200) return;
       final Object? decoded = jsonDecode(resp.body);

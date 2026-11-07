@@ -67,16 +67,24 @@ class _AnnouncementBannerState extends State<AnnouncementBanner> {
   @override
   void initState() {
     super.initState();
+    AnnouncementRepository.current.addListener(_applyCurrent);
     _load();
   }
 
+  @override
+  void dispose() {
+    AnnouncementRepository.current.removeListener(_applyCurrent);
+    super.dispose();
+  }
   Future<void> _load() async {
-    final Announcement? a = await AnnouncementRepository.fetchLatest();
-    if (a == null) return;
-    // Ne pas réafficher une annonce déjà fermée par l'utilisateur.
-    if (await AnnouncementRepository.isDismissed(a.id)) return;
-    if (!mounted) return;
-    setState(() => _announcement = a);
+    await AnnouncementRepository.fetchLatest();
+    await _applyCurrent();
+  }
+  Future<void> _applyCurrent() async {
+    final Announcement? a = AnnouncementRepository.current.value;
+    final bool dismissed = a != null && await AnnouncementRepository.isDismissed(a.id);
+    if (!mounted || !identical(a, AnnouncementRepository.current.value)) return;
+    setState(() => _announcement = dismissed ? null : a);
   }
 
   Future<void> _dismiss() async {

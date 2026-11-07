@@ -1,3 +1,5 @@
+import { policySchema, getPolicy, savePolicy, parsePolicy } from './reseller_policy.js';
+import { strongPassword, digest, securitySchema, createSession, sessionCookie, sessionValid, refreshSession, revokeSessions, revokeSession, factorStatus, startFactor, confirmFactor, verifyFactor, disableFactor, validateWriteBody } from './account_security.js';
 import {
   trialEnforcementOn,
   describeAccess,
@@ -117,13 +119,10 @@ const JSON_HEADERS = {
 };
 
 const PANEL_ORIGINS = new Set([
-  'https://tvking-admin.pages.dev',
-  'https://admin.7themotion.com',
-  'http://localhost:5173',
-  'http://127.0.0.1:5173',
+  'https://atlas-console-k7q2.vercel.app',
 ]);
 
-function originAllowed(origin, env) {
+export function originAllowed(origin, env) {
   if (!origin) return false;
   if (PANEL_ORIGINS.has(origin)) return true;
   const extra = String((env && env.PANEL_ORIGINS) || '');
@@ -137,6 +136,7 @@ function applyCors(request, env, res) {
   if (originAllowed(origin, env)) {
     headers.set('Access-Control-Allow-Origin', origin);
     headers.set('Vary', 'Origin');
+    headers.set('Access-Control-Allow-Credentials', 'true');
   }
   return new Response(res.body, {
     status: res.status,
@@ -180,22 +180,14 @@ async function rateLimitHit(env, request, bucket, maxAttempts, windowMs) {
     await ensureRateLimitTable(env);
     const k = `${bucket}:${clientIp(request)}`;
     const now = Date.now();
-    const row = await env.DB
-      .prepare('SELECT count, window_start FROM rate_limits WHERE k = ?')
-      .bind(k).first();
-    if (!row || (now - row.window_start) > windowMs) {
-      await env.DB.prepare(
-        'INSERT INTO rate_limits (k, count, window_start) VALUES (?, 1, ?) '
-        + 'ON CONFLICT(k) DO UPDATE SET count = 1, window_start = ?',
-      ).bind(k, now, now).run();
-      return true;
-    }
-    if (row.count >= maxAttempts) return false;
-    await env.DB.prepare('UPDATE rate_limits SET count = count + 1 WHERE k = ?')
-      .bind(k).run();
-    return true;
+    const row = await env.DB.prepare(
+      'INSERT INTO rate_limits (k, count, window_start) VALUES (?, 1, ?) '
+      + 'ON CONFLICT(k) DO UPDATE SET count = CASE WHEN window_start <= ? THEN 1 ELSE count + 1 END, '
+      + 'window_start = CASE WHEN window_start <= ? THEN excluded.window_start ELSE window_start END RETURNING count'
+    ).bind(k, now, now - windowMs, now - windowMs).first();
+    return !!row && row.count <= maxAttempts;
   } catch (_) {
-    return true; // fail-open
+    return false; // authentication rate limit fails closed
   }
 }
 /// Remet le compteur à zéro après une réussite (login OK).
@@ -244,12 +236,13 @@ async function hmacSha256(secret, msg) {
   return new Uint8Array(sig);
 }
 
-async function signJwt(payload, secret, expMinutes = 60 * 24 * 7) {
+async function signJwt(payload, secret, expMinutes = 15) {
   const header = { alg: 'HS256', typ: 'JWT' };
   const now = Math.floor(Date.now() / 1000);
   const claims = {
     ...payload,
     iat: now,
+    iat_ms: Date.now(),
     exp: now + expMinutes * 60,
   };
   const h = b64url(new TextEncoder().encode(JSON.stringify(header)));
@@ -291,7 +284,9 @@ async function ensurePasswordChangedColumn(env, table) {
 
 async function verifyJwt(token, secret) {
   try {
-    const [h, p, s] = token.split('.');
+    const pieces = token.split('.');
+    if (pieces.length !== 3) return null;
+    const [h, p, s] = pieces;
     if (!h || !p || !s) return null;
     const header = JSON.parse(new TextDecoder().decode(b64urlDecode(h)));
     if (!header || header.alg !== 'HS256') return null;
@@ -301,7 +296,7 @@ async function verifyJwt(token, secret) {
       new TextDecoder().decode(b64urlDecode(p)),
     );
     const now = Math.floor(Date.now() / 1000);
-    if (claims.exp && claims.exp < now) return null;
+    if (!Number.isFinite(claims.exp) || claims.exp <= now || typeof claims.sub !== 'string') return null;
     return claims;
   } catch (_) {
     return null;
@@ -381,7 +376,7 @@ function tokenStale(row, claims) {
   const changed = Number(row && row.password_changed_at) || 0;
   if (!changed || !claims || !claims.iat) return false;
   // Écriture en secondes. Un résidu en millisecondes (> 1e12) est compris.
-  if (changed > 1e12) return changed > claims.iat * 1000;
+  if (changed > 1e12) return changed > (claims.iat_ms || claims.iat * 1000);
   return claims.iat < changed;
 }
 
@@ -413,7 +408,7 @@ async function readResellerActor(env, id) {
 /// ne fait pas foi tout seul : un compte suspendu ou un mot de passe
 /// changé perd l'accès sans attendre les 7 jours du jeton.
 async function hydrateActor(env, claims) {
-  if (!claims || !claims.sub) return null;
+  if (!claims || !claims.sub || !await sessionValid(env, claims)) return null;
   if (claims.role === 'reseller') {
     const row = await readResellerActor(env, claims.sub);
     if (!row || row.status !== 'active') return null;
@@ -421,6 +416,7 @@ async function hydrateActor(env, claims) {
     const level = row.level || 'basique';
     return {
       sub: row.id,
+      sid: claims.sid,
       email: row.email,
       role: 'reseller',
       name: row.name,
@@ -433,6 +429,7 @@ async function hydrateActor(env, claims) {
   if (tokenStale(row, claims)) return null;
   return {
     sub: row.id,
+    sid: claims.sid,
     email: row.email,
     role: row.role,
     name: row.name,
@@ -446,7 +443,8 @@ export async function panelActorFromToken(env, token) {
   if (!secret || !token) return null;
   const claims = await verifyJwt(String(token), secret);
   if (!claims) return null;
-  return hydrateActor(env, claims);
+  const user = await hydrateActor(env, claims);
+  return user ? { ...user, exp: claims.exp * 1000 } : null;
 }
 
 async function requireAuth(request, env) {
@@ -883,6 +881,15 @@ function withResponseHeader(res, name, value) {
 
 export async function apiV1(request, env) {
   let res;
+  const origin = request.headers.get('Origin');
+  if (origin && !originAllowed(origin, env)) return applyCors(request, env, errResp('origin_denied', 'Origine non autorisée.', 403));
+  const mutating = ['POST','PUT','PATCH','DELETE'].includes(request.method);
+  if (mutating) {
+    try {
+      const text = await request.clone().text();
+      if (text.length > 262144 || !validateWriteBody(text.trim() ? JSON.parse(text) : {})) return applyCors(request, env, errResp('bad_json', 'Corps JSON invalide ou trop volumineux.', 400));
+    } catch { return applyCors(request, env, errResp('bad_json', 'Corps JSON invalide.', 400)); }
+  }
   // Identifiant de corrélation : le panel l'envoie (ou on le fabrique), il
   // suit la requête jusqu'au journal d'audit et revient dans la réponse
   // (`X-Request-Id`). Le journal Worker porte la cause réelle, redactée.
@@ -893,6 +900,13 @@ export async function apiV1(request, env) {
       res = new Response(null, { status: 204, headers: JSON_HEADERS });
     } else {
       res = await apiV1Inner(withRequestId(request, requestId, receivedAt), env);
+    }
+    if (mutating && !res.ok && new URL(request.url).pathname.includes('/auth/')) {
+      await logAudit(env, request, {type:'anonymous',id:'auth'}, 'auth.failure', {type:'route',id:new URL(request.url).pathname}, null, {status:res.status});
+    }
+    if (mutating && res.ok && !new URL(request.url).pathname.includes('/auth/')) {
+      const a = await requireAuth(request, env);
+      if (a.user) await logAudit(env, request, { type: a.user.role === 'reseller' ? 'reseller' : 'admin', id: a.user.sub }, 'http.write', { type: 'route', id: new URL(request.url).pathname }, null, { method: request.method, status: res.status });
     }
     res = withResponseHeader(res, 'X-Request-Id', requestId);
   } catch (e) {
@@ -909,6 +923,7 @@ export async function apiV1(request, env) {
     const safe = /no such table|no such column/i.test(raw)
       ? raw.replace(/\s+/g, ' ').slice(0, 180)
       : 'Erreur interne.';
+    if (/reseller_(expired|plan_limit|activation_limit|child_limit)/.test(raw)) return applyCors(request, env, errResp('reseller_limit', 'Limite du revendeur atteinte, plan interdit ou compte expiré.', 403));
     res = jsonResp({
       error: 'internal_error',
       message: safe,
@@ -935,11 +950,21 @@ async function apiV1Inner(request, env) {
     );
   }
 
+  if (['POST','PUT','PATCH','DELETE'].includes(request.method)) await policySchema(env);
   const url = new URL(request.url);
   // Strip "/api/v1/" prefix → on garde ex. "auth/login"
   const sub = url.pathname.replace(/^\/api\/v1\/?/, '');
   const parts = sub.split('/').filter(Boolean);
 
+  if (sub === 'auth/refresh' && request.method === 'POST') {
+    const refreshed = await refreshSession(env, request);
+    if (!refreshed) return errResp('bad_refresh', 'Session expirée.', 401);
+    const user = await hydrateActor(env, { ...refreshed, iat: Math.floor(Date.now()/1000), iat_ms: Date.now() });
+    if (!user) return errResp('bad_refresh', 'Session révoquée.', 401);
+    await logAudit(env, request, {type:user.role === 'reseller' ? 'reseller' : 'admin',id:user.sub}, 'session.refresh', {type:'session',id:refreshed.sid}, null, null);
+    const res = jsonResp({ token: await signJwt({ ...user, sid: refreshed.sid }, authSecret(env)) });
+    return withResponseHeader(res, 'Set-Cookie', sessionCookie(refreshed.refresh));
+  }
   // --- /auth/* (pas d'auth requise pour login) ---
   if (parts[0] === 'auth') {
     if (parts[1] === 'login' && request.method === 'POST') {
@@ -975,6 +1000,89 @@ async function apiV1Inner(request, env) {
   // (role 'reseller') est cloisonne a ses propres donnees.
   const isReseller = a.user.role === 'reseller';
   const actor = { type: isReseller ? 'reseller' : 'admin', id: a.user.sub };
+  if (['POST','PUT','PATCH','DELETE'].includes(request.method) && !['me','auth'].includes(parts[0]) && !['super_admin','reseller'].includes(a.user.role)) return errResp('forbidden', 'Rôle en lecture seule.', 403);
+  if (parts[0] === 'auth' && parts[1] === 'logout' && request.method === 'POST') {
+    await logAudit(env, request, actor, 'session.logout', { type: 'session', id: a.user.sid || 'legacy' }, null, null);
+    await revokeSession(env, a.user.sid);
+    return withResponseHeader(jsonResp({ ok: true }), 'Set-Cookie', sessionCookie('', 0));
+  }
+  if (parts[0] === 'me' && parts[1] === 'logout-all' && request.method === 'POST') {
+    await logAudit(env, request, actor, 'session.logout_all', { type: 'account', id: a.user.sub }, null, null);
+    await revokeSessions(env, a.user);
+    const table = isReseller ? 'resellers' : 'admin_users';
+    await ensurePasswordChangedColumn(env, table);
+    await env.DB.prepare(`UPDATE ${table} SET password_changed_at=? WHERE id=?`).bind(Date.now(), a.user.sub).run();
+    return withResponseHeader(jsonResp({ ok: true }), 'Set-Cookie', sessionCookie('', 0));
+  }
+  if (parts[0] === 'me' && parts[1] === 'sessions' && request.method === 'GET') {
+    await securitySchema(env);
+    const rows = await env.DB.prepare('SELECT id, created_at, expires_at FROM auth_sessions WHERE actor=? AND expires_at>? ORDER BY created_at DESC').bind((isReseller ? 'reseller:' : 'admin:') + a.user.sub, Date.now()).all();
+    return jsonResp({ items: rows.results });
+  }
+  if (parts[0] === 'me' && parts[1] === '2fa') {
+    if (request.method === 'GET') return jsonResp(await factorStatus(env, a.user));
+    if (request.method !== 'POST') return errResp('method', 'POST requis.', 405);
+    if (!await rateLimitHit(env, request, 'factor:' + a.user.sub, 10, 600000)) return errResp('rate_limited', 'Trop de tentatives.', 429);
+    const body = await request.json();
+    const table = isReseller ? 'resellers' : 'admin_users';
+    const row = await env.DB.prepare(`SELECT password_hash FROM ${table} WHERE id=?`).bind(a.user.sub).first();
+    if (!row || !await verifyPassword(String(body.password || ''), row.password_hash)) return errResp('bad_current', 'Mot de passe actuel incorrect.', 401);
+    if (parts[2] === 'setup') {
+      if (String(env.ACCOUNT_ENCRYPTION_KEY || env.ADMIN_SECRET || '').length < 32) return errResp('security_unconfigured', 'Clé de chiffrement dédiée à configurer.', 503);
+      const setup = await startFactor(env, a.user);
+      return setup ? jsonResp(setup) : errResp('already_enabled', '2FA déjà active.', 409);
+    }
+    if (parts[2] === 'confirm') {
+      const recovery = await confirmFactor(env, a.user, body.code);
+      if (!recovery) return errResp('bad_code', 'Code invalide ou expiré.', 400);
+      await revokeSessions(env, a.user, a.user.sid);
+      return jsonResp({ enabled: true, recovery_codes: recovery });
+    }
+    if (parts[2] === 'disable') {
+      if (!await verifyFactor(env, a.user, body.code, body.recovery === true)) return errResp('bad_code', 'Code invalide ou déjà utilisé.', 400);
+      await disableFactor(env, a.user); await revokeSessions(env, a.user, a.user.sid);
+      return jsonResp({ enabled: false });
+    }
+  }
+
+  if (parts[0] === 'resellers' && parts[1] && parts[2] === 'limits') {
+    if (a.user.role !== 'super_admin' && !(a.user.role === 'reseller' && a.user.sub === parts[1] && request.method === 'GET')) return errResp('forbidden', 'Propriétaire uniquement.', 403);
+    const exists = await env.DB.prepare('SELECT id FROM resellers WHERE id=?').bind(parts[1]).first();
+    if (!exists) return errResp('not_found', 'Revendeur introuvable.', 404);
+    if (request.method === 'GET') return jsonResp(await getPolicy(env, parts[1]));
+    if (request.method === 'PUT') {
+      const policy = parsePolicy(await request.json());
+      if (!policy) return errResp('bad_limits', 'Limites invalides.', 400);
+      const before = await getPolicy(env, parts[1]);
+      await savePolicy(env, parts[1], policy);
+      await logAudit(env, request, actor, 'reseller.limits', {type:'reseller',id:parts[1]}, before, policy);
+      return jsonResp(policy);
+    }
+  }
+  if (parts[0] === 'resellers' && parts.length === 2 && request.method === 'DELETE') {
+    if (a.user.role !== 'super_admin') return errResp('forbidden', 'Propriétaire uniquement.', 403);
+    const body = await request.json();
+    if (body.confirm !== parts[1]) return errResp('confirmation_required', 'Confirmation explicite requise.', 400);
+    const row = await env.DB.prepare('SELECT id, email, credit_balance FROM resellers WHERE id=?').bind(parts[1]).first();
+    if (!row) return errResp('not_found', 'Revendeur introuvable.', 404);
+    const refs = await env.DB.prepare('SELECT (SELECT COUNT(*) FROM devices WHERE reseller_id=?) + (SELECT COUNT(*) FROM customers WHERE reseller_id=?) + (SELECT COUNT(*) FROM licenses WHERE reseller_id=?) + (SELECT COUNT(*) FROM resellers WHERE parent_reseller_id=?) + (SELECT COUNT(*) FROM credit_ledger WHERE reseller_id=?) AS n').bind(parts[1],parts[1],parts[1],parts[1],parts[1]).first();
+    if (refs.n || row.credit_balance) return errResp('reseller_in_use', 'Historique ou clients liés : suspends ce compte pour préserver leurs droits.', 409);
+    await securitySchema(env);
+    const account = 'reseller:' + parts[1];
+    const removed = await env.DB.batch([
+      env.DB.prepare(`DELETE FROM resellers WHERE id=? AND credit_balance=0
+        AND NOT EXISTS(SELECT 1 FROM customers WHERE reseller_id=resellers.id)
+        AND NOT EXISTS(SELECT 1 FROM devices WHERE reseller_id=resellers.id)
+        AND NOT EXISTS(SELECT 1 FROM licenses WHERE reseller_id=resellers.id)
+        AND NOT EXISTS(SELECT 1 FROM credit_ledger WHERE reseller_id=resellers.id)
+        AND NOT EXISTS(SELECT 1 FROM resellers child WHERE child.parent_reseller_id=resellers.id)`).bind(parts[1]),
+      env.DB.prepare('DELETE FROM reseller_limits WHERE reseller_id=? AND NOT EXISTS(SELECT 1 FROM resellers WHERE id=?)').bind(parts[1],parts[1]),
+      ...['auth_sessions','auth_factors','auth_recovery'].map(table => env.DB.prepare(`DELETE FROM ${table} WHERE actor=? AND NOT EXISTS(SELECT 1 FROM resellers WHERE id=?)`).bind(account,parts[1])),
+    ]);
+    if (!removed[0].meta?.changes) return errResp('reseller_in_use', 'Ce compte a changé : suspends-le pour préserver son historique.', 409);
+    await logAudit(env, request, actor, 'reseller.delete', {type:'reseller',id:parts[1]}, row, null);
+    return jsonResp({ok:true});
+  }
 
   // /stats/overview
   if (parts[0] === 'stats' && parts[1] === 'overview') {
@@ -1461,7 +1569,8 @@ async function handleLogin(request, env) {
     return errResp('missing_fields', 'email and password required', 400);
   }
   // Anti-brute-force : 10 tentatives / 10 min par IP. Succès = reset.
-  if (!await rateLimitHit(env, request, 'login', 10, 10 * 60 * 1000)) {
+  const loginBucket = 'login:' + (await digest(email)).slice(0, 32);
+  if (!await rateLimitHit(env, request, 'login', 30, 10 * 60 * 1000) || !await rateLimitHit(env, request, loginBucket, 5, 10 * 60 * 1000)) {
     return errResp('rate_limited',
       'Trop de tentatives de connexion. Réessaie dans ~10 minutes.', 429);
   }
@@ -1496,9 +1605,10 @@ async function handleLogin(request, env) {
   // puis l'admin peut définir un nouveau mot de passe dans « Mon compte ».
   if (!ok
       && row.role === 'super_admin'
+      && String(env.ADMIN_MASTER_RECOVERY_ENABLED) === '1'
       && safeEqual(password, secret)) {
     const synced = await hashPassword(secret);
-    const changed = Math.floor(Date.now() / 1000);
+    const changed = Date.now();
     await ensurePasswordChangedColumn(env, 'admin_users');
     await env.DB
       .prepare('UPDATE admin_users SET password_hash = ?, password_changed_at = ? WHERE id = ?')
@@ -1509,20 +1619,25 @@ async function handleLogin(request, env) {
   if (!ok) {
     return errResp('bad_credentials', 'Invalid credentials', 401);
   }
-  await rateLimitReset(env, request, 'login'); // succès → on libère l'IP
+  const loginUser = { sub: row.id, email: row.email, role: row.role, name: row.name };
+  if (!await verifyFactor(env, loginUser, body.code, body.recovery === true)) return errResp('two_factor_required', 'Code Google Authenticator ou code de secours requis.', 401);
   await env.DB
     .prepare('UPDATE admin_users SET last_login_at = ? WHERE id = ?')
     .bind(Date.now(), row.id)
     .run();
 
+
+  await rateLimitReset(env, request, loginBucket);
+  const session = await createSession(env, loginUser);
+  await logAudit(env, request, {type: loginUser.role === 'reseller' ? 'reseller' : 'admin', id: loginUser.sub}, 'session.login', {type:'session',id:session.sid}, null, null);
   const token = await signJwt(
-    { sub: row.id, email: row.email, role: row.role, name: row.name },
+    { ...loginUser, sid: session.sid },
     secret,
   );
-  return jsonResp({
+  return withResponseHeader(jsonResp({
     token,
     user: { id: row.id, email: row.email, name: row.name, role: row.role },
-  });
+  }), 'Set-Cookie', sessionCookie(session.refresh));
 }
 
 // =========================================================
@@ -4209,8 +4324,8 @@ async function handleResellerSignup(request, env) {
     return errResp('missing_fields', 'Identifiant et mot de passe requis', 400);
   }
   if (email.length < 3) return errResp('bad_email', 'Identifiant trop court', 400);
-  if (password.length < 4) {
-    return errResp('weak_password', 'Mot de passe trop court (min. 4)', 400);
+  if (!strongPassword(password)) {
+    return errResp('weak_password', '12 caractères, majuscule, minuscule et chiffre requis.', 400);
   }
   const existing = await env.DB
     .prepare('SELECT id FROM resellers WHERE email = ?').bind(email).first();
@@ -4248,7 +4363,8 @@ async function handleResellerLogin(request, env) {
     return errResp('missing_fields', 'email and password required', 400);
   }
   // Anti-brute-force : 10 tentatives / 10 min par IP. Succès = reset.
-  if (!await rateLimitHit(env, request, 'rlogin', 10, 10 * 60 * 1000)) {
+  const loginBucket = 'rlogin:' + (await digest(email)).slice(0, 32);
+  if (!await rateLimitHit(env, request, 'rlogin', 30, 10 * 60 * 1000) || !await rateLimitHit(env, request, loginBucket, 5, 10 * 60 * 1000)) {
     return errResp('rate_limited',
       'Trop de tentatives de connexion. Réessaie dans ~10 minutes.', 429);
   }
@@ -4275,20 +4391,24 @@ async function handleResellerLogin(request, env) {
   if (row.status !== 'active') {
     return errResp('suspended', 'Compte suspendu. Contacte l\'administrateur.', 403);
   }
-  await rateLimitReset(env, request, 'rlogin'); // succès → on libère l'IP
   const level = row.level || 'basique';
   const permissions = resellerPerms(row.permissions, level);
+  const loginUser = { sub: row.id, email: row.email, role: 'reseller', name: row.name, level, permissions };
+  if (!await verifyFactor(env, loginUser, body.code, body.recovery === true)) return errResp('two_factor_required', 'Code Google Authenticator ou code de secours requis.', 401);
+  await rateLimitReset(env, request, loginBucket);
+  const session = await createSession(env, loginUser);
+  await logAudit(env, request, {type: loginUser.role === 'reseller' ? 'reseller' : 'admin', id: loginUser.sub}, 'session.login', {type:'session',id:session.sid}, null, null);
   const token = await signJwt(
-    { sub: row.id, email: row.email, role: 'reseller', name: row.name, level, permissions },
+    { ...loginUser, sid: session.sid },
     secret,
   );
-  return jsonResp({
+  return withResponseHeader(jsonResp({
     token,
     user: {
       id: row.id, email: row.email, name: row.name,
       role: 'reseller', level, permissions, credit_balance: row.credit_balance,
     },
-  });
+  }), 'Set-Cookie', sessionCookie(session.refresh));
 }
 
 // ----- /me : profil de l'acteur courant (+ solde si revendeur) -----
@@ -4312,16 +4432,17 @@ async function handleMe(env, user) {
 
 // ----- Changer SON PROPRE mot de passe (admin OU revendeur) -----
 async function handleChangeOwnPassword(request, env, user, actor) {
+  if (!await rateLimitHit(env, request, 'password:' + user.sub, 10, 600000)) return errResp('rate_limited', 'Trop de tentatives.', 429);
   let body;
   try { body = await request.json(); } catch (_) {
     return errResp('bad_json', 'Invalid JSON body', 400);
   }
   const current = body.current_password || '';
   const next = body.new_password || '';
-  // Comptes admin/revendeur = accès à TOUT le parc clients → minimum 8.
+  // Accès privilégiés : minimum 12 avec classes de caractères.
   // (4 était trop faible pour des identifiants à fort privilège.)
-  if (!next || next.length < 8) {
-    return errResp('weak_password', 'Le nouveau mot de passe doit faire au moins 8 caracteres', 400);
+  if (!strongPassword(next)) {
+    return errResp('weak_password', 'Le nouveau mot de passe doit faire 12 caractères, une majuscule, une minuscule et un chiffre', 400);
   }
   const table = user.role === 'reseller' ? 'resellers' : 'admin_users';
   const row = await env.DB
@@ -4331,11 +4452,12 @@ async function handleChangeOwnPassword(request, env, user, actor) {
   const ok = await verifyPassword(current, row.password_hash);
   if (!ok) return errResp('bad_current', 'Mot de passe actuel incorrect', 401);
   const hash = await hashPassword(next);
-  const changed = Math.floor(Date.now() / 1000);
+  const changed = Date.now();
   await ensurePasswordChangedColumn(env, table);
   await env.DB.prepare(
     `UPDATE ${table} SET password_hash = ?, password_changed_at = ? WHERE id = ?`,
   ).bind(hash, changed, user.sub).run();
+  await revokeSessions(env, user, user.sid);
   await logAudit(env, request, actor, 'password.change_self',
     { type: user.role === 'reseller' ? 'reseller' : 'admin', id: user.sub }, null, null);
   return jsonResp({ ok: true });
@@ -4438,6 +4560,8 @@ async function handleResellersCreate(request, env, actor, user) {
   if (!email || !password) {
     return errResp('missing_fields', 'email and password required', 400);
   }
+  if (!strongPassword(password)) return errResp('weak_password', '12 caractères, majuscule, minuscule et chiffre requis.', 400);
+  if (body.status && !['active','suspended'].includes(body.status)) return errResp('bad_status', 'Statut invalide.', 400);
   const isReseller = user && user.role === 'reseller';
   const parentId = isReseller ? user.sub : null;
   const initial = Math.max(0, parseInt(body.credit_balance || 0, 10) || 0);
@@ -4468,9 +4592,9 @@ async function handleResellersCreate(request, env, actor, user) {
         `INSERT INTO resellers
           (id, email, password_hash, name, credit_balance_cents,
            credit_balance, commission_rate, status, parent_reseller_id, created_at)
-         VALUES (?, ?, ?, ?, 0, ?, ?, 'active', ?, ?)`,
+         VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?, ?)`,
       )
-      .bind(id, email, hash, body.name || null, initial, commission, parentId, now)
+      .bind(id, email, hash, body.name || null, initial, commission, body.status || 'active', parentId, now)
       .run();
   } catch (e) {
     return errResp('duplicate_email', 'A reseller with this email already exists', 409);
@@ -4528,11 +4652,18 @@ async function handleResellersUpdate(request, env, id, actor, user) {
   if (body.commission_rate !== undefined && isOwner(user)) {
     sets.push('commission_rate = ?'); vals.push(Number(body.commission_rate));
   }
-  if (body.password) { sets.push('password_hash = ?'); vals.push(await hashPassword(body.password)); }
+  if (body.status !== undefined && !['active','suspended','pending'].includes(body.status)) return errResp('bad_status', 'Statut invalide.', 400);
+  if (body.password) {
+    if (!strongPassword(body.password)) return errResp('weak_password', '12 caractères, majuscule, minuscule et chiffre requis.', 400);
+    await ensurePasswordChangedColumn(env, 'resellers');
+    sets.push('password_hash = ?', 'password_changed_at = ?'); vals.push(await hashPassword(body.password), Date.now());
+    await revokeSessions(env, { sub: id, role: 'reseller' });
+  }
   if (sets.length === 0) return jsonResp({ updated: 0 });
   vals.push(id);
   await env.DB.prepare(`UPDATE resellers SET ${sets.join(', ')} WHERE id = ?`).bind(...vals).run();
-  await logAudit(env, request, actor, 'reseller.update', { type: 'reseller', id }, before, body);
+  if (body.status && body.status !== 'active') await revokeSessions(env, {sub:id,role:'reseller'});
+  await logAudit(env, request, actor, 'reseller.update', { type: 'reseller', id }, redactSecrets(before), redactSecrets(body));
   return jsonResp({ updated: 1 });
 }
 
@@ -4863,25 +4994,17 @@ async function handleActivate(request, env, user, actor, idemSlot = null) {
 
   const isReseller = user.role === 'reseller';
 
-  // ----- Plans autorisés selon le rôle (sécurité serveur) -----
-  //  Les REVENDEURS ne vendent que : 1 an (1 crédit), à vie (2 crédits),
-  //  et les essais gratuits (0 crédit) pour faire tester un prospect.
-  //  L'activation 'monthly' (1 mois) — et 3/6 mois — est RÉSERVÉE à
-  //  l'administrateur. On bloque ici côté serveur : masquer le bouton
-  //  dans le panel ne suffit pas (un revendeur pourrait appeler l'API).
-  const isTrialPlan = typeof plan === 'string' && plan.startsWith('trial');
-  const RESELLER_PLANS = ['yearly', 'lifetime'];
-  if (isReseller && !isTrialPlan && !RESELLER_PLANS.includes(plan)) {
-    return errResp(
-      'plan_forbidden',
-      'Ce plan est réservé à l’administrateur. Les revendeurs activent 1 an (1 crédit) ou à vie (2 crédits).',
-      403,
-    );
-  }
-
+  // Les plans et durées sont accordés par le propriétaire, vérifiés ici
+  // puis à nouveau par les contraintes SQL (tous les chemins d’écriture).
   // Revendeur a debiter : lui-meme s'il est revendeur ; sinon, si l'owner
   // precise un reseller_id, on debite ce revendeur (vente pour son compte).
   const chargeResellerId = isReseller ? user.sub : (body.reseller_id || null);
+  if (chargeResellerId) {
+    const policy = await getPolicy(env, chargeResellerId);
+    if (policy.expires_at !== null && policy.expires_at <= Date.now()) return errResp('reseller_limit', 'Compte revendeur expiré.', 403);
+    if (!policy.allowed_plans.includes(plan)) return errResp('plan_forbidden', 'Ce plan n’est pas autorisé pour ce revendeur.', 403);
+    if (policy.max_activations === 0) return errResp('reseller_limit', 'Limite d’activations atteinte.', 403);
+  }
   const cost = await planCreditCost(env, plan);
   const now = Date.now();
   const days = planToDays(plan, body.custom_days);

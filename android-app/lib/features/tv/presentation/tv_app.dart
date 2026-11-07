@@ -1,3 +1,5 @@
+import '../../simple_home/presentation/widgets/announcement_banner.dart';
+import '../../../core/realtime/panel_control_gate.dart';
 // =========================================================
 //  tv_app.dart — Racine de DeFew TV (MaterialApp 10-foot)
 // =========================================================
@@ -97,7 +99,7 @@ class TvApp extends StatelessWidget {
             ),
             child: FittedBox(
               fit: BoxFit.fill,
-              child: SizedBox(width: designW, height: designH, child: child),
+              child: SizedBox(width: designW, height: designH, child: PanelControlGate(child: child)),
             ),
           );
         },
@@ -486,6 +488,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
             const _HomeHeader(),
+            const AnnouncementBanner(),
             const SizedBox(height: 14),
             Expanded(
               child: Row(

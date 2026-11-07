@@ -23,6 +23,7 @@
 // =========================================================
 
 import 'dart:convert';
+import '../../../core/network/api_config.dart';
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
@@ -36,6 +37,9 @@ class ForceUpdateChecker {
   ForceUpdateChecker._();
   static final ForceUpdateChecker instance = ForceUpdateChecker._();
 
+  final ValueNotifier<bool> requiredUpdate = ValueNotifier<bool>(false);
+  Future<void> refresh() async { requiredUpdate.value = await mustUpdate(); }
+
   /// `true` si l'app installée doit être mise à jour de force.
   Future<bool> mustUpdate(
       {Duration timeout = const Duration(seconds: 6)}) async {
@@ -48,7 +52,7 @@ class ForceUpdateChecker {
         '$kSubscriptionBaseUrl/api/app-version?build=$kBuildTs'
         '&platform=${AppPlatform.id}',
       );
-      final http.Response resp = await http.get(uri).timeout(timeout);
+      final http.Response resp = await http.get(uri, headers: kNoCacheHeaders).timeout(timeout);
       if (resp.statusCode != 200) return false;
       final Object? decoded = jsonDecode(resp.body);
       if (decoded is! Map) return false;

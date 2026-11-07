@@ -1,3 +1,4 @@
+import { sessionValid } from './account_security.js';
 // =========================================================
 //  box_channel.js — Canal panel → box (Durable Object)
 // =========================================================
@@ -25,6 +26,7 @@
 //  refusé au déploiement (erreur 10064, le 3 octobre 2026).
 // =========================================================
 
+import { publishDeviceEvent } from './device_realtime.js';
 import { createOrder, markOrderSent, recordAck } from './box_orders.js';
 
 /// Noms d'ordres connus. Inconnu = refusé, pour qu'un appelant
@@ -290,6 +292,7 @@ export async function notifyBox(env, mac, kind, opts = {}) {
       mac: clean, kind: type, traceId: opts.traceId, t0: opts.t0, t1: opts.t1,
       t2: opts.t2 || Date.now(), configRev: opts.configRev,
     });
+    await publishDeviceEvent(env, { type, mac: clean });
     if (realtimePushOff(env)) return orderId;
     const ids = { order_id: orderId || undefined, trace_id: opts.traceId || undefined };
     const body = JSON.stringify({ kind: type, mac: clean, ...ids });
@@ -420,6 +423,57 @@ export class RealtimeHub {
 
   async fetch(request) {
     const url = new URL(request.url);
+    if (['/device-ticket','/panel-ticket'].includes(url.pathname) && request.method === 'POST') {
+      const { mac, exp, actor } = await request.json();
+      if ((!actor && !normalizeMac(mac)) || !Number.isFinite(exp)) return json({ error: 'invalid' }, 400);
+      const ticket = crypto.randomUUID();
+      await this.ctx.storage.put('ticket:' + ticket, { mac, exp, actor, until: Date.now() + 60_000 });
+      // DO storage has no TTL option: an alarm also reaps abandoned tickets.
+      await this.ctx.storage.setAlarm(Date.now() + 60_000);
+      return new Response(JSON.stringify({ ticket }), { headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
+    }
+    if (['/device-ws','/panel-ws'].includes(url.pathname)) {
+      const id = 'ticket:' + (url.searchParams.get('ticket') || '');
+      const session = await this.ctx.storage.transaction(async tx => {
+        const value = await tx.get(id);
+        await tx.delete(id);
+        return value;
+      });
+      if (!session || session.until <= Date.now() || session.exp <= Date.now()) return json({ error: 'invalid_ticket' }, 401);
+      if (url.pathname === '/panel-ws') {
+        if (!session.actor || !await sessionValid(this.env, session.actor)) return json({ error: 'invalid_session' }, 401);
+        const headers = new Headers(request.headers);
+        headers.set('X-Panel-Role', session.actor.role);
+        headers.set('X-Panel-Id', session.actor.sub);
+        headers.set('X-Panel-Sid', session.actor.sid || '');
+        headers.set('X-Panel-Exp', String(session.exp));
+        return this.#socket(new Request('https://hub/ws', { headers }));
+      }
+      if (session.actor) return json({ error: 'wrong_ticket_audience' }, 401);
+      const pair = new WebSocketPair();
+      pair[1].serializeAttachment({ role: 'device', mac: session.mac, exp: session.exp });
+      this.ctx.acceptWebSocket(pair[1], ['device']);
+      pair[1].send(JSON.stringify({ v: 1, type: 'hello' }));
+      return new Response(null, { status: 101, webSocket: pair[0] });
+    }
+    if (url.pathname === '/device-notify' && request.method === 'POST') {
+      const p = await request.json();
+      const type = canonicalKind(p.type);
+      const mac = p.mac ? normalizeMac(p.mac) : '';
+      if (!type || (p.mac && !mac)) return json({ error: 'invalid_event' }, 400);
+      const version = await this.ctx.storage.transaction(async tx => {
+        const n = (Number(await tx.get('device-version')) || 0) + 1;
+        await tx.put('device-version', n);
+        return n;
+      });
+      const text = JSON.stringify({ v: 1, type, ...(mac ? { mac } : {}), version, at: Date.now() });
+      for (const ws of this.ctx.getWebSockets('device')) {
+        const a = ws.deserializeAttachment();
+        if (a.exp <= Date.now()) { try { ws.close(4001, 'session_expired'); } catch {} continue; }
+        if (!mac || a.mac === mac) { try { ws.send(text); } catch {} }
+      }
+      return json({ ok: true, version });
+    }
     if (request.headers.get('Upgrade') === 'websocket') {
       return this.#socket(request);
     }
@@ -469,6 +523,10 @@ export class RealtimeHub {
     for (const ws of this.ctx.getWebSockets()) {
       let att = {};
       try { att = ws.deserializeAttachment() || {}; } catch (_) { att = {}; }
+      if (att.exp <= Date.now() || !await sessionValid(this.env, {sub:att.id,role:att.role,sid:att.sid})) {
+        try { ws.close(4001, 'session_revoked'); } catch {}
+        continue;
+      }
       const allowed = panelMaySee(
         { id: att.id, role: att.role },
         resellerId,
@@ -486,7 +544,7 @@ export class RealtimeHub {
     const role = request.headers.get('X-Panel-Role') || '';
     const id = request.headers.get('X-Panel-Id') || '';
     if (role && id) {
-      server.serializeAttachment({ role, id });
+      server.serializeAttachment({ role, id, sid: request.headers.get('X-Panel-Sid') || '', exp: Number(request.headers.get('X-Panel-Exp')) || 0 });
     } else {
       server.serializeAttachment({ role: 'box' });
     }
@@ -501,7 +559,20 @@ export class RealtimeHub {
     return new Response(null, { status: 101, webSocket: client });
   }
 
+  async alarm() {
+    const tickets = await this.ctx.storage.list({ prefix: 'ticket:' });
+    let next = Infinity;
+    for (const [id, value] of tickets) {
+      if (value.until <= Date.now()) await this.ctx.storage.delete(id);
+      else next = Math.min(next, value.until);
+    }
+    if (Number.isFinite(next)) await this.ctx.storage.setAlarm(next);
+  }
+
   async webSocketMessage(ws, message) {
+    const att = ws.deserializeAttachment() || {};
+    if (att.exp && att.exp <= Date.now()) { ws.close(4001, 'session_expired'); return; }
+    if (att.role !== 'device' && att.sid && !await sessionValid(this.env, { role: att.role, sub: att.id, sid: att.sid })) { ws.close(4001, 'session_revoked'); return; }
     // « hello » garde le chemin ouvert à travers les proxys.
     // Tout autre texte est ignoré. On ne le journalise pas :
     // un client pourrait y coller un mot de passe par erreur.

@@ -50,11 +50,15 @@ class _AddPlaylistScreenState extends State<AddPlaylistScreen> {
   @override
   void initState() {
     super.initState();
+    DefaultServersApi.current.addListener(_serversChanged);
     _loadServers();
   }
 
+  void _serversChanged() { _loadServers(); }
+
   @override
   void dispose() {
+    DefaultServersApi.current.removeListener(_serversChanged);
     _userCtrl.dispose();
     _passCtrl.dispose();
     super.dispose();

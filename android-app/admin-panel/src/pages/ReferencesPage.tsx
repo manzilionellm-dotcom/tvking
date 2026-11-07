@@ -1,3 +1,4 @@
+import { useT } from '@/lib/i18n';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
 import { ListPager } from '@/components/ListPager';
@@ -39,6 +40,7 @@ function RefStatus({ status }: { status: string }) {
 }
 
 export function ReferencesPage({ onLogout }: { onLogout: () => void }) {
+  const t = useT();
   const [items, setItems] = useState<ActivationReference[]>([]);
   const [offset, setOffset] = useState(0);
   const [total, setTotal] = useState(0);
@@ -116,7 +118,7 @@ export function ReferencesPage({ onLogout }: { onLogout: () => void }) {
               <th className="px-4 py-3">MAC</th>
               <th className="px-4 py-3">Client</th>
               <th className="px-4 py-3">Statut</th>
-              <th className="px-4 py-3">Username(s)</th>
+              <th className="px-4 py-3">{t('references.usernames')}</th>
               <th className="px-4 py-3">Serveur(s)</th>
               <th className="px-4 py-3">Activé le</th>
             </tr>

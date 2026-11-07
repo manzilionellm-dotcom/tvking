@@ -48,6 +48,7 @@ class _TvAddSourceScreenState extends State<TvAddSourceScreen> {
   @override
   void initState() {
     super.initState();
+    DefaultServersApi.current.addListener(_serversChanged);
     DefaultServersApi.fetch().then((List<DefaultServer> list) {
       if (!mounted) return;
       final List<DefaultServer> ok =
@@ -59,8 +60,11 @@ class _TvAddSourceScreenState extends State<TvAddSourceScreen> {
     });
   }
 
+  void _serversChanged() { if (mounted) setState(() => _servers = DefaultServersApi.current.value); }
+
   @override
   void dispose() {
+    DefaultServersApi.current.removeListener(_serversChanged);
     _serverC.dispose();
     _userC.dispose();
     _passC.dispose();

@@ -1,0 +1,14 @@
+{
+  "name": "atlas-worker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test *.test.mjs",
+    "build": "wrangler deploy --dry-run --outdir dist",
+    "test:realtime": "npm run build && node --test realtime_workerd.e2e.mjs"
+  },
+  "devDependencies": {
+    "miniflare": "^4.20260730.0",
+    "wrangler": "^4.0.0"
+  }
+}

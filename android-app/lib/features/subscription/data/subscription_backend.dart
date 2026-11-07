@@ -20,6 +20,8 @@
 // =========================================================
 
 import 'dart:convert';
+import '../../../core/network/api_config.dart';
+import '../../../core/realtime/device_session.dart';
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
@@ -33,19 +35,7 @@ import '../../playlists/data/playlist_repository.dart';
 import '../../playlists/domain/playlist.dart';
 import 'now_playing.dart';
 
-/// URL du Worker Cloudflare — DOIT être le MÊME backend que celui
-/// utilisé par le panneau admin (admin-panel, `VITE_API_BASE`), sinon
-/// l'app lit un autre serveur que celui où le panel écrit les
-/// activations/sources → « l'app ne se connecte pas avec le panel ».
-///
-/// Historique du bug : l'app a pointé sur `99999.7themotion.com` (ancien
-/// worker) PUIS sur `seven-motion-backend.manzilionel-lm.workers.dev`
-/// (sous-domaine workers.dev INJOIGNABLE → l'activation du panel ne
-/// descendait jamais dans l'app). On aligne désormais sur le Custom
-/// Domain FIABLE `app.7themotion.com` (= le worker que le panel utilise
-/// aussi). Résultat : l'activation panel → app redevient automatique.
-const String kSubscriptionBaseUrl =
-    'https://app.7themotion.com';
+const String kSubscriptionBaseUrl = kApiBaseUrl;
 
 /// Snapshot de l'état renvoyé par le serveur. Immuable.
 @immutable
@@ -212,10 +202,7 @@ abstract final class SubscriptionBackend {
       final http.Response resp = await http
           .post(
             Uri.parse('$kSubscriptionBaseUrl/api/heartbeat'),
-            headers: const <String, String>{
-              'Content-Type': 'application/json',
-              'Accept': 'application/json',
-            },
+            headers: <String, String>{...await DeviceSession.headers(), 'Content-Type': 'application/json'},
             body: jsonEncode(payload),
           )
           .timeout(const Duration(seconds: 8));
@@ -227,9 +214,10 @@ abstract final class SubscriptionBackend {
       }
       final Map<String, dynamic> body =
           jsonDecode(resp.body) as Map<String, dynamic>;
+      await DeviceSession.accept(body);
       return RemoteSubscriptionStatus.fromJson(body);
     } catch (e) {
-      if (kDebugMode) debugPrint('[Subscription] heartbeat error: $e');
+      if (kDebugMode) debugPrint('[Subscription] heartbeat error: ${e.runtimeType}');
       return RemoteSubscriptionStatus.unknown;
     }
   }
@@ -277,17 +265,16 @@ abstract final class SubscriptionBackend {
       final http.Response resp = await http
           .get(
             Uri.parse('$kSubscriptionBaseUrl/api/status/$mac'),
-            headers: const <String, String>{
-              'Accept': 'application/json',
-            },
+            headers: await DeviceSession.headers(),
           )
           .timeout(const Duration(seconds: 6));
       if (resp.statusCode != 200) return RemoteSubscriptionStatus.unknown;
       final Map<String, dynamic> body =
           jsonDecode(resp.body) as Map<String, dynamic>;
+      await DeviceSession.accept(body);
       return RemoteSubscriptionStatus.fromJson(body);
     } catch (e) {
-      if (kDebugMode) debugPrint('[Subscription] getStatus error: $e');
+      if (kDebugMode) debugPrint('[Subscription] getStatus error: ${e.runtimeType}');
       return RemoteSubscriptionStatus.unknown;
     }
   }

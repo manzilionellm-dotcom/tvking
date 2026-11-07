@@ -1,3 +1,4 @@
+import { AccountSecurity } from '@/components/AccountSecurity';
 import { FormEvent, ReactNode, useEffect, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
 import { meApi, getCurrentUser, isOwnerRole, type MeUser, ApiError } from '@/lib/api';
@@ -41,6 +42,7 @@ export function AccountPage({ onLogout }: { onLogout: () => void }) {
 
         {/* ===== Changer mot de passe ===== */}
         <PasswordForm />
+        <AccountSecurity onLogout={onLogout} />
       </div>
     </AppLayout>
   );
@@ -57,7 +59,7 @@ function PasswordForm() {
   async function submit(e: FormEvent) {
     e.preventDefault();
     setMsg(null);
-    if (next.length < 4) {
+    if (next.length < 12 || !/[a-z]/.test(next) || !/[A-Z]/.test(next) || !/[0-9]/.test(next)) {
       setMsg({ ok: false, text: t('account.pwdShort') });
       return;
     }

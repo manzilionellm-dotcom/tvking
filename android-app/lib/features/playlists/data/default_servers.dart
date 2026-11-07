@@ -21,6 +21,7 @@
 // =========================================================
 
 import 'dart:convert';
+import '../../../core/network/api_config.dart';
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
@@ -66,6 +67,7 @@ class DefaultServer {
 }
 
 abstract final class DefaultServersApi {
+  static final ValueNotifier<List<DefaultServer>> current = ValueNotifier<List<DefaultServer>>(<DefaultServer>[]);
   /// Clé du cache SharedPreferences (dernière liste valide connue).
   static const String _kCacheKey = 'default_servers_cache_v1';
 
@@ -90,6 +92,7 @@ abstract final class DefaultServersApi {
     final List<DefaultServer>? network = await _fetchFromNetwork();
     if (network != null) {
       _memoryCache = network;
+      current.value = network;
       await _writeCache(network);
       return network;
     }
@@ -97,6 +100,7 @@ abstract final class DefaultServersApi {
     // Réseau KO → on retombe sur le dernier cache disque connu.
     final List<DefaultServer> disk = await _readCache();
     _memoryCache = disk;
+    current.value = disk;
     return disk;
   }
 
@@ -105,7 +109,7 @@ abstract final class DefaultServersApi {
       final http.Response resp = await http
           .get(
             Uri.parse('$kSubscriptionBaseUrl/api/servers'),
-            headers: const <String, String>{'Accept': 'application/json'},
+            headers: kNoCacheHeaders,
           )
           .timeout(const Duration(seconds: 8));
       if (resp.statusCode != 200) {

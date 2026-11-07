@@ -17,6 +17,7 @@
 // =========================================================
 
 import 'dart:convert';
+import '../../../core/network/api_config.dart';
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
@@ -83,6 +84,7 @@ class Announcement {
 }
 
 abstract final class AnnouncementRepository {
+  static final ValueNotifier<Announcement?> current = ValueNotifier<Announcement?>(null);
   /// Clé SharedPreferences : id de la dernière annonce fermée par l'user.
   static const String _kDismissedIdKey = 'announcement_dismissed_id';
 
@@ -92,12 +94,14 @@ abstract final class AnnouncementRepository {
   static Future<Announcement?> fetchLatest() async {
     try {
       final http.Response resp = await http
-          .get(Uri.parse('$kSubscriptionBaseUrl/api/announcement'))
+          .get(Uri.parse('$kSubscriptionBaseUrl/api/announcement'), headers: kNoCacheHeaders)
           .timeout(const Duration(seconds: 6));
       if (resp.statusCode != 200) return null;
       final Object? decoded = jsonDecode(resp.body);
       if (decoded is! Map<String, dynamic>) return null;
-      return Announcement.fromJson(decoded);
+      final Announcement? announcement = Announcement.fromJson(decoded);
+      current.value = announcement;
+      return announcement;
     } catch (e) {
       if (kDebugMode) debugPrint('[Announcement] fetch: $e');
       return null;

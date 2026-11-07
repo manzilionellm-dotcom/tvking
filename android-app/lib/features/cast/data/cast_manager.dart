@@ -1,3 +1,4 @@
+import '../../../core/network/api_config.dart';
 // =========================================================
 //  cast_manager.dart — État global du casting
 // =========================================================
@@ -1100,7 +1101,7 @@ class CastManager extends ChangeNotifier {
   String _workerTsUrl(String upstreamUrl) {
     final String b64 =
         base64Url.encode(utf8.encode(upstreamUrl)).replaceAll('=', '');
-    return 'https://app.7themotion.com/cs/$b64.ts';
+    return '$kApiBaseUrl/cs/$b64.ts';
   }
 
   /// Choisit l'URL à pousser en stratégie DIRECT (0/1) vers une TV DLNA.

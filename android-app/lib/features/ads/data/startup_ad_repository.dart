@@ -8,6 +8,7 @@
 // =========================================================
 
 import 'dart:convert';
+import '../../../core/network/api_config.dart';
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
@@ -34,7 +35,7 @@ class AdConfig {
       AdConfig(enabled: false, url: '', skip: 5, freq: 'always');
 }
 
-class StartupAdRepository {
+class StartupAdRepository extends ChangeNotifier {
   StartupAdRepository._();
   static final StartupAdRepository instance = StartupAdRepository._();
 
@@ -45,7 +46,7 @@ class StartupAdRepository {
   Future<AdConfig> fetch() async {
     try {
       final http.Response resp = await http
-          .get(Uri.parse('$kSubscriptionBaseUrl/api/ad'))
+          .get(Uri.parse('$kSubscriptionBaseUrl/api/ad'), headers: kNoCacheHeaders)
           .timeout(const Duration(seconds: 5));
       if (resp.statusCode != 200) return _config;
       final Object? d = jsonDecode(resp.body);
@@ -55,12 +56,16 @@ class StartupAdRepository {
       final int skip = rawSkip is int
           ? rawSkip
           : (int.tryParse('${rawSkip ?? ''}') ?? 5);
-      _config = AdConfig(
+      final AdConfig next = AdConfig(
         enabled: d['enabled'] == true && url.isNotEmpty,
         url: url,
         skip: skip.clamp(0, 60),
         freq: (d['freq'] ?? 'always').toString(),
       );
+      if (next.enabled != _config.enabled || next.url != _config.url || next.skip != _config.skip || next.freq != _config.freq) {
+        _config = next;
+        notifyListeners();
+      }
     } catch (e) {
       if (kDebugMode) debugPrint('[StartupAd] $e');
     }

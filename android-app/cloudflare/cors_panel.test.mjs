@@ -19,7 +19,7 @@ import worker from './worker.js';
 import { createD1 } from './test_support/d1_sqlite.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const ORIGIN = 'https://tvking-admin.pages.dev';
+const ORIGIN = 'https://atlas-console-k7q2.vercel.app';
 const ctx = { waitUntil() {}, passThroughOnException() {} };
 let pass = 0;
 let fail = 0;
