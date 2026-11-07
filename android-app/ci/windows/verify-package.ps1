@@ -71,6 +71,18 @@ try {
             Sort-Object FullName -Descending | Select-Object -First 1).FullName
         Assert-TrustedSignature $setup
         Assert-TrustedSignature "$portable/tv_king.exe"
+        # Une signature valide du lanceur ne protège pas une DLL non signée.
+        # Chaque PE livré doit être approuvé par la chaîne de confiance Windows.
+        $peFiles = @(Get-ChildItem $portable -Recurse -File | Where-Object { $_.Extension -in '.exe', '.dll' })
+        if (!$peFiles) { throw 'Aucun module PE dans le paquet Windows.' }
+        foreach ($file in $peFiles) {
+            & $signtool verify /pa /all /tw $file.FullName
+            if ($LASTEXITCODE -ne 0) { throw "Module Windows non signé ou non fiable : $($file.Name)" }
+            $signature = Get-AuthenticodeSignature -FilePath $file.FullName
+            if ($signature.Status -ne 'Valid' -or $null -eq $signature.TimeStamperCertificate) {
+                throw "Signature Windows invalide ou non horodatée : $($file.Name)"
+            }
+        }
         # Contrôle négatif réel : un octet de code altéré doit invalider la signature.
         $altered = Join-Path $temp 'altered.exe'
         Copy-Item "$portable/tv_king.exe" $altered
