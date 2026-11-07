@@ -359,7 +359,7 @@ Future<void> bootstrapZunoTv({Widget Function(Widget app)? wrap}) async {
 
   // 8) Notifications (alarmes « ton équipe joue bientôt ») : init du plugin +
   //    fuseaux horaires + canal Android. Idempotent, best-effort.
-  unawaited(NotificationService.instance.init());
+  if (Platform.isAndroid) unawaited(NotificationService.instance.init());
 
   // 9) Contrôle parental du profil en cours : le 1er rendu du Direct
   //    masque déjà l'Adulte si ce profil l'a activé (forcé sur Enfants).

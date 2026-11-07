@@ -55,7 +55,7 @@ try {
 
     New-Item -ItemType Directory -Force -Path $portable | Out-Null
     Expand-Archive "$dist/zuno-windows.zip" $portable
-    foreach ($file in 'tv_king.exe', 'flutter_windows.dll', 'data/app.so', 'data/icudtl.dat',
+    foreach ($file in 'tv_king.exe', 'flutter_windows.dll', 'data/app.so', 'data/icudtl.dat', 'sqlite3.dll',
         'msvcp140.dll', 'vcruntime140.dll', 'vcruntime140_1.dll') {
         if (!(Test-Path (Join-Path $portable $file))) { throw "Paquet portable incomplet : $file" }
     }
@@ -86,8 +86,8 @@ try {
         if ($LASTEXITCODE -eq 0) { throw 'Un exécutable altéré a été accepté.' }
     }
 
-    # Installer les vrais fichiers en mode utilisateur sans lancer Zuno :
-    # le test ne crée ni appareil ni session sur le panel de production.
+    # Installer puis lancer les vrais fichiers en mode smoke hors réseau :
+    # aucune inscription ni session sur le panel de production.
     $arguments = @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/CURRENTUSER',
         '/LAUNCHAFTERUPDATE=0', '/TASKS=""', "/DIR=`"$install`"")
     $process = Start-Process $setup -ArgumentList $arguments -PassThru
@@ -100,6 +100,8 @@ try {
         $relative = [IO.Path]::GetRelativePath($portable, $file.FullName)
         Assert-FileHash (Join-Path $install $relative) (Get-FileHash $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
     }
+    # Lancer les VRAIS fichiers installés, et non le répertoire de build.
+    & "$PSScriptRoot/smoke.ps1" -ExePath (Join-Path $install 'tv_king.exe')
     $uninstaller = Join-Path $install 'unins000.exe'
     if (!(Test-Path $uninstaller)) { throw 'Désinstalleur absent.' }
     if ($proof.signed) { Assert-TrustedSignature $uninstaller }

@@ -24,6 +24,7 @@
 //  (journal local + Crashlytics si configuré) — sans jamais bloquer.
 // =========================================================
 import 'dart:async';
+import 'dart:io' show Platform;
 import 'dart:ui' show PlatformDispatcher;
 
 import 'package:flutter/foundation.dart';
@@ -40,7 +41,10 @@ import '../theme/bundled_fonts.dart';
 /// `void` et non `Future` : on ne veut PAS que l'appelant `await` — la zone
 /// vit aussi longtemps que l'app. Les points d'entrée se contentent de
 /// `runGuarded(() async { … });`.
-void runGuarded(Future<void> Function() body) {
+void runGuarded(Future<void> Function() body, {
+  Widget? startupWidget,
+  void Function()? onStartupError,
+}) {
   // 1) Un sous-arbre qui plante ne casse pas tout l'écran : fond Maison Noir.
   //    NB : on utilise volontairement une couleur LITTÉRALE ici (et non
   //    AppColors) — ce widget de secours ne doit dépendre de RIEN qui
@@ -48,6 +52,13 @@ void runGuarded(Future<void> Function() body) {
   ErrorWidget.builder = (FlutterErrorDetails details) {
     CrashReporting.instance
         .recordError(details.exception, details.stack, context: 'ErrorWidget');
+    if (Platform.isWindows) {
+      return const ColoredBox(color: Color(0xFF070707), child: Center(
+        child: Text('ZUNO — Affichage indisponible. Fermez puis relancez.',
+          textDirection: TextDirection.ltr,
+          style: TextStyle(color: Color(0xFFF0EDE9))),
+      ));
+    }
     return const ColoredBox(color: Color(0xFF070707));
   };
 
@@ -76,7 +87,11 @@ void runGuarded(Future<void> Function() body) {
       // RAM ⇒ élargit. Best-effort, ne retarde jamais le démarrage.
       // Les seuils vivent dans BoxMemoryBudget (même arithmétique qu'ici
       // avant) : le focus et les logos lisent le même palier.
-      unawaited(BoxMemoryBudget.load());
+      if (Platform.isAndroid) {
+        unawaited(BoxMemoryBudget.load());
+      } else {
+        BoxMemoryBudget.useDesktop();
+      }
 
       // 2) Erreurs Flutter (build/layout/paint).
       final FlutterExceptionHandler? presentError = FlutterError.onError;
@@ -88,6 +103,7 @@ void runGuarded(Future<void> Function() body) {
         }
         CrashReporting.instance.recordError(details.exception, details.stack,
             context: 'FlutterError');
+        onStartupError?.call();
       };
 
       // 3) Erreurs async/plateforme non rattrapées → « gérées », pas de crash.
@@ -99,11 +115,21 @@ void runGuarded(Future<void> Function() body) {
 
       // Collecteur local prêt AVANT le boot. Firebase sera attaché après la
       // première image rasterisée, sans attendre sa réponse pour lancer l'UI.
-      await startWithLocalCrashReporting(body);
+      if (startupWidget == null) {
+        await startWithLocalCrashReporting(body);
+      } else {
+        // Windows doit dessiner AVANT SQLite, libmpv, plugins ou réseau.
+        runApp(startupWidget);
+        await WidgetsBinding.instance.waitUntilFirstFrameRasterized
+            .timeout(const Duration(seconds: 5));
+        await startWithLocalCrashReporting(body)
+            .timeout(const Duration(seconds: 30));
+      }
     },
     // 4) Filet ultime.
     (Object error, StackTrace stack) {
       CrashReporting.instance.recordError(error, stack, context: 'Zone');
+      onStartupError?.call();
     },
   );
 }

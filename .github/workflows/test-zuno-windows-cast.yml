@@ -142,7 +142,11 @@ jobs:
           ./ci/windows/package.ps1 -Version $env:WIN_VERSION -Build $env:WIN_BUILD `
             -Commit '${{ github.sha }}' -RequireSignature:($env:PUBLISH_REQUESTED -eq 'true')
 
-      - name: Vérifier le paquet et installer puis désinstaller sans lancer l'app
+      - name: Smoke Windows hors réseau (vrai EXE, première image et fenêtre 20 s)
+        shell: pwsh
+        run: ./ci/windows/smoke.ps1
+
+      - name: Vérifier, installer, smoke hors réseau depuis installation puis désinstaller
         shell: pwsh
         run: ./ci/windows/verify-package.ps1 -Commit '${{ github.sha }}'
 

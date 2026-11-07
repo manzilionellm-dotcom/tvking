@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:io';
+import 'package:flutter/material.dart';
 // =========================================================
 //  main_windows.dart — Zuno sur PC (Windows)
 // =========================================================
@@ -23,10 +26,26 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'core/app/guarded_main.dart';
 import 'features/cinema/data/cinema_repository.dart';
 import 'features/tv/desktop/desktop_shell.dart';
+import 'features/tv/desktop/desktop_startup.dart';
 import 'features/tv/desktop/media_kit_video_backend.dart';
 import 'main_tv.dart';
 
-void main() => runGuarded(_bootstrapWindows);
+final ValueNotifier<bool> _startupFailed = ValueNotifier<bool>(false);
+String? _smokeMarker;
+
+void main(List<String> args) {
+  if (args.length == 2 && args.first == '--zuno-smoke') {
+    _smokeMarker = args.last;
+    HttpOverrides.global = DesktopSmokeHttpOverrides();
+  }
+  runGuarded(_bootstrapWindows,
+      startupWidget: DesktopStartupScreen(failed: _startupFailed),
+      onStartupError: () {
+    _startupFailed.value = true;
+    final String? marker = _smokeMarker;
+    if (marker != null) unawaited(File(marker).writeAsString('error'));
+  });
+}
 
 Future<void> _bootstrapWindows() async {
   // 1) SQLite embarqué (avant toute ouverture de base).
@@ -38,11 +57,17 @@ Future<void> _bootstrapWindows() async {
   NativeVideoController.backendFactory = MediaKitVideoBackend.new;
 
   // 3) Fenêtre plein écran « Zuno ».
-  await DesktopWindow.prepare();
+  await DesktopWindow.prepare().timeout(const Duration(seconds: 5));
 
   // Puis EXACTEMENT le démarrage de la box, avec les raccourcis PC autour.
   // Films / Séries : recherche sur 150 000 titres (un PC a la mémoire que
   // n'ont pas les box 1–2 Go ; même code que la box, seul ce plafond change).
   CinemaRepository.instance.useDesktopMemory();
   await bootstrapZunoTv(wrap: (app) => DesktopShell(child: app));
+  // Attendre un cadre de la vraie UI, pas seulement le splash de secours.
+  await WidgetsBinding.instance.endOfFrame;
+  final String? marker = _smokeMarker;
+  if (marker != null && !_startupFailed.value) {
+    await File(marker).writeAsString('ready');
+  }
 }

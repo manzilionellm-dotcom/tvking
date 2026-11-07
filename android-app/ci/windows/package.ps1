@@ -32,7 +32,7 @@ function Assert-Signature([string]$Path) {
 }
 
 try {
-    foreach ($file in 'tv_king.exe', 'flutter_windows.dll', 'data/app.so', 'data/icudtl.dat') {
+    foreach ($file in 'tv_king.exe', 'flutter_windows.dll', 'data/app.so', 'data/icudtl.dat', 'sqlite3.dll') {
         if (!(Test-Path (Join-Path $rel $file))) { throw "Binaire incomplet : $file" }
     }
     if (!(Get-ChildItem $rel -Filter '*mpv*.dll')) { throw 'Lecteur libmpv absent.' }
