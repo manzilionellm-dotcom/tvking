@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  channel_programs_screen.dart — Replay d'une chaîne (24h)
 // =========================================================
@@ -47,6 +48,7 @@ class _ChannelProgramsScreenState extends State<ChannelProgramsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
@@ -152,6 +154,7 @@ class _ProgramTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     final DateTime now = DateTime.now();
     final _ProgramState state = _stateFor(now);
 
@@ -292,6 +295,7 @@ class _StateBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     late Color bg;
     late Color fg;
     late String text;
@@ -345,6 +349,7 @@ class _ActionIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     switch (state) {
       case _ProgramState.live:
         return Icon(Icons.play_circle_filled_rounded,

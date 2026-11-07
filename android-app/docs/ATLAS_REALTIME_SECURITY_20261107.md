@@ -24,13 +24,13 @@ Branche issue de `origin/release/atlas-console-20261029` (`8bf5390`), cible de l
 | Activation / licence | MAC ou invalidation globale pour opérations multi-MAC | État abonnement et gate ; relecture sources lors activation/transfert/reset |
 | Pub démarrage / vidéo | Globale, `/api/ad` | Gate mobile/TV global ; désactivation retire la vidéo ; fréquence existante respectée |
 | Annonces | Globale, `/api/announcement` | Bandeau mobile/accueil TV, retrait compris ; pas une notification OS garantie en arrière-plan |
-| Thème | Globale, `/api/theme` | Nom/accent là où les contrôleurs sont consommés ; **fond et tokens TV fixes restent non pilotés** |
-| Home layout | Globale, `/api/home-layout` | Repository + notifier ; **consommé par CountryHomeView, pas encore par l’accueil SimpleHome / navigation TV** |
-| Featured | Globale, `/api/featured` | Même limite : repository actualisé, rendu CountryHomeView ; pas de rendu featured ajouté à SimpleHome / TV |
+| Thème | Globale, `/api/theme` | Nom distant (mobile/titre TV), accent et fond clair/sombre ; tokens surfaces/texte/bordures mobile et TV, cache par plateforme, rebuild sans remount |
+| Home layout | Globale, `/api/home-layout` | Rendu commun dans SimpleHome et le nouvel accueil TV ; ordre, visibilité, ruban, mise en avant, favoris/récents et cinéma/séries |
+| Featured | Globale, `/api/featured` | Héros piloté dans SimpleHome et accueil TV ; changement/retrait immédiats, aucun raccourci adulte, lecteur TV natif |
 | Version / mise à jour forcée | Globale, `/api/app-version` | Gate global mobile/TV ; règles existantes Play-build/build local conservées |
 | Serveurs | Globale, `/api/servers` | Sélecteurs mobile/TV abonnés au notifier |
 
-Les limites visuelles ci-dessus sont des travaux restants, pas des fonctionnalités terminées.
+La palette dérive ses tokens du fond clair/sombre et de l’accent existants du panel ; pas de nouvelle API de réglage arbitraire token par token. Les couleurs sémantiques (erreur/live/succès) restent dédiées. La recette sur matériel physique et la mesure de latence restent requises.
 
 ## Comptes, sessions, 2FA et revendeurs
 
@@ -58,7 +58,7 @@ Deux appareils/MAC A et B + owner et deux revendeurs. Ajouter puis supprimer une
 
 ## Tests automatisés
 
-Résultats locaux : Worker **43 tests OK**, WebSocket workerd réel **1 OK** (ticket unique + ciblage/global), panel **197 tests OK** (74 + 28 lifecycle + 85 MAC/UI + 10 livraison), build panel et build Worker dry-run OK ; Flutter **116 tests OK**, analyse **0 erreur / 21 warnings / 229 infos**. SDK Flutter installé sur la box : 3.47.9. Les lints restants n’ont pas été masqués dans le dépôt.
+Résultats locaux : Worker **43 tests OK**, WebSocket workerd réel **1 OK** (ticket unique + ciblage/global), panel **197 tests OK** (74 + 28 lifecycle + 85 MAC/UI + 10 livraison), build panel et build Worker dry-run OK ; Flutter **120 tests OK** (dont 4 nouveaux thème/accueil), analyse **0 erreur / 11 warnings / 51 infos**. SDK Flutter installé sur la box : 3.47.9. Les lints restants n’ont pas été masqués dans le dépôt.
 
 Commandes :
 
@@ -75,7 +75,7 @@ flutter test
 flutter analyze
 ```
 
-Audit npm runtime panel : 2 alertes modérées React Router déjà présentes ; ne pas faire de migration majeure du routeur à l’aveugle dans ce lot. À traiter avant promotion après analyse du chemin exploitable.
+Audit npm runtime panel : patch compatible **react-router-dom 6.30.4 → 6.30.6**, router 1.23.3 → 1.23.4. Les **2 alertes modérées subsistent** ; npm propose 7.18.5 (majeure), aucun correctif 6.x suffisant. Pas de migration majeure à l’aveugle. À traiter avant promotion après analyse du chemin exploitable.
 
 `flutter analyze` a encore des warnings/lints dans le code existant ; ne pas présenter cette commande comme entièrement verte. Aucun test bout en bout sur réseau et matériel de production exécuté.
 
@@ -84,3 +84,9 @@ Audit npm runtime panel : 2 alertes modérées React Router déjà présentes ; 
 Téléchargements connus conservés, faute de remplacement vérifié : `https://app.7themotion.com/vip` (Downloader 7988141), `https://app.7themotion.com/tv` (6248618), y compris le lien de téléchargement Flutter. Aucune API Flutter ne pointe encore vers cet ancien hôte. Les pages légales déjà servies par le Worker suivent la nouvelle origine.
 
 Erreur preview Vercel signalée : Root Directory `android-app/admin-panel` absente sur la branche `gh-pages`. Proposition seulement, **non appliquée** : Ignored Build Step qui retourne 0 pour `gh-pages`, 1 sinon, par exemple `if [ "$VERCEL_GIT_COMMIT_REF" = "gh-pages" ]; then exit 0; else exit 1; fi`. Ne pas changer la production pour corriger une branche de publication d’artefacts.
+
+## Complément Phase A et publication
+
+Les contextes Flutter utilisés après await sont maintenant vérifiés (activation, cast, biométrie, enregistrements, PIN TV) ; 10 assertions null inutiles XMLTV supprimées. Les const réellement stables sont conservés après conversion des tokens dynamiques.
+
+Runbook de mise en production et rollback : [GO_LIVE_ATLAS_REALTIME.md](GO_LIVE_ATLAS_REALTIME.md), également `/workspace/atlas-realtime-reference/GO_LIVE.md` sur la box. Aucune production, migration distante, génération de secret, signature ou publication Play exécutée. Blocage Play important : Gradle release utilise encore la clé **debug** et le package exemple ; confirmer identité Play et chaîne de signature avant tout AAB.

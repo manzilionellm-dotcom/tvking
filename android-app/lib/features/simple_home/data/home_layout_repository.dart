@@ -129,7 +129,7 @@ class HomeLayoutRepository extends ChangeNotifier {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       final String? raw = prefs.getString(_cacheKey);
       if (raw == null) return;
-      _applyJsonList(jsonDecode(raw));
+      applySnapshot(jsonDecode(raw));
     } catch (e) {
       if (kDebugMode) debugPrint('[HomeLayout] cache: $e');
     }
@@ -146,7 +146,7 @@ class HomeLayoutRepository extends ChangeNotifier {
       if (decoded is! Map<String, dynamic>) return;
       final Object? items = decoded['items'];
       if (items is! List) return;
-      _applyJsonList(items);
+      applySnapshot(items);
       // Mémorise la dernière config valide.
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       await prefs.setString(_cacheKey, jsonEncode(items));
@@ -155,7 +155,7 @@ class HomeLayoutRepository extends ChangeNotifier {
     }
   }
 
-  void _applyJsonList(Object? list) {
+  void applySnapshot(Object? list) {
     if (list is! List) return;
     final Map<String, HomeSectionConfig> next = <String, HomeSectionConfig>{};
     for (final Object? it in list) {
@@ -164,7 +164,6 @@ class HomeLayoutRepository extends ChangeNotifier {
         if (c != null) next[c.key] = c;
       }
     }
-    if (next.isEmpty) return;
     _byKey = next;
     notifyListeners();
   }

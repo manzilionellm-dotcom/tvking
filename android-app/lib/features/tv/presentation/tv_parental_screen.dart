@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  tv_parental_screen.dart — Contrôle parental & Mode Enfants (TV)
 // =========================================================
@@ -51,7 +52,7 @@ class _TvParentalScreenState extends State<TvParentalScreen> {
   // ----- Changer le code PIN -----
   Future<void> _changePin() async {
     final bool ok = await _askPin(context, 'Code actuel');
-    if (!ok) return;
+    if (!ok || !mounted) return;
     final String? next = await _pickNewPin(context);
     if (next == null) return;
     try {
@@ -70,6 +71,7 @@ class _TvParentalScreenState extends State<TvParentalScreen> {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     final bool kids = ParentalControls.instance.kidsMode.value;
     return SingleChildScrollView(
       child: Column(
@@ -145,10 +147,10 @@ class _TvParentalScreenState extends State<TvParentalScreen> {
                 ),
                 const SizedBox(height: 10),
                 if (_usingDefaultPin)
-                  Text(
+                  const Text(
                     'Tu utilises encore le code par défaut 0000. '
                     'Change-le pour protéger le Mode Enfants.',
-                    style: TextStyle(
+                    style: const TextStyle(
                         fontSize: TvDimens.label,
                         fontWeight: FontWeight.w600,
                         color: TvTokens.live),
@@ -321,6 +323,7 @@ class _PinPadScreenState extends State<_PinPadScreen> {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     final bool confirmStep = widget.confirm && _firstEntry != null;
     final String title = confirmStep ? 'Confirme le code' : widget.title;
     return Center(
@@ -364,7 +367,7 @@ class _PinPadScreenState extends State<_PinPadScreen> {
               child: _error == null
                   ? null
                   : Text(_error!,
-                      style: TextStyle(
+                      style: const TextStyle(
                           fontSize: TvDimens.label,
                           fontWeight: FontWeight.w600,
                           color: TvTokens.live)),
@@ -428,6 +431,7 @@ class _PadButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Padding(
       padding: const EdgeInsets.all(7),
       child: TvFocusBuilder(
@@ -468,6 +472,7 @@ class _Card extends StatelessWidget {
   final Widget child;
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Container(
       width: 760,
       padding: const EdgeInsets.all(22),
@@ -491,6 +496,7 @@ class _TogglePill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return TvFocusBuilder(
       autofocus: autofocus,
       scale: TvFocusScale.medium,

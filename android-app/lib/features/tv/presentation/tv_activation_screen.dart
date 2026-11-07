@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 import '../../../core/network/api_config.dart';
 // =========================================================
 //  tv_activation_screen.dart — Licence « The Few » (Maison Noir)
@@ -68,6 +69,7 @@ class _TvActivationScreenState extends State<TvActivationScreen> {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     // Le design est pensé à une taille FIXE puis MIS À L'ÉCHELLE pour tenir
     // dans n'importe quel écran TV (720p → 4K, overscan inclus). FittedBox =
     // jamais de débordement, jamais « trop zoomé ». On neutralise aussi le
@@ -224,6 +226,7 @@ class _CopyButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return TvFocusBuilder(
       onSelect: onSelect,
       scale: TvFocusScale.small,

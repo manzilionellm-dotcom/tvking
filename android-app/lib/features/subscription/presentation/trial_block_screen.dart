@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  trial_block_screen.dart — Écran quand l'essai de 7 jours est fini
 // =========================================================
@@ -70,6 +71,7 @@ class _TrialBlockScreenState extends State<TrialBlockScreen> {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     final TrialBlockText t = widget.text;
     final String pay = t.payUrl.isNotEmpty ? t.payUrl : kPurchaseUrl;
     return Scaffold(
@@ -205,6 +207,7 @@ class TrialDaysHint extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return ListenableBuilder(
       listenable: SubscriptionState.instance,
       builder: (BuildContext context, _) {

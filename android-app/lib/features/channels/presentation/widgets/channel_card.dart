@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  channel_card.dart — Card paysage pour les grilles
 // =========================================================
@@ -65,6 +66,7 @@ class _ChannelCardState extends State<ChannelCard> {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     final Channel ch = widget.channel;
 
     // `FocusableActionDetector` mappe la touche OK/Enter télécommande
@@ -235,6 +237,7 @@ class _LivePill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
@@ -260,6 +263,7 @@ class _FavoriteToggle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return StreamBuilder<Set<String>>(
       stream: FavoritesRepository.instance.favoritesStream,
       initialData: FavoritesRepository.instance.current,

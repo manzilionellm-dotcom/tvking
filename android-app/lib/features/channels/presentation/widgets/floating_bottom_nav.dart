@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  floating_bottom_nav.dart — Barre de navigation flottante
 // =========================================================
@@ -51,6 +52,7 @@ class FloatingBottomNav extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
@@ -133,6 +135,7 @@ class _NavButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     final Color color = selected ? AppColors.accent : Colors.white;
 
     return TvFocusable(

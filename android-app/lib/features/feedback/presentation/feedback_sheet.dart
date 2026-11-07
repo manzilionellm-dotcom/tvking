@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  feedback_sheet.dart — Feuille « Donne ton avis »
 // =========================================================
@@ -65,13 +66,14 @@ class _FeedbackSheetState extends State<_FeedbackSheet> {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     final double bottomInset = MediaQuery.of(context).viewInsets.bottom;
     return Padding(
       padding: EdgeInsets.only(bottom: bottomInset),
       child: Container(
-        decoration: const BoxDecoration(
+        decoration:  BoxDecoration(
           color: AppColors.background,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          borderRadius: const BorderRadius.vertical(top: const Radius.circular(20)),
         ),
         child: SafeArea(
           top: false,

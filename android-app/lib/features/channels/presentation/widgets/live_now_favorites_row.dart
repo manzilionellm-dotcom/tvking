@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  live_now_favorites_row.dart — "Live maintenant sur tes favoris"
 // =========================================================
@@ -96,6 +97,7 @@ class _LiveNowFavoritesRowState extends State<LiveNowFavoritesRow> {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     // Si pas de favoris, on ne montre rien — l'accueil reste propre.
     if (_loading) return const SizedBox.shrink();
     if (_slots.isEmpty) return const SizedBox.shrink();
@@ -187,6 +189,7 @@ class _LiveCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     // _LiveCard est consommé dans une rangée horizontale scrollable
     // ("En direct chez tes favoris"). À la télécommande, sans
     // TvFocusable on ne pouvait ni voir où on était ni scroller la
@@ -258,7 +261,7 @@ class _LiveCard extends StatelessWidget {
                     minHeight: 3,
                     backgroundColor:
                         AppColors.accent.withValues(alpha: 0.15),
-                    valueColor: AlwaysStoppedAnimation<Color>(
+                    valueColor: const AlwaysStoppedAnimation<Color>(
                       AppColors.live,
                     ),
                   ),

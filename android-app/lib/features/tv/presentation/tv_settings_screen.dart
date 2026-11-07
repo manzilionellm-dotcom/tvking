@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  tv_settings_screen.dart — Réglages (MAC à activer + statut)
 // =========================================================
@@ -63,6 +64,7 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     final ({String label, Color color}) st = _statusOf(context);
     return SingleChildScrollView(
       child: Column(

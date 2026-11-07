@@ -1,3 +1,4 @@
+import 'core/theme/remote_palette.dart';
 import 'core/realtime/panel_control_gate.dart';
 import 'core/realtime/panel_realtime.dart';
 // =========================================================
@@ -233,7 +234,7 @@ Future<void> bootApp() async {
   // « Thème ». Non bloquant : s'applique dès que la réponse arrive et
   // RECONSTRUIT toute l'app (BrandConfig + AccentController sont dans le
   // Listenable racine). Si rien n'est configuré ou réseau KO → défauts.
-  unawaited(RemoteThemeRepository.fetchAndApply());
+  unawaited(RemoteThemeRepository.initialize());
 
   // Tarifs DISTANTS (à vie / 1 an / essai + promo) pilotés par le panel
   // « Tarifs ». Non bloquant : le bloc « Nos offres » se met à jour dès
@@ -287,9 +288,11 @@ class TvKingApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return ListenableBuilder(
       listenable: Listenable.merge(<Listenable>[
         ThemeModeRepository.instance,
+        RemotePalette.instance,
         LocaleRepository.instance,
         AccentController.instance,
         BrandConfig.instance,
@@ -308,9 +311,9 @@ class TvKingApp extends StatelessWidget {
           // fonds restés sombres = contenu invisible. On force donc le
           // mode sombre quoi qu'il arrive (y compris si l'OS est en
           // clair) ; le sélecteur Apparence a été retiré des Réglages.
-          theme: AppTheme.cinema,
-          darkTheme: AppTheme.cinema,
-          themeMode: ThemeMode.dark,
+          theme: RemotePalette.instance.decorate(AppTheme.cinema),
+          darkTheme: RemotePalette.instance.decorate(AppTheme.cinema),
+          themeMode: RemotePalette.instance.light ? ThemeMode.light : ThemeMode.dark,
 
           // Internationalisation — la liste des langues supportées
           // sort de `LocaleRepository`. Quand l'utilisateur choisit
@@ -435,6 +438,7 @@ class _AppEntryState extends State<_AppEntry> {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     // Splash tant qu'on n'a pas chargé les flags persistés.
     if (_onboardingDone == null ||
         _lockEnabled == null ||
@@ -519,6 +523,7 @@ class _Splash extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Scaffold(
       backgroundColor: AppColors.voidSurface,
       body: SafeArea(

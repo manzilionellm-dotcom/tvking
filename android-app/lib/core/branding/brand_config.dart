@@ -19,6 +19,7 @@ class BrandConfig extends ChangeNotifier {
   static final BrandConfig instance = BrandConfig._();
 
   String? _override;
+  String? get overrideName => _override;
 
   /// Nom affiché de l'app : surcharge distante (panel) si présente et non
   /// vide, sinon le nom du flavor courant (The Few).

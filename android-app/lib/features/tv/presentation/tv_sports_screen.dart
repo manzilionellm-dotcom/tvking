@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  tv_sports_screen.dart — « Actu » sport + équipes préférées (10-foot)
 // =========================================================
@@ -61,6 +62,7 @@ class _TvSportsScreenState extends State<TvSportsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     if (_favs.isEmpty) return _emptyState();
 
     final List<String> tickerItems = <String>[];
@@ -112,7 +114,7 @@ class _TvSportsScreenState extends State<TvSportsScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
-            const Icon(Icons.sports_soccer_rounded, size: 64, color: TvTokens.mutedDim),
+             Icon(Icons.sports_soccer_rounded, size: 64, color: TvTokens.mutedDim),
             const SizedBox(height: 16),
             Text('Choisis tes équipes préférées',
                 style: TvTokens.display(32, color: TvTokens.text)),
@@ -151,6 +153,7 @@ class _TeamSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -174,10 +177,10 @@ class _TeamSection extends StatelessWidget {
                         memCacheWidth: 120,
                         fadeInDuration: const Duration(milliseconds: 150),
                         placeholder: (_, __) =>
-                            const Icon(Icons.shield_rounded, color: TvTokens.muted),
+                             Icon(Icons.shield_rounded, color: TvTokens.muted),
                         errorWidget: (_, __, ___) =>
-                            const Icon(Icons.shield_rounded, color: TvTokens.muted))
-                    : const Icon(Icons.shield_rounded, color: TvTokens.muted),
+                             Icon(Icons.shield_rounded, color: TvTokens.muted))
+                    :  Icon(Icons.shield_rounded, color: TvTokens.muted),
               ),
               const SizedBox(width: 14),
               Expanded(
@@ -258,6 +261,7 @@ class _TickerState extends State<_Ticker> {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Container(
       height: 46,
       decoration: BoxDecoration(
@@ -270,9 +274,9 @@ class _TickerState extends State<_Ticker> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 14),
             alignment: Alignment.center,
-            decoration: BoxDecoration(
+            decoration: const BoxDecoration(
               color: TvTokens.live,
-              borderRadius: const BorderRadius.only(
+              borderRadius: BorderRadius.only(
                 topLeft: Radius.circular(TvDimens.cardRadius),
                 bottomLeft: Radius.circular(TvDimens.cardRadius),
               ),
@@ -298,8 +302,8 @@ class _TickerState extends State<_Ticker> {
                             fontSize: 17,
                             fontWeight: FontWeight.w600,
                             color: TvTokens.text)),
-                    const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 16),
+                     Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
                       child: Text('•', style: TextStyle(color: TvTokens.gold)),
                     ),
                   ],
@@ -320,6 +324,7 @@ class _MatchCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -401,6 +406,7 @@ class _IconBtn extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return TvFocusBuilder(
       autofocus: autofocus,
       scale: TvFocusScale.small,
@@ -433,6 +439,7 @@ class _PillButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return TvFocusBuilder(
       autofocus: autofocus,
       scale: TvFocusScale.medium,

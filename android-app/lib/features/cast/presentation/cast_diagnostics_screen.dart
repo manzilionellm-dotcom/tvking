@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  cast_diagnostics_screen.dart — Banc de test cast
 // =========================================================
@@ -99,6 +100,7 @@ class _CastDiagnosticsScreenState extends State<CastDiagnosticsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
@@ -195,6 +197,7 @@ class _IntroCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -238,6 +241,7 @@ class _DevicePicker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     final List<CastDevice> devices =
         CastManager.instance.discoveredDevices;
     return Column(
@@ -299,6 +303,7 @@ class _DeviceRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -366,6 +371,7 @@ class _PresetPicker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
@@ -407,6 +413,7 @@ class _PresetChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -460,6 +467,7 @@ class _StartButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return SizedBox(
       height: 50,
       child: FilledButton.icon(
@@ -482,6 +490,7 @@ class _RunHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     final int done = runner.results.length;
     final int total = runner.totalCount;
     final double progress = total == 0 ? 0 : done / total;
@@ -535,6 +544,7 @@ class _ResultsTable extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     if (results.isEmpty) {
       return Container(
         padding: const EdgeInsets.all(14),
@@ -578,6 +588,7 @@ class _ResultRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     final AttemptResult? win = diag.winningAttempt;
     final Color statusColor =
         diag.success ? AppColors.success : AppColors.live;
@@ -637,6 +648,7 @@ class _SummaryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     final int total = runner.results.length;
     final int ok = runner.successCount;
     final int rate = total == 0 ? 0 : (ok * 100 ~/ total);

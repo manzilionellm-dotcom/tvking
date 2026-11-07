@@ -1,3 +1,5 @@
+import '../../country_home/presentation/country_home_view.dart';
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  simple_home_screen.dart — Accueil mobile (façon TiviMate)
 // =========================================================
@@ -36,7 +38,6 @@ import '../../channels/presentation/favorites_screen.dart';
 import '../../channels/presentation/search_screen.dart';
 import '../../channels/presentation/widgets/mac_activation_view.dart';
 import '../../subscription/presentation/trial_block_screen.dart';
-import '../../channels/presentation/widgets/resume_banner.dart';
 import '../../feedback/presentation/feedback_sheet.dart';
 import '../../channels/presentation/widgets/source_choice_sheet.dart';
 import '../../channels/data/recently_watched_repository.dart';
@@ -72,16 +73,16 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Scaffold(
       backgroundColor: AppColors.background,
       body: DecoratedBox(
-        decoration: const BoxDecoration(gradient: AppColors.backgroundGradient),
+        decoration: BoxDecoration(gradient: AppColors.backgroundGradient),
         child: SafeArea(
           child: StreamBuilder<List<Channel>>(
             stream: PlaylistRepository.instance.channelsStream,
             initialData: PlaylistRepository.instance.currentChannels,
-            builder:
-                (BuildContext context, AsyncSnapshot<List<Channel>> snap) {
+            builder: (BuildContext context, AsyncSnapshot<List<Channel>> snap) {
               final List<Channel> channels = snap.data ?? const <Channel>[];
 
               // Pas de playlist → écran d'activation par code MAC.
@@ -97,11 +98,28 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
                   const AnnouncementBanner(),
                   // « Reprendre » : bannière façon Continue Watching de
                   // Netflix (génère ~70% des plays). Apparaît seulement si
-                  // une session récente (< 60 min) existe ; sinon invisible.
-                  // En Privé, aucun historique n'est tracké (incognito) →
-                  // elle reste donc masquée, ce qui respecte la promesse.
-                  const ResumeBanner(),
-                  Expanded(child: CategoryBrowserView(channels: channels)),
+                  // Accueil commun piloté par le panel. Les catégories restent accessibles.
+                  Expanded(
+                      child: CountryHomeView(
+                    channels: channels
+                        .where((Channel c) => c.genre != ChannelGenre.adult)
+                        .toList(),
+                    trailing: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: FilledButton.icon(
+                          icon: const Icon(Icons.grid_view),
+                          label: Text(context.l10n.categoriesTitle),
+                          onPressed: () => Navigator.of(context)
+                              .push<void>(MaterialPageRoute<void>(
+                                  builder: (_) => Scaffold(
+                                        appBar: AppBar(
+                                            title: Text(
+                                                context.l10n.categoriesTitle)),
+                                        body: CategoryBrowserView(
+                                            channels: channels),
+                                      ))),
+                        )),
+                  )),
                   _buildBottomBar(),
                 ],
               );
@@ -249,7 +267,7 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
     return Container(
       decoration: BoxDecoration(
         color: AppColors.surface.withValues(alpha: 0.35),
-        border: const Border(top: BorderSide(color: AppColors.surface)),
+        border: Border(top: BorderSide(color: AppColors.surface)),
       ),
       padding: const EdgeInsets.only(top: 6, bottom: 4),
       child: Row(
@@ -314,6 +332,7 @@ class _BottomNavItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     final Color color =
         (active || accent) ? AppColors.accent : AppColors.textTertiary;
     return InkWell(

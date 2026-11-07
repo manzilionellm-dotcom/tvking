@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  search_screen.dart — Découverte premium type Netflix
 // =========================================================
@@ -316,6 +317,7 @@ class _SearchScreenState extends State<SearchScreen> {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
@@ -409,6 +411,7 @@ class _SearchHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Padding(
       padding: const EdgeInsets.fromLTRB(8, 8, 12, 8),
       child: Row(
@@ -548,6 +551,7 @@ class _IdleDiscovery extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return ListView(
       physics: const BouncingScrollPhysics(),
       padding: const EdgeInsets.only(top: 4, bottom: 32),
@@ -709,6 +713,7 @@ class _SectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 8, 10),
       child: Row(
@@ -744,6 +749,7 @@ class _Chip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -794,6 +800,7 @@ class _GenreChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -836,6 +843,7 @@ class _DiscoveryRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     if (channels.isEmpty) {
       return Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -872,6 +880,7 @@ class _DiscoveryPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -959,6 +968,7 @@ class _ResultsGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return LayoutBuilder(
       builder: (BuildContext context, BoxConstraints cons) {
         final double w = cons.maxWidth;
@@ -1020,6 +1030,7 @@ class _NoResults extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 32, 20, 32),
       physics: const BouncingScrollPhysics(),
@@ -1104,6 +1115,7 @@ class _EmptyCatalog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24),

@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  categories_screen.dart — Liste de toutes les catégories
 // =========================================================
@@ -24,6 +25,7 @@ class CategoriesScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
@@ -90,6 +92,7 @@ class _CategoryTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     // Dégradé déterministe basé sur le nom — chaque catégorie a "sa"
     // dérivée Maison Noir stable. On reste dans la famille accentEmber /
     // surfaces sombres : pas de néons, pas d'arc-en-ciel.

@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  tv_components.dart — Composants « Maison Noir » réutilisables
 // =========================================================
@@ -41,6 +42,7 @@ class TvWhatsAppQr extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
@@ -68,7 +70,7 @@ class TvWhatsAppQr extends StatelessWidget {
         Row(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
-            const Icon(Icons.qr_code_scanner_rounded,
+             Icon(Icons.qr_code_scanner_rounded,
                 color: TvTokens.goldBright, size: 22),
             const SizedBox(width: 10),
             Text(context.l10n.tvScanToActivate,
@@ -95,6 +97,7 @@ class TvLogo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Image.asset(_kLogoAsset, width: width, fit: BoxFit.contain);
   }
 }
@@ -107,6 +110,7 @@ class TvCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Container(
       decoration: BoxDecoration(
         color: TvTokens.card,
@@ -118,7 +122,7 @@ class TvCard extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
           // Filet d'accent or (1px) en haut.
-          const SizedBox(
+           SizedBox(
             height: 1,
             child: DecoratedBox(decoration: BoxDecoration(gradient: TvTokens.goldHairline)),
           ),
@@ -134,10 +138,10 @@ class TvSectionLabel extends StatelessWidget {
   const TvSectionLabel(this.text, {super.key});
   final String text;
   @override
-  Widget build(BuildContext context) => Text(
+  Widget build(BuildContext context) { RemotePalette.watch(context); return Text(
         text.toUpperCase(),
         style: TvTokens.ui(10.5, weight: FontWeight.w600, color: TvTokens.mutedDim, spacing: 2.8),
-      );
+      ); }
 }
 
 /// Pastille prix : « À VIE » + montant or.
@@ -148,6 +152,7 @@ class TvPricePill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 10),
       decoration: BoxDecoration(
@@ -185,6 +190,7 @@ class TvCtaButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return TvFocusBuilder(
       autofocus: autofocus,
       scale: TvFocusScale.large,
@@ -230,6 +236,7 @@ class TvEmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,

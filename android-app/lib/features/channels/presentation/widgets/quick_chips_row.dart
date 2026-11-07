@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  quick_chips_row.dart — Rangée de raccourcis rapides
 // =========================================================
@@ -30,6 +31,7 @@ class QuickChipsRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Row(
@@ -84,6 +86,7 @@ class _Chip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     // Wrappé dans TvFocusable pour que la télécommande / clavier
     // reçoive le focus ring ember 2.4 px (vs le focus système Flutter
     // grisâtre quasi-invisible). showGlow: false parce que les chips

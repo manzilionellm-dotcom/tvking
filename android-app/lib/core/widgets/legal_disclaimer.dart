@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  legal_disclaimer.dart — Mention légale The Few
 // =========================================================
@@ -40,6 +41,7 @@ class LegalDisclaimer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     if (!_full) return _buildCompact();
     return _buildFull();
   }

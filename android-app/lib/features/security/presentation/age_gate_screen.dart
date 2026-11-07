@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  age_gate_screen.dart — Modal "Vous avez 18 ans ou plus ?"
 // =========================================================
@@ -52,6 +53,7 @@ class AgeGateScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Scaffold(
       backgroundColor: AppColors.voidSurface,
       body: SafeArea(
@@ -156,6 +158,7 @@ class _PrimaryButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return InkWell(
       onTap: onPressed,
       borderRadius: BorderRadius.circular(CinematicSpacing.radiusM),
@@ -193,6 +196,7 @@ class _GhostButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return TextButton(
       onPressed: onPressed,
       child: Text(

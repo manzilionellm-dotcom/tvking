@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  video_player_screen.dart — Lecteur vidéo HAUT NIVEAU
 // =========================================================
@@ -682,7 +683,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         );
       }
       if (!ok) {
-        _toast(context.l10n.recStartFailed);
+        if (mounted) _toast(context.l10n.recStartFailed);
         return;
       }
 
@@ -701,7 +702,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         _toast(context.l10n.recInProgress);
       }
     } catch (e) {
-      _toast(context.l10n.startFailedWithError('$e'));
+      if (mounted) _toast(context.l10n.startFailedWithError('$e'));
     }
   }
 
@@ -741,7 +742,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         }
       }
     } catch (e) {
-      _toast(context.l10n.recStopError('$e'));
+      if (mounted) _toast(context.l10n.recStopError('$e'));
     }
   }
 
@@ -772,7 +773,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: <Widget>[
-                      Icon(Icons.fiber_manual_record_rounded,
+                      const Icon(Icons.fiber_manual_record_rounded,
                           color: AppColors.live, size: 14),
                       const SizedBox(width: 6),
                       Text(
@@ -1513,6 +1514,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     final bool useTikTokSwipe = _canZap && !_isTvUi;
     // Initialise le PageController au PREMIER build où on en a besoin.
     // Lazy car `_zapIndex` dépend de `_currentChannel` qui peut changer
@@ -2211,7 +2213,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
-            Icon(
+            const Icon(
               Icons.error_outline_rounded,
               color: AppColors.live,
               size: 56,
@@ -2275,6 +2277,7 @@ class _PlayPauseButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     // Pas de cercle, pas de bordure — juste l'icône blanche.
     // Apple TV / Netflix mobile : l'OSD reste discret, l'icône
     // a une légère ombre pour rester lisible sur les scènes claires.
@@ -2319,6 +2322,7 @@ class _SeekIconButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Semantics(
       button: true,
       label: semanticsLabel,
@@ -2373,6 +2377,7 @@ class _SeekBarState extends State<_SeekBar> {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return StreamBuilder<Duration>(
       stream: widget.player.stream.position,
       builder: (BuildContext context, AsyncSnapshot<Duration> snap) {
@@ -2449,6 +2454,7 @@ class _ControlButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return InkWell(
       borderRadius: BorderRadius.circular(12),
       onTap: onTap,
@@ -2482,6 +2488,7 @@ class _FavoriteToggle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return StreamBuilder<Set<String>>(
       stream: FavoritesRepository.instance.favoritesStream,
       initialData: FavoritesRepository.instance.current,
@@ -2528,6 +2535,7 @@ class _TvDpadButtonState extends State<_TvDpadButton> {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     final double size = widget.large ? 96 : 72;
     final double iconSize = widget.large ? 56 : 40;
     return Focus(
@@ -2595,6 +2603,7 @@ class _ZapPreviewPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     final String? logoUrl = channel.logoUrl;
     return ColoredBox(
       color: Colors.black,
@@ -2699,6 +2708,7 @@ class _CastingOverlay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return ListenableBuilder(
       listenable: CastManager.instance,
       builder: (BuildContext context, _) {

@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  search_result_card.dart — Card riche pour résultats search
 // =========================================================
@@ -34,6 +35,7 @@ class SearchResultCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     final ChannelGenre genre = channel.genre;
     final ChannelQuality quality = channel.quality;
     final CountryInfo? country = channel.country;
@@ -71,9 +73,9 @@ class SearchResultCard extends StatelessWidget {
                       channel: channel,
                       size: ChannelLogoSize.large,
                     ),
-                    const Positioned.fill(
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
+                     const Positioned.fill(
+                      child: const DecoratedBox(
+                        decoration: const BoxDecoration(
                           gradient: AppColors.cardScrim,
                         ),
                       ),
@@ -154,6 +156,7 @@ class SearchResultCard extends StatelessWidget {
 class _LiveBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
@@ -192,6 +195,7 @@ class _QualityBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(

@@ -1,3 +1,4 @@
+import 'remote_palette.dart';
 // =========================================================
 //  app_colors.dart — Facade Cinema Mode du système The Few
 // =========================================================
@@ -26,22 +27,22 @@ abstract final class AppColors {
   // -------------------------------------------------------
 
   /// Fond principal — charbon presque noir avec une trace de chaleur.
-  static const Color background = Color(0xFF0A0A0C);
+  static Color get background => RemotePalette.instance.resolve('background', const Color(0xFF0A0A0C));
 
   /// Surface la plus profonde — splash, vidéo plein écran.
-  static const Color voidSurface = Color(0xFF050507);
+  static Color get voidSurface => RemotePalette.instance.resolve('background', const Color(0xFF050507));
 
   /// Surface élevée (cards, panels, sheets).
-  static const Color surface = Color(0xFF14141A);
+  static Color get surface => RemotePalette.instance.resolve('surface', const Color(0xFF14141A));
 
   /// Glassmorphism — à combiner avec BackdropFilter.
-  static const Color surfaceHigh = Color(0xFF1C1C24);
+  static Color get surfaceHigh => RemotePalette.instance.resolve('surfaceHigh', const Color(0xFF1C1C24));
 
   /// Overlay le plus haut (modals, snackbars).
-  static const Color surfaceOverlay = Color(0xFF28282F);
+  static Color get surfaceOverlay => RemotePalette.instance.resolve('overlay', const Color(0xFF28282F));
 
   /// Liseré subtil (textPrimary @ 8% alpha).
-  static Color get border => const Color(0xFFF0EDE9).withValues(alpha: 0.08);
+  static Color get border => RemotePalette.instance.resolve('border', const Color(0x14F0EDE9));
 
   // -------------------------------------------------------
   //  PALETTE CINÉMA — niveaux supplémentaires (Phase 1 redesign)
@@ -53,25 +54,25 @@ abstract final class AppColors {
 
   /// Niveau 0 — obsidian. Fond principal sur grandes surfaces
   /// cinéma (home, hero plein écran).
-  static const Color obsidian = Color(0xFF0E0E12);
+  static Color get obsidian => RemotePalette.instance.resolve('background', const Color(0xFF0E0E12));
 
   /// Niveau 1 — midnight. Première élévation pour les rails.
-  static const Color midnight = Color(0xFF16161C);
+  static Color get midnight => RemotePalette.instance.resolve('surface', const Color(0xFF16161C));
 
   /// Niveau 2 — slate. Cards posters, chips.
-  static const Color slate = Color(0xFF1F1F26);
+  static Color get slate => RemotePalette.instance.resolve('surfaceHigh', const Color(0xFF1F1F26));
 
   /// Niveau 3 — ash. Overlays, sheets, modal headers.
-  static const Color ash = Color(0xFF2A2A33);
+  static Color get ash => RemotePalette.instance.resolve('overlay', const Color(0xFF2A2A33));
 
   /// Voile glass — surface translucide pour BackdropFilter
   /// (dock flottant, app bars translucides).
   static Color get glassSurface =>
-      const Color(0xFF14141A).withValues(alpha: 0.55);
+      surface.withValues(alpha: 0.55);
 
   /// Liseré ultra-subtil pour les verres flottants.
   static Color get glassBorder =>
-      const Color(0xFFF0EDE9).withValues(alpha: 0.06);
+      border;
 
   // -------------------------------------------------------
   //  ACCENT EMBER (rouge braise The Few)
@@ -84,16 +85,16 @@ abstract final class AppColors {
   //  braise (#D63A30) → identique à avant tant que rien n'est choisi.
 
   /// Accent principal — couleur du thème actif (braise par défaut).
-  static Color get accent => AccentController.instance.current.accent;
+  static Color get accent => RemotePalette.instance.resolve('accent', AccentController.instance.current.accent);
 
   /// Variante claire — glow, états focus / hover / brillance.
-  static Color get accentBright => AccentController.instance.current.bright;
+  static Color get accentBright => RemotePalette.instance.resolve('accentBright', AccentController.instance.current.bright);
 
   /// Variante deep — bordures actives, sélections passives.
-  static Color get accentMuted => AccentController.instance.current.muted;
+  static Color get accentMuted => RemotePalette.instance.resolve('accentDeep', AccentController.instance.current.muted);
 
   /// Halo — pour les glows sur CTAs primaires (= variante claire).
-  static Color get emberHalo => AccentController.instance.current.bright;
+  static Color get emberHalo => accentBright;
 
   /// Voile très léger d'accent — fond d'un état sélectionné.
   static Color get accentSurface => accent.withValues(alpha: 0.14);
@@ -131,16 +132,16 @@ abstract final class AppColors {
   // -------------------------------------------------------
 
   /// Texte principal — ivoire chaud, jamais blanc pur.
-  static const Color textPrimary = Color(0xFFF0EDE9);
+  static Color get textPrimary => RemotePalette.instance.resolve('text', const Color(0xFFF0EDE9));
 
   /// Sous-titres, métadonnées importantes.
-  static const Color textSecondary = Color(0xFFB6B0A8);
+  static Color get textSecondary => RemotePalette.instance.resolve('secondary', const Color(0xFFB6B0A8));
 
   /// Niveau intermédiaire — métadonnées discrètes.
-  static const Color textTertiary = Color(0xFF7E7872);
+  static Color get textTertiary => RemotePalette.instance.resolve('muted', const Color(0xFF7E7872));
 
   /// Texte estompé — hints, timestamps, états désactivés.
-  static const Color textMuted = Color(0xFF4E4A45);
+  static Color get textMuted => RemotePalette.instance.resolve('muted', const Color(0xFF4E4A45));
 
   // -------------------------------------------------------
   //  STATUTS SÉMANTIQUES
@@ -167,21 +168,21 @@ abstract final class AppColors {
   //  Color(0xFF…) dans l'UI.
   // -------------------------------------------------------
   /// Fond noir vrai (économie batterie OLED). Charte Black7 #08080A.
-  static const Color maisonBg = Color(0xFF08080A);
+  static Color get maisonBg => RemotePalette.instance.resolve('background', const Color(0xFF08080A));
   /// Surface de carte.
-  static const Color maisonSurface = Color(0xFF15151B);
+  static Color get maisonSurface => RemotePalette.instance.resolve('surface', const Color(0xFF15151B));
   /// Surface surélevée (hover / hero).
-  static const Color maisonSurfaceHigh = Color(0xFF1D1D25);
+  static Color get maisonSurfaceHigh => RemotePalette.instance.resolve('surfaceHigh', const Color(0xFF1D1D25));
   /// Texte quasi-blanc (contraste fort seniors).
-  static const Color maisonInk = Color(0xFFF7F7F5);
+  static Color get maisonInk => RemotePalette.instance.resolve('text', const Color(0xFFF7F7F5));
   /// ROUGE de marque Black7 (accent principal — remplace l'or).
-  static const Color black7Red = Color(0xFFE4202E);
+  static Color get black7Red => RemotePalette.instance.resolve('accent', const Color(0xFFE4202E));
   /// Rouge foncé Black7 (dégradés, états).
-  static const Color black7RedDeep = Color(0xFF8F1019);
+  static Color get black7RedDeep => RemotePalette.instance.resolve('accentDeep', const Color(0xFF8F1019));
   /// Rouge réservé au badge LIVE (Maison Noir / Black7).
   static const Color liveRed = Color(0xFFFF4D4F);
   /// Bordure subtile (blanc 8 %).
-  static const Color maisonBorder = Color(0x14FFFFFF);
+  static Color get maisonBorder => RemotePalette.instance.resolve('border', const Color(0x14FFFFFF));
 
   // -------------------------------------------------------
   //  GRADIENTS RÉUTILISÉS
@@ -189,13 +190,13 @@ abstract final class AppColors {
 
   /// Dégradé de fond global — très subtil, donne la profondeur sans
   /// distraire du contenu.
-  static const LinearGradient backgroundGradient = LinearGradient(
+  static LinearGradient get backgroundGradient => LinearGradient(
     begin: Alignment.topCenter,
     end: Alignment.bottomCenter,
     colors: <Color>[
-      Color(0xFF101012),
-      Color(0xFF0A0A0C),
-      Color(0xFF050507),
+      surface,
+      background,
+      voidSurface,
     ],
   );
 
@@ -228,7 +229,7 @@ abstract final class AppColors {
   static Color get accentPink => accent;
 
   @Deprecated('Use AppColors.textSecondary or AppColors.emberHalo')
-  static const Color accentCyan = textSecondary;
+  static Color get accentCyan => RemotePalette.instance.resolve('secondary', textSecondary);
 
   @Deprecated('Use AppColors.accent (ember)')
   static Color get gold => accent;

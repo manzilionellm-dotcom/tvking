@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 import '../../../core/network/api_config.dart';
 // =========================================================
 //  tv_legal_screen.dart — Mentions légales & Conditions d'utilisation
@@ -129,6 +130,7 @@ class _TvLegalScreenState extends State<TvLegalScreen> {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Focus(
       focusNode: _focus,
       autofocus: true,

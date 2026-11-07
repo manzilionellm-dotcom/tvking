@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  channel_logo.dart — Logo de chaîne + fallback initiales
 // =========================================================
@@ -28,6 +29,7 @@ class ChannelLogo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     final String? url = channel.logoUrl;
     final Widget fallback = _fallback();
     return ClipRRect(

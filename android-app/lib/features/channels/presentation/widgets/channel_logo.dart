@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  channel_logo.dart — Logo de chaîne avec fallback élégant
 // =========================================================
@@ -55,6 +56,7 @@ class ChannelLogo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     final BorderRadius radius =
         borderRadius ?? BorderRadius.circular(_dimension * 0.18);
 
@@ -142,6 +144,7 @@ class ChannelQualityBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     // On n'affiche pas la SD (par défaut) pour ne pas polluer.
     if (quality == ChannelQuality.sd) return const SizedBox.shrink();
 

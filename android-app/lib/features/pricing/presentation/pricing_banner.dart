@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  pricing_banner.dart — Bloc « Nos offres » (prix lisibles)
 // =========================================================
@@ -23,6 +24,7 @@ class PricingBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return ValueListenableBuilder<PricingConfig>(
       valueListenable: PricingRepository.notifier,
       builder: (BuildContext context, PricingConfig p, _) {
@@ -138,6 +140,7 @@ class _OfferTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
       decoration: BoxDecoration(

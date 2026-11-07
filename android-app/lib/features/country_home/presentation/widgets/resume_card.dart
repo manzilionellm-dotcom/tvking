@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  resume_card.dart — Carte "Reprendre" (récemment regardé)
 // =========================================================
@@ -29,6 +30,7 @@ class ResumeCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     final double s = scale;
     // Fraction déterministe (cosmétique) — stable par chaîne.
     final double frac =
@@ -87,7 +89,7 @@ class ResumeCard extends StatelessWidget {
                           minHeight: 4 * s,
                           backgroundColor:
                               AppColors.maisonInk.withValues(alpha: 0.18),
-                          valueColor: const AlwaysStoppedAnimation<Color>(
+                          valueColor:  AlwaysStoppedAnimation<Color>(
                               AppColors.black7Red),
                         ),
                       ),

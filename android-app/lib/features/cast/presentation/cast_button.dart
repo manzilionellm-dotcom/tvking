@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  cast_button.dart — Bouton cast global réutilisable
 // =========================================================
@@ -32,6 +33,7 @@ class CastButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return ListenableBuilder(
       listenable: CastManager.instance,
       builder: (BuildContext context, _) {
@@ -136,6 +138,7 @@ class _PulseIconState extends State<_PulseIcon>
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return FadeTransition(
       opacity: Tween<double>(begin: 0.45, end: 1.0).animate(_ctrl),
       child: Icon(widget.icon, color: widget.color, size: 22),
