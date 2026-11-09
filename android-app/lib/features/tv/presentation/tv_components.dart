@@ -10,6 +10,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import '../../device/domain/display_mac.dart';
 import '../../../core/app/repair_flags.dart';
 import '../../../core/i18n/l10n_extension.dart';
+import '../../../core/theme/app_text_styles.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
@@ -125,6 +126,12 @@ class TvLogo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (isZunoTouch) {
+      return Text(context.l10n.tvStealthWordmark,
+          style: AppTextStyles.stealthBrand,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis);
+    }
     return Image.asset(_kLogoAsset, width: width, fit: BoxFit.contain);
   }
 }

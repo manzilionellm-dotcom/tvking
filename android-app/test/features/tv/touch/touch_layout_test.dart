@@ -41,6 +41,10 @@ import 'package:tv_king/features/tv/presentation/tv_parental_screen.dart';
 import 'package:tv_king/features/tv/presentation/tv_profile_picker.dart';
 import 'package:tv_king/features/tv/presentation/tv_search_screen.dart';
 import 'package:tv_king/l10n/generated/app_localizations.dart';
+import 'package:tv_king/core/theme/app_colors.dart';
+import 'package:tv_king/features/channels/domain/channel.dart';
+import 'package:tv_king/features/tv/presentation/tv_stealth_mobile_home.dart';
+import 'package:tv_king/features/tv/presentation/tv_tonight.dart';
 
 const _mac = 'MK:12:34:AB:CD:56';
 const _displayMac = '12:34:AB:CD:56';
@@ -400,7 +404,7 @@ void main() {
     await _pumpApp(tester, size, textScale: 2);
     final AppLocalizations words =
         AppLocalizations.of(tester.element(find.byType(TvHubScreen)))!;
-    final Finder search = find.text(words.tvNavSearch);
+    final Finder search = find.byTooltip(words.tvNavSearch);
     await _revealIn(tester, search, 'zuno-touch-hub-root');
     await tester.tap(search);
     await tester.pumpAndSettle();
@@ -765,4 +769,92 @@ void main() {
       });
     }
   }, variant: _android);
+  // La nouvelle composition est éprouvée avec des données fictives et sans
+  // réseau : rien ne doit démarrer avant le toucher, même après un rebuild.
+  for (final scenario
+      in <({String name, Size size, double scale, String lang})>[
+    (name: 'portrait-contenus', size: Size(390, 844), scale: 1, lang: 'fr'),
+    (name: 'paysage-contenus', size: Size(844, 390), scale: 1, lang: 'fr'),
+    (name: 'petit-texte-2x', size: Size(320, 568), scale: 2, lang: 'fr'),
+    (name: 'arabe-contenus', size: Size(390, 844), scale: 1, lang: 'ar'),
+  ]) {
+    testWidgets('Noir Fantôme ${scenario.name} : lecture explicite et cartes',
+        (WidgetTester tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = scenario.size;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final piece = TonightPiece(
+        title: 'Horizons 4K',
+        meta: '4K',
+        channel: const Channel(
+            id: 'fixture-horizons',
+            name: 'Horizons 4K',
+            category: 'Documentaires',
+            streamUrl: 'https://example.test/horizons',
+            isLive: true),
+      );
+      final played = <TonightPiece>[];
+      await tester.pumpWidget(RepaintBoundary(
+        key: _paintKey,
+        child: MaterialApp(
+          debugShowCheckedModeBanner: false,
+          locale: Locale(scenario.lang),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          theme: ThemeData(
+              brightness: Brightness.dark,
+              scaffoldBackgroundColor: AppColors.stealthBlack),
+          builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(context)
+                  .copyWith(textScaler: TextScaler.linear(scenario.scale)),
+              child: child!),
+          home: Scaffold(
+              body: TvStealthMobileHome(
+            board: TonightBoard(
+                hero: piece,
+                heroDetail: 'Documentaires et découvertes',
+                recommendations: <TonightPiece>[piece],
+                discover: <TonightPiece>[piece]),
+            profileName: 'Profil 1',
+            profileIcon: Icons.person,
+            profileColor: AppColors.stealthPlatinum,
+            greeting: 'Bonsoir',
+            time: '21:56',
+            activationCode: _displayMac,
+            status: 'Abonnement actif',
+            statusColor: AppColors.stealthSport,
+            source: 'Source de démonstration',
+            onProfile: () {},
+            onSearch: () {},
+            onPlay: played.add,
+            onLive: () {},
+            onFilms: () {},
+            onSeries: () {},
+            onServer: () {},
+            onSettings: () {},
+          )),
+        ),
+      ));
+      await tester.runAsync(GoogleFonts.pendingFonts);
+      await tester.pumpAndSettle();
+      expect(played, isEmpty);
+      expect(tester.takeException(), isNull);
+      await _capture(tester, 'noir-fantome-${scenario.name}');
+      final play = find.byKey(const Key('stealth-mobile-hero-play'));
+      await tester.ensureVisible(play);
+      await tester.pumpAndSettle();
+      expect(_screenRect(tester, play).height, greaterThanOrEqualTo(48));
+      await tester.tap(play);
+      expect(played, <TonightPiece>[piece]);
+      final cardTitle = find.text(piece.title).at(1);
+      await tester.ensureVisible(cardTitle);
+      await tester.pumpAndSettle();
+      await tester.tap(cardTitle);
+      expect(played, <TonightPiece>[piece, piece]);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpAndSettle();
+    }, variant: _android);
+  }
 }

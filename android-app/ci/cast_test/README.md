@@ -80,3 +80,26 @@ La réussite de ces tests et de la compilation ne vaut pas une mesure sur une t�
 - [Google Cast Android Sender : sessions, suspension/reprise et commandes distantes](https://developers.google.com/cast/docs/android_sender/integrate)
 
 Ces références expliquent pourquoi la découverte, la pause, la fin de session et la fermeture du lecteur sont traitées séparément. Les résultats de compilation et les versions livrées doivent être lus dans la provenance du build concerné.
+
+
+## APK mobile Noir Fantôme (novembre 2026)
+
+Le workflow `zuno-mobile-phantom-test.yml` compile le même socle tactile et
+Cast, avec la palette et les typographies de la PR TV #221. L'accueil est
+composé à la taille réelle du téléphone, en portrait comme en paysage.
+Il conserve les listes, licences, profils, lecture et ponts Cast existants.
+Les médias viennent des sources utilisateur. Les badges qualité sont issus
+du nom fourni par la source ; aucun statut d'abonnement n'est fabriqué.
+
+Cet APK est une préversion mobile 0.1.x, pas le numéro de build TV 117.
+Package distinct : `com.sevenmotion.tv.seven_tv.phantomtest` ; nom Android :
+`Zuno Noir Fantôme test`. Il s'installe à côté des autres versions. Signature
+Android Debug jetable, aucun canal de mise à jour automatique ni publication
+Play Store. Le fichier livré est `ZUNO-Mobile-Noir-Fantome-test.apk`, accompagné
+du manifeste, du rapport de signature et de la provenance vérifiés en CI.
+
+`google_fonts` est épinglé à 6.3.3, la version utilisée par le thème TV :
+les polices libres sont embarquées dans `assets/fonts` avec leurs licences,
+afin d'afficher ce thème hors connexion sans changer les métriques au démarrage.
+Les contrôles tactiles existants sont complétés par des parcours Noir Fantôme
+avec contenu, texte 2x et arabe ; ils utilisent le toucher réel du widget.

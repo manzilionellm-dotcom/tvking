@@ -21,6 +21,16 @@ import 'accent_controller.dart';
 import 'lumiere_tokens.dart';
 
 abstract final class AppColors {
+  static const Color stealthBlack = Color(0xFF000000);
+  static const Color stealthSurface = Color(0xFF0F0F12);
+  static const Color stealthGlass = Color(0xB30F0F12);
+  static const Color stealthPlatinum = Color(0xFFE6EBF2);
+  static const Color stealthIce = Color(0xFFB7D4FF);
+  static const Color stealthSport = Color(0xFF89C5B4);
+  static const Color stealthCinema = Color(0xFFC4A78B);
+  static const Color stealthKids = Color(0xFFB5A3D3);
+  static const Color stealthMuted = Color(0xFFADB3BD);
+
   // -------------------------------------------------------
   //  FONDS / SURFACES (Cinema Mode The Few)
   // -------------------------------------------------------
@@ -168,18 +178,25 @@ abstract final class AppColors {
   // -------------------------------------------------------
   /// Fond noir vrai (économie batterie OLED). Charte Black7 #08080A.
   static const Color maisonBg = Color(0xFF08080A);
+
   /// Surface de carte.
   static const Color maisonSurface = Color(0xFF15151B);
+
   /// Surface surélevée (hover / hero).
   static const Color maisonSurfaceHigh = Color(0xFF1D1D25);
+
   /// Texte quasi-blanc (contraste fort seniors).
   static const Color maisonInk = Color(0xFFF7F7F5);
+
   /// ROUGE de marque Black7 (accent principal — remplace l'or).
   static const Color black7Red = Color(0xFFE4202E);
+
   /// Rouge foncé Black7 (dégradés, états).
   static const Color black7RedDeep = Color(0xFF8F1019);
+
   /// Rouge réservé au badge LIVE (Maison Noir / Black7).
   static const Color liveRed = Color(0xFFFF4D4F);
+
   /// Bordure subtile (blanc 8 %).
   static const Color maisonBorder = Color(0x14FFFFFF);
 
