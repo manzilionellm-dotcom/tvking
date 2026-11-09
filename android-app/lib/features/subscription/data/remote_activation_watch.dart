@@ -103,6 +103,8 @@ class RemoteActivationWatch {
     _allowSourceImport = allowSourceImport;
     if (_run) return;
     _run = true;
+    // Prépare le libellé hors du chemin critique du premier accusé.
+    unawaited(_version());
     // Le démarrage vient de faire un heartbeat. On ne le double pas.
     _lastHeartbeat = DateTime.now();
     _arm(ActivationPace.fast);
@@ -193,8 +195,7 @@ class RemoteActivationWatch {
     _tickBusy = true;
     try {
       final bool waiting = _isWaiting;
-      final bool heartbeatDue =
-          waiting &&
+      final bool heartbeatDue = waiting &&
           DateTime.now().difference(_lastHeartbeat) >= _heartbeatWhileWaiting;
       final RemoteSyncOutcome outcome = heartbeatDue
           ? await SubscriptionState.instance.syncWithBackend()
@@ -281,8 +282,8 @@ class RemoteActivationWatch {
     if (ordered &&
         result == RemoteSyncResult.loaded &&
         !RepairFlags.heartbeatAfterImportOff) {
-      final RemoteSyncOutcome hb = await SubscriptionState.instance
-          .syncWithBackend();
+      final RemoteSyncOutcome hb =
+          await SubscriptionState.instance.syncWithBackend();
       if (hb == RemoteSyncOutcome.applied) _lastHeartbeat = DateTime.now();
       BlackBox.instance.info(
         'PANEL',
@@ -308,6 +309,27 @@ class RemoteActivationWatch {
         alive: () => _run && generation == _generation,
         onConnectionChanged: (bool connected) {
           if (_run && generation == _generation) _setChannelUp(connected);
+        },
+        onReceived: (BoxChannelFrame frame) {
+          if (!_run || generation != _generation || frame.orderId.isEmpty) {
+            return;
+          }
+          if (_cursorsLoaded &&
+              frameAlreadyHandled(seq: frame.seq, cursor: _boxCursor)) {
+            return;
+          }
+          // La réception n'attend ni la playlist précédente ni son analyse.
+          // Le serveur conserve le premier RECEIVED ; l'accusé final continue
+          // de décrire le résultat réel, après application de l'ordre.
+          unawaited(OrderAckClient.send(mac, <Map<String, Object?>>[
+            ackPayload(
+              orderId: frame.orderId,
+              state: 'received',
+              traceId: frame.traceId,
+              appVersion: _appVersion,
+              receivedAtMs: DateTime.now().millisecondsSinceEpoch,
+            ),
+          ]));
         },
         onFrame: (BoxChannelFrame frame) async {
           // Le Durable Object renvoie le DERNIER ordre à chaque ouverture
