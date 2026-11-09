@@ -2,6 +2,7 @@
 // Pas de photographie, de météo, de certification ou d'abonnement inventé.
 import 'package:flutter/material.dart';
 
+import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../core/tv_dimens.dart';
@@ -96,8 +97,11 @@ class TvStealthHeader extends StatelessWidget {
                 children: <Widget>[
                   SizedBox(
                     width: compact ? 110 : 130,
-                    child:
-                        logo ?? Text('ZUNO', style: AppTextStyles.stealthBrand),
+                    child: logo ??
+                        Text(
+                          context.l10n.tvStealthWordmark,
+                          style: AppTextStyles.stealthBrand,
+                        ),
                   ),
                   const SizedBox(width: 16),
                   if (!compact)
@@ -114,7 +118,7 @@ class TvStealthHeader extends StatelessWidget {
                         ),
                       ),
                       child: Text(
-                        'PREMIER ACCESS',
+                        context.l10n.tvStealthPremierBadge,
                         style: AppTextStyles.stealthCaption.copyWith(
                           color: AppColors.stealthPlatinum,
                         ),

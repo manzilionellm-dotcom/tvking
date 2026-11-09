@@ -513,7 +513,7 @@ class _ContentCard extends StatelessWidget {
                               spacing: 6,
                               children: <Widget>[
                                 if (piece.channel?.isLive == true)
-                                  const _Badge('LIVE'),
+                                  _Badge(context.l10n.badgeLive),
                                 if (streamQualityLabel(
                                   piece.channel?.name ?? piece.title,
                                 )
@@ -613,7 +613,9 @@ class StealthArtwork extends StatelessWidget {
         memCacheWidth: background
             ? (BoxMemoryBudget.hubBackgroundCacheWidth ?? 1920)
             : 448,
-        fadeInDuration: BoxMemoryBudget.logoFade(TvDimens.focusAnim),
+        fadeInDuration: MediaQuery.disableAnimationsOf(context)
+            ? Duration.zero
+            : BoxMemoryBudget.logoFade(TvDimens.focusAnim),
         placeholder: (_, __) => fallback(),
         errorWidget: (_, __, ___) => fallback(),
       ),

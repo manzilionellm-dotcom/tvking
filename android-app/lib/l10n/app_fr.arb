@@ -1,4 +1,8 @@
 {
+  "tvStealthWordmark": "ZUNO",
+  "tvStealthPremierBadge": "PREMIER ACCESS",
+  "@tvStealthWordmark": {"description": "Signature de marque en capitales. Ne pas traduire."},
+  "@tvStealthPremierBadge": {"description": "Nom international du badge visuel demandé. Ne pas traduire ; ce badge ne déclare pas le statut réel de l’abonnement."},
   "@@locale": "fr",
   "@@x-template": true,
   "@@x-description": "Template canonique — toutes les autres langues s'alignent sur ces clefs.",
