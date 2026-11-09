@@ -1,4 +1,4 @@
-param(
+﻿param(
   [string]$Msix = 'dist/msix-test/ZUNO-Test.msix',
   [string]$ShotsDir = "$env:RUNNER_TEMP/zuno-store-shots",
   [int]$Seconds = 20

@@ -176,7 +176,8 @@ jobs:
             -IdentityName 'ZUNO.TestCI' -Publisher 'CN=ZUNO Test CI' -PublisherDisplayName 'ZUNO Test CI' -TestSign
 
       - name: MSIX installé (Add-AppxPackage) + smoke EN LIGNE 20 s + captures Store
-        shell: pwsh
+        # Windows PowerShell 5.1 : le module Appx ne se charge pas sous pwsh 7.
+        shell: powershell
         run: ./ci/windows/msix-smoke.ps1 -Msix dist/msix-test/ZUNO-Test.msix
 
       - name: Windows App Certification Kit (si présent)
