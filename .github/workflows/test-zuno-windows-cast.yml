@@ -172,6 +172,10 @@ jobs:
         shell: pwsh
         run: ./ci/windows/verify-package.ps1 -Commit '${{ github.sha }}'
 
+      - name: Smoke EN LIGNE (installeur par défaut, mise à jour 113.0.2 et 106)
+        shell: pwsh
+        run: ./ci/windows/online-smoke.ps1
+
       - name: Résultat de la compilation Windows
         shell: pwsh
         run: |

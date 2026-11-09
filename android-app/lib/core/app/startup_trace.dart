@@ -8,8 +8,64 @@ import 'package:flutter/foundation.dart';
 abstract final class StartupTrace {
   static final Stopwatch _clock = Stopwatch()..start();
 
+  /// Copie des jalons (PC : %LOCALAPPDATA%\Zuno\logs\startup.log).
+  static void Function(String line)? sink;
+
+  /// PC : une étape en échec ou trop lente est journalisée puis SAUTÉE.
+  /// La box Android garde exactement le comportement historique (false).
+  static bool tolerant = false;
+
   static void mark(String stage) {
-    debugPrint('[ZunoStartup] ${_clock.elapsedMilliseconds}ms $stage');
+    final String line = '[ZunoStartup] ${_clock.elapsedMilliseconds}ms $stage';
+    debugPrint(line);
+    try {
+      sink?.call(line);
+    } catch (_) {}
+  }
+
+  /// Étape de démarrage : historique sur Android, non bloquante sur PC.
+  static Future<void> boot(
+    String stage,
+    Future<void> Function() work, {
+    Duration timeout = const Duration(seconds: 8),
+  }) {
+    if (!tolerant) return step<void>(stage, work);
+    return soft(stage, work, timeout: timeout);
+  }
+
+  /// Étape synchrone protégée sur PC.
+  static void bootSync(String stage, void Function() work) {
+    if (!tolerant) {
+      work();
+      return;
+    }
+    try {
+      work();
+    } catch (error) {
+      mark('$stage.failed ${error.runtimeType}: ${_short(error)}');
+    }
+  }
+
+  /// Ne lance jamais : erreur ou délai dépassé = jalon, puis on continue.
+  static Future<void> soft(
+    String stage,
+    Future<void> Function() work, {
+    Duration timeout = const Duration(seconds: 8),
+  }) async {
+    mark('$stage.begin');
+    try {
+      await Future<void>.sync(work).timeout(timeout);
+      mark('$stage.end');
+    } on TimeoutException {
+      mark('$stage.timeout ${timeout.inMilliseconds}ms (sauté)');
+    } catch (error) {
+      mark('$stage.failed ${error.runtimeType}: ${_short(error)} (sauté)');
+    }
+  }
+
+  static String _short(Object error) {
+    final String text = error.toString().replaceAll(RegExp(r'\s+'), ' ');
+    return text.length > 400 ? '${text.substring(0, 400)}…' : text;
   }
 
   /// En debug seulement. On laisse passer la première image (shaders),

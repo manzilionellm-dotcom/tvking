@@ -24,7 +24,7 @@ function Get-Asset([string]$tag, [string]$name) {
 
 function Clear-ZunoState {
   Get-Process tv_king -ErrorAction SilentlyContinue | Stop-Process -Force
-  foreach ($p in @("$env:APPDATA\com.sevenmotion", "$env:LOCALAPPDATA\com.sevenmotion", "$env:LOCALAPPDATA\Zuno\logs")) {
+  foreach ($p in @("$env:APPDATA\Zuno", "$env:APPDATA\com.sevenmotion", "$env:LOCALAPPDATA\com.sevenmotion", "$env:LOCALAPPDATA\Zuno\logs")) {
     if (Test-Path $p) { Remove-Item $p -Recurse -Force }
   }
   Get-ChildItem $docs -Force -ErrorAction SilentlyContinue |
@@ -70,6 +70,22 @@ function Invoke-Zuno([string]$exe, [string]$label, [int]$seconds, [string[]]$arg
     Out-File (Join-Path $out 'summary.txt') -Append -Encoding utf8
 }
 
+
+function Set-CorruptPreferences {
+  # Fichier tronqué par une coupure / fermeture forcée pendant l'écriture.
+  $dir = Join-Path $env:APPDATA 'Zuno\Zuno'
+  New-Item -ItemType Directory -Force $dir | Out-Null
+  [IO.File]::WriteAllBytes((Join-Path $dir 'shared_preferences.json'), [byte[]]::new(1532))
+}
+function Set-DocumentsReadOnly([bool]$on) {
+  $docs = [Environment]::GetFolderPath('MyDocuments')
+  $who = "$env:USERDOMAIN\$env:USERNAME"
+  if ($on) {
+    Get-ChildItem $docs -Filter 'tv_king.db*' -Force -ErrorAction SilentlyContinue | Remove-Item -Force
+    icacls $docs /deny "${who}:(OI)(CI)(W,D,DC)" | Out-Null
+  } else { icacls $docs /remove:d $who | Out-Null }
+}
+
 $setup = Get-Asset $Tag 'Zuno-Setup.exe'
 $legacyZip = Get-Asset $LegacyTag 'zuno-windows.zip'
 $legacy = Join-Path $out 'legacy'
@@ -98,4 +114,12 @@ try {
   Invoke-Zuno $exe 'D-acces-controle' $Seconds
 } catch { Write-Host "Accès contrôlé indisponible : $($_.Exception.Message)" }
 finally { Set-MpPreference -EnableControlledFolderAccess Disabled -ErrorAction SilentlyContinue }
+# 5) Préférences illisibles (zéros) laissées par une fermeture forcée.
+Clear-ZunoState
+Set-CorruptPreferences
+Invoke-Zuno $exe 'E-preferences-illisibles' $Seconds
+# 6) Documents non inscriptible (OneDrive / stratégie) : base SQLite impossible.
+Clear-ZunoState
+try { Set-DocumentsReadOnly $true; Invoke-Zuno $exe 'F-documents-lecture-seule' $Seconds }
+finally { Set-DocumentsReadOnly $false }
 Get-Content (Join-Path $out 'summary.txt') | Write-Host

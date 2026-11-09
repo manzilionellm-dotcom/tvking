@@ -19,7 +19,7 @@ Future<void> startWithLocalCrashReporting(
   Future<void>? firstFrameRasterized,
   Future<bool> Function()? attachRemoteCrashReporting,
 }) async {
-  await StartupTrace.step('crashReporting', CrashReporting.instance.initialize);
+  await StartupTrace.boot('crashReporting', CrashReporting.instance.initialize);
 
   StartupTrace.mark('crashlytics.deferred');
   unawaited(_attachAfterFirstFrame(

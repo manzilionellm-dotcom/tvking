@@ -1,4 +1,9 @@
-param([string]$ExePath = 'build/windows/x64/runner/Release/tv_king.exe')
+param(
+  [string]$ExePath = 'build/windows/x64/runner/Release/tv_king.exe',
+  # Réseau RÉEL (démarrage client normal) au lieu du HTTP bloqué.
+  [switch]$Online,
+  [string]$Label = 'smoke'
+)
 
 # Le binaire démarre vraiment. Le mode smoke bloque tout HTTP Dart avant
 # le bootstrap : aucune inscription d'appareil sur le panel de production.
@@ -12,9 +17,11 @@ $temp = Join-Path ([IO.Path]::GetTempPath()) ('zuno-smoke-' + [guid]::NewGuid())
 New-Item -ItemType Directory $temp | Out-Null
 $marker = Join-Path $temp 'ready.txt'
 $process = $null
+$log = Join-Path $env:LOCALAPPDATA 'Zuno\logs\startup.log'
+$logStart = if (Test-Path $log) { (Get-Item $log).Length } else { 0 }
 try {
   $process = Start-Process $exe -WorkingDirectory (Split-Path $exe) `
-    -ArgumentList @('--zuno-smoke', "`"$marker`"") -PassThru `
+    -ArgumentList @($(if ($Online) { '--zuno-smoke-online' } else { '--zuno-smoke' }), "`"$marker`"") -PassThru `
     -RedirectStandardOutput (Join-Path $temp 'stdout.log') `
     -RedirectStandardError (Join-Path $temp 'stderr.log')
   $windowSeen = $false
@@ -40,11 +47,21 @@ try {
     }
     Write-Host "DLL app-local vérifiée : $dll"
   }
-  Write-Host 'Smoke OK : processus vivant 20 s, fenêtre Zuno créée, bootstrap terminé et image soumise. Réseau bloqué.'
+  if (!(Test-Path $log)) { throw "Journal absent : $log" }
+  $fs = [IO.File]::Open($log, 'Open', 'Read', 'ReadWrite'); $fs.Seek($logStart, 'Begin') | Out-Null
+  $run = (New-Object IO.StreamReader($fs)).ReadToEnd(); $fs.Dispose()
+  if ($run -notmatch 'realUi\.frame') { throw 'startup.log ne confirme pas la première image de la vraie interface.' }
+  if ($run -match 'bootstrap\.failed|bootstrap\.slow') { throw 'startup.log signale un échec de démarrage.' }
+  $skipped = @($run -split "`r?`n" | Where-Object { $_ -match '\.(failed|timeout)' })
+  Write-Host "startup.log ($log) : vraie interface atteinte ; étapes sautées sans bloquer : $($skipped.Count)"
+  $skipped | ForEach-Object { Write-Host "  SAUTÉ> $_" }
+  $mode = if ($Online) { 'Réseau RÉEL.' } else { 'Réseau bloqué.' }
+  Write-Host "Smoke OK [$Label] : processus vivant 20 s, fenêtre Zuno, vraie interface (accueil/connexion) affichée. $mode"
 } finally {
   if ($null -ne $process -and !$process.HasExited) { $process.Kill($true); $process.WaitForExit() }
-  foreach ($log in @('stdout.log', 'stderr.log')) {
-    $file = Join-Path $temp $log
+  if (Test-Path $log) { Write-Host "----- $log -----"; Get-Content $log -Tail 120 | Write-Host }
+  foreach ($std in @('stdout.log', 'stderr.log')) {
+    $file = Join-Path $temp $std
     if (Test-Path $file) { Get-Content $file | Write-Host }
   }
   Remove-Item $temp -Recurse -Force -ErrorAction SilentlyContinue

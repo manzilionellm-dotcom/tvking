@@ -44,6 +44,16 @@ abstract final class DesktopWindow {
     }
   }
 
+  /// Écran d'erreur : jamais bloqué en plein écran.
+  static Future<void> leaveFullscreen() async {
+    try {
+      await windowManager
+          .setFullScreen(false)
+          .timeout(const Duration(seconds: 2));
+      await windowManager.focus().timeout(const Duration(seconds: 2));
+    } catch (_) {}
+  }
+
   static Future<void> toggleFullscreen() async {
     try {
       await windowManager.setFullScreen(!await windowManager.isFullScreen());

@@ -43,7 +43,8 @@ import '../theme/bundled_fonts.dart';
 /// `runGuarded(() async { … });`.
 void runGuarded(Future<void> Function() body, {
   Widget? startupWidget,
-  void Function()? onStartupError,
+  void Function(Object error, StackTrace? stack)? onStartupError,
+  void Function(String context, Object error, StackTrace? stack)? onUnhandledError,
 }) {
   // 1) Un sous-arbre qui plante ne casse pas tout l'écran : fond Maison Noir.
   //    NB : on utilise volontairement une couleur LITTÉRALE ici (et non
@@ -103,13 +104,16 @@ void runGuarded(Future<void> Function() body, {
         }
         CrashReporting.instance.recordError(details.exception, details.stack,
             context: 'FlutterError');
-        onStartupError?.call();
+        // Journalisé seulement : une erreur d'affichage isolée (logo, image,
+        // widget) ne doit JAMAIS transformer le démarrage en écran d'erreur.
+        onUnhandledError?.call('FlutterError', details.exception, details.stack);
       };
 
       // 3) Erreurs async/plateforme non rattrapées → « gérées », pas de crash.
       PlatformDispatcher.instance.onError = (Object error, StackTrace stack) {
         CrashReporting.instance
             .recordError(error, stack, context: 'PlatformDispatcher');
+        onUnhandledError?.call('PlatformDispatcher', error, stack);
         return true;
       };
 
@@ -120,16 +124,38 @@ void runGuarded(Future<void> Function() body, {
       } else {
         // Windows doit dessiner AVANT SQLite, libmpv, plugins ou réseau.
         runApp(startupWidget);
-        await WidgetsBinding.instance.waitUntilFirstFrameRasterized
-            .timeout(const Duration(seconds: 5));
-        await startWithLocalCrashReporting(body)
-            .timeout(const Duration(seconds: 30));
+        try {
+          await WidgetsBinding.instance.waitUntilFirstFrameRasterized
+              .timeout(const Duration(seconds: 5));
+        } on TimeoutException {
+          StartupTrace.mark('startupScreen.frame.timeout (continue)');
+        }
+        // Aucun délai ne rend le démarrage fatal : le bootstrap continue et
+        // remplace l'écran dès qu'il appelle runApp. Seul un VRAI échec du
+        // bootstrap (exception) affiche l'écran d'erreur ; au-delà de 45 s
+        // sans interface, on propose Réessayer/Fermer sans tuer le démarrage.
+        bool settled = false;
+        Timer(const Duration(seconds: 45), () {
+          if (settled) return;
+          StartupTrace.mark('bootstrap.slow 45s');
+          onStartupError?.call(
+              TimeoutException('Démarrage plus long que 45 s'), null);
+        });
+        try {
+          await startWithLocalCrashReporting(body);
+          settled = true;
+        } catch (error, stack) {
+          settled = true;
+          StartupTrace.mark('bootstrap.failed ${error.runtimeType}');
+          CrashReporting.instance.recordError(error, stack, context: 'Bootstrap');
+          onStartupError?.call(error, stack);
+        }
       }
     },
     // 4) Filet ultime.
     (Object error, StackTrace stack) {
       CrashReporting.instance.recordError(error, stack, context: 'Zone');
-      onStartupError?.call();
+      onUnhandledError?.call('Zone', error, stack);
     },
   );
 }
