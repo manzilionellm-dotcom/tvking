@@ -112,3 +112,9 @@ Un heartbeat concurrent est regroupé puis renvoyé au lieu d'être perdu.
 La CI mesure activation/source/statut avec une vraie prise WebSocket locale
 et un accusé appliqué, seuil 1 000 ms. Cette mesure locale ne garantit pas
 le réseau d'un téléphone réel ni l'import complet d'une grande playlist.
+
+La réception du socket reste active pendant un import : l'accusé RECEIVED
+part immédiatement, tandis qu'une file unique conserve l'ordre des effets.
+APPLIED reste envoyé seulement après le traitement réel. Une régression avec
+un import volontairement bloqué vérifie que l'ordre suivant est reçu en moins
+d'une seconde sans que ses effets passent devant l'ordre précédent.

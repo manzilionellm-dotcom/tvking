@@ -17,6 +17,7 @@ import 'package:tv_king/features/subscription/data/subscription_state.dart';
 
 const bool _run = bool.fromEnvironment('RUN_PANEL_CONNECTION');
 const String _mac = 'MK:11:22:33:44:66';
+
 class _RealHttp extends HttpOverrides {}
 
 Future<void> _until(bool Function() condition, String reason) async {
@@ -29,7 +30,8 @@ Future<void> _until(bool Function() condition, String reason) async {
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
-  test('push par défaut : activation, source, statut et reprise HTTP rapides', () async {
+  test('push par défaut : activation, source, statut et reprise HTTP rapides',
+      () async {
     final previous = HttpOverrides.current;
     HttpOverrides.global = _RealHttp();
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 18789);
@@ -48,6 +50,10 @@ void main() {
     bool paid = false, frozen = false, pushAvailable = true;
     int sourceReads = 0;
     final applied = <String>{};
+    final received = <String>{};
+    final sourceStarted = Completer<void>();
+    final sourceGate = Completer<void>();
+    bool holdNextSource = false;
     server.listen((request) async {
       if (request.uri.path == '/api/box/ws' && pushAvailable) {
         peer = await WebSocketTransformer.upgrade(request);
@@ -62,26 +68,43 @@ void main() {
         request.response.statusCode = HttpStatus.notFound;
         request.response.write('{}');
       } else if (request.uri.path.startsWith('/api/box/ack/')) {
-        final body = jsonDecode(await utf8.decoder.bind(request).join()) as Map<String, dynamic>;
+        final body = jsonDecode(await utf8.decoder.bind(request).join())
+            as Map<String, dynamic>;
         final orders = body['orders'];
         if (orders is List) {
           for (final order in orders) {
             if (order is Map && order['state'] == 'applied') {
               applied.add(order['order_id'] as String);
             }
+            if (order is Map && order['state'] == 'received') {
+              received.add(order['order_id'] as String);
+            }
           }
         }
         request.response.write('{"ok":true}');
       } else if (request.uri.path.startsWith('/api/device-source/')) {
         sourceReads++;
+        if (holdNextSource) {
+          holdNextSource = false;
+          sourceStarted.complete();
+          await sourceGate.future;
+        }
         request.response.write('{"sources":[],"rev":1}');
       } else if (request.uri.path.startsWith('/api/status/') ||
           request.uri.path == '/api/heartbeat') {
         request.response.write(jsonEncode(<String, Object>{
-          'exists': true, 'status': frozen ? 'frozen' : 'active', 'paid': paid,
-          'plan': 'lifetime', 'paid_until': 0, 'expired': false,
-          'frozen': frozen, 'banned': false, 'source_rev': 0,
-          'trial_until': DateTime.now().add(const Duration(days: 1)).millisecondsSinceEpoch,
+          'exists': true,
+          'status': frozen ? 'frozen' : 'active',
+          'paid': paid,
+          'plan': 'lifetime',
+          'paid_until': 0,
+          'expired': false,
+          'frozen': frozen,
+          'banned': false,
+          'source_rev': 0,
+          'trial_until': DateTime.now()
+              .add(const Duration(days: 1))
+              .millisecondsSinceEpoch,
         }));
       } else {
         request.response.write('{"ok":true}');
@@ -93,7 +116,10 @@ void main() {
       final id = 'ord_ws_${seq}_fixture';
       final watch = Stopwatch()..start();
       peer!.add(jsonEncode(<String, Object>{
-        'seq': seq, 'type': type, 'mac': _mac, 'order_id': id,
+        'seq': seq,
+        'type': type,
+        'mac': _mac,
+        'order_id': id,
       }));
       await _until(() => visible() && applied.contains(id),
           'Le push $type doit appliquer son effet et accuser son résultat.');
@@ -101,16 +127,51 @@ void main() {
       expect(watch.elapsedMilliseconds, lessThan(1000),
           reason: 'Le signal reçu ne doit pas attendre le prochain polling.');
     }
+
     try {
       await SubscriptionState.instance.initialize();
       RemoteActivationWatch.instance.start();
-      await _until(() => peer != null, 'La prise WebSocket par défaut doit s’ouvrir.');
+      await _until(
+          () => peer != null, 'La prise WebSocket par défaut doit s’ouvrir.');
       paid = true;
       await send('activate', 11, () => SubscriptionState.instance.remote.paid);
       final beforeSource = sourceReads;
       await send('source', 12, () => sourceReads > beforeSource);
       frozen = true;
       await send('suspend', 13, () => SubscriptionState.instance.remote.frozen);
+      // Une source qui attend le fournisseur ne doit pas retenir l'accusé
+      // de la commande suivante. On vérifie le vrai POST reçu par le serveur.
+      holdNextSource = true;
+      peer!.add(jsonEncode(<String, Object>{
+        'seq': 14,
+        'type': 'source',
+        'mac': _mac,
+        'order_id': 'ord_ws_14_fixture',
+      }));
+      await sourceStarted.future.timeout(const Duration(seconds: 5));
+      frozen = false;
+      final reception = Stopwatch()..start();
+      peer!.add(jsonEncode(<String, Object>{
+        'seq': 15,
+        'type': 'activate',
+        'mac': _mac,
+        'order_id': 'ord_ws_15_fixture',
+      }));
+      await _until(() => received.contains('ord_ws_15_fixture'),
+          'Le panel reçoit RECEIVED même pendant un import bloqué.');
+      measurements['received_while_importing'] = reception.elapsedMilliseconds;
+      expect(reception.elapsedMilliseconds, lessThan(1000));
+      expect(applied.contains('ord_ws_14_fixture'), isFalse);
+      expect(applied.contains('ord_ws_15_fixture'), isFalse,
+          reason: 'RECEIVED ne doit jamais fabriquer un APPLIED prématuré.');
+      sourceGate.complete();
+      await _until(
+          () =>
+              applied.contains('ord_ws_14_fixture') &&
+              applied.contains('ord_ws_15_fixture'),
+          'Les deux effets finissent dans leur ordre.');
+      frozen = true;
+      await send('suspend', 16, () => SubscriptionState.instance.remote.frozen);
       // Sans nouvel ordre, la perte du push doit faire relire le statut.
       frozen = false;
       pushAvailable = false;
@@ -121,8 +182,10 @@ void main() {
       measurements['repli_http'] = watch.elapsedMilliseconds;
       debugPrint('[mesure panel local, ms] ${jsonEncode(measurements)}');
       expect(watch.elapsedMilliseconds, lessThan(1500),
-          reason: 'La coupure doit réveiller le statut sans attendre le polling.');
+          reason:
+              'La coupure doit réveiller le statut sans attendre le polling.');
     } finally {
+      if (!sourceGate.isCompleted) sourceGate.complete();
       RemoteActivationWatch.instance.stopForTesting();
       await peer?.close();
       await server.close(force: true);
