@@ -120,8 +120,9 @@ jobs:
       - name: Version de revue (source Android 113)
         shell: bash
         run: |
-          echo "WIN_VERSION=113.0.${{ github.run_number }}" >> "$GITHUB_ENV"
-          echo "WIN_BUILD=${{ github.run_number }}" >> "$GITHUB_ENV"
+          # Candidat de la release zuno-windows-113.0.3 (après 113.0.2, code 2).
+          echo "WIN_VERSION=113.0.3" >> "$GITHUB_ENV"
+          echo "WIN_BUILD=3" >> "$GITHUB_ENV"
 
       # PowerShell (PAS bash) : sous Git Bash, la valeur « /D_SILENCE… » de
       # CL était convertie en chemin Windows (conversion POSIX de MSYS) →
