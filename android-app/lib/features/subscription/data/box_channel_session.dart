@@ -111,8 +111,9 @@ class BoxChannelSession {
             } catch (e) {
               // Une erreur métier ne bloque ni la réception ni les ordres
               // suivants ; les accusés APPLIED/FAILED restent à la veille.
-              if (kDebugMode)
+              if (kDebugMode) {
                 debugPrint('[Canal] traitement : ${e.runtimeType}');
+              }
             }
           });
         }

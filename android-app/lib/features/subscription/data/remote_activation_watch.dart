@@ -311,10 +311,13 @@ class RemoteActivationWatch {
           if (_run && generation == _generation) _setChannelUp(connected);
         },
         onReceived: (BoxChannelFrame frame) {
-          if (!_run || generation != _generation || frame.orderId.isEmpty)
+          if (!_run || generation != _generation || frame.orderId.isEmpty) {
             return;
+          }
           if (_cursorsLoaded &&
-              frameAlreadyHandled(seq: frame.seq, cursor: _boxCursor)) return;
+              frameAlreadyHandled(seq: frame.seq, cursor: _boxCursor)) {
+            return;
+          }
           // La réception n'attend ni la playlist précédente ni son analyse.
           // Le serveur conserve le premier RECEIVED ; l'accusé final continue
           // de décrire le résultat réel, après application de l'ordre.
