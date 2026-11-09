@@ -17,6 +17,7 @@ import 'dart:convert';
 import 'dart:io' show Socket;
 
 import 'package:flutter/foundation.dart';
+import '../../subscription/data/subscription_backend.dart' show kSubscriptionBaseUrl;
 
 import '../../../core/crash/crash_reporting.dart';
 import '../../../core/i18n/l10n_now.dart';
@@ -1747,7 +1748,7 @@ class CastManager extends ChangeNotifier {
   String _workerTsUrl(String upstreamUrl) {
     final String b64 =
         base64Url.encode(utf8.encode(upstreamUrl)).replaceAll('=', '');
-    return 'https://app.7themotion.com/cs/$b64.ts';
+    return '$kSubscriptionBaseUrl/cs/$b64.ts';
   }
 
   /// Choisit l'URL à pousser en stratégie DIRECT (0/1) vers une TV DLNA.

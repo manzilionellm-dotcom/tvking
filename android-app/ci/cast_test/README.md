@@ -103,3 +103,12 @@ les polices libres sont embarquées dans `assets/fonts` avec leurs licences,
 afin d'afficher ce thème hors connexion sans changer les métriques au démarrage.
 Les contrôles tactiles existants sont complétés par des parcours Noir Fantôme
 avec contenu, texte 2x et arabe ; ils utilisent le toucher réel du widget.
+
+
+Le serveur de production mobile et le proxy Cast sont maintenant alignés
+sur la constante TV `https://api.zuno8k.com`. La chute du WebSocket réveille
+immédiatement le filet HTTP et un ordre ne supprime plus sa minuterie.
+Un heartbeat concurrent est regroupé puis renvoyé au lieu d'être perdu.
+La CI mesure activation/source/statut avec une vraie prise WebSocket locale
+et un accusé appliqué, seuil 1 000 ms. Cette mesure locale ne garantit pas
+le réseau d'un téléphone réel ni l'import complet d'une grande playlist.

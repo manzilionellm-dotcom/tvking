@@ -109,11 +109,20 @@ jobs:
       - name: Contrats Cast, moteur natif, téléchargements et mises à jour
         run: |
           flutter test --no-pub test/features/cast test/features/tv/desktop \
-            test/features/tv/touch \
+            test/features/tv/touch test/features/subscription \
             test/core/update packages/native_video_player/test \
             test/features/player/single_player_audio_test.dart \
             test/features/cinema/playback_download_pause_test.dart \
             test/features/cinema/download_repository_handoff_test.dart \
+            --reporter expanded
+
+      - name: Mesurer le push réel et la reprise réseau sur serveur local
+        run: |
+          flutter test --no-pub --concurrency=1 \
+            --dart-define=RUN_PANEL_CONNECTION=true \
+            --dart-define=BACKEND_URL=http://127.0.0.1:18789 \
+            test/features/subscription/panel_connection_test.dart \
+            test/features/subscription/panel_connection_websocket_test.dart \
             --reporter expanded
 
       - name: Construire un APK debug avec la seule clé jetable du runner

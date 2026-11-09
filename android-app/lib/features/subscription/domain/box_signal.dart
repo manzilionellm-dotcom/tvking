@@ -103,7 +103,9 @@ bool kindNeedsStatus(String kind) {
 }
 
 /// Canal ouvert : on ne relit le statut que toutes les 25 s
-/// (filet). Canal coupé : on revient au rythme 3 s / 4 s de la 103.
+/// (filet), l'ordre étant déjà arrivé par la prise.
+/// Canal coupé : rythme 1 s / 2 s, la fenêtre demandée
+/// quand le push ne tient pas.
 Duration signalPace({
   required bool channelUp,
   required bool waiting,

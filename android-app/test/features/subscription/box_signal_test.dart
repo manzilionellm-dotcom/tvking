@@ -3,22 +3,24 @@ import 'package:tv_king/features/subscription/domain/activation_pace.dart';
 import 'package:tv_king/features/subscription/domain/box_signal.dart';
 
 void main() {
-  test('canal ouvert : filet 25 s ; coupé : rythme 103', () {
+  test('canal ouvert : filet 25 s ; coupé : 1 s puis 2 s', () {
     expect(
       signalPace(channelUp: true, waiting: false, failures: 0),
       ActivationPace.parked,
     );
     expect(
       signalPace(channelUp: false, waiting: true, failures: 0),
-      const Duration(seconds: 3),
+      const Duration(seconds: 1),
     );
     expect(
       signalPace(channelUp: false, waiting: false, failures: 0),
-      const Duration(seconds: 4),
+      const Duration(seconds: 2),
     );
+    // Canal encore annoncé « ouvert » mais des échecs : on ne reste
+    // pas garé à 25 s, on reprend le repli (2 s × 4).
     expect(
       signalPace(channelUp: true, waiting: false, failures: 2),
-      const Duration(seconds: 16),
+      const Duration(seconds: 8),
     );
   });
 
@@ -42,10 +44,10 @@ void main() {
     expect(refreshesFor('expire'), {SignalRefresh.status});
     expect(refreshesFor('renew'), {SignalRefresh.status});
     expect(refreshesFor('block'), {SignalRefresh.status});
-    expect(
-      refreshesFor('source_clear'),
-      {SignalRefresh.status, SignalRefresh.source},
-    );
+    expect(refreshesFor('source_clear'), {
+      SignalRefresh.status,
+      SignalRefresh.source,
+    });
     expect(refreshesFor('message'), {SignalRefresh.announcement});
     expect(refreshesFor('force_update'), {SignalRefresh.forceUpdate});
     expect(refreshesFor('theme'), {SignalRefresh.theme});
