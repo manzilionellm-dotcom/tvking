@@ -1,8 +1,8 @@
 // =========================================================
 //  tv_look.dart — Confort ou Ghost, au choix
 // =========================================================
-//  Deux apparences. Confort reste le défaut (palette du soir,
-//  PR confort). Ghost est le noir Black Badge. Le choix est
+//  Deux apparences. Noir Fantôme devient le défaut.
+//  Un choix Confort déjà enregistré reste respecté. Le choix est
 //  local : rien n'est envoyé au panel. L'image de la chaîne
 //  n'utilise pas cette bascule.
 // =========================================================
@@ -17,7 +17,7 @@ class TvLook extends ChangeNotifier {
 
   static const String prefKey = 'zuno.tv.look.v1';
 
-  TvLookChoice _choice = TvLookChoice.comfort;
+  TvLookChoice _choice = TvLookChoice.ghost;
 
   TvLookChoice get choice => _choice;
   bool get ghost => _choice == TvLookChoice.ghost;
@@ -28,14 +28,14 @@ class TvLook extends ChangeNotifier {
       final String? raw = prefs.getString(prefKey);
       final TvLookChoice next = TvLookChoice.values.firstWhere(
         (TvLookChoice c) => c.name == raw,
-        orElse: () => TvLookChoice.comfort,
+        orElse: () => TvLookChoice.ghost,
       );
       if (next != _choice) {
         _choice = next;
         notifyListeners();
       }
     } catch (_) {
-      // On reste sur Confort. Le démarrage ne bloque pas.
+      // On garde le choix courant. Le démarrage ne bloque pas.
     }
   }
 

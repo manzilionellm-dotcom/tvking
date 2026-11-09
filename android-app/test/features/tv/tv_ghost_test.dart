@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tv_king/core/app/box_memory_budget.dart';
+import 'package:tv_king/core/theme/app_colors.dart';
 import 'package:tv_king/features/tv/core/tv_ambient.dart';
 import 'package:tv_king/features/tv/core/tv_app_tokens.dart';
 import 'package:tv_king/features/tv/core/tv_comfort.dart';
@@ -47,7 +48,7 @@ void main() {
     BoxMemoryBudget.debugTier = null;
   });
 
-  test('le choix Ghost ne remplace pas le confort par défaut', () {
+  test('le choix Confort reste disponible', () {
     final TvLook look = TvLook.instance;
     look.debugChoose(TvLookChoice.comfort);
     expect(look.ghost, isFalse);
@@ -101,11 +102,11 @@ void main() {
     const TvAppTokens comfort = TvAppTokens();
     final TvComfortPalette evening =
         TvComfortPalette.of(TvComfortPeriod.evening);
-    expect(ghost.glassFill, TvGhost.card);
+    expect(ghost.glassFill, AppColors.stealthGlass);
     expect(comfort.glassFill, evening.glassFill);
     expect(
       (ghost.bgGradient as RadialGradient).colors,
-      <Color>[TvGhost.sel, TvGhost.bg],
+      <Color>[TvGhost.bg, TvGhost.bg],
     );
     expect(comfort.bgGradient, evening.ambient);
   });
@@ -133,7 +134,7 @@ void main() {
 
     const TvAppTokens ghost = TvAppTokens(ghost: true);
     expect(await shellGradient(ghost), ghost.bgGradient);
-    expect(find.byType(PhantomWeave), findsOneWidget);
+    expect(find.byType(PhantomWeave), findsNothing);
 
     const TvAppTokens comfort = TvAppTokens();
     final TvComfortPalette evening =

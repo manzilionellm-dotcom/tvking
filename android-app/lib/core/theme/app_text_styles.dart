@@ -22,6 +22,51 @@ import 'package:google_fonts/google_fonts.dart';
 import 'app_colors.dart';
 
 abstract final class AppTextStyles {
+  // Échelle Noir Fantôme (canevas TV 1280 px). Polices déjà embarquées.
+  static TextStyle get stealthBrand => GoogleFonts.inter(
+    fontSize: 32,
+    fontWeight: FontWeight.w700,
+    letterSpacing: 4,
+    color: AppColors.stealthPlatinum,
+  );
+  static TextStyle get stealthHero => GoogleFonts.inter(
+    fontSize: 42,
+    fontWeight: FontWeight.w700,
+    height: 1.12,
+    letterSpacing: -1.2,
+    color: AppColors.stealthPlatinum,
+  );
+  static TextStyle get stealthTitle => GoogleFonts.inter(
+    fontSize: 20,
+    fontWeight: FontWeight.w600,
+    height: 1.25,
+    color: AppColors.stealthPlatinum,
+  );
+  static TextStyle get stealthBody => GoogleFonts.inter(
+    fontSize: 16,
+    fontWeight: FontWeight.w500,
+    height: 1.3,
+    color: AppColors.stealthPlatinum,
+  );
+  static TextStyle get stealthCaption => GoogleFonts.inter(
+    fontSize: 14,
+    fontWeight: FontWeight.w500,
+    height: 1.25,
+    color: AppColors.stealthMuted,
+  );
+  static TextStyle get stealthEyebrow => GoogleFonts.inter(
+    fontSize: 14,
+    fontWeight: FontWeight.w600,
+    height: 1.2,
+    letterSpacing: 2.2,
+    color: AppColors.stealthPlatinum,
+  );
+  static TextStyle get stealthCode => GoogleFonts.jetBrainsMono(
+    fontSize: 14,
+    fontWeight: FontWeight.w400,
+    color: AppColors.stealthMuted,
+  );
+
   /// Notification brève de la TV : lisible sans téléchargement de police.
   static const TextStyle tvNotice = TextStyle(
     fontSize: 20,

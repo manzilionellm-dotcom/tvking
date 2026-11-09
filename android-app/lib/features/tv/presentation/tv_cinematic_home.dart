@@ -23,6 +23,7 @@ import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
 import 'tv_glass.dart';
 import 'tv_tonight.dart';
+import 'tv_stealth_home.dart';
 
 Color _field(BuildContext context) =>
     TvAppTokens.of(context).ghost ? TvAppTokens.of(context).bg : TvTokens.bg;
@@ -59,6 +60,13 @@ class TvCinematicHome extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (TvAppTokens.of(context).ghost && !TvAppTokens.of(context).light) {
+      return TvStealthHome(
+        board: board, blur: blur, onPlay: onPlay,
+        onLive: onLive, onFilms: onFilms, onSeries: onSeries,
+        onServer: onServer, onSettings: onSettings,
+      );
+    }
     final bool heroFirst = board.hasHero;
     return Row(
       crossAxisAlignment: CrossAxisAlignment.stretch,

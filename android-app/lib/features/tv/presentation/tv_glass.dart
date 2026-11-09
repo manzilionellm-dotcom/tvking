@@ -16,6 +16,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../core/app/box_memory_budget.dart';
+import '../../../core/theme/app_colors.dart';
 import '../core/tv_app_tokens.dart';
 import '../core/tv_ghost.dart';
 import '../core/tv_tokens.dart';
@@ -84,7 +85,9 @@ class TvGlassPanel extends StatelessWidget {
         : TvTokens.accent.withValues(alpha: focused ? 0.72 : 0.26);
     // Aplat : le flou a besoin de transparence. Sans flou, on
     // couvre plus pour que le texte reste lisible sur l'obsidienne.
-    final Color fill = TvTokens.bg.withValues(alpha: blur ? 0.42 : 0.86);
+    final Color fill = phantom
+        ? AppColors.stealthGlass
+        : TvTokens.bg.withValues(alpha: blur ? 0.42 : 0.86);
     final Widget sheet = DecoratedBox(
       decoration: BoxDecoration(
         color: fill,
@@ -104,7 +107,7 @@ class TvGlassPanel extends StatelessWidget {
     );
     return ClipRRect(
       borderRadius: BorderRadius.circular(radius),
-      child: blur
+      child: blur && !MediaQuery.disableAnimationsOf(context)
           ? BackdropFilter(
               // Sigma court : un voile, pas un brouillard. Deux panneaux
               // au plus sur l'accueil (héros + colonne).

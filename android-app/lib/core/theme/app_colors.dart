@@ -21,6 +21,16 @@ import 'accent_controller.dart';
 import 'lumiere_tokens.dart';
 
 abstract final class AppColors {
+  // Noir Fantôme TV : palette isolée, sans effet sur la colorimétrie vidéo.
+  static const Color stealthBlack = Color(0xFF000000);
+  static const Color stealthSurface = Color(0xFF0F0F12);
+  static const Color stealthGlass = Color(0xB30F0F12);
+  static const Color stealthPlatinum = Color(0xFFE6EBF2);
+  static const Color stealthIce = Color(0xFFB7D4FF);
+  static const Color stealthSport = Color(0xFF89C5B4);
+  static const Color stealthCinema = Color(0xFFC4A78B);
+  static const Color stealthKids = Color(0xFFB5A3D3);
+  static const Color stealthMuted = Color(0xFFADB3BD);
   // -------------------------------------------------------
   //  FONDS / SURFACES (Cinema Mode The Few)
   // -------------------------------------------------------

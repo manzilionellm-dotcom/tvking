@@ -96,7 +96,7 @@ import 'tv_components.dart';
 import 'tv_cinematic_home.dart';
 import 'tv_epg_preview_screen.dart';
 import 'tv_glass.dart';
-import 'tv_starfield.dart';
+import 'tv_stealth_chrome.dart';
 import 'tv_tonight.dart';
 import 'tv_live_screen.dart';
 import 'tv_player_screen.dart';
@@ -1327,6 +1327,8 @@ class _TvHubScreenState extends State<TvHubScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final bool stealth =
+        TvAppTokens.of(context).ghost && !TvAppTokens.of(context).light;
     final Map<String, HomeSectionConfig> homeLayout = _homeLayout;
     final bool hasVisibleShelves = hasVisibleTvHomeShelves(
       _shelves,
@@ -1396,25 +1398,24 @@ class _TvHubScreenState extends State<TvHubScreen> {
                             ? TvAppTokens.of(context).bg
                             : TvTokens.bg,
                       ),
-                      DecoratedBox(
-                        decoration: BoxDecoration(
-                          gradient: RadialGradient(
-                            center: const Alignment(-0.72, -0.55),
-                            radius: 1.15,
-                            colors: <Color>[
-                              (TvAppTokens.of(context).ghost
-                                      ? TvAppTokens.of(context).accent
-                                      : TvTokens.accent)
-                                  .withValues(alpha: 0.06),
-                              TvAppTokens.of(context).ghost
-                                  ? TvAppTokens.of(context).bg
-                                  : TvTokens.bg,
-                            ],
+                      if (!stealth)
+                        DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: RadialGradient(
+                              center: const Alignment(-0.72, -0.55),
+                              radius: 1.15,
+                              colors: <Color>[
+                                (TvAppTokens.of(context).ghost
+                                        ? TvAppTokens.of(context).accent
+                                        : TvTokens.accent)
+                                    .withValues(alpha: 0.06),
+                                TvAppTokens.of(context).ghost
+                                    ? TvAppTokens.of(context).bg
+                                    : TvTokens.bg,
+                              ],
+                            ),
                           ),
                         ),
-                      ),
-                      if (TvAppTokens.of(context).ghost)
-                        const Positioned.fill(child: PhantomWeave()),
                       Padding(
                         padding: const EdgeInsets.symmetric(
                           horizontal: TvDimens.safeH,
@@ -1423,74 +1424,108 @@ class _TvHubScreenState extends State<TvHubScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: <Widget>[
-                            // ---------- BARRE DU HAUT ----------
-                            Row(
-                              children: <Widget>[
-                                const TvLogo(width: 150),
-                                const SizedBox(width: 18),
-                                _ProfileChip(
-                                  onSelect: () {
-                                    StartupPickerSession.shown = true;
-                                    Navigator.of(context)
-                                        .push<bool>(
-                                          MaterialPageRoute<bool>(
-                                            builder: (_) =>
-                                                const TvProfilePickerScreen(),
-                                          ),
-                                        )
-                                        .then((_) => _openLiveIfPending());
-                                  },
+                            if (stealth)
+                              TvStealthHeader(
+                                profileName: tvProfileLabel(
+                                  context,
+                                  ProfileRepository.instance.active,
                                 ),
-                                const Spacer(),
-                                _HubSearchButton(
-                                  label: context.l10n.tvNavSearch,
-                                  onSelect: () => VoiceNavigation.openSearch(),
+                                profileIcon: ProfileLooks.icon(
+                                  ProfileRepository.instance.active,
                                 ),
-                                const SizedBox(width: 16),
-                                Icon(
-                                  _netIcon,
-                                  size: 22,
-                                  color: TvAppTokens.of(context).muted,
+                                profileColor: ProfileLooks.color(
+                                  ProfileRepository.instance.active,
+                                  context: context,
                                 ),
-                                const SizedBox(width: 16),
-                                Text(
-                                  _time,
-                                  style: TvAppTokens.of(context).display(
-                                    22,
-                                    color: TvAppTokens.of(context).text,
+                                status: lic.label,
+                                greeting: _hello(context),
+                                time: _time,
+                                date: date,
+                                networkIcon: _netIcon,
+                                searchLabel: context.l10n.tvNavSearch,
+                                onSearch: () => VoiceNavigation.openSearch(),
+                                onProfile: () {
+                                  StartupPickerSession.shown = true;
+                                  Navigator.of(context)
+                                      .push<bool>(
+                                        MaterialPageRoute<bool>(
+                                          builder: (_) =>
+                                              const TvProfilePickerScreen(),
+                                        ),
+                                      )
+                                      .then((_) => _openLiveIfPending());
+                                },
+                              )
+                            else ...<Widget>[
+                              // ---------- BARRE DU HAUT ----------
+                              Row(
+                                children: <Widget>[
+                                  const TvLogo(width: 150),
+                                  const SizedBox(width: 18),
+                                  _ProfileChip(
+                                    onSelect: () {
+                                      StartupPickerSession.shown = true;
+                                      Navigator.of(context)
+                                          .push<bool>(
+                                            MaterialPageRoute<bool>(
+                                              builder: (_) =>
+                                                  const TvProfilePickerScreen(),
+                                            ),
+                                          )
+                                          .then((_) => _openLiveIfPending());
+                                    },
                                   ),
+                                  const Spacer(),
+                                  _HubSearchButton(
+                                    label: context.l10n.tvNavSearch,
+                                    onSelect: () => VoiceNavigation.openSearch(),
+                                  ),
+                                  const SizedBox(width: 16),
+                                  Icon(
+                                    _netIcon,
+                                    size: 22,
+                                    color: TvAppTokens.of(context).muted,
+                                  ),
+                                  const SizedBox(width: 16),
+                                  Text(
+                                    _time,
+                                    style: TvAppTokens.of(context).display(
+                                      22,
+                                      color: TvAppTokens.of(context).text,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Text(
+                                    date,
+                                    style: TvAppTokens.of(context).ui(
+                                      15,
+                                      color: TvAppTokens.of(context).mutedDim,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                _hello(context),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TvAppTokens.of(context).display(
+                                  TvDimens.title,
+                                  color: TvAppTokens.of(context).text,
                                 ),
-                                const SizedBox(width: 12),
+                              ),
+                              if (!hasPersonal) ...<Widget>[
+                                const SizedBox(height: 4),
                                 Text(
-                                  date,
+                                  context.l10n.tvHomeInvite,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
                                   style: TvAppTokens.of(context).ui(
-                                    15,
-                                    color: TvAppTokens.of(context).mutedDim,
+                                    TvDimens.label,
+                                    color: TvAppTokens.of(context).muted,
                                   ),
                                 ),
                               ],
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              _hello(context),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TvAppTokens.of(context).display(
-                                TvDimens.title,
-                                color: TvAppTokens.of(context).text,
-                              ),
-                            ),
-                            if (!hasPersonal) ...<Widget>[
-                              const SizedBox(height: 4),
-                              Text(
-                                context.l10n.tvHomeInvite,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: TvAppTokens.of(context).ui(
-                                  TvDimens.label,
-                                  color: TvAppTokens.of(context).muted,
-                                ),
-                              ),
                             ],
                             if (header != null) ...<Widget>[
                               header,
@@ -1544,50 +1579,63 @@ class _TvHubScreenState extends State<TvHubScreen> {
                                   ).ui(14, color: TvAppTokens.of(context).live),
                                 ),
                               ),
-                            // ---------- BARRE DU BAS ----------
-                            Row(
-                              children: <Widget>[
-                                Text(
-                                  '${context.l10n.tvActivationCodeLabel} : ',
-                                  style: TvAppTokens.of(context).ui(
-                                    14,
-                                    color: TvAppTokens.of(context).mutedDim,
-                                  ),
+                            if (stealth)
+                              TvStealthFooter(
+                                activationLabel:
+                                    context.l10n.tvActivationCodeLabel,
+                                activationCode: displayMac(
+                                  _mac,
+                                  showPrefix: RepairFlags.macShowPrefix,
                                 ),
-                                Text(
-                                  displayMac(
-                                    _mac,
-                                    showPrefix: RepairFlags.macShowPrefix,
-                                  ),
-                                  // Les groupes d'une MAC ne suivent pas le sens de l'UI.
-                                  textDirection: TextDirection.ltr,
-                                  style: TvAppTokens.of(context).mono(
-                                    16,
-                                    color: TvAppTokens.of(context).accentBright,
-                                  ),
-                                ),
-                                const Spacer(),
-                                if (lic.label.isNotEmpty)
+                                status: lic.label,
+                                statusColor: lic.color,
+                                source: src,
+                              )
+                            else
+                              // ---------- BARRE DU BAS ----------
+                              Row(
+                                children: <Widget>[
                                   Text(
-                                    lic.label,
-                                    style: TvAppTokens.of(context).ui(
-                                      15,
-                                      weight: FontWeight.w600,
-                                      color: lic.color,
-                                    ),
-                                  ),
-                                if (src.isNotEmpty) ...<Widget>[
-                                  const SizedBox(width: 18),
-                                  Text(
-                                    src,
+                                    '${context.l10n.tvActivationCodeLabel} : ',
                                     style: TvAppTokens.of(context).ui(
                                       14,
                                       color: TvAppTokens.of(context).mutedDim,
                                     ),
                                   ),
+                                  Text(
+                                    displayMac(
+                                      _mac,
+                                      showPrefix: RepairFlags.macShowPrefix,
+                                    ),
+                                    // Les groupes d'une MAC ne suivent pas le sens de l'UI.
+                                    textDirection: TextDirection.ltr,
+                                    style: TvAppTokens.of(context).mono(
+                                      16,
+                                      color: TvAppTokens.of(context).accentBright,
+                                    ),
+                                  ),
+                                  const Spacer(),
+                                  if (lic.label.isNotEmpty)
+                                    Text(
+                                      lic.label,
+                                      style: TvAppTokens.of(context).ui(
+                                        15,
+                                        weight: FontWeight.w600,
+                                        color: lic.color,
+                                      ),
+                                    ),
+                                  if (src.isNotEmpty) ...<Widget>[
+                                    const SizedBox(width: 18),
+                                    Text(
+                                      src,
+                                      style: TvAppTokens.of(context).ui(
+                                        14,
+                                        color: TvAppTokens.of(context).mutedDim,
+                                      ),
+                                    ),
+                                  ],
                                 ],
-                              ],
-                            ),
+                              ),
                           ],
                         ),
                       ),

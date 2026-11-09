@@ -1,39 +1,13 @@
-// =========================================================
-//  tv_ghost.dart — Palette « Ghost » (Black Badge)
-// =========================================================
-//  Sources, pas une invention de néon :
-//
-//  • Rolls-Royce Black Badge Ghost (designboom, 28 oct. 2021) :
-//    le noir le plus sombre de la marque, chrome assombri
-//    (un micromètre, pas une peinture argent criarde), et un
-//    ciel d'étoiles clairsemé — plus de 850 points dans la
-//    planche de bord, pas un champ dense.
-//    https://www.designboom.com/technology/2021-rolls-royce-black-badge-ghost-10-28-2021/
-//  • Starlight Headliner (designboom, Cullinan Black Badge, 2019) :
-//    1 344 fibres, huit étoiles filantes. L'effet est une
-//    constellation rare, pas une pluie.
-//    https://www.designboom.com/technology/rolls-royce-black-badge-cullinan-11-07-2019/
-//
-//  On ne copie pas le logo Rolls-Royce. On reprend le rapport :
-//  noir très profond (pas #000 : le banding OLED est déjà noté
-//  dans TvTokens), chrome sombre lisible, quelques points.
-//
-//  Le gris confort #121212 ne s'applique pas ici. Les surfaces
-//  confort restent dans tv_comfort.dart.
-//
-//  Contrastes sur #050506 (calculés) : chrome #C5C9D1 ≈ 12:1,
-//  texte #F4F6F8 ≈ 19:1, secondaire #B7BCC4 ≈ 11:1,
-//  tertiaire #8B9098 ≈ 6,4:1. Le chrome profond #6E737C est
-//  un filet (≈ 4,3:1), pas un texte.
-// =========================================================
+// Palette Noir Fantôme : noir OLED et reflets platine de la direction artistique.
 import 'package:flutter/material.dart';
 
+import '../../../core/theme/app_colors.dart';
+
 abstract final class TvGhost {
-  /// Obsidienne. Le #000 pur bande sur OLED ; la trame posée
-  /// dessus casse l'aplat. Plus profond que #070708 et que #121212.
-  static const Color bg = Color(0xFF010102);
-  static const Color panel = Color(0xFF0C0C0E);
-  static const Color card = Color(0xFF141416);
+  /// Fond absolu ; le halo de contenu reste un calque local de l’accueil.
+  static const Color bg = AppColors.stealthBlack;
+  static const Color panel = AppColors.stealthSurface;
+  static const Color card = AppColors.stealthSurface;
   static const Color tile = Color(0xFF18181B);
   static const Color sel = Color(0xFF222226);
   static const Color surface3 = Color(0xFF2A2A2E);

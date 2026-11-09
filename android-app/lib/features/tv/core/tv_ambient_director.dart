@@ -59,7 +59,7 @@ class TvAmbientDirector extends ChangeNotifier {
           : TvAmbientChoice.auto;
       if (next != _choice) {
         _choice = next;
-        _publish();
+        _publish(force: true);
       }
     } catch (_) {
       // On reste sur Auto.
@@ -73,8 +73,11 @@ class TvAmbientDirector extends ChangeNotifier {
       );
 
   Future<void> choose(TvAmbientChoice choice) async {
+    final bool changed = _choice != choice;
     _choice = choice;
-    _publish();
+    // L'accueil écoute aussi le choix lui-même : sans chaîne en cours,
+    // le look reste null mais il faut tout de même éteindre son halo.
+    _publish(force: changed);
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       await prefs.setString(prefKey, choice.name);
@@ -108,9 +111,9 @@ class TvAmbientDirector extends ChangeNotifier {
     clear();
   }
 
-  void _publish() {
+  void _publish({bool force = false}) {
     final TvAmbientLook? next = _resolve();
-    if (next == _look) return;
+    if (!force && next == _look) return;
     _look = next;
     notifyListeners();
   }

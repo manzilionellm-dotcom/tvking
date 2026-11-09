@@ -8,7 +8,6 @@ import '../core/tv_ambient_director.dart';
 import '../core/tv_comfort.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_app_tokens.dart';
-import 'tv_starfield.dart';
 
 class TvShell extends StatefulWidget {
   const TvShell({super.key, required this.child, this.applySafeArea = true});
@@ -88,7 +87,6 @@ class _TvShellState extends State<TvShell> with SingleTickerProviderStateMixin {
       child: Stack(
         fit: StackFit.expand,
         children: <Widget>[
-          if (palette.ghost) const Positioned.fill(child: PhantomWeave()),
           Material(
             type: MaterialType.transparency,
             child: widget.applySafeArea

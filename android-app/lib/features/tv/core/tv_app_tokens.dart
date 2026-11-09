@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/theme/app_colors.dart';
 import 'tv_comfort.dart';
 import 'tv_ghost.dart';
 import 'tv_tokens.dart';
@@ -157,18 +158,18 @@ class TvAppTokens extends ThemeExtension<TvAppTokens> {
   Color get glassFill => light
       ? card.withValues(alpha: 0.92)
       : _darkGhost
-          ? TvGhost.card
-          : _comfort.glassFill;
+          ? AppColors.stealthGlass
+      : _comfort.glassFill;
 
   /// Filet cuivré du verre. Suit l'accent du panel. Doux : pas un néon.
   Color get glassEdge => light ? line : accent.withValues(alpha: 0.42);
 
-  Gradient get bgGradient => !light && remoteAccent == null
+  Gradient get bgGradient => _darkGhost || (!light && remoteAccent == null)
       ? _darkGhost
           ? RadialGradient(
               center: const Alignment(0.56, -.40),
               radius: 1.3,
-              colors: <Color>[sel, bg],
+              colors: <Color>[bg, bg],
               stops: const <double>[0, .6],
             )
           : _comfort.ambient
@@ -181,7 +182,7 @@ class TvAppTokens extends ThemeExtension<TvAppTokens> {
           ],
           stops: const <double>[0, .6],
         );
-  Gradient get brandGlow => remoteAccent == null
+  Gradient get brandGlow => remoteAccent == null && !_darkGhost
       ? TvTokens.brandGlow
       : RadialGradient(
           center: Alignment.topLeft,
@@ -191,7 +192,7 @@ class TvAppTokens extends ThemeExtension<TvAppTokens> {
             accent.withValues(alpha: 0),
           ],
         );
-  Gradient get accentHairline => remoteAccent == null
+  Gradient get accentHairline => remoteAccent == null && !_darkGhost
       ? TvTokens.accentHairline
       : LinearGradient(
           colors: <Color>[
@@ -210,7 +211,7 @@ class TvAppTokens extends ThemeExtension<TvAppTokens> {
         end: Alignment.bottomCenter,
         colors: <Color>[accent, accent],
       );
-  Gradient get pillGradient => remoteAccent == null
+  Gradient get pillGradient => remoteAccent == null && !_darkGhost
       ? TvTokens.pillGradient
       : LinearGradient(
           begin: Alignment.topCenter,
