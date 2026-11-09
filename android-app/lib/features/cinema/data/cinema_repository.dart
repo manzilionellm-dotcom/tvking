@@ -31,7 +31,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 
 import '../../../core/blackbox/black_box.dart';
 import '../../channels/domain/channel_genre.dart';
@@ -46,6 +45,7 @@ import 'catalog_cache_policy.dart';
 import 'catalog_disk.dart';
 import 'catalog_refresh.dart';
 import 'cinema_parsers.dart';
+import '../../../core/storage/zuno_data_dir.dart';
 
 /// Au-delà, la liste complète n'est PAS téléchargée d'un bloc (index construit
 /// catégorie par catégorie). Même logique que l'import des chaînes.
@@ -817,7 +817,7 @@ class CinemaRepository {
   Future<CatalogDisk?> _openDisk() async {
     if (_disk != null) return _disk;
     try {
-      final Directory docs = await getApplicationDocumentsDirectory();
+      final Directory docs = await zunoDataDirectory();
       _disk = CatalogDisk(Directory(p.join(docs.path, 'zuno_catalog')));
       return _disk;
     } catch (e) {

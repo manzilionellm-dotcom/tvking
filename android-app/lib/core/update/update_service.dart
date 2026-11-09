@@ -107,7 +107,16 @@ class UpdateService {
   static const int _winBuild = int.fromEnvironment('ZUNO_WIN_BUILD');
 
   static bool get _isWindowsUpdater =>
-      Platform.isWindows && !RepairFlags.updateLegacy && _winBuild > 0;
+      Platform.isWindows &&
+      !RepairFlags.updateLegacy &&
+      _winBuild > 0 &&
+      !isWindowsStorePackage;
+
+  /// Paquet MSIX (Microsoft Store) : installé sous WindowsApps. Le Store
+  /// fait les mises à jour lui-même ; l'app ne télécharge jamais d'installeur.
+  static bool get isWindowsStorePackage =>
+      Platform.isWindows &&
+      Platform.resolvedExecutable.toLowerCase().contains(r'\windowsapps\');
 
   /// Vrai quand le dernier essai a trouvé que Zuno n'a pas le droit
   /// d'installer une application, et que l'écran Android pour l'autoriser

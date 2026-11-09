@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ZUNO — manifeste MSIX (Microsoft Store). Gabarit rempli par ci/windows/msix.ps1.
+  TODO(Partner Center) : __IDENTITY_NAME__, __PUBLISHER__ et
+  __PUBLISHER_DISPLAY_NAME__ viennent de la réservation du nom « ZUNO »
+  (Partner Center > Gestion des produits > Identité du produit). Ils sont lus
+  depuis les variables du dépôt ZUNO_MSIX_IDENTITY_NAME, ZUNO_MSIX_PUBLISHER,
+  ZUNO_MSIX_PUBLISHER_DISPLAY_NAME. Le Store re-signe le paquet.
+-->
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:uap3="http://schemas.microsoft.com/appx/manifest/uap/windows10/3"
+  xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
+  xmlns:desktop2="http://schemas.microsoft.com/appx/manifest/desktop/windows10/2"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  IgnorableNamespaces="uap uap3 desktop desktop2 rescap">
+
+  <Identity
+    Name="__IDENTITY_NAME__"
+    Publisher="__PUBLISHER__"
+    Version="__VERSION__"
+    ProcessorArchitecture="x64" />
+
+  <Properties>
+    <DisplayName>ZUNO</DisplayName>
+    <PublisherDisplayName>__PUBLISHER_DISPLAY_NAME__</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+    <Description>ZUNO — lecteur vidéo pour PC Windows</Description>
+  </Properties>
+
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.17763.0" MaxVersionTested="10.0.22621.0" />
+  </Dependencies>
+
+  <Resources>
+    <Resource Language="fr-FR" />
+    <Resource Language="en-US" />
+  </Resources>
+
+  <Applications>
+    <Application Id="ZUNO" Executable="tv_king.exe" EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements
+        DisplayName="ZUNO"
+        Description="ZUNO — lecteur vidéo pour PC Windows"
+        BackgroundColor="transparent"
+        Square150x150Logo="Assets\Square150x150Logo.png"
+        Square44x44Logo="Assets\Square44x44Logo.png">
+        <uap:DefaultTile
+          Wide310x150Logo="Assets\Wide310x150Logo.png"
+          Square71x71Logo="Assets\Square71x71Logo.png"
+          Square310x310Logo="Assets\Square310x310Logo.png"
+          ShortName="ZUNO" />
+      </uap:VisualElements>
+      <Extensions>
+        <!-- « zuno » dans Exécuter / un terminal ; aussi utilisé par le smoke CI. -->
+        <uap3:Extension Category="windows.appExecutionAlias" Executable="tv_king.exe" EntryPoint="Windows.FullTrustApplication">
+          <uap3:AppExecutionAlias>
+            <desktop:ExecutionAlias Alias="zuno.exe" />
+          </uap3:AppExecutionAlias>
+        </uap3:Extension>
+      </Extensions>
+    </Application>
+  </Applications>
+
+  <Extensions>
+    <!-- Cast local (DLNA, Chromecast, page navigateur) : réseau PRIVÉ seulement,
+         sans fenêtre « Autoriser l'accès » du pare-feu à la première diffusion. -->
+    <desktop2:Extension Category="windows.firewallRules">
+      <desktop2:FirewallRules Executable="tv_king.exe">
+        <desktop2:Rule Direction="in" IPProtocol="TCP" Profile="private" />
+        <desktop2:Rule Direction="in" IPProtocol="UDP" Profile="private" />
+      </desktop2:FirewallRules>
+    </desktop2:Extension>
+  </Extensions>
+
+  <Capabilities>
+    <Capability Name="internetClient" />
+    <Capability Name="privateNetworkClientServer" />
+    <rescap:Capability Name="runFullTrust" />
+  </Capabilities>
+</Package>
