@@ -14,6 +14,28 @@ defaults:
   run:
     working-directory: android-app
 jobs:
+  diagnose-published:
+    # Reproduit la release publiée installée comme chez un client (réseau
+    # actif). Diagnostic seulement : n'empêche pas la revue, ne publie rien.
+    if: github.head_ref == 'zuno-windows-cast'
+    runs-on: windows-2022
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Installer et lancer la release publiée (réseau actif)
+        shell: pwsh
+        run: ./ci/windows/diagnose-release.ps1 -Tag zuno-windows-113.0.2
+      - name: Captures et journaux
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: zuno-diagnose-published-${{ github.sha }}
+          path: ${{ runner.temp }}/zuno-diag/*.*
+          retention-days: 14
+          if-no-files-found: warn
   windows-review:
     if: github.head_ref == 'zuno-windows-cast'
     runs-on: windows-2022
