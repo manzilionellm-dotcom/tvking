@@ -1467,5 +1467,7 @@
   "tvAmbientOff": "Fra",
   "vipCountriesFirstUseHint": "Vælg dine lande her. Du kan ændre dem når som helst.",
   "tvAdultLive": "Adult live TV",
-  "tvAdultCinema": "Adult cinema"
+  "tvAdultCinema": "Adult cinema",
+  "tvProfileSources": "Profilens afspilningslister",
+  "tvProfileSourceUnavailable": "Denne profil findes ikke længere. Afspilningslisten blev ikke tilknyttet."
 }

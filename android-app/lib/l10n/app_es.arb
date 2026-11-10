@@ -1467,5 +1467,7 @@
   "tvAmbientOff": "Apagado",
   "vipCountriesFirstUseHint": "Elige tus países aquí. Puedes cambiarlos cuando quieras.",
   "tvAdultLive": "Adult live TV",
-  "tvAdultCinema": "Adult cinema"
+  "tvAdultCinema": "Adult cinema",
+  "tvProfileSources": "Listas del perfil",
+  "tvProfileSourceUnavailable": "Este perfil ya no existe. La lista no se ha vinculado."
 }

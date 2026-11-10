@@ -2897,5 +2897,7 @@
   "tvAmbientOff": "Spento",
   "vipCountriesFirstUseHint": "Scegli qui i tuoi Paesi. Puoi cambiarli in qualsiasi momento.",
   "tvAdultLive": "Adult live TV",
-  "tvAdultCinema": "Adult cinema"
+  "tvAdultCinema": "Adult cinema",
+  "tvProfileSources": "Playlist del profilo",
+  "tvProfileSourceUnavailable": "Questo profilo non esiste più. La playlist non è stata associata."
 }

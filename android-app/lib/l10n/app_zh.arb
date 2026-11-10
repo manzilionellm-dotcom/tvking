@@ -2897,5 +2897,7 @@
   "tvAmbientOff": "关闭",
   "vipCountriesFirstUseHint": "在这里选择你的国家。你可以随时更改。",
   "tvAdultLive": "Adult live TV",
-  "tvAdultCinema": "Adult cinema"
+  "tvAdultCinema": "Adult cinema",
+  "tvProfileSources": "个人资料的播放列表",
+  "tvProfileSourceUnavailable": "此个人资料已不存在，播放列表未能关联。"
 }

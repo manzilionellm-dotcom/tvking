@@ -2897,5 +2897,7 @@
   "tvAmbientOff": "Выкл",
   "vipCountriesFirstUseHint": "Выберите страны здесь. Их можно изменить в любое время.",
   "tvAdultLive": "Adult live TV",
-  "tvAdultCinema": "Adult cinema"
+  "tvAdultCinema": "Adult cinema",
+  "tvProfileSources": "Плейлисты профиля",
+  "tvProfileSourceUnavailable": "Этот профиль больше не существует. Плейлист не был привязан."
 }

@@ -2897,5 +2897,7 @@
   "tvAmbientOff": "Uit",
   "vipCountriesFirstUseHint": "Kies hier je landen. Je kunt ze op elk moment wijzigen.",
   "tvAdultLive": "Adult live TV",
-  "tvAdultCinema": "Adult cinema"
+  "tvAdultCinema": "Adult cinema",
+  "tvProfileSources": "Afspeellijsten van het profiel",
+  "tvProfileSourceUnavailable": "Dit profiel bestaat niet meer. De afspeellijst is niet gekoppeld."
 }

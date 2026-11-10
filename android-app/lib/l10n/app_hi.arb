@@ -2897,5 +2897,7 @@
   "tvAmbientOff": "बंद",
   "vipCountriesFirstUseHint": "यहाँ अपने देश चुनें। आप इन्हें कभी भी बदल सकते हैं।",
   "tvAdultLive": "Adult live TV",
-  "tvAdultCinema": "Adult cinema"
+  "tvAdultCinema": "Adult cinema",
+  "tvProfileSources": "प्रोफ़ाइल की प्लेलिस्ट",
+  "tvProfileSourceUnavailable": "यह प्रोफ़ाइल अब मौजूद नहीं है। प्लेलिस्ट प्रोफ़ाइल से नहीं जोड़ी गई।"
 }
