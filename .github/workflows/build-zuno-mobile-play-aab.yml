@@ -1,0 +1,783 @@
+# ============================================================================
+#  build-zuno-mobile-play-aab.yml — AAB Google Play de la ZUNO publique « 116 »
+#
+#  BUT. Produire, SANS RIEN PUBLIER, le fichier zuno-mobile-google-play.aab
+#  équivalent à l'APK réellement servi par https://zuno8k.com/mobile.apk :
+#
+#    SHA-256  0b66be1efca229dfc17a5e3a48b2710251600be71d55e8a1c21dd42cc4dd25cd
+#    taille   60 472 328 octets
+#    source   a4b81f7661d05866a39eeb05eec040ddbb1b7eb0 (run « Build Zuno TV » n° 317)
+#    paquet   com.sevenmotion.tv.seven_tv · version 116 · code 1794284448
+#
+#  MÉTHODE. Ce fichier n'invente aucune recette : il rejoue, étape par étape,
+#  celle de build-zuno-tv.yml (le constructeur qui a produit cet APK), sur le
+#  commit source EXACT, extrait par son SHA. Le code de l'application, ses
+#  dépendances, ses scripts de patch et son gel (.github/app-production.json,
+#  mode « frozen ») viennent de ce commit et ne sont pas modifiés.
+#
+#  CE QUE FAIT LE RUN.
+#    1. « build »   : recompile d'abord l'APK avec les paramètres du run 317
+#                     (preuve de reproductibilité), puis compile l'AAB avec les
+#                     seuls écarts exigés par Google Play, le signe avec la clé
+#                     d'import, et en tire des APK de test avec bundletool.
+#    2. « compare » : télécharge le vrai APK public, vérifie son empreinte et
+#                     compare manifestes, DEX, bibliothèques natives, assets et
+#                     signatures (.github/zuno-mobile-play-compare.py).
+#    3. « startup » : installe et ouvre l'APK issu de l'AAB sur émulateurs
+#                     API 29 et API 35, avec le scénario existant
+#                     android-app/ci/run-apk-startup.sh.
+#
+#  SEULS ÉCARTS ENTRE L'APK PUBLIC ET L'AAB (tous déjà pratiqués par l'étape
+#  « AAB Google Play » de build-zuno-tv.yml) :
+#    • PLAY_BUILD=true : la mise à jour par téléchargement d'APK est coupée,
+#      les mises à jour viennent du Store (lib/core/update/build_flags.dart) ;
+#    • permission REQUEST_INSTALL_PACKAGES retirée (restreinte sur Google Play) ;
+#    • minSdk 24 au lieu de 21 (protection automatique Play de la fiche) ;
+#    • format : bundle signé avec la clé d'import, re-signé ensuite par Google.
+#  Le nom « Zuno », le paquet, la version 116, le code 1794284448, l'entrée
+#  lib/main_tv.dart, le manifeste Leanback/téléphone, le lecteur, le Cast et
+#  le backend restent ceux de l'APK public.
+#
+#  NUMÉROTATION. Le plus grand code déjà importé sur la fiche Play
+#  com.sevenmotion.tv.seven_tv est 1793630235 (« 113 », importé le 7 novembre
+#  2026, relevé dans la Play Console le 10 novembre 2026). Le code de l'APK
+#  public, 1794284448, lui est supérieur : il est conservé tel quel, avec le
+#  nom 116. android-app/ci/play-tv-version.json n'est pas modifié ici ; il
+#  devra enregistrer ce code après un import accepté.
+#
+#  CE QUE CE FICHIER NE FAIT JAMAIS. Aucune release, aucun téléversement vers
+#  Google Play, aucun déploiement du Worker, aucune écriture sur /mobile.apk,
+#  /apk, zuno-tv ou zuno-tv-test. Permissions : contents: read uniquement.
+#  Le déclencheur est un push sur cette seule branche de préparation ; la
+#  garde .github/app-release-guard.mjs du commit source autorise un build
+#  sans publication sur push, et rien d'autre.
+# ============================================================================
+name: ZUNO mobile 116 — AAB Google Play (préparation, sans publication)
+
+on:
+  push:
+    branches: ['feature/zuno-mobile-play-aab-20261110']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: zuno-mobile-play-aab
+  cancel-in-progress: false
+
+env:
+  # --- Référence publique : vérifiée à chaque run, jamais supposée ---------
+  REFERENCE_URL: https://zuno8k.com/mobile.apk
+  REFERENCE_SHA256: 0b66be1efca229dfc17a5e3a48b2710251600be71d55e8a1c21dd42cc4dd25cd
+  REFERENCE_SIZE: '60472328'
+  REFERENCE_VERSION_CODE: '1794284448'
+  # --- Source exacte : commit et arbre du tag zuno-mobile-cast-20261110-test
+  SOURCE_SHA: a4b81f7661d05866a39eeb05eec040ddbb1b7eb0
+  SOURCE_TREE: 13d5ef7848c92a50c0fdf613f5cceed0def95030
+  # --- Identité : celle de l'APK public (lue par ci/tv/patch_*.py) ---------
+  ZUNO_APP_ID: com.sevenmotion.tv.seven_tv
+  ZUNO_APP_LABEL: Zuno
+  PLAY_VERSION_NAME: '116'
+  PLAY_VERSION_CODE: '1794284448'
+  # Plus grand code déjà importé sur la fiche Play (Play Console, 10/11/2026).
+  PLAY_HIGHEST_UPLOADED_CODE: '1793630235'
+  # Clé maîtresse = clé d'import enregistrée dans la Play Console.
+  EXPECTED_CERT: 5145b8e019f6d5fb96a207f2e73673fd954f799966fd598889211556cbdf9e61
+  AAB_NAME: zuno-mobile-google-play.aab
+  UNIVERSAL_APK_NAME: zuno-mobile-google-play-universal.apk
+  BUNDLETOOL_URL: https://github.com/google/bundletool/releases/download/1.18.1/bundletool-all-1.18.1.jar
+
+defaults:
+  run:
+    working-directory: android-app
+
+jobs:
+  build:
+    name: Reconstruire la référence et produire l'AAB signé
+    if: github.actor == github.repository_owner && github.triggering_actor == github.repository_owner && github.repository == 'manzilionellm-dotcom/tvking'
+    # Même environnement que le run 317 (push sans box de test) : c'est lui
+    # qui détient la clé maîtresse. Rien n'y est publié par ce workflow.
+    environment: zuno-app-production
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    outputs:
+      source-sha: ${{ steps.identity.outputs.source-sha }}
+      build-attempt: ${{ steps.identity.outputs.build-attempt }}
+      version-name: ${{ steps.identity.outputs.version-name }}
+      version-code: ${{ steps.identity.outputs.version-code }}
+      aab-sha256: ${{ steps.identity.outputs.aab-sha256 }}
+      aab-size: ${{ steps.identity.outputs.aab-size }}
+      aab-cert: ${{ steps.identity.outputs.aab-cert }}
+      universal-sha256: ${{ steps.identity.outputs.universal-sha256 }}
+      universal-size: ${{ steps.identity.outputs.universal-size }}
+      universal-cert: ${{ steps.identity.outputs.universal-cert }}
+      universal-artifact-id: ${{ steps.universal-upload.outputs.artifact-id }}
+      universal-artifact-digest: ${{ steps.universal-upload.outputs.artifact-digest }}
+      evidence-artifact-id: ${{ steps.evidence-upload.outputs.artifact-id }}
+    steps:
+      # Le code compilé est celui du commit de l'APK public, pas celui de
+      # cette branche : la branche n'apporte que ce workflow et son script.
+      - name: Checkout du commit source exact de l'APK public
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Prouver l'arbre extrait et le gel de production
+        working-directory: .
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          test "$(git rev-parse 'HEAD^{tree}')" = "$SOURCE_TREE"
+          test -z "$(git status --porcelain --untracked-files=all)"
+          python3 - <<'PYEOF'
+          import json
+          manifest = json.load(open('.github/app-production.json', encoding='utf-8'))
+          assert manifest['mode'] == 'frozen', 'Le gel de production doit rester actif.'
+          print('Gel de production : mode frozen conservé.')
+          PYEOF
+
+      # Même Node que le job « Protections de configuration » de Quality Zuno.
+      - name: Setup Node (version figée du dépôt)
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24.21.0'
+          package-manager-cache: false
+
+      # Garde du commit source, inchangée : sur un push elle n'autorise qu'un
+      # build sans publication et sans box de test, lancé par le propriétaire.
+      - name: Autoriser uniquement une construction sans publication
+        working-directory: .
+        env:
+          APP_OPERATION: build
+          APP_PUBLISH: 'false'
+          APP_TEST_BOX: 'false'
+          APP_PLAY_AAB: 'true'
+          APP_BACKEND_URL: ''
+          APP_VARIANT: box
+        run: node .github/app-release-guard.mjs
+
+      - name: Numérotation — version de l'APK public, acceptable par Google Play
+        working-directory: .
+        run: |
+          set -euo pipefail
+          test "$PLAY_VERSION_NAME" = "116"
+          test "$PLAY_VERSION_CODE" = "$REFERENCE_VERSION_CODE"
+          test "$PLAY_VERSION_CODE" -gt "$PLAY_HIGHEST_UPLOADED_CODE"
+          test "$PLAY_VERSION_CODE" -le 2100000000
+          echo "versionName=$PLAY_VERSION_NAME · versionCode=$PLAY_VERSION_CODE (> $PLAY_HIGHEST_UPLOADED_CODE déjà importé)"
+
+      - name: Setup Java 17 (Temurin)
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Flutter (stable)
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          flutter-version: '3.47.7'
+          channel: 'stable'
+          cache: false
+          pub-cache: false
+
+      - name: Setup Android SDK
+        id: setup_android
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
+        continue-on-error: true
+
+      - name: Setup Android SDK (retry après échec transitoire)
+        if: steps.setup_android.outcome == 'failure'
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
+
+      - name: Accept Android licenses
+        run: yes | sdkmanager --licenses >/dev/null 2>&1 || true
+
+      # Contrôles Java/Node du commit source, avant tout patch du manifeste :
+      # décision téléphone/TV du pont Cast, garde de publication, protections.
+      - name: Contrôles de configuration du commit source
+        run: |
+          set -euo pipefail
+          bash ci/test-zuno-device-capabilities.sh
+          node --test ../.github/security-config.test.mjs ../.github/app-release-guard.test.mjs
+
+      # ------------------------------------------------------------------
+      # Recette de build-zuno-tv.yml, reprise à l'identique (mêmes scripts).
+      # ------------------------------------------------------------------
+      - name: Patch manifest (Zuno, Leanback, réseau, compat box)
+        run: python3 ci/tv/patch_manifest.py android/app/src/main/AndroidManifest.xml
+
+      - name: Patch build.gradle.kts (applicationId, signature, R8)
+        run: |
+          set -e
+          cp ci/proguard-rules.pro android/app/proguard-rules.pro
+          python3 ci/tv/patch_gradle.py android/app/build.gradle.kts
+
+      - name: Préserver les préférences (même pin que le build 317)
+        run: |
+          python3 - <<'PYEOF'
+          from pathlib import Path
+          path = Path('pubspec.yaml')
+          source = path.read_text(encoding='utf-8')
+          anchor = '  shared_preferences: ^2.3.4\n'
+          if source.count(anchor) != 1 or '  shared_preferences_android:' in source:
+              raise SystemExit('Contrainte SharedPreferences inattendue : vérifier le pin TV.')
+          source = source.replace(anchor, anchor + '  shared_preferences_android: 2.5.0\n', 1)
+          path.write_text(source, encoding='utf-8')
+          PYEOF
+
+      - name: Flutter pub get
+        run: flutter pub get
+
+      - name: Patch screen_brightness_android build.gradle (si nécessaire)
+        run: |
+          set -e
+          FILE=$(find ~/.pub-cache/hosted/pub.dev -path "*/screen_brightness_android-*/android/build.gradle" 2>/dev/null | head -1)
+          if [ -z "$FILE" ]; then
+            echo "⊙ screen_brightness_android pas dans pub-cache, skip"
+            exit 0
+          fi
+          export PATCH_FILE="$FILE"
+          python3 - <<'PYEOF'
+          import os, re
+          file = os.environ['PATCH_FILE']
+          lines = open(file).readlines()
+          out, in_kotlin, depth, removed = [], False, 0, 0
+          for line in lines:
+              if not in_kotlin:
+                  if re.match(r'^\s*kotlin\s*\{', line):
+                      in_kotlin = True
+                      depth = line.count('{') - line.count('}')
+                      removed += 1
+                      if depth <= 0:
+                          in_kotlin = False
+                      continue
+                  out.append(line)
+              else:
+                  depth += line.count('{') - line.count('}')
+                  removed += 1
+                  if depth <= 0:
+                      in_kotlin = False
+          if removed:
+              open(file, 'w').writelines(out)
+              print(f'retiré {removed} ligne(s) kotlin{{}}')
+          else:
+              print('aucun bloc kotlin{} (déjà propre)')
+          PYEOF
+
+      - name: Generate AppLocalizations (.arb → Dart)
+        run: flutter gen-l10n
+
+      - name: Icône launcher (logo Zuno)
+        run: dart run flutter_launcher_icons -f flutter_launcher_icons_zuno_tv.yaml
+
+      - name: Bannière Android TV + écran de lancement sombre
+        run: |
+          set -e
+          RES=android/app/src/main/res
+          mkdir -p "$RES/drawable" "$RES/drawable-xhdpi" "$RES/drawable-xxhdpi"
+          cp assets/branding/zuno_tv_banner.png "$RES/drawable/tv_banner.png"
+          cp assets/branding/zuno_tv_banner.png "$RES/drawable-xhdpi/tv_banner.png"
+          cp assets/branding/zuno_tv_banner_2x.png "$RES/drawable-xxhdpi/tv_banner.png"
+          python3 ci/tv/apply_splash.py
+          python3 ci/tv/apply_splash_test.py
+
+      # Même étape que build-zuno-tv.yml. Les secrets ne sont jamais affichés.
+      - name: Signature (clé maîtresse = clé d'import Google Play)
+        env:
+          KS_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KS_PW: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KS_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PW: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -e
+          write_props() {
+            cat > android/key.properties <<EOF
+          storeFile=release.jks
+          storePassword=$KS_PW
+          keyAlias=${KS_ALIAS:-sevenmotion}
+          keyPassword=${KEY_PW:-$KS_PW}
+          EOF
+          }
+          if [ -n "$KS_B64" ] && [ -n "$KS_PW" ]; then
+            echo "$KS_B64" | base64 -d > android/app/release.jks
+            write_props
+            echo "✓ clé maîtresse (secret ANDROID_KEYSTORE_BASE64)."
+            echo "SIGNING=release" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          if [ -n "$KS_PW" ] && [ -f ci/release.jks.enc ]; then
+            if openssl enc -d -aes-256-cbc -pbkdf2 -in ci/release.jks.enc \
+                 -out android/app/release.jks -pass pass:"$KS_PW" 2>/dev/null \
+               && keytool -list -keystore android/app/release.jks -storepass "$KS_PW" >/dev/null 2>&1; then
+              write_props
+              echo "✓ clé maîtresse (ci/release.jks.enc déchiffré)."
+              echo "SIGNING=release" >> "$GITHUB_ENV"
+              exit 0
+            fi
+            echo "::error title=Clé maîtresse illisible::ci/release.jks.enc ne se déchiffre pas avec ANDROID_KEYSTORE_PASSWORD."
+            exit 1
+          fi
+          echo "::error title=Pas de clé maîtresse::Aucun secret de signature dans cet environnement : un AAB Google Play ne peut pas être préparé."
+          exit 1
+
+      - name: Exiger la clé officielle avant toute compilation
+        run: test "$SIGNING" = release
+
+      # Même barrière que le build 317, plus le test du bouton de mise à jour
+      # propre au build Google Play.
+      - name: Quality gate (analyze + tests)
+        run: |
+          set -e
+          python3 ci/tv/apply_splash_test.py
+          flutter analyze --no-fatal-infos --no-fatal-warnings
+          flutter test --reporter expanded
+          flutter test --reporter expanded --dart-define=PLAY_BUILD=true test/core/update/play_store_update_ui_test.dart
+
+      # ------------------------------------------------------------------
+      # 1. REPRODUCTION : la commande du run 317, avec SON code de version
+      #    (1794284448 = 10/11/2026 04:20:48 UTC, seconde de démarrage de
+      #    l'étape de compilation de ce run) au lieu de l'heure courante.
+      # ------------------------------------------------------------------
+      - name: Reconstruire l'APK public avec les paramètres du run 317
+        run: |
+          set -e
+          flutter build apk --release --no-tree-shake-icons \
+            --android-skip-build-dependency-validation \
+            --target-platform android-arm,android-arm64,android-x64 \
+            --build-number="$REFERENCE_VERSION_CODE" \
+            --build-name="$PLAY_VERSION_NAME" \
+            --obfuscate --split-debug-info=build/symbols \
+            --dart-define=APP_BUILD_TS="$REFERENCE_VERSION_CODE" \
+            --dart-define=GIT_SHA="$SOURCE_SHA" \
+            --target=lib/main_tv.dart
+          mkdir -p build/delivery
+          cp build/app/outputs/flutter-apk/app-release.apk build/delivery/zuno-reference-rebuild.apk
+          ls -lah build/delivery/
+
+      - name: Vérifier la reconstruction (JNI après R8, signature)
+        run: |
+          set -e
+          APK=build/delivery/zuno-reference-rebuild.apk
+          BUILD_TOOLS=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          python3 ci/tv/verify_apk_jni.py "$APK" --dexdump "$BUILD_TOOLS/dexdump"
+          CERT=$("$BUILD_TOOLS/apksigner" verify --print-certs "$APK" | grep -m1 -oiE "SHA-256 digest: [0-9a-f]+" | awk '{print $3}')
+          echo "certificat de la reconstruction : $CERT"
+          test "$CERT" = "$EXPECTED_CERT"
+
+      # ------------------------------------------------------------------
+      # 2. AAB GOOGLE PLAY : étape « Build AAB Google Play » de
+      #    build-zuno-tv.yml, avec la version et le code de l'APK public.
+      # ------------------------------------------------------------------
+      - name: Build AAB Google Play (mêmes sources, écarts Play seulement)
+        run: |
+          set -e
+          python3 - <<'PYEOF'
+          f = "android/app/src/main/AndroidManifest.xml"
+          s = open(f, encoding="utf-8").read()
+          keep = '<uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>'
+          drop = '<uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" tools:node="remove"/>'
+          if drop not in s:
+              s = s.replace(keep, drop) if keep in s else s.replace("<application", drop + "\n    <application", 1)
+          open(f, "w", encoding="utf-8").write(s)
+          print("REQUEST_INSTALL_PACKAGES retirée pour Google Play")
+          PYEOF
+          sed -i 's/^val kBoxMinSdk = 21$/val kBoxMinSdk = 24/' android/app/build.gradle.kts
+          grep -q '^val kBoxMinSdk = 24$' android/app/build.gradle.kts \
+            || { echo "❌ minSdk 24 non posé pour l'AAB Play"; exit 1; }
+          flutter build appbundle --release --no-tree-shake-icons \
+            --android-skip-build-dependency-validation \
+            --build-number="$PLAY_VERSION_CODE" \
+            --build-name="$PLAY_VERSION_NAME" \
+            --obfuscate --split-debug-info=build/symbols-aab \
+            --dart-define=PLAY_BUILD=true \
+            --dart-define=APP_BUILD_TS="$REFERENCE_VERSION_CODE" \
+            --dart-define=GIT_SHA="$SOURCE_SHA" \
+            --target=lib/main_tv.dart
+          cp build/app/outputs/bundle/release/app-release.aab "build/delivery/$AAB_NAME"
+          ls -lah "build/delivery/$AAB_NAME"
+
+      - name: Vérifier le bundle signé (bundletool, manifeste, clé d'import, JNI)
+        run: |
+          set -e
+          AAB="build/delivery/$AAB_NAME"
+          if unzip -p "$AAB" base/manifest/AndroidManifest.xml | grep -aq "REQUEST_INSTALL_PACKAGES"; then
+            echo "❌ REQUEST_INSTALL_PACKAGES encore présente dans l'AAB (refusé par Google Play)"; exit 1
+          fi
+          curl -fsSL -o "$RUNNER_TEMP/bundletool.jar" "$BUNDLETOOL_URL"
+          java -jar "$RUNNER_TEMP/bundletool.jar" validate --bundle "$AAB" > build/delivery/bundletool-validate.txt
+          java -jar "$RUNNER_TEMP/bundletool.jar" dump manifest --bundle "$AAB" > build/delivery/aab-AndroidManifest.xml
+          dump() {
+            java -jar "$RUNNER_TEMP/bundletool.jar" dump manifest --bundle "$AAB" --xpath "$1" 2>/dev/null \
+              | tail -1 | tr -d '[:space:]'
+          }
+          AAB_PACKAGE=$(dump /manifest/@package)
+          AAB_CODE=$(dump /manifest/@android:versionCode)
+          AAB_NAME_VALUE=$(dump /manifest/@android:versionName)
+          AAB_MIN=$(dump /manifest/uses-sdk/@android:minSdkVersion)
+          AAB_TARGET=$(dump /manifest/uses-sdk/@android:targetSdkVersion)
+          echo "AAB : $AAB_PACKAGE · $AAB_NAME_VALUE / $AAB_CODE · minSdk $AAB_MIN · targetSdk $AAB_TARGET"
+          [ "$AAB_PACKAGE" = "$ZUNO_APP_ID" ] || { echo "❌ package inattendu"; exit 1; }
+          [ "$AAB_CODE" = "$PLAY_VERSION_CODE" ] || { echo "❌ versionCode inattendu"; exit 1; }
+          [ "$AAB_NAME_VALUE" = "$PLAY_VERSION_NAME" ] || { echo "❌ versionName inattendu"; exit 1; }
+          [ "$AAB_MIN" = "24" ] || { echo "❌ minSdk AAB $AAB_MIN ≠ 24"; exit 1; }
+          [ "$AAB_TARGET" -ge 36 ] || { echo "❌ targetSdk $AAB_TARGET < 36"; exit 1; }
+          AAB_CERT=$(keytool -printcert -jarfile "$AAB" | grep -m1 -oE "SHA256: [0-9A-F:]+" | cut -d' ' -f2 | tr -d ':' | tr 'A-F' 'a-f')
+          echo "certificat de l'AAB : $AAB_CERT"
+          [ "$AAB_CERT" = "$EXPECTED_CERT" ] || { echo "::error title=AAB mal signé::$AAB_CERT ≠ clé d'import"; exit 1; }
+          echo "AAB_CERT=$AAB_CERT" >> "$GITHUB_ENV"
+          BUILD_TOOLS=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          python3 ci/tv/verify_apk_jni.py "$AAB" --bundle --dexdump "$BUILD_TOOLS/dexdump"
+
+      # ------------------------------------------------------------------
+      # 3. APK DE TEST ISSUS DE L'AAB : universel (émulateurs) et jeu de
+      #    splits (.apks), signés avec la même clé pour être installables.
+      #    Les mots de passe passent par des fichiers temporaires privés.
+      # ------------------------------------------------------------------
+      - name: APK de test issus de l'AAB (bundletool)
+        env:
+          KS_PW: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KS_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PW: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -e
+          AAB="build/delivery/$AAB_NAME"
+          trap 'rm -f "$RUNNER_TEMP/zuno-ks.pass" "$RUNNER_TEMP/zuno-key.pass"' EXIT
+          ( umask 077
+            printf '%s' "$KS_PW" > "$RUNNER_TEMP/zuno-ks.pass"
+            printf '%s' "${KEY_PW:-$KS_PW}" > "$RUNNER_TEMP/zuno-key.pass" )
+          sign_args="--ks=android/app/release.jks --ks-pass=file:$RUNNER_TEMP/zuno-ks.pass --ks-key-alias=${KS_ALIAS:-sevenmotion} --key-pass=file:$RUNNER_TEMP/zuno-key.pass"
+          # shellcheck disable=SC2086
+          java -jar "$RUNNER_TEMP/bundletool.jar" build-apks --bundle="$AAB" \
+            --output=build/delivery/universal.apks --mode=universal $sign_args
+          # shellcheck disable=SC2086
+          java -jar "$RUNNER_TEMP/bundletool.jar" build-apks --bundle="$AAB" \
+            --output=build/delivery/zuno-mobile-google-play.apks $sign_args
+          unzip -p build/delivery/universal.apks universal.apk > "build/delivery/$UNIVERSAL_APK_NAME"
+          rm build/delivery/universal.apks
+          java -jar "$RUNNER_TEMP/bundletool.jar" get-size total \
+            --apks=build/delivery/zuno-mobile-google-play.apks > build/delivery/apks-download-size.csv
+          cat build/delivery/apks-download-size.csv
+          BUILD_TOOLS=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          CERT=$("$BUILD_TOOLS/apksigner" verify --print-certs "build/delivery/$UNIVERSAL_APK_NAME" | grep -m1 -oiE "SHA-256 digest: [0-9a-f]+" | awk '{print $3}')
+          echo "certificat de l'APK universel : $CERT"
+          [ "$CERT" = "$EXPECTED_CERT" ] || { echo "❌ APK universel mal signé"; exit 1; }
+          echo "UNIVERSAL_CERT=$CERT" >> "$GITHUB_ENV"
+
+      - name: Retirer la clé du runner
+        if: always()
+        run: rm -f android/app/release.jks android/key.properties
+
+      - name: Figer l'identité des octets avant upload
+        id: identity
+        run: |
+          set -euo pipefail
+          AAB="build/delivery/$AAB_NAME"
+          UNIVERSAL="build/delivery/$UNIVERSAL_APK_NAME"
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          AAB_SHA=$(sha256sum "$AAB" | cut -d' ' -f1)
+          AAB_SIZE=$(stat -c%s "$AAB")
+          UNIVERSAL_SHA=$(sha256sum "$UNIVERSAL" | cut -d' ' -f1)
+          UNIVERSAL_SIZE=$(stat -c%s "$UNIVERSAL")
+          {
+            printf 'source-sha=%s\n' "$SOURCE_SHA"
+            printf 'build-attempt=%s\n' "$GITHUB_RUN_ATTEMPT"
+            printf 'version-name=%s\n' "$PLAY_VERSION_NAME"
+            printf 'version-code=%s\n' "$PLAY_VERSION_CODE"
+            printf 'aab-sha256=%s\n' "$AAB_SHA"
+            printf 'aab-size=%s\n' "$AAB_SIZE"
+            printf 'aab-cert=%s\n' "$AAB_CERT"
+            printf 'universal-sha256=%s\n' "$UNIVERSAL_SHA"
+            printf 'universal-size=%s\n' "$UNIVERSAL_SIZE"
+            printf 'universal-cert=%s\n' "$UNIVERSAL_CERT"
+          } >> "$GITHUB_OUTPUT"
+          (cd build/delivery && sha256sum ./*.aab ./*.apk ./*.apks > SHA256SUMS.txt && cat SHA256SUMS.txt)
+          cat > build/delivery/identity.json <<JSON
+          {
+            "package": "$ZUNO_APP_ID",
+            "versionName": "$PLAY_VERSION_NAME",
+            "versionCode": $PLAY_VERSION_CODE,
+            "sourceCommit": "$SOURCE_SHA",
+            "sourceTree": "$SOURCE_TREE",
+            "workflowCommit": "$GITHUB_SHA",
+            "run": "$GITHUB_RUN_ID",
+            "attempt": $GITHUB_RUN_ATTEMPT,
+            "aab": {"file": "$AAB_NAME", "sha256": "$AAB_SHA", "size": $AAB_SIZE, "uploadCertificateSHA256": "$AAB_CERT"},
+            "universalApk": {"file": "$UNIVERSAL_APK_NAME", "sha256": "$UNIVERSAL_SHA", "size": $UNIVERSAL_SIZE, "certificateSHA256": "$UNIVERSAL_CERT"},
+            "reference": {"url": "$REFERENCE_URL", "sha256": "$REFERENCE_SHA256", "size": $REFERENCE_SIZE, "versionCode": $REFERENCE_VERSION_CODE}
+          }
+          JSON
+          python3 -c "import json; json.load(open('build/delivery/identity.json'))"
+
+      # archive: false → l'artefact EST le fichier .aab (pas un ZIP) ; son nom
+      # est celui du fichier et son empreinte GitHub est celle de l'AAB.
+      - name: Upload de l'AAB Google Play (fichier .aab direct)
+        id: aab-upload
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          path: android-app/build/delivery/${{ env.AAB_NAME }}
+          archive: false
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Upload de l'APK universel issu de l'AAB (tests de démarrage)
+        id: universal-upload
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: zuno-mobile-play-universal-apk-${{ env.SOURCE_SHA }}
+          path: android-app/build/delivery/${{ env.UNIVERSAL_APK_NAME }}
+          retention-days: 14
+          if-no-files-found: error
+
+      - name: Upload des preuves (reconstruction, splits, manifeste, identité)
+        id: evidence-upload
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: zuno-mobile-play-evidence-${{ env.SOURCE_SHA }}
+          path: |
+            android-app/build/delivery/zuno-reference-rebuild.apk
+            android-app/build/delivery/zuno-mobile-google-play.apks
+            android-app/build/delivery/aab-AndroidManifest.xml
+            android-app/build/delivery/bundletool-validate.txt
+            android-app/build/delivery/apks-download-size.csv
+            android-app/build/delivery/identity.json
+            android-app/build/delivery/SHA256SUMS.txt
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Résumé du build (aucune publication)
+        env:
+          AAB_URL: ${{ steps.aab-upload.outputs.artifact-url }}
+          AAB_DIGEST: ${{ steps.aab-upload.outputs.artifact-digest }}
+        run: |
+          {
+            echo "## ZUNO mobile 116 — AAB Google Play (préparation)"
+            echo "- Fichier : \`$AAB_NAME\` — [téléchargement direct]($AAB_URL) (connexion GitHub requise)"
+            echo "- Paquet : \`$ZUNO_APP_ID\` · version \`$PLAY_VERSION_NAME\` · code \`$PLAY_VERSION_CODE\`"
+            echo "- Commit source : \`$SOURCE_SHA\`"
+            echo "- SHA-256 de l'AAB : \`${{ steps.identity.outputs.aab-sha256 }}\` (empreinte de l'artefact GitHub : \`$AAB_DIGEST\`)"
+            echo "- Certificat d'import : \`$AAB_CERT\`"
+            echo "- **Rien n'est publié** : ni release, ni Google Play, ni Worker, ni /mobile.apk."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # --------------------------------------------------------------------
+  # Comparaison avec le vrai APK public. Aucun secret, aucun environnement.
+  # --------------------------------------------------------------------
+  compare:
+    name: Comparer l'APK public, sa reconstruction et l'AAB
+    needs: [build]
+    if: needs.build.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - name: Extraire le script de comparaison de cette branche
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Télécharger les octets produits par le job build
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          artifact-ids: ${{ needs.build.outputs.evidence-artifact-id }},${{ needs.build.outputs.universal-artifact-id }}
+          merge-multiple: true
+          path: artifacts/compare-input
+
+      - name: Java 17
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: SDK Android
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
+
+      - name: Télécharger le véritable APK public et vérifier son empreinte
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/reference artifacts/comparison
+          curl -sS -L --max-redirs 5 --retry 3 --fail \
+            -o artifacts/reference/reference.apk \
+            -D artifacts/comparison/reference-headers.txt \
+            -w 'url_finale=%{url_effective}\nhttp=%{http_code}\nredirections=%{num_redirects}\noctets=%{size_download}\n' \
+            "$REFERENCE_URL" | sed -E 's/^(url_finale=[^?]*)\?.*$/\1?…/' \
+            | tee artifacts/comparison/reference-download.txt
+          # Les en-têtes de redirection portent des URL signées temporaires.
+          sed -i -E 's/^([Ll]ocation: [^?]*)\?.*$/\1?…/' artifacts/comparison/reference-headers.txt
+          grep -E '^(HTTP/|[Ll]ocation:|[Cc]ache-[Cc]ontrol:|[Cc]ontent-[Ll]ength:|[Cc]ontent-[Tt]ype:)' \
+            artifacts/comparison/reference-headers.txt || true
+          grep -qx 'http=200' artifacts/comparison/reference-download.txt
+          ACTUAL_SHA=$(sha256sum artifacts/reference/reference.apk | cut -d' ' -f1)
+          ACTUAL_SIZE=$(stat -c%s artifacts/reference/reference.apk)
+          echo "APK public : $ACTUAL_SIZE octets · SHA-256 $ACTUAL_SHA"
+          if [ "$ACTUAL_SHA" != "$REFERENCE_SHA256" ] || [ "$ACTUAL_SIZE" != "$REFERENCE_SIZE" ]; then
+            echo "::error title=La référence a changé::$REFERENCE_URL ne sert plus l'APK attendu ($REFERENCE_SHA256, $REFERENCE_SIZE octets). Préparation arrêtée."
+            exit 1
+          fi
+
+      - name: Comparer manifestes, DEX, bibliothèques natives, assets et signatures
+        run: |
+          set -euo pipefail
+          sdkmanager 'build-tools;35.0.0' > artifacts/comparison/sdk-install.txt 2>&1
+          SDK="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+          BUILD_TOOLS="$SDK/build-tools/35.0.0"
+          python3 -m py_compile .github/zuno-mobile-play-compare.py
+          # Sorties brutes des outils, conservées telles quelles dans l'artefact.
+          for item in "reference:artifacts/reference/reference.apk" \
+                      "reconstruction:artifacts/compare-input/zuno-reference-rebuild.apk" \
+                      "edition-play:artifacts/compare-input/$UNIVERSAL_APK_NAME"; do
+            label="${item%%:*}"; file="${item#*:}"
+            "$BUILD_TOOLS/aapt2" dump badging "$file" > "artifacts/comparison/$label-badging.txt"
+            "$BUILD_TOOLS/aapt2" dump xmltree --file AndroidManifest.xml "$file" > "artifacts/comparison/$label-manifest.txt"
+            "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$file" > "artifacts/comparison/$label-signature.txt" 2>&1
+            unzip -Z1 "$file" | sort > "artifacts/comparison/$label-files.txt"
+          done
+          python3 .github/zuno-mobile-play-compare.py \
+            --reference artifacts/reference/reference.apk \
+            --rebuilt artifacts/compare-input/zuno-reference-rebuild.apk \
+            --play "artifacts/compare-input/$UNIVERSAL_APK_NAME" \
+            --out artifacts/comparison \
+            --aapt2 "$BUILD_TOOLS/aapt2" --apksigner "$BUILD_TOOLS/apksigner" \
+            --reference-url "$REFERENCE_URL" --reference-sha256 "$REFERENCE_SHA256" \
+            --reference-size "$REFERENCE_SIZE" --package "$ZUNO_APP_ID" \
+            --version-name "$PLAY_VERSION_NAME" \
+            --reference-version-code "$REFERENCE_VERSION_CODE" \
+            --play-version-code "$PLAY_VERSION_CODE" \
+            --certificate "$EXPECTED_CERT" --source-sha "$SOURCE_SHA"
+
+      - name: Publier le rapport dans le résumé du run
+        if: always()
+        run: |
+          if [ -f artifacts/comparison/comparison.md ]; then
+            cat artifacts/comparison/comparison.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "## Comparaison non produite — voir les journaux" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Conserver le rapport de comparaison, même en cas d'échec
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: zuno-mobile-play-comparison-${{ env.SOURCE_SHA }}-attempt-${{ github.run_attempt }}
+          path: artifacts/comparison/
+          retention-days: 30
+          if-no-files-found: error
+
+  # --------------------------------------------------------------------
+  # Démarrage réel de l'APK issu de l'AAB : même scénario que le job
+  # « startup » de build-zuno-tv.yml (installation, 30 s au premier plan,
+  # dialogue Quitter, sortie, réouverture 30 s, hors réseau). Sans secret.
+  # --------------------------------------------------------------------
+  startup:
+    name: Ouvrir l'APK issu de l'AAB — API ${{ matrix.api }}
+    needs: [build]
+    if: needs.build.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: .
+    strategy:
+      fail-fast: false
+      matrix:
+        api: [29, 35]
+    env:
+      STARTUP_API_LEVEL: ${{ matrix.api }}
+      STARTUP_APK_PATH: ${{ github.workspace }}/artifacts/startup-input/zuno-mobile-google-play-universal.apk
+      STARTUP_SOURCE_SHA: ${{ needs.build.outputs.source-sha }}
+      STARTUP_BUILD_ATTEMPT: ${{ needs.build.outputs.build-attempt }}
+      STARTUP_APK_SHA256: ${{ needs.build.outputs.universal-sha256 }}
+      STARTUP_APK_SIZE: ${{ needs.build.outputs.universal-size }}
+      STARTUP_VERSION_NAME: ${{ needs.build.outputs.version-name }}
+      STARTUP_VERSION_CODE: ${{ needs.build.outputs.version-code }}
+      STARTUP_APK_CERT: ${{ needs.build.outputs.universal-cert }}
+      STARTUP_ARTIFACT_ID: ${{ needs.build.outputs.universal-artifact-id }}
+      STARTUP_ARTIFACT_DIGEST: ${{ needs.build.outputs.universal-artifact-digest }}
+    steps:
+      - name: Extraire le contrôle du même commit que le build
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+          persist-credentials: false
+
+      - name: Préparer le décodeur des captures dans un environnement Python isolé
+        run: |
+          set -euo pipefail
+          startup_python="$RUNNER_TEMP/zuno-startup-python"
+          python3 -m venv "$startup_python"
+          "$startup_python/bin/python" -m pip install --disable-pip-version-check \
+            --only-binary=:all: --no-deps -r android-app/ci/requirements-startup.txt
+          printf '%s\n' "$startup_python/bin" >> "$GITHUB_PATH"
+
+      # Le contrôle est d'abord éprouvé TEL QUEL (ses propres tests attendent
+      # le minSdk 21 de la box) ; l'adaptation ci-dessous vient seulement après.
+      - name: Vérifier le contrôle d'origine et ses cas d'échec
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$STARTUP_SOURCE_SHA"
+          bash -n android-app/ci/run-apk-startup.sh
+          python3 -m unittest discover -s android-app/ci -p test_apk_startup.py -v
+          python3 android-app/ci/verify_apk_startup.py identity
+
+      # SEULE adaptation du scénario : l'édition Google Play a minSdk 24
+      # (l'APK des box, 21). Une ligne, dans la copie de travail du runner,
+      # jamais dans le dépôt. Toutes les autres exigences restent celles de
+      # l'APK : paquet, version, certificat, empreinte, écran non noir,
+      # dialogue Quitter, absence de crash et d'ANR.
+      - name: Adapter l'unique attente minSdk à l'édition Play (24)
+        run: |
+          set -euo pipefail
+          checker=android-app/ci/verify_apk_startup.py
+          test "$(grep -c "sdkVersion:'21'" "$checker")" = 1
+          sed -i "s/sdkVersion:'21'/sdkVersion:'24'/" "$checker"
+          test "$(grep -c "sdkVersion:'24'" "$checker")" = 1
+          test "$(git diff --numstat | wc -l)" = 1
+          git diff --stat
+
+      - name: Télécharger uniquement l'APK universel uploadé par build
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          artifact-ids: ${{ needs.build.outputs.universal-artifact-id }}
+          merge-multiple: true
+          path: artifacts/startup-input
+
+      - name: Java 17
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: SDK Android
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
+
+      - name: Préparer les bibliothèques Linux de l'émulateur
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libpulse0
+
+      - name: Accélération de l'émulateur éphémère
+        run: |
+          set -euo pipefail
+          test -c /dev/kvm
+          sudo chmod a+rw /dev/kvm
+
+      - name: Installer, ouvrir, quitter et rouvrir l'APK issu de l'AAB hors réseau
+        run: bash android-app/ci/run-apk-startup.sh
+
+      - name: Conserver les écrans et diagnostics, même en cas d'échec
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: zuno-mobile-play-startup-api-${{ matrix.api }}-${{ env.SOURCE_SHA }}-attempt-${{ github.run_attempt }}
+          path: artifacts/startup-api-${{ matrix.api }}/
+          if-no-files-found: error
+          retention-days: 14
