@@ -32,6 +32,7 @@ import 'package:native_video_player/playback_lease.dart';
 
 import '../../player/data/image_prefs.dart';
 import '../../channels/domain/channel.dart';
+import '../../cast/data/cast_manager.dart';
 import '../core/tv_tokens.dart';
 import '../core/tv_app_tokens.dart';
 import '../core/tv_dimens.dart';
@@ -42,6 +43,7 @@ class TvLivePreview extends StatefulWidget {
     super.key,
     required this.channel,
     this.debounce = const Duration(milliseconds: 1500),
+    this.castManager,
   });
 
   /// Aperçu actuellement à l'écran (un seul). Le plein écran l'appelle
@@ -59,6 +61,11 @@ class TvLivePreview extends StatefulWidget {
   /// Temps d'immobilité du focus avant de créer le lecteur d'aperçu.
   final Duration debounce;
 
+  /// Les tests ouvrent une vraie session du gestionnaire avec un transport
+  /// simulé. En production, le singleton partagé garde la session du lecteur.
+  @visibleForTesting
+  final CastManager? castManager;
+
   @override
   State<TvLivePreview> createState() => _TvLivePreviewState();
 }
@@ -67,12 +74,32 @@ class _TvLivePreviewState extends State<TvLivePreview> {
   /// Non-null ⇔ la vue native est dans l'arbre (lecteur vivant).
   NativeVideoController? _ctrl;
   Timer? _timer;
+  late bool _castActive;
+  late final CastManager _castManager =
+      widget.castManager ?? CastManager.instance;
 
   @override
   void initState() {
     super.initState();
     TvLivePreview._active = this;
+    _castActive = _castManager.hasActiveSession;
+    _castManager.addListener(_onCastChanged);
     _schedule();
+  }
+
+  /// Le Cast survit au retour du lecteur plein écran vers Direct. L'aperçu
+  /// ne doit pas reprendre une deuxième connexion pendant cette session,
+  /// même suspendue par le Wi-Fi. Une fin définitive réarme son délai normal.
+  void _onCastChanged() {
+    final bool active = _castManager.hasActiveSession;
+    if (!mounted || active == _castActive) return;
+    _castActive = active;
+    if (active) {
+      _timer?.cancel();
+      _stop();
+    } else {
+      _schedule();
+    }
   }
 
   @override
@@ -86,6 +113,7 @@ class _TvLivePreviewState extends State<TvLivePreview> {
 
   void _schedule() {
     _timer?.cancel();
+    if (_castManager.hasActiveSession) return;
     _timer = Timer(widget.debounce, _start);
   }
 
@@ -121,7 +149,8 @@ class _TvLivePreviewState extends State<TvLivePreview> {
   /// Pas pendant un plein écran : ce second lecteur est la cause du
   /// double son (l'ancien n'était pas encore libéré).
   void _start() {
-    if (!mounted || ForegroundPlayback.locked) return;
+    if (!mounted || ForegroundPlayback.locked || _castManager.hasActiveSession)
+      return;
     final String url = widget.channel.streamUrl;
     if (url.isEmpty) return;
     _stop();
@@ -140,6 +169,7 @@ class _TvLivePreviewState extends State<TvLivePreview> {
 
   @override
   void dispose() {
+    _castManager.removeListener(_onCastChanged);
     _timer?.cancel();
     if (identical(TvLivePreview._active, this)) TvLivePreview._active = null;
     // Enfants déjà démontés (écouteur retiré) : on peut disposer le notifier.

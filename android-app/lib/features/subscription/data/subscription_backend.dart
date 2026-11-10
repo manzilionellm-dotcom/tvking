@@ -295,7 +295,10 @@ abstract final class SubscriptionBackend {
   /// gardé dans un try/catch pour ne jamais faire échouer le heartbeat.
   static List<Map<String, Object?>> _sourcesInventory() {
     try {
-      final List<Playlist> all = PlaylistRepository.instance.currentPlaylists;
+      // Le panel gère l'appareil entier, même lorsqu'un profil n'affiche
+      // qu'une seule liste. Aucun inventaire partiel n'est envoyé ici.
+      final List<Playlist> all =
+          PlaylistRepository.instance.currentDevicePlaylists;
       return all.take(5).map((Playlist p) {
         final bool xtream = p.type == PlaylistType.xtream;
         return <String, Object?>{

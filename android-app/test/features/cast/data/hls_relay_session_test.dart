@@ -45,9 +45,15 @@ Future<HttpServer> fakeUpstream() async {
 }
 
 void main() {
+  setUp(() {
+    LocalCastServer.instance.debugLanIpResolver = (_) async => '127.0.0.1';
+  });
+  tearDown(() async {
+    await LocalCastServer.instance.stop();
+    LocalCastServer.instance.debugLanIpResolver = null;
+  });
   group('HlsRelaySession', () {
-    test('playlist live glissante + discontinuité à la reconnexion',
-        () async {
+    test('playlist live glissante + discontinuité à la reconnexion', () async {
       final HttpServer upstream = await fakeUpstream();
       final HlsRelaySession session = HlsRelaySession(
         upstreamUrl: 'http://127.0.0.1:${upstream.port}/live/x/y/1.ts',
@@ -61,8 +67,8 @@ void main() {
         // kRetention : la rétention est un plafond MÉMOIRE, pas une cible
         // de production (les découpler évite qu'un réglage de rétention
         // casse ce test).
-        final bool ready = await session.waitForSegments(
-            10, const Duration(seconds: 20));
+        final bool ready =
+            await session.waitForSegments(10, const Duration(seconds: 20));
         expect(ready, isTrue,
             reason: 'les 2 connexions upstream doivent produire assez de '
                 'segments (erreur: ${session.fatalError})');
@@ -77,22 +83,21 @@ void main() {
         // cible entière.
         expect(playlist, contains('#EXT-X-START:TIME-OFFSET=-10.0'),
             reason: 'sans recul de join, chaque à-coup WiFi = coupure');
-        expect(await session.waitForBufferedSeconds(8.0, Duration.zero),
-            isTrue,
+        expect(await session.waitForBufferedSeconds(8.0, Duration.zero), isTrue,
             reason: 'le coussin est déjà là → réponse immédiate');
         expect(playlist, contains('#EXT-X-DISCONTINUITY\n'),
             reason: 'saut de PCR à la reconnexion → doit être annoncé '
                 '(le tag inline, pas seulement DISCONTINUITY-SEQUENCE)');
         // Fenêtre glissante : le 1er segment listé n'est plus le 0.
         final RegExp seqRe = RegExp(r'#EXT-X-MEDIA-SEQUENCE:(\d+)');
-        final int mediaSeq =
-            int.parse(seqRe.firstMatch(playlist)!.group(1)!);
+        final int mediaSeq = int.parse(seqRe.firstMatch(playlist)!.group(1)!);
         expect(mediaSeq, greaterThan(0));
         // Les URIs pointent vers les segments retenus, et chaque
         // segment listé est réellement servable.
         final RegExp uriRe = RegExp(r'^tok/(\d+)\.ts$', multiLine: true);
         final List<RegExpMatch> uris = uriRe.allMatches(playlist).toList();
-        expect(uris.length, inInclusiveRange(1, HlsRelaySession.kPlaylistWindow));
+        expect(
+            uris.length, inInclusiveRange(1, HlsRelaySession.kPlaylistWindow));
         for (final RegExpMatch m in uris) {
           final HlsLiveSegment? s = session.segment(int.parse(m.group(1)!));
           expect(s, isNotNull);
@@ -128,10 +133,9 @@ void main() {
       );
       session.start();
       try {
-        final bool ready = await session.waitForSegments(
-            9, const Duration(seconds: 20));
-        expect(ready, isTrue,
-            reason: 'erreur: ${session.fatalError}');
+        final bool ready =
+            await session.waitForSegments(9, const Duration(seconds: 20));
+        expect(ready, isTrue, reason: 'erreur: ${session.fatalError}');
         final String playlist = session.playlist(segmentUriPrefix: 'tok/');
         expect(playlist, isNot(contains('#EXT-X-DISCONTINUITY\n')),
             reason: 'PCR continue → pas de réinitialisation décodeur');
@@ -154,8 +158,8 @@ void main() {
       );
       session.start();
       try {
-        final bool ready = await session.waitForSegments(
-            1, const Duration(seconds: 25));
+        final bool ready =
+            await session.waitForSegments(1, const Duration(seconds: 25));
         expect(ready, isFalse);
         expect(session.fatalError, isNotNull);
         expect(session.isStopped, isTrue);
@@ -218,13 +222,9 @@ void main() {
         profile: DlnaProfiles.select(url: 'http://x/1.ts', finalMime: null),
         receiverHost: '127.0.0.1',
       );
-      if (url == null) {
-        markTestSkipped('aucune IP LAN — environnement sans réseau');
-        await upstream.close(force: true);
-        return;
-      }
+      expect(url, isNotNull);
       try {
-        final Uri headUri = Uri.parse(url).replace(host: '127.0.0.1');
+        final Uri headUri = Uri.parse(url!).replace(host: '127.0.0.1');
         final HttpClient client = HttpClient();
         final HttpClientRequest req = await client.openUrl('HEAD', headUri);
         final HttpClientResponse resp = await req.close();
@@ -253,17 +253,12 @@ void main() {
         receiverHost: '127.0.0.1',
         wrapInHls: true,
       );
-      if (url == null) {
-        // Pas d'interface IPv4 non-loopback sur cette machine de test.
-        markTestSkipped('aucune IP LAN — environnement sans réseau');
-        await upstream.close(force: true);
-        return;
-      }
+      expect(url, isNotNull);
       try {
         expect(url, endsWith('.m3u8'));
         // Le serveur bind 0.0.0.0 → joignable en loopback quel que
         // soit l'hôte annoncé dans l'URL.
-        final Uri advertised = Uri.parse(url);
+        final Uri advertised = Uri.parse(url!);
         final Uri playlistUri = advertised.replace(host: '127.0.0.1');
         final HttpClient client = HttpClient();
         final HttpClientRequest req = await client.getUrl(playlistUri);
@@ -271,8 +266,7 @@ void main() {
         expect(resp.statusCode, 200);
         expect(resp.headers.value('access-control-allow-origin'), '*',
             reason: 'sans CORS, Shaka rejette la playlist');
-        expect(resp.headers.contentType.toString(),
-            contains('mpegurl'));
+        expect(resp.headers.contentType.toString(), contains('mpegurl'));
         final String playlist = await resp.transform(utf8.decoder).join();
         expect(playlist, contains('#EXT-X-MEDIA-SEQUENCE'));
         expect(playlist, isNot(contains('#EXT-X-ENDLIST')));
@@ -285,9 +279,9 @@ void main() {
             await (await client.getUrl(segUri)).close();
         expect(segResp.statusCode, 200);
         expect(segResp.headers.value('access-control-allow-origin'), '*',
-            reason: 'sans CORS sur les SEGMENTS, échec « format non supporté »');
-        expect(segResp.headers.contentType.toString(),
-            contains('video/mp2t'));
+            reason:
+                'sans CORS sur les SEGMENTS, échec « format non supporté »');
+        expect(segResp.headers.contentType.toString(), contains('video/mp2t'));
         expect(segResp.headers.contentLength, greaterThan(0));
         final List<List<int>> chunks = await segResp.toList();
         final int total =

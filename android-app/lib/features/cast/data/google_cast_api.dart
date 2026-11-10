@@ -48,9 +48,12 @@ enum CastNativePlayerState {
 /// aligne avec la session SDK reelle, meme apres un reboot Dart.
 @immutable
 class CastNativeSessionEvent {
-  const CastNativeSessionEvent(this.kind, [this.errorCode = 0]);
+  const CastNativeSessionEvent(this.kind,
+      [this.errorCode = 0, this.loadId, this.contentId]);
   final String kind;
   final int errorCode;
+  final String? loadId;
+  final String? contentId;
 }
 
 /// Snapshot du state media du recepteur. Mute de RemoteMediaClient.
@@ -62,6 +65,8 @@ class CastNativeMediaState {
     required this.isPaused,
     required this.isBuffering,
     this.idleReason = 'none',
+    this.loadId,
+    this.contentId,
   });
 
   final CastNativePlayerState playerState;
@@ -74,6 +79,8 @@ class CastNativeMediaState {
   /// `error` = la TV a REFUSE le media (codec/conteneur non supporte,
   /// URL injoignable…) — distinct d'une fin normale (`finished`).
   final String idleReason;
+  final String? loadId;
+  final String? contentId;
 }
 
 class GoogleCastApi {
@@ -107,8 +114,7 @@ class GoogleCastApi {
 
   /// Stream des transitions d'etat media (PLAYING/PAUSED/IDLE/...)
   /// remontees par RemoteMediaClient.Callback cote Kotlin.
-  Stream<CastNativeMediaState> get mediaStateStream =>
-      _mediaStateCtrl.stream;
+  Stream<CastNativeMediaState> get mediaStateStream => _mediaStateCtrl.stream;
 
   /// Stream des evenements de cycle de vie de session SDK
   /// (started, resumed, ended, suspended, start_failed, etc.).
@@ -128,6 +134,8 @@ class GoogleCastApi {
             isPaused: (args['isPaused'] as bool?) ?? false,
             isBuffering: (args['isBuffering'] as bool?) ?? false,
             idleReason: (args['idleReason'] as String?) ?? 'none',
+            loadId: args['loadId'] as String?,
+            contentId: args['contentId'] as String?,
           ));
           break;
         case 'onSessionEvent':
@@ -136,6 +144,8 @@ class GoogleCastApi {
           _sessionEventCtrl.add(CastNativeSessionEvent(
             (args['event'] as String?) ?? 'unknown',
             (args['errorCode'] as int?) ?? 0,
+            args['loadId'] as String?,
+            args['contentId'] as String?,
           ));
           break;
         default:
@@ -172,8 +182,7 @@ class GoogleCastApi {
   /// `false` — l'app retombe alors sur le fallback navigateur.
   Future<bool> isCastAvailable() async {
     try {
-      final bool? result =
-          await _channel.invokeMethod<bool>('isCastAvailable');
+      final bool? result = await _channel.invokeMethod<bool>('isCastAvailable');
       return result ?? false;
     } on PlatformException catch (e) {
       if (kDebugMode) debugPrint('[GoogleCast] isCastAvailable: ${e.message}');
@@ -263,6 +272,7 @@ class GoogleCastApi {
     String? subtitle,
     String? imageUrl,
     bool debug = false,
+    String? loadId,
   }) async {
     try {
       final bool? result = await _channel.invokeMethod<bool>(
@@ -274,6 +284,7 @@ class GoogleCastApi {
           if (subtitle != null) 'subtitle': subtitle,
           if (imageUrl != null) 'imageUrl': imageUrl,
           if (debug) 'debug': true,
+          if (loadId != null) 'loadId': loadId,
         },
       );
       return result ?? false;
@@ -298,10 +309,13 @@ class GoogleCastApi {
     }
   }
 
-  Future<void> stop() async {
+  Future<void> stop({bool propagateError = false}) async {
     try {
       await _channel.invokeMethod<void>('stop');
     } on PlatformException {
+      // Une bascule de flux doit savoir si le récepteur a réellement
+      // accepté STOP avant d'ouvrir une autre connexion fournisseur.
+      if (propagateError) rethrow;
       // best effort
     }
   }

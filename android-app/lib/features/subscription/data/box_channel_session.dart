@@ -26,6 +26,7 @@ class BoxChannelSession {
     required this.onFrame,
     required this.alive,
     this.onConnectionChanged,
+    this.onReceived,
   });
 
   final String mac;
@@ -35,6 +36,10 @@ class BoxChannelSession {
   /// Réveille le filet HTTP dès qu'une prise tombe, sans attendre que
   /// l'autre boucle réseau constate indirectement la coupure.
   final void Function(bool open)? onConnectionChanged;
+
+  /// Accusé rapide à l'arrivée, indépendant d'un import déjà en cours.
+  /// Le traitement métier reste ordonné par la file ci-dessous.
+  final void Function(BoxChannelFrame frame)? onReceived;
 
   /// Dernier numéro appliqué. Un signal déjà vu ne se rejoue pas.
   int seq = 0;
@@ -67,6 +72,10 @@ class BoxChannelSession {
   /// Boucle jusqu'à ce que [alive] soit faux.
   Future<void> run() async {
     var delaySeconds = 1;
+    // Le socket continue de lire pendant un import : sinon les ordres suivants
+    // restent dans son tampon et leur accusé « reçu » peut attendre une minute.
+    // Une seule file applique les effets, y compris après une reconnexion.
+    Future<void> pending = Future<void>.value();
     while (_going()) {
       Timer? hello;
       try {
@@ -90,7 +99,23 @@ class BoxChannelSession {
           if (frame == null || frame.seq <= seq) continue;
           if (frame.mac != mac) continue;
           seq = frame.seq;
-          await onFrame(frame);
+          try {
+            onReceived?.call(frame);
+          } catch (e) {
+            if (kDebugMode) debugPrint('[Canal] accusé : ${e.runtimeType}');
+          }
+          pending = pending.then((_) async {
+            if (!_going()) return;
+            try {
+              await onFrame(frame);
+            } catch (e) {
+              // Une erreur métier ne bloque ni la réception ni les ordres
+              // suivants ; les accusés APPLIED/FAILED restent à la veille.
+              if (kDebugMode) {
+                debugPrint('[Canal] traitement : ${e.runtimeType}');
+              }
+            }
+          });
         }
       } catch (e) {
         if (kDebugMode) debugPrint('[Canal] $e');

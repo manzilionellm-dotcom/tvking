@@ -18,7 +18,7 @@
 //    défaut, la langue de l'app si le catalogue en propose (≥ 3
 //    catégories), sinon « Toutes ». Le choix est retenu.
 //  • MODE ENFANTS : seules les catégories enfants restent visibles.
-//  • ADULTE : catégories verrouillées, code parental à l'ouverture.
+//  • ADULTE : espace distinct, autorisation révocable avant ouverture.
 //  • OK sur une affiche : fiche du film / page de la série. OK dans
 //    « Continuer » : lecture directe à l'endroit quitté.
 // =========================================================
@@ -32,10 +32,12 @@ import '../../../core/i18n/l10n_extension.dart';
 import '../../remote/domain/remote_typing_hub.dart';
 import '../../cinema/data/catalog_cache_policy.dart';
 import '../../cinema/data/cinema_repository.dart';
+import '../../profiles/data/active_profile.dart';
 import '../../cinema/data/watch_progress.dart';
 import '../../cinema/domain/cinema_language.dart';
 import '../../cinema/domain/cinema_models.dart';
 import '../../security/data/parental_controls.dart';
+import '../../security/data/adult_access.dart';
 import '../../vod/data/download_repository.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
@@ -44,13 +46,13 @@ import '../core/tv_app_tokens.dart';
 import 'tv_cinema_common.dart';
 import 'tv_cinema_detail_screen.dart';
 import 'tv_components.dart';
-import 'tv_parental_screen.dart';
 import 'tv_search_screen.dart';
 import 'tv_shell.dart';
 
 class TvCinemaScreen extends StatefulWidget {
-  const TvCinemaScreen({super.key, required this.kind});
+  const TvCinemaScreen({super.key, required this.kind, this.adultAccess});
   final CinemaKind kind;
+  final AdultAccessGrant? adultAccess;
 
   @override
   State<TvCinemaScreen> createState() => _TvCinemaScreenState();
@@ -92,8 +94,14 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
   /// La catégorie affichée n'a pas pu être lue (ni cache, ni serveur).
   bool _titlesFailed = false;
   int _loadGen = 0;
+  int _initGen = 0;
 
-  bool _adultUnlocked = false;
+  bool _accessRevoked = false;
+  bool _closeScheduled = false;
+  bool get _adultOnly => widget.adultAccess != null;
+  bool get _accessValid =>
+      !_accessRevoked &&
+      (!_adultOnly || (widget.adultAccess!.isValid && !_kids));
 
   // Recherche.
   String _q = '';
@@ -122,13 +130,19 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
     RemoteTypingHub.instance.register(_remoteTyping);
     WatchProgressRepository.instance.addListener(_onExternal);
     _repo.indexVersion.addListener(_onIndex);
+    ActiveProfile.instance.scopeListenable.addListener(_onProfileScope);
     ParentalControls.instance.kidsMode.addListener(_onExternal);
+    widget.adultAccess?.addListener(_onAccessChanged);
     _dlSub = DownloadsRepository.instance.stream.listen((List<Download> d) {
       if (mounted) setState(() => _downloads = d);
     });
     // Catalogue de plus de 10 min → relu (nouveaux titres du fournisseur).
-    _repo.refreshIfStale();
-    unawaited(_init());
+    if (!_accessValid) {
+      _onAccessChanged();
+    } else {
+      _repo.refreshIfStale();
+      unawaited(_init());
+    }
   }
 
   @override
@@ -136,7 +150,9 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
     RemoteTypingHub.instance.unregister(_remoteTyping);
     WatchProgressRepository.instance.removeListener(_onExternal);
     _repo.indexVersion.removeListener(_onIndex);
+    ActiveProfile.instance.scopeListenable.removeListener(_onProfileScope);
     ParentalControls.instance.kidsMode.removeListener(_onExternal);
+    widget.adultAccess?.removeListener(_onAccessChanged);
     _dlSub?.cancel();
     _selDebounce?.cancel();
     _searchDebounce?.cancel();
@@ -147,11 +163,68 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
   }
 
   void _onExternal() {
-    if (mounted) setState(() {});
+    if (!_accessValid) {
+      _onAccessChanged();
+      return;
+    }
+    if (mounted) setState(() => _focused.value = null);
+  }
+
+  void _onAccessChanged() {
+    if (!mounted || _accessValid) return;
+    _initGen++;
+    _loadGen++;
+    _selDebounce?.cancel();
+    _searchDebounce?.cancel();
+    setState(() {
+      _accessRevoked = true;
+      _cats = const <CinemaCategory>[];
+      _titles = const <CinemaTitle>[];
+      _results = const <CinemaTitle>[];
+      _focused.value = null;
+    });
+    if (_closeScheduled) return;
+    _closeScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final route = ModalRoute.of(context);
+      if (route != null && route.isActive && !route.isFirst) {
+        Navigator.of(context).removeRoute(route);
+      }
+    });
+  }
+
+  void _onProfileScope() {
+    if (!mounted) return;
+    if (_adultOnly) {
+      _onAccessChanged();
+      return;
+    }
+    _initGen++;
+    _loadGen++;
+    _selDebounce?.cancel();
+    _searchDebounce?.cancel();
+    setState(() {
+      _cats = const <CinemaCategory>[];
+      _titles = const <CinemaTitle>[];
+      _results = const <CinemaTitle>[];
+      _langOptions = const <String>[];
+      _lang = null;
+      _q = '';
+      _focused.value = null;
+      _sel = const _Sel(_View.continueW);
+      _loadingCats = true;
+      _loadingTitles = false;
+      _titlesFailed = false;
+      _accountsMissing = false;
+      _catalogMissing = false;
+      _refreshingCatalog = false;
+    });
+    unawaited(_init());
   }
 
   void _onIndex() {
-    if (!mounted) return;
+    if (!mounted || !_accessValid) return;
     final List<CinemaCategory>? fresh = _repo.peekCategories(widget.kind);
     if (fresh != null && fresh.isNotEmpty) {
       _cats = fresh;
@@ -165,10 +238,15 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
   }
 
   Future<void> _init() async {
+    if (!_accessValid) return;
+    final int gen = ++_initGen;
     await WatchProgressRepository.instance.load();
+    if (!mounted || !_accessValid || gen != _initGen) return;
     await DownloadsRepository.instance.initialize();
+    if (!mounted || !_accessValid || gen != _initGen) return;
     _downloads = DownloadsRepository.instance.current;
     final List<CinemaSource> srcs = await _repo.sources();
+    if (!mounted || !_accessValid || gen != _initGen) return;
     if (srcs.isEmpty) {
       if (mounted) {
         setState(() {
@@ -180,12 +258,12 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
       return;
     }
     final List<CinemaCategory> cats = await _repo.categories(widget.kind);
-    if (!mounted) return;
+    if (!mounted || !_accessValid || gen != _initGen) return;
 
     // Langues présentes, les plus fréquentes d'abord.
     final Map<String, int> freq = <String, int>{};
     for (final CinemaCategory c in cats) {
-      if (c.languageKey != null && !c.isAdult) {
+      if (c.languageKey != null && c.isAdult == _adultOnly) {
         freq[c.languageKey!] = (freq[c.languageKey!] ?? 0) + 1;
       }
     }
@@ -206,7 +284,7 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
     } else {
       lang = null;
     }
-    if (!mounted) return;
+    if (!mounted || !_accessValid || gen != _initGen) return;
     setState(() {
       _cats = cats;
       _langOptions = langs;
@@ -225,7 +303,7 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
     // Index complet (recherche / récents / compteurs) en arrière-plan, après
     // le 1er affichage pour ne pas lui voler la bande passante.
     Future<void>.delayed(const Duration(seconds: 2), () {
-      if (mounted) unawaited(_repo.ensureIndex(widget.kind));
+      if (mounted && gen == _initGen) unawaited(_repo.ensureIndex(widget.kind));
     });
   }
 
@@ -236,32 +314,48 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
   bool get _kids => ParentalControls.instance.kidsMode.value;
 
   List<CinemaCategory> get _visibleCats {
-    final bool kids = _kids;
-    final List<CinemaCategory> normal = <CinemaCategory>[];
-    final List<CinemaCategory> adult = <CinemaCategory>[];
-    for (final CinemaCategory c in _cats) {
-      if (kids && !c.isKids) continue;
-      // Filtre de langue : on garde la langue choisie ET les catégories
-      // SANS langue détectée (« NETFLIX », « DISNEY+ », « 4K »…) — elles ne
-      // sont pas étrangères ; avant, elles disparaissaient avec le filtre.
-      if (_lang != null && c.languageKey != null && c.languageKey != _lang) {
-        continue;
-      }
-      (c.isAdult ? adult : normal).add(c);
-    }
-    return <CinemaCategory>[...normal, if (!kids) ...adult];
+    if (!_accessValid) return const <CinemaCategory>[];
+    return _cats.where((c) {
+      if (c.isAdult != _adultOnly || (_kids && !c.isKids)) return false;
+      return _lang == null || c.languageKey == null || c.languageKey == _lang;
+    }).toList(growable: false);
   }
 
   Set<String> get _allowedKeys => <String>{
-    for (final CinemaCategory c in _visibleCats)
-      if (!c.isAdult || _adultUnlocked) c.key,
-  };
+        for (final c in _visibleCats) c.key,
+      };
 
-  List<WatchEntry> get _continue =>
-      WatchProgressRepository.instance.continueWatching(episodes: !_movies);
+  bool _titleAllowed(CinemaTitle title) =>
+      _accessValid &&
+      _sourceAllowed(title.sourceKey) &&
+      _repo.isAdultTitle(title) == _adultOnly;
+
+  bool _entryAllowed(WatchEntry entry) =>
+      _accessValid &&
+      _sourceAllowed(entry.sourceKey) &&
+      _repo.adultStatusForWatch(entry) == _adultOnly;
+
+  bool _downloadAllowed(Download download) {
+    if (!_accessValid) return false;
+    final entry = WatchProgressRepository.instance.get(download.id);
+    return (entry == null
+            ? _repo.adultStatusForMedia(download.id, download.name)
+            : _repo.adultStatusForWatch(entry)) ==
+        _adultOnly;
+  }
+
+  bool _sourceAllowed(String key) => ActiveProfile.instance.allowsPlaylist(
+        int.tryParse(key.startsWith('p') ? key.substring(1) : ''),
+      );
+
+  List<WatchEntry> get _continue => WatchProgressRepository.instance
+      .continueWatching(episodes: !_movies)
+      .where(_entryAllowed)
+      .toList(growable: false);
 
   List<Download> get _myDownloads => _downloads
-      .where((Download d) => d.id.contains(_movies ? ':m:' : ':e:'))
+      .where((Download d) =>
+          d.id.contains(_movies ? ':m:' : ':e:') && _downloadAllowed(d))
       .toList(growable: false);
 
   Future<void> _cycleLanguage() async {
@@ -293,15 +387,10 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
   }
 
   Future<void> _select(_Sel s, {bool explicit = false}) async {
+    if (!_accessValid) return;
     _selDebounce?.cancel();
     final CinemaCategory? cat = s.cat;
-    if (cat != null && cat.isAdult && !_adultUnlocked) {
-      // Catégorie adulte : jamais sur simple focus, code parental sur OK.
-      if (!explicit) return;
-      final bool ok = await askParentalPin(context);
-      if (!ok || !mounted) return;
-      setState(() => _adultUnlocked = true);
-    }
+    if (cat != null && !_allowedKeys.contains(cat.key)) return;
     setState(() {
       _sel = s;
       _focused.value = null;
@@ -331,9 +420,9 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
       });
     }
     final CinemaTitleLoad load = await _repo.loadTitles(widget.kind, cat);
-    if (!mounted || gen != _loadGen) return;
+    if (!mounted || !_accessValid || gen != _loadGen) return;
     setState(() {
-      _titles = load.titles;
+      _titles = load.titles.where(_titleAllowed).toList(growable: false);
       _titlesFailed = load.failed && load.titles.isEmpty;
       _loadingTitles = false;
     });
@@ -351,18 +440,22 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
 
   Future<void> _refreshCatalogNow() async {
     if (_refreshingCatalog) return;
+    final int scope = _initGen;
     setState(() => _refreshingCatalog = true);
     try {
       final bool done = await _repo.refreshNow(widget.kind);
-      if (!mounted) return;
+      if (!mounted || scope != _initGen) return;
       _onIndex();
       await _select(_sel, explicit: true);
-      if (!done && mounted)
+      if (!done && mounted) {
         ScaffoldMessenger.maybeOf(context)?.showSnackBar(
           SnackBar(content: Text(context.l10n.libraryRefreshIncomplete)),
         );
+      }
     } finally {
-      if (mounted) setState(() => _refreshingCatalog = false);
+      if (mounted && scope == _initGen) {
+        setState(() => _refreshingCatalog = false);
+      }
     }
   }
 
@@ -379,9 +472,9 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
       cat,
       forceNetwork: true,
     );
-    if (!mounted || gen != _loadGen) return;
+    if (!mounted || !_accessValid || gen != _loadGen) return;
     setState(() {
-      _titles = load.titles;
+      _titles = load.titles.where(_titleAllowed).toList(growable: false);
       _titlesFailed = load.failed && load.titles.isEmpty;
       _loadingTitles = false;
     });
@@ -412,7 +505,7 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
   /// cinéma est affichée : sinon on répond faux, et le texte ne
   /// change pas le catalogue en train d'être parcouru.
   bool _onRemoteQuery(String text) {
-    if (!mounted || _sel.view != _View.search) return false;
+    if (!mounted || !_accessValid || _sel.view != _View.search) return false;
     setState(() => _q = text);
     _scheduleSearch();
     return true;
@@ -442,10 +535,12 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
   }
 
   void _runSearch() {
+    if (!_accessValid) return;
     final List<CinemaTitle> r = _q.trim().isEmpty
         ? const <CinemaTitle>[]
         : _repo.search(widget.kind, _q, allowedCats: _allowedKeys, max: 60);
-    if (mounted) setState(() => _results = r);
+    if (mounted)
+      setState(() => _results = r.where(_titleAllowed).toList(growable: false));
   }
 
   // ---------------------------------------------------------
@@ -453,21 +548,25 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
   // ---------------------------------------------------------
 
   void _openTitle(CinemaTitle t) {
+    if (!_titleAllowed(t)) return;
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => TvShell(
           applySafeArea: false,
           child: _movies
-              ? TvMovieDetailScreen(title: t)
-              : TvSeriesScreen(title: t),
+              ? TvMovieDetailScreen(title: t, adultAccess: widget.adultAccess)
+              : TvSeriesScreen(title: t, adultAccess: widget.adultAccess),
         ),
       ),
     );
   }
 
   Future<void> _playEntry(WatchEntry e) async {
+    if (!_entryAllowed(e)) return;
+    final int scope = _initGen;
     if (!e.isEpisode || e.seriesId == null) {
-      await openVod(context, VodPlayItem.entry(e));
+      await openVod(context, VodPlayItem.entry(e),
+          adultAccess: widget.adultAccess);
       return;
     }
     // Épisode : on charge la série pour pouvoir enchaîner l'épisode suivant.
@@ -478,16 +577,18 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
     } catch (_) {
       d = null;
     }
-    if (!mounted) return;
+    if (!mounted || scope != _initGen || !_entryAllowed(e)) return;
     await openVod(
       context,
       VodPlayItem.entry(e),
       series: d,
       seriesTitle: series,
+      adultAccess: widget.adultAccess,
     );
   }
 
   Future<void> _onDownload(Download d) async {
+    if (!_downloadAllowed(d)) return;
     final bool isEp = d.id.contains(':e:');
     final WatchEntry? w = WatchProgressRepository.instance.get(d.id);
     final VodPlayItem item = w != null
@@ -498,6 +599,7 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
             title: d.name,
             url: d.sourceUrl,
             posterUrl: d.posterUrl,
+            isAdult: _adultOnly,
           );
     await showCinemaSheet(
       context,
@@ -507,7 +609,7 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
           CinemaSheetAction(
             Icons.play_arrow_rounded,
             context.l10n.tvCinemaPlay,
-            () => openVod(context, item),
+            () => openVod(context, item, adultAccess: widget.adultAccess),
           ),
         if (d.status == DownloadStatus.downloading)
           CinemaSheetAction(
@@ -537,6 +639,7 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (!_accessValid) return const SizedBox.shrink();
     if (_loadingCats) return const CinemaLoading();
     if (_accountsMissing) {
       return TvEmptyState(
@@ -652,15 +755,13 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
               itemBuilder: (BuildContext context, int i) {
                 final CinemaCategory c = vis[i];
                 final _Sel s = _Sel(_View.category, c);
-                final bool locked = c.isAdult && !_adultUnlocked;
                 return CinemaRailRow(
-                  icon: locked ? Icons.lock_rounded : null,
                   label: c.name,
-                  count: locked ? null : _repo.countFor(widget.kind, c.key),
+                  count: _repo.countFor(widget.kind, c.key),
                   autofocus: cont.isEmpty && i == 0 && _sel.cat == c,
                   selected: _sel.cat?.key == c.key,
                   onSelect: () => _select(s, explicit: true),
-                  onFocused: locked ? null : () => _selectDebounced(s),
+                  onFocused: () => _selectDebounced(s),
                 );
               },
             ),
@@ -825,24 +926,28 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
     }
   }
 
-  Widget _titlesGrid(List<CinemaTitle> list) => _grid(
-    count: list.length,
-    builder: (int i) {
-      final CinemaTitle t = list[i];
-      final WatchEntry? w = _movies
-          ? WatchProgressRepository.instance.get(t.id)
-          : WatchProgressRepository.instance.latestForSeries(t.id);
-      return CinemaPoster(
-        title: t.name,
-        caption: t.year,
-        posterUrl: t.posterUrl,
-        progress: (w != null && w.isResumable && !w.upNext) ? w.fraction : null,
-        downloaded: _movies && _isDownloaded(t.id),
-        onFocused: () => _focused.value = t,
-        onSelect: () => _openTitle(t),
-      );
-    },
-  );
+  Widget _titlesGrid(List<CinemaTitle> titles) {
+    final list = titles.where(_titleAllowed).toList(growable: false);
+    return _grid(
+      count: list.length,
+      builder: (int i) {
+        final CinemaTitle t = list[i];
+        final WatchEntry? w = _movies
+            ? WatchProgressRepository.instance.get(t.id)
+            : WatchProgressRepository.instance.latestForSeries(t.id);
+        return CinemaPoster(
+          title: t.name,
+          caption: t.year,
+          posterUrl: t.posterUrl,
+          progress:
+              (w != null && w.isResumable && !w.upNext) ? w.fraction : null,
+          downloaded: _movies && _isDownloaded(t.id),
+          onFocused: () => _focused.value = t,
+          onSelect: () => _openTitle(t),
+        );
+      },
+    );
+  }
 
   /// Grille d'affiches 5 colonnes (hauteur calculée → liste paresseuse).
   Widget _grid({

@@ -3,9 +3,9 @@
 // =========================================================
 //  Jusqu'à 4 personnes (parents, enfants, invité). Chacun a SON
 //  tiroir : favoris, historique, reprise de lecture, rappels et
-//  code parental. Les chaînes IPTV, elles, restent communes :
-//  changer de profil ne retire jamais une chaîne, et ne bloque
-//  jamais la lecture.
+//  code parental. Les profils historiques gardent leurs listes
+//  communes ; les nouveaux profils choisissent leurs propres listes.
+//  Changer de profil n'efface aucune source et n'arrête pas la lecture.
 //
 //  MIGRATION DOUCE
 //  ---------------
@@ -94,6 +94,7 @@ class FamilyProfile {
     required this.avatar,
     required this.isKids,
     required this.createdAtMs,
+    this.playlistIds,
   });
 
   /// Nombre de pastilles (couleur + icône) côté écran.
@@ -111,6 +112,11 @@ class FamilyProfile {
 
   final int createdAtMs;
 
+  /// `null` garde les listes communes des profils créés avant cette option.
+  /// Une liste vide est volontaire : ce nouveau profil n'a pas encore reçu
+  /// de source. On ne doit jamais la remplacer par « toutes les listes ».
+  final List<int>? playlistIds;
+
   /// Le profil qui reçoit les données déjà sur la box.
   factory FamilyProfile.origin({int nowMs = 0}) => FamilyProfile(
         id: ProfileIds.origin,
@@ -120,13 +126,15 @@ class FamilyProfile {
         createdAtMs: nowMs,
       );
 
-  FamilyProfile copyWith({String? name, int? avatar, bool? isKids}) =>
+  FamilyProfile copyWith(
+          {String? name, int? avatar, bool? isKids, List<int>? playlistIds}) =>
       FamilyProfile(
         id: id,
         name: name ?? this.name,
         avatar: avatar ?? this.avatar,
         isKids: isKids ?? this.isKids,
         createdAtMs: createdAtMs,
+        playlistIds: playlistIds ?? this.playlistIds,
       );
 
   Map<String, Object?> toJson() => <String, Object?>{
@@ -135,6 +143,7 @@ class FamilyProfile {
         'avatar': avatar,
         'isKids': isKids,
         'createdAt': createdAtMs,
+        if (playlistIds != null) 'playlistIds': playlistIds,
       };
 
   /// `null` si la ligne est inutilisable (id vide, caractères
@@ -151,6 +160,12 @@ class FamilyProfile {
     if (name.length > 18) name = name.substring(0, 18);
     final int avatar = (raw['avatar'] as num?)?.toInt() ?? 0;
     final int created = (raw['createdAt'] as num?)?.toInt() ?? 0;
+    final Object? lists = raw['playlistIds'];
+    final List<int>? playlistIds = lists == null
+        ? null
+        : List<int>.unmodifiable(lists is List
+            ? lists.whereType<int>().where((int id) => id > 0).toSet()
+            : const <int>[]);
     return FamilyProfile(
       id: id,
       name: name,
@@ -158,6 +173,7 @@ class FamilyProfile {
           avatar < 0 ? 0 : (avatar >= avatarCount ? avatarCount - 1 : avatar),
       isKids: raw['isKids'] == true,
       createdAtMs: created < 0 ? 0 : created,
+      playlistIds: playlistIds,
     );
   }
 

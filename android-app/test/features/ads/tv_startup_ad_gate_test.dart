@@ -12,7 +12,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:tv_king/features/ads/data/startup_ad_repository.dart';
 import 'package:tv_king/features/ads/presentation/tv_startup_ad_gate.dart';
 import 'package:tv_king/features/cast/data/cast_manager.dart';
+import 'package:tv_king/features/cast/data/cast_transport.dart';
 import 'package:tv_king/features/cast/data/google_cast_api.dart';
+import 'package:tv_king/features/cast/data/stream_probe.dart';
+import 'package:tv_king/features/cast/domain/cast_device.dart';
 import 'package:tv_king/l10n/generated/app_localizations.dart';
 
 // Le vrai controller utilise un moteur simulé : aucune TV ni vidéo distante.
@@ -45,6 +48,21 @@ class _Video extends NativeVideoBackend {
   }
 }
 
+class _Transport implements CastTransport {
+  @override
+  Future<void> playStream({
+    required String streamUrl,
+    String title = 'Test',
+    String? imageUrl,
+  }) async {}
+  @override
+  Future<void> pause() async {}
+  @override
+  Future<void> resume() async {}
+  @override
+  Future<void> stop() async {}
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUpAll(() => GoogleFonts.config.allowRuntimeFetching = false);
@@ -71,8 +89,9 @@ void main() {
       );
     });
     cast = CastManager.forTesting(
-      transportFactory: (_) => throw StateError('Aucun transport demandé'),
-      probe: (_) => throw StateError('Aucune sonde demandée'),
+      transportFactory: (_) => _Transport(),
+      probe: (url) async =>
+          StreamProbeResult(originalUrl: url, finalUrl: url, success: true),
     );
     videos = <_Video>[];
     NativeVideoController.audiblePlayers.debugReset();
@@ -82,12 +101,30 @@ void main() {
       return video;
     };
   });
-  tearDown(() {
+  tearDown(() async {
     repo.resetForTesting();
+    await cast.disconnect();
     cast.dispose();
     NativeVideoController.backendFactory = null;
     NativeVideoController.audiblePlayers.debugReset();
   });
+
+  Future<void> startCast() async {
+    // La reprise SDK conserve une diffusion choisie par ce profil. Un simple
+    // événement natif sans propriétaire ne peut pas autoriser cette lecture.
+    await cast.castTo(
+      const CastDevice(
+        id: 'startup-ad-cast',
+        name: 'TV fictive',
+        kind: CastDeviceKind.googleCast,
+        host: '192.0.2.1',
+        port: 8009,
+        controlUrl: '',
+      ),
+      streamUrl: 'https://fixture.invalid/cast.ts',
+      title: 'Cast fictif',
+    );
+  }
 
   Future<void> mount(WidgetTester tester) async {
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
@@ -218,6 +255,8 @@ void main() {
   testWidgets('Cast restauré : aucun lecteur pub ni téléchargement de config', (
     tester,
   ) async {
+    await startCast();
+    cast.debugNativeSessionEvent(const CastNativeSessionEvent('suspended'));
     cast.debugNativeSessionEvent(const CastNativeSessionEvent('resumed'));
     await mount(tester);
     expect(cast.hasActiveSession, isTrue);
@@ -231,7 +270,7 @@ void main() {
     tester,
   ) async {
     await mount(tester);
-    cast.debugNativeSessionEvent(const CastNativeSessionEvent('resumed'));
+    await startCast();
     await tester.pump();
     expect(cast.hasActiveSession, isTrue);
     expect(find.text('Accueil'), findsOneWidget);

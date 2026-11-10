@@ -21,6 +21,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
 import '../../cinema/data/watch_progress.dart';
+import '../../cinema/data/cinema_repository.dart';
+import '../../profiles/data/active_profile.dart';
+import '../../security/data/adult_access.dart';
 import '../../cinema/domain/resume_start.dart';
 import '../../cinema/domain/cinema_models.dart';
 import '../../vod/data/download_repository.dart';
@@ -50,6 +53,8 @@ class VodPlayItem {
     this.seriesId,
     this.season,
     this.episode,
+    this.isAdult = false,
+    this.adultClassificationKnown = true,
   });
 
   final String id;
@@ -68,8 +73,10 @@ class VodPlayItem {
   final String? seriesId;
   final int? season;
   final int? episode;
+  final bool isAdult;
+  final bool adultClassificationKnown;
 
-  factory VodPlayItem.movie(CinemaTitle t) => VodPlayItem(
+  factory VodPlayItem.movie(CinemaTitle t, {bool? isAdult}) => VodPlayItem(
     id: t.id,
     isEpisode: false,
     title: t.name,
@@ -78,9 +85,10 @@ class VodPlayItem {
     containerExt: t.containerExt,
     sourceKey: t.sourceKey,
     remoteId: t.remoteId,
+    isAdult: isAdult ?? CinemaRepository.instance.isAdultTitle(t),
   );
 
-  factory VodPlayItem.episode(CinemaEpisode e, CinemaTitle series) =>
+  factory VodPlayItem.episode(CinemaEpisode e, CinemaTitle series, {bool? isAdult}) =>
       VodPlayItem(
         id: e.id,
         isEpisode: true,
@@ -94,9 +102,12 @@ class VodPlayItem {
         seriesId: series.id,
         season: e.season,
         episode: e.number,
+        isAdult: isAdult ?? CinemaRepository.instance.isAdultTitle(series),
       );
 
-  factory VodPlayItem.entry(WatchEntry e) => VodPlayItem(
+  factory VodPlayItem.entry(WatchEntry e) {
+    final bool? adult = CinemaRepository.instance.adultStatusForWatch(e);
+    return VodPlayItem(
     id: e.id,
     isEpisode: e.isEpisode,
     title: e.title,
@@ -109,7 +120,10 @@ class VodPlayItem {
     seriesId: e.seriesId,
     season: e.season,
     episode: e.episode,
+    isAdult: adult == true,
+    adultClassificationKnown: adult != null,
   );
+  }
 
   WatchEntry toEntry({required int posMs, required int durMs}) => WatchEntry(
     id: id,
@@ -124,6 +138,8 @@ class VodPlayItem {
     seriesId: seriesId,
     season: season,
     episode: episode,
+    isAdult: isAdult,
+    adultClassificationKnown: adultClassificationKnown,
     posMs: posMs,
     durMs: durMs,
     updatedAt: DateTime.now().millisecondsSinceEpoch,
@@ -165,8 +181,18 @@ Future<void> openVod(
   bool fromStart = false,
   SeriesDetails? series,
   CinemaTitle? seriesTitle,
+  AdultAccessGrant? adultAccess,
 }) async {
+  final int scope = ActiveProfile.instance.scopeListenable.value;
+  bool allowed() => context.mounted &&
+      scope == ActiveProfile.instance.scopeListenable.value &&
+      (item.sourceKey.isEmpty || ActiveProfile.instance.allowsPlaylist(int.tryParse(
+        item.sourceKey.startsWith('p') ? item.sourceKey.substring(1) : '',
+      ))) && item.adultClassificationKnown &&
+      (adultAccess == null ? !item.isAdult : adultAccess.isValid);
+  if (!allowed()) return;
   await WatchProgressRepository.instance.load();
+  if (!allowed()) return;
   final WatchEntry? prev = WatchProgressRepository.instance.get(item.id);
   // Même règle pour la rangée « Reprendre », la fiche, et « Depuis le début ».
   final Duration startAt = ResumeStart.decide(
@@ -174,7 +200,7 @@ Future<void> openVod(
     fromStart: fromStart,
   ).at;
   final String? local = await offlinePathFor(item.id);
-  if (!context.mounted) return;
+  if (!allowed()) return;
   await Navigator.of(context).push(
     MaterialPageRoute<void>(
       builder: (_) => TvVodPlayerScreen(
@@ -183,6 +209,7 @@ Future<void> openVod(
         localPath: local,
         series: series,
         seriesTitle: seriesTitle,
+        adultAccess: adultAccess,
       ),
     ),
   );

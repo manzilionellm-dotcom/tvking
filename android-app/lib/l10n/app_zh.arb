@@ -2894,5 +2894,22 @@
   "tvAmbientTitle": "光晕",
   "tvAmbientHelp": "光晕随电影或比赛变化，画面本身不变。小盒子上光晕保持固定。",
   "tvAmbientAuto": "自动",
-  "tvAmbientOff": "关闭"
+  "tvAmbientOff": "关闭",
+  "vipCountriesFirstUseHint": "在这里选择你的国家。你可以随时更改。",
+  "tvAdultLive": "Adult live TV",
+  "tvAdultCinema": "Adult cinema",
+  "tvProfileSources": "个人资料的播放列表",
+  "tvProfileSourceUnavailable": "此个人资料已不存在，播放列表未能关联。",
+  "tvCastDiagnostic": "投屏诊断",
+  "playerScreenCast": "屏幕",
+  "castZapPrevTooltip": "上一个频道",
+  "castZapNextTooltip": "下一个频道",
+  "screenCastTitle": "投放到屏幕",
+  "screenCastStartError": "无法开始共享。请确认 Wi-Fi 已开启，然后重试。",
+  "screenCastInstructions": "在与手机连接同一 Wi-Fi 的电脑或电视上打开浏览器，输入以下地址：",
+  "screenCastScanHint": "或用另一部手机扫描",
+  "screenCastKeepOpen": "投放期间请保持应用开启，并让两台设备连接同一 Wi-Fi 网络。",
+  "castNetworkDiagnostic": "检查投屏网络",
+  "castNetworkDiagnosticHelp": "检查连接和中继，不更改电视上的频道。",
+  "castDiagnosticClosePlayer": "请先返回首页，再在电视上测试频道。"
 }

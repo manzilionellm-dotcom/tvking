@@ -64,9 +64,49 @@ enum RemoteSyncResult {
 
   /// Problème réseau (serveur injoignable / réponse non 200).
   networkError,
+
+  /// Une commande plus récente a annulé cette passe ; jamais un import réussi.
+  superseded,
 }
 
 abstract final class RemoteSourceRepository {
+  static int _sourceGeneration = 0;
+  static int _manualGeneration = 0;
+  static http.Client? _activePanelClient;
+  static Set<String> _activePanelFingerprints = <String>{};
+
+  /// Un nouvel ordre source ne remplace l'import en vol que si le statut
+  /// authentifié frais retire réellement une source de SA configuration.
+  /// Les anciens tombstones sans rapport n'interrompent pas un ajout valide.
+  static bool supersedeRevokedPanelImport(Iterable<String> revoked) {
+    if (!_activePanelFingerprints.any(revoked.toSet().contains)) return false;
+    supersedePendingPanelImports();
+    return true;
+  }
+
+  /// À appeler APRÈS confirmation du retrait par un statut authentifié frais.
+  /// Un retrait partiel invalide la passe panel, jamais les ajouts manuels.
+  /// Un reset invalide aussi les imports manuels déjà commencés/en file.
+  /// Cette méthode n'efface rien : révocations/BoxReset font ensuite le SQL
+  /// réel. Le transport ancien peut finir tard, mais n'a plus droit d'écrire.
+  static void supersedePendingPanelImports({bool resetAll = false}) {
+    _sourceGeneration++;
+    // Ce client appartient exclusivement à la passe panel. Sa fermeture
+    // interrompt son HTTP et laisse la file se libérer normalement par le
+    // finally ; aucun client du statut, de l'enrôlement ou du manuel ne ferme.
+    _activePanelClient?.close();
+    _activePanelClient = null;
+    _activePanelFingerprints = <String>{};
+    importing.value = false;
+    syncing.value = false;
+    if (resetAll) {
+      _manualGeneration++;
+      PlaylistRepository.instance.cancelPendingImports();
+      manualImporting.value = false;
+    }
+    if (!manualImporting.value) ImportProgressBus.clear();
+  }
+
   /// Empreintes déjà vues sur CETTE box (listes venues du panel).
   static const String rememberedKey = 'zuno.panel_sources.v1';
 
@@ -112,18 +152,27 @@ abstract final class RemoteSourceRepository {
   /// l'autre. Les révocations restent immédiates, hors de cette file.
   static final ValueNotifier<bool> manualImporting = ValueNotifier<bool>(false);
 
-  static Future<T> runUserImport<T>(Future<T> Function() job) => _serial(() async {
-    ImportProgressBus.clear();
-    manualImporting.value = true;
-    try {
-      return await job();
-    } finally {
-      // Toujours nettoyer AVANT de libérer la file : une réponse UI tardive
-      // ne doit pas remettre à zéro la liste suivante venue du panel.
+  static Future<T> runUserImport<T>(Future<T> Function() job) {
+    final int generation = _manualGeneration;
+    final guard = PlaylistRepository.instance.guardCurrentImports();
+    return _serial(() async {
+      guard();
       ImportProgressBus.clear();
-      manualImporting.value = false;
-    }
-  });
+      manualImporting.value = true;
+      try {
+        final T result = await job();
+        guard();
+        return result;
+      } finally {
+        // Toujours nettoyer AVANT de libérer la file : une réponse UI tardive
+        // ne doit pas remettre à zéro la liste suivante venue du panel.
+        if (generation == _manualGeneration) {
+          ImportProgressBus.clear();
+          manualImporting.value = false;
+        }
+      }
+    });
+  }
 
   /// Entoure le chargement d'une nouvelle liste : pastille à l'écran et
   /// durée réelle dans la boîte noire (« liste du panel chargée en 12,4 s
@@ -137,12 +186,14 @@ abstract final class RemoteSourceRepository {
     String kind,
     Future<int> Function() job,
   ) async {
+    final int generation = _sourceGeneration;
     final Stopwatch watch = Stopwatch()..start();
     // La pastille affiche le détail chiffré du bus de progression : on
     // repart de zéro pour ne pas montrer le compte d'un import précédent.
     ImportProgressBus.clear();
     importing.value = true;
-    BlackBox.instance.info('SOURCE', 'nouvelle liste $kind reçue du panel : chargement');
+    BlackBox.instance
+        .info('SOURCE', 'nouvelle liste $kind reçue du panel : chargement');
     try {
       final int channels = await job();
       final String secs = (watch.elapsedMilliseconds / 1000).toStringAsFixed(1);
@@ -151,6 +202,8 @@ abstract final class RemoteSourceRepository {
         'liste $kind du panel chargée en $secs s ($channels chaînes)',
       );
       return RemoteSyncResult.loaded;
+    } on PlaylistImportSuperseded {
+      rethrow;
     } catch (e) {
       // Identifiants/serveur invalides, lien mort, 0 chaîne… → le dépôt a
       // rejeté. La boîte noire expurge les liens et mots de passe à
@@ -164,7 +217,7 @@ abstract final class RemoteSourceRepository {
       if (kDebugMode) debugPrint('[RemoteSource] $kind KO: $e');
       return RemoteSyncResult.sourceFailed;
     } finally {
-      importing.value = false;
+      if (generation == _sourceGeneration) importing.value = false;
     }
   }
 
@@ -236,7 +289,8 @@ abstract final class RemoteSourceRepository {
   /// Efface localement avant d'attendre le réseau ou une synchro en cours.
   /// Le succès décrit la suppression sur CET appareil. Le retrait de la
   /// copie serveur d'une liste personnelle est ensuite tenté au mieux.
-  static Future<bool> deleteFromTv(Playlist playlist, {http.Client? client}) async {
+  static Future<bool> deleteFromTv(Playlist playlist,
+      {http.Client? client}) async {
     final int? id = playlist.id;
     if (id == null) return false;
     try {
@@ -250,7 +304,8 @@ abstract final class RemoteSourceRepository {
     return true;
   }
 
-  static Future<bool> _deleteFromTv(Playlist playlist, {http.Client? client}) async {
+  static Future<bool> _deleteFromTv(Playlist playlist,
+      {http.Client? client}) async {
     final int? id = playlist.id;
     if (id == null) return false;
     if (RepairFlags.tvDeleteLegacy) return true;
@@ -269,7 +324,8 @@ abstract final class RemoteSourceRepository {
               )
               .timeout(const Duration(seconds: 8));
           if (resp.statusCode == 200) {
-            final Object? list = (jsonDecode(resp.body) as Map<String, dynamic>)['sources'];
+            final Object? list =
+                (jsonDecode(resp.body) as Map<String, dynamic>)['sources'];
             served = <Map<String, dynamic>>[
               if (list is List)
                 for (final Object? item in list)
@@ -282,10 +338,12 @@ abstract final class RemoteSourceRepository {
         }
       }
       if (!known) {
-        BlackBox.instance.info('SOURCE', 'liste supprimée localement ; serveur indisponible');
+        BlackBox.instance.info(
+            'SOURCE', 'liste supprimée localement ; serveur indisponible');
         return true;
       }
-      final TvDeleteDecision decision = decideTvDelete(playlistFingerprints: fps, served: served);
+      final TvDeleteDecision decision =
+          decideTvDelete(playlistFingerprints: fps, served: served);
       switch (decision.kind) {
         case TvDeleteKind.removeOnServer:
           final http.Response del = await c
@@ -296,19 +354,23 @@ abstract final class RemoteSourceRepository {
               )
               .timeout(const Duration(seconds: 8));
           if (del.statusCode != 200) {
-            BlackBox.instance.warn('SOURCE', 'copie serveur non retirée (HTTP ${del.statusCode}) ; liste supprimée localement');
+            BlackBox.instance.warn('SOURCE',
+                'copie serveur non retirée (HTTP ${del.statusCode}) ; liste supprimée localement');
             return false;
           }
-          BlackBox.instance.info('SOURCE', 'liste du client supprimée sur la télé et sur le serveur');
+          BlackBox.instance.info('SOURCE',
+              'liste du client supprimée sur la télé et sur le serveur');
           return true;
         case TvDeleteKind.refusePanelList:
-          BlackBox.instance.info('SOURCE', 'liste du panel supprimée sur la télé : refus durable');
+          BlackBox.instance.info(
+              'SOURCE', 'liste du panel supprimée sur la télé : refus durable');
           return true;
         case TvDeleteKind.localOnly:
           return true;
       }
     } catch (e) {
-      BlackBox.instance.warn('SOURCE', 'copie serveur non retirée ; suppression locale conservée : $e');
+      BlackBox.instance.warn('SOURCE',
+          'copie serveur non retirée ; suppression locale conservée : $e');
       return false;
     } finally {
       if (client == null) c.close();
@@ -316,14 +378,37 @@ abstract final class RemoteSourceRepository {
   }
 
   static Future<RemoteSyncResult> sync({bool force = false}) {
+    // Capturée AVANT la file : une vieille demande déjà en attente ne repart
+    // pas avec les droits de la nouvelle configuration après un effacement.
+    final int generation = _sourceGeneration;
+    void checkCurrent() {
+      if (generation != _sourceGeneration) {
+        throw const PlaylistImportSuperseded();
+      }
+    }
+
     return _serial(() async {
+      if (generation != _sourceGeneration) {
+        lastReport = SourceSyncReport(
+          result: RemoteSyncResult.superseded.name,
+          atMs: DateTime.now().millisecondsSinceEpoch,
+          error: 'Import remplacé par une commande plus récente.',
+        );
+        return RemoteSyncResult.superseded;
+      }
       ImportProgressBus.clear();
       syncing.value = true;
+      final http.Client client = http.Client();
+      _activePanelClient = client;
       try {
         _lastConfigRev = null;
         _lastError = null;
         _lastKeptPrevious = false;
-        final RemoteSyncResult r = await _syncBody(force: force);
+        final RemoteSyncResult r = await _syncBody(
+          force: force,
+          checkCurrent: checkCurrent,
+          client: client,
+        );
         // Rapport de CETTE lecture, lu par l'accusé de l'ordre (order_ack.dart).
         lastReport = SourceSyncReport(
           result: r.name,
@@ -332,10 +417,15 @@ abstract final class RemoteSourceRepository {
           error: _lastError,
           keptPrevious: _lastKeptPrevious,
         );
-        lastResult.value = r;
+        if (generation == _sourceGeneration) lastResult.value = r;
         return r;
       } finally {
-        syncing.value = false;
+        if (identical(_activePanelClient, client)) {
+          _activePanelClient = null;
+          _activePanelFingerprints = <String>{};
+        }
+        client.close();
+        if (generation == _sourceGeneration) syncing.value = false;
       }
     });
   }
@@ -397,9 +487,15 @@ abstract final class RemoteSourceRepository {
     return _wipeFingerprints(revoked.toSet());
   }
 
-  static Future<RemoteSyncResult> _syncBody({bool force = false}) async {
+  static Future<RemoteSyncResult> _syncBody({
+    bool force = false,
+    required VoidCallback checkCurrent,
+    required http.Client client,
+  }) async {
     try {
+      checkCurrent();
       final String mac = await DeviceIdentity.instance.mac;
+      checkCurrent();
       if (!mac.startsWith('MK:')) return RemoteSyncResult.noSource;
 
       // Enregistre le secret de cette box avant de demander les codes.
@@ -407,14 +503,17 @@ abstract final class RemoteSourceRepository {
       // doit présenter le header. Sinon (box pas encore enrôlée côté
       // serveur), l'ancienne lecture par MAC reste acceptée.
       await DeviceSecret.instance.enroll(mac);
-      final http.Response resp = await http
+      checkCurrent();
+      final http.Response resp = await client
           .get(
             Uri.parse('$kSubscriptionBaseUrl/api/device-source/$mac'),
             headers: await DeviceSecret.instance.headers(),
           )
           .timeout(const Duration(seconds: 8));
+      checkCurrent();
       if (resp.statusCode != 200) {
-        BlackBox.instance.warn('PANEL', 'device-source HTTP ${resp.statusCode}');
+        BlackBox.instance
+            .warn('PANEL', 'device-source HTTP ${resp.statusCode}');
         return RemoteSyncResult.networkError;
       }
 
@@ -425,7 +524,8 @@ abstract final class RemoteSourceRepository {
       if (body['sources'] is! List && !body.containsKey('source')) {
         return RemoteSyncResult.networkError;
       }
-      _lastConfigRev = (body['rev'] as num?)?.toInt() ?? (body['updated_at'] as num?)?.toInt();
+      _lastConfigRev = (body['rev'] as num?)?.toInt() ??
+          (body['updated_at'] as num?)?.toInt();
 
       // Ce que le panel a RETIRÉ est calculé maintenant (après un HTTP 200 :
       // une coupure ne vide pas la box) mais effacé APRÈS l'import des
@@ -434,11 +534,19 @@ abstract final class RemoteSourceRepository {
       // refusées, l'ancienne reste jusqu'au tour suivant. Repli
       // `zuno.source.drop_first_legacy` : ancien ordre.
       final _ReconcilePlan reconcile = await _planReconcile(body);
+      checkCurrent();
+      _activePanelFingerprints = <String>{
+        for (final source in reconcile.currentMaps)
+          ...SourceFingerprint.allFromMap(source),
+      };
       // Une révocation explicite prime sur la conservation de l'ancienne
       // liste quand sa remplaçante échoue. Elle part avant tout téléchargement.
-      await _wipeFingerprints(reconcile.revoked);
+      await _wipeFingerprints(reconcile.revoked, checkCurrent: checkCurrent);
       final bool dropFirst = RepairFlags.sourceDropFirstLegacy;
-      if (dropFirst) await _finishReconcile(reconcile, keepOld: false);
+      if (dropFirst) {
+        await _finishReconcile(reconcile,
+            keepOld: false, checkCurrent: checkCurrent);
+      }
       int servedCount = 0;
       bool anyLoaded = false;
       RemoteSyncResult outcome = RemoteSyncResult.noSource;
@@ -453,7 +561,8 @@ abstract final class RemoteSourceRepository {
           for (final Object? item in list)
             if (item is Map<String, dynamic>) item,
         ];
-        final List<Map<String, dynamic>> items = await _withoutRefused(allItems);
+        final List<Map<String, dynamic>> items =
+            await _withoutRefused(allItems);
         // Une liste refusée (mot de passe faux, serveur muet) ne bloque
         // plus les autres : jamais refusées d'abord, refusées après leur
         // délai, les autres mises de côté. Mesuré le 05/10/2026 : les
@@ -476,13 +585,16 @@ abstract final class RemoteSourceRepository {
           BlackBox.instance.info(
             'SOURCE',
             '${plan.skipped.length} liste(s) refusée(s) récemment mise(s) de côté '
-            '(${plan.tryNow.length} à tenter)',
+                '(${plan.tryNow.length} à tenter)',
           );
         }
         RemoteSyncResult agg = RemoteSyncResult.noSource;
         for (final int index in plan.tryNow) {
+          checkCurrent();
           final Map<String, dynamic> item = items[index];
-          final RemoteSyncResult r = await _applySource(item);
+          final RemoteSyncResult r =
+              await _applySource(item, checkCurrent, client);
+          checkCurrent();
           final String? fp = SourceFingerprint.fromMap(item);
           if (fp != null && r != RemoteSyncResult.networkError) {
             failures = noteSourceOutcome(
@@ -499,6 +611,7 @@ abstract final class RemoteSourceRepository {
             agg = RemoteSyncResult.sourceFailed;
           }
         }
+        checkCurrent();
         await _writeFailures(prefs, failures);
         if (plan.skipped.isNotEmpty && agg == RemoteSyncResult.noSource) {
           // Seules des listes mises de côté restaient : pour l'écran,
@@ -510,17 +623,22 @@ abstract final class RemoteSourceRepository {
         outcome = agg;
       } else {
         final Object? src = body['source'];
-        if (src is Map<String, dynamic> && (await _withoutRefused(<Map<String, dynamic>>[src])).isNotEmpty) {
+        if (src is Map<String, dynamic> &&
+            (await _withoutRefused(<Map<String, dynamic>>[src])).isNotEmpty) {
           servedCount = 1;
-          outcome = await _applySource(src);
+          checkCurrent();
+          outcome = await _applySource(src, checkCurrent, client);
+          checkCurrent();
           anyLoaded = outcome == RemoteSyncResult.loaded;
         }
         // Sinon : rien d'assigné (noSource) ; les anciennes listes partent.
       }
 
       if (!dropFirst) {
+        checkCurrent();
         await _finishReconcile(
           reconcile,
+          checkCurrent: checkCurrent,
           keepOld: keepOldLists(
             dropCount: reconcile.drop.length,
             servedCount: servedCount,
@@ -529,8 +647,18 @@ abstract final class RemoteSourceRepository {
           ),
         );
       }
+      checkCurrent();
       return outcome;
+    } on PlaylistImportSuperseded {
+      _lastError = 'Import remplacé par une commande plus récente.';
+      return RemoteSyncResult.superseded;
     } catch (e) {
+      try {
+        checkCurrent();
+      } on PlaylistImportSuperseded {
+        _lastError = 'Import remplacé par une commande plus récente.';
+        return RemoteSyncResult.superseded;
+      }
       if (kDebugMode) debugPrint('[RemoteSource] sync error: $e');
       BlackBox.instance.warn('PANEL', 'device-source injoignable : $e');
       return RemoteSyncResult.networkError;
@@ -544,7 +672,8 @@ abstract final class RemoteSourceRepository {
     final Set<String> deleted = await DeletedSources.read();
     final List<Map<String, dynamic>> kept = <Map<String, dynamic>>[];
     for (final Map<String, dynamic> item in served) {
-      final List<String> hashes = await DeletedSources.hashes(SourceFingerprint.allFromMap(item));
+      final List<String> hashes =
+          await DeletedSources.hashes(SourceFingerprint.allFromMap(item));
       if (!hashes.any(deleted.contains)) kept.add(item);
     }
     if (kept.length != served.length) {
@@ -565,19 +694,16 @@ abstract final class RemoteSourceRepository {
     try {
       final String mac = await DeviceIdentity.instance.mac;
       if (!mac.startsWith('MK:')) return;
-      final http.Response resp = await http
-          .get(
-            Uri.parse('$kSubscriptionBaseUrl/api/history/$mac'),
-            headers: const <String, String>{'Accept': 'application/json'},
-          )
-          .timeout(const Duration(seconds: 8));
+      final http.Response resp = await http.get(
+        Uri.parse('$kSubscriptionBaseUrl/api/history/$mac'),
+        headers: const <String, String>{'Accept': 'application/json'},
+      ).timeout(const Duration(seconds: 8));
       if (resp.statusCode != 200) return;
       final Map<String, dynamic> body =
           jsonDecode(resp.body) as Map<String, dynamic>;
       final Object? rec = body['recent'];
       if (rec is List && rec.isNotEmpty) {
-        final List<String> ids =
-            rec.map((Object? e) => e.toString()).toList();
+        final List<String> ids = rec.map((Object? e) => e.toString()).toList();
         await RecentlyWatchedRepository.instance.seedIfEmpty(ids);
       }
     } catch (e) {
@@ -586,17 +712,22 @@ abstract final class RemoteSourceRepository {
   }
 
   /// Charge la source en base locale si elle n'y est pas déjà.
-  static Future<RemoteSyncResult> _applySource(Map<String, dynamic> src) async {
+  static Future<RemoteSyncResult> _applySource(
+    Map<String, dynamic> src,
+    VoidCallback checkCurrent,
+    http.Client client,
+  ) async {
+    checkCurrent();
     final String type = (src['type'] as String?)?.trim().toLowerCase() ?? '';
-    final String label =
-        (src['label'] as String?)?.trim().isNotEmpty == true
-            ? (src['label'] as String).trim()
-            : 'Mon abonnement';
+    final String label = (src['label'] as String?)?.trim().isNotEmpty == true
+        ? (src['label'] as String).trim()
+        : 'Mon abonnement';
     final String? epg = (src['epg_url'] as String?)?.trim();
 
     // On s'assure que la liste locale est chargée avant la dédup.
     final List<Playlist> existing =
         await PlaylistRepository.instance.getAllPlaylists();
+    checkCurrent();
 
     if (type == 'xtream') {
       final String server = (src['server_url'] as String?)?.trim() ?? '';
@@ -613,8 +744,11 @@ abstract final class RemoteSourceRepository {
       if (already) return RemoteSyncResult.loaded;
 
       return _timedImport('Xtream', () async {
-        final Playlist saved = await PlaylistRepository.instance.addXtreamPlaylist(
+        final Playlist saved =
+            await PlaylistRepository.instance.addXtreamPlaylist(
           restoreDeleted: false,
+          checkCurrent: checkCurrent,
+          httpClient: client,
           name: label,
           serverUrl: server,
           username: user,
@@ -646,10 +780,14 @@ abstract final class RemoteSourceRepository {
             p.xtreamUsername == account.username);
         if (sameAccount) return RemoteSyncResult.loaded;
         Object? apiError;
-        final RemoteSyncResult viaApi = await _timedImport('Xtream (lien)', () async {
+        final RemoteSyncResult viaApi =
+            await _timedImport('Xtream (lien)', () async {
           try {
-            final Playlist saved = await PlaylistRepository.instance.addXtreamPlaylist(
+            final Playlist saved =
+                await PlaylistRepository.instance.addXtreamPlaylist(
               restoreDeleted: false,
+              checkCurrent: checkCurrent,
+              httpClient: client,
               name: label,
               serverUrl: account.serverUrl,
               username: account.username,
@@ -683,6 +821,8 @@ abstract final class RemoteSourceRepository {
       return _timedImport('M3U', () async {
         final Playlist saved = await PlaylistRepository.instance.addM3uPlaylist(
           restoreDeleted: false,
+          checkCurrent: checkCurrent,
+          httpClient: client,
           name: label,
           url: m3u,
           epgUrl: (epg != null && epg.isNotEmpty) ? epg : null,
@@ -716,7 +856,8 @@ abstract final class RemoteSourceRepository {
 
   /// Compare les listes encore assignées, celles déjà vues, et les
   /// tombstones. Ne touche à rien : l'effacement est dans [_finishReconcile].
-  static Future<_ReconcilePlan> _planReconcile(Map<String, dynamic> body) async {
+  static Future<_ReconcilePlan> _planReconcile(
+      Map<String, dynamic> body) async {
     final List<Map<String, dynamic>> currentMaps = <Map<String, dynamic>>[];
     final Object? list = body['sources'];
     if (list is List) {
@@ -735,8 +876,7 @@ abstract final class RemoteSourceRepository {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     final Set<String> remembered =
         (prefs.getStringList(rememberedKey) ?? const <String>[]).toSet();
-    final Set<String> revoked =
-        SourceFingerprint.revokedFromBody(body).toSet();
+    final Set<String> revoked = SourceFingerprint.revokedFromBody(body).toSet();
     return _ReconcilePlan(
       prefs: prefs,
       currentMaps: currentMaps,
@@ -757,20 +897,25 @@ abstract final class RemoteSourceRepository {
   static Future<void> _finishReconcile(
     _ReconcilePlan plan, {
     required bool keepOld,
+    required VoidCallback checkCurrent,
   }) async {
+    checkCurrent();
     if (keepOld) {
       _lastKeptPrevious = true;
       BlackBox.instance.warn(
         'SOURCE',
         '${plan.drop.length} ancienne(s) liste(s) gardée(s) : la nouvelle a été '
-        'refusée, nouvel essai au tour suivant',
+            'refusée, nouvel essai au tour suivant',
       );
     } else {
-      await _wipeFingerprints(plan.drop);
+      await _wipeFingerprints(plan.drop, checkCurrent: checkCurrent);
+      checkCurrent();
       await plan.prefs.setStringList(rememberedKey, plan.current.toList());
     }
     if (!RepairFlags.panelVisibilityOff) {
-      await _applyPanelVisibility(plan.prefs, plan.currentMaps);
+      checkCurrent();
+      await _applyPanelVisibility(plan.prefs, plan.currentMaps,
+          checkCurrent: checkCurrent);
     }
   }
 
@@ -783,8 +928,9 @@ abstract final class RemoteSourceRepository {
   /// planPanelVisibility pour les règles.
   static Future<void> _applyPanelVisibility(
     SharedPreferences prefs,
-    List<Map<String, dynamic>> served,
-  ) async {
+    List<Map<String, dynamic>> served, {
+    required VoidCallback checkCurrent,
+  }) async {
     Map<String, bool> applied = <String, bool>{};
     try {
       final String? raw = prefs.getString(panelOffKey);
@@ -806,6 +952,7 @@ abstract final class RemoteSourceRepository {
       final List<Playlist> playlists =
           await PlaylistRepository.instance.getAllPlaylists();
       for (final Playlist playlist in playlists) {
+        checkCurrent();
         final int? id = playlist.id;
         if (id == null) continue;
         // Une liste peut être connue du panel sous son lien M3U alors
@@ -820,10 +967,13 @@ abstract final class RemoteSourceRepository {
         await PlaylistRepository.instance.setPlaylistHidden(id, !enabled);
         BlackBox.instance.info(
           'SOURCE',
-          enabled ? 'liste rallumée depuis le panel' : 'liste éteinte depuis le panel',
+          enabled
+              ? 'liste rallumée depuis le panel'
+              : 'liste éteinte depuis le panel',
         );
       }
     }
+    checkCurrent();
     try {
       await prefs.setString(panelOffKey, jsonEncode(plan.nextApplied));
     } catch (_) {}
@@ -833,7 +983,9 @@ abstract final class RemoteSourceRepository {
   /// Chaînes, favoris, récents, sessions et identifiants (la ligne
   /// playlist porte le mot de passe et l'URL) partent avec.
   /// Renvoie le nombre de listes vraiment retirées.
-  static Future<int> _wipeFingerprints(Set<String> drop) async {
+  static Future<int> _wipeFingerprints(Set<String> drop,
+      {VoidCallback? checkCurrent}) async {
+    checkCurrent?.call();
     if (drop.isEmpty) return 0;
     // Même si la liste n'a pas fini de se charger ou n'existe plus en DB,
     // une vieille sauvegarde / réponse réseau ne doit pas la recréer.
@@ -843,13 +995,16 @@ abstract final class RemoteSourceRepository {
     int removed = 0;
     final List<String> channelIds = <String>[];
     for (final Playlist playlist in playlists) {
+      checkCurrent?.call();
       final int? id = playlist.id;
       if (id == null) continue;
       // Empreinte Xtream ET empreinte du lien get.php d'origine : le
       // panel retire par le lien, la box retrouve la liste quand même.
-      final bool hit = SourceFingerprint.ofPlaylist(playlist).any(drop.contains);
+      final bool hit =
+          SourceFingerprint.ofPlaylist(playlist).any(drop.contains);
       if (!hit) continue;
       channelIds.addAll(await _channelIdsOf(id));
+      checkCurrent?.call();
       await PlaylistRepository.instance.deletePlaylist(
         id,
         reason: 'plus envoyée par le panel',

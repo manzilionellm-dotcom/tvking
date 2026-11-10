@@ -2894,5 +2894,22 @@
   "tvAmbientTitle": "Alone",
   "tvAmbientHelp": "Segue il film o la partita intorno all'immagine. L'immagine non cambia. Su una box piccola l'alone resta fisso.",
   "tvAmbientAuto": "Auto",
-  "tvAmbientOff": "Spento"
+  "tvAmbientOff": "Spento",
+  "vipCountriesFirstUseHint": "Scegli qui i tuoi Paesi. Puoi cambiarli in qualsiasi momento.",
+  "tvAdultLive": "Adult live TV",
+  "tvAdultCinema": "Adult cinema",
+  "tvProfileSources": "Playlist del profilo",
+  "tvProfileSourceUnavailable": "Questo profilo non esiste più. La playlist non è stata associata.",
+  "tvCastDiagnostic": "Diagnostica Cast",
+  "playerScreenCast": "Schermo",
+  "castZapPrevTooltip": "Canale precedente",
+  "castZapNextTooltip": "Canale successivo",
+  "screenCastTitle": "Trasmetti a uno schermo",
+  "screenCastStartError": "Impossibile avviare la condivisione. Verifica che il Wi-Fi sia attivo e riprova.",
+  "screenCastInstructions": "Sul computer o sulla TV, connessi allo stesso Wi-Fi del telefono, apri il browser e digita questo indirizzo:",
+  "screenCastScanHint": "oppure scansiona con un altro telefono",
+  "screenCastKeepOpen": "Mantieni l’app aperta ed entrambi i dispositivi sulla stessa rete Wi-Fi durante la trasmissione.",
+  "castNetworkDiagnostic": "Verifica la rete Cast",
+  "castNetworkDiagnosticHelp": "Verifica la connessione e il relay senza cambiare il canale sulla TV.",
+  "castDiagnosticClosePlayer": "Torna alla schermata iniziale prima di testare i canali sulla TV."
 }

@@ -1464,5 +1464,22 @@
   "tvAmbientTitle": "Glød",
   "tvAmbientHelp": "Følger filmen eller kampen rundt bildet. Bildet endres ikke. På en liten boks er gløden fast.",
   "tvAmbientAuto": "Auto",
-  "tvAmbientOff": "Av"
+  "tvAmbientOff": "Av",
+  "vipCountriesFirstUseHint": "Velg landene dine her. Du kan endre dem når som helst.",
+  "tvAdultLive": "Adult live TV",
+  "tvAdultCinema": "Adult cinema",
+  "tvProfileSources": "Profilens spillelister",
+  "tvProfileSourceUnavailable": "Denne profilen finnes ikke lenger. Spillelisten ble ikke knyttet til profilen.",
+  "tvCastDiagnostic": "Cast-diagnostikk",
+  "playerScreenCast": "Skjerm",
+  "castZapPrevTooltip": "Forrige kanal",
+  "castZapNextTooltip": "Neste kanal",
+  "screenCastTitle": "Cast til en skjerm",
+  "screenCastStartError": "Kunne ikke starte delingen. Sjekk at Wi-Fi er på, og prøv igjen.",
+  "screenCastInstructions": "På PC-en eller TV-en din (på SAMME Wi-Fi som telefonen), åpne nettleseren og skriv inn denne adressen:",
+  "screenCastScanHint": "eller skann med en annen telefon",
+  "screenCastKeepOpen": "Hold appen åpen og begge enhetene på samme Wi-Fi-nettverk mens du caster.",
+  "castNetworkDiagnostic": "Sjekk Cast-nettverket",
+  "castNetworkDiagnosticHelp": "Sjekker tilkoblingen og reléet uten å bytte kanal på TV-en.",
+  "castDiagnosticClosePlayer": "Gå tilbake til startsiden før du tester kanaler på TV-en."
 }

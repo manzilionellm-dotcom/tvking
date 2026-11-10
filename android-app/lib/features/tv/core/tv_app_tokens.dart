@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/theme/app_colors.dart';
 import 'tv_comfort.dart';
 import 'tv_ghost.dart';
 import 'tv_tokens.dart';
@@ -10,29 +11,34 @@ import 'tv_type.dart';
 /// L'accès par contexte rend les écrans dépendants du Theme, sans recréer
 /// le lecteur, les routes, le focus ni leurs State lors d'un changement.
 ///
-/// En sombre, les surfaces viennent de [TvComfortPalette] (confort de
-/// lecture, soir par défaut). L'or, l'ivoire et le halo restent ceux de
-/// [TvTokens]. Le puits vidéo du lecteur n'utilise pas ces surfaces.
+/// Noir Fantôme garde son noir OLED et son accent platine, même si le
+/// panel a mémorisé un thème clair ou une couleur. Ces valeurs restent
+/// disponibles quand la personne choisit Confort. Le puits vidéo du
+/// lecteur n'utilise pas ces surfaces.
 @immutable
 class TvAppTokens extends ThemeExtension<TvAppTokens> {
   const TvAppTokens({
-    this.light = false,
+    bool light = false,
     this.remoteAccent,
     this.period = TvComfortPeriod.evening,
     this.ghost = false,
-  });
-  final bool light;
+  }) : _requestedLight = light;
+  final bool _requestedLight;
+
+  /// État réellement affiché : Material et les écrans doivent eux aussi
+  /// rester sombres sous Ghost. La demande du panel n'est pas effacée.
+  bool get light => !ghost && _requestedLight;
   final Color? remoteAccent;
 
   /// Moment sombre (jour / soir / nuit). Ignoré en mode clair du panel
   /// et quand [ghost] est vrai (le Ghost a sa propre pile).
   final TvComfortPeriod period;
 
-  /// Apparence Black Badge. Les surfaces confort ne sont pas utilisées.
-  /// Un accent envoyé par le panel reste prioritaire.
+  /// Apparence Noir Fantôme. Ses surfaces et accents restent prioritaires
+  /// sur les couleurs du panel ; Confort conserve leur comportement.
   final bool ghost;
 
-  bool get _darkGhost => ghost && !light;
+  bool get _darkGhost => ghost;
 
   TvComfortPalette get _comfort => TvComfortPalette.of(period);
 
@@ -113,24 +119,27 @@ class TvAppTokens extends ThemeExtension<TvAppTokens> {
       : _darkGhost
           ? TvGhost.mutedDim
           : _comfort.mutedDim;
-  Color get accent => remoteAccent ?? (_darkGhost ? TvGhost.chrome : TvTokens.accent);
+  Color get accent =>
+      _darkGhost ? TvGhost.chrome : remoteAccent ?? TvTokens.accent;
   Color get accentBright {
-    if (remoteAccent == null && _darkGhost) return TvGhost.chromeBright;
+    if (_darkGhost) return TvGhost.chromeBright;
     if (remoteAccent == null && !light) return TvTokens.accentBright;
     // Accent servant aussi de texte : contraste lisible sur le fond choisi,
     // même si le panel reçoit du blanc, du jaune ou un bleu très sombre.
     return _readableAccent(accent, bg);
   }
 
-  Color get accentDeep => remoteAccent == null
-      ? (_darkGhost ? TvGhost.chromeDeep : TvTokens.accentDeep)
-      : HSLColor.fromColor(accent)
-          .withLightness(
-            (HSLColor.fromColor(accent).lightness - .22).clamp(0.0, 1.0),
-          )
-          .toColor();
+  Color get accentDeep => _darkGhost
+      ? TvGhost.chromeDeep
+      : remoteAccent == null
+          ? TvTokens.accentDeep
+          : HSLColor.fromColor(accent)
+              .withLightness(
+                (HSLColor.fromColor(accent).lightness - .22).clamp(0.0, 1.0),
+              )
+              .toColor();
   Color get onAccent {
-    if (remoteAccent == null && _darkGhost) return TvGhost.onChrome;
+    if (_darkGhost) return TvGhost.onChrome;
     if (remoteAccent == null) return TvTokens.onAccent;
     const dark = Color(0xFF14100A);
     const white = Color(0xFFFFFFFF);
@@ -157,18 +166,18 @@ class TvAppTokens extends ThemeExtension<TvAppTokens> {
   Color get glassFill => light
       ? card.withValues(alpha: 0.92)
       : _darkGhost
-          ? TvGhost.card
-          : _comfort.glassFill;
+          ? AppColors.stealthGlass
+      : _comfort.glassFill;
 
-  /// Filet cuivré du verre. Suit l'accent du panel. Doux : pas un néon.
+  /// Filet du verre : platine sous Ghost, accent du panel sous Confort.
   Color get glassEdge => light ? line : accent.withValues(alpha: 0.42);
 
-  Gradient get bgGradient => !light && remoteAccent == null
+  Gradient get bgGradient => _darkGhost || (!light && remoteAccent == null)
       ? _darkGhost
           ? RadialGradient(
               center: const Alignment(0.56, -.40),
               radius: 1.3,
-              colors: <Color>[sel, bg],
+              colors: <Color>[bg, bg],
               stops: const <double>[0, .6],
             )
           : _comfort.ambient
@@ -181,7 +190,7 @@ class TvAppTokens extends ThemeExtension<TvAppTokens> {
           ],
           stops: const <double>[0, .6],
         );
-  Gradient get brandGlow => remoteAccent == null
+  Gradient get brandGlow => remoteAccent == null && !_darkGhost
       ? TvTokens.brandGlow
       : RadialGradient(
           center: Alignment.topLeft,
@@ -191,7 +200,7 @@ class TvAppTokens extends ThemeExtension<TvAppTokens> {
             accent.withValues(alpha: 0),
           ],
         );
-  Gradient get accentHairline => remoteAccent == null
+  Gradient get accentHairline => remoteAccent == null && !_darkGhost
       ? TvTokens.accentHairline
       : LinearGradient(
           colors: <Color>[
@@ -201,7 +210,7 @@ class TvAppTokens extends ThemeExtension<TvAppTokens> {
           ],
         );
 
-  /// Bouton principal : or champagne plein, pas le reflet vif.
+  /// Bouton principal : accent plein, pas le reflet vif.
   /// Le reflet (`accentBright`) reste réservé au focus, pour ne pas
   /// éclairer un grand aplat dans une pièce noire. Le texte du bouton
   /// est [onAccent] (7:1 sur l'or historique).
@@ -210,7 +219,7 @@ class TvAppTokens extends ThemeExtension<TvAppTokens> {
         end: Alignment.bottomCenter,
         colors: <Color>[accent, accent],
       );
-  Gradient get pillGradient => remoteAccent == null
+  Gradient get pillGradient => remoteAccent == null && !_darkGhost
       ? TvTokens.pillGradient
       : LinearGradient(
           begin: Alignment.topCenter,
@@ -297,7 +306,7 @@ class TvAppTokens extends ThemeExtension<TvAppTokens> {
     bool? ghost,
   }) =>
       TvAppTokens(
-        light: light ?? this.light,
+        light: light ?? _requestedLight,
         remoteAccent: remoteAccent ?? this.remoteAccent,
         period: period ?? this.period,
         ghost: ghost ?? this.ghost,
@@ -306,7 +315,7 @@ class TvAppTokens extends ThemeExtension<TvAppTokens> {
   TvAppTokens lerp(covariant TvAppTokens? other, double t) => other == null
       ? this
       : TvAppTokens(
-          light: t < .5 ? light : other.light,
+          light: t < .5 ? _requestedLight : other._requestedLight,
           period: t < .5 ? period : other.period,
           ghost: t < .5 ? ghost : other.ghost,
           remoteAccent: Color.lerp(remoteAccent, other.remoteAccent, t),

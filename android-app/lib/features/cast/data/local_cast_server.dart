@@ -29,6 +29,7 @@ import 'dart:math' show Random;
 import 'package:flutter/foundation.dart';
 
 import '../../../core/observability/structured_logger.dart';
+import 'cast_session_diagnostic.dart' show redactCastText;
 import 'dlna_profiles.dart';
 import 'hls_relay_session.dart';
 
@@ -38,11 +39,26 @@ class _RelayEntry {
     required this.upstreamUrl,
     required this.profile,
     required this.createdAt,
+    this.isCancelled,
   });
 
   final String upstreamUrl;
   final DlnaProfile profile;
   final DateTime createdAt;
+  final bool Function()? isCancelled;
+  final Set<HttpClient> clients = <HttpClient>{};
+  bool _cancelled = false;
+
+  bool get cancelled => _cancelled || isCancelled?.call() == true;
+
+  // Retirer l'URL de la table n'arrête pas un GET déjà ouvert. Fermer
+  // aussi ses clients rend immédiatement la connexion au fournisseur.
+  void cancel() {
+    _cancelled = true;
+    for (final HttpClient client in clients.toList()) {
+      client.close(force: true);
+    }
+  }
 
   /// Reconnexions upstream effectuées SANS couper la TV (flux live).
   /// Journalisé à la première pour le diagnostic terrain.
@@ -52,6 +68,12 @@ class _RelayEntry {
 class LocalCastServer {
   LocalCastServer._();
   static final LocalCastServer instance = LocalCastServer._();
+
+  /// Les tests HTTP utilisent uniquement leurs sockets loopback. Injecter
+  /// leur résolution d'adresse évite de dépendre d'une interface LAN de
+  /// l'hôte ; en production null conserve la découverte réseau réelle.
+  @visibleForTesting
+  Future<String?> Function(String receiverHost)? debugLanIpResolver;
 
   HttpServer? _server;
   int _port = 0;
@@ -66,8 +88,7 @@ class LocalCastServer {
   /// playlist glissante) pour le repli Google Cast. Indexées par le
   /// MÊME token que `_relays`. Une session tire le flux upstream en
   /// continu → on n'en garde qu'un petit nombre en vie.
-  final Map<String, HlsRelaySession> _hlsSessions =
-      <String, HlsRelaySession>{};
+  final Map<String, HlsRelaySession> _hlsSessions = <String, HlsRelaySession>{};
   static const int _kMaxHlsSessions = 2;
 
   /// UA envoyé aux serveurs IPTV (filtres anti-bot Xtream).
@@ -81,22 +102,43 @@ class LocalCastServer {
   /// = la session courante exposée à la page via /current.
   String? _browserToken;
   String _browserTitle = '';
+  Object? _browserOwner;
+  int _browserGeneration = 0;
+  Future<int>? _starting;
+  int _serverGeneration = 0;
 
   /// Lance le serveur (idempotent — réutilise l'instance existante).
   /// Renvoie le port d'écoute, ou jette une exception si bind échoue.
-  Future<int> start() async {
-    if (_server != null) return _port;
+  Future<int> start() {
+    if (_server != null) return Future<int>.value(_port);
+    final Future<int>? pending = _starting;
+    if (pending != null) return pending;
+    final int generation = _serverGeneration;
+    late final Future<int> operation;
+    operation = _bind(generation).whenComplete(() {
+      if (identical(_starting, operation)) _starting = null;
+    });
+    _starting = operation;
+    return operation;
+  }
 
+  Future<int> _bind(int generation) async {
     // On bind sur 0.0.0.0 pour être joignable depuis le LAN
     // (par défaut, dart:io HttpServer ne bind que sur localhost).
     // Port 0 = laisse l'OS choisir un port libre.
-    final HttpServer server =
-        await HttpServer.bind(InternetAddress.anyIPv4, 0);
+    final HttpServer server = await HttpServer.bind(InternetAddress.anyIPv4, 0);
+    // stop() peut intervenir pendant le bind : le socket qui arrive
+    // après cette fermeture n'appartient plus à une session autorisée.
+    if (generation != _serverGeneration) {
+      await server.close(force: true);
+      return 0;
+    }
     _server = server;
     _port = server.port;
 
     server.listen(_handleRequest, onError: (Object e) {
-      if (kDebugMode) debugPrint('[LocalCastServer] error: $e');
+      if (kDebugMode)
+        debugPrint('[LocalCastServer] error: ${redactCastText('$e')}');
     });
 
     if (kDebugMode) {
@@ -106,16 +148,26 @@ class LocalCastServer {
   }
 
   Future<void> stop() async {
+    ++_serverGeneration;
+    _starting = null;
+    final HttpServer? server = _server;
+    _server = null;
+    stopBrowser();
+    for (final _RelayEntry entry in _relays.values) {
+      entry.cancel();
+    }
+    _relays.clear();
     for (final HlsRelaySession s in _hlsSessions.values) {
       s.stop();
     }
     _hlsSessions.clear();
-    await _server?.close(force: true);
-    _server = null;
+    await server?.close(force: true);
   }
 
   int get port => _port;
   bool get isRunning => _server != null;
+  bool get hasBrowserSession =>
+      _browserToken != null && _relays[_browserToken]?.cancelled == false;
 
   // ============================================================
   //  Handlers
@@ -174,7 +226,8 @@ class LocalCastServer {
       req.response.statusCode = HttpStatus.notFound;
       await req.response.close();
     } catch (e) {
-      if (kDebugMode) debugPrint('[LocalCastServer] handler error: $e');
+      if (kDebugMode)
+        debugPrint('[LocalCastServer] handler error: ${redactCastText('$e')}');
       try {
         await req.response.close();
       } catch (_) {
@@ -328,7 +381,7 @@ class LocalCastServer {
     final int dot = last.indexOf('.');
     final String token = dot > 0 ? last.substring(0, dot) : last;
     final _RelayEntry? entry = _relays[token];
-    if (entry == null) {
+    if (entry == null || entry.cancelled) {
       req.response.statusCode = HttpStatus.notFound;
       await req.response.close();
       return;
@@ -380,7 +433,9 @@ class LocalCastServer {
     required String receiverHost,
     bool wrapInHls = false,
   }) async {
+    final int generation = _serverGeneration;
     await start();
+    if (generation != _serverGeneration || _server == null) return null;
 
     // Evict le plus vieux si on dépasse le budget — protège contre
     // une fuite si un caller oublie clearRelay.
@@ -390,7 +445,7 @@ class LocalCastServer {
                   MapEntry<String, _RelayEntry> b) =>
               a.value.createdAt.isBefore(b.value.createdAt) ? a : b)
           .key;
-      _relays.remove(oldest);
+      _relays.remove(oldest)?.cancel();
       // C3 — sessions HLS orphelines : une entrée _relays évincée peut avoir
       // une HlsRelaySession de MÊME token qui, elle, continue de tirer
       // l'upstream jusqu'à son idle-timeout (~120 s) → elle occupe le slot
@@ -407,8 +462,8 @@ class LocalCastServer {
     );
 
     final String? lanIp = await _lanIpFor(receiverHost);
-    if (lanIp == null) {
-      _relays.remove(token);
+    if (lanIp == null || generation != _serverGeneration || _server == null) {
+      _relays.remove(token)?.cancel();
       return null;
     }
     // Google Cast : VRAIE session HLS live (segmentation TS côté
@@ -441,7 +496,7 @@ class LocalCastServer {
     while (_hlsSessions.length >= _kMaxHlsSessions) {
       final String oldest = _hlsSessions.keys.first;
       _hlsSessions.remove(oldest)?.stop();
-      _relays.remove(oldest);
+      _relays.remove(oldest)?.cancel();
     }
   }
 
@@ -451,7 +506,12 @@ class LocalCastServer {
   /// idle → « Cette TV n'a pas accepté ce flux »). Partagé avec le
   /// transport Google pour le sauvetage TV-directe.
   static const Set<String> kUntransmuxableAudio = <String>{
-    'mp2', 'ac3', 'eac3', 'dts', 'aac-latm', 'private',
+    'mp2',
+    'ac3',
+    'eac3',
+    'dts',
+    'aac-latm',
+    'private',
   };
 
   /// Codec audio détecté (PMT) par la session HLS derrière [relayUrl],
@@ -468,7 +528,7 @@ class LocalCastServer {
   void clearRelay(String relayUrl) {
     final String? token = _tokenFromUrl(relayUrl);
     if (token == null) return;
-    _relays.remove(token);
+    _relays.remove(token)?.cancel();
     _hlsSessions.remove(token)?.stop();
   }
 
@@ -484,7 +544,7 @@ class LocalCastServer {
         ', segments produits=${s.totalSegmentsProduced}'
         ', playlists servies=${s.playlistServed}'
         ', segments servis=${s.segmentsServed}'
-        '${s.fatalError != null ? ', upstream KO: ${s.fatalError}' : ''}';
+        '${s.fatalError != null ? ', upstream KO: ${redactCastText(s.fatalError!)}' : ''}';
   }
 
   /// Extrait le token d'une URL relais :
@@ -513,7 +573,7 @@ class LocalCastServer {
     final int dot = last.indexOf('.');
     final String token = dot > 0 ? last.substring(0, dot) : last;
     final _RelayEntry? entry = _relays[token];
-    if (entry == null) {
+    if (entry == null || entry.cancelled) {
       req.response.statusCode = HttpStatus.notFound;
       await req.response.close();
       return;
@@ -584,7 +644,7 @@ class LocalCastServer {
     int consecutiveNoData = 0;
     const int kMaxConsecutiveNoData = 6;
 
-    while (!clientGone) {
+    while (!clientGone && !entry.cancelled) {
       final HttpClient client = HttpClient()
         ..connectionTimeout = const Duration(seconds: 8)
         // idleTimeout doit être LARGE — un flux LIVE peut avoir des
@@ -594,16 +654,19 @@ class LocalCastServer {
         ..idleTimeout = const Duration(minutes: 10)
         ..userAgent = _kUpstreamUserAgent
         ..autoUncompress = false;
+      entry.clients.add(client);
       bool gotData = false;
       try {
         final HttpClientRequest up =
             await client.getUrl(Uri.parse(entry.upstreamUrl));
+        if (entry.cancelled) break;
         up.followRedirects = true;
         up.maxRedirects = 5;
         if (rangeHeader != null) {
           up.headers.add(HttpHeaders.rangeHeader, rangeHeader);
         }
         final HttpClientResponse upResp = await up.close();
+        if (entry.cancelled) break;
         if (upResp.statusCode < 200 || upResp.statusCode >= 300) {
           await upResp.drain<void>();
           throw HttpException('upstream HTTP ${upResp.statusCode}');
@@ -623,7 +686,7 @@ class LocalCastServer {
         // pas pour une TV lente) et surface immédiatement l'erreur
         // d'écriture quand la TV coupe.
         await for (final List<int> chunk in upResp) {
-          if (clientGone) break;
+          if (clientGone || entry.cancelled) break;
           out.add(chunk);
           await out.flush();
           gotData = true;
@@ -631,7 +694,8 @@ class LocalCastServer {
         }
         // Fin de socket upstream « propre » : reconnexion si live.
       } on Object catch (e) {
-        if (kDebugMode) debugPrint('[Relay] $e');
+        if (entry.cancelled) break;
+        if (kDebugMode) debugPrint('[Relay] ${redactCastText('$e')}');
         if (!headersWritten) {
           // Premier contact upstream raté → 502, comme avant.
           try {
@@ -644,6 +708,7 @@ class LocalCastServer {
           return;
         }
       } finally {
+        entry.clients.remove(client);
         client.close(force: true);
       }
 
@@ -686,8 +751,7 @@ class LocalCastServer {
         profileTag.replaceFirst(RegExp(r'^http-get:\*:[^:]+:'), '');
     out.headers.set('contentFeatures.dlna.org', contentFeatures);
     out.headers.set('getcontentFeatures.dlna.org', contentFeatures);
-    out.headers
-        .set('transferMode.dlna.org', entry.profile.transferMode.header);
+    out.headers.set('transferMode.dlna.org', entry.profile.transferMode.header);
     out.headers.set('Cache-Control', 'no-store, no-cache');
   }
 
@@ -742,6 +806,8 @@ class LocalCastServer {
   /// du récepteur). On préfère une IP du même /24 ; sinon on tombe
   /// sur la première IPv4 non-loopback disponible.
   Future<String?> _lanIpFor(String receiverHost) async {
+    final resolver = debugLanIpResolver;
+    if (resolver != null) return resolver(receiverHost);
     try {
       final List<NetworkInterface> ifs = await NetworkInterface.list(
         includeLoopback: false,
@@ -776,7 +842,8 @@ class LocalCastServer {
         }
       }
     } on Exception catch (e) {
-      if (kDebugMode) debugPrint('[Relay] LAN IP lookup: $e');
+      if (kDebugMode)
+        debugPrint('[Relay] LAN IP lookup: ${redactCastText('$e')}');
     }
     return null;
   }
@@ -795,10 +862,21 @@ class LocalCastServer {
   Future<String?> serveBrowser({
     required String upstreamUrl,
     String title = '',
+    Object? owner,
+    bool Function()? isCancelled,
   }) async {
+    if (isCancelled?.call() == true) return null;
+    final int generation = ++_browserGeneration;
+    _clearBrowserRelay();
+    _browserOwner = owner;
+    bool cancelled() =>
+        generation != _browserGeneration || isCancelled?.call() == true;
     await start();
-    // Une seule session navigateur à la fois : on remplace la précédente.
-    if (_browserToken != null) _relays.remove(_browserToken);
+    if (cancelled()) return null;
+    final String? lanIp = await _lanIpFor('');
+    if (cancelled() || lanIp == null) return null;
+    // Publier seulement après toutes les attentes : aucun ancien droit ne
+    // peut réexposer son URL après l'ouverture d'une autre page.
     final DlnaProfile profile =
         DlnaProfiles.select(url: upstreamUrl, finalMime: null);
     final String token = _randomToken();
@@ -806,23 +884,33 @@ class LocalCastServer {
       upstreamUrl: upstreamUrl,
       profile: profile,
       createdAt: DateTime.now(),
+      isCancelled: cancelled,
     );
     _browserToken = token;
     _browserTitle = title;
-    final String? lanIp = await _lanIpFor('');
-    if (lanIp == null) return null;
     return 'http://$lanIp:$_port/screen';
   }
 
   /// Arrête la session navigateur (l'écran repassera en « attente »).
-  void stopBrowser() {
+  void stopBrowser({Object? owner}) {
+    if (owner != null && !identical(owner, _browserOwner)) return;
+    _browserGeneration++;
+    _browserOwner = null;
+    _clearBrowserRelay();
+  }
+
+  void _clearBrowserRelay() {
     if (_browserToken != null) {
-      _relays.remove(_browserToken);
+      _relays.remove(_browserToken)?.cancel();
       _browserToken = null;
     }
+    _browserTitle = '';
   }
 
   Future<void> _serveCurrent(HttpRequest req) async {
+    if (_relays[_browserToken]?.cancelled == true) {
+      stopBrowser(owner: _browserOwner);
+    }
     req.response.headers
       ..set('Content-Type', 'application/json; charset=utf-8')
       ..set('Cache-Control', 'no-store, no-cache');

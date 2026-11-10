@@ -2894,5 +2894,22 @@
   "tvAmbientTitle": "Свечение",
   "tvAmbientHelp": "Следует за фильмом или матчем вокруг картинки. Картинка не меняется. На маленькой приставке свечение фиксировано.",
   "tvAmbientAuto": "Авто",
-  "tvAmbientOff": "Выкл"
+  "tvAmbientOff": "Выкл",
+  "vipCountriesFirstUseHint": "Выберите страны здесь. Их можно изменить в любое время.",
+  "tvAdultLive": "Adult live TV",
+  "tvAdultCinema": "Adult cinema",
+  "tvProfileSources": "Плейлисты профиля",
+  "tvProfileSourceUnavailable": "Этот профиль больше не существует. Плейлист не был привязан.",
+  "tvCastDiagnostic": "Диагностика трансляции",
+  "playerScreenCast": "Экран",
+  "castZapPrevTooltip": "Предыдущий канал",
+  "castZapNextTooltip": "Следующий канал",
+  "screenCastTitle": "Трансляция на экран",
+  "screenCastStartError": "Не удалось начать трансляцию. Убедись, что Wi-Fi включён, и попробуй снова.",
+  "screenCastInstructions": "На компьютере или телевизоре в той же сети Wi-Fi, что и телефон, открой браузер и введи этот адрес:",
+  "screenCastScanHint": "или отсканируй другим телефоном",
+  "screenCastKeepOpen": "Во время трансляции держи приложение открытым, а оба устройства — в одной сети Wi-Fi.",
+  "castNetworkDiagnostic": "Проверить сеть Cast",
+  "castNetworkDiagnosticHelp": "Проверяет соединение и ретранслятор, не меняя канал на телевизоре.",
+  "castDiagnosticClosePlayer": "Вернись на главный экран перед проверкой каналов на телевизоре."
 }

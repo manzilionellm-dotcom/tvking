@@ -26,6 +26,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../data/cast_manager.dart';
 import 'cast_picker_sheet.dart';
+import '../../tv/core/tv_app_tokens.dart';
 
 class CastButton extends StatelessWidget {
   const CastButton({super.key});
@@ -35,10 +36,12 @@ class CastButton extends StatelessWidget {
     return ListenableBuilder(
       listenable: CastManager.instance,
       builder: (BuildContext context, _) {
+        final palette = Theme.of(context).extension<TvAppTokens>();
+        final accent = palette?.accentBright ?? AppColors.accent;
         final CastManager mgr = CastManager.instance;
         final bool hasTarget = mgr.hasTarget;
         final bool isActive = mgr.isCasting;
-        final bool scanning = mgr.state == CastState.discovering;
+        final bool scanning = mgr.isDiscovering;
         final bool hasDevices = mgr.discoveredDevices.isNotEmpty;
 
         // Phase 1+/G4 : la spec exige que l'icone Cast ne s'affiche
@@ -51,17 +54,15 @@ class CastButton extends StatelessWidget {
           return const SizedBox.shrink();
         }
 
-        final Color color = hasTarget
-            ? AppColors.accent
-            : AppColors.textSecondary;
+        final Color color =
+            hasTarget ? accent : palette?.muted ?? AppColors.textSecondary;
 
-        final IconData icon = hasTarget
-            ? Icons.cast_connected_rounded
-            : Icons.cast_rounded;
+        final IconData icon =
+            hasTarget ? Icons.cast_connected_rounded : Icons.cast_rounded;
 
         Widget child = Icon(icon, color: color, size: 22);
         if (scanning && !hasTarget) {
-          child = _PulseIcon(icon: icon, color: AppColors.accent);
+          child = _PulseIcon(icon: icon, color: accent);
         } else if (isActive) {
           // Petit halo doré quand un flux est réellement en cours
           child = Stack(
@@ -72,10 +73,10 @@ class CastButton extends StatelessWidget {
                 height: 28,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: AppColors.accent.withValues(alpha: 0.18),
+                  color: accent.withValues(alpha: 0.18),
                 ),
               ),
-              Icon(icon, color: AppColors.accent, size: 22),
+              Icon(icon, color: accent, size: 22),
             ],
           );
         }
@@ -186,11 +187,10 @@ void showCastFailedToast(BuildContext context, Object error) {
       behavior: SnackBarBehavior.floating,
       backgroundColor: AppColors.live,
       content: Text(
-        context.l10n.castFailedLocal(
-            error.toString().replaceFirst('Exception: ', '')),
+        context.l10n
+            .castFailedLocal(error.toString().replaceFirst('Exception: ', '')),
         style: AppTextStyles.bodyMedium,
       ),
     ),
   );
 }
-

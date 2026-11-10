@@ -2,7 +2,11 @@
 //  tv_shell.dart — Conteneur racine 10-foot (safe area + fond Maison Noir)
 // =========================================================
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 
+import '../../cast/data/cast_platform.dart';
+import '../../cast/presentation/cast_button.dart';
+import '../../cast/presentation/cast_mini_bar.dart';
 import '../core/tv_ambient.dart';
 import '../core/tv_ambient_director.dart';
 import '../core/tv_comfort.dart';
@@ -27,6 +31,7 @@ class _TvShellState extends State<TvShell> with SingleTickerProviderStateMixin {
   );
   TvAmbientLook? _from;
   TvAmbientLook? _to;
+  bool _ambientScheduled = false;
 
   @override
   void initState() {
@@ -38,6 +43,20 @@ class _TvShellState extends State<TvShell> with SingleTickerProviderStateMixin {
 
   void _onAmbient() {
     if (!mounted) return;
+    if (SchedulerBinding.instance.schedulerPhase ==
+        SchedulerPhase.persistentCallbacks) {
+      // L'initState du lecteur peut changer l'ambiance pendant le build de
+      // sa route. Le shell encore derrière ne doit pas notifier son animation
+      // au milieu de ce build. Coalescer, puis relire la toute dernière valeur.
+      if (!_ambientScheduled) {
+        _ambientScheduled = true;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _ambientScheduled = false;
+          if (mounted) _onAmbient();
+        });
+      }
+      return;
+    }
     final TvAmbientLook? next = TvAmbientDirector.instance.look;
     _from = _to;
     _to = next;
@@ -70,6 +89,10 @@ class _TvShellState extends State<TvShell> with SingleTickerProviderStateMixin {
   @override
   Widget build(BuildContext context) {
     final TvAppTokens palette = TvAppTokens.of(context);
+    // Sur téléphone seulement. Le marqueur évite de doubler les contrôles
+    // lorsqu'un écran contient lui-même un autre shell.
+    final bool showCast = CastPlatform.isAndroidHandset &&
+        context.getInheritedWidgetOfExactType<_CastOverlayScope>() == null;
     return AnimatedBuilder(
       animation: _blend,
       builder: (BuildContext context, Widget? child) {
@@ -89,7 +112,8 @@ class _TvShellState extends State<TvShell> with SingleTickerProviderStateMixin {
         fit: StackFit.expand,
         children: <Widget>[
           if (palette.ghost) const Positioned.fill(child: PhantomWeave()),
-          Material(
+          _CastOverlayScope(
+              child: Material(
             type: MaterialType.transparency,
             child: widget.applySafeArea
                 ? Padding(
@@ -100,9 +124,40 @@ class _TvShellState extends State<TvShell> with SingleTickerProviderStateMixin {
                     child: widget.child,
                   )
                 : widget.child,
-          ),
+          )),
+          // Les contrôles flottent dans le shell : le contenu conserve
+          // exactement ses dimensions et sa position du build 117.
+          if (showCast) ...<Widget>[
+            const Positioned(
+              top: 0,
+              right: 0,
+              child: SafeArea(
+                  child: Material(
+                type: MaterialType.transparency,
+                child: CastButton(),
+              )),
+            ),
+            const Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: SafeArea(
+                  top: false,
+                  child: Material(
+                    type: MaterialType.transparency,
+                    child: CastMiniBar(),
+                  )),
+            ),
+          ],
         ],
       ),
     );
   }
+}
+
+/// Empêche les doublons dans les rares compositions de shells imbriqués.
+class _CastOverlayScope extends InheritedWidget {
+  const _CastOverlayScope({required super.child});
+  @override
+  bool updateShouldNotify(_CastOverlayScope oldWidget) => false;
 }

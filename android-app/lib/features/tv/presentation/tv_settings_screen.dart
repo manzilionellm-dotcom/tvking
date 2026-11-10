@@ -24,6 +24,8 @@ import '../core/tv_app_tokens.dart';
 import '../core/tv_comfort_schedule.dart';
 import '../core/tv_ambient_director.dart';
 import '../core/tv_look.dart';
+import '../../cast/data/cast_platform.dart';
+import '../../cast/presentation/cast_diagnostics_screen.dart';
 import '../../device/data/device_identity.dart';
 import '../../subscription/data/subscription_state.dart';
 import '../../pricing/presentation/tv_pricing_card.dart';
@@ -478,6 +480,13 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
         description: context.l10n.tvAudioDiagnosticHelp,
         onSelect: () => open(const TvAudioDiagnosticScreen()),
       ),
+      if (CastPlatform.isAndroidHandset)
+        _SettingEntry(
+          icon: Icons.cast_rounded,
+          title: context.l10n.tvCastDiagnostic,
+          description: context.l10n.tvCastDiagnostic,
+          onSelect: () => open(const CastDiagnosticsScreen()),
+        ),
       _SettingEntry(
         icon: Icons.gavel_rounded,
         title: context.l10n.tvLegalTitle,

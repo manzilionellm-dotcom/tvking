@@ -49,7 +49,7 @@ class ProfileRepository extends ChangeNotifier {
       if (kDebugMode) debugPrint('[Profils] lecture impossible : $e');
       _catalog = ProfileCatalog.fresh();
     }
-    ActiveProfile.instance.set(_catalog.activeId);
+    _publishActiveScope();
     _ready = true;
     notifyListeners();
   }
@@ -81,6 +81,49 @@ class ProfileRepository extends ChangeNotifier {
     return true;
   }
 
+  /// Le propriétaire est capturé par le formulaire AVANT ses attentes.
+  /// Le résultat ne change pas de profil si l'utilisateur bascule pendant
+  /// le téléchargement, et ne ressuscite pas un profil supprimé.
+  Future<bool> attachPlaylist(String profileId, int playlistId) async {
+    await load();
+    final ProfileCatalog? next = _catalog.attachPlaylist(profileId, playlistId);
+    return _saveSourceScope(next);
+  }
+
+  Future<bool> detachPlaylist(String profileId, int playlistId) async {
+    await load();
+    final ProfileCatalog? next = _catalog.detachPlaylist(profileId, playlistId);
+    return _saveSourceScope(next);
+  }
+
+  Future<bool> _saveSourceScope(ProfileCatalog? next) async {
+    if (next == null) return false;
+    if (identical(next, _catalog)) return true;
+    final ProfileCatalog before = _catalog;
+    _catalog = next;
+    final bool saved = await _persist();
+    // Une erreur disque ne doit pas annoncer une association durable. Si
+    // un autre geste a eu lieu pendant l'écriture, ne pas l'écraser non plus.
+    if (!saved && identical(_catalog, next)) _catalog = before;
+    _publishActiveScope();
+    notifyListeners();
+    return saved;
+  }
+
+  void _publishActiveScope() => ActiveProfile.instance.set(
+        _catalog.activeId,
+        playlistIds: _catalog.active.playlistIds,
+      );
+
+  @visibleForTesting
+  void resetForTesting(ProfileCatalog catalog) {
+    _catalog = catalog;
+    _ready = true;
+    _loading = Future<void>.value();
+    _publishActiveScope();
+    notifyListeners();
+  }
+
   /// [leaveAllowed] doit être vrai pour QUITTER un profil Enfants.
   /// L'écran le met à vrai seulement après le bon code. Entrer
   /// dans le profil Enfants ne demande rien.
@@ -98,7 +141,7 @@ class ProfileRepository extends ChangeNotifier {
     final ProfileCatalog? next = _catalog.activate(id);
     if (next == null) return false;
     _catalog = next;
-    ActiveProfile.instance.set(next.activeId);
+    _publishActiveScope();
     await _persist();
     notifyListeners();
     return true;
@@ -114,7 +157,7 @@ class ProfileRepository extends ChangeNotifier {
     final ProfileCatalog? next = _catalog.remove(id);
     if (next == null) return false;
     _catalog = next;
-    ActiveProfile.instance.set(next.activeId);
+    _publishActiveScope();
     await _persist();
     await _wipe(id);
     notifyListeners();
@@ -129,12 +172,13 @@ class ProfileRepository extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> _persist() async {
+  Future<bool> _persist() async {
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
-      await prefs.setString(ProfileKeys.catalog, _catalog.encode());
+      return await prefs.setString(ProfileKeys.catalog, _catalog.encode());
     } catch (e) {
       if (kDebugMode) debugPrint('[Profils] écriture impossible : $e');
+      return false;
     }
   }
 

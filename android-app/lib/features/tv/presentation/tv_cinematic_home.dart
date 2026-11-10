@@ -44,6 +44,7 @@ class TvCinematicHome extends StatelessWidget {
     required this.onSeries,
     required this.onServer,
     required this.onSettings,
+    this.onAdult,
   });
 
   final TonightBoard board;
@@ -54,6 +55,9 @@ class TvCinematicHome extends StatelessWidget {
   final VoidCallback onSeries;
   final VoidCallback onServer;
   final VoidCallback onSettings;
+
+  /// Null en mode Enfants : aucune entrée adulte n’est construite.
+  final VoidCallback? onAdult;
 
   @override
   Widget build(BuildContext context) {
@@ -82,6 +86,7 @@ class TvCinematicHome extends StatelessWidget {
             onSeries: onSeries,
             onServer: onServer,
             onSettings: onSettings,
+            onAdult: onAdult,
             onPlay: onPlay,
           ),
         ),
@@ -258,6 +263,7 @@ class _RailColumn extends StatelessWidget {
     required this.onServer,
     required this.onSettings,
     required this.onPlay,
+    this.onAdult,
   });
 
   final TonightBoard board;
@@ -268,6 +274,7 @@ class _RailColumn extends StatelessWidget {
   final VoidCallback onSeries;
   final VoidCallback onServer;
   final VoidCallback onSettings;
+  final VoidCallback? onAdult;
   final ValueChanged<TonightPiece> onPlay;
 
   @override
@@ -295,6 +302,12 @@ class _RailColumn extends StatelessWidget {
               _Chip(icon: Icons.video_library_rounded, label: context.l10n.tvNavSeries, onSelect: onSeries),
               _Chip(icon: Icons.dns_rounded, label: context.l10n.tvNavServer, onSelect: onServer),
               _Chip(icon: Icons.settings_rounded, label: context.l10n.tvNavSettings, onSelect: onSettings),
+              if (onAdult != null)
+                _Chip(
+                  icon: Icons.lock_outline_rounded,
+                  label: context.l10n.sectionAdult,
+                  onSelect: onAdult!,
+                ),
             ],
           ),
         ),

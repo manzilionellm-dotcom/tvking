@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:tv_king/core/app/box_memory_budget.dart';
+import 'package:tv_king/core/theme/app_colors.dart';
 import 'package:tv_king/features/tv/core/tv_ambient.dart';
 import 'package:tv_king/features/tv/core/tv_app_tokens.dart';
 import 'package:tv_king/features/tv/core/tv_comfort.dart';
@@ -12,6 +14,54 @@ import 'package:tv_king/features/tv/presentation/tv_shell.dart';
 import 'package:tv_king/features/tv/presentation/tv_starfield.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  for (final previousChoice in <String?>[null, 'comfort', 'ghost']) {
+    test(
+      'la première ouverture migre $previousChoice vers Noir Fantôme',
+      () async {
+        SharedPreferences.setMockInitialValues(<String, Object>{
+          if (previousChoice != null) 'zuno.tv.look.v1': previousChoice,
+        });
+        final TvLook look = TvLook.instance;
+        look.debugChoose(TvLookChoice.comfort);
+        addTearDown(() => look.debugChoose(TvLookChoice.ghost));
+
+        await look.load();
+
+        final prefs = await SharedPreferences.getInstance();
+        expect(look.choice, TvLookChoice.ghost);
+        expect(prefs.getString(TvLook.prefKey), 'ghost');
+        // La migration garde l'ancien réglage disponible pour un retour
+        // à une ancienne version ; seul le choix de cette version change.
+        expect(prefs.getString('zuno.tv.look.v1'), previousChoice);
+      },
+    );
+  }
+
+  test(
+    'un choix Confort après migration reste effectif au redémarrage',
+    () async {
+      SharedPreferences.setMockInitialValues(<String, Object>{
+        'zuno.tv.look.v1': 'comfort',
+      });
+      final TvLook look = TvLook.instance;
+      addTearDown(() => look.debugChoose(TvLookChoice.ghost));
+      await look.load();
+      expect(look.ghost, isTrue);
+
+      await look.toggle();
+      expect(look.choice, TvLookChoice.comfort);
+      look.debugChoose(TvLookChoice.ghost);
+      await look.load();
+
+      expect(look.choice, TvLookChoice.comfort);
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getString(TvLook.prefKey), 'comfort');
+      expect(prefs.getString('zuno.tv.look.v1'), 'comfort');
+    },
+  );
+
   test('Ghost est plus profond que le confort et le chrome se lit', () {
     const TvAppTokens ghost = TvAppTokens(ghost: true);
     const TvAppTokens comfort = TvAppTokens();
@@ -47,7 +97,7 @@ void main() {
     BoxMemoryBudget.debugTier = null;
   });
 
-  test('le choix Ghost ne remplace pas le confort par défaut', () {
+  test('le choix Confort reste disponible', () {
     final TvLook look = TvLook.instance;
     look.debugChoose(TvLookChoice.comfort);
     expect(look.ghost, isFalse);
@@ -101,11 +151,11 @@ void main() {
     const TvAppTokens comfort = TvAppTokens();
     final TvComfortPalette evening =
         TvComfortPalette.of(TvComfortPeriod.evening);
-    expect(ghost.glassFill, TvGhost.card);
+    expect(ghost.glassFill, AppColors.stealthGlass);
     expect(comfort.glassFill, evening.glassFill);
     expect(
       (ghost.bgGradient as RadialGradient).colors,
-      <Color>[TvGhost.sel, TvGhost.bg],
+      <Color>[TvGhost.bg, TvGhost.bg],
     );
     expect(comfort.bgGradient, evening.ambient);
   });

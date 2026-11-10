@@ -1,3 +1,4 @@
+import 'features/cast/data/cast_manager.dart';
 import 'features/cast/data/cast_platform.dart';
 
 // =========================================================
@@ -376,6 +377,9 @@ Future<void> bootstrapZunoTv({Widget Function(Widget app)? wrap}) async {
   StartupTrace.mark('runApp');
   WidgetsBinding.instance.addPostFrameCallback((_) {
     StartupTrace.mark('frame.submitted');
+    // Découverte silencieuse après le premier cadre, uniquement sur mobile.
+    // Les éditions TV et leurs services restent sans émetteur Cast.
+    if (CastPlatform.isAndroidHandset) CastManager.instance.startWarmup();
   });
   unawaited(
     WidgetsBinding.instance.waitUntilFirstFrameRasterized.then((_) {

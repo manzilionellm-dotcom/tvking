@@ -19,8 +19,7 @@ import '../../../core/flavor/flavor.dart';
 
 class RecentSearchesRepository extends ChangeNotifier {
   RecentSearchesRepository._();
-  static final RecentSearchesRepository instance =
-      RecentSearchesRepository._();
+  static final RecentSearchesRepository instance = RecentSearchesRepository._();
 
   static const String _kKey = 'search.recent.v1';
   static const int _kMaxEntries = 10;
@@ -63,24 +62,24 @@ class RecentSearchesRepository extends ChangeNotifier {
 
   Future<void> remove(String query) async {
     final String lower = query.trim().toLowerCase();
-    _recent = _recent
-        .where((String r) => r.toLowerCase() != lower)
-        .toList();
+    _recent = _recent.where((String r) => r.toLowerCase() != lower).toList();
     notifyListeners();
     await _persist();
   }
 
-  Future<void> clearAll() async {
+  Future<void> clearAll({bool strict = false}) async {
     _recent = <String>[];
     notifyListeners();
-    await _persist();
+    await _persist(strict: strict);
   }
 
-  Future<void> _persist() async {
+  Future<void> _persist({bool strict = false}) async {
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
-      await prefs.setStringList(_kKey, _recent);
+      final bool saved = await prefs.setStringList(_kKey, _recent);
+      if (strict && !saved) throw StateError('Recherches non effacées.');
     } catch (e) {
+      if (strict) rethrow;
       if (kDebugMode) debugPrint('[RecentSearches] persist error: $e');
     }
   }

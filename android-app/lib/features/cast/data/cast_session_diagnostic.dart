@@ -63,7 +63,7 @@ class ProbeSummary {
         'acceptsRanges': acceptsRanges,
         'requiresAuth': requiresAuth,
         if (errorCode != null) 'errorCode': errorCode,
-        if (errorReason != null) 'errorReason': errorReason,
+        if (errorReason != null) 'errorReason': redactCastText(errorReason!),
       };
 }
 
@@ -154,7 +154,7 @@ class AttemptResult {
         'metadataMode': metadataMode,
         'durationMs': durationMs,
         'success': success,
-        if (errorMessage != null) 'errorMessage': errorMessage,
+        if (errorMessage != null) 'errorMessage': redactCastText(errorMessage!),
         if (lastCastUrlRedacted != null)
           'lastCastUrlRedacted': lastCastUrlRedacted,
       };
@@ -230,19 +230,18 @@ class CastSessionDiagnostic {
       if (p != null) 'probe': p.toJson(),
       if (s != null) 'sink': s.toJson(),
       if (pr != null) 'profile': pr.toJson(),
-      'attempts': attempts
-          .map((AttemptResult a) => a.toJson())
-          .toList(growable: false),
+      'attempts':
+          attempts.map((AttemptResult a) => a.toJson()).toList(growable: false),
       if (totalDurationMs != null) 'totalDurationMs': totalDurationMs,
       if (deviceReachable != null) 'deviceReachable': deviceReachable,
       'success': success,
       if (win != null) 'winningStrategy': win.strategyName,
-      if (finalUserMessage != null) 'finalUserMessage': finalUserMessage,
+      if (finalUserMessage != null)
+        'finalUserMessage': redactCastText(finalUserMessage!),
       if (finalErrorMessage != null && kDebugMode)
-        'finalErrorMessage': finalErrorMessage,
+        'finalErrorMessage': redactCastText(finalErrorMessage!),
     };
   }
-
 }
 
 /// Masque token/credentials dans une URL avant export public.
@@ -256,19 +255,73 @@ String redactStreamUrl(String url) {
   } on FormatException {
     return '<url invalide>';
   }
-  final Map<String, String> q = Map<String, String>.from(u.queryParameters);
-  for (final String k in <String>['password', 'pass', 'token', 'pwd']) {
-    if (q.containsKey(k)) q[k] = '***';
+  // Les chemins nus /USER/PASS/ID.ts et /cs/<base64>.ts portent aussi
+  // des secrets. Masquer seulement « password » dans query ne suffit pas.
+  // Le rapport garde l'hôte, les routes connues et l'extension du média,
+  // jamais les valeurs de query, fragments ou chemins d'abonnement.
+  const publicRoutes = <String>{
+    'live',
+    'movie',
+    'series',
+    'hls',
+    'relay',
+    'cs',
+    'cast-sign',
+    'cast-proxy',
+    'cast-receiver',
+    'get.php',
+    'player_api.php'
+  };
+  final List<String> segments = <String>[];
+  for (int i = 0; i < u.pathSegments.length; i++) {
+    final String segment = u.pathSegments[i];
+    if (i == 0 && publicRoutes.contains(segment)) {
+      segments.add(segment);
+    } else {
+      final Match? extension =
+          RegExp(r'\.([A-Za-z0-9]{1,5})$').firstMatch(segment);
+      segments.add(extension == null ? '***' : '***.${extension.group(1)}');
+    }
   }
-  String path = u.path;
-  // Xtream Codes utilise /live/USER/PASS/ID.ts — masque les 2e/3e
-  // segments si on est sur un endpoint /live/ ou /movie/ ou /series/.
-  final List<String> segs = path.split('/');
-  if (segs.length >= 4 &&
-      (segs[1] == 'live' || segs[1] == 'movie' || segs[1] == 'series')) {
-    segs[2] = '***';
-    segs[3] = '***';
-    path = segs.join('/');
+  return u
+      .replace(
+        userInfo: u.userInfo.isEmpty ? '' : '***',
+        pathSegments: segments,
+        fragment: '',
+        queryParameters: u.queryParameters.isEmpty
+            ? null
+            : <String, String>{
+                for (final key in u.queryParameters.keys) key: '***'
+              },
+      )
+      .toString();
+}
+
+/// Les exceptions réseau contiennent souvent l'URL complète dans leur
+/// texte, parfois percent-encodée. Le même filtre s'applique avant copie
+/// du rapport et avant journalisation, y compris aux messages de secours.
+String redactCastText(String text) {
+  String safe = text;
+  for (int i = 0; i < 2 && safe.contains('%'); i++) {
+    try {
+      final String decoded = Uri.decodeFull(safe);
+      if (decoded == safe) break;
+      safe = decoded;
+    } on FormatException {
+      break;
+    }
   }
-  return u.replace(path: path, queryParameters: q).toString();
+  safe = safe.replaceAllMapped(
+      RegExp(r'\b(Bearer|Basic)\s+\S+', caseSensitive: false),
+      (Match match) => '${match.group(1)} ***');
+  safe = safe.replaceAllMapped(
+    RegExp(r'''https?://[^\s<>"']+''', caseSensitive: false),
+    (Match match) => redactStreamUrl(match.group(0)!),
+  );
+  return safe.replaceAllMapped(
+    RegExp(
+        r'''["']?\b(password|passwd|pass|pwd|token|access_token|refresh_token|authorization|username|user|login|t)["']?\s*[:=]\s*["']?[^\s&;,"'}]+''',
+        caseSensitive: false),
+    (Match match) => '${match.group(1)}=***',
+  );
 }
