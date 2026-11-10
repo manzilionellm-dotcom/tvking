@@ -28,6 +28,7 @@ import { sessionValid } from './account_security.js';
 
 import { publishDeviceEvent } from './device_realtime.js';
 import { createOrder, markOrderSent, recordAck } from './box_orders.js';
+import { publicPanelState } from './panel_events.js';
 
 /// Noms d'ordres connus. Inconnu = refusé, pour qu'un appelant
 /// ne glisse pas un texte libre (ni un secret) dans le canal.
@@ -473,6 +474,18 @@ export class RealtimeHub {
         if (!mac || a.mac === mac) { try { ws.send(text); } catch {} }
       }
       return json({ ok: true, version });
+    }
+    if (url.pathname === '/panel-state' && request.method === 'POST') {
+      let payload;
+      try { payload = await request.json(); } catch (_) { return json({ error: 'bad_json' }, 400); }
+      const event = publicPanelState(payload);
+      if (!event || (event.type === 'receipt' && !canonicalKind(event.kind))) {
+        return json({ error: 'invalid_event' }, 400);
+      }
+      // Même contrôle session + propriétaire que les autres notifications
+      // du panel. Ces reçus ne sont ni mis dans la mailbox ni envoyés aux box.
+      await this.#sendPanel(JSON.stringify(event), event.mac);
+      return json({ ok: true });
     }
     if (request.headers.get('Upgrade') === 'websocket') {
       return this.#socket(request);

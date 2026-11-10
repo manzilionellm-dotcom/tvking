@@ -1,5 +1,6 @@
 import { validateWriteBody } from './account_security.js';
 import { attachDeviceToken, deviceRealtimeRoute, writeEvents, publishDeviceEvent } from './device_realtime.js';
+import { publishPanelState } from './panel_events.js';
 // =========================================================
 //  BLACK7 ROYAL — Cloudflare Worker (backend admin + clients)
 // =========================================================
@@ -510,7 +511,7 @@ async function ensureScaleSchema(env) {
 }
 
 async function recordPresence(env, mac, ip, country, now, channel) {
-  if (!env.DB) return;
+  if (!env.DB) return false;
   try {
     // DDL UNE fois par isolate (au lieu d'à chaque heartbeat — gros gain à
     // l'échelle de millions d'appareils). L'upsert, lui, tourne à chaque fois.
@@ -534,8 +535,10 @@ async function recordPresence(env, mac, ip, country, now, channel) {
       )
       .bind(mac, ip, country, now, chan)
       .run();
+    return true;
   } catch (_) {
     // best-effort : la présence ne doit jamais faire échouer un heartbeat.
+    return false;
   }
 }
 
@@ -2398,7 +2401,7 @@ async function handleHeartbeat(request, env, _ctx) {
   // Présence + inventaire : on ATTEND l'écriture avant de répondre.
   // waitUntil laissait le panel lire « hors ligne » / un vieil inventaire
   // juste après le ping, et pouvait perdre la ligne si l'isolate s'arrêtait.
-  await recordPresence(env, mac, ip, country, now, channel);
+  const presenceCommitted = await recordPresence(env, mac, ip, country, now, channel);
 
   // --- Chemin D1 (par defaut des que la base est branchee) ---
   // On enregistre AUTOMATIQUEMENT la MAC (essai 7 j), puis on renvoie son
@@ -2419,7 +2422,14 @@ async function handleHeartbeat(request, env, _ctx) {
     // l'exige (le panel lit la fiche juste après le ping).
     await updateDeviceInfo(env, mac, body);
     const d1 = await d1StatusForMac(env, mac, now);
-    if (d1) return json(await attachDeviceToken(env, mac, { ok: true, created: !!created, ...d1 }, request, { created: !!created, previousAndroidId: before?.android_id || '' }));
+    if (d1) {
+      // La présence ET l'inventaire ont été traités avant la notification :
+      // une relecture immédiate du panel observe les écritures terminées.
+      if (presenceCommitted) await publishPanelState(env, {
+        type: 'presence', mac, at: now, online: true, last_seen_at: now,
+      });
+      return json(await attachDeviceToken(env, mac, { ok: true, created: !!created, ...d1 }, request, { created: !!created, previousAndroidId: before?.android_id || '' }));
+    }
   }
 
   // --- Repli KV (si D1 pas branchee) ---

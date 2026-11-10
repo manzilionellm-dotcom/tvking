@@ -30,6 +30,8 @@
 //  d'erreur de la box sont expurgés avant écriture.
 // =========================================================
 
+import { publishPanelState } from './panel_events.js';
+
 export const ORDER_STATES = Object.freeze({
   CREATED: 'created',
   SENT: 'sent',
@@ -335,6 +337,15 @@ export async function recordAck(env, mac, raw, now = Date.now()) {
     await markRevisionAck(env, mac, ack.config_rev, isApplied && ack.result !== 'refused',
       ack.result, ack.error_message, now);
   }
+  // Seulement le gagnant de l'écriture conditionnelle publie. Ni un doublon,
+  // ni un ordre d'une autre MAC, ni une écriture refusée ne simulent un reçu.
+  // « at » reprend l'heure serveur persistée, jamais l'horloge de l'appareil.
+  await publishPanelState(env, {
+    type: 'receipt', mac, at: now, order_id: row.order_id,
+    kind: row.kind, state: next, config_rev: row.config_rev,
+    applied_rev: ack.config_rev ?? row.applied_rev,
+    elapsed_ms: Math.max(0, now - (row.t1_api || row.created_at)),
+  });
   return { status: 200, body: { ok: true, order_id: ack.order_id, state: next, changed: true, late_ack: !!late } };
 }
 
