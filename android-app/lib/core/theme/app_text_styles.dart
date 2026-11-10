@@ -203,4 +203,3 @@ abstract final class AppTextStyles {
         fontFeatures: const <FontFeature>[FontFeature.tabularFigures()],
       );
 }
-

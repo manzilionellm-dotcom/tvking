@@ -1477,10 +1477,13 @@ class _TvHubScreenState extends State<TvHubScreen> {
           child: Stack(
             fit: StackFit.expand,
             children: <Widget>[
-              Image.asset(
-                'assets/branding/tv_hub_background.jpg',
-                fit: BoxFit.cover,
-              ),
+              // Le thème change le fond seulement ; l'accueil tactile garde
+              // sa grille, ses espacements et ses actions d'origine.
+              if (CastPlatform.zunoEdition != ZunoEdition.touch)
+                Image.asset(
+                  'assets/branding/tv_hub_background.jpg',
+                  fit: BoxFit.cover,
+                ),
               DecoratedBox(
                 decoration: BoxDecoration(
                   color: TvTokens.bg.withValues(alpha: 0.35),

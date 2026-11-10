@@ -39,8 +39,8 @@ dependencies:
   # Icônes style iOS (incluses par défaut dans Flutter)
   cupertino_icons: ^1.0.8
 
-  # Police "Inter" via google_fonts (téléchargement + cache automatique)
-  google_fonts: ^6.2.1
+  # Polices Noir Fantôme via google_fonts 6.3.3 ; fichiers et licences embarqués.
+  google_fonts: 6.3.3
 
   # --- Phase 1.1 / 1.2 ---
 
@@ -298,6 +298,8 @@ flutter:
   # Logo officiel 7 MOTION, utilisé dans le splash, l'AppBar de
   # l'accueil et l'écran "À propos".
   assets:
+    - assets/fonts/
+    - assets/fonts/licenses/
     - assets/branding/logo_black7royal.png
     - assets/branding/logo_7motion.jpg
     - assets/branding/thefew_tv_icon.png

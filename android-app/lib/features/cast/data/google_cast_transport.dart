@@ -35,6 +35,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import '../../subscription/data/subscription_backend.dart' show kSubscriptionBaseUrl;
 
 import '../../../core/observability/structured_logger.dart';
 import '../domain/cast_device.dart';
@@ -109,7 +110,7 @@ const bool kCastDebugOverlay = false;
 /// Base du Worker (même domaine que le récepteur Cast custom) qui signe et sert
 /// le proxy Cast. Le secret HMAC vit UNIQUEMENT côté Worker : l'app demande une
 /// URL signée à `/cast-sign`, elle n'embarque aucun secret.
-const String _kCastProxyBase = 'https://app.7themotion.com';
+const String _kCastProxyBase = kSubscriptionBaseUrl;
 
 /// Mémo du verdict `/cast-proxy` PAR HÔTE UPSTREAM (fluidité 2026-07-10).
 ///

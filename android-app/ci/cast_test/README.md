@@ -80,3 +80,39 @@ La réussite de ces tests et de la compilation ne vaut pas une mesure sur une t�
 - [Google Cast Android Sender : sessions, suspension/reprise et commandes distantes](https://developers.google.com/cast/docs/android_sender/integrate)
 
 Ces références expliquent pourquoi la découverte, la pause, la fin de session et la fermeture du lecteur sont traitées séparément. Les résultats de compilation et les versions livrées doivent être lus dans la provenance du build concerné.
+
+
+## APK mobile Noir Fantôme (novembre 2026)
+
+Le workflow `zuno-mobile-phantom-test.yml` conserve exactement l'accueil
+mobile antérieur : logo, grille, ordre des actions, espacements, rayons et
+polices. Seules les couleurs des jetons et du fond adoptent Noir Fantôme.
+Le nouvel accueil panoramique ajouté dans 0.1.4 est retiré.
+
+Cet APK est une préversion mobile 0.1.x, pas le numéro de build TV 117.
+Package distinct : `com.sevenmotion.tv.seven_tv.phantomclassic` ; nom Android :
+`Zuno original test`. Ce paquet séparé permet de tester la correction sans
+désinstaller la préversion 0.1.4, dont la clé Android Debug était jetable.
+Aucun canal de mise à jour automatique ni publication Play Store.
+Le fichier livré est `ZUNO-Mobile-Noir-Fantome-test.apk`, accompagné du
+manifeste, du rapport de signature et de la provenance vérifiés en CI.
+
+`google_fonts` reste épinglé à 6.3.3. Les polices libres originales sont
+embarquées dans `assets/fonts` avec leurs licences pour fonctionner hors ligne.
+Les tests tactiles de l'interface d'origine vérifient les cinq formats,
+le texte agrandi, la navigation réelle et la saisie.
+
+
+Le serveur de production mobile et le proxy Cast sont maintenant alignés
+sur la constante TV `https://api.zuno8k.com`. La chute du WebSocket réveille
+immédiatement le filet HTTP et un ordre ne supprime plus sa minuterie.
+Un heartbeat concurrent est regroupé puis renvoyé au lieu d'être perdu.
+La CI mesure activation/source/statut avec une vraie prise WebSocket locale
+et un accusé appliqué, seuil 1 000 ms. Cette mesure locale ne garantit pas
+le réseau d'un téléphone réel ni l'import complet d'une grande playlist.
+
+La réception du socket reste active pendant un import : l'accusé RECEIVED
+part immédiatement, tandis qu'une file unique conserve l'ordre des effets.
+APPLIED reste envoyé seulement après le traitement réel. Une régression avec
+un import volontairement bloqué vérifie que l'ordre suivant est reçu en moins
+d'une seconde sans que ses effets passent devant l'ordre précédent.

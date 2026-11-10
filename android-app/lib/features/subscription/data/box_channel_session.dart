@@ -25,11 +25,21 @@ class BoxChannelSession {
     required this.mac,
     required this.onFrame,
     required this.alive,
+    this.onConnectionChanged,
+    this.onReceived,
   });
 
   final String mac;
   final Future<void> Function(BoxChannelFrame frame) onFrame;
   final bool Function() alive;
+
+  /// Réveille le filet HTTP dès qu'une prise tombe, sans attendre que
+  /// l'autre boucle réseau constate indirectement la coupure.
+  final void Function(bool open)? onConnectionChanged;
+
+  /// Accusé rapide à l'arrivée, indépendant d'un import déjà en cours.
+  /// Le traitement métier reste ordonné par la file ci-dessous.
+  final void Function(BoxChannelFrame frame)? onReceived;
 
   /// Dernier numéro appliqué. Un signal déjà vu ne se rejoue pas.
   int seq = 0;
@@ -37,6 +47,12 @@ class BoxChannelSession {
   /// Vrai tant que la prise est ouverte. La veille s'en sert
   /// pour ne pas doubler avec l'attente longue.
   bool open = false;
+
+  void _setOpen(bool value) {
+    if (open == value) return;
+    open = value;
+    onConnectionChanged?.call(value);
+  }
 
   bool _stopped = false;
   WebSocket? _socket;
@@ -56,6 +72,10 @@ class BoxChannelSession {
   /// Boucle jusqu'à ce que [alive] soit faux.
   Future<void> run() async {
     var delaySeconds = 1;
+    // Le socket continue de lire pendant un import : sinon les ordres suivants
+    // restent dans son tampon et leur accusé « reçu » peut attendre une minute.
+    // Une seule file applique les effets, y compris après une reconnexion.
+    Future<void> pending = Future<void>.value();
     while (_going()) {
       Timer? hello;
       try {
@@ -64,7 +84,7 @@ class BoxChannelSession {
             .timeout(const Duration(seconds: 8));
         _socket = socket;
         if (!_going()) break;
-        open = true;
+        _setOpen(true);
         delaySeconds = 1;
         hello = Timer.periodic(const Duration(seconds: 25), (_) {
           try {
@@ -79,13 +99,29 @@ class BoxChannelSession {
           if (frame == null || frame.seq <= seq) continue;
           if (frame.mac != mac) continue;
           seq = frame.seq;
-          await onFrame(frame);
+          try {
+            onReceived?.call(frame);
+          } catch (e) {
+            if (kDebugMode) debugPrint('[Canal] accusé : ${e.runtimeType}');
+          }
+          pending = pending.then((_) async {
+            if (!_going()) return;
+            try {
+              await onFrame(frame);
+            } catch (e) {
+              // Une erreur métier ne bloque ni la réception ni les ordres
+              // suivants ; les accusés APPLIED/FAILED restent à la veille.
+              if (kDebugMode) {
+                debugPrint('[Canal] traitement : ${e.runtimeType}');
+              }
+            }
+          });
         }
       } catch (e) {
         if (kDebugMode) debugPrint('[Canal] $e');
       } finally {
         hello?.cancel();
-        open = false;
+        _setOpen(false);
         try {
           await _socket?.close();
         } catch (_) {
