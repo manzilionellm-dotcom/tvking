@@ -2897,5 +2897,7 @@
   "tvAmbientOff": "Aus",
   "vipCountriesFirstUseHint": "Wähle hier deine Länder. Du kannst sie jederzeit ändern.",
   "tvAdultLive": "Adult live TV",
-  "tvAdultCinema": "Adult cinema"
+  "tvAdultCinema": "Adult cinema",
+  "tvProfileSources": "Wiedergabelisten des Profils",
+  "tvProfileSourceUnavailable": "Dieses Profil existiert nicht mehr. Die Wiedergabeliste wurde nicht zugeordnet."
 }
