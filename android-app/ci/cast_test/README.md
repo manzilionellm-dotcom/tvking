@@ -84,25 +84,23 @@ Ces références expliquent pourquoi la découverte, la pause, la fin de session
 
 ## APK mobile Noir Fantôme (novembre 2026)
 
-Le workflow `zuno-mobile-phantom-test.yml` compile le même socle tactile et
-Cast, avec la palette et les typographies de la PR TV #221. L'accueil est
-composé à la taille réelle du téléphone, en portrait comme en paysage.
-Il conserve les listes, licences, profils, lecture et ponts Cast existants.
-Les médias viennent des sources utilisateur. Les badges qualité sont issus
-du nom fourni par la source ; aucun statut d'abonnement n'est fabriqué.
+Le workflow `zuno-mobile-phantom-test.yml` conserve exactement l'accueil
+mobile antérieur : logo, grille, ordre des actions, espacements, rayons et
+polices. Seules les couleurs des jetons et du fond adoptent Noir Fantôme.
+Le nouvel accueil panoramique ajouté dans 0.1.4 est retiré.
 
 Cet APK est une préversion mobile 0.1.x, pas le numéro de build TV 117.
-Package distinct : `com.sevenmotion.tv.seven_tv.phantomtest` ; nom Android :
-`Zuno Noir Fantôme test`. Il s'installe à côté des autres versions. Signature
-Android Debug jetable, aucun canal de mise à jour automatique ni publication
-Play Store. Le fichier livré est `ZUNO-Mobile-Noir-Fantome-test.apk`, accompagné
-du manifeste, du rapport de signature et de la provenance vérifiés en CI.
+Package distinct : `com.sevenmotion.tv.seven_tv.phantomclassic` ; nom Android :
+`Zuno original test`. Ce paquet séparé permet de tester la correction sans
+désinstaller la préversion 0.1.4, dont la clé Android Debug était jetable.
+Aucun canal de mise à jour automatique ni publication Play Store.
+Le fichier livré est `ZUNO-Mobile-Noir-Fantome-test.apk`, accompagné du
+manifeste, du rapport de signature et de la provenance vérifiés en CI.
 
-`google_fonts` est épinglé à 6.3.3, la version utilisée par le thème TV :
-les polices libres sont embarquées dans `assets/fonts` avec leurs licences,
-afin d'afficher ce thème hors connexion sans changer les métriques au démarrage.
-Les contrôles tactiles existants sont complétés par des parcours Noir Fantôme
-avec contenu, texte 2x et arabe ; ils utilisent le toucher réel du widget.
+`google_fonts` reste épinglé à 6.3.3. Les polices libres originales sont
+embarquées dans `assets/fonts` avec leurs licences pour fonctionner hors ligne.
+Les tests tactiles de l'interface d'origine vérifient les cinq formats,
+le texte agrandi, la navigation réelle et la saisie.
 
 
 Le serveur de production mobile et le proxy Cast sont maintenant alignés

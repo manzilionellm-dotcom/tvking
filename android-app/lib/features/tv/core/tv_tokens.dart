@@ -73,7 +73,7 @@ class TvTokens {
 
   // =========================================================
   //  TYPOGRAPHIE — 3 rôles, jamais plus.
-  //   • display = Inter (titres d'accent : condensé, « métal » — contraste
+  //   • display = Oswald (titres d'accent : condensé, « métal » — contraste
   //               net avec la calligraphie du logo, qu'on ne copie PAS)
   //   • ui      = Inter  (tout le reste)
   //   • mono    = JetBrains Mono (code d'activation / identifiants UNIQUEMENT)
@@ -82,7 +82,7 @@ class TvTokens {
           {FontWeight weight = FontWeight.w600,
           Color color = text,
           double spacing = 0}) =>
-      GoogleFonts.inter(
+      GoogleFonts.oswald(
           fontSize: size,
           fontWeight: weight,
           color: color,

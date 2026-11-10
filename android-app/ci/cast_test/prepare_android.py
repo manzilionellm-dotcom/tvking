@@ -13,8 +13,8 @@ import re
 import xml.etree.ElementTree as ET
 
 ANDROID = "{http://schemas.android.com/apk/res/android}"
-TEST_PACKAGE = "com.sevenmotion.tv.seven_tv.phantomtest"
-TEST_LABEL = "Zuno Noir Fantôme test"
+TEST_PACKAGE = "com.sevenmotion.tv.seven_tv.phantomclassic"
+TEST_LABEL = "Zuno original test"
 NATIVE_FILES = (
     "GoogleCastApi.kt", "CastOptionsProviderImpl.kt", "GalleryExporter.kt",
     "RecordingForegroundService.kt", "RecordingServiceBridge.kt",

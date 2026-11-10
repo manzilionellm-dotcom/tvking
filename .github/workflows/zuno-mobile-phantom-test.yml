@@ -100,9 +100,7 @@ jobs:
 
       - name: Vérifier les composants Noir Fantôme
         run: |
-          flutter analyze --no-pub lib/features/tv/presentation/tv_stealth_mobile_home.dart \
-            lib/features/tv/presentation/tv_tonight.dart \
-            lib/features/tv/presentation/tv_hub_screen.dart \
+          flutter analyze --no-pub lib/features/tv/presentation/tv_hub_screen.dart \
             lib/features/tv/presentation/tv_components.dart \
             lib/features/tv/core/tv_tokens.dart lib/core/theme/app_text_styles.dart
 

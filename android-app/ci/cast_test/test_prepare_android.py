@@ -26,7 +26,7 @@ class PrepareAndroidTest(unittest.TestCase):
         root = ET.parse(self.app / "android/app/src/main/AndroidManifest.xml").getroot()
         app = root.find("application")
         activity = app.find("activity")
-        self.assertEqual(app.get(ANDROID + "label"), "Zuno Noir Fantôme test")
+        self.assertEqual(app.get(ANDROID + "label"), "Zuno original test")
         self.assertEqual(activity.get(ANDROID + "name"), "com.example.tv_king.ZunoCastActivity")
         self.assertIsNone(activity.get(ANDROID + "screenOrientation"))
         categories = {c.get(ANDROID + "name") for c in activity.findall("intent-filter/category")}

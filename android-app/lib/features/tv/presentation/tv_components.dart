@@ -10,7 +10,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import '../../device/domain/display_mac.dart';
 import '../../../core/app/repair_flags.dart';
 import '../../../core/i18n/l10n_extension.dart';
-import '../../../core/theme/app_text_styles.dart';
+import '../../../core/theme/app_colors.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
@@ -119,20 +119,18 @@ class TvWhatsAppQr extends StatelessWidget {
   }
 }
 
-/// Logo réel « Zuno » (calligraphie or, fond transparent).
+/// Logo réel « Zuno » : tracé original, blanc cassé et fond transparent.
 class TvLogo extends StatelessWidget {
   const TvLogo({super.key, this.width = 180});
   final double width;
 
   @override
   Widget build(BuildContext context) {
-    if (isZunoTouch) {
-      return Text(context.l10n.tvStealthWordmark,
-          style: AppTextStyles.stealthBrand,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis);
-    }
-    return Image.asset(_kLogoAsset, width: width, fit: BoxFit.contain);
+    return Image.asset(_kLogoAsset,
+              width: width,
+              fit: BoxFit.contain,
+              color: AppColors.zunoLogoIvory,
+              colorBlendMode: BlendMode.srcIn);
   }
 }
 

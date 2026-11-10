@@ -22,55 +22,6 @@ import 'package:google_fonts/google_fonts.dart';
 import 'app_colors.dart';
 
 abstract final class AppTextStyles {
-  // Échelle Noir Fantôme (canevas TV 1280 px). Polices déjà embarquées.
-  static TextStyle get stealthBrand => GoogleFonts.inter(
-        fontSize: 32,
-        fontWeight: FontWeight.w700,
-        letterSpacing: 4,
-        color: AppColors.stealthPlatinum,
-      );
-  static TextStyle get stealthHero => GoogleFonts.inter(
-        fontSize: 42,
-        fontWeight: FontWeight.w700,
-        height: 1.12,
-        letterSpacing: -1.2,
-        color: AppColors.stealthPlatinum,
-      );
-
-  /// Titre immersif mobile, avec l'échelle de texte du système conservée.
-  static TextStyle get stealthMobileHero => stealthHero.copyWith(fontSize: 32);
-
-  static TextStyle get stealthTitle => GoogleFonts.inter(
-        fontSize: 20,
-        fontWeight: FontWeight.w600,
-        height: 1.25,
-        color: AppColors.stealthPlatinum,
-      );
-  static TextStyle get stealthBody => GoogleFonts.inter(
-        fontSize: 16,
-        fontWeight: FontWeight.w500,
-        height: 1.3,
-        color: AppColors.stealthPlatinum,
-      );
-  static TextStyle get stealthCaption => GoogleFonts.inter(
-        fontSize: 14,
-        fontWeight: FontWeight.w500,
-        height: 1.25,
-        color: AppColors.stealthMuted,
-      );
-  static TextStyle get stealthEyebrow => GoogleFonts.inter(
-        fontSize: 14,
-        fontWeight: FontWeight.w600,
-        height: 1.2,
-        letterSpacing: 2.2,
-        color: AppColors.stealthPlatinum,
-      );
-  static TextStyle get stealthCode => GoogleFonts.jetBrainsMono(
-        fontSize: 14,
-        fontWeight: FontWeight.w400,
-        color: AppColors.stealthMuted,
-      );
-
   /// Notification brève de la TV : lisible sans téléchargement de police.
   static const TextStyle tvNotice = TextStyle(
     fontSize: 20,
@@ -197,8 +148,8 @@ abstract final class AppTextStyles {
   /// Charge une Google Font par NOM, avec repli sûr : si la police n'est
   /// pas dans le catalogue de la version installée, `getFont` lèverait —
   /// on retombe alors sur un TextStyle standard (mêmes métriques).
-  static TextStyle _gf(String family, double size, FontWeight w, Color? color,
-      double spacing, double height) {
+  static TextStyle _gf(String family, double size, FontWeight w,
+      Color? color, double spacing, double height) {
     final TextStyle base = TextStyle(
       fontSize: size,
       fontWeight: w,
@@ -223,29 +174,22 @@ abstract final class AppTextStyles {
 
   /// Titre du HERO "Pour vous" (~26 px, gras).
   static TextStyle get maisonHeroTitle => _display(26, FontWeight.w800);
-
   /// Titre de section ("Populaires en ce moment").
   static TextStyle get maisonSection => _display(20, FontWeight.w700);
-
   /// Grand chiffre de rang en filigrane (1, 2, 3…).
-  static TextStyle get maisonRank =>
-      _display(64, FontWeight.w800, color: AppColors.maisonInk, spacing: -2);
-
+  static TextStyle get maisonRank => _display(64, FontWeight.w800,
+      color: AppColors.maisonInk, spacing: -2);
   /// Nom de chaîne (liste) — 17 px gras, lisible.
   static TextStyle get maisonChannelName => _body(17, FontWeight.w700);
-
   /// Programme EPG "en ce moment" — 14.5 px.
   static TextStyle get maisonProgram => _body(14.5, FontWeight.w500,
       color: AppColors.textSecondary, height: 1.25);
-
   /// Texte du gros bouton "Regarder".
   static TextStyle get maisonCta =>
       _body(17, FontWeight.w800, color: AppColors.maisonBg, spacing: 0.2);
-
   /// Petit label (badges POUR VOUS / LIVE / compteurs).
-  static TextStyle get maisonLabel =>
-      _body(11.5, FontWeight.w800, spacing: 0.8, height: 1.0);
-
+  static TextStyle get maisonLabel => _body(11.5, FontWeight.w800,
+      spacing: 0.8, height: 1.0);
   /// Initiales sur vignette sans logo (Maison Noir).
   static TextStyle get maisonInitials =>
       _display(22, FontWeight.w800, spacing: -0.5, height: 1.0);
