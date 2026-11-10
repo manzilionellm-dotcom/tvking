@@ -35,7 +35,9 @@ abstract final class DeletedSources {
     final List<String> out = <String>[];
     for (final String fp in fingerprints.toSet()) {
       final Hash hash = await Sha256().hash(utf8.encode(fp));
-      out.add(hash.bytes.map((int b) => b.toRadixString(16).padLeft(2, '0')).join());
+      out.add(hash.bytes
+          .map((int b) => b.toRadixString(16).padLeft(2, '0'))
+          .join());
     }
     return out;
   }
@@ -44,7 +46,9 @@ abstract final class DeletedSources {
     await migrateLegacy();
     final Database db = await PlaylistDatabase.instance.database;
     final List<Map<String, Object?>> rows = await db.query('deleted_sources');
-    return rows.map((Map<String, Object?> row) => row['fingerprint'] as String).toSet();
+    return rows
+        .map((Map<String, Object?> row) => row['fingerprint'] as String)
+        .toSet();
   }
 
   static Future<void> remember(Iterable<String> fingerprints) async {
@@ -55,15 +59,22 @@ abstract final class DeletedSources {
 
   /// Levée volontaire AVANT le réseau. Un ajout déjà en cours ne peut pas
   /// annuler une suppression plus récente quand sa réponse arrive enfin.
-  static Future<void> restoreManually(Iterable<String> fingerprints) async {
+  static Future<void> restoreManually(Iterable<String> fingerprints,
+      {void Function()? checkCurrent}) async {
+    checkCurrent?.call();
     await migrateLegacy();
     final List<String> keys = await hashes(fingerprints);
     final Database db = await PlaylistDatabase.instance.database;
     await db.transaction((Transaction txn) async {
+      checkCurrent?.call();
       for (final String key in keys) {
-        await txn.delete('deleted_sources', where: 'fingerprint = ?',
-          whereArgs: <Object>[key]);
+        checkCurrent?.call();
+        await txn.delete('deleted_sources',
+            where: 'fingerprint = ?', whereArgs: <Object>[key]);
       }
+      // Un reset survenu pendant les awaits annule la transaction entière,
+      // y compris les refus déjà retirés au début de cette ancienne demande.
+      checkCurrent?.call();
     });
   }
 
@@ -71,13 +82,17 @@ abstract final class DeletedSources {
   /// On fusionne les refus ; une ancienne sauvegarde ne peut en retirer.
   static Future<void> restoreHashes(Iterable<Object?> values) async {
     final RegExp digest = RegExp(r'^[0-9a-f]{64}$');
-    final List<String> keys = values.whereType<String>()
-        .where((String key) => digest.hasMatch(key)).toSet().toList();
+    final List<String> keys = values
+        .whereType<String>()
+        .where((String key) => digest.hasMatch(key))
+        .toSet()
+        .toList();
     final Database db = await PlaylistDatabase.instance.database;
     await db.transaction((Transaction txn) => rememberHashes(txn, keys));
   }
 
-  static Future<void> rememberHashes(DatabaseExecutor db, List<String> keys) async {
+  static Future<void> rememberHashes(
+      DatabaseExecutor db, List<String> keys) async {
     for (final String key in keys) {
       await db.insert('deleted_sources', <String, Object?>{'fingerprint': key},
           conflictAlgorithm: ConflictAlgorithm.ignore);
@@ -89,5 +104,6 @@ class PlaylistDeletedException implements Exception {
   const PlaylistDeletedException();
 
   @override
-  String toString() => 'Cette liste a été supprimée. Ajoute-la à nouveau pour la rétablir.';
+  String toString() =>
+      'Cette liste a été supprimée. Ajoute-la à nouveau pour la rétablir.';
 }

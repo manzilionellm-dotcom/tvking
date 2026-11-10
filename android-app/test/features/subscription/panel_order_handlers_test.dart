@@ -23,6 +23,7 @@ import 'package:tv_king/features/simple_home/data/announcement_repository.dart';
 import 'package:tv_king/features/subscription/data/box_signal_client.dart';
 import 'package:tv_king/features/subscription/data/remote_activation_watch.dart';
 import 'package:tv_king/features/subscription/data/signal_inbox.dart';
+import 'package:tv_king/features/subscription/data/subscription_state.dart';
 import 'package:tv_king/features/theme/data/remote_theme_repository.dart';
 
 const _mac = 'MK:11:22:33:44:55';
@@ -75,6 +76,77 @@ void main() {
     AppPlatform.isTv = previousTv;
     AppPlatform.isZuno = previousZuno;
     messenger.setMockMethodCallHandler(_device, null);
+  });
+
+  test(
+      'statut occupé : APPLIED exige une lecture réellement postérieure à l’ordre',
+      () async {
+    final id = ++nextOrder;
+    final oldStarted = Completer<void>();
+    final newStarted = Completer<void>();
+    final received = Completer<void>();
+    final finished = Completer<void>();
+    final oldResponse = Completer<http.Response>();
+    final newResponse = Completer<http.Response>();
+    final states = <String>[];
+    int reads = 0;
+    String status(bool frozen) => jsonEncode(<String, Object>{
+          'exists': true,
+          'status': frozen ? 'frozen' : 'active',
+          'paid': true,
+          'plan': 'lifetime',
+          'expired': false,
+          'frozen': frozen,
+          'banned': false,
+          'source_rev': 0,
+        });
+    await http.runWithClient(() async {
+      final beforeOrder = SubscriptionState.instance.refreshRemote();
+      await oldStarted.future.timeout(const Duration(seconds: 2));
+      final processing = RemoteActivationWatch.instance.applyOrdersForTesting([
+        BoxOrder(
+            id: id, kind: 'resume', fleet: false, orderId: 'fresh_status_$id'),
+      ]);
+      await received.future.timeout(const Duration(seconds: 2));
+      expect(states, ['received']);
+      expect(SignalInbox.instance.appliedKinds, isEmpty);
+      oldResponse.complete(http.Response(status(true), 200));
+      await beforeOrder;
+      await newStarted.future.timeout(const Duration(seconds: 2));
+      expect(states, ['received'],
+          reason: 'La réponse partie avant l’ordre est insuffisante.');
+      expect(SubscriptionState.instance.remote.frozen, isTrue);
+      newResponse.complete(http.Response(status(false), 200));
+      expect(await processing, isTrue);
+      await finished.future.timeout(const Duration(seconds: 2));
+      expect(states, ['received', 'applied']);
+      expect(SubscriptionState.instance.remote.frozen, isFalse);
+      expect(SignalInbox.instance.appliedKinds, ['resume']);
+      expect(reads, 2);
+    },
+        () => MockClient((request) async {
+              if (request.method == 'POST' &&
+                  request.url.path.startsWith('/api/box/ack/')) {
+                final body = jsonDecode(request.body) as Map<String, dynamic>;
+                final ack =
+                    (body['orders'] as List).single as Map<String, dynamic>;
+                states.add(ack['state'] as String);
+                if (ack['state'] == 'received') {
+                  received.complete();
+                } else {
+                  finished.complete();
+                }
+                return http.Response('{"ok":true}', 200);
+              }
+              expect(request.url.path, '/api/status/$_mac');
+              reads++;
+              if (reads == 1) {
+                oldStarted.complete();
+                return oldResponse.future;
+              }
+              newStarted.complete();
+              return newResponse.future;
+            }));
   });
 
   const responses = <String, (String, String)>{
@@ -311,10 +383,11 @@ void main() {
                     final ack =
                         (body['orders'] as List).single as Map<String, dynamic>;
                     states.add(ack['state'] as String);
-                    if (ack['state'] == 'received')
+                    if (ack['state'] == 'received') {
                       received.complete();
-                    else
+                    } else {
                       finished.complete();
+                    }
                     return http.Response('{"ok":true}', 200);
                   }
                   expect(request.method, 'GET');

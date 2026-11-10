@@ -41,6 +41,7 @@ class EpgRepository {
 
   bool _initialized = false;
   bool _syncing = false;
+  int _generation = 0;
 
   bool get isSyncing => _syncing;
 
@@ -108,6 +109,7 @@ class EpgRepository {
   }) async {
     if (_syncing) return 0;
     _syncing = true;
+    final int generation = _generation;
     final Stopwatch sw = Stopwatch()..start();
     _RowSink? staging;
     try {
@@ -148,7 +150,12 @@ class EpgRepository {
           if (httpClient == null) client.close();
         }
       }
-      await sink.publish();
+      final bool published = await sink.publish(
+        isCurrent: () => generation == _generation,
+      );
+      // Un reset peut aussi arriver pendant la transaction : son DELETE
+      // passe alors après celle-ci. Ne pas annoncer un guide déjà invalidé.
+      if (!published || generation != _generation) return 0;
       BlackBox.instance.info(
         'EPG',
         'guide : $total programmes pour ${sink.channels} chaîne(s) '
@@ -252,6 +259,9 @@ class EpgRepository {
 
   /// Vide complètement la base EPG.
   Future<void> clearAll() async {
+    // Invalider avant le premier await : le téléchargement déjà parti peut
+    // terminer ensuite, mais sa table privée ne doit plus repeupler le guide.
+    _generation++;
     await initialize();
     final Database db = await PlaylistDatabase.instance.database;
     await db.delete('epg_programs');
@@ -412,9 +422,13 @@ class _RowSink {
     await batch.commit(noResult: true);
   }
 
-  Future<void> publish() async {
+  Future<bool> publish({required bool Function() isCurrent}) async {
     await flush();
-    await db.transaction((Transaction txn) async {
+    return db.transaction((Transaction txn) async {
+      // Vérifier après l'attente SQLite, dans la transaction qui publie.
+      // Une vérification avant flush/transaction laisserait une fenêtre où
+      // clearAll efface le guide avant qu'un ancien lot ne le réinsère.
+      if (!isCurrent()) return false;
       await txn.execute(
         'DELETE FROM epg_programs WHERE channel_id IN '
         '(SELECT DISTINCT channel_id FROM $_table)',
@@ -422,6 +436,7 @@ class _RowSink {
       await txn.execute(
         'INSERT INTO epg_programs ($_columns) SELECT $_columns FROM $_table',
       );
+      return true;
     });
   }
 

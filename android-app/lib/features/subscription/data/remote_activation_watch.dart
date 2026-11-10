@@ -27,6 +27,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/app/repair_flags.dart';
 import '../../../core/blackbox/black_box.dart';
+import '../../../core/realtime/device_session.dart';
 import '../../../core/update/update_service.dart';
 import '../../about/data/force_update_checker.dart';
 import '../../ads/data/startup_ad_repository.dart';
@@ -50,6 +51,7 @@ import '../domain/box_signal.dart';
 import '../domain/order_ack.dart';
 import 'box_channel_session.dart';
 import 'box_signal_client.dart';
+import 'device_realtime_channel.dart';
 import 'order_ack_client.dart';
 import 'signal_inbox.dart';
 import 'subscription_backend.dart';
@@ -73,11 +75,17 @@ class RemoteActivationWatch {
   int _fleetCursor = 0;
   http.Client? _signalHttp;
   BoxChannelSession? _session;
+  DeviceRealtimeChannel? _deviceSession;
   DateTime _lastHeartbeat = DateTime.fromMillisecondsSinceEpoch(0);
   String _appVersion = '';
   bool _versionTried = false;
   final Set<int> _seenBox = <int>{};
   final Set<int> _seenFleet = <int>{};
+  // Les listes restent ordonnées entre elles. Une longue importation ne doit
+  // cependant pas retenir un gel, une activation ou un réglage indépendant.
+  final Map<String, Future<bool>> _orderLanes = <String, Future<bool>>{};
+  final Map<String, Future<bool>> _ordersInFlight = <String, Future<bool>>{};
+  final Map<String, int> _legacyWakeCount = <String, int>{};
 
   /// Dernier corps reçu sur le canal (tests : pas de mot de passe).
   @visibleForTesting
@@ -99,7 +107,10 @@ class RemoteActivationWatch {
   /// À appeler une fois le boot lancé. [allowSourceImport] est faux
   /// en mode sans échec : on lit quand même la licence (la box peut
   /// s'ouvrir), mais on ne retélécharge pas une grosse liste.
-  void start({bool allowSourceImport = true}) {
+  void start({
+    bool allowSourceImport = true,
+    Future<DeviceRealtimeCredentials?> Function()? deviceCredentials,
+  }) {
     _allowSourceImport = allowSourceImport;
     if (_run) return;
     _run = true;
@@ -115,6 +126,10 @@ class RemoteActivationWatch {
     // (déjà dans _signalLoop) prend le relais. L'interrupteur
     // de repli, coupé par défaut, saute cette prise.
     unawaited(_socketLoop(generation));
+    unawaited(_deviceSocketLoop(
+      generation,
+      deviceCredentials ?? DeviceSession.instance.credentials,
+    ));
   }
 
   /// « J'ai payé — Vérifier », ou juste après un changement de
@@ -153,6 +168,8 @@ class RemoteActivationWatch {
     _lastSourceRev = null;
     _session?.stop();
     _session = null;
+    _deviceSession?.stop();
+    _deviceSession = null;
     _signalHttp?.close();
     _signalHttp = null;
   }
@@ -190,23 +207,22 @@ class RemoteActivationWatch {
   /// [sourceOrdered] : un ordre « source » / « source_clear » vient
   /// d'arriver du panel. Les listes sont relues tout de suite, même
   /// si une chaîne joue (sauf repli `zuno.source.order_waits_idle`).
-  Future<void> _tick({bool sourceOrdered = false}) async {
-    if (_tickBusy) return;
+  Future<bool> _tick({bool sourceOrdered = false}) async {
+    if (_tickBusy) return false;
     _tickBusy = true;
     try {
       final bool waiting = _isWaiting;
       final bool heartbeatDue = waiting &&
           DateTime.now().difference(_lastHeartbeat) >= _heartbeatWhileWaiting;
-      final RemoteSyncOutcome outcome = heartbeatDue
-          ? await SubscriptionState.instance.syncWithBackend()
-          : await SubscriptionState.instance.refreshRemote();
-      if (outcome == RemoteSyncOutcome.busy) return;
+      final RemoteSyncOutcome outcome = await _freshStatus(
+        heartbeat: heartbeatDue,
+      );
       if (heartbeatDue && outcome == RemoteSyncOutcome.applied) {
         _lastHeartbeat = DateTime.now();
       }
       if (outcome != RemoteSyncOutcome.applied) {
         _failures++;
-        return;
+        return false;
       }
       _failures = 0;
       // Remise à neuf demandée depuis le panel (« Réinitialiser la box ») :
@@ -221,9 +237,30 @@ class RemoteActivationWatch {
         await RemoteSourceRepository.applyRevocations(snapOf().revoked);
       }
       await _maybeImportSource(ordered: sourceOrdered);
+      return true;
     } finally {
       _tickBusy = false;
     }
+  }
+
+  /// Une lecture commencée avant l'ordre ne prouve pas son application.
+  /// Le heartbeat peut appartenir à un autre écran : on attend sa fin, puis
+  /// on exige notre propre lecture, sans attendre l'import des chaînes.
+  Future<RemoteSyncOutcome> _freshStatus({bool heartbeat = false}) async {
+    final int generation = _generation;
+    final DateTime deadline = DateTime.now().add(const Duration(seconds: 10));
+    bool first = true;
+    while (generation == _generation) {
+      final RemoteSyncOutcome outcome = heartbeat && first
+          ? await SubscriptionState.instance.syncWithBackend()
+          : await SubscriptionState.instance.refreshRemote();
+      if (generation != _generation) return RemoteSyncOutcome.busy;
+      first = false;
+      if (outcome != RemoteSyncOutcome.busy) return outcome;
+      if (DateTime.now().isAfter(deadline)) return RemoteSyncOutcome.busy;
+      await Future<void>.delayed(const Duration(milliseconds: 40));
+    }
+    return RemoteSyncOutcome.busy;
   }
 
   RemoteSubscriptionStatus snapOf() => SubscriptionState.instance.remote;
@@ -273,7 +310,10 @@ class RemoteActivationWatch {
     final RemoteSyncResult result = await RemoteSourceRepository.sync(
       force: ordered,
     );
-    if (result == RemoteSyncResult.networkError) return;
+    if (result == RemoteSyncResult.networkError ||
+        result == RemoteSyncResult.superseded) {
+      return;
+    }
     if (snap.sourceRev != null) _lastSourceRev = snap.sourceRev;
     // Ordre du panel appliqué : on remonte l'inventaire tout de suite
     // (heartbeat), au lieu d'attendre le prochain heartbeat régulier. Le
@@ -311,25 +351,38 @@ class RemoteActivationWatch {
           if (_run && generation == _generation) _setChannelUp(connected);
         },
         onReceived: (BoxChannelFrame frame) {
-          if (!_run || generation != _generation || frame.orderId.isEmpty) {
+          if (!_run || generation != _generation) {
             return;
           }
           if (_cursorsLoaded &&
               frameAlreadyHandled(seq: frame.seq, cursor: _boxCursor)) {
             return;
           }
+          _legacyWakeCount[frame.type] =
+              (_legacyWakeCount[frame.type] ?? 0) + 1;
           // La réception n'attend ni la playlist précédente ni son analyse.
           // Le serveur conserve le premier RECEIVED ; l'accusé final continue
           // de décrire le résultat réel, après application de l'ordre.
-          unawaited(OrderAckClient.send(mac, <Map<String, Object?>>[
-            ackPayload(
-              orderId: frame.orderId,
-              state: 'received',
-              traceId: frame.traceId,
-              appVersion: _appVersion,
-              receivedAtMs: DateTime.now().millisecondsSinceEpoch,
-            ),
-          ]));
+          if (frame.orderId.isNotEmpty) {
+            unawaited(OrderAckClient.send(mac, <Map<String, Object?>>[
+              ackPayload(
+                orderId: frame.orderId,
+                state: 'received',
+                traceId: frame.traceId,
+                appVersion: _appVersion,
+                receivedAtMs: DateTime.now().millisecondsSinceEpoch,
+              ),
+            ]));
+          }
+          // L'effet léger commence dès la réception. onFrame attendra la
+          // même opération : les curseurs restent enregistrés dans l'ordre,
+          // jamais au-delà d'une playlist encore en cours d'application.
+          if (!refreshesFor(frame.type).contains(SignalRefresh.source) ||
+              _priorityRemoval(frame.type)) {
+            unawaited(_applyFastFrame(frame, generation));
+          } else if (frame.type == 'source') {
+            unawaited(_preflightSourceReplacement());
+          }
         },
         onFrame: (BoxChannelFrame frame) async {
           // Le Durable Object renvoie le DERNIER ordre à chaque ouverture
@@ -373,6 +426,118 @@ class RemoteActivationWatch {
       await session.run();
       if (identical(_session, session)) _session = null;
     }
+  }
+
+  Future<void> _applyFastFrame(BoxChannelFrame frame, int generation) async {
+    if (!_cursorsLoaded) await _loadCursors();
+    if (!_run || generation != _generation) return;
+    if (!RepairFlags.wsReplayLegacy &&
+        frameAlreadyHandled(seq: frame.seq, cursor: _boxCursor)) {
+      return;
+    }
+    await _applyOrders(<BoxOrder>[
+      BoxOrder(
+        id: frame.seq,
+        kind: frame.type,
+        fleet: false,
+        orderId: frame.orderId,
+        traceId: frame.traceId,
+      ),
+    ], via: 'ws');
+  }
+
+  Future<void> _deviceSocketLoop(
+    int generation,
+    Future<DeviceRealtimeCredentials?> Function() credentials,
+  ) async {
+    if (RepairFlags.realtimeLegacy) return;
+    final String mac = await DeviceIdentity.instance.mac;
+    if (!_run || generation != _generation || !mac.startsWith('MK:')) return;
+    final session = DeviceRealtimeChannel(
+      mac: mac,
+      credentialProvider: credentials,
+      alive: () => _run && generation == _generation,
+      onWake: (DeviceRealtimeWake wake) => _applyDeviceWake(wake, generation),
+    );
+    _deviceSession = session;
+    await session.run();
+    if (identical(_deviceSession, session)) _deviceSession = null;
+  }
+
+  // Le canal actuel diffuse les réglages globaux ici, pas dans le socket
+  // historique. Il ne fournit pas d'order_id : aucun faux ACK n'est créé.
+  static const Set<String> _configurationKinds = <String>{
+    'message',
+    'theme',
+    'home',
+    'force_update',
+    'featured',
+    'ad',
+    'pricing',
+    'feedback',
+    'servers',
+    'banner',
+  };
+
+  Future<void> _applyDeviceWake(DeviceRealtimeWake wake, int generation) async {
+    if (!_run || generation != _generation) return;
+    final kinds = <String>{
+      ...wake.kinds,
+      if (wake.resync) ..._configurationKinds,
+    };
+    if (wake.resync) nudge();
+    await Future.wait<bool>(<Future<bool>>[
+      for (final String kind in kinds)
+        if (_configurationKinds.contains(kind))
+          _runOrderLane(_orderLane(kind), () async {
+            final bool refreshed = await _sideEffect(kind);
+            if (refreshed && _run && generation == _generation) {
+              SignalInbox.instance.note(kind);
+            }
+            return refreshed;
+          })
+        else
+          _applyDeviceTargetWake(kind, generation),
+    ]);
+  }
+
+  Future<bool> _applyDeviceTargetWake(String kind, int generation) async {
+    if (_session?.open == true) {
+      final int before = _legacyWakeCount[kind] ?? 0;
+      // Le Worker envoie d'abord le réveil v2, puis l'ordre historique suivi.
+      // On le laisse arriver, sans confondre une prise TCP ouverte avec une
+      // livraison effective. Si elle est devenue muette, v2 prend le relais.
+      await Future<void>.delayed(const Duration(milliseconds: 150));
+      if ((_legacyWakeCount[kind] ?? 0) > before) return true;
+    }
+    if (!_run || generation != _generation) return false;
+    if (kind == 'source') await _preflightSourceReplacement();
+    if (_priorityRemoval(kind)) {
+      final result = await _readPriorityRemoval(kind);
+      if (!result.statusRead) return false;
+      final OrderOutcome? removed = result.outcome;
+      if (removed != null) {
+        if (removed.applied) SignalInbox.instance.note(kind);
+        return removed.applied;
+      }
+      // Attendre une relecture complète ne doit pas retenir un autre
+      // retrait confirmé arrivé après cette demande sans preuve.
+      return _runOrderLane('source', () => _applySourceOrder(true));
+    }
+    return _runOrderLane(_orderLane(kind), () async {
+      if (refreshesFor(kind).contains(SignalRefresh.source)) {
+        return _applySourceOrder(true);
+      }
+      final bool refreshed = await _freshStatus() == RemoteSyncOutcome.applied;
+      if (refreshed && _run && generation == _generation) {
+        if (snapOf().revoked.isNotEmpty) {
+          await RemoteSourceRepository.applyRevocations(snapOf().revoked);
+        }
+        SignalInbox.instance.note(kind);
+        nudge();
+      }
+      return refreshed;
+    });
   }
 
   Future<void> _signalLoop(int generation) async {
@@ -478,6 +643,141 @@ class RemoteActivationWatch {
   /// « attente ») : la boîte noire horodate la réception, ce qui
   /// permet de mesurer le délai clic du panel → box.
   Future<bool> _applyOrders(List<BoxOrder> orders, {String via = ''}) async {
+    final List<bool> results = await Future.wait<bool>(<Future<bool>>[
+      for (final BoxOrder order in orders) _dispatchOrder(order, via: via),
+    ]);
+    return results.every((bool applied) => applied);
+  }
+
+  Future<bool> _dispatchOrder(BoxOrder order, {required String via}) {
+    final String key = '${order.fleet ? 'fleet' : 'box'}:${order.id}';
+    final Future<bool>? running = _ordersInFlight[key];
+    if (running != null) return running;
+    if ((order.fleet ? _seenFleet : _seenBox).contains(order.id)) {
+      return Future<bool>.value(true);
+    }
+    if (order.kind == 'source' && via != 'ws') {
+      unawaited(_preflightSourceReplacement());
+    }
+    late final Future<bool> operation;
+    operation = (_priorityRemoval(order.kind)
+            ? _applyOrder(<BoxOrder>[order], via: via)
+            : _runOrderLane(
+                _orderLane(order.kind),
+                () => _applyOrder(<BoxOrder>[order], via: via),
+              ))
+        .whenComplete(() {
+      if (identical(_ordersInFlight[key], operation)) {
+        _ordersInFlight.remove(key);
+      }
+    });
+    _ordersInFlight[key] = operation;
+    return operation;
+  }
+
+  String _orderLane(String kind) {
+    if (_priorityRemoval(kind)) return 'removal';
+    final Set<SignalRefresh> plan = refreshesFor(kind);
+    return plan.contains(SignalRefresh.source)
+        ? 'source'
+        : (plan.contains(SignalRefresh.status)
+            ? 'status'
+            : plan.map((SignalRefresh refresh) => refresh.name).join(':'));
+  }
+
+  Future<bool> _runOrderLane(String lane, Future<bool> Function() action) {
+    final int generation = _generation;
+    final Future<bool> previous = _orderLanes[lane] ?? Future<bool>.value(true);
+    late final Future<bool> operation;
+    operation = previous.catchError((Object _) => false).then((_) async {
+      if (generation != _generation) return false;
+      return action();
+    }).whenComplete(() {
+      if (identical(_orderLanes[lane], operation)) _orderLanes.remove(lane);
+    });
+    _orderLanes[lane] = operation;
+    return operation;
+  }
+
+  bool _priorityRemoval(String kind) =>
+      kind == 'source_clear' || kind == 'reset';
+
+  Future<bool> _preflightSourceReplacement() =>
+      _runOrderLane('removal', () async {
+        try {
+          if (await _freshStatus() != RemoteSyncOutcome.applied) return false;
+          final revoked = snapOf().revoked;
+          if (!RemoteSourceRepository.supersedeRevokedPanelImport(revoked)) {
+            return false;
+          }
+          await RemoteSourceRepository.applyRevocations(revoked);
+          return true;
+        } catch (_) {
+          // Le traitement ordonné relira le statut et produira son ACK réel.
+          return false;
+        }
+      });
+
+  Future<({bool statusRead, OrderOutcome? outcome})> _readPriorityRemoval(
+    String kind,
+  ) async {
+    bool statusRead = false;
+    OrderOutcome? outcome;
+    await _runOrderLane('removal', () async {
+      statusRead = await _freshStatus() == RemoteSyncOutcome.applied;
+      if (statusRead) outcome = await _confirmedRemoval(kind, snapOf());
+      return statusRead;
+    });
+    return (statusRead: statusRead, outcome: outcome);
+  }
+
+  /// Le nom de l'ordre n'autorise aucun effacement. Seuls les tombstones ou
+  /// un reset_at frais du serveur permettent de dépasser un téléchargement.
+  /// Le résultat est propre à cet ordre, jamais le rapport global de l'import.
+  Future<OrderOutcome?> _confirmedRemoval(
+    String kind,
+    RemoteSubscriptionStatus snapshot,
+  ) async {
+    try {
+      if (kind == 'source_clear' && snapshot.revoked.isNotEmpty) {
+        RemoteSourceRepository.supersedePendingPanelImports();
+        await RemoteSourceRepository.applyRevocations(snapshot.revoked);
+        return OrderOutcome(
+          applied: true,
+          result: 'revoked',
+          configRev: snapshot.sourceRev,
+        );
+      }
+      if (kind == 'reset' && !RepairFlags.remoteResetOff) {
+        final preferences = await SharedPreferences.getInstance();
+        if (!BoxReset.shouldApply(
+          resetAt: snapshot.resetAt,
+          appliedAt: preferences.getInt(BoxReset.appliedKey) ?? 0,
+        )) {
+          return null;
+        }
+        final bool wiped =
+            await BoxReset.maybeApply(snapshot.resetAt, strict: true);
+        if (!wiped) return null;
+        _lastSourceRev = null;
+        return OrderOutcome(
+          applied: true,
+          result: 'reset',
+          configRev: snapshot.sourceRev,
+        );
+      }
+      return null;
+    } catch (_) {
+      return const OrderOutcome(
+        applied: false,
+        result: 'removal_failed',
+        errorCode: 'removal_failed',
+        errorMessage: 'effacement local non confirmé',
+      );
+    }
+  }
+
+  Future<bool> _applyOrder(List<BoxOrder> orders, {String via = ''}) async {
     final List<Map<String, Object?>> boxMaps = <Map<String, Object?>>[
       for (final BoxOrder o in orders)
         if (!o.fleet) <String, Object?>{'id': o.id, 'kind': o.kind},
@@ -536,51 +836,60 @@ class RemoteActivationWatch {
     }
     final bool needStatus = kinds.any(kindNeedsStatus);
     final bool sourceOrdered = kinds.any(channelRefreshesSources);
-    if (needStatus) {
+    final bool needsSource = kinds.any(
+      (String kind) => refreshesFor(kind).contains(SignalRefresh.source),
+    );
+    final bool priorityRemoval =
+        kinds.length == 1 && _priorityRemoval(kinds.single);
+    OrderOutcome? removalOutcome;
+    bool statusRead = !needStatus;
+    if (priorityRemoval) {
+      final result = await _readPriorityRemoval(kinds.single);
+      statusRead = result.statusRead;
+      if (!statusRead) return false;
+      removalOutcome = result.outcome;
+    }
+    if (removalOutcome != null) {
+      // L'effacement confirmé ne dépend pas de la fin du réseau fournisseur.
+    } else if (needStatus && !needsSource) {
+      statusRead = await _freshStatus() == RemoteSyncOutcome.applied;
+      if (!statusRead) return false;
+      if (await BoxReset.maybeApply(snapOf().resetAt)) _lastSourceRev = null;
+      if (snapOf().revoked.isNotEmpty) {
+        await RemoteSourceRepository.applyRevocations(snapOf().revoked);
+      }
+      // L'activation garde sa vérification de source, mais son affichage et
+      // son ACK n'attendent pas le téléchargement de cette source.
+      if (_run) nudge();
+    } else if (needStatus) {
       // Une lecture déjà en vol a pu partir AVANT l'ordre. On la
       // laisse finir, puis on relit : l'accusé ne part qu'avec
       // l'état d'après le clic.
-      while (_tickBusy && _run) {
-        await Future<void>.delayed(const Duration(milliseconds: 40));
-      }
-      _timer?.cancel();
-      final int generation = _generation;
-      try {
-        await _tick(sourceOrdered: sourceOrdered);
-      } finally {
-        // L'ordre utilise le même synchroniseur que le filet HTTP. Son
-        // traitement ne doit pas supprimer ce filet après le premier clic.
-        if (_run && generation == _generation) {
-          _arm(
-            signalPace(
-              channelUp: _channelUp,
-              waiting: _isWaiting,
-              failures: _failures,
-            ),
-          );
-        }
-      }
-      if (SubscriptionState.instance.syncHint == 'offline') return false;
+      statusRead = priorityRemoval
+          ? await _runOrderLane(
+              'source', () => _applySourceOrder(sourceOrdered))
+          : await _applySourceOrder(sourceOrdered);
+      if (!statusRead) return false;
     }
     final Map<String, bool> sideOk = <String, bool>{};
     for (final String kind in kinds) {
-      sideOk[kind] = await _sideEffect(kind);
+      sideOk[kind] = removalOutcome?.applied ?? await _sideEffect(kind);
       if (sideOk[kind] == true) SignalInbox.instance.note(kind);
     }
     // Issue RÉELLE de chaque ordre suivi : APPLIED ou FAILED, avec le
     // résultat, l'erreur et la révision de listes effectivement appliquée.
     if (tracked.isNotEmpty) {
-      final bool statusRead = SubscriptionState.instance.syncHint != 'offline';
       final int doneAt = DateTime.now().millisecondsSinceEpoch;
       final List<Map<String, Object?>> finals = <Map<String, Object?>>[];
       for (final BoxOrder o in tracked) {
-        final OrderOutcome out = orderOutcome(
-          kind: o.kind,
-          receivedAtMs: receivedAt,
-          statusRead: statusRead,
-          sideEffectOk: sideOk[o.kind] ?? true,
-          report: RemoteSourceRepository.lastReport,
-        );
+        final OrderOutcome out = removalOutcome ??
+            orderOutcome(
+              kind: o.kind,
+              receivedAtMs: receivedAt,
+              statusRead: statusRead,
+              sideEffectOk: sideOk[o.kind] ?? true,
+              report: RemoteSourceRepository.lastReport,
+            );
         BlackBox.instance.info(
           'PANEL',
           'ordre ${o.kind} n°${o.id} ${out.applied ? 'appliqué' : 'en échec'} : ${out.result}'
@@ -608,6 +917,28 @@ class RemoteActivationWatch {
       _seenFleet.add(m['id']! as int);
     }
     return true;
+  }
+
+  Future<bool> _applySourceOrder(bool sourceOrdered) async {
+    final int generation = _generation;
+    while (_tickBusy && _run && generation == _generation) {
+      await Future<void>.delayed(const Duration(milliseconds: 40));
+    }
+    if (generation != _generation) return false;
+    _timer?.cancel();
+    try {
+      return await _tick(sourceOrdered: sourceOrdered);
+    } finally {
+      if (_run && generation == _generation) {
+        _arm(_nudge
+            ? Duration.zero
+            : signalPace(
+                channelUp: _channelUp,
+                waiting: _isWaiting,
+                failures: _failures,
+              ));
+      }
+    }
   }
 
   /// Rend faux si la relecture a échoué (l'accusé de l'ordre le dira).
@@ -677,7 +1008,6 @@ class RemoteActivationWatch {
   bool _cursorsLoaded = false;
 
   Future<void> _loadCursors() async {
-    _cursorsLoaded = true;
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       _boxCursor = prefs.getInt(_kBoxCursor) ?? 0;
@@ -686,6 +1016,7 @@ class RemoteActivationWatch {
       _boxCursor = 0;
       _fleetCursor = 0;
     }
+    _cursorsLoaded = true;
   }
 
   Future<void> _saveCursors() async {

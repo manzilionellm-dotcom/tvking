@@ -53,7 +53,15 @@ class OrderOutcome {
 
 const Set<String> _listKinds = <String>{'source', 'source_clear', 'reset'};
 const Set<String> _statusKinds = <String>{
-  'activate', 'renew', 'expire', 'suspend', 'resume', 'block', 'license', 'transfer', 'device_delete',
+  'activate',
+  'renew',
+  'expire',
+  'suspend',
+  'resume',
+  'block',
+  'license',
+  'transfer',
+  'device_delete',
 };
 
 /// Issue d'un ordre. [receivedAtMs] : quand la box a reçu l'ordre ; un
@@ -77,15 +85,26 @@ OrderOutcome orderOutcome({
     }
     switch (report.result) {
       case 'loaded':
-        return OrderOutcome(applied: true, result: 'loaded', configRev: report.configRev);
+        return OrderOutcome(
+            applied: true, result: 'loaded', configRev: report.configRev);
       case 'noSource':
-        return OrderOutcome(applied: true, result: 'no_source', configRev: report.configRev);
+        return OrderOutcome(
+            applied: true, result: 'no_source', configRev: report.configRev);
       case 'sourceFailed':
         return OrderOutcome(
           applied: false,
           result: 'refused',
           errorCode: report.keptPrevious ? 'refused_kept_previous' : 'refused',
           errorMessage: report.error,
+          configRev: report.configRev,
+        );
+      case 'superseded':
+        return OrderOutcome(
+          applied: false,
+          result: 'superseded',
+          errorCode: 'superseded',
+          errorMessage:
+              'import remplacé par un effacement plus récent du panel',
           configRev: report.configRev,
         );
       default:

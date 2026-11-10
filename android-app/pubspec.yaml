@@ -51,6 +51,13 @@ dependencies:
   #   - causer avec l'API Xtream Codes (player_api.php)
   http: ^1.2.2
 
+  # Identité du canal temps réel de production : reprend le Keystore/Keychain
+  # et les noms atlas.installation-key / atlas.device-token du client canonique.
+  # Version identique au protocole déployé, options de stockage par défaut
+  # conservées : changer de coffre rendrait une clé existante introuvable.
+  # Son build.gradle 9.2.4 fixe minSdk 19, compatible avec nos appareils 21+.
+  flutter_secure_storage: 9.2.4
+
   # SQLite pour Flutter. Permet de stocker localement :
   #   - la liste des playlists ajoutées
   #   - toutes les chaînes parsées, par playlist

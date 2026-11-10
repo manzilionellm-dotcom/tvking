@@ -24,6 +24,7 @@ import '../../../core/app/repair_flags.dart';
 import '../../../core/blackbox/black_box.dart';
 import '../../../core/curation/title_curator.dart';
 import '../../../core/i18n/l10n_extension.dart';
+import '../../../core/theme/app_colors.dart';
 import '../core/tv_activity.dart';
 import '../core/tv_sync_policy.dart';
 import '../core/tv_tokens.dart';
@@ -43,6 +44,7 @@ import '../../playlists/data/playlist_repository.dart';
 import '../../playlists/data/remote_source_repository.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
+import '../core/tv_glass.dart';
 import '../core/tv_list_keys.dart';
 import 'tv_components.dart';
 import 'tv_channel_loading_status.dart';
@@ -1035,12 +1037,9 @@ class _CategoryRail extends StatelessWidget {
   Widget build(BuildContext context) {
     if (cats.isEmpty) return const SizedBox.shrink();
     final int visible = cats.length < _kMaxVisible ? cats.length : _kMaxVisible;
-    return Container(
-      decoration: BoxDecoration(
-        color: TvAppTokens.of(context).card.withValues(alpha: 0.55),
-        borderRadius: BorderRadius.circular(TvTokens.rCard),
-        border: Border.all(color: TvAppTokens.of(context).lineSoft),
-      ),
+    return TvGlass(
+      // Le verre remplace uniquement la peinture du panneau 117.
+      insetBorder: true,
       padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
       child: Column(
         mainAxisSize: fill ? MainAxisSize.max : MainAxisSize.min,
@@ -1941,7 +1940,7 @@ class _LogoChip extends StatelessWidget {
       width: 56,
       height: 56,
       decoration: BoxDecoration(
-        color: const Color(0xD9141210), // rgba(20,18,16,.85)
+        color: TvAppTokens.of(context).glassFill,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: TvAppTokens.of(context).line),
       ),
@@ -2102,12 +2101,8 @@ class _ChannelList extends StatelessWidget {
         ),
       );
     }
-    return Container(
-      decoration: BoxDecoration(
-        color: TvAppTokens.of(context).card.withValues(alpha: 0.55),
-        borderRadius: BorderRadius.circular(TvTokens.rCard),
-        border: Border.all(color: TvAppTokens.of(context).lineSoft),
-      ),
+    return TvGlass(
+      insetBorder: true,
       padding: const EdgeInsets.all(8),
       child: ListView.builder(
         padding: EdgeInsets.zero,
@@ -2343,13 +2338,18 @@ class _PreviewInfoState extends State<_PreviewInfo> {
   @override
   Widget build(BuildContext context) {
     final Channel c = widget.channel;
-    return Container(
+    // La teinte suit le genre déjà connu de la chaîne : aucune requête ni
+    // analyse des pixels. Seul le fond du carton d'information est concerné.
+    final Color ambient = switch (c.genre) {
+      ChannelGenre.sports => AppColors.stealthSport,
+      ChannelGenre.movies || ChannelGenre.series => AppColors.stealthCinema,
+      ChannelGenre.kids || ChannelGenre.music => AppColors.stealthKids,
+      _ => AppColors.stealthIce,
+    };
+    return TvGlass(
+      insetBorder: true,
+      ambientColor: ambient,
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: TvAppTokens.of(context).card.withValues(alpha: 0.55),
-        borderRadius: BorderRadius.circular(TvTokens.rCard),
-        border: Border.all(color: TvAppTokens.of(context).lineSoft),
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
