@@ -212,8 +212,11 @@ abstract final class VipSupport {
     int? sourceCount;
     int? channelCount;
     try {
-      sourceCount = PlaylistRepository.instance.currentPlaylists.length;
-      channelCount = PlaylistRepository.instance.currentChannels.length;
+      sourceCount = PlaylistRepository.instance.currentDevicePlaylists.length;
+      channelCount = PlaylistRepository.instance.currentDevicePlaylists.fold<int>(
+        0,
+        (int count, playlist) => count + playlist.channelCount,
+      );
     } catch (_) {
       // Un appel très tôt au démarrage doit rester possible, même avant que
       // la configuration d'édition et le catalogue soient prêts.

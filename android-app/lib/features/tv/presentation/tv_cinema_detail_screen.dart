@@ -22,6 +22,8 @@ import 'tv_localized_format.dart';
 import '../../cinema/data/cinema_downloads.dart';
 import '../../vod/domain/vod_movie.dart';
 import '../../cinema/data/cinema_repository.dart';
+import '../../profiles/data/active_profile.dart';
+import '../../security/data/adult_access.dart';
 import '../../cinema/data/watch_progress.dart';
 import '../../cinema/domain/cinema_models.dart';
 import '../../vod/data/download_repository.dart';
@@ -187,8 +189,10 @@ String? _durationLabel(BuildContext context, int sec) {
 
 /// Bouton de téléchargement (libellé et action selon l'état).
 class _DownloadPill extends StatefulWidget {
-  const _DownloadPill({required this.item, this.compact = false});
+  const _DownloadPill(
+      {required this.item, this.compact = false, this.isAllowed});
   final VodPlayItem item;
+  final bool Function()? isAllowed;
 
   /// Version icône seule (ligne d'épisode).
   final bool compact;
@@ -219,6 +223,7 @@ class _DownloadPillState extends State<_DownloadPill> {
   }
 
   Future<void> _onSelect() async {
+    if (widget.isAllowed?.call() == false) return;
     final Download? d = _d;
     if (d == null ||
         d.status == DownloadStatus.error ||
@@ -353,26 +358,59 @@ class _DownloadPillState extends State<_DownloadPill> {
 // =========================================================
 
 class TvMovieDetailScreen extends StatefulWidget {
-  const TvMovieDetailScreen({super.key, required this.title});
+  const TvMovieDetailScreen({super.key, required this.title, this.adultAccess});
   final CinemaTitle title;
+  final AdultAccessGrant? adultAccess;
 
   @override
   State<TvMovieDetailScreen> createState() => _TvMovieDetailScreenState();
 }
 
 class _TvMovieDetailScreenState extends State<TvMovieDetailScreen> {
+  bool _scopeChanged = false;
+  late final bool _adultTitle =
+      CinemaRepository.instance.isAdultTitle(widget.title);
+  bool get _titleAllowed =>
+      !_scopeChanged &&
+      (widget.adultAccess == null
+          ? !_adultTitle
+          : widget.adultAccess!.isValid && _adultTitle) &&
+      ActiveProfile.instance.allowsPlaylist(
+        int.tryParse(widget.title.sourceKey.startsWith('p')
+            ? widget.title.sourceKey.substring(1)
+            : ''),
+      );
+
+  void _onProfileScope() {
+    if (!mounted || _scopeChanged) return;
+    setState(() => _scopeChanged = true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final route = ModalRoute.of(context);
+      if (route != null && route.isActive && !route.isFirst) {
+        Navigator.of(context).removeRoute(route);
+      }
+    });
+  }
+
   CinemaDetails? _d;
 
   @override
   void initState() {
     super.initState();
     WatchProgressRepository.instance.addListener(_refresh);
+    ActiveProfile.instance.scopeListenable.addListener(_onProfileScope);
+    widget.adultAccess?.addListener(_onAccessChanged);
+    if (!_titleAllowed) {
+      _onProfileScope();
+      return;
+    }
     unawaited(DownloadsRepository.instance.initialize());
     unawaited(
       CinemaRepository.instance.movieDetails(widget.title).then((
         CinemaDetails d,
       ) {
-        if (mounted) setState(() => _d = d);
+        if (mounted && _titleAllowed) setState(() => _d = d);
       }),
     );
   }
@@ -380,7 +418,13 @@ class _TvMovieDetailScreenState extends State<TvMovieDetailScreen> {
   @override
   void dispose() {
     WatchProgressRepository.instance.removeListener(_refresh);
+    ActiveProfile.instance.scopeListenable.removeListener(_onProfileScope);
+    widget.adultAccess?.removeListener(_onAccessChanged);
     super.dispose();
+  }
+
+  void _onAccessChanged() {
+    if (!_titleAllowed) _onProfileScope();
   }
 
   void _refresh() {
@@ -389,11 +433,12 @@ class _TvMovieDetailScreenState extends State<TvMovieDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (!_titleAllowed) return const SizedBox.shrink();
     final CinemaTitle t = widget.title;
     final CinemaDetails d = _d ?? CinemaDetails.empty;
     final WatchEntry? w = WatchProgressRepository.instance.get(t.id);
     final bool resumable = w != null && w.isResumable && !w.upNext;
-    final VodPlayItem item = VodPlayItem.movie(t);
+    final VodPlayItem item = VodPlayItem.movie(t, isAdult: _adultTitle);
     final double? rating = d.rating ?? t.rating;
     final List<String> meta = <String>[
       if (t.year != null)
@@ -432,7 +477,7 @@ class _TvMovieDetailScreenState extends State<TvMovieDetailScreen> {
                 ),
                 if (_d == null)
                   Padding(
-                    padding: EdgeInsets.only(top: 18),
+                    padding: const EdgeInsets.only(top: 18),
                     child: SizedBox(
                       width: 22,
                       height: 22,
@@ -472,16 +517,25 @@ class _TvMovieDetailScreenState extends State<TvMovieDetailScreen> {
                               formatClock(Duration(milliseconds: w.posMs)),
                             )
                           : context.l10n.tvCinemaPlay,
-                      onSelect: () => unawaited(openVod(context, item)),
+                      onSelect: () {
+                        if (_titleAllowed)
+                          unawaited(openVod(context, item,
+                              adultAccess: widget.adultAccess));
+                      },
                     ),
                     if (resumable)
                       CinemaPill(
                         icon: Icons.replay_rounded,
                         label: context.l10n.tvCinemaFromStart,
-                        onSelect: () =>
-                            unawaited(openVod(context, item, fromStart: true)),
+                        onSelect: () {
+                          if (_titleAllowed) {
+                            unawaited(openVod(context, item,
+                                fromStart: true,
+                                adultAccess: widget.adultAccess));
+                          }
+                        },
                       ),
-                    _DownloadPill(item: item),
+                    _DownloadPill(item: item, isAllowed: () => _titleAllowed),
                   ],
                 ),
               ],
@@ -498,14 +552,41 @@ class _TvMovieDetailScreenState extends State<TvMovieDetailScreen> {
 // =========================================================
 
 class TvSeriesScreen extends StatefulWidget {
-  const TvSeriesScreen({super.key, required this.title});
+  const TvSeriesScreen({super.key, required this.title, this.adultAccess});
   final CinemaTitle title;
+  final AdultAccessGrant? adultAccess;
 
   @override
   State<TvSeriesScreen> createState() => _TvSeriesScreenState();
 }
 
 class _TvSeriesScreenState extends State<TvSeriesScreen> {
+  bool _scopeChanged = false;
+  late final bool _adultTitle =
+      CinemaRepository.instance.isAdultTitle(widget.title);
+  bool get _titleAllowed =>
+      !_scopeChanged &&
+      (widget.adultAccess == null
+          ? !_adultTitle
+          : widget.adultAccess!.isValid && _adultTitle) &&
+      ActiveProfile.instance.allowsPlaylist(
+        int.tryParse(widget.title.sourceKey.startsWith('p')
+            ? widget.title.sourceKey.substring(1)
+            : ''),
+      );
+
+  void _onProfileScope() {
+    if (!mounted || _scopeChanged) return;
+    setState(() => _scopeChanged = true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final route = ModalRoute.of(context);
+      if (route != null && route.isActive && !route.isFirst) {
+        Navigator.of(context).removeRoute(route);
+      }
+    });
+  }
+
   SeriesDetails? _s;
   bool _loading = true;
   int? _season;
@@ -514,6 +595,12 @@ class _TvSeriesScreenState extends State<TvSeriesScreen> {
   void initState() {
     super.initState();
     WatchProgressRepository.instance.addListener(_refresh);
+    ActiveProfile.instance.scopeListenable.addListener(_onProfileScope);
+    widget.adultAccess?.addListener(_onAccessChanged);
+    if (!_titleAllowed) {
+      _onProfileScope();
+      return;
+    }
     unawaited(DownloadsRepository.instance.initialize());
     unawaited(_load());
   }
@@ -521,7 +608,13 @@ class _TvSeriesScreenState extends State<TvSeriesScreen> {
   @override
   void dispose() {
     WatchProgressRepository.instance.removeListener(_refresh);
+    ActiveProfile.instance.scopeListenable.removeListener(_onProfileScope);
+    widget.adultAccess?.removeListener(_onAccessChanged);
     super.dispose();
+  }
+
+  void _onAccessChanged() {
+    if (!_titleAllowed) _onProfileScope();
   }
 
   void _refresh() {
@@ -532,15 +625,15 @@ class _TvSeriesScreenState extends State<TvSeriesScreen> {
     final SeriesDetails? s = await CinemaRepository.instance.seriesDetails(
       widget.title,
     );
-    if (!mounted) return;
+    if (!mounted || !_titleAllowed) return;
     final WatchEntry? last = WatchProgressRepository.instance.latestForSeries(
       widget.title.id,
     );
-    int? season = s?.seasons.isNotEmpty == true
-        ? s!.seasons.first.number
-        : null;
-    if (last?.season != null && s?.episodes.containsKey(last!.season) == true)
+    int? season =
+        s?.seasons.isNotEmpty == true ? s!.seasons.first.number : null;
+    if (last?.season != null && s?.episodes.containsKey(last!.season) == true) {
       season = last!.season;
+    }
     setState(() {
       _s = s;
       _season = season;
@@ -567,19 +660,22 @@ class _TvSeriesScreenState extends State<TvSeriesScreen> {
   }
 
   void _play(CinemaEpisode e, {bool fromStart = false}) {
+    if (!_titleAllowed) return;
     unawaited(
       openVod(
         context,
-        VodPlayItem.episode(e, widget.title),
+        VodPlayItem.episode(e, widget.title, isAdult: _adultTitle),
         fromStart: fromStart,
         series: _s,
         seriesTitle: widget.title,
+        adultAccess: widget.adultAccess,
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    if (!_titleAllowed) return const SizedBox.shrink();
     final CinemaTitle t = widget.title;
     final SeriesDetails? s = _s;
     final CinemaDetails d = s?.details ?? CinemaDetails.empty;
@@ -655,15 +751,18 @@ class _TvSeriesScreenState extends State<TvSeriesScreen> {
                           label: active
                               ? context.l10n.tvCinemaSeasonQueue(n)
                               : context.l10n.tvCinemaDownloadSeason,
-                          onSelect: () => unawaited(
-                            CinemaDownloads.startSeason(<VodMovie>[
-                              for (final CinemaEpisode e in eps)
-                                VodPlayItem.episode(
-                                  e,
-                                  widget.title,
-                                ).toVodMovie(),
-                            ]).then((_) => _refresh()),
-                          ),
+                          onSelect: () {
+                            if (!_titleAllowed) return;
+                            unawaited(
+                              CinemaDownloads.startSeason(<VodMovie>[
+                                for (final CinemaEpisode e in eps)
+                                  VodPlayItem.episode(
+                                    e,
+                                    widget.title,
+                                  ).toVodMovie(),
+                              ]).then((_) => _refresh()),
+                            );
+                          },
                         );
                       },
                     ),
@@ -731,6 +830,8 @@ class _TvSeriesScreenState extends State<TvSeriesScreen> {
               episode: eps[i],
               series: widget.title,
               onPlay: () => _play(eps[i]),
+              isAllowed: () => _titleAllowed,
+              isAdult: _adultTitle,
             ),
           ),
         ),
@@ -744,18 +845,20 @@ class _EpisodeRow extends StatelessWidget {
     required this.episode,
     required this.series,
     required this.onPlay,
+    required this.isAllowed,
+    required this.isAdult,
   });
   final CinemaEpisode episode;
   final CinemaTitle series;
   final VoidCallback onPlay;
-
+  final bool Function() isAllowed;
+  final bool isAdult;
   @override
   Widget build(BuildContext context) {
     final CinemaEpisode e = episode;
     final WatchEntry? w = WatchProgressRepository.instance.get(e.id);
-    final double? progress = w == null || w.upNext
-        ? null
-        : (w.finished ? 1.0 : w.fraction);
+    final double? progress =
+        w == null || w.upNext ? null : (w.finished ? 1.0 : w.fraction);
     final String title = e.title.isEmpty
         ? context.l10n.tvCinemaEpisode(e.number.toString())
         : '${e.number}. ${e.title}';
@@ -882,7 +985,10 @@ class _EpisodeRow extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 10),
-          _DownloadPill(item: VodPlayItem.episode(e, series), compact: true),
+          _DownloadPill(
+              item: VodPlayItem.episode(e, series, isAdult: isAdult),
+              compact: true,
+              isAllowed: isAllowed),
         ],
       ),
     );

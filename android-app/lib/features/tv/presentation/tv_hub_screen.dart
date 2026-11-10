@@ -42,7 +42,10 @@ import 'tv_profile_label.dart';
 import '../../channels/data/recently_watched_repository.dart';
 import '../../channels/data/trending_repository.dart';
 import '../../channels/domain/channel.dart';
+import '../../channels/domain/adult_channel_policy.dart';
+import '../../profiles/data/active_profile.dart';
 import '../../cinema/data/watch_progress.dart';
+import '../../cinema/data/cinema_repository.dart';
 import '../../cinema/domain/cinema_models.dart';
 import '../../device/data/device_identity.dart';
 import '../../epg/data/catchup_url_builder.dart';
@@ -90,6 +93,7 @@ import '../data/tv_home_genres.dart';
 import '../data/startup_preference.dart';
 import '../../voice/presentation/voice_navigation.dart';
 import 'tv_app.dart';
+import 'tv_adult_section_screen.dart';
 import 'tv_cinema_common.dart';
 import 'tv_cinema_screen.dart';
 import 'tv_components.dart';
@@ -106,7 +110,7 @@ import 'tv_shell.dart';
 import 'tv_sources_screen.dart';
 
 /// Les tuiles de l'accueil, de gauche à droite.
-enum _Tile { live, films, series, guide, server, settings }
+enum _Tile { live, films, series, guide, server, settings, adult }
 
 class TvHubScreen extends StatefulWidget {
   const TvHubScreen({super.key});
@@ -249,7 +253,9 @@ class _TvHubScreenState extends State<TvHubScreen> {
     });
     // Ce qu'on a DÉJÀ en mémoire (le boot a chargé la playlist). Les dépôts
     // finissent de s'ouvrir dans _prepareEngagement, sans bloquer le 1er cadre.
-    _channels = PlaylistRepository.instance.currentChannels;
+    _channels = PlaylistRepository.instance.currentChannels
+        .where((Channel c) => !isAdultChannel(c))
+        .toList(growable: false);
     _scheduleGenreShelves();
     // Déjà des chaînes en mémoire : une source est là, pas de QR.
     // Sinon on lit les playlists (une source peut exister avant
@@ -282,6 +288,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
       _schedulePopular();
     });
     WatchProgressRepository.instance.addListener(_scheduleShelves);
+    CinemaRepository.instance.indexVersion.addListener(_scheduleShelves);
     ProgramReminderRepository.instance.addListener(_scheduleShelves);
     ParentalControls.instance.kidsMode.addListener(_scheduleShelves);
     TimePickLog.instance.listenable.addListener(_onTimePicks);
@@ -542,7 +549,11 @@ class _TvHubScreenState extends State<TvHubScreen> {
       _hasLocalSource = null;
       unawaited(_lookForLocalSource());
     }
-    _channels = channels;
+    // Le catalogue privé a sa propre entrée authentifiée : aucune carte,
+    // recommandation ou affiche de ce catalogue ne passe par l'accueil.
+    _channels = channels
+        .where((Channel c) => !isAdultChannel(c))
+        .toList(growable: false);
     _genreGeneration++;
     _genreShelves = const {}; // aucune carte de la source retirée
     _scheduleGenreShelves();
@@ -643,6 +654,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
     final ResumeZap? plan = resumeZapList(
       PlaylistRepository.instance.currentChannels,
       _shelves.resume,
+      hide: isAdultChannel,
     );
     if (plan == null) return false;
     final List<Channel> zap = plan.channels;
@@ -734,14 +746,24 @@ class _TvHubScreenState extends State<TvHubScreen> {
     final bool kids = ParentalControls.instance.kidsMode.value;
     final Map<String, Channel> byId = indexChannelsById(_channels);
     bool hide(Channel c) => hiddenForKids(c);
-    final bool Function(Channel)? kidsHide = kids ? hide : null;
+    final bool Function(Channel) kidsHide = isAdultChannel;
     final int now = DateTime.now().millisecondsSinceEpoch;
     _shelves = HomeShelfModel(
       resume: channelsInIdOrder(_recentIds, byId, hide: kidsHide),
       favorites: favoriteChannels(_channels, _favIds, hide: kidsHide),
       popular: channelsInIdOrder(_popularIds, byId, hide: kidsHide),
       continueWatching: continueForHome(
-        WatchProgressRepository.instance.continueWatching(),
+        WatchProgressRepository.instance.continueWatching().where((WatchEntry entry) {
+          // Un ancien historique non classé reste privé jusqu'à ce que son
+          // catalogue confirme qu'il appartient à l'espace normal.
+          if (CinemaRepository.instance.adultStatusForWatch(entry) != false) {
+            return false;
+          }
+          final String source = entry.sourceKey;
+          return ActiveProfile.instance.allowsPlaylist(
+            int.tryParse(source.startsWith('p') ? source.substring(1) : ''),
+          );
+        }).toList(growable: false),
         kidsMode: kids,
       ),
       reminders: ProgramReminderLog.forHome(
@@ -750,7 +772,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
         channelStillThere: (String id) {
           final Channel? c = byId[id];
           if (c == null) return false;
-          if (kids && hide(c)) return false;
+          if (hide(c)) return false;
           return true;
         },
       ),
@@ -1042,14 +1064,41 @@ class _TvHubScreenState extends State<TvHubScreen> {
 
   void _playShelf(List<Channel> shelf, int index) {
     if (index < 0 || index >= shelf.length) return;
+    final Channel target = shelf[index];
+    if (isAdultChannel(target) ||
+        !ActiveProfile.instance.allowsPlaylist(target.playlistId)) {
+      return;
+    }
+    final List<Channel> allowed = shelf.where((Channel c) =>
+        !isAdultChannel(c) &&
+        ActiveProfile.instance.allowsPlaylist(c.playlistId)).toList(growable: false);
+    final int selected = allowed.indexWhere((Channel c) =>
+        c.id == target.id && c.playlistId == target.playlistId);
+    if (selected < 0) return;
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => TvPlayerScreen(channels: shelf, startIndex: index),
+        builder: (_) => TvPlayerScreen(channels: allowed, startIndex: selected),
       ),
     );
   }
 
+  void _resumeLive(Channel channel) {
+    final ResumeZap? plan = resumeZapList(
+      PlaylistRepository.instance.currentChannels,
+      <Channel>[channel],
+      hide: isAdultChannel,
+    );
+    if (plan == null) return;
+    _playShelf(plan.channels, plan.startIndex);
+  }
+
   void _playContinue(WatchEntry entry) {
+    if (CinemaRepository.instance.adultStatusForWatch(entry) != false) return;
+    final String key = entry.sourceKey;
+    if (!ActiveProfile.instance.allowsPlaylist(
+        int.tryParse(key.startsWith('p') ? key.substring(1) : ''))) {
+      return;
+    }
     openVod(context, VodPlayItem.entry(entry));
   }
 
@@ -1073,10 +1122,13 @@ class _TvHubScreenState extends State<TvHubScreen> {
   /// préfère se taire plutôt que de le montrer à quelqu'un
   /// qui a déjà sa source.
   Future<void> _lookForLocalSource() async {
+    final int scope = ActiveProfile.instance.scopeListenable.value;
     try {
       final List<Playlist> lists =
-          await PlaylistRepository.instance.getAllPlaylists();
-      if (!mounted) return;
+          await PlaylistRepository.instance.getVisiblePlaylists();
+      if (!mounted || scope != ActiveProfile.instance.scopeListenable.value) {
+        return;
+      }
       final bool has = lists.isNotEmpty ||
           PlaylistRepository.instance.currentChannels.isNotEmpty;
       setState(() => _hasLocalSource = has);
@@ -1119,6 +1171,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
     _showGen++;
     TrendingRepository.instance.stop();
     WatchProgressRepository.instance.removeListener(_scheduleShelves);
+    CinemaRepository.instance.indexVersion.removeListener(_scheduleShelves);
     ProgramReminderRepository.instance.removeListener(_scheduleShelves);
     ParentalControls.instance.kidsMode.removeListener(_scheduleShelves);
     TimePickLog.instance.listenable.removeListener(_onTimePicks);
@@ -1212,9 +1265,29 @@ class _TvHubScreenState extends State<TvHubScreen> {
     }
   }
 
+  bool _openingAdult = false;
+
+  /// Une entrée = une nouvelle authentification, même juste après un retour.
+  Future<void> _openAdult() async {
+    if (_openingAdult ||
+        ProfileRepository.instance.activeIsKids ||
+        ParentalControls.instance.kidsMode.value) {
+      return;
+    }
+    _openingAdult = true;
+    try {
+      await openTvAdultSection(context);
+    } finally {
+      _openingAdult = false;
+    }
+  }
+
   void _openTile(_Tile t) {
     Widget page;
     switch (t) {
+      case _Tile.adult:
+        unawaited(_openAdult());
+        return;
       case _Tile.live:
         page = const TvLiveScreen();
       case _Tile.server:
@@ -1234,6 +1307,8 @@ class _TvHubScreenState extends State<TvHubScreen> {
 
   ({IconData icon, String label}) _tileMeta(BuildContext c, _Tile t) {
     switch (t) {
+      case _Tile.adult:
+        return (icon: Icons.lock_outline_rounded, label: c.l10n.sectionAdult);
       case _Tile.live:
         return (icon: Icons.live_tv_rounded, label: c.l10n.tvNavLive);
       case _Tile.films:
@@ -1306,7 +1381,10 @@ class _TvHubScreenState extends State<TvHubScreen> {
           spacing: TvDimens.rowGap,
           runSpacing: TvDimens.rowGap,
           children: <Widget>[
-            for (final _Tile tile in _Tile.values)
+            for (final _Tile tile in _Tile.values.where((tile) =>
+                tile != _Tile.adult ||
+                (!ProfileRepository.instance.activeIsKids &&
+                    !ParentalControls.instance.kidsMode.value)))
               TextButton.icon(
                 onPressed: () => _openTile(tile),
                 icon: Icon(_tileMeta(context, tile).icon, size: TvDimens.title),
@@ -1520,9 +1598,24 @@ class _TvHubScreenState extends State<TvHubScreen> {
                                       if (watch != null) {
                                         _playContinue(watch);
                                       } else if (channel != null) {
-                                        _playShelf(<Channel>[channel], 0);
+                                        final bool resume = identical(
+                                                piece, board.hero) ||
+                                            _shelves.resume.any(
+                                                (Channel recent) =>
+                                                    recent.id == channel.id &&
+                                                    recent.playlistId ==
+                                                        channel.playlistId);
+                                        if (channel.isLive && resume) {
+                                          _resumeLive(channel);
+                                        } else {
+                                          _playShelf(<Channel>[channel], 0);
+                                        }
                                       }
                                     },
+                                    onAdult: ProfileRepository.instance.activeIsKids ||
+                                            ParentalControls.instance.kidsMode.value
+                                        ? null
+                                        : () => _openTile(_Tile.adult),
                                     onLive: () => _openTile(_Tile.live),
                                     onFilms: () => _openTile(_Tile.films),
                                     onSeries: () => _openTile(_Tile.series),
@@ -1713,4 +1806,3 @@ class _ProfileChip extends StatelessWidget {
     );
   }
 }
-

@@ -55,6 +55,7 @@ import '../core/tv_app_tokens.dart';
 import '../core/tv_ambient_director.dart';
 import '../../channels/data/recently_watched_repository.dart';
 import '../../channels/domain/channel.dart';
+import '../../channels/domain/adult_channel_policy.dart';
 import '../../epg/data/epg_repository.dart';
 import '../../epg/data/catchup_url_builder.dart';
 import '../../epg/domain/epg_program.dart';
@@ -78,6 +79,7 @@ import '../../recordings/data/recording_repository.dart';
 import '../../recordings/domain/recording.dart';
 import '../../subscription/data/now_playing.dart';
 import '../../subscription/data/subscription_state.dart';
+import '../../security/data/adult_access.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_remote_map.dart';
 import '../core/tv_zap.dart';
@@ -90,6 +92,7 @@ class TvPlayerScreen extends StatefulWidget {
     required this.channels,
     required this.startIndex,
     this.startAtUrl,
+    this.adultAccess,
   });
 
   /// Liste pour le zap (Haut/Bas) — généralement la catégorie courante.
@@ -100,6 +103,7 @@ class TvPlayerScreen extends StatefulWidget {
   /// « Reprendre depuis le début ». Vide : on ouvre le direct,
   /// comme avant. Un zap revient au direct.
   final String? startAtUrl;
+  final AdultAccessGrant? adultAccess;
 
   @override
   State<TvPlayerScreen> createState() => _TvPlayerScreenState();
@@ -107,6 +111,9 @@ class TvPlayerScreen extends StatefulWidget {
 
 class _TvPlayerScreenState extends State<TvPlayerScreen>
     with WidgetsBindingObserver {
+  bool _adultRevoked = false;
+  bool get _accessAllowed =>
+      !_adultRevoked && (widget.adultAccess?.isValid ?? true);
   late final NativeVideoController _controller;
   late final ZunoPipPlayback _pip;
 
@@ -174,6 +181,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   // nouvel appui). Un seul setUrl au lieu d'un par répétition de touche.
   Timer? _zapSettle;
   bool _zapHolding = false;
+  double _verticalDragDistance = 0;
   String _numBuffer = ''; // saisie d'un numéro de chaîne (touches 0-9)
   // Une fois par minute, tant que l'image tourne : on note le
   // programme du guide. Pas à chaque image (ça chaufferait la box).
@@ -265,7 +273,9 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     } else {
       _playingUrl = LiveFallback.preferred(_current.streamUrl);
     }
-    _controller = NativeVideoController(initialUrl: _playingUrl);
+    _controller = NativeVideoController(
+      initialUrl: _accessAllowed ? _playingUrl : '',
+    );
     // Identique d'un build à l'autre : Flutter ne redessine pas la
     // SurfaceView quand le bandeau ou le numéro de chaîne change.
     _stableVideo = _PinnedVideo(key: _videoKey, controller: _controller);
@@ -281,6 +291,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
         _lastProgress = DateTime.now();
       },
     );
+    widget.adultAccess?.addListener(_onAdultAccessChanged);
     unawaited(
       ClearVoiceFlag.load().then((_) {
         if (mounted) _controller.setClearVoice(ClearVoiceFlag.value);
@@ -344,6 +355,45 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
       const Duration(minutes: 3),
       (_) => SubscriptionState.instance.syncWithBackend(),
     );
+    if (!_accessAllowed) _onAdultAccessChanged();
+  }
+
+  void _onAdultAccessChanged() {
+    if (!_accessAllowed) _invalidateAdultPlayback();
+  }
+
+  void _invalidateAdultPlayback() {
+    if (!mounted || _adultRevoked) return;
+    _adultRevoked = true;
+    _appActive = false;
+    _zapSettle?.cancel();
+    _cancelRecover();
+    _historyTimer?.cancel();
+    _numTimer?.cancel();
+    _missedGen++;
+    _watchdog?.cancel();
+    _tasteTimer?.cancel();
+    _presenceTimer?.cancel();
+    if (_activeRecording != null) {
+      unawaited(_finalizeRecording(resumeDirect: false));
+    }
+    unawaited(_controller.releaseNative());
+    NowPlaying.instance.clear();
+    _updatePip();
+    setState(() {});
+  }
+
+  @override
+  void didUpdateWidget(covariant TvPlayerScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (identical(oldWidget.adultAccess, widget.adultAccess)) return;
+    oldWidget.adultAccess?.removeListener(_onAdultAccessChanged);
+    widget.adultAccess?.addListener(_onAdultAccessChanged);
+    if (oldWidget.adultAccess != null) {
+      _invalidateAdultPlayback();
+    } else {
+      _onAdultAccessChanged();
+    }
   }
 
   void _onClearVoice() {
@@ -375,6 +425,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   }
 
   void _resumeInside() {
+    if (!_accessAllowed) return;
     _appActive = true;
     _lastProgress = DateTime.now();
     if (_zapHolding) {
@@ -390,7 +441,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   }
 
   void _updatePip() => _pip.update(
-    playing: _controller.isPlaying,
+    playing: _accessAllowed && _controller.isPlaying,
     casting: _casting,
     width: _controller.videoWidth,
     height: _controller.videoHeight,
@@ -398,6 +449,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
 
   @override
   void dispose() {
+    widget.adultAccess?.removeListener(_onAdultAccessChanged);
     _pip.dispose();
     TvActivity.leave();
     TvAmbientDirector.instance.clear();
@@ -405,7 +457,8 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     // On quitte sur cette chaîne : si une image a été vue, elle compte
     // (même sans les 20 s), sinon rien n'est écrit.
     _historyTimer?.cancel();
-    if (!_zapHolding &&
+    if (_accessAllowed &&
+        !_zapHolding &&
         HistoryPolicy.recordOnExit(
           frameShown: _everShownFrame,
           alreadyRecorded: _historyRecorded == _current.id,
@@ -458,6 +511,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   }
 
   void _onPlayer() {
+    if (!_accessAllowed) return;
     _publishVideoAspect();
     _updatePip();
     // Pendant un zap maintenu, le flux encore ouvert n'est PAS la chaîne
@@ -536,6 +590,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   }
 
   void _open({bool reuse = false}) {
+    if (!_accessAllowed) return;
     _lastProgress = DateTime.now();
     _lastPos = Duration.zero;
     _everShownFrame = false; // nouvelle ouverture → pas encore d'image
@@ -602,6 +657,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   }
 
   void _recordHistory(String id) {
+    if (!_accessAllowed) return;
     _historyRecorded = id;
     RecentlyWatchedRepository.instance.record(id);
     // Compteur local « à cette heure ». N'ouvre rien, n'attend pas.
@@ -609,6 +665,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   }
 
   void _zap(int delta) {
+    if (!_accessAllowed) return;
     final int n = widget.channels.length;
     if (n <= 1) return;
     // On ne peut enregistrer qu'1 chaîne à la fois (1 connexion) : changer de
@@ -664,6 +721,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   }
 
   void _recover() {
+    if (!_accessAllowed) return;
     if (_livePausedAt != null && _canTimeshift) return;
     if (!_appActive || _casting || _fatal || _zapHolding || _recoverArmed)
       return;
@@ -711,7 +769,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   /// Ouvre à nouveau, après l'attente. Même adresse si l'image avait
   /// déjà été vue (on garde cette image). Sinon, adresse de secours.
   void _reopenAfterFailure() {
-    if (!_appActive) return;
+    if (!_accessAllowed || !_appActive) return;
     if (_relayPlayUrl != null) {
       _controller.setUrl(_relayPlayUrl!, keepPicture: _everShownFrame);
       return;
@@ -723,7 +781,9 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     final String before = _playingUrl;
     final List<String> alts = _alts ??= LiveFallback.candidates(
       _current,
-      PlaylistRepository.instance.currentChannels,
+      PlaylistRepository.instance.currentChannels
+          .where((c) => isAdultChannel(c) == (widget.adultAccess != null))
+          .toList(growable: false),
     );
     if (alts.length > 1) {
       _altIdx = (_altIdx + 1) % alts.length;
@@ -768,17 +828,18 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     } else {
       await _startRecording();
     }
-    _showOverlayTemporarily();
+    if (mounted && _accessAllowed) _showOverlayTemporarily();
   }
 
   Future<void> _startRecording() async {
-    if (_isRecording) return;
+    if (_isRecording || !_accessAllowed) return;
     // L'adresse qui JOUE (éventuellement une adresse de secours).
     final String realUrl = _playingUrl;
     try {
       final String path = await RecordingRepository.instance.createFilePath(
         channelName: _current.cleanName,
       );
+      if (!mounted || !_accessAllowed) return;
 
       // 1) On bascule D'ABORD la lecture sur le relais : le lecteur lâche la
       //    connexion DIRECTE et le relais ouvre L'UNIQUE connexion vers le
@@ -787,6 +848,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
       final String localUrl = await LocalStreamRelay.instance.playUrlFor(
         realUrl,
       );
+      if (!mounted || !_accessAllowed) return;
       _relayPlayUrl = localUrl;
       _controller.setUrl(localUrl);
 
@@ -796,6 +858,10 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
         realUrl: realUrl,
         filePath: path,
       );
+      if (!mounted || !_accessAllowed) {
+        await LocalStreamRelay.instance.stopRecording(realUrl);
+        return;
+      }
       if (!ok) {
         _relayPlayUrl = null;
         _controller.setUrl(realUrl); // on revient au direct
@@ -811,6 +877,11 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
         channelLogoUrl: _current.logoUrl,
         streamUrl: realUrl,
       );
+      if (!mounted || !_accessAllowed) {
+        await LocalStreamRelay.instance.stopRecording(realUrl);
+        await RecordingRepository.instance.finishRecording(rec);
+        return;
+      }
       if (mounted) {
         setState(() => _activeRecording = rec);
         _flash(context.l10n.tvRecordingStarted);
@@ -842,7 +913,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     } catch (_) {
       failed = true;
     }
-    if (resumeDirect && mounted) {
+    if (resumeDirect && mounted && _accessAllowed) {
       _controller.setUrl(_playingUrl);
     }
     if (mounted) {
@@ -1334,7 +1405,12 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   /// un rattrapage (le guide dirait le programme du DIRECT,
   /// qui n'est pas celui qu'on regarde).
   Future<void> _noteTaste() async {
-    if (!mounted || !_appActive || !_everShownFrame || _fatal || _zapHolding) {
+    if (!mounted ||
+        !_accessAllowed ||
+        !_appActive ||
+        !_everShownFrame ||
+        _fatal ||
+        _zapHolding) {
       return;
     }
     if (_catchup || !_controller.isPlaying) return;
@@ -1342,11 +1418,16 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     final bool fav = _favIds.contains(id);
     try {
       await followedFlag.load();
-      if (!followedFlag.value || !mounted || _current.id != id) return;
+      if (!followedFlag.value || !mounted || !_accessAllowed ||
+          _current.id != id) {
+        return;
+      }
       final EpgProgram? program = await EpgRepository.instance.currentProgram(
         id,
       );
-      if (!mounted || _current.id != id || program == null) return;
+      if (!mounted || !_accessAllowed || _current.id != id || program == null) {
+        return;
+      }
       final String title = program.title.trim();
       if (title.isEmpty) return;
       await FollowedLog.instance.note(
@@ -1513,6 +1594,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
 
   @override
   Widget build(BuildContext context) {
+    if (!_accessAllowed) return const SizedBox.shrink();
     // Material TRANSPARENT obligatoire : le lecteur est poussé comme route
     // SÉPARÉE (hors de TvShell). Sans Material ancêtre, Flutter dessine tout
     // texte avec son style d'ERREUR (police machine à écrire + double
@@ -1533,13 +1615,18 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
           child: GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: _toggleOverlay,
+            onVerticalDragStart: (_) => _verticalDragDistance = 0,
+            onVerticalDragUpdate: (DragUpdateDetails d) {
+              _verticalDragDistance += d.primaryDelta ?? 0;
+            },
+            onVerticalDragCancel: () => _verticalDragDistance = 0,
             onVerticalDragEnd: (DragEndDetails d) {
-              final double v = d.primaryVelocity ?? 0;
-              if (v < -250) {
-                _zap(1); // glissé vers le HAUT → chaîne suivante
-              } else if (v > 250) {
-                _zap(-1); // glissé vers le BAS → chaîne précédente
-              }
+              final int delta = tvSwipeZapDelta(
+                distance: _verticalDragDistance,
+                velocity: d.primaryVelocity ?? 0,
+              );
+              _verticalDragDistance = 0;
+              if (delta != 0) _zap(delta);
             },
             child: ColoredBox(
               color: Colors.black,
@@ -1651,6 +1738,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
                         offstage: _pip.isInPipMode,
                         child: DesktopCastControls(
                           key: _desktopCastKey,
+                          adultAccess: widget.adultAccess,
                           controller: _controller,
                           streamUrl: _playingUrl,
                           title: _current.name,

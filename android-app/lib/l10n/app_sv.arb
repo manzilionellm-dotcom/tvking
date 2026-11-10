@@ -1111,7 +1111,7 @@
   "tvNameInvalid": "Namnet är tomt eller för långt.",
   "tvProfileDeleteBody": "Profilens favoriter, historik, uppspelningspositioner, påminnelser och PIN-kod raderas. Kanalerna och profil 1 finns kvar.",
   "tvProfileDeleteFailed": "Den här profilen kan inte tas bort.",
-  "tvProfilesHelp": "Upp till 4 profiler. Separata favoriter, historik, uppspelningspositioner, påminnelser och PIN-koder. Kanalerna delas.",
+  "tvProfilesHelp": "Upp till 4 profiler, var och en med sina spellistor, favoriter, historik, uppspelningspositioner, påminnelser och PIN-kod.",
   "tvDefaultPinWarning": "PIN-koden är fortfarande 0000. Ändra den under Föräldrakontroll.",
   "tvAskProfileOn": "Välj profil vid start: på",
   "tvAskProfileOff": "Välj profil vid start: av",
@@ -1124,7 +1124,7 @@
   "tvProfileCreated": "Profilen ”{name}” har skapats.",
   "tvProfileDeleteTitle": "Ta bort ”{name}”?",
   "tvWhoWatching": "Vem tittar?",
-  "tvProfilePickerHelp": "Alla har egna favoriter, historik och PIN-kod. Kanalerna är desamma.",
+  "tvProfilePickerHelp": "Välj en profil och dess spellistor. Varje profil har egna favoriter, historik och PIN-kod.",
   "tvLater": "Senare",
   "tvNameMum": "Mamma",
   "tvNameDad": "Pappa",
@@ -1189,7 +1189,7 @@
   "tvPhone": "Telefon",
   "tvSoftware": "Programvara",
   "tvHardware": "Hårdvara",
-  "tvProfilesSettingsHelp": "Upp till 4 profiler med separata favoriter, historik, uppspelningspositioner, påminnelser och PIN-koder.",
+  "tvProfilesSettingsHelp": "Spellistor, favoriter, historik, uppspelningspositioner, påminnelser och PIN-kod per profil. Upp till 4 profiler.",
   "tvAudioDiagnostic": "Ljuddiagnostik",
   "tvAudioDiagnosticHelp": "Lokal rapport per kanal. Inget skickas. Testalternativen är avstängda som standard.",
   "tvPlayerDisclaimer": "Den här appen är en mediaspelare. Den säljer, tillhandahåller eller lagrar inga kanaler, strömmar eller M3U-länkar. Innehållet kommer från användaren, som ansvarar för att det är lagligt.",
@@ -1464,5 +1464,10 @@
   "tvAmbientTitle": "Sken",
   "tvAmbientHelp": "Följer filmen eller matchen runt bilden. Bilden ändras inte. På en liten box är skenet fast.",
   "tvAmbientAuto": "Auto",
-  "tvAmbientOff": "Av"
+  "tvAmbientOff": "Av",
+  "vipCountriesFirstUseHint": "Välj dina länder här. Du kan ändra dem när som helst.",
+  "tvProfileSources": "Profilens spellistor",
+  "tvProfileSourceUnavailable": "Profilen finns inte längre. Spellistan kopplades inte.",
+  "tvAdultLive": "Direkt-TV för vuxna",
+  "tvAdultCinema": "Film för vuxna"
 }

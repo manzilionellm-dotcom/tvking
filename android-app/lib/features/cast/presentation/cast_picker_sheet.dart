@@ -24,6 +24,7 @@ import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../data/cast_manager.dart';
+import '../../security/data/adult_access.dart';
 import '../data/cast_platform.dart';
 import '../domain/cast_device.dart';
 
@@ -37,6 +38,7 @@ Future<void> showCastPicker(
   required String streamUrl,
   required String title,
   String? imageUrl,
+  AdultAccessGrant? adultAccess,
 }) {
   final ScaffoldState? noticeHost = Scaffold.maybeOf(context);
   final ScaffoldMessengerState? noticeMessenger = ScaffoldMessenger.maybeOf(context);
@@ -49,6 +51,7 @@ Future<void> showCastPicker(
       streamUrl: streamUrl,
       title: title,
       imageUrl: imageUrl,
+      adultAccess: adultAccess,
       noticeHost: noticeHost,
       noticeMessenger: noticeMessenger,
     ),
@@ -79,6 +82,7 @@ class CastPickerSheet extends StatefulWidget {
     this.streamUrl,
     this.title,
     this.imageUrl,
+    this.adultAccess,
     this.noticeHost,
     this.noticeMessenger,
     super.key,
@@ -92,6 +96,7 @@ class CastPickerSheet extends StatefulWidget {
   /// Logo de la chaine — sera affiche sur le recepteur (idle +
   /// overlay) via les metadonnees Cast. Phase 1+/G1.
   final String? imageUrl;
+  final AdultAccessGrant? adultAccess;
 
   // Le shell Zuno n'a pas de Scaffold. Un message facultatif ne doit
   // jamais transformer un Cast réussi en échec ni rouvrir le flux local.
@@ -124,7 +129,9 @@ class _CastPickerSheetState extends State<CastPickerSheet> {
   bool get _isGlobalMode => widget.streamUrl == null;
 
   Future<void> _onDeviceTap(CastDevice device) async {
+    if (widget.adultAccess?.isValid == false) return;
     final CastManager mgr = CastManager.instance;
+    final String title = widget.title ?? context.l10n.castPlayDefault;
 
     // Chromecast / Google TV : on a maintenant un VRAI bridge SDK
     // natif (cf. GoogleCastTransport). Le tap passe par le flow
@@ -154,10 +161,11 @@ class _CastPickerSheetState extends State<CastPickerSheet> {
       await mgr.castTo(
         device,
         streamUrl: widget.streamUrl!,
-        title: widget.title ?? context.l10n.castPlayDefault,
+        title: title,
         imageUrl: widget.imageUrl,
+        adultAccess: widget.adultAccess,
       );
-      if (!mounted) return;
+      if (!mounted || widget.adultAccess?.isValid == false) return;
       final String message = context.l10n.castSendingTo(device.displayName);
       Navigator.of(context).pop();
       _toast(message, accent: true);

@@ -23,6 +23,7 @@ import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
 import '../core/tv_app_tokens.dart';
 import 'tv_parental_screen.dart';
+import 'tv_add_source_screen.dart';
 import 'tv_shell.dart';
 
 /// Une fois par lancement de l'app : on ne repose pas le choix
@@ -64,8 +65,35 @@ abstract final class ProfileLooks {
   }
 }
 
-class TvProfilePickerScreen extends StatelessWidget {
-  const TvProfilePickerScreen({super.key});
+class TvProfilePickerScreen extends StatefulWidget {
+  const TvProfilePickerScreen({super.key, this.sourceBuilderForTesting});
+
+  /// Route de test utilisant le vrai formulaire sans serveur fournisseur.
+  final Widget Function(String profileId)? sourceBuilderForTesting;
+
+  @override
+  State<TvProfilePickerScreen> createState() => _TvProfilePickerScreenState();
+}
+
+class _TvProfilePickerScreenState extends State<TvProfilePickerScreen> {
+  bool _creating = false;
+
+  Future<void> _add() async {
+    if (_creating) return;
+    setState(() => _creating = true);
+    try {
+      final profile = await createTvProfile(context);
+      if (profile == null || !mounted) return;
+      await Navigator.of(context).push<void>(MaterialPageRoute<void>(
+        builder: (_) => TvShell(
+          child: widget.sourceBuilderForTesting?.call(profile.id) ??
+              TvAddSourceScreen(targetProfileId: profile.id),
+        ),
+      ));
+    } finally {
+      if (mounted) setState(() => _creating = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -112,38 +140,22 @@ class TvProfilePickerScreen extends StatelessWidget {
                 ),
               ),
               Center(
-                child: TvFocusBuilder(
-                  onSelect: () => Navigator.of(context).pop(false),
-                  builder: (BuildContext context, bool focused) {
-                    final Color fg = focused
-                        ? TvAppTokens.of(context).onAccent
-                        : TvAppTokens.of(context).text;
-                    return Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 28,
-                        vertical: 14,
+                child: Wrap(
+                  spacing: 12,
+                  runSpacing: 12,
+                  alignment: WrapAlignment.center,
+                  children: <Widget>[
+                    if (ProfileRepository.instance.catalog.canAdd)
+                      _PickerAction(
+                        key: const ValueKey<String>('tv-profile-add'),
+                        label: context.l10n.buttonAdd,
+                        onSelect: _creating ? null : _add,
                       ),
-                      decoration: BoxDecoration(
-                        color: focused
-                            ? TvAppTokens.of(context).accent
-                            : TvAppTokens.of(context).card,
-                        borderRadius: BorderRadius.circular(TvTokens.rButton),
-                        border: Border.all(
-                          color: focused
-                              ? TvAppTokens.of(context).accent
-                              : TvAppTokens.of(context).line,
-                        ),
-                      ),
-                      child: Text(
-                        context.l10n.tvLater,
-                        style: TvAppTokens.of(context).ui(
-                          TvDimens.title,
-                          weight: FontWeight.w700,
-                          color: fg,
-                        ),
-                      ),
-                    );
-                  },
+                    _PickerAction(
+                      label: context.l10n.tvLater,
+                      onSelect: () => Navigator.of(context).pop(false),
+                    ),
+                  ],
                 ),
               ),
             ],
@@ -159,6 +171,86 @@ class TvProfilePickerScreen extends StatelessWidget {
     await ProfileRepository.instance.activate(target.id, leaveAllowed: true);
     if (context.mounted) Navigator.of(context).pop(true);
   }
+}
+
+class _PickerAction extends StatelessWidget {
+  const _PickerAction({super.key, required this.label, required this.onSelect});
+  final String label;
+  final VoidCallback? onSelect;
+
+  @override
+  Widget build(BuildContext context) => TvFocusBuilder(
+        enabled: onSelect != null,
+        onSelect: onSelect,
+        builder: (BuildContext context, bool focused) {
+          final palette = TvAppTokens.of(context);
+          return Container(
+            padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
+            decoration: BoxDecoration(
+              color: focused ? palette.accent : palette.card,
+              borderRadius: BorderRadius.circular(TvTokens.rButton),
+              border:
+                  Border.all(color: focused ? palette.accent : palette.line),
+            ),
+            child: Text(label,
+                style: palette.ui(
+                  TvDimens.title,
+                  weight: FontWeight.w700,
+                  color: focused ? palette.onAccent : palette.text,
+                )),
+          );
+        },
+      );
+}
+
+/// Même création depuis l'accueil et les réglages. Le PIN est demandé avant
+/// la création si l'on quitte Enfants : ajouter un profil n'est pas une sortie
+/// dérobée. Un abandon du formulaire laissera un profil vide configurable.
+Future<FamilyProfile?> createTvProfile(BuildContext context,
+    {bool kids = false}) async {
+  final repository = ProfileRepository.instance;
+  await repository.load();
+  if (!context.mounted ||
+      !repository.catalog.canAdd ||
+      (kids && repository.catalog.hasKids)) {
+    return null;
+  }
+  String approvedFrom = repository.active.id;
+  if (!await confirmProfileSwitch(context, '__new_profile__') ||
+      !context.mounted) {
+    return null;
+  }
+  final String? name = await askProfileName(
+    context,
+    title: kids ? context.l10n.tvKidsProfile : context.l10n.tvNewProfile,
+    initial: kids ? context.l10n.tvChildren : '',
+  );
+  if (name == null || !context.mounted) return null;
+  if (repository.active.id != approvedFrom) {
+    if (!await confirmProfileSwitch(context, '__new_profile__') ||
+        !context.mounted) {
+      return null;
+    }
+    approvedFrom = repository.active.id;
+  }
+  final profile = await repository.addProfile(name: name, isKids: kids);
+  if (!context.mounted) return null;
+  if (profile == null) {
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+      SnackBar(content: Text(context.l10n.tvProfileAddFailed)),
+    );
+    return null;
+  }
+  if (repository.active.id != approvedFrom &&
+      !await confirmProfileSwitch(context, profile.id)) {
+    return null;
+  }
+  if (!context.mounted ||
+      !await repository.activate(profile.id, leaveAllowed: true)) {
+    return null;
+  }
+  if (kids && context.mounted) await offerKidsPin(context);
+  return profile;
 }
 
 /// Demande le code si on QUITTE le profil Enfants. Sinon, laisse passer.

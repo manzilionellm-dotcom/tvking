@@ -19,7 +19,8 @@ Channel _ch(String id, String name, {String category = 'FR'}) => Channel(
       isLive: true,
     );
 
-WatchEntry _film(String id, {int pos = 120000, String title = 'Film'}) =>
+WatchEntry _film(String id,
+        {int pos = 120000, String title = 'Film', bool isAdult = false}) =>
     WatchEntry(
       id: id,
       isEpisode: false,
@@ -28,6 +29,7 @@ WatchEntry _film(String id, {int pos = 120000, String title = 'Film'}) =>
       posMs: pos,
       durMs: 6000000,
       updatedAt: 1,
+      isAdult: isAdult,
     );
 
 void main() {
@@ -140,6 +142,18 @@ void main() {
   test('clé grossière : TF1 et « FR| TF1 HD » se rejoignent', () {
     expect(roughChannelKey('TF1'), roughChannelKey('FR| TF1 HD'));
     expect(roughChannelKey('TF1'), isNot(roughChannelKey('TF10')));
+  });
+
+  test('accueil normal : une reprise adulte au titre neutre reste privée', () {
+    final out = continueForHome(
+      <WatchEntry>[
+        _film('normal', title: 'Documentaire'),
+        _film('adult', title: 'Titre neutre', isAdult: true),
+        _film('legacy', title: 'XXX Club'),
+      ],
+      kidsMode: false,
+    );
+    expect(out.map((e) => e.id), <String>['normal']);
   });
 
   test('populaire : ordre des tendances, seulement les chaînes de la playlist',

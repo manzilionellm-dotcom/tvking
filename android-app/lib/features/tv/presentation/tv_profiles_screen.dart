@@ -24,6 +24,9 @@ import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
 import '../core/tv_app_tokens.dart';
 import 'tv_profile_picker.dart';
+import 'tv_add_source_screen.dart';
+import 'tv_sources_screen.dart';
+import 'tv_shell.dart';
 
 class TvProfilesScreen extends StatefulWidget {
   const TvProfilesScreen({super.key});
@@ -35,6 +38,7 @@ class TvProfilesScreen extends StatefulWidget {
 class _TvProfilesScreenState extends State<TvProfilesScreen> {
   String? _focusId;
   bool? _defaultPin;
+  bool _creating = false;
 
   @override
   void initState() {
@@ -79,40 +83,36 @@ class _TvProfilesScreenState extends State<TvProfilesScreen> {
   }
 
   Future<void> _add({required bool kids}) async {
-    if (!_cat.canAdd) return;
-    if (kids && _cat.hasKids) return;
-    final String? name = await askProfileName(
-      context,
-      title: kids ? context.l10n.tvKidsProfile : context.l10n.tvNewProfile,
-      initial: kids ? context.l10n.tvChildren : '',
-    );
-    if (name == null || !mounted) return;
-    final FamilyProfile? created = await ProfileRepository.instance.addProfile(
-      name: name,
-      isKids: kids,
-    );
-    if (!mounted) return;
-    if (created == null) {
-      _toast(
-        kids ? context.l10n.tvKidsExists : context.l10n.tvProfileAddFailed,
-      );
+    if (_creating) return;
+    _creating = true;
+    try {
+      final FamilyProfile? created = await createTvProfile(context, kids: kids);
+      if (created == null || !mounted) return;
+      setState(() => _focusId = created.id);
+      await _sources(created, newProfile: true);
+    } finally {
+      _creating = false;
+    }
+  }
+
+  Future<void> _sources(FamilyProfile profile,
+      {bool newProfile = false}) async {
+    if (!await confirmProfileSwitch(context, profile.id) || !mounted) return;
+    if (!await ProfileRepository.instance
+            .activate(profile.id, leaveAllowed: true) ||
+        !mounted) {
       return;
     }
-    // Entrer dans le nouveau profil ne demande pas de code.
-    // S'il est Enfants, on propose tout de suite SON code (pas celui
-    // du parent : on a déjà basculé).
-    final bool entered = await ProfileRepository.instance.activate(
-      created.id,
-      leaveAllowed: true,
-    );
-    if (!entered || !mounted) return;
-    if (kids) await offerKidsPin(context);
-    if (mounted) {
-      setState(() => _focusId = created.id);
-      _toast(
-        kids ? context.l10n.tvKidsReady : context.l10n.tvProfileCreated(name),
-      );
-    }
+    final current = ProfileRepository.instance.profileById(profile.id);
+    if (current == null) return;
+    final bool empty = current.playlistIds?.isEmpty == true;
+    await Navigator.of(context).push<void>(MaterialPageRoute<void>(
+      builder: (_) => TvShell(
+        child: newProfile || empty
+            ? TvAddSourceScreen(targetProfileId: profile.id)
+            : TvSourcesScreen(targetProfileId: profile.id),
+      ),
+    ));
   }
 
   Future<void> _rename(FamilyProfile p) async {
@@ -283,6 +283,11 @@ class _TvProfilesScreenState extends State<TvProfilesScreen> {
           spacing: 12,
           runSpacing: 12,
           children: <Widget>[
+            _Action(
+              label: context.l10n.tvProfileSources,
+              icon: Icons.playlist_play_rounded,
+              onSelect: () => _sources(focused),
+            ),
             _Action(
               label: context.l10n.tvRename,
               icon: Icons.edit_rounded,

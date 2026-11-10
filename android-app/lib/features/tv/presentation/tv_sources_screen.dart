@@ -22,6 +22,7 @@ import '../../playlists/data/playlist_repository.dart';
 import '../../playlists/data/remote_source_repository.dart';
 import '../../playlists/domain/open_source_input.dart';
 import '../../playlists/domain/playlist.dart';
+import '../../profiles/data/profile_repository.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
@@ -30,60 +31,85 @@ import 'tv_add_source_screen.dart';
 import 'tv_shell.dart';
 
 class TvSourcesScreen extends StatelessWidget {
-  const TvSourcesScreen({super.key});
+  const TvSourcesScreen({super.key, this.targetProfileId});
+
+  /// La gestion d'un profil ne doit jamais supprimer/masquer globalement
+  /// une liste également utilisée par une autre personne.
+  final String? targetProfileId;
 
   void _open(BuildContext context, OpenEntryMode mode) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => TvShell(child: TvAddSourceScreen(initialMode: mode)),
+        builder: (_) => TvShell(
+            child: TvAddSourceScreen(
+          initialMode: mode,
+          targetProfileId: targetProfileId,
+        )),
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: <Widget>[
-        Row(
+    return ListenableBuilder(
+      listenable: ProfileRepository.instance,
+      builder: (context, _) {
+        final target = targetProfileId == null
+            ? null
+            : ProfileRepository.instance.profileById(targetProfileId!);
+        if (targetProfileId != null && target == null) {
+          return Center(child: Text(context.l10n.tvProfileSourceUnavailable));
+        }
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
-            Text(
-              context.l10n.tvMySources,
-              style: TextStyle(
-                fontSize: TvDimens.displayS,
-                fontWeight: FontWeight.w800,
-                color: TvAppTokens.of(context).text,
-              ),
+            Row(
+              children: <Widget>[
+                Text(
+                  targetProfileId == null
+                      ? context.l10n.tvMySources
+                      : context.l10n.tvProfileSources,
+                  style: TextStyle(
+                    fontSize: TvDimens.displayS,
+                    fontWeight: FontWeight.w800,
+                    color: TvAppTokens.of(context).text,
+                  ),
+                ),
+                const Spacer(),
+                _Pill(
+                  icon: Icons.add_rounded,
+                  label: context.l10n.tvAddXtream,
+                  autofocus: true,
+                  onSelect: () => _open(context, OpenEntryMode.xtream),
+                ),
+                const SizedBox(width: 12),
+                _Pill(
+                  icon: Icons.playlist_add_rounded,
+                  label: context.l10n.tvAddM3u,
+                  onSelect: () => _open(context, OpenEntryMode.m3u),
+                ),
+                const SizedBox(width: 12),
+                _Pill(
+                  icon: Icons.play_circle_outline_rounded,
+                  label: OpenSourceInput.playerLabel,
+                  onSelect: () => _open(context, OpenEntryMode.player),
+                ),
+              ],
             ),
-            const Spacer(),
-            _Pill(
-              icon: Icons.add_rounded,
-              label: context.l10n.tvAddXtream,
-              autofocus: true,
-              onSelect: () => _open(context, OpenEntryMode.xtream),
-            ),
-            const SizedBox(width: 12),
-            _Pill(
-              icon: Icons.playlist_add_rounded,
-              label: context.l10n.tvAddM3u,
-              onSelect: () => _open(context, OpenEntryMode.m3u),
-            ),
-            const SizedBox(width: 12),
-            _Pill(
-              icon: Icons.play_circle_outline_rounded,
-              label: OpenSourceInput.playerLabel,
-              onSelect: () => _open(context, OpenEntryMode.player),
-            ),
-          ],
-        ),
-        const SizedBox(height: 16),
-        Expanded(
-          child: StreamBuilder<List<Playlist>>(
-            stream: PlaylistRepository.instance.playlistsStream,
-            initialData: PlaylistRepository.instance.currentPlaylists,
-            builder:
-                (BuildContext context, AsyncSnapshot<List<Playlist>> snap) {
-                  final List<Playlist> items = snap.data ?? const <Playlist>[];
+            const SizedBox(height: 16),
+            Expanded(
+              child: StreamBuilder<List<Playlist>>(
+                stream: PlaylistRepository.instance.playlistsStream,
+                initialData: PlaylistRepository.instance.currentPlaylists,
+                builder:
+                    (BuildContext context, AsyncSnapshot<List<Playlist>> snap) {
+                  final List<Playlist> items = targetProfileId == null
+                      ? snap.data ?? const <Playlist>[]
+                      : PlaylistRepository.instance.currentDevicePlaylists
+                          .where((playlist) =>
+                              target!.playlistIds == null ||
+                              target.playlistIds!.contains(playlist.id))
+                          .toList();
                   if (items.isEmpty) {
                     return Center(
                       child: Text(
@@ -100,20 +126,25 @@ class TvSourcesScreen extends StatelessWidget {
                     padding: const EdgeInsets.only(right: 6, bottom: 8),
                     itemCount: items.length,
                     separatorBuilder: (_, __) => const SizedBox(height: 10),
-                    itemBuilder: (BuildContext context, int i) =>
-                        _SourceRow(playlist: items[i]),
+                    itemBuilder: (BuildContext context, int i) => _SourceRow(
+                      playlist: items[i],
+                      allowGlobalChanges: targetProfileId == null,
+                    ),
                   );
                 },
-          ),
-        ),
-      ],
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }
 
 class _SourceRow extends StatelessWidget {
-  const _SourceRow({required this.playlist});
+  const _SourceRow({required this.playlist, this.allowGlobalChanges = true});
   final Playlist playlist;
+  final bool allowGlobalChanges;
 
   bool get _xtream => playlist.type == PlaylistType.xtream;
 
@@ -237,7 +268,7 @@ class _SourceRow extends StatelessWidget {
               ],
             ),
           ),
-          if (playlist.id != null && _merge) ...<Widget>[
+          if (allowGlobalChanges && playlist.id != null && _merge) ...<Widget>[
             // Bascule indépendante : les autres sources ne bougent pas.
             _Pill(
               icon: _on
@@ -250,7 +281,9 @@ class _SourceRow extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 10),
-          ] else if (!playlist.isActive && playlist.id != null) ...<Widget>[
+          ] else if (allowGlobalChanges &&
+              !playlist.isActive &&
+              playlist.id != null) ...<Widget>[
             _Pill(
               icon: Icons.play_arrow_rounded,
               label: context.l10n.tvActivate,
@@ -259,10 +292,11 @@ class _SourceRow extends StatelessWidget {
             ),
             const SizedBox(width: 10),
           ],
-          _IconBtn(
-            icon: Icons.delete_outline_rounded,
-            onSelect: () => _delete(context),
-          ),
+          if (allowGlobalChanges)
+            _IconBtn(
+              icon: Icons.delete_outline_rounded,
+              onSelect: () => _delete(context),
+            ),
         ],
       ),
     );

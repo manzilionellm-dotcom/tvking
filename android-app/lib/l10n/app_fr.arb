@@ -241,7 +241,7 @@
   "@sectionInternational": {
     "description": "Texte UI : sectionInternational"
   },
-  "sectionAdult": "Adulte",
+  "sectionAdult": "Adultes",
   "@sectionAdult": {
     "description": "Texte UI : sectionAdult"
   },
@@ -2687,7 +2687,7 @@
   "tvNameInvalid": "Nom vide ou trop long.",
   "tvProfileDeleteBody": "Ses favoris, son historique, sa reprise, ses rappels et son code seront effacés. Les chaînes restent. Le profil 1 n'est pas touché.",
   "tvProfileDeleteFailed": "Ce profil ne peut pas être supprimé.",
-  "tvProfilesHelp": "Jusqu'à 4. Favoris, historique, reprise, rappels et code sont séparés. Les chaînes, non : elles restent pour tout le monde.",
+  "tvProfilesHelp": "Jusqu’à 4 profils, chacun avec ses listes, favoris, historique, reprise, rappels et code.",
   "tvDefaultPinWarning": "Le code est encore 0000. Changez-le dans Contrôle parental.",
   "tvAskProfileOn": "Choix au démarrage : oui",
   "tvAskProfileOff": "Choix au démarrage : non",
@@ -2714,7 +2714,7 @@
     }
   },
   "tvWhoWatching": "Qui regarde ?",
-  "tvProfilePickerHelp": "Chacun a ses favoris, son historique et son code. Les chaînes restent les mêmes.",
+  "tvProfilePickerHelp": "Choisis un profil et ses listes. Chacun garde ses favoris, son historique et son code.",
   "tvLater": "Plus tard",
   "tvNameMum": "Maman",
   "tvNameDad": "Papa",
@@ -2807,7 +2807,7 @@
   "tvPhone": "Téléphone",
   "tvSoftware": "Logiciel",
   "tvHardware": "Matériel",
-  "tvProfilesSettingsHelp": "Favoris, historique, reprise, rappels et code séparés. Jusqu'à 4 profils.",
+  "tvProfilesSettingsHelp": "Listes, favoris, historique, reprise, rappels et code par profil. Jusqu’à 4 profils.",
   "tvAudioDiagnostic": "Diagnostic du son",
   "tvAudioDiagnosticHelp": "Rapport local par chaîne. Rien n'est envoyé. Les correctifs restent coupés.",
   "tvPlayerDisclaimer": "Cette application est un LECTEUR multimédia. Elle ne vend, ne fournit et n'héberge aucune chaîne, aucun flux ni aucun lien M3U. Le contenu est fourni par l'utilisateur, seul responsable de sa licéité.",
@@ -3242,5 +3242,10 @@
   "tvAmbientTitle": "Halo",
   "tvAmbientHelp": "Suit le film ou le match autour de l'image. L'image ne change pas. Sur une petite box, le halo reste fixe.",
   "tvAmbientAuto": "Auto",
-  "tvAmbientOff": "Arrêt"
+  "tvAmbientOff": "Arrêt",
+  "vipCountriesFirstUseHint": "Choisis tes pays ici. Tu pourras les modifier à tout moment.",
+  "tvProfileSources": "Listes du profil",
+  "tvProfileSourceUnavailable": "Ce profil n’existe plus. La liste n’a pas été associée.",
+  "tvAdultLive": "Direct adulte",
+  "tvAdultCinema": "Cinéma adulte"
 }

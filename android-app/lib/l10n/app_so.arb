@@ -2685,7 +2685,7 @@
   "tvNameInvalid": "Magacu wuu madhan yahay ama aad buu u dheer yahay.",
   "tvProfileDeleteBody": "Kuwa uu jecel yahay, taariikhda, meelaha la sii wadayo, xusuusiyeyaasha iyo PIN-ka waa la tirtirayaa. Kanaallada iyo bogga 1 way sii joogayaan.",
   "tvProfileDeleteFailed": "Boggan qofka lama tirtiri karo.",
-  "tvProfilesHelp": "Ilaa 4 bog qof. Mid walba wuxuu leeyahay kuwa uu jecel yahay, taariikh, meelaha la sii wadayo, xusuusiyeyaasha iyo PIN. Kanaallada waa la wadaagaa.",
+  "tvProfilesHelp": "Ilaa 4 bog qof, mid walba leh liisaskiisa, kuwa uu jecel yahay, taariikh, meelaha la sii wadayo, xusuusiyeyaal iyo PIN.",
   "tvDefaultPinWarning": "PIN-ku weli waa 0000. Ka beddel Xakamaynta waalidka.",
   "tvAskProfileOn": "Dooro bogga qofka marka la bilaabayo: shidan",
   "tvAskProfileOff": "Dooro bogga qofka marka la bilaabayo: deman",
@@ -2712,7 +2712,7 @@
     }
   },
   "tvWhoWatching": "Yaa daawanaya?",
-  "tvProfilePickerHelp": "Qof kastaa wuxuu leeyahay kuwa uu jecel yahay, taariikh iyo PIN u gaar ah. Kanaalladu isma beddelaan.",
+  "tvProfilePickerHelp": "Dooro bog qof iyo liisaskiisa. Bog kastaa wuxuu leeyahay kuwa uu jecel yahay, taariikh iyo PIN u gaar ah.",
   "tvLater": "Mar dambe",
   "tvNameMum": "Hooyo",
   "tvNameDad": "Aabbe",
@@ -2805,7 +2805,7 @@
   "tvPhone": "Telefoon",
   "tvSoftware": "Software",
   "tvHardware": "Qalabeed",
-  "tvProfilesSettingsHelp": "Ilaa 4 bog qof oo kala leh kuwa la jecel yahay, taariikh, meelaha la sii wadayo, xusuusiyeyaasha iyo PIN.",
+  "tvProfilesSettingsHelp": "Liisas, kuwa la jecel yahay, taariikh, meelaha la sii wadayo, xusuusiyeyaal iyo PIN bog kasta. Ilaa 4 bog qof.",
   "tvAudioDiagnostic": "Baaritaanka codka",
   "tvAudioDiagnosticHelp": "Warbixin gudaha qalabka ah oo kanaal kasta u gaar ah. Waxba lama diro. Ikhtiyaarrada tijaabadu caadi ahaan way deman yihiin.",
   "tvPlayerDisclaimer": "Abkani waa CIYAARIYE warbaahin. Ma iibiyo, ma bixiyo, mana martigeliyo kanaallo, qulqullo ama xiriiriyeyaal M3U. Barnaamijyada waxaa keena isticmaalaha, kaas oo mas'uul ka ah sharciyaddooda.",
@@ -3207,5 +3207,10 @@
   "tvAmbientTitle": "Iftiin",
   "tvAmbientHelp": "Waxay raacdaa filimka ama ciyaarta agagaarka sawirka. Sawirku ma beddelmo. Sanduuq yar ayaa iftiinka ku haya mid go'an.",
   "tvAmbientAuto": "Toos",
-  "tvAmbientOff": "Dami"
+  "tvAmbientOff": "Dami",
+  "vipCountriesFirstUseHint": "Halkan ka dooro dalalkaaga. Waad beddeli kartaa wakhti kasta.",
+  "tvProfileSources": "Liisaska bogga qofka",
+  "tvProfileSourceUnavailable": "Boggan qofka ma jiro mar dambe. Liiska laguma xirin.",
+  "tvAdultLive": "TV toos ah oo dadka waaweyn ah",
+  "tvAdultCinema": "Filimada dadka waaweyn"
 }

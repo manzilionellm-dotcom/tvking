@@ -2894,5 +2894,8 @@
   "tvAmbientTitle": "Свечение",
   "tvAmbientHelp": "Следует за фильмом или матчем вокруг картинки. Картинка не меняется. На маленькой приставке свечение фиксировано.",
   "tvAmbientAuto": "Авто",
-  "tvAmbientOff": "Выкл"
+  "tvAmbientOff": "Выкл",
+  "vipCountriesFirstUseHint": "Выберите страны здесь. Их можно изменить в любое время.",
+  "tvAdultLive": "Adult live TV",
+  "tvAdultCinema": "Adult cinema"
 }

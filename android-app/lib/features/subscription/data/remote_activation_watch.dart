@@ -194,13 +194,15 @@ class RemoteActivationWatch {
     });
   }
 
-  /// Vrai tant que l'accueil ne peut pas s'ouvrir, ou qu'il s'ouvre
-  /// mais qu'aucune chaîne n'est encore en cache.
+  /// Vrai tant que la licence n'ouvre pas l'appareil, ou qu'aucune
+  /// chaîne n'y est disponible, indépendamment du profil affiché.
   bool get _isWaiting {
     final SubscriptionStatus s = SubscriptionState.instance.status;
     final bool open =
         s == SubscriptionStatus.paid || s == SubscriptionStatus.trialActive;
-    final bool has = PlaylistRepository.instance.currentChannels.isNotEmpty;
+    // Une liste vide pour le profil choisi ne signifie pas que l'appareil
+    // attend encore une source du panel : l'inventaire reste global.
+    final bool has = PlaylistRepository.instance.hasDeviceChannels;
     return !open || !has;
   }
 
@@ -271,7 +273,7 @@ class RemoteActivationWatch {
   Future<void> _maybeImportSource({bool ordered = false}) async {
     if (!_allowSourceImport) return;
     final RemoteSubscriptionStatus snap = SubscriptionState.instance.remote;
-    final bool has = PlaylistRepository.instance.currentChannels.isNotEmpty;
+    final bool has = PlaylistRepository.instance.hasDeviceChannels;
     final bool busy = TvActivity.isBusy;
     final bool fetch = SourceFetchDecision.shouldFetch(
       networkOk: true,

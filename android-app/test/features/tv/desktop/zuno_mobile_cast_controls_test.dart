@@ -130,7 +130,7 @@ void main() {
       tester,
       local: local,
       manager: manager,
-      picker: (context, {required streamUrl, required title, imageUrl}) async {
+      picker: (context, {required streamUrl, required title, imageUrl, adultAccess}) async {
         fail('une TV ne doit pas ouvrir le sélecteur Cast');
       },
     );
@@ -180,7 +180,7 @@ void main() {
                 streamUrl: 'http://stream.invalid/live.ts',
                 title: 'Chaîne test',
                 picker: (context,
-                    {required streamUrl, required title, imageUrl}) async {
+                    {required streamUrl, required title, imageUrl, adultAccess}) async {
                   expect(events, ['local-stop']);
                   if (accept) {
                     await manager.castTo(device,
@@ -222,7 +222,7 @@ void main() {
       local: local,
       manager: manager,
       onHandoff: handoffs.add,
-      picker: (context, {required streamUrl, required title, imageUrl}) =>
+      picker: (context, {required streamUrl, required title, imageUrl, adultAccess}) =>
           manager.castTo(google, streamUrl: streamUrl, title: title),
     );
     await tester.tap(find.byType(TextButton));
@@ -279,7 +279,7 @@ void main() {
       tester,
       local: local,
       manager: manager,
-      picker: (context, {required streamUrl, required title, imageUrl}) =>
+      picker: (context, {required streamUrl, required title, imageUrl, adultAccess}) =>
           manager.castTo(google, streamUrl: streamUrl, title: title),
     );
     await tester.tap(find.byType(TextButton));
@@ -316,6 +316,45 @@ void main() {
     expect(tester.takeException(), isNull);
   }, variant: TargetPlatformVariant.only(TargetPlatform.android));
 
+  testWidgets('zap mobile pendant Cast : nouvelle URL distante, local suspendu',
+      (tester) async {
+    await CastPlatform.initializeZuno();
+    final events = <String>[];
+    final local = LocalPlayer(events);
+    final receiver = Receiver(events);
+    final manager = managerFor(receiver);
+    try {
+      await showControls(tester,
+        local: local, manager: manager,
+        picker: (context, {required streamUrl, required title, imageUrl, adultAccess}) =>
+            manager.castTo(google, streamUrl: streamUrl, title: title),
+      );
+      await tester.tap(find.byType(TextButton));
+      await tester.pumpAndSettle();
+      expect(receiver.urls, <String>[originalUrl]);
+      expect(events, <String>['local-stop', 'remote-play']);
+      // Le lecteur 117 garde le même contrôleur après un geste et met à jour
+      // son URL. Ce vrai didUpdateWidget doit charger uniquement le récepteur.
+      const next = 'http://stream.invalid/next.ts';
+      await showControls(tester, local: local, manager: manager, url: next);
+      await tester.pumpAndSettle();
+      expect(receiver.urls, <String>[originalUrl, next]);
+      expect(manager.hasActiveSession, isTrue);
+      expect(events.where((event) => event == 'local-stop'), hasLength(1));
+      expect(events, isNot(contains('local-resume')));
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+      expect(manager.hasActiveSession, isTrue,
+          reason: 'le retour quitte le lecteur et conserve le Cast');
+      expect(events, isNot(contains('local-resume')));
+    } finally {
+      await tester.pumpWidget(const SizedBox());
+      await manager.disconnect();
+      manager.dispose();
+      local.dispose();
+    }
+  }, variant: TargetPlatformVariant.only(TargetPlatform.android));
+
   testWidgets(
       'échec de reprise SDK : fin du handoff et une seule reprise locale',
       (tester) async {
@@ -335,7 +374,7 @@ void main() {
       local: local,
       manager: manager,
       onHandoff: handoffs.add,
-      picker: (context, {required streamUrl, required title, imageUrl}) =>
+      picker: (context, {required streamUrl, required title, imageUrl, adultAccess}) =>
           manager.castTo(google, streamUrl: streamUrl, title: title),
     );
     await tester.tap(find.byType(TextButton));
@@ -402,7 +441,7 @@ void main() {
           tester,
           local: local,
           manager: manager,
-          picker: (context, {required streamUrl, required title, imageUrl}) {
+          picker: (context, {required streamUrl, required title, imageUrl, adultAccess}) {
             attemptStarted = true;
             unawaited(manager
                 .castTo(google, streamUrl: streamUrl, title: title)

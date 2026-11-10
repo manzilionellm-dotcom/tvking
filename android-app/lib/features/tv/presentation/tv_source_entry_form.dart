@@ -16,7 +16,10 @@ import '../../playlists/data/local_m3u_bytes.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../../playlists/data/remote_source_repository.dart';
 import '../../playlists/domain/open_source_input.dart';
+import '../../playlists/domain/playlist.dart';
 import '../../playlists/presentation/widgets/configured_servers_picker.dart';
+import '../../profiles/data/active_profile.dart';
+import '../../profiles/data/profile_repository.dart';
 import '../core/tv_field_keys.dart';
 import '../core/tv_focusable.dart';
 import '../data/local_m3u_picker.dart';
@@ -31,17 +34,24 @@ class TvSourceEntryForm extends StatefulWidget {
   const TvSourceEntryForm({
     this.initialMode = OpenEntryMode.xtream,
     this.onAdded,
+    this.targetProfileId,
     this.autofocus = false,
     this.externalBusy = false,
     this.submitForTesting,
     this.pickLocalFileForTesting,
     this.importLocalFileForTesting,
     this.readClipboardForTesting,
+    this.importPlaylistForTesting,
+    this.importLocalPlaylistForTesting,
     super.key,
   });
 
   final OpenEntryMode initialMode;
   final VoidCallback? onAdded;
+
+  /// Une route de profil garde sa cible même si le profil actif change
+  /// pendant la saisie. Sinon la cible est capturée au geste d'import.
+  final String? targetProfileId;
   final bool autofocus;
 
   /// Une autre opération occupe le dépôt. La saisie reste possible ; seul
@@ -60,6 +70,13 @@ class TvSourceEntryForm extends StatefulWidget {
 
   /// Test : ne lit pas le presse-papiers du système.
   final Future<String?> Function()? readClipboardForTesting;
+
+  /// Imports de test retournant une vraie identité de liste : ils exercent
+  /// aussi l'association au profil, contrairement aux anciennes fixtures UI.
+  final Future<Playlist> Function(OpenSourceDraft draft, String name)?
+      importPlaylistForTesting;
+  final Future<Playlist> Function(String path, String name)?
+      importLocalPlaylistForTesting;
 
   @override
   State<TvSourceEntryForm> createState() => _TvSourceEntryFormState();
@@ -159,7 +176,10 @@ class _TvSourceEntryFormState extends State<TvSourceEntryForm> {
     // peut disparaître dès le premier lot de chaînes, l'import doit finir.
     final OpenSourceDraft draft = parsed.draft!;
     final String name = context.l10n.tvMyListHint;
+    final String profileId =
+        widget.targetProfileId ?? ActiveProfile.instance.id;
     final submit = widget.submitForTesting;
+    final importer = widget.importPlaylistForTesting;
     setState(() {
       _busy = true;
       _importStarted = false;
@@ -170,24 +190,30 @@ class _TvSourceEntryFormState extends State<TvSourceEntryForm> {
     try {
       await RemoteSourceRepository.runUserImport<void>(() async {
         if (mounted) setState(() => _importStarted = true);
-        if (submit != null) {
+        Playlist? saved;
+        if (importer != null) {
+          saved = await importer(draft, name);
+        } else if (submit != null) {
           await submit(draft, name);
         } else if (draft.kind == OpenSourceKind.xtream) {
-          await PlaylistRepository.instance.addXtreamPlaylist(
+          saved = await PlaylistRepository.instance.addXtreamPlaylist(
             name: name,
             serverUrl: draft.serverUrl!,
             username: draft.username!,
             password: draft.password!,
           );
         } else {
-          await PlaylistRepository.instance.addM3uPlaylist(
+          saved = await PlaylistRepository.instance.addM3uPlaylist(
             name: name,
             url: draft.m3uUrl!,
           );
         }
+        if (saved != null) await _attach(profileId, saved);
       });
       added = true;
       BlackBox.instance.info('SOURCE', 'source ouverte ajoutée');
+    } on _ProfileSourceUnavailable {
+      if (mounted) setState(() => _error = 'profile_unavailable');
     } catch (error) {
       // Une exception fournisseur peut contenir des identifiants dans l'URL.
       // Seul son type est journalisé ; le message public reste traduit.
@@ -246,6 +272,11 @@ class _TvSourceEntryFormState extends State<TvSourceEntryForm> {
     // Le sélecteur met une ou deux secondes à s'ouvrir, puis la copie
     // depuis une clé USB dure : un second OK ne relance rien.
     if (_blocked || _picking) return;
+    // Le sélecteur Android lui-même peut rester ouvert longtemps : la cible
+    // et le nom doivent être capturés AVANT son ouverture, pas à son retour.
+    final String profileId =
+        widget.targetProfileId ?? ActiveProfile.instance.id;
+    final String name = context.l10n.tvMyListHint;
     _picking = true;
     final Future<LocalM3uPick> Function()? fake = widget.pickLocalFileForTesting;
     final LocalM3uPick pick;
@@ -264,9 +295,9 @@ class _TvSourceEntryFormState extends State<TvSourceEntryForm> {
       return;
     }
     final String path = pick.path!;
-    final String name = context.l10n.tvMyListHint;
     final Future<void> Function(String path)? importer =
         widget.importLocalFileForTesting;
+    final playlistImporter = widget.importLocalPlaylistForTesting;
     setState(() {
       _busy = true;
       _importStarted = false;
@@ -274,18 +305,23 @@ class _TvSourceEntryFormState extends State<TvSourceEntryForm> {
     });
     bool added = false;
     try {
-      if (importer != null) {
+      if (importer != null && playlistImporter == null) {
         await importer(path);
       } else {
         await RemoteSourceRepository.runUserImport<void>(() async {
           if (mounted) setState(() => _importStarted = true);
-          await PlaylistRepository.instance.addM3uFromLocalFile(
-            name: name,
-            path: path,
-          );
+          final Playlist saved = playlistImporter != null
+              ? await playlistImporter(path, name)
+              : await PlaylistRepository.instance.addM3uFromLocalFile(
+                  name: name,
+                  path: path,
+                );
+          await _attach(profileId, saved);
         });
       }
       added = true;
+    } on _ProfileSourceUnavailable {
+      if (mounted) setState(() => _error = 'profile_unavailable');
     } on LocalM3uRead catch (error) {
       if (mounted) setState(() => _error = error.code);
     } catch (error) {
@@ -304,6 +340,16 @@ class _TvSourceEntryFormState extends State<TvSourceEntryForm> {
     }
     if (mounted && added) widget.onAdded?.call();
     if (mounted && !added) _refocusAfterFailure(_fileFocus);
+  }
+
+  Future<void> _attach(String profileId, Playlist playlist) async {
+    final int? id = playlist.id;
+    if (id == null ||
+        !await ProfileRepository.instance.attachPlaylist(profileId, id)) {
+      // Ne jamais attribuer la liste au profil devenu actif entre-temps.
+      // Si sa cible a été supprimée, aucun autre profil n'est modifié.
+      throw const _ProfileSourceUnavailable();
+    }
   }
 
   @override
@@ -468,7 +514,9 @@ class _TvSourceEntryFormState extends State<TvSourceEntryForm> {
               Semantics(
                 liveRegion: true,
                 child: Text(
-                  sourceErrorText(context, _error!),
+                  _error == 'profile_unavailable'
+                      ? l10n.tvProfileSourceUnavailable
+                      : sourceErrorText(context, _error!),
                   key: const ValueKey<String>('tv-source-error'),
                   style: TvAppTokens.of(context)
                       .ui(14, color: TvAppTokens.of(context).live),
@@ -511,6 +559,10 @@ class _TvSourceEntryFormState extends State<TvSourceEntryForm> {
       ),
     );
   }
+}
+
+class _ProfileSourceUnavailable implements Exception {
+  const _ProfileSourceUnavailable();
 }
 
 /// Vrai TextField : tactile, clavier physique, D-pad et copier-coller.

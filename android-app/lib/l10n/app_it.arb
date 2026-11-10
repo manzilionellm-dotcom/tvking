@@ -2894,5 +2894,8 @@
   "tvAmbientTitle": "Alone",
   "tvAmbientHelp": "Segue il film o la partita intorno all'immagine. L'immagine non cambia. Su una box piccola l'alone resta fisso.",
   "tvAmbientAuto": "Auto",
-  "tvAmbientOff": "Spento"
+  "tvAmbientOff": "Spento",
+  "vipCountriesFirstUseHint": "Scegli qui i tuoi Paesi. Puoi cambiarli in qualsiasi momento.",
+  "tvAdultLive": "Adult live TV",
+  "tvAdultCinema": "Adult cinema"
 }

@@ -14,9 +14,13 @@ import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../channels/domain/channel.dart';
+import '../../channels/domain/channel_genre.dart';
+import '../../cinema/data/cinema_repository.dart';
+import '../../cinema/data/watch_progress.dart';
 import '../../player/presentation/play_channel.dart';
 import '../data/download_repository.dart';
 import '../data/vod_repository.dart';
+import '../../profiles/data/active_profile.dart';
 import '../domain/vod_movie.dart';
 
 class MoviesScreen extends StatefulWidget {
@@ -34,6 +38,13 @@ class _MoviesScreenState extends State<MoviesScreen> {
     super.initState();
     DownloadsRepository.instance.initialize();
     _moviesFuture = VodRepository.instance.fetchMovies();
+    ActiveProfile.instance.scopeListenable.addListener(_reloadCatalogue);
+  }
+
+  @override
+  void dispose() {
+    ActiveProfile.instance.scopeListenable.removeListener(_reloadCatalogue);
+    super.dispose();
   }
 
   void _reloadCatalogue() {
@@ -44,6 +55,7 @@ class _MoviesScreenState extends State<MoviesScreen> {
 
   // Lance la lecture (streaming) d'un film VOD.
   void _playMovie(VodMovie m) {
+    if (ChannelClassifier.isAdult(m.name, m.category)) return;
     playChannel(
       context,
       Channel(
@@ -60,6 +72,7 @@ class _MoviesScreenState extends State<MoviesScreen> {
 
   // Lance la lecture HORS-LIGNE d'un film déjà téléchargé (fichier local).
   void _playOffline(Download d) {
+    if (!_normalDownload(d)) return;
     playChannel(
       context,
       Channel(
@@ -107,6 +120,15 @@ class _MoviesScreenState extends State<MoviesScreen> {
     );
   }
 
+  bool _normalDownload(Download d) {
+    final entry = WatchProgressRepository.instance.get(d.id);
+    final repo = CinemaRepository.instance;
+    return (entry == null
+            ? repo.adultStatusForMedia(d.id, d.name)
+            : repo.adultStatusForWatch(entry)) ==
+        false;
+  }
+
   // ----- Onglet 1 : catalogue VOD -----
   Widget _buildCatalogue() {
     return FutureBuilder<List<VodMovie>>(
@@ -115,7 +137,9 @@ class _MoviesScreenState extends State<MoviesScreen> {
         if (snap.connectionState != ConnectionState.done) {
           return const Center(child: CircularProgressIndicator());
         }
-        final List<VodMovie> movies = snap.data ?? const <VodMovie>[];
+        final List<VodMovie> movies = (snap.data ?? const <VodMovie>[])
+            .where((m) => !ChannelClassifier.isAdult(m.name, m.category))
+            .toList(growable: false);
         if (movies.isEmpty) {
           return Center(
             child: Padding(
@@ -169,7 +193,9 @@ class _MoviesScreenState extends State<MoviesScreen> {
       stream: DownloadsRepository.instance.stream,
       initialData: DownloadsRepository.instance.current,
       builder: (BuildContext context, AsyncSnapshot<List<Download>> snap) {
-        final List<Download> items = snap.data ?? const <Download>[];
+        final List<Download> items = (snap.data ?? const <Download>[])
+            .where(_normalDownload)
+            .toList(growable: false);
         if (items.isEmpty) {
           return Center(
             child: Padding(
@@ -273,7 +299,7 @@ class _MovieRow extends StatelessWidget {
     );
   }
 
-  Widget _posterFallback() => ColoredBox(
+  Widget _posterFallback() => const ColoredBox(
         color: AppColors.surfaceHigh,
         child:
             Icon(Icons.movie_outlined, color: AppColors.textTertiary, size: 22),

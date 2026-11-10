@@ -2894,5 +2894,8 @@
   "tvAmbientTitle": "Licht",
   "tvAmbientHelp": "Folgt dem Film oder dem Spiel um das Bild. Das Bild ändert sich nicht. Auf einer kleinen Box bleibt das Licht fest.",
   "tvAmbientAuto": "Auto",
-  "tvAmbientOff": "Aus"
+  "tvAmbientOff": "Aus",
+  "vipCountriesFirstUseHint": "Wähle hier deine Länder. Du kannst sie jederzeit ändern.",
+  "tvAdultLive": "Adult live TV",
+  "tvAdultCinema": "Adult cinema"
 }

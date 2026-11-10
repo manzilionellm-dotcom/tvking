@@ -2,6 +2,7 @@
 //  tv_shell.dart — Conteneur racine 10-foot (safe area + fond Maison Noir)
 // =========================================================
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 
 import '../core/tv_ambient.dart';
 import '../core/tv_ambient_director.dart';
@@ -27,6 +28,7 @@ class _TvShellState extends State<TvShell> with SingleTickerProviderStateMixin {
   );
   TvAmbientLook? _from;
   TvAmbientLook? _to;
+  bool _ambientScheduled = false;
 
   @override
   void initState() {
@@ -38,6 +40,20 @@ class _TvShellState extends State<TvShell> with SingleTickerProviderStateMixin {
 
   void _onAmbient() {
     if (!mounted) return;
+    if (SchedulerBinding.instance.schedulerPhase ==
+        SchedulerPhase.persistentCallbacks) {
+      // L'initState du lecteur peut changer l'ambiance pendant le build de
+      // sa route. Le shell encore derrière ne doit pas notifier son animation
+      // au milieu de ce build. Coalescer, puis relire la toute dernière valeur.
+      if (!_ambientScheduled) {
+        _ambientScheduled = true;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _ambientScheduled = false;
+          if (mounted) _onAmbient();
+        });
+      }
+      return;
+    }
     final TvAmbientLook? next = TvAmbientDirector.instance.look;
     _from = _to;
     _to = next;

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:native_video_player/native_video_player.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../../cast/data/cast_manager.dart';
+import '../../security/data/adult_access.dart';
 import '../../cast/data/cast_platform.dart';
 import '../../cast/presentation/cast_picker_sheet.dart';
 import '../core/tv_dimens.dart';
@@ -13,16 +14,18 @@ import 'media_kit_video_backend.dart';
 
 typedef ZunoCastPicker = Future<void> Function(BuildContext context, {
   required String streamUrl, required String title, String? imageUrl,
+  AdultAccessGrant? adultAccess,
 });
 
 class DesktopCastControls extends StatefulWidget {
   const DesktopCastControls({super.key, required this.controller,
     required this.streamUrl, required this.title, this.imageUrl,
-    this.onHandoffChanged, this.manager, this.picker});
+    this.onHandoffChanged, this.manager, this.picker, this.adultAccess});
   final NativeVideoController controller;
   final String streamUrl;
   final String title;
   final String? imageUrl;
+  final AdultAccessGrant? adultAccess;
   final ValueChanged<bool>? onHandoffChanged;
   // Injection pour tester annulation / passation sans récepteur physique.
   final CastManager? manager;
@@ -42,11 +45,13 @@ class DesktopCastControlsState extends State<DesktopCastControls> {
   Future<void> _localTail = Future<void>.value();
   int _revision = 0;
   bool get ownsSession => _owns;
+  bool get _accessAllowed => widget.adultAccess?.isValid ?? true;
 
   @override
   void initState() {
     super.initState();
     _manager.addListener(_changed);
+    widget.adultAccess?.addListener(_accessChanged);
     if (_manager.hasActiveSession) {
       // Le Cast appartient au moteur partagé, pas à cette route. Un lecteur
       // ouvert pendant sa session ferme son flux local, sans envoyer une
@@ -62,11 +67,25 @@ class DesktopCastControlsState extends State<DesktopCastControls> {
   @override
   void didUpdateWidget(DesktopCastControls oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.adultAccess, widget.adultAccess)) {
+      oldWidget.adultAccess?.removeListener(_accessChanged);
+      widget.adultAccess?.addListener(_accessChanged);
+      _accessChanged();
+    }
     if (oldWidget.controller != widget.controller && _localHandoff) {
       _localTail = _suspendLocal(widget.controller).catchError((Object _) {});
     }
     if (_owns && oldWidget.streamUrl != widget.streamUrl) unawaited(_changeStream());
   }
+  void _accessChanged() {
+    if (_dead || !mounted || _accessAllowed) return;
+    ++_revision;
+    // Ne jamais restaurer le lecteur local lorsque la session distante
+    // protégée s'arrête. Le propriétaire ferme également ses routes.
+    unawaited(_setLocalHandoff(true).catchError((Object _) {}));
+    setState(() {});
+  }
+
   void _changed() {
     if (_dead || !mounted) return;
     if (_pickerPending && _manager.isCasting) _pickerStartedPlayback = true;
@@ -80,6 +99,7 @@ class DesktopCastControlsState extends State<DesktopCastControls> {
   }
 
   Future<void> _setLocalHandoff(bool active) {
+    if (!_accessAllowed) active = true;
     if (_localHandoff == active) return _localTail;
     _localHandoff = active;
     widget.onHandoffChanged?.call(active);
@@ -100,14 +120,15 @@ class DesktopCastControlsState extends State<DesktopCastControls> {
 
   Future<void> _changeStream() async {
     final device = _manager.device;
-    if (device == null) return;
+    if (device == null || !_accessAllowed) return;
     final int ticket = ++_revision;
     _busy = true;
     try {
       await _localTail;
-      if (!mounted || ticket != _revision) return;
+      if (!mounted || ticket != _revision || !_accessAllowed) return;
       await _manager.castTo(device, streamUrl: widget.streamUrl,
-          title: widget.title, imageUrl: widget.imageUrl);
+          title: widget.title, imageUrl: widget.imageUrl,
+          adultAccess: widget.adultAccess);
     } catch (_) {
       // Le moteur partagé expose l'issue ; le finally réconcilie le local.
     } finally {
@@ -119,7 +140,7 @@ class DesktopCastControlsState extends State<DesktopCastControls> {
     }
   }
   Future<void> _pick() async {
-    if (_busy) return;
+    if (_busy || !_accessAllowed) return;
     final int ticket = ++_revision;
     final String requestedUrl = widget.streamUrl;
     setState(() => _busy = true);
@@ -129,9 +150,10 @@ class DesktopCastControlsState extends State<DesktopCastControls> {
     // chez les fournisseurs qui n’en autorisent qu’une. Le film garde sa position.
     try {
       await _setLocalHandoff(true);
-      if (!mounted || ticket != _revision) return;
+      if (!mounted || ticket != _revision || !_accessAllowed) return;
       await (widget.picker ?? showCastPicker)(context, streamUrl: widget.streamUrl,
-          title: widget.title, imageUrl: widget.imageUrl);
+          title: widget.title, imageUrl: widget.imageUrl,
+          adultAccess: widget.adultAccess);
       if (!mounted || ticket != _revision) return;
       _owns = _manager.hasActiveSession &&
           (_manager.isCasting || _pickerStartedPlayback);
@@ -141,7 +163,8 @@ class DesktopCastControlsState extends State<DesktopCastControls> {
         await _manager.disconnect();
       } else if (requestedUrl != widget.streamUrl && _manager.device != null) {
         await _manager.castTo(_manager.device!, streamUrl: widget.streamUrl,
-            title: widget.title, imageUrl: widget.imageUrl);
+            title: widget.title, imageUrl: widget.imageUrl,
+          adultAccess: widget.adultAccess);
         if (mounted && ticket == _revision) _owns = _manager.hasActiveSession;
       }
     } catch (_) {
@@ -172,7 +195,7 @@ class DesktopCastControlsState extends State<DesktopCastControls> {
   }
 
   Future<void> togglePause() async {
-    if (!_owns || _busy) return;
+    if (!_owns || _busy || !_accessAllowed) return;
     setState(() => _busy = true);
     try {
       if (_manager.state == CastState.paused) { await _manager.resume(); }
@@ -185,10 +208,10 @@ class DesktopCastControlsState extends State<DesktopCastControls> {
       }
     }
   }
-  Future<void> pause() async { if (_owns && !_busy) await _manager.pause(); }
-  Future<void> resume() async { if (_owns && !_busy) await _manager.resume(); }
+  Future<void> pause() async { if (_owns && !_busy && _accessAllowed) await _manager.pause(); }
+  Future<void> resume() async { if (_owns && !_busy && _accessAllowed) await _manager.resume(); }
   Future<void> _stop() async {
-    if (_busy) return;
+    if (_busy || !_accessAllowed) return;
     ++_revision;
     setState(() { _busy = true; _owns = false; });
     try {
@@ -205,6 +228,7 @@ class DesktopCastControlsState extends State<DesktopCastControls> {
   void dispose() {
     _dead = true; ++_revision;
     _manager.removeListener(_changed);
+    widget.adultAccess?.removeListener(_accessChanged);
     // Comme dans 7 MOTION, une session établie survit à la route. Seul un
     // choix encore en attente est annulé : il ne doit pas démarrer plus tard
     // après la fermeture de son sélecteur. Le moteur possède ses relais.
@@ -215,7 +239,7 @@ class DesktopCastControlsState extends State<DesktopCastControls> {
   }
   @override
   Widget build(BuildContext context) {
-    if (!CastPlatform.canSendFromZuno || !widget.streamUrl.startsWith(RegExp(r'https?://'))) return const SizedBox.shrink();
+    if (!_accessAllowed || !CastPlatform.canSendFromZuno || !widget.streamUrl.startsWith(RegExp(r'https?://'))) return const SizedBox.shrink();
     return Container(
       decoration: BoxDecoration(color: TvTokens.panel,
         borderRadius: BorderRadius.circular(TvTokens.rButton),

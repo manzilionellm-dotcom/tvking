@@ -2894,5 +2894,8 @@
   "tvAmbientTitle": "Gloed",
   "tvAmbientHelp": "Volgt de film of de wedstrijd rond het beeld. Het beeld verandert niet. Op een kleine box blijft de gloed vast.",
   "tvAmbientAuto": "Auto",
-  "tvAmbientOff": "Uit"
+  "tvAmbientOff": "Uit",
+  "vipCountriesFirstUseHint": "Kies hier je landen. Je kunt ze op elk moment wijzigen.",
+  "tvAdultLive": "Adult live TV",
+  "tvAdultCinema": "Adult cinema"
 }
