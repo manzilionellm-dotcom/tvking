@@ -14,6 +14,7 @@ import 'package:tv_king/features/playlists/data/playlist_database.dart';
 import 'package:tv_king/features/playlists/data/playlist_repository.dart';
 import 'package:tv_king/features/subscription/data/remote_activation_watch.dart';
 import 'package:tv_king/features/subscription/data/subscription_state.dart';
+import 'package:tv_king/features/theme/data/remote_theme_repository.dart';
 
 const bool _run = bool.fromEnvironment('RUN_PANEL_CONNECTION');
 const String _mac = 'MK:11:22:33:44:66';
@@ -90,6 +91,9 @@ void main() {
           await sourceGate.future;
         }
         request.response.write('{"sources":[],"rev":1}');
+      } else if (request.uri.path == '/api/theme') {
+        request.response.write(
+            '{"appName":"Thème reçu pendant import","accent":"#F2F0E8","bg":"dark"}');
       } else if (request.uri.path.startsWith('/api/status/') ||
           request.uri.path == '/api/heartbeat') {
         request.response.write(jsonEncode(<String, Object>{
@@ -112,6 +116,7 @@ void main() {
       await request.response.close();
     });
     final measurements = <String, int>{};
+    final statusSamples = <int>[];
     Future<void> send(String type, int seq, bool Function() visible) async {
       final id = 'ord_ws_${seq}_fixture';
       final watch = Stopwatch()..start();
@@ -124,6 +129,9 @@ void main() {
       await _until(() => visible() && applied.contains(id),
           'Le push $type doit appliquer son effet et accuser son résultat.');
       measurements[type] = watch.elapsedMilliseconds;
+      if (type == 'suspend' || type == 'resume' || type == 'activate') {
+        statusSamples.add(watch.elapsedMilliseconds);
+      }
       expect(watch.elapsedMilliseconds, lessThan(1000),
           reason: 'Le signal reçu ne doit pas attendre le prochain polling.');
     }
@@ -162,16 +170,44 @@ void main() {
       measurements['received_while_importing'] = reception.elapsedMilliseconds;
       expect(reception.elapsedMilliseconds, lessThan(1000));
       expect(applied.contains('ord_ws_14_fixture'), isFalse);
-      expect(applied.contains('ord_ws_15_fixture'), isFalse,
-          reason: 'RECEIVED ne doit jamais fabriquer un APPLIED prématuré.');
+      await _until(
+          () =>
+              !SubscriptionState.instance.remote.frozen &&
+              applied.contains('ord_ws_15_fixture'),
+          'Le statut léger doit réellement changer pendant l’import bloqué.');
+      measurements['applied_while_importing'] = reception.elapsedMilliseconds;
+      expect(reception.elapsedMilliseconds, lessThan(1000));
+      frozen = true;
+      await send('suspend', 16, () => SubscriptionState.instance.remote.frozen);
+      await send(
+          'theme',
+          17,
+          () =>
+              RemoteThemeRepository.current.value.appName ==
+              'Thème reçu pendant import');
+      expect(applied.contains('ord_ws_14_fixture'), isFalse,
+          reason:
+              'Le téléchargement bloqué ne devient jamais appliqué à tort.');
+      final preferences = await SharedPreferences.getInstance();
+      expect(preferences.getInt('zuno.signal.box_after.v1') ?? 0, lessThan(14),
+          reason:
+              'Les effets rapides ne sautent pas la source dans le curseur durable.');
+      for (int index = 0; index < 20; index++) {
+        frozen = index.isEven;
+        await send(frozen ? 'suspend' : 'resume', 18 + index,
+            () => SubscriptionState.instance.remote.frozen == frozen);
+      }
       sourceGate.complete();
       await _until(
           () =>
               applied.contains('ord_ws_14_fixture') &&
               applied.contains('ord_ws_15_fixture'),
-          'Les deux effets finissent dans leur ordre.');
+          'L’import finit réellement, sans perdre les effets déjà appliqués.');
+      await _until(
+          () => (preferences.getInt('zuno.signal.box_after.v1') ?? 0) >= 37,
+          'Le curseur rattrape les ordres seulement après la fin de la source.');
       frozen = true;
-      await send('suspend', 16, () => SubscriptionState.instance.remote.frozen);
+      await send('suspend', 38, () => SubscriptionState.instance.remote.frozen);
       // Sans nouvel ordre, la perte du push doit faire relire le statut.
       frozen = false;
       pushAvailable = false;
@@ -180,6 +216,12 @@ void main() {
       await _until(() => !SubscriptionState.instance.remote.frozen,
           'Le filet HTTP doit reprendre dès que la prise est coupée.');
       measurements['repli_http'] = watch.elapsedMilliseconds;
+      statusSamples.sort();
+      measurements['status_samples'] = statusSamples.length;
+      measurements['status_p50'] = statusSamples[statusSamples.length ~/ 2];
+      measurements['status_p95'] =
+          statusSamples[((statusSamples.length - 1) * .95).ceil()];
+      measurements['status_max'] = statusSamples.last;
       debugPrint('[mesure panel local, ms] ${jsonEncode(measurements)}');
       expect(watch.elapsedMilliseconds, lessThan(1500),
           reason:

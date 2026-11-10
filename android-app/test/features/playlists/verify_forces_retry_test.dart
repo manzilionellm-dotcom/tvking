@@ -19,6 +19,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:tv_king/core/app/repair_flags.dart';
 import 'package:tv_king/core/flavor/flavor.dart';
+import 'package:tv_king/features/playlists/data/import_progress.dart';
 import 'package:tv_king/features/playlists/data/playlist_database.dart';
 import 'package:tv_king/features/playlists/data/playlist_repository.dart';
 import 'package:tv_king/features/playlists/data/remote_source_repository.dart';
@@ -48,7 +49,7 @@ void main() {
         return http.Response('inconnu', 404);
       });
 
-  Future<void> sync({bool force = false}) =>
+  Future<RemoteSyncResult> sync({bool force = false}) =>
       http.runWithClient(() => RemoteSourceRepository.sync(force: force), client);
 
   Future<bool> hasList() async => (await PlaylistRepository.instance.getAllPlaylists())
@@ -63,11 +64,18 @@ void main() {
     PlaylistDatabase.debugFilePath = '${dir.path}/tv_king.db';
     PlaylistRepository.mergeAllPlaylists = true;
     SharedPreferences.setMockInitialValues(<String, Object>{'device.virtual_mac.v1': kMac});
-    RepairFlags.sourceRetryAlways = false;
+    RepairFlags.debugReset();
+    RemoteSourceRepository.importing.value = false;
+    RemoteSourceRepository.lastResult.value = null;
+    ImportProgressBus.clear();
     providerDown = true;
   });
 
   tearDown(() async {
+    RepairFlags.debugReset();
+    RemoteSourceRepository.importing.value = false;
+    RemoteSourceRepository.lastResult.value = null;
+    ImportProgressBus.clear();
     await PlaylistDatabase.instance.closeForTesting();
     try {
       await dir.delete(recursive: true);
@@ -75,15 +83,44 @@ void main() {
   });
 
   test('liste refusée une fois : relecture normale la saute, Vérifier (forcé) la charge', () async {
-    await sync(); // fournisseur en panne : refusée, mise de côté
+    // Masquer la pastille globale ne doit pas masquer les faits de l'import
+    // dont dépend l'écran Direct, déjà ouvert lors de l'ordre du panel.
+    RepairFlags.syncPillOff = true;
+    final List<bool> imports = <bool>[];
+    final List<RemoteSyncResult?> results = <RemoteSyncResult?>[];
+    void onImport() => imports.add(RemoteSourceRepository.importing.value);
+    void onResult() => results.add(RemoteSourceRepository.lastResult.value);
+    RemoteSourceRepository.importing.addListener(onImport);
+    RemoteSourceRepository.lastResult.addListener(onResult);
+    addTearDown(() {
+      RemoteSourceRepository.importing.removeListener(onImport);
+      RemoteSourceRepository.lastResult.removeListener(onResult);
+    });
+
+    // Fournisseur en panne : un vrai import commence puis termine en refus.
+    expect(await sync(), RemoteSyncResult.sourceFailed);
+    expect(imports, <bool>[true, false]);
+    expect(RemoteSourceRepository.importing.value, isFalse);
+    expect(RemoteSourceRepository.lastResult.value, RemoteSyncResult.sourceFailed);
+    expect(results, <RemoteSyncResult>[RemoteSyncResult.sourceFailed]);
     expect(await hasList(), isFalse);
 
     providerDown = false; // le fournisseur répond de nouveau
-    await sync(); // ancien bouton Vérifier : relecture NON forcée
+    expect(await sync(), RemoteSyncResult.sourceFailed);
+    expect(imports, <bool>[true, false],
+        reason: 'une liste mise de côté ne simule pas un téléchargement');
+    expect(RemoteSourceRepository.lastResult.value, RemoteSyncResult.sourceFailed);
     expect(await hasList(), isFalse,
         reason: 'contre-preuve : la liste reste mise de côté → « Pas encore de chaînes »');
 
-    await sync(force: true); // nouveau bouton Vérifier
+    expect(await sync(force: true), RemoteSyncResult.loaded);
+    expect(imports, <bool>[true, false, true, false]);
+    expect(RemoteSourceRepository.importing.value, isFalse);
+    expect(RemoteSourceRepository.lastResult.value, RemoteSyncResult.loaded);
+    expect(results, <RemoteSyncResult>[
+      RemoteSyncResult.sourceFailed,
+      RemoteSyncResult.loaded,
+    ]);
     expect(await hasList(), isTrue, reason: 'retentée tout de suite et chargée');
   });
 }

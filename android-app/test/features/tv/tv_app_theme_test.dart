@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tv_king/features/tv/core/tv_app_tokens.dart';
 import 'package:tv_king/features/tv/core/tv_comfort.dart';
+import 'package:tv_king/features/tv/core/tv_ghost.dart';
 import 'package:tv_king/features/tv/core/tv_tokens.dart';
 
 class _ThemeProbe extends StatefulWidget {
@@ -30,6 +31,58 @@ class _ThemeProbeState extends State<_ThemeProbe> {
 }
 
 void main() {
+  test(
+    'Noir Fantôme reste OLED et platine avec un thème clair doré du panel',
+    () {
+      const palette = TvAppTokens(
+        ghost: true,
+        light: true,
+        remoteAccent: TvTokens.accent,
+      );
+      expect(palette.light, isFalse);
+      expect(palette.bg, Colors.black);
+      expect(palette.panel, TvGhost.panel);
+      expect(palette.card, TvGhost.card);
+      expect(palette.text, TvGhost.text);
+      expect(palette.accent, TvGhost.chrome);
+      expect(palette.accentBright, TvGhost.chromeBright);
+      expect(palette.accentDeep, TvGhost.chromeDeep);
+      expect(palette.onAccent, TvGhost.onChrome);
+      expect((palette.bgGradient as RadialGradient).colors, <Color>[
+        Colors.black,
+        Colors.black,
+      ]);
+
+      // La priorité visuelle ne détruit pas les réglages du panel :
+      // l'option Confort retrouve réellement leur palette.
+      final comfort = palette.copyWith(ghost: false);
+      expect(palette.remoteAccent, TvTokens.accent);
+      expect(comfort.light, isTrue);
+      expect(comfort.bg, const TvAppTokens(light: true).bg);
+      expect(comfort.accent, TvTokens.accent);
+    },
+  );
+
+  test('une animation de thème Ghost conserve le choix clair du panel', () {
+    const before = TvAppTokens(
+      ghost: true,
+      light: true,
+      remoteAccent: Colors.blue,
+    );
+    const after = TvAppTokens(
+      ghost: true,
+      light: true,
+      remoteAccent: TvTokens.accent,
+    );
+    final during = before.lerp(after, .5);
+    expect(during.light, isFalse);
+    expect(during.bg, Colors.black);
+    expect(during.accent, TvGhost.chrome);
+    final comfort = during.copyWith(ghost: false);
+    expect(comfort.light, isTrue);
+    expect(comfort.accent, Color.lerp(Colors.blue, TvTokens.accent, .5));
+  });
+
   test('sans réglage panel, le soir confort remplace le noir historique', () {
     const palette = TvAppTokens();
     final comfort = TvComfortPalette.of(TvComfortPeriod.evening);

@@ -48,6 +48,17 @@ void main() {
       expect(orderOutcome(kind: 'reset', receivedAtMs: t, statusRead: true, sideEffectOk: true).state, 'failed');
     });
 
+    test('import annulé par un retrait plus récent → FAILED superseded', () {
+      final OrderOutcome result = orderOutcome(
+        kind: 'source', receivedAtMs: t, statusRead: true, sideEffectOk: true,
+        report: const SourceSyncReport(result: 'superseded', atMs: t + 1, configRev: 9),
+      );
+      expect(result.state, 'failed');
+      expect(result.result, 'superseded');
+      expect(result.errorCode, 'superseded');
+      expect(result.configRev, 9);
+    });
+
     test('listes vidées par le panel → APPLIED no_source ; réseau coupé → FAILED network', () {
       expect(orderOutcome(kind: 'source_clear', receivedAtMs: t, statusRead: true, sideEffectOk: true,
           report: const SourceSyncReport(result: 'noSource', atMs: t)).result, 'no_source');
