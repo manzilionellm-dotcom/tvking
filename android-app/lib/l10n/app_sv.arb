@@ -1469,5 +1469,17 @@
   "tvProfileSources": "Profilens spellistor",
   "tvProfileSourceUnavailable": "Profilen finns inte längre. Spellistan kopplades inte.",
   "tvAdultLive": "Direkt-TV för vuxna",
-  "tvAdultCinema": "Film för vuxna"
+  "tvAdultCinema": "Film för vuxna",
+  "tvCastDiagnostic": "Cast-diagnostik",
+  "playerScreenCast": "Skärm",
+  "castZapPrevTooltip": "Föregående kanal",
+  "castZapNextTooltip": "Nästa kanal",
+  "screenCastTitle": "Casta till en skärm",
+  "screenCastStartError": "Det gick inte att starta delningen. Kontrollera att Wi-Fi är på och försök igen.",
+  "screenCastInstructions": "Öppna webbläsaren på din dator eller TV (på SAMMA Wi-Fi som telefonen) och skriv in den här adressen:",
+  "screenCastScanHint": "eller skanna med en annan telefon",
+  "screenCastKeepOpen": "Håll appen öppen och båda enheterna på samma Wi-Fi-nätverk medan du castar.",
+  "castNetworkDiagnostic": "Kontrollera Cast-nätverket",
+  "castNetworkDiagnosticHelp": "Kontrollerar anslutningen och reläet utan att byta kanal på TV:n.",
+  "castDiagnosticClosePlayer": "Gå tillbaka till startsidan innan du testar kanaler på TV:n."
 }

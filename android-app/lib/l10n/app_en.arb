@@ -1537,5 +1537,17 @@
   "tvProfileSources": "Profile playlists",
   "tvProfileSourceUnavailable": "This profile no longer exists. The playlist was not linked.",
   "tvAdultLive": "Adult live TV",
-  "tvAdultCinema": "Adult cinema"
+  "tvAdultCinema": "Adult cinema",
+  "tvCastDiagnostic": "Cast diagnostics",
+  "playerScreenCast": "Screen",
+  "castZapPrevTooltip": "Previous channel",
+  "castZapNextTooltip": "Next channel",
+  "screenCastTitle": "Cast to a screen",
+  "screenCastStartError": "Couldn't start sharing. Make sure Wi-Fi is on and try again.",
+  "screenCastInstructions": "On your computer or TV (on the SAME Wi-Fi as your phone), open the browser and type this address:",
+  "screenCastScanHint": "or scan with another phone",
+  "screenCastKeepOpen": "Keep the app open and both devices on the same Wi-Fi network while casting.",
+  "castNetworkDiagnostic": "Check the Cast network",
+  "castNetworkDiagnosticHelp": "Check the connection and relay without changing the TV channel.",
+  "castDiagnosticClosePlayer": "Return to Home before testing channels on the TV."
 }

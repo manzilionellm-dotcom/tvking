@@ -1469,5 +1469,17 @@
   "tvAdultLive": "Adult live TV",
   "tvAdultCinema": "Adult cinema",
   "tvProfileSources": "Orodha za kucheza za wasifu",
-  "tvProfileSourceUnavailable": "Wasifu huu haupo tena. Orodha ya kucheza haikuunganishwa."
+  "tvProfileSourceUnavailable": "Wasifu huu haupo tena. Orodha ya kucheza haikuunganishwa.",
+  "tvCastDiagnostic": "Uchunguzi wa Cast",
+  "playerScreenCast": "Skrini",
+  "castZapPrevTooltip": "Kituo kilichotangulia",
+  "castZapNextTooltip": "Kituo kinachofuata",
+  "screenCastTitle": "Tangaza kwenye skrini",
+  "screenCastStartError": "Imeshindwa kuanza kushiriki. Hakikisha Wi-Fi imewashwa kisha ujaribu tena.",
+  "screenCastInstructions": "Kwenye kompyuta au TV yako (kwenye Wi-Fi ILE ILE na simu), fungua kivinjari na uandike anwani hii:",
+  "screenCastScanHint": "au skani kwa simu nyingine",
+  "screenCastKeepOpen": "Weka programu wazi na vifaa vyote viwili kwenye mtandao mmoja wa Wi-Fi wakati wa kutangaza.",
+  "castNetworkDiagnostic": "Kagua mtandao wa Cast",
+  "castNetworkDiagnosticHelp": "Hukagua muunganisho na njia ya kusambaza bila kubadilisha kituo cha TV.",
+  "castDiagnosticClosePlayer": "Rudi kwenye ukurasa wa mwanzo kabla ya kujaribu vituo kwenye TV."
 }

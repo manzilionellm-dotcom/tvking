@@ -2899,5 +2899,17 @@
   "tvAdultLive": "Adult live TV",
   "tvAdultCinema": "Adult cinema",
   "tvProfileSources": "Wiedergabelisten des Profils",
-  "tvProfileSourceUnavailable": "Dieses Profil existiert nicht mehr. Die Wiedergabeliste wurde nicht zugeordnet."
+  "tvProfileSourceUnavailable": "Dieses Profil existiert nicht mehr. Die Wiedergabeliste wurde nicht zugeordnet.",
+  "tvCastDiagnostic": "Cast-Diagnose",
+  "playerScreenCast": "Bildschirm",
+  "castZapPrevTooltip": "Vorheriger Sender",
+  "castZapNextTooltip": "Nächster Sender",
+  "screenCastTitle": "Auf einen Bildschirm übertragen",
+  "screenCastStartError": "Die Übertragung konnte nicht gestartet werden. Prüfe, ob WLAN aktiviert ist, und versuche es erneut.",
+  "screenCastInstructions": "Öffne auf deinem Computer oder Fernseher im selben WLAN wie dein Telefon den Browser und gib diese Adresse ein:",
+  "screenCastScanHint": "oder mit einem anderen Telefon scannen",
+  "screenCastKeepOpen": "Lass die App während der Übertragung geöffnet und beide Geräte im selben WLAN.",
+  "castNetworkDiagnostic": "Cast-Netzwerk prüfen",
+  "castNetworkDiagnosticHelp": "Prüft die Verbindung und das Relay, ohne den Sender auf dem Fernseher zu wechseln.",
+  "castDiagnosticClosePlayer": "Kehre zur Startseite zurück, bevor du Sender auf dem Fernseher testest."
 }

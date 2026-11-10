@@ -3212,5 +3212,17 @@
   "tvProfileSources": "Liisaska bogga qofka",
   "tvProfileSourceUnavailable": "Boggan qofka ma jiro mar dambe. Liiska laguma xirin.",
   "tvAdultLive": "TV toos ah oo dadka waaweyn ah",
-  "tvAdultCinema": "Filimada dadka waaweyn"
+  "tvAdultCinema": "Filimada dadka waaweyn",
+  "tvCastDiagnostic": "Baaritaanka Cast",
+  "playerScreenCast": "Shaashad",
+  "castZapPrevTooltip": "Kanaalkii hore",
+  "castZapNextTooltip": "Kanaalka xiga",
+  "screenCastTitle": "U gudbi shaashad",
+  "screenCastStartError": "Wadaagista lama bilaabi karin. Hubi in Wi-Fi daaran yahay oo mar kale isku day.",
+  "screenCastInstructions": "Kombiyuutarkaaga ama TV-gaaga oo ku xiran isla Wi-Fi-ga telefoonka, fur biraawsarka oo geli cinwaankan:",
+  "screenCastScanHint": "ama ku sawir telefoon kale",
+  "screenCastKeepOpen": "Inta aad baahinayso, barnaamijka ha furnaado, labada qalabna ha ku xirnaadaan isla shabakadda Wi-Fi.",
+  "castNetworkDiagnostic": "Hubi shabakadda Cast",
+  "castNetworkDiagnosticHelp": "Waxay hubisaa xiriirka iyo gudbinta iyada oo aan la beddelin kanaalka TV-ga.",
+  "castDiagnosticClosePlayer": "Ku noqo bogga hore ka hor inta aadan kanaallada ku tijaabin TV-ga."
 }

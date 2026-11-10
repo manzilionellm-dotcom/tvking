@@ -16,7 +16,10 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 
+import '../../channels/domain/adult_channel_policy.dart';
 import '../../channels/domain/channel.dart';
+import '../../profiles/data/active_profile.dart';
+import '../../tv/core/tv_activity.dart';
 import '../domain/cast_device.dart';
 import 'cast_manager.dart';
 import 'cast_session_diagnostic.dart';
@@ -52,13 +55,13 @@ List<Channel> pickDiagnosticChannels(List<Channel> all, int sampleSize) {
   // Groupe par genre
   final Map<String, List<Channel>> byGenre = <String, List<Channel>>{};
   for (final Channel ch in all) {
+    if (!_diagnosticChannelAllowed(ch)) continue;
     byGenre.putIfAbsent(ch.genre.label, () => <Channel>[]).add(ch);
   }
 
   // Round-robin
   final List<Channel> result = <Channel>[];
-  final List<List<Channel>> buckets =
-      byGenre.values.toList(growable: false);
+  final List<List<Channel>> buckets = byGenre.values.toList(growable: false);
   bool addedAny = true;
   while (result.length < sampleSize && addedAny) {
     addedAny = false;
@@ -73,16 +76,28 @@ List<Channel> pickDiagnosticChannels(List<Channel> all, int sampleSize) {
   return result;
 }
 
+bool _diagnosticChannelAllowed(Channel channel) =>
+    ActiveProfile.instance.allowsPlaylist(channel.playlistId) &&
+    !isAdultChannel(channel) &&
+    channel.streamUrl.trim().isNotEmpty;
+
 /// Coordonne une série de tests cast contre UN récepteur. Notifie
 /// ses listeners à chaque transition pour que l'UI suive en direct.
 class DiagnosticBatchRunner extends ChangeNotifier {
   DiagnosticBatchRunner({
     required this.device,
     required this.channels,
-  });
+    CastManager? manager,
+    Duration interTestPause = _kInterTestPause,
+  })  : _manager = manager ?? CastManager.instance,
+        _interTestPause = interTestPause;
 
   final CastDevice device;
   final List<Channel> channels;
+  final CastManager _manager;
+  final Duration _interTestPause;
+  int? _ownedRevision;
+  bool _disposed = false;
 
   bool _running = false;
   bool _cancelled = false;
@@ -108,72 +123,143 @@ class DiagnosticBatchRunner extends ChangeNotifier {
   static const Duration _kInterTestPause = Duration(seconds: 2);
 
   Future<void> run() async {
-    if (_running) return;
+    if (_running || _disposed || TvActivity.isBusy) return;
+    final int scope = ActiveProfile.instance.scopeListenable.value;
+    void scopeChanged() {
+      if (scope != ActiveProfile.instance.scopeListenable.value) cancel();
+    }
+
+    ActiveProfile.instance.scopeListenable.addListener(scopeChanged);
     _running = true;
     _cancelled = false;
     _results.clear();
     _currentIndex = 0;
-    notifyListeners();
+    _notify();
+    int expectedRevision = _manager.sessionRevision;
 
     try {
       for (int i = 0; i < channels.length; i++) {
-        if (_cancelled) break;
+        if (_cancelled ||
+            _disposed ||
+            TvActivity.isBusy ||
+            expectedRevision != _manager.sessionRevision ||
+            scope != ActiveProfile.instance.scopeListenable.value) break;
         _currentIndex = i;
-        notifyListeners();
+        _notify();
+        if (_cancelled ||
+            _disposed ||
+            TvActivity.isBusy ||
+            expectedRevision != _manager.sessionRevision ||
+            scope != ActiveProfile.instance.scopeListenable.value) break;
 
         final Channel ch = channels[i];
+        if (!_diagnosticChannelAllowed(ch)) continue;
+        final DateTime startedAt = DateTime.now();
+        bool timedOutHere = false;
 
         // 1) Cast — on encaisse l'exception, le diagnostic est déjà
         //    archivé par le CastManager dans tous les cas (finally).
         try {
-          await CastManager.instance.castTo(
+          final int before = _manager.sessionRevision;
+          final Future<void> attempt = _manager.castTo(
             device,
             streamUrl: ch.streamUrl,
             title: ch.name,
             channelName: ch.name,
             channelGenre: ch.genre.label,
           );
+          _ownedRevision = _manager.sessionRevision;
+          // Refus avant démarrage : ce numéro appartient à la session
+          // précédente, jamais au diagnostic qui vient d'être refusé.
+          if (_ownedRevision == before) {
+            _ownedRevision = null;
+            _cancelled = true;
+            break;
+          }
+          await attempt;
+        } on TimeoutException {
+          // Le timeout du manager nettoie lui-même et incrémente sa
+          // révision. Cette fermeture n'est pas une nouvelle sélection.
+          timedOutHere = _ownedRevision != null &&
+              _manager.sessionRevision == _ownedRevision! + 1 &&
+              _manager.state == CastState.error;
         } on Exception {
           // Pas d'action — l'erreur est enregistrée dans le diag.
         }
 
         // 2) Ramasser le diagnostic qui vient d'être archivé.
-        final List<CastSessionDiagnostic> recent =
-            CastManager.instance.recentDiagnostics;
-        if (recent.isNotEmpty) {
-          // Le 1er = celui qu'on vient d'archiver (insert à 0)
-          _results.add(recent.first);
-          notifyListeners();
+        final List<CastSessionDiagnostic> recent = _manager.recentDiagnostics;
+        for (final CastSessionDiagnostic diagnostic in recent) {
+          if (!diagnostic.startedAt.isBefore(startedAt) &&
+              diagnostic.device.id == device.id &&
+              diagnostic.originalUrl == ch.streamUrl) {
+            _results.add(diagnostic);
+            _notify();
+            break;
+          }
+        }
+
+        if (_cancelled ||
+            _disposed ||
+            (!timedOutHere && _ownedRevision != _manager.sessionRevision)) {
+          _cancelled = true;
+          break;
         }
 
         // 3) Disconnect + pause entre tests.
         try {
-          await CastManager.instance.disconnect();
+          if (timedOutHere) {
+            expectedRevision = _manager.sessionRevision;
+            _ownedRevision = null;
+          } else {
+            final Future<void> stopping = _manager.disconnect();
+            expectedRevision = _manager.sessionRevision;
+            _ownedRevision = null;
+            await stopping;
+          }
         } on Exception catch (e) {
           if (kDebugMode) debugPrint('[Diag] disconnect: $e');
         }
 
         if (i + 1 < channels.length && !_cancelled) {
-          await Future<void>.delayed(_kInterTestPause);
+          await Future<void>.delayed(_interTestPause);
         }
       }
     } finally {
+      ActiveProfile.instance.scopeListenable.removeListener(scopeChanged);
+      _ownedRevision = null;
       _running = false;
-      notifyListeners();
+      _notify();
     }
   }
 
   void cancel() {
     if (!_running) return;
     _cancelled = true;
-    // On laisse l'itération courante finir naturellement (castTo +
-    // disconnect) avant de sortir — éviter d'arracher la connexion
-    // au récepteur.
+    // Annuler coupe seulement la tentative possédée par CE diagnostic.
+    // Une sélection plus récente sur un autre écran reste intacte.
+    if (_ownedRevision == _manager.sessionRevision) {
+      unawaited(_manager.disconnect());
+    }
+    _ownedRevision = null;
+    _notify();
+  }
+
+  void _notify() {
+    if (!_disposed) notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    cancel();
+    _disposed = true;
+    super.dispose();
   }
 
   // -------- Agrégats pour l'UI résumé --------
 
-  int get successCount => _results.where((CastSessionDiagnostic d) => d.success).length;
+  int get successCount =>
+      _results.where((CastSessionDiagnostic d) => d.success).length;
   int get failureCount => _results.length - successCount;
 
   /// Distribution des stratégies gagnantes : `{ 'relay+full': 5, 'direct+full': 2 }`.
@@ -216,8 +302,7 @@ class DiagnosticBatchRunner extends ChangeNotifier {
           'name': device.name,
           'kind': device.kind.name,
           'host': device.host,
-          if (device.manufacturer != null)
-            'manufacturer': device.manufacturer,
+          if (device.manufacturer != null) 'manufacturer': device.manufacturer,
           if (device.model != null) 'model': device.model,
         },
         'sampleSize': _results.length,
@@ -225,8 +310,7 @@ class DiagnosticBatchRunner extends ChangeNotifier {
         'cancelled': _cancelled,
         'successCount': successCount,
         'failureCount': failureCount,
-        'successRate':
-            _results.isEmpty ? 0.0 : successCount / _results.length,
+        'successRate': _results.isEmpty ? 0.0 : successCount / _results.length,
         'averageSuccessLatencyMs': averageSuccessLatencyMs,
         'winningStrategies': winningStrategyCounts,
       },

@@ -222,7 +222,7 @@ void main() {
     ];
     await manager.castTo(_device,
         streamUrl: _url, title: 'Programme test', adultAccess: grant);
-    manager.setCastPlaylist(channels, channels.first);
+    manager.setCastPlaylist(channels, channels.first, adultAccess: grant);
     final oldZap = manager.zapCastNext();
     final replacement =
         manager.castTo(_device, streamUrl: normalUrl, title: 'Normal');

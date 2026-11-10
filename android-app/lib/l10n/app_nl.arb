@@ -2899,5 +2899,17 @@
   "tvAdultLive": "Adult live TV",
   "tvAdultCinema": "Adult cinema",
   "tvProfileSources": "Afspeellijsten van het profiel",
-  "tvProfileSourceUnavailable": "Dit profiel bestaat niet meer. De afspeellijst is niet gekoppeld."
+  "tvProfileSourceUnavailable": "Dit profiel bestaat niet meer. De afspeellijst is niet gekoppeld.",
+  "tvCastDiagnostic": "Cast-diagnose",
+  "playerScreenCast": "Scherm",
+  "castZapPrevTooltip": "Vorige zender",
+  "castZapNextTooltip": "Volgende zender",
+  "screenCastTitle": "Casten naar een scherm",
+  "screenCastStartError": "Delen kon niet worden gestart. Controleer of wifi aanstaat en probeer het opnieuw.",
+  "screenCastInstructions": "Open op je computer of tv, op hetzelfde wifi-netwerk als je telefoon, de browser en voer dit adres in:",
+  "screenCastScanHint": "of scan met een andere telefoon",
+  "screenCastKeepOpen": "Houd de app open en beide apparaten op hetzelfde wifi-netwerk tijdens het casten.",
+  "castNetworkDiagnostic": "Cast-netwerk controleren",
+  "castNetworkDiagnosticHelp": "Controleert de verbinding en de relay zonder de tv-zender te wijzigen.",
+  "castDiagnosticClosePlayer": "Ga terug naar Home voordat je zenders op de tv test."
 }

@@ -26,6 +26,7 @@ import '../../channels/data/recent_searches_repository.dart';
 import '../../channels/data/recently_watched_repository.dart';
 import '../../channels/data/watch_history_repository.dart';
 import '../../epg/data/epg_repository.dart';
+import '../../profiles/data/active_profile.dart';
 import '../domain/playlist.dart';
 import 'import_progress.dart';
 import 'playlist_repository.dart';
@@ -125,6 +126,9 @@ abstract final class BoxReset {
     if (strict && (!rememberedCleared || !failuresCleared)) {
       throw StateError('Mémoire des listes non effacée.');
     }
+    // Même un reset sans ligne SQLite invalide une autorisation ouverte et
+    // une réponse de PIN/biométrie encore en attente. Jamais avant les DELETE.
+    ActiveProfile.instance.notifyPlaylistsReset();
     BlackBox.instance.breadcrumb('');
     return n;
   }

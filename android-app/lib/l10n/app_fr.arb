@@ -3247,5 +3247,17 @@
   "tvProfileSources": "Listes du profil",
   "tvProfileSourceUnavailable": "Ce profil n’existe plus. La liste n’a pas été associée.",
   "tvAdultLive": "Direct adulte",
-  "tvAdultCinema": "Cinéma adulte"
+  "tvAdultCinema": "Cinéma adulte",
+  "tvCastDiagnostic": "Diagnostic Cast",
+  "playerScreenCast": "Écran",
+  "castZapPrevTooltip": "Chaîne précédente",
+  "castZapNextTooltip": "Chaîne suivante",
+  "screenCastTitle": "Caster sur un écran",
+  "screenCastStartError": "Impossible de démarrer le partage. Vérifie que le Wi-Fi est activé et réessaie.",
+  "screenCastInstructions": "Sur ton ordi ou ta TV (sur le MÊME Wi-Fi que le téléphone), ouvre le navigateur et tape cette adresse :",
+  "screenCastScanHint": "ou scanne avec un autre téléphone",
+  "screenCastKeepOpen": "Garde l’application ouverte et les deux appareils sur le même réseau Wi-Fi pendant la diffusion.",
+  "castNetworkDiagnostic": "Vérifier le réseau Cast",
+  "castNetworkDiagnosticHelp": "Vérifie la connexion et le relais sans changer la chaîne sur la TV.",
+  "castDiagnosticClosePlayer": "Retourne à l’accueil avant de tester les chaînes sur la TV."
 }

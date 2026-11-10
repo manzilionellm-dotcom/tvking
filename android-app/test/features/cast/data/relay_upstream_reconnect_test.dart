@@ -21,6 +21,13 @@ import 'package:tv_king/features/cast/data/dlna_profiles.dart';
 import 'package:tv_king/features/cast/data/local_cast_server.dart';
 
 void main() {
+  setUp(() {
+    LocalCastServer.instance.debugLanIpResolver = (_) async => '127.0.0.1';
+  });
+  tearDown(() async {
+    await LocalCastServer.instance.stop();
+    LocalCastServer.instance.debugLanIpResolver = null;
+  });
   // PAS de TestWidgetsFlutterBinding ici : il remplacerait HttpClient
   // par un mock qui répond 400 à tout — or ce test exerce de VRAIES
   // sockets loopback (même approche que hls_relay_session_test).
