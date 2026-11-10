@@ -73,10 +73,6 @@ String? streamQualityLabel(String raw) {
   if (k4 && hdr) return '4K HDR';
   if (k4) return '4K';
   if (hdr) return 'HDR';
-  if (RegExp(r'(^|[^a-z0-9])(fhd|1080p)([^a-z0-9]|$)').hasMatch(t)) {
-    return 'FHD';
-  }
-  if (RegExp(r'(^|[^a-z0-9])(hd|720p)([^a-z0-9]|$)').hasMatch(t)) return 'HD';
   return null;
 }
 

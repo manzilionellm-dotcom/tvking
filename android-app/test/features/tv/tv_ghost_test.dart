@@ -134,7 +134,7 @@ void main() {
 
     const TvAppTokens ghost = TvAppTokens(ghost: true);
     expect(await shellGradient(ghost), ghost.bgGradient);
-    expect(find.byType(PhantomWeave), findsNothing);
+    expect(find.byType(PhantomWeave), findsOneWidget);
 
     const TvAppTokens comfort = TvAppTokens();
     final TvComfortPalette evening =

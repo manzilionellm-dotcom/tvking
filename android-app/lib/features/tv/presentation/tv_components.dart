@@ -11,6 +11,7 @@ import '../../device/domain/display_mac.dart';
 import '../../theme/data/remote_theme_repository.dart';
 import '../../../core/app/repair_flags.dart';
 import '../../../core/i18n/l10n_extension.dart';
+import '../../../core/theme/app_colors.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
@@ -123,7 +124,7 @@ class TvWhatsAppQr extends StatelessWidget {
   }
 }
 
-/// Logo réel « Zuno » (calligraphie or, fond transparent).
+/// Logo réel « Zuno » : tracé original, blanc cassé et fond transparent.
 ///
 /// Pose courte (échelle 0,985 → 1, opacité pleine) : le mot reste
 /// visible dès la première image, il ne « disparaît » pas après le
@@ -172,7 +173,11 @@ class _TvLogoState extends State<TvLogo> with SingleTickerProviderStateMixin {
       child: ValueListenableBuilder(
         valueListenable: RemoteThemeRepository.current,
         builder: (context, settings, _) => settings.appName.isEmpty
-            ? Image.asset(_kLogoAsset, width: widget.width, fit: BoxFit.contain)
+            ? Image.asset(_kLogoAsset,
+              width: widget.width,
+              fit: BoxFit.contain,
+              color: AppColors.zunoLogoIvory,
+              colorBlendMode: BlendMode.srcIn)
             : SizedBox(
                 width: widget.width,
                 child: Text(

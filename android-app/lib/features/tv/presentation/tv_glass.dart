@@ -107,7 +107,7 @@ class TvGlassPanel extends StatelessWidget {
     );
     return ClipRRect(
       borderRadius: BorderRadius.circular(radius),
-      child: blur && !MediaQuery.disableAnimationsOf(context)
+      child: blur
           ? BackdropFilter(
               // Sigma court : un voile, pas un brouillard. Deux panneaux
               // au plus sur l'accueil (héros + colonne).

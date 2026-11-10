@@ -4,25 +4,25 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/app_colors.dart';
 
 abstract final class TvGhost {
-  /// Fond absolu ; le halo de contenu reste un calque local de l’accueil.
+  /// La palette seule change ; la géométrie et le contenu restent ceux de Zuno.
   static const Color bg = AppColors.stealthBlack;
   static const Color panel = AppColors.stealthSurface;
   static const Color card = AppColors.stealthSurface;
-  static const Color tile = Color(0xFF18181B);
-  static const Color sel = Color(0xFF222226);
-  static const Color surface3 = Color(0xFF2A2A2E);
-  static const Color line = Color(0xFF3A3A40);
-  static const Color lineSoft = Color(0xFF2A2A2E);
+  static const Color tile = AppColors.stealthSurface;
+  static const Color sel = Color(0xFF1E1E25);
+  static const Color surface3 = Color(0xFF24242C);
+  static const Color line = Color(0xFF2B2B34);
+  static const Color lineSoft = Color(0xFF202027);
 
-  static const Color text = Color(0xFFF4F6F8);
-  static const Color muted = Color(0xFFB7BCC4);
-  static const Color mutedDim = Color(0xFF8B9098);
+  static const Color text = AppColors.stealthPlatinum;
+  static const Color muted = AppColors.stealthMuted;
+  static const Color mutedDim = Color(0xFF6C6B76);
 
-  /// Chrome sombre, pas l'or du soir.
-  static const Color chrome = Color(0xFFC5C9D1);
-  static const Color chromeBright = Color(0xFFF4F6F8);
-  static const Color chromeDeep = Color(0xFF6E737C);
-  static const Color onChrome = Color(0xFF121418);
+  /// Accents platine identiques au téléphone.
+  static const Color chrome = AppColors.stealthPlatinum;
+  static const Color chromeBright = AppColors.stealthIce;
+  static const Color chromeDeep = Color(0xFF7794B5);
+  static const Color onChrome = AppColors.stealthBlack;
 
   /// Filet platine, un pixel. Lueur glace, jamais un néon.
   static const Color platinum = Color(0xFFE6EBF2);

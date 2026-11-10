@@ -21,6 +21,8 @@ import 'accent_controller.dart';
 import 'lumiere_tokens.dart';
 
 abstract final class AppColors {
+  /// Blanc cassé du logo Zuno, sans changer son tracé ni ses dimensions.
+  static const Color zunoLogoIvory = Color(0xFFF2F0E8);
   // Noir Fantôme TV : palette isolée, sans effet sur la colorimétrie vidéo.
   static const Color stealthBlack = Color(0xFF000000);
   static const Color stealthSurface = Color(0xFF0F0F12);

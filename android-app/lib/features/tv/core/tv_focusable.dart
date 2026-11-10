@@ -88,10 +88,7 @@ class _TvFocusableState extends State<TvFocusable>
   /// Reflet et onde : thème Ghost, et seulement au-dessus de 2 Go.
   /// En dessous, le contour déjà peint suffit (PR fluidité).
   bool get _shine {
-    if (!TvAppTokens.of(context).ghost ||
-        MediaQuery.disableAnimationsOf(context)) {
-      return false;
-    }
+    if (!TvAppTokens.of(context).ghost) return false;
     return BoxMemoryBudget.paintFocusGlow;
   }
 
@@ -224,19 +221,13 @@ class _TvFocusableState extends State<TvFocusable>
         child: AnimatedScale(
           // Signal 1 : SCALE (transform GPU uniquement).
           scale: targetScale,
-          duration: MediaQuery.disableAnimationsOf(context)
-                ? Duration.zero
-                : TvDimens.focusAnim,
+          duration: TvDimens.focusAnim,
           curve: TvDimens.focusCurve,
           child: AnimatedOpacity(
             opacity: widget.enabled ? 1.0 : 0.45, // §4 disabled
-            duration: MediaQuery.disableAnimationsOf(context)
-                  ? Duration.zero
-                  : TvDimens.focusAnim,
+            duration: TvDimens.focusAnim,
             child: AnimatedContainer(
-              duration: MediaQuery.disableAnimationsOf(context)
-                    ? Duration.zero
-                    : TvDimens.focusAnim,
+              duration: TvDimens.focusAnim,
               curve: TvDimens.focusCurve,
               decoration: BoxDecoration(
                 // Signal 2 : COULEUR de surface (tonale, Maison Noir).
