@@ -72,6 +72,7 @@ class ProfileCatalog {
       avatar: profiles.length % FamilyProfile.avatarCount,
       isKids: isKids,
       createdAtMs: nowMs,
+      playlistIds: const <int>[],
     );
     return ProfileCatalog(
       profiles: <FamilyProfile>[...profiles, created],
@@ -88,6 +89,52 @@ class ProfileCatalog {
       profiles: <FamilyProfile>[
         for (final FamilyProfile p in profiles)
           if (p.id == id) p.copyWith(name: trimmed) else p,
+      ],
+      activeId: activeId,
+      askOnStartup: askOnStartup,
+    );
+  }
+
+  /// Associe une liste au profil qui a lancé l'import. Un profil supprimé
+  /// entre-temps n'est jamais recréé, et une réponse répétée n'ajoute rien.
+  /// Les profils historiques gardent leur vue commune, déjà inclusive.
+  ProfileCatalog? attachPlaylist(String profileId, int playlistId) {
+    final FamilyProfile? profile = byId(profileId);
+    if (profile == null || playlistId <= 0) return null;
+    final List<int>? ids = profile.playlistIds;
+    if (ids == null || ids.contains(playlistId)) return this;
+    return ProfileCatalog(
+      profiles: <FamilyProfile>[
+        for (final FamilyProfile p in profiles)
+          if (p.id == profileId)
+            p.copyWith(
+                playlistIds: List<int>.unmodifiable(<int>[...ids, playlistId]))
+          else
+            p,
+      ],
+      activeId: activeId,
+      askOnStartup: askOnStartup,
+    );
+  }
+
+  /// Retirer l'association n'efface ni la source ni ses autres usages.
+  /// Un ancien profil partagé n'a pas d'association à retirer : l'écran
+  /// doit conserver ses actions historiques, sans conversion implicite.
+  ProfileCatalog? detachPlaylist(String profileId, int playlistId) {
+    final FamilyProfile? profile = byId(profileId);
+    final List<int>? ids = profile?.playlistIds;
+    if (profile == null || ids == null || playlistId <= 0) return null;
+    if (!ids.contains(playlistId)) return this;
+    return ProfileCatalog(
+      profiles: <FamilyProfile>[
+        for (final FamilyProfile p in profiles)
+          if (p.id == profileId)
+            p.copyWith(
+                playlistIds: List<int>.unmodifiable(
+              ids.where((int id) => id != playlistId),
+            ))
+          else
+            p,
       ],
       activeId: activeId,
       askOnStartup: askOnStartup,
@@ -112,11 +159,11 @@ class ProfileCatalog {
     if (id == ProfileIds.origin) return null;
     if (profiles.length <= 1) return null;
     if (byId(id) == null) return null;
-    final List<FamilyProfile> kept = profiles
-        .where((FamilyProfile p) => p.id != id)
-        .toList(growable: false);
-    final String nextActive =
-        kept.any((FamilyProfile p) => p.id == activeId) ? activeId : ProfileIds.origin;
+    final List<FamilyProfile> kept =
+        profiles.where((FamilyProfile p) => p.id != id).toList(growable: false);
+    final String nextActive = kept.any((FamilyProfile p) => p.id == activeId)
+        ? activeId
+        : ProfileIds.origin;
     return ProfileCatalog(
       profiles: kept,
       activeId: kept.any((FamilyProfile p) => p.id == nextActive)
@@ -177,12 +224,14 @@ class ProfileCatalog {
       }
       if (kept.isEmpty) return fresh(nowMs: nowMs);
       final String wanted = json['activeId']?.toString() ?? ProfileIds.origin;
-      final String active =
-          kept.any((FamilyProfile p) => p.id == wanted) ? wanted : ProfileIds.origin;
+      final String active = kept.any((FamilyProfile p) => p.id == wanted)
+          ? wanted
+          : ProfileIds.origin;
       bool? ask;
       final Object? askRaw = json['askOnStartup'];
       if (askRaw is bool) ask = askRaw;
-      return ProfileCatalog(profiles: kept, activeId: active, askOnStartup: ask);
+      return ProfileCatalog(
+          profiles: kept, activeId: active, askOnStartup: ask);
     } catch (_) {
       // JSON cassé : on repart sur Profil 1. Les tiroirs
       // (favoris, reprise…) ne sont PAS dans ce JSON, donc

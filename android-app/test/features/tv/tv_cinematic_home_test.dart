@@ -60,7 +60,9 @@ void main() {
       watching: <WatchEntry>[
         _watch('f1', 'Soirée', poster: 'https://cdn.example/a.jpg'),
       ],
-      favorites: <Channel>[_ch('c1', 'Info', logo: 'https://cdn.example/logo.png')],
+      favorites: <Channel>[
+        _ch('c1', 'Info', logo: 'https://cdn.example/logo.png')
+      ],
       popular: const <Channel>[],
       resume: const <Channel>[],
       guide: const <GuideSlot>[],
@@ -73,7 +75,8 @@ void main() {
     expect(board.hero?.artworkUrl, 'https://cdn.example/a.jpg');
     expect(board.hero?.meta, '90 min');
     expect(board.recommendations.single.title, 'Info');
-    expect(board.recommendations.single.artworkUrl, 'https://cdn.example/logo.png');
+    expect(board.recommendations.single.artworkUrl,
+        'https://cdn.example/logo.png');
   });
 
   test('sans jaquette, le héros du guide n\'a pas d\'image inventée', () {
@@ -174,6 +177,56 @@ void main() {
     await tester.pump();
     expect(find.text('Journal du soir'), findsOneWidget);
     expect(find.text('Direct'), findsOneWidget);
+    expect(find.text('Adultes'), findsNothing);
     expect(find.byType(BackdropFilter), findsNothing);
+  });
+
+  testWidgets('entrée Adultes optionnelle sans changer les autres actions',
+      (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(1280, 720);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    int adultCalls = 0;
+    final TonightBoard board = composeTonight(
+      watching: const [],
+      favorites: const [],
+      popular: const [],
+      resume: const [],
+      guide: const [],
+      reminders: const [],
+      also: const [],
+      nowMs: 0,
+      channelsById: const {},
+    );
+    await tester.pumpWidget(MaterialApp(
+      locale: const Locale('fr'),
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      theme: ThemeData(extensions: const <ThemeExtension<dynamic>>[
+        TvAppTokens(ghost: true),
+      ]),
+      home: Scaffold(
+          body: TvCinematicHome(
+        board: board,
+        blur: false,
+        onPlay: (_) {},
+        onLive: () {},
+        onFilms: () {},
+        onSeries: () {},
+        onServer: () {},
+        onSettings: () {},
+        onAdult: () => adultCalls++,
+      )),
+    ));
+    await tester.pumpAndSettle();
+    expect(find.text('Direct'), findsOneWidget);
+    expect(find.text('Adultes'), findsOneWidget);
+    await tester.ensureVisible(find.text('Adultes'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Adultes'));
+    await tester.pump();
+    expect(adultCalls, 1);
+    expect(tester.takeException(), isNull);
   });
 }

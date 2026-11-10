@@ -62,6 +62,18 @@ enum ChannelQuality {
 }
 
 abstract final class ChannelClassifier {
+  /// La même recherche que la première étape de classifyGenre, regroupée
+  /// en une expression précompilée. Les bornes et le vocabulaire restent
+  /// identiques ; une ouverture de Direct ne lance pas 30 recherches par nom.
+  static final RegExp _adultRx = RegExp(
+    r'(^|[^a-z0-9])(?:' +
+        _kAdultKeywords.map(RegExp.escape).join('|') +
+        r')($|[^a-z0-9])',
+  );
+
+  static bool isAdult(String name, String category) =>
+      _adultRx.hasMatch(_normalize('$name $category'));
+
   // -------------------------------------------------------
   //  GENRE
   // -------------------------------------------------------

@@ -1464,5 +1464,8 @@
   "tvAmbientTitle": "Mwanga",
   "tvAmbientHelp": "Hufuata filamu au mechi kuzunguka picha. Picha haibadiliki. Kwenye kisanduku kidogo mwanga hubaki tuli.",
   "tvAmbientAuto": "Otomatiki",
-  "tvAmbientOff": "Zima"
+  "tvAmbientOff": "Zima",
+  "vipCountriesFirstUseHint": "Chagua nchi zako hapa. Unaweza kuzibadilisha wakati wowote.",
+  "tvAdultLive": "Adult live TV",
+  "tvAdultCinema": "Adult cinema"
 }

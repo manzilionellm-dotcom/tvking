@@ -9,10 +9,15 @@ import '../../playlists/domain/open_source_input.dart';
 import 'tv_source_entry_form.dart';
 
 class TvAddSourceScreen extends StatefulWidget {
-  const TvAddSourceScreen({super.key, this.initialMode = OpenEntryMode.xtream});
+  const TvAddSourceScreen({
+    super.key,
+    this.initialMode = OpenEntryMode.xtream,
+    this.targetProfileId,
+  });
 
   /// Le raccourci historique player reste accepté et ouvre maintenant M3U.
   final OpenEntryMode initialMode;
+  final String? targetProfileId;
 
   @override
   State<TvAddSourceScreen> createState() => _TvAddSourceScreenState();
@@ -32,6 +37,7 @@ class _TvAddSourceScreenState extends State<TvAddSourceScreen> {
               padding: const EdgeInsets.all(12),
               child: TvSourceEntryForm(
                 initialMode: widget.initialMode,
+                targetProfileId: widget.targetProfileId,
                 autofocus: true,
                 onAdded: () {
                   // Un dialogue peut s'être ouvert pendant l'import. Ne pas le

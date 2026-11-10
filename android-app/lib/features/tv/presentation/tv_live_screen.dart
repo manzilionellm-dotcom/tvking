@@ -11,6 +11,7 @@
 import 'dart:async';
 
 import '../../channels/domain/channel_category_index.dart';
+import '../../channels/domain/adult_channel_policy.dart';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/foundation.dart' show listEquals;
@@ -39,6 +40,7 @@ import '../../device/data/device_identity.dart';
 import '../../epg/data/epg_repository.dart';
 import '../../epg/domain/epg_program.dart';
 import '../../security/data/parental_controls.dart';
+import '../../security/data/adult_access.dart';
 import '../../playlists/data/favorites_repository.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../../playlists/data/remote_source_repository.dart';
@@ -53,6 +55,7 @@ import 'tv_source_setup.dart';
 import 'tv_player_screen.dart';
 import 'tv_shell.dart';
 import 'tv_vip_countries_screen.dart';
+import 'tv_vip_countries_first_use.dart';
 import 'vip_country_names.dart';
 import '../data/vip_countries_repository.dart';
 import '../../profiles/data/active_profile.dart';
@@ -93,13 +96,28 @@ String _tvStripCodec(String s) {
 }
 
 class TvLiveScreen extends StatefulWidget {
-  const TvLiveScreen({super.key});
+  const TvLiveScreen({super.key, this.adultAccess});
+
+  /// Accord éphémère détenu par l'espace Adultes, jamais mémorisé par Direct.
+  final AdultAccessGrant? adultAccess;
 
   @override
   State<TvLiveScreen> createState() => _TvLiveScreenState();
 }
 
 class _TvLiveScreenState extends State<TvLiveScreen> {
+  bool get _adultMode => widget.adultAccess != null;
+  bool get _accessAllowed =>
+      !_adultMode ||
+      (widget.adultAccess!.isValid && !ParentalControls.instance.kidsMode.value);
+
+  bool _allowsChannel(Channel channel) =>
+      _accessAllowed &&
+      channel.isLive &&
+      ActiveProfile.instance.allowsPlaylist(channel.playlistId) &&
+      isAdultChannel(channel) == _adultMode &&
+      (!ParentalControls.instance.kidsMode.value || !_hideForKids(channel));
+
   StreamSubscription<List<Channel>>? _sub;
   StreamSubscription<Set<String>>? _favSub;
   StreamSubscription<List<String>>? _trendSub;
@@ -136,6 +154,7 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
   }
 
   Future<void> _openVipCountries() async {
+    if (!_accessAllowed) return;
     _catDebounce?.cancel();
     final saved = await Navigator.of(context).push<bool>(
       MaterialPageRoute<bool>(
@@ -237,6 +256,8 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     TvActivity.enter();
     VipCountriesRepository.instance.addListener(_onVipChanged);
     ActiveProfile.instance.listenable.addListener(_onVipProfileChanged);
+    ActiveProfile.instance.scopeListenable.addListener(_onProfileScopeChanged);
+    widget.adultAccess?.addListener(_onAdultAccessChanged);
     VipCountriesRepository.instance.load();
     BlackBox.instance.info('SCREEN', 'Direct ouvert');
     _ingest(PlaylistRepository.instance.currentChannels);
@@ -275,7 +296,7 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     // le ré-import automatique de la source — c'est précisément l'étape
     // gourmande qu'on veut éviter pour casser la boucle. Le bouton manuel
     // « Synchroniser » reste disponible.
-    if (!BootGuard.instance.safeMode) {
+    if (!BootGuard.instance.safeMode && _accessAllowed) {
       _kickSourceSync(); // tout de suite à l'ouverture de l'écran
       _syncTimer = Timer.periodic(const Duration(seconds: 12), (_) {
         // Borné : on arrête les tentatives AUTO après _kMaxAutoSync essais.
@@ -318,6 +339,37 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     if (mounted) _ingest(_rawLive);
   }
 
+  void _clearPreview() {
+    _previewDebounce?.cancel();
+    _previewCh.value = null;
+    unawaited(TvLivePreview.releaseActive());
+  }
+
+  void _onProfileScopeChanged() {
+    if (!mounted) return;
+    _catDebounce?.cancel();
+    _clearPreview();
+    // Le nouveau catalogue arrivera du dépôt sous sa propre garde de profil.
+    _ingest(const <Channel>[]);
+  }
+
+  void _onAdultAccessChanged() {
+    if (!mounted) return;
+    _catDebounce?.cancel();
+    _recomputeDebounce?.cancel();
+    _clearPreview();
+    _ingest(_rawLive);
+  }
+
+  @override
+  void didUpdateWidget(covariant TvLiveScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (identical(oldWidget.adultAccess, widget.adultAccess)) return;
+    oldWidget.adultAccess?.removeListener(_onAdultAccessChanged);
+    widget.adultAccess?.addListener(_onAdultAccessChanged);
+    _onAdultAccessChanged();
+  }
+
   @override
   void dispose() {
     TvActivity.leave();
@@ -325,6 +377,8 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     _ingestGen++; // annule un pré-calcul en cours
     VipCountriesRepository.instance.removeListener(_onVipChanged);
     ActiveProfile.instance.listenable.removeListener(_onVipProfileChanged);
+    ActiveProfile.instance.scopeListenable.removeListener(_onProfileScopeChanged);
+    widget.adultAccess?.removeListener(_onAdultAccessChanged);
     _sub?.cancel();
     _favSub?.cancel();
     _trendSub?.cancel();
@@ -559,18 +613,33 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     int index, {
     required bool fromRail,
   }) async {
-    if (index < 0 || index >= list.length) return;
+    if (index < 0 || index >= list.length || !_accessAllowed) return;
+    final Channel selected = list[index];
+    final List<Channel> allowed =
+        list.where(_allowsChannel).toList(growable: false);
+    final int selectedIndex = allowed.indexOf(selected);
+    if (selectedIndex < 0) return;
+    final int generation = _ingestGen;
     final String chId = list[index].id;
     // On REND le décodeur de l'aperçu AVANT le plein écran, et on attend.
     // Un simple setState laissait les deux lecteurs vivants une frame :
     // sur une box à un seul décodeur l'image restait noire, et un
     // abonnement « 1 connexion » refusait la chaîne (logo sans fin).
     await TvLivePreview.releaseActive();
-    if (!mounted) return;
+    if (!mounted || !_accessAllowed || generation != _ingestGen) return;
+    final current = PlaylistRepository.instance.currentChannels.toSet();
+    if (!allowed.every((c) =>
+        _allowsChannel(c) && _byId[c.id] == c && current.contains(c))) {
+      return;
+    }
     setState(() => _playerOpen = true);
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => TvPlayerScreen(channels: list, startIndex: index),
+        builder: (_) => TvPlayerScreen(
+          channels: allowed,
+          startIndex: selectedIndex,
+          adultAccess: widget.adultAccess,
+        ),
       ),
     );
     if (!mounted) return;
@@ -585,6 +654,7 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
       _openPlayerWith(_shownList, index, fromRail: false);
 
   void _setPreview(Channel c) {
+    if (!_allowsChannel(c)) return;
     // Focuser une CHAÎNE annule tout changement de CATÉGORIE en attente : si un
     // focus transitoire avait effleuré une catégorie (ex. au retour du lecteur),
     // sa sélection débouncée ne se déclenchera pas → la catégorie ne « saute »
@@ -596,7 +666,10 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     // Sinon un aperçu décalé démarre alors que le focus est déjà revenu.
     if (_previewCh.value?.id == c.id) return;
     _previewDebounce = Timer(const Duration(milliseconds: 120), () {
-      if (mounted && _previewCh.value?.id != c.id) {
+      if (mounted &&
+          _allowsChannel(c) &&
+          _byId[c.id] == c &&
+          _previewCh.value?.id != c.id) {
         _previewCh.value = c; // seule la colonne de droite se reconstruit
       }
     });
@@ -723,7 +796,7 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
   Future<void> _kickSourceSync({bool force = false}) async {
     // La passe du démarrage ou du canal temps réel alimente déjà l'écran.
     // Ne pas lui ajouter une seconde lecture en file depuis ce bouton/timer.
-    if (_syncing ||
+    if (!_accessAllowed || _syncing ||
         RemoteSourceRepository.syncing.value ||
         RemoteSourceRepository.manualImporting.value)
       return;
@@ -764,13 +837,8 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     // MODE ENFANTS : on retire toutes les chaînes classées « Adulte ». Le filtre
     // ne s'applique QUE si le parent l'a activé (défaut : désactivé → aucun
     // changement). Détection via le classifieur existant (mots-clés robustes).
-    final bool kids = ParentalControls.instance.kidsMode.value;
     final List<Channel> live = channels
-        .where((Channel c) {
-          if (!c.isLive) return false;
-          if (kids && _hideForKids(c)) return false;
-          return true;
-        })
+        .where(_allowsChannel)
         .toList(growable: false);
     // Ordre des catégories = ordre d'APPARITION ; dédup via Set (O(1)) pour
     // rester rapide même sur de très grandes listes (évite un contains O(n²)).
@@ -812,6 +880,8 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
       }
       _recompute();
     });
+    final Channel? preview = _previewCh.value;
+    if (preview != null && _byId[preview.id] != preview) _clearPreview();
     _startPrecompute(channels);
   }
 
@@ -847,6 +917,7 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (!_accessAllowed) return const SizedBox.shrink();
     if (_all.isEmpty) {
       // La saisie reste stable pendant la recherche du panel. Les compteurs
       // fréquents reconstruisent uniquement leur carte, jamais les champs.
@@ -931,9 +1002,14 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     //   droite  : aperçu vidéo (même moteur que le plein écran) + guide
     final Widget cList = Column(
       children: [
-        TvCtaButton(
-          label: context.l10n.vipCountriesTitle,
-          onSelect: _precomputed ? _openVipCountries : null,
+        TvVipCountriesFirstUse(
+          available: !_adultMode && _precomputed && _countryChannels.isNotEmpty,
+          playing: _playerOpen,
+          onOpen: _precomputed ? _openVipCountries : null,
+          builder: (open) => TvCtaButton(
+            label: context.l10n.vipCountriesTitle,
+            onSelect: open,
+          ),
         ),
         const SizedBox(height: 12),
         Expanded(

@@ -5,7 +5,7 @@
 //  chaîne avec, comme liste de zap, les 8 chaînes « Reprendre ». Haut/Bas
 //  ne parcouraient donc pas la liste du client. Ici on ouvre la même
 //  chaîne, positionnée dans la liste complète des chaînes en direct.
-//  Si elle n'y est plus (liste changée), on garde l'ancien comportement.
+//  Une chaîne retirée/masquée n'est jamais réintroduite depuis l'historique.
 //  Fonction pure, testée sans écran.
 // =========================================================
 
@@ -18,15 +18,23 @@ class ResumeZap {
 }
 
 /// [all] = toutes les chaînes connues ; [recent] = rangée « Reprendre »
-/// (la première est la dernière vue). `null` = rien à reprendre.
-ResumeZap? resumeZapList(List<Channel> all, List<Channel> recent) {
-  if (recent.isEmpty) return null;
-  final Channel last = recent.first;
+/// (la première est la dernière vue). [selectedIndex] conserve la carte
+/// choisie manuellement. [hide] applique le filtre parental du même écran.
+/// `null` = cible absente du catalogue accessible, donc aucune reprise.
+ResumeZap? resumeZapList(
+  List<Channel> all,
+  List<Channel> recent, {
+  int selectedIndex = 0,
+  bool Function(Channel)? hide,
+}) {
+  if (selectedIndex < 0 || selectedIndex >= recent.length) return null;
+  final Channel last = recent[selectedIndex];
   final List<Channel> live = <Channel>[
     for (final Channel c in all)
-      if (c.isLive) c,
+      if (c.isLive && !(hide?.call(c) ?? false)) c,
   ];
-  final int at = live.indexWhere((Channel c) => c.id == last.id);
-  if (at < 0) return ResumeZap(List<Channel>.of(recent), 0);
+  final int at = live.indexWhere(
+      (Channel c) => c.id == last.id && c.playlistId == last.playlistId);
+  if (at < 0) return null;
   return ResumeZap(live, at);
 }

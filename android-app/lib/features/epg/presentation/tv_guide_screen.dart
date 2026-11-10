@@ -22,10 +22,12 @@ import '../../../core/notifications/notification_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../cast/presentation/cast_button.dart';
+import '../../channels/domain/adult_channel_policy.dart';
 import '../../channels/domain/channel.dart';
 import '../../channels/presentation/widgets/channel_logo.dart';
 import '../../player/presentation/play_channel.dart';
 import '../../playlists/data/playlist_repository.dart';
+import '../../profiles/data/active_profile.dart';
 import '../data/catchup_url_builder.dart';
 import '../data/epg_repository.dart';
 import '../domain/epg_program.dart';
@@ -54,6 +56,7 @@ class _TvGuideScreenState extends State<TvGuideScreen> {
   final ScrollController _verticalController = ScrollController();
 
   List<Channel> _channels = const <Channel>[];
+  int _channelsRevision = 0;
   StreamSubscription<List<Channel>>? _channelsSub;
   StreamSubscription<void>? _epgSub;
 
@@ -68,15 +71,26 @@ class _TvGuideScreenState extends State<TvGuideScreen> {
     _timelineStart = DateTime(now.year, now.month, now.day, now.hour);
     _timelineEnd = _timelineStart.add(const Duration(hours: 24));
 
-    _channels = PlaylistRepository.instance.currentChannels;
+    _channels = _normalChannels(PlaylistRepository.instance.currentChannels);
     if (_channels.isEmpty) {
+      final int scope = ActiveProfile.instance.scopeListenable.value;
+      final int readRevision = _channelsRevision;
       PlaylistRepository.instance.getAllChannels().then((List<Channel> ch) {
-        if (mounted) setState(() => _channels = ch);
+        // Le stream a pu afficher le nouveau profil pendant la lecture.
+        // L'ancienne réponse ne doit pas remettre son catalogue à l'écran.
+        if (mounted &&
+            scope == ActiveProfile.instance.scopeListenable.value &&
+            readRevision == _channelsRevision) {
+          setState(() => _channels = _normalChannels(ch));
+        }
       });
     }
     _channelsSub = PlaylistRepository.instance.channelsStream
         .listen((List<Channel> ch) {
-      if (mounted) setState(() => _channels = ch);
+      if (mounted) {
+        _channelsRevision++;
+        setState(() => _channels = _normalChannels(ch));
+      }
     });
     _epgSub = EpgRepository.instance.changes.listen((_) {
       if (mounted) setState(() {});
@@ -101,6 +115,12 @@ class _TvGuideScreenState extends State<TvGuideScreen> {
     _verticalController.dispose();
     super.dispose();
   }
+
+  /// Les lignes et leurs programmes ne doivent jamais exposer Adultes
+  /// depuis le guide normal, indépendamment du réglage mode enfants.
+  List<Channel> _normalChannels(List<Channel> channels) => channels
+      .where((Channel channel) => !isAdultChannel(channel))
+      .toList(growable: false);
 
   void _scrollToNow() {
     if (!_horizontalController.hasClients) return;
@@ -360,8 +380,10 @@ class _GuideBody extends StatelessWidget {
                   channel: ch,
                   width: channelColWidth,
                   height: rowHeight,
-                  onTap: () =>
-                      playChannel(context, ch, zapPlaylist: channels),
+                  onTap: () {
+                    if (isAdultChannel(ch)) return;
+                    playChannel(context, ch, zapPlaylist: channels);
+                  },
                 ),
                 Container(
                   width: 1,
@@ -383,6 +405,7 @@ class _GuideBody extends StatelessWidget {
                       rowHeight: rowHeight,
                       now: now,
                       onProgramTap: (EpgProgram p) {
+                        if (isAdultChannel(ch)) return;
                         final int nowMs = now.millisecondsSinceEpoch;
                         if (p.isLiveAt(now)) {
                           // En cours → live direct

@@ -2894,5 +2894,8 @@
   "tvAmbientTitle": "Hale",
   "tvAmbientHelp": "Film veya maçla birlikte görüntünün çevresini izler. Görüntü değişmez. Küçük kutuda hale sabit kalır.",
   "tvAmbientAuto": "Otomatik",
-  "tvAmbientOff": "Kapalı"
+  "tvAmbientOff": "Kapalı",
+  "vipCountriesFirstUseHint": "Ülkelerini buradan seç. İstediğin zaman değiştirebilirsin.",
+  "tvAdultLive": "Adult live TV",
+  "tvAdultCinema": "Adult cinema"
 }

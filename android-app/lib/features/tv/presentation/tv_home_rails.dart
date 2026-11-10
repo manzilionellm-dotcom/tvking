@@ -24,12 +24,14 @@ import 'package:flutter/material.dart';
 import '../../../core/app/box_memory_budget.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../../channels/domain/channel.dart';
+import '../../playlists/data/playlist_repository.dart';
 import '../../cinema/data/watch_progress.dart';
 import '../../epg/domain/program_reminder.dart';
 import '../../followed/domain/show_clock.dart';
 import '../../followed/domain/show_lines.dart';
 import '../../simple_home/data/home_layout_repository.dart';
 import '../core/tv_dimens.dart';
+import '../core/resume_zap.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
 import '../core/tv_app_tokens.dart';
@@ -55,11 +57,16 @@ class TvHomeRails extends StatelessWidget {
     this.layout = const <String, HomeSectionConfig>{},
     this.genreShelves = const <String, List<Channel>>{},
     this.autofocusGenres = false,
+    this.resumeChannels,
   });
 
   final HomeShelfModel model;
   final int nowMs;
   final void Function(List<Channel> shelf, int index) onPlayChannel;
+
+  /// Catalogue accessible pour la reprise ; à défaut, snapshot courant
+  /// du dépôt (sources masquées et profils déjà filtrés).
+  final List<Channel>? resumeChannels;
   final void Function(WatchEntry entry) onPlayContinue;
   final void Function(ProgramReminder reminder) onPlayReminder;
 
@@ -141,7 +148,15 @@ class TvHomeRails extends StatelessWidget {
         itemBuilder: (BuildContext context, int i) => _ChannelCard(
           channel: model.resume[i],
           autofocus: focusShelf == HomeShelfKind.resume && i == 0,
-          onSelect: () => onPlayChannel(model.resume, i),
+          onSelect: () {
+            final ResumeZap? plan = resumeZapList(
+              resumeChannels ?? PlaylistRepository.instance.currentChannels,
+              model.resume,
+              selectedIndex: i,
+              hide: hiddenForKids,
+            );
+            if (plan != null) onPlayChannel(plan.channels, plan.startIndex);
+          },
         ),
       );
     }

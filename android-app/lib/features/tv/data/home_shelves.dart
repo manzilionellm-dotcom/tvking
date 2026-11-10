@@ -17,6 +17,7 @@
 import 'package:flutter/foundation.dart';
 
 import '../../channels/domain/channel.dart';
+import '../../channels/domain/adult_channel_policy.dart';
 import '../../cinema/data/watch_progress.dart';
 import '../../epg/domain/program_reminder.dart';
 
@@ -136,9 +137,8 @@ List<Channel> favoriteChannels(
   return out;
 }
 
-/// « Continuer à regarder », déjà trié par le dépôt. En Mode Enfants on
-/// retire seulement les titres qui se classent Adulte (quelques cartes,
-/// pas tout le catalogue).
+/// « Continuer à regarder », déjà trié par le dépôt. Le catalogue adulte
+/// reste dans son espace authentifié, quel que soit le mode du profil.
 List<WatchEntry> continueForHome(
   List<WatchEntry> entries, {
   required bool kidsMode,
@@ -148,7 +148,7 @@ List<WatchEntry> continueForHome(
   final List<WatchEntry> out = <WatchEntry>[];
   for (final WatchEntry e in entries) {
     if (!e.isResumable) continue;
-    if (kidsMode && _titleLooksAdult(e.title)) continue;
+    if (e.isAdult || _titleLooksAdult(e.title)) continue;
     out.add(e);
     if (out.length >= max) break;
   }
@@ -156,23 +156,11 @@ List<WatchEntry> continueForHome(
 }
 
 bool _titleLooksAdult(String title) =>
-    ChannelClassifier.classifyGenre(title, '') == ChannelGenre.adult;
+    ChannelClassifier.isAdult(title, '');
 
-/// Mode Enfants sur une chaîne de l'accueil.
-///
-///   • Genre déjà en cache « adulte » → masquée.
-///   • Genre déjà en cache autre chose → visible.
-///   • Pas encore classée → on regarde quelques mots du nom BRUT
-///     (`xxx`, `porn`, `adult`). On ne lance pas le classifieur complet :
-///     ce serait des dizaines de regex par chaîne, sur le fil de l'écran.
-///     Une chaîne au nom neutre reste visible ; le Direct, lui, reste
-///     plus strict le temps du pré-calcul.
-bool hiddenForKids(Channel channel) {
-  final ChannelGenre? known = ChannelPrecompute.cachedGenre(channel);
-  if (known == ChannelGenre.adult) return true;
-  if (known != null) return false;
-  return roughLooksAdult(channel.name) || roughLooksAdult(channel.category);
-}
+/// Filtre historique des cartes : même prédicat que l'espace Adultes,
+/// sans relancer le classement de tous les autres genres.
+bool hiddenForKids(Channel channel) => isAdultChannel(channel);
 
 /// Vrai si le texte brut contient un marqueur adulte évident.
 bool roughLooksAdult(String raw) {

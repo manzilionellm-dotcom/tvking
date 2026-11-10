@@ -17,29 +17,50 @@ import '../../cinema/data/cinema_repository.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../../playlists/domain/playlist.dart';
 import '../../playlists/data/xtream_client.dart';
+import '../../profiles/data/active_profile.dart';
 import '../domain/vod_movie.dart';
 
 class VodRepository {
-  VodRepository._();
+  VodRepository._() {
+    ActiveProfile.instance.scopeListenable.addListener(_onProfileScope);
+  }
+
+  int _scopeEpoch = 0;
+  final Set<XtreamClient> _pending = <XtreamClient>{};
+
+  void _onProfileScope() {
+    _scopeEpoch++;
+    _cache = null;
+    for (final client in _pending.toList(growable: false)) {
+      client.dispose();
+    }
+    _pending.clear();
+  }
+
   static final VodRepository instance = VodRepository._();
 
   List<VodMovie>? _cache;
 
   /// Renvoie le catalogue de films. [forceRefresh] re-tape le serveur.
   Future<List<VodMovie>> fetchMovies({bool forceRefresh = false}) async {
+    final int scope = _scopeEpoch;
     if (!forceRefresh && _cache != null) return _cache!;
 
     final List<Playlist> playlists =
-        await PlaylistRepository.instance.getAllPlaylists();
+        await PlaylistRepository.instance.getVisiblePlaylists();
+    if (scope != _scopeEpoch) return const <VodMovie>[];
     Playlist? xt;
     for (final Playlist p in playlists) {
-      if (p.type == PlaylistType.xtream && (p.xtreamServer ?? '').isNotEmpty) {
+      if (!p.hidden &&
+          p.type == PlaylistType.xtream &&
+          (p.xtreamServer ?? '').isNotEmpty) {
         xt = p;
         break;
       }
     }
     if (xt == null) {
       final List<VodMovie> saved = await _savedMovies();
+      if (scope != _scopeEpoch) return const <VodMovie>[];
       if (saved.isNotEmpty) return saved;
       _cache = const <VodMovie>[];
       return _cache!;
@@ -50,26 +71,32 @@ class VodRepository {
       username: xt.xtreamUsername ?? '',
       password: xt.xtreamPassword ?? '',
     );
+    _pending.add(client);
     try {
       final List<VodMovie> movies = await client.fetchVodMovies();
+      if (scope != _scopeEpoch) return const <VodMovie>[];
       // Une réponse vide n'efface pas ce qu'on a déjà (mémoire ou disque).
       final List<VodMovie> chosen = keepPreviousWhenEmpty<VodMovie>(
         incoming: movies,
         previous: _cache ?? const <VodMovie>[],
         disk: movies.isNotEmpty ? const <VodMovie>[] : await _savedMovies(),
       );
+      if (scope != _scopeEpoch) return const <VodMovie>[];
       if (chosen.isNotEmpty) _cache = chosen;
       return chosen;
     } catch (e) {
+      if (scope != _scopeEpoch) return const <VodMovie>[];
       if (kDebugMode) debugPrint('[VOD] fetch error: $e');
       final List<VodMovie> chosen = keepPreviousWhenEmpty<VodMovie>(
         incoming: null,
         previous: _cache ?? const <VodMovie>[],
         disk: await _savedMovies(),
       );
+      if (scope != _scopeEpoch) return const <VodMovie>[];
       if (chosen.isNotEmpty) _cache = chosen;
       return chosen;
     } finally {
+      _pending.remove(client);
       client.dispose();
     }
   }

@@ -18,16 +18,34 @@ class ActiveProfile {
   static final ActiveProfile instance = ActiveProfile._();
 
   String _id = ProfileIds.origin;
+  List<int>? _playlistIds;
 
   /// Id du profil en cours. Jamais vide.
   String get id => _id;
 
-  /// Change seulement quand l'id change vraiment.
-  final ValueNotifier<String> listenable = ValueNotifier<String>(ProfileIds.origin);
+  List<int>? get playlistIds => _playlistIds;
 
-  void set(String next) {
-    if (next.isEmpty || next == _id) return;
+  /// Une source sans identifiant ne peut appartenir à un profil explicite.
+  bool allowsPlaylist(int? id) =>
+      _playlistIds == null || (id != null && _playlistIds!.contains(id));
+
+  /// Contrairement au notifier d'identité, celui-ci réveille aussi les
+  /// catalogues lorsque le même profil reçoit sa première/nouvelle liste.
+  final ValueNotifier<int> scopeListenable = ValueNotifier<int>(0);
+
+  /// Change seulement quand l'id change vraiment.
+  final ValueNotifier<String> listenable =
+      ValueNotifier<String>(ProfileIds.origin);
+
+  void set(String next, {List<int>? playlistIds}) {
+    if (next.isEmpty) return;
+    final List<int>? selection = playlistIds == null
+        ? null
+        : List<int>.unmodifiable(playlistIds.where((int id) => id > 0).toSet());
+    if (next == _id && listEquals(selection, _playlistIds)) return;
     _id = next;
+    _playlistIds = selection;
     listenable.value = next;
+    scopeListenable.value++;
   }
 }

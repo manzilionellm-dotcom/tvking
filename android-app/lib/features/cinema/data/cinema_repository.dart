@@ -38,6 +38,7 @@ import '../../channels/domain/channel_genre.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../../playlists/data/xtream_client.dart';
 import '../../playlists/domain/playlist.dart';
+import '../../profiles/data/active_profile.dart';
 import '../../tv/core/tv_activity.dart';
 import '../../vod/domain/vod_movie.dart';
 import '../domain/cinema_language.dart';
@@ -46,6 +47,7 @@ import 'catalog_cache_policy.dart';
 import 'catalog_disk.dart';
 import 'catalog_refresh.dart';
 import 'cinema_parsers.dart';
+import 'watch_progress.dart';
 
 /// Au-delà, la liste complète n'est PAS téléchargée d'un bloc (index construit
 /// catégorie par catégorie). Même logique que l'import des chaînes.
@@ -66,8 +68,62 @@ const int kCinemaCategoryMax = 150000;
 const Duration kCinemaMaxAge = Duration(minutes: 10);
 
 class CinemaRepository {
-  CinemaRepository._();
+  CinemaRepository._() {
+    ActiveProfile.instance.scopeListenable.addListener(_onProfileScope);
+  }
+
+  int _scopeEpoch = 0;
+
+  void _onProfileScope() {
+    _scopeEpoch++;
+    _sourcesSig = '';
+    _sources = const <CinemaSource>[];
+    _folderSig = null;
+    clear();
+  }
+
   static final CinemaRepository instance = CinemaRepository._();
+
+  /// Classification partagée par le catalogue, la recherche et les reprises.
+  bool isAdultTitle(CinemaTitle title) => _adultStatusForTitle(title) == true;
+
+  bool? _adultStatusForTitle(CinemaTitle title) {
+    if (ChannelClassifier.isAdult(title.name, title.categoryKey)) return true;
+    for (final category in _cats[title.kind] ?? const <CinemaCategory>[]) {
+      if (category.key == title.categoryKey) return category.isAdult;
+    }
+    return null;
+  }
+
+  /// null signifie une ancienne reprise neutre dont le catalogue n'a pas
+  /// encore révélé la catégorie. Elle reste stockée mais n'est pas exposée
+  /// dans les catalogues normaux ou adultes tant qu'elle n'est pas classée.
+  bool? adultStatusForWatch(WatchEntry entry) {
+    if (entry.isAdult ||
+        ChannelClassifier.isAdult(entry.title, entry.subtitle ?? '')) {
+      return true;
+    }
+    final String id = entry.isEpisode ? (entry.seriesId ?? entry.id) : entry.id;
+    final bool? fromCatalogue = adultStatusForMedia(id, entry.title);
+    if (fromCatalogue != null) return fromCatalogue;
+    return entry.adultClassificationKnown ? false : null;
+  }
+
+  /// Classification d'un ancien téléchargement sans métadonnée dédiée.
+  /// Aucun titre non retrouvé n'est supposé normal.
+  bool? adultStatusForMedia(String id, String name) {
+    if (ChannelClassifier.isAdult(name, '')) return true;
+    for (final title in _index) {
+      if (title.id == id) return _adultStatusForTitle(title);
+    }
+    for (final titles in _titles.values) {
+      for (final title in titles) {
+        if (title.id == id) return _adultStatusForTitle(title);
+      }
+    }
+    return null;
+  }
+
   @visibleForTesting
   static http.Client Function()? httpForTesting;
   final Map<CinemaKind, int> _publications = <CinemaKind, int>{};
@@ -171,14 +227,16 @@ class CinemaRepository {
   /// Bouton explicite : attendre le fournisseur, même avec un catalogue
   /// récent en mémoire. Un ancien staging partiel ne vaut pas une relecture.
   Future<bool> refreshNow(CinemaKind kind) async {
+    final int scope = _scopeEpoch;
     await sources();
-    if (_sources.isEmpty) return false;
+    if (scope != _scopeEpoch || _sources.isEmpty) return false;
     final Future<void>? previous = _refreshInFlight[kind];
     if (previous != null) {
       // Réveille aussi une passe silencieuse en attente de fin de lecture.
       ++_catalogGen;
       await previous;
     }
+    if (scope != _scopeEpoch) return false;
     final int gen = _catalogGen;
     final String? folder = _folderSig;
     final CatalogDisk? disk = await _openDisk();
@@ -186,8 +244,12 @@ class CinemaRepository {
     await disk.discardStaging(folder, kind);
     final int before = _publications[kind] ?? 0;
     await _refreshCatalog(kind, forceNetwork: true);
-    final bool published = gen == _catalogGen && (_publications[kind] ?? 0) > before;
-    if (published) { _details.clear(); _series.clear(); }
+    final bool published =
+        gen == _catalogGen && (_publications[kind] ?? 0) > before;
+    if (published) {
+      _details.clear();
+      _series.clear();
+    }
     return published;
   }
 
@@ -264,8 +326,10 @@ class CinemaRepository {
   /// Comptes Xtream du client. Si la liste change (compte ajouté / retiré /
   /// poussé par le panel), tous les caches sont vidés.
   Future<List<CinemaSource>> sources() async {
+    final int scope = _scopeEpoch;
     final List<Playlist> all =
-        await PlaylistRepository.instance.getAllPlaylists();
+        await PlaylistRepository.instance.getVisiblePlaylists();
+    if (scope != _scopeEpoch) return const <CinemaSource>[];
     final List<CinemaSource> out = <CinemaSource>[];
     for (final Playlist p in all) {
       if (p.type != PlaylistType.xtream) continue;
@@ -305,21 +369,29 @@ class CinemaRepository {
 
   CinemaSource? sourceByKey(String key) {
     for (final CinemaSource s in _sources) {
-      if (s.key == key) return s;
+      if (s.key == key && ActiveProfile.instance.allowsPlaylist(s.playlistId)) {
+        return s;
+      }
     }
     return null;
   }
 
-  XtreamClient _client(CinemaSource s) => _clients.putIfAbsent(
-        s.key,
-        () => XtreamClient(
-          serverUrl: s.server,
-          username: s.username,
-          password: s.password,
-          timeout: const Duration(seconds: 25),
-          httpClient: httpForTesting?.call(),
-        ),
-      );
+  XtreamClient _client(CinemaSource s) {
+    if (!ActiveProfile.instance.allowsPlaylist(s.playlistId) ||
+        sourceByKey(s.key) == null) {
+      throw StateError('Source hors du profil actif.');
+    }
+    return _clients.putIfAbsent(
+      s.key,
+      () => XtreamClient(
+        serverUrl: s.server,
+        username: s.username,
+        password: s.password,
+        timeout: const Duration(seconds: 25),
+        httpClient: httpForTesting?.call(),
+      ),
+    );
+  }
 
   // ---------------- Catégories ----------------
 
@@ -329,7 +401,10 @@ class CinemaRepository {
   /// Une erreur réseau sans rien d'enregistré ne mémorise PAS la liste vide :
   /// sinon l'écran afficherait « aucun film » jusqu'au prochain vidage.
   Future<List<CinemaCategory>> categories(CinemaKind kind) async {
+    final int scope = _scopeEpoch;
     final List<CinemaSource> srcs = await sources();
+    if (scope != _scopeEpoch) return const <CinemaCategory>[];
+    final int gen = _catalogGen;
     final List<CinemaCategory>? cached = _cats[kind];
     if (cached != null) {
       if (srcs.isNotEmpty && _needsRefresh(kind)) {
@@ -339,6 +414,7 @@ class CinemaRepository {
     }
 
     final CatalogHeader? header = await _readDiskHeader(kind);
+    if (gen != _catalogGen) return const <CinemaCategory>[];
     if (header != null && header.categories.isNotEmpty) {
       _installHeader(kind, header);
       _persisted[kind] = true;
@@ -351,6 +427,7 @@ class CinemaRepository {
     if (srcs.isEmpty) return const <CinemaCategory>[];
 
     final _CatFetch fetched = await _fetchMerged(kind);
+    if (gen != _catalogGen) return const <CinemaCategory>[];
     final bool keep = rememberCategoryList(
       count: fetched.categories.length,
       anySuccess: fetched.anySuccess,
@@ -402,7 +479,13 @@ class CinemaRepository {
     CinemaCategory cat, {
     bool forceNetwork = false,
   }) async {
+    final int scope = _scopeEpoch;
     await sources();
+    if (scope != _scopeEpoch || _sources.isEmpty) {
+      return const CinemaTitleLoad(titles: <CinemaTitle>[], failed: false);
+    }
+    final int gen = _catalogGen;
+    const empty = CinemaTitleLoad(titles: <CinemaTitle>[], failed: false);
     final String ck = '${kind.name}|${cat.key}';
     if (!forceNetwork) {
       final List<CinemaTitle>? hit = _titles.remove(ck);
@@ -411,6 +494,7 @@ class CinemaRepository {
         return CinemaTitleLoad(titles: hit, fromCache: true, failed: false);
       }
       final List<CinemaTitle>? saved = await _titlesFromDisk(kind, cat.key);
+      if (gen != _catalogGen) return empty;
       if (saved != null) {
         _rememberTitles(ck, saved);
         return CinemaTitleLoad(titles: saved, fromCache: true, failed: false);
@@ -420,13 +504,16 @@ class CinemaRepository {
             .where((CinemaTitle t) => t.categoryKey == cat.key)
             .toList(growable: false);
         _rememberTitles(ck, fromIndex);
-        return CinemaTitleLoad(titles: fromIndex, fromCache: true, failed: false);
+        return CinemaTitleLoad(
+            titles: fromIndex, fromCache: true, failed: false);
       }
     }
 
     final _TitleNet net = await _fetchTitlesNetwork(kind, cat);
+    if (gen != _catalogGen) return empty;
     if (net.failed) {
       final List<CinemaTitle>? saved = await _titlesFromDisk(kind, cat.key);
+      if (gen != _catalogGen) return empty;
       if (saved != null) {
         _rememberTitles(ck, saved);
         return CinemaTitleLoad(titles: saved, fromCache: true, failed: false);
@@ -448,12 +535,16 @@ class CinemaRepository {
 
   Future<_TitleNet> _fetchTitlesNetwork(
       CinemaKind kind, CinemaCategory cat) async {
+    final int gen = _catalogGen;
     final String action =
         kind == CinemaKind.movie ? 'get_vod_streams' : 'get_series';
     final List<CinemaTitle> all = <CinemaTitle>[];
     bool anyOk = false;
     bool anyFail = false;
     for (final CategoryRef part in cat.parts) {
+      if (gen != _catalogGen) {
+        return const _TitleNet(titles: <CinemaTitle>[], failed: false);
+      }
       final CinemaSource? s = sourceByKey(part.sourceKey);
       if (s == null) {
         anyFail = true;
@@ -505,10 +596,13 @@ class CinemaRepository {
   /// ce 2e essai, la catégorie (ou tout un compte) manquait à l'écran.
   Future<Uint8List?> _fetchWithRetry(
       CinemaSource s, String action, Map<String, String>? extra) async {
+    final int gen = _catalogGen;
     try {
       return await _client(s).fetchActionBytes(action, extra: extra);
     } catch (_) {
+      if (gen != _catalogGen) return null;
       await Future<void>.delayed(const Duration(milliseconds: 1500));
+      if (gen != _catalogGen) return null;
       return _client(s).fetchActionBytes(action, extra: extra);
     }
   }
@@ -528,7 +622,10 @@ class CinemaRepository {
   bool indexReady(CinemaKind kind) => _indexKind == kind && _indexDone;
 
   /// Lance (une fois) la construction de l'index de [kind] en arrière-plan.
-  Future<void> ensureIndex(CinemaKind kind) {
+  Future<void> ensureIndex(CinemaKind kind) async {
+    final int scope = _scopeEpoch;
+    await sources();
+    if (scope != _scopeEpoch || _sources.isEmpty) return;
     if (_indexKind == kind && _indexDone) return Future<void>.value();
     if (_indexKind == kind && _indexing != null) return _indexing!;
     // Un seul type indexé à la fois : on libère l'autre.
@@ -548,6 +645,7 @@ class CinemaRepository {
     // Le disque suffit : on ne retélécharge pas tout le catalogue pour
     // la recherche pendant que le client regarde un film.
     if (await _fillIndexFromDisk(kind)) return;
+    if (stale()) return;
     final Future<void>? pending = _refreshInFlight[kind];
     if (pending != null) {
       await pending;
@@ -555,7 +653,9 @@ class CinemaRepository {
       if (await _fillIndexFromDisk(kind)) return;
     }
     await tuneForRam();
+    if (stale()) return;
     final List<CinemaCategory> cats = await categories(kind);
+    if (stale()) return;
     final String action =
         kind == CinemaKind.movie ? 'get_vod_streams' : 'get_series';
     final List<CinemaTitle> acc = <CinemaTitle>[];
@@ -710,6 +810,12 @@ class CinemaRepository {
   // ---------------- Fiches détaillées ----------------
 
   Future<CinemaDetails> movieDetails(CinemaTitle t) async {
+    final int scope = _scopeEpoch;
+    await sources();
+    if (scope != _scopeEpoch || sourceByKey(t.sourceKey) == null) {
+      return CinemaDetails.empty;
+    }
+    final int gen = _catalogGen;
     final CinemaDetails? hit = _details[t.id];
     if (hit != null) return hit;
     final CinemaSource? s = sourceByKey(t.sourceKey);
@@ -721,6 +827,7 @@ class CinemaRepository {
       );
       final CinemaDetails d =
           b == null ? CinemaDetails.empty : parseVodInfo(decodeJsonBytes(b));
+      if (gen != _catalogGen) return CinemaDetails.empty;
       _details[t.id] = d;
       while (_details.length > 200) {
         _details.remove(_details.keys.first);
@@ -733,6 +840,10 @@ class CinemaRepository {
   }
 
   Future<SeriesDetails?> seriesDetails(CinemaTitle t) async {
+    final int scope = _scopeEpoch;
+    await sources();
+    if (scope != _scopeEpoch || sourceByKey(t.sourceKey) == null) return null;
+    final int gen = _catalogGen;
     final SeriesDetails? hit = _series[t.id];
     if (hit != null) return hit;
     final CinemaSource? s = sourceByKey(t.sourceKey) ??
@@ -755,6 +866,7 @@ class CinemaRepository {
           name: t.name,
         ),
       );
+      if (gen != _catalogGen) return null;
       _series[t.id] = d;
       while (_series.length > 20) {
         _series.remove(_series.keys.first);
@@ -880,15 +992,19 @@ class CinemaRepository {
   /// Films déjà sur la box, pour l'écran mobile si le serveur ne répond pas.
   /// Liste vide si le cache est incomplet : on ne montre pas un morceau.
   Future<List<VodMovie>> cachedVodMovies() async {
-    final String? folder = _folderSig;
-    if (folder == null) {
-      await sources();
-    }
+    final int scope = _scopeEpoch;
+    await sources();
+    if (scope != _scopeEpoch || _sources.isEmpty) return const <VodMovie>[];
+    final int gen = _catalogGen;
     final String? sig = _folderSig;
     final CatalogDisk? disk = await _openDisk();
-    if (sig == null || disk == null) return const <VodMovie>[];
+    if (sig == null || disk == null || gen != _catalogGen) {
+      return const <VodMovie>[];
+    }
     final CatalogHeader? header = await disk.readHeader(sig, CinemaKind.movie);
-    if (header == null || !header.complete) return const <VodMovie>[];
+    if (header == null || !header.complete || gen != _catalogGen) {
+      return const <VodMovie>[];
+    }
     final Map<String, String> names = <String, String>{
       for (final CatalogCategoryRecord category in header.categories)
         category.key: category.name,
@@ -897,9 +1013,12 @@ class CinemaRepository {
     for (final CatalogCategoryRecord category in header.categories) {
       final List<CatalogTitleRecord>? rows =
           await disk.readTitles(sig, CinemaKind.movie, category.key);
-      if (rows == null) return const <VodMovie>[];
+      if (rows == null || gen != _catalogGen) return const <VodMovie>[];
       for (final CatalogTitleRecord row in rows) {
-        if (row.kind != CinemaKind.movie) continue;
+        if (row.kind != CinemaKind.movie ||
+            sourceByKey(row.sourceKey) == null) {
+          continue;
+        }
         final CinemaTitle title = row.toCinemaTitle(sourceByKey(row.sourceKey));
         final String? url = title.streamUrl;
         if (url == null || url.isEmpty) continue;
@@ -930,7 +1049,8 @@ class CinemaRepository {
     });
   }
 
-  Future<void> _refreshBody(CinemaKind kind, int gen, String? folder, bool forceNetwork) async {
+  Future<void> _refreshBody(
+      CinemaKind kind, int gen, String? folder, bool forceNetwork) async {
     if (folder == null || gen != _catalogGen) return;
     final CatalogDisk? disk = await _openDisk();
     if (disk == null || gen != _catalogGen) return;
@@ -938,7 +1058,8 @@ class CinemaRepository {
     _refreshStartedAt = DateTime.now();
     try {
       final CatalogRefresher refresher = forceNetwork
-          ? const CatalogRefresher(gap: Duration.zero, maxAttempts: 1) : _refresher;
+          ? const CatalogRefresher(gap: Duration.zero, maxAttempts: 1)
+          : _refresher;
       final CatalogRefreshResult result = await refresher.run(
         disk: disk,
         signature: folder,
@@ -961,6 +1082,7 @@ class CinemaRepository {
       _titles.removeWhere(
           (String key, List<CinemaTitle> _) => key.startsWith('${kind.name}|'));
       await disk.pruneSignatures(folder);
+      if (gen != _catalogGen) return;
       if (_indexKind == null || _indexKind == kind) {
         await _fillIndexFromDisk(kind);
       }
@@ -1239,13 +1361,13 @@ const List<String> _kKidsVodWords = <String>[
   'बच्चों',
 ];
 
-bool isAdultCategory(String name) =>
-    ChannelClassifier.classifyGenre('', name) == ChannelGenre.adult;
+bool isAdultCategory(String name) => ChannelClassifier.isAdult('', name);
 
 bool isKidsCategory(String name) {
   if (isAdultCategory(name)) return false;
-  if (ChannelClassifier.classifyGenre('', name) == ChannelGenre.kids)
+  if (ChannelClassifier.classifyGenre('', name) == ChannelGenre.kids) {
     return true;
+  }
   final String k = CinemaLanguage.searchKey(name);
   for (final String w in _kKidsVodWords) {
     if (k.contains(w)) return true;

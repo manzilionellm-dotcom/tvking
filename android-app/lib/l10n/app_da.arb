@@ -1464,5 +1464,8 @@
   "tvAmbientTitle": "Glød",
   "tvAmbientHelp": "Følger filmen eller kampen omkring billedet. Billedet ændres ikke. På en lille boks bliver gløden fast.",
   "tvAmbientAuto": "Auto",
-  "tvAmbientOff": "Fra"
+  "tvAmbientOff": "Fra",
+  "vipCountriesFirstUseHint": "Vælg dine lande her. Du kan ændre dem når som helst.",
+  "tvAdultLive": "Adult live TV",
+  "tvAdultCinema": "Adult cinema"
 }

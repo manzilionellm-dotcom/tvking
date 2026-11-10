@@ -2894,5 +2894,8 @@
   "tvAmbientTitle": "Halo",
   "tvAmbientHelp": "Segue o filme ou o jogo à volta da imagem. A imagem não muda. Numa box pequena o halo fica fixo.",
   "tvAmbientAuto": "Auto",
-  "tvAmbientOff": "Desligado"
+  "tvAmbientOff": "Desligado",
+  "vipCountriesFirstUseHint": "Escolha seus países aqui. Você pode alterá-los a qualquer momento.",
+  "tvAdultLive": "Adult live TV",
+  "tvAdultCinema": "Adult cinema"
 }

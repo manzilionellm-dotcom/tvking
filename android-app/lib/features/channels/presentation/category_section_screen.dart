@@ -30,6 +30,7 @@ import 'package:flutter/material.dart';
 
 import '../../tv/core/tv_field_keys.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../profiles/data/active_profile.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/theme/app_colors.dart';
@@ -37,6 +38,7 @@ import '../../../core/theme/app_text_styles.dart';
 import '../../cast/presentation/cast_button.dart';
 import '../../player/presentation/play_channel.dart';
 import '../../playlists/data/playlist_repository.dart';
+import '../domain/adult_channel_policy.dart';
 import '../domain/channel.dart';
 import '../domain/channel_genre.dart';
 import 'channel_detail_sheet.dart';
@@ -84,20 +86,30 @@ class _CategorySectionScreenState extends State<CategorySectionScreen> {
   final TextEditingController _searchCtrl = TextEditingController();
 
   List<Channel> _channels = const <Channel>[];
+  int _channelsRevision = 0;
   StreamSubscription<List<Channel>>? _sub;
 
   @override
   void initState() {
     super.initState();
-    _channels = PlaylistRepository.instance.currentChannels;
+    _channels = _normalChannels(PlaylistRepository.instance.currentChannels);
     if (_channels.isEmpty) {
+      final int scope = ActiveProfile.instance.scopeListenable.value;
+      final int readRevision = _channelsRevision;
       PlaylistRepository.instance.getAllChannels().then((List<Channel> ch) {
-        if (mounted) setState(() => _channels = ch);
+        if (mounted &&
+            scope == ActiveProfile.instance.scopeListenable.value &&
+            readRevision == _channelsRevision) {
+          setState(() => _channels = _normalChannels(ch));
+        }
       });
     }
     _sub =
         PlaylistRepository.instance.channelsStream.listen((List<Channel> ch) {
-      if (mounted) setState(() => _channels = ch);
+      if (mounted) {
+        _channelsRevision++;
+        setState(() => _channels = _normalChannels(ch));
+      }
     });
     _restoreViewMode();
   }
@@ -167,6 +179,12 @@ class _CategorySectionScreenState extends State<CategorySectionScreen> {
 
     return q.toList(growable: false);
   }
+
+  /// Filtrer AVANT catégories, compteurs, recherche et liste de zapping :
+  /// masquer seulement la carte laisserait son contenu dans ces chemins.
+  List<Channel> _normalChannels(List<Channel> channels) => channels
+      .where((Channel channel) => !isAdultChannel(channel))
+      .toList(growable: false);
 
   @override
   Widget build(BuildContext context) {
@@ -579,8 +597,13 @@ class _CompactList extends StatelessWidget {
         return RepaintBoundary(
           child: CompactChannelRow(
             channel: ch,
-            onTap: () => playChannel(context, ch, zapPlaylist: channels),
-            onLongPress: () => showChannelDetail(context, ch),
+            onTap: () {
+              if (isAdultChannel(ch)) return;
+              playChannel(context, ch, zapPlaylist: channels);
+            },
+            onLongPress: () {
+              if (!isAdultChannel(ch)) showChannelDetail(context, ch);
+            },
           ),
         );
       },
@@ -618,8 +641,13 @@ class _Grid extends StatelessWidget {
             return RepaintBoundary(
               child: ChannelCard(
                 channel: ch,
-                onTap: () => playChannel(context, ch, zapPlaylist: channels),
-                onLongPress: () => showChannelDetail(context, ch),
+                onTap: () {
+                  if (isAdultChannel(ch)) return;
+                  playChannel(context, ch, zapPlaylist: channels);
+                },
+                onLongPress: () {
+                  if (!isAdultChannel(ch)) showChannelDetail(context, ch);
+                },
               ),
             );
           },

@@ -2894,5 +2894,8 @@
   "tvAmbientTitle": "आभा",
   "tvAmbientHelp": "फिल्म या मैच के साथ आभा बदलती है। चित्र नहीं बदलता। छोटे बॉक्स पर आभा स्थिर रहती है।",
   "tvAmbientAuto": "ऑटो",
-  "tvAmbientOff": "बंद"
+  "tvAmbientOff": "बंद",
+  "vipCountriesFirstUseHint": "यहाँ अपने देश चुनें। आप इन्हें कभी भी बदल सकते हैं।",
+  "tvAdultLive": "Adult live TV",
+  "tvAdultCinema": "Adult cinema"
 }

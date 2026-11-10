@@ -31,6 +31,7 @@ import '../domain/cast_device.dart';
 import 'cast_progress.dart';
 import 'cast_platform.dart';
 import 'cast_url_resolver.dart';
+import '../../security/data/adult_access.dart';
 import 'cast_session_diagnostic.dart';
 import 'cast_transport.dart';
 import 'google_cast_transport.dart';
@@ -201,6 +202,7 @@ class CastManager extends ChangeNotifier {
     );
     switch (evt.kind) {
       case 'ended':
+        _releaseAdultAccess();
         _nativeSessionSuspended = false;
         ++_sessionSeq;
         // Le SDK signale la fin DEFINITIVE de la session — on aligne
@@ -270,6 +272,7 @@ class CastManager extends ChangeNotifier {
         // conservait le relais et la passation locale ; il faut les libérer
         // ici même si le SDK n'envoie pas ensuite de callback « ended ».
         if (_nativeSessionSuspended || isCasting) {
+          _releaseAdultAccess();
           _nativeSessionSuspended = false;
           ++_sessionSeq;
           _transport = null;
@@ -370,9 +373,23 @@ class CastManager extends ChangeNotifier {
 
   @override
   void dispose() {
+    _releaseAdultAccess();
     _nativeSessionSub?.cancel();
     _nativeMediaSub?.cancel();
     super.dispose();
+  }
+
+  // Le droit appartient à la demande de Cast, pas au widget du lecteur.
+  // Ainsi, quitter le lecteur ne retire pas la protection de sa session.
+  AdultAccessGrant? _sessionAdultAccess;
+
+  void _releaseAdultAccess() {
+    _sessionAdultAccess?.removeListener(_onAdultAccessChanged);
+    _sessionAdultAccess = null;
+  }
+
+  void _onAdultAccessChanged() {
+    if (_sessionAdultAccess?.isValid == false) unawaited(disconnect());
   }
 
   CastState _state = CastState.idle;
@@ -655,7 +672,14 @@ class CastManager extends ChangeNotifier {
     String? channelName,
     String? channelGenre,
     String? imageUrl,
+    AdultAccessGrant? adultAccess,
   }) async {
+    if (adultAccess != null && !adultAccess.isValid) return;
+    // Un Cast ordinaire remplaçant un ancien Cast protégé n'hérite jamais
+    // de son verrou ; une session préexistante n'est pas liée par l'UI.
+    _releaseAdultAccess();
+    _sessionAdultAccess = adultAccess;
+    adultAccess?.addListener(_onAdultAccessChanged);
     final int mySeq = ++_sessionSeq;
     _nativeSessionSuspended = false;
     final Duration timeout = _testTimeout ?? (device.kind == CastDeviceKind.dlna ? kCastTotalTimeoutDlna : kCastTotalTimeout);
@@ -736,12 +760,17 @@ class CastManager extends ChangeNotifier {
     final int next =
         ((_castIndex + delta) % list.length + list.length) % list.length;
     final Channel ch = list[next];
+    final AdultAccessGrant? adultAccess = _sessionAdultAccess;
+    final int session = _sessionSeq;
     _castIndex = next;
     notifyListeners();
     try {
       // Même URL que le lecteur : format Xtream mémorisé appliqué
       // (sinon 404 sur les panels qui exigent /live/).
       final String castUrl = await CastUrlResolver.resolve(ch);
+      // Une nouvelle session pendant la résolution rend ce geste périmé.
+      // Ne pas écraser sa cible ni lui rattacher le droit de l’ancienne.
+      if (session != _sessionSeq || !isCasting) return;
       await castChannelOnCurrentSession(
         streamUrl: castUrl,
         title: ch.cleanName,
@@ -749,6 +778,7 @@ class CastManager extends ChangeNotifier {
         channelGenre: ch.category,
         imageUrl: ch.logoUrl,
         channel: ch,
+        adultAccess: adultAccess,
       );
     } on Object catch (e, st) {
       // Échec du swap : l'état d'erreur est déjà posé par castTo et
@@ -793,7 +823,9 @@ class CastManager extends ChangeNotifier {
     String? channelGenre,
     String? imageUrl,
     Channel? channel,
+    AdultAccessGrant? adultAccess,
   }) async {
+    if (adultAccess != null && !adultAccess.isValid) return false;
     final CastDevice? target = _device ?? _selectedDevice;
     if (target == null) return false;
     // Garde le contexte de zap aligné quand le swap vient du lecteur
@@ -811,6 +843,7 @@ class CastManager extends ChangeNotifier {
       channelName: channelName,
       channelGenre: channelGenre,
       imageUrl: imageUrl,
+      adultAccess: adultAccess,
     );
     return true;
   }
@@ -2172,6 +2205,7 @@ class CastManager extends ChangeNotifier {
   }
 
   Future<void> disconnect() async {
+    _releaseAdultAccess();
     _nativeSessionSuspended = false;
     ++_sessionSeq;
     final CastTransport? previous = _transport;

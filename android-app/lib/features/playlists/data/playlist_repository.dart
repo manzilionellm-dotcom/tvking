@@ -34,6 +34,7 @@ import '../../../core/blackbox/black_box.dart';
 import '../../channels/domain/channel.dart';
 import '../../epg/data/epg_repository.dart';
 import '../../epg/data/epg_targets.dart';
+import '../../profiles/data/active_profile.dart';
 import '../domain/playlist.dart';
 import '../domain/source_fingerprint.dart';
 import 'deleted_sources.dart';
@@ -99,6 +100,7 @@ class PlaylistRepository {
     // peut republier ce cache grâce à la même révision d'état.
     _channelsCache = const <Channel>[];
     _playlistsCache = const <Playlist>[];
+    _hasDeviceChannels = false;
     if (!_channelsController.isClosed) _channelsController.add(_channelsCache);
     if (!_playlistsController.isClosed) {
       _playlistsController.add(_playlistsCache);
@@ -129,6 +131,30 @@ class PlaylistRepository {
   // affichait "0 chaînes" jusqu'à la prochaine mise à jour.
   List<Channel> _channelsCache = const <Channel>[];
   List<Playlist> _playlistsCache = const <Playlist>[];
+  bool _hasDeviceChannels = false;
+  bool _profileListenerAttached = false;
+
+  /// Inventaire de l'appareil, indépendant du profil affiché. Le panel et
+  /// sa reprise réseau ne doivent pas confondre un profil vide avec une
+  /// box sans chaînes. Aucun deuxième cache de 50 000 chaînes en mémoire.
+  bool get hasDeviceChannels => _hasDeviceChannels;
+  List<Playlist> get currentDevicePlaylists => _playlistsCache;
+
+  List<Playlist> _visiblePlaylists(List<Playlist> all) =>
+      ActiveProfile.instance.playlistIds == null
+          ? all
+          : all
+              .where(
+                  (Playlist p) => ActiveProfile.instance.allowsPlaylist(p.id))
+              .toList(growable: false);
+
+  List<Channel> _visibleChannels(List<Channel> all) =>
+      _applyFlavorFilter(ActiveProfile.instance.playlistIds == null
+          ? all
+          : all
+              .where((Channel c) =>
+                  ActiveProfile.instance.allowsPlaylist(c.playlistId))
+              .toList(growable: false));
 
   // FILTRE FLAVOR (POINT UNIQUE) : sur un flavor `adultOnly` (ex. « Privé »),
   // on ne laisse passer QUE les chaînes du genre Adulte. Comme tout l'UI
@@ -143,21 +169,43 @@ class PlaylistRepository {
   }
 
   Stream<List<Channel>> get channelsStream =>
-      _channelsController.stream.map(_applyFlavorFilter);
-  Stream<List<Playlist>> get playlistsStream => _playlistsController.stream;
+      _channelsController.stream.map(_visibleChannels);
+  Stream<List<Playlist>> get playlistsStream =>
+      _playlistsController.stream.map(_visiblePlaylists);
 
   /// Snapshot synchrone des chaînes actuellement chargées. À utiliser
   /// en `initialData` d'un StreamBuilder pour avoir l'état immédiatement.
+  /// Le cache est vidé au changement de portée et publié sous garde :
+  /// inutile de recopier 50 000 références à chaque reconstruction d'écran.
   List<Channel> get currentChannels => _applyFlavorFilter(_channelsCache);
 
   /// Snapshot synchrone des playlists actuellement chargées.
-  List<Playlist> get currentPlaylists => _playlistsCache;
+  List<Playlist> get currentPlaylists => _visiblePlaylists(_playlistsCache);
 
   /// Charge initialement les chaînes depuis la base et émet sur le stream.
   /// À appeler une fois au démarrage de l'app.
   Future<void> initialize() async {
+    if (!_profileListenerAttached) {
+      _profileListenerAttached = true;
+      ActiveProfile.instance.scopeListenable.addListener(_onProfileScope);
+    }
     await _completePendingDeletions();
     await _emitCurrentState();
+  }
+
+  void _onProfileScope() {
+    // Retirer l'ancien écran tout de suite, avant la première attente SQL.
+    // Les téléchargements restent affectés à leur profil d'origine.
+    _stateRevision++;
+    _channelsCache = const <Channel>[];
+    if (!_channelsController.isClosed) _channelsController.add(_channelsCache);
+    if (!_playlistsController.isClosed) {
+      _playlistsController.add(_playlistsCache);
+    }
+    unawaited(_emitCurrentState().catchError((Object error) {
+      BlackBox.instance.warn(
+          'PROFILS', 'lecture des listes impossible (${error.runtimeType})');
+    }));
   }
 
   /// Une coupure peut interrompre le nettoyage des milliers de chaînes,
@@ -187,6 +235,26 @@ class PlaylistRepository {
   static bool mergeAllPlaylists = false;
 
   Future<List<Channel>> getAllChannels() async {
+    final int scope = ActiveProfile.instance.scopeListenable.value;
+    final int revision = _stateRevision;
+    final List<int>? ids = ActiveProfile.instance.playlistIds;
+    final List<Channel> result;
+    if (ids == null) {
+      result = await _readDeviceChannels();
+    } else if (ids.isEmpty) {
+      result = const <Channel>[];
+    } else {
+      final Database db = await PlaylistDatabase.instance.database;
+      result = await _readProfileChannels(db, ids);
+    }
+    if (scope != ActiveProfile.instance.scopeListenable.value ||
+        revision != _stateRevision) {
+      return const <Channel>[];
+    }
+    return _applyFlavorFilter(result);
+  }
+
+  Future<List<Channel>> _readDeviceChannels() async {
     final Database db = await PlaylistDatabase.instance.database;
     if (mergeAllPlaylists) return _readMergedChannels(db);
 
@@ -282,6 +350,73 @@ class PlaylistRepository {
     return out;
   }
 
+  /// Lecture bornée des seules listes du profil : une première source de
+  /// 50 000 chaînes ne doit pas empêcher un autre profil de voir la sienne.
+  /// SQLite calcule d'abord l'identité globale (première occurrence). Ainsi
+  /// une chaîne suffixée ~p<ID> garde le même id en changeant de profil,
+  /// sans charger toutes les autres chaînes en objets Dart.
+  Future<List<Channel>> _readProfileChannels(Database db, List<int> ids) async {
+    final int scope = ActiveProfile.instance.scopeListenable.value;
+    final String allowed = ids.map((int id) => id.toString()).join(',');
+    // Les identifiants sont des entiers positifs issus du modèle, jamais
+    // une saisie SQL. Pas de limite de paramètres SQLite sur une grosse
+    // sélection ; le résultat reste borné au même plafond mémoire.
+    final List<Map<String, Object?>> firstRows = await db.rawQuery('''
+      SELECT origin.external_id, origin.playlist_id
+      FROM channels origin
+      JOIN (
+        SELECT external_id, MIN(local_id) AS first_id FROM channels
+        WHERE playlist_id IN (SELECT id FROM playlists WHERE hidden = 0)
+        GROUP BY external_id
+      ) first ON origin.local_id = first.first_id
+      WHERE origin.external_id IN (
+        SELECT external_id FROM channels
+        WHERE playlist_id IN ($allowed)
+          AND playlist_id IN (SELECT id FROM playlists WHERE hidden = 0)
+        ORDER BY local_id ASC LIMIT $kMaxInMemoryChannels
+      )
+    ''');
+    if (scope != ActiveProfile.instance.scopeListenable.value) {
+      return <Channel>[];
+    }
+    final Map<String, int> firstOwners = <String, int>{
+      for (final Map<String, Object?> row in firstRows)
+        row['external_id'] as String: row['playlist_id'] as int,
+    };
+    final List<Channel> channels = await _readChannelsBounded(
+      db,
+      null,
+      skipHidden: true,
+      playlistIds: ids,
+    );
+    if (scope != ActiveProfile.instance.scopeListenable.value) {
+      return <Channel>[];
+    }
+    final Set<String> seen = <String>{};
+    final List<Channel> out = <Channel>[];
+    for (final Channel c in channels) {
+      final bool original = firstOwners[c.id] == c.playlistId && seen.add(c.id);
+      final String id = original ? c.id : '${c.id}~p${c.playlistId}';
+      if (!original && !seen.add(id)) continue;
+      out.add(original
+          ? c
+          : Channel(
+              id: id,
+              playlistId: c.playlistId,
+              name: c.name,
+              category: c.category,
+              streamUrl: c.streamUrl,
+              isLive: c.isLive,
+              logoUrl: c.logoUrl,
+              currentProgram: c.currentProgram,
+              catchupSupported: c.catchupSupported,
+              catchupDays: c.catchupDays,
+              catchupSource: c.catchupSource,
+            ));
+    }
+    return out;
+  }
+
   /// Plafond de chaînes chargées EN MÉMOIRE — garde-fou anti-OOM des box
   /// faibles (Android TV/box 1 Go). Au-delà, on s'arrête : les chaînes
   /// supplémentaires restent en base (rien n'est perdu) mais ne sont pas
@@ -299,7 +434,7 @@ class PlaylistRepository {
   /// [kMaxInMemoryChannels]. Keyset pagination : `local_id > dernier` (O(1) par
   /// lot grâce à l'index PK), l'ORDRE NATIF de la playlist est préservé.
   Future<List<Channel>> _readChannelsBounded(Database db, int? activeId,
-      {bool skipHidden = false}) async {
+      {bool skipHidden = false, List<int>? playlistIds}) async {
     final List<Channel> out = <Channel>[];
     int afterLocalId = 0; // local_id (AUTOINCREMENT) démarre à 1
     // Sous-requête évaluée par SQLite (index PK) : écarte les chaînes des
@@ -307,17 +442,20 @@ class PlaylistRepository {
     final String hiddenFilter = skipHidden
         ? ' AND playlist_id NOT IN (SELECT id FROM playlists WHERE hidden = 1)'
         : '';
+    final String profileFilter = playlistIds == null
+        ? ''
+        : ' AND playlist_id IN (${playlistIds.join(',')})';
     while (out.length < kMaxInMemoryChannels) {
       final List<Map<String, Object?>> rows = await db.query(
         'channels',
         where: activeId != null
             ? 'playlist_id = ? AND local_id > ?'
-            : 'local_id > ?$hiddenFilter',
+            : 'local_id > ?$hiddenFilter$profileFilter',
         whereArgs: activeId != null
             ? <Object>[activeId, afterLocalId]
             : <Object>[afterLocalId],
         orderBy: 'local_id ASC',
-        limit: _kReadChunk,
+        limit: (kMaxInMemoryChannels - out.length).clamp(0, _kReadChunk),
       );
       if (rows.isEmpty) break;
       for (final Map<String, Object?> r in rows) {
@@ -343,6 +481,17 @@ class PlaylistRepository {
       out.add(await _playlistFromRow(row));
     }
     return out;
+  }
+
+  /// Vue utilisateur seulement. Réconciliation panel, sauvegarde et reset
+  /// gardent getAllPlaylists(), dont le contrat reste global.
+  Future<List<Playlist>> getVisiblePlaylists() async {
+    final int scope = ActiveProfile.instance.scopeListenable.value;
+    final List<Playlist> all = await getAllPlaylists();
+    if (scope != ActiveProfile.instance.scopeListenable.value) {
+      return <Playlist>[];
+    }
+    return _visiblePlaylists(all);
   }
 
   /// Phase 1+/Multi-serveurs : retourne la playlist active, ou la 1ere
@@ -818,6 +967,7 @@ class PlaylistRepository {
         .toList();
     _playlistsCache = remainingPlaylists;
     _channelsCache = remainingChannels;
+    if (remainingPlaylists.isEmpty) _hasDeviceChannels = false;
     if (!_playlistsController.isClosed) {
       _playlistsController.add(remainingPlaylists);
     }
@@ -1360,16 +1510,26 @@ class PlaylistRepository {
 
   Future<void> _emitCurrentState() async {
     final int revision = ++_stateRevision;
+    final int scope = ActiveProfile.instance.scopeListenable.value;
     final Stopwatch sw = Stopwatch()..start();
     final List<Channel> channels = await getAllChannels();
     final List<Playlist> playlists = await getAllPlaylists();
-    if (revision != _stateRevision) return;
+    final Database db = await PlaylistDatabase.instance.database;
+    final List<Map<String, Object?>> anyChannels = await db.rawQuery(
+      'SELECT c.local_id FROM channels c JOIN playlists p ON p.id = c.playlist_id '
+      'WHERE p.hidden = 0 LIMIT 1',
+    );
+    if (revision != _stateRevision ||
+        scope != ActiveProfile.instance.scopeListenable.value) {
+      return;
+    }
     BlackBox.instance.info('DB',
         'lecture : ${channels.length} chaînes, ${playlists.length} liste(s) en ${sw.elapsedMilliseconds} ms');
     // Met à jour les caches synchrones avant d'émettre
     // (`currentChannels` est ainsi cohérent avec le dernier event).
     _channelsCache = channels;
     _playlistsCache = playlists;
+    _hasDeviceChannels = anyChannels.isNotEmpty;
     if (!_channelsController.isClosed) {
       _channelsController.add(channels);
     }

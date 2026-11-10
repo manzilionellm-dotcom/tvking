@@ -2894,5 +2894,8 @@
   "tvAmbientTitle": "光晕",
   "tvAmbientHelp": "光晕随电影或比赛变化，画面本身不变。小盒子上光晕保持固定。",
   "tvAmbientAuto": "自动",
-  "tvAmbientOff": "关闭"
+  "tvAmbientOff": "关闭",
+  "vipCountriesFirstUseHint": "在这里选择你的国家。你可以随时更改。",
+  "tvAdultLive": "Adult live TV",
+  "tvAdultCinema": "Adult cinema"
 }

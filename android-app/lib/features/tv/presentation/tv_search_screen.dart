@@ -20,13 +20,14 @@ import 'package:intl/intl.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../../channels/data/ai_search_service.dart';
 import '../../channels/domain/channel.dart';
+import '../../channels/domain/adult_channel_policy.dart';
 import '../../cinema/data/cinema_repository.dart';
 import '../../cinema/domain/cinema_models.dart';
 import '../../epg/data/epg_repository.dart';
 import '../../epg/domain/epg_program.dart';
 import '../../playlists/data/playlist_repository.dart';
+import '../../profiles/data/active_profile.dart';
 import '../../remote/domain/remote_typing_hub.dart';
-import '../../security/data/parental_controls.dart';
 import '../../voice/data/voice_capture.dart';
 import '../../voice/data/voice_remote_assist.dart';
 import '../../voice/domain/tonight_plan.dart';
@@ -91,13 +92,20 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
     _hooks = VoiceSearchHooks(onText: _applySpoken, onListen: _listen);
     VoiceNavigation.attach(_hooks);
     RemoteTypingHub.instance.register(_remoteTyping);
-    _channels = List<Channel>.of(PlaylistRepository.instance.currentChannels);
+    _channels = PlaylistRepository.instance.currentChannels
+        .where((Channel c) => !isAdultChannel(c))
+        .toList(growable: false);
     _prepareSearch(_channels);
     _sub = PlaylistRepository.instance.channelsStream.listen((
       List<Channel> ch,
     ) {
       if (!mounted) return;
-      _channels = List<Channel>.of(ch);
+      _gen++;
+      _channels = ch.where((Channel c) => !isAdultChannel(c)).toList(growable: false);
+      setState(() {
+        _hits = const <VoiceHit>[];
+        _tonight = null;
+      });
       _prepareSearch(_channels);
       if (_q.trim().isNotEmpty) _schedule();
     });
@@ -268,14 +276,13 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
       // Index cinéma indisponible : on garde les chaînes.
       if (kDebugMode) debugPrint('[Voix] cinéma : $e');
     }
-    final bool kids = ParentalControls.instance.kidsMode.value;
     final bool ready = _searchReady();
     final List<VoiceHit> local = searchCatalog(
       query: intent.catalogQuery,
       channels: _channels,
-      movies: movies,
-      series: series,
-      hideAdult: kids,
+      movies: movies.where((t) => !CinemaRepository.instance.isAdultTitle(t)).toList(),
+      series: series.where((t) => !CinemaRepository.instance.isAdultTitle(t)).toList(),
+      hideAdult: true,
       channelHay: ready ? _hay : null,
       adultIds: ready ? _adultIds : null,
     );
@@ -301,11 +308,10 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
       final AiSearchFilter? filter = await AiSearchService.search(query)
           .timeout(const Duration(seconds: 8));
       if (filter == null || !mounted || gen != _gen) return;
-      final bool kids = ParentalControls.instance.kidsMode.value;
       final List<VoiceHit> remote = <VoiceHit>[];
       for (final Channel c in _channels) {
         if (remote.length >= 24) break;
-        if (kids && c.genre == ChannelGenre.adult) continue;
+        if (isAdultChannel(c)) continue;
         if (!filter.matches(c)) continue;
         remote.add(VoiceHit.fromChannel(c));
       }
@@ -365,6 +371,12 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
   void _openHit(VoiceHit hit) {
     final CinemaTitle? cinema = hit.cinema;
     if (cinema != null) {
+      final String key = cinema.sourceKey;
+      if (CinemaRepository.instance.isAdultTitle(cinema) ||
+          !ActiveProfile.instance.allowsPlaylist(
+              int.tryParse(key.startsWith('p') ? key.substring(1) : ''))) {
+        return;
+      }
       Navigator.of(context).push(
         MaterialPageRoute<void>(
           builder: (_) => TvShell(
@@ -378,7 +390,12 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
       return;
     }
     final Channel? channel = hit.channel;
-    if (channel == null || channel.streamUrl.trim().isEmpty) return;
+    if (channel == null ||
+        channel.streamUrl.trim().isEmpty ||
+        isAdultChannel(channel) ||
+        !ActiveProfile.instance.allowsPlaylist(channel.playlistId)) {
+      return;
+    }
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) =>
@@ -396,7 +413,12 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
         break;
       }
     }
-    if (channel == null || channel.streamUrl.trim().isEmpty) return;
+    if (channel == null ||
+        channel.streamUrl.trim().isEmpty ||
+        isAdultChannel(channel) ||
+        !ActiveProfile.instance.allowsPlaylist(channel.playlistId)) {
+      return;
+    }
     final Channel play = channel;
     Navigator.of(context).push(
       MaterialPageRoute<void>(

@@ -19,15 +19,16 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
+import '../../channels/domain/adult_channel_policy.dart';
 import '../../channels/domain/channel.dart';
 import '../../epg/data/epg_repository.dart';
 import '../../epg/domain/epg_program.dart';
 import '../../playlists/data/playlist_repository.dart';
+import '../../profiles/data/active_profile.dart';
 import '../../security/data/parental_controls.dart';
 import '../core/tv_app_tokens.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
-import '../data/home_shelves.dart';
 import 'tv_live_preview.dart';
 import 'tv_player_screen.dart';
 import 'tv_shell.dart';
@@ -103,13 +104,11 @@ class _TvEpgPreviewScreenState extends State<TvEpgPreviewScreen> {
   }
 
   List<Channel> _filter(List<Channel> all) {
-    final bool kids = ParentalControls.instance.kidsMode.value;
     final List<Channel> out = <Channel>[];
     for (final Channel c in all) {
-      if (!c.isLive) continue;
-      if (kids && (roughLooksAdult(c.name) || roughLooksAdult(c.category))) {
-        continue;
-      }
+      // Ce guide est une entrée normale : Adultes reste dans son espace
+      // authentifié, même quand le mode enfants n'est pas activé.
+      if (!c.isLive || isAdultChannel(c)) continue;
       out.add(c);
     }
     return out;
@@ -126,6 +125,7 @@ class _TvEpgPreviewScreenState extends State<TvEpgPreviewScreen> {
       index = rows.length - 1;
     }
     final String? nextId = rows.isEmpty ? null : rows[index].id;
+    if (nextId != previous) unawaited(TvLivePreview.releaseActive());
     setState(() {
       _rows = rows;
       _index = index;
@@ -135,6 +135,9 @@ class _TvEpgPreviewScreenState extends State<TvEpgPreviewScreen> {
 
   Future<TvEpgWindow> _loadCurrent() {
     if (_rows.isEmpty) return Future<TvEpgWindow>.value(const TvEpgWindow());
+    if (isAdultChannel(_rows[_index])) {
+      return Future<TvEpgWindow>.value(const TvEpgWindow());
+    }
     final String id = _rows[_index].id;
     final TvEpgWindowLoader? custom = widget.loadWindow;
     if (custom != null) return custom(id);
@@ -159,19 +162,34 @@ class _TvEpgPreviewScreenState extends State<TvEpgPreviewScreen> {
     });
   }
 
-  void _open(int i) {
+  Future<void> _open(int i) async {
     if (i < 0 || i >= _rows.length) return;
+    final Channel channel = _rows[i];
+    if (isAdultChannel(channel)) return;
+    final int scope = ActiveProfile.instance.scopeListenable.value;
+    await TvLivePreview.releaseActive();
+    if (!mounted ||
+        scope != ActiveProfile.instance.scopeListenable.value ||
+        !ActiveProfile.instance.allowsPlaylist(channel.playlistId) ||
+        isAdultChannel(channel)) {
+      return;
+    }
+    final List<Channel> channels = _filter(_rows);
+    final int selected = channels.indexWhere((Channel c) =>
+        c.id == channel.id && c.playlistId == channel.playlistId);
+    if (selected < 0) return;
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => TvShell(
           applySafeArea: false,
-          child: TvPlayerScreen(channels: _rows, startIndex: i),
+          child: TvPlayerScreen(channels: channels, startIndex: selected),
         ),
       ),
     );
   }
 
   Widget _previewOf(Channel channel) {
+    if (isAdultChannel(channel)) return const SizedBox.shrink();
     final Widget Function(Channel channel)? custom = widget.preview;
     if (custom != null) return custom(channel);
     return TvLivePreview(channel: channel);
@@ -270,6 +288,7 @@ class _TvEpgPreviewScreenState extends State<TvEpgPreviewScreen> {
           ),
           const SizedBox(height: TvDimens.gutter),
           FutureBuilder<TvEpgWindow>(
+            key: ValueKey<String>('epg-${channel.id}'),
             future: _window,
             builder: (BuildContext context, AsyncSnapshot<TvEpgWindow> snap) {
               final EpgProgram? now = snap.data?.now;
