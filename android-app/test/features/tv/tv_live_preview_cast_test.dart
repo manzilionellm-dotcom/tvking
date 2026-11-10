@@ -8,14 +8,32 @@ import 'package:native_video_player/native_video_player.dart';
 import 'package:native_video_player/playback_lease.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:tv_king/features/cast/data/cast_manager.dart';
+import 'package:tv_king/features/cast/data/cast_transport.dart';
 import 'package:tv_king/features/cast/data/google_cast_api.dart';
+import 'package:tv_king/features/cast/data/stream_probe.dart';
+import 'package:tv_king/features/cast/domain/cast_device.dart';
 import 'package:tv_king/features/channels/domain/channel.dart';
 import 'package:tv_king/features/tv/presentation/tv_live_preview.dart';
+
+class _Transport implements CastTransport {
+  @override
+  Future<void> playStream(
+      {required String streamUrl,
+      String title = 'Test',
+      String? imageUrl}) async {}
+  @override
+  Future<void> pause() async {}
+  @override
+  Future<void> resume() async {}
+  @override
+  Future<void> stop() async {}
+}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   final List<MethodChannel> natives = <MethodChannel>[];
   final List<MethodCall> calls = <MethodCall>[];
+  late CastManager manager;
   final messenger =
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
 
@@ -24,8 +42,10 @@ void main() {
     NativeVideoController.backendFactory = null;
     NativeVideoController.audiblePlayers.debugReset();
     ForegroundPlayback.debugReset();
-    CastManager.instance.debugNativeSessionEvent(
-      const CastNativeSessionEvent('ended'),
+    manager = CastManager.forTesting(
+      transportFactory: (_) => _Transport(),
+      probe: (url) async =>
+          StreamProbeResult(originalUrl: url, finalUrl: url, success: true),
     );
     messenger.setMockMethodCallHandler(SystemChannels.platform_views,
         (MethodCall call) async {
@@ -42,10 +62,9 @@ void main() {
     });
   });
 
-  tearDown(() {
-    CastManager.instance.debugNativeSessionEvent(
-      const CastNativeSessionEvent('ended'),
-    );
+  tearDown(() async {
+    await manager.disconnect();
+    manager.dispose();
     for (final channel in natives) {
       messenger.setMockMethodCallHandler(channel, null);
     }
@@ -56,24 +75,25 @@ void main() {
     ForegroundPlayback.debugReset();
   });
 
-  Future<void> nativeCastEvent(
-    WidgetTester tester,
-    String method,
-    Map<String, Object> arguments,
-  ) async {
-    await tester.binding.defaultBinaryMessenger.handlePlatformMessage(
-      'com.manzilionellm.tvking/cast',
-      const StandardMethodCodec().encodeMethodCall(MethodCall(method, arguments)),
-      (ByteData? _) {},
-    );
+  Future<void> startCast(WidgetTester tester) async {
+    // Une session issue du choix du profil possède réellement son transport.
+    // Une reprise SDK orpheline ne constitue plus une autorisation de lecture.
+    await manager.castTo(
+        const CastDevice(
+          id: 'preview-cast',
+          name: 'TV fictive',
+          kind: CastDeviceKind.googleCast,
+          host: '192.0.2.1',
+          port: 8009,
+          controlUrl: '',
+        ),
+        streamUrl: 'https://fixture.invalid/cast.ts',
+        title: 'Cast fictif');
     await tester.pump();
   }
 
   Future<void> session(WidgetTester tester, String event) async {
-    // L'entrée de test existante place l'événement dans l'horloge du widget.
-    // Le singleton a été créé avant FakeAsync : son abonnement au stream
-    // natif garderait sinon une autre horloge pour le délai de l'aperçu.
-    CastManager.instance.debugNativeSessionEvent(CastNativeSessionEvent(event));
+    manager.debugNativeSessionEvent(CastNativeSessionEvent(event));
     await tester.pump();
   }
 
@@ -84,6 +104,7 @@ void main() {
               width: 470,
               height: 264,
               child: TvLivePreview(
+                castManager: manager,
                 channel: Channel(
                   id: id,
                   name: 'Chaîne fictive $id',
@@ -100,28 +121,28 @@ void main() {
 
   testWidgets('Cast conservé au retour : aucun aperçu avant la déconnexion',
       (WidgetTester tester) async {
-    await session(tester, 'resumed_at_boot');
-    expect(CastManager.instance.hasActiveSession, isTrue);
+    await startCast(tester);
+    await session(tester, 'resumed');
+    expect(manager.hasActiveSession, isTrue);
     await show(tester, 'premiere');
     await tester.pump(const Duration(seconds: 3));
     expect(natives, isEmpty);
     expect(find.byType(NativeVideoView), findsNothing);
 
-    await nativeCastEvent(tester, 'onMediaStateChanged', <String, Object>{
-      'playerState': 'paused', 'isPaused': true,
-    });
-    expect(CastManager.instance.state, CastState.paused);
+    await manager.pause();
+    await tester.pump();
+    expect(manager.state, CastState.paused);
     await show(tester, 'seconde');
     await tester.pump(const Duration(seconds: 3));
     expect(natives, isEmpty, reason: 'une pause distante reste un Cast actif');
 
     await session(tester, 'suspended');
-    expect(CastManager.instance.hasActiveSession, isTrue);
+    expect(manager.hasActiveSession, isTrue);
     await tester.pump(const Duration(seconds: 3));
     expect(natives, isEmpty, reason: 'la reprise Wi-Fi ne libère pas le flux');
 
     await session(tester, 'ended');
-    expect(CastManager.instance.hasActiveSession, isFalse);
+    expect(manager.hasActiveSession, isFalse);
     await tester.pump(const Duration(milliseconds: 1000));
     expect(natives, isEmpty, reason: 'le délai normal reste respecté');
     await tester.pump(const Duration(milliseconds: 600));
@@ -144,7 +165,7 @@ void main() {
     expect(natives, hasLength(1));
     expect(find.byType(NativeVideoView), findsOneWidget);
 
-    await session(tester, 'resumed');
+    await startCast(tester);
     await tester.pumpAndSettle();
     expect(find.byType(NativeVideoView), findsNothing);
     expect(calls.where((call) => call.method == 'dispose'), hasLength(1));

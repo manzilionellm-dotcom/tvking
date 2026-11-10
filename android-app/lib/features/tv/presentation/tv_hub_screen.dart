@@ -91,6 +91,7 @@ import '../data/home_shelves.dart';
 import '../data/tv_home_layout.dart';
 import '../data/tv_home_genres.dart';
 import '../data/startup_preference.dart';
+import '../desktop/desktop_cast_controls.dart';
 import '../../voice/presentation/voice_navigation.dart';
 import 'tv_app.dart';
 import 'tv_adult_section_screen.dart';
@@ -658,7 +659,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
     );
     if (plan == null) return false;
     final List<Channel> zap = plan.channels;
-    final int startIndex = plan.startIndex;
+    final int scope = ActiveProfile.instance.scopeListenable.value;
     _resumedThisVisit = true;
     _autoOpened = true;
     _deferredLiveOpen = false;
@@ -666,11 +667,28 @@ class _TvHubScreenState extends State<TvHubScreen> {
       'ACCUEIL',
       'reprise au démarrage : ${zap.first.name}',
     );
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted || !(ModalRoute.of(context)?.isCurrent ?? true)) return;
+      ResumeZap? currentPlan() =>
+          refreshResumeZap(plan, PlaylistRepository.instance.currentChannels,
+              requestedScope: scope,
+              currentScope: ActiveProfile.instance.scopeListenable.value,
+              hide: (channel) =>
+                  isAdultChannel(channel) ||
+                  !ActiveProfile.instance.allowsPlaylist(channel.playlistId));
+      final latest = currentPlan();
+      if (latest == null) return;
+      if (zunoHasCastTarget &&
+          await routeZunoChannelToCast(context,
+              channels: latest.channels,
+              channel: latest.channels[latest.startIndex])) return;
       if (!mounted) return;
+      final confirmed = currentPlan();
+      if (confirmed == null) return;
       Navigator.of(context).push(
         MaterialPageRoute<void>(
-          builder: (_) => TvPlayerScreen(channels: zap, startIndex: startIndex),
+          builder: (_) => TvPlayerScreen(
+              channels: confirmed.channels, startIndex: confirmed.startIndex),
         ),
       );
     });
@@ -753,7 +771,9 @@ class _TvHubScreenState extends State<TvHubScreen> {
       favorites: favoriteChannels(_channels, _favIds, hide: kidsHide),
       popular: channelsInIdOrder(_popularIds, byId, hide: kidsHide),
       continueWatching: continueForHome(
-        WatchProgressRepository.instance.continueWatching().where((WatchEntry entry) {
+        WatchProgressRepository.instance
+            .continueWatching()
+            .where((WatchEntry entry) {
           // Un ancien historique non classé reste privé jusqu'à ce que son
           // catalogue confirme qu'il appartient à l'espace normal.
           if (CinemaRepository.instance.adultStatusForWatch(entry) != false) {
@@ -1020,7 +1040,8 @@ class _TvHubScreenState extends State<TvHubScreen> {
     }
   }
 
-  void _openShow(ShowCue cue, {bool fromStart = false, bool replay = false}) {
+  Future<void> _openShow(ShowCue cue,
+      {bool fromStart = false, bool replay = false}) async {
     final Map<String, Channel> byId = indexChannelsById(_channels);
     final String id =
         replay ? (cue.replayChannelId ?? cue.channelId) : cue.channelId;
@@ -1043,6 +1064,10 @@ class _TvHubScreenState extends State<TvHubScreen> {
         );
       }
     }
+    if (zunoHasCastTarget &&
+        await routeZunoChannelToCast(context,
+            channels: _channels, channel: target, streamUrl: url)) return;
+    if (!mounted) return;
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => TvPlayerScreen(
@@ -1062,19 +1087,28 @@ class _TvHubScreenState extends State<TvHubScreen> {
     setState(() => _banner = null);
   }
 
-  void _playShelf(List<Channel> shelf, int index) {
+  Future<void> _playShelf(List<Channel> shelf, int index) async {
     if (index < 0 || index >= shelf.length) return;
     final Channel target = shelf[index];
     if (isAdultChannel(target) ||
         !ActiveProfile.instance.allowsPlaylist(target.playlistId)) {
       return;
     }
-    final List<Channel> allowed = shelf.where((Channel c) =>
-        !isAdultChannel(c) &&
-        ActiveProfile.instance.allowsPlaylist(c.playlistId)).toList(growable: false);
-    final int selected = allowed.indexWhere((Channel c) =>
-        c.id == target.id && c.playlistId == target.playlistId);
+    final List<Channel> allowed = shelf
+        .where((Channel c) =>
+            !isAdultChannel(c) &&
+            ActiveProfile.instance.allowsPlaylist(c.playlistId))
+        .toList(growable: false);
+    final int selected = allowed.indexWhere(
+        (Channel c) => c.id == target.id && c.playlistId == target.playlistId);
     if (selected < 0) return;
+    // Le Cast garde toutes les chaînes accessibles du profil, y compris
+    // lorsqu'on choisit la chaîne dans le petit carrousel « Reprendre ».
+    if (zunoHasCastTarget &&
+        await routeZunoChannelToCast(context,
+            channels: PlaylistRepository.instance.currentChannels,
+            channel: target)) return;
+    if (!mounted) return;
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => TvPlayerScreen(channels: allowed, startIndex: selected),
@@ -1612,8 +1646,10 @@ class _TvHubScreenState extends State<TvHubScreen> {
                                         }
                                       }
                                     },
-                                    onAdult: ProfileRepository.instance.activeIsKids ||
-                                            ParentalControls.instance.kidsMode.value
+                                    onAdult: ProfileRepository
+                                                .instance.activeIsKids ||
+                                            ParentalControls
+                                                .instance.kidsMode.value
                                         ? null
                                         : () => _openTile(_Tile.adult),
                                     onLive: () => _openTile(_Tile.live),

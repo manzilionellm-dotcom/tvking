@@ -2899,5 +2899,17 @@
   "tvAdultLive": "Adult live TV",
   "tvAdultCinema": "Adult cinema",
   "tvProfileSources": "प्रोफ़ाइल की प्लेलिस्ट",
-  "tvProfileSourceUnavailable": "यह प्रोफ़ाइल अब मौजूद नहीं है। प्लेलिस्ट प्रोफ़ाइल से नहीं जोड़ी गई।"
+  "tvProfileSourceUnavailable": "यह प्रोफ़ाइल अब मौजूद नहीं है। प्लेलिस्ट प्रोफ़ाइल से नहीं जोड़ी गई।",
+  "tvCastDiagnostic": "कास्ट की जाँच",
+  "playerScreenCast": "स्क्रीन",
+  "castZapPrevTooltip": "पिछला चैनल",
+  "castZapNextTooltip": "अगला चैनल",
+  "screenCastTitle": "स्क्रीन पर कास्ट करें",
+  "screenCastStartError": "साझा करना शुरू नहीं हो सका। जाँचें कि वाई-फ़ाई चालू है और फिर कोशिश करें।",
+  "screenCastInstructions": "अपने फ़ोन के समान वाई-फ़ाई से जुड़े कंप्यूटर या टीवी पर ब्राउज़र खोलें और यह पता दर्ज करें:",
+  "screenCastScanHint": "या दूसरे फ़ोन से स्कैन करें",
+  "screenCastKeepOpen": "कास्ट करते समय ऐप खुला रखें और दोनों डिवाइस को एक ही वाई-फ़ाई नेटवर्क से जोड़े रखें।",
+  "castNetworkDiagnostic": "कास्ट नेटवर्क जाँचें",
+  "castNetworkDiagnosticHelp": "टीवी का चैनल बदले बिना कनेक्शन और रिले जाँचें।",
+  "castDiagnosticClosePlayer": "टीवी पर चैनल जाँचने से पहले होम पर लौटें।"
 }

@@ -35,13 +35,13 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import '../../subscription/data/subscription_backend.dart'
+    show kSubscriptionBaseUrl;
 
 import '../../../core/observability/structured_logger.dart';
 import '../domain/cast_device.dart';
 import '../../player/data/xtream_url_variants.dart';
-import '../../subscription/data/subscription_backend.dart'
-    show kSubscriptionBaseUrl;
-import 'cast_session_diagnostic.dart' show redactStreamUrl;
+import 'cast_session_diagnostic.dart' show redactStreamUrl, redactCastText;
 import 'cast_transport.dart';
 import 'dlna_profiles.dart';
 import 'google_cast_api.dart';
@@ -173,10 +173,42 @@ class _ProxyVerdict {
   final DateTime at;
 }
 
+class _GoogleCastSessionCancelled implements Exception {
+  const _GoogleCastSessionCancelled();
+
+  @override
+  String toString() => 'Session Google Cast remplacée ou annulée';
+}
+
 class GoogleCastTransport implements CastTransport {
   GoogleCastTransport(this.device);
 
   final CastDevice device;
+  static int _loadSequence = 0;
+  String? currentLoadId;
+  String? currentContentId;
+
+  /// Le SDK est partagé par toutes les routes. CastManager injecte la
+  /// révision de CE démarrage : après un await (picker, réseau, LOAD), une
+  /// ancienne session ne doit plus charger de média ni ouvrir de repli sur
+  /// la TV que la route suivante vient de prendre en charge.
+  bool Function()? sessionIsCurrent;
+
+  void _checkCurrentSession() {
+    if (sessionIsCurrent?.call() == false) {
+      throw const _GoogleCastSessionCancelled();
+    }
+  }
+
+  /// Un relais peut avoir fini de s'enregistrer pendant l'annulation.
+  /// Libérer seulement cette URL avant de remonter l'annulation évite
+  /// d'occuper le fournisseur avec une lecture qui ne sera jamais envoyée.
+  void _checkRegisteredRelay(String? relayUrl) {
+    if (sessionIsCurrent?.call() == false) {
+      if (relayUrl != null) LocalCastServer.instance.clearRelay(relayUrl);
+      throw const _GoogleCastSessionCancelled();
+    }
+  }
 
   /// Dernier chemin de routage reellement emprunte par [playStream] :
   /// 'cast_proxy' | 'local_hls_relay' | 'direct'. Lu par CastManager pour
@@ -214,11 +246,14 @@ class GoogleCastTransport implements CastTransport {
     String title = 'ZUNO',
     String? imageUrl,
   }) async {
+    _checkCurrentSession();
     // Reset des marqueurs de diagnostic : evite d'afficher le chemin
     // du cast precedent si celui-ci echoue avant la decision de routage.
     lastCastPath = 'direct';
     lastCastUrlRedacted = null;
     lastRelayUrl = null;
+    currentLoadId = null;
+    currentContentId = null;
     final GoogleCastApi api = GoogleCastApi.instance;
 
     // 1) Le SDK Cast est-il disponible sur ce device ?
@@ -226,6 +261,7 @@ class GoogleCastTransport implements CastTransport {
     //    custom ROMs). Dans ce cas on lève — le CastManager retombera
     //    sur le fallback navigateur ou affichera un message friendly.
     final bool available = await api.isCastAvailable();
+    _checkCurrentSession();
     if (!available) {
       throw Exception(
         'Google Cast indisponible sur ce téléphone — '
@@ -289,10 +325,10 @@ class GoogleCastTransport implements CastTransport {
       // originalUpstreamUrl). Le Worker re-suit la redirection au play-time.
       // Nettoyage minimal : trim + strip des « ? » orphelins de fin (fréquents
       // sur les URLs Xtream .ts) qui perturbent certains parseurs.
-      final String signSource =
-          (originalUpstreamUrl != null && originalUpstreamUrl!.trim().isNotEmpty)
-              ? originalUpstreamUrl!
-              : streamUrl;
+      final String signSource = (originalUpstreamUrl != null &&
+              originalUpstreamUrl!.trim().isNotEmpty)
+          ? originalUpstreamUrl!
+          : streamUrl;
       String upstream = signSource.trim();
       while (upstream.endsWith('?')) {
         upstream = upstream.substring(0, upstream.length - 1);
@@ -318,6 +354,7 @@ class GoogleCastTransport implements CastTransport {
         );
       } else if (kCastUseCustomReceiver) {
         proxied = await _signedCastProxyUrl(upstream);
+        _checkCurrentSession();
 
         // NOUVEAU (CAST_HANDOFF §6.1) : ne PAS faire confiance aveuglément au
         // proxy — le Worker peut être BLOQUÉ par le fournisseur IPTV (IP
@@ -326,7 +363,9 @@ class GoogleCastTransport implements CastTransport {
         // vérifie que /cast-proxy DÉLIVRE vraiment avant de l'envoyer à la TV
         // (sauf verdict « délivre » tout frais dans le mémo).
         if (proxied != null && memoBlocked != false) {
-          if (await _proxyDelivers(proxied)) {
+          final bool delivers = await _proxyDelivers(proxied);
+          _checkCurrentSession();
+          if (delivers) {
             CastProxyVerdictMemo.instance
                 .remember(upstreamHost, blocked: false);
           } else {
@@ -335,8 +374,7 @@ class GoogleCastTransport implements CastTransport {
               event: 'proxy.blocked_fallback_relay',
               ctx: const <String, Object?>{},
             );
-            CastProxyVerdictMemo.instance
-                .remember(upstreamHost, blocked: true);
+            CastProxyVerdictMemo.instance.remember(upstreamHost, blocked: true);
             proxied = null; // → bascule sur le relais HLS du téléphone
           }
         }
@@ -360,8 +398,7 @@ class GoogleCastTransport implements CastTransport {
         // dans la MÊME session, et les zaps suivants n'essaient plus.
         String? direct;
         if (isExoPlayerReceiver(device) &&
-            CastProxyVerdictMemo.directTv.cachedBlocked(upstreamHost) !=
-                true) {
+            CastProxyVerdictMemo.directTv.cachedBlocked(upstreamHost) != true) {
           direct = await directTvCandidate(upstream);
         }
         if (direct != null) {
@@ -411,17 +448,22 @@ class GoogleCastTransport implements CastTransport {
         );
         return; // La TV tire le flux via le Worker — téléphone libre.
       } on Exception catch (e) {
-        CastProxyVerdictMemo.instance
-            .remember(upstreamHost, blocked: true);
+        _checkCurrentSession();
+        CastProxyVerdictMemo.instance.remember(upstreamHost, blocked: true);
         StructuredLogger.instance.warn(
           domain: 'cast',
           event: 'cast_proxy.playback_fallback',
-          ctx: <String, Object?>{'error': e.toString()},
+          ctx: <String, Object?>{'error': redactCastText(e.toString())},
         );
+        // Le <video> externe du custom receiver peut encore tirer le
+        // fournisseur même si CAF n'a jamais annoncé PLAYING. Fermer
+        // cette application et attendre le Default AVANT la présonde
+        // TV-direct ou le démarrage du relais (compte 1 connexion).
+        await _ensureSessionOn(api, 'local_hls_relay');
+        _checkCurrentSession();
         String? direct;
         if (isExoPlayerReceiver(device) &&
-            CastProxyVerdictMemo.directTv.cachedBlocked(upstreamHost) !=
-                true) {
+            CastProxyVerdictMemo.directTv.cachedBlocked(upstreamHost) != true) {
           direct = await directTvCandidate(upstreamForRelay);
         }
         if (direct != null) {
@@ -439,8 +481,7 @@ class GoogleCastTransport implements CastTransport {
           castPath = 'local_hls_relay';
           lastRelayUrl = urlToCast;
         }
-        // custom 5BDFD969 → Default CC1AD845 : re-route la session.
-        await _ensureSessionOn(api, castPath);
+        // Les deux replis utilisent le Default, déjà établi ci-dessus.
       }
     }
 
@@ -459,20 +500,20 @@ class GoogleCastTransport implements CastTransport {
           imageUrl: imageUrl,
           budget: const Duration(seconds: 12),
         );
-        CastProxyVerdictMemo.directTv
-            .remember(upstreamHost, blocked: false);
+        CastProxyVerdictMemo.directTv.remember(upstreamHost, blocked: false);
         // La TV tire le flux CHEZ LE FOURNISSEUR : pas de relais, pas de
         // foreground service, le téléphone est au repos (lastRelayUrl
         // reste null → CastManager ne démarre pas le keep-alive).
         return;
       } on Exception catch (e) {
-        CastProxyVerdictMemo.directTv
-            .remember(upstreamHost, blocked: true);
+        _checkCurrentSession();
+        CastProxyVerdictMemo.directTv.remember(upstreamHost, blocked: true);
         StructuredLogger.instance.warn(
           domain: 'cast',
           event: 'direct_tv.fallback_relay',
-          ctx: <String, Object?>{'error': e.toString()},
+          ctx: <String, Object?>{'error': redactCastText(e.toString())},
         );
+        await _stopBeforeFallback(api);
         final ({String url, String mime}) relay = await _registerRelayFor(
           upstream: upstreamForRelay,
           profileUrl: streamUrl,
@@ -496,6 +537,7 @@ class GoogleCastTransport implements CastTransport {
         budget: const Duration(seconds: 25),
       );
     } on Exception {
+      _checkCurrentSession();
       // SAUVETAGE AUDIO (terrain 2026-07-16, SHIELD × AC-3) : le relais
       // a servi le flux (load_ok) mais le récepteur web n'a pas pu le
       // JOUER — mux.js ne sait ré-emballer que l'AAC/MP3, un TS en
@@ -515,20 +557,20 @@ class GoogleCastTransport implements CastTransport {
           relayAudio != null && kRescueAudio.contains(relayAudio);
       String? direct;
       if (audioAtRisk && isExoPlayerReceiver(device)) {
+        // Libérer le relais AVANT même la présonde HLS : cette présonde
+        // est aussi un GET fournisseur et serait refusée en 1 connexion.
+        // stop() ferme immédiatement le client HTTP du relais local.
+        LocalCastServer.instance.clearRelay(relayUrl!);
+        lastRelayUrl = null;
+        await _stopBeforeFallback(api);
         try {
           direct = await directTvCandidate(upstreamForRelay);
         } on Exception {
+          _checkCurrentSession();
           direct = null; // pas de candidat direct → on laisse remonter
         }
       }
       if (direct == null) rethrow;
-      // LIBÉRER LE RELAIS AVANT l'essai direct (revue 2026-07-16) : la
-      // session HLS tient encore la connexion fournisseur — sur un
-      // compte 1-connexion, le fetch de la TV serait refusé et l'essai
-      // condamné d'avance (et le mémo « bloqué » posé à tort pour
-      // 10 min sur la foi d'un test biaisé).
-      LocalCastServer.instance.clearRelay(relayUrl!);
-      lastRelayUrl = null;
       StructuredLogger.instance.warn(
         domain: 'cast',
         event: 'relay_audio.fallback_direct_tv',
@@ -564,6 +606,14 @@ class GoogleCastTransport implements CastTransport {
     }
   }
 
+  /// Le bridge confirme maintenant l'ACK du STOP, pas seulement son
+  /// envoi. Un refus/timeout interdit d'ouvrir le fournisseur suivant.
+  Future<void> _stopBeforeFallback(GoogleCastApi api) async {
+    _checkCurrentSession();
+    await api.stop(propagateError: true).timeout(const Duration(seconds: 5));
+    _checkCurrentSession();
+  }
+
   /// Enregistre la session relais HLS du téléphone et renvoie son URL
   /// LAN. [upstream] = URL PORTAIL D'ORIGINE nettoyée, PAS l'URL déjà
   /// résolue : les tokens Xtream sont par-connexion — celui du probe a
@@ -575,6 +625,7 @@ class GoogleCastTransport implements CastTransport {
     required String upstream,
     required String profileUrl,
   }) async {
+    _checkCurrentSession();
     final DlnaProfile profile =
         DlnaProfiles.select(url: profileUrl, finalMime: null);
     final String? hlsRelay = await LocalCastServer.instance.registerRelay(
@@ -583,6 +634,7 @@ class GoogleCastTransport implements CastTransport {
       receiverHost: device.host,
       wrapInHls: true,
     );
+    _checkRegisteredRelay(hlsRelay);
     if (hlsRelay == null) {
       throw Exception(
         'Le cast vers cette TV est indisponible (réseau incompatible). '
@@ -612,6 +664,7 @@ class GoogleCastTransport implements CastTransport {
     required String profileUrl,
     required String streamUrl,
   }) async {
+    _checkCurrentSession();
     final bool isLiveTs = _looksLikeRawMpegTs(streamUrl);
     if (!isLiveTs && !isHlsOrDash(streamUrl)) {
       // VOD : pass-through du fichier (wrapInHls:false → route /relay/<t>.<ext>).
@@ -623,6 +676,7 @@ class GoogleCastTransport implements CastTransport {
         receiverHost: device.host,
         wrapInHls: false,
       );
+      _checkRegisteredRelay(passthrough);
       if (passthrough != null) {
         StructuredLogger.instance.info(
           domain: 'cast',
@@ -652,6 +706,7 @@ class GoogleCastTransport implements CastTransport {
     String? imageUrl,
     required Duration budget,
   }) async {
+    _checkCurrentSession();
     // DIAGNOSTIC (brief §4.3) — tracer EXACTEMENT l'URL et le MIME
     // pousses au recepteur (URL redactee, pas de fuite credentials).
     StructuredLogger.instance.info(
@@ -677,16 +732,22 @@ class GoogleCastTransport implements CastTransport {
     lastCastPath = castPath;
     lastCastUrlRedacted = _redactCastToken(redactStreamUrl(urlToCast));
 
-    final bool loaded = await api.loadMedia(
-      streamUrl: urlToCast,
-      title: title,
-      mime: mime,
-      imageUrl: imageUrl,
-      debug: kCastDebugOverlay,
-    );
-    if (!loaded) {
-      throw Exception('La TV a refusé le flux.');
-    }
+    // Écouter AVANT LOAD : un SDK très rapide peut annoncer PLAYING
+    // avant la réponse MethodChannel. Le stream est broadcast, donc
+    // un abonnement créé ensuite perdrait définitivement cette preuve.
+    final Completer<void> stopObservation = Completer<void>();
+    final String loadId =
+        '${DateTime.now().microsecondsSinceEpoch}-${++_loadSequence}';
+    currentLoadId = loadId;
+    currentContentId = urlToCast;
+    final Future<void> playback = _awaitRealPlayback(api,
+        budget: budget,
+        cancellation: stopObservation.future,
+        loadId: loadId,
+        contentId: urlToCast);
+    // L'échec peut aussi arriver avant la réponse LOAD. Cette branche
+    // consomme l'erreur immédiatement ; await playback la relira ensuite.
+    unawaited(playback.catchError((Object _) {}));
 
     // VERITE TERRAIN (2026-06-06) : loadMedia=true signifie seulement
     // que le recepteur a ACCEPTE la commande, PAS que la video joue.
@@ -694,8 +755,20 @@ class GoogleCastTransport implements CastTransport {
     // image, mais le diagnostic affichait "succes". On attend donc la
     // lecture REELLE (etat PLAYING) avant de declarer le succes.
     try {
-      await _awaitRealPlayback(api, budget: budget);
+      final bool loaded = await api.loadMedia(
+        streamUrl: urlToCast,
+        title: title,
+        mime: mime,
+        imageUrl: imageUrl,
+        debug: kCastDebugOverlay,
+        loadId: loadId,
+      );
+      _checkCurrentSession();
+      if (!loaded) throw Exception('La TV a refusé le flux.');
+      await playback;
+      _checkCurrentSession();
     } on Exception catch (e) {
+      _checkCurrentSession();
       // Sur le chemin relais, enrichit l'erreur avec l'etat REEL de la
       // session HLS (codec vu en PMT + compteurs de requetes du
       // recepteur) : « codec/format non supporte » avec 0 segment servi
@@ -706,7 +779,7 @@ class GoogleCastTransport implements CastTransport {
             LocalCastServer.instance.hlsSessionDebugInfo(lastRelayUrl!);
         if (info != null) {
           final String base =
-              e.toString().replaceFirst('Exception: ', '');
+              redactCastText(e.toString()).replaceFirst('Exception: ', '');
           // Cas tranché sur le terrain (M6 ᴿᴬᵂ, 2026-07-09) : la TV
           // télécharge playlist + segments puis rejette → HEVC-dans-TS,
           // que le Default Media Receiver ne décode pas (limite CAF,
@@ -738,6 +811,8 @@ class GoogleCastTransport implements CastTransport {
         }
       }
       rethrow;
+    } finally {
+      stopObservation.complete();
     }
   }
 
@@ -752,8 +827,21 @@ class GoogleCastTransport implements CastTransport {
   Future<void> _awaitRealPlayback(
     GoogleCastApi api, {
     Duration budget = const Duration(seconds: 25),
+    required Future<void> cancellation,
+    required String loadId,
+    required String contentId,
   }) async {
     final Completer<void> done = Completer<void>();
+    void cancelled() {
+      if (!done.isCompleted)
+        done.completeError(const _GoogleCastSessionCancelled());
+    }
+
+    unawaited(cancellation.then((_) => cancelled()));
+    final Timer ownership =
+        Timer.periodic(const Duration(milliseconds: 200), (_) {
+      if (sessionIsCurrent?.call() == false) cancelled();
+    });
     final Timer timer = Timer(budget, () {
       if (!done.isCompleted) {
         done.completeError(Exception(
@@ -764,6 +852,9 @@ class GoogleCastTransport implements CastTransport {
     });
     final StreamSubscription<CastNativeMediaState> sub =
         api.mediaStateStream.listen((CastNativeMediaState s) {
+      // Un PLAYING de l'ancienne chaîne ne valide jamais ce nouveau
+      // LOAD, même si le SDK partage le même RemoteMediaClient.
+      if (s.loadId != loadId || s.contentId != contentId) return;
       if (s.playerState == CastNativePlayerState.playing) {
         if (!done.isCompleted) done.complete();
       } else if (s.playerState == CastNativePlayerState.idle &&
@@ -783,7 +874,7 @@ class GoogleCastTransport implements CastTransport {
     // codec » à la simple lecture du message d'erreur.
     final StreamSubscription<CastNativeSessionEvent> evSub =
         api.sessionEventStream.listen((CastNativeSessionEvent e) {
-      if (e.kind == 'load_failed' && !done.isCompleted) {
+      if (e.kind == 'load_failed' && e.loadId == loadId && !done.isCompleted) {
         done.completeError(Exception(
           'La TV a refusé la commande de lecture (LOAD échoué, code '
           '${e.errorCode}) — flux injoignable depuis la TV ou récepteur '
@@ -795,6 +886,7 @@ class GoogleCastTransport implements CastTransport {
       await done.future;
     } finally {
       timer.cancel();
+      ownership.cancel();
       await sub.cancel();
       await evSub.cancel();
     }
@@ -820,10 +912,12 @@ class GoogleCastTransport implements CastTransport {
   /// initial ET par les replis qui changent de receiver en cours de
   /// playStream (cast_proxy custom → relais/direct sur le Default).
   Future<void> _ensureSessionOn(GoogleCastApi api, String castPath) async {
+    _checkCurrentSession();
     final String desiredReceiver = receiverAppIdForCastPath(castPath);
     final String switchOutcome = kCastUseCustomReceiver
         ? await api.setReceiverApplicationId(desiredReceiver)
         : 'skipped';
+    _checkCurrentSession();
     StructuredLogger.instance.info(
       domain: 'cast',
       event: 'google.receiver_select',
@@ -847,24 +941,23 @@ class GoogleCastTransport implements CastTransport {
     } else {
       hasSession = await api.hasActiveSession();
     }
+    _checkCurrentSession();
 
     // Pas de session → on demande au SDK d'ouvrir SON dialog natif.
     // L'utilisateur sélectionne sa TV. Le SDK gère la négociation,
     // le pairing, etc. — c'est exactement le flow Netflix / YouTube.
     if (!hasSession) {
       await api.showRoutePicker();
-      // Le dialog est asynchrone côté utilisateur (il doit tap sa TV).
-      // On poll hasActiveSession pendant 30s max — au-delà on suppose
-      // que l'utilisateur a annulé.
-      final DateTime deadline =
-          DateTime.now().add(const Duration(seconds: 30));
-      while (DateTime.now().isBefore(deadline)) {
-        await Future<void>.delayed(const Duration(milliseconds: 500));
-        if (await api.hasActiveSession()) {
-          hasSession = true;
-          break;
-        }
-      }
+      _checkCurrentSession();
+      // Le picker peut rester ouvert pendant la fermeture de l'ancien
+      // receiver. Même ici, une bascule ne peut pas accepter cette
+      // ancienne session encore active comme preuve de fermeture.
+      hasSession = await _waitForSessionOn(
+        api,
+        desiredReceiver,
+        const Duration(seconds: 30),
+        requireReceiverMatch: switchOutcome == 'switching',
+      );
       if (!hasSession) {
         throw Exception('Aucune TV sélectionnée.');
       }
@@ -874,18 +967,27 @@ class GoogleCastTransport implements CastTransport {
   /// Attend qu'une session soit CONNECTÉE sur le receiver [appId] après une
   /// bascule ('switching') : l'ancienne session peut encore apparaître
   /// active pendant sa fermeture, d'où la double condition session + App ID.
-  /// `null` (métadonnées pas encore remontées) est toléré : l'App ID du
-  /// contexte vient d'être changé, toute NOUVELLE session est la bonne.
-  static Future<bool> _waitForSessionOn(
+  /// Un ID encore absent n'est toléré qu'après une déconnexion observée,
+  /// ou pour une sélection initiale sans ancien receiver à fermer.
+  Future<bool> _waitForSessionOn(
     GoogleCastApi api,
     String appId,
-    Duration timeout,
-  ) async {
+    Duration timeout, {
+    bool requireReceiverMatch = true,
+  }) async {
     final DateTime deadline = DateTime.now().add(timeout);
+    bool sawDisconnected = !requireReceiverMatch;
     while (DateTime.now().isBefore(deadline)) {
-      if (await api.hasActiveSession()) {
+      _checkCurrentSession();
+      final bool active = await api.hasActiveSession();
+      _checkCurrentSession();
+      if (active) {
         final String? current = await api.currentReceiverApplicationId();
-        if (current == null || current == appId) return true;
+        _checkCurrentSession();
+        if (current == appId || (current == null && sawDisconnected))
+          return true;
+      } else {
+        sawDisconnected = true;
       }
       await Future<void>.delayed(const Duration(milliseconds: 500));
     }
@@ -908,17 +1010,21 @@ class GoogleCastTransport implements CastTransport {
   /// xtream_url_variants) ; une URL non-Xtream part telle quelle.
   @visibleForTesting
   Future<String> directTvCandidate(String upstream) async {
+    _checkCurrentSession();
     final XtreamUrlShape? shape = XtreamUrlShape.parse(upstream);
     final bool liveShape = shape != null &&
-        (shape.prefix == 'live' ||
-            (shape.prefix == null && shape.ext == 'ts'));
+        (shape.prefix == 'live' || (shape.prefix == null && shape.ext == 'ts'));
     if (liveShape) {
       final String hls = shape.build(newPrefix: 'live', newExt: 'm3u8');
-      if (await _urlDelivers(hls)) return hls;
+      final bool hlsWorks = await _urlDelivers(hls);
+      _checkCurrentSession();
+      if (hlsWorks) return hls;
       // Forme nue (panels sans préfixe) : deuxième et dernière chance HLS.
       if (shape.prefix == null) {
         final String nakedHls = shape.build(newPrefix: null, newExt: 'm3u8');
-        if (await _urlDelivers(nakedHls)) return nakedHls;
+        final bool nakedHlsWorks = await _urlDelivers(nakedHls);
+        _checkCurrentSession();
+        if (nakedHlsWorks) return nakedHls;
       }
     }
     return upstream;
@@ -1092,16 +1198,20 @@ class GoogleCastTransport implements CastTransport {
   Future<void> resume() => GoogleCastApi.instance.play();
 
   @override
-  Future<void> stop() async {
+  Future<void> stop({bool Function()? mayDisconnect}) async {
+    if (mayDisconnect?.call() == false) return;
     try {
       await GoogleCastApi.instance.stop();
     } on Exception catch (e) {
-      if (kDebugMode) debugPrint('[Cast] stop: $e');
+      if (kDebugMode) debugPrint('[Cast] stop: ${redactCastText('$e')}');
     }
+    // Le SDK est global : un ancien STOP peut répondre APRÈS qu'une
+    // autre chaîne/TV a pris la main. Ne jamais déconnecter sa session.
+    if (mayDisconnect?.call() == false) return;
     try {
       await GoogleCastApi.instance.disconnect();
     } on Exception catch (e) {
-      if (kDebugMode) debugPrint('[Cast] disconnect: $e');
+      if (kDebugMode) debugPrint('[Cast] disconnect: ${redactCastText('$e')}');
     }
   }
 

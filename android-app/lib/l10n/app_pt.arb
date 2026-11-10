@@ -2899,5 +2899,17 @@
   "tvAdultLive": "Adult live TV",
   "tvAdultCinema": "Adult cinema",
   "tvProfileSources": "Listas de reprodução do perfil",
-  "tvProfileSourceUnavailable": "Este perfil já não existe. A lista de reprodução não foi associada."
+  "tvProfileSourceUnavailable": "Este perfil já não existe. A lista de reprodução não foi associada.",
+  "tvCastDiagnostic": "Diagnóstico de Cast",
+  "playerScreenCast": "Ecrã",
+  "castZapPrevTooltip": "Canal anterior",
+  "castZapNextTooltip": "Canal seguinte",
+  "screenCastTitle": "Transmitir para um ecrã",
+  "screenCastStartError": "Não foi possível iniciar a partilha. Verifica se o Wi-Fi está ligado e tenta novamente.",
+  "screenCastInstructions": "No computador ou na TV, na mesma rede Wi-Fi do telemóvel, abre o navegador e introduz este endereço:",
+  "screenCastScanHint": "ou lê o código com outro telemóvel",
+  "screenCastKeepOpen": "Mantém a aplicação aberta e ambos os dispositivos na mesma rede Wi-Fi durante a transmissão.",
+  "castNetworkDiagnostic": "Verificar a rede Cast",
+  "castNetworkDiagnosticHelp": "Verifica a ligação e o retransmissor sem mudar o canal da TV.",
+  "castDiagnosticClosePlayer": "Volta ao início antes de testar os canais na TV."
 }

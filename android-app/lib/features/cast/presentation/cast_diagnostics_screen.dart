@@ -21,12 +21,31 @@ import 'package:flutter/services.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
+import '../../../core/i18n/l10n_extension.dart';
 import '../../channels/domain/channel.dart';
+import '../../channels/domain/adult_channel_policy.dart';
 import '../../playlists/data/playlist_repository.dart';
+import '../../profiles/data/active_profile.dart';
+import '../../tv/core/tv_app_tokens.dart';
+import '../../tv/core/tv_activity.dart';
+import '../../tv/presentation/tv_live_preview.dart';
 import '../data/cast_diagnostics.dart';
+import '../data/cast_network_diagnostic.dart';
 import '../data/cast_manager.dart';
 import '../data/cast_session_diagnostic.dart';
 import '../domain/cast_device.dart';
+
+Color _diagnosticAccent(BuildContext context) =>
+    Theme.of(context).extension<TvAppTokens>()?.accentBright ??
+    AppColors.accent;
+Color _diagnosticSelected(BuildContext context) =>
+    Theme.of(context).extension<TvAppTokens>()?.sel ?? AppColors.accentSurface;
+Color _diagnosticBackground(BuildContext context) =>
+    Theme.of(context).extension<TvAppTokens>()?.bg ?? AppColors.background;
+Color _diagnosticSurface(BuildContext context) =>
+    Theme.of(context).extension<TvAppTokens>()?.panel ?? AppColors.surface;
+Color _diagnosticBorder(BuildContext context) =>
+    Theme.of(context).extension<TvAppTokens>()?.line ?? AppColors.border;
 
 class CastDiagnosticsScreen extends StatefulWidget {
   const CastDiagnosticsScreen({super.key});
@@ -39,10 +58,16 @@ class _CastDiagnosticsScreenState extends State<CastDiagnosticsScreen> {
   CastDevice? _selectedDevice;
   DiagnosticPreset _preset = DiagnosticPreset.standard;
   DiagnosticBatchRunner? _runner;
+  bool _networkBusy = false;
+  String? _networkReport;
+  late final int _scope = ActiveProfile.instance.scopeListenable.value;
+  bool get _scopeValid =>
+      _scope == ActiveProfile.instance.scopeListenable.value;
 
   @override
   void initState() {
     super.initState();
+    ActiveProfile.instance.scopeListenable.addListener(_scopeChanged);
     // Auto-lance la discovery si on entre sans devices chauds.
     if (CastManager.instance.discoveredDevices.isEmpty) {
       CastManager.instance.startDiscovery();
@@ -51,17 +76,49 @@ class _CastDiagnosticsScreenState extends State<CastDiagnosticsScreen> {
 
   @override
   void dispose() {
+    ActiveProfile.instance.scopeListenable.removeListener(_scopeChanged);
     _runner?.removeListener(_onRunnerTick);
     _runner?.cancel();
     super.dispose();
   }
 
-  void _onRunnerTick() => setState(() {});
+  void _onRunnerTick() {
+    if (mounted && _scopeValid) setState(() {});
+  }
+
+  void _scopeChanged() {
+    if (_scopeValid) return;
+    _runner?.cancel();
+    _runner?.removeListener(_onRunnerTick);
+    _runner = null;
+    _networkReport = null;
+    _selectedDevice = null;
+    if (!mounted) return;
+    setState(() {});
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final route = ModalRoute.of(context);
+      if (route == null || !route.isActive) return;
+      if (route.isCurrent && Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      } else if (!route.isCurrent) {
+        Navigator.of(context).removeRoute(route);
+      }
+    });
+  }
 
   void _start() {
-    if (_selectedDevice == null) return;
-    final List<Channel> all =
-        PlaylistRepository.instance.currentChannels;
+    if (_selectedDevice == null || !_scopeValid || _networkBusy) return;
+    if (TvActivity.isBusy) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(context.l10n.castDiagnosticClosePlayer)));
+      return;
+    }
+    final List<Channel> all = PlaylistRepository.instance.currentChannels
+        .where((channel) =>
+            !isAdultChannel(channel) &&
+            ActiveProfile.instance.allowsPlaylist(channel.playlistId))
+        .toList(growable: false);
     final List<Channel> sample =
         pickDiagnosticChannels(all, _preset.sampleSize);
     if (sample.isEmpty) {
@@ -82,8 +139,38 @@ class _CastDiagnosticsScreenState extends State<CastDiagnosticsScreen> {
     runner.run();
   }
 
+  Future<void> _checkNetwork() async {
+    if (_networkBusy || _runner?.isRunning == true || !_scopeValid) return;
+    setState(() {
+      _networkBusy = true;
+      _networkReport = null;
+    });
+    try {
+      await TvLivePreview.releaseActive();
+      if (!mounted || !_scopeValid) return;
+      final report = await CastNetworkDiagnostic.run();
+      if (!mounted || !_scopeValid) return;
+      setState(() => _networkReport = report);
+    } catch (_) {
+      if (mounted && _scopeValid) {
+        setState(() => _networkReport = context.l10n.castFriendlyNetworkFail);
+      }
+    } finally {
+      if (mounted && _scopeValid) setState(() => _networkBusy = false);
+    }
+  }
+
+  Future<void> _copyNetworkReport() async {
+    final report = _networkReport;
+    if (report == null || !_scopeValid) return;
+    await Clipboard.setData(ClipboardData(text: report));
+    if (!mounted || !_scopeValid) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(context.l10n.tvCopied)));
+  }
+
   Future<void> _copyReport() async {
-    if (_runner == null) return;
+    if (_runner == null || !_scopeValid) return;
     final String report = _runner!.exportReport();
     await Clipboard.setData(ClipboardData(text: report));
     if (!mounted) return;
@@ -99,13 +186,14 @@ class _CastDiagnosticsScreenState extends State<CastDiagnosticsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (!_scopeValid) return const SizedBox.shrink();
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: _diagnosticBackground(context),
       appBar: AppBar(
-        backgroundColor: AppColors.background,
+        backgroundColor: _diagnosticBackground(context),
         elevation: 0,
         title: Text(
-          'Diagnostic cast',
+          context.l10n.tvCastDiagnostic,
           style: AppTextStyles.headlineMedium,
         ),
       ),
@@ -119,6 +207,36 @@ class _CastDiagnosticsScreenState extends State<CastDiagnosticsScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: <Widget>[
+                  OutlinedButton.icon(
+                    onPressed: _networkBusy || _runner?.isRunning == true
+                        ? null
+                        : _checkNetwork,
+                    icon: const Icon(Icons.network_check_rounded),
+                    label: Text(_networkBusy
+                        ? context.l10n.subLoading
+                        : context.l10n.castNetworkDiagnostic),
+                  ),
+                  Text(context.l10n.castNetworkDiagnosticHelp,
+                      style: AppTextStyles.bodyMedium),
+                  if (_networkReport != null) ...<Widget>[
+                    ExpansionTile(
+                      title: Text(context.l10n.castNetworkDiagnostic),
+                      children: <Widget>[
+                        SizedBox(
+                          height: MediaQuery.sizeOf(context).height * 0.32,
+                          child: SingleChildScrollView(
+                            child: SelectableText(_networkReport!,
+                                style: AppTextStyles.labelSmall),
+                          ),
+                        ),
+                        TextButton.icon(
+                            onPressed: _copyNetworkReport,
+                            icon: const Icon(Icons.copy_rounded),
+                            label: Text(context.l10n.buttonCopy)),
+                      ],
+                    ),
+                  ],
+                  const SizedBox(height: 20),
                   const _IntroCard(),
                   const SizedBox(height: 20),
                   _DevicePicker(
@@ -130,14 +248,13 @@ class _CastDiagnosticsScreenState extends State<CastDiagnosticsScreen> {
                   const SizedBox(height: 16),
                   _PresetPicker(
                     selected: _preset,
-                    onPick: (DiagnosticPreset p) =>
-                        setState(() => _preset = p),
+                    onPick: (DiagnosticPreset p) => setState(() => _preset = p),
                     locked: _runner?.isRunning ?? false,
                   ),
                   const SizedBox(height: 20),
                   if (_runner == null)
                     _StartButton(
-                      enabled: _selectedDevice != null,
+                      enabled: _selectedDevice != null && !_networkBusy,
                       onPressed: _start,
                     )
                   else ...<Widget>[
@@ -198,14 +315,15 @@ class _IntroCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: _diagnosticSurface(context),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: _diagnosticBorder(context)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Icon(Icons.science_outlined, color: AppColors.accent, size: 20),
+          Icon(Icons.science_outlined,
+              color: _diagnosticAccent(context), size: 20),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
@@ -238,8 +356,7 @@ class _DevicePicker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final List<CastDevice> devices =
-        CastManager.instance.discoveredDevices;
+    final List<CastDevice> devices = CastManager.instance.discoveredDevices;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
@@ -249,9 +366,9 @@ class _DevicePicker extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color: AppColors.surface,
+              color: _diagnosticSurface(context),
               borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: AppColors.border),
+              border: Border.all(color: _diagnosticBorder(context)),
             ),
             child: Row(
               children: <Widget>[
@@ -305,13 +422,16 @@ class _DeviceRow extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(10),
         child: Container(
-          padding:
-              const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           decoration: BoxDecoration(
-            color: selected ? AppColors.accentSurface : AppColors.surface,
+            color: selected
+                ? _diagnosticSelected(context)
+                : _diagnosticSurface(context),
             borderRadius: BorderRadius.circular(10),
             border: Border.all(
-              color: selected ? AppColors.accent : AppColors.border,
+              color: selected
+                  ? _diagnosticAccent(context)
+                  : _diagnosticBorder(context),
               width: selected ? 1.4 : 1,
             ),
           ),
@@ -322,7 +442,8 @@ class _DeviceRow extends StatelessWidget {
                     ? Icons.radio_button_checked_rounded
                     : Icons.radio_button_unchecked_rounded,
                 size: 18,
-                color: selected ? AppColors.accent : AppColors.textMuted,
+                color:
+                    selected ? _diagnosticAccent(context) : AppColors.textMuted,
               ),
               const SizedBox(width: 10),
               Expanded(
@@ -413,13 +534,16 @@ class _PresetChip extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(10),
         child: Container(
-          padding:
-              const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
           decoration: BoxDecoration(
-            color: selected ? AppColors.accentSurface : AppColors.surface,
+            color: selected
+                ? _diagnosticSelected(context)
+                : _diagnosticSurface(context),
             borderRadius: BorderRadius.circular(10),
             border: Border.all(
-              color: selected ? AppColors.accent : AppColors.border,
+              color: selected
+                  ? _diagnosticAccent(context)
+                  : _diagnosticBorder(context),
               width: selected ? 1.4 : 1,
             ),
           ),
@@ -431,7 +555,7 @@ class _PresetChip extends StatelessWidget {
                   fontSize: 13,
                   fontWeight: FontWeight.w700,
                   color: selected
-                      ? AppColors.accent
+                      ? _diagnosticAccent(context)
                       : AppColors.textPrimary,
                 ),
               ),
@@ -466,9 +590,7 @@ class _StartButton extends StatelessWidget {
         onPressed: enabled ? onPressed : null,
         icon: const Icon(Icons.play_arrow_rounded),
         label: Text(
-          enabled
-              ? 'Lancer le diagnostic'
-              : 'Sélectionne un récepteur',
+          enabled ? 'Lancer le diagnostic' : 'Sélectionne un récepteur',
         ),
       ),
     );
@@ -505,7 +627,7 @@ class _RunHeader extends StatelessWidget {
               Text(
                 '${(progress * 100).toInt()}%',
                 style: AppTextStyles.labelSmall
-                    .copyWith(color: AppColors.accent),
+                    .copyWith(color: _diagnosticAccent(context)),
               ),
           ],
         ),
@@ -515,11 +637,9 @@ class _RunHeader extends StatelessWidget {
           child: LinearProgressIndicator(
             value: runner.isRunning ? progress : 1,
             minHeight: 4,
-            backgroundColor: AppColors.surface,
+            backgroundColor: _diagnosticSurface(context),
             valueColor: AlwaysStoppedAnimation<Color>(
-              runner.isRunning
-                  ? AppColors.accent
-                  : AppColors.success,
+              runner.isRunning ? _diagnosticAccent(context) : AppColors.success,
             ),
           ),
         ),
@@ -539,9 +659,9 @@ class _ResultsTable extends StatelessWidget {
       return Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: AppColors.surface,
+          color: _diagnosticSurface(context),
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: AppColors.border),
+          border: Border.all(color: _diagnosticBorder(context)),
         ),
         child: Text(
           'En attente du premier résultat…',
@@ -554,15 +674,14 @@ class _ResultsTable extends StatelessWidget {
     }
     return Container(
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: _diagnosticSurface(context),
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: _diagnosticBorder(context)),
       ),
       child: Column(
         children: <Widget>[
           for (int i = 0; i < results.length; i++) ...<Widget>[
-            if (i > 0)
-              Divider(height: 1, color: AppColors.border),
+            if (i > 0) Divider(height: 1, color: _diagnosticBorder(context)),
             _ResultRow(diag: results[i]),
           ],
         ],
@@ -579,17 +698,14 @@ class _ResultRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final AttemptResult? win = diag.winningAttempt;
-    final Color statusColor =
-        diag.success ? AppColors.success : AppColors.live;
+    final Color statusColor = diag.success ? AppColors.success : AppColors.live;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Icon(
-            diag.success
-                ? Icons.check_circle_rounded
-                : Icons.cancel_rounded,
+            diag.success ? Icons.check_circle_rounded : Icons.cancel_rounded,
             size: 18,
             color: statusColor,
           ),
@@ -645,10 +761,10 @@ class _SummaryCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: AppColors.accentSurface,
+        color: _diagnosticSelected(context),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: AppColors.accent.withValues(alpha: 0.5),
+          color: _diagnosticAccent(context).withValues(alpha: 0.5),
         ),
       ),
       child: Column(

@@ -1275,7 +1275,7 @@ class PlaylistRepository {
         : <String>[];
     // Le refus durable et l'effacement sont validés ensemble : une coupure
     // au milieu ne laisse pas une source supprimée sans sa mémoire de refus.
-    await db.transaction((Transaction txn) async {
+    final bool removed = await db.transaction<bool>((Transaction txn) async {
       await DeletedSources.rememberHashes(txn, keys);
       // Phase 1+/Multi-serveurs : si on delete l'active, on promeut la
       // plus ancienne playlist restante comme nouvelle active. Comme ca
@@ -1319,7 +1319,13 @@ class PlaylistRepository {
           );
         }
       }
+      return rowsGone > 0 || channelsGone > 0;
     });
+    // La portée réveille AdultAccess, les lecteurs et le Cast/QR. Le signal
+    // vient après le COMMIT : sa relecture ne peut remettre en cache la liste
+    // que nous sommes encore en train d'effacer. Un rollback ne révoque pas
+    // une source annoncée à tort comme supprimée.
+    if (removed) ActiveProfile.instance.notifyPlaylistRemoved(id);
   }
 
   /// Vérifie qu'un téléchargement terminé est encore demandé. Une liste

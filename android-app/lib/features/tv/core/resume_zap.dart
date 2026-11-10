@@ -38,3 +38,21 @@ ResumeZap? resumeZapList(
   if (at < 0) return null;
   return ResumeZap(live, at);
 }
+
+/// Une reprise différée conserve son intention, pas son ancien catalogue.
+/// Un changement de portée l'annule ; une actualisation de la même source
+/// utilise ses nouvelles chaînes et son URL actuelle au prochain cadre.
+ResumeZap? refreshResumeZap(
+  ResumeZap captured,
+  List<Channel> current, {
+  required int requestedScope,
+  required int currentScope,
+  bool Function(Channel)? hide,
+}) {
+  if (requestedScope != currentScope ||
+      captured.startIndex < 0 ||
+      captured.startIndex >= captured.channels.length) return null;
+  return resumeZapList(
+      current, <Channel>[captured.channels[captured.startIndex]],
+      hide: hide);
+}

@@ -1469,5 +1469,17 @@
   "tvProfileSources": "قوائم تشغيل الملف",
   "tvProfileSourceUnavailable": "لم يعد هذا الملف موجودًا. لم يتم ربط قائمة التشغيل.",
   "tvAdultLive": "قنوات مباشرة للبالغين",
-  "tvAdultCinema": "سينما للبالغين"
+  "tvAdultCinema": "سينما للبالغين",
+  "tvCastDiagnostic": "تشخيص البث إلى التلفزيون",
+  "playerScreenCast": "الشاشة",
+  "castZapPrevTooltip": "القناة السابقة",
+  "castZapNextTooltip": "القناة التالية",
+  "screenCastTitle": "البث إلى شاشة",
+  "screenCastStartError": "تعذّر بدء المشاركة. تأكّد من تفعيل Wi-Fi ثم أعد المحاولة.",
+  "screenCastInstructions": "على حاسوبك أو تلفازك (على نفس شبكة Wi-Fi مع الهاتف)، افتح المتصفّح واكتب هذا العنوان:",
+  "screenCastScanHint": "أو امسحه بهاتف آخر",
+  "screenCastKeepOpen": "أبقِ التطبيق مفتوحًا والجهازين متصلين بشبكة Wi-Fi نفسها أثناء البث.",
+  "castNetworkDiagnostic": "التحقّق من شبكة البث",
+  "castNetworkDiagnosticHelp": "يتحقّق من الاتصال ووسيط البث دون تغيير القناة على التلفزيون.",
+  "castDiagnosticClosePlayer": "عُد إلى الصفحة الرئيسية قبل اختبار القنوات على التلفزيون."
 }

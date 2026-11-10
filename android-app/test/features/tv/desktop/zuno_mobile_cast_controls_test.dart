@@ -12,7 +12,9 @@ import 'package:tv_king/features/cast/data/cast_transport.dart';
 import 'package:tv_king/features/cast/data/google_cast_api.dart';
 import 'package:tv_king/features/cast/data/stream_probe.dart';
 import 'package:tv_king/features/cast/domain/cast_device.dart';
+import 'package:tv_king/features/channels/domain/channel.dart';
 import 'package:tv_king/features/tv/desktop/desktop_cast_controls.dart';
+import 'package:tv_king/features/tv/presentation/tv_scaled_viewport.dart';
 
 class LocalPlayer extends NativeVideoController {
   final List<String> events;
@@ -26,6 +28,18 @@ class LocalPlayer extends NativeVideoController {
   @override
   Future<void> resumeAfterCast() async {
     events.add('$name-resume');
+  }
+}
+
+class _DeferredLocalPlayer extends LocalPlayer {
+  _DeferredLocalPlayer(super.events, this.released);
+  final Completer<void> released;
+
+  @override
+  Future<void> suspendForCast() async {
+    events.add('local-stopping');
+    await released.future;
+    events.add('local-stop');
   }
 }
 
@@ -92,6 +106,7 @@ void main() {
     required LocalPlayer local,
     required CastManager manager,
     String url = originalUrl,
+    bool castOnOpen = false,
     ZunoCastPicker? picker,
     ValueChanged<bool>? onHandoff,
   }) async {
@@ -104,6 +119,7 @@ void main() {
         controller: local,
         manager: manager,
         streamUrl: url,
+        castOnOpen: castOnOpen,
         title: 'Chaîne test',
         picker: picker,
         onHandoffChanged: onHandoff,
@@ -130,7 +146,8 @@ void main() {
       tester,
       local: local,
       manager: manager,
-      picker: (context, {required streamUrl, required title, imageUrl, adultAccess}) async {
+      picker: (context,
+          {required streamUrl, required title, imageUrl, adultAccess}) async {
         fail('une TV ne doit pas ouvrir le sélecteur Cast');
       },
     );
@@ -143,10 +160,62 @@ void main() {
     expect(tester.takeException(), isNull);
   }, variant: TargetPlatformVariant.only(TargetPlatform.android));
 
+  testWidgets('un fichier local ne déclenche ni passation ni tentative Cast',
+      (tester) async {
+    await CastPlatform.initializeZuno();
+    final events = <String>[];
+    final local = LocalPlayer(events);
+    final receiver = Receiver(events);
+    final manager = managerFor(receiver)..selectDevice(google);
+    try {
+      for (final url in <String>[
+        '/data/user/0/app/files/movie.mp4',
+        'file:///data/user/0/app/files/movie.mp4',
+        'content://downloads/movie',
+      ]) {
+        await showControls(tester,
+            local: local, manager: manager, url: url, castOnOpen: true);
+        // Une notification du moteur ne doit pas non plus suspendre le
+        // fichier hors ligne alors que ses contrôles Cast sont masqués.
+        manager.selectDevice(google);
+        await tester.pump();
+        expect(events, isEmpty);
+        expect(receiver.urls, isEmpty);
+        expect(manager.hasTarget, isTrue);
+        expect(find.byType(TextButton), findsNothing);
+      }
+
+      // La même route peut ensuite recevoir un vrai flux réseau.
+      await showControls(tester,
+          local: local, manager: manager, url: originalUrl, castOnOpen: true);
+      await tester.pumpAndSettle();
+      expect(events, <String>['local-stop', 'remote-play']);
+      expect(receiver.urls, <String>[originalUrl]);
+
+      // Revenir à un chemin local ne doit jamais le pousser à la TV ni
+      // arrêter sa session réseau déjà établie.
+      await showControls(tester,
+          local: local,
+          manager: manager,
+          url: '/data/user/0/app/files/movie.mp4',
+          castOnOpen: true);
+      await tester.pump();
+      expect(events, <String>['local-stop', 'remote-play']);
+      expect(receiver.urls, <String>[originalUrl]);
+      expect(manager.isCasting, isTrue);
+      expect(tester.takeException(), isNull);
+    } finally {
+      await tester.pumpWidget(const SizedBox());
+      await manager.disconnect();
+      manager.dispose();
+      local.dispose();
+    }
+  }, variant: TargetPlatformVariant.only(TargetPlatform.android));
+
   for (final accept in [true, false]) {
     testWidgets(
         accept
-            ? 'Cast mobile ferme le local avant le récepteur puis reprend au stop'
+            ? 'Cast mobile ferme le local puis attend une reprise après Stop'
             : 'Fermer le sélecteur reprend le mobile sans lecture distante',
         (tester) async {
       await CastPlatform.initializeZuno();
@@ -180,7 +249,10 @@ void main() {
                 streamUrl: 'http://stream.invalid/live.ts',
                 title: 'Chaîne test',
                 picker: (context,
-                    {required streamUrl, required title, imageUrl, adultAccess}) async {
+                    {required streamUrl,
+                    required title,
+                    imageUrl,
+                    adultAccess}) async {
                   expect(events, ['local-stop']);
                   if (accept) {
                     await manager.castTo(device,
@@ -194,6 +266,10 @@ void main() {
         expect(events.take(2), ['local-stop', 'remote-play']);
         expect(events, isNot(contains('local-resume')));
         await tester.tap(find.byIcon(Icons.stop_circle_outlined));
+        await tester.pumpAndSettle();
+        expect(events, isNot(contains('local-resume')),
+            reason: 'la recette 7motion laisse un arrêt volontaire arrêté');
+        await tester.tap(find.byIcon(Icons.play_arrow_rounded));
         await tester.pumpAndSettle();
         expect(events.indexOf('remote-stop'),
             lessThan(events.indexOf('local-resume')));
@@ -222,7 +298,8 @@ void main() {
       local: local,
       manager: manager,
       onHandoff: handoffs.add,
-      picker: (context, {required streamUrl, required title, imageUrl, adultAccess}) =>
+      picker: (context,
+              {required streamUrl, required title, imageUrl, adultAccess}) =>
           manager.castTo(google, streamUrl: streamUrl, title: title),
     );
     await tester.tap(find.byType(TextButton));
@@ -250,12 +327,16 @@ void main() {
     manager.debugNativeSessionEvent(const CastNativeSessionEvent('ended'));
     await tester.pumpAndSettle();
     expect(manager.hasActiveSession, isFalse);
-    expect(events, <String>['local-stop', 'remote-play', 'local-resume']);
-    expect(handoffs, <bool>[true, false]);
+    expect(events, <String>['local-stop', 'remote-play']);
+    expect(handoffs, <bool>[true]);
     manager.debugNativeSessionEvent(const CastNativeSessionEvent('ended'));
     await tester.pumpAndSettle();
-    expect(events, <String>['local-stop', 'remote-play', 'local-resume'],
-        reason: 'une fin SDK répétée ne doit pas rouvrir le local deux fois');
+    expect(events, <String>['local-stop', 'remote-play'],
+        reason: 'une fin SDK répétée ne doit pas rouvrir le local');
+    await tester.tap(find.byIcon(Icons.play_arrow_rounded));
+    await tester.pumpAndSettle();
+    expect(events, <String>['local-stop', 'remote-play', 'local-resume']);
+    expect(handoffs, <bool>[true, false]);
     await tester.pumpWidget(const SizedBox());
     expect(tester.takeException(), isNull);
   }, variant: TargetPlatformVariant.only(TargetPlatform.android));
@@ -279,7 +360,8 @@ void main() {
       tester,
       local: local,
       manager: manager,
-      picker: (context, {required streamUrl, required title, imageUrl, adultAccess}) =>
+      picker: (context,
+              {required streamUrl, required title, imageUrl, adultAccess}) =>
           manager.castTo(google, streamUrl: streamUrl, title: title),
     );
     await tester.tap(find.byType(TextButton));
@@ -304,6 +386,9 @@ void main() {
 
     await tester.tap(find.byIcon(Icons.stop_circle_outlined));
     await tester.pumpAndSettle();
+    expect(events, isNot(contains('nouveau-resume')));
+    await tester.tap(find.byIcon(Icons.play_arrow_rounded));
+    await tester.pumpAndSettle();
     expect(events, <String>[
       'local-stop',
       'remote-play',
@@ -316,6 +401,41 @@ void main() {
     expect(tester.takeException(), isNull);
   }, variant: TargetPlatformVariant.only(TargetPlatform.android));
 
+  testWidgets('le Cast attend la fermeture native effective du flux local',
+      (tester) async {
+    await CastPlatform.initializeZuno();
+    final released = Completer<void>();
+    final events = <String>[];
+    final local = _DeferredLocalPlayer(events, released);
+    final receiver = Receiver(events);
+    final manager = managerFor(receiver);
+    try {
+      await showControls(tester,
+          local: local,
+          manager: manager,
+          picker: (context,
+                  {required streamUrl,
+                  required title,
+                  imageUrl,
+                  adultAccess}) =>
+              manager.castTo(google, streamUrl: streamUrl, title: title));
+      await tester.tap(find.byType(TextButton));
+      await tester.pump();
+      expect(events, <String>['local-stopping']);
+      expect(receiver.urls, isEmpty);
+      released.complete();
+      await tester.pumpAndSettle();
+      expect(events, <String>['local-stopping', 'local-stop', 'remote-play']);
+      expect(tester.takeException(), isNull);
+    } finally {
+      if (!released.isCompleted) released.complete();
+      await tester.pumpWidget(const SizedBox());
+      await manager.disconnect();
+      manager.dispose();
+      local.dispose();
+    }
+  }, variant: TargetPlatformVariant.only(TargetPlatform.android));
+
   testWidgets('zap mobile pendant Cast : nouvelle URL distante, local suspendu',
       (tester) async {
     await CastPlatform.initializeZuno();
@@ -324,9 +444,12 @@ void main() {
     final receiver = Receiver(events);
     final manager = managerFor(receiver);
     try {
-      await showControls(tester,
-        local: local, manager: manager,
-        picker: (context, {required streamUrl, required title, imageUrl, adultAccess}) =>
+      await showControls(
+        tester,
+        local: local,
+        manager: manager,
+        picker: (context,
+                {required streamUrl, required title, imageUrl, adultAccess}) =>
             manager.castTo(google, streamUrl: streamUrl, title: title),
       );
       await tester.tap(find.byType(TextButton));
@@ -374,7 +497,8 @@ void main() {
       local: local,
       manager: manager,
       onHandoff: handoffs.add,
-      picker: (context, {required streamUrl, required title, imageUrl, adultAccess}) =>
+      picker: (context,
+              {required streamUrl, required title, imageUrl, adultAccess}) =>
           manager.castTo(google, streamUrl: streamUrl, title: title),
     );
     await tester.tap(find.byType(TextButton));
@@ -411,6 +535,120 @@ void main() {
     expect(tester.takeException(), isNull);
   }, variant: TargetPlatformVariant.only(TargetPlatform.android));
 
+  testWidgets(
+      'les commandes Cast complètes tiennent sur mobile 360dp avec le canevas117',
+      (tester) async {
+    tester.view.physicalSize = const Size(360, 640);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await CastPlatform.initializeZuno();
+    final events = <String>[];
+    final local = LocalPlayer(events);
+    final receiver = Receiver(events);
+    final manager = managerFor(receiver);
+    const longName = CastDevice(
+        id: 'long',
+        name: 'Télévision du salon avec un nom volontairement très long',
+        kind: CastDeviceKind.googleCast,
+        host: '192.0.2.2',
+        port: 8009,
+        controlUrl: 'http://192.0.2.2');
+    const channels = <Channel>[
+      Channel(
+          id: 'one',
+          name: 'Information',
+          category: 'Info',
+          streamUrl: originalUrl,
+          isLive: true),
+      Channel(
+          id: 'two',
+          name: 'Sport',
+          category: 'Sport',
+          streamUrl: 'http://stream.invalid/next.ts',
+          isLive: true),
+    ];
+    await manager.castTo(longName,
+        streamUrl: originalUrl, title: 'Information');
+    manager.setCastPlaylist(channels, channels.first);
+    await tester.pumpWidget(MaterialApp(
+      locale: const Locale('fr'),
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      builder: (_, child) => TvScaledViewport(child: child!),
+      home: Scaffold(
+          body: Stack(fit: StackFit.expand, children: <Widget>[
+        Positioned(
+            top: 24,
+            right: 48,
+            child: DesktopCastControls(
+                manager: manager,
+                controller: local,
+                streamUrl: originalUrl,
+                title: 'Information',
+                channels: channels,
+                channel: channels.first)),
+      ])),
+    ));
+    await tester.pumpAndSettle();
+    expect(find.byIcon(Icons.skip_previous_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.skip_next_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.screen_share_rounded), findsOneWidget);
+    final rect = tester.getRect(find.byType(DesktopCastControls));
+    expect(rect.left, greaterThanOrEqualTo(0));
+    expect(rect.right, lessThanOrEqualTo(360));
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+    await manager.disconnect();
+    manager.dispose();
+    local.dispose();
+  }, variant: TargetPlatformVariant.only(TargetPlatform.android));
+
+  testWidgets(
+      'fermer un ancien picker conserve la nouvelle connexion du même profil',
+      (tester) async {
+    await CastPlatform.initializeZuno();
+    final events = <String>[];
+    final local = LocalPlayer(events);
+    final receiver = Receiver(events);
+    final firstProbe = Completer<StreamProbeResult>();
+    final nextProbe = Completer<StreamProbeResult>();
+    final close = Completer<void>();
+    const nextUrl = 'http://stream.invalid/new-selection.ts';
+    final manager = managerFor(receiver,
+        probe: (url) =>
+            url == originalUrl ? firstProbe.future : nextProbe.future);
+    Future<void>? first;
+    await showControls(tester, local: local, manager: manager, picker: (context,
+        {required streamUrl, required title, imageUrl, adultAccess}) {
+      first = manager.castTo(google, streamUrl: streamUrl, title: title);
+      return close.future;
+    });
+    await tester.tap(find.byType(TextButton));
+    await tester.pump();
+    final next =
+        manager.castTo(google, streamUrl: nextUrl, title: 'Nouvelle chaîne');
+    await tester.pump();
+    close.complete();
+    await tester.pump();
+    expect(manager.state, CastState.connecting,
+        reason:
+            'le wrapper ne possède pas le jeton de cette nouvelle tentative');
+    expect(events, isNot(contains('local-resume')));
+    firstProbe.complete(const StreamProbeResult(
+        originalUrl: originalUrl, finalUrl: originalUrl, success: true));
+    nextProbe.complete(const StreamProbeResult(
+        originalUrl: nextUrl, finalUrl: nextUrl, success: true));
+    await Future.wait(<Future<void>>[first!, next]);
+    await tester.pumpAndSettle();
+    expect(receiver.urls, <String>[nextUrl]);
+    expect(manager.isCasting, isTrue);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+    await manager.disconnect();
+    manager.dispose();
+    local.dispose();
+  }, variant: TargetPlatformVariant.only(TargetPlatform.android));
+
   for (final removeRoute in <bool>[false, true]) {
     testWidgets(
         removeRoute
@@ -441,7 +679,8 @@ void main() {
           tester,
           local: local,
           manager: manager,
-          picker: (context, {required streamUrl, required title, imageUrl, adultAccess}) {
+          picker: (context,
+              {required streamUrl, required title, imageUrl, adultAccess}) {
             attemptStarted = true;
             unawaited(manager
                 .castTo(google, streamUrl: streamUrl, title: title)

@@ -25,6 +25,7 @@
 
 import '../../channels/domain/channel.dart';
 import '../../player/data/xtream_url_variants.dart';
+import '../../player/domain/live_fallback.dart';
 
 class CastUrlResolver {
   /// URL à donner au CastManager pour [channel] : le format Xtream
@@ -32,10 +33,9 @@ class CastUrlResolver {
   /// source Xtream identifiable ou sans format mémorisé, l'URL brute
   /// part telle quelle (la cascade de secours du CastManager tranchera).
   static Future<String> resolve(Channel channel) async {
-    // ZUNO TV/PC construit déjà l’URL de lecture dans son catalogue.
-    // Sa base ne possède pas la colonne mobile url_formats : ne pas
-    // importer une migration mobile ni réécrire une liste M3U arbitraire.
-    return channel.streamUrl;
+    // Même URL gagnante que le lecteur Zuno, y compris au zap distant.
+    // Le catalogue n'utilise pas la table mobile url_formats de 7 MOTION.
+    return LiveFallback.preferred(channel.streamUrl);
   }
 
   /// Cœur PUR : applique [memorizedCode] à [rawUrl] avec les mêmes

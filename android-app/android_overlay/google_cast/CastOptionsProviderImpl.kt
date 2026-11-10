@@ -50,7 +50,7 @@ class CastOptionsProviderImpl : OptionsProvider {
         //
         // ✅ ACTIVÉ (2026-06-25) : `5BDFD969` est désormais PUBLISHED dans la
         // Google Cast Developer Console (Custom Receiver →
-        // https://app.7themotion.com/cast-receiver). Étant publié, il se
+        // https://api.zuno8k.com/cast-receiver, vérifiée le 10/11/2026). Étant publié, il se
         // charge sur TOUS les Chromecast/SHIELD/Google TV (clients inclus,
         // aucun numéro de série à enregistrer) et la box réapparaît dans le
         // picker.
@@ -63,7 +63,7 @@ class CastOptionsProviderImpl : OptionsProvider {
         //     Il décode le MPEG-TS LUI-MÊME sur la TV. L'échec CORS / contenu
         //     mixte du diagnostic 2026-06-29 (fetch HTTPS→HTTP sans CORS) est
         //     désormais RÉSOLU : le sender n'envoie plus le .ts HTTP brut mais
-        //     l'URL HTTPS https://app.7themotion.com/cast-proxy?u=… (même origine
+        //     l'URL HTTPS https://api.zuno8k.com/cast-proxy?u=… (même origine
         //     que le receiver, en-têtes CORS ouverts) → mpegts.js la fetch sans
         //     blocage. cf. google_cast_transport.dart playStream (stratégie
         //     cast_proxy) + worker.js route /cast-proxy.

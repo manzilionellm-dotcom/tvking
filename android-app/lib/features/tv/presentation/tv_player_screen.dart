@@ -1,4 +1,5 @@
 import '../../cast/data/cast_platform.dart';
+import '../../cast/data/cast_manager.dart';
 
 // =========================================================
 //  tv_player_screen.dart — Lecteur plein écran TV (SurfaceView natif)
@@ -151,8 +152,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   DateTime? _livePausedAt;
   bool get _showPause => _canTimeshift && !_catchup;
   int? get _pauseBtn => LiveBarSlots.pause(_showPause);
-  int? get _followBtn =>
-      LiveBarSlots.follow(_canFollow, showPause: _showPause);
+  int? get _followBtn => LiveBarSlots.follow(_canFollow, showPause: _showPause);
   int? get _startBtn => LiveBarSlots.start(
         _showStart,
         showFollow: _canFollow,
@@ -197,7 +197,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   Recording? _activeRecording;
   bool get _isRecording => _activeRecording != null;
   String?
-  _relayPlayUrl; // URL locale 127.0.0.1 utilisée pendant l'enregistrement
+      _relayPlayUrl; // URL locale 127.0.0.1 utilisée pendant l'enregistrement
   String? _toastMsg; // petit message éphémère (sauvegardé / vide / échec)
 
   // ----- Favoris -----
@@ -276,6 +276,9 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     _controller = NativeVideoController(
       initialUrl: _accessAllowed ? _playingUrl : '',
     );
+    if (CastPlatform.canSendFromZuno && CastManager.instance.hasTarget) {
+      unawaited(_controller.suspendForCast());
+    }
     // Identique d'un build à l'autre : Flutter ne redessine pas la
     // SurfaceView quand le bandeau ou le numéro de chaîne change.
     _stableVideo = _PinnedVideo(key: _videoKey, controller: _controller);
@@ -441,11 +444,11 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   }
 
   void _updatePip() => _pip.update(
-    playing: _accessAllowed && _controller.isPlaying,
-    casting: _casting,
-    width: _controller.videoWidth,
-    height: _controller.videoHeight,
-  );
+        playing: _accessAllowed && _controller.isPlaying,
+        casting: _casting,
+        width: _controller.videoWidth,
+        height: _controller.videoHeight,
+      );
 
   @override
   void dispose() {
@@ -501,8 +504,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   /// Le format de l'image (16:9, ou le vrai ratio en mini-fenêtre)
   /// vit dans [_PinnedVideo]. Le setState du zap ne le reconstruit pas.
   void _publishVideoAspect() {
-    final double aspect =
-        _pip.isInPipMode &&
+    final double aspect = _pip.isInPipMode &&
             _controller.videoWidth > 0 &&
             _controller.videoHeight > 0
         ? _controller.videoWidth / _controller.videoHeight
@@ -575,8 +577,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     // Panneau opaque seulement s'il n'y a pas d'image à garder.
     // holdFrame = le natif montre la dernière image : un panneau
     // par-dessus ferait un écran noir le temps de revenir.
-    final bool buffering =
-        !_controller.holdFrame &&
+    final bool buffering = !_controller.holdFrame &&
         (_controller.isBuffering || !_controller.firstFrame);
     if (mounted && buffering != _buffering) {
       setState(() => _buffering = buffering);
@@ -747,11 +748,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     BlackBox.instance.warn(
       'PLAYER',
       'reconnexion dans ${delay}ms (tentative $next/$_maxRecover)'
-          '${_controller.hasError
-              ? ' après erreur ExoPlayer'
-              : _controller.isEnded
-              ? ' après fin de flux'
-              : ' après gel 15 s'}',
+          '${_controller.hasError ? ' après erreur ExoPlayer' : _controller.isEnded ? ' après fin de flux' : ' après gel 15 s'}',
     );
     _recoverTimer = Timer(Duration(milliseconds: delay), () {
       _recoverTimer = null;
@@ -1144,9 +1141,8 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     if (!_subsReady || !_subsOn || !mounted) return;
     final List<NativeTrack> tracks = _controller.tracks;
     if (identical(_appliedTracks, tracks)) return;
-    final List<NativeTrack> texts = tracks
-        .where((NativeTrack t) => !t.isAudio)
-        .toList();
+    final List<NativeTrack> texts =
+        tracks.where((NativeTrack t) => !t.isAudio).toList();
     if (texts.isEmpty) return;
     final List<NativeTrack> mine = _userTextTracks(context);
     if (_subsWant == null) {
@@ -1258,8 +1254,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
         try {
           await missedShowFlag.load();
           if (missedShowFlag.value && !_catchup && gen == _missedGen) {
-            final bool declared =
-                channel.catchupSupported ||
+            final bool declared = channel.catchupSupported ||
                 (channel.catchupSource != null &&
                     channel.catchupSource!.isNotEmpty);
             final String? url = declared && program != null
@@ -1329,17 +1324,17 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     unawaited(
       Navigator.of(context)
           .push(
-            MaterialPageRoute<void>(
-              builder: (_) => TvChannelGuideScreen(
-                channel: _current,
-                currentSummary: _missed,
-              ),
-            ),
-          )
+        MaterialPageRoute<void>(
+          builder: (_) => TvChannelGuideScreen(
+            channel: _current,
+            currentSummary: _missed,
+          ),
+        ),
+      )
           .then((_) {
-            // Au retour, le focus clavier était parti avec la route du guide.
-            if (mounted) _focus.requestFocus();
-          }),
+        // Au retour, le focus clavier était parti avec la route du guide.
+        if (mounted) _focus.requestFocus();
+      }),
     );
     _showOverlayTemporarily();
   }
@@ -1418,7 +1413,9 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     final bool fav = _favIds.contains(id);
     try {
       await followedFlag.load();
-      if (!followedFlag.value || !mounted || !_accessAllowed ||
+      if (!followedFlag.value ||
+          !mounted ||
+          !_accessAllowed ||
           _current.id != id) {
         return;
       }
@@ -1738,7 +1735,35 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
                         offstage: _pip.isInPipMode,
                         child: DesktopCastControls(
                           key: _desktopCastKey,
+                          castOnOpen: true,
                           adultAccess: widget.adultAccess,
+                          channels: widget.channels,
+                          channel: _current,
+                          onChannelChanged: (Channel channel) {
+                            final next = widget.channels.indexWhere(
+                              (c) =>
+                                  c.id == channel.id &&
+                                  c.playlistId == channel.playlistId,
+                            );
+                            if (next < 0 || next == _index) return;
+                            WidgetsBinding.instance.addPostFrameCallback((_) {
+                              if (!mounted ||
+                                  !_accessAllowed ||
+                                  CastManager.instance.currentCastChannel?.id !=
+                                      channel.id ||
+                                  CastManager.instance.currentCastChannel
+                                          ?.playlistId !=
+                                      channel.playlistId) return;
+                              setState(() {
+                                _index = next;
+                                _playingUrl =
+                                    LiveFallback.preferred(channel.streamUrl);
+                              });
+                              // Le contrôleur est déjà suspendu pour Cast :
+                              // mémorise seulement l'URL d'une reprise explicite.
+                              _controller.setUrl(_playingUrl);
+                            });
+                          },
                           controller: _controller,
                           streamUrl: _playingUrl,
                           title: _current.name,
@@ -2350,30 +2375,30 @@ class _ControlsBar extends StatelessWidget {
   }
 
   Widget _logo(BuildContext context) => SizedBox(
-    width: 56,
-    height: 56,
-    child: (channel.logoUrl != null && channel.logoUrl!.isNotEmpty)
-        ? CachedNetworkImage(
-            imageUrl: channel.logoUrl!,
-            fit: BoxFit.contain,
-            memCacheWidth: 160,
-            fadeInDuration: const Duration(milliseconds: 150),
-            placeholder: (_, __) => _initials(context),
-            errorWidget: (_, __, ___) => _initials(context),
-          )
-        : _initials(context),
-  );
+        width: 56,
+        height: 56,
+        child: (channel.logoUrl != null && channel.logoUrl!.isNotEmpty)
+            ? CachedNetworkImage(
+                imageUrl: channel.logoUrl!,
+                fit: BoxFit.contain,
+                memCacheWidth: 160,
+                fadeInDuration: const Duration(milliseconds: 150),
+                placeholder: (_, __) => _initials(context),
+                errorWidget: (_, __, ___) => _initials(context),
+              )
+            : _initials(context),
+      );
 
   Widget _initials(BuildContext context) => Center(
-    child: Text(
-      channel.initials,
-      style: TextStyle(
-        fontSize: TvDimens.title,
-        fontWeight: FontWeight.w800,
-        color: TvAppTokens.playbackOf(context).muted,
-      ),
-    ),
-  );
+        child: Text(
+          channel.initials,
+          style: TextStyle(
+            fontSize: TvDimens.title,
+            fontWeight: FontWeight.w800,
+            color: TvAppTokens.playbackOf(context).muted,
+          ),
+        ),
+      );
 
   Widget _info(BuildContext context) => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2500,8 +2525,8 @@ class _CtrlButtonState extends State<_CtrlButton> {
     final Color bg = widget.focused
         ? TvAppTokens.playbackOf(context).accent.withValues(alpha: 0.28)
         : (widget.active
-              ? accent.withValues(alpha: 0.22)
-              : Colors.black.withValues(alpha: 0.42));
+            ? accent.withValues(alpha: 0.22)
+            : Colors.black.withValues(alpha: 0.42));
     final Color iconColor = widget.focused
         ? TvAppTokens.playbackOf(context).accent
         : (widget.active ? accent : TvAppTokens.playbackOf(context).text);
@@ -2537,7 +2562,8 @@ class _CtrlButtonState extends State<_CtrlButton> {
                 boxShadow: widget.focused
                     ? <BoxShadow>[
                         BoxShadow(
-                          color: TvAppTokens.playbackOf(context).accent
+                          color: TvAppTokens.playbackOf(context)
+                              .accent
                               .withValues(alpha: 0.45),
                           blurRadius: 24,
                           spreadRadius: -2,

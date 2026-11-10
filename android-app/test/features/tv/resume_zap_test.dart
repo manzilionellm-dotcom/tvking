@@ -63,4 +63,42 @@ void main() {
   test('rien à reprendre', () {
     expect(resumeZapList(<Channel>[_ch('a')], <Channel>[]), isNull);
   });
+
+  test('reprise différée : le changement de profil annule le plan capturé', () {
+    final old = [_ch('a', playlist: 1), _ch('b', playlist: 1)];
+    final captured = resumeZapList(old, [old.last])!;
+    expect(refreshResumeZap(captured, old, requestedScope: 3, currentScope: 4),
+        isNull,
+        reason: 'même un catalogue encore présent appartient à l’ancien scope');
+  });
+
+  test(
+      'reprise différée : une source retirée ne revient pas par son ancien plan',
+      () {
+    final old = [_ch('same', playlist: 1), _ch('same', playlist: 2)];
+    final captured = resumeZapList(old, [old.last])!;
+    expect(
+        refreshResumeZap(captured, [old.first],
+            requestedScope: 3, currentScope: 3),
+        isNull);
+  });
+
+  test('reprise différée : même profil utilise URL et catalogue actualisés',
+      () {
+    final old = [_ch('a', playlist: 1), _ch('b', playlist: 1)];
+    final captured = resumeZapList(old, [old.last])!;
+    const updated = Channel(
+        id: 'b',
+        name: 'b',
+        category: 'Test',
+        streamUrl: 'https://flux.example.invalid/new-b',
+        isLive: true,
+        playlistId: 1);
+    final current = [updated, _ch('c', playlist: 1)];
+    final plan = refreshResumeZap(captured, current,
+        requestedScope: 3, currentScope: 3)!;
+    expect(plan.startIndex, 0);
+    expect(plan.channels, current);
+    expect(plan.channels.first.streamUrl, updated.streamUrl);
+  });
 }

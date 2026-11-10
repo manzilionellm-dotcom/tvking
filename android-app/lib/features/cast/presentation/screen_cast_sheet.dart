@@ -19,8 +19,12 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
+import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
+import '../../profiles/data/active_profile.dart';
+import '../../security/data/adult_access.dart';
+import '../../tv/core/tv_app_tokens.dart';
 import '../data/local_cast_server.dart';
 
 /// Ouvre la feuille « Caster sur un écran » pour `streamUrl`.
@@ -29,7 +33,9 @@ Future<void> showScreenCastSheet(
   required String streamUrl,
   required String title,
   VoidCallback? onActive,
+  AdultAccessGrant? adultAccess,
 }) {
+  if (adultAccess?.isValid == false) return Future<void>.value();
   return showModalBottomSheet<void>(
     context: context,
     backgroundColor: Colors.transparent,
@@ -39,6 +45,7 @@ Future<void> showScreenCastSheet(
       streamUrl: streamUrl,
       title: title,
       onActive: onActive,
+      adultAccess: adultAccess,
     ),
   );
 }
@@ -48,11 +55,13 @@ class ScreenCastSheet extends StatefulWidget {
     required this.streamUrl,
     required this.title,
     this.onActive,
+    this.adultAccess,
     super.key,
   });
 
   final String streamUrl;
   final String title;
+  final AdultAccessGrant? adultAccess;
 
   /// Appelé quand l'écran est prêt à recevoir (le cast est actif). Le
   /// player s'en sert pour ARRÊTER la lecture du téléphone et libérer la
@@ -68,20 +77,85 @@ enum _Status { loading, ready, error }
 class _ScreenCastSheetState extends State<ScreenCastSheet> {
   _Status _status = _Status.loading;
   String? _localUrl;
+  final Object _owner = Object();
+  late final int _scope = ActiveProfile.instance.scopeListenable.value;
+  bool _closed = false;
+  int _generation = 0;
+
+  bool get _allowed =>
+      !_closed &&
+      ActiveProfile.instance.scopeListenable.value == _scope &&
+      (widget.adultAccess?.isValid ?? true);
 
   @override
   void initState() {
     super.initState();
+    ActiveProfile.instance.scopeListenable.addListener(_onAccessChanged);
+    widget.adultAccess?.addListener(_onAccessChanged);
     _start();
   }
 
+  void _release() {
+    _closed = true;
+    ++_generation;
+    _localUrl = null;
+    LocalCastServer.instance.stopBrowser(owner: _owner);
+  }
+
+  void _onAccessChanged() {
+    if (_allowed || _closed) return;
+    _release();
+    _closeRoute();
+  }
+
+  void _closeRoute() {
+    if (!mounted) return;
+    setState(() {});
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final route = ModalRoute.of(context);
+      if (route is! PopupRoute || !route.isActive) return;
+      final navigator = Navigator.of(context);
+      if (route.isCurrent) {
+        navigator.pop();
+      } else {
+        navigator.removeRoute(route);
+      }
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant ScreenCastSheet oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (identical(oldWidget.adultAccess, widget.adultAccess) &&
+        oldWidget.streamUrl == widget.streamUrl &&
+        oldWidget.title == widget.title) return;
+    oldWidget.adultAccess?.removeListener(_onAccessChanged);
+    widget.adultAccess?.addListener(_onAccessChanged);
+    _release();
+    _closeRoute();
+  }
+
+  @override
+  void dispose() {
+    ActiveProfile.instance.scopeListenable.removeListener(_onAccessChanged);
+    widget.adultAccess?.removeListener(_onAccessChanged);
+    _release();
+    super.dispose();
+  }
+
   Future<void> _start() async {
+    if (!_allowed) return;
+    final generation = ++_generation;
     final String? url = await LocalCastServer.instance.serveBrowser(
       upstreamUrl: widget.streamUrl,
       title: widget.title,
+      owner: _owner,
+      isCancelled: () => !mounted || !_allowed || generation != _generation,
     );
-    if (!mounted) return;
+    if (!mounted || !_allowed || generation != _generation) return;
     if (url == null) {
+      LocalCastServer.instance.stopBrowser(owner: _owner);
       setState(() => _status = _Status.error);
       return;
     }
@@ -95,12 +169,14 @@ class _ScreenCastSheetState extends State<ScreenCastSheet> {
   }
 
   Future<void> _stop() async {
-    LocalCastServer.instance.stopBrowser();
+    _release();
     if (mounted) Navigator.of(context).pop();
   }
 
   @override
   Widget build(BuildContext context) {
+    if (!_allowed) return const SizedBox.shrink();
+    final palette = Theme.of(context).extension<TvAppTokens>();
     final double maxH = MediaQuery.of(context).size.height * 0.9;
     return ClipRRect(
       borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
@@ -109,8 +185,10 @@ class _ScreenCastSheetState extends State<ScreenCastSheet> {
         child: Container(
           constraints: BoxConstraints(maxHeight: maxH),
           decoration: BoxDecoration(
-            color: AppColors.background.withValues(alpha: 0.96),
-            border: Border(top: BorderSide(color: AppColors.border)),
+            color:
+                (palette?.bg ?? AppColors.background).withValues(alpha: 0.96),
+            border: Border(
+                top: BorderSide(color: palette?.line ?? AppColors.border)),
           ),
           child: SafeArea(
             top: false,
@@ -133,9 +211,10 @@ class _ScreenCastSheetState extends State<ScreenCastSheet> {
                     mainAxisSize: MainAxisSize.min,
                     children: <Widget>[
                       Icon(Icons.screen_share_rounded,
-                          color: AppColors.accent, size: 22),
+                          color: palette?.accentBright ?? AppColors.accent,
+                          size: 22),
                       const SizedBox(width: 10),
-                      Text('Caster sur un écran',
+                      Text(context.l10n.screenCastTitle,
                           style: AppTextStyles.headlineMedium),
                     ],
                   ),
@@ -151,6 +230,7 @@ class _ScreenCastSheetState extends State<ScreenCastSheet> {
   }
 
   Widget _body() {
+    final palette = Theme.of(context).extension<TvAppTokens>();
     switch (_status) {
       case _Status.loading:
         return const Padding(
@@ -164,8 +244,7 @@ class _ScreenCastSheetState extends State<ScreenCastSheet> {
                 color: AppColors.textSecondary, size: 40),
             const SizedBox(height: 12),
             Text(
-              'Impossible de démarrer le partage. '
-              'Vérifie que le Wi-Fi est activé et réessaie.',
+              context.l10n.screenCastStartError,
               textAlign: TextAlign.center,
               style: AppTextStyles.bodyMedium
                   .copyWith(color: AppColors.textSecondary),
@@ -176,7 +255,7 @@ class _ScreenCastSheetState extends State<ScreenCastSheet> {
                 setState(() => _status = _Status.loading);
                 _start();
               },
-              child: const Text('Réessayer'),
+              child: Text(context.l10n.buttonRetry),
             ),
           ],
         );
@@ -185,8 +264,7 @@ class _ScreenCastSheetState extends State<ScreenCastSheet> {
         return Column(
           children: <Widget>[
             Text(
-              'Sur ton ordi ou ta TV (sur le MÊME Wi-Fi que le téléphone), '
-              'ouvre le navigateur et tape cette adresse :',
+              context.l10n.screenCastInstructions,
               textAlign: TextAlign.center,
               style: AppTextStyles.bodyMedium
                   .copyWith(color: AppColors.textSecondary),
@@ -196,16 +274,16 @@ class _ScreenCastSheetState extends State<ScreenCastSheet> {
               width: double.infinity,
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
               decoration: BoxDecoration(
-                color: AppColors.surfaceHigh,
+                color: palette?.panel ?? AppColors.surfaceHigh,
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: AppColors.border),
+                border: Border.all(color: palette?.line ?? AppColors.border),
               ),
               child: SelectableText(
                 url,
                 textAlign: TextAlign.center,
                 style: AppTextStyles.bodyLarge.copyWith(
                   fontWeight: FontWeight.w800,
-                  color: AppColors.accent,
+                  color: palette?.accentBright ?? AppColors.accent,
                 ),
               ),
             ),
@@ -224,14 +302,12 @@ class _ScreenCastSheetState extends State<ScreenCastSheet> {
               ),
             ),
             const SizedBox(height: 8),
-            Text('ou scanne avec un autre téléphone',
+            Text(context.l10n.screenCastScanHint,
                 style: AppTextStyles.labelSmall
                     .copyWith(color: AppColors.textSecondary)),
             const SizedBox(height: 18),
             Text(
-              'La chaîne démarre toute seule. Garde l’app ouverte : c’est '
-              'le téléphone qui envoie la vidéo à l’écran. Fonctionne avec '
-              'ton abonnement (pas de blocage cloud).',
+              context.l10n.screenCastKeepOpen,
               textAlign: TextAlign.center,
               style: AppTextStyles.labelSmall
                   .copyWith(color: AppColors.textSecondary),
@@ -242,7 +318,7 @@ class _ScreenCastSheetState extends State<ScreenCastSheet> {
               child: TextButton.icon(
                 onPressed: _stop,
                 icon: Icon(Icons.stop_rounded, color: AppColors.live),
-                label: Text('Arrêter',
+                label: Text(context.l10n.castStop,
                     style: AppTextStyles.bodyLarge
                         .copyWith(color: AppColors.live)),
               ),

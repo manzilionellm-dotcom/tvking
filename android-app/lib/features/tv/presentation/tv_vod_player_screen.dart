@@ -1,4 +1,5 @@
 import '../../cast/data/cast_platform.dart';
+import '../../cast/data/cast_manager.dart';
 
 // =========================================================
 //  tv_vod_player_screen.dart — Lecteur Films / Épisodes (télécommande)
@@ -89,9 +90,12 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
   bool _closeAfterPip = false;
   bool _appActive = true;
   bool _accessRevoked = false;
-  bool get _accessValid => !_accessRevoked &&
+  bool get _accessValid =>
+      !_accessRevoked &&
       _item.adultClassificationKnown &&
-      (widget.adultAccess == null ? !_item.isAdult : widget.adultAccess!.isValid);
+      (widget.adultAccess == null
+          ? !_item.isAdult
+          : widget.adultAccess!.isValid);
   int _startRevision = 0;
   Future<void> Function()? _pendingStart;
   final GlobalKey<DesktopCastControlsState> _desktopCastKey =
@@ -148,6 +152,11 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
     ForegroundPlayback.lock();
     _item = widget.item;
     _c = NativeVideoController()..addListener(_onPlayer);
+    if (CastPlatform.canSendFromZuno &&
+        DesktopCastControls.supportsSource(_item.url) &&
+        CastManager.instance.hasTarget) {
+      unawaited(_c.suspendForCast());
+    }
     _pip = ZunoPipService.instance.acquire(
       onSuspend: (bool forceStop) {
         _appActive = false;
@@ -287,11 +296,11 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
   }
 
   void _updatePip() => _pip.update(
-    playing: _c.isPlaying,
-    casting: _desktopCasting,
-    width: _c.videoWidth,
-    height: _c.videoHeight,
-  );
+        playing: _c.isPlaying,
+        casting: _desktopCasting,
+        width: _c.videoWidth,
+        height: _c.videoHeight,
+      );
 
   @override
   void dispose() {
@@ -336,8 +345,8 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
     if (!_appActive) {
       // Préférences lues trop tard après Home : reprendre seulement sur
       // demande visible, jamais ouvrir une nouvelle connexion hors écran.
-      _pendingStart = () =>
-          _start(item, startAt, local: local, keepPicture: keepPicture);
+      _pendingStart =
+          () => _start(item, startAt, local: local, keepPicture: keepPicture);
       return;
     }
     _pendingStart = null;
@@ -479,9 +488,8 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
     }
     _vodAttempts++;
     final int delay = ReconnectPlan.delayMs(_vodAttempts);
-    final Duration at = _c.position > const Duration(seconds: 1)
-        ? _c.position
-        : widget.startAt;
+    final Duration at =
+        _c.position > const Duration(seconds: 1) ? _c.position : widget.startAt;
     _vodArmed = true;
     _saveProgress();
     BlackBox.instance.warn(
@@ -510,7 +518,8 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
     _countdownTimer?.cancel();
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (Timer t) {
       if (!mounted) return t.cancel();
-      if (!_appActive || !_accessValid) return; // le décompte reprend avec l'image visible
+      if (!_appActive || !_accessValid)
+        return; // le décompte reprend avec l'image visible
       if (_c.isPlaying || _c.isEnded) {
         setState(() => _countdown--);
       }
@@ -639,30 +648,31 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
 
   List<({IconData icon, String label, VoidCallback run})> _buttons(
     BuildContext context,
-  ) => <({IconData icon, String label, VoidCallback run})>[
-    (
-      icon: Icons.subtitles_rounded,
-      label: context.l10n.tvCinemaAudioSubs,
-      run: _openTracks,
-    ),
-    (
-      icon: Icons.replay_rounded,
-      label: context.l10n.tvCinemaRestart,
-      run: () {
+  ) =>
+      <({IconData icon, String label, VoidCallback run})>[
+        (
+          icon: Icons.subtitles_rounded,
+          label: context.l10n.tvCinemaAudioSubs,
+          run: _openTracks,
+        ),
+        (
+          icon: Icons.replay_rounded,
+          label: context.l10n.tvCinemaRestart,
+          run: () {
             if (!_accessValid) return;
-        _c.seekTo(Duration.zero);
-        _c.play();
-        _showOverlay();
-      },
-    ),
-    if (_next != null)
-      (
-        icon: Icons.skip_next_rounded,
-        label: context.l10n.tvCinemaNextEpisode,
-        run: () => unawaited(_playNext()),
-      ),
-    (icon: Icons.memory_rounded, label: _engineLabel(), run: _cycleEngine),
-  ];
+            _c.seekTo(Duration.zero);
+            _c.play();
+            _showOverlay();
+          },
+        ),
+        if (_next != null)
+          (
+            icon: Icons.skip_next_rounded,
+            label: context.l10n.tvCinemaNextEpisode,
+            run: () => unawaited(_playNext()),
+          ),
+        (icon: Icons.memory_rounded, label: _engineLabel(), run: _cycleEngine),
+      ];
 
   // ---------------------------------------------------------
   //  Audio / sous-titres
@@ -998,8 +1008,7 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
                 children: <Widget>[
                   Center(
                     child: AspectRatio(
-                      aspectRatio:
-                          _pip.isInPipMode &&
+                      aspectRatio: _pip.isInPipMode &&
                               _c.videoWidth > 0 &&
                               _c.videoHeight > 0
                           ? _c.videoWidth / _c.videoHeight
@@ -1035,10 +1044,13 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
                       child: Offstage(
                         offstage: _pip.isInPipMode,
                         child: DesktopCastControls(
+                          castOnOpen: true,
                           adultAccess: widget.adultAccess,
                           key: _desktopCastKey,
                           controller: _c,
-                          streamUrl: _playingUrl ?? _item.url,
+                          // Le fichier téléchargé reste au moteur local ;
+                          // la TV reçoit toujours l'URL réseau du film.
+                          streamUrl: _item.url,
                           title: _item.title,
                           imageUrl: null,
                           onHandoffChanged: (bool active) {
@@ -1064,33 +1076,35 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
   }
 
   Widget _buildLoading() => Center(
-    child: SizedBox(
-      width: 46,
-      height: 46,
-      child: CircularProgressIndicator(
-        strokeWidth: 3,
-        color: TvAppTokens.playbackOf(context).accent,
-      ),
-    ),
-  );
+        child: SizedBox(
+          width: 46,
+          height: 46,
+          child: CircularProgressIndicator(
+            strokeWidth: 3,
+            color: TvAppTokens.playbackOf(context).accent,
+          ),
+        ),
+      );
 
   Widget _buildSubtitles() => Positioned(
-    left: 120,
-    right: 120,
-    bottom: _overlay ? 170 : 60,
-    child: Text(
-      _c.cues,
-      textAlign: TextAlign.center,
-      style: TvAppTokens.playbackOf(context)
-          .ui(30, weight: FontWeight.w600, color: TvAppTokens.playbackOf(context).text)
-          .copyWith(
+        left: 120,
+        right: 120,
+        bottom: _overlay ? 170 : 60,
+        child: Text(
+          _c.cues,
+          textAlign: TextAlign.center,
+          style: TvAppTokens.playbackOf(context)
+              .ui(30,
+                  weight: FontWeight.w600,
+                  color: TvAppTokens.playbackOf(context).text)
+              .copyWith(
             shadows: const <Shadow>[
               Shadow(blurRadius: 6, color: Colors.black),
               Shadow(offset: Offset(0, 2), blurRadius: 3, color: Colors.black),
             ],
           ),
-    ),
-  );
+        ),
+      );
 
   Widget _buildOverlay(BuildContext context) {
     final Duration d = _c.duration;
@@ -1138,7 +1152,8 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
                     overflow: TextOverflow.ellipsis,
                     style: TvAppTokens.playbackOf(
                       context,
-                    ).ui(TvDimens.title, color: TvAppTokens.playbackOf(context).muted),
+                    ).ui(TvDimens.title,
+                        color: TvAppTokens.playbackOf(context).muted),
                   ),
                 if (!_desktopCasting) ...<Widget>[
                   const SizedBox(height: TvDimens.rowGap),
@@ -1236,27 +1251,29 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
   }
 
   Widget _buildToast() => Positioned(
-    top: 120,
-    left: 0,
-    right: 0,
-    child: Center(
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
-        decoration: BoxDecoration(
-          color: TvAppTokens.playbackOf(context).surface3.withValues(alpha: 0.92),
-          borderRadius: BorderRadius.circular(TvTokens.rButton),
-        ),
-        child: Text(
-          _toast!,
-          style: TvAppTokens.playbackOf(context).ui(
-            TvDimens.titleS,
-            weight: FontWeight.w600,
-            color: TvAppTokens.playbackOf(context).text,
+        top: 120,
+        left: 0,
+        right: 0,
+        child: Center(
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
+            decoration: BoxDecoration(
+              color: TvAppTokens.playbackOf(context)
+                  .surface3
+                  .withValues(alpha: 0.92),
+              borderRadius: BorderRadius.circular(TvTokens.rButton),
+            ),
+            child: Text(
+              _toast!,
+              style: TvAppTokens.playbackOf(context).ui(
+                TvDimens.titleS,
+                weight: FontWeight.w600,
+                color: TvAppTokens.playbackOf(context).text,
+              ),
+            ),
           ),
         ),
-      ),
-    ),
-  );
+      );
 
   Widget _buildNextCard(BuildContext context) {
     final CinemaEpisode n = _next!;
@@ -1267,7 +1284,8 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
         width: 360,
         padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
-          color: TvAppTokens.playbackOf(context).surface3.withValues(alpha: 0.96),
+          color:
+              TvAppTokens.playbackOf(context).surface3.withValues(alpha: 0.96),
           borderRadius: BorderRadius.circular(TvTokens.rCard),
           border: Border.all(
             color: TvAppTokens.playbackOf(context).accent,
@@ -1302,7 +1320,8 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
               context.l10n.tvCinemaNextHint,
               style: TvAppTokens.playbackOf(
                 context,
-              ).ui(TvDimens.caption, color: TvAppTokens.playbackOf(context).mutedDim),
+              ).ui(TvDimens.caption,
+                  color: TvAppTokens.playbackOf(context).mutedDim),
             ),
           ],
         ),
@@ -1317,62 +1336,62 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
     final List<Widget> rows = <Widget>[];
     int idx = 0;
     Widget row(String label, bool selected, int i) => Container(
-      key: _trackKey(i),
-      margin: const EdgeInsets.only(bottom: 4),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(
-        color: _trackIdx == i
-            ? TvAppTokens.playbackOf(context).sel
-            : Colors.transparent,
-        borderRadius: BorderRadius.circular(TvTokens.rMenuItem),
-        border: _trackIdx == i
-            ? Border.all(
-                color: TvAppTokens.playbackOf(context).accent,
-                width: TvDimens.focusOutline,
-              )
-            : null,
-      ),
-      child: Row(
-        children: <Widget>[
-          SizedBox(
-            width: 28,
-            child: selected
-                ? Icon(
-                    Icons.check_rounded,
-                    color: TvAppTokens.playbackOf(context).accentBright,
-                    size: 22,
+          key: _trackKey(i),
+          margin: const EdgeInsets.only(bottom: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
+            color: _trackIdx == i
+                ? TvAppTokens.playbackOf(context).sel
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(TvTokens.rMenuItem),
+            border: _trackIdx == i
+                ? Border.all(
+                    color: TvAppTokens.playbackOf(context).accent,
+                    width: TvDimens.focusOutline,
                   )
                 : null,
           ),
-          Expanded(
-            child: Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TvAppTokens.playbackOf(context).ui(
-                TvDimens.body,
-                weight: FontWeight.w600,
-                color: _trackIdx == i
-                    ? TvAppTokens.playbackOf(context).accentBright
-                    : TvAppTokens.playbackOf(context).text,
+          child: Row(
+            children: <Widget>[
+              SizedBox(
+                width: 28,
+                child: selected
+                    ? Icon(
+                        Icons.check_rounded,
+                        color: TvAppTokens.playbackOf(context).accentBright,
+                        size: 22,
+                      )
+                    : null,
               ),
+              Expanded(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TvAppTokens.playbackOf(context).ui(
+                    TvDimens.body,
+                    weight: FontWeight.w600,
+                    color: _trackIdx == i
+                        ? TvAppTokens.playbackOf(context).accentBright
+                        : TvAppTokens.playbackOf(context).text,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+    Widget header(String s) => Padding(
+          padding: const EdgeInsets.fromLTRB(6, 14, 6, 8),
+          child: Text(
+            s,
+            style: TvAppTokens.playbackOf(context).ui(
+              TvDimens.caption,
+              weight: FontWeight.w500,
+              color: TvAppTokens.playbackOf(context).mutedDim,
+              spacing: 0.5,
             ),
           ),
-        ],
-      ),
-    );
-    Widget header(String s) => Padding(
-      padding: const EdgeInsets.fromLTRB(6, 14, 6, 8),
-      child: Text(
-        s,
-        style: TvAppTokens.playbackOf(context).ui(
-          TvDimens.caption,
-          weight: FontWeight.w500,
-          color: TvAppTokens.playbackOf(context).mutedDim,
-          spacing: 0.5,
-        ),
-      ),
-    );
+        );
 
     final List<String> aLabels = _trackLabels(context, a);
     final List<String> tLabels = _trackLabels(context, t);
@@ -1411,39 +1430,41 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
   }
 
   Widget _buildError(BuildContext context) => Center(
-    child: Container(
-      padding: const EdgeInsets.symmetric(horizontal: 34, vertical: 26),
-      decoration: BoxDecoration(
-        color: TvAppTokens.playbackOf(context).surface3.withValues(alpha: 0.96),
-        borderRadius: BorderRadius.circular(TvTokens.rCard),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          Icon(
-            Icons.error_outline_rounded,
-            color: TvAppTokens.playbackOf(context).live,
-            size: 44,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 34, vertical: 26),
+          decoration: BoxDecoration(
+            color: TvAppTokens.playbackOf(context)
+                .surface3
+                .withValues(alpha: 0.96),
+            borderRadius: BorderRadius.circular(TvTokens.rCard),
           ),
-          const SizedBox(height: 12),
-          Text(
-            context.l10n.tvPlaybackImpossible,
-            style: TvAppTokens.playbackOf(context)
-                .display(28, color: TvAppTokens.playbackOf(context).text),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Icon(
+                Icons.error_outline_rounded,
+                color: TvAppTokens.playbackOf(context).live,
+                size: 44,
+              ),
+              const SizedBox(height: 12),
+              Text(
+                context.l10n.tvPlaybackImpossible,
+                style: TvAppTokens.playbackOf(context)
+                    .display(28, color: TvAppTokens.playbackOf(context).text),
+              ),
+              const SizedBox(height: 14),
+              Text(
+                context.l10n.tvPlayerFatalHint,
+                style: TvAppTokens.playbackOf(context).ui(
+                  TvDimens.titleS,
+                  weight: FontWeight.w700,
+                  color: TvAppTokens.playbackOf(context).accentBright,
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 14),
-          Text(
-            context.l10n.tvPlayerFatalHint,
-            style: TvAppTokens.playbackOf(context).ui(
-              TvDimens.titleS,
-              weight: FontWeight.w700,
-              color: TvAppTokens.playbackOf(context).accentBright,
-            ),
-          ),
-        ],
-      ),
-    ),
-  );
+        ),
+      );
 }
 
 class _PlayerButton extends StatelessWidget {
