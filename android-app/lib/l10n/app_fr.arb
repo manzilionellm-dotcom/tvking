@@ -3136,5 +3136,13 @@
   "tvRecordingUnsupported": "Ce format de flux ne peut pas être enregistré.",
   "tvRecordingNetworkError": "Enregistrement interrompu : la connexion au flux a été perdue.",
   "tvRecordingDiskError": "Impossible d’écrire l’enregistrement. Vérifie l’espace de stockage disponible.",
-  "tvRecordingServiceError": "Impossible de démarrer l’enregistrement sur cet appareil. Réessaie."
+  "tvRecordingServiceError": "Impossible de démarrer l’enregistrement sur cet appareil. Réessaie.",
+  "tvRecordingSavedToGallery": "Enregistrement terminé ({size}). Sauvegarde dans la galerie du téléphone…",
+  "@tvRecordingSavedToGallery": {
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  }
 }

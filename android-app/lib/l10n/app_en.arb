@@ -1445,5 +1445,13 @@
   "tvRecordingUnsupported": "This stream format cannot be recorded.",
   "tvRecordingNetworkError": "Recording interrupted: the stream connection was lost.",
   "tvRecordingDiskError": "Couldn't write the recording. Check the available storage space.",
-  "tvRecordingServiceError": "Couldn't start recording on this device. Try again."
+  "tvRecordingServiceError": "Couldn't start recording on this device. Try again.",
+  "tvRecordingSavedToGallery": "Recording finished ({size}). Saving it to your phone's gallery…",
+  "@tvRecordingSavedToGallery": {
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  }
 }

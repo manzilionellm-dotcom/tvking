@@ -47,6 +47,7 @@ import '../../../core/app/novatube_play_policy.dart';
 import 'tv_content_unavailable.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import 'tv_localized_format.dart';
+import 'tv_recording_messages.dart';
 import '../../../core/blackbox/black_box.dart';
 import '../core/history_policy.dart';
 import '../core/tv_activity.dart';
@@ -73,6 +74,8 @@ import '../../player/domain/live_fallback.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../../security/data/adult_access.dart';
 import '../../playlists/data/favorites_repository.dart';
+import '../../recordings/data/gallery_exporter.dart';
+import '../../recordings/data/recording_gallery_auto_save.dart';
 import '../../recordings/data/recording_repository.dart';
 import '../../recordings/data/recording_service.dart';
 import '../../recordings/domain/recording.dart';
@@ -1053,16 +1056,38 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
         failed = true;
       }
     }
+    // SAUVEGARDE AUTOMATIQUE dans la galerie du téléphone (Movies/NOVATUBE).
+    // Dès qu'il y a de vraies données, la vidéo part en MP4 dans la galerie,
+    // même si le flux a coupé en route : ce qui a été enregistré ne doit pas
+    // rester caché dans le stockage privé de l'app. Le fichier est complet ici
+    // (stopRecordingResult a fermé l'écriture). La copie continue même si on
+    // quitte le lecteur ; « Mes enregistrements » affiche alors sa progression.
+    final bool savingToGallery = result.bytes > 0;
+    if (savingToGallery) {
+      unawaited(_autoSaveToGallery(session.recording!.filePath));
+    }
     if (mounted && !_recordingViewDisposed) {
       setState(() {});
       _flash(failed
           ? context.l10n.tvRecordingCloseFailed
           : !result.succeeded
               ? _recordingErrorText(result.reason)
-              : result.bytes > 0
-                  ? context.l10n.tvRecordingSaved(_humanSize(result.bytes))
+              : savingToGallery
+                  ? context.l10n
+                      .tvRecordingSavedToGallery(_humanSize(result.bytes))
                   : context.l10n.tvRecordingEmpty);
     }
+  }
+
+  /// Copie l'enregistrement terminé dans la galerie, puis affiche le résultat
+  /// (« MP4 disponible dans la galerie » ou la raison de l'échec) si le
+  /// lecteur est encore à l'écran. En cas d'échec, l'original reste dans
+  /// « Mes enregistrements », où le bouton galerie permet de réessayer.
+  Future<void> _autoSaveToGallery(String filePath) async {
+    final GalleryExportResult saved =
+        await RecordingGalleryAutoSave.instance.save(filePath);
+    if (!mounted || _recordingViewDisposed) return;
+    _flash(tvGalleryExportMessage(context, saved));
   }
 
   /// Zap, retour au direct ou destruction de la vue : annuler un démarrage

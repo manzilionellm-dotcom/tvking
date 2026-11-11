@@ -13,7 +13,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:path/path.dart' as p;
 
 import '../../../core/i18n/l10n_extension.dart';
 import 'tv_localized_format.dart';
@@ -25,6 +24,7 @@ import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
 import 'tv_components.dart';
+import 'tv_recording_messages.dart';
 import 'tv_recording_player_screen.dart';
 
 class TvRecordingsScreen extends StatelessWidget {
@@ -130,7 +130,7 @@ class _RecordingRowState extends State<_RecordingRow> {
     });
     await _waitForExport(GalleryExporter.exportVideo(
       srcPath: rec.filePath,
-      displayName: '${p.basenameWithoutExtension(rec.filePath)}.mp4',
+      displayName: GalleryExporter.displayNameFor(rec.filePath),
     ));
   }
 
@@ -140,9 +140,7 @@ class _RecordingRowState extends State<_RecordingRow> {
       if (!mounted) return;
       setState(() {
         _feedbackError = !result.success;
-        _feedback = result.success
-            ? context.l10n.tvRecordingExportSuccess
-            : _exportError(result.errorCode);
+        _feedback = tvGalleryExportMessage(context, result);
       });
     } catch (_) {
       if (!mounted) return;
@@ -152,24 +150,6 @@ class _RecordingRowState extends State<_RecordingRow> {
       });
     } finally {
       if (mounted) setState(() => _exporting = false);
-    }
-  }
-
-  String _exportError(String? code) {
-    switch (code) {
-      case 'SRC_MISSING':
-        return context.l10n.tvRecordingNotFoundBody;
-      case 'SRC_EMPTY':
-        return context.l10n.tvRecordingEmpty;
-      case 'PERMISSION_DENIED':
-        return context.l10n.tvRecordingExportPermission;
-      case 'UNSUPPORTED_CODEC':
-      case 'CONVERSION_FAILED':
-        return context.l10n.tvRecordingExportFormat;
-      case 'EXPORT_IN_PROGRESS':
-        return context.l10n.tvRecordingExportInProgress;
-      default:
-        return context.l10n.tvRecordingExportFailed;
     }
   }
 
