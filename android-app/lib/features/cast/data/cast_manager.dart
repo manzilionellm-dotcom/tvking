@@ -36,6 +36,9 @@ import 'cast_progress.dart';
 import 'cast_platform.dart';
 import 'cast_url_resolver.dart';
 import '../../security/data/adult_access.dart';
+import '../../security/data/parental_controls.dart';
+import '../../cinema/data/cinema_repository.dart';
+import '../domain/zuno_cast_media.dart';
 import 'cast_session_diagnostic.dart';
 import 'cast_transport.dart';
 import 'google_cast_transport.dart';
@@ -143,6 +146,7 @@ enum CastState {
 class CastManager extends ChangeNotifier {
   CastManager._() {
     ActiveProfile.instance.scopeListenable.addListener(_onProfileScopeChanged);
+    _listenZunoRestrictions();
     _subscribeToNativeEvents();
   }
   static final CastManager instance = CastManager._();
@@ -161,6 +165,7 @@ class CastManager extends ChangeNotifier {
         _testSsdpDiscovery = discoverSsdp,
         _testMdnsDiscovery = discoverMdns {
     ActiveProfile.instance.scopeListenable.addListener(_onProfileScopeChanged);
+    _listenZunoRestrictions();
   }
 
   CastTransport Function(CastDevice)? _testTransportFactory;
@@ -219,7 +224,8 @@ class CastManager extends ChangeNotifier {
     // le changement de TV qui attend justement cette fermeture.
     if (evt.kind == 'ended' && _transport == null && _device == null) return;
     if ((evt.kind == 'resumed' || evt.kind == 'resumed_at_boot') &&
-        (_transport == null || _sessionAdultAccess?.isValid == false)) {
+        (_transport == null || _sessionAdultAccess?.isValid == false ||
+            !_zunoSessionValid)) {
       // Le SDK peut restaurer une vidéo après redémarrage de Dart. Sans
       // propriétaire local nous ne savons plus quel profil, quelle liste
       // ou quel droit Adultes l'autorisait : la lecture reste fermée.
@@ -435,6 +441,12 @@ class CastManager extends ChangeNotifier {
     _disposed = true;
     ActiveProfile.instance.scopeListenable
         .removeListener(_onProfileScopeChanged);
+    ParentalControls.instance.readiness.removeListener(_onZunoRestrictionsChanged);
+    ParentalControls.instance.kidsMode.removeListener(_onZunoRestrictionsChanged);
+    if (_listeningToCinema) {
+      CinemaRepository.instance.classificationVersion
+          .removeListener(_onZunoRestrictionsChanged);
+    }
     stopWarmup();
     _stopDiscovery(notify: false);
     unawaited(_disconnect());
@@ -446,6 +458,38 @@ class CastManager extends ChangeNotifier {
   // Le droit appartient à la demande de Cast, pas au widget du lecteur.
   // Ainsi, quitter le lecteur ne retire pas la protection de sa session.
   AdultAccessGrant? _sessionAdultAccess;
+  ZunoCastMediaAccess? _pendingZunoMedia;
+  ZunoCastMediaAccess? _sessionZunoMedia;
+  bool Function()? _sessionZunoAllowed;
+  bool _listeningToCinema = false;
+
+  bool get _zunoSessionValid => !AppPlatform.isZuno ||
+      _sessionZunoAllowed?.call() == true;
+
+  void _listenZunoRestrictions() {
+    ParentalControls.instance.readiness.addListener(_onZunoRestrictionsChanged);
+    ParentalControls.instance.kidsMode.addListener(_onZunoRestrictionsChanged);
+    _listenZunoCatalogue();
+  }
+
+  void _listenZunoCatalogue() {
+    if (AppPlatform.isZuno && !_listeningToCinema) {
+      _listeningToCinema = true;
+      CinemaRepository.instance.classificationVersion
+          .addListener(_onZunoRestrictionsChanged);
+    }
+  }
+
+  void _onZunoRestrictionsChanged() {
+    if (!AppPlatform.isZuno || _disposed || _sessionZunoAllowed == null) return;
+    if (!_zunoSessionValid) unawaited(disconnect());
+  }
+
+  /// Contexte éphémère remis par le vrai lecteur avant d'ouvrir le picker.
+  /// Ne le transforme jamais en droit implicite pour une autre URL.
+  void setZunoMediaAccess(ZunoCastMediaAccess? access) {
+    if (AppPlatform.isZuno) _pendingZunoMedia = access;
+  }
 
   void _releaseAdultAccess() {
     _sessionAdultAccess?.removeListener(_onAdultAccessChanged);
@@ -510,7 +554,7 @@ class CastManager extends ChangeNotifier {
   /// et archive proprement (sans noise UX vers le user puisque
   /// l'outer a deja rendu).
   void _checkCancelled(int mySeq) {
-    if (_sessionSeq != mySeq) {
+    if (_sessionSeq != mySeq || !_zunoSessionValid) {
       throw _CastSessionCancelled(
         'Session cast superseded (mySeq=$mySeq, current=$_sessionSeq)',
       );
@@ -782,6 +826,8 @@ class CastManager extends ChangeNotifier {
     if (_device?.id == device.id && _device?.kind == device.kind) return;
     final media = _currentMedia!;
     final AdultAccessGrant? grant = _sessionAdultAccess;
+    final ZunoCastMediaAccess? mediaAccess = _sessionZunoMedia;
+    final bool Function()? allowed = _sessionZunoAllowed;
     final List<Channel>? list = _castPlaylist;
     final Channel? channel = currentCastChannel;
     final int scope = ActiveProfile.instance.scopeListenable.value;
@@ -794,11 +840,15 @@ class CastManager extends ChangeNotifier {
         revision != _sessionSeq ||
         selection != _selectionRevision ||
         scope != ActiveProfile.instance.scopeListenable.value ||
-        grant?.isValid == false) return;
+        grant?.isValid == false ||
+        (AppPlatform.isZuno && allowed?.call() != true)) {
+      return;
+    }
     selectDevice(device);
     if (list != null && channel != null) {
       setCastPlaylist(list, channel, adultAccess: grant);
     }
+    if (AppPlatform.isZuno) setZunoMediaAccess(mediaAccess);
     if (_disposed || isCancelled?.call() == true || revision != _sessionSeq)
       return;
     final int attemptRevision = _sessionSeq + 1;
@@ -826,16 +876,42 @@ class CastManager extends ChangeNotifier {
     String? channelGenre,
     String? imageUrl,
     AdultAccessGrant? adultAccess,
+    ZunoCastMedia? zunoMedia,
   }) async {
+    final controls = ParentalControls.instance;
+    _listenZunoCatalogue();
+    final int scope = ActiveProfile.instance.scopeListenable.value;
+    final int generation = controls.contentGeneration;
+    final ZunoCastMediaAccess? mediaAccess = AppPlatform.isZuno
+        ? (zunoMedia?.capture() ??
+            (_pendingZunoMedia?.media.streamUrl == streamUrl
+                ? _pendingZunoMedia : null))
+        : null;
+    bool allowed() => !AppPlatform.isZuno ||
+        (controls.protectsZuno && controls.contentReady &&
+         scope == ActiveProfile.instance.scopeListenable.value &&
+         generation == controls.contentGeneration &&
+         (mediaAccess != null
+             ? mediaAccess.allows(streamUrl, adultAccess: adultAccess)
+             : !controls.kidsMode.value &&
+               ActiveProfile.instance.playlistIds == null));
     if (_disposed ||
+        !allowed() ||
         adultAccess?.isValid == false ||
         (adultAccess == null &&
             ChannelClassifier.isAdult(
-                channelName ?? title, channelGenre ?? ''))) return;
+                channelName ?? title, channelGenre ?? ''))) {
+      return;
+    }
     // Un Cast ordinaire remplaçant un ancien Cast protégé n'hérite jamais
     // de son verrou ; une session préexistante n'est pas liée par l'UI.
     _releaseAdultAccess();
     _sessionAdultAccess = adultAccess;
+    _sessionZunoMedia = mediaAccess;
+    _sessionZunoAllowed = allowed;
+    // Une relance du picker après erreur conserve les métadonnées de cette
+    // URL résolue, sans les étendre à une autre URL ou à un autre profil.
+    if (AppPlatform.isZuno) _pendingZunoMedia = mediaAccess;
     adultAccess?.addListener(_onAdultAccessChanged);
     final int mySeq = ++_sessionSeq;
     _currentMedia = (
@@ -906,6 +982,7 @@ class CastManager extends ChangeNotifier {
   /// proposer Ch+/Ch- : un cast est actif ET on connaît la playlist.
   bool get canZapOnCast =>
       isCasting &&
+      _zunoSessionValid &&
       (_castPlaylist?.length ?? 0) > 1 &&
       _playlistAdultAccess?.isValid != false;
 
@@ -930,6 +1007,10 @@ class CastManager extends ChangeNotifier {
         allowed.indexWhere((Channel channel) => _sameChannel(channel, current));
     _castPlaylist = _castIndex < 0 ? null : List<Channel>.unmodifiable(allowed);
     _playlistAdultAccess = _castPlaylist == null ? null : adultAccess;
+    if (AppPlatform.isZuno) {
+      _pendingZunoMedia = ZunoCastMedia.channel(current,
+          streamUrl: current.streamUrl).capture();
+    }
     notifyListeners();
   }
 
@@ -947,7 +1028,12 @@ class CastManager extends ChangeNotifier {
   static bool _allowsChannel(Channel channel, AdultAccessGrant? grant) =>
       ActiveProfile.instance.allowsPlaylist(channel.playlistId) &&
       grant?.isValid != false &&
-      (!isAdultChannel(channel) || grant != null);
+      (!isAdultChannel(channel) || grant != null) &&
+      (!AppPlatform.isZuno ||
+          (ParentalControls.instance.protectsZuno &&
+           ParentalControls.instance.contentReady &&
+           ((!ParentalControls.instance.kidsMode.value && grant != null) ||
+            !isHiddenFromNormalCatalog(channel))));
 
   /// Chaîne suivante sur la TV (bouton Ch+ / ⏭ des surfaces globales).
   Future<void> zapCastNext() => _zapCastBy(1);
@@ -1069,6 +1155,8 @@ class CastManager extends ChangeNotifier {
       channelGenre: channelGenre,
       imageUrl: imageUrl,
       adultAccess: adultAccess,
+      zunoMedia: AppPlatform.isZuno && channel != null
+          ? ZunoCastMedia.channel(channel, streamUrl: streamUrl) : null,
     );
     return !_disposed &&
         isCasting &&
@@ -1269,6 +1357,12 @@ class CastManager extends ChangeNotifier {
         myTransport.sessionIsCurrent = () =>
             !_disposed &&
             mySeq == _sessionSeq &&
+            _sessionAdultAccess?.isValid != false &&
+            _zunoSessionValid;
+      }
+      if (AppPlatform.isZuno && myTransport is UpnpAvTransport) {
+        myTransport.sessionIsCurrent = () =>
+            !_disposed && mySeq == _sessionSeq && _zunoSessionValid &&
             _sessionAdultAccess?.isValid != false;
       }
       if (device.kind == CastDeviceKind.dlna) {
@@ -2482,6 +2576,8 @@ class CastManager extends ChangeNotifier {
 
   Future<void> _disconnect({bool nativeOnly = false}) async {
     _releaseAdultAccess();
+    _sessionZunoMedia = null;
+    _sessionZunoAllowed = null;
     _nativeSessionSuspended = false;
     final int revision = ++_sessionSeq;
     ++_selectionRevision;
@@ -2593,6 +2689,7 @@ class CastManager extends ChangeNotifier {
           scope == ActiveProfile.instance.scopeListenable.value &&
           zap == _zapRevision &&
           _sessionAdultAccess?.isValid != false &&
+          _zunoSessionValid &&
           (currentCastChannel == null ||
               _allowsChannel(currentCastChannel!, _sessionAdultAccess));
       try {

@@ -20,9 +20,13 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
+import '../../../core/app/app_platform.dart';
+import '../../security/data/parental_controls.dart';
+import '../../channels/domain/channel_genre.dart';
 import '../../cinema/data/watch_progress.dart';
 import '../../cinema/data/cinema_repository.dart';
 import '../../profiles/data/active_profile.dart';
+import '../../profiles/data/profile_repository.dart';
 import '../../security/data/adult_access.dart';
 import '../../cinema/domain/resume_start.dart';
 import '../../cinema/domain/cinema_models.dart';
@@ -55,6 +59,7 @@ class VodPlayItem {
     this.episode,
     this.isAdult = false,
     this.adultClassificationKnown = true,
+    this.classification,
   });
 
   final String id;
@@ -75,8 +80,81 @@ class VodPlayItem {
   final int? episode;
   final bool isAdult;
   final bool adultClassificationKnown;
+  final CinemaClassification? classification;
 
-  factory VodPlayItem.movie(CinemaTitle t, {bool? isAdult}) => VodPlayItem(
+  // Faible : aucune liste globale de médias n'est retenue. Après remplacement
+  // du catalogue, seul un item encore détenu peut mémoriser sa preuve relue.
+  static final Expando<CinemaClassification> _revalidated =
+      Expando<CinemaClassification>();
+
+  int? get playlistId => sourceKey.isNotEmpty
+      ? int.tryParse(sourceKey.startsWith('p') ? sourceKey.substring(1) : '')
+      : int.tryParse(RegExp(r'^p([1-9][0-9]*):[mes]:')
+          .firstMatch(id)?.group(1) ?? '');
+
+  CinemaClassification? get _currentClassification {
+    final previous = _revalidated[this] ?? classification;
+    final proof = CinemaRepository.instance.classificationForMedia(
+        isEpisode ? (seriesId ?? id) : id,
+        isEpisode ? CinemaKind.series : CinemaKind.movie,
+        previous: previous);
+    if (proof != null && !identical(previous, proof)) _revalidated[this] = proof;
+    return proof;
+  }
+
+  CinemaClassification? get playbackClassification => _currentClassification;
+
+  bool? get currentAdultStatus {
+    if (isAdult || ChannelClassifier.isAdult(title, subtitle ?? '')) return true;
+    final proof = _currentClassification;
+    return proof != null ? proof.isAdult
+        : (adultClassificationKnown ? false : null);
+  }
+
+  static bool get _zunoKids => AppPlatform.isZuno &&
+      (ParentalControls.instance.kidsMode.value ||
+       ProfileRepository.instance.activeIsKids);
+
+  /// La sélection n'est pas un droit : une feuille peut rester ouverte
+  /// pendant le remplacement du catalogue, sans changement de profil.
+  bool isAllowedNow({AdultAccessGrant? adultAccess}) {
+    if (!AppPlatform.isZuno) {
+      return adultClassificationKnown &&
+          (adultAccess == null ? !isAdult : adultAccess.isValid);
+    }
+    if (!ParentalControls.instance.protectsZuno ||
+        !ParentalControls.instance.contentReady ||
+        adultAccess?.isValid == false) {
+      return false;
+    }
+    final source = playlistId;
+    final structuredSource = int.tryParse(RegExp(r'^p([1-9][0-9]*):[mes]:')
+        .firstMatch(id)?.group(1) ?? '');
+    if ((sourceKey.isNotEmpty && (source == null || source <= 0)) ||
+        (structuredSource != null && source != structuredSource) ||
+        !ActiveProfile.instance.allowsPlaylist(source)) {
+      return false;
+    }
+    final proof = _currentClassification;
+    if (proof != null && proof.sourceKey != 'p$source') return false;
+    final explicitAdult = isAdult ||
+        ChannelClassifier.isAdult(title, subtitle ?? '');
+    final status = proof != null ? proof.isAdult
+        : CinemaRepository.instance.adultStatusForMedia(
+            isEpisode ? (seriesId ?? id) : id, title);
+    if (_zunoKids) return !explicitAdult && status == false;
+    // Une ancienne reprise sans classement demeure fermée. Les factories
+    // de films/séries conservent le comportement adulte du 116 ci-dessous.
+    return adultClassificationKnown &&
+        (adultAccess == null
+            ? !explicitAdult && status != true
+            : adultAccess.isValid);
+  }
+
+  factory VodPlayItem.movie(CinemaTitle t,
+      {bool? isAdult, CinemaClassification? previousClassification}) {
+    final status = CinemaRepository.instance.adultStatusForTitle(t);
+    return VodPlayItem(
     id: t.id,
     isEpisode: false,
     title: t.name,
@@ -85,11 +163,31 @@ class VodPlayItem {
     containerExt: t.containerExt,
     sourceKey: t.sourceKey,
     remoteId: t.remoteId,
-    isAdult: isAdult ?? CinemaRepository.instance.isAdultTitle(t),
+    isAdult: AppPlatform.isZuno ? (isAdult == true || status == true)
+        : isAdult ?? CinemaRepository.instance.isAdultTitle(t),
+    adultClassificationKnown: !AppPlatform.isZuno ||
+        (ParentalControls.instance.contentReady && !_zunoKids) ||
+        isAdult == true || status != null,
+    classification: CinemaRepository.instance.classificationForMedia(t.id, t.kind,
+        previous: previousClassification),
   );
+  }
 
-  factory VodPlayItem.episode(CinemaEpisode e, CinemaTitle series, {bool? isAdult}) =>
-      VodPlayItem(
+  /// La fiche d'une série doit protéger son titre avant de choisir un épisode.
+  /// Cet objet porte seulement l'identité de la fiche, jamais une URL inventée.
+  factory VodPlayItem.catalogueTitle(CinemaTitle title) {
+    if (title.kind == CinemaKind.movie) return VodPlayItem.movie(title);
+    return VodPlayItem(id: title.id, isEpisode: true, seriesId: title.id,
+        title: title.name, url: '', sourceKey: title.sourceKey,
+        isAdult: CinemaRepository.instance.isAdultTitle(title),
+        classification: CinemaRepository.instance.classificationForMedia(
+            title.id, CinemaKind.series));
+  }
+
+  factory VodPlayItem.episode(CinemaEpisode e, CinemaTitle series,
+      {bool? isAdult, CinemaClassification? previousClassification}) {
+    final status = CinemaRepository.instance.adultStatusForTitle(series);
+    return VodPlayItem(
         id: e.id,
         isEpisode: true,
         title: series.name,
@@ -102,8 +200,15 @@ class VodPlayItem {
         seriesId: series.id,
         season: e.season,
         episode: e.number,
-        isAdult: isAdult ?? CinemaRepository.instance.isAdultTitle(series),
+        isAdult: AppPlatform.isZuno ? (isAdult == true || status == true)
+            : isAdult ?? CinemaRepository.instance.isAdultTitle(series),
+        adultClassificationKnown: !AppPlatform.isZuno ||
+            (ParentalControls.instance.contentReady && !_zunoKids) ||
+            isAdult == true || status != null,
+        classification: CinemaRepository.instance.classificationForMedia(
+            series.id, CinemaKind.series, previous: previousClassification),
       );
+  }
 
   factory VodPlayItem.entry(WatchEntry e) {
     final bool? adult = CinemaRepository.instance.adultStatusForWatch(e);
@@ -122,7 +227,25 @@ class VodPlayItem {
     episode: e.episode,
     isAdult: adult == true,
     adultClassificationKnown: adult != null,
+    classification: CinemaRepository.instance.classificationForMedia(
+        e.isEpisode ? (e.seriesId ?? e.id) : e.id,
+        e.isEpisode ? CinemaKind.series : CinemaKind.movie),
   );
+  }
+
+  /// Les anciens téléchargements ne portent aucun classement persistant.
+  /// La preuve provient uniquement du catalogue réellement chargé maintenant.
+  factory VodPlayItem.download(Download download, {required bool isAdult}) {
+    final episode = download.id.contains(':e:');
+    final proof = CinemaRepository.instance.classificationForMedia(
+        download.id, episode ? CinemaKind.series : CinemaKind.movie);
+    return VodPlayItem(id: download.id, isEpisode: episode,
+        title: download.name, url: download.sourceUrl,
+        posterUrl: download.posterUrl, isAdult: isAdult,
+        adultClassificationKnown: !AppPlatform.isZuno ||
+            (ParentalControls.instance.contentReady && !_zunoKids) ||
+            isAdult || proof != null,
+        classification: proof);
   }
 
   WatchEntry toEntry({required int posMs, required int durMs}) => WatchEntry(
@@ -184,12 +307,14 @@ Future<void> openVod(
   AdultAccessGrant? adultAccess,
 }) async {
   final int scope = ActiveProfile.instance.scopeListenable.value;
+  final int generation = ParentalControls.instance.contentGeneration;
   bool allowed() => context.mounted &&
+      (!AppPlatform.isZuno || (ParentalControls.instance.contentReady &&
+        generation == ParentalControls.instance.contentGeneration)) &&
       scope == ActiveProfile.instance.scopeListenable.value &&
       (item.sourceKey.isEmpty || ActiveProfile.instance.allowsPlaylist(int.tryParse(
         item.sourceKey.startsWith('p') ? item.sourceKey.substring(1) : '',
-      ))) && item.adultClassificationKnown &&
-      (adultAccess == null ? !item.isAdult : adultAccess.isValid);
+      ))) && item.isAllowedNow(adultAccess: adultAccess);
   if (!allowed()) return;
   await WatchProgressRepository.instance.load();
   if (!allowed()) return;
@@ -203,7 +328,8 @@ Future<void> openVod(
   if (!allowed()) return;
   await Navigator.of(context).push(
     MaterialPageRoute<void>(
-      builder: (_) => TvVodPlayerScreen(
+      builder: (_) => AppPlatform.isZuno && !allowed()
+          ? const SizedBox.shrink() : TvVodPlayerScreen(
         item: item,
         startAt: startAt,
         localPath: local,
@@ -631,14 +757,19 @@ Future<void> showCinemaSheet(
   BuildContext context, {
   required String title,
   required List<CinemaSheetAction> actions,
+  bool Function()? isAllowed,
+  Listenable? permissionChanges,
 }) async {
+  bool allowed() => !AppPlatform.isZuno || isAllowed?.call() != false;
+  if (!allowed()) return;
   final CinemaSheetAction? chosen = await Navigator.of(context)
       .push<CinemaSheetAction>(
         PageRouteBuilder<CinemaSheetAction>(
           opaque: false,
           barrierDismissible: true,
           barrierColor: Colors.black.withValues(alpha: 0.6),
-          pageBuilder: (BuildContext ctx, _, __) => Material(
+          pageBuilder: (BuildContext ctx, _, __) {
+            final Widget sheet = Material(
             type: MaterialType.transparency,
             child: Center(
               child: Container(
@@ -674,8 +805,73 @@ Future<void> showCinemaSheet(
                 ),
               ),
             ),
-          ),
+            );
+            return AppPlatform.isZuno && isAllowed != null
+                ? _CinemaSheetProtection(isAllowed: isAllowed,
+                    permissionChanges: permissionChanges, child: sheet)
+                : sheet;
+          },
         ),
       );
-  if (chosen != null) await chosen.run();
+  if (chosen != null && allowed()) await chosen.run();
+}
+
+/// Une feuille déjà ouverte ne garde ni titre ni actions d'un média révoqué.
+/// La fermeture vise sa propre route ; elle ne dépile jamais une autre page.
+class _CinemaSheetProtection extends StatefulWidget {
+  const _CinemaSheetProtection({required this.isAllowed, required this.child,
+      this.permissionChanges});
+  final bool Function() isAllowed;
+  final Widget child;
+  final Listenable? permissionChanges;
+
+  @override
+  State<_CinemaSheetProtection> createState() => _CinemaSheetProtectionState();
+}
+
+class _CinemaSheetProtectionState extends State<_CinemaSheetProtection> {
+  late final Listenable _changes = Listenable.merge(<Listenable?>[
+    CinemaRepository.instance.classificationVersion,
+    ActiveProfile.instance.scopeListenable,
+    ParentalControls.instance.readiness,
+    ParentalControls.instance.kidsMode,
+    widget.permissionChanges,
+  ]);
+  bool _revoked = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _changes.addListener(_changed);
+    if (!widget.isAllowed()) _close();
+  }
+
+  void _changed() {
+    if (!mounted || _revoked) return;
+    if (!widget.isAllowed()) {
+      setState(_close);
+    }
+  }
+
+  void _close() {
+    if (_revoked) return;
+    _revoked = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final route = ModalRoute.of(context);
+      if (route != null && route.isActive && !route.isFirst) {
+        Navigator.of(context).removeRoute(route);
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) =>
+      _revoked || !widget.isAllowed() ? const SizedBox.shrink() : widget.child;
+
+  @override
+  void dispose() {
+    _changes.removeListener(_changed);
+    super.dispose();
+  }
 }

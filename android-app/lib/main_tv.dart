@@ -170,6 +170,7 @@ Future<void> bootstrapZunoTv({Widget Function(Widget app)? wrap}) async {
   // la licence ni le namespace historique « tv » de ZUNO dans le panel.
   await StartupTrace.step('castPlatform', CastPlatform.initializeZuno);
   AppPlatform.configureZuno(isAndroidHandset: CastPlatform.isAndroidHandset);
+  ParentalControls.instance.protectZunoBeforeProfile();
 
   // MISE À JOUR IN-APP : la TV ne regarde QUE sa propre release (zuno-tv),
   // publiée par build-zuno-tv.yml (version.json + zuno-tv.apk). Même clé de
@@ -250,6 +251,11 @@ Future<void> bootstrapZunoTv({Widget Function(Widget app)? wrap}) async {
         onTimeout: () {},
       );
   StartupTrace.mark('profile.end');
+  await StartupTrace.step('parental', () =>
+      ParentalControls.instance.loadBeforeFirstFrame(
+        budget: RepairFlags.parentalWaitImmediate
+            ? Duration.zero : const Duration(milliseconds: 300),
+      ));
   // Langue des pistes audio (direct, aperçu, film). On la relit si
   // la personne change la langue dans Réglages : le prochain zap
   // prend la nouvelle, sans rouvrir la chaîne en cours.
@@ -374,9 +380,8 @@ Future<void> bootstrapZunoTv({Widget Function(Widget app)? wrap}) async {
   //    fuseaux horaires + canal Android. Idempotent, best-effort.
   unawaited(NotificationService.instance.init());
 
-  // 9) Contrôle parental du profil en cours : le 1er rendu du Direct
-  //    masque déjà l'Adulte si ce profil l'a activé (forcé sur Enfants).
-  unawaited(ParentalControls.instance.load());
+  // 9) Restrictions déjà chargées ou fermées avant le premier rendu.
+  //    Un disque lent laisse l’attente sûre affichée ; il n’ouvre aucun droit.
 
   // 10) Historique du profil en cours, puis restauration serveur si ce
   //     tiroir est vide (la box neuve). N'écrase jamais un historique là.

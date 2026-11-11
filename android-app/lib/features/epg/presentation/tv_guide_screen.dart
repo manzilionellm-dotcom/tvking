@@ -119,7 +119,7 @@ class _TvGuideScreenState extends State<TvGuideScreen> {
   /// Les lignes et leurs programmes ne doivent jamais exposer Adultes
   /// depuis le guide normal, indépendamment du réglage mode enfants.
   List<Channel> _normalChannels(List<Channel> channels) => channels
-      .where((Channel channel) => !isAdultChannel(channel))
+      .where((Channel channel) => !isHiddenFromNormalCatalog(channel))
       .toList(growable: false);
 
   void _scrollToNow() {
@@ -381,7 +381,7 @@ class _GuideBody extends StatelessWidget {
                   width: channelColWidth,
                   height: rowHeight,
                   onTap: () {
-                    if (isAdultChannel(ch)) return;
+                    if (isHiddenFromNormalCatalog(ch)) return;
                     playChannel(context, ch, zapPlaylist: channels);
                   },
                 ),
@@ -405,7 +405,7 @@ class _GuideBody extends StatelessWidget {
                       rowHeight: rowHeight,
                       now: now,
                       onProgramTap: (EpgProgram p) {
-                        if (isAdultChannel(ch)) return;
+                        if (isHiddenFromNormalCatalog(ch)) return;
                         final int nowMs = now.millisecondsSinceEpoch;
                         if (p.isLiveAt(now)) {
                           // En cours → live direct

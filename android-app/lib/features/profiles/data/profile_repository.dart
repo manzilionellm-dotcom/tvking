@@ -3,8 +3,8 @@
 // =========================================================
 //  Enregistre le catalogue (qui existe, qui est actif, est-ce
 //  qu'on demande au démarrage). Le chargement est court et
-//  borné par l'appelant : s'il tarde, l'app continue avec le
-//  profil 1. On ne met JAMAIS un écran devant une chaîne.
+//  borné par l'appelant. Sur ZUNO, un profil non confirmé conserve
+//  la barrière parentale fermée ; le budget ne valide pas le profil 1.
 //
 //  Supprimer un profil efface SON tiroir seulement. Le profil 1
 //  ne se supprime pas, et ses clés historiques non plus.
@@ -14,6 +14,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/notifications/notification_service.dart';
+import '../../../core/app/app_platform.dart';
 import '../../channels/data/recently_watched_repository.dart';
 import '../../cinema/data/watch_progress.dart';
 import '../../playlists/data/favorites_repository.dart';
@@ -29,6 +30,10 @@ class ProfileRepository extends ChangeNotifier {
   ProfileCatalog _catalog = ProfileCatalog.fresh();
   Future<void>? _loading;
   bool _ready = false;
+  bool _confirmed = false;
+  bool loadFailed = false;
+
+  bool get activeProfileConfirmed => _ready && _confirmed && !loadFailed;
 
   bool get isReady => _ready;
   ProfileCatalog get catalog => _catalog;
@@ -44,14 +49,25 @@ class ProfileRepository extends ChangeNotifier {
   Future<void> _load() async {
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
-      _catalog = ProfileCatalog.decode(prefs.getString(ProfileKeys.catalog));
+      final String? raw = prefs.getString(ProfileKeys.catalog);
+      _confirmed = !AppPlatform.isZuno || ProfileCatalog.confirmsActiveProfile(raw);
+      loadFailed = !_confirmed;
+      _catalog = ProfileCatalog.decode(raw);
     } catch (e) {
+      _confirmed = false;
+      loadFailed = true;
       if (kDebugMode) debugPrint('[Profils] lecture impossible : $e');
       _catalog = ProfileCatalog.fresh();
     }
     _publishActiveScope();
     _ready = true;
     notifyListeners();
+  }
+
+  /// Nouvelle lecture explicite après erreur, sans effacer les préférences.
+  Future<void> retryProtectedRead() {
+    if (!activeProfileConfirmed) _loading = null;
+    return load();
   }
 
   Future<FamilyProfile?> addProfile({
@@ -116,10 +132,12 @@ class ProfileRepository extends ChangeNotifier {
       );
 
   @visibleForTesting
-  void resetForTesting(ProfileCatalog catalog) {
+  void resetForTesting(ProfileCatalog catalog, {bool loaded = true}) {
     _catalog = catalog;
-    _ready = true;
-    _loading = Future<void>.value();
+    _ready = loaded;
+    _confirmed = loaded;
+    loadFailed = false;
+    _loading = loaded ? Future<void>.value() : null;
     _publishActiveScope();
     notifyListeners();
   }

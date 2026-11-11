@@ -277,7 +277,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
     // Ce qu'on a DÉJÀ en mémoire (le boot a chargé la playlist). Les dépôts
     // finissent de s'ouvrir dans _prepareEngagement, sans bloquer le 1er cadre.
     _channels = PlaylistRepository.instance.currentChannels
-        .where((Channel c) => !isAdultChannel(c))
+        .where((Channel c) => !isHiddenFromNormalCatalog(c))
         .toList(growable: false);
     _channelsScope = ActiveProfile.instance.scopeListenable.value;
     _scheduleGenreShelves();
@@ -680,7 +680,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
     // Le catalogue privé a sa propre entrée authentifiée : aucune carte,
     // recommandation ou affiche de ce catalogue ne passe par l'accueil.
     _channels = channels
-        .where((Channel c) => !isAdultChannel(c))
+        .where((Channel c) => !isHiddenFromNormalCatalog(c))
         .toList(growable: false);
     _genreGeneration++;
     _genreShelves = const {}; // aucune carte de la source retirée
@@ -783,7 +783,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
     final ResumeZap? plan = resumeZapList(
       PlaylistRepository.instance.currentChannels,
       _shelves.resume,
-      hide: isAdultChannel,
+      hide: isHiddenFromNormalCatalog,
     );
     if (plan == null) return false;
     final List<Channel> zap = plan.channels;
@@ -802,7 +802,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
               requestedScope: scope,
               currentScope: ActiveProfile.instance.scopeListenable.value,
               hide: (channel) =>
-                  isAdultChannel(channel) ||
+                  isHiddenFromNormalCatalog(channel) ||
                   !ActiveProfile.instance.allowsPlaylist(channel.playlistId));
       final latest = currentPlan();
       if (latest == null) return;
@@ -904,7 +904,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
     final bool kids = ParentalControls.instance.kidsMode.value;
     final Map<String, Channel> byId = _hubById;
     bool hide(Channel c) => hiddenForKids(c);
-    final bool Function(Channel) kidsHide = isAdultChannel;
+    final bool Function(Channel) kidsHide = isHiddenFromNormalCatalog;
     final int now = DateTime.now().millisecondsSinceEpoch;
     _shelves = HomeShelfModel(
       resume: channelsInIdOrder(_recentIds, byId, hide: kidsHide),
@@ -1253,13 +1253,13 @@ class _TvHubScreenState extends State<TvHubScreen> {
   Future<void> _playShelf(List<Channel> shelf, int index) async {
     if (index < 0 || index >= shelf.length) return;
     final Channel target = shelf[index];
-    if (isAdultChannel(target) ||
+    if (isHiddenFromNormalCatalog(target) ||
         !ActiveProfile.instance.allowsPlaylist(target.playlistId)) {
       return;
     }
     final List<Channel> allowed = shelf
         .where((Channel c) =>
-            !isAdultChannel(c) &&
+            !isHiddenFromNormalCatalog(c) &&
             ActiveProfile.instance.allowsPlaylist(c.playlistId))
         .toList(growable: false);
     final int selected = allowed.indexWhere(
@@ -1283,7 +1283,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
     final ResumeZap? plan = resumeZapList(
       PlaylistRepository.instance.currentChannels,
       <Channel>[channel],
-      hide: isAdultChannel,
+      hide: isHiddenFromNormalCatalog,
     );
     if (plan == null) return;
     _playShelf(plan.channels, plan.startIndex);

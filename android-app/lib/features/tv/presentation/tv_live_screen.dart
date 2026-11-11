@@ -22,6 +22,7 @@ import '../../device/domain/display_mac.dart';
 import '../../../core/app/box_memory_budget.dart';
 import '../../../core/app/boot_guard.dart';
 import '../../../core/app/repair_flags.dart';
+import '../../../core/app/app_platform.dart';
 import '../../../core/blackbox/black_box.dart';
 import '../../../core/curation/title_curator.dart';
 import '../../../core/i18n/l10n_extension.dart';
@@ -109,16 +110,15 @@ class TvLiveScreen extends StatefulWidget {
 
 class _TvLiveScreenState extends State<TvLiveScreen> {
   bool get _adultMode => widget.adultAccess != null;
-  bool get _accessAllowed =>
-      !_adultMode ||
-      (widget.adultAccess!.isValid &&
-          !ParentalControls.instance.kidsMode.value);
+  bool get _accessAllowed => ParentalControls.instance.contentReady &&
+      (!_adultMode || (widget.adultAccess!.isValid &&
+          !ParentalControls.instance.kidsMode.value));
 
   bool _allowsChannel(Channel channel) =>
       _accessAllowed &&
       channel.isLive &&
       ActiveProfile.instance.allowsPlaylist(channel.playlistId) &&
-      isAdultChannel(channel) == _adultMode &&
+      (_adultMode ? isAdultChannel(channel) : !isHiddenFromNormalCatalog(channel)) &&
       (!ParentalControls.instance.kidsMode.value || !_hideForKids(channel));
 
   StreamSubscription<List<Channel>>? _sub;
@@ -887,7 +887,8 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
   /// erreur) ; elle réapparaît quand le pré-calcul termine (re-ingest).
   static bool _hideForKids(Channel c) {
     final ChannelGenre? g = ChannelPrecompute.cachedGenre(c);
-    return g == null || g == ChannelGenre.adult;
+    return g == null || g == ChannelGenre.adult ||
+        (AppPlatform.isZuno && g == ChannelGenre.other);
   }
 
   void _ingest(List<Channel> channels) {

@@ -47,6 +47,7 @@ import 'removed_list_prompt.dart';
 import 'tv_activation_screen.dart';
 import 'tv_components.dart';
 import 'tv_hub_screen.dart';
+import 'tv_parental_gate.dart';
 import 'tv_light_intro.dart';
 import 'tv_live_screen.dart';
 import 'tv_recordings_screen.dart';
@@ -141,11 +142,13 @@ class TvApp extends StatelessWidget {
           // système (certaines box le poussent à 1,3-1,5).
           builder: (BuildContext context, Widget? child) {
             if (child == null) return const SizedBox.shrink();
-            return VoiceHotkey(
-              child: TvRemoteShortcuts(
-                child: TvScaledViewport(
-                  designWidth: kTvDesignWidth,
-                  child: child,
+            return TvParentalGate(
+              child: VoiceHotkey(
+                child: TvRemoteShortcuts(
+                  child: TvScaledViewport(
+                    designWidth: kTvDesignWidth,
+                    child: child,
+                  ),
                 ),
               ),
             );

@@ -308,6 +308,11 @@ abstract final class RepairFlags {
   static const String hubGlobalTickLegacyKey = 'zuno.hub.global_tick_legacy';
   static bool hubGlobalTickLegacy = false;
 
+  /// L1-03 : vrai affiche immédiatement l’attente sûre ; faux attend au plus
+  /// 300 ms. Les permissions restent fermées dans les deux chemins.
+  static const String parentalWaitImmediateKey = 'zuno.parental.wait_immediate';
+  static bool parentalWaitImmediate = false;
+
   /// L1-01 : vrai rétablit le sondage DLNA historique de ZUNO. Les gardes
   /// de session et de contrôle parental restent obligatoires.
   static const String dlnaWatchdogLegacyKey = 'zuno.dlna.watchdog_legacy';
@@ -359,6 +364,7 @@ abstract final class RepairFlags {
     bool globalTickLegacy = false;
     bool loadedNativeMetricsOff = false;
     bool loadedDlnaWatchdogLegacy = false;
+    bool loadedParentalWaitImmediate = false;
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       raw = prefs.getBool(blackBoxRawKey) ?? false;
@@ -401,6 +407,7 @@ abstract final class RepairFlags {
       globalTickLegacy = prefs.getBool(hubGlobalTickLegacyKey) ?? false;
       loadedNativeMetricsOff = prefs.getBool(nativeMetricsOffKey) ?? false;
       loadedDlnaWatchdogLegacy = prefs.getBool(dlnaWatchdogLegacyKey) ?? false;
+      loadedParentalWaitImmediate = prefs.getBool(parentalWaitImmediateKey) ?? false;
     } catch (_) {
       raw = false;
       fsyncAll = false;
@@ -442,6 +449,7 @@ abstract final class RepairFlags {
       globalTickLegacy = false;
       loadedNativeMetricsOff = false;
       loadedDlnaWatchdogLegacy = false;
+      loadedParentalWaitImmediate = false;
     }
     epgGzipByHeader = gzipByHeader;
     xtreamPerCategorySerial = xtreamSerial;
@@ -453,6 +461,7 @@ abstract final class RepairFlags {
     hubGlobalTickLegacy = globalTickLegacy;
     nativeMetricsOff = loadedNativeMetricsOff;
     dlnaWatchdogLegacy = loadedDlnaWatchdogLegacy;
+    parentalWaitImmediate = loadedParentalWaitImmediate;
     orderAckOff = ackOff;
     tvDeleteLegacy = tvDelLegacy;
     liveShelvesLegacy = shelvesLegacy;
@@ -530,6 +539,7 @@ abstract final class RepairFlags {
     hubGlobalTickLegacy = false;
     nativeMetricsOff = false;
     dlnaWatchdogLegacy = false;
+    parentalWaitImmediate = false;
     NativeVideoController.legacyHoldFrame = false;
   }
 }

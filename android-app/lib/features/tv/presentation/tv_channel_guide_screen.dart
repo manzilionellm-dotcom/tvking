@@ -14,6 +14,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
+import '../../../core/app/app_platform.dart';
+import '../../channels/domain/adult_channel_policy.dart';
+import '../../profiles/data/active_profile.dart';
+import '../../security/data/adult_access.dart';
+import '../../security/data/parental_controls.dart';
 import 'tv_localized_format.dart';
 import '../../channels/domain/channel.dart';
 import '../../epg/data/epg_repository.dart';
@@ -32,10 +37,12 @@ class TvChannelGuideScreen extends StatefulWidget {
     super.key,
     required this.channel,
     this.currentSummary,
+    this.adultAccess,
   });
 
   final Channel channel;
   final MissedSummary? currentSummary;
+  final AdultAccessGrant? adultAccess;
 
   @override
   State<TvChannelGuideScreen> createState() => _TvChannelGuideScreenState();
@@ -53,8 +60,15 @@ class _TvChannelGuideScreenState extends State<TvChannelGuideScreen> {
   bool _didFocusLive = false;
   bool _didFocusRetry = false;
 
-  Future<List<EpgProgram>> _load() =>
-      EpgRepository.instance.todayPrograms(widget.channel.id);
+  bool get _allowed => !AppPlatform.isZuno ||
+      (ParentalControls.instance.contentReady &&
+       ActiveProfile.instance.allowsPlaylist(widget.channel.playlistId) &&
+       (widget.adultAccess?.isValid == true ||
+        !isHiddenFromNormalCatalog(widget.channel)));
+
+  Future<List<EpgProgram>> _load() => _allowed
+      ? EpgRepository.instance.todayPrograms(widget.channel.id)
+      : Future<List<EpgProgram>>.value(const <EpgProgram>[]);
 
   FocusNode _nodeFor(int i) => _nodes.putIfAbsent(i, FocusNode.new);
 
@@ -131,6 +145,7 @@ class _TvChannelGuideScreenState extends State<TvChannelGuideScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (!_allowed) return const SizedBox.shrink();
     return TvShell(
       child: Focus(
         // Prend le focus tout de suite : sinon la touche Retour traverse

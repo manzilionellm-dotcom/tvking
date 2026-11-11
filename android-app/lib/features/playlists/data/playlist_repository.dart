@@ -29,6 +29,7 @@ import 'package:sqflite/sqflite.dart';
 // ignore: depend_on_referenced_packages — dart:async fournit unawaited
 
 import '../../../core/app/repair_flags.dart';
+import '../../../core/app/app_platform.dart';
 import '../../../core/flavor/flavor.dart';
 import '../../../core/blackbox/black_box.dart';
 import '../../channels/domain/channel.dart';
@@ -178,6 +179,14 @@ class PlaylistRepository {
   /// Le cache est vidé au changement de portée et publié sous garde :
   /// inutile de recopier 50 000 références à chaque reconstruction d'écran.
   List<Channel> get currentChannels => _applyFlavorFilter(_channelsCache);
+
+  /// La classification peut arriver après la lecture SQL. Une nouvelle
+  /// identité invalide les index de ZUNO sans réécrire ni relire la base.
+  void notifyClassifiedSnapshot() {
+    if (!AppPlatform.isZuno) return;
+    _channelsCache = List<Channel>.unmodifiable(_channelsCache);
+    if (!_channelsController.isClosed) _channelsController.add(_channelsCache);
+  }
 
   /// Snapshot synchrone des playlists actuellement chargées.
   List<Playlist> get currentPlaylists => _visiblePlaylists(_playlistsCache);

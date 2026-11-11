@@ -217,6 +217,18 @@ void main() {
     });
   });
 
+  test('restrictions changées pendant la sonde ferment la session ZUNO', () {
+    _scenario((clock, manager, first, second) {
+      first.cut();
+      clock.elapse(const Duration(seconds: 11));
+      ParentalControls.instance.kidsMode.value = true;
+      clock.flushMicrotasks();
+      clock.elapse(const Duration(seconds: 25));
+      expect(first.setUris, 1);
+      expect(manager.state, CastState.idle);
+    });
+  });
+
   test('une erreur de sonde ne conserve pas le verrou', () {
     _scenario((clock, manager, first, second) {
       first.failNextRead = true;
