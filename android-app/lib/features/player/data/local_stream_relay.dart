@@ -57,7 +57,9 @@ class LocalStreamRelay {
     Duration networkTimeout = const Duration(seconds: 15),
     Duration retryDelay = const Duration(seconds: 2),
     Duration? playlistPollDelay,
-    int maxReconnectFailures = 3,
+    // 12 comme 7 MOTION : un direct IPTV qui coupe en plein REC a droit à
+    // plusieurs reconnexions (le compteur repart à 0 dès que le média revient).
+    int maxReconnectFailures = 12,
     RelayFileOpener? openFile,
   })  : _firstMediaTimeout = firstMediaTimeout,
         _networkTimeout = networkTimeout,
@@ -295,31 +297,75 @@ class LocalStreamRelay {
     }
   }
 
+  /// Codes HTTP réessayables à tout moment (refus temporaires classiques).
+  static const Set<int> _transientStatuses = <int>{
+    408, 429, 500, 502, 503, 504,
+  };
+
+  /// Codes réessayables UNIQUEMENT pendant la bascule direct → relais, avant
+  /// le premier octet média. Un fournisseur IPTV « 1 connexion max » qui n'a
+  /// pas encore libéré l'ancienne lecture répond souvent 401/403 (ou 458/509,
+  /// « trop de connexions ») pendant quelques secondes, alors que les mêmes
+  /// identifiants lisaient la chaîne une seconde plus tôt. Hors bascule, ces
+  /// codes restent définitifs (vrai refus d'accès).
+  static const Set<int> _handoffStatuses = <int>{401, 403, 458, 509};
+
   Future<_Fetched> _get(_RelaySession session, Uri uri) async {
+    // Repris de 7 MOTION (12 essais avant d'abandonner) mais borné dans le
+    // temps : avant tout média, on réessaie tant que la fenêtre du premier
+    // média (25 s en production) n'est pas écoulée, au lieu de 3 essais
+    // seulement (~6 s), trop court pour que certains fournisseurs libèrent
+    // la connexion du lecteur direct.
+    final Stopwatch elapsed = Stopwatch()..start();
     for (int attempt = 0; ; attempt++) {
       if (session.closed) {
         throw const RelayRecordingException(RelayStopReason.cancelled);
       }
-      final HttpClient client = session.client ??= (HttpClient()
-        ..connectionTimeout = _networkTimeout
-        ..idleTimeout = const Duration(seconds: 20)
-        ..maxConnectionsPerHost = 1
-        ..autoUncompress = true
-        ..userAgent = PlayerSettings.instance.userAgent);
-      final HttpClientRequest request =
-          await client.getUrl(uri).timeout(_networkTimeout);
-      request.followRedirects = true;
-      request.maxRedirects = 8;
-      request.headers.set(HttpHeaders.acceptHeader, '*/*');
-      for (final MapEntry<String, String> header in session.headers.entries) {
-        if (<String>{'host', 'connection', 'content-length', 'transfer-encoding'}
-            .contains(header.key.toLowerCase())) {
-          continue;
+      // « Bascule » = aucun octet média encore reçu : rien n'a été écrit,
+      // donc réessayer ne peut jamais dupliquer de données.
+      final bool handoff = session.mediaBytes == 0;
+      final HttpClientResponse response;
+      try {
+        final HttpClient client = session.client ??= (HttpClient()
+          ..connectionTimeout = _networkTimeout
+          ..idleTimeout = const Duration(seconds: 20)
+          ..maxConnectionsPerHost = 1
+          ..autoUncompress = true
+          ..userAgent = PlayerSettings.instance.userAgent);
+        final HttpClientRequest request =
+            await client.getUrl(uri).timeout(_networkTimeout);
+        request.followRedirects = true;
+        request.maxRedirects = 8;
+        request.headers.set(HttpHeaders.acceptHeader, '*/*');
+        for (final MapEntry<String, String> header
+            in session.headers.entries) {
+          if (<String>{
+            'host',
+            'connection',
+            'content-length',
+            'transfer-encoding'
+          }.contains(header.key.toLowerCase())) {
+            continue;
+          }
+          request.headers.set(header.key, header.value);
         }
-        request.headers.set(header.key, header.value);
+        response = await request.close().timeout(_networkTimeout);
+      } on Object catch (_) {
+        // Connexion refusée/coupée par le fournisseur pendant la bascule :
+        // même traitement qu'un 503, dans la même fenêtre de temps.
+        if (session.closed) {
+          throw const RelayRecordingException(RelayStopReason.cancelled);
+        }
+        final Duration delay = _handoffDelay(attempt);
+        if (!handoff || elapsed.elapsed + delay >= _firstMediaTimeout) {
+          rethrow;
+        }
+        // Le client a pu rester dans un état cassé : on en recrée un propre.
+        session.client?.close(force: true);
+        session.client = null;
+        await _wait(session, delay);
+        continue;
       }
-      final HttpClientResponse response =
-          await request.close().timeout(_networkTimeout);
       if (response.statusCode == HttpStatus.ok ||
           response.statusCode == HttpStatus.partialContent) {
         Uri resolved = uri;
@@ -330,17 +376,28 @@ class LocalStreamRelay {
       }
 
       // Après la fermeture du lecteur direct, certains fournisseurs rendent
-      // momentanément 429/503 avant de libérer l'unique connexion autorisée.
-      // Réessayer CE GET avant tout média, pas _hls() ni un segment partiellement
-      // écrit : les segments déjà reçus ne doivent jamais être recopiés.
-      final bool retryable = <int>{408, 429, 500, 502, 503, 504}
-          .contains(response.statusCode);
+      // momentanément 429/503 (voire 401/403) avant de libérer l'unique
+      // connexion autorisée. Réessayer CE GET avant tout média, pas _hls() ni
+      // un segment partiellement écrit : les segments déjà reçus ne doivent
+      // jamais être recopiés.
+      final int status = response.statusCode;
+      final bool retryable = _transientStatuses.contains(status) ||
+          (handoff && _handoffStatuses.contains(status));
       final String? retryAfter = response.headers.value('retry-after');
       await response.drain<void>().timeout(_networkTimeout);
-      if (!retryable || attempt + 1 >= _maxReconnectFailures) {
+      if (!retryable) {
         throw const RelayRecordingException(RelayStopReason.networkError);
       }
-      Duration delay = _retryDelay * (attempt + 1);
+      if (handoff) {
+        // Budget en TEMPS pendant la bascule (voir plus haut).
+        if (elapsed.elapsed + _handoffDelay(attempt) >= _firstMediaTimeout) {
+          throw const RelayRecordingException(RelayStopReason.networkError);
+        }
+      } else if (attempt + 1 >= _maxReconnectFailures) {
+        // Après le premier média : budget en nombre d'essais, comme avant.
+        throw const RelayRecordingException(RelayStopReason.networkError);
+      }
+      Duration delay = handoff ? _handoffDelay(attempt) : _retryDelay * (attempt + 1);
       if (retryAfter != null) {
         final int? seconds = int.tryParse(retryAfter.trim());
         Duration? requested;
@@ -365,6 +422,15 @@ class LocalStreamRelay {
       // Stop/navigation annule aussi l'attente, sans nouvelle connexion.
       await _wait(session, delay);
     }
+  }
+
+  /// Délai entre deux essais pendant la bascule : croissant (2 s, 4 s…)
+  /// comme dans 7 MOTION, mais plafonné à 2 × [_retryDelay] pour tenter
+  /// régulièrement notre chance dès que le fournisseur libère la place.
+  Duration _handoffDelay(int attempt) {
+    final Duration grown = _retryDelay * (attempt + 1);
+    final Duration cap = _retryDelay * 2;
+    return grown > cap ? cap : grown;
   }
 
   Future<_Probe> _probe(_Fetched fetched) async {
