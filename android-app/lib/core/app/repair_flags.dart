@@ -289,6 +289,13 @@ abstract final class RepairFlags {
   static const String missedNoticeLegacyKey = 'zuno.guide.notice_legacy';
   static bool missedNoticeLegacy = false;
 
+  /// L1-05, écran Direct ZUNO uniquement. Vrai = recalcul de la sélection
+  /// à chaque ouverture ; faux = index du catalogue courant. Les contrôles
+  /// de profil, de génération et d'autorisation restent obligatoires dans
+  /// les deux chemins : ce repli ne rouvre jamais un contenu interdit.
+  static const String liveOpenIndexLegacyKey = 'zuno.direct.open_index_legacy';
+  static bool liveOpenIndexLegacy = false;
+
   /// L1-02 : vrai recalcule l’index et assemble immédiatement les
   /// suggestions. Faux mémorise et regroupe leurs demandes. Les gardes de
   /// profil, de catalogue et d’autorisation restent obligatoires.
@@ -337,6 +344,7 @@ abstract final class RepairFlags {
     bool sportsLegacy = false;
     bool communityOff = false;
     bool noticeLegacy = false;
+    bool openIndexLegacy = false;
     bool loadedHubIndexLegacy = false;
     bool globalTickLegacy = false;
     try {
@@ -376,6 +384,7 @@ abstract final class RepairFlags {
       sportsLegacy = prefs.getBool(sportsNetworkLegacyKey) ?? false;
       communityOff = prefs.getBool(sportsCommunityOffKey) ?? false;
       noticeLegacy = prefs.getBool(missedNoticeLegacyKey) ?? false;
+      openIndexLegacy = prefs.getBool(liveOpenIndexLegacyKey) ?? false;
       loadedHubIndexLegacy = prefs.getBool(hubIndexLegacyKey) ?? false;
       globalTickLegacy = prefs.getBool(hubGlobalTickLegacyKey) ?? false;
     } catch (_) {
@@ -414,6 +423,7 @@ abstract final class RepairFlags {
       sportsLegacy = false;
       communityOff = false;
       noticeLegacy = false;
+      openIndexLegacy = false;
       loadedHubIndexLegacy = false;
       globalTickLegacy = false;
     }
@@ -422,6 +432,7 @@ abstract final class RepairFlags {
     sportsNetworkLegacy = sportsLegacy;
     sportsCommunityOff = communityOff;
     missedNoticeLegacy = noticeLegacy;
+    liveOpenIndexLegacy = openIndexLegacy;
     hubIndexLegacy = loadedHubIndexLegacy;
     hubGlobalTickLegacy = globalTickLegacy;
     orderAckOff = ackOff;
@@ -496,6 +507,7 @@ abstract final class RepairFlags {
     sportsNetworkLegacy = false;
     sportsCommunityOff = false;
     missedNoticeLegacy = false;
+    liveOpenIndexLegacy = false;
     hubIndexLegacy = false;
     hubGlobalTickLegacy = false;
     NativeVideoController.legacyHoldFrame = false;

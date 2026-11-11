@@ -35,6 +35,7 @@ import '../../channels/data/trending_repository.dart';
 import '../../channels/domain/channel.dart';
 import '../domain/live_shelves.dart';
 import '../domain/live_catalog_index.dart';
+import '../domain/live_open_selection.dart';
 import '../domain/vip_channel_groups.dart';
 import '../../device/data/device_identity.dart';
 import '../../epg/data/epg_repository.dart';
@@ -251,6 +252,16 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
   // le fil UI d'un coup → app figée puis tuée par Android.
   bool _precomputed = false;
   int _ingestGen = 0;
+  // Distincte du pré-calcul : une sélection appartient au catalogue ET aux
+  // restrictions sous lesquels sa ligne a été affichée.
+  int _catalogGeneration = 0;
+
+  LiveOpenContext get _openContext => (
+        catalogGeneration: _catalogGeneration,
+        profileId: ActiveProfile.instance.id,
+        profileScope: ActiveProfile.instance.scopeListenable.value,
+        kidsMode: ParentalControls.instance.kidsMode.value,
+      );
 
   @override
   void initState() {
@@ -263,7 +274,11 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     VipCountriesRepository.instance.load();
     BlackBox.instance.info('SCREEN', 'Direct ouvert');
     _ingest(PlaylistRepository.instance.currentChannels);
-    _sub = PlaylistRepository.instance.channelsStream.listen(_ingest);
+    _sub = PlaylistRepository.instance.channelsStream.listen((_) {
+      // Plusieurs publications peuvent attendre dans le stream. L'index doit
+      // appartenir au snapshot ACTUEL, pas à une ancienne émission en file.
+      _ingest(PlaylistRepository.instance.currentChannels);
+    });
     // Favoris en direct : la catégorie « ★ Favoris » se met à jour toute seule.
     FavoritesRepository.instance.initialize();
     _favSub = FavoritesRepository.instance.favoritesStream.listen((
@@ -615,43 +630,78 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     List<Channel> list,
     int index, {
     required bool fromRail,
+    required int displayedGeneration,
   }) async {
-    if (index < 0 || index >= list.length || !_accessAllowed) return;
-    final Channel selected = list[index];
-    final List<Channel> allowed =
-        list.where(_allowsChannel).toList(growable: false);
-    final int selectedIndex = allowed.indexOf(selected);
-    if (selectedIndex < 0) return;
-    final int generation = _ingestGen;
-    final String chId = list[index].id;
+    if (!_accessAllowed || displayedGeneration != _catalogGeneration) return;
+    final selection = LiveOpenSelection.capture(
+      list: list,
+      index: index,
+      byId: _byId,
+      context: _openContext,
+      catalogSnapshot: _rawLive,
+      allowsChannel: _allowsChannel,
+      legacy: RepairFlags.liveOpenIndexLegacy,
+    );
+    if (selection == null) return;
+    bool stillAllowed() =>
+        mounted &&
+        _accessAllowed &&
+        selection.isCurrent(
+          context: _openContext,
+          catalogSnapshot: PlaylistRepository.instance.currentChannels,
+          byId: _byId,
+          allowsChannel: _allowsChannel,
+        );
+    if (!stillAllowed()) return;
+    final Channel selected = selection.selected;
+    final String chId = selected.id;
     // On REND le décodeur de l'aperçu AVANT le plein écran, et on attend.
     // Un simple setState laissait les deux lecteurs vivants une frame :
     // sur une box à un seul décodeur l'image restait noire, et un
     // abonnement « 1 connexion » refusait la chaîne (logo sans fin).
     await TvLivePreview.releaseActive();
-    if (!mounted || !_accessAllowed || generation != _ingestGen) return;
-    final current = PlaylistRepository.instance.currentChannels.toSet();
-    if (!allowed.every(
-        (c) => _allowsChannel(c) && _byId[c.id] == c && current.contains(c))) {
-      return;
+    if (!mounted || !stillAllowed()) return;
+    if (RepairFlags.liveOpenIndexLegacy) {
+      // Le repli remet le coût historique pour comparaison, jamais une
+      // autorisation ancienne : les mêmes gardes entourent tous les await.
+      final current = PlaylistRepository.instance.currentChannels.toSet();
+      if (!selection.channels.every(
+          (c) => _allowsChannel(c) && current.contains(c))) {
+        return;
+      }
     }
     if (zunoHasCastTarget &&
         await routeZunoChannelToCast(context,
             channels: _all,
             channel: selected,
             adultAccess: widget.adultAccess,
-            stillAllowed: () =>
-                mounted && _accessAllowed && generation == _ingestGen,
+            stillAllowed: stillAllowed,
             releaseLocal: () async {})) return;
-    if (!mounted || !_accessAllowed || generation != _ingestGen) return;
+    if (!mounted || !stillAllowed()) return;
     setState(() => _playerOpen = true);
+    Widget? playerPage;
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => TvPlayerScreen(
-          channels: allowed,
-          startIndex: selectedIndex,
-          adultAccess: widget.adultAccess,
-        ),
+        builder: (routeContext) {
+          // Le premier build de route peut être différé après push(). On
+          // revalide AVANT de créer le lecteur ; ensuite une actualisation du
+          // catalogue ne détruit pas une session déjà ouverte.
+          if (playerPage != null) return playerPage!;
+          if (stillAllowed()) {
+            return playerPage = TvPlayerScreen(
+              channels: selection.channels,
+              startIndex: selection.startIndex,
+              adultAccess: widget.adultAccess,
+            );
+          }
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (routeContext.mounted &&
+                (ModalRoute.of(routeContext)?.isCurrent ?? false)) {
+              Navigator.of(routeContext).pop();
+            }
+          });
+          return playerPage = const SizedBox.shrink();
+        },
       ),
     );
     if (!mounted) return;
@@ -661,9 +711,6 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
       _restoreFromRail = fromRail;
     });
   }
-
-  Future<void> _openPlayer(int index) =>
-      _openPlayerWith(_shownList, index, fromRail: false);
 
   void _setPreview(Channel c) {
     if (!_allowsChannel(c)) return;
@@ -844,6 +891,7 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
   }
 
   void _ingest(List<Channel> channels) {
+    _catalogGeneration++;
     // On garde la liste BRUTE pour pouvoir re-filtrer si le Mode Enfants change.
     _rawLive = channels;
     // MODE ENFANTS : on retire toutes les chaînes classées « Adulte ». Le filtre
@@ -1041,11 +1089,20 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
       ],
     );
 
+    // Un ancien callback conserve SON lot et SA génération. Relire _shownList
+    // à son exécution pouvait ouvrir la nouvelle chaîne au même index.
+    final List<Channel> displayedChannels = _shownList;
+    final int displayedGeneration = _catalogGeneration;
     final Widget list = _ChannelList(
       key: _liveGridKey,
-      channels: _shownList,
+      channels: displayedChannels,
       onFocused: _setPreview,
-      onPlay: _openPlayer,
+      onPlay: (index) => _openPlayerWith(
+        displayedChannels,
+        index,
+        fromRail: false,
+        displayedGeneration: displayedGeneration,
+      ),
       onLeft: _focusSelectedCategory,
       restoreFocusId: _restoreFromRail ? null : _restoreFocusId,
       onRestored: () => _restoreFocusId = null,
@@ -1870,6 +1927,8 @@ class _ChannelCardState extends State<_ChannelCard> {
     final Channel channel = widget.channel;
     final bool fav = FavoritesRepository.instance.current.contains(channel.id);
     final String name = _parseName(channel);
+    final onPlay = widget.onPlay;
+    final int displayedIndex = widget.index;
     // Les mentions 4K/HD du nom sont des promesses de la playlist. Aucune
     // carte n'en fait un badge technique : seule la lecture mesure l'image.
     // RESTAURATION DU FOCUS au retour du lecteur (déterministe) : quand l'écran
@@ -1902,7 +1961,7 @@ class _ChannelCardState extends State<_ChannelCard> {
       },
       // Lecture : l'ÉCRAN gère la navigation (et la restauration du focus au
       // retour). La carte se contente de signaler son index.
-      onSelect: () => widget.onPlay?.call(widget.index),
+      onSelect: () => onPlay?.call(displayedIndex),
       child: Stack(
         fit: StackFit.expand,
         children: <Widget>[
@@ -2265,6 +2324,10 @@ class _ChannelRowState extends State<_ChannelRow> {
     final Channel channel = widget.channel;
     // Même nom nettoyé que la grille, sans qualité déduite de la playlist.
     final String name = _ChannelCardState._parseName(channel);
+    // Un événement déjà en file garde la ligne qu'il visait, même si cet
+    // élément Flutter est réutilisé par une nouvelle chaîne au même index.
+    final onPlay = widget.onPlay;
+    final int displayedIndex = widget.index;
     if (widget.restoreFocusId != null && widget.restoreFocusId == channel.id) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
@@ -2286,7 +2349,7 @@ class _ChannelRowState extends State<_ChannelRow> {
           // Liste serrée : le zoom rognait le contour. Le fond or + le
           // numéro en or vif disent où l'on est, sans rien déplacer.
           scale: TvFocusScale.none,
-          onSelect: () => widget.onPlay?.call(widget.index),
+          onSelect: () => onPlay?.call(displayedIndex),
           onFocusChange: (bool f) {
             if (!f) return;
             widget.onFocused?.call(channel);
