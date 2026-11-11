@@ -637,7 +637,7 @@
   "tvCopied": "Copied",
   "tvClear": "Clear",
   "tvReading": "Reading…",
-  "tvBlackBoxHelp": "UP/DOWN: scroll · CH+/CH−: page · Copy = clipboard (paste it to support on WhatsApp). This log may be sent to support. You can turn sending off in Settings → Extras.",
+  "tvBlackBoxHelp": "UP/DOWN: scroll · CH+/CH−: page · Copy = clipboard. The log is stored locally; NOVATUBE does not upload it.",
   "tvNavServer": "Server",
   "tvLegalTitle": "Legal notice & Terms",
   "tvHelloMorning": "Good morning",
@@ -979,7 +979,7 @@
   },
   "tvCinemaNoEpisodes": "No episodes available.",
   "tvCinemaNoSource": "No movies or series yet",
-  "tvCinemaNoSourceBody": "Movies and series come from your Xtream subscription. Add it in Server, or ask your reseller to activate it.",
+  "tvCinemaNoSourceBody": "Add your own source in My sources: an M3U link or Xtream credentials. For movies and series, use an Xtream account.",
   "tvCinemaNoSpace": "Not enough space on the box ({free} GB free).",
   "@tvCinemaNoSpace": {
     "placeholders": {
