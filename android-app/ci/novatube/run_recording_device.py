@@ -20,10 +20,10 @@ SERIAL = "emulator-5580"
 IMAGE = "system-images;android-35;default;x86_64"
 
 
-def run(command, *, capture=False, timeout=900, cwd=APP_ROOT, input_text=None):
+def run(command, *, capture=False, timeout=900, cwd=APP_ROOT, input_text=None, env=None):
     return subprocess.run(command, cwd=cwd, check=True, timeout=timeout, text=True,
                           input=input_text, stdout=subprocess.PIPE if capture else None,
-                          stderr=subprocess.STDOUT).stdout
+                          stderr=subprocess.STDOUT, env=env).stdout
 
 
 def runner_identity() -> str:
@@ -52,18 +52,37 @@ def safe_diagnostic(value) -> str:
     return text
 
 
-def prepare_emulator(sdk: Path) -> str:
+def emulator_environment() -> dict:
+    """Un dossier AVD explicite partagé par les deux outils, sans changer HOME."""
+    temporary = os.environ.get("RUNNER_TEMP")
+    require(temporary is not None and Path(temporary).is_absolute(),
+            "Répertoire temporaire absolu du runner absent")
+    avd_home = (Path(temporary) / "novatube-avds").resolve()
+    avd_home.mkdir(parents=True, exist_ok=True)
+    environment = dict(os.environ)
+    environment["ANDROID_AVD_HOME"] = str(avd_home)
+    return environment
+
+
+def prepare_emulator(sdk: Path, environment: dict) -> str:
     """Même image, même AVD et même accès KVM pour le prévol et les tests."""
     sdkmanager = sdk / "cmdline-tools/latest/bin/sdkmanager"
     avdmanager = sdk / "cmdline-tools/latest/bin/avdmanager"
     print("Préparation de l'émulateur Android 35 AOSP, sans compte Google…", flush=True)
-    run([str(sdkmanager), IMAGE, "emulator"], timeout=900)
+    run([str(sdkmanager), IMAGE, "emulator"], timeout=900, env=environment)
     require(Path("/dev/kvm").exists(), "Accélération KVM absente du runner")
     if not os.access("/dev/kvm", os.R_OK | os.W_OK):
         run(["sudo", "chown", f"{os.getuid()}:{os.getgid()}", "/dev/kvm"])
     avd = "novatube_export_" + os.environ["GITHUB_RUN_ID"]
+    avd_home = Path(environment["ANDROID_AVD_HOME"])
+    avd_path = avd_home / (avd + ".avd")
     run([str(avdmanager), "create", "avd", "--name", avd, "--package", IMAGE,
-         "--force"], input_text="no\n")
+         "--path", str(avd_path), "--force"], input_text="no\n", env=environment)
+    # L'index .ini sert à résoudre « -avd nom ». --path seul ne garantit
+    # pas que le lanceur et avdmanager recherchent cet index au même endroit.
+    require((avd_home / (avd + ".ini")).is_file(),
+            f"Index AVD absent du dossier explicite : {avd_home / (avd + '.ini')}")
+    require(avd_path.is_dir(), f"Dossier de données AVD absent : {avd_path}")
     return avd
 
 
@@ -94,7 +113,8 @@ def stop_emulator(process, adb: Path) -> None:
 def booted_emulator(reports: Path, sdk: Path, *, preflight=False):
     """Conserve les erreurs de démarrage et garantit l'arrêt après utilisation."""
     reports.mkdir(parents=True, exist_ok=True)
-    avd = prepare_emulator(sdk)
+    environment = emulator_environment()
+    avd = prepare_emulator(sdk, environment)
     adb = sdk / "platform-tools/adb"
     emulator = sdk / "emulator/emulator"
     process = None
@@ -107,7 +127,7 @@ def booted_emulator(reports: Path, sdk: Path, *, preflight=False):
                 str(emulator), "-avd", avd, "-port", "5580", "-no-window", "-no-audio",
                 "-no-boot-anim", "-no-snapshot", "-gpu", "software",
                 "-memory", "2048", "-cores", "2", "-accel", "on",
-            ], stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+            ], stdout=log, stderr=subprocess.STDOUT, start_new_session=True, env=environment)
             deadline = time.monotonic() + 300
             while time.monotonic() < deadline:
                 code = process.poll()

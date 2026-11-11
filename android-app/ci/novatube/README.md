@@ -45,6 +45,10 @@ privée. Il ne constitue pas une réussite des tests d'export et ne crée pas le
 preuve. Si Android ne démarre pas, le code de sortie et la fin du journal sont
 affichés, puis conservés dans un artefact de diagnostic. Cela évite d'attendre
 une compilation complète pour découvrir une panne du banc de test.
+L'AVD est créé et recherché dans un même dossier NOVATUBE sous `RUNNER_TEMP`,
+avec un chemin absolu et `ANDROID_AVD_HOME` transmis aux deux outils. Le fichier
+de déclaration `.ini` est contrôlé avant le lancement ; le répertoire personnel
+du runner n'est pas déplacé.
 Le runner redémarre ensuite Android, installe l'APK release exact et lie la
 preuve des trois exports à son SHA-256 avant la publication. Les journaux
 d'échec ne contiennent que le banc synthétique, sans playlist utilisateur.
