@@ -43,7 +43,7 @@ import 'package:tv_king/features/tv/presentation/tv_settings_screen.dart';
 import 'package:tv_king/features/tv/presentation/tv_shell.dart';
 import 'package:tv_king/l10n/generated/app_localizations.dart';
 
-const _android = TargetPlatformVariant.only(TargetPlatform.android);
+final _android = TargetPlatformVariant.only(TargetPlatform.android);
 
 Future<void> _installTestFonts() async {
   final String? root = Platform.environment['FLUTTER_ROOT'];
