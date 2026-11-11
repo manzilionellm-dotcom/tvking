@@ -9,7 +9,84 @@ import tempfile
 import unittest
 from unittest.mock import Mock, patch
 
-from run_recording_device import booted_emulator
+from run_recording_device import booted_emulator, capture_test_logcat
+
+
+class AndroidDiagnosticTest(unittest.TestCase):
+    def test_all_and_crash_keep_system_causes_and_mask_secrets_in_files_and_console(self):
+        secret = "secret-synthetique-diagnostic-ci"
+        all_log = "ActivityManager: killing test process " + secret + "\n" + "\n".join(
+            f"all line {index}" for index in range(350)) + "\nAndroidRuntime: " + secret + "\n"
+        crash_log = "AndroidRuntime: FATAL EXCEPTION " + secret + "\n" + "\n".join(
+            f"crash line {index}" for index in range(350)) + "\nDEBUG: " + secret + "\n"
+        console = io.StringIO()
+        with tempfile.TemporaryDirectory() as directory:
+            reports = Path(directory)
+            with patch.dict(os.environ, {"NOVATUBE_UPLOAD_KEY_PASSWORD": secret}), \
+                    patch("run_recording_device.run", side_effect=[all_log, crash_log]) as command, \
+                    redirect_stdout(console):
+                capture_test_logcat(Path("/unused-adb"), reports)
+            for buffer, filename, cause in (
+                ("all", "recording-android-logcat.txt", "ActivityManager: killing test process"),
+                ("crash", "recording-android-logcat-crash.txt", "AndroidRuntime: FATAL EXCEPTION"),
+            ):
+                saved = (reports / filename).read_text()
+                self.assertIn(cause, saved)
+                self.assertIn(buffer + " line 0", saved)
+                self.assertIn(buffer + " line 349", saved)
+                self.assertNotIn(secret, saved)
+                self.assertIn("[MASQUÉ]", saved)
+            self.assertEqual([call.args[0][5] for call in command.call_args_list], ["all", "crash"])
+            for call in command.call_args_list:
+                self.assertEqual(call.args[0][-5:], ["-d", "-v", "threadtime", "-t", "3000"])
+                self.assertNotIn("*:S", call.args[0])
+                self.assertEqual(call.kwargs["timeout"], 20)
+            self.assertNotIn(secret, console.getvalue())
+            self.assertIn("[MASQUÉ]", console.getvalue())
+            self.assertIn("all line 349", console.getvalue())
+            self.assertIn("crash line 349", console.getvalue())
+            self.assertNotIn("all line 0", console.getvalue())
+            self.assertLessEqual(len(console.getvalue().splitlines()), 202)
+            self.assertFalse((reports / "recording-device-tests.json").exists())
+
+    def test_all_buffer_timeout_preserves_partial_output_and_independent_crash_buffer(self):
+        secret = "secret-partiel-diagnostic-ci"
+        failure = subprocess.TimeoutExpired(["adb", "logcat"], 20,
+                                            output=("libc: partial abort " + secret).encode())
+        console = io.StringIO()
+        with tempfile.TemporaryDirectory() as directory:
+            reports = Path(directory)
+            with patch.dict(os.environ, {"GITHUB_TOKEN": secret}), \
+                    patch("run_recording_device.run", side_effect=[failure, "DEBUG: native backtrace\n"]) as command, \
+                    redirect_stdout(console):
+                capture_test_logcat(Path("/unused-adb"), reports)
+            all_log = (reports / "recording-android-logcat.txt").read_text()
+            self.assertIn("indisponible", all_log)
+            self.assertIn("libc: partial abort [MASQUÉ]", all_log)
+            self.assertEqual((reports / "recording-android-logcat-crash.txt").read_text(),
+                             "DEBUG: native backtrace\n")
+            self.assertNotIn(secret, console.getvalue())
+            self.assertEqual(command.call_count, 2)
+            self.assertFalse((reports / "recording-device-tests.json").exists())
+
+    def test_crash_buffer_failure_does_not_discard_all_buffer_or_expose_error_secret(self):
+        secret = "secret-erreur-diagnostic-ci"
+        console = io.StringIO()
+        with tempfile.TemporaryDirectory() as directory:
+            reports = Path(directory)
+            with patch.dict(os.environ, {"NOVATUBE_UPLOAD_STORE_PASSWORD": secret}), \
+                    patch("run_recording_device.run", side_effect=["lmkd: killed test process\n", OSError(secret)]) as command, \
+                    redirect_stdout(console):
+                capture_test_logcat(Path("/unused-adb"), reports)
+            self.assertEqual((reports / "recording-android-logcat.txt").read_text(),
+                             "lmkd: killed test process\n")
+            crash_log = (reports / "recording-android-logcat-crash.txt").read_text()
+            self.assertIn("indisponible", crash_log)
+            self.assertIn("[MASQUÉ]", crash_log)
+            self.assertNotIn(secret, crash_log)
+            self.assertNotIn(secret, console.getvalue())
+            self.assertEqual(command.call_count, 2)
+            self.assertFalse((reports / "recording-device-tests.json").exists())
 
 
 class EmulatorLifecycleTest(unittest.TestCase):

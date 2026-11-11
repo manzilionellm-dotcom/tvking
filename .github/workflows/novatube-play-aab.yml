@@ -343,6 +343,7 @@ jobs:
             android-app/build/novatube/reports/recording-emulator*.txt
             android-app/build/novatube/reports/recording-android-logcat*.txt
             android-app/build/novatube/reports/recording-device-tests.txt
+            android-app/build/app/outputs/mapping/release/mapping.txt
           if-no-files-found: ignore
           retention-days: 7
 

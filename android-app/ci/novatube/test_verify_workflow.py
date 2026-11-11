@@ -126,6 +126,21 @@ class WorkflowIsolationTest(unittest.TestCase):
         steps.append(preflight)
         self.reject(document)
 
+    def test_failure_diagnostic_keeps_only_logs_and_mapping_after_key_cleanup(self):
+        steps = self.template["jobs"]["release"]["steps"]
+        diagnostic = next(step for step in steps
+                          if step.get("name") == "Conserver le diagnostic Android en cas d'échec")
+        cleanup = next(step for step in steps if step.get("name") == "Retirer la clé temporaire du runner")
+        self.assertEqual(diagnostic["if"], "failure() && inputs.confirme == 'PUBLIER_NOVATUBE_APK_PRIVE'")
+        self.assertEqual(cleanup["if"], "always()")
+        self.assertLess(steps.index(cleanup), steps.index(diagnostic))
+        self.assertEqual(set(diagnostic["with"]["path"].splitlines()), {
+            "android-app/build/novatube/reports/recording-emulator*.txt",
+            "android-app/build/novatube/reports/recording-android-logcat*.txt",
+            "android-app/build/novatube/reports/recording-device-tests.txt",
+            "android-app/build/app/outputs/mapping/release/mapping.txt",
+        })
+
     def test_test_or_build_failures_cannot_be_ignored(self):
         for step_id in ("analyze", "tests_play", "tests_private", "build_private_apk", "verify_private_apk"):
             with self.subTest(step=step_id):

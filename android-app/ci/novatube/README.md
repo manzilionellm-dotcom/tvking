@@ -56,8 +56,20 @@ avec un chemin absolu et `ANDROID_AVD_HOME` transmis aux deux outils. Le fichier
 de déclaration `.ini` est contrôlé avant le lancement ; le répertoire personnel
 du runner n'est pas déplacé.
 Le runner redémarre ensuite Android, installe l'APK release exact et lie la
-preuve des trois exports à son SHA-256 avant la publication. Les journaux
-d'échec ne contiennent que le banc synthétique, sans playlist utilisateur.
+preuve des trois exports à son SHA-256 avant la publication. L'AVD jetable ne
+contient que le banc synthétique, sans playlist utilisateur ; tous ses buffers
+logcat sont vidés juste avant les tests. En cas d'échec, deux collectes
+indépendantes conservent jusqu'à 3 000 lignes : tous les buffers Android dans
+`recording-android-logcat.txt`, puis le buffer de crash dans
+`recording-android-logcat-crash.txt`. Aucun filtre par tag ne masque les erreurs
+AndroidRuntime, les signaux natifs ou une suppression par ActivityManager/LMKD.
+Les valeurs sensibles de l'environnement sont masquées avant écriture et
+affichage. Même si une collecte échoue, sa sortie partielle et la seconde
+collecte sont conservées ; la console ne reprend que les 100 dernières lignes
+de chaque buffer. L'artefact de diagnostic conserve les deux journaux complets
+bornés et le `mapping.txt` R8 release pour interpréter une stack obfusquée.
+Il est téléversé uniquement en cas d'échec, après suppression de la clé
+temporaire, sans aucun APK non vérifié. Ces diagnostics ne valident aucun test.
 Une réussite sur émulateur n'est pas un essai sur le téléphone de l'utilisateur.
 Le lanceur AndroidX et l'APK de test partagent plusieurs bibliothèques avec
 l'application. Gradle ne les embarque pas une seconde fois dans l'APK de test,

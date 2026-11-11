@@ -176,16 +176,33 @@ def preflight(reports: Path, sdk: Path) -> dict:
 
 
 def capture_test_logcat(adb: Path, reports: Path) -> None:
-    """Journal limité au pont d'export et aux tags du banc synthétique."""
-    try:
-        output = run([str(adb), "-s", SERIAL, "logcat", "-d", "-v", "threadtime", "-t", "2000",
-                      "GalleryExporter:V", "TestRunner:V", "AndroidJUnitRunner:V",
-                      "InstrumentationResultPrinter:V", "*:S"], capture=True, timeout=20)
-    except (OSError, subprocess.SubprocessError) as error:
-        output = "Journal du test indisponible : " + str(error)
-    output = safe_diagnostic(output)
-    (reports / "recording-android-logcat.txt").write_text(output, encoding="utf-8")
-    print("Journal limité à l'export NOVATUBE et au test Android :\n" + output, flush=True)
+    """Conserve les causes Java, natives et système du seul AVD synthétique."""
+    for buffer, filename in (
+        ("all", "recording-android-logcat.txt"),
+        ("crash", "recording-android-logcat-crash.txt"),
+    ):
+        # Un filtre par tag peut cacher AndroidRuntime, un signal natif ou une
+        # suppression par ActivityManager/LMKD. Tous les buffers ont été vidés
+        # juste avant le test ; on conserve leurs 3 000 dernières lignes.
+        try:
+            output = run([str(adb), "-s", SERIAL, "logcat", "-b", buffer,
+                          "-d", "-v", "threadtime", "-t", "3000"], capture=True, timeout=20)
+        except (OSError, subprocess.SubprocessError) as error:
+            # Le délai ou l'échec d'une collecte ne doit empêcher ni la seconde
+            # collecte, ni la conservation d'une éventuelle sortie partielle.
+            partial = safe_diagnostic(getattr(error, "output", ""))
+            output = f"Collecte logcat {buffer} indisponible : {error}\n" + partial
+        output = safe_diagnostic(output)
+        try:
+            (reports / filename).write_text(output, encoding="utf-8")
+        except OSError as error:
+            # Le test reste en échec : un problème de diagnostic ne le valide
+            # jamais et ne remplace pas sa cause initiale par une erreur d'I/O.
+            print(f"Écriture du diagnostic {filename} impossible : " + safe_diagnostic(error), flush=True)
+        # L'artefact garde toute la collecte bornée ; la console ne reprend
+        # que 100 lignes par buffer, soit environ 200 lignes au total.
+        print(f"Diagnostic Android ({buffer}, fin du journal) :\n" +
+              ("\n".join(output.splitlines()[-100:]) or "Aucune ligne disponible."), flush=True)
 
 
 def verify(apk: Path, reports: Path, sdk: Path) -> dict:
@@ -212,7 +229,7 @@ def verify(apk: Path, reports: Path, sdk: Path) -> dict:
             run([str(adb), "-s", SERIAL, "install", "-r", str(test_apks[0])], timeout=120)
             # L'émulateur est jetable et ne contient que nos mires. Effacer
             # son historique garantit un diagnostic borné à cette exécution.
-            run([str(adb), "-s", SERIAL, "logcat", "-c"], timeout=20)
+            run([str(adb), "-s", SERIAL, "logcat", "-b", "all", "-c"], timeout=20)
             print("Vrais exports Android : copie AVC/AAC, conversion HEVC, refus faux MP4…", flush=True)
             report_path = reports / "recording-device-tests.txt"
             instrumentation_started = True
