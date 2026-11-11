@@ -61,7 +61,7 @@ class GalleryExporterInstrumentedTest {
         val latch = CountDownLatch(1)
         val outcome = AtomicReference<Outcome>()
         instrumentation.runOnMainSync {
-            GalleryExporter(messenger, context).onMethodCall(
+            GalleryExporter(messenger, context, activity = null).onMethodCall(
                 MethodCall("exportVideo", mapOf("srcPath" to file.absolutePath, "displayName" to name)),
                 object : MethodChannel.Result {
                     override fun success(result: Any?) {
@@ -129,13 +129,30 @@ class GalleryExporterInstrumentedTest {
                 extractor.selectTrack(track)
                 extractor.seekTo(0, MediaExtractor.SEEK_TO_CLOSEST_SYNC)
                 var samples = 0
+                var firstPts = -1L
+                var lastPts = -1L
                 val buffer = ByteBuffer.allocate(1024 * 1024)
                 while (extractor.readSampleData(buffer, 0) >= 0) {
+                    val pts = extractor.sampleTime
+                    assertTrue("Chaque échantillon doit avoir un timestamp", pts >= 0)
+                    if (samples == 0) firstPts = pts
+                    lastPts = pts
                     samples++
                     if (!extractor.advance()) break
                     buffer.clear()
                 }
-                assertTrue("Une piste annoncée doit contenir des échantillons", samples > 10)
+                val spanUs = lastPts - firstPts
+                if (formats[track].getString(MediaFormat.KEY_MIME)?.startsWith("video/") == true) {
+                    assertEquals("Les 50 images source doivent être conservées", 50, samples)
+                    assertTrue("50 images à 25 fps doivent couvrir 1,96 s entre premier et dernier PTS : $spanUs",
+                        spanUs in 1_940_000L..1_980_000L)
+                } else {
+                    // AAC-LC : blocs de 1024 échantillons, avec amorçage et
+                    // bourrage variables selon l'encodeur Android.
+                    assertTrue("L'audio de deux secondes doit rester complet : $samples blocs", samples in 90..100)
+                    assertTrue("La durée audio doit rester proche de deux secondes : $spanUs",
+                        spanUs in 1_850_000L..2_150_000L)
+                }
                 extractor.unselectTrack(track)
             }
         } finally {
