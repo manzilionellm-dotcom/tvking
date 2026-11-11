@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "status": "verified",
+  "package": "com.sevenmotion.novatube",
+  "versionName": "0.1.5",
+  "versionCode": 5,
+  "distribution": "private-apk",
+  "sourceCommit": "26193f1889dd41d46f1e9f501eb750d906a71a05",
+  "sha256": "c2172505f5cfede1c0c63fab5a2c83f0ce2dc1768681e3bc06b9bbfe26e97f00",
+  "sizeBytes": 124242223,
+  "uploadCertificateSha256": "38d6dabe9a73e5ab94a56491e4da6638f5da09ef1eaa77d0eb892d5f0478824b",
+  "url": "https://joe3v6of1vo5g2zl.public.blob.vercel-storage.com/novatube-0.1.5-5-26193f18.apk",
+  "filename": "novatube-0.1.5-5-26193f18.apk",
+  "releaseTag": null,
+  "runId": null,
+  "runUrl": null,
+  "verifiedAtUtc": "2026-11-11T14:31:18.230006+00:00"
+}
