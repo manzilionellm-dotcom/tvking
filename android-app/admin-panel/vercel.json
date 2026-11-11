@@ -1,0 +1,9 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "git": {
+    "deploymentEnabled": {
+      "zuno/audit-116": false,
+      "zuno/audit-116-lot1": false
+    }
+  }
+}
