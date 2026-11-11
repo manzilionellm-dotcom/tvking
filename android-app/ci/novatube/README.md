@@ -44,6 +44,17 @@ tests JVM vérifient les octets préservés et les tampons directs/lecture seule
 les trois tests Android et leurs exigences de durée, d'images et de son
 restent obligatoires pour autoriser la publication.
 
+Les PTS d'un TS peuvent débuter avant l'origine choisie par le parseur : dans
+la mire H.264, le premier son précède la première image de 21 333 µs. Une
+passe sur les métadonnées des pistes sélectionnées relève leur minimum sans
+stocker toute la chronologie ni décoder la vidéo. Si ce minimum est négatif,
+une translation commune remet toutes les dates à zéro ou après zéro, pour
+le remux comme pour les deux décodeurs de la conversion. Les écarts entre
+audio et vidéo, la cadence et l'ordre des images restent ainsi identiques.
+La fin de l'entrée dépend de l'absence d'échantillon, jamais du signe du PTS.
+La relecture finale continue de refuser une piste vide ou un PTS négatif,
+avec un message distinct pour ces deux cas.
+
 Android 10 et plus utilise MediaStore sans accès global à la galerie. Android
 7 à 9 demande la permission d'écriture historique, limitée par `maxSdkVersion=28`.
 Le REC reste désactivé dans l'espace +18 : un export public dans la galerie

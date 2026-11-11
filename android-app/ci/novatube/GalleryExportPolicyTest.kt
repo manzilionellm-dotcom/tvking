@@ -15,6 +15,47 @@ class GalleryExportPolicyTest {
     private fun sampleBytes(buffer: ByteBuffer): ByteArray =
         ByteArray(buffer.remaining()).also { buffer.duplicate().get(it) }
 
+    @Test fun audioBeforeVideoZeroGetsOneSharedTimestampTranslation() {
+        // Cas réel de la mire TS : l'AAC précède la première image de 21,333 ms.
+        val audio = listOf(-21_333L, 0L, 21_333L)
+        val video = listOf(0L, 40_000L, 80_000L)
+        val offset = policy.timestampOffsetUs((audio + video).min())
+        assertEquals(21_333L, offset)
+        val shiftedAudio = audio.map { policy.normalizedTimestampUs(it, offset) }
+        val shiftedVideo = video.map { policy.normalizedTimestampUs(it, offset) }
+        assertEquals(listOf(0L, 21_333L, 42_666L), shiftedAudio)
+        assertEquals(listOf(21_333L, 61_333L, 101_333L), shiftedVideo)
+        assertEquals(video.first() - audio.first(), shiftedVideo.first() - shiftedAudio.first())
+        assertEquals(audio.zipWithNext { a, b -> b - a }, shiftedAudio.zipWithNext { a, b -> b - a })
+        assertEquals(video.zipWithNext { a, b -> b - a }, shiftedVideo.zipWithNext { a, b -> b - a })
+    }
+
+    @Test fun timestampTranslationKeepsBFrameOrderAndALaterMinimum() {
+        val decodeOrder = listOf(80_000L, 200_000L, -40_000L, 120_000L, -1L)
+        val offset = policy.timestampOffsetUs(decodeOrder.min())
+        val shifted = decodeOrder.map { policy.normalizedTimestampUs(it, offset) }
+        assertEquals(listOf(120_000L, 240_000L, 0L, 160_000L, 39_999L), shifted)
+        assertEquals(decodeOrder.zipWithNext { a, b -> b - a }, shifted.zipWithNext { a, b -> b - a })
+        assertEquals(decodeOrder.size, shifted.size)
+    }
+
+    @Test fun alreadyNonNegativeTimestampsAreNotRebasedPerTrack() {
+        val timestamps = listOf(58_666L, 80_000L, 120_000L, Long.MAX_VALUE)
+        val offset = policy.timestampOffsetUs(timestamps.min())
+        assertEquals(0L, offset)
+        assertEquals(timestamps, timestamps.map { policy.normalizedTimestampUs(it, offset) })
+        assertEquals(0L, policy.timestampOffsetUs(0L))
+    }
+
+    @Test fun timestampTranslationRejectsOverflowAndInvalidOffsets() {
+        assertFailsWith<IllegalArgumentException> { policy.timestampOffsetUs(Long.MIN_VALUE) }
+        assertFailsWith<ArithmeticException> { policy.normalizedTimestampUs(Long.MAX_VALUE, 1L) }
+        assertFailsWith<IllegalArgumentException> { policy.normalizedTimestampUs(0L, -1L) }
+        assertFailsWith<IllegalArgumentException> { policy.normalizedTimestampUs(-2L, 1L) }
+        assertEquals(Long.MAX_VALUE, policy.normalizedTimestampUs(Long.MAX_VALUE - 1L, 1L))
+        assertEquals(0L, policy.normalizedTimestampUs(-1L, policy.timestampOffsetUs(-1L)))
+    }
+
     @Test fun threeByteAvcPrefixIsExpandedWithoutChangingPayloadOrSource() {
         val bytes = byteArrayOf(0, 0, 1, 0x65, 0x11, 0x22)
         val input = ByteBuffer.wrap(bytes).apply { position(2) }

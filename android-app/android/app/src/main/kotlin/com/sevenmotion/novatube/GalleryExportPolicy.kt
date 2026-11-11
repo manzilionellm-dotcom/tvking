@@ -16,6 +16,24 @@ internal object GalleryExportPolicy {
         videoMime == AVC && (if (sourceHasAudio) audioMime == AAC else audioMime == null)
 
     /**
+     * L'audio TS peut commencer avant le zéro choisi par l'extracteur vidéo.
+     * Une seule translation pour toutes les pistes conserve leur synchronisation,
+     * leur cadence et l'ordre des B-frames ; aucun PTS n'est écrêté séparément.
+     */
+    fun timestampOffsetUs(minimumTimestampUs: Long): Long {
+        require(minimumTimestampUs != Long.MIN_VALUE) { "Origine des timestamps hors limites" }
+        return if (minimumTimestampUs < 0) -minimumTimestampUs else 0L
+    }
+
+    /** Refuse un débordement ou un PTS hors de la chronologie inspectée avant JNI. */
+    fun normalizedTimestampUs(timestampUs: Long, offsetUs: Long): Long {
+        require(offsetUs >= 0) { "Décalage de timestamp négatif" }
+        val result = Math.addExact(timestampUs, offsetUs)
+        require(result >= 0) { "Timestamp antérieur à l'origine commune" }
+        return result
+    }
+
+    /**
      * MediaMuxer attend des séparateurs AVC de quatre octets. Le TS peut
      * fournir 00 00 01 : MPEG4Writer soustrait pourtant quatre et peut
      * provoquer un abort natif. Seuls les séparateurs sont normalisés.

@@ -95,6 +95,7 @@ class GalleryExporter(
         val videoFormat: MediaFormat,
         val audioTrack: Int,
         val audioFormat: MediaFormat?,
+        val timestampOffsetUs: Long = 0L,
     ) {
         val hasAudio: Boolean get() = audioFormat != null
     }
@@ -224,7 +225,8 @@ class GalleryExporter(
         val extractor = MediaExtractorCompat(context)
         try {
             extractor.setDataSource(file.absolutePath)
-            return inspectTracks(file, extractor.trackCount, extractor::getTrackFormat)
+            val tracks = inspectTracks(file, extractor.trackCount, extractor::getTrackFormat)
+            return tracks.copy(timestampOffsetUs = inspectTimestampOffset(extractor, tracks))
         } catch (e: ExportFailure) {
             throw e
         } catch (e: Exception) {
@@ -232,6 +234,34 @@ class GalleryExporter(
         } finally {
             extractor.release()
         }
+    }
+
+    /**
+     * Parcourt les métadonnées des deux pistes avant toute écriture. Un premier
+     * PTS n'est pas forcément le minimum (B-frames, entrelacement audio/vidéo).
+     * Seuls deux nombres sont conservés : pas de liste ni de décodage des images.
+     */
+    private fun inspectTimestampOffset(extractor: MediaExtractorCompat, source: SourceTracks): Long {
+        for (track in listOf(source.videoTrack, source.audioTrack).filter { it >= 0 }) {
+            extractor.selectTrack(track)
+        }
+        var minimumPts = 0L
+        var maximumPts = 0L
+        // Un PTS négatif, même -1, reste une donnée tant qu'une piste est présente.
+        while (extractor.sampleTrackIndex >= 0) {
+            val pts = extractor.sampleTime
+            if (pts == androidx.media3.common.C.TIME_UNSET) {
+                throw ExportFailure("CONVERSION_FAILED", "Timestamp source indéterminé")
+            }
+            minimumPts = minOf(minimumPts, pts)
+            maximumPts = maxOf(maximumPts, pts)
+            if (!extractor.advance()) break
+        }
+        val offset = GalleryExportPolicy.timestampOffsetUs(minimumPts)
+        // Contrôler aussi la borne haute avant d'ouvrir muxer ou codecs.
+        GalleryExportPolicy.normalizedTimestampUs(maximumPts, offset)
+        if (offset > 0) Log.i(TAG, "Translation commune A/V : $offset µs (PTS minimal : $minimumPts µs)")
+        return offset
     }
 
     /** La sortie reste relue par Android lui-même, avant toute publication. */
@@ -303,8 +333,12 @@ class GalleryExporter(
             try {
                 extractor.setDataSource(file.absolutePath)
                 extractor.selectTrack(track)
-                if (extractor.sampleTrackIndex < 0 || extractor.sampleTime < 0) {
-                    throw ExportFailure("CONVERSION_FAILED", "Une piste MP4 est vide")
+                if (extractor.sampleTrackIndex < 0) {
+                    throw ExportFailure("CONVERSION_FAILED", "La piste MP4 $track est vide")
+                }
+                val firstPts = extractor.sampleTime
+                if (firstPts < 0) {
+                    throw ExportFailure("CONVERSION_FAILED", "Premier PTS négatif sur la piste MP4 $track : $firstPts µs")
                 }
             } finally {
                 extractor.release()
@@ -408,8 +442,7 @@ class GalleryExporter(
                 if (sampleSize.toLong() != expectedSize) return null
                 val dstTrack = indexMap[extractor.sampleTrackIndex]
                 if (dstTrack != null && sampleSize > 0) {
-                    val pts = extractor.sampleTime
-                    if (pts < 0) return null
+                    val pts = GalleryExportPolicy.normalizedTimestampUs(extractor.sampleTime, source.timestampOffsetUs)
                     val prev = lastPts[dstTrack]
                     // Les B-frames sont prises en charge à partir d'API25.
                     // Modifier leurs timestamps détruirait la cadence : sur API24,
@@ -558,6 +591,7 @@ class GalleryExporter(
                 vExtractor!!, vDecoder!!, vEncoder!!,
                 aExtractor, aDecoder,
                 muxer,
+                source.timestampOffsetUs,
             )
             if (!ok) {
                 try { outFile.delete() } catch (_: Exception) {}
@@ -626,7 +660,7 @@ class GalleryExporter(
             extractor.setDataSource(file.absolutePath)
             extractor.selectTrack(source.videoTrack)
             val timestamps = ArrayList<Long>()
-            while (timestamps.size < 120 && extractor.sampleTime >= 0) {
+            while (timestamps.size < 120 && extractor.sampleTrackIndex >= 0) {
                 timestamps.add(extractor.sampleTime)
                 if (!extractor.advance()) break
             }
@@ -652,6 +686,7 @@ class GalleryExporter(
         aExtractor: MediaExtractorCompat?,
         aDecoder: MediaCodec?,
         muxer: MediaMuxer,
+        timestampOffsetUs: Long,
     ): Boolean {
         val doAudio = aExtractor != null && aDecoder != null
         var aEncoder: MediaCodec? = null
@@ -762,7 +797,8 @@ class GalleryExporter(
                             vDecoder.queueInputBuffer(inIdx, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
                             videoExtractorDone = true
                         } else {
-                            vDecoder.queueInputBuffer(inIdx, 0, size, vExtractor.sampleTime, 0)
+                            vDecoder.queueInputBuffer(inIdx, 0, size,
+                                GalleryExportPolicy.normalizedTimestampUs(vExtractor.sampleTime, timestampOffsetUs), 0)
                             vExtractor.advance()
                         }
                     }
@@ -819,7 +855,8 @@ class GalleryExporter(
                             aDecoder.queueInputBuffer(inIdx, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
                             audioExtractorDone = true
                         } else {
-                            aDecoder.queueInputBuffer(inIdx, 0, size, aExtractor.sampleTime, 0)
+                            aDecoder.queueInputBuffer(inIdx, 0, size,
+                                GalleryExportPolicy.normalizedTimestampUs(aExtractor.sampleTime, timestampOffsetUs), 0)
                             aExtractor.advance()
                         }
                     }
