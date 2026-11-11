@@ -1,3 +1,6 @@
+import com.android.build.api.dsl.ApplicationExtension
+import java.util.Base64
+
 plugins {
     id("com.android.application")
     id("dev.flutter.flutter-gradle-plugin")
@@ -20,12 +23,12 @@ require(flutter.versionName == "0.1.5" && flutter.versionCode == 5) {
 // Le mode Cast de test n'a aucune place dans un bundle Play de NOVATUBE.
 val novatubeDefines = (project.findProperty("dart-defines") as? String)
     .orEmpty().split(',').filter { it.isNotBlank() }
-    .map { String(java.util.Base64.getDecoder().decode(it), Charsets.UTF_8) }
+    .map { String(Base64.getDecoder().decode(it), Charsets.UTF_8) }
 require(novatubeDefines.none { it.startsWith("ZUNO_CAST_TEST=") }) {
     "Le drapeau ZUNO_CAST_TEST est interdit pour NOVATUBE"
 }
 
-android {
+extensions.configure<ApplicationExtension> {
     namespace = "com.sevenmotion.novatube"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
@@ -55,7 +58,7 @@ android {
     }
 
     buildTypes {
-        release {
+        getByName("release") {
             signingConfig = signingConfigs.getByName("novatubeUpload")
         }
     }
