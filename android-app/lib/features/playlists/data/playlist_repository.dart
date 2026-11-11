@@ -1352,6 +1352,9 @@ class PlaylistRepository {
     // (`currentChannels` est ainsi cohérent avec le dernier event).
     _channelsCache = channels;
     _playlistsCache = playlists;
+    // Les noms/genres/pays déjà calculés pour des chaînes qui ont quitté le
+    // catalogue (liste supprimée, source changée) ne restent plus en mémoire.
+    ChannelPrecompute.retainOnly(channels);
     if (!_channelsController.isClosed) {
       _channelsController.add(channels);
     }
