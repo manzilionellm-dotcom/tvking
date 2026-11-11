@@ -202,8 +202,12 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   int _openGeneration = 0;
   bool get _recordingViewAlive => mounted && !_recordingViewDisposed;
   bool get _isRecording => _activeRecording != null;
-  // Les enregistrements actuels n'ont pas de section protégée.
-  bool get _canRecord => !_current.isAdult;
+  // REC autorisé sur TOUTES les chaînes, espace +18 compris (demande de
+  // Lionel, 11/11/2026). Avant, le REC était coupé sur les chaînes adultes
+  // parce que « Mes enregistrements » et la galerie ne sont pas protégés par
+  // la biométrie. Ce getter reste l'interrupteur unique si on veut revenir
+  // en arrière (ex. `!_current.isAdult`).
+  bool get _canRecord => true;
   String?
       _relayPlayUrl; // URL locale 127.0.0.1 utilisée pendant l'enregistrement
   String? _toastMsg; // petit message éphémère (sauvegardé / vide / échec)

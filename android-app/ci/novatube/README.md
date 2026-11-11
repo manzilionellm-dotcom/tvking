@@ -72,8 +72,10 @@ avec un message distinct pour ces deux cas.
 
 Android 10 et plus utilise MediaStore sans accès global à la galerie. Android
 7 à 9 demande la permission d'écriture historique, limitée par `maxSdkVersion=28`.
-Le REC reste désactivé dans l'espace +18 : un export public dans la galerie
-ne serait plus protégé par la biométrie de l'application.
+Depuis le 11/11/2026, à la demande de Lionel, le REC fonctionne aussi dans
+l'espace +18, et ces vidéos sont copiées dans la galerie comme les autres.
+Conséquence acceptée : dans la galerie (et une éventuelle sauvegarde cloud
+du téléphone), elles ne sont plus protégées par la biométrie de l'application.
 
 Le workflow privé exige les tests UI/REC, les règles natives sur JVM et trois
 tests instrumentés sur Android 35 AOSP : sauvegarde AVC/AAC, conversion HEVC

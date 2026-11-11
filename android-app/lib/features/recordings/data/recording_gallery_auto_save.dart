@@ -26,9 +26,9 @@
 //     même fichier partagent la même opération native.
 //  3. Jamais d'exception vers l'appelant : le lecteur reçoit toujours un
 //     [GalleryExportResult] qu'il peut afficher.
-//  4. Le REC est déjà interdit dans l'espace +18 (le lecteur ne démarre
-//     pas d'enregistrement sur une chaîne adulte) : rien d'adulte n'arrive
-//     donc dans la galerie publique.
+//  4. Depuis le 11/11/2026, le REC est aussi permis dans l'espace +18 : la
+//     règle de copie vers la galerie pour ces chaînes est décidée par le
+//     lecteur (voir `_closeRecording` dans tv_player_screen.dart).
 // =========================================================
 
 import 'dart:async';
