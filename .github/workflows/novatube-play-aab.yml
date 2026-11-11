@@ -120,8 +120,12 @@ jobs:
 
       - name: Installer SQLite pour les tests du vrai import manuel
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends libsqlite3-0
+          # Le runner fournit normalement déjà SQLite. Ne contacter un
+          # miroir Ubuntu que si la bibliothèque est réellement absente.
+          if ! python3 -c 'import ctypes; ctypes.CDLL("libsqlite3.so.0")'; then
+            sudo apt-get update -qq
+            sudo apt-get install -y --no-install-recommends libsqlite3-0
+          fi
 
       - name: Récupérer uniquement les trois fichiers du wrapper Gradle manquants
         run: |
@@ -285,10 +289,6 @@ jobs:
           NOVATUBE_UPLOAD_KEY_ALIAS: ${{ secrets.NOVATUBE_UPLOAD_KEY_ALIAS }}
         run: |
           set -euo pipefail
-          if ! command -v ffmpeg >/dev/null; then
-            sudo apt-get update -qq
-            sudo apt-get install -y --no-install-recommends ffmpeg
-          fi
           python3 ci/novatube/run_recording_device.py \
             --apk build/app/outputs/flutter-apk/app-release.apk \
             --reports build/novatube/reports

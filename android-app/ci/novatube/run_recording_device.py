@@ -7,7 +7,6 @@ import json
 import os
 from pathlib import Path
 import re
-import shutil
 import subprocess
 import time
 
@@ -35,7 +34,8 @@ def verify(apk: Path, reports: Path, sdk: Path) -> dict:
     require(apk.is_file(), "APK release absent avant le test Android")
     digest = sha256_file(apk)
     reports.mkdir(parents=True, exist_ok=True)
-    require(shutil.which("ffmpeg") is not None, "ffmpeg requis pour les seules mires de test")
+    # Les deux mires synthétiques sont versionnées et vérifiées par SHA-256 :
+    # aucun téléchargement de logiciel ni de vidéo externe pour les préparer.
     create(APP_ROOT / "android/app/src/androidTest/assets")
     # Même entrée et même mode que l'APK déjà construit. On conserve son
     # empreinte et on installe CE fichier, pas un autre APK trouvé au hasard.

@@ -34,7 +34,13 @@ ne serait plus protégé par la biométrie de l'application.
 Le workflow privé exige les tests UI/REC, les règles natives sur JVM et trois
 tests instrumentés sur Android 35 AOSP : sauvegarde AVC/AAC, conversion HEVC
 vers AVC/AAC et refus d'une fausse vidéo. Les clips sont synthétiques (mire et
-son générés par ffmpeg), réservés à l'APK de test. Le runner installe l'APK
+son générés par ffmpeg), réservés à l'APK de test. Les deux fichiers sont
+versionnés dans `recording-test-media/` et vérifiés par SHA-256 avant copie :
+la CI ne dépend pas d'une installation FFmpeg ou d'un miroir Ubuntu pour
+les préparer. La commande `create_recording_test_media.py --regenerate DOSSIER`
+documente leur fabrication locale à partir d'une mire et d'une sinusoïde ;
+une régénération exige une revue des nouveaux fichiers et de leurs empreintes.
+Le runner installe l'APK
 release exact et lie la preuve Android à son SHA-256 avant la publication.
 Une réussite sur émulateur n'est pas un essai sur le téléphone de l'utilisateur.
 
