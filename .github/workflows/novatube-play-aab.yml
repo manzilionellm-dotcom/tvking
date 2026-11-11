@@ -1,0 +1,215 @@
+# NOUVELLE APPLICATION : aucune clé, release ou fiche Play d'une autre app.
+# Ce fichier ne déclenche rien au push ni à l'ouverture d'une pull request.
+# Limite GitHub : son premier workflow_dispatch exige son enregistrement
+# préalable ; voir android-app/ci/novatube/README.md. Ne pas modifier main
+# ni ajouter un déclencheur automatique pour contourner cette limite.
+name: NOVATUBE — AAB release pour revue
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirme:
+        description: 'COMPILER_NOVATUBE uniquement après accord explicite de Lionel sur les fichiers'
+        type: string
+        required: true
+      reviewed_commit:
+        description: 'SHA complet (40 caractères) de la version exactement approuvée'
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: novatube-play-aab
+  cancel-in-progress: false
+
+env:
+  CI: 'true'
+  BOT: 'true'
+  FLUTTER_SUPPRESS_ANALYTICS: 'true'
+
+defaults:
+  run:
+    shell: bash
+    working-directory: android-app
+
+jobs:
+  release:
+    name: Tester, compiler et vérifier NOVATUBE 0.1.5 (5)
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.repository == 'manzilionellm-dotcom/tvking' &&
+      github.ref == 'refs/heads/feature/novatube-play-aab' &&
+      github.actor == github.repository_owner &&
+      github.triggering_actor == github.repository_owner &&
+      inputs.confirme == 'COMPILER_NOVATUBE' &&
+      inputs.reviewed_commit == github.sha
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    steps:
+      - name: Charger uniquement le commit approuvé
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Vérifier la base, l'identité, les icônes et la politique Play
+        env:
+          REVIEWED_COMMIT: ${{ inputs.reviewed_commit }}
+        run: |
+          set -euo pipefail
+          python3 ci/novatube/verify_source.py \
+            --reviewed-commit "$REVIEWED_COMMIT" \
+            --report build/novatube/reports/source-verification.json
+          python3 -m unittest discover -s ci/novatube -p 'test_*.py' -v \
+            2>&1 | tee build/novatube/reports/static-tests.txt
+
+      - name: Refuser le build si les quatre secrets dédiés manquent
+        env:
+          NOVATUBE_UPLOAD_KEYSTORE_BASE64: ${{ secrets.NOVATUBE_UPLOAD_KEYSTORE_BASE64 }}
+          NOVATUBE_UPLOAD_STORE_PASSWORD: ${{ secrets.NOVATUBE_UPLOAD_STORE_PASSWORD }}
+          NOVATUBE_UPLOAD_KEY_PASSWORD: ${{ secrets.NOVATUBE_UPLOAD_KEY_PASSWORD }}
+          NOVATUBE_UPLOAD_KEY_ALIAS: ${{ secrets.NOVATUBE_UPLOAD_KEY_ALIAS }}
+        run: python3 ci/novatube/prepare_signing.py --check-only
+
+      - name: Java 21 pour les tests JVM du lecteur existant
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Vérifier le handoff natif du Cast
+        run: |
+          set -euo pipefail
+          python3 ci/cast_test/run_native_logic.py \
+            2>&1 | tee build/novatube/reports/native-jvm-tests.txt
+
+      - name: Java 17 pour la compilation Android
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Flutter identique au tag de départ
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          flutter-version: '3.47.7'
+          channel: stable
+          cache: false
+          pub-cache: false
+
+      - name: Android SDK
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
+
+      - name: Installer SQLite pour les tests du vrai import manuel
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends libsqlite3-0
+
+      - name: Récupérer uniquement les trois fichiers du wrapper Gradle manquants
+        run: |
+          set -euo pipefail
+          if [[ ! -f android/gradlew || ! -f android/gradlew.bat || ! -f android/gradle/wrapper/gradle-wrapper.jar ]]; then
+            # Le tag ne versionne pas les wrappers. La génération temporaire
+            # n'écrase jamais le manifeste, Gradle, les icônes ou les sources.
+            flutter create --platforms=android --no-pub \
+              --project-name=novatube_wrapper "$RUNNER_TEMP/novatube-wrapper"
+            for relative in gradlew gradlew.bat gradle/wrapper/gradle-wrapper.jar; do
+              if [[ ! -f "android/$relative" ]]; then
+                mkdir -p "$(dirname "android/$relative")"
+                cp "$RUNNER_TEMP/novatube-wrapper/android/$relative" "android/$relative"
+              fi
+            done
+          fi
+          chmod +x android/gradlew
+
+      - name: Résoudre les dépendances et générer les traductions
+        run: |
+          set -euo pipefail
+          flutter pub get
+          flutter gen-l10n
+          flutter --version --machine > build/novatube/reports/flutter-toolchain.json
+
+      - name: Analyser le code livré et les nouveaux tests NOVATUBE
+        run: |
+          set -euo pipefail
+          flutter analyze --no-pub --no-fatal-infos --no-fatal-warnings \
+            lib test/novatube test/features/tv/touch/novatube_play_ui_test.dart \
+            2>&1 | tee build/novatube/reports/flutter-analyze.txt
+
+      - name: Tester les exclusions Play et les fonctions conservées
+        run: |
+          set -euo pipefail
+          # Les anciens tests d'activation par MAC/panel ne décrivent pas
+          # NOVATUBE. Les comportements remplacés ont leurs tests dédiés.
+          flutter test --no-pub --machine \
+            test/novatube \
+            test/features/tv/touch/novatube_play_ui_test.dart \
+            test/features/cast \
+            test/features/epg \
+            test/features/profiles \
+            test/features/player \
+            test/features/playlists/m3u_parser_test.dart \
+            test/features/playlists/m3u_link_test.dart \
+            test/features/playlists/open_source_input_test.dart \
+            test/features/playlists/xtream_category_parallel_test.dart \
+            packages/native_video_player/test \
+            | tee build/novatube/reports/flutter-tests.jsonl
+
+      - name: Charger la clé dédiée et vérifier son certificat public
+        env:
+          NOVATUBE_KEYSTORE_PATH: ${{ runner.temp }}/novatube-upload.jks
+          NOVATUBE_UPLOAD_KEYSTORE_BASE64: ${{ secrets.NOVATUBE_UPLOAD_KEYSTORE_BASE64 }}
+          NOVATUBE_UPLOAD_STORE_PASSWORD: ${{ secrets.NOVATUBE_UPLOAD_STORE_PASSWORD }}
+          NOVATUBE_UPLOAD_KEY_PASSWORD: ${{ secrets.NOVATUBE_UPLOAD_KEY_PASSWORD }}
+          NOVATUBE_UPLOAD_KEY_ALIAS: ${{ secrets.NOVATUBE_UPLOAD_KEY_ALIAS }}
+        run: python3 ci/novatube/prepare_signing.py
+
+      - name: Compiler uniquement l'AAB release NOVATUBE approuvé
+        env:
+          NOVATUBE_KEYSTORE_PATH: ${{ runner.temp }}/novatube-upload.jks
+          NOVATUBE_UPLOAD_STORE_PASSWORD: ${{ secrets.NOVATUBE_UPLOAD_STORE_PASSWORD }}
+          NOVATUBE_UPLOAD_KEY_PASSWORD: ${{ secrets.NOVATUBE_UPLOAD_KEY_PASSWORD }}
+          NOVATUBE_UPLOAD_KEY_ALIAS: ${{ secrets.NOVATUBE_UPLOAD_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          flutter build appbundle --release \
+            --target=lib/main_zuno_mobile.dart \
+            --build-name=0.1.5 --build-number=5
+
+      - name: Vérifier le vrai bundle et produire sa provenance
+        run: |
+          set -euo pipefail
+          curl --fail --location --silent --show-error --retry 2 \
+            --output "$RUNNER_TEMP/novatube-bundletool.jar" \
+            https://github.com/google/bundletool/releases/download/1.18.2/bundletool-all-1.18.2.jar
+          # Le script vérifie la somme officielle du JAR avant de l'exécuter.
+          bundles=(build/app/outputs/bundle/release/*.aab)
+          [[ "${#bundles[@]}" == 1 && -f "${bundles[0]}" ]]
+          python3 ci/novatube/verify_aab.py \
+            --aab "${bundles[0]}" \
+            --bundletool "$RUNNER_TEMP/novatube-bundletool.jar" \
+            --reports build/novatube/reports \
+            --output build/novatube/verified
+
+      - name: Conserver seulement l'AAB vérifié et ses preuves
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: NOVATUBE-0.1.5-5-verified-${{ github.sha }}-${{ github.run_attempt }}
+          path: android-app/build/novatube/verified/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Retirer la clé temporaire du runner
+        if: always()
+        working-directory: .
+        env:
+          NOVATUBE_KEYSTORE_PATH: ${{ runner.temp }}/novatube-upload.jks
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          Path(os.environ['NOVATUBE_KEYSTORE_PATH']).unlink(missing_ok=True)
+          PY
