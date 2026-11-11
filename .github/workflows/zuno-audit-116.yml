@@ -1,0 +1,591 @@
+# Lot 1 seulement. Aucun AAB, aucune release, aucun déploiement ni lien public modifié.
+# La signature conserve la clé existante ; les garde-fous du dépôt restent intacts.
+name: ZUNO audit 116 — lot 1, tests et APK uniquement
+'on':
+  push:
+    branches:
+    - zuno/audit-116-lot1
+permissions:
+  contents: read
+concurrency:
+  group: audit-116-${{ github.ref }}
+  cancel-in-progress: false
+env:
+  SOURCE_SHA: ${{ github.sha }}
+  CI: 'true'
+  FLUTTER_SUPPRESS_ANALYTICS: 'true'
+  DASH__SUPPRESS_ANALYTICS: 'true'
+  EXPECTED_CERT: 5145b8e019f6d5fb96a207f2e73673fd954f799966fd598889211556cbdf9e61
+  ESSAI: 'false'
+  APK_NAME: zuno-tv.apk
+  ZUNO_APP_ID: com.sevenmotion.tv.seven_tv
+  ZUNO_APP_LABEL: Zuno
+jobs:
+  configuration:
+    name: Vérifier branche, base et gardes existantes
+    if: github.event_name == 'push' && github.ref == 'refs/heads/zuno/audit-116-lot1' && github.repository == 'manzilionellm-dotcom/tvking'
+      && github.actor == github.repository_owner && github.triggering_actor == github.repository_owner
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        ref: ${{ github.sha }}
+        fetch-depth: 0
+        persist-credentials: false
+    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+      with:
+        node-version: 24.21.0
+        package-manager-cache: false
+    - name: Base exacte du seul contrôle des ancres mobiles
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        ref: 37fdf3305c5de9d35e20fd6567df38008fc7a7ee
+        path: audit-anchors-phone
+        persist-credentials: false
+    - name: Préparer le vérificateur de captures dans un venv dédié
+      run: |
+        set -euo pipefail
+        audit_python="$RUNNER_TEMP/audit116-python"
+        python3 -m venv "$audit_python"
+        "$audit_python/bin/python" -m pip install --only-binary=:all: --no-deps -r android-app/ci/requirements-startup.txt
+        printf '%s\n' "$audit_python/bin" >> "$GITHUB_PATH"
+    - name: Vérifier la provenance et conserver le manifeste
+      run: |
+        set -euo pipefail
+        mkdir -p artifacts/audit-configuration
+        test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+        test "$(git rev-parse 'a4b81f7661d05866a39eeb05eec040ddbb1b7eb0^{tree}')" = '13d5ef7848c92a50c0fdf613f5cceed0def95030'
+        git merge-base --is-ancestor a4b81f7661d05866a39eeb05eec040ddbb1b7eb0 HEAD
+        git rev-parse HEAD > artifacts/audit-configuration/source-sha.txt
+        git rev-parse 'HEAD^{tree}' > artifacts/audit-configuration/tree.txt
+        node --test .github/security-config.test.mjs .github/app-release-guard.test.mjs .github/release-cleanup.test.mjs 2>&1 | tee artifacts/audit-configuration/configuration.log
+        python3 -m unittest discover -s android-app/ci -p test_apk_startup.py -v 2>&1 | tee artifacts/audit-configuration/startup-validator.log
+        python3 android-app/ci/audit-116/check_transformations.py --phone-checkout "$GITHUB_WORKSPACE/audit-anchors-phone" | tee artifacts/audit-configuration/anchors.json
+    - name: Conserver les preuves même après échec
+      if: always()
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      with:
+        name: audit-116-configuration-${{ github.sha }}
+        path: artifacts/audit-configuration/
+        if-no-files-found: error
+        retention-days: 14
+  flutter:
+    name: Tous les tests Flutter et analyse
+    needs:
+    - configuration
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    defaults:
+      run:
+        working-directory: android-app
+        shell: bash
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        ref: ${{ github.sha }}
+        fetch-depth: 1
+        persist-credentials: false
+    - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+      with:
+        flutter-version: 3.47.7
+        channel: stable
+        cache: false
+        pub-cache: false
+    - name: Dépendances application verrouillées
+      run: |
+        set -euo pipefail
+        mkdir -p ../artifacts/audit-flutter
+        flutter --suppress-analytics --no-version-check --version | tee ../artifacts/audit-flutter/flutter-version.txt
+        cp ci/audit-116/app-tests.lock pubspec.lock
+        flutter --suppress-analytics --no-version-check pub get --enforce-lockfile
+        cmp pubspec.lock ci/audit-116/app-tests.lock
+        flutter --suppress-analytics --no-version-check gen-l10n
+        git rev-parse HEAD > ../artifacts/audit-flutter/source-sha.txt
+        sha256sum pubspec.lock > ../artifacts/audit-flutter/pubspec-lock.sha256
+    - name: Localisations et analyse stricte conservée
+      run: |
+        set -euo pipefail
+        python3 tool/check_l10n.py 2>&1 | tee ../artifacts/audit-flutter/l10n.log
+        set +e
+        flutter --suppress-analytics --no-version-check analyze --no-pub 2>&1 | tee ../artifacts/audit-flutter/analyze-strict.log
+        audit_analyze_status=${PIPESTATUS[0]}
+        set -e
+        printf '%s\n' "$audit_analyze_status" > ../artifacts/audit-flutter/analyze-strict-exit.txt
+        # Le gate historique accepte les avertissements préexistants. Le résultat
+        # strict reste séparé et ne devient jamais un succès si son code est non nul.
+        flutter --suppress-analytics --no-version-check analyze --no-pub --no-fatal-infos --no-fatal-warnings 2>&1 | tee ../artifacts/audit-flutter/analyze-gate.log
+    - name: Suite Flutter complète sans suppression de tests
+      run: |
+        set -euo pipefail
+        flutter --suppress-analytics --no-version-check test --no-pub --reporter expanded \
+          --file-reporter=json:../artifacts/audit-flutter/tests.jsonl 2>&1 | tee ../artifacts/audit-flutter/tests.log
+    - name: Conserver les preuves même après échec
+      if: always()
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      with:
+        name: audit-116-flutter-${{ github.sha }}
+        path: artifacts/audit-flutter/
+        if-no-files-found: error
+        retention-days: 14
+  worker:
+    name: Worker — tests locaux uniquement
+    needs:
+    - configuration
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        ref: ${{ github.sha }}
+        fetch-depth: 1
+        persist-credentials: false
+    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+      with:
+        node-version: 24.21.0
+        package-manager-cache: false
+    - name: Tests Node sans déploiement
+      run: |
+        set -euo pipefail
+        mkdir -p artifacts/audit-worker
+        git rev-parse HEAD > artifacts/audit-worker/source-sha.txt
+        node --version > artifacts/audit-worker/node-version.txt
+        node android-app/cloudflare/worker_security.smoke.mjs 2>&1 | tee artifacts/audit-worker/security-smoke.log
+        node --test android-app/cloudflare/*.test.mjs 2>&1 | tee artifacts/audit-worker/tests.log
+    - name: Conserver les preuves même après échec
+      if: always()
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      with:
+        name: audit-116-worker-${{ github.sha }}
+        path: artifacts/audit-worker/
+        if-no-files-found: error
+        retention-days: 14
+  player:
+    name: Code partagé — player
+    needs:
+    - configuration
+    uses: ./.github/workflows/player-debug-test.yml
+    with:
+      audit_116: true
+    permissions:
+      contents: read
+  mobile:
+    name: Code partagé — mobile
+    needs:
+    - configuration
+    uses: ./.github/workflows/mobile-gestures-test.yml
+    with:
+      audit_116: true
+    permissions:
+      contents: read
+  pixels:
+    name: Pixels Android API ${{ matrix.api }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        api:
+        - 29
+        - 35
+    env:
+      SOURCE_SHA: ${{ github.sha }}
+      FLUTTER_SUPPRESS_ANALYTICS: 'true'
+      DASH__SUPPRESS_ANALYTICS: 'true'
+    steps:
+    - name: Extraire exactement le commit à vérifier
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        ref: ${{ env.SOURCE_SHA }}
+        persist-credentials: false
+    - name: Vérifier la provenance du code
+      run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+    - name: Vérifier le contrat des rapports Android
+      run: |
+        python3 -m unittest discover -s android-app/ci -p test_contrast_results.py -v
+        python3 -m unittest discover -s android-app/ci -p test_ai_picture_results.py -v
+    - name: Java 17
+      uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+      with:
+        distribution: temurin
+        java-version: '17'
+    - name: Flutter stable validé par le dépôt
+      uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+      with:
+        flutter-version: 3.47.7
+        channel: stable
+        cache: false
+        pub-cache: false
+    - name: SDK Android
+      uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+    - name: Préparer KVM et le générateur de mire
+      run: |
+        set -euo pipefail
+        test -c /dev/kvm
+        # Permission limitée au runner éphémère ; aucun repli lent ne masque
+        # l'absence d'accélération de la machine virtuelle.
+        sudo chmod a+rw /dev/kvm
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends ffmpeg
+    - name: Préparer uniquement les outils Android de debug
+      working-directory: android-app
+      run: |
+        set -euo pipefail
+        # Génère le wrapper/local.properties absents de Git, sans refaire
+        # le code du plugin ni appliquer les patches de publication APK.
+        flutter create . --platforms=android --no-pub --project-name tv_king
+        cp ci/audit-116/app-tests.lock pubspec.lock
+        flutter pub get --enforce-lockfile
+        cmp pubspec.lock ci/audit-116/app-tests.lock
+        python3 ci/generate-contrast-fixture.py
+    - name: Vérifier les pixels puis prouver que l’ancien défaut est détecté
+      env:
+        CONTRAST_API_LEVEL: ${{ matrix.api }}
+      run: bash android-app/ci/run-contrast-render-tests.sh
+    - name: Conserver les images, mesures et rapports même en cas d’échec
+      if: always()
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      with:
+        name: audit-116-pixels-api-${{ matrix.api }}-${{ github.sha }}
+        path: |
+          artifacts/contrast-api-${{ matrix.api }}/
+          android-app/build/native_video_player/reports/androidTests/
+          android-app/build/native_video_player/outputs/androidTest-results/
+          android-app/packages/native_video_player/android/build/reports/androidTests/
+          android-app/packages/native_video_player/android/build/outputs/androidTest-results/
+        if-no-files-found: error
+        retention-days: 14
+    needs:
+    - configuration
+  build-tv:
+    name: APK ZUNO signé — aucune publication
+    needs:
+    - configuration
+    - flutter
+    - worker
+    - player
+    - mobile
+    - pixels
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    environment: zuno-app-production
+    defaults:
+      run:
+        working-directory: android-app
+        shell: bash
+    outputs:
+      version-name: ${{ env.TV_VERSION_NAME }}
+      version-code: ${{ env.TV_BUILD_NUMBER }}
+      signing: ${{ env.SIGNING }}
+      apk-cert: ${{ env.APK_CERT }}
+      source-sha: ${{ steps.apk-identity.outputs.source-sha }}
+      build-attempt: ${{ steps.apk-identity.outputs.build-attempt }}
+      apk-sha256: ${{ steps.apk-identity.outputs.sha256 }}
+      apk-size: ${{ steps.apk-identity.outputs.size }}
+      apk-artifact-id: ${{ steps.apk-upload.outputs.artifact-id }}
+      apk-artifact-digest: ${{ steps.apk-upload.outputs.artifact-digest }}
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        ref: ${{ github.sha }}
+        fetch-depth: 1
+        persist-credentials: false
+    - name: Conserver le garde existant sans modifier le gel
+      working-directory: .
+      env:
+        APP_OPERATION: build
+        APP_PUBLISH: 'false'
+        APP_TEST_BOX: 'false'
+        APP_PLAY_AAB: 'false'
+        APP_BACKEND_URL: ''
+        APP_VARIANT: box
+      run: |
+        node .github/app-release-guard.mjs
+    - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+      with:
+        distribution: temurin
+        java-version: '17'
+    - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+      with:
+        flutter-version: 3.47.7
+        channel: stable
+        cache: false
+        pub-cache: false
+    - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+    - name: Patch manifest (Zuno, Leanback, réseau, compat box)
+      run: python3 ci/tv/patch_manifest.py android/app/src/main/AndroidManifest.xml
+    - name: Patch build.gradle.kts (applicationId TV, signature, R8)
+      run: |
+        set -e
+        cp ci/proguard-rules.pro android/app/proguard-rules.pro
+        python3 ci/tv/patch_gradle.py android/app/build.gradle.kts
+    - name: Préserver les préférences sur les box Android 5
+      if: env.ESSAI != 'true'
+      run: |
+        # La version 2.5.1 impose DataStore 1.2.1 (Android 6 minimum).
+        # La box conserve Android 5 et la version 2.5.0 du build signé
+        # du 19/10/2026. Ce pin local au runner ne touche pas le mobile.
+        python3 - <<'PYEOF'
+        from pathlib import Path
+        path = Path('pubspec.yaml')
+        source = path.read_text(encoding='utf-8')
+        anchor = '  shared_preferences: ^2.3.4\n'
+        if source.count(anchor) != 1 or '  shared_preferences_android:' in source:
+            raise SystemExit('Contrainte SharedPreferences inattendue : vérifier le pin TV.')
+        source = source.replace(anchor, anchor + '  shared_preferences_android: 2.5.0\n', 1)
+        path.write_text(source, encoding='utf-8')
+        PYEOF
+    - name: Résoudre le verrou TV attendu
+      run: |
+        set -euo pipefail
+        mkdir -p ../artifacts/audit-apk
+        flutter --suppress-analytics --no-version-check --version | tee ../artifacts/audit-apk/flutter-version.txt
+        java -version 2>&1 | tee ../artifacts/audit-apk/java-version.txt
+        cp ci/audit-116/tv-apk.lock pubspec.lock
+        flutter --suppress-analytics --no-version-check pub get --enforce-lockfile
+        cmp pubspec.lock ci/audit-116/tv-apk.lock
+        sha256sum pubspec.lock > ../artifacts/audit-apk/pubspec-lock.sha256
+    - name: Patch screen_brightness_android build.gradle (si nécessaire)
+      run: |
+        set -e
+        FILE=$(find ~/.pub-cache/hosted/pub.dev -path "*/screen_brightness_android-*/android/build.gradle" 2>/dev/null | head -1)
+        if [ -z "$FILE" ]; then
+          echo "⊙ screen_brightness_android pas dans pub-cache, skip"
+          exit 0
+        fi
+        export PATCH_FILE="$FILE"
+        python3 - <<'PYEOF'
+        import os, re
+        file = os.environ['PATCH_FILE']
+        lines = open(file).readlines()
+        out, in_kotlin, depth, removed = [], False, 0, 0
+        for line in lines:
+            if not in_kotlin:
+                if re.match(r'^\s*kotlin\s*\{', line):
+                    in_kotlin = True
+                    depth = line.count('{') - line.count('}')
+                    removed += 1
+                    if depth <= 0:
+                        in_kotlin = False
+                    continue
+                out.append(line)
+            else:
+                depth += line.count('{') - line.count('}')
+                removed += 1
+                if depth <= 0:
+                    in_kotlin = False
+        if removed:
+            open(file, 'w').writelines(out)
+            print(f'retiré {removed} ligne(s) kotlin{{}}')
+        else:
+            print('aucun bloc kotlin{} (déjà propre)')
+        PYEOF
+    - name: Generate AppLocalizations (.arb → Dart)
+      run: flutter gen-l10n
+    - name: Icône launcher (logo Zuno)
+      run: dart run flutter_launcher_icons -f flutter_launcher_icons_zuno_tv.yaml
+    - name: Bannière Android TV + écran de lancement sombre
+      run: |
+        set -e
+        RES=android/app/src/main/res
+        mkdir -p "$RES/drawable" "$RES/drawable-xhdpi" "$RES/drawable-xxhdpi"
+        # Bannière Leanback (spec Android TV : 320×180 en xhdpi).
+        cp assets/branding/zuno_tv_banner.png    "$RES/drawable/tv_banner.png"
+        cp assets/branding/zuno_tv_banner.png    "$RES/drawable-xhdpi/tv_banner.png"
+        cp assets/branding/zuno_tv_banner_2x.png "$RES/drawable-xxhdpi/tv_banner.png"
+        # Splash = calligraphie transparente sur TvTokens.bg (#070708).
+        # Le thème de marche reste un aplat : un windowBackground avec
+        # bitmap reste derrière Flutter toute la session et peut couvrir
+        # la SurfaceView (rectangle noir, ou le logo figé à la place de
+        # l'image).
+        python3 ci/tv/apply_splash.py
+        python3 ci/tv/apply_splash_test.py
+    - name: Exiger la clé existante et son certificat avant toute compilation
+      env:
+        KS_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        KS_PW: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        KS_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        KEY_PW: ${{ secrets.ANDROID_KEY_PASSWORD }}
+      run: |
+        bash ci/audit-116/sign_validation_apk.sh
+    - name: Version de validation sans changer le canal de mise à jour
+      run: |
+        set -euo pipefail
+        audit_build_code=$(date +%s)
+        test "$audit_build_code" -gt 1794284448
+        test "$audit_build_code" -lt 2100000000
+        printf 'TV_BUILD_NUMBER=%s\n' "$audit_build_code" >> "$GITHUB_ENV"
+        printf 'TV_VERSION_NAME=116-test.%s\n' "$GITHUB_RUN_NUMBER" >> "$GITHUB_ENV"
+    - name: Compiler uniquement un APK release depuis main_tv
+      run: |
+        set -euo pipefail
+        flutter --suppress-analytics --no-version-check build apk --release --no-pub --no-tree-shake-icons \
+          --android-skip-build-dependency-validation \
+          --target-platform android-arm,android-arm64,android-x64 \
+          --build-number="$TV_BUILD_NUMBER" --build-name="$TV_VERSION_NAME" \
+          --obfuscate --split-debug-info=build/symbols \
+          --dart-define=APP_BUILD_TS="$TV_BUILD_NUMBER" \
+          --dart-define=GIT_SHA="$SOURCE_SHA" --target=lib/main_tv.dart 2>&1 | tee ../artifacts/audit-apk/build.log
+        cp build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/zuno-tv.apk
+        python3 ci/audit-116/verify_generated_cast.py > ../artifacts/audit-apk/generated-cast.json
+    - name: Conserver le classpath Media3 réellement résolu pour cet APK
+      working-directory: android-app/android
+      run: |
+        set -euo pipefail
+        ./gradlew :native_video_player:dependencyInsight --dependency androidx.media3 \
+          --configuration releaseCompileClasspath --offline --no-daemon --max-workers=1 \
+          2>&1 | tee ../../artifacts/audit-apk/media3-classpath.log
+    - name: Vérifier le démarrage SharedPreferences après R8
+      run: |
+        set -e
+        BUILD_TOOLS=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+        python3 ci/tv/verify_apk_jni.py \
+          "build/app/outputs/flutter-apk/$APK_NAME" \
+          --dexdump "$BUILD_TOOLS/dexdump"
+    - name: Vérifier identité, signature, version et lancement TV du binaire
+      run: |
+        set -euo pipefail
+        audit_apk=build/app/outputs/flutter-apk/zuno-tv.apk
+        audit_tools=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)
+        "$audit_tools/apksigner" verify --verbose --print-certs "$audit_apk" > ../artifacts/audit-apk/signature.txt
+        "$audit_tools/aapt" dump badging "$audit_apk" > ../artifacts/audit-apk/badging.txt
+        python3 - <<'PYCERT'
+        import json,os,re
+        from pathlib import Path
+        from zipfile import ZipFile
+        out=Path('../artifacts/audit-apk')
+        certs=re.findall(r'Signer #\d+ certificate SHA-256 digest: ([0-9a-f]+)',(out/'signature.txt').read_text())
+        assert certs == [os.environ['EXPECTED_CERT']], 'Certificat APK inattendu'
+        badging=(out/'badging.txt').read_text()
+        assert "package: name='com.sevenmotion.tv.seven_tv'" in badging
+        assert "versionCode='"+os.environ['TV_BUILD_NUMBER']+"'" in badging
+        assert "versionName='"+os.environ['TV_VERSION_NAME']+"'" in badging
+        assert "sdkVersion:'21'" in badging
+        assert "application-label:'Zuno'" in badging, 'Libellé Android différent'
+        assert re.search(r'^leanback-launchable-activity:', badging, re.M), 'Activité Leanback absente'
+        with ZipFile('build/app/outputs/flutter-apk/zuno-tv.apk') as archive:
+            names=set(archive.namelist())
+            abis={name.split('/')[1] for name in names if name.startswith('lib/') and len(name.split('/')) > 2}
+            assert {'armeabi-v7a','arm64-v8a','x86_64'} <= abis, 'Architecture demandée absente'
+            for abi in sorted(abis):
+                for library in ('libflutter.so','libapp.so'):
+                    assert f'lib/{abi}/{library}' in names, 'Architecture incomplète : '+abi
+                assert b'https://api.zuno8k.com' in archive.read(f'lib/{abi}/libapp.so'), 'Backend attendu absent : '+abi
+        (out/'abi-backend.json').write_text(json.dumps({'architectures':sorted(abis),'backend':'https://api.zuno8k.com'},indent=2)+'\n')
+        assert "uses-feature-not-required: name='android.software.leanback'" in badging or "uses-feature: name='android.software.leanback'" in badging
+        with open(os.environ['GITHUB_ENV'],'a') as target:
+            target.write('APK_CERT='+certs[0]+'\n')
+        PYCERT
+    - name: Figer l'identité des octets APK avant upload
+      id: apk-identity
+      run: |
+        set -euo pipefail
+        APK="build/app/outputs/flutter-apk/$APK_NAME"
+        test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+        printf 'source-sha=%s\n' "$SOURCE_SHA" >> "$GITHUB_OUTPUT"
+        printf 'build-attempt=%s\n' "$GITHUB_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
+        printf 'sha256=%s\n' "$(sha256sum "$APK" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+        printf 'size=%s\n' "$(stat -c%s "$APK")" >> "$GITHUB_OUTPUT"
+    - name: Upload APK artifact (Zuno TV)
+      id: apk-upload
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      with:
+        name: audit-116-apk-${{ github.sha }}
+        path: android-app/build/app/outputs/flutter-apk/${{ env.APK_NAME }}
+        retention-days: 30
+        if-no-files-found: error
+    - name: Conserver les preuves même après échec
+      if: always()
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      with:
+        name: audit-116-apk-proof-${{ github.sha }}
+        path: |-
+          artifacts/audit-apk/
+          android-app/build/symbols/
+        if-no-files-found: error
+        retention-days: 14
+  startup:
+    name: Ouvrir l'APK signé — API ${{ matrix.api }}
+    needs:
+    - build-tv
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: .
+    strategy:
+      fail-fast: false
+      matrix:
+        api:
+        - 29
+        - 35
+    env:
+      STARTUP_API_LEVEL: ${{ matrix.api }}
+      STARTUP_APK_PATH: ${{ github.workspace }}/artifacts/startup-input/zuno-tv.apk
+      STARTUP_SOURCE_SHA: ${{ needs.build-tv.outputs.source-sha }}
+      STARTUP_BUILD_ATTEMPT: ${{ needs.build-tv.outputs.build-attempt }}
+      STARTUP_APK_SHA256: ${{ needs.build-tv.outputs.apk-sha256 }}
+      STARTUP_APK_SIZE: ${{ needs.build-tv.outputs.apk-size }}
+      STARTUP_VERSION_NAME: ${{ needs.build-tv.outputs.version-name }}
+      STARTUP_VERSION_CODE: ${{ needs.build-tv.outputs.version-code }}
+      STARTUP_APK_CERT: ${{ needs.build-tv.outputs.apk-cert }}
+      STARTUP_ARTIFACT_ID: ${{ needs.build-tv.outputs.apk-artifact-id }}
+      STARTUP_ARTIFACT_DIGEST: ${{ needs.build-tv.outputs.apk-artifact-digest }}
+    steps:
+    - name: Extraire le contrôle du même commit que le build
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        ref: ${{ env.SOURCE_SHA }}
+        persist-credentials: false
+    - name: Préparer le décodeur des captures dans un environnement Python isolé
+      run: |
+        set -euo pipefail
+        startup_python="$RUNNER_TEMP/zuno-startup-python"
+        python3 -m venv "$startup_python"
+        "$startup_python/bin/python" -m pip install --disable-pip-version-check \
+          --only-binary=:all: --no-deps -r android-app/ci/requirements-startup.txt
+        printf '%s\n' "$startup_python/bin" >> "$GITHUB_PATH"
+    - name: Vérifier le contrôle et ses cas d'échec
+      run: |
+        set -euo pipefail
+        test "$(git rev-parse HEAD)" = "$STARTUP_SOURCE_SHA"
+        bash -n android-app/ci/run-apk-startup.sh
+        python3 -m unittest discover -s android-app/ci -p test_apk_startup.py -v
+        python3 android-app/ci/verify_apk_startup.py identity
+    - name: Télécharger uniquement l'APK uploadé par build-tv
+      uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+      with:
+        artifact-ids: ${{ needs.build-tv.outputs.apk-artifact-id }}
+        merge-multiple: true
+        path: artifacts/startup-input
+    - name: Java 17
+      uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+      with:
+        distribution: temurin
+        java-version: '17'
+    - name: SDK Android
+      uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+    - name: Préparer les bibliothèques Linux de l'émulateur
+      run: |
+        set -euo pipefail
+        # Même avec -no-audio, le binaire de l'émulateur charge libpulse.
+        # Sa présence n'est pas garantie sur le runner Ubuntu 24.04.
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends libpulse0
+    - name: Accélération de l'émulateur éphémère
+      run: |
+        set -euo pipefail
+        test -c /dev/kvm
+        sudo chmod a+rw /dev/kvm
+    - name: Installer, ouvrir, quitter et rouvrir l'APK signé hors réseau
+      run: bash android-app/ci/run-apk-startup.sh
+    - name: Conserver les écrans et diagnostics, même en cas d'échec
+      if: always()
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      with:
+        name: audit-116-startup-api-${{ matrix.api }}-${{ github.sha }}-attempt-${{ github.run_attempt }}
+        path: artifacts/startup-api-${{ matrix.api }}/
+        if-no-files-found: error
+        retention-days: 14

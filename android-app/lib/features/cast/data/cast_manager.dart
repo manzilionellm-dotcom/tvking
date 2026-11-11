@@ -18,6 +18,8 @@ import 'dart:io' show Socket;
 
 import 'package:flutter/foundation.dart';
 
+import '../../../core/app/app_platform.dart';
+import '../../../core/app/repair_flags.dart';
 import '../../../core/crash/crash_reporting.dart';
 import '../../../core/i18n/l10n_now.dart';
 import '../../../core/notifications/notification_service.dart';
@@ -34,6 +36,9 @@ import 'cast_progress.dart';
 import 'cast_platform.dart';
 import 'cast_url_resolver.dart';
 import '../../security/data/adult_access.dart';
+import '../../security/data/parental_controls.dart';
+import '../../cinema/data/cinema_repository.dart';
+import '../domain/zuno_cast_media.dart';
 import 'cast_session_diagnostic.dart';
 import 'cast_transport.dart';
 import 'google_cast_transport.dart';
@@ -141,6 +146,7 @@ enum CastState {
 class CastManager extends ChangeNotifier {
   CastManager._() {
     ActiveProfile.instance.scopeListenable.addListener(_onProfileScopeChanged);
+    _listenZunoRestrictions();
     _subscribeToNativeEvents();
   }
   static final CastManager instance = CastManager._();
@@ -159,6 +165,7 @@ class CastManager extends ChangeNotifier {
         _testSsdpDiscovery = discoverSsdp,
         _testMdnsDiscovery = discoverMdns {
     ActiveProfile.instance.scopeListenable.addListener(_onProfileScopeChanged);
+    _listenZunoRestrictions();
   }
 
   CastTransport Function(CastDevice)? _testTransportFactory;
@@ -217,7 +224,8 @@ class CastManager extends ChangeNotifier {
     // le changement de TV qui attend justement cette fermeture.
     if (evt.kind == 'ended' && _transport == null && _device == null) return;
     if ((evt.kind == 'resumed' || evt.kind == 'resumed_at_boot') &&
-        (_transport == null || _sessionAdultAccess?.isValid == false)) {
+        (_transport == null || _sessionAdultAccess?.isValid == false ||
+            !_zunoSessionValid)) {
       // Le SDK peut restaurer une vidéo après redémarrage de Dart. Sans
       // propriétaire local nous ne savons plus quel profil, quelle liste
       // ou quel droit Adultes l'autorisait : la lecture reste fermée.
@@ -433,6 +441,12 @@ class CastManager extends ChangeNotifier {
     _disposed = true;
     ActiveProfile.instance.scopeListenable
         .removeListener(_onProfileScopeChanged);
+    ParentalControls.instance.readiness.removeListener(_onZunoRestrictionsChanged);
+    ParentalControls.instance.kidsMode.removeListener(_onZunoRestrictionsChanged);
+    if (_listeningToCinema) {
+      CinemaRepository.instance.classificationVersion
+          .removeListener(_onZunoRestrictionsChanged);
+    }
     stopWarmup();
     _stopDiscovery(notify: false);
     unawaited(_disconnect());
@@ -444,6 +458,38 @@ class CastManager extends ChangeNotifier {
   // Le droit appartient à la demande de Cast, pas au widget du lecteur.
   // Ainsi, quitter le lecteur ne retire pas la protection de sa session.
   AdultAccessGrant? _sessionAdultAccess;
+  ZunoCastMediaAccess? _pendingZunoMedia;
+  ZunoCastMediaAccess? _sessionZunoMedia;
+  bool Function()? _sessionZunoAllowed;
+  bool _listeningToCinema = false;
+
+  bool get _zunoSessionValid => !AppPlatform.isZuno ||
+      _sessionZunoAllowed?.call() == true;
+
+  void _listenZunoRestrictions() {
+    ParentalControls.instance.readiness.addListener(_onZunoRestrictionsChanged);
+    ParentalControls.instance.kidsMode.addListener(_onZunoRestrictionsChanged);
+    _listenZunoCatalogue();
+  }
+
+  void _listenZunoCatalogue() {
+    if (AppPlatform.isZuno && !_listeningToCinema) {
+      _listeningToCinema = true;
+      CinemaRepository.instance.classificationVersion
+          .addListener(_onZunoRestrictionsChanged);
+    }
+  }
+
+  void _onZunoRestrictionsChanged() {
+    if (!AppPlatform.isZuno || _disposed || _sessionZunoAllowed == null) return;
+    if (!_zunoSessionValid) unawaited(disconnect());
+  }
+
+  /// Contexte éphémère remis par le vrai lecteur avant d'ouvrir le picker.
+  /// Ne le transforme jamais en droit implicite pour une autre URL.
+  void setZunoMediaAccess(ZunoCastMediaAccess? access) {
+    if (AppPlatform.isZuno) _pendingZunoMedia = access;
+  }
 
   void _releaseAdultAccess() {
     _sessionAdultAccess?.removeListener(_onAdultAccessChanged);
@@ -508,7 +554,7 @@ class CastManager extends ChangeNotifier {
   /// et archive proprement (sans noise UX vers le user puisque
   /// l'outer a deja rendu).
   void _checkCancelled(int mySeq) {
-    if (_sessionSeq != mySeq) {
+    if (_sessionSeq != mySeq || !_zunoSessionValid) {
       throw _CastSessionCancelled(
         'Session cast superseded (mySeq=$mySeq, current=$_sessionSeq)',
       );
@@ -541,6 +587,9 @@ class CastManager extends ChangeNotifier {
   String? _dlnaLiveTitle;
   final List<DateTime> _dlnaReconnects = <DateTime>[];
   bool _dlnaReconnecting = false;
+  // Le propriétaire couvre aussi GetTransportInfo, qui peut dépasser le
+  // tick de 10 s. Une ancienne session ne peut libérer le verrou suivant.
+  Object? _dlnaWatchdogOwner;
 
   /// Contexte de REPLI RELAIS pour la reconnexion auto : URL upstream
   /// (portail d'origine — token frais à chaque connexion) et profil
@@ -777,6 +826,8 @@ class CastManager extends ChangeNotifier {
     if (_device?.id == device.id && _device?.kind == device.kind) return;
     final media = _currentMedia!;
     final AdultAccessGrant? grant = _sessionAdultAccess;
+    final ZunoCastMediaAccess? mediaAccess = _sessionZunoMedia;
+    final bool Function()? allowed = _sessionZunoAllowed;
     final List<Channel>? list = _castPlaylist;
     final Channel? channel = currentCastChannel;
     final int scope = ActiveProfile.instance.scopeListenable.value;
@@ -789,11 +840,15 @@ class CastManager extends ChangeNotifier {
         revision != _sessionSeq ||
         selection != _selectionRevision ||
         scope != ActiveProfile.instance.scopeListenable.value ||
-        grant?.isValid == false) return;
+        grant?.isValid == false ||
+        (AppPlatform.isZuno && allowed?.call() != true)) {
+      return;
+    }
     selectDevice(device);
     if (list != null && channel != null) {
       setCastPlaylist(list, channel, adultAccess: grant);
     }
+    if (AppPlatform.isZuno) setZunoMediaAccess(mediaAccess);
     if (_disposed || isCancelled?.call() == true || revision != _sessionSeq)
       return;
     final int attemptRevision = _sessionSeq + 1;
@@ -821,16 +876,42 @@ class CastManager extends ChangeNotifier {
     String? channelGenre,
     String? imageUrl,
     AdultAccessGrant? adultAccess,
+    ZunoCastMedia? zunoMedia,
   }) async {
+    final controls = ParentalControls.instance;
+    _listenZunoCatalogue();
+    final int scope = ActiveProfile.instance.scopeListenable.value;
+    final int generation = controls.contentGeneration;
+    final ZunoCastMediaAccess? mediaAccess = AppPlatform.isZuno
+        ? (zunoMedia?.capture() ??
+            (_pendingZunoMedia?.media.streamUrl == streamUrl
+                ? _pendingZunoMedia : null))
+        : null;
+    bool allowed() => !AppPlatform.isZuno ||
+        (controls.protectsZuno && controls.contentReady &&
+         scope == ActiveProfile.instance.scopeListenable.value &&
+         generation == controls.contentGeneration &&
+         (mediaAccess != null
+             ? mediaAccess.allows(streamUrl, adultAccess: adultAccess)
+             : !controls.kidsMode.value &&
+               ActiveProfile.instance.playlistIds == null));
     if (_disposed ||
+        !allowed() ||
         adultAccess?.isValid == false ||
         (adultAccess == null &&
             ChannelClassifier.isAdult(
-                channelName ?? title, channelGenre ?? ''))) return;
+                channelName ?? title, channelGenre ?? ''))) {
+      return;
+    }
     // Un Cast ordinaire remplaçant un ancien Cast protégé n'hérite jamais
     // de son verrou ; une session préexistante n'est pas liée par l'UI.
     _releaseAdultAccess();
     _sessionAdultAccess = adultAccess;
+    _sessionZunoMedia = mediaAccess;
+    _sessionZunoAllowed = allowed;
+    // Une relance du picker après erreur conserve les métadonnées de cette
+    // URL résolue, sans les étendre à une autre URL ou à un autre profil.
+    if (AppPlatform.isZuno) _pendingZunoMedia = mediaAccess;
     adultAccess?.addListener(_onAdultAccessChanged);
     final int mySeq = ++_sessionSeq;
     _currentMedia = (
@@ -901,6 +982,7 @@ class CastManager extends ChangeNotifier {
   /// proposer Ch+/Ch- : un cast est actif ET on connaît la playlist.
   bool get canZapOnCast =>
       isCasting &&
+      _zunoSessionValid &&
       (_castPlaylist?.length ?? 0) > 1 &&
       _playlistAdultAccess?.isValid != false;
 
@@ -925,6 +1007,10 @@ class CastManager extends ChangeNotifier {
         allowed.indexWhere((Channel channel) => _sameChannel(channel, current));
     _castPlaylist = _castIndex < 0 ? null : List<Channel>.unmodifiable(allowed);
     _playlistAdultAccess = _castPlaylist == null ? null : adultAccess;
+    if (AppPlatform.isZuno) {
+      _pendingZunoMedia = ZunoCastMedia.channel(current,
+          streamUrl: current.streamUrl).capture();
+    }
     notifyListeners();
   }
 
@@ -942,7 +1028,12 @@ class CastManager extends ChangeNotifier {
   static bool _allowsChannel(Channel channel, AdultAccessGrant? grant) =>
       ActiveProfile.instance.allowsPlaylist(channel.playlistId) &&
       grant?.isValid != false &&
-      (!isAdultChannel(channel) || grant != null);
+      (!isAdultChannel(channel) || grant != null) &&
+      (!AppPlatform.isZuno ||
+          (ParentalControls.instance.protectsZuno &&
+           ParentalControls.instance.contentReady &&
+           ((!ParentalControls.instance.kidsMode.value && grant != null) ||
+            !isHiddenFromNormalCatalog(channel))));
 
   /// Chaîne suivante sur la TV (bouton Ch+ / ⏭ des surfaces globales).
   Future<void> zapCastNext() => _zapCastBy(1);
@@ -1064,6 +1155,8 @@ class CastManager extends ChangeNotifier {
       channelGenre: channelGenre,
       imageUrl: imageUrl,
       adultAccess: adultAccess,
+      zunoMedia: AppPlatform.isZuno && channel != null
+          ? ZunoCastMedia.channel(channel, streamUrl: streamUrl) : null,
     );
     return !_disposed &&
         isCasting &&
@@ -1264,6 +1357,12 @@ class CastManager extends ChangeNotifier {
         myTransport.sessionIsCurrent = () =>
             !_disposed &&
             mySeq == _sessionSeq &&
+            _sessionAdultAccess?.isValid != false &&
+            _zunoSessionValid;
+      }
+      if (AppPlatform.isZuno && myTransport is UpnpAvTransport) {
+        myTransport.sessionIsCurrent = () =>
+            !_disposed && mySeq == _sessionSeq && _zunoSessionValid &&
             _sessionAdultAccess?.isValid != false;
       }
       if (device.kind == CastDeviceKind.dlna) {
@@ -2477,6 +2576,8 @@ class CastManager extends ChangeNotifier {
 
   Future<void> _disconnect({bool nativeOnly = false}) async {
     _releaseAdultAccess();
+    _sessionZunoMedia = null;
+    _sessionZunoAllowed = null;
     _nativeSessionSuspended = false;
     final int revision = ++_sessionSeq;
     ++_selectionRevision;
@@ -2552,6 +2653,7 @@ class CastManager extends ChangeNotifier {
     _dlnaRelayFallbackProfile = relayFallbackProfile;
     _dlnaReconnects.clear();
     _dlnaReconnecting = false;
+    _dlnaWatchdogOwner = null;
     _dlnaWatchdog =
         Timer.periodic(const Duration(seconds: 10), (Timer t) async {
       // Session changée (un nouveau cast a démarré) ou déconnecté → stop.
@@ -2564,12 +2666,51 @@ class CastManager extends ChangeNotifier {
       // pause VOLONTAIRE de l'utilisateur (sinon on relancerait un flux
       // qu'il a mis en pause), ni pendant une reconnexion déjà en cours.
       if (_state != CastState.casting || _dlnaReconnecting) return;
-      final String? st = await transport.currentTransportState();
-      if (mySeq != _sessionSeq || !identical(transport, _transport)) return;
-      // null = la TV ne supporte pas GetTransportInfo → rien à surveiller.
-      if (st == null) return;
-      if (st == 'STOPPED' || st == 'NO_MEDIA_PRESENT') {
-        await _dlnaAutoReconnect(transport, mySeq);
+      if (!AppPlatform.isZuno) {
+        // Le code partagé garde le chemin historique de 7 MOTION.
+        final String? st = await transport.currentTransportState();
+        if (mySeq != _sessionSeq || !identical(transport, _transport)) return;
+        if (st == 'STOPPED' || st == 'NO_MEDIA_PRESENT') {
+          await _dlnaAutoReconnect(transport, mySeq);
+        }
+        return;
+      }
+      final bool serialize = !RepairFlags.dlnaWatchdogLegacy;
+      if (serialize && _dlnaWatchdogOwner != null) return;
+      final Object? owner = serialize ? Object() : null;
+      if (owner != null) _dlnaWatchdogOwner = owner;
+      final int scope = ActiveProfile.instance.scopeListenable.value;
+      final int zap = _zapRevision;
+      bool current() =>
+          !_disposed &&
+          mySeq == _sessionSeq &&
+          identical(transport, _transport) &&
+          _state == CastState.casting &&
+          scope == ActiveProfile.instance.scopeListenable.value &&
+          zap == _zapRevision &&
+          _sessionAdultAccess?.isValid != false &&
+          _zunoSessionValid &&
+          (currentCastChannel == null ||
+              _allowsChannel(currentCastChannel!, _sessionAdultAccess));
+      try {
+        final String? st = await transport.currentTransportState();
+        // L'attente a pu couvrir Pause, Stop, un zap ou un autre profil.
+        // Le repli du mécanisme conserve également ces protections.
+        if (!current()) return;
+        if (st == 'STOPPED' || st == 'NO_MEDIA_PRESENT') {
+          await _dlnaAutoReconnect(transport, mySeq, isCurrent: current);
+        }
+      } on Object catch (error) {
+        if (current()) {
+          StructuredLogger.instance.warn(
+            domain: 'cast', event: 'dlna.watchdog_failure',
+            ctx: <String, Object?>{'error': redactCastText(error.toString())},
+          );
+        }
+      } finally {
+        if (owner != null && identical(owner, _dlnaWatchdogOwner)) {
+          _dlnaWatchdogOwner = null;
+        }
       }
     });
   }
@@ -2579,8 +2720,10 @@ class CastManager extends ChangeNotifier {
   /// partir en boucle si le serveur IPTV est définitivement coupé.
   Future<void> _dlnaAutoReconnect(
     UpnpAvTransport transport,
-    int mySeq,
-  ) async {
+    int mySeq, {
+    bool Function()? isCurrent,
+  }) async {
+    if (isCurrent?.call() == false) return;
     final String? url = _dlnaLiveUrl;
     if (url == null) return;
     final DateTime now = DateTime.now();
@@ -2604,11 +2747,19 @@ class CastManager extends ChangeNotifier {
     try {
       await Future<void>.delayed(const Duration(seconds: 2));
       if (mySeq != _sessionSeq || _transport == null) return;
-      await transport.playStream(
-        streamUrl: url,
-        title: _dlnaLiveTitle ?? 'ZUNO',
-      );
+      if (isCurrent?.call() == false) return;
+      if (isCurrent == null) {
+        await transport.playStream(
+          streamUrl: url, title: _dlnaLiveTitle ?? 'ZUNO',
+        );
+      } else {
+        await transport.recoverStream(
+          streamUrl: url, title: _dlnaLiveTitle ?? 'ZUNO',
+          isCurrent: isCurrent,
+        );
+      }
     } on Object catch (e) {
+      if (isCurrent?.call() == false) return;
       StructuredLogger.instance.warn(
         domain: 'cast',
         event: 'dlna.auto_reconnect_fail',
@@ -2620,7 +2771,8 @@ class CastManager extends ChangeNotifier {
       // sans re-dérouler castTo : on registre le relais et on rejoue
       // UNE fois. En cas de succès, la session continue sur le relais
       // (keep-alive téléphone activé) au lieu de mourir en silence.
-      await _dlnaReconnectViaRelay(transport, url, mySeq, directError: e);
+      await _dlnaReconnectViaRelay(transport, url, mySeq,
+          directError: e, isCurrent: isCurrent);
     } finally {
       if (mySeq == _sessionSeq) _dlnaReconnecting = false;
     }
@@ -2634,7 +2786,9 @@ class CastManager extends ChangeNotifier {
     String failedUrl,
     int mySeq, {
     required Object directError,
+    bool Function()? isCurrent,
   }) async {
+    if (isCurrent?.call() == false) return;
     final String? upstream = _dlnaRelayFallbackUpstream;
     final DlnaProfile? prof = _dlnaRelayFallbackProfile;
     if (!_looksLikeConnFailure(directError.toString())) return;
@@ -2651,15 +2805,23 @@ class CastManager extends ChangeNotifier {
         receiverHost: transport.device.host,
       );
       if (relayUrl == null) return;
-      if (mySeq != _sessionSeq || _transport == null) {
+      if (mySeq != _sessionSeq || _transport == null ||
+          isCurrent?.call() == false) {
         LocalCastServer.instance.clearRelay(relayUrl);
         return;
       }
-      await transport.playStream(
-        streamUrl: relayUrl,
-        title: _dlnaLiveTitle ?? 'ZUNO',
-      );
+      if (isCurrent == null) {
+        await transport.playStream(
+          streamUrl: relayUrl, title: _dlnaLiveTitle ?? 'ZUNO',
+        );
+      } else {
+        await transport.recoverStream(
+          streamUrl: relayUrl, title: _dlnaLiveTitle ?? 'ZUNO',
+          isCurrent: isCurrent,
+        );
+      }
       if (mySeq != _sessionSeq || !identical(transport, _transport)) return;
+      if (isCurrent?.call() == false) return;
       adopted = true;
       _currentRelayUrl = relayUrl;
       _dlnaLiveUrl = relayUrl;
@@ -2688,6 +2850,7 @@ class CastManager extends ChangeNotifier {
     _dlnaWatchdog = null;
     _dlnaReconnects.clear();
     _dlnaReconnecting = false;
+    _dlnaWatchdogOwner = null;
     _dlnaLiveUrl = null;
     _dlnaLiveTitle = null;
     _dlnaRelayFallbackUpstream = null;

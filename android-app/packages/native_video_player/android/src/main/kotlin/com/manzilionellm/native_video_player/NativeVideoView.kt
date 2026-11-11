@@ -33,6 +33,7 @@ import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
+import androidx.media3.common.Timeline
 import androidx.media3.common.Tracks
 import androidx.media3.common.VideoSize
 import androidx.media3.common.text.CueGroup
@@ -92,6 +93,7 @@ import com.manzilionellm.native_video_player.logic.PictureHealth
 import com.manzilionellm.native_video_player.logic.PictureSignal
 import com.manzilionellm.native_video_player.logic.PictureTune
 import com.manzilionellm.native_video_player.logic.PlaybackSession
+import com.manzilionellm.native_video_player.logic.PlaybackMetrics
 import com.manzilionellm.native_video_player.logic.PlayerCensus
 import com.manzilionellm.native_video_player.logic.ProbeAttach
 import com.manzilionellm.native_video_player.logic.VolumeTrace
@@ -109,6 +111,7 @@ import com.manzilionellm.native_video_player.logic.VideoTrackChoice
 import com.manzilionellm.native_video_player.logic.VideoSurfaceBuffer
 import com.manzilionellm.native_video_player.logic.VideoSurfaceSize
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodCall
@@ -397,6 +400,12 @@ class NativeVideoView(
     // Epoch Dart du setUrl en cours (accusé). null = pas un setUrl.
     private var dartEpoch: Int? = null
 
+    // L1-07 : aucun collecteur sans opt-in explicite de l'entrée ZUNO.
+    // Un seul bilan et une seule fenêtre, sans catalogue ni URL supplémentaire.
+    private var playbackMetrics: PlaybackMetrics? = null
+    private var metricsWindow: Timeline.Window? = null
+    private var disposeMetrics: Map<String, Any?>? = null
+
     // Langue audio demandée par l'app pour cette lecture.
     private var prefAudio: String? = null
 
@@ -612,6 +621,7 @@ class NativeVideoView(
                 maybeCopyFrame()
             }
             sampleVideoCadence()
+            samplePlaybackMetrics()
             // Filet : la copie de la dernière image est retirée dès qu'une
             // trame a été rendue APRÈS son affichage, sans attendre le
             // signal « première image » (absent sur certaines box quand la
@@ -1033,9 +1043,10 @@ class NativeVideoView(
      */
     private fun suspendForBackground() {
         if (released || suspended) return
+        playbackMetrics?.plannedInterruption(SystemClock.elapsedRealtime())
         suspended = true
         if (vodMode && player.currentPosition > 0) lastKnownPos = player.currentPosition
-        silenceForHandoff()
+        silenceForHandoff(preserveMetrics = true)
         abandonOwnFocus()
         // Repli Flutter : la phrase d'avant. Nouveau chemin : la ligne [SON]
         // demandée quand l'arrêt part de l'activité (onPause / onStop).
@@ -1369,6 +1380,7 @@ class NativeVideoView(
                     result.error("no_url", "setUrl appelé sans url", null)
                     return
                 }
+                beginPlaybackMetrics(call.argument<Number>("metricsMediaId")?.toLong())
                 if (url != currentUrl) {
                     // Tant que le nouveau format n'est pas identifié, aucun
                     // réseau neuronal ne touche les pixels de cette source.
@@ -1485,6 +1497,7 @@ class NativeVideoView(
                 result.success(null)
             }
             "setEngine" -> {
+                playbackMetrics?.plannedInterruption(SystemClock.elapsedRealtime())
                 // Choix manuel. « ffmpeg » sans décodeur vidéo ne rouvre
                 // pas la chaîne : on le dit, et on reste où on est.
                 val requested = VideoEngine.fromWire(call.arguments as? String)
@@ -1509,6 +1522,7 @@ class NativeVideoView(
                 result.success(null)
             }
             "setContrast" -> {
+                playbackMetrics?.plannedInterruption(SystemClock.elapsedRealtime())
                 contrastRequested = call.arguments == true
                 // Le shader relit cette valeur pour chaque image. Ne pas
                 // réenregistrer le flux GL lors d'un simple ON/OFF.
@@ -1685,6 +1699,7 @@ class NativeVideoView(
                 beginDispose(result)
             }
             "seekTo" -> {
+                playbackMetrics?.plannedInterruption(SystemClock.elapsedRealtime())
                 val ms = (call.argument<Number>("ms"))?.toLong() ?: 0L
                 val dur = player.duration
                 val target = if (dur != C.TIME_UNSET && dur > 0) ms.coerceIn(0L, dur) else ms.coerceAtLeast(0L)
@@ -1759,6 +1774,7 @@ class NativeVideoView(
                 result.success(null)
             }
             "pause" -> {
+                playbackMetrics?.plannedInterruption(SystemClock.elapsedRealtime())
                 pausedByFocus = false
                 preparePlayRequested = false
                 player.pause()
@@ -1780,8 +1796,88 @@ class NativeVideoView(
         return eventTime.realtimeMs >= sessionOpenedAt && sessionOpenedAt > 0L
     }
 
+    /** Démarre au passage de la demande dans le natif, avant son attente audio. */
+    private fun beginPlaybackMetrics(requestedMediaId: Long?) {
+        val mediaId = requestedMediaId?.takeIf { it in 1..PlaybackMetrics.MAX_VALUE }
+        if (mediaId != null && playbackMetrics?.mediaId == mediaId) return
+        finishPlaybackMetrics(if (mediaId == null) PlaybackMetrics.EndReason.DISABLED
+            else PlaybackMetrics.EndReason.MEDIA_CHANGED)
+        if (mediaId == null || released || disposeStarted) return
+        val metrics = PlaybackMetrics(metricsSessionIds.incrementAndGet(), mediaId, SystemClock.elapsedRealtime())
+        playbackMetrics = metrics
+        // L'ancien décodeur peut encore exister avant le stop du zap. Sa
+        // valeur actuelle devient une origine, pas des pertes du nouveau média.
+        try {
+            player.videoDecoderCounters?.let {
+                it.ensureUpdated()
+                metrics.decoderBaseline(it, it.droppedBufferCount.toLong())
+            }
+        } catch (_: RuntimeException) { /* Une mesure ne bloque jamais la lecture. */ }
+    }
+
+    /** Le tag du média de l'événement est nécessaire, pas seulement son heure. */
+    private fun metricsForEvent(event: AnalyticsListener.EventTime): PlaybackMetrics? {
+        val metrics = playbackMetrics ?: return null
+        val generation = sessions.generation
+        if (released || !metrics.accepts(generation, event.realtimeMs)) return null
+        if (event.windowIndex < 0 || event.windowIndex >= event.timeline.windowCount) return null
+        val window = metricsWindow ?: Timeline.Window().also { metricsWindow = it }
+        val tag = event.timeline.getWindow(event.windowIndex, window).mediaItem.localConfiguration?.tag
+        if (tag != generation || player.currentMediaItem?.localConfiguration?.tag != generation) return null
+        return metrics
+    }
+
+    /** Lecture passive au rythme du timer existant : ni nouveau timer ni trace. */
+    private fun samplePlaybackMetrics() {
+        val metrics = playbackMetrics ?: return
+        if (released || !metrics.accepts(sessions.generation, SystemClock.elapsedRealtime())) return
+        try {
+            if (player.currentMediaItem?.localConfiguration?.tag != sessions.generation) return
+            if (player.isPlaying && player.playbackState == Player.STATE_READY) {
+                metrics.readyObserved(sessions.generation, SystemClock.elapsedRealtime())
+            }
+            player.videoDecoderCounters?.let {
+                it.ensureUpdated()
+                metrics.decoderSample(it, it.droppedBufferCount.toLong())
+            }
+            val offset = if (player.isCommandAvailable(Player.COMMAND_GET_CURRENT_MEDIA_ITEM)) {
+                player.currentLiveOffset.takeUnless { it == C.TIME_UNSET }
+            } else null
+            metrics.liveOffset(offset)
+        } catch (_: RuntimeException) {
+            metrics.liveOffset(null)
+        }
+    }
+
+    private fun recordMetricsState(event: AnalyticsListener.EventTime, state: Int) {
+        val metrics = metricsForEvent(event) ?: return
+        val value = when (state) {
+            Player.STATE_BUFFERING -> PlaybackMetrics.State.BUFFERING
+            Player.STATE_READY -> PlaybackMetrics.State.READY
+            Player.STATE_ENDED -> PlaybackMetrics.State.ENDED
+            else -> PlaybackMetrics.State.OTHER
+        }
+        metrics.state(sessions.generation, event.realtimeMs, value,
+            preparePlayRequested && player.playWhenReady && !pausedByFocus &&
+                !suspended && !castSuspended && AppForeground.allowsReopen())
+    }
+
+    private fun finishPlaybackMetrics(reason: PlaybackMetrics.EndReason): Map<String, Any?>? {
+        val metrics = playbackMetrics ?: return null
+        samplePlaybackMetrics()
+        val summary = metrics.finish(reason, SystemClock.elapsedRealtime())?.toWire()
+        playbackMetrics = null
+        metricsWindow = null
+        if (summary != null) emit("playbackMetrics", summary)
+        return summary
+    }
+
     override fun onPlaybackStateChanged(eventTime: AnalyticsListener.EventTime, state: Int) {
         if (!fresh(eventTime)) return
+        recordMetricsState(eventTime, state)
+        if (state == Player.STATE_ENDED && metricsForEvent(eventTime) != null) {
+            finishPlaybackMetrics(PlaybackMetrics.EndReason.ENDED)
+        }
         when (state) {
             Player.STATE_BUFFERING -> emit("buffering", true)
             Player.STATE_READY -> {
@@ -1809,6 +1905,7 @@ class NativeVideoView(
 
     override fun onIsPlayingChanged(eventTime: AnalyticsListener.EventTime, isPlaying: Boolean) {
         if (!fresh(eventTime)) return
+        recordMetricsState(eventTime, player.playbackState)
         if (!isPlaying) resetVideoCadence()
         emit("playing", isPlaying)
         // Le son de CETTE session seulement. Avant, le volume remontait
@@ -1932,6 +2029,14 @@ class NativeVideoView(
         // L'heure de l'événement, pas « maintenant » : une trame déjà
         // décodée avant le zap ne retire pas le logo de la nouvelle chaîne.
         if (!fresh(eventTime)) return
+        metricsForEvent(eventTime)?.let { metrics ->
+            samplePlaybackMetrics()
+            // Media3 1.5.1 documente renderTimeMs sur elapsedRealtime.
+            // Le collecteur conserve seulement la première image logique,
+            // jamais une nouvelle image initiale après un reset technique.
+            metrics.firstFrame(sessions.generation, eventTime.realtimeMs, renderTimeMs)
+                ?.let { emit("playbackMetrics", it.toWire()) }
+        }
         reconnect.onRecovered()
         behindLiveCount = 0
         sawFrame = true
@@ -1948,6 +2053,16 @@ class NativeVideoView(
         handler.postDelayed({
             if (!released) maybeCopyFrame(force = true)
         }, 400)
+    }
+
+    override fun onDroppedVideoFrames(
+        eventTime: AnalyticsListener.EventTime,
+        droppedFrames: Int,
+        elapsedMs: Long,
+    ) {
+        metricsForEvent(eventTime)?.droppedFrames(
+            sessions.generation, eventTime.realtimeMs, droppedFrames.toLong())
+        samplePlaybackMetrics()
     }
 
     override fun onVideoDecoderInitialized(
@@ -2031,6 +2146,8 @@ class NativeVideoView(
 
     override fun onPlayerError(eventTime: AnalyticsListener.EventTime, error: PlaybackException) {
         if (!fresh(eventTime)) return
+        // Inclure l'attente de reconnexion dans la coupure, avant prepare().
+        recordMetricsState(eventTime, Player.STATE_BUFFERING)
         // Surface déjà partie : une erreur ne doit pas repréparer le flux.
         if (refuseReopen()) return
         val token = sessions.generation
@@ -2125,8 +2242,14 @@ class NativeVideoView(
      * l'ancienne chaîne. Le jeton change : les callbacks déjà postés
      * ne relancent plus cette session.
      */
-    private fun silenceForHandoff() {
+    private fun silenceForHandoff(preserveMetrics: Boolean = false) {
         if (released) return
+        if (preserveMetrics) {
+            samplePlaybackMetrics()
+            playbackMetrics?.invalidateGeneration()
+        } else {
+            finishPlaybackMetrics(PlaybackMetrics.EndReason.SILENCED)
+        }
         pausedByFocus = false
         sessions.open()
         aiSessionId = sessions.generation
@@ -2199,7 +2322,7 @@ class NativeVideoView(
         // Avant stop() : la copie couvre la surface, qui va se vider.
         if (sawFrame && heldBitmap != null) showHeldFrame()
         if (playerKey >= 0) owners.claim(playerKey)
-        silenceForHandoff()
+        silenceForHandoff(preserveMetrics = true)
         preparePlayRequested = preservePlayRequested ?: true
         pausedByFocus = preserveFocusPause
         val token = sessions.generation
@@ -2262,6 +2385,7 @@ class NativeVideoView(
         val lang = prefAudio
         if (!lang.isNullOrBlank()) params.setPreferredAudioLanguage(lang)
         player.trackSelectionParameters = params.build()
+        playbackMetrics?.activateGeneration(token, SystemClock.elapsedRealtime())
         val item = MediaItem.Builder().setUri(url).setTag(token).build()
         if (startPositionMs != null && startPositionMs > 0L) {
             player.setMediaItem(item, startPositionMs)
@@ -2852,6 +2976,7 @@ class NativeVideoView(
 
     override fun onPlayWhenReadyChanged(eventTime: AnalyticsListener.EventTime, playWhenReady: Boolean, reason: Int) {
         if (!fresh(eventTime)) return
+        recordMetricsState(eventTime, player.playbackState)
         if (reason == Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS) {
             emit("audioDiag", "Focus audio (Media3) : PERDU → lecture mise en pause par Android.")
         }
@@ -2984,13 +3109,16 @@ class NativeVideoView(
             return
         }
         if (released) {
-            result?.success(null)
+            result?.success(disposeMetrics)
             return
         }
         if (disposeStarted) {
             if (result != null) disposeResult = result
             return
         }
+        // Le bilan est pris avant le retrait de l'écouteur. Il est aussi
+        // retourné par dispose : Dart peut avoir déjà détaché son handler.
+        disposeMetrics = finishPlaybackMetrics(PlaybackMetrics.EndReason.DISPOSED)
         // All calls are serialized above. Set the guard before any callbacks/stop.
         disposeStarted = true
         disposeResult = result
@@ -3082,7 +3210,7 @@ class NativeVideoView(
         disposeResult = null
         try {
             if (playerReleaseConfirmed) {
-                pending?.success(null)
+                pending?.success(disposeMetrics)
             } else {
                 pending?.error("player_release_failed", "Native player release was not confirmed", null)
             }
@@ -3510,6 +3638,8 @@ class NativeVideoView(
      */
     private fun rebuildPlayer() {
         if (!::player.isInitialized || released || disposeStarted) return
+        samplePlaybackMetrics()
+        playbackMetrics?.invalidateGeneration()
         val old = player
         val oldUsedGl = contrastPipelineInstalled
         val next = buildConfiguredPlayer()
@@ -3797,6 +3927,8 @@ class NativeVideoView(
     }
 
     companion object {
+        // Compteur éphémère du processus, jamais restauré depuis le disque.
+        private val metricsSessionIds = AtomicLong(0L)
         /**
          * Délai après setUrl avant de conclure que FFmpeg ne deviendra pas
          * prêt. Voir [armFfmpegReadyWatchdog].

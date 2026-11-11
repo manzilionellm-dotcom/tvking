@@ -1,0 +1,10 @@
+// Réutilise le compilateur Kotlin déjà résolu par les tests logiques natifs.
+// Aucune dépendance applicative ni version supplémentaire n'est introduite.
+gradle.projectsEvaluated {
+    rootProject.tasks.register('audit116CastCompiler', Copy) {
+        from(rootProject.configurations.getByName('kotlinCompilerClasspath'))
+        from(rootProject.configurations.getByName('compileClasspath'))
+        into(rootProject.providers.environmentVariable('AUDIT116_COMPILER_DIR').get())
+        duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    }
+}

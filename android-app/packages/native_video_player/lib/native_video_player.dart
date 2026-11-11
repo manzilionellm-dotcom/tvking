@@ -19,10 +19,12 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
 import 'playback_lease.dart';
+import 'playback_metrics.dart';
 import 'spoken_track.dart';
 import 'video_quality.dart';
 
 export 'video_quality.dart';
+export 'playback_metrics.dart';
 
 /// Une piste audio ou de sous-titres proposée par le fichier en cours.
 @immutable
@@ -148,6 +150,13 @@ class NativeVideoController extends ChangeNotifier {
   /// Plusieurs lignes séparées par « \n ». Null = ignoré.
   static void Function(String diagnostic)? onAudioDiagnostic;
 
+  /// L1-07 : opt-in de l'entrée ZUNO. Le paquet partagé reste inactif
+  /// par défaut ; aucun moteur PC ne produit de preuve native Android.
+  static bool playbackMetricsEnabled = false;
+  static void Function(NativePlaybackMetrics metrics)? onPlaybackMetrics;
+  static int _nextMetricsOwnerId = 0;
+  static const int _metricsStride = 0x100000000;
+
   /// Sonde PCM du diagnostic. Faux par défaut : le processeur natif
   /// reste inactif (NOT_SET), le son ne change pas.
   static bool audioProbeEnabled = false;
@@ -249,6 +258,66 @@ class NativeVideoController extends ChangeNotifier {
   String? _pendingUrl;
   bool _attached = false;
   bool _disposed = false;
+
+  // Identifiants éphémères seulement, sans liste de médias et sans persistance.
+  // La partie haute identifie ce contrôleur, la partie basse sa sélection.
+  int? _metricsOwnerId;
+  int _metricsSelection = 0;
+  String? _metricsUrl;
+  int _metricsLastSessionId = 0;
+  bool _metricsFirstSeen = false;
+  bool _metricsSummarySeen = false;
+
+  int? get _metricsMediaId => _metricsOwnerId == null ? null :
+      _metricsOwnerId! * _metricsStride + _metricsSelection;
+
+  Map<String, int> _metricsArguments(String url, {bool newSession = false}) {
+    if (!playbackMetricsEnabled || _backend != null) return const <String, int>{};
+    _metricsOwnerId ??= ++_nextMetricsOwnerId;
+    if (_metricsUrl != url || newSession || _metricsSelection == 0) {
+      _metricsUrl = url;
+      _metricsSelection++;
+    }
+    final int id = _metricsMediaId!;
+    // Une borne atteinte coupe seulement le diagnostic, jamais la lecture.
+    if (_metricsSelection >= _metricsStride || id > 9000000000000000) {
+      return const <String, int>{};
+    }
+    return <String, int>{'metricsMediaId': id};
+  }
+
+  void _consumeNativeMetrics(Object? arguments, {bool summaryOnly = false}) {
+    if (!playbackMetricsEnabled || _backend != null || _metricsOwnerId == null) return;
+    final NativePlaybackMetrics? metrics = NativePlaybackMetrics.readNative(arguments);
+    if (metrics == null || (summaryOnly && !metrics.isSummary)) return;
+    final int selection = metrics.mediaId % _metricsStride;
+    if (metrics.mediaId ~/ _metricsStride != _metricsOwnerId ||
+        selection == 0 || selection > _metricsSelection ||
+        (!metrics.isSummary && (metrics.mediaId != _metricsMediaId || _disposed))) {
+      return;
+    }
+    // Le canal peut livrer le bilan puis le retourner par dispose. Une seule
+    // publication ; un ancien identifiant ne remplace jamais la session récente.
+    if (metrics.sessionId < _metricsLastSessionId) return;
+    if (metrics.sessionId > _metricsLastSessionId) {
+      _metricsLastSessionId = metrics.sessionId;
+      _metricsFirstSeen = false;
+      _metricsSummarySeen = false;
+    }
+    if (metrics.isSummary) {
+      if (_metricsSummarySeen) return;
+      _metricsSummarySeen = true;
+    } else {
+      if (_metricsFirstSeen || _metricsSummarySeen) return;
+      _metricsFirstSeen = true;
+    }
+    try {
+      onPlaybackMetrics?.call(metrics);
+    } catch (_) {
+      // Le rangement d'une mesure ne doit pas interrompre le canal du lecteur.
+      if (kDebugMode) debugPrint('[NativeVideo] bilan natif non enregistré');
+    }
+  }
 
   /// Une session Cast peut déjà jouer quand une nouvelle vue locale est
   /// construite. Garder le verrou avant l'arrivée de sa PlatformView évite
@@ -407,6 +476,7 @@ class NativeVideoController extends ChangeNotifier {
     return <String, dynamic>{
       'url': url,
       'epoch': _epoch,
+      ..._metricsArguments(url),
       if (openAsVod) 'vod': true,
       if (lang != null && lang.isNotEmpty) 'preferredAudio': lang,
     };
@@ -426,13 +496,19 @@ class NativeVideoController extends ChangeNotifier {
   }
 
   Future<dynamic> _onNativeCall(MethodCall call) async {
+    // Seule cette entrée vient du MethodChannel Android. Un firstFrame
+    // synthétique du moteur PC ou du secours position n'est pas une mesure.
+    if (call.method == 'playbackMetrics') {
+      _consumeNativeMetrics(call.arguments);
+      return null;
+    }
     applyBackendEvent(call.method, call.arguments);
     return null;
   }
 
   /// Applique un événement d'état (natif Android OU moteur PC).
   void applyBackendEvent(String method, Object? arguments) {
-    if (_disposed) return;
+    if (_disposed || method == 'playbackMetrics') return;
     // Le cycle de vie concerne l'application, pas le flux. Pendant un zap
     // l'ack peut être différé jusqu'au retour au premier plan : filtrer ce
     // message laisserait le verrou d'arrière-plan collé sur l'ancien état.
@@ -635,6 +711,8 @@ class NativeVideoController extends ChangeNotifier {
     bool keepPicture = false,
   }) {
     if (_disposed) return;
+    final Map<String, int> metricsArgs =
+        _metricsArguments(url, newSession: isEnded || !audible);
     // On prend le son AVANT d'ouvrir : les autres lecteurs sont coupés
     // tout de suite (volume 0 + arrêt), puis seulement on charge.
     audible = true;
@@ -684,6 +762,7 @@ class NativeVideoController extends ChangeNotifier {
     final Map<String, dynamic> args = <String, dynamic>{
       'url': url,
       'epoch': _epoch,
+      ...metricsArgs,
       if (vod) 'vod': true,
       if (startAt > Duration.zero) 'startMs': startAt.inMilliseconds,
       if (lang != null && lang.isNotEmpty) 'preferredAudio': lang,
@@ -865,7 +944,12 @@ class NativeVideoController extends ChangeNotifier {
     ch?.setMethodCallHandler(null);
     if (ch == null) return;
     try {
-      await ch.invokeMethod<void>('dispose');
+      if (_metricsOwnerId == null) {
+        await ch.invokeMethod<void>('dispose');
+      } else {
+        final Object? summary = await ch.invokeMethod<Object?>('dispose');
+        _consumeNativeMetrics(summary, summaryOnly: true);
+      }
     } catch (e) {
       // La vue a pu partir en même temps : la libération Kotlin est
       // idempotente, ce n'est pas une panne de lecture.
@@ -887,7 +971,15 @@ class NativeVideoController extends ChangeNotifier {
       _channel = null;
       if (ch != null) _audioFlagChannels.remove(ch);
       ch?.setMethodCallHandler(null);
-      ch?.invokeMethod<void>('dispose');
+      if (_metricsOwnerId == null) {
+        ch?.invokeMethod<void>('dispose');
+      } else {
+        ch?.invokeMethod<Object?>('dispose').then<void>((Object? summary) {
+          _consumeNativeMetrics(summary, summaryOnly: true);
+        }, onError: (Object _) {
+          // La vue peut être déjà fermée ; aucun nouveau dispose ni retry.
+        });
+      }
     }
     super.dispose();
   }

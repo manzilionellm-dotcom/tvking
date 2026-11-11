@@ -42,6 +42,8 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:xml/xml.dart';
 
+import '../../../core/app/app_platform.dart';
+import '../../../core/app/repair_flags.dart';
 import '../../../core/observability/structured_logger.dart';
 import '../domain/cast_device.dart';
 import 'cast_transport.dart';
@@ -66,10 +68,33 @@ enum MetadataMode {
   none,
 }
 
+/// Une commande devenue obsolète ne doit pas envoyer la suite de la séquence.
+class UpnpSessionObsolete implements Exception {
+  const UpnpSessionObsolete();
+
+  @override
+  String toString() => 'Session UPnP devenue obsolète';
+}
+
 class UpnpAvTransport implements CastTransport {
   UpnpAvTransport(this.device);
 
   final CastDevice device;
+
+  /// Droit éphémère de la session ZUNO. Stop reste disponible pour nettoyer
+  /// une session révoquée. Aucun caller 7 MOTION ne change de comportement.
+  bool Function()? sessionIsCurrent;
+
+  bool get _cancelExpiredRequests =>
+      AppPlatform.isZuno && !RepairFlags.dlnaWatchdogLegacy;
+
+  void _checkCurrent(bool Function()? isCurrent,
+      {bool allowExpiredSession = false}) {
+    if (!AppPlatform.isZuno || allowExpiredSession) return;
+    if (sessionIsCurrent?.call() == false || isCurrent?.call() == false) {
+      throw const UpnpSessionObsolete();
+    }
+  }
 
   /// Profil DLNA à utiliser. Initialisé par défaut sur MPEG-TS LIVE
   /// (cas IPTV le plus courant). Le cast_manager le remplace avec
@@ -138,7 +163,29 @@ class UpnpAvTransport implements CastTransport {
     String title = 'ZUNO',
     String? imageUrl,
     bool assumeSuccessWhenUnknown = true,
+  }) => _playStream(
+        streamUrl: streamUrl,
+        title: title,
+        imageUrl: imageUrl,
+        assumeSuccessWhenUnknown: assumeSuccessWhenUnknown,
+      );
+
+  /// Reprise du watchdog : la même autorisation est revérifiée avant et
+  /// après chaque attente, sans modifier une propriété partagée du transport.
+  Future<void> recoverStream({
+    required String streamUrl,
+    required String title,
+    required bool Function() isCurrent,
+  }) => _playStream(streamUrl: streamUrl, title: title, isCurrent: isCurrent);
+
+  Future<void> _playStream({
+    required String streamUrl,
+    String title = 'ZUNO',
+    String? imageUrl,
+    bool assumeSuccessWhenUnknown = true,
+    bool Function()? isCurrent,
   }) async {
+    _checkCurrent(isCurrent);
     // Phase 1+/G1 : DLNA pourrait porter `imageUrl` dans le DIDL-Lite
     // via `upnp:albumArtURI`. Pas encore wire — la conformite varie
     // beaucoup entre TVs et risquerait de re-casser le failover
@@ -156,6 +203,7 @@ class UpnpAvTransport implements CastTransport {
       await _soapCall(
         action: 'Stop',
         body: '<InstanceID>0</InstanceID>',
+        isCurrent: isCurrent,
       );
     } on Exception {
       // ignore — best effort
@@ -167,7 +215,10 @@ class UpnpAvTransport implements CastTransport {
     //      → le 2e cast (zapping) timeout à 15s (constaté sur LG QNED816QA).
     //      Borné + poll court : coût ~nul quand la TV est déjà idle (retour
     //      immédiat dès que l'état est STOPPED/NO_MEDIA_PRESENT/inconnu).
-    await _waitUntilStopped(maxWait: const Duration(seconds: 3));
+    _checkCurrent(isCurrent);
+    await _waitUntilStopped(
+        maxWait: const Duration(seconds: 3), isCurrent: isCurrent);
+    _checkCurrent(isCurrent);
 
     // (2) Construit le bloc de métadonnées DIDL-Lite selon le mode courant.
     final String metadata = _buildMetadataForCurrentMode(streamUrl, title);
@@ -178,6 +229,7 @@ class UpnpAvTransport implements CastTransport {
           body: '<InstanceID>0</InstanceID>'
               '<CurrentURI>${_escape(streamUrl)}</CurrentURI>'
               '<CurrentURIMetaData>${_escape(metadata)}</CurrentURIMetaData>',
+          isCurrent: isCurrent,
         );
     try {
       await setUri();
@@ -193,12 +245,15 @@ class UpnpAvTransport implements CastTransport {
       // on rejoue UNE fois SetAVTransportURI dans la même tentative.
       if (!isTransitionNotAvailable(e.toString())) rethrow;
       try {
-        await _soapCall(action: 'Stop', body: '<InstanceID>0</InstanceID>');
+        await _soapCall(action: 'Stop', body: '<InstanceID>0</InstanceID>',
+            isCurrent: isCurrent);
       } on Exception {
         // best effort — la TV peut refuser Stop tant qu'elle transite
       }
-      final bool freed =
-          await _waitUntilStopped(maxWait: const Duration(seconds: 6));
+      _checkCurrent(isCurrent);
+      final bool freed = await _waitUntilStopped(
+          maxWait: const Duration(seconds: 6), isCurrent: isCurrent);
+      _checkCurrent(isCurrent);
       StructuredLogger.instance.warn(
         domain: 'cast',
         event: 'dlna.transition_recovery',
@@ -212,12 +267,15 @@ class UpnpAvTransport implements CastTransport {
 
     // (4) Poll GetTransportInfo jusqu'à sortir de TRANSITIONING.
     //     Sans ça, Play sur un device en TRANSITIONING renvoie 500.
-    await _waitOutOfTransition(maxWait: const Duration(seconds: 2));
+    await _waitOutOfTransition(
+        maxWait: const Duration(seconds: 2), isCurrent: isCurrent);
+    _checkCurrent(isCurrent);
 
     // (5) Play
     await _soapCall(
       action: 'Play',
       body: '<InstanceID>0</InstanceID><Speed>1</Speed>',
+      isCurrent: isCurrent,
     );
 
     // (6) Vérifie qu'on est vraiment passé en PLAYING (ou PAUSED — certains
@@ -225,7 +283,9 @@ class UpnpAvTransport implements CastTransport {
     await _waitForPlaying(
       maxWait: const Duration(seconds: 4),
       assumeSuccessWhenUnknown: assumeSuccessWhenUnknown,
+      isCurrent: isCurrent,
     );
+    _checkCurrent(isCurrent);
   }
 
   @override
@@ -244,6 +304,7 @@ class UpnpAvTransport implements CastTransport {
   Future<void> stop() => _soapCall(
         action: 'Stop',
         body: '<InstanceID>0</InstanceID>',
+        allowExpiredSession: true,
       );
 
   // ============================================================
@@ -314,11 +375,13 @@ class UpnpAvTransport implements CastTransport {
   Future<void> _waitOutOfTransition({
     required Duration maxWait,
     Duration pollEvery = const Duration(milliseconds: 250),
+    bool Function()? isCurrent,
   }) async {
     final DateTime deadline = DateTime.now().add(maxWait);
     while (DateTime.now().isBefore(deadline)) {
-      final String? state = await _getTransportState()
-          .timeout(const Duration(seconds: 2), onTimeout: () => null);
+      _checkCurrent(isCurrent);
+      final String? state = await _shortTransportState(isCurrent);
+      _checkCurrent(isCurrent);
       if (state == null || state != 'TRANSITIONING') return;
       await Future<void>.delayed(pollEvery);
     }
@@ -337,11 +400,13 @@ class UpnpAvTransport implements CastTransport {
   Future<bool> _waitUntilStopped({
     required Duration maxWait,
     Duration pollEvery = const Duration(milliseconds: 200),
+    bool Function()? isCurrent,
   }) async {
     final DateTime deadline = DateTime.now().add(maxWait);
     while (DateTime.now().isBefore(deadline)) {
-      final String? state = await _getTransportState()
-          .timeout(const Duration(seconds: 2), onTimeout: () => null);
+      _checkCurrent(isCurrent);
+      final String? state = await _shortTransportState(isCurrent);
+      _checkCurrent(isCurrent);
       if (state == null ||
           state == 'STOPPED' ||
           state == 'NO_MEDIA_PRESENT') {
@@ -376,11 +441,14 @@ class UpnpAvTransport implements CastTransport {
     required Duration maxWait,
     Duration pollEvery = const Duration(milliseconds: 300),
     bool assumeSuccessWhenUnknown = true,
+    bool Function()? isCurrent,
   }) async {
     final DateTime deadline = DateTime.now().add(maxWait);
     String? lastState;
     while (DateTime.now().isBefore(deadline)) {
-      lastState = await _getTransportState();
+      _checkCurrent(isCurrent);
+      lastState = await _getTransportState(isCurrent: isCurrent);
+      _checkCurrent(isCurrent);
       if (lastState == 'PLAYING' ||
           lastState == 'PAUSED_PLAYBACK' ||
           lastState == 'RECORDING') {
@@ -420,6 +488,18 @@ class UpnpAvTransport implements CastTransport {
   /// supporte pas GetTransportInfo.
   Future<String?> currentTransportState() => _getTransportState();
 
+  Future<String?> _shortTransportState(bool Function()? isCurrent) {
+    const budget = Duration(seconds: 2);
+    if (_cancelExpiredRequests) {
+      return _getTransportState(
+          isCurrent: isCurrent,
+          requestTimeout: soapTimeout < budget ? soapTimeout : budget);
+    }
+    // Repli et 7 MOTION : même attente historique, sans annulation nouvelle.
+    return _getTransportState(isCurrent: isCurrent)
+        .timeout(budget, onTimeout: () => null);
+  }
+
   /// Réécriture MIME pour LG webOS. Diagnostic LG QNED816QA : la Sink de
   /// la TV annonce `video/vnd.dlna.mpeg-tts` mais PAS `video/mp2t` ; en
   /// envoyant `video/mp2t` elle répond "Resource not found". On réécrit
@@ -434,11 +514,16 @@ class UpnpAvTransport implements CastTransport {
     return protocolInfo;
   }
 
-  Future<String?> _getTransportState() async {
+  Future<String?> _getTransportState({
+    bool Function()? isCurrent,
+    Duration? requestTimeout,
+  }) async {
     try {
       final http.Response resp = await _soapRequest(
         action: 'GetTransportInfo',
         body: '<InstanceID>0</InstanceID>',
+        isCurrent: isCurrent,
+        requestTimeout: requestTimeout,
       );
       if (resp.statusCode != 200) return null;
       final XmlDocument doc = XmlDocument.parse(resp.body);
@@ -458,8 +543,12 @@ class UpnpAvTransport implements CastTransport {
   Future<void> _soapCall({
     required String action,
     required String body,
+    bool Function()? isCurrent,
+    bool allowExpiredSession = false,
   }) async {
-    final http.Response resp = await _soapRequest(action: action, body: body);
+    final http.Response resp = await _soapRequest(
+        action: action, body: body, isCurrent: isCurrent,
+        allowExpiredSession: allowExpiredSession);
     if (resp.statusCode != 200) {
       if (kDebugMode) {
         debugPrint(
@@ -477,7 +566,11 @@ class UpnpAvTransport implements CastTransport {
   Future<http.Response> _soapRequest({
     required String action,
     required String body,
+    bool Function()? isCurrent,
+    bool allowExpiredSession = false,
+    Duration? requestTimeout,
   }) async {
+    _checkCurrent(isCurrent, allowExpiredSession: allowExpiredSession);
     final String envelope =
         '<?xml version="1.0" encoding="utf-8"?>'
         '<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" '
@@ -532,13 +625,28 @@ class UpnpAvTransport implements CastTransport {
       );
     }
 
-    final http.Response resp = await http
-        .post(
-          Uri.parse(device.controlUrl),
-          headers: headers,
-          body: envelope,
-        )
-        .timeout(soapTimeout);
+    final http.Response resp;
+    if (_cancelExpiredRequests) {
+      // Ce client appartient exclusivement à cette requête. Fermer la socket
+      // à l'échéance n'interrompt ni une commande parallèle ni une autre TV.
+      final http.Client requestClient = http.Client();
+      final Duration timeout = requestTimeout ?? soapTimeout;
+      try {
+        resp = await requestClient.post(
+          Uri.parse(device.controlUrl), headers: headers, body: envelope,
+        ).timeout(timeout, onTimeout: () {
+          requestClient.close();
+          throw TimeoutException('Délai de commande UPnP expiré', timeout);
+        });
+      } finally {
+        requestClient.close();
+      }
+    } else {
+      resp = await http.post(
+        Uri.parse(device.controlUrl), headers: headers, body: envelope,
+      ).timeout(soapTimeout);
+    }
+    _checkCurrent(isCurrent, allowExpiredSession: allowExpiredSession);
 
     if (kDebugMode && resp.statusCode != 200) {
       debugPrint(

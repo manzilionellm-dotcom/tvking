@@ -194,6 +194,31 @@ class ProfileCatalog {
   ///     toujours le profil 1. Les autres restent sur le disque
   ///     (on n'efface pas leurs clés ici) ;
   ///   • id actif inconnu → profil 1.
+  /// Confirme la provenance du profil actif sans réparer ni réécrire le JSON.
+  /// Une installation neuve (clé absente) est distincte d'une valeur illisible.
+  static bool confirmsActiveProfile(String? raw) {
+    if (raw == null) return true;
+    try {
+      final Object? value = jsonDecode(raw);
+      if (value is! Map || value['profiles'] is! List ||
+          value['activeId'] is! String) {
+        return false;
+      }
+      final List<Object?> entries = (value['profiles'] as List<Object?>);
+      final active = entries.whereType<Map<Object?, Object?>>().where((entry) =>
+          entry['id'] == value['activeId']).toList();
+      if (active.length != 1 || active.single['isKids'] is! bool ||
+          FamilyProfile.fromJson(active.single) == null) {
+        return false;
+      }
+      final decoded = decode(raw);
+      return decoded.activeId == value['activeId'] &&
+          decoded.active.isKids == active.single['isKids'];
+    } catch (_) {
+      return false;
+    }
+  }
+
   static ProfileCatalog decode(String? raw, {int nowMs = 0}) {
     if (raw == null || raw.trim().isEmpty) return fresh(nowMs: nowMs);
     try {

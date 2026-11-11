@@ -1481,5 +1481,75 @@
   "screenCastKeepOpen": "أبقِ التطبيق مفتوحًا والجهازين متصلين بشبكة Wi-Fi نفسها أثناء البث.",
   "castNetworkDiagnostic": "التحقّق من شبكة البث",
   "castNetworkDiagnosticHelp": "يتحقّق من الاتصال ووسيط البث دون تغيير القناة على التلفزيون.",
-  "castDiagnosticClosePlayer": "عُد إلى الصفحة الرئيسية قبل اختبار القنوات على التلفزيون."
+  "castDiagnosticClosePlayer": "عُد إلى الصفحة الرئيسية قبل اختبار القنوات على التلفزيون.",
+  "catalogLimitTitle": "حد الكتالوج",
+  "catalogLimitSummary": "{stored} صفًا محفوظًا؛ {read} صفًا مقروءًا؛ {loaded} قناة محمّلة. حد القراءة: {limit} صفًا.",
+  "@catalogLimitSummary": {
+    "placeholders": {
+      "stored": {
+        "type": "int"
+      },
+      "read": {
+        "type": "int"
+      },
+      "loaded": {
+        "type": "int"
+      },
+      "limit": {
+        "type": "int"
+      }
+    }
+  },
+  "catalogLimitPreserved": "حد القراءة هذا لا يحذف أي بيانات. قد تقلل المرشحات عدد القنوات المعروضة.",
+  "catalogLimitSource": "{name}: {stored} صفًا محفوظًا، {read} صفًا مقروءًا، {loaded} قناة محمّلة.",
+  "@catalogLimitSource": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "stored": {
+        "type": "int"
+      },
+      "read": {
+        "type": "int"
+      },
+      "loaded": {
+        "type": "int"
+      }
+    }
+  },
+  "catalogLimitImport": "{name}: {total} إدخالًا صالحًا للاستيراد، تم الاحتفاظ بـ {retained}، ولم يُستورد {skipped}.",
+  "@catalogLimitImport": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "total": {
+        "type": "int"
+      },
+      "retained": {
+        "type": "int"
+      },
+      "skipped": {
+        "type": "int"
+      }
+    }
+  },
+  "catalogLimitKids": "هناك حد للكتالوج. يمكن لشخص بالغ الاطلاع على التفاصيل من ملفه الشخصي.",
+  "catalogLimitUnnamed": "المصدر {id}",
+  "@catalogLimitUnnamed": {
+    "placeholders": {
+      "id": {
+        "type": "int"
+      }
+    }
+  },
+  "catalogLimitSources": "المصادر المتأثرة: {sources}",
+  "@catalogLimitSources": {
+    "placeholders": {
+      "sources": {
+        "type": "String"
+      }
+    }
+  }
 }

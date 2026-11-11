@@ -93,7 +93,7 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
     VoiceNavigation.attach(_hooks);
     RemoteTypingHub.instance.register(_remoteTyping);
     _channels = PlaylistRepository.instance.currentChannels
-        .where((Channel c) => !isAdultChannel(c))
+        .where((Channel c) => !isHiddenFromNormalCatalog(c))
         .toList(growable: false);
     _prepareSearch(_channels);
     _sub = PlaylistRepository.instance.channelsStream.listen((
@@ -101,7 +101,7 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
     ) {
       if (!mounted) return;
       _gen++;
-      _channels = ch.where((Channel c) => !isAdultChannel(c)).toList(growable: false);
+      _channels = ch.where((Channel c) => !isHiddenFromNormalCatalog(c)).toList(growable: false);
       setState(() {
         _hits = const <VoiceHit>[];
         _tonight = null;
@@ -280,8 +280,8 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
     final List<VoiceHit> local = searchCatalog(
       query: intent.catalogQuery,
       channels: _channels,
-      movies: movies.where((t) => !CinemaRepository.instance.isAdultTitle(t)).toList(),
-      series: series.where((t) => !CinemaRepository.instance.isAdultTitle(t)).toList(),
+      movies: movies.where((t) => !CinemaRepository.instance.isHiddenTitle(t)).toList(),
+      series: series.where((t) => !CinemaRepository.instance.isHiddenTitle(t)).toList(),
       hideAdult: true,
       channelHay: ready ? _hay : null,
       adultIds: ready ? _adultIds : null,
@@ -311,7 +311,7 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
       final List<VoiceHit> remote = <VoiceHit>[];
       for (final Channel c in _channels) {
         if (remote.length >= 24) break;
-        if (isAdultChannel(c)) continue;
+        if (isHiddenFromNormalCatalog(c)) continue;
         if (!filter.matches(c)) continue;
         remote.add(VoiceHit.fromChannel(c));
       }
@@ -372,7 +372,7 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
     final CinemaTitle? cinema = hit.cinema;
     if (cinema != null) {
       final String key = cinema.sourceKey;
-      if (CinemaRepository.instance.isAdultTitle(cinema) ||
+      if (CinemaRepository.instance.isHiddenTitle(cinema) ||
           !ActiveProfile.instance.allowsPlaylist(
               int.tryParse(key.startsWith('p') ? key.substring(1) : ''))) {
         return;
@@ -392,7 +392,7 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
     final Channel? channel = hit.channel;
     if (channel == null ||
         channel.streamUrl.trim().isEmpty ||
-        isAdultChannel(channel) ||
+        isHiddenFromNormalCatalog(channel) ||
         !ActiveProfile.instance.allowsPlaylist(channel.playlistId)) {
       return;
     }
@@ -415,7 +415,7 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
     }
     if (channel == null ||
         channel.streamUrl.trim().isEmpty ||
-        isAdultChannel(channel) ||
+        isHiddenFromNormalCatalog(channel) ||
         !ActiveProfile.instance.allowsPlaylist(channel.playlistId)) {
       return;
     }

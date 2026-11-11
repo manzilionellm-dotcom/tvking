@@ -19,6 +19,7 @@ import 'package:flutter/foundation.dart' show compute;
 import 'package:flutter/material.dart';
 
 import '../../../core/curation/title_curator.dart';
+import '../../../core/app/app_platform.dart';
 import 'channel_genre.dart';
 
 // Re-export pour que les widgets qui importent `channel.dart`
@@ -125,7 +126,9 @@ class Channel {
   /// SHIELD) : `_recompute` saturait le fil UI à 100 % pendant ~3,7 s → ANR
   /// (« Waited 5000ms for KeyEvent »). Mémoïsé par chaîne, c'est UNE curation
   /// par chaîne sur toute la session, puis O(1) — quelle que soit la taille.
-  String get cleanName => _ChannelComputedCache.cleanNames.putIfAbsent(
+  String get cleanName => AppPlatform.isZuno
+      ? (_ChannelComputedCache.forChannel(this).cleanName ??= TitleCurator.curate(name))
+      : _ChannelComputedCache.cleanNames.putIfAbsent(
         id,
         () => TitleCurator.curate(name),
       );
@@ -142,19 +145,31 @@ class Channel {
   /// Genre détecté. **Caché** dans une Map statique car appelé
   /// à chaque rebuild sur 20 000+ chaînes — sans cache, les regex
   /// du classifier saturaient le main thread et l'UI laguait.
-  ChannelGenre get genre => _ChannelComputedCache.genres.putIfAbsent(
+  ChannelGenre get genre => AppPlatform.isZuno
+      ? (_ChannelComputedCache.forChannel(this).genre ??= ChannelClassifier.classifyGenre(name, category))
+      : _ChannelComputedCache.genres.putIfAbsent(
         id,
         () => ChannelClassifier.classifyGenre(name, category),
       );
 
   /// Pays détecté (caché — voir [genre]).
-  CountryInfo? get country => _ChannelComputedCache.countries.putIfAbsent(
-        id,
-        () => ChannelClassifier.detectCountry(name, category),
-      );
+  CountryInfo? get country {
+    if (!AppPlatform.isZuno) {
+      return _ChannelComputedCache.countries.putIfAbsent(
+        id, () => ChannelClassifier.detectCountry(name, category));
+    }
+    final value = _ChannelComputedCache.forChannel(this);
+    if (!value.countryKnown) {
+      value.country = ChannelClassifier.detectCountry(name, category);
+      value.countryKnown = true;
+    }
+    return value.country;
+  }
 
   /// Qualité détectée (cachée — voir [genre]).
-  ChannelQuality get quality => _ChannelComputedCache.qualities.putIfAbsent(
+  ChannelQuality get quality => AppPlatform.isZuno
+      ? (_ChannelComputedCache.forChannel(this).quality ??= ChannelClassifier.detectQuality(name))
+      : _ChannelComputedCache.qualities.putIfAbsent(
         id,
         () => ChannelClassifier.detectQuality(name),
       );
@@ -189,7 +204,21 @@ class Channel {
 ///
 /// Limite : la Map vit pendant toute la session — ~50 octets par
 /// chaîne soit ~1 Mo pour 20 000 entrées, négligeable.
+// Une même identité fournisseur peut désigner un autre média après un
+// remplacement de catalogue. ZUNO attache donc les valeurs à l'objet immuable,
+// dont la durée de vie borne aussi la mémoire, et non à son seul identifiant.
+class _ChannelValues {
+  String? cleanName;
+  ChannelGenre? genre;
+  CountryInfo? country;
+  bool countryKnown = false;
+  ChannelQuality? quality;
+}
+
 abstract final class _ChannelComputedCache {
+  static final Expando<_ChannelValues> _objects = Expando<_ChannelValues>('zuno-channel-values');
+  static _ChannelValues forChannel(Channel channel) =>
+      _objects[channel] ??= _ChannelValues();
   static final Map<String, ChannelGenre> genres = <String, ChannelGenre>{};
   static final Map<String, CountryInfo?> countries = <String, CountryInfo?>{};
   static final Map<String, ChannelQuality> qualities =
@@ -228,24 +257,32 @@ abstract final class ChannelPrecompute {
   static const int _kChunk = 2000;
 
   /// Vrai si les valeurs de [c] sont déjà en cache (nom curé + genre).
-  static bool isDone(Channel c) =>
-      _ChannelComputedCache.cleanNames.containsKey(c.id) &&
+  static bool isDone(Channel c) => AppPlatform.isZuno
+      ? (_ChannelComputedCache.forChannel(c).cleanName != null &&
+         _ChannelComputedCache.forChannel(c).genre != null)
+      : _ChannelComputedCache.cleanNames.containsKey(c.id) &&
       _ChannelComputedCache.genres.containsKey(c.id);
 
   /// Genre déjà calculé, ou `null` s'il n'est pas encore en cache. Permet à
   /// un filtre (Mode Enfants) de décider SANS déclencher le calcul lourd.
-  static ChannelGenre? cachedGenre(Channel c) =>
-      _ChannelComputedCache.genres[c.id];
+  static ChannelGenre? cachedGenre(Channel c) => AppPlatform.isZuno
+      ? _ChannelComputedCache.forChannel(c).genre
+      : _ChannelComputedCache.genres[c.id];
 
   /// Nom curé déjà calculé, ou `null` (jamais de calcul ici). Même rôle que
   /// [cachedGenre] pour Tendances (06/10/2026 : 50 000 noms curés d'un coup
   /// sur le fil UI = ANR mesuré sur la SHIELD).
-  static String? cachedCleanName(Channel c) =>
-      _ChannelComputedCache.cleanNames[c.id];
+  static String? cachedCleanName(Channel c) => AppPlatform.isZuno
+      ? _ChannelComputedCache.forChannel(c).cleanName
+      : _ChannelComputedCache.cleanNames[c.id];
 
   /// Pays déjà calculé : `known` faux s'il n'est pas encore en cache (le
   /// pays lui-même peut valoir `null` = aucun pays détecté).
   static ({bool known, CountryInfo? country}) cachedCountry(Channel c) {
+    if (AppPlatform.isZuno) {
+      final value = _ChannelComputedCache.forChannel(c);
+      return (known: value.countryKnown, country: value.country);
+    }
     final bool known = _ChannelComputedCache.countries.containsKey(c.id);
     return (known: known, country: known ? _ChannelComputedCache.countries[c.id] : null);
   }
@@ -256,6 +293,7 @@ abstract final class ChannelPrecompute {
   /// liste arrivée…). Ne throw jamais.
   static Future<void> run(List<Channel> channels,
       {bool Function()? cancelled}) async {
+    final bool zuno = AppPlatform.isZuno;
     final List<Channel> pending =
         channels.where((Channel c) => !isDone(c)).toList(growable: false);
     for (int i = 0; i < pending.length; i += _kChunk) {
@@ -271,7 +309,20 @@ abstract final class ChannelPrecompute {
       } catch (_) {
         return; // best-effort : les getters à la demande prennent le relais
       }
-      for (final List<String> row in out) {
+      if (zuno && (cancelled?.call() ?? false)) return;
+      for (int offset = 0; offset < out.length; offset++) {
+        final List<String> row = out[offset];
+        if (zuno) {
+          // Le résultat de l'isolate reste lié au snapshot envoyé, même si
+          // un nouveau catalogue a réutilisé les mêmes identifiants.
+          final value = _ChannelComputedCache.forChannel(pending[i + offset]);
+          value.cleanName ??= row[1];
+          value.genre ??= ChannelGenre.values[int.parse(row[2])];
+          value.country = row[3].isEmpty ? null : ChannelClassifier.countryForKey(row[3]);
+          value.countryKnown = true;
+          value.quality ??= ChannelQuality.values[int.parse(row[4])];
+          continue;
+        }
         final String id = row[0];
         _ChannelComputedCache.cleanNames.putIfAbsent(id, () => row[1]);
         _ChannelComputedCache.genres

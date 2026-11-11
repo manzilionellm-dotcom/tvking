@@ -27,6 +27,9 @@ import '../../cast/data/cast_manager.dart';
 //  enchaîner 20 setUrl gelait la box.
 // =========================================================
 import 'dart:async';
+import '../../security/data/parental_controls.dart';
+import '../../profiles/data/active_profile.dart';
+import '../../../core/app/app_platform.dart';
 
 import '../desktop/desktop_cast_controls.dart';
 import '../data/zuno_pip_service.dart';
@@ -113,8 +116,14 @@ class TvPlayerScreen extends StatefulWidget {
 class _TvPlayerScreenState extends State<TvPlayerScreen>
     with WidgetsBindingObserver {
   bool _adultRevoked = false;
+  late final int _parentalGeneration = ParentalControls.instance.contentGeneration;
   bool get _accessAllowed =>
-      !_adultRevoked && (widget.adultAccess?.isValid ?? true);
+      !_adultRevoked && (widget.adultAccess?.isValid ?? true) &&
+      (!AppPlatform.isZuno ||
+        (ParentalControls.instance.contentReady &&
+         _parentalGeneration == ParentalControls.instance.contentGeneration &&
+         ActiveProfile.instance.allowsPlaylist(_current.playlistId) &&
+         (widget.adultAccess != null || !isHiddenFromNormalCatalog(_current))));
   late final NativeVideoController _controller;
   late final ZunoPipPlayback _pip;
 
@@ -779,7 +788,8 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     final List<String> alts = _alts ??= LiveFallback.candidates(
       _current,
       PlaylistRepository.instance.currentChannels
-          .where((c) => isAdultChannel(c) == (widget.adultAccess != null))
+          .where((c) => widget.adultAccess != null
+              ? isAdultChannel(c) : !isHiddenFromNormalCatalog(c))
           .toList(growable: false),
     );
     if (alts.length > 1) {
@@ -1326,6 +1336,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
           .push(
         MaterialPageRoute<void>(
           builder: (_) => TvChannelGuideScreen(
+            adultAccess: widget.adultAccess,
             channel: _current,
             currentSummary: _missed,
           ),

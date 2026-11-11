@@ -1,5 +1,10 @@
 name: 7 MOTION mobile gesture compatibility (no release)
 'on':
+  workflow_call:
+    inputs:
+      audit_116:
+        type: boolean
+        default: false
   push:
     branches:
     - feature/mobile-back-gestures-20261019
@@ -9,6 +14,7 @@ env:
   SOURCE_SHA: ${{ github.sha }}
 jobs:
   test-apk:
+    if: inputs.audit_116 != true
     name: Tests Flutter et APK debug isolé
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -288,3 +294,11 @@ jobs:
         path: phone/build/app/outputs/flutter-apk/7motion-gestures-test.apk
         if-no-files-found: error
         retention-days: 7
+
+  audit-116:
+    if: inputs.audit_116 == true
+    uses: ./.github/workflows/audit-116-shared-tests.yml
+    with:
+      suite: mobile
+    permissions:
+      contents: read

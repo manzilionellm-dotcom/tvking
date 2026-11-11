@@ -25,6 +25,11 @@ import '../../cast/data/cast_manager.dart';
 //    • choix audio / sous-titres retenu pour les films suivants.
 // =========================================================
 import 'dart:async';
+import '../../../core/app/app_platform.dart';
+import '../../profiles/data/active_profile.dart';
+import '../../security/data/parental_controls.dart';
+import '../../cast/domain/zuno_cast_media.dart';
+import '../../cinema/data/cinema_repository.dart';
 
 import '../desktop/desktop_cast_controls.dart';
 import '../data/zuno_pip_service.dart';
@@ -90,12 +95,14 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
   bool _closeAfterPip = false;
   bool _appActive = true;
   bool _accessRevoked = false;
+  late final int _parentalGeneration = ParentalControls.instance.contentGeneration;
   bool get _accessValid =>
       !_accessRevoked &&
-      _item.adultClassificationKnown &&
-      (widget.adultAccess == null
-          ? !_item.isAdult
-          : widget.adultAccess!.isValid);
+      (!AppPlatform.isZuno || (ParentalControls.instance.contentReady &&
+        _parentalGeneration == ParentalControls.instance.contentGeneration &&
+        (_item.sourceKey.isEmpty || ActiveProfile.instance.allowsPlaylist(
+          int.tryParse(_item.sourceKey.startsWith('p') ? _item.sourceKey.substring(1) : ''))))) &&
+      _item.isAllowedNow(adultAccess: widget.adultAccess);
   int _startRevision = 0;
   Future<void> Function()? _pendingStart;
   final GlobalKey<DesktopCastControlsState> _desktopCastKey =
@@ -199,6 +206,9 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
       }),
     );
     widget.adultAccess?.addListener(_onAdultAccess);
+    if (AppPlatform.isZuno) {
+      CinemaRepository.instance.classificationVersion.addListener(_onAdultAccess);
+    }
     _next = _computeNext();
     unawaited(_start(_item, widget.startAt, local: widget.localPath));
     _saveTimer = Timer.periodic(
@@ -305,6 +315,7 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
   @override
   void dispose() {
     widget.adultAccess?.removeListener(_onAdultAccess);
+    CinemaRepository.instance.classificationVersion.removeListener(_onAdultAccess);
     _pip.dispose();
     _saveProgress(flush: true);
     WidgetsBinding.instance.removeObserver(this);
@@ -391,7 +402,8 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
     _vodTimer?.cancel();
     _vodTimer = null;
     _vodArmed = false;
-    final VodPlayItem ni = VodPlayItem.episode(n, st, isAdult: _item.isAdult);
+    final VodPlayItem ni = VodPlayItem.episode(n, st, isAdult: _item.isAdult,
+        previousClassification: _item.playbackClassification);
     final WatchEntry? prev = WatchProgressRepository.instance.get(ni.id);
     final String? local = await offlinePathFor(ni.id);
     if (!mounted || !_accessValid) return;
@@ -553,7 +565,8 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
     final CinemaTitle? st = widget.seriesTitle;
     VodPlayItem? ni;
     if (n != null && st != null) {
-      ni = VodPlayItem.episode(n, st, isAdult: _item.isAdult);
+      ni = VodPlayItem.episode(n, st, isAdult: _item.isAdult,
+          previousClassification: _item.playbackClassification);
       WatchProgressRepository.instance.proposeNext(
         ni.toEntry(posMs: 0, durMs: n.durationSec * 1000),
       );
@@ -1044,6 +1057,13 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
                       child: Offstage(
                         offstage: _pip.isInPipMode,
                         child: DesktopCastControls(
+                          zunoMedia: ZunoCastMedia(
+                            id: _item.id,
+                            streamUrl: _item.url,
+                            playlistId: _item.playlistId,
+                            isAdult: _item.currentAdultStatus,
+                            isAllowedNow: _item.isAllowedNow,
+                          ),
                           castOnOpen: true,
                           adultAccess: widget.adultAccess,
                           key: _desktopCastKey,

@@ -32,6 +32,7 @@ import '../../../core/i18n/l10n_extension.dart';
 import '../../remote/domain/remote_typing_hub.dart';
 import '../../cinema/data/catalog_cache_policy.dart';
 import '../../cinema/data/cinema_repository.dart';
+import '../../../core/app/app_platform.dart';
 import '../../profiles/data/active_profile.dart';
 import '../../cinema/data/watch_progress.dart';
 import '../../cinema/domain/cinema_language.dart';
@@ -95,11 +96,12 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
   bool _titlesFailed = false;
   int _loadGen = 0;
   int _initGen = 0;
+  late int _classificationRevision = _repo.classificationRevision(widget.kind);
 
   bool _accessRevoked = false;
   bool _closeScheduled = false;
   bool get _adultOnly => widget.adultAccess != null;
-  bool get _accessValid =>
+  bool get _accessValid => ParentalControls.instance.contentReady &&
       !_accessRevoked &&
       (!_adultOnly || (widget.adultAccess!.isValid && !_kids));
 
@@ -130,6 +132,9 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
     RemoteTypingHub.instance.register(_remoteTyping);
     WatchProgressRepository.instance.addListener(_onExternal);
     _repo.indexVersion.addListener(_onIndex);
+    if (AppPlatform.isZuno) {
+      _repo.classificationVersion.addListener(_onClassificationChanged);
+    }
     ActiveProfile.instance.scopeListenable.addListener(_onProfileScope);
     ParentalControls.instance.kidsMode.addListener(_onExternal);
     widget.adultAccess?.addListener(_onAccessChanged);
@@ -150,6 +155,7 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
     RemoteTypingHub.instance.unregister(_remoteTyping);
     WatchProgressRepository.instance.removeListener(_onExternal);
     _repo.indexVersion.removeListener(_onIndex);
+    _repo.classificationVersion.removeListener(_onClassificationChanged);
     ActiveProfile.instance.scopeListenable.removeListener(_onProfileScope);
     ParentalControls.instance.kidsMode.removeListener(_onExternal);
     widget.adultAccess?.removeListener(_onAccessChanged);
@@ -235,6 +241,22 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
       unawaited(_loadCategory(_sel.cat!, keepVisible: _titles.isNotEmpty));
     }
     setState(() {});
+  }
+
+  void _onClassificationChanged() {
+    if (!mounted || !AppPlatform.isZuno) return;
+    final revision = _repo.classificationRevision(widget.kind);
+    if (revision == _classificationRevision) return;
+    _classificationRevision = revision;
+    // Une réponse de catégorie antérieure à la publication reste périmée.
+    // L'événement index suivant recharge la sélection avec les données neuves.
+    _loadGen++;
+    setState(() {
+      _cats = _repo.peekCategories(widget.kind) ?? const <CinemaCategory>[];
+      _titles = const <CinemaTitle>[];
+      _results = const <CinemaTitle>[];
+      _focused.value = null;
+    });
   }
 
   Future<void> _init() async {
@@ -328,7 +350,7 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
   bool _titleAllowed(CinemaTitle title) =>
       _accessValid &&
       _sourceAllowed(title.sourceKey) &&
-      _repo.isAdultTitle(title) == _adultOnly;
+      (_adultOnly ? _repo.isAdultTitle(title) : !_repo.isHiddenTitle(title));
 
   bool _entryAllowed(WatchEntry entry) =>
       _accessValid &&
@@ -593,6 +615,7 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
     final WatchEntry? w = WatchProgressRepository.instance.get(d.id);
     final VodPlayItem item = w != null
         ? VodPlayItem.entry(w)
+        : AppPlatform.isZuno ? VodPlayItem.download(d, isAdult: _adultOnly)
         : VodPlayItem(
             id: d.id,
             isEpisode: isEp,
@@ -604,6 +627,8 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
     await showCinemaSheet(
       context,
       title: d.name,
+      isAllowed: () => item.isAllowedNow(adultAccess: widget.adultAccess),
+      permissionChanges: widget.adultAccess,
       actions: <CinemaSheetAction>[
         if (d.isDone)
           CinemaSheetAction(

@@ -183,7 +183,7 @@ class _CategorySectionScreenState extends State<CategorySectionScreen> {
   /// Filtrer AVANT catégories, compteurs, recherche et liste de zapping :
   /// masquer seulement la carte laisserait son contenu dans ces chemins.
   List<Channel> _normalChannels(List<Channel> channels) => channels
-      .where((Channel channel) => !isAdultChannel(channel))
+      .where((Channel channel) => !isHiddenFromNormalCatalog(channel))
       .toList(growable: false);
 
   @override
@@ -598,11 +598,11 @@ class _CompactList extends StatelessWidget {
           child: CompactChannelRow(
             channel: ch,
             onTap: () {
-              if (isAdultChannel(ch)) return;
+              if (isHiddenFromNormalCatalog(ch)) return;
               playChannel(context, ch, zapPlaylist: channels);
             },
             onLongPress: () {
-              if (!isAdultChannel(ch)) showChannelDetail(context, ch);
+              if (!isHiddenFromNormalCatalog(ch)) showChannelDetail(context, ch);
             },
           ),
         );
@@ -642,11 +642,11 @@ class _Grid extends StatelessWidget {
               child: ChannelCard(
                 channel: ch,
                 onTap: () {
-                  if (isAdultChannel(ch)) return;
+                  if (isHiddenFromNormalCatalog(ch)) return;
                   playChannel(context, ch, zapPlaylist: channels);
                 },
                 onLongPress: () {
-                  if (!isAdultChannel(ch)) showChannelDetail(context, ch);
+                  if (!isHiddenFromNormalCatalog(ch)) showChannelDetail(context, ch);
                 },
               ),
             );

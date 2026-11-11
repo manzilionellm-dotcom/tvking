@@ -3,10 +3,13 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:native_video_player/native_video_player.dart';
+import '../../../core/app/app_platform.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../../cast/data/cast_manager.dart';
 import '../../cast/data/cast_url_resolver.dart';
+import '../../cast/domain/zuno_cast_media.dart';
 import '../../security/data/adult_access.dart';
+import '../../security/data/parental_controls.dart';
 import '../../profiles/data/active_profile.dart';
 import '../../channels/domain/adult_channel_policy.dart';
 import '../../cast/data/cast_platform.dart';
@@ -43,12 +46,19 @@ Future<bool> routeZunoChannelToCast(
   if (!CastPlatform.canSendFromZuno || !cast.hasTarget) return false;
   final int revision = ++_channelRouteRevision;
   final int scope = ActiveProfile.instance.scopeListenable.value;
+  final int generation = ParentalControls.instance.contentGeneration;
   bool allowed() =>
       context.mounted &&
       revision == _channelRouteRevision &&
       scope == ActiveProfile.instance.scopeListenable.value &&
       ActiveProfile.instance.allowsPlaylist(channel.playlistId) &&
       (adultAccess?.isValid ?? !isAdultChannel(channel)) &&
+      (!AppPlatform.isZuno ||
+          (ParentalControls.instance.protectsZuno &&
+           ParentalControls.instance.contentReady &&
+           generation == ParentalControls.instance.contentGeneration &&
+           ((!ParentalControls.instance.kidsMode.value && adultAccess != null) ||
+            !isHiddenFromNormalCatalog(channel)))) &&
       (stillAllowed?.call() ?? true);
   if (!allowed()) return true;
   await (releaseLocal ?? TvLivePreview.releaseActive)();
@@ -109,6 +119,7 @@ class DesktopCastControls extends StatefulWidget {
       this.manager,
       this.picker,
       this.adultAccess,
+      this.zunoMedia,
       this.channels,
       this.channel,
       this.onChannelChanged,
@@ -118,6 +129,7 @@ class DesktopCastControls extends StatefulWidget {
   final String title;
   final String? imageUrl;
   final AdultAccessGrant? adultAccess;
+  final ZunoCastMedia? zunoMedia;
   final List<Channel>? channels;
   final Channel? channel;
   final ValueChanged<Channel>? onChannelChanged;
@@ -147,20 +159,42 @@ class DesktopCastControlsState extends State<DesktopCastControls> {
   Future<void> _localTail = Future<void>.value();
   int _revision = 0;
   late final int _scope = ActiveProfile.instance.scopeListenable.value;
+  ZunoCastMediaAccess? _zunoAccess;
+  int _zunoGeneration = 0;
   bool get ownsSession => _owns;
   bool get waitingForLocalPlay => _castEndedIdle;
   bool get _hasRemoteSource =>
       DesktopCastControls.supportsSource(widget.streamUrl);
   bool get _accessAllowed =>
       _scope == ActiveProfile.instance.scopeListenable.value &&
-      (widget.adultAccess?.isValid ?? true);
+      (widget.adultAccess?.isValid ?? true) &&
+      (!AppPlatform.isZuno ||
+          (ParentalControls.instance.protectsZuno &&
+           ParentalControls.instance.contentReady &&
+           _zunoGeneration == ParentalControls.instance.contentGeneration &&
+           (_zunoAccess?.allows(widget.streamUrl,
+                   adultAccess: widget.adultAccess) ??
+               (!ParentalControls.instance.kidsMode.value &&
+                ActiveProfile.instance.playlistIds == null))));
+
+  void _captureZunoMedia() {
+    if (!AppPlatform.isZuno) return;
+    final channel = widget.channel;
+    final media = widget.zunoMedia ?? (channel == null ? null :
+        ZunoCastMedia.channel(channel, streamUrl: widget.streamUrl));
+    _zunoAccess = media?.capture();
+    _zunoGeneration = ParentalControls.instance.contentGeneration;
+  }
 
   @override
   void initState() {
     super.initState();
+    _captureZunoMedia();
     _manager.addListener(_changed);
     ActiveProfile.instance.scopeListenable.addListener(_accessChanged);
     widget.adultAccess?.addListener(_accessChanged);
+    ParentalControls.instance.readiness.addListener(_accessChanged);
+    ParentalControls.instance.kidsMode.addListener(_accessChanged);
     if (CastPlatform.canSendFromZuno &&
         _accessAllowed &&
         _hasRemoteSource &&
@@ -186,6 +220,16 @@ class DesktopCastControlsState extends State<DesktopCastControls> {
   @override
   void didUpdateWidget(DesktopCastControls oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (AppPlatform.isZuno &&
+        (oldWidget.streamUrl != widget.streamUrl ||
+         !identical(oldWidget.channel, widget.channel) ||
+         (oldWidget.zunoMedia == null
+             ? widget.zunoMedia != null
+             : widget.zunoMedia == null ||
+               !oldWidget.zunoMedia!.sameMedia(widget.zunoMedia!)))) {
+      ++_revision;
+      _captureZunoMedia();
+    }
     if (!identical(oldWidget.adultAccess, widget.adultAccess)) {
       oldWidget.adultAccess?.removeListener(_accessChanged);
       widget.adultAccess?.addListener(_accessChanged);
@@ -321,7 +365,10 @@ class DesktopCastControlsState extends State<DesktopCastControls> {
         _pickerOwnedRevision = _manager.sessionRevision;
         await operation;
       }
-      if (!mounted || ticket != _revision) return;
+      if (!mounted || ticket != _revision ||
+          (AppPlatform.isZuno && !_accessAllowed)) {
+        return;
+      }
       _owns = _manager.hasActiveSession &&
           (_manager.isCasting || _pickerStartedPlayback);
       if (!_owns) {
@@ -335,6 +382,7 @@ class DesktopCastControlsState extends State<DesktopCastControls> {
           _hasRemoteSource &&
           _manager.device != null &&
           _pickerOwnedRevision == _manager.sessionRevision) {
+        if (AppPlatform.isZuno) _sharePlaylist();
         await _manager.castTo(_manager.device!,
             streamUrl: widget.streamUrl,
             title: widget.title,
@@ -424,6 +472,7 @@ class DesktopCastControlsState extends State<DesktopCastControls> {
     } else {
       _manager.clearCastPlaylist();
     }
+    if (AppPlatform.isZuno) _manager.setZunoMediaAccess(_zunoAccess);
   }
 
   Future<void> _screen() async {
@@ -486,6 +535,8 @@ class DesktopCastControlsState extends State<DesktopCastControls> {
     _manager.removeListener(_changed);
     ActiveProfile.instance.scopeListenable.removeListener(_accessChanged);
     widget.adultAccess?.removeListener(_accessChanged);
+    ParentalControls.instance.readiness.removeListener(_accessChanged);
+    ParentalControls.instance.kidsMode.removeListener(_accessChanged);
     // Comme dans 7 MOTION, une session établie survit à la route. Seul un
     // choix encore en attente est annulé : il ne doit pas démarrer plus tard
     // après la fermeture de son sélecteur. Le moteur possède ses relais.

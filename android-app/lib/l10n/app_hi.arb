@@ -2911,5 +2911,75 @@
   "screenCastKeepOpen": "कास्ट करते समय ऐप खुला रखें और दोनों डिवाइस को एक ही वाई-फ़ाई नेटवर्क से जोड़े रखें।",
   "castNetworkDiagnostic": "कास्ट नेटवर्क जाँचें",
   "castNetworkDiagnosticHelp": "टीवी का चैनल बदले बिना कनेक्शन और रिले जाँचें।",
-  "castDiagnosticClosePlayer": "टीवी पर चैनल जाँचने से पहले होम पर लौटें।"
+  "castDiagnosticClosePlayer": "टीवी पर चैनल जाँचने से पहले होम पर लौटें।",
+  "catalogLimitTitle": "कैटलॉग सीमा",
+  "catalogLimitSummary": "{stored} पंक्तियाँ सहेजी गईं; {read} पंक्तियाँ पढ़ी गईं; {loaded} चैनल लोड हुए। पढ़ने की सीमा: {limit} पंक्तियाँ।",
+  "@catalogLimitSummary": {
+    "placeholders": {
+      "stored": {
+        "type": "int"
+      },
+      "read": {
+        "type": "int"
+      },
+      "loaded": {
+        "type": "int"
+      },
+      "limit": {
+        "type": "int"
+      }
+    }
+  },
+  "catalogLimitPreserved": "पढ़ने की यह सीमा कोई डेटा नहीं मिटाती। फ़िल्टर दिखाए जाने वाले चैनलों की संख्या कम कर सकते हैं।",
+  "catalogLimitSource": "{name}: {stored} पंक्तियाँ सहेजी गईं, {read} पढ़ी गईं, {loaded} चैनल लोड हुए।",
+  "@catalogLimitSource": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "stored": {
+        "type": "int"
+      },
+      "read": {
+        "type": "int"
+      },
+      "loaded": {
+        "type": "int"
+      }
+    }
+  },
+  "catalogLimitImport": "{name}: आयात में {total} मान्य प्रविष्टियाँ, {retained} रखी गईं, {skipped} आयात नहीं की गईं।",
+  "@catalogLimitImport": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "total": {
+        "type": "int"
+      },
+      "retained": {
+        "type": "int"
+      },
+      "skipped": {
+        "type": "int"
+      }
+    }
+  },
+  "catalogLimitKids": "कैटलॉग की सीमा लागू है। कोई वयस्क अपनी प्रोफ़ाइल से विवरण देख सकता है।",
+  "catalogLimitUnnamed": "स्रोत {id}",
+  "@catalogLimitUnnamed": {
+    "placeholders": {
+      "id": {
+        "type": "int"
+      }
+    }
+  },
+  "catalogLimitSources": "प्रभावित स्रोत: {sources}",
+  "@catalogLimitSources": {
+    "placeholders": {
+      "sources": {
+        "type": "String"
+      }
+    }
+  }
 }

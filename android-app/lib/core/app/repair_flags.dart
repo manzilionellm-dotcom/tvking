@@ -289,6 +289,45 @@ abstract final class RepairFlags {
   static const String missedNoticeLegacyKey = 'zuno.guide.notice_legacy';
   static bool missedNoticeLegacy = false;
 
+  /// L1-05, écran Direct ZUNO uniquement. Vrai = recalcul de la sélection
+  /// à chaque ouverture ; faux = index du catalogue courant. Les contrôles
+  /// de profil, de génération et d'autorisation restent obligatoires dans
+  /// les deux chemins : ce repli ne rouvre jamais un contenu interdit.
+  static const String liveOpenIndexLegacyKey = 'zuno.direct.open_index_legacy';
+  static bool liveOpenIndexLegacy = false;
+
+  /// L1-02 : vrai recalcule l’index et assemble immédiatement les
+  /// suggestions. Faux mémorise et regroupe leurs demandes. Les gardes de
+  /// profil, de catalogue et d’autorisation restent obligatoires.
+  static const String hubIndexLegacyKey = 'zuno.hub.index_legacy';
+  static bool hubIndexLegacy = false;
+
+  /// L1-06, accueil ZUNO uniquement. Vrai = reconstructions globales de
+  /// l'horloge et des cartes comme dans le 116 ; faux = écouteurs locaux.
+  /// Ce choix n'altère ni les cartes autorisées ni leur disposition.
+  static const String hubGlobalTickLegacyKey = 'zuno.hub.global_tick_legacy';
+  static bool hubGlobalTickLegacy = false;
+
+  /// L1-03 : vrai affiche immédiatement l’attente sûre ; faux attend au plus
+  /// 300 ms. Les permissions restent fermées dans les deux chemins.
+  static const String parentalWaitImmediateKey = 'zuno.parental.wait_immediate';
+  static bool parentalWaitImmediate = false;
+
+  /// L1-01 : vrai rétablit le sondage DLNA historique de ZUNO. Les gardes
+  /// de session et de contrôle parental restent obligatoires.
+  static const String dlnaWatchdogLegacyKey = 'zuno.dlna.watchdog_legacy';
+  static bool dlnaWatchdogLegacy = false;
+
+  /// L1-04 : vrai masque seulement l’avertissement de limite. Le plafond,
+  /// les données et la trace de boîte noire restent inchangés.
+  static const String catalogLimitNoticeOffKey = 'zuno.catalog.limit_notice_off';
+  static bool catalogLimitNoticeOff = false;
+
+  /// L1-07 : vrai coupe l’instrumentation native de ZUNO. Aucun réglage
+  /// du moteur vidéo ne dépend de cet interrupteur.
+  static const String nativeMetricsOffKey = 'zuno.player.native_metrics_off';
+  static bool nativeMetricsOff = false;
+
   static Future<void> load() async {
     bool raw = false;
     bool tvDelLegacy = false;
@@ -325,6 +364,13 @@ abstract final class RepairFlags {
     bool sportsLegacy = false;
     bool communityOff = false;
     bool noticeLegacy = false;
+    bool openIndexLegacy = false;
+    bool loadedHubIndexLegacy = false;
+    bool globalTickLegacy = false;
+    bool loadedNativeMetricsOff = false;
+    bool loadedCatalogLimitNoticeOff = false;
+    bool loadedDlnaWatchdogLegacy = false;
+    bool loadedParentalWaitImmediate = false;
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       raw = prefs.getBool(blackBoxRawKey) ?? false;
@@ -362,6 +408,13 @@ abstract final class RepairFlags {
       sportsLegacy = prefs.getBool(sportsNetworkLegacyKey) ?? false;
       communityOff = prefs.getBool(sportsCommunityOffKey) ?? false;
       noticeLegacy = prefs.getBool(missedNoticeLegacyKey) ?? false;
+      openIndexLegacy = prefs.getBool(liveOpenIndexLegacyKey) ?? false;
+      loadedHubIndexLegacy = prefs.getBool(hubIndexLegacyKey) ?? false;
+      globalTickLegacy = prefs.getBool(hubGlobalTickLegacyKey) ?? false;
+      loadedNativeMetricsOff = prefs.getBool(nativeMetricsOffKey) ?? false;
+      loadedCatalogLimitNoticeOff = prefs.getBool(catalogLimitNoticeOffKey) ?? false;
+      loadedDlnaWatchdogLegacy = prefs.getBool(dlnaWatchdogLegacyKey) ?? false;
+      loadedParentalWaitImmediate = prefs.getBool(parentalWaitImmediateKey) ?? false;
     } catch (_) {
       raw = false;
       fsyncAll = false;
@@ -398,12 +451,26 @@ abstract final class RepairFlags {
       sportsLegacy = false;
       communityOff = false;
       noticeLegacy = false;
+      openIndexLegacy = false;
+      loadedHubIndexLegacy = false;
+      globalTickLegacy = false;
+      loadedNativeMetricsOff = false;
+      loadedCatalogLimitNoticeOff = false;
+      loadedDlnaWatchdogLegacy = false;
+      loadedParentalWaitImmediate = false;
     }
     epgGzipByHeader = gzipByHeader;
     xtreamPerCategorySerial = xtreamSerial;
     sportsNetworkLegacy = sportsLegacy;
     sportsCommunityOff = communityOff;
     missedNoticeLegacy = noticeLegacy;
+    liveOpenIndexLegacy = openIndexLegacy;
+    hubIndexLegacy = loadedHubIndexLegacy;
+    hubGlobalTickLegacy = globalTickLegacy;
+    nativeMetricsOff = loadedNativeMetricsOff;
+    catalogLimitNoticeOff = loadedCatalogLimitNoticeOff;
+    dlnaWatchdogLegacy = loadedDlnaWatchdogLegacy;
+    parentalWaitImmediate = loadedParentalWaitImmediate;
     orderAckOff = ackOff;
     tvDeleteLegacy = tvDelLegacy;
     liveShelvesLegacy = shelvesLegacy;
@@ -476,6 +543,13 @@ abstract final class RepairFlags {
     sportsNetworkLegacy = false;
     sportsCommunityOff = false;
     missedNoticeLegacy = false;
+    liveOpenIndexLegacy = false;
+    hubIndexLegacy = false;
+    hubGlobalTickLegacy = false;
+    nativeMetricsOff = false;
+    catalogLimitNoticeOff = false;
+    dlnaWatchdogLegacy = false;
+    parentalWaitImmediate = false;
     NativeVideoController.legacyHoldFrame = false;
   }
 }

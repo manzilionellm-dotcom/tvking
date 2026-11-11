@@ -108,7 +108,7 @@ class _TvEpgPreviewScreenState extends State<TvEpgPreviewScreen> {
     for (final Channel c in all) {
       // Ce guide est une entrée normale : Adultes reste dans son espace
       // authentifié, même quand le mode enfants n'est pas activé.
-      if (!c.isLive || isAdultChannel(c)) continue;
+      if (!c.isLive || isHiddenFromNormalCatalog(c)) continue;
       out.add(c);
     }
     return out;
@@ -135,7 +135,7 @@ class _TvEpgPreviewScreenState extends State<TvEpgPreviewScreen> {
 
   Future<TvEpgWindow> _loadCurrent() {
     if (_rows.isEmpty) return Future<TvEpgWindow>.value(const TvEpgWindow());
-    if (isAdultChannel(_rows[_index])) {
+    if (isHiddenFromNormalCatalog(_rows[_index])) {
       return Future<TvEpgWindow>.value(const TvEpgWindow());
     }
     final String id = _rows[_index].id;
@@ -165,13 +165,13 @@ class _TvEpgPreviewScreenState extends State<TvEpgPreviewScreen> {
   Future<void> _open(int i) async {
     if (i < 0 || i >= _rows.length) return;
     final Channel channel = _rows[i];
-    if (isAdultChannel(channel)) return;
+    if (isHiddenFromNormalCatalog(channel)) return;
     final int scope = ActiveProfile.instance.scopeListenable.value;
     await TvLivePreview.releaseActive();
     if (!mounted ||
         scope != ActiveProfile.instance.scopeListenable.value ||
         !ActiveProfile.instance.allowsPlaylist(channel.playlistId) ||
-        isAdultChannel(channel)) {
+        isHiddenFromNormalCatalog(channel)) {
       return;
     }
     final List<Channel> channels = _filter(_rows);
@@ -189,7 +189,7 @@ class _TvEpgPreviewScreenState extends State<TvEpgPreviewScreen> {
   }
 
   Widget _previewOf(Channel channel) {
-    if (isAdultChannel(channel)) return const SizedBox.shrink();
+    if (isHiddenFromNormalCatalog(channel)) return const SizedBox.shrink();
     final Widget Function(Channel channel)? custom = widget.preview;
     if (custom != null) return custom(channel);
     return TvLivePreview(channel: channel);

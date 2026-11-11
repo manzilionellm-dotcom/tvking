@@ -1549,5 +1549,75 @@
   "screenCastKeepOpen": "Keep the app open and both devices on the same Wi-Fi network while casting.",
   "castNetworkDiagnostic": "Check the Cast network",
   "castNetworkDiagnosticHelp": "Check the connection and relay without changing the TV channel.",
-  "castDiagnosticClosePlayer": "Return to Home before testing channels on the TV."
+  "castDiagnosticClosePlayer": "Return to Home before testing channels on the TV.",
+  "catalogLimitTitle": "Catalogue limit",
+  "catalogLimitSummary": "{stored} rows stored; {read} rows read; {loaded} channels loaded. Read limit: {limit} rows.",
+  "@catalogLimitSummary": {
+    "placeholders": {
+      "stored": {
+        "type": "int"
+      },
+      "read": {
+        "type": "int"
+      },
+      "loaded": {
+        "type": "int"
+      },
+      "limit": {
+        "type": "int"
+      }
+    }
+  },
+  "catalogLimitPreserved": "This read limit does not delete any data. Filters may reduce the number of channels displayed.",
+  "catalogLimitSource": "{name}: {stored} rows stored, {read} read, {loaded} channels loaded.",
+  "@catalogLimitSource": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "stored": {
+        "type": "int"
+      },
+      "read": {
+        "type": "int"
+      },
+      "loaded": {
+        "type": "int"
+      }
+    }
+  },
+  "catalogLimitImport": "{name}: {total} valid import entries, {retained} retained, {skipped} not imported.",
+  "@catalogLimitImport": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "total": {
+        "type": "int"
+      },
+      "retained": {
+        "type": "int"
+      },
+      "skipped": {
+        "type": "int"
+      }
+    }
+  },
+  "catalogLimitKids": "A catalogue limit applies. An adult can view the details from their profile.",
+  "catalogLimitUnnamed": "Source {id}",
+  "@catalogLimitUnnamed": {
+    "placeholders": {
+      "id": {
+        "type": "int"
+      }
+    }
+  },
+  "catalogLimitSources": "Affected sources: {sources}",
+  "@catalogLimitSources": {
+    "placeholders": {
+      "sources": {
+        "type": "String"
+      }
+    }
+  }
 }

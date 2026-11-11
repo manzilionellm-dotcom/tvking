@@ -34,6 +34,9 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import '../../../core/blackbox/black_box.dart';
+import '../../../core/app/app_platform.dart';
+import '../../profiles/data/profile_repository.dart';
+import '../../security/data/parental_controls.dart';
 import '../../channels/domain/channel_genre.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../../playlists/data/xtream_client.dart';
@@ -67,6 +70,28 @@ const int kCinemaCategoryMax = 150000;
 /// Films / Séries (nouveaux titres ajoutés par le fournisseur).
 const Duration kCinemaMaxAge = Duration(minutes: 10);
 
+/// Jeton du classement réellement lu pour un média, sans droit de profil.
+/// Le dépôt actualise ce petit état lors des publications ; trim le conserve.
+/// Il n'est jamais persisté et le dépôt ne le retient que faiblement.
+class CinemaClassification {
+  CinemaClassification._({
+    required this.id,
+    required this.sourceKey,
+    required this.kind,
+    required bool? isAdult,
+    required int revision,
+  }) : _isAdult = isAdult, _revision = revision;
+
+  final String id;
+  final String sourceKey;
+  final CinemaKind kind;
+  bool? _isAdult;
+  bool? get isAdult => _isAdult;
+  int _revision;
+  String? _categoryKey;
+  List<CategoryRef> _parts = const <CategoryRef>[];
+}
+
 class CinemaRepository {
   CinemaRepository._() {
     ActiveProfile.instance.scopeListenable.addListener(_onProfileScope);
@@ -84,8 +109,179 @@ class CinemaRepository {
 
   static final CinemaRepository instance = CinemaRepository._();
 
+  final Map<CinemaKind, int> _classificationRevisions = <CinemaKind, int>{};
+  final Map<String, WeakReference<CinemaClassification>> _heldClassifications =
+      <String, WeakReference<CinemaClassification>>{};
+  final Expando<CinemaClassification> _titleClassifications =
+      Expando<CinemaClassification>();
+
+  /// Seuls remplacement, invalidation et effacement mémoire complet changent
+  /// cette révision. Ni la croissance de l'index ni trim ne révoquent un média.
+  final ValueNotifier<int> classificationVersion = ValueNotifier<int>(0);
+
+  int classificationRevision(CinemaKind kind) =>
+      _classificationRevisions[kind] ?? 0;
+
+  void _invalidateClassification(CinemaKind kind) {
+    if (!AppPlatform.isZuno) return;
+    _classificationRevisions[kind] = classificationRevision(kind) + 1;
+  }
+
+  void _classificationChanged() {
+    if (AppPlatform.isZuno) classificationVersion.value++;
+  }
+
+  List<CinemaClassification> _heldClassificationsFor(CinemaKind kind) {
+    final held = <CinemaClassification>[];
+    _heldClassifications.removeWhere((_, reference) {
+      final proof = reference.target;
+      if (proof == null) return true;
+      if (proof.kind == kind) held.add(proof);
+      return false;
+    });
+    return held;
+  }
+
+  void _readClassification(CinemaClassification proof, CinemaTitle? title) {
+    proof._revision = classificationRevision(proof.kind);
+    proof._isAdult = title == null ? null : _adultStatusForTitle(title);
+    if (title == null) return;
+    proof._categoryKey = title.categoryKey;
+    proof._parts = const <CategoryRef>[];
+    for (final category in _cats[proof.kind] ?? const <CinemaCategory>[]) {
+      if (category.key != title.categoryKey) continue;
+      proof._parts = List<CategoryRef>.unmodifiable(category.parts.where(
+          (part) => part.sourceKey == proof.sourceKey));
+      break;
+    }
+  }
+
+  /// Toute nouvelle page peut remplacer le classement d'un item déjà ouvert,
+  /// même sans forceNetwork. Une absence dans une page complète devient
+  /// inconnue ; l'extension partielle de l'index ne révoque pas ses autres items.
+  bool _readHeldTitles(CinemaKind kind, Iterable<CinemaTitle> titles,
+      {String? replacedCategory}) {
+    if (!AppPlatform.isZuno) return false;
+    final held = _heldClassificationsFor(kind);
+    if (held.isEmpty) return false;
+    final byId = <String, CinemaClassification>{
+      for (final proof in held) '${proof.sourceKey}|${proof.id}': proof,
+    };
+    if (replacedCategory != null) {
+      for (final proof in held) {
+        if (proof._categoryKey == replacedCategory) {
+          _readClassification(proof, null);
+        }
+      }
+    }
+    bool found = false;
+    for (final title in titles) {
+      final proof = byId['${title.sourceKey}|${title.id}'];
+      if (proof == null) continue;
+      final wasCurrent = proof._revision == classificationRevision(kind);
+      final previousStatus = proof._isAdult;
+      _readClassification(proof, title);
+      // Une construction partielle commencée plus tôt ne libéralise pas
+      // le classement déjà révoqué par une page plus récente.
+      if (replacedCategory == null && wasCurrent) {
+        if (previousStatus == true) {
+          proof._isAdult = true;
+        } else if (previousStatus == null && proof._isAdult == false) {
+          proof._isAdult = null;
+        }
+      }
+      _titleClassifications[title] = proof;
+      found = true;
+    }
+    return found || replacedCategory != null;
+  }
+
+  CinemaTitle? _currentTitle(String id) {
+    for (final titles in _titles.values.toList(growable: false).reversed) {
+      for (final title in titles) {
+        if (title.id == id) return title;
+      }
+    }
+    for (final title in _index) {
+      if (title.id == id) return title;
+    }
+    return null;
+  }
+
+  /// Une preuve ne naît que d'un titre réellement chargé et classé. Une URL,
+  /// un ancien booléen de reprise ou une catégorie supposée ne suffisent pas.
+  CinemaClassification? classificationForMedia(
+    String id,
+    CinemaKind kind, {
+    CinemaClassification? previous,
+  }) {
+    if (!AppPlatform.isZuno) return null;
+    final revision = classificationRevision(kind);
+    if (previous != null && previous.id == id && previous.kind == kind &&
+        previous._revision == revision) {
+      return previous;
+    }
+    final title = _currentTitle(id);
+    if (title == null || title.kind != kind) return null;
+    // Nettoie les clés mortes avant chaque ajout : aucun objet média ou
+    // catalogue ne reste vivant à cause de ce registre.
+    _heldClassificationsFor(kind);
+    final key = '${kind.name}|${title.sourceKey}|$id';
+    final existing = _titleClassifications[title] ??
+        _heldClassifications[key]?.target;
+    if (existing != null) {
+      // Une sélection n'est pas une publication : elle ne peut jamais
+      // assouplir un jeton courant depuis un ancien objet d'index.
+      _titleClassifications[title] = existing;
+      return existing._revision == revision ? existing : null;
+    }
+    final proof = CinemaClassification._(
+        id: title.id, sourceKey: title.sourceKey, kind: kind,
+        isAdult: null, revision: revision);
+    _readClassification(proof, title);
+    _heldClassifications[key] = WeakReference<CinemaClassification>(proof);
+    _titleClassifications[title] = proof;
+    return proof;
+  }
+
+  void _discardTitlesFor(CinemaKind kind) {
+    _titles.removeWhere((key, _) => key.startsWith('${kind.name}|'));
+    if (_indexKind != kind) return;
+    _indexGen++;
+    _indexKind = null;
+    _index = const <CinemaTitle>[];
+    _indexOverrides.clear();
+    _indexDone = false;
+    _indexComplete = false;
+    _indexing = null;
+    _indexCounts = const <String, int>{};
+    _recent = null;
+  }
+
   /// Classification partagée par le catalogue, la recherche et les reprises.
-  bool isAdultTitle(CinemaTitle title) => _adultStatusForTitle(title) == true;
+  bool isAdultTitle(CinemaTitle title) => _visibleStatusForTitle(title) == true;
+
+  /// null conserve l'absence de classification ; false est un résultat connu.
+  bool? adultStatusForTitle(CinemaTitle title) => _visibleStatusForTitle(title);
+
+  bool isHiddenTitle(CinemaTitle title) {
+    final status = _visibleStatusForTitle(title);
+    if (status == true) return true;
+    if (!AppPlatform.isZuno) return false;
+    if (!ParentalControls.instance.contentReady) return true;
+    return (ParentalControls.instance.kidsMode.value ||
+        ProfileRepository.instance.activeIsKids) && status != false;
+  }
+
+  bool? _visibleStatusForTitle(CinemaTitle title) {
+    final raw = _adultStatusForTitle(title);
+    if (!AppPlatform.isZuno || raw == true) return raw;
+    final proof = _titleClassifications[title] ?? _heldClassifications[
+        '${title.kind.name}|${title.sourceKey}|${title.id}']?.target;
+    if (proof == null) return raw;
+    return proof._revision == classificationRevision(title.kind)
+        ? proof.isAdult : null;
+  }
 
   bool? _adultStatusForTitle(CinemaTitle title) {
     if (ChannelClassifier.isAdult(title.name, title.categoryKey)) return true;
@@ -106,6 +302,13 @@ class CinemaRepository {
     final String id = entry.isEpisode ? (entry.seriesId ?? entry.id) : entry.id;
     final bool? fromCatalogue = adultStatusForMedia(id, entry.title);
     if (fromCatalogue != null) return fromCatalogue;
+    // Le 116 persistait parfois « false » faute de catégorie. Pour un enfant,
+    // ce cache ancien ne prouve donc pas une classification du média courant.
+    // Il reste stocké, sans migration ni effacement.
+    if (AppPlatform.isZuno && (ParentalControls.instance.kidsMode.value ||
+        ProfileRepository.instance.activeIsKids)) {
+      return null;
+    }
     return entry.adultClassificationKnown ? false : null;
   }
 
@@ -113,6 +316,10 @@ class CinemaRepository {
   /// Aucun titre non retrouvé n'est supposé normal.
   bool? adultStatusForMedia(String id, String name) {
     if (ChannelClassifier.isAdult(name, '')) return true;
+    if (AppPlatform.isZuno) {
+      final title = _currentTitle(id);
+      return title == null ? null : _visibleStatusForTitle(title);
+    }
     for (final title in _index) {
       if (title.id == id) return _adultStatusForTitle(title);
     }
@@ -260,6 +467,12 @@ class CinemaRepository {
     _catKeys.remove(kind);
     _persisted.remove(kind);
     _wantsRefresh = true;
+    if (AppPlatform.isZuno) {
+      _discardTitlesFor(kind);
+      _invalidateClassification(kind);
+      _classificationChanged();
+      indexVersion.value++;
+    }
   }
 
   /// Date du catalogue affiché, ou null s'il n'y en a pas encore.
@@ -299,6 +512,9 @@ class CinemaRepository {
   /// rouvert) s'arrête d'elle-même et ne publie plus rien.
   int _indexGen = 0;
   List<CinemaTitle> _index = const <CinemaTitle>[];
+  // Catégories relues pendant la construction : les anciennes réponses
+  // conservent leur snapshot actuel, toujours borné par _indexMax.
+  final Set<String> _indexOverrides = <String>{};
   bool _indexDone = false;
 
   /// Vrai seulement si l'index contient TOUT le catalogue : plafond
@@ -405,6 +621,9 @@ class CinemaRepository {
     final List<CinemaSource> srcs = await sources();
     if (scope != _scopeEpoch) return const <CinemaCategory>[];
     final int gen = _catalogGen;
+    final int classification = classificationRevision(kind);
+    bool stale() => gen != _catalogGen || (AppPlatform.isZuno &&
+        classification != classificationRevision(kind));
     final List<CinemaCategory>? cached = _cats[kind];
     if (cached != null) {
       if (srcs.isNotEmpty && _needsRefresh(kind)) {
@@ -414,7 +633,7 @@ class CinemaRepository {
     }
 
     final CatalogHeader? header = await _readDiskHeader(kind);
-    if (gen != _catalogGen) return const <CinemaCategory>[];
+    if (stale()) return const <CinemaCategory>[];
     if (header != null && header.categories.isNotEmpty) {
       _installHeader(kind, header);
       _persisted[kind] = true;
@@ -427,13 +646,17 @@ class CinemaRepository {
     if (srcs.isEmpty) return const <CinemaCategory>[];
 
     final _CatFetch fetched = await _fetchMerged(kind);
-    if (gen != _catalogGen) return const <CinemaCategory>[];
+    if (stale()) return const <CinemaCategory>[];
     final bool keep = rememberCategoryList(
       count: fetched.categories.length,
       anySuccess: fetched.anySuccess,
       anyFailure: fetched.anyFailure,
     );
     if (keep) {
+      if (AppPlatform.isZuno) {
+        _discardTitlesFor(kind);
+        _invalidateClassification(kind);
+      }
       _cats[kind] = fetched.categories;
       _catKeys[kind] = fetched.keys;
       _loadedAt ??= DateTime.now();
@@ -441,6 +664,8 @@ class CinemaRepository {
         _persisted[kind] = false;
         unawaited(_refreshCatalog(kind));
       }
+      _classificationChanged();
+      if (AppPlatform.isZuno) indexVersion.value++;
     }
     BlackBox.instance.info('CINEMA',
         '${kind.name} : ${fetched.categories.length} catégories (${srcs.length} compte(s))');
@@ -485,6 +710,9 @@ class CinemaRepository {
       return const CinemaTitleLoad(titles: <CinemaTitle>[], failed: false);
     }
     final int gen = _catalogGen;
+    final int classification = classificationRevision(kind);
+    bool stale() => gen != _catalogGen || (AppPlatform.isZuno &&
+        classification != classificationRevision(kind));
     const empty = CinemaTitleLoad(titles: <CinemaTitle>[], failed: false);
     final String ck = '${kind.name}|${cat.key}';
     if (!forceNetwork) {
@@ -494,43 +722,85 @@ class CinemaRepository {
         return CinemaTitleLoad(titles: hit, fromCache: true, failed: false);
       }
       final List<CinemaTitle>? saved = await _titlesFromDisk(kind, cat.key);
-      if (gen != _catalogGen) return empty;
+      if (stale()) return empty;
       if (saved != null) {
-        _rememberTitles(ck, saved);
+        _rememberTitles(ck, saved, kind: kind, categoryKey: cat.key);
         return CinemaTitleLoad(titles: saved, fromCache: true, failed: false);
       }
       if (_indexKind == kind && _indexDone && _indexComplete) {
         final List<CinemaTitle> fromIndex = _index
             .where((CinemaTitle t) => t.categoryKey == cat.key)
             .toList(growable: false);
-        _rememberTitles(ck, fromIndex);
+        _rememberTitles(ck, fromIndex, kind: kind, categoryKey: cat.key);
         return CinemaTitleLoad(
             titles: fromIndex, fromCache: true, failed: false);
       }
     }
 
     final _TitleNet net = await _fetchTitlesNetwork(kind, cat);
-    if (gen != _catalogGen) return empty;
+    if (stale()) return empty;
     if (net.failed) {
       final List<CinemaTitle>? saved = await _titlesFromDisk(kind, cat.key);
-      if (gen != _catalogGen) return empty;
+      if (stale()) return empty;
       if (saved != null) {
-        _rememberTitles(ck, saved);
+        _rememberTitles(ck, saved, kind: kind, categoryKey: cat.key);
         return CinemaTitleLoad(titles: saved, fromCache: true, failed: false);
       }
       return const CinemaTitleLoad(titles: <CinemaTitle>[], failed: true);
     }
     if (shouldCacheTitlePage(fetchFailed: false)) {
-      _rememberTitles(ck, net.titles);
+      if (AppPlatform.isZuno) {
+        _invalidateClassification(kind);
+        // La réponse remplace cette catégorie seulement. Les jetons des
+        // autres catégories gardent leur classement et suivent la révision.
+        for (final proof in _heldClassificationsFor(kind)) {
+          if (proof._revision == classification) {
+            proof._revision = classificationRevision(kind);
+          }
+        }
+        if (_indexKind == kind) {
+          final updated = <CinemaTitle>[];
+          bool replaced = false;
+          for (final title in _index) {
+            if (title.categoryKey == cat.key) {
+              if (!replaced) {
+                updated.addAll(net.titles.take(_indexMax - updated.length));
+                replaced = true;
+              }
+            } else if (updated.length < _indexMax) {
+              updated.add(title);
+            }
+          }
+          if (!replaced) updated.addAll(net.titles.take(_indexMax - updated.length));
+          if (!_indexDone) _indexOverrides.add(cat.key);
+          _index = List<CinemaTitle>.unmodifiable(updated);
+          _indexComplete = false;
+          _indexCounts = <String, int>{};
+          for (final title in updated) {
+            _indexCounts[title.categoryKey] = (_indexCounts[title.categoryKey] ?? 0) + 1;
+          }
+          _recent = null;
+        }
+      }
+      _rememberTitles(ck, net.titles, kind: kind, categoryKey: cat.key,
+          notifyClassification: false);
+      if (AppPlatform.isZuno) {
+        _classificationChanged();
+        indexVersion.value++;
+      }
     }
     return CinemaTitleLoad(titles: net.titles, failed: false);
   }
 
-  void _rememberTitles(String cacheKey, List<CinemaTitle> titles) {
+  void _rememberTitles(String cacheKey, List<CinemaTitle> titles,
+      {required CinemaKind kind, required String categoryKey,
+       bool notifyClassification = true}) {
     _titles[cacheKey] = titles;
     while (_titles.length > _kTitleCacheMax) {
       _titles.remove(_titles.keys.first);
     }
+    final changed = _readHeldTitles(kind, titles, replacedCategory: categoryKey);
+    if (notifyClassification && changed) _classificationChanged();
   }
 
   Future<_TitleNet> _fetchTitlesNetwork(
@@ -631,6 +901,7 @@ class CinemaRepository {
     // Un seul type indexé à la fois : on libère l'autre.
     _indexKind = kind;
     _index = const <CinemaTitle>[];
+    _indexOverrides.clear();
     _indexDone = false;
     _indexComplete = false;
     _indexCounts = const <String, int>{};
@@ -674,8 +945,16 @@ class CinemaRepository {
 
     void publish() {
       if (stale()) return;
-      _index = List<CinemaTitle>.unmodifiable(acc);
+      _index = _indexSnapshot(acc);
       _recent = null;
+      if (AppPlatform.isZuno && _indexDone) {
+        _indexCounts = <String, int>{};
+        for (final title in _index) {
+          _indexCounts[title.categoryKey] = (_indexCounts[title.categoryKey] ?? 0) + 1;
+        }
+        _indexOverrides.clear();
+      }
+      if (_readHeldTitles(kind, _index)) _classificationChanged();
       indexVersion.value++;
     }
 
@@ -739,18 +1018,52 @@ class CinemaRepository {
       publish();
     }
     if (stale()) return;
-    final Map<String, int> counts = <String, int>{};
-    for (final CinemaTitle t in acc) {
-      counts[t.categoryKey] = (counts[t.categoryKey] ?? 0) + 1;
+    if (!AppPlatform.isZuno) {
+      final Map<String, int> counts = <String, int>{};
+      for (final CinemaTitle t in acc) {
+        counts[t.categoryKey] = (counts[t.categoryKey] ?? 0) + 1;
+      }
+      _indexCounts = counts;
     }
-    _indexCounts = counts;
-    _indexComplete = complete;
+    _indexComplete = complete &&
+        (!AppPlatform.isZuno || _indexOverrides.isEmpty);
     _indexDone = true;
     publish();
     BlackBox.instance.info(
         'CINEMA',
-        'index ${kind.name} : ${acc.length} titres en ${sw.elapsedMilliseconds} ms'
+        'index ${kind.name} : ${AppPlatform.isZuno ? _index.length : acc.length} titres en ${sw.elapsedMilliseconds} ms'
             '${complete ? '' : ' (partiel → catégories lues en direct)'}');
+  }
+
+  /// Une réponse ancienne ne réintroduit pas les objets de catégories déjà
+  /// remplacées. Réutilise seulement le snapshot de l'index courant ; aucun
+  /// autre type de catalogue n'est chargé, ni aucune limite augmentée.
+  List<CinemaTitle> _indexSnapshot(List<CinemaTitle> incoming) {
+    if (!AppPlatform.isZuno || _indexOverrides.isEmpty) {
+      return List<CinemaTitle>.unmodifiable(incoming);
+    }
+    final pages = <String, List<CinemaTitle>>{
+      for (final key in _indexOverrides) key: <CinemaTitle>[],
+    };
+    for (final title in _index) {
+      pages[title.categoryKey]?.add(title);
+    }
+    final emitted = <String>{};
+    final result = <CinemaTitle>[];
+    for (final title in incoming) {
+      final replacement = pages[title.categoryKey];
+      if (replacement == null) {
+        if (result.length < _indexMax) result.add(title);
+      } else if (emitted.add(title.categoryKey)) {
+        result.addAll(replacement.take(_indexMax - result.length));
+      }
+    }
+    for (final entry in pages.entries) {
+      if (emitted.add(entry.key)) {
+        result.addAll(entry.value.take(_indexMax - result.length));
+      }
+    }
+    return List<CinemaTitle>.unmodifiable(result);
   }
 
   /// Nombre de titres d'une catégorie (null tant que l'index n'est pas fini).
@@ -897,6 +1210,7 @@ class CinemaRepository {
     _indexKind = null;
     _indexGen++;
     _index = const <CinemaTitle>[];
+    _indexOverrides.clear();
     _indexDone = false;
     _indexComplete = false;
     _indexing = null;
@@ -908,6 +1222,10 @@ class CinemaRepository {
     _refreshInFlight.clear();
     _refreshStartedAt = null;
     _catalogGen++;
+    for (final kind in CinemaKind.values) {
+      _invalidateClassification(kind);
+    }
+    _classificationChanged();
     indexVersion.value++;
   }
 
@@ -918,6 +1236,7 @@ class CinemaRepository {
     _indexKind = null;
     _indexGen++;
     _index = const <CinemaTitle>[];
+    _indexOverrides.clear();
     _indexDone = false;
     _indexing = null;
     _indexCounts = const <String, int>{};
@@ -961,7 +1280,7 @@ class CinemaRepository {
       if (rows == null) return null;
       return <CinemaTitle>[
         for (final CatalogTitleRecord row in rows)
-          row.toCinemaTitle(sourceByKey(row.sourceKey)),
+          _titleFromCatalogRow(row, categoryKey),
       ];
     } catch (e) {
       BlackBox.instance.warn('CINEMA', 'titres en cache « $categoryKey » : $e');
@@ -969,7 +1288,27 @@ class CinemaRepository {
     }
   }
 
-  void _installHeader(CinemaKind kind, CatalogHeader header) {
+  CinemaTitle _titleFromCatalogRow(CatalogTitleRecord row, String categoryKey) {
+    final source = sourceByKey(row.sourceKey);
+    if (!AppPlatform.isZuno) return row.toCinemaTitle(source);
+    // Le fichier est rattaché à la catégorie de l'en-tête publié. Certains
+    // anciens caches ont gardé une clé issue de la table précédente pendant
+    // le téléchargement : corriger cette lecture ne réécrit aucune donnée.
+    return CinemaTitle(id: row.id, kind: row.kind, sourceKey: row.sourceKey,
+        remoteId: row.remoteId, name: row.name, categoryKey: categoryKey,
+        searchKey: row.searchKey, posterUrl: row.posterUrl, rating: row.rating,
+        year: row.year, addedAt: row.addedAt, containerExt: row.containerExt,
+        streamUrl: row.kind == CinemaKind.movie && source != null
+            ? source.movieUrl(row.remoteId, row.containerExt) : null,
+        plot: row.plot);
+  }
+
+  void _installHeader(CinemaKind kind, CatalogHeader header,
+      {bool notifyClassification = true}) {
+    if (AppPlatform.isZuno) {
+      _discardTitlesFor(kind);
+      _invalidateClassification(kind);
+    }
     final List<CinemaCategory> cats = <CinemaCategory>[
       for (final CatalogCategoryRecord record in header.categories)
         record.toCinemaCategory(),
@@ -987,6 +1326,10 @@ class CinemaRepository {
     _catKeys[kind] = keys;
     _loadedAt = header.updatedAt;
     _updatedAt[kind] = header.updatedAt;
+    if (notifyClassification) {
+      _classificationChanged();
+      if (AppPlatform.isZuno) indexVersion.value++;
+    }
   }
 
   /// Films déjà sur la box, pour l'écran mobile si le serveur ne répond pas.
@@ -1019,7 +1362,7 @@ class CinemaRepository {
             sourceByKey(row.sourceKey) == null) {
           continue;
         }
-        final CinemaTitle title = row.toCinemaTitle(sourceByKey(row.sourceKey));
+        final CinemaTitle title = _titleFromCatalogRow(row, category.key);
         final String? url = title.streamUrl;
         if (url == null || url.isEmpty) continue;
         out.add(VodMovie(
@@ -1049,6 +1392,52 @@ class CinemaRepository {
     });
   }
 
+  /// Relit seulement les catégories des médias encore détenus. Le second
+  /// index n'est ni chargé ni remplacé ; une seule page est lue à la fois et
+  /// seuls les quelques titres recherchés survivent jusqu'à la publication.
+  Future<Map<CinemaClassification, CinemaTitle?>> _readHeldPublication(
+      CinemaKind kind, CatalogHeader header, CatalogDisk disk,
+      String folder, int gen) async {
+    final held = _heldClassificationsFor(kind);
+    final found = <CinemaClassification, CinemaTitle?>{
+      for (final proof in held) proof: null,
+    };
+    for (final category in header.categories) {
+      final wanted = <CinemaClassification>[
+        for (final proof in held)
+          if (proof._categoryKey == category.key || category.parts.any(
+              (part) => proof._parts.any((previous) =>
+                  previous.sourceKey == part.sourceKey &&
+                  previous.categoryId == part.categoryId))) proof,
+      ];
+      if (wanted.isEmpty) continue;
+      List<CatalogTitleRecord>? rows;
+      try {
+        rows = await disk.readTitles(folder, kind, category.key);
+      } catch (_) {
+        // L'échec conserve null : il n'autorise jamais un ancien classement.
+      }
+      if (gen != _catalogGen) return const <CinemaClassification, CinemaTitle?>{};
+      if (rows == null) continue;
+      final byId = <String, CinemaClassification>{
+        for (final proof in wanted) '${proof.sourceKey}|${proof.id}': proof,
+      };
+      for (final row in rows) {
+        final proof = byId['${row.sourceKey}|${row.id}'];
+        if (proof == null || row.kind != kind) continue;
+        found[proof] = _titleFromCatalogRow(row, category.key);
+      }
+    }
+    return found;
+  }
+
+  void _publishHeldClassifications(CinemaKind kind,
+      Map<CinemaClassification, CinemaTitle?> values) {
+    for (final proof in _heldClassificationsFor(kind)) {
+      _readClassification(proof, values[proof]);
+    }
+  }
+
   Future<void> _refreshBody(
       CinemaKind kind, int gen, String? folder, bool forceNetwork) async {
     if (folder == null || gen != _catalogGen) return;
@@ -1076,14 +1465,33 @@ class CinemaRepository {
       if (result.status != CatalogRefreshStatus.published) return;
       final CatalogHeader? header = await disk.readHeader(folder, kind);
       if (header == null || gen != _catalogGen) return;
-      _installHeader(kind, header);
+      final held = AppPlatform.isZuno
+          ? await _readHeldPublication(kind, header, disk, folder, gen)
+          : const <CinemaClassification, CinemaTitle?>{};
+      if (gen != _catalogGen) return;
+      // ZUNO publie le nouveau classement et son index dans la même étape
+      // synchrone. Aucun observateur ne voit les nouvelles catégories avec
+      // les anciens titres encore classés normaux.
+      final bool installedTogether = AppPlatform.isZuno &&
+          await _fillIndexFromDisk(kind, publication: header,
+              classifications: held);
+      if (gen != _catalogGen) return;
+      if (!installedTogether) {
+        _installHeader(kind, header, notifyClassification: !AppPlatform.isZuno);
+        if (AppPlatform.isZuno) {
+          _publishHeldClassifications(kind, held);
+          _classificationChanged();
+          indexVersion.value++;
+        }
+      }
       _publications[kind] = (_publications[kind] ?? 0) + 1;
       _persisted[kind] = true;
       _titles.removeWhere(
           (String key, List<CinemaTitle> _) => key.startsWith('${kind.name}|'));
       await disk.pruneSignatures(folder);
       if (gen != _catalogGen) return;
-      if (_indexKind == null || _indexKind == kind) {
+      if (!AppPlatform.isZuno &&
+          (_indexKind == null || _indexKind == kind)) {
         await _fillIndexFromDisk(kind);
       }
       BlackBox.instance.info('CINEMA',
@@ -1094,13 +1502,15 @@ class CinemaRepository {
     }
   }
 
-  Future<bool> _fillIndexFromDisk(CinemaKind kind) async {
+  Future<bool> _fillIndexFromDisk(CinemaKind kind,
+      {CatalogHeader? publication,
+       Map<CinemaClassification, CinemaTitle?>? classifications}) async {
     final int gen = _indexGen;
     if (_indexKind != null && _indexKind != kind) return false;
     final String? folder = _folderSig;
     final CatalogDisk? disk = await _openDisk();
     if (folder == null || disk == null) return false;
-    final CatalogHeader? header = await disk.readHeader(folder, kind);
+    final CatalogHeader? header = publication ?? await disk.readHeader(folder, kind);
     if (header == null || !header.complete || header.titleCount <= 0) {
       return false;
     }
@@ -1119,22 +1529,36 @@ class CinemaRepository {
           hitCap = true;
           break;
         }
-        final CinemaTitle title = row.toCinemaTitle(sourceByKey(row.sourceKey));
+        final CinemaTitle title = _titleFromCatalogRow(row, category.key);
         if (seen.add('${title.searchKey}|${title.year ?? ''}')) acc.add(title);
       }
       if (hitCap) break;
     }
     if (gen != _indexGen || acc.isEmpty) return false;
+    final snapshot = publication == null
+        ? _indexSnapshot(acc) : List<CinemaTitle>.unmodifiable(acc);
     final Map<String, int> counts = <String, int>{};
-    for (final CinemaTitle title in acc) {
+    for (final CinemaTitle title in snapshot) {
       counts[title.categoryKey] = (counts[title.categoryKey] ?? 0) + 1;
     }
+    if (publication != null) {
+      _installHeader(kind, publication, notifyClassification: false);
+    }
     _indexKind = kind;
-    _index = List<CinemaTitle>.unmodifiable(acc);
+    _index = snapshot;
     _indexCounts = counts;
-    _indexComplete = !hitCap;
+    _indexComplete = !hitCap &&
+        (!AppPlatform.isZuno || _indexOverrides.isEmpty);
     _indexDone = true;
+    _indexOverrides.clear();
     _recent = null;
+    if (publication != null) {
+      _publishHeldClassifications(kind,
+          classifications ?? const <CinemaClassification, CinemaTitle?>{});
+      _classificationChanged();
+    } else if (_readHeldTitles(kind, _index)) {
+      _classificationChanged();
+    }
     indexVersion.value++;
     return true;
   }

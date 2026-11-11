@@ -2911,5 +2911,75 @@
   "screenCastKeepOpen": "Во время трансляции держи приложение открытым, а оба устройства — в одной сети Wi-Fi.",
   "castNetworkDiagnostic": "Проверить сеть Cast",
   "castNetworkDiagnosticHelp": "Проверяет соединение и ретранслятор, не меняя канал на телевизоре.",
-  "castDiagnosticClosePlayer": "Вернись на главный экран перед проверкой каналов на телевизоре."
+  "castDiagnosticClosePlayer": "Вернись на главный экран перед проверкой каналов на телевизоре.",
+  "catalogLimitTitle": "Ограничение каталога",
+  "catalogLimitSummary": "Сохранено строк: {stored}; прочитано строк: {read}; загружено каналов: {loaded}. Предел чтения: {limit} строк.",
+  "@catalogLimitSummary": {
+    "placeholders": {
+      "stored": {
+        "type": "int"
+      },
+      "read": {
+        "type": "int"
+      },
+      "loaded": {
+        "type": "int"
+      },
+      "limit": {
+        "type": "int"
+      }
+    }
+  },
+  "catalogLimitPreserved": "Этот предел чтения не удаляет данные. Фильтры могут уменьшить число отображаемых каналов.",
+  "catalogLimitSource": "{name}: сохранено строк — {stored}, прочитано — {read}, загружено каналов — {loaded}.",
+  "@catalogLimitSource": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "stored": {
+        "type": "int"
+      },
+      "read": {
+        "type": "int"
+      },
+      "loaded": {
+        "type": "int"
+      }
+    }
+  },
+  "catalogLimitImport": "{name}: допустимых записей при импорте — {total}, сохранено — {retained}, не импортировано — {skipped}.",
+  "@catalogLimitImport": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "total": {
+        "type": "int"
+      },
+      "retained": {
+        "type": "int"
+      },
+      "skipped": {
+        "type": "int"
+      }
+    }
+  },
+  "catalogLimitKids": "Действует ограничение каталога. Взрослый может посмотреть подробности в своём профиле.",
+  "catalogLimitUnnamed": "Источник {id}",
+  "@catalogLimitUnnamed": {
+    "placeholders": {
+      "id": {
+        "type": "int"
+      }
+    }
+  },
+  "catalogLimitSources": "Затронутые источники: {sources}",
+  "@catalogLimitSources": {
+    "placeholders": {
+      "sources": {
+        "type": "String"
+      }
+    }
+  }
 }

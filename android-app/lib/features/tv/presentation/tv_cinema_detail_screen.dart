@@ -22,8 +22,10 @@ import 'tv_localized_format.dart';
 import '../../cinema/data/cinema_downloads.dart';
 import '../../vod/domain/vod_movie.dart';
 import '../../cinema/data/cinema_repository.dart';
+import '../../../core/app/app_platform.dart';
 import '../../profiles/data/active_profile.dart';
 import '../../security/data/adult_access.dart';
+import '../../security/data/parental_controls.dart';
 import '../../cinema/data/watch_progress.dart';
 import '../../cinema/domain/cinema_models.dart';
 import '../../vod/data/download_repository.dart';
@@ -254,6 +256,7 @@ class _DownloadPillState extends State<_DownloadPill> {
     await showCinemaSheet(
       context,
       title: widget.item.subtitle ?? widget.item.title,
+      isAllowed: () => widget.isAllowed?.call() ?? widget.item.isAllowedNow(),
       actions: <CinemaSheetAction>[
         CinemaSheetAction(
           Icons.delete_outline_rounded,
@@ -368,12 +371,15 @@ class TvMovieDetailScreen extends StatefulWidget {
 
 class _TvMovieDetailScreenState extends State<TvMovieDetailScreen> {
   bool _scopeChanged = false;
+  late final VodPlayItem _permissionItem = VodPlayItem.catalogueTitle(widget.title);
   late final bool _adultTitle =
       CinemaRepository.instance.isAdultTitle(widget.title);
   bool get _titleAllowed =>
-      !_scopeChanged &&
+      ParentalControls.instance.contentReady && !_scopeChanged &&
+      (!AppPlatform.isZuno ||
+          _permissionItem.isAllowedNow(adultAccess: widget.adultAccess)) &&
       (widget.adultAccess == null
-          ? !_adultTitle
+          ? !CinemaRepository.instance.isHiddenTitle(widget.title)
           : widget.adultAccess!.isValid && _adultTitle) &&
       ActiveProfile.instance.allowsPlaylist(
         int.tryParse(widget.title.sourceKey.startsWith('p')
@@ -401,6 +407,9 @@ class _TvMovieDetailScreenState extends State<TvMovieDetailScreen> {
     WatchProgressRepository.instance.addListener(_refresh);
     ActiveProfile.instance.scopeListenable.addListener(_onProfileScope);
     widget.adultAccess?.addListener(_onAccessChanged);
+    if (AppPlatform.isZuno) {
+      CinemaRepository.instance.classificationVersion.addListener(_onAccessChanged);
+    }
     if (!_titleAllowed) {
       _onProfileScope();
       return;
@@ -420,6 +429,7 @@ class _TvMovieDetailScreenState extends State<TvMovieDetailScreen> {
     WatchProgressRepository.instance.removeListener(_refresh);
     ActiveProfile.instance.scopeListenable.removeListener(_onProfileScope);
     widget.adultAccess?.removeListener(_onAccessChanged);
+    CinemaRepository.instance.classificationVersion.removeListener(_onAccessChanged);
     super.dispose();
   }
 
@@ -438,7 +448,9 @@ class _TvMovieDetailScreenState extends State<TvMovieDetailScreen> {
     final CinemaDetails d = _d ?? CinemaDetails.empty;
     final WatchEntry? w = WatchProgressRepository.instance.get(t.id);
     final bool resumable = w != null && w.isResumable && !w.upNext;
-    final VodPlayItem item = VodPlayItem.movie(t, isAdult: _adultTitle);
+    final VodPlayItem item = VodPlayItem.movie(t, isAdult: _adultTitle,
+        previousClassification: AppPlatform.isZuno
+            ? _permissionItem.playbackClassification : null);
     final double? rating = d.rating ?? t.rating;
     final List<String> meta = <String>[
       if (t.year != null)
@@ -562,12 +574,15 @@ class TvSeriesScreen extends StatefulWidget {
 
 class _TvSeriesScreenState extends State<TvSeriesScreen> {
   bool _scopeChanged = false;
+  late final VodPlayItem _permissionItem = VodPlayItem.catalogueTitle(widget.title);
   late final bool _adultTitle =
       CinemaRepository.instance.isAdultTitle(widget.title);
   bool get _titleAllowed =>
-      !_scopeChanged &&
+      ParentalControls.instance.contentReady && !_scopeChanged &&
+      (!AppPlatform.isZuno ||
+          _permissionItem.isAllowedNow(adultAccess: widget.adultAccess)) &&
       (widget.adultAccess == null
-          ? !_adultTitle
+          ? !CinemaRepository.instance.isHiddenTitle(widget.title)
           : widget.adultAccess!.isValid && _adultTitle) &&
       ActiveProfile.instance.allowsPlaylist(
         int.tryParse(widget.title.sourceKey.startsWith('p')
@@ -597,6 +612,9 @@ class _TvSeriesScreenState extends State<TvSeriesScreen> {
     WatchProgressRepository.instance.addListener(_refresh);
     ActiveProfile.instance.scopeListenable.addListener(_onProfileScope);
     widget.adultAccess?.addListener(_onAccessChanged);
+    if (AppPlatform.isZuno) {
+      CinemaRepository.instance.classificationVersion.addListener(_onAccessChanged);
+    }
     if (!_titleAllowed) {
       _onProfileScope();
       return;
@@ -610,6 +628,7 @@ class _TvSeriesScreenState extends State<TvSeriesScreen> {
     WatchProgressRepository.instance.removeListener(_refresh);
     ActiveProfile.instance.scopeListenable.removeListener(_onProfileScope);
     widget.adultAccess?.removeListener(_onAccessChanged);
+    CinemaRepository.instance.classificationVersion.removeListener(_onAccessChanged);
     super.dispose();
   }
 
@@ -664,7 +683,9 @@ class _TvSeriesScreenState extends State<TvSeriesScreen> {
     unawaited(
       openVod(
         context,
-        VodPlayItem.episode(e, widget.title, isAdult: _adultTitle),
+        VodPlayItem.episode(e, widget.title, isAdult: _adultTitle,
+            previousClassification: AppPlatform.isZuno
+                ? _permissionItem.playbackClassification : null),
         fromStart: fromStart,
         series: _s,
         seriesTitle: widget.title,
