@@ -4,6 +4,8 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import {
+  BROADCAST_MAX,
+  broadcastRecentBoxes,
   canonicalKind,
   clampTimeout,
   containsSecretKey,
@@ -107,4 +109,79 @@ test('un revendeur ne voit pas la MAC d\'un autre', () => {
   assert.equal(panelMaySee({ id: 'r1', role: 'reseller' }, ''), false);
   assert.equal(panelMaySee({ id: 'admin', role: 'super_admin' }, 'r2'), true);
   assert.equal(panelMaySee(null, 'r1'), false);
+});
+
+// --- Envoi groupé d'un réglage global (publicité) ---------------------
+
+function fakeEnv(rows, { failMac = null, pushOff = false } = {}) {
+  const sent = [];
+  let lastBind = null;
+  return {
+    sent,
+    get lastBind() { return lastBind; },
+    REALTIME_PUSH_OFF: pushOff ? '1' : undefined,
+    DB: {
+      prepare(sql) {
+        return {
+          bind(...args) {
+            lastBind = { sql, args };
+            return { async all() { return { results: rows }; } };
+          },
+        };
+      },
+    },
+    RT_HUB: {
+      idFromName(name) { return name; },
+      get(id) {
+        return {
+          async fetch(url, init) {
+            if (id === failMac) throw new Error('hub indisponible');
+            sent.push({ id, url, body: JSON.parse(init.body) });
+            return { ok: true };
+          },
+        };
+      },
+    },
+  };
+}
+
+const NOW = 1794430000000;
+
+test('publicité : chaque box vue récemment reçoit « ad », sans secret ni ligne d\'ordre', async () => {
+  const env = fakeEnv([
+    { mac: 'MK:00:00:00:00:01' },
+    { mac: 'mk:00:00:00:00:02' }, // forme normalisée
+    { mac: 'pas-une-mac' },          // ignorée
+    { mac: 'MK:00:00:00:00:01' }, // doublon
+  ]);
+  const r = await broadcastRecentBoxes(env, 'ad', { now: NOW });
+  assert.deepEqual(r, { notified: 2, skipped: 0 });
+  assert.deepEqual(env.sent.map((x) => x.id), ['MK:00:00:00:00:01', 'MK:00:00:00:00:02']);
+  for (const s of env.sent) {
+    assert.equal(s.url, 'https://hub/notify');
+    assert.deepEqual(Object.keys(s.body).sort(), ['kind', 'mac']);
+    assert.equal(s.body.kind, 'ad');
+    assert.equal(containsSecretKey(s.body), false);
+  }
+  // Fenêtre de 15 min, en millisecondes ET en secondes (anciennes dates).
+  const [sinceMs, ceiling, sinceSec, limit] = env.lastBind.args;
+  assert.equal(sinceMs, NOW - 15 * 60 * 1000);
+  assert.equal(ceiling, 100000000000);
+  assert.equal(sinceSec, Math.floor((NOW - 15 * 60 * 1000) / 1000));
+  assert.equal(limit, BROADCAST_MAX + 1);
+});
+
+test('publicité : plafond par requête, une panne de box ne bloque pas les autres', async () => {
+  const rows = Array.from({ length: 7 }, (_, i) => ({ mac: `MK:00:00:00:00:0${i}` }));
+  const env = fakeEnv(rows, { failMac: 'MK:00:00:00:00:01' });
+  const r = await broadcastRecentBoxes(env, 'ad', { now: NOW, max: 5 });
+  assert.equal(r.skipped, 2);
+  assert.equal(r.notified, 4); // 5 visées, une en panne
+});
+
+test('publicité : interrupteur de repli, ordre inconnu ou base absente → rien', async () => {
+  const rows = [{ mac: 'MK:00:00:00:00:01' }];
+  assert.deepEqual(await broadcastRecentBoxes(fakeEnv(rows, { pushOff: true }), 'ad'), { notified: 0, skipped: 0 });
+  assert.deepEqual(await broadcastRecentBoxes(fakeEnv(rows), 'mot_de_passe'), { notified: 0, skipped: 0 });
+  assert.deepEqual(await broadcastRecentBoxes({}, 'ad'), { notified: 0, skipped: 0 });
 });

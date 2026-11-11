@@ -19,7 +19,7 @@ import {
   markSourcesCleared,
   clearSourceTombstone,
 } from './linkage.js';
-import { notifyBox } from './box_channel.js';
+import { broadcastRecentBoxes, notifyBox } from './box_channel.js';
 import { isBlackboxMac, markBlackBoxAsked, readBlackBox } from './blackbox_journal.js';
 //  Importe depuis worker.js pour servir le namespace /api/v1/*.
 //  Coexiste avec les anciens endpoints /admin/* et /api/* qui
@@ -2309,7 +2309,14 @@ async function handleAdPut(request, env, actor) {
   await _cfgSet(env, 'ad_freq', freq);
   await logAudit(env, request, actor, 'ad.save',
     { type: 'app_config', id: null }, null, { url, enabled, skip, freq });
-  return jsonResp({ ok: true, enabled: enabled === '1', url, skip, freq });
+  // Instantané (11/11/2026) : les box en ligne relisent la publicité tout
+  // de suite (ordre « ad », déjà compris par l'app) au lieu d'attendre leur
+  // prochain démarrage. Jamais bloquant : le réglage est déjà enregistré.
+  const push = await broadcastRecentBoxes(env, 'ad');
+  return jsonResp({
+    ok: true, enabled: enabled === '1', url, skip, freq,
+    boxes_notified: push.notified,
+  });
 }
 
 // =========================================================

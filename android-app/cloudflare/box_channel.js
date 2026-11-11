@@ -315,6 +315,65 @@ export async function notifyBox(env, mac, kind, opts = {}) {
   return orderId;
 }
 
+/// Fenêtre « vue récemment » d'un envoi groupé (réglage GLOBAL du panel).
+export const BROADCAST_RECENT_MS = 15 * 60 * 1000;
+/// Plafond de box prévenues par requête : reste sous la limite de
+/// sous-requêtes d'un Worker. Les autres liront le réglage au démarrage.
+export const BROADCAST_MAX = 900;
+const BROADCAST_PARALLEL = 25;
+/// Une date `last_seen_at` sous ce seuil est en SECONDES (anciennes
+/// écritures), au-dessus en millisecondes : les deux formes coexistent.
+const SECONDS_CEILING = 100000000000;
+
+/// Préviens TOUTES les box vues récemment qu'un réglage global a changé
+/// (11/11/2026 : la publicité de démarrage n'arrivait qu'au redémarrage
+/// suivant, faute de signal). Pas de ligne d'ordre par box — aucun suivi
+/// utile et pas N écritures D1 — seulement le Durable Object de chaque box,
+/// qui pousse sur la WebSocket ou garde l'évènement pour la reprise.
+/// N'échoue jamais. Rend { notified, skipped }.
+export async function broadcastRecentBoxes(env, kind, opts = {}) {
+  const none = { notified: 0, skipped: 0 };
+  try {
+    const type = canonicalKind(kind);
+    if (!type || realtimePushOff(env) || !env || !env.DB) return none;
+    const now = Number.isFinite(opts.now) ? opts.now : Date.now();
+    const sinceMs = now - (Number.isFinite(opts.windowMs) ? opts.windowMs : BROADCAST_RECENT_MS);
+    const max = Number.isFinite(opts.max) ? opts.max : BROADCAST_MAX;
+    const res = await env.DB.prepare(
+      'SELECT mac FROM devices WHERE last_seen_at >= ? OR ' +
+        '(last_seen_at < ? AND last_seen_at >= ?) ORDER BY last_seen_at DESC LIMIT ?',
+    ).bind(sinceMs, SECONDS_CEILING, Math.floor(sinceMs / 1000), max + 1).all();
+    const macs = [];
+    const seen = new Set();
+    for (const row of (res && res.results) || []) {
+      const mac = normalizeMac(row && row.mac);
+      if (mac && !seen.has(mac)) { seen.add(mac); macs.push(mac); }
+    }
+    const targets = macs.slice(0, max);
+    let notified = 0;
+    for (let i = 0; i < targets.length; i += BROADCAST_PARALLEL) {
+      const batch = targets.slice(i, i + BROADCAST_PARALLEL);
+      const ok = await Promise.all(batch.map(async (mac) => {
+        const target = stub(env, mac);
+        if (!target) return false;
+        try {
+          const r = await target.fetch('https://hub/notify', {
+            method: 'POST',
+            body: JSON.stringify({ kind: type, mac }),
+          });
+          return !!(r && r.ok);
+        } catch (_) {
+          return false; // cette box relira au démarrage
+        }
+      }));
+      notified += ok.filter(Boolean).length;
+    }
+    return { notified, skipped: Math.max(0, macs.length - targets.length) };
+  } catch (_) {
+    return none;
+  }
+}
+
 function notFound() {
   return json({ error: 'not_found' }, 404);
 }
