@@ -44,11 +44,14 @@ const int _kCategories = 919;
 /// bouquets « ALL » des fournisseurs) puis une longue traîne, 2 % de chaînes
 /// rangées dans deux catégories (vrai cas de dédoublonnage).
 class _SyntheticXtream {
-  _SyntheticXtream(this.total) {
+  _SyntheticXtream(this.total, {bool bigCategories = false}) {
     final math.Random rnd = math.Random(42);
     for (int i = 0; i < total; i++) {
       // 30 % des chaînes dans les 20 premières catégories, le reste réparti.
-      final int cat = i % 10 < 3 ? 1 + rnd.nextInt(20) : 21 + rnd.nextInt(_kCategories - 20);
+      // bigCategories : 80 % dans 4 catégories géantes (bouquets « ALL »).
+      final int cat = bigCategories
+          ? (i % 10 < 8 ? 1 + rnd.nextInt(4) : 5 + rnd.nextInt(_kCategories - 4))
+          : (i % 10 < 3 ? 1 + rnd.nextInt(20) : 21 + rnd.nextInt(_kCategories - 20));
       (_byCat[cat] ??= <int>[]).add(i);
       if (rnd.nextInt(50) == 0) {
         (_byCat[1 + rnd.nextInt(_kCategories)] ??= <int>[]).add(i);
@@ -239,14 +242,16 @@ void main() {
     await dir.delete(recursive: true);
   });
 
-  for (final int total in <int>[10000, 50000, 100000]) {
-    test('banc import Xtream $total chaînes / $_kCategories catégories', () async {
+  for (final (int total, bool big) in <(int, bool)>[
+    (10000, false), (50000, false), (100000, false), (50000, true),
+  ]) {
+    test('banc import Xtream $total chaînes / $_kCategories catégories${big ? ' (4 catégories géantes)' : ''}', () async {
       RepairFlags.debugReset();
       ImportProgressBus.clear();
       final Database db = await PlaylistDatabase.instance.database;
       await db.delete('playlists');
       await repo.initialize();
-      final _SyntheticXtream server = _SyntheticXtream(total)..prepare();
+      final _SyntheticXtream server = _SyntheticXtream(total, bigCategories: big)..prepare();
 
       final _RssSampler rss = _RssSampler();
       await rss.start();
@@ -271,6 +276,7 @@ void main() {
           .first['n']! as int;
       // ignore: avoid_print
       print('ZUNO_BENCH ${jsonEncode(<String, Object>{
+            'scenario': big ? 'import_${total}_categories_geantes' : 'import_$total',
             'chaines_demandees': total,
             'chaines_en_base': rows,
             'chaines_en_memoire_ui': repo.currentChannels.length,

@@ -44,6 +44,7 @@ import '../../channels/domain/channel.dart';
 import 'import_progress.dart';
 import '../../player/data/player_settings.dart';
 import '../../vod/domain/vod_movie.dart';
+import 'json_array_stream.dart';
 import 'playlist_import_limits.dart';
 
 /// Exception métier pour signaler une erreur Xtream lisible
@@ -600,45 +601,28 @@ class _LiveStreamsResult {
   final Map<String, String> epgIds;
 }
 
+/// Champs `get_live_streams` réellement utilisés par le mapping.
+const Set<String> _kLiveStreamKeys = <String>{
+  'stream_id',
+  'name',
+  'category_id',
+  'stream_icon',
+  'tv_archive',
+  'tv_archive_duration',
+  'epg_channel_id',
+};
+
 _LiveStreamsResult _mapLiveStreamsInIsolate(_LiveStreamsJob job) {
   final Uint8List bytes = job.payload.materialize().asUint8List();
-  // Décodeur UTF-8 → JSON FUSIONNÉ de dart:convert : parse le JSON directement
-  // depuis les octets, sans construire la String intermédiaire (qui pesait
-  // 1-2× la taille du JSON en plus de l'arbre d'objets).
-  dynamic decoded;
-  try {
-    decoded = const Utf8Decoder(allowMalformed: true)
-        .fuse(const JsonDecoder())
-        .convert(bytes);
-  } on FormatException catch (e) {
-    throw XtreamException(
-      'Réponse non-JSON sur action=get_live_streams : ${e.message}',
-    );
-  }
-  List<dynamic> raw;
-  if (decoded is List<dynamic>) {
-    raw = decoded;
-  } else if (decoded is Map<String, dynamic> && decoded['data'] is List) {
-    raw = decoded['data'] as List<dynamic>; // certains serveurs encapsulent
-  } else {
-    throw XtreamException(
-      'Réponse JSON non attendue (List attendue) sur action=get_live_streams.',
-    );
-  }
-
   final List<Channel> channels = <Channel>[];
   // Appariement guide : `epg_channel_id` du serveur = identifiant du
   // XMLTV (xmltv.php). Gardé à part : la chaîne reste `xtream-<id>`.
   final Map<String, String> epgIds = <String, String>{};
-  for (final dynamic item in raw) {
-    // PLAFOND MÉMOIRE (anti-OOM) : on arrête de matérialiser au-delà du
-    // plafond d'import — le reste reste sur le serveur, la source est juste
-    // tronquée à une taille tenable sur box faible.
-    if (channels.length >= job.maxChannels) break;
-    if (item is! Map<String, dynamic>) continue;
 
+  // Mapping d'UN élément (logique inchangée depuis la boucle d'origine).
+  void addItem(Map<String, Object?> item) {
     final String streamId = item['stream_id']?.toString() ?? '';
-    if (streamId.isEmpty) continue;
+    if (streamId.isEmpty) return;
 
     final String name = item['name']?.toString() ?? '(Sans nom)';
     final String categoryId = item['category_id']?.toString() ?? '';
@@ -670,5 +654,57 @@ _LiveStreamsResult _mapLiveStreamsInIsolate(_LiveStreamsJob job) {
       ),
     );
   }
-  return _LiveStreamsResult(channels, epgIds);
+
+  try {
+    if (JsonArrayStream.isTopLevelArray(bytes)) {
+      // MÉMOIRE (11/11/2026, Fire TV AFTSS 899 Mo) : élément par élément au
+      // lieu de l'arbre JSON complet. Chaque Map ne vit que le temps de son
+      // mapping ; le pic n'est plus « toute la catégorie décodée ». On
+      // s'arrête net au plafond d'import, sans décoder le reste.
+      // Seuls les 7 champs utiles sont lus : les ~8 autres (num, added,
+      // custom_sid…) sont sautés sans créer ni Map complète ni chaînes, ce
+      // qui évite aussi les collectes fréquentes (elles suspendent un instant
+      // tous les isolates, fil UI compris).
+      for (final (int start, int end) in JsonArrayStream.spans(bytes)) {
+        // PLAFOND MÉMOIRE (anti-OOM) : on arrête de matérialiser au-delà du
+        // plafond d'import — le reste reste sur le serveur, la source est
+        // juste tronquée à une taille tenable sur box faible.
+        if (channels.length >= job.maxChannels) break;
+        if (JsonArrayStream.isObject(bytes, start)) {
+          addItem(JsonArrayStream.fields(bytes, start, end, _kLiveStreamKeys));
+        } else {
+          // Élément non-objet : ignoré comme avant, mais toujours validé
+          // (un JSON invalide était refusé par le décodage complet).
+          JsonArrayStream.decode(bytes, start, end);
+        }
+      }
+      return _LiveStreamsResult(channels, epgIds);
+    }
+
+    // Forme rare `{"data": [...]}` : ancien chemin (décodage complet).
+    // Décodeur UTF-8 → JSON FUSIONNÉ de dart:convert : parse le JSON
+    // directement depuis les octets, sans String intermédiaire.
+    final dynamic decoded = const Utf8Decoder(allowMalformed: true)
+        .fuse(const JsonDecoder())
+        .convert(bytes);
+    List<dynamic> raw;
+    if (decoded is List<dynamic>) {
+      raw = decoded;
+    } else if (decoded is Map<String, dynamic> && decoded['data'] is List) {
+      raw = decoded['data'] as List<dynamic>; // certains serveurs encapsulent
+    } else {
+      throw XtreamException(
+        'Réponse JSON non attendue (List attendue) sur action=get_live_streams.',
+      );
+    }
+    for (final dynamic item in raw) {
+      if (channels.length >= job.maxChannels) break;
+      if (item is Map<String, dynamic>) addItem(item);
+    }
+    return _LiveStreamsResult(channels, epgIds);
+  } on FormatException catch (e) {
+    throw XtreamException(
+      'Réponse non-JSON sur action=get_live_streams : ${e.message}',
+    );
+  }
 }
