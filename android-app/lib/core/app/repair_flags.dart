@@ -289,6 +289,12 @@ abstract final class RepairFlags {
   static const String missedNoticeLegacyKey = 'zuno.guide.notice_legacy';
   static bool missedNoticeLegacy = false;
 
+  /// L1-06, accueil ZUNO uniquement. Vrai = reconstructions globales de
+  /// l'horloge et des cartes comme dans le 116 ; faux = écouteurs locaux.
+  /// Ce choix n'altère ni les cartes autorisées ni leur disposition.
+  static const String hubGlobalTickLegacyKey = 'zuno.hub.global_tick_legacy';
+  static bool hubGlobalTickLegacy = false;
+
   static Future<void> load() async {
     bool raw = false;
     bool tvDelLegacy = false;
@@ -325,6 +331,7 @@ abstract final class RepairFlags {
     bool sportsLegacy = false;
     bool communityOff = false;
     bool noticeLegacy = false;
+    bool globalTickLegacy = false;
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       raw = prefs.getBool(blackBoxRawKey) ?? false;
@@ -362,6 +369,7 @@ abstract final class RepairFlags {
       sportsLegacy = prefs.getBool(sportsNetworkLegacyKey) ?? false;
       communityOff = prefs.getBool(sportsCommunityOffKey) ?? false;
       noticeLegacy = prefs.getBool(missedNoticeLegacyKey) ?? false;
+      globalTickLegacy = prefs.getBool(hubGlobalTickLegacyKey) ?? false;
     } catch (_) {
       raw = false;
       fsyncAll = false;
@@ -398,12 +406,14 @@ abstract final class RepairFlags {
       sportsLegacy = false;
       communityOff = false;
       noticeLegacy = false;
+      globalTickLegacy = false;
     }
     epgGzipByHeader = gzipByHeader;
     xtreamPerCategorySerial = xtreamSerial;
     sportsNetworkLegacy = sportsLegacy;
     sportsCommunityOff = communityOff;
     missedNoticeLegacy = noticeLegacy;
+    hubGlobalTickLegacy = globalTickLegacy;
     orderAckOff = ackOff;
     tvDeleteLegacy = tvDelLegacy;
     liveShelvesLegacy = shelvesLegacy;
@@ -476,6 +486,7 @@ abstract final class RepairFlags {
     sportsNetworkLegacy = false;
     sportsCommunityOff = false;
     missedNoticeLegacy = false;
+    hubGlobalTickLegacy = false;
     NativeVideoController.legacyHoldFrame = false;
   }
 }

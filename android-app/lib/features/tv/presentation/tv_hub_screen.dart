@@ -114,7 +114,12 @@ import 'tv_sources_screen.dart';
 enum _Tile { live, films, series, guide, server, settings, adult }
 
 class TvHubScreen extends StatefulWidget {
-  const TvHubScreen({super.key});
+  const TvHubScreen({super.key, this.nowForTesting});
+
+  /// Fige seulement l'horloge d'affichage des tests ; aucune donnée ni
+  /// préférence client n'est modifiée pour comparer deux captures.
+  @visibleForTesting
+  final DateTime Function()? nowForTesting;
   @override
   State<TvHubScreen> createState() => _TvHubScreenState();
 }
@@ -123,6 +128,11 @@ class _TvHubScreenState extends State<TvHubScreen> {
   // Barre du haut : heure/date (tick 20 s) + réseau.
   Timer? _clock;
   DateTime _now = DateTime.now();
+  late final ValueNotifier<DateTime> _clockValue;
+  final ValueNotifier<int> _panelRevision = ValueNotifier<int>(0);
+  final ValueNotifier<int> _tonightRevision = ValueNotifier<int>(0);
+  TonightBoard _renderedTonight = const TonightBoard();
+  GuideSlot? _renderedCurrentGuide;
   List<ConnectivityResult> _conn = const <ConnectivityResult>[];
   StreamSubscription<List<ConnectivityResult>>? _connSub;
 
@@ -219,16 +229,21 @@ class _TvHubScreenState extends State<TvHubScreen> {
   @override
   void initState() {
     super.initState();
+    _now = widget.nowForTesting?.call() ?? DateTime.now();
+    _clockValue = ValueNotifier<DateTime>(_now);
     _clock = Timer.periodic(const Duration(seconds: 20), (_) {
       if (!mounted) return;
-      _now = DateTime.now();
+      _now = widget.nowForTesting?.call() ?? DateTime.now();
+      _clockValue.value = _now;
       // Le texte « dans 4 minutes » se met à jour sans relire
       // le guide. La lecture du guide, elle, attend une minute.
       _replanShows();
       // Les cartes du panel tournent au même rythme (20 s).
       _panelTick++;
       _replanPanel();
-      setState(() {});
+      // Le guide peut changer de programme à ce tick. Seul ce changement
+      // justifie de reconstruire « Ce soir » ; l'heure seule ne le fait pas.
+      _notifyTonightIfChanged();
       final int nowMs = _now.millisecondsSinceEpoch;
       if (_guideAtMs == 0 || nowMs - _guideAtMs >= 60000) {
         unawaited(_reloadGuide());
@@ -323,11 +338,59 @@ class _TvHubScreenState extends State<TvHubScreen> {
     final generation = ++_feedbackGeneration;
     final available = await FeedbackRepository.instance.shouldPrompt();
     if (!mounted || generation != _feedbackGeneration) return;
-    setState(() => _feedbackAvailable = available);
+    _feedbackAvailable = available;
+    _notifyPanel();
   }
 
   void _onHomeLayout() {
     if (mounted) setState(() {});
+  }
+
+  /// Les cartes, leur espace et le repli réseau ont leurs propres abonnés.
+  /// Le repli de réparation conserve les anciennes reconstructions globales,
+  /// sans modifier les permissions ni le contenu choisi.
+  void _notifyPanel() {
+    if (!mounted) return;
+    if (RepairFlags.hubGlobalTickLegacy) {
+      setState(() {});
+    } else {
+      _panelRevision.value++;
+    }
+  }
+
+  TonightBoard _composeTonight() => composeTonight(
+        watching: _shelves.continueWatching,
+        favorites: _shelves.favorites,
+        popular: _shelves.popular,
+        resume: _shelves.resume,
+        guide: _guide,
+        reminders: _shelves.reminders,
+        also: _timePicks,
+        nowMs: _now.millisecondsSinceEpoch,
+        channelsById: indexChannelsById(_channels),
+      );
+
+  void _notifyTonightIfChanged() {
+    if (!mounted || RepairFlags.hubGlobalTickLegacy) return;
+    // Le temps n'entre dans composeTonight que pour ce programme. Tant
+    // qu'il reste identique, aucun index du catalogue n'est reconstruit ici.
+    final GuideSlot? current = _currentGuide();
+    if (identical(current, _renderedCurrentGuide)) return;
+    _renderedCurrentGuide = current;
+    final TonightBoard next = _composeTonight();
+    if (!_sameTonightBoard(_renderedTonight, next)) _tonightRevision.value++;
+  }
+
+  GuideSlot? _currentGuide() {
+    final int now = _now.millisecondsSinceEpoch;
+    for (final GuideSlot slot in _guide) {
+      if (slot.startMs <= now &&
+          now < slot.stopMs &&
+          slot.title.trim().isNotEmpty) {
+        return slot;
+      }
+    }
+    return null;
   }
 
   // ---------------------------------------------------------------------
@@ -376,10 +439,9 @@ class _TvHubScreenState extends State<TvHubScreen> {
     bool dismissed = false;
     if (a != null) dismissed = await AnnouncementRepository.isDismissed(a.id);
     if (!mounted || a != AnnouncementRepository.latest.value) return;
-    setState(() {
-      _notice = a;
-      _noticeDismissed = dismissed;
-    });
+    _notice = a;
+    _noticeDismissed = dismissed;
+    _notifyPanel();
   }
 
   bool get _noticeVisible =>
@@ -395,7 +457,8 @@ class _TvHubScreenState extends State<TvHubScreen> {
     final Announcement? a = _notice;
     if (a == null) return;
     BlackBox.instance.info('PANEL', 'annonce ${a.id} vue');
-    setState(() => _noticeDismissed = true);
+    _noticeDismissed = true;
+    _notifyPanel();
     await AnnouncementRepository.dismiss(a.id);
   }
 
@@ -406,14 +469,21 @@ class _TvHubScreenState extends State<TvHubScreen> {
     final FeaturedRepository f = FeaturedRepository.instance;
     final int gen = ++_featuredGen;
     _featuredNote = f.note;
+    _notifyPanel();
     if (!_featuredOn || !f.hasFeatured) {
-      if (_featuredChannel != null) setState(() => _featuredChannel = null);
+      if (_featuredChannel != null) {
+        _featuredChannel = null;
+        _notifyPanel();
+      }
       return;
     }
     unawaited(
       findChannelByName(f.name, _channels).then((Channel? c) {
         if (!mounted || gen != _featuredGen) return;
-        if (c?.id != _featuredChannel?.id) setState(() => _featuredChannel = c);
+        if (c?.id != _featuredChannel?.id) {
+          _featuredChannel = c;
+          _notifyPanel();
+        }
       }),
     );
   }
@@ -443,7 +513,8 @@ class _TvHubScreenState extends State<TvHubScreen> {
         unawaited(
           findChannelByName(next.channel, _channels).then((Channel? c) {
             if (!mounted || gen != _promoGen || _promo?.id != next.id) return;
-            setState(() => _promoChannel = c);
+            _promoChannel = c;
+            _notifyPanel();
           }),
         );
       }
@@ -453,7 +524,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
       _promoCounted = next.id;
       unawaited(repo.noteShown(next.id, now: _now));
     }
-    setState(() {});
+    _notifyPanel();
   }
 
   HeaderCard get _headerCard => pickHeaderCard(
@@ -880,7 +951,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
       return;
     }
     _replanShows();
-    setState(() {});
+    _notifyPanel();
   }
 
   void _replanShows() {
@@ -958,7 +1029,8 @@ class _TvHubScreenState extends State<TvHubScreen> {
         _guide = const <GuideSlot>[];
         if (gen == _showGen && mounted) {
           _replanShows();
-          setState(() {});
+          _notifyPanel();
+          _notifyTonightIfChanged();
         }
         return;
       }
@@ -969,7 +1041,8 @@ class _TvHubScreenState extends State<TvHubScreen> {
         _guide = const <GuideSlot>[];
         _guideAtMs = DateTime.now().millisecondsSinceEpoch;
         _replanShows();
-        if (mounted) setState(() {});
+        _notifyPanel();
+        _notifyTonightIfChanged();
         return;
       }
       final int now = DateTime.now().millisecondsSinceEpoch;
@@ -1031,12 +1104,14 @@ class _TvHubScreenState extends State<TvHubScreen> {
       _guide = slots;
       _guideAtMs = now;
       _replanShows();
-      if (mounted) setState(() {});
+      _notifyPanel();
+      _notifyTonightIfChanged();
     } catch (_) {
       if (gen != _showGen || !mounted) return;
       _guide = const <GuideSlot>[];
       _replanShows();
-      setState(() {});
+      _notifyPanel();
+      _notifyTonightIfChanged();
     }
   }
 
@@ -1047,7 +1122,8 @@ class _TvHubScreenState extends State<TvHubScreen> {
         replay ? (cue.replayChannelId ?? cue.channelId) : cue.channelId;
     final Channel? target = byId[id];
     unawaited(FollowedLog.instance.markSeen(cue.alertKey));
-    setState(() => _banner = null);
+    _banner = null;
+    _notifyPanel();
     if (target == null || !mounted) return;
     String? url;
     if (fromStart) {
@@ -1084,7 +1160,8 @@ class _TvHubScreenState extends State<TvHubScreen> {
     if (cue != null) {
       unawaited(FollowedLog.instance.markSeen(cue.alertKey));
     }
-    setState(() => _banner = null);
+    _banner = null;
+    _notifyPanel();
   }
 
   Future<void> _playShelf(List<Channel> shelf, int index) async {
@@ -1192,6 +1269,9 @@ class _TvHubScreenState extends State<TvHubScreen> {
   @override
   void dispose() {
     _clock?.cancel();
+    _clockValue.dispose();
+    _panelRevision.dispose();
+    _tonightRevision.dispose();
     _genreDebounce?.cancel();
     _genreGeneration++;
     _connSub?.cancel();
@@ -1437,25 +1517,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
   String get _time =>
       '${_now.hour.toString().padLeft(2, '0')}:${_now.minute.toString().padLeft(2, '0')}';
 
-  @override
-  Widget build(BuildContext context) {
-    final Map<String, HomeSectionConfig> homeLayout = _homeLayout;
-    final bool hasVisibleShelves = hasVisibleTvHomeShelves(
-      _shelves,
-      homeLayout,
-      genreShelves: _genreShelves,
-    );
-    // Le focus automatique des rangées ne doit jouer qu'UNE fois (à leur
-    // apparition). Le laisser à true réclamerait le focus à chaque cadre.
-    if (_pendingShelfFocus && hasVisibleShelves) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _pendingShelfFocus = false;
-      });
-    }
-    final String localeName = Localizations.localeOf(context).toString();
-    final String date = DateFormat('EEE d MMM', localeName).format(_now);
-    final ({String label, Color color}) lic = _license(context);
-    final String src = _activeSource;
+  Widget _buildPanelArea(BuildContext context, bool hasVisibleShelves) {
     final String lang = Localizations.localeOf(context).languageCode;
     final Widget? panelHeader = _panelHeader(lang);
     final Widget? header =
@@ -1471,9 +1533,55 @@ class _TvHubScreenState extends State<TvHubScreen> {
         _timePicks.isNotEmpty ||
         _showCards.isNotEmpty ||
         header != null;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        if (!hasPersonal) ...<Widget>[
+          const SizedBox(height: 4),
+          Text(
+            context.l10n.tvHomeInvite,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TvAppTokens.of(context).ui(
+              TvDimens.label,
+              color: TvAppTokens.of(context).muted,
+            ),
+          ),
+        ],
+        if (header != null) ...<Widget>[
+          header,
+          const SizedBox(height: 8),
+        ],
+      ],
+    );
+  }
 
-    return AnnouncementRefresh(
-      enabled: _panelReady && _noticeOn,
+  @override
+  Widget build(BuildContext context) {
+    final Map<String, HomeSectionConfig> homeLayout = _homeLayout;
+    final bool hasVisibleShelves = hasVisibleTvHomeShelves(
+      _shelves,
+      homeLayout,
+      genreShelves: _genreShelves,
+    );
+    // Le focus automatique des rangées ne doit jouer qu'UNE fois (à leur
+    // apparition). Le laisser à true réclamerait le focus à chaque cadre.
+    if (_pendingShelfFocus && hasVisibleShelves) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _pendingShelfFocus = false;
+      });
+    }
+    final ({String label, Color color}) lic = _license(context);
+    final String src = _activeSource;
+
+    return ValueListenableBuilder<int>(
+      valueListenable: _panelRevision,
+      builder: (BuildContext context, int revision, Widget? child) =>
+          AnnouncementRefresh(
+        enabled: _panelReady && _noticeOn,
+        child: child!,
+      ),
       child: PopScope(
         canPop: false,
         onPopInvokedWithResult: (bool didPop, Object? _) {
@@ -1565,100 +1673,104 @@ class _TvHubScreenState extends State<TvHubScreen> {
                                   color: TvAppTokens.of(context).muted,
                                 ),
                                 const SizedBox(width: 16),
-                                Text(
-                                  _time,
-                                  style: TvAppTokens.of(context).display(
-                                    22,
-                                    color: TvAppTokens.of(context).text,
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Text(
-                                  date,
-                                  style: TvAppTokens.of(context).ui(
-                                    15,
-                                    color: TvAppTokens.of(context).mutedDim,
+                                ValueListenableBuilder<DateTime>(
+                                  valueListenable: _clockValue,
+                                  builder: (BuildContext context,
+                                          DateTime now, _) =>
+                                      Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: <Widget>[
+                                      Text(
+                                        _time,
+                                        style: TvAppTokens.of(context).display(
+                                          22,
+                                          color: TvAppTokens.of(context).text,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Text(
+                                        DateFormat(
+                                          'EEE d MMM',
+                                          Localizations.localeOf(context)
+                                              .toString(),
+                                        ).format(now),
+                                        style: TvAppTokens.of(context).ui(
+                                          15,
+                                          color:
+                                              TvAppTokens.of(context).mutedDim,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
                               ],
                             ),
                             const SizedBox(height: 8),
-                            Text(
-                              _hello(context),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TvAppTokens.of(context).display(
-                                TvDimens.title,
-                                color: TvAppTokens.of(context).text,
-                              ),
-                            ),
-                            if (!hasPersonal) ...<Widget>[
-                              const SizedBox(height: 4),
-                              Text(
-                                context.l10n.tvHomeInvite,
-                                maxLines: 2,
+                            ValueListenableBuilder<DateTime>(
+                              valueListenable: _clockValue,
+                              builder: (BuildContext context, DateTime now, _) =>
+                                  Text(
+                                _hello(context),
+                                maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
-                                style: TvAppTokens.of(context).ui(
-                                  TvDimens.label,
-                                  color: TvAppTokens.of(context).muted,
+                                style: TvAppTokens.of(context).display(
+                                  TvDimens.title,
+                                  color: TvAppTokens.of(context).text,
                                 ),
                               ),
-                            ],
-                            if (header != null) ...<Widget>[
-                              header,
-                              const SizedBox(height: 8),
-                            ],
+                            ),
+                            ValueListenableBuilder<int>(
+                              valueListenable: _panelRevision,
+                              builder: (BuildContext context, int revision, _) =>
+                                  _buildPanelArea(context, hasVisibleShelves),
+                            ),
                             Expanded(
-                              child: ValueListenableBuilder<bool>(
-                                valueListenable: TvGlass.blur,
-                                builder: (BuildContext context, bool blur, _) {
-                                  final TonightBoard board = composeTonight(
-                                    watching: _shelves.continueWatching,
-                                    favorites: _shelves.favorites,
-                                    popular: _shelves.popular,
-                                    resume: _shelves.resume,
-                                    guide: _guide,
-                                    reminders: _shelves.reminders,
-                                    also: _timePicks,
-                                    nowMs: _now.millisecondsSinceEpoch,
-                                    channelsById: indexChannelsById(_channels),
-                                  );
-                                  return TvCinematicHome(
-                                    board: board,
-                                    blur: blur,
-                                    onPlay: (TonightPiece piece) {
-                                      final WatchEntry? watch = piece.watch;
-                                      final Channel? channel = piece.channel;
-                                      if (watch != null) {
-                                        _playContinue(watch);
-                                      } else if (channel != null) {
-                                        final bool resume = identical(
-                                                piece, board.hero) ||
-                                            _shelves.resume.any(
-                                                (Channel recent) =>
-                                                    recent.id == channel.id &&
-                                                    recent.playlistId ==
-                                                        channel.playlistId);
-                                        if (channel.isLive && resume) {
-                                          _resumeLive(channel);
-                                        } else {
-                                          _playShelf(<Channel>[channel], 0);
-                                        }
-                                      }
+                              child: ValueListenableBuilder<int>(
+                                valueListenable: _tonightRevision,
+                                builder: (BuildContext context, int revision, _) =>
+                                    ValueListenableBuilder<bool>(
+                                    valueListenable: TvGlass.blur,
+                                    builder: (BuildContext context, bool blur, _) {
+                                      final TonightBoard board = _composeTonight();
+                                      _renderedTonight = board;
+                                      _renderedCurrentGuide = _currentGuide();
+                                      return TvCinematicHome(
+                                        board: board,
+                                        blur: blur,
+                                        onPlay: (TonightPiece piece) {
+                                          final WatchEntry? watch = piece.watch;
+                                          final Channel? channel = piece.channel;
+                                          if (watch != null) {
+                                            _playContinue(watch);
+                                          } else if (channel != null) {
+                                            final bool resume = identical(
+                                                    piece, board.hero) ||
+                                                _shelves.resume.any(
+                                                    (Channel recent) =>
+                                                        recent.id == channel.id &&
+                                                        recent.playlistId ==
+                                                            channel.playlistId);
+                                            if (channel.isLive && resume) {
+                                              _resumeLive(channel);
+                                            } else {
+                                              _playShelf(<Channel>[channel], 0);
+                                            }
+                                          }
+                                        },
+                                        onAdult: ProfileRepository
+                                                    .instance.activeIsKids ||
+                                                ParentalControls
+                                                    .instance.kidsMode.value
+                                            ? null
+                                            : () => _openTile(_Tile.adult),
+                                        onLive: () => _openTile(_Tile.live),
+                                        onFilms: () => _openTile(_Tile.films),
+                                        onSeries: () => _openTile(_Tile.series),
+                                        onServer: () => _openTile(_Tile.server),
+                                        onSettings: () => _openTile(_Tile.settings),
+                                      );
                                     },
-                                    onAdult: ProfileRepository
-                                                .instance.activeIsKids ||
-                                            ParentalControls
-                                                .instance.kidsMode.value
-                                        ? null
-                                        : () => _openTile(_Tile.adult),
-                                    onLive: () => _openTile(_Tile.live),
-                                    onFilms: () => _openTile(_Tile.films),
-                                    onSeries: () => _openTile(_Tile.series),
-                                    onServer: () => _openTile(_Tile.server),
-                                    onSettings: () => _openTile(_Tile.settings),
-                                  );
-                                },
+                                  ),
                               ),
                             ),
                             if (_refreshNotice != null &&
@@ -1727,6 +1839,33 @@ class _TvHubScreenState extends State<TvHubScreen> {
       ),
     );
   }
+}
+
+/// Deux assemblages temporels identiques réutilisent le widget des carrousels.
+/// Les objets de lecture font partie de la comparaison : une chaîne portant
+/// le même identifiant mais remplacée par le catalogue ne doit pas être gardée.
+bool _sameTonightBoard(TonightBoard a, TonightBoard b) {
+  bool samePiece(TonightPiece? left, TonightPiece? right) =>
+      identical(left, right) ||
+      (left != null &&
+          right != null &&
+          left.title == right.title &&
+          left.artworkUrl == right.artworkUrl &&
+          left.meta == right.meta &&
+          identical(left.channel, right.channel) &&
+          identical(left.watch, right.watch));
+  bool sameRow(List<TonightPiece> left, List<TonightPiece> right) {
+    if (left.length != right.length) return false;
+    for (int i = 0; i < left.length; i++) {
+      if (!samePiece(left[i], right[i])) return false;
+    }
+    return true;
+  }
+
+  return a.heroDetail == b.heroDetail &&
+      samePiece(a.hero, b.hero) &&
+      sameRow(a.recommendations, b.recommendations) &&
+      sameRow(a.discover, b.discover);
 }
 
 /// Bouton « Recherche » de la barre du haut. Le focus initial reste
