@@ -287,7 +287,15 @@ class BlackBox {
     // Même expurgation que le journal : ce fichier est relu au boot suivant.
     _breadcrumb = RepairFlags.blackBoxRaw ? action : redactBlackBox(action);
     try {
-      _crumbFile?.writeAsStringSync(_breadcrumb, flush: true);
+      // Écriture SYNCHRONE (dans le noyau avant de rendre la main : survit à
+      // une mort du processus, c'est tout son rôle), mais SANS fsync : pendant
+      // un import, ce fichier est réécrit à chaque lot de catégories (~230
+      // fois pour 919 catégories) et chaque fsync sur le fil UI pouvait
+      // attendre derrière les écritures SQLite. Repli : blackBoxFsyncAll.
+      _crumbFile?.writeAsStringSync(
+        _breadcrumb,
+        flush: RepairFlags.blackBoxFsyncAll,
+      );
     } catch (_) {}
     if (action.isNotEmpty) _line(BbLevel.info, 'ACTION', action);
   }
