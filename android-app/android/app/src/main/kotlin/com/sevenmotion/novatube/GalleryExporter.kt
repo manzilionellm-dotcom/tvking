@@ -46,6 +46,7 @@ import android.os.SystemClock
 import android.provider.MediaStore
 import android.util.Log
 import android.view.Surface
+import androidx.media3.exoplayer.MediaExtractorCompat
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
@@ -195,7 +196,7 @@ class GalleryExporter(
             )
         }
 
-        val source = inspectSource(srcFile)
+        val source = inspectRecordedSource(srcFile)
         val dataFile = remuxToMp4(srcFile, source) ?: transcodeToMp4(srcFile, source)
             ?: return ExportOutcome.error("CONVERSION_FAILED", "Aucun MP4 H.264/AAC complet n'a été produit")
         return try {
@@ -218,37 +219,12 @@ class GalleryExporter(
         }
     }
 
-    private fun inspectSource(file: File): SourceTracks {
-        val extractor = MediaExtractor()
+    /** Le TS source passe par le même extracteur HEVC que le lecteur Media3. */
+    private fun inspectRecordedSource(file: File): SourceTracks {
+        val extractor = MediaExtractorCompat(context)
         try {
             extractor.setDataSource(file.absolutePath)
-            var video = -1
-            var audio = -1
-            for (index in 0 until extractor.trackCount) {
-                val mime = extractor.getTrackFormat(index).getString(MediaFormat.KEY_MIME).orEmpty()
-                if (video < 0 && mime.startsWith("video/")) video = index
-                if (audio < 0 && mime.startsWith("audio/")) audio = index
-            }
-            if (video < 0) throw ExportFailure("UNSUPPORTED_CODEC", "Aucune piste vidéo décodable identifiée")
-            if (audio < 0) {
-                val prefix = ByteArray(minOf(file.length(), 2L * 1024 * 1024).toInt())
-                val read = FileInputStream(file).use { input ->
-                    var position = 0
-                    while (position < prefix.size) {
-                        val count = input.read(prefix, position, prefix.size - position)
-                        if (count < 0) break
-                        position += count
-                    }
-                    position
-                }
-                val bytes = prefix.copyOf(read)
-                if (!GalleryExportPolicy.isMp4Header(bytes) && GalleryExportPolicy.transportStreamOffset(bytes) != null &&
-                    GalleryExportPolicy.declaredTsAudio(bytes) != false) {
-                    throw ExportFailure("UNSUPPORTED_CODEC", "L'audio TS ne peut pas être préservé par cet appareil")
-                }
-            }
-            return SourceTracks(video, extractor.getTrackFormat(video), audio,
-                if (audio >= 0) extractor.getTrackFormat(audio) else null)
+            return inspectTracks(file, extractor.trackCount, extractor::getTrackFormat)
         } catch (e: ExportFailure) {
             throw e
         } catch (e: Exception) {
@@ -256,6 +232,51 @@ class GalleryExporter(
         } finally {
             extractor.release()
         }
+    }
+
+    /** La sortie reste relue par Android lui-même, avant toute publication. */
+    private fun inspectSource(file: File): SourceTracks {
+        val extractor = MediaExtractor()
+        try {
+            extractor.setDataSource(file.absolutePath)
+            return inspectTracks(file, extractor.trackCount, extractor::getTrackFormat)
+        } catch (e: ExportFailure) {
+            throw e
+        } catch (e: Exception) {
+            throw ExportFailure("UNSUPPORTED_CODEC", "Format source non pris en charge")
+        } finally {
+            extractor.release()
+        }
+    }
+
+    private fun inspectTracks(file: File, trackCount: Int, formatAt: (Int) -> MediaFormat): SourceTracks {
+        var video = -1
+        var audio = -1
+        for (index in 0 until trackCount) {
+            val mime = formatAt(index).getString(MediaFormat.KEY_MIME).orEmpty()
+            if (video < 0 && mime.startsWith("video/")) video = index
+            if (audio < 0 && mime.startsWith("audio/")) audio = index
+        }
+        if (video < 0) throw ExportFailure("UNSUPPORTED_CODEC", "Aucune piste vidéo décodable identifiée")
+        if (audio < 0) {
+            val prefix = ByteArray(minOf(file.length(), 2L * 1024 * 1024).toInt())
+            val read = FileInputStream(file).use { input ->
+                var position = 0
+                while (position < prefix.size) {
+                    val count = input.read(prefix, position, prefix.size - position)
+                    if (count < 0) break
+                    position += count
+                }
+                position
+            }
+            val bytes = prefix.copyOf(read)
+            if (!GalleryExportPolicy.isMp4Header(bytes) && GalleryExportPolicy.transportStreamOffset(bytes) != null &&
+                GalleryExportPolicy.declaredTsAudio(bytes) != false) {
+                throw ExportFailure("UNSUPPORTED_CODEC", "L'audio TS ne peut pas être préservé par cet appareil")
+            }
+        }
+        return SourceTracks(video, formatAt(video), audio,
+            if (audio >= 0) formatAt(audio) else null)
     }
 
     /** Vérifie le conteneur et les pistes réellement écrites avant toute insertion publique. */
@@ -347,7 +368,7 @@ class GalleryExporter(
     private fun remuxToMp4(srcFile: File, source: SourceTracks): File? {
         if (!GalleryExportPolicy.canRemux(source.videoFormat.getString(MediaFormat.KEY_MIME),
                 source.audioFormat?.getString(MediaFormat.KEY_MIME), source.hasAudio)) return null
-        val extractor = MediaExtractor()
+        val extractor = MediaExtractorCompat(context)
         var muxer: MediaMuxer? = null
         val outFile = File.createTempFile("novatube_remux_", ".mp4", context.cacheDir)
         var complete = false
@@ -374,19 +395,17 @@ class GalleryExporter(
             val lastPts = HashMap<Int, Long>()
             val sampleCounts = HashMap<Int, Int>()
             while (true) {
-                var sampleSize: Int
-                while (true) {
-                    try {
-                        buffer.clear()
-                        sampleSize = extractor.readSampleData(buffer, 0)
-                        break
-                    } catch (e: IllegalArgumentException) {
-                        if (buffer.capacity() >= GalleryExportPolicy.MAX_SAMPLE_BYTES) throw e
-                        val newCap = buffer.capacity() * 2
-                        buffer = ByteBuffer.allocate(minOf(newCap, GalleryExportPolicy.MAX_SAMPLE_BYTES))
-                    }
+                // Media3 annonce la taille avant la lecture : ne pas dépendre
+                // d'une exception propre à l'extracteur Android pour agrandir.
+                val expectedSize = extractor.sampleSize
+                if (expectedSize < 0L) break
+                if (expectedSize > GalleryExportPolicy.MAX_SAMPLE_BYTES.toLong()) return null
+                if (expectedSize > buffer.capacity().toLong()) {
+                    buffer = ByteBuffer.allocate(expectedSize.toInt())
                 }
-                if (sampleSize < 0) break
+                buffer.clear()
+                val sampleSize = extractor.readSampleData(buffer, 0)
+                if (sampleSize.toLong() != expectedSize) return null
                 val dstTrack = indexMap[extractor.sampleTrackIndex]
                 if (dstTrack != null && sampleSize > 0) {
                     val pts = extractor.sampleTime
@@ -461,8 +480,8 @@ class GalleryExporter(
         val outFile = File.createTempFile("novatube_xcode_", ".mp4", context.cacheDir)
         var complete = false
 
-        var vExtractor: MediaExtractor? = null
-        var aExtractor: MediaExtractor? = null
+        var vExtractor: MediaExtractorCompat? = null
+        var aExtractor: MediaExtractorCompat? = null
         var vDecoder: MediaCodec? = null
         var vEncoder: MediaCodec? = null
         var aDecoder: MediaCodec? = null
@@ -493,7 +512,7 @@ class GalleryExporter(
 
             // --- Décodeur vidéo → rend sur la Surface de l'encodeur -------
             // (peut lever si l'appareil n'a pas de décodeur pour ce codec).
-            vExtractor = MediaExtractor().apply {
+            vExtractor = MediaExtractorCompat(context).apply {
                 setDataSource(srcFile.absolutePath)
                 selectTrack(source.videoTrack)
             }
@@ -513,7 +532,7 @@ class GalleryExporter(
             // L'encodeur AAC sera créé à réception du format PCM réel du
             // décodeur (fréquence/canaux parfois différents du format compressé).
             if (source.hasAudio) {
-                aExtractor = MediaExtractor().apply {
+                aExtractor = MediaExtractorCompat(context).apply {
                     setDataSource(srcFile.absolutePath)
                     selectTrack(source.audioTrack)
                 }
@@ -597,7 +616,7 @@ class GalleryExporter(
                 .getOrElse { runCatching { source.videoFormat.getInteger(MediaFormat.KEY_FRAME_RATE).toDouble() }.getOrDefault(0.0) }
             if (rate.isFinite() && rate > 0) return rate
         }
-        val extractor = MediaExtractor()
+        val extractor = MediaExtractorCompat(context)
         try {
             extractor.setDataSource(file.absolutePath)
             extractor.selectTrack(source.videoTrack)
@@ -622,10 +641,10 @@ class GalleryExporter(
      * et si le conteneur a été finalisé après leur fin de flux.
      */
     private fun runTranscodeLoop(
-        vExtractor: MediaExtractor,
+        vExtractor: MediaExtractorCompat,
         vDecoder: MediaCodec,
         vEncoder: MediaCodec,
-        aExtractor: MediaExtractor?,
+        aExtractor: MediaExtractorCompat?,
         aDecoder: MediaCodec?,
         muxer: MediaMuxer,
     ): Boolean {

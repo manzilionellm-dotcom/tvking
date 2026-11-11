@@ -85,6 +85,8 @@ dependencies {
     implementation("androidx.mediarouter:mediarouter:1.6.0")
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("androidx.fragment:fragment:1.6.2")
+    // Même extracteur TS/HEVC que le lecteur existant, sans nouveau codec natif.
+    implementation("androidx.media3:media3-exoplayer:1.5.1")
     // Banc Android isolé : vrais codecs/MediaStore, absent de l'APK livré.
     androidTestImplementation("androidx.test:runner:1.6.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")

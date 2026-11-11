@@ -26,6 +26,12 @@ copie interrompue donnent un échec visible ; le fichier original est conservé.
 L'export ne promet pas la lecture de toute résolution sur chaque téléphone.
 Le nom `.mp4`, le conteneur et les pistes réels doivent tous être corrects.
 
+La lecture du TS enregistré utilise `MediaExtractorCompat` de Media3 1.5.1,
+déjà embarqué par le lecteur. Son parseur TS sait identifier les pistes HEVC ;
+la conversion conserve ensuite les vrais codecs Android de l'appareil. Le MP4
+final reste contrôlé par l'extracteur Android natif, et la capacité matérielle
+du téléphone reste nécessaire pour décoder puis encoder le format demandé.
+
 Android 10 et plus utilise MediaStore sans accès global à la galerie. Android
 7 à 9 demande la permission d'écriture historique, limitée par `maxSdkVersion=28`.
 Le REC reste désactivé dans l'espace +18 : un export public dans la galerie
@@ -53,6 +59,9 @@ Le runner redémarre ensuite Android, installe l'APK release exact et lie la
 preuve des trois exports à son SHA-256 avant la publication. Les journaux
 d'échec ne contiennent que le banc synthétique, sans playlist utilisateur.
 Une réussite sur émulateur n'est pas un essai sur le téléphone de l'utilisateur.
+L'API `androidx.tracing.Trace`, partagée entre Flutter et le lanceur de tests,
+est conservée explicitement par R8 pour les appels de l'APK d'instrumentation.
+Cette règle ciblée ne désactive pas l'optimisation de l'application.
 
 ## Profils et APK de test avec espace +18
 
