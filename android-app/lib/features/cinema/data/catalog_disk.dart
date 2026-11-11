@@ -569,11 +569,13 @@ class CatalogDisk {
     await for (final FileSystemEntity entity in root.list()) {
       if (entity is Directory) dirs.add(entity);
     }
-    dirs.sort((Directory a, Directory b) {
-      final DateTime am = a.statSync().modified;
-      final DateTime bm = b.statSync().modified;
-      return bm.compareTo(am);
-    });
+    // Une lecture ASYNCHRONE par dossier, avant le tri : avant, chaque
+    // comparaison relisait deux dates sur le disque, de façon synchrone sur
+    // le fil appelant (n·log n accès disque).
+    final Map<Directory, DateTime> modified = <Directory, DateTime>{
+      for (final Directory dir in dirs) dir: (await dir.stat()).modified,
+    };
+    dirs.sort((Directory a, Directory b) => modified[b]!.compareTo(modified[a]!));
     int keptExtras = 0;
     for (final Directory dir in dirs) {
       final String name = p.basename(dir.path);

@@ -37,6 +37,7 @@ import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+import '../../../core/app/box_memory_budget.dart';
 import '../../../core/app/repair_flags.dart';
 
 import '../../../core/blackbox/black_box.dart';
@@ -44,6 +45,7 @@ import '../../channels/domain/channel.dart';
 import 'import_progress.dart';
 import '../../player/data/player_settings.dart';
 import '../../vod/domain/vod_movie.dart';
+import 'json_array_stream.dart';
 import 'playlist_import_limits.dart';
 
 /// Exception métier pour signaler une erreur Xtream lisible
@@ -193,16 +195,19 @@ class XtreamClient {
     // fetchLiveCategories publie son étape au départ uniquement : elle ne
     // réécrit pas « catégories » après la progression du téléchargement.
     bool receivingCatalog = true;
-    late final List<Object?> catalog;
+    // Seuil du bloc unique selon la mémoire de la box (24 / 48 / 64 Mo) :
+    // depuis le décodage élément par élément, un bloc coûte ~ses octets, et
+    // UN téléchargement remplace les 919 requêtes de l'import par catégorie.
+    final int singleShotMax = xtreamSingleShotBytesFor(BoxMemoryBudget.current);
+    List<Object?>? catalog;
     try {
       catalog = await Future.wait<Object?>(
         <Future<Object?>>[
           categories == null
               ? fetchLiveCategories()
               : Future<Map<String, String>>.value(categories),
-          _getBytes(
-            _buildUri(action: 'get_live_streams'),
-            softMax: kXtreamSingleShotBytes,
+          _getWholeCatalog(
+            singleShotMax,
             onBytes: (int bytes) {
               if (receivingCatalog) ImportProgressBus.downloading(bytes);
             },
@@ -216,18 +221,25 @@ class XtreamClient {
       receivingCatalog = false;
     }
     final Map<String, String> cats = catalog[0]! as Map<String, String>;
-    final Uint8List? whole = catalog[1] as Uint8List?;
+    Uint8List? whole = catalog[1] as Uint8List?;
+    catalog = null; // plus aucune référence au bloc hors de `whole`
 
     List<Channel> channels;
     if (whole != null) {
-      final String mb = (whole.length / (1024 * 1024)).toStringAsFixed(1);
+      final int wholeBytes = whole.length;
+      final String mb = (wholeBytes / (1024 * 1024)).toStringAsFixed(1);
       BlackBox.instance.info('XTREAM', '$host : $mb Mo reçus (bloc unique) → décodage en isolate');
       BlackBox.instance.breadcrumb('Import Xtream $host : décodage $mb Mo (isolate)');
-      ImportProgressBus.decoding(whole.length);
+      ImportProgressBus.decoding(wholeBytes);
+      // Copie transférable PUIS abandon de l'original : une seule copie du
+      // bloc reste en mémoire pendant tout le décodage (avant : deux).
+      final TransferableTypedData payload =
+          TransferableTypedData.fromList(<Uint8List>[whole]);
+      whole = null;
       final _LiveStreamsResult mapped = await compute(
         _mapLiveStreamsInIsolate,
         _LiveStreamsJob(
-          payload: TransferableTypedData.fromList(<Uint8List>[whole]),
+          payload: payload,
           categories: cats,
           playlistId: playlistId,
           streamUrlPrefix: prefix,
@@ -238,7 +250,7 @@ class XtreamClient {
       epgChannelIds.addAll(mapped.epgIds);
     } else {
       BlackBox.instance.warn('XTREAM',
-          '$host : liste > ${kXtreamSingleShotBytes ~/ (1024 * 1024)} Mo → import PAR CATÉGORIE (${cats.length} catégories)');
+          '$host : liste > ${singleShotMax ~/ (1024 * 1024)} Mo ou bloc interrompu → import PAR CATÉGORIE (${cats.length} catégories)');
       channels = <Channel>[];
       final Set<String> seen = <String>{};
       final List<MapEntry<String, String>> list = cats.entries.toList(growable: false);
@@ -282,6 +294,37 @@ class XtreamClient {
       debugPrint('[XtreamClient] ${channels.length} chaînes live récupérées');
     }
     return channels;
+  }
+
+  /// Bouquet entier en UN bloc, ou `null` → import par catégorie quand :
+  ///   - la liste dépasse [softMax] (comme avant) ;
+  ///   - le téléchargement s'interrompt APRÈS le début des données (coupure
+  ///     Wi-Fi, 20 s sans octet, durée max dépassée).
+  /// Un serveur muet dès la connexion lève toujours, comme avant : on ne
+  /// lance pas 919 requêtes vouées au même échec.
+  Future<Uint8List?> _getWholeCatalog(
+    int softMax, {
+    required void Function(int received) onBytes,
+  }) async {
+    int received = 0;
+    try {
+      return await _getBytes(
+        _buildUri(action: 'get_live_streams'),
+        softMax: softMax,
+        idleTimeout: true,
+        onBytes: (int bytes) {
+          received = bytes;
+          onBytes(bytes);
+        },
+      );
+    } on PlaylistImportTooLarge {
+      rethrow;
+    } catch (e) {
+      if (received == 0) rethrow;
+      BlackBox.instance.warn('XTREAM',
+          'bouquet entier interrompu après ${received ~/ 1024} Ko ($e) → import par catégorie');
+      return null;
+    }
   }
 
   /// Une catégorie : téléchargement puis décodage en isolate. Une catégorie
@@ -444,7 +487,9 @@ class XtreamClient {
   /// renvoie `null` (l'appelant bascule sur un import par catégorie). Sans
   /// [softMax], seul le plafond dur [kMaxXtreamJsonBytes] s'applique (erreur).
   Future<Uint8List?> _getBytes(Uri uri,
-      {int? softMax, void Function(int received)? onBytes}) async {
+      {int? softMax,
+      void Function(int received)? onBytes,
+      bool idleTimeout = false}) async {
     Object? lastError;
     for (final String ua in _candidateUserAgents()) {
       try {
@@ -462,12 +507,19 @@ class XtreamClient {
             await _http.send(req).timeout(_timeout);
         if (resp.statusCode == 200) {
           _workingUserAgent = ua;
-          return await _readCapped(
-            resp.stream,
+          // [idleTimeout] (bouquet entier) : délai d'INACTIVITÉ — tant que
+          // des octets arrivent, on continue (24 Mo à 5 Mbit/s ≈ 40 s) —
+          // borné par une durée max. Sinon (petites réponses) : délai total.
+          final Stream<List<int>> body =
+              idleTimeout ? resp.stream.timeout(_timeout) : resp.stream;
+          final Future<Uint8List?> read = _readCapped(
+            body,
             kMaxXtreamJsonBytes,
             softMax: softMax,
             onBytes: onBytes,
-          ).timeout(_timeout);
+          );
+          return await read
+              .timeout(idleTimeout ? kXtreamSingleShotMaxDuration : _timeout);
         }
         lastError = XtreamException(
           'Erreur HTTP ${resp.statusCode} sur ${uri.host}',
@@ -600,45 +652,28 @@ class _LiveStreamsResult {
   final Map<String, String> epgIds;
 }
 
+/// Champs `get_live_streams` réellement utilisés par le mapping.
+const Set<String> _kLiveStreamKeys = <String>{
+  'stream_id',
+  'name',
+  'category_id',
+  'stream_icon',
+  'tv_archive',
+  'tv_archive_duration',
+  'epg_channel_id',
+};
+
 _LiveStreamsResult _mapLiveStreamsInIsolate(_LiveStreamsJob job) {
   final Uint8List bytes = job.payload.materialize().asUint8List();
-  // Décodeur UTF-8 → JSON FUSIONNÉ de dart:convert : parse le JSON directement
-  // depuis les octets, sans construire la String intermédiaire (qui pesait
-  // 1-2× la taille du JSON en plus de l'arbre d'objets).
-  dynamic decoded;
-  try {
-    decoded = const Utf8Decoder(allowMalformed: true)
-        .fuse(const JsonDecoder())
-        .convert(bytes);
-  } on FormatException catch (e) {
-    throw XtreamException(
-      'Réponse non-JSON sur action=get_live_streams : ${e.message}',
-    );
-  }
-  List<dynamic> raw;
-  if (decoded is List<dynamic>) {
-    raw = decoded;
-  } else if (decoded is Map<String, dynamic> && decoded['data'] is List) {
-    raw = decoded['data'] as List<dynamic>; // certains serveurs encapsulent
-  } else {
-    throw XtreamException(
-      'Réponse JSON non attendue (List attendue) sur action=get_live_streams.',
-    );
-  }
-
   final List<Channel> channels = <Channel>[];
   // Appariement guide : `epg_channel_id` du serveur = identifiant du
   // XMLTV (xmltv.php). Gardé à part : la chaîne reste `xtream-<id>`.
   final Map<String, String> epgIds = <String, String>{};
-  for (final dynamic item in raw) {
-    // PLAFOND MÉMOIRE (anti-OOM) : on arrête de matérialiser au-delà du
-    // plafond d'import — le reste reste sur le serveur, la source est juste
-    // tronquée à une taille tenable sur box faible.
-    if (channels.length >= job.maxChannels) break;
-    if (item is! Map<String, dynamic>) continue;
 
+  // Mapping d'UN élément (logique inchangée depuis la boucle d'origine).
+  void addItem(Map<String, Object?> item) {
     final String streamId = item['stream_id']?.toString() ?? '';
-    if (streamId.isEmpty) continue;
+    if (streamId.isEmpty) return;
 
     final String name = item['name']?.toString() ?? '(Sans nom)';
     final String categoryId = item['category_id']?.toString() ?? '';
@@ -670,5 +705,57 @@ _LiveStreamsResult _mapLiveStreamsInIsolate(_LiveStreamsJob job) {
       ),
     );
   }
-  return _LiveStreamsResult(channels, epgIds);
+
+  try {
+    if (JsonArrayStream.isTopLevelArray(bytes)) {
+      // MÉMOIRE (11/11/2026, Fire TV AFTSS 899 Mo) : élément par élément au
+      // lieu de l'arbre JSON complet. Chaque Map ne vit que le temps de son
+      // mapping ; le pic n'est plus « toute la catégorie décodée ». On
+      // s'arrête net au plafond d'import, sans décoder le reste.
+      // Seuls les 7 champs utiles sont lus : les ~8 autres (num, added,
+      // custom_sid…) sont sautés sans créer ni Map complète ni chaînes, ce
+      // qui évite aussi les collectes fréquentes (elles suspendent un instant
+      // tous les isolates, fil UI compris).
+      for (final (int start, int end) in JsonArrayStream.spans(bytes)) {
+        // PLAFOND MÉMOIRE (anti-OOM) : on arrête de matérialiser au-delà du
+        // plafond d'import — le reste reste sur le serveur, la source est
+        // juste tronquée à une taille tenable sur box faible.
+        if (channels.length >= job.maxChannels) break;
+        if (JsonArrayStream.isObject(bytes, start)) {
+          addItem(JsonArrayStream.fields(bytes, start, end, _kLiveStreamKeys));
+        } else {
+          // Élément non-objet : ignoré comme avant, mais toujours validé
+          // (un JSON invalide était refusé par le décodage complet).
+          JsonArrayStream.decode(bytes, start, end);
+        }
+      }
+      return _LiveStreamsResult(channels, epgIds);
+    }
+
+    // Forme rare `{"data": [...]}` : ancien chemin (décodage complet).
+    // Décodeur UTF-8 → JSON FUSIONNÉ de dart:convert : parse le JSON
+    // directement depuis les octets, sans String intermédiaire.
+    final dynamic decoded = const Utf8Decoder(allowMalformed: true)
+        .fuse(const JsonDecoder())
+        .convert(bytes);
+    List<dynamic> raw;
+    if (decoded is List<dynamic>) {
+      raw = decoded;
+    } else if (decoded is Map<String, dynamic> && decoded['data'] is List) {
+      raw = decoded['data'] as List<dynamic>; // certains serveurs encapsulent
+    } else {
+      throw XtreamException(
+        'Réponse JSON non attendue (List attendue) sur action=get_live_streams.',
+      );
+    }
+    for (final dynamic item in raw) {
+      if (channels.length >= job.maxChannels) break;
+      if (item is Map<String, dynamic>) addItem(item);
+    }
+    return _LiveStreamsResult(channels, epgIds);
+  } on FormatException catch (e) {
+    throw XtreamException(
+      'Réponse non-JSON sur action=get_live_streams : ${e.message}',
+    );
+  }
 }

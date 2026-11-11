@@ -27,10 +27,50 @@ class AudioDiagnosisTest {
 
     @Test
     fun ffmpegQuiReconstruitLes48kHzNestPasAccuse() {
-        val ok = heAacBox.copy(decoder = "ffmpeg6.0-aac", outSampleRate = 48_000, outChannels = 2)
+        val ok = heAacBox.copy(
+            decoder = "ffmpeg6.0-aac", outSampleRate = 48_000, outChannels = 2, playerAudible = true,
+        )
         val v = AudioDiagnosis.verdicts(ok)
         assertTrue(v.none { it.startsWith("BOX") }, v.toString())
         assertTrue(v.last().startsWith("Rien d'anormal côté app"), v.toString())
+    }
+
+    @Test
+    fun pasDeRienDanormalSansMesures() {
+        val ok = heAacBox.copy(
+            decoder = "ffmpeg6.0-aac", outSampleRate = 48_000, outChannels = 2, playerAudible = true,
+        )
+        // Chaque mesure manquante empêche de conclure, et elle est nommée.
+        for ((snapshot, label) in listOf(
+            ok.copy(mime = null) to "codec reçu",
+            ok.copy(decoder = null) to "décodeur",
+            ok.copy(outEncoding = null) to "format de sortie",
+            ok.copy(outSampleRate = 0) to "fréquence de sortie",
+            ok.copy(probeRequested = true, probeFrames = 0) to "échantillons de sortie (sonde vide)",
+            ok.copy(playerAudible = false) to "lecture en cours",
+        )) {
+            val v = AudioDiagnosis.verdicts(snapshot)
+            assertTrue(v.none { it.startsWith("Rien d'anormal") }, v.toString())
+            // Codec inconnu : aucune conclusion « source » sur la fréquence.
+            assertTrue(v.none { it.startsWith("SOURCE : son échantillonné") }, v.toString())
+            assertTrue(v.last().startsWith("MESURES INSUFFISANTES : $label non mesuré(s)"), v.toString())
+        }
+        // Sonde demandée ET lue : plus de manque.
+        assertTrue(AudioDiagnosis.missingMeasures(ok.copy(probeRequested = true, probeFrames = 480)).isEmpty())
+        // Passthrough : pas de décodeur ni de fréquence PCM à attendre.
+        assertTrue(
+            AudioDiagnosis.missingMeasures(
+                AudioSnapshot(mime = "audio/ac3", passthrough = true, outEncoding = "AC-3", playerAudible = true),
+            ).isEmpty(),
+        )
+    }
+
+    @Test
+    fun unDefautReelResteDitMemeSiUneMesureManque() {
+        // Les coupures mesurées restent signalées : le manque ne masque rien.
+        val v = AudioDiagnosis.verdicts(AudioSnapshot(mime = "audio/mp4a-latm", underruns = 2))
+        assertTrue(v.any { it.startsWith("SORTIE : 2 coupure(s)") }, v.toString())
+        assertTrue(v.none { it.startsWith("Rien d'anormal") }, v.toString())
     }
 
     @Test
