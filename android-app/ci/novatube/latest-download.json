@@ -5,14 +5,14 @@
   "versionName": "0.1.5",
   "versionCode": 5,
   "distribution": "private-apk",
-  "sourceCommit": "b379ce61c798289d03a67a9dc85c631e7c07c77f",
-  "sha256": "44369f80bd3d24930ff9b488fd7b178e8267706f549ad0dd72b1d0bb4034999e",
-  "sizeBytes": 124111961,
+  "sourceCommit": "d024416f87ac7e2b083a88da1f72b65c78fb151a",
+  "sha256": "13917ef0775aec9ba26813d1ae567bc841a701215fdffa201abef11af289a792",
+  "sizeBytes": 124177497,
   "uploadCertificateSha256": "38d6dabe9a73e5ab94a56491e4da6638f5da09ef1eaa77d0eb892d5f0478824b",
-  "url": "https://github.com/manzilionellm-dotcom/tvking/releases/download/novatube-private-b379ce61c798289d03a67a9dc85c631e7c07c77f/NOVATUBE-b379ce61c798289d03a67a9dc85c631e7c07c77f.apk",
-  "filename": "NOVATUBE-b379ce61c798289d03a67a9dc85c631e7c07c77f.apk",
-  "releaseTag": "novatube-private-b379ce61c798289d03a67a9dc85c631e7c07c77f",
-  "runId": "43075044331",
-  "runUrl": "https://github.com/manzilionellm-dotcom/tvking/actions/runs/43075044331",
-  "verifiedAtUtc": "2026-11-11T18:23:22.694575+00:00"
+  "url": "https://github.com/manzilionellm-dotcom/tvking/releases/download/novatube-private-d024416f87ac7e2b083a88da1f72b65c78fb151a/NOVATUBE-d024416f87ac7e2b083a88da1f72b65c78fb151a.apk",
+  "filename": "NOVATUBE-d024416f87ac7e2b083a88da1f72b65c78fb151a.apk",
+  "releaseTag": "novatube-private-d024416f87ac7e2b083a88da1f72b65c78fb151a",
+  "runId": "43092038838",
+  "runUrl": "https://github.com/manzilionellm-dotcom/tvking/actions/runs/43092038838",
+  "verifiedAtUtc": "2026-11-11T20:12:23.098251+00:00"
 }
