@@ -1,0 +1,148 @@
+# Tests du code partagé au SHA appelant ; aucun paquet Android ni publication.
+name: Audit 116 — suites du code partagé
+'on':
+  workflow_call:
+    inputs:
+      suite:
+        type: string
+        required: true
+permissions:
+  contents: read
+env:
+  SOURCE_SHA: ${{ github.sha }}
+  CI: 'true'
+  FLUTTER_SUPPRESS_ANALYTICS: 'true'
+  DASH__SUPPRESS_ANALYTICS: 'true'
+jobs:
+  flutter:
+    name: Sources courantes — ${{ inputs.suite }}
+    if: github.event_name == 'push' && github.ref == 'refs/heads/zuno/audit-116-lot1' && github.repository == 'manzilionellm-dotcom/tvking'
+      && github.actor == github.repository_owner && github.triggering_actor == github.repository_owner
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: android-app
+        shell: bash
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        ref: ${{ github.sha }}
+        fetch-depth: 1
+        persist-credentials: false
+    - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+      with:
+        flutter-version: 3.47.7
+        channel: stable
+        cache: false
+        pub-cache: false
+    - name: Résoudre le verrou application testé
+      run: |
+        set -euo pipefail
+        mkdir -p ../artifacts/audit-flutter
+        flutter --suppress-analytics --no-version-check --version | tee ../artifacts/audit-flutter/flutter-version.txt
+        cp ci/audit-116/app-tests.lock pubspec.lock
+        flutter --suppress-analytics --no-version-check pub get --enforce-lockfile
+        cmp pubspec.lock ci/audit-116/app-tests.lock
+        flutter --suppress-analytics --no-version-check gen-l10n
+        git rev-parse HEAD > ../artifacts/audit-flutter/source-sha.txt
+        sha256sum pubspec.lock > ../artifacts/audit-flutter/pubspec-lock.sha256
+    - name: Tests Flutter des sources courantes
+      env:
+        AUDIT_SUITE: ${{ inputs.suite }}
+      run: |
+        set -euo pipefail
+        case "$AUDIT_SUITE" in
+          player) audit_paths=(test/features/player test/features/cast test/features/tv/desktop) ;;
+          mobile) audit_paths=(test/features/tv test/features/profiles test/features/security test/features/cast) ;;
+          *) echo 'Suite inconnue.' >&2; exit 1 ;;
+        esac
+        flutter --suppress-analytics --no-version-check test --no-pub --reporter expanded \
+          --file-reporter=json:../artifacts/audit-flutter/tests.jsonl "${audit_paths[@]}" 2>&1 | tee ../artifacts/audit-flutter/tests.log
+    - name: Conserver les preuves même après échec
+      if: always()
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      with:
+        name: audit-116-shared-${{ inputs.suite }}-${{ github.sha }}
+        path: artifacts/audit-flutter/
+        if-no-files-found: error
+        retention-days: 14
+  device:
+    name: Capacités Cast et matériel — ${{ inputs.suite }}
+    if: github.event_name == 'push' && github.ref == 'refs/heads/zuno/audit-116-lot1' && github.repository == 'manzilionellm-dotcom/tvking'
+      && github.actor == github.repository_owner && github.triggering_actor == github.repository_owner
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        ref: ${{ github.sha }}
+        fetch-depth: 1
+        persist-credentials: false
+    - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+      with:
+        distribution: temurin
+        java-version: '17'
+    - name: Tests Java des deux paquets
+      run: |
+        set -euo pipefail
+        mkdir -p artifacts/audit-device
+        git rev-parse HEAD > artifacts/audit-device/source-sha.txt
+        java -version 2>&1 | tee artifacts/audit-device/java-version.txt
+        bash android-app/ci/test-zuno-device-capabilities.sh 2>&1 | tee artifacts/audit-device/capabilities.log
+        bash android-app/ci/test-device-hardware-kind.sh 2>&1 | tee artifacts/audit-device/hardware.log
+    - name: Conserver les preuves même après échec
+      if: always()
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      with:
+        name: audit-116-device-${{ inputs.suite }}-${{ github.sha }}
+        path: artifacts/audit-device/
+        if-no-files-found: error
+        retention-days: 14
+  native:
+    name: Logique vidéo et bridge Cast — ${{ inputs.suite }}
+    if: github.event_name == 'push' && github.ref == 'refs/heads/zuno/audit-116-lot1' && github.repository == 'manzilionellm-dotcom/tvking'
+      && github.actor == github.repository_owner && github.triggering_actor == github.repository_owner
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        ref: ${{ github.sha }}
+        fetch-depth: 1
+        persist-credentials: false
+    - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+      with:
+        distribution: temurin
+        java-version: '21'
+    - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a
+      with:
+        gradle-version: 8.11.1
+        cache-read-only: true
+    - name: Tous les tests JVM puis le bridge Kotlin réel
+      run: |
+        set -euo pipefail
+        mkdir -p artifacts/audit-native
+        git rev-parse HEAD > artifacts/audit-native/source-sha.txt
+        java -version 2>&1 | tee artifacts/audit-native/java-version.txt
+        gradle --version | tee artifacts/audit-native/gradle-version.txt
+        export AUDIT116_COMPILER_DIR="$RUNNER_TEMP/audit116-kotlin-compiler"
+        gradle -p android-app/packages/native_video_player/logic-test --no-daemon --max-workers=1 \
+          -Pkotlin.compiler.execution.strategy=in-process \
+          -I "$GITHUB_WORKSPACE/android-app/ci/audit-116/cast-compiler.init.gradle" \
+          test audit116CastCompiler 2>&1 | tee artifacts/audit-native/jvm.log
+        java -cp "$AUDIT116_COMPILER_DIR/*" org.jetbrains.kotlin.cli.jvm.K2JVMCompiler -version \
+          2>&1 | tee artifacts/audit-native/kotlin-version.txt
+        python3 android-app/packages/zuno_cast/logic-test/test_native_bridge.py \
+          --compiler-dir "$AUDIT116_COMPILER_DIR" 2>&1 | tee artifacts/audit-native/cast-bridge.log
+    - name: Conserver les preuves même après échec
+      if: always()
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      with:
+        name: audit-116-native-${{ inputs.suite }}-${{ github.sha }}
+        path: |-
+          artifacts/audit-native/
+          android-app/packages/native_video_player/logic-test/build/test-results/
+          android-app/packages/native_video_player/logic-test/build/reports/
+        if-no-files-found: error
+        retention-days: 14
