@@ -128,6 +128,10 @@ class _SyntheticXtream {
     _perCat.length;
   }
 
+  /// ZUNO_BENCH_NET=1 : réseau réaliste (120 ms par requête + 3 Mo/s), pour
+  /// mesurer ce que le client attend après l'envoi de sa liste.
+  static final bool _realNetwork = Platform.environment['ZUNO_BENCH_NET'] == '1';
+
   http.Client client() => MockClient((http.Request r) async {
         // Petite latence réseau : laisse les requêtes parallèles s'entrelacer.
         await Future<void>.delayed(const Duration(milliseconds: 2));
@@ -143,6 +147,10 @@ class _SyntheticXtream {
             body = c == null ? _whole : _perCat[int.parse(c)]!;
           default:
             return http.Response('', 404);
+        }
+        if (_realNetwork) {
+          await Future<void>.delayed(Duration(
+              milliseconds: 120 + body.length * 1000 ~/ (3 * 1024 * 1024)));
         }
         return http.Response.bytes(body, 200,
             headers: <String, String>{'content-type': 'application/json'});
