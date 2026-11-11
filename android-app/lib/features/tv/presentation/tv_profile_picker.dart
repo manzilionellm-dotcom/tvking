@@ -17,13 +17,16 @@ import 'tv_profile_label.dart';
 import '../../cast/data/cast_platform.dart';
 import '../../profiles/data/profile_repository.dart';
 import '../../profiles/domain/family_profile.dart';
+import '../../profiles/domain/profile_catalog.dart';
 import '../../profiles/domain/profile_policies.dart';
 import '../../security/data/app_pin_settings.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
 import 'tv_parental_screen.dart';
+import 'tv_components.dart';
 import 'tv_shell.dart';
+import 'tv_sources_screen.dart';
 
 /// Une fois par lancement de l'app : on ne repose pas le choix
 /// devant l'accueil à chaque retour de Direct.
@@ -62,8 +65,30 @@ abstract final class ProfileLooks {
   }
 }
 
-class TvProfilePickerScreen extends StatelessWidget {
+class TvProfilePickerScreen extends StatefulWidget {
   const TvProfilePickerScreen({super.key});
+
+  @override
+  State<TvProfilePickerScreen> createState() => _TvProfilePickerScreenState();
+}
+
+class _TvProfilePickerScreenState extends State<TvProfilePickerScreen> {
+  bool _busy = false;
+
+  Future<void> _addProfile() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      final FamilyProfile? created = await createTvProfile(context);
+      if (created == null || !mounted) return;
+      // Un profil neuf ouvre son propre espace vide : la personne peut y
+      // ajouter ses sources immédiatement, avant de revenir à l'accueil.
+      await openTvProfileSources(context, created);
+      if (mounted) Navigator.of(context).pop(true);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -73,6 +98,7 @@ class TvProfilePickerScreen extends StatelessWidget {
         final List<FamilyProfile> profiles =
             ProfileRepository.instance.catalog.profiles;
         final String activeId = ProfileRepository.instance.active.id;
+        final bool canAdd = ProfileRepository.instance.catalog.canAdd;
         if (CastPlatform.zunoEdition == ZunoEdition.touch) {
           return TvShell(child: _touchPicker(context, profiles, activeId));
         }
@@ -95,24 +121,45 @@ class TvProfilePickerScreen extends StatelessWidget {
               const SizedBox(height: 28),
               Expanded(
                 child: Center(
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: <Widget>[
-                      for (int i = 0; i < profiles.length; i++) ...<Widget>[
-                        if (i > 0) const SizedBox(width: 22),
-                        _ProfileCard(
-                          profile: profiles[i],
-                          active: profiles[i].id == activeId,
-                          autofocus: profiles[i].id == activeId,
-                          onSelect: () => _choose(context, profiles[i]),
-                        ),
+                  child: SingleChildScrollView(
+                    child: Wrap(
+                      alignment: WrapAlignment.center,
+                      spacing: TvDimens.gutter,
+                      runSpacing: TvDimens.gutter,
+                      children: <Widget>[
+                        for (int i = 0; i < profiles.length; i++)
+                          _ProfileCard(
+                            profile: profiles[i],
+                            active: profiles[i].id == activeId,
+                            autofocus: profiles[i].id == activeId,
+                            onSelect: _busy
+                                ? null
+                                : () => _choose(context, profiles[i]),
+                          ),
                       ],
-                    ],
+                    ),
                   ),
                 ),
               ),
+              if (!canAdd) ...<Widget>[
+                Text(
+                  context.l10n.tvProfileLimit(ProfileCatalog.maxProfiles),
+                  textAlign: TextAlign.center,
+                  style: TvTokens.ui(TvDimens.label, color: TvTokens.muted),
+                ),
+                const SizedBox(height: TvDimens.touchGap),
+              ],
+              Center(
+                child: TvCtaButton(
+                  key: const ValueKey<String>('novatube-add-profile'),
+                  label: context.l10n.tvAddProfile,
+                  onSelect: canAdd && !_busy ? _addProfile : null,
+                ),
+              ),
+              const SizedBox(height: TvDimens.touchGap),
               Center(
                 child: TvFocusBuilder(
+                  enabled: !_busy,
                   onSelect: () => Navigator.of(context).pop(false),
                   builder: (BuildContext context, bool focused) {
                     final Color fg =
@@ -180,7 +227,7 @@ class TvProfilePickerScreen extends StatelessWidget {
                   selected: profile.id == activeId,
                   child: OutlinedButton(
                     key: ValueKey<String>('zuno-touch-profile-${profile.id}'),
-                    onPressed: () => _choose(context, profile),
+                    onPressed: _busy ? null : () => _choose(context, profile),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: TvTokens.text,
                       backgroundColor: TvTokens.card,
@@ -236,9 +283,35 @@ class TvProfilePickerScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: TvDimens.touchGap),
               ],
+              FilledButton.icon(
+                key: const ValueKey<String>('novatube-add-profile'),
+                onPressed: ProfileRepository.instance.catalog.canAdd && !_busy
+                    ? _addProfile
+                    : null,
+                icon: const Icon(Icons.person_add_rounded),
+                label: Text(context.l10n.tvAddProfile),
+                style: FilledButton.styleFrom(
+                  foregroundColor: TvTokens.onAccent,
+                  backgroundColor: TvTokens.accent,
+                  minimumSize: const Size(0, TvDimens.touchButtonHeight),
+                  padding: const EdgeInsets.all(TvDimens.touchGap),
+                  textStyle: TvTokens.ui(
+                    TvDimens.label,
+                    weight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              if (!ProfileRepository.instance.catalog.canAdd) ...<Widget>[
+                const SizedBox(height: TvDimens.touchGap),
+                Text(
+                  context.l10n.tvProfileLimit(ProfileCatalog.maxProfiles),
+                  style: TvTokens.ui(TvDimens.label, color: TvTokens.muted),
+                ),
+              ],
+              const SizedBox(height: TvDimens.touchGap),
               OutlinedButton(
                 key: const ValueKey<String>('zuno-touch-profile-later'),
-                onPressed: () => Navigator.of(context).pop(false),
+                onPressed: _busy ? null : () => Navigator.of(context).pop(false),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: TvTokens.text,
                   minimumSize: const Size(0, TvDimens.touchButtonHeight),
@@ -259,10 +332,18 @@ class TvProfilePickerScreen extends StatelessWidget {
   }
 
   Future<void> _choose(BuildContext context, FamilyProfile target) async {
-    final bool ok = await confirmProfileSwitch(context, target.id);
-    if (!ok || !context.mounted) return;
-    await ProfileRepository.instance.activate(target.id, leaveAllowed: true);
-    if (context.mounted) Navigator.of(context).pop(true);
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      final bool ok = await confirmProfileSwitch(context, target.id);
+      if (!ok || !context.mounted) return;
+      final bool entered = await ProfileRepository.instance.activate(
+        target.id, leaveAllowed: true,
+      );
+      if (entered && context.mounted) Navigator.of(context).pop(true);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 }
 
@@ -280,6 +361,55 @@ Future<bool> confirmProfileSwitch(BuildContext context, String nextId) async {
   return askParentalPin(context);
 }
 
+/// Même création depuis « Qui regarde ? » et Réglages. Le profil choisi
+/// possède ses sources : on attend la fin de l'activation avant de les ouvrir.
+Future<FamilyProfile?> createTvProfile(
+  BuildContext context, {
+  bool kids = false,
+}) async {
+  final ProfileRepository repo = ProfileRepository.instance;
+  if (!repo.catalog.canAdd || (kids && repo.catalog.hasKids)) return null;
+  final String? name = await askProfileName(
+    context,
+    title: kids ? context.l10n.tvKidsProfile : context.l10n.tvNewProfile,
+    initial: kids ? context.l10n.tvChildren : '',
+  );
+  if (name == null || !context.mounted) return null;
+  // L'identifiant vide n'est jamais un profil enregistré. Il sert seulement
+  // à vérifier la sortie du profil Enfants AVANT de créer un nouveau profil.
+  if (!await confirmProfileSwitch(context, '') || !context.mounted) return null;
+  final FamilyProfile? created = await repo.addProfile(name: name, isKids: kids);
+  if (!context.mounted) return null;
+  if (created == null) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
+      repo.catalog.canAdd
+          ? context.l10n.tvProfileAddFailed
+          : context.l10n.tvProfileLimit(ProfileCatalog.maxProfiles),
+    )));
+    return null;
+  }
+  final bool entered = await repo.activate(created.id, leaveAllowed: true);
+  if (!entered || !context.mounted) return null;
+  if (kids) await offerKidsPin(context);
+  return created;
+}
+
+/// L'écran de sources lit exclusivement le profil actif. Le choix et le
+/// rafraîchissement de son catalogue doivent donc précéder la navigation.
+Future<void> openTvProfileSources(
+  BuildContext context,
+  FamilyProfile profile,
+) async {
+  if (!await confirmProfileSwitch(context, profile.id) || !context.mounted) return;
+  final bool entered = await ProfileRepository.instance.activate(
+    profile.id, leaveAllowed: true,
+  );
+  if (!entered || !context.mounted) return;
+  await Navigator.of(context).push<void>(MaterialPageRoute<void>(
+    builder: (_) => const TvShell(child: TvSourcesScreen()),
+  ));
+}
+
 class _ProfileCard extends StatelessWidget {
   const _ProfileCard({
     required this.profile,
@@ -290,13 +420,14 @@ class _ProfileCard extends StatelessWidget {
 
   final FamilyProfile profile;
   final bool active;
-  final VoidCallback onSelect;
+  final VoidCallback? onSelect;
   final bool autofocus;
 
   @override
   Widget build(BuildContext context) {
     return TvFocusBuilder(
       autofocus: autofocus,
+      enabled: onSelect != null,
       scale: TvFocusScale.large,
       onSelect: onSelect,
       builder: (BuildContext context, bool focused) {

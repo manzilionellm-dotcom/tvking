@@ -18,20 +18,34 @@ import '../../cinema/data/cinema_repository.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../../playlists/domain/playlist.dart';
 import '../../playlists/data/xtream_client.dart';
+import '../../profiles/data/active_profile.dart';
 import '../domain/vod_movie.dart';
 
 class VodRepository {
-  VodRepository._();
+  VodRepository._() {
+    ActiveProfile.instance.listenable.addListener(_invalidate);
+    PlaylistRepository.instance.playlistsStream.listen((_) => _invalidate());
+  }
   static final VodRepository instance = VodRepository._();
 
   List<VodMovie>? _cache;
+  int _generation = 0;
+
+  void _invalidate() {
+    _cache = null;
+    _generation++;
+  }
 
   /// Renvoie le catalogue de films. [forceRefresh] re-tape le serveur.
   Future<List<VodMovie>> fetchMovies({bool forceRefresh = false}) async {
+    final int generation = _generation;
+    final String owner = ActiveProfile.instance.id;
+    bool stale() => generation != _generation || owner != ActiveProfile.instance.id;
     if (!forceRefresh && _cache != null) return _cache!;
 
     final List<Playlist> playlists =
         await PlaylistRepository.instance.getAllPlaylists();
+    if (stale()) return const <VodMovie>[];
     Playlist? xt;
     for (final Playlist p in playlists) {
       if (p.type == PlaylistType.xtream && (p.xtreamServer ?? '').isNotEmpty) {
@@ -41,6 +55,7 @@ class VodRepository {
     }
     if (xt == null) {
       final List<VodMovie> saved = await _savedMovies();
+      if (stale()) return const <VodMovie>[];
       if (saved.isNotEmpty) return saved;
       _cache = const <VodMovie>[];
       return _cache!;
@@ -62,15 +77,18 @@ class VodRepository {
         previous: _cache ?? const <VodMovie>[],
         disk: movies.isNotEmpty ? const <VodMovie>[] : await _savedMovies(),
       );
+      if (stale()) return const <VodMovie>[];
       if (chosen.isNotEmpty) _cache = chosen;
       return chosen;
     } catch (e) {
+      if (stale()) return const <VodMovie>[];
       if (kDebugMode) debugPrint('[VOD] fetch error: $e');
       final List<VodMovie> chosen = keepPreviousWhenEmpty<VodMovie>(
         incoming: null,
         previous: _cache ?? const <VodMovie>[],
         disk: await _savedMovies(),
       );
+      if (stale()) return const <VodMovie>[];
       if (chosen.isNotEmpty) _cache = chosen;
       return chosen;
     } finally {

@@ -103,7 +103,14 @@ class RecentlyWatchedRepository {
   }
 
   void _onProfile() {
+    _cache = const <String>[];
+    if (!_controller.isClosed) _controller.add(_cache);
     if (_initialized) unawaited(_reload());
+  }
+
+  Future<void> reloadForActiveProfile() async {
+    await initialize();
+    await _reload();
   }
 
   Future<void> _reload() async {
@@ -129,8 +136,8 @@ class RecentlyWatchedRepository {
 
   Future<void> record(String channelId) async {
     if (FlavorConfig.current.adultOnly) return;
-    await initialize();
     final String profileId = ActiveProfile.instance.id;
+    await initialize();
     final Database db = await PlaylistDatabase.instance.database;
     final int now = DateTime.now().millisecondsSinceEpoch;
 

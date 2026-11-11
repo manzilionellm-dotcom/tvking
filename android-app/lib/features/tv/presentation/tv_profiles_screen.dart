@@ -1,7 +1,7 @@
 // =========================================================
 //  tv_profiles_screen.dart — Gérer les profils (Réglages)
 // =========================================================
-//  Ajouter (jusqu'à 4), renommer, supprimer (pas le profil 1),
+//  Ajouter (jusqu'à 10), renommer, supprimer (pas le profil 1),
 //  créer le profil Enfants, et couper le choix au démarrage.
 //
 //  Le profil Enfants : mode enfants forcé, code à part, on ne
@@ -34,6 +34,7 @@ class TvProfilesScreen extends StatefulWidget {
 class _TvProfilesScreenState extends State<TvProfilesScreen> {
   String? _focusId;
   bool? _defaultPin;
+  bool _busy = false;
 
   @override
   void initState() {
@@ -68,49 +69,45 @@ class _TvProfilesScreenState extends State<TvProfilesScreen> {
   }
 
   Future<void> _use(FamilyProfile target) async {
-    final bool ok = await confirmProfileSwitch(context, target.id);
-    if (!ok || !mounted) return;
-    final bool entered = await ProfileRepository.instance.activate(
-      target.id,
-      leaveAllowed: true,
-    );
-    if (entered && mounted) setState(() => _focusId = target.id);
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      final bool ok = await confirmProfileSwitch(context, target.id);
+      if (!ok || !mounted) return;
+      final bool entered = await ProfileRepository.instance.activate(
+        target.id,
+        leaveAllowed: true,
+      );
+      if (entered && mounted) setState(() => _focusId = target.id);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   Future<void> _add({required bool kids}) async {
-    if (!_cat.canAdd) return;
-    if (kids && _cat.hasKids) return;
-    final String? name = await askProfileName(
-      context,
-      title: kids ? context.l10n.tvKidsProfile : context.l10n.tvNewProfile,
-      initial: kids ? context.l10n.tvChildren : '',
-    );
-    if (name == null || !mounted) return;
-    final FamilyProfile? created = await ProfileRepository.instance.addProfile(
-      name: name,
-      isKids: kids,
-    );
-    if (!mounted) return;
-    if (created == null) {
-      _toast(
-        kids ? context.l10n.tvKidsExists : context.l10n.tvProfileAddFailed,
-      );
-      return;
-    }
-    // Entrer dans le nouveau profil ne demande pas de code.
-    // S'il est Enfants, on propose tout de suite SON code (pas celui
-    // du parent : on a déjà basculé).
-    final bool entered = await ProfileRepository.instance.activate(
-      created.id,
-      leaveAllowed: true,
-    );
-    if (!entered || !mounted) return;
-    if (kids) await offerKidsPin(context);
-    if (mounted) {
+    if (_busy || !_cat.canAdd) return;
+    setState(() => _busy = true);
+    try {
+      final FamilyProfile? created = await createTvProfile(context, kids: kids);
+      if (created == null || !mounted) return;
       setState(() => _focusId = created.id);
       _toast(
-        kids ? context.l10n.tvKidsReady : context.l10n.tvProfileCreated(name),
+        kids ? context.l10n.tvKidsReady : context.l10n.tvProfileCreated(created.name),
       );
+      await openTvProfileSources(context, created);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _sources(FamilyProfile profile) async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      await openTvProfileSources(context, profile);
+      if (mounted) setState(() => _focusId = _cat.activeId);
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
   }
 
@@ -242,7 +239,7 @@ class _TvProfilesScreenState extends State<TvProfilesScreen> {
             active: p.id == cat.activeId,
             selected: p.id == focused.id,
             autofocus: p.id == cat.activeId,
-            onSelect: () => _use(p),
+            onSelect: _busy ? null : () => _use(p),
           ),
           const SizedBox(height: 10),
         ],
@@ -279,37 +276,50 @@ class _TvProfilesScreenState extends State<TvProfilesScreen> {
           runSpacing: 12,
           children: <Widget>[
             _Action(
+              key: const ValueKey<String>('novatube-profile-sources'),
+              label: context.l10n.tvProfileSources(tvProfileLabel(context, focused)),
+              icon: Icons.playlist_add_rounded,
+              onSelect: _busy ? null : () => _sources(focused),
+            ),
+            _Action(
               label: context.l10n.tvRename,
               icon: Icons.edit_rounded,
-              onSelect: () => _rename(focused),
+              onSelect: _busy ? null : () => _rename(focused),
             ),
             if (!origin)
               _Action(
                 label: context.l10n.buttonDelete,
                 icon: Icons.delete_outline_rounded,
-                onSelect: () => _delete(focused),
+                onSelect: _busy ? null : () => _delete(focused),
               ),
-            if (cat.canAdd)
-              _Action(
-                label: context.l10n.buttonAdd,
-                icon: Icons.person_add_rounded,
-                onSelect: () => _add(kids: false),
-              ),
+            _Action(
+              key: const ValueKey<String>('novatube-manage-add-profile'),
+              label: context.l10n.tvAddProfile,
+              icon: Icons.person_add_rounded,
+              onSelect: cat.canAdd && !_busy ? () => _add(kids: false) : null,
+            ),
             if (cat.canAdd && !cat.hasKids)
               _Action(
                 label: context.l10n.tvKidsProfile,
                 icon: Icons.child_care_rounded,
-                onSelect: () => _add(kids: true),
+                onSelect: _busy ? null : () => _add(kids: true),
               ),
             _Action(
               label: ask
                   ? context.l10n.tvAskProfileOn
                   : context.l10n.tvAskProfileOff,
               icon: ask ? Icons.waving_hand_rounded : Icons.flash_on_rounded,
-              onSelect: _toggleAsk,
+              onSelect: _busy ? null : _toggleAsk,
             ),
           ],
         ),
+        if (!cat.canAdd) ...<Widget>[
+          const SizedBox(height: TvDimens.touchGap),
+          Text(
+            context.l10n.tvProfileLimit(ProfileCatalog.maxProfiles),
+            style: TvTokens.ui(TvDimens.label, color: TvTokens.muted),
+          ),
+        ],
         const SizedBox(height: 12),
         Text(
           cat.profiles.length < 2
@@ -344,13 +354,14 @@ class _Row extends StatelessWidget {
   final FamilyProfile profile;
   final bool active;
   final bool selected;
-  final VoidCallback onSelect;
+  final VoidCallback? onSelect;
   final bool autofocus;
 
   @override
   Widget build(BuildContext context) {
     return TvFocusBuilder(
       autofocus: autofocus,
+      enabled: onSelect != null,
       onSelect: onSelect,
       builder: (BuildContext context, bool focused) {
         final Color fg = focused ? TvTokens.onAccent : TvTokens.text;
@@ -416,17 +427,19 @@ class _Row extends StatelessWidget {
 
 class _Action extends StatelessWidget {
   const _Action({
+    super.key,
     required this.label,
     required this.icon,
     required this.onSelect,
   });
   final String label;
   final IconData icon;
-  final VoidCallback onSelect;
+  final VoidCallback? onSelect;
 
   @override
   Widget build(BuildContext context) {
     return TvFocusBuilder(
+      enabled: onSelect != null,
       onSelect: onSelect,
       builder: (BuildContext context, bool focused) {
         final Color fg = focused ? TvTokens.onAccent : TvTokens.text;
@@ -444,12 +457,14 @@ class _Action extends StatelessWidget {
             children: <Widget>[
               Icon(icon, size: 20, color: fg),
               const SizedBox(width: 8),
-              Text(
-                label,
-                style: TvTokens.ui(
-                  TvDimens.label,
-                  weight: FontWeight.w700,
-                  color: fg,
+              Flexible(
+                child: Text(
+                  label,
+                  style: TvTokens.ui(
+                    TvDimens.label,
+                    weight: FontWeight.w700,
+                    color: fg,
+                  ),
                 ),
               ),
             ],

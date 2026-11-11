@@ -24,6 +24,7 @@
 //  enchaîner 20 setUrl gelait la box.
 // =========================================================
 import 'dart:async';
+
 import '../desktop/desktop_cast_controls.dart';
 import '../../cast/data/cast_platform.dart';
 
@@ -69,6 +70,7 @@ import '../../cinema/data/cinema_downloads.dart';
 import '../../player/data/local_stream_relay.dart';
 import '../../player/domain/live_fallback.dart';
 import '../../playlists/data/playlist_repository.dart';
+import '../../security/data/adult_access.dart';
 import '../../playlists/data/favorites_repository.dart';
 import '../../recordings/data/recording_repository.dart';
 import '../../recordings/domain/recording.dart';
@@ -105,7 +107,9 @@ class TvPlayerScreen extends StatefulWidget {
     }
     final Channel selected = channels[startIndex];
     if (!NovatubeContentPolicy.allows(
-        name: selected.name, category: selected.category)) {
+      name: selected.name,
+      category: selected.category,
+    )) {
       return NovatubeUnavailableState<TvPlayerScreen>();
     }
     return _TvPlayerScreenState();
@@ -124,8 +128,10 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   // Le zap conserve l'ordre des chaînes admises, sans exposer une chaîne
   // exclue passée directement à cette route en dehors du catalogue.
   late final List<Channel> _channels = widget.channels
-      .where((Channel c) => NovatubeContentPolicy.allows(
-          name: c.name, category: c.category))
+      .where(
+        (Channel c) =>
+            NovatubeContentPolicy.allows(name: c.name, category: c.category),
+      )
       .toList(growable: false);
   late int _index = _channels.indexOf(widget.channels[widget.startIndex]);
   bool _overlay = true;
@@ -185,6 +191,9 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   Recording? _activeRecording;
   bool _recordingBusy = false;
   bool get _isRecording => _activeRecording != null;
+  // Les enregistrements actuels n'ont pas de section protégée par PIN.
+  bool get _canRecord => !NovatubeContentPolicy.isAdult(
+      name: _current.name, category: _current.category);
   String?
       _relayPlayUrl; // URL locale 127.0.0.1 utilisée pendant l'enregistrement
   String? _toastMsg; // petit message éphémère (sauvegardé / vide / échec)
@@ -285,6 +294,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
       _playingUrl = LiveFallback.preferred(_current.streamUrl);
     }
     _controller = NativeVideoController(initialUrl: _playingUrl);
+    AdultAccess.instance.unlocked.addListener(_onAdultAccessChanged);
     unawaited(
       ClearVoiceFlag.load().then((_) {
         if (mounted) _controller.setClearVoice(ClearVoiceFlag.value);
@@ -301,11 +311,15 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     // téléchargement de film en cours ferait refuser le direct (« le cinéma
     // marche mais pas les chaînes »). On le met en pause le temps du direct,
     // il reprend tout seul en quittant le lecteur.
-    unawaited(CinemaDownloads.pauseForLive(owner: _downloadOwner)
-        .catchError((Object _) {
-      BlackBox.instance
-          .warn('CINEMA', 'Pause des téléchargements non confirmée');
-    }));
+    unawaited(
+      CinemaDownloads.pauseForLive(owner: _downloadOwner)
+          .catchError((Object _) {
+        BlackBox.instance.warn(
+          'CINEMA',
+          'Pause des téléchargements non confirmée',
+        );
+      }),
+    );
     _controller.addListener(_onPlayer);
     // Favoris en direct (le ❤ se met à jour tout seul).
     FavoritesRepository.instance.initialize();
@@ -425,8 +439,23 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     }
   }
 
+  void _onAdultAccessChanged() {
+    if (NovatubeContentPolicy.allows(
+      name: _current.name,
+      category: _current.category,
+    )) return;
+    _controller.suspendForBackground();
+    unawaited(_desktopCastKey.currentState?.close() ?? Future<void>.value());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final ModalRoute<void>? route = ModalRoute.of<void>(context);
+      if (route != null) Navigator.of(context).removeRoute(route);
+    });
+  }
+
   @override
   void dispose() {
+    AdultAccess.instance.unlocked.removeListener(_onAdultAccessChanged);
     final Future<void> castClosed =
         _desktopCastKey.currentState?.close() ?? Future<void>.value();
     TvActivity.leave();
@@ -467,8 +496,11 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     SubscriptionState.instance.syncWithBackend(); // on ne regarde plus rien
     _controller.dispose();
     ForegroundPlayback.unlock();
-    unawaited(castClosed
-        .then((_) => CinemaDownloads.resumeAfterLive(owner: _downloadOwner)));
+    unawaited(
+      castClosed.then(
+        (_) => CinemaDownloads.resumeAfterLive(owner: _downloadOwner),
+      ),
+    );
     _focus.dispose();
     super.dispose();
   }
@@ -775,7 +807,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   // ----- Enregistrement (bouton REC / touche média) -----
 
   Future<void> _toggleRecording() async {
-    if (_castingHandoff || _recordingBusy) return;
+    if (_castingHandoff || _recordingBusy || !_canRecord) return;
     setState(() => _recordingBusy = true);
     try {
       if (_isRecording) {
@@ -790,7 +822,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   }
 
   Future<void> _startRecording() async {
-    if (_isRecording) return;
+    if (_isRecording || !_canRecord) return;
     // L'adresse qui JOUE (éventuellement une adresse de secours).
     final String realUrl = _playingUrl;
     try {
@@ -1577,7 +1609,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
                             isFavorite: _isFavorite,
                             focusedIndex: _btnFocus,
                             onGuide: _openGuide,
-                            onRecord: _toggleRecording,
+                            onRecord: _canRecord ? _toggleRecording : null,
                             onFavorite: _toggleFavorite,
                             onFollow: _canFollow
                                 ? () => unawaited(_toggleFollow())
@@ -1613,22 +1645,23 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
                   ),
                   if (CastPlatform.canSend)
                     Positioned(
-                        top: isZunoTouch
-                            ? MediaQuery.paddingOf(context).top +
-                                TvDimens.touchSafeV
-                            : TvDimens.safeV,
-                        right:
-                            isZunoTouch ? TvDimens.touchSafeH : TvDimens.safeH,
-                        child: DesktopCastControls(
-                            key: _desktopCastKey,
-                            controller: _controller,
-                            streamUrl: _playingUrl,
-                            title: _current.name,
-                            imageUrl: _current.logoUrl,
-                            enabled: !_isRecording && !_recordingBusy,
-                            disabledHint: context.l10n.playerRecording,
-                            prepareHandoff: _prepareCastHandoff,
-                            onHandoffChanged: _onCastHandoff)),
+                      top: isZunoTouch
+                          ? MediaQuery.paddingOf(context).top +
+                              TvDimens.touchSafeV
+                          : TvDimens.safeV,
+                      right: isZunoTouch ? TvDimens.touchSafeH : TvDimens.safeH,
+                      child: DesktopCastControls(
+                        key: _desktopCastKey,
+                        controller: _controller,
+                        streamUrl: _playingUrl,
+                        title: _current.name,
+                        imageUrl: _current.logoUrl,
+                        enabled: !_isRecording && !_recordingBusy,
+                        disabledHint: context.l10n.playerRecording,
+                        prepareHandoff: _prepareCastHandoff,
+                        onHandoffChanged: _onCastHandoff,
+                      ),
+                    ),
                   // Numéro saisi à la télécommande (coin haut-droit).
                   if (_numBuffer.isNotEmpty)
                     Positioned(
@@ -1976,7 +2009,7 @@ class _ControlsBar extends StatelessWidget {
   /// Index du bouton surligné au D-pad (-1 = aucun). 0=Guide 1=REC 2=Favori.
   final int focusedIndex;
   final VoidCallback onGuide;
-  final VoidCallback onRecord;
+  final VoidCallback? onRecord;
   final VoidCallback onFavorite;
 
   /// Bouton « Suivre », seulement si le guide a un titre.
@@ -2260,7 +2293,7 @@ class _CtrlButton extends StatefulWidget {
     this.focused = false,
   });
   final IconData icon;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
   final String? label; // libellé sous le bouton (Guide / REC / Favori)
   final bool primary;
   final Color? accent; // teinte quand actif (rouge REC / or favori)
@@ -2288,9 +2321,11 @@ class _CtrlButtonState extends State<_CtrlButton> {
         : (widget.active
             ? accent.withValues(alpha: 0.22)
             : Colors.black.withValues(alpha: 0.42));
-    final Color iconColor = widget.focused
-        ? TvTokens.accent
-        : (widget.active ? accent : TvTokens.text);
+    final Color iconColor = widget.onTap == null
+        ? TvTokens.mutedDim
+        : widget.focused
+            ? TvTokens.accent
+            : (widget.active ? accent : TvTokens.text);
     final Color labelColor = widget.focused
         ? TvTokens.accent
         : (widget.active ? accent : TvTokens.muted);
@@ -2299,8 +2334,10 @@ class _CtrlButtonState extends State<_CtrlButton> {
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTapDown: (_) => setState(() => _down = true),
-      onTapUp: (_) => setState(() => _down = false),
+      onTapDown:
+          widget.onTap == null ? null : (_) => setState(() => _down = true),
+      onTapUp:
+          widget.onTap == null ? null : (_) => setState(() => _down = false),
       onTapCancel: () => setState(() => _down = false),
       onTap: widget.onTap,
       child: AnimatedScale(

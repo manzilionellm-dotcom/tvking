@@ -56,6 +56,20 @@ class LocalCastServer {
   HttpServer? _server;
   int _port = 0;
 
+  InternetAddress? _advertisedLoopbackForTesting;
+
+  /// Permet aux tests HTTP réels de rester sur loopback lorsque le runner
+  /// interdit l'énumération des interfaces. Inactif en profile/release.
+  @visibleForTesting
+  set advertisedLoopbackForTesting(InternetAddress? address) {
+    if (!kDebugMode) return;
+    if (address != null &&
+        (address.type != InternetAddressType.IPv4 || !address.isLoopback)) {
+      throw ArgumentError.value(address, 'address', 'IPv4 loopback requise');
+    }
+    _advertisedLoopbackForTesting = address;
+  }
+
   /// Sessions de relay actives, indexées par token aléatoire.
   /// On garde un nombre limité pour éviter une fuite mémoire si
   /// le caller oublie de clearRelay (failover qui crash, etc.).
@@ -72,7 +86,7 @@ class LocalCastServer {
 
   /// UA envoyé aux serveurs IPTV (filtres anti-bot Xtream).
   static const String _kUpstreamUserAgent =
-      'VLC/3.0.20 LibVLC/3.0.20 (7 MOTION Relay)';
+      'VLC/3.0.20 LibVLC/3.0.20 (NOVATUBE Relay)';
 
   /// Mode « Caster sur un écran » EN LOCAL (même Wi-Fi) : le PC / la TV
   /// ouvre http://<ip-téléphone>:<port>/screen dans son navigateur. Le
@@ -742,6 +756,9 @@ class LocalCastServer {
   /// du récepteur). On préfère une IP du même /24 ; sinon on tombe
   /// sur la première IPv4 non-loopback disponible.
   Future<String?> _lanIpFor(String receiverHost) async {
+    if (kDebugMode && _advertisedLoopbackForTesting != null) {
+      return _advertisedLoopbackForTesting!.address;
+    }
     try {
       final List<NetworkInterface> ifs = await NetworkInterface.list(
         includeLoopback: false,
@@ -868,7 +885,7 @@ class LocalCastServer {
   static const String _screenHtml = r'''<!doctype html>
 <html lang="fr"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ZUNO - Écran</title>
+<title>NOVATUBE - Écran</title>
 <script src="//cdn.jsdelivr.net/npm/mpegts.js@1.7.3/dist/mpegts.js"></script>
 <style>*{margin:0;padding:0;box-sizing:border-box}html,body{width:100%;height:100%;
 background:#0A0A0C;color:#fff;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;overflow:hidden}
@@ -877,7 +894,7 @@ background:#0A0A0C;color:#fff;font-family:-apple-system,Segoe UI,Roboto,Arial,sa
 padding:6vh 5vw;font-size:clamp(16px,2.6vw,28px);color:#9aa;line-height:1.5}
 #m b{color:#D63A30}</style></head>
 <body><video id="v" playsinline webkit-playsinline autoplay></video>
-<div id="m"><span>7&nbsp;<b>MOTION</b> &mdash; en attente d'une chaine depuis le telephone...</span></div>
+<div id="m"><span><b>NOVATUBE</b> &mdash; en attente d'une chaîne depuis le téléphone...</span></div>
 <script>(function(){
 var v=document.getElementById('v'),m=document.getElementById('m');
 var player=null,curUrl=null;
@@ -899,7 +916,7 @@ var fails=0;
 function poll(){fetch('/current',{cache:'no-store'}).then(function(r){return r.json();})
   .then(function(s){fails=0;
     if(s&&s.url){if(s.url!==curUrl)play(s.url);}
-    else{teardown();curUrl=null;show("7&nbsp;<b>MOTION</b> &mdash; en attente d'une chaine depuis le telephone...");}})
+    else{teardown();curUrl=null;show("<b>NOVATUBE</b> &mdash; en attente d'une chaîne depuis le téléphone...");}})
   .catch(function(){fails++;if(fails===5)show("Connexion au telephone perdue. Meme Wi-Fi ?");})
   .then(function(){setTimeout(poll,1500);});}
 poll();})();</script></body></html>''';

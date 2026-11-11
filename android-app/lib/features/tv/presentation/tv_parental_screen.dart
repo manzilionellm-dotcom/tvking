@@ -19,6 +19,7 @@ import '../../cast/data/cast_platform.dart';
 import '../../profiles/data/profile_repository.dart';
 import '../../profiles/domain/profile_policies.dart';
 import '../../security/data/app_pin_settings.dart';
+import '../../security/data/adult_access.dart';
 import '../../security/data/parental_controls.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
@@ -40,6 +41,8 @@ class _TvParentalScreenState extends State<TvParentalScreen> {
     super.initState();
     ProfileRepository.instance.addListener(_rebuild);
     ParentalControls.instance.kidsMode.addListener(_rebuild);
+    AdultAccess.instance.enabled.addListener(_rebuild);
+    AdultAccess.instance.load();
     _refreshPin();
   }
 
@@ -47,6 +50,7 @@ class _TvParentalScreenState extends State<TvParentalScreen> {
   void dispose() {
     ProfileRepository.instance.removeListener(_rebuild);
     ParentalControls.instance.kidsMode.removeListener(_rebuild);
+    AdultAccess.instance.enabled.removeListener(_rebuild);
     super.dispose();
   }
 
@@ -196,6 +200,35 @@ class _TvParentalScreenState extends State<TvParentalScreen> {
           ),
           const SizedBox(height: 16),
 
+          if (AdultAccess.instance.supported) ...<Widget>[
+            _Card(
+              child: SwitchListTile.adaptive(
+                key: const ValueKey<String>('novatube-adult-setting'),
+                contentPadding: EdgeInsets.zero,
+                title: Text(context.l10n.tvAdultTitle),
+                subtitle: Text(
+                  kids || kidsProfile
+                      ? context.l10n.tvAdultBlockedKids
+                      : AdultAccess.instance.enabled.value
+                          ? context.l10n.tvAdultEnabled
+                          : context.l10n.tvAdultDisabled,
+                ),
+                value: AdultAccess.instance.enabled.value && !kids,
+                onChanged: kids || kidsProfile
+                    ? null
+                    : (bool value) async {
+                        if (value) {
+                          await authorizeAdultAccess(context);
+                          AdultAccess.instance.lock();
+                        } else {
+                          await AdultAccess.instance.disable();
+                        }
+                      },
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
+
           // ----- Carte Code PIN -----
           _Card(
             child: Column(
@@ -288,8 +321,70 @@ class _TvParentalScreenState extends State<TvParentalScreen> {
 Future<bool> askParentalPin(BuildContext context) =>
     _askPin(context, context.l10n.tvEnterParentalCode);
 
+/// Deux étapes explicites avant le premier accès : majorité puis PIN choisi.
+/// L'activation appartient au profil ; le PIN est redemandé à chaque visite.
+Future<bool> authorizeAdultAccess(BuildContext context) async {
+  final AdultAccess access = AdultAccess.instance;
+  final String profileId = ProfileRepository.instance.active.id;
+  await access.load();
+  if (!context.mounted || !access.supported || access.blockedForKids)
+    return false;
+  if (!access.enabled.value) {
+    final bool confirmed = await showDialog<bool>(
+          context: context,
+          builder: (BuildContext dialog) => AlertDialog(
+            title: Text(dialog.l10n.tvAdultTitle),
+            content: Text(dialog.l10n.tvAdultIntro),
+            actions: <Widget>[
+              TextButton(
+                onPressed: () => Navigator.pop(dialog, false),
+                child: Text(dialog.l10n.buttonCancel),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(dialog, true),
+                child: Text(dialog.l10n.tvAdultConsent),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+    if (!confirmed || !context.mounted) return false;
+    if (!await AppPinSettings.instance.hasCustomPin()) {
+      if (!context.mounted) return false;
+      final String? pin = await pickNewParentalPin(context);
+      if (pin == null) return false;
+      await AppPinSettings.instance.setPin(pin);
+    }
+    if (!context.mounted) return false;
+  }
+  if (!context.mounted) return false;
+  String? verifiedPin;
+  final bool activating = !access.enabled.value;
+  final bool accepted = await _askPin(
+    context,
+    activating ? context.l10n.tvAdultEnable : context.l10n.tvAdultOpen,
+    onVerified: (String pin) => verifiedPin = pin,
+  );
+  // Aucune autorisation n'est créée dans le callback du pavé : son résultat
+  // de navigation doit être confirmé, même si une annulation a été rapide.
+  if (!accepted ||
+      verifiedPin == null ||
+      !context.mounted ||
+      profileId != ProfileRepository.instance.active.id) {
+    access.lock();
+    return false;
+  }
+  return activating
+      ? access.enableWithPin(verifiedPin!)
+      : access.unlockWithPin(verifiedPin!);
+}
+
 /// Demande le code parental et le vérifie. Retourne true si correct.
-Future<bool> _askPin(BuildContext context, String title) async {
+Future<bool> _askPin(
+  BuildContext context,
+  String title, {
+  void Function(String)? onVerified,
+}) async {
   // Libellés lus AVANT l'attente (pas de BuildContext après un await).
   final String subtitle = context.l10n.tvPinSubtitle;
   final String wrong = context.l10n.tvPinWrong;
@@ -306,7 +401,10 @@ Future<bool> _askPin(BuildContext context, String title) async {
               return context.l10n.tvPinWaitMinutes(minutes);
             }
             final bool good = await AppPinSettings.instance.verify(pin);
-            if (good) return null;
+            if (good) {
+              onVerified?.call(pin);
+              return null;
+            }
             final int after = await AppPinSettings.instance.lockRemainingMs();
             if (after > 0) {
               return context.l10n.tvPinWait;
@@ -325,6 +423,7 @@ Future<bool> _askPin(BuildContext context, String title) async {
 Future<String?> pickNewParentalPin(BuildContext context) async {
   final String title = context.l10n.tvNewPin;
   final String subtitle = context.l10n.tvNewPinSubtitle;
+  final String insecure = context.l10n.tvChooseSecurePin;
   String? chosen;
   final bool? ok = await Navigator.of(context).push<bool>(
     MaterialPageRoute<bool>(
@@ -334,6 +433,7 @@ Future<String?> pickNewParentalPin(BuildContext context) async {
           subtitle: subtitle,
           confirm: true,
           onComplete: (String pin) async {
+            if (AppPinSettings.policy.isForbidden(pin)) return insecure;
             chosen = pin;
             return null; // succès → la page se ferme
           },
@@ -423,7 +523,12 @@ class _PinPadScreenState extends State<_PinPadScreen> {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => PopScope(
+        canPop: !_busy,
+        child: _buildPinPad(context),
+      );
+
+  Widget _buildPinPad(BuildContext context) {
     final bool confirmStep = widget.confirm && _firstEntry != null;
     final String title =
         confirmStep ? context.l10n.tvConfirmCode : widget.title;
@@ -611,7 +716,7 @@ class _PinPadScreenState extends State<_PinPadScreen> {
     }
     return OutlinedButton(
       key: ValueKey<String>('zuno-touch-pin-$key'),
-      onPressed: _busy && key != 'done' ? null : action,
+      onPressed: _busy ? null : action,
       style: OutlinedButton.styleFrom(
         foregroundColor: TvTokens.text,
         backgroundColor: TvTokens.card,
@@ -634,7 +739,9 @@ class _PinPadScreenState extends State<_PinPadScreen> {
       return _PadButton(
         label: '',
         icon: Icons.close_rounded,
-        onSelect: () => Navigator.of(context).maybePop(false),
+        onSelect: () {
+          if (!_busy) Navigator.of(context).maybePop(false);
+        },
       );
     }
     if (k == 'back') {

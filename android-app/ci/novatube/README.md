@@ -1,5 +1,40 @@
 # Construction séparée de NOVATUBE
 
+## Profils et APK de test avec espace +18
+
+La demande complémentaire conserve l'identité NOVATUBE, la version `0.1.5+5`
+et sa clé dédiée. Elle permet dix profils, chacun avec dix sources manuelles
+Xtream ou M3U. La migration attribue les anciennes sources au profil 1.
+
+Le build AAB Play garde `allowAdult=false` et ne reçoit aucun paramètre
+`NOVATUBE_PRIVATE_APK`. L'espace +18 est réservé à une compilation APK
+installée directement :
+
+```sh
+flutter build apk --release --target=lib/main_zuno_mobile.dart \
+  --build-name=0.1.5 --build-number=5 \
+  --dart-define=NOVATUBE_PRIVATE_APK=true
+```
+
+Dans cet APK, l'activation est désactivée au départ et propre à chaque profil.
+La première ouverture demande une confirmation de majorité et un PIN choisi.
+Chaque nouvelle visite demande le PIN ; les profils enfants restent bloqués.
+Les catégories reconnues +18 sont séparées du Direct, du cinéma et de l'accueil
+ordinaires. L'application ne fournit aucune source ni aucun contenu.
+Le bouton REC est désactivé dans cette section : les enregistrements actuels
+ne disposent pas d'un accès protégé. La lecture, le Cast et les favoris restent
+disponibles après saisie du PIN.
+
+Ce paramètre ne réactive ni les licences, ni le panel/MAC, ni Gold, ni les
+promotions, ni les achats externes. Les contrôles de signature et d'identité
+restent identiques. Aucun de ces builds n'est envoyé à Google automatiquement.
+
+Les tests `test/novatube/adult_access_test.dart` couvrent les verrouillages,
+les profils, les échecs de PIN et la conservation des catégories dans la reprise.
+Les tests d'interface de l'APK doivent aussi être exécutés avec le paramètre
+`--dart-define=NOVATUBE_PRIVATE_APK=true` ; les tests Play restent exécutés sans
+ce paramètre.
+
 Ce dossier prépare **NOVATUBE**, nouvelle application Android :
 
 | Valeur | Identité imposée |

@@ -15,6 +15,8 @@
 //  Plusieurs sources : cet écran en ajoute une. Les autres restent.
 //  Une liste déjà en base n'est pas touchée.
 // =========================================================
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../../core/blackbox/black_box.dart';
@@ -22,10 +24,13 @@ import '../../../core/i18n/l10n_extension.dart';
 import '../../playlists/data/import_progress.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../../playlists/domain/open_source_input.dart';
+import '../../profiles/data/profile_repository.dart';
+import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
 import 'tv_components.dart';
 import 'tv_import_progress_label.dart';
+import 'tv_profile_label.dart';
 import 'tv_source_error_text.dart';
 import 'tv_touch_components.dart';
 
@@ -47,12 +52,38 @@ class _TvAddSourceScreenState extends State<TvAddSourceScreen> {
 
   late OpenEntryMode _mode;
   bool _busy = false;
+  bool _checkingCapacity = true;
+  int _sourceCount = 0;
   String? _error;
 
   @override
   void initState() {
     super.initState();
     _mode = widget.initialMode;
+    unawaited(_refreshCapacity());
+  }
+
+  bool get _isFull =>
+      _sourceCount >= PlaylistRepository.maxSourcesPerProfile;
+
+  Future<void> _refreshCapacity() async {
+    try {
+      final int count = await PlaylistRepository.instance.sourceCount();
+      if (!mounted) return;
+      setState(() {
+        _sourceCount = count;
+        _checkingCapacity = false;
+        if (_isFull) _error = 'source_limit';
+      });
+    } catch (_) {
+      // Une lecture locale indisponible ne laisse pas un formulaire bloqué.
+      // Valider retentera le contrôle du dépôt avant toute requête réseau.
+      if (!mounted) return;
+      setState(() {
+        _checkingCapacity = false;
+        _error ??= 'connect_failed';
+      });
+    }
   }
 
   @override
@@ -65,6 +96,9 @@ class _TvAddSourceScreenState extends State<TvAddSourceScreen> {
   }
 
   Future<void> _validate() async {
+    // Les champs vides se valident immédiatement. Une saisie correcte attend
+    // ensuite la lecture du quota, puis le dépôt le contrôle avant import.
+    if (_busy || _isFull) return;
     final OpenSourceParse parsed = switch (_mode) {
       OpenEntryMode.xtream => OpenSourceInput.xtream(
           server: _serverC.text,
@@ -87,6 +121,12 @@ class _TvAddSourceScreenState extends State<TvAddSourceScreen> {
     // Pas d'adresse ni de mot de passe dans le journal : seulement le mode.
     BlackBox.instance.breadcrumb('Ajout source ouverte (${_mode.name})');
     try {
+      // Une autre importation peut avoir rempli la dernière place pendant
+      // la saisie. Le dépôt répète ce contrôle avant réseau et insertion.
+      if (!await PlaylistRepository.instance.canAddSource()) {
+        throw const SourceLimitReachedException();
+      }
+      if (!mounted) return;
       final String name = context.l10n.tvMyListHint;
       if (draft.kind == OpenSourceKind.xtream) {
         await PlaylistRepository.instance.addXtreamPlaylist(
@@ -105,6 +145,16 @@ class _TvAddSourceScreenState extends State<TvAddSourceScreen> {
       BlackBox.instance.info('SOURCE', 'source ouverte ajoutée');
       ImportProgressBus.clear();
       if (mounted) Navigator.of(context).pop();
+    } on SourceLimitReachedException catch (error) {
+      BlackBox.instance.breadcrumb('');
+      ImportProgressBus.clear();
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _sourceCount = error.limit;
+          _error = 'source_limit';
+        });
+      }
     } catch (e) {
       BlackBox.instance.error('SOURCE', 'ajout source ouverte ÉCHEC', e);
       BlackBox.instance.breadcrumb('');
@@ -139,6 +189,22 @@ class _TvAddSourceScreenState extends State<TvAddSourceScreen> {
                   style: TvTokens.display(34, color: TvTokens.text),
                 ),
               const SizedBox(height: 6),
+              Text(
+                context.l10n.tvProfileSources(
+                  tvProfileLabel(context, ProfileRepository.instance.active),
+                ),
+                style: TvTokens.ui(TvDimens.label, color: TvTokens.muted),
+              ),
+              if (!_checkingCapacity) ...<Widget>[
+                const SizedBox(height: TvDimens.rowGap),
+                Text(
+                  context.l10n.tvSourceCount(
+                    _sourceCount, PlaylistRepository.maxSourcesPerProfile,
+                  ),
+                  style: TvTokens.ui(TvDimens.label, color: TvTokens.muted),
+                ),
+              ],
+              const SizedBox(height: TvDimens.touchGap),
               Text(
                 context.l10n.tvSourcePasteHelp,
                 style: TvTokens.ui(16, color: TvTokens.mutedDim),
@@ -217,8 +283,11 @@ class _TvAddSourceScreenState extends State<TvAddSourceScreen> {
                           ? context.l10n.tvConnecting
                           : importProgressLabel(context, p));
                   return TvCtaButton(
+                    key: const ValueKey<String>('novatube-source-submit'),
                     label: label,
-                    onSelect: _busy ? null : _validate,
+                    onSelect: _busy || _isFull
+                        ? null
+                        : _validate,
                   );
                 },
               ),
@@ -232,7 +301,7 @@ class _TvAddSourceScreenState extends State<TvAddSourceScreen> {
   void _select(OpenEntryMode mode) {
     setState(() {
       _mode = mode;
-      _error = null;
+      _error = _isFull ? 'source_limit' : null;
     });
   }
 }

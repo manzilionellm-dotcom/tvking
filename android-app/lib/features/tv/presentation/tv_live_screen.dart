@@ -32,6 +32,7 @@ import '../../device/data/device_identity.dart';
 import '../../epg/data/epg_repository.dart';
 import '../../epg/domain/epg_program.dart';
 import '../../security/data/parental_controls.dart';
+import '../../security/data/adult_access.dart';
 import '../../playlists/data/favorites_repository.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../../playlists/data/remote_source_repository.dart';
@@ -82,7 +83,8 @@ String _tvStripCodec(String s) {
 }
 
 class TvLiveScreen extends StatefulWidget {
-  const TvLiveScreen({super.key});
+  const TvLiveScreen({super.key, this.adultOnly = false});
+  final bool adultOnly;
 
   @override
   State<TvLiveScreen> createState() => _TvLiveScreenState();
@@ -95,7 +97,8 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
   StreamSubscription<List<String>>? _recentSub;
   Set<String> _favIds = FavoritesRepository.instance.current;
   List<String> _trending = NovatubePlayPolicy.allowPromotions
-      ? TrendingRepository.instance.current : const <String>[];
+      ? TrendingRepository.instance.current
+      : const <String>[];
   List<String> _recentIds = RecentlyWatchedRepository.instance.current;
   List<Channel> _all = const <Channel>[];
   List<String> _cats = const <String>[];
@@ -189,15 +192,17 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     });
     // Tendances en direct : la catégorie « 🔥 Tendances » se met à jour seule.
     if (NovatubePlayPolicy.allowPromotions) {
-    TrendingRepository.instance.start();
-    _trendSub = TrendingRepository.instance.stream.listen((List<String> names) {
-      // Le dépôt ré-émet toutes les 60 s MÊME sans changement : on ignore les
-      // émissions identiques → plus de recalcul O(n) + rebuild complet chaque
-      // minute pendant que le client navigue.
-      if (listEquals(names, _trending)) return;
-      _trending = names;
-      _scheduleRecompute(); // coalescé (anti-ANR)
-    });
+      TrendingRepository.instance.start();
+      _trendSub = TrendingRepository.instance.stream.listen((
+        List<String> names,
+      ) {
+        // Le dépôt ré-émet toutes les 60 s MÊME sans changement : on ignore les
+        // émissions identiques → plus de recalcul O(n) + rebuild complet chaque
+        // minute pendant que le client navigue.
+        if (listEquals(names, _trending)) return;
+        _trending = names;
+        _scheduleRecompute(); // coalescé (anti-ANR)
+      });
     }
     // Historique « 🕒 Récemment » en direct.
     _recentSub = RecentlyWatchedRepository.instance.stream.listen((
@@ -252,6 +257,7 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     }
     // Mode Enfants : si le parent l'active/désactive, on re-filtre la liste.
     ParentalControls.instance.kidsMode.addListener(_onKidsModeChanged);
+    AdultAccess.instance.unlocked.addListener(_onKidsModeChanged);
   }
 
   /// Re-filtre la liste courante quand le Mode Enfants bascule (sans toucher
@@ -277,6 +283,7 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     _previewCh.dispose();
     _catLabelMemo.clear();
     ParentalControls.instance.kidsMode.removeListener(_onKidsModeChanged);
+    AdultAccess.instance.unlocked.removeListener(_onKidsModeChanged);
     super.dispose();
   }
 
@@ -613,32 +620,20 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     return raw.isEmpty ? 'Autres' : raw;
   }
 
-  /// Vrai si la chaîne est classée « Adulte » (pour le Mode Enfants).
-  /// IMPORTANT (stabilité) : on lit le genre DÉJÀ classé et MIS EN CACHE du
-  /// modèle Channel (O(1) après 1er calcul). Avant, on re-classait via le
-  /// classifieur complet (des dizaines de regex) à CHAQUE rafraîchissement —
-  /// sur une grosse liste (10 000+ chaînes), ça figeait le thread UI → l'app
-  /// « ne s'updatait plus » puis se fermait (ANR). Plus jamais.
-  /// Mode Enfants SANS calcul lourd : on lit le genre EN CACHE uniquement.
-  /// Pas encore calculé → on CACHE la chaîne (jamais d'adulte visible par
-  /// erreur) ; elle réapparaît quand le pré-calcul termine (re-ingest).
-  static bool _hideForKids(Channel c) {
-    final ChannelGenre? g = ChannelPrecompute.cachedGenre(c);
-    return g == null || g == ChannelGenre.adult;
-  }
+  /// Contrôle adulte léger sur le nom/catégorie actuels. Le cache de genre
+  /// peut encore décrire l'ancienne version d'une chaîne de même identifiant.
+  static bool _hideForKids(Channel c) =>
+      ChannelClassifier.isAdult(c.name, c.category);
 
   void _ingest(List<Channel> channels) {
     // On garde la liste BRUTE pour pouvoir re-filtrer si le Mode Enfants change.
     _rawLive = channels;
-    // MODE ENFANTS : on retire toutes les chaînes classées « Adulte ». Le filtre
-    // ne s'applique QUE si le parent l'a activé (défaut : désactivé → aucun
-    // changement). Détection via le classifieur existant (mots-clés robustes).
-    final bool kids = !NovatubePlayPolicy.allowAdult ||
-        ParentalControls.instance.kidsMode.value;
+    // Le Direct ordinaire et le Direct +18 restent deux listes disjointes.
     final List<Channel> live = channels.where((Channel c) {
       if (!c.isLive) return false;
-      if (kids && _hideForKids(c)) return false;
-      return true;
+      // Les écrans ordinaires restent séparés, même pendant une visite +18.
+      if (!widget.adultOnly) return !_hideForKids(c);
+      return AdultAccess.instance.canAccess && _hideForKids(c);
     }).toList(growable: false);
     // Ordre des catégories = ordre d'APPARITION ; dédup via Set (O(1)) pour
     // rester rapide même sur de très grandes listes (évite un contains O(n²)).
@@ -703,18 +698,36 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
         'DIRECT',
         'pré-calcul noms/genres terminé en ${sw.elapsedMilliseconds} ms (isolate)',
       );
-      if (!NovatubePlayPolicy.allowAdult ||
-          ParentalControls.instance.kidsMode.value) {
-        _ingest(_rawLive); // re-filtre avec les genres maintenant connus
-      } else {
-        _scheduleRecompute();
-      }
+      _ingest(_rawLive); // re-filtre avec les genres maintenant connus
     });
   }
 
   @override
   Widget build(BuildContext context) {
     if (_all.isEmpty) {
+      if (widget.adultOnly) {
+        return Center(
+          child: Padding(
+            padding: const EdgeInsets.all(TvDimens.touchSafeH),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Text(
+                  AdultAccess.instance.canAccess
+                      ? context.l10n.tvAdultEmpty
+                      : context.l10n.tvAdultLocked,
+                  style: TvTokens.ui(TvDimens.title),
+                ),
+                const SizedBox(height: TvDimens.touchGap),
+                Text(
+                  context.l10n.tvAdultSourceHelp,
+                  style: TvTokens.ui(TvDimens.label, color: TvTokens.muted),
+                ),
+              ],
+            ),
+          ),
+        );
+      }
       if (NovatubePlayPolicy.isPlay) return const TvManualSourcePrompt();
       // États PRÉCIS au lieu d'un « écran mort » :
       //  • en cours / réseau → « Recherche de tes chaînes… »
@@ -750,11 +763,15 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
               const SizedBox(height: TvDimens.touchSafeV),
               Text(title, style: TvTokens.display(TvDimens.headline)),
               const SizedBox(height: TvDimens.touchGap),
-              Text(subtitle,
-                  style: TvTokens.ui(TvDimens.label, color: TvTokens.muted)),
+              Text(
+                subtitle,
+                style: TvTokens.ui(TvDimens.label, color: TvTokens.muted),
+              ),
               const SizedBox(height: TvDimens.touchSafeV),
-              Text(context.l10n.tvDeviceAddress,
-                  style: TvTokens.ui(TvDimens.caption)),
+              Text(
+                context.l10n.tvDeviceAddress,
+                style: TvTokens.ui(TvDimens.caption),
+              ),
               SelectableText(
                 displayMac(_mac, showPrefix: RepairFlags.macShowPrefix),
                 textDirection: TextDirection.ltr,
@@ -1976,8 +1993,10 @@ class _ActionPill extends StatelessWidget {
       return FilledButton.icon(
         onPressed: onSelect,
         icon: Icon(icon),
-        label: Text(label,
-            style: TvTokens.ui(TvDimens.label, color: TvTokens.onAccent)),
+        label: Text(
+          label,
+          style: TvTokens.ui(TvDimens.label, color: TvTokens.onAccent),
+        ),
         style: FilledButton.styleFrom(
           minimumSize: const Size.fromHeight(TvDimens.touchButtonHeight),
           padding: const EdgeInsets.all(TvDimens.touchGap),

@@ -24,6 +24,7 @@ import 'package:sqflite/sqflite.dart';
 
 import '../../../core/app/novatube_content_policy.dart';
 import '../../playlists/data/playlist_database.dart';
+import '../../profiles/data/active_profile.dart';
 import '../domain/vod_movie.dart';
 
 /// État d'un téléchargement.
@@ -41,6 +42,8 @@ class Download {
     required this.totalBytes,
     required this.createdAt,
     this.posterUrl,
+    this.category = '',
+    this.profileId = 'p1',
   });
 
   final String id; // = VodMovie.id
@@ -52,6 +55,8 @@ class Download {
   final int totalBytes; // 0 si inconnu
   final int createdAt;
   final String? posterUrl;
+  final String category;
+  final String profileId;
 
   double get progress =>
       totalBytes > 0 ? (receivedBytes / totalBytes).clamp(0.0, 1.0) : 0.0;
@@ -72,6 +77,8 @@ class Download {
       totalBytes: totalBytes ?? this.totalBytes,
       createdAt: createdAt,
       posterUrl: posterUrl,
+      category: category,
+      profileId: profileId,
     );
   }
 
@@ -85,6 +92,8 @@ class Download {
         'total_bytes': totalBytes,
         'created_at': createdAt,
         'poster_url': posterUrl,
+        'category': category,
+        'profile_id': profileId,
       };
 
   factory Download.fromMap(Map<String, Object?> m) => Download(
@@ -100,6 +109,8 @@ class Download {
         totalBytes: (m['total_bytes'] as num?)?.toInt() ?? 0,
         createdAt: (m['created_at'] as num?)?.toInt() ?? 0,
         posterUrl: m['poster_url'] as String?,
+        category: (m['category'] as String?) ?? '',
+        profileId: (m['profile_id'] as String?) ?? 'p1',
       );
 }
 
@@ -108,6 +119,8 @@ class DownloadsRepository {
   static final DownloadsRepository instance = DownloadsRepository._();
 
   bool _initialized = false;
+  bool _listening = false;
+  int _refreshGeneration = 0;
   final StreamController<List<Download>> _controller =
       StreamController<List<Download>>.broadcast();
   List<Download> _cache = const <Download>[];
@@ -120,6 +133,14 @@ class DownloadsRepository {
 
   Future<void> initialize() async {
     if (_initialized) return;
+    if (!_listening) {
+      _listening = true;
+      ActiveProfile.instance.listenable.addListener(() {
+        _cache = const <Download>[];
+        _controller.add(_cache);
+        if (_initialized) unawaited(_refresh());
+      });
+    }
     final Database db = await PlaylistDatabase.instance.database;
     await db.execute('''
       CREATE TABLE IF NOT EXISTS downloads (
@@ -131,7 +152,9 @@ class DownloadsRepository {
         received_bytes INTEGER NOT NULL DEFAULT 0,
         total_bytes INTEGER NOT NULL DEFAULT 0,
         created_at INTEGER NOT NULL,
-        poster_url TEXT
+        poster_url TEXT,
+        category TEXT NOT NULL DEFAULT '',
+        profile_id TEXT NOT NULL DEFAULT 'p1'
       )
     ''');
     _initialized = true;
@@ -171,24 +194,33 @@ class DownloadsRepository {
   /// Démarre (ou reprend) le téléchargement d'un film.
   Future<void> start(VodMovie movie) async {
     if (!NovatubeContentPolicy.allows(
-      name: movie.name, category: movie.category,
+      name: movie.name,
+      category: movie.category,
     )) return;
+    final String profileId = ActiveProfile.instance.id;
     await initialize();
+    if (profileId != ActiveProfile.instance.id) return;
     if (_jobs.containsKey(movie.id)) return; // déjà en cours
 
     String safe(String s) => s.replaceAll(RegExp(r'[^\w\d\-_. ]+'), '_');
     final Directory dir = await _downloadsDir();
+    if (profileId != ActiveProfile.instance.id) return;
     final Download existing = byId(movie.id) ??
         Download(
           id: movie.id,
           name: movie.name,
           sourceUrl: movie.streamUrl,
-          filePath: p.join(dir.path, '${safe(movie.name)}-${movie.id}.${movie.containerExt}'),
+          filePath: p.join(
+            dir.path,
+            '${safe(movie.name)}-${movie.id}.${movie.containerExt}',
+          ),
           status: DownloadStatus.downloading,
           receivedBytes: 0,
           totalBytes: 0,
           createdAt: DateTime.now().millisecondsSinceEpoch,
           posterUrl: movie.posterUrl,
+          category: movie.category,
+          profileId: profileId,
         );
     await _upsert(existing.copyWith(status: DownloadStatus.downloading));
     _runJob(existing);
@@ -221,12 +253,16 @@ class DownloadsRepository {
   Future<void> resume(String id) async {
     final Download? d = byId(id);
     if (d == null || d.status == DownloadStatus.done) return;
+    if (!NovatubeContentPolicy.allows(name: d.name, category: d.category))
+      return;
     if (_jobs.containsKey(id)) return;
     await _upsert(d.copyWith(status: DownloadStatus.downloading));
     _runJob(d);
   }
 
   Future<void> delete(String id) async {
+    final String profileId = ActiveProfile.instance.id;
+    if (byId(id) == null) return;
     await pause(id);
     final Download? d = byId(id);
     if (d != null) {
@@ -236,7 +272,32 @@ class DownloadsRepository {
       } catch (_) {}
     }
     final Database db = await PlaylistDatabase.instance.database;
-    await db.delete('downloads', where: 'id = ?', whereArgs: <Object>[id]);
+    await db.delete(
+      'downloads',
+      where: 'id = ? AND profile_id = ?',
+      whereArgs: <Object>[id, profileId],
+    );
+    await _refresh();
+  }
+
+  /// Appelé seulement après la suppression explicite d'un profil secondaire.
+  Future<void> dropProfile(String profileId) async {
+    if (profileId == 'p1') return;
+    await initialize();
+    final Database db = await PlaylistDatabase.instance.database;
+    final List<Map<String, Object?>> rows = await db.query('downloads',
+        where: 'profile_id = ?', whereArgs: <Object>[profileId]);
+    for (final Download download in rows.map(Download.fromMap)) {
+      await pause(download.id);
+      try {
+        final File file = File(download.filePath);
+        if (await file.exists()) await file.delete();
+      } catch (_) {
+        // Le profil est retiré même si le stockage externe a été débranché.
+      }
+    }
+    await db.delete('downloads',
+        where: 'profile_id = ?', whereArgs: <Object>[profileId]);
     await _refresh();
   }
 
@@ -268,8 +329,9 @@ class DownloadsRepository {
         ..autoUncompress = false
         ..userAgent = 'VLC/3.0.18 LibVLC/3.0.18';
 
-      final HttpClientRequest req =
-          await job.client!.getUrl(Uri.parse(d.sourceUrl));
+      final HttpClientRequest req = await job.client!.getUrl(
+        Uri.parse(d.sourceUrl),
+      );
       if (job.cancelled) return;
       req.followRedirects = true;
       req.maxRedirects = 8;
@@ -288,7 +350,9 @@ class DownloadsRepository {
       // reprise), on repart de zéro proprement.
       if (start > 0 && !partial) {
         start = 0;
-        try { await file.delete(); } catch (_) {}
+        try {
+          await file.delete();
+        } catch (_) {}
       }
       if (job.cancelled) return;
 
@@ -299,11 +363,13 @@ class DownloadsRepository {
 
       job.sink = file.openWrite(mode: FileMode.append);
       int received = start;
-      await _upsert(d.copyWith(
-        status: DownloadStatus.downloading,
-        receivedBytes: received,
-        totalBytes: total,
-      ));
+      await _upsert(
+        d.copyWith(
+          status: DownloadStatus.downloading,
+          receivedBytes: received,
+          totalBytes: total,
+        ),
+      );
       if (job.cancelled) return;
 
       final Completer<void> done = Completer<void>();
@@ -319,11 +385,15 @@ class DownloadsRepository {
           final DateTime now = DateTime.now();
           if (now.difference(lastUi).inMilliseconds > 700) {
             lastUi = now;
-            unawaited(_upsert(d.copyWith(
-              status: DownloadStatus.downloading,
-              receivedBytes: received,
-              totalBytes: total,
-            )));
+            unawaited(
+              _upsert(
+                d.copyWith(
+                  status: DownloadStatus.downloading,
+                  receivedBytes: received,
+                  totalBytes: total,
+                ),
+              ),
+            );
           }
         },
         onError: (Object e, StackTrace s) {
@@ -336,7 +406,10 @@ class DownloadsRepository {
       );
 
       await done.future;
-      try { await job.sink?.flush(); await job.sink?.close(); } catch (_) {}
+      try {
+        await job.sink?.flush();
+        await job.sink?.close();
+      } catch (_) {}
       job.client?.close(force: true);
 
       if (job.cancelled) return; // mis en pause par l'utilisateur
@@ -347,14 +420,19 @@ class DownloadsRepository {
       // condition → erreur de type.)
       final int finalSize =
           (await file.exists()) ? (await file.length()) : received;
-      await _upsert(d.copyWith(
-        status: DownloadStatus.done,
-        receivedBytes: finalSize,
-        totalBytes: total > 0 ? total : finalSize,
-      ));
+      await _upsert(
+        d.copyWith(
+          status: DownloadStatus.done,
+          receivedBytes: finalSize,
+          totalBytes: total > 0 ? total : finalSize,
+        ),
+      );
     } catch (e) {
       if (kDebugMode) debugPrint('[Downloads] ${d.id} erreur: $e');
-      try { await job.sink?.flush(); await job.sink?.close(); } catch (_) {}
+      try {
+        await job.sink?.flush();
+        await job.sink?.close();
+      } catch (_) {}
       job.client?.close(force: true);
       final Download? cur = byId(d.id);
       if (cur != null && !job.cancelled) {
@@ -365,8 +443,13 @@ class DownloadsRepository {
         // Couvre aussi les retours anticipés après un await : une ressource
         // reçue tardivement appartient toujours à ce job, jamais au suivant.
         job.client?.close(force: true);
-        try { await job.sub?.cancel(); } catch (_) {}
-        try { await job.sink?.flush(); await job.sink?.close(); } catch (_) {}
+        try {
+          await job.sub?.cancel();
+        } catch (_) {}
+        try {
+          await job.sink?.flush();
+          await job.sink?.close();
+        } catch (_) {}
       }
       if (identical(_jobs[d.id], job)) _jobs.remove(d.id);
     }
@@ -385,12 +468,26 @@ class DownloadsRepository {
   }
 
   Future<void> _refresh() async {
+    final String profileId = ActiveProfile.instance.id;
+    final int generation = ++_refreshGeneration;
     final Database db = await PlaylistDatabase.instance.database;
-    final List<Map<String, Object?>> rows =
-        await db.query('downloads', orderBy: 'created_at DESC');
-    _cache = rows.map(Download.fromMap).where((Download d) =>
-      NovatubeContentPolicy.allows(name: d.name, category: ''),
-    ).toList();
+    final List<Map<String, Object?>> rows = await db.query(
+      'downloads',
+      where: 'profile_id = ?',
+      whereArgs: <Object>[profileId],
+      orderBy: 'created_at DESC',
+    );
+    if (generation != _refreshGeneration ||
+        profileId != ActiveProfile.instance.id) return;
+    _cache = rows
+        .map(Download.fromMap)
+        .where(
+          (Download d) => NovatubeContentPolicy.canImport(
+            name: d.name,
+            category: d.category,
+          ),
+        )
+        .toList();
     _controller.add(_cache);
   }
 }
@@ -401,9 +498,11 @@ class _Job {
   StreamSubscription<List<int>>? sub;
   IOSink? sink;
   bool cancelled = false;
+
   /// Complété quand le téléchargement se termine OU est mis en pause,
   /// pour débloquer la coroutine _download.
   Completer<void>? completer;
+
   /// Achèvement réel de la coroutine, fermeture des ressources comprise.
   Future<void>? finished;
 }

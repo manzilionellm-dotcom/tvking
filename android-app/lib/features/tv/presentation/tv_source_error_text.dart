@@ -3,6 +3,7 @@
 import 'package:flutter/widgets.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
+import '../../playlists/data/playlist_repository.dart';
 import '../../playlists/domain/open_source_input.dart';
 
 String sourceErrorText(BuildContext context, String error) => switch (error) {
@@ -11,5 +12,8 @@ String sourceErrorText(BuildContext context, String error) => switch (error) {
   OpenSourceInput.errNeedPlayerCreds => context.l10n.tvSourceNeedCredentials,
   OpenSourceInput.errBadScheme => context.l10n.tvSourceBadScheme,
   'm3u_failed' => context.l10n.tvAddM3uFailed,
+  'source_limit' => context.l10n.tvSourceLimitReached(
+      PlaylistRepository.maxSourcesPerProfile,
+    ),
   _ => context.l10n.tvConnectError,
 };

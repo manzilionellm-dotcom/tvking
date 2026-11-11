@@ -208,7 +208,8 @@ abstract final class RemoteSourceRepository {
     final int? id = playlist.id;
     if (id == null) return false;
     try {
-      await DeletedSources.remember(SourceFingerprint.ofPlaylist(playlist));
+      // La suppression locale contrôle le propriétaire et enregistre le refus
+      // dans la même transaction. Aucun refus écrit dans un autre profil.
       await PlaylistRepository.instance.deletePlaylist(id);
     } catch (e) {
       BlackBox.instance.warn('SOURCE', 'suppression locale impossible : $e');

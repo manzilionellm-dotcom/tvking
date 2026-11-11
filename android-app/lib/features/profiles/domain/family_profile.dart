@@ -1,11 +1,11 @@
 // =========================================================
 //  family_profile.dart — Un profil de la maison + ses clés
 // =========================================================
-//  Jusqu'à 4 personnes (parents, enfants, invité). Chacun a SON
+//  Jusqu'à 10 personnes (parents, enfants, invités). Chacun a SON
 //  tiroir : favoris, historique, reprise de lecture, rappels et
-//  code parental. Les chaînes IPTV, elles, restent communes :
-//  changer de profil ne retire jamais une chaîne, et ne bloque
-//  jamais la lecture.
+//  code parental, ainsi que ses sources personnelles. Changer de profil
+//  recharge les catalogues de CE profil ; les sources des autres restent
+//  enregistrées dans leur propre tiroir.
 //
 //  MIGRATION DOUCE
 //  ---------------

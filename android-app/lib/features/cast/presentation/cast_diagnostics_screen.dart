@@ -20,6 +20,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../core/theme/app_colors.dart';
+import '../../../core/app/novatube_content_policy.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../channels/domain/channel.dart';
 import '../../playlists/data/playlist_repository.dart';
@@ -60,8 +61,10 @@ class _CastDiagnosticsScreenState extends State<CastDiagnosticsScreen> {
 
   void _start() {
     if (_selectedDevice == null) return;
-    final List<Channel> all =
-        PlaylistRepository.instance.currentChannels;
+    final List<Channel> all = PlaylistRepository.instance.currentChannels
+        .where((Channel channel) => !NovatubeContentPolicy.isAdult(
+            name: channel.name, category: channel.category))
+        .toList(growable: false);
     final List<Channel> sample =
         pickDiagnosticChannels(all, _preset.sampleSize);
     if (sample.isEmpty) {
@@ -130,8 +133,7 @@ class _CastDiagnosticsScreenState extends State<CastDiagnosticsScreen> {
                   const SizedBox(height: 16),
                   _PresetPicker(
                     selected: _preset,
-                    onPick: (DiagnosticPreset p) =>
-                        setState(() => _preset = p),
+                    onPick: (DiagnosticPreset p) => setState(() => _preset = p),
                     locked: _runner?.isRunning ?? false,
                   ),
                   const SizedBox(height: 20),
@@ -238,8 +240,7 @@ class _DevicePicker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final List<CastDevice> devices =
-        CastManager.instance.discoveredDevices;
+    final List<CastDevice> devices = CastManager.instance.discoveredDevices;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
@@ -305,8 +306,7 @@ class _DeviceRow extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(10),
         child: Container(
-          padding:
-              const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           decoration: BoxDecoration(
             color: selected ? AppColors.accentSurface : AppColors.surface,
             borderRadius: BorderRadius.circular(10),
@@ -413,8 +413,7 @@ class _PresetChip extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(10),
         child: Container(
-          padding:
-              const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
           decoration: BoxDecoration(
             color: selected ? AppColors.accentSurface : AppColors.surface,
             borderRadius: BorderRadius.circular(10),
@@ -430,9 +429,7 @@ class _PresetChip extends StatelessWidget {
                 style: AppTextStyles.bodyMedium.copyWith(
                   fontSize: 13,
                   fontWeight: FontWeight.w700,
-                  color: selected
-                      ? AppColors.accent
-                      : AppColors.textPrimary,
+                  color: selected ? AppColors.accent : AppColors.textPrimary,
                 ),
               ),
               const SizedBox(height: 2),
@@ -466,9 +463,7 @@ class _StartButton extends StatelessWidget {
         onPressed: enabled ? onPressed : null,
         icon: const Icon(Icons.play_arrow_rounded),
         label: Text(
-          enabled
-              ? 'Lancer le diagnostic'
-              : 'Sélectionne un récepteur',
+          enabled ? 'Lancer le diagnostic' : 'Sélectionne un récepteur',
         ),
       ),
     );
@@ -504,8 +499,8 @@ class _RunHeader extends StatelessWidget {
             if (runner.isRunning)
               Text(
                 '${(progress * 100).toInt()}%',
-                style: AppTextStyles.labelSmall
-                    .copyWith(color: AppColors.accent),
+                style:
+                    AppTextStyles.labelSmall.copyWith(color: AppColors.accent),
               ),
           ],
         ),
@@ -517,9 +512,7 @@ class _RunHeader extends StatelessWidget {
             minHeight: 4,
             backgroundColor: AppColors.surface,
             valueColor: AlwaysStoppedAnimation<Color>(
-              runner.isRunning
-                  ? AppColors.accent
-                  : AppColors.success,
+              runner.isRunning ? AppColors.accent : AppColors.success,
             ),
           ),
         ),
@@ -561,8 +554,7 @@ class _ResultsTable extends StatelessWidget {
       child: Column(
         children: <Widget>[
           for (int i = 0; i < results.length; i++) ...<Widget>[
-            if (i > 0)
-              Divider(height: 1, color: AppColors.border),
+            if (i > 0) Divider(height: 1, color: AppColors.border),
             _ResultRow(diag: results[i]),
           ],
         ],
@@ -579,17 +571,14 @@ class _ResultRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final AttemptResult? win = diag.winningAttempt;
-    final Color statusColor =
-        diag.success ? AppColors.success : AppColors.live;
+    final Color statusColor = diag.success ? AppColors.success : AppColors.live;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Icon(
-            diag.success
-                ? Icons.check_circle_rounded
-                : Icons.cancel_rounded,
+            diag.success ? Icons.check_circle_rounded : Icons.cancel_rounded,
             size: 18,
             color: statusColor,
           ),

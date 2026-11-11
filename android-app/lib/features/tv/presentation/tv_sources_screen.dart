@@ -4,8 +4,8 @@
 //  Le client gère SES sources : en ajouter (Xtream ou M3U), les activer /
 //  désactiver, ou les supprimer.
 //
-//  TV = MODE FUSION : PLUSIEURS sources actives EN MÊME TEMPS, sans limite de
-//  nombre — leurs chaînes arrivent ensemble dans Direct (et leurs films /
+//  MODE FUSION : jusqu’à 10 sources pour le profil actif.
+//  Leurs chaînes arrivent ensemble dans Direct (et leurs films /
 //  séries dans Cinéma). « Désactiver » retire une source de l'affichage sans
 //  la supprimer ; « Activer » la remet instantanément (chaînes gardées en base).
 //
@@ -22,18 +22,30 @@ import '../../playlists/data/playlist_repository.dart';
 import '../../playlists/data/remote_source_repository.dart';
 import '../../playlists/domain/open_source_input.dart';
 import '../../playlists/domain/playlist.dart';
+import '../../profiles/data/profile_repository.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
 import 'tv_add_source_screen.dart';
+import 'tv_profile_label.dart';
 import 'tv_shell.dart';
 import 'tv_touch_components.dart';
 
 class TvSourcesScreen extends StatelessWidget {
   const TvSourcesScreen({super.key});
 
-  void _open(BuildContext context, OpenEntryMode mode) {
-    Navigator.of(context).push(
+  Future<void> _open(BuildContext context, OpenEntryMode mode) async {
+    // Le compteur affiché peut précéder une importation déjà en cours :
+    // on vérifie également la capacité réelle avant d'ouvrir le formulaire.
+    final bool canAdd = await PlaylistRepository.instance.canAddSource();
+    if (!context.mounted) return;
+    if (!canAdd) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
+        context.l10n.tvSourceLimitReached(PlaylistRepository.maxSourcesPerProfile),
+      )));
+      return;
+    }
+    await Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
         builder: (_) => TvShell(child: TvAddSourceScreen(initialMode: mode)),
       ),
@@ -42,67 +54,99 @@ class TvSourcesScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return StreamBuilder<List<Playlist>>(
+      stream: PlaylistRepository.instance.playlistsStream,
+      initialData: PlaylistRepository.instance.currentPlaylists,
+      builder: (BuildContext context, AsyncSnapshot<List<Playlist>> snap) =>
+          _content(context, snap.data ?? const <Playlist>[]),
+    );
+  }
+
+  Widget _profileSummary(BuildContext context, int count) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: <Widget>[
+      Text(
+        context.l10n.tvProfileSources(
+          tvProfileLabel(context, ProfileRepository.instance.active),
+        ),
+        style: TvTokens.ui(TvDimens.label, color: TvTokens.muted),
+      ),
+      const SizedBox(height: TvDimens.rowGap),
+      Text(
+        context.l10n.tvSourceCount(count, PlaylistRepository.maxSourcesPerProfile),
+        key: const ValueKey<String>('novatube-source-count'),
+        style: TvTokens.ui(TvDimens.label, color: TvTokens.muted),
+      ),
+      if (count >= PlaylistRepository.maxSourcesPerProfile) ...<Widget>[
+        const SizedBox(height: TvDimens.touchGap),
+        Text(
+          context.l10n.tvSourceLimitReached(PlaylistRepository.maxSourcesPerProfile),
+          style: TvTokens.ui(TvDimens.label, color: TvTokens.muted),
+        ),
+      ],
+    ],
+  );
+
+  Widget _content(BuildContext context, List<Playlist> items) {
+    final bool canAdd = items.length < PlaylistRepository.maxSourcesPerProfile;
     if (isZunoTouch) {
-      return StreamBuilder<List<Playlist>>(
-        stream: PlaylistRepository.instance.playlistsStream,
-        initialData: PlaylistRepository.instance.currentPlaylists,
-        builder: (BuildContext context, AsyncSnapshot<List<Playlist>> snap) {
-          final List<Playlist> items = snap.data ?? const <Playlist>[];
-          // Les actions font partie du même défilement que les sources :
-          // même avec le texte à 200 %, elles ne bloquent pas toute la page.
-          return CustomScrollView(
-            key: const ValueKey<String>('zuno-touch-sources'),
-            slivers: <Widget>[
-              SliverToBoxAdapter(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
+      // Le compteur et les actions suivent le même flux que les sources :
+      // une suppression rend immédiatement possible un nouvel ajout.
+      return CustomScrollView(
+        key: const ValueKey<String>('zuno-touch-sources'),
+        slivers: <Widget>[
+          SliverToBoxAdapter(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                TvTouchPageHeader(title: context.l10n.tvMySources),
+                const SizedBox(height: TvDimens.touchGap),
+                _profileSummary(context, items.length),
+                const SizedBox(height: TvDimens.touchGap),
+                Wrap(
+                  spacing: TvDimens.touchGap,
+                  runSpacing: TvDimens.touchGap,
                   children: <Widget>[
-                    TvTouchPageHeader(title: context.l10n.tvMySources),
-                    const SizedBox(height: TvDimens.touchGap),
-                    Wrap(
-                      spacing: TvDimens.touchGap,
-                      runSpacing: TvDimens.touchGap,
-                      children: <Widget>[
-                        _Pill(
-                          icon: Icons.add_rounded,
-                          label: context.l10n.tvAddXtream,
-                          onSelect: () => _open(context, OpenEntryMode.xtream),
-                        ),
-                        _Pill(
-                          icon: Icons.playlist_add_rounded,
-                          label: context.l10n.tvAddM3u,
-                          onSelect: () => _open(context, OpenEntryMode.m3u),
-                        ),
-                        _Pill(
-                          icon: Icons.play_circle_outline_rounded,
-                          label: context.l10n.tvPlayerLink,
-                          onSelect: () => _open(context, OpenEntryMode.player),
-                        ),
-                      ],
+                    _Pill(
+                      key: const ValueKey<String>('novatube-add-xtream'),
+                      icon: Icons.add_rounded,
+                      label: context.l10n.tvAddXtream,
+                      onSelect: canAdd ? () => _open(context, OpenEntryMode.xtream) : null,
                     ),
-                    const SizedBox(height: TvDimens.touchSafeV),
+                    _Pill(
+                      key: const ValueKey<String>('novatube-add-m3u'),
+                      icon: Icons.playlist_add_rounded,
+                      label: context.l10n.tvAddM3u,
+                      onSelect: canAdd ? () => _open(context, OpenEntryMode.m3u) : null,
+                    ),
+                    _Pill(
+                      icon: Icons.play_circle_outline_rounded,
+                      label: context.l10n.tvPlayerLink,
+                      onSelect: canAdd ? () => _open(context, OpenEntryMode.player) : null,
+                    ),
                   ],
                 ),
+                const SizedBox(height: TvDimens.touchSafeV),
+              ],
+            ),
+          ),
+          if (items.isEmpty)
+            SliverToBoxAdapter(
+              child: Text(
+                context.l10n.tvSourcesEmpty,
+                textAlign: TextAlign.center,
+                style: TvTokens.ui(TvDimens.body, color: TvTokens.mutedDim),
               ),
-              if (items.isEmpty)
-                SliverToBoxAdapter(
-                  child: Text(
-                    context.l10n.tvSourcesEmpty,
-                    textAlign: TextAlign.center,
-                    style: TvTokens.ui(TvDimens.body, color: TvTokens.mutedDim),
-                  ),
-                )
-              else
-                SliverList.builder(
-                  itemCount: items.length,
-                  itemBuilder: (BuildContext context, int index) => Padding(
-                    padding: const EdgeInsets.only(bottom: TvDimens.touchGap),
-                    child: _SourceRow(playlist: items[index]),
-                  ),
-                ),
-            ],
-          );
-        },
+            )
+          else
+            SliverList.builder(
+              itemCount: items.length,
+              itemBuilder: (BuildContext context, int index) => Padding(
+                padding: const EdgeInsets.only(bottom: TvDimens.touchGap),
+                child: _SourceRow(playlist: items[index]),
+              ),
+            ),
+        ],
       );
     }
     return Column(
@@ -120,54 +164,46 @@ class TvSourcesScreen extends StatelessWidget {
             ),
             const Spacer(),
             _Pill(
+              key: const ValueKey<String>('novatube-add-xtream'),
               icon: Icons.add_rounded,
               label: context.l10n.tvAddXtream,
               autofocus: true,
-              onSelect: () => _open(context, OpenEntryMode.xtream),
+              onSelect: canAdd ? () => _open(context, OpenEntryMode.xtream) : null,
             ),
             const SizedBox(width: 12),
             _Pill(
+              key: const ValueKey<String>('novatube-add-m3u'),
               icon: Icons.playlist_add_rounded,
               label: context.l10n.tvAddM3u,
-              onSelect: () => _open(context, OpenEntryMode.m3u),
+              onSelect: canAdd ? () => _open(context, OpenEntryMode.m3u) : null,
             ),
             const SizedBox(width: 12),
             _Pill(
               icon: Icons.play_circle_outline_rounded,
-              label: OpenSourceInput.playerLabel,
-              onSelect: () => _open(context, OpenEntryMode.player),
+              label: context.l10n.tvPlayerLink,
+              onSelect: canAdd ? () => _open(context, OpenEntryMode.player) : null,
             ),
           ],
         ),
+        const SizedBox(height: TvDimens.touchGap),
+        _profileSummary(context, items.length),
         const SizedBox(height: 16),
         Expanded(
-          child: StreamBuilder<List<Playlist>>(
-            stream: PlaylistRepository.instance.playlistsStream,
-            initialData: PlaylistRepository.instance.currentPlaylists,
-            builder:
-                (BuildContext context, AsyncSnapshot<List<Playlist>> snap) {
-              final List<Playlist> items = snap.data ?? const <Playlist>[];
-              if (items.isEmpty) {
-                return Center(
+          child: items.isEmpty
+              ? Center(
                   child: Text(
                     context.l10n.tvSourcesEmpty,
                     textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: TvDimens.body,
-                      color: TvTokens.mutedDim,
-                    ),
+                    style: TvTokens.ui(TvDimens.body, color: TvTokens.mutedDim),
                   ),
-                );
-              }
-              return ListView.separated(
-                padding: const EdgeInsets.only(right: 6, bottom: 8),
-                itemCount: items.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 10),
-                itemBuilder: (BuildContext context, int i) =>
-                    _SourceRow(playlist: items[i]),
-              );
-            },
-          ),
+                )
+              : ListView.separated(
+                  padding: const EdgeInsets.only(right: 6, bottom: 8),
+                  itemCount: items.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 10),
+                  itemBuilder: (BuildContext context, int i) =>
+                      _SourceRow(playlist: items[i]),
+                ),
         ),
       ],
     );
@@ -442,6 +478,7 @@ class _Reference extends StatelessWidget {
 
 class _Pill extends StatelessWidget {
   const _Pill({
+    super.key,
     required this.icon,
     required this.label,
     required this.onSelect,
@@ -449,7 +486,7 @@ class _Pill extends StatelessWidget {
   });
   final IconData icon;
   final String label;
-  final VoidCallback onSelect;
+  final VoidCallback? onSelect;
   final bool autofocus;
 
   @override
@@ -468,6 +505,7 @@ class _Pill extends StatelessWidget {
     }
     return TvFocusBuilder(
       autofocus: autofocus,
+      enabled: onSelect != null,
       scale: TvFocusScale.medium,
       onSelect: onSelect,
       builder: (BuildContext context, bool focused) {

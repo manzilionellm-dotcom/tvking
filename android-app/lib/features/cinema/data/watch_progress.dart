@@ -39,6 +39,7 @@ class WatchEntry {
     this.containerExt = 'mp4',
     this.sourceKey = '',
     this.remoteId = '',
+    this.categoryKey = '',
     this.seriesId,
     this.season,
     this.episode,
@@ -60,6 +61,7 @@ class WatchEntry {
   final String containerExt;
   final String sourceKey;
   final String remoteId;
+  final String categoryKey;
 
   /// Épisode : identifiant de la série (CinemaTitle.id).
   final String? seriesId;
@@ -74,8 +76,7 @@ class WatchEntry {
   /// Épisode SUIVANT proposé après la fin du précédent (position 0).
   final bool upNext;
 
-  double get fraction =>
-      durMs > 0 ? (posMs / durMs).clamp(0.0, 1.0) : 0.0;
+  double get fraction => durMs > 0 ? (posMs / durMs).clamp(0.0, 1.0) : 0.0;
 
   /// À afficher dans « Continuer à regarder » ?
   bool get isResumable => !finished && (upNext || posMs >= 30000);
@@ -92,7 +93,13 @@ class WatchEntry {
     return posMs >= durMs * 0.93 || durMs - posMs <= 120000;
   }
 
-  WatchEntry copyWith({int? posMs, int? durMs, int? updatedAt, bool? finished, bool? upNext}) =>
+  WatchEntry copyWith({
+    int? posMs,
+    int? durMs,
+    int? updatedAt,
+    bool? finished,
+    bool? upNext,
+  }) =>
       WatchEntry(
         id: id,
         isEpisode: isEpisode,
@@ -103,6 +110,7 @@ class WatchEntry {
         containerExt: containerExt,
         sourceKey: sourceKey,
         remoteId: remoteId,
+        categoryKey: categoryKey,
         seriesId: seriesId,
         season: season,
         episode: episode,
@@ -123,6 +131,7 @@ class WatchEntry {
         'ext': containerExt,
         'src': sourceKey,
         'rid': remoteId,
+        'cat': categoryKey,
         if (seriesId != null) 'sid': seriesId,
         if (season != null) 's': season,
         if (episode != null) 'e': episode,
@@ -149,6 +158,7 @@ class WatchEntry {
       containerExt: (raw['ext'] as String?) ?? 'mp4',
       sourceKey: (raw['src'] as String?) ?? '',
       remoteId: (raw['rid'] as String?) ?? '',
+      categoryKey: (raw['cat'] as String?) ?? '',
       seriesId: raw['sid'] as String?,
       season: raw['s'] is num ? (raw['s'] as num).toInt() : null,
       episode: raw['e'] is num ? (raw['e'] as num).toInt() : null,
@@ -170,8 +180,9 @@ class WatchProgressStore {
     }
   }
 
-  static bool _allowed(WatchEntry entry) => NovatubeContentPolicy.allows(
-        name: entry.title, category: entry.subtitle ?? '',
+  static bool _allowed(WatchEntry entry) => NovatubeContentPolicy.canImport(
+        name: entry.title,
+        category: '${entry.categoryKey} ${entry.subtitle ?? ''}',
       );
 
   static const int maxEntries = 400;
@@ -189,8 +200,10 @@ class WatchProgressStore {
     // Série : une seule « tête » par série dans Continuer — l'épisode qu'on
     // regarde remplace l'ancien « suivant » proposé.
     if (e.seriesId != null) {
-      _byId.removeWhere((String k, WatchEntry v) =>
-          k != e.id && v.seriesId == e.seriesId && v.upNext);
+      _byId.removeWhere(
+        (String k, WatchEntry v) =>
+            k != e.id && v.seriesId == e.seriesId && v.upNext,
+      );
     }
     _prune();
     return stored;
@@ -220,9 +233,14 @@ class WatchProgressStore {
   /// série (la plus récente).
   List<WatchEntry> continueWatching({bool? episodes, int max = 24}) {
     final List<WatchEntry> list = _byId.values
-        .where((WatchEntry e) => e.isResumable && (episodes == null || e.isEpisode == episodes))
+        .where(
+          (WatchEntry e) =>
+              e.isResumable && (episodes == null || e.isEpisode == episodes),
+        )
         .toList()
-      ..sort((WatchEntry a, WatchEntry b) => b.updatedAt.compareTo(a.updatedAt));
+      ..sort(
+        (WatchEntry a, WatchEntry b) => b.updatedAt.compareTo(a.updatedAt),
+      );
     final Set<String> seenSeries = <String>{};
     final List<WatchEntry> out = <WatchEntry>[];
     for (final WatchEntry e in list) {
@@ -246,20 +264,29 @@ class WatchProgressStore {
   void _prune() {
     if (_byId.length <= maxEntries) return;
     final List<WatchEntry> sorted = _byId.values.toList()
-      ..sort((WatchEntry a, WatchEntry b) => b.updatedAt.compareTo(a.updatedAt));
+      ..sort(
+        (WatchEntry a, WatchEntry b) => b.updatedAt.compareTo(a.updatedAt),
+      );
     _byId
       ..clear()
-      ..addEntries(sorted.take(maxEntries).map((WatchEntry e) => MapEntry<String, WatchEntry>(e.id, e)));
+      ..addEntries(
+        sorted
+            .take(maxEntries)
+            .map((WatchEntry e) => MapEntry<String, WatchEntry>(e.id, e)),
+      );
   }
 
-  String encode() => jsonEncode(_byId.values.map((WatchEntry e) => e.toJson()).toList());
+  String encode() =>
+      jsonEncode(_byId.values.map((WatchEntry e) => e.toJson()).toList());
 
   static WatchProgressStore decode(String? raw) {
     if (raw == null || raw.isEmpty) return WatchProgressStore();
     try {
       final Object? list = jsonDecode(raw);
       if (list is! List) return WatchProgressStore();
-      return WatchProgressStore(list.map(WatchEntry.fromJson).whereType<WatchEntry>());
+      return WatchProgressStore(
+        list.map(WatchEntry.fromJson).whereType<WatchEntry>(),
+      );
     } catch (_) {
       return WatchProgressStore(); // stockage corrompu → on repart propre
     }
@@ -345,7 +372,8 @@ class WatchProgressRepository extends ChangeNotifier {
 
   List<WatchEntry> continueWatching({bool? episodes}) =>
       _store.continueWatching(episodes: episodes);
-  WatchEntry? latestForSeries(String seriesId) => _store.latestForSeries(seriesId);
+  WatchEntry? latestForSeries(String seriesId) =>
+      _store.latestForSeries(seriesId);
 
   WatchEntry record(WatchEntry e, {bool flushNow = false}) {
     final WatchEntry stored = _store.record(e);
@@ -376,7 +404,8 @@ class WatchProgressRepository extends ChangeNotifier {
     }
   }
 
-  Future<void> _save() => _saveKey(ProfileKeys.watchProgress(_profileId), _store);
+  Future<void> _save() =>
+      _saveKey(ProfileKeys.watchProgress(_profileId), _store);
 
   Future<void> _saveKey(String key, WatchProgressStore store) async {
     try {

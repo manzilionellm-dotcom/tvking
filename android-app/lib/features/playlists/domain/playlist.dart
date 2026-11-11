@@ -14,6 +14,8 @@
 
 import 'package:flutter/material.dart';
 
+import '../../profiles/domain/family_profile.dart';
+
 enum PlaylistType {
   m3u,
   xtream,
@@ -35,10 +37,23 @@ class Playlist {
     this.channelCount = 0,
     this.isActive = false,
     this.hidden = false,
+    this.profileId = ProfileIds.origin,
+    this.scopedChannelIds = false,
   });
 
   /// ID auto-incrémenté par SQLite. Null = pas encore enregistrée.
   final int? id;
+
+  /// Propriétaire de la source. Les lignes antérieures à SQLite v8 restent
+  /// au Profil 1 ; un nouvel import capture ce champ avant toute requête.
+  final String profileId;
+
+  /// Les nouvelles sources utilisent des identifiants liés à leur source.
+  /// Les anciennes gardent leurs identifiants : favoris et guide préservés.
+  final bool scopedChannelIds;
+
+  String channelId(String externalId) => scopedChannelIds && id != null
+      ? '$externalId~p$id' : externalId;
 
   /// Nom donné par l'utilisateur (ex : "Mon abonnement").
   final String name;
@@ -74,16 +89,16 @@ class Playlist {
   final int channelCount;
 
   /// Phase 1+/Multi-serveurs (2026-06-01) : indique si cette playlist
-  /// est la source de chaines active pour l'app. Un seul `true` a la
-  /// fois — la repo garantit l'exclusivite via [setActive]. Quand
+  /// est la source de chaînes active dans son profil. Un seul `true` par
+  /// profil — le repository garantit l'exclusivité. Quand
   /// false, ses chaines existent en base mais ne sont pas exposees
   /// par [PlaylistRepository.getAllChannels].
   final bool isActive;
 
   /// TV (mode fusion) : source DÉSACTIVÉE par le client — ses chaînes
   /// restent en base mais n'apparaissent plus dans Direct ni dans Films /
-  /// Séries. Plusieurs sources peuvent être actives EN MÊME TEMPS, sans
-  /// limite de nombre : seules celles marquées `hidden` sont écartées.
+  /// Séries. Jusqu'à dix sources du profil peuvent être visibles en même
+  /// temps : seules celles marquées `hidden` sont écartées.
   final bool hidden;
 
   /// Référence lisible de la source, pour que le revendeur sache QUEL
@@ -115,6 +130,8 @@ class Playlist {
   Map<String, Object?> toMap() {
     return <String, Object?>{
       if (id != null) 'id': id,
+      'profile_id': profileId,
+      'scoped_channel_ids': scopedChannelIds ? 1 : 0,
       'name': name,
       'type': type.name,
       'm3u_url': m3uUrl,
@@ -133,6 +150,8 @@ class Playlist {
   factory Playlist.fromMap(Map<String, Object?> map) {
     return Playlist(
       id: map['id'] as int?,
+      profileId: (map['profile_id'] as String?) ?? ProfileIds.origin,
+      scopedChannelIds: (map['scoped_channel_ids'] as int?) == 1,
       name: map['name'] as String,
       type: PlaylistType.values.firstWhere(
         (PlaylistType t) => t.name == (map['type'] as String),
@@ -159,6 +178,8 @@ class Playlist {
   }) {
     return Playlist(
       id: id ?? this.id,
+      profileId: profileId,
+      scopedChannelIds: scopedChannelIds,
       name: name,
       type: type,
       createdAt: createdAt,

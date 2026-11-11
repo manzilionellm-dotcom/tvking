@@ -96,7 +96,14 @@ class FavoritesRepository {
   }
 
   void _onProfile() {
+    _cache = <String>{};
+    if (!_controller.isClosed) _controller.add(<String>{});
     if (_initialized) unawaited(_reload());
+  }
+
+  Future<void> reloadForActiveProfile() async {
+    await initialize();
+    await _reload();
   }
 
   Future<void> _reload() async {
@@ -123,10 +130,13 @@ class FavoritesRepository {
   bool isFavorite(String channelId) => _cache.contains(channelId);
 
   Future<void> toggle(String channelId) async {
-    await initialize();
     final String profileId = ActiveProfile.instance.id;
+    await initialize();
     final Database db = await PlaylistDatabase.instance.database;
-    final bool removing = _cache.contains(channelId);
+    final bool removing = (await db.query(_kScoped,
+      columns: <String>['channel_id'], where: 'profile_id = ? AND channel_id = ?',
+      whereArgs: <Object>[profileId, channelId], limit: 1,
+    )).isNotEmpty;
 
     if (removing) {
       await db.delete(

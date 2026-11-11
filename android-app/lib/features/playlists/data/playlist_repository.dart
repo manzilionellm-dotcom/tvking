@@ -38,6 +38,8 @@ import '../../channels/domain/channel.dart';
 import '../../channels/domain/channel_genre.dart';
 import '../../epg/data/epg_repository.dart';
 import '../../epg/data/epg_targets.dart';
+import '../../profiles/data/active_profile.dart';
+import '../../profiles/domain/family_profile.dart';
 import '../domain/playlist.dart';
 import '../domain/source_fingerprint.dart';
 import 'deleted_sources.dart';
@@ -68,9 +70,25 @@ class BatchImportResult {
   final String? error;
 }
 
+/// Le quota concerne les sources personnelles d'un seul profil. Il est
+/// vérifié dans la même transaction que l'insertion, même en cas de double OK.
+class SourceLimitReachedException implements Exception {
+  const SourceLimitReachedException({this.limit = 10});
+  final int limit;
+
+  @override
+  String toString() => 'Ce profil contient déjà $limit sources personnelles.';
+}
+
 class PlaylistRepository {
-  PlaylistRepository._();
+  PlaylistRepository._() {
+    ActiveProfile.instance.listenable.addListener(_onProfile);
+  }
   static final PlaylistRepository instance = PlaylistRepository._();
+  static const int maxSourcesPerProfile = 10;
+  bool _initialized = false;
+  Future<void>? _profileReload;
+  final Set<String> _removedProfiles = <String>{};
 
   // Notifie chaque écran abonné quand les chaînes/playlists changent.
   final StreamController<List<Channel>> _channelsController =
@@ -91,7 +109,7 @@ class PlaylistRepository {
   // restriction est héritée partout, sans toucher chaque écran. Sur les
   // flavors normaux (The Few, TV), `adultOnly` = false → aucune restriction.
   List<Channel> _applyFlavorFilter(List<Channel> all) {
-    all = all.where((Channel c) => NovatubeContentPolicy.allows(
+    all = all.where((Channel c) => NovatubeContentPolicy.canImport(
       name: c.name, category: c.category,
     )).toList(growable: false);
     if (!FlavorConfig.current.adultOnly) return all;
@@ -114,7 +132,46 @@ class PlaylistRepository {
   /// Charge initialement les chaînes depuis la base et émet sur le stream.
   /// À appeler une fois au démarrage de l'app.
   Future<void> initialize() async {
+    _initialized = true;
     await _emitCurrentState();
+  }
+
+  /// Le changement de tiroir est synchrone : une ancienne liste ne reste
+  /// jamais visible pendant le SELECT SQLite du nouveau profil.
+  void _onProfile() {
+    _stateRevision++;
+    _channelsCache = const <Channel>[];
+    _playlistsCache = const <Playlist>[];
+    refreshWarning.value = null;
+    _channelsController.add(_channelsCache);
+    _playlistsController.add(_playlistsCache);
+    if (_initialized) _profileReload = _emitCurrentState();
+  }
+
+  /// ProfileRepository attend cette fin avant de fermer le sélecteur.
+  Future<void> reloadForActiveProfile() async {
+    if (!_initialized) return initialize();
+    final Future<void>? pending = _profileReload;
+    if (pending != null) await pending;
+    await _emitCurrentState();
+  }
+
+  Future<int> sourceCount() => _sourceCountFor(ActiveProfile.instance.id);
+
+  Future<bool> canAddSource() async =>
+      await sourceCount() < maxSourcesPerProfile;
+
+  Future<int> _sourceCountFor(String profileId) async {
+    final Database db = await PlaylistDatabase.instance.database;
+    return Sqflite.firstIntValue(await db.rawQuery(
+      'SELECT COUNT(*) FROM playlists WHERE profile_id = ?', <Object>[profileId],
+    )) ?? 0;
+  }
+
+  Future<void> _ensureCapacity(String profileId) async {
+    if (await _sourceCountFor(profileId) >= maxSourcesPerProfile) {
+      throw const SourceLimitReachedException();
+    }
   }
 
   // ============================================================
@@ -122,16 +179,20 @@ class PlaylistRepository {
   // ============================================================
 
   /// MODE FUSION (app TV, décision du propriétaire 25/09/2026) : quand `true`,
-  /// `getAllChannels` renvoie les chaînes de TOUTES les playlists en même
-  /// temps (comme TiviMate), au lieu de la seule playlist « active ». Le
-  /// client (ou le panel) peut donc poser 4-5 listes et tout voir d'un coup :
+  /// `getAllChannels` renvoie les chaînes des sources du profil en même
+  /// temps, au lieu de la seule playlist « active ». Le profil peut donc
+  /// ajouter jusqu'à dix listes personnelles et tout voir d'un coup :
   /// les catégories de même nom se rejoignent, l'ordre = ordre d'import.
   /// Le téléphone garde le comportement historique (une active à la fois).
   static bool mergeAllPlaylists = false;
 
   Future<List<Channel>> getAllChannels() async {
+    final String owner = ActiveProfile.instance.id;
     final Database db = await PlaylistDatabase.instance.database;
-    if (mergeAllPlaylists) return _readMergedChannels(db);
+    if (mergeAllPlaylists) {
+      final List<Channel> channels = await _readMergedChannels(db, owner);
+      return owner == ActiveProfile.instance.id ? channels : const <Channel>[];
+    }
 
     // Phase 1+/Multi-serveurs (2026-06-01) : si une playlist est
     // marquee active, on filtre les chaines pour ne renvoyer que les
@@ -142,7 +203,8 @@ class PlaylistRepository {
     final List<Map<String, Object?>> activeRows = await db.query(
       'playlists',
       columns: <String>['id'],
-      where: 'is_active = 1',
+      where: 'profile_id = ? AND is_active = 1',
+      whereArgs: <Object>[owner],
       limit: 1,
     );
 
@@ -167,9 +229,10 @@ class PlaylistRepository {
     // planter/redémarrer les petites box. On lit désormais par tranches
     // (keyset sur local_id, l'ordre natif de la playlist est préservé) et on
     // s'arrête au plafond. Voir _readChannelsBounded.
-    final List<Channel> all = await _readChannelsBounded(db, activeId);
+    final List<Channel> all = await _readChannelsBounded(db, activeId, owner);
 
-    return _applyFlavorFilter(all);
+    return owner == ActiveProfile.instance.id
+        ? _applyFlavorFilter(all) : const <Channel>[];
   }
 
   /// Lecture FUSIONNÉE (toutes les playlists). Deux listes peuvent porter le
@@ -178,16 +241,16 @@ class PlaylistRepository {
   /// que favoris, récents et index restent univoques. La première occurrence
   /// garde son id d'origine → les favoris déjà enregistrés continuent de
   /// fonctionner.
-  Future<List<Channel>> _readMergedChannels(Database db) async {
+  Future<List<Channel>> _readMergedChannels(Database db, String profileId) async {
     // Purge des orphelines (même garde-fou que le mode « active »).
     await db.delete(
       'channels',
       where: 'playlist_id NOT IN (SELECT id FROM playlists)',
     );
     // Seules les sources NON désactivées (colonne `hidden`) sont fusionnées :
-    // le client peut en activer autant qu'il veut EN MÊME TEMPS.
+    // plusieurs sources du profil restent visibles en même temps.
     final List<Channel> all =
-        await _readChannelsBounded(db, null, skipHidden: true);
+        await _readChannelsBounded(db, null, profileId, skipHidden: true);
     final Set<String> seen = <String>{};
     final List<Channel> out = <Channel>[];
     for (final Channel c in all) {
@@ -230,26 +293,21 @@ class PlaylistRepository {
   /// Lit les chaînes par lots successifs et borne le total à
   /// [kMaxInMemoryChannels]. Keyset pagination : `local_id > dernier` (O(1) par
   /// lot grâce à l'index PK), l'ORDRE NATIF de la playlist est préservé.
-  Future<List<Channel>> _readChannelsBounded(Database db, int? activeId,
+  Future<List<Channel>> _readChannelsBounded(Database db, int? activeId, String profileId,
       {bool skipHidden = false}) async {
     final List<Channel> out = <Channel>[];
     int afterLocalId = 0; // local_id (AUTOINCREMENT) démarre à 1
     // Sous-requête évaluée par SQLite (index PK) : écarte les chaînes des
     // sources désactivées sans les charger en mémoire.
-    final String hiddenFilter = skipHidden
-        ? ' AND playlist_id NOT IN (SELECT id FROM playlists WHERE hidden = 1)'
-        : '';
+    final String hiddenFilter = skipHidden ? ' AND p.hidden = 0' : '';
+    final String activeFilter = activeId == null ? '' : ' AND c.playlist_id = ?';
     while (out.length < kMaxInMemoryChannels) {
-      final List<Map<String, Object?>> rows = await db.query(
-        'channels',
-        where: activeId != null
-            ? 'playlist_id = ? AND local_id > ?'
-            : 'local_id > ?$hiddenFilter',
-        whereArgs: activeId != null
-            ? <Object>[activeId, afterLocalId]
-            : <Object>[afterLocalId],
-        orderBy: 'local_id ASC',
-        limit: _kReadChunk,
+      final List<Map<String, Object?>> rows = await db.rawQuery(
+        'SELECT c.*, p.scoped_channel_ids FROM channels c '
+        'JOIN playlists p ON p.id = c.playlist_id '
+        'WHERE p.profile_id = ? AND c.local_id > ?$hiddenFilter$activeFilter '
+        'ORDER BY c.local_id ASC LIMIT $_kReadChunk',
+        <Object>[profileId, afterLocalId, if (activeId != null) activeId],
       );
       if (rows.isEmpty) break;
       for (final Map<String, Object?> r in rows) {
@@ -267,36 +325,46 @@ class PlaylistRepository {
   }
 
   Future<List<Playlist>> getAllPlaylists() async {
+    final String owner = ActiveProfile.instance.id;
     final Database db = await PlaylistDatabase.instance.database;
     final List<Map<String, Object?>> rows =
-        await db.query('playlists', orderBy: 'created_at DESC');
+        await db.query('playlists', where: 'profile_id = ?',
+            whereArgs: <Object>[owner], orderBy: 'created_at DESC');
     final List<Playlist> out = <Playlist>[];
     for (final Map<String, Object?> row in rows) {
       out.add(await _playlistFromRow(row));
     }
-    return out;
+    return owner == ActiveProfile.instance.id ? out : const <Playlist>[];
   }
 
   /// Phase 1+/Multi-serveurs : retourne la playlist active, ou la 1ere
   /// (la plus ancienne) si aucune n'est marquee. `null` si la base
   /// est vide.
   Future<Playlist?> getActivePlaylist() async {
+    final String owner = ActiveProfile.instance.id;
     final Database db = await PlaylistDatabase.instance.database;
     // 1) Tente la marquee active
     final List<Map<String, Object?>> active = await db.query(
       'playlists',
-      where: 'is_active = 1',
+      where: 'profile_id = ? AND is_active = 1',
+      whereArgs: <Object>[owner],
       limit: 1,
     );
-    if (active.isNotEmpty) return _playlistFromRow(active.first);
+    if (active.isNotEmpty) {
+      final Playlist result = await _playlistFromRow(active.first);
+      return owner == ActiveProfile.instance.id ? result : null;
+    }
     // 2) Fallback sur la plus ancienne
     final List<Map<String, Object?>> first = await db.query(
       'playlists',
+      where: 'profile_id = ?',
+      whereArgs: <Object>[owner],
       orderBy: 'created_at ASC',
       limit: 1,
     );
     if (first.isEmpty) return null;
-    return _playlistFromRow(first.first);
+    final Playlist result = await _playlistFromRow(first.first);
+    return owner == ActiveProfile.instance.id ? result : null;
   }
 
   /// Relit une ligne SQLite en déchiffrant le mot de passe. Les
@@ -314,20 +382,26 @@ class PlaylistRepository {
   /// is_active=0) via une transaction. Refresh ensuite le stream
   /// channels pour que l'UI bascule sans recharger.
   Future<void> setActivePlaylist(int playlistId) async {
+    final String owner = ActiveProfile.instance.id;
+    await _setActivePlaylist(playlistId, owner);
+  }
+
+  Future<void> _setActivePlaylist(int playlistId, String owner) async {
     final Database db = await PlaylistDatabase.instance.database;
     await db.transaction((Transaction txn) async {
+      await _requireOwned(txn, playlistId, owner);
       await txn.update(
         'playlists',
         <String, Object?>{'is_active': 0},
         // Tout sauf la cible -> 0
-        where: 'id != ?',
-        whereArgs: <Object>[playlistId],
+        where: 'profile_id = ? AND id != ?',
+        whereArgs: <Object>[owner, playlistId],
       );
       await txn.update(
         'playlists',
         <String, Object?>{'is_active': 1},
-        where: 'id = ?',
-        whereArgs: <Object>[playlistId],
+        where: 'profile_id = ? AND id = ?',
+        whereArgs: <Object>[owner, playlistId],
       );
     });
     // Re-emit les chaines de la nouvelle playlist active.
@@ -335,16 +409,18 @@ class PlaylistRepository {
   }
 
   /// TV (mode fusion) : active ou désactive UNE source sans toucher aux
-  /// autres — plusieurs sources actives en même temps, sans limite. Ses
+  /// autres — plusieurs sources du profil visibles en même temps. Ses
   /// chaînes restent en base : la réactiver est instantané (pas de
   /// re-téléchargement). Ré-émet l'état pour que Direct se mette à jour.
   Future<void> setPlaylistHidden(int playlistId, bool hidden) async {
+    final String owner = ActiveProfile.instance.id;
     final Database db = await PlaylistDatabase.instance.database;
+    await _requireOwned(db, playlistId, owner);
     await db.update(
       'playlists',
       <String, Object?>{'hidden': hidden ? 1 : 0},
-      where: 'id = ?',
-      whereArgs: <Object>[playlistId],
+      where: 'profile_id = ? AND id = ?',
+      whereArgs: <Object>[owner, playlistId],
     );
     await _emitCurrentState();
   }
@@ -364,6 +440,7 @@ class PlaylistRepository {
     http.Client? httpClient,
     bool restoreDeleted = true,
   }) async {
+    final String owner = ActiveProfile.instance.id;
     final http.Client client = httpClient ?? http.Client();
     // On insère la playlist AVANT le download (le parser a besoin de son
     // id pour rattacher les chaînes). MAIS : si une étape échoue ensuite
@@ -374,6 +451,8 @@ class PlaylistRepository {
       // 1) Insère la playlist (sans channelCount/lastSync)
       final Playlist newPlaylist = Playlist(
         id: null,
+        profileId: owner,
+        scopedChannelIds: true,
         name: name,
         type: PlaylistType.m3u,
         m3uUrl: url,
@@ -386,7 +465,7 @@ class PlaylistRepository {
       //    (User-Agent navigateur + UTF-8 / Latin-1 fallback +
       //    strip BOM + timeout 90s — gère les serveurs paranos
       //    ou les exports Windows-1252 mal étiquetés).
-      if (kDebugMode) debugPrint('[Repo] GET $url');
+      if (kDebugMode) debugPrint('[Repo] Téléchargement de la source M3U');
       // Octets bruts : décodage ET parsing dans l'isolate (le fil UI ne
       // touche jamais au contenu, même pour un fichier de 60 Mo).
       final Uint8List body = await M3uFetcher.fetchBytes(url, httpClient: client);
@@ -422,14 +501,14 @@ class PlaylistRepository {
       // `is_active=0` → `getAllChannels` filtrait ses chaînes et l'accueil
       // affichait l'ancienne source (ou rien) malgré le « connecté ».
       // setActivePlaylist ré-émet l'état → l'accueil bascule aussitôt.
-      await setActivePlaylist(playlistId);
+      await _setActivePlaylist(playlistId, owner);
       ImportProgressBus.done(parsed.channels.length);
 
       // Si une URL EPG est fournie → on déclenche la sync en
       // arrière-plan (non bloquant : l'utilisateur peut déjà
       // naviguer pendant que l'EPG arrive).
       if (epgUrl != null && epgUrl.isNotEmpty) {
-        unawaited(_syncEpgFor(parsed.channels, epgUrl));
+        unawaited(_syncEpgFor(parsed.channels, epgUrl, playlist: saved));
       }
       return saved;
     } catch (_) {
@@ -437,7 +516,7 @@ class PlaylistRepository {
       // playlist orpheline pour ne garder QUE les sources valides.
       if (playlistId != null) {
         BlackBox.instance.info('DB', 'liste $playlistId supprimée (import M3U échoué)');
-        await _deletePlaylist(playlistId);
+        await _deletePlaylist(playlistId, profileId: owner);
       }
       rethrow;
     } finally {
@@ -455,24 +534,35 @@ class PlaylistRepository {
   Future<void> _syncEpgFor(
     List<Channel> channels,
     String epgUrl, {
+    required Playlist playlist,
     Map<String, String>? xtreamEpgIds,
   }) async {
     try {
+      if (_removedProfiles.contains(playlist.profileId)) return;
       final bool xtream =
           channels.isNotEmpty && channels.every((Channel c) => c.id.startsWith('xtream-'));
       if (xtream) {
-        final Map<String, List<String>> map = buildEpgIdMap(xtreamEpgIds ?? const <String, String>{});
+        final Map<String, String> sourceIds = <String, String>{
+          for (final MapEntry<String, String> entry
+              in (xtreamEpgIds ?? const <String, String>{}).entries)
+            playlist.channelId(entry.key): entry.value,
+        };
+        final Map<String, List<String>> map = buildEpgIdMap(sourceIds);
         if (map.isEmpty) {
           BlackBox.instance.info('EPG', 'Xtream : aucun epg_channel_id fourni par le serveur, guide sauté');
           return;
         }
-        await EpgRepository.instance.downloadAndImport(url: epgUrl, channelIdMap: map);
+        await EpgRepository.instance.downloadAndImport(url: epgUrl,
+            channelIdMap: map, profileId: playlist.profileId);
         return;
       }
-      final Set<String> ids = channels.map((Channel c) => c.id).toSet();
       await EpgRepository.instance.downloadAndImport(
         url: epgUrl,
-        knownChannelIds: ids,
+        channelIdMap: buildEpgIdMap(<String, String>{
+          for (final Channel channel in channels)
+            playlist.channelId(channel.id): channel.id,
+        }),
+        profileId: playlist.profileId,
       );
     } catch (e) {
       // L'EPG est optionnel : la liste reste utilisable. La trace sert au support.
@@ -495,9 +585,16 @@ class PlaylistRepository {
     void Function(int index, int total, String name, BatchImportResult? result)?
         onProgress,
   }) async {
+    final String owner = ActiveProfile.instance.id;
     final List<BatchImportResult> results = <BatchImportResult>[];
     for (int i = 0; i < entries.length; i++) {
       final ({String name, String url}) entry = entries[i];
+      if (owner != ActiveProfile.instance.id) {
+        results.add(BatchImportResult.failure(
+          name: entry.name, error: 'Le profil a changé. Import interrompu.',
+        ));
+        break;
+      }
       onProgress?.call(i, entries.length, entry.name, null);
       try {
         final Playlist saved = await addM3uPlaylist(
@@ -552,6 +649,9 @@ class PlaylistRepository {
     http.Client? httpClient,
     bool restoreDeleted = true,
   }) async {
+    final String owner = ActiveProfile.instance.id;
+    // Le refus de la onzième source intervient avant l'envoi des identifiants.
+    await _ensureCapacity(owner);
     // 1) Vérifie d'abord les credentials, avant de polluer la base
     final XtreamClient xtream = XtreamClient(
       serverUrl: serverUrl,
@@ -568,6 +668,8 @@ class PlaylistRepository {
       // 2) Crée la playlist en base (avec EPG URL auto-générée)
       final Playlist newPlaylist = Playlist(
         id: null,
+        profileId: owner,
+        scopedChannelIds: true,
         name: name,
         type: PlaylistType.xtream,
         m3uUrl: originM3uUrl,
@@ -610,7 +712,7 @@ class PlaylistRepository {
       // playlist Xtream qu'on vient d'ajouter (même raison que pour le
       // M3U). Sans ça, un 2e compte ajouté restait invisible car
       // `getAllChannels` ne renvoie que les chaînes de la playlist active.
-      await setActivePlaylist(playlistId);
+      await _setActivePlaylist(playlistId, owner);
       ImportProgressBus.done(channels.length);
 
       // EPG auto en arrière-plan (Xtream a sa propre URL XMLTV), apparié
@@ -619,6 +721,7 @@ class PlaylistRepository {
         unawaited(_syncEpgFor(
           channels,
           newPlaylist.epgUrl!,
+          playlist: saved,
           xtreamEpgIds: Map<String, String>.of(xtream.epgChannelIds),
         ));
       }
@@ -628,7 +731,7 @@ class PlaylistRepository {
       // retire la playlist orpheline : on ne garde QUE le valide.
       if (playlistId != null) {
         BlackBox.instance.info('DB', 'liste $playlistId supprimée (import Xtream échoué)');
-        await _deletePlaylist(playlistId);
+        await _deletePlaylist(playlistId, profileId: owner);
       }
       rethrow;
     } finally {
@@ -645,6 +748,9 @@ class PlaylistRepository {
   /// PENDANT son import (« FOREIGN KEY constraint failed ») sans qu'aucune
   /// ligne ne dise qui l'avait supprimée.
   Future<void> deletePlaylist(int playlistId, {String reason = 'client'}) async {
+    final String owner = ActiveProfile.instance.id;
+    final Database db = await PlaylistDatabase.instance.database;
+    await _requireOwned(db, playlistId, owner);
     // Une relecture déjà en vol ne doit pas republier l'ancien cache après
     // la suppression immédiate affichée ci-dessous.
     _stateRevision++;
@@ -673,7 +779,7 @@ class PlaylistRepository {
 
     // Maintenant le DELETE SQL réel (peut prendre du temps sur
     // grosses playlists, mais l'UI est déjà à jour).
-    await _deletePlaylist(playlistId, rememberDeletion: true);
+    await _deletePlaylist(playlistId, profileId: owner, rememberDeletion: true);
     // Re-émet l'état "officiel" depuis la DB pour rester cohérent
     // en cas d'incohérence (rare).
     await _emitCurrentState();
@@ -706,6 +812,7 @@ class PlaylistRepository {
   /// Les sources DÉSACTIVÉES ne sont pas re-téléchargées (économie réseau et
   /// mémoire) : elles le seront à leur réactivation au prochain passage.
   Future<int> refreshAll({Duration? skipSyncedWithin}) async {
+    final String owner = ActiveProfile.instance.id;
     if (_refreshingAll) return 0; // une passe déjà en cours → on ne double pas
     _refreshingAll = true;
     try {
@@ -716,6 +823,7 @@ class PlaylistRepository {
       int ok = 0;
       int failed = 0;
       for (final Playlist p in all) {
+        if (owner != ActiveProfile.instance.id) break;
         if (!shouldRefreshPlaylist(
           p,
           freshAfter: freshAfter,
@@ -736,6 +844,7 @@ class PlaylistRepository {
           failed++;
         }
       }
+      if (owner != ActiveProfile.instance.id) return ok;
       refreshWarning.value = failed > 0
           ? 'Une liste n\'a pas pu être actualisée. Les autres sont à jour.'
           : null;
@@ -755,17 +864,19 @@ class PlaylistRepository {
   /// touche pas à une source temporairement injoignable (elle garde son
   /// dernier `channel_count` > 0). Renvoie le nombre supprimé.
   Future<int> pruneEmptyPlaylists() async {
+    final String owner = ActiveProfile.instance.id;
     final Database db = await PlaylistDatabase.instance.database;
     final List<Map<String, Object?>> rows = await db.query(
       'playlists',
       columns: <String>['id'],
-      where: 'last_synced_at IS NOT NULL '
+      where: 'profile_id = ? AND last_synced_at IS NOT NULL '
           'AND (channel_count IS NULL OR channel_count = 0)',
+      whereArgs: <Object>[owner],
     );
     if (rows.isEmpty) return 0;
     for (final Map<String, Object?> r in rows) {
       BlackBox.instance.info('DB', 'liste ${r['id']} supprimée (vide après synchro)');
-      await _deletePlaylist(r['id'] as int);
+      await _deletePlaylist(r['id'] as int, profileId: owner);
     }
     await _emitCurrentState();
     return rows.length;
@@ -797,7 +908,10 @@ class PlaylistRepository {
   /// Retourne `true` si la sync a réussi, lance une Exception sinon.
   Future<bool> refreshPlaylist(Playlist playlist) async {
     if (playlist.id == null) return false;
+    final String owner = ActiveProfile.instance.id;
+    if (playlist.profileId != owner) return false;
     final Database db = await PlaylistDatabase.instance.database;
+    await _requireOwned(db, playlist.id!, owner);
 
     if (playlist.type == PlaylistType.m3u && playlist.m3uUrl != null) {
       final http.Client client = http.Client();
@@ -831,7 +945,7 @@ class PlaylistRepository {
         // RepairFlags.epgRefreshOff.
         final String? epgUrl = playlist.epgUrl;
         if (!RepairFlags.epgRefreshOff && epgUrl != null && epgUrl.isNotEmpty) {
-          unawaited(_syncEpgFor(parsed.channels, epgUrl));
+          unawaited(_syncEpgFor(parsed.channels, epgUrl, playlist: playlist));
         }
         return true;
       } finally {
@@ -874,6 +988,7 @@ class PlaylistRepository {
           unawaited(_syncEpgFor(
             channels,
             xtreamEpg,
+            playlist: playlist,
             xtreamEpgIds: Map<String, String>.of(xtream.epgChannelIds),
           ));
         }
@@ -893,30 +1008,25 @@ class PlaylistRepository {
   Future<int> _insertPlaylist(Playlist playlist, {required bool restoreDeleted}) async {
     await DeletedSources.migrateLegacy();
     final Database db = await PlaylistDatabase.instance.database;
-    // Phase 1+/Multi-serveurs : si c'est la PREMIERE playlist (la
-    // table etait vide), on la marque auto-active. Sinon, les
-    // suivantes sont inactives par defaut (l'user les active
-    // explicitement depuis l'UI). Comme ca le user qui n'utilise
-    // qu'une playlist n'a jamais besoin de "choisir" — l'app marche
-    // naturellement.
-    final List<Map<String, Object?>> existing = await db.query(
-      'playlists',
-      columns: <String>['id'],
-      limit: 1,
-    );
-    final bool isFirst = existing.isEmpty;
     final Map<String, Object?> map = playlist.toMap();
-    if (isFirst) {
-      map['is_active'] = 1;
-    }
     map['xtream_password'] =
         await PlaylistSecret.seal(map['xtream_password'] as String?);
     map['m3u_url'] = await PlaylistSecret.seal(map['m3u_url'] as String?);
     final List<String> keys = await DeletedSources.hashes(SourceFingerprint.ofPlaylist(playlist));
     return db.transaction((Transaction txn) async {
+      if (_removedProfiles.contains(playlist.profileId)) {
+        throw const PlaylistDeletedException();
+      }
+      final int count = Sqflite.firstIntValue(await txn.rawQuery(
+        'SELECT COUNT(*) FROM playlists WHERE profile_id = ?',
+        <Object>[playlist.profileId],
+      )) ?? 0;
+      if (count >= maxSourcesPerProfile) throw const SourceLimitReachedException();
+      if (count == 0) map['is_active'] = 1;
       for (final String key in keys) {
         final List<Map<String, Object?>> deleted = await txn.query(
-          'deleted_sources', where: 'fingerprint = ?', whereArgs: <Object>[key], limit: 1,
+          'deleted_sources', where: 'profile_id = ? AND fingerprint = ?',
+          whereArgs: <Object>[playlist.profileId, key], limit: 1,
         );
         if (deleted.isNotEmpty && !restoreDeleted) {
           throw const PlaylistDeletedException();
@@ -924,26 +1034,31 @@ class PlaylistRepository {
         if (restoreDeleted) {
           // Seul un ajout explicite dans l'app rétablit cette source.
           // La synchronisation et les sauvegardes passent false.
-          await txn.delete('deleted_sources', where: 'fingerprint = ?', whereArgs: <Object>[key]);
+          await txn.delete('deleted_sources',
+              where: 'profile_id = ? AND fingerprint = ?',
+              whereArgs: <Object>[playlist.profileId, key]);
         }
       }
       return txn.insert('playlists', map);
     });
   }
 
-  Future<void> _deletePlaylist(int id, {bool rememberDeletion = false}) async {
+  Future<void> _deletePlaylist(int id,
+      {required String profileId, bool rememberDeletion = false}) async {
     BlackBox.instance.breadcrumb('Suppression de la liste $id');
     final Database db = await PlaylistDatabase.instance.database;
     final List<Map<String, Object?>> source = await db.query(
-      'playlists', where: 'id = ?', whereArgs: <Object>[id], limit: 1,
+      'playlists', where: 'profile_id = ? AND id = ?',
+      whereArgs: <Object>[profileId, id], limit: 1,
     );
+    if (source.isEmpty) return;
     final List<String> keys = rememberDeletion && source.isNotEmpty
         ? await DeletedSources.hashes(SourceFingerprint.ofPlaylist(await _playlistFromRow(source.first)))
         : <String>[];
     // Le refus durable et l'effacement sont validés ensemble : une coupure
     // au milieu ne laisse pas une source supprimée sans sa mémoire de refus.
     await db.transaction((Transaction txn) async {
-      await DeletedSources.rememberHashes(txn, keys);
+      await DeletedSources.rememberHashes(txn, keys, profileId: profileId);
       // Phase 1+/Multi-serveurs : si on delete l'active, on promeut la
       // plus ancienne playlist restante comme nouvelle active. Comme ca
       // l'user n'a pas a aller manuellement reactiver une autre source
@@ -951,8 +1066,8 @@ class PlaylistRepository {
       final List<Map<String, Object?>> wasActive = await txn.query(
         'playlists',
         columns: <String>['id'],
-        where: 'id = ? AND is_active = 1',
-        whereArgs: <Object>[id],
+        where: 'profile_id = ? AND id = ? AND is_active = 1',
+        whereArgs: <Object>[profileId, id],
         limit: 1,
       );
       // Suppression EXPLICITE des chaînes de cette liste AVANT la liste.
@@ -964,7 +1079,8 @@ class PlaylistRepository {
       final int channelsGone =
           await txn.delete('channels', where: 'playlist_id = ?', whereArgs: <Object>[id]);
       final int rowsGone =
-          await txn.delete('playlists', where: 'id = ?', whereArgs: <Object>[id]);
+          await txn.delete('playlists', where: 'profile_id = ? AND id = ?',
+              whereArgs: <Object>[profileId, id]);
       // Preuve pour la boîte noire : « 0 liste » = la ligne avait DÉJÀ disparu
       // (mesuré le 06/10/2026 : « FOREIGN KEY constraint failed » à l'écriture
       // des chaînes, puis suppression d'une liste qui n'existait plus).
@@ -974,6 +1090,8 @@ class PlaylistRepository {
         final List<Map<String, Object?>> next = await txn.query(
           'playlists',
           columns: <String>['id'],
+          where: 'profile_id = ?',
+          whereArgs: <Object>[profileId],
           orderBy: 'created_at ASC',
           limit: 1,
         );
@@ -987,6 +1105,29 @@ class PlaylistRepository {
         }
       }
     });
+  }
+
+  /// Suppression du tiroir : l'id est invalidé avant le disque afin qu'un
+  /// import commencé sur ce profil ne puisse pas le recréer après coup.
+  Future<void> dropProfile(String profileId) async {
+    if (profileId == ProfileIds.origin) return;
+    _removedProfiles.add(profileId);
+    final Database db = await PlaylistDatabase.instance.database;
+    await db.transaction((Transaction txn) async {
+      await txn.delete('channels',
+          where: 'playlist_id IN (SELECT id FROM playlists WHERE profile_id = ?)',
+          whereArgs: <Object>[profileId]);
+      await txn.delete('playlists', where: 'profile_id = ?', whereArgs: <Object>[profileId]);
+      await txn.delete('deleted_sources', where: 'profile_id = ?', whereArgs: <Object>[profileId]);
+    });
+    await _emitCurrentState();
+  }
+
+  Future<void> _requireOwned(DatabaseExecutor db, int playlistId, String profileId) async {
+    final List<Map<String, Object?>> rows = await db.query('playlists',
+        columns: <String>['id'], where: 'profile_id = ? AND id = ?',
+        whereArgs: <Object>[profileId, playlistId], limit: 1);
+    if (rows.isEmpty) throw const PlaylistDeletedException();
   }
 
   /// Vérifie qu'un téléchargement terminé est encore demandé. Une liste
@@ -1123,19 +1264,20 @@ class PlaylistRepository {
         'last_synced_at': playlist.lastSyncedAt,
         'channel_count': playlist.channelCount,
       },
-      where: 'id = ?',
-      whereArgs: <Object>[playlist.id!],
+      where: 'profile_id = ? AND id = ?',
+      whereArgs: <Object>[playlist.profileId, playlist.id!],
     );
   }
 
   int _stateRevision = 0;
 
   Future<void> _emitCurrentState() async {
+    final String owner = ActiveProfile.instance.id;
     final int revision = ++_stateRevision;
     final Stopwatch sw = Stopwatch()..start();
     final List<Channel> channels = await getAllChannels();
     final List<Playlist> playlists = await getAllPlaylists();
-    if (revision != _stateRevision) return;
+    if (revision != _stateRevision || owner != ActiveProfile.instance.id) return;
     BlackBox.instance.info('DB', 'lecture : ${channels.length} chaînes, ${playlists.length} liste(s) en ${sw.elapsedMilliseconds} ms');
     // Met à jour les caches synchrones avant d'émettre
     // (`currentChannels` est ainsi cohérent avec le dernier event).
@@ -1169,9 +1311,12 @@ class PlaylistRepository {
   }
 
   Channel _channelFromMap(Map<String, Object?> map) {
+    final String externalId = map['external_id'] as String;
+    final int? playlistId = map['playlist_id'] as int?;
     return Channel(
-      id: map['external_id'] as String,
-      playlistId: map['playlist_id'] as int?,
+      id: map['scoped_channel_ids'] == 1 && playlistId != null
+          ? '$externalId~p$playlistId' : externalId,
+      playlistId: playlistId,
       name: map['name'] as String,
       category: map['category'] as String,
       streamUrl: map['stream_url'] as String,

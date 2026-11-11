@@ -2676,26 +2676,64 @@
       }
     }
   },
+  "tvAdultTitle": "+18",
+  "tvAdultIntro": "Espace réservé aux adultes. Seuls les contenus de tes sources personnelles sont affichés.",
+  "tvAdultConsent": "Je confirme avoir 18 ans ou plus.",
+  "tvAdultEnable": "Activer avec mon code parental",
+  "tvAdultOpen": "Ouvrir avec mon code parental",
+  "tvAdultDisabled": "Désactivé par défaut. Activation réservée aux adultes, avec un code parental.",
+  "tvAdultEnabled": "Activé pour ce profil. Le code est demandé à chaque ouverture.",
+  "tvAdultLock": "Verrouiller l’espace +18",
+  "tvAdultEmpty": "Aucun contenu +18 identifié dans les sources de ce profil.",
+  "tvAdultLocked": "Cet espace est verrouillé.",
+  "tvAdultBlockedKids": "L’espace +18 est indisponible en mode enfants.",
+  "tvAdultSourceHelp": "Ajoute ou actualise tes comptes Xtream ou listes M3U dans Mes sources.",
   "tvProfiles": "Profils",
   "tvKidsProfile": "Profil Enfants",
   "tvNewProfile": "Nouveau profil",
+  "tvAddProfile": "Ajouter un profil",
+  "tvProfileLimit": "La limite de {count} profils est atteinte.",
+  "@tvProfileLimit": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "tvProfileSources": "Sources de {name}",
+  "@tvProfileSources": {
+    "placeholders": {
+      "name": { "type": "String" }
+    }
+  },
+  "tvSourceCount": "{count}/{limit} sources",
+  "@tvSourceCount": {
+    "placeholders": {
+      "count": { "type": "int" },
+      "limit": { "type": "int" }
+    }
+  },
+  "tvSourceLimitReached": "Ce profil a déjà {limit} sources. Supprime une source pour en ajouter une autre.",
+  "@tvSourceLimitReached": {
+    "placeholders": {
+      "limit": { "type": "int" }
+    }
+  },
   "tvChildren": "Enfants",
   "tvKidsExists": "Un profil Enfants existe déjà.",
   "tvProfileAddFailed": "Impossible d'ajouter.",
   "tvKidsReady": "Profil Enfants prêt. Le mode enfants reste allumé.",
   "tvRename": "Renommer",
   "tvNameInvalid": "Nom vide ou trop long.",
-  "tvProfileDeleteBody": "Ses favoris, son historique, sa reprise, ses rappels et son code seront effacés. Les chaînes restent. Le profil 1 n'est pas touché.",
+  "tvProfileDeleteBody": "Ses sources, ses chaînes, ses favoris, son historique, sa reprise, ses rappels et son code seront effacés. Les autres profils ne sont pas touchés.",
   "tvProfileDeleteFailed": "Ce profil ne peut pas être supprimé.",
-  "tvProfilesHelp": "Jusqu'à 4. Favoris, historique, reprise, rappels et code sont séparés. Les chaînes, non : elles restent pour tout le monde.",
+  "tvProfilesHelp": "Jusqu'à 10 profils, avec 10 sources M3U/Xtream chacun. Sources, chaînes, favoris, historique, reprise, rappels et code sont propres à chaque profil.",
   "tvDefaultPinWarning": "Le code est encore 0000. Changez-le dans Contrôle parental.",
   "tvAskProfileOn": "Choix au démarrage : oui",
   "tvAskProfileOff": "Choix au démarrage : non",
   "tvProfileStartupSingle": "Le choix au démarrage apparaît dès le 2e profil. Avec un seul profil, la box s'ouvre directement.",
   "tvProfileStartupHelp": "« Non » : la box s'ouvre sur le dernier profil, sans écran. Vous pourrez toujours changer ici, ou depuis l'accueil.",
   "tvKidsProfileHelp": "Mode enfants verrouillé. On ne sort qu'avec le code de ce profil. L'adulte est masqué. Le profil 1 garde vos anciennes données.",
-  "tvOriginProfileHelp": "Profil d'origine : vos favoris, votre historique, votre reprise et votre code d'avant la mise à jour sont ici. Il ne se supprime pas.",
-  "tvSeparateProfileHelp": "Tiroir à part. Supprimer ce profil n'efface pas le profil 1.",
+  "tvOriginProfileHelp": "Profil d'origine : tes sources et tes données déjà présentes sont conservées ici. Il ne peut pas être supprimé.",
+  "tvSeparateProfileHelp": "Ses sources, ses chaînes et ses données sont séparées. Supprimer ce profil ne touche pas aux autres.",
   "tvProfileActive": "Actif",
   "tvProfileCreated": "Profil « {name} » créé.",
   "@tvProfileCreated": {
@@ -2714,7 +2752,7 @@
     }
   },
   "tvWhoWatching": "Qui regarde ?",
-  "tvProfilePickerHelp": "Chacun a ses favoris, son historique et son code. Les chaînes restent les mêmes.",
+  "tvProfilePickerHelp": "Jusqu'à 10 profils et 10 sources M3U/Xtream par profil. Les chaînes, favoris, historique et codes sont séparés.",
   "tvLater": "Plus tard",
   "tvNameMum": "Maman",
   "tvNameDad": "Papa",
@@ -2805,7 +2843,7 @@
   "tvPhone": "Téléphone",
   "tvSoftware": "Logiciel",
   "tvHardware": "Matériel",
-  "tvProfilesSettingsHelp": "Favoris, historique, reprise, rappels et code séparés. Jusqu'à 4 profils.",
+  "tvProfilesSettingsHelp": "Jusqu'à 10 profils avec leurs propres sources, chaînes, favoris, historique, reprise, rappels et code.",
   "tvAudioDiagnostic": "Diagnostic du son",
   "tvAudioDiagnosticHelp": "Rapport local par chaîne. Rien n'est envoyé. Les correctifs restent coupés.",
   "tvPlayerDisclaimer": "Cette application est un LECTEUR multimédia. Elle ne vend, ne fournit et n'héberge aucune chaîne, aucun flux ni aucun lien M3U. Le contenu est fourni par l'utilisateur, seul responsable de sa licéité.",

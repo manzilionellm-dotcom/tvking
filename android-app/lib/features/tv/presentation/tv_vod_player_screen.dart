@@ -22,6 +22,7 @@
 //    • choix audio / sous-titres retenu pour les films suivants.
 // =========================================================
 import 'dart:async';
+
 import '../desktop/desktop_cast_controls.dart';
 import '../../cast/data/cast_platform.dart';
 
@@ -41,6 +42,7 @@ import 'tv_content_unavailable.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../../cinema/data/cinema_downloads.dart';
 import '../../cinema/data/watch_progress.dart';
+import '../../security/data/adult_access.dart';
 import '../../cinema/domain/cinema_language.dart';
 import '../../cinema/domain/cinema_models.dart';
 import '../core/tv_activity.dart';
@@ -73,9 +75,12 @@ class TvVodPlayerScreen extends StatefulWidget {
   @override
   State<TvVodPlayerScreen> createState() {
     final CinemaTitle? series = seriesTitle;
-    if (!item.isAllowedInPlay || (series != null &&
-        !NovatubeContentPolicy.allows(
-            name: series.name, category: series.categoryKey))) {
+    if (!item.isAllowedInPlay ||
+        (series != null &&
+            !NovatubeContentPolicy.allows(
+              name: series.name,
+              category: series.categoryKey,
+            ))) {
       return NovatubeUnavailableState<TvVodPlayerScreen>();
     }
     return _TvVodPlayerScreenState();
@@ -144,6 +149,7 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
     ForegroundPlayback.lock();
     _item = widget.item;
     _c = NativeVideoController()..addListener(_onPlayer);
+    AdultAccess.instance.unlocked.addListener(_onAdultAccessChanged);
     unawaited(
       ClearVoiceFlag.load().then((_) {
         if (mounted) _c.setClearVoice(ClearVoiceFlag.value);
@@ -247,8 +253,20 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
     }
   }
 
+  void _onAdultAccessChanged() {
+    if (_item.isAllowedInPlay) return;
+    _c.suspendForBackground();
+    unawaited(_desktopCastKey.currentState?.close() ?? Future<void>.value());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final ModalRoute<void>? route = ModalRoute.of<void>(context);
+      if (route != null) Navigator.of(context).removeRoute(route);
+    });
+  }
+
   @override
   void dispose() {
+    AdultAccess.instance.unlocked.removeListener(_onAdultAccessChanged);
     ++_startGeneration;
     final Future<void> castClosed =
         _desktopCastKey.currentState?.close() ?? Future<void>.value();
@@ -266,8 +284,11 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
     ImagePrefs.changes.removeListener(_onImagePrefs);
     _c.dispose();
     if (_downloadsPausedForCast) {
-      unawaited(castClosed
-          .then((_) => CinemaDownloads.resumeAfterLive(owner: _downloadOwner)));
+      unawaited(
+        castClosed.then(
+          (_) => CinemaDownloads.resumeAfterLive(owner: _downloadOwner),
+        ),
+      );
     }
     ForegroundPlayback.unlock();
     _focus.dispose();
@@ -292,8 +313,10 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
       _downloadsPausedForCast = true;
       await CinemaDownloads.pauseForLive(owner: _downloadOwner)
           .catchError((Object _) {
-        BlackBox.instance
-            .warn('CINEMA', 'Pause des téléchargements non confirmée');
+        BlackBox.instance.warn(
+          'CINEMA',
+          'Pause des téléchargements non confirmée',
+        );
       });
     }
     final String? audioPref = await CinemaTrackPrefs.audio();
@@ -327,9 +350,11 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
     for (final CinemaEpisode e in s.allInOrder) {
       if (e.id == _item.id) {
         final CinemaEpisode? next = s.nextAfter(e);
-        if (next == null || !NovatubeContentPolicy.allows(
-            name: '${_item.title} ${next.title}',
-            category: widget.seriesTitle?.categoryKey ?? _item.categoryKey)) {
+        if (next == null ||
+            !NovatubeContentPolicy.allows(
+              name: '${_item.title} ${next.title}',
+              category: widget.seriesTitle?.categoryKey ?? _item.categoryKey,
+            )) {
           return null;
         }
         return next;
@@ -995,20 +1020,21 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
                   if (!_castingHandoff && _fatal) _buildError(context),
                   if (CastPlatform.canSend)
                     Positioned(
-                        top: isZunoTouch
-                            ? MediaQuery.paddingOf(context).top +
-                                TvDimens.touchSafeV
-                            : TvDimens.safeV,
-                        right:
-                            isZunoTouch ? TvDimens.touchSafeH : TvDimens.safeH,
-                        child: DesktopCastControls(
-                            key: _desktopCastKey,
-                            controller: _c,
-                            streamUrl: _playingUrl ?? _item.url,
-                            title: _item.title,
-                            imageUrl: null,
-                            prepareHandoff: _prepareCastHandoff,
-                            onHandoffChanged: _onCastHandoff)),
+                      top: isZunoTouch
+                          ? MediaQuery.paddingOf(context).top +
+                              TvDimens.touchSafeV
+                          : TvDimens.safeV,
+                      right: isZunoTouch ? TvDimens.touchSafeH : TvDimens.safeH,
+                      child: DesktopCastControls(
+                        key: _desktopCastKey,
+                        controller: _c,
+                        streamUrl: _playingUrl ?? _item.url,
+                        title: _item.title,
+                        imageUrl: null,
+                        prepareHandoff: _prepareCastHandoff,
+                        onHandoffChanged: _onCastHandoff,
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -1034,9 +1060,11 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
         child: Text(
           _c.cues,
           textAlign: TextAlign.center,
-          style: TvTokens.ui(isZunoTouch ? TvDimens.title : 30,
-                  weight: FontWeight.w600, color: TvTokens.text)
-              .copyWith(
+          style: TvTokens.ui(
+            isZunoTouch ? TvDimens.title : 30,
+            weight: FontWeight.w600,
+            color: TvTokens.text,
+          ).copyWith(
             shadows: const <Shadow>[
               Shadow(blurRadius: 6, color: Colors.black),
               Shadow(offset: Offset(0, 2), blurRadius: 3, color: Colors.black),
@@ -1257,20 +1285,24 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
                       : (double value) {
                           if (_castingHandoff || _c.castSuspended) return;
                           _seekTimer?.cancel();
-                          setState(() => _seekTarget = Duration(
-                                milliseconds:
-                                    (duration.inMilliseconds * value).round(),
-                              ));
+                          setState(
+                            () => _seekTarget = Duration(
+                              milliseconds:
+                                  (duration.inMilliseconds * value).round(),
+                            ),
+                          );
                           _showOverlay();
                         },
                   onChangeEnd: duration <= Duration.zero
                       ? null
                       : (double value) {
                           if (_castingHandoff || _c.castSuspended) return;
-                          _c.seekTo(Duration(
-                            milliseconds:
-                                (duration.inMilliseconds * value).round(),
-                          ));
+                          _c.seekTo(
+                            Duration(
+                              milliseconds:
+                                  (duration.inMilliseconds * value).round(),
+                            ),
+                          );
                           setState(() => _seekTarget = null);
                           _saveProgress();
                         },
@@ -1406,7 +1438,9 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
               borderRadius: BorderRadius.circular(TvTokens.rMenuItem),
               border: _trackIdx == i
                   ? Border.all(
-                      color: TvTokens.accent, width: TvDimens.focusOutline)
+                      color: TvTokens.accent,
+                      width: TvDimens.focusOutline,
+                    )
                   : null,
             ),
             child: Row(

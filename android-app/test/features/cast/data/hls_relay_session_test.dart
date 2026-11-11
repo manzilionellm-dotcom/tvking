@@ -45,6 +45,15 @@ Future<HttpServer> fakeUpstream() async {
 }
 
 void main() {
+  setUp(() {
+    LocalCastServer.instance.advertisedLoopbackForTesting =
+        InternetAddress.loopbackIPv4;
+  });
+  tearDown(() async {
+    LocalCastServer.instance.advertisedLoopbackForTesting = null;
+    await LocalCastServer.instance.stop();
+  });
+
   group('HlsRelaySession', () {
     test('playlist live glissante + discontinuité à la reconnexion',
         () async {
@@ -218,14 +227,12 @@ void main() {
         profile: DlnaProfiles.select(url: 'http://x/1.ts', finalMime: null),
         receiverHost: '127.0.0.1',
       );
-      if (url == null) {
-        markTestSkipped('aucune IP LAN — environnement sans réseau');
-        await upstream.close(force: true);
-        return;
-      }
       try {
-        final Uri headUri = Uri.parse(url).replace(host: '127.0.0.1');
+        expect(url, isNotNull);
+        final Uri headUri = Uri.parse(url!);
+        expect(headUri.host, InternetAddress.loopbackIPv4.address);
         final HttpClient client = HttpClient();
+        addTearDown(() => client.close(force: true));
         final HttpClientRequest req = await client.openUrl('HEAD', headUri);
         final HttpClientResponse resp = await req.close();
         expect(resp.statusCode, 200);
@@ -253,19 +260,13 @@ void main() {
         receiverHost: '127.0.0.1',
         wrapInHls: true,
       );
-      if (url == null) {
-        // Pas d'interface IPv4 non-loopback sur cette machine de test.
-        markTestSkipped('aucune IP LAN — environnement sans réseau');
-        await upstream.close(force: true);
-        return;
-      }
       try {
+        expect(url, isNotNull);
         expect(url, endsWith('.m3u8'));
-        // Le serveur bind 0.0.0.0 → joignable en loopback quel que
-        // soit l'hôte annoncé dans l'URL.
-        final Uri advertised = Uri.parse(url);
-        final Uri playlistUri = advertised.replace(host: '127.0.0.1');
+        final Uri playlistUri = Uri.parse(url!);
+        expect(playlistUri.host, InternetAddress.loopbackIPv4.address);
         final HttpClient client = HttpClient();
+        addTearDown(() => client.close(force: true));
         final HttpClientRequest req = await client.getUrl(playlistUri);
         final HttpClientResponse resp = await req.close();
         expect(resp.statusCode, 200);

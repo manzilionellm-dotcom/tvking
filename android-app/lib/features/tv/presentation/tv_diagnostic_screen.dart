@@ -30,6 +30,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import '../../../core/app/novatube_play_policy.dart';
+import '../../../core/app/novatube_content_policy.dart';
 import '../../../core/i18n/l10n_extension.dart';
 
 import 'package:flutter/services.dart';
@@ -140,14 +141,16 @@ class _TvDiagnosticScreenState extends State<TvDiagnosticScreen> {
   // ------------------------------------------------------------------
   Future<void> _run() async {
     // Chaîne courante : sert d'hôte IPTV (DNS) + d'URL de flux (3 et 5).
-    final List<Channel> chans = PlaylistRepository.instance.currentChannels;
+    final List<Channel> chans = PlaylistRepository.instance.currentChannels
+        .where((Channel channel) => !NovatubeContentPolicy.isAdult(
+            name: channel.name, category: channel.category))
+        .toList(growable: false);
     final Channel? chan = chans.isEmpty
         ? null
         : chans.firstWhere((Channel c) => c.isLive, orElse: () => chans.first);
     final String? streamUrl = chan?.streamUrl;
-    final String? iptvHost = (streamUrl != null)
-        ? Uri.tryParse(streamUrl)?.host
-        : null;
+    final String? iptvHost =
+        (streamUrl != null) ? Uri.tryParse(streamUrl)?.host : null;
 
     await _runCaptive();
     await _runDns(iptvHost);
@@ -195,8 +198,8 @@ class _TvDiagnosticScreenState extends State<TvDiagnosticScreen> {
     }
     _set(_dns, _Stat.running, (context) => context.l10n.tvDiagLookup(host));
     try {
-      final List<InternetAddress> ips = await InternetAddress.lookup(host)
-          .timeout(_kCheckTimeout);
+      final List<InternetAddress> ips =
+          await InternetAddress.lookup(host).timeout(_kCheckTimeout);
       if (ips.isEmpty) {
         _set(_dns, _Stat.fail, (context) => context.l10n.tvDiagNoIp(host));
       } else {
@@ -240,8 +243,8 @@ class _TvDiagnosticScreenState extends State<TvDiagnosticScreen> {
         // et pourrait bloquer la sonde lecteur (5) sur un abonnement 1 connexion.
         final http.Request req = http.Request('GET', uri);
         final http.StreamedResponse g = await req.send().timeout(
-          _kCheckTimeout,
-        );
+              _kCheckTimeout,
+            );
         code = g.statusCode;
         await g.stream.listen((_) {}).cancel();
       }
@@ -296,7 +299,7 @@ class _TvDiagnosticScreenState extends State<TvDiagnosticScreen> {
       final String b = r.body;
       final bool hasSource =
           (b.contains('"source"') && !b.contains('"source":null')) ||
-          (b.contains('"sources"') && b.contains('{'));
+              (b.contains('"sources"') && b.contains('{'));
       _set(
         _source,
         hasSource ? _Stat.ok : _Stat.fail,
@@ -374,15 +377,13 @@ class _TvDiagnosticScreenState extends State<TvDiagnosticScreen> {
   //  Verdict
   // ------------------------------------------------------------------
   void _computeVerdict() {
-    final bool netBlock =
-        _captive.stat == _Stat.fail ||
+    final bool netBlock = _captive.stat == _Stat.fail ||
         _captive.stat == _Stat.timeout ||
         _dns.stat == _Stat.fail ||
         _dns.stat == _Stat.timeout ||
         (_stream.detail(context).contains('456'));
     final bool allOk = _checks.every((_Check c) => c.stat == _Stat.ok);
-    final bool netOk =
-        _captive.stat == _Stat.ok &&
+    final bool netOk = _captive.stat == _Stat.ok &&
         _dns.stat == _Stat.ok &&
         _stream.stat == _Stat.ok &&
         (!NovatubePlayPolicy.allowPanelSources || _source.stat == _Stat.ok);
@@ -454,7 +455,8 @@ class _TvDiagnosticScreenState extends State<TvDiagnosticScreen> {
         k == LogicalKeyboardKey.escape ||
         k == LogicalKeyboardKey.browserBack ||
         k == LogicalKeyboardKey.exit) {
-      TvBackGuard.markHandled(); // un appui = un seul écran (tv_back_guard.dart)
+      TvBackGuard
+          .markHandled(); // un appui = un seul écran (tv_back_guard.dart)
       Navigator.of(context).maybePop();
       return KeyEventResult.handled;
     }

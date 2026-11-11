@@ -4,6 +4,8 @@ import 'package:cryptography/cryptography.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../profiles/data/active_profile.dart';
+import '../../profiles/domain/family_profile.dart';
 import 'playlist_database.dart';
 
 /// Mémoire durable des suppressions, commune au panel et aux sauvegardes.
@@ -27,7 +29,7 @@ abstract final class DeletedSources {
     await remember(<String>[
       for (final MapEntry<Object?, Object?> entry in value.entries)
         if (entry.key is String && entry.value is num) entry.key as String,
-    ]);
+    ], profileId: ProfileIds.origin);
     await prefs.remove(legacyKey);
   }
 
@@ -40,32 +42,40 @@ abstract final class DeletedSources {
     return out;
   }
 
-  static Future<Set<String>> read() async {
+  static Future<Set<String>> read({String? profileId}) async {
+    final String owner = profileId ?? ActiveProfile.instance.id;
     await migrateLegacy();
     final Database db = await PlaylistDatabase.instance.database;
-    final List<Map<String, Object?>> rows = await db.query('deleted_sources');
+    final List<Map<String, Object?>> rows = await db.query('deleted_sources',
+        where: 'profile_id = ?', whereArgs: <Object>[owner]);
     return rows.map((Map<String, Object?> row) => row['fingerprint'] as String).toSet();
   }
 
-  static Future<void> remember(Iterable<String> fingerprints) async {
+  static Future<void> remember(Iterable<String> fingerprints, {String? profileId}) async {
+    final String owner = profileId ?? ActiveProfile.instance.id;
     final List<String> keys = await hashes(fingerprints);
     final Database db = await PlaylistDatabase.instance.database;
-    await db.transaction((Transaction txn) => rememberHashes(txn, keys));
+    await db.transaction((Transaction txn) => rememberHashes(txn, keys, profileId: owner));
   }
 
   /// Sauvegarde v2 : seules des empreintes SHA-256 valides sont acceptées.
   /// On fusionne les refus ; une ancienne sauvegarde ne peut en retirer.
-  static Future<void> restoreHashes(Iterable<Object?> values) async {
+  static Future<void> restoreHashes(Iterable<Object?> values, {String? profileId}) async {
+    final String owner = profileId ?? ActiveProfile.instance.id;
     final RegExp digest = RegExp(r'^[0-9a-f]{64}$');
     final List<String> keys = values.whereType<String>()
         .where((String key) => digest.hasMatch(key)).toSet().toList();
     final Database db = await PlaylistDatabase.instance.database;
-    await db.transaction((Transaction txn) => rememberHashes(txn, keys));
+    await db.transaction((Transaction txn) => rememberHashes(txn, keys, profileId: owner));
   }
 
-  static Future<void> rememberHashes(DatabaseExecutor db, List<String> keys) async {
+  static Future<void> rememberHashes(DatabaseExecutor db, List<String> keys,
+      {String? profileId}) async {
+    final String owner = profileId ?? ActiveProfile.instance.id;
     for (final String key in keys) {
-      await db.insert('deleted_sources', <String, Object?>{'fingerprint': key},
+      await db.insert('deleted_sources', <String, Object?>{
+        'profile_id': owner, 'fingerprint': key,
+      },
           conflictAlgorithm: ConflictAlgorithm.ignore);
     }
   }

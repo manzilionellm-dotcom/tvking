@@ -25,6 +25,8 @@ import 'package:sqflite/sqflite.dart';
 import '../../../core/app/repair_flags.dart';
 import '../../../core/blackbox/black_box.dart';
 import '../../playlists/data/playlist_database.dart';
+import '../../profiles/data/active_profile.dart';
+import '../../profiles/domain/family_profile.dart';
 import '../domain/epg_program.dart';
 import 'epg_batch_pipe.dart';
 import 'epg_fetch.dart';
@@ -39,8 +41,11 @@ class EpgRepository {
   /// Émet à chaque sync EPG → les écrans rebuildent.
   Stream<void> get changes => _changesController.stream;
 
-  bool _initialized = false;
+  Database? _initializedFor;
+  Future<void>? _initializing;
   bool _syncing = false;
+  Future<void> _importTail = Future<void>.value();
+  final Set<String> _removedProfiles = <String>{};
 
   bool get isSyncing => _syncing;
 
@@ -49,12 +54,24 @@ class EpgRepository {
   // ============================================================
 
   Future<void> initialize() async {
-    if (_initialized) return;
     final Database db = await PlaylistDatabase.instance.database;
+    if (identical(_initializedFor, db)) return;
+    if (_initializing != null) await _initializing;
+    if (identical(_initializedFor, db)) return;
+    final Future<void> pending = _initializeDatabase(db);
+    _initializing = pending;
+    try {
+      await pending;
+    } finally {
+      if (identical(_initializing, pending)) _initializing = null;
+    }
+  }
 
+  Future<void> _initializeDatabase(Database db) async {
     await db.execute('''
       CREATE TABLE IF NOT EXISTS epg_programs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        profile_id TEXT NOT NULL DEFAULT 'p1',
         channel_id TEXT NOT NULL,
         start_time INTEGER NOT NULL,
         stop_time INTEGER NOT NULL,
@@ -64,6 +81,15 @@ class EpgRepository {
         icon_url TEXT
       )
     ''');
+    final List<Map<String, Object?>> columns =
+        await db.rawQuery('PRAGMA table_info(epg_programs)');
+    if (!columns.any((Map<String, Object?> row) => row['name'] == 'profile_id')) {
+      // Les guides déjà téléchargés restent ceux du Profil 1.
+      await db.execute(
+          "ALTER TABLE epg_programs ADD COLUMN profile_id TEXT NOT NULL DEFAULT 'p1'");
+    }
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_epg_profile_channel_time '
+        'ON epg_programs(profile_id, channel_id, start_time)');
     await db.execute('''
       CREATE INDEX IF NOT EXISTS idx_epg_channel_time
       ON epg_programs(channel_id, start_time)
@@ -73,7 +99,19 @@ class EpgRepository {
       ON epg_programs(start_time)
     ''');
 
-    _initialized = true;
+    _initializedFor = db;
+  }
+
+  void profileChanged() {
+    if (!_changesController.isClosed) _changesController.add(null);
+  }
+
+  Future<void> dropProfile(String profileId) async {
+    if (profileId == ProfileIds.origin) return;
+    _removedProfiles.add(profileId);
+    await initialize();
+    final Database db = await PlaylistDatabase.instance.database;
+    await db.delete('epg_programs', where: 'profile_id = ?', whereArgs: <Object>[profileId]);
   }
 
   // ============================================================
@@ -98,6 +136,7 @@ class EpgRepository {
   /// • Un ré-import remplace le guide d'une chaîne au lieu de le doubler.
   Future<int> downloadAndImport({
     required String url,
+    String? profileId,
     Set<String>? knownChannelIds,
     Map<String, List<String>>? channelIdMap,
     http.Client? httpClient,
@@ -105,8 +144,31 @@ class EpgRepository {
     Duration connectTimeout = const Duration(seconds: 30),
     Duration idleTimeout = const Duration(seconds: 60),
     bool? inIsolate,
+  }) {
+    final String owner = profileId ?? ActiveProfile.instance.id;
+    // Dix sources peuvent finir leur import presque ensemble. Le guide est
+    // mis en file, jamais abandonné parce qu'un autre import occupe le disque.
+    final Future<int> result = _importTail.then((_) => _downloadAndImport(
+      url: url, profileId: owner, knownChannelIds: knownChannelIds,
+      channelIdMap: channelIdMap, httpClient: httpClient, onProgress: onProgress,
+      connectTimeout: connectTimeout, idleTimeout: idleTimeout, inIsolate: inIsolate,
+    ));
+    _importTail = result.then<void>((_) {}, onError: (Object _, StackTrace __) {});
+    return result;
+  }
+
+  Future<int> _downloadAndImport({
+    required String url,
+    required String profileId,
+    required Set<String>? knownChannelIds,
+    required Map<String, List<String>>? channelIdMap,
+    required http.Client? httpClient,
+    required void Function(int progressBytes)? onProgress,
+    required Duration connectTimeout,
+    required Duration idleTimeout,
+    required bool? inIsolate,
   }) async {
-    if (_syncing) return 0;
+    if (_removedProfiles.contains(profileId)) return 0;
     _syncing = true;
     final Stopwatch sw = Stopwatch()..start();
     _RowSink? staging;
@@ -115,7 +177,7 @@ class EpgRepository {
       // On purge d'abord les vieux programmes pour faire de la place.
       await purgeStale();
       final Database db = await PlaylistDatabase.instance.database;
-      final _RowSink sink = _RowSink(db);
+      final _RowSink sink = _RowSink(db, profileId);
       staging = sink;
       await sink.begin();
       final bool isolate =
@@ -148,14 +210,16 @@ class EpgRepository {
           if (httpClient == null) client.close();
         }
       }
-      await sink.publish();
+      if (_removedProfiles.contains(profileId)) return 0;
+      await sink.publish(cancelled: () => _removedProfiles.contains(profileId));
+      if (_removedProfiles.contains(profileId)) return 0;
       BlackBox.instance.info(
         'EPG',
         'guide : $total programmes pour ${sink.channels} chaîne(s) '
             'en ${sw.elapsedMilliseconds} ms'
             '${isolate ? ' (isolate)' : ''}',
       );
-      if (!_changesController.isClosed) {
+      if (profileId == ActiveProfile.instance.id && !_changesController.isClosed) {
         _changesController.add(null);
       }
       return total;
@@ -250,11 +314,12 @@ class EpgRepository {
     );
   }
 
-  /// Vide complètement la base EPG.
+  /// Vide le guide du profil actif, sans toucher aux autres profils.
   Future<void> clearAll() async {
+    final String profileId = ActiveProfile.instance.id;
     await initialize();
     final Database db = await PlaylistDatabase.instance.database;
-    await db.delete('epg_programs');
+    await db.delete('epg_programs', where: 'profile_id = ?', whereArgs: <Object>[profileId]);
     if (!_changesController.isClosed) _changesController.add(null);
   }
 
@@ -264,32 +329,34 @@ class EpgRepository {
 
   /// Programme actuellement diffusé sur cette chaîne (null si rien).
   Future<EpgProgram?> currentProgram(String channelId) async {
+    final String profileId = ActiveProfile.instance.id;
     await initialize();
     final Database db = await PlaylistDatabase.instance.database;
     final int now = DateTime.now().millisecondsSinceEpoch;
     final List<Map<String, Object?>> rows = await db.query(
       'epg_programs',
-      where: 'channel_id = ? AND start_time <= ? AND stop_time > ?',
-      whereArgs: <Object>[channelId, now, now],
+      where: 'profile_id = ? AND channel_id = ? AND start_time <= ? AND stop_time > ?',
+      whereArgs: <Object>[profileId, channelId, now, now],
       limit: 1,
     );
-    if (rows.isEmpty) return null;
+    if (rows.isEmpty || profileId != ActiveProfile.instance.id) return null;
     return EpgProgram.fromMap(rows.first);
   }
 
   /// Programme suivant après celui en cours (null si rien programmé).
   Future<EpgProgram?> nextProgram(String channelId) async {
+    final String profileId = ActiveProfile.instance.id;
     await initialize();
     final Database db = await PlaylistDatabase.instance.database;
     final int now = DateTime.now().millisecondsSinceEpoch;
     final List<Map<String, Object?>> rows = await db.query(
       'epg_programs',
-      where: 'channel_id = ? AND start_time > ?',
-      whereArgs: <Object>[channelId, now],
+      where: 'profile_id = ? AND channel_id = ? AND start_time > ?',
+      whereArgs: <Object>[profileId, channelId, now],
       orderBy: 'start_time ASC',
       limit: 1,
     );
-    if (rows.isEmpty) return null;
+    if (rows.isEmpty || profileId != ActiveProfile.instance.id) return null;
     return EpgProgram.fromMap(rows.first);
   }
 
@@ -299,16 +366,18 @@ class EpgRepository {
     int startMs,
     int endMs,
   ) async {
+    final String profileId = ActiveProfile.instance.id;
     await initialize();
     final Database db = await PlaylistDatabase.instance.database;
     final List<Map<String, Object?>> rows = await db.query(
       'epg_programs',
       where:
-          'channel_id = ? AND stop_time > ? AND start_time < ?',
-      whereArgs: <Object>[channelId, startMs, endMs],
+          'profile_id = ? AND channel_id = ? AND stop_time > ? AND start_time < ?',
+      whereArgs: <Object>[profileId, channelId, startMs, endMs],
       orderBy: 'start_time ASC',
     );
-    return rows.map(EpgProgram.fromMap).toList(growable: false);
+    return profileId == ActiveProfile.instance.id
+        ? rows.map(EpgProgram.fromMap).toList(growable: false) : const <EpgProgram>[];
   }
 
   /// Récupère les programmes d'aujourd'hui pour une chaîne donnée.
@@ -339,18 +408,20 @@ class EpgRepository {
     int endMs, {
     int limit = 500,
   }) async {
+    final String profileId = ActiveProfile.instance.id;
     try {
       await initialize();
       final Database db = await PlaylistDatabase.instance.database;
       final int cap = limit < 1 ? 1 : (limit > 1000 ? 1000 : limit);
       final List<Map<String, Object?>> rows = await db.query(
         'epg_programs',
-        where: 'stop_time > ? AND start_time < ?',
-        whereArgs: <Object>[startMs, endMs],
+        where: 'profile_id = ? AND stop_time > ? AND start_time < ?',
+        whereArgs: <Object>[profileId, startMs, endMs],
         orderBy: 'start_time ASC',
         limit: cap,
       );
-      return rows.map(EpgProgram.fromMap).toList(growable: false);
+      return profileId == ActiveProfile.instance.id
+          ? rows.map(EpgProgram.fromMap).toList(growable: false) : const <EpgProgram>[];
     } catch (e) {
       if (kDebugMode) debugPrint('[EpgRepository] programmes du soir : $e');
       return const <EpgProgram>[];
@@ -359,11 +430,13 @@ class EpgRepository {
 
   /// Nombre total de programmes en base (pour l'écran EPG).
   Future<int> totalCount() async {
+    final String profileId = ActiveProfile.instance.id;
     await initialize();
     final Database db = await PlaylistDatabase.instance.database;
     final List<Map<String, Object?>> rows =
-        await db.rawQuery('SELECT COUNT(*) as c FROM epg_programs');
-    return (rows.first['c'] as int?) ?? 0;
+        await db.rawQuery('SELECT COUNT(*) as c FROM epg_programs WHERE profile_id = ?',
+            <Object>[profileId]);
+    return profileId == ActiveProfile.instance.id ? ((rows.first['c'] as int?) ?? 0) : 0;
   }
 }
 
@@ -372,11 +445,12 @@ class EpgRepository {
 /// guide. Aucune transaction n'est gardée ouverte pendant le réseau :
 /// les écrans peuvent continuer de lire le dernier guide complet.
 class _RowSink {
-  _RowSink(this.db);
+  _RowSink(this.db, this.profileId);
   static const String _table = 'epg_import_stage';
   static const String _columns =
-      'channel_id, start_time, stop_time, title, description, category, icon_url';
+      'profile_id, channel_id, start_time, stop_time, title, description, category, icon_url';
   final Database db;
+  final String profileId;
   Batch? _batch;
   int _pending = 0;
   final Set<String> _refreshed = <String>{};
@@ -398,7 +472,7 @@ class _RowSink {
       final Batch batch = _batch ??= db.batch();
       final String channelId = row['channel_id'] as String;
       _refreshed.add(channelId);
-      batch.insert(_table, row);
+      batch.insert(_table, <String, Object?>{...row, 'profile_id': profileId});
       _pending++;
       if (_pending >= 500) await flush();
     }
@@ -412,12 +486,16 @@ class _RowSink {
     await batch.commit(noResult: true);
   }
 
-  Future<void> publish() async {
+  Future<void> publish({required bool Function() cancelled}) async {
     await flush();
     await db.transaction((Transaction txn) async {
+      // Le profil peut avoir été supprimé pendant la mise en file SQLite.
+      // Cette garde sous verrou empêche de recréer son guide après le DELETE.
+      if (cancelled()) return;
       await txn.execute(
-        'DELETE FROM epg_programs WHERE channel_id IN '
+        'DELETE FROM epg_programs WHERE profile_id = ? AND channel_id IN '
         '(SELECT DISTINCT channel_id FROM $_table)',
+        <Object>[profileId],
       );
       await txn.execute(
         'INSERT INTO epg_programs ($_columns) SELECT $_columns FROM $_table',

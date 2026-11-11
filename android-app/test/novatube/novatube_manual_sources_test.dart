@@ -61,8 +61,8 @@ http://example.invalid/hidden.ts
     await Future<void>.delayed(Duration.zero);
     await sub.cancel();
     expect(saved.id, isNotNull);
-    expect((await repo.getAllChannels()).map((Channel c) => c.id), <String>['doc']);
-    expect(repo.currentChannels.map((Channel c) => c.id), <String>['doc']);
+    expect((await repo.getAllChannels()).map((Channel c) => c.id), <String>[saved.channelId('doc')]);
+    expect(repo.currentChannels.map((Channel c) => c.id), <String>[saved.channelId('doc')]);
     expect(seen, isNotEmpty);
     expect(seen.expand((List<Channel> list) => list)
         .any((Channel c) => c.genre == ChannelGenre.adult), isFalse);

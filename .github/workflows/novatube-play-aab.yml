@@ -136,7 +136,9 @@ jobs:
         run: |
           set -euo pipefail
           flutter analyze --no-pub --no-fatal-infos --no-fatal-warnings \
-            lib test/novatube test/features/tv/touch/novatube_play_ui_test.dart \
+            lib test/novatube test/features/profiles \
+            test/features/tv/touch/novatube_play_ui_test.dart \
+            test/features/tv/touch/novatube_private_ui_test.dart \
             2>&1 | tee build/novatube/reports/flutter-analyze.txt
 
       - name: Tester les exclusions Play et les fonctions conservées
@@ -147,6 +149,7 @@ jobs:
           flutter test --no-pub --machine \
             test/novatube \
             test/features/tv/touch/novatube_play_ui_test.dart \
+            test/features/tv/touch/novatube_private_ui_test.dart \
             test/features/cast \
             test/features/epg \
             test/features/profiles \

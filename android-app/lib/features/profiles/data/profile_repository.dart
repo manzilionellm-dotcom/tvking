@@ -2,9 +2,9 @@
 //  profile_repository.dart — Profils sur le disque
 // =========================================================
 //  Enregistre le catalogue (qui existe, qui est actif, est-ce
-//  qu'on demande au démarrage). Le chargement est court et
-//  borné par l'appelant : s'il tarde, l'app continue avec le
-//  profil 1. On ne met JAMAIS un écran devant une chaîne.
+//  qu'on demande au démarrage). L'identité est chargée avant
+//  les sources : l'écran ne reçoit jamais le catalogue d'un
+//  autre profil en attendant la lecture du disque.
 //
 //  Supprimer un profil efface SON tiroir seulement. Le profil 1
 //  ne se supprime pas, et ses clés historiques non plus.
@@ -16,7 +16,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/notifications/notification_service.dart';
 import '../../channels/data/recently_watched_repository.dart';
 import '../../cinema/data/watch_progress.dart';
+import '../../cinema/data/cinema_repository.dart';
+import '../../epg/data/epg_repository.dart';
 import '../../playlists/data/favorites_repository.dart';
+import '../../playlists/data/playlist_repository.dart';
+import '../../vod/data/download_repository.dart';
 import '../domain/family_profile.dart';
 import '../domain/profile_catalog.dart';
 import '../domain/profile_policies.dart';
@@ -50,6 +54,7 @@ class ProfileRepository extends ChangeNotifier {
       _catalog = ProfileCatalog.fresh();
     }
     ActiveProfile.instance.set(_catalog.activeId);
+    await _reloadScopedData();
     _ready = true;
     notifyListeners();
   }
@@ -99,6 +104,7 @@ class ProfileRepository extends ChangeNotifier {
     if (next == null) return false;
     _catalog = next;
     ActiveProfile.instance.set(next.activeId);
+    await _reloadScopedData();
     await _persist();
     notifyListeners();
     return true;
@@ -115,6 +121,7 @@ class ProfileRepository extends ChangeNotifier {
     if (next == null) return false;
     _catalog = next;
     ActiveProfile.instance.set(next.activeId);
+    await _reloadScopedData();
     await _persist();
     await _wipe(id);
     notifyListeners();
@@ -138,16 +145,19 @@ class ProfileRepository extends ChangeNotifier {
     }
   }
 
-  /// Efface le tiroir d'un profil qui n'est PAS le profil 1.
-  /// Les chaînes ne sont pas concernées.
+  /// Efface uniquement les sources et données du profil supprimé.
   Future<void> _wipe(String id) async {
     if (ProfileKeys.disposableKeys(id).isEmpty) return;
+    await PlaylistRepository.instance.dropProfile(id);
+    await EpgRepository.instance.dropProfile(id);
+    await DownloadsRepository.instance.dropProfile(id);
     await FavoritesRepository.instance.dropProfile(id);
     await RecentlyWatchedRepository.instance.dropProfile(id);
     await WatchProgressRepository.instance.dropProfile(id);
     await NotificationService.instance.dropBook(id);
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
+      await prefs.remove('novatube.adult.enabled.$id');
       for (final String key in ProfileKeys.disposableKeys(id)) {
         if (key == ProfileKeys.pin(id) ||
             key == ProfileKeys.kidsMode(id) ||
@@ -159,5 +169,30 @@ class ProfileRepository extends ChangeNotifier {
     } catch (e) {
       if (kDebugMode) debugPrint('[Profils] nettoyage : $e');
     }
+  }
+
+  /// Les observateurs vident déjà leurs snapshots lors du changement d'id.
+  /// On attend les lectures locales utiles avant de rendre la main au picker.
+  Future<void> _reloadScopedData() async {
+    CinemaRepository.instance.changeProfile();
+    EpgRepository.instance.profileChanged();
+    await PlaylistRepository.instance.reloadForActiveProfile();
+    await Future.wait(<Future<void>>[
+      FavoritesRepository.instance.reloadForActiveProfile(),
+      RecentlyWatchedRepository.instance.reloadForActiveProfile(),
+      WatchProgressRepository.instance.load(),
+    ]);
+  }
+
+  /// Remet seulement le catalogue en mémoire à zéro ; ne supprime ni source,
+  /// ni clé, ni historique. Les tests fournissent leurs SharedPreferences.
+  @visibleForTesting
+  Future<void> resetForTesting() async {
+    if (_loading != null) await _loading;
+    _catalog = ProfileCatalog.fresh();
+    _loading = null;
+    _ready = false;
+    ActiveProfile.instance.set(ProfileIds.origin);
+    await _reloadScopedData();
   }
 }

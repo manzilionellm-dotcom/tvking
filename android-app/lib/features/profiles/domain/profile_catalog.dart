@@ -1,10 +1,10 @@
 // =========================================================
-//  profile_catalog.dart — La liste des profils (max 4)
+//  profile_catalog.dart — La liste des profils (max 10)
 // =========================================================
 //  Pur Dart : pas de disque, pas d'écran. Le dépôt
 //  (profile_repository) se charge d'enregistrer le JSON.
 //  Ici on décide seulement ce qui est AUTORISÉ :
-//    • 4 profils grand maximum ;
+//    • 10 profils grand maximum ;
 //    • un seul profil Enfants (il doit rester lisible) ;
 //    • on ne supprime JAMAIS le profil 1 (ses données sont
 //      les anciennes données de la box) ;
@@ -22,7 +22,7 @@ class ProfileCatalog {
     required this.askOnStartup,
   });
 
-  static const int maxProfiles = 4;
+  static const int maxProfiles = 10;
 
   final List<FamilyProfile> profiles;
 
@@ -55,7 +55,7 @@ class ProfileCatalog {
         askOnStartup: null,
       );
 
-  /// Ajoute un profil. `null` si c'est refusé (déjà 4, ou un
+  /// Ajoute un profil. `null` si c'est refusé (déjà 10, ou un
   /// deuxième profil Enfants, ou un nom vide / trop long).
   ProfileCatalog? add({
     required String name,
@@ -143,7 +143,7 @@ class ProfileCatalog {
   ///
   ///   • pas de profil 1 → on l'ajoute en tête (ses données
   ///     disque existent peut-être déjà) ;
-  ///   • plus de 4 lignes → on n'en montre que 4, en gardant
+  ///   • plus de 10 lignes → on n'en montre que 10, en gardant
   ///     toujours le profil 1. Les autres restent sur le disque
   ///     (on n'efface pas leurs clés ici) ;
   ///   • id actif inconnu → profil 1.

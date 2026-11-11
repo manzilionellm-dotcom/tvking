@@ -166,6 +166,11 @@ Future<void> bootstrapZunoTv({
   // distante ne conditionne les sources saisies manuellement.
   await SubscriptionState.instance.initialize();
 
+  // Le propriétaire des données est connu AVANT la première lecture SQLite.
+  // Un démarrage sur un autre profil n'affiche jamais les sources du Profil 1.
+  PlaylistRepository.mergeAllPlaylists = true;
+  await ProfileRepository.instance.load();
+
   // 4) Chaînes : on charge les sources manuelles AVANT le 1er rendu.
   //
   //    POURQUOI bloquant ici : au redémarrage, les chaînes sont DÉJÀ en cache
@@ -174,9 +179,7 @@ Future<void> bootstrapZunoTv({
   //    qui s'affichait à chaque démarrage le temps que le cache se charge.
   //    Timeout de sécurité : si la base est lente, on n'empêche JAMAIS l'app
   //    de démarrer (au pire, le cache arrivera via le stream juste après).
-  //    TV = TOUTES les listes fusionnées (Xtream + M3U, jusqu'à 4-5 sources
-  //    posées par le client ou le panel) affichées ensemble, façon TiviMate.
-  PlaylistRepository.mergeAllPlaylists = true;
+  //    Jusqu'à dix sources personnelles DU PROFIL ACTIF sont fusionnées.
   await PlaylistRepository.instance.initialize().timeout(
     const Duration(seconds: 6),
     onTimeout: () {},
@@ -202,16 +205,6 @@ Future<void> bootstrapZunoTv({
         .initialize()
         .then((_) => RecordingRepository.instance.recoverOrphans())
         .then((_) {}),
-  );
-
-  // 6) Profils familiaux. Le défaut SYNCHRONE est le profil 1 (les
-  //    données déjà sur la box). On attend le disque au plus 500 ms :
-  //    s'il tarde, l'app démarre quand même — une chaîne n'est jamais
-  //    bloquée parce qu'aucun profil n'a été choisi. Le choix à l'écran,
-  //    s'il est activé, arrive APRÈS l'accueil (voir TvHubScreen).
-  await ProfileRepository.instance.load().timeout(
-    const Duration(milliseconds: 500),
-    onTimeout: () {},
   );
 
   // 7) Favoris du profil en cours : préchargés pour que le cœur ❤

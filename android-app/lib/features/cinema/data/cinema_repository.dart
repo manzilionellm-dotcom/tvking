@@ -33,12 +33,13 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import '../../../core/app/novatube_content_policy.dart';
-import '../../../core/app/novatube_play_policy.dart';
+import '../../../core/app/novatube_private_features.dart';
 import '../../../core/blackbox/black_box.dart';
 import '../../channels/domain/channel_genre.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../../playlists/data/xtream_client.dart';
 import '../../playlists/domain/playlist.dart';
+import '../../profiles/data/active_profile.dart';
 import '../../tv/core/tv_activity.dart';
 import '../../vod/domain/vod_movie.dart';
 import '../domain/cinema_language.dart';
@@ -190,6 +191,7 @@ class CinemaRepository {
 
   // ---------------- État ----------------
   String _sourcesSig = '';
+  String _sourceProfile = ActiveProfile.instance.id;
   List<CinemaSource> _sources = const <CinemaSource>[];
   final Map<String, XtreamClient> _clients = <String, XtreamClient>{};
 
@@ -239,8 +241,11 @@ class CinemaRepository {
   /// Comptes Xtream du client. Si la liste change (compte ajouté / retiré /
   /// poussé par le panel), tous les caches sont vidés.
   Future<List<CinemaSource>> sources() async {
+    final String owner = ActiveProfile.instance.id;
+    if (_sourceProfile != owner) changeProfile();
     final List<Playlist> all =
         await PlaylistRepository.instance.getAllPlaylists();
+    if (owner != ActiveProfile.instance.id) return const <CinemaSource>[];
     final List<CinemaSource> out = <CinemaSource>[];
     for (final Playlist p in all) {
       if (p.type != PlaylistType.xtream) continue;
@@ -258,7 +263,7 @@ class CinemaRepository {
         password: p.xtreamPassword ?? '',
       ));
     }
-    final String sig = out
+    final String sig = '$owner|' + out
         .map((CinemaSource s) => '${s.key}@${s.server}/${s.username}')
         .join(',');
     if (sig != _sourcesSig) {
@@ -279,6 +284,7 @@ class CinemaRepository {
   }
 
   CinemaSource? sourceByKey(String key) {
+    if (_sourceProfile != ActiveProfile.instance.id) return null;
     for (final CinemaSource s in _sources) {
       if (s.key == key) return s;
     }
@@ -303,7 +309,10 @@ class CinemaRepository {
   /// Une erreur réseau sans rien d'enregistré ne mémorise PAS la liste vide :
   /// sinon l'écran afficherait « aucun film » jusqu'au prochain vidage.
   Future<List<CinemaCategory>> categories(CinemaKind kind) async {
+    final String owner = ActiveProfile.instance.id;
     final List<CinemaSource> srcs = await sources();
+    if (owner != ActiveProfile.instance.id) return const <CinemaCategory>[];
+    final int generation = _catalogGen;
     final List<CinemaCategory>? cached = _cats[kind];
     if (cached != null) {
       if (srcs.isNotEmpty && _needsRefresh(kind)) {
@@ -313,6 +322,9 @@ class CinemaRepository {
     }
 
     final CatalogHeader? header = await _readDiskHeader(kind);
+    if (owner != ActiveProfile.instance.id || generation != _catalogGen) {
+      return const <CinemaCategory>[];
+    }
     if (header != null && header.categories.isNotEmpty) {
       _installHeader(kind, header);
       _persisted[kind] = true;
@@ -325,6 +337,9 @@ class CinemaRepository {
     if (srcs.isEmpty) return const <CinemaCategory>[];
 
     final _CatFetch fetched = await _fetchMerged(kind);
+    if (owner != ActiveProfile.instance.id || generation != _catalogGen) {
+      return const <CinemaCategory>[];
+    }
     final List<CinemaCategory> visible =
         fetched.categories.where(_allowsCategory).toList(growable: false);
     final bool keep = rememberCategoryList(
@@ -364,7 +379,7 @@ class CinemaRepository {
   /// Contrôle identique pour le réseau, le disque, la recherche et la reprise.
   /// Les noms classés adultes sont écartés même si le fournisseur les a placés
   /// dans une catégorie générale ; le code parental ne peut pas les réactiver.
-  static bool _allowsTitle(CinemaTitle title) => NovatubeContentPolicy.allows(
+  static bool _allowsTitle(CinemaTitle title) => NovatubeContentPolicy.canImport(
         name: title.name, category: title.categoryKey,
       );
 
@@ -372,7 +387,7 @@ class CinemaRepository {
       titles.where(_allowsTitle).toList(growable: false);
 
   static bool _allowsCategory(CinemaCategory category) =>
-      NovatubePlayPolicy.allowAdult ||
+      NovatubePrivateFeatures.adultCatalogs ||
       (!category.isAdult && NovatubeContentPolicy.allows(
         name: '', category: category.name,
       ));
@@ -394,10 +409,15 @@ class CinemaRepository {
     CinemaCategory cat, {
     bool forceNetwork = false,
   }) async {
+    final String owner = ActiveProfile.instance.id;
     if (!_allowsCategory(cat)) {
       return const CinemaTitleLoad(titles: <CinemaTitle>[], failed: false);
     }
     await sources();
+    final int generation = _catalogGen;
+    bool stale() => owner != ActiveProfile.instance.id || generation != _catalogGen;
+    const CinemaTitleLoad empty = CinemaTitleLoad(titles: <CinemaTitle>[], failed: false);
+    if (stale()) return empty;
     final String ck = '${kind.name}|${cat.key}';
     if (!forceNetwork) {
       final List<CinemaTitle>? hit = _titles.remove(ck);
@@ -406,6 +426,7 @@ class CinemaRepository {
         return CinemaTitleLoad(titles: hit, fromCache: true, failed: false);
       }
       final List<CinemaTitle>? saved = await _titlesFromDisk(kind, cat.key);
+      if (stale()) return empty;
       if (saved != null) {
         _rememberTitles(ck, saved);
         return CinemaTitleLoad(titles: saved, fromCache: true, failed: false);
@@ -420,8 +441,10 @@ class CinemaRepository {
     }
 
     final _TitleNet net = await _fetchTitlesNetwork(kind, cat);
+    if (stale()) return empty;
     if (net.failed) {
       final List<CinemaTitle>? saved = await _titlesFromDisk(kind, cat.key);
+      if (stale()) return empty;
       if (saved != null) {
         _rememberTitles(ck, saved);
         return CinemaTitleLoad(titles: saved, fromCache: true, failed: false);
@@ -706,6 +729,8 @@ class CinemaRepository {
   // ---------------- Fiches détaillées ----------------
 
   Future<CinemaDetails> movieDetails(CinemaTitle t) async {
+    final String owner = ActiveProfile.instance.id;
+    final int generation = _catalogGen;
     if (!_allowsTitle(t)) return CinemaDetails.empty;
     final CinemaDetails? hit = _details[t.id];
     if (hit != null) return hit;
@@ -716,6 +741,9 @@ class CinemaRepository {
         'get_vod_info',
         extra: <String, String>{'vod_id': t.remoteId},
       );
+      if (owner != ActiveProfile.instance.id || generation != _catalogGen) {
+        return CinemaDetails.empty;
+      }
       final CinemaDetails d =
           b == null ? CinemaDetails.empty : parseVodInfo(decodeJsonBytes(b));
       _details[t.id] = d;
@@ -730,6 +758,7 @@ class CinemaRepository {
   }
 
   Future<SeriesDetails?> seriesDetails(CinemaTitle t) async {
+    final String owner = ActiveProfile.instance.id;
     if (!_allowsTitle(t)) return null;
     final SeriesDetails? hit = _series[t.id];
     if (hit != null) return hit;
@@ -738,6 +767,8 @@ class CinemaRepository {
             .where((CinemaSource x) => x.key == t.sourceKey)
             .firstOrNull;
     if (s == null) return null;
+    if (owner != ActiveProfile.instance.id) return null;
+    final int generation = _catalogGen;
     try {
       final Uint8List? b = await _client(s).fetchActionBytes(
         'get_series_info',
@@ -753,6 +784,7 @@ class CinemaRepository {
           name: t.name,
         ),
       );
+      if (owner != ActiveProfile.instance.id || generation != _catalogGen) return null;
       _series[t.id] = d;
       while (_series.length > 20) {
         _series.remove(_series.keys.first);
@@ -762,6 +794,16 @@ class CinemaRepository {
       BlackBox.instance.warn('CINEMA', 'fiche série ${t.id} : $e');
       return null;
     }
+  }
+
+  /// Retire immédiatement les sources du précédent profil. Le disque reste
+  /// intact : revenir au profil retrouve son catalogue et ses identifiants.
+  void changeProfile() {
+    _sourceProfile = ActiveProfile.instance.id;
+    _sourcesSig = '';
+    _sources = const <CinemaSource>[];
+    _folderSig = null;
+    clear();
   }
 
   /// Vide la MÉMOIRE (comptes changés, ou libération).
@@ -893,7 +935,7 @@ class CinemaRepository {
     };
     final List<VodMovie> out = <VodMovie>[];
     for (final CatalogCategoryRecord category in header.categories) {
-      if (!NovatubePlayPolicy.allowAdult &&
+      if (!NovatubePrivateFeatures.adultCatalogs &&
           (category.isAdult || !NovatubeContentPolicy.allows(
             name: '', category: category.name,
           ))) continue;
@@ -988,7 +1030,7 @@ class CinemaRepository {
     final Set<String> seen = <String>{};
     bool hitCap = false;
     for (final CatalogCategoryRecord category in header.categories) {
-      if (!NovatubePlayPolicy.allowAdult &&
+      if (!NovatubePrivateFeatures.adultCatalogs &&
           (category.isAdult || !NovatubeContentPolicy.allows(
             name: '', category: category.name,
           ))) continue;

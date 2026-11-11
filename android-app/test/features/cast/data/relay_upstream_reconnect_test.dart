@@ -25,12 +25,35 @@ void main() {
   // par un mock qui répond 400 à tout — or ce test exerce de VRAIES
   // sockets loopback (même approche que hls_relay_session_test).
 
+  setUp(() {
+    LocalCastServer.instance.advertisedLoopbackForTesting =
+        InternetAddress.loopbackIPv4;
+  });
+  tearDown(() async {
+    LocalCastServer.instance.advertisedLoopbackForTesting = null;
+    await LocalCastServer.instance.stop();
+  });
+
+  test('adresse annoncée de test limitée au loopback IPv4', () {
+    expect(
+      () => LocalCastServer.instance.advertisedLoopbackForTesting =
+          InternetAddress('192.0.2.1'),
+      throwsArgumentError,
+    );
+    expect(
+      () => LocalCastServer.instance.advertisedLoopbackForTesting =
+          InternetAddress.loopbackIPv6,
+      throwsArgumentError,
+    );
+  });
+
   test('relais live : reconnexion upstream sans couper la TV', () async {
     // Upstream factice : chaque connexion envoie 1000 octets marqués
     // du numéro de connexion, puis FERME (simule la coupure Xtream).
     int connections = 0;
     final HttpServer upstream =
         await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    addTearDown(() => upstream.close(force: true));
     upstream.listen((HttpRequest req) async {
       connections++;
       final int marker = connections;
@@ -56,14 +79,13 @@ void main() {
       receiverHost: '127.0.0.1',
     );
     expect(relayUrl, isNotNull);
+    addTearDown(() => server.clearRelay(relayUrl!));
 
-    // On interroge le serveur via loopback quel que soit l'IP LAN
-    // annoncée (le conteneur de test n'a pas forcément la même
-    // interface que receiverHost).
-    final Uri lanUri = Uri.parse(relayUrl!);
-    final Uri localUri = lanUri.replace(host: '127.0.0.1');
+    final Uri localUri = Uri.parse(relayUrl!);
+    expect(localUri.host, InternetAddress.loopbackIPv4.address);
 
     final HttpClient tv = HttpClient();
+    addTearDown(() => tv.close(force: true));
     final HttpClientRequest get = await tv.getUrl(localUri);
     final HttpClientResponse resp = await get.close();
     expect(resp.statusCode, 200);
@@ -88,6 +110,7 @@ void main() {
         );
       }
     });
+    addTearDown(sub.cancel);
 
     await sawTwo.future.timeout(const Duration(seconds: 15));
     expect(connections, greaterThanOrEqualTo(2));
@@ -95,15 +118,13 @@ void main() {
     // La « TV » zappe : fermer le client doit arrêter la boucle relais.
     await sub.cancel();
     tv.close(force: true);
-    server.clearRelay(relayUrl);
-    await upstream.close(force: true);
-    await server.stop();
   });
 
   test('VOD (Content-Length connu) : pas de reconnexion, EOF propagé',
       () async {
     final HttpServer upstream =
         await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    addTearDown(() => upstream.close(force: true));
     int connections = 0;
     upstream.listen((HttpRequest req) async {
       connections++;
@@ -128,9 +149,12 @@ void main() {
       receiverHost: '127.0.0.1',
     );
     expect(relayUrl, isNotNull);
-    final Uri localUri = Uri.parse(relayUrl!).replace(host: '127.0.0.1');
+    addTearDown(() => server.clearRelay(relayUrl!));
+    final Uri localUri = Uri.parse(relayUrl!);
+    expect(localUri.host, InternetAddress.loopbackIPv4.address);
 
     final HttpClient tv = HttpClient();
+    addTearDown(() => tv.close(force: true));
     final HttpClientRequest get = await tv.getUrl(localUri);
     final HttpClientResponse resp = await get.close();
     final List<int> received = <int>[];
@@ -141,10 +165,5 @@ void main() {
     // exactement le contenu d'UNE connexion upstream.
     expect(received.length, 500);
     expect(connections, 1);
-
-    tv.close(force: true);
-    server.clearRelay(relayUrl);
-    await upstream.close(force: true);
-    await server.stop();
   });
 }

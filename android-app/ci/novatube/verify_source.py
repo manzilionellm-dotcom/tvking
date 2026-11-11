@@ -93,6 +93,8 @@ def verify_source(reviewed_commit: str) -> dict:
                 "Contrat Google Play modifié : " + flag)
     workflow = (REPO_ROOT / ".github/workflows/novatube-play-aab.yml").read_text(encoding="utf-8")
     require("ZUNO_CAST_TEST" not in workflow, "Drapeau de test interdit dans la CI NOVATUBE")
+    require("NOVATUBE_PRIVATE_APK" not in workflow,
+            "La fonction réservée à l'APK privé est interdite dans la CI Google Play")
     require("secrets.ANDROID_" not in workflow and "secrets.GOOGLE_" not in workflow,
             "Secret d'une autre livraison référencé")
     events = workflow.split("\non:\n", 1)[1].split("\npermissions:", 1)[0]

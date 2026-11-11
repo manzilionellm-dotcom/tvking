@@ -232,6 +232,7 @@ class TvCtaButton extends StatelessWidget {
     return TvFocusBuilder(
       autofocus: autofocus,
       scale: TvFocusScale.large,
+      enabled: onSelect != null,
       onSelect: onSelect,
       builder: (BuildContext context, bool focused) {
         return Container(

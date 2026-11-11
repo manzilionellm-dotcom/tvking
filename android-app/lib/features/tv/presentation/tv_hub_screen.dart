@@ -73,6 +73,10 @@ import 'tv_phone_source_qr.dart';
 import '../../profiles/data/profile_repository.dart';
 import '../../profiles/domain/profile_policies.dart';
 import '../../security/data/parental_controls.dart';
+import '../../security/data/adult_access.dart';
+import '../../../core/app/novatube_content_policy.dart';
+import 'tv_adult_screen.dart';
+import 'tv_parental_screen.dart';
 import '../../time_picks/data/time_pick_flag.dart';
 import '../../time_picks/data/time_pick_log.dart';
 import '../../subscription/data/remote_activation_watch.dart';
@@ -100,7 +104,7 @@ import 'tv_shell.dart';
 import 'tv_sources_screen.dart';
 
 /// Les 5 tuiles de l'accueil, de gauche à droite.
-enum _Tile { live, films, series, server, settings }
+enum _Tile { live, films, series, server, settings, adult }
 
 class TvHubScreen extends StatefulWidget {
   const TvHubScreen({super.key});
@@ -272,7 +276,9 @@ class _TvHubScreenState extends State<TvHubScreen> {
     });
     if (NovatubePlayPolicy.allowPromotions) {
       TrendingRepository.instance.start();
-      _trendSub = TrendingRepository.instance.stream.listen((List<String> names) {
+      _trendSub = TrendingRepository.instance.stream.listen((
+        List<String> names,
+      ) {
         if (listEquals(names, _trending)) return;
         _trending = names;
         _schedulePopular();
@@ -430,7 +436,8 @@ class _TvHubScreenState extends State<TvHubScreen> {
         hasNotice: NovatubePlayPolicy.allowPromotions && _noticeVisible,
         hasPromo: NovatubePlayPolicy.allowPromotions && _promo != null,
         hasFeatured: NovatubePlayPolicy.allowPromotions &&
-            _featuredOn && _featuredChannel != null,
+            _featuredOn &&
+            _featuredChannel != null,
         tick: _panelTick,
       );
 
@@ -706,7 +713,15 @@ class _TvHubScreenState extends State<TvHubScreen> {
           ? channelsInIdOrder(_popularIds, byId, hide: kidsHide)
           : const <Channel>[],
       continueWatching: continueForHome(
-        WatchProgressRepository.instance.continueWatching(),
+        WatchProgressRepository.instance
+            .continueWatching()
+            .where(
+              (WatchEntry entry) => !NovatubeContentPolicy.isAdult(
+                name: entry.title,
+                category: entry.categoryKey,
+              ),
+            )
+            .toList(growable: false),
         kidsMode: kids,
       ),
       reminders: ProgramReminderLog.forHome(
@@ -930,7 +945,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
       }
       if (gen != _showGen || !mounted) return;
       final bool kids = !NovatubePlayPolicy.allowAdult ||
-        ParentalControls.instance.kidsMode.value;
+          ParentalControls.instance.kidsMode.value;
       final Map<String, Channel> byId = indexChannelsById(_channels);
       final List<GuideSlot> slots = <GuideSlot>[];
       for (final EpgProgram program in found) {
@@ -1196,9 +1211,33 @@ class _TvHubScreenState extends State<TvHubScreen> {
         page = const TvCinemaScreen(kind: CinemaKind.movie);
       case _Tile.series:
         page = const TvCinemaScreen(kind: CinemaKind.series);
+      case _Tile.adult:
+        _openAdult();
+        return;
     }
     Navigator.of(context)
         .push(MaterialPageRoute<void>(builder: (_) => TvShell(child: page)));
+  }
+
+  List<_Tile> get _visibleTiles => <_Tile>[
+        _Tile.live,
+        _Tile.films,
+        _Tile.series,
+        _Tile.server,
+        _Tile.settings,
+        if (AdultAccess.instance.supported &&
+            !AdultAccess.instance.blockedForKids)
+          _Tile.adult,
+      ];
+
+  Future<void> _openAdult() async {
+    if (!await authorizeAdultAccess(context) || !mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => const TvShell(child: TvAdultScreen()),
+      ),
+    );
+    AdultAccess.instance.lock();
   }
 
   Widget _tileRow(BuildContext context, {required bool compact}) {
@@ -1206,14 +1245,14 @@ class _TvHubScreenState extends State<TvHubScreen> {
       mainAxisSize: MainAxisSize.min,
       mainAxisAlignment: MainAxisAlignment.center,
       children: <Widget>[
-        for (int i = 0; i < _Tile.values.length; i++) ...<Widget>[
+        for (int i = 0; i < _visibleTiles.length; i++) ...<Widget>[
           _HubTile(
-            meta: _tileMeta(context, _Tile.values[i]),
+            meta: _tileMeta(context, _visibleTiles[i]),
             autofocus: !compact && i == 0,
             compact: compact,
-            onSelect: () => _openTile(_Tile.values[i]),
+            onSelect: () => _openTile(_visibleTiles[i]),
           ),
-          if (i != _Tile.values.length - 1) SizedBox(width: compact ? 12 : 22),
+          if (i != _visibleTiles.length - 1) SizedBox(width: compact ? 12 : 22),
         ],
       ],
     );
@@ -1268,10 +1307,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
                 ],
               ),
               const SizedBox(height: TvDimens.touchSafeV),
-              Text(
-                _hello(context),
-                style: TvTokens.display(TvDimens.title),
-              ),
+              Text(_hello(context), style: TvTokens.display(TvDimens.title)),
               if (!hasPersonal) ...<Widget>[
                 const SizedBox(height: TvDimens.rowGap),
                 Text(
@@ -1307,7 +1343,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
                     spacing: TvDimens.touchGap,
                     runSpacing: TvDimens.touchGap,
                     children: <Widget>[
-                      for (final _Tile tile in _Tile.values)
+                      for (final _Tile tile in _visibleTiles)
                         SizedBox(
                           width: tileWidth,
                           child: _TouchHubTile(
@@ -1349,52 +1385,60 @@ class _TvHubScreenState extends State<TvHubScreen> {
               ],
               const SizedBox(height: TvDimens.touchSafeV),
               if (NovatubePlayPolicy.allowPanelSources || source.isNotEmpty)
-              Container(
-                padding: const EdgeInsets.all(TvDimens.touchSafeH),
-                decoration: BoxDecoration(
-                  color: TvTokens.card,
-                  borderRadius: BorderRadius.circular(TvTokens.rCard),
-                  border: Border.all(color: TvTokens.line),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    if (NovatubePlayPolicy.allowPanelSources) ...<Widget>[
-                    Text(
-                      context.l10n.tvActivationCodeLabel,
-                      style:
-                          TvTokens.ui(TvDimens.caption, color: TvTokens.muted),
-                    ),
-                    const SizedBox(height: TvDimens.rowGap),
-                    SelectableText(
-                      displayMac(_mac, showPrefix: RepairFlags.macShowPrefix),
-                      textDirection: TextDirection.ltr,
-                      style: TvTokens.mono(TvDimens.label),
-                    ),
-                    ],
-                    if (license.label.isNotEmpty) ...<Widget>[
-                      const SizedBox(height: TvDimens.touchGap),
-                      Text(
-                        license.label,
-                        style: TvTokens.ui(
-                          TvDimens.label,
-                          weight: FontWeight.w600,
-                          color: license.color,
+                Container(
+                  padding: const EdgeInsets.all(TvDimens.touchSafeH),
+                  decoration: BoxDecoration(
+                    color: TvTokens.card,
+                    borderRadius: BorderRadius.circular(TvTokens.rCard),
+                    border: Border.all(color: TvTokens.line),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      if (NovatubePlayPolicy.allowPanelSources) ...<Widget>[
+                        Text(
+                          context.l10n.tvActivationCodeLabel,
+                          style: TvTokens.ui(
+                            TvDimens.caption,
+                            color: TvTokens.muted,
+                          ),
                         ),
-                      ),
+                        const SizedBox(height: TvDimens.rowGap),
+                        SelectableText(
+                          displayMac(
+                            _mac,
+                            showPrefix: RepairFlags.macShowPrefix,
+                          ),
+                          textDirection: TextDirection.ltr,
+                          style: TvTokens.mono(TvDimens.label),
+                        ),
+                      ],
+                      if (license.label.isNotEmpty) ...<Widget>[
+                        const SizedBox(height: TvDimens.touchGap),
+                        Text(
+                          license.label,
+                          style: TvTokens.ui(
+                            TvDimens.label,
+                            weight: FontWeight.w600,
+                            color: license.color,
+                          ),
+                        ),
+                      ],
+                      if (source.isNotEmpty) ...<Widget>[
+                        const SizedBox(height: TvDimens.touchGap),
+                        Text(
+                          source,
+                          style: TvTokens.ui(
+                            TvDimens.caption,
+                            color: TvTokens.muted,
+                          ),
+                        ),
+                      ],
                     ],
-                    if (source.isNotEmpty) ...<Widget>[
-                      const SizedBox(height: TvDimens.touchGap),
-                      Text(
-                        source,
-                        style: TvTokens.ui(TvDimens.caption,
-                            color: TvTokens.muted),
-                      ),
-                    ],
-                  ],
+                  ),
                 ),
-              ),
-              if (NovatubePlayPolicy.allowPanelSources && _hasLocalSource == false) ...<Widget>[
+              if (NovatubePlayPolicy.allowPanelSources &&
+                  _hasLocalSource == false) ...<Widget>[
                 const SizedBox(height: TvDimens.touchSafeV),
                 Align(child: TvPhoneSourceQr(mac: _mac)),
               ],
@@ -1417,6 +1461,8 @@ class _TvHubScreenState extends State<TvHubScreen> {
         return (icon: Icons.dns_rounded, label: c.l10n.tvNavServer);
       case _Tile.settings:
         return (icon: Icons.settings_rounded, label: c.l10n.tvNavSettings);
+      case _Tile.adult:
+        return (icon: Icons.lock_rounded, label: c.l10n.tvAdultTitle);
     }
   }
 
@@ -1626,7 +1672,8 @@ class _TvHubScreenState extends State<TvHubScreen> {
                             // Aucune playlist sur la box : tuiles un peu plus petites,
                             // et à droite le QR que le téléphone photographie
                             // pour ouvrir « Mon espace » (lien M3U ou Xtream).
-                            : NovatubePlayPolicy.allowPanelSources && _hasLocalSource == false
+                            : NovatubePlayPolicy.allowPanelSources &&
+                                    _hasLocalSource == false
                                 ? Row(
                                     crossAxisAlignment:
                                         CrossAxisAlignment.center,
@@ -1657,22 +1704,22 @@ class _TvHubScreenState extends State<TvHubScreen> {
                       Row(
                         children: <Widget>[
                           if (NovatubePlayPolicy.allowPanelSources) ...<Widget>[
-                          Text(
-                            '${context.l10n.tvActivationCodeLabel} : ',
-                            style: TvTokens.ui(14, color: TvTokens.mutedDim),
-                          ),
-                          Text(
-                            displayMac(
-                              _mac,
-                              showPrefix: RepairFlags.macShowPrefix,
+                            Text(
+                              '${context.l10n.tvActivationCodeLabel} : ',
+                              style: TvTokens.ui(14, color: TvTokens.mutedDim),
                             ),
-                            // Les groupes d'une MAC ne suivent pas le sens de l'UI.
-                            textDirection: TextDirection.ltr,
-                            style: TvTokens.mono(
-                              16,
-                              color: TvTokens.accentBright,
+                            Text(
+                              displayMac(
+                                _mac,
+                                showPrefix: RepairFlags.macShowPrefix,
+                              ),
+                              // Les groupes d'une MAC ne suivent pas le sens de l'UI.
+                              textDirection: TextDirection.ltr,
+                              style: TvTokens.mono(
+                                16,
+                                color: TvTokens.accentBright,
+                              ),
                             ),
-                          ),
                           ],
                           const Spacer(),
                           if (lic.label.isNotEmpty)
@@ -1722,8 +1769,11 @@ class _HubSearchButton extends StatelessWidget {
         final Color fg = focused ? TvTokens.onAccent : TvTokens.text;
         final Widget caption = Text(
           label,
-          style:
-              TvTokens.ui(TvDimens.label, weight: FontWeight.w700, color: fg),
+          style: TvTokens.ui(
+            TvDimens.label,
+            weight: FontWeight.w700,
+            color: fg,
+          ),
         );
         return Container(
           height: touch ? null : 48,
@@ -1775,8 +1825,11 @@ class _ProfileChip extends StatelessWidget {
           tvProfileLabel(context, profile),
           maxLines: touch ? 1 : null,
           overflow: touch ? TextOverflow.ellipsis : null,
-          style:
-              TvTokens.ui(TvDimens.label, weight: FontWeight.w700, color: fg),
+          style: TvTokens.ui(
+            TvDimens.label,
+            weight: FontWeight.w700,
+            color: fg,
+          ),
         );
         return Container(
           constraints: touch
@@ -1814,11 +1867,7 @@ class _ProfileChip extends StatelessWidget {
 /// Carte tactile à hauteur minimale, qui grandit avec son libellé traduit.
 /// Aucun FittedBox : une grande police reste grande et passe à la ligne.
 class _TouchHubTile extends StatelessWidget {
-  const _TouchHubTile({
-    super.key,
-    required this.meta,
-    required this.onSelect,
-  });
+  const _TouchHubTile({super.key, required this.meta, required this.onSelect});
 
   final ({IconData icon, String label}) meta;
   final VoidCallback onSelect;
@@ -1844,8 +1893,11 @@ class _TouchHubTile extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               mainAxisAlignment: MainAxisAlignment.center,
               children: <Widget>[
-                Icon(meta.icon,
-                    size: TvDimens.touchIcon, color: TvTokens.accent),
+                Icon(
+                  meta.icon,
+                  size: TvDimens.touchIcon,
+                  color: TvTokens.accent,
+                ),
                 const SizedBox(height: TvDimens.touchGap),
                 Text(
                   meta.label,

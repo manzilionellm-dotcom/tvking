@@ -158,27 +158,13 @@ List<WatchEntry> continueForHome(
 bool _titleLooksAdult(String title) =>
     ChannelClassifier.classifyGenre(title, '') == ChannelGenre.adult;
 
-/// Mode Enfants sur une chaîne de l'accueil.
-///
-///   • Genre déjà en cache « adulte » → masquée.
-///   • Genre déjà en cache autre chose → visible.
-///   • Pas encore classée → on regarde quelques mots du nom BRUT
-///     (`xxx`, `porn`, `adult`). On ne lance pas le classifieur complet :
-///     ce serait des dizaines de regex par chaîne, sur le fil de l'écran.
-///     Une chaîne au nom neutre reste visible ; le Direct, lui, reste
-///     plus strict le temps du pré-calcul.
-bool hiddenForKids(Channel channel) {
-  final ChannelGenre? known = ChannelPrecompute.cachedGenre(channel);
-  if (known == ChannelGenre.adult) return true;
-  if (known != null) return false;
-  return roughLooksAdult(channel.name) || roughLooksAdult(channel.category);
-}
+/// Contrôle léger sur les valeurs actuelles, avant tout pré-calcul des genres.
+/// Un fournisseur peut changer la catégorie en conservant le même id.
+bool hiddenForKids(Channel channel) =>
+    ChannelClassifier.isAdult(channel.name, channel.category);
 
 /// Vrai si le texte brut contient un marqueur adulte évident.
-bool roughLooksAdult(String raw) {
-  final String s = raw.toLowerCase();
-  return s.contains('xxx') || s.contains('porn') || s.contains('adult');
-}
+bool roughLooksAdult(String raw) => ChannelClassifier.isAdult(raw, '');
 
 // -----------------------------------------------------------------
 //  « Populaire maintenant » — rapprochement léger, hors du fil UI

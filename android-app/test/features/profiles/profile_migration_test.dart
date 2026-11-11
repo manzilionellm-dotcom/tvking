@@ -8,12 +8,14 @@
 //    • favoris et historique historiques sont AJOUTÉS au profil 1,
 //      jamais retirés, et les autres profils ne sont pas touchés ;
 //    • on ne recopie pas une deuxième fois ;
-//    • 4 profils max, un seul Enfants, le profil 1 ne se supprime pas ;
+//    • 10 profils max, un seul Enfants, le profil 1 ne se supprime pas ;
 //    • le choix au démarrage ne s'affiche pas s'il n'y a rien à choisir
 //      ou s'il est désactivé ;
 //    • le profil Enfants ne peut pas couper le mode enfants ;
 //    • une chaîne non classée n'est pas masquée « par précaution ».
 // =========================================================
+
+import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tv_king/features/profiles/domain/family_profile.dart';
@@ -113,17 +115,21 @@ void main() {
   });
 
   group('règles des profils', () {
-    test('4 maximum, un seul Enfants, profil 1 indestructible', () {
+    test('10 maximum, le onzième refusé, un seul Enfants, profil 1 conservé', () {
       ProfileCatalog c = ProfileCatalog.fresh(nowMs: 1);
       c = c.add(name: 'Papa', isKids: false, nowMs: 2)!;
       c = c.add(name: 'Maman', isKids: false, nowMs: 3)!;
       c = c.add(name: 'Enfants', isKids: true, nowMs: 4)!;
-      expect(c.profiles, hasLength(4));
-      expect(c.add(name: 'Invité', isKids: false, nowMs: 5), isNull);
+      // Le second Enfants est refusé même avant d'atteindre le quota.
       expect(c.add(name: 'Encore', isKids: true, nowMs: 6), isNull);
+      for (int i = 5; i <= 10; i++) {
+        c = c.add(name: 'Personne $i', isKids: false, nowMs: i)!;
+      }
+      expect(c.profiles, hasLength(10));
+      expect(c.add(name: 'Onzième', isKids: false, nowMs: 11), isNull);
       expect(c.remove(ProfileIds.origin), isNull);
       final ProfileCatalog? withoutKids =
-          c.remove(c.profiles.last.id);
+          c.remove(c.profiles.firstWhere((FamilyProfile p) => p.isKids).id);
       expect(withoutKids, isNotNull);
       expect(withoutKids!.hasKids, isFalse);
       expect(withoutKids.byId(ProfileIds.origin), isNotNull);
@@ -145,17 +151,17 @@ void main() {
       expect(c.rename(ProfileIds.origin, ''), isNull);
     });
 
-    test('plus de 4 lignes au disque : on garde le profil 1', () {
-      const String raw = '''
-      {"activeId":"p5","profiles":[
-        {"id":"p2","name":"A","avatar":0,"isKids":false,"createdAt":1},
-        {"id":"p3","name":"B","avatar":0,"isKids":false,"createdAt":1},
-        {"id":"p4","name":"C","avatar":0,"isKids":false,"createdAt":1},
-        {"id":"p5","name":"D","avatar":0,"isKids":false,"createdAt":1},
-        {"id":"p6","name":"E","avatar":0,"isKids":true,"createdAt":1}
-      ]}''';
+    test('plus de 10 lignes au disque : on garde le profil 1', () {
+      final String raw = jsonEncode(<String, Object>{
+        'activeId': 'p5',
+        'profiles': <Object>[
+          for (int i = 2; i <= 12; i++)
+            <String, Object>{'id': 'p$i', 'name': 'Personne $i',
+              'avatar': 0, 'isKids': false, 'createdAt': 1},
+        ],
+      });
       final ProfileCatalog c = ProfileCatalog.decode(raw);
-      expect(c.profiles, hasLength(4));
+      expect(c.profiles, hasLength(10));
       expect(c.byId(ProfileIds.origin), isNotNull);
     });
   });

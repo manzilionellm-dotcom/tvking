@@ -28,7 +28,9 @@ class PlaylistDatabase {
   // v5 ajoute `http_headers` à la table channels (User-Agent/Referer par
   // chaîne, imposés par certains panels IPTV — sinon 403 à la lecture).
   // v7 : suppressions durables, partagées par import panel et restauration.
-  static const int _kDbVersion = 7;
+  // v8 : sources et refus de réimport propres à chaque profil. Le défaut p1
+  // conserve toutes les sources déjà présentes, sans renommage ni effacement.
+  static const int _kDbVersion = 8;
 
   Database? _db;
 
@@ -83,6 +85,8 @@ class PlaylistDatabase {
     await db.execute('''
       CREATE TABLE playlists (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        profile_id TEXT NOT NULL DEFAULT 'p1',
+        scoped_channel_ids INTEGER NOT NULL DEFAULT 0,
         name TEXT NOT NULL,
         type TEXT NOT NULL,
         m3u_url TEXT,
@@ -99,6 +103,9 @@ class PlaylistDatabase {
     ''');
     await db.execute(
       'CREATE INDEX idx_playlists_active ON playlists(is_active)',
+    );
+    await db.execute(
+      'CREATE INDEX idx_playlists_profile ON playlists(profile_id, is_active)',
     );
 
     await db.execute('''
@@ -224,8 +231,42 @@ class PlaylistDatabase {
         'ALTER TABLE playlists ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0',
       );
     }
+    if (oldVersion < 8) {
+      await db.execute(
+        "ALTER TABLE playlists ADD COLUMN profile_id TEXT NOT NULL DEFAULT 'p1'",
+      );
+      await db.execute(
+        'ALTER TABLE playlists ADD COLUMN scoped_channel_ids INTEGER NOT NULL DEFAULT 0',
+      );
+      await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_playlists_profile ON playlists(profile_id, is_active)',
+      );
+      final List<Map<String, Object?>> columns =
+          await db.rawQuery('PRAGMA table_info(deleted_sources)');
+      if (!columns.any((Map<String, Object?> row) => row['name'] == 'profile_id')) {
+        await db.execute('ALTER TABLE deleted_sources RENAME TO deleted_sources_v7');
+        await _createDeletedSources(db);
+        await db.execute("INSERT INTO deleted_sources (profile_id, fingerprint) "
+            "SELECT 'p1', fingerprint FROM deleted_sources_v7");
+        await db.execute('DROP TABLE deleted_sources_v7');
+      }
+      // Cette table est créée à la demande par DownloadsRepository. Une
+      // installation sans téléchargement n'en possède donc pas forcément.
+      final List<Map<String, Object?>> downloads =
+          await db.rawQuery('PRAGMA table_info(downloads)');
+      if (downloads.isNotEmpty &&
+          !downloads.any((Map<String, Object?> row) => row['name'] == 'category')) {
+        await db.execute("ALTER TABLE downloads ADD COLUMN category TEXT NOT NULL DEFAULT ''");
+      }
+      if (downloads.isNotEmpty &&
+          !downloads.any((Map<String, Object?> row) => row['name'] == 'profile_id')) {
+        await db.execute("ALTER TABLE downloads ADD COLUMN profile_id TEXT NOT NULL DEFAULT 'p1'");
+      }
+    }
   }
 
   Future<void> _createDeletedSources(Database db) => db.execute(
-      'CREATE TABLE IF NOT EXISTS deleted_sources (fingerprint TEXT PRIMARY KEY)');
+      "CREATE TABLE IF NOT EXISTS deleted_sources ("
+      "profile_id TEXT NOT NULL DEFAULT 'p1', fingerprint TEXT NOT NULL, "
+      "PRIMARY KEY (profile_id, fingerprint))");
 }
