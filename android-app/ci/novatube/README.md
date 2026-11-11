@@ -11,6 +11,21 @@ l'interface. Les prises portent un nom unique, y compris dans la même minute.
 Les HLS chiffrés, à pistes séparées ou en fMP4 non pris en charge sont refusés
 explicitement ; aucun texte de playlist n'est enregistré comme une vidéo.
 
+Pendant la bascule du direct vers le relais, un fournisseur limité à une
+connexion peut encore refuser la nouvelle lecture (401/403/458/509, 429/5xx
+ou coupure). Avant le premier octet média, le relais réessaie donc pendant
+toute la fenêtre du premier média (25 s), avec un délai plafonné ; après le
+premier média, 401/403 redeviennent définitifs et les segments déjà écrits ne
+sont jamais recopiés. Une coupure en plein REC autorise 12 reconnexions,
+comme 7 MOTION.
+
+Chaque REC terminé avec de vraies données, même interrompu par le réseau,
+est **sauvegardé automatiquement** dans la galerie (même export MP4 que le
+bouton ci-dessous). Les sauvegardes passent une par une, attendent un export
+manuel en cours au lieu d'échouer, et ne recopient jamais un fichier déjà
+exporté. Le lecteur affiche le résultat ; en cas d'échec, l'original reste
+dans l'app et le bouton permet de réessayer.
+
 Dans Réglages → Enregistrements, le bouton **Enregistrer dans la galerie
 (MP4)** exporte une prise terminée vers `Movies/NOVATUBE/NOVATUBE_*.mp4`.
 La progression reste visible pendant le traitement. Les doubles exports et
