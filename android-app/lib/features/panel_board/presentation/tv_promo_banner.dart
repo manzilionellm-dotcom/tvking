@@ -14,6 +14,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
+import '../../../core/app/novatube_play_policy.dart';
 import '../../../core/i18n/l10n_extension.dart';
 
 import '../../tv/core/tv_dimens.dart';
@@ -43,6 +44,7 @@ class TvPromoBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (!NovatubePlayPolicy.allowPromotions) return const SizedBox.shrink();
     final bool hasQr = banner.url.isNotEmpty;
     final String watchLabel = banner.cta.trim().isNotEmpty
         ? banner.cta.trim()

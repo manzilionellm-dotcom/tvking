@@ -9,6 +9,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../../../core/app/novatube_play_policy.dart';
 import '../../../core/i18n/l10n_extension.dart';
 
 import '../../../core/blackbox/black_box_upload_flag.dart';
@@ -80,6 +81,7 @@ class _TvExtrasScreenState extends State<TvExtrasScreen> {
   /// chacune se coupe seule. Coupée, elle disparaît de l'accueil, rien
   /// d'autre ne change.
   Future<void> _togglePanel(BoxFlag flag) async {
+    if (!NovatubePlayPolicy.allowPromotions) return;
     await flag.load();
     await flag.set(!flag.value);
     if (mounted) setState(() {});
@@ -126,6 +128,7 @@ class _TvExtrasScreenState extends State<TvExtrasScreen> {
   }
 
   Future<void> _toggleBlackBox() async {
+    if (!NovatubePlayPolicy.allowPanelSources) return;
     await blackBoxUploadFlag.load();
     await blackBoxUploadFlag.set(!blackBoxUploadFlag.value);
     if (mounted) setState(() {});
@@ -200,6 +203,7 @@ class _TvExtrasScreenState extends State<TvExtrasScreen> {
           subtitle: leadHint(code),
           onSelect: _cycleLead,
         ),
+        if (NovatubePlayPolicy.allowPromotions)
         ExtrasRow(
           title: context.l10n.tvServiceNotices,
           subtitle: panelNoticeFlag.value
@@ -207,6 +211,7 @@ class _TvExtrasScreenState extends State<TvExtrasScreen> {
               : context.l10n.tvNoticesOff,
           onSelect: () => _togglePanel(panelNoticeFlag),
         ),
+        if (NovatubePlayPolicy.allowPromotions)
         ExtrasRow(
           title: context.l10n.tvPickOfDay,
           subtitle: featuredFlag.value
@@ -214,6 +219,7 @@ class _TvExtrasScreenState extends State<TvExtrasScreen> {
               : context.l10n.tvFeaturedOff,
           onSelect: () => _togglePanel(featuredFlag),
         ),
+        if (NovatubePlayPolicy.allowPromotions)
         ExtrasRow(
           title: context.l10n.tvBanners,
           subtitle: promoBannerFlag.value
@@ -235,6 +241,7 @@ class _TvExtrasScreenState extends State<TvExtrasScreen> {
               : context.l10n.tvClearVoiceOff,
           onSelect: _toggleVoice,
         ),
+        if (NovatubePlayPolicy.allowPanelSources)
         ExtrasRow(
           title: context.l10n.tvLogToSupport,
           subtitle: boxOn

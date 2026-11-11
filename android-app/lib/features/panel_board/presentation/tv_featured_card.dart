@@ -10,6 +10,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
+import '../../../core/app/novatube_play_policy.dart';
 import '../../../core/i18n/l10n_extension.dart';
 
 import '../../channels/domain/channel.dart';
@@ -31,6 +32,7 @@ class TvFeaturedCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (!NovatubePlayPolicy.allowPromotions) return const SizedBox.shrink();
     final String? logo = channel.logoUrl;
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
@@ -127,6 +129,7 @@ class _Initials extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (!NovatubePlayPolicy.allowPromotions) return const SizedBox.shrink();
     return DecoratedBox(
       decoration: BoxDecoration(
         color: TvTokens.tile,

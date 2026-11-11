@@ -9,6 +9,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+import '../../../core/app/novatube_play_policy.dart';
 import '../../subscription/data/subscription_backend.dart';
 
 @immutable
@@ -48,6 +49,8 @@ class GreetingRepository {
   Greeting? get current => _cached;
 
   Future<Greeting?> fetch() async {
+    if (!NovatubePlayPolicy.allowPanelSources) return null;
+
     try {
       final http.Response resp = await http
           .get(Uri.parse('$kSubscriptionBaseUrl/api/greeting'))

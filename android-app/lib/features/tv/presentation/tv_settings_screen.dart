@@ -14,6 +14,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
+import '../../../core/app/novatube_play_policy.dart';
 import '../../../core/blackbox/black_box.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/i18n/locale_repository.dart';
@@ -65,9 +66,11 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
   @override
   void initState() {
     super.initState();
-    DeviceIdentity.instance.mac.then((String m) {
-      if (mounted) setState(() => _mac = m);
-    });
+    if (NovatubePlayPolicy.allowPanelSources) {
+      DeviceIdentity.instance.mac.then((String m) {
+        if (mounted) setState(() => _mac = m);
+      });
+    }
     StartupPreference.instance.load().then((_) {
       if (mounted) setState(() {});
     });
@@ -77,7 +80,7 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
         if (mounted) setState(() => _remoteAi = on);
       }),
     );
-    _checkUpdate();
+    if (NovatubePlayPolicy.allowSelfUpdate) _checkUpdate();
   }
 
   @override
@@ -98,6 +101,7 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
   }
 
   Future<void> _checkUpdate() async {
+    if (!NovatubePlayPolicy.allowSelfUpdate) return;
     setState(() => _upd = _UpdState.checking);
     try {
       final PackageInfo p = await PackageInfo.fromPlatform();
@@ -116,6 +120,7 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
   }
 
   Future<void> _onUpdatePressed() async {
+    if (!NovatubePlayPolicy.allowSelfUpdate) return;
     switch (_upd) {
       case _UpdState.checking:
       case _UpdState.downloading:
@@ -189,6 +194,7 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
   }
 
   Future<void> _toggleRemoteAi() async {
+    if (!NovatubePlayPolicy.allowPanelSources) return;
     final bool next = !_remoteAi;
     await VoiceRemoteAssist.setEnabled(next);
     if (mounted) setState(() => _remoteAi = VoiceRemoteAssist.enabled);
@@ -214,6 +220,7 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
   }
 
   Future<void> _refresh() async {
+    if (!NovatubePlayPolicy.allowPanelSources) return;
     setState(() => _busy = true);
     await SubscriptionState.instance.syncWithBackend();
     if (mounted) setState(() => _busy = false);
@@ -271,6 +278,7 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
           if (mounted) setState(() {}); // compteurs à jour au retour
         });
     return <_SettingEntry>[
+      if (NovatubePlayPolicy.allowPanelSources)
       _SettingEntry(
         icon: Icons.tv_rounded,
         title: context.l10n.tvDeviceCard,
@@ -331,6 +339,7 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
         description: context.l10n.tvSettingsParental,
         onSelect: () => open(const TvParentalScreen()),
       ),
+      if (NovatubePlayPolicy.allowSelfUpdate)
       _SettingEntry(
         icon: _upd == _UpdState.available
             ? Icons.system_update_rounded
@@ -348,6 +357,7 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
         description: context.l10n.tvSettingsLanguage(_languageLabel(context)),
         onSelect: _nextLanguage,
       ),
+      if (NovatubePlayPolicy.allowPanelSources)
       _SettingEntry(
         icon: Icons.mic_none_rounded,
         title: context.l10n.tvVoiceRemoteAi,

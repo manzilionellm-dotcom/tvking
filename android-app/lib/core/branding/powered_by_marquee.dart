@@ -23,7 +23,7 @@ import '../theme/app_text_styles.dart';
 class PoweredByMarquee extends StatefulWidget {
   const PoweredByMarquee({
     super.key,
-    this.text = 'POWERED BY 7 — THE FEW · NOT FOR EVERYONE',
+    this.text = 'NOVATUBE',
     this.duration = const Duration(seconds: 18),
     this.height = 30,
     this.tinted = true,

@@ -19,6 +19,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../core/app/novatube_play_policy.dart';
 import '../../subscription/data/subscription_backend.dart'
     show kSubscriptionBaseUrl;
 
@@ -90,6 +91,8 @@ abstract final class DefaultServersApi {
   /// Ne throw jamais : en dernier recours renvoie une liste vide,
   /// et l'UI affiche un message « serveurs indisponibles, réessaie ».
   static Future<List<DefaultServer>> fetch({bool forceRefresh = false}) async {
+    if (!NovatubePlayPolicy.allowPanelSources) return const <DefaultServer>[];
+
     if (!forceRefresh && _memoryCache != null) {
       return _memoryCache!;
     }

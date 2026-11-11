@@ -7,10 +7,10 @@
 import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
+import '../../../core/app/novatube_play_policy.dart';
 import '../../device/domain/display_mac.dart';
 import '../../../core/app/repair_flags.dart';
 import '../../../core/i18n/l10n_extension.dart';
-import '../../../core/theme/app_colors.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
@@ -18,12 +18,10 @@ import '../core/tv_tokens.dart';
 import 'tv_touch_components.dart';
 
 /// Nom produit affiché PARTOUT.
-const String kAppName = 'Zuno';
-// Logo « naturel » sur fond TRANSPARENT (pas le carré noir, qui se voyait
-// comme un rectangle plus sombre sur les surfaces gris foncé de l'app).
-// Le carré noir reste UNIQUEMENT pour l'icône de lancement (cf. yaml dédié),
-// où un fond est normal.
-const String _kLogoAsset = 'assets/branding/zuno_logo.png';
+const String kAppName = 'NOVATUBE';
+// Logo validé, utilisé entier. Son cadre conserve les dimensions de la
+// disposition d’origine ; aucune recoloration ni découpe du mot NOVATUBE.
+const String _kLogoAsset = 'assets/branding/novatube_logo.jpg';
 
 /// Numéro WhatsApp business (format international, sans + ni espaces).
 const String kWhatsAppPhone = '447307410512';
@@ -31,6 +29,7 @@ const String kWhatsAppPhone = '447307410512';
 /// Construit le lien wa.me avec un message pré-rempli (code MAC inclus,
 /// sans « MK: » : le panel le remet tout seul, voir display_mac.dart).
 String tvWhatsAppUrl(String mac, AppLocalizations l10n) {
+  if (!NovatubePlayPolicy.allowExternalPurchase) return '';
   final String code = (mac == '…' || mac.isEmpty)
       ? ''
       : displayMac(mac, showPrefix: RepairFlags.macShowPrefix);
@@ -53,6 +52,9 @@ class TvWhatsAppQr extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (!NovatubePlayPolicy.allowExternalPurchase) {
+      return const SizedBox.shrink();
+    }
     return SizedBox(
       width: size + 40,
       child: Column(
@@ -119,18 +121,20 @@ class TvWhatsAppQr extends StatelessWidget {
   }
 }
 
-/// Logo réel « Zuno » : tracé original, blanc cassé et fond transparent.
+/// Logo NOVATUBE validé, couleurs et image entière conservées.
 class TvLogo extends StatelessWidget {
   const TvLogo({super.key, this.width = 180});
   final double width;
 
   @override
   Widget build(BuildContext context) {
+    // Le cadre conserve les proportions de l’ancien logo. La nouvelle
+    // image reste entière et garde ses couleurs, sans masque ni recadrage.
     return Image.asset(_kLogoAsset,
-              width: width,
-              fit: BoxFit.contain,
-              color: AppColors.zunoLogoIvory,
-              colorBlendMode: BlendMode.srcIn);
+        width: width,
+        height: width * 768 / 1246,
+        fit: BoxFit.contain,
+        semanticLabel: kAppName);
   }
 }
 
@@ -185,6 +189,7 @@ class TvPricePill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (!NovatubePlayPolicy.allowExternalPurchase) return const SizedBox.shrink();
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 10),
       decoration: BoxDecoration(

@@ -32,6 +32,8 @@ import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+import '../../../core/app/novatube_content_policy.dart';
+import '../../../core/app/novatube_play_policy.dart';
 import '../../../core/blackbox/black_box.dart';
 import '../../channels/domain/channel_genre.dart';
 import '../../playlists/data/playlist_repository.dart';
@@ -323,13 +325,15 @@ class CinemaRepository {
     if (srcs.isEmpty) return const <CinemaCategory>[];
 
     final _CatFetch fetched = await _fetchMerged(kind);
+    final List<CinemaCategory> visible =
+        fetched.categories.where(_allowsCategory).toList(growable: false);
     final bool keep = rememberCategoryList(
       count: fetched.categories.length,
       anySuccess: fetched.anySuccess,
       anyFailure: fetched.anyFailure,
     );
     if (keep) {
-      _cats[kind] = fetched.categories;
+      _cats[kind] = visible;
       _catKeys[kind] = fetched.keys;
       _loadedAt ??= DateTime.now();
       if (fetched.categories.isNotEmpty) {
@@ -338,8 +342,8 @@ class CinemaRepository {
       }
     }
     BlackBox.instance.info('CINEMA',
-        '${kind.name} : ${fetched.categories.length} catégories (${srcs.length} compte(s))');
-    return fetched.categories;
+        '${kind.name} : ${visible.length} catégories (${srcs.length} compte(s))');
+    return visible;
   }
 
   bool _needsRefresh(CinemaKind kind) {
@@ -356,6 +360,22 @@ class CinemaRepository {
     }
     return true;
   }
+
+  /// Contrôle identique pour le réseau, le disque, la recherche et la reprise.
+  /// Les noms classés adultes sont écartés même si le fournisseur les a placés
+  /// dans une catégorie générale ; le code parental ne peut pas les réactiver.
+  static bool _allowsTitle(CinemaTitle title) => NovatubeContentPolicy.allows(
+        name: title.name, category: title.categoryKey,
+      );
+
+  static List<CinemaTitle> _visibleTitles(List<CinemaTitle> titles) =>
+      titles.where(_allowsTitle).toList(growable: false);
+
+  static bool _allowsCategory(CinemaCategory category) =>
+      NovatubePlayPolicy.allowAdult ||
+      (!category.isAdult && NovatubeContentPolicy.allows(
+        name: '', category: category.name,
+      ));
 
   // ---------------- Titres d'une catégorie ----------------
 
@@ -374,6 +394,9 @@ class CinemaRepository {
     CinemaCategory cat, {
     bool forceNetwork = false,
   }) async {
+    if (!_allowsCategory(cat)) {
+      return const CinemaTitleLoad(titles: <CinemaTitle>[], failed: false);
+    }
     await sources();
     final String ck = '${kind.name}|${cat.key}';
     if (!forceNetwork) {
@@ -412,7 +435,7 @@ class CinemaRepository {
   }
 
   void _rememberTitles(String cacheKey, List<CinemaTitle> titles) {
-    _titles[cacheKey] = titles;
+    _titles[cacheKey] = _visibleTitles(titles);
     while (_titles.length > _kTitleCacheMax) {
       _titles.remove(_titles.keys.first);
     }
@@ -469,7 +492,7 @@ class CinemaRepository {
         fallbackCategoryKey: fallbackKey,
         max: max,
       ),
-    );
+    ).then(_visibleTitles);
   }
 
   /// Requête Xtream avec UN nouvel essai après 1,5 s : un serveur IPTV
@@ -641,7 +664,7 @@ class CinemaRepository {
     final Iterable<CinemaTitle> it = allowedCats == null
         ? sorted
         : sorted.where((CinemaTitle t) => allowedCats.contains(t.categoryKey));
-    return it.take(max).toList(growable: false);
+    return it.where(_allowsTitle).take(max).toList(growable: false);
   }
 
   /// Recherche (tous les mots de la requête doivent être dans le nom).
@@ -663,6 +686,7 @@ class CinemaRepository {
     }
     final List<CinemaTitle> out = <CinemaTitle>[];
     for (final CinemaTitle t in pool) {
+      if (!_allowsTitle(t)) continue;
       if (allowedCats != null && !allowedCats.contains(t.categoryKey)) continue;
       bool ok = true;
       for (final String w in words) {
@@ -682,6 +706,7 @@ class CinemaRepository {
   // ---------------- Fiches détaillées ----------------
 
   Future<CinemaDetails> movieDetails(CinemaTitle t) async {
+    if (!_allowsTitle(t)) return CinemaDetails.empty;
     final CinemaDetails? hit = _details[t.id];
     if (hit != null) return hit;
     final CinemaSource? s = sourceByKey(t.sourceKey);
@@ -705,6 +730,7 @@ class CinemaRepository {
   }
 
   Future<SeriesDetails?> seriesDetails(CinemaTitle t) async {
+    if (!_allowsTitle(t)) return null;
     final SeriesDetails? hit = _series[t.id];
     if (hit != null) return hit;
     final CinemaSource? s = sourceByKey(t.sourceKey) ??
@@ -819,10 +845,10 @@ class CinemaRepository {
       final List<CatalogTitleRecord>? rows =
           await disk.readTitles(folder, kind, categoryKey);
       if (rows == null) return null;
-      return <CinemaTitle>[
+      return _visibleTitles(<CinemaTitle>[
         for (final CatalogTitleRecord row in rows)
           row.toCinemaTitle(sourceByKey(row.sourceKey)),
-      ];
+      ]);
     } catch (e) {
       BlackBox.instance.warn('CINEMA', 'titres en cache « $categoryKey » : $e');
       return null;
@@ -834,7 +860,7 @@ class CinemaRepository {
       for (final CatalogCategoryRecord record in header.categories)
         record.toCinemaCategory(),
     ];
-    _cats[kind] = cats;
+    _cats[kind] = cats.where(_allowsCategory).toList(growable: false);
     final Map<String, Map<String, String>> keys =
         <String, Map<String, String>>{};
     for (final CinemaCategory category in cats) {
@@ -867,12 +893,17 @@ class CinemaRepository {
     };
     final List<VodMovie> out = <VodMovie>[];
     for (final CatalogCategoryRecord category in header.categories) {
+      if (!NovatubePlayPolicy.allowAdult &&
+          (category.isAdult || !NovatubeContentPolicy.allows(
+            name: '', category: category.name,
+          ))) continue;
       final List<CatalogTitleRecord>? rows =
           await disk.readTitles(sig, CinemaKind.movie, category.key);
       if (rows == null) return const <VodMovie>[];
       for (final CatalogTitleRecord row in rows) {
         if (row.kind != CinemaKind.movie) continue;
         final CinemaTitle title = row.toCinemaTitle(sourceByKey(row.sourceKey));
+        if (!_allowsTitle(title)) continue;
         final String? url = title.streamUrl;
         if (url == null || url.isEmpty) continue;
         out.add(VodMovie(
@@ -957,6 +988,10 @@ class CinemaRepository {
     final Set<String> seen = <String>{};
     bool hitCap = false;
     for (final CatalogCategoryRecord category in header.categories) {
+      if (!NovatubePlayPolicy.allowAdult &&
+          (category.isAdult || !NovatubeContentPolicy.allows(
+            name: '', category: category.name,
+          ))) continue;
       if (gen != _indexGen) return false;
       final List<CatalogTitleRecord>? rows =
           await disk.readTitles(folder, kind, category.key);
@@ -967,6 +1002,7 @@ class CinemaRepository {
           break;
         }
         final CinemaTitle title = row.toCinemaTitle(sourceByKey(row.sourceKey));
+        if (!_allowsTitle(title)) continue;
         if (seen.add('${title.searchKey}|${title.year ?? ''}')) acc.add(title);
       }
       if (hitCap) break;
@@ -1043,6 +1079,9 @@ class CinemaRepository {
         ),
     ];
     return _CatFetch(
+      // Conserve les métadonnées exclues en privé : elles identifient aussi
+      // les titres d'une réponse globale après relecture du cache disque.
+      // L'API publique et les téléchargements filtrent séparément.
       categories: out,
       keys: keys,
       anySuccess: anySuccess,
@@ -1083,6 +1122,10 @@ class CinemaRepository {
     CinemaKind kind,
     CatalogCategoryRecord category,
   ) async {
+    if (!_allowsCategory(category.toCinemaCategory())) {
+      return const CatalogFetchResult<List<CatalogTitleRecord>>.ok(
+          <CatalogTitleRecord>[]);
+    }
     final String action =
         kind == CinemaKind.movie ? 'get_vod_streams' : 'get_series';
     if (category.parts.isEmpty) {

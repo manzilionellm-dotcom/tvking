@@ -21,6 +21,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+import '../../../core/app/novatube_play_policy.dart';
 import '../../subscription/data/subscription_backend.dart';
 import '../domain/channel.dart';
 
@@ -119,6 +120,8 @@ abstract final class AiSearchService {
   /// (IA non configurée, réseau, erreur) → l'app retombe sur la recherche
   /// classique.
   static Future<AiSearchFilter?> search(String query) async {
+    if (!NovatubePlayPolicy.allowPanelSources) return null;
+
     final String q = query.trim();
     if (q.isEmpty) return null;
     try {

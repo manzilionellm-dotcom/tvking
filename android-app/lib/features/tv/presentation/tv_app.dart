@@ -15,6 +15,7 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/app/novatube_play_policy.dart';
 import '../../../core/app/repair_flags.dart';
 import '../../../core/app/zuno_edition.dart';
 import '../../cast/data/cast_platform.dart';
@@ -162,7 +163,9 @@ class _RestartWidgetState extends State<RestartWidget> {
 
   void _restart() {
     // Re-synchronise explicitement (au cas où les écrans étaient déjà montés).
-    SubscriptionState.instance.syncWithBackend();
+    if (NovatubePlayPolicy.allowPanelSources) {
+      SubscriptionState.instance.syncWithBackend();
+    }
     // VRAIE mise à jour : nouvelle source du panel + RE-TÉLÉCHARGEMENT des
     // chaînes de chaque source + nouveaux films / séries. Avant, Redémarrer
     // ne relisait que le cache → « le client redémarre et rien n'entre ».
@@ -181,7 +184,8 @@ class _RestartWidgetState extends State<RestartWidget> {
           ListenableBuilder(
             listenable: SignalInbox.instance,
             builder: (BuildContext context, _) {
-              if (!SignalInbox.instance.forceBlocked) {
+              if (!NovatubePlayPolicy.allowSelfUpdate ||
+                  !SignalInbox.instance.forceBlocked) {
                 return const SizedBox.shrink();
               }
               return ForcedUpdateScreen(
@@ -491,6 +495,9 @@ class _TvGateState extends State<TvGate> {
 
   @override
   Widget build(BuildContext context) {
+    // NOVATUBE ouvre le lecteur local dès le premier lancement. Aucun
+    // statut commercial distant ne conditionne l’import ou la lecture.
+    if (NovatubePlayPolicy.isPlay) return const TvHubScreen();
     final SubscriptionStatus s = SubscriptionState.instance.status;
     // L'app s'ouvre dès que l'appareil a un ACCÈS valide : abonnement PAYÉ
     // OU ESSAI EN COURS. Le revendeur peut activer un essai gratuit (Test

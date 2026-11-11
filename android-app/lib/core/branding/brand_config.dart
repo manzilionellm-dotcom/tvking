@@ -13,6 +13,7 @@
 import 'package:flutter/foundation.dart';
 
 import '../flavor/flavor.dart';
+import '../app/novatube_play_policy.dart';
 
 class BrandConfig extends ChangeNotifier {
   BrandConfig._();
@@ -23,6 +24,7 @@ class BrandConfig extends ChangeNotifier {
   /// Nom affiché de l'app : surcharge distante (panel) si présente et non
   /// vide, sinon le nom du flavor courant (The Few).
   String get appName {
+    if (NovatubePlayPolicy.isPlay) return 'NOVATUBE';
     final String? o = _override;
     if (o != null && o.trim().isNotEmpty) return o.trim();
     return FlavorConfig.current.appName;
@@ -30,6 +32,7 @@ class BrandConfig extends ChangeNotifier {
 
   /// Pose (ou retire avec `null`/vide) la surcharge distante du nom.
   void setOverrideName(String? name) {
+    if (NovatubePlayPolicy.isPlay) return;
     final String? next =
         (name == null || name.trim().isEmpty) ? null : name.trim();
     if (next == _override) return;

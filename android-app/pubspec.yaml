@@ -7,12 +7,10 @@
 # =========================================================
 
 name: tv_king
-description: "The Few — lecteur multimédia premium (Not For Everyone)."
+description: "NOVATUBE — lecteur multimédia avec import manuel M3U/Xtream et Cast."
 publish_to: 'none'
-# L'APK TV n'utilise PAS ce numéro. Le workflow build-zuno-tv.yml
-# passe --build-name (plancher 106) et --build-number (secondes
-# epoch, toujours au-dessus de 1790642483).
-version: 0.3.0+11
+# Identité de la nouvelle application NOVATUBE, indépendante des autres apps.
+version: 0.1.5+5
 
 environment:
   sdk: ^3.5.0
@@ -265,26 +263,16 @@ dev_dependencies:
   # juste après `flutter create` pour que l'icône finale soit ember.
   flutter_launcher_icons: ^0.14.1
 
-# ============================================================
-#  Configuration du generateur d'icones (utilisée par
-#  flutter_launcher_icons). L'icône source est notre logo
-#  7 MOTION en JPG (1011×965). Adaptive icon : on utilise la
-#  même image en foreground et un fond noir profond (voidSurface
-#  de LUMIERE) pour respecter l'identité Maison Noir même sous
-#  le mask circulaire Android.
-# ============================================================
+# Logo validé : proportions conservées, marge adaptative de 18 % par côté.
+# Les ressources générées sont versionnées et contrôlées avant compilation.
 flutter_launcher_icons:
   android: true
   ios: false
-  remove_alpha_ios: false
-  # Logo source 7 MOTION (PAS de badge ✓ incrusté — l'user a
-  # finalement demandé que le badge "vérifié" reste UNIQUEMENT
-  # dans l'interface après le texte "MOTION", pas sur l'image
-  # de l'icône launcher Android).
-  image_path: "assets/branding/logo_black7royal.png"
-  min_sdk_android: 21
-  adaptive_icon_background: "#0E0E0E"
-  adaptive_icon_foreground: "assets/branding/logo_black7royal.png"
+  image_path: "assets/branding/novatube_logo.jpg"
+  min_sdk_android: 24
+  adaptive_icon_background: "#050D23"
+  adaptive_icon_foreground: "assets/branding/novatube_logo.jpg"
+  adaptive_icon_foreground_inset: 18
 
 flutter:
   uses-material-design: true
@@ -309,7 +297,7 @@ flutter:
     # pour 7 MOTION (charbon + halo braise + logo en filigrane). Pour changer
     # le fond : remplace ce fichier par ta propre image 1920×1080, rien d'autre.
     - assets/branding/tv_hub_background.jpg
-    - assets/branding/zuno_logo.png
+    - assets/branding/novatube_logo.jpg
     # Son témoin du diagnostic (10 s, AAC-LC 48 kHz stéréo). Généré par
     # ci/audio/make_witness.py : 5 s de voix synthétique, 5 s de bruit.
     # Aucune chaîne, aucune adresse. Sert à entendre si le chemin de

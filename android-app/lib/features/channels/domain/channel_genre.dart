@@ -66,6 +66,12 @@ abstract final class ChannelClassifier {
   //  GENRE
   // -------------------------------------------------------
 
+  /// Même règle adulte que [classifyGenre], sans calculer tous les autres
+  /// genres. Le filtre du catalogue l'utilise sur les métadonnées brutes,
+  /// indépendamment des caches par identifiant et du profil actif.
+  static bool isAdult(String name, String category) =>
+      _containsAny(_normalize('$name $category'), _kAdultKeywords);
+
   static ChannelGenre classifyGenre(String name, String category) {
     final String text = _normalize('$name $category');
 

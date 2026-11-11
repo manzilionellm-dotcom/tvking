@@ -13,6 +13,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../core/app/novatube_play_policy.dart';
 import '../../subscription/data/subscription_backend.dart';
 
 /// Config d'une pub vidéo de démarrage.
@@ -43,6 +44,8 @@ class StartupAdRepository {
 
   /// Récupère la config distante. Retourne la config (mise en cache).
   Future<AdConfig> fetch() async {
+    if (!NovatubePlayPolicy.allowPromotions) return AdConfig.none;
+
     try {
       final http.Response resp = await http
           .get(Uri.parse('$kSubscriptionBaseUrl/api/ad'))
@@ -69,6 +72,8 @@ class StartupAdRepository {
 
   /// Faut-il montrer la pub maintenant ? (selon enabled + fréquence)
   Future<bool> shouldShow() async {
+    if (!NovatubePlayPolicy.allowPromotions) return false;
+
     final AdConfig c = _config;
     if (!c.enabled || c.url.isEmpty) return false;
     if (c.freq != 'daily') return true; // 'always' = à chaque ouverture

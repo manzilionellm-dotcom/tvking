@@ -14,6 +14,7 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../core/app/novatube_play_policy.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
@@ -24,6 +25,7 @@ class SubscriptionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (!NovatubePlayPolicy.allowExternalPurchase) return const SizedBox.shrink();
     return ListenableBuilder(
       listenable: SubscriptionState.instance,
       builder: (BuildContext context, _) {

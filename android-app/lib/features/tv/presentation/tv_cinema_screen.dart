@@ -28,6 +28,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show SliverConstraints;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../core/app/novatube_play_policy.dart';
 import '../../../core/blackbox/black_box.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../../remote/domain/remote_typing_hub.dart';
@@ -236,6 +237,7 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
     final List<CinemaCategory> normal = <CinemaCategory>[];
     final List<CinemaCategory> adult = <CinemaCategory>[];
     for (final CinemaCategory c in _cats) {
+      if (!NovatubePlayPolicy.allowAdult && c.isAdult) continue;
       if (kids && !c.isKids) continue;
       // Filtre de langue : on garde la langue choisie ET les catégories
       // SANS langue détectée (« NETFLIX », « DISNEY+ », « 4K »…) — elles ne
@@ -289,6 +291,7 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
   Future<void> _select(_Sel s, {bool explicit = false}) async {
     _selDebounce?.cancel();
     final CinemaCategory? cat = s.cat;
+    if (!NovatubePlayPolicy.allowAdult && cat?.isAdult == true) return;
     if (cat != null && cat.isAdult && !_adultUnlocked) {
       // Catégorie adulte : jamais sur simple focus, code parental sur OK.
       if (!explicit) return;
@@ -314,6 +317,7 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
   /// pas si le serveur échoue.
   Future<void> _loadCategory(CinemaCategory cat,
       {bool keepVisible = false}) async {
+    if (!NovatubePlayPolicy.allowAdult && cat.isAdult) return;
     final int gen = ++_loadGen;
     if (!keepVisible) {
       setState(() {
@@ -343,7 +347,7 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
 
   Future<void> _retryCategory() async {
     final CinemaCategory? cat = _sel.cat;
-    if (cat == null) return;
+    if (cat == null || (!NovatubePlayPolicy.allowAdult && cat.isAdult)) return;
     final int gen = ++_loadGen;
     setState(() {
       _loadingTitles = true;

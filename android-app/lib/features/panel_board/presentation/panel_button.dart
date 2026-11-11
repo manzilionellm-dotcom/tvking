@@ -8,6 +8,7 @@
 import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
+import '../../../core/app/novatube_play_policy.dart';
 import '../../tv/core/tv_dimens.dart';
 import '../../tv/core/tv_focusable.dart';
 import '../../tv/core/tv_tokens.dart';
@@ -26,6 +27,7 @@ class PanelButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (!NovatubePlayPolicy.allowPromotions) return const SizedBox.shrink();
     return TvFocusable(
       scale: TvFocusScale.small,
       onSelect: onSelect,
@@ -68,6 +70,7 @@ class PanelQr extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (!NovatubePlayPolicy.allowPromotions) return const SizedBox.shrink();
     return Container(
       padding: const EdgeInsets.all(6),
       decoration: BoxDecoration(

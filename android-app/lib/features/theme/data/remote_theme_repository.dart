@@ -18,6 +18,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+import '../../../core/app/novatube_play_policy.dart';
 import '../../../core/app/app_platform.dart';
 import '../../../core/branding/brand_config.dart';
 import '../../../core/theme/accent_controller.dart';
@@ -26,6 +27,8 @@ import '../../subscription/data/subscription_backend.dart';
 abstract final class RemoteThemeRepository {
   /// Récupère le thème distant et l'applique (nom + couleur d'accent).
   static Future<void> fetchAndApply() async {
+    if (!NovatubePlayPolicy.allowPanelSources) return;
+
     try {
       // Thème PAR PLATEFORME : le mobile lit le thème mobile, DeFew TV
       // lit le thème TV (?platform=tv).

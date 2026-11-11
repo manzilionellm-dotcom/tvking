@@ -20,6 +20,7 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../core/app/novatube_play_policy.dart';
 import '../../../core/branding/brand_logo.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/support/support_choice_sheet.dart';
@@ -28,12 +29,14 @@ import '../../../core/theme/app_text_styles.dart';
 import '../../../core/widgets/legal_disclaimer.dart';
 import '../../pricing/presentation/pricing_banner.dart';
 import '../data/subscription_state.dart';
+import '../../tv/presentation/tv_add_source_screen.dart';
 
 class SubscriptionGateScreen extends StatelessWidget {
   const SubscriptionGateScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
+    if (NovatubePlayPolicy.isPlay) return const TvAddSourceScreen();
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
@@ -71,7 +74,7 @@ class SubscriptionGateScreen extends StatelessWidget {
                       children: <Widget>[
                         const BrandLogo.compact(),
                         const SizedBox(height: 14),
-                        Text('The Few',
+                        Text('NOVATUBE',
                             style: AppTextStyles.headlineLarge.copyWith(
                               fontSize: 22,
                               letterSpacing: 4,

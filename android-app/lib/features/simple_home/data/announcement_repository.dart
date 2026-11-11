@@ -22,6 +22,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../core/app/novatube_play_policy.dart';
 import '../../subscription/data/subscription_backend.dart';
 
 /// Une annonce telle que renvoyée par le Worker. Immuable.
@@ -99,6 +100,8 @@ abstract final class AnnouncementRepository {
   /// réseau. On reste SILENCIEUX en cas d'échec : une annonce est un
   /// bonus, jamais bloquant.
   static Future<Announcement?> fetchLatest() async {
+    if (!NovatubePlayPolicy.allowPromotions) return null;
+
     try {
       final http.Response resp = await http
           .get(Uri.parse('$kSubscriptionBaseUrl/api/announcement'))

@@ -25,6 +25,7 @@ import 'package:flutter/foundation.dart';
 /// TV et Red Room ont été retirées. L'enum est conservé (un seul membre)
 /// pour ne pas casser les lecteurs de `FlavorConfig.current.flavor`.
 enum Flavor {
+  novatube,
   sevenMotion,
   // « Privé » — édition 18+ : MÊME app, mais nom/logo dédiés et
   // catalogue limité aux chaînes adultes (adultOnly = true).
@@ -118,6 +119,16 @@ class FlavorConfig {
   // -------------------------------------------------------
   //  Configurations canoniques (utilisées par les mains)
   // -------------------------------------------------------
+
+  /// Produit indépendant : aucune activation distante ni catalogue fourni.
+  static const FlavorConfig novatube = FlavorConfig(
+    flavor: Flavor.novatube,
+    appName: 'NOVATUBE',
+    appTagline: 'NOVATUBE',
+    adultOnly: false,
+    biometricMandatory: false,
+    requireAgeGate: false,
+  );
 
   /// The Few — lecteur IPTV premium grand public.
   static const FlavorConfig sevenMotion = FlavorConfig(

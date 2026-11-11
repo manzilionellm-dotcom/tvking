@@ -25,6 +25,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 
+import '../../../core/app/novatube_play_policy.dart';
 import '../../../core/app/app_platform.dart';
 import '../../../core/app/build_info.dart';
 import '../../device/data/device_identity.dart';
@@ -214,6 +215,8 @@ abstract final class SubscriptionBackend {
   /// (au plus une fois par minute pendant l'attente). La veille
   /// rapide passe par [getStatus], qui ne fait PAS d'écriture.
   static Future<RemoteStatusRead> heartbeat(String mac) async {
+    if (!NovatubePlayPolicy.allowPanelSources) return RemoteStatusRead.offline;
+
     try {
       // Infos appareil → le panel recense chaque Android où l'app tourne
       // (même partagée via WhatsApp), avec son modèle + numéro de build.
@@ -335,6 +338,8 @@ abstract final class SubscriptionBackend {
   /// attendant l'activation. Timeout 6 s. Un échec renvoie
   /// [RemoteStatusRead.offline] : l'état déjà connu reste en place.
   static Future<RemoteStatusRead> getStatus(String mac) async {
+    if (!NovatubePlayPolicy.allowPanelSources) return RemoteStatusRead.offline;
+
     try {
       final http.Response resp = await http
           .get(

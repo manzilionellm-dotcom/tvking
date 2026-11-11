@@ -17,6 +17,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/app/novatube_play_policy.dart';
 import '../../../core/app/zuno_edition.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../../cast/data/cast_platform.dart';
@@ -252,7 +253,8 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
       // Index cinéma indisponible : on garde les chaînes.
       if (kDebugMode) debugPrint('[Voix] cinéma : $e');
     }
-    final bool kids = ParentalControls.instance.kidsMode.value;
+    final bool kids = !NovatubePlayPolicy.allowAdult ||
+        ParentalControls.instance.kidsMode.value;
     final List<VoiceHit> local = searchCatalog(
       query: intent.catalogQuery,
       channels: _channels,
@@ -271,6 +273,7 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
   /// Aide distante : seulement si le réglage est allumé (défaut : non).
   /// Échec réseau → on garde [local]. Jamais pour « ce soir ».
   Future<void> _maybeRemote(int gen, String query, List<VoiceHit> local) async {
+    if (!NovatubePlayPolicy.allowPanelSources) return;
     bool on = false;
     try {
       on = await VoiceRemoteAssist.load();
@@ -282,7 +285,8 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
       final AiSearchFilter? filter = await AiSearchService.search(query)
           .timeout(const Duration(seconds: 8));
       if (filter == null || !mounted || gen != _gen) return;
-      final bool kids = ParentalControls.instance.kidsMode.value;
+      final bool kids = !NovatubePlayPolicy.allowAdult ||
+        ParentalControls.instance.kidsMode.value;
       final List<VoiceHit> remote = <VoiceHit>[];
       for (final Channel c in _channels) {
         if (remote.length >= 24) break;

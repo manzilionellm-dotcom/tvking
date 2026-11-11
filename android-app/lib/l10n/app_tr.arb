@@ -1,6 +1,6 @@
 {
   "@@locale": "tr",
-  "appName": "The Few",
+  "appName": "NOVATUBE",
   "@appName": {
     "description": "Nom de la marque — ne pas traduire."
   },
@@ -107,7 +107,7 @@
   "deviceAuto": "Otomatik",
   "deviceAutoSubtitle": "Otomatik algılama",
   "deviceAutoDesc": "Uygulama ekranından tahmin eder. Emin değilsen ya da birden fazla cihaz kullanıyorsan iyi bir seçim.",
-  "onboardingWelcomeTitle": "The Few'a hoş geldin",
+  "onboardingWelcomeTitle": "NOVATUBE'a hoş geldin",
   "onboardingWelcomeDesc": "Sınırsız sinema. TV için tasarlandı, telefonun için optimize edildi, her yerde güzel.",
   "onboardingLoadTitle": "Listeni yükle",
   "onboardingLoadDesc": "Bir M3U URL'si ya da Xtream bilgilerini yapıştır. Kanalların saniyeler içinde görünür.",
@@ -560,7 +560,7 @@
   "@recTapToStop": {
     "description": "Texte UI : recTapToStop"
   },
-  "pipUnavailable": "Bu cihazda mini pencere kullanılamıyor (Android 8+ gerekir). Ayrıca şuradan Resim içinde resim iznini aç: Ayarlar → Uygulamalar → 7 MOTION → İzinler.",
+  "pipUnavailable": "Bu cihazda mini pencere kullanılamıyor (Android 8+ gerekir). Ayrıca şuradan Resim içinde resim iznini aç: Ayarlar → Uygulamalar → NOVATUBE → İzinler.",
   "@pipUnavailable": {
     "description": "Texte UI : pipUnavailable"
   },
@@ -994,7 +994,7 @@
   "@subAccountFrozen": {
     "description": "Texte UI : subAccountFrozen"
   },
-  "subUnlockAll": "The Few'un tamamını aç",
+  "subUnlockAll": "NOVATUBE'un tamamını aç",
   "@subUnlockAll": {
     "description": "Texte UI : subUnlockAll"
   },
@@ -1106,7 +1106,7 @@
   "@subLoading": {
     "description": "Texte UI : subLoading"
   },
-  "subCardSubPaid": "Desteğin için teşekkürler — tüm özellikler bu cihazda ve diğer The Few kurulumlarında açık.",
+  "subCardSubPaid": "Desteğin için teşekkürler — tüm özellikler bu cihazda ve diğer NOVATUBE kurulumlarında açık.",
   "@subCardSubPaid": {
     "description": "Texte UI : subCardSubPaid"
   },
@@ -1208,7 +1208,7 @@
   "@aboutCreditFonts": {
     "description": "Texte UI : aboutCreditFonts"
   },
-  "aboutLegalNotice": "The Few genel amaçlı bir medya oynatıcıdır. Uygulamayla birlikte hiçbir içerik sunulmaz. Eklediğin kaynaklardan ve bunların ülkendeki yasalara uygunluğundan sen sorumlusun.",
+  "aboutLegalNotice": "NOVATUBE genel amaçlı bir medya oynatıcıdır. Uygulamayla birlikte hiçbir içerik sunulmaz. Eklediğin kaynaklardan ve bunların ülkendeki yasalara uygunluğundan sen sorumlusun.",
   "@aboutLegalNotice": {
     "description": "Texte UI : aboutLegalNotice"
   },
@@ -1506,7 +1506,7 @@
   "@deviceIdLabel": {
     "description": "Texte UI : deviceIdLabel"
   },
-  "deviceIdCaption": "The Few kurulumunu tanımlar. Uygulamanın teknik desteği için bu kodu sakla. Kanallarla ilgili sorular için IPTV sağlayıcına ulaş.",
+  "deviceIdCaption": "NOVATUBE kurulumunu tanımlar. Uygulamanın teknik desteği için bu kodu sakla. Kanallarla ilgili sorular için IPTV sağlayıcına ulaş.",
   "@deviceIdCaption": {
     "description": "Texte UI : deviceIdCaption"
   },
@@ -1969,7 +1969,7 @@
   "tvSearchHint": "Aramak için yaz…",
   "tvNoResult": "Sonuç yok.",
   "tvDeviceAddress": "Bu cihazın adresi (MAC)",
-  "tvDeviceAddressHelp": "Zuno'yu etkinleştirmek için bu adresi bayine ver.",
+  "tvDeviceAddressHelp": "NOVATUBE'yu etkinleştirmek için bu adresi bayine ver.",
   "tvStatus": "Durum",
   "tvStatusPaid": "Abonelik etkin",
   "tvStatusTrial": "Deneme — {days} gün kaldı",
@@ -1999,7 +1999,7 @@
   "tvSearchingChannels": "Kanalların aranıyor…",
   "tvRetry": "Tekrar dene",
   "tvSourceInvalid": "Abonelik alındı ama reddedildi — paneldeki bilgileri kontrol et.",
-  "tvQuitTitle": "Zuno'dan çıkılsın mı?",
+  "tvQuitTitle": "NOVATUBE'dan çıkılsın mı?",
   "tvQuitMessage": "Kanallarını yenilemek için yeniden başlat ya da uygulamadan çık.",
   "tvRestart": "Yeniden başlat",
   "tvQuit": "Çık",
@@ -2482,7 +2482,7 @@
   "tvVoiceRemoteAi": "Uzaktan ses yardımı",
   "tvVoiceRemoteAiOn": "Açık",
   "tvVoiceRemoteAiOff": "Kapalı",
-  "tvVoiceRemoteAiHelp": "Varsayılan olarak kapalı. Uygulamada anahtar yok. « Bu akşam » kutudaki rehberden okunur. Hizmet yanıt vermezse Zuno listenin içinde arar.",
+  "tvVoiceRemoteAiHelp": "Varsayılan olarak kapalı. Uygulamada anahtar yok. « Bu akşam » kutudaki rehberden okunur. Hizmet yanıt vermezse NOVATUBE listenin içinde arar.",
   "tvVoiceCinemaHint": "Filmler veya Diziler'i bir kez aç: arama onları sonra bulur, sen izlerken ağa gerek kalmaz.",
   "tvVoiceOnChannel": "{channel} kanalında",
   "tvDeletePanelSourceConfirm": "“{name}” bu TV’den silinecek. Senkronizasyon veya panelden yeniden gönderme listeyi geri getirmez. Geri getirmek için uygulamada yeniden ekleyin.",
@@ -2606,7 +2606,7 @@
   "tvScreenRefreshOff": "Kapalı, başlangıç ayarı. Ekranı saniyede 24 / 25 / 30 / 50 / 60 kareye uyarlamak için OK. Kendiliğinden açılmaz.",
   "tvContrast": "Kontrast",
   "tvContrastUnavailable": "Kullanılamıyor. Android filtresi doğrudan görüntü yolundan çıkar ve daha önce siyah ekrana yol açmıştır. Kapalı kalır.",
-  "tvUpdateAllowInstall": "Zuno’nun uygulama yüklemesine izin verin: Android’in açtığı ekranda “Zuno”yu etkinleştirin. Sonra geri dönüp OK’ye basın. Güncelleme zaten indirildi.",
+  "tvUpdateAllowInstall": "NOVATUBE’nun uygulama yüklemesine izin verin: Android’in açtığı ekranda “NOVATUBE”yu etkinleştirin. Sonra geri dönüp OK’ye basın. Güncelleme zaten indirildi.",
   "tvFfmpegKeepDecoder": "Bu sürümde FFmpeg video yok. Mevcut kod çözücü korunuyor.",
   "tvFfmpegBoxDecoder": "Bu sürümde FFmpeg video yok. Cihazın kod çözücüsüne dönülüyor.",
   "tvFfmpegUnavailable": "Bu sürümde FFmpeg video yok.",
@@ -2658,8 +2658,8 @@
   "tvLegalSection1Body": "Bu uygulama, kullanıcının sağladığı ses ve video akışlarını oynatan bir medya OYNATICISIDIR. Televizyon kanalı, akış, görsel-işitsel içerik, oynatma listesi (M3U) veya portal bilgisi (Xtream) SAĞLAMAZ, SATMAZ, BARINDIRMAZ, YAYINLAMAZ ve DİZİNLEMEZ. Uygulamaya hiçbir içerik dahil edilmez, önceden yüklenmez veya uygulamayla satılmaz.",
   "tvLegalSection2Title": "2. Kullanıcının sağladığı içerik",
   "tvLegalSection2Body": "Kullanıcı, kendi sağlayıcısından aldığı kaynakları (M3U bağlantıları / Xtream bilgileri) kendisi sağlar. Eklediği, oynattığı veya yayınladığı içeriklerden ve gerekli hak, lisans ve aboneliklere sahip olmaktan YALNIZCA kullanıcı sorumludur.",
-  "tvLegalSection3Title": "3. Abonelik = YAZILIM, içerik değil",
-  "tvLegalSection3Body": "Her ödeme veya abonelik YALNIZCA uygulamanın kullanımını karşılar: oynatıcı ve arayüz, favoriler, yerel kayıt, EPG gibi işlevler. Kanal, akış veya içerik satın alma, satma, kiralama ya da sağlama anlamına ASLA gelmez.",
+  "tvLegalSection3Title": "3. NOVATUBE",
+  "tvLegalSection3Body": "Kendi M3U veya Xtream kaynaklarınızı içe aktarın. NOVATUBE içerik satmaz ve içerik denemesi sunmaz.",
   "tvLegalSection4Title": "4. Yasal kullanım",
   "tvLegalSection4Body": "Kullanıcı ülkesinin yasalarına uymayı ve uygulamayı yasa dışı veya telif hakkı ihlali içeren içeriklere erişmek için kullanmamayı kabul eder. Yasa dışı kullanım kesinlikle yasaktır ve yalnızca kullanıcının sorumluluğundadır.",
   "tvLegalSection5Title": "5. Üçüncü taraf içeriği — sorumluluk kabul edilmez",
@@ -2669,9 +2669,9 @@
   "tvLegalSection7Title": "7. Olduğu gibi sunulur",
   "tvLegalSection7Body": "Uygulama sürekli erişim veya hatasızlık garantisi olmadan olduğu gibi sunulur. Yayıncı işlevlerin bir kısmını veya tümünü değiştirebilir ya da durdurabilir.",
   "tvLegalSection8Title": "8. Kişisel veriler",
-  "tvLegalSection8Body": "Lisans, deneme süresi ve destek yönetimi için teknik bir cihaz kimliği kullanılır. Ayrıntılar: app.7themotion.com/privacy.",
+  "tvLegalSection8Body": "Kaynaklar, favoriler ve profiller bu cihazda saklanır. İçe aktarma, oynatma, EPG ve Cast ağı kullanır. MAC adresi üzerinden içerik atanmaz.",
   "tvLegalSection9Title": "9. Kabul",
-  "tvLegalSection9Body": "Kullanıcı uygulamayı yükleyerek veya kullanarak bu koşulları okuyup kabul ettiğini onaylar. Tam metin: app.7themotion.com/terms",
+  "tvLegalSection9Body": "Eklediğiniz kaynakların haklarından siz sorumlusunuz.",
   "tvLegalLead": "Bu uygulama bir oynatıcıdır. Kanal veya bağlantı satmaz ya da sağlamaz. Kaydırmak için yukarı/aşağı, çıkmak için Geri.",
   "tvAudioSpectrumOn": "Spektrum: ölçüm açık",
   "tvAudioSpectrumOff": "Spektrum: kapalı",
@@ -2682,7 +2682,7 @@
   "tvAudioFallbackSession": "Yedek: tüm oturum",
   "tvAudioFallbackChannel": "Yedek: kanal başına",
   "tvAudioFocusAndroid": "Ses odağı: Android",
-  "tvAudioFocusZuno": "Ses odağı: Zuno",
+  "tvAudioFocusZuno": "Ses odağı: NOVATUBE",
   "tvAudioBackgroundPause": "Uygulama dışında: duraklat",
   "tvAudioBackgroundStop": "Uygulama dışında: durdur",
   "tvAudioHomeLegacy": "Ana ekran: eski mod",
@@ -2696,7 +2696,7 @@
   "tvAudioWitnessPlay": "Test sesini çal",
   "tvAudioScrollHelp": "YUKARI/AŞAĞI: kaydır · CH+/CH−: sayfa",
   "tvAudioWitnessHelp": "10 saniyelik test sesi: konuşma, sonra gürültü. Kanallarla aynı oynatıcı. Boğuk gürültü → cihaz. Net gürültü → kanal.",
-  "tvAudioOptionsHelp": "Spektrum: sonraki kanalda dört noktayı ölçer (kod çözücü, net ses, sessizlik, AudioTrack); sesi değiştirmez. FFmpeg: yazılım kod çözücüsünü yeniden dener; 8 saniyede başlamazsa cihaz devralır. Cihaz AAC: sonraki kanalda ExoPlayer gibi cihazın AAC kod çözücüsünü kullanır. Başarısızsa o açılışı FFmpeg devralır. Yedek: varsayılan “kanal başına”, FFmpeg hatasında yalnızca etkilenen kanalı cihaza geçirir. “Tüm oturum” eski davranıştır: tek hatadan sonra tüm kanallar cihaza geçer. Ses odağı: varsayılan “Zuno”, başka uygulama veya uyarı sesi ses istediğinde sesi kısmaz. “Android” eski davranıştır, sesi %20’ye düşürür. Uygulama dışında: varsayılan “durdur”, çıkışta sesi durdurup serbest bırakır, dönüşte kanalı yeniden açar. “Duraklat” eski davranıştır. Ana ekran: varsayılan “yerel durdurma”, onPause sırasında durur ve uygulama dışarıdayken yeniden açmaz. “Eski mod” Flutter’ı bekler. Geçiş: varsayılan “bekle”, önceki AudioTrack serbest bırakılmadan sonraki kanalı açmaz; çok sayıda geçişten sonra seslerin karışmasını önler. “Hemen” eski davranıştır. Çıkış: varsayılan “akış frekansı”, akışın örnekleme hızını kullanır; çoğu kanalda 44,1 kHz’dir ve cihaz dönüştürür. “48 kHz”, çıkıştan önce uygulamada yeniden örnekler. 44,1 kHz raporunda ses kötüyse deneyin. Test sesi: aynı oynatıcıda 10 saniye konuşma ve gürültü. Sesi değiştirmeden ölçümü açar. Boğuk gürültü → cihaz. Net gürültü → kanal.",
+  "tvAudioOptionsHelp": "Spektrum: sonraki kanalda dört noktayı ölçer (kod çözücü, net ses, sessizlik, AudioTrack); sesi değiştirmez. FFmpeg: yazılım kod çözücüsünü yeniden dener; 8 saniyede başlamazsa cihaz devralır. Cihaz AAC: sonraki kanalda ExoPlayer gibi cihazın AAC kod çözücüsünü kullanır. Başarısızsa o açılışı FFmpeg devralır. Yedek: varsayılan “kanal başına”, FFmpeg hatasında yalnızca etkilenen kanalı cihaza geçirir. “Tüm oturum” eski davranıştır: tek hatadan sonra tüm kanallar cihaza geçer. Ses odağı: varsayılan “NOVATUBE”, başka uygulama veya uyarı sesi ses istediğinde sesi kısmaz. “Android” eski davranıştır, sesi %20’ye düşürür. Uygulama dışında: varsayılan “durdur”, çıkışta sesi durdurup serbest bırakır, dönüşte kanalı yeniden açar. “Duraklat” eski davranıştır. Ana ekran: varsayılan “yerel durdurma”, onPause sırasında durur ve uygulama dışarıdayken yeniden açmaz. “Eski mod” Flutter’ı bekler. Geçiş: varsayılan “bekle”, önceki AudioTrack serbest bırakılmadan sonraki kanalı açmaz; çok sayıda geçişten sonra seslerin karışmasını önler. “Hemen” eski davranıştır. Çıkış: varsayılan “akış frekansı”, akışın örnekleme hızını kullanır; çoğu kanalda 44,1 kHz’dir ve cihaz dönüştürür. “48 kHz”, çıkıştan önce uygulamada yeniden örnekler. 44,1 kHz raporunda ses kötüyse deneyin. Test sesi: aynı oynatıcıda 10 saniye konuşma ve gürültü. Sesi değiştirmeden ölçümü açar. Boğuk gürültü → cihaz. Net gürültü → kanal.",
   "tvAudioNoReports": "Rapor yok. Bir kanal açın: oynatıcı codec, kod çözücü ve çıkışı kaydeder. Spektrum yalnızca etkinleştirilirse ölçülür.",
   "tvAudioTestSound": "Test sesi",
   "tvDiagCaptive": "1. Ağ giriş portalı (204)",
@@ -2724,7 +2724,7 @@
   "tvDiagNetworkBlocked": "AĞ ENGELİ",
   "tvDiagPlayerFailed": "OYNATICI HATASI",
   "tvDiagPartial": "KISMİ TANILAMA",
-  "tvDiagTitle": "CİHAZ TANILAMASI — Zuno",
+  "tvDiagTitle": "CİHAZ TANILAMASI — NOVATUBE",
   "tvDiagHelp": "TV’nin akışı kendi IP adresinden oynatıp oynatamadığını sınar.",
   "tvBackToExit": "Çıkmak için GERİ",
   "tvDiagCaptiveLikely": "HTTP {status}, {bytes} bayt → olası ağ giriş portalı",
@@ -2738,7 +2738,7 @@
   "tvSizeMb": "{size} MB",
   "tvSizeGb": "{size} GB",
   "tvDurationHm": "{hours} sa {minutes} dk",
-  "tvWhatsAppActivationRequest": "Merhaba, Zuno’yu etkinleştirmek istiyorum.",
+  "tvWhatsAppActivationRequest": "Merhaba, NOVATUBE’yu etkinleştirmek istiyorum.",
   "castErrorTimeoutRetry": "TV çok yavaş yanıt veriyor. Tekrar deneyin veya başka bir TV seçin.",
   "castProgressRelay": "Aktarım hazırlanıyor…",
   "castFriendlyNetworkFail": "TV’ye bağlanılamadı.",

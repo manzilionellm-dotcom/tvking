@@ -1,4 +1,4 @@
-// Entrée ZUNO pour téléphones et tablettes. La variante est explicite :
+// Entrée NOVATUBE pour téléphones et tablettes. Le chemin validé est conservé :
 // même une tablette large garde son bouton Cast. Le lecteur Android reste
 // le lecteur natif ZUNO ; le pont Google Cast est fourni par son packaging.
 import 'core/app/guarded_main.dart';

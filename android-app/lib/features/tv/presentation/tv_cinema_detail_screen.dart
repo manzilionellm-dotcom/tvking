@@ -17,6 +17,8 @@ import 'dart:async';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
+import '../../../core/app/novatube_content_policy.dart';
+import 'tv_content_unavailable.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import 'tv_localized_format.dart';
 import '../../cinema/data/cinema_downloads.dart';
@@ -324,7 +326,13 @@ class TvMovieDetailScreen extends StatefulWidget {
   final CinemaTitle title;
 
   @override
-  State<TvMovieDetailScreen> createState() => _TvMovieDetailScreenState();
+  State<TvMovieDetailScreen> createState() {
+    if (!NovatubeContentPolicy.allows(
+        name: title.name, category: title.categoryKey)) {
+      return NovatubeUnavailableState<TvMovieDetailScreen>();
+    }
+    return _TvMovieDetailScreenState();
+  }
 }
 
 class _TvMovieDetailScreenState extends State<TvMovieDetailScreen> {
@@ -535,7 +543,13 @@ class TvSeriesScreen extends StatefulWidget {
   final CinemaTitle title;
 
   @override
-  State<TvSeriesScreen> createState() => _TvSeriesScreenState();
+  State<TvSeriesScreen> createState() {
+    if (!NovatubeContentPolicy.allows(
+        name: title.name, category: title.categoryKey)) {
+      return NovatubeUnavailableState<TvSeriesScreen>();
+    }
+    return _TvSeriesScreenState();
+  }
 }
 
 class _TvSeriesScreenState extends State<TvSeriesScreen> {

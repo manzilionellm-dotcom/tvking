@@ -1,6 +1,6 @@
 {
   "@@locale": "nl",
-  "appName": "The Few",
+  "appName": "NOVATUBE",
   "@appName": {
     "description": "Nom de la marque — ne pas traduire."
   },
@@ -107,7 +107,7 @@
   "deviceAuto": "Auto",
   "deviceAutoSubtitle": "Automatische detectie",
   "deviceAutoDesc": "De app raadt het op basis van je scherm. Goede keuze als je het niet weet, of als je meerdere apparaten gebruikt.",
-  "onboardingWelcomeTitle": "Welkom bij The Few",
+  "onboardingWelcomeTitle": "Welkom bij NOVATUBE",
   "onboardingWelcomeDesc": "Cinema zonder grenzen. Gemaakt voor tv, geoptimaliseerd voor je telefoon, overal mooi.",
   "onboardingLoadTitle": "Laad je playlist",
   "onboardingLoadDesc": "Plak een M3U-URL of je Xtream-gegevens. Je zenders verschijnen binnen enkele seconden.",
@@ -560,7 +560,7 @@
   "@recTapToStop": {
     "description": "Texte UI : recTapToStop"
   },
-  "pipUnavailable": "Mini-venster niet beschikbaar op dit apparaat (vereist Android 8+). Zet ook de toestemming Picture-in-picture aan via: Instellingen → Apps → 7 MOTION → Machtigingen.",
+  "pipUnavailable": "Mini-venster niet beschikbaar op dit apparaat (vereist Android 8+). Zet ook de toestemming Picture-in-picture aan via: Instellingen → Apps → NOVATUBE → Machtigingen.",
   "@pipUnavailable": {
     "description": "Texte UI : pipUnavailable"
   },
@@ -994,7 +994,7 @@
   "@subAccountFrozen": {
     "description": "Texte UI : subAccountFrozen"
   },
-  "subUnlockAll": "Ontgrendel alles van The Few",
+  "subUnlockAll": "Ontgrendel alles van NOVATUBE",
   "@subUnlockAll": {
     "description": "Texte UI : subUnlockAll"
   },
@@ -1106,7 +1106,7 @@
   "@subLoading": {
     "description": "Texte UI : subLoading"
   },
-  "subCardSubPaid": "Bedankt voor je steun — alle functies zijn ontgrendeld op dit apparaat en op je andere The Few-installaties.",
+  "subCardSubPaid": "Bedankt voor je steun — alle functies zijn ontgrendeld op dit apparaat en op je andere NOVATUBE-installaties.",
   "@subCardSubPaid": {
     "description": "Texte UI : subCardSubPaid"
   },
@@ -1208,7 +1208,7 @@
   "@aboutCreditFonts": {
     "description": "Texte UI : aboutCreditFonts"
   },
-  "aboutLegalNotice": "The Few is een generieke mediaspeler. De app bevat geen content. Jij bent verantwoordelijk voor de bronnen die je toevoegt en voor het naleven van de wetgeving in jouw land.",
+  "aboutLegalNotice": "NOVATUBE is een generieke mediaspeler. De app bevat geen content. Jij bent verantwoordelijk voor de bronnen die je toevoegt en voor het naleven van de wetgeving in jouw land.",
   "@aboutLegalNotice": {
     "description": "Texte UI : aboutLegalNotice"
   },
@@ -1506,7 +1506,7 @@
   "@deviceIdLabel": {
     "description": "Texte UI : deviceIdLabel"
   },
-  "deviceIdCaption": "Identificeert je The Few-installatie. Bewaar deze code voor de technische support van de app. Voor vragen over zenders neem je contact op met je IPTV-aanbieder.",
+  "deviceIdCaption": "Identificeert je NOVATUBE-installatie. Bewaar deze code voor de technische support van de app. Voor vragen over zenders neem je contact op met je IPTV-aanbieder.",
   "@deviceIdCaption": {
     "description": "Texte UI : deviceIdCaption"
   },
@@ -1969,7 +1969,7 @@
   "tvSearchHint": "Typ om te zoeken…",
   "tvNoResult": "Geen resultaten.",
   "tvDeviceAddress": "Adres van dit apparaat (MAC)",
-  "tvDeviceAddressHelp": "Geef dit adres aan je reseller om Zuno te activeren.",
+  "tvDeviceAddressHelp": "Geef dit adres aan je reseller om NOVATUBE te activeren.",
   "tvStatus": "Status",
   "tvStatusPaid": "Abonnement actief",
   "tvStatusTrial": "Proefperiode — nog {days} dag(en)",
@@ -1999,7 +1999,7 @@
   "tvSearchingChannels": "Je zenders zoeken…",
   "tvRetry": "Opnieuw proberen",
   "tvSourceInvalid": "Abonnement ontvangen maar geweigerd — controleer de inloggegevens in het panel.",
-  "tvQuitTitle": "Zuno afsluiten?",
+  "tvQuitTitle": "NOVATUBE afsluiten?",
   "tvQuitMessage": "Herstart om je zenders te vernieuwen, of sluit de app af.",
   "tvRestart": "Herstarten",
   "tvQuit": "Afsluiten",
@@ -2482,7 +2482,7 @@
   "tvVoiceRemoteAi": "Externe spraakhulp",
   "tvVoiceRemoteAiOn": "Aan",
   "tvVoiceRemoteAiOff": "Uit",
-  "tvVoiceRemoteAiHelp": "Standaard uit. Geen sleutel in de app. „Vanavond“ komt uit je gids, op de box. Als de dienst niet antwoordt, zoekt Zuno in je lijst.",
+  "tvVoiceRemoteAiHelp": "Standaard uit. Geen sleutel in de app. „Vanavond“ komt uit je gids, op de box. Als de dienst niet antwoordt, zoekt NOVATUBE in je lijst.",
   "tvVoiceCinemaHint": "Open één keer Films of Series: de zoekfunctie vindt ze daarna, zonder netwerk terwijl je kijkt.",
   "tvVoiceOnChannel": "Op {channel}",
   "tvDeletePanelSourceConfirm": "‘{name}’ wordt van deze tv verwijderd. Synchronisatie of opnieuw versturen via het paneel herstelt de lijst niet. Voeg de lijst opnieuw toe in de app om haar te herstellen.",
@@ -2606,7 +2606,7 @@
   "tvScreenRefreshOff": "Uit, de oorspronkelijke instelling. OK om het scherm op 24 / 25 / 30 / 50 / 60 beelden per seconde af te stemmen. Gaat nooit vanzelf aan.",
   "tvContrast": "Contrast",
   "tvContrastUnavailable": "Niet beschikbaar. Het Android-filter verlaat het directe beeldpad en heeft zwarte schermen veroorzaakt. Het blijft uit.",
-  "tvUpdateAllowInstall": "Sta Zuno toe apps te installeren: schakel ‘Zuno’ in op het scherm dat Android heeft geopend. Ga terug en druk op OK. De update is al gedownload.",
+  "tvUpdateAllowInstall": "Sta NOVATUBE toe apps te installeren: schakel ‘NOVATUBE’ in op het scherm dat Android heeft geopend. Ga terug en druk op OK. De update is al gedownload.",
   "tvFfmpegKeepDecoder": "FFmpeg-video ontbreekt in deze versie. De huidige decoder blijft actief.",
   "tvFfmpegBoxDecoder": "FFmpeg-video ontbreekt in deze versie. Terug naar de decoder van het apparaat.",
   "tvFfmpegUnavailable": "FFmpeg-video ontbreekt in deze versie.",
@@ -2658,8 +2658,8 @@
   "tvLegalSection1Body": "Deze toepassing is een mediaspeler voor audio- en videostreams die de gebruiker levert. Ze LEVERT, VERKOOPT, HOST, ZENDT of INDEXEERT GEEN televisiezenders, streams, audiovisuele inhoud, afspeellijsten (M3U) of portalgegevens (Xtream). Er wordt geen inhoud meegeleverd, vooraf geladen of met de toepassing verkocht.",
   "tvLegalSection2Title": "2. Inhoud van de gebruiker",
   "tvLegalSection2Body": "De gebruiker levert eigen bronnen (M3U-links / Xtream-gegevens) van een eigen aanbieder. De gebruiker is ALS ENIGE verantwoordelijk voor toegevoegde, afgespeelde of uitgezonden inhoud en voor de benodigde rechten, licenties en abonnementen.",
-  "tvLegalSection3Title": "3. Abonnement = SOFTWARE, geen inhoud",
-  "tvLegalSection3Body": "Betalingen of abonnementen vergoeden ALLEEN het gebruik van de app: de speler en functies zoals interface, favorieten, lokale opname en EPG. Ze vormen NOOIT de aankoop, verkoop, verhuur of levering van zenders, streams of inhoud.",
+  "tvLegalSection3Title": "3. NOVATUBE",
+  "tvLegalSection3Body": "Importeer je eigen M3U- of Xtream-bronnen. NOVATUBE verkoopt geen inhoud en biedt geen proefperiodes voor inhoud aan.",
   "tvLegalSection4Title": "4. Rechtmatig gebruik",
   "tvLegalSection4Body": "De gebruiker verbindt zich ertoe de wetten van het eigen land na te leven en de app niet te gebruiken voor illegale of auteursrechtelijk inbreukmakende inhoud. Onrechtmatig gebruik is strikt verboden en uitsluitend de verantwoordelijkheid van de gebruiker.",
   "tvLegalSection5Title": "5. Inhoud van derden — geen aansprakelijkheid",
@@ -2669,9 +2669,9 @@
   "tvLegalSection7Title": "7. Geleverd zoals deze is",
   "tvLegalSection7Body": "De app wordt geleverd zoals deze is, zonder garantie op voortdurende beschikbaarheid of foutloosheid. De uitgever kan sommige of alle functies wijzigen of opschorten.",
   "tvLegalSection8Title": "8. Persoonsgegevens",
-  "tvLegalSection8Body": "Een technische apparaatidentificatie wordt gebruikt voor licentie- en proefperiodebeheer en ondersteuning. Details: app.7themotion.com/privacy.",
+  "tvLegalSection8Body": "Bronnen, favorieten en profielen worden op dit apparaat opgeslagen. Importeren, afspelen, EPG en Cast gebruiken het netwerk. Er wordt geen inhoud toegewezen via een MAC-adres.",
   "tvLegalSection9Title": "9. Aanvaarding",
-  "tvLegalSection9Body": "Door de app te installeren of te gebruiken bevestigt de gebruiker deze voorwaarden te hebben gelezen en aanvaard. Volledige versie: app.7themotion.com/terms",
+  "tvLegalSection9Body": "Je bent verantwoordelijk voor de rechten op de bronnen die je toevoegt.",
   "tvLegalLead": "Deze app is een speler. Ze verkoopt of levert geen zenders of links. Omhoog/omlaag om te scrollen, Terug om af te sluiten.",
   "tvAudioSpectrumOn": "Spectrum: meting aan",
   "tvAudioSpectrumOff": "Spectrum: uit",
@@ -2682,7 +2682,7 @@
   "tvAudioFallbackSession": "Terugval: hele sessie",
   "tvAudioFallbackChannel": "Terugval: per zender",
   "tvAudioFocusAndroid": "Audiofocus: Android",
-  "tvAudioFocusZuno": "Audiofocus: Zuno",
+  "tvAudioFocusZuno": "Audiofocus: NOVATUBE",
   "tvAudioBackgroundPause": "Buiten de app: pauze",
   "tvAudioBackgroundStop": "Buiten de app: stoppen",
   "tvAudioHomeLegacy": "Startscherm: oude modus",
@@ -2696,7 +2696,7 @@
   "tvAudioWitnessPlay": "Testgeluid afspelen",
   "tvAudioScrollHelp": "OMHOOG/OMLAAG: scrollen · CH+/CH−: pagina",
   "tvAudioWitnessHelp": "Testgeluid gedurende 10 s: stem, daarna ruis. Dezelfde speler als de zenders. Doffe ruis → apparaat. Heldere ruis → zender.",
-  "tvAudioOptionsHelp": "Spectrum: meet op de volgende zender vier punten (decoder, duidelijke stem, stilte, AudioTrack) zonder het geluid te wijzigen. FFmpeg: probeert de softwaredecoder opnieuw; start deze niet binnen 8 s, dan neemt het apparaat over. Apparaat-AAC: de volgende zender gebruikt de AAC-decoder van het apparaat, zoals ExoPlayer. Bij een fout neemt FFmpeg deze opening over. Terugval: ‘per zender’, standaard, stuurt alleen de zender met een FFmpeg-fout naar het apparaat. ‘Hele sessie’ is het oude gedrag: alle zenders gaan naar het apparaat na één fout. Audiofocus: ‘Zuno’, standaard, verlaagt het volume nooit als een andere app of piep geluid aanvraagt. ‘Android’ is het oude gedrag, met verlaging naar 20%. Buiten de app: ‘stoppen’, standaard, stopt en geeft audio vrij bij verlaten en opent de zender opnieuw bij terugkeer. ‘Pauze’ is het oude gedrag. Home: ‘native stop’, standaard, stopt bij onPause en opent niets zolang de app buiten beeld is. ‘Oude modus’ wacht op Flutter. Wisselen: ‘wachten’, standaard, opent de volgende zender pas nadat de vorige AudioTrack is vrijgegeven, om gemengd geluid na veel wisselingen te voorkomen. ‘Direct’ is het oude gedrag. Uitvoer: ‘streamfrequentie’, standaard, gebruikt de samplefrequentie van de stream, vaak 44,1 kHz, die het apparaat omzet. ‘48 kHz’ hersampelt in de app vóór uitvoer. Probeer dit bij slecht geluid en een rapport van 44,1 kHz. Testgeluid: 10 s stem en ruis in dezelfde speler. Activeert de meting zonder geluidswijziging. Doffe ruis → apparaat. Heldere ruis → zender.",
+  "tvAudioOptionsHelp": "Spectrum: meet op de volgende zender vier punten (decoder, duidelijke stem, stilte, AudioTrack) zonder het geluid te wijzigen. FFmpeg: probeert de softwaredecoder opnieuw; start deze niet binnen 8 s, dan neemt het apparaat over. Apparaat-AAC: de volgende zender gebruikt de AAC-decoder van het apparaat, zoals ExoPlayer. Bij een fout neemt FFmpeg deze opening over. Terugval: ‘per zender’, standaard, stuurt alleen de zender met een FFmpeg-fout naar het apparaat. ‘Hele sessie’ is het oude gedrag: alle zenders gaan naar het apparaat na één fout. Audiofocus: ‘NOVATUBE’, standaard, verlaagt het volume nooit als een andere app of piep geluid aanvraagt. ‘Android’ is het oude gedrag, met verlaging naar 20%. Buiten de app: ‘stoppen’, standaard, stopt en geeft audio vrij bij verlaten en opent de zender opnieuw bij terugkeer. ‘Pauze’ is het oude gedrag. Home: ‘native stop’, standaard, stopt bij onPause en opent niets zolang de app buiten beeld is. ‘Oude modus’ wacht op Flutter. Wisselen: ‘wachten’, standaard, opent de volgende zender pas nadat de vorige AudioTrack is vrijgegeven, om gemengd geluid na veel wisselingen te voorkomen. ‘Direct’ is het oude gedrag. Uitvoer: ‘streamfrequentie’, standaard, gebruikt de samplefrequentie van de stream, vaak 44,1 kHz, die het apparaat omzet. ‘48 kHz’ hersampelt in de app vóór uitvoer. Probeer dit bij slecht geluid en een rapport van 44,1 kHz. Testgeluid: 10 s stem en ruis in dezelfde speler. Activeert de meting zonder geluidswijziging. Doffe ruis → apparaat. Heldere ruis → zender.",
   "tvAudioNoReports": "Geen rapporten. Open een zender: de speler registreert codec, decoder en uitvoer. Het spectrum wordt alleen gemeten wanneer ingeschakeld.",
   "tvAudioTestSound": "Testgeluid",
   "tvDiagCaptive": "1. Netwerkaanmeldportaal (204)",
@@ -2724,7 +2724,7 @@
   "tvDiagNetworkBlocked": "NETWERKBLOKKADE",
   "tvDiagPlayerFailed": "SPELERFOUT",
   "tvDiagPartial": "GEDEELTELIJKE DIAGNOSE",
-  "tvDiagTitle": "APPARAATDIAGNOSE — Zuno",
+  "tvDiagTitle": "APPARAATDIAGNOSE — NOVATUBE",
   "tvDiagHelp": "Test of de tv de stream vanaf het eigen IP-adres kan afspelen.",
   "tvBackToExit": "TERUG om af te sluiten",
   "tvDiagCaptiveLikely": "HTTP {status}, {bytes} bytes → mogelijk aanmeldportaal",
@@ -2738,7 +2738,7 @@
   "tvSizeMb": "{size} MB",
   "tvSizeGb": "{size} GB",
   "tvDurationHm": "{hours} u {minutes} min",
-  "tvWhatsAppActivationRequest": "Hallo, ik wil graag Zuno activeren.",
+  "tvWhatsAppActivationRequest": "Hallo, ik wil graag NOVATUBE activeren.",
   "castErrorTimeoutRetry": "De tv reageert te langzaam. Probeer opnieuw of kies een andere tv.",
   "castProgressRelay": "Relay voorbereiden…",
   "castFriendlyNetworkFail": "Geen verbinding met de tv.",

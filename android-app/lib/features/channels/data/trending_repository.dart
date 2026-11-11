@@ -17,6 +17,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+import '../../../core/app/novatube_play_policy.dart';
 import '../../subscription/data/subscription_backend.dart'
     show kSubscriptionBaseUrl;
 
@@ -43,6 +44,8 @@ class TrendingRepository {
   /// Démarre le rafraîchissement périodique. Chaque écran appelle [start]
   /// à l'ouverture et [stop] à la fermeture.
   void start() {
+    if (!NovatubePlayPolicy.allowPromotions) return;
+
     _holders++;
     _fetch();
     _timer ??= Timer.periodic(const Duration(minutes: 1), (_) => _fetch());
@@ -57,6 +60,8 @@ class TrendingRepository {
   }
 
   Future<void> _fetch() async {
+    if (!NovatubePlayPolicy.allowPromotions) return;
+
     try {
       final http.Response resp = await http.get(
           Uri.parse('$kSubscriptionBaseUrl/api/trending'),

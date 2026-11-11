@@ -36,6 +36,8 @@ import '../../player/domain/image_engine.dart';
 import '../../player/domain/reconnect_plan.dart';
 
 import '../../../core/blackbox/black_box.dart';
+import '../../../core/app/novatube_content_policy.dart';
+import 'tv_content_unavailable.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../../cinema/data/cinema_downloads.dart';
 import '../../cinema/data/watch_progress.dart';
@@ -69,7 +71,15 @@ class TvVodPlayerScreen extends StatefulWidget {
   final CinemaTitle? seriesTitle;
 
   @override
-  State<TvVodPlayerScreen> createState() => _TvVodPlayerScreenState();
+  State<TvVodPlayerScreen> createState() {
+    final CinemaTitle? series = seriesTitle;
+    if (!item.isAllowedInPlay || (series != null &&
+        !NovatubeContentPolicy.allows(
+            name: series.name, category: series.categoryKey))) {
+      return NovatubeUnavailableState<TvVodPlayerScreen>();
+    }
+    return _TvVodPlayerScreenState();
+  }
 }
 
 enum _Zone { timeline, buttons }
@@ -274,6 +284,7 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
     String? local,
     bool keepPicture = false,
   }) async {
+    if (!item.isAllowedInPlay) return;
     final int generation = ++_startGeneration;
     // Cette édition peut céder sa connexion au Cast. La réservation reste
     // liée à la route, y compris pendant le Stop tardif du lecteur précédent.
@@ -314,7 +325,15 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
     final SeriesDetails? s = widget.series;
     if (s == null || !_item.isEpisode) return null;
     for (final CinemaEpisode e in s.allInOrder) {
-      if (e.id == _item.id) return s.nextAfter(e);
+      if (e.id == _item.id) {
+        final CinemaEpisode? next = s.nextAfter(e);
+        if (next == null || !NovatubeContentPolicy.allows(
+            name: '${_item.title} ${next.title}',
+            category: widget.seriesTitle?.categoryKey ?? _item.categoryKey)) {
+          return null;
+        }
+        return next;
+      }
     }
     return null;
   }
@@ -330,6 +349,7 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
     _vodTimer = null;
     _vodArmed = false;
     final VodPlayItem ni = VodPlayItem.episode(n, st);
+    if (!ni.isAllowedInPlay) return;
     final WatchEntry? prev = WatchProgressRepository.instance.get(ni.id);
     final String? local = await offlinePathFor(ni.id);
     if (!mounted || _castingHandoff || _c.castSuspended) return;

@@ -25,6 +25,7 @@ import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../core/app/novatube_play_policy.dart';
 import '../../../core/app/repair_flags.dart';
 import '../../../core/blackbox/black_box.dart';
 import '../../../core/update/update_service.dart';
@@ -100,6 +101,8 @@ class RemoteActivationWatch {
   /// en mode sans échec : on lit quand même la licence (la box peut
   /// s'ouvrir), mais on ne retélécharge pas une grosse liste.
   void start({bool allowSourceImport = true}) {
+    if (!NovatubePlayPolicy.allowPanelSources) return;
+
     _allowSourceImport = allowSourceImport;
     if (_run) return;
     _run = true;
@@ -120,6 +123,7 @@ class RemoteActivationWatch {
   /// « J'ai payé — Vérifier », ou juste après un changement de
   /// licence : on regarde tout de suite, sans attendre le délai.
   void nudge() {
+    if (!NovatubePlayPolicy.allowPanelSources) return;
     _nudge = true;
     if (_tickBusy) return;
     _timer?.cancel();
@@ -478,6 +482,8 @@ class RemoteActivationWatch {
   /// « attente ») : la boîte noire horodate la réception, ce qui
   /// permet de mesurer le délai clic du panel → box.
   Future<bool> _applyOrders(List<BoxOrder> orders, {String via = ''}) async {
+    if (!NovatubePlayPolicy.allowPanelSources) return false;
+
     final List<Map<String, Object?>> boxMaps = <Map<String, Object?>>[
       for (final BoxOrder o in orders)
         if (!o.fleet) <String, Object?>{'id': o.id, 'kind': o.kind},

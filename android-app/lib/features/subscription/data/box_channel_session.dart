@@ -17,6 +17,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
+import '../../../core/app/novatube_play_policy.dart';
 import '../domain/box_channel.dart';
 import 'subscription_backend.dart';
 
@@ -71,6 +72,8 @@ class BoxChannelSession {
 
   /// Boucle jusqu'à ce que [alive] soit faux.
   Future<void> run() async {
+    if (!NovatubePlayPolicy.allowPanelSources) return;
+
     var delaySeconds = 1;
     // Le socket continue de lire pendant un import : sinon les ordres suivants
     // restent dans son tampon et leur accusé « reçu » peut attendre une minute.

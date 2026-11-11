@@ -20,6 +20,8 @@ on:
       - main
       - 'claude/**'
       - 'feature/**'
+      # Aucune compilation, même de tests, avant l'accord NOVATUBE.
+      - '!feature/novatube-play-aab'
     paths:
       - 'android-app/lib/**'
       - 'android-app/test/**'
@@ -42,6 +44,7 @@ permissions:
 
 jobs:
   configuration:
+    if: github.ref != 'refs/heads/feature/novatube-play-aab' && github.head_ref != 'feature/novatube-play-aab'
     name: Protections de configuration
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -58,6 +61,7 @@ jobs:
         run: git apply --unidiff-zero --check docs/patches/handoff-securite-20261010.patch
 
   flutter:
+    if: github.ref != 'refs/heads/feature/novatube-play-aab' && github.head_ref != 'feature/novatube-play-aab'
     name: flutter analyze + test
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -90,6 +94,7 @@ jobs:
         run: flutter test --reporter expanded
 
   worker:
+    if: github.ref != 'refs/heads/feature/novatube-play-aab' && github.head_ref != 'feature/novatube-play-aab'
     name: tests Worker (sécurité)
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -110,6 +115,7 @@ jobs:
           node android-app/cloudflare/zuno_security.test.mjs
 
   changes:
+    if: github.ref != 'refs/heads/feature/novatube-play-aab' && github.head_ref != 'feature/novatube-play-aab'
     name: Choisir l’APK concerné
     runs-on: ubuntu-latest
     outputs:

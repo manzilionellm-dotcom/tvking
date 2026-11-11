@@ -1,6 +1,6 @@
 {
   "@@locale": "zh",
-  "appName": "The Few",
+  "appName": "NOVATUBE",
   "@appName": {
     "description": "Nom de la marque — ne pas traduire."
   },
@@ -107,7 +107,7 @@
   "deviceAuto": "自动",
   "deviceAutoSubtitle": "自动检测",
   "deviceAutoDesc": "应用根据屏幕自动判断。不确定或使用多台设备时，选这个就对了。",
-  "onboardingWelcomeTitle": "欢迎使用 The Few",
+  "onboardingWelcomeTitle": "欢迎使用 NOVATUBE",
   "onboardingWelcomeDesc": "无限影院。为电视而生，为手机优化，处处精彩。",
   "onboardingLoadTitle": "加载你的播放列表",
   "onboardingLoadDesc": "粘贴 M3U 链接或输入 Xtream 账号，几秒钟内频道即刻呈现。",
@@ -560,7 +560,7 @@
   "@recTapToStop": {
     "description": "Texte UI : recTapToStop"
   },
-  "pipUnavailable": "此设备不支持小窗播放（需要 Android 8 及以上）。请同时开启画中画权限：设置 → 应用 → 7 MOTION → 权限。",
+  "pipUnavailable": "此设备不支持小窗播放（需要 Android 8 及以上）。请同时开启画中画权限：设置 → 应用 → NOVATUBE → 权限。",
   "@pipUnavailable": {
     "description": "Texte UI : pipUnavailable"
   },
@@ -994,7 +994,7 @@
   "@subAccountFrozen": {
     "description": "Texte UI : subAccountFrozen"
   },
-  "subUnlockAll": "解锁 The Few 全部功能",
+  "subUnlockAll": "解锁 NOVATUBE 全部功能",
   "@subUnlockAll": {
     "description": "Texte UI : subUnlockAll"
   },
@@ -1106,7 +1106,7 @@
   "@subLoading": {
     "description": "Texte UI : subLoading"
   },
-  "subCardSubPaid": "感谢你的支持 — 此设备及你的其他 The Few 安装均已解锁全部功能。",
+  "subCardSubPaid": "感谢你的支持 — 此设备及你的其他 NOVATUBE 安装均已解锁全部功能。",
   "@subCardSubPaid": {
     "description": "Texte UI : subCardSubPaid"
   },
@@ -1208,7 +1208,7 @@
   "@aboutCreditFonts": {
     "description": "Texte UI : aboutCreditFonts"
   },
-  "aboutLegalNotice": "The Few 是一款通用媒体播放器。应用本身不包含任何内容。你需对自己添加的内容源及其是否符合所在国家/地区的法律负责。",
+  "aboutLegalNotice": "NOVATUBE 是一款通用媒体播放器。应用本身不包含任何内容。你需对自己添加的内容源及其是否符合所在国家/地区的法律负责。",
   "@aboutLegalNotice": {
     "description": "Texte UI : aboutLegalNotice"
   },
@@ -1506,7 +1506,7 @@
   "@deviceIdLabel": {
     "description": "Texte UI : deviceIdLabel"
   },
-  "deviceIdCaption": "用于识别你的 The Few 安装。请保留此码以便应用技术支持。频道相关问题请联系你的 IPTV 服务商。",
+  "deviceIdCaption": "用于识别你的 NOVATUBE 安装。请保留此码以便应用技术支持。频道相关问题请联系你的 IPTV 服务商。",
   "@deviceIdCaption": {
     "description": "Texte UI : deviceIdCaption"
   },
@@ -1969,7 +1969,7 @@
   "tvSearchHint": "输入关键词搜索…",
   "tvNoResult": "没有结果。",
   "tvDeviceAddress": "此设备地址（MAC）",
-  "tvDeviceAddressHelp": "把此地址告诉经销商即可激活 Zuno。",
+  "tvDeviceAddressHelp": "把此地址告诉经销商即可激活 NOVATUBE。",
   "tvStatus": "状态",
   "tvStatusPaid": "订阅已激活",
   "tvStatusTrial": "试用中 — 剩余 {days} 天",
@@ -1999,7 +1999,7 @@
   "tvSearchingChannels": "正在查找你的频道…",
   "tvRetry": "重试",
   "tvSourceInvalid": "已收到订阅但被拒绝 — 请在管理面板中检查账号。",
-  "tvQuitTitle": "退出 Zuno？",
+  "tvQuitTitle": "退出 NOVATUBE？",
   "tvQuitMessage": "重启以刷新频道，或退出应用。",
   "tvRestart": "重启",
   "tvQuit": "退出",
@@ -2482,7 +2482,7 @@
   "tvVoiceRemoteAi": "远程语音帮助",
   "tvVoiceRemoteAiOn": "已开启",
   "tvVoiceRemoteAiOff": "已关闭",
-  "tvVoiceRemoteAiHelp": "默认关闭。应用里没有密钥。「今晚」从盒子上的节目单读取。如果服务没有回应，Zuno 会在你的列表里搜索。",
+  "tvVoiceRemoteAiHelp": "默认关闭。应用里没有密钥。「今晚」从盒子上的节目单读取。如果服务没有回应，NOVATUBE 会在你的列表里搜索。",
   "tvVoiceCinemaHint": "先打开一次电影或剧集：之后搜索就能找到它们，观看时不用联网。",
   "tvVoiceOnChannel": "在 {channel}",
   "tvDeletePanelSourceConfirm": "“{name}”将从此电视中删除。同步或从面板重新发送不会将其恢复。如需恢复，请在应用中重新添加。",
@@ -2606,7 +2606,7 @@
   "tvScreenRefreshOff": "已关闭，这是初始设置。按 OK 可让屏幕匹配每秒24 / 25 / 30 / 50 / 60帧，不会自动开启。",
   "tvContrast": "对比度",
   "tvContrastUnavailable": "不可用。Android 滤镜会离开直接显示通道，且曾导致黑屏，因此保持关闭。",
-  "tvUpdateAllowInstall": "请允许 Zuno 安装应用：在 Android 打开的页面中启用“Zuno”，然后返回并按 OK。更新已下载完成。",
+  "tvUpdateAllowInstall": "请允许 NOVATUBE 安装应用：在 Android 打开的页面中启用“NOVATUBE”，然后返回并按 OK。更新已下载完成。",
   "tvFfmpegKeepDecoder": "此版本不含 FFmpeg 视频解码，继续使用当前解码器。",
   "tvFfmpegBoxDecoder": "此版本不含 FFmpeg 视频解码，返回设备解码器。",
   "tvFfmpegUnavailable": "此版本不含 FFmpeg 视频解码。",
@@ -2658,8 +2658,8 @@
   "tvLegalSection1Body": "本应用是用于播放用户提供的音频及视频流的媒体播放器。它不提供、销售、托管、广播或索引任何电视频道、节目流、视听内容、播放列表（M3U）或门户凭据（Xtream）。应用不包含、不预装，也不随附销售任何内容。",
   "tvLegalSection2Title": "2. 用户提供的内容",
   "tvLegalSection2Body": "用户自行提供从其服务商取得的来源（M3U 链接／Xtream 凭据）。用户独自负责其添加、播放或广播的内容，并须持有必要的权利、许可和订阅。",
-  "tvLegalSection3Title": "3. 订阅针对软件，而非内容",
-  "tvLegalSection3Body": "任何付款或订阅仅用于支付应用的使用，包括播放器及界面、收藏、本地录制、EPG 等功能。绝不构成对频道、节目流或内容的购买、销售、租赁或提供。",
+  "tvLegalSection3Title": "3. NOVATUBE",
+  "tvLegalSection3Body": "导入您自己的 M3U 或 Xtream 来源。NOVATUBE 不销售内容，也不提供内容试用。",
   "tvLegalSection4Title": "4. 合法使用",
   "tvLegalSection4Body": "用户承诺遵守所在国家的法律，不使用本应用访问非法或侵犯版权的内容。任何非法使用均被严格禁止，并由用户独自负责。",
   "tvLegalSection5Title": "5. 第三方内容 — 不承担责任",
@@ -2669,9 +2669,9 @@
   "tvLegalSection7Title": "7. 按现状提供",
   "tvLegalSection7Body": "本应用按现状提供，不保证持续可用或完全无错误。发布者可更改或暂停部分或全部功能。",
   "tvLegalSection8Title": "8. 个人数据",
-  "tvLegalSection8Body": "技术设备标识符用于管理许可、试用期及支持服务。详情：app.7themotion.com/privacy。",
+  "tvLegalSection8Body": "来源、收藏和个人资料保存在本设备上。导入、播放、EPG 和 Cast 使用网络。不会通过 MAC 地址分配内容。",
   "tvLegalSection9Title": "9. 接受条款",
-  "tvLegalSection9Body": "安装或使用本应用即表示用户确认已阅读并接受这些条款。完整版本：app.7themotion.com/terms",
+  "tvLegalSection9Body": "您需对所添加来源的使用权负责。",
   "tvLegalLead": "本应用是播放器，不销售或提供频道及链接。按上／下滚动，按返回退出。",
   "tvAudioSpectrumOn": "频谱：测量中",
   "tvAudioSpectrumOff": "频谱：关闭",
@@ -2682,7 +2682,7 @@
   "tvAudioFallbackSession": "后备解码：整个会话",
   "tvAudioFallbackChannel": "后备解码：按频道",
   "tvAudioFocusAndroid": "音频焦点：Android",
-  "tvAudioFocusZuno": "音频焦点：Zuno",
+  "tvAudioFocusZuno": "音频焦点：NOVATUBE",
   "tvAudioBackgroundPause": "离开应用：暂停",
   "tvAudioBackgroundStop": "离开应用：停止",
   "tvAudioHomeLegacy": "主页键：旧模式",
@@ -2696,7 +2696,7 @@
   "tvAudioWitnessPlay": "播放测试音",
   "tvAudioScrollHelp": "上／下：滚动 · CH+/CH−：翻页",
   "tvAudioWitnessHelp": "测试音播放10秒：先人声，后噪声。使用与频道相同的播放器。噪声低沉→设备问题；噪声清晰→频道问题。",
-  "tvAudioOptionsHelp": "频谱：在下一个频道测量四处信号（解码器、清晰人声、静音、AudioTrack），不改变声音。FFmpeg：重试软件解码器；8秒内未启动则由设备接管。设备 AAC：下一个频道使用设备的 AAC 解码器，与 ExoPlayer 类似。若失败，本次打开由 FFmpeg 接管。后备解码：“按频道”为默认，仅把 FFmpeg 出错的频道交给设备；“整个会话”为旧行为，一次出错后所有频道都交给设备。音频焦点：“Zuno”为默认，其他应用或提示音请求音频时不降低音量；“Android”为旧行为，降低到20%。离开应用：“停止”为默认，退出时停止并释放音频，返回时重新打开频道；“暂停”为旧行为。主页键：“原生停止”为默认，在 onPause 时停止，应用处于后台时不重新打开；“旧模式”等待 Flutter。切换：“等待”为默认，前一个 AudioTrack 释放后才打开下一频道，避免频繁换台后声音重叠；“立即”为旧行为。输出：“节目流频率”为默认，采用节目流的采样率（很多频道为44.1 kHz），由设备转换；“48 kHz”在输出前由应用重采样。如果报告为44.1 kHz且声音不好，可尝试此项。测试音：同一播放器播放10秒人声和噪声，开启测量但不改变声音。噪声低沉→设备问题；噪声清晰→频道问题。",
+  "tvAudioOptionsHelp": "频谱：在下一个频道测量四处信号（解码器、清晰人声、静音、AudioTrack），不改变声音。FFmpeg：重试软件解码器；8秒内未启动则由设备接管。设备 AAC：下一个频道使用设备的 AAC 解码器，与 ExoPlayer 类似。若失败，本次打开由 FFmpeg 接管。后备解码：“按频道”为默认，仅把 FFmpeg 出错的频道交给设备；“整个会话”为旧行为，一次出错后所有频道都交给设备。音频焦点：“NOVATUBE”为默认，其他应用或提示音请求音频时不降低音量；“Android”为旧行为，降低到20%。离开应用：“停止”为默认，退出时停止并释放音频，返回时重新打开频道；“暂停”为旧行为。主页键：“原生停止”为默认，在 onPause 时停止，应用处于后台时不重新打开；“旧模式”等待 Flutter。切换：“等待”为默认，前一个 AudioTrack 释放后才打开下一频道，避免频繁换台后声音重叠；“立即”为旧行为。输出：“节目流频率”为默认，采用节目流的采样率（很多频道为44.1 kHz），由设备转换；“48 kHz”在输出前由应用重采样。如果报告为44.1 kHz且声音不好，可尝试此项。测试音：同一播放器播放10秒人声和噪声，开启测量但不改变声音。噪声低沉→设备问题；噪声清晰→频道问题。",
   "tvAudioNoReports": "暂无报告。打开一个频道后，播放器会记录编解码格式、解码器和输出。只有开启选项时才测量频谱。",
   "tvAudioTestSound": "测试音",
   "tvDiagCaptive": "1. 网络登录门户（204）",
@@ -2724,7 +2724,7 @@
   "tvDiagNetworkBlocked": "网络阻断",
   "tvDiagPlayerFailed": "播放器错误",
   "tvDiagPartial": "部分诊断完成",
-  "tvDiagTitle": "设备端诊断 — Zuno",
+  "tvDiagTitle": "设备端诊断 — NOVATUBE",
   "tvDiagHelp": "测试电视能否通过自己的 IP 地址播放节目流。",
   "tvBackToExit": "按返回退出",
   "tvDiagCaptiveLikely": "HTTP {status}，{bytes}字节→可能需要网络登录",
@@ -2738,7 +2738,7 @@
   "tvSizeMb": "{size} MB",
   "tvSizeGb": "{size} GB",
   "tvDurationHm": "{hours}小时{minutes}分钟",
-  "tvWhatsAppActivationRequest": "您好，我想激活 Zuno。",
+  "tvWhatsAppActivationRequest": "您好，我想激活 NOVATUBE。",
   "castErrorTimeoutRetry": "电视响应时间过长。请重试或选择其他电视。",
   "castProgressRelay": "正在准备中继…",
   "castFriendlyNetworkFail": "无法连接电视。",

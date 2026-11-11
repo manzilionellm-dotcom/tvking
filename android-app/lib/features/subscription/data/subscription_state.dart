@@ -21,6 +21,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../core/app/novatube_play_policy.dart';
 import '../../device/data/device_identity.dart';
 import '../domain/activation_pace.dart';
 import '../domain/heartbeat_coalesce.dart';
@@ -154,6 +155,8 @@ class SubscriptionState extends ChangeNotifier {
   ///  remote.exists   → status = trialActive (jours restants côté serveur)
   ///  (sinon)         → calcul local sur firstLaunchAt
   SubscriptionStatus get status {
+    if (NovatubePlayPolicy.allowManualPlayback) return SubscriptionStatus.unknown;
+
     if (!_loaded) return SubscriptionStatus.unknown;
 
     // ----- Source de vérité côté serveur (si dispo) -----
@@ -193,6 +196,8 @@ class SubscriptionState extends ChangeNotifier {
 
   /// Jours restants d'essai. Priorité serveur, fallback local.
   int get trialDaysRemaining {
+    if (NovatubePlayPolicy.allowManualPlayback) return 0;
+
     if (_remote.exists) return _remote.daysLeft;
     if (_firstLaunchAt == null) return kTrialDurationDays;
     final int nowMs = _effectiveNowMs;
@@ -206,6 +211,8 @@ class SubscriptionState extends ChangeNotifier {
   /// True si l'app doit afficher un écran bloquant (gelé, banni,
   /// ou essai expiré non payé). Utilisé par `_AppEntry` au boot.
   bool get shouldBlockUser {
+    if (NovatubePlayPolicy.allowManualPlayback) return false;
+
     final SubscriptionStatus s = status;
     return s == SubscriptionStatus.frozen ||
         s == SubscriptionStatus.banned ||
@@ -217,6 +224,12 @@ class SubscriptionState extends ChangeNotifier {
   /// démarrer le compte à rebours de l'essai (kTrialDurationDays).
   Future<void> initialize() async {
     if (_loaded) return;
+    if (NovatubePlayPolicy.isPlay) {
+      // Aucun premier-lancement commercial ni compteur d’essai créé.
+      _loaded = true;
+      notifyListeners();
+      return;
+    }
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       final int? firstMs = prefs.getInt(_kFirstLaunchKey);
@@ -290,6 +303,10 @@ class SubscriptionState extends ChangeNotifier {
   /// garde le dernier statut (ou le trial local au tout premier boot).
   /// L'app reste utilisable hors-ligne, une chaîne en cours continue.
   Future<RemoteSyncOutcome> syncWithBackend() async {
+    if (!NovatubePlayPolicy.allowPanelSources) {
+      return RemoteSyncOutcome.offline;
+    }
+
     if (!_net.start()) return RemoteSyncOutcome.busy;
     try {
       final String mac = await DeviceIdentity.instance.mac;
@@ -311,6 +328,10 @@ class SubscriptionState extends ChangeNotifier {
   /// C'est la veille « le panel vient-il d'activer ? ». Même règle
   /// qu'au-dessus : un échec réseau ne change pas l'accès déjà ouvert.
   Future<RemoteSyncOutcome> refreshRemote() async {
+    if (!NovatubePlayPolicy.allowPanelSources) {
+      return RemoteSyncOutcome.offline;
+    }
+
     if (!_net.start(resend: false)) return RemoteSyncOutcome.busy;
     try {
       final String mac = await DeviceIdentity.instance.mac;

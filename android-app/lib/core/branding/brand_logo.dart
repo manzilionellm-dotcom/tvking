@@ -62,6 +62,8 @@ class BrandLogo extends StatelessWidget {
   /// celui de Red Room.
   static String get _assetPath {
     switch (FlavorConfig.current.flavor) {
+      case Flavor.novatube:
+        return 'assets/branding/novatube_logo.jpg';
       case Flavor.sevenMotion:
         return 'assets/branding/logo_black7royal.png';
       case Flavor.prive:
@@ -73,6 +75,8 @@ class BrandLogo extends StatelessWidget {
   /// mais on prefere une lettre qu'un widget casse).
   static String get _fallbackLetter {
     switch (FlavorConfig.current.flavor) {
+      case Flavor.novatube:
+        return 'N';
       case Flavor.sevenMotion:
         return '7';
       case Flavor.prive:
@@ -148,7 +152,7 @@ class BrandLogo extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: Image.asset(
         _assetPath,
-        fit: BoxFit.cover,
+        fit: BoxFit.contain,
         // En cas d'erreur de chargement (asset manquant), on dégrade
         // sur un placeholder texte plutôt que de crasher.
         errorBuilder: (BuildContext _, Object __, StackTrace? ___) {
@@ -173,10 +177,10 @@ enum BrandLogoSize { compact, medium, splash, hero }
 /// Constantes de chaîne pour les wordmarks The Few.
 abstract final class BrandStrings {
   /// Nom court — utilisé partout dans l'app.
-  static const String appName = 'The Few';
+  static const String appName = 'NOVATUBE';
 
   /// Nom long — utilisé dans le titre de la fenêtre / des stores.
-  static const String longName = 'The Few — Premium IPTV';
+  static const String longName = 'NOVATUBE';
 
   /// Tagline courte pour les hero / onboarding.
   static const String tagline = 'Cinéma sans limites';

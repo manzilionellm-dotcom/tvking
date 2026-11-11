@@ -33,6 +33,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../core/app/novatube_play_policy.dart';
 import '../../device/data/device_identity.dart';
 import '../../device/data/device_secret.dart';
 import '../../subscription/data/subscription_backend.dart';
@@ -57,6 +58,8 @@ class CloudBackupRepository {
   /// Démarre la sauvegarde automatique : on ré-uploade (debounce) dès
   /// que les playlists ou les favoris changent.
   void start() {
+    if (!NovatubePlayPolicy.allowPanelSources) return;
+
     if (_started) return;
     _started = true;
     _subs.add(
@@ -92,6 +95,8 @@ class CloudBackupRepository {
   Future<void> uploadForTesting() => _upload();
 
   Future<void> _uploadSnapshot() async {
+    if (!NovatubePlayPolicy.allowPanelSources) return;
+
     try {
       final List<Playlist> playlists =
           await PlaylistRepository.instance.getAllPlaylists();
@@ -144,6 +149,8 @@ class CloudBackupRepository {
   /// Restaure depuis le cloud SI aucune playlist locale n'existe.
   /// À appeler au démarrage (après l'init de PlaylistRepository).
   Future<void> restoreIfNeeded() async {
+    if (!NovatubePlayPolicy.allowPanelSources) return;
+
     try {
       final List<Playlist> existing =
           await PlaylistRepository.instance.getAllPlaylists();

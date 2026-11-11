@@ -22,6 +22,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../core/app/novatube_play_policy.dart';
 import '../../subscription/data/subscription_backend.dart';
 import '../domain/panel_board.dart';
 
@@ -63,6 +64,8 @@ class PromoBannerRepository extends ChangeNotifier {
 
   /// Cache puis réseau. Appelable plusieurs fois : la deuxième ne fait rien.
   Future<void> initialize() async {
+    if (!NovatubePlayPolicy.allowPromotions) return;
+
     if (_initialized) return;
     _initialized = true;
     await _loadLocal();
@@ -73,6 +76,8 @@ class PromoBannerRepository extends ChangeNotifier {
   /// (le panel n'a rien publié ou la route n'existe pas encore). Autre
   /// code ou réseau coupé → on garde ce qu'on a.
   Future<void> refresh() async {
+    if (!NovatubePlayPolicy.allowPromotions) return;
+
     final http.Client c = client ?? http.Client();
     try {
       final String base = baseUrl ?? kSubscriptionBaseUrl;

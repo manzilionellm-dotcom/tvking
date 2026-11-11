@@ -29,6 +29,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
+import '../../../core/app/novatube_play_policy.dart';
 import '../../../core/i18n/l10n_extension.dart';
 
 import 'package:flutter/services.dart';
@@ -83,7 +84,7 @@ class _TvDiagnosticScreenState extends State<TvDiagnosticScreen> {
     _captive,
     _dns,
     _stream,
-    _source,
+    if (NovatubePlayPolicy.allowPanelSources) _source,
     _player,
   ];
 
@@ -151,7 +152,7 @@ class _TvDiagnosticScreenState extends State<TvDiagnosticScreen> {
     await _runCaptive();
     await _runDns(iptvHost);
     await _runStream(streamUrl);
-    await _runSource();
+    if (NovatubePlayPolicy.allowPanelSources) await _runSource();
     await _runPlayer(streamUrl);
 
     if (!mounted) return;
@@ -261,6 +262,7 @@ class _TvDiagnosticScreenState extends State<TvDiagnosticScreen> {
   // 4. Source poussée : GET /api/device-source/<MAC>. Lecture seule. On montre
   // le code + si une source est assignée à cette box.
   Future<void> _runSource() async {
+    if (!NovatubePlayPolicy.allowPanelSources) return;
     _set(_source, _Stat.running, (context) => context.l10n.tvDiagReadingMac);
     String mac;
     try {
@@ -383,7 +385,7 @@ class _TvDiagnosticScreenState extends State<TvDiagnosticScreen> {
         _captive.stat == _Stat.ok &&
         _dns.stat == _Stat.ok &&
         _stream.stat == _Stat.ok &&
-        _source.stat == _Stat.ok;
+        (!NovatubePlayPolicy.allowPanelSources || _source.stat == _Stat.ok);
     final bool playerKo =
         _player.stat == _Stat.fail || _player.stat == _Stat.timeout;
 

@@ -18,6 +18,7 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+import '../../../core/app/novatube_play_policy.dart';
 import '../../device/data/device_secret.dart';
 import '../../subscription/data/subscription_backend.dart';
 import '../domain/home_source_link.dart';
@@ -48,6 +49,8 @@ Future<HomeSourceLink?> publishHomeSourceLink({
   Random? random,
   HomeSourcePairPost? post,
 }) async {
+    if (!NovatubePlayPolicy.allowPanelSources) return null;
+
   final String? bare = homeSourcePortalUrl(baseUrl: baseUrl, mac: mac);
   if (bare == null) return null;
 

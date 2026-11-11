@@ -19,6 +19,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../core/app/novatube_content_policy.dart';
 import '../../profiles/data/active_profile.dart';
 import '../../profiles/domain/family_profile.dart';
 
@@ -164,9 +165,14 @@ class WatchEntry {
 class WatchProgressStore {
   WatchProgressStore([Iterable<WatchEntry> initial = const <WatchEntry>[]]) {
     for (final WatchEntry e in initial) {
+      if (!_allowed(e)) continue;
       _byId[e.id] = e;
     }
   }
+
+  static bool _allowed(WatchEntry entry) => NovatubeContentPolicy.allows(
+        name: entry.title, category: entry.subtitle ?? '',
+      );
 
   static const int maxEntries = 400;
   final Map<String, WatchEntry> _byId = <String, WatchEntry>{};
@@ -176,6 +182,7 @@ class WatchProgressStore {
 
   /// Enregistre une position ; calcule « terminé ». Renvoie l'entrée stockée.
   WatchEntry record(WatchEntry e) {
+    if (!_allowed(e)) return e;
     final bool fin = WatchEntry.isFinishedAt(e.posMs, e.durMs);
     final WatchEntry stored = e.copyWith(finished: fin, upNext: false);
     _byId[e.id] = stored;
@@ -191,6 +198,7 @@ class WatchProgressStore {
 
   /// Propose l'épisode suivant dans « Continuer » (après la fin du précédent).
   void proposeNext(WatchEntry next) {
+    if (!_allowed(next)) return;
     final WatchEntry? existing = _byId[next.id];
     if (existing != null && (existing.isResumable || existing.finished)) return;
     _byId[next.id] = next.copyWith(posMs: 0, upNext: true, finished: false);

@@ -22,6 +22,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
 
+import '../../../core/app/novatube_content_policy.dart';
 import '../../playlists/data/playlist_database.dart';
 import '../domain/vod_movie.dart';
 
@@ -169,6 +170,9 @@ class DownloadsRepository {
 
   /// Démarre (ou reprend) le téléchargement d'un film.
   Future<void> start(VodMovie movie) async {
+    if (!NovatubeContentPolicy.allows(
+      name: movie.name, category: movie.category,
+    )) return;
     await initialize();
     if (_jobs.containsKey(movie.id)) return; // déjà en cours
 
@@ -384,7 +388,9 @@ class DownloadsRepository {
     final Database db = await PlaylistDatabase.instance.database;
     final List<Map<String, Object?>> rows =
         await db.query('downloads', orderBy: 'created_at DESC');
-    _cache = rows.map(Download.fromMap).toList();
+    _cache = rows.map(Download.fromMap).where((Download d) =>
+      NovatubeContentPolicy.allows(name: d.name, category: ''),
+    ).toList();
     _controller.add(_cache);
   }
 }

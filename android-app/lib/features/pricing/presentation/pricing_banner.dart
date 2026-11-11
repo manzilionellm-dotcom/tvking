@@ -13,6 +13,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../../../core/app/novatube_play_policy.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
@@ -23,6 +24,7 @@ class PricingBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (!NovatubePlayPolicy.allowExternalPurchase) return const SizedBox.shrink();
     return ValueListenableBuilder<PricingConfig>(
       valueListenable: PricingRepository.notifier,
       builder: (BuildContext context, PricingConfig p, _) {
@@ -138,6 +140,7 @@ class _OfferTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (!NovatubePlayPolicy.allowExternalPurchase) return const SizedBox.shrink();
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
       decoration: BoxDecoration(

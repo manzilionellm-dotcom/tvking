@@ -31,6 +31,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/data/latest_all.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
 
+import '../app/novatube_play_policy.dart';
 import '../../features/profiles/data/active_profile.dart';
 import '../../features/profiles/domain/family_profile.dart';
 import '../../features/profiles/domain/reminder_book.dart';
@@ -399,6 +400,8 @@ class NotificationService {
   /// l'`id` est plus récent que la dernière annonce déjà vue. Gardé par
   /// l'interrupteur Réglages. 100 % best-effort.
   Future<void> checkAnnouncement() async {
+    if (!NovatubePlayPolicy.allowPromotions) return;
+
     try {
       if (!await isEnabled(prefAnnouncements)) return;
       final http.Response resp = await http

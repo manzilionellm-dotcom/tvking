@@ -1,0 +1,32 @@
+{
+  "source_path": "android-app/assets/branding/novatube_logo.jpg",
+  "source_sha256": "2341489bcd9cc84781cc117b3231075685880535950bae7cb137d688399e33b9",
+  "source_dimensions": [
+    1536,
+    1536
+  ],
+  "source_wordmark_bounds": [
+    141,
+    640,
+    1430,
+    858
+  ],
+  "adaptive_foreground_inset_percent": 18,
+  "wordmark_max_radius_dp": 29.839,
+  "safe_circle_radius_dp": 33,
+  "original_image_preserved": true,
+  "generated_icons": {
+    "android-app/android/app/src/main/res/mipmap-mdpi/ic_launcher.png": "1e2276d4adb4a7ab3f0652f8a36ca748086026147dfcebb1d4ef1123f97945ea",
+    "android-app/android/app/src/main/res/drawable-mdpi/novatube_icon_foreground.png": "fae583aa28be1268372d5ca16160093dcb37d9d6173cfc2d5ac61514f1082ae2",
+    "android-app/android/app/src/main/res/mipmap-hdpi/ic_launcher.png": "f8069488eccf3abd9e62acc648ed7f3e29e64c9e7b09d2d7e35471b5c3dc66a4",
+    "android-app/android/app/src/main/res/drawable-hdpi/novatube_icon_foreground.png": "c37ac613f8b047ce362723a69f73625619b30336a1952fd7491725e793fd3935",
+    "android-app/android/app/src/main/res/mipmap-xhdpi/ic_launcher.png": "9d6cd39c0e69a7d52cd96793b201d76714724fd89245ec6221c47881739cf731",
+    "android-app/android/app/src/main/res/drawable-xhdpi/novatube_icon_foreground.png": "7e422ee8c35253ab8cf4a8eecc5442c15a5dcc6701d3269e0340fd21816cb0b6",
+    "android-app/android/app/src/main/res/mipmap-xxhdpi/ic_launcher.png": "c47ba0ba8bf429e17c98978cbd99cae7172afcd492a216ccc32e61bf42d83802",
+    "android-app/android/app/src/main/res/drawable-xxhdpi/novatube_icon_foreground.png": "b420b44ddef6b93dc754e718d4de8a85ed8a491004dc1d92acc55a7b4f8aaf1f",
+    "android-app/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png": "35ab032ac18530bab7b116861df00fca962d1adbbfd41f4c465b8eca05ca8179",
+    "android-app/android/app/src/main/res/drawable-xxxhdpi/novatube_icon_foreground.png": "96559230de7e49870a7e16405f652cd41877d59adf3760fe7df4980cafff071d",
+    "android-app/android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml": "8323f40a303e251e78622e4acc8993570ea339575f8ee1676f2264c1e83e8d61",
+    "android-app/android/app/src/main/res/values/novatube_colors.xml": "9b6e7f18bb7abcd129aac6141a4adf1decf03137cdbe347b6fb8a316d31bf487"
+  }
+}

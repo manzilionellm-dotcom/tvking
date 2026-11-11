@@ -13,6 +13,7 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../../../core/app/novatube_play_policy.dart';
 import '../../../core/app/repair_flags.dart';
 import '../../../core/blackbox/black_box.dart';
 import '../../device/data/device_secret.dart';
@@ -32,6 +33,8 @@ abstract final class OrderAckClient {
     http.Client? client,
     List<Duration> delays = retryDelays,
   }) async {
+    if (!NovatubePlayPolicy.allowPanelSources) return false;
+
     if (RepairFlags.orderAckOff || orders.isEmpty) return false;
     final http.Client c = client ?? http.Client();
     try {

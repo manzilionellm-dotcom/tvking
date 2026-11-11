@@ -2,7 +2,7 @@
   "@@locale": "fr",
   "@@x-template": true,
   "@@x-description": "Template canonique — toutes les autres langues s'alignent sur ces clefs.",
-  "appName": "The Few",
+  "appName": "NOVATUBE",
   "@appName": {
     "description": "Nom de la marque — ne pas traduire."
   },
@@ -109,7 +109,7 @@
   "deviceAuto": "Auto",
   "deviceAutoSubtitle": "Détection automatique",
   "deviceAutoDesc": "L'app devine d'après ton écran. Bon choix si tu ne sais pas, ou si tu utilises plusieurs appareils.",
-  "onboardingWelcomeTitle": "Bienvenue sur The Few",
+  "onboardingWelcomeTitle": "Bienvenue sur NOVATUBE",
   "onboardingWelcomeDesc": "Cinéma sans limites. Conçu pour la TV, optimisé pour ton téléphone, beau partout.",
   "onboardingLoadTitle": "Charge ta playlist",
   "onboardingLoadDesc": "Colle une URL M3U, ou tes identifiants Xtream. Tes chaînes apparaissent en quelques secondes.",
@@ -562,7 +562,7 @@
   "@recTapToStop": {
     "description": "Texte UI : recTapToStop"
   },
-  "pipUnavailable": "Mini-fenêtre indisponible sur cet appareil (requiert Android 8+). Active aussi la permission Picture-in-picture dans : Paramètres → Apps → 7 MOTION → Permissions.",
+  "pipUnavailable": "Mini-fenêtre indisponible sur cet appareil (requiert Android 8+). Active aussi la permission Picture-in-picture dans : Paramètres → Apps → NOVATUBE → Permissions.",
   "@pipUnavailable": {
     "description": "Texte UI : pipUnavailable"
   },
@@ -996,7 +996,7 @@
   "@subAccountFrozen": {
     "description": "Texte UI : subAccountFrozen"
   },
-  "subUnlockAll": "Débloque tout The Few",
+  "subUnlockAll": "Débloque tout NOVATUBE",
   "@subUnlockAll": {
     "description": "Texte UI : subUnlockAll"
   },
@@ -1108,7 +1108,7 @@
   "@subLoading": {
     "description": "Texte UI : subLoading"
   },
-  "subCardSubPaid": "Merci pour ton soutien — toutes les fonctions sont débloquées sur cet appareil et tes autres installations The Few.",
+  "subCardSubPaid": "Merci pour ton soutien — toutes les fonctions sont débloquées sur cet appareil et tes autres installations NOVATUBE.",
   "@subCardSubPaid": {
     "description": "Texte UI : subCardSubPaid"
   },
@@ -1210,7 +1210,7 @@
   "@aboutCreditFonts": {
     "description": "Texte UI : aboutCreditFonts"
   },
-  "aboutLegalNotice": "The Few est un lecteur média générique. Aucun contenu n'est inclus avec l'app. Tu es responsable des sources que tu ajoutes et de leur conformité aux lois en vigueur dans ton pays.",
+  "aboutLegalNotice": "NOVATUBE est un lecteur média générique. Aucun contenu n'est inclus avec l'app. Tu es responsable des sources que tu ajoutes et de leur conformité aux lois en vigueur dans ton pays.",
   "@aboutLegalNotice": {
     "description": "Texte UI : aboutLegalNotice"
   },
@@ -1508,7 +1508,7 @@
   "@deviceIdLabel": {
     "description": "Texte UI : deviceIdLabel"
   },
-  "deviceIdCaption": "Identifie ton installation The Few. Garde ce code pour le support technique de l'app. Pour toute question sur les chaînes, contacte ton fournisseur IPTV.",
+  "deviceIdCaption": "Identifie ton installation NOVATUBE. Garde ce code pour le support technique de l'app. Pour toute question sur les chaînes, contacte ton fournisseur IPTV.",
   "@deviceIdCaption": {
     "description": "Texte UI : deviceIdCaption"
   },
@@ -1971,7 +1971,7 @@
   "tvSearchHint": "Tape pour rechercher…",
   "tvNoResult": "Aucun résultat.",
   "tvDeviceAddress": "Adresse de cet appareil (MAC)",
-  "tvDeviceAddressHelp": "Donne cette adresse à ton revendeur pour activer Zuno.",
+  "tvDeviceAddressHelp": "Donne cette adresse à ton revendeur pour activer NOVATUBE.",
   "tvStatus": "Statut",
   "tvStatusPaid": "Abonnement actif",
   "tvStatusTrial": "Essai — {days} jour(s) restants",
@@ -2001,7 +2001,7 @@
   "tvSearchingChannels": "Recherche de tes chaînes…",
   "tvRetry": "Réessayer",
   "tvSourceInvalid": "Abonnement reçu mais refusé — vérifie les identifiants dans le panel.",
-  "tvQuitTitle": "Quitter Zuno ?",
+  "tvQuitTitle": "Quitter NOVATUBE ?",
   "tvQuitMessage": "Redémarre pour rafraîchir tes chaînes, ou quitte l'application.",
   "tvRestart": "Redémarrer",
   "tvQuit": "Quitter",
@@ -2628,7 +2628,7 @@
   "tvVoiceRemoteAi": "Aide vocale distante",
   "tvVoiceRemoteAiOn": "Activée",
   "tvVoiceRemoteAiOff": "Désactivée",
-  "tvVoiceRemoteAiHelp": "Désactivée par défaut. Aucune clé dans l'application. « Ce soir » reste lu dans ton guide, sur la box. Si le service ne répond pas, Zuno cherche dans ta liste.",
+  "tvVoiceRemoteAiHelp": "Désactivée par défaut. Aucune clé dans l'application. « Ce soir » reste lu dans ton guide, sur la box. Si le service ne répond pas, NOVATUBE cherche dans ta liste.",
   "tvVoiceCinemaHint": "Ouvre Films ou Séries une fois : la recherche les trouvera ensuite, sans réseau pendant que tu regardes.",
   "tvVoiceOnChannel": "Sur {channel}",
   "@tvVoiceOnChannel": {
@@ -2787,7 +2787,7 @@
   "tvScreenRefreshOff": "Coupé, c'est le réglage d'origine. OK pour caler l'écran sur 24 / 25 / 30 / 50 / 60 images par seconde. On ne le fait pas tout seul.",
   "tvContrast": "Contraste",
   "tvContrastUnavailable": "Pas disponible. Le seul filtre Android quitte l'image directe et a déjà fait des écrans noirs. On ne l'allume pas.",
-  "tvUpdateAllowInstall": "Autorise Zuno à installer des applications (écran ouvert par Android : active « Zuno »), puis reviens et appuie OK. La mise à jour est déjà téléchargée.",
+  "tvUpdateAllowInstall": "Autorise NOVATUBE à installer des applications (écran ouvert par Android : active « NOVATUBE »), puis reviens et appuie OK. La mise à jour est déjà téléchargée.",
   "tvFfmpegKeepDecoder": "FFmpeg vidéo n'est pas dans cette version. On reste sur le décodeur actuel.",
   "tvFfmpegBoxDecoder": "FFmpeg vidéo n'est pas dans cette version. Retour au décodeur de la box.",
   "tvFfmpegUnavailable": "FFmpeg vidéo n'est pas dans cette version.",
@@ -2860,8 +2860,8 @@
   "tvLegalSection1Body": "Cette application est un LECTEUR multimédia (player) permettant de lire des flux audio/vidéo fournis par l'utilisateur. Elle NE FOURNIT PAS, NE VEND PAS, N'HÉBERGE PAS, NE DIFFUSE PAS et N'INDEXE AUCUNE chaîne de télévision, flux, contenu audiovisuel, ni liste de lecture (M3U) ou identifiants de portail (Xtream). Aucun contenu n'est inclus, préchargé ou commercialisé avec l'application.",
   "tvLegalSection2Title": "2. Contenu fourni par l'utilisateur",
   "tvLegalSection2Body": "L'utilisateur fournit lui-même ses propres sources (lien M3U / identifiants Xtream), obtenues auprès de son propre fournisseur. L'utilisateur est SEUL responsable des contenus qu'il ajoute, lit ou diffuse, ainsi que de la détention des droits, licences et abonnements nécessaires.",
-  "tvLegalSection3Title": "3. Abonnement = le LOGICIEL, pas le contenu",
-  "tvLegalSection3Body": "Tout paiement ou abonnement éventuel rémunère UNIQUEMENT l'utilisation de l'application (le lecteur et ses fonctionnalités : interface, favoris, enregistrement local, EPG…). Il ne constitue EN AUCUN CAS l'achat, la vente, la location ou la fourniture de chaînes, de flux ou de contenus.",
+  "tvLegalSection3Title": "3. NOVATUBE",
+  "tvLegalSection3Body": "Importez vos propres sources M3U ou Xtream. NOVATUBE ne vend aucun contenu et ne propose aucun essai de contenu.",
   "tvLegalSection4Title": "4. Usage licite",
   "tvLegalSection4Body": "L'utilisateur s'engage à utiliser l'application conformément aux lois en vigueur dans son pays et à ne pas l'utiliser pour accéder à des contenus illégaux ou portant atteinte aux droits d'auteur. Toute utilisation illicite est strictement interdite et relève de la seule responsabilité de l'utilisateur.",
   "tvLegalSection5Title": "5. Contenus tiers — absence de responsabilité",
@@ -2871,9 +2871,9 @@
   "tvLegalSection7Title": "7. Fourniture « en l'état »",
   "tvLegalSection7Body": "L'application est fournie « telle quelle », sans garantie de disponibilité continue ni d'absence d'erreurs. L'éditeur peut faire évoluer ou suspendre tout ou partie des fonctionnalités.",
   "tvLegalSection8Title": "8. Données personnelles",
-  "tvLegalSection8Body": "Un identifiant technique d'appareil est utilisé pour la gestion de la licence/essai et le support. Détails : app.7themotion.com/privacy.",
+  "tvLegalSection8Body": "Les sources, favoris et profils sont stockés sur cet appareil. L’import, la lecture, l’EPG et le Cast utilisent le réseau. Aucun contenu n’est attribué par adresse MAC.",
   "tvLegalSection9Title": "9. Acceptation",
-  "tvLegalSection9Body": "En installant ou en utilisant cette application, l'utilisateur reconnaît avoir lu et accepté les présentes conditions. Version complète en ligne : app.7themotion.com/terms",
+  "tvLegalSection9Body": "Vous êtes responsable des droits sur les sources que vous ajoutez.",
   "tvLegalLead": "Cette application est un lecteur. Elle ne vend ni ne fournit aucune chaîne ni lien. Haut/Bas pour faire défiler, Retour pour quitter.",
   "tvAudioSpectrumOn": "Spectre : mesuré",
   "tvAudioSpectrumOff": "Spectre : coupé",
@@ -2884,7 +2884,7 @@
   "tvAudioFallbackSession": "Repli : session entière",
   "tvAudioFallbackChannel": "Repli : par chaîne",
   "tvAudioFocusAndroid": "Focus : Android",
-  "tvAudioFocusZuno": "Focus : Zuno",
+  "tvAudioFocusZuno": "Focus : NOVATUBE",
   "tvAudioBackgroundPause": "Hors app : pause",
   "tvAudioBackgroundStop": "Hors app : arrêt",
   "tvAudioHomeLegacy": "Home : ancien",
@@ -2898,7 +2898,7 @@
   "tvAudioWitnessPlay": "Jouer le son témoin",
   "tvAudioScrollHelp": "HAUT/BAS : défiler · CH+/CH− : page",
   "tvAudioWitnessHelp": "Témoin en lecture (10 s) : voix, puis bruit. Même lecteur que les chaînes. Bruit sourd → l'appareil. Bruit clair → la chaîne.",
-  "tvAudioOptionsHelp": "Spectre : à la prochaine chaîne, mesure quatre points (décodeur, voix claire, silence, AudioTrack) sans modifier le son. FFmpeg : réessaie le décodeur logiciel ; s'il ne démarre pas en 8 s, la box reprend. Box AAC : à la prochaine chaîne, l'AAC passe par le décodeur de la box (comme ExoPlayer). S'il échoue, FFmpeg reprend cette ouverture. Repli : « par chaîne » (défaut) = une panne FFmpeg n'envoie à la box que la chaîne concernée ; « session entière » = ancien comportement, toutes les chaînes passent à la box après une seule panne. Focus : « Zuno » (défaut) = jamais de baisse de volume quand une autre app ou un bip demande le son (le son « dans un trou ») ; « Android » = ancien comportement (baisse à 20 %). Hors app : « arrêt » (défaut) = en quittant l'app le son est coupé et rendu, la chaîne est rouverte au retour ; « pause » = ancien comportement. Home : « arrêt natif » (défaut) = coupé dès onPause, rien ne rouvre tant que l'app est dehors ; « ancien » = on attend Flutter. Passage : « attendre » (défaut) = on n'ouvre la chaîne suivante que lorsque l'AudioTrack précédent est vraiment rendu (sinon deux sons se mélangent après beaucoup de zaps) ; « tout de suite » = ancien comportement. Sortie : « flux » (défaut) = l'AudioTrack prend la fréquence du flux (44,1 kHz pour beaucoup de chaînes) et la box convertit ; « 48 kHz » = l'app rééchantillonne avant la sortie. À essayer si le son est mauvais avec une fiche à 44,1 kHz. Son témoin : 10 s (voix puis bruit), lu par le même lecteur. Allume la mesure, ne change pas le son. Bruit sourd → l'appareil. Bruit clair → la chaîne.",
+  "tvAudioOptionsHelp": "Spectre : à la prochaine chaîne, mesure quatre points (décodeur, voix claire, silence, AudioTrack) sans modifier le son. FFmpeg : réessaie le décodeur logiciel ; s'il ne démarre pas en 8 s, la box reprend. Box AAC : à la prochaine chaîne, l'AAC passe par le décodeur de la box (comme ExoPlayer). S'il échoue, FFmpeg reprend cette ouverture. Repli : « par chaîne » (défaut) = une panne FFmpeg n'envoie à la box que la chaîne concernée ; « session entière » = ancien comportement, toutes les chaînes passent à la box après une seule panne. Focus : « NOVATUBE » (défaut) = jamais de baisse de volume quand une autre app ou un bip demande le son (le son « dans un trou ») ; « Android » = ancien comportement (baisse à 20 %). Hors app : « arrêt » (défaut) = en quittant l'app le son est coupé et rendu, la chaîne est rouverte au retour ; « pause » = ancien comportement. Home : « arrêt natif » (défaut) = coupé dès onPause, rien ne rouvre tant que l'app est dehors ; « ancien » = on attend Flutter. Passage : « attendre » (défaut) = on n'ouvre la chaîne suivante que lorsque l'AudioTrack précédent est vraiment rendu (sinon deux sons se mélangent après beaucoup de zaps) ; « tout de suite » = ancien comportement. Sortie : « flux » (défaut) = l'AudioTrack prend la fréquence du flux (44,1 kHz pour beaucoup de chaînes) et la box convertit ; « 48 kHz » = l'app rééchantillonne avant la sortie. À essayer si le son est mauvais avec une fiche à 44,1 kHz. Son témoin : 10 s (voix puis bruit), lu par le même lecteur. Allume la mesure, ne change pas le son. Bruit sourd → l'appareil. Bruit clair → la chaîne.",
   "tvAudioNoReports": "Aucun rapport. Ouvre une chaîne : le lecteur note le codec, le décodeur et la sortie. Le spectre n'est mesuré que si l'interrupteur est allumé.",
   "tvAudioTestSound": "Son témoin",
   "tvDiagCaptive": "1. Portail captif (204)",
@@ -2926,7 +2926,7 @@
   "tvDiagNetworkBlocked": "BLOCAGE CÔTÉ RÉSEAU",
   "tvDiagPlayerFailed": "BUG PLAYER",
   "tvDiagPartial": "DIAGNOSTIC PARTIEL",
-  "tvDiagTitle": "DIAGNOSTIC ON-DEVICE — DeFew TV",
+  "tvDiagTitle": "DIAGNOSTIC ON-DEVICE — NOVATUBE",
   "tvDiagHelp": "Teste si la box peut jouer le flux depuis sa propre IP.",
   "tvBackToExit": "RETOUR pour quitter",
   "tvDiagCaptiveLikely": "HTTP {status}, {bytes} octets → portail captif probable",
@@ -3023,7 +3023,7 @@
       }
     }
   },
-  "tvWhatsAppActivationRequest": "Bonjour, je souhaite activer Zuno.",
+  "tvWhatsAppActivationRequest": "Bonjour, je souhaite activer NOVATUBE.",
   "@tvWhatsAppActivationRequest": {
     "description": "Demande préremplie du QR WhatsApp. La MAC ASCII est ajoutée séparément, sur sa propre ligne, pour conserver son ordre en arabe."
   },

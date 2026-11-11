@@ -135,7 +135,7 @@ class UpnpAvTransport implements CastTransport {
   @override
   Future<void> playStream({
     required String streamUrl,
-    String title = 'ZUNO',
+    String title = 'NOVATUBE',
     String? imageUrl,
     bool assumeSuccessWhenUnknown = true,
   }) async {

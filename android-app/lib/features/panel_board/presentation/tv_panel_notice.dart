@@ -13,6 +13,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../../../core/app/novatube_play_policy.dart';
 import '../../../core/i18n/l10n_extension.dart';
 
 import '../../simple_home/data/announcement_repository.dart';
@@ -45,6 +46,7 @@ class TvPanelNotice extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (!NovatubePlayPolicy.allowPromotions) return const SizedBox.shrink();
     final ({IconData icon, Color color}) style = styleFor(notice.kind);
     final bool hasLink = notice.url.isNotEmpty;
     final String linkLabel = notice.cta.trim().isNotEmpty

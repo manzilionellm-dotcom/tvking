@@ -19,6 +19,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../core/app/novatube_content_policy.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../../cinema/data/watch_progress.dart';
 import '../../cinema/domain/resume_start.dart';
@@ -47,6 +48,7 @@ class VodPlayItem {
     this.containerExt = 'mp4',
     this.sourceKey = '',
     this.remoteId = '',
+    this.categoryKey = '',
     this.seriesId,
     this.season,
     this.episode,
@@ -65,6 +67,10 @@ class VodPlayItem {
   final String containerExt;
   final String sourceKey;
   final String remoteId;
+  final String categoryKey;
+
+  bool get isAllowedInPlay => NovatubeContentPolicy.allows(
+      name: '$title ${subtitle ?? ""}', category: categoryKey);
   final String? seriesId;
   final int? season;
   final int? episode;
@@ -78,6 +84,7 @@ class VodPlayItem {
         containerExt: t.containerExt,
         sourceKey: t.sourceKey,
         remoteId: t.remoteId,
+        categoryKey: t.categoryKey,
       );
 
   factory VodPlayItem.episode(CinemaEpisode e, CinemaTitle series) =>
@@ -91,6 +98,7 @@ class VodPlayItem {
         containerExt: e.containerExt,
         sourceKey: series.sourceKey,
         remoteId: e.remoteId,
+        categoryKey: series.categoryKey,
         seriesId: series.id,
         season: e.season,
         episode: e.number,
@@ -133,7 +141,8 @@ class VodPlayItem {
   VodMovie toVodMovie() => VodMovie(
         id: id,
         name: subtitle == null ? title : '$title · $subtitle',
-        category: isEpisode ? 'series' : 'movie',
+        category: categoryKey.isNotEmpty
+            ? categoryKey : (isEpisode ? 'series' : 'movie'),
         streamUrl: url,
         containerExt: containerExt,
         posterUrl: posterUrl,
@@ -166,6 +175,9 @@ Future<void> openVod(
   SeriesDetails? series,
   CinemaTitle? seriesTitle,
 }) async {
+  if (!item.isAllowedInPlay) return;
+  if (seriesTitle != null && !NovatubeContentPolicy.allows(
+      name: seriesTitle.name, category: seriesTitle.categoryKey)) return;
   await WatchProgressRepository.instance.load();
   final WatchEntry? prev = WatchProgressRepository.instance.get(item.id);
   // Même règle pour la rangée « Reprendre », la fiche, et « Depuis le début ».

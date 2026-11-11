@@ -26,6 +26,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../core/app/novatube_play_policy.dart';
 import '../../subscription/data/subscription_backend.dart';
 
 /// Clés stables des sections de l'accueil. DOIVENT rester alignées avec
@@ -116,6 +117,8 @@ class HomeLayoutRepository extends ChangeNotifier {
 
   /// Charge le cache (immédiat) puis rafraîchit depuis le réseau.
   Future<void> initialize() async {
+    if (!NovatubePlayPolicy.allowPanelSources) return;
+
     if (_initialized) return;
     _initialized = true;
     await _loadCache();
@@ -136,6 +139,8 @@ class HomeLayoutRepository extends ChangeNotifier {
 
   /// Va chercher la config distante. Silencieux en cas d'échec.
   Future<void> refresh() async {
+    if (!NovatubePlayPolicy.allowPanelSources) return;
+
     try {
       final http.Response resp = await http
           .get(Uri.parse('$kSubscriptionBaseUrl/api/home-layout'))

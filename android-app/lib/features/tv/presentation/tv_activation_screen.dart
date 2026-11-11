@@ -9,6 +9,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../core/app/novatube_play_policy.dart';
 import '../../device/domain/display_mac.dart';
 import '../../../core/app/repair_flags.dart';
 import '../../../core/app/zuno_edition.dart';
@@ -41,6 +42,7 @@ class _TvActivationScreenState extends State<TvActivationScreen> {
   @override
   void initState() {
     super.initState();
+    if (!NovatubePlayPolicy.allowPanelSources) return;
     DeviceIdentity.instance.mac.then((String m) {
       if (mounted) setState(() => _mac = m);
     });
@@ -60,6 +62,7 @@ class _TvActivationScreenState extends State<TvActivationScreen> {
   }
 
   Future<void> _check() async {
+    if (!NovatubePlayPolicy.allowPanelSources) return;
     setState(() => _busy = true);
     await SubscriptionState.instance.syncWithBackend();
     RemoteActivationWatch.instance.nudge();
@@ -80,6 +83,7 @@ class _TvActivationScreenState extends State<TvActivationScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (NovatubePlayPolicy.isPlay) return const TvAddSourceScreen();
     // L'identité envoyée au panel reste celle de ZUNO. Seule l'édition
     // explicite choisit cette présentation : une grande tablette reste
     // tactile, tandis que la TV et le bureau gardent leur canevas actuel.

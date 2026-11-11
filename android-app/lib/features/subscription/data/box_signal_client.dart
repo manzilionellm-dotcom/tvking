@@ -17,6 +17,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+import '../../../core/app/novatube_play_policy.dart';
 import '../../device/data/device_secret.dart';
 import '../domain/box_channel.dart' show safeOrderToken;
 import 'subscription_backend.dart';
@@ -87,6 +88,8 @@ abstract final class BoxSignalClient {
     String build = '',
     int timeoutMs = 20000,
   }) async {
+    if (!NovatubePlayPolicy.allowPanelSources) return BoxWaitResult.down;
+
     try {
       final Map<String, String> headers = await DeviceSecret.instance.headers();
       final Uri uri = Uri.parse(
@@ -113,6 +116,8 @@ abstract final class BoxSignalClient {
     required List<int> boxIds,
     required List<int> fleetIds,
   }) async {
+    if (!NovatubePlayPolicy.allowPanelSources) return false;
+
     try {
       final Map<String, String> headers =
           await DeviceSecret.instance.headers(jsonBody: true);

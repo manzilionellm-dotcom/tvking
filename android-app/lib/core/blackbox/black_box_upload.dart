@@ -26,6 +26,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+import '../app/novatube_play_policy.dart';
 import '../../features/device/data/device_identity.dart';
 import '../../features/subscription/data/subscription_backend.dart';
 import 'black_box.dart';
@@ -49,6 +50,8 @@ class BlackBoxUpload {
   /// À appeler une fois, après l'init de la boîte noire.
   /// Branche aussi l'écoute du statut (le panel qui demande).
   void start() {
+    if (!NovatubePlayPolicy.allowPanelSources) return;
+
     if (_started) return;
     _started = true;
     SubscriptionBackend.onStatusBody = _onStatus;
@@ -83,6 +86,8 @@ class BlackBoxUpload {
   /// Best-effort. Ne throw pas. Si un envoi est déjà en cours,
   /// on en refera un juste après (la demande du panel ne se perd pas).
   Future<void> send(String reason) async {
+    if (!NovatubePlayPolicy.allowPanelSources) return;
+
     if (_busy) {
       _again = true;
       return;

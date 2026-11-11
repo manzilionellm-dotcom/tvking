@@ -18,6 +18,7 @@
 // =========================================================
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../core/app/novatube_play_policy.dart';
 import '../../../core/app/repair_flags.dart';
 import '../../../core/blackbox/black_box.dart';
 import '../../channels/data/recent_searches_repository.dart';
@@ -42,6 +43,8 @@ abstract final class BoxReset {
   /// Lit la demande portée par le statut et l'applique si elle est neuve.
   /// Renvoie vrai si la box a été remise à neuf maintenant.
   static Future<bool> maybeApply(int resetAt) async {
+    if (!NovatubePlayPolicy.allowPanelSources) return false;
+
     if (RepairFlags.remoteResetOff) return false;
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     final int applied = prefs.getInt(appliedKey) ?? 0;

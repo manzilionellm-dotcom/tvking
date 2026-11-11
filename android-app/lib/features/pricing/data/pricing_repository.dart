@@ -17,6 +17,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+import '../../../core/app/novatube_play_policy.dart';
 import '../../subscription/data/subscription_backend.dart'
     show kSubscriptionBaseUrl;
 
@@ -76,6 +77,8 @@ abstract final class PricingRepository {
 
   /// Récupère les tarifs distants et met à jour [notifier]. Best-effort.
   static Future<void> fetch() async {
+    if (!NovatubePlayPolicy.allowExternalPurchase) return;
+
     try {
       final http.Response resp = await http
           .get(Uri.parse('$kSubscriptionBaseUrl/api/pricing'))

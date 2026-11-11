@@ -31,6 +31,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart' show DateFormat;
 
+import '../../../core/app/novatube_play_policy.dart';
 import '../../device/domain/display_mac.dart';
 import '../../../core/app/repair_flags.dart';
 import '../../../core/app/zuno_edition.dart';
@@ -221,9 +222,11 @@ class _TvHubScreenState extends State<TvHubScreen> {
         unawaited(_reloadGuide());
       }
     });
-    DeviceIdentity.instance.mac.then((String m) {
-      if (mounted) setState(() => _mac = m);
-    });
+    if (NovatubePlayPolicy.allowPanelSources) {
+      DeviceIdentity.instance.mac.then((String m) {
+        if (mounted) setState(() => _mac = m);
+      });
+    }
     BlackBox.instance.info('SCREEN', 'Accueil');
     _hadChannels = PlaylistRepository.instance.currentChannels.isNotEmpty;
     _wasActive = _isActive(SubscriptionState.instance.status);
@@ -251,7 +254,9 @@ class _TvHubScreenState extends State<TvHubScreen> {
     }
     _favIds = FavoritesRepository.instance.current;
     _recentIds = RecentlyWatchedRepository.instance.current;
-    _trending = TrendingRepository.instance.current;
+    _trending = NovatubePlayPolicy.allowPromotions
+        ? TrendingRepository.instance.current
+        : const <String>[];
     _rebuildShelves(notify: false);
     _favSub = FavoritesRepository.instance.favoritesStream.listen((
       Set<String> ids,
@@ -265,12 +270,14 @@ class _TvHubScreenState extends State<TvHubScreen> {
       _recentIds = ids;
       _scheduleShelves();
     });
-    TrendingRepository.instance.start();
-    _trendSub = TrendingRepository.instance.stream.listen((List<String> names) {
-      if (listEquals(names, _trending)) return;
-      _trending = names;
-      _schedulePopular();
-    });
+    if (NovatubePlayPolicy.allowPromotions) {
+      TrendingRepository.instance.start();
+      _trendSub = TrendingRepository.instance.stream.listen((List<String> names) {
+        if (listEquals(names, _trending)) return;
+        _trending = names;
+        _schedulePopular();
+      });
+    }
     WatchProgressRepository.instance.addListener(_scheduleShelves);
     ProgramReminderRepository.instance.addListener(_scheduleShelves);
     ParentalControls.instance.kidsMode.addListener(_scheduleShelves);
@@ -297,6 +304,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
   /// réseau ensuite). Le canal « signal » les rafraîchira quand le panel
   /// publie ; l'accueil n'a qu'à écouter.
   Future<void> _preparePanelBoard() async {
+    if (!NovatubePlayPolicy.allowPromotions) return;
     try {
       await Future.wait(<Future<void>>[
         panelNoticeFlag.load(),
@@ -315,9 +323,9 @@ class _TvHubScreenState extends State<TvHubScreen> {
   }
 
   void _readPanelFlags() {
-    _noticeOn = panelNoticeFlag.value;
-    _featuredOn = featuredFlag.value;
-    _promoOn = promoBannerFlag.value;
+    _noticeOn = NovatubePlayPolicy.allowPromotions && panelNoticeFlag.value;
+    _featuredOn = NovatubePlayPolicy.allowPromotions && featuredFlag.value;
+    _promoOn = NovatubePlayPolicy.allowPromotions && promoBannerFlag.value;
   }
 
   void _onPanelFlags() {
@@ -330,6 +338,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
   /// L'annonce a changé (canal « signal » ou relecture) : on regarde si
   /// la personne l'a déjà fermée AVANT de l'afficher.
   Future<void> _onNotice() async {
+    if (!NovatubePlayPolicy.allowPromotions) return;
     final Announcement? a = AnnouncementRepository.latest.value;
     bool dismissed = false;
     if (a != null) dismissed = await AnnouncementRepository.isDismissed(a.id);
@@ -360,6 +369,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
   /// Le favori du jour est un NOM : on cherche la chaîne dans la liste
   /// (hors fil UI si elle est grosse). Liste changée → on recherche.
   void _onFeatured() {
+    if (!NovatubePlayPolicy.allowPromotions) return;
     if (!mounted) return;
     final FeaturedRepository f = FeaturedRepository.instance;
     final int gen = ++_featuredGen;
@@ -380,6 +390,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
   /// du jour, rotation), et on la compte « montrée » si c'est bien elle
   /// qui est à l'écran (pas si l'émission suivie passe devant).
   void _replanPanel() {
+    if (!NovatubePlayPolicy.allowPromotions) return;
     if (!mounted) return;
     final int nowMs = _now.millisecondsSinceEpoch;
     final PromoBannerRepository repo = PromoBannerRepository.instance;
@@ -416,9 +427,10 @@ class _TvHubScreenState extends State<TvHubScreen> {
 
   HeaderCard get _headerCard => pickHeaderCard(
         hasShow: _banner != null,
-        hasNotice: _noticeVisible,
-        hasPromo: _promo != null,
-        hasFeatured: _featuredOn && _featuredChannel != null,
+        hasNotice: NovatubePlayPolicy.allowPromotions && _noticeVisible,
+        hasPromo: NovatubePlayPolicy.allowPromotions && _promo != null,
+        hasFeatured: NovatubePlayPolicy.allowPromotions &&
+            _featuredOn && _featuredChannel != null,
         tick: _panelTick,
       );
 
@@ -485,6 +497,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
   /// s'ouvrir (activation faite dans le panel), va chercher la source TOUT DE
   /// SUITE — c'est le moment exact où le revendeur vient d'assigner l'abonnement.
   void _onLicenseChange() {
+    if (!NovatubePlayPolicy.allowPanelSources) return;
     final bool active = _isActive(SubscriptionState.instance.status);
     if (active && !_wasActive && !BootGuard.instance.safeMode) {
       RemoteActivationWatch.instance.nudge();
@@ -654,6 +667,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
     if (_pendingAutoOpen) _openLiveIfPending();
     if (mounted) setState(() {});
     _schedulePopular();
+    if (!NovatubePlayPolicy.allowPanelSources) return;
     final Greeting? g = await GreetingRepository.instance.fetch();
     if (!mounted || g == null) return;
     setState(() => _greeting = g);
@@ -669,6 +683,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
   }
 
   void _schedulePopular() {
+    if (!NovatubePlayPolicy.allowPromotions) return;
     _popularDebounce?.cancel();
     _popularDebounce = Timer(const Duration(milliseconds: 400), () {
       if (mounted) unawaited(_refreshPopular());
@@ -678,7 +693,8 @@ class _TvHubScreenState extends State<TvHubScreen> {
   /// Assemble les rangées à partir des listes déjà en mémoire.
   /// [notify] à false pendant initState / avant le premier cadre.
   void _rebuildShelves({bool notify = true}) {
-    final bool kids = ParentalControls.instance.kidsMode.value;
+    final bool kids = !NovatubePlayPolicy.allowAdult ||
+        ParentalControls.instance.kidsMode.value;
     final Map<String, Channel> byId = indexChannelsById(_channels);
     bool hide(Channel c) => hiddenForKids(c);
     final bool Function(Channel)? kidsHide = kids ? hide : null;
@@ -686,7 +702,9 @@ class _TvHubScreenState extends State<TvHubScreen> {
     _shelves = HomeShelfModel(
       resume: channelsInIdOrder(_recentIds, byId, hide: kidsHide),
       favorites: favoriteChannels(_channels, _favIds, hide: kidsHide),
-      popular: channelsInIdOrder(_popularIds, byId, hide: kidsHide),
+      popular: NovatubePlayPolicy.allowPromotions
+          ? channelsInIdOrder(_popularIds, byId, hide: kidsHide)
+          : const <Channel>[],
       continueWatching: continueForHome(
         WatchProgressRepository.instance.continueWatching(),
         kidsMode: kids,
@@ -752,8 +770,10 @@ class _TvHubScreenState extends State<TvHubScreen> {
   }
 
   Future<void> _refreshPopular() async {
+    if (!NovatubePlayPolicy.allowPromotions) return;
     final int gen = ++_popularGen;
-    final bool kids = ParentalControls.instance.kidsMode.value;
+    final bool kids = !NovatubePlayPolicy.allowAdult ||
+        ParentalControls.instance.kidsMode.value;
     final List<String> ids = await resolvePopularIds(
       trendingNames: _trending,
       channels: _channels,
@@ -909,7 +929,8 @@ class _TvHubScreenState extends State<TvHubScreen> {
         } catch (_) {}
       }
       if (gen != _showGen || !mounted) return;
-      final bool kids = ParentalControls.instance.kidsMode.value;
+      final bool kids = !NovatubePlayPolicy.allowAdult ||
+        ParentalControls.instance.kidsMode.value;
       final Map<String, Channel> byId = indexChannelsById(_channels);
       final List<GuideSlot> slots = <GuideSlot>[];
       for (final EpgProgram program in found) {
@@ -1120,6 +1141,9 @@ class _TvHubScreenState extends State<TvHubScreen> {
   }
 
   ({String label, Color color}) _license(BuildContext context) {
+    if (!NovatubePlayPolicy.allowPanelSources) {
+      return (label: '', color: TvTokens.mutedDim);
+    }
     switch (SubscriptionState.instance.status) {
       case SubscriptionStatus.paid:
         return (label: context.l10n.tvStatusPaid, color: TvTokens.success);
@@ -1324,6 +1348,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
                 ),
               ],
               const SizedBox(height: TvDimens.touchSafeV),
+              if (NovatubePlayPolicy.allowPanelSources || source.isNotEmpty)
               Container(
                 padding: const EdgeInsets.all(TvDimens.touchSafeH),
                 decoration: BoxDecoration(
@@ -1334,6 +1359,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
+                    if (NovatubePlayPolicy.allowPanelSources) ...<Widget>[
                     Text(
                       context.l10n.tvActivationCodeLabel,
                       style:
@@ -1345,6 +1371,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
                       textDirection: TextDirection.ltr,
                       style: TvTokens.mono(TvDimens.label),
                     ),
+                    ],
                     if (license.label.isNotEmpty) ...<Widget>[
                       const SizedBox(height: TvDimens.touchGap),
                       Text(
@@ -1367,7 +1394,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
                   ],
                 ),
               ),
-              if (_hasLocalSource == false) ...<Widget>[
+              if (NovatubePlayPolicy.allowPanelSources && _hasLocalSource == false) ...<Widget>[
                 const SizedBox(height: TvDimens.touchSafeV),
                 Align(child: TvPhoneSourceQr(mac: _mac)),
               ],
@@ -1599,7 +1626,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
                             // Aucune playlist sur la box : tuiles un peu plus petites,
                             // et à droite le QR que le téléphone photographie
                             // pour ouvrir « Mon espace » (lien M3U ou Xtream).
-                            : _hasLocalSource == false
+                            : NovatubePlayPolicy.allowPanelSources && _hasLocalSource == false
                                 ? Row(
                                     crossAxisAlignment:
                                         CrossAxisAlignment.center,
@@ -1629,6 +1656,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
                       // ---------- BARRE DU BAS ----------
                       Row(
                         children: <Widget>[
+                          if (NovatubePlayPolicy.allowPanelSources) ...<Widget>[
                           Text(
                             '${context.l10n.tvActivationCodeLabel} : ',
                             style: TvTokens.ui(14, color: TvTokens.mutedDim),
@@ -1645,6 +1673,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
                               color: TvTokens.accentBright,
                             ),
                           ),
+                          ],
                           const Spacer(),
                           if (lic.label.isNotEmpty)
                             Text(

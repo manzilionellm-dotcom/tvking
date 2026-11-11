@@ -63,7 +63,9 @@ name: Build Zuno TV (APK → release zuno-tv)
 
 on:
   push:
-    branches: ['main', 'claude/**', 'feature/**']
+    # NOVATUBE dispose de sa propre identité et attend un accord de build.
+    # Cette exclusion vit uniquement sur sa branche de travail.
+    branches: ['main', 'claude/**', 'feature/**', '!feature/novatube-play-aab']
     paths:
       - 'android-app/lib/**'
       - 'android-app/packages/**'
@@ -186,6 +188,8 @@ jobs:
       aab-ready: ${{ env.AAB_READY }}
     name: Build Zuno TV APK
     if: >-
+      github.ref != 'refs/heads/feature/novatube-play-aab' &&
+      github.head_ref != 'feature/novatube-play-aab' &&
       (github.actor == github.repository_owner && github.triggering_actor == github.repository_owner && github.repository == 'manzilionellm-dotcom/tvking') &&
       (github.event_name != 'pull_request' ||
       (github.repository == 'manzilionellm-dotcom/tvking' &&

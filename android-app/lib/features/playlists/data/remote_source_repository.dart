@@ -28,6 +28,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart';
 
+import '../../../core/app/novatube_play_policy.dart';
 import '../../channels/data/recently_watched_repository.dart';
 import '../../../core/app/repair_flags.dart';
 import '../../../core/blackbox/black_box.dart';
@@ -77,6 +78,8 @@ abstract final class RemoteSourceRepository {
   /// le 05/10/2026 : « j'efface, il revient après cinq minutes »). Le retrait
   /// définitif se fait depuis le panel.
   static Future<bool> isServedByPanel(Playlist playlist) async {
+    if (!NovatubePlayPolicy.allowPanelSources) return false;
+
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     final List<String> remembered =
         prefs.getStringList(rememberedKey) ?? const <String>[];
@@ -211,7 +214,9 @@ abstract final class RemoteSourceRepository {
       BlackBox.instance.warn('SOURCE', 'suppression locale impossible : $e');
       return false;
     }
-    await _serial(() => _deleteFromTv(playlist, client: client));
+    if (NovatubePlayPolicy.allowPanelSources) {
+      await _serial(() => _deleteFromTv(playlist, client: client));
+    }
     return true;
   }
 
@@ -281,6 +286,8 @@ abstract final class RemoteSourceRepository {
   }
 
   static Future<RemoteSyncResult> sync({bool force = false}) {
+    if (!NovatubePlayPolicy.allowPanelSources) return Future<RemoteSyncResult>.value(RemoteSyncResult.noSource);
+
     return _serial(() async {
       _lastConfigRev = null;
       _lastError = null;
@@ -348,6 +355,8 @@ abstract final class RemoteSourceRepository {
   /// l'empreinte (réponse légère de /api/status). N'importe rien.
   /// Un échec réseau ne doit pas appeler cette méthode.
   static Future<int> applyRevocations(List<String> revoked) {
+    if (!NovatubePlayPolicy.allowPanelSources) return Future<int>.value(0);
+
     if (revoked.isEmpty) return Future<int>.value(0);
     // Une révocation ne doit pas attendre la fin d'un téléchargement de
     // plusieurs minutes. SQLite sérialise les écritures ; l'import tardif
@@ -356,6 +365,8 @@ abstract final class RemoteSourceRepository {
   }
 
   static Future<RemoteSyncResult> _syncBody({bool force = false}) async {
+    if (!NovatubePlayPolicy.allowPanelSources) return RemoteSyncResult.noSource;
+
     try {
       final String mac = await DeviceIdentity.instance.mac;
       if (!mac.startsWith('MK:')) return RemoteSyncResult.noSource;
@@ -521,6 +532,8 @@ abstract final class RemoteSourceRepository {
   /// pour retrouver « Récemment » et « Pour vous » immédiatement. Best-effort :
   /// ne throw jamais, n'écrase jamais un historique local déjà présent.
   static Future<void> syncHistory() async {
+    if (!NovatubePlayPolicy.allowPanelSources) return;
+
     try {
       final String mac = await DeviceIdentity.instance.mac;
       if (!mac.startsWith('MK:')) return;

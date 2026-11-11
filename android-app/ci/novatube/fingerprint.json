@@ -1,0 +1,8 @@
+{
+  "package": "com.sevenmotion.novatube",
+  "alias": "novatube-upload",
+  "created_at": "2026-11-11T07:37:35.575520+00:00",
+  "sha256": "38d6dabe9a73e5ab94a56491e4da6638f5da09ef1eaa77d0eb892d5f0478824b",
+  "algorithm": "RSA-4096 / SHA256withRSA",
+  "purpose": "NOVATUBE dedicated Android upload certificate"
+}

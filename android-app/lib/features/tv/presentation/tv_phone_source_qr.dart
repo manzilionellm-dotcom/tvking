@@ -17,6 +17,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
+import '../../../core/app/novatube_play_policy.dart';
 import '../../../core/blackbox/black_box.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../core/tv_dimens.dart';
@@ -39,6 +40,7 @@ class TvOwnSourceQr extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (!NovatubePlayPolicy.allowPanelSources) return const SizedBox.shrink();
     final bool showQr = url != null && url!.isNotEmpty;
     return SizedBox(
       width: qrSize + 112,
@@ -123,6 +125,7 @@ class _TvPhoneSourceQrState extends State<TvPhoneSourceQr> {
   @override
   void initState() {
     super.initState();
+    if (!NovatubePlayPolicy.allowPanelSources) return;
     // 15 minutes : le Worker garde le code 20 minutes. On le
     // remplace avant qu'il tombe, tant que cet écran est visible.
     _renew = Timer.periodic(const Duration(minutes: 15), (_) {
@@ -144,6 +147,7 @@ class _TvPhoneSourceQrState extends State<TvPhoneSourceQr> {
   }
 
   Future<void> _publish() async {
+    if (!NovatubePlayPolicy.allowPanelSources) return;
     final int gen = ++_gen;
     final HomeSourceLink? link = await publishHomeSourceLink(mac: widget.mac);
     if (!mounted || gen != _gen) return;
@@ -159,6 +163,7 @@ class _TvPhoneSourceQrState extends State<TvPhoneSourceQr> {
 
   @override
   Widget build(BuildContext context) {
+    if (!NovatubePlayPolicy.allowPanelSources) return const SizedBox.shrink();
     return TvOwnSourceQr(url: _url, code: _code, qrSize: widget.qrSize);
   }
 }

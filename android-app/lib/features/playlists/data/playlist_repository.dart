@@ -30,6 +30,7 @@ import 'package:sqflite/sqflite.dart';
 // ignore: depend_on_referenced_packages — dart:async fournit unawaited
 
 
+import '../../../core/app/novatube_content_policy.dart';
 import '../../../core/app/repair_flags.dart';
 import '../../../core/flavor/flavor.dart';
 import '../../../core/blackbox/black_box.dart';
@@ -90,6 +91,9 @@ class PlaylistRepository {
   // restriction est héritée partout, sans toucher chaque écran. Sur les
   // flavors normaux (The Few, TV), `adultOnly` = false → aucune restriction.
   List<Channel> _applyFlavorFilter(List<Channel> all) {
+    all = all.where((Channel c) => NovatubeContentPolicy.allows(
+      name: c.name, category: c.category,
+    )).toList(growable: false);
     if (!FlavorConfig.current.adultOnly) return all;
     return all
         .where((Channel c) => c.genre == ChannelGenre.adult)
@@ -97,12 +101,12 @@ class PlaylistRepository {
   }
 
   Stream<List<Channel>> get channelsStream =>
-      _channelsController.stream.map(_applyFlavorFilter);
+      _channelsController.stream;
   Stream<List<Playlist>> get playlistsStream => _playlistsController.stream;
 
   /// Snapshot synchrone des chaînes actuellement chargées. À utiliser
   /// en `initialData` d'un StreamBuilder pour avoir l'état immédiatement.
-  List<Channel> get currentChannels => _applyFlavorFilter(_channelsCache);
+  List<Channel> get currentChannels => _channelsCache;
 
   /// Snapshot synchrone des playlists actuellement chargées.
   List<Playlist> get currentPlaylists => _playlistsCache;
@@ -165,15 +169,7 @@ class PlaylistRepository {
     // s'arrête au plafond. Voir _readChannelsBounded.
     final List<Channel> all = await _readChannelsBounded(db, activeId);
 
-    // Filtre adultOnly du flavor Red Room. On le pose ICI (point
-    // unique de lecture) pour que TOUS les consommateurs (home,
-    // favoris, recherche, EPG, recommandations) héritent
-    // automatiquement de la restriction. Aucun risque d'oubli dans
-    // un widget qui contournerait le repo.
-    if (FlavorConfig.current.adultOnly) {
-      return all.where((Channel c) => c.genre == ChannelGenre.adult).toList();
-    }
-    return all;
+    return _applyFlavorFilter(all);
   }
 
   /// Lecture FUSIONNÉE (toutes les playlists). Deux listes peuvent porter le
@@ -215,10 +211,7 @@ class PlaylistRepository {
         catchupSource: c.catchupSource,
       ));
     }
-    if (FlavorConfig.current.adultOnly) {
-      return out.where((Channel c) => c.genre == ChannelGenre.adult).toList();
-    }
-    return out;
+    return _applyFlavorFilter(out);
   }
 
   /// Plafond de chaînes chargées EN MÉMOIRE — garde-fou anti-OOM des box

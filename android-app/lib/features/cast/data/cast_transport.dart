@@ -33,7 +33,7 @@ abstract class CastTransport {
   /// affichera son placeholder).
   Future<void> playStream({
     required String streamUrl,
-    String title = 'ZUNO',
+    String title = 'NOVATUBE',
     String? imageUrl,
   });
 

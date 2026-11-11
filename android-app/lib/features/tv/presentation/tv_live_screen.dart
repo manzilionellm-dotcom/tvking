@@ -14,6 +14,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 
+import '../../../core/app/novatube_play_policy.dart';
 import '../../device/domain/display_mac.dart';
 import '../../../core/app/boot_guard.dart';
 import '../../../core/app/repair_flags.dart';
@@ -39,6 +40,7 @@ import '../core/tv_focusable.dart';
 import 'tv_add_source_screen.dart';
 import 'tv_components.dart';
 import 'tv_live_preview.dart';
+import 'tv_manual_source_prompt.dart';
 import 'tv_phone_source_qr.dart';
 import 'tv_player_screen.dart';
 import 'tv_shell.dart';
@@ -92,7 +94,8 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
   StreamSubscription<List<String>>? _trendSub;
   StreamSubscription<List<String>>? _recentSub;
   Set<String> _favIds = FavoritesRepository.instance.current;
-  List<String> _trending = TrendingRepository.instance.current;
+  List<String> _trending = NovatubePlayPolicy.allowPromotions
+      ? TrendingRepository.instance.current : const <String>[];
   List<String> _recentIds = RecentlyWatchedRepository.instance.current;
   List<Channel> _all = const <Channel>[];
   List<String> _cats = const <String>[];
@@ -185,6 +188,7 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
       _scheduleRecompute(); // coalescé (anti-ANR)
     });
     // Tendances en direct : la catégorie « 🔥 Tendances » se met à jour seule.
+    if (NovatubePlayPolicy.allowPromotions) {
     TrendingRepository.instance.start();
     _trendSub = TrendingRepository.instance.stream.listen((List<String> names) {
       // Le dépôt ré-émet toutes les 60 s MÊME sans changement : on ignore les
@@ -194,6 +198,7 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
       _trending = names;
       _scheduleRecompute(); // coalescé (anti-ANR)
     });
+    }
     // Historique « 🕒 Récemment » en direct.
     _recentSub = RecentlyWatchedRepository.instance.stream.listen((
       List<String> ids,
@@ -203,14 +208,16 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     });
     // MAC affichée sur l'état vide : sans elle, impossible de savoir à quel
     // appareil pousser une source dans le panel.
-    DeviceIdentity.instance.mac.then((String m) {
-      if (mounted) setState(() => _mac = m);
-    });
+    if (NovatubePlayPolicy.allowPanelSources) {
+      DeviceIdentity.instance.mac.then((String m) {
+        if (mounted) setState(() => _mac = m);
+      });
+    }
     // MODE SANS ÉCHEC (boucle de redémarrage détectée) : on NE relance PAS
     // le ré-import automatique de la source — c'est précisément l'étape
     // gourmande qu'on veut éviter pour casser la boucle. Le bouton manuel
     // « Synchroniser » reste disponible.
-    if (!BootGuard.instance.safeMode) {
+    if (NovatubePlayPolicy.allowPanelSources && !BootGuard.instance.safeMode) {
       _kickSourceSync(); // tout de suite à l'ouverture de l'écran
       _syncTimer = Timer.periodic(const Duration(seconds: 12), (_) {
         // Borné : on arrête les tentatives AUTO après _kMaxAutoSync essais.
@@ -411,7 +418,9 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     }
     // Catégories affichées (pseudo-catégories non vides en tête).
     final List<String> cats = <String>[];
-    if (_trendCh.isNotEmpty) cats.add(_kTrendCat);
+    if (NovatubePlayPolicy.allowPromotions && _trendCh.isNotEmpty) {
+      cats.add(_kTrendCat);
+    }
     if (_favCh.isNotEmpty) cats.add(_kFavCat);
     if (_recentCh.isNotEmpty) cats.add(_kRecentCat);
     if (_forYouCh.isNotEmpty) cats.add(_kForYouCat);
@@ -585,6 +594,7 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
   }
 
   Future<void> _kickSourceSync() async {
+    if (!NovatubePlayPolicy.allowPanelSources) return;
     if (_syncing) return;
     if (mounted) setState(() => _syncing = true);
     final RemoteSyncResult r = await RemoteSourceRepository.sync();
@@ -623,7 +633,8 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     // MODE ENFANTS : on retire toutes les chaînes classées « Adulte ». Le filtre
     // ne s'applique QUE si le parent l'a activé (défaut : désactivé → aucun
     // changement). Détection via le classifieur existant (mots-clés robustes).
-    final bool kids = ParentalControls.instance.kidsMode.value;
+    final bool kids = !NovatubePlayPolicy.allowAdult ||
+        ParentalControls.instance.kidsMode.value;
     final List<Channel> live = channels.where((Channel c) {
       if (!c.isLive) return false;
       if (kids && _hideForKids(c)) return false;
@@ -692,7 +703,8 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
         'DIRECT',
         'pré-calcul noms/genres terminé en ${sw.elapsedMilliseconds} ms (isolate)',
       );
-      if (ParentalControls.instance.kidsMode.value) {
+      if (!NovatubePlayPolicy.allowAdult ||
+          ParentalControls.instance.kidsMode.value) {
         _ingest(_rawLive); // re-filtre avec les genres maintenant connus
       } else {
         _scheduleRecompute();
@@ -703,6 +715,7 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
   @override
   Widget build(BuildContext context) {
     if (_all.isEmpty) {
+      if (NovatubePlayPolicy.isPlay) return const TvManualSourcePrompt();
       // États PRÉCIS au lieu d'un « écran mort » :
       //  • en cours / réseau → « Recherche de tes chaînes… »
       //  • source refusée     → identifiants invalides côté panel

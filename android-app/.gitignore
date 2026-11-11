@@ -48,6 +48,19 @@ android/local.properties
 android/key.properties        # SECRET — keystore signature
 android/app/key.jks           # SECRET — keystore
 android/app/upload-keystore.jks
+# Signature NOVATUBE : seuls le certificat PUBLIC et son empreinte sont suivis.
+*.jks
+*.keystore
+*.p12
+*.pfx
+*recovery-private*
+novatube-signing-private/
+# Le certificat public est nécessaire pour vérifier le signataire du bundle.
+!ci/novatube/novatube-upload-cert.pem
+
+# Caches Python des contrôles CI, jamais des sources à livrer.
+__pycache__/
+*.py[cod]
 ios/Pods/
 ios/.symlinks/
 ios/Flutter/Flutter.framework

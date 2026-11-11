@@ -12,6 +12,7 @@
 
 import 'package:flutter/foundation.dart';
 
+import '../../../core/app/novatube_content_policy.dart';
 import '../../cinema/data/catalog_cache_policy.dart';
 import '../../cinema/data/cinema_repository.dart';
 import '../../playlists/data/playlist_repository.dart';
@@ -51,7 +52,10 @@ class VodRepository {
       password: xt.xtreamPassword ?? '',
     );
     try {
-      final List<VodMovie> movies = await client.fetchVodMovies();
+      final List<VodMovie> movies = (await client.fetchVodMovies())
+          .where((VodMovie movie) => NovatubeContentPolicy.allows(
+            name: movie.name, category: movie.category,
+          )).toList(growable: false);
       // Une réponse vide n'efface pas ce qu'on a déjà (mémoire ou disque).
       final List<VodMovie> chosen = keepPreviousWhenEmpty<VodMovie>(
         incoming: movies,

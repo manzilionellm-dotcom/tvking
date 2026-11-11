@@ -40,6 +40,9 @@ import '../../player/domain/live_bar_slots.dart';
 import '../../player/domain/reconnect_plan.dart';
 
 import '../../../core/app/repair_flags.dart';
+import '../../../core/app/novatube_content_policy.dart';
+import '../../../core/app/novatube_play_policy.dart';
+import 'tv_content_unavailable.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import 'tv_localized_format.dart';
 import '../../../core/blackbox/black_box.dart';
@@ -95,7 +98,18 @@ class TvPlayerScreen extends StatefulWidget {
   final String? startAtUrl;
 
   @override
-  State<TvPlayerScreen> createState() => _TvPlayerScreenState();
+  State<TvPlayerScreen> createState() {
+    // Refus avant toute création de contrôleur natif ou requête réseau.
+    if (startIndex < 0 || startIndex >= channels.length) {
+      return NovatubeUnavailableState<TvPlayerScreen>();
+    }
+    final Channel selected = channels[startIndex];
+    if (!NovatubeContentPolicy.allows(
+        name: selected.name, category: selected.category)) {
+      return NovatubeUnavailableState<TvPlayerScreen>();
+    }
+    return _TvPlayerScreenState();
+  }
 }
 
 class _TvPlayerScreenState extends State<TvPlayerScreen>
@@ -107,7 +121,13 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   final Object _downloadOwner = Object();
   final FocusNode _focus = FocusNode();
 
-  late int _index = widget.startIndex;
+  // Le zap conserve l'ordre des chaînes admises, sans exposer une chaîne
+  // exclue passée directement à cette route en dehors du catalogue.
+  late final List<Channel> _channels = widget.channels
+      .where((Channel c) => NovatubeContentPolicy.allows(
+          name: c.name, category: c.category))
+      .toList(growable: false);
+  late int _index = _channels.indexOf(widget.channels[widget.startIndex]);
   bool _overlay = true;
 
   // Index du bouton de la barre actuellement « surligné » au D-pad
@@ -219,7 +239,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     return n > _kMaxRecover ? n : _kMaxRecover;
   }
 
-  Channel get _current => widget.channels[_index];
+  Channel get _current => _channels[_index];
 
   static const List<LogicalKeyboardKey> _digits = <LogicalKeyboardKey>[
     LogicalKeyboardKey.digit0,
@@ -322,10 +342,12 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     );
     followedFlag.changes.addListener(_onFollowFlag);
     // Garde l'app « en ligne » + chaîne à jour pendant le visionnage.
-    _presenceTimer = Timer.periodic(
-      const Duration(minutes: 3),
-      (_) => SubscriptionState.instance.syncWithBackend(),
-    );
+    if (NovatubePlayPolicy.allowPanelSources) {
+      _presenceTimer = Timer.periodic(
+        const Duration(minutes: 3),
+        (_) => SubscriptionState.instance.syncWithBackend(),
+      );
+    }
   }
 
   void _onClearVoice() {
@@ -599,7 +621,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   }
 
   void _zap(int delta) {
-    final int n = widget.channels.length;
+    final int n = _channels.length;
     if (n <= 1) return;
     // On ne peut enregistrer qu'1 chaîne à la fois (1 connexion) : changer de
     // chaîne clôt et SAUVEGARDE l'enregistrement en cours.
@@ -1354,7 +1376,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
       setState(() {});
       return;
     }
-    setState(() => _index = (n - 1).clamp(0, widget.channels.length - 1));
+    setState(() => _index = (n - 1).clamp(0, _channels.length - 1));
     _open();
   }
 
@@ -1550,7 +1572,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
                           child: _ControlsBar(
                             channel: _current,
                             index: _index,
-                            total: widget.channels.length,
+                            total: _channels.length,
                             isRecording: _isRecording,
                             isFavorite: _isFavorite,
                             focusedIndex: _btnFocus,
