@@ -1,15 +1,14 @@
 # NOUVELLE APPLICATION : aucune clé, release ou fiche Play d'une autre app.
 # Ce fichier ne déclenche rien au push ni à l'ouverture d'une pull request.
-# Limite GitHub : son premier workflow_dispatch exige son enregistrement
-# préalable ; voir android-app/ci/novatube/README.md. Ne pas modifier main
-# ni ajouter un déclencheur automatique pour contourner cette limite.
-name: NOVATUBE — AAB release pour revue
+# Le workflow est déjà enregistré sur main ; sélectionner la branche
+# NOVATUBE et son SHA approuvé. Aucun changement de main n'est nécessaire.
+name: NOVATUBE — AAB Play ou APK privé vérifié
 
 on:
   workflow_dispatch:
     inputs:
       confirme:
-        description: 'COMPILER_NOVATUBE uniquement après accord explicite de Lionel sur les fichiers'
+        description: 'COMPILER_NOVATUBE (AAB Play) ou PUBLIER_NOVATUBE_APK_PRIVE, après accord sur le SHA'
         type: string
         required: true
       reviewed_commit:
@@ -43,7 +42,7 @@ jobs:
       github.ref == 'refs/heads/feature/novatube-play-aab' &&
       github.actor == github.repository_owner &&
       github.triggering_actor == github.repository_owner &&
-      inputs.confirme == 'COMPILER_NOVATUBE' &&
+      (inputs.confirme == 'COMPILER_NOVATUBE' || inputs.confirme == 'PUBLIER_NOVATUBE_APK_PRIVE') &&
       inputs.reviewed_commit == github.sha
     runs-on: ubuntu-24.04
     timeout-minutes: 75
@@ -55,6 +54,13 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      - name: Installer le parseur des garde-fous du workflow
+        run: |
+          set -euo pipefail
+          python3 -m venv "$RUNNER_TEMP/novatube-ci-python"
+          "$RUNNER_TEMP/novatube-ci-python/bin/python" -m pip install --disable-pip-version-check PyYAML==6.0.3
+          echo "$RUNNER_TEMP/novatube-ci-python/bin" >> "$GITHUB_PATH"
+
       - name: Vérifier la base, l'identité, les icônes et la politique Play
         env:
           REVIEWED_COMMIT: ${{ inputs.reviewed_commit }}
@@ -65,6 +71,8 @@ jobs:
             --report build/novatube/reports/source-verification.json
           python3 -m unittest discover -s ci/novatube -p 'test_*.py' -v \
             2>&1 | tee build/novatube/reports/static-tests.txt
+          node --test ci/novatube/test_download_worker.mjs \
+            2>&1 | tee build/novatube/reports/download-worker-tests.txt
 
       - name: Refuser le build si les quatre secrets dédiés manquent
         env:
@@ -133,6 +141,7 @@ jobs:
           flutter --version --machine > build/novatube/reports/flutter-toolchain.json
 
       - name: Analyser le code livré et les nouveaux tests NOVATUBE
+        id: analyze
         run: |
           set -euo pipefail
           flutter analyze --no-pub --no-fatal-infos --no-fatal-warnings \
@@ -143,6 +152,7 @@ jobs:
             2>&1 | tee build/novatube/reports/flutter-analyze.txt
 
       - name: Tester les exclusions Play et les fonctions conservées
+        id: tests_play
         run: |
           set -euo pipefail
           # Les anciens tests d'activation par MAC/panel ne décrivent pas
@@ -167,6 +177,27 @@ jobs:
             packages/native_video_player/test \
             | tee build/novatube/reports/flutter-tests.jsonl
 
+      - name: Tester le tri adulte, la biométrie et les profils de l'APK privé
+        id: tests_private
+        if: inputs.confirme == 'PUBLIER_NOVATUBE_APK_PRIVE'
+        run: |
+          set -euo pipefail
+          flutter test --no-pub --machine --concurrency=2 \
+            --dart-define=NOVATUBE_PRIVATE_APK=true \
+            test/features/cinema \
+            test/features/profiles \
+            test/features/voice \
+            test/features/tv/home_engagement_test.dart \
+            test/features/tv/live_shelves_test.dart \
+            test/features/tv/touch/novatube_private_ui_test.dart \
+            test/features/tv/touch/novatube_cinema_sort_ui_test.dart \
+            test/novatube/adult_access_test.dart \
+            test/novatube/channel_classifier_adult_test.dart \
+            test/novatube/declared_adult_routes_test.dart \
+            test/novatube/provider_adult_persistence_test.dart \
+            test/novatube/provider_adult_signal_test.dart \
+            | tee build/novatube/reports/flutter-tests-private.jsonl
+
       - name: Charger la clé dédiée et vérifier son certificat public
         env:
           NOVATUBE_KEYSTORE_PATH: ${{ runner.temp }}/novatube-upload.jks
@@ -177,6 +208,8 @@ jobs:
         run: python3 ci/novatube/prepare_signing.py
 
       - name: Compiler uniquement l'AAB release NOVATUBE approuvé
+        id: build_play_aab
+        if: inputs.confirme == 'COMPILER_NOVATUBE'
         env:
           NOVATUBE_KEYSTORE_PATH: ${{ runner.temp }}/novatube-upload.jks
           NOVATUBE_UPLOAD_STORE_PASSWORD: ${{ secrets.NOVATUBE_UPLOAD_STORE_PASSWORD }}
@@ -189,6 +222,8 @@ jobs:
             --build-name=0.1.5 --build-number=5
 
       - name: Vérifier le vrai bundle et produire sa provenance
+        id: verify_play_aab
+        if: inputs.confirme == 'COMPILER_NOVATUBE'
         run: |
           set -euo pipefail
           curl --fail --location --silent --show-error --retry 2 \
@@ -204,10 +239,48 @@ jobs:
             --output build/novatube/verified
 
       - name: Conserver seulement l'AAB vérifié et ses preuves
+        id: upload_play_aab
+        if: inputs.confirme == 'COMPILER_NOVATUBE'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: NOVATUBE-0.1.5-5-verified-${{ github.sha }}-${{ github.run_attempt }}
           path: android-app/build/novatube/verified/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Compiler l'APK privé release NOVATUBE approuvé
+        id: build_private_apk
+        if: inputs.confirme == 'PUBLIER_NOVATUBE_APK_PRIVE'
+        env:
+          NOVATUBE_KEYSTORE_PATH: ${{ runner.temp }}/novatube-upload.jks
+          NOVATUBE_UPLOAD_STORE_PASSWORD: ${{ secrets.NOVATUBE_UPLOAD_STORE_PASSWORD }}
+          NOVATUBE_UPLOAD_KEY_PASSWORD: ${{ secrets.NOVATUBE_UPLOAD_KEY_PASSWORD }}
+          NOVATUBE_UPLOAD_KEY_ALIAS: ${{ secrets.NOVATUBE_UPLOAD_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          flutter build apk --release \
+            --target=lib/main_zuno_mobile.dart \
+            --build-name=0.1.5 --build-number=5 \
+            --dart-define=NOVATUBE_PRIVATE_APK=true
+
+      - name: Vérifier l'APK privé réel et ses preuves avant toute publication
+        id: verify_private_apk
+        if: inputs.confirme == 'PUBLIER_NOVATUBE_APK_PRIVE'
+        run: |
+          set -euo pipefail
+          sdkmanager 'build-tools;36.0.0'
+          python3 ci/novatube/verify_private_apk.py \
+            --apk build/app/outputs/flutter-apk/app-release.apk \
+            --reports build/novatube/reports \
+            --output build/novatube/private-verified
+
+      - name: Conserver uniquement l'APK privé vérifié et ses preuves
+        id: upload_private_apk
+        if: inputs.confirme == 'PUBLIER_NOVATUBE_APK_PRIVE'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: NOVATUBE-PRIVATE-APK-verified-${{ github.sha }}-${{ github.run_attempt }}
+          path: android-app/build/novatube/private-verified/
           if-no-files-found: error
           retention-days: 30
 
@@ -222,3 +295,41 @@ jobs:
           from pathlib import Path
           Path(os.environ['NOVATUBE_KEYSTORE_PATH']).unlink(missing_ok=True)
           PY
+
+  publish_private:
+    name: Publier exclusivement l'APK privé NOVATUBE déjà vérifié
+    needs: release
+    if: >-
+      needs.release.result == 'success' &&
+      github.event_name == 'workflow_dispatch' &&
+      github.repository == 'manzilionellm-dotcom/tvking' &&
+      github.ref == 'refs/heads/feature/novatube-play-aab' &&
+      github.actor == github.repository_owner &&
+      github.triggering_actor == github.repository_owner &&
+      inputs.confirme == 'PUBLIER_NOVATUBE_APK_PRIVE' &&
+      inputs.reviewed_commit == github.sha
+    permissions:
+      contents: write
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Charger le script du commit approuvé sans identifiant persistant
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Télécharger uniquement l'APK vérifié de ce run
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: NOVATUBE-PRIVATE-APK-verified-${{ github.sha }}-${{ github.run_attempt }}
+          path: android-app/build/novatube/private-verified/
+
+      - name: Publier la release dédiée puis actualiser le lien fixe NOVATUBE
+        id: publish_private_apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NOVATUBE_PUBLICATION_CONFIRMATION: ${{ inputs.confirme }}
+          REVIEWED_COMMIT: ${{ inputs.reviewed_commit }}
+        run: python3 ci/novatube/publish_private_apk.py --verified build/novatube/private-verified

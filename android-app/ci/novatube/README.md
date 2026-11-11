@@ -76,17 +76,62 @@ ne doit être exécutée pour NOVATUBE avant cet accord. Les lectures, contrôle
 de syntaxe et tests Python de validation de fichiers ne construisent pas l'app.
 
 Le workflow `.github/workflows/novatube-play-aab.yml` a uniquement un événement
-`workflow_dispatch`. Ses entrées obligatoires sont `confirme=COMPILER_NOVATUBE`
-et `reviewed_commit=<SHA complet approuvé>`. Si la branche a changé depuis la
-revue, le job ne démarre pas. Aucun job ne publie sur Google Play, une release
-GitHub, un domaine de téléchargement ou un environnement ZUNO/7 MOTION.
+`workflow_dispatch`. L'entrée `reviewed_commit=<SHA complet approuvé>` reste
+obligatoire. `confirme=COMPILER_NOVATUBE` construit l'AAB Play sans publication ;
+`confirme=PUBLIER_NOVATUBE_APK_PRIVE` construit et publie l'APK privé vérifié.
+Si la branche a changé depuis la revue, le job ne démarre pas. Aucun job ne
+publie sur Google Play ou dans un environnement ZUNO/7 MOTION.
+
+## Adresse fixe pour Downloader
+
+**<https://novatube.zuno8k.com/novatube.apk>** est l'adresse à conserver dans
+Downloader. Le Worker Cloudflare dédié `novatube-downloads` lit
+`latest-download.json` sur la seule branche NOVATUBE puis redirige vers l'APK
+signé et vérifié. Les métadonnées publiques sont disponibles à
+<https://novatube.zuno8k.com/version.json>. Les routes `/` et `/apk` mènent
+également au téléchargement.
+
+Le premier APK disponible est celui du commit `26193f18`, hébergé dans le
+stockage Blob dédié. Les prochaines publications du mode
+`PUBLIER_NOVATUBE_APK_PRIVE` utilisent des releases GitHub propres à NOVATUBE :
+tag `novatube-private-<SHA complet>` et fichier `NOVATUBE-<SHA complet>.apk`.
+Elles ne changent pas la release « latest » globale du dépôt. Les assets
+existants ne sont jamais écrasés et aucun secret d'hébergement supplémentaire
+n'est nécessaire.
+
+La publication suit cet ordre : analyse, tests Play et privés, signature,
+contrôle du véritable APK, conservation de ses preuves, téléversement dans
+la release dédiée, téléchargement public intégral et comparaison du SHA-256.
+Le manifeste est modifié seulement après la réussite de ces contrôles, par
+une écriture conditionnelle sur le SHA de son contenu courant. Un échec de
+build, de tests, de téléchargement ou une modification concurrente laisse
+le dernier pointeur valide en place. Un ancien run ou un commit antérieur
+ou divergent ne peut pas remplacer une version plus récente.
+
+Le job de compilation reste en lecture seule ; seul le job de publication
+dispose de `contents: write`, après réussite du premier job et vérification
+du propriétaire, de la branche, du mode privé et du SHA approuvé. Le Worker
+refuse un manifeste d'une autre application ou d'un autre certificat et
+n'accepte que les destinations NOVATUBE prévues. Il ne conserve pas la
+redirection en cache ; le cache GitHub en amont peut toutefois retarder de
+quelques minutes la visibilité du nouveau manifeste.
+
+Les tests Python et Node couvrent ces comportements avec des doubles de
+GitHub et du réseau. Ils ne constituent pas une exécution réelle de la
+future publication GitHub Actions. Aucun nouveau build n'est nécessaire
+pour utiliser l'adresse fixe avec l'APK déjà disponible.
 
 Les exclusions de cette branche dans `build-zuno-tv.yml` et `quality-zuno.yml`
 empêchent leurs déclenchements habituels au push. Elles n'altèrent pas leurs
 copies sur les autres branches. Ne pas ouvrir de PR avant l'accord : le dépôt
 possède également des workflows hérités déclenchés par les PR, dont `qa-gates`.
 
-## Limite GitHub à résoudre avant le premier lancement
+## Enregistrement du workflow GitHub
+
+Le workflow initial a été ajouté sur `main` par la PR autorisée pour ce seul
+fichier. Les évolutions APK privé restent sur `feature/novatube-play-aab` ;
+sélectionner cette branche lors du lancement manuel et garder les deux
+entrées existantes `confirme` et `reviewed_commit`.
 
 Un nouveau workflow uniquement manuel, ajouté seulement à une branche de
 travail et jamais exécuté, peut être absent du registre GitHub Actions.
