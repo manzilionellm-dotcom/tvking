@@ -18,6 +18,8 @@ import 'dart:io' show Socket;
 
 import 'package:flutter/foundation.dart';
 
+import '../../../core/app/app_platform.dart';
+import '../../../core/app/repair_flags.dart';
 import '../../../core/crash/crash_reporting.dart';
 import '../../../core/i18n/l10n_now.dart';
 import '../../../core/notifications/notification_service.dart';
@@ -541,6 +543,9 @@ class CastManager extends ChangeNotifier {
   String? _dlnaLiveTitle;
   final List<DateTime> _dlnaReconnects = <DateTime>[];
   bool _dlnaReconnecting = false;
+  // Le propriétaire couvre aussi GetTransportInfo, qui peut dépasser le
+  // tick de 10 s. Une ancienne session ne peut libérer le verrou suivant.
+  Object? _dlnaWatchdogOwner;
 
   /// Contexte de REPLI RELAIS pour la reconnexion auto : URL upstream
   /// (portail d'origine — token frais à chaque connexion) et profil
@@ -2552,6 +2557,7 @@ class CastManager extends ChangeNotifier {
     _dlnaRelayFallbackProfile = relayFallbackProfile;
     _dlnaReconnects.clear();
     _dlnaReconnecting = false;
+    _dlnaWatchdogOwner = null;
     _dlnaWatchdog =
         Timer.periodic(const Duration(seconds: 10), (Timer t) async {
       // Session changée (un nouveau cast a démarré) ou déconnecté → stop.
@@ -2564,12 +2570,50 @@ class CastManager extends ChangeNotifier {
       // pause VOLONTAIRE de l'utilisateur (sinon on relancerait un flux
       // qu'il a mis en pause), ni pendant une reconnexion déjà en cours.
       if (_state != CastState.casting || _dlnaReconnecting) return;
-      final String? st = await transport.currentTransportState();
-      if (mySeq != _sessionSeq || !identical(transport, _transport)) return;
-      // null = la TV ne supporte pas GetTransportInfo → rien à surveiller.
-      if (st == null) return;
-      if (st == 'STOPPED' || st == 'NO_MEDIA_PRESENT') {
-        await _dlnaAutoReconnect(transport, mySeq);
+      if (!AppPlatform.isZuno) {
+        // Le code partagé garde le chemin historique de 7 MOTION.
+        final String? st = await transport.currentTransportState();
+        if (mySeq != _sessionSeq || !identical(transport, _transport)) return;
+        if (st == 'STOPPED' || st == 'NO_MEDIA_PRESENT') {
+          await _dlnaAutoReconnect(transport, mySeq);
+        }
+        return;
+      }
+      final bool serialize = !RepairFlags.dlnaWatchdogLegacy;
+      if (serialize && _dlnaWatchdogOwner != null) return;
+      final Object? owner = serialize ? Object() : null;
+      if (owner != null) _dlnaWatchdogOwner = owner;
+      final int scope = ActiveProfile.instance.scopeListenable.value;
+      final int zap = _zapRevision;
+      bool current() =>
+          !_disposed &&
+          mySeq == _sessionSeq &&
+          identical(transport, _transport) &&
+          _state == CastState.casting &&
+          scope == ActiveProfile.instance.scopeListenable.value &&
+          zap == _zapRevision &&
+          _sessionAdultAccess?.isValid != false &&
+          (currentCastChannel == null ||
+              _allowsChannel(currentCastChannel!, _sessionAdultAccess));
+      try {
+        final String? st = await transport.currentTransportState();
+        // L'attente a pu couvrir Pause, Stop, un zap ou un autre profil.
+        // Le repli du mécanisme conserve également ces protections.
+        if (!current()) return;
+        if (st == 'STOPPED' || st == 'NO_MEDIA_PRESENT') {
+          await _dlnaAutoReconnect(transport, mySeq, isCurrent: current);
+        }
+      } on Object catch (error) {
+        if (current()) {
+          StructuredLogger.instance.warn(
+            domain: 'cast', event: 'dlna.watchdog_failure',
+            ctx: <String, Object?>{'error': redactCastText(error.toString())},
+          );
+        }
+      } finally {
+        if (owner != null && identical(owner, _dlnaWatchdogOwner)) {
+          _dlnaWatchdogOwner = null;
+        }
       }
     });
   }
@@ -2579,8 +2623,10 @@ class CastManager extends ChangeNotifier {
   /// partir en boucle si le serveur IPTV est définitivement coupé.
   Future<void> _dlnaAutoReconnect(
     UpnpAvTransport transport,
-    int mySeq,
-  ) async {
+    int mySeq, {
+    bool Function()? isCurrent,
+  }) async {
+    if (isCurrent?.call() == false) return;
     final String? url = _dlnaLiveUrl;
     if (url == null) return;
     final DateTime now = DateTime.now();
@@ -2604,11 +2650,19 @@ class CastManager extends ChangeNotifier {
     try {
       await Future<void>.delayed(const Duration(seconds: 2));
       if (mySeq != _sessionSeq || _transport == null) return;
-      await transport.playStream(
-        streamUrl: url,
-        title: _dlnaLiveTitle ?? 'ZUNO',
-      );
+      if (isCurrent?.call() == false) return;
+      if (isCurrent == null) {
+        await transport.playStream(
+          streamUrl: url, title: _dlnaLiveTitle ?? 'ZUNO',
+        );
+      } else {
+        await transport.recoverStream(
+          streamUrl: url, title: _dlnaLiveTitle ?? 'ZUNO',
+          isCurrent: isCurrent,
+        );
+      }
     } on Object catch (e) {
+      if (isCurrent?.call() == false) return;
       StructuredLogger.instance.warn(
         domain: 'cast',
         event: 'dlna.auto_reconnect_fail',
@@ -2620,7 +2674,8 @@ class CastManager extends ChangeNotifier {
       // sans re-dérouler castTo : on registre le relais et on rejoue
       // UNE fois. En cas de succès, la session continue sur le relais
       // (keep-alive téléphone activé) au lieu de mourir en silence.
-      await _dlnaReconnectViaRelay(transport, url, mySeq, directError: e);
+      await _dlnaReconnectViaRelay(transport, url, mySeq,
+          directError: e, isCurrent: isCurrent);
     } finally {
       if (mySeq == _sessionSeq) _dlnaReconnecting = false;
     }
@@ -2634,7 +2689,9 @@ class CastManager extends ChangeNotifier {
     String failedUrl,
     int mySeq, {
     required Object directError,
+    bool Function()? isCurrent,
   }) async {
+    if (isCurrent?.call() == false) return;
     final String? upstream = _dlnaRelayFallbackUpstream;
     final DlnaProfile? prof = _dlnaRelayFallbackProfile;
     if (!_looksLikeConnFailure(directError.toString())) return;
@@ -2651,15 +2708,23 @@ class CastManager extends ChangeNotifier {
         receiverHost: transport.device.host,
       );
       if (relayUrl == null) return;
-      if (mySeq != _sessionSeq || _transport == null) {
+      if (mySeq != _sessionSeq || _transport == null ||
+          isCurrent?.call() == false) {
         LocalCastServer.instance.clearRelay(relayUrl);
         return;
       }
-      await transport.playStream(
-        streamUrl: relayUrl,
-        title: _dlnaLiveTitle ?? 'ZUNO',
-      );
+      if (isCurrent == null) {
+        await transport.playStream(
+          streamUrl: relayUrl, title: _dlnaLiveTitle ?? 'ZUNO',
+        );
+      } else {
+        await transport.recoverStream(
+          streamUrl: relayUrl, title: _dlnaLiveTitle ?? 'ZUNO',
+          isCurrent: isCurrent,
+        );
+      }
       if (mySeq != _sessionSeq || !identical(transport, _transport)) return;
+      if (isCurrent?.call() == false) return;
       adopted = true;
       _currentRelayUrl = relayUrl;
       _dlnaLiveUrl = relayUrl;
@@ -2688,6 +2753,7 @@ class CastManager extends ChangeNotifier {
     _dlnaWatchdog = null;
     _dlnaReconnects.clear();
     _dlnaReconnecting = false;
+    _dlnaWatchdogOwner = null;
     _dlnaLiveUrl = null;
     _dlnaLiveTitle = null;
     _dlnaRelayFallbackUpstream = null;
