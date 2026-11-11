@@ -261,6 +261,8 @@ class NativeVideoController extends ChangeNotifier {
 
   bool _castSuspended = false;
   bool _hasCastHandoff = false;
+  bool _recordingSourceHeld = false;
+  bool _recordingPreviousCastHandoff = false;
   bool _castRevoked = false;
   bool _wantsToPlay = false;
   int _castGeneration = 0;
@@ -274,6 +276,10 @@ class NativeVideoController extends ChangeNotifier {
   /// La lecture locale est réservée au Cast : ni Play, ni Home/retour,
   /// ni une vue attachée en retard ne peuvent rouvrir le média.
   bool get castSuspended => _castSuspended;
+
+  /// Transition locale REC : même barrière de fermeture réseau que le Cast,
+  /// mais sans mémoriser un transfert Cast qui n’a jamais eu lieu.
+  bool get recordingSourceHeld => _recordingSourceHeld;
 
   /// Génération du dernier [setUrl]. Les événements natifs d'une génération
   /// précédente (zap très rapide) sont ignorés jusqu'à l'accusé `ack`.
@@ -789,6 +795,31 @@ class NativeVideoController extends ChangeNotifier {
       _backend!.pause();
     } else {
       _channel?.invokeMethod<void>('pause');
+    }
+  }
+
+  /// Avant d'ouvrir le relais REC, attendre la fermeture de la connexion
+  /// fournisseur par le moteur. setUrl seul est volontairement non bloquant.
+  Future<void> suspendForRecording() {
+    if (!_recordingSourceHeld) {
+      if (_castSuspended) {
+        return Future<void>.error(
+            StateError('Le lecteur est réservé au Cast.'));
+      }
+      _recordingPreviousCastHandoff = _hasCastHandoff;
+      _recordingSourceHeld = true;
+    }
+    return suspendForCast();
+  }
+
+  /// Le relais est ouvert (ou entièrement fermé au retour direct) : reprendre
+  /// le dernier setUrl. Une fermeture échouée garde le verrou, comme le Cast.
+  Future<void> resumeAfterRecording() async {
+    if (!_recordingSourceHeld) return;
+    await resumeAfterCast();
+    if (!_castSuspended && !_disposed && !_castRevoked) {
+      _hasCastHandoff = _recordingPreviousCastHandoff;
+      _recordingSourceHeld = false;
     }
   }
 

@@ -45,7 +45,11 @@ extensions.configure<ApplicationExtension> {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        // Les tests d'export tournent contre le véritable APK release signé.
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
+
+    testBuildType = "release"
 
     signingConfigs {
         create("novatubeUpload") {
@@ -81,4 +85,7 @@ dependencies {
     implementation("androidx.mediarouter:mediarouter:1.6.0")
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("androidx.fragment:fragment:1.6.2")
+    // Banc Android isolé : vrais codecs/MediaStore, absent de l'APK livré.
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
 }

@@ -13,6 +13,7 @@ from unittest.mock import patch
 import zipfile
 
 from common import BRANCH, PACKAGE, expected_certificate, sha256_file
+from recording_device_evidence import TEST_CLASS, TEST_METHODS
 from publish_private_apk import (
     API_ROOT, MANIFEST_PATH, checked_context, load_verified, publish, verify_public_download,
 )
@@ -59,9 +60,21 @@ def fixture(directory):
             '{"type":"done","success":true}\n', encoding="utf-8")
     (directory / "flutter-analyze.txt").write_text("Analyzing…\nNo issues found!\n", encoding="utf-8")
     (directory / "native-jvm-tests.txt").write_text("OK (10 tests)\n", encoding="utf-8")
+    (directory / "recording-native-tests.txt").write_text("OK (2 tests)\n", encoding="utf-8")
     (directory / "static-tests.txt").write_text("Ran 2 tests in 0.001s\n\nOK\n", encoding="utf-8")
     artifact = "NOVATUBE-" + SOURCE + ".apk"
     (directory / artifact).write_bytes(b"fixture APK already verified by the preceding job")
+    device_log = "".join(
+        f"INSTRUMENTATION_STATUS: class={TEST_CLASS}\nINSTRUMENTATION_STATUS: test={name}\n"
+        "INSTRUMENTATION_STATUS_CODE: 0\n" for name in TEST_METHODS
+    ) + "OK (3 tests)\nINSTRUMENTATION_CODE: -1\n"
+    (directory / "recording-device-tests.txt").write_text(device_log, encoding="utf-8")
+    write_json(directory / "recording-device-tests.json", {
+        "status": "passed", "platform": "Android Emulator AOSP", "apiLevel": 35,
+        "physicalDevice": False, "sourceCommit": SOURCE, "passed": 3,
+        "apkSha256": sha256_file(directory / artifact),
+        "reportSha256": sha256_file(directory / "recording-device-tests.txt"),
+    })
     proof = {
         "status": "passed", "artifact": artifact, "package": PACKAGE, "versionName": "0.1.5",
         "versionCode": 5, "distribution": "private-apk", "branch": BRANCH,
@@ -236,6 +249,24 @@ class PublicationTest(unittest.TestCase):
         checksums(self.directory)
         with self.assertRaisesRegex(ValueError, "ignorée"):
             self.run_publish()
+
+    def test_failed_recording_export_rules_prevent_publication(self):
+        path = self.directory / "recording-native-tests.txt"
+        path.write_text("OK (2 tests)\nFAILURES!!!\n", encoding="utf-8")
+        checksums(self.directory)
+        with self.assertRaisesRegex(ValueError, "Échec JVM"):
+            self.run_publish()
+        self.assertEqual(self.github.events, [])
+
+    def test_another_apk_cannot_reuse_successful_android_export_tests(self):
+        path = self.directory / "recording-device-tests.json"
+        report = json.loads(path.read_text(encoding="utf-8"))
+        report["apkSha256"] = "0" * 64
+        write_json(path, report)
+        checksums(self.directory)
+        with self.assertRaisesRegex(ValueError, "testé sur Android"):
+            self.run_publish()
+        self.assertEqual(self.github.events, [])
 
     def test_unhashed_extra_file_is_rejected(self):
         (self.directory / "extra.txt").write_text("unreviewed", encoding="utf-8")

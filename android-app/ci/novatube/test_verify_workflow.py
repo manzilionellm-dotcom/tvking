@@ -47,7 +47,7 @@ class WorkflowIsolationTest(unittest.TestCase):
                     self.reject(document)
 
     def test_private_steps_cannot_run_in_play_mode_or_unconditionally(self):
-        for step_id in ("tests_private", "build_private_apk", "verify_private_apk", "upload_private_apk"):
+        for step_id in ("tests_private", "build_private_apk", "tests_recording_device", "verify_private_apk", "upload_private_apk"):
             for condition in (None, "always()", "inputs.confirme == 'COMPILER_NOVATUBE'"):
                 with self.subTest(step=step_id, condition=condition):
                     document = self.document()
@@ -87,6 +87,21 @@ class WorkflowIsolationTest(unittest.TestCase):
         document = self.document()
         self.step(document, "verify_private_apk")["run"] = "set -euo pipefail\ntrue\n"
         self.reject(document)
+
+    def test_recording_export_rules_are_required_before_build(self):
+        for mutation in ("skip", "command", "order"):
+            with self.subTest(mutation=mutation):
+                document = self.document()
+                step = self.step(document, "tests_recording_native")
+                if mutation == "skip":
+                    step["if"] = "false"
+                elif mutation == "command":
+                    step["run"] = "set -euo pipefail\ntrue\n"
+                else:
+                    steps = document["jobs"]["release"]["steps"]
+                    steps.remove(step)
+                    steps.append(step)
+                self.reject(document)
 
     def test_tests_and_verification_must_precede_artifact_upload(self):
         document = self.document()

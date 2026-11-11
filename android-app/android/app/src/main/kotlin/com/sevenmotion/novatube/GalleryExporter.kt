@@ -11,29 +11,13 @@
 //
 //  Méthode exposée :
 //    - exportVideo(srcPath, displayName) : bool
-//      Convertit l'enregistrement en VRAI MP4 lisible partout puis le
+//      Convertit l'enregistrement en VRAI MP4 H.264/AAC puis le
 //      range dans Movies/ via MediaStore. Retourne true si OK.
 //
-//  --- 3 NIVEAUX DE CONVERSION (du plus rapide au plus universel) ------
-//  Les enregistrements IPTV sont des MPEG-TS (.ts) bruts. Renommer en
-//  .mp4 ne suffit PAS : la galerie native scanne le CONTENU réel.
-//
-//   1) REMUX (rapide, sans perte) — MediaExtractor + MediaMuxer copient
-//      les pistes telles quelles dans un conteneur MP4. Marche quand les
-//      codecs sont déjà compatibles MP4 (vidéo H.264/HEVC + audio AAC).
-//      Aucun ré-encodage, aucune perte, quasi-instantané.
-//
-//   2) TRANSCODE (universel) — si le remux ne peut pas embarquer la vidéo
-//      (ex. 6ter = MPEG-2) ou perd l'audio (ex. AC3), on RÉ-ENCODE via
-//      MediaCodec : vidéo → H.264, audio → AAC. Plus lent (proche du
-//      temps réel) mais le MP4 produit est lisible PARTOUT (galerie,
-//      WhatsApp, iPhone…). Si le téléphone n'a pas de décodeur audio
-//      (AC3 non licencié), on garde la vidéo SANS le son plutôt que
-//      d'échouer. Aucun ffmpeg embarqué : 100 % API natives Android.
-//
-//   3) COPIE BRUTE (dernier repli) — si même le transcodage est
-//      impossible (codec vidéo non décodable par l'appareil), on copie
-//      le .ts tel quel. Au pire on n'est pas plus mauvais qu'avant.
+//  H.264 + AAC compatibles : remux sans ré-encodage ni perte de qualité.
+//  Autres codecs : conversion native, si les codecs du téléphone le permettent.
+//  Un TS renommé MP4, une piste sonore perdue ou une copie partielle sont
+//  des ÉCHECS. Le fichier original reste toujours conservé dans l'application.
 //
 //  Tout tourne sur un thread d'ARRIÈRE-PLAN (le transcodage peut durer
 //  plusieurs secondes) ; le résultat est renvoyé à Flutter sur le thread
@@ -42,10 +26,15 @@
 
 package com.sevenmotion.novatube
 
+import android.Manifest
+import android.app.Activity
 import android.content.ContentValues
 import android.content.Context
+import android.content.pm.PackageManager
+import android.media.AudioFormat
 import android.media.MediaCodec
 import android.media.MediaCodecInfo
+import android.media.MediaCodecList
 import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.media.MediaMuxer
@@ -53,6 +42,7 @@ import android.os.Build
 import android.os.Environment
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.provider.MediaStore
 import android.util.Log
 import android.view.Surface
@@ -61,12 +51,15 @@ import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
 import java.io.FileInputStream
+import java.io.DataInputStream
+import java.io.IOException
 import java.nio.ByteBuffer
 import java.util.concurrent.Executors
 
 class GalleryExporter(
     messenger: BinaryMessenger,
     private val context: Context,
+    private val activity: Activity? = null,
 ) : MethodChannel.MethodCallHandler {
 
     companion object {
@@ -79,9 +72,7 @@ class GalleryExporter(
 
         // Délai d'attente unitaire des opérations MediaCodec (µs).
         private const val CODEC_TIMEOUT_US = 10_000L
-        // Garde-fou : un transcodage ne doit jamais bloquer indéfiniment.
-        // Au-delà, on abandonne et on retombe sur le repli.
-        private const val TRANSCODE_MAX_MS = 10 * 60 * 1000L
+        private const val STORAGE_REQUEST_CODE = 55021
     }
 
     private val channel: MethodChannel =
@@ -93,6 +84,19 @@ class GalleryExporter(
     // doivent revenir sur le thread principal (mainHandler).
     private val ioExecutor = Executors.newSingleThreadExecutor()
     private val mainHandler = Handler(Looper.getMainLooper())
+    private var exporting = false
+    private var pendingPermission: Pair<Map<String, Any?>, MethodChannel.Result>? = null
+
+    private class ExportFailure(val code: String, message: String) : IOException(message)
+
+    private data class SourceTracks(
+        val videoTrack: Int,
+        val videoFormat: MediaFormat,
+        val audioTrack: Int,
+        val audioFormat: MediaFormat?,
+    ) {
+        val hasAudio: Boolean get() = audioFormat != null
+    }
 
     /** Résultat interne d'un export, traduit ensuite en result.success/error. */
     private class ExportOutcome private constructor(
@@ -109,27 +113,61 @@ class GalleryExporter(
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
             "exportVideo" -> {
+                if (exporting) {
+                    result.error("EXPORT_IN_PROGRESS", "Un export est déjà en cours", null)
+                    return
+                }
                 @Suppress("UNCHECKED_CAST")
                 val args = call.arguments as? Map<String, Any?> ?: emptyMap()
-                // Travail lourd hors du thread principal pour éviter l'ANR.
-                ioExecutor.execute {
-                    val outcome = try {
-                        exportVideoBlocking(args)
+                exporting = true
+                if (GalleryExportPolicy.legacyPermissionRequired(Build.VERSION.SDK_INT) &&
+                    activity?.checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+                    pendingPermission = args to result
+                    try {
+                        if (activity == null) throw SecurityException("Activity requise pour l'autorisation Android")
+                        activity.requestPermissions(arrayOf(Manifest.permission.WRITE_EXTERNAL_STORAGE), STORAGE_REQUEST_CODE)
                     } catch (e: Exception) {
-                        Log.e(TAG, "exportVideo threw: $e")
-                        ExportOutcome.error("EXPORT_FAILED", e.message ?: e.javaClass.simpleName)
+                        pendingPermission = null
+                        finish(result, ExportOutcome.error("PERMISSION_DENIED", e.message))
                     }
-                    mainHandler.post {
-                        if (outcome.ok) {
-                            result.success(true)
-                        } else {
-                            result.error(outcome.code ?: "EXPORT_FAILED", outcome.message, null)
-                        }
-                    }
+                } else {
+                    startExport(args, result)
                 }
             }
             else -> result.notImplemented()
         }
+    }
+
+    fun onRequestPermissionsResult(requestCode: Int, grantResults: IntArray): Boolean {
+        if (requestCode != STORAGE_REQUEST_CODE) return false
+        val pending = pendingPermission ?: return true
+        pendingPermission = null
+        if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+            startExport(pending.first, pending.second)
+        } else {
+            finish(pending.second, ExportOutcome.error("PERMISSION_DENIED", "Accès au dossier Movies refusé"))
+        }
+        return true
+    }
+
+    private fun startExport(args: Map<String, Any?>, result: MethodChannel.Result) {
+        ioExecutor.execute {
+            val outcome = try {
+                exportVideoBlocking(args)
+            } catch (e: ExportFailure) {
+                ExportOutcome.error(e.code, e.message)
+            } catch (e: Exception) {
+                Log.e(TAG, "exportVideo failed: ${e.javaClass.simpleName}")
+                ExportOutcome.error("EXPORT_FAILED", e.message)
+            }
+            mainHandler.post { finish(result, outcome) }
+        }
+    }
+
+    private fun finish(result: MethodChannel.Result, outcome: ExportOutcome) {
+        exporting = false
+        if (outcome.ok) result.success(true)
+        else result.error(outcome.code ?: "EXPORT_FAILED", outcome.message, null)
     }
 
     // ============================================================
@@ -145,7 +183,7 @@ class GalleryExporter(
         }
 
         val srcFile = File(srcPath)
-        if (!srcFile.exists()) {
+        if (!srcFile.isFile) {
             Log.w(TAG, "Source introuvable: $srcPath")
             return ExportOutcome.error("SRC_MISSING", "Fichier introuvable: $srcPath")
         }
@@ -157,50 +195,15 @@ class GalleryExporter(
             )
         }
 
-        // --- Choix de la stratégie de conversion --------------------------
-        // 1) REMUX rapide. On regarde s'il a pu embarquer l'audio.
-        // 2) Si le remux échoue (vidéo non muxable) OU perd l'audio que la
-        //    source contenait → TRANSCODE (ré-encodage universel).
-        // 3) Sinon copie brute.
-        var dataFile: File = srcFile
-        var tempToCleanup: File? = null
-
-        val remux = remuxToMp4(srcFile)
-        if (remux != null && (remux.audioMuxed || !remux.sourceHadAudio)) {
-            // Remux complet (vidéo + audio si présent) → parfait, sans perte.
-            dataFile = remux.file
-            tempToCleanup = remux.file
-            Log.i(TAG, "Remux complet: ${remux.file.length()} octets")
-        } else {
-            // Soit pas de vidéo muxable, soit audio perdu → on transcode.
-            Log.i(TAG, "Remux insuffisant (remux=${remux != null}) → transcodage")
-            val transcoded = transcodeToMp4(srcFile)
-            when {
-                transcoded != null -> {
-                    dataFile = transcoded
-                    tempToCleanup = transcoded
-                    // Le remux partiel (vidéo seule) ne sert plus.
-                    remux?.file?.delete()
-                    Log.i(TAG, "Transcodage OK: ${transcoded.length()} octets")
-                }
-                remux != null -> {
-                    // Transcodage impossible mais on a au moins la vidéo
-                    // remuxée (sans son) → mieux que le .ts brut.
-                    dataFile = remux.file
-                    tempToCleanup = remux.file
-                    Log.w(TAG, "Transcodage indisponible → vidéo remuxée (sans audio)")
-                }
-                else -> {
-                    // Rien n'a marché → copie brute du .ts (dernier repli).
-                    dataFile = srcFile
-                    Log.w(TAG, "Aucune conversion possible → copie brute du .ts")
-                }
-            }
-        }
-
+        val source = inspectSource(srcFile)
+        val dataFile = remuxToMp4(srcFile, source) ?: transcodeToMp4(srcFile, source)
+            ?: return ExportOutcome.error("CONVERSION_FAILED", "Aucun MP4 H.264/AAC complet n'a été produit")
         return try {
+            validatePortableMp4(dataFile, source)
             insertIntoGallery(dataFile, displayName)
             ExportOutcome.success()
+        } catch (e: ExportFailure) {
+            ExportOutcome.error(e.code, e.message)
         } catch (e: SecurityException) {
             Log.e(TAG, "SecurityException: $e")
             ExportOutcome.error(
@@ -211,31 +214,101 @@ class GalleryExporter(
             Log.e(TAG, "insertIntoGallery failed: $e")
             ExportOutcome.error("EXPORT_FAILED", e.message ?: e.javaClass.simpleName)
         } finally {
-            if (tempToCleanup != null) {
-                try {
-                    tempToCleanup.delete()
-                } catch (e: Exception) {
-                    Log.w(TAG, "Suppression temp échouée: ${e.message}")
+            dataFile.delete()
+        }
+    }
+
+    private fun inspectSource(file: File): SourceTracks {
+        val extractor = MediaExtractor()
+        try {
+            extractor.setDataSource(file.absolutePath)
+            var video = -1
+            var audio = -1
+            for (index in 0 until extractor.trackCount) {
+                val mime = extractor.getTrackFormat(index).getString(MediaFormat.KEY_MIME).orEmpty()
+                if (video < 0 && mime.startsWith("video/")) video = index
+                if (audio < 0 && mime.startsWith("audio/")) audio = index
+            }
+            if (video < 0) throw ExportFailure("UNSUPPORTED_CODEC", "Aucune piste vidéo décodable identifiée")
+            if (audio < 0) {
+                val prefix = ByteArray(minOf(file.length(), 2L * 1024 * 1024).toInt())
+                val read = FileInputStream(file).use { input ->
+                    var position = 0
+                    while (position < prefix.size) {
+                        val count = input.read(prefix, position, prefix.size - position)
+                        if (count < 0) break
+                        position += count
+                    }
+                    position
                 }
+                val bytes = prefix.copyOf(read)
+                if (!GalleryExportPolicy.isMp4Header(bytes) && GalleryExportPolicy.transportStreamOffset(bytes) != null &&
+                    GalleryExportPolicy.declaredTsAudio(bytes) != false) {
+                    throw ExportFailure("UNSUPPORTED_CODEC", "L'audio TS ne peut pas être préservé par cet appareil")
+                }
+            }
+            return SourceTracks(video, extractor.getTrackFormat(video), audio,
+                if (audio >= 0) extractor.getTrackFormat(audio) else null)
+        } catch (e: ExportFailure) {
+            throw e
+        } catch (e: Exception) {
+            throw ExportFailure("UNSUPPORTED_CODEC", "Format source non pris en charge")
+        } finally {
+            extractor.release()
+        }
+    }
+
+    /** Vérifie le conteneur et les pistes réellement écrites avant toute insertion publique. */
+    private fun validatePortableMp4(file: File, source: SourceTracks) {
+        val header = ByteArray(12)
+        DataInputStream(FileInputStream(file)).use { it.readFully(header) }
+        if (!GalleryExportPolicy.isMp4Header(header)) {
+            throw ExportFailure("CONVERSION_FAILED", "Conteneur MP4 invalide")
+        }
+        val output = inspectSource(file)
+        if (!GalleryExportPolicy.canRemux(output.videoFormat.getString(MediaFormat.KEY_MIME),
+                output.audioFormat?.getString(MediaFormat.KEY_MIME), source.hasAudio) ||
+            output.hasAudio != source.hasAudio) {
+            throw ExportFailure("CONVERSION_FAILED", "Piste H.264/AAC absente ou audio perdu")
+        }
+        for (key in listOf(MediaFormat.KEY_WIDTH, MediaFormat.KEY_HEIGHT)) {
+            if (!output.videoFormat.containsKey(key) || !source.videoFormat.containsKey(key) ||
+                output.videoFormat.getInteger(key) != source.videoFormat.getInteger(key)) {
+                throw ExportFailure("CONVERSION_FAILED", "Dimensions de la source non conservées")
+            }
+        }
+        for (track in listOf(output.videoTrack, output.audioTrack).filter { it >= 0 }) {
+            val extractor = MediaExtractor()
+            try {
+                extractor.setDataSource(file.absolutePath)
+                extractor.selectTrack(track)
+                if (extractor.sampleTrackIndex < 0 || extractor.sampleTime < 0) {
+                    throw ExportFailure("CONVERSION_FAILED", "Une piste MP4 est vide")
+                }
+            } finally {
+                extractor.release()
             }
         }
     }
 
     /** Insère [dataFile] dans la galerie (Movies/) via MediaStore. */
     private fun insertIntoGallery(dataFile: File, displayName: String) {
-        // RELATIVE_PATH = Movies. On préfixe le nom par "7MOTION_" pour
-        // qu'il soit reconnaissable dans la liste de la galerie.
-        val finalDisplayName = if (displayName.startsWith("7MOTION_")) {
-            displayName
-        } else {
-            "7MOTION_$displayName"
-        }
+        val finalDisplayName = GalleryExportPolicy.displayName(displayName)
+        var legacyFile: File? = null
         val values = ContentValues().apply {
             put(MediaStore.Video.Media.DISPLAY_NAME, finalDisplayName)
             put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                put(MediaStore.Video.Media.RELATIVE_PATH, Environment.DIRECTORY_MOVIES)
+                put(MediaStore.Video.Media.RELATIVE_PATH, Environment.DIRECTORY_MOVIES + "/NOVATUBE")
                 put(MediaStore.Video.Media.IS_PENDING, 1)
+            } else {
+                @Suppress("DEPRECATION")
+                val directory = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES), "NOVATUBE")
+                if (!directory.isDirectory && !directory.mkdirs()) throw IOException("Dossier Movies indisponible")
+                // Nom unique : un deuxième export n'écrase jamais une vidéo existante.
+                legacyFile = File.createTempFile(finalDisplayName.removeSuffix(".mp4") + "_", ".mp4", directory)
+                @Suppress("DEPRECATION")
+                put(MediaStore.Video.Media.DATA, legacyFile!!.absolutePath)
             }
         }
 
@@ -247,123 +320,96 @@ class GalleryExporter(
         }
 
         Log.i(TAG, "Inserting MediaStore entry: $finalDisplayName (${dataFile.length()} bytes)")
-        val uri = context.contentResolver.insert(collection, values)
-            ?: throw java.io.IOException("MediaStore a refusé l'insertion (collection=$collection)")
-
-        context.contentResolver.openOutputStream(uri)?.use { out ->
-            FileInputStream(dataFile).use { input ->
-                val buffer = ByteArray(64 * 1024)
-                var bytes = input.read(buffer)
-                while (bytes >= 0) {
-                    out.write(buffer, 0, bytes)
-                    bytes = input.read(buffer)
-                }
-                out.flush()
+        val resolver = context.contentResolver
+        var uri: android.net.Uri? = null
+        try {
+            uri = resolver.insert(collection, values) ?: throw IOException("Insertion MediaStore refusée")
+            val copied = resolver.openOutputStream(uri, "w")?.use { out ->
+                FileInputStream(dataFile).use { input -> input.copyTo(out, 64 * 1024) }.also { out.flush() }
+            } ?: throw IOException("Écriture MediaStore indisponible")
+            if (copied != dataFile.length() || copied == 0L) throw IOException("Copie MediaStore incomplète")
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val finalize = ContentValues().apply { put(MediaStore.Video.Media.IS_PENDING, 0) }
+                if (resolver.update(uri, finalize, null, null) != 1) throw IOException("Finalisation MediaStore refusée")
             }
-        } ?: throw java.io.IOException("openOutputStream returned null")
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            val finalize = ContentValues().apply {
-                put(MediaStore.Video.Media.IS_PENDING, 0)
-            }
-            context.contentResolver.update(uri, finalize, null, null)
+            Log.i(TAG, "Export NOVATUBE terminé")
+        } catch (error: Exception) {
+            if (uri != null) try { resolver.delete(uri, null, null) } catch (_: Exception) {}
+            legacyFile?.delete()
+            throw error
         }
-        Log.i(TAG, "Exported → $uri")
     }
 
     // ============================================================
     //  NIVEAU 1 : REMUX (copie de pistes, sans ré-encodage)
     // ============================================================
 
-    /** Résultat du remux : le fichier MP4, + si l'audio a pu être embarqué
-     *  et si la source CONTENAIT de l'audio (pour décider d'un transcodage). */
-    private class RemuxOutcome(
-        val file: File,
-        val audioMuxed: Boolean,
-        val sourceHadAudio: Boolean,
-    )
-
-    private fun remuxToMp4(srcFile: File): RemuxOutcome? {
+    private fun remuxToMp4(srcFile: File, source: SourceTracks): File? {
+        if (!GalleryExportPolicy.canRemux(source.videoFormat.getString(MediaFormat.KEY_MIME),
+                source.audioFormat?.getString(MediaFormat.KEY_MIME), source.hasAudio)) return null
         val extractor = MediaExtractor()
         var muxer: MediaMuxer? = null
-        val outFile = File(context.cacheDir, "remux_${System.currentTimeMillis()}.mp4")
+        val outFile = File.createTempFile("novatube_remux_", ".mp4", context.cacheDir)
+        var complete = false
         try {
             extractor.setDataSource(srcFile.absolutePath)
-            val trackCount = extractor.trackCount
-            if (trackCount == 0) return null
-
             muxer = MediaMuxer(outFile.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
-
+            setOrientation(muxer, source.videoFormat)
             val indexMap = HashMap<Int, Int>()
             var maxInputSize = MIN_BUFFER_BYTES
-            var hasVideo = false
-            var sourceHadAudio = false
-            var audioMuxed = false
-            for (i in 0 until trackCount) {
+            // Une piste vidéo + la première piste audio : compatible dès API24.
+            // Ne jamais accepter une piste refusée en la supprimant silencieusement.
+            for (i in listOf(source.videoTrack, source.audioTrack).filter { it >= 0 }) {
                 val format = extractor.getTrackFormat(i)
-                val mime = format.getString(MediaFormat.KEY_MIME) ?: continue
-                val isVideo = mime.startsWith("video/")
-                val isAudio = mime.startsWith("audio/")
-                if (!isVideo && !isAudio) continue
-                if (isAudio) sourceHadAudio = true
-                try {
-                    val muxIndex = muxer.addTrack(format)
-                    indexMap[i] = muxIndex
-                    if (isVideo) hasVideo = true
-                    if (isAudio) audioMuxed = true
-                    if (format.containsKey(MediaFormat.KEY_MAX_INPUT_SIZE)) {
-                        val s = format.getInteger(MediaFormat.KEY_MAX_INPUT_SIZE)
-                        if (s > maxInputSize) maxInputSize = s
-                    }
-                } catch (e: Exception) {
-                    // Codec non muxable en MP4 (MPEG-2 vidéo, AC3 audio…).
-                    Log.w(TAG, "remux: addTrack a refusé '$mime': ${e.message}")
+                indexMap[i] = muxer.addTrack(format)
+                if (format.containsKey(MediaFormat.KEY_MAX_INPUT_SIZE)) {
+                    maxInputSize = maxOf(maxInputSize, format.getInteger(MediaFormat.KEY_MAX_INPUT_SIZE))
                 }
             }
-
-            // Sans vidéo muxable, le remux n'a pas d'intérêt → on laissera
-            // le transcodage prendre le relais.
-            if (!hasVideo || indexMap.isEmpty()) {
-                Log.w(TAG, "remux: aucune piste vidéo muxable")
-                return null
-            }
-
+            if (maxInputSize > GalleryExportPolicy.MAX_SAMPLE_BYTES) return null
             for (srcIndex in indexMap.keys) extractor.selectTrack(srcIndex)
-
             muxer.start()
             var buffer = ByteBuffer.allocate(maxInputSize)
             val bufferInfo = MediaCodec.BufferInfo()
             val lastPts = HashMap<Int, Long>()
+            val sampleCounts = HashMap<Int, Int>()
             while (true) {
                 var sampleSize: Int
                 while (true) {
                     try {
+                        buffer.clear()
                         sampleSize = extractor.readSampleData(buffer, 0)
                         break
                     } catch (e: IllegalArgumentException) {
+                        if (buffer.capacity() >= GalleryExportPolicy.MAX_SAMPLE_BYTES) throw e
                         val newCap = buffer.capacity() * 2
-                        Log.w(TAG, "remux: tampon trop petit (${buffer.capacity()}) → $newCap")
-                        buffer = ByteBuffer.allocate(newCap)
+                        buffer = ByteBuffer.allocate(minOf(newCap, GalleryExportPolicy.MAX_SAMPLE_BYTES))
                     }
                 }
                 if (sampleSize < 0) break
                 val dstTrack = indexMap[extractor.sampleTrackIndex]
-                if (dstTrack != null) {
-                    var pts = extractor.sampleTime
-                    if (pts < 0) pts = 0
+                if (dstTrack != null && sampleSize > 0) {
+                    val pts = extractor.sampleTime
+                    if (pts < 0) return null
                     val prev = lastPts[dstTrack]
-                    if (prev != null && pts <= prev) pts = prev + 1
+                    // Les B-frames sont prises en charge à partir d'API25.
+                    // Modifier leurs timestamps détruirait la cadence : sur API24,
+                    // demander une conversion au lieu d'inventer des PTS.
+                    if (Build.VERSION.SDK_INT < 25 && prev != null && pts < prev) return null
                     lastPts[dstTrack] = pts
                     bufferInfo.offset = 0
                     bufferInfo.size = sampleSize
                     bufferInfo.presentationTimeUs = pts
                     bufferInfo.flags = sampleFlagsToBufferFlags(extractor.sampleFlags)
                     muxer.writeSampleData(dstTrack, buffer, bufferInfo)
+                    sampleCounts[dstTrack] = (sampleCounts[dstTrack] ?: 0) + 1
                 }
                 extractor.advance()
             }
             muxer.stop()
-            return RemuxOutcome(outFile, audioMuxed, sourceHadAudio)
+            if (indexMap.values.any { (sampleCounts[it] ?: 0) == 0 }) return null
+            complete = true
+            return outFile
         } catch (e: Exception) {
             Log.w(TAG, "remux échoué (${e.javaClass.simpleName}: ${e.message})")
             try {
@@ -380,78 +426,46 @@ class GalleryExporter(
                 muxer?.release()
             } catch (_: Exception) {
             }
+            if (!complete) outFile.delete()
         }
     }
 
+    private fun setOrientation(muxer: MediaMuxer, format: MediaFormat) {
+        val rotation = if (format.containsKey(MediaFormat.KEY_ROTATION)) format.getInteger(MediaFormat.KEY_ROTATION) else 0
+        if (rotation in setOf(0, 90, 180, 270)) muxer.setOrientationHint(rotation)
+    }
+
     // ============================================================
-    //  NIVEAU 2 : TRANSCODE (ré-encodage universel via MediaCodec)
+    //  NIVEAU 2 : TRANSCODE (ré-encodage H.264/AAC via MediaCodec)
     // ============================================================
 
     /** Petit échantillon encodé mis en attente tant que le muxer n'est pas
      *  démarré (on attend d'avoir le format des DEUX encodeurs). */
     private class PendingSample(val data: ByteArray, val info: MediaCodec.BufferInfo)
 
-    /**
-     * Ré-encode la source en MP4 H.264 + AAC. La vidéo est décodée puis
-     * ré-encodée via une Surface (chemin GPU, pas de copie de pixels en
-     * RAM). L'audio est décodé en PCM puis ré-encodé en AAC ; s'il n'y a
-     * pas de décodeur audio (AC3 non licencié), on produit une vidéo SANS
-     * son plutôt que d'échouer. Retourne le MP4 ou `null` si même la vidéo
-     * n'est pas décodable par l'appareil.
-     */
-    private fun transcodeToMp4(srcFile: File): File? {
-        val outFile = File(context.cacheDir, "xcode_${System.currentTimeMillis()}.mp4")
-
-        // --- Repérage des pistes ----------------------------------------
-        var videoTrack = -1
-        var audioTrack = -1
-        var videoFormat: MediaFormat? = null
-        var audioFormat: MediaFormat? = null
-        val probe = MediaExtractor()
-        try {
-            probe.setDataSource(srcFile.absolutePath)
-            for (i in 0 until probe.trackCount) {
-                val f = probe.getTrackFormat(i)
-                val m = f.getString(MediaFormat.KEY_MIME) ?: continue
-                if (videoTrack < 0 && m.startsWith("video/")) {
-                    videoTrack = i; videoFormat = f
-                } else if (audioTrack < 0 && m.startsWith("audio/")) {
-                    audioTrack = i; audioFormat = f
-                }
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "transcode: setDataSource échoué: ${e.message}")
-            return null
-        } finally {
-            try {
-                probe.release()
-            } catch (_: Exception) {
-            }
-        }
-        val vFormat = videoFormat
-        if (videoTrack < 0 || vFormat == null) {
-            Log.w(TAG, "transcode: pas de piste vidéo")
-            return null
-        }
+    /** Conversion native complète : l'audio présent dans la source est obligatoire. */
+    private fun transcodeToMp4(srcFile: File, source: SourceTracks): File? {
+        val vFormat = source.videoFormat
         if (!vFormat.containsKey(MediaFormat.KEY_WIDTH) || !vFormat.containsKey(MediaFormat.KEY_HEIGHT)) {
-            Log.w(TAG, "transcode: dimensions vidéo inconnues")
-            return null
+            throw ExportFailure("UNSUPPORTED_CODEC", "Dimensions vidéo inconnues")
         }
         val width = vFormat.getInteger(MediaFormat.KEY_WIDTH)
         val height = vFormat.getInteger(MediaFormat.KEY_HEIGHT)
-        val vMime = vFormat.getString(MediaFormat.KEY_MIME) ?: return null
-        val frameRate = if (vFormat.containsKey(MediaFormat.KEY_FRAME_RATE)) {
-            vFormat.getInteger(MediaFormat.KEY_FRAME_RATE)
-        } else {
-            25
+        val frameRate = sourceFrameRate(srcFile, source)
+        if (vFormat.containsKey(MediaFormat.KEY_COLOR_TRANSFER) &&
+            vFormat.getInteger(MediaFormat.KEY_COLOR_TRANSFER) in setOf(MediaFormat.COLOR_TRANSFER_ST2084, MediaFormat.COLOR_TRANSFER_HLG)) {
+            // Sans moteur de tone-mapping, une conversion HDR→SDR ferait perdre
+            // les couleurs. Refuser plutôt que livrer un MP4 délavé.
+            throw ExportFailure("UNSUPPORTED_CODEC", "Conversion HDR vers H.264 SDR indisponible")
         }
+        val outFile = File.createTempFile("novatube_xcode_", ".mp4", context.cacheDir)
+        var complete = false
 
         var vExtractor: MediaExtractor? = null
         var aExtractor: MediaExtractor? = null
         var vDecoder: MediaCodec? = null
         var vEncoder: MediaCodec? = null
         var aDecoder: MediaCodec? = null
-        var aEncoder: MediaCodec? = null
         var inputSurface: Surface? = null
         var muxer: MediaMuxer? = null
 
@@ -464,12 +478,16 @@ class GalleryExporter(
                     MediaFormat.KEY_COLOR_FORMAT,
                     MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface,
                 )
-                setInteger(MediaFormat.KEY_BIT_RATE, estimateVideoBitrate(width, height))
-                setInteger(MediaFormat.KEY_FRAME_RATE, frameRate)
+                setFloat(MediaFormat.KEY_FRAME_RATE, frameRate.toFloat())
                 setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 2)
+                if (Build.VERSION.SDK_INT >= 29) setInteger(MediaFormat.KEY_MAX_B_FRAMES, 0)
+                for (key in listOf(MediaFormat.KEY_COLOR_STANDARD, MediaFormat.KEY_COLOR_RANGE, MediaFormat.KEY_COLOR_TRANSFER)) {
+                    if (vFormat.containsKey(key)) setInteger(key, vFormat.getInteger(key))
+                }
             }
-            vEncoder = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
-            vEncoder.configure(outVideoFormat, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
+            val sourceBitrate = if (vFormat.containsKey(MediaFormat.KEY_BIT_RATE)) vFormat.getInteger(MediaFormat.KEY_BIT_RATE) else 0
+            vEncoder = configuredEncoder(outVideoFormat,
+                GalleryExportPolicy.videoBitrate(width, height, frameRate, sourceBitrate))
             inputSurface = vEncoder.createInputSurface()
             vEncoder.start()
 
@@ -477,67 +495,54 @@ class GalleryExporter(
             // (peut lever si l'appareil n'a pas de décodeur pour ce codec).
             vExtractor = MediaExtractor().apply {
                 setDataSource(srcFile.absolutePath)
-                selectTrack(videoTrack)
+                selectTrack(source.videoTrack)
             }
-            vDecoder = MediaCodec.createDecoderByType(vMime)
-            vDecoder.configure(vFormat, inputSurface, null, 0)
+            val decodeFormat = vExtractor.getTrackFormat(source.videoTrack).apply {
+                // L'orientation est portée par le MP4, pas appliquée deux fois.
+                setInteger(MediaFormat.KEY_ROTATION, 0)
+                // Android Q permet d'interdire les images supprimées quand
+                // l'encodeur est plus lent ; la constante publique arrive en S.
+                if (Build.VERSION.SDK_INT >= 29) setInteger("allow-frame-drop", 0)
+            }
+            val videoDecoderName = MediaCodecList(MediaCodecList.REGULAR_CODECS).findDecoderForFormat(decodeFormat)
+                ?: throw ExportFailure("UNSUPPORTED_CODEC", "Décodeur vidéo indisponible")
+            vDecoder = MediaCodec.createByCodecName(videoDecoderName)
+            vDecoder.configure(decodeFormat, inputSurface, null, 0)
             vDecoder.start()
 
-            // --- Audio (best-effort) -------------------------------------
-            var doAudio = false
-            val aFormat = audioFormat
-            if (audioTrack >= 0 && aFormat != null) {
-                try {
-                    val aMime = aFormat.getString(MediaFormat.KEY_MIME)!!
-                    val sampleRate = aFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE)
-                    val channels = aFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
-                    val outAudioFormat = MediaFormat.createAudioFormat(
-                        MediaFormat.MIMETYPE_AUDIO_AAC, sampleRate, channels,
-                    ).apply {
-                        setInteger(
-                            MediaFormat.KEY_AAC_PROFILE,
-                            MediaCodecInfo.CodecProfileLevel.AACObjectLC,
-                        )
-                        setInteger(MediaFormat.KEY_BIT_RATE, 128_000)
-                        setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, 64 * 1024)
-                    }
-                    aEncoder = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_AUDIO_AAC)
-                    aEncoder.configure(outAudioFormat, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
-                    aEncoder.start()
-
-                    aExtractor = MediaExtractor().apply {
-                        setDataSource(srcFile.absolutePath)
-                        selectTrack(audioTrack)
-                    }
-                    aDecoder = MediaCodec.createDecoderByType(aMime)
-                    aDecoder.configure(aFormat, null, null, 0)
-                    aDecoder.start()
-                    doAudio = true
-                } catch (e: Exception) {
-                    // Pas de décodeur audio (AC3…) → vidéo seule, sans son.
-                    Log.w(TAG, "transcode: audio non transcodable (${e.message}) → vidéo sans son")
-                    try { aDecoder?.release() } catch (_: Exception) {}
-                    try { aEncoder?.release() } catch (_: Exception) {}
-                    try { aExtractor?.release() } catch (_: Exception) {}
-                    aDecoder = null; aEncoder = null; aExtractor = null
-                    doAudio = false
+            // L'encodeur AAC sera créé à réception du format PCM réel du
+            // décodeur (fréquence/canaux parfois différents du format compressé).
+            if (source.hasAudio) {
+                aExtractor = MediaExtractor().apply {
+                    setDataSource(srcFile.absolutePath)
+                    selectTrack(source.audioTrack)
                 }
+                val audioDecodeFormat = aExtractor.getTrackFormat(source.audioTrack).apply {
+                    setInteger(MediaFormat.KEY_PCM_ENCODING, AudioFormat.ENCODING_PCM_16BIT)
+                }
+                val audioDecoderName = MediaCodecList(MediaCodecList.REGULAR_CODECS).findDecoderForFormat(audioDecodeFormat)
+                    ?: throw ExportFailure("UNSUPPORTED_CODEC", "Décodeur audio indisponible")
+                aDecoder = MediaCodec.createByCodecName(audioDecoderName)
+                aDecoder.configure(audioDecodeFormat, null, null, 0)
+                aDecoder.start()
             }
 
             muxer = MediaMuxer(outFile.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
+            setOrientation(muxer, source.videoFormat)
 
             val ok = runTranscodeLoop(
                 vExtractor!!, vDecoder!!, vEncoder!!,
-                if (doAudio) aExtractor else null,
-                if (doAudio) aDecoder else null,
-                if (doAudio) aEncoder else null,
+                aExtractor, aDecoder,
                 muxer,
             )
             if (!ok) {
                 try { outFile.delete() } catch (_: Exception) {}
                 return null
             }
+            complete = true
             return outFile
+        } catch (e: ExportFailure) {
+            throw e
         } catch (e: Exception) {
             Log.w(TAG, "transcode échoué (${e.javaClass.simpleName}: ${e.message})")
             try { outFile.delete() } catch (_: Exception) {}
@@ -549,20 +554,72 @@ class GalleryExporter(
             try { vEncoder?.release() } catch (_: Exception) {}
             try { aDecoder?.stop() } catch (_: Exception) {}
             try { aDecoder?.release() } catch (_: Exception) {}
-            try { aEncoder?.stop() } catch (_: Exception) {}
-            try { aEncoder?.release() } catch (_: Exception) {}
             try { inputSurface?.release() } catch (_: Exception) {}
             try { vExtractor?.release() } catch (_: Exception) {}
             try { aExtractor?.release() } catch (_: Exception) {}
             try { muxer?.release() } catch (_: Exception) {}
+            if (!complete) outFile.delete()
         }
+    }
+
+    /** Choisit un encodeur qui accepte réellement la taille/cadence et borne son débit. */
+    private fun configuredEncoder(format: MediaFormat, targetBitrate: Int): MediaCodec {
+        val mime = format.getString(MediaFormat.KEY_MIME)!!
+        for (info in MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos) {
+            if (!info.isEncoder || !info.supportedTypes.any { it.equals(mime, ignoreCase = true) }) continue
+            var codec: MediaCodec? = null
+            try {
+                val capabilities = info.getCapabilitiesForType(mime)
+                val range = if (mime.startsWith("video/")) capabilities.videoCapabilities.bitrateRange
+                            else capabilities.audioCapabilities.bitrateRange
+                format.setInteger(MediaFormat.KEY_BIT_RATE, targetBitrate.coerceIn(range.lower, range.upper))
+                val mode = listOf(MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_VBR,
+                    MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_CBR).firstOrNull {
+                    capabilities.encoderCapabilities.isBitrateModeSupported(it)
+                } ?: continue
+                // Réécrire le mode pour chaque candidat : un VBR essayé sur
+                // le précédent ne doit pas empêcher un encodeur CBR compatible.
+                format.setInteger(MediaFormat.KEY_BITRATE_MODE, mode)
+                if (!capabilities.isFormatSupported(format)) continue
+                codec = MediaCodec.createByCodecName(info.name)
+                codec.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
+                return codec
+            } catch (_: Exception) {
+                try { codec?.release() } catch (_: Exception) {}
+            }
+        }
+        throw ExportFailure("UNSUPPORTED_CODEC", "Aucun encodeur compatible avec la qualité source")
+    }
+
+    private fun sourceFrameRate(file: File, source: SourceTracks): Double {
+        if (source.videoFormat.containsKey(MediaFormat.KEY_FRAME_RATE)) {
+            val rate = runCatching { source.videoFormat.getFloat(MediaFormat.KEY_FRAME_RATE).toDouble() }
+                .getOrElse { runCatching { source.videoFormat.getInteger(MediaFormat.KEY_FRAME_RATE).toDouble() }.getOrDefault(0.0) }
+            if (rate.isFinite() && rate > 0) return rate
+        }
+        val extractor = MediaExtractor()
+        try {
+            extractor.setDataSource(file.absolutePath)
+            extractor.selectTrack(source.videoTrack)
+            val timestamps = ArrayList<Long>()
+            while (timestamps.size < 120 && extractor.sampleTime >= 0) {
+                timestamps.add(extractor.sampleTime)
+                if (!extractor.advance()) break
+            }
+            val differences = timestamps.sorted().zipWithNext { a, b -> b - a }.filter { it > 0 }.sorted()
+            if (differences.isNotEmpty()) return 1_000_000.0 / differences[differences.size / 2]
+        } finally { extractor.release() }
+        // Une source d'une seule image n'a pas de cadence mesurable. Les PTS
+        // restent copiés tels quels : aucune image supplémentaire n'est créée.
+        return 30.0
     }
 
     /**
      * Boucle de transcodage coordonnée (vidéo Surface + audio buffers).
      * Démarre le muxer seulement quand les DEUX encodeurs ont publié leur
      * format ; les échantillons produits avant sont mis en attente.
-     * Retourne true si au moins la vidéo a été écrite jusqu'à la fin.
+     * Retourne true seulement si toutes les pistes attendues sont non vides
+     * et si le conteneur a été finalisé après leur fin de flux.
      */
     private fun runTranscodeLoop(
         vExtractor: MediaExtractor,
@@ -570,11 +627,13 @@ class GalleryExporter(
         vEncoder: MediaCodec,
         aExtractor: MediaExtractor?,
         aDecoder: MediaCodec?,
-        aEncoder: MediaCodec?,
         muxer: MediaMuxer,
     ): Boolean {
-        val doAudio = aExtractor != null && aDecoder != null && aEncoder != null
-        val startMs = System.currentTimeMillis()
+        val doAudio = aExtractor != null && aDecoder != null
+        var aEncoder: MediaCodec? = null
+        var lastProgressMs = SystemClock.elapsedRealtime()
+        var audioSampleRate = 0
+        var audioChannels = 0
 
         var videoExtractorDone = false
         var videoDecoderDone = false
@@ -591,10 +650,14 @@ class GalleryExporter(
 
         val pendingVideo = ArrayList<PendingSample>()
         val pendingAudio = ArrayList<PendingSample>()
+        var pendingBytes = 0L
+        var videoSamples = 0
+        var audioSamples = 0
 
         // Index d'un buffer de sortie du décodeur audio gardé en attente
         // tant que l'encodeur audio n'a pas de slot d'entrée libre.
         var pendingAudioDecoderOut = -1
+        var pendingAudioConsumed = 0
         val audioDecInfo = MediaCodec.BufferInfo()
 
         val vInfo = MediaCodec.BufferInfo()
@@ -610,6 +673,7 @@ class GalleryExporter(
                 for (p in pendingAudio) muxer.writeSampleData(audioMuxTrack, ByteBuffer.wrap(p.data), p.info)
                 pendingVideo.clear()
                 pendingAudio.clear()
+                pendingBytes = 0L
             }
         }
 
@@ -617,6 +681,10 @@ class GalleryExporter(
             if (muxing) {
                 muxer.writeSampleData(track, buf, info)
             } else {
+                pendingBytes += info.size
+                if (pendingBytes > GalleryExportPolicy.MAX_PENDING_BYTES) {
+                    throw ExportFailure("CONVERSION_FAILED", "Une piste ne démarre pas ; export interrompu")
+                }
                 val copy = ByteArray(info.size)
                 buf.position(info.offset)
                 buf.get(copy, 0, info.size)
@@ -626,156 +694,203 @@ class GalleryExporter(
             }
         }
 
-        while (!videoEncoderDone || !audioEncoderDone) {
-            if (System.currentTimeMillis() - startMs > TRANSCODE_MAX_MS) {
-                Log.w(TAG, "transcode: dépassement du budget temps → abandon")
+        fun prepareAudioEncoder() {
+            val pcmFormat = aDecoder!!.outputFormat
+            val sampleRate = pcmFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE)
+            val channels = pcmFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
+            val encoding = if (pcmFormat.containsKey(MediaFormat.KEY_PCM_ENCODING))
+                pcmFormat.getInteger(MediaFormat.KEY_PCM_ENCODING) else AudioFormat.ENCODING_PCM_16BIT
+            if (encoding != AudioFormat.ENCODING_PCM_16BIT || sampleRate <= 0 || channels <= 0) {
+                throw ExportFailure("UNSUPPORTED_CODEC", "Format PCM non pris en charge")
+            }
+            if (aEncoder != null) {
+                if (sampleRate != audioSampleRate || channels != audioChannels) {
+                    throw ExportFailure("UNSUPPORTED_CODEC", "Le format audio change pendant l'enregistrement")
+                }
+                return
+            }
+            audioSampleRate = sampleRate
+            audioChannels = channels
+            val format = MediaFormat.createAudioFormat(MediaFormat.MIMETYPE_AUDIO_AAC, sampleRate, channels).apply {
+                setInteger(MediaFormat.KEY_AAC_PROFILE, MediaCodecInfo.CodecProfileLevel.AACObjectLC)
+                setInteger(MediaFormat.KEY_PCM_ENCODING, AudioFormat.ENCODING_PCM_16BIT)
+                setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, 64 * 1024)
+            }
+            aEncoder = configuredEncoder(format, GalleryExportPolicy.audioBitrate(channels))
+            aEncoder!!.start()
+        }
+
+        try {
+            while (!videoEncoderDone || !audioEncoderDone) {
+                if (GalleryExportPolicy.stalled(SystemClock.elapsedRealtime(), lastProgressMs)) {
+                    Log.w(TAG, "transcode: aucune progression depuis une minute")
+                    return false
+                }
+
+                // ---- 1. Alimente le décodeur vidéo -------------------------
+                if (!videoExtractorDone) {
+                    val inIdx = vDecoder.dequeueInputBuffer(CODEC_TIMEOUT_US)
+                    if (inIdx >= 0) {
+                        lastProgressMs = SystemClock.elapsedRealtime()
+                        val buf = vDecoder.getInputBuffer(inIdx)!!
+                        val size = vExtractor.readSampleData(buf, 0)
+                        if (size < 0) {
+                            vDecoder.queueInputBuffer(inIdx, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
+                            videoExtractorDone = true
+                        } else {
+                            vDecoder.queueInputBuffer(inIdx, 0, size, vExtractor.sampleTime, 0)
+                            vExtractor.advance()
+                        }
+                    }
+                }
+
+                // ---- 2. Draine le décodeur vidéo → Surface de l'encodeur ----
+                if (!videoDecoderDone) {
+                    val outIdx = vDecoder.dequeueOutputBuffer(vInfo, CODEC_TIMEOUT_US)
+                    if (outIdx >= 0) {
+                        lastProgressMs = SystemClock.elapsedRealtime()
+                        val eos = (vInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0
+                        // render=true → la frame décodée part sur la Surface de
+                        // l'encodeur, qui la ré-encode en H.264.
+                        vDecoder.releaseOutputBuffer(outIdx, vInfo.size > 0)
+                        if (eos) {
+                            videoDecoderDone = true
+                            vEncoder.signalEndOfInputStream()
+                        }
+                    }
+                }
+
+                // ---- 3. Draine l'encodeur vidéo → muxer --------------------
+                if (!videoEncoderDone) {
+                    val outIdx = vEncoder.dequeueOutputBuffer(vEncInfo, CODEC_TIMEOUT_US)
+                    if (outIdx == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
+                        lastProgressMs = SystemClock.elapsedRealtime()
+                        videoMuxTrack = muxer.addTrack(vEncoder.outputFormat)
+                        videoFormatReady = true
+                        maybeStartMuxer()
+                    } else if (outIdx >= 0) {
+                        lastProgressMs = SystemClock.elapsedRealtime()
+                        val encBuf = vEncoder.getOutputBuffer(outIdx)!!
+                        if ((vEncInfo.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG) != 0) {
+                            vEncInfo.size = 0
+                        }
+                        if (vEncInfo.size > 0 && videoMuxTrack >= 0) {
+                            writeOrBuffer(videoMuxTrack, pendingVideo, encBuf, vEncInfo)
+                            videoSamples++
+                        }
+                        val eos = (vEncInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0
+                        vEncoder.releaseOutputBuffer(outIdx, false)
+                        if (eos) videoEncoderDone = true
+                    }
+                }
+
+                // ---- 4. Audio : extracteur → décodeur ----------------------
+                if (doAudio && !audioExtractorDone) {
+                    val inIdx = aDecoder!!.dequeueInputBuffer(CODEC_TIMEOUT_US)
+                    if (inIdx >= 0) {
+                        lastProgressMs = SystemClock.elapsedRealtime()
+                        val buf = aDecoder.getInputBuffer(inIdx)!!
+                        val size = aExtractor!!.readSampleData(buf, 0)
+                        if (size < 0) {
+                            aDecoder.queueInputBuffer(inIdx, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
+                            audioExtractorDone = true
+                        } else {
+                            aDecoder.queueInputBuffer(inIdx, 0, size, aExtractor.sampleTime, 0)
+                            aExtractor.advance()
+                        }
+                    }
+                }
+
+                // ---- 5. Audio : décodeur (PCM) → encodeur AAC --------------
+                if (doAudio && !audioDecoderDone) {
+                    if (pendingAudioDecoderOut < 0) {
+                        val o = aDecoder!!.dequeueOutputBuffer(audioDecInfo, CODEC_TIMEOUT_US)
+                        if (o >= 0) {
+                            lastProgressMs = SystemClock.elapsedRealtime()
+                            pendingAudioDecoderOut = o
+                            pendingAudioConsumed = 0
+                            if (aEncoder == null) prepareAudioEncoder()
+                        } else if (o == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
+                            lastProgressMs = SystemClock.elapsedRealtime()
+                            prepareAudioEncoder()
+                        }
+                    }
+                    if (pendingAudioDecoderOut >= 0) {
+                        val encoder = aEncoder!!
+                        val inIdx = encoder.dequeueInputBuffer(CODEC_TIMEOUT_US)
+                        if (inIdx >= 0) {
+                            lastProgressMs = SystemClock.elapsedRealtime()
+                            val eos = (audioDecInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0
+                            val encIn = encoder.getInputBuffer(inIdx)!!
+                            encIn.clear()
+                            val count = GalleryExportPolicy.pcmChunkBytes(
+                                audioDecInfo.size - pendingAudioConsumed, encIn.remaining(), audioChannels)
+                            if (count > 0) {
+                                val pcm = aDecoder!!.getOutputBuffer(pendingAudioDecoderOut)!!
+                                pcm.position(audioDecInfo.offset + pendingAudioConsumed)
+                                pcm.limit(audioDecInfo.offset + pendingAudioConsumed + count)
+                                encIn.put(pcm)
+                            }
+                            val lastChunk = pendingAudioConsumed + count == audioDecInfo.size
+                            encoder.queueInputBuffer(
+                                inIdx, 0, count,
+                                GalleryExportPolicy.pcmTimestampUs(audioDecInfo.presentationTimeUs, pendingAudioConsumed,
+                                    audioSampleRate, audioChannels),
+                                if (eos && lastChunk) MediaCodec.BUFFER_FLAG_END_OF_STREAM else 0,
+                            )
+                            pendingAudioConsumed += count
+                            if (lastChunk) {
+                                aDecoder!!.releaseOutputBuffer(pendingAudioDecoderOut, false)
+                                pendingAudioDecoderOut = -1
+                                if (eos) audioDecoderDone = true
+                            }
+                        }
+                    }
+                }
+
+                // ---- 6. Audio : encodeur AAC → muxer -----------------------
+                if (doAudio && !audioEncoderDone && aEncoder != null) {
+                    val encoder = aEncoder!!
+                    val outIdx = encoder.dequeueOutputBuffer(aEncInfo, CODEC_TIMEOUT_US)
+                    if (outIdx == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
+                        lastProgressMs = SystemClock.elapsedRealtime()
+                        audioMuxTrack = muxer.addTrack(encoder.outputFormat)
+                        audioFormatReady = true
+                        maybeStartMuxer()
+                    } else if (outIdx >= 0) {
+                        lastProgressMs = SystemClock.elapsedRealtime()
+                        val encBuf = encoder.getOutputBuffer(outIdx)!!
+                        if ((aEncInfo.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG) != 0) {
+                            aEncInfo.size = 0
+                        }
+                        if (aEncInfo.size > 0 && audioMuxTrack >= 0) {
+                            writeOrBuffer(audioMuxTrack, pendingAudio, encBuf, aEncInfo)
+                            audioSamples++
+                        }
+                        val eos = (aEncInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0
+                        encoder.releaseOutputBuffer(outIdx, false)
+                        if (eos) audioEncoderDone = true
+                    }
+                }
+            }
+
+            // Sécurité : si le muxer n'a jamais démarré (formats jamais reçus),
+            // l'export n'a rien produit d'exploitable.
+            if (!muxing) {
+                Log.w(TAG, "transcode: muxer jamais démarré")
                 return false
             }
-
-            // ---- 1. Alimente le décodeur vidéo -------------------------
-            if (!videoExtractorDone) {
-                val inIdx = vDecoder.dequeueInputBuffer(CODEC_TIMEOUT_US)
-                if (inIdx >= 0) {
-                    val buf = vDecoder.getInputBuffer(inIdx)!!
-                    val size = vExtractor.readSampleData(buf, 0)
-                    if (size < 0) {
-                        vDecoder.queueInputBuffer(inIdx, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
-                        videoExtractorDone = true
-                    } else {
-                        vDecoder.queueInputBuffer(inIdx, 0, size, vExtractor.sampleTime, 0)
-                        vExtractor.advance()
-                    }
-                }
+            try {
+                muxer.stop()
+            } catch (e: Exception) {
+                Log.w(TAG, "transcode: muxer.stop() a levé: ${e.message}")
+                return false
             }
-
-            // ---- 2. Draine le décodeur vidéo → Surface de l'encodeur ----
-            if (!videoDecoderDone) {
-                val outIdx = vDecoder.dequeueOutputBuffer(vInfo, CODEC_TIMEOUT_US)
-                if (outIdx >= 0) {
-                    val eos = (vInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0
-                    // render=true → la frame décodée part sur la Surface de
-                    // l'encodeur, qui la ré-encode en H.264.
-                    vDecoder.releaseOutputBuffer(outIdx, vInfo.size > 0)
-                    if (eos) {
-                        videoDecoderDone = true
-                        vEncoder.signalEndOfInputStream()
-                    }
-                }
-            }
-
-            // ---- 3. Draine l'encodeur vidéo → muxer --------------------
-            if (!videoEncoderDone) {
-                val outIdx = vEncoder.dequeueOutputBuffer(vEncInfo, CODEC_TIMEOUT_US)
-                if (outIdx == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
-                    videoMuxTrack = muxer.addTrack(vEncoder.outputFormat)
-                    videoFormatReady = true
-                    maybeStartMuxer()
-                } else if (outIdx >= 0) {
-                    val encBuf = vEncoder.getOutputBuffer(outIdx)!!
-                    if ((vEncInfo.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG) != 0) {
-                        vEncInfo.size = 0
-                    }
-                    if (vEncInfo.size > 0 && videoMuxTrack >= 0) {
-                        writeOrBuffer(videoMuxTrack, pendingVideo, encBuf, vEncInfo)
-                    }
-                    val eos = (vEncInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0
-                    vEncoder.releaseOutputBuffer(outIdx, false)
-                    if (eos) videoEncoderDone = true
-                }
-            }
-
-            // ---- 4. Audio : extracteur → décodeur ----------------------
-            if (doAudio && !audioExtractorDone) {
-                val inIdx = aDecoder!!.dequeueInputBuffer(CODEC_TIMEOUT_US)
-                if (inIdx >= 0) {
-                    val buf = aDecoder.getInputBuffer(inIdx)!!
-                    val size = aExtractor!!.readSampleData(buf, 0)
-                    if (size < 0) {
-                        aDecoder.queueInputBuffer(inIdx, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
-                        audioExtractorDone = true
-                    } else {
-                        aDecoder.queueInputBuffer(inIdx, 0, size, aExtractor.sampleTime, 0)
-                        aExtractor.advance()
-                    }
-                }
-            }
-
-            // ---- 5. Audio : décodeur (PCM) → encodeur AAC --------------
-            if (doAudio && !audioDecoderDone) {
-                if (pendingAudioDecoderOut < 0) {
-                    val o = aDecoder!!.dequeueOutputBuffer(audioDecInfo, CODEC_TIMEOUT_US)
-                    if (o >= 0) {
-                        pendingAudioDecoderOut = o
-                    }
-                    // INFO_OUTPUT_FORMAT_CHANGED / TRY_AGAIN : on ignore.
-                }
-                if (pendingAudioDecoderOut >= 0) {
-                    val inIdx = aEncoder!!.dequeueInputBuffer(CODEC_TIMEOUT_US)
-                    if (inIdx >= 0) {
-                        val eos = (audioDecInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0
-                        val pcm = aDecoder!!.getOutputBuffer(pendingAudioDecoderOut)!!
-                        val encIn = aEncoder.getInputBuffer(inIdx)!!
-                        encIn.clear()
-                        if (audioDecInfo.size > 0) {
-                            pcm.position(audioDecInfo.offset)
-                            pcm.limit(audioDecInfo.offset + audioDecInfo.size)
-                            encIn.put(pcm)
-                        }
-                        aEncoder.queueInputBuffer(
-                            inIdx, 0, audioDecInfo.size, audioDecInfo.presentationTimeUs,
-                            if (eos) MediaCodec.BUFFER_FLAG_END_OF_STREAM else 0,
-                        )
-                        aDecoder.releaseOutputBuffer(pendingAudioDecoderOut, false)
-                        pendingAudioDecoderOut = -1
-                        if (eos) audioDecoderDone = true
-                    }
-                }
-            }
-
-            // ---- 6. Audio : encodeur AAC → muxer -----------------------
-            if (doAudio && !audioEncoderDone) {
-                val outIdx = aEncoder!!.dequeueOutputBuffer(aEncInfo, CODEC_TIMEOUT_US)
-                if (outIdx == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
-                    audioMuxTrack = muxer.addTrack(aEncoder.outputFormat)
-                    audioFormatReady = true
-                    maybeStartMuxer()
-                } else if (outIdx >= 0) {
-                    val encBuf = aEncoder.getOutputBuffer(outIdx)!!
-                    if ((aEncInfo.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG) != 0) {
-                        aEncInfo.size = 0
-                    }
-                    if (aEncInfo.size > 0 && audioMuxTrack >= 0) {
-                        writeOrBuffer(audioMuxTrack, pendingAudio, encBuf, aEncInfo)
-                    }
-                    val eos = (aEncInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0
-                    aEncoder.releaseOutputBuffer(outIdx, false)
-                    if (eos) audioEncoderDone = true
-                }
-            }
+            return videoSamples > 0 && (!doAudio || audioSamples > 0)
+        } finally {
+            try { aEncoder?.stop() } catch (_: Exception) {}
+            try { aEncoder?.release() } catch (_: Exception) {}
         }
-
-        // Sécurité : si le muxer n'a jamais démarré (formats jamais reçus),
-        // l'export n'a rien produit d'exploitable.
-        if (!muxing) {
-            Log.w(TAG, "transcode: muxer jamais démarré")
-            return false
-        }
-        try {
-            muxer.stop()
-        } catch (e: Exception) {
-            Log.w(TAG, "transcode: muxer.stop() a levé: ${e.message}")
-            return false
-        }
-        return true
-    }
-
-    /** Débit cible H.264 ~ proportionnel à la résolution, borné. */
-    private fun estimateVideoBitrate(width: Int, height: Int): Int {
-        val pixels = width.toLong() * height.toLong()
-        // ~4 bits/pixel : confortable pour de la TNT ré-encodée, borné
-        // entre 1,5 Mbps (SD) et 12 Mbps (Full HD+).
-        val bps = pixels * 4
-        return bps.coerceIn(1_500_000L, 12_000_000L).toInt()
     }
 
     /** Traduit les flags d'échantillon de MediaExtractor en flags MediaCodec

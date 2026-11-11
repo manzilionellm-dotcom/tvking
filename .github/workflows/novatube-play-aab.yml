@@ -94,6 +94,13 @@ jobs:
           python3 ci/cast_test/run_native_logic.py \
             2>&1 | tee build/novatube/reports/native-jvm-tests.txt
 
+      - name: Vérifier les règles de qualité et de sauvegarde MP4
+        id: tests_recording_native
+        run: |
+          set -euo pipefail
+          python3 ci/novatube/run_recording_logic.py \
+            2>&1 | tee build/novatube/reports/recording-native-tests.txt
+
       - name: Java 17 pour la compilation Android
         uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
@@ -149,6 +156,7 @@ jobs:
             test/features/tv/touch/novatube_play_ui_test.dart \
             test/features/tv/touch/novatube_private_ui_test.dart \
             test/features/tv/touch/novatube_cinema_sort_ui_test.dart \
+            test/features/tv/touch/novatube_recording_export_ui_test.dart \
             2>&1 | tee build/novatube/reports/flutter-analyze.txt
 
       - name: Tester les exclusions Play et les fonctions conservées
@@ -162,6 +170,7 @@ jobs:
             test/features/tv/touch/novatube_play_ui_test.dart \
             test/features/tv/touch/novatube_private_ui_test.dart \
             test/features/tv/touch/novatube_cinema_sort_ui_test.dart \
+            test/features/tv/touch/novatube_recording_export_ui_test.dart \
             test/features/cast \
             test/features/epg \
             test/features/profiles \
@@ -191,11 +200,14 @@ jobs:
             test/features/tv/live_shelves_test.dart \
             test/features/tv/touch/novatube_private_ui_test.dart \
             test/features/tv/touch/novatube_cinema_sort_ui_test.dart \
+            test/features/tv/touch/novatube_recording_export_ui_test.dart \
             test/novatube/adult_access_test.dart \
             test/novatube/channel_classifier_adult_test.dart \
             test/novatube/declared_adult_routes_test.dart \
             test/novatube/provider_adult_persistence_test.dart \
             test/novatube/provider_adult_signal_test.dart \
+            test/novatube/recording_relay_test.dart \
+            test/novatube/recording_handoff_test.dart \
             | tee build/novatube/reports/flutter-tests-private.jsonl
 
       - name: Charger la clé dédiée et vérifier son certificat public
@@ -262,6 +274,24 @@ jobs:
             --target=lib/main_zuno_mobile.dart \
             --build-name=0.1.5 --build-number=5 \
             --dart-define=NOVATUBE_PRIVATE_APK=true
+
+      - name: Vérifier de vrais exports MP4 sur Android 35
+        id: tests_recording_device
+        if: inputs.confirme == 'PUBLIER_NOVATUBE_APK_PRIVE'
+        env:
+          NOVATUBE_KEYSTORE_PATH: ${{ runner.temp }}/novatube-upload.jks
+          NOVATUBE_UPLOAD_STORE_PASSWORD: ${{ secrets.NOVATUBE_UPLOAD_STORE_PASSWORD }}
+          NOVATUBE_UPLOAD_KEY_PASSWORD: ${{ secrets.NOVATUBE_UPLOAD_KEY_PASSWORD }}
+          NOVATUBE_UPLOAD_KEY_ALIAS: ${{ secrets.NOVATUBE_UPLOAD_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          if ! command -v ffmpeg >/dev/null; then
+            sudo apt-get update -qq
+            sudo apt-get install -y --no-install-recommends ffmpeg
+          fi
+          python3 ci/novatube/run_recording_device.py \
+            --apk build/app/outputs/flutter-apk/app-release.apk \
+            --reports build/novatube/reports
 
       - name: Vérifier l'APK privé réel et ses preuves avant toute publication
         id: verify_private_apk

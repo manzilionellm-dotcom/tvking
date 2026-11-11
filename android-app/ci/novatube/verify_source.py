@@ -86,16 +86,16 @@ def verify_workflow(workflow: str) -> None:
     steps = release.get("steps", [])
     identified = {step["id"]: step for step in steps if "id" in step}
     require(len(identified) == sum("id" in step for step in steps), "Identifiant d'étape dupliqué")
-    private_ids = ("tests_private", "build_private_apk", "verify_private_apk", "upload_private_apk")
+    private_ids = ("tests_private", "build_private_apk", "tests_recording_device", "verify_private_apk", "upload_private_apk")
     play_ids = ("build_play_aab", "verify_play_aab", "upload_play_aab")
     for step_id, condition in [(name, PRIVATE_CONFIRMATION) for name in private_ids] + [
             (name, PLAY_CONFIRMATION) for name in play_ids]:
         require(step_id in identified and same_expression(identified[step_id].get("if"), condition),
                 "Étape hors de son mode explicite : " + step_id)
-    for step_id in ("analyze", "tests_play"):
+    for step_id in ("analyze", "tests_play", "tests_recording_native"):
         require(step_id in identified and "if" not in identified[step_id], "Validation commune absente : " + step_id)
     order = {step.get("id"): index for index, step in enumerate(steps) if "id" in step}
-    for sequence in (("analyze", "tests_play", *private_ids), ("tests_play", *play_ids)):
+    for sequence in (("tests_recording_native", "analyze", "tests_play", *private_ids), ("tests_play", *play_ids)):
         require(all(order[a] < order[b] for a, b in zip(sequence, sequence[1:])),
                 "Vérification, compilation ou conservation dans un ordre incorrect")
     expected_builds = {
@@ -114,7 +114,11 @@ def verify_workflow(workflow: str) -> None:
             "Vérification réelle de l'APK privé absente")
     require("ci/novatube/verify_aab.py" in identified["verify_play_aab"].get("run", ""),
             "Vérification réelle de l'AAB absente")
-    for step_id in ("analyze", "tests_play", "tests_private", "build_play_aab", "build_private_apk",
+    require("python3 ci/novatube/run_recording_logic.py" in identified["tests_recording_native"].get("run", ""),
+            "Tests des règles natives d'export MP4 absents")
+    require("python3 ci/novatube/run_recording_device.py" in identified["tests_recording_device"].get("run", ""),
+            "Test du vrai export Android absent")
+    for step_id in ("analyze", "tests_play", "tests_private", "tests_recording_native", "tests_recording_device", "build_play_aab", "build_private_apk",
                     "verify_play_aab", "verify_private_apk"):
         require("set -euo pipefail" in identified[step_id].get("run", ""),
                 "Une erreur de pipeline pourrait être ignorée : " + step_id)

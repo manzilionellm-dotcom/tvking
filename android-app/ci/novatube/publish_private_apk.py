@@ -106,6 +106,8 @@ def load_verified(directory: Path, sha: str, run_id: str, attempt: str) -> tuple
     require(type(proof.get("sizeBytes")) is int and proof["sizeBytes"] > 0
             and apk.stat().st_size == proof["sizeBytes"] == provenance.get("sizeBytes"), "Taille APK différente")
     evidence = evidence_results(directory, sha)
+    require(evidence["tests"]["recordingDevice"]["apkSha256"] == proof["sha256"],
+            "L'APK publié diffère de celui testé sur Android")
     require(proof.get("tests") == evidence["tests"] == provenance.get("tests"), "Résultats de tests incohérents")
     require(proof.get("sourceTree") == evidence["source"]["sourceTree"] == provenance.get("sourceTree"),
             "Arbre Git des preuves incohérent")

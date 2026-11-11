@@ -15,11 +15,9 @@
 //  accessible à toutes les apps (Galerie, YouTube, WhatsApp upload, etc.)
 //  et survit à la désinstallation.
 //
-//  Stratégie : côté natif (GalleryExporter.kt), on REMUXE le MPEG-TS
-//  dans un VRAI conteneur MP4 (MediaExtractor + MediaMuxer, copie des
-//  pistes sans ré-encodage) → fichier accepté par la galerie de la
-//  plupart des téléphones. Repli sur copie brute si un codec n'est pas
-//  muxable. Pas de ffmpeg embarqué, pas de perte de qualité.
+//  Le natif produit un MP4 H.264/AAC : copie des pistes sans ré-encodage
+//  lorsqu'elles sont compatibles, conversion sinon. Un TS simplement
+//  renommé ou une conversion incomplète ne vaut jamais succès d'export.
 // =========================================================
 
 import 'package:flutter/foundation.dart';
@@ -30,11 +28,32 @@ class GalleryExporter {
 
   static const MethodChannel _channel =
       MethodChannel('com.manzilionellm.tvking/gallery');
+  static final Map<String, Future<GalleryExportResult>> _inFlight =
+      <String, Future<GalleryExportResult>>{};
+
+  /// Une vue rouverte peut reprendre l'attente, sans relancer le natif.
+  static Future<GalleryExportResult>? pendingExportFor(String srcPath) =>
+      _inFlight[srcPath];
 
   /// Résultat de l'export. Contient un flag de succès et, en cas
   /// d'échec, le code + message d'erreur côté natif pour qu'on puisse
   /// l'afficher dans le snackbar (au lieu d'un "indisponible" vague).
   static Future<GalleryExportResult> exportVideo({
+    required String srcPath,
+    required String displayName,
+  }) {
+    // Un retour vers la liste pendant une conversion native ne doit pas
+    // lancer une seconde copie du même fichier. Les deux vues attendent
+    // le résultat de la même opération jusqu'à sa fin effective.
+    return _inFlight.putIfAbsent(srcPath, () {
+      return _exportVideo(srcPath: srcPath, displayName: displayName)
+          .whenComplete(() {
+        _inFlight.remove(srcPath);
+      });
+    });
+  }
+
+  static Future<GalleryExportResult> _exportVideo({
     required String srcPath,
     required String displayName,
   }) async {

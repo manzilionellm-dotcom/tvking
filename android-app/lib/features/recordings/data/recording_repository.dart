@@ -21,6 +21,7 @@ import 'package:sqflite/sqflite.dart';
 
 import '../../../core/observability/structured_logger.dart';
 import '../../playlists/data/playlist_database.dart';
+import '../../player/data/local_stream_relay.dart';
 import '../domain/recording.dart';
 import 'http_recording_downloader.dart';
 
@@ -29,6 +30,7 @@ class RecordingRepository {
   static final RecordingRepository instance = RecordingRepository._();
 
   bool _initialized = false;
+  int _fileSequence = 0;
   final StreamController<List<Recording>> _controller =
       StreamController<List<Recording>>.broadcast();
   List<Recording> _cache = const <Recording>[];
@@ -119,7 +121,8 @@ class RecordingRepository {
     String safe(String s) => s.replaceAll(RegExp(r'[^\w\d\-_. ]+'), '_');
     final String stamp =
         '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}'
-        '-${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}';
+        '-${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}'
+        '-${now.microsecondsSinceEpoch}-${++_fileSequence}';
     final String slug = programTitle == null || programTitle.isEmpty
         ? safe(channelName)
         : '${safe(channelName)}-${safe(programTitle)}';
@@ -149,8 +152,15 @@ class RecordingRepository {
       streamUrl: streamUrl,
     );
     final int id = await db.insert('recordings', rec.toMap());
-    await _refresh();
-    return rec.copyWith(id: id);
+    try {
+      await _refresh();
+      return rec.copyWith(id: id);
+    } catch (_) {
+      // L'appelant nettoie le fichier si la fiche n'a pas pu être créée.
+      // Ne pas laisser une ligne « en cours » qu'il n'a jamais reçue.
+      await db.delete('recordings', where: 'id = ?', whereArgs: <Object>[id]);
+      rethrow;
+    }
   }
 
   Future<void> finishRecording(Recording rec) async {
@@ -253,7 +263,8 @@ class RecordingRepository {
       // Ceinture + bretelles : si un job tourne reellement pour ce
       // path (cas exotique), on ne touche PAS — c'est un vrai
       // recording en cours.
-      if (dl.isRecordingFile(r.filePath)) {
+      if (dl.isRecordingFile(r.filePath) ||
+          LocalStreamRelay.instance.isRecordingFile(r.filePath)) {
         continue;
       }
       await finishRecordingByPath(
@@ -292,7 +303,8 @@ class RecordingRepository {
       if (kDebugMode) debugPrint('[Recordings] delete file failed: $e');
     }
     final Database db = await PlaylistDatabase.instance.database;
-    await db.delete('recordings', where: 'id = ?', whereArgs: <Object>[rec.id!]);
+    await db
+        .delete('recordings', where: 'id = ?', whereArgs: <Object>[rec.id!]);
     await _refresh();
   }
 

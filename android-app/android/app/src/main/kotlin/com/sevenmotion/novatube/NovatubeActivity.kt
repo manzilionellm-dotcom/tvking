@@ -94,6 +94,7 @@ class NovatubeActivity : FlutterFragmentActivity() {
             galleryExporter = GalleryExporter(
                 messenger = messenger,
                 context = applicationContext,
+                activity = this,
             )
             Log.i(TAG, "  ✓ Gallery channel wired")
         } catch (e: Throwable) {
@@ -307,6 +308,15 @@ class NovatubeActivity : FlutterFragmentActivity() {
     override fun onResume() {
         AppForeground.onResume()
         super.onResume()
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray,
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        galleryExporter?.onRequestPermissionsResult(requestCode, grantResults)
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {

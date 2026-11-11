@@ -157,6 +157,9 @@ def verify(aab: Path, bundletool: Path, reports: Path, output: Path) -> dict:
     require(source.get("sourceCommit") == os.environ.get("GITHUB_SHA"), "Les sources ne correspondent pas au run")
     flutter = flutter_test_results(reports / "flutter-tests.jsonl")
     native = native_test_results(reports / "native-jvm-tests.txt")
+    recording_native = native_test_results(reports / "recording-native-tests.txt")
+    require("FAILURES!!!" not in (reports / "recording-native-tests.txt").read_text(encoding="utf-8"),
+            "Échec des règles natives de sauvegarde MP4")
     toolchain = json.loads((reports / "flutter-toolchain.json").read_text(encoding="utf-8"))
     require(toolchain.get("frameworkVersion") == "3.47.7", "Version Flutter différente du tag approuvé")
     dependency_lock = APP_ROOT / "pubspec.lock"
@@ -193,7 +196,8 @@ def verify(aab: Path, bundletool: Path, reports: Path, output: Path) -> dict:
         "sha256": sha256_file(aab), "sizeBytes": aab.stat().st_size,
         "runId": run_id, "runAttempt": os.environ.get("GITHUB_RUN_ATTEMPT"),
         "runUrl": f"https://github.com/{repository}/actions/runs/{run_id}",
-        "tests": {"flutter": flutter, "nativeJvm": native, "deviceTests": "not-run"},
+        "tests": {"flutter": flutter, "nativeJvm": native,
+                  "recordingNativeJvm": recording_native, "deviceTests": "not-run"},
         "googleUpload": False, "published": False,
     }
     # Ce dossier n'existe qu'après TOUS les contrôles. Aucun AAB non validé
@@ -205,7 +209,7 @@ def verify(aab: Path, bundletool: Path, reports: Path, output: Path) -> dict:
     (output / "signature-verification.txt").write_text(signature_report, encoding="utf-8")
     (output / "build-provenance.json").write_text(json.dumps(provenance, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     (output / "SHA256SUMS.txt").write_text(provenance["sha256"] + "  " + filename + "\n", encoding="ascii")
-    for report in ("source-verification.json", "flutter-tests.jsonl", "native-jvm-tests.txt", "flutter-analyze.txt", "static-tests.txt", "flutter-toolchain.json"):
+    for report in ("source-verification.json", "flutter-tests.jsonl", "native-jvm-tests.txt", "recording-native-tests.txt", "flutter-analyze.txt", "static-tests.txt", "flutter-toolchain.json"):
         shutil.copyfile(reports / report, output / report)
     shutil.copyfile(dependency_lock, output / "pubspec.lock")
     return provenance

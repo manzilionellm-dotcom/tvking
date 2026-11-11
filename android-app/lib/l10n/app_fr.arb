@@ -3122,5 +3122,19 @@
     "placeholders": {
       "name": {"type": "String"}
     }
-  }
+  },
+  "tvRecordingSaveGallery": "Enregistrer dans la galerie (MP4)",
+  "tvRecordingExporting": "Préparation du MP4…",
+  "tvRecordingExportSuccess": "Enregistrement MP4 disponible dans la galerie.",
+  "tvRecordingExportFailed": "Impossible d’enregistrer la vidéo dans la galerie. Réessaie.",
+  "tvRecordingExportPermission": "L’autorisation d’enregistrer dans la galerie a été refusée. Autorise-la dans les paramètres Android puis réessaie.",
+  "tvRecordingExportFormat": "Ce téléphone ne peut pas créer un MP4 compatible à partir de cet enregistrement. L’original reste disponible dans NOVATUBE.",
+  "tvRecordingExportInProgress": "Un export est déjà en cours. Attends sa fin avant de réessayer.",
+  "tvRecordingFinishBeforeExport": "Arrête l’enregistrement avant de le sauvegarder dans la galerie.",
+  "tvRecordingDeleteFailed": "Impossible de supprimer cet enregistrement. Réessaie.",
+  "tvRecordingPreparing": "Préparation de l’enregistrement…",
+  "tvRecordingUnsupported": "Ce format de flux ne peut pas être enregistré.",
+  "tvRecordingNetworkError": "Enregistrement interrompu : la connexion au flux a été perdue.",
+  "tvRecordingDiskError": "Impossible d’écrire l’enregistrement. Vérifie l’espace de stockage disponible.",
+  "tvRecordingServiceError": "Impossible de démarrer l’enregistrement sur cet appareil. Réessaie."
 }

@@ -20,13 +20,14 @@ from common import (
     VERSION_NAME, expected_certificate, require, sha256_file,
 )
 from verify_aab import flutter_test_results, native_test_results
+from recording_device_evidence import device_test_results
 
 REPOSITORY = "manzilionellm-dotcom/tvking"
 ABIS = ["arm64-v8a", "armeabi-v7a", "x86_64"]
 RAW_REPORTS = (
     "source-verification.json", "flutter-toolchain.json", "flutter-analyze.txt",
     "flutter-tests.jsonl", "flutter-tests-private.jsonl", "native-jvm-tests.txt",
-    "static-tests.txt",
+    "static-tests.txt", "recording-native-tests.txt", "recording-device-tests.txt", "recording-device-tests.json",
 )
 
 
@@ -111,16 +112,21 @@ def evidence_results(reports: Path, source_commit: str) -> dict:
     require(re.search(r"^\s*(?:error\s+[•-]|Error:|Unhandled exception:)", analysis, re.M) is None,
             "Erreur dans l'analyse Flutter")
     native = native_test_results(reports / "native-jvm-tests.txt")
-    require("FAILURES!!!" not in (reports / "native-jvm-tests.txt").read_text(encoding="utf-8"),
-            "Échec JVM présent dans le rapport")
+    recording_native = native_test_results(reports / "recording-native-tests.txt")
+    for filename in ("native-jvm-tests.txt", "recording-native-tests.txt"):
+        require("FAILURES!!!" not in (reports / filename).read_text(encoding="utf-8"),
+                "Échec JVM présent dans le rapport : " + filename)
     static = (reports / "static-tests.txt").read_text(encoding="utf-8")
     counts = re.findall(r"^Ran (\d+) tests? in .+$", static, re.M)
     require(len(counts) == 1 and int(counts[0]) > 0 and re.search(r"^OK$", static, re.M)
             and not re.search(r"^(?:FAILED|FAIL:|ERROR:)", static, re.M),
             "Tests Python absents ou non réussis")
+    device = device_test_results(reports, source_commit)
     return {"source": source, "flutterToolchain": toolchain,
-            "tests": {**suites, "nativeJvm": native, "python": {"passed": int(counts[0])},
-                      "deviceTests": "not-run"}}
+            "tests": {**suites, "nativeJvm": native, "recordingNativeJvm": recording_native,
+                      "recordingDevice": device,
+                      "python": {"passed": int(counts[0])},
+                      "deviceTests": "android-emulator-api-35"}}
 
 
 def verify(apk: Path, reports: Path, output: Path, sdk_root: Path, build_tools: str) -> dict:
@@ -135,6 +141,8 @@ def verify(apk: Path, reports: Path, output: Path, sdk_root: Path, build_tools: 
             and os.environ.get("GITHUB_EVENT_NAME") == "workflow_dispatch"
             and run_id.isdigit() and attempt.isdigit(), "Contexte CI NOVATUBE incorrect")
     evidence = evidence_results(reports, source_commit)
+    require(evidence["tests"]["recordingDevice"]["apkSha256"] == sha256_file(apk),
+            "L'APK livré diffère de celui testé sur Android")
     commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=REPO_ROOT, text=True).strip()
     tree = subprocess.check_output(["git", "rev-parse", "HEAD^{tree}"], cwd=REPO_ROOT, text=True).strip()
     require(commit == source_commit and tree == evidence["source"]["sourceTree"],

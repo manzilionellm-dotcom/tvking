@@ -24,6 +24,7 @@
 //  enchaîner 20 setUrl gelait la box.
 // =========================================================
 import 'dart:async';
+import 'dart:io';
 
 import '../desktop/desktop_cast_controls.dart';
 import '../../cast/data/cast_platform.dart';
@@ -73,6 +74,7 @@ import '../../playlists/data/playlist_repository.dart';
 import '../../security/data/adult_access.dart';
 import '../../playlists/data/favorites_repository.dart';
 import '../../recordings/data/recording_repository.dart';
+import '../../recordings/data/recording_service.dart';
 import '../../recordings/domain/recording.dart';
 import '../../subscription/data/now_playing.dart';
 import '../../subscription/data/subscription_state.dart';
@@ -130,9 +132,8 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   // exclue passée directement à cette route en dehors du catalogue.
   late final List<Channel> _channels = widget.channels
       .where(
-        (Channel c) =>
-            NovatubeContentPolicy.allows(name: c.name, category: c.category,
-                declaredAdult: c.declaredAdult),
+        (Channel c) => NovatubeContentPolicy.allows(
+            name: c.name, category: c.category, declaredAdult: c.declaredAdult),
       )
       .toList(growable: false);
   late int _index = _channels.indexOf(widget.channels[widget.startIndex]);
@@ -192,6 +193,11 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   // lecture reste DIRECTE (le relais n'est pas dans le chemin).
   Recording? _activeRecording;
   bool _recordingBusy = false;
+  bool _recordingViewDisposed = false;
+  _TvRecordingSession? _recordingSession;
+  Future<void>? _recordingWork;
+  int _openGeneration = 0;
+  bool get _recordingViewAlive => mounted && !_recordingViewDisposed;
   bool get _isRecording => _activeRecording != null;
   // Les enregistrements actuels n'ont pas de section protégée.
   bool get _canRecord => !_current.isAdult;
@@ -389,7 +395,9 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   Future<void> _prepareCastHandoff() async {
     // Un enregistrement a son propre consommateur réseau. On garde le
     // bouton indisponible jusqu'à sa clôture, sans couper le fichier.
-    if (_isRecording || _recordingBusy) throw StateError('recording-active');
+    if (_isRecording || _recordingBusy || _controller.recordingSourceHeld) {
+      throw StateError('recording-active');
+    }
     await CinemaDownloads.pauseForLive(owner: _downloadOwner);
   }
 
@@ -424,7 +432,8 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
       case AppLifecycleState.resumed:
         if (_appActive) break;
         _appActive = true;
-        if (!NovatubeContentPolicy.allows(name: _current.name,
+        if (!NovatubeContentPolicy.allows(
+            name: _current.name,
             category: _current.category,
             declaredAdult: _current.declaredAdult)) break;
         _lastProgress = DateTime.now();
@@ -487,11 +496,11 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     _favSub?.cancel();
     // Si on quitte le lecteur en plein enregistrement : on finalise proprement
     // (arrêt du relais + clôture en base), sans toucher au controller détruit.
-    if (_activeRecording != null) {
-      final Recording rec = _activeRecording!;
-      LocalStreamRelay.instance.stopRecording(rec.streamUrl ?? _playingUrl);
-      RecordingRepository.instance.finishRecording(rec);
-    }
+    _recordingViewDisposed = true;
+    _openGeneration++;
+    // Le fichier est fermé AVANT de figer sa taille en base. Un démarrage
+    // encore en attente voit cancelled et nettoie aussi sa fiche éventuelle.
+    unawaited(_stopRecordingForNavigation());
     _controller.removeListener(_onPlayer);
     subtitlesFlag.changes.removeListener(_onSubsFlag);
     ClearVoiceFlag.changes.removeListener(_onClearVoice);
@@ -517,7 +526,10 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     // affichée. On ignore ses erreurs / sa première image, sinon l'écran
     // croirait que la mauvaise chaîne est prête et lancerait une
     // reconnexion inutile.
-    if (_zapHolding || _castingHandoff || _controller.castSuspended) return;
+    if (_zapHolding ||
+        _recordingBusy ||
+        _castingHandoff ||
+        _controller.castSuspended) return;
     if (_controller.reopenCount != _seenReopen) {
       _seenReopen = _controller.reopenCount;
       _lastProgress = DateTime.now();
@@ -586,7 +598,12 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     _offerSubtitles();
   }
 
-  void _open({bool reuse = false}) {
+  Future<void> _open({bool reuse = false}) async {
+    final int ticket = ++_openGeneration;
+    if (!reuse && (_recordingSession != null || _recordingWork != null)) {
+      await _stopRecordingForNavigation();
+      if (!_recordingViewAlive || ticket != _openGeneration) return;
+    }
     _lastProgress = DateTime.now();
     _lastPos = Duration.zero;
     _everShownFrame = false; // nouvelle ouverture → pas encore d'image
@@ -609,6 +626,18 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
       // pour les sous-titres (ça rouvrirait le flux). On choisit la
       // piste ensuite, avec selectTrack, si le flux en a déjà une.
       _controller.setUrl(_playingUrl);
+      try {
+        if (_controller.recordingSourceHeld) {
+          await _controller.suspendForRecording();
+          await _controller.resumeAfterRecording();
+        }
+      } catch (_) {
+        if (mounted && !_recordingViewDisposed) {
+          _flash(context.l10n.tvRecordingCloseFailed);
+        }
+        return;
+      }
+      if (!_recordingViewAlive || ticket != _openGeneration) return;
       _catchup = false;
       _subsWant = null;
       _appliedTracks = null;
@@ -660,9 +689,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   void _zap(int delta) {
     final int n = _channels.length;
     if (n <= 1) return;
-    // On ne peut enregistrer qu'1 chaîne à la fois (1 connexion) : changer de
-    // chaîne clôt et SAUVEGARDE l'enregistrement en cours.
-    if (_isRecording) _finalizeRecording(resumeDirect: false);
+    // _open attendra la clôture REC avant d'ouvrir la chaîne retenue.
     setState(() {
       _index = tvNextZapIndex(_index, delta, n);
       _zapHolding = true;
@@ -711,6 +738,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
 
   void _recover() {
     if (_fatal ||
+        _recordingBusy ||
         _zapHolding ||
         _recoverArmed ||
         _castingHandoff ||
@@ -744,6 +772,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
       _recoverArmed = false;
       if (!mounted ||
           _fatal ||
+          _recordingBusy ||
           _zapHolding ||
           _castingHandoff ||
           _controller.castSuspended) return;
@@ -759,7 +788,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   /// Ouvre à nouveau, après l'attente. Même adresse si l'image avait
   /// déjà été vue (on garde cette image). Sinon, adresse de secours.
   void _reopenAfterFailure() {
-    if (_castingHandoff || _controller.castSuspended) return;
+    if (_recordingBusy || _castingHandoff || _controller.castSuspended) return;
     if (_relayPlayUrl != null) {
       _controller.setUrl(_relayPlayUrl!, keepPicture: _everShownFrame);
       return;
@@ -793,7 +822,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
 
   /// « Réessayer » manuel depuis l'écran d'erreur : on repart d'un budget neuf.
   void _manualRetry() {
-    if (_castingHandoff || _controller.castSuspended) return;
+    if (_recordingBusy || _castingHandoff || _controller.castSuspended) return;
     _zapSettle?.cancel();
     _zapHolding = false;
     _cancelRecover();
@@ -812,104 +841,248 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   // ----- Enregistrement (bouton REC / touche média) -----
 
   Future<void> _toggleRecording() async {
-    if (_castingHandoff || _recordingBusy || !_canRecord) return;
+    if (_zapHolding ||
+        _castingHandoff ||
+        _recordingBusy ||
+        _controller.recordingSourceHeld ||
+        !_canRecord) return;
     setState(() => _recordingBusy = true);
+    final Future<void> operation = _isRecording
+        ? _finalizeRecording(resumeDirect: true)
+        : _startRecording();
+    _recordingWork = operation;
     try {
-      if (_isRecording) {
-        await _finalizeRecording(resumeDirect: true);
-      } else {
-        await _startRecording();
-      }
+      await operation;
     } finally {
-      if (mounted) setState(() => _recordingBusy = false);
+      if (identical(_recordingWork, operation)) _recordingWork = null;
+      if (mounted && !_recordingViewDisposed) {
+        setState(() => _recordingBusy = false);
+        _showOverlayTemporarily();
+        final _TvRecordingSession? session = _recordingSession;
+        if (session?.stopped != null && !session!.cancelled) {
+          unawaited(_finishRecordingAutomatically(session));
+        }
+      }
     }
-    if (mounted) _showOverlayTemporarily();
+  }
+
+  void _checkRecordingStart(_TvRecordingSession session) {
+    if (!_recordingViewAlive ||
+        session.cancelled ||
+        !identical(_recordingSession, session) ||
+        session.channel.id != _current.id ||
+        !_canRecord) {
+      session.cancelled = true;
+      throw const RelayRecordingException(RelayStopReason.cancelled);
+    }
   }
 
   Future<void> _startRecording() async {
     if (_isRecording || !_canRecord) return;
-    // L'adresse qui JOUE (éventuellement une adresse de secours).
-    final String realUrl = _playingUrl;
+    final _TvRecordingSession session =
+        _TvRecordingSession(_current, _playingUrl);
+    _recordingSession = session;
+    _cancelRecover();
+    _flash(context.l10n.tvRecordingPreparing);
     try {
+      // setUrl ne garantit pas la fermeture de l'ancien DataSource. La même
+      // barrière native que le Cast attend réellement cette fermeture avant
+      // que le relais puisse ouvrir son unique lecture fournisseur.
+      await _controller.suspendForRecording();
+      _checkRecordingStart(session);
+      session.serviceStarted = await RecordingService.instance.start(
+        title: session.channel.cleanName,
+      ); // Pas d'URL : service de maintien, jamais un second downloader.
+      _checkRecordingStart(session);
+      if (!session.serviceStarted) throw const _RecordingServiceUnavailable();
       final String path = await RecordingRepository.instance.createFilePath(
-        channelName: _current.cleanName,
+        channelName: session.channel.cleanName,
       );
-
-      // 1) On bascule D'ABORD la lecture sur le relais : le lecteur lâche la
-      //    connexion DIRECTE et le relais ouvre L'UNIQUE connexion vers le
-      //    serveur. On évite ainsi d'avoir 2 connexions en même temps
-      //    (incompatible avec les fournisseurs max_connections=1).
+      session.filePath = path;
+      _checkRecordingStart(session);
       final String localUrl = await LocalStreamRelay.instance.playUrlFor(
-        realUrl,
+        session.realUrl,
       );
-      _relayPlayUrl = localUrl;
-      _controller.setUrl(localUrl);
-
-      // 2) On attache l'écriture fichier à CETTE MÊME session relais (pas de
-      //    nouvelle connexion : le tee recopie juste les octets vers le .ts).
-      final bool ok = await LocalStreamRelay.instance.startRecording(
-        realUrl: realUrl,
+      _checkRecordingStart(session);
+      await LocalStreamRelay.instance.startRecording(
+        realUrl: session.realUrl,
         filePath: path,
+        onStopped: (RelayRecordingResult result) {
+          session.stopped = result;
+          // Un HLS court peut finir avant l'insertion SQLite. Le démarrage
+          // traite alors ce résultat après avoir créé la fiche.
+          if (session.recording != null &&
+              !_recordingBusy &&
+              !session.cancelled &&
+              _recordingViewAlive) {
+            unawaited(_finishRecordingAutomatically(session));
+          }
+        },
       );
-      if (!ok) {
-        _relayPlayUrl = null;
-        _controller.setUrl(realUrl); // on revient au direct
-        _flash(context.l10n.tvRecordingError);
-        return;
+      _checkRecordingStart(session);
+      session.recording = await RecordingRepository.instance.startRecording(
+        channelId: session.channel.id,
+        channelName: session.channel.cleanName,
+        filePath: path,
+        channelLogoUrl: session.channel.logoUrl,
+        streamUrl: session.realUrl,
+      );
+      _checkRecordingStart(session);
+      setState(() => _activeRecording = session.recording);
+      if (session.stopped == null) {
+        _relayPlayUrl = localUrl;
+        _controller.setUrl(localUrl);
+        await _controller.resumeAfterRecording();
+        _checkRecordingStart(session);
       }
-
-      // 3) On enregistre la fiche en base (liste « Enregistrements »).
-      final Recording rec = await RecordingRepository.instance.startRecording(
-        channelId: _current.id,
-        channelName: _current.cleanName,
-        filePath: path,
-        channelLogoUrl: _current.logoUrl,
-        streamUrl: realUrl,
-      );
-      if (mounted) {
-        setState(() => _activeRecording = rec);
+      if (session.stopped != null) {
+        await _finalizeRecording(resumeDirect: true);
+      } else if (mounted && !_recordingViewDisposed) {
         _flash(context.l10n.tvRecordingStarted);
       }
-    } catch (e) {
-      if (mounted) _flash(context.l10n.tvRecordingError);
+    } catch (error) {
+      // Toute sortie après création de fichier ferme d'abord son handle, puis
+      // retire la fiche/fichier incomplet. Aucun REC fictif ne reste affiché.
+      await LocalStreamRelay.instance.stopRecordingResult(
+        session.realUrl,
+        closePlayback: true,
+      );
+      if (session.serviceStarted) await RecordingService.instance.stop();
+      try {
+        if (session.recording != null) {
+          await RecordingRepository.instance.delete(session.recording!);
+        } else if (session.filePath != null) {
+          final File file = File(session.filePath!);
+          if (await file.exists()) await file.delete();
+        }
+      } catch (_) {
+        // Le fichier pourra être supprimé depuis la liste si le stockage a
+        // disparu ; l'erreur initiale reste le message utile au téléspectateur.
+      }
+      if (identical(_recordingSession, session)) {
+        _recordingSession = null;
+        _activeRecording = null;
+        _relayPlayUrl = null;
+      }
+      if (mounted && !_recordingViewDisposed && !session.cancelled) {
+        bool restored = false;
+        try {
+          // Un premier arrêt natif a pu échouer : réessayer la fermeture,
+          // sans ouvrir le relais ni le direct tant qu'elle n'est pas acquise.
+          await _controller.suspendForRecording();
+          _controller.setUrl(session.realUrl);
+          await _controller.resumeAfterRecording();
+          restored = true;
+        } catch (_) {}
+        if (mounted && !_recordingViewDisposed) {
+          _flash(!restored
+              ? context.l10n.tvRecordingCloseFailed
+              : error is _RecordingServiceUnavailable
+                  ? context.l10n.tvRecordingServiceError
+                  : _recordingErrorText(
+                      error is RelayRecordingException ? error.reason : null));
+        }
+      }
     }
   }
 
-  /// Clôt l'enregistrement en cours. [resumeDirect] = on rebascule la lecture
-  /// en direct (bouton stop) ; à false quand l'appelant va lui-même rouvrir
-  /// une autre source (zap).
-  Future<void> _finalizeRecording({required bool resumeDirect}) async {
-    final Recording? rec = _activeRecording;
-    if (rec == null) return;
-    // UI immédiate : on n'est plus « en train d'enregistrer ».
-    if (mounted) {
-      setState(() => _activeRecording = null);
-    } else {
-      _activeRecording = null;
-    }
-    _relayPlayUrl = null;
-    final String realUrl = rec.streamUrl ?? _playingUrl;
-    int bytes = 0;
-    bool failed = false;
+  String _recordingErrorText(RelayStopReason? reason) => switch (reason) {
+        RelayStopReason.unsupportedStream =>
+          context.l10n.tvRecordingUnsupported,
+        RelayStopReason.networkError => context.l10n.tvRecordingNetworkError,
+        RelayStopReason.diskError => context.l10n.tvRecordingDiskError,
+        _ => context.l10n.tvRecordingError,
+      };
+
+  Future<void> _finishRecordingAutomatically(
+      _TvRecordingSession session) async {
+    if (!identical(_recordingSession, session) || _recordingBusy) return;
+    setState(() => _recordingBusy = true);
+    final Future<void> operation = _finalizeRecording(resumeDirect: true);
+    _recordingWork = operation;
     try {
-      bytes = await LocalStreamRelay.instance.stopRecording(realUrl);
-      await RecordingRepository.instance.finishRecording(rec);
+      await operation;
+    } finally {
+      if (identical(_recordingWork, operation)) _recordingWork = null;
+      if (mounted && !_recordingViewDisposed)
+        setState(() => _recordingBusy = false);
+    }
+  }
+
+  Future<void> _finalizeRecording({required bool resumeDirect}) {
+    final _TvRecordingSession? session = _recordingSession;
+    if (session == null || session.recording == null)
+      return Future<void>.value();
+    return session.finishing ??=
+        _closeRecording(session, resumeDirect: resumeDirect);
+  }
+
+  Future<void> _closeRecording(_TvRecordingSession session,
+      {required bool resumeDirect}) async {
+    bool failed = false;
+    bool held = _controller.recordingSourceHeld;
+    if (mounted && !_recordingViewDisposed) {
+      try {
+        await _controller.suspendForRecording();
+        held = true;
+      } catch (_) {
+        failed = true;
+      }
+    }
+    final RelayRecordingResult result = await LocalStreamRelay.instance
+        .stopRecordingResult(session.realUrl, closePlayback: true);
+    if (session.serviceStarted) await RecordingService.instance.stop();
+    try {
+      await RecordingRepository.instance.finishRecordingByPath(
+        session.recording!.filePath,
+        reason: result.succeeded ? null : result.reason.name,
+      );
     } catch (_) {
       failed = true;
     }
-    if (resumeDirect && mounted) {
-      _controller.setUrl(_playingUrl);
+    if (identical(_recordingSession, session)) {
+      _recordingSession = null;
+      _activeRecording = null;
+      _relayPlayUrl = null;
     }
-    if (mounted) {
-      if (failed) {
-        _flash(context.l10n.tvRecordingCloseFailed);
-      } else {
-        _flash(
-          bytes > 0
-              ? context.l10n.tvRecordingSaved(_humanSize(bytes))
-              : context.l10n.tvRecordingEmpty,
-        );
+    if (resumeDirect && !session.cancelled && held && _recordingViewAlive) {
+      try {
+        _controller.setUrl(session.realUrl);
+        await _controller.resumeAfterRecording();
+      } catch (_) {
+        failed = true;
       }
+    }
+    if (mounted && !_recordingViewDisposed) {
+      setState(() {});
+      _flash(failed
+          ? context.l10n.tvRecordingCloseFailed
+          : !result.succeeded
+              ? _recordingErrorText(result.reason)
+              : result.bytes > 0
+                  ? context.l10n.tvRecordingSaved(_humanSize(result.bytes))
+                  : context.l10n.tvRecordingEmpty);
+    }
+  }
+
+  /// Zap, retour au direct ou destruction de la vue : annuler un démarrage
+  /// tardif et attendre la fermeture complète avant toute nouvelle source.
+  Future<void> _stopRecordingForNavigation() async {
+    final _TvRecordingSession? session = _recordingSession;
+    if (session == null) {
+      await _recordingWork;
+      return;
+    }
+    session.cancelled = true;
+    if (session.recording == null) {
+      await LocalStreamRelay.instance.stopRecordingResult(
+        session.realUrl,
+        closePlayback: true,
+      );
+      await _recordingWork;
+    } else {
+      await _finalizeRecording(resumeDirect: false);
+      await _recordingWork;
     }
   }
 
@@ -1266,24 +1439,37 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     }());
   }
 
-  void _rewindMissed() {
+  Future<void> _rewindMissed() async {
     final String? url = _missed?.rewindUrl;
     if (url == null || url.isEmpty) return;
+    final int ticket = ++_openGeneration;
+    await _stopRecordingForNavigation();
+    if (!_recordingViewAlive || ticket != _openGeneration) return;
     try {
       _catchup = true;
       _playingUrl = url;
       _controller.setUrl(url);
-      _flash(_missedFlash(context));
+      await _controller.resumeAfterRecording();
+      if (mounted && !_recordingViewDisposed) _flash(_missedFlash(context));
     } catch (_) {
       _catchup = false;
     }
   }
 
-  void _backToLive() {
+  Future<void> _backToLive() async {
+    final int ticket = ++_openGeneration;
+    await _stopRecordingForNavigation();
+    if (!_recordingViewAlive || ticket != _openGeneration) return;
     _catchup = false;
     _playingUrl = LiveFallback.preferred(_current.streamUrl);
     _controller.setUrl(_playingUrl);
-    _showOverlayTemporarily();
+    try {
+      await _controller.resumeAfterRecording();
+    } catch (_) {
+      if (mounted && !_recordingViewDisposed)
+        _flash(context.l10n.tvRecordingCloseFailed);
+    }
+    if (mounted && !_recordingViewDisposed) _showOverlayTemporarily();
   }
 
   String _missedFlash(BuildContext context) {
@@ -1325,7 +1511,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
       unawaited(_desktopCastKey.currentState!.togglePause());
       return;
     }
-    if (_castingHandoff || _controller.castSuspended) return;
+    if (_recordingBusy || _castingHandoff || _controller.castSuspended) return;
     if (_controller.isPlaying) {
       _controller.pause();
     } else {
@@ -1614,7 +1800,12 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
                             isFavorite: _isFavorite,
                             focusedIndex: _btnFocus,
                             onGuide: _openGuide,
-                            onRecord: _canRecord ? _toggleRecording : null,
+                            onRecord: _canRecord &&
+                                    !_zapHolding &&
+                                    !_recordingBusy &&
+                                    !_controller.recordingSourceHeld
+                                ? _toggleRecording
+                                : null,
                             onFavorite: _toggleFavorite,
                             onFollow: _canFollow
                                 ? () => unawaited(_toggleFollow())
@@ -1661,7 +1852,9 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
                         streamUrl: _playingUrl,
                         title: _current.name,
                         imageUrl: _current.logoUrl,
-                        enabled: !_isRecording && !_recordingBusy,
+                        enabled: !_isRecording &&
+                            !_recordingBusy &&
+                            !_controller.recordingSourceHeld,
                         disabledHint: context.l10n.playerRecording,
                         prepareHandoff: _prepareCastHandoff,
                         onHandoffChanged: _onCastHandoff,
@@ -2395,4 +2588,22 @@ class _CtrlButtonState extends State<_CtrlButton> {
       ),
     );
   }
+}
+
+// État d'une seule capture. Il reste vivant pendant les attentes réseau/SQLite
+// même si la vue est quittée : cancelled interdit toute reprise tardive.
+class _TvRecordingSession {
+  _TvRecordingSession(this.channel, this.realUrl);
+  final Channel channel;
+  final String realUrl;
+  String? filePath;
+  Recording? recording;
+  RelayRecordingResult? stopped;
+  Future<void>? finishing;
+  bool serviceStarted = false;
+  bool cancelled = false;
+}
+
+class _RecordingServiceUnavailable implements Exception {
+  const _RecordingServiceUnavailable();
 }

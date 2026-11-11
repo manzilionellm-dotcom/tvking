@@ -1,5 +1,43 @@
 # Construction séparée de NOVATUBE
 
+## REC et sauvegarde MP4 dans le téléphone
+
+Le lecteur NOVATUBE attend la fermeture de sa connexion directe, puis partage
+un seul relais entre la lecture et l'enregistrement. Le relais reconnaît les
+réponses MPEG-TS et HLS, suit les variantes et recopie les segments TS sans
+réencoder la vidéo. Il ne confirme le démarrage qu'après réception et écriture
+de vrais paquets ; erreurs réseau, disque et fermeture sont remontées à
+l'interface. Les prises portent un nom unique, y compris dans la même minute.
+Les HLS chiffrés, à pistes séparées ou en fMP4 non pris en charge sont refusés
+explicitement ; aucun texte de playlist n'est enregistré comme une vidéo.
+
+Dans Réglages → Enregistrements, le bouton **Enregistrer dans la galerie
+(MP4)** exporte une prise terminée vers `Movies/NOVATUBE/NOVATUBE_*.mp4`.
+La progression reste visible pendant le traitement. Les doubles exports et
+la suppression du fichier pendant sa conversion sont bloqués, même après
+fermeture et réouverture de la liste.
+
+Les pistes H.264/AAC compatibles sont remuxées sans perte. Sinon, les codecs
+natifs effectuent une conversion H.264/AAC lorsque l'appareil la permet,
+avec dimensions et cadence source conservées et un débit adapté. Il n'y a
+pas d'agrandissement artificiel d'une vidéo basse définition. Un codec absent,
+une source HDR non gérée, une piste audio perdue, un fichier invalide ou une
+copie interrompue donnent un échec visible ; le fichier original est conservé.
+L'export ne promet pas la lecture de toute résolution sur chaque téléphone.
+Le nom `.mp4`, le conteneur et les pistes réels doivent tous être corrects.
+
+Android 10 et plus utilise MediaStore sans accès global à la galerie. Android
+7 à 9 demande la permission d'écriture historique, limitée par `maxSdkVersion=28`.
+Le REC reste désactivé dans l'espace +18 : un export public dans la galerie
+ne serait plus protégé par la biométrie de l'application.
+
+Le workflow privé exige les tests UI/REC, les règles natives sur JVM et trois
+tests instrumentés sur Android 35 AOSP : sauvegarde AVC/AAC, conversion HEVC
+vers AVC/AAC et refus d'une fausse vidéo. Les clips sont synthétiques (mire et
+son générés par ffmpeg), réservés à l'APK de test. Le runner installe l'APK
+release exact et lie la preuve Android à son SHA-256 avant la publication.
+Une réussite sur émulateur n'est pas un essai sur le téléphone de l'utilisateur.
+
 ## Profils et APK de test avec espace +18
 
 La demande complémentaire conserve l'identité NOVATUBE, la version `0.1.5+5`
@@ -117,9 +155,9 @@ redirection en cache ; le cache GitHub en amont peut toutefois retarder de
 quelques minutes la visibilité du nouveau manifeste.
 
 Les tests Python et Node couvrent ces comportements avec des doubles de
-GitHub et du réseau. Ils ne constituent pas une exécution réelle de la
-future publication GitHub Actions. Aucun nouveau build n'est nécessaire
-pour utiliser l'adresse fixe avec l'APK déjà disponible.
+GitHub et du réseau. Le résultat effectif de chaque publication reste celui
+du run indiqué dans le manifeste et dans les preuves de l'artefact ; des tests
+du script ne constituent pas à eux seuls une publication GitHub Actions.
 
 Les exclusions de cette branche dans `build-zuno-tv.yml` et `quality-zuno.yml`
 empêchent leurs déclenchements habituels au push. Elles n'altèrent pas leurs
@@ -239,7 +277,8 @@ extrait, le rapport de signature, les tests, la version Flutter exacte et la
 provenance (commit, numéro/URL du run, versions, certificat).
 
 Aucun AAB n'est téléversé en cas d'échec. Un résultat de tests unitaires ou de
-widgets n'est pas un essai sur téléphone : la provenance indique explicitement
-`deviceTests: not-run`. Aucun contrôle de ce workflow ne constitue une
+widgets n'est pas un essai sur téléphone : la provenance distingue les tests
+non exécutés sur appareil et les tests d'export du mode privé sur émulateur
+Android 35. Aucun contrôle de ce workflow ne constitue une
 acceptation Google Play. Les champs `googleUpload` et `published` restent
 `false` : toute création de fiche ou publication attend une autorisation séparée.

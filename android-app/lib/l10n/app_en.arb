@@ -1431,5 +1431,19 @@
     "placeholders": {
       "name": {"type": "String"}
     }
-  }
+  },
+  "tvRecordingSaveGallery": "Save to gallery (MP4)",
+  "tvRecordingExporting": "Preparing MP4…",
+  "tvRecordingExportSuccess": "Your MP4 recording is available in the gallery.",
+  "tvRecordingExportFailed": "Couldn't save the video to the gallery. Try again.",
+  "tvRecordingExportPermission": "Permission to save to the gallery was denied. Allow it in Android settings, then try again.",
+  "tvRecordingExportFormat": "This phone couldn't create a compatible MP4 from this recording. The original remains available in NOVATUBE.",
+  "tvRecordingExportInProgress": "An export is already in progress. Wait for it to finish before trying again.",
+  "tvRecordingFinishBeforeExport": "Stop the recording before saving it to the gallery.",
+  "tvRecordingDeleteFailed": "Couldn't delete this recording. Try again.",
+  "tvRecordingPreparing": "Preparing the recording…",
+  "tvRecordingUnsupported": "This stream format cannot be recorded.",
+  "tvRecordingNetworkError": "Recording interrupted: the stream connection was lost.",
+  "tvRecordingDiskError": "Couldn't write the recording. Check the available storage space.",
+  "tvRecordingServiceError": "Couldn't start recording on this device. Try again."
 }
