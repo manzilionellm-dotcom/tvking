@@ -289,6 +289,12 @@ abstract final class RepairFlags {
   static const String missedNoticeLegacyKey = 'zuno.guide.notice_legacy';
   static bool missedNoticeLegacy = false;
 
+  /// L1-02 : vrai recalcule l’index et assemble immédiatement les
+  /// suggestions. Faux mémorise et regroupe leurs demandes. Les gardes de
+  /// profil, de catalogue et d’autorisation restent obligatoires.
+  static const String hubIndexLegacyKey = 'zuno.hub.index_legacy';
+  static bool hubIndexLegacy = false;
+
   /// L1-06, accueil ZUNO uniquement. Vrai = reconstructions globales de
   /// l'horloge et des cartes comme dans le 116 ; faux = écouteurs locaux.
   /// Ce choix n'altère ni les cartes autorisées ni leur disposition.
@@ -331,6 +337,7 @@ abstract final class RepairFlags {
     bool sportsLegacy = false;
     bool communityOff = false;
     bool noticeLegacy = false;
+    bool loadedHubIndexLegacy = false;
     bool globalTickLegacy = false;
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
@@ -369,6 +376,7 @@ abstract final class RepairFlags {
       sportsLegacy = prefs.getBool(sportsNetworkLegacyKey) ?? false;
       communityOff = prefs.getBool(sportsCommunityOffKey) ?? false;
       noticeLegacy = prefs.getBool(missedNoticeLegacyKey) ?? false;
+      loadedHubIndexLegacy = prefs.getBool(hubIndexLegacyKey) ?? false;
       globalTickLegacy = prefs.getBool(hubGlobalTickLegacyKey) ?? false;
     } catch (_) {
       raw = false;
@@ -406,6 +414,7 @@ abstract final class RepairFlags {
       sportsLegacy = false;
       communityOff = false;
       noticeLegacy = false;
+      loadedHubIndexLegacy = false;
       globalTickLegacy = false;
     }
     epgGzipByHeader = gzipByHeader;
@@ -413,6 +422,7 @@ abstract final class RepairFlags {
     sportsNetworkLegacy = sportsLegacy;
     sportsCommunityOff = communityOff;
     missedNoticeLegacy = noticeLegacy;
+    hubIndexLegacy = loadedHubIndexLegacy;
     hubGlobalTickLegacy = globalTickLegacy;
     orderAckOff = ackOff;
     tvDeleteLegacy = tvDelLegacy;
@@ -486,6 +496,7 @@ abstract final class RepairFlags {
     sportsNetworkLegacy = false;
     sportsCommunityOff = false;
     missedNoticeLegacy = false;
+    hubIndexLegacy = false;
     hubGlobalTickLegacy = false;
     NativeVideoController.legacyHoldFrame = false;
   }

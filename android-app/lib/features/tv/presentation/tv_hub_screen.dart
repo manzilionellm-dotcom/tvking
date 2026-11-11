@@ -88,6 +88,7 @@ import '../core/tv_tokens.dart';
 import '../core/tv_app_tokens.dart';
 import '../data/greeting_repository.dart';
 import '../data/home_shelves.dart';
+import '../data/hub_channel_index.dart';
 import '../data/tv_home_layout.dart';
 import '../data/tv_home_genres.dart';
 import '../data/startup_preference.dart';
@@ -170,6 +171,9 @@ class _TvHubScreenState extends State<TvHubScreen> {
   // On ne recalcule pas dans build() : un import de playlist peut émettre
   // souvent, et on ne veut qu'UN assemblage après une courte pause.
   List<Channel> _channels = const <Channel>[];
+  final HubChannelIndex _channelIndex = HubChannelIndex();
+  int _catalogGeneration = 0;
+  int _channelsScope = 0;
   Set<String> _favIds = <String>{};
   List<String> _recentIds = const <String>[];
   List<String> _trending = const <String>[];
@@ -220,6 +224,8 @@ class _TvHubScreenState extends State<TvHubScreen> {
   // la dernière chaîne par-dessus.
   bool _deferredLiveOpen = false;
   int _popularGen = 0;
+  int _timePickGen = 0;
+  bool _shelvesNeedPopular = false;
   Timer? _shelfDebounce;
   Timer? _popularDebounce;
   StreamSubscription<Set<String>>? _favSub;
@@ -262,6 +268,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
     _refreshNotice = TvContentRefresh.notice.value;
     TvContentRefresh.notice.addListener(_onRefreshNotice);
     _srcSub = PlaylistRepository.instance.channelsStream.listen(_onChannels);
+    ActiveProfile.instance.scopeListenable.addListener(_onHubScopeChanged);
     _initConnectivity();
     ProfileRepository.instance.addListener(_onProfileCatalog);
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -272,6 +279,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
     _channels = PlaylistRepository.instance.currentChannels
         .where((Channel c) => !isAdultChannel(c))
         .toList(growable: false);
+    _channelsScope = ActiveProfile.instance.scopeListenable.value;
     _scheduleGenreShelves();
     // Déjà des chaînes en mémoire : une source est là, pas de QR.
     // Sinon on lit les playlists (une source peut exister avant
@@ -306,7 +314,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
     WatchProgressRepository.instance.addListener(_scheduleShelves);
     CinemaRepository.instance.indexVersion.addListener(_scheduleShelves);
     ProgramReminderRepository.instance.addListener(_scheduleShelves);
-    ParentalControls.instance.kidsMode.addListener(_scheduleShelves);
+    ParentalControls.instance.kidsMode.addListener(_onHubRestrictionsChanged);
     TimePickLog.instance.listenable.addListener(_onTimePicks);
     timePicksFlag.changes.addListener(_onTimeFlag);
     FollowedLog.instance.listenable.addListener(_onFollowed);
@@ -346,6 +354,46 @@ class _TvHubScreenState extends State<TvHubScreen> {
     if (mounted) setState(() {});
   }
 
+  Map<String, Channel> get _hubById => _channelIndex.read(
+        catalog: _channels,
+        catalogGeneration: _catalogGeneration,
+        catalogScope: _channelsScope,
+        currentScope: ActiveProfile.instance.scopeListenable.value,
+        profileId: ActiveProfile.instance.id,
+        kidsMode: ParentalControls.instance.kidsMode.value,
+        kidsProfile: ProfileRepository.instance.activeIsKids,
+        memoize: !RepairFlags.hubIndexLegacy,
+      );
+
+  /// Le nouveau profil attend son propre événement de catalogue. Ni un
+  /// index ni une réponse de suggestions de l'ancien profil ne sont repris.
+  void _onHubScopeChanged() {
+    if (!mounted) return;
+    _channels = const <Channel>[];
+    _channelsScope = ActiveProfile.instance.scopeListenable.value;
+    _catalogGeneration++;
+    _genreGeneration++;
+    _genreDebounce?.cancel();
+    _genreShelves = const {};
+    _timePickGen++;
+    _popularIds = const <String>[];
+    _timePickIds = const <String>[];
+    _timePicks = const <Channel>[];
+    _shelves = const HomeShelfModel();
+    // L'expiration d'une portée retire ses cartes dès le prochain cadre,
+    // sans attendre le regroupement ni la réponse du dépôt de playlists.
+    setState(() {});
+    _onHubRestrictionsChanged();
+    unawaited(_reloadTimePicks());
+  }
+
+  void _onHubRestrictionsChanged() {
+    if (!mounted) return;
+    _channelIndex.invalidate();
+    _popularGen++;
+    _scheduleShelves();
+  }
+
   /// Les cartes, leur espace et le repli réseau ont leurs propres abonnés.
   /// Le repli de réparation conserve les anciennes reconstructions globales,
   /// sans modifier les permissions ni le contenu choisi.
@@ -367,7 +415,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
         reminders: _shelves.reminders,
         also: _timePicks,
         nowMs: _now.millisecondsSinceEpoch,
-        channelsById: indexChannelsById(_channels),
+        channelsById: _hubById,
       );
 
   void _notifyTonightIfChanged() {
@@ -610,6 +658,14 @@ class _TvHubScreenState extends State<TvHubScreen> {
   /// de chaînes (0 → n) pendant que l'accueil est visible, ouvre Direct
   /// — sauf si la personne a demandé la dernière chaîne (voir Réglages).
   void _onChannels(List<Channel> channels) {
+    // Un événement déjà en file ne porte pas la génération actuelle du
+    // dépôt. Relire son snapshot évite d'étiqueter l'ancien lot comme neuf.
+    channels = PlaylistRepository.instance.currentChannels;
+    _catalogGeneration++;
+    _genreGeneration++;
+    _channelsScope = ActiveProfile.instance.scopeListenable.value;
+    _channelIndex.invalidate();
+    _popularGen++;
     final bool has = channels.isNotEmpty;
     final bool firstArrival = has && !_hadChannels;
     _hadChannels = has;
@@ -674,6 +730,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
 
   void _onProfileCatalog() {
     if (!mounted) return;
+    _onHubRestrictionsChanged();
     setState(() {});
     unawaited(_maybeOfferProfiles());
   }
@@ -813,12 +870,24 @@ class _TvHubScreenState extends State<TvHubScreen> {
     });
   }
 
-  void _scheduleShelves() {
+  void _scheduleShelves({bool refreshPopular = true}) {
+    if (!refreshPopular && RepairFlags.hubIndexLegacy) {
+      // Le repli retrouve le rythme historique des seules suggestions.
+      // Les gardes de portée et d'autorisation restent communes.
+      _rebuildShelves();
+      return;
+    }
+    // Une requête purement visuelle ne doit pas annuler une demande déjà
+    // reçue de recalcul des tendances. Le résultat des tendances revient
+    // ici avec false : aucune boucle de rafraîchissement n'est créée.
+    _shelvesNeedPopular = _shelvesNeedPopular || refreshPopular;
     _shelfDebounce?.cancel();
     _shelfDebounce = Timer(const Duration(milliseconds: 150), () {
       if (!mounted) return;
+      final bool refresh = _shelvesNeedPopular;
+      _shelvesNeedPopular = false;
       _rebuildShelves();
-      _schedulePopular();
+      if (refresh) _schedulePopular();
     });
   }
 
@@ -833,7 +902,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
   /// [notify] à false pendant initState / avant le premier cadre.
   void _rebuildShelves({bool notify = true}) {
     final bool kids = ParentalControls.instance.kidsMode.value;
-    final Map<String, Channel> byId = indexChannelsById(_channels);
+    final Map<String, Channel> byId = _hubById;
     bool hide(Channel c) => hiddenForKids(c);
     final bool Function(Channel) kidsHide = isAdultChannel;
     final int now = DateTime.now().millisecondsSinceEpoch;
@@ -892,42 +961,59 @@ class _TvHubScreenState extends State<TvHubScreen> {
     if (!timePicksFlag.value) {
       if (_timePickIds.isEmpty) return;
       _timePickIds = const <String>[];
-      _rebuildShelves();
+      _scheduleShelves(refreshPopular: false);
       return;
     }
     _timePickIds = TimePickLog.instance.idsNow();
-    _rebuildShelves();
+    _scheduleShelves(refreshPopular: false);
   }
 
   /// La rangée n'existe que si l'interrupteur est allumé ET que
   /// CE créneau a déjà des chaînes. Sinon on laisse la liste vide :
   /// pas de repli sur « tout ce qui a été regardé ».
   Future<void> _reloadTimePicks() async {
+    final int gen = ++_timePickGen;
+    final int scope = ActiveProfile.instance.scopeListenable.value;
+    List<String> ids;
     try {
       await timePicksFlag.load();
       if (!timePicksFlag.value) {
-        _timePickIds = const <String>[];
+        ids = const <String>[];
       } else {
         await TimePickLog.instance.reload();
-        _timePickIds = TimePickLog.instance.idsNow();
+        ids = TimePickLog.instance.idsNow();
       }
     } catch (_) {
-      _timePickIds = const <String>[];
+      ids = const <String>[];
     }
-    if (mounted) _rebuildShelves();
+    if (!mounted ||
+        gen != _timePickGen ||
+        scope != ActiveProfile.instance.scopeListenable.value) {
+      return;
+    }
+    _timePickIds = ids;
+    _scheduleShelves(refreshPopular: false);
   }
 
   Future<void> _refreshPopular() async {
     final int gen = ++_popularGen;
+    final int catalogGeneration = _catalogGeneration;
+    final int scope = ActiveProfile.instance.scopeListenable.value;
     final bool kids = ParentalControls.instance.kidsMode.value;
     final List<String> ids = await resolvePopularIds(
       trendingNames: _trending,
       channels: _channels,
       kidsMode: kids,
     );
-    if (!mounted || gen != _popularGen) return;
+    if (!mounted ||
+        gen != _popularGen ||
+        catalogGeneration != _catalogGeneration ||
+        scope != ActiveProfile.instance.scopeListenable.value ||
+        kids != ParentalControls.instance.kidsMode.value) {
+      return;
+    }
     _popularIds = ids;
-    _rebuildShelves();
+    _scheduleShelves(refreshPopular: false);
   }
 
   void _onFollowedFlag() {
@@ -1002,7 +1088,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
 
   bool _rewindReady(ShowCue? cue) {
     if (cue == null || !cue.canRewind) return false;
-    final Channel? channel = indexChannelsById(_channels)[cue.channelId];
+    final Channel? channel = _hubById[cue.channelId];
     if (channel == null) return false;
     final String? url = CatchupUrlBuilder.build(
       channel: channel,
@@ -1078,7 +1164,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
       }
       if (gen != _showGen || !mounted) return;
       final bool kids = ParentalControls.instance.kidsMode.value;
-      final Map<String, Channel> byId = indexChannelsById(_channels);
+      final Map<String, Channel> byId = _hubById;
       final List<GuideSlot> slots = <GuideSlot>[];
       for (final EpgProgram program in found) {
         final Channel? channel = byId[program.channelId];
@@ -1117,7 +1203,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
 
   Future<void> _openShow(ShowCue cue,
       {bool fromStart = false, bool replay = false}) async {
-    final Map<String, Channel> byId = indexChannelsById(_channels);
+    final Map<String, Channel> byId = _hubById;
     final String id =
         replay ? (cue.replayChannelId ?? cue.channelId) : cue.channelId;
     final Channel? target = byId[id];
@@ -1276,6 +1362,9 @@ class _TvHubScreenState extends State<TvHubScreen> {
     _genreGeneration++;
     _connSub?.cancel();
     _srcSub?.cancel();
+    ActiveProfile.instance.scopeListenable.removeListener(_onHubScopeChanged);
+    _channelIndex.invalidate();
+    _timePickGen++;
     _shelfDebounce?.cancel();
     _popularDebounce?.cancel();
     _favSub?.cancel();
@@ -1287,7 +1376,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
     WatchProgressRepository.instance.removeListener(_scheduleShelves);
     CinemaRepository.instance.indexVersion.removeListener(_scheduleShelves);
     ProgramReminderRepository.instance.removeListener(_scheduleShelves);
-    ParentalControls.instance.kidsMode.removeListener(_scheduleShelves);
+    ParentalControls.instance.kidsMode.removeListener(_onHubRestrictionsChanged);
     TimePickLog.instance.listenable.removeListener(_onTimePicks);
     timePicksFlag.changes.removeListener(_onTimeFlag);
     FollowedLog.instance.listenable.removeListener(_onFollowed);
