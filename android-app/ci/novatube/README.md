@@ -59,9 +59,19 @@ Le runner redémarre ensuite Android, installe l'APK release exact et lie la
 preuve des trois exports à son SHA-256 avant la publication. Les journaux
 d'échec ne contiennent que le banc synthétique, sans playlist utilisateur.
 Une réussite sur émulateur n'est pas un essai sur le téléphone de l'utilisateur.
-L'API `androidx.tracing.Trace`, partagée entre Flutter et le lanceur de tests,
-est conservée explicitement par R8 pour les appels de l'APK d'instrumentation.
-Cette règle ciblée ne désactive pas l'optimisation de l'application.
+Le lanceur AndroidX et l'APK de test partagent plusieurs bibliothèques avec
+l'application. Gradle ne les embarque pas une seconde fois dans l'APK de test,
+alors que R8 peut supprimer leurs entrées inutilisées par l'application seule.
+Les règles de `android/app/proguard-rules.pro` sont obtenues par l'outil officiel
+R8 `TraceReferences`, à partir du bytecode des trois tests et des dépendances
+AndroidX Test figées : runner 1.6.2, monitor 1.7.2, core 1.6.1, ext-junit 1.2.1,
+storage 1.5.0 et concurrent-futures-ktx 1.1.0.
+Elles conservent les classes et membres effectivement référencés dans le
+classpath release : Kotlin et coroutines, futures, Lifecycle, Trace et le pont
+Flutter. Les façades Kotlin et leurs méthodes héritées sont traitées ensemble.
+Aucune règle globale ne désactive l'optimisation, et les bibliothèques du lanceur
+restent réservées à l'APK de test. Les trois critères d'export et l'identité de
+l'APK release testé restent inchangés.
 
 ## Profils et APK de test avec espace +18
 
