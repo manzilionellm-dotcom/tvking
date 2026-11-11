@@ -296,39 +296,75 @@ class LocalStreamRelay {
   }
 
   Future<_Fetched> _get(_RelaySession session, Uri uri) async {
-    if (session.closed) {
-      throw const RelayRecordingException(RelayStopReason.cancelled);
-    }
-    final HttpClient client = session.client ??= (HttpClient()
-      ..connectionTimeout = _networkTimeout
-      ..idleTimeout = const Duration(seconds: 20)
-      ..maxConnectionsPerHost = 1
-      ..autoUncompress = true
-      ..userAgent = PlayerSettings.instance.userAgent);
-    final HttpClientRequest request =
-        await client.getUrl(uri).timeout(_networkTimeout);
-    request.followRedirects = true;
-    request.maxRedirects = 8;
-    request.headers.set(HttpHeaders.acceptHeader, '*/*');
-    for (final MapEntry<String, String> header in session.headers.entries) {
-      if (<String>{'host', 'connection', 'content-length', 'transfer-encoding'}
-          .contains(header.key.toLowerCase())) {
-        continue;
+    for (int attempt = 0; ; attempt++) {
+      if (session.closed) {
+        throw const RelayRecordingException(RelayStopReason.cancelled);
       }
-      request.headers.set(header.key, header.value);
-    }
-    final HttpClientResponse response =
-        await request.close().timeout(_networkTimeout);
-    if (response.statusCode != HttpStatus.ok &&
-        response.statusCode != HttpStatus.partialContent) {
+      final HttpClient client = session.client ??= (HttpClient()
+        ..connectionTimeout = _networkTimeout
+        ..idleTimeout = const Duration(seconds: 20)
+        ..maxConnectionsPerHost = 1
+        ..autoUncompress = true
+        ..userAgent = PlayerSettings.instance.userAgent);
+      final HttpClientRequest request =
+          await client.getUrl(uri).timeout(_networkTimeout);
+      request.followRedirects = true;
+      request.maxRedirects = 8;
+      request.headers.set(HttpHeaders.acceptHeader, '*/*');
+      for (final MapEntry<String, String> header in session.headers.entries) {
+        if (<String>{'host', 'connection', 'content-length', 'transfer-encoding'}
+            .contains(header.key.toLowerCase())) {
+          continue;
+        }
+        request.headers.set(header.key, header.value);
+      }
+      final HttpClientResponse response =
+          await request.close().timeout(_networkTimeout);
+      if (response.statusCode == HttpStatus.ok ||
+          response.statusCode == HttpStatus.partialContent) {
+        Uri resolved = uri;
+        for (final RedirectInfo redirect in response.redirects) {
+          resolved = resolved.resolveUri(redirect.location);
+        }
+        return _Fetched(response, resolved);
+      }
+
+      // Après la fermeture du lecteur direct, certains fournisseurs rendent
+      // momentanément 429/503 avant de libérer l'unique connexion autorisée.
+      // Réessayer CE GET avant tout média, pas _hls() ni un segment partiellement
+      // écrit : les segments déjà reçus ne doivent jamais être recopiés.
+      final bool retryable = <int>{408, 429, 500, 502, 503, 504}
+          .contains(response.statusCode);
+      final String? retryAfter = response.headers.value('retry-after');
       await response.drain<void>().timeout(_networkTimeout);
-      throw const RelayRecordingException(RelayStopReason.networkError);
+      if (!retryable || attempt + 1 >= _maxReconnectFailures) {
+        throw const RelayRecordingException(RelayStopReason.networkError);
+      }
+      Duration delay = _retryDelay * (attempt + 1);
+      if (retryAfter != null) {
+        final int? seconds = int.tryParse(retryAfter.trim());
+        Duration? requested;
+        if (seconds != null && seconds >= 0) {
+          requested = Duration(seconds: seconds);
+        } else {
+          try {
+            requested = HttpDate.parse(retryAfter).difference(DateTime.now());
+          } on HttpException {
+            // Un en-tête non conforme conserve le délai borné local.
+          }
+        }
+        if (requested != null && requested > delay) {
+          // Ne pas ignorer une longue limitation du fournisseur, ni laisser
+          // l'interface en attente indéfiniment : arrêter proprement REC.
+          if (requested > _firstMediaTimeout) {
+            throw const RelayRecordingException(RelayStopReason.networkError);
+          }
+          delay = requested;
+        }
+      }
+      // Stop/navigation annule aussi l'attente, sans nouvelle connexion.
+      await _wait(session, delay);
     }
-    Uri resolved = uri;
-    for (final RedirectInfo redirect in response.redirects) {
-      resolved = resolved.resolveUri(redirect.location);
-    }
-    return _Fetched(response, resolved);
   }
 
   Future<_Probe> _probe(_Fetched fetched) async {
