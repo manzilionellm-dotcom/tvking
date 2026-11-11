@@ -17,20 +17,39 @@ flutter build apk --release --target=lib/main_zuno_mobile.dart \
 ```
 
 Dans cet APK, l'activation est désactivée au départ et propre à chaque profil.
-La première ouverture demande une confirmation de majorité et un PIN choisi.
-Chaque nouvelle visite demande le PIN ; les profils enfants restent bloqués.
-Les catégories reconnues +18 sont séparées du Direct, du cinéma et de l'accueil
-ordinaires. L'application ne fournit aucune source ni aucun contenu.
+La première ouverture demande une confirmation de majorité et une
+authentification biométrique système. Chaque nouvelle visite exige cette
+authentification (empreinte sur un appareil configuré) ; aucun PIN de
+l'application ou de l'appareil ne sert de repli. Sans biométrie disponible et
+enregistrée, après annulation ou échec, la section reste verrouillée. Les
+profils enfants restent bloqués. Le changement de profil et le passage en
+arrière-plan révoquent la session ; elle n'est jamais persistée.
+
+Le tri exploite noms, catégories, marqueurs `+18`/`18+`/`🔞` et indicateurs
+explicites du fournisseur, notamment `is_adult`. Le signal est conservé dans
+la base, les caches, les reprises et les téléchargements sans modifier les
+libellés ou URLs. Une catégorie neutre peut être ouverte dans +18 sous le
+libellé « Dossier source », mais seuls ses titres classés adultes y sont
+affichés. Le filtrage précède les plafonds de recherche et de récents.
+Les indications découvertes dans une fiche consultée sont mémorisées par
+source et par titre. Aucun scan du contenu vidéo ni de toutes les fiches
+n'est effectué ; un fournisseur sans information fiable peut laisser un
+contenu impossible à identifier automatiquement. L'application ne fournit
+aucune source ni aucun contenu.
 Le bouton REC est désactivé dans cette section : les enregistrements actuels
 ne disposent pas d'un accès protégé. La lecture, le Cast et les favoris restent
-disponibles après saisie du PIN.
+disponibles après authentification.
 
 Ce paramètre ne réactive ni les licences, ni le panel/MAC, ni Gold, ni les
 promotions, ni les achats externes. Les contrôles de signature et d'identité
 restent identiques. Aucun de ces builds n'est envoyé à Google automatiquement.
 
 Les tests `test/novatube/adult_access_test.dart` couvrent les verrouillages,
-les profils, les échecs de PIN et la conservation des catégories dans la reprise.
+les profils, la biométrie et la conservation des signaux dans la reprise.
+Les tests de tri contrôlent les catégories neutres, les indicateurs explicites
+et la conservation du classement après rechargement. Les tests biométriques
+utilisent une plateforme simulée ; un essai sur appareil physique reste
+nécessaire pour vérifier le dialogue et le capteur de ce téléphone.
 Les tests d'interface de l'APK doivent aussi être exécutés avec le paramètre
 `--dart-define=NOVATUBE_PRIVATE_APK=true` ; les tests Play restent exécutés sans
 ce paramètre.

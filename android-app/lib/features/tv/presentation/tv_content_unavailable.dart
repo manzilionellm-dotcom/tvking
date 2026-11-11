@@ -10,6 +10,15 @@ import 'tv_shell.dart';
 
 class NovatubeUnavailableState<T extends StatefulWidget> extends State<T> {
   @override
+  Widget build(BuildContext context) => const NovatubeUnavailableView();
+}
+
+/// Utilisé également si une réponse de détail révèle le classement adulte
+/// après l'ouverture de la route ou si l'autorisation est révoquée.
+class NovatubeUnavailableView extends StatelessWidget {
+  const NovatubeUnavailableView({super.key});
+
+  @override
   Widget build(BuildContext context) => TvShell(
         child: Center(
           key: const ValueKey<String>('novatube-content-unavailable'),

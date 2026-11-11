@@ -9,6 +9,8 @@
 //  100 % LOCAL — aucune incidence sur le lecteur vidéo. Pavé numérique
 //  navigable à la télécommande (D-pad).
 // =========================================================
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../../core/app/zuno_edition.dart';
@@ -16,10 +18,12 @@ import '../../../core/i18n/l10n_extension.dart';
 import 'tv_profile_label.dart';
 
 import '../../cast/data/cast_platform.dart';
+import '../../profiles/data/active_profile.dart';
 import '../../profiles/data/profile_repository.dart';
 import '../../profiles/domain/profile_policies.dart';
 import '../../security/data/app_pin_settings.dart';
 import '../../security/data/adult_access.dart';
+import '../../security/data/adult_biometric_auth.dart';
 import '../../security/data/parental_controls.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
@@ -316,25 +320,34 @@ class _TvParentalScreenState extends State<TvParentalScreen> {
 //  Helpers de flux PIN (pushés en plein écran, façon app TV)
 // =========================================================
 
-/// Demande le code parental (écran PIN habituel). Utilisé aussi par le
-/// Cinéma pour ouvrir une catégorie adulte.
+/// Demande le code parental pour les autres parcours de contrôle parental.
+/// Le déverrouillage +18 utilise exclusivement [authorizeAdultAccess].
 Future<bool> askParentalPin(BuildContext context) =>
     _askPin(context, context.l10n.tvEnterParentalCode);
 
-/// Deux étapes explicites avant le premier accès : majorité puis PIN choisi.
-/// L'activation appartient au profil ; le PIN est redemandé à chaque visite.
+/// Première activation : consentement de majorité puis biométrie obligatoire.
+/// Chaque visite suivante redemande la biométrie, sans code de remplacement.
 Future<bool> authorizeAdultAccess(BuildContext context) async {
   final AdultAccess access = AdultAccess.instance;
-  final String profileId = ProfileRepository.instance.active.id;
+  if (access.authenticating) return false;
+  final String profileId = ActiveProfile.instance.id;
+  access.lock();
   await access.load();
-  if (!context.mounted || !access.supported || access.blockedForKids)
-    return false;
-  if (!access.enabled.value) {
-    final bool confirmed = await showDialog<bool>(
+  if (!context.mounted ||
+      !access.supported ||
+      access.blockedForKids ||
+      profileId != ActiveProfile.instance.id) return false;
+
+  final bool activating = !access.enabled.value;
+  bool consent = false;
+  if (activating) {
+    consent = await showDialog<bool>(
           context: context,
           builder: (BuildContext dialog) => AlertDialog(
             title: Text(dialog.l10n.tvAdultTitle),
-            content: Text(dialog.l10n.tvAdultIntro),
+            content: SingleChildScrollView(
+              child: Text(dialog.l10n.tvAdultIntro),
+            ),
             actions: <Widget>[
               TextButton(
                 onPressed: () => Navigator.pop(dialog, false),
@@ -348,35 +361,135 @@ Future<bool> authorizeAdultAccess(BuildContext context) async {
           ),
         ) ??
         false;
-    if (!confirmed || !context.mounted) return false;
-    if (!await AppPinSettings.instance.hasCustomPin()) {
-      if (!context.mounted) return false;
-      final String? pin = await pickNewParentalPin(context);
-      if (pin == null) return false;
-      await AppPinSettings.instance.setPin(pin);
-    }
-    if (!context.mounted) return false;
+    if (!consent || !context.mounted) return false;
   }
-  if (!context.mounted) return false;
-  String? verifiedPin;
-  final bool activating = !access.enabled.value;
-  final bool accepted = await _askPin(
-    context,
-    activating ? context.l10n.tvAdultEnable : context.l10n.tvAdultOpen,
-    onVerified: (String pin) => verifiedPin = pin,
-  );
-  // Aucune autorisation n'est créée dans le callback du pavé : son résultat
-  // de navigation doit être confirmé, même si une annulation a été rapide.
+  if (!context.mounted ||
+      profileId != ActiveProfile.instance.id ||
+      access.blockedForKids) return false;
+
+  final String reason = context.l10n.tvAdultBiometricReason;
+  final bool accepted = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => _AdultBiometricPrompt(
+          access: access,
+          profileId: profileId,
+          activating: activating,
+          consent: consent,
+          reason: reason,
+        ),
+      ) ??
+      false;
   if (!accepted ||
-      verifiedPin == null ||
       !context.mounted ||
-      profileId != ProfileRepository.instance.active.id) {
+      profileId != ActiveProfile.instance.id ||
+      !access.canAccess) {
     access.lock();
     return false;
   }
-  return activating
-      ? access.enableWithPin(verifiedPin!)
-      : access.unlockWithPin(verifiedPin!);
+  return true;
+}
+
+/// La route reste annulable pendant le dialogue Android. Son retrait ou un
+/// retour arrière invalide le résultat natif, même s'il arrive plus tard.
+class _AdultBiometricPrompt extends StatefulWidget {
+  const _AdultBiometricPrompt({
+    required this.access,
+    required this.profileId,
+    required this.activating,
+    required this.consent,
+    required this.reason,
+  });
+
+  final AdultAccess access;
+  final String profileId;
+  final bool activating;
+  final bool consent;
+  final String reason;
+
+  @override
+  State<_AdultBiometricPrompt> createState() => _AdultBiometricPromptState();
+}
+
+class _AdultBiometricPromptState extends State<_AdultBiometricPrompt> {
+  bool _accepted = false;
+  bool _finished = false;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_authenticate());
+  }
+
+  Future<void> _authenticate() async {
+    final bool accepted = widget.activating
+        ? await widget.access.enableWithBiometrics(
+            consent: widget.consent, reason: widget.reason)
+        : await widget.access.unlockWithBiometrics(reason: widget.reason);
+    if (!mounted) return;
+    if (accepted &&
+        widget.access.canAccess &&
+        widget.profileId == ActiveProfile.instance.id &&
+        ModalRoute.of(context)?.isCurrent == true) {
+      _accepted = true;
+      Navigator.of(context).pop(true);
+      return;
+    }
+    widget.access.lock();
+    setState(() => _finished = true);
+  }
+
+  void _cancel() {
+    widget.access.lock();
+    Navigator.of(context).pop(false);
+  }
+
+  @override
+  void dispose() {
+    if (!_accepted) widget.access.lock();
+    super.dispose();
+  }
+
+  String _message(BuildContext context) {
+    if (!_finished) return context.l10n.tvAdultBiometricPrompt;
+    switch (widget.access.lastBiometricResult) {
+      case AdultBiometricResult.unavailable:
+        return context.l10n.tvAdultBiometricUnavailable;
+      case AdultBiometricResult.notEnrolled:
+        return context.l10n.tvAdultBiometricSetup;
+      case AdultBiometricResult.lockedOut:
+        return context.l10n.tvAdultBiometricLockedOut;
+      case AdultBiometricResult.cancelled:
+      case AdultBiometricResult.rejected:
+        return context.l10n.tvAdultBiometricCancelled;
+      case AdultBiometricResult.authenticated:
+      case AdultBiometricResult.error:
+      case null:
+        return context.l10n.tvAdultBiometricError;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => PopScope<bool>(
+        onPopInvokedWithResult: (bool didPop, bool? result) {
+          if (didPop && !_accepted) widget.access.lock();
+        },
+        child: AlertDialog(
+          key: const ValueKey<String>('novatube-adult-biometric-prompt'),
+          icon: const Icon(Icons.fingerprint_rounded),
+          title: Text(widget.activating
+              ? context.l10n.tvAdultEnable
+              : context.l10n.tvAdultOpen),
+          content: SingleChildScrollView(child: Text(_message(context))),
+          actions: <Widget>[
+            TextButton(
+              key: const ValueKey<String>('novatube-adult-biometric-cancel'),
+              onPressed: _cancel,
+              child: Text(context.l10n.buttonCancel),
+            ),
+          ],
+        ),
+      );
 }
 
 /// Demande le code parental et le vérifie. Retourne true si correct.

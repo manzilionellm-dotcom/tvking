@@ -30,7 +30,8 @@ class PlaylistDatabase {
   // v7 : suppressions durables, partagées par import panel et restauration.
   // v8 : sources et refus de réimport propres à chaque profil. Le défaut p1
   // conserve toutes les sources déjà présentes, sans renommage ni effacement.
-  static const int _kDbVersion = 8;
+  // v9 : déclaration adulte du fournisseur conservée sans changer les libellés.
+  static const int _kDbVersion = 9;
 
   Database? _db;
 
@@ -115,6 +116,7 @@ class PlaylistDatabase {
         external_id TEXT NOT NULL,
         name TEXT NOT NULL,
         category TEXT NOT NULL DEFAULT 'Autres',
+        declared_adult INTEGER NOT NULL DEFAULT 0,
         stream_url TEXT NOT NULL,
         logo_url TEXT,
         is_live INTEGER NOT NULL DEFAULT 1,
@@ -132,6 +134,7 @@ class PlaylistDatabase {
     await db.execute('''
       CREATE INDEX idx_channels_category ON channels(category)
     ''');
+    await _createAdultSignals(db);
 
     // v3 : sessions de visionnage pour le Hook Model (Continue Watching,
     // affinity scoring, time-of-day adaptation).
@@ -263,7 +266,28 @@ class PlaylistDatabase {
         await db.execute("ALTER TABLE downloads ADD COLUMN profile_id TEXT NOT NULL DEFAULT 'p1'");
       }
     }
+    if (oldVersion < 9) {
+      await db.execute(
+          'ALTER TABLE channels ADD COLUMN declared_adult INTEGER NOT NULL DEFAULT 0');
+      final List<Map<String, Object?>> downloads =
+          await db.rawQuery('PRAGMA table_info(downloads)');
+      if (downloads.isNotEmpty &&
+          !downloads.any((Map<String, Object?> row) => row['name'] == 'declared_adult')) {
+        await db.execute(
+            'ALTER TABLE downloads ADD COLUMN declared_adult INTEGER NOT NULL DEFAULT 0');
+      }
+      await _createAdultSignals(db);
+    }
   }
+
+  Future<void> _createAdultSignals(Database db) => db.execute('''
+    CREATE TABLE IF NOT EXISTS cinema_adult_signals (
+      playlist_id INTEGER NOT NULL,
+      title_id TEXT NOT NULL,
+      PRIMARY KEY (playlist_id, title_id),
+      FOREIGN KEY (playlist_id) REFERENCES playlists(id) ON DELETE CASCADE
+    )
+  ''');
 
   Future<void> _createDeletedSources(Database db) => db.execute(
       "CREATE TABLE IF NOT EXISTS deleted_sources ("

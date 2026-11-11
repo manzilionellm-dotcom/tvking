@@ -110,7 +110,8 @@ class CatalogCategoryRecord {
         name: name,
         parts: <CategoryRef>[
           for (final CatalogPartRecord part in parts)
-            CategoryRef(part.sourceKey, part.categoryId),
+            CategoryRef(part.sourceKey, part.categoryId,
+                declaredAdult: part.declaredAdult),
         ],
         languageKey: languageKey,
         isAdult: isAdult,
@@ -155,13 +156,16 @@ class CatalogCategoryRecord {
 }
 
 class CatalogPartRecord {
-  const CatalogPartRecord(this.sourceKey, this.categoryId);
+  const CatalogPartRecord(this.sourceKey, this.categoryId,
+      {this.declaredAdult = false});
   final String sourceKey;
   final String categoryId;
+  final bool declaredAdult;
 
   Map<String, Object?> toJson() => <String, Object?>{
         'source': sourceKey,
         'id': categoryId,
+        if (declaredAdult) 'declared_adult': true,
       };
 
   static CatalogPartRecord? fromJson(Object? raw) {
@@ -169,7 +173,7 @@ class CatalogPartRecord {
     final String source = _str(raw['source']) ?? '';
     final String id = _str(raw['id']) ?? '';
     if (source.isEmpty || id.isEmpty) return null;
-    return CatalogPartRecord(source, id);
+    return CatalogPartRecord(source, id, declaredAdult: raw['declared_adult'] == true);
   }
 }
 
@@ -189,6 +193,7 @@ class CatalogTitleRecord {
     this.rating,
     this.year,
     this.plot,
+    this.declaredAdult = false,
   });
 
   final String id;
@@ -204,6 +209,7 @@ class CatalogTitleRecord {
   final int addedAt;
   final String containerExt;
   final String? plot;
+  final bool declaredAdult;
 
   factory CatalogTitleRecord.fromCinemaTitle(CinemaTitle title) {
     String? plot = title.plot;
@@ -217,6 +223,7 @@ class CatalogTitleRecord {
       remoteId: title.remoteId,
       name: title.name,
       categoryKey: title.categoryKey,
+      declaredAdult: title.declaredAdult,
       searchKey: title.searchKey,
       posterUrl: title.posterUrl,
       rating: title.rating,
@@ -238,6 +245,7 @@ class CatalogTitleRecord {
       remoteId: remoteId,
       name: name,
       categoryKey: categoryKey,
+      declaredAdult: declaredAdult,
       searchKey: searchKey,
       posterUrl: posterUrl,
       rating: rating,
@@ -258,6 +266,7 @@ class CatalogTitleRecord {
         'rid': remoteId,
         'name': name,
         'cat': categoryKey,
+        if (declaredAdult) 'declared_adult': true,
         'q': searchKey,
         'poster': posterUrl,
         'rating': rating,
@@ -285,6 +294,7 @@ class CatalogTitleRecord {
       remoteId: remoteId,
       name: name,
       categoryKey: _str(raw['cat']) ?? '',
+      declaredAdult: raw['declared_adult'] == true,
       searchKey: _str(raw['q']) ?? '',
       posterUrl: _str(raw['poster']),
       rating: ratingRaw is num ? ratingRaw.toDouble() : null,
@@ -311,9 +321,18 @@ String catalogFolderName(String signatureMaterial) {
 /// repart de zéro (l'ancien live, lui, reste).
 String catalogFingerprint(List<CatalogCategoryRecord> categories) {
   final List<String> keys = <String>[
-    for (final CatalogCategoryRecord category in categories) category.key,
+    for (final CatalogCategoryRecord category in categories)
+      category.key + _adultPartFingerprint(category.parts),
   ]..sort();
   return keys.join('\u0001');
+}
+
+String _adultPartFingerprint(List<CatalogPartRecord> parts) {
+  final List<String> marked = <String>[
+    for (final CatalogPartRecord part in parts)
+      if (part.declaredAdult) '${part.sourceKey}:${part.categoryId}',
+  ]..sort();
+  return marked.isEmpty ? '' : '\u0002${marked.join('\u0003')}';
 }
 
 class CatalogDisk {

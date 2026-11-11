@@ -22,6 +22,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/app/novatube_content_policy.dart';
 import '../../profiles/data/active_profile.dart';
 import '../../profiles/domain/family_profile.dart';
+import 'cinema_adult_signals.dart';
 
 /// Une position de lecture mémorisée.
 @immutable
@@ -40,6 +41,7 @@ class WatchEntry {
     this.sourceKey = '',
     this.remoteId = '',
     this.categoryKey = '',
+    this.declaredAdult = false,
     this.seriesId,
     this.season,
     this.episode,
@@ -62,6 +64,10 @@ class WatchEntry {
   final String sourceKey;
   final String remoteId;
   final String categoryKey;
+  final bool declaredAdult;
+  bool get isAdult => NovatubeContentPolicy.isAdult(
+      name: '$title ${subtitle ?? ''}', category: categoryKey,
+      declaredAdult: declaredAdult);
 
   /// Épisode : identifiant de la série (CinemaTitle.id).
   final String? seriesId;
@@ -99,6 +105,7 @@ class WatchEntry {
     int? updatedAt,
     bool? finished,
     bool? upNext,
+    bool? declaredAdult,
   }) =>
       WatchEntry(
         id: id,
@@ -111,6 +118,7 @@ class WatchEntry {
         sourceKey: sourceKey,
         remoteId: remoteId,
         categoryKey: categoryKey,
+        declaredAdult: declaredAdult ?? this.declaredAdult,
         seriesId: seriesId,
         season: season,
         episode: episode,
@@ -132,6 +140,7 @@ class WatchEntry {
         'src': sourceKey,
         'rid': remoteId,
         'cat': categoryKey,
+        if (declaredAdult) 'adult': true,
         if (seriesId != null) 'sid': seriesId,
         if (season != null) 's': season,
         if (episode != null) 'e': episode,
@@ -159,6 +168,7 @@ class WatchEntry {
       sourceKey: (raw['src'] as String?) ?? '',
       remoteId: (raw['rid'] as String?) ?? '',
       categoryKey: (raw['cat'] as String?) ?? '',
+      declaredAdult: raw['adult'] == true,
       seriesId: raw['sid'] as String?,
       season: raw['s'] is num ? (raw['s'] as num).toInt() : null,
       episode: raw['e'] is num ? (raw['e'] as num).toInt() : null,
@@ -183,16 +193,36 @@ class WatchProgressStore {
   static bool _allowed(WatchEntry entry) => NovatubeContentPolicy.canImport(
         name: entry.title,
         category: '${entry.categoryKey} ${entry.subtitle ?? ''}',
+        declaredAdult: entry.declaredAdult,
       );
 
   static const int maxEntries = 400;
   final Map<String, WatchEntry> _byId = <String, WatchEntry>{};
 
-  WatchEntry? get(String id) => _byId[id];
-  Iterable<WatchEntry> get all => _byId.values;
+  WatchEntry? get(String id) {
+    final WatchEntry? entry = _byId[id];
+    return entry != null && _allowed(entry) ? entry : null;
+  }
+  Iterable<WatchEntry> get all => _byId.values.where(_allowed);
+
+  /// Une fiche peut révéler un signal absent au moment de la première lecture.
+  /// Les reprises du même film ou de la même série doivent alors le conserver.
+  bool declareAdult(Set<String> ids) {
+    bool changed = false;
+    for (final WatchEntry entry in _byId.values.toList()) {
+      if (entry.declaredAdult ||
+          (!ids.contains(entry.id) && !ids.contains(entry.seriesId))) continue;
+      _byId[entry.id] = entry.copyWith(declaredAdult: true);
+      changed = true;
+    }
+    return changed;
+  }
 
   /// Enregistre une position ; calcule « terminé ». Renvoie l'entrée stockée.
   WatchEntry record(WatchEntry e) {
+    if (_byId[e.id]?.declaredAdult == true && !e.declaredAdult) {
+      e = e.copyWith(declaredAdult: true);
+    }
     if (!_allowed(e)) return e;
     final bool fin = WatchEntry.isFinishedAt(e.posMs, e.durMs);
     final WatchEntry stored = e.copyWith(finished: fin, upNext: false);
@@ -211,6 +241,9 @@ class WatchProgressStore {
 
   /// Propose l'épisode suivant dans « Continuer » (après la fin du précédent).
   void proposeNext(WatchEntry next) {
+    if (_byId[next.id]?.declaredAdult == true && !next.declaredAdult) {
+      next = next.copyWith(declaredAdult: true);
+    }
     if (!_allowed(next)) return;
     final WatchEntry? existing = _byId[next.id];
     if (existing != null && (existing.isResumable || existing.finished)) return;
@@ -235,7 +268,8 @@ class WatchProgressStore {
     final List<WatchEntry> list = _byId.values
         .where(
           (WatchEntry e) =>
-              e.isResumable && (episodes == null || e.isEpisode == episodes),
+              _allowed(e) && e.isResumable &&
+              (episodes == null || e.isEpisode == episodes),
         )
         .toList()
       ..sort(
@@ -255,7 +289,7 @@ class WatchProgressStore {
   WatchEntry? latestForSeries(String seriesId) {
     WatchEntry? best;
     for (final WatchEntry e in _byId.values) {
-      if (e.seriesId != seriesId) continue;
+      if (e.seriesId != seriesId || !_allowed(e)) continue;
       if (best == null || e.updatedAt > best.updatedAt) best = e;
     }
     return best;
@@ -331,6 +365,9 @@ class WatchProgressRepository extends ChangeNotifier {
       incoming = WatchProgressStore.decode(
         prefs.getString(ProfileKeys.watchProgress(id)),
       );
+      // La découverte appartient au profil et à sa source ; une reprise
+      // ancienne ne redevient pas neutre après un retour au profil.
+      incoming.declareAdult(await CinemaAdultSignals.read(id));
     } catch (e) {
       if (kDebugMode) debugPrint('[WatchProgress] lecture : $e');
     }
@@ -369,6 +406,20 @@ class WatchProgressRepository extends ChangeNotifier {
   }
 
   WatchEntry? get(String id) => _store.get(id);
+
+  /// Met à niveau aussi une reprise déjà enregistrée avant la découverte.
+  /// Le nom, l'URL et la position restent inchangés ; seule la preuve change.
+  Future<void> declareAdult({required String profileId,
+      required Set<String> ids}) async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final String key = ProfileKeys.watchProgress(profileId);
+    final bool current = _loaded && _profileId == profileId;
+    final WatchProgressStore store = current
+        ? _store : WatchProgressStore.decode(prefs.getString(key));
+    if (!store.declareAdult(ids)) return;
+    if (current) notifyListeners();
+    await prefs.setString(key, store.encode());
+  }
 
   List<WatchEntry> continueWatching({bool? episodes}) =>
       _store.continueWatching(episodes: episodes);

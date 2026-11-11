@@ -2677,12 +2677,12 @@
     }
   },
   "tvAdultTitle": "+18",
-  "tvAdultIntro": "Espace réservé aux adultes. Seuls les contenus de tes sources personnelles sont affichés.",
+  "tvAdultIntro": "Espace réservé aux adultes. Seuls les contenus de tes sources personnelles sont affichés. La biométrie Android est obligatoire à chaque visite.",
   "tvAdultConsent": "Je confirme avoir 18 ans ou plus.",
-  "tvAdultEnable": "Activer avec mon code parental",
-  "tvAdultOpen": "Ouvrir avec mon code parental",
-  "tvAdultDisabled": "Désactivé par défaut. Activation réservée aux adultes, avec un code parental.",
-  "tvAdultEnabled": "Activé pour ce profil. Le code est demandé à chaque ouverture.",
+  "tvAdultEnable": "Activer avec la biométrie",
+  "tvAdultOpen": "Ouvrir avec la biométrie",
+  "tvAdultDisabled": "Désactivé par défaut. Après ta confirmation de majorité, la biométrie Android est obligatoire.",
+  "tvAdultEnabled": "Activé pour ce profil. La biométrie est demandée à chaque visite ; aucun code ne donne accès.",
   "tvAdultLock": "Verrouiller l’espace +18",
   "tvAdultEmpty": "Aucun contenu +18 identifié dans les sources de ce profil.",
   "tvAdultLocked": "Cet espace est verrouillé.",
@@ -3109,5 +3109,18 @@
   "castFriendlyDnsUnstable": "Internet ou DNS instable. Réessaie dans quelques secondes.",
   "castFriendlyProviderLimit": "Ton fournisseur IPTV refuse une connexion supplémentaire (limite atteinte). Coupe une autre app qui regarde et réessaie.",
   "castProgressValidating": "Vérification du flux…",
-  "castWindowsHelp": "PC et TV sur le même réseau privé (Wi-Fi ou Ethernet). Choisis une TV DLNA ou Roku. Google Cast seul n’est pas disponible sous Windows. Utilise la télécommande de la TV pour les pistes audio et l’avance rapide."
+  "castWindowsHelp": "PC et TV sur le même réseau privé (Wi-Fi ou Ethernet). Choisis une TV DLNA ou Roku. Google Cast seul n’est pas disponible sous Windows. Utilise la télécommande de la TV pour les pistes audio et l’avance rapide.",
+  "tvAdultBiometricReason": "Vérifie ton identité pour ouvrir l’espace +18.",
+  "tvAdultBiometricPrompt": "Utilise ton empreinte ou la biométrie proposée par Android. Aucun code n’ouvre l’espace +18.",
+  "tvAdultBiometricUnavailable": "Cet appareil ne permet pas la biométrie requise. L’espace +18 reste verrouillé.",
+  "tvAdultBiometricSetup": "Configure une empreinte ou une biométrie compatible dans les paramètres de sécurité Android, puis réessaie. Aucun code ne remplace cette vérification.",
+  "tvAdultBiometricCancelled": "Authentification annulée ou refusée. L’espace +18 reste verrouillé.",
+  "tvAdultBiometricLockedOut": "La biométrie est bloquée par Android. Rétablis-la dans les paramètres de sécurité Android, puis réessaie. L’espace +18 reste verrouillé.",
+  "tvAdultBiometricError": "La vérification biométrique a échoué. L’espace +18 reste verrouillé ; tu peux réessayer.",
+  "tvAdultSourceFolder": "Dossier source : {name}",
+  "@tvAdultSourceFolder": {
+    "placeholders": {
+      "name": {"type": "String"}
+    }
+  }
 }

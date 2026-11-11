@@ -20,7 +20,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../core/theme/app_colors.dart';
-import '../../../core/app/novatube_content_policy.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../channels/domain/channel.dart';
 import '../../playlists/data/playlist_repository.dart';
@@ -62,8 +61,7 @@ class _CastDiagnosticsScreenState extends State<CastDiagnosticsScreen> {
   void _start() {
     if (_selectedDevice == null) return;
     final List<Channel> all = PlaylistRepository.instance.currentChannels
-        .where((Channel channel) => !NovatubeContentPolicy.isAdult(
-            name: channel.name, category: channel.category))
+        .where((Channel channel) => !channel.isAdult)
         .toList(growable: false);
     final List<Channel> sample =
         pickDiagnosticChannels(all, _preset.sampleSize);

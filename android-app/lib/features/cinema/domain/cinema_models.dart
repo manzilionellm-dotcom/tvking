@@ -17,6 +17,8 @@
 // =========================================================
 import 'package:flutter/foundation.dart';
 
+import '../../channels/domain/channel_genre.dart';
+
 /// Films ou séries.
 enum CinemaKind { movie, series }
 
@@ -51,9 +53,10 @@ class CinemaSource {
 /// Une catégorie d'un compte (id serveur).
 @immutable
 class CategoryRef {
-  const CategoryRef(this.sourceKey, this.categoryId);
+  const CategoryRef(this.sourceKey, this.categoryId, {this.declaredAdult = false});
   final String sourceKey;
   final String categoryId;
+  final bool declaredAdult;
 }
 
 /// Catégorie AFFICHÉE : les catégories de même nom sur plusieurs comptes sont
@@ -106,6 +109,7 @@ class CinemaTitle {
     this.containerExt = 'mp4',
     this.streamUrl,
     this.plot,
+    this.declaredAdult = false,
   });
 
   /// Identifiant unique toutes sources confondues (`p3:m:12345`).
@@ -119,6 +123,8 @@ class CinemaTitle {
 
   /// Clé de la [CinemaCategory] d'origine.
   final String categoryKey;
+  final bool declaredAdult;
+  bool get isAdult => declaredAdult || ChannelClassifier.isAdult(name, categoryKey);
 
   /// Nom normalisé (minuscules, sans accents) pour la recherche.
   final String searchKey;
@@ -141,6 +147,14 @@ class CinemaTitle {
 
   /// Résumé (souvent fourni dans la liste des séries).
   final String? plot;
+
+  CinemaTitle copyWith({bool? declaredAdult}) => CinemaTitle(
+    id: id, kind: kind, sourceKey: sourceKey, remoteId: remoteId,
+    name: name, categoryKey: categoryKey, searchKey: searchKey,
+    posterUrl: posterUrl, rating: rating, year: year, addedAt: addedAt,
+    containerExt: containerExt, streamUrl: streamUrl, plot: plot,
+    declaredAdult: declaredAdult ?? this.declaredAdult,
+  );
 }
 
 /// Fiche détaillée (film ou série).
@@ -156,6 +170,7 @@ class CinemaDetails {
     this.backdropUrl,
     this.posterUrl,
     this.rating,
+    this.declaredAdult = false,
   });
 
   final String? plot;
@@ -167,6 +182,7 @@ class CinemaDetails {
   final String? backdropUrl;
   final String? posterUrl;
   final double? rating;
+  final bool declaredAdult;
 
   static const CinemaDetails empty = CinemaDetails();
 }
@@ -201,6 +217,7 @@ class CinemaEpisode {
     this.plot,
     this.durationSec = 0,
     this.stillUrl,
+    this.declaredAdult = false,
   });
 
   /// Identifiant unique (`p3:e:98765`).
@@ -217,6 +234,8 @@ class CinemaEpisode {
   final String? plot;
   final int durationSec;
   final String? stillUrl;
+  final bool declaredAdult;
+  bool get isAdult => declaredAdult || ChannelClassifier.isAdult(title, '');
 }
 
 /// Fiche série complète : infos + saisons + épisodes (triés).

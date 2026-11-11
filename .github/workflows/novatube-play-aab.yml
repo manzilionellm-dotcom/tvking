@@ -139,6 +139,7 @@ jobs:
             lib test/novatube test/features/profiles \
             test/features/tv/touch/novatube_play_ui_test.dart \
             test/features/tv/touch/novatube_private_ui_test.dart \
+            test/features/tv/touch/novatube_cinema_sort_ui_test.dart \
             2>&1 | tee build/novatube/reports/flutter-analyze.txt
 
       - name: Tester les exclusions Play et les fonctions conservées
@@ -150,10 +151,15 @@ jobs:
             test/novatube \
             test/features/tv/touch/novatube_play_ui_test.dart \
             test/features/tv/touch/novatube_private_ui_test.dart \
+            test/features/tv/touch/novatube_cinema_sort_ui_test.dart \
             test/features/cast \
             test/features/epg \
             test/features/profiles \
             test/features/player \
+            test/features/cinema \
+            test/features/voice \
+            test/features/tv/home_engagement_test.dart \
+            test/features/tv/live_shelves_test.dart \
             test/features/playlists/m3u_parser_test.dart \
             test/features/playlists/m3u_link_test.dart \
             test/features/playlists/open_source_input_test.dart \

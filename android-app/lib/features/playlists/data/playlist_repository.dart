@@ -111,6 +111,7 @@ class PlaylistRepository {
   List<Channel> _applyFlavorFilter(List<Channel> all) {
     all = all.where((Channel c) => NovatubeContentPolicy.canImport(
       name: c.name, category: c.category,
+      declaredAdult: c.declaredAdult,
     )).toList(growable: false);
     if (!FlavorConfig.current.adultOnly) return all;
     return all
@@ -265,6 +266,7 @@ class PlaylistRepository {
         playlistId: c.playlistId,
         name: c.name,
         category: c.category,
+        declaredAdult: c.declaredAdult,
         streamUrl: c.streamUrl,
         isLive: c.isLive,
         logoUrl: c.logoUrl,
@@ -1301,6 +1303,7 @@ class PlaylistRepository {
       'external_id': ch.id,
       'name': ch.name,
       'category': ch.category,
+      'declared_adult': ch.declaredAdult ? 1 : 0,
       'stream_url': ch.streamUrl,
       'logo_url': ch.logoUrl,
       'is_live': ch.isLive ? 1 : 0,
@@ -1319,6 +1322,7 @@ class PlaylistRepository {
       playlistId: playlistId,
       name: map['name'] as String,
       category: map['category'] as String,
+      declaredAdult: map['declared_adult'] == 1,
       streamUrl: map['stream_url'] as String,
       isLive: (map['is_live'] as int? ?? 1) == 1,
       logoUrl: map['logo_url'] as String?,

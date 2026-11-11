@@ -1159,12 +1159,12 @@
     }
   },
   "tvAdultTitle": "+18",
-  "tvAdultIntro": "Adults-only area. Only content from your own sources is shown.",
+  "tvAdultIntro": "Adults-only area. Only content from your own sources is shown. Android biometric authentication is required on every visit.",
   "tvAdultConsent": "I confirm that I am 18 or older.",
-  "tvAdultEnable": "Enable with my parental PIN",
-  "tvAdultOpen": "Open with my parental PIN",
-  "tvAdultDisabled": "Off by default. Adults may enable it with a parental PIN.",
-  "tvAdultEnabled": "Enabled for this profile. Your PIN is required each time you open it.",
+  "tvAdultEnable": "Enable with biometrics",
+  "tvAdultOpen": "Open with biometrics",
+  "tvAdultDisabled": "Off by default. After confirming that you are an adult, Android biometric authentication is required.",
+  "tvAdultEnabled": "Enabled for this profile. Biometrics are required on every visit; no passcode grants access.",
   "tvAdultLock": "Lock the +18 area",
   "tvAdultEmpty": "No +18 content was identified in this profile’s sources.",
   "tvAdultLocked": "This area is locked.",
@@ -1418,5 +1418,18 @@
   "castFriendlyDnsUnstable": "Unstable internet or DNS. Try again in a few seconds.",
   "castFriendlyProviderLimit": "Your IPTV provider is refusing an extra connection (limit reached). Close another app that's watching and try again.",
   "castProgressValidating": "Checking the stream…",
-  "castWindowsHelp": "Connect your PC and TV to the same private network (Wi-Fi or Ethernet). Choose a DLNA TV or Roku. Google Cast-only receivers are not supported on Windows. Use the TV remote for audio tracks and seeking."
+  "castWindowsHelp": "Connect your PC and TV to the same private network (Wi-Fi or Ethernet). Choose a DLNA TV or Roku. Google Cast-only receivers are not supported on Windows. Use the TV remote for audio tracks and seeking.",
+  "tvAdultBiometricReason": "Verify your identity to open the +18 area.",
+  "tvAdultBiometricPrompt": "Use your fingerprint or the biometric method offered by Android. No passcode opens the +18 area.",
+  "tvAdultBiometricUnavailable": "This device does not support the required biometrics. The +18 area stays locked.",
+  "tvAdultBiometricSetup": "Set up a fingerprint or compatible biometrics in Android security settings, then try again. No passcode can replace this check.",
+  "tvAdultBiometricCancelled": "Authentication was cancelled or refused. The +18 area stays locked.",
+  "tvAdultBiometricLockedOut": "Android has locked biometric authentication. Restore it in Android security settings, then try again. The +18 area stays locked.",
+  "tvAdultBiometricError": "Biometric verification failed. The +18 area stays locked; you can try again.",
+  "tvAdultSourceFolder": "Source folder: {name}",
+  "@tvAdultSourceFolder": {
+    "placeholders": {
+      "name": {"type": "String"}
+    }
+  }
 }

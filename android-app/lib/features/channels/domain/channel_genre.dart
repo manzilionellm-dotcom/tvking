@@ -70,15 +70,19 @@ abstract final class ChannelClassifier {
   /// genres. Le filtre du catalogue l'utilise sur les métadonnées brutes,
   /// indépendamment des caches par identifiant et du profil actif.
   static bool isAdult(String name, String category) =>
-      _containsAny(_normalize('$name $category'), _kAdultKeywords);
+      _isAdultLabel(_normalize(name)) || _isAdultLabel(_normalize(category));
 
   static ChannelGenre classifyGenre(String name, String category) {
-    final String text = _normalize('$name $category');
+    final String normalizedName = _normalize(name);
+    final String normalizedCategory = _normalize(category);
+    final String text = '$normalizedName $normalizedCategory';
 
     // Ordre critique : on teste les genres les plus SPÉCIFIQUES
     // d'abord (sinon "kids" capture des chaînes "kids sport").
 
-    if (_containsAny(text, _kAdultKeywords)) return ChannelGenre.adult;
+    if (_isAdultLabel(normalizedName) || _isAdultLabel(normalizedCategory)) {
+      return ChannelGenre.adult;
+    }
     if (_containsAny(text, _kKidsKeywords)) return ChannelGenre.kids;
     if (_containsAny(text, _kSportsKeywords)) return ChannelGenre.sports;
     if (_containsAny(text, _kNewsKeywords)) return ChannelGenre.news;
@@ -165,6 +169,24 @@ abstract final class ChannelClassifier {
   //  Internes
   // ============================================================
 
+  /// Un âge seul (18), une année (2018) ou un numéro de chaîne ne suffit
+  /// pas : le signe + doit accompagner exactement 18. Les fournisseurs
+  /// ajoutent parfois des espaces, dont U+00A0 et U+202F insécables.
+  /// On garde les bornes alphanumériques des autres mots-clés afin que
+  /// « 2018+ », « +180 » et « Canal+18 » restent des libellés ordinaires.
+  static final RegExp _rxAdultAgeMarker = RegExp(
+    r'(^|[^a-z0-9])(?:18[\s\u00a0\u202f]*\+|\+[\s\u00a0\u202f]*18)($|[^a-z0-9])',
+  );
+
+  /// Même point de décision pour [isAdult] et [classifyGenre]. Le symbole
+  /// explicite 🔞 reste reconnaissable même collé au titre. Chaque champ
+  /// est évalué séparément : nom « Canal 18 » + catégorie « + » ne doivent
+  /// pas fabriquer ensemble un repère adulte absent des métadonnées.
+  static bool _isAdultLabel(String normalized) =>
+      normalized.contains('🔞') ||
+      _rxAdultAgeMarker.hasMatch(normalized) ||
+      _containsAny(normalized, _kAdultKeywords);
+
   static String _normalize(String s) {
     String out = s.toLowerCase();
     const Map<String, String> accents = <String, String>{
@@ -230,7 +252,7 @@ abstract final class ChannelClassifier {
   // normales. Tous ces mots envoient la chaîne dans le rayon Adulte.
   static const List<String> _kAdultKeywords = <String>[
     'xxx', 'adult', 'adulte', 'adultes', 'porn', 'porno',
-    '18+', '+18', 'x-rated', 'xrated',
+    'x-rated', 'xrated',
     'erotic', 'erotik', 'erotica', 'erotique',
     'sex', 'sexe', 'sexy', 'sexo',
     'playboy', 'penthouse', 'hustler', 'brazzers', 'dorcel',

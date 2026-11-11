@@ -12,6 +12,8 @@
 
 import 'package:flutter/foundation.dart';
 
+import '../../channels/domain/channel_genre.dart';
+
 @immutable
 class VodMovie {
   const VodMovie({
@@ -23,6 +25,7 @@ class VodMovie {
     this.posterUrl,
     this.rating,
     this.year,
+    this.declaredAdult = false,
   });
 
   /// Identifiant stable (ex. `vod-12345`).
@@ -32,6 +35,8 @@ class VodMovie {
 
   /// Catégorie (ex. « Action », « Comédie »…).
   final String category;
+  final bool declaredAdult;
+  bool get isAdult => declaredAdult || ChannelClassifier.isAdult(name, category);
 
   /// URL directe du fichier film (streaming ou téléchargement).
   final String streamUrl;

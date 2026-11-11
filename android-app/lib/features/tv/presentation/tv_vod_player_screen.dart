@@ -72,15 +72,13 @@ class TvVodPlayerScreen extends StatefulWidget {
   final SeriesDetails? series;
   final CinemaTitle? seriesTitle;
 
+  VodPlayItem get _classifiedItem => item.withDeclaredAdult(
+      (seriesTitle?.isAdult ?? false) ||
+      (series?.details.declaredAdult ?? false));
+
   @override
   State<TvVodPlayerScreen> createState() {
-    final CinemaTitle? series = seriesTitle;
-    if (!item.isAllowedInPlay ||
-        (series != null &&
-            !NovatubeContentPolicy.allows(
-              name: series.name,
-              category: series.categoryKey,
-            ))) {
+    if (!_classifiedItem.isAllowedInPlay) {
       return NovatubeUnavailableState<TvVodPlayerScreen>();
     }
     return _TvVodPlayerScreenState();
@@ -147,7 +145,7 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
     WidgetsBinding.instance.addObserver(this);
     TvActivity.enter();
     ForegroundPlayback.lock();
-    _item = widget.item;
+    _item = widget._classifiedItem;
     _c = NativeVideoController()..addListener(_onPlayer);
     AdultAccess.instance.unlocked.addListener(_onAdultAccessChanged);
     unawaited(
@@ -255,6 +253,7 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
 
   void _onAdultAccessChanged() {
     if (_item.isAllowedInPlay) return;
+    ++_startGeneration;
     _c.suspendForBackground();
     unawaited(_desktopCastKey.currentState?.close() ?? Future<void>.value());
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -321,7 +320,8 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
     }
     final String? audioPref = await CinemaTrackPrefs.audio();
     final String? textPref = await CinemaTrackPrefs.text();
-    if (!mounted || generation != _startGeneration) return;
+    if (!mounted || generation != _startGeneration ||
+        !item.isAllowedInPlay) return;
     final String appLang = Localizations.localeOf(context).languageCode;
     BlackBox.instance.breadcrumb(
       'Cinéma : lecture ${item.title} ${item.subtitle ?? ''}',
@@ -354,6 +354,9 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
             !NovatubeContentPolicy.allows(
               name: '${_item.title} ${next.title}',
               category: widget.seriesTitle?.categoryKey ?? _item.categoryKey,
+              declaredAdult: _item.declaredAdult || next.declaredAdult ||
+                  (widget.seriesTitle?.declaredAdult ?? false) ||
+                  (widget.series?.details.declaredAdult ?? false),
             )) {
           return null;
         }
@@ -373,7 +376,8 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
     _vodTimer?.cancel();
     _vodTimer = null;
     _vodArmed = false;
-    final VodPlayItem ni = VodPlayItem.episode(n, st);
+    final VodPlayItem ni = VodPlayItem.episode(n, st,
+        details: widget.series?.details);
     if (!ni.isAllowedInPlay) return;
     final WatchEntry? prev = WatchProgressRepository.instance.get(ni.id);
     final String? local = await offlinePathFor(ni.id);
@@ -532,7 +536,7 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
     final CinemaTitle? st = widget.seriesTitle;
     VodPlayItem? ni;
     if (n != null && st != null) {
-      ni = VodPlayItem.episode(n, st);
+      ni = VodPlayItem.episode(n, st, details: widget.series?.details);
       WatchProgressRepository.instance.proposeNext(
         ni.toEntry(posMs: 0, durMs: n.durationSec * 1000),
       );

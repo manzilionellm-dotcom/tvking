@@ -32,6 +32,7 @@ import 'package:flutter/foundation.dart';
 import '../../channels/domain/channel.dart';
 import 'import_progress.dart';
 import '../../../core/blackbox/black_box.dart';
+import '../../../core/app/provider_adult_signal.dart';
 import 'playlist_import_limits.dart';
 
 /// Résultat du parsing : la liste des chaînes + warnings non
@@ -244,6 +245,7 @@ abstract final class M3uParser {
           playlistId: playlistId,
           name: name,
           category: groupTitle.isEmpty ? 'Autres' : groupTitle,
+          declaredAdult: ProviderAdultSignal.fromMetadata(attrs),
           streamUrl: line,
           isLive: true,
           logoUrl: logoUrl.isEmpty ? null : logoUrl,

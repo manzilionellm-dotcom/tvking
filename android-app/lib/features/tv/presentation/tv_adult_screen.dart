@@ -81,7 +81,7 @@ class _TvAdultScreenState extends State<TvAdultScreen> {
                 onPressed: AdultAccess.instance.blockedForKids
                     ? null
                     : () => authorizeAdultAccess(context),
-                icon: const Icon(Icons.lock_open_rounded),
+                icon: const Icon(Icons.fingerprint_rounded),
                 label: Text(context.l10n.tvAdultOpen),
               ),
             ],

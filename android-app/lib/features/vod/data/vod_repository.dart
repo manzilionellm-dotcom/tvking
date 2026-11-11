@@ -70,6 +70,7 @@ class VodRepository {
       final List<VodMovie> movies = (await client.fetchVodMovies())
           .where((VodMovie movie) => NovatubeContentPolicy.allows(
             name: movie.name, category: movie.category,
+            declaredAdult: movie.declaredAdult,
           )).toList(growable: false);
       // Une réponse vide n'efface pas ce qu'on a déjà (mémoire ou disque).
       final List<VodMovie> chosen = keepPreviousWhenEmpty<VodMovie>(

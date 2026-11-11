@@ -38,6 +38,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../../../core/app/repair_flags.dart';
+import '../../../core/app/provider_adult_signal.dart';
 
 import '../../../core/blackbox/black_box.dart';
 import '../../channels/domain/channel.dart';
@@ -81,6 +82,9 @@ class XtreamClient {
   /// chaîne de l'app (`xtream-<stream_id>`) → `epg_channel_id` du serveur
   /// (l'identifiant utilisé par son XMLTV). Vide si le serveur n'en donne pas.
   final Map<String, String> epgChannelIds = <String, String>{};
+  // Ces identifiants sont propres à CE client, jamais partagés entre comptes.
+  final Set<String> _adultLiveCategoryIds = <String>{};
+  final Set<String> _adultVodCategoryIds = <String>{};
   final http.Client _http;
   final Duration _timeout;
 
@@ -144,12 +148,14 @@ class XtreamClient {
       action: 'get_live_categories',
     );
     final Map<String, String> result = <String, String>{};
+    _adultLiveCategoryIds.clear();
     for (final dynamic item in raw) {
       if (item is Map<String, dynamic>) {
         final String id = item['category_id']?.toString() ?? '';
         final String name = item['category_name']?.toString() ?? 'Sans nom';
         if (id.isNotEmpty) {
           result[id] = name;
+          if (ProviderAdultSignal.read(item)) _adultLiveCategoryIds.add(id);
         }
       }
     }
@@ -201,6 +207,7 @@ class XtreamClient {
         _LiveStreamsJob(
           payload: TransferableTypedData.fromList(<Uint8List>[whole]),
           categories: cats,
+          adultCategoryIds: Set<String>.of(_adultLiveCategoryIds),
           playlistId: playlistId,
           streamUrlPrefix: prefix,
           maxChannels: kMaxChannelsPerImport,
@@ -277,6 +284,7 @@ class XtreamClient {
         _LiveStreamsJob(
           payload: TransferableTypedData.fromList(<Uint8List>[part]),
           categories: cats,
+          adultCategoryIds: Set<String>.of(_adultLiveCategoryIds),
           playlistId: playlistId,
           streamUrlPrefix: prefix,
           maxChannels: maxChannels,
@@ -297,11 +305,15 @@ class XtreamClient {
     final List<dynamic> raw =
         await _callApiList(action: 'get_vod_categories');
     final Map<String, String> result = <String, String>{};
+    _adultVodCategoryIds.clear();
     for (final dynamic item in raw) {
       if (item is Map<String, dynamic>) {
         final String id = item['category_id']?.toString() ?? '';
         final String name = item['category_name']?.toString() ?? 'Sans nom';
-        if (id.isNotEmpty) result[id] = name;
+        if (id.isNotEmpty) {
+          result[id] = name;
+          if (ProviderAdultSignal.read(item)) _adultVodCategoryIds.add(id);
+        }
       }
     }
     return result;
@@ -335,6 +347,8 @@ class XtreamClient {
           id: 'vod-$streamId',
           name: name,
           category: category.isEmpty ? 'Autres' : category,
+          declaredAdult: ProviderAdultSignal.fromMetadata(item) ||
+              _adultVodCategoryIds.contains(categoryId),
           streamUrl: _buildVodStreamUrl(streamId, ext),
           containerExt: ext,
           posterUrl: (poster == null || poster.isEmpty) ? null : poster,
@@ -550,12 +564,14 @@ class _LiveStreamsJob {
   const _LiveStreamsJob({
     required this.payload,
     required this.categories,
+    required this.adultCategoryIds,
     required this.playlistId,
     required this.streamUrlPrefix,
     required this.maxChannels,
   });
   final TransferableTypedData payload;
   final Map<String, String> categories;
+  final Set<String> adultCategoryIds;
   final int playlistId;
   final String streamUrlPrefix;
   final int maxChannels;
@@ -632,6 +648,8 @@ _LiveStreamsResult _mapLiveStreamsInIsolate(_LiveStreamsJob job) {
         playlistId: job.playlistId,
         name: name,
         category: category.isEmpty ? 'Autres' : category,
+        declaredAdult: ProviderAdultSignal.fromMetadata(item) ||
+            job.adultCategoryIds.contains(categoryId),
         streamUrl: '${job.streamUrlPrefix}$streamId.ts',
         isLive: true,
         logoUrl:

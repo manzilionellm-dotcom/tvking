@@ -15,6 +15,7 @@ import 'dart:convert';
 import 'dart:isolate';
 import 'dart:typed_data';
 
+import '../../../core/app/provider_adult_signal.dart';
 import '../domain/cinema_language.dart';
 import '../domain/cinema_models.dart';
 
@@ -36,13 +37,24 @@ List<dynamic> asJsonList(dynamic decoded) {
 
 /// Catégories : liste de (id, nom).
 List<({String id, String name})> parseCategories(dynamic decoded) {
-  final List<({String id, String name})> out = <({String id, String name})>[];
+  return <({String id, String name})>[
+    for (final category in parseCategoriesWithSignals(decoded))
+      (id: category.id, name: category.name),
+  ];
+}
+
+/// Le signal reste lié à l'id de catégorie du compte qui l'a fourni.
+/// Le libellé seul n'est jamais une clé d'héritage entre deux fournisseurs.
+List<({String id, String name, bool declaredAdult})> parseCategoriesWithSignals(
+    dynamic decoded) {
+  final List<({String id, String name, bool declaredAdult})> out =
+      <({String id, String name, bool declaredAdult})>[];
   for (final dynamic item in asJsonList(decoded)) {
     if (item is! Map) continue;
     final String id = _str(item['category_id']) ?? '';
     final String name = (_str(item['category_name']) ?? '').trim();
     if (id.isEmpty || name.isEmpty) continue;
-    out.add((id: id, name: name));
+    out.add((id: id, name: name, declaredAdult: ProviderAdultSignal.fromMetadata(item)));
   }
   return out;
 }
@@ -55,6 +67,8 @@ class TitlesJob {
     required this.source,
     required this.categoryKeyById,
     this.fallbackCategoryKey = '',
+    this.declaredAdultCategoryIds = const <String>{},
+    this.fallbackDeclaredAdult = false,
     this.max = 40000,
   });
   final TransferableTypedData payload;
@@ -62,6 +76,8 @@ class TitlesJob {
   final CinemaSource source;
   final Map<String, String> categoryKeyById;
   final String fallbackCategoryKey;
+  final Set<String> declaredAdultCategoryIds;
+  final bool fallbackDeclaredAdult;
   final int max;
 }
 
@@ -74,6 +90,8 @@ List<CinemaTitle> mapTitlesJob(TitlesJob job) {
     source: job.source,
     categoryKeyById: job.categoryKeyById,
     fallbackCategoryKey: job.fallbackCategoryKey,
+    declaredAdultCategoryIds: job.declaredAdultCategoryIds,
+    fallbackDeclaredAdult: job.fallbackDeclaredAdult,
     max: job.max,
   );
 }
@@ -85,6 +103,8 @@ List<CinemaTitle> mapTitles(
   required CinemaSource source,
   required Map<String, String> categoryKeyById,
   String fallbackCategoryKey = '',
+  Set<String> declaredAdultCategoryIds = const <String>{},
+  bool fallbackDeclaredAdult = false,
   int max = 40000,
 }) {
   final bool movie = kind == CinemaKind.movie;
@@ -115,6 +135,8 @@ List<CinemaTitle> mapTitles(
       remoteId: remoteId,
       name: rawName,
       categoryKey: catKey,
+      declaredAdult: ProviderAdultSignal.fromMetadata(item) ||
+          (catId.isEmpty ? fallbackDeclaredAdult : declaredAdultCategoryIds.contains(catId)),
       searchKey: CinemaLanguage.searchKey(rawName),
       posterUrl: _url(movie ? item['stream_icon'] : item['cover']),
       rating: _rating(item['rating'], item['rating_5based']),
@@ -137,6 +159,9 @@ CinemaDetails parseVodInfo(dynamic decoded) {
   int dur = _int(info['duration_secs']);
   if (dur == 0) dur = _hmsToSeconds(_str(info['duration']));
   return CinemaDetails(
+    declaredAdult: ProviderAdultSignal.fromMetadata(decoded) ||
+        ProviderAdultSignal.fromMetadata(info) ||
+        ProviderAdultSignal.fromMetadata(decoded['movie_data']),
     plot: _text(info['plot']) ?? _text(info['description']),
     cast: _text(info['cast']) ?? _text(info['actors']),
     director: _text(info['director']),
@@ -155,6 +180,7 @@ SeriesDetails parseSeriesInfo(
   required CinemaSource source,
   required String seriesId,
   String seriesName = '',
+  bool declaredAdult = false,
 }) {
   if (decoded is! Map) {
     return const SeriesDetails(
@@ -167,7 +193,10 @@ SeriesDetails parseSeriesInfo(
   final Map<dynamic, dynamic> info =
       infoRaw is Map ? infoRaw : const <dynamic, dynamic>{};
   final int runMinutes = _int(info['episode_run_time']);
+  final bool seriesAdult = declaredAdult || ProviderAdultSignal.fromMetadata(decoded) ||
+      ProviderAdultSignal.fromMetadata(info);
   final CinemaDetails details = CinemaDetails(
+    declaredAdult: seriesAdult,
     plot: _text(info['plot']),
     cast: _text(info['cast']),
     director: _text(info['director']),
@@ -196,6 +225,8 @@ SeriesDetails parseSeriesInfo(
     if (dur == 0) dur = _hmsToSeconds(_str(epInfo['duration']));
     eps.putIfAbsent(season, () => <CinemaEpisode>[]).add(CinemaEpisode(
           id: '${source.key}:e:$id',
+          declaredAdult: seriesAdult || ProviderAdultSignal.fromMetadata(e) ||
+              ProviderAdultSignal.fromMetadata(epInfo),
           remoteId: id,
           seriesId: seriesId,
           season: season,

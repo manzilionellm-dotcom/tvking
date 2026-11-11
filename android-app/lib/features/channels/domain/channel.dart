@@ -39,6 +39,7 @@ class Channel {
     this.catchupSupported = false,
     this.catchupDays,
     this.catchupSource,
+    this.declaredAdult = false,
   });
 
   /// Identifiant unique de la chaîne (tvg-id côté M3U,
@@ -57,6 +58,11 @@ class Channel {
   /// (group-title M3U ou category_name Xtream). À nettoyer
   /// pour l'affichage via `ChannelClassifier.prettifyCategory`.
   final String category;
+
+  /// Signal explicite de la source (chaîne ou catégorie serveur). Il ne
+  /// modifie pas les libellés et reste prioritaire sur un ancien cache.
+  final bool declaredAdult;
+  bool get isAdult => declaredAdult || ChannelClassifier.isAdult(name, category);
 
   /// URL du flux vidéo (HLS, MPEG-TS, MP4...).
   final String streamUrl;
@@ -142,7 +148,8 @@ class Channel {
   /// Genre détecté. **Caché** dans une Map statique car appelé
   /// à chaque rebuild sur 20 000+ chaînes — sans cache, les regex
   /// du classifier saturaient le main thread et l'UI laguait.
-  ChannelGenre get genre => _ChannelComputedCache.genres.putIfAbsent(
+  ChannelGenre get genre => declaredAdult ? ChannelGenre.adult :
+      _ChannelComputedCache.genres.putIfAbsent(
         id,
         () => ChannelClassifier.classifyGenre(name, category),
       );
@@ -235,7 +242,7 @@ abstract final class ChannelPrecompute {
   /// Genre déjà calculé, ou `null` s'il n'est pas encore en cache. Permet à
   /// un filtre (Mode Enfants) de décider SANS déclencher le calcul lourd.
   static ChannelGenre? cachedGenre(Channel c) =>
-      _ChannelComputedCache.genres[c.id];
+      c.declaredAdult ? ChannelGenre.adult : _ChannelComputedCache.genres[c.id];
 
   /// Nom curé déjà calculé, ou `null` (jamais de calcul ici). Même rôle que
   /// [cachedGenre] pour Tendances (06/10/2026 : 50 000 noms curés d'un coup
@@ -263,7 +270,7 @@ abstract final class ChannelPrecompute {
       final int end = (i + _kChunk < pending.length) ? i + _kChunk : pending.length;
       final List<List<String>> input = <List<String>>[
         for (final Channel c in pending.sublist(i, end))
-          <String>[c.id, c.name, c.category],
+          <String>[c.id, c.name, c.category, c.declaredAdult ? '1' : '0'],
       ];
       List<List<String>> out;
       try {
@@ -294,7 +301,8 @@ List<List<String>> _precomputeChunk(List<List<String>> rows) {
     out.add(<String>[
       id,
       TitleCurator.curate(name),
-      ChannelClassifier.classifyGenre(name, category).index.toString(),
+      (r.length > 3 && r[3] == '1' ? ChannelGenre.adult :
+          ChannelClassifier.classifyGenre(name, category)).index.toString(),
       ChannelClassifier.detectCountryKey(name, category) ?? '',
       ChannelClassifier.detectQuality(name).index.toString(),
     ]);

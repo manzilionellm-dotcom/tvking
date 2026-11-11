@@ -26,6 +26,7 @@ import '../../vod/domain/vod_movie.dart';
 import '../../cinema/data/cinema_repository.dart';
 import '../../cinema/data/watch_progress.dart';
 import '../../cinema/domain/cinema_models.dart';
+import '../../security/data/adult_access.dart';
 import '../../vod/data/download_repository.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
@@ -184,6 +185,7 @@ class _DownloadPillState extends State<_DownloadPill> {
   }
 
   Future<void> _onSelect() async {
+    if (!widget.item.isAllowedInPlay) return;
     final Download? d = _d;
     if (d == null ||
         d.status == DownloadStatus.error ||
@@ -328,7 +330,8 @@ class TvMovieDetailScreen extends StatefulWidget {
   @override
   State<TvMovieDetailScreen> createState() {
     if (!NovatubeContentPolicy.allows(
-        name: title.name, category: title.categoryKey)) {
+        name: title.name, category: title.categoryKey,
+        declaredAdult: title.declaredAdult)) {
       return NovatubeUnavailableState<TvMovieDetailScreen>();
     }
     return _TvMovieDetailScreenState();
@@ -342,6 +345,7 @@ class _TvMovieDetailScreenState extends State<TvMovieDetailScreen> {
   void initState() {
     super.initState();
     WatchProgressRepository.instance.addListener(_refresh);
+    AdultAccess.instance.unlocked.addListener(_refresh);
     unawaited(DownloadsRepository.instance.initialize());
     unawaited(
       CinemaRepository.instance.movieDetails(widget.title).then((
@@ -355,6 +359,7 @@ class _TvMovieDetailScreenState extends State<TvMovieDetailScreen> {
   @override
   void dispose() {
     WatchProgressRepository.instance.removeListener(_refresh);
+    AdultAccess.instance.unlocked.removeListener(_refresh);
     super.dispose();
   }
 
@@ -365,10 +370,18 @@ class _TvMovieDetailScreenState extends State<TvMovieDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final CinemaTitle t = widget.title;
+    // Les détails peuvent révéler un indicateur adulte absent de la liste.
+    // Aucun visuel de fiche n'est montré avant ce contrôle.
+    if (_d == null) return const CinemaLoading();
     final CinemaDetails d = _d ?? CinemaDetails.empty;
+    if (!NovatubeContentPolicy.allows(name: t.name,
+        category: t.categoryKey,
+        declaredAdult: t.declaredAdult || d.declaredAdult)) {
+      return const NovatubeUnavailableView();
+    }
     final WatchEntry? w = WatchProgressRepository.instance.get(t.id);
     final bool resumable = w != null && w.isResumable && !w.upNext;
-    final VodPlayItem item = VodPlayItem.movie(t);
+    final VodPlayItem item = VodPlayItem.movie(t, details: d);
     final double? rating = d.rating ?? t.rating;
     final List<String> meta = <String>[
       if (t.year != null)
@@ -545,7 +558,8 @@ class TvSeriesScreen extends StatefulWidget {
   @override
   State<TvSeriesScreen> createState() {
     if (!NovatubeContentPolicy.allows(
-        name: title.name, category: title.categoryKey)) {
+        name: title.name, category: title.categoryKey,
+        declaredAdult: title.declaredAdult)) {
       return NovatubeUnavailableState<TvSeriesScreen>();
     }
     return _TvSeriesScreenState();
@@ -561,6 +575,7 @@ class _TvSeriesScreenState extends State<TvSeriesScreen> {
   void initState() {
     super.initState();
     WatchProgressRepository.instance.addListener(_refresh);
+    AdultAccess.instance.unlocked.addListener(_refresh);
     unawaited(DownloadsRepository.instance.initialize());
     unawaited(_load());
   }
@@ -568,6 +583,7 @@ class _TvSeriesScreenState extends State<TvSeriesScreen> {
   @override
   void dispose() {
     WatchProgressRepository.instance.removeListener(_refresh);
+    AdultAccess.instance.unlocked.removeListener(_refresh);
     super.dispose();
   }
 
@@ -594,29 +610,42 @@ class _TvSeriesScreenState extends State<TvSeriesScreen> {
     });
   }
 
+  bool _episodeAllowed(CinemaEpisode episode) =>
+      VodPlayItem.episode(episode, widget.title, details: _s?.details)
+          .isAllowedInPlay;
+
+  List<CinemaEpisode> _visibleEpisodes() =>
+      (_s?.episodes[_season] ?? const <CinemaEpisode>[])
+          .where(_episodeAllowed).toList(growable: false);
+
   /// Épisode à lancer avec le gros bouton : celui en cours, sinon le suivant
   /// du dernier vu, sinon S1 · E1.
   CinemaEpisode? _primary() {
     final SeriesDetails? s = _s;
     if (s == null) return null;
-    final List<CinemaEpisode> all = s.allInOrder;
+    final List<CinemaEpisode> all = s.allInOrder
+        .where(_episodeAllowed).toList(growable: false);
     if (all.isEmpty) return null;
     final WatchEntry? last = WatchProgressRepository.instance.latestForSeries(
       widget.title.id,
     );
     if (last != null) {
-      for (final CinemaEpisode e in all) {
-        if (e.id == last.id) return last.finished ? (s.nextAfter(e) ?? e) : e;
+      for (int i = 0; i < all.length; i++) {
+        final CinemaEpisode e = all[i];
+        if (e.id == last.id) {
+          return last.finished && i + 1 < all.length ? all[i + 1] : e;
+        }
       }
     }
     return all.first;
   }
 
   void _play(CinemaEpisode e, {bool fromStart = false}) {
+    if (!_episodeAllowed(e)) return;
     unawaited(
       openVod(
         context,
-        VodPlayItem.episode(e, widget.title),
+        VodPlayItem.episode(e, widget.title, details: _s?.details),
         fromStart: fromStart,
         series: _s,
         seriesTitle: widget.title,
@@ -628,7 +657,13 @@ class _TvSeriesScreenState extends State<TvSeriesScreen> {
   Widget build(BuildContext context) {
     final CinemaTitle t = widget.title;
     final SeriesDetails? s = _s;
+    if (_loading) return const CinemaLoading();
     final CinemaDetails d = s?.details ?? CinemaDetails.empty;
+    if (!NovatubeContentPolicy.allows(name: t.name,
+        category: t.categoryKey,
+        declaredAdult: t.declaredAdult || d.declaredAdult)) {
+      return const NovatubeUnavailableView();
+    }
     final CinemaEpisode? primary = _primary();
     final WatchEntry? pw = primary == null
         ? null
@@ -643,8 +678,7 @@ class _TvSeriesScreenState extends State<TvSeriesScreen> {
         context.l10n.tvCinemaSeasons(s.seasons.length.toString()),
     ];
     if (isZunoTouch) {
-      final List<CinemaEpisode> episodes =
-          s?.episodes[_season] ?? const <CinemaEpisode>[];
+      final List<CinemaEpisode> episodes = _visibleEpisodes();
       return SafeArea(
         minimum: const EdgeInsets.symmetric(
           horizontal: TvDimens.touchSafeH,
@@ -706,6 +740,7 @@ class _TvSeriesScreenState extends State<TvSeriesScreen> {
                                         VodPlayItem.episode(
                                           e,
                                           widget.title,
+                                          details: d,
                                         ).toVodMovie(),
                                     ]).then((_) => _refresh()),
                                   ),
@@ -759,6 +794,7 @@ class _TvSeriesScreenState extends State<TvSeriesScreen> {
                   itemBuilder: (BuildContext context, int index) => _EpisodeRow(
                     episode: episodes[index],
                     series: widget.title,
+                    details: d,
                     onPlay: () => _play(episodes[index]),
                   ),
                 ),
@@ -810,11 +846,11 @@ class _TvSeriesScreenState extends State<TvSeriesScreen> {
                   if (primary != null) const SizedBox(width: 12),
                   // « Télécharger la saison » (façon Netflix) : tous les
                   // épisodes de la saison affichée, un par un, en file.
-                  if (!_loading && (s?.episodes[_season]?.isNotEmpty ?? false))
+                  if (!_loading && _visibleEpisodes().isNotEmpty)
                     ValueListenableBuilder<int>(
                       valueListenable: CinemaDownloads.queued,
                       builder: (BuildContext context, int n, _) {
-                        final List<CinemaEpisode> eps = s!.episodes[_season]!;
+                        final List<CinemaEpisode> eps = _visibleEpisodes();
                         final bool active = eps.any(
                           (CinemaEpisode e) => CinemaDownloads.isQueued(
                             VodPlayItem.episode(e, widget.title).id,
@@ -833,6 +869,7 @@ class _TvSeriesScreenState extends State<TvSeriesScreen> {
                                 VodPlayItem.episode(
                                   e,
                                   widget.title,
+                                  details: d,
                                 ).toVodMovie(),
                             ]).then((_) => _refresh()),
                           ),
@@ -864,8 +901,7 @@ class _TvSeriesScreenState extends State<TvSeriesScreen> {
         ),
       );
     }
-    final List<CinemaEpisode> eps =
-        s.episodes[_season] ?? const <CinemaEpisode>[];
+    final List<CinemaEpisode> eps = _visibleEpisodes();
     return Row(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
@@ -902,6 +938,7 @@ class _TvSeriesScreenState extends State<TvSeriesScreen> {
             itemBuilder: (BuildContext context, int i) => _EpisodeRow(
               episode: eps[i],
               series: widget.title,
+              details: s.details,
               onPlay: () => _play(eps[i]),
             ),
           ),
@@ -916,9 +953,11 @@ class _EpisodeRow extends StatelessWidget {
     required this.episode,
     required this.series,
     required this.onPlay,
+    this.details,
   });
   final CinemaEpisode episode;
   final CinemaTitle series;
+  final CinemaDetails? details;
   final VoidCallback onPlay;
 
   @override
@@ -960,7 +999,7 @@ class _EpisodeRow extends StatelessWidget {
                         ),
                       ),
                 trailing: _DownloadPill(
-                  item: VodPlayItem.episode(e, series),
+                  item: VodPlayItem.episode(e, series, details: details),
                   compact: true,
                 ),
               ),
@@ -1095,7 +1134,8 @@ class _EpisodeRow extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 10),
-          _DownloadPill(item: VodPlayItem.episode(e, series), compact: true),
+          _DownloadPill(item: VodPlayItem.episode(e, series, details: details),
+              compact: true),
         ],
       ),
     );

@@ -74,7 +74,6 @@ import '../../profiles/data/profile_repository.dart';
 import '../../profiles/domain/profile_policies.dart';
 import '../../security/data/parental_controls.dart';
 import '../../security/data/adult_access.dart';
-import '../../../core/app/novatube_content_policy.dart';
 import 'tv_adult_screen.dart';
 import 'tv_parental_screen.dart';
 import '../../time_picks/data/time_pick_flag.dart';
@@ -716,10 +715,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
         WatchProgressRepository.instance
             .continueWatching()
             .where(
-              (WatchEntry entry) => !NovatubeContentPolicy.isAdult(
-                name: entry.title,
-                category: entry.categoryKey,
-              ),
+              (WatchEntry entry) => !entry.isAdult,
             )
             .toList(growable: false),
         kidsMode: kids,

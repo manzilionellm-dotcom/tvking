@@ -290,7 +290,7 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
       final List<VoiceHit> remote = <VoiceHit>[];
       for (final Channel c in _channels) {
         if (remote.length >= 24) break;
-        if (kids && c.genre == ChannelGenre.adult) continue;
+        if (kids && c.isAdult) continue;
         if (!filter.matches(c)) continue;
         remote.add(VoiceHit.fromChannel(c));
       }

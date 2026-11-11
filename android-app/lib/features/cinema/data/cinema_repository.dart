@@ -41,6 +41,7 @@ import '../../playlists/data/xtream_client.dart';
 import '../../playlists/domain/playlist.dart';
 import '../../profiles/data/active_profile.dart';
 import '../../tv/core/tv_activity.dart';
+import '../../vod/data/download_repository.dart';
 import '../../vod/domain/vod_movie.dart';
 import '../domain/cinema_language.dart';
 import '../domain/cinema_models.dart';
@@ -48,6 +49,8 @@ import 'catalog_cache_policy.dart';
 import 'catalog_disk.dart';
 import 'catalog_refresh.dart';
 import 'cinema_parsers.dart';
+import 'cinema_adult_signals.dart';
+import 'watch_progress.dart';
 
 /// Au-delà, la liste complète n'est PAS téléchargée d'un bloc (index construit
 /// catégorie par catégorie). Même logique que l'import des chaînes.
@@ -70,6 +73,21 @@ const Duration kCinemaMaxAge = Duration(minutes: 10);
 class CinemaRepository {
   CinemaRepository._();
   static final CinemaRepository instance = CinemaRepository._();
+
+  /// Index local injectable pour éprouver les filtres avant pagination sans
+  /// serveur, disque ou balayage des fiches. L'app utilise toujours [instance].
+  @visibleForTesting
+  CinemaRepository.forTesting({required CinemaKind kind,
+      required List<CinemaTitle> titles}) {
+    _indexKind = kind;
+    _index = _visibleTitles(titles);
+    _indexDone = true;
+    _indexComplete = true;
+    _indexCounts = <String, int>{};
+    for (final CinemaTitle title in _index) {
+      _indexCounts[title.categoryKey] = (_indexCounts[title.categoryKey] ?? 0) + 1;
+    }
+  }
 
   // ---------------- Mémoire de la box ----------------
 
@@ -193,6 +211,8 @@ class CinemaRepository {
   String _sourcesSig = '';
   String _sourceProfile = ActiveProfile.instance.id;
   List<CinemaSource> _sources = const <CinemaSource>[];
+  String? _adultSignalsProfile;
+  Set<String> _knownAdultIds = <String>{};
   final Map<String, XtreamClient> _clients = <String, XtreamClient>{};
 
   final Map<CinemaKind, List<CinemaCategory>> _cats =
@@ -201,6 +221,8 @@ class CinemaRepository {
   /// kind → sourceKey → id catégorie serveur → clé fusionnée.
   final Map<CinemaKind, Map<String, Map<String, String>>> _catKeys =
       <CinemaKind, Map<String, Map<String, String>>>{};
+  final Map<CinemaKind, Map<String, Set<String>>> _adultCatIds =
+      <CinemaKind, Map<String, Set<String>>>{};
 
   /// Cache LRU des catégories chargées (`kind|catKey`).
   final LinkedHashMap<String, List<CinemaTitle>> _titles =
@@ -246,6 +268,15 @@ class CinemaRepository {
     final List<Playlist> all =
         await PlaylistRepository.instance.getAllPlaylists();
     if (owner != ActiveProfile.instance.id) return const <CinemaSource>[];
+    if (_adultSignalsProfile != owner) {
+      final Set<String> known = await CinemaAdultSignals.read(owner);
+      if (owner != ActiveProfile.instance.id) return const <CinemaSource>[];
+      // Une fiche peut terminer entre deux lectures concurrentes des sources.
+      // Une ancienne lecture ne doit pas retirer son signal positif en mémoire.
+      if (_adultSignalsProfile == owner) known.addAll(_knownAdultIds);
+      _knownAdultIds = known;
+      _adultSignalsProfile = owner;
+    }
     final List<CinemaSource> out = <CinemaSource>[];
     for (final Playlist p in all) {
       if (p.type != PlaylistType.xtream) continue;
@@ -350,6 +381,7 @@ class CinemaRepository {
     if (keep) {
       _cats[kind] = visible;
       _catKeys[kind] = fetched.keys;
+      _rememberCategorySignals(kind, fetched.categories);
       _loadedAt ??= DateTime.now();
       if (fetched.categories.isNotEmpty) {
         _persisted[kind] = false;
@@ -381,10 +413,48 @@ class CinemaRepository {
   /// dans une catégorie générale ; le code parental ne peut pas les réactiver.
   static bool _allowsTitle(CinemaTitle title) => NovatubeContentPolicy.canImport(
         name: title.name, category: title.categoryKey,
+        declaredAdult: title.declaredAdult,
       );
 
-  static List<CinemaTitle> _visibleTitles(List<CinemaTitle> titles) =>
-      titles.where(_allowsTitle).toList(growable: false);
+  List<CinemaTitle> _visibleTitles(List<CinemaTitle> titles) =>
+      titles.map(_withKnownAdult).where(_allowsTitle).toList(growable: false);
+
+  CinemaTitle _withKnownAdult(CinemaTitle title) =>
+      CinemaAdultSignals.apply(title, _knownAdultIds);
+
+  Future<void> _rememberDetailedAdult(CinemaTitle title, CinemaSource source,
+      String owner, {Iterable<String> relatedIds = const <String>[],
+      bool includeTitle = true}) async {
+    final Set<String> ids = <String>{if (includeTitle) title.id, ...relatedIds};
+    if (ids.isEmpty) return;
+    try {
+      await CinemaAdultSignals.rememberMany(profileId: owner,
+          playlistId: source.playlistId, titleIds: ids);
+    } catch (_) {
+      // Une panne disque ne doit jamais retirer l'information reçue à l'écran.
+      BlackBox.instance.warn('CINEMA', 'classement adulte non enregistré sur disque');
+    }
+    if (owner != ActiveProfile.instance.id) return;
+    _knownAdultIds.addAll(ids);
+    for (final String key in _titles.keys.toList()) {
+      _titles[key] = _visibleTitles(_titles[key]!);
+    }
+    _index = _visibleTitles(_index);
+    _indexCounts = <String, int>{};
+    for (final CinemaTitle current in _index) {
+      _indexCounts[current.categoryKey] = (_indexCounts[current.categoryKey] ?? 0) + 1;
+    }
+    _recent = null;
+    indexVersion.value++;
+    DownloadsRepository.instance.declareAdult(profileId: owner, ids: ids);
+    try {
+      await WatchProgressRepository.instance.declareAdult(
+          profileId: owner, ids: ids);
+    } catch (_) {
+      // La preuve SQLite sera réappliquée lors du prochain chargement du profil.
+      BlackBox.instance.warn('CINEMA', 'classement de reprise non enregistré');
+    }
+  }
 
   static bool _allowsCategory(CinemaCategory category) =>
       NovatubePrivateFeatures.adultCatalogs ||
@@ -472,6 +542,7 @@ class CinemaRepository {
     bool anyOk = false;
     bool anyFail = false;
     for (final CategoryRef part in cat.parts) {
+      if (!NovatubePrivateFeatures.adultCatalogs && part.declaredAdult) continue;
       final CinemaSource? s = sourceByKey(part.sourceKey);
       if (s == null) {
         anyFail = true;
@@ -488,7 +559,9 @@ class CinemaRepository {
           continue;
         }
         anyOk = true;
-        all.addAll(await _mapInIsolate(b, kind, s, cat.key));
+        all.addAll(await _mapInIsolate(b, kind, s, cat.key,
+            requestedCategoryId: part.categoryId,
+            requestedCategoryAdult: part.declaredAdult || cat.isAdult));
       } catch (e) {
         anyFail = true;
         BlackBox.instance.warn('CINEMA', '${s.key} « ${cat.name} » : $e');
@@ -504,7 +577,8 @@ class CinemaRepository {
 
   Future<List<CinemaTitle>> _mapInIsolate(
       Uint8List bytes, CinemaKind kind, CinemaSource s, String fallbackKey,
-      {int max = kCinemaCategoryMax}) {
+      {int max = kCinemaCategoryMax, String? requestedCategoryId,
+      bool requestedCategoryAdult = false}) {
     return compute(
       mapTitlesJob,
       TitlesJob(
@@ -513,6 +587,12 @@ class CinemaRepository {
         source: s,
         categoryKeyById: _catKeys[kind]?[s.key] ?? const <String, String>{},
         fallbackCategoryKey: fallbackKey,
+        declaredAdultCategoryIds: <String>{
+          ...?_adultCatIds[kind]?[s.key],
+          if (requestedCategoryAdult && requestedCategoryId != null)
+            requestedCategoryId,
+        },
+        fallbackDeclaredAdult: requestedCategoryAdult,
         max: max,
       ),
     ).then(_visibleTitles);
@@ -536,7 +616,7 @@ class CinemaRepository {
     final Set<String> seen = <String>{};
     final List<CinemaTitle> out = <CinemaTitle>[];
     for (final CinemaTitle t in all) {
-      if (seen.add('${t.searchKey}|${t.year ?? ''}')) out.add(t);
+      if (seen.add('${t.searchKey}|${t.year ?? ''}|${t.isAdult}')) out.add(t);
     }
     return out;
   }
@@ -586,7 +666,7 @@ class CinemaRepository {
           complete = false;
           return;
         }
-        if (seen.add('${t.searchKey}|${t.year ?? ''}')) acc.add(t);
+        if (seen.add('${t.searchKey}|${t.year ?? ''}|${t.isAdult}')) acc.add(t);
       }
     }
 
@@ -640,13 +720,16 @@ class CinemaRepository {
         }
         for (final CategoryRef part in c.parts) {
           if (part.sourceKey != s.key) continue;
+          if (!NovatubePrivateFeatures.adultCatalogs && part.declaredAdult) continue;
           try {
             final Uint8List? b = await _fetchWithRetry(
               s,
               action,
               <String, String>{'category_id': part.categoryId},
             );
-            if (b != null) add(await _mapInIsolate(b, kind, s, c.key));
+            if (b != null) add(await _mapInIsolate(b, kind, s, c.key,
+                requestedCategoryId: part.categoryId,
+                requestedCategoryAdult: part.declaredAdult || c.isAdult));
           } catch (e) {
             complete = false; // cette catégorie devra être relue en direct
             BlackBox.instance.warn('CINEMA', 'index « ${c.name} » : $e');
@@ -674,12 +757,16 @@ class CinemaRepository {
   /// Nombre de titres d'une catégorie (null tant que l'index n'est pas fini).
   /// Pas de compteur si l'index est partiel : mieux vaut aucun chiffre
   /// qu'un chiffre faux (« 0 » sur une catégorie pleine).
-  int? countFor(CinemaKind kind, String catKey) =>
-      indexReady(kind) && _indexComplete ? (_indexCounts[catKey] ?? 0) : null;
+  int? countFor(CinemaKind kind, String catKey, {bool? adultOnly}) {
+    if (!indexReady(kind) || !_indexComplete) return null;
+    if (adultOnly == null) return _indexCounts[catKey] ?? 0;
+    return _index.where((CinemaTitle t) =>
+        t.categoryKey == catKey && t.isAdult == adultOnly).length;
+  }
 
   /// « Récemment ajoutés » (depuis l'index, du plus récent au plus ancien).
   List<CinemaTitle> recent(CinemaKind kind,
-      {Set<String>? allowedCats, int max = 80}) {
+      {Set<String>? allowedCats, int max = 80, bool? adultOnly}) {
     if (_indexKind != kind || _index.isEmpty) return const <CinemaTitle>[];
     final List<CinemaTitle> sorted = _recent ??= (List<CinemaTitle>.of(
         _index.where((CinemaTitle t) => t.addedAt > 0))
@@ -687,12 +774,14 @@ class CinemaRepository {
     final Iterable<CinemaTitle> it = allowedCats == null
         ? sorted
         : sorted.where((CinemaTitle t) => allowedCats.contains(t.categoryKey));
-    return it.where(_allowsTitle).take(max).toList(growable: false);
+    return it.where((CinemaTitle t) => _allowsTitle(t) &&
+        (adultOnly == null || t.isAdult == adultOnly))
+        .take(max).toList(growable: false);
   }
 
   /// Recherche (tous les mots de la requête doivent être dans le nom).
   List<CinemaTitle> search(CinemaKind kind, String query,
-      {Set<String>? allowedCats, int max = 80}) {
+      {Set<String>? allowedCats, int max = 80, bool? adultOnly}) {
     final List<String> words = CinemaLanguage.searchKey(query)
         .split(' ')
         .where((String w) => w.isNotEmpty)
@@ -710,6 +799,7 @@ class CinemaRepository {
     final List<CinemaTitle> out = <CinemaTitle>[];
     for (final CinemaTitle t in pool) {
       if (!_allowsTitle(t)) continue;
+      if (adultOnly != null && t.isAdult != adultOnly) continue;
       if (allowedCats != null && !allowedCats.contains(t.categoryKey)) continue;
       bool ok = true;
       for (final String w in words) {
@@ -746,6 +836,10 @@ class CinemaRepository {
       }
       final CinemaDetails d =
           b == null ? CinemaDetails.empty : parseVodInfo(decodeJsonBytes(b));
+      if (d.declaredAdult) await _rememberDetailedAdult(t, s, owner);
+      if (owner != ActiveProfile.instance.id || generation != _catalogGen) {
+        return CinemaDetails.empty;
+      }
       _details[t.id] = d;
       while (_details.length > 200) {
         _details.remove(_details.keys.first);
@@ -782,8 +876,18 @@ class CinemaRepository {
           source: s,
           seriesId: t.id,
           name: t.name,
+          declaredAdult: t.declaredAdult,
         ),
       );
+      if (owner != ActiveProfile.instance.id || generation != _catalogGen) return null;
+      if (d.details.declaredAdult) {
+        await _rememberDetailedAdult(t, s, owner,
+            relatedIds: d.allInOrder.map((CinemaEpisode e) => e.id));
+      } else {
+        await _rememberDetailedAdult(t, s, owner, includeTitle: false,
+            relatedIds: d.allInOrder.where((CinemaEpisode e) => e.isAdult)
+                .map((CinemaEpisode e) => e.id));
+      }
       if (owner != ActiveProfile.instance.id || generation != _catalogGen) return null;
       _series[t.id] = d;
       while (_series.length > 20) {
@@ -802,6 +906,8 @@ class CinemaRepository {
     _sourceProfile = ActiveProfile.instance.id;
     _sourcesSig = '';
     _sources = const <CinemaSource>[];
+    _adultSignalsProfile = null;
+    _knownAdultIds = <String>{};
     _folderSig = null;
     clear();
   }
@@ -819,6 +925,7 @@ class CinemaRepository {
     _clients.clear();
     _cats.clear();
     _catKeys.clear();
+    _adultCatIds.clear();
     _titles.clear();
     _details.clear();
     _series.clear();
@@ -897,6 +1004,18 @@ class CinemaRepository {
     }
   }
 
+  void _rememberCategorySignals(CinemaKind kind, Iterable<CinemaCategory> cats) {
+    final Map<String, Set<String>> bySource = <String, Set<String>>{};
+    for (final CinemaCategory category in cats) {
+      for (final CategoryRef part in category.parts) {
+        if (part.declaredAdult || category.isAdult) {
+          bySource.putIfAbsent(part.sourceKey, () => <String>{}).add(part.categoryId);
+        }
+      }
+    }
+    _adultCatIds[kind] = bySource;
+  }
+
   void _installHeader(CinemaKind kind, CatalogHeader header) {
     final List<CinemaCategory> cats = <CinemaCategory>[
       for (final CatalogCategoryRecord record in header.categories)
@@ -913,6 +1032,7 @@ class CinemaRepository {
       }
     }
     _catKeys[kind] = keys;
+    _rememberCategorySignals(kind, cats);
     _loadedAt = header.updatedAt;
     _updatedAt[kind] = header.updatedAt;
   }
@@ -944,7 +1064,7 @@ class CinemaRepository {
       if (rows == null) return const <VodMovie>[];
       for (final CatalogTitleRecord row in rows) {
         if (row.kind != CinemaKind.movie) continue;
-        final CinemaTitle title = row.toCinemaTitle(sourceByKey(row.sourceKey));
+        final CinemaTitle title = _withKnownAdult(row.toCinemaTitle(sourceByKey(row.sourceKey)));
         if (!_allowsTitle(title)) continue;
         final String? url = title.streamUrl;
         if (url == null || url.isEmpty) continue;
@@ -952,6 +1072,7 @@ class CinemaRepository {
           id: title.id,
           name: title.name,
           category: names[title.categoryKey] ?? title.categoryKey,
+          declaredAdult: title.declaredAdult,
           streamUrl: url,
           containerExt: title.containerExt,
           posterUrl: title.posterUrl,
@@ -1043,9 +1164,9 @@ class CinemaRepository {
           hitCap = true;
           break;
         }
-        final CinemaTitle title = row.toCinemaTitle(sourceByKey(row.sourceKey));
+        final CinemaTitle title = _withKnownAdult(row.toCinemaTitle(sourceByKey(row.sourceKey)));
         if (!_allowsTitle(title)) continue;
-        if (seen.add('${title.searchKey}|${title.year ?? ''}')) acc.add(title);
+        if (seen.add('${title.searchKey}|${title.year ?? ''}|${title.isAdult}')) acc.add(title);
       }
       if (hitCap) break;
     }
@@ -1071,22 +1192,22 @@ class CinemaRepository {
         : 'get_series_categories';
     bool anySuccess = false;
     bool anyFailure = false;
-    final List<List<({String id, String name})>> perSource =
-        await Future.wait(<Future<List<({String id, String name})>>>[
+    final List<List<({String id, String name, bool declaredAdult})>> perSource =
+        await Future.wait(<Future<List<({String id, String name, bool declaredAdult})>>>[
       for (final CinemaSource s in srcs)
         () async {
           try {
             final Uint8List? b = await _client(s).fetchActionBytes(action);
             if (b == null) {
               anyFailure = true;
-              return const <({String id, String name})>[];
+              return const <({String id, String name, bool declaredAdult})>[];
             }
             anySuccess = true;
-            return parseCategories(decodeJsonBytes(b));
+            return parseCategoriesWithSignals(decodeJsonBytes(b));
           } catch (e) {
             anyFailure = true;
             BlackBox.instance.warn('CINEMA', '${s.key} $action : $e');
-            return const <({String id, String name})>[];
+            return const <({String id, String name, bool declaredAdult})>[];
           }
         }(),
     ]);
@@ -1099,14 +1220,14 @@ class CinemaRepository {
       final CinemaSource s = srcs[i];
       final Map<String, String> byId =
           keys.putIfAbsent(s.key, () => <String, String>{});
-      for (final ({String id, String name}) c in perSource[i]) {
+      for (final ({String id, String name, bool declaredAdult}) c in perSource[i]) {
         final String pretty = ChannelClassifier.prettifyCategory(c.name);
         final String key = CinemaLanguage.searchKey(pretty);
         byId[c.id] = key;
         merged
             .putIfAbsent(key, () => _CatBuilder(pretty))
             .parts
-            .add(CategoryRef(s.key, c.id));
+            .add(CategoryRef(s.key, c.id, declaredAdult: c.declaredAdult));
       }
     }
     final List<CinemaCategory> out = <CinemaCategory>[
@@ -1150,7 +1271,8 @@ class CinemaRepository {
             fileId: '',
             parts: <CatalogPartRecord>[
               for (final CategoryRef part in category.parts)
-                CatalogPartRecord(part.sourceKey, part.categoryId),
+                CatalogPartRecord(part.sourceKey, part.categoryId,
+                    declaredAdult: part.declaredAdult),
             ],
           ),
       ]);
@@ -1176,6 +1298,7 @@ class CinemaRepository {
     }
     final List<CinemaTitle> all = <CinemaTitle>[];
     for (final CatalogPartRecord part in category.parts) {
+      if (!NovatubePrivateFeatures.adultCatalogs && part.declaredAdult) continue;
       final CinemaSource? source = sourceByKey(part.sourceKey);
       if (source == null) {
         return const CatalogFetchResult<List<CatalogTitleRecord>>.fail();
@@ -1188,7 +1311,9 @@ class CinemaRepository {
         if (bytes == null) {
           return const CatalogFetchResult<List<CatalogTitleRecord>>.fail();
         }
-        all.addAll(await _mapInIsolate(bytes, kind, source, category.key));
+        all.addAll(await _mapInIsolate(bytes, kind, source, category.key,
+            requestedCategoryId: part.categoryId,
+            requestedCategoryAdult: part.declaredAdult || category.isAdult));
       } catch (e) {
         BlackBox.instance.warn('CINEMA', 'morceau « ${category.name} » : $e');
         return const CatalogFetchResult<List<CatalogTitleRecord>>.fail();
@@ -1251,13 +1376,15 @@ SeriesDetails _seriesInIsolate(
       TransferableTypedData payload,
       CinemaSource source,
       String seriesId,
-      String name
+      String name,
+      bool declaredAdult
     }) job) {
   return parseSeriesInfo(
     decodeJsonBytes(job.payload.materialize().asUint8List()),
     source: job.source,
     seriesId: job.seriesId,
     seriesName: job.name,
+    declaredAdult: job.declaredAdult,
   );
 }
 

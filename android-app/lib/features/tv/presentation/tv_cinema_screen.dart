@@ -18,7 +18,7 @@
 //    défaut, la langue de l'app si le catalogue en propose (≥ 3
 //    catégories), sinon « Toutes ». Le choix est retenu.
 //  • MODE ENFANTS : seules les catégories enfants restent visibles.
-//  • ADULTE : catégories verrouillées, code parental à l'ouverture.
+//  • ADULTE : titres triés dans un espace séparé, protégé à l'ouverture.
 //  • OK sur une affiche : fiche du film / page de la série. OK dans
 //    « Continuer » : lecture directe à l'endroit quitté.
 // =========================================================
@@ -51,9 +51,15 @@ import 'tv_shell.dart';
 import 'tv_touch_components.dart';
 
 class TvCinemaScreen extends StatefulWidget {
-  const TvCinemaScreen({super.key, required this.kind, this.adultOnly = false});
+  const TvCinemaScreen({
+    super.key,
+    required this.kind,
+    this.adultOnly = false,
+    this.repository,
+  });
   final CinemaKind kind;
   final bool adultOnly;
+  final CinemaRepository? repository;
 
   @override
   State<TvCinemaScreen> createState() => _TvCinemaScreenState();
@@ -70,11 +76,12 @@ class _Sel {
 }
 
 class _TvCinemaScreenState extends State<TvCinemaScreen> {
-  final CinemaRepository _repo = CinemaRepository.instance;
+  late final CinemaRepository _repo =
+      widget.repository ?? CinemaRepository.instance;
 
   bool _loadingCats = true;
 
-  /// Pas de compte Xtream : le message « ajoute ton abonnement ».
+  /// Pas de compte Xtream : invitation à ajouter sa source personnelle.
   bool _accountsMissing = false;
 
   /// Compte présent, mais ni cache ni réponse du serveur.
@@ -240,21 +247,26 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
   bool get _kids => ParentalControls.instance.kidsMode.value;
 
   bool _categoryVisible(CinemaCategory category) {
+    // Un titre adulte peut être rangé par son fournisseur dans un dossier
+    // ordinaire. Dans +18, on garde ces dossiers, puis on trie les titres
+    // chargés à la demande : aucun balayage supplémentaire du catalogue.
+    if (widget.adultOnly) return _adultUnlocked;
     final bool adult = category.isAdult ||
         NovatubeContentPolicy.isAdult(
           name: category.name,
           category: category.key,
         );
-    return widget.adultOnly ? _adultUnlocked && adult : !adult;
+    return !adult;
   }
 
   bool _titleVisible(CinemaTitle title) {
-    final bool adult = NovatubeContentPolicy.isAdult(
-      name: title.name,
-      category: title.categoryKey,
-    );
+    final bool adult = title.isAdult;
     return widget.adultOnly ? _adultUnlocked && adult : !adult;
   }
+
+  String _categoryLabel(CinemaCategory category) => widget.adultOnly
+      ? context.l10n.tvAdultSourceFolder(category.name)
+      : category.name;
 
   List<CinemaCategory> get _visibleCats {
     final bool kids = _kids;
@@ -279,12 +291,19 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
           if (!c.isAdult || _adultUnlocked) c.key,
       };
 
+  List<CinemaTitle> get _recent => _repo.recent(
+        widget.kind,
+        allowedCats: _allowedKeys,
+        adultOnly: widget.adultOnly,
+      );
+
   List<WatchEntry> get _continue => WatchProgressRepository.instance
           .continueWatching(episodes: !_movies)
           .where((WatchEntry entry) {
         final bool adult = NovatubeContentPolicy.isAdult(
-          name: entry.title,
+          name: '${entry.title} ${entry.subtitle ?? ""}',
           category: entry.categoryKey,
+          declaredAdult: entry.declaredAdult,
         );
         return widget.adultOnly ? _adultUnlocked && adult : !adult;
       }).toList(growable: false);
@@ -295,6 +314,7 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
         final bool adult = NovatubeContentPolicy.isAdult(
           name: d.name,
           category: d.category,
+          declaredAdult: d.declaredAdult,
         );
         return widget.adultOnly ? _adultUnlocked && adult : !adult;
       }).toList(growable: false);
@@ -457,7 +477,13 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
   void _runSearch() {
     final List<CinemaTitle> r = _q.trim().isEmpty
         ? const <CinemaTitle>[]
-        : _repo.search(widget.kind, _q, allowedCats: _allowedKeys, max: 60);
+        : _repo.search(
+            widget.kind,
+            _q,
+            allowedCats: _allowedKeys,
+            adultOnly: widget.adultOnly,
+            max: 60,
+          );
     if (mounted)
       setState(() => _results = r.where(_titleVisible).toList(growable: false));
   }
@@ -496,7 +522,7 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
     if (!mounted) return;
     await openVod(
       context,
-      VodPlayItem.entry(e),
+      VodPlayItem.entry(e, details: d?.details),
       series: d,
       seriesTitle: series,
     );
@@ -506,7 +532,7 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
     final bool isEp = d.id.contains(':e:');
     final WatchEntry? w = WatchProgressRepository.instance.get(d.id);
     final VodPlayItem item = w != null
-        ? VodPlayItem.entry(w)
+        ? VodPlayItem.entry(w, declaredAdult: d.declaredAdult)
         : VodPlayItem(
             id: d.id,
             isEpisode: isEp,
@@ -514,6 +540,7 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
             url: d.sourceUrl,
             posterUrl: d.posterUrl,
             categoryKey: d.category,
+            declaredAdult: d.declaredAdult,
           );
     await showCinemaSheet(
       context,
@@ -590,13 +617,16 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
             label: context.l10n.tvCinemaDownloads,
             selection: const _Sel(_View.downloads),
           ),
-        if (_repo.recent(widget.kind, allowedCats: _allowedKeys).isNotEmpty)
+        if (_recent.isNotEmpty)
           (
             label: context.l10n.tvCinemaRecent,
             selection: const _Sel(_View.recent),
           ),
         for (final CinemaCategory category in _visibleCats)
-          (label: category.name, selection: _Sel(_View.category, category)),
+          (
+            label: _categoryLabel(category),
+            selection: _Sel(_View.category, category),
+          ),
       ];
       String selectedLabel = context.l10n.categoriesTitle;
       for (final option in options) {
@@ -627,8 +657,7 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
                         label: option.label,
                       ),
                   ],
-                  // _select conserve la demande du code parental pour les catégories
-                  // adultes : changer la disposition ne contourne pas cette garde.
+                  // Le changement de dossier conserve la garde d’accès +18.
                   onSelected: (String key) => _select(
                     options
                         .firstWhere((option) => option.selection.key == key)
@@ -690,10 +719,7 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
     final List<CinemaCategory> vis = _visibleCats;
     final List<WatchEntry> cont = _continue;
     final List<Download> dls = _myDownloads;
-    final List<CinemaTitle> recent = _repo.recent(
-      widget.kind,
-      allowedCats: _allowedKeys,
-    );
+    final List<CinemaTitle> recent = _recent;
     final String langLabel = _lang == null
         ? context.l10n.tvCinemaAllLanguages
         : (CinemaLanguage.labelFor(_lang) ?? _lang!);
@@ -778,8 +804,14 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
                 final bool locked = c.isAdult && !_adultUnlocked;
                 return CinemaRailRow(
                   icon: locked ? Icons.lock_rounded : null,
-                  label: c.name,
-                  count: locked ? null : _repo.countFor(widget.kind, c.key),
+                  label: _categoryLabel(c),
+                  count: locked
+                      ? null
+                      : _repo.countFor(
+                          widget.kind,
+                          c.key,
+                          adultOnly: widget.adultOnly,
+                        ),
                   autofocus: cont.isEmpty && i == 0 && _sel.cat == c,
                   selected: _sel.cat?.key == c.key,
                   onSelect: () => _select(s, explicit: true),
@@ -850,7 +882,7 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
       case _View.recent:
         return _withHero(
           context,
-          _titlesGrid(_repo.recent(widget.kind, allowedCats: _allowedKeys)),
+          _titlesGrid(_recent),
         );
       case _View.category:
         if (_loadingTitles) {
@@ -1203,6 +1235,7 @@ CinemaTitle seriesTitleFromEntry(WatchEntry e) {
     remoteId: parts.length >= 3 ? parts[2] : '',
     name: e.title,
     categoryKey: e.categoryKey,
+    declaredAdult: e.declaredAdult,
     searchKey: CinemaLanguage.searchKey(e.title),
     posterUrl: e.posterUrl,
   );

@@ -30,7 +30,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import '../../../core/app/novatube_play_policy.dart';
-import '../../../core/app/novatube_content_policy.dart';
 import '../../../core/i18n/l10n_extension.dart';
 
 import 'package:flutter/services.dart';
@@ -142,8 +141,7 @@ class _TvDiagnosticScreenState extends State<TvDiagnosticScreen> {
   Future<void> _run() async {
     // Chaîne courante : sert d'hôte IPTV (DNS) + d'URL de flux (3 et 5).
     final List<Channel> chans = PlaylistRepository.instance.currentChannels
-        .where((Channel channel) => !NovatubeContentPolicy.isAdult(
-            name: channel.name, category: channel.category))
+        .where((Channel channel) => !channel.isAdult)
         .toList(growable: false);
     final Channel? chan = chans.isEmpty
         ? null

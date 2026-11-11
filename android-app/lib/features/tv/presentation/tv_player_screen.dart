@@ -109,6 +109,7 @@ class TvPlayerScreen extends StatefulWidget {
     if (!NovatubeContentPolicy.allows(
       name: selected.name,
       category: selected.category,
+      declaredAdult: selected.declaredAdult,
     )) {
       return NovatubeUnavailableState<TvPlayerScreen>();
     }
@@ -130,7 +131,8 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   late final List<Channel> _channels = widget.channels
       .where(
         (Channel c) =>
-            NovatubeContentPolicy.allows(name: c.name, category: c.category),
+            NovatubeContentPolicy.allows(name: c.name, category: c.category,
+                declaredAdult: c.declaredAdult),
       )
       .toList(growable: false);
   late int _index = _channels.indexOf(widget.channels[widget.startIndex]);
@@ -191,9 +193,8 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   Recording? _activeRecording;
   bool _recordingBusy = false;
   bool get _isRecording => _activeRecording != null;
-  // Les enregistrements actuels n'ont pas de section protégée par PIN.
-  bool get _canRecord => !NovatubeContentPolicy.isAdult(
-      name: _current.name, category: _current.category);
+  // Les enregistrements actuels n'ont pas de section protégée.
+  bool get _canRecord => !_current.isAdult;
   String?
       _relayPlayUrl; // URL locale 127.0.0.1 utilisée pendant l'enregistrement
   String? _toastMsg; // petit message éphémère (sauvegardé / vide / échec)
@@ -423,6 +424,9 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
       case AppLifecycleState.resumed:
         if (_appActive) break;
         _appActive = true;
+        if (!NovatubeContentPolicy.allows(name: _current.name,
+            category: _current.category,
+            declaredAdult: _current.declaredAdult)) break;
         _lastProgress = DateTime.now();
         if (_castingHandoff || _controller.castSuspended) break;
         if (NativeVideoController.backgroundPauseOnly) {
@@ -443,6 +447,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     if (NovatubeContentPolicy.allows(
       name: _current.name,
       category: _current.category,
+      declaredAdult: _current.declaredAdult,
     )) return;
     _controller.suspendForBackground();
     unawaited(_desktopCastKey.currentState?.close() ?? Future<void>.value());

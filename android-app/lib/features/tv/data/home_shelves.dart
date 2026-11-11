@@ -148,20 +148,16 @@ List<WatchEntry> continueForHome(
   final List<WatchEntry> out = <WatchEntry>[];
   for (final WatchEntry e in entries) {
     if (!e.isResumable) continue;
-    if (kidsMode && _titleLooksAdult(e.title)) continue;
+    if (kidsMode && e.isAdult) continue;
     out.add(e);
     if (out.length >= max) break;
   }
   return out;
 }
 
-bool _titleLooksAdult(String title) =>
-    ChannelClassifier.classifyGenre(title, '') == ChannelGenre.adult;
-
 /// Contrôle léger sur les valeurs actuelles, avant tout pré-calcul des genres.
 /// Un fournisseur peut changer la catégorie en conservant le même id.
-bool hiddenForKids(Channel channel) =>
-    ChannelClassifier.isAdult(channel.name, channel.category);
+bool hiddenForKids(Channel channel) => channel.isAdult;
 
 /// Vrai si le texte brut contient un marqueur adulte évident.
 bool roughLooksAdult(String raw) => ChannelClassifier.isAdult(raw, '');

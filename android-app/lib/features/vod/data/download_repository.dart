@@ -44,6 +44,7 @@ class Download {
     this.posterUrl,
     this.category = '',
     this.profileId = 'p1',
+    this.declaredAdult = false,
   });
 
   final String id; // = VodMovie.id
@@ -57,6 +58,9 @@ class Download {
   final String? posterUrl;
   final String category;
   final String profileId;
+  final bool declaredAdult;
+  bool get isAdult => NovatubeContentPolicy.isAdult(
+      name: name, category: category, declaredAdult: declaredAdult);
 
   double get progress =>
       totalBytes > 0 ? (receivedBytes / totalBytes).clamp(0.0, 1.0) : 0.0;
@@ -66,6 +70,7 @@ class Download {
     DownloadStatus? status,
     int? receivedBytes,
     int? totalBytes,
+    bool? declaredAdult,
   }) {
     return Download(
       id: id,
@@ -79,6 +84,7 @@ class Download {
       posterUrl: posterUrl,
       category: category,
       profileId: profileId,
+      declaredAdult: declaredAdult ?? this.declaredAdult,
     );
   }
 
@@ -94,6 +100,7 @@ class Download {
         'poster_url': posterUrl,
         'category': category,
         'profile_id': profileId,
+        'declared_adult': declaredAdult ? 1 : 0,
       };
 
   factory Download.fromMap(Map<String, Object?> m) => Download(
@@ -111,6 +118,7 @@ class Download {
         posterUrl: m['poster_url'] as String?,
         category: (m['category'] as String?) ?? '',
         profileId: (m['profile_id'] as String?) ?? 'p1',
+        declaredAdult: m['declared_adult'] == 1,
       );
 }
 
@@ -130,6 +138,18 @@ class DownloadsRepository {
 
   Stream<List<Download>> get stream => _controller.stream;
   List<Download> get current => _cache;
+
+  /// Le catalogue vient de préciser le classement d'une ancienne copie locale.
+  /// La mise à jour SQLite a déjà eu lieu dans CinemaAdultSignals ; on rend
+  /// immédiatement ce signal visible aux écrans qui avaient chargé la liste.
+  void declareAdult({required String profileId, required Set<String> ids}) {
+    if (profileId != ActiveProfile.instance.id) return;
+    _cache = _cache.map((Download d) => ids.contains(d.id)
+        ? d.copyWith(declaredAdult: true) : d).where((Download d) =>
+        NovatubeContentPolicy.canImport(name: d.name, category: d.category,
+            declaredAdult: d.declaredAdult)).toList(growable: false);
+    _controller.add(_cache);
+  }
 
   Future<void> initialize() async {
     if (_initialized) return;
@@ -154,7 +174,8 @@ class DownloadsRepository {
         created_at INTEGER NOT NULL,
         poster_url TEXT,
         category TEXT NOT NULL DEFAULT '',
-        profile_id TEXT NOT NULL DEFAULT 'p1'
+        profile_id TEXT NOT NULL DEFAULT 'p1',
+        declared_adult INTEGER NOT NULL DEFAULT 0
       )
     ''');
     _initialized = true;
@@ -196,6 +217,7 @@ class DownloadsRepository {
     if (!NovatubeContentPolicy.allows(
       name: movie.name,
       category: movie.category,
+      declaredAdult: movie.declaredAdult,
     )) return;
     final String profileId = ActiveProfile.instance.id;
     await initialize();
@@ -221,6 +243,7 @@ class DownloadsRepository {
           posterUrl: movie.posterUrl,
           category: movie.category,
           profileId: profileId,
+          declaredAdult: movie.declaredAdult,
         );
     await _upsert(existing.copyWith(status: DownloadStatus.downloading));
     _runJob(existing);
@@ -253,7 +276,8 @@ class DownloadsRepository {
   Future<void> resume(String id) async {
     final Download? d = byId(id);
     if (d == null || d.status == DownloadStatus.done) return;
-    if (!NovatubeContentPolicy.allows(name: d.name, category: d.category))
+    if (!NovatubeContentPolicy.allows(name: d.name, category: d.category,
+        declaredAdult: d.declaredAdult))
       return;
     if (_jobs.containsKey(id)) return;
     await _upsert(d.copyWith(status: DownloadStatus.downloading));
@@ -459,11 +483,19 @@ class DownloadsRepository {
 
   Future<void> _upsert(Download d) async {
     final Database db = await PlaylistDatabase.instance.database;
-    await db.insert(
-      'downloads',
-      d.toMap(),
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    await db.transaction((Transaction txn) async {
+      // Un téléchargement en cours garde son ancien objet. Sa progression ne
+      // doit pas effacer un signal découvert entre-temps dans la fiche.
+      final List<Map<String, Object?>> previous = await txn.query('downloads',
+          columns: <String>['declared_adult'],
+          where: 'id = ? AND profile_id = ?',
+          whereArgs: <Object>[d.id, d.profileId], limit: 1);
+      final Download stored = previous.isNotEmpty &&
+          previous.single['declared_adult'] == 1
+          ? d.copyWith(declaredAdult: true) : d;
+      await txn.insert('downloads', stored.toMap(),
+          conflictAlgorithm: ConflictAlgorithm.replace);
+    });
     await _refresh();
   }
 
@@ -485,6 +517,7 @@ class DownloadsRepository {
           (Download d) => NovatubeContentPolicy.canImport(
             name: d.name,
             category: d.category,
+            declaredAdult: d.declaredAdult,
           ),
         )
         .toList();

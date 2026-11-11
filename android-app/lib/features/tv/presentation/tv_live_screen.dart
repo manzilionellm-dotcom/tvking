@@ -620,10 +620,9 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     return raw.isEmpty ? 'Autres' : raw;
   }
 
-  /// Contrôle adulte léger sur le nom/catégorie actuels. Le cache de genre
-  /// peut encore décrire l'ancienne version d'une chaîne de même identifiant.
-  static bool _hideForKids(Channel c) =>
-      ChannelClassifier.isAdult(c.name, c.category);
+  /// Le marqueur explicite du fournisseur et les métadonnées actuelles
+  /// priment sur un ancien cache de genre du même identifiant.
+  static bool _hideForKids(Channel c) => c.isAdult;
 
   void _ingest(List<Channel> channels) {
     // On garde la liste BRUTE pour pouvoir re-filtrer si le Mode Enfants change.

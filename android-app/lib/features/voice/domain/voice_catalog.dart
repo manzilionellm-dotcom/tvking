@@ -99,13 +99,9 @@ List<VoiceHit> searchCatalog({
     return true;
   }
 
-  bool adultChannel(Channel c) =>
-      hideAdult && c.genre == ChannelGenre.adult;
+  bool adultChannel(Channel c) => hideAdult && c.isAdult;
 
-  bool adultTitle(CinemaTitle t) =>
-      hideAdult &&
-      ChannelClassifier.classifyGenre(t.name, t.categoryKey) ==
-          ChannelGenre.adult;
+  bool adultTitle(CinemaTitle t) => hideAdult && t.isAdult;
 
   final List<VoiceHit> channelsOut = <VoiceHit>[];
   final List<VoiceHit> moviesOut = <VoiceHit>[];

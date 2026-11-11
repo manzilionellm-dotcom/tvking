@@ -49,6 +49,7 @@ class VodPlayItem {
     this.sourceKey = '',
     this.remoteId = '',
     this.categoryKey = '',
+    this.declaredAdult = false,
     this.seriesId,
     this.season,
     this.episode,
@@ -68,16 +69,40 @@ class VodPlayItem {
   final String sourceKey;
   final String remoteId;
   final String categoryKey;
+  final bool declaredAdult;
 
   bool get isAllowedInPlay => NovatubeContentPolicy.allows(
         name: '$title ${subtitle ?? ""}',
         category: categoryKey,
+        declaredAdult: declaredAdult,
       );
   final String? seriesId;
   final int? season;
   final int? episode;
 
-  factory VodPlayItem.movie(CinemaTitle t) => VodPlayItem(
+  /// Un signal découvert dans la fiche ne peut jamais être retiré pendant
+  /// le transfert au lecteur, à la reprise ou au téléchargement.
+  VodPlayItem withDeclaredAdult(bool signal) {
+    if (!signal || declaredAdult) return this;
+    return VodPlayItem(
+      id: id,
+      isEpisode: isEpisode,
+      title: title,
+      subtitle: subtitle,
+      url: url,
+      posterUrl: posterUrl,
+      containerExt: containerExt,
+      sourceKey: sourceKey,
+      remoteId: remoteId,
+      categoryKey: categoryKey,
+      declaredAdult: true,
+      seriesId: seriesId,
+      season: season,
+      episode: episode,
+    );
+  }
+
+  factory VodPlayItem.movie(CinemaTitle t, {CinemaDetails? details}) => VodPlayItem(
         id: t.id,
         isEpisode: false,
         title: t.name,
@@ -87,9 +112,11 @@ class VodPlayItem {
         sourceKey: t.sourceKey,
         remoteId: t.remoteId,
         categoryKey: t.categoryKey,
+        declaredAdult: t.declaredAdult || (details?.declaredAdult ?? false),
       );
 
-  factory VodPlayItem.episode(CinemaEpisode e, CinemaTitle series) =>
+  factory VodPlayItem.episode(CinemaEpisode e, CinemaTitle series,
+          {CinemaDetails? details}) =>
       VodPlayItem(
         id: e.id,
         isEpisode: true,
@@ -101,12 +128,17 @@ class VodPlayItem {
         sourceKey: series.sourceKey,
         remoteId: e.remoteId,
         categoryKey: series.categoryKey,
+        declaredAdult: e.declaredAdult ||
+            series.declaredAdult ||
+            (details?.declaredAdult ?? false),
         seriesId: series.id,
         season: e.season,
         episode: e.number,
       );
 
-  factory VodPlayItem.entry(WatchEntry e) => VodPlayItem(
+  factory VodPlayItem.entry(WatchEntry e,
+          {CinemaDetails? details, bool declaredAdult = false}) =>
+      VodPlayItem(
         id: e.id,
         isEpisode: e.isEpisode,
         title: e.title,
@@ -117,6 +149,9 @@ class VodPlayItem {
         sourceKey: e.sourceKey,
         remoteId: e.remoteId,
         categoryKey: e.categoryKey,
+        declaredAdult: e.declaredAdult ||
+            declaredAdult ||
+            (details?.declaredAdult ?? false),
         seriesId: e.seriesId,
         season: e.season,
         episode: e.episode,
@@ -133,6 +168,7 @@ class VodPlayItem {
         sourceKey: sourceKey,
         remoteId: remoteId,
         categoryKey: categoryKey,
+        declaredAdult: declaredAdult,
         seriesId: seriesId,
         season: season,
         episode: episode,
@@ -151,6 +187,7 @@ class VodPlayItem {
         streamUrl: url,
         containerExt: containerExt,
         posterUrl: posterUrl,
+        declaredAdult: declaredAdult,
       );
 }
 
@@ -180,12 +217,16 @@ Future<void> openVod(
   SeriesDetails? series,
   CinemaTitle? seriesTitle,
 }) async {
-  if (!item.isAllowedInPlay) return;
-  if (seriesTitle != null &&
-      !NovatubeContentPolicy.allows(
-        name: seriesTitle.name,
-        category: seriesTitle.categoryKey,
-      )) return;
+  item = item.withDeclaredAdult((series?.details.declaredAdult ?? false) ||
+      (seriesTitle?.declaredAdult ?? false));
+  bool allowed() => item.isAllowedInPlay &&
+      NovatubeContentPolicy.allows(
+        name: seriesTitle?.name ?? item.title,
+        category: seriesTitle?.categoryKey ?? item.categoryKey,
+        declaredAdult: (seriesTitle?.declaredAdult ?? false) ||
+            (series?.details.declaredAdult ?? false),
+      );
+  if (!allowed()) return;
   await WatchProgressRepository.instance.load();
   final WatchEntry? prev = WatchProgressRepository.instance.get(item.id);
   // Même règle pour la rangée « Reprendre », la fiche, et « Depuis le début ».
@@ -194,7 +235,7 @@ Future<void> openVod(
     fromStart: fromStart,
   ).at;
   final String? local = await offlinePathFor(item.id);
-  if (!context.mounted) return;
+  if (!context.mounted || !allowed()) return;
   await Navigator.of(context).push(
     MaterialPageRoute<void>(
       builder: (_) => TvVodPlayerScreen(

@@ -1,4 +1,4 @@
-// Régression de la vraie migration SQLite v7 → v8. Aucun serveur contacté.
+// Régression de la vraie migration SQLite v7 → v9. Aucun serveur contacté.
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -128,7 +128,7 @@ void main() {
     expect(await EpgRepository.instance.currentProgram('legacy-1'), isNull);
 
     final Database db = await PlaylistDatabase.instance.database;
-    expect(await db.getVersion(), 8);
+    expect(await db.getVersion(), 9);
     final List<Map<String, Object?>> rows = await db.query('playlists');
     expect(rows, hasLength(11));
     expect(rows.every((Map<String, Object?> row) =>
@@ -136,6 +136,9 @@ void main() {
     final Map<String, Object?> download = (await db.query('downloads')).single;
     expect(download['profile_id'], ProfileIds.origin);
     expect(download['category'], '');
+    expect(download['declared_adult'], 0);
+    expect((await db.query('channels')).every((Map<String, Object?> row) =>
+        row['declared_adult'] == 0), isTrue);
     expect(download['name'], 'Documentaire conservé');
 
     await profiles.activate(ProfileIds.origin, leaveAllowed: true);
