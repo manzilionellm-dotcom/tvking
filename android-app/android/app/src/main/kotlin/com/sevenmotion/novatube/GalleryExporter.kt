@@ -416,11 +416,16 @@ class GalleryExporter(
                     // demander une conversion au lieu d'inventer des PTS.
                     if (Build.VERSION.SDK_INT < 25 && prev != null && pts < prev) return null
                     lastPts[dstTrack] = pts
+                    // Le TS peut mélanger des séparateurs AVC de trois et de
+                    // quatre octets. Ne jamais envoyer ce mélange au parseur
+                    // natif MP4 : seuls les séparateurs vidéo sont réécrits.
+                    val videoSample = extractor.sampleTrackIndex == source.videoTrack
+                    val muxData = if (videoSample) GalleryExportPolicy.avcAnnexBForMp4(buffer, sampleSize) else buffer
                     bufferInfo.offset = 0
-                    bufferInfo.size = sampleSize
+                    bufferInfo.size = if (videoSample) muxData.remaining() else sampleSize
                     bufferInfo.presentationTimeUs = pts
                     bufferInfo.flags = sampleFlagsToBufferFlags(extractor.sampleFlags)
-                    muxer.writeSampleData(dstTrack, buffer, bufferInfo)
+                    muxer.writeSampleData(dstTrack, muxData, bufferInfo)
                     sampleCounts[dstTrack] = (sampleCounts[dstTrack] ?: 0) + 1
                 }
                 extractor.advance()

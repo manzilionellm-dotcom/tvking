@@ -32,6 +32,18 @@ la conversion conserve ensuite les vrais codecs Android de l'appareil. Le MP4
 final reste contrôlé par l'extracteur Android natif, et la capacité matérielle
 du téléphone reste nécessaire pour décoder puis encoder le format demandé.
 
+Avant le remux H.264, chaque séparateur Annex-B de trois octets est normalisé
+en quatre octets : les NAL vidéo, leur ordre, les horodatages et la piste AAC
+restent inchangés. Le parseur natif `MPEG4Writer` soustrait quatre octets entre
+deux NAL ; lui transmettre les séparateurs mixtes du TS peut tronquer un NAL
+ou arrêter le processus avec une taille d'écriture négative. Le run nº11 a
+enregistré cet arrêt dans `addMultipleLengthPrefixedSamples_l`.
+Le correctif refuse les NAL vides ou mal formés et applique la limite de
+64 Mio après l'expansion, avant toute allocation ou écriture native. Des
+tests JVM vérifient les octets préservés et les tampons directs/lecture seule ;
+les trois tests Android et leurs exigences de durée, d'images et de son
+restent obligatoires pour autoriser la publication.
+
 Android 10 et plus utilise MediaStore sans accès global à la galerie. Android
 7 à 9 demande la permission d'écriture historique, limitée par `maxSdkVersion=28`.
 Le REC reste désactivé dans l'espace +18 : un export public dans la galerie

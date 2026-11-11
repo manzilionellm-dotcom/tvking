@@ -1,5 +1,7 @@
 package com.sevenmotion.novatube
 
+import java.nio.ByteBuffer
+import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertFailsWith
@@ -9,6 +11,72 @@ import org.junit.Test
 
 class GalleryExportPolicyTest {
     private val policy = GalleryExportPolicy
+
+    private fun sampleBytes(buffer: ByteBuffer): ByteArray =
+        ByteArray(buffer.remaining()).also { buffer.duplicate().get(it) }
+
+    @Test fun threeByteAvcPrefixIsExpandedWithoutChangingPayloadOrSource() {
+        val bytes = byteArrayOf(0, 0, 1, 0x65, 0x11, 0x22)
+        val input = ByteBuffer.wrap(bytes).apply { position(2) }
+        val result = policy.avcAnnexBForMp4(input, bytes.size)
+        assertContentEquals(byteArrayOf(0, 0, 0, 1, 0x65, 0x11, 0x22), sampleBytes(result))
+        assertEquals(2, input.position())
+        assertEquals(bytes.size, input.limit())
+        assertContentEquals(byteArrayOf(0, 0, 1, 0x65, 0x11, 0x22), bytes)
+    }
+
+    @Test fun mixedAvcPrefixesKeepNalOrderAndEmulationPreventionBytes() {
+        val input = byteArrayOf(0, 0, 0, 1, 0x67, 0x42, 0, 0, 3, 1,
+            0, 0, 1, 0x68, 0x11, 0, 0, 1, 0x65, 0x22)
+        val expected = byteArrayOf(0, 0, 0, 1, 0x67, 0x42, 0, 0, 3, 1,
+            0, 0, 0, 1, 0x68, 0x11, 0, 0, 0, 1, 0x65, 0x22)
+        assertContentEquals(expected, sampleBytes(policy.avcAnnexBForMp4(ByteBuffer.wrap(input), input.size)))
+        assertContentEquals(expected, sampleBytes(policy.avcAnnexBForMp4(ByteBuffer.wrap(expected), expected.size)))
+    }
+
+    @Test fun directAndReadOnlyAvcBuffersRespectTheDeclaredSampleBoundary() {
+        val bytes = byteArrayOf(0, 0, 1, 0x65, 0x11, 0x22)
+        val expected = byteArrayOf(0, 0, 0, 1, 0x65, 0x11, 0x22)
+        val heap = ByteBuffer.allocate(bytes.size + 4).apply {
+            put(bytes); put(byteArrayOf(0, 0, 1, 0)); position(1); limit(bytes.size)
+        }
+        val direct = ByteBuffer.allocateDirect(bytes.size + 4).apply {
+            put(bytes); put(byteArrayOf(0, 0, 1, 0)); position(1); limit(bytes.size)
+        }
+        for (input in listOf(heap, heap.asReadOnlyBuffer(), direct, direct.asReadOnlyBuffer())) {
+            assertContentEquals(expected, sampleBytes(policy.avcAnnexBForMp4(input, bytes.size)))
+            assertEquals(1, input.position())
+            assertEquals(bytes.size, input.limit())
+            assertFailsWith<IllegalArgumentException> { policy.avcAnnexBForMp4(input, bytes.size + 1) }
+        }
+    }
+
+    @Test fun emptyOrTruncatedAvcNalNeverReachesTheNativeMuxer() {
+        val malformed = listOf(
+            byteArrayOf(), byteArrayOf(0, 0, 1), byteArrayOf(0, 0, 0, 1),
+            byteArrayOf(0, 0, 1, 0x65, 0, 0, 1),
+            byteArrayOf(0, 0, 1, 0, 0, 1, 0x65),
+            byteArrayOf(1, 0, 0, 1, 0x65),
+            byteArrayOf(0, 0, 1, 0x80.toByte()), byteArrayOf(0, 0, 1, 0),
+        )
+        for (bytes in malformed) {
+            assertFailsWith<IllegalArgumentException> {
+                policy.avcAnnexBForMp4(ByteBuffer.wrap(bytes), bytes.size)
+            }
+        }
+    }
+
+    @Test fun avcLimitAlsoAppliesAfterPrefixExpansion() {
+        val bytes = byteArrayOf(0, 0, 1, 0x65, 0x11, 0x22)
+        assertFailsWith<IllegalArgumentException> {
+            policy.avcAnnexBForMp4(ByteBuffer.wrap(bytes), bytes.size, maxBytes = bytes.size)
+        }
+        assertEquals(bytes.size + 1,
+            policy.avcAnnexBForMp4(ByteBuffer.wrap(bytes), bytes.size, maxBytes = bytes.size + 1).remaining())
+        assertFailsWith<IllegalArgumentException> {
+            policy.avcAnnexBForMp4(ByteBuffer.wrap(bytes), bytes.size, maxBytes = policy.MAX_SAMPLE_BYTES + 1)
+        }
+    }
 
     @Test fun remuxRequiresAvcAndAac() {
         assertTrue(policy.canRemux("video/avc", "audio/mp4a-latm", true))

@@ -1,5 +1,6 @@
 package com.sevenmotion.novatube
 
+import java.nio.ByteBuffer
 import kotlin.math.max
 import kotlin.math.min
 
@@ -13,6 +14,61 @@ internal object GalleryExportPolicy {
 
     fun canRemux(videoMime: String?, audioMime: String?, sourceHasAudio: Boolean): Boolean =
         videoMime == AVC && (if (sourceHasAudio) audioMime == AAC else audioMime == null)
+
+    /**
+     * MediaMuxer attend des séparateurs AVC de quatre octets. Le TS peut
+     * fournir 00 00 01 : MPEG4Writer soustrait pourtant quatre et peut
+     * provoquer un abort natif. Seuls les séparateurs sont normalisés.
+     * Le contenu des NAL, leur ordre et le tampon source restent intacts.
+     */
+    fun avcAnnexBForMp4(
+        sample: ByteBuffer,
+        size: Int,
+        maxBytes: Int = MAX_SAMPLE_BYTES,
+    ): ByteBuffer {
+        require(maxBytes in 4..MAX_SAMPLE_BYTES && size in 4..maxBytes && size <= sample.limit()) {
+            "Taille de l'échantillon AVC invalide"
+        }
+        fun prefixAt(at: Int): Int {
+            if (at + 3 < size && sample.get(at).toInt() == 0 && sample.get(at + 1).toInt() == 0 &&
+                sample.get(at + 2).toInt() == 0 && sample.get(at + 3).toInt() == 1) return 4
+            if (at + 2 < size && sample.get(at).toInt() == 0 && sample.get(at + 1).toInt() == 0 &&
+                sample.get(at + 2).toInt() == 1) return 3
+            return 0
+        }
+        fun nextPrefix(from: Int): Int {
+            var at = from
+            while (at < size && prefixAt(at) == 0) at++
+            return at
+        }
+        var at = 0
+        var extra = 0
+        while (at < size) {
+            val prefix = prefixAt(at)
+            require(prefix != 0) { "Échantillon AVC sans séparateur Annex-B" }
+            val payload = at + prefix
+            val end = nextPrefix(payload)
+            require(payload < end) { "NAL AVC vide ou tronqué" }
+            val header = sample.get(payload).toInt() and 0xff
+            require(header and 0x80 == 0 && (header and 0x1f) in 1..23) { "En-tête NAL AVC invalide" }
+            if (prefix == 3) extra++
+            at = end
+        }
+        val expanded = size.toLong() + extra
+        require(expanded <= maxBytes.toLong()) { "Échantillon AVC normalisé trop volumineux" }
+        if (extra == 0) return sample.duplicate().apply { position(0); limit(size) }
+        val result = ByteBuffer.allocate(expanded.toInt())
+        at = 0
+        while (at < size) {
+            val payload = at + prefixAt(at)
+            val end = nextPrefix(payload)
+            result.put(0.toByte()).put(0.toByte()).put(0.toByte()).put(1.toByte())
+            result.put(sample.duplicate().apply { position(payload); limit(end) })
+            at = end
+        }
+        result.flip()
+        return result
+    }
 
     fun legacyPermissionRequired(api: Int): Boolean = api in 24..28
 
