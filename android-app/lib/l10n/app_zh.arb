@@ -2911,5 +2911,75 @@
   "screenCastKeepOpen": "投放期间请保持应用开启，并让两台设备连接同一 Wi-Fi 网络。",
   "castNetworkDiagnostic": "检查投屏网络",
   "castNetworkDiagnosticHelp": "检查连接和中继，不更改电视上的频道。",
-  "castDiagnosticClosePlayer": "请先返回首页，再在电视上测试频道。"
+  "castDiagnosticClosePlayer": "请先返回首页，再在电视上测试频道。",
+  "catalogLimitTitle": "目录限制",
+  "catalogLimitSummary": "已保存 {stored} 行；已读取 {read} 行；已加载 {loaded} 个频道。读取上限为 {limit} 行。",
+  "@catalogLimitSummary": {
+    "placeholders": {
+      "stored": {
+        "type": "int"
+      },
+      "read": {
+        "type": "int"
+      },
+      "loaded": {
+        "type": "int"
+      },
+      "limit": {
+        "type": "int"
+      }
+    }
+  },
+  "catalogLimitPreserved": "此读取限制不会删除任何数据。筛选条件可能会减少显示的频道数量。",
+  "catalogLimitSource": "{name}：已保存 {stored} 行，已读取 {read} 行，已加载 {loaded} 个频道。",
+  "@catalogLimitSource": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "stored": {
+        "type": "int"
+      },
+      "read": {
+        "type": "int"
+      },
+      "loaded": {
+        "type": "int"
+      }
+    }
+  },
+  "catalogLimitImport": "{name}：导入时共有 {total} 个有效条目，保留了 {retained} 个，未导入 {skipped} 个。",
+  "@catalogLimitImport": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "total": {
+        "type": "int"
+      },
+      "retained": {
+        "type": "int"
+      },
+      "skipped": {
+        "type": "int"
+      }
+    }
+  },
+  "catalogLimitKids": "目录存在限制。成年人可以在自己的个人资料中查看详情。",
+  "catalogLimitUnnamed": "来源 {id}",
+  "@catalogLimitUnnamed": {
+    "placeholders": {
+      "id": {
+        "type": "int"
+      }
+    }
+  },
+  "catalogLimitSources": "受影响的来源：{sources}",
+  "@catalogLimitSources": {
+    "placeholders": {
+      "sources": {
+        "type": "String"
+      }
+    }
+  }
 }

@@ -55,6 +55,7 @@ import 'tv_channel_loading_status.dart';
 import 'tv_live_preview.dart';
 import 'tv_source_setup.dart';
 import 'tv_player_screen.dart';
+import 'tv_catalog_limit_notice.dart';
 import 'tv_shell.dart';
 import 'tv_vip_countries_screen.dart';
 import 'tv_vip_countries_first_use.dart';
@@ -978,6 +979,10 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
   @override
   Widget build(BuildContext context) {
     if (!_accessAllowed) return const SizedBox.shrink();
+    return TvCatalogLimitFrame(child: _buildContent(context));
+  }
+
+  Widget _buildContent(BuildContext context) {
     if (_all.isEmpty) {
       // La saisie reste stable pendant la recherche du panel. Les compteurs
       // fréquents reconstruisent uniquement leur carte, jamais les champs.

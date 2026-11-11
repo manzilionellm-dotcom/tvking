@@ -2911,5 +2911,75 @@
   "screenCastKeepOpen": "Lass die App während der Übertragung geöffnet und beide Geräte im selben WLAN.",
   "castNetworkDiagnostic": "Cast-Netzwerk prüfen",
   "castNetworkDiagnosticHelp": "Prüft die Verbindung und das Relay, ohne den Sender auf dem Fernseher zu wechseln.",
-  "castDiagnosticClosePlayer": "Kehre zur Startseite zurück, bevor du Sender auf dem Fernseher testest."
+  "castDiagnosticClosePlayer": "Kehre zur Startseite zurück, bevor du Sender auf dem Fernseher testest.",
+  "catalogLimitTitle": "Katalogbegrenzung",
+  "catalogLimitSummary": "{stored} Zeilen gespeichert; {read} Zeilen gelesen; {loaded} Sender geladen. Lesegrenze: {limit} Zeilen.",
+  "@catalogLimitSummary": {
+    "placeholders": {
+      "stored": {
+        "type": "int"
+      },
+      "read": {
+        "type": "int"
+      },
+      "loaded": {
+        "type": "int"
+      },
+      "limit": {
+        "type": "int"
+      }
+    }
+  },
+  "catalogLimitPreserved": "Diese Lesegrenze löscht keine Daten. Filter können die Anzahl der angezeigten Sender verringern.",
+  "catalogLimitSource": "{name}: {stored} Zeilen gespeichert, {read} gelesen, {loaded} Sender geladen.",
+  "@catalogLimitSource": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "stored": {
+        "type": "int"
+      },
+      "read": {
+        "type": "int"
+      },
+      "loaded": {
+        "type": "int"
+      }
+    }
+  },
+  "catalogLimitImport": "{name}: {total} gültige Importeinträge, {retained} übernommen, {skipped} nicht importiert.",
+  "@catalogLimitImport": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "total": {
+        "type": "int"
+      },
+      "retained": {
+        "type": "int"
+      },
+      "skipped": {
+        "type": "int"
+      }
+    }
+  },
+  "catalogLimitKids": "Eine Katalogbegrenzung gilt. Ein Erwachsener kann die Details in seinem Profil ansehen.",
+  "catalogLimitUnnamed": "Quelle {id}",
+  "@catalogLimitUnnamed": {
+    "placeholders": {
+      "id": {
+        "type": "int"
+      }
+    }
+  },
+  "catalogLimitSources": "Betroffene Quellen: {sources}",
+  "@catalogLimitSources": {
+    "placeholders": {
+      "sources": {
+        "type": "String"
+      }
+    }
+  }
 }

@@ -1481,5 +1481,75 @@
   "screenCastKeepOpen": "Håll appen öppen och båda enheterna på samma Wi-Fi-nätverk medan du castar.",
   "castNetworkDiagnostic": "Kontrollera Cast-nätverket",
   "castNetworkDiagnosticHelp": "Kontrollerar anslutningen och reläet utan att byta kanal på TV:n.",
-  "castDiagnosticClosePlayer": "Gå tillbaka till startsidan innan du testar kanaler på TV:n."
+  "castDiagnosticClosePlayer": "Gå tillbaka till startsidan innan du testar kanaler på TV:n.",
+  "catalogLimitTitle": "Kataloggräns",
+  "catalogLimitSummary": "{stored} rader lagrade; {read} rader lästa; {loaded} kanaler inlästa. Läsgräns: {limit} rader.",
+  "@catalogLimitSummary": {
+    "placeholders": {
+      "stored": {
+        "type": "int"
+      },
+      "read": {
+        "type": "int"
+      },
+      "loaded": {
+        "type": "int"
+      },
+      "limit": {
+        "type": "int"
+      }
+    }
+  },
+  "catalogLimitPreserved": "Den här läsgränsen raderar inga data. Filter kan minska antalet kanaler som visas.",
+  "catalogLimitSource": "{name}: {stored} rader lagrade, {read} lästa, {loaded} kanaler inlästa.",
+  "@catalogLimitSource": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "stored": {
+        "type": "int"
+      },
+      "read": {
+        "type": "int"
+      },
+      "loaded": {
+        "type": "int"
+      }
+    }
+  },
+  "catalogLimitImport": "{name}: {total} giltiga importposter, {retained} behållna, {skipped} inte importerade.",
+  "@catalogLimitImport": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "total": {
+        "type": "int"
+      },
+      "retained": {
+        "type": "int"
+      },
+      "skipped": {
+        "type": "int"
+      }
+    }
+  },
+  "catalogLimitKids": "En kataloggräns gäller. En vuxen kan se detaljerna från sin profil.",
+  "catalogLimitUnnamed": "Källa {id}",
+  "@catalogLimitUnnamed": {
+    "placeholders": {
+      "id": {
+        "type": "int"
+      }
+    }
+  },
+  "catalogLimitSources": "Berörda källor: {sources}",
+  "@catalogLimitSources": {
+    "placeholders": {
+      "sources": {
+        "type": "String"
+      }
+    }
+  }
 }

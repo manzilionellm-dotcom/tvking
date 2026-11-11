@@ -318,6 +318,11 @@ abstract final class RepairFlags {
   static const String dlnaWatchdogLegacyKey = 'zuno.dlna.watchdog_legacy';
   static bool dlnaWatchdogLegacy = false;
 
+  /// L1-04 : vrai masque seulement l’avertissement de limite. Le plafond,
+  /// les données et la trace de boîte noire restent inchangés.
+  static const String catalogLimitNoticeOffKey = 'zuno.catalog.limit_notice_off';
+  static bool catalogLimitNoticeOff = false;
+
   /// L1-07 : vrai coupe l’instrumentation native de ZUNO. Aucun réglage
   /// du moteur vidéo ne dépend de cet interrupteur.
   static const String nativeMetricsOffKey = 'zuno.player.native_metrics_off';
@@ -363,6 +368,7 @@ abstract final class RepairFlags {
     bool loadedHubIndexLegacy = false;
     bool globalTickLegacy = false;
     bool loadedNativeMetricsOff = false;
+    bool loadedCatalogLimitNoticeOff = false;
     bool loadedDlnaWatchdogLegacy = false;
     bool loadedParentalWaitImmediate = false;
     try {
@@ -406,6 +412,7 @@ abstract final class RepairFlags {
       loadedHubIndexLegacy = prefs.getBool(hubIndexLegacyKey) ?? false;
       globalTickLegacy = prefs.getBool(hubGlobalTickLegacyKey) ?? false;
       loadedNativeMetricsOff = prefs.getBool(nativeMetricsOffKey) ?? false;
+      loadedCatalogLimitNoticeOff = prefs.getBool(catalogLimitNoticeOffKey) ?? false;
       loadedDlnaWatchdogLegacy = prefs.getBool(dlnaWatchdogLegacyKey) ?? false;
       loadedParentalWaitImmediate = prefs.getBool(parentalWaitImmediateKey) ?? false;
     } catch (_) {
@@ -448,6 +455,7 @@ abstract final class RepairFlags {
       loadedHubIndexLegacy = false;
       globalTickLegacy = false;
       loadedNativeMetricsOff = false;
+      loadedCatalogLimitNoticeOff = false;
       loadedDlnaWatchdogLegacy = false;
       loadedParentalWaitImmediate = false;
     }
@@ -460,6 +468,7 @@ abstract final class RepairFlags {
     hubIndexLegacy = loadedHubIndexLegacy;
     hubGlobalTickLegacy = globalTickLegacy;
     nativeMetricsOff = loadedNativeMetricsOff;
+    catalogLimitNoticeOff = loadedCatalogLimitNoticeOff;
     dlnaWatchdogLegacy = loadedDlnaWatchdogLegacy;
     parentalWaitImmediate = loadedParentalWaitImmediate;
     orderAckOff = ackOff;
@@ -538,6 +547,7 @@ abstract final class RepairFlags {
     hubIndexLegacy = false;
     hubGlobalTickLegacy = false;
     nativeMetricsOff = false;
+    catalogLimitNoticeOff = false;
     dlnaWatchdogLegacy = false;
     parentalWaitImmediate = false;
     NativeVideoController.legacyHoldFrame = false;

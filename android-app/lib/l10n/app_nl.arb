@@ -2911,5 +2911,75 @@
   "screenCastKeepOpen": "Houd de app open en beide apparaten op hetzelfde wifi-netwerk tijdens het casten.",
   "castNetworkDiagnostic": "Cast-netwerk controleren",
   "castNetworkDiagnosticHelp": "Controleert de verbinding en de relay zonder de tv-zender te wijzigen.",
-  "castDiagnosticClosePlayer": "Ga terug naar Home voordat je zenders op de tv test."
+  "castDiagnosticClosePlayer": "Ga terug naar Home voordat je zenders op de tv test.",
+  "catalogLimitTitle": "Cataloguslimiet",
+  "catalogLimitSummary": "{stored} rijen opgeslagen; {read} rijen gelezen; {loaded} zenders geladen. Leeslimiet: {limit} rijen.",
+  "@catalogLimitSummary": {
+    "placeholders": {
+      "stored": {
+        "type": "int"
+      },
+      "read": {
+        "type": "int"
+      },
+      "loaded": {
+        "type": "int"
+      },
+      "limit": {
+        "type": "int"
+      }
+    }
+  },
+  "catalogLimitPreserved": "Deze leeslimiet verwijdert geen gegevens. Filters kunnen het aantal weergegeven zenders beperken.",
+  "catalogLimitSource": "{name}: {stored} rijen opgeslagen, {read} gelezen, {loaded} zenders geladen.",
+  "@catalogLimitSource": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "stored": {
+        "type": "int"
+      },
+      "read": {
+        "type": "int"
+      },
+      "loaded": {
+        "type": "int"
+      }
+    }
+  },
+  "catalogLimitImport": "{name}: {total} geldige importitems, {retained} behouden, {skipped} niet geïmporteerd.",
+  "@catalogLimitImport": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "total": {
+        "type": "int"
+      },
+      "retained": {
+        "type": "int"
+      },
+      "skipped": {
+        "type": "int"
+      }
+    }
+  },
+  "catalogLimitKids": "Er geldt een cataloguslimiet. Een volwassene kan de details vanuit het eigen profiel bekijken.",
+  "catalogLimitUnnamed": "Bron {id}",
+  "@catalogLimitUnnamed": {
+    "placeholders": {
+      "id": {
+        "type": "int"
+      }
+    }
+  },
+  "catalogLimitSources": "Betrokken bronnen: {sources}",
+  "@catalogLimitSources": {
+    "placeholders": {
+      "sources": {
+        "type": "String"
+      }
+    }
+  }
 }

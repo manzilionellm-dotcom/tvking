@@ -33,6 +33,7 @@ import '../../channels/domain/channel.dart';
 import 'import_progress.dart';
 import '../../../core/blackbox/black_box.dart';
 import 'playlist_import_limits.dart';
+import 'channel_limit_snapshot.dart';
 
 /// Résultat du parsing : la liste des chaînes + warnings non
 /// bloquants (lignes ignorées, attributs étranges, etc.).
@@ -40,10 +41,12 @@ class M3uParseResult {
   const M3uParseResult({
     required this.channels,
     required this.warnings,
+    this.importCounts,
   });
 
   final List<Channel> channels;
   final List<String> warnings;
+  final M3uImportCounts? importCounts;
 }
 
 abstract final class M3uParser {
@@ -54,8 +57,9 @@ abstract final class M3uParser {
   static Future<M3uParseResult> parseInBackground(
     String content, {
     required int playlistId,
+    bool reportLimit = false,
   }) {
-    return compute(_m3uParseEntry, (content, playlistId));
+    return compute(_m3uParseEntry, (content, playlistId, reportLimit));
   }
 
   /// Variante OCTETS (performance, 25/09/2026) : les octets bruts du
@@ -67,12 +71,13 @@ abstract final class M3uParser {
   static Future<M3uParseResult> parseBytesInBackground(
     Uint8List bytes, {
     required int playlistId,
+    bool reportLimit = false,
   }) {
     BlackBox.instance.breadcrumb('Analyse M3U (${(bytes.length / (1024 * 1024)).toStringAsFixed(1)} Mo, isolate)');
     ImportProgressBus.decoding(bytes.length);
     return compute(
       _m3uParseBytesEntry,
-      (TransferableTypedData.fromList(<Uint8List>[bytes]), playlistId),
+      (TransferableTypedData.fromList(<Uint8List>[bytes]), playlistId, reportLimit),
     ).then((M3uParseResult r) {
       BlackBox.instance.info('M3U', '${r.channels.length} chaînes analysées');
       ImportProgressBus.found(r.channels.length);
@@ -103,9 +108,11 @@ abstract final class M3uParser {
 
   /// Parse un contenu M3U complet (String) → liste de chaînes.
   /// [playlistId] est assigné à chaque chaîne.
-  static M3uParseResult parse(String content, {required int playlistId}) {
+  static M3uParseResult parse(String content,
+      {required int playlistId, bool reportLimit = false}) {
     final List<Channel> channels = <Channel>[];
     final List<String> warnings = <String>[];
+    int validEntries = 0;
 
     // ----- Normalisation préalable -----
 
@@ -120,7 +127,13 @@ abstract final class M3uParser {
     final Iterator<String> lines = LineSplitter.split(content).iterator;
     if (!lines.moveNext()) {
       warnings.add('Fichier vide.');
-      return M3uParseResult(channels: channels, warnings: warnings);
+      return M3uParseResult(
+        channels: channels,
+        warnings: warnings,
+        importCounts: reportLimit
+            ? const M3uImportCounts(validEntries: 0, retainedEntries: 0)
+            : null,
+      );
     }
     final bool hasHeader =
         lines.current.trim().toUpperCase().startsWith('#EXTM3U');
@@ -147,6 +160,13 @@ abstract final class M3uParser {
       // de la playlist est ignoré (la source reste utilisable, juste tronquée
       // à une taille tenable). Aligné sur le plafond de LECTURE du repository.
       if (channels.length >= kMaxChannelsPerImport) {
+        if (reportLimit) {
+          // ZUNO : compter seulement les vraies entrées restantes, sans
+          // parser EXTINF ni créer de Channel supplémentaire. Un commentaire
+          // après la 50 000e URL ne constitue pas une troncature.
+          if (!line.startsWith('#') && _looksLikeUrl(line)) validEntries++;
+          continue;
+        }
         warnings.add(
           'Limite atteinte ($kMaxChannelsPerImport chaînes) — le reste de la '
           'playlist est ignoré (garde-fou mémoire des appareils faibles).',
@@ -192,6 +212,7 @@ abstract final class M3uParser {
             '${line.length > 80 ? "${line.substring(0, 80)}…" : line}');
         continue;
       }
+      validEntries++;
 
       // Si on a une URL SANS #EXTINF avant, on l'accepte quand
       // même : c'est un M3U "simple" (juste des URLs). On génère
@@ -265,7 +286,16 @@ abstract final class M3uParser {
       );
     }
 
-    return M3uParseResult(channels: channels, warnings: warnings);
+    final counts = reportLimit
+        ? M3uImportCounts(
+            validEntries: validEntries, retainedEntries: channels.length)
+        : null;
+    if (counts?.truncated ?? false) {
+      warnings.add('Limite atteinte ($kMaxChannelsPerImport chaînes) : '
+          '${counts!.skippedEntries} entrées valides non importées.');
+    }
+    return M3uParseResult(
+        channels: channels, warnings: warnings, importCounts: counts);
   }
 
   // ============================================================
@@ -359,14 +389,15 @@ class _ExtInf {
 }
 
 // Point d'entrée de l'isolate (`compute`) pour [M3uParser.parseInBackground].
-// Top-level = forme la plus sûre pour `compute` ; le Record (String, int)
+// Top-level = forme la plus sûre pour `compute` ; le Record (String, int, bool)
 // est « sendable » entre isolates.
-M3uParseResult _m3uParseEntry((String, int) args) =>
-    M3uParser.parse(args.$1, playlistId: args.$2);
+M3uParseResult _m3uParseEntry((String, int, bool) args) =>
+    M3uParser.parse(args.$1, playlistId: args.$2, reportLimit: args.$3);
 
 /// Entrée isolate de [M3uParser.parseBytesInBackground] : matérialise les
 /// octets transférés, décode, parse. Tout hors du fil UI.
-M3uParseResult _m3uParseBytesEntry((TransferableTypedData, int) args) {
+M3uParseResult _m3uParseBytesEntry((TransferableTypedData, int, bool) args) {
   final Uint8List bytes = args.$1.materialize().asUint8List();
-  return M3uParser.parse(M3uParser.decodeBytes(bytes), playlistId: args.$2);
+  return M3uParser.parse(M3uParser.decodeBytes(bytes),
+      playlistId: args.$2, reportLimit: args.$3);
 }

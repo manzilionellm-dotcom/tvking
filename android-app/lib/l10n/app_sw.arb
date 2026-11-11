@@ -1481,5 +1481,75 @@
   "screenCastKeepOpen": "Weka programu wazi na vifaa vyote viwili kwenye mtandao mmoja wa Wi-Fi wakati wa kutangaza.",
   "castNetworkDiagnostic": "Kagua mtandao wa Cast",
   "castNetworkDiagnosticHelp": "Hukagua muunganisho na njia ya kusambaza bila kubadilisha kituo cha TV.",
-  "castDiagnosticClosePlayer": "Rudi kwenye ukurasa wa mwanzo kabla ya kujaribu vituo kwenye TV."
+  "castDiagnosticClosePlayer": "Rudi kwenye ukurasa wa mwanzo kabla ya kujaribu vituo kwenye TV.",
+  "catalogLimitTitle": "Kikomo cha katalogi",
+  "catalogLimitSummary": "Safu {stored} zimehifadhiwa; safu {read} zimesomwa; chaneli {loaded} zimepakiwa. Kikomo cha kusoma: safu {limit}.",
+  "@catalogLimitSummary": {
+    "placeholders": {
+      "stored": {
+        "type": "int"
+      },
+      "read": {
+        "type": "int"
+      },
+      "loaded": {
+        "type": "int"
+      },
+      "limit": {
+        "type": "int"
+      }
+    }
+  },
+  "catalogLimitPreserved": "Kikomo hiki cha kusoma hakifuti data yoyote. Vichujio vinaweza kupunguza idadi ya chaneli zinazoonyeshwa.",
+  "catalogLimitSource": "{name}: safu {stored} zimehifadhiwa, {read} zimesomwa, chaneli {loaded} zimepakiwa.",
+  "@catalogLimitSource": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "stored": {
+        "type": "int"
+      },
+      "read": {
+        "type": "int"
+      },
+      "loaded": {
+        "type": "int"
+      }
+    }
+  },
+  "catalogLimitImport": "{name}: maingizo halali {total} wakati wa kuingiza, {retained} yamehifadhiwa, {skipped} hayakuingizwa.",
+  "@catalogLimitImport": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "total": {
+        "type": "int"
+      },
+      "retained": {
+        "type": "int"
+      },
+      "skipped": {
+        "type": "int"
+      }
+    }
+  },
+  "catalogLimitKids": "Kikomo cha katalogi kinatumika. Mtu mzima anaweza kuona maelezo katika wasifu wake.",
+  "catalogLimitUnnamed": "Chanzo {id}",
+  "@catalogLimitUnnamed": {
+    "placeholders": {
+      "id": {
+        "type": "int"
+      }
+    }
+  },
+  "catalogLimitSources": "Vyanzo vilivyoathiriwa: {sources}",
+  "@catalogLimitSources": {
+    "placeholders": {
+      "sources": {
+        "type": "String"
+      }
+    }
+  }
 }

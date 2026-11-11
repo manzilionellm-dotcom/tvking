@@ -105,6 +105,7 @@ import 'tv_glass.dart';
 import 'tv_starfield.dart';
 import 'tv_tonight.dart';
 import 'tv_live_screen.dart';
+import 'tv_catalog_limit_notice.dart';
 import 'tv_player_screen.dart';
 import 'tv_profile_picker.dart';
 import 'tv_settings_screen.dart';
@@ -1732,6 +1733,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: <Widget>[
+                            const TvCatalogLimitNotice(),
                             // ---------- BARRE DU HAUT ----------
                             Row(
                               children: <Widget>[

@@ -39,6 +39,7 @@ import '../../profiles/data/active_profile.dart';
 import '../domain/playlist.dart';
 import '../domain/source_fingerprint.dart';
 import 'deleted_sources.dart';
+import 'channel_limit_snapshot.dart';
 import 'playlist_secret.dart';
 import 'local_m3u_bytes.dart';
 import 'm3u_fetcher.dart';
@@ -101,6 +102,9 @@ class PlaylistRepository {
     // peut republier ce cache grâce à la même révision d'état.
     _channelsCache = const <Channel>[];
     _playlistsCache = const <Playlist>[];
+    channelLimitSnapshot.value = null;
+    _m3uImportLimits.clear();
+    _lastLimitTrace = null;
     _hasDeviceChannels = false;
     if (!_channelsController.isClosed) _channelsController.add(_channelsCache);
     if (!_playlistsController.isClosed) {
@@ -134,6 +138,13 @@ class PlaylistRepository {
   List<Playlist> _playlistsCache = const <Playlist>[];
   bool _hasDeviceChannels = false;
   bool _profileListenerAttached = false;
+
+  /// Seulement ZUNO. Les trois décomptes restent liés à la lecture qui a
+  /// produit le cache ; aucune statistique d'un ancien profil n'est publiée.
+  final ValueNotifier<ChannelLimitSnapshot?> channelLimitSnapshot =
+      ValueNotifier<ChannelLimitSnapshot?>(null);
+  final Map<int, M3uImportCounts> _m3uImportLimits = <int, M3uImportCounts>{};
+  String? _lastLimitTrace;
 
   /// Inventaire de l'appareil, indépendant du profil affiché. Le panel et
   /// sa reprise réseau ne doivent pas confondre un profil vide avec une
@@ -206,6 +217,8 @@ class PlaylistRepository {
     // Retirer l'ancien écran tout de suite, avant la première attente SQL.
     // Les téléchargements restent affectés à leur profil d'origine.
     _stateRevision++;
+    channelLimitSnapshot.value = null;
+    _lastLimitTrace = null;
     _channelsCache = const <Channel>[];
     if (!_channelsController.isClosed) _channelsController.add(_channelsCache);
     if (!_playlistsController.isClosed) {
@@ -243,29 +256,42 @@ class PlaylistRepository {
   /// Le téléphone garde le comportement historique (une active à la fois).
   static bool mergeAllPlaylists = false;
 
-  Future<List<Channel>> getAllChannels() async {
+  Future<List<Channel>> getAllChannels(
+      {ValueChanged<ChannelReadCounts>? onReadCounts}) async {
     final int scope = ActiveProfile.instance.scopeListenable.value;
     final int revision = _stateRevision;
     final List<int>? ids = ActiveProfile.instance.playlistIds;
+    ChannelReadCounts? counts;
+    // Aucun comptage supplémentaire sur le chemin historique de 7 MOTION.
+    final ValueChanged<ChannelReadCounts>? capture =
+        AppPlatform.isZuno && onReadCounts != null
+            ? (value) => counts = value
+            : null;
     final List<Channel> result;
     if (ids == null) {
-      result = await _readDeviceChannels();
+      result = await _readDeviceChannels(onReadCounts: capture);
     } else if (ids.isEmpty) {
       result = const <Channel>[];
+      capture?.call(ChannelReadCounts(storedRows: {}, loadedRows: {}));
     } else {
       final Database db = await PlaylistDatabase.instance.database;
-      result = await _readProfileChannels(db, ids);
+      result = await _readProfileChannels(db, ids, onReadCounts: capture);
     }
     if (scope != ActiveProfile.instance.scopeListenable.value ||
         revision != _stateRevision) {
       return const <Channel>[];
     }
-    return _applyFlavorFilter(result);
+    final visible = _applyFlavorFilter(result);
+    if (counts != null) onReadCounts?.call(counts!.withChannels(visible));
+    return visible;
   }
 
-  Future<List<Channel>> _readDeviceChannels() async {
+  Future<List<Channel>> _readDeviceChannels(
+      {ValueChanged<ChannelReadCounts>? onReadCounts}) async {
     final Database db = await PlaylistDatabase.instance.database;
-    if (mergeAllPlaylists) return _readMergedChannels(db);
+    if (mergeAllPlaylists) {
+      return _readMergedChannels(db, onReadCounts: onReadCounts);
+    }
 
     // Phase 1+/Multi-serveurs (2026-06-01) : si une playlist est
     // marquee active, on filtre les chaines pour ne renvoyer que les
@@ -301,7 +327,8 @@ class PlaylistRepository {
     // planter/redémarrer les petites box. On lit désormais par tranches
     // (keyset sur local_id, l'ordre natif de la playlist est préservé) et on
     // s'arrête au plafond. Voir _readChannelsBounded.
-    final List<Channel> all = await _readChannelsBounded(db, activeId);
+    final List<Channel> all =
+        await _readChannelsBounded(db, activeId, onReadCounts: onReadCounts);
 
     // Filtre adultOnly du flavor Red Room. On le pose ICI (point
     // unique de lecture) pour que TOUS les consommateurs (home,
@@ -320,7 +347,8 @@ class PlaylistRepository {
   /// que favoris, récents et index restent univoques. La première occurrence
   /// garde son id d'origine → les favoris déjà enregistrés continuent de
   /// fonctionner.
-  Future<List<Channel>> _readMergedChannels(Database db) async {
+  Future<List<Channel>> _readMergedChannels(Database db,
+      {ValueChanged<ChannelReadCounts>? onReadCounts}) async {
     // Purge des orphelines (même garde-fou que le mode « active »).
     await db.delete(
       'channels',
@@ -328,8 +356,8 @@ class PlaylistRepository {
     );
     // Seules les sources NON désactivées (colonne `hidden`) sont fusionnées :
     // le client peut en activer autant qu'il veut EN MÊME TEMPS.
-    final List<Channel> all =
-        await _readChannelsBounded(db, null, skipHidden: true);
+    final List<Channel> all = await _readChannelsBounded(db, null,
+        skipHidden: true, onReadCounts: onReadCounts);
     final Set<String> seen = <String>{};
     final List<Channel> out = <Channel>[];
     for (final Channel c in all) {
@@ -364,7 +392,20 @@ class PlaylistRepository {
   /// SQLite calcule d'abord l'identité globale (première occurrence). Ainsi
   /// une chaîne suffixée ~p<ID> garde le même id en changeant de profil,
   /// sans charger toutes les autres chaînes en objets Dart.
-  Future<List<Channel>> _readProfileChannels(Database db, List<int> ids) async {
+  Future<List<Channel>> _readProfileChannels(Database db, List<int> ids,
+      {ValueChanged<ChannelReadCounts>? onReadCounts}) {
+    if (onReadCounts == null) return _readProfileSnapshot(db, ids);
+    // Les identités dédoublonnées, COUNT et pages appartiennent au même
+    // instantané. Aucun appel au Database extérieur depuis cette transaction.
+    return db.transaction(
+      (txn) => _readProfileSnapshot(txn, ids, onReadCounts: onReadCounts),
+      exclusive: false,
+    );
+  }
+
+  Future<List<Channel>> _readProfileSnapshot(
+      DatabaseExecutor db, List<int> ids,
+      {ValueChanged<ChannelReadCounts>? onReadCounts}) async {
     final int scope = ActiveProfile.instance.scopeListenable.value;
     final String allowed = ids.map((int id) => id.toString()).join(',');
     // Les identifiants sont des entiers positifs issus du modèle, jamais
@@ -392,11 +433,12 @@ class PlaylistRepository {
       for (final Map<String, Object?> row in firstRows)
         row['external_id'] as String: row['playlist_id'] as int,
     };
-    final List<Channel> channels = await _readChannelsBounded(
+    final List<Channel> channels = await _readChannelPages(
       db,
       null,
       skipHidden: true,
       playlistIds: ids,
+      onReadCounts: onReadCounts,
     );
     if (scope != ActiveProfile.instance.scopeListenable.value) {
       return <Channel>[];
@@ -443,7 +485,29 @@ class PlaylistRepository {
   /// [kMaxInMemoryChannels]. Keyset pagination : `local_id > dernier` (O(1) par
   /// lot grâce à l'index PK), l'ORDRE NATIF de la playlist est préservé.
   Future<List<Channel>> _readChannelsBounded(Database db, int? activeId,
-      {bool skipHidden = false, List<int>? playlistIds}) async {
+      {bool skipHidden = false,
+      List<int>? playlistIds,
+      ValueChanged<ChannelReadCounts>? onReadCounts}) {
+    if (onReadCounts == null) {
+      return _readChannelPages(db, activeId,
+          skipHidden: skipHidden, playlistIds: playlistIds);
+    }
+    // Transaction de lecture uniquement : le COUNT et les pages ne peuvent
+    // pas voir deux versions différentes du catalogue. Elle peut retarder un
+    // écrivain ; ce coût doit être mesuré sur appareil, aucun gain n'est promis.
+    return db.transaction(
+      (txn) => _readChannelPages(txn, activeId,
+          skipHidden: skipHidden,
+          playlistIds: playlistIds,
+          onReadCounts: onReadCounts),
+      exclusive: false,
+    );
+  }
+
+  Future<List<Channel>> _readChannelPages(DatabaseExecutor db, int? activeId,
+      {bool skipHidden = false,
+      List<int>? playlistIds,
+      ValueChanged<ChannelReadCounts>? onReadCounts}) async {
     final List<Channel> out = <Channel>[];
     int afterLocalId = 0; // local_id (AUTOINCREMENT) démarre à 1
     // Sous-requête évaluée par SQLite (index PK) : écarte les chaînes des
@@ -454,6 +518,23 @@ class PlaylistRepository {
     final String profileFilter = playlistIds == null
         ? ''
         : ' AND playlist_id IN (${playlistIds.join(',')})';
+    // Le prédicat est partagé avec les pages (dont local_id > 0 au départ),
+    // sans SELECT de toutes les lignes ni confiance dans channel_count.
+    final String eligible = activeId != null
+        ? 'playlist_id = ? AND local_id > 0'
+        : 'local_id > 0$hiddenFilter$profileFilter';
+    final Map<int, int> stored = <int, int>{};
+    final Map<int, int> read = <int, int>{};
+    if (onReadCounts != null) {
+      final rows = await db.rawQuery(
+          'SELECT playlist_id, COUNT(*) AS row_count FROM channels '
+          'WHERE $eligible GROUP BY playlist_id',
+          activeId == null ? null : <Object>[activeId]);
+      for (final row in rows) {
+        final id = row['playlist_id'] as int?;
+        if (id != null) stored[id] = row['row_count'] as int;
+      }
+    }
     while (out.length < kMaxInMemoryChannels) {
       final List<Map<String, Object?>> rows = await db.query(
         'channels',
@@ -469,15 +550,20 @@ class PlaylistRepository {
       if (rows.isEmpty) break;
       for (final Map<String, Object?> r in rows) {
         out.add(_channelFromMap(r));
+        if (onReadCounts != null) {
+          final id = r['playlist_id'] as int?;
+          if (id != null) read.update(id, (count) => count + 1, ifAbsent: () => 1);
+        }
         afterLocalId = r['local_id'] as int;
       }
       if (rows.length < _kReadChunk) break; // dernière tranche
     }
-    if (out.length >= kMaxInMemoryChannels) {
+    if (onReadCounts == null && out.length >= kMaxInMemoryChannels) {
       debugPrint('[Playlist] plafond mémoire atteint '
           '($kMaxInMemoryChannels chaînes) → tranches suivantes NON chargées '
           '(garde-fou anti-OOM box faibles).');
     }
+    onReadCounts?.call(ChannelReadCounts(storedRows: stored, loadedRows: read));
     return out;
   }
 
@@ -651,8 +737,8 @@ class PlaylistRepository {
       guard();
 
       // 3) Parse (dans un ISOLATE → pas de gel UI) + insertion en batch
-      final M3uParseResult parsed =
-          await M3uParser.parseBytesInBackground(body, playlistId: playlistId);
+      final M3uParseResult parsed = await M3uParser.parseBytesInBackground(body,
+          playlistId: playlistId, reportLimit: AppPlatform.isZuno);
       guard();
 
       if (parsed.channels.isEmpty) {
@@ -676,6 +762,7 @@ class PlaylistRepository {
       );
       await _updatePlaylistMetrics(saved, checkCurrent: guard);
       guard();
+      _rememberM3uLimit(playlistId, parsed.importCounts);
 
       // CORRECTIF « les chaînes n'arrivent jamais » : on ACTIVE la
       // playlist qu'on vient d'ajouter. Sans ça, seule la TOUTE 1re
@@ -1133,7 +1220,7 @@ class PlaylistRepository {
         guard();
         final M3uParseResult parsed = await M3uParser.parseBytesInBackground(
             body,
-            playlistId: playlist.id!);
+            playlistId: playlist.id!, reportLimit: AppPlatform.isZuno);
         if (parsed.channels.isEmpty) {
           throw Exception('Aucune chaîne dans la nouvelle version.');
         }
@@ -1152,6 +1239,7 @@ class PlaylistRepository {
           checkCurrent: guard,
         );
         guard();
+        _rememberM3uLimit(playlist.id!, parsed.importCounts);
         await _emitCurrentState();
         guard();
         // Le guide suit la liste : avant, il n'était téléchargé qu'à
@@ -1523,11 +1611,78 @@ class PlaylistRepository {
 
   int _stateRevision = 0;
 
+  void _rememberM3uLimit(int playlistId, M3uImportCounts? counts) {
+    if (!AppPlatform.isZuno) return;
+    if (counts == null || !counts.truncated) {
+      _m3uImportLimits.remove(playlistId);
+      return;
+    }
+    _m3uImportLimits[playlistId] = counts;
+    BlackBox.instance.warn('CATALOGUE',
+        'import source=$playlistId valides=${counts.validEntries} '
+        'retenues=${counts.retainedEntries} '
+        'non_importees=${counts.skippedEntries}');
+  }
+
+  void _publishChannelLimit(ChannelReadCounts? counts,
+      List<Playlist> playlists, String profileId, int scope) {
+    if (!AppPlatform.isZuno || counts == null) {
+      channelLimitSnapshot.value = null;
+      return;
+    }
+    final existing = playlists.map((source) => source.id).toSet();
+    _m3uImportLimits.removeWhere((id, _) => !existing.contains(id));
+    final names = <int, Playlist>{
+      for (final source in playlists)
+        if (source.id != null && !source.hidden &&
+            ActiveProfile.instance.allowsPlaylist(source.id))
+          source.id!: source,
+    };
+    final ids = counts.storedRows.keys.where(names.containsKey).toList()..sort();
+    final snapshot = ChannelLimitSnapshot(
+      profileId: profileId,
+      scope: scope,
+      limit: kMaxInMemoryChannels,
+      sources: [
+        for (final id in ids)
+          ChannelLimitSource(
+            playlistId: id,
+            name: names[id]!.name,
+            storedRows: counts.storedRows[id] ?? 0,
+            loadedRows: counts.loadedRows[id] ?? 0,
+            loadedChannels: counts.loadedChannels[id] ?? 0,
+            importCounts: _m3uImportLimits[id],
+          ),
+      ],
+    );
+    channelLimitSnapshot.value = snapshot.hasLimit ? snapshot : null;
+    if (!snapshot.hasLimit) {
+      _lastLimitTrace = null;
+      return;
+    }
+    // Aucune URL, aucun nom de source, aucun titre : les identifiants sont
+    // locaux à SQLite. Le volume est borné et une répétition identique est tue.
+    final affected = snapshot.affectedSources;
+    final details = affected.take(20).map((source) =>
+        '${source.playlistId}:${source.storedRows}/${source.loadedRows}/'
+        '${source.loadedChannels}').join(',');
+    final trace = 'enregistrees=${snapshot.storedRows} '
+        'lues=${snapshot.loadedRows} chargees=${snapshot.loadedChannels} '
+        'plafond=$kMaxInMemoryChannels sources=${affected.length} '
+        'details=$details';
+    if (trace == _lastLimitTrace) return;
+    _lastLimitTrace = trace;
+    BlackBox.instance.warn('CATALOGUE', trace);
+  }
+
   Future<void> _emitCurrentState() async {
     final int revision = ++_stateRevision;
     final int scope = ActiveProfile.instance.scopeListenable.value;
+    final String profileId = ActiveProfile.instance.id;
     final Stopwatch sw = Stopwatch()..start();
-    final List<Channel> channels = await getAllChannels();
+    ChannelReadCounts? counts;
+    final List<Channel> channels = await getAllChannels(
+        onReadCounts: AppPlatform.isZuno ? (value) => counts = value : null);
     final List<Playlist> playlists = await getAllPlaylists();
     final Database db = await PlaylistDatabase.instance.database;
     final List<Map<String, Object?>> anyChannels = await db.rawQuery(
@@ -1545,6 +1700,7 @@ class PlaylistRepository {
     _channelsCache = channels;
     _playlistsCache = playlists;
     _hasDeviceChannels = anyChannels.isNotEmpty;
+    _publishChannelLimit(counts, playlists, profileId, scope);
     if (!_channelsController.isClosed) {
       _channelsController.add(channels);
     }

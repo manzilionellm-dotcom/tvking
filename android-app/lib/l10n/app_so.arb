@@ -3224,5 +3224,75 @@
   "screenCastKeepOpen": "Inta aad baahinayso, barnaamijka ha furnaado, labada qalabna ha ku xirnaadaan isla shabakadda Wi-Fi.",
   "castNetworkDiagnostic": "Hubi shabakadda Cast",
   "castNetworkDiagnosticHelp": "Waxay hubisaa xiriirka iyo gudbinta iyada oo aan la beddelin kanaalka TV-ga.",
-  "castDiagnosticClosePlayer": "Ku noqo bogga hore ka hor inta aadan kanaallada ku tijaabin TV-ga."
+  "castDiagnosticClosePlayer": "Ku noqo bogga hore ka hor inta aadan kanaallada ku tijaabin TV-ga.",
+  "catalogLimitTitle": "Xadka buugga kanaallada",
+  "catalogLimitSummary": "{stored} saf ayaa kaydsan; {read} saf ayaa la akhriyey; {loaded} kanaal ayaa la soo raray. Xadka akhriska: {limit} saf.",
+  "@catalogLimitSummary": {
+    "placeholders": {
+      "stored": {
+        "type": "int"
+      },
+      "read": {
+        "type": "int"
+      },
+      "loaded": {
+        "type": "int"
+      },
+      "limit": {
+        "type": "int"
+      }
+    }
+  },
+  "catalogLimitPreserved": "Xadkan akhrisku ma tirtiro xog. Shaandhooyinku waxay yareyn karaan tirada kanaallada la soo bandhigo.",
+  "catalogLimitSource": "{name}: {stored} saf ayaa kaydsan, {read} ayaa la akhriyey, {loaded} kanaal ayaa la soo raray.",
+  "@catalogLimitSource": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "stored": {
+        "type": "int"
+      },
+      "read": {
+        "type": "int"
+      },
+      "loaded": {
+        "type": "int"
+      }
+    }
+  },
+  "catalogLimitImport": "{name}: {total} gelitaan oo sax ah xilliga soo dejinta, {retained} waa la hayey, {skipped} lama soo dejin.",
+  "@catalogLimitImport": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "total": {
+        "type": "int"
+      },
+      "retained": {
+        "type": "int"
+      },
+      "skipped": {
+        "type": "int"
+      }
+    }
+  },
+  "catalogLimitKids": "Xad ayaa saaran buugga kanaallada. Qof weyn ayaa faahfaahinta ka eegi kara boggiisa qofeed.",
+  "catalogLimitUnnamed": "Isha {id}",
+  "@catalogLimitUnnamed": {
+    "placeholders": {
+      "id": {
+        "type": "int"
+      }
+    }
+  },
+  "catalogLimitSources": "Ilaha ay saameysay: {sources}",
+  "@catalogLimitSources": {
+    "placeholders": {
+      "sources": {
+        "type": "String"
+      }
+    }
+  }
 }

@@ -1481,5 +1481,75 @@
   "screenCastKeepOpen": "Hold appen åpen og begge enhetene på samme Wi-Fi-nettverk mens du caster.",
   "castNetworkDiagnostic": "Sjekk Cast-nettverket",
   "castNetworkDiagnosticHelp": "Sjekker tilkoblingen og reléet uten å bytte kanal på TV-en.",
-  "castDiagnosticClosePlayer": "Gå tilbake til startsiden før du tester kanaler på TV-en."
+  "castDiagnosticClosePlayer": "Gå tilbake til startsiden før du tester kanaler på TV-en.",
+  "catalogLimitTitle": "Kataloggrense",
+  "catalogLimitSummary": "{stored} rader lagret; {read} rader lest; {loaded} kanaler lastet. Lesegrense: {limit} rader.",
+  "@catalogLimitSummary": {
+    "placeholders": {
+      "stored": {
+        "type": "int"
+      },
+      "read": {
+        "type": "int"
+      },
+      "loaded": {
+        "type": "int"
+      },
+      "limit": {
+        "type": "int"
+      }
+    }
+  },
+  "catalogLimitPreserved": "Denne lesegrensen sletter ingen data. Filtre kan redusere antall kanaler som vises.",
+  "catalogLimitSource": "{name}: {stored} rader lagret, {read} lest, {loaded} kanaler lastet.",
+  "@catalogLimitSource": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "stored": {
+        "type": "int"
+      },
+      "read": {
+        "type": "int"
+      },
+      "loaded": {
+        "type": "int"
+      }
+    }
+  },
+  "catalogLimitImport": "{name}: {total} gyldige importoppføringer, {retained} beholdt, {skipped} ikke importert.",
+  "@catalogLimitImport": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "total": {
+        "type": "int"
+      },
+      "retained": {
+        "type": "int"
+      },
+      "skipped": {
+        "type": "int"
+      }
+    }
+  },
+  "catalogLimitKids": "En kataloggrense gjelder. En voksen kan se detaljene fra sin profil.",
+  "catalogLimitUnnamed": "Kilde {id}",
+  "@catalogLimitUnnamed": {
+    "placeholders": {
+      "id": {
+        "type": "int"
+      }
+    }
+  },
+  "catalogLimitSources": "Berørte kilder: {sources}",
+  "@catalogLimitSources": {
+    "placeholders": {
+      "sources": {
+        "type": "String"
+      }
+    }
+  }
 }

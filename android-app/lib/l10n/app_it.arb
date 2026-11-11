@@ -2911,5 +2911,75 @@
   "screenCastKeepOpen": "Mantieni l’app aperta ed entrambi i dispositivi sulla stessa rete Wi-Fi durante la trasmissione.",
   "castNetworkDiagnostic": "Verifica la rete Cast",
   "castNetworkDiagnosticHelp": "Verifica la connessione e il relay senza cambiare il canale sulla TV.",
-  "castDiagnosticClosePlayer": "Torna alla schermata iniziale prima di testare i canali sulla TV."
+  "castDiagnosticClosePlayer": "Torna alla schermata iniziale prima di testare i canali sulla TV.",
+  "catalogLimitTitle": "Limite del catalogo",
+  "catalogLimitSummary": "{stored} righe salvate; {read} righe lette; {loaded} canali caricati. Limite di lettura: {limit} righe.",
+  "@catalogLimitSummary": {
+    "placeholders": {
+      "stored": {
+        "type": "int"
+      },
+      "read": {
+        "type": "int"
+      },
+      "loaded": {
+        "type": "int"
+      },
+      "limit": {
+        "type": "int"
+      }
+    }
+  },
+  "catalogLimitPreserved": "Questo limite di lettura non elimina dati. I filtri possono ridurre il numero di canali visualizzati.",
+  "catalogLimitSource": "{name}: {stored} righe salvate, {read} lette, {loaded} canali caricati.",
+  "@catalogLimitSource": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "stored": {
+        "type": "int"
+      },
+      "read": {
+        "type": "int"
+      },
+      "loaded": {
+        "type": "int"
+      }
+    }
+  },
+  "catalogLimitImport": "{name}: {total} voci valide all’importazione, {retained} mantenute, {skipped} non importate.",
+  "@catalogLimitImport": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "total": {
+        "type": "int"
+      },
+      "retained": {
+        "type": "int"
+      },
+      "skipped": {
+        "type": "int"
+      }
+    }
+  },
+  "catalogLimitKids": "Si applica un limite al catalogo. Un adulto può consultare i dettagli dal proprio profilo.",
+  "catalogLimitUnnamed": "Fonte {id}",
+  "@catalogLimitUnnamed": {
+    "placeholders": {
+      "id": {
+        "type": "int"
+      }
+    }
+  },
+  "catalogLimitSources": "Fonti interessate: {sources}",
+  "@catalogLimitSources": {
+    "placeholders": {
+      "sources": {
+        "type": "String"
+      }
+    }
+  }
 }

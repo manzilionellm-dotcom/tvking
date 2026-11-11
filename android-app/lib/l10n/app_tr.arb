@@ -2911,5 +2911,75 @@
   "screenCastKeepOpen": "Yayın sırasında uygulamayı açık, her iki cihazı da aynı Wi-Fi ağına bağlı tut.",
   "castNetworkDiagnostic": "Cast ağını kontrol et",
   "castNetworkDiagnosticHelp": "TV kanalını değiştirmeden bağlantıyı ve aktarmayı kontrol eder.",
-  "castDiagnosticClosePlayer": "TV’de kanalları test etmeden önce ana sayfaya dön."
+  "castDiagnosticClosePlayer": "TV’de kanalları test etmeden önce ana sayfaya dön.",
+  "catalogLimitTitle": "Katalog sınırı",
+  "catalogLimitSummary": "{stored} satır kayıtlı; {read} satır okundu; {loaded} kanal yüklendi. Okuma sınırı: {limit} satır.",
+  "@catalogLimitSummary": {
+    "placeholders": {
+      "stored": {
+        "type": "int"
+      },
+      "read": {
+        "type": "int"
+      },
+      "loaded": {
+        "type": "int"
+      },
+      "limit": {
+        "type": "int"
+      }
+    }
+  },
+  "catalogLimitPreserved": "Bu okuma sınırı hiçbir veriyi silmez. Filtreler gösterilen kanal sayısını azaltabilir.",
+  "catalogLimitSource": "{name}: {stored} satır kayıtlı, {read} satır okundu, {loaded} kanal yüklendi.",
+  "@catalogLimitSource": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "stored": {
+        "type": "int"
+      },
+      "read": {
+        "type": "int"
+      },
+      "loaded": {
+        "type": "int"
+      }
+    }
+  },
+  "catalogLimitImport": "{name}: içe aktarımda {total} geçerli kayıt, {retained} kayıt tutuldu, {skipped} kayıt içe aktarılmadı.",
+  "@catalogLimitImport": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "total": {
+        "type": "int"
+      },
+      "retained": {
+        "type": "int"
+      },
+      "skipped": {
+        "type": "int"
+      }
+    }
+  },
+  "catalogLimitKids": "Bir katalog sınırı uygulanıyor. Bir yetişkin ayrıntıları kendi profilinden görebilir.",
+  "catalogLimitUnnamed": "Kaynak {id}",
+  "@catalogLimitUnnamed": {
+    "placeholders": {
+      "id": {
+        "type": "int"
+      }
+    }
+  },
+  "catalogLimitSources": "Etkilenen kaynaklar: {sources}",
+  "@catalogLimitSources": {
+    "placeholders": {
+      "sources": {
+        "type": "String"
+      }
+    }
+  }
 }
