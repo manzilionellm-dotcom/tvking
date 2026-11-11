@@ -99,6 +99,17 @@ void _wireAudioDiagnostic() {
   };
 }
 
+/// Instrumentation native opt-in de ZUNO : un résumé borné par session,
+/// sans URL ni titre. Les jalons synthétiques Dart ne sont pas des mesures.
+void _wirePlaybackMetrics() {
+  NativeVideoController.playbackMetricsEnabled = !RepairFlags.nativeMetricsOff;
+  NativeVideoController.onPlaybackMetrics = (NativePlaybackMetrics metrics) {
+    if (metrics.isSummary) {
+      BlackBox.instance.info('LECTURE', metrics.toBlackBoxLine());
+    }
+  };
+}
+
 /// Démarrage de Zuno. Partagé avec la version PC (lib/main_windows.dart),
 /// qui prépare d'abord SQLite / lecteur / fenêtre puis appelle cette même
 /// fonction : MÊME app, même design, mêmes services. [wrap] permet au PC
@@ -222,6 +233,7 @@ Future<void> bootstrapZunoTv({Widget Function(Widget app)? wrap}) async {
     playlistsReady,
   ]);
   StartupTrace.mark('playlists.end');
+  _wirePlaybackMetrics();
   // Palette confort : préférence locale (soir par défaut). Lecture
   // disque seulement, avant le premier cadre, pour éviter un flash.
   await StartupTrace.step('comfort', TvComfortSchedule.instance.load);

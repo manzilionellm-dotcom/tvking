@@ -313,6 +313,11 @@ abstract final class RepairFlags {
   static const String dlnaWatchdogLegacyKey = 'zuno.dlna.watchdog_legacy';
   static bool dlnaWatchdogLegacy = false;
 
+  /// L1-07 : vrai coupe l’instrumentation native de ZUNO. Aucun réglage
+  /// du moteur vidéo ne dépend de cet interrupteur.
+  static const String nativeMetricsOffKey = 'zuno.player.native_metrics_off';
+  static bool nativeMetricsOff = false;
+
   static Future<void> load() async {
     bool raw = false;
     bool tvDelLegacy = false;
@@ -352,6 +357,7 @@ abstract final class RepairFlags {
     bool openIndexLegacy = false;
     bool loadedHubIndexLegacy = false;
     bool globalTickLegacy = false;
+    bool loadedNativeMetricsOff = false;
     bool loadedDlnaWatchdogLegacy = false;
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
@@ -393,6 +399,7 @@ abstract final class RepairFlags {
       openIndexLegacy = prefs.getBool(liveOpenIndexLegacyKey) ?? false;
       loadedHubIndexLegacy = prefs.getBool(hubIndexLegacyKey) ?? false;
       globalTickLegacy = prefs.getBool(hubGlobalTickLegacyKey) ?? false;
+      loadedNativeMetricsOff = prefs.getBool(nativeMetricsOffKey) ?? false;
       loadedDlnaWatchdogLegacy = prefs.getBool(dlnaWatchdogLegacyKey) ?? false;
     } catch (_) {
       raw = false;
@@ -433,6 +440,7 @@ abstract final class RepairFlags {
       openIndexLegacy = false;
       loadedHubIndexLegacy = false;
       globalTickLegacy = false;
+      loadedNativeMetricsOff = false;
       loadedDlnaWatchdogLegacy = false;
     }
     epgGzipByHeader = gzipByHeader;
@@ -443,6 +451,7 @@ abstract final class RepairFlags {
     liveOpenIndexLegacy = openIndexLegacy;
     hubIndexLegacy = loadedHubIndexLegacy;
     hubGlobalTickLegacy = globalTickLegacy;
+    nativeMetricsOff = loadedNativeMetricsOff;
     dlnaWatchdogLegacy = loadedDlnaWatchdogLegacy;
     orderAckOff = ackOff;
     tvDeleteLegacy = tvDelLegacy;
@@ -519,6 +528,7 @@ abstract final class RepairFlags {
     liveOpenIndexLegacy = false;
     hubIndexLegacy = false;
     hubGlobalTickLegacy = false;
+    nativeMetricsOff = false;
     dlnaWatchdogLegacy = false;
     NativeVideoController.legacyHoldFrame = false;
   }
