@@ -47,7 +47,7 @@ class WorkflowIsolationTest(unittest.TestCase):
                     self.reject(document)
 
     def test_private_steps_cannot_run_in_play_mode_or_unconditionally(self):
-        for step_id in ("tests_private", "build_private_apk", "tests_recording_device", "verify_private_apk", "upload_private_apk"):
+        for step_id in ("preflight_recording_device", "tests_private", "build_private_apk", "tests_recording_device", "verify_private_apk", "upload_private_apk"):
             for condition in (None, "always()", "inputs.confirme == 'COMPILER_NOVATUBE'"):
                 with self.subTest(step=step_id, condition=condition):
                     document = self.document()
@@ -109,6 +109,21 @@ class WorkflowIsolationTest(unittest.TestCase):
         upload = self.step(document, "upload_private_apk")
         steps.remove(upload)
         steps.insert(0, upload)
+        self.reject(document)
+
+    def test_emulator_preflight_cannot_replace_real_export_tests(self):
+        document = self.document()
+        self.step(document, "tests_recording_device")["run"] = (
+            "set -euo pipefail\npython3 ci/novatube/run_recording_device.py "
+            "--preflight --reports build/novatube/reports\n")
+        self.reject(document)
+
+    def test_emulator_preflight_must_precede_apk_compilation(self):
+        document = self.document()
+        steps = document["jobs"]["release"]["steps"]
+        preflight = self.step(document, "preflight_recording_device")
+        steps.remove(preflight)
+        steps.append(preflight)
         self.reject(document)
 
     def test_test_or_build_failures_cannot_be_ignored(self):

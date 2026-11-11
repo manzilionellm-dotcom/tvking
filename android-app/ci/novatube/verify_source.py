@@ -88,7 +88,7 @@ def verify_workflow(workflow: str) -> None:
     require(len(identified) == sum("id" in step for step in steps), "Identifiant d'étape dupliqué")
     private_ids = ("tests_private", "build_private_apk", "tests_recording_device", "verify_private_apk", "upload_private_apk")
     play_ids = ("build_play_aab", "verify_play_aab", "upload_play_aab")
-    for step_id, condition in [(name, PRIVATE_CONFIRMATION) for name in private_ids] + [
+    for step_id, condition in [(name, PRIVATE_CONFIRMATION) for name in (*private_ids, "preflight_recording_device")] + [
             (name, PLAY_CONFIRMATION) for name in play_ids]:
         require(step_id in identified and same_expression(identified[step_id].get("if"), condition),
                 "Étape hors de son mode explicite : " + step_id)
@@ -98,6 +98,8 @@ def verify_workflow(workflow: str) -> None:
     for sequence in (("tests_recording_native", "analyze", "tests_play", *private_ids), ("tests_play", *play_ids)):
         require(all(order[a] < order[b] for a, b in zip(sequence, sequence[1:])),
                 "Vérification, compilation ou conservation dans un ordre incorrect")
+    require(order["preflight_recording_device"] < order["build_private_apk"],
+            "Le démarrage Android doit être vérifié avant de compiler l'APK privé")
     expected_builds = {
         "build_play_aab": "flutter build appbundle --release --target=lib/main_zuno_mobile.dart --build-name=0.1.5 --build-number=5",
         "build_private_apk": "flutter build apk --release --target=lib/main_zuno_mobile.dart --build-name=0.1.5 --build-number=5 --dart-define=NOVATUBE_PRIVATE_APK=true",
@@ -116,9 +118,13 @@ def verify_workflow(workflow: str) -> None:
             "Vérification réelle de l'AAB absente")
     require("python3 ci/novatube/run_recording_logic.py" in identified["tests_recording_native"].get("run", ""),
             "Tests des règles natives d'export MP4 absents")
-    require("python3 ci/novatube/run_recording_device.py" in identified["tests_recording_device"].get("run", ""),
+    device_verifier = " ".join(identified["tests_recording_device"].get("run", "").replace("\\\n", " ").split())
+    require("python3 ci/novatube/run_recording_device.py --apk build/app/outputs/flutter-apk/app-release.apk "
+            "--reports build/novatube/reports" in device_verifier and "--preflight" not in device_verifier,
             "Test du vrai export Android absent")
-    for step_id in ("analyze", "tests_play", "tests_private", "tests_recording_native", "tests_recording_device", "build_play_aab", "build_private_apk",
+    require("python3 ci/novatube/run_recording_device.py --preflight" in identified["preflight_recording_device"].get("run", ""),
+            "Contrôle du démarrage de l'émulateur absent")
+    for step_id in ("analyze", "tests_play", "tests_private", "tests_recording_native", "preflight_recording_device", "tests_recording_device", "build_play_aab", "build_private_apk",
                     "verify_play_aab", "verify_private_apk"):
         require("set -euo pipefail" in identified[step_id].get("run", ""),
                 "Une erreur de pipeline pourrait être ignorée : " + step_id)

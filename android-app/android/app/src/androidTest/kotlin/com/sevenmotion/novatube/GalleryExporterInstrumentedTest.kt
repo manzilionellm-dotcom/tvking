@@ -68,7 +68,9 @@ class GalleryExporterInstrumentedTest {
                         outcome.set(Outcome(result, null)); latch.countDown()
                     }
                     override fun error(code: String, message: String?, details: Any?) {
-                        outcome.set(Outcome(null, code)); latch.countDown()
+                        // Conserver le diagnostic natif sans modifier les critères
+                        // de réussite : aucune piste, codec ou stockage indisponible.
+                        outcome.set(Outcome(null, "$code: ${message.orEmpty()}")); latch.countDown()
                     }
                     override fun notImplemented() {
                         outcome.set(Outcome(null, "NOT_IMPLEMENTED")); latch.countDown()

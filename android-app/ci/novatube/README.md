@@ -40,8 +40,14 @@ la CI ne dépend pas d'une installation FFmpeg ou d'un miroir Ubuntu pour
 les préparer. La commande `create_recording_test_media.py --regenerate DOSSIER`
 documente leur fabrication locale à partir d'une mire et d'une sinusoïde ;
 une régénération exige une revue des nouveaux fichiers et de leurs empreintes.
-Le runner installe l'APK
-release exact et lie la preuve Android à son SHA-256 avant la publication.
+Un précontrôle démarre l'émulateur puis l'arrête avant de lancer la compilation
+privée. Il ne constitue pas une réussite des tests d'export et ne crée pas leur
+preuve. Si Android ne démarre pas, le code de sortie et la fin du journal sont
+affichés, puis conservés dans un artefact de diagnostic. Cela évite d'attendre
+une compilation complète pour découvrir une panne du banc de test.
+Le runner redémarre ensuite Android, installe l'APK release exact et lie la
+preuve des trois exports à son SHA-256 avant la publication. Les journaux
+d'échec ne contiennent que le banc synthétique, sans playlist utilisateur.
 Une réussite sur émulateur n'est pas un essai sur le téléphone de l'utilisateur.
 
 ## Profils et APK de test avec espace +18
