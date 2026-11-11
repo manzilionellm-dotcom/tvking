@@ -25,6 +25,20 @@ from common import (
 )
 
 
+def is_media_playback_type(value: str | None) -> bool:
+    if value == "mediaPlayback":
+        return True
+    if value is None:
+        return False
+    # bundletool imprime les entiers hexadécimaux avec huit chiffres.
+    # Le masque doit être exactement 2, sans aucun type de service ajouté.
+    if re.fullmatch(r"[0-9]+", value):
+        return int(value, 10) == 2
+    if re.fullmatch(r"0[xX][0-9a-fA-F]+", value):
+        return int(value, 16) == 2
+    return False
+
+
 def manifest_identity(xml: str) -> dict:
     root = ET.fromstring(xml)
     require(root.get("package") == PACKAGE, "Package du bundle incorrect")
@@ -63,8 +77,9 @@ def manifest_identity(xml: str) -> dict:
     for name in ("RecordingForegroundService", "PlaybackForegroundService"):
         matches = [item for item in app.findall("service") if item.get(ANDROID + "name") == PACKAGE + "." + name]
         require(len(matches) == 1, "Service mobile absent : " + name)
-        require(matches[0].get(ANDROID + "foregroundServiceType") in ("mediaPlayback", "2", "0x2"),
-                "Type du service de lecture incorrect : " + name)
+        service_type = matches[0].get(ANDROID + "foregroundServiceType")
+        require(is_media_playback_type(service_type),
+                f"Type du service de lecture incorrect : {name} = {service_type!r} (attendu : mediaPlayback / 2)")
         require(matches[0].get(ANDROID + "exported", "false") in ("false", "0", "0x0"),
                 "Service de lecture exposé à une autre application")
     sdk = root.find("uses-sdk")

@@ -84,11 +84,52 @@ class ManifestRejectionTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Service mobile absent"):
             self.verify(root)
 
+    def test_media_playback_symbol_decimal_and_padded_hex_are_accepted(self):
+        for index in (0, 1):
+            for value in ("mediaPlayback", "2", "02", "00000002", "0x2", "0x02", "0x00000002", "0X00000002"):
+                with self.subTest(service=index, value=value):
+                    root = mobile_manifest()
+                    root.findall("application/service")[index].set(ANDROID + "foregroundServiceType", value)
+                    self.assertEqual(self.verify(root)["castManifest"], "verified")
+
     def test_foreground_service_cannot_gain_unrelated_types(self):
-        root = mobile_manifest()
-        root.find("application/service").set(ANDROID + "foregroundServiceType", "mediaPlayback|location")
-        with self.assertRaisesRegex(ValueError, "Type du service"):
-            self.verify(root)
+        for index in (0, 1):
+            for value in ("mediaPlayback|location", "location", "mediaProjection", "dataSync",
+                          "0", "1", "3", "8", "10", "0x0", "0x3", "0x0000000a",
+                          "0x0000000A", "0x80000002", "0xffffffff", "4294967298"):
+                with self.subTest(service=index, value=value):
+                    root = mobile_manifest()
+                    service = root.findall("application/service")[index]
+                    service.set(ANDROID + "foregroundServiceType", value)
+                    with self.assertRaisesRegex(ValueError, "Type du service") as error:
+                        self.verify(root)
+                    self.assertIn(service.get(ANDROID + "name").rsplit(".", 1)[-1], str(error.exception))
+                    self.assertIn(repr(value), str(error.exception))
+
+    def test_missing_or_malformed_foreground_service_type_is_rejected(self):
+        for index in (0, 1):
+            for value in (None, "", "-2", "+2", " 2 ", "2.0", "2e0", "0b10", "0o2",
+                          "0x", "0x2junk", "0x0_2", "mediaPlayback|", "MediaPlayback"):
+                with self.subTest(service=index, value=value):
+                    root = mobile_manifest()
+                    service = root.findall("application/service")[index]
+                    if value is None:
+                        service.attrib.pop(ANDROID + "foregroundServiceType")
+                    else:
+                        service.set(ANDROID + "foregroundServiceType", value)
+                    with self.assertRaisesRegex(ValueError, "Type du service") as error:
+                        self.verify(root)
+                    self.assertIn(repr(value), str(error.exception))
+
+    def test_numeric_media_playback_does_not_allow_exported_services(self):
+        for index in (0, 1):
+            with self.subTest(service=index):
+                root = mobile_manifest()
+                service = root.findall("application/service")[index]
+                service.set(ANDROID + "foregroundServiceType", "0x00000002")
+                service.set(ANDROID + "exported", "true")
+                with self.assertRaisesRegex(ValueError, "Service de lecture exposé"):
+                    self.verify(root)
 
     def test_tv_launcher_is_rejected(self):
         root = mobile_manifest()
