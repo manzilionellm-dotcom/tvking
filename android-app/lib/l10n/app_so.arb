@@ -2580,6 +2580,7 @@
   "tvSearchCount": "{count, plural, =1{1 natiijo} other{{count} natiijo}}",
   "tvGuideLoading": "Hagaha ayaa la rarayaa…",
   "tvGuideHint": "Kor / Hoos: dhex soco · OK ama Dib: xir",
+  "tvGuideReplayHint": "Kor / Hoos: dhex soco · OK ee REPLAY: ka daawo bilowga · Dib: xir",
   "tvNoEpg": "Barnaamij lama sheegin",
   "@tvSearchCount": {
     "placeholders": {

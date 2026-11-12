@@ -9,6 +9,11 @@
 //  Ici : gros caractères, ligne dorée sous le focus, programme en
 //  cours amené au milieu. OK ou Retour ferment le guide et laissent
 //  la chaîne qui joue déjà. On ne lance pas un second lecteur.
+//
+//  REPLAY (12/11/2026) : sur une chaîne qui déclare un catch-up, chaque
+//  émission TERMINÉE porte une pastille « REPLAY ». OK dessus ferme le
+//  guide en rendant le programme choisi : c'est le lecteur déjà ouvert
+//  qui le rejoue depuis le début (toujours pas de second lecteur).
 // =========================================================
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -18,6 +23,7 @@ import 'tv_localized_format.dart';
 import '../../channels/domain/channel.dart';
 import '../../epg/data/epg_repository.dart';
 import '../../epg/domain/epg_program.dart';
+import '../../epg/domain/replay_choice.dart';
 import '../../missed_show/domain/missed_summary.dart';
 import '../../missed_show/presentation/missed_guide_details.dart';
 import '../core/tv_back_guard.dart';
@@ -32,10 +38,14 @@ class TvChannelGuideScreen extends StatefulWidget {
     super.key,
     required this.channel,
     this.currentSummary,
+    this.loadPrograms,
   });
 
   final Channel channel;
   final MissedSummary? currentSummary;
+
+  /// Source des programmes (tests). Par défaut : le guide du jour en base.
+  final Future<List<EpgProgram>> Function(String channelId)? loadPrograms;
 
   @override
   State<TvChannelGuideScreen> createState() => _TvChannelGuideScreenState();
@@ -54,7 +64,15 @@ class _TvChannelGuideScreenState extends State<TvChannelGuideScreen> {
   bool _didFocusRetry = false;
 
   Future<List<EpgProgram>> _load() =>
-      EpgRepository.instance.todayPrograms(widget.channel.id);
+      (widget.loadPrograms ?? EpgRepository.instance.todayPrograms)(
+        widget.channel.id,
+      );
+
+  /// Ferme le guide en rendant [program] au lecteur, qui le rejoue.
+  void _replay(EpgProgram program) {
+    TvBackGuard.markHandled();
+    Navigator.of(context).pop<EpgProgram>(program);
+  }
 
   FocusNode _nodeFor(int i) => _nodes.putIfAbsent(i, FocusNode.new);
 
@@ -166,7 +184,9 @@ class _TvChannelGuideScreenState extends State<TvChannelGuideScreen> {
             ),
             const SizedBox(height: 4),
             Text(
-              context.l10n.tvGuideHint,
+              ReplayChoice.declared(widget.channel)
+                  ? context.l10n.tvGuideReplayHint
+                  : context.l10n.tvGuideHint,
               style: TvAppTokens.of(context)
                   .ui(TvDimens.label, color: TvAppTokens.of(context).mutedDim),
             ),
@@ -217,12 +237,17 @@ class _TvChannelGuideScreenState extends State<TvChannelGuideScreen> {
                           final bool live = p.isLiveAt(now);
                           final bool past =
                               !live && p.stopTime <= now.millisecondsSinceEpoch;
+                          final bool replay = past &&
+                              ReplayChoice.urlFor(widget.channel, p, now) !=
+                                  null;
                           return _ProgramRow(
+                            key: ValueKey<String>('guide-row-$i'),
                             program: p,
                             live: live,
                             past: past,
+                            replay: replay,
                             focusNode: _nodeFor(i),
-                            onSelect: _close,
+                            onSelect: replay ? () => _replay(p) : _close,
                           );
                         },
                       );
@@ -315,9 +340,11 @@ class _TvChannelGuideScreenState extends State<TvChannelGuideScreen> {
 
 class _ProgramRow extends StatelessWidget {
   const _ProgramRow({
+    super.key,
     required this.program,
     required this.live,
     required this.past,
+    required this.replay,
     required this.focusNode,
     required this.onSelect,
   });
@@ -325,6 +352,9 @@ class _ProgramRow extends StatelessWidget {
   final EpgProgram program;
   final bool live;
   final bool past;
+
+  /// Émission terminée que le fournisseur permet de revoir.
+  final bool replay;
   final FocusNode focusNode;
   final VoidCallback onSelect;
 
@@ -420,6 +450,52 @@ class _ProgramRow extends StatelessWidget {
                     ],
                   ),
                 ),
+                if (replay) ...<Widget>[
+                  const SizedBox(width: 16),
+                  // Pastille « REPLAY » : dit AVANT d'appuyer que OK relance
+                  // cette émission. Pleine sous le focus, contour sinon.
+                  Container(
+                    key: const ValueKey<String>('guide-replay-pill'),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      color: focused
+                          ? TvAppTokens.of(context).accent
+                          : Colors.transparent,
+                      borderRadius: BorderRadius.circular(TvTokens.rSmall),
+                      border: Border.all(
+                        color: TvAppTokens.of(context).accent,
+                        width: TvDimens.focusOutline,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        Icon(
+                          Icons.replay_rounded,
+                          size: TvDimens.titleS,
+                          color: focused
+                              ? TvAppTokens.of(context).onAccent
+                              : TvAppTokens.of(context).accentBright,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          context.l10n.badgeReplay,
+                          maxLines: 1,
+                          style: TvAppTokens.of(context).ui(
+                            TvDimens.caption,
+                            weight: FontWeight.w800,
+                            color: focused
+                                ? TvAppTokens.of(context).onAccent
+                                : TvAppTokens.of(context).accentBright,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ],
             ),
           );

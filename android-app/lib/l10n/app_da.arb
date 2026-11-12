@@ -1037,6 +1037,7 @@
   "tvSearchCount": "{count, plural, =1{1 resultat} other{{count} resultater}}",
   "tvGuideLoading": "Indlæser guiden…",
   "tvGuideHint": "Op / Ned: bladre · OK eller Tilbage: luk",
+  "tvGuideReplayHint": "Op / Ned: gennemse · OK på REPLAY: se fra starten · Tilbage: luk",
   "tvNoEpg": "Intet program annonceret",
   "tvVoiceMic": "Mikrofon",
   "tvVoiceListening": "Tal nu…",

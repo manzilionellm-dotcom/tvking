@@ -1037,6 +1037,7 @@
   "tvSearchCount": "{count, plural, =1{Tokeo 1} other{Matokeo {count}}}",
   "tvGuideLoading": "Inapakia mwongozo…",
   "tvGuideHint": "Juu / Chini: pitia · OK au Nyuma: funga",
+  "tvGuideReplayHint": "Juu / Chini: vinjari · OK kwenye REPLAY: tazama tangu mwanzo · Nyuma: funga",
   "tvNoEpg": "Hakuna kipindi kilichotangazwa",
   "tvVoiceMic": "Mikrofoni",
   "tvVoiceListening": "Zungumza sasa…",

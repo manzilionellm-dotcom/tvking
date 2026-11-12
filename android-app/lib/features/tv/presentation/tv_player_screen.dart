@@ -58,6 +58,7 @@ import '../../channels/domain/channel.dart';
 import '../../epg/data/epg_repository.dart';
 import '../../epg/data/catchup_url_builder.dart';
 import '../../epg/domain/epg_program.dart';
+import '../../epg/domain/replay_choice.dart';
 import '../../epg/domain/timeshift_pause.dart';
 import '../../followed/data/followed_flag.dart';
 import '../../followed/data/followed_log.dart';
@@ -1233,6 +1234,24 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     }
   }
 
+  /// Rejoue [program] depuis le début dans CE lecteur (choix fait dans le
+  /// guide). Même chemin que « depuis le début » : `_catchup` affiche le
+  /// bouton de retour au direct.
+  void _replayProgram(EpgProgram program) {
+    final String? url =
+        ReplayChoice.urlFor(_current, program, DateTime.now());
+    if (url == null) return;
+    try {
+      _livePausedAt = null;
+      _catchup = true;
+      _playingUrl = url;
+      _controller.setUrl(url);
+      _flash(_missedFlash(context));
+    } catch (_) {
+      _catchup = false;
+    }
+  }
+
   void _backToLive() {
     _livePausedAt = null;
     _catchup = false;
@@ -1258,16 +1277,19 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     unawaited(
       Navigator.of(context)
           .push(
-            MaterialPageRoute<void>(
+            MaterialPageRoute<EpgProgram>(
               builder: (_) => TvChannelGuideScreen(
                 channel: _current,
                 currentSummary: _missed,
               ),
             ),
           )
-          .then((_) {
+          .then((EpgProgram? chosen) {
             // Au retour, le focus clavier était parti avec la route du guide.
-            if (mounted) _focus.requestFocus();
+            if (!mounted) return;
+            _focus.requestFocus();
+            // Émission passée choisie dans le guide (pastille REPLAY).
+            if (chosen != null) _replayProgram(chosen);
           }),
     );
     _showOverlayTemporarily();

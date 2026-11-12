@@ -1037,6 +1037,7 @@
   "tvSearchCount": "{count, plural, =1{نتيجة واحدة} other{{count} نتائج}}",
   "tvGuideLoading": "جارٍ تحميل الدليل…",
   "tvGuideHint": "أعلى / أسفل: تصفح · موافق أو رجوع: إغلاق",
+  "tvGuideReplayHint": "أعلى / أسفل: تصفّح · موافق على REPLAY: المشاهدة من البداية · رجوع: إغلاق",
   "tvNoEpg": "لا يوجد برنامج معلن",
   "tvVoiceMic": "ميكروفون",
   "tvVoiceListening": "تحدّث الآن…",

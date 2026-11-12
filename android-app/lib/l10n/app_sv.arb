@@ -1037,6 +1037,7 @@
   "tvSearchCount": "{count, plural, =1{1 träff} other{{count} träffar}}",
   "tvGuideLoading": "Laddar guiden…",
   "tvGuideHint": "Upp / Ner: bläddra · OK eller Tillbaka: stäng",
+  "tvGuideReplayHint": "Upp / Ner: bläddra · OK på REPLAY: se från början · Tillbaka: stäng",
   "tvNoEpg": "Inget program annonserat",
   "tvVoiceMic": "Mikrofon",
   "tvVoiceListening": "Prata nu…",

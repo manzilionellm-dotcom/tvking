@@ -2467,6 +2467,7 @@
   "tvSearchCount": "{count, plural, =1{1 sonuç} other{{count} sonuç}}",
   "tvGuideLoading": "Rehber yükleniyor…",
   "tvGuideHint": "Yukarı / Aşağı: gez · OK veya Geri: kapat",
+  "tvGuideReplayHint": "Yukarı / Aşağı: gezin · REPLAY üzerinde OK: baştan izle · Geri: kapat",
   "tvNoEpg": "Duyurulan program yok",
   "tvVoiceMic": "Mikrofon",
   "tvVoiceListening": "Şimdi konuş…",
