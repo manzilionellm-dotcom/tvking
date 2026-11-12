@@ -1,6 +1,7 @@
 package com.manzilionellm.native_video_player
 
 import android.app.Activity
+import android.app.ActivityManager
 import android.content.Context
 import android.content.ContextWrapper
 import android.graphics.Bitmap
@@ -77,6 +78,7 @@ import com.manzilionellm.native_video_player.logic.AudioSnapshot
 import com.manzilionellm.native_video_player.logic.AudioSpectrum
 import com.manzilionellm.native_video_player.logic.AudioStages
 import com.manzilionellm.native_video_player.logic.AudioTrackBuffer
+import com.manzilionellm.native_video_player.logic.LowRamBuffer
 import com.manzilionellm.native_video_player.logic.AacRoute
 import com.manzilionellm.native_video_player.logic.CodecOrder
 import com.manzilionellm.native_video_player.logic.DecoderFallback
@@ -1097,7 +1099,13 @@ class NativeVideoView(
         // Le matelas anti-saccade reste celui qui est déjà en production.
         // setBackBuffer(0) est le défaut : on ne garde PAS les images déjà
         // jouées (mémoire, et une vieille image ne peut pas rester à l'écran).
-        val loadControl = DefaultLoadControl.Builder()
+        //
+        // BOX À FAIBLE MÉMOIRE (≤ 1 Go, ex. Fire TV AFTSS 899 Mo) : plafond EN
+        // OCTETS en plus des durées ci-dessus, qui restent identiques. Les 5 s
+        // de démarrage passent toujours (priorité au temps) ; au-delà, le
+        // chargement s'arrête à 45 s OU 32 Mio. Box plus grosses : inchangé.
+        // Voir logic/LowRamBuffer.kt et LowRamBufferTest.
+        val loadControlBuilder = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
                 5_000,
                 45_000,
@@ -1106,7 +1114,8 @@ class NativeVideoView(
             )
             .setPrioritizeTimeOverSizeThresholds(true)
             .setBackBuffer(0, false)
-            .build()
+        lowRamTargetBufferBytes()?.let { loadControlBuilder.setTargetBufferBytes(it) }
+        val loadControl = loadControlBuilder.build()
 
         // DÉCODEUR VIDÉO. Matériel d'abord (MediaCodec Android, le plus
         // compatible sur les box), repli vers le décodeur suivant SEULEMENT
@@ -1331,6 +1340,16 @@ class NativeVideoView(
      * (craquements) ; FFmpeg est le décodeur de référence, avec le même
      * repli « retour à la box » que l'AAC si ça bloque.
      */
+    /** Plafond d'octets du tampon réseau, ou null (box > 1 Go : défaut Media3). */
+    private fun lowRamTargetBufferBytes(): Int? = try {
+        val am = appContext.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
+        val info = ActivityManager.MemoryInfo()
+        am?.getMemoryInfo(info)
+        LowRamBuffer.targetBytes(info.totalMem, am?.isLowRamDevice == true)
+    } catch (_: Throwable) {
+        null // jamais d'échec de lecture à cause d'une mesure mémoire
+    }
+
     private fun preferFfmpegFor(mimeType: String): Boolean {
         if (!ffmpegReady) return false
         if (mimeType == MimeTypes.AUDIO_AAC) {
