@@ -155,6 +155,12 @@ class _TvHubScreenState extends State<TvHubScreen> {
   // On ne recalcule pas dans build() : un import de playlist peut émettre
   // souvent, et on ne veut qu'UN assemblage après une courte pause.
   List<Channel> _channels = const <Channel>[];
+
+  /// Index id → chaîne de [_channels], refait UNIQUEMENT quand la liste
+  /// change. Avant, il était reconstruit à chaque `build()` de l'accueil et
+  /// à chaque recalcul des rangées : jusqu'à 50 000 entrées, toutes les 20 s
+  /// (horloge) et à chaque événement, y compris sous un lecteur en marche.
+  Map<String, Channel> _byId = const <String, Channel>{};
   Set<String> _favIds = <String>{};
   List<String> _recentIds = const <String>[];
   List<String> _trending = const <String>[];
@@ -250,6 +256,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
     // Ce qu'on a DÉJÀ en mémoire (le boot a chargé la playlist). Les dépôts
     // finissent de s'ouvrir dans _prepareEngagement, sans bloquer le 1er cadre.
     _channels = PlaylistRepository.instance.currentChannels;
+    _byId = indexChannelsById(_channels);
     _scheduleGenreShelves();
     // Déjà des chaînes en mémoire : une source est là, pas de QR.
     // Sinon on lit les playlists (une source peut exister avant
@@ -283,7 +290,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
     });
     WatchProgressRepository.instance.addListener(_scheduleShelves);
     ProgramReminderRepository.instance.addListener(_scheduleShelves);
-    ParentalControls.instance.kidsMode.addListener(_scheduleShelves);
+    ParentalControls.instance.kidsMode.addListener(_onKidsMode);
     TimePickLog.instance.listenable.addListener(_onTimePicks);
     timePicksFlag.changes.addListener(_onTimeFlag);
     FollowedLog.instance.listenable.addListener(_onFollowed);
@@ -543,6 +550,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
       unawaited(_lookForLocalSource());
     }
     _channels = channels;
+    _byId = indexChannelsById(channels);
     _genreGeneration++;
     _genreShelves = const {}; // aucune carte de la source retirée
     _scheduleGenreShelves();
@@ -712,13 +720,23 @@ class _TvHubScreenState extends State<TvHubScreen> {
     });
   }
 
+  /// Rangées locales (reprise, favoris, rappels). « Populaires » n'en fait
+  /// plus partie : elle ne dépend que des tendances, de la liste et du mode
+  /// enfants, qui la relancent déjà. Avant, chaque position de film
+  /// enregistrée (toutes les 10 s) et chaque zap relançaient un isolate sur
+  /// tout le catalogue, sous le lecteur, pour un résultat identique.
   void _scheduleShelves() {
     _shelfDebounce?.cancel();
     _shelfDebounce = Timer(const Duration(milliseconds: 150), () {
       if (!mounted) return;
       _rebuildShelves();
-      _schedulePopular();
     });
+  }
+
+  /// Mode enfants basculé : les rangées ET « Populaires » changent.
+  void _onKidsMode() {
+    _scheduleShelves();
+    _schedulePopular();
   }
 
   void _schedulePopular() {
@@ -732,7 +750,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
   /// [notify] à false pendant initState / avant le premier cadre.
   void _rebuildShelves({bool notify = true}) {
     final bool kids = ParentalControls.instance.kidsMode.value;
-    final Map<String, Channel> byId = indexChannelsById(_channels);
+    final Map<String, Channel> byId = _byId;
     bool hide(Channel c) => hiddenForKids(c);
     final bool Function(Channel)? kidsHide = kids ? hide : null;
     final int now = DateTime.now().millisecondsSinceEpoch;
@@ -889,7 +907,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
 
   bool _rewindReady(ShowCue? cue) {
     if (cue == null || !cue.canRewind) return false;
-    final Channel? channel = indexChannelsById(_channels)[cue.channelId];
+    final Channel? channel = _byId[cue.channelId];
     if (channel == null) return false;
     final String? url = CatchupUrlBuilder.build(
       channel: channel,
@@ -963,7 +981,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
       }
       if (gen != _showGen || !mounted) return;
       final bool kids = ParentalControls.instance.kidsMode.value;
-      final Map<String, Channel> byId = indexChannelsById(_channels);
+      final Map<String, Channel> byId = _byId;
       final List<GuideSlot> slots = <GuideSlot>[];
       for (final EpgProgram program in found) {
         final Channel? channel = byId[program.channelId];
@@ -999,7 +1017,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
   }
 
   void _openShow(ShowCue cue, {bool fromStart = false, bool replay = false}) {
-    final Map<String, Channel> byId = indexChannelsById(_channels);
+    final Map<String, Channel> byId = _byId;
     final String id =
         replay ? (cue.replayChannelId ?? cue.channelId) : cue.channelId;
     final Channel? target = byId[id];
@@ -1120,7 +1138,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
     TrendingRepository.instance.stop();
     WatchProgressRepository.instance.removeListener(_scheduleShelves);
     ProgramReminderRepository.instance.removeListener(_scheduleShelves);
-    ParentalControls.instance.kidsMode.removeListener(_scheduleShelves);
+    ParentalControls.instance.kidsMode.removeListener(_onKidsMode);
     TimePickLog.instance.listenable.removeListener(_onTimePicks);
     timePicksFlag.changes.removeListener(_onTimeFlag);
     FollowedLog.instance.listenable.removeListener(_onFollowed);
@@ -1509,7 +1527,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
                                     reminders: _shelves.reminders,
                                     also: _timePicks,
                                     nowMs: _now.millisecondsSinceEpoch,
-                                    channelsById: indexChannelsById(_channels),
+                                    channelsById: _byId,
                                   );
                                   return TvCinematicHome(
                                     board: board,

@@ -267,6 +267,9 @@ class PlaylistRepository {
     while (out.length < kMaxInMemoryChannels) {
       final List<Map<String, Object?>> rows = await db.query(
         'channels',
+        // Seulement les colonnes lues par [_channelFromMap] : `http_headers`
+        // n'est pas utilisé ici et alourdissait chaque rangée au démarrage.
+        columns: _kChannelColumns,
         where: activeId != null
             ? 'playlist_id = ? AND local_id > ?'
             : 'local_id > ?$hiddenFilter',
@@ -1382,6 +1385,21 @@ class PlaylistRepository {
   // ============================================================
   //  Mapping Channel ↔ SQLite
   // ============================================================
+
+  /// Colonnes lues par [_channelFromMap], plus `local_id` (pagination).
+  static const List<String> _kChannelColumns = <String>[
+    'local_id',
+    'external_id',
+    'playlist_id',
+    'name',
+    'category',
+    'stream_url',
+    'is_live',
+    'logo_url',
+    'catchup_supported',
+    'catchup_days',
+    'catchup_source',
+  ];
 
   Channel _channelFromMap(Map<String, Object?> map) {
     return Channel(
