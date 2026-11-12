@@ -501,12 +501,17 @@ class PlaylistRepository {
           BlackBox.instance.info('EPG', 'Xtream : aucun epg_channel_id fourni par le serveur, guide sauté');
           return;
         }
-        await EpgRepository.instance.downloadAndImport(url: epgUrl, channelIdMap: map);
+        await EpgRepository.instance.downloadAndImport(
+          url: epgUrl,
+          channelIdMap: map,
+          replayChannelIds: plan.replayIds,
+        );
         return;
       }
       await EpgRepository.instance.downloadAndImport(
         url: epgUrl,
         knownChannelIds: plan.knownIds!,
+        replayChannelIds: plan.replayIds,
       );
     } catch (e) {
       // L'EPG est optionnel : la liste reste utilisable. La trace sert au support.
@@ -523,11 +528,19 @@ class PlaylistRepository {
   }) {
     final bool xtream =
         channels.isNotEmpty && channels.every((Channel c) => c.id.startsWith('xtream-'));
+    // Chaînes qui déclarent un catch-up (identifiants seulement) : le guide
+    // garde leur journée passée pour les pastilles REPLAY.
+    final Set<String> replay = <String>{
+      for (final Channel c in channels)
+        if (c.catchupSupported ||
+            (c.catchupSource != null && c.catchupSource!.isNotEmpty))
+          c.id,
+    };
     if (xtream) {
       return _EpgPlan.xtream(
-          buildEpgIdMap(xtreamEpgIds ?? const <String, String>{}));
+          buildEpgIdMap(xtreamEpgIds ?? const <String, String>{}), replay);
     }
-    return _EpgPlan.known(channels.map((Channel c) => c.id).toSet());
+    return _EpgPlan.known(channels.map((Channel c) => c.id).toSet(), replay);
   }
 
 
@@ -1397,12 +1410,15 @@ class _ImportedCatalog {
 /// Résumé du guide : la table epg_channel_id (Xtream) OU les identifiants
 /// connus (M3U). Ne référence aucun [Channel].
 class _EpgPlan {
-  const _EpgPlan.xtream(Map<String, List<String>> map)
+  const _EpgPlan.xtream(Map<String, List<String>> map, this.replayIds)
       : xtreamIdMap = map,
         knownIds = null;
-  const _EpgPlan.known(Set<String> ids)
+  const _EpgPlan.known(Set<String> ids, this.replayIds)
       : xtreamIdMap = null,
         knownIds = ids;
   final Map<String, List<String>>? xtreamIdMap;
   final Set<String>? knownIds;
+
+  /// Identifiants des chaînes à catch-up (voir [_epgPlanFor]).
+  final Set<String> replayIds;
 }

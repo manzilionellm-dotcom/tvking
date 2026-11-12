@@ -100,6 +100,8 @@ class EpgRepository {
     required String url,
     Set<String>? knownChannelIds,
     Map<String, List<String>>? channelIdMap,
+    // Chaînes à catch-up : leur journée passée est gardée (REPLAY).
+    Set<String>? replayChannelIds,
     http.Client? httpClient,
     void Function(int progressBytes)? onProgress,
     Duration connectTimeout = const Duration(seconds: 30),
@@ -126,6 +128,7 @@ class EpgRepository {
           url: url,
           knownIds: knownChannelIds,
           idMap: channelIdMap,
+          replayIds: replayChannelIds,
           connectTimeout: connectTimeout,
           idleTimeout: idleTimeout,
           onProgress: onProgress,
@@ -139,6 +142,7 @@ class EpgRepository {
             client: client,
             knownIds: knownChannelIds,
             idMap: channelIdMap,
+            replayIds: replayChannelIds,
             connectTimeout: connectTimeout,
             idleTimeout: idleTimeout,
             onProgress: onProgress,
@@ -174,6 +178,7 @@ class EpgRepository {
     required String url,
     required Set<String>? knownIds,
     required Map<String, List<String>>? idMap,
+    required Set<String>? replayIds,
     required Duration connectTimeout,
     required Duration idleTimeout,
     required void Function(int progressBytes)? onProgress,
@@ -188,6 +193,7 @@ class EpgRepository {
           url: url,
           knownIds: knownIds?.toList(growable: false),
           idMap: idMap,
+          replayIds: replayIds?.toList(growable: false),
           connectTimeoutMs: connectTimeout.inMilliseconds,
           idleTimeoutMs: idleTimeout.inMilliseconds,
           port: rx.sendPort,
@@ -235,18 +241,24 @@ class EpgRepository {
     }
   }
 
-  /// Supprime tous les programmes terminés depuis plus d'une heure.
-  /// Garde 1h dans le passé pour le catch-up immédiat.
+  /// Supprime les programmes terminés depuis plus d'une heure. Exception :
+  /// les chaînes qui déclarent un catch-up gardent [kEpgReplayKeepHours]
+  /// heures, sinon le guide n'avait presque rien à proposer en REPLAY.
   Future<int> purgeStale() async {
     await initialize();
     final Database db = await PlaylistDatabase.instance.database;
-    final int cutoff = DateTime.now()
-        .subtract(const Duration(hours: 1))
+    final DateTime now = DateTime.now();
+    final int cutoff =
+        now.subtract(const Duration(hours: 1)).millisecondsSinceEpoch;
+    final int replayCutoff = now
+        .subtract(const Duration(hours: kEpgReplayKeepHours))
         .millisecondsSinceEpoch;
     return db.delete(
       'epg_programs',
-      where: 'stop_time < ?',
-      whereArgs: <Object>[cutoff],
+      where: 'stop_time < ? AND (stop_time < ? OR channel_id NOT IN ('
+          'SELECT external_id FROM channels WHERE catchup_supported = 1 '
+          "OR (catchup_source IS NOT NULL AND catchup_source <> '')))",
+      whereArgs: <Object>[cutoff, replayCutoff],
     );
   }
 
@@ -438,6 +450,7 @@ class _EpgJob {
     required this.url,
     required this.knownIds,
     required this.idMap,
+    required this.replayIds,
     required this.connectTimeoutMs,
     required this.idleTimeoutMs,
     required this.port,
@@ -446,6 +459,7 @@ class _EpgJob {
   final String url;
   final List<String>? knownIds;
   final Map<String, List<String>>? idMap;
+  final List<String>? replayIds;
   final int connectTimeoutMs;
   final int idleTimeoutMs;
   final SendPort port;
@@ -465,6 +479,7 @@ Future<void> _epgWorker(_EpgJob job) async {
       client: client,
       knownIds: job.knownIds?.toSet(),
       idMap: job.idMap,
+      replayIds: job.replayIds?.toSet(),
       connectTimeout: Duration(milliseconds: job.connectTimeoutMs),
       idleTimeout: Duration(milliseconds: job.idleTimeoutMs),
       onProgress: (int bytes) => job.port.send(bytes),
