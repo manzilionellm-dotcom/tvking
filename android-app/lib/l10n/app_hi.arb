@@ -2467,6 +2467,7 @@
   "tvSearchCount": "{count, plural, =1{1 परिणाम} other{{count} परिणाम}}",
   "tvGuideLoading": "गाइड लोड हो रही है…",
   "tvGuideHint": "ऊपर / नीचे: देखें · OK या वापस: बंद करें",
+  "tvGuideReplayHint": "ऊपर / नीचे: देखें · REPLAY पर OK: शुरू से देखें · वापस: बंद करें",
   "tvNoEpg": "कोई कार्यक्रम नहीं",
   "tvVoiceMic": "माइक",
   "tvVoiceListening": "अब बोलें…",

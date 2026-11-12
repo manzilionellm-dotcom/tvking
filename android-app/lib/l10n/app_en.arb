@@ -1078,6 +1078,7 @@
   "tvSearchCount": "{count, plural, =1{1 result} other{{count} results}}",
   "tvGuideLoading": "Loading the guide…",
   "tvGuideHint": "Up / Down: browse · OK or Back: close",
+  "tvGuideReplayHint": "Up / Down: browse · OK on REPLAY: watch from the start · Back: close",
   "tvNoEpg": "No programme listed",
   "tvRemoteTitle": "Remote",
   "tvSettingsRemote": "The phone becomes the remote, on the same Wi-Fi, with nothing to install.",

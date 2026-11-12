@@ -2467,6 +2467,7 @@
   "tvSearchCount": "{count, plural, =1{1 resultado} other{{count} resultados}}",
   "tvGuideLoading": "A carregar o guia…",
   "tvGuideHint": "Cima / Baixo: percorrer · OK ou Voltar: fechar",
+  "tvGuideReplayHint": "Cima / Baixo: percorrer · OK em REPLAY: ver desde o início · Voltar: fechar",
   "tvNoEpg": "Sem programa anunciado",
   "tvVoiceMic": "Micro",
   "tvVoiceListening": "Fala agora…",

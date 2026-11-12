@@ -2582,6 +2582,7 @@
   "tvSearchCount": "{count, plural, =1{1 résultat} other{{count} résultats}}",
   "tvGuideLoading": "Chargement du guide…",
   "tvGuideHint": "Haut / Bas : parcourir · OK ou Retour : fermer",
+  "tvGuideReplayHint": "Haut / Bas : parcourir · OK sur REPLAY : revoir depuis le début · Retour : fermer",
   "tvNoEpg": "Pas de programme annoncé",
   "@tvSearchCount": {
     "placeholders": {

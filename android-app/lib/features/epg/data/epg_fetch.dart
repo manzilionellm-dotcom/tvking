@@ -30,12 +30,20 @@ import 'xmltv_parser.dart';
 /// silence entre deux paquets : dépassés, l'appel lève et l'appelant
 /// rend son verrou. [knownIds] (M3U) et [idMap] (Xtream) décident quels
 /// programmes sont gardés ; voir epg_targets.dart.
+/// Heures de programmes PASSÉS gardées pour les chaînes qui déclarent un
+/// catch-up : la journée en cours du guide (pastilles REPLAY). Les autres
+/// chaînes gardent 1 h, comme avant : pas de rangées en plus pour elles.
+const int kEpgReplayKeepHours = 24;
+
 Future<int> fetchXmltvRows({
   required String url,
   required http.Client client,
   required Future<void> Function(List<Map<String, Object?>> rows) onRows,
   Set<String>? knownIds,
   Map<String, List<String>>? idMap,
+  // Chaînes de l'app (identifiants) qui déclarent un catch-up : leurs
+  // programmes finis restent [kEpgReplayKeepHours] heures au lieu d'une.
+  Set<String>? replayIds,
   Duration connectTimeout = const Duration(seconds: 30),
   Duration idleTimeout = const Duration(seconds: 60),
   int batchSize = 500,
@@ -94,16 +102,28 @@ Future<int> fetchXmltvRows({
     skip = (String id) => !knownIds.contains(id);
   }
 
+  // Avant : tout programme fini depuis plus d'1 h était écarté, donc le
+  // guide d'une chaîne ne montrait presque aucune émission à revoir. On
+  // garde la journée, mais SEULEMENT pour les chaînes à catch-up.
+  final Set<String> replay = replayIds ?? const <String>{};
+  final int recentStop = DateTime.now()
+      .subtract(const Duration(hours: 1))
+      .millisecondsSinceEpoch;
+
   List<Map<String, Object?>> pending = <Map<String, Object?>>[];
   int total = 0;
   await XmltvParser.parse(
     bytes,
     skipPredicate: skip,
+    keepHoursBeforeNow: replay.isEmpty ? 1 : kEpgReplayKeepHours,
     onProgram: (EpgProgram p) async {
       final List<String> targets = map == null
           ? expandEpgTargets(p.channelId, null)
           : expandEpgTargets(normalizeEpgId(p.channelId), map);
+      final bool old = p.stopTime < recentStop;
       for (final String channelId in targets) {
+        // Programme fini depuis plus d'1 h : utile au replay uniquement.
+        if (old && !replay.contains(channelId)) continue;
         final Map<String, Object?> row = p.toMap();
         row['channel_id'] = channelId;
         pending.add(row);

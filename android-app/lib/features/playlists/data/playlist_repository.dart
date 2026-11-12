@@ -47,6 +47,7 @@ import 'import_progress.dart';
 import 'm3u_parser.dart';
 import 'playlist_database.dart';
 import 'xtream_client.dart';
+import 'xtream_server_clock.dart';
 
 /// Résultat individuel d'un import en lot.
 class BatchImportResult {
@@ -111,6 +112,8 @@ class PlaylistRepository {
   /// Charge initialement les chaînes depuis la base et émet sur le stream.
   /// À appeler une fois au démarrage de l'app.
   Future<void> initialize() async {
+    // Fuseaux des serveurs Xtream déjà connus (heure du catch-up).
+    await XtreamServerClock.load();
     await _completePendingDeletions();
     await _emitCurrentState();
   }
@@ -264,6 +267,9 @@ class PlaylistRepository {
     while (out.length < kMaxInMemoryChannels) {
       final List<Map<String, Object?>> rows = await db.query(
         'channels',
+        // Seulement les colonnes lues par [_channelFromMap] : `http_headers`
+        // n'est pas utilisé ici et alourdissait chaque rangée au démarrage.
+        columns: _kChannelColumns,
         where: activeId != null
             ? 'playlist_id = ? AND local_id > ?'
             : 'local_id > ?$hiddenFilter',
@@ -498,12 +504,17 @@ class PlaylistRepository {
           BlackBox.instance.info('EPG', 'Xtream : aucun epg_channel_id fourni par le serveur, guide sauté');
           return;
         }
-        await EpgRepository.instance.downloadAndImport(url: epgUrl, channelIdMap: map);
+        await EpgRepository.instance.downloadAndImport(
+          url: epgUrl,
+          channelIdMap: map,
+          replayChannelIds: plan.replayIds,
+        );
         return;
       }
       await EpgRepository.instance.downloadAndImport(
         url: epgUrl,
         knownChannelIds: plan.knownIds!,
+        replayChannelIds: plan.replayIds,
       );
     } catch (e) {
       // L'EPG est optionnel : la liste reste utilisable. La trace sert au support.
@@ -520,11 +531,19 @@ class PlaylistRepository {
   }) {
     final bool xtream =
         channels.isNotEmpty && channels.every((Channel c) => c.id.startsWith('xtream-'));
+    // Chaînes qui déclarent un catch-up (identifiants seulement) : le guide
+    // garde leur journée passée pour les pastilles REPLAY.
+    final Set<String> replay = <String>{
+      for (final Channel c in channels)
+        if (c.catchupSupported ||
+            (c.catchupSource != null && c.catchupSource!.isNotEmpty))
+          c.id,
+    };
     if (xtream) {
       return _EpgPlan.xtream(
-          buildEpgIdMap(xtreamEpgIds ?? const <String, String>{}));
+          buildEpgIdMap(xtreamEpgIds ?? const <String, String>{}), replay);
     }
-    return _EpgPlan.known(channels.map((Channel c) => c.id).toSet());
+    return _EpgPlan.known(channels.map((Channel c) => c.id).toSet(), replay);
   }
 
 
@@ -1367,6 +1386,21 @@ class PlaylistRepository {
   //  Mapping Channel ↔ SQLite
   // ============================================================
 
+  /// Colonnes lues par [_channelFromMap], plus `local_id` (pagination).
+  static const List<String> _kChannelColumns = <String>[
+    'local_id',
+    'external_id',
+    'playlist_id',
+    'name',
+    'category',
+    'stream_url',
+    'is_live',
+    'logo_url',
+    'catchup_supported',
+    'catchup_days',
+    'catchup_source',
+  ];
+
   Channel _channelFromMap(Map<String, Object?> map) {
     return Channel(
       id: map['external_id'] as String,
@@ -1394,12 +1428,15 @@ class _ImportedCatalog {
 /// Résumé du guide : la table epg_channel_id (Xtream) OU les identifiants
 /// connus (M3U). Ne référence aucun [Channel].
 class _EpgPlan {
-  const _EpgPlan.xtream(Map<String, List<String>> map)
+  const _EpgPlan.xtream(Map<String, List<String>> map, this.replayIds)
       : xtreamIdMap = map,
         knownIds = null;
-  const _EpgPlan.known(Set<String> ids)
+  const _EpgPlan.known(Set<String> ids, this.replayIds)
       : xtreamIdMap = null,
         knownIds = ids;
   final Map<String, List<String>>? xtreamIdMap;
   final Set<String>? knownIds;
+
+  /// Identifiants des chaînes à catch-up (voir [_epgPlanFor]).
+  final Set<String> replayIds;
 }

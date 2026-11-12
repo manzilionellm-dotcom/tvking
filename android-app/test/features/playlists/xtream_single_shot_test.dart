@@ -68,8 +68,11 @@ Stream<List<int>> _chunked(List<int> body,
 }
 
 class _Server {
-  _Server(this.whole);
+  _Server(this.whole, {this.failingCategories = const <String>{}});
   final Stream<List<int>> Function() whole;
+
+  /// Catégories qui répondent en erreur (réseau encore instable).
+  final Set<String> failingCategories;
   int wholeCalls = 0;
   final Set<String> categoryCalls = <String>{};
 
@@ -85,6 +88,9 @@ class _Server {
             return http.StreamedResponse(whole(), 200);
           }
           categoryCalls.add(cat);
+          if (failingCategories.contains(cat)) {
+            return http.StreamedResponse(const Stream<List<int>>.empty(), 500);
+          }
           return http.StreamedResponse(Stream<List<int>>.value(_category(int.parse(cat))), 200);
         }
         return http.StreamedResponse(const Stream<List<int>>.empty(), 404);
@@ -147,6 +153,18 @@ void main() {
         await _import(server, timeout: const Duration(milliseconds: 150));
     expect(server.categoryCalls.length, _kCats);
     expect(channels.length, _kCats * 3);
+  });
+
+  test('coupure du bloc PUIS catégorie en échec : import refusé, pas de liste partielle', () async {
+    // Avant : la catégorie en échec était ignorée et les 5 autres formaient
+    // une liste « réussie » qui remplaçait la liste complète de la box.
+    final _Server server = _Server(
+      () => _chunked(_whole(400), failAfter: 3),
+      failingCategories: const <String>{'1'},
+    );
+    await expectLater(_import(server), throwsA(isA<XtreamException>()));
+    // Arrêt dès la première vague : pas de requête pour toutes les catégories.
+    expect(server.categoryCalls.length, lessThan(_kCats));
   });
 
   test('serveur muet dès la connexion : erreur, et aucune rafale par catégorie', () async {

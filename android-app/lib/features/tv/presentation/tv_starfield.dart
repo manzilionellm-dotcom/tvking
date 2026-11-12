@@ -24,17 +24,17 @@ class PhantomWeave extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Opacité portée par l'image elle-même : un widget `Opacity` plein
+    // écran imposait un calque hors écran sous toute l'interface.
     return const IgnorePointer(
-      child: Opacity(
-        opacity: 0.55,
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            image: DecorationImage(
-              image: AssetImage('assets/branding/phantom_weave.png'),
-              repeat: ImageRepeat.repeat,
-              filterQuality: FilterQuality.none,
-              alignment: Alignment.topLeft,
-            ),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          image: DecorationImage(
+            image: AssetImage('assets/branding/phantom_weave.png'),
+            repeat: ImageRepeat.repeat,
+            filterQuality: FilterQuality.none,
+            alignment: Alignment.topLeft,
+            opacity: 0.55,
           ),
         ),
       ),

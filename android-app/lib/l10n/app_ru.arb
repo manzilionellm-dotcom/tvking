@@ -2467,6 +2467,7 @@
   "tvSearchCount": "{count, plural, =1{1 результат} few{{count} результата} many{{count} результатов} other{{count} результата}}",
   "tvGuideLoading": "Загрузка телегида…",
   "tvGuideHint": "Вверх / Вниз: листать · OK или Назад: закрыть",
+  "tvGuideReplayHint": "Вверх / Вниз: листать · OK на REPLAY: смотреть с начала · Назад: закрыть",
   "tvNoEpg": "Программа не указана",
   "tvVoiceMic": "Микрофон",
   "tvVoiceListening": "Говори сейчас…",

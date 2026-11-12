@@ -43,9 +43,12 @@ void main() {
       live: true,
       alreadyTimeshift: false,
     );
+    // Route Xtream réelle : /timeshift/… (corrigé le 12/11/2026). L'ancienne
+    // attente « /live/timeshift/… » décrivait le défaut du constructeur : sur
+    // un serveur Xtream, /live/(user)/(pass)/(id) y lit un faux identifiant.
     expect(
       url,
-      'http://example.invalid:8080/live/timeshift/demo/secret/1/2026-11-04:20-15/55.ts',
+      'http://example.invalid:8080/timeshift/demo/secret/1/2026-11-04:20-15/55.ts',
     );
   });
 

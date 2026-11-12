@@ -2467,6 +2467,7 @@
   "tvSearchCount": "{count, plural, =1{1 resultaat} other{{count} resultaten}}",
   "tvGuideLoading": "Gids laden…",
   "tvGuideHint": "Omhoog / Omlaag: bladeren · OK of Terug: sluiten",
+  "tvGuideReplayHint": "Omhoog / Omlaag: bladeren · OK op REPLAY: vanaf het begin kijken · Terug: sluiten",
   "tvNoEpg": "Geen programma bekend",
   "tvVoiceMic": "Microfoon",
   "tvVoiceListening": "Spreek nu…",
