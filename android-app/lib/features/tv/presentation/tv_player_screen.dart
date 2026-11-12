@@ -912,7 +912,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     if (!_overlay || _btnFocus < 0) {
       setState(() {
         _overlay = true;
-        if (_btnFocus < 0) _btnFocus = 1; // REC par défaut (bouton central)
+        if (_btnFocus < 0) _btnFocus = _defaultBtn;
       });
       _showOverlayTemporarily();
       return;
@@ -920,18 +920,35 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     _activateBtn(_btnFocus);
   }
 
+  /// Bouton surligné à l'ouverture de la barre : REC (bouton central) en
+  /// direct ; en replay, le bouton « Direct ». L'aide affichée au lancement
+  /// d'un replay dit « Droite, puis OK : retour au direct » : avec REC par
+  /// défaut, ces deux touches lançaient un enregistrement.
+  int get _defaultBtn => _catchup ? (_startBtn ?? 1) : 1;
+
+  /// Entrée en replay : la barre se referme pour que l'aide soit vraie
+  /// (Droite la rouvre sur « Direct », OK revient au direct).
+  void _closeBarForReplay() {
+    _hideTimer?.cancel();
+    if (!mounted) return;
+    setState(() {
+      _overlay = false;
+      _btnFocus = -1;
+    });
+  }
+
   // Déplace le surlignage Gauche/Droite. Si la barre est masquée, on l'ouvre.
   void _navBtn(int delta) {
     if (!_overlay) {
       setState(() {
         _overlay = true;
-        if (_btnFocus < 0) _btnFocus = 1;
+        if (_btnFocus < 0) _btnFocus = _defaultBtn;
       });
       _showOverlayTemporarily();
       return;
     }
     setState(() {
-      _btnFocus = (_btnFocus < 0 ? 1 : _btnFocus + delta).clamp(
+      _btnFocus = (_btnFocus < 0 ? _defaultBtn : _btnFocus + delta).clamp(
         0,
         _btnCount(context) - 1,
       );
@@ -1238,10 +1255,16 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   void _rewindMissed() {
     final String? url = _missed?.rewindUrl;
     if (url == null || url.isEmpty) return;
+    // Une seule connexion par compte : comme au zap, l'enregistrement en
+    // cours est clos et SAUVEGARDÉ avant d'ouvrir l'archive. Sinon le relais
+    // gardait le direct pendant que le lecteur ouvrait le replay (deux
+    // connexions, refusées par les comptes à une seule).
+    if (_isRecording) _finalizeRecording(resumeDirect: false);
     try {
       _catchup = true;
       _playingUrl = url;
       _controller.setUrl(url);
+      _closeBarForReplay();
       _flash(_missedFlash(context));
     } catch (_) {
       _catchup = false;
@@ -1255,11 +1278,15 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     final String? url =
         ReplayChoice.urlFor(_current, program, DateTime.now());
     if (url == null) return;
+    // Même règle qu'au zap : on clôt et on sauvegarde l'enregistrement en
+    // cours avant d'ouvrir l'archive (une seule connexion par compte).
+    if (_isRecording) _finalizeRecording(resumeDirect: false);
     try {
       _livePausedAt = null;
       _catchup = true;
       _playingUrl = url;
       _controller.setUrl(url);
+      _closeBarForReplay();
       _flash(_missedFlash(context));
     } catch (_) {
       _catchup = false;
