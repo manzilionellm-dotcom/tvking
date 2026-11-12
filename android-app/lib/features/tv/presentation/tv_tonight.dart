@@ -30,6 +30,10 @@ class TonightPiece {
   final WatchEntry? watch;
 
   bool get canPlay => watch != null || channel != null;
+
+  /// Vrai si l'image est un LOGO de chaîne (et non une jaquette de film).
+  /// Un logo se montre en entier ; une jaquette peut remplir la carte.
+  bool get artworkIsLogo => watch == null && channel != null;
 }
 
 class TonightBoard {

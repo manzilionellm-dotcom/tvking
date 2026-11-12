@@ -33,6 +33,8 @@ import '../../voice/domain/tonight_plan.dart';
 import '../../voice/domain/voice_catalog.dart';
 import '../../voice/domain/voice_query.dart';
 import '../../voice/presentation/voice_navigation.dart';
+import '../core/resume_zap.dart';
+import '../data/home_shelves.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_app_tokens.dart';
@@ -381,11 +383,21 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
     if (channel == null || channel.streamUrl.trim().isEmpty) return;
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) =>
-            TvPlayerScreen(channels: <Channel>[channel], startIndex: 0),
+        builder: (_) {
+          // Toute la liste derrière le résultat : Haut/Bas zappent.
+          final ResumeZap zap = zapListAround(_channels, channel, hide: _zapHide);
+          return TvPlayerScreen(
+            channels: zap.channels,
+            startIndex: zap.startIndex,
+          );
+        },
       ),
     );
   }
+
+  /// Mode enfants : le zap ne doit pas mener à une chaîne masquée.
+  bool Function(Channel)? get _zapHide =>
+      ParentalControls.instance.kidsMode.value ? hiddenForKids : null;
 
   void _openSlot(TonightSlot slot) {
     if (!slot.canPlay) return;
@@ -400,8 +412,13 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
     final Channel play = channel;
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) =>
-            TvPlayerScreen(channels: <Channel>[play], startIndex: 0),
+        builder: (_) {
+          final ResumeZap zap = zapListAround(_channels, play, hide: _zapHide);
+          return TvPlayerScreen(
+            channels: zap.channels,
+            startIndex: zap.startIndex,
+          );
+        },
       ),
     );
   }
