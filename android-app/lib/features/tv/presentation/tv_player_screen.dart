@@ -531,6 +531,15 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     // Erreur / fin de flux live → reconnexion.
     if (_controller.hasError || _controller.isEnded) {
       if (_livePausedAt != null && _canTimeshift) return;
+      // Fin d'une émission rejouée : le fichier est terminé, ce n'est pas
+      // une panne. Sans ce retour, la reconnexion rouvrait la même adresse
+      // et l'émission repartait du début, en boucle, sans jamais revenir
+      // au direct.
+      if (_controller.isEnded &&
+          !_controller.hasError &&
+          _leaveCatchupForLive('émission terminée')) {
+        return;
+      }
       _recover();
     }
     _offerSubtitles();
@@ -721,6 +730,11 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
       _controller.setUrl(_playingUrl, keepPicture: true);
       return;
     }
+    // Replay en panne (archive absente, 404…) : les adresses de secours
+    // ci-dessous sont celles du DIRECT. Les ouvrir en restant en mode replay
+    // montrait le direct avec le bouton « Direct » et sans Pause, et retenait
+    // ce format pour tout le serveur. On revient franchement au direct.
+    if (_leaveCatchupForLive('archive indisponible')) return;
     final String before = _playingUrl;
     final List<String> alts = _alts ??= LiveFallback.candidates(
       _current,
@@ -1250,6 +1264,24 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     } catch (_) {
       _catchup = false;
     }
+  }
+
+  /// Quitte le replay pour le direct quand l'émission rejouée est finie ou
+  /// que son archive ne s'ouvre pas. Rend `false` si on n'était pas en replay
+  /// ou si le lecteur ne doit rien rouvrir maintenant (mêmes garde-fous que
+  /// [_recover] : arrière-plan, Cast, zap en cours, écran « Réessayer »).
+  bool _leaveCatchupForLive(String why) {
+    if (!_catchup) return false;
+    if (!mounted || !_appActive || _casting || _fatal || _zapHolding) {
+      return false;
+    }
+    if (NativeVideoController.blocksReopenInBackground) return false;
+    BlackBox.instance.info('PLAYER', 'replay : $why → retour au direct');
+    // Budget de reconnexion neuf pour le direct, aucune relance en attente.
+    _cancelRecover();
+    _recoverAttempts = 0;
+    _backToLive();
+    return true;
   }
 
   void _backToLive() {
