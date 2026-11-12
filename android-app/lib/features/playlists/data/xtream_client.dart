@@ -202,6 +202,9 @@ class XtreamClient {
     // depuis le décodage élément par élément, un bloc coûte ~ses octets, et
     // UN téléchargement remplace les 919 requêtes de l'import par catégorie.
     final int singleShotMax = xtreamSingleShotBytesFor(BoxMemoryBudget.current);
+    // Vrai si le bloc a été COUPÉ en route (et non refusé pour sa taille) :
+    // le repli par catégorie doit alors être complet, cf. plus bas.
+    bool wholeInterrupted = false;
     List<Object?>? catalog;
     try {
       catalog = await Future.wait<Object?>(
@@ -214,6 +217,7 @@ class XtreamClient {
             onBytes: (int bytes) {
               if (receivingCatalog) ImportProgressBus.downloading(bytes);
             },
+            onInterrupted: () => wholeInterrupted = true,
           ),
         ],
         eagerError: true,
@@ -276,6 +280,24 @@ class XtreamClient {
           for (int k = start; k < end; k++)
             _fetchCategory(list[k], cats, playlistId, prefix, remaining),
         ]);
+        // APRÈS UNE COUPURE du bloc, une catégorie en échec = réseau encore
+        // instable : on arrête tout de suite. Sinon les catégories lues
+        // pendant la panne manquaient sans bruit, et cette liste PARTIELLE
+        // remplaçait la liste complète déjà sur la box (jusqu'à la prochaine
+        // actualisation, 12 h). L'erreur, elle, garde l'ancienne liste —
+        // comme avant le repli. Elle évite aussi d'enchaîner des centaines
+        // de requêtes vers un serveur devenu muet (20 s d'attente chacune).
+        // Liste trop grosse pour un bloc (pas de coupure) : inchangé, une
+        // catégorie en échec reste ignorée.
+        if (wholeInterrupted &&
+            parts.any((_LiveStreamsResult? mapped) => mapped == null)) {
+          BlackBox.instance.warn('XTREAM',
+              '$host : catégorie en échec après un bloc interrompu → import abandonné, liste précédente gardée');
+          throw XtreamException(
+            'Connexion interrompue pendant l\'import ($host). '
+            'La liste reçue est incomplète : réessaie.',
+          );
+        }
         for (final _LiveStreamsResult? mapped in parts) {
           if (mapped == null) continue;
           // Une chaîne peut être rangée dans deux catégories : dédup par id.
@@ -308,6 +330,7 @@ class XtreamClient {
   Future<Uint8List?> _getWholeCatalog(
     int softMax, {
     required void Function(int received) onBytes,
+    required void Function() onInterrupted,
   }) async {
     int received = 0;
     try {
@@ -326,6 +349,7 @@ class XtreamClient {
       if (received == 0) rethrow;
       BlackBox.instance.warn('XTREAM',
           'bouquet entier interrompu après ${received ~/ 1024} Ko ($e) → import par catégorie');
+      onInterrupted();
       return null;
     }
   }
@@ -520,6 +544,10 @@ class XtreamClient {
             kMaxXtreamJsonBytes,
             softMax: softMax,
             onBytes: onBytes,
+            // Le `.timeout` ci-dessous abandonne l'attente, pas la lecture :
+            // sans cette borne, un bloc lent mais continu continuait de se
+            // télécharger en mémoire PENDANT le repli par catégorie.
+            maxDuration: idleTimeout ? kXtreamSingleShotMaxDuration : null,
           );
           return await read
               .timeout(idleTimeout ? kXtreamSingleShotMaxDuration : _timeout);
@@ -547,10 +575,18 @@ class XtreamClient {
   /// [PlaylistImportTooLarge], le flux est interrompu et l'abonnement annulé.
   static Future<Uint8List?> _readCapped(
       Stream<List<int>> stream, int maxBytes,
-      {int? softMax, void Function(int received)? onBytes}) async {
+      {int? softMax,
+      void Function(int received)? onBytes,
+      Duration? maxDuration}) async {
     final BytesBuilder builder = BytesBuilder(copy: false);
+    final Stopwatch clock = Stopwatch()..start();
     int total = 0;
     await for (final List<int> chunk in stream) {
+      // Durée max dépassée : l'exception sort de la boucle, ce qui annule
+      // l'abonnement et ferme la connexion (comme le plafond souple).
+      if (maxDuration != null && clock.elapsed > maxDuration) {
+        throw TimeoutException('bouquet entier trop long', maxDuration);
+      }
       total += chunk.length;
       onBytes?.call(total); // progression « Téléchargement… x Mo » (limitée côté bus)
       // Plafond souple : on arrête de lire (le `return` annule l'abonnement →
