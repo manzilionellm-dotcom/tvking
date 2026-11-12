@@ -26,6 +26,16 @@
 //      seulement la forme `${…}` ;
 //    - un gabarit relatif (`?utc={utc}&lutc={lutc}`) est AJOUTÉ à l'adresse
 //      du flux au lieu d'être pris pour une adresse complète.
+//
+//  Alignement sur la référence du marché, le module Kodi « IPTV Simple »
+//  (lecture de CatchupController.cpp et Channel.cpp, branche Omega) :
+//    - `{Y} {m} {d} {H} {M} {S}` sont l'heure MURALE du début, pas l'UTC
+//      (Kodi : localtime). Ici : le fuseau du serveur s'il est connu, sinon
+//      celui de la box. En UTC, le replay démarrait 1 à 2 h à côté ;
+//    - les formes `{utc:Y-m-d H:M}`, `${start:…}`, `{utcend:…}`, `{lutc:…}`
+//      sont reconnues (même heure murale, malgré le nom « utc ») ;
+//    - un gabarit relatif qui ne commence ni par `?` ni par `&` est collé
+//      tel quel derrière l'adresse du flux (mode « append » de Kodi).
 // =========================================================
 
 import '../../channels/domain/channel.dart';
@@ -50,7 +60,11 @@ abstract final class CatchupUrlBuilder {
     // 1. Template explicite catchup-source
     if (channel.catchupSource != null &&
         channel.catchupSource!.isNotEmpty) {
-      final String filled = _fillTemplate(channel.catchupSource!, program);
+      final String filled = _fillTemplate(
+        channel.catchupSource!,
+        program,
+        streamUrl: channel.streamUrl,
+      );
       // Gabarit « append » : seulement des paramètres (`?utc=…` ou `&utc=…`),
       // à coller derrière l'adresse du flux.
       if (filled.startsWith('?') || filled.startsWith('&')) {
@@ -58,6 +72,10 @@ abstract final class CatchupUrlBuilder {
         final String sep = base.contains('?') ? '&' : '?';
         return '$base$sep${filled.substring(1)}';
       }
+      // Autre gabarit relatif (pas de `schéma://`) : collé tel quel derrière
+      // l'adresse du flux, comme le mode « append » de Kodi. Avant, il était
+      // renvoyé seul : une adresse sans serveur, impossible à ouvrir.
+      if (!_absolute.hasMatch(filled)) return '${channel.streamUrl}$filled';
       return filled;
     }
 
@@ -71,6 +89,9 @@ abstract final class CatchupUrlBuilder {
 
   // ----- Helpers -----
 
+  /// Adresse complète : commence par un schéma (`http://`, `https://`…).
+  static final RegExp _absolute = RegExp(r'^[A-Za-z][A-Za-z0-9+.-]*://');
+
   /// Remplace les variables d'un gabarit catch-up. Les deux écritures du
   /// marché sont acceptées : `${nom}` et `{nom}`. Variables :
   ///   start, utc        → début du programme (secondes epoch)
@@ -78,17 +99,59 @@ abstract final class CatchupUrlBuilder {
   ///   lutc, now, timestamp → maintenant
   ///   duration, duration:N → durée en secondes (÷ N)
   ///   offset, offset:N  → retard sur le direct en secondes (÷ N)
-  ///   Y m d H M S       → date et heure UTC du début
+  ///   Y m d H M S       → date et heure MURALES du début (voir [wall])
+  ///   utc:FORMAT, start:FORMAT, utcend:FORMAT, end:FORMAT, lutc:FORMAT…
+  ///                     → même heure murale, FORMAT fait des lettres
+  ///                       Y m d H M S (ex. `{utc:Y-m-d:H-M}`)
   ///   start-time        → AAAAMMJJTHHMMSS (UTC)
   /// Une variable inconnue est laissée telle quelle.
-  static String _fillTemplate(String template, EpgProgram p) {
+  static String _fillTemplate(
+    String template,
+    EpgProgram p, {
+    required String streamUrl,
+  }) {
     final int startSec = p.startTime ~/ 1000;
     final int endSec = p.stopTime ~/ 1000;
     final int duration = endSec - startSec;
-    final int nowSec = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    final int nowMs = DateTime.now().millisecondsSinceEpoch;
+    final int nowSec = nowMs ~/ 1000;
     final int offset = nowSec - startSec;
     final DateTime start = p.startDateTime.toUtc();
     String two(int n) => n.toString().padLeft(2, '0');
+
+    // Heure murale : celle du serveur d'archives si son fuseau est connu
+    // (gabarit complet → son hôte, gabarit relatif → celui du flux), sinon
+    // celle de la box, comme Kodi. On ne lit que le début du gabarit, avant
+    // la première variable, pour trouver l'hôte.
+    final String clockUrl = _absolute.hasMatch(template)
+        ? template.split(RegExp(r'[\$\{]')).first
+        : streamUrl;
+    DateTime wall(int epochMs) =>
+        XtreamServerClock.wallClock(clockUrl, epochMs) ??
+        DateTime.fromMillisecondsSinceEpoch(epochMs);
+    final DateTime wallStart = wall(p.startTime);
+    String field(DateTime t, String letter) {
+      switch (letter) {
+        case 'Y':
+          return t.year.toString().padLeft(4, '0');
+        case 'm':
+          return two(t.month);
+        case 'd':
+          return two(t.day);
+        case 'H':
+          return two(t.hour);
+        case 'M':
+          return two(t.minute);
+        case 'S':
+          return two(t.second);
+        default:
+          return letter; // séparateur (- : / espace…) : recopié
+      }
+    }
+
+    String formatted(DateTime t, String format) => <String>[
+          for (int i = 0; i < format.length; i++) field(t, format[i]),
+        ].join();
 
     final String yyyyMMddHHmmss =
         '${start.year.toString().padLeft(4, '0')}'
@@ -96,10 +159,30 @@ abstract final class CatchupUrlBuilder {
         '${two(start.hour)}${two(start.minute)}${two(start.second)}';
 
     return template.replaceAllMapped(
-      RegExp(r'\$?\{([A-Za-z][A-Za-z-]*)(?::(\d+))?\}'),
+      RegExp(r'\$?\{([A-Za-z][A-Za-z-]*)(?::([^{}]+))?\}'),
       (Match m) {
         final String name = m.group(1)!;
-        final int divisor = int.tryParse(m.group(2) ?? '') ?? 1;
+        final String? arg = m.group(2);
+        final int? number = arg == null ? 1 : int.tryParse(arg);
+        // Forme `{nom:FORMAT}` (FORMAT non numérique) : date murale écrite
+        // avec les lettres Y m d H M S. Réservée aux variables de temps.
+        if (number == null) {
+          switch (name) {
+            case 'start':
+            case 'utc':
+              return formatted(wallStart, arg!);
+            case 'end':
+            case 'utcend':
+              return formatted(wall(p.stopTime), arg!);
+            case 'lutc':
+            case 'now':
+            case 'timestamp':
+              return formatted(wall(nowMs), arg!);
+            default:
+              return m.group(0)!; // ex. {duration:abc} : on n'invente rien
+          }
+        }
+        final int divisor = number;
         int div(int value) => divisor > 0 ? value ~/ divisor : value;
         switch (name) {
           case 'start':
@@ -117,17 +200,12 @@ abstract final class CatchupUrlBuilder {
           case 'offset':
             return div(offset).toString();
           case 'Y':
-            return start.year.toString();
           case 'm':
-            return two(start.month);
           case 'd':
-            return two(start.day);
           case 'H':
-            return two(start.hour);
           case 'M':
-            return two(start.minute);
           case 'S':
-            return two(start.second);
+            return field(wallStart, name);
           case 'start-time':
             return yyyyMMddHHmmss;
           default:

@@ -8,7 +8,9 @@
 //       qui a peu de chances de marcher ;
 //    3. il est encore dans la fenêtre annoncée par le fournisseur
 //       (catchupDays), quand elle est connue ;
-//    4. on sait fabriquer son adresse (CatchupUrlBuilder).
+//    4. on sait fabriquer son adresse (CatchupUrlBuilder), en entier :
+//       un programme sans durée ou une variable de gabarit restée telle
+//       quelle (`{catchup-id}`…) donnent une adresse qui ne peut pas jouer.
 //  Sinon : pas de bouton « Replay », la ligne garde son rôle d'avant.
 // =========================================================
 import '../../channels/domain/channel.dart';
@@ -16,6 +18,9 @@ import '../data/catchup_url_builder.dart';
 import 'epg_program.dart';
 
 abstract final class ReplayChoice {
+  /// Variable de gabarit non remplacée : `{nom}`, `${nom}`, `{nom:…}`.
+  static final RegExp _unfilled = RegExp(r'\$?\{[A-Za-z][^{}]*\}');
+
   /// Vrai si la source annonce un catch-up pour cette chaîne.
   static bool declared(Channel channel) =>
       channel.catchupSupported ||
@@ -26,6 +31,9 @@ abstract final class ReplayChoice {
   static String? urlFor(Channel channel, EpgProgram program, DateTime now) {
     final int nowMs = now.millisecondsSinceEpoch;
     if (program.stopTime > nowMs) return null; // en cours ou à venir
+    // Guide incohérent (fin ≤ début) : l'adresse porterait une durée nulle
+    // ou négative.
+    if (program.stopTime <= program.startTime) return null;
     if (!declared(channel)) return null;
     final int? days = channel.catchupDays;
     if (days != null && days > 0) {
@@ -34,6 +42,9 @@ abstract final class ReplayChoice {
     }
     final String? url =
         CatchupUrlBuilder.build(channel: channel, program: program);
-    return (url == null || url.isEmpty) ? null : url;
+    if (url == null || url.isEmpty) return null;
+    // Variable inconnue laissée dans l'adresse : pas de pastille REPLAY.
+    if (_unfilled.hasMatch(url)) return null;
+    return url;
   }
 }

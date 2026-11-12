@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tv_king/features/channels/domain/channel.dart';
 import 'package:tv_king/features/epg/data/catchup_url_builder.dart';
 import 'package:tv_king/features/epg/domain/epg_program.dart';
+import 'package:tv_king/features/epg/domain/replay_choice.dart';
 import 'package:tv_king/features/playlists/data/xtream_server_clock.dart';
 
 Channel _channel(
@@ -176,7 +177,10 @@ void main() {
       expect(b, a);
     });
 
-    test('date UTC, durée divisée et variable inconnue laissée telle quelle', () {
+    test('date MURALE de la box (fuseau du serveur inconnu), durée divisée, variable inconnue gardée', () {
+      // Référence Kodi IPTV Simple : {Y} {m} {d} {H} {M} {S} = heure locale,
+      // pas UTC. `start-time` reste en UTC (inchangé).
+      final DateTime l = DateTime.fromMillisecondsSinceEpoch(_start);
       final String url = CatchupUrlBuilder.build(
         channel: _channel('http://tv.invalid/a.m3u8',
             declared: true,
@@ -184,8 +188,70 @@ void main() {
                 'http://arch.invalid/{Y}/{m}/{d}/{H}-{M}-{S}.m3u8?min={duration:60}&t=\${start-time}&x={inconnu}'),
         program: _program,
       )!;
-      expect(url,
-          'http://arch.invalid/2026/11/10/19-00-00.m3u8?min=90&t=20261110T190000&x={inconnu}');
+      expect(
+          url,
+          'http://arch.invalid/${l.year}/${_two(l.month)}/${_two(l.day)}/'
+          '${_two(l.hour)}-${_two(l.minute)}-${_two(l.second)}.m3u8'
+          '?min=90&t=20261110T190000&x={inconnu}');
+    });
+
+    test('date écrite dans le fuseau du SERVEUR d’archives quand il est connu', () {
+      XtreamServerClock.debugSetZone('http://arch.invalid:8080', 'Europe/Paris');
+      addTearDown(XtreamServerClock.debugReset);
+      // 19:00 UTC en novembre = 20:00 à Paris. En UTC, le replay démarrait
+      // une heure trop tôt.
+      expect(
+        CatchupUrlBuilder.build(
+          channel: _channel('http://tv.invalid/a.m3u8',
+              declared: true,
+              source:
+                  'http://arch.invalid:8080/timeshift/u/p/{duration:60}/{Y}-{m}-{d}:{H}-{M}/12.ts'),
+          program: _program,
+        ),
+        'http://arch.invalid:8080/timeshift/u/p/90/2026-11-10:20-00/12.ts',
+      );
+      // Formes {utc:FORMAT} / ${start:FORMAT} / {utcend:FORMAT} : même heure
+      // murale, malgré le nom « utc ».
+      expect(
+        CatchupUrlBuilder.build(
+          channel: _channel('http://tv.invalid/a.m3u8',
+              declared: true,
+              source:
+                  'http://arch.invalid:8080/a?s={utc:Y-m-d:H-M}&b=\${start:YmdHMS}&e={utcend:H-M}'),
+          program: _program,
+        ),
+        'http://arch.invalid:8080/a?s=2026-11-10:20-00&b=20261110200000&e=21-30',
+      );
+    });
+
+    test('gabarit relatif sans ? ni & : collé derrière l’adresse du flux (append)', () {
+      expect(
+        CatchupUrlBuilder.build(
+          channel: _channel('http://tv.invalid/direct/12',
+              declared: true, source: '/timeshift_abs-{utc}.ts'),
+          program: _program,
+        ),
+        'http://tv.invalid/direct/12/timeshift_abs-$s.ts',
+      );
+    });
+
+    test('pas de pastille REPLAY pour une adresse qui ne peut pas jouer', () {
+      final DateTime after = DateTime.fromMillisecondsSinceEpoch(_start + 3 * 3600 * 1000);
+      final Channel ok = _channel('http://tv.invalid/a.m3u8',
+          declared: true, source: 'http://arch.invalid/a?s={utc}');
+      expect(ReplayChoice.urlFor(ok, _program, after), 'http://arch.invalid/a?s=$s');
+      // Variable que l'app ne sait pas remplir : rien n'est proposé.
+      final Channel unknown = _channel('http://tv.invalid/a.m3u8',
+          declared: true, source: 'http://arch.invalid/a?id={catchup-id}');
+      expect(ReplayChoice.urlFor(unknown, _program, after), isNull);
+      // Guide incohérent : fin avant le début.
+      final EpgProgram broken = EpgProgram(
+        channelId: 'c1',
+        startTime: _start,
+        stopTime: _start - 60000,
+        title: 'Sans durée',
+      );
+      expect(ReplayChoice.urlFor(ok, broken, after), isNull);
     });
 
     test('{lutc}, {now}, {timestamp} = maintenant ; {offset:1} = retard sur le direct', () {
