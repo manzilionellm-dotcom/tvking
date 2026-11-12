@@ -636,33 +636,21 @@ class PlaylistRepository {
       //    strip BOM + timeout 90s — gère les serveurs paranos
       //    ou les exports Windows-1252 mal étiquetés).
       if (kDebugMode) debugPrint('[Repo] GET $url');
-      // Octets bruts : décodage ET parsing dans l'isolate (le fil UI ne
-      // touche jamais au contenu, même pour un fichier de 60 Mo).
-      final Uint8List body = await _loadM3uBody(url, httpClient: client);
-      guard();
-
-      // 3) Parse (dans un ISOLATE → pas de gel UI) + insertion en batch
-      final M3uParseResult parsed =
-          await M3uParser.parseBytesInBackground(body, playlistId: playlistId);
-      guard();
-
-      if (parsed.channels.isEmpty) {
-        // Source invalide → on lève ; le `catch` retire l'orpheline.
-        final String hint = parsed.warnings.isEmpty
-            ? ''
-            : '\n\nDétails parser :\n${parsed.warnings.take(3).join('\n')}';
-        throw Exception(
-          'Aucune chaîne trouvée dans le fichier M3U. '
-          'URL invalide ou format incompatible ?$hint',
-        );
-      }
-
-      await _ensurePlaylistRow(playlistId);
-      guard();
-      await _insertChannels(parsed.channels, checkCurrent: guard);
+      // 3) Téléchargement + parse (ISOLATE) + insertion, dans une fonction à
+      // part : à son retour, les octets bruts (jusqu'à 60 Mo) et la liste
+      // parsée ne sont plus atteignables. La relecture de setActivePlaylist
+      // ne cohabite donc plus avec eux (pic mémoire des box à 1 Go). Les
+      // gardes d'import (PlaylistImportSuperseded) y gardent leur ordre.
+      final _ImportedCatalog imported = await _loadParseInsertM3u(
+        url,
+        client: client,
+        playlistId: playlistId,
+        wantEpg: epgUrl != null && epgUrl.isNotEmpty,
+        guard: guard,
+      );
       final Playlist saved = newPlaylist.copyWith(
         id: playlistId,
-        channelCount: parsed.channels.length,
+        channelCount: imported.count,
         lastSyncedAt: DateTime.now().millisecondsSinceEpoch,
       );
       await _updatePlaylistMetrics(saved, checkCurrent: guard);
@@ -677,14 +665,15 @@ class PlaylistRepository {
       // setActivePlaylist ré-émet l'état → l'accueil bascule aussitôt.
       await setActivePlaylist(playlistId, checkCurrent: guard);
       guard();
-      ImportProgressBus.done(parsed.channels.length);
+      ImportProgressBus.done(imported.count);
       guard();
 
       // Si une URL EPG est fournie → on déclenche la sync en
       // arrière-plan (non bloquant : l'utilisateur peut déjà
       // naviguer pendant que l'EPG arrive).
-      if (epgUrl != null && epgUrl.isNotEmpty) {
-        unawaited(_syncEpgFor(parsed.channels, epgUrl));
+      final _EpgPlan? epgPlan = imported.epgPlan;
+      if (epgUrl != null && epgUrl.isNotEmpty && epgPlan != null) {
+        unawaited(_syncEpg(epgUrl, epgPlan));
       }
       return saved;
     } catch (_) {
@@ -712,17 +701,18 @@ class PlaylistRepository {
   /// du serveur à nos `xtream-<stream_id>` — avant le 4 octobre 2026 ce
   /// guide était sauté (aucun appariement) et l'import bloquait le fil UI ;
   /// il tourne maintenant dans un isolate (EpgRepository).
-  Future<void> _syncEpgFor(
-    List<Channel> channels,
-    String epgUrl, {
-    Map<String, String>? xtreamEpgIds,
-  }) async {
+  ///
+  /// MÉMOIRE (11/11/2026, journal Fire TV AFTSS 899 Mo) : le guide ne reçoit
+  /// que son résumé ([_EpgPlan], identifiants seulement), calculé dès la fin
+  /// de l'import par [_epgPlanFor]. Avant, la fonction recevait la liste
+  /// importée (jusqu'à 50 000 objets [Channel], noms et URL compris) et la
+  /// gardait dans son contexte `async` pendant les minutes du téléchargement
+  /// XMLTV : deux catalogues complets coexistaient (celui de l'import + celui
+  /// relu pour l'écran) pendant tout le guide.
+  Future<void> _syncEpg(String epgUrl, _EpgPlan plan) async {
     try {
-      final bool xtream = channels.isNotEmpty &&
-          channels.every((Channel c) => c.id.startsWith('xtream-'));
-      if (xtream) {
-        final Map<String, List<String>> map =
-            buildEpgIdMap(xtreamEpgIds ?? const <String, String>{});
+      final Map<String, List<String>>? map = plan.xtreamIdMap;
+      if (map != null) {
         if (map.isEmpty) {
           BlackBox.instance.info('EPG',
               'Xtream : aucun epg_channel_id fourni par le serveur, guide sauté');
@@ -732,15 +722,30 @@ class PlaylistRepository {
             .downloadAndImport(url: epgUrl, channelIdMap: map);
         return;
       }
-      final Set<String> ids = channels.map((Channel c) => c.id).toSet();
       await EpgRepository.instance.downloadAndImport(
         url: epgUrl,
-        knownChannelIds: ids,
+        knownChannelIds: plan.knownIds!,
       );
     } catch (e) {
       // L'EPG est optionnel : la liste reste utilisable. La trace sert au support.
       BlackBox.instance.warn('EPG', 'guide non importé : $e');
     }
+  }
+
+  /// Résumé minimal pour le guide, calculé dès la fin de l'import. Xtream :
+  /// la table epg_channel_id ; M3U : l'ensemble des identifiants connus.
+  /// Aucune référence aux [Channel].
+  static _EpgPlan _epgPlanFor(
+    List<Channel> channels, {
+    Map<String, String>? xtreamEpgIds,
+  }) {
+    final bool xtream = channels.isNotEmpty &&
+        channels.every((Channel c) => c.id.startsWith('xtream-'));
+    if (xtream) {
+      return _EpgPlan.xtream(
+          buildEpgIdMap(xtreamEpgIds ?? const <String, String>{}));
+    }
+    return _EpgPlan.known(channels.map((Channel c) => c.id).toSet());
   }
 
   // ============================================================
@@ -866,25 +871,18 @@ class PlaylistRepository {
       );
       playlistId = await _insertPlaylist(newPlaylist, checkCurrent: guard);
 
-      // 3) Les catégories et chaînes sont chargées ensemble par le client.
-      final List<Channel> channels = await xtream.fetchLiveChannels(
+      // 3) Les catégories et chaînes sont chargées ensemble par le client,
+      // puis insérées, dans une fonction à part : à son retour la liste
+      // importée n'est plus atteignable (relecture et guide sans doublon).
+      final _ImportedCatalog imported = await _fetchInsertXtream(
+        xtream,
         playlistId: playlistId,
+        wantEpg: newPlaylist.epgUrl != null,
+        guard: guard,
       );
-      guard();
-
-      if (channels.isEmpty) {
-        // Compte sans chaîne live → on lève ; le `catch` retire l'orpheline.
-        throw Exception(
-          'Aucune chaîne live disponible pour ce compte Xtream.',
-        );
-      }
-
-      await _ensurePlaylistRow(playlistId);
-      guard();
-      await _insertChannels(channels, checkCurrent: guard);
       final Playlist saved = newPlaylist.copyWith(
         id: playlistId,
-        channelCount: channels.length,
+        channelCount: imported.count,
         lastSyncedAt: DateTime.now().millisecondsSinceEpoch,
       );
       await _updatePlaylistMetrics(saved, checkCurrent: guard);
@@ -896,17 +894,14 @@ class PlaylistRepository {
       // `getAllChannels` ne renvoie que les chaînes de la playlist active.
       await setActivePlaylist(playlistId, checkCurrent: guard);
       guard();
-      ImportProgressBus.done(channels.length);
+      ImportProgressBus.done(imported.count);
       guard();
 
       // EPG auto en arrière-plan (Xtream a sa propre URL XMLTV), apparié
-      // par epg_channel_id. Copie de la table : le client est libéré après.
-      if (newPlaylist.epgUrl != null) {
-        unawaited(_syncEpgFor(
-          channels,
-          newPlaylist.epgUrl!,
-          xtreamEpgIds: Map<String, String>.of(xtream.epgChannelIds),
-        ));
+      // par epg_channel_id. Le résumé a été copié : le client est libéré après.
+      final _EpgPlan? epgPlan = imported.epgPlan;
+      if (newPlaylist.epgUrl != null && epgPlan != null) {
+        unawaited(_syncEpg(newPlaylist.epgUrl!, epgPlan));
       }
       return saved;
     } catch (_) {
@@ -1117,27 +1112,25 @@ class PlaylistRepository {
       try {
         // Même fetcher robuste qu'à l'ajout initial (Latin-1 fallback,
         // User-Agent navigateur, strip BOM, timeout 90s).
-        final Uint8List body = await _loadM3uBody(
-          playlist.m3uUrl!,
-          httpClient: client,
-        );
-        guard();
-        final M3uParseResult parsed = await M3uParser.parseBytesInBackground(
-            body,
-            playlistId: playlist.id!);
-        if (parsed.channels.isEmpty) {
-          throw Exception('Aucune chaîne dans la nouvelle version.');
-        }
         // Remplace les chaînes existantes, ATOMIQUEMENT : si le processus
         // est tué entre l'effacement et la fin des insertions (box à 1 Go,
         // import lourd), la base garde l'ancienne liste complète au lieu
         // d'une liste vide ou tronquée jusqu'à l'actualisation suivante.
-        guard();
-        await _replaceChannelsOf(db, playlist.id!, parsed.channels,
-            checkCurrent: guard);
+        // Fonction à part : octets et liste parsée sont libérés AVANT la
+        // relecture de l'écran (_emitCurrentState).
+        final String? epgUrl = playlist.epgUrl;
+        final bool wantEpg =
+            !RepairFlags.epgRefreshOff && epgUrl != null && epgUrl.isNotEmpty;
+        final _ImportedCatalog imported = await _loadParseReplaceM3u(
+          db,
+          playlist,
+          client: client,
+          wantEpg: wantEpg,
+          guard: guard,
+        );
         await _updatePlaylistMetrics(
           playlist.copyWith(
-            channelCount: parsed.channels.length,
+            channelCount: imported.count,
             lastSyncedAt: DateTime.now().millisecondsSinceEpoch,
           ),
           checkCurrent: guard,
@@ -1149,9 +1142,9 @@ class PlaylistRepository {
         // l'ajout de la source et ne gardait que 48 h → vide au 3e jour.
         // Même chemin qu'à l'ajout (ids connus, Xtream sauté). Repli :
         // RepairFlags.epgRefreshOff.
-        final String? epgUrl = playlist.epgUrl;
-        if (!RepairFlags.epgRefreshOff && epgUrl != null && epgUrl.isNotEmpty) {
-          unawaited(_syncEpgFor(parsed.channels, epgUrl));
+        final _EpgPlan? epgPlan = imported.epgPlan;
+        if (wantEpg && epgPlan != null) {
+          unawaited(_syncEpg(epgUrl, epgPlan));
         }
         return true;
       } finally {
@@ -1171,19 +1164,22 @@ class PlaylistRepository {
       try {
         await xtream.verifyCredentials();
         guard();
-        final List<Channel> channels = await xtream.fetchLiveChannels(
+        // Atomique, même raison que pour le M3U ci-dessus. Fonction à part :
+        // la liste importée est libérée AVANT la relecture de l'écran.
+        final String? xtreamEpg = playlist.epgUrl;
+        final bool wantEpg = !RepairFlags.epgRefreshOff &&
+            xtreamEpg != null &&
+            xtreamEpg.isNotEmpty;
+        final _ImportedCatalog imported = await _fetchReplaceXtream(
+          db,
+          xtream,
           playlistId: playlist.id!,
+          wantEpg: wantEpg,
+          guard: guard,
         );
-        guard();
-        if (channels.isEmpty) {
-          throw Exception('Aucune chaîne live disponible.');
-        }
-        // Atomique, même raison que pour le M3U ci-dessus.
-        await _replaceChannelsOf(db, playlist.id!, channels,
-            checkCurrent: guard);
         await _updatePlaylistMetrics(
           playlist.copyWith(
-            channelCount: channels.length,
+            channelCount: imported.count,
             lastSyncedAt: DateTime.now().millisecondsSinceEpoch,
           ),
           checkCurrent: guard,
@@ -1193,15 +1189,9 @@ class PlaylistRepository {
         guard();
         // Le guide Xtream suit la liste, apparié par epg_channel_id.
         // Repli : RepairFlags.epgRefreshOff.
-        final String? xtreamEpg = playlist.epgUrl;
-        if (!RepairFlags.epgRefreshOff &&
-            xtreamEpg != null &&
-            xtreamEpg.isNotEmpty) {
-          unawaited(_syncEpgFor(
-            channels,
-            xtreamEpg,
-            xtreamEpgIds: Map<String, String>.of(xtream.epgChannelIds),
-          ));
+        final _EpgPlan? epgPlan = imported.epgPlan;
+        if (wantEpg && epgPlan != null) {
+          unawaited(_syncEpg(xtreamEpg, epgPlan));
         }
         return true;
       } finally {
@@ -1210,6 +1200,148 @@ class PlaylistRepository {
     }
 
     return false;
+  }
+
+  // ============================================================
+  //  Import en fonctions courtes (libération mémoire, 11/11/2026)
+  // ============================================================
+  //  Chaque aide télécharge, analyse et écrit en base, puis ne rend que le
+  //  NOMBRE de chaînes et le résumé du guide ([_ImportedCatalog]). Les octets
+  //  bruts et la liste importée vivent dans SON cadre : à son retour ils ne
+  //  sont plus atteignables, et la relecture complète qui suit
+  //  (setActivePlaylist / _emitCurrentState) ne les double plus. Sur une box
+  //  à 899 Mo avec 50 000 chaînes, c'était un catalogue entier en trop
+  //  pendant la relecture, puis pendant tout le téléchargement du guide.
+  //  [guard] est la garde d'import de l'appelant (PlaylistImportSuperseded) :
+  //  elle est appelée aux MÊMES endroits qu'avant ce découpage.
+
+  /// Téléchargement + parse en isolate. Les octets bruts (jusqu'à 60 Mo)
+  /// meurent au retour de cette fonction, avant l'insertion.
+  Future<M3uParseResult> _loadAndParseM3u(
+    String url, {
+    required http.Client client,
+    required int playlistId,
+    required VoidCallback guard,
+  }) async {
+    // Octets bruts : décodage ET parsing dans l'isolate (le fil UI ne
+    // touche jamais au contenu, même pour un fichier de 60 Mo).
+    final Uint8List body = await _loadM3uBody(url, httpClient: client);
+    guard();
+    return M3uParser.parseBytesInBackground(body, playlistId: playlistId);
+  }
+
+  Future<_ImportedCatalog> _loadParseInsertM3u(
+    String url, {
+    required http.Client client,
+    required int playlistId,
+    required bool wantEpg,
+    required VoidCallback guard,
+  }) async {
+    final M3uParseResult parsed = await _loadAndParseM3u(
+      url,
+      client: client,
+      playlistId: playlistId,
+      guard: guard,
+    );
+    guard();
+    if (parsed.channels.isEmpty) {
+      // Source invalide → on lève ; le `catch` de l'appelant retire l'orpheline.
+      final String hint = parsed.warnings.isEmpty
+          ? ''
+          : '\n\nDétails parser :\n${parsed.warnings.take(3).join('\n')}';
+      throw Exception(
+        'Aucune chaîne trouvée dans le fichier M3U. '
+        'URL invalide ou format incompatible ?$hint',
+      );
+    }
+    await _ensurePlaylistRow(playlistId);
+    guard();
+    await _insertChannels(parsed.channels, checkCurrent: guard);
+    return _ImportedCatalog(
+      parsed.channels.length,
+      wantEpg ? _epgPlanFor(parsed.channels) : null,
+    );
+  }
+
+  Future<_ImportedCatalog> _loadParseReplaceM3u(
+    Database db,
+    Playlist playlist, {
+    required http.Client client,
+    required bool wantEpg,
+    required VoidCallback guard,
+  }) async {
+    final M3uParseResult parsed = await _loadAndParseM3u(
+      playlist.m3uUrl!,
+      client: client,
+      playlistId: playlist.id!,
+      guard: guard,
+    );
+    if (parsed.channels.isEmpty) {
+      throw Exception('Aucune chaîne dans la nouvelle version.');
+    }
+    guard();
+    await _replaceChannelsOf(db, playlist.id!, parsed.channels,
+        checkCurrent: guard);
+    return _ImportedCatalog(
+      parsed.channels.length,
+      wantEpg ? _epgPlanFor(parsed.channels) : null,
+    );
+  }
+
+  Future<_ImportedCatalog> _fetchInsertXtream(
+    XtreamClient xtream, {
+    required int playlistId,
+    required bool wantEpg,
+    required VoidCallback guard,
+  }) async {
+    final List<Channel> channels = await xtream.fetchLiveChannels(
+      playlistId: playlistId,
+    );
+    guard();
+    if (channels.isEmpty) {
+      // Compte sans chaîne live → on lève ; le `catch` de l'appelant retire l'orpheline.
+      throw Exception(
+        'Aucune chaîne live disponible pour ce compte Xtream.',
+      );
+    }
+    await _ensurePlaylistRow(playlistId);
+    guard();
+    await _insertChannels(channels, checkCurrent: guard);
+    return _ImportedCatalog(
+      channels.length,
+      wantEpg
+          ? _epgPlanFor(
+              channels,
+              xtreamEpgIds: Map<String, String>.of(xtream.epgChannelIds),
+            )
+          : null,
+    );
+  }
+
+  Future<_ImportedCatalog> _fetchReplaceXtream(
+    Database db,
+    XtreamClient xtream, {
+    required int playlistId,
+    required bool wantEpg,
+    required VoidCallback guard,
+  }) async {
+    final List<Channel> channels = await xtream.fetchLiveChannels(
+      playlistId: playlistId,
+    );
+    guard();
+    if (channels.isEmpty) {
+      throw Exception('Aucune chaîne live disponible.');
+    }
+    await _replaceChannelsOf(db, playlistId, channels, checkCurrent: guard);
+    return _ImportedCatalog(
+      channels.length,
+      wantEpg
+          ? _epgPlanFor(
+              channels,
+              xtreamEpgIds: Map<String, String>.of(xtream.epgChannelIds),
+            )
+          : null,
+    );
   }
 
   // ============================================================
@@ -1535,6 +1667,9 @@ class PlaylistRepository {
     // (`currentChannels` est ainsi cohérent avec le dernier event).
     _channelsCache = channels;
     _playlistsCache = playlists;
+    // Les noms/genres/pays déjà calculés pour des chaînes qui ont quitté le
+    // catalogue (liste supprimée, source changée) ne restent plus en mémoire.
+    ChannelPrecompute.retainOnly(channels);
     _hasDeviceChannels = anyChannels.isNotEmpty;
     if (!_channelsController.isClosed) {
       _channelsController.add(channels);
@@ -1562,4 +1697,25 @@ class PlaylistRepository {
       catchupSource: map['catchup_source'] as String?,
     );
   }
+}
+
+/// Ce qui survit à un import : le nombre de chaînes et, si un guide est
+/// prévu, son résumé. Jamais la liste elle-même (voir `_syncEpg`).
+class _ImportedCatalog {
+  const _ImportedCatalog(this.count, this.epgPlan);
+  final int count;
+  final _EpgPlan? epgPlan;
+}
+
+/// Résumé du guide : la table epg_channel_id (Xtream) OU les identifiants
+/// connus (M3U). Ne référence aucun [Channel].
+class _EpgPlan {
+  const _EpgPlan.xtream(Map<String, List<String>> map)
+      : xtreamIdMap = map,
+        knownIds = null;
+  const _EpgPlan.known(Set<String> ids)
+      : xtreamIdMap = null,
+        knownIds = ids;
+  final Map<String, List<String>>? xtreamIdMap;
+  final Set<String>? knownIds;
 }
