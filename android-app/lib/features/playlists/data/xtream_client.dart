@@ -47,6 +47,7 @@ import '../../player/data/player_settings.dart';
 import '../../vod/domain/vod_movie.dart';
 import 'json_array_stream.dart';
 import 'playlist_import_limits.dart';
+import 'xtream_server_clock.dart';
 
 /// Exception métier pour signaler une erreur Xtream lisible
 /// (login refusé, serveur HS, réponse non-JSON, etc.).
@@ -137,6 +138,8 @@ class XtreamClient {
         'Compte non-actif côté serveur (status=$status).',
       );
     }
+    // Fuseau du serveur, pour écrire l'heure du catch-up comme il l'attend.
+    await XtreamServerClock.remember(serverUrl, data['server_info']);
   }
 
   /// Récupère la liste des catégories Live (map id → nom).

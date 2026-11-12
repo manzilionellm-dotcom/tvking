@@ -47,6 +47,7 @@ import 'import_progress.dart';
 import 'm3u_parser.dart';
 import 'playlist_database.dart';
 import 'xtream_client.dart';
+import 'xtream_server_clock.dart';
 
 /// Résultat individuel d'un import en lot.
 class BatchImportResult {
@@ -111,6 +112,8 @@ class PlaylistRepository {
   /// Charge initialement les chaînes depuis la base et émet sur le stream.
   /// À appeler une fois au démarrage de l'app.
   Future<void> initialize() async {
+    // Fuseaux des serveurs Xtream déjà connus (heure du catch-up).
+    await XtreamServerClock.load();
     await _completePendingDeletions();
     await _emitCurrentState();
   }
