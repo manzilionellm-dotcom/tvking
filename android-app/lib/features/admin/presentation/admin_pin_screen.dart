@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  admin_pin_screen.dart — Code admin (création / vérification)
 // =========================================================
@@ -129,6 +130,7 @@ class _AdminPinScreenState extends State<AdminPinScreen> {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
@@ -226,6 +228,7 @@ class _Numpad extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Column(
       children: <Widget>[
         for (int row = 0; row < 3; row++)
@@ -255,7 +258,7 @@ class _Numpad extends StatelessWidget {
                 child: IconButton(
                   iconSize: 28,
                   onPressed: onBackspace,
-                  icon: const Icon(
+                  icon:  Icon(
                     Icons.backspace_outlined,
                     color: AppColors.textSecondary,
                   ),
@@ -277,6 +280,7 @@ class _NumKey extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return SizedBox(
       width: 72,
       height: 72,

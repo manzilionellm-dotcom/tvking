@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  channel_detail_sheet.dart — Fiche détaillée d'une chaîne
 // =========================================================
@@ -46,6 +47,7 @@ class ChannelDetailSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return ClipRRect(
       borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
       child: BackdropFilter(
@@ -345,6 +347,7 @@ class _MetaBadges extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Wrap(
       spacing: 6,
       runSpacing: 6,
@@ -423,6 +426,7 @@ class _FavoriteButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return StreamBuilder<Set<String>>(
       stream: FavoritesRepository.instance.favoritesStream,
       initialData: FavoritesRepository.instance.current,

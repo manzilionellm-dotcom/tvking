@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  tv_recording_player_screen.dart — Lecteur d'ENREGISTREMENT (10-foot)
 // =========================================================
@@ -133,6 +134,7 @@ class _TvRecordingPlayerScreenState extends State<TvRecordingPlayerScreen> {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     final String title =
         (widget.recording.programTitle != null &&
                 widget.recording.programTitle!.isNotEmpty)
@@ -153,7 +155,7 @@ class _TvRecordingPlayerScreenState extends State<TvRecordingPlayerScreen> {
 
             // ----- Spinner de chargement -----
             if (_buffering && !_missing && !_error)
-              const Center(
+               Center(
                 child: SizedBox(
                   width: 56,
                   height: 56,
@@ -232,6 +234,7 @@ class _Message extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,

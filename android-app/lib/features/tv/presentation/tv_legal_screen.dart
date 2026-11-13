@@ -1,3 +1,5 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
+import '../../../core/network/api_config.dart';
 // =========================================================
 //  tv_legal_screen.dart — Mentions légales & Conditions d'utilisation
 // =========================================================
@@ -7,7 +9,7 @@
 //  le LOGICIEL, pas le contenu. Affiché en clair pour limiter le risque de
 //  retrait/bannissement et clarifier les responsabilités.
 //
-//  Le MÊME texte est servi en ligne par le worker sur app.7themotion.com/terms
+//  Le MÊME texte est servi en ligne par le worker sur $kApiBaseUrl/terms
 //  (à coller dans la fiche des stores).
 //
 //  Défilement à la télécommande : Haut/Bas font défiler le texte (D-pad), Retour
@@ -87,13 +89,13 @@ class _TvLegalScreenState extends State<TvLegalScreen> {
     (
       '8. Données personnelles',
       'Un identifiant technique d\'appareil est utilisé pour la gestion de la '
-          'licence/essai et le support. Détails : app.7themotion.com/privacy.',
+          'licence/essai et le support. Détails : $kApiBaseUrl/privacy.',
     ),
     (
       '9. Acceptation',
       'En installant ou en utilisant cette application, l\'utilisateur reconnaît '
           'avoir lu et accepté les présentes conditions. Version complète en '
-          'ligne : app.7themotion.com/terms',
+          'ligne : $kApiBaseUrl/terms',
     ),
   ];
 
@@ -128,6 +130,7 @@ class _TvLegalScreenState extends State<TvLegalScreen> {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Focus(
       focusNode: _focus,
       autofocus: true,

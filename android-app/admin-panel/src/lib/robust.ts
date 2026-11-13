@@ -131,12 +131,33 @@ export function readListPage<T>(raw: unknown): ListPage<T> {
   };
 }
 
+/// Entier 0–100, sinon null. Une valeur absente ou bizarre n'est jamais
+/// transformée en « 0 % » : ce serait accuser à tort la connexion du client.
+export function qualityPercent(raw: unknown): number | null {
+  if (typeof raw !== 'number' || !Number.isFinite(raw)) return null;
+  const q = Math.round(raw);
+  return q >= 0 && q <= 100 ? q : null;
+}
+
+/// Niveau lisible d'une qualité de lecture.
+export function qualityLevel(q: number | null): 'good' | 'medium' | 'bad' | 'none' {
+  if (q == null) return 'none';
+  if (q >= 90) return 'good';
+  if (q >= 70) return 'medium';
+  return 'bad';
+}
+
 export interface OnlineItem {
   mac: string;
   ip: string;
   country: string;
   lastSeen: number;
   channel: string;
+  /// Qualité de lecture 0–100 mesurée par l'app, ou null si non mesurée.
+  quality: number | null;
+  device_model: string;
+  platform: string;
+  app_version: string;
 }
 
 export interface OnlineView {
@@ -171,6 +192,10 @@ export function onlineView(raw: unknown): OnlineView {
       country,
       lastSeen: toEpochMs(row.lastSeen) || 0,
       channel: row.channel == null ? '' : String(row.channel),
+      quality: qualityPercent(row.quality),
+      device_model: typeof row.device_model === 'string' ? row.device_model : '',
+      platform: typeof row.platform === 'string' ? row.platform : '',
+      app_version: typeof row.app_version === 'string' ? row.app_version : '',
     };
   });
   return {

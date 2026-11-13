@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  profile_screen.dart — Onglet Profil (Phase 1.0b redesign)
 // =========================================================
@@ -58,6 +59,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
@@ -156,6 +158,7 @@ class _Header extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     final FlavorConfig flavor = FlavorConfig.current;
     return Center(
       child: Column(
@@ -192,6 +195,7 @@ class _AccountCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     final String display = mac ?? 'MK:??:??:??:??:??';
     return Container(
       padding: const EdgeInsets.all(CinematicSpacing.m),
@@ -205,7 +209,7 @@ class _AccountCard extends StatelessWidget {
         children: <Widget>[
           Row(
             children: <Widget>[
-              Icon(
+              const Icon(
                 Icons.workspace_premium_rounded,
                 color: AppColors.editorialCream,
                 size: 20,
@@ -266,6 +270,7 @@ class _MenuTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -334,6 +339,7 @@ class _MenuTile extends StatelessWidget {
 class _CastTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return ListenableBuilder(
       listenable: CastManager.instance,
       builder: (BuildContext context, _) {
@@ -364,6 +370,7 @@ class _SectionLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Padding(
       padding: const EdgeInsets.only(left: CinematicSpacing.s),
       child: Text(

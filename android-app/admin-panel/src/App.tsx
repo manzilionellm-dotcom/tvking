@@ -1,3 +1,4 @@
+import { securityApi, refreshAccess } from '@/lib/api';
 import { useCallback, useEffect, useState } from 'react';
 import { Navigate, Route, Routes, useNavigate, useLocation } from 'react-router-dom';
 import {
@@ -19,6 +20,7 @@ import { HomeManagerPage } from '@/pages/HomeManagerPage';
 import { ControlCenterPage } from '@/pages/ControlCenterPage';
 import { ForceUpdatePage } from '@/pages/ForceUpdatePage';
 import { OnlinePage } from '@/pages/OnlinePage';
+import { InsightsPage } from '@/pages/InsightsPage';
 import { FeaturedPage } from '@/pages/FeaturedPage';
 import { ThemePage } from '@/pages/ThemePage';
 import { AdPage } from '@/pages/AdPage';
@@ -69,10 +71,15 @@ export default function App() {
 
   useEffect(() => {
     if (status !== 'logged_in') return;
-    return startPanelChannel();
+    let cleanup = startPanelChannel();
+    const restart = () => { cleanup(); cleanup = startPanelChannel(); };
+    window.addEventListener('atlas-auth-token', restart);
+    const timer = window.setInterval(() => { void refreshAccess(); }, 10 * 60 * 1000);
+    return () => { cleanup(); window.clearInterval(timer); window.removeEventListener('atlas-auth-token', restart); };
   }, [status]);
 
   const handleLogout = useCallback(() => {
+    void securityApi.logout().catch(() => {});
     setToken(null);
     setCurrentUser(null);
     setStatus('logged_out');
@@ -118,6 +125,7 @@ export default function App() {
       <Route path="/home-manager" element={<HomeManagerPage onLogout={handleLogout} />} />
       <Route path="/force-update" element={<ForceUpdatePage onLogout={handleLogout} />} />
       <Route path="/online" element={<OnlinePage onLogout={handleLogout} />} />
+      <Route path="/insights" element={<InsightsPage onLogout={handleLogout} />} />
       <Route path="/featured" element={<FeaturedPage onLogout={handleLogout} />} />
       <Route path="/theme" element={<ThemePage onLogout={handleLogout} />} />
       <Route path="/ad" element={<AdPage onLogout={handleLogout} />} />

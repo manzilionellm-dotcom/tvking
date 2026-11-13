@@ -20,6 +20,9 @@ import { shouldApplyPollResult } from '@/lib/live-sync';
 import { bindPanelRefresh } from '@/lib/box-channel';
 import { formatDateTime } from '@/lib/utils';
 import { formatMacAddress, looksLikeMac } from '@/lib/mac-format/mac';
+import {
+  appVersionLabel, countryCode, countryName, deviceKind, seenInfo,
+} from '@/lib/clientRow';
 import { isClientList, isListOn, planRemoveSource, planToggleSource, toSourceInput } from '@/lib/sources';
 import { useOrderDelivery, type OrderDelivery } from '@/lib/use-order-delivery';
 import {
@@ -151,6 +154,7 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
       onLogout={onLogout}
     >
       <SearchField
+        macSearch
         label="Rechercher un appareil"
         value={q}
         onChange={(value) => { setQ(value); setOffset(0); }}
@@ -202,16 +206,34 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
                     >
                       {d.mac}
                     </button>
+                    {/* Pays de la dernière connexion : drapeau + nom. */}
+                    {countryCode(d.country) && (
+                      <div className="mt-1 flex items-center gap-1.5 text-xs text-ink-secondary">
+                        <span aria-hidden="true" className="text-base leading-none">{flagEmoji(countryCode(d.country))}</span>
+                        <span>{countryName(d.country)}</span>
+                      </div>
+                    )}
                   </td>
                   <td className="px-4 py-3">{d.customer_name || d.customer_email || '—'}</td>
                   <td className="px-4 py-3">
-                    <PlatformChip device={d} />
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <PlatformChip device={d} />
+                      {/* « Mobile » est déjà dit par la pastille de gauche. */}
+                      {deviceKind(d) && deviceKind(d) !== 'Mobile' && (
+                        <span className="inline-flex rounded-full border border-white/10 px-2 py-0.5 text-[10px] font-semibold text-ink-secondary">
+                          {deviceKind(d)}
+                        </span>
+                      )}
+                    </div>
                     {d.device_model ? (
                       <div className="mt-1">
                         <div className="text-xs text-ink-secondary">{d.device_model}</div>
                         <div className="text-[10px] text-ink-tertiary">
-                          {d.android_release ? `Android ${d.android_release}` : ''}
-                          {d.android_build ? ` · ${d.android_build}` : ''}
+                          {[
+                            d.android_release ? `Android ${d.android_release}` : '',
+                            appVersionLabel(d.app_version, d.app_build)
+                              ? `ZUNO ${appVersionLabel(d.app_version, d.app_build)}` : '',
+                          ].filter(Boolean).join(' · ')}
                         </div>
                       </div>
                     ) : (
@@ -221,7 +243,11 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
                   <td className="px-4 py-3"><StatusBadge status={st} /></td>
                   {/* Pastille d'accès : essai en cours / expiré / activé / à vie. */}
                   <td className="px-4 py-3 text-xs text-ink-secondary">{d.access_label || '—'}</td>
-                  <td className="px-4 py-3 text-ink-tertiary">{formatDateTime(d.last_seen_at)}</td>
+                  {/* Dernière vue : point vert si en ligne, sinon « il y a … ».
+                      La date exacte reste au survol. */}
+                  <td className="px-4 py-3" title={formatDateTime(d.last_seen_at)}>
+                    <LastSeen value={d.last_seen_at} />
+                  </td>
                   <td className="px-4 py-3">
                     <div className="flex flex-wrap justify-end gap-1.5">
                       <ActionBtn busy={busy} onClick={() => setDetailFor(d)} title="Fiche complète : M-Trio + infos appareil">Détails</ActionBtn>
@@ -901,6 +927,20 @@ function ActivatePlanModal({
       </div>
     </div>
   );
+}
+
+/// « En ligne » avec un point vert, ou « il y a 3 h » en gris.
+function LastSeen({ value }: { value: unknown }) {
+  const seen = seenInfo(value);
+  if (seen.online) {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-xs font-semibold" style={{ color: '#6FCF97' }}>
+        <span aria-hidden="true" className="inline-block h-2 w-2 rounded-full" style={{ background: '#6FCF97' }} />
+        {seen.label}
+      </span>
+    );
+  }
+  return <span className="text-xs text-ink-tertiary">{seen.label}</span>;
 }
 
 /// Pastille 📱 Mobile / 📺 TV. Priorité au champ `platform` (rapporté par

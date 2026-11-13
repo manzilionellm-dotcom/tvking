@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  channel_list_row.dart — Ligne de chaîne (liste haute seniors)
 // =========================================================
@@ -32,6 +33,7 @@ class ChannelListRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     final String? prog = channel.currentProgram;
     final bool hasEpg = prog != null && prog.trim().isNotEmpty;
     final double logo = 52 * scale;
@@ -68,7 +70,7 @@ class ChannelListRow extends StatelessWidget {
                             width: 6 * scale,
                             height: 6 * scale,
                             margin: EdgeInsets.only(right: 6 * scale),
-                            decoration: const BoxDecoration(
+                            decoration:  const BoxDecoration(
                               color: AppColors.liveRed,
                               shape: BoxShape.circle,
                             ),

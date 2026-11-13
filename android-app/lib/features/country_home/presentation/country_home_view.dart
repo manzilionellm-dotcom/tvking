@@ -1,3 +1,5 @@
+import '../../simple_home/data/home_sections.dart';
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  country_home_view.dart — Accueil d'un pays "Maison Noir"
 // =========================================================
@@ -32,48 +34,41 @@ import '../data/text_scale_repository.dart';
 import 'widgets/channel_list_row.dart';
 import 'widgets/hero_card.dart';
 import 'widgets/popular_card.dart';
-import 'widgets/resume_card.dart';
-
-/// Correspondance clé de section → (libellé, genres regroupés).
-final Map<String, (String, Set<ChannelGenre>)> _kGenreSections =
-    <String, (String, Set<ChannelGenre>)>{
-  HomeSectionKey.sport: ('Sport', <ChannelGenre>{ChannelGenre.sports}),
-  HomeSectionKey.entertainment: (
-    'Divertissement',
-    <ChannelGenre>{
-      ChannelGenre.entertainment,
-      ChannelGenre.music,
-      ChannelGenre.documentary,
-    }
-  ),
-  HomeSectionKey.info: ('Info', <ChannelGenre>{ChannelGenre.news}),
-  HomeSectionKey.kids: ('Enfants', <ChannelGenre>{ChannelGenre.kids}),
-  HomeSectionKey.general: (
-    'Général',
-    <ChannelGenre>{ChannelGenre.other, ChannelGenre.international}
-  ),
-};
 
 class CountryHomeView extends StatelessWidget {
-  const CountryHomeView({super.key, required this.channels, this.trailing});
+  const CountryHomeView(
+      {super.key,
+      required this.channels,
+      this.trailing,
+      this.onPlay,
+      this.television = false});
 
   /// Chaînes de CE pays (déjà filtrées par l'appelant).
   final List<Channel> channels;
 
   /// Zone optionnelle ajoutée en bas (ex. Cinéma verrouillé).
   final Widget? trailing;
+  final void Function(BuildContext, Channel, List<Channel>)? onPlay;
+  final bool television;
 
   void _play(BuildContext context, Channel c, List<Channel> list) {
     PopularityRepository.instance.recordOpen(c.id);
-    playChannel(context, c, zapPlaylist: list);
+    if (onPlay != null) {
+      onPlay!(context, c, list);
+    } else {
+      playChannel(context, c, zapPlaylist: list);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return ListenableBuilder(
       listenable: TextScaleRepository.instance,
       builder: (BuildContext context, _) {
-        final double scale = TextScaleRepository.instance.factor;
+        final double scale = television
+            ? TextScaleRepository.instance.factor * 1.25
+            : TextScaleRepository.instance.factor;
         return StreamBuilder<Set<String>>(
           stream: FavoritesRepository.instance.favoritesStream,
           initialData: FavoritesRepository.instance.current,
@@ -113,14 +108,6 @@ class CountryHomeView extends StatelessWidget {
     // Populaires, puis on pousse les chaînes mortes au fond (santé).
     final List<Channel> popular = ChannelHealthRepository.instance.sortByHealth(
         PopularityRepository.instance.getPopularChannels(channels, top: 12));
-    final Map<String, Channel> byId = <String, Channel>{
-      for (final Channel c in channels) c.id: c,
-    };
-    final List<Channel> recent = <Channel>[
-      for (final String id in recentIds)
-        if (byId[id] != null) byId[id]!,
-    ];
-
     final List<Widget> items = <Widget>[];
 
     // 1) Réglage accessibilité.
@@ -133,14 +120,10 @@ class CountryHomeView extends StatelessWidget {
     String? heroNote;
     final FeaturedRepository feat = FeaturedRepository.instance;
     if (feat.hasFeatured) {
-      final String q = feat.name.trim().toLowerCase();
-      for (final Channel c in channels) {
-        if (c.name.toLowerCase().contains(q)) {
-          hero = c;
-          heroLabel = 'FAVORI DU JOUR';
-          heroNote = feat.note.trim().isEmpty ? null : feat.note.trim();
-          break;
-        }
+      hero = matchFeatured(channels, feat.name);
+      if (hero != null) {
+        heroLabel = 'FAVORI DU JOUR';
+        heroNote = feat.note.trim().isEmpty ? null : feat.note.trim();
       }
     }
     hero ??= popular.isNotEmpty
@@ -182,46 +165,43 @@ class CountryHomeView extends StatelessWidget {
       ));
     }
 
-    // 4) Reprendre.
-    if (recent.isNotEmpty) {
-      items.add(_sectionTitle('Reprendre', scale));
-      items.add(_horizontal(
-        height: 132 * scale,
-        children: <Widget>[
-          for (final Channel c in recent.take(12))
-            ResumeCard(
-              channel: c,
-              scale: scale,
-              onTap: () => _play(context, c, recent),
-            ),
-        ],
-      ));
-    }
-
-    // 5) Sections par genre, dans l'ordre piloté par le panel.
+    // Every supported panel section participates in order, visibility,
+    // ribbon and promotion, including recent/favorites/cinema.
     final List<String> order =
         HomeLayoutRepository.instance.orderedVisibleKeys(kDefaultHomeOrder);
-    for (final String key in order) {
-      final (String, Set<ChannelGenre>)? def = _kGenreSections[key];
-      if (def == null) continue; // recent/favorites/cinema gérés ailleurs
-      final List<Channel> inGenre = channels
-          .where((Channel c) => def.$2.contains(c.genre))
-          .toList();
-      if (inGenre.isEmpty) continue;
-      final List<Channel> top = ChannelHealthRepository.instance.sortByHealth(
-          PopularityRepository.instance.getPopularChannels(inGenre, top: 12));
-      final String ribbon =
-          HomeLayoutRepository.instance.config(key)?.ribbon ?? '';
-      items.add(_sectionTitle(def.$1, scale, ribbon: ribbon));
-      for (final Channel c in top) {
-        items.add(ChannelListRow(
-          channel: c,
-          isFav: favs.contains(c.id),
-          scale: scale,
-          onTap: () => _play(context, c, inGenre),
-          onFav: () => FavoritesRepository.instance.toggle(c.id),
-        ));
-      }
+    for (final HomeSectionView section in buildHomeSections(
+        channels: channels,
+        order: order,
+        config: HomeLayoutRepository.instance.config,
+        favorites: favs,
+        recentIds: recentIds)) {
+      final Iterable<Channel> top = section.key == HomeSectionKey.recent ||
+              section.key == HomeSectionKey.favorites
+          ? section.channels.take(12)
+          : ChannelHealthRepository.instance.sortByHealth(PopularityRepository
+              .instance
+              .getPopularChannels(section.channels, top: 12));
+      items.add(Container(
+        key: ValueKey<String>('home-section-${section.key}'),
+        decoration: section.promoted
+            ? BoxDecoration(
+                color: AppColors.accent.withValues(alpha: 0.08),
+                border:
+                    Border(left: BorderSide(color: AppColors.accent, width: 3)))
+            : null,
+        child: Column(children: <Widget>[
+          _sectionTitle(section.title, scale, ribbon: section.ribbon),
+          for (final Channel c in top)
+            ChannelListRow(
+              key: ValueKey<String>('${section.key}-${c.id}'),
+              channel: c,
+              isFav: favs.contains(c.id),
+              scale: scale,
+              onTap: () => _play(context, c, section.channels),
+              onFav: () => FavoritesRepository.instance.toggle(c.id),
+            ),
+        ]),
+      ));
     }
 
     // 6) Zone verrouillée (Cinéma & Séries) fournie par l'appelant.
@@ -259,7 +239,8 @@ class CountryHomeView extends StatelessWidget {
             borderRadius: BorderRadius.circular(12),
             onTap: () => TextScaleRepository.instance.toggle(),
             child: Padding(
-              padding: EdgeInsets.symmetric(horizontal: 12 * scale, vertical: 8 * scale),
+              padding: EdgeInsets.symmetric(
+                  horizontal: 12 * scale, vertical: 8 * scale),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: <Widget>[
@@ -286,8 +267,8 @@ class CountryHomeView extends StatelessWidget {
   Widget _eyebrow(String text, double scale) => Padding(
         padding: const EdgeInsets.fromLTRB(16, 2, 16, 8),
         child: Text(text,
-            style: AppTextStyles.maisonLabel.copyWith(
-                color: AppColors.black7Red, fontSize: 12 * scale)),
+            style: AppTextStyles.maisonLabel
+                .copyWith(color: AppColors.black7Red, fontSize: 12 * scale)),
       );
 
   Widget _sectionTitle(String text, double scale, {String ribbon = ''}) =>
@@ -299,8 +280,8 @@ class CountryHomeView extends StatelessWidget {
               child: Text(text,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style:
-                      AppTextStyles.maisonSection.copyWith(fontSize: 20 * scale)),
+                  style: AppTextStyles.maisonSection
+                      .copyWith(fontSize: 20 * scale)),
             ),
             if (ribbon.isNotEmpty) ...<Widget>[
               SizedBox(width: 8 * scale),

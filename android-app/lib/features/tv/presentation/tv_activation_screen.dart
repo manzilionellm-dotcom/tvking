@@ -1,3 +1,5 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
+import '../../../core/network/api_config.dart';
 // =========================================================
 //  tv_activation_screen.dart — Licence « The Few » (Maison Noir)
 // =========================================================
@@ -31,7 +33,6 @@ class _TvActivationScreenState extends State<TvActivationScreen> {
   String _mac = '…';
   bool _busy = false;
   bool _copied = false;
-  Timer? _poll;
 
   @override
   void initState() {
@@ -39,9 +40,6 @@ class _TvActivationScreenState extends State<TvActivationScreen> {
     DeviceIdentity.instance.mac.then((String m) {
       if (mounted) setState(() => _mac = m);
     });
-    // Activation instantanée : revérifie toutes les 5 s.
-    _poll = Timer.periodic(const Duration(seconds: 5),
-        (_) => SubscriptionState.instance.syncWithBackend());
     SubscriptionState.instance.addListener(_onSub);
   }
 
@@ -51,7 +49,6 @@ class _TvActivationScreenState extends State<TvActivationScreen> {
 
   @override
   void dispose() {
-    _poll?.cancel();
     SubscriptionState.instance.removeListener(_onSub);
     super.dispose();
   }
@@ -72,6 +69,7 @@ class _TvActivationScreenState extends State<TvActivationScreen> {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     // Le design est pensé à une taille FIXE puis MIS À L'ÉCHELLE pour tenir
     // dans n'importe quel écran TV (720p → 4K, overscan inclus). FittedBox =
     // jamais de débordement, jamais « trop zoomé ». On neutralise aussi le
@@ -211,7 +209,7 @@ class _TvActivationScreenState extends State<TvActivationScreen> {
               child: Text(
                 'Lecteur multimédia — ne vend ni ne fournit aucune chaîne ni '
                 'lien M3U. Le contenu est apporté par l\'utilisateur. '
-                'Conditions : app.7themotion.com/terms',
+                'Conditions : $kApiBaseUrl/terms',
                 textAlign: TextAlign.center,
                 style: TvTokens.ui(12, color: TvTokens.mutedDim),
               ),
@@ -228,6 +226,7 @@ class _CopyButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return TvFocusBuilder(
       onSelect: onSelect,
       scale: TvFocusScale.small,

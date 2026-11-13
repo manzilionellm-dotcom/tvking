@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  focused_category_screen.dart — Catégorie focus (Football…)
 // =========================================================
@@ -54,6 +55,7 @@ class FocusedCategoryScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
@@ -171,6 +173,7 @@ class _ResultsHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
       child: Text(
@@ -191,6 +194,7 @@ class _EmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),

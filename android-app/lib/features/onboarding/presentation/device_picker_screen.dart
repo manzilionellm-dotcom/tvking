@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  device_picker_screen.dart — "Téléphone ou Télévision ?"
 // =========================================================
@@ -50,6 +51,7 @@ class _DevicePickerScreenState extends State<DevicePickerScreen> {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     final bool wide = MediaQuery.of(context).size.width >= 720;
 
     return Scaffold(
@@ -226,6 +228,7 @@ class _DeviceCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     final bool reduceMotion = MediaQuery.disableAnimationsOf(context);
     return Material(
       color: Colors.transparent,

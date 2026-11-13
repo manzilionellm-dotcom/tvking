@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  mac_activation_view.dart — Activation par code MAC
 // =========================================================
@@ -48,6 +49,7 @@ class MacActivationView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return FutureBuilder<String>(
       future: DeviceIdentity.instance.mac,
       builder: (BuildContext context, AsyncSnapshot<String> snap) {
@@ -228,23 +230,25 @@ class MacActivationView extends StatelessWidget {
     );
     await SubscriptionState.instance.syncWithBackend();
     await RemoteSourceRepository.sync();
+    if (!context.mounted || !messenger.mounted) return;
+    final l10n = context.l10n;
 
     final bool hasChannels =
         PlaylistRepository.instance.currentChannels.isNotEmpty;
     messenger.clearSnackBars();
     if (hasChannels) {
-      onActivated?.call();
       messenger.showSnackBar(
         SnackBar(
           backgroundColor: AppColors.success,
-          content: Text(context.l10n.activationSuccess),
+          content: Text(l10n.activationSuccess),
         ),
       );
+      onActivated?.call();
     } else {
       messenger.showSnackBar(
         SnackBar(
           backgroundColor: AppColors.warning,
-          content: Text(context.l10n.activationNoSourceYet),
+          content: Text(l10n.activationNoSourceYet),
         ),
       );
     }

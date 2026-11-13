@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  poster_card.dart — Carte affiche portrait 2:3 (direction
 //  "Poster-forward" Netflix 2025)
@@ -80,6 +81,7 @@ class _PosterCardState extends State<PosterCard> {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     final Channel ch = widget.channel;
 
     return FocusableActionDetector(
@@ -136,8 +138,8 @@ class _PosterCardState extends State<PosterCard> {
                             _poster(ch),
 
                             // Scrim bas pour lisibilité d'éventuels badges.
-                            const DecoratedBox(
-                              decoration: BoxDecoration(
+                             const DecoratedBox(
+                              decoration: const BoxDecoration(
                                 gradient: AppColors.cardScrim,
                               ),
                             ),
@@ -242,8 +244,9 @@ class _PosterFallback extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return DecoratedBox(
-      decoration: const BoxDecoration(
+      decoration:  BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
@@ -281,6 +284,7 @@ class _LivePill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(

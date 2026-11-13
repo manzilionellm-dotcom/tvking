@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  section_header.dart — Entête d'une section (titre + lien)
 // =========================================================
@@ -27,6 +28,7 @@ class SectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
       child: Row(

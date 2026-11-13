@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  settings_screen.dart — Réglages globaux de l'app
 // =========================================================
@@ -33,6 +34,7 @@ class SettingsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
@@ -47,7 +49,7 @@ class SettingsScreen extends StatelessWidget {
             //  Le client doit pouvoir nous joindre en 1 tap, depuis
             //  l'écran qu'il consulte le plus quand quelque chose
             //  cloche (Réglages).
-            _SectionTitle('Aide & Support'),
+            const _SectionTitle('Aide & Support'),
             const VipHelpCard.full(),
             const SizedBox(height: 4),
 
@@ -56,7 +58,7 @@ class SettingsScreen extends StatelessWidget {
             //  où il en est dans les 10j d'essai (ou si payé) + un
             //  CTA pour acheter sur 7themotion.com (paiement externe,
             //  pas d'in-app purchase Google Play).
-            _SectionTitle('Mon abonnement'),
+            const _SectionTitle('Mon abonnement'),
             const SubscriptionCard(),
             const SizedBox(height: 4),
 
@@ -147,7 +149,7 @@ class SettingsScreen extends StatelessWidget {
             // L'écosystème revendeur (Mode admin → push à distance via
             // backend Cloudflare) reste intact, c'est juste une porte
             // supplémentaire pour l'usage direct.
-            _SectionTitle('Mes sources IPTV'),
+            const _SectionTitle('Mes sources IPTV'),
             _ActionTile(
               icon: Icons.playlist_play_rounded,
               title: 'Mes playlists',
@@ -211,7 +213,7 @@ class SettingsScreen extends StatelessWidget {
             // ====== NOTIFICATIONS ======
             //  Trois interrupteurs : rappels d'émission, annonces de
             //  l'équipe, dispo des mises à jour. Tout activé par défaut.
-            _SectionTitle('Notifications'),
+            const _SectionTitle('Notifications'),
             _ActionTile(
               icon: Icons.notifications_active_outlined,
               title: 'Notifications',
@@ -231,7 +233,7 @@ class SettingsScreen extends StatelessWidget {
             //  JSON copiable se colle dans une issue ou dans
             //  lib/features/cast/COMPATIBILITY.md pour empiler
             //  les données empiriques.
-            _SectionTitle('Cast'),
+            const _SectionTitle('Cast'),
             _ActionTile(
               icon: Icons.troubleshoot_rounded,
               title: 'Diagnostic cast',
@@ -360,6 +362,7 @@ class _LockToggleTileState extends State<_LockToggleTile> {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     if (_enabled == null) {
       // Placeholder pendant le chargement SharedPreferences (~5 ms)
       return const SizedBox(height: 56);
@@ -382,6 +385,7 @@ class _SectionTitle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Padding(
       padding: const EdgeInsets.fromLTRB(4, 22, 4, 8),
       child: Align(
@@ -416,6 +420,7 @@ class _ActionTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     final Color iconColor =
         destructive ? AppColors.live : AppColors.accent;
     return Material(
@@ -495,6 +500,7 @@ class _SwitchTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Container(
       margin: const EdgeInsets.only(bottom: 6),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -571,6 +577,7 @@ class _SliderTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Container(
       margin: const EdgeInsets.only(bottom: 6),
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
@@ -647,6 +654,7 @@ class _ThemeModePicker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return ListenableBuilder(
       listenable: ThemeModeRepository.instance,
       builder: (BuildContext context, _) {
@@ -710,6 +718,7 @@ class _ThemeOption extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     // Respect du système : si l'utilisateur a activé "réduire les
     // animations" dans l'OS, MediaQuery.disableAnimations remonte
     // true et on coupe la transition.
@@ -791,6 +800,7 @@ class _LanguagePicker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return ListenableBuilder(
       listenable: LocaleRepository.instance,
       builder: (BuildContext context, _) {
@@ -891,6 +901,7 @@ class _LanguageTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -984,6 +995,7 @@ class _UserAgentSheetState extends State<_UserAgentSheet> {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return SafeArea(
       top: false,
       child: Padding(

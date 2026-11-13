@@ -64,6 +64,7 @@ export function getToken(): string | null {
 export function setToken(t: string | null) {
   if (t) localStorage.setItem(TOKEN_KEY, t);
   else localStorage.removeItem(TOKEN_KEY);
+  window.dispatchEvent(new Event('atlas-auth-token'));
 }
 
 export class ApiError extends Error {
@@ -85,6 +86,7 @@ interface RequestOpts {
   signal?: AbortSignal;
   /// En-têtes en plus (ex. `Idempotency-Key` sur une écriture critique).
   headers?: Record<string, string>;
+  retried?: boolean;
 }
 
 // Clé d'idempotence des écritures critiques : module pur (testé sous node).
@@ -118,6 +120,8 @@ async function request<T = unknown>(
       headers,
       body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
       signal: opts.signal,
+      credentials: 'include',
+      cache: 'no-store',
     });
   } catch (e) {
     // L'annulation n'est pas une panne : l'appelant l'ignore.
@@ -125,6 +129,9 @@ async function request<T = unknown>(
     throw new ApiError(0, 'network', networkFailureMessage());
   }
 
+  if (resp.status === 401 && !opts.noAuth && !opts.retried) {
+    if (await refreshAccess()) return request<T>(path, { ...opts, retried: true });
+  }
   const text = await resp.text();
   const read = interpretHttpResult(resp.status, text);
   if (!read.ok) {
@@ -133,6 +140,36 @@ async function request<T = unknown>(
   }
   return read.json as T;
 }
+
+let refreshing: Promise<boolean> | null = null;
+export function refreshAccess(): Promise<boolean> {
+  if (refreshing) return refreshing;
+  refreshing = (async () => {
+    try {
+      const response = await fetch(`${API_BASE}/api/v1/auth/refresh`, { method: 'POST', credentials: 'include', cache: 'no-store', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      if (!response.ok) return false;
+      const data = await response.json();
+      if (typeof data.token !== 'string') return false;
+      setToken(data.token); return true;
+    } catch { return false; }
+    finally { refreshing = null; }
+  })();
+  return refreshing;
+}
+export interface ResellerPolicy { max_activations: number | null; allowed_plans: string[]; expires_at: number | null; max_sub_resellers: number; }
+export const resellerPolicyApi = {
+  get: (id: string) => request<ResellerPolicy>(`/api/v1/resellers/${encodeURIComponent(id)}/limits`),
+  save: (id: string, body: ResellerPolicy) => request<ResellerPolicy>(`/api/v1/resellers/${encodeURIComponent(id)}/limits`, {method:'PUT',body}),
+  remove: (id: string) => request(`/api/v1/resellers/${encodeURIComponent(id)}`, {method:'DELETE',body:{confirm:id}}),
+};
+export const securityApi = {
+  status: () => request<{enabled: boolean}>('/api/v1/me/2fa'),
+  setup: (password: string) => request<{secret: string; uri: string}>('/api/v1/me/2fa/setup', { method:'POST', body:{password} }),
+  confirm: (password: string, code: string) => request<{enabled: boolean; recovery_codes: string[]}>('/api/v1/me/2fa/confirm', { method:'POST', body:{password,code} }),
+  disable: (password: string, code: string) => request<{enabled: boolean}>('/api/v1/me/2fa/disable', { method:'POST', body:{password,code,recovery:/^[a-f0-9]{16}$/i.test(code)} }),
+  logout: () => request('/api/v1/auth/logout', {method:'POST',body:{}}),
+  logoutAll: () => request('/api/v1/me/logout-all', {method:'POST',body:{}}),
+};
 
 // =========================================================
 //  Endpoints typees
@@ -182,17 +219,17 @@ export function isOwnerRole(role?: string | null): boolean {
 }
 
 export const authApi = {
-  login: (email: string, password: string) =>
+  login: (email: string, password: string, code?: string, recovery = false) =>
     request<AuthLoginResponse>('/api/v1/auth/login', {
       method: 'POST',
-      body: { email, password },
+      body: { email, password, code, recovery },
       noAuth: true,
     }),
   // Login d'un compte revendeur (table resellers, role 'reseller').
-  resellerLogin: (email: string, password: string) =>
+  resellerLogin: (email: string, password: string, code?: string, recovery = false) =>
     request<AuthLoginResponse>('/api/v1/auth/reseller/login', {
       method: 'POST',
-      body: { email, password },
+      body: { email, password, code, recovery },
       noAuth: true,
     }),
   me: () => request<{ user: MeUser }>('/api/v1/auth/me'),
@@ -332,7 +369,10 @@ export interface Device {
   android_build?: string | null;
   android_release?: string | null;
   app_build?: number | null;
+  app_version?: string | null;
   platform?: string | null;   // 'tv' (DeFew TV) | 'mobile' (The Few)
+  // Pays (ISO2) de la dernière connexion, '' si inconnu.
+  country?: string | null;
   // Pastille d'accès calculée par le serveur (essai / expiré / activé).
   access?: 'trial' | 'expired' | 'activated' | 'lifetime' | 'frozen' | 'banned' | string;
   access_label?: string;
@@ -467,6 +507,7 @@ export const resellersApi = {
     password: string;
     name?: string;
     credit_balance?: number;
+    status?: 'active' | 'suspended';
     commission_rate?: number;
   }) =>
     request<{ id: string; credit_balance: number }>('/api/v1/resellers', {
@@ -1084,6 +1125,10 @@ export interface OnlineDevice {
   country: string;
   lastSeen: number;
   channel?: string;   // chaîne en cours de visionnage (vide si rien)
+  quality?: number | null;   // qualité de lecture 0–100 (null = non mesurée)
+  device_model?: string;
+  platform?: string;
+  app_version?: string;
 }
 export interface OnlineSnapshot {
   onlineCount: number;
@@ -1091,6 +1136,32 @@ export interface OnlineSnapshot {
   byCountry: Record<string, number>;
   items: OnlineDevice[];
 }
+// ---- Pilotage (santé, ventes, fraude) : lecture seule, owner ----
+export interface InsightStat { key: string; count: number; quality: number }
+export interface InsightCount { key: string; count: number }
+export interface InsightPerson {
+  mac: string; plan: string; expires_at: number; customer: string; reseller: string;
+}
+export interface Insights {
+  generated_at: number;
+  unavailable: string[];
+  health: {
+    watching: number; bad: number; quality: number | null; alert: boolean;
+    byChannel: InsightStat[]; byCountry: InsightStat[]; byVersion: InsightStat[];
+  };
+  money: {
+    newPaid30: number; perDay: { day: number; count: number }[];
+    byPlan: InsightCount[]; byReseller: InsightCount[];
+    paidActive: number; paidExpired: number;
+    expiring: InsightPerson[]; lost: InsightPerson[];
+    resellerActivations30: number; resellerRenewals30: number;
+  };
+  fraud: { sameBox: { id: string; count: number; macs: string[] }[] };
+}
+export const insightsApi = {
+  get: (signal?: AbortSignal) => request<Insights>('/api/v1/insights', { signal }),
+};
+
 export const onlineApi = {
   get: (page?: { limit?: number; offset?: number }, signal?: AbortSignal) =>
     request<OnlineSnapshot>(listQuery('/api/v1/online', undefined, page), { signal }),

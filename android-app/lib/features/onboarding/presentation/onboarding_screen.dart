@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  onboarding_screen.dart — Première impression de l'app
 // =========================================================
@@ -106,6 +107,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Scaffold(
       backgroundColor: AppColors.background,
       body: Stack(
@@ -247,6 +249,7 @@ class _SlideView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 32),
       child: Column(
@@ -350,6 +353,7 @@ class _MacHandoffSlideState extends State<_MacHandoffSlide> {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     final String display = _mac ?? 'MK:??:??:??:??:??';
 
     return Padding(

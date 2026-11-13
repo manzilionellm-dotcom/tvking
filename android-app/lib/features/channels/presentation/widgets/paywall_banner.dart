@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  paywall_banner.dart — Bandeau "App payante" (accueil)
 // =========================================================
@@ -25,6 +26,7 @@ class PaywallBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
       child: Material(
@@ -43,7 +45,7 @@ class PaywallBanner extends StatelessWidget {
             ),
             child: Row(
               children: <Widget>[
-                Icon(
+                const Icon(
                   Icons.auto_awesome_rounded,
                   size: 18,
                   color: AppColors.editorialCream,
@@ -81,7 +83,7 @@ class PaywallBanner extends StatelessWidget {
                     color: AppColors.editorialCreamDeep,
                   ),
                 ),
-                Icon(
+                const Icon(
                   Icons.chevron_right_rounded,
                   size: 16,
                   color: AppColors.editorialCreamDeep,

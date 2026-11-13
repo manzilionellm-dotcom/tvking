@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  theme_picker_sheet.dart — Sélecteur de couleur d'accent
 // =========================================================
@@ -36,11 +37,12 @@ class _ThemePickerSheet extends StatefulWidget {
 class _ThemePickerSheetState extends State<_ThemePickerSheet> {
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     final String currentId = AccentController.instance.current.id;
     return Container(
-      decoration: const BoxDecoration(
+      decoration:  BoxDecoration(
         color: AppColors.background,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: const BorderRadius.vertical(top: const Radius.circular(20)),
       ),
       padding: const EdgeInsets.fromLTRB(20, 14, 20, 28),
       child: SafeArea(
@@ -112,6 +114,7 @@ class _Swatch extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return GestureDetector(
       onTap: onTap,
       child: SizedBox(

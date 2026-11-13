@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  lock_screen.dart — Écran de verrouillage à l'ouverture
 // =========================================================
@@ -105,6 +106,7 @@ class _LockScreenState extends State<LockScreen> {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     // Sur l'ecran de lock, on cache la status bar pour que l'ecran
     // soit pleinement immersif (style verrouillage bancaire).
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersive);

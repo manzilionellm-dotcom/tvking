@@ -1,5 +1,6 @@
 import { useId, useState, type ReactNode } from 'react';
 import { cn } from '@/lib/utils';
+import { MacInput } from '@/components/MacInput';
 import {
   filterRows, pageWindow, sortRows, type SortDir,
 } from '@/lib/tableView';
@@ -116,11 +117,13 @@ export function SearchField({
   onChange,
   label,
   placeholder,
+  macSearch = false,
 }: {
   value: string;
   onChange: (value: string) => void;
   label: string;
   placeholder?: string;
+  macSearch?: boolean;
 }) {
   const id = useId();
   return (
@@ -128,14 +131,21 @@ export function SearchField({
       <label htmlFor={id} className="mb-1.5 block text-xs font-medium text-ink-secondary">
         {label}
       </label>
-      <input
+      {macSearch ? <MacInput
+        id={id}
+        mode="search"
+        value={value}
+        onValueChange={onChange}
+        placeholder={placeholder}
+        className="w-full rounded-md border border-white/10 bg-midnight px-3 py-2.5 text-sm text-ink-primary outline-none placeholder:text-ink-tertiary focus:border-accent/60 focus:ring-2 focus:ring-accent/40"
+      /> : <input
         id={id}
         type="search"
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         className="w-full rounded-md border border-white/10 bg-midnight px-3 py-2.5 text-sm text-ink-primary outline-none placeholder:text-ink-tertiary focus:border-accent/60 focus:ring-2 focus:ring-accent/40"
-      />
+      />}
     </div>
   );
 }
@@ -256,6 +266,7 @@ export function useClientTable<T>(
     pageSize?: number;
     valueOf: (row: T, key: string) => unknown;
     textOf?: (row: T) => string;
+    matchAlso?: (row: T, query: string) => boolean;
     query?: string;
   },
 ) {
@@ -272,7 +283,7 @@ export function useClientTable<T>(
     setPage(1);
   }
 
-  const filtered = opts.textOf ? filterRows(rows, query, opts.textOf) : rows.slice();
+  const filtered = opts.textOf ? filterRows(rows, query, opts.textOf, opts.matchAlso) : rows.slice();
   const sorted = sortKey ? sortRows(filtered, sortKey, dir, opts.valueOf) : filtered;
   const win = pageWindow(sorted.length, page, pageSize);
   const view = sorted.slice(win.start, win.end);

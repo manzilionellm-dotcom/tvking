@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  movies_screen.dart — Films (catalogue VOD + téléchargés)
 // =========================================================
@@ -76,6 +77,7 @@ class _MoviesScreenState extends State<MoviesScreen> {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return DefaultTabController(
       length: 2,
       child: Scaffold(
@@ -207,6 +209,7 @@ class _MovieRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     final bool done = download?.status == DownloadStatus.done;
     final bool busy = download?.status == DownloadStatus.downloading;
     return Card(
@@ -295,6 +298,7 @@ class _DownloadRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     final Download d = download;
     final String status;
     switch (d.status) {

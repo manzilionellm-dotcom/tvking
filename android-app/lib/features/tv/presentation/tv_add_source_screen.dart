@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  tv_add_source_screen.dart — « J'ajoute ma propre liste » (Xtream)
 // =========================================================
@@ -48,6 +49,7 @@ class _TvAddSourceScreenState extends State<TvAddSourceScreen> {
   @override
   void initState() {
     super.initState();
+    DefaultServersApi.current.addListener(_serversChanged);
     DefaultServersApi.fetch().then((List<DefaultServer> list) {
       if (!mounted) return;
       final List<DefaultServer> ok =
@@ -59,8 +61,11 @@ class _TvAddSourceScreenState extends State<TvAddSourceScreen> {
     });
   }
 
+  void _serversChanged() { if (mounted) setState(() => _servers = DefaultServersApi.current.value); }
+
   @override
   void dispose() {
+    DefaultServersApi.current.removeListener(_serversChanged);
     _serverC.dispose();
     _userC.dispose();
     _passC.dispose();
@@ -98,6 +103,7 @@ class _TvAddSourceScreenState extends State<TvAddSourceScreen> {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 760),
@@ -205,6 +211,7 @@ class _TextField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     OutlineInputBorder border(Color c, double w) => OutlineInputBorder(
           borderRadius: BorderRadius.circular(TvTokens.rButton),
           borderSide: BorderSide(color: c, width: w),
@@ -242,6 +249,7 @@ class _ServerChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return TvFocusBuilder(
       scale: TvFocusScale.medium,
       onSelect: onSelect,

@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  empty_state.dart — Écran "Ajoute ton abonnement"
 // =========================================================
@@ -41,6 +42,7 @@ class EmptyStateView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     // Écran ADAPTATIF : on écoute le statut d'abonnement pour afficher la
     // bonne chose selon la situation (pro), au lieu de toujours montrer
     // « Active ton abonnement / essai » même quand le client est déjà
@@ -321,6 +323,7 @@ class _SyncNowButtonState extends State<_SyncNowButton> {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return SizedBox(
       width: double.infinity,
       height: 50,

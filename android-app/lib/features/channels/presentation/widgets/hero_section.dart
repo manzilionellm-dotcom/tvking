@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  hero_section.dart — Bannière cinéma edge-to-edge (Phase 1
 //                      redesign)
@@ -62,6 +63,7 @@ class HeroSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return ClipRRect(
       borderRadius: BorderRadius.circular(CinematicSpacing.radiusXL),
       child: SizedBox(
@@ -123,6 +125,7 @@ class _AmbientBackdrop extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     if (!channel.hasLogo) {
       return const _NeutralBackdrop();
     }
@@ -153,7 +156,8 @@ class _NeutralBackdrop extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const DecoratedBox(
+    RemotePalette.watch(context);
+    return  DecoratedBox(
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
@@ -176,6 +180,7 @@ class _BottomScrim extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return const IgnorePointer(
       child: DecoratedBox(
         decoration: BoxDecoration(
@@ -219,6 +224,7 @@ class _HeroCopy extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
@@ -281,6 +287,7 @@ class _MetaLine extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     final List<String> parts = <String>[
       channel.genre.label,
       if (channel.country != null) channel.country!.name,
@@ -309,6 +316,7 @@ class _PlayCta extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return TvFocusable(
       onTap: onPressed,
       borderRadius: BorderRadius.circular(CinematicSpacing.radiusM),
@@ -351,6 +359,7 @@ class _InfoCta extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return TvFocusable(
       onTap: onPressed,
       borderRadius: BorderRadius.circular(CinematicSpacing.radiusM),
@@ -373,7 +382,7 @@ class _InfoCta extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[
-                const Icon(
+                 Icon(
                   Icons.info_outline_rounded,
                   size: 18,
                   color: AppColors.textPrimary,

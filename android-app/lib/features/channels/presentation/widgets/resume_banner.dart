@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  resume_banner.dart — Bannière "Reprendre où tu t'es arrêté"
 // =========================================================
@@ -47,6 +48,7 @@ class _ResumeBannerState extends State<ResumeBanner> {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     if (_dismissed) return const SizedBox.shrink();
 
     return ListenableBuilder(
@@ -102,6 +104,7 @@ class _Banner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     final String agoText = minutesAgo <= 1
         ? context.l10n.resumeAgoNow
         : context.l10n.resumeAgoMinutes(minutesAgo);

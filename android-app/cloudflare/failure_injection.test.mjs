@@ -47,7 +47,7 @@ async function login(env) {
 
 async function reseller(env, admin, credits) {
   const email = `r-${crypto.randomUUID()}@example.test`;
-  const password = crypto.randomUUID();
+  const password = 'Test9Aa!' + crypto.randomUUID();
   const c = await api(env, 'POST', '/api/v1/resellers', { token: admin, body: { email, password, name: 'R', credit_balance: credits } });
   await api(env, 'PATCH', `/api/v1/resellers/${c.json.id}`, { token: admin, body: { permissions: ['activate', 'devices', 'sources'] } });
   const l = await api(env, 'POST', '/api/v1/auth/reseller/login', { body: { email, password } });
@@ -331,7 +331,8 @@ async function main() {
   // admin, insertion en double → contrainte UNIQUE → connexion en échec.
   {
     const { env, db } = makeEnv({ jitterMs: 4 });
-    const rs = await Promise.all(Array.from({ length: 10 }, () => api(env, 'POST', '/api/v1/auth/login', {
+    const rs = await Promise.all(Array.from({ length: 10 }, (_, i) => api(env, 'POST', '/api/v1/auth/login', {
+      headers: { 'CF-Connecting-IP': `192.0.2.${i + 1}` },
       body: { email: 'admin', password: env.ADMIN_SECRET },
     })));
     const admins = one(db, 'SELECT COUNT(*) AS n FROM admin_users').n;
@@ -344,7 +345,7 @@ async function main() {
     const { env, db } = makeEnv({ jitterMs: 4 });
     const email = 'meme-identifiant@example.test';
     const rs = await Promise.all(Array.from({ length: 5 }, (_, i) => api(env, 'POST', '/api/v1/auth/reseller/signup', {
-      body: { email, password: `mdp-test-${i}`, name: `R${i}` },
+      body: { email, password: `Test9Aa!-mdp-test-${i}`, name: `R${i}` },
       headers: { 'CF-Connecting-IP': `203.0.113.${i + 1}` },
     })));
     const st = rs.map((r) => r.status).sort();

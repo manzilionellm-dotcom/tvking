@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  player_settings_sheet.dart — Sheet de réglages avancés
 // =========================================================
@@ -46,6 +47,7 @@ class _PlayerSettingsSheetState extends State<PlayerSettingsSheet> {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return ClipRRect(
       borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
       child: BackdropFilter(

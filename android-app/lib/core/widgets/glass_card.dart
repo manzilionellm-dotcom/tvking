@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  glass_card.dart — Effet "glassmorphism" réutilisable
 // =========================================================
@@ -45,6 +46,7 @@ class GlassCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return ClipRRect(
       // ClipRRect est ESSENTIEL : sinon le flou déborde des coins.
       borderRadius: BorderRadius.circular(borderRadius),

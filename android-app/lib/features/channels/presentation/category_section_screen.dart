@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  category_section_screen.dart — Écran de section unifié
 // =========================================================
@@ -168,6 +169,7 @@ class _CategorySectionScreenState extends State<CategorySectionScreen> {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
@@ -243,6 +245,7 @@ class _ViewModeToggle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 12),
       decoration: BoxDecoration(
@@ -315,6 +318,7 @@ class _SearchBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
       child: TextField(
@@ -372,6 +376,7 @@ class _FilterChipsBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
       child: Row(
@@ -472,6 +477,7 @@ class _SubCategoriesBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     // Compte les sous-catégories
     final Map<String, int> counts = <String, int>{};
     for (final Channel c in channels) {
@@ -560,6 +566,7 @@ class _CompactList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return ListView.builder(
       physics: const BouncingScrollPhysics(
         parent: AlwaysScrollableScrollPhysics(),
@@ -591,6 +598,7 @@ class _Grid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return LayoutBuilder(
       builder: (BuildContext context, BoxConstraints cons) {
         final double w = cons.maxWidth;
@@ -632,6 +640,7 @@ class _EmptyResult extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),

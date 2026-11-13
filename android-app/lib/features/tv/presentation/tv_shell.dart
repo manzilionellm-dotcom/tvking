@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  tv_shell.dart — Conteneur racine 10-foot (safe area + fond Maison Noir)
 // =========================================================
@@ -18,9 +19,10 @@ class TvShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return DecoratedBox(
       // Fond FULL-BLEED : radial or très sombre sur noir profond.
-      decoration: const BoxDecoration(color: TvTokens.bg, gradient: TvTokens.bgGradient),
+      decoration:  BoxDecoration(color: TvTokens.bg, gradient: TvTokens.bgGradient),
       // Material TRANSPARENT obligatoire : sans un Material ancêtre, Flutter
       // dessine chaque Text avec un double soulignement jaune (debug). On le
       // met en transparence pour laisser voir le dégradé Maison Noir.

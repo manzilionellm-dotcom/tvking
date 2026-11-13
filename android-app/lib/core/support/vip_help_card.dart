@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  vip_help_card.dart — Carte "Aide VIP" très premium
 // =========================================================
@@ -67,6 +68,7 @@ class _VipHelpCardState extends State<VipHelpCard>
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     final bool reduceMotion = MediaQuery.disableAnimationsOf(context);
     switch (widget.variant) {
       case VipHelpVariant.full:
@@ -139,7 +141,7 @@ class _VipHelpCardState extends State<VipHelpCard>
             borderRadius: BorderRadius.circular(14),
             boxShadow: AppColors.emberGlowShadow,
           ),
-          child: const Icon(
+          child:  Icon(
             Icons.workspace_premium_rounded,
             color: AppColors.voidSurface,
             size: 30,
@@ -260,7 +262,7 @@ class _VipHelpCardState extends State<VipHelpCard>
                   gradient: AppColors.premiumGradient,
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Icon(
+                child:  Icon(
                   Icons.workspace_premium_rounded,
                   color: AppColors.voidSurface,
                   size: 20,
@@ -342,7 +344,7 @@ class _VipHelpCardState extends State<VipHelpCard>
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
-              const Icon(
+               Icon(
                 Icons.workspace_premium_rounded,
                 color: AppColors.voidSurface,
                 size: 18,

@@ -1,0 +1,60 @@
+# Vérifie le panel et ses champs de recherche MAC sur les changements concernés.
+# Ce workflow exécute uniquement des tests et une compilation locale.
+name: Panel input QA
+
+on:
+  pull_request:
+    paths:
+      - 'android-app/admin-panel/**'
+      - '.github/workflows/panel-input-qa.yml'
+  push:
+    branches:
+      - 'release/atlas-console-20261029'
+    paths:
+      - 'android-app/admin-panel/**'
+      - '.github/workflows/panel-input-qa.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: panel-input-qa-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: android-app/admin-panel
+
+jobs:
+  panel-input-qa:
+    name: Panel — saisie MAC, temps réel, livraison et compilation
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24.21.0'
+          cache: npm
+          cache-dependency-path: android-app/admin-panel/package-lock.json
+
+      - name: Dépendances du panel (lockfile strict)
+        run: npm ci --no-audit --no-fund
+
+      - name: Saisie et recherche MAC
+        run: npm run test:mac-format
+
+      - name: Reconnexion et cycle de vie du canal
+        run: npm run test:realtime
+
+      - name: Confirmation de livraison à la box
+        run: npm run test:device-delivery
+
+      - name: Tests historiques du panel
+        run: npm test
+
+      - name: TypeScript et compilation du panel
+        run: npm run build

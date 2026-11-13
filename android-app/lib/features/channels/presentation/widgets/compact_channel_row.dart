@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  compact_channel_row.dart — Ligne dense pour 20 000 chaînes
 // =========================================================
@@ -65,6 +66,7 @@ class _CompactChannelRowState extends State<CompactChannelRow> {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     final Channel ch = widget.channel;
     // Pattern input-agnostic standard : FocusableActionDetector pour
     // mapper OK/Enter → onTap (sinon télécommande ne peut pas valider).
@@ -270,6 +272,7 @@ class _MiniLiveDotState extends State<_MiniLiveDot>
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return AnimatedBuilder(
       animation: _ctrl,
       builder: (BuildContext context, Widget? child) {
@@ -295,6 +298,7 @@ class _MiniFavorite extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return StreamBuilder<Set<String>>(
       stream: FavoritesRepository.instance.favoritesStream,
       initialData: FavoritesRepository.instance.current,

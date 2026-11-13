@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  round_category_row.dart — Catégories rondes style Apple TV
 // =========================================================
@@ -44,6 +45,7 @@ class RoundCategoryRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return SizedBox(
       height: 108,
       child: ListView.separated(
@@ -68,6 +70,7 @@ class _RoundChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     // _RoundChip est utilisé dans une rangée horizontale (snap scroll)
     // de catégories Football / Jeunesse / Info... À la télécommande,
     // chaque chip doit être focusable individuellement, avec scroll

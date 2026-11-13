@@ -1,6 +1,8 @@
+import { useT } from '@/lib/i18n';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
 import { ListPager } from '@/components/ListPager';
+import { MacInput } from '@/components/MacInput';
 import { referencesApi, type ActivationReference, ApiError, isAbortError } from '@/lib/api';
 import { formatDateTime } from '@/lib/utils';
 import { macMatches } from '@/lib/mac-format/mac';
@@ -38,6 +40,7 @@ function RefStatus({ status }: { status: string }) {
 }
 
 export function ReferencesPage({ onLogout }: { onLogout: () => void }) {
+  const t = useT();
   const [items, setItems] = useState<ActivationReference[]>([]);
   const [offset, setOffset] = useState(0);
   const [total, setTotal] = useState(0);
@@ -96,9 +99,10 @@ export function ReferencesPage({ onLogout }: { onLogout: () => void }) {
       )}
 
       <div className="mb-4 flex items-center justify-between gap-3">
-        <input
+        <MacInput
+          mode="search"
           value={q}
-          onChange={(e) => setQ(e.target.value)}
+          onValueChange={setQ}
           placeholder="Rechercher une MAC, un username, un serveur ou un client…"
           className="w-full max-w-md rounded-md border border-white/10 bg-slate px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-accent"
         />
@@ -114,7 +118,7 @@ export function ReferencesPage({ onLogout }: { onLogout: () => void }) {
               <th className="px-4 py-3">MAC</th>
               <th className="px-4 py-3">Client</th>
               <th className="px-4 py-3">Statut</th>
-              <th className="px-4 py-3">Username(s)</th>
+              <th className="px-4 py-3">{t('references.usernames')}</th>
               <th className="px-4 py-3">Serveur(s)</th>
               <th className="px-4 py-3">Activé le</th>
             </tr>

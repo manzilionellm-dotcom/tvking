@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  about_screen.dart — À propos de TV King
 // =========================================================
@@ -69,6 +70,7 @@ class _AboutScreenState extends State<AboutScreen> {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
@@ -227,7 +229,7 @@ class _AboutScreenState extends State<AboutScreen> {
                       padding: const EdgeInsets.only(bottom: 12),
                       child: Row(
                         children: <Widget>[
-                          Icon(Icons.check_circle_rounded,
+                          const Icon(Icons.check_circle_rounded,
                               color: AppColors.success, size: 18),
                           const SizedBox(width: 8),
                           Text(

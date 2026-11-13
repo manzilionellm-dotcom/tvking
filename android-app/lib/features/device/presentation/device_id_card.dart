@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  device_id_card.dart — Carte d'affichage du MAC virtuel
 // =========================================================
@@ -63,6 +64,7 @@ class _DeviceIdCardState extends State<DeviceIdCard> {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     final String display = _mac ?? 'MK:??:??:??:??:??';
     return Container(
       padding: const EdgeInsets.all(14),

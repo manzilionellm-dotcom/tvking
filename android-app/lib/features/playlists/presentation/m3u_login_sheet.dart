@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  m3u_login_sheet.dart — Source perso : M3U OU Xtream
 // =========================================================
@@ -128,13 +129,14 @@ class _M3uLoginSheetState extends State<_M3uLoginSheet> {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     final double bottomInset = MediaQuery.of(context).viewInsets.bottom;
     return Padding(
       padding: EdgeInsets.only(bottom: bottomInset),
       child: Container(
-        decoration: const BoxDecoration(
+        decoration:  BoxDecoration(
           color: AppColors.background,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          borderRadius: const BorderRadius.vertical(top: const Radius.circular(20)),
         ),
         child: SafeArea(
           top: false,
@@ -229,7 +231,7 @@ class _M3uLoginSheetState extends State<_M3uLoginSheet> {
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: <Widget>[
-                        Icon(Icons.error_outline_rounded,
+                        const Icon(Icons.error_outline_rounded,
                             color: AppColors.live, size: 18),
                         const SizedBox(width: 8),
                         Expanded(

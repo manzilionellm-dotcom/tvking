@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  poster_row.dart — Rangée horizontale d'affiches portrait
 // =========================================================
@@ -51,6 +52,7 @@ class PosterRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     if (channels.isEmpty) return const SizedBox.shrink();
 
     // En "numbered", on plafonne à 10 (c'est un Top 10).
@@ -189,6 +191,7 @@ class _RankNumber extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     final String n = '$rank';
     // Base SANS couleur : indispensable pour pouvoir alterner `color`
     // (remplissage) et `foreground` (contour) sans déclencher l'assert

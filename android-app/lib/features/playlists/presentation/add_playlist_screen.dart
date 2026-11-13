@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  add_playlist_screen.dart — Connexion client (Xtream)
 // =========================================================
@@ -50,11 +51,15 @@ class _AddPlaylistScreenState extends State<AddPlaylistScreen> {
   @override
   void initState() {
     super.initState();
+    DefaultServersApi.current.addListener(_serversChanged);
     _loadServers();
   }
 
+  void _serversChanged() { _loadServers(); }
+
   @override
   void dispose() {
+    DefaultServersApi.current.removeListener(_serversChanged);
     _userCtrl.dispose();
     _passCtrl.dispose();
     super.dispose();
@@ -145,6 +150,7 @@ class _AddPlaylistScreenState extends State<AddPlaylistScreen> {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
@@ -395,7 +401,7 @@ class _AddPlaylistScreenState extends State<AddPlaylistScreen> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Icon(Icons.error_outline, color: AppColors.live, size: 18),
+          const Icon(Icons.error_outline, color: AppColors.live, size: 18),
           const SizedBox(width: 10),
           Expanded(
             child: Text(

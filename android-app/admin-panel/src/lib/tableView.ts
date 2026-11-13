@@ -32,10 +32,11 @@ export function filterRows<T>(
   rows: readonly T[],
   query: string,
   textOf: (row: T) => string,
+  matchAlso?: (row: T, query: string) => boolean,
 ): T[] {
   const needle = query.trim().toLocaleLowerCase('fr');
   if (!needle) return rows.slice();
-  return rows.filter((row) => textOf(row).toLocaleLowerCase('fr').includes(needle));
+  return rows.filter((row) => textOf(row).toLocaleLowerCase('fr').includes(needle) || !!matchAlso?.(row, query));
 }
 
 export function pageWindow(total: number, page: number, pageSize: number) {

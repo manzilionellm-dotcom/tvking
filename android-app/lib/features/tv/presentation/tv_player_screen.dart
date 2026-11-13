@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  tv_player_screen.dart — Lecteur plein écran TV (SurfaceView natif)
 // =========================================================
@@ -591,6 +592,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return PopScope(
       canPop: true,
       child: Focus(
@@ -625,14 +627,14 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
               ),
               // Écran de marque pendant l'ouverture / le zap / une reconnexion.
               if (_buffering && !_fatal)
-                const ColoredBox(
+                 ColoredBox(
                   color: TvTokens.bg,
                   child: Center(
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: <Widget>[
-                        TvLogo(width: 200),
-                        SizedBox(height: 28),
+                        const TvLogo(width: 200),
+                        const SizedBox(height: 28),
                         SizedBox(
                           width: 40, height: 40,
                           child: CircularProgressIndicator(
@@ -652,7 +654,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: <Widget>[
-                        const Icon(Icons.error_outline_rounded,
+                         Icon(Icons.error_outline_rounded,
                             color: TvTokens.mutedDim, size: 56),
                         const SizedBox(height: 16),
                         Text(_current.cleanName,
@@ -756,7 +758,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: <Widget>[
-                        Icon(Icons.fiber_manual_record_rounded,
+                        const Icon(Icons.fiber_manual_record_rounded,
                             color: TvTokens.live, size: 16),
                         const SizedBox(width: 8),
                         Text('REC',
@@ -833,9 +835,10 @@ class _ControlsBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Container(
       width: double.infinity,
-      padding: EdgeInsets.fromLTRB(
+      padding: const EdgeInsets.fromLTRB(
           TvDimens.safeH, 44, TvDimens.safeH, TvDimens.safeV + 14),
       decoration: const BoxDecoration(
         gradient: LinearGradient(
@@ -1018,6 +1021,7 @@ class _CtrlButtonState extends State<_CtrlButton> {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     final double d = widget.primary ? 76 : 62;
     final Color accent = widget.accent ?? TvTokens.gold;
     // Surlignage D-pad = anneau OR épais + halo : visible sur N'IMPORTE quelle

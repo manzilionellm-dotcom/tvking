@@ -8,6 +8,7 @@ import {
 } from '@/components/ui';
 import { licensesApi, type License, ApiError, isAbortError } from '@/lib/api';
 import { LIST_PAGE_SIZE, createAbortBag, createGeneration, expiryPhrase, readListPage } from '@/lib/robust';
+import { macSearchMatches } from '@/lib/mac-format/mac-search';
 
 const PLAN_FR: Record<string, string> = {
   monthly: '1 mois', quarterly: '3 mois', biannual: '6 mois',
@@ -50,6 +51,7 @@ export function ActivationsPage({ onLogout }: { onLogout: () => void }) {
 
   const table = useClientTable(items, {
     textOf: (l) => [l.customer_name, l.customer_email, l.app_name, l.device_mac, l.plan, l.status].filter(Boolean).join(' '),
+    matchAlso: (l, query) => macSearchMatches(l.device_mac, query),
     valueOf: (l, key) => {
       if (key === 'client') return l.customer_name || l.customer_email || '';
       if (key === 'app') return l.app_name || '';
@@ -78,6 +80,7 @@ export function ActivationsPage({ onLogout }: { onLogout: () => void }) {
       {err && <Alert>{err}</Alert>}
 
       <SearchField
+        macSearch
         label="Filtrer les activations"
         value={table.query}
         onChange={table.setQuery}

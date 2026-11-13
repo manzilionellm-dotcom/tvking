@@ -12,6 +12,7 @@
 
 import 'dart:async';
 import 'dart:convert';
+import '../../../core/network/api_config.dart';
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
@@ -43,20 +44,24 @@ class FeaturedRepository extends ChangeNotifier {
   Future<void> refresh() async {
     try {
       final http.Response resp = await http
-          .get(Uri.parse('$kSubscriptionBaseUrl/api/featured'))
+          .get(Uri.parse('$kSubscriptionBaseUrl/api/featured'),
+              headers: kNoCacheHeaders)
           .timeout(const Duration(seconds: 6));
       if (resp.statusCode != 200) return;
       final Object? decoded = jsonDecode(resp.body);
       if (decoded is! Map) return;
-      final String name = (decoded['name'] ?? '').toString();
-      final String note = (decoded['note'] ?? '').toString();
-      if (name != _name || note != _note) {
-        _name = name;
-        _note = note;
-        notifyListeners();
-      }
+      applySnapshot(decoded);
     } catch (e) {
       if (kDebugMode) debugPrint('[Featured] $e');
     }
+  }
+
+  void applySnapshot(Map<dynamic, dynamic> data) {
+    final String name = (data['name'] ?? '').toString();
+    final String note = (data['note'] ?? '').toString();
+    if (name == _name && note == _note) return;
+    _name = name;
+    _note = note;
+    notifyListeners();
   }
 }

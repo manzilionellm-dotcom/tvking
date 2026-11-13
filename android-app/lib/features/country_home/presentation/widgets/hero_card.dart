@@ -1,3 +1,4 @@
+import 'package:tv_king/core/theme/remote_palette.dart';
 // =========================================================
 //  hero_card.dart — HERO "Pour vous" (chaîne #1 populaire live)
 // =========================================================
@@ -58,6 +59,7 @@ class _HeroCardState extends State<HeroCard>
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     final Channel ch = widget.channel;
     final double s = widget.scale;
     final Color base = logoFallbackColor(ch.name);
@@ -205,7 +207,7 @@ class _HeroCardState extends State<HeroCard>
             child: Container(
               width: 7 * s,
               height: 7 * s,
-              decoration: const BoxDecoration(
+              decoration:  const BoxDecoration(
                 color: AppColors.liveRed,
                 shape: BoxShape.circle,
               ),
@@ -234,6 +236,7 @@ class _Badge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemotePalette.watch(context);
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 9 * scale, vertical: 5 * scale),
       decoration: BoxDecoration(

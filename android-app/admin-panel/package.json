@@ -8,16 +8,17 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "test": "node --experimental-strip-types --test src/lib/robust.test.ts src/lib/mac.test.ts src/lib/sources.test.ts src/lib/box-channel.test.ts src/lib/plans.test.ts src/lib/blackbox.test.ts src/lib/instant.test.ts src/lib/idempotency.test.ts src/lib/timeline.test.ts src/lib/activation.test.ts src/lib/delivery.test.ts",
-    "test:mac-format": "vitest run src/lib/mac-format/mac.test.ts src/components/MacInput.test.tsx",
+    "test": "node --experimental-strip-types --test src/lib/robust.test.ts src/lib/mac.test.ts src/lib/sources.test.ts src/lib/box-channel.test.ts src/lib/plans.test.ts src/lib/blackbox.test.ts src/lib/instant.test.ts src/lib/idempotency.test.ts src/lib/timeline.test.ts src/lib/activation.test.ts src/lib/delivery.test.ts src/lib/clientRow.test.ts src/lib/csv.test.ts src/lib/blackboxDiagnosis.test.ts",
+    "test:mac-format": "vitest run src/lib/mac-format/mac.test.ts src/lib/mac-format/mac-search.test.ts src/components/MacInput.test.tsx src/pages/DevicesPage.search.test.tsx",
     "test:realtime": "vitest run src/lib/box-channel.lifecycle.test.ts",
     "test:device-delivery": "vitest run src/pages/DevicesPage.delivery.test.tsx"
   },
   "dependencies": {
+    "clsx": "^2.1.1",
+    "qrcode.react": "^4.2.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.26.2",
-    "clsx": "^2.1.1",
     "tailwind-merge": "^2.5.4"
   },
   "devDependencies": {
