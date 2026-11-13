@@ -123,6 +123,40 @@ void main() {
     expect(board.discover, isEmpty);
   });
 
+  test('la progression vient de la reprise ou du guide, jamais inventée', () {
+    expect(progressOf(doneMs: 30, totalMs: 120), 0.25);
+    expect(progressOf(doneMs: 500, totalMs: 120), 1);
+    expect(progressOf(doneMs: 10, totalMs: 0), isNull);
+    final Channel info = _ch('c1', 'Info');
+    final Channel sport = _ch('c2', 'Sport');
+    final TonightBoard board = composeTonight(
+      watching: <WatchEntry>[_watch('f1', 'Soirée')],
+      favorites: <Channel>[info, sport],
+      popular: const <Channel>[],
+      resume: const <Channel>[],
+      guide: const <GuideSlot>[
+        GuideSlot(
+          channelId: 'c1',
+          channelName: 'Info',
+          title: 'Journal',
+          startMs: 0,
+          stopMs: 4000,
+          catchupDeclared: false,
+        ),
+      ],
+      reminders: const [],
+      also: const <Channel>[],
+      nowMs: 1000,
+      channelsById: <String, Channel>{'c1': info, 'c2': sport},
+    );
+    // Film repris : 1 min sur 90.
+    expect(board.hero?.progress, closeTo(60000 / 5400000, 1e-9));
+    // Chaîne avec guide : un quart de l'émission est passé.
+    expect(board.recommendations[0].progress, 0.25);
+    // Chaîne sans guide : pas de trait.
+    expect(board.recommendations[1].progress, isNull);
+  });
+
   testWidgets('l\'accueil verre montre le titre réel et le Direct',
       (WidgetTester tester) async {
     tester.view.physicalSize = const Size(1280, 720);

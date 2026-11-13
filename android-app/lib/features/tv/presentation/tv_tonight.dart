@@ -19,6 +19,7 @@ class TonightPiece {
     this.meta = '',
     this.channel,
     this.watch,
+    this.progress,
   });
 
   final String title;
@@ -28,6 +29,11 @@ class TonightPiece {
   final String meta;
   final Channel? channel;
   final WatchEntry? watch;
+
+  /// Avancement entre 0 et 1 : la reprise d'un film, ou l'émission en
+  /// cours d'après le guide déjà sur la box. Null = inconnu : l'écran
+  /// n'affiche alors aucun trait (on n'invente pas une progression).
+  final double? progress;
 
   bool get canPlay => watch != null || channel != null;
 
@@ -58,6 +64,13 @@ String? _httpArt(String? url) {
   final String t = (url ?? '').trim();
   if (t.isEmpty) return null;
   return t;
+}
+
+/// Part écoulée entre 0 et 1, ou null si la durée est inconnue.
+double? progressOf({required int doneMs, required int totalMs}) {
+  if (totalMs <= 0 || doneMs < 0) return null;
+  final double v = doneMs / totalMs;
+  return v > 1 ? 1 : v;
 }
 
 String _minutes(int ms) {
@@ -128,6 +141,18 @@ TonightBoard composeTonight({
     }
   }
 
+  // Avancement de l'émission en cours, par chaîne (guide de la box).
+  final Map<String, double> liveProgress = <String, double>{};
+  for (final GuideSlot slot in guide) {
+    if (slot.startMs <= nowMs && nowMs < slot.stopMs) {
+      final double? v = progressOf(
+        doneMs: nowMs - slot.startMs,
+        totalMs: slot.stopMs - slot.startMs,
+      );
+      if (v != null) liveProgress.putIfAbsent(slot.channelId, () => v);
+    }
+  }
+
   TonightPiece? hero;
   String detail = '';
   if (vod.isNotEmpty) {
@@ -140,6 +165,7 @@ TonightBoard composeTonight({
         quality: streamQualityLabel(w.title),
       ),
       watch: w,
+      progress: progressOf(doneMs: w.posMs, totalMs: w.durMs),
     );
     detail = (w.subtitle ?? '').trim();
   } else if (onNow != null) {
@@ -152,6 +178,7 @@ TonightBoard composeTonight({
         quality: streamQualityLabel(channel?.name ?? ''),
       ),
       channel: channel,
+      progress: channel == null ? null : liveProgress[channel.id],
     );
     detail = onNow.channelName.trim();
   } else if (reminders.isNotEmpty && reminders.first.title.trim().isNotEmpty) {
@@ -162,6 +189,7 @@ TonightBoard composeTonight({
       artworkUrl: _httpArt(channel?.logoUrl),
       meta: joinCrispMeta(quality: streamQualityLabel(channel?.name ?? '')),
       channel: channel,
+      progress: channel == null ? null : liveProgress[channel.id],
     );
     detail = reminder.channelName.trim();
   } else if (favorites.isNotEmpty) {
@@ -171,6 +199,7 @@ TonightBoard composeTonight({
       artworkUrl: _httpArt(channel.logoUrl),
       meta: joinCrispMeta(quality: streamQualityLabel(channel.name)),
       channel: channel,
+      progress: liveProgress[channel.id],
     );
   } else if (resume.isNotEmpty) {
     final Channel channel = resume.first;
@@ -179,6 +208,7 @@ TonightBoard composeTonight({
       artworkUrl: _httpArt(channel.logoUrl),
       meta: joinCrispMeta(quality: streamQualityLabel(channel.name)),
       channel: channel,
+      progress: liveProgress[channel.id],
     );
   }
 
@@ -194,12 +224,14 @@ TonightBoard composeTonight({
         quality: streamQualityLabel(w.title),
       ),
         watch: w,
+      progress: progressOf(doneMs: w.posMs, totalMs: w.durMs),
       );
   TonightPiece pieceChannel(Channel c) => TonightPiece(
         title: c.cleanName,
         artworkUrl: _httpArt(c.logoUrl),
         meta: joinCrispMeta(quality: streamQualityLabel(c.name)),
         channel: c,
+        progress: liveProgress[c.id],
       );
 
   final List<TonightPiece> recs = <TonightPiece>[];

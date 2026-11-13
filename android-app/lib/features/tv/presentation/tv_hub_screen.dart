@@ -1575,16 +1575,41 @@ class _TvHubScreenState extends State<TvHubScreen> {
                                   ).ui(14, color: TvAppTokens.of(context).live),
                                 ),
                               ),
-                            // ---------- BARRE DU BAS ----------
+                            // ---------- BARRE D'ABONNEMENT ----------
+                            // Sobre : l'état de l'abonnement, puis le code
+                            // d'activation en petit, discret. Les textes
+                            // sont ceux d'avant (rien d'inventé : pas de
+                            // « jours restants » si la box ne le sait pas).
                             Row(
                               children: <Widget>[
-                                Text(
-                                  '${context.l10n.tvActivationCodeLabel} : ',
-                                  style: TvAppTokens.of(context).ui(
-                                    14,
-                                    color: TvAppTokens.of(context).mutedDim,
+                                if (lic.label.isNotEmpty) ...<Widget>[
+                                  Container(
+                                    width: 6,
+                                    height: 6,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      color: lic.color,
+                                    ),
                                   ),
-                                ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    lic.label,
+                                    style: TvAppTokens.of(context).ui(
+                                      14,
+                                      weight: FontWeight.w400,
+                                      color: TvAppTokens.of(context).text,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Text(
+                                    '·',
+                                    style: TvAppTokens.of(context).ui(
+                                      14,
+                                      color: TvAppTokens.of(context).mutedDim,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                ],
                                 Text(
                                   displayMac(
                                     _mac,
@@ -1593,20 +1618,13 @@ class _TvHubScreenState extends State<TvHubScreen> {
                                   // Les groupes d'une MAC ne suivent pas le sens de l'UI.
                                   textDirection: TextDirection.ltr,
                                   style: TvAppTokens.of(context).mono(
-                                    16,
-                                    color: TvAppTokens.of(context).accentBright,
+                                    13,
+                                    weight: FontWeight.w400,
+                                    color: TvAppTokens.of(context).muted,
+                                    spacing: 0.6,
                                   ),
                                 ),
                                 const Spacer(),
-                                if (lic.label.isNotEmpty)
-                                  Text(
-                                    lic.label,
-                                    style: TvAppTokens.of(context).ui(
-                                      15,
-                                      weight: FontWeight.w600,
-                                      color: lic.color,
-                                    ),
-                                  ),
                                 if (src.isNotEmpty) ...<Widget>[
                                   const SizedBox(width: 18),
                                   Text(
