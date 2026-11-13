@@ -22,6 +22,7 @@ import {
   clearSourceTombstone,
 } from './linkage.js';
 import { notifyBox } from './box_channel.js';
+import { readInsights } from './insights.js';
 import { isBlackboxMac, markBlackBoxAsked, readBlackBox } from './blackbox_journal.js';
 //  Importe depuis worker.js pour servir le namespace /api/v1/*.
 //  Coexiste avec les anciens endpoints /admin/* et /api/* qui
@@ -1327,6 +1328,14 @@ async function apiV1Inner(request, env) {
       return errResp('forbidden', 'Owner only', 403);
     }
     return handleOnlineGet(request, env);
+  }
+
+  // /insights — pilotage (santé, argent, fraude). Lecture seule, owner uniquement.
+  if (parts[0] === 'insights' && parts.length === 1 && request.method === 'GET') {
+    if (a.user.role !== 'super_admin') {
+      return errResp('forbidden', 'Owner only', 403);
+    }
+    return jsonResp(await readInsights(env));
   }
 
   // /force-update — mise à jour forcée (bouton du panel). Owner uniquement.

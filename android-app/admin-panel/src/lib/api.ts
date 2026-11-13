@@ -1136,6 +1136,32 @@ export interface OnlineSnapshot {
   byCountry: Record<string, number>;
   items: OnlineDevice[];
 }
+// ---- Pilotage (santé, ventes, fraude) : lecture seule, owner ----
+export interface InsightStat { key: string; count: number; quality: number }
+export interface InsightCount { key: string; count: number }
+export interface InsightPerson {
+  mac: string; plan: string; expires_at: number; customer: string; reseller: string;
+}
+export interface Insights {
+  generated_at: number;
+  unavailable: string[];
+  health: {
+    watching: number; bad: number; quality: number | null; alert: boolean;
+    byChannel: InsightStat[]; byCountry: InsightStat[]; byVersion: InsightStat[];
+  };
+  money: {
+    newPaid30: number; perDay: { day: number; count: number }[];
+    byPlan: InsightCount[]; byReseller: InsightCount[];
+    paidActive: number; paidExpired: number;
+    expiring: InsightPerson[]; lost: InsightPerson[];
+    resellerActivations30: number; resellerRenewals30: number;
+  };
+  fraud: { sameBox: { id: string; count: number; macs: string[] }[] };
+}
+export const insightsApi = {
+  get: (signal?: AbortSignal) => request<Insights>('/api/v1/insights', { signal }),
+};
+
 export const onlineApi = {
   get: (page?: { limit?: number; offset?: number }, signal?: AbortSignal) =>
     request<OnlineSnapshot>(listQuery('/api/v1/online', undefined, page), { signal }),
