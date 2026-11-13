@@ -78,6 +78,7 @@ import '../../playlists/data/favorites_repository.dart';
 import '../../recordings/data/recording_repository.dart';
 import '../../recordings/domain/recording.dart';
 import '../../subscription/data/now_playing.dart';
+import '../../subscription/data/playback_health.dart';
 import '../../subscription/data/subscription_state.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_remote_map.dart';
@@ -437,6 +438,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     ImagePrefs.changes.removeListener(_onImagePrefs);
     followedFlag.changes.removeListener(_onFollowFlag);
     NowPlaying.instance.clear();
+    PlaybackHealth.instance.stop();
     SubscriptionState.instance.syncWithBackend(); // on ne regarde plus rien
     _controller.dispose();
     ForegroundPlayback.unlock();
@@ -543,6 +545,15 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     if (mounted && buffering != _buffering) {
       setState(() => _buffering = buffering);
     }
+    // Qualité de lecture pour le panel : « bloqué » = chargement, erreur ou
+    // reconnexion, même quand la dernière image reste affichée (holdFrame).
+    PlaybackHealth.instance.mark(
+      stalled: _controller.isBuffering ||
+          !_controller.firstFrame ||
+          _controller.holdFrame ||
+          _controller.hasError ||
+          _controller.nativeRetrying,
+    );
     // Erreur / fin de flux live → reconnexion.
     if (_controller.hasError || _controller.isEnded) {
       if (_livePausedAt != null && _canTimeshift) return;
@@ -674,6 +685,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   }
 
   void _showFatal() {
+    PlaybackHealth.instance.mark(stalled: true);
     _cancelRecover();
     if (!mounted) return;
     setState(() {
