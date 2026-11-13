@@ -120,6 +120,57 @@ void main() {
     );
   });
 
+  test('le meilleur nom passe devant, puis le plus court', () {
+    final List<Channel> list = <Channel>[
+      _ch('a', 'Info Sport Week-end'),
+      _ch('b', 'beIN Sports 1'),
+      _ch('c', 'Sport 24 Séries Films'),
+      _ch('d', 'Sport 24'),
+      _ch('e', 'Sportive'),
+    ];
+    final List<String?> ids = searchCatalog(
+      query: 'sport',
+      channels: list,
+      movies: const <CinemaTitle>[],
+      series: const <CinemaTitle>[],
+    ).map((VoiceHit h) => h.channel?.id).toList();
+    // Mot entier en tête (le plus court d'abord), puis début de nom,
+    // puis un mot du nom (le plus court d'abord).
+    expect(ids, <String?>['d', 'c', 'e', 'b', 'a']);
+    expect(searchRank('sport 24 test', 'sport'), 0);
+    expect(searchRank('sportive test', 'sport'), 1);
+    expect(searchRank('bein sports 1 test', 'sport'), 2);
+    expect(searchRank('test sport', 'spo'), 2);
+    expect(searchRank('multisport', 'sport'), 3);
+  });
+
+  test('une faute de frappe trouve quand même la chaîne', () {
+    final List<Channel> list = <Channel>[
+      _ch('euro', 'Eurosport 2'),
+      _ch('nf', 'Netflix Action'),
+      _ch('tf1', 'TF1'),
+    ];
+    List<String?> ids(String q) => searchCatalog(
+          query: q,
+          channels: list,
+          movies: const <CinemaTitle>[],
+          series: const <CinemaTitle>[],
+        ).map((VoiceHit h) => h.channel?.id).toList();
+    expect(ids('eurosprt'), <String?>['euro']); // lettre oubliée
+    expect(ids('eurospotr'), <String?>['euro']); // lettres inversées
+    expect(ids('netflx'), <String?>['nf']);
+    expect(ids('nteflix action'), <String?>['nf']);
+    // Un mot court ne pardonne rien : « tf2 » n'est pas « TF1 ».
+    expect(ids('tf2'), isEmpty);
+    // Trop loin : rien.
+    expect(ids('zzzzzz'), isEmpty);
+    expect(typoBudget(3), 0);
+    expect(typoBudget(5), 1);
+    expect(typoBudget(9), 2);
+    expect(typoDistance('netflx', 'netflix', 1), 1);
+    expect(typoDistance('abcd', 'wxyz', 1), 2);
+  });
+
   test('mode enfants : le contenu adulte disparaît', () {
     expect(find('xxx'), isNotEmpty);
     expect(find('xxx', hideAdult: true), isEmpty);
