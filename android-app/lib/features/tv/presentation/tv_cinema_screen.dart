@@ -32,9 +32,12 @@ import '../../../core/i18n/l10n_extension.dart';
 import '../../remote/domain/remote_typing_hub.dart';
 import '../../cinema/data/catalog_cache_policy.dart';
 import '../../cinema/data/cinema_repository.dart';
+import '../../cinema/data/cinema_taste.dart';
 import '../../cinema/data/watch_progress.dart';
 import '../../cinema/domain/cinema_language.dart';
 import '../../cinema/domain/cinema_models.dart';
+import '../../cinema/domain/cinema_shelf_order.dart';
+import '../../profiles/data/active_profile.dart';
 import '../../security/data/parental_controls.dart';
 import '../../vod/data/download_repository.dart';
 import '../core/tv_dimens.dart';
@@ -112,6 +115,21 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
   StreamSubscription<List<Download>>? _dlSub;
   List<Download> _downloads = const <Download>[];
 
+  /// Langue de l'application (celle du client) : ses catégories passent
+  /// devant. Lue une fois le contexte prêt.
+  String? _viewerLang;
+
+  /// Rayons déjà fréquentés par CE profil, lus à l'ouverture de l'écran.
+  /// On ne relit pas pendant la visite : la liste ne doit pas bouger
+  /// sous la télécommande.
+  Map<String, int> _taste = const <String, int>{};
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _viewerLang = Localizations.localeOf(context).languageCode;
+  }
+
   bool get _movies => widget.kind == CinemaKind.movie;
   String get _prefKey => 'cinema.lang.${widget.kind.name}';
 
@@ -180,7 +198,12 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
       return;
     }
     final List<CinemaCategory> cats = await _repo.categories(widget.kind);
+    final Map<String, int> taste = await CinemaTaste.read(
+      widget.kind.name,
+      ActiveProfile.instance.id,
+    );
     if (!mounted) return;
+    _taste = taste;
 
     // Langues présentes, les plus fréquentes d'abord.
     final Map<String, int> freq = <String, int>{};
@@ -239,7 +262,14 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
     final bool kids = _kids;
     final List<CinemaCategory> normal = <CinemaCategory>[];
     final List<CinemaCategory> adult = <CinemaCategory>[];
-    for (final CinemaCategory c in _cats) {
+    // Rangement : ses rayons, puis sa langue, puis le reste. Rien n'est
+    // retiré (voir cinema_shelf_order.dart).
+    final List<CinemaCategory> ordered = orderCinemaShelves(
+      _cats,
+      viewerLanguage: _viewerLang,
+      taste: _taste,
+    );
+    for (final CinemaCategory c in ordered) {
       if (kids && !c.isKids) continue;
       // Filtre de langue : on garde la langue choisie ET les catégories
       // SANS langue détectée (« NETFLIX », « DISNEY+ », « 4K »…) — elles ne
@@ -453,6 +483,13 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
   // ---------------------------------------------------------
 
   void _openTitle(CinemaTitle t) {
+    // On retient le rayon : à la prochaine visite il sera plus haut.
+    final CinemaCategory? cat = _sel.cat;
+    if (_sel.view == _View.category && cat != null && !cat.isAdult) {
+      unawaited(
+        CinemaTaste.note(widget.kind.name, ActiveProfile.instance.id, cat.key),
+      );
+    }
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => TvShell(
