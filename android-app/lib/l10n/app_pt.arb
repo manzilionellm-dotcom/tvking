@@ -2542,7 +2542,7 @@
   "tvNameInvalid": "O nome está vazio ou é demasiado longo.",
   "tvProfileDeleteBody": "Os favoritos, histórico, posições de reprodução, lembretes e PIN deste perfil serão apagados. Os canais e o perfil 1 mantêm-se.",
   "tvProfileDeleteFailed": "Este perfil não pode ser eliminado.",
-  "tvProfilesHelp": "Até 4 perfis. Favoritos, histórico, posições de reprodução, lembretes e PIN separados. Os canais são partilhados.",
+  "tvProfilesHelp": "Até 10 perfis. Favoritos, histórico, posições de reprodução, lembretes e PIN separados. Os canais são partilhados.",
   "tvDefaultPinWarning": "O PIN continua a ser 0000. Altera-o no Controlo parental.",
   "tvAskProfileOn": "Escolher perfil ao iniciar: sim",
   "tvAskProfileOff": "Escolher perfil ao iniciar: não",
@@ -2620,7 +2620,7 @@
   "tvPhone": "Telefone",
   "tvSoftware": "Software",
   "tvHardware": "Hardware",
-  "tvProfilesSettingsHelp": "Até 4 perfis com favoritos, histórico, posições de reprodução, lembretes e PIN separados.",
+  "tvProfilesSettingsHelp": "Até 10 perfis com favoritos, histórico, posições de reprodução, lembretes e PIN separados.",
   "tvAudioDiagnostic": "Diagnóstico de som",
   "tvAudioDiagnosticHelp": "Relatório local por canal. Nada é enviado. As opções de teste estão desativadas por predefinição.",
   "tvPlayerDisclaimer": "Esta aplicação é um LEITOR multimédia. Não vende, fornece nem aloja canais, transmissões ou ligações M3U. O utilizador fornece o conteúdo e é responsável pela sua legalidade.",
@@ -2895,5 +2895,15 @@
   "tvAmbientTitle": "Halo",
   "tvAmbientHelp": "Segue o filme ou o jogo à volta da imagem. A imagem não muda. Numa box pequena o halo fica fixo.",
   "tvAmbientAuto": "Auto",
-  "tvAmbientOff": "Desligado"
+  "tvAmbientOff": "Desligado",
+  "tvUpdateLowStorage": "Pouco espaço no dispositivo: {mb} MB livres. O Android pode recusar a instalação. Liberta espaço (Definições do Android → Armazenamento) ou prime OK de novo para tentar mesmo assim.",
+  "@tvUpdateLowStorage": {
+    "placeholders": {
+      "mb": {
+        "type": "String"
+      }
+    }
+  },
+  "tvCatchupUnavailable": "Replay indisponível para este programa. Regresso ao direto.",
+  "tvCatchupEnded": "Fim do replay. Regresso ao direto."
 }

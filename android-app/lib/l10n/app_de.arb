@@ -2542,7 +2542,7 @@
   "tvNameInvalid": "Der Name ist leer oder zu lang.",
   "tvProfileDeleteBody": "Favoriten, Verlauf, Wiedergabepositionen, Erinnerungen und PIN dieses Profils werden gelöscht. Sender und Profil 1 bleiben erhalten.",
   "tvProfileDeleteFailed": "Dieses Profil kann nicht gelöscht werden.",
-  "tvProfilesHelp": "Bis zu 4 Profile. Getrennte Favoriten, Verläufe, Wiedergabepositionen, Erinnerungen und PINs. Sender werden gemeinsam genutzt.",
+  "tvProfilesHelp": "Bis zu 10 Profile. Getrennte Favoriten, Verläufe, Wiedergabepositionen, Erinnerungen und PINs. Sender werden gemeinsam genutzt.",
   "tvDefaultPinWarning": "Die PIN ist noch 0000. Ändere sie unter Kindersicherung.",
   "tvAskProfileOn": "Profil beim Start wählen: ein",
   "tvAskProfileOff": "Profil beim Start wählen: aus",
@@ -2620,7 +2620,7 @@
   "tvPhone": "Telefon",
   "tvSoftware": "Software",
   "tvHardware": "Hardware",
-  "tvProfilesSettingsHelp": "Bis zu 4 Profile mit getrennten Favoriten, Verläufen, Wiedergabepositionen, Erinnerungen und PINs.",
+  "tvProfilesSettingsHelp": "Bis zu 10 Profile mit getrennten Favoriten, Verläufen, Wiedergabepositionen, Erinnerungen und PINs.",
   "tvAudioDiagnostic": "Tondiagnose",
   "tvAudioDiagnosticHelp": "Lokaler Bericht pro Sender. Es wird nichts gesendet. Testoptionen sind standardmäßig ausgeschaltet.",
   "tvPlayerDisclaimer": "Diese App ist ein Mediaplayer. Sie verkauft, liefert und hostet keine Sender, Streams oder M3U-Links. Der Nutzer stellt die Inhalte bereit und ist für deren Rechtmäßigkeit verantwortlich.",
@@ -2895,5 +2895,15 @@
   "tvAmbientTitle": "Licht",
   "tvAmbientHelp": "Folgt dem Film oder dem Spiel um das Bild. Das Bild ändert sich nicht. Auf einer kleinen Box bleibt das Licht fest.",
   "tvAmbientAuto": "Auto",
-  "tvAmbientOff": "Aus"
+  "tvAmbientOff": "Aus",
+  "tvUpdateLowStorage": "Wenig Speicher auf dem Gerät: {mb} MB frei. Android kann die Installation ablehnen. Gib Speicher frei (Android-Einstellungen → Speicher) oder drücke erneut OK, um es trotzdem zu versuchen.",
+  "@tvUpdateLowStorage": {
+    "placeholders": {
+      "mb": {
+        "type": "String"
+      }
+    }
+  },
+  "tvCatchupUnavailable": "Replay für diese Sendung nicht verfügbar. Zurück zum Live-Programm.",
+  "tvCatchupEnded": "Ende des Replays. Zurück zum Live-Programm."
 }

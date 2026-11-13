@@ -26,6 +26,7 @@ import 'source_http_input_formatter.dart';
 import 'tv_channel_loading_status.dart';
 import 'tv_components.dart';
 import 'tv_source_error_text.dart';
+import '../core/own_list.dart';
 
 class TvSourceEntryForm extends StatefulWidget {
   const TvSourceEntryForm({
@@ -173,16 +174,20 @@ class _TvSourceEntryFormState extends State<TvSourceEntryForm> {
         if (submit != null) {
           await submit(draft, name);
         } else if (draft.kind == OpenSourceKind.xtream) {
-          await PlaylistRepository.instance.addXtreamPlaylist(
-            name: name,
-            serverUrl: draft.serverUrl!,
-            username: draft.username!,
-            password: draft.password!,
+          await ownedByActiveProfile(
+            PlaylistRepository.instance.addXtreamPlaylist(
+              name: name,
+              serverUrl: draft.serverUrl!,
+              username: draft.username!,
+              password: draft.password!,
+            ),
           );
         } else {
-          await PlaylistRepository.instance.addM3uPlaylist(
-            name: name,
-            url: draft.m3uUrl!,
+          await ownedByActiveProfile(
+            PlaylistRepository.instance.addM3uPlaylist(
+              name: name,
+              url: draft.m3uUrl!,
+            ),
           );
         }
       });
@@ -279,9 +284,11 @@ class _TvSourceEntryFormState extends State<TvSourceEntryForm> {
       } else {
         await RemoteSourceRepository.runUserImport<void>(() async {
           if (mounted) setState(() => _importStarted = true);
-          await PlaylistRepository.instance.addM3uFromLocalFile(
-            name: name,
-            path: path,
+          await ownedByActiveProfile(
+            PlaylistRepository.instance.addM3uFromLocalFile(
+              name: name,
+              path: path,
+            ),
           );
         });
       }

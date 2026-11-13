@@ -817,7 +817,8 @@ abstract final class RemoteSourceRepository {
           if (enabled != null) break;
         }
         if (enabled == null) continue;
-        await PlaylistRepository.instance.setPlaylistHidden(id, !enabled);
+        await PlaylistRepository.instance
+            .setPlaylistHidden(id, !enabled, forAll: true);
         BlackBox.instance.info(
           'SOURCE',
           enabled ? 'liste rallumée depuis le panel' : 'liste éteinte depuis le panel',

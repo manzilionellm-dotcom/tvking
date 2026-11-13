@@ -1170,7 +1170,7 @@
   "tvNameInvalid": "Name is empty or too long.",
   "tvProfileDeleteBody": "Its favourites, history, resume positions, reminders and PIN will be erased. Channels and profile 1 stay.",
   "tvProfileDeleteFailed": "This profile cannot be deleted.",
-  "tvProfilesHelp": "Up to 4 profiles. Separate favourites, history, resume positions, reminders and PINs. Channels are shared.",
+  "tvProfilesHelp": "Up to 10 profiles. Separate favourites, history, resume positions, reminders and PINs. Channels are shared.",
   "tvDefaultPinWarning": "The PIN is still 0000. Change it in Parental controls.",
   "tvAskProfileOn": "Choose profile at startup: on",
   "tvAskProfileOff": "Choose profile at startup: off",
@@ -1248,7 +1248,7 @@
   "tvPhone": "Phone",
   "tvSoftware": "Software",
   "tvHardware": "Hardware",
-  "tvProfilesSettingsHelp": "Up to 4 profiles with separate favourites, history, resume positions, reminders and PINs.",
+  "tvProfilesSettingsHelp": "Up to 10 profiles with separate favourites, history, resume positions, reminders and PINs.",
   "tvAudioDiagnostic": "Sound diagnostics",
   "tvAudioDiagnosticHelp": "Local report for each channel. Nothing is sent. Test options are off by default.",
   "tvPlayerDisclaimer": "This app is a media PLAYER. It does not sell, provide or host channels, streams or M3U links. Content comes from the user, who is responsible for its legality.",
@@ -1533,5 +1533,15 @@
   "tvAmbientTitle": "Glow",
   "tvAmbientHelp": "Follows the film or the match around the picture. The picture does not change. On a small box the glow stays fixed.",
   "tvAmbientAuto": "Auto",
-  "tvAmbientOff": "Off"
+  "tvAmbientOff": "Off",
+  "tvUpdateLowStorage": "Low storage on this device: {mb} MB free. Android may refuse the install. Free up space (Android Settings → Storage), or press OK again to try anyway.",
+  "@tvUpdateLowStorage": {
+    "placeholders": {
+      "mb": {
+        "type": "String"
+      }
+    }
+  },
+  "tvCatchupUnavailable": "Replay not available for this programme. Back to live.",
+  "tvCatchupEnded": "End of replay. Back to live."
 }

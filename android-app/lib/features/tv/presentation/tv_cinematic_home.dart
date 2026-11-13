@@ -153,6 +153,11 @@ class _Hero extends StatelessWidget {
                   child: _Artwork(
                     url: hero?.artworkUrl,
                     title: title,
+                    logo: hero?.artworkIsLogo ?? false,
+                    // Grande carte : un logo est une petite image. Étiré sur
+                    // toute la surface il devenait flou ; on le garde net,
+                    // centré, sur un fond sobre.
+                    logoScale: 0.5,
                   ),
                 ),
                 if (onPlay != null)
@@ -509,6 +514,7 @@ class _PosterCardState extends State<_PosterCard> {
                 child: _Artwork(
                   url: widget.piece.artworkUrl,
                   title: widget.piece.title,
+                  logo: widget.piece.artworkIsLogo,
                 ),
               ),
               Container(
@@ -535,15 +541,57 @@ class _PosterCardState extends State<_PosterCard> {
 
 /// Jaquette distante, ou monogramme si la source n'a pas d'image.
 /// Jamais une affiche embarquée.
+///
+/// [logo] : l'image est un logo de chaîne. Avant le 13/11/2026 il était
+/// agrandi pour REMPLIR la carte (`BoxFit.cover`) : « Eurosport » devenait
+/// « ROSPO », « Canal+ » devenait « NAN ». Un logo est maintenant montré EN
+/// ENTIER, centré sur le même fond sobre pour toutes les cartes.
 class _Artwork extends StatelessWidget {
-  const _Artwork({required this.url, required this.title});
+  const _Artwork({
+    required this.url,
+    required this.title,
+    this.logo = false,
+    this.logoScale = 0.74,
+  });
   final String? url;
   final String title;
+  final bool logo;
+
+  /// Part de la carte occupée par un logo (largeur et hauteur).
+  final double logoScale;
 
   @override
   Widget build(BuildContext context) {
     final String? art = url;
     if (art == null) return _Monogram(title: title);
+    if (logo) {
+      return DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: <Color>[
+              _metal(context).withValues(alpha: 0.22),
+              _field(context),
+            ],
+          ),
+        ),
+        child: Center(
+          child: FractionallySizedBox(
+            widthFactor: logoScale,
+            heightFactor: logoScale,
+            child: CachedNetworkImage(
+              imageUrl: art,
+              fit: BoxFit.contain,
+              memCacheWidth: 360,
+              fadeInDuration: const Duration(milliseconds: 120),
+              placeholder: (_, __) => const SizedBox.shrink(),
+              errorWidget: (_, __, ___) => _Monogram(title: title),
+            ),
+          ),
+        ),
+      );
+    }
     return CachedNetworkImage(
       imageUrl: art,
       fit: BoxFit.cover,

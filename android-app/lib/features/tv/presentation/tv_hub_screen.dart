@@ -1039,11 +1039,13 @@ class _TvHubScreenState extends State<TvHubScreen> {
         );
       }
     }
+    // Toute la liste du client derrière la chaîne ouverte : Haut/Bas zappent.
+    final ResumeZap zap = zapListAround(_channels, target, hide: _zapHide);
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => TvPlayerScreen(
-          channels: <Channel>[target],
-          startIndex: 0,
+          channels: zap.channels,
+          startIndex: zap.startIndex,
           startAtUrl: (url != null && url.isNotEmpty) ? url : null,
         ),
       ),
@@ -1058,11 +1060,22 @@ class _TvHubScreenState extends State<TvHubScreen> {
     setState(() => _banner = null);
   }
 
+  /// Mode enfants : le zap ne doit pas mener à une chaîne masquée.
+  bool Function(Channel)? get _zapHide =>
+      ParentalControls.instance.kidsMode.value ? hiddenForKids : null;
+
   void _playShelf(List<Channel> shelf, int index) {
     if (index < 0 || index >= shelf.length) return;
+    // Avant : le lecteur ne recevait que la rangée (souvent UNE chaîne :
+    // favori, grande carte, « à cette heure »), donc Haut/Bas restaient
+    // bloqués dessus. Maintenant : toute la liste, placée sur ce choix.
+    final ResumeZap zap = zapListAround(_channels, shelf[index], hide: _zapHide);
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => TvPlayerScreen(channels: shelf, startIndex: index),
+        builder: (_) => TvPlayerScreen(
+          channels: zap.channels,
+          startIndex: zap.startIndex,
+        ),
       ),
     );
   }

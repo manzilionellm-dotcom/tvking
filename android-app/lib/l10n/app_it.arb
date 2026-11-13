@@ -2542,7 +2542,7 @@
   "tvNameInvalid": "Nome vuoto o troppo lungo.",
   "tvProfileDeleteBody": "Preferiti, cronologia, posizioni di ripresa, promemoria e PIN del profilo saranno cancellati. I canali e il profilo 1 restano.",
   "tvProfileDeleteFailed": "Questo profilo non può essere eliminato.",
-  "tvProfilesHelp": "Fino a 4 profili. Preferiti, cronologia, posizioni di ripresa, promemoria e PIN separati. I canali sono condivisi.",
+  "tvProfilesHelp": "Fino a 10 profili. Preferiti, cronologia, posizioni di ripresa, promemoria e PIN separati. I canali sono condivisi.",
   "tvDefaultPinWarning": "Il PIN è ancora 0000. Modificalo in Controllo genitori.",
   "tvAskProfileOn": "Scegli profilo all’avvio: sì",
   "tvAskProfileOff": "Scegli profilo all’avvio: no",
@@ -2620,7 +2620,7 @@
   "tvPhone": "Telefono",
   "tvSoftware": "Software",
   "tvHardware": "Hardware",
-  "tvProfilesSettingsHelp": "Fino a 4 profili con preferiti, cronologia, posizioni di ripresa, promemoria e PIN separati.",
+  "tvProfilesSettingsHelp": "Fino a 10 profili con preferiti, cronologia, posizioni di ripresa, promemoria e PIN separati.",
   "tvAudioDiagnostic": "Diagnostica audio",
   "tvAudioDiagnosticHelp": "Rapporto locale per canale. Nulla viene inviato. Le opzioni di prova sono disattivate per impostazione predefinita.",
   "tvPlayerDisclaimer": "Questa app è un LETTORE multimediale. Non vende, fornisce né ospita canali, flussi o link M3U. I contenuti provengono dall’utente, responsabile della loro legalità.",
@@ -2895,5 +2895,15 @@
   "tvAmbientTitle": "Alone",
   "tvAmbientHelp": "Segue il film o la partita intorno all'immagine. L'immagine non cambia. Su una box piccola l'alone resta fisso.",
   "tvAmbientAuto": "Auto",
-  "tvAmbientOff": "Spento"
+  "tvAmbientOff": "Spento",
+  "tvUpdateLowStorage": "Poco spazio sul dispositivo: {mb} MB liberi. Android può rifiutare l'installazione. Libera spazio (Impostazioni Android → Memoria) oppure premi di nuovo OK per provare comunque.",
+  "@tvUpdateLowStorage": {
+    "placeholders": {
+      "mb": {
+        "type": "String"
+      }
+    }
+  },
+  "tvCatchupUnavailable": "Replay non disponibile per questo programma. Ritorno alla diretta.",
+  "tvCatchupEnded": "Fine del replay. Ritorno alla diretta."
 }

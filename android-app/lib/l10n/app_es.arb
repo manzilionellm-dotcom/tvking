@@ -1112,7 +1112,7 @@
   "tvNameInvalid": "El nombre está vacío o es demasiado largo.",
   "tvProfileDeleteBody": "Se borrarán sus favoritos, historial, posiciones de reproducción, recordatorios y PIN. Los canales y el perfil 1 se conservan.",
   "tvProfileDeleteFailed": "No se puede eliminar este perfil.",
-  "tvProfilesHelp": "Hasta 4 perfiles. Favoritos, historial, posiciones de reproducción, recordatorios y PIN separados. Los canales se comparten.",
+  "tvProfilesHelp": "Hasta 10 perfiles. Favoritos, historial, posiciones de reproducción, recordatorios y PIN separados. Los canales se comparten.",
   "tvDefaultPinWarning": "El PIN sigue siendo 0000. Cámbialo en Control parental.",
   "tvAskProfileOn": "Elegir perfil al iniciar: sí",
   "tvAskProfileOff": "Elegir perfil al iniciar: no",
@@ -1190,7 +1190,7 @@
   "tvPhone": "Teléfono",
   "tvSoftware": "Software",
   "tvHardware": "Hardware",
-  "tvProfilesSettingsHelp": "Hasta 4 perfiles con favoritos, historial, posiciones de reproducción, recordatorios y PIN separados.",
+  "tvProfilesSettingsHelp": "Hasta 10 perfiles con favoritos, historial, posiciones de reproducción, recordatorios y PIN separados.",
   "tvAudioDiagnostic": "Diagnóstico de sonido",
   "tvAudioDiagnosticHelp": "Informe local por canal. No se envía nada. Las opciones de prueba están desactivadas por defecto.",
   "tvPlayerDisclaimer": "Esta app es un REPRODUCTOR multimedia. No vende, proporciona ni aloja canales, emisiones o enlaces M3U. El contenido lo aporta el usuario, responsable de su legalidad.",
@@ -1465,5 +1465,15 @@
   "tvAmbientTitle": "Halo",
   "tvAmbientHelp": "Sigue la película o el partido alrededor de la imagen. La imagen no cambia. En una box pequeña el halo queda fijo.",
   "tvAmbientAuto": "Auto",
-  "tvAmbientOff": "Apagado"
+  "tvAmbientOff": "Apagado",
+  "tvUpdateLowStorage": "Poco espacio en el dispositivo: {mb} MB libres. Android puede rechazar la instalación. Libera espacio (Ajustes de Android → Almacenamiento) o pulsa OK otra vez para intentarlo igualmente.",
+  "@tvUpdateLowStorage": {
+    "placeholders": {
+      "mb": {
+        "type": "String"
+      }
+    }
+  },
+  "tvCatchupUnavailable": "Replay no disponible para este programa. Vuelta al directo.",
+  "tvCatchupEnded": "Fin del replay. Vuelta al directo."
 }

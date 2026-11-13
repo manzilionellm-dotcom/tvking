@@ -65,6 +65,12 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
   // Android (mise à jour par-dessus, même signature). Tout est journalisé.
   _UpdState _upd = _UpdState.checking;
   UpdateInfo? _updInfo;
+
+  /// Place libre (Mo) affichée par l'avertissement « peu de place ».
+  int _updFreeMb = 0;
+
+  /// L'avertissement n'est montré qu'une fois : le OK suivant installe.
+  bool _updStorageWarned = false;
   int _updPct = 0;
   String _current = '';
   bool _remoteAi = false;
@@ -163,9 +169,24 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
       // Autorisation donnée dans Android : OK relance l'installateur
       // avec l'APK déjà téléchargé et vérifié.
       case _UpdState.permission:
+      case _UpdState.storage:
       case _UpdState.available:
         final UpdateInfo? u = _updInfo;
         if (u == null) return;
+        // Android ne dit pas pourquoi il refuse d'installer. On prévient
+        // AVANT, avec le chiffre, sans jamais bloquer la mise à jour.
+        if (!_updStorageWarned) {
+          final int? freeMb = await UpdateService.instance.tightStorageMb(u);
+          if (!mounted) return;
+          if (freeMb != null) {
+            setState(() {
+              _updStorageWarned = true;
+              _updFreeMb = freeMb;
+              _upd = _UpdState.storage;
+            });
+            return;
+          }
+        }
         BlackBox.instance.info(
           'MAJ',
           'installation demandée → build ${u.versionCode}',
@@ -269,6 +290,8 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
         return context.l10n.tvUpdateFailed;
       case _UpdState.permission:
         return context.l10n.tvUpdateAllowInstall;
+      case _UpdState.storage:
+        return context.l10n.tvUpdateLowStorage(_updFreeMb.toString());
     }
   }
 
@@ -503,6 +526,8 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
       case _UpdState.downloading:
         return '$_updPct %';
       case _UpdState.failed:
+        return '⚠';
+      case _UpdState.storage:
         return '⚠';
       case _UpdState.permission:
         return '🔒';
@@ -801,4 +826,7 @@ enum _UpdState {
   downloading,
   failed,
   permission,
+
+  /// Peu de place sur la box : on prévient, un deuxième OK continue.
+  storage,
 }

@@ -2542,7 +2542,7 @@
   "tvNameInvalid": "Ad boş veya çok uzun.",
   "tvProfileDeleteBody": "Bu profilin favorileri, geçmişi, oynatma konumları, hatırlatıcıları ve PIN’i silinir. Kanallar ve profil 1 kalır.",
   "tvProfileDeleteFailed": "Bu profil silinemez.",
-  "tvProfilesHelp": "En fazla 4 profil. Ayrı favoriler, geçmiş, oynatma konumları, hatırlatıcılar ve PIN’ler. Kanallar ortaktır.",
+  "tvProfilesHelp": "En fazla 10 profil. Ayrı favoriler, geçmiş, oynatma konumları, hatırlatıcılar ve PIN’ler. Kanallar ortaktır.",
   "tvDefaultPinWarning": "PIN hâlâ 0000. Ebeveyn denetiminden değiştirin.",
   "tvAskProfileOn": "Başlangıçta profil seç: açık",
   "tvAskProfileOff": "Başlangıçta profil seç: kapalı",
@@ -2620,7 +2620,7 @@
   "tvPhone": "Telefon",
   "tvSoftware": "Yazılım",
   "tvHardware": "Donanım",
-  "tvProfilesSettingsHelp": "Ayrı favoriler, geçmiş, oynatma konumları, hatırlatıcılar ve PIN’lerle en fazla 4 profil.",
+  "tvProfilesSettingsHelp": "Ayrı favoriler, geçmiş, oynatma konumları, hatırlatıcılar ve PIN’lerle en fazla 10 profil.",
   "tvAudioDiagnostic": "Ses tanılama",
   "tvAudioDiagnosticHelp": "Kanal başına yerel rapor. Hiçbir şey gönderilmez. Test seçenekleri varsayılan olarak kapalıdır.",
   "tvPlayerDisclaimer": "Bu uygulama bir medya OYNATICISIDIR. Kanal, yayın veya M3U bağlantısı satmaz, sağlamaz veya barındırmaz. İçeriği kullanıcı sağlar ve yasallığından sorumludur.",
@@ -2895,5 +2895,15 @@
   "tvAmbientTitle": "Hale",
   "tvAmbientHelp": "Film veya maçla birlikte görüntünün çevresini izler. Görüntü değişmez. Küçük kutuda hale sabit kalır.",
   "tvAmbientAuto": "Otomatik",
-  "tvAmbientOff": "Kapalı"
+  "tvAmbientOff": "Kapalı",
+  "tvUpdateLowStorage": "Cihazda yer az: {mb} MB boş. Android kurulumu reddedebilir. Yer açın (Android Ayarları → Depolama) veya yine de denemek için tekrar OK'e basın.",
+  "@tvUpdateLowStorage": {
+    "placeholders": {
+      "mb": {
+        "type": "String"
+      }
+    }
+  },
+  "tvCatchupUnavailable": "Bu program için tekrar izleme yok. Canlı yayına dönülüyor.",
+  "tvCatchupEnded": "Tekrar bitti. Canlı yayına dönülüyor."
 }

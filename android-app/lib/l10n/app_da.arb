@@ -1112,7 +1112,7 @@
   "tvNameInvalid": "Navnet er tomt eller for langt.",
   "tvProfileDeleteBody": "Profilens favoritter, historik, afspilningspositioner, påmindelser og pinkode slettes. Kanalerne og profil 1 bevares.",
   "tvProfileDeleteFailed": "Denne profil kan ikke slettes.",
-  "tvProfilesHelp": "Op til 4 profiler. Separate favoritter, historik, afspilningspositioner, påmindelser og pinkoder. Kanalerne deles.",
+  "tvProfilesHelp": "Op til 10 profiler. Separate favoritter, historik, afspilningspositioner, påmindelser og pinkoder. Kanalerne deles.",
   "tvDefaultPinWarning": "Pinkoden er stadig 0000. Skift den under Forældrekontrol.",
   "tvAskProfileOn": "Vælg profil ved start: til",
   "tvAskProfileOff": "Vælg profil ved start: fra",
@@ -1190,7 +1190,7 @@
   "tvPhone": "Telefon",
   "tvSoftware": "Software",
   "tvHardware": "Hardware",
-  "tvProfilesSettingsHelp": "Op til 4 profiler med separate favoritter, historik, afspilningspositioner, påmindelser og pinkoder.",
+  "tvProfilesSettingsHelp": "Op til 10 profiler med separate favoritter, historik, afspilningspositioner, påmindelser og pinkoder.",
   "tvAudioDiagnostic": "Lyddiagnostik",
   "tvAudioDiagnosticHelp": "Lokal rapport pr. kanal. Intet sendes. Testindstillinger er slået fra som standard.",
   "tvPlayerDisclaimer": "Appen er en medieafspiller. Den sælger, leverer eller hoster ingen kanaler, strømme eller M3U-links. Indholdet leveres af brugeren, som er ansvarlig for dets lovlighed.",
@@ -1465,5 +1465,15 @@
   "tvAmbientTitle": "Glød",
   "tvAmbientHelp": "Følger filmen eller kampen omkring billedet. Billedet ændres ikke. På en lille boks bliver gløden fast.",
   "tvAmbientAuto": "Auto",
-  "tvAmbientOff": "Fra"
+  "tvAmbientOff": "Fra",
+  "tvUpdateLowStorage": "Lidt lagerplads på enheden: {mb} MB ledig. Android kan afvise installationen. Frigør plads (Android-indstillinger → Lagerplads), eller tryk OK igen for at prøve alligevel.",
+  "@tvUpdateLowStorage": {
+    "placeholders": {
+      "mb": {
+        "type": "String"
+      }
+    }
+  },
+  "tvCatchupUnavailable": "Replay er ikke tilgængelig for dette program. Tilbage til live.",
+  "tvCatchupEnded": "Replay er slut. Tilbage til live."
 }

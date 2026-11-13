@@ -40,6 +40,7 @@ import 'update_manifest.dart';
 import 'update_check.dart';
 import 'update_download_queue.dart';
 import 'update_file_integrity.dart';
+import 'update_storage.dart';
 
 export 'update_check.dart' show UpdateCheckResult, UpdateCheckStatus;
 
@@ -550,6 +551,30 @@ class UpdateService {
       return false;
     } finally {
       progress.removeListener(relay);
+    }
+  }
+
+  /// Place libre en Mo si elle risque de manquer pour installer [update],
+  /// sinon `null`. Sert seulement à PRÉVENIR (voir update_storage.dart).
+  Future<int?> tightStorageMb(UpdateInfo update) async {
+    if (!Platform.isAndroid || RepairFlags.updateLegacy) return null;
+    try {
+      final Directory dir = await getTemporaryDirectory();
+      final int free = await _device.invokeMethod<int>(
+              'getFreeBytes', <String, dynamic>{'path': dir.path}) ??
+          -1;
+      // Un APK déjà téléchargé ne prendra pas de place en plus.
+      final bool ready = await readyApk(update) != null;
+      final bool tight = updateStorageIsTight(
+        freeBytes: free,
+        apkBytes: ready ? update.sizeBytes * 2 ~/ 3 : update.sizeBytes,
+      );
+      if (!tight) return null;
+      BlackBox.instance.warn(
+          'MAJ', 'peu de place : ${updateFreeMegabytes(free)} Mo libres');
+      return updateFreeMegabytes(free);
+    } catch (_) {
+      return null;
     }
   }
 
