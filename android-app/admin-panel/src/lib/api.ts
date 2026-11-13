@@ -332,7 +332,10 @@ export interface Device {
   android_build?: string | null;
   android_release?: string | null;
   app_build?: number | null;
+  app_version?: string | null;
   platform?: string | null;   // 'tv' (DeFew TV) | 'mobile' (The Few)
+  // Pays (ISO2) de la dernière connexion, '' si inconnu.
+  country?: string | null;
   // Pastille d'accès calculée par le serveur (essai / expiré / activé).
   access?: 'trial' | 'expired' | 'activated' | 'lifetime' | 'frozen' | 'banned' | string;
   access_label?: string;

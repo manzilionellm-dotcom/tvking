@@ -3681,10 +3681,33 @@ async function handleDevicesList(request, env, user) {
     first_seen_at: epochMs(row.first_seen_at),
     last_seen_at: epochMs(row.last_seen_at),
   }));
-  page.items = await annotateDeviceAccess(env, rows);
+  page.items = await annotateDeviceCountry(
+    env, await annotateDeviceAccess(env, rows));
   // Le panel lit ce drapeau pour afficher l'état de l'interrupteur.
   page.trial_enforced = trialEnforcementOn(env);
   return jsonResp(page);
+}
+
+/// Ajoute `country` (ISO2 ou '') à chaque appareil de la page : le pays
+/// de sa dernière connexion, déjà noté dans `presence` par le heartbeat.
+/// Lecture seule, limitée aux MAC de la page. Table absente ou erreur :
+/// la liste part sans pays (elle ne doit jamais échouer pour un drapeau).
+async function annotateDeviceCountry(env, rows) {
+  const byMac = {};
+  try {
+    const macs = rows.map((r) => r.mac).filter(Boolean);
+    if (macs.length) {
+      const marks = macs.map(() => '?').join(',');
+      const p = await env.DB.prepare(
+        `SELECT mac, country FROM presence WHERE mac IN (${marks})`,
+      ).bind(...macs).all();
+      for (const row of (p && p.results) || []) {
+        const c = String(row.country || '').trim().toUpperCase();
+        if (/^[A-Z]{2}$/.test(c) && c !== 'XX') byMac[row.mac] = c;
+      }
+    }
+  } catch (_) { /* pas de table presence : pas de pays */ }
+  return rows.map((r) => ({ ...r, country: byMac[r.mac] || '' }));
 }
 
 /// Ajoute access / access_label à chaque appareil. Interrupteur allumé :
