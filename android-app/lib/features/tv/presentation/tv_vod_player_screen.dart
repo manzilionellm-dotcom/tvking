@@ -583,6 +583,9 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
   //  Avance / retour
   // ---------------------------------------------------------
 
+  /// Position horizontale du dernier double appui (téléphone).
+  double _doubleTapX = 0;
+
   void _seekBy(int direction, {bool repeat = false}) {
     if (_castingHandoff) return;
     _repeat = repeat ? _repeat + 1 : 0;
@@ -998,6 +1001,18 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
           child: GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: _togglePlay,
+            // Téléphone : double appui à gauche = 10 s en arrière, à droite =
+            // 10 s en avant (même pas que les flèches du clavier). Ailleurs,
+            // pas de double appui : l'appui simple reste immédiat.
+            onDoubleTapDown: isZunoTouch
+                ? (TapDownDetails d) => _doubleTapX = d.localPosition.dx
+                : null,
+            onDoubleTap: isZunoTouch
+                ? () {
+                    final double width = MediaQuery.sizeOf(context).width;
+                    _seekBy(_doubleTapX < width / 2 ? -1 : 1);
+                  }
+                : null,
             child: ColoredBox(
               color: Colors.black,
               child: Stack(
