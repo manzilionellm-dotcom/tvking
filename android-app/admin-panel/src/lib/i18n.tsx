@@ -36,6 +36,7 @@ const STR: Record<string, Record<Lang, string>> = {
   'nav.controlCenter': { fr: 'Centre de contrôle', en: 'Control center', ar: 'مركز التحكم' },
   'nav.forceUpdate': { fr: 'Mise à jour forcée', en: 'Force update', ar: 'تحديث إجباري' },
   'nav.online': { fr: 'En ligne', en: 'Online', ar: 'متصل' },
+  'nav.insights': { fr: 'Pilotage', en: 'Insights', ar: 'لوحة القيادة' },
   'nav.featured': { fr: 'Favori du jour', en: 'Daily pick', ar: 'مختار اليوم' },
   'nav.theme': { fr: 'Thème', en: 'Theme', ar: 'السمة' },
   'nav.ad': { fr: 'Pub vidéo', en: 'Video ad', ar: 'إعلان فيديو' },

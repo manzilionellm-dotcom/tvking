@@ -369,7 +369,10 @@ export interface Device {
   android_build?: string | null;
   android_release?: string | null;
   app_build?: number | null;
+  app_version?: string | null;
   platform?: string | null;   // 'tv' (DeFew TV) | 'mobile' (The Few)
+  // Pays (ISO2) de la dernière connexion, '' si inconnu.
+  country?: string | null;
   // Pastille d'accès calculée par le serveur (essai / expiré / activé).
   access?: 'trial' | 'expired' | 'activated' | 'lifetime' | 'frozen' | 'banned' | string;
   access_label?: string;
@@ -1122,6 +1125,10 @@ export interface OnlineDevice {
   country: string;
   lastSeen: number;
   channel?: string;   // chaîne en cours de visionnage (vide si rien)
+  quality?: number | null;   // qualité de lecture 0–100 (null = non mesurée)
+  device_model?: string;
+  platform?: string;
+  app_version?: string;
 }
 export interface OnlineSnapshot {
   onlineCount: number;
@@ -1129,6 +1136,32 @@ export interface OnlineSnapshot {
   byCountry: Record<string, number>;
   items: OnlineDevice[];
 }
+// ---- Pilotage (santé, ventes, fraude) : lecture seule, owner ----
+export interface InsightStat { key: string; count: number; quality: number }
+export interface InsightCount { key: string; count: number }
+export interface InsightPerson {
+  mac: string; plan: string; expires_at: number; customer: string; reseller: string;
+}
+export interface Insights {
+  generated_at: number;
+  unavailable: string[];
+  health: {
+    watching: number; bad: number; quality: number | null; alert: boolean;
+    byChannel: InsightStat[]; byCountry: InsightStat[]; byVersion: InsightStat[];
+  };
+  money: {
+    newPaid30: number; perDay: { day: number; count: number }[];
+    byPlan: InsightCount[]; byReseller: InsightCount[];
+    paidActive: number; paidExpired: number;
+    expiring: InsightPerson[]; lost: InsightPerson[];
+    resellerActivations30: number; resellerRenewals30: number;
+  };
+  fraud: { sameBox: { id: string; count: number; macs: string[] }[] };
+}
+export const insightsApi = {
+  get: (signal?: AbortSignal) => request<Insights>('/api/v1/insights', { signal }),
+};
+
 export const onlineApi = {
   get: (page?: { limit?: number; offset?: number }, signal?: AbortSignal) =>
     request<OnlineSnapshot>(listQuery('/api/v1/online', undefined, page), { signal }),

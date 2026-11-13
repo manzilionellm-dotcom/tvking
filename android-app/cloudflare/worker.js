@@ -509,7 +509,15 @@ async function ensureScaleSchema(env) {
   _scaleSchemaReady.add(env.DB);
 }
 
-async function recordPresence(env, mac, ip, country, now, channel) {
+// Qualité de lecture envoyée par l'app : entier 0–100, sinon null
+// (l'app ne regarde rien, ou version trop ancienne pour la mesurer).
+function presenceQuality(raw) {
+  if (typeof raw !== 'number' || !Number.isFinite(raw)) return null;
+  const q = Math.round(raw);
+  return q >= 0 && q <= 100 ? q : null;
+}
+
+async function recordPresence(env, mac, ip, country, now, channel, quality) {
   if (!env.DB) return;
   try {
     // DDL UNE fois par isolate (au lieu d'à chaque heartbeat — gros gain à
@@ -520,6 +528,7 @@ async function recordPresence(env, mac, ip, country, now, channel) {
           'mac TEXT PRIMARY KEY, ip TEXT, country TEXT, last_seen INTEGER, channel TEXT)'
       ).run();
       try { await env.DB.prepare('ALTER TABLE presence ADD COLUMN channel TEXT').run(); } catch (_) {}
+      try { await env.DB.prepare('ALTER TABLE presence ADD COLUMN quality INTEGER').run(); } catch (_) {}
       try { await env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_presence_lastseen ON presence(last_seen)').run(); } catch (_) {}
       _presenceReady.add(env.DB);
     }
@@ -528,11 +537,12 @@ async function recordPresence(env, mac, ip, country, now, channel) {
     const chan = (channel === undefined || channel === null) ? null : String(channel).slice(0, 120);
     await env.DB
       .prepare(
-        'INSERT INTO presence (mac, ip, country, last_seen, channel) VALUES (?, ?, ?, ?, ?) ' +
+        'INSERT INTO presence (mac, ip, country, last_seen, channel, quality) VALUES (?, ?, ?, ?, ?, ?) ' +
           'ON CONFLICT(mac) DO UPDATE SET ip = excluded.ip, ' +
-          'country = excluded.country, last_seen = excluded.last_seen, channel = excluded.channel'
+          'country = excluded.country, last_seen = excluded.last_seen, ' +
+          'channel = excluded.channel, quality = excluded.quality'
       )
-      .bind(mac, ip, country, now, chan)
+      .bind(mac, ip, country, now, chan, presenceQuality(quality))
       .run();
   } catch (_) {
     // best-effort : la présence ne doit jamais faire échouer un heartbeat.
@@ -2398,7 +2408,9 @@ async function handleHeartbeat(request, env, _ctx) {
   // Présence + inventaire : on ATTEND l'écriture avant de répondre.
   // waitUntil laissait le panel lire « hors ligne » / un vieil inventaire
   // juste après le ping, et pouvait perdre la ligne si l'isolate s'arrêtait.
-  await recordPresence(env, mac, ip, country, now, channel);
+  // `quality` = part du temps où l'image a vraiment joué (0–100), mesurée
+  // par l'app depuis le dernier ping. Absent = non mesuré.
+  await recordPresence(env, mac, ip, country, now, channel, body.quality);
 
   // --- Chemin D1 (par defaut des que la base est branchee) ---
   // On enregistre AUTOMATIQUEMENT la MAC (essai 7 j), puis on renvoie son

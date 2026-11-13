@@ -20,6 +20,7 @@ import { HomeManagerPage } from '@/pages/HomeManagerPage';
 import { ControlCenterPage } from '@/pages/ControlCenterPage';
 import { ForceUpdatePage } from '@/pages/ForceUpdatePage';
 import { OnlinePage } from '@/pages/OnlinePage';
+import { InsightsPage } from '@/pages/InsightsPage';
 import { FeaturedPage } from '@/pages/FeaturedPage';
 import { ThemePage } from '@/pages/ThemePage';
 import { AdPage } from '@/pages/AdPage';
@@ -124,6 +125,7 @@ export default function App() {
       <Route path="/home-manager" element={<HomeManagerPage onLogout={handleLogout} />} />
       <Route path="/force-update" element={<ForceUpdatePage onLogout={handleLogout} />} />
       <Route path="/online" element={<OnlinePage onLogout={handleLogout} />} />
+      <Route path="/insights" element={<InsightsPage onLogout={handleLogout} />} />
       <Route path="/featured" element={<FeaturedPage onLogout={handleLogout} />} />
       <Route path="/theme" element={<ThemePage onLogout={handleLogout} />} />
       <Route path="/ad" element={<AdPage onLogout={handleLogout} />} />

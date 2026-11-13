@@ -22,6 +22,7 @@ import {
   clearSourceTombstone,
 } from './linkage.js';
 import { notifyBox } from './box_channel.js';
+import { readInsights } from './insights.js';
 import { isBlackboxMac, markBlackBoxAsked, readBlackBox } from './blackbox_journal.js';
 //  Importe depuis worker.js pour servir le namespace /api/v1/*.
 //  Coexiste avec les anciens endpoints /admin/* et /api/* qui
@@ -1327,6 +1328,14 @@ async function apiV1Inner(request, env) {
       return errResp('forbidden', 'Owner only', 403);
     }
     return handleOnlineGet(request, env);
+  }
+
+  // /insights — pilotage (santé, argent, fraude). Lecture seule, owner uniquement.
+  if (parts[0] === 'insights' && parts.length === 1 && request.method === 'GET') {
+    if (a.user.role !== 'super_admin') {
+      return errResp('forbidden', 'Owner only', 403);
+    }
+    return jsonResp(await readInsights(env));
   }
 
   // /force-update — mise à jour forcée (bouton du panel). Owner uniquement.
@@ -2652,6 +2661,8 @@ async function handleOnlineGet(request, env) {
   const DAY_MS = 24 * 60 * 60 * 1000;
   // `channel` peut manquer sur une base ancienne → on l'ajoute (no-op si déjà là).
   try { await env.DB.prepare('ALTER TABLE presence ADD COLUMN channel TEXT').run(); } catch (_) {}
+  // `quality` (0–100) : qualité de lecture mesurée par l'app. Même principe.
+  try { await env.DB.prepare('ALTER TABLE presence ADD COLUMN quality INTEGER').run(); } catch (_) {}
   const { limit, offset } = parsePageQuery(new URL(request.url), {
     defaultLimit: 100, maxLimit: 200,
   });
@@ -2676,7 +2687,7 @@ async function handleOnlineGet(request, env) {
     .bind(onlineSince).all();
   const rs = await env.DB
     .prepare(
-      `SELECT mac, ip, country, last_seen, channel FROM presence
+      `SELECT mac, ip, country, last_seen, channel, quality FROM presence
         WHERE ${seen} > ?
         ORDER BY ${seen} DESC LIMIT ? OFFSET ?`,
     )
@@ -2695,7 +2706,30 @@ async function handleOnlineGet(request, env) {
     country: /^[A-Za-z]{2}$/.test(r.country || '') ? String(r.country).toUpperCase() : '',
     lastSeen: epochMs(r.last_seen) || 0,
     channel: r.channel || '',
+    // null = non mesuré (rien à l'écran, ou app trop ancienne).
+    quality: Number.isInteger(r.quality) && r.quality >= 0 && r.quality <= 100
+      ? r.quality : null,
   }));
+  // Appareil de chaque ligne (modèle, plateforme, version) : lecture seule,
+  // limitée aux MAC de la page. Une erreur ne casse pas « En ligne ».
+  try {
+    const macs = items.map((i) => i.mac).filter(Boolean);
+    if (macs.length) {
+      const marks = macs.map(() => '?').join(',');
+      const d = await env.DB.prepare(
+        `SELECT * FROM devices WHERE mac IN (${marks})`,
+      ).bind(...macs).all();
+      const byMac = {};
+      for (const row of (d && d.results) || []) byMac[row.mac] = row;
+      for (const item of items) {
+        const dev = byMac[item.mac];
+        if (!dev) continue;
+        item.device_model = dev.device_model || '';
+        item.platform = dev.platform || '';
+        item.app_version = dev.app_version || '';
+      }
+    }
+  } catch (_) { /* pas d'inventaire : la ligne reste sans appareil */ }
   return jsonResp({
     onlineCount,
     todayCount: num(todayCountRow, 'n'),
@@ -3796,10 +3830,33 @@ async function handleDevicesList(request, env, user) {
     first_seen_at: epochMs(row.first_seen_at),
     last_seen_at: epochMs(row.last_seen_at),
   }));
-  page.items = await annotateDeviceAccess(env, rows);
+  page.items = await annotateDeviceCountry(
+    env, await annotateDeviceAccess(env, rows));
   // Le panel lit ce drapeau pour afficher l'état de l'interrupteur.
   page.trial_enforced = trialEnforcementOn(env);
   return jsonResp(page);
+}
+
+/// Ajoute `country` (ISO2 ou '') à chaque appareil de la page : le pays
+/// de sa dernière connexion, déjà noté dans `presence` par le heartbeat.
+/// Lecture seule, limitée aux MAC de la page. Table absente ou erreur :
+/// la liste part sans pays (elle ne doit jamais échouer pour un drapeau).
+async function annotateDeviceCountry(env, rows) {
+  const byMac = {};
+  try {
+    const macs = rows.map((r) => r.mac).filter(Boolean);
+    if (macs.length) {
+      const marks = macs.map(() => '?').join(',');
+      const p = await env.DB.prepare(
+        `SELECT mac, country FROM presence WHERE mac IN (${marks})`,
+      ).bind(...macs).all();
+      for (const row of (p && p.results) || []) {
+        const c = String(row.country || '').trim().toUpperCase();
+        if (/^[A-Z]{2}$/.test(c) && c !== 'XX') byMac[row.mac] = c;
+      }
+    }
+  } catch (_) { /* pas de table presence : pas de pays */ }
+  return rows.map((r) => ({ ...r, country: byMac[r.mac] || '' }));
 }
 
 /// Ajoute access / access_label à chaque appareil. Interrupteur allumé :

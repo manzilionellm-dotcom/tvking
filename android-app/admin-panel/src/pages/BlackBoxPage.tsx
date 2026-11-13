@@ -19,6 +19,7 @@ import {
   formatBlackBoxUpdated,
   normalizePanelMac,
 } from '@/lib/blackbox';
+import { diagnoseBlackBox, type Finding } from '@/lib/blackboxDiagnosis';
 
 export function BlackBoxPage({ onLogout }: { onLogout: () => void }) {
   const [sp] = useSearchParams();
@@ -157,6 +158,7 @@ export function BlackBoxPage({ onLogout }: { onLogout: () => void }) {
                 : 'Pas encore de journal reçu pour cette box.'}
             </p>
           </div>
+          <DiagnosisPanel text={text} />
           <textarea
             readOnly
             value={text}
@@ -190,5 +192,66 @@ export function BlackBoxPage({ onLogout }: { onLogout: () => void }) {
       )}
       <TracePanel initialQuery={active || ''} key={active || 'vide'} />
     </AppLayout>
+  );
+}
+
+const TONE: Record<Finding['severity'], { color: string; label: string }> = {
+  critical: { color: '#EB5757', label: 'Bloquant' },
+  warning: { color: '#F2C94C', label: 'À surveiller' },
+  info: { color: '#8FB4D6', label: 'Information' },
+};
+
+/// Le diagnostic lu dans le journal : la panne, pourquoi, quoi faire.
+/// Rien ne s'affiche tant qu'aucun journal n'est reçu.
+function DiagnosisPanel({ text }: { text: string }) {
+  if (!text.trim()) return null;
+  const d = diagnoseBlackBox(text);
+  const now = d.findings.filter((f) => f.current);
+  const before = d.findings.filter((f) => !f.current);
+  return (
+    <div className="mb-4 rounded-xl border border-white/10 bg-midnight p-4">
+      <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+        <h2 className="text-sm font-semibold uppercase tracking-widest text-ink-secondary">Diagnostic automatique</h2>
+        <p className="text-xs text-ink-tertiary">
+          {d.version ? `Version ${d.version}` : 'Version inconnue'}
+          {d.lastBoot ? ` · dernier démarrage ${d.lastBoot}` : ''}
+          {` · ${d.lines} lignes lues`}
+        </p>
+      </div>
+      {d.findings.length === 0 && (
+        <p className="text-sm" style={{ color: '#6FCF97' }}>
+          Aucune panne connue dans ce journal. Si le client a quand même un souci, lis les
+          dernières lignes ci-dessous ou redemande le journal juste après le problème.
+        </p>
+      )}
+      {now.length > 0 && <FindingList title="Depuis le dernier démarrage" items={now} />}
+      {before.length > 0 && <FindingList title="Plus ancien (peut-être déjà réglé)" items={before} muted />}
+    </div>
+  );
+}
+
+function FindingList({ title, items, muted }: { title: string; items: Finding[]; muted?: boolean }) {
+  return (
+    <div className={muted ? 'mt-4 opacity-70' : ''}>
+      <div className="mb-2 text-[10px] uppercase tracking-widest text-ink-tertiary">{title}</div>
+      <ul className="space-y-3">
+        {items.map((f) => {
+          const tone = TONE[f.severity];
+          return (
+            <li key={f.id} className="rounded-lg border border-white/5 p-3" style={{ borderLeft: `3px solid ${tone.color}` }}>
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <strong className="text-sm text-ink-primary">{f.title}</strong>
+                <span className="text-[10px] uppercase tracking-widest" style={{ color: tone.color }}>
+                  {tone.label} · {f.count} ligne(s) · dernière {f.last}
+                </span>
+              </div>
+              <p className="mt-1 text-xs text-ink-secondary">{f.why}</p>
+              <p className="mt-1 text-xs text-ink-primary"><span className="text-ink-tertiary">À faire : </span>{f.action}</p>
+              <p className="mt-2 break-all font-mono text-[10px] text-ink-tertiary">{f.evidence}</p>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
   );
 }

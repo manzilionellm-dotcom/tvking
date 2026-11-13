@@ -9,8 +9,9 @@ import { PANEL_POLL_MS, shouldApplyPollResult } from '@/lib/live-sync';
 import { macSearchMatches } from '@/lib/mac-format/mac-search';
 import {
   LIST_PAGE_SIZE, agoLabel, createAbortBag, createGeneration, onlineView,
-  type OnlineView,
+  qualityLevel, type OnlineView,
 } from '@/lib/robust';
+import { appVersionLabel, countryName, deviceKind } from '@/lib/clientRow';
 
 /// Page « En ligne » (owner) — qui utilise l'app en ce moment, depuis où.
 /// Données issues de la présence (heartbeat) : IP + pays fournis par
@@ -55,13 +56,17 @@ export function OnlinePage({ onLogout }: { onLogout: () => void }) {
 
   const byCountry = data ? data.byCountry : [];
   const table = useClientTable(data?.items ?? [], {
-    textOf: (d) => [d.country, d.ip, d.mac, d.channel].filter(Boolean).join(' '),
+    textOf: (d) => [d.country, countryName(d.country), d.ip, d.mac, d.channel, d.device_model, deviceKind(d)]
+      .filter(Boolean).join(' '),
     matchAlso: (d, query) => macSearchMatches(d.mac, query),
     valueOf: (d, key) => {
       if (key === 'country') return d.country || '';
       if (key === 'ip') return d.ip || '';
       if (key === 'mac') return d.mac;
       if (key === 'channel') return d.channel || '';
+      if (key === 'device') return d.device_model || '';
+      // Non mesuré = rangé après les vraies valeurs.
+      if (key === 'quality') return d.quality == null ? -1 : d.quality;
       if (key === 'seen') return d.lastSeen || 0;
       return '';
     },
@@ -146,7 +151,9 @@ export function OnlinePage({ onLogout }: { onLogout: () => void }) {
                   <SortTh label="Pays" column="country" sortKey={table.sortKey} dir={table.dir} onSort={table.toggleSort} />
                   <SortTh label="Adresse IP" column="ip" sortKey={table.sortKey} dir={table.dir} onSort={table.toggleSort} />
                   <SortTh label="MAC" column="mac" sortKey={table.sortKey} dir={table.dir} onSort={table.toggleSort} />
+                  <SortTh label="Appareil" column="device" sortKey={table.sortKey} dir={table.dir} onSort={table.toggleSort} />
                   <SortTh label="Regarde" column="channel" sortKey={table.sortKey} dir={table.dir} onSort={table.toggleSort} />
+                  <SortTh label="Connexion" column="quality" sortKey={table.sortKey} dir={table.dir} onSort={table.toggleSort} />
                   <SortTh label="Vu" column="seen" sortKey={table.sortKey} dir={table.dir} onSort={table.toggleSort} />
                 </tr>
               </thead>
@@ -156,21 +163,34 @@ export function OnlinePage({ onLogout }: { onLogout: () => void }) {
                     <td className="px-4 py-2.5"><StatusBadge status="online" /></td>
                     <td className="px-4 py-2.5">
                       <span className="mr-1.5">{flagEmoji(d.country)}</span>
-                      {d.country || '—'}
+                      {countryName(d.country) || '—'}
                     </td>
                     <td className="px-4 py-2.5 font-mono text-xs text-ink-secondary">{d.ip || '—'}</td>
                     <td className="px-4 py-2.5 font-mono text-xs text-ink-secondary">{d.mac}</td>
+                    <td className="px-4 py-2.5 text-xs">
+                      {d.device_model ? (
+                        <>
+                          <div className="text-ink-primary">{deviceKind(d) || d.device_model}</div>
+                          <div className="text-[10px] text-ink-tertiary">
+                            {[deviceKind(d) ? d.device_model : '', appVersionLabel(d.app_version, null)
+                              ? `ZUNO ${appVersionLabel(d.app_version, null)}` : '']
+                              .filter(Boolean).join(' · ')}
+                          </div>
+                        </>
+                      ) : <span className="text-ink-tertiary">—</span>}
+                    </td>
                     <td className="px-4 py-2.5 text-xs">
                       {d.channel
                         ? <span className="inline-flex items-center gap-1 text-accent-bright">▶ {d.channel}</span>
                         : <span className="text-ink-tertiary">—</span>}
                     </td>
+                    <td className="px-4 py-2.5"><QualityMeter value={d.quality} /></td>
                     <td className="px-4 py-2.5 text-xs text-ink-tertiary">{agoLabel(d.lastSeen)}</td>
                   </tr>
                 ))}
                 {table.total === 0 && (
                   <tr>
-                    <td colSpan={6}>
+                    <td colSpan={8}>
                       <EmptyState
                         title={table.query ? `Personne ne correspond à « ${table.query} ».` : 'Personne en ligne.'}
                         hint={table.query ? 'Essaie une autre MAC ou un autre pays.' : 'Aucun appareil vu dans les 15 dernières minutes.'}
@@ -191,5 +211,29 @@ export function OnlinePage({ onLogout }: { onLogout: () => void }) {
         </>
       )}
     </AppLayout>
+  );
+}
+
+/// Qualité de lecture : pourcentage + petite barre colorée.
+/// C'est la part du temps où l'image a vraiment joué (sans chargement ni
+/// coupure) depuis le dernier signal de la box. « — » = non mesuré : la
+/// box ne regarde rien, ou son app est trop ancienne.
+function QualityMeter({ value }: { value: number | null }) {
+  const level = qualityLevel(value);
+  if (value == null || level === 'none') {
+    return <span className="text-xs text-ink-tertiary" title="Non mesuré">—</span>;
+  }
+  const color = level === 'good' ? '#6FCF97' : level === 'medium' ? '#F2C94C' : '#EB5757';
+  const word = level === 'good' ? 'Bonne' : level === 'medium' ? 'Moyenne' : 'Mauvaise';
+  return (
+    <div className="min-w-[92px]" title={`${word} : l'image a joué ${value} % du temps`}>
+      <div className="flex items-baseline justify-between gap-2 text-xs">
+        <span className="font-semibold" style={{ color }}>{value} %</span>
+        <span className="text-[10px] text-ink-tertiary">{word}</span>
+      </div>
+      <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+        <div className="h-full rounded-full" style={{ width: `${value}%`, background: color }} />
+      </div>
+    </div>
   );
 }
