@@ -2895,5 +2895,13 @@
   "tvAmbientTitle": "आभा",
   "tvAmbientHelp": "फिल्म या मैच के साथ आभा बदलती है। चित्र नहीं बदलता। छोटे बॉक्स पर आभा स्थिर रहती है।",
   "tvAmbientAuto": "ऑटो",
-  "tvAmbientOff": "बंद"
+  "tvAmbientOff": "बंद",
+  "tvUpdateLowStorage": "डिवाइस में जगह कम है: {mb} MB खाली। Android इंस्टॉल करने से मना कर सकता है। जगह खाली करें (Android सेटिंग्स → स्टोरेज), या फिर भी कोशिश करने के लिए दोबारा OK दबाएँ।",
+  "@tvUpdateLowStorage": {
+    "placeholders": {
+      "mb": {
+        "type": "String"
+      }
+    }
+  }
 }

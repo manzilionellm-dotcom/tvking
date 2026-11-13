@@ -19,6 +19,7 @@ import '../core/tv_dimens.dart';
 import '../core/tv_app_tokens.dart';
 import '../core/tv_field_keys.dart';
 import 'tv_components.dart';
+import '../core/own_list.dart';
 
 class TvAddM3uScreen extends StatefulWidget {
   const TvAddM3uScreen({super.key});
@@ -60,17 +61,21 @@ class _TvAddM3uScreenState extends State<TvAddM3uScreen> {
         : _nameC.text.trim();
     try {
       if (draft.kind == OpenSourceKind.xtream) {
-        await PlaylistRepository.instance.addXtreamPlaylist(
-          name: name,
-          serverUrl: draft.serverUrl!,
-          username: draft.username!,
-          password: draft.password!,
+        await ownedByActiveProfile(
+          PlaylistRepository.instance.addXtreamPlaylist(
+            name: name,
+            serverUrl: draft.serverUrl!,
+            username: draft.username!,
+            password: draft.password!,
+          ),
         );
       } else {
-        await PlaylistRepository.instance.addM3uPlaylist(
-          name: name,
-          url: draft.m3uUrl!,
-          epgUrl: _epgC.text.trim().isEmpty ? null : _epgC.text.trim(),
+        await ownedByActiveProfile(
+          PlaylistRepository.instance.addM3uPlaylist(
+            name: name,
+            url: draft.m3uUrl!,
+            epgUrl: _epgC.text.trim().isEmpty ? null : _epgC.text.trim(),
+          ),
         );
       }
       if (mounted) Navigator.of(context).maybePop();

@@ -2895,5 +2895,13 @@
   "tvAmbientTitle": "光晕",
   "tvAmbientHelp": "光晕随电影或比赛变化，画面本身不变。小盒子上光晕保持固定。",
   "tvAmbientAuto": "自动",
-  "tvAmbientOff": "关闭"
+  "tvAmbientOff": "关闭",
+  "tvUpdateLowStorage": "设备存储空间不足：剩余 {mb} MB。Android 可能会拒绝安装。请释放空间（Android 设置 → 存储），或再按一次 OK 仍然尝试。",
+  "@tvUpdateLowStorage": {
+    "placeholders": {
+      "mb": {
+        "type": "String"
+      }
+    }
+  }
 }

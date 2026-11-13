@@ -37,10 +37,13 @@ import '../../channels/domain/channel.dart';
 import '../../channels/domain/channel_genre.dart';
 import '../../epg/data/epg_repository.dart';
 import '../../epg/data/epg_targets.dart';
+import '../../profiles/data/active_profile.dart';
+import '../../profiles/domain/family_profile.dart';
 import '../domain/playlist.dart';
 import '../domain/source_fingerprint.dart';
 import 'deleted_sources.dart';
 import 'playlist_secret.dart';
+import 'profile_source_switches.dart';
 import 'local_m3u_bytes.dart';
 import 'm3u_fetcher.dart';
 import 'import_progress.dart';
@@ -115,6 +118,67 @@ class PlaylistRepository {
     // Fuseaux des serveurs Xtream déjà connus (heure du catch-up).
     await XtreamServerClock.load();
     await _completePendingDeletions();
+    // Chaque profil a ses listes : on relit quand « qui regarde » change.
+    await _loadProfileSwitches();
+    ActiveProfile.instance.listenable.removeListener(_onProfileChanged);
+    ActiveProfile.instance.listenable.addListener(_onProfileChanged);
+    await _emitCurrentState();
+  }
+
+  // ============================================================
+  //  LISTES PAR PROFIL (voir profile_source_switches.dart)
+  // ============================================================
+
+  /// Listes éteintes pour le profil en cours. `null` = profil 1 :
+  /// c'est la colonne `hidden` de la base qui décide, comme avant.
+  Set<int>? _profileOff;
+
+  /// Profil pour lequel [_profileOff] a été lu.
+  String _profileOffOwner = '';
+
+  Future<void> _loadProfileSwitches() async {
+    final String id = ActiveProfile.instance.id;
+    final Set<int>? off = await ProfileSourceSwitches.read(id);
+    // Le profil a pu changer pendant la lecture du disque : on ne garde
+    // que la réponse qui correspond à celui qui regarde MAINTENANT.
+    if (id != ActiveProfile.instance.id) return;
+    _profileOff = off;
+    _profileOffOwner = id;
+  }
+
+  void _onProfileChanged() {
+    unawaited(() async {
+      await _loadProfileSwitches();
+      await _emitCurrentState();
+    }());
+  }
+
+  /// Réserve une liste qui vient d'être ajoutée À LA MAIN au profil qui
+  /// l'a ajoutée : elle est éteinte chez les autres ([others]), qui peuvent
+  /// la rallumer dans leurs propres réglages. Un seul profil = rien à faire.
+  Future<void> reserveForProfile(
+    int playlistId, {
+    required String owner,
+    required Iterable<String> others,
+  }) async {
+    bool touched = false;
+    for (final String other in others) {
+      if (other == owner) continue;
+      touched = true;
+      if (ProfileKeys.isOrigin(other)) {
+        final Database db = await PlaylistDatabase.instance.database;
+        await db.update(
+          'playlists',
+          <String, Object?>{'hidden': 1},
+          where: 'id = ?',
+          whereArgs: <Object>[playlistId],
+        );
+      } else {
+        await ProfileSourceSwitches.write(other, playlistId, off: true);
+      }
+    }
+    if (!touched) return;
+    await _loadProfileSwitches();
     await _emitCurrentState();
   }
 
@@ -261,9 +325,13 @@ class PlaylistRepository {
     int afterLocalId = 0; // local_id (AUTOINCREMENT) démarre à 1
     // Sous-requête évaluée par SQLite (index PK) : écarte les chaînes des
     // sources désactivées sans les charger en mémoire.
-    final String hiddenFilter = skipHidden
-        ? ' AND playlist_id NOT IN (SELECT id FROM playlists WHERE hidden = 1)'
-        : '';
+    // Profil 1 : colonne `hidden`. Autres profils : leur propre carnet.
+    final Set<int>? profileOff = _profileOff;
+    final String hiddenFilter = !skipHidden
+        ? ''
+        : profileOff == null
+            ? ' AND playlist_id NOT IN (SELECT id FROM playlists WHERE hidden = 1)'
+            : ProfileSourceSwitches.sqlFilter(profileOff);
     while (out.length < kMaxInMemoryChannels) {
       final List<Map<String, Object?>> rows = await db.query(
         'channels',
@@ -334,6 +402,12 @@ class PlaylistRepository {
     next['xtream_password'] =
         await PlaylistSecret.open(next['xtream_password'] as String?);
     next['m3u_url'] = await PlaylistSecret.open(next['m3u_url'] as String?);
+    // « Allumée / éteinte » se lit pour le profil en cours : les écrans
+    // (Sources, actualisation) n'ont pas à connaître les profils.
+    final Set<int>? profileOff = _profileOff;
+    if (profileOff != null) {
+      next['hidden'] = profileOff.contains(next['id']) ? 1 : 0;
+    }
     return Playlist.fromMap(next);
   }
 
@@ -366,14 +440,28 @@ class PlaylistRepository {
   /// autres — plusieurs sources actives en même temps, sans limite. Ses
   /// chaînes restent en base : la réactiver est instantané (pas de
   /// re-téléchargement). Ré-émet l'état pour que Direct se mette à jour.
-  Future<void> setPlaylistHidden(int playlistId, bool hidden) async {
-    final Database db = await PlaylistDatabase.instance.database;
-    await db.update(
-      'playlists',
-      <String, Object?>{'hidden': hidden ? 1 : 0},
-      where: 'id = ?',
-      whereArgs: <Object>[playlistId],
-    );
+  ///
+  /// L'interrupteur est celui du PROFIL en cours : éteindre une liste ici
+  /// ne l'éteint pas chez les autres. [forAll] (ordre du panel) l'applique
+  /// à tous les profils.
+  Future<void> setPlaylistHidden(int playlistId, bool hidden,
+      {bool forAll = false}) async {
+    final String profile = ActiveProfile.instance.id;
+    if (forAll || ProfileKeys.isOrigin(profile)) {
+      final Database db = await PlaylistDatabase.instance.database;
+      await db.update(
+        'playlists',
+        <String, Object?>{'hidden': hidden ? 1 : 0},
+        where: 'id = ?',
+        whereArgs: <Object>[playlistId],
+      );
+    }
+    if (forAll) {
+      await ProfileSourceSwitches.writeAll(playlistId, off: hidden);
+    } else if (!ProfileKeys.isOrigin(profile)) {
+      await ProfileSourceSwitches.write(profile, playlistId, off: hidden);
+    }
+    await _loadProfileSwitches();
     await _emitCurrentState();
   }
 
@@ -1183,6 +1271,10 @@ class PlaylistRepository {
         }
       }
     });
+    // Le numéro d'une liste effacée ne doit rester dans aucun carnet de
+    // profil : SQLite peut le redonner à une liste ajoutée plus tard.
+    await ProfileSourceSwitches.writeAll(id, off: false);
+    if (_profileOffOwner.isNotEmpty) await _loadProfileSwitches();
   }
 
   /// Vérifie qu'un téléchargement terminé est encore demandé. Une liste

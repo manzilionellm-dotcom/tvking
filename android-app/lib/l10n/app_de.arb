@@ -2895,5 +2895,13 @@
   "tvAmbientTitle": "Licht",
   "tvAmbientHelp": "Folgt dem Film oder dem Spiel um das Bild. Das Bild ändert sich nicht. Auf einer kleinen Box bleibt das Licht fest.",
   "tvAmbientAuto": "Auto",
-  "tvAmbientOff": "Aus"
+  "tvAmbientOff": "Aus",
+  "tvUpdateLowStorage": "Wenig Speicher auf dem Gerät: {mb} MB frei. Android kann die Installation ablehnen. Gib Speicher frei (Android-Einstellungen → Speicher) oder drücke erneut OK, um es trotzdem zu versuchen.",
+  "@tvUpdateLowStorage": {
+    "placeholders": {
+      "mb": {
+        "type": "String"
+      }
+    }
+  }
 }

@@ -1465,5 +1465,13 @@
   "tvAmbientTitle": "Glød",
   "tvAmbientHelp": "Følger filmen eller kampen rundt bildet. Bildet endres ikke. På en liten boks er gløden fast.",
   "tvAmbientAuto": "Auto",
-  "tvAmbientOff": "Av"
+  "tvAmbientOff": "Av",
+  "tvUpdateLowStorage": "Lite lagringsplass på enheten: {mb} MB ledig. Android kan avvise installasjonen. Frigjør plass (Android-innstillinger → Lagring), eller trykk OK igjen for å prøve likevel.",
+  "@tvUpdateLowStorage": {
+    "placeholders": {
+      "mb": {
+        "type": "String"
+      }
+    }
+  }
 }

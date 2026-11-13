@@ -1465,5 +1465,13 @@
   "tvAmbientTitle": "Mwanga",
   "tvAmbientHelp": "Hufuata filamu au mechi kuzunguka picha. Picha haibadiliki. Kwenye kisanduku kidogo mwanga hubaki tuli.",
   "tvAmbientAuto": "Otomatiki",
-  "tvAmbientOff": "Zima"
+  "tvAmbientOff": "Zima",
+  "tvUpdateLowStorage": "Nafasi ni ndogo kwenye kifaa: MB {mb} ziko wazi. Android inaweza kukataa usakinishaji. Futa nafasi (Mipangilio ya Android → Hifadhi), au bonyeza OK tena ili kujaribu hata hivyo.",
+  "@tvUpdateLowStorage": {
+    "placeholders": {
+      "mb": {
+        "type": "String"
+      }
+    }
+  }
 }

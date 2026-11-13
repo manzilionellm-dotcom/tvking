@@ -3208,5 +3208,13 @@
   "tvAmbientTitle": "Iftiin",
   "tvAmbientHelp": "Waxay raacdaa filimka ama ciyaarta agagaarka sawirka. Sawirku ma beddelmo. Sanduuq yar ayaa iftiinka ku haya mid go'an.",
   "tvAmbientAuto": "Toos",
-  "tvAmbientOff": "Dami"
+  "tvAmbientOff": "Dami",
+  "tvUpdateLowStorage": "Meel yar ayaa ku hadhay qalabka: {mb} MB ayaa bannaan. Android wuu diidi karaa rakibidda. Meel bannee (Dejinta Android → Kaydinta), ama mar kale riix OK si aad isugu daydo.",
+  "@tvUpdateLowStorage": {
+    "placeholders": {
+      "mb": {
+        "type": "String"
+      }
+    }
+  }
 }

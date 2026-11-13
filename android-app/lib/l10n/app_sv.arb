@@ -1465,5 +1465,13 @@
   "tvAmbientTitle": "Sken",
   "tvAmbientHelp": "Följer filmen eller matchen runt bilden. Bilden ändras inte. På en liten box är skenet fast.",
   "tvAmbientAuto": "Auto",
-  "tvAmbientOff": "Av"
+  "tvAmbientOff": "Av",
+  "tvUpdateLowStorage": "Lite lagringsutrymme på enheten: {mb} MB ledigt. Android kan neka installationen. Frigör utrymme (Android-inställningar → Lagring) eller tryck OK igen för att försöka ändå.",
+  "@tvUpdateLowStorage": {
+    "placeholders": {
+      "mb": {
+        "type": "String"
+      }
+    }
+  }
 }

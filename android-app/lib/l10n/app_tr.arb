@@ -2895,5 +2895,13 @@
   "tvAmbientTitle": "Hale",
   "tvAmbientHelp": "Film veya maçla birlikte görüntünün çevresini izler. Görüntü değişmez. Küçük kutuda hale sabit kalır.",
   "tvAmbientAuto": "Otomatik",
-  "tvAmbientOff": "Kapalı"
+  "tvAmbientOff": "Kapalı",
+  "tvUpdateLowStorage": "Cihazda yer az: {mb} MB boş. Android kurulumu reddedebilir. Yer açın (Android Ayarları → Depolama) veya yine de denemek için tekrar OK'e basın.",
+  "@tvUpdateLowStorage": {
+    "placeholders": {
+      "mb": {
+        "type": "String"
+      }
+    }
+  }
 }

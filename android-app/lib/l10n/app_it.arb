@@ -2895,5 +2895,13 @@
   "tvAmbientTitle": "Alone",
   "tvAmbientHelp": "Segue il film o la partita intorno all'immagine. L'immagine non cambia. Su una box piccola l'alone resta fisso.",
   "tvAmbientAuto": "Auto",
-  "tvAmbientOff": "Spento"
+  "tvAmbientOff": "Spento",
+  "tvUpdateLowStorage": "Poco spazio sul dispositivo: {mb} MB liberi. Android può rifiutare l'installazione. Libera spazio (Impostazioni Android → Memoria) oppure premi di nuovo OK per provare comunque.",
+  "@tvUpdateLowStorage": {
+    "placeholders": {
+      "mb": {
+        "type": "String"
+      }
+    }
+  }
 }

@@ -1465,5 +1465,13 @@
   "tvAmbientTitle": "Halo",
   "tvAmbientHelp": "Sigue la película o el partido alrededor de la imagen. La imagen no cambia. En una box pequeña el halo queda fijo.",
   "tvAmbientAuto": "Auto",
-  "tvAmbientOff": "Apagado"
+  "tvAmbientOff": "Apagado",
+  "tvUpdateLowStorage": "Poco espacio en el dispositivo: {mb} MB libres. Android puede rechazar la instalación. Libera espacio (Ajustes de Android → Almacenamiento) o pulsa OK otra vez para intentarlo igualmente.",
+  "@tvUpdateLowStorage": {
+    "placeholders": {
+      "mb": {
+        "type": "String"
+      }
+    }
+  }
 }

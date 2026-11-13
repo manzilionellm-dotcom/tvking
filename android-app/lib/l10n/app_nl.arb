@@ -2895,5 +2895,13 @@
   "tvAmbientTitle": "Gloed",
   "tvAmbientHelp": "Volgt de film of de wedstrijd rond het beeld. Het beeld verandert niet. Op een kleine box blijft de gloed vast.",
   "tvAmbientAuto": "Auto",
-  "tvAmbientOff": "Uit"
+  "tvAmbientOff": "Uit",
+  "tvUpdateLowStorage": "Weinig opslagruimte op het apparaat: {mb} MB vrij. Android kan de installatie weigeren. Maak ruimte vrij (Android-instellingen → Opslag) of druk nogmaals op OK om het toch te proberen.",
+  "@tvUpdateLowStorage": {
+    "placeholders": {
+      "mb": {
+        "type": "String"
+      }
+    }
+  }
 }
