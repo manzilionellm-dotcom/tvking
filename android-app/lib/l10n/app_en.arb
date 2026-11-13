@@ -1453,5 +1453,7 @@
         "type": "String"
       }
     }
-  }
+  },
+  "tvPictureFill": "Fill",
+  "tvPictureFit": "Whole picture"
 }

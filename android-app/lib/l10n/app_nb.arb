@@ -1333,5 +1333,7 @@
   "castFriendlyDnsUnstable": "Ustabilt internett eller DNS. Prøv igjen om noen sekunder.",
   "castFriendlyProviderLimit": "IPTV-leverandøren din avviser en ekstra tilkobling (grensen er nådd). Lukk en annen app som ser på, og prøv igjen.",
   "castProgressValidating": "Verifiserer strømmen…",
-  "castWindowsHelp": "Koble PC og TV til samme private nettverk (Wi-Fi eller Ethernet). Velg en DLNA-TV eller Roku. Mottakere med bare Google Cast støttes ikke på Windows. Bruk TV-fjernkontrollen til lydspor og spoling."
+  "castWindowsHelp": "Koble PC og TV til samme private nettverk (Wi-Fi eller Ethernet). Velg en DLNA-TV eller Roku. Mottakere med bare Google Cast støttes ikke på Windows. Bruk TV-fjernkontrollen til lydspor og spoling.",
+  "tvPictureFill": "Fyll",
+  "tvPictureFit": "Hele bildet"
 }
