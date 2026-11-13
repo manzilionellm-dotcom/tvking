@@ -2903,5 +2903,7 @@
         "type": "String"
       }
     }
-  }
+  },
+  "tvCatchupUnavailable": "Replay für diese Sendung nicht verfügbar. Zurück zum Live-Programm.",
+  "tvCatchupEnded": "Ende des Replays. Zurück zum Live-Programm."
 }

@@ -3216,5 +3216,7 @@
         "type": "String"
       }
     }
-  }
+  },
+  "tvCatchupUnavailable": "Dib-u-daawashadu barnaamijkan ma diyaarsana. Ku noqoshada tooska.",
+  "tvCatchupEnded": "Dib-u-daawashadu way dhammaatay. Ku noqoshada tooska."
 }

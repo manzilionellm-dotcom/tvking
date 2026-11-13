@@ -1473,5 +1473,7 @@
         "type": "String"
       }
     }
-  }
+  },
+  "tvCatchupUnavailable": "Replay er ikke tilgængelig for dette program. Tilbage til live.",
+  "tvCatchupEnded": "Replay er slut. Tilbage til live."
 }

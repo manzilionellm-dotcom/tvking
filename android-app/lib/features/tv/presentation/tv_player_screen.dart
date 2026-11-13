@@ -263,6 +263,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     if (forced != null && forced.isNotEmpty) {
       _playingUrl = forced;
       _catchup = true;
+      _catchupShown = false;
     } else {
       _playingUrl = LiveFallback.preferred(_current.streamUrl);
     }
@@ -466,6 +467,20 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     // croirait que la mauvaise chaîne est prête et lancerait une
     // reconnexion inutile.
     if (_zapHolding) return;
+    // Replay : l'archive n'a JAMAIS montré d'image et le lecteur est déjà
+    // en échec ou en train de réessayer → elle n'existe pas chez le
+    // fournisseur. Avant, on attendait la fin de tous les essais (environ
+    // 50 s d'écran figé, sans un mot) avant de revenir au direct.
+    if (_catchup) {
+      if (_controller.firstFrame) {
+        _catchupShown = true;
+      } else if (!_catchupShown &&
+          (_controller.hasError || _controller.nativeRetrying) &&
+          _leaveCatchupForLive('archive introuvable')) {
+        _flash(context.l10n.tvCatchupUnavailable);
+        return;
+      }
+    }
     if (_controller.reopenCount != _seenReopen) {
       _seenReopen = _controller.reopenCount;
       _lastProgress = DateTime.now();
@@ -538,6 +553,8 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
       if (_controller.isEnded &&
           !_controller.hasError &&
           _leaveCatchupForLive('émission terminée')) {
+        // On le dit : sinon le saut vers le direct ressemble à une panne.
+        _flash(context.l10n.tvCatchupEnded);
         return;
       }
       _recover();
@@ -734,7 +751,10 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     // ci-dessous sont celles du DIRECT. Les ouvrir en restant en mode replay
     // montrait le direct avec le bouton « Direct » et sans Pause, et retenait
     // ce format pour tout le serveur. On revient franchement au direct.
-    if (_leaveCatchupForLive('archive indisponible')) return;
+    if (_leaveCatchupForLive('archive indisponible')) {
+      _flash(context.l10n.tvCatchupUnavailable);
+      return;
+    }
     final String before = _playingUrl;
     final List<String> alts = _alts ??= LiveFallback.candidates(
       _current,
@@ -1262,6 +1282,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     if (_isRecording) _finalizeRecording(resumeDirect: false);
     try {
       _catchup = true;
+      _catchupShown = false;
       _playingUrl = url;
       _controller.setUrl(url);
       _closeBarForReplay();
@@ -1284,6 +1305,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     try {
       _livePausedAt = null;
       _catchup = true;
+      _catchupShown = false;
       _playingUrl = url;
       _controller.setUrl(url);
       _closeBarForReplay();
@@ -1297,6 +1319,10 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   /// que son archive ne s'ouvre pas. Rend `false` si on n'était pas en replay
   /// ou si le lecteur ne doit rien rouvrir maintenant (mêmes garde-fous que
   /// [_recover] : arrière-plan, Cast, zap en cours, écran « Réessayer »).
+  /// Vrai dès que le replay en cours a montré une image. Tant que c'est
+  /// faux, une erreur veut dire « archive introuvable », pas « coupure ».
+  bool _catchupShown = false;
+
   bool _leaveCatchupForLive(String why) {
     if (!_catchup) return false;
     if (!mounted || !_appActive || _casting || _fatal || _zapHolding) {
@@ -1371,7 +1397,11 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     } else {
       final DateTime? pausedAt = _livePausedAt;
       _livePausedAt = null;
-      final String? shift = pausedAt == null
+      // Pendant un enregistrement, on ne passe PAS par le timeshift : il
+      // ouvrirait une deuxième connexion (refusée par les comptes à une
+      // seule) ou couperait l'enregistrement. Lecture reprend le flux en
+      // cours ; l'enregistrement continue.
+      final String? shift = pausedAt == null || _isRecording
           ? null
           : TimeshiftPause.resumeUrl(
               channel: _current,
@@ -1382,6 +1412,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
             );
       if (shift != null) {
         _catchup = true;
+      _catchupShown = false;
         _playingUrl = shift;
         _controller.setUrl(shift);
         _flash(context.l10n.tvCatchupHelp);

@@ -1473,5 +1473,7 @@
         "type": "String"
       }
     }
-  }
+  },
+  "tvCatchupUnavailable": "Repris finns inte för det här programmet. Tillbaka till direktsändning.",
+  "tvCatchupEnded": "Reprisen är slut. Tillbaka till direktsändning."
 }

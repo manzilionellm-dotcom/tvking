@@ -1541,5 +1541,7 @@
         "type": "String"
       }
     }
-  }
+  },
+  "tvCatchupUnavailable": "Replay not available for this programme. Back to live.",
+  "tvCatchupEnded": "End of replay. Back to live."
 }

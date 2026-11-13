@@ -3251,5 +3251,7 @@
         "type": "String"
       }
     }
-  }
+  },
+  "tvCatchupUnavailable": "Replay indisponible pour cette émission. Retour au direct.",
+  "tvCatchupEnded": "Fin du replay. Retour au direct."
 }

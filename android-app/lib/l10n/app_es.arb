@@ -1473,5 +1473,7 @@
         "type": "String"
       }
     }
-  }
+  },
+  "tvCatchupUnavailable": "Replay no disponible para este programa. Vuelta al directo.",
+  "tvCatchupEnded": "Fin del replay. Vuelta al directo."
 }

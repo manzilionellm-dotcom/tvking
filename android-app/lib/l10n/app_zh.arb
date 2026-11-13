@@ -2903,5 +2903,7 @@
         "type": "String"
       }
     }
-  }
+  },
+  "tvCatchupUnavailable": "此节目无法回看。已返回直播。",
+  "tvCatchupEnded": "回看结束。已返回直播。"
 }

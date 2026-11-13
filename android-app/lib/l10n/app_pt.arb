@@ -2903,5 +2903,7 @@
         "type": "String"
       }
     }
-  }
+  },
+  "tvCatchupUnavailable": "Replay indisponível para este programa. Regresso ao direto.",
+  "tvCatchupEnded": "Fim do replay. Regresso ao direto."
 }

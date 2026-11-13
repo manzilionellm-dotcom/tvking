@@ -2903,5 +2903,7 @@
         "type": "String"
       }
     }
-  }
+  },
+  "tvCatchupUnavailable": "Bu program için tekrar izleme yok. Canlı yayına dönülüyor.",
+  "tvCatchupEnded": "Tekrar bitti. Canlı yayına dönülüyor."
 }
