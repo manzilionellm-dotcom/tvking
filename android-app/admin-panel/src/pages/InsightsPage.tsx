@@ -27,6 +27,9 @@ export function InsightsPage({ onLogout }: { onLogout: () => void }) {
   const [data, setData] = useState<Insights | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  // Vrai tant que le serveur ne connaît pas encore /insights : le panel
+  // peut être mis en ligne avant lui sans afficher une erreur brute.
+  const [serverTooOld, setServerTooOld] = useState(false);
   const abort = useRef<AbortController | null>(null);
 
   const load = useCallback(() => {
@@ -34,10 +37,11 @@ export function InsightsPage({ onLogout }: { onLogout: () => void }) {
     const ctl = new AbortController();
     abort.current = ctl;
     insightsApi.get(ctl.signal)
-      .then((raw) => { setData(raw); setErr(null); })
+      .then((raw) => { setData(raw); setErr(null); setServerTooOld(false); })
       .catch((e: unknown) => {
         if (isAbortError(e)) return;
         if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
+        if (e instanceof ApiError && e.status === 404) { setServerTooOld(true); setErr(null); return; }
         setErr(e instanceof ApiError ? e.message : 'Erreur réseau.');
       })
       .finally(() => { if (abort.current === ctl) setLoading(false); });
@@ -60,6 +64,12 @@ export function InsightsPage({ onLogout }: { onLogout: () => void }) {
       onLogout={onLogout}
     >
       {err && <Alert>{err}</Alert>}
+      {serverTooOld && (
+        <Alert>
+          Cette page sera disponible dès que le serveur sera mis à jour. Le reste du panel
+          fonctionne normalement.
+        </Alert>
+      )}
       {missing.length > 0 && (
         <Alert>Données indisponibles pour {missing.join(', ')}. Le reste de la page est à jour.</Alert>
       )}
