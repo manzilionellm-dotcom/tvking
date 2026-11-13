@@ -32,14 +32,18 @@ import '../../../core/i18n/l10n_extension.dart';
 import '../../remote/domain/remote_typing_hub.dart';
 import '../../cinema/data/catalog_cache_policy.dart';
 import '../../cinema/data/cinema_repository.dart';
+import '../../cinema/data/cinema_taste.dart';
 import '../../cinema/data/watch_progress.dart';
 import '../../cinema/domain/cinema_language.dart';
 import '../../cinema/domain/cinema_models.dart';
+import '../../cinema/domain/cinema_shelf_order.dart';
+import '../../profiles/data/active_profile.dart';
 import '../../security/data/parental_controls.dart';
 import '../../vod/data/download_repository.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
+import '../core/tv_app_tokens.dart';
 import 'tv_cinema_common.dart';
 import 'tv_cinema_detail_screen.dart';
 import 'tv_components.dart';
@@ -69,6 +73,7 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
   final CinemaRepository _repo = CinemaRepository.instance;
 
   bool _loadingCats = true;
+  bool _refreshingCatalog = false;
 
   /// Pas de compte Xtream : le message « ajoute ton abonnement ».
   bool _accountsMissing = false;
@@ -97,8 +102,11 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
   String _q = '';
   List<CinemaTitle> _results = const <CinemaTitle>[];
   Timer? _searchDebounce;
-  late final Widget _keyboard =
-      TvKeyboard(onType: _type, onBackspace: _backspace, onClear: _clearQuery);
+  late final Widget _keyboard = TvKeyboard(
+    onType: _type,
+    onBackspace: _backspace,
+    onClear: _clearQuery,
+  );
   late final bool Function(String text) _remoteTyping = _onRemoteQuery;
 
   /// Élément focalisé → bandeau du haut (sans reconstruire la grille).
@@ -106,6 +114,21 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
 
   StreamSubscription<List<Download>>? _dlSub;
   List<Download> _downloads = const <Download>[];
+
+  /// Langue de l'application (celle du client) : ses catégories passent
+  /// devant. Lue une fois le contexte prêt.
+  String? _viewerLang;
+
+  /// Rayons déjà fréquentés par CE profil, lus à l'ouverture de l'écran.
+  /// On ne relit pas pendant la visite : la liste ne doit pas bouger
+  /// sous la télécommande.
+  Map<String, int> _taste = const <String, int>{};
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _viewerLang = Localizations.localeOf(context).languageCode;
+  }
 
   bool get _movies => widget.kind == CinemaKind.movie;
   String get _prefKey => 'cinema.lang.${widget.kind.name}';
@@ -175,7 +198,12 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
       return;
     }
     final List<CinemaCategory> cats = await _repo.categories(widget.kind);
+    final Map<String, int> taste = await CinemaTaste.read(
+      widget.kind.name,
+      ActiveProfile.instance.id,
+    );
     if (!mounted) return;
+    _taste = taste;
 
     // Langues présentes, les plus fréquentes d'abord.
     final Map<String, int> freq = <String, int>{};
@@ -192,8 +220,9 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
     // se mettait TOUT SEUL sur la langue de la TV → le client croyait voir
     // tout le catalogue alors qu'il n'en voyait qu'une partie. Le filtre ne
     // s'applique plus que si le client l'a CHOISI lui-même (ligne Langue).
-    final String? saved =
-        (await SharedPreferences.getInstance()).getString(_prefKey);
+    final String? saved = (await SharedPreferences.getInstance()).getString(
+      _prefKey,
+    );
     String? lang;
     if (saved != null && saved != 'all' && freq.containsKey(saved)) {
       lang = saved;
@@ -233,7 +262,14 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
     final bool kids = _kids;
     final List<CinemaCategory> normal = <CinemaCategory>[];
     final List<CinemaCategory> adult = <CinemaCategory>[];
-    for (final CinemaCategory c in _cats) {
+    // Rangement : ses rayons, puis sa langue, puis le reste. Rien n'est
+    // retiré (voir cinema_shelf_order.dart).
+    final List<CinemaCategory> ordered = orderCinemaShelves(
+      _cats,
+      viewerLanguage: _viewerLang,
+      taste: _taste,
+    );
+    for (final CinemaCategory c in ordered) {
       if (kids && !c.isKids) continue;
       // Filtre de langue : on garde la langue choisie ET les catégories
       // SANS langue détectée (« NETFLIX », « DISNEY+ », « 4K »…) — elles ne
@@ -247,9 +283,9 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
   }
 
   Set<String> get _allowedKeys => <String>{
-        for (final CinemaCategory c in _visibleCats)
-          if (!c.isAdult || _adultUnlocked) c.key,
-      };
+    for (final CinemaCategory c in _visibleCats)
+      if (!c.isAdult || _adultUnlocked) c.key,
+  };
 
   List<WatchEntry> get _continue =>
       WatchProgressRepository.instance.continueWatching(episodes: !_movies);
@@ -263,8 +299,10 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
     final int i = order.indexOf(_lang);
     final String? next = order[(i + 1) % order.length];
     setState(() => _lang = next);
-    await (await SharedPreferences.getInstance())
-        .setString(_prefKey, next ?? 'all');
+    await (await SharedPreferences.getInstance()).setString(
+      _prefKey,
+      next ?? 'all',
+    );
     if (_sel.view == _View.category && !_visibleCats.contains(_sel.cat)) {
       final List<CinemaCategory> vis = _visibleCats;
       if (vis.isNotEmpty) _select(_Sel(_View.category, vis.first));
@@ -310,8 +348,10 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
   /// [keepVisible] : un rafraîchissement est arrivé alors que la grille
   /// est déjà là. On ne la remplace pas par un spinner, et on ne la vide
   /// pas si le serveur échoue.
-  Future<void> _loadCategory(CinemaCategory cat,
-      {bool keepVisible = false}) async {
+  Future<void> _loadCategory(
+    CinemaCategory cat, {
+    bool keepVisible = false,
+  }) async {
     final int gen = ++_loadGen;
     if (!keepVisible) {
       setState(() {
@@ -339,6 +379,23 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
     await _init();
   }
 
+  Future<void> _refreshCatalogNow() async {
+    if (_refreshingCatalog) return;
+    setState(() => _refreshingCatalog = true);
+    try {
+      final bool done = await _repo.refreshNow(widget.kind);
+      if (!mounted) return;
+      _onIndex();
+      await _select(_sel, explicit: true);
+      if (!done && mounted)
+        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+          SnackBar(content: Text(context.l10n.libraryRefreshIncomplete)),
+        );
+    } finally {
+      if (mounted) setState(() => _refreshingCatalog = false);
+    }
+  }
+
   Future<void> _retryCategory() async {
     final CinemaCategory? cat = _sel.cat;
     if (cat == null) return;
@@ -347,8 +404,11 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
       _loadingTitles = true;
       _titlesFailed = false;
     });
-    final CinemaTitleLoad load =
-        await _repo.loadTitles(widget.kind, cat, forceNetwork: true);
+    final CinemaTitleLoad load = await _repo.loadTitles(
+      widget.kind,
+      cat,
+      forceNetwork: true,
+    );
     if (!mounted || gen != _loadGen) return;
     setState(() {
       _titles = load.titles;
@@ -423,13 +483,23 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
   // ---------------------------------------------------------
 
   void _openTitle(CinemaTitle t) {
-    Navigator.of(context).push(MaterialPageRoute<void>(
-      builder: (_) => TvShell(
-        applySafeArea: false,
-        child:
-            _movies ? TvMovieDetailScreen(title: t) : TvSeriesScreen(title: t),
+    // On retient le rayon : à la prochaine visite il sera plus haut.
+    final CinemaCategory? cat = _sel.cat;
+    if (_sel.view == _View.category && cat != null && !cat.isAdult) {
+      unawaited(
+        CinemaTaste.note(widget.kind.name, ActiveProfile.instance.id, cat.key),
+      );
+    }
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => TvShell(
+          applySafeArea: false,
+          child: _movies
+              ? TvMovieDetailScreen(title: t)
+              : TvSeriesScreen(title: t),
+        ),
       ),
-    ));
+    );
   }
 
   Future<void> _playEntry(WatchEntry e) async {
@@ -446,8 +516,12 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
       d = null;
     }
     if (!mounted) return;
-    await openVod(context, VodPlayItem.entry(e),
-        series: d, seriesTitle: series);
+    await openVod(
+      context,
+      VodPlayItem.entry(e),
+      series: d,
+      seriesTitle: series,
+    );
   }
 
   Future<void> _onDownload(Download d) async {
@@ -462,25 +536,36 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
             url: d.sourceUrl,
             posterUrl: d.posterUrl,
           );
-    await showCinemaSheet(context, title: d.name, actions: <CinemaSheetAction>[
-      if (d.isDone)
-        CinemaSheetAction(Icons.play_arrow_rounded, context.l10n.tvCinemaPlay,
-            () => openVod(context, item)),
-      if (d.status == DownloadStatus.downloading)
-        CinemaSheetAction(
+    await showCinemaSheet(
+      context,
+      title: d.name,
+      actions: <CinemaSheetAction>[
+        if (d.isDone)
+          CinemaSheetAction(
+            Icons.play_arrow_rounded,
+            context.l10n.tvCinemaPlay,
+            () => openVod(context, item),
+          ),
+        if (d.status == DownloadStatus.downloading)
+          CinemaSheetAction(
             Icons.pause_rounded,
             context.l10n.tvCinemaPauseDownload,
-            () => DownloadsRepository.instance.pause(d.id)),
-      if (d.status == DownloadStatus.paused || d.status == DownloadStatus.error)
-        CinemaSheetAction(
+            () => DownloadsRepository.instance.pause(d.id),
+          ),
+        if (d.status == DownloadStatus.paused ||
+            d.status == DownloadStatus.error)
+          CinemaSheetAction(
             Icons.download_rounded,
             context.l10n.tvCinemaResumeDownload,
-            () => DownloadsRepository.instance.resume(d.id)),
-      CinemaSheetAction(
+            () => DownloadsRepository.instance.resume(d.id),
+          ),
+        CinemaSheetAction(
           Icons.delete_outline_rounded,
           context.l10n.tvCinemaDeleteDownload,
-          () => DownloadsRepository.instance.delete(d.id)),
-    ]);
+          () => DownloadsRepository.instance.delete(d.id),
+        ),
+      ],
+    );
   }
 
   // ---------------------------------------------------------
@@ -512,13 +597,23 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
     final List<CinemaCategory> vis = _visibleCats;
     final List<WatchEntry> cont = _continue;
     final List<Download> dls = _myDownloads;
-    final List<CinemaTitle> recent =
-        _repo.recent(widget.kind, allowedCats: _allowedKeys);
+    final List<CinemaTitle> recent = _repo.recent(
+      widget.kind,
+      allowedCats: _allowedKeys,
+    );
     final String langLabel = _lang == null
         ? context.l10n.tvCinemaAllLanguages
         : (CinemaLanguage.labelFor(_lang) ?? _lang!);
 
     final List<Widget> fixed = <Widget>[
+      CinemaRailRow(
+        icon: Icons.sync_rounded,
+        label: _refreshingCatalog
+            ? context.l10n.libraryRefreshRunning
+            : context.l10n.tvRefresh,
+        selected: _refreshingCatalog,
+        onSelect: () => unawaited(_refreshCatalogNow()),
+      ),
       if (_langOptions.isNotEmpty)
         CinemaRailRow(
           icon: Icons.language_rounded,
@@ -564,9 +659,9 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
 
     return Container(
       decoration: BoxDecoration(
-        color: TvTokens.card.withValues(alpha: 0.55),
+        color: TvAppTokens.of(context).card.withValues(alpha: 0.55),
         borderRadius: BorderRadius.circular(TvTokens.rCard),
-        border: Border.all(color: TvTokens.lineSoft),
+        border: Border.all(color: TvAppTokens.of(context).lineSoft),
       ),
       padding: const EdgeInsets.all(8),
       child: Column(
@@ -575,16 +670,17 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
           Padding(
             padding: const EdgeInsets.fromLTRB(6, 2, 6, 8),
             child: Text(
-              (_movies ? context.l10n.tvNavFilms : context.l10n.tvNavSeries)
-                  .toUpperCase(),
-              style: TvTokens.ui(12,
-                  weight: FontWeight.w700,
-                  color: TvTokens.mutedDim,
-                  spacing: 2),
+              _movies ? context.l10n.tvNavFilms : context.l10n.tvNavSeries,
+              style: TvAppTokens.of(context).ui(
+                TvDimens.caption,
+                weight: FontWeight.w500,
+                color: TvAppTokens.of(context).mutedDim,
+                spacing: 0.5,
+              ),
             ),
           ),
           ...fixed,
-          const Divider(color: TvTokens.lineSoft, height: 12),
+          Divider(color: TvAppTokens.of(context).lineSoft, height: 12),
           Expanded(
             child: ListView.builder(
               padding: EdgeInsets.zero,
@@ -613,7 +709,9 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
                 label,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style: TvTokens.ui(TvDimens.caption, color: TvTokens.mutedDim),
+                style: TvAppTokens.of(
+                  context,
+                ).ui(TvDimens.caption, color: TvAppTokens.of(context).mutedDim),
               ),
             ),
         ],
@@ -666,8 +764,10 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
           ),
         );
       case _View.recent:
-        return _withHero(context,
-            _titlesGrid(_repo.recent(widget.kind, allowedCats: _allowedKeys)));
+        return _withHero(
+          context,
+          _titlesGrid(_repo.recent(widget.kind, allowedCats: _allowedKeys)),
+        );
       case _View.category:
         if (_loadingTitles) return _withHero(context, const CinemaLoading());
         if (_titlesFailed && _titles.isEmpty) {
@@ -677,9 +777,13 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
           return _withHero(
             context,
             Center(
-              child: Text(context.l10n.tvCinemaEmptyCategory,
-                  style: const TextStyle(
-                      fontSize: TvDimens.body, color: TvTokens.mutedDim)),
+              child: Text(
+                context.l10n.tvCinemaEmptyCategory,
+                style: TextStyle(
+                  fontSize: TvDimens.body,
+                  color: TvAppTokens.of(context).mutedDim,
+                ),
+              ),
             ),
           );
         }
@@ -704,8 +808,10 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
           Text(
             context.l10n.tvCinemaCategoryFailed,
             textAlign: TextAlign.center,
-            style: const TextStyle(
-                fontSize: TvDimens.body, color: TvTokens.mutedDim),
+            style: TextStyle(
+              fontSize: TvDimens.body,
+              color: TvAppTokens.of(context).mutedDim,
+            ),
           ),
           const SizedBox(height: 18),
           _retryButton(context, () => unawaited(_retryCategory())),
@@ -722,13 +828,14 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 12),
         decoration: BoxDecoration(
-          color: TvTokens.card,
+          color: TvAppTokens.of(context).card,
           borderRadius: BorderRadius.circular(TvTokens.rButton),
-          border: Border.all(color: TvTokens.line),
+          border: Border.all(color: TvAppTokens.of(context).line),
         ),
         child: Text(
           context.l10n.tvCinemaRetry,
-          style: TvTokens.ui(TvDimens.body, weight: FontWeight.w600),
+          style: TvAppTokens.of(context)
+              .ui(TvDimens.body, weight: FontWeight.w600),
         ),
       ),
     );
@@ -756,54 +863,60 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
   }
 
   Widget _titlesGrid(List<CinemaTitle> list) => _grid(
-        count: list.length,
-        builder: (int i) {
-          final CinemaTitle t = list[i];
-          final WatchEntry? w = _movies
-              ? WatchProgressRepository.instance.get(t.id)
-              : WatchProgressRepository.instance.latestForSeries(t.id);
-          return CinemaPoster(
-            title: t.name,
-            caption: t.year,
-            posterUrl: t.posterUrl,
-            progress:
-                (w != null && w.isResumable && !w.upNext) ? w.fraction : null,
-            downloaded: _movies && _isDownloaded(t.id),
-            onFocused: () => _focused.value = t,
-            onSelect: () => _openTitle(t),
-          );
-        },
+    count: list.length,
+    builder: (int i) {
+      final CinemaTitle t = list[i];
+      final WatchEntry? w = _movies
+          ? WatchProgressRepository.instance.get(t.id)
+          : WatchProgressRepository.instance.latestForSeries(t.id);
+      return CinemaPoster(
+        title: t.name,
+        caption: t.year,
+        posterUrl: t.posterUrl,
+        progress: (w != null && w.isResumable && !w.upNext) ? w.fraction : null,
+        downloaded: _movies && _isDownloaded(t.id),
+        onFocused: () => _focused.value = t,
+        onSelect: () => _openTitle(t),
       );
+    },
+  );
 
   /// Grille d'affiches 5 colonnes (hauteur calculée → liste paresseuse).
-  Widget _grid(
-      {required int count,
-      required Widget Function(int) builder,
-      int columns = 5}) {
+  Widget _grid({
+    required int count,
+    required Widget Function(int) builder,
+    int columns = 5,
+  }) {
     if (count == 0) {
       return Center(
-        child: Text(context.l10n.tvCinemaEmptyCategory,
-            style: const TextStyle(
-                fontSize: TvDimens.body, color: TvTokens.mutedDim)),
+        child: Text(
+          context.l10n.tvCinemaEmptyCategory,
+          style: TextStyle(
+            fontSize: TvDimens.body,
+            color: TvAppTokens.of(context).mutedDim,
+          ),
+        ),
       );
     }
-    return LayoutBuilder(builder: (BuildContext context, BoxConstraints c) {
-      const double gapX = 16;
-      final double w = (c.maxWidth - gapX * (columns - 1)) / columns;
-      final double h = w * 1.5 + 42;
-      return GridView.builder(
-        padding: const EdgeInsets.only(top: 6, bottom: 24),
-        addAutomaticKeepAlives: false,
-        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: columns,
-          crossAxisSpacing: gapX,
-          mainAxisSpacing: 18,
-          mainAxisExtent: h,
-        ),
-        itemCount: count,
-        itemBuilder: (BuildContext context, int i) => builder(i),
-      );
-    });
+    return LayoutBuilder(
+      builder: (BuildContext context, BoxConstraints c) {
+        const double gapX = 16;
+        final double w = (c.maxWidth - gapX * (columns - 1)) / columns;
+        final double h = w * 1.5 + 42;
+        return GridView.builder(
+          padding: const EdgeInsets.only(top: 6, bottom: 24),
+          addAutomaticKeepAlives: false,
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: columns,
+            crossAxisSpacing: gapX,
+            mainAxisSpacing: 18,
+            mainAxisExtent: h,
+          ),
+          itemCount: count,
+          itemBuilder: (BuildContext context, int i) => builder(i),
+        );
+      },
+    );
   }
 
   Widget _withHero(BuildContext context, Widget body) {
@@ -836,10 +949,12 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 18,
+                  vertical: 14,
+                ),
                 decoration: BoxDecoration(
-                  color: TvTokens.card,
+                  color: TvAppTokens.of(context).card,
                   borderRadius: BorderRadius.circular(TvDimens.cardRadius),
                 ),
                 child: Text(
@@ -849,27 +964,34 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
                   style: TextStyle(
                     fontSize: TvDimens.title,
                     fontWeight: FontWeight.w700,
-                    color: _q.isEmpty ? TvTokens.mutedDim : TvTokens.text,
+                    color: _q.isEmpty
+                        ? TvAppTokens.of(context).mutedDim
+                        : TvAppTokens.of(context).text,
                   ),
                 ),
               ),
               if (indexing)
                 Padding(
                   padding: const EdgeInsets.only(top: 8),
-                  child: Text(context.l10n.tvCinemaIndexing,
-                      style: const TextStyle(
-                          fontSize: TvDimens.caption,
-                          color: TvTokens.mutedDim)),
+                  child: Text(
+                    context.l10n.tvCinemaIndexing,
+                    style: TextStyle(
+                      fontSize: TvDimens.caption,
+                      color: TvAppTokens.of(context).mutedDim,
+                    ),
+                  ),
                 ),
               const SizedBox(height: 12),
               Expanded(
                 child: _results.isEmpty
                     ? Center(
                         child: Text(
-                            _q.trim().isEmpty ? '' : context.l10n.tvNoResult,
-                            style: const TextStyle(
-                                fontSize: TvDimens.body,
-                                color: TvTokens.mutedDim)),
+                          _q.trim().isEmpty ? '' : context.l10n.tvNoResult,
+                          style: TextStyle(
+                            fontSize: TvDimens.body,
+                            color: TvAppTokens.of(context).mutedDim,
+                          ),
+                        ),
                       )
                     : _grid(
                         count: _results.length,
@@ -975,8 +1097,11 @@ class _HeroState extends State<_Hero> {
       title = it.title;
       if (it.subtitle != null) meta.add(it.subtitle!);
       if (it.durMs > 0 && !it.upNext) {
-        meta.add(context.l10n
-            .tvCinemaResumeAt(formatClock(Duration(milliseconds: it.posMs))));
+        meta.add(
+          context.l10n.tvCinemaResumeAt(
+            formatClock(Duration(milliseconds: it.posMs)),
+          ),
+        );
       }
     } else if (it is Download) {
       title = it.name;
@@ -985,24 +1110,35 @@ class _HeroState extends State<_Hero> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        Text(title,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TvTokens.display(32, color: TvTokens.text)),
+        Text(
+          title,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TvAppTokens.of(context)
+              .display(32, color: TvAppTokens.of(context).text),
+        ),
         if (meta.isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(top: 4),
-            child: Text(meta.join('  ·  '),
-                style: TvTokens.ui(TvDimens.label,
-                    weight: FontWeight.w600, color: TvTokens.accentBright)),
+            child: Text(
+              meta.join('  ·  '),
+              style: TvAppTokens.of(context).ui(
+                TvDimens.label,
+                weight: FontWeight.w600,
+                color: TvAppTokens.of(context).accentBright,
+              ),
+            ),
           ),
         if (plot != null)
           Padding(
             padding: const EdgeInsets.only(top: 8),
-            child: Text(plot,
-                maxLines: 3,
-                overflow: TextOverflow.ellipsis,
-                style: TvTokens.ui(TvDimens.label, color: TvTokens.muted)),
+            child: Text(
+              plot,
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+              style: TvAppTokens.of(context)
+                  .ui(TvDimens.label, color: TvAppTokens.of(context).muted),
+            ),
           ),
       ],
     );

@@ -22,6 +22,10 @@ on:
       - '.github/workflows/publish-7motion-test.yml'
   workflow_dispatch:
     inputs:
+      confirme:
+        description: PUBLIER_APP après dégel autorisé
+        required: true
+        type: string
       run_id:
         description: 'ID du run build-android dont on publie l''APK'
         required: true
@@ -36,7 +40,7 @@ on:
         type: string
 
 permissions:
-  contents: write   # créer 7motion-test, effacer / téléverser ses fichiers
+  contents: read
   actions: read     # télécharger l'artefact du run
 
 concurrency:
@@ -52,13 +56,24 @@ env:
 
 jobs:
   publish:
+    if: github.event_name == 'workflow_dispatch' && github.actor == github.repository_owner && github.triggering_actor == github.repository_owner && github.repository == 'manzilionellm-dotcom/tvking'
+    environment: zuno-app-production
+    permissions:
+      contents: write
     name: APK téléphone existant → 7motion-test
-    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - name: Lire les protections
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Refuser une publication clients non revue
+        env:
+          APP_OPERATION: client
+        run: node .github/app-release-guard.mjs
       - name: Télécharger l'APK du run
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: tvking-release-apk-*
           run-id: ${{ inputs.run_id }}
@@ -155,3 +170,4 @@ jobs:
             --jq '[.updated_at] + [.assets[] | "\(.id) \(.name) \(.size) \(.digest)"] | .[]' > client_apres.txt
           echo "== phone-latest APRÈS"; cat client_apres.txt
           diff client_avant.txt client_apres.txt && echo "✓ phone-latest n'a pas bougé"
+

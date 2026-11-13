@@ -142,6 +142,7 @@ class AccentController extends ChangeNotifier {
   /// Thème courant. Défaut = ember (1er du catalogue) tant que rien
   /// n'est chargé/choisi → comportement identique à avant.
   AccentTheme _current = kAccentThemes.first;
+  AccentTheme _selected = kAccentThemes.first;
   AccentTheme get current => _current;
 
   /// Charge le choix sauvegardé au démarrage. Silencieux si rien.
@@ -154,7 +155,8 @@ class AccentController extends ChangeNotifier {
         (AccentTheme t) => t.id == id,
         orElse: () => kAccentThemes.first,
       );
-      if (match.id != _current.id) {
+      _selected = match;
+      if (_current.id != 'remote' && match.id != _current.id) {
         _current = match;
         notifyListeners();
       }
@@ -170,10 +172,12 @@ class AccentController extends ChangeNotifier {
   /// de vérité, relue à chaque démarrage. Sans effet si identique.
   void applyCustom(Color accent) {
     final HSLColor hsl = HSLColor.fromColor(accent);
-    final Color bright =
-        hsl.withLightness((hsl.lightness + 0.15).clamp(0.0, 1.0)).toColor();
-    final Color muted =
-        hsl.withLightness((hsl.lightness - 0.22).clamp(0.0, 1.0)).toColor();
+    final Color bright = hsl
+        .withLightness((hsl.lightness + 0.15).clamp(0.0, 1.0))
+        .toColor();
+    final Color muted = hsl
+        .withLightness((hsl.lightness - 0.22).clamp(0.0, 1.0))
+        .toColor();
     if (_current.id == 'remote' && _current.accent == accent) return;
     _current = AccentTheme(
       id: 'remote',
@@ -185,9 +189,18 @@ class AccentController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Le bouton Réinitialiser du panel retire sa couleur sans effacer le
+  /// choix personnel sauvegardé avant elle.
+  void clearCustom() {
+    if (_current.id != 'remote') return;
+    _current = _selected;
+    notifyListeners();
+  }
+
   /// Applique un thème (instantané) et le persiste.
   Future<void> select(AccentTheme theme) async {
     if (theme.id == _current.id) return;
+    _selected = theme;
     _current = theme;
     notifyListeners(); // recolore toute l'app immédiatement
     try {

@@ -11,9 +11,9 @@
 ;      installées » dans HKLM, visible par Windows et le Store) ;
 ;    • AppId FIXE : une nouvelle version REMPLACE l'ancienne au lieu
 ;      d'ajouter une seconde entrée (mise à jour propre) ;
-;    • pas de signature Authenticode tant qu'aucun certificat n'existe
-;      (SmartScreen affichera « éditeur inconnu » — dire « Exécuter quand
-;      même ») ; l'emplacement SignTool est prévu, commenté.
+;    • signature Authenticode de l'app, de l'installeur et du désinstalleur
+;      si un vrai certificat est configuré. Sans certificat : revue non signée,
+;      publication client refusée par le workflow.
 ;  La VERSION est injectée par le build, jamais codée en dur.
 ; =========================================================
 
@@ -27,7 +27,7 @@
 #define AppName        "Zuno"
 #define AppPublisher   "Zuno"
 #define AppExeName     "tv_king.exe"
-#define AppUrl         "https://app.7themotion.com"
+#define AppUrl         "https://zuno.7themotion.com"
 
 [Setup]
 ; Identifiant PROPRE à Zuno (≠ ancien 7 MOTION) : ne jamais le changer.
@@ -63,8 +63,12 @@ VersionInfoCompany={#AppPublisher}
 VersionInfoProductName={#AppName}
 VersionInfoDescription={#AppName} Setup
 VersionInfoCopyright=Copyright (C) 2026 {#AppPublisher}. All rights reserved.
-; SignTool=signtool sign /tr http://timestamp.digicert.com /td sha256 /fd sha256 $f
-; SignedUninstaller=yes
+#ifdef UseAuthenticode
+SignTool=zuno
+SignedUninstaller=yes
+#else
+SignedUninstaller=no
+#endif
 
 [Languages]
 Name: "french";  MessagesFile: "compiler:Languages\French.isl"
@@ -85,4 +89,12 @@ Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; Tasks: deskto
 [Run]
 Filename: "{app}\{#AppExeName}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent
 ; Mise à jour lancée par l'app (/SILENT) : Zuno revient tout seul après l'installation.
-Filename: "{app}\{#AppExeName}"; Flags: nowait runasoriginaluser; Check: WizardSilent
+Filename: "{app}\{#AppExeName}"; Flags: nowait runasoriginaluser; Check: ShouldLaunchAfterUpdate
+
+[Code]
+function ShouldLaunchAfterUpdate: Boolean;
+begin
+  { Le test d'installation CI utilise /LAUNCHAFTERUPDATE=0 pour ne pas joindre
+    le panel. Par défaut une vraie mise à jour relance Zuno comme auparavant. }
+  Result := WizardSilent and (ExpandConstant('{param:LAUNCHAFTERUPDATE|1}') <> '0');
+end;

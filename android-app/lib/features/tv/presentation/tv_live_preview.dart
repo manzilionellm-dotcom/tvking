@@ -33,6 +33,9 @@ import 'package:native_video_player/playback_lease.dart';
 import '../../player/data/image_prefs.dart';
 import '../../channels/domain/channel.dart';
 import '../core/tv_tokens.dart';
+import '../core/tv_app_tokens.dart';
+import '../core/tv_dimens.dart';
+import 'tv_playback_quality.dart';
 
 class TvLivePreview extends StatefulWidget {
   const TvLivePreview({
@@ -122,12 +125,17 @@ class _TvLivePreviewState extends State<TvLivePreview> {
     final String url = widget.channel.streamUrl;
     if (url.isEmpty) return;
     _stop();
-    final NativeVideoController created = NativeVideoController(initialUrl: url);
+    final NativeVideoController created = NativeVideoController(
+      initialUrl: url,
+    );
     setState(() => _ctrl = created);
-    unawaited(ImagePrefs.load().then((_) {
-      created.setImageEngine(ImagePrefs.engine.wire);
-      created.setFrameRateMatch(ImagePrefs.frameRateMatch);
-    }));
+    unawaited(
+      ImagePrefs.load().then((_) {
+        created.setImageEngine(ImagePrefs.engine.wire);
+        created.setFrameRateMatch(ImagePrefs.frameRateMatch);
+        created.setLightContrast(ImagePrefs.lightContrast);
+      }),
+    );
   }
 
   @override
@@ -142,29 +150,48 @@ class _TvLivePreviewState extends State<TvLivePreview> {
   @override
   Widget build(BuildContext context) {
     final NativeVideoController? c = _ctrl;
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(TvTokens.rCard),
-      child: ColoredBox(
-        color: TvTokens.bg,
-        child: c == null
-            // Défilement / attente : AUCUNE vue native, juste le logo.
-            ? _LogoFallback(channel: widget.channel)
-            : Stack(
-                fit: StackFit.expand,
-                children: <Widget>[
-                  NativeVideoView(controller: c),
-                  // Logo par-dessus tant qu'aucune image n'est rendue (ou en erreur).
-                  ListenableBuilder(
-                    listenable: c,
-                    builder: (BuildContext context, Widget? _) {
-                      final bool showLogo = !c.firstFrame || c.hasError;
-                      return showLogo
-                          ? _LogoFallback(channel: widget.channel)
-                          : const SizedBox.shrink();
-                    },
-                  ),
-                ],
-              ),
+    // Rien ne se pilote dans l'aperçu. Sans ça, la vue native (le
+    // PlatformViewLink porte un Focus) devenait une cible du D-pad : focus
+    // invisible, et Haut/Bas n'en sortaient plus.
+    return ExcludeFocus(
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(TvTokens.rCard),
+        child: ColoredBox(
+          color: TvAppTokens.playbackOf(context).bg,
+          child: c == null
+              // Défilement / attente : AUCUNE vue native, juste le logo.
+              ? _LogoFallback(channel: widget.channel)
+              : Stack(
+                  fit: StackFit.expand,
+                  children: <Widget>[
+                    NativeVideoView(controller: c),
+                    // Logo par-dessus tant qu'aucune image n'est rendue (ou en erreur).
+                    ListenableBuilder(
+                      listenable: c,
+                      builder: (BuildContext context, Widget? _) {
+                        final bool showLogo = !c.firstFrame || c.hasError;
+                        return showLogo
+                            ? _LogoFallback(channel: widget.channel)
+                            : Align(
+                                alignment: AlignmentDirectional.bottomStart,
+                                child: Container(
+                                  padding: const EdgeInsets.all(
+                                    TvDimens.rowGap,
+                                  ),
+                                  color: TvAppTokens.playbackOf(
+                                    context,
+                                  ).bg.withValues(alpha: 0.85),
+                                  child: TvPlaybackQuality(
+                                    quality: c.videoQuality,
+                                    compact: true,
+                                  ),
+                                ),
+                              );
+                      },
+                    ),
+                  ],
+                ),
+        ),
       ),
     );
   }
@@ -179,10 +206,14 @@ class _LogoFallback extends StatelessWidget {
   Widget build(BuildContext context) {
     final String? url = channel.logoUrl;
     return ColoredBox(
-      color: TvTokens.tile,
+      color: TvAppTokens.playbackOf(context).tile,
       child: Center(
         child: (url == null || url.isEmpty)
-            ? const Icon(Icons.live_tv_rounded, size: 56, color: TvTokens.mutedDim)
+            ? Icon(
+                Icons.live_tv_rounded,
+                size: 56,
+                color: TvAppTokens.playbackOf(context).mutedDim,
+              )
             : Padding(
                 padding: const EdgeInsets.all(28),
                 child: Image.network(
@@ -191,8 +222,11 @@ class _LogoFallback extends StatelessWidget {
                   // Décodage borné (l'aperçu fait ~470×265 px à l'écran) :
                   // un logo 2000×2000 ne coûte plus 16 Mo de RAM.
                   cacheWidth: 480,
-                  errorBuilder: (_, __, ___) => const Icon(Icons.live_tv_rounded,
-                      size: 56, color: TvTokens.mutedDim),
+                  errorBuilder: (_, __, ___) => Icon(
+                    Icons.live_tv_rounded,
+                    size: 56,
+                    color: TvAppTokens.playbackOf(context).mutedDim,
+                  ),
                 ),
               ),
       ),

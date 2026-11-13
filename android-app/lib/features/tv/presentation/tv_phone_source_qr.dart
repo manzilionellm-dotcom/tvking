@@ -21,17 +21,13 @@ import '../../../core/blackbox/black_box.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_tokens.dart';
+import '../core/tv_app_tokens.dart';
 import '../data/home_source_pair.dart';
 
 /// Dessin du QR et des phrases. [url] null : la phrase reste, le
 /// carré attend que la MAC soit connue.
 class TvOwnSourceQr extends StatelessWidget {
-  const TvOwnSourceQr({
-    super.key,
-    this.url,
-    this.code,
-    this.qrSize = 168,
-  });
+  const TvOwnSourceQr({super.key, this.url, this.code, this.qrSize = 168});
 
   final String? url;
   final String? code;
@@ -48,10 +44,10 @@ class TvOwnSourceQr extends StatelessWidget {
           Text(
             context.l10n.tvNoChannelsSold,
             textAlign: TextAlign.center,
-            style: TvTokens.ui(
+            style: TvAppTokens.of(context).ui(
               TvDimens.label,
               weight: FontWeight.w700,
-              color: TvTokens.text,
+              color: TvAppTokens.of(context).text,
             ),
           ),
           if (showQr) ...<Widget>[
@@ -64,20 +60,23 @@ class TvOwnSourceQr extends StatelessWidget {
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(TvTokens.rCard),
-                border: Border.all(color: TvTokens.accent, width: 2),
+                border: Border.all(
+                  color: TvAppTokens.of(context).accent,
+                  width: 2,
+                ),
               ),
               child: QrImageView(
                 data: url!,
                 version: QrVersions.auto,
                 size: qrSize,
                 backgroundColor: Colors.white,
-                eyeStyle: const QrEyeStyle(
+                eyeStyle: QrEyeStyle(
                   eyeShape: QrEyeShape.square,
-                  color: TvTokens.onAccent,
+                  color: TvAppTokens.of(context).onAccent,
                 ),
-                dataModuleStyle: const QrDataModuleStyle(
+                dataModuleStyle: QrDataModuleStyle(
                   dataModuleShape: QrDataModuleShape.square,
-                  color: TvTokens.onAccent,
+                  color: TvAppTokens.of(context).onAccent,
                 ),
               ),
             ),
@@ -86,14 +85,15 @@ class TvOwnSourceQr extends StatelessWidget {
           Text(
             context.l10n.tvScanSourceHelp,
             textAlign: TextAlign.center,
-            style: TvTokens.ui(TvDimens.caption, color: TvTokens.muted),
+            style: TvAppTokens.of(context)
+                .ui(TvDimens.caption, color: TvAppTokens.of(context).muted),
           ),
           if (code != null && code!.isNotEmpty) ...<Widget>[
             const SizedBox(height: 8),
             Text(
               context.l10n.tvScanSourceCode(code!),
               textAlign: TextAlign.center,
-              style: TvTokens.mono(TvDimens.label),
+              style: TvAppTokens.of(context).mono(TvDimens.label),
             ),
           ],
         ],

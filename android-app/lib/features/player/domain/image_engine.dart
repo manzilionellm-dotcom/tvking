@@ -53,9 +53,8 @@ class EngineStep {
   }
 }
 
-/// Le filtre de contraste ne s'applique que si le natif a dit que
-/// le matériel le permet. Cette version dit non : le filtre OpenGL
-/// quitterait la Surface qui affiche l'image.
+/// Une préférence ne suffit pas à annoncer un effet appliqué : le natif
+/// confirme la disponibilité de son traitement vidéo pour cette lecture.
 class PictureTuneChoice {
   const PictureTuneChoice._();
 

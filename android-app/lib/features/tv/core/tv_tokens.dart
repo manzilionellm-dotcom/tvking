@@ -1,9 +1,10 @@
 // =========================================================
 //  tv_tokens.dart — Design System « Maison Noir » Zuno (TV)
 // =========================================================
-//  Source de vérité UNIQUE des couleurs, rayons, dégradés et styles de
-//  texte de Zuno TV. AUCUNE couleur en dur dans les écrans : tout passe
-//  par ici (règle n°5 d'AGENTS.md).
+//  Couleurs historiques Maison Noir, figées pour les commandes Cast.
+//  L'interface de la box lit `TvAppTokens` / `TvComfortPalette` : le soir
+//  confort reprend l'or et l'ivoire d'ici, sur un fond relevé. Les écrans
+//  ne posent pas de `Color(0xFF…)` (règle n°5 d'AGENTS.md).
 //
 //  ADN visuel (25/09/2026) : le logo Zuno est une calligraphie OR brossé
 //  sur noir. L'interface prolonge ce logo : noir profond, or champagne,
@@ -29,7 +30,8 @@
 //     ≈ 13:1 ; or champagne/noir ≈ 8:1.
 // =========================================================
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+
+import 'tv_type.dart';
 
 class TvTokens {
   TvTokens._();
@@ -100,24 +102,30 @@ class TvTokens {
   );
 
   // =========================================================
-  //  TYPOGRAPHIE — 3 rôles, jamais plus.
-  //   • display = Oswald (titres d'accent : condensé, « métal » — contraste
-  //               net avec la calligraphie du logo, qu'on ne copie PAS)
-  //   • ui      = Inter  (tout le reste)
-  //   • mono    = JetBrains Mono (code d'activation / identifiants UNIQUEMENT)
+  //  TYPOGRAPHIE — voir tv_type.dart.
+  //   • display = titres (Inter 700, interligne 1,25)
+  //   • ui      = interface (Inter)
+  //   • body    = paragraphes (interligne 24/16)
+  //   • figure  = horloges et compteurs (chiffres tabulaires)
+  //   • mono    = codes seulement (JetBrains Mono)
   // =========================================================
   static TextStyle display(double size,
-          {FontWeight weight = FontWeight.w600, Color color = text, double spacing = 0}) =>
-      GoogleFonts.oswald(
-          fontSize: size, fontWeight: weight, color: color, letterSpacing: spacing);
+          {FontWeight weight = FontWeight.w700, Color color = text, double spacing = 0}) =>
+      TvType.display(size, weight: weight, color: color, letterSpacing: spacing);
 
   static TextStyle ui(double size,
           {FontWeight weight = FontWeight.w400, Color color = text, double spacing = 0}) =>
-      GoogleFonts.inter(
-          fontSize: size, fontWeight: weight, color: color, letterSpacing: spacing);
+      TvType.ui(size, weight: weight, color: color, letterSpacing: spacing);
+
+  static TextStyle body(double size,
+          {FontWeight weight = FontWeight.w400, Color color = text}) =>
+      TvType.body(size, weight: weight, color: color);
+
+  static TextStyle figure(double size,
+          {FontWeight weight = FontWeight.w500, Color color = text}) =>
+      TvType.figure(size, weight: weight, color: color);
 
   static TextStyle mono(double size,
           {FontWeight weight = FontWeight.w600, Color color = accentBright, double spacing = 0}) =>
-      GoogleFonts.jetBrainsMono(
-          fontSize: size, fontWeight: weight, color: color, letterSpacing: spacing);
+      TvType.code(size, weight: weight, color: color, letterSpacing: spacing);
 }

@@ -18,6 +18,7 @@ import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
+import '../../../core/blackbox/black_box.dart';
 
 class PlaylistDatabase {
   PlaylistDatabase._();
@@ -27,7 +28,8 @@ class PlaylistDatabase {
   // v2 ajoute la colonne `epg_url` à la table playlists.
   // v5 ajoute `http_headers` à la table channels (User-Agent/Referer par
   // chaîne, imposés par certains panels IPTV — sinon 403 à la lecture).
-  static const int _kDbVersion = 6;
+  // v7 : suppressions durables, partagées par import panel et restauration.
+  static const int _kDbVersion = 7;
 
   Database? _db;
 
@@ -65,7 +67,140 @@ class PlaylistDatabase {
       onConfigure: _onConfigure,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
+      onOpen: repairSchema,
     );
+  }
+
+  // ============================================================
+  //  RÉPARATION DU SCHÉMA À CHAQUE OUVERTURE
+  // ============================================================
+  //  Constaté le 13/11/2026 sur un PC Windows : le fichier
+  //  Documents\tv_king.db portait déjà un numéro de version récent, mais
+  //  sa table `playlists` n'avait PAS la colonne `hidden`. Le numéro
+  //  disait « à jour », donc aucune migration ne tournait, et chaque
+  //  ajout de liste échouait (« no such column: hidden ») : zéro chaîne,
+  //  depuis des semaines, avec un message qui accusait le lien du client.
+  //
+  //  Un numéro de version ne prouve pas que les colonnes existent (fichier
+  //  partagé par une autre édition, copie restaurée par un service de
+  //  synchronisation…). On REGARDE donc les colonnes réelles et on ajoute
+  //  celles qui manquent. Rien n'est effacé, rien n'est modifié : seulement
+  //  des ajouts, avec les mêmes valeurs par défaut que les migrations.
+  // ============================================================
+
+  /// Colonnes attendues, avec l'ordre SQL qui les ajoute si elles manquent.
+  static const List<({String table, String column, String ddl})>
+      kRepairColumns = <({String table, String column, String ddl})>[
+    (
+      table: 'playlists',
+      column: 'epg_url',
+      ddl: 'ALTER TABLE playlists ADD COLUMN epg_url TEXT',
+    ),
+    (
+      table: 'playlists',
+      column: 'last_synced_at',
+      ddl: 'ALTER TABLE playlists ADD COLUMN last_synced_at INTEGER',
+    ),
+    (
+      table: 'playlists',
+      column: 'channel_count',
+      ddl:
+          'ALTER TABLE playlists ADD COLUMN channel_count INTEGER NOT NULL DEFAULT 0',
+    ),
+    (
+      table: 'playlists',
+      column: 'is_active',
+      ddl:
+          'ALTER TABLE playlists ADD COLUMN is_active INTEGER NOT NULL DEFAULT 0',
+    ),
+    (
+      table: 'playlists',
+      column: 'hidden',
+      ddl: 'ALTER TABLE playlists ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0',
+    ),
+    (
+      table: 'channels',
+      column: 'logo_url',
+      ddl: 'ALTER TABLE channels ADD COLUMN logo_url TEXT',
+    ),
+    (
+      table: 'channels',
+      column: 'is_live',
+      ddl: 'ALTER TABLE channels ADD COLUMN is_live INTEGER NOT NULL DEFAULT 1',
+    ),
+    (
+      table: 'channels',
+      column: 'catchup_supported',
+      ddl:
+          'ALTER TABLE channels ADD COLUMN catchup_supported INTEGER NOT NULL DEFAULT 0',
+    ),
+    (
+      table: 'channels',
+      column: 'catchup_days',
+      ddl: 'ALTER TABLE channels ADD COLUMN catchup_days INTEGER',
+    ),
+    (
+      table: 'channels',
+      column: 'catchup_source',
+      ddl: 'ALTER TABLE channels ADD COLUMN catchup_source TEXT',
+    ),
+    (
+      table: 'channels',
+      column: 'http_headers',
+      ddl: 'ALTER TABLE channels ADD COLUMN http_headers TEXT',
+    ),
+  ];
+
+  /// Ajoute ce qui manque. Rend le nombre de colonnes ajoutées (0 = la
+  /// base était saine, cas normal). Ne lève jamais : une base qu'on ne
+  /// peut pas réparer se comporte comme avant.
+  @visibleForTesting
+  static Future<int> repairSchema(Database db) async {
+    int added = 0;
+    try {
+      await db.execute(
+        'CREATE TABLE IF NOT EXISTS deleted_sources (fingerprint TEXT PRIMARY KEY)',
+      );
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS watch_sessions (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          channel_id TEXT NOT NULL,
+          channel_name TEXT,
+          started_at INTEGER NOT NULL,
+          ended_at INTEGER,
+          duration_ms INTEGER NOT NULL DEFAULT 0
+        )
+      ''');
+      final Map<String, Set<String>> have = <String, Set<String>>{};
+      for (final String table in <String>{
+        for (final ({String table, String column, String ddl}) c
+            in kRepairColumns)
+          c.table,
+      }) {
+        final List<Map<String, Object?>> info =
+            await db.rawQuery('PRAGMA table_info($table)');
+        have[table] = <String>{
+          for (final Map<String, Object?> row in info)
+            (row['name'] as String?) ?? '',
+        };
+      }
+      for (final ({String table, String column, String ddl}) c
+          in kRepairColumns) {
+        final Set<String> columns = have[c.table] ?? const <String>{};
+        // Table absente : ce n'est pas une colonne qui manque, on ne
+        // bricole pas (la création complète est le rôle de onCreate).
+        if (columns.isEmpty || columns.contains(c.column)) continue;
+        await db.execute(c.ddl);
+        added++;
+        BlackBox.instance.warn(
+          'DB',
+          'colonne manquante réparée : ${c.table}.${c.column}',
+        );
+      }
+    } catch (e) {
+      BlackBox.instance.warn('DB', 'réparation du schéma impossible (${e.runtimeType})');
+    }
+    return added;
   }
 
   /// Active les clés étrangères SUR CHAQUE connexion. SQLite les
@@ -78,6 +213,7 @@ class PlaylistDatabase {
   }
 
   Future<void> _onCreate(Database db, int version) async {
+    await _createDeletedSources(db);
     await db.execute('''
       CREATE TABLE playlists (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -147,6 +283,7 @@ class PlaylistDatabase {
   }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 7) await _createDeletedSources(db);
     if (kDebugMode) {
       debugPrint('[DB] Migration $oldVersion → $newVersion');
     }
@@ -222,4 +359,7 @@ class PlaylistDatabase {
       );
     }
   }
+
+  Future<void> _createDeletedSources(Database db) => db.execute(
+      'CREATE TABLE IF NOT EXISTS deleted_sources (fingerprint TEXT PRIMARY KEY)');
 }

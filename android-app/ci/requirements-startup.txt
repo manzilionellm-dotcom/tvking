@@ -1,0 +1,4 @@
+# Uniquement dans le venv du smoke Android : décodage des captures pour refuser
+# une fenêtre Flutter noire/uniforme malgré un processus et des labels vivants.
+# Aucun ajout à l'application Flutter, au lecteur, ou au job de publication.
+Pillow==12.3.0

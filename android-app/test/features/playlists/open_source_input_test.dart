@@ -93,6 +93,29 @@ void main() {
     expect(asList.draft!.kind, OpenSourceKind.m3u);
   });
 
+  test('une adresse Xtream est reconnue sans choisir le bon onglet', () {
+    final OpenSourceParse query = OpenSourceInput.playlistLink(
+      'http://panel.invalid:8080/?username=demo&password=jeton',
+    );
+    expect(query.draft!.kind, OpenSourceKind.xtream);
+    expect(query.draft!.serverUrl, 'http://panel.invalid:8080');
+    expect(query.draft!.username, 'demo');
+    expect(query.draft!.password, 'jeton');
+
+    final OpenSourceParse portal = OpenSourceInput.playlistLink(
+      'http://demo:jeton@panel.invalid:8080',
+    );
+    expect(portal.draft!.kind, OpenSourceKind.xtream);
+    expect(portal.draft!.serverUrl, 'http://panel.invalid:8080');
+    expect(portal.draft!.username, 'demo');
+
+    // Une liste .m3u avec un compte dans l'adresse reste une liste.
+    final OpenSourceParse file = OpenSourceInput.playlistLink(
+      'http://demo:jeton@boite.invalid:8080/liste.m3u',
+    );
+    expect(file.draft!.kind, OpenSourceKind.m3u);
+  });
+
   test('adresse vide, schéma interdit, deux sources différentes', () {
     expect(OpenSourceInput.playlistLink('   ').error, OpenSourceInput.errNeedUrl);
     expect(
@@ -145,10 +168,18 @@ void main() {
     expect(find.text('Serveur 1'), findsNothing);
     expect(find.text('Choisis ton serveur'), findsNothing);
     expect(find.text('Ajouter ma source'), findsOneWidget);
-    expect(find.text('Lien lecteur'), findsOneWidget);
+    expect(find.text('Lien lecteur'), findsNothing);
+    expect(find.text('Xtream Codes'), findsOneWidget);
+    expect(find.text('M3U / URL'), findsOneWidget);
+    // À l'ouverture, les trois champs Xtream sont vides : aucun fournisseur
+    // prérempli et aucun lien imposé au client.
+    expect(find.byType(TextField), findsNWidgets(3));
+    for (final field in tester.widgetList<TextField>(find.byType(TextField))) {
+      expect(field.controller!.text, isEmpty);
+    }
 
     // Validation avant tout réseau : phrase française, pas d'appel.
-    await tester.tap(find.text('Valider et charger ma liste'));
+    await tester.tap(find.text('Se connecter et charger'));
     await tester.pump();
     expect(find.text(OpenSourceInput.errNeedXtream), findsOneWidget);
   });

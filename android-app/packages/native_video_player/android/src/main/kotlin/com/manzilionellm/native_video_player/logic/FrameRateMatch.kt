@@ -16,14 +16,21 @@ package com.manzilionellm.native_video_player.logic
  *   ~60        → 60 Hz.
  * 23,976 compte comme 24, 29,97 comme 30, 59,94 comme 60.
  *
- * Si aucun mode de la TV n'est à moins de 1 Hz de la cible, on ne
+ * On conserve toujours la résolution physique du mode courant : une
+ * cadence plus régulière ne doit pas transformer une sortie 4K en 1080p.
+ * Si aucun mode de la TV n'est à moins de 0,1 Hz de la cible, on ne
  * change rien. Si le mode actuel est déjà le bon, on ne change rien
  * non plus (un second appel ne doit pas refaire clignoter l'écran).
  *
  * La cadence du flux est reconnue à 0,5 Hz près : 23,976 compte
  * comme 24, mais 25 ne doit pas être pris pour 24 (écart d'1 Hz).
  */
-data class DisplayModeOption(val id: Int, val refreshHz: Float)
+data class DisplayModeOption(
+    val id: Int,
+    val refreshHz: Float,
+    val physicalWidth: Int,
+    val physicalHeight: Int,
+)
 
 object FrameRateMatch {
     fun pick(
@@ -35,10 +42,19 @@ object FrameRateMatch {
         if (!enabled || modes.isEmpty()) return null
         val wanted = preferredHz(contentFps)
         if (wanted.isEmpty()) return null
+        val current = modes.firstOrNull { it.id == currentModeId } ?: return null
+        if (current.physicalWidth <= 0 || current.physicalHeight <= 0) return null
+        val sameResolution = modes.filter {
+            it.physicalWidth == current.physicalWidth &&
+                it.physicalHeight == current.physicalHeight
+        }
         for (hz in wanted) {
-            val found = modes.firstOrNull { kotlin.math.abs(it.refreshHz - hz) <= 1f }
+            val compatible = sameResolution.filter { kotlin.math.abs(it.refreshHz - hz) <= 0.1f }
+            // Plusieurs modes équivalents existent sur certaines TV. Garder
+            // le mode courant évite un clignotement HDMI sans aucun gain.
+            if (compatible.any { it.id == currentModeId }) return null
+            val found = compatible.minByOrNull { kotlin.math.abs(it.refreshHz - hz) }
             if (found != null) {
-                if (found.id == currentModeId) return null
                 return found
             }
         }
@@ -55,7 +71,7 @@ object FrameRateMatch {
             near(contentFps, 23.976f) || near(contentFps, 24f) -> listOf(24f, 23.976f)
             near(contentFps, 25f) -> listOf(50f, 25f)
             near(contentFps, 29.97f) || near(contentFps, 30f) -> listOf(59.94f, 60f, 29.97f, 30f)
-            near(contentFps, 50f) -> listOf(50f, 25f)
+            near(contentFps, 50f) -> listOf(50f)
             near(contentFps, 59.94f) || near(contentFps, 60f) -> listOf(59.94f, 60f)
             else -> emptyList()
         }

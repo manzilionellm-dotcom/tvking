@@ -72,21 +72,27 @@ class PromoBannerRepository extends ChangeNotifier {
   /// Relit la liste. 200 → remplace (et met en cache). 404 → liste vide
   /// (le panel n'a rien publié ou la route n'existe pas encore). Autre
   /// code ou réseau coupé → on garde ce qu'on a.
-  Future<void> refresh() async {
+  Future<void> refresh({bool strict = false}) async {
     final http.Client c = client ?? http.Client();
     try {
       final String base = baseUrl ?? kSubscriptionBaseUrl;
       final http.Response resp =
           await c.get(Uri.parse('$base/api/banners')).timeout(_timeout);
       if (resp.statusCode == 404) {
+        if (strict) throw StateError('Bannières non prises en charge');
         await _replace(const <PromoBanner>[], rawJson: '[]');
         return;
       }
-      if (resp.statusCode != 200) return;
+      if (resp.statusCode != 200) throw StateError('Bannières non confirmées');
       final Object? decoded = jsonDecode(resp.body);
+      final Object? items = decoded is Map ? decoded['items'] : decoded;
+      if (items is! List || items.any((item) => PromoBanner.fromJson(item) == null)) {
+        throw const FormatException('Bannières invalides');
+      }
       await _replace(parsePromoBanners(decoded), rawJson: resp.body);
     } catch (e) {
-      if (kDebugMode) debugPrint('[Bannières] $e');
+      if (strict) rethrow;
+      if (kDebugMode) debugPrint('[Bannières] ${e.runtimeType}');
     } finally {
       if (client == null) c.close();
     }

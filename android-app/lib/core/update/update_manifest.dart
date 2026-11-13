@@ -33,14 +33,25 @@ class UpdateManifest {
     required int currentBuild,
   }) {
     if (decoded is! Map) return null;
-    final Map<String, dynamic> j = Map<String, dynamic>.from(decoded);
-    final int latest = (j['versionCode'] as num?)?.toInt() ?? 0;
+    // Un champ mal typé d'une release ne doit jamais masquer l'autre.
+    final Map<dynamic, dynamic> j = decoded;
+    final int latest = _positiveInteger(j['versionCode']) ?? 0;
     if (latest <= currentBuild) return null;
-    final String url = (j['url'] ?? '').toString().trim();
-    if (url.isEmpty) return null;
-    final String sha = (j['sha256'] ?? '').toString().trim().toLowerCase();
+    if (j['url'] is! String || j['sha256'] is! String) return null;
+    final String url = (j['url'] as String).trim();
+    final Uri? uri = Uri.tryParse(url);
+    // Le manifeste et le fichier d'installation passent par TLS ; les liens
+    // IPTV saisis par le client suivent une politique distincte.
+    if (uri == null ||
+        uri.scheme != 'https' ||
+        uri.host.isEmpty ||
+        uri.userInfo.isNotEmpty ||
+        uri.hasFragment) {
+      return null;
+    }
+    final String sha = (j['sha256'] as String).trim().toLowerCase();
     if (!RegExp(r'^[0-9a-f]{64}$').hasMatch(sha)) return null;
-    final int size = (j['size'] as num?)?.toInt() ?? 0;
+    final int size = _positiveInteger(j['size']) ?? 0;
     if (size <= 0) return null;
     return UpdateManifest(
       versionCode: latest,
@@ -50,6 +61,16 @@ class UpdateManifest {
       sizeBytes: size,
       mandatory: j['mandatory'] == true,
     );
+  }
+
+  static int? _positiveInteger(Object? value) {
+    if (value is! num ||
+        !value.isFinite ||
+        value <= 0 ||
+        value != value.truncateToDouble()) {
+      return null;
+    }
+    return value.toInt();
   }
 }
 

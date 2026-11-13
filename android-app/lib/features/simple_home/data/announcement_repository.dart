@@ -16,6 +16,7 @@
 //  et le stockage local.
 // =========================================================
 
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -31,11 +32,12 @@ class Announcement {
     required this.id,
     required this.title,
     required this.body,
-    required this.url,
+    required String url,
     required this.kind,
     required this.cta,
     required this.createdAt,
-  });
+    this.expiresAt = 0,
+  }) : _url = url;
 
   /// Identifiant unique côté serveur (auto-incrément). Sert à savoir si
   /// l'utilisateur a déjà fermé CETTE annonce.
@@ -43,8 +45,25 @@ class Announcement {
   final String title;
   final String body;
 
-  /// Lien optionnel (ex. page promo). Vide si absent.
-  final String url;
+  final String _url;
+
+  /// Une seule règle pour le bouton mobile et le QR d'annonce TV : seulement
+  /// un lien HTTP(S) absolu, avec hôte et sans identifiants. Un lien invalide
+  /// devient vide ; le titre et le message restent lisibles, sans fausse action.
+  /// Le getter protège aussi les annonces créées directement par du code local.
+  String get url {
+    final value = _url.trim();
+    if (value.isEmpty || RegExp(r'[\s\\]').hasMatch(value)) return '';
+    final uri = Uri.tryParse(value);
+    if (uri == null ||
+        !<String>['http', 'https'].contains(uri.scheme) ||
+        !uri.hasAuthority ||
+        uri.host.isEmpty ||
+        uri.userInfo.isNotEmpty) {
+      return '';
+    }
+    return uri.toString();
+  }
 
   /// Catégorie : `nouveaute` | `promo` | `info` | `maintenance` (ou vide).
   /// Pilote l'icône + la couleur du bandeau (cf. AnnouncementBanner).
@@ -57,19 +76,29 @@ class Announcement {
   /// Timestamp epoch (ms) de création côté serveur.
   final int createdAt;
 
+  /// Fin décidée par le panel (0 = sans expiration). La box retire aussi
+  /// localement une annonce échue si le réseau disparaît entre-temps.
+  final int expiresAt;
+
   /// Construit depuis le JSON du Worker. Renvoie `null` si la charge utile
   /// est vide (`{}` = aucune annonce) ou invalide.
   static Announcement? fromJson(Map<String, dynamic> json) {
     final Object? rawId = json['id'];
-    if (rawId == null) return null; // {} → pas d'annonce
+    if (rawId == null || json['active'] == false || json['active'] == 0) {
+      return null;
+    }
     final int id = rawId is int ? rawId : int.tryParse('$rawId') ?? 0;
+    if (id <= 0) return null;
+    final int expiresAt = int.tryParse('${json['expires_at'] ?? 0}') ?? 0;
+    if (expiresAt > 0 && expiresAt <= DateTime.now().millisecondsSinceEpoch) {
+      return null;
+    }
     final String title = (json['title'] ?? '').toString();
     final String body = (json['body'] ?? '').toString();
     // Une annonce sans titre NI corps n'a rien à montrer.
     if (title.isEmpty && body.isEmpty) return null;
     final Object? rawTs = json['created_at'];
-    final int createdAt =
-        rawTs is int ? rawTs : int.tryParse('$rawTs') ?? 0;
+    final int createdAt = rawTs is int ? rawTs : int.tryParse('$rawTs') ?? 0;
     return Announcement(
       id: id,
       title: title,
@@ -78,6 +107,7 @@ class Announcement {
       kind: (json['kind'] ?? '').toString(),
       cta: (json['cta'] ?? '').toString(),
       createdAt: createdAt,
+      expiresAt: expiresAt,
     );
   }
 }
@@ -94,30 +124,116 @@ abstract final class AnnouncementRepository {
       ValueNotifier<Announcement?>(null);
 
   static int _lastFetchMs = 0;
+  static Future<Announcement?>? _pending;
+  static Timer? _expiry;
+  static int _generation = 0;
 
-  /// Récupère la dernière annonce publiée, ou `null` si aucune / erreur
-  /// réseau. On reste SILENCIEUX en cas d'échec : une annonce est un
-  /// bonus, jamais bloquant.
-  static Future<Announcement?> fetchLatest() async {
+  @visibleForTesting
+  static http.Client? client;
+  @visibleForTesting
+  static String? baseUrl;
+
+  /// Les lectures UI simultanées partagent une requête. Un ordre strict
+  /// attend puis relit pour ne jamais confirmer une réponse partie avant lui.
+  /// Une réponse 200 vide retire l'annonce ; une panne conserve la précédente
+  /// jusqu'à sa date d'expiration.
+  static Future<Announcement?> fetchLatest({bool strict = false}) async {
+    // Une lecture partie avant l'ordre peut encore contenir l'ancienne valeur.
+    // Le strict attend sa fin, puis démarre sa propre lecture après l'ordre.
+    // La boucle sérialise aussi plusieurs ordres stricts sans réponse tardive.
+    if (strict) {
+      while (_pending != null) {
+        final previous = _pending!;
+        try {
+          await previous;
+        } catch (_) {
+          // Seule la nouvelle lecture décide du succès de cet ordre.
+        }
+        if (identical(_pending, previous)) _pending = null;
+      }
+    }
+    final int generation = _generation;
+    final Future<Announcement?> request = _pending ??= _fetch().whenComplete(
+      () {
+        if (generation == _generation) _pending = null;
+      },
+    );
     try {
-      final http.Response resp = await http
-          .get(Uri.parse('$kSubscriptionBaseUrl/api/announcement'))
+      return await request;
+    } catch (e) {
+      // Un ordre du panel ne doit pas être accusé reçu après une panne.
+      // Le bandeau garde, lui, sa dernière valeur jusqu'à son expiration.
+      if (strict) rethrow;
+      if (kDebugMode) debugPrint('[Announcement] fetch: $e');
+      return latest.value;
+    }
+  }
+
+  static Future<Announcement?> _fetch() async {
+    final int generation = _generation;
+    final http.Client c = client ?? http.Client();
+    final bool owned = client == null;
+    try {
+      final http.Response resp = await c
+          .get(Uri.parse('${baseUrl ?? kSubscriptionBaseUrl}/api/announcement'))
           .timeout(const Duration(seconds: 6));
-      if (resp.statusCode != 200) return null;
+      if (resp.statusCode != 200) {
+        throw StateError('Annonce : HTTP ${resp.statusCode}');
+      }
       final Object? decoded = jsonDecode(resp.body);
-      if (decoded is! Map<String, dynamic>) return null;
+      if (decoded is! Map<String, dynamic> ||
+          (decoded.isNotEmpty &&
+              (int.tryParse('${decoded['id']}') ?? 0) <= 0)) {
+        throw const FormatException('Annonce invalide');
+      }
+      if (generation != _generation) return latest.value;
       final Announcement? parsed = Announcement.fromJson(decoded);
       _lastFetchMs = DateTime.now().millisecondsSinceEpoch;
-      if (parsed?.id != latest.value?.id ||
-          parsed?.title != latest.value?.title ||
-          parsed?.body != latest.value?.body) {
-        latest.value = parsed;
-      }
+      _replace(parsed);
       return parsed;
-    } catch (e) {
-      if (kDebugMode) debugPrint('[Announcement] fetch: $e');
-      return null;
+    } finally {
+      if (owned) c.close();
     }
+  }
+
+  static void _replace(Announcement? next) {
+    _expiry?.cancel();
+    final Announcement? before = latest.value;
+    if (next?.id != before?.id ||
+        next?.title != before?.title ||
+        next?.body != before?.body ||
+        next?.url != before?.url ||
+        next?.kind != before?.kind ||
+        next?.cta != before?.cta ||
+        next?.expiresAt != before?.expiresAt) {
+      latest.value = next;
+    }
+    if (next != null && next.expiresAt > 0) {
+      final int remaining =
+          next.expiresAt - DateTime.now().millisecondsSinceEpoch;
+      _expiry = Timer(
+        Duration(milliseconds: remaining < 0 ? 0 : remaining),
+        () {
+          // Ne jamais supprimer une nouvelle annonce arrivée entre-temps.
+          if (latest.value?.id == next.id &&
+              latest.value?.expiresAt == next.expiresAt) {
+            _replace(null);
+          }
+        },
+      );
+    }
+  }
+
+  @visibleForTesting
+  static void resetForTesting() {
+    _generation++;
+    _expiry?.cancel();
+    _expiry = null;
+    _pending = null;
+    _lastFetchMs = 0;
+    client = null;
+    baseUrl = null;
+    latest.value = null;
   }
 
   /// Comme [fetchLatest], mais pas plus d'une fois par [maxAge] : l'accueil

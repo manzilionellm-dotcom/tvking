@@ -10,6 +10,8 @@
 
 import 'package:flutter/material.dart';
 
+import '../../tv/core/tv_field_keys.dart';
+
 import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/i18n/locale_repository.dart';
 import '../../../core/support/vip_help_card.dart';
@@ -1094,7 +1096,8 @@ class _UserAgentSheetState extends State<_UserAgentSheet> {
                   ),
                   Padding(
                     padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-                    child: TextField(
+                    child: TvFieldKeys(
+                      child: TextField(
                       controller: _controller,
                       minLines: 1,
                       maxLines: 3,
@@ -1112,6 +1115,7 @@ class _UserAgentSheetState extends State<_UserAgentSheet> {
                           borderRadius: BorderRadius.circular(10),
                           borderSide: BorderSide(color: AppColors.border),
                         ),
+                      ),
                       ),
                     ),
                   ),

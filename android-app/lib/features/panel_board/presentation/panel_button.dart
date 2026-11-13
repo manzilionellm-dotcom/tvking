@@ -11,6 +11,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import '../../tv/core/tv_dimens.dart';
 import '../../tv/core/tv_focusable.dart';
 import '../../tv/core/tv_tokens.dart';
+import '../../tv/core/tv_app_tokens.dart';
 
 class PanelButton extends StatelessWidget {
   const PanelButton({
@@ -32,23 +33,23 @@ class PanelButton extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         decoration: BoxDecoration(
-          color: TvTokens.sel,
+          color: TvAppTokens.of(context).sel,
           borderRadius: BorderRadius.circular(TvTokens.rButton),
-          border: Border.all(color: TvTokens.line),
+          border: Border.all(color: TvAppTokens.of(context).line),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
             if (icon != null) ...<Widget>[
-              Icon(icon, size: 18, color: TvTokens.text),
+              Icon(icon, size: 18, color: TvAppTokens.of(context).text),
               const SizedBox(width: 8),
             ],
             Text(
               label,
-              style: TvTokens.ui(
+              style: TvAppTokens.of(context).ui(
                 TvDimens.label,
                 weight: FontWeight.w700,
-                color: TvTokens.text,
+                color: TvAppTokens.of(context).text,
               ),
             ),
           ],

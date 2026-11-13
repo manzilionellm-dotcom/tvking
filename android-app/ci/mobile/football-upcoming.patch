@@ -1,0 +1,1633 @@
+diff --git a/ci/build_label.sh b/ci/build_label.sh
+index 44fa50d..c6970c2 100755
+--- a/ci/build_label.sh
++++ b/ci/build_label.sh
+@@ -58,8 +58,10 @@
+ #  ---------------------------------------------------------
+ #  IL MONTE À CHAQUE PUBLICATION, PAS À CHAQUE COMPILATION
+ #  ---------------------------------------------------------
+-#  Le max est lu depuis les `version.json` RÉELLEMENT publiés, pas
+-#  depuis un compteur du serveur de build.
++#  Le max est lu depuis les `version.json` RÉELLEMENT publiés et les
++#  releases immuables 7motion-1988N qui contiennent leur APK, pas
++#  depuis un compteur du serveur de build. Ces releases sont déjà
++#  téléchargeables même si aucun manifeste client n'a été modifié.
+ #
+ #  Sans ça, trois pushes sans publication feraient sauter le numéro de
+ #  19881 à 19884, et le client verrait des numéros manquants — il
+@@ -77,8 +79,11 @@
+ #
+ #  Écrit le nouveau numéro sur la sortie standard, et RIEN d'autre
+ #  (les explications partent sur la sortie d'erreur, pour ne pas
+-#  polluer la capture). Ne échoue jamais : sans réseau ou sans
+-#  manifeste publié, il rend « 19881 ».
++#  polluer la capture). Les anciens canaux gardent leur repli historique
++#  sans réseau. Pour 7motion-test, l'index des releases immuables doit
++#  être intégralement lisible : sinon le script échoue, sans numéro sur
++#  stdout. Reprendre « 19881 » ou un ancien maximum pourrait graver un
++#  numéro déjà livré dans le nouvel APK.
+ #
+ #  Vérifier (rien n'est publié — lecture seule) :
+ #      bash -n ci/build_label.sh
+@@ -90,6 +95,15 @@
+ #      BUILD_LABEL_FAMILY        liste d'espaces qui remplace la famille
+ #      BUILD_LABEL_FIXTURE_DIR   lit <dir>/<canal>/version.json sans réseau
+ #      BUILD_LABEL_RELEASE_BASE  base d'URL, défaut GitHub releases/download
++#      BUILD_LABEL_RELEASES_API  endpoint public /repos/<repo>/releases
++#
++#  En mode FIXTURE_DIR, l'index est aussi local :
++#      <dir>/releases/page-1.json, page-2.json, etc. (100 entrées/page).
++#  L'absence de la première page signifie « aucune release ». Si une
++#  page pleine annonce la suivante, cette dernière doit exister : une
++#  pagination incomplète ne prouve pas le maximum. Aucun accès réseau
++#  n'est effectué en mode fixtures. Le parseur utilise Python 3, déjà
++#  présent dans les chaînes de construction Android de ce dépôt.
+ #
+ #  ---------------------------------------------------------
+ #  POUR LE PROCHAIN QUI AJOUTE UNE APP
+@@ -181,6 +195,87 @@ fi
+ 
+ RELEASE_BASE="${BUILD_LABEL_RELEASE_BASE:-https://github.com/${REPO}/releases/download}"
+ 
++# ---------------------------------------------------------
++#  Lire les publications immuables, sans inventer de manifeste.
++# ---------------------------------------------------------
++#  Un tag seul, une release brouillon ou un fichier encore vide ne
++#  consomme pas de numéro. L'API est publique : aucun secret n'est
++#  transmis. On suit toutes les pages, avec une borne qui fait échouer
++#  la lecture plutôt que tronquer silencieusement le maximum.
++#  Rien n'est émis avant la fin : une panne à la page 2 ne doit pas
++#  transformer le résultat partiel de la page 1 en preuve complète.
++lire_releases_immuables() {
++  python3 - "$PREFIX" "${BUILD_LABEL_FIXTURE_DIR:-}" \
++    "${BUILD_LABEL_RELEASES_API:-https://api.github.com/repos/${REPO}/releases}" <<'PYRELEASES'
++import json
++import re
++import sys
++import urllib.request
++from pathlib import Path
++
++prefix, fixtures, endpoint = sys.argv[1:]
++pattern = re.compile(r"7motion-(" + re.escape(prefix) + r"[0-9]+)")
++page_size = 100
++max_pages = 100
++max_bytes = 16 * 1024 * 1024
++labels = {}
++page = 1
++try:
++    for page in range(1, max_pages + 1):
++        if fixtures:
++            path = Path(fixtures, "releases", f"page-{page}.json")
++            if page == 1 and not path.exists():
++                payload = b"[]"
++            else:
++                with path.open("rb") as stream:
++                    payload = stream.read(max_bytes + 1)
++        else:
++            request = urllib.request.Request(
++                f"{endpoint}?per_page={page_size}&page={page}",
++                headers={"Accept": "application/vnd.github+json",
++                         "User-Agent": "7motion-build-label"},
++            )
++            with urllib.request.urlopen(request, timeout=12) as response:
++                if response.status != 200:
++                    raise ValueError("HTTP inattendu")
++                payload = response.read(max_bytes + 1)
++        if len(payload) > max_bytes:
++            raise ValueError("Page trop grande")
++        releases = json.loads(payload)
++        if not isinstance(releases, list) or len(releases) > page_size:
++            raise ValueError("Page de releases invalide")
++        for release in releases:
++            if not isinstance(release, dict):
++                raise ValueError("Release invalide")
++            tag = release.get("tag_name")
++            match = pattern.fullmatch(tag) if isinstance(tag, str) else None
++            published = release.get("published_at")
++            if (match is None or release.get("draft") is not False or
++                    not isinstance(published, str) or not published.strip()):
++                continue
++            assets = release.get("assets")
++            if not isinstance(assets, list):
++                raise ValueError("Fichiers de release invalides")
++            if any(isinstance(asset, dict) and
++                   asset.get("name") == "7motion.apk" and
++                   asset.get("state") == "uploaded" and
++                   type(asset.get("size")) is int and asset["size"] > 0
++                   for asset in assets):
++                labels[tag] = match.group(1)
++        if len(releases) < page_size:
++            break
++    else:
++        raise ValueError("Pagination trop longue")
++except Exception:
++    # Ne pas recopier le corps d'une réponse, une URL de test ou des
++    # détails réseau. La page suffit à localiser la lecture à reprendre.
++    sys.stderr.write(f"build_label: index des releases inaccessible ou invalide (page {page})\n")
++    sys.exit(1)
++for tag, label in labels.items():
++    sys.stdout.write(f"{tag}\t{label}\n")
++PYRELEASES
++}
++
+ # ---------------------------------------------------------
+ #  Lire le buildLabel d'UN manifeste, ou rien.
+ # ---------------------------------------------------------
+@@ -236,11 +331,15 @@ max_label=""
+ max_canal=""
+ resume_famille=""
+ 
+-for canal in "${FAMILLE_CANAUX[@]}"; do
+-  label="$(extraire_label "$(lire_manifeste "$canal")")"
++#  La même accumulation traite les manifestes et les APK immuables :
++#  il n'existe toujours qu'un maximum familial et qu'un seul « + 1 ».
++considerer_label() {
++  local canal="$1"
++  local label="$2"
++  local n
+   if [ -z "$label" ]; then
+     echo "build_label:   canal=${canal} precedent=aucun (ignore)" >&2
+-    continue
++    return
+   fi
+   n="$(compteur_depuis_label "$label")"
+   echo "build_label:   canal=${canal} precedent=${label} (compteur=${n})" >&2
+@@ -250,8 +349,24 @@ for canal in "${FAMILLE_CANAUX[@]}"; do
+     max_label="$label"
+     max_canal="$canal"
+   fi
++}
++
++for canal in "${FAMILLE_CANAUX[@]}"; do
++  considerer_label "$canal" "$(extraire_label "$(lire_manifeste "$canal")")"
+ done
+ 
++if releases_immuables="$(lire_releases_immuables)"; then
++  while IFS=$'\t' read -r canal label; do
++    [ -n "$canal" ] || continue
++    considerer_label "$canal" "$label"
++  done <<< "$releases_immuables"
++elif [ "$TAG" = "7motion-test" ]; then
++  echo 'build_label: refus de numéroter 7motion-test avec un index incomplet ; relancer après rétablissement de la lecture.' >&2
++  exit 1
++else
++  echo 'build_label: index immuable indisponible ; repli historique sur les manifestes pour cet ancien canal.' >&2
++fi
++
+ NEW_LABEL="${PREFIX}$((max_n + 1))"
+ 
+ echo "build_label: publie=${TAG} famille_max=${max_label:-aucun} (via ${max_canal:-aucun}) nouveau=${NEW_LABEL}" >&2
+diff --git a/ci/build_label_test.sh b/ci/build_label_test.sh
+index 7a0b86f..01c8d96 100755
+--- a/ci/build_label_test.sh
++++ b/ci/build_label_test.sh
+@@ -9,7 +9,8 @@
+ #
+ #      prochain = PREFIX + (max familial + 1)
+ #
+-#  Il ne tape PAS GitHub. Il pose des version.json factices dans un
++#  Il ne tape PAS GitHub. Il pose des version.json et pages de releases
++#  factices dans un
+ #  dossier temporaire et demande à build_label.sh de les lire via
+ #  BUILD_LABEL_FIXTURE_DIR — le même chemin de code que la CI, sans
+ #  le réseau. Un 404 se simule en n'écrivant pas le fichier.
+@@ -109,15 +110,19 @@ ok "$([[ "$got" == 198831 ]] && echo 1 || echo 0)" \
+ #  Canal sans version.json : ignoré, comme aujourd'hui « aucun ».
+ # ---------------------------------------------------------
+ rm -rf "${WORKDIR}/windows-latest"
+-got="$(appeler windows-latest)"
++#  Le canal Tizen doit maintenant être déclaré dans la famille de ce
++#  scénario. Son ajout automatique lors de l'appel précédent ne vit
++#  que dans ce précédent processus, pas dans celui de Windows.
++got="$(BUILD_LABEL_FAMILY="phone-latest seventv-latest windows-latest tizen-latest" \
++  appeler windows-latest)"
+ ok "$([[ "$got" == 198831 ]] && echo 1 || echo 0)" \
+   "windows sans version.json : ignore, max reste tizen 198830 → 198831 [got=${got}]"
+ 
+ #  Manifeste sans buildLabel (cas réel du canal `test`) : ignore.
+ mkdir -p "${WORKDIR}/test"
+ printf '%s\n' '{"versionCode":1,"url":"x"}' > "${WORKDIR}/test/version.json"
+-BUILD_LABEL_FIXTURE_DIR="$WORKDIR" BUILD_LABEL_FAMILY="test" \
+-  got_test="$("$SCRIPT" manzilionellm-dotcom/tvking test 2>/dev/null)"
++got_test="$(BUILD_LABEL_FIXTURE_DIR="$WORKDIR" BUILD_LABEL_FAMILY="test" \
++  "$SCRIPT" manzilionellm-dotcom/tvking test 2>/dev/null)"
+ ok "$([[ "$got_test" == 19881 ]] && echo 1 || echo 0)" \
+   "manifeste sans buildLabel → 19881 [got=${got_test}]"
+ 
+@@ -136,6 +141,7 @@ rmdir "$EMPTY"
+ #  tomber le build. Même contrat qu'avant (« Ne échoue jamais »).
+ # ---------------------------------------------------------
+ got="$(BUILD_LABEL_RELEASE_BASE="http://127.0.0.1:1" \
++  BUILD_LABEL_RELEASES_API="http://127.0.0.1:1/releases" \
+   BUILD_LABEL_FAMILY="seventv-latest" \
+   "$SCRIPT" manzilionellm-dotcom/tvking seventv-latest 2>/dev/null)"
+ ok "$([[ "$got" == 19881 ]] && echo 1 || echo 0)" \
+@@ -159,6 +165,134 @@ stdout_lines="$(BUILD_LABEL_FIXTURE_DIR="$WORKDIR" BUILD_LABEL_FAMILY="seventv-l
+ ok "$([[ "$stdout_lines" -eq 1 ]] && echo 1 || echo 0)" \
+   "stdout = une seule ligne [lines=${stdout_lines}]"
+ 
++# ---------------------------------------------------------
++#  Le 20/10/2026, 7motion-1988119 était déjà téléchargeable mais
++#  aucun version.json ne le mentionnait. Le prochain APK doit être
++#  1988120, sans changer le manifeste que les clients interrogent.
++#  Ces fixtures passent par le vrai parseur et sa vraie pagination.
++# ---------------------------------------------------------
++rm -rf "${WORKDIR:?}/"*
++poser phone-latest 1988118
++
++indice() {
++  python3 - "$WORKDIR" "$1" <<'PYFIXTURES'
++import copy
++import json
++import sys
++from pathlib import Path
++
++root, scenario = sys.argv[1:]
++directory = Path(root, "releases")
++directory.mkdir(exist_ok=True)
++for path in directory.glob("page-*.json"):
++    path.unlink()
++
++published = {
++    "tag_name": "7motion-1988119", "draft": False,
++    "published_at": "2026-10-20T00:25:55Z",
++    "assets": [{"name": "7motion.apk", "state": "uploaded", "size": 72089508}],
++}
++
++def changed(**values):
++    result = copy.deepcopy(published)
++    result.update(values)
++    return result
++
++first = [published]
++if scenario == "excluded":
++    first.extend([
++        changed(tag_name="7motion-1988999", draft=True),
++        changed(tag_name="7motion-1988998", published_at=None),
++        changed(tag_name="7motion-1988997", published_at=" "),
++        changed(tag_name="7motion-1988996", assets=[]),
++        changed(tag_name="7motion-1988995", assets=[{
++            "name": "7motion.apk", "state": "new", "size": 123}]),
++        changed(tag_name="7motion-1988994", assets=[{
++            "name": "7motion.apk", "state": "uploaded", "size": 0}]),
++        changed(tag_name="7motion-1988993", assets=[{
++            "name": "7motion.aab", "state": "uploaded", "size": 123}]),
++        changed(tag_name="7motion-1988992", assets=[{
++            "name": "7motion.apk", "state": "uploaded", "size": True}]),
++        changed(tag_name="7motion-1988999-rc"),
++        changed(tag_name="7motion-1988"),
++        changed(tag_name="other-1988999"),
++        changed(tag_name="7motion-2988999"),
++    ])
++elif scenario in ("paginated", "incomplete"):
++    first.extend({"tag_name": f"unrelated-{index}"} for index in range(99))
++    if scenario == "paginated":
++        Path(directory, "page-2.json").write_text(json.dumps([
++            changed(tag_name="7motion-1988130")
++        ]))
++elif scenario == "malformed":
++    Path(directory, "page-1.json").write_text("{")
++    sys.exit(0)
++elif scenario == "error-object":
++    first = {"message": "API indisponible"}
++elif scenario == "invalid-entry":
++    first = [published, None]
++Path(directory, "page-1.json").write_text(json.dumps(first))
++PYFIXTURES
++}
++
++refus_sans_numero() {
++  local scenario="$1"
++  local statut=0
++  local resultat
++  indice "$scenario"
++  resultat="$(appeler 7motion-test)" || statut=$?
++  ok "$([[ "$statut" -ne 0 && -z "$resultat" ]] && echo 1 || echo 0)" \
++    "index ${scenario} : 7motion-test refuse, stdout vide [status=${statut}]"
++}
++
++indice published
++got="$(appeler 7motion-test)"
++ok "$([[ "$got" == 1988120 ]] && echo 1 || echo 0)" \
++  "APK immuable 1988119 sans version.json → 1988120 [got=${got}]"
++
++got="$(appeler seventv-latest)"
++ok "$([[ "$got" == 1988120 ]] && echo 1 || echo 0)" \
++  "la publication immuable participe au même maximum familial [got=${got}]"
++
++got="$(appeler 7motion-test)"
++ok "$([[ "$got" == 1988120 ]] && echo 1 || echo 0)" \
++  "une autre compilation sans publication ne consomme pas de numéro [got=${got}]"
++
++indice excluded
++got="$(appeler 7motion-test)"
++ok "$([[ "$got" == 1988120 ]] && echo 1 || echo 0)" \
++  "brouillons, APK absent/vide/incomplet et tags hors format ignorés [got=${got}]"
++
++poser phone-latest 1988125
++got="$(appeler 7motion-test)"
++ok "$([[ "$got" == 1988126 ]] && echo 1 || echo 0)" \
++  "un manifeste plus avancé garde la priorité dans le maximum [got=${got}]"
++poser phone-latest 1988118
++
++indice paginated
++got="$(appeler 7motion-test)"
++ok "$([[ "$got" == 1988131 ]] && echo 1 || echo 0)" \
++  "le label supérieur de la deuxième page n'est pas perdu [got=${got}]"
++
++refus_sans_numero incomplete
++refus_sans_numero malformed
++refus_sans_numero error-object
++refus_sans_numero invalid-entry
++
++#  Le refus fermé vise la chaîne 7motion-test qui livre ces APK.
++#  Le contrat de repli des anciens canaux n'est pas changé.
++got="$(appeler seventv-latest)"
++ok "$([[ "$got" == 1988119 ]] && echo 1 || echo 0)" \
++  "index invalide : ancien canal conserve le repli manifeste [got=${got}]"
++
++statut=0
++got="$(BUILD_LABEL_RELEASE_BASE="http://127.0.0.1:1" \
++  BUILD_LABEL_RELEASES_API="http://127.0.0.1:1/releases" \
++  BUILD_LABEL_FAMILY="phone-latest" \
++  "$SCRIPT" manzilionellm-dotcom/tvking 7motion-test 2>/dev/null)" || statut=$?
++ok "$([[ "$statut" -ne 0 && -z "$got" ]] && echo 1 || echo 0)" \
++  "API réellement injoignable : 7motion-test échoue sans numéro [status=${statut}]"
++
+ echo
+ echo "${pass} pass, ${fail} fail"
+ [ "$fail" -eq 0 ]
+diff --git a/lib/features/sports/data/public_football_repository.dart b/lib/features/sports/data/public_football_repository.dart
+index a56afc5..0f576c9 100644
+--- a/lib/features/sports/data/public_football_repository.dart
++++ b/lib/features/sports/data/public_football_repository.dart
+@@ -28,59 +28,102 @@ class _FootballFailure implements Exception {
+   final String reason;
+ }
+ 
++// La saison et la journée viennent du fournisseur : ni l'année du téléphone
++// ni « journée + 1 » ne permettent de retrouver un match reporté.
++class _FootballRound {
++  const _FootballRound(this.season, this.order);
++  final int season;
++  final int order;
++  String get key => '$season/$order';
++}
++
++class _FootballCalendar {
++  const _FootballCalendar(this.matches, this.round);
++  final List<SportEvent> matches;
++  final _FootballRound? round;
++}
++
++class _FixtureCache {
++  const _FixtureCache({required this.checkedAt, required this.matches,
++    this.currentRound, this.diagnostic});
++  final DateTime checkedAt;
++  final List<SportEvent> matches;
++  final String? currentRound;
++  final String? diagnostic;
++}
++
+ class PublicFootballRepository {
+   PublicFootballRepository._()
+       : _publicBase = Uri.parse('https://api.openligadb.de/'),
+         _legacyBase = null,
++        _clock = DateTime.now,
+         _competitions = const <String>['bl1', 'bl2', 'la1', 'pl', 'ucl'];
+   static final PublicFootballRepository instance = PublicFootballRepository._();
+ 
+   // Le banc ne remplace pas HTTP : seule l'adresse devient 127.0.0.1.
+   @visibleForTesting
+   PublicFootballRepository.forTesting({required Uri publicBase,
+-    required Uri legacyBase, List<String> competitions = const <String>['bl1']})
++    required Uri legacyBase, List<String> competitions = const <String>['bl1'],
++    DateTime Function()? clock})
+       : _publicBase = publicBase, _legacyBase = legacyBase,
++        _clock = clock ?? DateTime.now,
+         _competitions = competitions;
+   final Uri _publicBase;
+   final Uri? _legacyBase;
+   final List<String> _competitions;
++  final DateTime Function() _clock;
+   static const int maxResponseBytes = 1024 * 1024;
+   static const Duration _cacheAge = Duration(seconds: 60);
++  static const Duration _fixtureAge = Duration(minutes: 15);
+   FootballLoad? _cache;
++  DateTime? _lastAttemptAt;
+   Future<FootballLoad>? _inFlight;
+-  bool _paused = false;
++  final Map<String, _FixtureCache> _fixtures = <String, _FixtureCache>{};
+   String? get diagnostic => _cache?.diagnostic;
++  FootballLoad? get latest => _cache;
+ 
+   Future<FootballLoad> load({bool scores = false, bool manual = false,
+       Iterable<SportEvent> followed = const <SportEvent>[]}) async {
+     if (RepairFlags.mobileSportsLegacy) return _legacy(scores);
+     // Affiches, sentinelle et rappels partagent le même téléchargement.
+     if (_inFlight != null) return _inFlight!;
+-    if (!manual && _cache != null && (_paused ||
+-        DateTime.now().difference(_cache!.receivedAt!) < _cacheAge)) return _cache!;
+-    if (manual) _paused = false;
+-    final Future<FootballLoad> pending = _fresh(followed);
++    // Une panne ne bloque jamais les appels futurs. On temporise depuis le
++    // dernier essai (même raté), sans rajeunir la date des scores conservés.
++    if (!manual && _cache != null && _lastAttemptAt != null &&
++        _clock().difference(_lastAttemptAt!) < _cacheAge) return _cache!;
++    final Future<FootballLoad> pending = _fresh(followed, manual: manual);
+     _inFlight = pending;
+     try { return await pending; } finally { _inFlight = null; }
+   }
+ 
+-  Future<FootballLoad> _fresh(Iterable<SportEvent> followed) async {
++  Future<FootballLoad> _fresh(Iterable<SportEvent> followed, {required bool manual}) async {
+     final Map<String, SportEvent> found = <String, SportEvent>{};
+     final List<String> failures = <String>[];
+     int successes = 0;
+-    // Cinq petites réponses en parallèle, pas un fichier annuel ni une
+-    // compétition choisie à partir d'un nom ambigu ou d'une clé récupérée.
++    // Les scores courants restent relus chaque minute. Le calendrier demande
++    // au plus deux journées supplémentaires par ligue, puis reste 15 min en
++    // cache : les fichiers annuels grossissent au fil des résultats.
+     await Future.wait(_competitions.map((String code) async {
+       try {
+         final String body = await _get(_publicBase.resolve('getmatchdata/$code'));
+-        final List<SportEvent> matches = await compute(decodePublicFootball, body);
+-        for (final SportEvent e in matches) { found[e.id] = e; }
++        final _FootballCalendar current = await compute(_decodeFootballCalendar, body);
++        // Sans métadonnées de journée on peut toujours afficher les scores,
++        // mais on ne fabrique pas de saison. Une réponse vide permet en
++        // revanche de chercher le premier match de la saison suivante.
++        if (current.round != null || current.matches.isEmpty) {
++          final _FixtureCache upcoming = await _futureFixtures(code, current.round,
++              manual: manual);
++          for (final SportEvent e in upcoming.matches) { found[e.id] = e; }
++          if (upcoming.diagnostic != null) failures.add(upcoming.diagnostic!);
++        }
++        // Le score courant gagne toujours sur une prévision mise en cache.
++        for (final SportEvent e in current.matches) { found[e.id] = e; }
+         successes++;
+       } catch (error) { failures.add(_reason(error)); }
+     }));
+     // Une journée peut changer pendant un match reporté. On relit aussi
+     // les IDs publics suivis proches du coup d'envoi, par petits lots.
+-    final DateTime now = DateTime.now();
++    final DateTime now = _clock();
+     final Set<String> missing = <String>{};
+     for (final SportEvent e in followed) {
+       final DateTime? k = e.startsAt;
+@@ -101,24 +144,82 @@ class PublicFootballRepository {
+       }));
+     }
+     // Garder les scores reçus des sources en panne ; ne pas prétendre
+-    // qu'ils ont été actualisés. Réessayer est un geste explicite.
++    // qu'ils ont été actualisés. Le prochain essai automatique reste possible.
+     if (failures.isNotEmpty) {
+       for (final SportEvent e in _cache?.matches ?? const <SportEvent>[]) {
+         found.putIfAbsent(e.id, () => e);
+       }
+-      _paused = true;
+     }
+     final List<SportEvent> matches = found.values.toList()
+       ..sort((SportEvent a, SportEvent b) => a.timestamp.compareTo(b.timestamp));
+     final String? diagnostic = failures.isEmpty ? null : failures.first;
+     final FootballLoad result = FootballLoad(matches: List<SportEvent>.unmodifiable(matches),
+         available: successes > 0, diagnostic: diagnostic,
+-        receivedAt: successes > 0 ? DateTime.now() : _cache?.receivedAt ?? DateTime.now());
++        receivedAt: successes > 0 ? _clock() : _cache?.receivedAt);
+     _cache = result;
++    _lastAttemptAt = _clock();
+     _log(result, failures.length);
+     return result;
+   }
+ 
++  Future<_FixtureCache> _futureFixtures(String code, _FootballRound? current,
++      {required bool manual}) async {
++    final _FixtureCache? previous = _fixtures[code];
++    if (!manual && previous != null && previous.currentRound == current?.key &&
++        _clock().difference(previous.checkedAt) <
++            (previous.diagnostic == null ? _fixtureAge : _cacheAge)) return previous;
++
++    final Map<String, SportEvent> found = <String, SportEvent>{};
++    final Map<String, _FootballRound> rounds = <String, _FootballRound>{};
++    final List<String> failures = <String>[];
++    await Future.wait(<Future<void>>[
++      (() async {
++        try {
++          // 404 signifie ici « aucun prochain match » (compétition achevée).
++          final String body = await _get(
++              _publicBase.resolve('getnextmatchbyleagueshortcut/$code'), allowNotFound: true);
++          final _FootballCalendar next = await compute(_decodeFootballCalendar, body);
++          for (final SportEvent e in next.matches) { found[e.id] = e; }
++          final _FootballRound? round = next.round;
++          if (round != null && round.key != current?.key) rounds[round.key] = round;
++        } catch (error) { failures.add(_reason(error)); }
++      })(),
++      if (current != null) (() async {
++        try {
++          final String body = await _get(
++              _publicBase.resolve('getavailablegroups/$code/${current.season}'));
++          final List<int> groups = await compute(_decodeFootballGroups, body);
++          // Le prochain match peut appartenir à une ancienne journée reportée.
++          // On ajoute aussi la prochaine journée réellement déclarée, même si
++          // les numéros ne se suivent pas (phases d'une coupe, par exemple).
++          for (final int group in groups) {
++            if (group <= current.order) continue;
++            final _FootballRound round = _FootballRound(current.season, group);
++            rounds[round.key] = round;
++            break;
++          }
++        } catch (error) { failures.add(_reason(error)); }
++      })(),
++    ]);
++    await Future.wait(rounds.values.map((_FootballRound round) async {
++      try {
++        final String body = await _get(_publicBase.resolve('getmatchdata/$code/${round.key}'));
++        final List<SportEvent> matches = await compute(decodePublicFootball, body);
++        for (final SportEvent e in matches) { found[e.id] = e; }
++      } catch (error) { failures.add(_reason(error)); }
++    }));
++    if (failures.isNotEmpty) {
++      for (final SportEvent e in previous?.matches ?? const <SportEvent>[]) {
++        found.putIfAbsent(e.id, () => e);
++      }
++    }
++    final _FixtureCache result = _FixtureCache(checkedAt: _clock(),
++      currentRound: current?.key, matches: List<SportEvent>.unmodifiable(found.values),
++      diagnostic: failures.isEmpty ? null : failures.first);
++    _fixtures[code] = result;
++    return result;
++  }
++
+   Future<FootballLoad> _legacy(bool scores) async {
+     final Uri base = _legacyBase ?? Uri.parse('$kSubscriptionBaseUrl/');
+     try {
+@@ -143,15 +244,17 @@ class PublicFootballRepository {
+     }
+   }
+ 
+-  Future<String> _get(Uri uri, {Duration timeout = const Duration(seconds: 20)}) async {
++  Future<String> _get(Uri uri, {Duration timeout = const Duration(seconds: 20),
++      bool allowNotFound = false}) async {
+     final http.Client client = http.Client();
+-    try { return await _download(client, uri).timeout(timeout); }
++    try { return await _download(client, uri, allowNotFound: allowNotFound).timeout(timeout); }
+     finally { client.close(); }
+   }
+ 
+-  Future<String> _download(http.Client client, Uri uri) async {
++  Future<String> _download(http.Client client, Uri uri, {bool allowNotFound = false}) async {
+     final http.StreamedResponse response = await client.send(http.Request('GET', uri)
+       ..headers['Accept'] = 'application/json');
++    if (allowNotFound && response.statusCode == 404) return '[]';
+     if (response.statusCode != 200) {
+       throw _FootballFailure('Sport : HTTP ${response.statusCode}');
+     }
+@@ -200,6 +303,36 @@ class PublicFootballRepository {
+   }
+ }
+ 
++// Ces petites métadonnées sont décodées dans le même isolate que les matchs.
++// Une réponse de scores plus ancienne sans calendrier reste compatible.
++_FootballCalendar _decodeFootballCalendar(String body) {
++  final List<SportEvent> matches = decodePublicFootball(body);
++  final Object? decoded = jsonDecode(body);
++  final Object? first = decoded is List
++      ? (decoded.isEmpty ? null : decoded.first) : decoded;
++  _FootballRound? round;
++  if (first is Map && first['group'] is Map) {
++    final int? season = int.tryParse('${first['leagueSeason']}');
++    final int? order = int.tryParse('${(first['group'] as Map)['groupOrderID']}');
++    if (season != null && season > 0 && order != null && order > 0) {
++      round = _FootballRound(season, order);
++    }
++  }
++  return _FootballCalendar(matches, round);
++}
++
++List<int> _decodeFootballGroups(String body) {
++  final Object? decoded = jsonDecode(body);
++  if (decoded is! List) throw const FormatException('Calendrier invalide');
++  final Set<int> groups = <int>{};
++  for (final Object? row in decoded) {
++    final int? order = row is Map ? int.tryParse('${row['groupOrderID']}') : null;
++    if (order == null || order <= 0) throw const FormatException('Journée invalide');
++    groups.add(order);
++  }
++  return groups.toList()..sort();
++}
++
+ // Le décodage travaille hors du fil UI. On choisit resultTypeID=2 et
+ // jamais le premier élément (qui est souvent le score de la mi-temps).
+ List<SportEvent> decodePublicFootball(String body) {
+diff --git a/lib/features/sports/domain/sport_ordering.dart b/lib/features/sports/domain/sport_ordering.dart
+index 9fc1146..c41c481 100644
+--- a/lib/features/sports/domain/sport_ordering.dart
++++ b/lib/features/sports/domain/sport_ordering.dart
+@@ -27,7 +27,8 @@ const List<String> kPinnedSports = <String>[
+ /// épinglée absente des affiches du moment n'apparaît pas (un filtre
+ /// « Tennis » sans tennis serait un mensonge).
+ List<String> orderSports(Iterable<String> available) {
+-  final Set<String> present = available.where((String s) => s.isNotEmpty).toSet();
++  final Set<String> present =
++      available.where((String s) => s.isNotEmpty).toSet();
+   final List<String> out = <String>[];
+   for (final String p in kPinnedSports) {
+     final String? match = _findIgnoringCase(present, p);
+@@ -59,12 +60,14 @@ String? defaultSport(List<String> ordered) {
+ /// Ordonne une liste de matchs pour l'affichage :
+ ///   1. ceux qui sont EN DIRECT (selon [isLive]), en tête, dans l'ordre où
+ ///      la source les a classés (elle met les grandes affiches d'abord) ;
+-///   2. puis les autres, du plus proche coup d'envoi au plus lointain ;
+-///      les matchs sans horaire connu ferment la marche.
++///   2. les coups d'envoi à venir, du plus proche au plus lointain ;
++///   3. les horaires déjà passés, du plus récent au plus ancien ;
++///   4. les matchs sans horaire connu ferment la marche.
+ ///
+-/// Un match déjà TERMINÉ (score connu, pas en direct) reste après les
+-/// matchs à venir : un résultat d'hier ne doit pas cacher le match de
+-/// ce soir.
++/// Un horaire passé ne prouve PAS qu'un match est terminé : un report ou
++/// un résultat manquant peut laisser le statut vide. On range seulement
++/// sa date, sans inventer de score ni de statut FT. Ainsi, les affiches
++/// du 17 octobre sans résultat ne cachent pas celles des 20 et 21.
+ List<SportEvent> orderMatches(
+   List<SportEvent> events, {
+   required bool Function(SportEvent) isLive,
+@@ -72,7 +75,7 @@ List<SportEvent> orderMatches(
+ }) {
+   final List<SportEvent> live = <SportEvent>[];
+   final List<SportEvent> upcoming = <SportEvent>[];
+-  final List<SportEvent> finished = <SportEvent>[];
++  final List<SportEvent> past = <SportEvent>[];
+   final List<SportEvent> undated = <SportEvent>[];
+   for (final SportEvent e in events) {
+     if (isLive(e)) {
+@@ -82,8 +85,8 @@ List<SportEvent> orderMatches(
+     final DateTime? k = e.startsAt;
+     if (k == null) {
+       undated.add(e);
+-    } else if (e.hasScore && k.isBefore(now)) {
+-      finished.add(e);
++    } else if (k.isBefore(now)) {
++      past.add(e);
+     } else {
+       upcoming.add(e);
+     }
+@@ -91,8 +94,8 @@ List<SportEvent> orderMatches(
+   int byKickoff(SportEvent a, SportEvent b) =>
+       a.startsAt!.compareTo(b.startsAt!);
+   upcoming.sort(byKickoff);
+-  // Les terminés : le plus récent d'abord (le résultat d'hier avant celui
+-  // de la semaine dernière).
+-  finished.sort((SportEvent a, SportEvent b) => byKickoff(b, a));
+-  return <SportEvent>[...live, ...upcoming, ...finished, ...undated];
++  // Les horaires passés : hier avant la semaine dernière, même quand
++  // la source n'a encore envoyé aucun résultat.
++  past.sort((SportEvent a, SportEvent b) => byKickoff(b, a));
++  return <SportEvent>[...live, ...upcoming, ...past, ...undated];
+ }
+diff --git a/lib/features/sports/presentation/sport_screen.dart b/lib/features/sports/presentation/sport_screen.dart
+index bb8803d..d70174a 100644
+--- a/lib/features/sports/presentation/sport_screen.dart
++++ b/lib/features/sports/presentation/sport_screen.dart
+@@ -9,8 +9,8 @@
+ //  notifications, sans aucun écran — donc rien à régler, rien à voir.
+ //
+ //  TROIS ONGLETS, dans l'ordre de ce qu'on regarde le plus souvent :
+-//    1. À L'AFFICHE — les grandes rencontres des 3 prochains jours, tous
+-//       sports confondus, filtrables par discipline. Chaque ligne a un
++//    1. À L'AFFICHE — les journées courantes et prochaines publiées par
++//       les sources, filtrables par discipline. Chaque ligne a un
+ //       bouton « suivre » : c'est LÀ qu'on choisit match par match.
+ //    2. MES MATCHS  — ce qu'on a choisi de suivre. Servi depuis la
+ //       mémoire locale : instantané, et lisible même sans réseau.
+@@ -68,7 +68,22 @@ class _BigLoad {
+ }
+ 
+ class SportScreen extends StatefulWidget {
+-  const SportScreen({super.key});
++  const SportScreen({super.key})
++      : footballRepository = null,
++        scoreChanges = null;
++
++  /// Le banc pilote le vrai écran avec des réponses locales et un flux
++  /// explicite, sans démarrer le minuteur ni appeler un fournisseur.
++  /// En production, le constructeur normal garde les services partagés.
++  @visibleForTesting
++  const SportScreen.forTesting({
++    super.key,
++    required this.footballRepository,
++    required this.scoreChanges,
++  });
++
++  final PublicFootballRepository? footballRepository;
++  final Stream<void>? scoreChanges;
+ 
+   @override
+   State<SportScreen> createState() => _SportScreenState();
+@@ -95,6 +110,9 @@ class _SportScreenState extends State<SportScreen>
+   StreamSubscription<List<SportTeam>>? _favSub;
+   StreamSubscription<void>? _liveSub;
+ 
++  PublicFootballRepository get _footballRepository =>
++      widget.footballRepository ?? PublicFootballRepository.instance;
++
+   @override
+   void initState() {
+     super.initState();
+@@ -112,14 +130,23 @@ class _SportScreenState extends State<SportScreen>
+     //  SCORES EN DIRECT. Le service ne tourne QUE tant que cet écran est
+     //  ouvert (cf. start/stop) : un minuteur qui lui survivrait viderait
+     //  la batterie pour des données que personne ne regarde.
+-    LiveScoresService.instance.start();
+-    _liveSub = LiveScoresService.instance.changes.listen((_) {
+-      if (mounted) setState(() {
+-        if (!RepairFlags.mobileSportsLegacy) {
+-          _diagnostic = PublicFootballRepository.instance.diagnostic;
+-        }
+-      });
++    _liveSub =
++        (widget.scoreChanges ?? LiveScoresService.instance.changes).listen((_) {
++      if (!mounted) return;
++      // Le fournisseur public renvoie TOUT le calendrier téléchargé,
++      // pas seulement les scores : une nouvelle journée ou un horaire
++      // reporté doit remplacer les affiches déjà visibles. Repeindre
++      // l'ancien _load ne faisait jamais apparaître les nouveaux matchs.
++      final FootballLoad? latest = _footballRepository.latest;
++      if (!RepairFlags.mobileSportsLegacy && latest != null) {
++        _applyFootballLoad(latest);
++      } else {
++        // Le flux historique ne contient que le direct. Il continue à
++        // enrichir les cartes, sans effacer les autres affiches.
++        setState(() {});
++      }
+     });
++    if (widget.scoreChanges == null) LiveScoresService.instance.start();
+   }
+ 
+   @override
+@@ -127,41 +154,50 @@ class _SportScreenState extends State<SportScreen>
+     _followSub?.cancel();
+     _favSub?.cancel();
+     _liveSub?.cancel();
+-    LiveScoresService.instance.stop();
++    if (widget.scoreChanges == null) LiveScoresService.instance.stop();
+     _tabs.dispose();
+     super.dispose();
+   }
+ 
+   Future<void> _fetch() async {
+     if (mounted) setState(() => _loading = true);
+-    _BigLoad result = const _BigLoad();
+-    bool failed = false;
++    FootballLoad result = FootballLoad(diagnostic: _diagnostic);
+     try {
+       await FollowedMatchesService.instance.ensureLoaded();
+-      final FootballLoad loaded = await PublicFootballRepository.instance.load(
+-        manual: true, followed: FollowedMatchesService.instance.all);
+-      _diagnostic = loaded.diagnostic;
+-      failed = !loaded.available && loaded.matches.isEmpty;
+-      result = _BigLoad(matches: loaded.matches);
++      result = await _footballRepository.load(
++          manual: true, followed: FollowedMatchesService.instance.all);
+     } catch (e) {
+       if (kDebugMode) debugPrint('[Sport] chargement KO: $e');
+-      failed = true;
+     }
++    if (!mounted) return;
++    _applyFootballLoad(result);
++  }
++
++  /// Un seul chemin pour le geste « Actualiser » ET les téléchargements
++  /// périodiques : données, diagnostic et filtres décrivent toujours la
++  /// même réponse. Le dépôt conserve lui-même le cache en cas de panne.
++  void _applyFootballLoad(FootballLoad result) {
+     // Le suivi mémorisé se rafraîchit avec ce qui vient d'arriver : les
+-    // scores des matchs suivis restent lisibles hors ligne ensuite.
++    // scores ET les horaires corrigés restent lisibles hors ligne ensuite.
+     if (result.matches.isNotEmpty) {
+       unawaited(FollowedMatchesService.instance.refreshKnown(result.matches));
+     }
+-    if (!mounted) return;
+     setState(() {
+-      _load = result;
+-      _failed = failed;
++      _load = _BigLoad(matches: result.matches);
++      _diagnostic = result.diagnostic;
++      _failed = !result.available && result.matches.isEmpty;
+       _loading = false;
+       // FOOTBALL PAR DÉFAUT (07/09) : tant que le client n'a pas touché
+-      // la barre, on présélectionne le football s'il y en a.
+-      if (!_filterChosen) {
+-        _sportFilter = defaultSport(
+-            orderSports(result.matches.map((SportEvent e) => e.sport)));
++      // la barre, on présélectionne le football s'il y en a. Un choix
++      // encore disponible (y compris « Tous ») survit au rafraîchissement.
++      final List<String> available = _availableSports;
++      if (!_filterChosen ||
++          (!RepairFlags.mobileSportsLegacy &&
++              _sportFilter != null &&
++              !available.contains(_sportFilter))) {
++        // Si la discipline a disparu, ne laissons pas un filtre devenu
++        // invisible masquer la totalité du nouveau calendrier.
++        _sportFilter = defaultSport(available);
+       }
+     });
+   }
+@@ -174,6 +210,7 @@ class _SportScreenState extends State<SportScreen>
+       orderSports(_load.matches.map((SportEvent e) => e.sport));
+ 
+   bool _isLive(SportEvent e) {
++    if (!RepairFlags.mobileSportsLegacy) return e.isLive;
+     final SportEvent? l = LiveScoresService.instance.forId(e.id);
+     return l != null && l.isLive;
+   }
+@@ -223,15 +260,18 @@ class _SportScreenState extends State<SportScreen>
+             Padding(
+               padding: const EdgeInsets.all(12),
+               child: Text(context.l10n.freeFootballSourceNote,
+-                style: AppTextStyles.labelSmall.copyWith(color: AppColors.textSecondary)),
++                  style: AppTextStyles.labelSmall
++                      .copyWith(color: AppColors.textSecondary)),
+             ),
+           if (_diagnostic != null)
+             Padding(
+               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+-              child: Text(_diagnostic!, style: AppTextStyles.labelSmall
+-                .copyWith(color: AppColors.textSecondary)),
++              child: Text(_diagnostic!,
++                  style: AppTextStyles.labelSmall
++                      .copyWith(color: AppColors.textSecondary)),
+             ),
+-          Expanded(child: TabBarView(
++          Expanded(
++              child: TabBarView(
+             controller: _tabs,
+             children: <Widget>[_highlightsTab(), _followedTab(), _teamsTab()],
+           )),
+@@ -301,8 +341,8 @@ class _SportScreenState extends State<SportScreen>
+                 : ListView.builder(
+                     padding: const EdgeInsets.fromLTRB(12, 4, 12, 24),
+                     itemCount: items.length,
+-                    itemBuilder: (BuildContext _, int i) =>
+-                        _MatchTile(event: items[i]),
++                    itemBuilder: (BuildContext _, int i) => _MatchTile(
++                        key: ValueKey<String>(items[i].id), event: items[i]),
+                   ),
+           ),
+         ],
+@@ -323,10 +363,11 @@ class _SportScreenState extends State<SportScreen>
+   Widget _liveBand() {
+     // OpenLigaDB n'a pas de minute/statut de direct : ni une heure
+     // passée ni un score partiel ne suffisent à inventer le badge LIVE.
+-    final List<SportEvent> received = LiveScoresService.instance.live;
+     final List<SportEvent> live = RepairFlags.mobileSportsLegacy
+-        ? received
+-        : received.where((SportEvent e) => e.isLive).toList(growable: false);
++        ? LiveScoresService.instance.live
++        : _load.matches
++            .where((SportEvent e) => e.isLive)
++            .toList(growable: false);
+     if (live.isEmpty) return const SizedBox.shrink();
+     // On respecte le filtre de discipline : si le client regarde le
+     // tennis, on ne lui impose pas le baseball en bandeau.
+@@ -445,7 +486,8 @@ class _SportScreenState extends State<SportScreen>
+     return ListView.builder(
+       padding: const EdgeInsets.fromLTRB(12, 8, 12, 24),
+       itemCount: items.length,
+-      itemBuilder: (BuildContext _, int i) => _MatchTile(event: items[i]),
++      itemBuilder: (BuildContext _, int i) =>
++          _MatchTile(key: ValueKey<String>(items[i].id), event: items[i]),
+     );
+   }
+ 
+@@ -755,7 +797,7 @@ class _WomenChip extends StatelessWidget {
+ /// Une rencontre + le bouton « suivre ». C'est la brique qui répond à
+ /// « quelqu'un peut choisir les matchs où il veut suivre ».
+ class _MatchTile extends StatefulWidget {
+-  const _MatchTile({required this.event});
++  const _MatchTile({super.key, required this.event});
+   final SportEvent event;
+ 
+   @override
+@@ -767,10 +809,13 @@ class _MatchTileState extends State<_MatchTile> {
+ 
+   @override
+   Widget build(BuildContext context) {
+-    //  LE SCORE EN DIRECT EST INJECTÉ ICI, au dernier moment. L'affiche
+-    //  garde son heure, ses écussons et son niveau ; seul ce qui bouge
+-    //  (score, minute) vient du service temps réel.
+-    final SportEvent e = LiveScoresService.instance.enrich(widget.event);
++    // La réponse publique est déjà complète. Après « Actualiser », le
++    // cache du minuteur peut être plus ancien : il ne doit pas rétablir
++    // l'ancien score ou un ancien statut sur la nouvelle affiche.
++    // La source historique conserve son enrichissement séparé du direct.
++    final SportEvent e = RepairFlags.mobileSportsLegacy
++        ? LiveScoresService.instance.enrich(widget.event)
++        : widget.event;
+     final bool followed = FollowedMatchesService.instance.isFollowed(e.id);
+ 
+     //  AVANT le 23/08, « en direct » était DEVINÉ à l'horloge : un match
+@@ -779,8 +824,9 @@ class _MatchTileState extends State<_MatchTile> {
+     //  un fuseau mal lu, et le badge mentait. Maintenant la source le DIT :
+     //  on n'affiche « EN DIRECT » que si le match est vraiment dans la
+     //  liste des rencontres en cours.
+-    final bool live =
+-        LiveScoresService.instance.forId(e.id) != null && e.isLive;
++    final bool live = e.isLive &&
++        (!RepairFlags.mobileSportsLegacy ||
++            LiveScoresService.instance.forId(e.id) != null);
+ 
+     return Card(
+       color: AppColors.surface,
+@@ -1031,8 +1077,8 @@ class _CountryChipState extends State<_CountryChip> {
+                 ),
+               for (final SportCountryOption o in options)
+                 ListTile(
+-                  leading: Text(o.info.flag,
+-                      style: const TextStyle(fontSize: 22)),
++                  leading:
++                      Text(o.info.flag, style: const TextStyle(fontSize: 22)),
+                   title: Text(o.info.name),
+                   subtitle: Text('${o.channelCount}',
+                       style: AppTextStyles.labelSmall
+diff --git a/test/features/sports/public_football_http_test.dart b/test/features/sports/public_football_http_test.dart
+index ec9cbaa..ca2d87d 100644
+--- a/test/features/sports/public_football_http_test.dart
++++ b/test/features/sports/public_football_http_test.dart
+@@ -72,9 +72,30 @@ void main() {
+     LiveScoresService.instance.debugResetGoals();
+   });
+ 
+-  PublicFootballRepository repo({List<String> competitions = const <String>['bl1']}) =>
++  PublicFootballRepository repo({List<String> competitions = const <String>['bl1'],
++      DateTime Function()? clock}) =>
+       PublicFootballRepository.forTesting(publicBase: publicBase,
+-        legacyBase: legacyBase, competitions: competitions);
++        legacyBase: legacyBase, competitions: competitions, clock: clock);
++
++  Map<String, Object?> scheduled(int id, int season, int group, DateTime kickoff,
++      {int home = 1, bool finished = false}) => <String, Object?>{
++    ...fixture(id: id, kickoff: kickoff, home: home, finished: finished),
++    'leagueSeason': season,
++    'group': <String, Object?>{'groupOrderID': group},
++  };
++
++  // Chaque URL doit exister dans le contrat du scénario. Un endpoint inventé
++  // répond 404 : une jolie liste issue d'une route incorrecte ne peut pas passer.
++  void serveCalendar(Map<String, Object?> responses) {
++    respond = (HttpRequest r) async {
++      if (!responses.containsKey(r.uri.path)) {
++        r.response.statusCode = HttpStatus.notFound;
++      } else {
++        r.response.write(jsonEncode(responses[r.uri.path]));
++      }
++      await r.response.close();
++    };
++  }
+ 
+   test('routes historiques 404 ; source publique reçue sans clé', () async {
+     expect(RepairFlags.mobileSportsLegacy, isFalse);
+@@ -132,9 +153,11 @@ void main() {
+     expect(paths.length, 1); // cache commun de 60 s
+   });
+ 
+-  test('503 : scores conservés, panne visible, aucun réessai automatique', () async {
+-    final PublicFootballRepository source = repo();
+-    await source.load();
++  test('503 : cache conservé et rétablissement automatique après 60 s', () async {
++    DateTime now = DateTime.utc(2026, 10, 20);
++    final PublicFootballRepository source = repo(clock: () => now);
++    final FootballLoad first = await source.load();
++    now = now.add(const Duration(minutes: 2));
+     respond = (HttpRequest r) async {
+       r.response.statusCode = 503;
+       await r.response.close();
+@@ -143,16 +166,152 @@ void main() {
+     expect(bad.diagnostic, 'Sport : HTTP 503');
+     expect(bad.matches.single.homeScore, '1');
+     expect(bad.available, isFalse);
++    expect(bad.receivedAt, first.receivedAt); // on ne rajeunit pas un ancien score
+     await source.load(scores: true);
+     expect(paths.length, 2);
+     respond = (HttpRequest r) async {
+       r.response.write(jsonEncode(<Object?>[fixture(home: 2)]));
+       await r.response.close();
+     };
+-    final FootballLoad recovered = await source.load(manual: true);
++    now = now.add(const Duration(seconds: 61));
++    final FootballLoad recovered = await source.load();
+     expect(recovered.diagnostic, isNull);
+     expect(recovered.matches.single.homeScore, '2');
+     expect(paths.length, 3);
++    expect(recovered.receivedAt, now);
++  });
++
++  test('journee passée : charge tous les matchs de la prochaine journée une fois', () async {
++    final DateTime now = DateTime.utc(2026, 10, 20);
++    final Map<String, Object?> next = scheduled(2, 2026, 7, DateTime.utc(2026, 10, 23));
++    serveCalendar(<String, Object?>{
++      '/public/getmatchdata/bl1': <Object?>[scheduled(1, 2026, 6, DateTime.utc(2026, 10, 17))],
++      '/public/getnextmatchbyleagueshortcut/bl1': next,
++      '/public/getavailablegroups/bl1/2026': <Object?>[
++        <String, int>{'groupOrderID': 9}, <String, int>{'groupOrderID': 7},
++        <String, int>{'groupOrderID': 6}],
++      '/public/getmatchdata/bl1/2026/7': <Object?>[
++        next, scheduled(3, 2026, 7, DateTime.utc(2026, 10, 25))],
++    });
++    final PublicFootballRepository source = repo(clock: () => now);
++    final FootballLoad result = await source.load();
++    expect(result.available, isTrue);
++    expect(result.diagnostic, isNull);
++    expect(result.matches.map((SportEvent e) => e.id).toSet(),
++        <String>{'oldb:1', 'oldb:2', 'oldb:3'});
++    expect(result.matches.where((SportEvent e) => e.startsAt!.isAfter(now)).length, 2);
++    expect(paths.where((String p) => p == '/public/getmatchdata/bl1/2026/7').length, 1);
++    expect(paths.length, 4);
++    expect(identical(source.latest, result), isTrue);
++  });
++
++  test('report ancien : ajoute son groupe ET la prochaine journée déclarée', () async {
++    final Map<String, Object?> delayed = scheduled(6, 2026, 6, DateTime.utc(2026, 10, 21));
++    serveCalendar(<String, Object?>{
++      '/public/getmatchdata/bl1': <Object?>[scheduled(9, 2026, 9, DateTime.utc(2026, 10, 18))],
++      '/public/getnextmatchbyleagueshortcut/bl1': delayed,
++      '/public/getavailablegroups/bl1/2026': <Object?>[
++        <String, int>{'groupOrderID': 6}, <String, int>{'groupOrderID': 9},
++        <String, int>{'groupOrderID': 12}],
++      '/public/getmatchdata/bl1/2026/6': <Object?>[delayed],
++      '/public/getmatchdata/bl1/2026/12': <Object?>[
++        scheduled(12, 2026, 12, DateTime.utc(2026, 10, 23))],
++    });
++    final FootballLoad result = await repo().load();
++    expect(result.diagnostic, isNull);
++    expect(result.matches.map((SportEvent e) => e.id).toSet(),
++        <String>{'oldb:6', 'oldb:9', 'oldb:12'});
++    expect(paths, contains('/public/getmatchdata/bl1/2026/6'));
++    expect(paths, contains('/public/getmatchdata/bl1/2026/12'));
++    expect(paths, isNot(contains('/public/getmatchdata/bl1/2026/10')));
++    expect(paths.length, 5); // au maximum deux groupes en plus du courant
++  });
++
++  test('nouvelle saison : suit la saison du prochain match, pas celle de l’horloge', () async {
++    final Map<String, Object?> next = scheduled(100, 2027, 1, DateTime.utc(2027, 8, 20));
++    serveCalendar(<String, Object?>{
++      '/public/getmatchdata/bl1': <Object?>[
++        scheduled(34, 2026, 34, DateTime.utc(2027, 5, 20), finished: true)],
++      '/public/getnextmatchbyleagueshortcut/bl1': next,
++      '/public/getavailablegroups/bl1/2026': <Object?>[<String, int>{'groupOrderID': 34}],
++      '/public/getmatchdata/bl1/2027/1': <Object?>[next],
++    });
++    final FootballLoad result = await repo(clock: () => DateTime.utc(2027, 6, 1)).load();
++    expect(result.diagnostic, isNull);
++    expect(result.matches.map((SportEvent e) => e.id), contains('oldb:100'));
++    expect(paths, contains('/public/getavailablegroups/bl1/2026'));
++    expect(paths, contains('/public/getmatchdata/bl1/2027/1'));
++  });
++
++  test('fin de compétition : aucun prochain match (404) n’est pas une panne', () async {
++    serveCalendar(<String, Object?>{
++      '/public/getmatchdata/bl1': <Object?>[
++        scheduled(34, 2026, 34, DateTime.utc(2027, 5, 20), finished: true)],
++      '/public/getavailablegroups/bl1/2026': <Object?>[<String, int>{'groupOrderID': 34}],
++    });
++    final FootballLoad result = await repo().load();
++    expect(result.available, isTrue);
++    expect(result.diagnostic, isNull);
++    expect(result.matches.single.status, 'FT');
++    expect(paths.length, 3);
++  });
++
++  test('calendrier vide : retrouve la prochaine saison fournie', () async {
++    final Map<String, Object?> next = scheduled(100, 2027, 1, DateTime.utc(2027, 8, 20));
++    serveCalendar(<String, Object?>{
++      '/public/getmatchdata/bl1': <Object?>[],
++      '/public/getnextmatchbyleagueshortcut/bl1': next,
++      '/public/getmatchdata/bl1/2027/1': <Object?>[next],
++    });
++    final FootballLoad result = await repo().load();
++    expect(result.diagnostic, isNull);
++    expect(result.matches.single.id, 'oldb:100');
++    expect(paths.length, 3);
++  });
++
++  test('prévisions 15 min : les scores courants gagnent et le bouton force la relecture', () async {
++    DateTime now = DateTime.utc(2026, 10, 20);
++    int home = 1;
++    respond = (HttpRequest r) async {
++      final Object? data = r.uri.path.contains('getavailablegroups')
++        ? <Object?>[<String, int>{'groupOrderID': 6}]
++        : <Object?>[scheduled(1, 2026, 6, DateTime.utc(2026, 10, 20), home: home)];
++      r.response.write(jsonEncode(data));
++      await r.response.close();
++    };
++    final PublicFootballRepository source = repo(clock: () => now);
++    await source.load();
++    home = 2;
++    now = now.add(const Duration(seconds: 61));
++    expect((await source.load()).matches.single.homeScore, '2');
++    expect(paths.where((String p) => p.contains('getnextmatch')).length, 1);
++    now = now.add(const Duration(minutes: 15));
++    await source.load();
++    expect(paths.where((String p) => p.contains('getnextmatch')).length, 2);
++    await source.load(manual: true);
++    expect(paths.where((String p) => p.contains('getnextmatch')).length, 3);
++  });
++
++  test('panne calendrier : scores disponibles puis prochain groupe récupéré sans geste', () async {
++    DateTime now = DateTime.utc(2026, 10, 20);
++    final Map<String, Object?> next = scheduled(2, 2026, 7, DateTime.utc(2026, 10, 23));
++    final Map<String, Object?> responses = <String, Object?>{
++      '/public/getmatchdata/bl1': <Object?>[scheduled(1, 2026, 6, DateTime.utc(2026, 10, 17))],
++      '/public/getnextmatchbyleagueshortcut/bl1': next,
++      '/public/getavailablegroups/bl1/2026': <Object?>[<String, int>{'groupOrderID': 7}],
++    };
++    serveCalendar(responses);
++    final PublicFootballRepository source = repo(clock: () => now);
++    final FootballLoad bad = await source.load();
++    expect(bad.available, isTrue);
++    expect(bad.diagnostic, 'Sport : HTTP 404'); // seul next accepte 404
++    expect(bad.matches.map((SportEvent e) => e.id), contains('oldb:2'));
++    responses['/public/getmatchdata/bl1/2026/7'] = <Object?>[
++      next, scheduled(3, 2026, 7, DateTime.utc(2026, 10, 24))];
++    now = now.add(const Duration(seconds: 61));
++    final FootballLoad recovered = await source.load();
++    expect(recovered.diagnostic, isNull);
++    expect(recovered.matches.map((SportEvent e) => e.id), contains('oldb:3'));
+   });
+ 
+   test('une compétition en panne ne jette pas les autres scores', () async {
+diff --git a/test/features/sports/sport_ordering_test.dart b/test/features/sports/sport_ordering_test.dart
+index dca4781..be849a0 100644
+--- a/test/features/sports/sport_ordering_test.dart
++++ b/test/features/sports/sport_ordering_test.dart
+@@ -31,9 +31,15 @@ void main() {
+   group('ordre des filtres', () {
+     test('Football, Basket, Tennis, Baseball d\'abord, dans cet ordre', () {
+       final List<String> r = orderSports(<String>[
+-        'Tennis', 'Ice Hockey', 'Baseball', 'Soccer', 'Rugby', 'Basketball',
++        'Tennis',
++        'Ice Hockey',
++        'Baseball',
++        'Soccer',
++        'Rugby',
++        'Basketball',
+       ]);
+-      expect(r.sublist(0, 4), <String>['Soccer', 'Basketball', 'Tennis', 'Baseball']);
++      expect(r.sublist(0, 4),
++          <String>['Soccer', 'Basketball', 'Tennis', 'Baseball']);
+       expect(r.sublist(4), <String>['Ice Hockey', 'Rugby'],
+           reason: 'le reste suit, alphabétique');
+     });
+@@ -45,7 +51,8 @@ void main() {
+     });
+ 
+     test('une discipline épinglée absente n\'est pas inventée', () {
+-      expect(orderSports(<String>['Rugby', 'Tennis']), <String>['Tennis', 'Rugby']);
++      expect(orderSports(<String>['Rugby', 'Tennis']),
++          <String>['Tennis', 'Rugby']);
+     });
+ 
+     test('la casse de la source ne casse pas l\'épinglage', () {
+@@ -65,7 +72,8 @@ void main() {
+     final Set<String> liveIds = <String>{'live1', 'live2'};
+     bool isLive(SportEvent e) => liveIds.contains(e.id);
+ 
+-    test('EN DIRECT en tête, dans l\'ordre de la source, puis à venir par heure',
++    test(
++        'EN DIRECT en tête, dans l\'ordre de la source, puis à venir par heure',
+         () {
+       final List<SportEvent> r = orderMatches(<SportEvent>[
+         _m('soir', kickoff: now.add(const Duration(hours: 3))),
+@@ -80,10 +88,71 @@ void main() {
+ 
+     test('un résultat d\'hier ne cache pas le match de ce soir', () {
+       final List<SportEvent> r = orderMatches(<SportEvent>[
+-        _m('hier', kickoff: now.subtract(const Duration(days: 1)), hs: '2', as: '1'),
++        _m('hier',
++            kickoff: now.subtract(const Duration(days: 1)), hs: '2', as: '1'),
+         _m('ce_soir', kickoff: now.add(const Duration(hours: 2))),
+       ], isLive: isLive, now: now);
+-      expect(r.map((SportEvent e) => e.id).toList(), <String>['ce_soir', 'hier']);
++      expect(
++          r.map((SportEvent e) => e.id).toList(), <String>['ce_soir', 'hier']);
++    });
++
++    test('les 17 octobre sans score suivent les matchs des 20 et 21', () {
++      final DateTime october20 = DateTime.utc(2026, 10, 20, 12);
++      final SportEvent october17 =
++          _m('17_sans_score', kickoff: DateTime.utc(2026, 10, 17, 14));
++      final SportEvent october19 = _m('19_resultat',
++          kickoff: DateTime.utc(2026, 10, 19, 19),
++          status: 'FT',
++          hs: '2',
++          as: '1');
++      final SportEvent october18 = _m('18_reporte',
++          kickoff: DateTime.utc(2026, 10, 18, 17), status: 'POSTP');
++      final List<SportEvent> input = <SportEvent>[
++        october17,
++        _m('21_soir', kickoff: DateTime.utc(2026, 10, 21, 19)),
++        october19,
++        _m('20_soir', kickoff: DateTime.utc(2026, 10, 20, 19)),
++        october18,
++        _m('20_debut', kickoff: DateTime.utc(2026, 10, 20, 16, 45)),
++      ];
++
++      final List<SportEvent> ordered = orderMatches(input,
++          isLive: (SportEvent e) => e.isLive, now: october20);
++
++      expect(ordered.map((SportEvent e) => e.id), <String>[
++        '20_debut',
++        '20_soir',
++        '21_soir',
++        '19_resultat',
++        '18_reporte',
++        '17_sans_score',
++      ]);
++      // Le tri ne réécrit pas les faits manquants : sans résultat reçu,
++      // l'affiche du 17 n'acquiert ni score ni statut « terminé ».
++      expect(identical(ordered.last, october17), isTrue);
++      expect(october17.status, isEmpty);
++      expect(october17.hasScore, isFalse);
++      expect(october17.isLive, isFalse);
++      expect(october18.status, 'POSTP');
++      expect(input.first, same(october17), reason: 'la source reste intacte');
++    });
++
++    test('seul un direct explicite précède le coup d\'envoi présent', () {
++      final List<SportEvent> ordered = orderMatches(<SportEvent>[
++        _m('a_l_instant', kickoff: now),
++        _m('passe_sans_statut',
++            kickoff: now.subtract(const Duration(minutes: 1))),
++        _m('vrai_direct',
++            kickoff: now.subtract(const Duration(minutes: 30)), status: '1H'),
++        _m('horaire_invalide'),
++      ], isLive: (SportEvent e) => e.isLive, now: now);
++
++      expect(ordered.map((SportEvent e) => e.id), <String>[
++        'vrai_direct',
++        'a_l_instant',
++        'passe_sans_statut',
++        'horaire_invalide',
++      ]);
+     });
+ 
+     test('sans horaire connu → en dernier, jamais jeté', () {
+@@ -91,7 +160,8 @@ void main() {
+         _m('inconnu'),
+         _m('ce_soir', kickoff: now.add(const Duration(hours: 2))),
+       ], isLive: isLive, now: now);
+-      expect(r.map((SportEvent e) => e.id).toList(), <String>['ce_soir', 'inconnu']);
++      expect(r.map((SportEvent e) => e.id).toList(),
++          <String>['ce_soir', 'inconnu']);
+     });
+   });
+ 
+@@ -100,21 +170,49 @@ void main() {
+       final MatchDetail d = MatchDetail.fromJson(<String, dynamic>{
+         'id': '2494022',
+         'event': <String, dynamic>{
+-          'home': 'Arsenal', 'away': 'Chelsea', 'homeScore': '2', 'awayScore': '1',
+-          'status': 'FT', 'league': 'English Premier League', 'summary': 'Arsenal…',
++          'home': 'Arsenal',
++          'away': 'Chelsea',
++          'homeScore': '2',
++          'awayScore': '1',
++          'status': 'FT',
++          'league': 'English Premier League',
++          'summary': 'Arsenal…',
+         },
+         'stats': <Object>[
+           <String, dynamic>{'name': 'Corner Kicks', 'home': 5, 'away': 3},
+         ],
+         'timeline': <Object>[
+-          <String, dynamic>{'minute': 25, 'type': 'Goal', 'detail': 'Normal Goal', 'player': 'Havertz', 'home': true},
+-          <String, dynamic>{'minute': 14, 'type': 'Card', 'detail': 'Yellow Card', 'player': 'Pedro', 'home': false},
++          <String, dynamic>{
++            'minute': 25,
++            'type': 'Goal',
++            'detail': 'Normal Goal',
++            'player': 'Havertz',
++            'home': true
++          },
++          <String, dynamic>{
++            'minute': 14,
++            'type': 'Card',
++            'detail': 'Yellow Card',
++            'player': 'Pedro',
++            'home': false
++          },
+         ],
+         'lineup': <String, dynamic>{
+-          'home': <Object>[<String, dynamic>{'name': 'Raya', 'position': 'Goalkeeper', 'number': 1, 'home': true}],
++          'home': <Object>[
++            <String, dynamic>{
++              'name': 'Raya',
++              'position': 'Goalkeeper',
++              'number': 1,
++              'home': true
++            }
++          ],
+           'away': <Object>[],
+         },
+-        'available': <String, dynamic>{'stats': true, 'timeline': true, 'lineup': true},
++        'available': <String, dynamic>{
++          'stats': true,
++          'timeline': true,
++          'lineup': true
++        },
+       });
+       expect(d.home, 'Arsenal');
+       expect(d.stat('corner')!.home, 5);
+@@ -128,7 +226,10 @@ void main() {
+     test('un JSON vide ou malformé donne une fiche vide, jamais une exception',
+         () {
+       final MatchDetail d = MatchDetail.fromJson(<String, dynamic>{
+-        'id': '1', 'event': 'pas un objet', 'stats': 42, 'lineup': null,
++        'id': '1',
++        'event': 'pas un objet',
++        'stats': 42,
++        'lineup': null,
+       });
+       expect(d.home, isEmpty);
+       expect(d.stats, isEmpty);
+diff --git a/test/features/sports/sport_screen_refresh_test.dart b/test/features/sports/sport_screen_refresh_test.dart
+new file mode 100644
+index 0000000..a48bb09
+--- /dev/null
++++ b/test/features/sports/sport_screen_refresh_test.dart
+@@ -0,0 +1,273 @@
++import 'dart:async';
++
++import 'package:flutter/material.dart';
++import 'package:flutter_test/flutter_test.dart';
++import 'package:shared_preferences/shared_preferences.dart';
++import 'package:tv_king/core/app/repair_flags.dart';
++import 'package:tv_king/core/theme/app_theme.dart';
++import 'package:tv_king/features/sports/data/followed_matches_service.dart';
++import 'package:tv_king/features/sports/data/live_scores_service.dart';
++import 'package:tv_king/features/sports/data/public_football_repository.dart';
++import 'package:tv_king/features/sports/domain/sport_models.dart';
++import 'package:tv_king/features/sports/presentation/sport_screen.dart';
++import 'package:tv_king/l10n/generated/app_localizations.dart';
++
++import '../../support/premium_capture_fonts.dart';
++
++// Le transport est couvert par public_football_http_test. Ici, un dépôt
++// contrôlé et un vrai flux rejouent ce que le service périodique remet à
++// l'écran : le test doit échouer si le listener ne remplace que le diagnostic.
++class _FixtureFootballRepository extends PublicFootballRepository {
++  _FixtureFootballRepository(this.result)
++      : super.forTesting(
++          publicBase: Uri.parse('https://public.invalid/'),
++          legacyBase: Uri.parse('https://legacy.invalid/'),
++        );
++
++  FootballLoad result;
++  int loads = 0;
++
++  @override
++  FootballLoad get latest => result;
++
++  @override
++  Future<FootballLoad> load({
++    bool scores = false,
++    bool manual = false,
++    Iterable<SportEvent> followed = const <SportEvent>[],
++  }) async {
++    loads++;
++    return result;
++  }
++}
++
++SportEvent _match(String id, String name, int day,
++    {String sport = 'Soccer', int hour = 19}) {
++  final DateTime kickoff = DateTime.utc(2026, 10, day, hour);
++  return SportEvent(
++    id: 'oldb:$id',
++    name: name,
++    date: '2026-10-${day.toString().padLeft(2, '0')}',
++    time: '${hour.toString().padLeft(2, '0')}:00:00',
++    timestamp: kickoff.toIso8601String(),
++    sport: sport,
++  );
++}
++
++FootballLoad _loaded(List<SportEvent> matches,
++        {String? diagnostic, bool available = true}) =>
++    FootballLoad(
++      matches: matches,
++      available: available,
++      diagnostic: diagnostic,
++      receivedAt: DateTime.utc(2026, 10, 20, 12),
++    );
++
++Future<void> _mount(WidgetTester tester, _FixtureFootballRepository repository,
++    Stream<void> changes) async {
++  tester.view.devicePixelRatio = 1;
++  tester.view.physicalSize = const Size(390, 844);
++  addTearDown(tester.view.resetDevicePixelRatio);
++  addTearDown(tester.view.resetPhysicalSize);
++  await tester.pumpWidget(MaterialApp(
++    locale: const Locale('fr'),
++    supportedLocales: AppLocalizations.supportedLocales,
++    localizationsDelegates: AppLocalizations.localizationsDelegates,
++    // Le scénario porte sur les données et les gestes. Il ne dépend pas
++    // du shader GPU InkSparkle, absent de certains moteurs de test Linux.
++    theme: AppTheme.cinema.copyWith(splashFactory: NoSplash.splashFactory),
++    home: SportScreen.forTesting(
++      footballRepository: repository,
++      scoreChanges: changes,
++    ),
++  ));
++  await tester.pumpAndSettle();
++}
++
++void main() {
++  setUpAll(preparePremiumCaptureFonts);
++  setUp(() async {
++    SharedPreferences.setMockInitialValues(<String, Object>{});
++    await FollowedMatchesService.instance.clear();
++    LiveScoresService.instance.debugSeed(const <SportEvent>[]);
++    RepairFlags.mobileSportsLegacy = false;
++  });
++  tearDown(() {
++    RepairFlags.mobileSportsLegacy = false;
++    LiveScoresService.instance.debugSeed(const <SportEvent>[]);
++  });
++
++  testWidgets('une notification apporte les 20–21 et corrige le 17 reporté',
++      (WidgetTester tester) async {
++    final StreamController<void> changes = StreamController<void>.broadcast();
++    addTearDown(changes.close);
++    final _FixtureFootballRepository repository = _FixtureFootballRepository(
++      _loaded(<SportEvent>[
++        _match('1', 'Rencontre reportée', 17),
++        _match('2', 'Ancienne journée', 16),
++      ]),
++    );
++    await _mount(tester, repository, changes.stream);
++    expect(find.text('Rencontre reportée'), findsOneWidget);
++    expect(find.text('17/10 · 19:00'), findsOneWidget);
++    expect(find.text('Nouvelle rencontre'), findsNothing);
++
++    repository.result = _loaded(<SportEvent>[
++      _match('1', 'Rencontre reportée', 21, hour: 18),
++      _match('3', 'Nouvelle rencontre', 20),
++    ]);
++    changes.add(null);
++    await tester.pumpAndSettle();
++
++    expect(find.text('Nouvelle rencontre'), findsOneWidget);
++    expect(find.text('20/10 · 19:00'), findsOneWidget);
++    expect(find.text('Rencontre reportée'), findsOneWidget);
++    expect(find.text('21/10 · 18:00'), findsOneWidget);
++    expect(find.text('17/10 · 19:00'), findsNothing);
++    expect(find.text('Ancienne journée'), findsNothing);
++    expect(repository.loads, 1,
++        reason: 'le listener consomme la réponse reçue sans retélécharger');
++    expect(tester.takeException(), isNull);
++
++    await tester.pumpWidget(const SizedBox.shrink());
++    changes.add(null);
++    await tester.pump();
++    expect(tester.takeException(), isNull,
++        reason: 'la fermeture de l’écran annule son abonnement');
++  });
++
++  testWidgets(
++      'une reprise périodique sort de la panne et garde le cache lisible',
++      (WidgetTester tester) async {
++    final StreamController<void> changes = StreamController<void>.broadcast();
++    addTearDown(changes.close);
++    final _FixtureFootballRepository repository = _FixtureFootballRepository(
++      const FootballLoad(diagnostic: 'Source indisponible'),
++    );
++    await _mount(tester, repository, changes.stream);
++    expect(find.text('Pas de connexion'), findsOneWidget);
++
++    final List<SportEvent> matches = <SportEvent>[
++      _match('1', 'Match revenu', 21),
++    ];
++    repository.result = _loaded(matches);
++    changes.add(null);
++    await tester.pumpAndSettle();
++    expect(find.text('Pas de connexion'), findsNothing);
++    expect(find.text('Source indisponible'), findsNothing);
++    expect(find.text('Match revenu'), findsOneWidget);
++    expect(find.byType(CircularProgressIndicator), findsNothing);
++
++    repository.result = _loaded(matches,
++        available: false, diagnostic: 'Dernières données conservées');
++    changes.add(null);
++    await tester.pumpAndSettle();
++    expect(find.text('Match revenu'), findsOneWidget);
++    expect(find.text('Dernières données conservées'), findsOneWidget);
++    expect(find.text('Pas de connexion'), findsNothing);
++
++    repository.result = _loaded(const <SportEvent>[]);
++    changes.add(null);
++    await tester.pumpAndSettle();
++    expect(find.text('Aucune grande affiche'), findsOneWidget);
++    expect(find.text('Match revenu'), findsNothing);
++    expect(find.text('Dernières données conservées'), findsNothing);
++    expect(find.text('Pas de connexion'), findsNothing);
++    expect(tester.takeException(), isNull);
++  });
++
++  testWidgets('Actualiser ne réinjecte pas le vieux score du minuteur',
++      (WidgetTester tester) async {
++    final StreamController<void> changes = StreamController<void>.broadcast();
++    addTearDown(changes.close);
++    final SportEvent stale = _match('1', 'Score corrigé', 20)
++        .copyWith(homeScore: '1', awayScore: '0', status: '1H');
++    LiveScoresService.instance.debugSeed(<SportEvent>[stale]);
++    final _FixtureFootballRepository repository = _FixtureFootballRepository(
++      _loaded(<SportEvent>[
++        stale.copyWith(homeScore: '2', awayScore: '1', status: 'FT'),
++      ]),
++    );
++    await _mount(tester, repository, changes.stream);
++    expect(find.text('2–1'), findsOneWidget);
++    expect(find.text('1–0'), findsNothing);
++    expect(find.text('1H'), findsNothing,
++        reason: 'un ancien statut live ne remplace pas le résultat reçu');
++
++    repository.result = _loaded(<SportEvent>[
++      stale.copyWith(homeScore: '3', awayScore: '1', status: 'FT'),
++    ]);
++    await tester.tap(find.byTooltip('Actualiser'));
++    await tester.pumpAndSettle();
++    expect(find.text('3–1'), findsOneWidget);
++    expect(find.text('2–1'), findsNothing);
++    expect(find.text('1–0'), findsNothing);
++    expect(repository.loads, 2);
++    expect(tester.takeException(), isNull);
++  });
++
++  testWidgets('les filtres choisis survivent, un filtre disparu ne masque rien',
++      (WidgetTester tester) async {
++    final StreamController<void> changes = StreamController<void>.broadcast();
++    addTearDown(changes.close);
++    final SportEvent football = _match('1', 'Affiche football', 20);
++    final SportEvent basket =
++        _match('2', 'Affiche basket', 20, sport: 'Basketball');
++    final _FixtureFootballRepository repository = _FixtureFootballRepository(
++      _loaded(<SportEvent>[football, basket]),
++    );
++    await _mount(tester, repository, changes.stream);
++    expect(find.text('Affiche football'), findsOneWidget);
++    expect(find.text('Affiche basket'), findsNothing);
++
++    await tester.tap(find.text('Basket'));
++    await tester.pumpAndSettle();
++    final SportEvent newBasket =
++        _match('3', 'Nouveau basket', 21, sport: 'Basketball');
++    repository.result = _loaded(<SportEvent>[football, newBasket]);
++    changes.add(null);
++    await tester.pumpAndSettle();
++    expect(find.text('Nouveau basket'), findsOneWidget);
++    expect(find.text('Affiche basket'), findsNothing);
++    expect(find.text('Affiche football'), findsNothing);
++
++    await tester.tap(find.text('Tous'));
++    await tester.pumpAndSettle();
++    changes.add(null);
++    await tester.pumpAndSettle();
++    expect(find.text('Affiche football'), findsOneWidget);
++    expect(find.text('Nouveau basket'), findsOneWidget);
++
++    await tester.tap(find.text('Basket'));
++    await tester.pumpAndSettle();
++    repository.result = _loaded(<SportEvent>[football]);
++    changes.add(null);
++    await tester.pumpAndSettle();
++    expect(find.text('Affiche football'), findsOneWidget,
++        reason: 'le filtre Basket disparu ne doit pas laisser un écran vide');
++    expect(find.text('Nouveau basket'), findsNothing);
++    expect(tester.takeException(), isNull);
++  });
++
++  testWidgets('le flux legacy de scores conserve le catalogue des affiches',
++      (WidgetTester tester) async {
++    RepairFlags.mobileSportsLegacy = true;
++    final StreamController<void> changes = StreamController<void>.broadcast();
++    addTearDown(changes.close);
++    final _FixtureFootballRepository repository = _FixtureFootballRepository(
++      _loaded(<SportEvent>[_match('1', 'Affiche historique', 21)]),
++    );
++    await _mount(tester, repository, changes.stream);
++
++    repository.result = _loaded(<SportEvent>[
++      _match('2', 'Autre rencontre du flux', 20),
++    ]);
++    changes.add(null);
++    await tester.pumpAndSettle();
++
++    expect(find.text('Affiche historique'), findsOneWidget);
++    expect(find.text('Autre rencontre du flux'), findsNothing);
++    expect(repository.loads, 1);
++    expect(tester.takeException(), isNull);
++  });
++}

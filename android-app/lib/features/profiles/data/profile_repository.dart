@@ -15,8 +15,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/notifications/notification_service.dart';
 import '../../channels/data/recently_watched_repository.dart';
+import '../../cinema/data/cinema_taste.dart';
 import '../../cinema/data/watch_progress.dart';
 import '../../playlists/data/favorites_repository.dart';
+import '../../playlists/data/profile_source_switches.dart';
 import '../domain/family_profile.dart';
 import '../domain/profile_catalog.dart';
 import '../domain/profile_policies.dart';
@@ -146,6 +148,8 @@ class ProfileRepository extends ChangeNotifier {
     await RecentlyWatchedRepository.instance.dropProfile(id);
     await WatchProgressRepository.instance.dropProfile(id);
     await NotificationService.instance.dropBook(id);
+    await ProfileSourceSwitches.drop(id);
+    await CinemaTaste.drop(id);
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       for (final String key in ProfileKeys.disposableKeys(id)) {

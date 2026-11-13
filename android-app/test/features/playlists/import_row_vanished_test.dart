@@ -8,8 +8,8 @@
 //    00:16:07  même scénario après 130,9 s
 //  Ici on rejoue le scénario sur le vrai code (PlaylistRepository +
 //  XtreamClient), avec un serveur Xtream simulé qui EFFACE la ligne de la
-//  liste juste avant de rendre les chaînes. Attendu : l'import aboutit quand
-//  même (ligne remise), et échoue comme avant si le repli est activé.
+//  liste juste avant de rendre les chaînes. Attendu : l'import est annulé
+//  et aucun ancien interrupteur ne peut recréer la liste effacée.
 //  Aucune adresse réelle : tout est en 127.0.0.1.
 // =========================================================
 import 'dart:convert';
@@ -91,26 +91,19 @@ void main() {
     RepairFlags.importReinsertOff = false;
   });
 
-  test('ligne effacée pendant le téléchargement : la ligne est remise, l\'import aboutit',
+  test('ligne effacée pendant le téléchargement : import annulé, aucune résurrection',
       () async {
-    final Playlist saved = await PlaylistRepository.instance.addXtreamPlaylist(
+    await expectLater(PlaylistRepository.instance.addXtreamPlaylist(
       name: 'Panel',
       serverUrl: 'http://127.0.0.1:8080',
       username: 'u1',
       password: 'p1',
       httpClient: _xtreamServer(beforeStreams: _wipePlaylistsRows),
-    );
-    expect(saved.channelCount, 2);
+    ), throwsA(anything));
     final List<Playlist> all = await PlaylistRepository.instance.getAllPlaylists();
-    expect(all.map((Playlist p) => p.id), contains(saved.id));
+    expect(all, isEmpty);
     final Database db = await PlaylistDatabase.instance.database;
-    final List<Map<String, Object?>> rows = await db.query(
-      'channels',
-      where: 'playlist_id = ?',
-      whereArgs: <Object>[saved.id!],
-    );
-    expect(rows.length, 2, reason: 'les chaînes sont rattachées à la ligne remise');
-    await PlaylistRepository.instance.deletePlaylist(saved.id!, reason: 'test');
+    expect(await db.query('channels'), isEmpty);
   });
 
   test('repli zuno.import.reinsert_off : même scénario → échec comme avant, rien ne reste',

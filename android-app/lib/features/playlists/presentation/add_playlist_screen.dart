@@ -11,6 +11,8 @@
 
 import 'package:flutter/material.dart';
 
+import '../../tv/core/tv_field_keys.dart';
+
 import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
@@ -228,17 +230,23 @@ class _AddPlaylistScreenState extends State<AddPlaylistScreen> {
     TextInputType keyboardType = TextInputType.text,
     bool obscureText = false,
   }) {
-    return TextField(
+    return TvFieldKeys(
+      child: TextField(
       controller: controller,
       enabled: !_busy,
       keyboardType: keyboardType,
       obscureText: obscureText,
       autocorrect: false,
       enableSuggestions: false,
+      enableIMEPersonalizedLearning: false,
+      textCapitalization: TextCapitalization.none,
+      smartDashesType: SmartDashesType.disabled,
+      smartQuotesType: SmartQuotesType.disabled,
       style: AppTextStyles.bodyLarge,
       decoration: InputDecoration(
         hintText: hint,
         prefixIcon: Icon(icon, color: AppColors.accent, size: 20),
+      ),
       ),
     );
   }

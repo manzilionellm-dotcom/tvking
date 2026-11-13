@@ -1,0 +1,80 @@
+# APK de vérification uniquement : identité et signature de test séparées.
+# Aucun secret de production, aucune publication de release ni mise à jour TV.
+name: Zuno TV — aperçu langues
+
+on:
+  push:
+    branches: ['feature/zuno-tv-localisation-20261012']
+    paths:
+      - 'android-app/**'
+      - '.github/workflows/zuno-locale-preview.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: zuno-locale-preview-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apk:
+    name: Tester et construire l’APK langues
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: android-app
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          flutter-version: '3.47.7'
+          channel: stable
+          cache: true
+      - name: Vérifier, générer et tester les traductions
+        run: |
+          python3 tool/check_l10n.py
+          flutter pub get
+          flutter gen-l10n
+          flutter analyze --no-fatal-infos --no-fatal-warnings
+          flutter test --reporter expanded
+      - name: Préparer une application TV de test indépendante
+        env:
+          ZUNO_APP_ID: com.sevenmotion.tv.locale.preview
+          ZUNO_APP_LABEL: Zuno Langues — test
+        run: |
+          python3 ci/tv/patch_manifest.py android/app/src/main/AndroidManifest.xml
+          python3 ci/tv/patch_gradle.py android/app/build.gradle.kts
+          cp ci/proguard-rules.pro android/app/proguard-rules.pro
+          mkdir -p android/app/src/main/res/drawable
+          cp assets/branding/zuno_tv_banner.png android/app/src/main/res/drawable/tv_banner.png
+          # Le moteur de débogage est testé sur Android 7+ ; la compatibilité
+          # du constructeur de production reste strictement inchangée.
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('android/app/build.gradle.kts')
+          p.write_text(p.read_text().replace('val kBoxMinSdk = 21', 'val kBoxMinSdk = 24'))
+          PY
+      - name: Construire sans clé de production
+        run: >-
+          flutter build apk --debug --no-tree-shake-icons
+          --android-skip-build-dependency-validation
+          --target-platform android-arm64 --target lib/main_tv.dart
+      - name: Préparer la preuve du binaire
+        run: |
+          mkdir -p build/locale-preview
+          cp build/app/outputs/flutter-apk/app-debug.apk build/locale-preview/zuno-langues-test-arm64.apk
+          cp pubspec.lock build/locale-preview/pubspec.lock
+          cd build/locale-preview
+          sha256sum zuno-langues-test-arm64.apk > SHA256SUMS
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: zuno-langues-test-arm64
+          path: android-app/build/locale-preview/
+          retention-days: 30

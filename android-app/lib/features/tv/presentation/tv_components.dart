@@ -8,11 +8,14 @@ import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../device/domain/display_mac.dart';
+import '../../theme/data/remote_theme_repository.dart';
 import '../../../core/app/repair_flags.dart';
 import '../../../core/i18n/l10n_extension.dart';
+import '../../../l10n/generated/app_localizations.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
+import '../core/tv_app_tokens.dart';
 
 /// Nom produit affiché PARTOUT.
 const String kAppName = 'Zuno';
@@ -27,12 +30,16 @@ const String kWhatsAppPhone = '447307410512';
 
 /// Construit le lien wa.me avec un message pré-rempli (code MAC inclus,
 /// sans « MK: » : le panel le remet tout seul, voir display_mac.dart).
-String tvWhatsAppUrl(String mac) {
+String tvWhatsAppUrl(String mac, AppLocalizations l10n) {
   final String code = (mac == '…' || mac.isEmpty)
       ? ''
       : displayMac(mac, showPrefix: RepairFlags.macShowPrefix);
-  final String msg = Uri.encodeComponent('Bonjour, je souhaite activer Zuno.'
-      '${code.isEmpty ? '' : ' Mon code : $code'}');
+  // La phrase suit la langue TV. La MAC reste seule sur une ligne commençant
+  // par un sigle latin : Unicode conserve ainsi l'ordre de tous ses groupes,
+  // même dans un message arabe. Aucun caractère invisible dans le code copié.
+  final String msg = Uri.encodeComponent(
+    '${l10n.tvWhatsAppActivationRequest}${code.isEmpty ? '' : '\nMAC: $code'}',
+  );
   return 'https://wa.me/$kWhatsAppPhone?text=$msg';
 }
 
@@ -46,61 +53,138 @@ class TvWhatsAppQr extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: <Widget>[
-        // QR sur fond clair (un QR se scanne en sombre-sur-clair).
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(TvTokens.rCard),
-            border: Border.all(color: TvTokens.accent, width: 2),
-          ),
-          child: QrImageView(
-            data: tvWhatsAppUrl(mac),
-            version: QrVersions.auto,
-            size: size,
-            backgroundColor: Colors.white,
-            eyeStyle: const QrEyeStyle(
-                eyeShape: QrEyeShape.square, color: Color(0xFF0B0B0B)),
-            dataModuleStyle: const QrDataModuleStyle(
+    return SizedBox(
+      width: size + 40,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          // QR sur fond clair (un QR se scanne en sombre-sur-clair).
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(TvTokens.rCard),
+              border: Border.all(
+                color: TvAppTokens.of(context).accent,
+                width: 2,
+              ),
+            ),
+            child: QrImageView(
+              data: tvWhatsAppUrl(mac, context.l10n),
+              version: QrVersions.auto,
+              size: size,
+              backgroundColor: Colors.white,
+              eyeStyle: const QrEyeStyle(
+                eyeShape: QrEyeShape.square,
+                color: Color(0xFF0B0B0B),
+              ),
+              dataModuleStyle: const QrDataModuleStyle(
                 dataModuleShape: QrDataModuleShape.square,
-                color: Color(0xFF0B0B0B)),
+                color: Color(0xFF0B0B0B),
+              ),
+            ),
           ),
-        ),
-        const SizedBox(height: 16),
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            const Icon(Icons.qr_code_scanner_rounded,
-                color: TvTokens.accentBright, size: 22),
-            const SizedBox(width: 10),
-            Text(context.l10n.tvScanToActivate,
-                style: TvTokens.ui(18,
-                    weight: FontWeight.w700, color: TvTokens.accentBright)),
-          ],
-        ),
-        const SizedBox(height: 6),
-        SizedBox(
-          width: size + 40,
-          child: Text(context.l10n.tvScanHelp,
+          const SizedBox(height: 16),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Icon(
+                Icons.qr_code_scanner_rounded,
+                color: TvAppTokens.of(context).accentBright,
+                size: 22,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  context.l10n.tvScanToActivate,
+                  textAlign: TextAlign.center,
+                  style: TvAppTokens.of(context).ui(
+                    18,
+                    weight: FontWeight.w700,
+                    color: TvAppTokens.of(context).accentBright,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          SizedBox(
+            width: size + 40,
+            child: Text(
+              context.l10n.tvScanHelp,
               textAlign: TextAlign.center,
-              style: TvTokens.ui(13, color: TvTokens.mutedDim)),
-        ),
-      ],
+              style: TvAppTokens.of(context)
+                  .ui(13, color: TvAppTokens.of(context).mutedDim),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
 
 /// Logo réel « Zuno » (calligraphie or, fond transparent).
-class TvLogo extends StatelessWidget {
+///
+/// Pose courte (échelle 0,985 → 1, opacité pleine) : le mot reste
+/// visible dès la première image, il ne « disparaît » pas après le
+/// splash natif. Transform seulement, 180 ms, coupé si la box demande
+/// moins d'animations.
+class TvLogo extends StatefulWidget {
   const TvLogo({super.key, this.width = 180});
   final double width;
 
   @override
+  State<TvLogo> createState() => _TvLogoState();
+}
+
+class _TvLogoState extends State<TvLogo> with SingleTickerProviderStateMixin {
+  late final AnimationController _settle = AnimationController(
+    vsync: this,
+    duration: TvDimens.focusAnim,
+  );
+  bool _armed = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_armed) return;
+    _armed = true;
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _settle.value = 1;
+    } else {
+      _settle.forward();
+    }
+  }
+
+  @override
+  void dispose() {
+    _settle.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Image.asset(_kLogoAsset, width: width, fit: BoxFit.contain);
+    final Animation<double> scale = Tween<double>(begin: 0.985, end: 1).animate(
+      CurvedAnimation(parent: _settle, curve: TvDimens.focusCurve),
+    );
+    return ScaleTransition(
+      scale: scale,
+      child: ValueListenableBuilder(
+        valueListenable: RemoteThemeRepository.current,
+        builder: (context, settings, _) => settings.appName.isEmpty
+            ? Image.asset(_kLogoAsset, width: widget.width, fit: BoxFit.contain)
+            : SizedBox(
+                width: widget.width,
+                child: Text(
+                  settings.appName,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TvAppTokens.of(context)
+                      .display(28, color: TvAppTokens.of(context).accentBright),
+                ),
+              ),
+      ),
+    );
   }
 }
 
@@ -114,19 +198,22 @@ class TvCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: TvTokens.card,
+        color: TvAppTokens.of(context).card,
         borderRadius: BorderRadius.circular(TvTokens.rCard),
-        border: Border.all(color: TvTokens.lineSoft),
+        border: Border.all(color: TvAppTokens.of(context).lineSoft),
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
           // Filet d'accent or (1px) en haut.
-          const SizedBox(
+          SizedBox(
             height: 1,
             child: DecoratedBox(
-                decoration: BoxDecoration(gradient: TvTokens.accentHairline)),
+              decoration: BoxDecoration(
+                gradient: TvAppTokens.of(context).accentHairline,
+              ),
+            ),
           ),
           Padding(padding: padding ?? const EdgeInsets.all(24), child: child),
         ],
@@ -135,16 +222,22 @@ class TvCard extends StatelessWidget {
   }
 }
 
-/// Libellé de section : Inter 600, letterspaced, majuscules, gris.
+/// Libellé de section. Taille plancher 14 (Fire TV), graisse 500,
+/// interlettrage 0,5 px (label Material 3). On garde la casse du texte :
+/// un titre de rangée n'est pas crié en capitales.
 class TvSectionLabel extends StatelessWidget {
   const TvSectionLabel(this.text, {super.key});
   final String text;
   @override
   Widget build(BuildContext context) => Text(
-        text.toUpperCase(),
-        style: TvTokens.ui(10.5,
-            weight: FontWeight.w600, color: TvTokens.mutedDim, spacing: 2.8),
-      );
+    text,
+    style: TvAppTokens.of(context).ui(
+      TvDimens.caption,
+      weight: FontWeight.w500,
+      color: TvAppTokens.of(context).mutedDim,
+      spacing: 0.5,
+    ),
+  );
 }
 
 /// Pastille prix : « À VIE » + montant or.
@@ -158,20 +251,31 @@ class TvPricePill extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 10),
       decoration: BoxDecoration(
-        gradient: TvTokens.pillGradient,
-        border: Border.all(color: TvTokens.line),
+        gradient: TvAppTokens.of(context).pillGradient,
+        border: Border.all(color: TvAppTokens.of(context).line),
         borderRadius: BorderRadius.circular(100),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
-          Text(label.toUpperCase(),
-              style: TvTokens.ui(15,
-                  weight: FontWeight.w600, color: TvTokens.accent, spacing: 2)),
+          Text(
+            label.toUpperCase(),
+            style: TvAppTokens.of(context).ui(
+              TvDimens.caption,
+              weight: FontWeight.w500,
+              color: TvAppTokens.of(context).accent,
+              spacing: 0.5,
+            ),
+          ),
           const SizedBox(width: 12),
-          Text(amount,
-              style: TvTokens.display(26,
-                  weight: FontWeight.w600, color: TvTokens.accentBright)),
+          Text(
+            amount,
+            style: TvAppTokens.of(context).display(
+              26,
+              weight: FontWeight.w600,
+              color: TvAppTokens.of(context).accentBright,
+            ),
+          ),
         ],
       ),
     );
@@ -186,17 +290,24 @@ class TvCtaButton extends StatelessWidget {
     required this.onSelect,
     this.autofocus = false,
     this.expand = true,
+    this.focusNode,
   });
   final String label;
   final VoidCallback? onSelect;
   final bool autofocus;
   final bool expand;
+  final FocusNode? focusNode;
 
   @override
   Widget build(BuildContext context) {
+    final BorderRadius radius = BorderRadius.circular(TvTokens.rButton);
     return TvFocusBuilder(
+      focusNode: focusNode,
       autofocus: autofocus,
       scale: TvFocusScale.large,
+      borderRadius: radius,
+      // Le dégradé or EST le focus. Pas de second halo (néon + coût GPU).
+      showGlow: false,
       onSelect: onSelect,
       builder: (BuildContext context, bool focused) {
         return Container(
@@ -204,28 +315,37 @@ class TvCtaButton extends StatelessWidget {
           alignment: Alignment.center,
           padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 16),
           decoration: BoxDecoration(
-            gradient: TvTokens.ctaGradient,
-            borderRadius: BorderRadius.circular(TvTokens.rButton),
-            border: focused ? Border.all(color: TvTokens.text, width: 2) : null,
+            gradient: TvAppTokens.of(context).ctaGradient,
+            borderRadius: radius,
+            border: focused
+                ? Border.all(color: TvAppTokens.of(context).text, width: 2)
+                : null,
             boxShadow: <BoxShadow>[
               BoxShadow(
-                color: TvTokens.accent.withValues(alpha: focused ? 0.55 : 0.35),
-                blurRadius: focused ? 36 : 24,
-                spreadRadius: -10,
-                offset: const Offset(0, 8),
+                color: TvAppTokens.of(context).accent.withValues(
+                      alpha: focused ? 0.40 : 0.16,
+                    ),
+                blurRadius: focused ? 22 : 14,
+                spreadRadius: -8,
+                offset: const Offset(0, 6),
               ),
             ],
           ),
-          child: Text(label,
-              style: TvTokens.ui(TvDimens.title,
-                  weight: FontWeight.w600, color: TvTokens.onAccent)),
+          child: Text(
+            label,
+            style: TvAppTokens.of(context).ui(
+              TvDimens.title,
+              weight: FontWeight.w600,
+              color: TvAppTokens.of(context).onAccent,
+            ),
+          ),
         );
       },
     );
   }
 }
 
-/// État vide soigné : carré or léger + titre Oswald + sous-texte gris.
+/// État vide : titre de l'échelle display, sous-texte en corps 24/16.
 class TvEmptyState extends StatelessWidget {
   const TvEmptyState({
     super.key,
@@ -251,25 +371,29 @@ class TvEmptyState extends StatelessWidget {
             width: 78,
             height: 78,
             decoration: BoxDecoration(
-              gradient: TvTokens.pillGradient,
-              border: Border.all(color: TvTokens.line),
+              gradient: TvAppTokens.of(context).pillGradient,
+              border: Border.all(color: TvAppTokens.of(context).line),
               borderRadius: BorderRadius.circular(TvTokens.rButton),
             ),
-            child: Icon(icon, color: TvTokens.accent, size: 38),
+            child: Icon(icon, color: TvAppTokens.of(context).accent, size: 38),
           ),
           const SizedBox(height: 22),
-          Text(title, style: TvTokens.display(34, color: TvTokens.text)),
+          Text(
+            title,
+            style: TvAppTokens.of(context)
+                .display(34, color: TvAppTokens.of(context).text),
+          ),
           const SizedBox(height: 10),
           SizedBox(
             width: 460,
-            child: Text(subtitle,
-                textAlign: TextAlign.center,
-                style: TvTokens.ui(16, color: TvTokens.mutedDim)),
+            child: Text(
+              subtitle,
+              textAlign: TextAlign.center,
+              style: TvAppTokens.of(context)
+                  .body(TvDimens.label, color: TvAppTokens.of(context).mutedDim),
+            ),
           ),
-          if (footer != null) ...<Widget>[
-            const SizedBox(height: 22),
-            footer!,
-          ],
+          if (footer != null) ...<Widget>[const SizedBox(height: 22), footer!],
         ],
       ),
     );

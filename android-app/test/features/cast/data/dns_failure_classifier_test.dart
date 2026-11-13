@@ -18,6 +18,8 @@
 // =========================================================
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:tv_king/core/i18n/locale_repository.dart';
 import 'package:tv_king/features/cast/data/cast_manager.dart';
 import 'package:tv_king/features/cast/data/stream_probe.dart';
 
@@ -31,6 +33,16 @@ StreamProbeResult _fail(String reason) {
 }
 
 void main() {
+  // i18n : friendlyMessageFor sort désormais d'AppLocalizations via
+  // l10nNow. On force la langue FR pour que les assertions textuelles
+  // restent déterministes quel que soit l'environnement de test.
+  setUpAll(() async {
+    TestWidgetsFlutterBinding.ensureInitialized();
+    SharedPreferences.setMockInitialValues(
+        <String, Object>{'app.locale.v1': 'fr'});
+    await LocaleRepository.instance.initialize();
+  });
+
   group('StreamProbe.isDnsFailure', () {
     test('detecte le message Android exact ("No address associated with hostname")',
         () {

@@ -1,3 +1,4 @@
+import 'core/i18n/somali_localizations.dart';
 // =========================================================
 //  main.dart — Point d'entrée unique de l'application
 // =========================================================
@@ -336,10 +337,12 @@ class TvKingApp extends StatelessWidget {
           // Internationalisation — la liste des langues supportées
           // sort de `LocaleRepository`. Quand l'utilisateur choisit
           // "Système" (locale=null), Flutter retombe sur la langue
-          // de l'OS s'il y a un .arb correspondant, sinon sur fr.
+          // de l'OS si elle est traduite, sinon sur l'anglais.
           locale: LocaleRepository.instance.locale,
           supportedLocales: LocaleRepository.supportedLocales,
+          localeListResolutionCallback: LocaleRepository.resolve,
           localizationsDelegates: const <LocalizationsDelegate<dynamic>>[
+            ...somaliLocalizationsDelegates,
             AppLocalizations.delegate,
             GlobalMaterialLocalizations.delegate,
             GlobalWidgetsLocalizations.delegate,
@@ -422,14 +425,20 @@ class _AppEntryState extends State<_AppEntry> {
 
   /// Résout la pub de démarrage SANS jamais bloquer l'accueil plus de 2,5 s.
   Future<void> _resolveAd() async {
+    if (CastManager.instance.hasActiveSession) {
+      _adResolved = _adDone = true;
+      return;
+    }
     Timer(const Duration(milliseconds: 2500), () {
       if (mounted && !_adResolved) setState(() => _adResolved = true);
     });
     await StartupAdRepository.instance.fetch();
     final bool show = await StartupAdRepository.instance.shouldShow();
-    if (mounted) {
+    // Le délai a déjà laissé entrer le client : une réponse tardive ne
+    // doit jamais recouvrir son accueil ou sa lecture en cours.
+    if (mounted && !_adResolved) {
       setState(() {
-        _adShow = show;
+        _adShow = show && !CastManager.instance.hasActiveSession;
         _adResolved = true;
       });
     }
@@ -451,6 +460,7 @@ class _AppEntryState extends State<_AppEntry> {
   @override
   void initState() {
     super.initState();
+    CastManager.instance.addListener(_onCastForAd);
     _checkForcedUpdate();
     // Mise à jour in-app (sideload) : détection NON bloquante après le
     // 1er frame, avec un léger délai pour ne pas gêner le boot/lock.
@@ -494,6 +504,17 @@ class _AppEntryState extends State<_AppEntry> {
     } else {
       _ageGateConfirmed = true;
     }
+  }
+
+  void _onCastForAd() {
+    if (!mounted || _adDone || !CastManager.instance.hasActiveSession) return;
+    setState(() { _adDone = true; _adResolved = true; });
+  }
+
+  @override
+  void dispose() {
+    CastManager.instance.removeListener(_onCastForAd);
+    super.dispose();
   }
 
   @override
@@ -585,7 +606,6 @@ class _AppEntryState extends State<_AppEntry> {
           return StartupAdScreen(
             config: StartupAdRepository.instance.config,
             onDone: () {
-              StartupAdRepository.instance.markShown();
               if (mounted) setState(() => _adDone = true);
             },
           );

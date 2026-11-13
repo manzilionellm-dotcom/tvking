@@ -29,6 +29,7 @@ import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
@@ -67,6 +68,9 @@ const Duration kCinemaMaxAge = Duration(minutes: 10);
 class CinemaRepository {
   CinemaRepository._();
   static final CinemaRepository instance = CinemaRepository._();
+  @visibleForTesting
+  static http.Client Function()? httpForTesting;
+  final Map<CinemaKind, int> _publications = <CinemaKind, int>{};
 
   // ---------------- Mémoire de la box ----------------
 
@@ -162,6 +166,29 @@ class CinemaRepository {
   /// le catalogue déjà sur la box.
   void requestRefresh() {
     _wantsRefresh = true;
+  }
+
+  /// Bouton explicite : attendre le fournisseur, même avec un catalogue
+  /// récent en mémoire. Un ancien staging partiel ne vaut pas une relecture.
+  Future<bool> refreshNow(CinemaKind kind) async {
+    await sources();
+    if (_sources.isEmpty) return false;
+    final Future<void>? previous = _refreshInFlight[kind];
+    if (previous != null) {
+      // Réveille aussi une passe silencieuse en attente de fin de lecture.
+      ++_catalogGen;
+      await previous;
+    }
+    final int gen = _catalogGen;
+    final String? folder = _folderSig;
+    final CatalogDisk? disk = await _openDisk();
+    if (folder == null || disk == null || gen != _catalogGen) return false;
+    await disk.discardStaging(folder, kind);
+    final int before = _publications[kind] ?? 0;
+    await _refreshCatalog(kind, forceNetwork: true);
+    final bool published = gen == _catalogGen && (_publications[kind] ?? 0) > before;
+    if (published) { _details.clear(); _series.clear(); }
+    return published;
   }
 
   /// Oublie les catégories en mémoire pour UN type (le bouton Réessayer).
@@ -290,6 +317,7 @@ class CinemaRepository {
           username: s.username,
           password: s.password,
           timeout: const Duration(seconds: 25),
+          httpClient: httpForTesting?.call(),
         ),
       );
 
@@ -890,33 +918,35 @@ class CinemaRepository {
     return out;
   }
 
-  Future<void> _refreshCatalog(CinemaKind kind) {
+  Future<void> _refreshCatalog(CinemaKind kind, {bool forceNetwork = false}) {
     final Future<void>? current = _refreshInFlight[kind];
     if (current != null) return current;
     final int gen = _catalogGen;
     final String? folder = _folderSig;
-    final Future<void> run = _refreshBody(kind, gen, folder);
+    final Future<void> run = _refreshBody(kind, gen, folder, forceNetwork);
     _refreshInFlight[kind] = run;
     return run.whenComplete(() {
       if (identical(_refreshInFlight[kind], run)) _refreshInFlight.remove(kind);
     });
   }
 
-  Future<void> _refreshBody(CinemaKind kind, int gen, String? folder) async {
+  Future<void> _refreshBody(CinemaKind kind, int gen, String? folder, bool forceNetwork) async {
     if (folder == null || gen != _catalogGen) return;
     final CatalogDisk? disk = await _openDisk();
     if (disk == null || gen != _catalogGen) return;
     _wantsRefresh = false;
     _refreshStartedAt = DateTime.now();
     try {
-      final CatalogRefreshResult result = await _refresher.run(
+      final CatalogRefresher refresher = forceNetwork
+          ? const CatalogRefresher(gap: Duration.zero, maxAttempts: 1) : _refresher;
+      final CatalogRefreshResult result = await refresher.run(
         disk: disk,
         signature: folder,
         kind: kind,
         fetchCategories: () => _downloadCategoryRecords(kind),
         fetchTitles: (CatalogCategoryRecord category) =>
             _downloadTitleRecords(kind, category),
-        playbackBusy: () => TvActivity.isBusy,
+        playbackBusy: () => !forceNetwork && TvActivity.isBusy,
         sleep: (Duration delay) => Future<void>.delayed(delay),
         jitterPermille: () => _jitter.nextInt(1001),
         cancelled: () => gen != _catalogGen,
@@ -926,6 +956,7 @@ class CinemaRepository {
       final CatalogHeader? header = await disk.readHeader(folder, kind);
       if (header == null || gen != _catalogGen) return;
       _installHeader(kind, header);
+      _publications[kind] = (_publications[kind] ?? 0) + 1;
       _persisted[kind] = true;
       _titles.removeWhere(
           (String key, List<CinemaTitle> _) => key.startsWith('${kind.name}|'));
