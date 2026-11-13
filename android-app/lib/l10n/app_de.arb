@@ -2905,5 +2905,13 @@
     }
   },
   "tvCatchupUnavailable": "Replay für diese Sendung nicht verfügbar. Zurück zum Live-Programm.",
-  "tvCatchupEnded": "Ende des Replays. Zurück zum Live-Programm."
+  "tvCatchupEnded": "Ende des Replays. Zurück zum Live-Programm.",
+  "tvStatusPaidDays": "Abo aktiv · noch {days} Tag(e)",
+  "@tvStatusPaidDays": {
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  }
 }

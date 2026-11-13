@@ -77,6 +77,7 @@ import '../../time_picks/data/time_pick_flag.dart';
 import '../../time_picks/data/time_pick_log.dart';
 import '../../subscription/data/remote_activation_watch.dart';
 import '../../subscription/data/subscription_state.dart';
+import '../../subscription/domain/paid_days_left.dart';
 import '../core/resume_zap.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
@@ -1194,9 +1195,24 @@ class _TvHubScreenState extends State<TvHubScreen> {
   ({String label, Color color}) _license(BuildContext context) {
     switch (SubscriptionState.instance.status) {
       case SubscriptionStatus.paid:
+        // Date de fin connue : on dit combien de jours il reste, en
+        // couleur d'alerte la dernière semaine. À vie ou date inconnue :
+        // « Abonnement actif », sans chiffre inventé.
+        final int? left = paidDaysLeft(
+          paidUntilMs: SubscriptionState.instance.remote.paidUntil,
+          nowMs: _now.millisecondsSinceEpoch,
+        );
+        if (left == null) {
+          return (
+            label: context.l10n.tvStatusPaid,
+            color: TvAppTokens.of(context).success,
+          );
+        }
         return (
-          label: context.l10n.tvStatusPaid,
-          color: TvAppTokens.of(context).success,
+          label: context.l10n.tvStatusPaidDays(left),
+          color: paidEndsSoon(left)
+              ? TvAppTokens.of(context).live
+              : TvAppTokens.of(context).success,
         );
       case SubscriptionStatus.trialActive:
         return (

@@ -1475,5 +1475,6 @@
     }
   },
   "tvCatchupUnavailable": "Replay er ikke tilgængelig for dette program. Tilbage til live.",
-  "tvCatchupEnded": "Replay er slut. Tilbage til live."
+  "tvCatchupEnded": "Replay er slut. Tilbage til live.",
+  "tvStatusPaidDays": "Abonnement aktivt · {days} dag(e) tilbage"
 }

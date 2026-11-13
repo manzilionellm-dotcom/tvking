@@ -2905,5 +2905,13 @@
     }
   },
   "tvCatchupUnavailable": "Replay niet beschikbaar voor dit programma. Terug naar live.",
-  "tvCatchupEnded": "Einde van de replay. Terug naar live."
+  "tvCatchupEnded": "Einde van de replay. Terug naar live.",
+  "tvStatusPaidDays": "Abonnement actief · nog {days} dag(en)",
+  "@tvStatusPaidDays": {
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  }
 }

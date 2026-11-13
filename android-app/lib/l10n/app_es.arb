@@ -1475,5 +1475,6 @@
     }
   },
   "tvCatchupUnavailable": "Replay no disponible para este programa. Vuelta al directo.",
-  "tvCatchupEnded": "Fin del replay. Vuelta al directo."
+  "tvCatchupEnded": "Fin del replay. Vuelta al directo.",
+  "tvStatusPaidDays": "Suscripción activa · quedan {days} día(s)"
 }

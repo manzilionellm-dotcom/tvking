@@ -3253,5 +3253,13 @@
     }
   },
   "tvCatchupUnavailable": "Replay indisponible pour cette émission. Retour au direct.",
-  "tvCatchupEnded": "Fin du replay. Retour au direct."
+  "tvCatchupEnded": "Fin du replay. Retour au direct.",
+  "tvStatusPaidDays": "Abonnement actif · {days} jour(s) restants",
+  "@tvStatusPaidDays": {
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  }
 }

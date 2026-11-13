@@ -2905,5 +2905,13 @@
     }
   },
   "tvCatchupUnavailable": "此节目无法回看。已返回直播。",
-  "tvCatchupEnded": "回看结束。已返回直播。"
+  "tvCatchupEnded": "回看结束。已返回直播。",
+  "tvStatusPaidDays": "订阅有效 · 剩余 {days} 天",
+  "@tvStatusPaidDays": {
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  }
 }

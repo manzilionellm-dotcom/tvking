@@ -3218,5 +3218,13 @@
     }
   },
   "tvCatchupUnavailable": "Dib-u-daawashadu barnaamijkan ma diyaarsana. Ku noqoshada tooska.",
-  "tvCatchupEnded": "Dib-u-daawashadu way dhammaatay. Ku noqoshada tooska."
+  "tvCatchupEnded": "Dib-u-daawashadu way dhammaatay. Ku noqoshada tooska.",
+  "tvStatusPaidDays": "Rukunka wuu shaqeynayaa · {days} maalmood ayaa hadhay",
+  "@tvStatusPaidDays": {
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  }
 }
