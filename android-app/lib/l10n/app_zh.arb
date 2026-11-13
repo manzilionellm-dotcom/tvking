@@ -2913,5 +2913,7 @@
         "type": "int"
       }
     }
-  }
+  },
+  "tvPrevChannel": "上一个",
+  "tvNextChannel": "下一个"
 }

@@ -3226,5 +3226,7 @@
         "type": "int"
       }
     }
-  }
+  },
+  "tvPrevChannel": "Hore",
+  "tvNextChannel": "Xiga"
 }

@@ -3261,5 +3261,7 @@
         "type": "int"
       }
     }
-  }
+  },
+  "tvPrevChannel": "Précédente",
+  "tvNextChannel": "Suivante"
 }
