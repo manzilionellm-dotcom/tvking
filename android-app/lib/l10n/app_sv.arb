@@ -1476,5 +1476,7 @@
   },
   "tvCatchupUnavailable": "Repris finns inte för det här programmet. Tillbaka till direktsändning.",
   "tvCatchupEnded": "Reprisen är slut. Tillbaka till direktsändning.",
-  "tvStatusPaidDays": "Abonnemang aktivt · {days} dag(ar) kvar"
+  "tvStatusPaidDays": "Abonnemang aktivt · {days} dag(ar) kvar",
+  "tvPrevChannel": "Föregående",
+  "tvNextChannel": "Nästa"
 }

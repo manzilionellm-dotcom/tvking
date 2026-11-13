@@ -2913,5 +2913,7 @@
         "type": "int"
       }
     }
-  }
+  },
+  "tvPrevChannel": "Anterior",
+  "tvNextChannel": "Seguinte"
 }

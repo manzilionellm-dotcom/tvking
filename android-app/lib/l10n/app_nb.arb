@@ -1476,5 +1476,7 @@
   },
   "tvCatchupUnavailable": "Replay er ikke tilgjengelig for dette programmet. Tilbake til direkte.",
   "tvCatchupEnded": "Replay er slutt. Tilbake til direkte.",
-  "tvStatusPaidDays": "Abonnement aktivt · {days} dag(er) igjen"
+  "tvStatusPaidDays": "Abonnement aktivt · {days} dag(er) igjen",
+  "tvPrevChannel": "Forrige",
+  "tvNextChannel": "Neste"
 }

@@ -1476,5 +1476,7 @@
   },
   "tvCatchupUnavailable": "Marudio hayapatikani kwa kipindi hiki. Kurudi kwenye matangazo ya moja kwa moja.",
   "tvCatchupEnded": "Marudio yameisha. Kurudi kwenye matangazo ya moja kwa moja.",
-  "tvStatusPaidDays": "Usajili unatumika · siku {days} zimebaki"
+  "tvStatusPaidDays": "Usajili unatumika · siku {days} zimebaki",
+  "tvPrevChannel": "Iliyotangulia",
+  "tvNextChannel": "Inayofuata"
 }

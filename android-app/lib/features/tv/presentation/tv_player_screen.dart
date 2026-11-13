@@ -31,6 +31,7 @@ import '../desktop/desktop_cast_controls.dart';
 import '../data/zuno_pip_service.dart';
 
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:native_video_player/native_video_player.dart';
@@ -645,6 +646,13 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     // Compteur local « à cette heure ». N'ouvre rien, n'attend pas.
     unawaited(TimePickLog.instance.note(id));
   }
+
+  /// Vrai sur ordinateur, quand il y a plus d'une chaîne à parcourir.
+  bool get _mouseZap =>
+      widget.channels.length > 1 &&
+      (defaultTargetPlatform == TargetPlatform.windows ||
+          defaultTargetPlatform == TargetPlatform.macOS ||
+          defaultTargetPlatform == TargetPlatform.linux);
 
   void _zap(int delta) {
     final int n = widget.channels.length;
@@ -1761,6 +1769,10 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
                               engineLabel: _engineLabel(),
                               engineFocused: _btnFocus == _engineBtn(context),
                               engineNote: _engineNote,
+                              // Ordinateur : tout le monde n'a pas un écran
+                              // tactile ni l'habitude des flèches du clavier.
+                              onPrevChannel: _mouseZap ? () => _zap(-1) : null,
+                              onNextChannel: _mouseZap ? () => _zap(1) : null,
                             ),
                           ),
                         ),
@@ -2185,6 +2197,8 @@ class _ControlsBar extends StatelessWidget {
     this.engineLabel,
     this.engineFocused = false,
     this.engineNote,
+    this.onPrevChannel,
+    this.onNextChannel,
   });
 
   final Channel channel;
@@ -2226,6 +2240,12 @@ class _ControlsBar extends StatelessWidget {
   final String? engineLabel;
   final bool engineFocused;
   final String? engineNote;
+
+  /// Chaîne précédente / suivante À LA SOURIS (ordinateur). Sur une TV,
+  /// c'est Haut/Bas de la télécommande : ces deux boutons n'y sont pas, et
+  /// ils ne comptent pas dans le surlignage au D-pad (focusedIndex).
+  final VoidCallback? onPrevChannel;
+  final VoidCallback? onNextChannel;
 
   @override
   Widget build(BuildContext context) {
@@ -2290,6 +2310,15 @@ class _ControlsBar extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
+              if (onPrevChannel != null) ...<Widget>[
+                _CtrlButton(
+                  icon: Icons.skip_previous_rounded,
+                  label: context.l10n.tvPrevChannel,
+                  onTap: onPrevChannel!,
+                  focused: false,
+                ),
+                const SizedBox(width: 34),
+              ],
               _CtrlButton(
                 icon: Icons.calendar_month_rounded,
                 label: context.l10n.tvGuideBtn,
@@ -2376,6 +2405,15 @@ class _ControlsBar extends StatelessWidget {
                   label: engineLabel ?? context.l10n.tvPictureEngine,
                   onTap: onEngine!,
                   focused: engineFocused,
+                ),
+              ],
+              if (onNextChannel != null) ...<Widget>[
+                const SizedBox(width: 34),
+                _CtrlButton(
+                  icon: Icons.skip_next_rounded,
+                  label: context.l10n.tvNextChannel,
+                  onTap: onNextChannel!,
+                  focused: false,
                 ),
               ],
             ],

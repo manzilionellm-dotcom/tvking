@@ -1476,5 +1476,7 @@
   },
   "tvCatchupUnavailable": "الإعادة غير متاحة لهذا البرنامج. العودة إلى البث المباشر.",
   "tvCatchupEnded": "انتهت الإعادة. العودة إلى البث المباشر.",
-  "tvStatusPaidDays": "الاشتراك نشط · المتبقي {days} يوم"
+  "tvStatusPaidDays": "الاشتراك نشط · المتبقي {days} يوم",
+  "tvPrevChannel": "السابقة",
+  "tvNextChannel": "التالية"
 }
