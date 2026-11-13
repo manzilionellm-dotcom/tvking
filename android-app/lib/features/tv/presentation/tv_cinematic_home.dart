@@ -1,16 +1,24 @@
 // =========================================================
-//  tv_cinematic_home.dart — Accueil « Ce soir » (maquette Lionel)
+//  tv_cinematic_home.dart — Accueil « salon » (demande du 13/11/2026)
 // =========================================================
-//  Gauche : une carte verre, le programme ou le film déjà sur la
-//  box, bouton lecture. Droite : le Direct, puis deux rangées
-//  horizontales. Fond obsidienne (#070708, _field(context)), plus
-//  profond que le gris confort #121212 : la maquette gagne sur
-//  CE fond seulement. Le texte et le cuivre restent les jetons
-//  du thème (lisible le soir, pas un néon).
+//  De haut en bas :
+//   1. une ligne de raccourcis (Direct, Films, Séries, Serveur, Réglages) ;
+//   2. le GRAND BANDEAU : ce qu'on regarde en ce moment, sur toute la
+//      largeur, son image en fond légèrement floutée, un bouton lecture
+//      au centre qui « respire » quand il a le focus ;
+//   3. la rangée des favoris : vignettes compactes, coins arrondis, fin
+//      liseré doré au focus, image qui avance doucement, et un trait de
+//      progression sous chaque carte quand on la connaît vraiment.
+//  La barre d'abonnement est dessinée par l'écran qui porte cet accueil
+//  (tv_hub_screen.dart).
 //
-//  Le flou n'est posé que si [blur] est vrai. Sinon le verre est
-//  un aplat. Les affiches ne viennent que d'une URL de la liste.
+//  Ce qu'on ne fait PAS : ouvrir un flux pour animer une vignette (règle
+//  du projet : rien ne se lance tout seul), ni inventer une image ou une
+//  progression. Le flou n'est posé que si [blur] est vrai (box au-dessus
+//  de 2 Go) ; sinon un voile sombre le remplace.
 // =========================================================
+import 'dart:ui' show ImageFilter;
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
@@ -19,7 +27,6 @@ import '../core/tv_app_tokens.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
-import 'tv_glass.dart';
 import 'tv_tonight.dart';
 
 Color _field(BuildContext context) =>
@@ -31,6 +38,7 @@ Color _metalBright(BuildContext context) => TvAppTokens.of(context).ghost
     : TvTokens.accentBright;
 Color _onMetal(BuildContext context) =>
     TvAppTokens.of(context).ghost ? TvAppTokens.of(context).onAccent : TvTokens.onAccent;
+
 
 
 class TvCinematicHome extends StatelessWidget {
@@ -58,11 +66,57 @@ class TvCinematicHome extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bool heroFirst = board.hasHero;
-    return Row(
+    // Une seule rangée : d'abord ce qui est à soi (reprises, favoris),
+    // puis ce que la box propose. Aucune carte en double (composeTonight).
+    final List<TonightPiece> row = <TonightPiece>[
+      ...board.recommendations,
+      ...board.discover,
+    ];
+    final bool vod =
+        board.recommendations.any((TonightPiece p) => p.watch != null);
+    final String rowLabel = board.recommendations.isEmpty
+        ? context.l10n.tvHomePopular
+        : (vod ? context.l10n.tvHomeContinue : context.l10n.tvHomeFavorites);
+    return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
+        SizedBox(
+          height: 44,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            children: <Widget>[
+              _Chip(
+                icon: Icons.live_tv_rounded,
+                label: context.l10n.tvNavLive,
+                autofocus: !heroFirst,
+                onSelect: onLive,
+              ),
+              _Chip(
+                icon: Icons.movie_rounded,
+                label: context.l10n.tvNavFilms,
+                onSelect: onFilms,
+              ),
+              _Chip(
+                icon: Icons.video_library_rounded,
+                label: context.l10n.tvNavSeries,
+                onSelect: onSeries,
+              ),
+              _Chip(
+                icon: Icons.dns_rounded,
+                label: context.l10n.tvNavServer,
+                onSelect: onServer,
+              ),
+              _Chip(
+                icon: Icons.settings_rounded,
+                label: context.l10n.tvNavSettings,
+                onSelect: onSettings,
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 10),
         Expanded(
-          flex: 5,
+          flex: 70,
           child: _Hero(
             board: board,
             blur: blur,
@@ -70,28 +124,13 @@ class TvCinematicHome extends StatelessWidget {
             onPlay: board.hero == null ? null : () => onPlay(board.hero!),
           ),
         ),
-        const SizedBox(width: 18),
-        Expanded(
-          flex: 6,
-          child: _RailColumn(
-            board: board,
-            blur: blur,
-            liveAutofocus: !heroFirst,
-            onLive: onLive,
-            onFilms: onFilms,
-            onSeries: onSeries,
-            onServer: onServer,
-            onSettings: onSettings,
-            onPlay: onPlay,
-          ),
-        ),
-        if (TvAppTokens.of(context).ghost) ...<Widget>[
-          const SizedBox(width: 10),
-          _IconRail(
-            onLive: onLive,
-            onFilms: onFilms,
-            onSeries: onSeries,
-            onSettings: onSettings,
+        if (row.isNotEmpty) ...<Widget>[
+          const SizedBox(height: 12),
+          _RowLabel(rowLabel),
+          const SizedBox(height: 8),
+          Expanded(
+            flex: 30,
+            child: _CardRow(pieces: row, onPlay: onPlay),
           ),
         ],
       ],
@@ -99,6 +138,8 @@ class TvCinematicHome extends StatelessWidget {
   }
 }
 
+/// Le grand bandeau. Toute la carte prend le focus (cible large pour la
+/// télécommande) ; OK lance la lecture.
 class _Hero extends StatelessWidget {
   const _Hero({
     required this.board,
@@ -117,134 +158,109 @@ class _Hero extends StatelessWidget {
     final TonightPiece? hero = board.hero;
     final String title = hero?.title ?? context.l10n.tvHomeInvite;
     final String detail = board.heroDetail;
-    return TvGlassPanel(
-      blur: blur,
-      padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Text(
-            context.l10n.tvVoiceTonightTitle,
-            style: TvAppTokens.of(context).ui(
-              TvDimens.label,
-              weight: FontWeight.w700,
-              color: _metalBright(context),
-            ),
-          ),
-          if (detail.isNotEmpty) ...<Widget>[
-            const SizedBox(height: 4),
-            Text(
-              detail,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TvAppTokens.of(context).ui(
-                TvDimens.caption,
-                color: TvAppTokens.of(context).muted,
-              ),
-            ),
-          ],
-          const SizedBox(height: 12),
-          Expanded(
-            child: Stack(
-              fit: StackFit.expand,
-              children: <Widget>[
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(16),
-                  child: _Artwork(
-                    url: hero?.artworkUrl,
-                    title: title,
-                    logo: hero?.artworkIsLogo ?? false,
-                    // Grande carte : un logo est une petite image. Étiré sur
-                    // toute la surface il devenait flou ; on le garde net,
-                    // centré, sur un fond sobre.
-                    logoScale: 0.5,
-                  ),
-                ),
-                if (onPlay != null)
-                  Positioned(
-                    right: 14,
-                    bottom: 14,
-                    child: _PlayButton(autofocus: autofocus, onSelect: onPlay!),
-                  ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            title,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: TvAppTokens.of(context).display(
-              TvDimens.headline,
-              color: TvAppTokens.of(context).text,
-            ),
-          ),
-          if (hero != null && hero.meta.isNotEmpty) ...<Widget>[
-            const SizedBox(height: 4),
-            Text(
-              hero.meta,
-              style: TvAppTokens.of(context).ui(
-                TvDimens.caption,
-                color: TvAppTokens.of(context).muted,
-              ),
-            ),
-          ],
-          if (TvAppTokens.of(context).ghost && onPlay != null) ...<Widget>[
-            const SizedBox(height: 10),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: _PlatinumPill(
-                label: context.l10n.moviesPlayTooltip,
-                autofocus: false,
-                onSelect: onPlay!,
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-class _PlayButton extends StatelessWidget {
-  const _PlayButton({required this.autofocus, required this.onSelect});
-  final bool autofocus;
-  final VoidCallback onSelect;
-
-  @override
-  Widget build(BuildContext context) {
+    final String meta = hero?.meta ?? '';
+    final String under = <String>[
+      if (detail.isNotEmpty) detail,
+      if (meta.isNotEmpty) meta,
+    ].join(' · ');
+    final double? progress = hero?.progress;
+    final BorderRadius radius = BorderRadius.circular(22);
     return TvFocusBuilder(
       autofocus: autofocus,
       scale: TvFocusScale.small,
       showGlow: false,
-      borderRadius: BorderRadius.circular(40),
-      onSelect: onSelect,
+      borderRadius: radius,
+      onSelect: onPlay,
       builder: (BuildContext context, bool focused) {
-        final bool phantom = TvAppTokens.of(context).ghost;
-        return Container(
-          width: 64,
-          height: 64,
+        return AnimatedContainer(
+          duration: TvDimens.focusAnim,
+          curve: TvDimens.focusCurve,
           decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: phantom
-                ? const Color(0xFF2A2E34)
-                : _metal(context).withValues(alpha: focused ? 0.95 : 0.82),
+            borderRadius: radius,
             border: Border.all(
-              color: focused ? _metalBright(context) : _metal(context),
-              width: phantom ? 1 : (focused ? 2 : 1),
+              color: focused
+                  ? _metalBright(context)
+                  : _metal(context).withValues(alpha: 0.18),
+              width: 1,
             ),
-            boxShadow: <BoxShadow>[
-              BoxShadow(
-                color: _metal(context).withValues(alpha: focused ? 0.35 : 0.12),
-                blurRadius: focused ? 16 : 8,
-                spreadRadius: -2,
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: Stack(
+            fit: StackFit.expand,
+            children: <Widget>[
+              _Backdrop(piece: hero, title: title, blur: blur),
+              // Voile : le texte reste lisible quelle que soit l'image.
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
+                    colors: <Color>[
+                      _field(context).withValues(alpha: 0.92),
+                      _field(context).withValues(alpha: 0.55),
+                      _field(context).withValues(alpha: 0.20),
+                    ],
+                  ),
+                ),
+              ),
+              if (onPlay != null) Center(child: _PulsePlay(active: focused)),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(26, 20, 26, 20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      context.l10n.tvVoiceTonightTitle.toUpperCase(),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TvAppTokens.of(context).ui(
+                        TvDimens.caption,
+                        weight: FontWeight.w500,
+                        color: _metalBright(context),
+                        spacing: 2.2,
+                      ),
+                    ),
+                    const Spacer(),
+                    FractionallySizedBox(
+                      widthFactor: 0.62,
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TvAppTokens.of(context).ui(
+                          40,
+                          weight: FontWeight.w300,
+                          color: TvAppTokens.of(context).text,
+                          height: 1.08,
+                        ),
+                      ),
+                    ),
+                    if (under.isNotEmpty) ...<Widget>[
+                      const SizedBox(height: 6),
+                      Text(
+                        under,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TvAppTokens.of(context).ui(
+                          TvDimens.label,
+                          weight: FontWeight.w300,
+                          color: TvAppTokens.of(context).muted,
+                        ),
+                      ),
+                    ],
+                    if (progress != null) ...<Widget>[
+                      const SizedBox(height: 12),
+                      FractionallySizedBox(
+                        widthFactor: 0.42,
+                        alignment: Alignment.centerLeft,
+                        child: _ProgressLine(value: progress, height: 3),
+                      ),
+                    ],
+                  ],
+                ),
               ),
             ],
-          ),
-          child: Icon(
-            Icons.play_arrow_rounded,
-            size: 36,
-            color: phantom ? _metalBright(context) : _onMetal(context),
           ),
         );
       },
@@ -252,76 +268,163 @@ class _PlayButton extends StatelessWidget {
   }
 }
 
-class _RailColumn extends StatelessWidget {
-  const _RailColumn({
-    required this.board,
-    required this.blur,
-    required this.liveAutofocus,
-    required this.onLive,
-    required this.onFilms,
-    required this.onSeries,
-    required this.onServer,
-    required this.onSettings,
-    required this.onPlay,
-  });
-
-  final TonightBoard board;
+/// Fond du bandeau : l'image de la source, agrandie. Floutée seulement
+/// si la box le supporte ; sinon elle est simplement assombrie.
+class _Backdrop extends StatelessWidget {
+  const _Backdrop({required this.piece, required this.title, required this.blur});
+  final TonightPiece? piece;
+  final String title;
   final bool blur;
-  final bool liveAutofocus;
-  final VoidCallback onLive;
-  final VoidCallback onFilms;
-  final VoidCallback onSeries;
-  final VoidCallback onServer;
-  final VoidCallback onSettings;
-  final ValueChanged<TonightPiece> onPlay;
 
   @override
   Widget build(BuildContext context) {
-    final bool vod = board.recommendations.any((TonightPiece p) => p.watch != null);
-    final String recLabel =
-        vod ? context.l10n.tvHomeContinue : context.l10n.tvHomeFavorites;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: <Widget>[
-        _WideAction(
-          icon: Icons.live_tv_rounded,
-          label: context.l10n.tvNavLive,
-          blur: blur,
-          autofocus: liveAutofocus,
-          onSelect: onLive,
+    final TonightPiece? p = piece;
+    final String? art = p?.artworkUrl;
+    if (p == null || art == null) return _Monogram(title: title);
+    final bool logo = p.artworkIsLogo;
+    final Widget image = _Artwork(
+      url: art,
+      title: title,
+      logo: logo,
+      logoScale: 0.5,
+    );
+    // Un logo se montre net et entier, à droite : le flouter le rendrait
+    // illisible. Une jaquette remplit le fond et reçoit le flou.
+    if (logo) {
+      return Align(
+        alignment: Alignment.centerRight,
+        child: FractionallySizedBox(widthFactor: 0.5, child: image),
+      );
+    }
+    if (!blur) return image;
+    return ImageFiltered(
+      imageFilter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
+      child: Transform.scale(scale: 1.06, child: image),
+    );
+  }
+}
+
+/// Bouton lecture au centre du bandeau. Il « respire » doucement tant
+/// que le bandeau a le focus. Aucune animation si le système demande de
+/// les réduire, ni quand le bandeau n'a pas le focus (rien ne tourne
+/// pour rien sur une petite box).
+class _PulsePlay extends StatefulWidget {
+  const _PulsePlay({required this.active});
+  final bool active;
+
+  @override
+  State<_PulsePlay> createState() => _PulsePlayState();
+}
+
+class _PulsePlayState extends State<_PulsePlay>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1600),
+  );
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _sync();
+  }
+
+  @override
+  void didUpdateWidget(_PulsePlay oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _sync();
+  }
+
+  void _sync() {
+    final bool run = widget.active && !MediaQuery.disableAnimationsOf(context);
+    if (run && !_c.isAnimating) {
+      _c.repeat(reverse: true);
+    } else if (!run && _c.isAnimating) {
+      _c.stop();
+      _c.value = 0;
+    }
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bool on = widget.active;
+    return RepaintBoundary(
+      child: AnimatedBuilder(
+        animation: _c,
+        builder: (BuildContext context, Widget? child) {
+          final double t = Curves.easeInOut.transform(_c.value);
+          return Transform.scale(
+            scale: 1 + 0.06 * t,
+            child: Container(
+              width: 76,
+              height: 76,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: _field(context).withValues(alpha: on ? 0.55 : 0.38),
+                border: Border.all(
+                  color: on
+                      ? _metalBright(context)
+                      : TvAppTokens.of(context).text.withValues(alpha: 0.55),
+                  width: 1.2,
+                ),
+                boxShadow: on
+                    ? <BoxShadow>[
+                        BoxShadow(
+                          color: _metal(context)
+                              .withValues(alpha: 0.18 + 0.22 * t),
+                          blurRadius: 14 + 10 * t,
+                          spreadRadius: -2,
+                        ),
+                      ]
+                    : null,
+              ),
+              child: child,
+            ),
+          );
+        },
+        child: Icon(
+          Icons.play_arrow_rounded,
+          size: 40,
+          color: on ? _metalBright(context) : TvAppTokens.of(context).text,
         ),
-        const SizedBox(height: 10),
-        SizedBox(
-          height: 48,
-          child: ListView(
-            scrollDirection: Axis.horizontal,
-            children: <Widget>[
-              _Chip(icon: Icons.movie_rounded, label: context.l10n.tvNavFilms, onSelect: onFilms),
-              _Chip(icon: Icons.video_library_rounded, label: context.l10n.tvNavSeries, onSelect: onSeries),
-              _Chip(icon: Icons.dns_rounded, label: context.l10n.tvNavServer, onSelect: onServer),
-              _Chip(icon: Icons.settings_rounded, label: context.l10n.tvNavSettings, onSelect: onSettings),
-            ],
-          ),
+      ),
+    );
+  }
+}
+
+/// Trait de progression : fin, discret. [value] entre 0 et 1.
+class _ProgressLine extends StatelessWidget {
+  const _ProgressLine({required this.value, this.height = 2});
+  final double value;
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    final double v = value.clamp(0.0, 1.0);
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(height),
+      child: SizedBox(
+        height: height,
+        child: Stack(
+          fit: StackFit.expand,
+          children: <Widget>[
+            ColoredBox(
+              color: TvAppTokens.of(context).text.withValues(alpha: 0.14),
+            ),
+            FractionallySizedBox(
+              alignment: AlignmentDirectional.centerStart,
+              widthFactor: v,
+              child: ColoredBox(color: _metalBright(context)),
+            ),
+          ],
         ),
-        if (board.recommendations.isNotEmpty) ...<Widget>[
-          const SizedBox(height: 12),
-          _RowLabel(recLabel),
-          const SizedBox(height: 8),
-          Expanded(
-            child: _CardRow(pieces: board.recommendations, onPlay: onPlay),
-          ),
-        ],
-        if (board.discover.isNotEmpty) ...<Widget>[
-          const SizedBox(height: 8),
-          _RowLabel(context.l10n.tvHomePopular),
-          const SizedBox(height: 8),
-          Expanded(
-            child: _CardRow(pieces: board.discover, onPlay: onPlay),
-          ),
-        ],
-        if (board.recommendations.isEmpty && board.discover.isEmpty)
-          const Spacer(),
-      ],
+      ),
     );
   }
 }
@@ -337,66 +440,22 @@ class _RowLabel extends StatelessWidget {
       overflow: TextOverflow.ellipsis,
       style: TvAppTokens.of(context).ui(
         TvDimens.label,
-        weight: FontWeight.w700,
-        color: TvAppTokens.of(context).text,
+        weight: FontWeight.w400,
+        color: TvAppTokens.of(context).muted,
+        spacing: 0.4,
       ),
     );
   }
 }
 
-class _WideAction extends StatelessWidget {
-  const _WideAction({
+class _Chip extends StatelessWidget {
+  const _Chip({
     required this.icon,
     required this.label,
-    required this.blur,
-    required this.autofocus,
     required this.onSelect,
+    this.autofocus = false,
   });
-
-  final IconData icon;
-  final String label;
-  final bool blur;
   final bool autofocus;
-  final VoidCallback onSelect;
-
-  @override
-  Widget build(BuildContext context) {
-    return TvFocusBuilder(
-      autofocus: autofocus,
-      scale: TvFocusScale.small,
-      showGlow: false,
-      borderRadius: BorderRadius.circular(18),
-      onSelect: onSelect,
-      builder: (BuildContext context, bool focused) {
-        return TvGlassPanel(
-          blur: blur,
-          focused: focused,
-          radius: 18,
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-          child: Row(
-            children: <Widget>[
-              Icon(icon, color: _metalBright(context), size: 26),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Text(
-                  label,
-                  style: TvAppTokens.of(context).ui(
-                    TvDimens.titleS,
-                    weight: FontWeight.w700,
-                    color: TvAppTokens.of(context).text,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-}
-
-class _Chip extends StatelessWidget {
-  const _Chip({required this.icon, required this.label, required this.onSelect});
   final IconData icon;
   final String label;
   final VoidCallback onSelect;
@@ -406,6 +465,7 @@ class _Chip extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(right: 8),
       child: TvFocusBuilder(
+        autofocus: autofocus,
         scale: TvFocusScale.small,
         showGlow: false,
         borderRadius: BorderRadius.circular(14),
@@ -454,35 +514,52 @@ class _CardRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListView.separated(
-      scrollDirection: Axis.horizontal,
-      itemCount: pieces.length,
-      separatorBuilder: (_, __) => const SizedBox(width: 12),
-      itemBuilder: (BuildContext context, int i) {
-        final TonightPiece piece = pieces[i];
-        return _PosterCard(piece: piece, onSelect: () => onPlay(piece));
+    return LayoutBuilder(
+      builder: (BuildContext context, BoxConstraints box) {
+        // La carte suit la hauteur disponible (720p comme 4K) : image en
+        // 16/9, puis le titre et le trait de progression (34 px).
+        final double artH = (box.maxHeight - 34).clamp(40.0, 130.0);
+        final double width = artH * 16 / 9;
+        return ListView.separated(
+          scrollDirection: Axis.horizontal,
+          itemCount: pieces.length,
+          separatorBuilder: (_, __) => const SizedBox(width: 14),
+          itemBuilder: (BuildContext context, int i) {
+            final TonightPiece piece = pieces[i];
+            return _PosterCard(
+              piece: piece,
+              width: width,
+              artHeight: artH,
+              onSelect: () => onPlay(piece),
+            );
+          },
+        );
       },
     );
   }
 }
 
-class _PosterCard extends StatefulWidget {
-  const _PosterCard({required this.piece, required this.onSelect});
+class _PosterCard extends StatelessWidget {
+  const _PosterCard({
+    required this.piece,
+    required this.width,
+    required this.artHeight,
+    required this.onSelect,
+  });
   final TonightPiece piece;
+  final double width;
+  final double artHeight;
   final VoidCallback onSelect;
 
   @override
-  State<_PosterCard> createState() => _PosterCardState();
-}
-
-class _PosterCardState extends State<_PosterCard> {
-  @override
   Widget build(BuildContext context) {
+    final BorderRadius radius = BorderRadius.circular(12);
+    final double? progress = piece.progress;
     return TvFocusBuilder(
       scale: TvFocusScale.small,
       showGlow: false,
-      borderRadius: BorderRadius.circular(14),
-      onSelect: widget.piece.canPlay ? widget.onSelect : null,
+      borderRadius: radius,
+      onSelect: piece.canPlay ? onSelect : null,
       onFocusChange: (bool focused) {
         if (!focused) return;
         Scrollable.ensureVisible(
@@ -493,44 +570,60 @@ class _PosterCardState extends State<_PosterCard> {
         );
       },
       builder: (BuildContext context, bool focused) {
-        return AnimatedContainer(
-          duration: TvDimens.focusAnim,
-          curve: TvDimens.focusCurve,
-          width: 132,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: focused
-                  ? _metalBright(context)
-                  : _metal(context).withValues(alpha: 0.22),
-              width: focused ? 2 : 1,
-            ),
-          ),
-          clipBehavior: Clip.antiAlias,
+        final bool still = MediaQuery.disableAnimationsOf(context);
+        return SizedBox(
+          width: width,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
-              Expanded(
-                child: _Artwork(
-                  url: widget.piece.artworkUrl,
-                  title: widget.piece.title,
-                  logo: widget.piece.artworkIsLogo,
+              AnimatedContainer(
+                duration: TvDimens.focusAnim,
+                curve: TvDimens.focusCurve,
+                height: artHeight,
+                decoration: BoxDecoration(
+                  borderRadius: radius,
+                  border: Border.all(
+                    color: focused
+                        ? _metalBright(context)
+                        : _metal(context).withValues(alpha: 0.14),
+                    width: 1,
+                  ),
                 ),
-              ),
-              Container(
-                color: _field(context).withValues(alpha: 0.88),
-                padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
-                child: Text(
-                  widget.piece.title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TvAppTokens.of(context).ui(
-                    TvDimens.caption,
-                    weight: FontWeight.w500,
-                    color: TvAppTokens.of(context).text,
+                clipBehavior: Clip.antiAlias,
+                // Au focus, l'image avance très lentement : la vignette
+                // « vit » sans ouvrir de flux.
+                child: AnimatedScale(
+                  scale: focused && !still ? 1.08 : 1.0,
+                  duration: still
+                      ? Duration.zero
+                      : const Duration(milliseconds: 2400),
+                  curve: Curves.easeOut,
+                  child: _Artwork(
+                    url: piece.artworkUrl,
+                    title: piece.title,
+                    logo: piece.artworkIsLogo,
                   ),
                 ),
               ),
+              const SizedBox(height: 6),
+              Text(
+                piece.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TvAppTokens.of(context).ui(
+                  TvDimens.caption,
+                  weight: focused ? FontWeight.w500 : FontWeight.w300,
+                  color: focused
+                      ? TvAppTokens.of(context).text
+                      : TvAppTokens.of(context).muted,
+                ),
+              ),
+              const SizedBox(height: 5),
+              // Pas de progression connue = pas de trait (rien d'inventé).
+              if (progress != null)
+                _ProgressLine(value: progress)
+              else
+                const SizedBox(height: 2),
             ],
           ),
         );
@@ -632,111 +725,6 @@ class _Monogram extends StatelessWidget {
             color: _metalBright(context),
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _PlatinumPill extends StatelessWidget {
-  const _PlatinumPill({
-    required this.label,
-    required this.onSelect,
-    this.autofocus = false,
-  });
-  final String label;
-  final VoidCallback onSelect;
-  final bool autofocus;
-
-  @override
-  Widget build(BuildContext context) {
-    return TvFocusBuilder(
-      autofocus: autofocus,
-      scale: TvFocusScale.small,
-      showGlow: false,
-      borderRadius: BorderRadius.circular(20),
-      onSelect: onSelect,
-      builder: (BuildContext context, bool focused) {
-        return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-              color: focused ? _metalBright(context) : _metal(context),
-              width: 1,
-            ),
-            color: focused
-                ? _metal(context).withValues(alpha: 0.16)
-                : const Color(0x00000000),
-          ),
-          child: Text(
-            label,
-            style: TvAppTokens.of(context).ui(
-              TvDimens.caption,
-              weight: FontWeight.w500,
-              color: _metalBright(context),
-            ),
-          ),
-        );
-      },
-    );
-  }
-}
-
-/// Rail d'icônes à droite, comme la maquette. Pas de libellé :
-/// le focus allume le filet platine.
-class _IconRail extends StatelessWidget {
-  const _IconRail({
-    required this.onLive,
-    required this.onFilms,
-    required this.onSeries,
-    required this.onSettings,
-  });
-  final VoidCallback onLive;
-  final VoidCallback onFilms;
-  final VoidCallback onSeries;
-  final VoidCallback onSettings;
-
-  @override
-  Widget build(BuildContext context) {
-    final List<(IconData, VoidCallback)> items = <(IconData, VoidCallback)>[
-      (Icons.live_tv_rounded, onLive),
-      (Icons.movie_rounded, onFilms),
-      (Icons.video_library_rounded, onSeries),
-      (Icons.settings_rounded, onSettings),
-    ];
-    return SizedBox(
-      width: 52,
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: <Widget>[
-          for (final (IconData icon, VoidCallback action) in items)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 6),
-              child: TvFocusBuilder(
-                scale: TvFocusScale.small,
-                showGlow: false,
-                borderRadius: BorderRadius.circular(12),
-                onSelect: action,
-                builder: (BuildContext context, bool focused) {
-                  return Container(
-                    width: 44,
-                    height: 44,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: focused
-                            ? _metalBright(context)
-                            : _metal(context).withValues(alpha: 0.35),
-                        width: 1,
-                      ),
-                    ),
-                    child: Icon(icon, size: 22, color: _metalBright(context)),
-                  );
-                },
-              ),
-            ),
-        ],
       ),
     );
   }
