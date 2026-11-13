@@ -2905,5 +2905,13 @@
     }
   },
   "tvCatchupUnavailable": "Bu program için tekrar izleme yok. Canlı yayına dönülüyor.",
-  "tvCatchupEnded": "Tekrar bitti. Canlı yayına dönülüyor."
+  "tvCatchupEnded": "Tekrar bitti. Canlı yayına dönülüyor.",
+  "tvStatusPaidDays": "Abonelik etkin · {days} gün kaldı",
+  "@tvStatusPaidDays": {
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  }
 }

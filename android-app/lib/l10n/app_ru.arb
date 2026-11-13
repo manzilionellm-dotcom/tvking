@@ -2905,5 +2905,13 @@
     }
   },
   "tvCatchupUnavailable": "Повтор для этой передачи недоступен. Возврат к прямому эфиру.",
-  "tvCatchupEnded": "Повтор окончен. Возврат к прямому эфиру."
+  "tvCatchupEnded": "Повтор окончен. Возврат к прямому эфиру.",
+  "tvStatusPaidDays": "Подписка активна · осталось дней: {days}",
+  "@tvStatusPaidDays": {
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  }
 }

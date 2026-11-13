@@ -34,6 +34,7 @@ import '../../channels/data/recently_watched_repository.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../../playlists/domain/playlist.dart';
 import 'now_playing.dart';
+import 'playback_health.dart';
 
 /// URL du Worker Cloudflare — DOIT être le MÊME backend que celui
 /// utilisé par le panneau admin (admin-panel, `VITE_API_BASE`), sinon
@@ -224,6 +225,7 @@ abstract final class SubscriptionBackend {
       // et afficher la version installée.
       final String androidId = await DeviceIdentity.instance.androidId();
       final String appVersion = await _appVersion();
+      final int? quality = PlaybackHealth.instance.takePercent();
       final Map<String, Object?> payload = <String, Object?>{
         'mac': mac,
         'model': info['model'] ?? '',
@@ -247,6 +249,9 @@ abstract final class SubscriptionBackend {
         'appBuild': kBuildTs,
         // Chaîne en cours de visionnage (vide si rien) → panel « En ligne ».
         'channel': NowPlaying.instance.current,
+        // Qualité de lecture depuis le dernier signal (0–100). Absente si
+        // rien ne joue : le panel affiche « — », pas un chiffre inventé.
+        if (quality != null) 'quality': quality,
         // Namespace PRODUIT inchangé : mobile = 7 MOTION, tv = ZUNO.
         'platform': AppPlatform.id,
         // INVENTAIRE des sources réellement présentes sur l'appareil (celles

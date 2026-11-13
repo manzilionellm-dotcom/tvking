@@ -2905,5 +2905,13 @@
     }
   },
   "tvCatchupUnavailable": "इस कार्यक्रम के लिए रीप्ले उपलब्ध नहीं है। लाइव पर वापसी।",
-  "tvCatchupEnded": "रीप्ले समाप्त। लाइव पर वापसी।"
+  "tvCatchupEnded": "रीप्ले समाप्त। लाइव पर वापसी।",
+  "tvStatusPaidDays": "सदस्यता सक्रिय · {days} दिन शेष",
+  "@tvStatusPaidDays": {
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  }
 }
