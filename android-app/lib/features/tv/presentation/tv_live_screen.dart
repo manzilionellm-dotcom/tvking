@@ -49,6 +49,7 @@ import 'tv_channel_loading_status.dart';
 import 'tv_live_preview.dart';
 import 'tv_source_setup.dart';
 import 'tv_player_screen.dart';
+import 'tv_search_screen.dart';
 import 'tv_shell.dart';
 import 'tv_vip_countries_screen.dart';
 import 'vip_country_names.dart';
@@ -131,6 +132,23 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     _selectedCat = null;
     _catDebounce?.cancel();
     VipCountriesRepository.instance.load();
+  }
+
+  /// Ouvre la recherche depuis le Direct. Comme pour le plein écran, on
+  /// rend d'abord le décodeur de l'aperçu : la recherche peut lancer une
+  /// chaîne, et un abonnement « 1 connexion » refuserait deux flux.
+  Future<void> _openSearch() async {
+    _catDebounce?.cancel();
+    await TvLivePreview.releaseActive();
+    if (!mounted) return;
+    setState(() => _playerOpen = true);
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => const TvShell(child: TvSearchScreen()),
+      ),
+    );
+    if (!mounted) return;
+    setState(() => _playerOpen = false);
   }
 
   Future<void> _openVipCountries() async {
@@ -929,9 +947,22 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     //   droite  : aperçu vidéo (même moteur que le plein écran) + guide
     final Widget cList = Column(
       children: [
-        TvCtaButton(
-          label: context.l10n.vipCountriesTitle,
-          onSelect: _precomputed ? _openVipCountries : null,
+        // « Mes pays · VIP » et, juste à côté, la recherche : même écran
+        // que le micro de la télécommande (chaînes, films, séries).
+        Row(
+          children: <Widget>[
+            Expanded(
+              child: TvCtaButton(
+                label: context.l10n.vipCountriesTitle,
+                onSelect: _precomputed ? _openVipCountries : null,
+              ),
+            ),
+            const SizedBox(width: 10),
+            _SearchButton(
+              label: context.l10n.tvNavSearch,
+              onSelect: _openSearch,
+            ),
+          ],
         ),
         const SizedBox(height: 12),
         Expanded(
@@ -2480,6 +2511,50 @@ class _PreviewInfoState extends State<_PreviewInfo> {
                 },
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Bouton carré « Recherche », à côté de « Mes pays · VIP ».
+/// Une loupe suffit : le nom est lu par l'accessibilité.
+class _SearchButton extends StatelessWidget {
+  const _SearchButton({required this.label, required this.onSelect});
+  final String label;
+  final VoidCallback onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    final BorderRadius radius = BorderRadius.circular(TvTokens.rButton);
+    return Semantics(
+      button: true,
+      label: label,
+      child: TvFocusBuilder(
+        scale: TvFocusScale.small,
+        borderRadius: radius,
+        showGlow: false,
+        onSelect: onSelect,
+        builder: (BuildContext context, bool focused) {
+          final TvAppTokens t = TvAppTokens.of(context);
+          return Container(
+            width: 58,
+            height: 58,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: focused ? t.accent : t.card,
+              borderRadius: radius,
+              border: Border.all(
+                color: focused ? t.text : t.line,
+                width: focused ? 2 : 1,
+              ),
+            ),
+            child: Icon(
+              Icons.search_rounded,
+              size: 28,
+              color: focused ? t.onAccent : t.accentBright,
+            ),
+          );
+        },
       ),
     );
   }
