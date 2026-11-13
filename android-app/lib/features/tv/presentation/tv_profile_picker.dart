@@ -23,6 +23,7 @@ import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
 import '../core/tv_app_tokens.dart';
 import 'tv_parental_screen.dart';
+import 'tv_profiles_screen.dart';
 import 'tv_shell.dart';
 
 /// Une fois par lancement de l'app : on ne repose pas le choix
@@ -95,19 +96,41 @@ class TvProfilePickerScreen extends StatelessWidget {
               const SizedBox(height: 28),
               Expanded(
                 child: Center(
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: <Widget>[
-                      for (int i = 0; i < profiles.length; i++) ...<Widget>[
-                        if (i > 0) const SizedBox(width: 22),
-                        _ProfileCard(
-                          profile: profiles[i],
-                          active: profiles[i].id == activeId,
-                          autofocus: profiles[i].id == activeId,
-                          onSelect: () => _choose(context, profiles[i]),
-                        ),
+                  // Jusqu'à 10 profils : la rangée défile si elle dépasse
+                  // l'écran (le focus de la télécommande la fait suivre).
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 24,
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        for (int i = 0; i < profiles.length; i++) ...<Widget>[
+                          if (i > 0) const SizedBox(width: 22),
+                          _ProfileCard(
+                            profile: profiles[i],
+                            active: profiles[i].id == activeId,
+                            autofocus: profiles[i].id == activeId,
+                            onSelect: () => _choose(context, profiles[i]),
+                          ),
+                        ],
+                        // Carte « + » : avant, cet écran ne permettait pas
+                        // d'ajouter un profil (il fallait passer par les
+                        // Réglages). Elle ouvre l'écran des profils.
+                        if (ProfileRepository.instance.catalog.canAdd) ...<Widget>[
+                          const SizedBox(width: 22),
+                          _AddProfileCard(
+                            onSelect: () => Navigator.of(context).push(
+                              MaterialPageRoute<void>(
+                                builder: (_) => const TvProfilesScreen(),
+                              ),
+                            ),
+                          ),
+                        ],
                       ],
-                    ],
+                    ),
                   ),
                 ),
               ),
@@ -173,6 +196,60 @@ Future<bool> confirmProfileSwitch(BuildContext context, String nextId) async {
     return true;
   }
   return askParentalPin(context);
+}
+
+/// Carte « + » : même gabarit qu'un profil, ouvre la gestion des profils.
+class _AddProfileCard extends StatelessWidget {
+  const _AddProfileCard({required this.onSelect});
+
+  final VoidCallback onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    return TvFocusBuilder(
+      scale: TvFocusScale.large,
+      onSelect: onSelect,
+      builder: (BuildContext context, bool focused) {
+        final Color fg = focused
+            ? TvAppTokens.of(context).onAccent
+            : TvAppTokens.of(context).text;
+        return Container(
+          width: 200,
+          height: 240,
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            color: focused
+                ? TvAppTokens.of(context).accent
+                : TvAppTokens.of(context).card,
+            borderRadius: BorderRadius.circular(TvTokens.rCard),
+            border: Border.all(
+              color: focused
+                  ? TvAppTokens.of(context).accent
+                  : TvAppTokens.of(context).line,
+            ),
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: <Widget>[
+              Icon(Icons.add_rounded, size: 64, color: fg),
+              const SizedBox(height: 14),
+              Text(
+                context.l10n.tvNewProfile,
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TvAppTokens.of(context).ui(
+                  TvDimens.title,
+                  weight: FontWeight.w700,
+                  color: fg,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
 }
 
 class _ProfileCard extends StatelessWidget {

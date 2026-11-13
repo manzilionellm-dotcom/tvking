@@ -8,7 +8,7 @@
 //    • favoris et historique historiques sont AJOUTÉS au profil 1,
 //      jamais retirés, et les autres profils ne sont pas touchés ;
 //    • on ne recopie pas une deuxième fois ;
-//    • 4 profils max, un seul Enfants, le profil 1 ne se supprime pas ;
+//    • 10 profils max, un seul Enfants, le profil 1 ne se supprime pas ;
 //    • le choix au démarrage ne s'affiche pas s'il n'y a rien à choisir
 //      ou s'il est désactivé ;
 //    • le profil Enfants ne peut pas couper le mode enfants ;
@@ -113,12 +113,15 @@ void main() {
   });
 
   group('règles des profils', () {
-    test('4 maximum, un seul Enfants, profil 1 indestructible', () {
+    test('10 maximum, un seul Enfants, profil 1 indestructible', () {
       ProfileCatalog c = ProfileCatalog.fresh(nowMs: 1);
-      c = c.add(name: 'Papa', isKids: false, nowMs: 2)!;
-      c = c.add(name: 'Maman', isKids: false, nowMs: 3)!;
-      c = c.add(name: 'Enfants', isKids: true, nowMs: 4)!;
-      expect(c.profiles, hasLength(4));
+      // Profil 1 + 8 adultes + 1 Enfants (ajouté en dernier) = 10.
+      for (int i = 2; i <= 9; i++) {
+        c = c.add(name: 'Profil $i', isKids: false, nowMs: i)!;
+      }
+      c = c.add(name: 'Enfants', isKids: true, nowMs: 10)!;
+      expect(c.profiles, hasLength(ProfileCatalog.maxProfiles));
+      expect(ProfileCatalog.maxProfiles, 10);
       expect(c.add(name: 'Invité', isKids: false, nowMs: 5), isNull);
       expect(c.add(name: 'Encore', isKids: true, nowMs: 6), isNull);
       expect(c.remove(ProfileIds.origin), isNull);
@@ -145,17 +148,14 @@ void main() {
       expect(c.rename(ProfileIds.origin, ''), isNull);
     });
 
-    test('plus de 4 lignes au disque : on garde le profil 1', () {
-      const String raw = '''
-      {"activeId":"p5","profiles":[
-        {"id":"p2","name":"A","avatar":0,"isKids":false,"createdAt":1},
-        {"id":"p3","name":"B","avatar":0,"isKids":false,"createdAt":1},
-        {"id":"p4","name":"C","avatar":0,"isKids":false,"createdAt":1},
-        {"id":"p5","name":"D","avatar":0,"isKids":false,"createdAt":1},
-        {"id":"p6","name":"E","avatar":0,"isKids":true,"createdAt":1}
-      ]}''';
+    test('plus de 10 lignes au disque : on garde le profil 1', () {
+      final String lines = <String>[
+        for (int i = 2; i <= 13; i++)
+          '{"id":"p$i","name":"N$i","avatar":0,"isKids":false,"createdAt":1}',
+      ].join(',');
+      final String raw = '{"activeId":"p5","profiles":[$lines]}';
       final ProfileCatalog c = ProfileCatalog.decode(raw);
-      expect(c.profiles, hasLength(4));
+      expect(c.profiles, hasLength(ProfileCatalog.maxProfiles));
       expect(c.byId(ProfileIds.origin), isNotNull);
     });
   });
