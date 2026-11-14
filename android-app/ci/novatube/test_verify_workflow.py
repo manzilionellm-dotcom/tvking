@@ -79,8 +79,8 @@ class WorkflowIsolationTest(unittest.TestCase):
 
     def test_play_and_private_versions_cannot_be_interchanged(self):
         for step_id, old, new in (
-            ("build_play_aab", "--build-name=0.1.6 --build-number=6", "--build-name=0.1.5 --build-number=5"),
-            ("build_private_apk", "--build-name=0.1.5 --build-number=5", "--build-name=0.1.6 --build-number=6"),
+            ("build_play_aab", "--build-name=0.1.7 --build-number=7", "--build-name=0.1.5 --build-number=5"),
+            ("build_private_apk", "--build-name=0.1.5 --build-number=5", "--build-name=0.1.7 --build-number=7"),
         ):
             with self.subTest(step=step_id):
                 document = self.document()

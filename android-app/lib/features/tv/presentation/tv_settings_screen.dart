@@ -13,8 +13,10 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/app/novatube_play_policy.dart';
+import '../../../core/app/novatube_private_features.dart';
 import '../../../core/blackbox/black_box.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/i18n/locale_repository.dart';
@@ -269,6 +271,32 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
   );
   int _focusIndex = 0;
 
+  Future<void> _openPrivacyPolicy() async {
+    if (!NovatubePlayPolicy.isPlay || NovatubePrivateFeatures.adultCatalogs) {
+      return;
+    }
+    final bool french = Localizations.localeOf(context).languageCode == 'fr';
+    final Uri uri = Uri.https(
+      'novatube-legal.manzilionel-lm.workers.dev',
+      french ? '/privacy/fr' : '/privacy/en',
+    );
+    try {
+      if (await launchUrl(uri, mode: LaunchMode.externalApplication)) return;
+    } catch (_) {
+      // Keep the settings screen usable if no browser can handle the link.
+    }
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          french
+              ? 'Impossible d’ouvrir la politique de confidentialité.'
+              : 'Unable to open the privacy policy.',
+        ),
+      ),
+    );
+  }
+
   List<_SettingEntry> _entries(BuildContext context) {
     final ({String label, Color color}) st = _statusOf(context);
     final int channels = PlaylistRepository.instance.currentChannels.length;
@@ -380,6 +408,15 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
         description: context.l10n.tvAudioDiagnosticHelp,
         onSelect: () => open(const TvAudioDiagnosticScreen()),
       ),
+      if (NovatubePlayPolicy.isPlay && !NovatubePrivateFeatures.adultCatalogs)
+        _SettingEntry(
+          icon: Icons.privacy_tip_outlined,
+          title: context.l10n.aboutPrivacyPolicy,
+          description: Localizations.localeOf(context).languageCode == 'fr'
+              ? 'Données, Cast, conservation et contact.'
+              : 'Data, Cast, retention and contact.',
+          onSelect: _openPrivacyPolicy,
+        ),
       _SettingEntry(
         icon: Icons.gavel_rounded,
         title: context.l10n.tvLegalTitle,

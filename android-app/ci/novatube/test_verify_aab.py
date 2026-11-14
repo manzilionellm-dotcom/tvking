@@ -13,7 +13,7 @@ from verify_aab import flutter_test_results, manifest_identity, native_test_resu
 
 def mobile_manifest():
     root = ET.Element("manifest", {
-        "package": PACKAGE, ANDROID + "versionName": "0.1.6", ANDROID + "versionCode": "6",
+        "package": PACKAGE, ANDROID + "versionName": "0.1.7", ANDROID + "versionCode": "7",
     })
     ET.SubElement(root, "uses-sdk", {ANDROID + "minSdkVersion": "24", ANDROID + "targetSdkVersion": "36"})
     ET.SubElement(root, "uses-feature", {ANDROID + "name": "android.hardware.touchscreen",
@@ -46,7 +46,7 @@ class ManifestRejectionTest(unittest.TestCase):
     def test_correct_mobile_identity_is_accepted(self):
         result = self.verify(mobile_manifest())
         self.assertEqual(result["package"], PACKAGE)
-        self.assertEqual(result["versionCode"], 6)
+        self.assertEqual(result["versionCode"], 7)
         self.assertTrue(result["touchscreenRequired"])
         self.assertEqual(result["sharedMediaReadPermissions"], "absent")
 
@@ -192,7 +192,7 @@ class ManifestRejectionTest(unittest.TestCase):
 class TestEvidenceRejectionTest(unittest.TestCase):
     def test_play_target_cannot_use_private_version(self):
         verify_play_source_target({"buildTargets": {
-            "play-aab": {"versionName": "0.1.6", "versionCode": 6},
+            "play-aab": {"versionName": "0.1.7", "versionCode": 7},
         }})
         for source in ({}, {"buildTargets": {"play-aab": {
                 "versionName": "0.1.5", "versionCode": 5}}}):
