@@ -41,6 +41,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.common.util.Util
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.decoder.DecoderInputBuffer
 import androidx.media3.decoder.ffmpeg.ExperimentalFfmpegVideoRenderer
 import androidx.media3.decoder.ffmpeg.FfmpegAudioRenderer
 import androidx.media3.decoder.ffmpeg.FfmpegLibrary
@@ -63,6 +64,7 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.trackselection.AdaptiveTrackSelection
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
+import androidx.media3.exoplayer.video.MediaCodecVideoRenderer
 import androidx.media3.exoplayer.video.VideoFrameMetadataListener
 import androidx.media3.exoplayer.video.VideoRendererEventListener
 import com.manzilionellm.native_video_player.ai.AiPictureEngine
@@ -89,6 +91,10 @@ import com.manzilionellm.native_video_player.logic.FrameRateMatch
 import com.manzilionellm.native_video_player.logic.GlSurfaceGate
 import com.manzilionellm.native_video_player.logic.HdrToneMap
 import com.manzilionellm.native_video_player.logic.HeldFrame
+import com.manzilionellm.native_video_player.logic.HybridHdr
+import com.manzilionellm.native_video_player.logic.HybridHdrFilter
+import com.manzilionellm.native_video_player.logic.HybridHdrReport
+import com.manzilionellm.native_video_player.logic.HybridHdrScope
 import com.manzilionellm.native_video_player.logic.NamedCodec
 import com.manzilionellm.native_video_player.logic.PictureHealth
 import com.manzilionellm.native_video_player.logic.PictureSignal
@@ -587,6 +593,12 @@ class NativeVideoView(
     private val videoCadenceWindow = VideoCadenceWindow()
     private var lastVideoCadencePollMs = 0L
     private var videoCadencePublished = false
+
+    // Boîte noire « IMAGE » : dernier format annoncé, dernier décodeur créé,
+    // dernière ligne écrite. Remis à zéro quand l'adresse change.
+    private var videoDiagSource: String? = null
+    private var videoDiagDecoder: String? = null
+    private var videoDiagLast: String? = null
 
     // Contexte créé UNIQUEMENT sur le fil principal, après validation du
     // format de cette session. Le fil vidéo lit cet instantané immuable et
@@ -1137,7 +1149,30 @@ class NativeVideoView(
         // ce qu'elle ne sait pas lire. On l'ajoute nous-mêmes (et pas par le mode
         // « extension » qui passerait AUSSI par la vidéo) pour que R8 ne le
         // retire jamais, et pour que la vidéo reste sur MediaCodec.
-        val renderersFactory = object : TvVideoRenderersFactory(appContext, installFfmpegVideo) {
+        // FILM « DOLBY VISION + HDR10+ » : sur les clés Amazon MT8696 le
+        // décodeur reçoit les deux jeux de réglages et l'écran reste d'une
+        // seule couleur, le son continue. Le rendu vidéo retire ce qu'il
+        // faut avant le décodeur (voir logic/HybridHdr.kt). Ailleurs il ne
+        // lit rien : même chemin qu'avant, octet pour octet.
+        val hybridScope = HybridHdr.scope(
+            Build.MANUFACTURER,
+            Build.MODEL,
+            Build.HARDWARE,
+            Build.BOARD,
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) Build.SOC_MODEL else null,
+        )
+        // Appelé depuis le fil de lecture : le canal Flutter exige le fil
+        // principal. [emit] ne parle plus après release.
+        val hybridReport: (String) -> Unit = { line ->
+            handler.post { emit("videoDiag", line) }
+        }
+        val renderersFactory = object : TvVideoRenderersFactory(
+            appContext,
+            installFfmpegVideo,
+            hybridScope,
+            "${Build.MANUFACTURER} ${Build.MODEL}",
+            hybridReport,
+        ) {
             override fun buildAudioRenderers(
                 context: Context,
                 extensionRendererMode: Int,
@@ -1443,6 +1478,9 @@ class NativeVideoView(
                     reconnect.onDifferentUrl()
                     discardHeldFrame()
                     sawFrame = false
+                    videoDiagSource = null
+                    videoDiagDecoder = null
+                    videoDiagLast = null
                 } else {
                     reconnect.onExternalReopen()
                 }
@@ -1683,6 +1721,20 @@ class NativeVideoView(
                 // Repli de la copie de dernière image : vrai = ancien
                 // comportement (copie gardée même noire, retirée au signal).
                 HeldFrame.legacy = call.arguments == true
+                result.success(null)
+            }
+            "setHybridHdrOff" -> {
+                // Repli du correctif « film Dolby Vision + HDR10+ » : vrai =
+                // ancien comportement, le flux part tel quel au décodeur.
+                // Lu à chaque ouverture de décodeur : pas de réouverture ici.
+                HybridHdr.autoOff = call.arguments == true
+                result.success(null)
+            }
+            "setHdrCompat" -> {
+                // Réglage « Compatibilité HDR » : la personne demande de
+                // retirer Dolby Vision et HDR10+ du flux, sur cette box.
+                // Pris en compte au prochain film ou à la prochaine chaîne.
+                HybridHdr.manual = call.arguments == true
                 result.success(null)
             }
             "setBackgroundFlutterOnly" -> {
@@ -1980,6 +2032,23 @@ class NativeVideoView(
         videoDecoderReady = true
         decoderReadyAtMs = SystemClock.elapsedRealtime()
         emit("videoDecoder", decoderName)
+        videoDiagDecoder = decoderName
+        noteVideoDiag()
+    }
+
+    /**
+     * Une ligne « IMAGE » dans la boîte noire quand le format ou le
+     * décodeur de CETTE lecture est connu ou change : ce que le flux
+     * annonce et qui le décode. Avant, le journal n'avait que le son.
+     * Lecture seule, une ligne identique n'est pas répétée.
+     */
+    private fun noteVideoDiag() {
+        val source = videoDiagSource ?: return
+        val decoder = videoDiagDecoder ?: return
+        val line = "Vidéo : $source. Décodeur $decoder."
+        if (line == videoDiagLast) return
+        videoDiagLast = line
+        emit("videoDiag", line)
     }
 
     override fun onVideoInputFormatChanged(
@@ -2012,6 +2081,21 @@ class NativeVideoView(
             "dynamicRange" to dynamicRange,
             "frameRate" to format.frameRate.takeIf { it.isFinite() && it > 0f },
         ))
+        videoDiagSource = buildString {
+            append(format.sampleMimeType ?: "type inconnu")
+            format.codecs?.takeIf { it.isNotBlank() }?.let { append(" (").append(it).append(")") }
+            append(", ").append(positive(format.width)).append("×").append(positive(format.height))
+            append(", ").append(
+                when (dynamicRange) {
+                    "dolbyVision" -> "Dolby Vision"
+                    "pq" -> "HDR (PQ)"
+                    "hlg" -> "HDR (HLG)"
+                    "sdr" -> "SDR"
+                    else -> "HDR/SDR non renseigné"
+                },
+            )
+        }
+        noteVideoDiag()
         val fps = format.frameRate
         if (fps > 0f) {
             contentFps = fps
@@ -3913,6 +3997,9 @@ private fun panelSupportsHdr(context: Context): Boolean {
 private open class TvVideoRenderersFactory(
     private val appContext: Context,
     private val installFfmpegVideo: Boolean,
+    private val hybridScope: HybridHdrScope,
+    private val hybridDevice: String,
+    private val hybridReport: (String) -> Unit,
 ) : DefaultRenderersFactory(appContext) {
     // Figé à la construction du lecteur : un écran HDR ne doit pas
     // perdre ses métadonnées au milieu d'une chaîne.
@@ -3961,15 +4048,184 @@ private open class TvVideoRenderersFactory(
                 ),
             )
         }
-        super.buildVideoRenderers(
-            context,
-            EXTENSION_RENDERER_MODE_OFF,
-            mediaCodecSelector,
-            enableDecoderFallback,
-            eventHandler,
-            eventListener,
-            allowedVideoJoiningTimeMs,
-            out,
+        // Même construction que DefaultRenderersFactory (Media3 1.5.1, mode
+        // extension OFF) : un seul rendu MediaCodec, mêmes paramètres. Seule
+        // la classe change, pour voir passer chaque image compressée.
+        out.add(
+            HybridHdrVideoRenderer(
+                context,
+                getCodecAdapterFactory(),
+                mediaCodecSelector,
+                allowedVideoJoiningTimeMs,
+                enableDecoderFallback,
+                eventHandler,
+                eventListener,
+                MAX_DROPPED_VIDEO_FRAME_COUNT_TO_NOTIFY,
+                hybridScope,
+                hybridDevice,
+                hybridReport,
+            ),
         )
+    }
+}
+
+/**
+ * Rendu vidéo MediaCodec de Media3, avec le filtre « Dolby Vision + HDR10+ »
+ * (logic/HybridHdr.kt) posé juste avant le décodeur.
+ *
+ * Tant qu'aucun niveau ne s'applique (box ordinaire, réglage coupé, flux
+ * H.264…), [filter] est `null` et cette classe se comporte exactement comme
+ * [MediaCodecVideoRenderer] : les deux méthodes ne font qu'appeler la sienne.
+ *
+ * Le niveau est relu à CHAQUE création de décodeur (zap, film, reprise) :
+ * le réglage et l'interrupteur de repli arrivent de Flutter après la
+ * construction du lecteur.
+ */
+@UnstableApi
+private class HybridHdrVideoRenderer(
+    context: Context,
+    codecAdapterFactory: MediaCodecAdapter.Factory,
+    mediaCodecSelector: MediaCodecSelector,
+    allowedJoiningTimeMs: Long,
+    enableDecoderFallback: Boolean,
+    eventHandler: Handler,
+    eventListener: VideoRendererEventListener,
+    maxDroppedFramesToNotify: Int,
+    private val scope: HybridHdrScope,
+    private val device: String,
+    private val report: (String) -> Unit,
+) : MediaCodecVideoRenderer(
+    context,
+    codecAdapterFactory,
+    mediaCodecSelector,
+    allowedJoiningTimeMs,
+    enableDecoderFallback,
+    eventHandler,
+    eventListener,
+    maxDroppedFramesToNotify,
+) {
+    private var filter: HybridHdrFilter? = null
+    private var decoder: String = ""
+
+    // Vrai pour une source 4K : c'est là que le défaut existe, et là
+    // seulement qu'on écrit « rien trouvé » (pas une ligne par chaîne HD).
+    private var ultraHd = false
+
+    // Ce qui a déjà été écrit pour ce décodeur : -1 = rien encore, sinon
+    // 1 = Dolby Vision, 2 = HDR10+, 3 = les deux (0 = « rien trouvé »).
+    private var toldContent = -1
+    private var toldAction = 0
+
+    // Saut dans le film : la prochaine image donnée au décodeur est celle
+    // sur laquelle il repart. [fed] évite de compter le démarrage.
+    private var fed = false
+    private var afterSeek = false
+
+    // Vrai seulement PENDANT le traitement d'un saut : le décodeur est
+    // recréé au lieu d'être vidé (voir HybridHdr.freshDecoderAfterSeek).
+    private var freshDecoderForSeek = false
+
+    override fun onCodecInitialized(
+        name: String,
+        configuration: MediaCodecAdapter.Configuration,
+        initializedTimestampMs: Long,
+        initializationDurationMs: Long,
+    ) {
+        super.onCodecInitialized(name, configuration, initializedTimestampMs, initializationDurationMs)
+        decoder = name
+        toldContent = -1
+        toldAction = 0
+        fed = false
+        afterSeek = false
+        filter = try {
+            val format = configuration.format
+            ultraHd = format.width >= 3000 || format.height >= 1700
+            val mode = HybridHdr.mode(scope)
+            val path = HybridHdr.path(
+                format.sampleMimeType,
+                format.codecs,
+                configuration.codecInfo.mimeType,
+            )
+            if (mode != null && path != null) HybridHdrFilter(mode, path) else null
+        } catch (_: RuntimeException) {
+            // Jamais d'échec de lecture à cause du filtre : sans lui, le
+            // flux part tel quel, comme avant.
+            null
+        }
+    }
+
+    @Throws(ExoPlaybackException::class)
+    override fun onPositionReset(positionUs: Long, joining: Boolean) {
+        // [fed] : des images sont déjà parties au décodeur, c'est donc un
+        // saut dans la lecture et pas son démarrage.
+        val seek = fed
+        freshDecoderForSeek = seek && HybridHdr.freshDecoderAfterSeek(filter?.mode, ultraHd)
+        try {
+            super.onPositionReset(positionUs, joining)
+        } finally {
+            // Jamais au-delà de ce saut : un rattrapage de retard, plus
+            // tard, vide le décodeur comme Media3 l'a toujours fait.
+            freshDecoderForSeek = false
+        }
+        // Après super : un décodeur recréé vient de remettre ce drapeau à zéro.
+        if (seek) afterSeek = true
+    }
+
+    /**
+     * Media3 appelle ceci pour vider le décodeur. Rendre « vrai » après
+     * [releaseCodec] est son propre chemin pour les décodeurs qui ne
+     * supportent pas d'être vidés : il en crée un neuf aussitôt.
+     */
+    override fun flushOrReleaseCodec(): Boolean {
+        if (freshDecoderForSeek && codec != null) {
+            releaseCodec()
+            report(HybridHdrReport.FRESH_DECODER)
+            return true
+        }
+        return super.flushOrReleaseCodec()
+    }
+
+    @Throws(ExoPlaybackException::class)
+    override fun onQueueInputBuffer(buffer: DecoderInputBuffer) {
+        val active = filter
+        val data = buffer.data
+        // Une image chiffrée (DRM) garde sa découpe d'octets : on n'y touche pas.
+        if (active != null && data != null && !buffer.isEncrypted) {
+            try {
+                if (afterSeek) {
+                    afterSeek = false
+                    HybridHdrReport.afterSeek(HybridHdrFilter.firstPictureType(data))?.let(report)
+                }
+                fed = true
+                active.process(data, buffer.isKeyFrame)
+                tell(active)
+            } catch (_: RuntimeException) {
+                // Image que le filtre ne sait pas lire : il s'arrête pour
+                // ce décodeur, la lecture continue sans lui.
+                filter = null
+                report("Correctif HDR arrêté pour cette lecture : image illisible par le filtre.")
+            }
+        }
+        super.onQueueInputBuffer(buffer)
+    }
+
+    /** Écrit dans la boîte noire ce qui est nouveau, et rien d'autre. */
+    private fun tell(active: HybridHdrFilter) {
+        val content = (if (active.sawDolbyVision) 1 else 0) or (if (active.sawHdr10Plus) 2 else 0)
+        if (content != 0) {
+            if (content != toldContent) {
+                toldContent = content
+                report(HybridHdrReport.content(active, decoder, device))
+            }
+        } else if (toldContent == -1 && ultraHd && active.settled) {
+            toldContent = 0
+            report(HybridHdrReport.content(active, decoder, device))
+        }
+        val action = (if (active.removedDolbyVision > 0) 1 else 0) or
+            (if (active.removedHdr10Plus > 0) 2 else 0)
+        if (action != 0 && action != toldAction) {
+            toldAction = action
+            HybridHdrReport.action(active)?.let(report)
+        }
     }
 }

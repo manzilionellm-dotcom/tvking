@@ -5,6 +5,8 @@ import json
 from pathlib import Path
 import subprocess
 
+import generate_hybrid_hdr_fixture
+
 
 app = Path(__file__).resolve().parents[1]
 output = app / "packages/native_video_player/android/src/androidTest/assets/contrast_sdr.mp4"
@@ -43,3 +45,6 @@ assert float(stream["duration"]) >= 120
 print(json.dumps({"fixture": str(output), "bytes": output.stat().st_size,
                   "width": 256, "height": 144, "duration_seconds": 120,
                   "color_transfer": "bt709", "audio": False}))
+# Seconde mire, pour NativeHybridHdrTest : un HEVC qui porte à la fois
+# HDR10+ et Dolby Vision, vérifié image par image à la fabrication.
+print(json.dumps(generate_hybrid_hdr_fixture.build()))

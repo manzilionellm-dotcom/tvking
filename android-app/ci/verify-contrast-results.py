@@ -18,11 +18,19 @@ RECOVERY_PROOFS = (
     "pause-502", "cancel-new-url", "cancel-silence", "cancel-background",
     "cancel-suspendForCast", "cancel-dispose", "track-rebuild",
 )
+# Film « Dolby Vision + HDR10+ » : le filtre branché dans le vrai lecteur.
+HYBRID_METHODS = {
+    "autoFix_removesBothBeforeTheDecoder_playbackContinues",
+    "manualSetting_removesBothOnAnyDevice",
+    "fallbackSwitch_leavesTheStreamUntouched",
+}
+HYBRID_PROOFS = ("hybrid-auto", "hybrid-manual", "hybrid-off")
 
 
 def verify(output: Path, mode: str) -> None:
     cases = []
     recovery = []
+    hybrid = []
     for report in (output / "junit").rglob("*.xml"):
         root = ET.parse(report).getroot()
         cases.extend(
@@ -31,6 +39,8 @@ def verify(output: Path, mode: str) -> None:
         )
         recovery.extend(case for case in root.iter("testcase")
                         if case.get("classname", "").endswith("NativeRecoveryPlaybackTest"))
+        hybrid.extend(case for case in root.iter("testcase")
+                      if case.get("classname", "").endswith("NativeHybridHdrTest"))
     if not any(case.get("name") == PIXEL_METHOD for case in cases):
         raise SystemExit("Test de pixels attendu non exécuté : preuve de rendu absente.")
     for case in cases:
@@ -73,6 +83,19 @@ def verify(output: Path, mode: str) -> None:
             path = captures / "recovery" / f"{name}.json"
             if not path.is_file() or json.loads(path.read_text()).get("passed") is not True:
                 raise SystemExit(f"Preuve de reprise absente ou échouée : {name}")
+        if not HYBRID_METHODS.issubset({case.get("name") for case in hybrid}):
+            raise SystemExit("Film hybride non joué : preuve du filtre HDR absente.")
+        if any(case.find(tag) is not None for case in hybrid for tag in ("error", "failure", "skipped")):
+            raise SystemExit("Test du film hybride échoué ou ignoré.")
+        for name in HYBRID_PROOFS:
+            path = captures / "hybrid-hdr" / f"{name}.json"
+            if not path.is_file() or json.loads(path.read_text()).get("passed") is not True:
+                raise SystemExit(f"Preuve du film hybride absente ou échouée : {name}")
+        for name in ("hybrid-auto", "hybrid-manual"):
+            proof = json.loads((captures / "hybrid-hdr" / f"{name}.json").read_text())
+            # Un vert sans unité retirée ne prouverait pas que le filtre agit.
+            if min(proof.get("removedDolbyVision", 0), proof.get("removedHdr10Plus", 0)) < 30:
+                raise SystemExit(f"Film hybride joué sans nettoyage mesuré : {name}")
     # La comparaison numérique est faite dans Android par le test instrumenté,
     # ce contrôle ne remplace pas les assertions sur les pixels rendus.
     sys.stdout.write(f"Preuve {mode} collectée : {len(cases)} tests de rendu, PNG et JSON.\n")
