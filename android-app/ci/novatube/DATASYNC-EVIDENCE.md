@@ -6,8 +6,9 @@ Ce dossier prépare un job de preuves séparé, dans le workflow NOVATUBE déjà
 enregistré. Neuf essais Android ont été exécutés sur l'ancien AAB7 ; les plus
 avancés ont affiché le lecteur avec la mire réelle. Aucun MP4 de l'interface
 n'est encore qualifié. Les bancs sont maintenant épinglés sur l'AAB8 vérifié.
-Un premier essai AAB8 a atteint l'enregistrement, l'arrêt depuis la notification
-et l'ouverture du fichier local ; sa première image de relecture était noire.
+Deux essais AAB8 ont atteint l'enregistrement et l'arrêt depuis la notification.
+Le second a montré une relecture animée dans le MP4, puis la fin naturelle du
+fichier avant les trois captures de contrôle ; il reste non qualifié.
 Le scénario est destiné à une revue humaine avant toute utilisation dans
 Google Play Console ; une réussite machine ne vaut pas approbation de Google.
 
@@ -78,7 +79,7 @@ inclus dans les artefacts de preuves.
 5. Vérifier une vraie image animée dans une surface vidéo observée, puis
    commencer la capture d'écran MP4 avant le tap REC.
 6. Taper REC, vérifier le service `dataSync` (type 1, notification 1001),
-   passer Home et observer une croissance du fichier pendant huit secondes.
+   passer Home et observer une croissance du fichier pendant trente secondes.
 7. Ouvrir le volet Android et taper l'action `Arrêter` de la notification
    `Enregistrement en cours`. Vérifier retrait du service, de la notification
    et stabilisation du fichier.
@@ -218,6 +219,26 @@ un échec. Le MP4 de ce premier essai AAB8 reste non qualifié.
 
 La correction locale de cette attente, fondée sur les captures de cet essai,
 passe les 141 tests Python. Elle ne modifie ni les pins AAB8 ni les workflows.
+
+Le deuxième essai AAB8, run `43612490241` sur le banc `7281cb52ffd1d57c21504645c6a2ea3c0d4300d4`,
+confirme dans le MP4 continu une mire animée vers 87,5–96 secondes, puis le
+message explicite `Playback finished` à 97 secondes. Les trois PNG de contrôle
+montrent cette fin de lecture. Le fichier dure 26,450944 secondes ; la première
+image contrastée est capturée 28,294 secondes après son ouverture, puis un
+nouveau relevé XML prend environ trois secondes. Il ne s'agit pas d'une
+hypothèse d'alias de la mire : la vidéo continue montre le mouvement puis
+l'arrêt naturel, qui explique les captures finales immobiles.
+
+Le banc enregistre désormais réellement trente secondes après Home au lieu
+de huit, avant la même action de notification. Les vingt-deux secondes de
+contenu supplémentaire laissent une marge pour la relecture après les délais
+observés. Le maintien minimal exigé par `qualify()` reste huit secondes ; les
+contrôles du fichier, de l'arrêt, de la source éteinte, des trois images et
+des vidéos restent identiques. Aucun tap, redémarrage, boucle ou reprise de
+lecture n'est ajouté. L'AST complet du script ne change que par la constante
+de cette attente. Les 141 tests de la correction précédente ne sont pas
+répétés pour ce changement borné ; aucune réussite Android nouvelle ni
+qualification rétroactive du deuxième essai n'est revendiquée.
 
 ## Média contrôlé
 

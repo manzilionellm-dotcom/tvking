@@ -912,7 +912,10 @@ def execute_scenario(device, helpers, translations, fixture: Path, stage: Path) 
                 recording = flow.wait(flow.recording_file, "Fichier d'enregistrement absent", 15)
                 flow.home_background()
                 first = flow.size(recording)
-                time.sleep(8)
+                # REC AAB8 n°2 : le fichier de 26 s était déjà terminé quand
+                # les trois captures de relecture arrivaient. Enregistrer
+                # réellement plus longtemps ; les seuils restent inchangés.
+                time.sleep(30)
                 second = flow.size(recording)
                 observations["backgroundSizes"] = [first, second]
                 observations["serviceBackground"] = flow.service(True, "background")
