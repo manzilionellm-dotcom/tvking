@@ -230,7 +230,9 @@ def run_diagnostic(args):
         config.write_text("\n".join(lines + [f"{key}={value}" for key, value in values.items()]) + "\n")
         # Serveur ADB au premier plan : son PID/groupe reste suivi comme les
         # autres processus. Aucun serveur auto-détaché ne retient le namespace.
-        adb_server = spawn([adb, "-L", ADB_SOCKET, "server", "nodaemon"], "adb-server.txt")
+        # ADB exige « localhost » pour cette écoute ; l'adresse numérique
+        # ADB_SOCKET reste réservée aux clients sur la même boucle locale.
+        adb_server = spawn([adb, "-L", "tcp:localhost:5037", "server", "nodaemon"], "adb-server.txt")
         adb_owned = True
         time.sleep(1)
         require(adb_server.poll() is None, "Le serveur ADB privé n'a pas démarré")

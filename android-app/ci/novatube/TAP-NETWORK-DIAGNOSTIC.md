@@ -1,7 +1,11 @@
 # Diagnostic réseau Cast NOVATUBE, isolé et non destiné à Play
 
-État : préparation locale pour revue. Aucun diagnostic Android/CI ni installation
-n'a été exécuté pendant cette préparation. Aucune vidéo FGS n'est produite.
+État : TAP1 a été exécuté le 14 novembre 2026 sur le commit
+`02ea2633f8e9de66fb6ab7d74d9f8cc4a63fbd4b`, run `43604492220`. Le diagnostic
+s'est arrêté avant le lancement d'Android : l'adresse numérique donnée à
+l'écoute ADB n'était pas prise en charge. Le correctif ci-dessous est préparé
+localement sur REC6 pour revue ; il n'a pas encore été exécuté en CI.
+Aucune vidéo FGS n'est produite.
 
 ## Périmètre du job
 
@@ -67,7 +71,11 @@ La capture PCAP est ouverte par le contrôleur avant de lancer tcpdump avec
 fichier séparé pour ne pas corrompre les octets de capture.
 
 Les variables ADB héritées sont retirées. Après validation de l'isolation seulement,
-le probe démarre et suit `adb -L tcp:127.0.0.1:5037 server nodaemon`. L'émulateur utilise
+le probe démarre et suit `adb -L tcp:localhost:5037 server nodaemon`. Les clients
+conservent `ADB_SERVER_SOCKET=tcp:127.0.0.1:5037`. Le manuel AOSP utilise le nom
+`localhost` pour l'écoute ; son implémentation refuse ici l'adresse numérique
+`127.0.0.1`, pourtant acceptée pour la connexion des clients. Aucune option `-a`
+d'écoute sur toutes les interfaces n'est ajoutée. L'émulateur utilise
 la console 5582 et le port invité 5583, dans la plage normalement détectée par ADB.
 Ce serveur et tous ses clients restent dans le même namespace. Un indicateur de
 propriété initialement faux empêche tout `logcat`, `emu kill` ou `kill-server` avant
@@ -111,6 +119,17 @@ que NOVATUBE a reçu cette réponse ni que son interface a découvert le rendere
 
 ## Résultats et limites
 
+TAP1 a validé les versions et empreintes des outils, créé le namespace et le TAP,
+démarré dnsmasq sur cette seule interface, ouvert la capture PCAP et démarré le
+vrai renderer jusqu'à `Ready for rendering`. ADB a ensuite refusé son argument
+d'écoute avec `listening on specified hostname currently unsupported`.
+Le nettoyage ne rapporte aucune erreur. Le PCAP ne contient que son en-tête :
+aucun DHCP Android, échange SSDP ou GET entre Android et le renderer n'est prouvé.
+
+Le renderer a aussi signalé deux icônes absentes dans `/usr/share/gmediarender`,
+car son paquet est extrait en privé. Il a néanmoins atteint son état prêt ; ces
+avertissements ne sont pas la cause observée de l'arrêt TAP1.
+
 L'artefact porte toujours le nom `NOVATUBE-Cast-network-DIAGNOSTIC-NOT-PLAY-…`.
 Il contient le contexte de provenance, les versions, les logs, les échanges HTTP,
 les réponses SSDP observées et la capture PCAP. Il est conservé également en cas
@@ -141,6 +160,9 @@ critères mediaPlayback demandent une étape séparée et ne font pas partie de 
   connexion directe et DHCP ; cette option historique est distincte du TAP netsimd expérimental.
 - [Manuel AOSP ADB](https://android.googlesource.com/platform/packages/modules/adb/+/refs/heads/main/docs/user/adb.1.md) et
   [serveur ADB au premier plan](https://android.googlesource.com/platform/packages/modules/adb/+/refs/heads/main/docs/dev/debugging.md).
+- [Écoute des sockets ADB](https://android.googlesource.com/platform/packages/modules/adb/+/refs/heads/main/socket_spec.cpp) :
+  `socket_spec_listen` et `tcp_host_is_local` expliquent le refus observé dans TAP1
+  et l'emploi de `localhost` pour l'écoute, avec les clients sur `127.0.0.1`.
 - [Toybox Android 35](https://android.googlesource.com/platform/external/toybox/+/android-15.0.0_r1/toys/net/netcat.c).
 - [Manuel tcpdump 4.99.4](https://github.com/the-tcpdump-group/tcpdump/blob/tcpdump-4.99.4/tcpdump.1.in) :
   l'abandon de privilèges peut précéder l'ouverture du fichier de capture.
