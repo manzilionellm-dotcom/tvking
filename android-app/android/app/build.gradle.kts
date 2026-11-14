@@ -24,8 +24,8 @@ require(novatubeDefines.none { it.startsWith("ZUNO_CAST_TEST=") }) {
     "Le drapeau ZUNO_CAST_TEST est interdit pour NOVATUBE"
 }
 val novatubePrivateApk = novatubeDefines.contains("NOVATUBE_PRIVATE_APK=true")
-val novatubeExpectedName = if (novatubePrivateApk) "0.1.5" else "0.1.6"
-val novatubeExpectedCode = if (novatubePrivateApk) 5 else 6
+val novatubeExpectedName = if (novatubePrivateApk) "0.1.5" else "0.1.7"
+val novatubeExpectedCode = if (novatubePrivateApk) 5 else 7
 require(flutter.versionName == novatubeExpectedName && flutter.versionCode == novatubeExpectedCode) {
     "Version NOVATUBE inattendue pour cette distribution"
 }
