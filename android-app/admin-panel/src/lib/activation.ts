@@ -62,14 +62,32 @@ export function planCost(plan: string, costs: { plan: string; credits: number }[
 }
 
 /// Phrase de résultat après une activation réussie.
+/// Un résultat incomplet n'est jamais transformé en activation à vie.
 export function activationResultText(
   plan: string,
   result: { plan?: string | null; expires_at?: number | null },
   formatDate: (ms: number) => string,
 ): string {
-  if (result.plan === 'lifetime' || result.expires_at == null) return 'Activée à vie.';
+  if (result.plan === 'lifetime' && result.expires_at === null) return 'Activée à vie.';
+  if (typeof result.expires_at !== 'number' || !Number.isFinite(result.expires_at) || result.expires_at <= 0) return 'Échéance non confirmée.';
   const until = formatDate(result.expires_at);
-  return isTrialPlan(plan) ? `Essai gratuit jusqu’au ${until}.` : `Activée jusqu’au ${until}.`;
+  return isTrialPlan(result.plan || plan) ? `Essai gratuit jusqu’au ${until}.` : `Activée jusqu’au ${until}.`;
+}
+
+/** Vérifie le reçu du serveur avant d'annoncer une licence enregistrée.
+ * Une réponse ambiguë peut suivre une écriture réussie : l'appelant conserve
+ * donc sa clé d'idempotence au lieu de relancer une nouvelle facturation.
+ */
+export function activationReceiptMatches(result: {
+  ok?: boolean; mac?: string; license_id?: string; device_id?: string;
+  plan?: string; expires_at?: number | null;
+} | null | undefined, mac: string): boolean {
+  if (result?.ok !== true || result.mac !== mac
+      || typeof result.license_id !== 'string' || !result.license_id
+      || typeof result.device_id !== 'string' || !result.device_id
+      || typeof result.plan !== 'string' || !result.plan) return false;
+  return result.plan === 'lifetime' ? result.expires_at === null
+    : Number.isSafeInteger(result.expires_at) && (result.expires_at ?? 0) > 0;
 }
 
 /// Texte du bouton : le prix est dit AVANT le clic.

@@ -13,6 +13,7 @@ import { FormEvent, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { AppLayout } from '@/components/AppLayout';
 import { MacInput, initialMac } from '@/components/MacInput';
+import { NovatubeReassociation } from '@/components/NovatubeReassociation';
 import { ApiError, blackboxApi } from '@/lib/api';
 import {
   BLACKBOX_POLL_MS,
@@ -43,6 +44,11 @@ export function BlackBoxPage({ onLogout }: { onLogout: () => void }) {
   useEffect(() => {
     if (!active) return;
     let alive = true;
+    // Le journal de la fiche précédente ne doit pas rester affiché sous
+    // le code d'un autre appareil pendant sa première lecture réseau.
+    setText('');
+    setUpdatedAt(0);
+    setCopied(false);
 
     async function load() {
       try {
@@ -158,6 +164,7 @@ export function BlackBoxPage({ onLogout }: { onLogout: () => void }) {
                 : 'Pas encore de journal reçu pour cette box.'}
             </p>
           </div>
+          <NovatubeReassociation key={active} mac={active} />
           <DiagnosisPanel text={text} />
           <textarea
             readOnly

@@ -3,9 +3,10 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { AppLayout } from '@/components/AppLayout';
 import { PlanPicker } from '@/components/PlanPicker';
 import { NovatubeReassociation } from '@/components/NovatubeReassociation';
+import { ActivationResultNotice } from '@/components/ActivationResultNotice';
 import { readPanelTarget } from '@/lib/panel-links';
 import { useDeviceLink } from '@/lib/use-device-link';
-import { DEFAULT_RENEW_PLAN, activateButtonText, planCost, planLabel } from '@/lib/activation';
+import { DEFAULT_RENEW_PLAN, activateButtonText, activationReceiptMatches, planCost, planLabel } from '@/lib/activation';
 import { ListPager } from '@/components/ListPager';
 import { confirmAction } from '@/components/confirm';
 import {
@@ -14,7 +15,7 @@ import {
 } from '@/components/ui';
 import {
   devicesApi, activateApi, sourcesApi, planCostsApi, flagEmoji, isAbortError,
-  getCurrentUser, isOwnerRole, type PlanCost,
+  getCurrentUser, isOwnerRole, type PlanCost, type ActivateResult,
   type Device, type DeviceSource, type DeviceOverview, type DeviceLocalSource,
   type DeviceLicense, type DevicePresence, ApiError,
   newIdempotencyKey, keepIdempotencyKeyAfter,
@@ -550,6 +551,8 @@ function DeviceDetailModal({
           <PresenceBox loading={loading} presence={ov?.presence ?? null} />
         </div>
 
+        <NovatubeReassociation key={`${device.id}:${device.mac}`} mac={device.mac} disabled={busy || clearing || resetting} />
+
         {/* ----- Infos appareil (le « ventre ») ----- */}
         <div className="mb-5 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
           <InfoRow label="Client" value={device.customer_name || device.customer_email || '—'} />
@@ -661,7 +664,6 @@ function DeviceDetailModal({
           </div>
         </div>
 
-        <NovatubeReassociation key={`${device.id}:${device.mac}`} mac={device.mac} disabled={busy || clearing || resetting} />
 
         <div className="flex justify-end pt-5">
           <button type="button" onClick={onClose} className="rounded-md px-3 py-2 text-sm text-ink-secondary hover:text-ink-primary">Fermer</button>
@@ -886,7 +888,7 @@ function ActivatePlanModal({
   const [costs, setCosts] = useState<PlanCost[]>([]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const [done, setDone] = useState(false);
+  const [done, setDone] = useState<{ result: ActivateResult; plan: string } | null>(null);
   const isReseller = !isOwnerRole(getCurrentUser()?.role);
   useEffect(() => {
     let active = true;
@@ -904,10 +906,12 @@ function ActivatePlanModal({
       setBusy(true); setErr(null);
       try {
         const key = idem.current ?? (idem.current = newIdempotencyKey());
-        await activateApi.activate({ mac: device.mac, plan }, key);
+        const result = await activateApi.activate({ mac: device.mac, plan }, key);
+        if (!activationReceiptMatches(result, device.mac)) {
+          throw new ApiError(0, 'activation_unconfirmed', 'Le résultat de l’activation n’a pas pu être confirmé. Vérifie la fiche de l’appareil avant de recommencer.');
+        }
         idem.current = null;
-        setDone(true);
-        setTimeout(onDone, 900);
+        setDone({ result, plan });
       } catch (e: any) {
         if (!keepIdempotencyKeyAfter(e)) idem.current = null;
         setErr(e instanceof ApiError ? e.message : 'Échec.');
@@ -916,22 +920,24 @@ function ActivatePlanModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4" onClick={onClose}>
-      <div className="w-full max-w-md rounded-2xl border border-white/10 bg-midnight p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4" onClick={done ? onDone : onClose}>
+      <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl border border-white/10 bg-midnight p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <h2 className="mb-1 text-lg font-semibold tracking-tight">Activer / prolonger</h2>
         <p className="mb-4 font-mono text-xs text-accent">{device.mac}</p>
         <p className="mb-3 text-sm text-ink-tertiary">
-          La durée s'ajoute au temps restant et débloque l'app tout de suite.
-          Mêmes choix que l'écran « Activer une box ».
+          La durée s’ajoute au temps restant. L’application vérifie ensuite sa licence auprès du serveur.
+          Une installation à réassocier garde sa licence et nécessite une vérification séparée.
         </p>
+        <fieldset disabled={busy || !!done}>
         <PlanPicker value={plan} onChange={(p) => { setPlan(p); idem.current = null; }} costs={costs} showCosts={isReseller} />
+        </fieldset>
         {err && <div className="mt-3 rounded-md border border-accent/30 bg-accent/10 px-3 py-2 text-xs text-accent-bright">{err}</div>}
-        {done && <div className="mt-3 rounded-md border border-success/30 bg-success/10 px-3 py-2 text-xs text-success">Activé ✔</div>}
+        {done && <ActivationResultNotice result={done.result} plan={done.plan} showDeviceLink={false} />}
         <div className="flex justify-end gap-2 pt-4">
-          <button type="button" onClick={onClose} className="rounded-md px-3 py-2 text-sm text-ink-secondary hover:text-ink-primary">Annuler</button>
-          <button disabled={busy || done} onClick={go} className="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-black hover:bg-accent-bright disabled:opacity-50">
+          <button type="button" onClick={done ? onDone : onClose} className="rounded-md px-3 py-2 text-sm text-ink-secondary hover:text-ink-primary">{done ? 'Terminer' : 'Annuler'}</button>
+          {!done && <button disabled={busy} onClick={go} className="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-black hover:bg-accent-bright disabled:opacity-50">
             {busy ? 'Activation…' : activateButtonText(plan, planCost(plan, costs), isReseller)}
-          </button>
+          </button>}
         </div>
       </div>
     </div>

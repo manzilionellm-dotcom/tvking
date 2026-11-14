@@ -45,6 +45,7 @@ function ReassociationFlow({ mac, disabled }: { mac: string; disabled: boolean }
   const [pending, setPending] = useState<Pending>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [verificationDeadline, setVerificationDeadline] = useState<number | null>(null);
   const revision = useRef(0);
   const alive = useRef(true);
   const inFlight = useRef<Pending>(null);
@@ -66,7 +67,9 @@ function ReassociationFlow({ mac, disabled }: { mac: string; disabled: boolean }
   useEffect(() => {
     let current = true;
     const abort = new AbortController();
+    const startedAt = performance.now();
     setCapabilityError(false);
+    setVerificationDeadline(null);
     novatubeReassociationApi.capability(mac, abort.signal).then((result) => {
       if (!current || getCurrentUser()?.role !== 'super_admin') return;
       if (result?.ok !== true || result.supported !== true || result.app_id !== APP_ID || result.mac !== mac) {
@@ -74,6 +77,17 @@ function ReassociationFlow({ mac, disabled }: { mac: string; disabled: boolean }
         return;
       }
       setSupported(true);
+      // Une licence active ne prouve pas que la clé de cette installation
+      // est reconnue. Ce diagnostic ne vaut que pour une demande actuelle
+      // vérifiée par le serveur ; il n'autorise aucune réassociation.
+      if (result.installation_status === 'verification_required' && result.recovery_pending === true
+          && Number.isSafeInteger(result.server_now) && (result.server_now ?? 0) > 0
+          && Number.isSafeInteger(result.recovery_expires_at)
+          && (result.recovery_expires_at ?? 0) > result.server_now!
+          && result.recovery_expires_at! - result.server_now! <= MAX_LIFETIME) {
+        const deadline = startedAt + result.recovery_expires_at! - result.server_now!;
+        if (deadline > performance.now()) setVerificationDeadline(deadline);
+      }
     }).catch((failure: unknown) => {
       if (!current || isAbortError(failure)) return;
       // Les autres applications, et les rôles non autorisés, n'ont pas d'action.
@@ -82,6 +96,12 @@ function ReassociationFlow({ mac, disabled }: { mac: string; disabled: boolean }
     });
     return () => { current = false; abort.abort(); };
   }, [mac, capabilityAttempt]);
+
+  useEffect(() => {
+    if (verificationDeadline === null) return;
+    const timer = window.setTimeout(() => setVerificationDeadline(null), Math.max(0, verificationDeadline - performance.now()));
+    return () => window.clearTimeout(timer);
+  }, [verificationDeadline]);
 
   useEffect(() => { if (open) input.current?.focus(); }, [open]);
 
@@ -181,6 +201,7 @@ function ReassociationFlow({ mac, disabled }: { mac: string; disabled: boolean }
         return;
       }
       setSuccess(true);
+      setVerificationDeadline(null);
       setPreview(null);
       setCode('');
       setOpen(false);
@@ -209,6 +230,11 @@ function ReassociationFlow({ mac, disabled }: { mac: string; disabled: boolean }
 
   return (
     <section className="mt-4 border-t border-white/5 pt-4" aria-label="Réassociation NovaTube">
+      {verificationDeadline !== null && <div className="mb-3 rounded-lg border border-accent/30 bg-accent/5 p-3" role="status">
+        <p className="text-sm font-semibold text-ink-primary">Installation NovaTube à vérifier</p>
+        <p className="mt-1 text-xs leading-relaxed text-ink-secondary">Une installation attend sa réassociation. La licence existante est conservée : une nouvelle activation ou un nouvel achat ne résout pas cette liaison.</p>
+        <p className="mt-2 text-xs leading-relaxed text-ink-secondary">Laisse NovaTube ouverte, relève son code d’assistance, puis utilise « Réassocier NovaTube » ci-dessous. Vérifie l’aperçu avant de confirmer.</p>
+      </div>}
       {!open && <button type="button" className={BUTTON} disabled={disabled} onClick={() => { invalidate(); setSuccess(false); setOpen(true); }}>Réassocier NovaTube</button>}
       {success && <p className="mt-2 text-sm text-success" role="status">Liaison remplacée. Demande au client de laisser NovaTube ouverte pour terminer la connexion.</p>}
       {open && <>

@@ -4,6 +4,7 @@ import { AppLayout } from '@/components/AppLayout';
 import { MacInput, initialMac } from '@/components/MacInput';
 import { Alert } from '@/components/ui';
 import { PlanPicker } from '@/components/PlanPicker';
+import { ActivationResultNotice } from '@/components/ActivationResultNotice';
 import {
   activateApi, appsApi, planCostsApi, meApi,
   getCurrentUser, isOwnerRole, userCan,
@@ -12,10 +13,10 @@ import {
   newIdempotencyKey, keepIdempotencyKeyAfter,
 } from '@/lib/api';
 import {
-  DEFAULT_PLAN, activateButtonText, activationResultText, planCost,
+  DEFAULT_PLAN, activateButtonText, activationReceiptMatches, planCost,
 } from '@/lib/activation';
 import { useT } from '@/lib/i18n';
-import { formatDateTime, isValidMac, normalizeMac } from '@/lib/utils';
+import { isValidMac, normalizeMac } from '@/lib/utils';
 import { createSingleFlight } from '@/lib/robust';
 
 // =========================================================
@@ -99,6 +100,9 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
           mac: normalized, plan, app_id: appId,
           customer_name: customerName.trim() || undefined,
         }, key);
+        if (!activationReceiptMatches(res, normalized)) {
+          throw new ApiError(0, 'activation_unconfirmed', 'Le résultat de l’activation n’a pas pu être confirmé. Vérifie la fiche de l’appareil avant de recommencer.');
+        }
         idem.current = null;
         setResult({ res, plan });
         if (res.credit_balance !== null) setBalance(res.credit_balance);
@@ -128,7 +132,9 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
         ) : undefined
       }
     >
-      <form onSubmit={submit} className="mx-auto w-full max-w-md space-y-5">
+      <div className="mx-auto w-full max-w-md space-y-5">
+      <form onSubmit={submit}>
+      <fieldset disabled={busy} className="space-y-5">
         <div>
           <label htmlFor="act-mac" className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-ink-secondary">
             Adresse MAC (comme sur la box)
@@ -163,19 +169,18 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
         <PlanPicker value={plan} onChange={changePlan} costs={costs} showCosts={isReseller} />
 
         {err && <Alert>{err}</Alert>}
-        {result && (
-          <p className="rounded-xl border border-emerald-400/30 bg-emerald-400/10 px-4 py-3 text-sm text-ink-primary" role="status">
-            ✓ {activationResultText(result.plan, result.res, formatDateTime)} La box est prévenue à l’instant.
-          </p>
-        )}
 
         <button
           type="submit"
-          disabled={busy || !mac.trim()}
+          disabled={busy || !!result || !mac.trim()}
           className="w-full rounded-xl bg-accent px-4 py-3.5 text-base font-semibold text-obsidian hover:bg-accent-bright disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {busy ? 'Activation…' : activateButtonText(plan, planCost(plan, costs), isReseller)}
+          {result ? 'Licence enregistrée' : busy ? 'Activation…' : activateButtonText(plan, planCost(plan, costs), isReseller)}
         </button>
+      </fieldset>
+      </form>
+
+        {result && <ActivationResultNotice result={result.res} plan={result.plan} />}
 
         {canLists && (
           <p className="text-sm leading-relaxed text-ink-secondary">
@@ -191,7 +196,7 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
           <CopyLine label="Téléphone" url={DOWNLOAD_URL} code={DOWNLOADER_CODE} />
           <CopyLine label="TV" url={DOWNLOAD_URL_TV} code={DOWNLOADER_CODE_TV} />
         </div>
-      </form>
+      </div>
     </AppLayout>
   );
 }

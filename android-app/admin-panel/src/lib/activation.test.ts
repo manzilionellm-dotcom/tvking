@@ -13,7 +13,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   DEFAULT_PLAN, DEFAULT_RENEW_PLAN, PAID_PLANS, TRIAL_PLANS,
-  activateButtonText, activationResultText, isTrialPlan, planCost, planLabel,
+  activateButtonText, activationReceiptMatches, activationResultText, isTrialPlan, planCost, planLabel,
 } from './activation.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -79,7 +79,23 @@ test('phrase de résultat', () => {
   const f = (ms: number) => `J${ms}`;
   assert.equal(activationResultText('trial_7d', { plan: 'trial_7d', expires_at: 5 }, f), 'Essai gratuit jusqu’au J5.');
   assert.equal(activationResultText('yearly', { plan: 'yearly', expires_at: 9 }, f), 'Activée jusqu’au J9.');
+  assert.equal(activationResultText('trial_7d', { plan: 'yearly', expires_at: 9 }, f), 'Activée jusqu’au J9.');
   assert.equal(activationResultText('lifetime', { plan: 'lifetime', expires_at: null }, f), 'Activée à vie.');
+  assert.equal(activationResultText('yearly', {}, f), 'Échéance non confirmée.');
+  assert.equal(activationResultText('yearly', { expires_at: null }, f), 'Échéance non confirmée.');
+});
+
+test('un reçu incomplet ou destiné à une autre MAC ne confirme pas l’activation', () => {
+  const mac = 'MK:AA:BB:CC:DD:EE';
+  const receipt = { ok: true, mac, license_id: 'license-fixture', device_id: 'device-fixture', plan: 'lifetime', expires_at: null };
+  assert.equal(activationReceiptMatches(receipt, mac), true);
+  assert.equal(activationReceiptMatches({ ...receipt, plan: 'yearly', expires_at: 1_800_000_000_000 }, mac), true);
+  for (const invalid of [null, undefined, {}, { ...receipt, ok: false },
+    { ...receipt, mac: 'MK:11:22:33:44:55' }, { ...receipt, device_id: '' },
+    { ...receipt, plan: 'yearly' }, { ...receipt, expires_at: undefined },
+    { ...receipt, plan: 'yearly', expires_at: NaN }]) {
+    assert.equal(activationReceiptMatches(invalid, mac), false);
+  }
 });
 
 test('menu : UNE entrée d’activation, plus d’« Activation à distance »', () => {
