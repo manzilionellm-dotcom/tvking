@@ -4116,6 +4116,11 @@ private class HybridHdrVideoRenderer(
     private var toldContent = -1
     private var toldAction = 0
 
+    // Saut dans le film : la prochaine image donnée au décodeur est celle
+    // sur laquelle il repart. [fed] évite de compter le démarrage.
+    private var fed = false
+    private var afterSeek = false
+
     override fun onCodecInitialized(
         name: String,
         configuration: MediaCodecAdapter.Configuration,
@@ -4126,6 +4131,8 @@ private class HybridHdrVideoRenderer(
         decoder = name
         toldContent = -1
         toldAction = 0
+        fed = false
+        afterSeek = false
         filter = try {
             val format = configuration.format
             ultraHd = format.width >= 3000 || format.height >= 1700
@@ -4144,12 +4151,24 @@ private class HybridHdrVideoRenderer(
     }
 
     @Throws(ExoPlaybackException::class)
+    override fun onPositionReset(positionUs: Long, joining: Boolean) {
+        super.onPositionReset(positionUs, joining)
+        // Le décodeur vient d'être vidé pour un saut (pas le démarrage).
+        if (fed) afterSeek = true
+    }
+
+    @Throws(ExoPlaybackException::class)
     override fun onQueueInputBuffer(buffer: DecoderInputBuffer) {
         val active = filter
         val data = buffer.data
         // Une image chiffrée (DRM) garde sa découpe d'octets : on n'y touche pas.
         if (active != null && data != null && !buffer.isEncrypted) {
             try {
+                if (afterSeek) {
+                    afterSeek = false
+                    HybridHdrReport.afterSeek(HybridHdrFilter.firstPictureType(data))?.let(report)
+                }
+                fed = true
                 active.process(data, buffer.isKeyFrame)
                 tell(active)
             } catch (_: RuntimeException) {

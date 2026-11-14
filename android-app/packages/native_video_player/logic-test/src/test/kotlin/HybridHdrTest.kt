@@ -560,6 +560,58 @@ class HybridHdrTest {
         assertNull(HybridHdrReport.action(filter))
     }
 
+    // ---- Après un saut dans le film ---------------------------------------
+
+    @Test
+    fun premiereImage_typeLuSansLireLeContenu() {
+        fun type(vararg nals: ByteArray): Int =
+            HybridHdrFilter.firstPictureType(ByteBuffer.wrap(accessUnit(*nals)))
+        assertEquals(IDR, type(aud(), vps(), sps(), pps(), hdr10PlusSei(), slice(IDR, 500, 80), rpu()))
+        assertEquals(21, type(aud(), vps(), sps(), pps(), slice(21, 500, 81)))
+        assertEquals(TRAIL, type(hdr10PlusSei(), slice(TRAIL, 500, 82), rpu()))
+        // La première image compte, pas les tranches suivantes.
+        assertEquals(TRAIL, type(slice(TRAIL, 50, 83), slice(IDR, 50, 84)))
+        // Pas d'image du tout, ou tampon qui n'est pas en Annex B.
+        assertEquals(-1, type(aud(), vps(), sps(), pps()))
+        assertEquals(-1, HybridHdrFilter.firstPictureType(ByteBuffer.wrap(byteArrayOf(1, 2, 3, 4, 5, 6))))
+        assertEquals(-1, HybridHdrFilter.firstPictureType(ByteBuffer.wrap(ByteArray(0))))
+        assertEquals(-1, HybridHdrFilter.firstPictureType(ByteBuffer.wrap(byteArrayOf(0, 0, 1))))
+    }
+
+    @Test
+    fun premiereImage_respecteLaPositionEtNeChangeRien() {
+        val unit = accessUnit(vps(), sps(), pps(), slice(21, 300, 85))
+        val buffer = ByteBuffer.allocateDirect(40 + unit.size)
+        // Devant la position : une autre image, qui ne doit pas être lue.
+        buffer.put(accessUnit(slice(IDR, 30, 86)).copyOf(40)).put(unit)
+        buffer.position(40)
+        assertEquals(21, HybridHdrFilter.firstPictureType(buffer))
+        assertEquals(40, buffer.position())
+        assertEquals(40 + unit.size, buffer.limit())
+    }
+
+    @Test
+    fun journal_apresUnSaut() {
+        // Image clé fermée (IDR) : rien à dire.
+        assertNull(HybridHdrReport.afterSeek(19))
+        assertNull(HybridHdrReport.afterSeek(20))
+        // Image clé ouverte (BLA, CRA) : notée, c'est un départ légal.
+        for (type in listOf(16, 17, 18, 21)) {
+            assertEquals(
+                "Après un saut : reprise sur une image clé ouverte (type $type).",
+                HybridHdrReport.afterSeek(type),
+            )
+        }
+        // Image ordinaire : le décodeur n'a pas ses images de référence.
+        for (type in listOf(0, 1, 8, 9, 15)) {
+            val line = HybridHdrReport.afterSeek(type)
+            assertTrue(line != null && line.contains("n'est pas une image clé (type $type)"), "$type : $line")
+        }
+        assertNull(HybridHdrReport.afterSeek(-1))
+        assertNull(HybridHdrReport.afterSeek(22))
+        assertNull(HybridHdrReport.afterSeek(39))
+    }
+
     // ---- Comparaison avec une écriture naïve, sur des milliers de flux -----
 
     @Test

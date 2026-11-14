@@ -492,6 +492,9 @@ class HybridHdrFilter(
         /** Images lues à chaque ouverture avant de conclure « flux ordinaire ». */
         const val PROBE_UNITS: Int = 12
 
+        /** Dernier type d'unité qui porte de l'image (« VCL »). */
+        const val MAX_PICTURE_TYPE: Int = 31
+
         const val NAL_PREFIX_SEI: Int = 39
         const val NAL_SUFFIX_SEI: Int = 40
         const val NAL_DOLBY_RPU: Int = 62
@@ -520,6 +523,27 @@ class HybridHdrFilter(
         private const val MAX_MASKS = 16
         private const val SCRATCH_BYTES = 64 * 1024
         private const val ZERO: Byte = 0
+
+        /**
+         * Type (0 à 31) de la première unité d'IMAGE de [data], ou -1 si le
+         * tampon n'en montre pas. Lecture seule, et rapide : on s'arrête à
+         * l'en-tête de l'image, sans lire son contenu. Sert à écrire dans la
+         * boîte noire sur quelle image le décodeur repart après un saut.
+         */
+        fun firstPictureType(data: ByteBuffer): Int {
+            val end = data.limit()
+            var code = findStartCode(data, data.position(), end)
+            while (code >= 0) {
+                val at = code + START_CODE_BYTES
+                if (at >= end) return -1
+                val first = data.get(at).toInt() and 0xFF
+                if (first and 0x80 != 0) return -1
+                val type = (first shr 1) and 0x3F
+                if (type <= MAX_PICTURE_TYPE) return type
+                code = findStartCode(data, at, end)
+            }
+            return -1
+        }
 
         /**
          * Position du prochain `00 00 01` à partir de [from], ou -1.
@@ -567,6 +591,22 @@ object HybridHdrReport {
         } else {
             line
         }
+    }
+
+    /**
+     * Sur quelle image le décodeur repart après un saut dans le film.
+     * [pictureType] vient de [HybridHdrFilter.firstPictureType]. `null` =
+     * rien à signaler : image clé fermée (types 19 et 20), le cas sans
+     * histoire, ou type illisible.
+     */
+    fun afterSeek(pictureType: Int): String? = when (pictureType) {
+        19, 20 -> null
+        in 16..18, 21 ->
+            "Après un saut : reprise sur une image clé ouverte (type $pictureType)."
+        in 0..15 ->
+            "Après un saut : la première image donnée au décodeur n'est pas une image clé " +
+                "(type $pictureType). L'image peut rester abîmée jusqu'à la prochaine image clé."
+        else -> null
     }
 
     /** Ce que le correctif a retiré depuis l'ouverture, ou `null` : rien. */

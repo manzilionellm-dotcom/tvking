@@ -67,6 +67,26 @@ class NativeHybridHdrTest {
             assertTrue("ligne IMAGE du format et du décodeur $lines", lines.any {
                 it.startsWith("Vidéo : video/hevc") && it.contains("256×144") && it.contains("Décodeur ")
             })
+            // SAUT dans le film, comme le client : le décodeur est vidé puis
+            // repart sur une image clé. Le nettoyage doit continuer après,
+            // et le journal dit sur quelle image la lecture est repartie.
+            val removedBefore = filter.removedDolbyVision
+            invoke("seekTo", mapOf("ms" to 20_000L))
+            await("lecture repartie après le saut à 20 s") {
+                onMain { player().isPlaying && player().currentPosition >= 21_500 }
+            }
+            await("le filtre retire encore les deux jeux après le saut") {
+                // Même décodeur vidé (cas courant) : le compteur continue.
+                // Décodeur recréé par l'appareil : un filtre neuf repart de zéro.
+                onMain { filterNow() }?.let {
+                    it.removedDolbyVision >= (if (it === filter) removedBefore + 20L else 20L)
+                } == true
+            }
+            // La mire x265 a des images clés ouvertes (type 21) après la première.
+            assertTrue("SEEK_RESTART_NOT_REPORTED ${diagLines()}", diagLines().any {
+                it == "Après un saut : reprise sur une image clé ouverte (type 21)."
+            })
+            proof.put("positionAfterSeek", onMain { player().currentPosition })
             finish(proof, filter)
         }
 
