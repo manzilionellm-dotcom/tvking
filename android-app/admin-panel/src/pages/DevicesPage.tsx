@@ -1,7 +1,10 @@
 import { ReactNode, useCallback, useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { AppLayout } from '@/components/AppLayout';
 import { PlanPicker } from '@/components/PlanPicker';
+import { NovatubeReassociation } from '@/components/NovatubeReassociation';
+import { readPanelTarget } from '@/lib/panel-links';
+import { useDeviceLink } from '@/lib/use-device-link';
 import { DEFAULT_RENEW_PLAN, activateButtonText, planCost, planLabel } from '@/lib/activation';
 import { ListPager } from '@/components/ListPager';
 import { confirmAction } from '@/components/confirm';
@@ -32,6 +35,8 @@ import {
 
 
 export function DevicesPage({ onLogout }: { onLogout: () => void }) {
+  const location = useLocation();
+  const link = readPanelTarget(location.pathname + location.search, window.location.origin);
   const [items, setItems] = useState<Device[]>([]);
   const [trialEnforced, setTrialEnforced] = useState(false);
   const [q, setQ] = useState('');
@@ -44,6 +49,7 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
   const [activateFor, setActivateFor] = useState<Device | null>(null);
   // Appareil dont on affiche la « fiche complète » (infos + M-Trio).
   const [detailFor, setDetailFor] = useState<Device | null>(null);
+  const linkError = useDeviceLink(link?.path === '/devices' ? link.mac : null, setDetailFor, onLogout);
   // Une frappe rapide lançait plusieurs requêtes : la plus lente
   // (souvent l'ancienne recherche) écrasait la plus récente.
   const gen = useRef(createGeneration());
@@ -169,6 +175,7 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
       </div>
 
       {err && <Alert>{err}</Alert>}
+      {linkError && <Alert>{linkError}</Alert>}
 
       <TableFrame label="Liste des appareils" busy={loading}>
           <thead className="bg-midnight text-left">
@@ -653,6 +660,8 @@ function DeviceDetailModal({
             <ActionBtn busy={busy} danger onClick={onRemove} title="Supprimer la MAC">Supprimer</ActionBtn>
           </div>
         </div>
+
+        <NovatubeReassociation key={`${device.id}:${device.mac}`} mac={device.mac} disabled={busy || clearing || resetting} />
 
         <div className="flex justify-end pt-5">
           <button type="button" onClick={onClose} className="rounded-md px-3 py-2 text-sm text-ink-secondary hover:text-ink-primary">Fermer</button>

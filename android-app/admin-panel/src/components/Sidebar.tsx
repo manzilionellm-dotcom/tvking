@@ -83,6 +83,7 @@ const OWNER_NAV: NavSection[] = [
     titleKey: 'navsec.system',
     items: [
       { key: 'nav.blackbox', to: '/blackbox' },
+      { key: 'nav.panelAlerts', to: '/alerts' },
       { key: 'nav.history',  to: '/history' },
       { key: 'nav.account',  to: '/account' },
     ],
@@ -191,7 +192,7 @@ export function Sidebar({
   const sections = (owner ? OWNER_NAV : RESELLER_NAV)
     .map((sec) => ({
       ...sec,
-      items: sec.items.filter((it) => !it.cap || userCan(user, it.cap)),
+      items: sec.items.filter((it) => (it.to !== '/alerts' || user?.role === 'super_admin') && (!it.cap || userCan(user, it.cap))),
     }))
     .filter((sec) => sec.items.length > 0);
   const who = user?.name || user?.email;
