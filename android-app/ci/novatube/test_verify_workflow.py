@@ -40,7 +40,7 @@ class WorkflowIsolationTest(unittest.TestCase):
         for old, new in (("inputs.reviewed_commit == github.sha", "true"),
                          ("refs/heads/feature/novatube-play-aab", "refs/heads/main"),
                          ("github.actor == github.repository_owner", "true")):
-            for job in ("release", "publish_private", "capture_play", "capture_datasync"):
+            for job in ("release", "publish_private", "capture_play", "capture_datasync", "diagnose_cast_network"):
                 with self.subTest(job=job, old=old):
                     document = self.document()
                     document["jobs"][job]["if"] = document["jobs"][job]["if"].replace(old, new)
@@ -287,6 +287,39 @@ class WorkflowIsolationTest(unittest.TestCase):
                 document = self.document()
                 job = document["jobs"][job_id]
                 job["if"] += " || inputs.confirme == 'CAPTURER_NOVATUBE_DATASYNC'"
+                self.reject(document)
+
+    def test_cast_network_diagnostic_cannot_gain_delivery_or_install_actions(self):
+        # Toutes ces mutations rendraient le job différent de la configuration
+        # relue ; aucune ne doit emprunter les clés ou le binaire d'une livraison.
+        for mutation in ("needs", "permission", "secret", "build", "app", "intent", "sdk_license", "artifact"):
+            with self.subTest(mutation=mutation):
+                document = self.document()
+                job = document["jobs"]["diagnose_cast_network"]
+                steps = {step["id"]: step for step in job["steps"]}
+                if mutation == "needs":
+                    job["needs"] = "release"
+                elif mutation == "permission":
+                    job["permissions"]["contents"] = "write"
+                elif mutation == "secret":
+                    steps["tap_network"]["env"]["KEY"] = "${{ secrets.NOVATUBE_UPLOAD_KEYSTORE_BASE64 }}"
+                elif mutation == "build":
+                    job["steps"].append({"run": "flutter build appbundle --release"})
+                elif mutation == "app":
+                    job["steps"].append({"run": "adb install app.apk"})
+                elif mutation == "intent":
+                    job["if"] = job["if"].replace("DIAGNOSTIQUER_NOVATUBE_CAST_RESEAU", "COMPILER_NOVATUBE")
+                elif mutation == "sdk_license":
+                    steps["tap_android"]["with"]["accept-android-sdk-licenses"] = "true"
+                else:
+                    steps["tap_upload_diagnostic"]["with"]["name"] = "NOVATUBE-Play-evidence"
+                self.reject(document)
+
+    def test_cast_network_intent_never_enables_an_existing_job(self):
+        for job_id in ("release", "publish_private", "capture_play", "capture_datasync"):
+            with self.subTest(job=job_id):
+                document = self.document()
+                document["jobs"][job_id]["if"] += " || inputs.confirme == 'DIAGNOSTIQUER_NOVATUBE_CAST_RESEAU'"
                 self.reject(document)
 
 

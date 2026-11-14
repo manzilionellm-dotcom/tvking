@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       confirme:
-        description: 'COMPILER_NOVATUBE, PUBLIER_NOVATUBE_APK_PRIVE ou CAPTURER_NOVATUBE_DATASYNC, après accord sur le SHA'
+        description: 'COMPILER_NOVATUBE, PUBLIER_NOVATUBE_APK_PRIVE, CAPTURER_NOVATUBE_DATASYNC ou DIAGNOSTIQUER_NOVATUBE_CAST_RESEAU, après accord sur le SHA'
         type: string
         required: true
       reviewed_commit:
@@ -459,6 +459,129 @@ jobs:
           NOVATUBE_PUBLICATION_CONFIRMATION: ${{ inputs.confirme }}
           REVIEWED_COMMIT: ${{ inputs.reviewed_commit }}
         run: python3 ci/novatube/publish_private_apk.py --verified build/novatube/private-verified
+
+  diagnose_cast_network:
+    name: Diagnostiquer le réseau Cast — aucune preuve Play ni application installée
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.repository == 'manzilionellm-dotcom/tvking' &&
+      github.ref == 'refs/heads/feature/novatube-play-aab' &&
+      github.actor == github.repository_owner &&
+      github.triggering_actor == github.repository_owner &&
+      inputs.confirme == 'DIAGNOSTIQUER_NOVATUBE_CAST_RESEAU' &&
+      inputs.reviewed_commit == github.sha
+    permissions:
+      contents: read
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Charger seulement le diagnostic du commit approuvé
+        id: tap_checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Préparer le parseur des gardes existantes
+        id: tap_python
+        run: |
+          set -euo pipefail
+          python3 -m venv "$RUNNER_TEMP/novatube-tap-python"
+          "$RUNNER_TEMP/novatube-tap-python/bin/python" -m pip install --disable-pip-version-check PyYAML==6.0.3
+          echo "$RUNNER_TEMP/novatube-tap-python/bin" >> "$GITHUB_PATH"
+
+      - name: Refuser toute autre intention, origine ou révision du diagnostic
+        id: tap_preflight
+        env:
+          NOVATUBE_CAST_DIAGNOSTIC_CONFIRMATION: ${{ inputs.confirme }}
+          REVIEWED_COMMIT: ${{ inputs.reviewed_commit }}
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s ci/novatube -p 'test_tap_*.py' -v
+          python3 -m unittest discover -s ci/novatube -p test_verify_workflow.py -v
+          python3 -m unittest discover -s ci/novatube -p test_datasync_evidence.py -v
+          python3 ci/novatube/run_tap_diagnostic.py --preflight \
+            --output build/novatube/cast-network-diagnostic
+
+      - name: Java 17 pour l'appareil jetable, sans compilation
+        id: tap_java
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Préparer les outils Android sans accepter de nouvelle licence
+        id: tap_android
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+        with:
+          cmdline-tools-version: '15859902'
+          accept-android-sdk-licenses: false
+          log-accepted-android-sdk-licenses: true
+          packages: ''
+
+      - name: Préparer le véritable récepteur et les outils des dépôts Ubuntu
+        id: tap_linux_dependencies
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq \
+            2>&1 | tee build/novatube/cast-network-diagnostic/ubuntu-update.txt
+          sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            iproute2 util-linux dnsmasq-base tcpdump libixml11t64 libupnp17t64 \
+            gstreamer1.0-tools gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-x \
+            2>&1 | tee build/novatube/cast-network-diagnostic/ubuntu-install.txt
+          dpkg-query -W iproute2 util-linux dnsmasq-base tcpdump libixml11t64 libupnp17t64 \
+            gstreamer1.0-tools gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-x \
+            > build/novatube/cast-network-diagnostic/ubuntu-versions.txt
+          # Extraire le paquet officiel sans postinst : aucun service du
+          # récepteur ne peut démarrer sur le réseau hôte avant le namespace.
+          novatube_receiver_root="$RUNNER_TEMP/novatube-tap-receiver"
+          mkdir "$novatube_receiver_root"
+          curl --fail --location --silent --show-error --retry 2 \
+            --output "$novatube_receiver_root/gmediarender.deb" \
+            https://archive.ubuntu.com/ubuntu/pool/universe/g/gmrender-resurrect/gmediarender_0.1-1build3_amd64.deb
+          printf '%s  %s\n' \
+            '3560d817eaedb453a3fb2dcc69c1388994df9d1658877f4b5523e15cfb2ad395' \
+            "$novatube_receiver_root/gmediarender.deb" | sha256sum --check --status
+          dpkg-deb --extract "$novatube_receiver_root/gmediarender.deb" "$novatube_receiver_root/extracted"
+          printf '%s  %s\n' \
+            '22a18fa5d813e21ad7fdbf5fcf1f172dfdda8f4389a9aa4c15975079e16793f6' \
+            "$novatube_receiver_root/extracted/usr/bin/gmediarender" | sha256sum --check --status
+          dpkg-deb --field "$novatube_receiver_root/gmediarender.deb" \
+            > build/novatube/cast-network-diagnostic/receiver-package.txt
+          sha256sum "$novatube_receiver_root/gmediarender.deb" \
+            "$novatube_receiver_root/extracted/usr/bin/gmediarender" \
+            > build/novatube/cast-network-diagnostic/receiver-sha256.txt
+
+      - name: Préparer Android 35 avant tout namespace réseau
+        id: tap_sdk_dependencies
+        run: |
+          set -euo pipefail
+          # L'entrée fermée interdit toute acceptation interactive d'une licence.
+          sdkmanager 'system-images;android-35;default;x86_64' emulator platform-tools </dev/null \
+            2>&1 | tee build/novatube/cast-network-diagnostic/sdk-install.txt
+          "$ANDROID_HOME/emulator/emulator" -version \
+            > build/novatube/cast-network-diagnostic/emulator-version-before-namespace.txt
+
+      - name: Observer uniquement TAP, SSDP et les deux sens HTTP dans un réseau jetable
+        id: tap_network
+        env:
+          NOVATUBE_CAST_DIAGNOSTIC_CONFIRMATION: ${{ inputs.confirme }}
+          REVIEWED_COMMIT: ${{ inputs.reviewed_commit }}
+        run: |
+          set -euo pipefail
+          python3 ci/novatube/run_tap_diagnostic.py \
+            --output build/novatube/cast-network-diagnostic
+
+      - name: Conserver le diagnostic réseau explicitement non destiné à Play
+        id: tap_upload_diagnostic
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: NOVATUBE-Cast-network-DIAGNOSTIC-NOT-PLAY-${{ github.sha }}-${{ github.run_attempt }}
+          path: android-app/build/novatube/cast-network-diagnostic/
+          if-no-files-found: ignore
+          retention-days: 7
 
   capture_datasync:
     name: Observer dataSync depuis le seul AAB déjà approuvé

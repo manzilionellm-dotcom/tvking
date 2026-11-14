@@ -54,7 +54,7 @@ CONTROL_ACTION_WINDOW = 5.0
 WORKFLOW = ".github/workflows/novatube-play-aab.yml"
 # Empreinte du workflow relu avec ce banc ponctuel. La moindre modification
 # exige une nouvelle revue du YAML et du SHA du script, pas une garde élargie.
-WORKFLOW_SHA256 = "60250d98b61adf8425115c6c6c6978c6bb8fd9eacf81f27e89994f8bb5b7b9b5"
+WORKFLOW_SHA256 = "e30a9955b913c9a8eabc5a5358fc2ec7786551cf50776995b6440ab134b18a4f"
 # Le vérificateur de livraison lit déjà le YAML avec WorkflowLoader. Cette
 # seconde empreinte contrôle exactement le nouveau job sans permettre que
 # son ajout assouplisse les gardes des trois jobs historiques.

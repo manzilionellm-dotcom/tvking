@@ -1,0 +1,55 @@
+[
+  {
+    "package": "platform-tools",
+    "revision": "37.0.1",
+    "channel": "channel-0",
+    "host_os": "linux",
+    "size": 9054187,
+    "checksum_type": "sha1",
+    "checksum": "477254aa5f903c15cf51001717bdf347fb6b53e0",
+    "archive_url": "https://dl.google.com/android/repository/platform-tools_r37.0.1-linux.zip",
+    "metadata_url": "https://dl.google.com/android/repository/repository2-3.xml",
+    "archive_downloaded_during_preparation": false,
+    "archive_sha256_measured": null
+  },
+  {
+    "package": "emulator",
+    "revision": "37.2.13",
+    "channel": "channel-0",
+    "host_os": "linux",
+    "size": 349658551,
+    "checksum_type": "sha1",
+    "checksum": "f41f9e31eb5ca64926603c03265c50bbc0ff4172",
+    "archive_url": "https://dl.google.com/android/repository/emulator-linux_x64-16740729.zip",
+    "metadata_url": "https://dl.google.com/android/repository/repository2-3.xml",
+    "archive_downloaded_during_preparation": false,
+    "archive_sha256_measured": null,
+    "observed_in_rec3": "37.2.13.0 build_id 16740729, run 43601114877"
+  },
+  {
+    "package": "system-images;android-35;default;x86_64",
+    "revision": "2.0.0",
+    "channel": "channel-0",
+    "host_os": null,
+    "size": 782404023,
+    "checksum_type": "sha1",
+    "checksum": "2d857d170c0d1b827149565da34b3383e5306f7f",
+    "archive_url": "https://dl.google.com/android/repository/sys-img/android/x86_64-35_r02.zip",
+    "metadata_url": "https://dl.google.com/android/repository/sys-img/android/sys-img2-3.xml",
+    "archive_downloaded_during_preparation": false,
+    "archive_sha256_measured": null
+  },
+  {
+    "package": "cmdline-tools;22.0",
+    "revision": "22.0",
+    "channel": "channel-0",
+    "host_os": "linux",
+    "size": 181833628,
+    "checksum_type": "sha1",
+    "checksum": "040d3996a65543d22ec4bf73e4c37aa37a8d4af4",
+    "archive_url": "https://dl.google.com/android/repository/commandlinetools-linux-15859902_latest.zip",
+    "metadata_url": "https://dl.google.com/android/repository/repository2-3.xml",
+    "archive_downloaded_during_preparation": false,
+    "archive_sha256_measured": null
+  }
+]
