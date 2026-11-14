@@ -13,7 +13,7 @@ contrast_avd="zuno_contrast_api_$contrast_api"
 contrast_serial=emulator-5554
 contrast_pid=''
 contrast_phase=baseline
-contrast_test_classes=com.manzilionellm.native_video_player.NativeContrastPixelTest,com.manzilionellm.native_video_player.NativeRecoveryPlaybackTest,com.manzilionellm.native_video_player.ai.AiPictureGpuTest
+contrast_test_classes=com.manzilionellm.native_video_player.NativeContrastPixelTest,com.manzilionellm.native_video_player.NativeRecoveryPlaybackTest,com.manzilionellm.native_video_player.NativeHybridHdrTest,com.manzilionellm.native_video_player.ai.AiPictureGpuTest
 contrast_gate="$contrast_repo/android-app/packages/native_video_player/android/src/main/kotlin/com/manzilionellm/native_video_player/logic/PictureTune.kt"
 contrast_original=''
 mkdir -p "$contrast_out"
@@ -68,6 +68,10 @@ git -C "$contrast_repo" rev-parse HEAD > "$contrast_out/source-sha.txt"
 contrast_fixture="$contrast_repo/android-app/packages/native_video_player/android/src/androidTest/assets/contrast_sdr.mp4"
 sha256sum "$contrast_fixture" > "$contrast_out/fixture.sha256"
 cp "$contrast_fixture" "$contrast_out/contrast_sdr.mp4"
+# Mire « film hybride » de NativeHybridHdrTest : gardée avec les preuves.
+contrast_hybrid="$contrast_repo/android-app/packages/native_video_player/android/src/androidTest/assets/hybrid_hdr.mkv"
+sha256sum "$contrast_hybrid" >> "$contrast_out/fixture.sha256"
+cp "$contrast_hybrid" "$contrast_out/hybrid_hdr.mkv"
 sdkmanager "platform-tools" "emulator" "platforms;android-35" "build-tools;35.0.0" "$contrast_image" \
   > "$contrast_out/sdk-install.txt" 2>&1
 "$contrast_sdk/emulator/emulator" -version > "$contrast_out/emulator-version.txt" 2>&1

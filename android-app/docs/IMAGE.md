@@ -102,6 +102,62 @@ si une autre session ou URL a pris sa place, si l'application n'autorise plus
 la reprise ou si le Cast possède la lecture. Ce mécanisme ne doit pas être
 confondu avec le repli du décodeur vidéo déjà présent.
 
+## Film « Dolby Vision + HDR10+ » : écran d'une seule couleur, le son continue
+
+Signalé le 14/11/2026 par un client sur une clé Amazon Fire TV branchée à
+un téléviseur 4K : un film 4K démarre, puis l'écran devient uni (bleu sur
+la photo) et le son continue. Le journal de sa box ne contenait aucune
+ligne sur l'image.
+
+**Cause retenue.** Beaucoup de films 4K récents sont « hybrides » : le même
+flux HEVC porte Dolby Vision (unité NAL de type 62 à la fin de chaque image,
+type 63 pour la seconde couche) et HDR10+ (message SEI de type 4, signature
+`B5 00 3C 00 01 04`). Les appareils à puce MediaTek MT8696 (Fire TV Stick
+4K Max 1re et 2e génération, Fire TV Stick 4K 2e génération, Google TV
+Streamer) n'affichent pas ce mélange : écran noir ou d'une seule couleur
+avec le son. Défaut du constructeur, suivi dans
+[androidx/media#1895](https://github.com/androidx/media/issues/1895) ;
+d'autres lecteurs le contournent en retirant l'un des deux jeux.
+
+**Ce que fait le lecteur** (`logic/HybridHdr.kt`, branché dans le rendu
+vidéo de `NativeVideoView.kt`, juste avant le décodeur) :
+
+| Niveau | Quand | Décodeur Dolby Vision | Décodeur HEVC |
+| --- | --- | --- | --- |
+| Automatique | modèles `AFTKA`, `AFTKM`, `AFTKRT`, ou puce `mt8696` | HDR10+ retiré, Dolby Vision gardé | si le flux porte les deux : les deux retirés, lecture en HDR10 |
+| Réglage « Compatibilité HDR » | allumé par la personne, toute box Android | HDR10+ retiré | Dolby Vision et HDR10+ retirés |
+| Observation | autres appareils Amazon | rien | rien |
+| Aucun | toutes les autres box | le flux n'est pas lu | le flux n'est pas lu |
+
+Les unités d'image (« VCL ») ne sont jamais modifiées. Un flux sans Dolby
+Vision ni HDR10+ n'est lu que sur ses 12 premières images puis sur les
+images clés. Interrupteur de repli de l'automatique :
+`zuno.player.hybrid_hdr_off` (voir `repair_flags.dart`).
+
+**Boîte noire.** Étiquette `IMAGE`, sur toutes les box : une ligne par
+lecture avec le format annoncé et le décodeur. Sur les appareils Amazon et
+MT8696 : ce que le flux contient (Dolby Vision, HDR10+) et ce qui a été
+retiré.
+
+**Vérifié.** `HybridHdrTest` (logic-test) : 41 cas, dont 1 500 suites
+d'images tirées au hasard comparées à une réécriture naïve. La mire
+`hybrid_hdr.mkv` (x265 + HDR10+ valide + unité 62 sur les 600 images,
+`ci/generate_hybrid_hdr_fixture.py`) passée dans le filtre puis relue par
+ffprobe : HDR10+ et Dolby Vision absents des 600 images, sommes de contrôle
+des images décodées identiques à l'original.
+
+**À lire dans le run du commit.** `NativeHybridHdrTest` joue la même mire
+dans le vrai lecteur (émulateurs API 29 et 35, workflow
+`zuno-contrast-render-tests`) : niveau automatique, réglage manuel et
+interrupteur de repli. Son résultat est celui du run, pas de ce document.
+
+**Non vérifié.** L'image sur une vraie clé Amazon MT8696 : aucun émulateur
+n'a sa sortie HDMI. Le film du client n'a pas été analysé ; que son flux
+soit bien hybride sera lu dans sa boîte noire (ligne `HDR du flux`). Le
+passage par le décodeur HEVC ordinaire, celui que son écran annonçait, n'est
+pas décrit dans le ticket du constructeur : le retrait des deux jeux y est
+une précaution, pas un correctif démontré.
+
 ## Résolution de la surface
 
 Un écran peut sortir en 3840 × 2160 alors que l'interface Android est dessinée
