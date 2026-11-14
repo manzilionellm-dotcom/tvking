@@ -3,7 +3,7 @@
 ## Statut et portée
 
 Ce dossier prépare un job de preuves séparé, dans le workflow NOVATUBE déjà
-enregistré. Deux essais Android ont atteint le formulaire M3U, puis le
+enregistré. Trois essais Android ont atteint le formulaire M3U, puis le
 lecteur avec la mire réelle. Aucun MP4 de l'interface n'est encore qualifié.
 Le scénario est destiné à une revue humaine avant toute utilisation dans
 Google Play Console ; une réussite machine ne vaut pas approbation de Google.
@@ -92,6 +92,27 @@ sous son nom. Les vues Flutter globales, les conteneurs plein écran et les
 candidats ambigus restent refusés. Le contrôle de mouvement et tous les
 contrôles FGS, fichier, arrêt, relecture et vidéo restent obligatoires.
 
+La relecture possède un locator distinct : le code de
+`TvRecordingPlayerScreen` place le même `NativeVideoView` dans un
+`StackFit.expand` et affiche en permanence le titre du canal. Seulement
+après l'ouverture depuis Mes enregistrements et l'arrêt vérifié du serveur,
+de son thread et de ses processus média, `motion("replay")` accepte un
+unique wrapper natif portrait de cette même structure. Le titre CHANNEL
+doit être présent dans le XML frais ; les bounds sont ceux du conteneur,
+jamais ceux d'une vue Flutter globale. Le direct reste limité au 16:9.
+Cette géométrie de relecture reste à observer sur Android. Le calcul de
+mouvement centré et la revue humaine de la mire ne changent pas.
+
+Le run `43601114877` atteint la mire, mais sa barre de commandes est masquée
+avant l'attente initiale du canal et de REC. Le banc révèle cette barre par
+un tap sur le conteneur vidéo observé seulement lorsque les deux libellés
+sont absents. Il exige ensuite canal et REC dans le même XML ; l'action REC
+emploie directement les bounds de ce vrai bouton, sans deuxième dump. La
+barre du lecteur se masque après six secondes. L'attente du canal et de
+Stop après le tap REC peut aussi révéler la barre ; elle ne retouche jamais
+REC. Aucun enregistrement n'a
+encore été observé dans ces trois essais.
+
 ## Média contrôlé
 
 Seule la fixture H.264/AAC versionnée
@@ -137,7 +158,7 @@ modifiée, chemins ZIP dangereux, mauvais type FGS, éléments hors écran ou
 d'une autre application, croissance absente, arrêt incomplet et vidéo tronquée.
 Ils ne constituent aucune preuve d'exécution réelle du scénario Android.
 
-Validation locale du 14 novembre 2026 : les treize tests passent. L'archive
+Validation locale du 14 novembre 2026 : les dix-sept tests passent. L'archive
 originale 0.1.7 et son AAB ont passé leurs empreintes et la validation de provenance.
 Un client HTTP réel a reçu 357 200 octets de mire ; FFprobe a reconnu H.264,
 AAC, 160 × 90 et 9,101333 secondes. FFmpeg a décodé strictement les 8,101333
@@ -205,8 +226,8 @@ Les tests de workflow supplémentaires refusent l'élargissement d'une ancienne
 garde à l'intention REC, toute dépendance au build, toute suppression des
 contrôles d'acteur/SHA/branche, un secret de signature, un droit d'écriture,
 une recompilation et la promotion de diagnostics en preuve.
-Les 26 tests de workflow et les 13 tests du banc passent ensemble, soit
-39 tests ciblés. La comparaison des objets YAML confirme que les trois
+Les 26 tests de workflow et les 17 tests du banc passent ensemble, soit
+43 tests ciblés. La comparaison des objets YAML confirme que les trois
 anciens jobs et les permissions globales sont identiques à la base
 `6b66f0a8302b0cb34c540bb671a4d6d7fae190c6`.
 

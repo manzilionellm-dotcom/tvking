@@ -252,6 +252,31 @@ def video_surfaces(xml: str) -> list:
     return containers
 
 
+def replay_video_bounds(xml: str) -> tuple[int, int, int, int]:
+    # TvRecordingPlayerScreen utilise le même NativeVideoView dans un
+    # StackFit.expand, avec titre permanent. Ce cas portrait est réservé
+    # à la relecture ; le locator du direct conserve son exigence 16:9.
+    target_bounds(xml, CHANNEL)
+    containers = []
+    for node in ET.fromstring(xml).iter("node"):
+        children = list(node)
+        if node.get("class") != "android.widget.FrameLayout" or len(children) != 1:
+            continue
+        child, rectangle = children[0], bounds(node)
+        if (child.get("class") != "android.view.View" or list(child) or rectangle is None
+                or bounds(child) != rectangle):
+            continue
+        if any(part.get("package") != PACKAGE or part.get("enabled") != "true" or labels(part)
+               or any(part.get(flag) != "false" for flag in ("clickable", "scrollable", "long-clickable"))
+               for part in (node, child)):
+            continue
+        width, height = rectangle[2] - rectangle[0], rectangle[3] - rectangle[1]
+        if width >= 1080 // 2 and height >= 1920 // 2 and height > width:
+            containers.append(rectangle)
+    require(len(containers) == 1, "Conteneur natif portrait de relecture absent ou ambigu")
+    return containers[0]
+
+
 def foreground_service(text: str) -> dict:
     blocks = re.split(r"(?m)(?=^\s*\* ServiceRecord\{)", text)
     matches = []
@@ -405,6 +430,7 @@ class Scenario:
     def __init__(self, device, helpers, translations, stage: Path):
         self.device, self.helpers, self.translations, self.stage = device, helpers, translations, stage
         self.events, self.counter, self.language = [], 0, None
+        self.replay_opened = False
         self.started = time.monotonic()
 
     def event(self, action: str, **details):
@@ -441,6 +467,23 @@ class Scenario:
 
     def translated(self, key: str) -> str:
         return self.translations[self.language][key]
+
+    def player_controls(self, texts, timeout=45):
+        def probe():
+            self.device.foreground()
+            xml = self.observe("player-controls")
+            present = [normalized(text) in observed_labels(xml) for text in texts]
+            if all(present):
+                return xml
+            # REC3 : la mire est visible, mais la barre s'est déjà masquée.
+            # Révéler uniquement un lecteur observé ; une barre partielle
+            # ou un autre canal ne permet pas de valider les libellés exigés.
+            if not any(present):
+                rectangles = video_surfaces(xml)
+                require(len(rectangles) == 1, "Commandes masquées sans zone vidéo non ambiguë")
+                self.tap_rectangle(rectangles[0], "révéler les commandes du conteneur vidéo observé")
+            return None
+        return self.wait(probe, "Commandes du lecteur non observées : " + ", ".join(texts), timeout)
 
     def tap_rectangle(self, rectangle, description):
         left, top, right, bottom = rectangle
@@ -492,9 +535,18 @@ class Scenario:
         require(value.isdigit(), "Taille de fichier non observable")
         return int(value)
 
-    def motion(self, name: str) -> bool:
+    def motion(self, name: str, *, fixture_server=None) -> bool:
+        require(name in ("live", "replay"), "Phase de lecture inconnue")
+        if name == "replay":
+            require(self.replay_opened and fixture_server is not None,
+                    "Relecture non ouverte depuis la liste des enregistrements")
+            with fixture_server.lock:
+                stopped = (fixture_server.stopped and fixture_server.server is None
+                           and (fixture_server.thread is None or not fixture_server.thread.is_alive())
+                           and all(process.poll() is not None for process in fixture_server.processes))
+            require(stopped, "Source synthétique encore active avant la relecture")
         xml = self.observe(name + "-player")
-        rectangles = video_surfaces(xml)
+        rectangles = [replay_video_bounds(xml)] if name == "replay" else video_surfaces(xml)
         require(bool(rectangles), "Vue ou conteneur vidéo absent de la hiérarchie ; aucune zone inventée")
         left, top, right, bottom = max(rectangles, key=lambda value: (value[2] - value[0]) * (value[3] - value[1]))
         # Utiliser le centre de la surface observée évite l'horloge et les
@@ -543,7 +595,7 @@ class Scenario:
         self.tap(self.translated("tvNavLive"))
         self.wait_labels([CHANNEL])
         self.tap(CHANNEL, scroll=True)
-        self.wait_labels([CHANNEL, self.translated("tvRec")])
+        self.player_controls([CHANNEL, self.translated("tvRec")])
         self.observe("live-loaded")
 
     def stop_notification(self):
@@ -564,6 +616,7 @@ class Scenario:
         self.event("user-notification-stop")
 
     def navigate_replay(self):
+        self.replay_opened = False
         self.device.command("shell", "cmd", "statusbar", "collapse")
         self.device.command("shell", "am", "start", "-W", "-n", PACKAGE + "/" + PACKAGE + ".NovatubeActivity")
         for _ in range(4):
@@ -580,7 +633,13 @@ class Scenario:
         self.wait_labels([self.translated("tvMyRecordings"), CHANNEL])
         self.observe("saved-recording-list")
         self.tap(CHANNEL)
-        self.wait_labels([CHANNEL])
+        def opened_player():
+            self.device.foreground()
+            xml = self.observe("replay-open")
+            replay_video_bounds(xml)
+            return xml
+        self.wait(opened_player, "Lecteur de l'enregistrement non observé")
+        self.replay_opened = True
 
 
 def probe_media(path: Path, *, transport_stream=False) -> dict:
@@ -665,18 +724,15 @@ def execute_scenario(device, helpers, translations, fixture: Path, stage: Path) 
             observations["liveMotion"] = flow.motion("live")
             observations["serviceBefore"] = flow.service(False, "before")
             with screen_recording(device, stage / "datasync-demo.mp4", flow.event):
-                # Un tap sur la surface réelle dévoile la barre si elle a
-                # disparu. Pas de touche REC envoyée à un écran inconnu.
-                xml = device.hierarchy()
-                if normalized(flow.translated("tvRec")) not in observed_labels(xml):
-                    surfaces = video_surfaces(xml)
-                    require(len(surfaces) == 1, "Commandes masquées sans zone vidéo non ambiguë")
-                    flow.tap_rectangle(surfaces[0], "vue ou conteneur vidéo observé")
-                flow.wait_labels([flow.translated("tvRec")])
-                flow.tap(flow.translated("tvRec"))
+                # La barre se masque après six secondes. Utiliser les bounds
+                # du vrai REC dans le XML qui vient de confirmer canal + REC,
+                # sans deuxième dump susceptible de laisser expirer la barre.
+                rec = flow.translated("tvRec")
+                xml = flow.player_controls([CHANNEL, rec])
+                flow.tap_rectangle(target_bounds(xml, rec), rec)
                 observations["userRecTap"] = True
                 flow.event("user-rec")
-                flow.wait_labels([flow.translated("tvStop")])
+                flow.player_controls([CHANNEL, flow.translated("tvStop")])
                 observations["serviceDuring"] = flow.service(True, "recording")
                 recording = flow.wait(flow.recording_file, "Fichier d'enregistrement absent", 15)
                 device.command("shell", "input", "keyevent", "KEYCODE_HOME")
@@ -711,7 +767,7 @@ def execute_scenario(device, helpers, translations, fixture: Path, stage: Path) 
                 observations["fixtureServerStopped"] = True
                 flow.event("fixture-server-stopped-before-replay")
                 flow.navigate_replay()
-                observations["replayMotion"] = flow.motion("replay")
+                observations["replayMotion"] = flow.motion("replay", fixture_server=server)
                 time.sleep(2)
             observations["videoProbe"] = probe_media(stage / "datasync-demo.mp4")
             start = next(event["seconds"] for event in flow.events if event["action"] == "video-start")

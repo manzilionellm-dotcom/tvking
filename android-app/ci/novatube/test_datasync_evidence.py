@@ -3,8 +3,10 @@
 
 from pathlib import Path
 import tempfile
+import threading
+from types import SimpleNamespace
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 import zipfile
 
 import run_datasync_evidence as evidence
@@ -207,6 +209,90 @@ class DataSyncEvidenceTest(unittest.TestCase):
                             ("videoProbe", {"decodeScope": "all-except-final-1s", "excludedTailSeconds": 1})):
             with self.subTest(key=key, update=update), self.assertRaises(ValueError):
                 evidence.qualify({**original, key: {**original[key], **update}})
+
+    def observed_player_controls(self):
+        # Nœuds observés : lecteur masqué REC3, barre visible REC2.
+        # Une suite XML teste la navigation, jamais une réussite Android.
+        common = 'package="com.sevenmotion.novatube" text="" content-desc="" enabled="true" clickable="false" scrollable="false" long-clickable="false" bounds="[0,656][1079,1263]"'
+        video = '<node class="android.widget.FrameLayout" ' + common + '><node class="android.view.View" ' + common + '/></node>'
+        channel = '<node package="com.sevenmotion.novatube" class="android.view.View" content-desc="NT&#10;Novatube_test_pattern&#10;LIVE&#10;Demonstration&#10;1 / 1" enabled="true" bounds="[0,0][1080,1920]"/>'
+        rec = '<node package="com.sevenmotion.novatube" class="android.view.View" content-desc="REC" enabled="true" clickable="true" bounds="[330,1521][493,1752]"/>'
+        return video, channel, rec
+
+    def test_hidden_controls_are_revealed_and_rec_uses_the_fresh_recognized_xml(self):
+        video, channel, rec = self.observed_player_controls()
+        hidden = '<hierarchy>' + video + '</hierarchy>'
+        visible = '<hierarchy>' + video + channel + rec + '</hierarchy>'
+        device = Mock()
+        device.hierarchy.side_effect = [hidden, visible]
+        with tempfile.TemporaryDirectory() as directory, patch.object(evidence.time, "sleep"):
+            flow = evidence.Scenario(device, None, {}, Path(directory))
+            xml = flow.player_controls([evidence.CHANNEL, "REC"])
+            flow.tap_rectangle(evidence.target_bounds(xml, "REC"), "REC")
+            self.assertEqual(xml, visible)
+            self.assertEqual(device.hierarchy.call_count, 2)
+            self.assertEqual([item.args for item in device.command.call_args_list], [
+                ("shell", "input", "tap", "539", "959"),
+                ("shell", "input", "tap", "411", "1636"),
+            ])
+            self.assertEqual(flow.events[-1]["target"], "REC")
+
+    def test_player_controls_still_require_both_channel_and_rec_in_novatube(self):
+        video, channel, rec = self.observed_player_controls()
+        cases = [(partial, [evidence.CHANNEL, "REC"]) for partial in (
+            video + channel, video + rec,
+            (video + channel + rec).replace(evidence.PACKAGE, "other.app"), "")]
+        # Après le tap REC, attendre Stop ne doit jamais retoucher REC.
+        cases.append((video + channel + rec, [evidence.CHANNEL, "Stop"]))
+        for partial, required in cases:
+            now, device = [0], Mock()
+            device.hierarchy.return_value = '<hierarchy>' + partial + '</hierarchy>'
+            def advance(seconds):
+                now[0] += seconds
+            with self.subTest(xml=partial), tempfile.TemporaryDirectory() as directory, \
+                    patch.object(evidence.time, "monotonic", side_effect=lambda: now[0]), \
+                    patch.object(evidence.time, "sleep", side_effect=advance):
+                flow = evidence.Scenario(device, None, {}, Path(directory))
+                with self.assertRaises(ValueError):
+                    flow.player_controls(required, timeout=2)
+                device.command.assert_not_called()
+
+    def test_portrait_container_requires_recording_title_and_stays_replay_only(self):
+        video, channel, _ = self.observed_player_controls()
+        # Le wrapper est observé sur le direct ; sa taille portrait vient
+        # du StackFit.expand de relecture et reste à confirmer sur Android.
+        portrait = video.replace('[0,656][1079,1263]', '[0,0][1080,1794]')
+        xml = '<hierarchy>' + portrait + channel + '</hierarchy>'
+        self.assertEqual(evidence.replay_video_bounds(xml), (0, 0, 1080, 1794))
+        self.assertEqual(evidence.video_surfaces(xml), [])
+        for bad in (xml.replace(channel, ''), xml.replace(evidence.PACKAGE, 'other.app'),
+                    xml.replace('class="android.view.View"', 'class="io.flutter.embedding.android.FlutterSurfaceView"'),
+                    xml.replace('clickable="false"', 'clickable="true"'),
+                    xml.replace('content-desc=""', 'content-desc="Flutter root"'),
+                    xml.replace(portrait, portrait + portrait),
+                    xml.replace(portrait, video),
+                    xml.replace('[0,0][1080,1794]', '[0,0][1081,1794]'),
+                    xml.replace('[0,0][1080,1794]', '[0,0][1080,1793]', 1),
+                    '<hierarchy>' + channel + '<node class="android.view.View" package="com.sevenmotion.novatube" bounds="[0,0][1080,1920]"/></hierarchy>'):
+            with self.subTest(xml=bad), self.assertRaises(ValueError):
+                evidence.replay_video_bounds(bad)
+
+    def test_replay_motion_requires_opened_recording_and_fully_stopped_source(self):
+        alive_thread, alive_process = Mock(), Mock()
+        alive_thread.is_alive.return_value = True
+        alive_process.poll.return_value = None
+        cases = [(False, {}), (True, {'stopped': False}), (True, {'server': object()}),
+                 (True, {'thread': alive_thread}), (True, {'processes': {alive_process}})]
+        for opened, changes in cases:
+            device = Mock()
+            state = dict(stopped=True, server=None, thread=None, processes=set(), lock=threading.Lock())
+            with self.subTest(opened=opened, fields=list(changes)), tempfile.TemporaryDirectory() as directory:
+                flow = evidence.Scenario(device, None, {}, Path(directory))
+                flow.replay_opened = opened
+                with self.assertRaises(ValueError):
+                    flow.motion('replay', fixture_server=SimpleNamespace(**{**state, **changes}))
+                device.hierarchy.assert_not_called()
+                device.binary.assert_not_called()
 
     def test_truncated_video_and_out_of_order_actions_are_not_evidence(self):
         for timeline in ([2, 6, 20, 65], [2, 20, 6, 55], [2, 6, 9, 55], [], [2, 6, 20, float("nan")]):
