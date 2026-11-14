@@ -1,0 +1,235 @@
+# Banc de démonstration dataSync NOVATUBE
+
+## Statut et portée
+
+Ce dossier prépare un job de preuves séparé, dans le workflow NOVATUBE déjà
+enregistré. Il n'a pas été poussé ni
+exécuté sur Android. Aucun MP4 de l'interface n'est encore produit ou qualifié.
+Le scénario est destiné à une revue humaine avant toute utilisation dans
+Google Play Console ; une réussite machine ne vaut pas approbation de Google.
+
+Le binaire de référence est NOVATUBE **0.1.7 (7)**, vérifié localement le
+14 novembre 2026 : commit `6b66f0a8302b0cb34c540bb671a4d6d7fae190c6`,
+run `43597754114`, tentative `1`, artefact `14115570586`.
+
+| Élément immuable | Valeur vérifiée |
+| --- | --- |
+| Nom d'artefact | `NOVATUBE-0.1.7-7-verified-6b66f0a8302b0cb34c540bb671a4d6d7fae190c6-1` |
+| Archive ZIP | 96 483 282 octets ; SHA-256 `fb508bea33c8421fcc32448287ba2f676a031ad4196d1ccdbdc253a4f5a26d7d` |
+| AAB | 97 117 820 octets ; SHA-256 `cc5dab113e0300a7ecec765085eb21a68d11e0acff1594d17490c72433dae8ef` |
+| Certificat d'upload | SHA-256 `38d6dabe9a73e5ab94a56491e4da6638f5da09ef1eaa77d0eb892d5f0478824b` |
+
+Les contrôles locaux ont confirmé la provenance, le manifeste, la validation
+bundletool et la signature JAR stricte. Les rapports du build attestent
+603 tests Flutter, 10 tests Cast JVM et 36 tests d'enregistrement JVM.
+Ces résultats ne prouvent pas l'exécution Android de ce nouveau banc vidéo.
+
+## Deux provenances explicites
+
+Le SHA saisi dans `reviewed_commit` approuve le script de démonstration. Le
+binaire est fixé séparément par le bloc de constantes en tête de
+`run_datasync_evidence.py` : commit original, run, tentative, artefact,
+SHA-256 ZIP et SHA-256 AAB. Le workflow ne propose pas d'URL de binaire libre.
+
+Les gardes exigent un lancement manuel sur
+`feature/novatube-play-aab`, dans `manzilionellm-dotcom/tvking`, par le
+propriétaire et le même propriétaire comme acteur déclencheur, avec le SHA
+complet du script et l'intention `CAPTURER_NOVATUBE_DATASYNC`.
+Le script vérifie aussi `GITHUB_WORKFLOW_REF`, `GITHUB_WORKFLOW_SHA` et
+`GITHUB_JOB` : seul `capture_datasync`, dans le fichier de workflow enregistré
+et au même SHA approuvé, peut exécuter le banc.
+
+Le job `capture_datasync` est en lecture seule (`contents: read`, `actions: read`).
+`github.token` sert uniquement à l'action de téléchargement d'un artefact
+d'un autre run. Aucun secret de signature ni droit d'écriture n'est fourni.
+Les octets exacts du workflow sont vérifiés par une empreinte dans le script.
+Toute modification du YAML, même un changement de nom, exige de mettre à
+jour cette empreinte après revue. Une seconde empreinte porte sur l'objet
+`capture_datasync` après lecture YAML ; `verify_source.py` vérifie ainsi
+l'intégralité de ce job sans relâcher les gardes des trois jobs existants.
+
+Le second checkout fournit les helpers et traductions du commit exact de
+l'application. Ils restent inchangés : validation de provenance, signature
+publique réelle, manifeste réel, bundletool 1.18.2 épinglé, conversion en APK
+avec une clé éphémère, comparaison DEX/libapp et émulateur Android 35.
+L'application n'est jamais recompilée. L'APK dérivé et sa clé ne sont jamais
+inclus dans les artefacts de preuves.
+
+## Scénario réel
+
+1. Installer l'APK dérivé sur un téléphone AOSP neuf.
+2. Accorder uniquement `POST_NOTIFICATIONS` par `adb pm grant` sur cet
+   appareil jetable, puis vérifier le résultat Android. Cette préparation
+   est enregistrée dans les preuves ; aucun dialogue de permission au clic
+   REC n'est prétendu. Le parcours REC actuel ne présente pas ce dialogue.
+3. Ajouter volontairement une M3U par l'interface : Serveur, Ajouter M3U,
+   champ URL M3U, Valider et charger ma liste. Aucun préremplissage de la base
+   ou changement de préférences n'est effectué.
+4. Ouvrir Direct et la chaîne synthétique `NOVATUBE_TEST_PATTERN`.
+5. Vérifier une vraie image animée dans une surface vidéo observée, puis
+   commencer la capture d'écran MP4 avant le tap REC.
+6. Taper REC, vérifier le service `dataSync` (type 1, notification 1001),
+   passer Home et observer une croissance du fichier pendant huit secondes.
+7. Ouvrir le volet Android et taper l'action `Arrêter` de la notification
+   `Enregistrement en cours`. Vérifier retrait du service, de la notification
+   et stabilisation du fichier.
+8. Récupérer et vérifier le fichier `.ts`, arrêter le serveur source, puis
+   ouvrir Mes enregistrements et relire le fichier dans l'application.
+9. Vérifier une image animée en relecture et que la vidéo MP4 contient toute
+   la séquence des actions. Conserver les relevés, XML UI et sommes de contrôle.
+
+Les coordonnées de chaque action proviennent des rectangles des éléments
+effectivement observés. Une surface vidéo non accessible, un libellé absent,
+une notification ambiguë ou un fichier inaccessible entraîne un échec. Le
+script n'invente pas de sélecteur réussi ni d'image à la place d'un échec.
+
+## Média contrôlé
+
+Seule la fixture H.264/AAC versionnée
+`recording-test-media/novatube-h264-aac.ts` est utilisée, avec le SHA-256
+`81724394c63e0b5294ba57e47c0e2c631ded3c28e0b0589610c768a64c019694`.
+Le serveur local écoute sur `127.0.0.1:8765`; Android y accède par `10.0.2.2`.
+FFmpeg boucle et remuxe les mêmes octets média à débit réel, sans réencoder
+l'application ni contacter un fournisseur de contenu. La fixture est une
+mire et une tonalité synthétiques. Les connexions et octets transmis sont
+journalisés. Le serveur est arrêté avant la relecture du fichier enregistré.
+
+La capture `screenrecord` est une vraie capture de l'écran, sans audio. Les
+PNG de vérification sont bruts ; aucune image de remplacement n'est générée.
+
+Le TS brut est conservé. Son décodage strict porte sur toute la durée, sauf
+la dernière seconde : une coupure réseau volontaire peut interrompre la
+dernière image TS. Il faut au moins six secondes de contenu décodable, puis
+une relecture animée réelle dans l'app avec le serveur source arrêté. Cette
+tolérance bornée ne s'applique pas au MP4 de démonstration, qui doit décoder
+intégralement. Le rapport donne la durée exacte vérifiée et la seconde exclue.
+
+## Ce qui n'est pas démontré
+
+- `mediaPlayback` : le service garde un relais Cast/DLNA vivant lorsque le
+  téléphone alimente un récepteur réel. Aucun récepteur n'est disponible
+  dans ce banc. Une simple lecture locale n'est pas présentée comme preuve.
+- PiP ou mode Écouteurs : aucun parcours Play correspondant n'est utilisé.
+- Conversion/export MP4 sous dataSync : le service est arrêté avant cette
+  opération. Après un arrêt par notification, le fichier reste disponible
+  dans Mes enregistrements ; aucune conversion automatique n'est prétendue.
+- Délai Android de six heures : ce scénario court ne le teste pas.
+
+## Validation et résultats
+
+Tests locaux sans Android :
+
+```bash
+python3 -m unittest discover -s android-app/ci/novatube -p test_datasync_evidence.py -v
+```
+
+Les tests couvrent refus des mauvaises autorités/provenances, archive
+modifiée, chemins ZIP dangereux, mauvais type FGS, éléments hors écran ou
+d'une autre application, croissance absente, arrêt incomplet et vidéo tronquée.
+Ils ne constituent aucune preuve d'exécution réelle du scénario Android.
+
+Validation locale du 14 novembre 2026 : les onze tests passent. L'archive
+originale 0.1.7 et son AAB ont passé leurs empreintes et la validation de provenance.
+Un client HTTP réel a reçu 357 200 octets de mire ; FFprobe a reconnu H.264,
+AAC, 160 × 90 et 9,101333 secondes. FFmpeg a décodé strictement les 8,101333
+secondes utiles. La fixture n'a pas changé et aucun processus de diffusion
+n'est resté actif après l'arrêt du serveur. Ce test de composants n'a pas
+ouvert NOVATUBE ni produit une vidéo de son interface.
+
+Restent à observer sur Android : la surface vidéo exposée à UIAutomator,
+le conteneur `expandableNotificationRow`, les libellés du parcours et l'accès
+ADB au fichier externe de l'app et le maintien du portrait. Les chemins
+`TvPlayerScreen` et `TvRecordingPlayerScreen` n'imposent pas le paysage ; le
+banc refuse néanmoins toute dimension différente de 1080 × 1920. Si une de
+ces hypothèses n'est pas satisfaite,
+le run produit uniquement des diagnostics à relire, sans vidéo qualifiée.
+
+Seule une séquence complète crée `datasync-evidence/` avec `datasync-demo.mp4`
+et `evidence.json`. Toute observation partielle, y compris un MP4 éventuel,
+reste dans `datasync-diagnostic/unqualified-observations/`. Le rapport de
+succès exige encore une revue humaine et indique `mediaPlayback` non démontré.
+La variation de pixels ne prouve pas à elle seule l'identité visuelle de la
+mire. Le rapport exige explicitement la confirmation humaine de la mire
+animée en direct, de sa relecture locale et de la lisibilité des actions.
+La surface Flutter globale est exclue des surfaces vidéo acceptées.
+
+## Remplacement par l'AAB final suivant
+
+Après validation du prochain AAB, mettre à jour le bloc des six constantes
+de provenance, le ref du checkout original, `run-id`, `artifact-ids` et le
+nom d'artefact de sortie du YAML. Recalculer `WORKFLOW_SHA256` et
+`DATASYNC_JOB_SHA256` (JSON canonique de `jobs.capture_datasync` lu par
+`WorkflowLoader`), puis refaire
+les tests et la revue. La version affichée dans les preuves provient de la
+provenance et du manifeste vérifiés par les helpers de ce nouveau commit.
+Ne pas substituer le SHA du script à celui de l'application.
+
+## Chemin de dispatch autorisé
+
+Le nouveau fichier autonome `novatube-datasync-evidence.yml` ne serait pas
+déclenchable légitimement tant qu'il n'existe pas sur la branche par défaut.
+La lecture GitHub du 14 novembre 2026 a confirmé `default_branch=main`,
+l'absence de ce nouveau fichier sur `main` et la présence du workflow
+`novatube-play-aab.yml` avec `workflow_dispatch`. Ce workflow est déjà
+enregistré sous l'identifiant `414377516` : le run `43597754114` l'utilise
+sur `feature/novatube-play-aab`.
+
+Cette variante remplace donc le précédent patch autonome : ne pas appliquer
+les deux. Elle ajoute uniquement `capture_datasync` au fichier déjà enregistré
+sur la branche NOVATUBE. Aucun nouveau workflow n'est créé sur `main`.
+
+Les deux inputs existants restent des chaînes obligatoires. Après revue et
+épinglage du binaire final, sélectionner le workflow NOVATUBE existant dans
+Actions, choisir `feature/novatube-play-aab`, saisir
+`confirme=CAPTURER_NOVATUBE_DATASYNC` et le SHA complet du script approuvé dans
+`reviewed_commit`. Il n'est pas nécessaire de modifier la branche par défaut.
+
+Les trois anciens jobs restent identiques et refusent cette intention :
+`release` accepte seulement compilation Play ou publication privée ;
+`publish_private` exige la réussite de `release` et l'intention privée ;
+`capture_play` exige la réussite de `release` et l'intention de compilation.
+Le nouveau job n'a aucune dépendance `needs: release`, ne reçoit aucun secret
+de signature, ne compile pas l'app et ne dispose d'aucun droit d'écriture.
+Les permissions globales, la concurrence et les événements restent inchangés.
+
+Les tests de workflow supplémentaires refusent l'élargissement d'une ancienne
+garde à l'intention REC, toute dépendance au build, toute suppression des
+contrôles d'acteur/SHA/branche, un secret de signature, un droit d'écriture,
+une recompilation et la promotion de diagnostics en preuve.
+Les 26 tests de workflow et les 11 tests du banc passent ensemble, soit
+37 tests ciblés. La comparaison des objets YAML confirme que les trois
+anciens jobs et les permissions globales sont identiques à la base
+`6b66f0a8302b0cb34c540bb671a4d6d7fae190c6`.
+
+Ce dossier n'effectue aucun changement distant, aucun commit, aucun dispatch
+et aucun envoi à Google Play. Les références désignent exclusivement l'AAB 7
+vérifié du run `43597754114`. Le précédent run `43597097197` ayant échoué,
+ses métadonnées ne servent pas de provenance d'un binaire.
+
+Sources GitHub :
+
+- [Déclenchement manuel et choix de branche](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/manually-run-a-workflow)
+- [Workflow enregistré sur main](https://github.com/manzilionellm-dotcom/tvking/blob/main/.github/workflows/novatube-play-aab.yml)
+- [Run du workflow existant sur la branche NOVATUBE](https://github.com/manzilionellm-dotcom/tvking/actions/runs/43597754114)
+
+## Faisabilité du second service, hors de ce banc
+
+`gmrender-resurrect` est un vrai récepteur UPnP utilisant GStreamer ; une
+lecture vidéo réelle est possible avec une sortie vidéo et les bons codecs.
+Le picker NOVATUBE relu ne propose cependant pas de saisie IP manuelle : il
+attend la découverte SSDP. Le relais publie ensuite l'IP locale du téléphone
+avec un port dynamique. Un processus Linux hôte ne constitue donc pas à lui
+seul un récepteur utilisable depuis le banc actuel : découverte et route
+inverse du relais doivent être observées avant de tenter la démonstration.
+
+Android Emulator 36.5 a ajouté un réseau Wi-Fi commun entre émulateurs. Cela
+ouvre une autre piste avec un véritable récepteur Android, mais ne prouve pas
+le fonctionnement automatique d'un récepteur Linux hôte. Aucun récepteur
+factice, aucune réponse SOAP simulée et aucun banc Cast supplémentaire n'ont
+été ajoutés. La preuve `mediaPlayback` reste à faire séparément.
+
+Sources techniques :
+
+- [Sortie GStreamer du récepteur](https://github.com/hzeller/gmrender-resurrect/blob/master/src/output_gstreamer.c)
+- [Réseau entre émulateurs](https://developer.android.com/studio/run/emulator-networking-interconnect)
+- [Adresses et limites du réseau Android Emulator](https://developer.android.com/studio/run/emulator-networking-address)

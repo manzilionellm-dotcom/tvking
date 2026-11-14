@@ -40,7 +40,7 @@ class WorkflowIsolationTest(unittest.TestCase):
         for old, new in (("inputs.reviewed_commit == github.sha", "true"),
                          ("refs/heads/feature/novatube-play-aab", "refs/heads/main"),
                          ("github.actor == github.repository_owner", "true")):
-            for job in ("release", "publish_private", "capture_play"):
+            for job in ("release", "publish_private", "capture_play", "capture_datasync"):
                 with self.subTest(job=job, old=old):
                     document = self.document()
                     document["jobs"][job]["if"] = document["jobs"][job]["if"].replace(old, new)
@@ -246,6 +246,47 @@ class WorkflowIsolationTest(unittest.TestCase):
                     upload["with"]["path"] = "${{ runner.temp }}/"
                 else:
                     steps["capture_screenshots"]["continue-on-error"] = "true"
+                self.reject(document)
+
+    def test_datasync_has_its_own_intent_and_no_build_dependency(self):
+        for mutation in ("intent", "needs", "event", "triggering_actor"):
+            with self.subTest(mutation=mutation):
+                document = self.document()
+                job = document["jobs"]["capture_datasync"]
+                if mutation == "intent":
+                    job["if"] = job["if"].replace("CAPTURER_NOVATUBE_DATASYNC", "COMPILER_NOVATUBE")
+                elif mutation == "needs":
+                    job["needs"] = "release"
+                elif mutation == "event":
+                    job["if"] = job["if"].replace("github.event_name == 'workflow_dispatch'", "true")
+                else:
+                    job["if"] = job["if"].replace("github.triggering_actor == github.repository_owner", "true")
+                self.reject(document)
+
+    def test_datasync_cannot_receive_write_signing_secret_or_build_step(self):
+        for mutation in ("write", "secret", "rebuild", "artifact", "diagnostic"):
+            with self.subTest(mutation=mutation):
+                document = self.document()
+                job = document["jobs"]["capture_datasync"]
+                steps = {step["id"]: step for step in job["steps"]}
+                if mutation == "write":
+                    job["permissions"]["actions"] = "write"
+                elif mutation == "secret":
+                    steps["data_sync_video"]["env"]["KEY"] = "${{ secrets.NOVATUBE_UPLOAD_KEYSTORE_BASE64 }}"
+                elif mutation == "rebuild":
+                    job["steps"].append({"run": "flutter build appbundle --release"})
+                elif mutation == "artifact":
+                    steps["download_aab"]["with"]["artifact-ids"] = "other-artifact"
+                else:
+                    steps["upload_evidence"]["if"] = "always()"
+                self.reject(document)
+
+    def test_datasync_intent_never_enables_an_existing_job(self):
+        for job_id in ("release", "publish_private", "capture_play"):
+            with self.subTest(job=job_id):
+                document = self.document()
+                job = document["jobs"][job_id]
+                job["if"] += " || inputs.confirme == 'CAPTURER_NOVATUBE_DATASYNC'"
                 self.reject(document)
 
 

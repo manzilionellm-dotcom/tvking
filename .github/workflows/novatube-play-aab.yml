@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       confirme:
-        description: 'COMPILER_NOVATUBE (AAB Play) ou PUBLIER_NOVATUBE_APK_PRIVE, après accord sur le SHA'
+        description: 'COMPILER_NOVATUBE, PUBLIER_NOVATUBE_APK_PRIVE ou CAPTURER_NOVATUBE_DATASYNC, après accord sur le SHA'
         type: string
         required: true
       reviewed_commit:
@@ -459,3 +459,114 @@ jobs:
           NOVATUBE_PUBLICATION_CONFIRMATION: ${{ inputs.confirme }}
           REVIEWED_COMMIT: ${{ inputs.reviewed_commit }}
         run: python3 ci/novatube/publish_private_apk.py --verified build/novatube/private-verified
+
+  capture_datasync:
+    name: Observer dataSync depuis le seul AAB déjà approuvé
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.repository == 'manzilionellm-dotcom/tvking' &&
+      github.ref == 'refs/heads/feature/novatube-play-aab' &&
+      github.actor == github.repository_owner &&
+      github.triggering_actor == github.repository_owner &&
+      inputs.confirme == 'CAPTURER_NOVATUBE_DATASYNC' &&
+      inputs.reviewed_commit == github.sha
+    permissions:
+      contents: read
+      actions: read
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - name: Charger uniquement le script approuvé
+        id: script_checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Charger les vérificateurs et traductions du binaire existant
+        id: binary_checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 6b66f0a8302b0cb34c540bb671a4d6d7fae190c6
+          path: novatube-binary-source
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Refuser toute autre révision, origine ou configuration de preuves
+        id: preflight
+        env:
+          NOVATUBE_DATASYNC_CONFIRMATION: ${{ inputs.confirme }}
+          REVIEWED_COMMIT: ${{ inputs.reviewed_commit }}
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s ci/novatube -p test_datasync_evidence.py -v
+          python3 ci/novatube/run_datasync_evidence.py --preflight \
+            --original-source ../novatube-binary-source/android-app
+
+      - name: Télécharger l'unique archive immuable déjà vérifiée
+        id: download_aab
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          artifact-ids: '14115570586'
+          run-id: '43597754114'
+          repository: manzilionellm-dotcom/tvking
+          github-token: ${{ github.token }}
+          skip-decompress: true
+          digest-mismatch: error
+          path: android-app/build/novatube/datasync-artifact/
+
+      - name: Java pour vérifier et convertir l'AAB, sans compilation
+        id: java
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Android SDK pour le téléphone jetable
+        id: android
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+
+      - name: Vérifier les outils de la seule mire synthétique
+        id: ffmpeg
+        run: |
+          set -euo pipefail
+          if ! command -v ffmpeg >/dev/null || ! command -v ffprobe >/dev/null; then
+            sudo apt-get update -qq
+            sudo apt-get install -y --no-install-recommends ffmpeg
+          fi
+          ffmpeg -version
+          ffprobe -version
+
+      - name: Observer REC, l'écriture en arrière-plan, l'arrêt et la relecture
+        id: data_sync_video
+        env:
+          NOVATUBE_DATASYNC_CONFIRMATION: ${{ inputs.confirme }}
+          REVIEWED_COMMIT: ${{ inputs.reviewed_commit }}
+        run: |
+          set -euo pipefail
+          python3 ci/novatube/run_datasync_evidence.py \
+            --original-source ../novatube-binary-source/android-app \
+            --archive-dir build/novatube/datasync-artifact \
+            --output build/novatube/datasync-evidence \
+            --diagnostics build/novatube/datasync-diagnostic
+
+      - name: Conserver uniquement la démonstration ayant passé les contrôles
+        id: upload_evidence
+        if: success()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: NOVATUBE-dataSync-from-43597754114-${{ github.sha }}-${{ github.run_attempt }}
+          path: android-app/build/novatube/datasync-evidence/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Conserver séparément les preuves non qualifiées en cas d'échec
+        id: upload_diagnostic
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: NOVATUBE-dataSync-diagnostic-${{ github.sha }}-${{ github.run_attempt }}
+          path: android-app/build/novatube/datasync-diagnostic/
+          if-no-files-found: ignore
+          retention-days: 7

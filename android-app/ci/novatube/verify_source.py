@@ -20,6 +20,7 @@ from common import (
     PRIVATE_VERSION_NAME, expected_certificate,
     require, sha256_file,
 )
+from run_datasync_evidence import verify_datasync_job
 
 
 PLAY_CONFIRMATION = "inputs.confirme == 'COMPILER_NOVATUBE'"
@@ -147,8 +148,9 @@ def verify_workflow(workflow: str) -> None:
             "Confirmation et SHA approuvé obligatoires")
     require(document.get("permissions") == {"contents": "read"}, "Permissions globales trop larges")
     jobs = document.get("jobs", {})
-    require(set(jobs) == {"release", "publish_private", "capture_play"}, "Jobs de livraison inattendus")
+    require(set(jobs) == {"release", "publish_private", "capture_play", "capture_datasync"}, "Jobs de livraison inattendus")
     verify_capture_job(jobs["capture_play"])
+    verify_datasync_job(jobs["capture_datasync"])
     release, publish = jobs["release"], jobs["publish_private"]
     require(release.get("permissions", {"contents": "read"}) == {"contents": "read"},
             "Le job de compilation doit rester en lecture seule")
