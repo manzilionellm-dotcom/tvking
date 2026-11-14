@@ -3,7 +3,7 @@
 ## Statut et portée
 
 Ce dossier prépare un job de preuves séparé, dans le workflow NOVATUBE déjà
-enregistré. Sept essais Android ont été exécutés ; les plus avancés ont
+enregistré. Huit essais Android ont été exécutés ; les plus avancés ont
 affiché le lecteur avec la mire réelle. Aucun MP4 de l'interface n'est encore qualifié.
 Le scénario est destiné à une revue humaine avant toute utilisation dans
 Google Play Console ; une réussite machine ne vaut pas approbation de Google.
@@ -161,6 +161,18 @@ en cas d'échec. Les huit secondes de mesure du fichier commencent seulement
 après ce constat. Le service en arrière-plan, l'arrêt et la relecture restent
 obligatoires ; ils n'ont pas encore été atteints dans cet essai.
 
+Le run `43606350793` atteint Home après 1,668 seconde. Le fichier passe de
+292 152 à 609 308 octets pendant huit secondes avec dataSync toujours actif.
+L'action Arrêter de la notification retire le service et sa notification ;
+le TS se stabilise à 1 051 484 octets et ses 25,690944 secondes utiles sont
+décodées strictement. Le serveur est arrêté avant la tentative de relecture.
+Le retour ouvre bien l'accueil, mais défilé sur RESUME : Series, Server,
+Settings et le canal sont visibles dans un unique ScrollView NOVATUBE.
+Le banc utilise seulement cette structure observée pour remonter vers les
+tuiles hautes, puis exige le recognizer complet initial inchangé avant
+d'ouvrir les réglages. Les XML de ce retour sont désormais conservés.
+La relecture réelle reste obligatoire et n'est pas encore démontrée.
+
 ## Média contrôlé
 
 Seule la fixture H.264/AAC versionnée
@@ -206,7 +218,7 @@ modifiée, chemins ZIP dangereux, mauvais type FGS, éléments hors écran ou
 d'une autre application, croissance absente, arrêt incomplet et vidéo tronquée.
 Ils ne constituent aucune preuve d'exécution réelle du scénario Android.
 
-Validation locale du 14 novembre 2026 : les vingt-deux tests passent. L'archive
+Validation locale du 14 novembre 2026 : les vingt-trois tests passent. L'archive
 originale 0.1.7 et son AAB ont passé leurs empreintes et la validation de provenance.
 Un client HTTP réel a reçu 357 200 octets de mire ; FFprobe a reconnu H.264,
 AAC, 160 × 90 et 9,101333 secondes. FFmpeg a décodé strictement les 8,101333
@@ -274,9 +286,9 @@ Les tests de workflow supplémentaires refusent l'élargissement d'une ancienne
 garde à l'intention REC, toute dépendance au build, toute suppression des
 contrôles d'acteur/SHA/branche, un secret de signature, un droit d'écriture,
 une recompilation et la promotion de diagnostics en preuve.
-Les 28 tests de workflow et les 22 tests du banc passent ensemble, soit
-50 tests ciblés, sur la tête incluant le diagnostic réseau séparé
-`e0b3a9bccece196a7a31992d106132492efe6c78`. La comparaison des objets YAML confirme que les trois
+Les 28 tests de workflow et les 23 tests du banc passent ensemble, soit
+51 tests ciblés, sur la tête incluant le diagnostic réseau séparé
+`785d11a5e09c040d8492981785788957c1ba9c08`. La comparaison des objets YAML confirme que les trois
 anciens jobs et les permissions globales sont identiques à la base
 `6b66f0a8302b0cb34c540bb671a4d6d7fae190c6`.
 

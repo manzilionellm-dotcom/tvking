@@ -177,6 +177,26 @@ class DataSyncEvidenceTest(unittest.TestCase):
             with self.subTest(key=key), self.assertRaises(ValueError):
                 evidence.qualify({**original, key: value})
 
+    def test_replay_home_scroll_requires_observed_tiles_resume_and_channel(self):
+        # Sous-arbre observé REC8, phone-unqualified-ui.xml, artefact14118104917.
+        values = {"tvNavSeries": "Series", "tvNavServer": "Server", "tvNavSettings": "Settings", "tvHomeResume": "Resume"}
+        nodes = ''.join('<node package="com.sevenmotion.novatube" content-desc="' + label + '"/>'
+                        for label in ("Series", "Server", "Settings", "RESUME", "NT&#10;Novatube_test_pattern"))
+        scroll = ('<node package="com.sevenmotion.novatube" class="android.widget.ScrollView" '
+                  'enabled="true" scrollable="true" bounds="[0,63][1080,1794]">' + nodes + '</node>')
+        xml = '<hierarchy>' + scroll + '</hierarchy>'
+        self.assertEqual(evidence.scrolled_home_bounds(xml, values), (0, 63, 1080, 1794))
+        for bad in (xml.replace('content-desc="Settings"', 'content-desc="Other"'),
+                    xml.replace('content-desc="RESUME"', 'content-desc="Other"'),
+                    xml.replace('Novatube_test_pattern', 'Other_channel'),
+                    xml.replace(evidence.PACKAGE, 'other.app'),
+                    xml.replace('scrollable="true"', 'scrollable="false"'),
+                    xml.replace('[1080,1794]', '[1200,1794]')):
+            with self.subTest(xml=bad):
+                self.assertIsNone(evidence.scrolled_home_bounds(bad, values))
+        with self.assertRaises(ValueError):
+            evidence.scrolled_home_bounds('<hierarchy>' + scroll + scroll + '</hierarchy>', values)
+
     def test_stop_action_is_scoped_to_the_actual_recording_notification(self):
         def row(title, channel):
             return ('<node package="com.android.systemui" resource-id="com.android.systemui:id/expandableNotificationRow">'

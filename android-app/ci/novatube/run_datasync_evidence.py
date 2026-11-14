@@ -209,6 +209,24 @@ def m3u_editor_bounds(xml: str, title: str, mode: str):
     return editors[0]
 
 
+def scrolled_home_bounds(xml: str, translations: dict):
+    # REC8 revient sur l'accueil défilé : Series/Server/Settings et la
+    # rangée Resume du canal sont visibles, mais Live/Movies sont au-dessus.
+    # Ce repérage autorise seulement à remonter, jamais à déclarer l'accueil
+    # complet reconnu ni à remplacer la navigation vers Mes enregistrements.
+    required = {normalized(translations[key]) for key in
+                ("tvNavSeries", "tvNavServer", "tvNavSettings", "tvHomeResume")}
+    required.add(normalized(CHANNEL))
+    candidates = []
+    for node in ET.fromstring(xml).iter("node"):
+        if (node.get("package") == PACKAGE and node.get("class") == "android.widget.ScrollView"
+                and node.get("enabled") == "true" and node.get("scrollable") == "true" and bounds(node)
+                and required <= observed_labels(ET.tostring(node, encoding="unicode"))):
+            candidates.append(bounds(node))
+    require(len(candidates) <= 1, "Accueil défilé ambigu")
+    return candidates[0] if candidates else None
+
+
 def recording_notification(xml: str) -> str:
     # Une action homonyme d'une autre notification n'est jamais utilisée.
     # On exige le conteneur Android réellement observé de notre notification.
@@ -691,11 +709,19 @@ class Scenario:
         self.device.command("shell", "cmd", "statusbar", "collapse")
         self.device.command("shell", "am", "start", "-W", "-n", PACKAGE + "/" + PACKAGE + ".NovatubeActivity")
         for _ in range(4):
-            xml = self.device.hierarchy()
+            self.device.foreground()
+            xml = self.observe("return-home-before-replay")
             if self.helpers.recognized_screen(xml, self.translations, "home"):
                 break
-            self.device.foreground()
-            self.device.command("shell", "input", "keyevent", "KEYCODE_BACK")
+            rectangle = scrolled_home_bounds(xml, self.translations[self.language])
+            if rectangle:
+                left, top, right, bottom = rectangle
+                self.event("scroll", target="retrouver les tuiles hautes de l'accueil", observedBounds=list(rectangle))
+                self.device.command("shell", "input", "swipe", str((left + right) // 2),
+                                    str(top + (bottom - top) // 4), str((left + right) // 2),
+                                    str(top + (bottom - top) * 4 // 5), "350")
+            else:
+                self.device.command("shell", "input", "keyevent", "KEYCODE_BACK")
             time.sleep(0.5)
         else:
             raise ValueError("Retour à l'accueil non observé")
