@@ -126,6 +126,24 @@ class DataSyncEvidenceTest(unittest.TestCase):
             with self.subTest(xml=bad), self.assertRaises(ValueError):
                 evidence.target_bounds(bad, "REC")
 
+    def test_observed_m3u_form_exposes_an_unlabelled_editor(self):
+        # Extrait des nœuds réels de phone-unqualified-ui.xml,
+        # artefact 14116006161 du run 43599127964. Le libellé flottant
+        # « M3U URL » visible sur le PNG n'existe pas dans ce XML.
+        title = '<node package="com.sevenmotion.novatube" class="android.view.View" content-desc="Add my source" enabled="true" bounds="[168,105][1038,214]"/>'
+        mode = '<node package="com.sevenmotion.novatube" class="android.view.View" content-desc="M3U / URL" enabled="true" clickable="true" bounds="[434,567][735,685]"/>'
+        editor = '<node NAF="true" package="com.sevenmotion.novatube" class="android.widget.EditText" text="" content-desc="" enabled="true" password="false" focused="true" bounds="[42,867][1038,1021]"/>'
+        xml = '<hierarchy>' + title + mode + editor + '</hierarchy>'
+        self.assertNotIn(evidence.normalized("M3U URL"), evidence.observed_labels(xml))
+        self.assertEqual(evidence.m3u_editor_bounds(xml, "Add my source", "M3U / URL"), (42, 867, 1038, 1021))
+        for bad in (xml.replace(title, ""), xml.replace(mode, ""),
+                    xml.replace(editor, editor + editor),
+                    xml.replace('password="false"', 'password="true"'),
+                    xml.replace(evidence.PACKAGE, "com.other.app"),
+                    xml.replace('[1038,1021]', '[1200,1021]')):
+            with self.subTest(xml=bad), self.assertRaises(ValueError):
+                evidence.m3u_editor_bounds(bad, "Add my source", "M3U / URL")
+
     def test_no_qualification_when_any_runtime_proof_is_missing(self):
         original = self.observations()
         evidence.qualify(original)

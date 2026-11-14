@@ -194,6 +194,19 @@ def target_bounds(xml: str, text: str, package=PACKAGE):
     return min(matches, key=lambda rect: (rect[2] - rect[0]) * (rect[3] - rect[1]))
 
 
+def m3u_editor_bounds(xml: str, title: str, mode: str):
+    # Run 43599127964 : le libellé flottant est dessiné, mais Android expose
+    # l'EditText vide sans texte ni description. Vérifier le formulaire et
+    # son onglet observés, puis le seul champ visible non mot de passe.
+    target_bounds(xml, title)
+    target_bounds(xml, mode)
+    editors = [bounds(node) for node in ET.fromstring(xml).iter("node")
+               if node.get("package") == PACKAGE and node.get("class") == "android.widget.EditText"
+               and node.get("enabled") == "true" and node.get("password") == "false" and bounds(node)]
+    require(len(editors) == 1, "Champ M3U absent ou ambigu")
+    return editors[0]
+
+
 def recording_notification(xml: str) -> str:
     # Une action homonyme d'une autre notification n'est jamais utilisée.
     # On exige le conteneur Android réellement observé de notre notification.
@@ -490,11 +503,12 @@ class Scenario:
         self.tap(self.translated("tvNavServer"), scroll=True)
         self.wait_labels([self.translated("tvMySources"), self.translated("tvAddM3u")])
         self.tap(self.translated("tvAddM3u"))
-        xml = self.wait_labels([self.translated("tvAddListTitle"), self.translated("tvFieldM3uUrl")])
-        editors = [bounds(node) for node in ET.fromstring(xml).iter("node") if node.get("package") == PACKAGE
-                   and node.get("class") == "android.widget.EditText" and node.get("enabled") == "true" and bounds(node)]
-        require(len(editors) == 1, "Champ M3U absent ou ambigu")
-        self.tap_rectangle(editors[0], self.translated("tvFieldM3uUrl"))
+        title, mode = self.translated("tvAddListTitle"), self.translated("playlistTypeM3u")
+        self.wait_labels([title, mode])
+        self.tap(mode)
+        self.wait_labels([title, mode])
+        xml = self.observe("m3u-form")
+        self.tap_rectangle(m3u_editor_bounds(xml, title, mode), "champ URL unique du mode M3U observé")
         self.device.command("shell", "input", "text", PLAYLIST_URL)
         self.wait_labels([PLAYLIST_URL])
         ime = self.device.command("shell", "dumpsys", "input_method")
