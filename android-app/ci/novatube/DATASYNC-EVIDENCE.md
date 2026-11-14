@@ -3,7 +3,7 @@
 ## Statut et portée
 
 Ce dossier prépare un job de preuves séparé, dans le workflow NOVATUBE déjà
-enregistré. Quatre essais Android ont atteint le formulaire M3U, puis le
+enregistré. Cinq essais Android ont atteint le formulaire M3U, puis le
 lecteur avec la mire réelle. Aucun MP4 de l'interface n'est encore qualifié.
 Le scénario est destiné à une revue humaine avant toute utilisation dans
 Google Play Console ; une réussite machine ne vaut pas approbation de Google.
@@ -128,6 +128,17 @@ le scénario ; un fichier séparé indique si ce suivi s'est arrêté trop tôt.
 En cas d'échec, l'état brut des services et la liste des fichiers enregistrés
 sont aussi conservés. Ces diagnostics ne remplacent aucune preuve requise.
 
+Le run `43603905492` envoie REC 3,582 secondes après la révélation des commandes, observe
+Stop et révèle un vrai `RecordingForegroundService` NOVATUBE au premier
+plan, notification 1001, type numérique `0x00000001`, avec un fichier TS de
+765 912 octets. Le relevé Android 35 nomme ce champ `types=`. Le parseur
+accepte désormais ce nom ou `foregroundServiceType=`, sur l'unique ligne
+foreground du service identifié, avec un seul champ de type. Seul le type
+dataSync exact reste accepté ; mediaPlayback, types combinés, champs
+absents/ambigus et notification différente restent refusés. La croissance
+en arrière-plan, l'arrêt par notification et la relecture ne sont pas
+encore démontrés par cet essai.
+
 ## Média contrôlé
 
 Seule la fixture H.264/AAC versionnée
@@ -173,7 +184,7 @@ modifiée, chemins ZIP dangereux, mauvais type FGS, éléments hors écran ou
 d'une autre application, croissance absente, arrêt incomplet et vidéo tronquée.
 Ils ne constituent aucune preuve d'exécution réelle du scénario Android.
 
-Validation locale du 14 novembre 2026 : les dix-neuf tests passent. L'archive
+Validation locale du 14 novembre 2026 : les vingt tests passent. L'archive
 originale 0.1.7 et son AAB ont passé leurs empreintes et la validation de provenance.
 Un client HTTP réel a reçu 357 200 octets de mire ; FFprobe a reconnu H.264,
 AAC, 160 × 90 et 9,101333 secondes. FFmpeg a décodé strictement les 8,101333
@@ -241,8 +252,9 @@ Les tests de workflow supplémentaires refusent l'élargissement d'une ancienne
 garde à l'intention REC, toute dépendance au build, toute suppression des
 contrôles d'acteur/SHA/branche, un secret de signature, un droit d'écriture,
 une recompilation et la promotion de diagnostics en preuve.
-Les 26 tests de workflow et les 19 tests du banc passent ensemble, soit
-45 tests ciblés. La comparaison des objets YAML confirme que les trois
+Les 28 tests de workflow et les 20 tests du banc passent ensemble, soit
+48 tests ciblés, après intégration du diagnostic réseau séparé à la tête
+`02ea2633f8e9de66fb6ab7d74d9f8cc4a63fbd4b`. La comparaison des objets YAML confirme que les trois
 anciens jobs et les permissions globales sont identiques à la base
 `6b66f0a8302b0cb34c540bb671a4d6d7fae190c6`.
 

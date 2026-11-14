@@ -292,9 +292,13 @@ def foreground_service(text: str) -> dict:
     require(len(active) <= 1, "Plusieurs services d'enregistrement actifs inattendus")
     if not active:
         return {"foreground": False, "type": None}
-    match = re.search(r"\bforegroundServiceType=(0x[0-9a-fA-F]+|[0-9]+|dataSync)\b", active[0])
-    require(match is not None, "Type FGS absent du relevé Android")
-    value = match[1]
+    # Android 35 observé dans REC5 écrit « types= » sur la ligne foreground.
+    # Lire un seul type de ce service, jamais un champ d'une autre ligne.
+    foreground_lines = [line for line in active[0].splitlines() if re.search(r"\bisForeground=true\b", line)]
+    require(len(foreground_lines) == 1, "Ligne foreground absente ou ambiguë")
+    values = re.findall(r"\b(?:foregroundServiceType|types)=(0x[0-9a-fA-F]+|[0-9]+|dataSync)\b", foreground_lines[0])
+    require(len(values) == 1, "Type FGS absent ou ambigu dans le relevé Android")
+    value = values[0]
     kind = 1 if value == "dataSync" else int(value, 16 if value.startswith("0x") else 10)
     require(kind == 1, "Le service observé n'est pas exclusivement dataSync")
     require(re.search(r"\bforegroundId=1001\b", active[0]) is not None, "Notification FGS inattendue")

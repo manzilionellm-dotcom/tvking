@@ -128,6 +128,24 @@ class DataSyncEvidenceTest(unittest.TestCase):
             with self.subTest(xml=bad), self.assertRaises(ValueError):
                 evidence.target_bounds(bad, "REC")
 
+    def test_android35_observed_types_field_keeps_exact_datasync_identity(self):
+        # Extrait réel REC5, failure-services.txt, artefact 14117811234.
+        raw = ("ACTIVITY MANAGER SERVICES (dumpsys activity services)\n"
+               "  * ServiceRecord{ef52dbd u0 com.sevenmotion.novatube/.RecordingForegroundService c:com.sevenmotion.novatube}\n"
+               "    isForeground=true foregroundId=1001 types=0x00000001 "
+               "foregroundNoti=Notification(channel=recording_channel flags=FOREGROUND_SERVICE actions=1)\n")
+        self.assertEqual(evidence.foreground_service(raw), {"foreground": True, "type": 1})
+        for bad in (raw.replace('types=0x00000001', 'types=0x00000002'),
+                    raw.replace('types=0x00000001', 'types=0x00000003'),
+                    raw.replace('types=0x00000001', ''),
+                    raw.replace('types=0x00000001', '') + '    other types=0x00000001\n',
+                    raw.replace('types=0x00000001', 'types=0x00000001 foregroundServiceType=0x00000001'),
+                    raw.replace('foregroundId=1001', 'foregroundId=1002')):
+            with self.subTest(raw=bad), self.assertRaises(ValueError):
+                evidence.foreground_service(bad)
+        self.assertEqual(evidence.foreground_service(raw.replace(evidence.PACKAGE, 'other.app')),
+                         {"foreground": False, "type": None})
+
     def test_observed_m3u_form_exposes_an_unlabelled_editor(self):
         # Extrait des nœuds réels de phone-unqualified-ui.xml,
         # artefact 14116006161 du run 43599127964. Le libellé flottant
