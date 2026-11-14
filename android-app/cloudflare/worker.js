@@ -1287,7 +1287,7 @@ const PRIVACY_HTML = `<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>The Few — Politique de confidentialité</title>
+<title>ZUNO / 7 MOTION — Politique de confidentialité</title>
 <style>
   body{background:#0A0A0C;color:#EDEAE3;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;line-height:1.6;margin:0;padding:32px}
   .wrap{max-width:780px;margin:0 auto}
@@ -1300,10 +1300,10 @@ const PRIVACY_HTML = `<!doctype html>
 </style>
 </head>
 <body><div class="wrap">
-  <h1>Politique de confidentialité — The Few</h1>
+  <h1>Politique de confidentialité — ZUNO / 7 MOTION</h1>
   <p class="muted">Éditeur : 7 MOTION · Dernière mise à jour : 2026.</p>
 
-  <p>The Few (« l'application ») est un lecteur multimédia pour téléphones,
+  <p>ZUNO / 7 MOTION (« l'application ») est un lecteur multimédia pour téléphones,
   téléviseurs et box (Android, Android TV, Fire TV, Google TV). L'application ne fournit, n'héberge ni
   ne revend aucun contenu : l'utilisateur charge sa propre source (liste M3U ou
   identifiants Xtream). Cette politique explique les données traitées et leur
@@ -1352,7 +1352,7 @@ const PRIVACY_HTML = `<!doctype html>
   <p>Pour toute question relative à cette politique ou à vos données :
   <a href="mailto:contact@7themotion.com">contact@7themotion.com</a>.</p>
 
-  <p class="muted">En utilisant The Few, vous acceptez la présente politique.
+  <p class="muted">En utilisant ZUNO / 7 MOTION, vous acceptez la présente politique.
   Vous devez disposer des droits nécessaires pour le contenu que vous lisez via
   vos propres sources.</p>
 </div></body>
