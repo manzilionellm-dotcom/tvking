@@ -1,8 +1,9 @@
 // =========================================================
 //  NOVATUBE 4K — liaison explicite appareil / licence Atlas
 // =========================================================
-//  L'enrôlement crée une fiche visible dans le panel, jamais un essai ni
-//  une activation. L'accès dépend uniquement de la licence de cette app.
+//  Le premier enrôlement d'un nouvel appareil ouvre un essai de dix jours.
+//  Les licences déjà présentes restent intactes ; l'accès dépend toujours
+//  de la licence propre à cette app et des blocages administratifs.
 //  La MAC d'origine reste un alias ; Atlas conserve son format MK habituel.
 //  La clé aléatoire de l'installation est envoyée sous HTTPS et seul son
 //  SHA-256 est conservé en D1. Une autre clé ne peut pas réclamer la fiche.
@@ -11,6 +12,10 @@ import {
   PANEL_BODY_LIMITS, handleNovatube4kPanel, readNovatubePanelSignals,
 } from './novatube4k-panel.js';
 import { offerNovatubeRecovery } from './novatube4k-recovery.js';
+import {
+  ensureNovatubeTrialEntitlements, novatubeTrialEnrollmentStatements, novatubeTrialMetadata,
+} from './novatube4k-trial-entitlement.js';
+import { novatubeCommerceMetadata, createNovatubeCheckout } from './novatube4k-commerce.js';
 
 export const NOVATUBE4K_APP_ID = 'app_novatube4k';
 export const NOVATUBE4K_PACKAGE = 'com.manthefew';
@@ -100,6 +105,7 @@ async function ensureSchema(env) {
       if (!/duplicate column name:\s*last_served_rev\b/i.test(String(e?.message || ''))) throw e;
     }
   }
+  await ensureNovatubeTrialEntitlements(env);
   schemaReady.add(env.DB);
 }
 
@@ -167,11 +173,7 @@ async function register(env, raw, keyHash, input) {
       env.DB.prepare(`INSERT INTO devices
         (id, customer_id, mac, label, first_seen_at, last_seen_at)
         VALUES (?, ?, ?, ?, ?, ?)`).bind(deviceId, customerId, mac, label, now, now),
-      env.DB.prepare(`INSERT INTO licenses
-        (id, customer_id, device_id, app_id, status, plan, started_at,
-         expires_at, auto_renew, created_at, updated_at)
-        VALUES (?, ?, ?, ?, 'inactive', 'custom', ?, 0, 0, ?, ?)`)
-        .bind(licenseId, customerId, deviceId, NOVATUBE4K_APP_ID, now, now, now),
+      ...novatubeTrialEnrollmentStatements(env, { raw, mac, deviceId, customerId, licenseId, now }),
       env.DB.prepare(`INSERT INTO novatube4k_devices
         (raw_mac, mac, device_id, device_key_hash, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?)`).bind(raw, mac, deviceId, keyHash, now, now),
@@ -195,7 +197,7 @@ async function register(env, raw, keyHash, input) {
 async function accessFor(env, binding, now) {
   const row = await env.DB.prepare(`SELECT
       d.block_status, a.is_active AS app_active,
-      l.status AS license_status, l.plan, l.expires_at
+      l.status AS license_status, l.plan, l.started_at, l.expires_at
     FROM devices d
     JOIN apps a ON a.id = ?
     LEFT JOIN licenses l ON l.device_id = d.id AND l.app_id = a.id
@@ -209,7 +211,10 @@ async function accessFor(env, binding, now) {
   else if (row.app_active !== 1) status = 'disabled';
   else if (row.license_status === 'active') {
     const expiry = row.expires_at === null ? null : Number(row.expires_at);
-    status = expiry === null || (Number.isFinite(expiry) && expiry > now) ? 'active' : 'expired';
+    // Un essai ne peut jamais devenir illimité par une échéance manquante.
+    // Les licences payées lifetime existantes conservent leur expires_at NULL.
+    status = expiry === null && /^trial(?:\d+)?$/.test(row.plan || '') ? 'inactive'
+      : expiry === null || (Number.isFinite(expiry) && expiry > now) ? 'active' : 'expired';
   } else if (row.license_status === 'expired') status = 'expired';
 
   return { row, status };
@@ -306,6 +311,8 @@ async function state(env, binding, deps, created, request) {
     registered: true,
     created: !!created,
     active: status === 'active',
+    playback_allowed: status === 'active',
+    access_kind: status === 'active' ? (/^trial(?:\d+)?$/.test(row.plan || '') ? 'trial' : 'paid') : 'none',
     status,
     plan: row.plan || null,
     expires_at: row.expires_at == null ? null : Number(row.expires_at),
@@ -313,6 +320,8 @@ async function state(env, binding, deps, created, request) {
     sources: [],
     sources_ok: false,
     source_rev: null,
+    trial: await novatubeTrialMetadata(env, binding, access, now),
+    commerce: novatubeCommerceMetadata(env),
   };
   // Compatibilité 334.2.1 : champs additifs, sans changer la preuve de licence.
   // Une demande de journal et un reset doivent être vus aussi sur l'écran bloqué.
@@ -415,7 +424,7 @@ export async function handleNovatube4k(request, env, deps = {}) {
   if (!path.startsWith(PREFIX)) return null;
   const action = path.slice(PREFIX.length);
   const panelAction = Object.hasOwn(PANEL_BODY_LIMITS, action);
-  if (!['register', 'state', 'ack'].includes(action) && !panelAction) return error('not_found', 404);
+  if (!['register', 'state', 'ack', 'checkout'].includes(action) && !panelAction) return error('not_found', 404);
   if (request.method !== 'POST') return error('method_not_allowed', 405);
   if (!env?.DB) return error('storage_unavailable', 503);
 
@@ -435,8 +444,8 @@ export async function handleNovatube4k(request, env, deps = {}) {
 
   try {
     if (typeof deps.rateLimitOk !== 'function') return error('rate_limit_unavailable', 503);
-    const bucket = panelAction ? 'novatube4k-' + action : 'novatube4k';
-    const limit = action === 'orders-ack' ? 600 : action === 'blackbox' ? 60 : 240;
+    const bucket = panelAction || action === 'checkout' ? 'novatube4k-' + action : 'novatube4k';
+    const limit = action === 'orders-ack' ? 600 : action === 'blackbox' ? 60 : action === 'checkout' ? 10 : 240;
     if (!await deps.rateLimitOk(env, request, bucket, limit, 60_000)) return error('rate_limited', 429);
     await ensureSchema(env);
     const keyHash = await sha256(deviceKey);
@@ -447,6 +456,11 @@ export async function handleNovatube4k(request, env, deps = {}) {
     }
     const binding = await bindingForRaw(env, raw);
     if (!binding || !sameHash(binding.device_key_hash, keyHash)) return error('device_auth_required', 401);
+    if (action === 'checkout') {
+      const access = await accessFor(env, binding, Date.now());
+      if (!access) return identityError('device_registration_missing', binding.mac);
+      return await createNovatubeCheckout(env, binding, input, { ...deps, access });
+    }
     if (panelAction) {
       const access = await accessFor(env, binding, Date.now());
       if (!access) return identityError('device_registration_missing', binding.mac);

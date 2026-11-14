@@ -70,8 +70,10 @@ try {
     try { await db.prepare('ALTER TABLE resellers ADD COLUMN parent_reseller_id TEXT').run(); } catch {}
     assert.ok(await mf.getDurableObjectNamespace('RT_HUB'));
   });
-  const mac = await step('inscription inactive et refus de la nouvelle clé', async () => {
-    const r = await device('register'); status(r, 200); assert.equal(r.data.active, false);
+  const mac = await step('inscription essai dix jours et refus de la nouvelle clé', async () => {
+    const r = await device('register'); status(r, 200); assert.equal(r.data.active, true);
+    assert.equal(r.data.plan, 'trial10');
+    assert.equal(r.data.expires_at - r.data.trial.started_at, 10 * 86400000);
     status(await device('state', NEXT), 401);
     return r.data.mac;
   });

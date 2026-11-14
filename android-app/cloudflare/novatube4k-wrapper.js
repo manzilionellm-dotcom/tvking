@@ -10,6 +10,7 @@ import { handleNovatube4kTransfer } from './novatube4k-transfer.js';
 import { handleNovatube4kTrialExtend } from './novatube4k-trial.js';
 import { handleNovatubeRecoveryAdmin } from './novatube4k-recovery.js';
 import { handlePanelAlertsApi } from './panel-alerts-api.js';
+import { handleNovatubeStripeWebhook, handleNovatubePaymentReturn } from './novatube4k-commerce.js';
 
 function unavailable() {
   return Response.json({ error: 'novatube4k_unavailable' }, {
@@ -88,6 +89,20 @@ export function createNovatube4kEntry(legacy, original, hooks = {}) {
     ...legacy,
     async fetch(request, env, ctx) {
       const url = new URL(request.url);
+      // Ces retours sont purement informatifs. Aucune URL ouverte par le
+      // navigateur ne peut accorder une licence ou valider un paiement.
+      const paymentReturn = handleNovatubePaymentReturn(request);
+      if (paymentReturn) return paymentReturn;
+      try {
+        // Stripe utilise sa signature serveur propre, jamais une clé de box.
+        // Le module ne traite que son chemin exact et reste fermé sans secrets.
+        const payment = await handleNovatubeStripeWebhook(request, env, hooks);
+        if (payment) return payment;
+      } catch {
+        return Response.json({ ok: false, error: 'payment_unavailable',
+          message: 'Le paiement sera vérifié de nouveau.' },
+        { status: 503, headers: { 'Cache-Control': 'no-store, private' } });
+      }
       const ownerAlerts = await handlePanelAlertsApi(request, env, ctx, original, hooks);
       if (ownerAlerts) return ownerAlerts;
       try {

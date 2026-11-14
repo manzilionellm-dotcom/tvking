@@ -79,10 +79,39 @@ try{
     const p=await api('GET',prefix+'/preferences',{token:login.data.token});status(p,200);assert.equal(p.data.enabled,false);assert.equal(p.data.public_key,publicKey);
     return login.data.token;
   });
-  const mac=await step('trigger premier enrôlement, jamais activation de licence inactive',async()=>{
-    const first=await device('register');status(first,200);assert.equal(first.data.active,false);status(await device('register'),200);
-    const rows=(await DB.prepare('SELECT type,mac FROM panel_alert_events').all()).results;
-    assert.deepEqual(rows,[{type:'new_device',mac:first.data.mac}]);return first.data.mac;
+  const mac=await step('nouvel essai : deux alertes distinctes dédupliquées, aucune annonce de paiement',async()=>{
+    const first=await device('register');status(first,200);assert.equal(first.data.active,true);
+    assert.equal(first.data.plan,'trial10');assert.equal(first.data.expires_at-first.data.trial.started_at,10*86400000);
+    const rows=(await DB.prepare('SELECT * FROM panel_alert_events ORDER BY seq').all()).results;
+    assert.deepEqual(rows.map(row=>({type:row.type,mac:row.mac})),[
+      {type:'new_device',mac:first.data.mac},{type:'activation',mac:first.data.mac},
+    ]);
+    assert.equal(new Set(rows.map(row=>row.event_id)).size,2);
+    assert.equal(new Set(rows.map(row=>row.dedupe_key)).size,2);
+    assert.equal(rows[1].title,'Licence activée');
+    assert.doesNotMatch(rows.map(row=>row.title+' '+row.message).join('\n'),/paiement|payé|facturé|payment|paid|EUR|€/i);
+    status(await device('register'),200);status(await device('state'),200);
+    assert.deepEqual((await DB.prepare('SELECT * FROM panel_alert_events ORDER BY seq').all()).results,rows);
+    assert.equal((await DB.prepare('SELECT COUNT(*) n FROM credit_ledger').first()).n,0);
+    assert.equal((await DB.prepare('SELECT COUNT(*) n FROM payments').first()).n,0);
+    return first.data.mac;
+  });
+  await step('échec après insertion des deux alertes : rollback de l’enrôlement et de l’essai',async()=>{
+    const before=(await DB.prepare('SELECT * FROM panel_alert_events ORDER BY seq').all()).results;
+    const devices=(await DB.prepare('SELECT COUNT(*) n FROM devices').first()).n;
+    const licenses=(await DB.prepare('SELECT COUNT(*) n FROM licenses').first()).n;
+    // Le dernier INSERT du lot d'enrôlement survient après les triggers device
+    // et licence : un abort ici doit retirer aussi leurs deux événements.
+    await DB.prepare(`CREATE TRIGGER fixture_trial_registration_failure AFTER INSERT ON novatube4k_devices
+      WHEN NEW.raw_mac='AABBCCDDEEF0' BEGIN SELECT RAISE(ABORT,'fixture_registration_failure'); END`).run();
+    try{status(await device('register',{raw_mac:'AABBCCDDEEF0'}),503);}
+    finally{await DB.prepare('DROP TRIGGER fixture_trial_registration_failure').run();}
+    assert.deepEqual((await DB.prepare('SELECT * FROM panel_alert_events ORDER BY seq').all()).results,before);
+    assert.equal((await DB.prepare('SELECT COUNT(*) n FROM devices').first()).n,devices);
+    assert.equal((await DB.prepare('SELECT COUNT(*) n FROM licenses').first()).n,licenses);
+    assert.equal((await DB.prepare("SELECT COUNT(*) n FROM novatube4k_trial_entitlements WHERE raw_mac='AABBCCDDEEF0'").first()).n,0);
+    assert.equal((await DB.prepare('SELECT COUNT(*) n FROM credit_ledger').first()).n,0);
+    assert.equal((await DB.prepare('SELECT COUNT(*) n FROM payments').first()).n,0);
   });
   const reseller=await step('compte revendeur de fixture avec crédit et authentification réelle',async()=>{
     const email='fixture@example.test',password='Fixture9Aa!'+randomBytes(12).toString('hex');
@@ -96,7 +125,7 @@ try{
     const first=await api('POST','/api/v1/activate',{token:reseller.token,body,headers});status(first,201);
     const replay=await api('POST','/api/v1/activate',{token:reseller.token,body,headers});status(replay,201);
     assert.equal((await DB.prepare('SELECT credit_balance FROM resellers WHERE id=?').bind(reseller.id).first()).credit_balance,before.credit_balance-first.data.credits_charged);
-    assert.equal((await DB.prepare("SELECT COUNT(*) n FROM panel_alert_events WHERE type='activation'").first()).n,1);
+    assert.equal((await DB.prepare("SELECT COUNT(*) n FROM panel_alert_events WHERE type='activation'").first()).n,2);
     assert.equal((await DB.prepare("SELECT COUNT(*) n FROM credit_ledger WHERE reseller_id=? AND delta<0").bind(reseller.id).first()).n,1);
     const marker=await DB.prepare('SELECT committed_at FROM idempotency_keys WHERE k LIKE ?').bind('%fixture-push-activation-001').first();assert.ok(marker.committed_at);
   });
@@ -104,7 +133,7 @@ try{
     status(await api('POST','/api/v1/activate',{token,body:{mac,plan:'yearly'}}),201);
     const licence=await DB.prepare('SELECT id FROM licenses WHERE app_id=? AND device_id=(SELECT id FROM devices WHERE mac=?)').bind('app_novatube4k',mac).first();
     status(await api('POST','/api/v1/licenses/'+licence.id+'/renew',{token,body:{plan:'yearly'}}),200);
-    assert.equal((await DB.prepare("SELECT COUNT(*) n FROM panel_alert_events WHERE type='activation'").first()).n,3);
+    assert.equal((await DB.prepare("SELECT COUNT(*) n FROM panel_alert_events WHERE type='activation'").first()).n,4);
   });
   await step('rollback D1 annule aussi une alerte, sans modifier durée ou crédits',async()=>{
     const before=await DB.prepare('SELECT id,expires_at FROM licenses WHERE device_id=(SELECT id FROM devices WHERE mac=?)').bind(mac).first();
