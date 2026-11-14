@@ -3,8 +3,8 @@
 ## Statut et portée
 
 Ce dossier prépare un job de preuves séparé, dans le workflow NOVATUBE déjà
-enregistré. Il n'a pas été poussé ni
-exécuté sur Android. Aucun MP4 de l'interface n'est encore produit ou qualifié.
+enregistré. Deux essais Android ont atteint le formulaire M3U, puis le
+lecteur avec la mire réelle. Aucun MP4 de l'interface n'est encore qualifié.
 Le scénario est destiné à une revue humaine avant toute utilisation dans
 Google Play Console ; une réussite machine ne vaut pas approbation de Google.
 
@@ -83,6 +83,15 @@ effectivement observés. Une surface vidéo non accessible, un libellé absent,
 une notification ambiguë ou un fichier inaccessible entraîne un échec. Le
 script n'invente pas de sélecteur réussi ni d'image à la place d'un échec.
 
+Le run `43599920601` expose la vidéo via un `FrameLayout` NOVATUBE et une
+unique `View` feuille ayant les mêmes bounds, non interactifs et sans libellé.
+La capture et le XML montrent ce conteneur autour de la mire réelle. Le banc
+reconnaît strictement cette structure et son aspect 16:9, puis lit ses bounds
+à chaque observation ; il ne prétend pas que `SurfaceView` est accessible
+sous son nom. Les vues Flutter globales, les conteneurs plein écran et les
+candidats ambigus restent refusés. Le contrôle de mouvement et tous les
+contrôles FGS, fichier, arrêt, relecture et vidéo restent obligatoires.
+
 ## Média contrôlé
 
 Seule la fixture H.264/AAC versionnée
@@ -128,7 +137,7 @@ modifiée, chemins ZIP dangereux, mauvais type FGS, éléments hors écran ou
 d'une autre application, croissance absente, arrêt incomplet et vidéo tronquée.
 Ils ne constituent aucune preuve d'exécution réelle du scénario Android.
 
-Validation locale du 14 novembre 2026 : les onze tests passent. L'archive
+Validation locale du 14 novembre 2026 : les treize tests passent. L'archive
 originale 0.1.7 et son AAB ont passé leurs empreintes et la validation de provenance.
 Un client HTTP réel a reçu 357 200 octets de mire ; FFprobe a reconnu H.264,
 AAC, 160 × 90 et 9,101333 secondes. FFmpeg a décodé strictement les 8,101333
@@ -136,8 +145,8 @@ secondes utiles. La fixture n'a pas changé et aucun processus de diffusion
 n'est resté actif après l'arrêt du serveur. Ce test de composants n'a pas
 ouvert NOVATUBE ni produit une vidéo de son interface.
 
-Restent à observer sur Android : la surface vidéo exposée à UIAutomator,
-le conteneur `expandableNotificationRow`, les libellés du parcours et l'accès
+Restent à observer sur Android : le conteneur vidéo pendant la relecture,
+le conteneur `expandableNotificationRow`, les libellés après REC et l'accès
 ADB au fichier externe de l'app et le maintien du portrait. Les chemins
 `TvPlayerScreen` et `TvRecordingPlayerScreen` n'imposent pas le paysage ; le
 banc refuse néanmoins toute dimension différente de 1080 × 1920. Si une de
@@ -196,8 +205,8 @@ Les tests de workflow supplémentaires refusent l'élargissement d'une ancienne
 garde à l'intention REC, toute dépendance au build, toute suppression des
 contrôles d'acteur/SHA/branche, un secret de signature, un droit d'écriture,
 une recompilation et la promotion de diagnostics en preuve.
-Les 26 tests de workflow et les 11 tests du banc passent ensemble, soit
-37 tests ciblés. La comparaison des objets YAML confirme que les trois
+Les 26 tests de workflow et les 13 tests du banc passent ensemble, soit
+39 tests ciblés. La comparaison des objets YAML confirme que les trois
 anciens jobs et les permissions globales sont identiques à la base
 `6b66f0a8302b0cb34c540bb671a4d6d7fae190c6`.
 

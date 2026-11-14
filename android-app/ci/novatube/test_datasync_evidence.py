@@ -178,6 +178,27 @@ class DataSyncEvidenceTest(unittest.TestCase):
         self.assertEqual(evidence.video_surfaces(xml.replace("android.view.SurfaceView", "io.flutter.embedding.android.FlutterSurfaceView")), [])
         self.assertEqual(evidence.video_surfaces(xml.replace(evidence.PACKAGE, "com.other.app")), [])
 
+    def test_observed_native_video_container_is_specific_and_unambiguous(self):
+        # Nœuds du vrai 09-live-player.xml, run 43599920601/artifact14116232276.
+        # Le PNG montre la mire dans ces bounds ; aucune SurfaceView nommée
+        # n'existe dans le XML. Ces nombres sont une donnée de test seulement.
+        common = 'package="com.sevenmotion.novatube" text="" content-desc="" enabled="true" clickable="false" scrollable="false" long-clickable="false" bounds="[0,656][1079,1263]"'
+        container = '<node class="android.widget.FrameLayout" ' + common + '><node class="android.view.View" ' + common + '/></node>'
+        xml = '<hierarchy>' + container + '</hierarchy>'
+        self.assertEqual(evidence.video_surfaces(xml), [(0, 656, 1079, 1263)])
+        for bad in (xml.replace(evidence.PACKAGE, "com.other.app"),
+                    xml.replace('content-desc=""', 'content-desc="Other widget"'),
+                    xml.replace('clickable="false"', 'clickable="true"'),
+                    xml.replace('scrollable="false"', 'scrollable="true"'),
+                    xml.replace('[0,656][1079,1263]', '[0,0][1080,1920]'),
+                    xml.replace('[0,656][1079,1263]', '[0,0][1000,750]'),
+                    xml.replace('[0,656][1079,1263]', '[0,0][320,180]'),
+                    xml.replace('[0,656][1079,1263]', '[0,656][1078,1263]', 1)):
+            with self.subTest(xml=bad):
+                self.assertEqual(evidence.video_surfaces(bad), [])
+        with self.assertRaises(ValueError):
+            evidence.video_surfaces('<hierarchy>' + container + container + '</hierarchy>')
+
     def test_a_bounded_ts_tail_does_not_allow_truncated_screen_video(self):
         original = self.observations()
         for key, update in (("recordingProbe", {"decodedSeconds": 5}),

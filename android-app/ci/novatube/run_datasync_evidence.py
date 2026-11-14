@@ -222,12 +222,34 @@ def recording_notification(xml: str) -> str:
 
 
 def video_surfaces(xml: str) -> list:
-    # Le lecteur natif crée SurfaceView(context). Ne pas confondre ce
-    # composant avec la FlutterSurfaceView globale ou une vue homonyme.
-    return [bounds(node) for node in ET.fromstring(xml).iter("node")
-            if node.get("package") == PACKAGE
-            and node.get("class") in ("android.view.SurfaceView", "android.view.TextureView")
-            and bounds(node)]
+    # Rectangles exposés par Android, jamais coordonnées prédéfinies.
+    root = ET.fromstring(xml)
+    native = [bounds(node) for node in root.iter("node") if node.get("package") == PACKAGE
+              and node.get("class") in ("android.view.SurfaceView", "android.view.TextureView") and bounds(node)]
+    if native:
+        return native
+    # Run 43599920601 : la mire réelle est dans un FrameLayout contenant
+    # une seule View feuille aux mêmes bounds. SurfaceView n'est pas exposée
+    # sous son nom. Le lecteur source enveloppe NativeVideoView dans 16:9.
+    # Exclure les vues Flutter globales, plein écran, interactives ou nommées.
+    containers = []
+    for node in root.iter("node"):
+        children = list(node)
+        if node.get("class") != "android.widget.FrameLayout" or len(children) != 1:
+            continue
+        child, rectangle = children[0], bounds(node)
+        if (child.get("class") != "android.view.View" or list(child) or rectangle is None
+                or bounds(child) != rectangle):
+            continue
+        if any(part.get("package") != PACKAGE or part.get("enabled") != "true" or labels(part)
+               or any(part.get(flag) != "false" for flag in ("clickable", "scrollable", "long-clickable"))
+               for part in (node, child)):
+            continue
+        width, height = rectangle[2] - rectangle[0], rectangle[3] - rectangle[1]
+        if width >= 1080 // 2 and abs(width * 9 - height * 16) <= 16:
+            containers.append(rectangle)
+    require(len(containers) <= 1, "Plusieurs conteneurs vidéo observés : sélection ambiguë")
+    return containers
 
 
 def foreground_service(text: str) -> dict:
@@ -473,7 +495,7 @@ class Scenario:
     def motion(self, name: str) -> bool:
         xml = self.observe(name + "-player")
         rectangles = video_surfaces(xml)
-        require(bool(rectangles), "Surface vidéo réelle absente de la hiérarchie ; aucune zone inventée")
+        require(bool(rectangles), "Vue ou conteneur vidéo absent de la hiérarchie ; aucune zone inventée")
         left, top, right, bottom = max(rectangles, key=lambda value: (value[2] - value[0]) * (value[3] - value[1]))
         # Utiliser le centre de la surface observée évite l'horloge et les
         # commandes de la barre : leur animation ne prouve pas la lecture.
@@ -495,7 +517,7 @@ class Scenario:
         differences = [sum(abs(a - b) for a, b in zip(first, second)) / len(first)
                        for first, second in zip(samples, samples[1:])]
         require(min(differences) > 1.0, "Image vidéo sans mouvement observable")
-        self.event("motion", phase=name, observedSurface=[left, top, right, bottom], meanPixelDifferences=differences)
+        self.event("motion", phase=name, observedVideoBounds=[left, top, right, bottom], meanPixelDifferences=differences)
         return True
 
     def prepare_live(self):
@@ -648,8 +670,8 @@ def execute_scenario(device, helpers, translations, fixture: Path, stage: Path) 
                 xml = device.hierarchy()
                 if normalized(flow.translated("tvRec")) not in observed_labels(xml):
                     surfaces = video_surfaces(xml)
-                    require(len(surfaces) == 1, "Commandes masquées sans surface non ambiguë")
-                    flow.tap_rectangle(surfaces[0], "surface vidéo observée")
+                    require(len(surfaces) == 1, "Commandes masquées sans zone vidéo non ambiguë")
+                    flow.tap_rectangle(surfaces[0], "vue ou conteneur vidéo observé")
                 flow.wait_labels([flow.translated("tvRec")])
                 flow.tap(flow.translated("tvRec"))
                 observations["userRecTap"] = True
