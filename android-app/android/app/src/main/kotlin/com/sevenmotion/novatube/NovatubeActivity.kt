@@ -105,6 +105,7 @@ class NovatubeActivity : FlutterFragmentActivity() {
             recordingService = RecordingServiceBridge(
                 messenger = messenger,
                 context = applicationContext,
+                engine = flutterEngine,
             )
             Log.i(TAG, "  ✓ RecordingService channel wired")
         } catch (e: Throwable) {

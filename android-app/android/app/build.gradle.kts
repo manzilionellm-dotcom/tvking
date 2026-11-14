@@ -16,10 +16,6 @@ val novatubeStore = file(novatubeSecret("NOVATUBE_KEYSTORE_PATH"))
 require(novatubeStore.isFile) { "Keystore dédié NOVATUBE introuvable" }
 val novatubeAlias = novatubeSecret("NOVATUBE_UPLOAD_KEY_ALIAS")
 require(novatubeAlias == "novatube-upload") { "Alias de signature NOVATUBE inattendu" }
-require(flutter.versionName == "0.1.5" && flutter.versionCode == 5) {
-    "Cette branche prépare exclusivement NOVATUBE 0.1.5 (5)"
-}
-
 // Le mode Cast de test n'a aucune place dans un bundle Play de NOVATUBE.
 val novatubeDefines = (project.findProperty("dart-defines") as? String)
     .orEmpty().split(',').filter { it.isNotBlank() }
@@ -27,11 +23,18 @@ val novatubeDefines = (project.findProperty("dart-defines") as? String)
 require(novatubeDefines.none { it.startsWith("ZUNO_CAST_TEST=") }) {
     "Le drapeau ZUNO_CAST_TEST est interdit pour NOVATUBE"
 }
+val novatubePrivateApk = novatubeDefines.contains("NOVATUBE_PRIVATE_APK=true")
+val novatubeExpectedName = if (novatubePrivateApk) "0.1.5" else "0.1.6"
+val novatubeExpectedCode = if (novatubePrivateApk) 5 else 6
+require(flutter.versionName == novatubeExpectedName && flutter.versionCode == novatubeExpectedCode) {
+    "Version NOVATUBE inattendue pour cette distribution"
+}
 
 extensions.configure<ApplicationExtension> {
     namespace = "com.sevenmotion.novatube"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
+    buildFeatures { buildConfig = true }
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -45,6 +48,9 @@ extensions.configure<ApplicationExtension> {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        // Constante native fermée à la compilation : les adaptations FGS
+        // de Google Play ne modifient jamais le comportement de l'APK privé.
+        buildConfigField("boolean", "NOVATUBE_PLAY", "false")
         // Les tests d'export tournent contre le véritable APK release signé.
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -64,7 +70,17 @@ extensions.configure<ApplicationExtension> {
     buildTypes {
         getByName("release") {
             signingConfig = signingConfigs.getByName("novatubeUpload")
+            buildConfigField("boolean", "NOVATUBE_PLAY", (!novatubePrivateApk).toString())
         }
+    }
+
+    // Surcouche réservée au bundle Play NOVATUBE : le manifeste principal
+    // et les modèles ZUNO/TV restent inchangés. L'APK privé conserve aussi
+    // son manifeste actuel ; sa commande transmet explicitement ce define.
+    if (!novatubePrivateApk) {
+        sourceSets.getByName("release").manifest.srcFile(
+            "src/novatubePlay/AndroidManifest.xml"
+        )
     }
 
     // Même pont Cast et même coexistence libc++ que la source mobile validée.

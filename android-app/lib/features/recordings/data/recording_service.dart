@@ -20,11 +20,36 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 class RecordingService {
-  RecordingService._();
+  RecordingService._() {
+    _channel.setMethodCallHandler(_onNativeCall);
+  }
   static final RecordingService instance = RecordingService._();
 
   static const MethodChannel _channel =
       MethodChannel('com.manzilionellm.tvking/recording_service');
+  final Map<String, _ForegroundRecordingSession> _sessions =
+      <String, _ForegroundRecordingSession>{};
+  String? _activeSessionId;
+  int _sequence = 0;
+
+  Future<void> _onNativeCall(MethodCall call) async {
+    // Seul le pont natif NOVATUBE Play envoie cet événement. Les ponts
+    // privés/ZUNO conservent leurs commandes et ne changent pas de logique.
+    if (call.method != 'recordingStopped' || call.arguments is! Map) return;
+    final Map<dynamic, dynamic> args = call.arguments as Map<dynamic, dynamic>;
+    final Object? id = args['sessionId'];
+    final Object? reason = args['reason'];
+    if (id is! String || reason is! String) return;
+    final _ForegroundRecordingSession? session = _sessions.remove(id);
+    if (session == null || session.stopped) return;
+    session.stopped = true;
+    if (_activeSessionId == id) _activeSessionId = null;
+    try {
+      await session.onStopped?.call(reason);
+    } catch (error) {
+      if (kDebugMode) debugPrint('[RecService] finalisation après arrêt : $error');
+    }
+  }
 
   /// Démarre le ForegroundService natif avec [title] affiché dans
   /// la notification "Enregistrement en cours – $title".
@@ -41,24 +66,37 @@ class RecordingService {
     required String title,
     String? url,
     String? filePath,
+    Future<void> Function(String reason)? onStopped,
   }) async {
+    final String id = '${DateTime.now().microsecondsSinceEpoch}-${++_sequence}';
+    final _ForegroundRecordingSession session =
+        _ForegroundRecordingSession(onStopped);
+    _sessions[id] = session;
     try {
       final bool? ok = await _channel.invokeMethod<bool>(
         'start',
         <String, dynamic>{
           'title': title,
+          'sessionId': id,
           if (url != null) 'url': url,
           if (filePath != null) 'file': filePath,
         },
       );
-      return ok ?? false;
+      if (ok == true && !session.stopped) {
+        _activeSessionId = id;
+        return true;
+      }
+      _sessions.remove(id);
+      return false;
     } on PlatformException catch (e) {
       if (kDebugMode) {
         debugPrint('[RecService] start error: ${e.message}');
       }
+      _sessions.remove(id);
       return false;
     } on MissingPluginException {
       // Channel pas câblé côté natif (iOS, ou build sans overlay)
+      _sessions.remove(id);
       return false;
     }
   }
@@ -78,6 +116,9 @@ class RecordingService {
 
   /// Arrête le ForegroundService et retire la notification.
   Future<void> stop() async {
+    final String? id = _activeSessionId;
+    _activeSessionId = null;
+    if (id != null) _sessions.remove(id);
     try {
       await _channel.invokeMethod<bool>('stop');
     } on PlatformException catch (e) {
@@ -88,4 +129,10 @@ class RecordingService {
       // ignore
     }
   }
+}
+
+class _ForegroundRecordingSession {
+  _ForegroundRecordingSession(this.onStopped);
+  final Future<void> Function(String reason)? onStopped;
+  bool stopped = false;
 }

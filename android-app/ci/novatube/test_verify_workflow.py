@@ -40,7 +40,7 @@ class WorkflowIsolationTest(unittest.TestCase):
         for old, new in (("inputs.reviewed_commit == github.sha", "true"),
                          ("refs/heads/feature/novatube-play-aab", "refs/heads/main"),
                          ("github.actor == github.repository_owner", "true")):
-            for job in ("release", "publish_private"):
+            for job in ("release", "publish_private", "capture_play"):
                 with self.subTest(job=job, old=old):
                     document = self.document()
                     document["jobs"][job]["if"] = document["jobs"][job]["if"].replace(old, new)
@@ -76,6 +76,25 @@ class WorkflowIsolationTest(unittest.TestCase):
                     document = self.document()
                     self.step(document, step_id)["run"] = self.step(document, step_id)["run"].replace(old, new)
                     self.reject(document)
+
+    def test_play_and_private_versions_cannot_be_interchanged(self):
+        for step_id, old, new in (
+            ("build_play_aab", "--build-name=0.1.6 --build-number=6", "--build-name=0.1.5 --build-number=5"),
+            ("build_private_apk", "--build-name=0.1.5 --build-number=5", "--build-name=0.1.6 --build-number=6"),
+        ):
+            with self.subTest(step=step_id):
+                document = self.document()
+                step = self.step(document, step_id)
+                self.assertIn(old, step["run"])
+                step["run"] = step["run"].replace(old, new)
+                self.reject(document)
+
+    def test_play_artifact_cannot_keep_the_previous_version_label(self):
+        document = self.document()
+        self.step(document, "upload_play_aab")["with"]["name"] = (
+            "NOVATUBE-0.1.5-5-verified-${{ github.sha }}-${{ github.run_attempt }}"
+        )
+        self.reject(document)
 
     def test_private_suite_must_enable_the_private_feature(self):
         document = self.document()
@@ -175,6 +194,59 @@ class WorkflowIsolationTest(unittest.TestCase):
     def test_ambiguous_yaml_keys_are_rejected(self):
         with self.assertRaisesRegex(ValueError, "YAML"):
             verify_workflow(self.text + "\npermissions:\n  contents: write\n")
+
+    def test_capture_requires_release_success_and_play_confirmation(self):
+        for mutation in ("dependency", "success", "confirmation", "triggering_actor", "write"):
+            with self.subTest(mutation=mutation):
+                document = self.document()
+                capture = document["jobs"]["capture_play"]
+                if mutation == "dependency":
+                    capture.pop("needs")
+                elif mutation == "success":
+                    capture["if"] = capture["if"].replace("needs.release.result == 'success'", "always()")
+                elif mutation == "confirmation":
+                    capture["if"] = capture["if"].replace("COMPILER_NOVATUBE", "PUBLIER_NOVATUBE_APK_PRIVE")
+                elif mutation == "triggering_actor":
+                    capture["if"] = capture["if"].replace("github.triggering_actor == github.repository_owner", "true")
+                else:
+                    capture["permissions"]["contents"] = "write"
+                self.reject(document)
+
+    def test_capture_cannot_substitute_a_binary_rebuild_or_receive_signing_secrets(self):
+        for mutation in ("artifact", "checkout", "rebuild", "secret", "extra_step", "unpinned"):
+            with self.subTest(mutation=mutation):
+                document = self.document()
+                capture = document["jobs"]["capture_play"]
+                steps = {step["id"]: step for step in capture["steps"]}
+                if mutation == "artifact":
+                    steps["capture_aab"]["with"]["name"] = "NOVATUBE-0.1.5-5-verified-other-run"
+                elif mutation == "checkout":
+                    steps["capture_checkout"]["with"]["ref"] = "main"
+                elif mutation == "rebuild":
+                    steps["capture_screenshots"]["run"] += "\nflutter build apk --release\n"
+                elif mutation == "secret":
+                    steps["capture_screenshots"]["env"]["KEY"] = "${{ secrets.NOVATUBE_UPLOAD_KEYSTORE_BASE64 }}"
+                elif mutation == "extra_step":
+                    capture["steps"].append({"name": "Other", "run": "echo unexpected"})
+                else:
+                    steps["capture_aab"]["uses"] = "actions/download-artifact@main"
+                self.reject(document)
+
+    def test_capture_cannot_promote_diagnostics_or_publish_the_derived_apk(self):
+        for mutation in ("failed_success", "diagnostic_path", "apk_path", "ignore_failure"):
+            with self.subTest(mutation=mutation):
+                document = self.document()
+                steps = {step["id"]: step for step in document["jobs"]["capture_play"]["steps"]}
+                upload = steps["upload_play_evidence"]
+                if mutation == "failed_success":
+                    upload["if"] = "always()"
+                elif mutation == "diagnostic_path":
+                    upload["with"]["path"] = steps["upload_play_evidence_diagnostic"]["with"]["path"]
+                elif mutation == "apk_path":
+                    upload["with"]["path"] = "${{ runner.temp }}/"
+                else:
+                    steps["capture_screenshots"]["continue-on-error"] = "true"
+                self.reject(document)
 
 
 if __name__ == "__main__":

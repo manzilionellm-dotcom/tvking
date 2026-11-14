@@ -16,8 +16,9 @@ import tempfile
 import zipfile
 
 from common import (
-    APP_ROOT, BRANCH, ENTRYPOINT, LABEL, PACKAGE, REPO_ROOT, VERSION_CODE,
-    VERSION_NAME, expected_certificate, require, sha256_file,
+    APP_ROOT, BRANCH, ENTRYPOINT, LABEL, PACKAGE, REPO_ROOT,
+    PRIVATE_VERSION_CODE as VERSION_CODE, PRIVATE_VERSION_NAME as VERSION_NAME,
+    expected_certificate, require, sha256_file,
 )
 from verify_aab import flutter_test_results, native_test_results
 from recording_device_evidence import device_test_results
@@ -97,6 +98,9 @@ def evidence_results(reports: Path, source_commit: str) -> dict:
             "Vérification des sources absente ou d'une autre révision")
     require(source.get("privateApkWorkflowVerified") is True,
             "La séparation du build APK privé et du build Play n'est pas vérifiée")
+    require(source.get("buildTargets", {}).get("private-apk") == {
+        "versionName": VERSION_NAME, "versionCode": int(VERSION_CODE),
+    }, "Version privée absente ou incohérente dans la provenance des sources")
     require(re.fullmatch(r"[0-9a-f]{40}", str(source.get("sourceTree", ""))) is not None,
             "Arbre Git de la validation absent")
     toolchain = json.loads((reports / "flutter-toolchain.json").read_text(encoding="utf-8"))

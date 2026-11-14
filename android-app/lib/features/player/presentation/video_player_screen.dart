@@ -657,6 +657,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       final String url = widget.overrideUrl ?? _currentChannel.streamUrl;
 
       bool ok;
+      bool foregroundStopped = false;
       if (_liveViaRelay) {
         // ENREGISTREMENT VIA LE MINI-RELAIS (1 connexion) :
         // Le relais ouvre DÉJÀ l'unique connexion vers le serveur pour la
@@ -679,9 +680,14 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           title: title,
           url: url,
           filePath: path,
+          onStopped: (_) async {
+            foregroundStopped = true;
+            if (_activeRecording?.filePath == path) await _stopRecording();
+          },
         );
       }
-      if (!ok) {
+      if (!ok || foregroundStopped) {
+        if (foregroundStopped) await RecordingService.instance.stop();
         _toast(context.l10n.recStartFailed);
         return;
       }
@@ -699,6 +705,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       if (mounted) {
         setState(() => _activeRecording = rec);
         _toast(context.l10n.recInProgress);
+        if (foregroundStopped) await _stopRecording();
       }
     } catch (e) {
       _toast(context.l10n.startFailedWithError('$e'));

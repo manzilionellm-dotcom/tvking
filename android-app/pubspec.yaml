@@ -10,7 +10,7 @@ name: tv_king
 description: "NOVATUBE — lecteur multimédia avec import manuel M3U/Xtream et Cast."
 publish_to: 'none'
 # Identité de la nouvelle application NOVATUBE, indépendante des autres apps.
-version: 0.1.5+5
+version: 0.1.6+6
 
 environment:
   sdk: ^3.5.0

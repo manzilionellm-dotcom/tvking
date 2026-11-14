@@ -25,17 +25,17 @@ from common import (
 )
 
 
-def is_media_playback_type(value: str | None) -> bool:
-    if value == "mediaPlayback":
+def is_foreground_service_type(value: str | None, symbol: str, mask: int) -> bool:
+    if value == symbol:
         return True
     if value is None:
         return False
     # bundletool imprime les entiers hexadécimaux avec huit chiffres.
-    # Le masque doit être exactement 2, sans aucun type de service ajouté.
+    # Refuser tout type supplémentaire, même si le bit attendu est présent.
     if re.fullmatch(r"[0-9]+", value):
-        return int(value, 10) == 2
+        return int(value, 10) == mask
     if re.fullmatch(r"0[xX][0-9a-fA-F]+", value):
-        return int(value, 16) == 2
+        return int(value, 16) == mask
     return False
 
 
@@ -65,21 +65,39 @@ def manifest_identity(xml: str) -> dict:
                     for item in root.iter("category")), "Lanceur Android TV inattendu")
     require(not any("leanback" in item.get(ANDROID + "name", "")
                     for item in root.findall("uses-feature")), "Fonction TV imposée au mobile")
-    permissions = {item.get(ANDROID + "name") for item in root.findall("uses-permission")}
+    touchscreens = [item for item in root.findall("uses-feature")
+                    if item.get(ANDROID + "name") == "android.hardware.touchscreen"]
+    require(len(touchscreens) == 1 and
+            touchscreens[0].get(ANDROID + "required") in ("true", "1", "0xffffffff"),
+            "Écran tactile obligatoire absent du bundle NOVATUBE Play")
+    # Contrôler le résultat de la fusion, pas seulement notre manifeste :
+    # une dépendance peut réintroduire une permission de médias partagés.
+    permissions = {item.get(ANDROID + "name") for item in root
+                   if item.tag in ("uses-permission", "uses-permission-sdk-23")}
+    shared_media_reads = {"android.permission." + name for name in (
+        "READ_MEDIA_IMAGES", "READ_MEDIA_VIDEO", "READ_MEDIA_AUDIO",
+    )}
+    require(not permissions.intersection(shared_media_reads),
+            "Permission de lecture globale des médias interdite dans NOVATUBE Play")
     required = {"android.permission." + name for name in (
         "INTERNET", "ACCESS_NETWORK_STATE", "ACCESS_WIFI_STATE", "CHANGE_WIFI_MULTICAST_STATE",
         "FOREGROUND_SERVICE", "FOREGROUND_SERVICE_MEDIA_PLAYBACK", "POST_NOTIFICATIONS",
+        "FOREGROUND_SERVICE_DATA_SYNC",
     )}
     require(required <= permissions, "Permissions de lecture/Cast incomplètes")
     require(any(item.get(ANDROID + "name") == "com.google.android.gms.cast.framework.OPTIONS_PROVIDER_CLASS_NAME"
                 and item.get(ANDROID + "value") == PACKAGE + ".CastOptionsProviderImpl"
                 for item in app.findall("meta-data")), "Options Google Cast NOVATUBE absentes")
-    for name in ("RecordingForegroundService", "PlaybackForegroundService"):
+    service_types = {
+        "RecordingForegroundService": ("dataSync", 1),
+        "PlaybackForegroundService": ("mediaPlayback", 2),
+    }
+    for name, (symbol, mask) in service_types.items():
         matches = [item for item in app.findall("service") if item.get(ANDROID + "name") == PACKAGE + "." + name]
         require(len(matches) == 1, "Service mobile absent : " + name)
         service_type = matches[0].get(ANDROID + "foregroundServiceType")
-        require(is_media_playback_type(service_type),
-                f"Type du service de lecture incorrect : {name} = {service_type!r} (attendu : mediaPlayback / 2)")
+        require(is_foreground_service_type(service_type, symbol, mask),
+                f"Type du service incorrect : {name} = {service_type!r} (attendu : {symbol} / {mask})")
         require(matches[0].get(ANDROID + "exported", "false") in ("false", "0", "0x0"),
                 "Service de lecture exposé à une autre application")
     sdk = root.find("uses-sdk")
@@ -89,7 +107,15 @@ def manifest_identity(xml: str) -> dict:
         "versionCode": int(VERSION_CODE), "launcher": launchers[0].get(ANDROID + "name"),
         "minSdk": sdk.get(ANDROID + "minSdkVersion"), "targetSdk": sdk.get(ANDROID + "targetSdkVersion"),
         "debuggable": False, "testOnly": False, "castManifest": "verified",
+        "touchscreenRequired": True, "sharedMediaReadPermissions": "absent",
+        "recordingForegroundType": "dataSync", "playbackForegroundType": "mediaPlayback",
     }
+
+
+def verify_play_source_target(source: dict) -> None:
+    require(source.get("buildTargets", {}).get("play-aab") == {
+        "versionName": VERSION_NAME, "versionCode": int(VERSION_CODE),
+    }, "Version cible Play absente ou incohérente dans la provenance source")
 
 
 def flutter_test_results(path: Path) -> dict:
@@ -155,6 +181,7 @@ def verify(aab: Path, bundletool: Path, reports: Path, output: Path) -> dict:
     source = json.loads((reports / "source-verification.json").read_text(encoding="utf-8"))
     require(source.get("status") == "passed", "Vérification des sources manquante")
     require(source.get("sourceCommit") == os.environ.get("GITHUB_SHA"), "Les sources ne correspondent pas au run")
+    verify_play_source_target(source)
     flutter = flutter_test_results(reports / "flutter-tests.jsonl")
     native = native_test_results(reports / "native-jvm-tests.txt")
     recording_native = native_test_results(reports / "recording-native-tests.txt")

@@ -34,13 +34,18 @@ package com.sevenmotion.novatube
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.IBinder
+import android.os.Handler
+import android.os.Looper
 import android.os.PowerManager
+import android.os.ResultReceiver
 import android.util.Log
 import androidx.core.app.NotificationCompat
 
@@ -58,6 +63,23 @@ class RecordingForegroundService : Service() {
         const val EXTRA_TITLE = "title"
         const val EXTRA_URL = "url"
         const val EXTRA_FILE = "file"
+        const val EXTRA_SESSION = "sessionId"
+        const val EXTRA_START_RESULT = "startResult"
+
+        // Accès sur le thread principal seulement. Un arrêt demandé depuis
+        // Dart ne redémarre jamais un service déjà expiré en arrière-plan.
+        private var activePlayService: RecordingForegroundService? = null
+        fun stopPlayFromApp(completed: () -> Unit) {
+            val service = activePlayService
+            if (service == null) completed()
+            else service.stopPlay("appStopped", completed)
+        }
+        fun stopPlayForEngineLoss() {
+            val service = activePlayService ?: return
+            // Le relais Dart n'existe plus après destruction du moteur.
+            // Un vrai téléchargement natif, lui, peut encore finir son travail.
+            if (service.currentUrl == null) service.stopPlay("engineDestroyed")
+        }
 
         /// Octets écrits par l'enregistrement natif en cours. Lu en
         /// best-effort par Dart si besoin. 0 = inactif.
@@ -90,9 +112,33 @@ class RecordingForegroundService : Service() {
     /// les sockets HTTP du downloader sont fermées par le système.
     private var wifiLock: WifiManager.WifiLock? = null
 
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var playSession: String? = null
+    private var playCleanupFinished = false
+    private val playStopCallbacks = mutableListOf<() -> Unit>()
+    private val playStopper by lazy {
+        PlayRecordingStopper(
+            endForeground = {
+                try { stopForeground(STOP_FOREGROUND_REMOVE) }
+                finally { stopSelf() }
+            },
+            releaseLocks = { releaseLocks() },
+            cancelProducer = { closePlayProducerAsync() },
+            notifyStopped = { reason ->
+                // L'arrêt normal depuis l'écran possède déjà sa propre
+                // finalisation. Seuls les arrêts externes la déclenchent.
+                if (reason != "appStopped" && reason != "startFailed") {
+                    playSession?.let { RecordingServiceBridge.playStopped(it, reason) }
+                }
+            },
+            onFailure = { Log.e(TAG, "Nettoyage du service Play incomplet", it) },
+        )
+    }
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (BuildConfig.NOVATUBE_PLAY) return onPlayStartCommand(intent)
         when (intent?.action) {
             ACTION_START -> {
                 val title = intent.getStringExtra(EXTRA_TITLE) ?: "NOVATUBE"
@@ -138,6 +184,96 @@ class RecordingForegroundService : Service() {
         return START_REDELIVER_INTENT
     }
 
+    /** Aucun redémarrage automatique d'un téléchargement après expiration. */
+    private fun onPlayStartCommand(intent: Intent?): Int {
+        if (intent?.action == ACTION_STOP) {
+            stopPlay("notificationStop")
+            return START_NOT_STICKY
+        }
+        if (intent?.action != ACTION_START) {
+            stopPlay("serviceDestroyed")
+            return START_NOT_STICKY
+        }
+        @Suppress("DEPRECATION")
+        val acknowledgement = intent.getParcelableExtra<ResultReceiver>(EXTRA_START_RESULT)
+        val session = intent.getStringExtra(EXTRA_SESSION)
+        if (session.isNullOrBlank() || !RecordingServiceBridge.hasPlayEngine() || playStopper.isStopped ||
+            (playSession != null && playSession != session)) {
+            acknowledgement?.send(1, null)
+            if (playSession == null) stopPlay("startFailed")
+            return START_NOT_STICKY
+        }
+        try {
+            playSession = session
+            activePlayService = this
+            val title = intent.getStringExtra(EXTRA_TITLE) ?: "NOVATUBE"
+            createChannelIfNeeded()
+            val notification = buildNotification(title)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+            } else {
+                startForeground(NOTIFICATION_ID, notification)
+            }
+            acquireLocks()
+            val url = intent.getStringExtra(EXTRA_URL)
+            val file = intent.getStringExtra(EXTRA_FILE)
+            if (url != null && file != null) startDownload(url, file)
+            // Dart n'annonce le REC qu'après la promotion réelle. Un quota
+            // épuisé peut faire échouer startForeground, même après startService.
+            acknowledgement?.send(0, null)
+        } catch (error: Exception) {
+            Log.e(TAG, "Démarrage dataSync refusé", error)
+            stopPlay("startFailed")
+            acknowledgement?.send(1, null)
+        }
+        return START_NOT_STICKY
+    }
+
+    override fun onTimeout(startId: Int, fgsType: Int) {
+        if (BuildConfig.NOVATUBE_PLAY) stopPlay("foregroundTimeout")
+        else super.onTimeout(startId, fgsType)
+    }
+
+    private fun stopPlay(reason: String, completed: (() -> Unit)? = null) {
+        if (playCleanupFinished) {
+            completed?.invoke()
+            return
+        }
+        completed?.let { playStopCallbacks.add(it) }
+        // Fermer le robinet immédiatement : un read débloqué après le
+        // timeout ne doit plus ajouter des octets au fichier.
+        recording = false
+        playStopper.stop(reason)
+    }
+
+    private fun closePlayProducerAsync() {
+        val connection = activeConn
+        val worker = downloadThread
+        worker?.interrupt()
+        Thread {
+            try {
+                try { connection?.disconnect() } catch (_: Throwable) {}
+                // Le service est déjà arrêté. Attendre ici permet à Dart
+                // d'exporter seulement après flush/close, sans bloquer Android.
+                worker?.join()
+            } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+            } finally {
+                mainHandler.post {
+                    downloadThread = null
+                    activeConn = null
+                    currentUrl = null
+                    currentFile = null
+                    playCleanupFinished = true
+                    if (activePlayService === this) activePlayService = null
+                    val callbacks = playStopCallbacks.toList()
+                    playStopCallbacks.clear()
+                    callbacks.forEach { it() }
+                }
+            }
+        }.apply { isDaemon = true; name = "novatube-rec-close"; start() }
+    }
+
     /// L'utilisateur a "swipe" l'app hors des recents. On NE STOPPE PAS
     /// l'enregistrement : c'est tout l'interet du natif. Le service
     /// foreground continue de tourner et d'ecrire le fichier.
@@ -148,6 +284,11 @@ class RecordingForegroundService : Service() {
     }
 
     override fun onDestroy() {
+        if (BuildConfig.NOVATUBE_PLAY) {
+            stopPlay("serviceDestroyed")
+            super.onDestroy()
+            return
+        }
         // Sécurité : si le service est détruit sans ACTION_STOP propre
         // (kill par l'OS, crash, etc.), on arrête le download + libère
         // les locks pour ne pas laisser le tel surchauffer.
@@ -208,6 +349,9 @@ class RecordingForegroundService : Service() {
                     out?.close()
                 } catch (_: Throwable) {}
                 Log.i(TAG, "download termine, octets=$bytesWritten")
+                if (BuildConfig.NOVATUBE_PLAY) {
+                    mainHandler.post { stopPlay("downloadEnded") }
+                }
             }
         }.apply {
             isDaemon = true
@@ -268,6 +412,7 @@ class RecordingForegroundService : Service() {
                         }
                     }
                     first = false
+                    if (BuildConfig.NOVATUBE_PLAY && !recording) break
                     out.write(buf, 0, n)
                     bytesWritten += n
                 }
@@ -367,6 +512,7 @@ class RecordingForegroundService : Service() {
             while (recording) {
                 val n = input.read(buf)
                 if (n < 0) break
+                if (BuildConfig.NOVATUBE_PLAY && !recording) break
                 out.write(buf, 0, n)
                 bytesWritten += n
             }
@@ -411,6 +557,7 @@ class RecordingForegroundService : Service() {
         var current = urlStr
         var hops = 0
         while (true) {
+            if (BuildConfig.NOVATUBE_PLAY && !recording) throw InterruptedException()
             val conn = (java.net.URL(current).openConnection() as java.net.HttpURLConnection).apply {
                 connectTimeout = 15000
                 readTimeout = 30000
@@ -419,6 +566,15 @@ class RecordingForegroundService : Service() {
                 instanceFollowRedirects = false
                 setRequestProperty("User-Agent", "VLC/3.0.20 LibVLC/3.0.20 (7 MOTION)")
                 setRequestProperty("Accept", "*/*")
+            }
+            // Publier la connexion AVANT connect/responseCode permet à
+            // l'arrêt Play d'interrompre aussi une connexion en ouverture.
+            if (BuildConfig.NOVATUBE_PLAY) {
+                activeConn = conn
+                if (!recording) {
+                    conn.disconnect()
+                    throw InterruptedException()
+                }
             }
             val code = conn.responseCode
             if (code in 300..399 && hops < 8) {
@@ -570,7 +726,7 @@ class RecordingForegroundService : Service() {
     }
 
     private fun buildNotification(title: String): Notification {
-        return NotificationCompat.Builder(this, CHANNEL_ID)
+        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_media_play)
             .setContentTitle("Enregistrement en cours")
             .setContentText(title)
@@ -583,7 +739,21 @@ class RecordingForegroundService : Service() {
             .setForegroundServiceBehavior(
                 NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE,
             )
-            .build()
+        if (BuildConfig.NOVATUBE_PLAY) {
+            val stop = PendingIntent.getService(
+                this, NOTIFICATION_ID,
+                Intent(this, RecordingForegroundService::class.java).setAction(ACTION_STOP),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
+            builder.addAction(android.R.drawable.ic_media_pause, "Arrêter", stop)
+            packageManager.getLaunchIntentForPackage(packageName)?.let { launch ->
+                builder.setContentIntent(PendingIntent.getActivity(
+                    this, NOTIFICATION_ID, launch,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+                ))
+            }
+        }
+        return builder.build()
     }
 
     private fun createChannelIfNeeded() {

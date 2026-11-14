@@ -899,6 +899,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
       _checkRecordingStart(session);
       session.serviceStarted = await RecordingService.instance.start(
         title: session.channel.cleanName,
+        onStopped: (String reason) => _onRecordingServiceStopped(session, reason),
       ); // Pas d'URL : service de maintien, jamais un second downloader.
       _checkRecordingStart(session);
       if (!session.serviceStarted) throw const _RecordingServiceUnavailable();
@@ -1001,6 +1002,22 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
         _ => context.l10n.tvRecordingError,
       };
 
+  Future<void> _onRecordingServiceStopped(
+      _TvRecordingSession session, String reason) async {
+    if (!identical(_recordingSession, session)) return;
+    session.foregroundStopReason = reason;
+    // Le FGS a déjà répondu au délai Android. Fermer aussi le producteur
+    // Dart : retirer seulement la notification laisserait le REC tourner.
+    if (session.recording == null) session.cancelled = true;
+    session.stopped = await LocalStreamRelay.instance.stopRecordingResult(
+      session.realUrl,
+      closePlayback: true,
+    );
+    if (session.recording != null && !_recordingBusy && _recordingViewAlive) {
+      await _finishRecordingAutomatically(session);
+    }
+  }
+
   Future<void> _finishRecordingAutomatically(
       _TvRecordingSession session) async {
     if (!identical(_recordingSession, session) || _recordingBusy) return;
@@ -1042,7 +1059,8 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     try {
       await RecordingRepository.instance.finishRecordingByPath(
         session.recording!.filePath,
-        reason: result.succeeded ? null : result.reason.name,
+        reason: session.foregroundStopReason ??
+            (result.succeeded ? null : result.reason.name),
       );
     } catch (_) {
       failed = true;
@@ -1066,7 +1084,11 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     // rester caché dans le stockage privé de l'app. Le fichier est complet ici
     // (stopRecordingResult a fermé l'écriture). La copie continue même si on
     // quitte le lecteur ; « Mes enregistrements » affiche alors sa progression.
-    final bool savingToGallery = result.bytes > 0;
+    // Après un arrêt du FGS par Android ou la notification, conserver le
+    // fichier déjà fermé sans démarrer une conversion longue sans service.
+    // Le bouton galerie reste disponible au retour dans les enregistrements.
+    final bool savingToGallery =
+        result.bytes > 0 && session.foregroundStopReason == null;
     if (savingToGallery) {
       unawaited(_autoSaveToGallery(session.recording!.filePath));
     }
@@ -1074,12 +1096,14 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
       setState(() {});
       _flash(failed
           ? context.l10n.tvRecordingCloseFailed
-          : !result.succeeded
-              ? _recordingErrorText(result.reason)
-              : savingToGallery
-                  ? context.l10n
-                      .tvRecordingSavedToGallery(_humanSize(result.bytes))
-                  : context.l10n.tvRecordingEmpty);
+          : session.foregroundStopReason != null && result.bytes > 0
+              ? context.l10n.recordingStopped
+              : !result.succeeded
+                  ? _recordingErrorText(result.reason)
+                  : savingToGallery
+                      ? context.l10n
+                          .tvRecordingSavedToGallery(_humanSize(result.bytes))
+                      : context.l10n.tvRecordingEmpty);
     }
   }
 
@@ -2630,6 +2654,7 @@ class _TvRecordingSession {
   RelayRecordingResult? stopped;
   Future<void>? finishing;
   bool serviceStarted = false;
+  String? foregroundStopReason;
   bool cancelled = false;
 }
 

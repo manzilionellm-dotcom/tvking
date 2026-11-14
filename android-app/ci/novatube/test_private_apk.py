@@ -52,6 +52,11 @@ def fixture(directory):
     write_json(directory / "source-verification.json", {
         "status": "passed", "sourceCommit": SOURCE, "sourceTree": "3" * 40,
         "privateApkWorkflowVerified": True,
+        "pubspecVersion": "0.1.6+6",
+        "buildTargets": {
+            "play-aab": {"versionName": "0.1.6", "versionCode": 6},
+            "private-apk": {"versionName": "0.1.5", "versionCode": 5},
+        },
     })
     write_json(directory / "flutter-toolchain.json", {"frameworkVersion": "3.47.7"})
     for name in ("flutter-tests.jsonl", "flutter-tests-private.jsonl"):
@@ -225,6 +230,16 @@ class PublicationTest(unittest.TestCase):
     def test_modified_apk_prevents_every_network_action(self):
         (self.directory / self.proof["artifact"]).write_bytes(b"changed")
         with self.assertRaisesRegex(ValueError, "modifié"):
+            self.run_publish()
+        self.assertEqual(self.github.events, [])
+
+    def test_play_version_cannot_replace_private_source_provenance(self):
+        path = self.directory / "source-verification.json"
+        source = json.loads(path.read_text())
+        source["buildTargets"]["private-apk"] = {"versionName": "0.1.6", "versionCode": 6}
+        write_json(path, source)
+        checksums(self.directory)
+        with self.assertRaisesRegex(ValueError, "Version privée"):
             self.run_publish()
         self.assertEqual(self.github.events, [])
 

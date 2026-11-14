@@ -1,0 +1,24 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <!-- NOVATUBE Play est destinée aux téléphones et tablettes tactiles.
+         L'exigence explicite exclut aussi les appareils à toucher simulé. -->
+    <uses-feature android:name="android.hardware.touchscreen" android:required="true" />
+
+    <!-- Les dépendances peuvent déclarer une lecture globale des médias.
+         NOVATUBE exporte ses propres enregistrements via MediaStore ; elle
+         n'a pas besoin de lire les photos, vidéos ou sons des autres apps.
+         Ces marqueurs retirent les permissions du manifeste fusionné. -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" tools:node="remove" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" tools:node="remove" />
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" tools:node="remove" />
+
+    <!-- Enregistrer le flux distant est un téléchargement. La lecture
+         garde son service mediaPlayback distinct dans le manifeste main. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <application>
+        <service
+            android:name="com.sevenmotion.novatube.RecordingForegroundService"
+            android:foregroundServiceType="dataSync"
+            tools:replace="android:foregroundServiceType" />
+    </application>
+</manifest>

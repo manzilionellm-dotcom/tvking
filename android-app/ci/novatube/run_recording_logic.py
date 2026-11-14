@@ -27,6 +27,8 @@ def verify(cache: Path) -> None:
     sources = (
         app_root / "android/app/src/main/kotlin/com/sevenmotion/novatube/GalleryExportPolicy.kt",
         app_root / "ci/novatube/GalleryExportPolicyTest.kt",
+        app_root / "android/app/src/main/kotlin/com/sevenmotion/novatube/PlayRecordingStopper.kt",
+        app_root / "ci/novatube/PlayRecordingStopperTest.kt",
     )
     for source in sources:
         if not source.is_file():
@@ -50,7 +52,8 @@ def verify(cache: Path) -> None:
         print("Exécution des tests GalleryExportPolicy…", flush=True)
         subprocess.run(
             ["java", "-cp", classes + os.pathsep + classpath, "org.junit.runner.JUnitCore",
-             "com.sevenmotion.novatube.GalleryExportPolicyTest"],
+             "com.sevenmotion.novatube.GalleryExportPolicyTest",
+             "com.sevenmotion.novatube.PlayRecordingStopperTest"],
             cwd=app_root, check=True,
         )
 

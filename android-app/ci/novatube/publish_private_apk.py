@@ -16,7 +16,10 @@ import sys
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 
-from common import BRANCH, PACKAGE, VERSION_CODE, VERSION_NAME, expected_certificate, require, sha256_file
+from common import (
+    BRANCH, PACKAGE, PRIVATE_VERSION_CODE as VERSION_CODE,
+    PRIVATE_VERSION_NAME as VERSION_NAME, expected_certificate, require, sha256_file,
+)
 from verify_private_apk import REPOSITORY, evidence_results
 
 MANIFEST_PATH = "android-app/ci/novatube/latest-download.json"

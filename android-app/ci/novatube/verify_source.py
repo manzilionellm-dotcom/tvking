@@ -16,7 +16,8 @@ import yaml
 
 from common import (
     ANDROID, APP_ROOT, BASE_COMMIT, BASE_TAG, BRANCH, ENTRYPOINT, LABEL,
-    PACKAGE, REPO_ROOT, VERSION_CODE, VERSION_NAME, expected_certificate,
+    PACKAGE, REPO_ROOT, VERSION_CODE, VERSION_NAME, PRIVATE_VERSION_CODE,
+    PRIVATE_VERSION_NAME, expected_certificate,
     require, sha256_file,
 )
 
@@ -52,6 +53,81 @@ def same_expression(actual, expected: str) -> bool:
     return isinstance(actual, str) and re.sub(r"\s+", "", actual) == re.sub(r"\s+", "", expected)
 
 
+def verify_capture_job(capture: dict) -> None:
+    """Les preuves ne compilent ni ne publient : elles lisent l'AAB de ce run.
+
+    Énumérer les étapes et leurs arguments évite qu'un outil de capture se
+    transforme plus tard en second chemin de livraison ou de signature.
+    Aucun secret de téléversement n'est nécessaire à cet émulateur jetable.
+    """
+    require(set(capture) == {"name", "needs", "if", "permissions", "runs-on",
+                             "timeout-minutes", "steps"}, "Configuration du job de captures inattendue")
+    require(capture.get("needs") == "release" and capture.get("permissions") == {"contents": "read"},
+            "Les captures doivent attendre la vérification et rester en lecture seule")
+    require(same_expression(capture.get("if"), "needs.release.result == 'success' && " + COMMON_GUARD +
+                            " && " + PLAY_CONFIRMATION + " && inputs.reviewed_commit == github.sha"),
+            "Captures Play insuffisamment protégées")
+    require(capture.get("runs-on") == "ubuntu-24.04" and capture.get("timeout-minutes") == "35",
+            "Runner de captures inattendu")
+    steps = capture.get("steps", [])
+    ids = [step.get("id") for step in steps]
+    require(ids == ["capture_checkout", "capture_java", "capture_android", "capture_aab",
+                    "capture_screenshots", "upload_play_evidence", "upload_play_evidence_diagnostic"],
+            "Étape de captures ajoutée, absente ou déplacée")
+    actions = {
+        "capture_checkout": ("actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1", {
+            "ref": "${{ github.sha }}", "fetch-depth": "0", "persist-credentials": "false",
+        }),
+        "capture_java": ("actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6", {
+            "distribution": "temurin", "java-version": "17",
+        }),
+        "capture_android": ("android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd", None),
+        "capture_aab": ("actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333", {
+            "name": f"NOVATUBE-{VERSION_NAME}-{VERSION_CODE}-verified-"
+                    "${{ github.sha }}-${{ github.run_attempt }}",
+            "path": "android-app/build/novatube/capture-input/",
+        }),
+        "upload_play_evidence": ("actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9", {
+            "name": "NOVATUBE-Play-evidence-${{ github.sha }}-${{ github.run_attempt }}",
+            "path": "android-app/build/novatube/play-evidence/",
+            "if-no-files-found": "error", "retention-days": "30",
+        }),
+        "upload_play_evidence_diagnostic": ("actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9", {
+            "name": "NOVATUBE-Play-evidence-diagnostic-${{ github.sha }}-${{ github.run_attempt }}",
+            "path": "android-app/build/novatube/play-evidence-diagnostic/",
+            "if-no-files-found": "ignore", "retention-days": "7",
+        }),
+    }
+    for step in steps:
+        step_id = step["id"]
+        allowed = {"name", "id"}
+        if step_id in actions:
+            action, arguments = actions[step_id]
+            allowed.add("uses")
+            require(step.get("uses") == action, "Action de captures non approuvée : " + step_id)
+            if arguments is not None:
+                allowed.add("with")
+                require(step.get("with") == arguments, "Arguments de captures modifiés : " + step_id)
+            if step_id.startswith("upload_"):
+                allowed.add("if")
+                condition = "failure()" if step_id.endswith("_diagnostic") else "success()"
+                require(step.get("if") == condition, "Captures et diagnostics ne doivent pas être confondus")
+        else:
+            allowed.update(("run", "env"))
+            require(step.get("env") == {
+                "NOVATUBE_CAPTURE_CONFIRMATION": "${{ inputs.confirme }}",
+                "REVIEWED_COMMIT": "${{ inputs.reviewed_commit }}",
+            }, "Contexte des captures incomplet ou secret ajouté")
+            run = " ".join(step.get("run", "").replace("\\\n", " ").split())
+            require(run == "set -euo pipefail python3 ci/novatube/run_play_evidence.py "
+                    "--verified build/novatube/capture-input --output build/novatube/play-evidence "
+                    "--diagnostics build/novatube/play-evidence-diagnostic",
+                    "Les captures doivent uniquement exécuter le vérificateur dédié")
+        require(set(step) == allowed, "Configuration d'étape de captures inattendue : " + step_id)
+    require("secrets." not in json.dumps(capture) and "GITHUB_TOKEN" not in json.dumps(capture),
+            "Le job de captures ne doit recevoir aucun secret de publication")
+
+
 def verify_workflow(workflow: str) -> None:
     """Le define privé est admis uniquement dans deux étapes fermées de l'APK.
 
@@ -71,7 +147,8 @@ def verify_workflow(workflow: str) -> None:
             "Confirmation et SHA approuvé obligatoires")
     require(document.get("permissions") == {"contents": "read"}, "Permissions globales trop larges")
     jobs = document.get("jobs", {})
-    require(set(jobs) == {"release", "publish_private"}, "Jobs de livraison inattendus")
+    require(set(jobs) == {"release", "publish_private", "capture_play"}, "Jobs de livraison inattendus")
+    verify_capture_job(jobs["capture_play"])
     release, publish = jobs["release"], jobs["publish_private"]
     require(release.get("permissions", {"contents": "read"}) == {"contents": "read"},
             "Le job de compilation doit rester en lecture seule")
@@ -101,8 +178,15 @@ def verify_workflow(workflow: str) -> None:
     require(order["preflight_recording_device"] < order["build_private_apk"],
             "Le démarrage Android doit être vérifié avant de compiler l'APK privé")
     expected_builds = {
-        "build_play_aab": "flutter build appbundle --release --target=lib/main_zuno_mobile.dart --build-name=0.1.5 --build-number=5",
-        "build_private_apk": "flutter build apk --release --target=lib/main_zuno_mobile.dart --build-name=0.1.5 --build-number=5 --dart-define=NOVATUBE_PRIVATE_APK=true",
+        "build_play_aab": (
+            "flutter build appbundle --release --target=lib/main_zuno_mobile.dart "
+            f"--build-name={VERSION_NAME} --build-number={VERSION_CODE}"
+        ),
+        "build_private_apk": (
+            "flutter build apk --release --target=lib/main_zuno_mobile.dart "
+            f"--build-name={PRIVATE_VERSION_NAME} --build-number={PRIVATE_VERSION_CODE} "
+            "--dart-define=NOVATUBE_PRIVATE_APK=true"
+        ),
     }
     for step_id, command in expected_builds.items():
         run = identified[step_id].get("run", "").replace("\\\n", " ")
@@ -160,6 +244,12 @@ def verify_workflow(workflow: str) -> None:
             identified["upload_private_apk"].get("with", {}) == {
                 **artifact, "if-no-files-found": "error", "retention-days": "30",
             }, "Artifact privé incohérent")
+    require(identified["upload_play_aab"].get("with", {}) == {
+        "name": f"NOVATUBE-{VERSION_NAME}-{VERSION_CODE}-verified-"
+                "${{ github.sha }}-${{ github.run_attempt }}",
+        "path": "android-app/build/novatube/verified/",
+        "if-no-files-found": "error", "retention-days": "30",
+    }, "Artifact Play incohérent avec la version approuvée")
     for step, action in ((publication[0], "checkout"), (publication[1], "download-artifact"),
                          (identified["upload_private_apk"], "upload-artifact")):
         require(re.fullmatch(r"actions/" + action + r"@[0-9a-f]{40}", step.get("uses", "")) is not None,
@@ -251,7 +341,15 @@ def verify_source(reviewed_commit: str) -> dict:
         "status": "passed", "sourceCommit": source_commit, "sourceTree": git("rev-parse", "HEAD^{tree}"),
         "privateApkWorkflowVerified": True, "sourceTag": BASE_TAG,
         "sourceTagCommit": BASE_COMMIT, "package": PACKAGE, "entrypoint": ENTRYPOINT,
-        "versionName": VERSION_NAME, "versionCode": int(VERSION_CODE),
+        # Il s'agit de versions de compilation autorisées, pas d'une preuve
+        # de version binaire : celle-ci est lue ensuite dans l'AAB ou l'APK.
+        "pubspecVersion": VERSION_NAME + "+" + VERSION_CODE,
+        "buildTargets": {
+            "play-aab": {"versionName": VERSION_NAME, "versionCode": int(VERSION_CODE)},
+            "private-apk": {
+                "versionName": PRIVATE_VERSION_NAME, "versionCode": int(PRIVATE_VERSION_CODE),
+            },
+        },
         "uploadCertificateSha256": certificate_sha256, "branding": verify_branding(),
     }
 

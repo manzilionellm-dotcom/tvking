@@ -12,8 +12,12 @@ import re
 
 PACKAGE = "com.sevenmotion.novatube"
 LABEL = "NOVATUBE"
-VERSION_NAME = "0.1.5"
-VERSION_CODE = "5"
+# La fiche Play évolue indépendamment de l'APK privé déjà distribué.
+# Les commandes privées continuent d'écraser explicitement la version pubspec.
+VERSION_NAME = "0.1.6"
+VERSION_CODE = "6"
+PRIVATE_VERSION_NAME = "0.1.5"
+PRIVATE_VERSION_CODE = "5"
 KEY_ALIAS = "novatube-upload"
 BRANCH = "feature/novatube-play-aab"
 BASE_TAG = "zuno-mobile-0.1.5-test"
