@@ -573,6 +573,9 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
     _seekTimer = Timer(const Duration(milliseconds: 650), () {
       final Duration? target = _seekTarget;
       if (target == null || !mounted) return;
+      // Daté dans la boîte noire : un défaut d'image qui suit un saut se
+      // lit alors d'un coup d'œil (signalement du 14/11/2026).
+      BlackBox.instance.info('CINEMA', 'saut à ${formatClock(target)}');
       _c.seekTo(target);
       setState(() => _seekTarget = null);
       _saveProgress();

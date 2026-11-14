@@ -18,6 +18,8 @@ PIXEL_METHOD = verifier["PIXEL_METHOD"]
 MUTATION_MARKER = verifier["MUTATION_MARKER"]
 RECOVERY_METHODS = verifier["RECOVERY_METHODS"]
 RECOVERY_PROOFS = verifier["RECOVERY_PROOFS"]
+HYBRID_METHODS = verifier["HYBRID_METHODS"]
+HYBRID_PROOFS = verifier["HYBRID_PROOFS"]
 
 
 class ContrastResultsTest(unittest.TestCase):
@@ -41,6 +43,12 @@ class ContrastResultsTest(unittest.TestCase):
         recovery.mkdir()
         for name in RECOVERY_PROOFS:
             (recovery / f"{name}.json").write_text(json.dumps({"passed": True}))
+        hybrid = captures / "hybrid-hdr"
+        hybrid.mkdir()
+        for name in HYBRID_PROOFS:
+            (hybrid / f"{name}.json").write_text(json.dumps({
+                "passed": True, "removedDolbyVision": 64, "removedHdr10Plus": 64,
+            }))
 
     def report(self, failure_type=None, failure_text=None, failure_message=None, status=None):
         suite = ET.Element("testsuite")
@@ -61,6 +69,11 @@ class ContrastResultsTest(unittest.TestCase):
             ET.SubElement(suite, "testcase", {
                 "name": method,
                 "classname": "com.manzilionellm.native_video_player.NativeRecoveryPlaybackTest",
+            })
+        for method in HYBRID_METHODS:
+            ET.SubElement(suite, "testcase", {
+                "name": method,
+                "classname": "com.manzilionellm.native_video_player.NativeHybridHdrTest",
             })
         ET.ElementTree(suite).write(self.output / "junit" / "TEST-render.xml")
 
@@ -161,6 +174,52 @@ class ContrastResultsTest(unittest.TestCase):
         (self.output / "contrast-pixels" / "recovery" / "pause-502.json").write_text('{"passed": false}')
         with self.assertRaisesRegex(SystemExit, "Preuve de reprise absente ou échouée"):
             self.check("baseline")
+
+    def test_baseline_requires_the_hybrid_film_to_be_played(self):
+        self.report()
+        report = self.output / "junit" / "TEST-render.xml"
+        tree = ET.parse(report)
+        for case in list(tree.getroot()):
+            if case.get("name") in HYBRID_METHODS:
+                tree.getroot().remove(case)
+        tree.write(report)
+        with self.assertRaisesRegex(SystemExit, "Film hybride non joué"):
+            self.check("baseline")
+
+    def test_failed_or_skipped_hybrid_film_is_not_green(self):
+        for status in ("failure", "skipped", "error"):
+            self.report()
+            report = self.output / "junit" / "TEST-render.xml"
+            tree = ET.parse(report)
+            case = next(case for case in tree.getroot() if case.get("name") in HYBRID_METHODS)
+            ET.SubElement(case, status)
+            tree.write(report)
+            with self.assertRaisesRegex(SystemExit, "film hybride échoué ou ignoré"):
+                self.check("baseline")
+
+    def test_hybrid_film_without_evidence_is_not_green(self):
+        self.report()
+        proof = self.output / "contrast-pixels" / "hybrid-hdr" / "hybrid-off.json"
+        proof.write_text('{"passed": false}')
+        with self.assertRaisesRegex(SystemExit, "Preuve du film hybride absente ou échouée"):
+            self.check("baseline")
+        proof.unlink()
+        with self.assertRaisesRegex(SystemExit, "Preuve du film hybride absente ou échouée"):
+            self.check("baseline")
+
+    def test_hybrid_film_played_without_measured_cleaning_is_not_green(self):
+        self.report()
+        proof = self.output / "contrast-pixels" / "hybrid-hdr" / "hybrid-auto.json"
+        proof.write_text(json.dumps({"passed": True, "removedDolbyVision": 64, "removedHdr10Plus": 0}))
+        with self.assertRaisesRegex(SystemExit, "sans nettoyage mesuré"):
+            self.check("baseline")
+
+    def test_mutation_phase_does_not_require_the_hybrid_film(self):
+        # La seconde passe ne relance que le test des pixels du contraste.
+        self.report(failure_type="java.lang.AssertionError", failure_message=MUTATION_MARKER)
+        for name in HYBRID_PROOFS:
+            (self.output / "contrast-pixels" / "hybrid-hdr" / f"{name}.json").unlink()
+        self.check("mutation")
 
 
 if __name__ == "__main__":

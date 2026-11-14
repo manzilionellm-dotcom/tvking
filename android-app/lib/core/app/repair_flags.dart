@@ -25,6 +25,15 @@ abstract final class RepairFlags {
   /// l'écran noir « le son continue » après une coupure.
   static const String legacyHoldFrameKey = 'zuno.player.hold_frame_legacy';
   static bool legacyHoldFrame = false;
+
+  /// Vrai = le correctif « film Dolby Vision + HDR10+ » est désarmé : le
+  /// flux part tel quel au décodeur (ancien comportement). Faux = sur les
+  /// clés Amazon à puce MT8696, où ce mélange donne un écran d'une seule
+  /// couleur avec le son, le lecteur retire ce qu'il faut avant le
+  /// décodeur. Le réglage « Compatibilité HDR » n'est pas concerné : c'est
+  /// un choix de la personne.
+  static const String hybridHdrOffKey = 'zuno.player.hybrid_hdr_off';
+  static bool hybridHdrOff = false;
   /// Vrai = la boîte noire écrit les lignes TELLES QUELLES (ancien
   /// comportement). Faux = chaque ligne est expurgée à l'écriture
   /// (adresses de flux, identifiants, mots de passe) : le journal sur la
@@ -325,6 +334,7 @@ abstract final class RepairFlags {
     bool sportsLegacy = false;
     bool communityOff = false;
     bool noticeLegacy = false;
+    bool hdrOff = false;
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       raw = prefs.getBool(blackBoxRawKey) ?? false;
@@ -362,6 +372,7 @@ abstract final class RepairFlags {
       sportsLegacy = prefs.getBool(sportsNetworkLegacyKey) ?? false;
       communityOff = prefs.getBool(sportsCommunityOffKey) ?? false;
       noticeLegacy = prefs.getBool(missedNoticeLegacyKey) ?? false;
+      hdrOff = prefs.getBool(hybridHdrOffKey) ?? false;
     } catch (_) {
       raw = false;
       fsyncAll = false;
@@ -398,6 +409,7 @@ abstract final class RepairFlags {
       sportsLegacy = false;
       communityOff = false;
       noticeLegacy = false;
+      hdrOff = false;
     }
     epgGzipByHeader = gzipByHeader;
     xtreamPerCategorySerial = xtreamSerial;
@@ -434,8 +446,10 @@ abstract final class RepairFlags {
     legacyHoldFrame = holdLegacy;
     epgInlineParse = epgInline;
     historyOnOpen = histOpen;
+    hybridHdrOff = hdrOff;
     // Le lecteur natif reçoit le réglage avec les autres (avant l'URL).
     NativeVideoController.legacyHoldFrame = holdLegacy;
+    NativeVideoController.hybridHdrOff = hdrOff;
     NativeVideoController.pushAudioDiagFlags();
   }
 
@@ -476,7 +490,9 @@ abstract final class RepairFlags {
     sportsNetworkLegacy = false;
     sportsCommunityOff = false;
     missedNoticeLegacy = false;
+    hybridHdrOff = false;
     NativeVideoController.legacyHoldFrame = false;
+    NativeVideoController.hybridHdrOff = false;
   }
 }
 

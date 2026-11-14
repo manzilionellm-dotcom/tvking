@@ -148,6 +148,21 @@ class NativeVideoController extends ChangeNotifier {
   /// Plusieurs lignes séparées par « \n ». Null = ignoré.
   static void Function(String diagnostic)? onAudioDiagnostic;
 
+  /// Diagnostic de l'image envoyé par le lecteur natif : ce que le flux
+  /// annonce, quel décodeur le lit, et ce que le correctif « Dolby Vision
+  /// + HDR10+ » a retiré. Une ligne par appel. Null = ignoré.
+  static void Function(String line)? onVideoDiagnostic;
+
+  /// Repli du correctif « film Dolby Vision + HDR10+ » (clés Amazon
+  /// MT8696 : écran d'une seule couleur, le son continue). Vrai = ancien
+  /// comportement, le flux part tel quel au décodeur. Faux par défaut.
+  static bool hybridHdrOff = false;
+
+  /// Réglage « Compatibilité HDR » : vrai = retirer Dolby Vision et HDR10+
+  /// du flux HEVC sur cette box, le film passe en HDR10 simple. Faux par
+  /// défaut. Pris en compte à la prochaine ouverture.
+  static bool hdrCompat = false;
+
   /// Sonde PCM du diagnostic. Faux par défaut : le processeur natif
   /// reste inactif (NOT_SET), le son ne change pas.
   static bool audioProbeEnabled = false;
@@ -224,6 +239,8 @@ class NativeVideoController extends ChangeNotifier {
       ch.invokeMethod<void>('setBackgroundFlutterOnly', backgroundFlutterOnly);
       ch.invokeMethod<void>('setLegacyHoldFrame', legacyHoldFrame);
       ch.invokeMethod<void>('setOutput48k', output48k);
+      ch.invokeMethod<void>('setHybridHdrOff', hybridHdrOff);
+      ch.invokeMethod<void>('setHdrCompat', hdrCompat);
     }
   }
 
@@ -391,6 +408,9 @@ class NativeVideoController extends ChangeNotifier {
     ch.invokeMethod<void>('setBackgroundFlutterOnly', backgroundFlutterOnly);
     ch.invokeMethod<void>('setLegacyHoldFrame', legacyHoldFrame);
     ch.invokeMethod<void>('setOutput48k', output48k);
+    // Avant l'URL : le décodeur du premier film lit déjà le bon réglage.
+    ch.invokeMethod<void>('setHybridHdrOff', hybridHdrOff);
+    ch.invokeMethod<void>('setHdrCompat', hdrCompat);
     final String? url = _pendingUrl ?? initialUrl;
     if (url != null) {
       audible = true;
@@ -584,6 +604,11 @@ class NativeVideoController extends ChangeNotifier {
         // change rien à l'état du lecteur, on le passe à l'app (boîte noire).
         final String line = (call.arguments as String?) ?? '';
         if (line.isNotEmpty) onAudioDiagnostic?.call(line);
+        return;
+      case 'videoDiag':
+        // Diagnostic de l'image : même principe, rien ne change à l'écran.
+        final Object? raw = call.arguments;
+        if (raw is String && raw.isNotEmpty) onVideoDiagnostic?.call(raw);
         return;
     }
     if (!_disposed) notifyListeners();

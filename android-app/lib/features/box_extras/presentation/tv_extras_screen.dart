@@ -127,6 +127,15 @@ class _TvExtrasScreenState extends State<TvExtrasScreen> {
     if (mounted) setState(() {});
   }
 
+  /// « Compatibilité HDR » : retire Dolby Vision et HDR10+ du flux, pour
+  /// une box où un film 4K donne un écran vide avec le son. Coupé par
+  /// défaut ; pris en compte à la prochaine lecture.
+  Future<void> _toggleHdrCompat() async {
+    await ImagePrefs.load();
+    await ImagePrefs.setHdrCompat(!ImagePrefs.hdrCompat);
+    if (mounted) setState(() {});
+  }
+
   Future<void> _toggleVoice() async {
     await ClearVoiceFlag.load();
     await ClearVoiceFlag.set(!ClearVoiceFlag.value);
@@ -276,6 +285,16 @@ class _TvExtrasScreenState extends State<TvExtrasScreen> {
                   : context.l10n.tvContrastOff,
           onSelect: contrastAvailable ? _toggleContrast : () {},
         ),
+        // Même condition que le contraste : seul le lecteur Android lit
+        // le flux image par image avant le décodeur.
+        if (contrastAvailable)
+          ExtrasRow(
+            title: context.l10n.tvHdrCompat,
+            subtitle: ImagePrefs.hdrCompat
+                ? context.l10n.tvHdrCompatOn
+                : context.l10n.tvHdrCompatOff,
+            onSelect: _toggleHdrCompat,
+          ),
       ],
     );
   }

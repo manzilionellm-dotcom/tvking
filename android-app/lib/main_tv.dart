@@ -98,6 +98,21 @@ void _wireAudioDiagnostic() {
   };
 }
 
+/// Diagnostic de l'image → boîte noire, étiquette « IMAGE » : format du
+/// flux, décodeur, et ce que le correctif « Dolby Vision + HDR10+ » a
+/// retiré. Avant, le journal ne disait rien de l'image.
+void _wireVideoDiagnostic() {
+  NativeVideoController.onVideoDiagnostic = (String line) {
+    final String channel = NowPlaying.instance.current;
+    final String text = line.trim();
+    if (text.isEmpty) return;
+    BlackBox.instance.info(
+      'IMAGE',
+      channel.isNotEmpty ? '[$channel] $text' : text,
+    );
+  };
+}
+
 /// Démarrage de Zuno. Partagé avec la version PC (lib/main_windows.dart),
 /// qui prépare d'abord SQLite / lecteur / fenêtre puis appelle cette même
 /// fonction : MÊME app, même design, mêmes services. [wrap] permet au PC
@@ -183,6 +198,7 @@ Future<void> bootstrapZunoTv({Widget Function(Widget app)? wrap}) async {
     () => BlackBox.instance.initialize(flavor: AppPlatform.zunoEditionName),
   );
   _wireAudioDiagnostic();
+  _wireVideoDiagnostic();
   // Le journal part vers le panel (même Worker, même MAC). L'envoi
   // est coupé par l'interrupteur « En plus ». Rien ici ne touche au son.
   BlackBoxUpload.instance.start();
