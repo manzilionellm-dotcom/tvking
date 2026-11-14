@@ -555,6 +555,33 @@ class Scenario:
         require(value.isdigit(), "Taille de fichier non observable")
         return int(value)
 
+    def await_live_contrast(self, timeout=30):
+        started = time.monotonic()
+        def probe():
+            self.device.foreground()
+            xml = self.observe("live-readiness")
+            rectangles = video_surfaces(xml)
+            require(bool(rectangles), "Conteneur vidéo absent pendant l'attente initiale")
+            left, top, right, bottom = max(rectangles, key=lambda value: (value[2] - value[0]) * (value[3] - value[1]))
+            width, height = right - left, bottom - top
+            x, y, width, height = left + width // 5, top + height // 5, width * 3 // 5, height * 3 // 5
+            png = self.device.binary("exec-out", "screencap", "-p")
+            require(self.helpers.png_dimensions(png) == (1080, 1920), "Dimensions inattendues pendant l'attente initiale")
+            filename = f"live-readiness-{self.counter:02d}.png"
+            (self.stage / filename).write_bytes(png)
+            pixels = command(["ffmpeg", "-nostdin", "-v", "error", "-f", "image2pipe", "-i", "pipe:0",
+                              "-vf", f"crop={width}:{height}:{x}:{y},scale=64:36,format=gray",
+                              "-frames:v", "1", "-f", "rawvideo", "pipe:1"], binary=True, input_value=png)
+            require(len(pixels) == 64 * 36, "Pixels initiaux non lisibles")
+            contrast = max(pixels) - min(pixels)
+            elapsed = time.monotonic() - started
+            self.event("live-readiness-sample", elapsedSeconds=round(elapsed, 3),
+                       contrastRange=contrast, imageFile=filename, observedVideoBounds=[left, top, right, bottom])
+            # Cette image prépare le lecteur ; elle ne remplace aucune des
+            # trois nouvelles images ni les seuils de motion("live").
+            return True if contrast > 25 and elapsed <= timeout else None
+        self.wait(probe, "Image live restée vide ou uniforme pendant l'attente initiale", timeout)
+
     def motion(self, name: str, *, fixture_server=None) -> bool:
         require(name in ("live", "replay"), "Phase de lecture inconnue")
         if name == "replay":
@@ -786,6 +813,7 @@ def execute_scenario(device, helpers, translations, fixture: Path, stage: Path) 
     try:
         with application_logs(device, stage), FixtureServer(fixture) as server, failure_state(device, stage):
             flow.prepare_live()
+            flow.await_live_contrast()
             observations["liveMotion"] = flow.motion("live")
             observations["serviceBefore"] = flow.service(False, "before")
             with screen_recording(device, stage / "datasync-demo.mp4", flow.event):

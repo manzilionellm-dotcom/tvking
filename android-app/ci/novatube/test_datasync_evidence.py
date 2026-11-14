@@ -317,6 +317,39 @@ class DataSyncEvidenceTest(unittest.TestCase):
             with self.subTest(timeline=timeline), self.assertRaises(ValueError):
                 evidence.qualify({**self.observations(), "videoTimeline": timeline})
 
+    def test_initial_live_contrast_wait_is_bounded_and_does_not_replace_motion(self):
+        video, _, _ = self.observed_player_controls()
+        # Contraste réel REC6 = 2. Le seuil exact 25 ne suffit toujours pas.
+        for contrasts, accepted, capture_delay in (([2, 25, 26], True, 0), ([2, 2], False, 0), ([26], False, 3)):
+            now, device, helpers = [0], Mock(), Mock()
+            device.hierarchy.return_value = '<hierarchy>' + video + '</hierarchy>'
+            device.binary.return_value = b'diagnostic-png'
+            helpers.png_dimensions.return_value = (1080, 1920)
+            def advance(seconds):
+                now[0] += seconds
+            samples = [bytes([0, value]) * (64 * 36 // 2) for value in contrasts]
+            def next_sample(*arguments, **keywords):
+                now[0] += capture_delay
+                return samples.pop(0)
+            with self.subTest(contrasts=contrasts), tempfile.TemporaryDirectory() as directory, \
+                    patch.object(evidence.time, "monotonic", side_effect=lambda: now[0]), \
+                    patch.object(evidence.time, "sleep", side_effect=advance), \
+                    patch.object(evidence, "command", side_effect=next_sample):
+                flow = evidence.Scenario(device, helpers, {}, Path(directory))
+                with patch.object(flow, "motion") as motion:
+                    if accepted:
+                        flow.await_live_contrast(timeout=3)
+                    else:
+                        with self.assertRaises(ValueError):
+                            flow.await_live_contrast(timeout=2)
+                    motion.assert_not_called()
+                seen = [event for event in flow.events if event["action"] == "live-readiness-sample"]
+                self.assertEqual([event["contrastRange"] for event in seen], contrasts)
+                self.assertEqual([event["elapsedSeconds"] for event in seen],
+                                 [index + (index + 1) * capture_delay for index in range(len(contrasts))])
+                self.assertEqual(len(list(Path(directory).glob('live-readiness-*.png'))), len(contrasts))
+                device.command.assert_not_called()
+
     def test_rec_target_freshness_reserves_a_second_before_overlay_expiry(self):
         with tempfile.TemporaryDirectory() as directory:
             flow = evidence.Scenario(Mock(), None, {}, Path(directory))
