@@ -299,6 +299,46 @@ class DataSyncEvidenceTest(unittest.TestCase):
             with self.subTest(timeline=timeline), self.assertRaises(ValueError):
                 evidence.qualify({**self.observations(), "videoTimeline": timeline})
 
+    def test_rec_target_freshness_reserves_a_second_before_overlay_expiry(self):
+        with tempfile.TemporaryDirectory() as directory:
+            flow = evidence.Scenario(Mock(), None, {}, Path(directory))
+            self.assertFalse(flow.controls_are_fresh())
+            flow.controls_revealed_at = 100
+            for stamp, expected in ((100, True), (104.999, True), (105, False),
+                                    (106.081, False), (99.99, False)):
+                with self.subTest(stamp=stamp), patch.object(evidence.time, "monotonic", return_value=stamp):
+                    self.assertEqual(flow.controls_are_fresh(), expected)
+
+    def test_reveal_is_followed_immediately_by_xml_and_expired_rec_is_never_returned(self):
+        video, channel, rec = self.observed_player_controls()
+        hidden = '<hierarchy>' + video + '</hierarchy>'
+        visible = '<hierarchy>' + video + channel + rec + '</hierarchy>'
+        # REC4 a rendu le XML à 6,081 s : il ne doit plus autoriser un tap.
+        for dump_seconds, accepted in ((4.5, True), (6.081, False)):
+            now, calls, device = [0], [0], Mock()
+            def hierarchy():
+                calls[0] += 1
+                if calls[0] == 1:
+                    return hidden
+                now[0] += dump_seconds
+                return visible
+            def advance(seconds):
+                now[0] += seconds
+            device.hierarchy.side_effect = hierarchy
+            with self.subTest(dump_seconds=dump_seconds), tempfile.TemporaryDirectory() as directory, \
+                    patch.object(evidence.time, "monotonic", side_effect=lambda: now[0]), \
+                    patch.object(evidence.time, "sleep", side_effect=advance) as sleep:
+                flow = evidence.Scenario(device, None, {}, Path(directory))
+                if accepted:
+                    self.assertEqual(flow.player_controls([evidence.CHANNEL, "REC"], timeout=5, fresh=True), visible)
+                    sleep.assert_not_called()
+                else:
+                    with self.assertRaises(ValueError):
+                        flow.player_controls([evidence.CHANNEL, "REC"], timeout=5, fresh=True)
+                self.assertEqual(calls[0], 2)
+                self.assertEqual([item.args for item in device.command.call_args_list], [
+                    ("shell", "input", "tap", "539", "959")])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -3,7 +3,7 @@
 ## Statut et portée
 
 Ce dossier prépare un job de preuves séparé, dans le workflow NOVATUBE déjà
-enregistré. Trois essais Android ont atteint le formulaire M3U, puis le
+enregistré. Quatre essais Android ont atteint le formulaire M3U, puis le
 lecteur avec la mire réelle. Aucun MP4 de l'interface n'est encore qualifié.
 Le scénario est destiné à une revue humaine avant toute utilisation dans
 Google Play Console ; une réussite machine ne vaut pas approbation de Google.
@@ -110,8 +110,23 @@ sont absents. Il exige ensuite canal et REC dans le même XML ; l'action REC
 emploie directement les bounds de ce vrai bouton, sans deuxième dump. La
 barre du lecteur se masque après six secondes. L'attente du canal et de
 Stop après le tap REC peut aussi révéler la barre ; elle ne retouche jamais
-REC. Aucun enregistrement n'a
-encore été observé dans ces trois essais.
+REC. Le quatrième essai observe le mouvement réel de la mire et envoie le
+tap REC, mais ne valide pas Stop ni le démarrage de l'enregistrement.
+
+Le run `43602519391` retourne le XML de REC 6,081 secondes après la
+révélation. La vidéo montre la barre en train de descendre au moment du
+tap, cohérent avec l'expiration des six secondes. La nouvelle observation
+après révélation est immédiate, sans la pause générique d'une seconde.
+Avant REC, le XML doit avoir moins de cinq secondes depuis ce tap de
+révélation, avec une nouvelle vérification juste avant l'envoi ; la marge
+restante est réservée au transport de la commande. Un XML expiré n'autorise
+aucun tap REC, et une attente après REC ne retente jamais cette action.
+
+Le diagnostic global précédent perdait l'instant REC sous les messages
+audio de l'émulateur. Le PID NOVATUBE est désormais suivi par logcat durant
+le scénario ; un fichier séparé indique si ce suivi s'est arrêté trop tôt.
+En cas d'échec, l'état brut des services et la liste des fichiers enregistrés
+sont aussi conservés. Ces diagnostics ne remplacent aucune preuve requise.
 
 ## Média contrôlé
 
@@ -158,7 +173,7 @@ modifiée, chemins ZIP dangereux, mauvais type FGS, éléments hors écran ou
 d'une autre application, croissance absente, arrêt incomplet et vidéo tronquée.
 Ils ne constituent aucune preuve d'exécution réelle du scénario Android.
 
-Validation locale du 14 novembre 2026 : les dix-sept tests passent. L'archive
+Validation locale du 14 novembre 2026 : les dix-neuf tests passent. L'archive
 originale 0.1.7 et son AAB ont passé leurs empreintes et la validation de provenance.
 Un client HTTP réel a reçu 357 200 octets de mire ; FFprobe a reconnu H.264,
 AAC, 160 × 90 et 9,101333 secondes. FFmpeg a décodé strictement les 8,101333
@@ -226,8 +241,8 @@ Les tests de workflow supplémentaires refusent l'élargissement d'une ancienne
 garde à l'intention REC, toute dépendance au build, toute suppression des
 contrôles d'acteur/SHA/branche, un secret de signature, un droit d'écriture,
 une recompilation et la promotion de diagnostics en preuve.
-Les 26 tests de workflow et les 17 tests du banc passent ensemble, soit
-43 tests ciblés. La comparaison des objets YAML confirme que les trois
+Les 26 tests de workflow et les 19 tests du banc passent ensemble, soit
+45 tests ciblés. La comparaison des objets YAML confirme que les trois
 anciens jobs et les permissions globales sont identiques à la base
 `6b66f0a8302b0cb34c540bb671a4d6d7fae190c6`.
 

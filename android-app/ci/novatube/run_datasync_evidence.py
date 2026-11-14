@@ -49,6 +49,8 @@ SYSTEM_UI = "com.android.systemui"
 CHANNEL = "NOVATUBE_TEST_PATTERN"
 PLAYLIST_URL = "http://10.0.2.2:8765/playlist.m3u"
 RECORDINGS = "/sdcard/Android/data/" + PACKAGE + "/files/Recordings"
+# La barre disparaît à 6 s ; réserver au moins 1 s à l'envoi du tap.
+CONTROL_ACTION_WINDOW = 5.0
 WORKFLOW = ".github/workflows/novatube-play-aab.yml"
 # Empreinte du workflow relu avec ce banc ponctuel. La moindre modification
 # exige une nouvelle revue du YAML et du SHA du script, pas une garde élargie.
@@ -431,6 +433,7 @@ class Scenario:
         self.device, self.helpers, self.translations, self.stage = device, helpers, translations, stage
         self.events, self.counter, self.language = [], 0, None
         self.replay_opened = False
+        self.controls_revealed_at = None
         self.started = time.monotonic()
 
     def event(self, action: str, **details):
@@ -468,12 +471,19 @@ class Scenario:
     def translated(self, key: str) -> str:
         return self.translations[self.language][key]
 
-    def player_controls(self, texts, timeout=45):
+    def controls_are_fresh(self):
+        return (self.controls_revealed_at is not None
+                and 0 <= time.monotonic() - self.controls_revealed_at < CONTROL_ACTION_WINDOW)
+
+    def player_controls(self, texts, timeout=45, *, fresh=False):
+        def recognized(xml):
+            return all(normalized(text) in observed_labels(xml) for text in texts)
+
         def probe():
             self.device.foreground()
             xml = self.observe("player-controls")
             present = [normalized(text) in observed_labels(xml) for text in texts]
-            if all(present):
+            if all(present) and (not fresh or self.controls_are_fresh()):
                 return xml
             # REC3 : la mire est visible, mais la barre s'est déjà masquée.
             # Révéler uniquement un lecteur observé ; une barre partielle
@@ -481,7 +491,13 @@ class Scenario:
             if not any(present):
                 rectangles = video_surfaces(xml)
                 require(len(rectangles) == 1, "Commandes masquées sans zone vidéo non ambiguë")
+                self.controls_revealed_at = time.monotonic()
                 self.tap_rectangle(rectangles[0], "révéler les commandes du conteneur vidéo observé")
+                # REC4 : attendre 1 s avant le dump faisait dépasser les 6 s.
+                # Relire immédiatement et refuser toute cible déjà périmée.
+                xml = self.observe("player-controls-revealed")
+                if recognized(xml) and (not fresh or self.controls_are_fresh()):
+                    return xml
             return None
         return self.wait(probe, "Commandes du lecteur non observées : " + ", ".join(texts), timeout)
 
@@ -670,6 +686,51 @@ def probe_media(path: Path, *, transport_stream=False) -> dict:
 
 
 @contextmanager
+def application_logs(device, stage: Path):
+    # REC4 : le tail global de 1 200 lignes avait déjà perdu l'instant REC
+    # sous le bruit audio de l'émulateur. Suivre le PID réel de NOVATUBE
+    # pendant tout le scénario, sans toucher à l'app ni à ses services.
+    pid = device.command("shell", "pidof", PACKAGE).strip()
+    require(re.fullmatch(r"[1-9][0-9]*", pid) is not None, "PID NOVATUBE absent ou ambigu pour les diagnostics")
+    with (stage / "application-logcat.txt").open("wb") as output:
+        process = subprocess.Popen([str(device.adb), "-s", "emulator-5582", "logcat", "-v", "threadtime", "--pid", pid],
+                                   stdout=output, stderr=subprocess.STDOUT)
+        try:
+            yield
+        finally:
+            exited_early = process.poll()
+            if exited_early is None:
+                process.terminate()
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=5)
+            (stage / "application-logcat-status.json").write_text(json.dumps({
+                "pid": int(pid), "exitedBeforeScenarioEnd": exited_early is not None,
+                "earlyExitCode": exited_early}, indent=2) + "\n", encoding="utf-8")
+
+
+@contextmanager
+def failure_state(device, stage: Path):
+    try:
+        yield
+    except BaseException:
+        # Relever avant la fermeture de la fixture : son arrêt pourrait
+        # sinon faire disparaître le service que l'on cherche à diagnostiquer.
+        for filename, arguments in (
+            ("failure-services.txt", ("shell", "dumpsys", "activity", "services", PACKAGE)),
+            ("failure-recordings.txt", ("shell", "ls", "-l", RECORDINGS)),
+        ):
+            try:
+                value = device.command(*arguments, timeout=15)
+            except (OSError, subprocess.SubprocessError) as error:
+                value = safe_error(error)
+            (stage / filename).write_text(value, encoding="utf-8")
+        raise
+
+
+@contextmanager
 def screen_recording(device, destination: Path, events):
     remote = "/sdcard/novatube-datasync-demo.mp4"
     events("video-start", audioRecorded=False)
@@ -719,7 +780,7 @@ def execute_scenario(device, helpers, translations, fixture: Path, stage: Path) 
     require(observations["notificationPermission"], "Autorisation de notification non vérifiée")
     flow.event("permission-precondition", permission="POST_NOTIFICATIONS", method="adb-pm-grant-on-disposable-emulator")
     try:
-        with FixtureServer(fixture) as server:
+        with application_logs(device, stage), FixtureServer(fixture) as server, failure_state(device, stage):
             flow.prepare_live()
             observations["liveMotion"] = flow.motion("live")
             observations["serviceBefore"] = flow.service(False, "before")
@@ -728,7 +789,10 @@ def execute_scenario(device, helpers, translations, fixture: Path, stage: Path) 
                 # du vrai REC dans le XML qui vient de confirmer canal + REC,
                 # sans deuxième dump susceptible de laisser expirer la barre.
                 rec = flow.translated("tvRec")
-                xml = flow.player_controls([CHANNEL, rec])
+                xml = flow.player_controls([CHANNEL, rec], fresh=True)
+                require(flow.controls_are_fresh(), "XML REC expiré avant le tap ; aucune action envoyée")
+                flow.event("rec-target-freshness", ageSeconds=round(time.monotonic() - flow.controls_revealed_at, 3),
+                           maximumAgeSeconds=CONTROL_ACTION_WINDOW)
                 flow.tap_rectangle(target_bounds(xml, rec), rec)
                 observations["userRecTap"] = True
                 flow.event("user-rec")
@@ -777,7 +841,7 @@ def execute_scenario(device, helpers, translations, fixture: Path, stage: Path) 
             ] + [next(event["seconds"] for event in flow.events
                       if event["action"] == "motion" and event.get("phase") == "replay") - start]
             observations["fixtureRequests"] = list(server.requests)
-        qualify(observations)
+            qualify(observations)
         return observations
     finally:
         (stage / "events.json").write_text(json.dumps(flow.events, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
