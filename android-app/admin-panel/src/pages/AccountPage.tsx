@@ -1,4 +1,6 @@
 import { AccountSecurity } from '@/components/AccountSecurity';
+import { PanelAppSettings } from '@/components/PanelAppSettings';
+import { panelAlertsPort } from '@/lib/panel-alerts';
 import { FormEvent, ReactNode, useEffect, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
 import { meApi, getCurrentUser, isOwnerRole, type MeUser, ApiError } from '@/lib/api';
@@ -39,6 +41,8 @@ export function AccountPage({ onLogout }: { onLogout: () => void }) {
           <span className="text-sm font-semibold tracking-tight">{t('common.language')}</span>
           <LangSelect />
         </div>
+
+        <PanelAppSettings alerts={panelAlertsPort} />
 
         {/* ===== Changer mot de passe ===== */}
         <PasswordForm />

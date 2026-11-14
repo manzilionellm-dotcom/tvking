@@ -431,6 +431,83 @@ export const devicesApi = {
     request<{ deleted: number }>(`/api/v1/devices/${id}`, { method: 'DELETE' }),
 };
 
+// Réassociation d'une installation NovaTube : accès super_admin strict côté
+// Worker. Le code d'assistance reste en mémoire, jamais dans l'URL ni le stockage.
+export interface NovatubeReassociationCapability {
+  ok: true;
+  supported: true;
+  app_id: 'app_novatube4k';
+  mac: string;
+}
+export interface NovatubeReassociationPreview {
+  ok: true;
+  app_id: 'app_novatube4k';
+  mac: string;
+  server_now: number;
+  candidate: {
+    request_id: string;
+    created_at: number;
+    expires_at: number;
+    model: string | null;
+    app_version: string | null;
+    platform: string | null;
+  };
+}
+export interface NovatubeReassociationResult {
+  ok: true;
+  app_id: 'app_novatube4k';
+  mac: string;
+  result: 'device_reassociated';
+  approved_at: number;
+}
+export const novatubeReassociationApi = {
+  capability: (mac: string, signal?: AbortSignal) =>
+    request<NovatubeReassociationCapability>(
+      `/api/v1/novatube4k/reassociate?mac=${encodeURIComponent(mac)}`, { signal },
+    ),
+  preview: (mac: string, code: string, signal?: AbortSignal) =>
+    request<NovatubeReassociationPreview>('/api/v1/novatube4k/reassociate/preview', {
+      method: 'POST', body: { mac, code }, signal,
+    }),
+  approve: (mac: string, code: string, requestId: string, signal?: AbortSignal) =>
+    request<NovatubeReassociationResult>('/api/v1/novatube4k/reassociate/approve', {
+      method: 'POST', body: { mac, code, request_id: requestId }, signal,
+    }),
+};
+
+export type PanelAlertType = 'new_device' | 'activation' | 'problem';
+export type PanelAlertTypes = Record<PanelAlertType, boolean>;
+export interface PanelAlertPreferences {
+  ok: boolean; enabled: boolean; types: PanelAlertTypes;
+  push_available: boolean; public_key: string | null;
+}
+export interface PanelAlertEvent {
+  v: 1; event_id: string; type: PanelAlertType; title: string; message: string;
+  url: string; seq: number; created_at: number; read_at: number | null;
+}
+export interface PanelAlertSubscription {
+  id: string; label: string; enabled: boolean; current_session: boolean;
+  created_at: number; consented_at: number; expires_at: number | null;
+  last_success_at: number | null; revoked_at: number | null; revoked_reason: string | null;
+}
+export const panelAlertsApi = {
+  preferences: (signal?: AbortSignal) => request<PanelAlertPreferences>('/api/v1/panel-alerts/preferences', { signal }),
+  savePreferences: (enabled: boolean, types: PanelAlertTypes) =>
+    request<PanelAlertPreferences>('/api/v1/panel-alerts/preferences', { method: 'PUT', body: { enabled, types } }),
+  events: (after?: number, signal?: AbortSignal) =>
+    request<{ ok: boolean; items: PanelAlertEvent[]; next_cursor: number; unread_count: number }>(
+      `/api/v1/panel-alerts/events?limit=50${after === undefined ? '' : `&after=${after}`}`, { signal }),
+  read: (eventIds: string[]) => request<{ ok: boolean }>('/api/v1/panel-alerts/read', { method: 'POST', body: { event_ids: eventIds } }),
+  subscriptions: (signal?: AbortSignal) => request<{ ok: boolean; items: PanelAlertSubscription[] }>('/api/v1/panel-alerts/subscriptions', { signal }),
+  subscribe: (subscription: PushSubscriptionJSON, label: string) =>
+    request<{ ok: boolean; id: string; enabled: boolean; delivery_confirmed: false; expires_at: number; consented_at: number }>('/api/v1/panel-alerts/subscriptions', {
+      method: 'POST', body: { endpoint: subscription.endpoint, keys: subscription.keys,
+        expirationTime: subscription.expirationTime ?? null, label, permission: 'granted', consent: true },
+    }),
+  unsubscribe: (id: string, signal?: AbortSignal) =>
+    request<{ ok: boolean }>(`/api/v1/panel-alerts/subscriptions/${encodeURIComponent(id)}`, { method: 'DELETE', signal }),
+};
+
 export interface License {
   id: string;
   customer_id: string;

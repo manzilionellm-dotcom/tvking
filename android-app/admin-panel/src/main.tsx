@@ -4,7 +4,10 @@ import { BrowserRouter } from 'react-router-dom';
 import App from './App';
 import { ConfirmHost } from './components/confirm';
 import { LangProvider } from './lib/i18n';
+import { initializePanelApp } from './lib/panel-app';
 import './styles.css';
+
+initializePanelApp();
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

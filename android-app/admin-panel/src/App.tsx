@@ -1,5 +1,5 @@
 import { securityApi, refreshAccess } from '@/lib/api';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Navigate, Route, Routes, useNavigate, useLocation } from 'react-router-dom';
 import {
   authApi, getToken, setToken, setCurrentUser,
@@ -33,6 +33,9 @@ import { TransferPage } from '@/pages/TransferPage';
 import { FamiliesPage } from '@/pages/FamiliesPage';
 import { BlackBoxPage } from '@/pages/BlackBoxPage';
 import { startPanelChannel } from '@/lib/box-channel';
+import { loginDestination } from '@/lib/panel-links';
+import { PanelAlertsPage } from '@/pages/PanelAlertsPage';
+import { revokePanelPushForLogout } from '@/lib/panel-alerts';
 
 /// Etats possibles de l'app :
 ///   - bootstrapping : on verifie si le token est encore valide
@@ -43,6 +46,8 @@ type AuthStatus = 'bootstrapping' | 'logged_in' | 'logged_out';
 export default function App() {
   const [status, setStatus] = useState<AuthStatus>('bootstrapping');
   const nav = useNavigate();
+  const location = useLocation();
+  const loggingOut = useRef(false);
 
   // Au chargement initial, on tente /auth/me avec le token stocke.
   // Si 401 → on flush et on bascule en logged_out.
@@ -66,8 +71,11 @@ export default function App() {
     authApi.me()
       .then((r) => { setCurrentUser(r.user); })
       .catch(() => {})
-      .finally(() => { setStatus('logged_in'); nav('/'); });
-  }, [nav]);
+      .finally(() => {
+        setStatus('logged_in');
+        nav(loginDestination((location.state as { returnTo?: unknown } | null)?.returnTo, window.location.origin), { replace: true });
+      });
+  }, [nav, location.state]);
 
   useEffect(() => {
     if (status !== 'logged_in') return;
@@ -79,11 +87,25 @@ export default function App() {
   }, [status]);
 
   const handleLogout = useCallback(() => {
-    void securityApi.logout().catch(() => {});
-    setToken(null);
-    setCurrentUser(null);
-    setStatus('logged_out');
-    nav('/login');
+    if (loggingOut.current) return;
+    loggingOut.current = true;
+    setStatus('bootstrapping');
+    const abort = new AbortController();
+    let timeout: number;
+    // Une panne réseau n'empêche jamais la déconnexion. Tant que l'appel
+    // est en cours, le JWT courant permet de révoquer cet abonnement seulement.
+    void Promise.race([
+      revokePanelPushForLogout(abort.signal).catch(() => {}),
+      new Promise<void>((resolve) => { timeout = window.setTimeout(() => { abort.abort(); resolve(); }, 2500); }),
+    ]).finally(() => {
+      window.clearTimeout(timeout);
+      void securityApi.logout().catch(() => {});
+      setToken(null);
+      setCurrentUser(null);
+      setStatus('logged_out');
+      loggingOut.current = false;
+      nav('/login');
+    });
   }, [nav]);
 
   if (status === 'bootstrapping') {
@@ -103,7 +125,7 @@ export default function App() {
     return (
       <Routes>
         <Route path="/login" element={<LoginPage onLoggedIn={handleLoggedIn} />} />
-        <Route path="*" element={<Navigate to="/login" replace />} />
+        <Route path="*" element={<Navigate to="/login" replace state={{ returnTo: loginDestination(location.pathname + location.search, window.location.origin) }} />} />
       </Routes>
     );
   }
@@ -121,6 +143,7 @@ export default function App() {
       <Route path="/chaines"    element={<ChainesPage     onLogout={handleLogout} />} />
       <Route path="/playlists"   element={<Navigate to="/chaines" replace />} />
       <Route path="/notifications" element={<NotificationsPage onLogout={handleLogout} />} />
+      <Route path="/alerts" element={<PanelAlertsPage onLogout={handleLogout} />} />
       <Route path="/control-center" element={<ControlCenterPage onLogout={handleLogout} />} />
       <Route path="/home-manager" element={<HomeManagerPage onLogout={handleLogout} />} />
       <Route path="/force-update" element={<ForceUpdatePage onLogout={handleLogout} />} />
