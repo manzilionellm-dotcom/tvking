@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Capturer le Cast du seul AAB7 approuvé avec le vrai renderer Rygel.
+"""Capturer le Cast du seul AAB8 approuvé avec le vrai renderer Rygel.
 
 La préparation télécharge des octets officiels vérifiés et convertit le bundle
 existant. Le parcours UI n'a accès qu'à un réseau Linux privé, sans jeton GitHub.
@@ -30,8 +30,8 @@ WORKFLOW = rec.WORKFLOW
 BASE_COMMIT = "f8467063651072095c2125adca973b7dbd9bbcaf"
 JOB = "capture_mediaplayback"
 CONFIRMATION = "CAPTURER_NOVATUBE_MEDIAPLAYBACK"
-WORKFLOW_SHA256 = "a18b20ca1285f58398786c41575a83e8fff2482db66d780ab38fd3d86c71fee8"
-MEDIAPLAYBACK_JOB_SHA256 = "5eee056567b66a98e0688cbf6b4b2601d437eeb9161e57890aa592d65c09defa"
+WORKFLOW_SHA256 = "af64cbb3df5f2deaf59f106c2ecfcc82d711c5797e5d9a0840f17a7e2924e315"
+MEDIAPLAYBACK_JOB_SHA256 = "aeb7698d6d74067056778f285f7132dc15cae8c4542a748bf8dd894c340c4ff9"
 ROOT = Path(__file__).resolve().parents[3]
 MODULE = Path(__file__).resolve().parent
 DIAGNOSTICS = ROOT / "android-app/build/novatube/mediaplayback-diagnostic"

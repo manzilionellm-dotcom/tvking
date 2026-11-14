@@ -3,7 +3,8 @@
 
 Le contrôleur fournit le vrai renderer et l'appareil provenant de l'AAB
 vérifié. Ce module utilise seulement l'interface Android pour commencer et
-arrêter le Cast. Les observations partielles restent des diagnostics.
+arrêter le Cast depuis sa notification, en restant en arrière-plan.
+Les observations partielles restent des diagnostics.
 """
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ import json
 import math
 from pathlib import Path, PurePosixPath
 import re
+import shlex
 import subprocess
 import time
 from urllib.parse import urlsplit
@@ -23,7 +25,7 @@ import run_datasync_evidence as shared
 
 
 PLAYLIST_URL = "http://127.0.0.1:18765/playlist.m3u"
-PLAYBACK_TEXT = "Lecture audio en arrière-plan"
+CAST_NOTIFICATION_CHANNEL = "cast_playback_channel"
 PACKAGE, CHANNEL, SYSTEM_UI = shared.PACKAGE, shared.CHANNEL, shared.SYSTEM_UI
 require = shared.require
 
@@ -58,14 +60,74 @@ def unique_button(xml: str, label: str) -> tuple[int, int, int, int]:
     return matches[0]
 
 
-def playback_notifications(xml: str) -> list:
+def cast_notifications(xml: str, description: str) -> list:
     rows = []
     for node in ET.fromstring(xml).iter("node"):
         if node.get("package") == SYSTEM_UI and node.get("resource-id", "").endswith("/expandableNotificationRow"):
             labels = shared.observed_labels(ET.tostring(node, encoding="unicode"), SYSTEM_UI)
-            if {shared.normalized(CHANNEL), shared.normalized(PLAYBACK_TEXT)} <= labels:
+            if {shared.normalized(CHANNEL), shared.normalized(description)} <= labels:
                 rows.append(node)
     return rows
+
+
+def cast_notification_keys(raw: str) -> list[str]:
+    """Lire les seules clés actives ; ne jamais lancer une action native."""
+    keys = []
+    for line in raw.splitlines():
+        parts = line.strip().split("|")
+        if len(parts) >= 3 and parts[1:3] == [PACKAGE, "1002"]:
+            require(len(parts) == 5 and parts[0] == "0" and parts[3] == "null"
+                    and re.fullmatch(r"[1-9][0-9]*", parts[4]), "Clé de notification Cast inattendue")
+            keys.append(line.strip())
+    require(len(keys) <= 1, "Plusieurs notifications Cast1002 actives")
+    return keys
+
+
+def cast_notification_identity(raw: str, key: str, description: str, stop_label: str) -> dict:
+    """Relier le texte SystemUI au vrai NotificationRecord Android1002.
+
+    Le format vient des commandes Android15 `cmd notification list/get`.
+    Ce sont des lectures ; le PendingIntent n'est jamais envoyé par ADB.
+    """
+    require(cast_notification_keys(key) == [key], "Clé Cast1002 non vérifiée")
+    headers = [line for line in raw.splitlines() if line.startswith("NotificationRecord(")]
+    require(len(headers) == 1 and re.search(r"\bpkg=" + re.escape(PACKAGE) + r"\s", headers[0])
+            and re.search(r"\bid=1002\s", headers[0]), "NotificationRecord d'une autre application ou identité")
+    require(re.findall(r"(?m)^\s*key=(\S+)\s*$", raw) == [key], "Clé du NotificationRecord différente")
+    channels = re.findall(r"(?m)^\s*effectiveNotificationChannel=NotificationChannel\{mId='([^']+)'", raw)
+    require(channels == [CAST_NOTIFICATION_CHANNEL], "Notification d'écouteurs ou canal Cast ambigu")
+    title = re.findall(r"(?m)^\s*android\.title=\S+ \((.*)\)\s*$", raw)
+    text = re.findall(r"(?m)^\s*android\.text=\S+ \((.*)\)\s*$", raw)
+    require(len(title) == len(text) == 1 and shared.normalized(title[0]) == shared.normalized(CHANNEL)
+            and shared.normalized(text[0]) == shared.normalized(description),
+            "Titre ou vrai nom du renderer différent dans la notification")
+    actions = re.findall(r'(?m)^\s*\[([0-9]+)\] "([^"\n]+)" -> (.+)$', raw)
+    require(len(actions) == 1 and actions[0][0] == "0"
+            and shared.normalized(actions[0][1]) == shared.normalized(stop_label)
+            and actions[0][2].startswith("PendingIntent{"), "Action Cast absente, différente ou ambiguë")
+    return {"key": key, "package": PACKAGE, "id": 1002, "channel": channels[0],
+            "title": title[0], "description": text[0], "actionLabel": actions[0][1]}
+
+
+def cast_notification_action_bounds(xml: str, description: str, stop_label: str) -> tuple:
+    rows = cast_notifications(xml, description)
+    require(len(rows) == 1, "Notification Cast SystemUI absente ou ambiguë")
+    row = rows[0]
+    row_bounds = shared.bounds(row)
+    require(row_bounds, "Limites de la notification Cast absentes")
+    names = [node for node in row.iter("node") if node.get("package") == SYSTEM_UI
+             and node.get("resource-id", "").endswith("/app_name_text")
+             and shared.normalized("NOVATUBE") in shared.labels(node)]
+    require(len(names) == 1, "L'action doit appartenir à la notification NOVATUBE dépliée")
+    actions = [shared.bounds(node) for node in row.iter("node") if node.get("package") == SYSTEM_UI
+               and node.get("resource-id") == "android:id/action0"
+               and shared.normalized(stop_label) in shared.labels(node)
+               and node.get("enabled") == "true" and node.get("clickable") == "true" and shared.bounds(node)]
+    require(len(actions) == 1, "Action d'arrêt Cast SystemUI absente, désactivée ou ambiguë")
+    left, top, right, bottom = actions[0]
+    require(row_bounds[0] <= left < right <= row_bounds[2] and row_bounds[1] <= top < bottom <= row_bounds[3],
+            "L'action d'arrêt sort de la ligne de notification Cast")
+    return actions[0]
 
 
 def validate_relay_uri(uri: str, guest_ip: str) -> str:
@@ -119,16 +181,33 @@ def validate_playing_sample(sample: dict, guest_ip: str) -> str:
 def qualify(observations: dict) -> None:
     require(observations.get("notificationPermission") is True and observations.get("liveMotion") is True,
             "Permission ou lecture locale réelle non observée")
-    require(observations.get("userCastTargetTap") is True and observations.get("userStopCastingTap") is True,
-            "Les actions Cast de l'interface doivent être observées")
+    require(observations.get("userCastTargetTap") is True and observations.get("userCastNotificationStopTap") is True,
+            "Le départ UI et l'arrêt depuis la notification Cast doivent être observés")
     require(observations.get("serviceBefore") == {"foreground": False, "type": None}
             and observations.get("serviceDuring") == {"foreground": True, "type": 2}
             and observations.get("serviceBackground") == {"foreground": True, "type": 2}
-            and observations.get("serviceAfter") == {"foreground": False, "type": None},
+            and observations.get("serviceAfterNotificationStop") == {"foreground": False, "type": None},
             "Cycle mediaPlayback1002 incomplet")
-    require(observations.get("notificationVisible") is True and observations.get("notificationRemoved") is True
-            and observations.get("homeObserved") is True and observations.get("stillBackground") is True,
+    require(observations.get("castNotificationVisible") is True and observations.get("castNotificationRemoved") is True
+            and observations.get("homeObserved") is True and observations.get("stillBackground") is True
+            and observations.get("backgroundAfterNotificationStop") is True,
             "Notification ou maintien de l'app en arrière-plan non observés")
+    notification = observations.get("castNotificationStop", {})
+    action_bounds = notification.get("actionBounds", [])
+    require(notification.get("package") == PACKAGE and notification.get("id") == 1002
+            and notification.get("channel") == CAST_NOTIFICATION_CHANNEL
+            and notification.get("uiPackage") == SYSTEM_UI and notification.get("appBackgroundAtTap") is True
+            and notification.get("tapAction") == "observed-notification-action0"
+            and cast_notification_keys(notification.get("key", "")) == [notification.get("key")]
+            and shared.normalized(notification.get("title", "")) == shared.normalized(CHANNEL)
+            and shared.normalized(notification.get("description", "")) == shared.normalized(observations.get("castDescription", ""))
+            and shared.normalized(notification.get("actionLabel", "")) == shared.normalized(observations.get("castStopLabel", ""))
+            and bool(observations.get("castConnectedLabel")) and bool(observations.get("rendererName"))
+            and observations.get("castDescription") == (observations.get("castConnectedLabel", "") + " " + observations.get("rendererName", "")).strip()
+            and bool(observations.get("castStopLabel"))
+            and len(action_bounds) == 4 and all(type(value) is int for value in action_bounds)
+            and 0 <= action_bounds[0] < action_bounds[2] <= 1080 and 0 <= action_bounds[1] < action_bounds[3] <= 1920,
+            "Le geste n'est pas relié à l'unique notification Cast1002 observée en arrière-plan")
     samples = [observations.get(key, {}) for key in ("rendererConnected", "rendererBackgroundStart", "rendererBackgroundEnd")]
     require([sample.get("phase") for sample in samples] == ["connected", "background-start", "background-end"],
             "Phases renderer absentes ou réutilisées")
@@ -141,7 +220,7 @@ def qualify(observations: dict) -> None:
             and samples[2]["relayBytes"] > samples[1]["relayBytes"] + 1880
             and (sample_time(samples[2]) - sample_time(samples[1])).total_seconds() >= 8,
             "Le relais ne progresse pas pendant huit secondes en arrière-plan")
-    stopped = observations.get("rendererStopped", {})
+    stopped = observations.get("rendererStoppedAfterNotification", {})
     require(stopped.get("transportState") == "STOPPED" and stopped.get("relayConnectionClosed") is True
             and stopped.get("relayUri") == uris[0] and stopped.get("oldUriRefused") is True
             and stopped.get("oldUriHttpStatus") == 404
@@ -156,7 +235,7 @@ def qualify(observations: dict) -> None:
         require(len(timeline) == 4 and all(type(value) in (int, float) and math.isfinite(value) for value in timeline)
                 and 0 <= timeline[0] < timeline[1] < timeline[2] < timeline[3]
                 and timeline[2] - timeline[1] >= 8 and timeline[3] + 1 <= video["durationSeconds"],
-                "La vidéo ne contient pas Cast, Home, arrêt UI et arrêt réel : " + key)
+                "La vidéo ne contient pas Cast, Home, arrêt notification et arrêt réel : " + key)
 
 
 class MediaPlaybackScenario(shared.Scenario):
@@ -235,42 +314,84 @@ class MediaPlaybackScenario(shared.Scenario):
         self.event("renderer-playing", phase=phase, uri=value["relayUri"], relayBytes=value["relayBytes"])
         return value
 
-    def background_still_observed(self) -> bool:
+    def background_still_observed(self, phase="background-end") -> bool:
+        require(re.fullmatch(r"[a-z0-9-]+", phase), "Phase d'arrière-plan incorrecte")
         raw = self.device.command("shell", "dumpsys", "activity", "activities")
-        (self.stage / "background-end-activity.txt").write_text(raw, encoding="utf-8")
+        (self.stage / (phase + "-activity.txt")).write_text(raw, encoding="utf-8")
         resumed = [line for line in raw.splitlines() if "topResumedActivity=" in line or "mResumedActivity:" in line]
         require(resumed and all(PACKAGE + "/" not in line for line in resumed), "NOVATUBE est revenu au premier plan")
         return True
 
-    def notification(self, expected: bool) -> bool:
+    def cast_description(self, friendly_name: str) -> str:
+        return (self.translated("castConnected") + " " + friendly_name).strip()
+
+    def active_cast_notification(self, expected: bool, friendly_name: str, phase: str):
+        raw = self.device.command("shell", "cmd", "notification", "list")
+        (self.stage / (phase + "-notification-list.txt")).write_text(raw, encoding="utf-8")
+        keys = cast_notification_keys(raw)
+        require(bool(keys) is expected, "Présence de la notification1002 native incorrecte")
+        if not expected:
+            return None
+        # Les | d'une clé Android ne doivent pas devenir des pipelines du shell.
+        record = self.device.command("shell", "cmd", "notification", "get", shlex.quote(keys[0]))
+        (self.stage / (phase + "-notification-record.txt")).write_text(record, encoding="utf-8")
+        return cast_notification_identity(record, keys[0], self.cast_description(friendly_name), self.translated("castStopTooltip"))
+
+    def cast_notification(self, expected: bool, friendly_name: str) -> bool:
         self.device.command("shell", "cmd", "statusbar", "expand-notifications")
+        description = self.cast_description(friendly_name)
         def probe():
-            xml = self.observe("playback-notification-visible" if expected else "playback-notification-removed")
+            phase = "cast-notification-visible" if expected else "cast-notification-removed"
+            self.active_cast_notification(expected, friendly_name, phase)
+            xml = self.observe(phase)
             if expected:
-                require(len(playback_notifications(xml)) == 1, "Notification playback visible absente ou ambiguë")
+                require(len(cast_notifications(xml, description)) == 1, "Notification Cast visible absente ou ambiguë")
             else:
                 require(any(node.get("package") == SYSTEM_UI
                             and node.get("resource-id", "").endswith("/notification_stack_scroller")
                             for node in ET.fromstring(xml).iter("node")), "Volet de notifications non reconnu")
-                require(not playback_notifications(xml), "Notification playback encore visible")
+                require(not cast_notifications(xml, description), "Notification Cast encore visible")
             return xml
         self.wait(probe, "État visible de notification non atteint", 15)
         name = "playback-notification-present.png" if expected else "playback-notification-removed.png"
         (self.stage / name).write_bytes(self.device.binary("exec-out", "screencap", "-p"))
-        self.event("playback-notification", visible=expected, imageFile=name)
+        self.event("cast-notification", visible=expected, imageFile=name)
         return True
 
-    def stop_cast(self, friendly_name: str):
-        self.device.command("shell", "cmd", "statusbar", "collapse")
-        self.device.command("shell", "am", "start", "-W", "-n", PACKAGE + "/" + PACKAGE + ".NovatubeActivity")
-        xml = self.wait(lambda: self.cast_state(friendly_name, picker=False), "Session Cast absente au retour", 20)
-        self.tap_rectangle(unique_button(xml, self.translated("castStopTooltip")), self.translated("castStopTooltip"))
-        self.event("user-stop-casting")
+    def stop_cast_notification(self, friendly_name: str) -> dict:
+        description, stop_label = self.cast_description(friendly_name), self.translated("castStopTooltip")
+        self.device.command("shell", "cmd", "statusbar", "expand-notifications")
+        xml = self.observe("cast-notification-before-expand")
+        rows = cast_notifications(xml, description)
+        require(len(rows) == 1, "Notification Cast à arrêter absente ou ambiguë")
+        content = ET.tostring(rows[0], encoding="unicode")
+        if shared.normalized(stop_label) not in shared.observed_labels(content, SYSTEM_UI):
+            buttons = [node for node in rows[0].iter("node") if node.get("package") == SYSTEM_UI
+                       and node.get("resource-id", "").endswith("/expand_button")
+                       and node.get("enabled") == "true" and node.get("clickable") == "true" and shared.bounds(node)]
+            require(len(buttons) == 1, "Notification Cast repliée sans bouton d'expansion unique")
+            self.tap_rectangle(shared.bounds(buttons[0]), "Déplier uniquement la notification Cast observée")
+        self.wait(lambda: cast_notification_action_bounds(self.observe("cast-notification-wait-action"), description, stop_label),
+                  "Action d'arrêt Cast non visible", 15)
+        identity = self.active_cast_notification(True, friendly_name, "cast-notification-before-stop")
+        self.service(True, "notification-before-stop")
+        background = self.background_still_observed("notification-before-stop")
+        # Relire après les diagnostics, puis toucher ces seules coordonnées.
+        # Aucun retour dans l'activité et aucune commande STOP native/UPnP.
+        xml = self.observe("cast-notification-action-before-stop")
+        rectangle = cast_notification_action_bounds(xml, description, stop_label)
+        (self.stage / "cast-notification-action-before-stop.png").write_bytes(self.device.binary("exec-out", "screencap", "-p"))
+        self.tap_rectangle(rectangle, stop_label + " dans la notification Cast1002")
+        observation = {**identity, "uiPackage": SYSTEM_UI, "appBackgroundAtTap": background,
+            "tapAction": "observed-notification-action0", "actionBounds": list(rectangle)}
+        self.event("user-cast-notification-stop", **observation)
+        return observation
 
 
 def execute_ui(device, helpers, translations, stage: Path, renderer) -> dict:
     """Le contrôleur conserve fixture et renderer actifs jusqu'à ce retour."""
-    flow, observations = MediaPlaybackScenario(device, helpers, translations, stage), {"guestIp": renderer.guest_ip}
+    flow, observations = MediaPlaybackScenario(device, helpers, translations, stage), {
+        "guestIp": renderer.guest_ip, "rendererName": renderer.friendly_name}
     require(isinstance(renderer.friendly_name, str) and renderer.friendly_name.strip(), "Nom réel du renderer absent")
     device.command("shell", "pm", "grant", PACKAGE, "android.permission.POST_NOTIFICATIONS")
     permission = device.command("shell", "dumpsys", "package", PACKAGE)
@@ -296,13 +417,17 @@ def execute_ui(device, helpers, translations, stage: Path, renderer) -> dict:
                 observations["rendererBackgroundEnd"] = flow.renderer_sample(renderer, "background-end")
                 observations["stillBackground"] = flow.background_still_observed()
                 observations["serviceBackground"] = flow.service(True, "background")
-                observations["notificationVisible"] = flow.notification(True)
-                flow.stop_cast(renderer.friendly_name)
-                observations["userStopCastingTap"] = True
-                observations["serviceAfter"] = flow.service(False, "after-stop")
-                observations["rendererStopped"] = renderer.wait_stopped(observations["rendererConnected"]["relayUri"], timeout=20)
-                flow.event("renderer-stop-confirmed")
-                observations["notificationRemoved"] = flow.notification(False)
+                observations["castDescription"] = flow.cast_description(renderer.friendly_name)
+                observations["castConnectedLabel"] = flow.translated("castConnected")
+                observations["castStopLabel"] = flow.translated("castStopTooltip")
+                observations["castNotificationVisible"] = flow.cast_notification(True, renderer.friendly_name)
+                observations["castNotificationStop"] = flow.stop_cast_notification(renderer.friendly_name)
+                observations["userCastNotificationStopTap"] = True
+                observations["serviceAfterNotificationStop"] = flow.service(False, "after-notification-stop")
+                observations["rendererStoppedAfterNotification"] = renderer.wait_stopped(observations["rendererConnected"]["relayUri"], timeout=20)
+                flow.event("renderer-stopped-after-notification")
+                observations["castNotificationRemoved"] = flow.cast_notification(False, renderer.friendly_name)
+                observations["backgroundAfterNotificationStop"] = flow.background_still_observed("after-notification-stop")
                 # REC9 a mesuré 2,453 s d'écart entre les marqueurs muraux
                 # et le MP4 ; conserver une fin visible sans assouplir qualify.
                 time.sleep(5)
@@ -311,7 +436,7 @@ def execute_ui(device, helpers, translations, stage: Path, renderer) -> dict:
             for key, start_event in (("phoneVideoTimeline", "video-start"), ("rendererVideoTimeline", "renderer-video-start")):
                 start = next(event["seconds"] for event in flow.events if event["action"] == start_event)
                 observations[key] = [next(event["seconds"] for event in flow.events if event["action"] == action) - start
-                                     for action in ("user-cast-target", "home-background", "user-stop-casting", "renderer-stop-confirmed")]
+                                     for action in ("user-cast-target", "home-background", "user-cast-notification-stop", "renderer-stopped-after-notification")]
             qualify(observations)
             return observations
     except BaseException:

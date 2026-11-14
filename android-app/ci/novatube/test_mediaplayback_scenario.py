@@ -23,14 +23,22 @@ class MediaPlaybackScenarioTest(unittest.TestCase):
         start, end = self.sample("background-start", 5, 20000), self.sample("background-end", 15, 50000)
         video = {"videoCodec": "h264", "durationSeconds": 70, "decodeScope": "entire-file", "excludedTailSeconds": 0}
         return {"guestIp": "192.0.2.10", "notificationPermission": True, "liveMotion": True,
-                "userCastTargetTap": True, "userStopCastingTap": True,
+                "rendererName": "NOVATUBE test renderer", "castConnectedLabel": "Casting on",
+                "castDescription": "Casting on NOVATUBE test renderer", "castStopLabel": "Stop casting",
+                "userCastTargetTap": True, "userCastNotificationStopTap": True,
                 "serviceBefore": {"foreground": False, "type": None},
                 "serviceDuring": {"foreground": True, "type": 2},
                 "serviceBackground": {"foreground": True, "type": 2},
-                "serviceAfter": {"foreground": False, "type": None},
-                "notificationVisible": True, "notificationRemoved": True, "homeObserved": True, "stillBackground": True,
+                "serviceAfterNotificationStop": {"foreground": False, "type": None},
+                "castNotificationVisible": True, "castNotificationRemoved": True, "homeObserved": True,
+                "stillBackground": True, "backgroundAfterNotificationStop": True,
+                "castNotificationStop": {"key": "0|com.sevenmotion.novatube|1002|null|10217",
+                    "package": media.PACKAGE, "id": 1002, "channel": "cast_playback_channel",
+                    "title": media.CHANNEL, "description": "Casting on NOVATUBE test renderer",
+                    "actionLabel": "Stop casting", "uiPackage": media.SYSTEM_UI, "appBackgroundAtTap": True,
+                    "tapAction": "observed-notification-action0", "actionBounds": [147, 1268, 730, 1394]},
                 "rendererConnected": connected, "rendererBackgroundStart": start, "rendererBackgroundEnd": end,
-                "rendererStopped": {"transportState": "STOPPED", "relayConnectionClosed": True,
+                "rendererStoppedAfterNotification": {"transportState": "STOPPED", "relayConnectionClosed": True,
                                     "relayUri": connected["relayUri"], "relayBytes": 55000,
                                     "oldUriRefused": True, "oldUriHttpStatus": 404},
                 "phoneVideoProbe": video, "rendererVideoProbe": copy.deepcopy(video),
@@ -77,11 +85,11 @@ class MediaPlaybackScenarioTest(unittest.TestCase):
             ("rendererBackgroundEnd", "atUtc", "2026-11-14T14:00:12+00:00"),
             ("rendererBackgroundEnd", "frameFiles", original["rendererBackgroundStart"]["frameFiles"]),
             ("rendererBackgroundEnd", "phase", "connected"),
-            ("rendererStopped", "transportState", "PLAYING"),
-            ("rendererStopped", "relayConnectionClosed", False),
-            ("rendererStopped", "oldUriHttpStatus", 200),
-            ("rendererStopped", "oldUriRefused", False),
-            ("rendererStopped", "relayUri", "http://192.0.2.10:31531/relay/Other12345.ts"),
+            ("rendererStoppedAfterNotification", "transportState", "PLAYING"),
+            ("rendererStoppedAfterNotification", "relayConnectionClosed", False),
+            ("rendererStoppedAfterNotification", "oldUriHttpStatus", 200),
+            ("rendererStoppedAfterNotification", "oldUriRefused", False),
+            ("rendererStoppedAfterNotification", "relayUri", "http://192.0.2.10:31531/relay/Other12345.ts"),
             ("phoneVideoProbe", "decodeScope", "unchecked"),
             ("rendererVideoProbe", "durationSeconds", 30),
         ]
@@ -90,11 +98,68 @@ class MediaPlaybackScenarioTest(unittest.TestCase):
             bad[group][key] = value
             with self.subTest(group=group, key=key), self.assertRaises(ValueError):
                 media.qualify(bad)
-        for key in ("userCastTargetTap", "userStopCastingTap", "notificationVisible", "notificationRemoved", "stillBackground"):
+        for key in ("userCastTargetTap", "userCastNotificationStopTap", "castNotificationVisible", "castNotificationRemoved",
+                    "stillBackground", "backgroundAfterNotificationStop"):
             with self.subTest(key=key), self.assertRaises(ValueError):
                 media.qualify({**original, key: False})
         with self.assertRaises(ValueError):
             media.qualify({**original, "serviceBackground": {"foreground": True, "type": 1}})
+
+    def test_notification_stop_cannot_be_replaced_by_old_app_stop_or_another_row(self):
+        original = self.observations()
+        old = copy.deepcopy(original)
+        old.pop("userCastNotificationStopTap")
+        old["userStopCastingTap"] = True
+        with self.assertRaises(ValueError):
+            media.qualify(old)
+        for key, value in (("package", "other.app"), ("id", 1001), ("channel", "playback_channel"),
+                           ("appBackgroundAtTap", False), ("uiPackage", media.PACKAGE),
+                           ("key", "0|com.sevenmotion.novatube|1001|null|10217"),
+                           ("description", "Lecture audio en arrière-plan"), ("actionLabel", "Arrêter"),
+                           ("tapAction", "app-stop-button"), ("actionBounds", [])):
+            bad = copy.deepcopy(original)
+            bad["castNotificationStop"][key] = value
+            with self.subTest(key=key), self.assertRaises(ValueError):
+                media.qualify(bad)
+
+    def test_notification_action_is_scoped_to_unique_enabled_novatube_systemui_row(self):
+        # XML de régression structurelle, aucun appareil ni vidéo simulé.
+        description, stop_label = "Casting on NOVATUBE test renderer", "Stop casting"
+        row = ('<node package="com.android.systemui" resource-id="com.android.systemui:id/expandableNotificationRow" bounds="[32,990][1040,1400]">'
+               '<node package="com.android.systemui" resource-id="android:id/app_name_text" text="NOVATUBE"/>'
+               '<node package="com.android.systemui" resource-id="android:id/title" text="NOVATUBE_TEST_PATTERN"/>'
+               '<node package="com.android.systemui" resource-id="android:id/text" text="Casting on NOVATUBE test renderer"/>'
+               '<node package="com.android.systemui" resource-id="android:id/action0" text="STOP CASTING" content-desc="Stop casting" '
+               'enabled="true" clickable="true" bounds="[147,1268][730,1394]"/></node>')
+        xml = '<hierarchy>' + row + '</hierarchy>'
+        self.assertEqual(media.cast_notification_action_bounds(xml, description, stop_label), (147, 1268, 730, 1394))
+        for bad in (xml.replace('text="NOVATUBE"', 'text="Other app"'), xml.replace(description, 'Casting on Other renderer'),
+                    xml.replace('enabled="true"', 'enabled="false"'), xml.replace('clickable="true"', 'clickable="false"'),
+                    xml.replace('android:id/action0', 'android:id/action1'), xml.replace('[147,1268][730,1394]', '[0,0][730,1394]'),
+                    xml.replace(media.SYSTEM_UI, media.PACKAGE), '<hierarchy>' + row + row + '</hierarchy>'):
+            with self.subTest(xml=bad), self.assertRaises(ValueError):
+                media.cast_notification_action_bounds(bad, description, stop_label)
+
+    def test_native_notification_identity_rejects_old_audio_and_wrong_key_or_action(self):
+        # Format provenant de NotificationRecord.dump Android15 ; données de
+        # test locales, jamais utilisées pour répondre à l'app ou au renderer.
+        key = "0|com.sevenmotion.novatube|1002|null|10217"
+        record = ('NotificationRecord(0x000001: pkg=com.sevenmotion.novatube user=UserHandle{0} id=1002 tag=null key=' + key + ': Notification())\n'
+                  '  key=' + key + '\n'
+                  '  effectiveNotificationChannel=NotificationChannel{mId=\'cast_playback_channel\', mName=Diffusion Cast}\n'
+                  '    android.title=String (Novatube_test_pattern)\n'
+                  '    android.text=String (Casting on NOVATUBE test renderer)\n'
+                  '    [0] "Stop casting" -> PendingIntent{00001}\n')
+        self.assertEqual(media.cast_notification_identity(record, key, "Casting on NOVATUBE test renderer", "Stop casting")["id"], 1002)
+        for bad in (record.replace('id=1002', 'id=1001'), record.replace('cast_playback_channel', 'playback_channel'),
+                    record.replace('Casting on NOVATUBE test renderer', 'Lecture audio en arrière-plan'),
+                    record.replace('"Stop casting"', '"Arrêter"'), record.replace('PendingIntent{00001}', 'null'),
+                    record.replace('pkg=' + media.PACKAGE, 'pkg=other.app'), record + record):
+            with self.subTest(record=bad), self.assertRaises(ValueError):
+                media.cast_notification_identity(bad, key, "Casting on NOVATUBE test renderer", "Stop casting")
+        for invalid in (key.replace('|1002|', '|1001|'), key.replace('0|', '1|', 1), key + '|extra', key + '\n' + key):
+            with self.subTest(key=invalid), self.assertRaises(ValueError):
+                media.cast_notification_identity(record, invalid, "Casting on NOVATUBE test renderer", "Stop casting")
 
     def test_cast_button_requires_observed_enabled_unique_semantics(self):
         # Vrai bouton du XML REC7 ; ces bounds ne servent qu'à la régression.

@@ -584,7 +584,7 @@ jobs:
           retention-days: 7
 
   capture_mediaplayback:
-    name: Observer le vrai relais Cast et mediaPlayback de l'AAB7 immuable
+    name: Observer le vrai relais Cast et mediaPlayback de l'AAB8 immuable
     if: >-
       github.event_name == 'workflow_dispatch' &&
       github.repository == 'manzilionellm-dotcom/tvking' &&
@@ -607,11 +607,11 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Charger les outils et traductions exacts de l'AAB7
+      - name: Charger les outils et traductions exacts de l'AAB8
         id: media_binary_checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: 6b66f0a8302b0cb34c540bb671a4d6d7fae190c6
+          ref: 1610073a902acb922d1ea1bc394eebef2273efb3
           path: novatube-binary-source
           fetch-depth: 1
           persist-credentials: false
@@ -635,12 +635,12 @@ jobs:
           python3 -m unittest discover -s ci/novatube -p test_verify_workflow.py -v
           python3 ci/novatube/run_mediaplayback_evidence.py --preflight
 
-      - name: Télécharger uniquement l'archive AAB7 déjà vérifiée
+      - name: Télécharger uniquement l'archive AAB8 déjà vérifiée
         id: media_download_aab
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
-          artifact-ids: '14115570586'
-          run-id: '43597754114'
+          artifact-ids: '14120095100'
+          run-id: '43608872429'
           repository: manzilionellm-dotcom/tvking
           github-token: ${{ github.token }}
           skip-decompress: true
@@ -701,7 +701,7 @@ jobs:
           sdkmanager 'system-images;android-35;default;x86_64' emulator platform-tools 'build-tools;35.0.0' </dev/null \
             2>&1 | tee build/novatube/mediaplayback-diagnostic/sdk-install.txt
 
-      - name: Vérifier l'AAB7 et extraire les seuls octets officiels du renderer
+      - name: Vérifier l'AAB8 et extraire les seuls octets officiels du renderer
         id: media_prepare
         env:
           NOVATUBE_MEDIAPLAYBACK_CONFIRMATION: ${{ inputs.confirme }}
@@ -728,7 +728,7 @@ jobs:
         if: success()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
-          name: NOVATUBE-mediaPlayback-from-43597754114-${{ github.sha }}-${{ github.run_attempt }}
+          name: NOVATUBE-mediaPlayback-from-43608872429-${{ github.sha }}-${{ github.run_attempt }}
           path: android-app/build/novatube/mediaplayback-evidence/
           if-no-files-found: error
           retention-days: 30
@@ -771,7 +771,7 @@ jobs:
         id: binary_checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: 6b66f0a8302b0cb34c540bb671a4d6d7fae190c6
+          ref: 1610073a902acb922d1ea1bc394eebef2273efb3
           path: novatube-binary-source
           fetch-depth: 1
           persist-credentials: false
@@ -791,8 +791,8 @@ jobs:
         id: download_aab
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
-          artifact-ids: '14115570586'
-          run-id: '43597754114'
+          artifact-ids: '14120095100'
+          run-id: '43608872429'
           repository: manzilionellm-dotcom/tvking
           github-token: ${{ github.token }}
           skip-decompress: true
@@ -839,7 +839,7 @@ jobs:
         if: success()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
-          name: NOVATUBE-dataSync-from-43597754114-${{ github.sha }}-${{ github.run_attempt }}
+          name: NOVATUBE-dataSync-from-43608872429-${{ github.sha }}-${{ github.run_attempt }}
           path: android-app/build/novatube/datasync-evidence/
           if-no-files-found: error
           retention-days: 30

@@ -1,4 +1,6 @@
 """Refus du banc et des courses d'observation, sans réseau ni Android."""
+import subprocess
+import sys
 import tempfile
 import threading
 import unittest
@@ -11,6 +13,35 @@ import run_mediaplayback_evidence as ci
 
 
 class MediaPlaybackRuntimeTest(unittest.TestCase):
+    def test_original_helpers_cannot_replace_the_reviewed_ui_scenario(self):
+        # Un processus Python neuf évite que les imports des autres tests
+        # masquent le défaut. Le second checkout contient un scénario ancien ;
+        # ses helpers sont voulus, mais son scénario ne doit jamais remplacer
+        # celui du banc courant. Aucun appareil ou résultat vidéo n'est simulé.
+        with tempfile.TemporaryDirectory() as folder:
+            original = Path(folder)
+            modules = original / "ci/novatube"
+            modules.mkdir(parents=True)
+            (modules / "run_play_evidence.py").write_text("ORIGIN = 'binary-helpers'\n")
+            (modules / "mediaplayback_scenario.py").write_text(
+                "raise AssertionError('Le scénario archivé ne doit pas être chargé')\n")
+            code = """
+from pathlib import Path
+import sys
+current, original = map(Path, sys.argv[1:])
+sys.path.insert(0, str(current))
+import mediaplayback_runtime as runtime
+helpers = runtime.rec.original_helpers(original)
+assert Path(helpers.__file__).parent == original / 'ci/novatube'
+from mediaplayback_scenario import execute_ui
+assert execute_ui is runtime.execute_ui
+assert Path(sys.modules[execute_ui.__module__].__file__).parent == current
+"""
+            result = subprocess.run([sys.executable, "-c", code,
+                str(Path(__file__).resolve().parent), str(original)],
+                capture_output=True, text=True, timeout=15)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_namespace_guards_refuse_each_parent_view_before_any_action(self):
         for net, mount, pid, uid in (("net-parent", "mnt-child", 1, 0),
                                       ("net-child", "mnt-parent", 1, 0),

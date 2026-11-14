@@ -31,6 +31,9 @@ import xml.etree.ElementTree as ET
 import run_datasync_evidence as rec
 from probe_tap_network import checked_wlan, stop_owned_process, ENGINE_VERSION, ENGINE_BUILD
 from mediaplayback_observations import RendererProbe, HOST_IP, DIRECT_URI, DISPLAY
+# Charger le scénario du banc approuvé avant que les helpers du binaire
+# ajoutent leur dossier à sys.path : l'AAB8 contient aussi un ancien scénario.
+from mediaplayback_scenario import execute_ui
 
 TAP = "ntprobe0"
 RENDERER_PORT = 19494
@@ -55,7 +58,7 @@ def namespace_guards(parent_netns, parent_mntns):
 class Fixture:
     """Une mire réelle sur 8765 ; l'URL 18765 n'existe que dans Android."""
     def __init__(self, path, stage):
-        require(rec.digest(path) == rec.FIXTURE_SHA256, "Mire différente de l'AAB7")
+        require(rec.digest(path) == rec.FIXTURE_SHA256, "Mire différente de l'AAB8")
         self.path, self.stage = path, stage
         self.lock, self.requests, self.processes = threading.Lock(), [], set()
         self.stopped = False
@@ -392,12 +395,11 @@ class Runtime:
             environment=self.environment, spawn=self.spawn, stop_process=stop_owned_process)
 
     def scenario(self):
-        from mediaplayback_scenario import execute_ui
         apk = self.prepared / self.manifest["apkRelativePath"]
         self.device.command("install", str(apk), timeout=180)
         installed = self.device.command("shell", "dumpsys", "package", rec.PACKAGE)
-        require(re.search(r"\bversionCode=7\b", installed) and re.search(r"\bversionName=0\.1\.7\b", installed),
-                "Version installée différente de l'AAB7")
+        require(re.search(r"\bversionCode=8\b", installed) and re.search(r"\bversionName=0\.1\.8\b", installed),
+                "Version installée différente de l'AAB8")
         (self.stage / "installed-package.txt").write_text(installed)
         self.fixture = Fixture(self.original / "ci/novatube/recording-test-media/novatube-h264-aac.ts", self.stage)
         self.fixture.start()

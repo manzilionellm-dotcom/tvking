@@ -37,12 +37,12 @@ CONFIRMATION = "CAPTURER_NOVATUBE_DATASYNC"
 # Seul bloc à mettre à jour pour un prochain binaire : relire les preuves du
 # nouveau build, puis adapter aussi checkout/run-id/artifact-ids dans le YAML.
 # Le vérificateur du commit original contrôle sa propre version du manifeste.
-APP_COMMIT = "6b66f0a8302b0cb34c540bb671a4d6d7fae190c6"
-APP_RUN = "43597754114"
+APP_COMMIT = "1610073a902acb922d1ea1bc394eebef2273efb3"
+APP_RUN = "43608872429"
 APP_ATTEMPT = "1"
-ARTIFACT_ID = "14115570586"
-ARCHIVE_SHA256 = "fb508bea33c8421fcc32448287ba2f676a031ad4196d1ccdbdc253a4f5a26d7d"
-AAB_SHA256 = "cc5dab113e0300a7ecec765085eb21a68d11e0acff1594d17490c72433dae8ef"
+ARTIFACT_ID = "14120095100"
+ARCHIVE_SHA256 = "5bfaa2a6e74e3594ea7bb377e038b266e7b2014c8c5dbc66c407273231f598ee"
+AAB_SHA256 = "4de381b8bcc7898bf96d038945f4b2047586aad08cd990630404d345c7cceb60"
 FIXTURE_SHA256 = "81724394c63e0b5294ba57e47c0e2c631ded3c28e0b0589610c768a64c019694"
 PACKAGE = "com.sevenmotion.novatube"
 SYSTEM_UI = "com.android.systemui"
@@ -54,11 +54,11 @@ CONTROL_ACTION_WINDOW = 5.0
 WORKFLOW = ".github/workflows/novatube-play-aab.yml"
 # Empreinte du workflow relu avec ce banc ponctuel. La moindre modification
 # exige une nouvelle revue du YAML et du SHA du script, pas une garde élargie.
-WORKFLOW_SHA256 = "a18b20ca1285f58398786c41575a83e8fff2482db66d780ab38fd3d86c71fee8"
+WORKFLOW_SHA256 = "af64cbb3df5f2deaf59f106c2ecfcc82d711c5797e5d9a0840f17a7e2924e315"
 # Le vérificateur de livraison lit déjà le YAML avec WorkflowLoader. Cette
 # seconde empreinte contrôle exactement le nouveau job sans permettre que
 # son ajout assouplisse les gardes des trois jobs historiques.
-DATASYNC_JOB_SHA256 = "590f6eefb468bf54aa089d3aea0344d575c7a1f577b570f06d9002da1126831f"
+DATASYNC_JOB_SHA256 = "997d1073773fed8ddd16ab20361dc9a197bdfb455dfd5825be7fc4edc3d8d081"
 SCRIPT_ROOT = Path(__file__).resolve().parents[3]
 
 

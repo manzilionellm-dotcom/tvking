@@ -26,7 +26,7 @@ WORKFLOW = ".github/workflows/novatube-play-aab.yml"
 BASE_COMMIT = "6954bafc0596d6617caca4b287af8e42e40cf256"
 # Ces deux valeurs sont calculées après revue du YAML proposé. Le SHA du job
 # ferme aussi les étapes, arguments, dépendances, permissions et artefacts.
-WORKFLOW_SHA256 = "a18b20ca1285f58398786c41575a83e8fff2482db66d780ab38fd3d86c71fee8"
+WORKFLOW_SHA256 = "af64cbb3df5f2deaf59f106c2ecfcc82d711c5797e5d9a0840f17a7e2924e315"
 TAP_JOB_SHA256 = "a4fc804f949d8eea7474546e38411e6b3152a576438472eb76bae7667e67a76d"
 REPO_ROOT = Path(__file__).resolve().parents[3]
 PROBE = Path(__file__).with_name("probe_tap_network.py")

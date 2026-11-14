@@ -3,26 +3,34 @@
 ## Statut et portée
 
 Ce dossier prépare un job de preuves séparé, dans le workflow NOVATUBE déjà
-enregistré. Neuf essais Android ont été exécutés ; les plus avancés ont
-affiché le lecteur avec la mire réelle. Aucun MP4 de l'interface n'est encore qualifié.
+enregistré. Neuf essais Android ont été exécutés sur l'ancien AAB7 ; les plus
+avancés ont affiché le lecteur avec la mire réelle. Aucun MP4 de l'interface
+n'est encore qualifié. Les bancs sont maintenant épinglés sur l'AAB8 vérifié ;
+aucun parcours FGS de cette version n'a encore été exécuté.
 Le scénario est destiné à une revue humaine avant toute utilisation dans
 Google Play Console ; une réussite machine ne vaut pas approbation de Google.
 
-Le binaire de référence est NOVATUBE **0.1.7 (7)**, vérifié localement le
-14 novembre 2026 : commit `6b66f0a8302b0cb34c540bb671a4d6d7fae190c6`,
-run `43597754114`, tentative `1`, artefact `14115570586`.
+Le binaire de référence est NOVATUBE **0.1.8 (8)**, vérifié localement le
+14 novembre 2026 : commit `1610073a902acb922d1ea1bc394eebef2273efb3`,
+run `43608872429`, tentative `1`, artefact `14120095100`.
 
 | Élément immuable | Valeur vérifiée |
 | --- | --- |
-| Nom d'artefact | `NOVATUBE-0.1.7-7-verified-6b66f0a8302b0cb34c540bb671a4d6d7fae190c6-1` |
-| Archive ZIP | 96 483 282 octets ; SHA-256 `fb508bea33c8421fcc32448287ba2f676a031ad4196d1ccdbdc253a4f5a26d7d` |
-| AAB | 97 117 820 octets ; SHA-256 `cc5dab113e0300a7ecec765085eb21a68d11e0acff1594d17490c72433dae8ef` |
+| Nom d'artefact | `NOVATUBE-0.1.8-8-verified-1610073a902acb922d1ea1bc394eebef2273efb3-1` |
+| Archive ZIP | 96 493 953 octets ; SHA-256 `5bfaa2a6e74e3594ea7bb377e038b266e7b2014c8c5dbc66c407273231f598ee` |
+| AAB | 97 127 777 octets ; SHA-256 `4de381b8bcc7898bf96d038945f4b2047586aad08cd990630404d345c7cceb60` |
 | Certificat d'upload | SHA-256 `38d6dabe9a73e5ab94a56491e4da6638f5da09ef1eaa77d0eb892d5f0478824b` |
 
 Les contrôles locaux ont confirmé la provenance, le manifeste, la validation
 bundletool et la signature JAR stricte. Les rapports du build attestent
-603 tests Flutter, 10 tests Cast JVM et 36 tests d'enregistrement JVM.
+608 tests Flutter, 10 tests Cast JVM et 42 tests d'enregistrement JVM.
 Ces résultats ne prouvent pas l'exécution Android de ce nouveau banc vidéo.
+
+Le repin local du 14 novembre 2026 sur la base `1610073a902acb922d1ea1bc394eebef2273efb3`
+passe les 140 tests Python. Les quatre jobs hors preuves vidéo sont identiques
+à cette base. Les conditions, permissions, actions et commandes des deux jobs
+vidéo restent identiques ; leurs identités de binaire et empreintes sont mises
+à jour ensemble. Ce contrôle local n'exécute ni émulateur ni parcours FGS.
 
 ## Deux provenances explicites
 
@@ -232,8 +240,9 @@ modifiée, chemins ZIP dangereux, mauvais type FGS, éléments hors écran ou
 d'une autre application, croissance absente, arrêt incomplet et vidéo tronquée.
 Ils ne constituent aucune preuve d'exécution réelle du scénario Android.
 
-Validation locale du 14 novembre 2026 : les vingt-trois tests passent. L'archive
-originale 0.1.7 et son AAB ont passé leurs empreintes et la validation de provenance.
+Validation historique du 14 novembre 2026 sur l'AAB7 : les vingt-trois tests
+passaient. L'archive originale 0.1.7 et son AAB avaient passé leurs empreintes
+et la validation de provenance.
 Un client HTTP réel a reçu 357 200 octets de mire ; FFprobe a reconnu H.264,
 AAC, 160 × 90 et 9,101333 secondes. FFmpeg a décodé strictement les 8,101333
 secondes utiles. La fixture n'a pas changé et aucun processus de diffusion
@@ -299,15 +308,17 @@ Les tests de workflow supplémentaires refusent l'élargissement d'une ancienne
 garde à l'intention REC, toute dépendance au build, toute suppression des
 contrôles d'acteur/SHA/branche, un secret de signature, un droit d'écriture,
 une recompilation et la promotion de diagnostics en preuve.
-Les 28 tests de workflow et les 23 tests du banc passent ensemble, soit
-51 tests ciblés, sur la tête incluant le diagnostic réseau séparé
+Lors de la validation historique REC9, les 28 tests de workflow et les
+23 tests du banc passaient ensemble, soit 51 tests ciblés, sur la tête
+incluant le diagnostic réseau séparé
 `f8467063651072095c2125adca973b7dbd9bbcaf`. La comparaison des objets YAML confirme que les trois
 anciens jobs et les permissions globales sont identiques à la base
 `6b66f0a8302b0cb34c540bb671a4d6d7fae190c6`.
 
 Ce dossier n'effectue aucun changement distant, aucun commit, aucun dispatch
-et aucun envoi à Google Play. Les références désignent exclusivement l'AAB 7
-vérifié du run `43597754114`. Le précédent run `43597097197` ayant échoué,
+et aucun envoi à Google Play. Les références actives désignent exclusivement l'AAB8
+vérifié du run `43608872429`. Les neuf essais Android cités ci-dessus concernent
+l'ancien AAB7. Le run `43597097197` ayant échoué,
 ses métadonnées ne servent pas de provenance d'un binaire.
 
 Sources GitHub :
