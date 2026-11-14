@@ -91,6 +91,34 @@ afterEach(() => {
 });
 
 describe('Réassociation NovaTube — autorisation et confirmation', () => {
+  it('signale une demande actuelle sans convertir une licence active en accès confirmé', async () => {
+    mocks.capability.mockResolvedValue({ ok: true, supported: true, app_id: 'app_novatube4k', mac: MAC,
+      installation_status: 'verification_required', recovery_pending: true, server_now: NOW, recovery_expires_at: NOW + 600_000 });
+    await render();
+    expect(text()).toContain('Installation NovaTube à vérifier');
+    expect(text()).toContain('La licence existante est conservée');
+    expect(text()).toContain('un nouvel achat ne résout pas cette liaison');
+    expect(mocks.preview).not.toHaveBeenCalled();
+    expect(mocks.approve).not.toHaveBeenCalled();
+    await act(async () => { await vi.advanceTimersByTimeAsync(600_001); });
+    expect(text()).not.toContain('Installation NovaTube à vérifier');
+    expect(text()).not.toMatch(/connexion confirmée|activation réussie/i);
+  });
+
+  it.each([
+    {},
+    { installation_status: 'unknown', recovery_pending: false, server_now: NOW, recovery_expires_at: null },
+    { installation_status: 'verification_required', recovery_pending: false, server_now: NOW, recovery_expires_at: NOW + 1000 },
+    { installation_status: 'verification_required', recovery_pending: true, server_now: NOW, recovery_expires_at: NOW - 1 },
+    { installation_status: 'verification_required', recovery_pending: true, server_now: NOW, recovery_expires_at: NOW + 600_001 },
+  ])('un diagnostic absent, incohérent ou expiré reste neutre : %o', async (fields) => {
+    mocks.capability.mockResolvedValue({ ok: true, supported: true, app_id: 'app_novatube4k', mac: MAC, ...fields });
+    await render();
+    expect(text()).not.toContain('Installation NovaTube à vérifier');
+    expect(text()).not.toMatch(/connexion confirmée|activation réussie/i);
+    expect(mocks.approve).not.toHaveBeenCalled();
+  });
+
   it.each(['admin', 'support', 'reseller', 'unexpected', null])('ne montre et ne demande rien pour le rôle %s', async (role) => {
     user(role);
     await render();

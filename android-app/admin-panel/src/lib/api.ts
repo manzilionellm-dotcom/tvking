@@ -438,6 +438,12 @@ export interface NovatubeReassociationCapability {
   supported: true;
   app_id: 'app_novatube4k';
   mac: string;
+  // Diagnostic en lecture seule. Son absence (ancien serveur) ne permet
+  // jamais d'affirmer que l'installation est vérifiée ou déjà connectée.
+  installation_status?: 'verification_required' | 'unknown';
+  recovery_pending?: boolean;
+  server_now?: number;
+  recovery_expires_at?: number | null;
 }
 export interface NovatubeReassociationPreview {
   ok: true;
