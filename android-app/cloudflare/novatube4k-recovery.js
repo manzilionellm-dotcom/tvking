@@ -236,6 +236,32 @@ function candidateError(row, current, now, expectedId) {
   return null;
 }
 
+// Une licence active ne prouve pas que l'installation visible sur la TV
+// possède la clé actuellement liée. Le panneau propriétaire peut signaler
+// ce blocage sans connaître ni énumérer les codes à saisir physiquement.
+// Cette lecture n'initialise aucune table, ne prolonge aucune demande et
+// n'approuve rien. « unknown » ne promet donc jamais une livraison à la TV.
+async function installationState(env, current, now) {
+  let expiresAt = null;
+  try {
+    const row = await env.DB.prepare(`SELECT MAX(r.expires_at) AS expires_at
+      FROM novatube4k_recovery_requests r
+      JOIN novatube4k_devices n ON n.raw_mac = r.raw_mac AND n.mac = r.mac
+        AND n.device_id = r.device_id AND n.device_key_hash = r.old_key_hash
+      WHERE r.raw_mac = ? AND r.mac = ? AND r.device_id = ?
+        AND r.state = 'pending' AND r.new_key_hash <> n.device_key_hash
+        AND r.created_at <= ? AND r.expires_at > ? AND r.expires_at <= ?`)
+      .bind(current.raw_mac, current.mac, current.device_id, now, now, now + TTL).first();
+    if (Number.isSafeInteger(row?.expires_at) && row.expires_at > now) expiresAt = row.expires_at;
+  } catch (error) {
+    // Une installation sans conflit n'a encore jamais créé cette table.
+    // Les autres pannes restent un échec explicite, jamais un faux feu vert.
+    if (!/no such table:\s*novatube4k_recovery_requests\b/i.test(String(error?.message || ''))) throw error;
+  }
+  return { installation_status: expiresAt === null ? 'unknown' : 'verification_required',
+    recovery_pending: expiresAt !== null, server_now: now, recovery_expires_at: expiresAt };
+}
+
 /** Les routes admin n'énumèrent jamais les demandes ni leurs codes. */
 export async function handleNovatubeRecoveryAdmin(request, env, ctx, original, deps) {
   const url = new URL(request.url);
@@ -277,7 +303,8 @@ export async function handleNovatubeRecoveryAdmin(request, env, ctx, original, d
     if (!mac) return failure(headers, 'invalid_recovery_request', 400);
     const current = await binding(env, 'mac', mac);
     if (!current) return failure(headers, 'recovery_not_supported', 404);
-    if (path === ADMIN_PATH) return reply(headers, { ok: true, supported: true, app_id: APP, mac });
+    if (path === ADMIN_PATH) return reply(headers, { ok: true, supported: true, app_id: APP, mac,
+      ...await installationState(env, current, Date.now()) });
     const row = await candidateFor(env, mac, code);
     const now = Date.now();
     const invalid = candidateError(row, current, now, expectedId);

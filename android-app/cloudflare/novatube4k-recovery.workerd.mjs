@@ -95,19 +95,42 @@ try {
   });
   const requestId = await step('capacité et preview expurgés sans code ni empreinte', async () => {
     const capable = await api('GET', PATH + '?mac=' + mac, { token }); status(capable, 200);
-    assert.deepEqual(capable.data, { ok: true, supported: true, app_id: APP, mac });
+    assert.deepEqual(capable.data, { ok: true, supported: true, app_id: APP, mac,
+      installation_status: 'verification_required', recovery_pending: true,
+      server_now: capable.data.server_now, recovery_expires_at: offer.expires_at });
+    assert.ok(Number.isSafeInteger(capable.data.server_now));
+    assert.ok(capable.data.recovery_expires_at > capable.data.server_now);
+    assert.ok(capable.data.recovery_expires_at - capable.data.server_now <= 600_000);
+    for (const secret of [offer.code, RAW, KEY, NEXT, hash(KEY), hash(NEXT)]) assert.ok(!capable.text.includes(secret));
     const r = await preview(token, mac, offer.code.toLowerCase().replaceAll('-', ' ')); status(r, 200);
     assert.equal(r.data.candidate.model, 'Fixture API23');
     for (const secret of [offer.code, RAW, KEY, NEXT, hash(KEY), hash(NEXT)]) assert.ok(!r.text.includes(secret));
     return r.data.candidate.request_id;
   });
   await step('activation lifetime et publication source de fixture par les handlers historiques', async () => {
-    status(await api('POST', '/api/v1/activate', { token, body: { mac, plan: 'lifetime' } }), 201);
+    status(await api('POST', '/api/v1/activate', { token, body: { mac, plan: 'lifetime', app_id: 'app_7motion' } }), 201);
+    const again = await api('POST', '/api/v1/activate', { token, body: { mac, plan: 'lifetime' } });
+    status(again, 200); assert.equal(again.data.already_lifetime, true);
+    assert.equal((await db.prepare('SELECT COUNT(*) n FROM licenses').first()).n, 1);
+    assert.equal((await db.prepare('SELECT app_id FROM licenses').first()).app_id, APP);
+    status(await device('state', NEXT), 401);
+    const capability = await api('GET', PATH + '?mac=' + mac, { token }); status(capability, 200);
+    assert.equal(capability.data.installation_status, 'verification_required');
     status(await api('PUT', '/api/v1/sources/' + mac, { token, body: {
       sources: [{ type: 'm3u', label: 'Fixture', m3u_url: 'https://fixture.test/list.m3u?token=fixture' }],
     } }), 200);
     const r = await device('state'); status(r, 200); assert.equal(r.data.active, true);
     assert.equal(r.data.plan, 'lifetime'); assert.equal(r.data.expires_at, null); assert.equal(r.data.sources.length, 1);
+  });
+  const blackboxRequestedAt = await step('journal demandé par le panel mais aucune écriture avec la clé en conflit', async () => {
+    const ask = await api('POST', '/api/v1/blackbox/' + encodeURIComponent(mac) + '/ask', { token, body: {} });
+    status(ask, 200); assert.ok(ask.data.requested_at > 0);
+    const before = await db.prepare('SELECT mac,body,updated_at,requested_at FROM device_blackbox WHERE mac=?').bind(mac).first();
+    assert.equal(before.body, ''); assert.equal(before.updated_at, 0);
+    const refused = await device('blackbox', NEXT, { text: 'FIXTURE AVANT VERIFICATION' });
+    status(refused, 401); assert.equal(refused.data.error, 'device_auth_required');
+    assert.deepEqual(await db.prepare('SELECT mac,body,updated_at,requested_at FROM device_blackbox WHERE mac=?').bind(mac).first(), before);
+    return ask.data.requested_at;
   });
   async function snapshot() {
     const result = {};
@@ -137,6 +160,26 @@ try {
     const state = await device('register', NEXT); status(state, 200);
     assert.equal(state.data.active, true); assert.equal(state.data.created, false);
     assert.equal(state.data.sources.length, 1); assert.equal(state.data.expires_at, null);
+    assert.equal(state.data.blackbox_pull, blackboxRequestedAt);
+    const capability = await api('GET', PATH + '?mac=' + mac, { token }); status(capability, 200);
+    assert.equal(capability.data.installation_status, 'unknown');
+    assert.equal(capability.data.recovery_pending, false); assert.equal(capability.data.recovery_expires_at, null);
+  });
+  await step('après approbation le journal est persisté sous la bonne MAC et visible seulement à l’admin', async () => {
+    const before = await snapshot();
+    const sent = await device('blackbox', NEXT, { raw_mac: RAW.toLowerCase().match(/../g).join(':'),
+      mac: 'MK:00:00:00:00:00', text: 'NOVATUBE JOURNAL FIXTURE\napp_version=334.2.fixture' });
+    status(sent, 200); assert.equal(sent.data.ok, true); assert.ok(sent.data.updated_at > 0);
+    const stored = await db.prepare('SELECT mac,body,updated_at FROM device_blackbox WHERE mac=?').bind(mac).first();
+    assert.equal(stored.mac, mac); assert.equal(stored.updated_at, sent.data.updated_at);
+    assert.ok(stored.body.includes('NOVATUBE JOURNAL FIXTURE'));
+    const path = '/api/v1/blackbox/' + encodeURIComponent(mac);
+    status(await api('GET', path), 401);
+    const journal = await api('GET', path, { token }); status(journal, 200);
+    assert.equal(journal.data.updated_at, sent.data.updated_at); assert.ok(journal.data.text.includes('NOVATUBE JOURNAL FIXTURE'));
+    status(await device('blackbox', KEY, { text: 'ANCIENNE CLE' }), 401);
+    assert.deepEqual(await db.prepare('SELECT mac,body,updated_at FROM device_blackbox WHERE mac=?').bind(mac).first(), stored);
+    assert.deepEqual(await snapshot(), before);
   });
   await step('rejeu du même approve refusé sans second audit', async () => {
     const r = await approve(token, mac, offer.code, requestId); status(r, 409);
@@ -147,6 +190,9 @@ try {
     const key = randomBytes(32).toString('hex'), first = (await offered(key)).data.recovery;
     const id = (await preview(token, mac, first.code)).data.candidate.request_id;
     await db.prepare('UPDATE novatube4k_recovery_requests SET expires_at=? WHERE request_id=?').bind(Date.now() - 1, id).run();
+    const capability = await api('GET', PATH + '?mac=' + mac, { token }); status(capability, 200);
+    assert.equal(capability.data.installation_status, 'unknown');
+    assert.equal(capability.data.recovery_pending, false); assert.equal(capability.data.recovery_expires_at, null);
     const expired = await approve(token, mac, first.code, id); status(expired, 409); assert.equal(expired.data.error, 'recovery_expired');
     assert.equal((await preview(token, mac, first.code)).data.error, 'recovery_expired');
     const second = await offered(key); assert.notEqual(second.data.recovery.code, first.code);
