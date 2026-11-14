@@ -55,6 +55,26 @@ def namespace_guards(parent_netns, parent_mntns):
     require(os.getpid() == 1, "Le runtime doit être le PID initial du namespace privé")
 
 
+def fixture_aac_config(probe):
+    """Vérifier l'AudioSpecificConfig que le lecteur Android devra recevoir.
+
+    Le décodage tolérant de FFmpeg ne suffit pas : média3 décodait alors que
+    le moov initial ne contenait pas les deux octets AAC-LC requis. Le flux
+    source immuable est précisément AAC-LC, 48 kHz, mono : ASC1188.
+    """
+    audio = [stream for stream in probe.get("streams", []) if stream.get("codec_type") == "audio"]
+    require(len(audio) == 1, "Une unique piste audio de mire est requise")
+    audio = audio[0]
+    lines = [line for line in audio.get("extradata", "").splitlines() if line.strip()]
+    require(len(lines) == 1 and lines[0].startswith("00000000:"), "AudioSpecificConfig AAC absente ou ambiguë")
+    hexadecimal = lines[0].split(":", 1)[1].strip().split("  ", 1)[0].replace(" ", "")
+    require(audio.get("codec_name") == "aac" and audio.get("profile") == "LC"
+            and audio.get("sample_rate") == "48000" and audio.get("channels") == 1
+            and audio.get("extradata_size") == 2 and hexadecimal == "1188",
+            "AudioSpecificConfig AAC-LC 48kHz mono incorrecte : refuser la fixture")
+    return hexadecimal
+
+
 class Fixture:
     """La mire H264/AAC remuxée en vrai MP4, disponible seulement via Android.
 
@@ -73,7 +93,7 @@ class Fixture:
         return ["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error",
             "-stream_loop", "-1", "-re", "-i", str(self.path), "-map", "0:v:0", "-map", "0:a:0",
             "-c", "copy", "-bsf:a", "aac_adtstoasc", "-movflags",
-            "+frag_keyframe+empty_moov+default_base_moof", "-f", "mp4", "pipe:1"]
+            "+frag_keyframe+empty_moov+default_base_moof+delay_moov", "-f", "mp4", "pipe:1"]
 
     def validate_remux(self):
         """Décoder un vrai échantillon produit avec les mêmes options du muxer."""
@@ -82,18 +102,20 @@ class Fixture:
         command.remove("-re")
         command[-1:] = ["-t", "4", str(target)]
         subprocess.run(command, capture_output=True, check=True, timeout=30)
-        probe = json.loads(subprocess.check_output(["ffprobe", "-v", "error", "-show_streams", "-show_format",
+        probe = json.loads(subprocess.check_output(["ffprobe", "-v", "error", "-show_streams", "-show_format", "-show_data",
             "-of", "json", str(target)], timeout=20))
         kinds = [(x.get("codec_type"), x.get("codec_name")) for x in probe["streams"]]
         require(kinds == [("video", "h264"), ("audio", "aac")]
                 and "mp4" in probe["format"]["format_name"]
                 and 4 <= float(probe["format"]["duration"]) < 5, "Mire MP4 H264/AAC invalide")
+        audio_config = fixture_aac_config(probe)
         subprocess.run(["ffmpeg", "-nostdin", "-v", "error", "-xerror", "-err_detect", "explode",
             "-i", str(target), "-f", "null", "-"], capture_output=True, check=True, timeout=30)
         provenance = {"sourceSha256": rec.FIXTURE_SHA256, "sourceFile": self.path.name,
             "mode": "stream-copy-to-fragmented-mp4", "servedUri": DIRECT_URI, "contentType": "video/mp4",
             "streamCommand": self.stream_command(), "sampleCommand": command, "sampleFile": target.name,
             "sampleSha256": rec.digest(target), "sampleFullDecode": True, "sampleProbe": probe,
+            "audioSpecificConfigHex": audio_config, "audioTranscoded": False, "videoTranscoded": False,
             "ffmpegVersion": subprocess.check_output(["ffmpeg", "-version"], text=True).splitlines()[0]}
         (self.stage / "fixture-fmp4-provenance.json").write_text(json.dumps(provenance, indent=2) + "\n")
 

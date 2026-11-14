@@ -13,6 +13,25 @@ import run_mediaplayback_evidence as ci
 
 
 class MediaPlaybackRuntimeTest(unittest.TestCase):
+    def test_malformed_initial_aac_config_is_rejected_before_serving_the_fixture(self):
+        # Le cas à un octet/profile-1 provient de média3. Aucun décodeur ni
+        # résultat Android n'est remplacé par ce test de refus du conteneur.
+        audio = {"codec_type": "audio", "codec_name": "aac", "profile": "LC",
+            "sample_rate": "48000", "channels": 1, "extradata_size": 2,
+            "extradata": "\n00000000: 1188                                     ..\n"}
+        self.assertEqual(runtime.fixture_aac_config({"streams": [audio]}), "1188")
+        bad_audio = [
+            {**audio, "profile": "-1", "extradata_size": 1, "extradata": "\n00000000: 06                                       .\n"},
+            {**audio, "extradata_size": 0, "extradata": ""},
+            {**audio, "extradata_size": 2, "extradata": audio["extradata"].replace("1188", "1190")},
+            {**audio, "profile": "HE-AAC"}, {**audio, "sample_rate": "44100"}, {**audio, "channels": 2},
+        ]
+        for value in bad_audio:
+            with self.subTest(audio=value), self.assertRaises(ValueError):
+                runtime.fixture_aac_config({"streams": [value]})
+        with self.assertRaises(ValueError):
+            runtime.fixture_aac_config({"streams": [audio, audio]})
+
     def test_original_helpers_cannot_replace_the_reviewed_ui_scenario(self):
         # Un processus Python neuf évite que les imports des autres tests
         # masquent le défaut. Le second checkout contient un scénario ancien ;

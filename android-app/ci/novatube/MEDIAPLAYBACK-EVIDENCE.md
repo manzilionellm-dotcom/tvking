@@ -20,10 +20,12 @@ run `43608872429`, tentative `1`, artefact `14120095100`.
 
 La signature stricte, le manifeste et la provenance ont été vérifiés. Les
 608 tests Flutter, 10 tests Cast JVM et 42 tests d'enregistrement JVM passent
-dans le build. Les deux premiers essais Android restent des diagnostics :
+dans le build. Les premiers essais Android restent des diagnostics :
 le second découvre le vrai renderer et atteint son relais, mais Rygel refuse
-le MIME MPEG-TS avant décodage. Le contrôle d'arrêt par notification reste
-donc à observer réellement. Les corrections ciblées passent 16 tests Python.
+le MIME MPEG-TS avant décodage. Le troisième révèle une configuration AAC
+incomplète dans le MP4, refusée par ExoPlayer avant le Cast. Le contrôle
+d'arrêt par notification reste donc à observer réellement. Les corrections
+ciblées passent 17 tests Python.
 Les trois contrôleurs vérifient les mêmes octets de workflow ; les empreintes
 des deux jobs vidéo sont recalculées sans changement de leurs gardes.
 Le runtime charge le scénario du banc avant les helpers du binaire : leur
@@ -46,6 +48,11 @@ MIME fictif ne remplace ce choix. Le serveur utilise `/vod/pattern.mp4`, le
 vrai type `video/mp4` et ne promet aucun Range. L'échantillon de contrôle du
 même muxer est entièrement décodé ; sa provenance et son empreinte restent
 dans les diagnostics. Le démultiplexeur officiel `qtdemux` est vérifié.
+Le muxer utilise `delay_moov`, disponible dans FFmpeg6.1 : l'en-tête initial
+attend les informations des premiers paquets. Avant d'ouvrir le serveur, le
+banc exige l'AudioSpecificConfig réelle `1188` (deux octets), le profil AAC-LC,
+48 000 Hz et un canal. Cette garde refuse le MP4 de média3 même lorsque FFmpeg
+parvient à le décoder. Les deux pistes restent copiées sans transcodage.
 
 Ce flux est servi sur le loopback hôte 8765, puis rendu accessible à Android
 par `adb reverse tcp:18765 tcp:8765`. Aucun service ne
@@ -104,6 +111,7 @@ Sources du renderer :
 - <https://docs.kernel.org/filesystems/overlayfs.html>
 - <https://dbus.freedesktop.org/doc/dbus-run-session.1.html>
 - <https://ffmpeg.org/ffmpeg-formats.html#Fragmentation>
+- <https://ffmpeg.org/doxygen/6.1/movenc_8c_source.html>
 - <https://gstreamer.freedesktop.org/documentation/isomp4/qtdemux.html>
 
 Formats de lecture Android 15 utilisés pour identifier la notification :
