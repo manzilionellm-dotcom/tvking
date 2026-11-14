@@ -103,6 +103,8 @@ test('toutes les routes appareil exigent la clé et une identité existante', as
 
 test('inventaire et présence réels : inconnus null, aucun compte fournisseur, historique vidé', async (t) => {
   const f = fixture(t), mac = await f.register();
+  // La télémétrie doit aussi fonctionner après désactivation d'un essai.
+  f.db.prepare("UPDATE licenses SET status='inactive',plan='custom',expires_at=0 WHERE app_id=?").run(APP);
   const r = await f.device('panel', { model: 'Fixture TV', android: '6.0', build: 'build fixture',
     appBuild: Math.floor(Date.now() / 1000), appVersion: '334.2.fixture', channel: 'Information', quality: null,
     sources: [{ type: 'm3u', name: 'Liste Atlas M3U', server: 'https://fixture-user:fixture-pass@provider.test/p?token=secret',
@@ -270,6 +272,7 @@ test('feedback imposé à la MAC authentifiée, notes valides et route publique 
 
 test('historique et sauvegarde sous licence, clé exclue, données limitées à l’appareil', async (t) => {
   const f = fixture(t), mac = await f.register(), token = await f.admin();
+  f.db.prepare("UPDATE licenses SET status='inactive',plan='custom',expires_at=0 WHERE app_id=?").run(APP);
   assert.equal((await f.device('history')).status, 403);
   assert.equal((await f.device('backup', { op: 'get' })).status, 403);
   await f.activate(token, mac);
@@ -298,7 +301,7 @@ test('reset panel expose le timestamp exact sans effacer clé ni licence', async
   assert.equal(f.db.prepare('SELECT device_key_hash FROM novatube4k_devices WHERE mac=?').get(mac).device_key_hash, before);
 });
 
-test('Analyses exige l’auth exacte et le rôle owner, exclut les enrôlements inactifs', async (t) => {
+test('Analyses exige l’auth exacte et le rôle owner, exclut les essais gratuits des ventes', async (t) => {
   const f = fixture(t); await f.register();
   assert.equal((await f.api('GET', '/api/v1/insights')).status, 401);
   assert.equal((await f.api('GET', '/api/v1/insights', { token: 'invalid' })).status, 401);
@@ -368,7 +371,7 @@ test('transfert : autre app refusée et panne audit annule licence, sources et i
   assert.deepEqual(f.db.prepare('SELECT * FROM device_sources ORDER BY mac').all(), sources);
   assert.deepEqual(f.db.prepare('SELECT id,customer_id,reseller_id,block_status FROM devices ORDER BY id').all(), devices);
   assert.equal((await f.device('state')).json.active, true);
-  assert.equal((await f.device('state', {}, KEY2, RAW2)).json.active, false);
+  assert.equal((await f.device('state', {}, KEY2, RAW2)).json.plan, 'trial10');
 });
 
 test('transfert : activation concurrente détectée dans le lot, sans écraser la destination', async (t) => {
@@ -393,6 +396,8 @@ test('transfert : activation concurrente détectée dans le lot, sans écraser l
 
 test('essai manuel : aucune création, payé refusé, essai accordé/expiré prolongé avec journal', async (t) => {
   const f = fixture(t), mac = await f.register(), token = await f.admin();
+  // Le refus vise une inscription inactive, pas le nouvel essai automatique.
+  f.db.prepare("UPDATE licenses SET status='inactive',plan='custom',expires_at=0 WHERE app_id=?").run(APP);
   const body = { mac, days: 3 };
   assert.equal((await f.api('POST', '/api/v1/trial-extend', { body })).status, 401);
   assert.equal((await f.api('POST', '/api/v1/trial-extend', { token, body })).status, 409);
@@ -431,8 +436,9 @@ test('essai manuel : rôle et origine préservés, secret admin historique admis
   assert.equal(f.db.prepare('SELECT COUNT(*) n FROM trial_extensions').get().n, 1);
 });
 
-test('grant-trial-all garde sa portée historique et ne crée jamais un essai sur enrôlement', async (t) => {
+test('grant-trial-all garde sa portée historique et ne réactive pas une inscription désactivée', async (t) => {
   const f = fixture(t), mac = await f.register(), second = await f.register(RAW2, KEY2), token = await f.admin();
+  f.db.prepare("UPDATE licenses SET status='inactive',plan='custom',expires_at=0 WHERE device_id=(SELECT id FROM devices WHERE mac=?)").run(second);
   await f.activate(token, mac);
   f.db.prepare('UPDATE licenses SET expires_at=? WHERE device_id=(SELECT id FROM devices WHERE mac=?)')
     .run(Date.now() + 86_400_000, mac);

@@ -117,18 +117,18 @@ try {
     assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM devices').first()).n, 0);
   });
 
-  const mac = await step('register : appareil inactif, licence dédiée expires_at=0 et présence', async () => {
+  const mac = await step('register : essai dédié dix jours et présence, sans crédit ni achat', async () => {
     const r = await device('register');
     status(r, 200);
     assert.equal(r.data.created, true);
-    assert.equal(r.data.active, false);
-    assert.equal(r.data.status, 'inactive');
-    assert.equal(r.data.expires_at, 0);
+    assert.equal(r.data.active, true);
+    assert.equal(r.data.status, 'active');
+    assert.equal(r.data.expires_at - r.data.trial.started_at, 10 * 86400000);
     assert.equal(r.data.app_id, appId);
     assert.deepEqual(r.data.sources, []);
     assert.match(r.data.mac, /^MK(?::[0-9A-F]{2}){5}$/);
     const lic = await db.prepare('SELECT app_id,status,expires_at FROM licenses').first();
-    assert.deepEqual(lic, { app_id: appId, status: 'inactive', expires_at: 0 });
+    assert.deepEqual(lic, { app_id: appId, status: 'active', expires_at: r.data.expires_at });
     const online = await db.prepare('SELECT last_seen,channel FROM presence WHERE mac=?').bind(r.data.mac).first();
     assert.ok(online.last_seen > started - 1000);
     assert.equal(online.channel, '');
@@ -157,7 +157,7 @@ try {
   await step('activation anonyme refusée par les contrôles originaux', async () => {
     const denied = await api('POST', '/api/v1/activate', { body: { mac, plan: 'yearly' } });
     assert.ok([401, 403].includes(denied.status));
-    assert.equal((await device('state')).data.active, false);
+    assert.equal((await device('state')).data.plan, 'trial10');
   });
 
   const token = await step('authentification admin locale par la vraie route JWT', async () => {

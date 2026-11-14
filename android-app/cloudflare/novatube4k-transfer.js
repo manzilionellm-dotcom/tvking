@@ -1,6 +1,7 @@
 // Le transfert historique rencontre une licence UNIQUE(device_id, app_id)
 // quand les deux NOVATUBE sont déjà enrôlées. Ce pont traite seulement ce
-// cas : identité et clé conservées, licence de destination vierge remplacée,
+// cas : identité et clé conservées, licence de destination vierge ou essai
+// automatique remplacée (jamais une licence payée),
 // listes et révisions déplacées dans la MÊME transaction D1.
 import { readNovatubePanelActor } from './novatube4k-panel-admin.js';
 
@@ -13,6 +14,24 @@ function failure(headers, error, message, status = 409) { return reply(headers, 
 function virgin(license) {
   return license && license.app_id === APP && license.status === 'inactive'
     && license.plan === 'custom' && license.expires_at === 0;
+}
+
+async function automaticTrialDestination(env, license, device) {
+  if (!license || license.app_id !== APP || license.plan !== 'trial10'
+    || !['active', 'expired'].includes(license.status)
+    || ['banned', 'frozen'].includes(device.block_status)
+    || !Number.isSafeInteger(license.expires_at) || license.expires_at <= 0) return null;
+  try {
+    // Le nom de plan ne suffit pas : seule la première attribution automatique
+    // ancrée pour cette fiche peut être remplacée par un transfert de licence.
+    return await env.DB.prepare(`SELECT raw_mac, started_at, expires_at
+      FROM novatube4k_trial_entitlements WHERE mac = ? AND first_device_id = ?
+        AND disposition = 'trial' AND started_at = ? AND expires_at <= ?`)
+      .bind(device.mac, device.id, license.started_at, license.expires_at).first();
+  } catch (error) {
+    if (/no such table:\s*novatube4k_trial_entitlements\b/i.test(String(error?.message || ''))) return null;
+    throw error;
+  }
 }
 
 async function schema(env, deps) {
@@ -91,7 +110,9 @@ export async function handleNovatube4kTransfer(request, env, ctx, original, deps
   if (oldLicenses.length !== 1 || oldLicenses[0].app_id !== APP || virgin(oldLicenses[0])) {
     return failure(headers, 'novatube4k_source_license', 'La source doit posséder une seule licence NOVATUBE à transférer.');
   }
-  if (newLicenses.length !== 1 || !virgin(newLicenses[0])) {
+  const trialDestination = newLicenses.length === 1
+    ? await automaticTrialDestination(env, newLicenses[0], newDev) : null;
+  if (newLicenses.length !== 1 || (!virgin(newLicenses[0]) && !trialDestination)) {
     return failure(headers, 'novatube4k_destination_paid', 'La destination possède déjà une licence ou une autre application.');
   }
   const oldLicense = oldLicenses[0];
@@ -121,6 +142,13 @@ export async function handleNovatube4kTransfer(request, env, ctx, original, deps
       AND status = ? AND plan = ? AND expires_at IS ? AND updated_at = ?)`);
     values.push(license.id, license.device_id, license.app_id, license.status,
       license.plan, license.expires_at, license.updated_at);
+  }
+  if (trialDestination) {
+    conditions.push(`EXISTS (SELECT 1 FROM novatube4k_trial_entitlements
+      WHERE raw_mac = ? AND mac = ? AND first_device_id = ? AND disposition = 'trial'
+        AND started_at = ? AND expires_at = ?)`);
+    values.push(trialDestination.raw_mac, newMac, newDev.id,
+      trialDestination.started_at, trialDestination.expires_at);
   }
   for (const [mac, source] of [[oldMac, oldSource], [newMac, newSource]]) {
     conditions.push(source ? 'EXISTS (SELECT 1 FROM device_sources WHERE mac = ? AND version = ?)' : 'NOT EXISTS (SELECT 1 FROM device_sources WHERE mac = ?)');

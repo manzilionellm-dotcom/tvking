@@ -106,24 +106,25 @@ test('MAC brute canonique et identité Atlas déterministe sans changer le forma
   assert.notEqual(await novatube4kAtlasMac('123456789ABD'), expected);
 });
 
-test('premier enrôlement atomique : visible, inactif, sans essai, source ni débit', async (t) => {
+test('premier enrôlement atomique : visible, essai dix jours, aucune source préremplie ni débit', async (t) => {
   const f = fixture(t);
   const customersBefore = count(f, 'customers');
   const r = await call(f, 'register');
   assert.equal(r.status, 200);
   assert.equal(r.body.created, true);
   assert.equal(r.body.registered, true);
-  assert.equal(r.body.active, false);
-  assert.equal(r.body.status, 'inactive');
-  assert.equal(r.body.expires_at, 0);
+  assert.equal(r.body.active, true);
+  assert.equal(r.body.status, 'active');
+  assert.equal(r.body.plan, 'trial10');
+  assert.equal(r.body.expires_at - r.body.trial.started_at, 10 * 86400000);
   assert.deepEqual(r.body.sources, []);
-  assert.equal(r.body.sources_ok, false);
-  assert.equal(f.calls.sources, 0);
+  assert.equal(r.body.sources_ok, true);
+  assert.equal(f.calls.sources, 1);
   assert.equal(count(f, 'customers'), customersBefore + 1);
   assert.equal(count(f, 'devices'), 1);
   assert.equal(count(f, 'licenses'), 1);
   assert.equal(count(f, 'novatube4k_devices'), 1);
-  assert.equal(license(f).status, 'inactive');
+  assert.equal(license(f).status, 'active');
   assert.equal(count(f, 'credit_ledger'), 0);
   assert.equal(f.db.prepare("SELECT name FROM sqlite_master WHERE name='trial_anchors'").get(), undefined);
   const row = f.db.prepare('SELECT * FROM novatube4k_devices').get();
@@ -155,12 +156,13 @@ test('une autre clé ne réclame pas la fiche et ne lit jamais ses sources', asy
   const f = fixture(t);
   await call(f, 'register');
   activate(f);
+  const previousReads = f.calls.sources;
   const r = await call(f, 'register', { raw_mac: RAW }, { key: OTHER_KEY });
   assert.equal(r.status, 409);
   assert.equal(r.body.error, 'device_key_conflict');
   const s = await call(f, 'state', { raw_mac: RAW }, { key: OTHER_KEY });
   assert.equal(s.status, 401);
-  assert.equal(f.calls.sources, 0);
+  assert.equal(f.calls.sources, previousReads);
   assert.equal(count(f, 'devices'), 1);
   assert.equal((await call(f, 'state')).body.active, true);
 });
@@ -204,6 +206,8 @@ test('state et ack inconnus ne créent aucun appareil ou licence', async (t) => 
 test('licence d’une autre app ignorée, puis expiry et blocages toujours appliqués', async (t) => {
   const f = fixture(t);
   await call(f, 'register');
+  // Simule une licence NovaTube désactivée : l'essai initial est testé à part.
+  f.db.prepare("UPDATE licenses SET status='inactive',plan='custom',expires_at=0 WHERE app_id=?").run(NOVATUBE4K_APP_ID);
   const own = license(f);
   f.db.prepare(`INSERT INTO licenses
     (id,customer_id,device_id,app_id,status,plan,started_at,expires_at,created_at,updated_at)
@@ -243,6 +247,7 @@ test('licence d’une autre app ignorée, puis expiry et blocages toujours appli
 test('sources déchiffrées par le handler réel seulement après activation dédiée', async (t) => {
   const f = fixture(t);
   const registered = await call(f, 'register');
+  f.db.prepare("UPDATE licenses SET status='inactive',plan='custom',expires_at=0 WHERE app_id=?").run(NOVATUBE4K_APP_ID);
   const source = { type: 'xtream', label: 'Fixture', server_url: 'https://provider.invalid/prefix', username: 'fixture-user', password: 'fixture-password', origin: 'panel' };
   await publish(f, registered.body.mac, 1, [source]);
   assert.ok(f.db.prepare('SELECT sources_json FROM device_sources').get().sources_json.includes('enc1.'));

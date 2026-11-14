@@ -231,6 +231,9 @@ test('approbation conserve licence lifetime, sources, expiration et crédits ; a
 
 test('réassociation ne transforme pas une inscription inactive ni une licence expirée en accès', async (t) => {
   const f = fixture(t), mac = await f.registered(), other = await f.registered(RAW2, THIRD), token = await f.admin();
+  // L'inscription nouvelle ouvre désormais un essai. Ce scénario vise une
+  // licence explicitement inactive et vérifie que recovery ne l'active pas.
+  f.db.prepare("UPDATE licenses SET status='inactive',plan='custom',expires_at=0 WHERE device_id=(SELECT id FROM devices WHERE mac=?)").run(mac);
   const expiry = Date.now() - 86_400_000;
   f.db.prepare('UPDATE licenses SET status=\'active\',plan=\'yearly\',expires_at=? WHERE device_id=(SELECT id FROM devices WHERE mac=?)')
     .run(expiry, other);
@@ -244,6 +247,24 @@ test('réassociation ne transforme pas une inscription inactive ni une licence e
   assert.equal(inactive.json.active, false); assert.equal(inactive.json.status, 'inactive');
   assert.equal(expired.json.active, false); assert.equal(expired.json.status, 'expired');
   assert.equal(expired.json.expires_at, expiry);
+});
+
+test('réassociation d’un essai automatique conserve exactement son ancre et son échéance J10', async (t) => {
+  const f = fixture(t), mac = await f.registered(), token = await f.admin();
+  const before = f.protectedData();
+  const anchor = f.rows('novatube4k_trial_entitlements');
+  const initial = await f.device('state');
+  assert.equal(initial.json.plan, 'trial10');
+  const code = (await f.offered()).json.recovery.code;
+  assert.equal((await f.approve(token, mac, code)).status, 200);
+  const recovered = await f.device('register', NEXT);
+  assert.equal(recovered.status, 200);
+  assert.equal(recovered.json.created, false);
+  assert.equal(recovered.json.expires_at, initial.json.expires_at);
+  assert.deepEqual(recovered.json.trial, initial.json.trial);
+  assert.deepEqual(f.rows('novatube4k_trial_entitlements'), anchor);
+  assert.deepEqual(f.protectedData(), before);
+  assert.equal((await f.device('state', KEY)).status, 401);
 });
 
 test('code expiré refusé, renouvellement par la même clé sans réutiliser le code ancien', async (t) => {

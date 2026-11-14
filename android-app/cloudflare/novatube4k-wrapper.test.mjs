@@ -110,25 +110,26 @@ function fixture(t) {
   return { env, db, faults, ctx, outbound, api, admin, device, registered, activate, reseller };
 }
 
-test('enrôlement visible dans le panel, inactif et idempotent, sans essai', async (t) => {
+test('enrôlement visible dans le panel, essai dix jours idempotent et sans débit', async (t) => {
   const f = fixture(t);
   const first = await f.device();
   assert.equal(first.status, 200);
   assert.equal(first.json.created, true);
-  assert.equal(first.json.active, false);
-  assert.equal(first.json.status, 'inactive');
+  assert.equal(first.json.active, true);
+  assert.equal(first.json.status, 'active');
   assert.equal(first.json.app_id, APP);
   assert.deepEqual(first.json.sources, []);
-  assert.equal(first.json.sources_ok, false);
-  assert.equal(first.json.expires_at, 0);
+  assert.equal(first.json.sources_ok, true);
+  assert.equal(first.json.expires_at - first.json.trial.started_at, 10 * DAY);
   const second = await f.device();
   assert.equal(second.status, 200);
   assert.equal(second.json.created, false);
   assert.equal(second.json.mac, first.json.mac);
+  assert.equal(second.json.expires_at, first.json.expires_at);
   assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM devices').get().n, 1);
   assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM customers').get().n, 1);
   assert.deepEqual({ ...f.db.prepare('SELECT app_id, status, plan, expires_at FROM licenses').get() },
-    { app_id: APP, status: 'inactive', plan: 'custom', expires_at: 0 });
+    { app_id: APP, status: 'active', plan: 'trial10', expires_at: first.json.expires_at });
   const token = await f.admin();
   const panel = await f.api('GET', `/api/v1/devices?q=${RAW_HEX}`, { token });
   assert.equal(panel.status, 200);
@@ -157,6 +158,7 @@ test('clé appareil obligatoire, clé concurrente refusée, état sans fuite de 
 test('activation exige toujours JWT et origine autorisée', async (t) => {
   const f = fixture(t);
   const mac = await f.registered();
+  const before = f.db.prepare('SELECT * FROM licenses WHERE app_id=?').get(APP);
   const body = { mac, plan: 'yearly', app_id: 'app_7motion' };
   const anon = await f.api('POST', '/api/v1/activate', { body });
   assert.ok([401, 403].includes(anon.status));
@@ -165,8 +167,8 @@ test('activation exige toujours JWT et origine autorisée', async (t) => {
     token, body, headers: { Origin: 'https://untrusted.example.test' },
   });
   assert.equal(origin.status, 403);
-  assert.equal((await f.device('state')).json.active, false);
-  assert.equal(f.db.prepare("SELECT COUNT(*) AS n FROM licenses WHERE status='active'").get().n, 0);
+  assert.deepEqual(f.db.prepare('SELECT * FROM licenses WHERE app_id=?').get(APP), before);
+  assert.equal((await f.device('state')).json.plan, 'trial10');
   assert.equal(f.outbound.length, 0);
 });
 
@@ -178,7 +180,8 @@ test('yearly et lifetime activent seulement NOVATUBE, sans hook Gold ni appel CM
     token, body: { gold_enabled: '1', gold_trial_enabled: '1' },
   });
   assert.equal(configured.status, 200, 'Gold activé dans la fixture pour rendre une fuite observable');
-  const before = Date.now();
+  // L'activation historique conserve le reliquat, y compris les jours d'essai.
+  const before = f.db.prepare('SELECT expires_at FROM licenses WHERE app_id=?').get(APP).expires_at;
   const yearly = await f.activate(token, mac, 'yearly', { app_id: 'app_7motion' });
   assert.ok(Math.abs(yearly.json.expires_at - before - 365 * DAY) < 10_000);
   assert.equal((await f.device('state')).json.active, true);
@@ -244,6 +247,7 @@ test('droits revendeur, propriété de la MAC et débit unique restent appliqué
 test('licence étrangère, expiration, gel, bannissement et app désactivée ne donnent aucun accès', async (t) => {
   const f = fixture(t);
   const mac = await f.registered();
+  f.db.prepare("UPDATE licenses SET status='inactive',plan='custom',expires_at=0 WHERE app_id=?").run(APP);
   const token = await f.admin();
   const row = f.db.prepare('SELECT id, customer_id FROM devices WHERE mac=?').get(mac);
   const now = Date.now();
@@ -274,6 +278,7 @@ test('licence étrangère, expiration, gel, bannissement et app désactivée ne 
 test('publication M3U/Xtream, source masquée, révision et ACK authentifié visibles dans le panel', async (t) => {
   const f = fixture(t);
   const mac = await f.registered();
+  f.db.prepare("UPDATE licenses SET status='inactive',plan='custom',expires_at=0 WHERE app_id=?").run(APP);
   const token = await f.admin();
   const sources = [
     { type: 'm3u', label: 'Liste active', m3u_url: URL_A },
@@ -381,19 +386,21 @@ test('anciennes routes publiques ne révèlent ni ne modifient une MAC NOVATUBE 
 test('panne de liaison D1 ferme le pont au lieu de tomber sur Gold', async (t) => {
   const f = fixture(t);
   const mac = await f.registered();
+  const before = f.db.prepare('SELECT * FROM licenses WHERE app_id=?').get(APP);
   const token = await f.admin();
   f.faults.add({ match: /SELECT 1 AS found FROM novatube4k_devices/, times: 1 });
   const response = await f.api('POST', '/api/v1/activate', {
     token, body: { mac, plan: 'yearly' },
   });
   assert.equal(response.status, 503);
-  assert.equal(f.db.prepare('SELECT status FROM licenses WHERE app_id=?').get(APP).status, 'inactive');
+  assert.deepEqual(f.db.prepare('SELECT * FROM licenses WHERE app_id=?').get(APP), before);
   assert.equal(f.outbound.length, 0);
 });
 
 test('corps dépassant la lecture bornée refusé sans retour vers activation ou heartbeat legacy', async (t) => {
   const f = fixture(t);
   const mac = await f.registered();
+  const before = f.db.prepare('SELECT * FROM licenses WHERE app_id=?').get(APP);
   const token = await f.admin();
   const largeActivation = await f.api('POST', '/api/v1/activate', {
     token,
@@ -405,7 +412,7 @@ test('corps dépassant la lecture bornée refusé sans retour vers activation ou
   });
   assert.equal(largeHeartbeat.status, 413);
   assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM licenses').get().n, 1);
-  assert.equal(f.db.prepare('SELECT status FROM licenses WHERE app_id=?').get(APP).status, 'inactive');
+  assert.deepEqual(f.db.prepare('SELECT * FROM licenses WHERE app_id=?').get(APP), before);
   assert.equal(f.outbound.length, 0);
 });
 

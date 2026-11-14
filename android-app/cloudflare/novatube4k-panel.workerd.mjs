@@ -59,13 +59,17 @@ try {
     status(await device('panel'), 401); status(await device('blackbox', { text: 'fixture' }), 401);
     assert.equal((await db.prepare('SELECT COUNT(*) n FROM devices').first()).n, 0);
   });
-  const [mac, secondMac] = await step('deux inscriptions inactives sans essai', async () => {
+  const [mac, secondMac] = await step('deux nouveaux essais de dix jours sans paiement', async () => {
     const a = await device('register'), b = await device('register', {}, KEY2, RAW2);
-    status(a, 200); status(b, 200); assert.equal(a.data.active, false); assert.equal(b.data.active, false);
+    status(a, 200); status(b, 200); assert.equal(a.data.active, true); assert.equal(b.data.active, true);
+    assert.equal(a.data.plan, 'trial10'); assert.equal(b.data.plan, 'trial10');
     status(await device('panel', {}, KEY2), 401);
     return [a.data.mac, b.data.mac];
   });
   await step('présence, inventaire expurgé et inconnus null sans accès licence', async () => {
+    // Vérifie aussi le diagnostic d'une licence explicitement désactivée.
+    await db.prepare("UPDATE licenses SET status='inactive',plan='custom',expires_at=0 WHERE device_id=(SELECT id FROM devices WHERE mac=?)")
+      .bind(mac).run();
     const r = await device('panel', { appVersion: '334.2.fixture', appBuild: Math.floor(Date.now() / 1000),
       platform: 'tv', model: 'Fixture API23', channel: 'Canal fixture', quality: null,
       sources: [{ type: 'm3u', name: 'Liste Atlas M3U', active: true }], recent: ['channel-1'] });
@@ -83,7 +87,7 @@ try {
     status(await api('GET', '/api/v1/insights', { token: login.data.token, headers: { Origin: 'https://untrusted.test' } }), 403);
     return login.data.token;
   });
-  await step('Analyses disponible et inscription inactive non comptée comme vente', async () => {
+  await step('Analyses disponible et essai gratuit non compté comme vente', async () => {
     const r = await api('GET', '/api/v1/insights', { token }); status(r, 200);
     assert.equal(r.data.money.newPaid30, 0); assert.equal(r.data.money.paidExpired, 0);
   });
@@ -151,13 +155,19 @@ try {
     status(await device('backup', { op: 'put', data: { deviceKey: KEY } }), 400);
     status(await device('backup', { op: 'put', data: { favorites: ['channel-1'] } }), 200);
     assert.deepEqual((await device('backup', { op: 'get' })).data.data, { favorites: ['channel-1'] });
+    status(await device('backup', { op: 'get' }, KEY2, RAW2), 200);
+    // L'essai initial donne bien accès ; une révocation doit encore le retirer.
+    await db.prepare("UPDATE licenses SET status='inactive' WHERE device_id=(SELECT id FROM devices WHERE mac=?)")
+      .bind(secondMac).run();
     status(await device('backup', { op: 'get' }, KEY2, RAW2), 403);
+    await db.prepare("UPDATE licenses SET status='active' WHERE device_id=(SELECT id FROM devices WHERE mac=?)")
+      .bind(secondMac).run();
   });
   await step('limites de corps refusées sans promesse bloquante', async () => {
     status(await device('panel', { extra: 'x'.repeat(20000) }), 413);
     status(await device('blackbox', { text: 'x'.repeat(270000) }), 413);
   });
-  await step('transfert atomique vers enrôlement vierge, temps et clés préservés', async () => {
+  await step('transfert atomique vers essai automatique, temps et clés préservés', async () => {
     const before = await db.prepare('SELECT raw_mac,mac,device_id,device_key_hash FROM novatube4k_devices ORDER BY raw_mac').all();
     const body = { old_mac: mac, new_mac: secondMac };
     status(await api('POST', '/api/v1/transfer', { body }), 401);
