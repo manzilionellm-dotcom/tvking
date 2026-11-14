@@ -4121,6 +4121,10 @@ private class HybridHdrVideoRenderer(
     private var fed = false
     private var afterSeek = false
 
+    // Vrai seulement PENDANT le traitement d'un saut : le décodeur est
+    // recréé au lieu d'être vidé (voir HybridHdr.freshDecoderAfterSeek).
+    private var freshDecoderForSeek = false
+
     override fun onCodecInitialized(
         name: String,
         configuration: MediaCodecAdapter.Configuration,
@@ -4152,9 +4156,33 @@ private class HybridHdrVideoRenderer(
 
     @Throws(ExoPlaybackException::class)
     override fun onPositionReset(positionUs: Long, joining: Boolean) {
-        super.onPositionReset(positionUs, joining)
-        // Le décodeur vient d'être vidé pour un saut (pas le démarrage).
-        if (fed) afterSeek = true
+        // [fed] : des images sont déjà parties au décodeur, c'est donc un
+        // saut dans la lecture et pas son démarrage.
+        val seek = fed
+        freshDecoderForSeek = seek && HybridHdr.freshDecoderAfterSeek(filter?.mode, ultraHd)
+        try {
+            super.onPositionReset(positionUs, joining)
+        } finally {
+            // Jamais au-delà de ce saut : un rattrapage de retard, plus
+            // tard, vide le décodeur comme Media3 l'a toujours fait.
+            freshDecoderForSeek = false
+        }
+        // Après super : un décodeur recréé vient de remettre ce drapeau à zéro.
+        if (seek) afterSeek = true
+    }
+
+    /**
+     * Media3 appelle ceci pour vider le décodeur. Rendre « vrai » après
+     * [releaseCodec] est son propre chemin pour les décodeurs qui ne
+     * supportent pas d'être vidés : il en crée un neuf aussitôt.
+     */
+    override fun flushOrReleaseCodec(): Boolean {
+        if (freshDecoderForSeek && codec != null) {
+            releaseCodec()
+            report(HybridHdrReport.FRESH_DECODER)
+            return true
+        }
+        return super.flushOrReleaseCodec()
     }
 
     @Throws(ExoPlaybackException::class)

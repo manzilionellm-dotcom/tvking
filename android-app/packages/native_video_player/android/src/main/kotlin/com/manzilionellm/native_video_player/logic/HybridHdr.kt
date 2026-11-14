@@ -27,6 +27,14 @@ import java.nio.ByteBuffer
  *  - décodeur HEVC ordinaire et flux hybride → on retire les deux : le
  *    film passe en HDR10 simple, que tous les téléviseurs HDR savent lire.
  *
+ * APRÈS UN SAUT. Chez le client qui a signalé le défaut, le film démarre
+ * bien et l'écran se vide juste après une avance. Au démarrage le décodeur
+ * est NEUF ; après un saut Media3 le VIDE et le réutilise. Sur ces mêmes
+ * appareils, pour un film 4K, on recrée donc le décodeur après un saut :
+ * la lecture repart exactement comme elle démarre (voir
+ * [HybridHdr.freshDecoderAfterSeek]). C'est une précaution fondée sur ce
+ * constat, pas un défaut documenté par le constructeur.
+ *
  * Rien d'autre n'est touché : ni l'image elle-même (les unités « VCL »
  * ne sont jamais modifiées), ni un flux qui ne porte qu'un seul des deux
  * jeux, ni les autres appareils. Trois niveaux, décidés par [HybridHdr] :
@@ -120,6 +128,25 @@ object HybridHdr {
             HybridHdrScope.WATCH -> HybridHdrMode.WATCH
             HybridHdrScope.NONE -> null
         }
+    }
+
+    /**
+     * Après un saut dans le film : recréer le décodeur au lieu de le vider ?
+     * [mode] est le niveau du décodeur en cours (`null` = filtre absent),
+     * [ultraHd] vrai pour une source 4K.
+     *
+     *  - automatique (appareil en défaut) : seulement en 4K, là où le
+     *    défaut a été vu. Les chaînes et films HD gardent le saut rapide ;
+     *  - réglage « Compatibilité HDR » : toujours, la personne l'a demandé ;
+     *  - observation ou filtre absent : jamais, rien ne change.
+     *
+     * Ne concerne que les sauts demandés (avance, retour, reprise) : quand
+     * Media3 vide le décodeur pour rattraper un retard, il reste vidé.
+     */
+    fun freshDecoderAfterSeek(mode: HybridHdrMode?, ultraHd: Boolean): Boolean = when (mode) {
+        HybridHdrMode.STRICT -> true
+        HybridHdrMode.AUTO -> ultraHd
+        HybridHdrMode.WATCH, null -> false
     }
 
     /**
@@ -608,6 +635,10 @@ object HybridHdrReport {
                 "(type $pictureType). L'image peut rester abîmée jusqu'à la prochaine image clé."
         else -> null
     }
+
+    /** Le décodeur a été recréé pour ce saut au lieu d'être vidé. */
+    const val FRESH_DECODER: String =
+        "Après un saut : décodeur recréé au lieu d'être vidé, la lecture repart comme au démarrage."
 
     /** Ce que le correctif a retiré depuis l'ouverture, ou `null` : rien. */
     fun action(filter: HybridHdrFilter): String? {

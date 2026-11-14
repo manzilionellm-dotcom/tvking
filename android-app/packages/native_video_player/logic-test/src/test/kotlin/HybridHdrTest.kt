@@ -563,6 +563,32 @@ class HybridHdrTest {
     // ---- Après un saut dans le film ---------------------------------------
 
     @Test
+    fun decodeurNeufApresUnSaut_seulementLaOuLeDefautAEteVu() {
+        // Appareil en défaut : en 4K seulement. Les chaînes HD gardent le saut rapide.
+        assertTrue(HybridHdr.freshDecoderAfterSeek(HybridHdrMode.AUTO, ultraHd = true))
+        assertFalse(HybridHdr.freshDecoderAfterSeek(HybridHdrMode.AUTO, ultraHd = false))
+        // Réglage allumé par la personne : toujours.
+        assertTrue(HybridHdr.freshDecoderAfterSeek(HybridHdrMode.STRICT, ultraHd = true))
+        assertTrue(HybridHdr.freshDecoderAfterSeek(HybridHdrMode.STRICT, ultraHd = false))
+        // Observation, box ordinaire, repli armé : Media3 vide le décodeur comme avant.
+        assertFalse(HybridHdr.freshDecoderAfterSeek(HybridHdrMode.WATCH, ultraHd = true))
+        assertFalse(HybridHdr.freshDecoderAfterSeek(null, ultraHd = true))
+        assertFalse(HybridHdr.freshDecoderAfterSeek(null, ultraHd = false))
+    }
+
+    @Test
+    fun decodeurNeufApresUnSaut_suitLAppareilLeReglageEtLeRepli() {
+        fun fresh(scope: HybridHdrScope, manual: Boolean, autoOff: Boolean) =
+            HybridHdr.freshDecoderAfterSeek(HybridHdr.mode(scope, manual, autoOff), ultraHd = true)
+        assertTrue(fresh(HybridHdrScope.FIX, manual = false, autoOff = false))
+        assertFalse(fresh(HybridHdrScope.FIX, manual = false, autoOff = true))
+        assertFalse(fresh(HybridHdrScope.WATCH, manual = false, autoOff = false))
+        assertFalse(fresh(HybridHdrScope.NONE, manual = false, autoOff = false))
+        assertTrue(fresh(HybridHdrScope.NONE, manual = true, autoOff = false))
+        assertTrue(fresh(HybridHdrScope.NONE, manual = true, autoOff = true))
+    }
+
+    @Test
     fun premiereImage_typeLuSansLireLeContenu() {
         fun type(vararg nals: ByteArray): Int =
             HybridHdrFilter.firstPictureType(ByteBuffer.wrap(accessUnit(*nals)))

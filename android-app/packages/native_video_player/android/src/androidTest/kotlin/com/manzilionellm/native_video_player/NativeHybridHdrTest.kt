@@ -12,6 +12,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.manzilionellm.native_video_player.logic.AppForeground
 import com.manzilionellm.native_video_player.logic.HybridHdr
 import com.manzilionellm.native_video_player.logic.HybridHdrFilter
+import com.manzilionellm.native_video_player.logic.HybridHdrReport
 import com.manzilionellm.native_video_player.logic.HybridHdrScope
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
@@ -71,6 +72,7 @@ class NativeHybridHdrTest {
             // repart sur une image clé. Le nettoyage doit continuer après,
             // et le journal dit sur quelle image la lecture est repartie.
             val removedBefore = filter.removedDolbyVision
+            val decodersBefore = decoderEvents().size
             invoke("seekTo", mapOf("ms" to 20_000L))
             await("lecture repartie après le saut à 20 s") {
                 onMain { player().isPlaying && player().currentPosition >= 21_500 }
@@ -86,6 +88,10 @@ class NativeHybridHdrTest {
             assertTrue("SEEK_RESTART_NOT_REPORTED ${diagLines()}", diagLines().any {
                 it == "Après un saut : reprise sur une image clé ouverte (type 21)."
             })
+            // Mire de 144 lignes, pas un film 4K : l'automatique garde le
+            // saut rapide de Media3, le décodeur est vidé, pas recréé.
+            assertEquals("FRESH_DECODER_OUTSIDE_4K ${decoderEvents()}", decodersBefore, decoderEvents().size)
+            assertFalse("aucune ligne de décodeur recréé hors 4K", diagLines().any { it == HybridHdrReport.FRESH_DECODER })
             proof.put("positionAfterSeek", onMain { player().currentPosition })
             finish(proof, filter)
         }
@@ -102,7 +108,26 @@ class NativeHybridHdrTest {
             assertTrue("MANUAL_FIX_NOT_REPORTED $lines", lines.any {
                 it.startsWith("Correctif HDR (réglage) : Dolby Vision et HDR10+ retirés avant le décodeur HEVC")
             })
-            finish(proof, filter)
+            // SAUT avec le réglage allumé : le décodeur est RECRÉÉ (pas vidé),
+            // la lecture repart comme au démarrage du film.
+            val decodersBefore = decoderEvents().size
+            assertTrue("au moins un décodeur avant le saut", decodersBefore >= 1)
+            invoke("seekTo", mapOf("ms" to 20_000L))
+            await("décodeur recréé pour le saut") { decoderEvents().size == decodersBefore + 1 }
+            await("lecture repartie après le saut à 20 s") {
+                onMain { player().isPlaying && player().currentPosition >= 21_500 }
+            }
+            assertTrue("FRESH_DECODER_NOT_REPORTED ${diagLines()}", diagLines().any { it == HybridHdrReport.FRESH_DECODER })
+            // Décodeur neuf = filtre neuf : il nettoie à son tour.
+            await("le filtre du nouveau décodeur retire les deux jeux") {
+                onMain { filterNow() }?.let {
+                    it !== filter && it.removedDolbyVision >= 30 && it.removedHdr10Plus >= 30
+                } == true
+            }
+            assertEquals("un seul décodeur de plus ${decoderEvents()}", decodersBefore + 1, decoderEvents().size)
+            proof.put("positionAfterSeek", onMain { player().currentPosition })
+                .put("decodersCreated", decoderEvents().size)
+            finish(proof, onMain { filterNow() } ?: throw AssertionError("HYBRID_FILTER_GONE"))
         }
 
     @Test
@@ -178,6 +203,10 @@ class NativeHybridHdrTest {
 
     private fun diagLines(): List<String> =
         activity.messenger.events.filter { it.method == "videoDiag" }.map { it.arguments.toString() }
+
+    /** Un événement par décodeur vidéo créé pendant cette lecture. */
+    private fun decoderEvents(): List<String> =
+        activity.messenger.events.filter { it.method == "videoDecoder" }.map { it.arguments.toString() }
 
     private fun decoderName(): String =
         activity.messenger.events.lastOrNull { it.method == "videoDecoder" }?.arguments?.toString().orEmpty()

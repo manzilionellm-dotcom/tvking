@@ -134,6 +134,16 @@ Vision ni HDR10+ n'est lu que sur ses 12 premières images puis sur les
 images clés. Interrupteur de repli de l'automatique :
 `zuno.player.hybrid_hdr_off` (voir `repair_flags.dart`).
 
+**Après un saut.** Chez le client, les deux films démarrent bien et l'écran
+se vide juste après une avance. Au démarrage le décodeur est neuf ; après
+un saut Media3 le vide et le réutilise. Sur les appareils du niveau
+automatique, pour une source 4K HEVC, le rendu recrée donc le décodeur
+après un saut demandé (`flushOrReleaseCodec`, le chemin que Media3 prend
+lui-même pour les décodeurs qui ne supportent pas d'être vidés). Avec le
+réglage « Compatibilité HDR », c'est fait pour toute source HEVC. Un
+rattrapage de retard continue de vider le décodeur, comme avant. C'est une
+précaution tirée de ce constat, pas un défaut documenté.
+
 **Boîte noire.** Étiquette `IMAGE`, sur toutes les box : une ligne par
 lecture avec le format annoncé et le décodeur. Sur les appareils Amazon et
 MT8696 : ce que le flux contient (Dolby Vision, HDR10+), ce qui a été
@@ -155,8 +165,9 @@ réglage manuel et interrupteur de repli. Au commit `cb3e32c`,
 [run 43589026916](https://github.com/manzilionellm-dotcom/tvking/actions/runs/43589026916),
 les huit tests instrumentés ont réussi sur les deux API, et le vérificateur
 exige au moins 30 unités retirées de chaque sorte dans les preuves. Le saut
-dans le film a été ajouté ensuite au même test : son résultat est celui du
-run du commit suivant, pas de ce document.
+dans le film (décodeur vidé en automatique hors 4K, décodeur recréé avec le
+réglage) a été ajouté ensuite au même test : son résultat est celui du run
+du commit suivant, pas de ce document.
 
 **Non vérifié.** L'image sur une vraie clé Amazon MT8696 : aucun émulateur
 n'a sa sortie HDMI. Le film du client n'a pas été analysé ; que son flux
