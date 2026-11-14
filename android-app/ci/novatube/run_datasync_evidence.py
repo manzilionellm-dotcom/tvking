@@ -624,6 +624,34 @@ class Scenario:
             return True if contrast > 25 and elapsed <= timeout else None
         self.wait(probe, "Image live restée vide ou uniforme pendant l'attente initiale", timeout)
 
+    def await_replay_contrast(self, timeout=30):
+        # REC AAB8 : le titre et le vrai conteneur sont déjà présents, mais
+        # la première image est encore noire. Attendre sans retoucher l'UI.
+        require(self.replay_opened, "Relecture non ouverte depuis les enregistrements")
+        started = time.monotonic()
+        def probe():
+            self.device.foreground()
+            xml = self.observe("replay-readiness")
+            left, top, right, bottom = replay_video_bounds(xml)
+            width, height = right - left, bottom - top
+            x, y, width, height = left + width // 5, top + height // 5, width * 3 // 5, height * 3 // 5
+            png = self.device.binary("exec-out", "screencap", "-p")
+            require(self.helpers.png_dimensions(png) == (1080, 1920), "Dimensions inattendues pendant l'attente de relecture")
+            filename = f"replay-readiness-{self.counter:02d}.png"
+            (self.stage / filename).write_bytes(png)
+            pixels = command(["ffmpeg", "-nostdin", "-v", "error", "-f", "image2pipe", "-i", "pipe:0",
+                              "-vf", f"crop={width}:{height}:{x}:{y},scale=64:36,format=gray",
+                              "-frames:v", "1", "-f", "rawvideo", "pipe:1"], binary=True, input_value=png)
+            require(len(pixels) == 64 * 36, "Pixels initiaux de relecture non lisibles")
+            contrast = max(pixels) - min(pixels)
+            elapsed = time.monotonic() - started
+            self.event("replay-readiness-sample", elapsedSeconds=round(elapsed, 3),
+                       contrastRange=contrast, imageFile=filename, observedVideoBounds=[left, top, right, bottom])
+            # L'image d'attente n'est jamais une preuve de mouvement : les
+            # trois nouvelles images et leurs seuils restent obligatoires.
+            return True if contrast > 25 and elapsed <= timeout else None
+        self.wait(probe, "Image de relecture restée vide ou uniforme pendant l'attente initiale", timeout)
+
     def motion(self, name: str, *, fixture_server=None) -> bool:
         require(name in ("live", "replay"), "Phase de lecture inconnue")
         if name == "replay":
@@ -634,6 +662,7 @@ class Scenario:
                            and (fixture_server.thread is None or not fixture_server.thread.is_alive())
                            and all(process.poll() is not None for process in fixture_server.processes))
             require(stopped, "Source synthétique encore active avant la relecture")
+            self.await_replay_contrast()
         xml = self.observe(name + "-player")
         rectangles = [replay_video_bounds(xml)] if name == "replay" else video_surfaces(xml)
         require(bool(rectangles), "Vue ou conteneur vidéo absent de la hiérarchie ; aucune zone inventée")

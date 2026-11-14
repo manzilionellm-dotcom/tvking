@@ -380,6 +380,44 @@ class DataSyncEvidenceTest(unittest.TestCase):
                 with self.subTest(stamp=stamp), patch.object(evidence.time, "monotonic", return_value=stamp):
                     self.assertEqual(flow.controls_are_fresh(), expected)
 
+    def test_replay_first_image_wait_keeps_diagnostics_and_rejects_late_or_black_frames(self):
+        video, _, _ = self.observed_player_controls()
+        # Nœuds du run AAB8 43611184525 ; contraste central mesuré = 8.
+        portrait = video.replace('[0,656][1079,1263]', '[0,0][1079,1920]')
+        title = '<node package="com.sevenmotion.novatube" class="android.view.View" content-desc="Novatube_test_pattern" bounds="[0,0][1080,1920]"/>'
+        for contrasts, accepted, capture_delay in (([8, 25, 26], True, 0), ([8, 8], False, 0), ([26], False, 3)):
+            now, device, helpers = [0], Mock(), Mock()
+            device.hierarchy.return_value = '<hierarchy>' + portrait + title + '</hierarchy>'
+            device.binary.return_value = b'diagnostic-png'
+            helpers.png_dimensions.return_value = (1080, 1920)
+            def advance(seconds):
+                now[0] += seconds
+            samples = [bytes([0, value]) * (64 * 36 // 2) for value in contrasts]
+            def next_sample(*arguments, **keywords):
+                now[0] += capture_delay
+                return samples.pop(0)
+            with self.subTest(contrasts=contrasts), tempfile.TemporaryDirectory() as directory, \
+                    patch.object(evidence.time, "monotonic", side_effect=lambda: now[0]), \
+                    patch.object(evidence.time, "sleep", side_effect=advance), \
+                    patch.object(evidence, "command", side_effect=next_sample):
+                stage = Path(directory)
+                flow = evidence.Scenario(device, helpers, {}, stage)
+                flow.replay_opened = True
+                if accepted:
+                    flow.await_replay_contrast(timeout=3)
+                else:
+                    with self.assertRaises(ValueError):
+                        flow.await_replay_contrast(timeout=2)
+                seen = [event for event in flow.events if event["action"] == "replay-readiness-sample"]
+                self.assertEqual([event["contrastRange"] for event in seen], contrasts)
+                self.assertEqual([event["elapsedSeconds"] for event in seen],
+                                 [index + (index + 1) * capture_delay for index in range(len(contrasts))])
+                self.assertTrue(all(event['observedVideoBounds'] == [0, 0, 1079, 1920] for event in seen))
+                self.assertEqual(len(list(stage.glob('replay-readiness-*.png'))), len(contrasts))
+                self.assertEqual(list(stage.glob('replay-frame-*.png')), [])
+                self.assertNotIn('motion', [event['action'] for event in flow.events])
+                device.command.assert_not_called()
+
     def test_home_waits_for_real_transition_once_and_keeps_failed_observations(self):
         # Le relevé final REC7, artefact 14118128135, expose ce launcher.
         launcher = "      topResumedActivity=ActivityRecord{e2c5706 u0 com.android.launcher3/.uioverrides.QuickstepLauncher t7}\n"

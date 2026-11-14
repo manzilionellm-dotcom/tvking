@@ -5,8 +5,9 @@
 Ce dossier prépare un job de preuves séparé, dans le workflow NOVATUBE déjà
 enregistré. Neuf essais Android ont été exécutés sur l'ancien AAB7 ; les plus
 avancés ont affiché le lecteur avec la mire réelle. Aucun MP4 de l'interface
-n'est encore qualifié. Les bancs sont maintenant épinglés sur l'AAB8 vérifié ;
-aucun parcours FGS de cette version n'a encore été exécuté.
+n'est encore qualifié. Les bancs sont maintenant épinglés sur l'AAB8 vérifié.
+Un premier essai AAB8 a atteint l'enregistrement, l'arrêt depuis la notification
+et l'ouverture du fichier local ; sa première image de relecture était noire.
 Le scénario est destiné à une revue humaine avant toute utilisation dans
 Google Play Console ; une réussite machine ne vaut pas approbation de Google.
 
@@ -194,6 +195,29 @@ Le banc garde désormais cinq secondes de relecture après le contrôle de
 mouvement au lieu de deux. Les trois nouvelles images, leurs seuils et
 l'exigence d'une seconde finale dans `qualify()` restent inchangés. Aucun
 MP4 de cet essai n'est promu rétroactivement en preuve qualifiée.
+
+Le premier essai AAB8, run `43611184525` sur le banc `8241660293f077643ae1fbce2c96c31570b0463c`,
+a observé le service NOVATUBE avec `isForeground=true`, `foregroundId=1001`
+et `types=0x00000001`. Le fichier est passé de 277 676 à 597 464 octets pendant
+les huit secondes en arrière-plan. L'action de notification a retiré le FGS ;
+le fichier s'est stabilisé à 1 018 584 octets et ses 25,0056 secondes utiles
+H.264/AAC ont été strictement décodées. Le serveur source était arrêté avant
+l'ouverture du fichier dans Mes enregistrements.
+
+Le XML de relecture expose le titre `Novatube_test_pattern` et le vrai wrapper
+natif `[0,0][1079,1920]`. La première capture reste noire : le crop central
+`647×1152` à `(215,384)` a un contraste de 8, insuffisant pour le seuil de 25.
+La capture de diagnostic finale est également noire ; aucune image tardive
+réussie n'est supposée. Le banc attend désormais au plus trente secondes une
+première image contrastée, uniquement après les gardes de relecture et d'arrêt
+complet du serveur. Il relit chaque fois le titre et le conteneur observé,
+conserve les PNG/XML/délais d'attente, puis prélève les trois nouvelles images
+de mouvement avec les seuils inchangés. Il ne retouche pas l'interface, ne
+relance pas le lecteur et ne recommence pas REC. Un écran toujours noir reste
+un échec. Le MP4 de ce premier essai AAB8 reste non qualifié.
+
+La correction locale de cette attente, fondée sur les captures de cet essai,
+passe les 141 tests Python. Elle ne modifie ni les pins AAB8 ni les workflows.
 
 ## Média contrôlé
 
