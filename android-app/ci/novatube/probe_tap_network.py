@@ -144,7 +144,9 @@ def run_diagnostic(args):
     def packet_exchange(request_path, host, port, *, udp=False):
         remote = "/data/local/tmp/ntprobe-request.txt"
         device("push", request_path, remote)
-        command = f"toybox nc {'-u ' if udp else ''}-w 4 -W 4 {host} {port} < {remote}"
+        # Après EOF du fichier, Toybox remplace -W par le délai -q. Sans -q,
+        # ce délai vaut -1 et le vrai M-SEARCH peut laisser nc ouvert indéfiniment.
+        command = f"toybox nc {'-u ' if udp else ''}-w 4 -W 4 -q 4 {host} {port} < {remote}"
         # Toybox peut signaler son délai même après avoir reçu une réponse valide.
         return shell(command, timeout=12, check=False)
 
@@ -270,7 +272,7 @@ def run_diagnostic(args):
             raise RuntimeError("No TAP address on wlan0 within 60 seconds; inspect DHCP/emulator logs")
         nc_help = device("shell", "toybox", "nc", "--help", check=False)
         (output / "android-netcat-help.txt").write_text(nc_help)
-        require(all(flag in nc_help for flag in ("-u", "-w", "-W", "-l", "-p")),
+        require(all(flag in nc_help for flag in ("-u", "-w", "-W", "-q", "-l", "-p")),
                 "Android netcat lacks options required by this bounded network probe")
         (output / "android-wlan.txt").write_text(wlan)
         guest_ip = checked_wlan(wlan)

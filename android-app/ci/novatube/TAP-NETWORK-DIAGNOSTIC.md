@@ -1,11 +1,12 @@
 # Diagnostic réseau Cast NOVATUBE, isolé et non destiné à Play
 
-État : TAP1 a été exécuté le 14 novembre 2026 sur le commit
-`02ea2633f8e9de66fb6ab7d74d9f8cc4a63fbd4b`, run `43604492220`. Le diagnostic
-s'est arrêté avant le lancement d'Android : l'adresse numérique donnée à
-l'écoute ADB n'était pas prise en charge. Le correctif ci-dessous est préparé
-localement sur REC6 pour revue ; il n'a pas encore été exécuté en CI.
-Aucune vidéo FGS n'est produite.
+État : TAP2 a été exécuté le 14 novembre 2026 sur le commit
+`5705f631d7f644a4c542ae70338eb9a36182abc5`, run `43604930373`. L'écoute ADB
+corrigée a permis de démarrer Android et d'observer DHCP et une vraie réponse
+SSDP du renderer. Le script s'est ensuite arrêté sur le délai externe de nc,
+resté ouvert après la fin du fichier d'envoi. Le correctif EOF est préparé
+localement pour revue ; les GET HTTP restent à observer. Aucune vidéo FGS
+n'est produite.
 
 ## Périmètre du job
 
@@ -117,7 +118,21 @@ les réponses SSDP unicast à une requête multicast. La capture passive évite 
 confondre ce comportement avec une panne réseau. Le diagnostic ne prétend jamais
 que NOVATUBE a reçu cette réponse ni que son interface a découvert le renderer.
 
+Les envois utilisent `-q 4` en plus de `-w 4 -W 4`. Après EOF du fichier d'entrée,
+`pollinate` remplace le délai d'inactivité par celui de `-q`, qui vaut sinon -1
+(attente indéfinie). L'aide relevée sur l'AVD doit annoncer cette option.
+Le délai externe ADB reste de douze secondes et les critères de contenu des
+réponses SSDP et HTTP ne changent pas : terminer nc ne suffit jamais au succès.
+
 ## Résultats et limites
+
+TAP2 a obtenu `192.0.2.17/24` sur `wlan0`. Le journal DHCP montre le véritable
+échange avec Android 15. À 14:29:26 UTC, le TAP a capturé une réponse SSDP du
+renderer vers Android, contenant `http://192.0.2.1:49494/description.xml` et le
+type `urn:schemas-upnp-org:device:MediaRenderer:1`. Le PCAP contient 26 575 octets.
+Le script a cependant levé `TimeoutExpired` en attendant la fin de nc ; il n'a
+donc pas exécuté les GET ni qualifié le diagnostic complet. Son nettoyage ne
+rapporte aucune erreur. Cette capture partielle ne prouve aucune lecture média.
 
 TAP1 a validé les versions et empreintes des outils, créé le namespace et le TAP,
 démarré dnsmasq sur cette seule interface, ouvert la capture PCAP et démarré le
@@ -164,6 +179,8 @@ critères mediaPlayback demandent une étape séparée et ne font pas partie de 
   `socket_spec_listen` et `tcp_host_is_local` expliquent le refus observé dans TAP1
   et l'emploi de `localhost` pour l'écoute, avec les clients sur `127.0.0.1`.
 - [Toybox Android 35](https://android.googlesource.com/platform/external/toybox/+/android-15.0.0_r1/toys/net/netcat.c).
+- [Boucle réseau Toybox Android 35](https://android.googlesource.com/platform/external/toybox/+/android-15.0.0_r1/lib/net.c) :
+  `pollinate` remplace `timeout` par `shutdown_timeout` après EOF de l'entrée.
 - [Manuel tcpdump 4.99.4](https://github.com/the-tcpdump-group/tcpdump/blob/tcpdump-4.99.4/tcpdump.1.in) :
   l'abandon de privilèges peut précéder l'ouverture du fichier de capture.
 - [gmrender-resurrect](https://github.com/hzeller/gmrender-resurrect),
