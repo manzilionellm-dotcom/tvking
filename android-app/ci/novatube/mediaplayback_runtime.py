@@ -234,6 +234,32 @@ class Runtime:
         require(mounted.startswith("overlay ") and "ro," in mounted and str(layer) in mounted,
                 "Les données Rygel ne sont pas dans l'overlay privé attendu")
         (self.stage / "private-share-mount.txt").write_text(mounted)
+        # Rygel 0.42.5 charge obligatoirement /etc/rygel.conf avant sa
+        # configuration utilisateur. Exposer seulement le fichier officiel
+        # extrait, en conservant /etc existant comme couche basse readonly.
+        # Ces montages restent après les gardes réseau/montages/PID privées.
+        system_config = self.prepared / "renderer/etc/rygel.conf"
+        config_sha = manifest["files"].get("renderer/etc/rygel.conf")
+        require(config_sha and system_config.is_file() and rec.digest(system_config) == config_sha,
+                "Configuration système officielle Rygel absente ou modifiée")
+        etc_layer, etc_lower = self.private / "etc-layer", self.private / "etc-lower"
+        etc_layer.mkdir()
+        etc_lower.mkdir()
+        shutil.copyfile(system_config, etc_layer / "rygel.conf")
+        require(rec.digest(etc_layer / "rygel.conf") == config_sha
+                and {path.name for path in etc_layer.iterdir()} == {"rygel.conf"},
+                "La couche /etc doit contenir uniquement la configuration officielle intacte")
+        require(not any(mark in str(path) for path in (etc_layer, etc_lower) for mark in (",", ":", "\n")),
+                "Chemins d'overlay /etc non représentables sans ambiguïté")
+        self.mount(["--bind", "/etc", etc_lower], etc_lower)
+        self.run(["mount", "-o", "remount,bind,ro", etc_lower])
+        self.mount(["-t", "overlay", "overlay", "-o", f"ro,lowerdir={etc_layer}:{etc_lower}", "/etc"], "/etc")
+        etc_mounted = self.run(["findmnt", "-n", "-o", "FSTYPE,OPTIONS", "--target", "/etc"])
+        require(etc_mounted.startswith("overlay ") and "ro," in etc_mounted and str(etc_layer) in etc_mounted
+                and rec.digest(Path("/etc/rygel.conf")) == config_sha,
+                "Configuration système Rygel hors de l'overlay privé attendu")
+        (self.stage / "private-etc-mount.txt").write_text(etc_mounted)
+        (self.stage / "rygel-system-config-sha256.txt").write_text(config_sha + "\n")
         # Les sockets X11 et leurs fichiers de verrou ne rejoignent pas /tmp hôte.
         self.mount(["-t", "tmpfs", "-o", "mode=1777,size=128m", "tmpfs", "/tmp"], "/tmp")
         for name, folder in (("ANDROID_AVD_HOME", "avds"), ("ANDROID_USER_HOME", "android-user"),
@@ -329,7 +355,10 @@ class Runtime:
         (self.stage / "android-routes.txt").write_text(self.device.command("shell", "ip", "route", "show", "table", "all"))
 
     def start_renderer(self):
-        config = self.private / "rygel.conf"
+        # Le fichier local par défaut n'est lu qu'après le fichier système
+        # officiel monté plus haut ; aucun chemin de configuration hôte.
+        config = Path(self.environment["XDG_CONFIG_HOME"]) / "rygel.conf"
+        require(config.parent == self.private / "config", "Configuration utilisateur Rygel hors du dossier privé")
         pcm = str(self.stage / "receiver.pcm")
         require('"' not in pcm and "\n" not in pcm, "Chemin PCM non sûr")
         config.write_text("[general]\ninterface=" + TAP + f"\nport={RENDERER_PORT}\nipv6=false\nenable-transcoding=false\n"
@@ -339,13 +368,14 @@ class Runtime:
             "".join(f"\n[{name}]\nenabled=false\n" for name in ("Tracker3", "Tracker", "MediaExport", "MPRIS", "External", "LMS", "GstLaunch", "Test", "Ruih")))
         (self.stage / "rygel-config.txt").write_text(config.read_text())
         self.ssdp = self.spawn(["tcpdump", "-i", TAP, "-n", "-s", "0", "-A", "-l", "udp", "and", "src", "host", HOST_IP], "renderer-ssdp.txt")
-        self.rygel = self.spawn(["dbus-run-session", "--", self.prepared / "renderer/usr/bin/rygel", "--config", config,
+        self.rygel = self.spawn(["dbus-run-session", "--", self.prepared / "renderer/usr/bin/rygel",
             "--plugin-path", self.prepared / "playbin-plugins", "--engine-path", self.prepared / "empty-engines"], "rygel.txt")
         deadline = time.monotonic() + 45
-        location = None
+        location, observed_locations = None, set()
         while time.monotonic() < deadline:
             require(self.rygel.poll() is None and self.ssdp.poll() is None, "Rygel ou sa capture SSDP s'est arrêté")
             for value in re.findall(r"(?im)^location:\s*(\S+)", (self.stage / "renderer-ssdp.txt").read_text(errors="replace")):
+                observed_locations.add(value)
                 uri = urllib.parse.urlsplit(value)
                 if uri.scheme == "http" and uri.hostname == HOST_IP and uri.port == RENDERER_PORT:
                     location = value
@@ -353,7 +383,9 @@ class Runtime:
             if location:
                 break
             time.sleep(0.5)
-        require(location, "Aucune annonce SSDP véritable de Rygel")
+        (self.stage / "renderer-locations.json").write_text(json.dumps({"expectedHost": HOST_IP,
+            "expectedPort": RENDERER_PORT, "observedLocations": sorted(observed_locations)}, indent=2) + "\n")
+        require(location, "Aucune LOCATION SSDP de Rygel ne correspond au port privé configuré 19494")
         uri = urllib.parse.urlsplit(location)
         connection = http.client.HTTPConnection(uri.hostname, uri.port, timeout=5)
         try:
