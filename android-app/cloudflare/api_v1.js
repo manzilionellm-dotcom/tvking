@@ -465,7 +465,7 @@ async function requireAuth(request, env) {
 
 /// Comparaison en temps constant. Secret vide = refus (instance
 /// sans protection ne doit pas accepter n'importe quel en-tête).
-function adminSecretMatches(request, env) {
+export function adminSecretMatches(request, env) {
   const provided = request.headers.get('X-Admin-Secret') || '';
   const expected = env.ADMIN_SECRET || '';
   if (!expected || typeof provided !== 'string') return false;
