@@ -63,7 +63,7 @@ import {
   handleBoxRoute,
   notifyBox,
 } from './box_channel.js';
-export { RealtimeHub, rateLimitOk, recordPresence };
+export { RealtimeHub, rateLimitOk, recordPresence, ensureScaleSchema, updateDeviceInfo, resetAtFor };
 import { httpUrlError, sourceTextProblem, sourceUrlProblem } from './source_url.js';
 import { currentRevision } from './box_orders.js';
 import { casWriteSources } from './device_sources_store.js';

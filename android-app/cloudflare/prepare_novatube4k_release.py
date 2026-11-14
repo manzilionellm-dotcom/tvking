@@ -21,6 +21,10 @@ def main():
     anchor = 'export {\n  RealtimeHub,\n  gold_default as default,'
     replacement = ('export {\n  worker_default as atlasOriginal,\n'
                    '  recordAck,\n  markRevisionAck,\n  rateLimitOk,\n  recordPresence,\n'
+                   '  ensureOrderTables,\n  markOrderSent,\n  ensureScaleSchema,\n'
+                   '  updateDeviceInfo,\n  resetAtFor,\n  blackboxRequestedAt,\n'
+                   '  ensureSourcesVersion,\n  notifyBox,\n'
+                   '  adminSecretMatches,\n  parseExtendDays,\n  nextTrialEnd,\n  ensureTrialAnchorTable,\n'
                    '  RealtimeHub,\n  gold_default as default,')
     if original.count(anchor) != 1:
         raise SystemExit('Export du bundle Atlas non reconnu.')
@@ -31,15 +35,22 @@ def main():
     args.out.mkdir(parents=True, exist_ok=True)
     (args.out / 'atlas-live.js').write_text(patched)
     here = Path(__file__).resolve().parent
-    for name in ('novatube4k.js', 'novatube4k-wrapper.js'):
+    modules = ('novatube4k.js', 'novatube4k-wrapper.js', 'novatube4k-panel.js',
+               'novatube4k-panel-admin.js', 'novatube4k-transfer.js', 'novatube4k-trial.js', 'insights.js', 'page_query.js')
+    for name in modules:
         (args.out / name).write_bytes((here / name).read_bytes())
-    entry = """import legacy, { atlasOriginal, recordAck, markRevisionAck, rateLimitOk, recordPresence } from './atlas-live.js';
+    entry = """import legacy, { atlasOriginal, recordAck, markRevisionAck, rateLimitOk, recordPresence,
+  ensureOrderTables, markOrderSent, ensureScaleSchema, updateDeviceInfo,
+  resetAtFor, blackboxRequestedAt, ensureSourcesVersion, notifyBox,
+  adminSecretMatches, parseExtendDays, nextTrialEnd, ensureTrialAnchorTable } from './atlas-live.js';
 import { createNovatube4kEntry } from './novatube4k-wrapper.js';
 export { RealtimeHub, normMac, shouldAutoProvision } from './atlas-live.js';
-export default createNovatube4kEntry(legacy, atlasOriginal, { recordAck, markRevisionAck, rateLimitOk, recordPresence });
+export default createNovatube4kEntry(legacy, atlasOriginal, { recordAck, markRevisionAck, rateLimitOk, recordPresence,
+  ensureOrderTables, markOrderSent, ensureScaleSchema, updateDeviceInfo, resetAtFor, blackboxRequestedAt,
+  ensureSourcesVersion, notifyBox, adminSecretMatches, parseExtendDays, nextTrialEnd, ensureTrialAnchorTable });
 """
     (args.out / 'novatube4k-live-entry.js').write_text(entry)
-    names = ['atlas-live.js', 'novatube4k.js', 'novatube4k-wrapper.js', 'novatube4k-live-entry.js']
+    names = ['atlas-live.js', *modules, 'novatube4k-live-entry.js']
     audit = {
         'base_version': BASE_VERSION,
         'base_sha256': BASE_SHA256,

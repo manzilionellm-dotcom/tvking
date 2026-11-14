@@ -7,6 +7,10 @@
 //  La clé aléatoire de l'installation est envoyée sous HTTPS et seul son
 //  SHA-256 est conservé en D1. Une autre clé ne peut pas réclamer la fiche.
 
+import {
+  PANEL_BODY_LIMITS, handleNovatube4kPanel, readNovatubePanelSignals,
+} from './novatube4k-panel.js';
+
 export const NOVATUBE4K_APP_ID = 'app_novatube4k';
 export const NOVATUBE4K_PACKAGE = 'com.manthefew';
 const PREFIX = '/api/novatube4k/';
@@ -296,6 +300,11 @@ async function state(env, binding, deps, created, request) {
     sources_ok: false,
     source_rev: null,
   };
+  // Compatibilité 334.2.1 : champs additifs, sans changer la preuve de licence.
+  // Une demande de journal et un reset doivent être vus aussi sur l'écran bloqué.
+  if (typeof deps.resetAtFor === 'function' && typeof deps.blackboxRequestedAt === 'function') {
+    Object.assign(body, await readNovatubePanelSignals(env, binding, deps));
+  }
   if (body.active && typeof deps.readSources === 'function') {
     try {
       // Le handler existant fait le déchiffrement des sources Atlas ;
@@ -365,9 +374,9 @@ async function acknowledge(env, binding, input, deps) {
   return json({ ok: true, mac: binding.mac, source_rev: rev, result: 'config_saved', orders_acked: (orders.results || []).length });
 }
 
-async function readBody(request) {
+async function readBody(request, limit = BODY_LIMIT) {
   const length = Number(request.headers.get('Content-Length'));
-  if (Number.isFinite(length) && length > BODY_LIMIT) return { tooLarge: true };
+  if (Number.isFinite(length) && length > limit) return { tooLarge: true };
   const reader = request.body?.getReader();
   if (!reader) return { input: null };
   const chunks = [];
@@ -376,7 +385,7 @@ async function readBody(request) {
     const { done, value } = await reader.read();
     if (done) break;
     size += value.byteLength;
-    if (size > BODY_LIMIT) { await reader.cancel(); return { tooLarge: true }; }
+    if (size > limit) { await reader.cancel(); return { tooLarge: true }; }
     chunks.push(value);
   }
   const bytes = new Uint8Array(size);
@@ -390,7 +399,9 @@ async function readBody(request) {
 export async function handleNovatube4k(request, env, deps = {}) {
   const path = new URL(request.url).pathname;
   if (!path.startsWith(PREFIX)) return null;
-  if (![PREFIX + 'register', PREFIX + 'state', PREFIX + 'ack'].includes(path)) return error('not_found', 404);
+  const action = path.slice(PREFIX.length);
+  const panelAction = Object.hasOwn(PANEL_BODY_LIMITS, action);
+  if (!['register', 'state', 'ack'].includes(action) && !panelAction) return error('not_found', 404);
   if (request.method !== 'POST') return error('method_not_allowed', 405);
   if (!env?.DB) return error('storage_unavailable', 503);
 
@@ -398,7 +409,7 @@ export async function handleNovatube4k(request, env, deps = {}) {
   if (!/^[a-f0-9]{64}$/.test(deviceKey)) return error('device_auth_required', 401);
   let input;
   try {
-    const result = await readBody(request);
+    const result = await readBody(request, panelAction ? PANEL_BODY_LIMITS[action] : BODY_LIMIT);
     if (result.tooLarge) return error('body_too_large', 413);
     input = result.input;
   } catch (_) {
@@ -410,7 +421,9 @@ export async function handleNovatube4k(request, env, deps = {}) {
 
   try {
     if (typeof deps.rateLimitOk !== 'function') return error('rate_limit_unavailable', 503);
-    if (!await deps.rateLimitOk(env, request, 'novatube4k', 240, 60_000)) return error('rate_limited', 429);
+    const bucket = panelAction ? 'novatube4k-' + action : 'novatube4k';
+    const limit = action === 'orders-ack' ? 600 : action === 'blackbox' ? 60 : 240;
+    if (!await deps.rateLimitOk(env, request, bucket, limit, 60_000)) return error('rate_limited', 429);
     await ensureSchema(env);
     const keyHash = await sha256(deviceKey);
     if (path.endsWith('/register')) {
@@ -420,6 +433,11 @@ export async function handleNovatube4k(request, env, deps = {}) {
     }
     const binding = await bindingForRaw(env, raw);
     if (!binding || !sameHash(binding.device_key_hash, keyHash)) return error('device_auth_required', 401);
+    if (panelAction) {
+      const access = await accessFor(env, binding, Date.now());
+      if (!access) return error('device_registration_missing', 409);
+      return await handleNovatube4kPanel(action, request, env, binding, input, deps, access);
+    }
     if (path.endsWith('/ack')) return await acknowledge(env, binding, input, deps);
     return await state(env, binding, deps, false, request);
   } catch (_) {

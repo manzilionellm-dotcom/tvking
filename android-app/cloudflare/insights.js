@@ -89,7 +89,11 @@ async function money(env, now) {
   //     ne contient que les activations faites par un revendeur.
   const created = epochSql('l.created_at');
   const exp = epochSql('l.expires_at');
-  const paid = `l.plan IS NOT NULL AND l.plan != 'trial'`;
+  // L'enrôlement NOVATUBE crée une licence inactive custom avec expires_at=0.
+  // Cette fiche technique n'est pas une vente. Les essais trial7/trial30
+  // doivent également rester hors des abonnements payés.
+  const paid = `l.plan IS NOT NULL AND l.plan NOT LIKE 'trial%' ` +
+    `AND NOT (l.app_id = 'app_novatube4k' AND l.plan = 'custom' AND l.expires_at = 0)`;
   const since30 = now - 30 * DAY;
   const perDay = await env.DB.prepare(
     `SELECT CAST(${created} / ${DAY} AS INTEGER) AS day, COUNT(*) AS n FROM licenses l ` +

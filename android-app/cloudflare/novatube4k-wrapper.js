@@ -4,6 +4,10 @@
 import {
   handleNovatube4k, isNovatube4kMac, NOVATUBE4K_APP_ID,
 } from './novatube4k.js';
+import { notifyNovatubePanelMutation } from './novatube4k-panel.js';
+import { handleNovatubePanelAdmin } from './novatube4k-panel-admin.js';
+import { handleNovatube4kTransfer } from './novatube4k-transfer.js';
+import { handleNovatube4kTrialExtend } from './novatube4k-trial.js';
 
 function unavailable() {
   return Response.json({ error: 'novatube4k_unavailable' }, {
@@ -29,7 +33,7 @@ async function legacyDeviceMac(request, url, ctx) {
   let candidate = direct?.[1] || (box
     ? (parts[2] === 'ws' ? url.searchParams.get('mac') : parts[3] || url.searchParams.get('mac'))
     : '');
-  if (['/api/heartbeat', '/api/blackbox', '/api/gold-trial', '/api/v1/device/trial'].includes(path)) {
+  if (['/api/heartbeat', '/api/blackbox', '/api/feedback', '/api/gold-trial', '/api/v1/device/trial'].includes(path)) {
     // La boîte noire historique conserve 32 Kio ; 1 Mio laisse aussi une
     // marge pour l'échappement JSON et les inventaires des anciens clients.
     const body = await activationBody(request, ctx, 1024 * 1024);
@@ -82,8 +86,24 @@ export function createNovatube4kEntry(legacy, original, hooks = {}) {
     ...legacy,
     async fetch(request, env, ctx) {
       const url = new URL(request.url);
+      const panelAdmin = await handleNovatubePanelAdmin(request, env, ctx, original);
+      if (panelAdmin) return panelAdmin;
       if (url.pathname.startsWith('/api/novatube4k/')) {
         try {
+          const relay = (method, path, body) => {
+            // Le module appelle seulement des chemins constants contrôlés.
+            // Ni clé d'installation, ni JWT panel ne sortent dans un sous-appel.
+            const headers = new Headers({ 'Content-Type': 'application/json' });
+            for (const name of ['CF-Connecting-IP', 'CF-IPCountry']) {
+              const value = request.headers.get(name);
+              if (value) headers.set(name, value);
+            }
+            const forwarded = new Request(new URL(path, url), {
+              method, headers, ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+              ...(request.cf ? { cf: request.cf } : {}),
+            });
+            return original.fetch(forwarded, env, ctx);
+          };
           return await handleNovatube4k(request, env, {
             readSources: (mac) => {
               // Le routeur existant attend les « : » littéraux. La valeur est
@@ -93,6 +113,7 @@ export function createNovatube4kEntry(legacy, original, hooks = {}) {
                 method: 'GET', headers: request.headers,
               }), env, ctx);
             },
+            relay,
             ...hooks,
           });
         } catch {
@@ -111,6 +132,28 @@ export function createNovatube4kEntry(legacy, original, hooks = {}) {
             });
           }
         } catch { return unavailable(); }
+      }
+      if (url.pathname.split('/').filter(Boolean).join('/') === 'api/v1/transfer' && request.method === 'POST') {
+        const body = await activationBody(request, ctx);
+        if (body === TOO_LARGE) return oversized();
+        try {
+          const transfer = await handleNovatube4kTransfer(request, env, ctx, original, hooks, body);
+          if (transfer) return transfer;
+        } catch {
+          console.error(JSON.stringify({ event: 'novatube4k_transfer_failed' }));
+          return unavailable();
+        }
+      }
+      if (url.pathname.split('/').filter(Boolean).join('/') === 'api/v1/trial-extend' && request.method === 'POST') {
+        const body = await activationBody(request, ctx);
+        if (body === TOO_LARGE) return oversized();
+        try {
+          const trial = await handleNovatube4kTrialExtend(request, env, ctx, original, hooks, body);
+          if (trial) return trial;
+        } catch {
+          console.error(JSON.stringify({ event: 'novatube4k_trial_extension_failed' }));
+          return unavailable();
+        }
       }
       if (url.pathname.split('/').filter(Boolean).join('/') === 'api/v1/activate' && request.method === 'POST') {
         const body = await activationBody(request, ctx);
@@ -134,7 +177,15 @@ export function createNovatube4kEntry(legacy, original, hooks = {}) {
           }
         }
       }
-      return legacy.fetch(request, env, ctx);
+      const response = await legacy.fetch(request, env, ctx);
+      // La mutation a déjà passé l'authentification et tous les contrôles du
+      // Worker courant. Le réveil NOVATUBE n'altère jamais sa réponse.
+      const notification = notifyNovatubePanelMutation(request, response, env).catch(() => {
+        console.error(JSON.stringify({ event: 'novatube4k_panel_wakeup_failed' }));
+      });
+      if (ctx && typeof ctx.waitUntil === 'function') ctx.waitUntil(notification);
+      else await notification;
+      return response;
     },
   };
 }
