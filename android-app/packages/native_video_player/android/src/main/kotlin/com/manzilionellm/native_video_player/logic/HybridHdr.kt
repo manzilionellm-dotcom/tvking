@@ -76,7 +76,7 @@ object HybridHdr {
     @Volatile
     var autoOff: Boolean = false
 
-    /** Réglage « Compatibilité HDR » (Réglages → Plus). Faux par défaut. */
+    /** Réglage « Compatibilité HDR » (Réglages → En plus). Faux par défaut. */
     @Volatile
     var manual: Boolean = false
 
@@ -614,7 +614,7 @@ object HybridHdrReport {
         // Observation seule : dire pourquoi rien n'est retiré, et quoi essayer.
         return if (filter.mode == HybridHdrMode.WATCH && filter.hybrid) {
             "$line Rien n'est retiré sur cet appareil ; si l'image disparaît, " +
-                "allumer « Compatibilité HDR » (Réglages → Plus)."
+                "allumer « Compatibilité HDR » (Réglages → En plus)."
         } else {
             line
         }

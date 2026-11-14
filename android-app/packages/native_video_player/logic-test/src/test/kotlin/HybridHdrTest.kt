@@ -540,7 +540,8 @@ class HybridHdrTest {
         val line = HybridHdrReport.content(filter, "OMX.MTK.VIDEO.DECODER.HEVC", "Amazon AFTMM")
         assertTrue(line.startsWith("HDR du flux : Dolby Vision oui, HDR10+ oui (film hybride)."), line)
         assertTrue(line.contains("Rien n'est retiré sur cet appareil"), line)
-        assertTrue(line.contains("Compatibilité HDR"), line)
+        // Le nom exact de l'écran : c'est ce que le support lira au client.
+        assertTrue(line.contains("allumer « Compatibilité HDR » (Réglages → En plus)."), line)
         assertNull(HybridHdrReport.action(filter))
     }
 
