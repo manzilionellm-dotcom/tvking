@@ -24,12 +24,17 @@ import android.app.PictureInPictureParams
 import android.content.Intent
 import android.content.res.Configuration
 import android.os.Build
+import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.os.ResultReceiver
 import android.util.Log
 import android.util.Rational
 import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import com.manzilionellm.native_video_player.logic.AppForeground
 import io.flutter.plugin.common.MethodChannel
+import java.lang.ref.WeakReference
 
 class NovatubeActivity : FlutterFragmentActivity() {
 
@@ -39,8 +44,31 @@ class NovatubeActivity : FlutterFragmentActivity() {
         /// Channel Dart ↔ natif pour le Picture-in-Picture.
         /// Doit matcher EXACTEMENT côté lib/features/player/data/pip_service.dart
         private const val PIP_CHANNEL = "com.manzilionellm.tvking/pip"
+        private var castStopChannel: WeakReference<MethodChannel>? = null
 
+        private fun notifyCastStop(sessionId: String) {
+            if (!BuildConfig.NOVATUBE_PLAY) return
+            try {
+                castStopChannel?.get()?.invokeMethod(
+                    "castStopRequested", mapOf("sessionId" to sessionId),
+                )
+            } catch (error: Exception) {
+                Log.w(TAG, "Moteur Flutter indisponible après l'arrêt Cast", error)
+            }
+        }
+    }
 
+    // Classe imbriquée non inner : le service ne retient aucune Activity.
+    // Le canal courant est retrouvé à la livraison, après une éventuelle
+    // recréation d'activité ; Dart refuse encore tout jeton devenu obsolète.
+    private class CastStopReceiver(private val sessionId: String) :
+        ResultReceiver(Handler(Looper.getMainLooper())) {
+        override fun onReceiveResult(resultCode: Int, resultData: Bundle?) {
+            val stopped = resultData?.getString(PlaybackForegroundService.EXTRA_CAST_SESSION)
+            if (resultCode == PlaybackForegroundService.RESULT_CAST_USER_STOP && stopped == sessionId) {
+                notifyCastStop(sessionId)
+            }
+        }
     }
 
     private var castApi: GoogleCastApi? = null
@@ -142,6 +170,9 @@ class NovatubeActivity : FlutterFragmentActivity() {
         //      ET le device supporte PiP (hasSystemFeature).
         try {
             pipChannel = MethodChannel(messenger, PIP_CHANNEL)
+            if (BuildConfig.NOVATUBE_PLAY) {
+                pipChannel?.let { castStopChannel = WeakReference(it) }
+            }
             pipChannel!!.setMethodCallHandler { call, result ->
                 when (call.method) {
                     "setPlaybackActive" -> {
@@ -173,11 +204,16 @@ class NovatubeActivity : FlutterFragmentActivity() {
                     }
                     "startBackgroundAudio" -> {
                         val title = call.argument<String>("title") ?: "NOVATUBE"
-                        startBackgroundAudio(title)
+                        startBackgroundAudio(
+                            title,
+                            call.argument<String>("castSessionId"),
+                            call.argument<String>("castDescription"),
+                            call.argument<String>("castStopLabel"),
+                        )
                         result.success(null)
                     }
                     "stopBackgroundAudio" -> {
-                        stopBackgroundAudio()
+                        stopBackgroundAudio(call.argument<String>("castSessionId"))
                         result.success(null)
                     }
                     else -> result.notImplemented()
@@ -224,11 +260,24 @@ class NovatubeActivity : FlutterFragmentActivity() {
     /// Démarre le service audio de fond (mode « Écouteurs »). Appelé
     /// pendant que l'app est VISIBLE (tap utilisateur) → pas de
     /// restriction Android 12+ sur le démarrage d'un foreground service.
-    private fun startBackgroundAudio(title: String) {
+    private fun startBackgroundAudio(
+        title: String, castSessionId: String?, castDescription: String?, castStopLabel: String?,
+    ) {
         try {
             val intent = Intent(this, PlaybackForegroundService::class.java).apply {
                 action = PlaybackForegroundService.ACTION_START
                 putExtra(PlaybackForegroundService.EXTRA_TITLE, title)
+                if (BuildConfig.NOVATUBE_PLAY && castSessionId != null) {
+                    require(castSessionId.isNotBlank()) { "Session Cast vide" }
+                    // Binder privé transmis uniquement à notre service explicite.
+                    // Le canal faible ne maintient pas un moteur Flutter détruit.
+                    pipChannel?.let { castStopChannel = WeakReference(it) }
+                    val receiver = CastStopReceiver(castSessionId)
+                    putExtra(PlaybackForegroundService.EXTRA_CAST_SESSION, castSessionId)
+                    putExtra(PlaybackForegroundService.EXTRA_CAST_DESCRIPTION, castDescription)
+                    putExtra(PlaybackForegroundService.EXTRA_CAST_STOP_LABEL, castStopLabel)
+                    putExtra(PlaybackForegroundService.EXTRA_CAST_STOP_RECEIVER, receiver)
+                }
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 startForegroundService(intent)
@@ -241,10 +290,13 @@ class NovatubeActivity : FlutterFragmentActivity() {
     }
 
     /// Arrête le service audio de fond.
-    private fun stopBackgroundAudio() {
+    private fun stopBackgroundAudio(castSessionId: String?) {
         try {
             val intent = Intent(this, PlaybackForegroundService::class.java).apply {
                 action = PlaybackForegroundService.ACTION_STOP
+                if (BuildConfig.NOVATUBE_PLAY && castSessionId != null) {
+                    putExtra(PlaybackForegroundService.EXTRA_CAST_SESSION, castSessionId)
+                }
             }
             startService(intent)
         } catch (e: Throwable) {

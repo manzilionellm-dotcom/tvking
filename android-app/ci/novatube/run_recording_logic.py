@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Teste la politique d'export NOVATUBE sur JVM, sans simuler les codecs Android."""
+"""Teste les politiques natives NOVATUBE sur JVM, sans simuler un service Android."""
 
 from __future__ import annotations
 
@@ -29,6 +29,8 @@ def verify(cache: Path) -> None:
         app_root / "ci/novatube/GalleryExportPolicyTest.kt",
         app_root / "android/app/src/main/kotlin/com/sevenmotion/novatube/PlayRecordingStopper.kt",
         app_root / "ci/novatube/PlayRecordingStopperTest.kt",
+        app_root / "android/app/src/main/kotlin/com/sevenmotion/novatube/PlaybackStopSession.kt",
+        app_root / "ci/novatube/PlaybackStopSessionTest.kt",
     )
     for source in sources:
         if not source.is_file():
@@ -42,18 +44,19 @@ def verify(cache: Path) -> None:
         ))
     classpath = os.pathsep.join(map(str, jars))
     with tempfile.TemporaryDirectory(prefix="novatube-recording-jvm-classes-") as classes:
-        print("Compilation de la politique d'export et de ses tests…", flush=True)
+        print("Compilation des politiques natives et de leurs tests…", flush=True)
         subprocess.run(
             ["java", "-cp", classpath, "org.jetbrains.kotlin.cli.jvm.K2JVMCompiler",
              "-no-stdlib", "-no-reflect", "-classpath", classpath, "-jvm-target", "17",
              "-d", classes, *map(str, sources)],
             cwd=app_root, check=True,
         )
-        print("Exécution des tests GalleryExportPolicy…", flush=True)
+        print("Exécution des tests des politiques natives NOVATUBE…", flush=True)
         subprocess.run(
             ["java", "-cp", classes + os.pathsep + classpath, "org.junit.runner.JUnitCore",
              "com.sevenmotion.novatube.GalleryExportPolicyTest",
-             "com.sevenmotion.novatube.PlayRecordingStopperTest"],
+             "com.sevenmotion.novatube.PlayRecordingStopperTest",
+             "com.sevenmotion.novatube.PlaybackStopSessionTest"],
             cwd=app_root, check=True,
         )
 

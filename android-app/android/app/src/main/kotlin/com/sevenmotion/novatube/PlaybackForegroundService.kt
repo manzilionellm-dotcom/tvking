@@ -38,9 +38,12 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.net.wifi.WifiManager
+import android.net.Uri
 import android.os.Build
+import android.os.Bundle
 import android.os.IBinder
 import android.os.PowerManager
+import android.os.ResultReceiver
 import android.util.Log
 import androidx.core.app.NotificationCompat
 
@@ -50,38 +53,89 @@ class PlaybackForegroundService : Service() {
         private const val TAG = "PlaybackFgSvc"
         private const val NOTIFICATION_ID = 1002
         private const val CHANNEL_ID = "playback_channel"
+        private const val CAST_CHANNEL_ID = "cast_playback_channel"
         private const val WAKE_LOCK_TAG = "7motion:playback_wake_lock"
         private const val WIFI_LOCK_TAG = "7motion:playback_wifi_lock"
 
         const val ACTION_START = "com.manzilionellm.tvking.playback.START"
         const val ACTION_STOP = "com.manzilionellm.tvking.playback.STOP"
         const val EXTRA_TITLE = "title"
+        const val ACTION_STOP_CAST = "com.sevenmotion.novatube.playback.STOP_CAST"
+        const val EXTRA_CAST_SESSION = "castSessionId"
+        const val EXTRA_CAST_DESCRIPTION = "castDescription"
+        const val EXTRA_CAST_STOP_LABEL = "castStopLabel"
+        const val EXTRA_CAST_STOP_RECEIVER = "castStopReceiver"
+        const val RESULT_CAST_USER_STOP = 1
+
+        // Survit à stopSelf dans le même processus : un START de permission
+        // déjà en route ne peut recréer la session que l'utilisateur a arrêtée.
+        private val castStops = PlaybackStopSession()
     }
 
     private var wakeLock: PowerManager.WakeLock? = null
     private var wifiLock: WifiManager.WifiLock? = null
+    private var castSessionId: String? = null
+    private var castStopReceiver: ResultReceiver? = null
+    private var castDescription: String? = null
+    private var castStopLabel: String? = null
+    private var foregroundStarted = false
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_START -> {
+                val requestedCast = if (BuildConfig.NOVATUBE_PLAY) {
+                    intent.getStringExtra(EXTRA_CAST_SESSION)
+                } else null
+                if (requestedCast != null) {
+                    @Suppress("DEPRECATION")
+                    val receiver = intent.getParcelableExtra<ResultReceiver>(EXTRA_CAST_STOP_RECEIVER)
+                    if (receiver == null || !castStops.startCast(requestedCast)) {
+                        stopIfUnused(startId)
+                        return START_NOT_STICKY
+                    }
+                    castSessionId = requestedCast
+                    castStopReceiver = receiver
+                    castDescription = intent.getStringExtra(EXTRA_CAST_DESCRIPTION)
+                    castStopLabel = intent.getStringExtra(EXTRA_CAST_STOP_LABEL)
+                } else {
+                    if (BuildConfig.NOVATUBE_PLAY) castStops.startAudio()
+                    clearCastNotification()
+                }
                 val title = intent.getStringExtra(EXTRA_TITLE) ?: "NOVATUBE"
-                Log.i(TAG, "START background audio: $title")
+                Log.i(TAG, if (castSessionId != null) "START cast relay" else "START background audio: $title")
                 createChannelIfNeeded()
                 startForeground(NOTIFICATION_ID, buildNotification(title))
+                foregroundStarted = true
                 acquireLocks()
             }
             ACTION_STOP -> {
-                Log.i(TAG, "STOP background audio")
-                releaseLocks()
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                    stopForeground(STOP_FOREGROUND_REMOVE)
-                } else {
-                    @Suppress("DEPRECATION")
-                    stopForeground(true)
+                val requestedCast = intent.getStringExtra(EXTRA_CAST_SESSION)
+                if (BuildConfig.NOVATUBE_PLAY && !castStops.stopFromApp(requestedCast)) {
+                    stopIfUnused(startId)
+                    return START_NOT_STICKY
                 }
-                stopSelf()
+                Log.i(TAG, "STOP background audio")
+                clearCastNotification()
+                stopPlayback(startId)
+            }
+            ACTION_STOP_CAST -> {
+                val requestedCast = intent.getStringExtra(EXTRA_CAST_SESSION)
+                if (!BuildConfig.NOVATUBE_PLAY || requestedCast != castSessionId ||
+                    !castStops.stopFromNotification(requestedCast)) {
+                    stopIfUnused(startId)
+                    return START_NOT_STICKY
+                }
+                // Seul CE bouton utilisateur renvoie l'événement à Dart.
+                // Le ResultReceiver est fourni par notre activité au service
+                // non exporté : aucun broadcast public ou lancement d'écran.
+                val receiver = castStopReceiver
+                clearCastNotification()
+                stopPlayback(startId)
+                receiver?.send(RESULT_CAST_USER_STOP, Bundle().apply {
+                    putString(EXTRA_CAST_SESSION, requestedCast)
+                })
             }
             else -> {
                 // Re-livraison sans action exploitable → on s'arrête.
@@ -112,8 +166,36 @@ class PlaybackForegroundService : Service() {
     }
 
     override fun onDestroy() {
+        if (BuildConfig.NOVATUBE_PLAY) castStops.release(castSessionId)
+        clearCastNotification()
+        foregroundStarted = false
         releaseLocks()
         super.onDestroy()
+    }
+
+    private fun clearCastNotification() {
+        castSessionId = null
+        castStopReceiver = null
+        castDescription = null
+        castStopLabel = null
+    }
+
+    private fun stopIfUnused(startId: Int) {
+        // Un ancien PendingIntent peut recréer un service sans notification.
+        // Le fermer, mais ne jamais toucher au service d'une autre session.
+        if (!foregroundStarted) stopSelf(startId)
+    }
+
+    private fun stopPlayback(startId: Int) {
+        releaseLocks()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+        } else {
+            @Suppress("DEPRECATION")
+            stopForeground(true)
+        }
+        foregroundStarted = false
+        if (BuildConfig.NOVATUBE_PLAY) stopSelf(startId) else stopSelf()
     }
 
     private fun buildNotification(title: String): Notification {
@@ -132,21 +214,30 @@ class PlaybackForegroundService : Service() {
             null
         }
 
-        // Action « Arrêter » → renvoie ACTION_STOP au service (coupe le
-        // son de fond + retire la notification).
+        // Le jeton est aussi dans data : Android ne compare pas les extras
+        // pour l'identité d'un PendingIntent. Une ancienne notification ne
+        // doit donc jamais être mise à jour avec le jeton du nouveau Cast.
+        val castId = castSessionId
         val stopIntent = Intent(this, PlaybackForegroundService::class.java).apply {
-            action = ACTION_STOP
+            action = if (castId != null) ACTION_STOP_CAST else ACTION_STOP
+            if (castId != null) {
+                data = Uri.Builder().scheme("novatube").authority("cast-stop")
+                    .appendPath(castId).build()
+                putExtra(EXTRA_CAST_SESSION, castId)
+            }
         }
         val stopPi = PendingIntent.getService(
             this,
-            1,
+            if (castId != null) 2 else 1,
             stopIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
-        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
+        val builder = NotificationCompat.Builder(this, if (castId != null) CAST_CHANNEL_ID else CHANNEL_ID)
             .setContentTitle(title)
-            .setContentText("Lecture audio en arrière-plan")
+            .setContentText(if (castId != null) {
+                castDescription?.takeIf { it.isNotBlank() } ?: "Diffusion sur un écran en cours"
+            } else "Lecture audio en arrière-plan")
             .setSmallIcon(android.R.drawable.ic_media_play)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
@@ -155,7 +246,7 @@ class PlaybackForegroundService : Service() {
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .addAction(
                 android.R.drawable.ic_menu_close_clear_cancel,
-                "Arrêter",
+                if (castId != null) castStopLabel?.takeIf { it.isNotBlank() } ?: "Arrêter le cast" else "Arrêter",
                 stopPi,
             )
         if (contentPi != null) builder.setContentIntent(contentPi)
@@ -165,6 +256,19 @@ class PlaybackForegroundService : Service() {
     private fun createChannelIfNeeded() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val mgr = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            if (castSessionId != null) {
+                if (mgr.getNotificationChannel(CAST_CHANNEL_ID) == null) {
+                    val channel = NotificationChannel(
+                        CAST_CHANNEL_ID, "Diffusion Cast", NotificationManager.IMPORTANCE_LOW,
+                    ).apply {
+                        description = "Lecture envoyée vers un écran"
+                        setShowBadge(false)
+                        setSound(null, null)
+                    }
+                    mgr.createNotificationChannel(channel)
+                }
+                return
+            }
             if (mgr.getNotificationChannel(CHANNEL_ID) == null) {
                 val ch = NotificationChannel(
                     CHANNEL_ID,

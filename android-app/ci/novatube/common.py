@@ -14,8 +14,8 @@ PACKAGE = "com.sevenmotion.novatube"
 LABEL = "NOVATUBE"
 # La fiche Play évolue indépendamment de l'APK privé déjà distribué.
 # Les commandes privées continuent d'écraser explicitement la version pubspec.
-VERSION_NAME = "0.1.7"
-VERSION_CODE = "7"
+VERSION_NAME = "0.1.8"
+VERSION_CODE = "8"
 PRIVATE_VERSION_NAME = "0.1.5"
 PRIVATE_VERSION_CODE = "5"
 KEY_ALIAS = "novatube-upload"

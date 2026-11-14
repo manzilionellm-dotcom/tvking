@@ -54,7 +54,7 @@ CONTROL_ACTION_WINDOW = 5.0
 WORKFLOW = ".github/workflows/novatube-play-aab.yml"
 # Empreinte du workflow relu avec ce banc ponctuel. La moindre modification
 # exige une nouvelle revue du YAML et du SHA du script, pas une garde élargie.
-WORKFLOW_SHA256 = "e30a9955b913c9a8eabc5a5358fc2ec7786551cf50776995b6440ab134b18a4f"
+WORKFLOW_SHA256 = "a18b20ca1285f58398786c41575a83e8fff2482db66d780ab38fd3d86c71fee8"
 # Le vérificateur de livraison lit déjà le YAML avec WorkflowLoader. Cette
 # seconde empreinte contrôle exactement le nouveau job sans permettre que
 # son ajout assouplisse les gardes des trois jobs historiques.
@@ -909,7 +909,10 @@ def execute_scenario(device, helpers, translations, fixture: Path, stage: Path) 
                 flow.event("fixture-server-stopped-before-replay")
                 flow.navigate_replay()
                 observations["replayMotion"] = flow.motion("replay", fixture_server=server)
-                time.sleep(2)
+                # REC9 : le MP4 est 2,453 s plus court que la fenêtre murale
+                # qui encadre aussi le démarrage et l'arrêt de screenrecord.
+                # Garder une vraie marge finale sans changer qualify().
+                time.sleep(5)
             observations["videoProbe"] = probe_media(stage / "datasync-demo.mp4")
             start = next(event["seconds"] for event in flow.events if event["action"] == "video-start")
             observations["videoTimeline"] = [

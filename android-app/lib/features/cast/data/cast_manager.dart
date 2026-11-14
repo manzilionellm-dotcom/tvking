@@ -15,6 +15,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io' show Socket;
+import 'dart:math' show Random;
 
 import 'package:flutter/foundation.dart';
 import '../../subscription/data/subscription_backend.dart' show kSubscriptionBaseUrl;
@@ -147,17 +148,20 @@ class CastManager extends ChangeNotifier {
     required Future<StreamProbeResult> Function(String) probe,
     Stream<CastDevice> Function(Duration)? discoverSsdp,
     Stream<CastDevice> Function(Duration)? discoverMdns,
+    Future<bool> Function()? requestNotificationPermission,
     Duration timeout = const Duration(seconds: 1),
   }) : _testTransportFactory = transportFactory,
        _testProbe = probe,
        _testSsdpDiscovery = discoverSsdp,
        _testMdnsDiscovery = discoverMdns,
+        _testNotificationPermission = requestNotificationPermission,
        _testTimeout = timeout;
 
   CastTransport Function(CastDevice)? _testTransportFactory;
   Future<StreamProbeResult> Function(String)? _testProbe;
   Stream<CastDevice> Function(Duration)? _testSsdpDiscovery;
   Stream<CastDevice> Function(Duration)? _testMdnsDiscovery;
+  Future<bool> Function()? _testNotificationPermission;
   Duration? _testTimeout;
 
   @visibleForTesting
@@ -2148,6 +2152,8 @@ class CastManager extends ChangeNotifier {
 
   /// `true` quand le foreground service « cast relais » est actif.
   bool _relayKeepAliveActive = false;
+  String? _relayKeepAliveSessionId;
+  int _relayKeepAliveRevision = -1;
 
   /// Le telephone alimente-t-il la TV ? Alors il doit SURVIVRE a
   /// l'ecran eteint : foreground service + wakelock + wifilock (le
@@ -2159,12 +2165,21 @@ class CastManager extends ChangeNotifier {
     if (CastPlatform.isWindows) return;
     if (_currentRelayUrl != null) {
       _relayKeepAliveActive = true;
+      if (_relayKeepAliveSessionId == null || _relayKeepAliveRevision != _sessionSeq) {
+        final Random random = Random.secure();
+        _relayKeepAliveSessionId = List<String>.generate(
+          16, (_) => random.nextInt(256).toRadixString(16).padLeft(2, '0'),
+        ).join();
+        _relayKeepAliveRevision = _sessionSeq;
+      }
       // Le maintien éveillé (foreground service + wakelock + wifilock) est
       // VITAL pour que le relais survive à l'écran éteint. On JOURNALISE
       // son démarrage ET un éventuel échec : « le cast coupe écran éteint »
       // devient enfin visible dans la boîte noire (avant, un échec du
       // service était avalé silencieusement).
-      unawaited(_startRelayKeepAlive(title));
+      unawaited(_startRelayKeepAlive(
+        title, _relayKeepAliveSessionId!, _relayKeepAliveRevision,
+      ));
     } else {
       _stopRelayKeepAlive();
     }
@@ -2175,6 +2190,10 @@ class CastManager extends ChangeNotifier {
   /// et, pire, l'ancienne version ATTENDAIT la réponse avant de
   /// démarrer le foreground service (revue adversariale 2026-07-16).
   static bool _notifPermissionAsked = false;
+
+  bool _ownsRelayKeepAlive(String sessionId, int revision) =>
+      !_disposed && _relayKeepAliveActive &&
+      _relayKeepAliveSessionId == sessionId && revision == _sessionSeq;
 
   /// Démarre réellement le maintien éveillé du relais.
   ///
@@ -2188,8 +2207,23 @@ class CastManager extends ChangeNotifier {
   /// permission est demandée en parallèle, une seule fois, et si elle
   /// est accordée on re-poste la notification (idempotent) pour la
   /// rendre visible.
-  Future<void> _startRelayKeepAlive(String title) async {
-    await PipService.instance.startBackgroundAudio(title);
+  Future<void> _startRelayKeepAlive(String title, String sessionId, int revision) async {
+    Future<void> start() => PipService.instance.startBackgroundAudio(
+      title,
+      castSessionId: sessionId,
+      castDescription: '${l10nNow.castConnected} ${_device?.displayName ?? ''}'.trim(),
+      castStopLabel: l10nNow.castStopTooltip,
+      onCastStopRequested: () async {
+        if (!_ownsRelayKeepAlive(sessionId, revision)) return;
+        // Même fermeture que l'UI : annulation du watchdog, retrait du
+        // relais, Stop du transport et libération du service. Une ancienne
+        // notification ne peut jamais fermer le Cast qui l'a remplacée.
+        await disconnectIfOwned(revision);
+      },
+    );
+    if (!_ownsRelayKeepAlive(sessionId, revision)) return;
+    await start();
+    if (!_ownsRelayKeepAlive(sessionId, revision)) return;
     StructuredLogger.instance.info(
       domain: 'cast', event: 'relay.keepalive_requested',
     );
@@ -2199,7 +2233,8 @@ class CastManager extends ChangeNotifier {
     if (!_notifPermissionAsked) {
       _notifPermissionAsked = true;
       unawaited(
-        NotificationService.instance.requestPermission().then((bool granted) {
+        (_testNotificationPermission?.call() ??
+            NotificationService.instance.requestPermission()).then((bool granted) {
           StructuredLogger.instance.info(
             domain: 'cast',
             event: 'relay.keepalive_notif_permission',
@@ -2207,9 +2242,8 @@ class CastManager extends ChangeNotifier {
           );
           // Accordée APRÈS le démarrage : on re-poste la notification
           // (ACTION_START met à jour, ne redémarre pas le service).
-          if (granted && _relayKeepAliveActive) {
-            unawaited(PipService.instance
-                .startBackgroundAudio(title));
+          if (granted && _ownsRelayKeepAlive(sessionId, revision)) {
+            unawaited(start());
           }
         }).catchError((Object _) {
           // Best-effort : sur Android < 13 il n'y a rien à demander.
@@ -2219,9 +2253,12 @@ class CastManager extends ChangeNotifier {
   }
 
   void _stopRelayKeepAlive() {
+    final String? sessionId = _relayKeepAliveSessionId;
+    _relayKeepAliveSessionId = null;
+    _relayKeepAliveRevision = -1;
     if (!_relayKeepAliveActive) return;
     _relayKeepAliveActive = false;
-    unawaited(PipService.instance.stopBackgroundAudio());
+    unawaited(PipService.instance.stopBackgroundAudio(castSessionId: sessionId));
   }
 
   /// Pose une fermeture dans l'ordre des sessions. Seule la référence

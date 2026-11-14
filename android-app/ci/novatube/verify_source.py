@@ -22,6 +22,7 @@ from common import (
 )
 from run_datasync_evidence import verify_datasync_job
 from run_tap_diagnostic import verify_tap_job
+from run_mediaplayback_evidence import verify_mediaplayback_job
 
 
 PLAY_CONFIRMATION = "inputs.confirme == 'COMPILER_NOVATUBE'"
@@ -150,10 +151,11 @@ def verify_workflow(workflow: str) -> None:
     require(document.get("permissions") == {"contents": "read"}, "Permissions globales trop larges")
     jobs = document.get("jobs", {})
     require(set(jobs) == {"release", "publish_private", "capture_play", "capture_datasync",
-                         "diagnose_cast_network"}, "Jobs de livraison inattendus")
+                         "diagnose_cast_network", "capture_mediaplayback"}, "Jobs de livraison inattendus")
     verify_capture_job(jobs["capture_play"])
     verify_datasync_job(jobs["capture_datasync"])
     verify_tap_job(jobs["diagnose_cast_network"])
+    verify_mediaplayback_job(jobs["capture_mediaplayback"])
     release, publish = jobs["release"], jobs["publish_private"]
     require(release.get("permissions", {"contents": "read"}) == {"contents": "read"},
             "Le job de compilation doit rester en lecture seule")

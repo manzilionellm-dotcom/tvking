@@ -3,7 +3,7 @@
 ## Statut et portée
 
 Ce dossier prépare un job de preuves séparé, dans le workflow NOVATUBE déjà
-enregistré. Huit essais Android ont été exécutés ; les plus avancés ont
+enregistré. Neuf essais Android ont été exécutés ; les plus avancés ont
 affiché le lecteur avec la mire réelle. Aucun MP4 de l'interface n'est encore qualifié.
 Le scénario est destiné à une revue humaine avant toute utilisation dans
 Google Play Console ; une réussite machine ne vaut pas approbation de Google.
@@ -173,6 +173,20 @@ tuiles hautes, puis exige le recognizer complet initial inchangé avant
 d'ouvrir les réglages. Les XML de ce retour sont désormais conservés.
 La relecture réelle reste obligatoire et n'est pas encore démontrée.
 
+Le run `43607218714` réalise ensuite tout le parcours, y compris une
+relecture animée réelle avec le serveur source arrêté. Le TS est stable à
+987 000 octets et ses 24,0456 secondes utiles se décodent strictement. Le
+MP4 de 92,029189 secondes se décode intégralement, mais échoue au dernier
+contrôle : le marqueur de mouvement en relecture est à 91,334 secondes
+dans l'horloge externe, ce qui laisse 0,695 seconde contre la seconde
+exigée. La fenêtre video-start→video-stop dure 94,482 secondes ; elle
+encadre aussi le démarrage et l'arrêt de screenrecord, contrairement à la
+durée du média. Les dernières images du MP4 montrent bien la mire locale.
+Le banc garde désormais cinq secondes de relecture après le contrôle de
+mouvement au lieu de deux. Les trois nouvelles images, leurs seuils et
+l'exigence d'une seconde finale dans `qualify()` restent inchangés. Aucun
+MP4 de cet essai n'est promu rétroactivement en preuve qualifiée.
+
 ## Média contrôlé
 
 Seule la fixture H.264/AAC versionnée
@@ -226,13 +240,12 @@ secondes utiles. La fixture n'a pas changé et aucun processus de diffusion
 n'est resté actif après l'arrêt du serveur. Ce test de composants n'a pas
 ouvert NOVATUBE ni produit une vidéo de son interface.
 
-Restent à observer sur Android : le conteneur vidéo pendant la relecture,
-le conteneur `expandableNotificationRow`, les libellés après REC et l'accès
-ADB au fichier externe de l'app et le maintien du portrait. Les chemins
-`TvPlayerScreen` et `TvRecordingPlayerScreen` n'imposent pas le paysage ; le
-banc refuse néanmoins toute dimension différente de 1080 × 1920. Si une de
-ces hypothèses n'est pas satisfaite,
-le run produit uniquement des diagnostics à relire, sans vidéo qualifiée.
+Les essais jusqu'à REC9 ont observé sur Android le conteneur de relecture,
+la notification `expandableNotificationRow`, les libellés après REC, l'accès
+ADB au fichier externe et le maintien du portrait 1080 × 1920. La nouvelle
+marge finale de cinq secondes reste à exécuter ; toute exécution doit
+toujours satisfaire l'ensemble des contrôles, sinon elle produit uniquement
+des diagnostics, sans vidéo qualifiée.
 
 Seule une séquence complète crée `datasync-evidence/` avec `datasync-demo.mp4`
 et `evidence.json`. Toute observation partielle, y compris un MP4 éventuel,
@@ -288,7 +301,7 @@ contrôles d'acteur/SHA/branche, un secret de signature, un droit d'écriture,
 une recompilation et la promotion de diagnostics en preuve.
 Les 28 tests de workflow et les 23 tests du banc passent ensemble, soit
 51 tests ciblés, sur la tête incluant le diagnostic réseau séparé
-`785d11a5e09c040d8492981785788957c1ba9c08`. La comparaison des objets YAML confirme que les trois
+`f8467063651072095c2125adca973b7dbd9bbcaf`. La comparaison des objets YAML confirme que les trois
 anciens jobs et les permissions globales sont identiques à la base
 `6b66f0a8302b0cb34c540bb671a4d6d7fae190c6`.
 

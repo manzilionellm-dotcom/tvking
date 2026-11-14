@@ -40,7 +40,7 @@ class WorkflowIsolationTest(unittest.TestCase):
         for old, new in (("inputs.reviewed_commit == github.sha", "true"),
                          ("refs/heads/feature/novatube-play-aab", "refs/heads/main"),
                          ("github.actor == github.repository_owner", "true")):
-            for job in ("release", "publish_private", "capture_play", "capture_datasync", "diagnose_cast_network"):
+            for job in ("release", "publish_private", "capture_play", "capture_datasync", "diagnose_cast_network", "capture_mediaplayback"):
                 with self.subTest(job=job, old=old):
                     document = self.document()
                     document["jobs"][job]["if"] = document["jobs"][job]["if"].replace(old, new)
@@ -79,8 +79,8 @@ class WorkflowIsolationTest(unittest.TestCase):
 
     def test_play_and_private_versions_cannot_be_interchanged(self):
         for step_id, old, new in (
-            ("build_play_aab", "--build-name=0.1.7 --build-number=7", "--build-name=0.1.5 --build-number=5"),
-            ("build_private_apk", "--build-name=0.1.5 --build-number=5", "--build-name=0.1.7 --build-number=7"),
+            ("build_play_aab", "--build-name=0.1.8 --build-number=8", "--build-name=0.1.5 --build-number=5"),
+            ("build_private_apk", "--build-name=0.1.5 --build-number=5", "--build-name=0.1.8 --build-number=8"),
         ):
             with self.subTest(step=step_id):
                 document = self.document()
@@ -320,6 +320,35 @@ class WorkflowIsolationTest(unittest.TestCase):
             with self.subTest(job=job_id):
                 document = self.document()
                 document["jobs"][job_id]["if"] += " || inputs.confirme == 'DIAGNOSTIQUER_NOVATUBE_CAST_RESEAU'"
+                self.reject(document)
+
+    def test_mediaplayback_cannot_gain_build_secrets_writes_or_unqualified_upload(self):
+        for mutation in ("needs", "write", "secret", "build", "artifact", "license", "upload"):
+            with self.subTest(mutation=mutation):
+                document = self.document()
+                job = document["jobs"]["capture_mediaplayback"]
+                steps = {step["id"]: step for step in job["steps"]}
+                if mutation == "needs":
+                    job["needs"] = "release"
+                elif mutation == "write":
+                    job["permissions"]["contents"] = "write"
+                elif mutation == "secret":
+                    steps["media_capture"]["env"]["KEY"] = "${{ secrets.NOVATUBE_UPLOAD_KEYSTORE_BASE64 }}"
+                elif mutation == "build":
+                    job["steps"].append({"run": "flutter build appbundle --release"})
+                elif mutation == "artifact":
+                    steps["media_download_aab"]["with"]["artifact-ids"] = "other-artifact"
+                elif mutation == "license":
+                    steps["media_android"]["with"]["accept-android-sdk-licenses"] = "true"
+                else:
+                    steps["media_upload_evidence"]["if"] = "always()"
+                self.reject(document)
+
+    def test_mediaplayback_intent_never_enables_an_existing_job(self):
+        for job_id in ("release", "publish_private", "capture_play", "capture_datasync", "diagnose_cast_network"):
+            with self.subTest(job=job_id):
+                document = self.document()
+                document["jobs"][job_id]["if"] += " || inputs.confirme == 'CAPTURER_NOVATUBE_MEDIAPLAYBACK'"
                 self.reject(document)
 
 

@@ -47,6 +47,11 @@ class PipService extends ChangeNotifier {
   bool _isSupported = false;
   bool _supportChecked = false;
 
+  // Le service est unique : seul le propriétaire de sa notification Cast
+  // reçoit l'arrêt utilisateur. Le jeton n'est ni une URL ni une préférence.
+  String? _castStopSession;
+  Future<void> Function()? _castStopHandler;
+
   /// True quand la fenêtre est actuellement en PiP. Lu par le
   /// VideoPlayerScreen pour cacher les overlays et fitter la vidéo.
   bool get isInPipMode => _isInPipMode;
@@ -139,11 +144,28 @@ class PipService extends ChangeNotifier {
 
   /// Démarre le service audio de fond (notification + locks). `title`
   /// s'affiche dans la notification (nom de la chaîne en cours).
-  Future<void> startBackgroundAudio(String title) async {
+  Future<void> startBackgroundAudio(
+    String title, {
+    String? castSessionId,
+    String? castDescription,
+    String? castStopLabel,
+    Future<void> Function()? onCastStopRequested,
+  }) async {
+    if (castSessionId != null && onCastStopRequested != null) {
+      // Poser le destinataire AVANT l'appel natif : l'utilisateur peut
+      // toucher Arrêter avant même l'accusé de démarrage du service.
+      _castStopSession = castSessionId;
+      _castStopHandler = onCastStopRequested;
+    }
     try {
       await _channel.invokeMethod<void>(
         'startBackgroundAudio',
-        <String, Object>{'title': title},
+        <String, Object>{
+          'title': title,
+          if (castSessionId != null) 'castSessionId': castSessionId,
+          if (castDescription != null) 'castDescription': castDescription,
+          if (castStopLabel != null) 'castStopLabel': castStopLabel,
+        },
       );
     } catch (e) {
       if (kDebugMode) debugPrint('[PiP] startBackgroundAudio failed: $e');
@@ -152,20 +174,41 @@ class PipService extends ChangeNotifier {
 
   /// Arrête le service audio de fond (retire la notification + libère
   /// les locks). Idempotent.
-  Future<void> stopBackgroundAudio() async {
+  Future<void> stopBackgroundAudio({String? castSessionId}) async {
+    if (castSessionId != null && castSessionId == _castStopSession) {
+      _castStopSession = null;
+      _castStopHandler = null;
+    }
     try {
-      await _channel.invokeMethod<void>('stopBackgroundAudio');
+      await _channel.invokeMethod<void>(
+        'stopBackgroundAudio',
+        castSessionId == null ? null : <String, String>{'castSessionId': castSessionId},
+      );
     } catch (e) {
       if (kDebugMode) debugPrint('[PiP] stopBackgroundAudio failed: $e');
     }
   }
 
-  /// Handler des appels natif → Dart. Pour l'instant un seul
-  /// event : `onPipModeChanged` quand l'état PiP change. Au futur :
+  /// Handler des appels natif → Dart. Le service NOVATUBE Play peut aussi
+  /// demander l'arrêt de LA session Cast portée par sa notification. Au futur :
   /// `onMediaActionTriggered` pour les boutons play/pause dans
   /// la mini-fenêtre PiP (Android offre des contrôles natifs).
   Future<dynamic> _onNativeCall(MethodCall call) async {
     switch (call.method) {
+      case 'castStopRequested':
+        final Object? arguments = call.arguments;
+        if (arguments is! Map) return null;
+        final Object? session = arguments['sessionId'];
+        if (session is! String || session.isEmpty || session != _castStopSession) {
+          return null;
+        }
+        final Future<void> Function()? stop = _castStopHandler;
+        // Consommer avant await rend un doublon inoffensif. Un arrêt interne
+        // ne crée jamais cet événement et ne peut donc pas reboucler ici.
+        _castStopSession = null;
+        _castStopHandler = null;
+        await stop?.call();
+        return null;
       case 'onPipModeChanged':
         final dynamic args = call.arguments;
         bool inPip = false;

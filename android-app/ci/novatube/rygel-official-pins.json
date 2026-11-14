@@ -1,0 +1,37 @@
+{
+  "version": "0.42.5-1ubuntu3",
+  "packages": [
+    {
+      "name": "rygel",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/r/rygel/rygel_0.42.5-1ubuntu3_amd64.deb",
+      "bytes": 330234,
+      "sha256": "5d766db0190658e25d2df62dd76e43b28f415727b578632726b943ca577a500a"
+    },
+    {
+      "name": "rygel-playbin",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/universe/r/rygel/rygel-playbin_0.42.5-1ubuntu3_amd64.deb",
+      "bytes": 12654,
+      "sha256": "b99bc71160955a4805431027f8085e3824795e70444f9333319d95120b7db115"
+    },
+    {
+      "name": "librygel-renderer-gst-2.8-0",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/universe/r/rygel/librygel-renderer-gst-2.8-0_0.42.5-1ubuntu3_amd64.deb",
+      "bytes": 23814,
+      "sha256": "631771afcb515d6c944be5435e16ff1321e04a1263d62d1e4933fa3d69daa3c6"
+    }
+  ],
+  "files": {
+    "usr/bin/rygel": "ea8dc26be875f2ca54716c666ddf20ccd617bb21ee7893964dcde9287862f016",
+    "usr/lib/x86_64-linux-gnu/rygel-2.8/plugins/librygel-playbin.so": "a6bfc57d9f7ec1845702db7898003258802233141828e72dfcf8221a9cdd5f4c",
+    "usr/lib/x86_64-linux-gnu/rygel-2.8/plugins/playbin.plugin": "8ca1a951be9d56640bade655e66efd83c4de4e3d3959de038245c8d1ad50d2e0"
+  },
+  "source": {
+    "url": "https://archive.ubuntu.com/ubuntu/pool/main/r/rygel/rygel_0.42.5.orig.tar.xz",
+    "sha256": "1133602d2e6710aade6b22aa98d93384c8d56396f344763413e96e0110b7d89f"
+  },
+  "gupnp": {
+    "package": "libgupnp-1.6-0",
+    "version": "1.6.6-1build3",
+    "contextManager": "linux"
+  }
+}

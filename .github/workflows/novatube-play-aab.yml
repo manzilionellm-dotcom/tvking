@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       confirme:
-        description: 'COMPILER_NOVATUBE, PUBLIER_NOVATUBE_APK_PRIVE, CAPTURER_NOVATUBE_DATASYNC ou DIAGNOSTIQUER_NOVATUBE_CAST_RESEAU, après accord sur le SHA'
+        description: 'COMPILER_NOVATUBE, PUBLIER_NOVATUBE_APK_PRIVE, CAPTURER_NOVATUBE_DATASYNC, CAPTURER_NOVATUBE_MEDIAPLAYBACK ou DIAGNOSTIQUER_NOVATUBE_CAST_RESEAU, après accord sur le SHA'
         type: string
         required: true
       reviewed_commit:
@@ -35,7 +35,7 @@ defaults:
 
 jobs:
   release:
-    name: Vérifier NOVATUBE — Play 0.1.7 (7) ou APK privé 0.1.5 (5)
+    name: Vérifier NOVATUBE — Play 0.1.8 (8) ou APK privé 0.1.5 (5)
     if: >-
       github.event_name == 'workflow_dispatch' &&
       github.repository == 'manzilionellm-dotcom/tvking' &&
@@ -243,7 +243,7 @@ jobs:
           set -euo pipefail
           flutter build appbundle --release \
             --target=lib/main_zuno_mobile.dart \
-            --build-name=0.1.7 --build-number=7
+            --build-name=0.1.8 --build-number=8
 
       - name: Vérifier le vrai bundle et produire sa provenance
         id: verify_play_aab
@@ -267,7 +267,7 @@ jobs:
         if: inputs.confirme == 'COMPILER_NOVATUBE'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: NOVATUBE-0.1.7-7-verified-${{ github.sha }}-${{ github.run_attempt }}
+          name: NOVATUBE-0.1.8-8-verified-${{ github.sha }}-${{ github.run_attempt }}
           path: android-app/build/novatube/verified/
           if-no-files-found: error
           retention-days: 30
@@ -387,7 +387,7 @@ jobs:
         id: capture_aab
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: NOVATUBE-0.1.7-7-verified-${{ github.sha }}-${{ github.run_attempt }}
+          name: NOVATUBE-0.1.8-8-verified-${{ github.sha }}-${{ github.run_attempt }}
           path: android-app/build/novatube/capture-input/
 
       - name: Vérifier le binaire puis capturer les deux interfaces réelles
@@ -580,6 +580,166 @@ jobs:
         with:
           name: NOVATUBE-Cast-network-DIAGNOSTIC-NOT-PLAY-${{ github.sha }}-${{ github.run_attempt }}
           path: android-app/build/novatube/cast-network-diagnostic/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  capture_mediaplayback:
+    name: Observer le vrai relais Cast et mediaPlayback de l'AAB7 immuable
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.repository == 'manzilionellm-dotcom/tvking' &&
+      github.ref == 'refs/heads/feature/novatube-play-aab' &&
+      github.actor == github.repository_owner &&
+      github.triggering_actor == github.repository_owner &&
+      inputs.confirme == 'CAPTURER_NOVATUBE_MEDIAPLAYBACK' &&
+      inputs.reviewed_commit == github.sha
+    permissions:
+      contents: read
+      actions: read
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - name: Charger seulement le banc du commit approuvé
+        id: media_checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Charger les outils et traductions exacts de l'AAB7
+        id: media_binary_checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 6b66f0a8302b0cb34c540bb671a4d6d7fae190c6
+          path: novatube-binary-source
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Préparer le parseur des gardes du workflow
+        id: media_python
+        run: |
+          set -euo pipefail
+          python3 -m venv "$RUNNER_TEMP/novatube-media-python"
+          "$RUNNER_TEMP/novatube-media-python/bin/python" -m pip install --disable-pip-version-check PyYAML==6.0.3
+          echo "$RUNNER_TEMP/novatube-media-python/bin" >> "$GITHUB_PATH"
+
+      - name: Vérifier l'intention, la source immuable et les refus de qualification
+        id: media_preflight
+        env:
+          NOVATUBE_MEDIAPLAYBACK_CONFIRMATION: ${{ inputs.confirme }}
+          REVIEWED_COMMIT: ${{ inputs.reviewed_commit }}
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s ci/novatube -p 'test_mediaplayback*.py' -v
+          python3 -m unittest discover -s ci/novatube -p test_verify_workflow.py -v
+          python3 ci/novatube/run_mediaplayback_evidence.py --preflight
+
+      - name: Télécharger uniquement l'archive AAB7 déjà vérifiée
+        id: media_download_aab
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          artifact-ids: '14115570586'
+          run-id: '43597754114'
+          repository: manzilionellm-dotcom/tvking
+          github-token: ${{ github.token }}
+          skip-decompress: true
+          digest-mismatch: error
+          path: android-app/build/novatube/mediaplayback-artifact/
+
+      - name: Java 17 pour convertir le bundle existant sans compilation
+        id: media_java
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Outils Android sans nouvelle acceptation de licence
+        id: media_android
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+        with:
+          cmdline-tools-version: '15859902'
+          accept-android-sdk-licenses: false
+          log-accepted-android-sdk-licenses: true
+          packages: ''
+
+      - name: Préparer les bibliothèques officielles et le vrai affichage X11
+        id: media_linux_dependencies
+        run: |
+          set -euo pipefail
+          command -v dbus-run-session
+          sudo apt-get update -qq 2>&1 | tee build/novatube/mediaplayback-diagnostic/ubuntu-update.txt
+          novatube_media_packages=(
+            iproute2 util-linux dnsmasq-base tcpdump ffmpeg xvfb x11-utils xauth
+            libgdk-pixbuf-2.0-0 libgee-0.8-2 libgssdp-1.6-0 libgupnp-1.6-0=1.6.6-1build3
+            libgupnp-av-1.0-3 libgupnp-dlna-2.0-4 libmediaart-2.0-0 libsoup-3.0-0
+            libsqlite3-0 libx11-6 libxml2
+            librygel-core-2.8-0=0.42.5-1ubuntu3 librygel-db-2.8-0=0.42.5-1ubuntu3
+            librygel-renderer-2.8-0=0.42.5-1ubuntu3 librygel-server-2.8-0=0.42.5-1ubuntu3
+            gstreamer1.0-tools gstreamer1.0-plugins-base gstreamer1.0-plugins-good
+            gstreamer1.0-plugins-bad gstreamer1.0-libav gstreamer1.0-x
+          )
+          sudo apt-get --simulate --no-install-recommends install "${novatube_media_packages[@]}" \
+            > build/novatube/mediaplayback-diagnostic/ubuntu-plan.txt
+          # Le daemon et son plugin sont extraits plus tard, sans postinst.
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          plan = Path('build/novatube/mediaplayback-diagnostic/ubuntu-plan.txt').read_text()
+          if re.search(r'^Inst rygel', plan, re.M):
+              raise SystemExit('Refus de toute installation du daemon Rygel sur le réseau hôte')
+          PY
+          sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            "${novatube_media_packages[@]}" 2>&1 | tee build/novatube/mediaplayback-diagnostic/ubuntu-install.txt
+          dpkg-query -W 'librygel*' libgupnp-1.6-0 'gstreamer1.0-*' xvfb \
+            > build/novatube/mediaplayback-diagnostic/ubuntu-versions.txt
+
+      - name: Préparer Android 35 avant le réseau jetable
+        id: media_sdk_dependencies
+        run: |
+          set -euo pipefail
+          sdkmanager 'system-images;android-35;default;x86_64' emulator platform-tools 'build-tools;35.0.0' </dev/null \
+            2>&1 | tee build/novatube/mediaplayback-diagnostic/sdk-install.txt
+
+      - name: Vérifier l'AAB7 et extraire les seuls octets officiels du renderer
+        id: media_prepare
+        env:
+          NOVATUBE_MEDIAPLAYBACK_CONFIRMATION: ${{ inputs.confirme }}
+          REVIEWED_COMMIT: ${{ inputs.reviewed_commit }}
+        run: python3 ci/novatube/run_mediaplayback_evidence.py --prepare
+
+      - name: Capturer la découverte, le relais réel, Home et l'arrêt utilisateur
+        id: media_capture
+        env:
+          NOVATUBE_MEDIAPLAYBACK_CONFIRMATION: ${{ inputs.confirme }}
+          REVIEWED_COMMIT: ${{ inputs.reviewed_commit }}
+        run: python3 ci/novatube/run_mediaplayback_evidence.py --capture
+
+      - name: Supprimer les seuls fichiers privés de l'émulateur et de conversion
+        id: media_cleanup
+        if: always()
+        env:
+          NOVATUBE_MEDIAPLAYBACK_CONFIRMATION: ${{ inputs.confirme }}
+          REVIEWED_COMMIT: ${{ inputs.reviewed_commit }}
+        run: python3 ci/novatube/run_mediaplayback_evidence.py --cleanup
+
+      - name: Conserver seulement les deux vidéos ayant passé la qualification
+        id: media_upload_evidence
+        if: success()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: NOVATUBE-mediaPlayback-from-43597754114-${{ github.sha }}-${{ github.run_attempt }}
+          path: android-app/build/novatube/mediaplayback-evidence/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Conserver les observations brutes séparées des vidéos qualifiées
+        id: media_upload_diagnostic
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: NOVATUBE-mediaPlayback-DIAGNOSTIC-NOT-PLAY-${{ github.sha }}-${{ github.run_attempt }}
+          path: android-app/build/novatube/mediaplayback-diagnostic/
           if-no-files-found: ignore
           retention-days: 7
 
