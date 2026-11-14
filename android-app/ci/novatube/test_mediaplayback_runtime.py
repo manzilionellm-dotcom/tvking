@@ -82,6 +82,46 @@ assert Path(sys.modules[execute_ui.__module__].__file__).parent == current
         prefix.feed(100, raw)
         self.assertEqual(prefix.body_bytes(), 4000)
 
+    def test_passive_set_uri_rejection_requires_complete_matching_soap_exchange(self):
+        # Format de la vraie capture média2. Ces octets ne sont jamais envoyés
+        # à l'app ou au renderer : on teste seulement le lecteur passif PCAP.
+        service = 'urn:schemas-upnp-org:service:AVTransport:1'
+        request_body = ('<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body>'
+            '<u:SetAVTransportURI xmlns:u="' + service + '"><InstanceID>0</InstanceID><CurrentURI>'
+            + observed.DIRECT_URI + '</CurrentURI><CurrentURIMetaData></CurrentURIMetaData>'
+            '</u:SetAVTransportURI></s:Body></s:Envelope>').encode()
+        response_body = ('<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><s:Fault>'
+            '<faultcode>s:Client</faultcode><detail><UPnPError xmlns="urn:schemas-upnp-org:control-1-0">'
+            '<errorCode>716</errorCode><errorDescription>Resource not found</errorDescription>'
+            '</UPnPError></detail></s:Fault></s:Body></s:Envelope>').encode()
+        request = (b'POST /Control/Playbin/RygelAVTransport HTTP/1.1\r\nsoapaction: "'
+            + service.encode() + b'#SetAVTransportURI"\r\ncontent-length: '
+            + str(len(request_body)).encode() + b'\r\n\r\n' + request_body)
+        response = (b'HTTP/1.1 500 Internal server error\r\nContent-Length: '
+            + str(len(response_body)).encode() + b'\r\n\r\n' + response_body)
+        control = 'http://192.0.2.1:19494/Control/Playbin/RygelAVTransport'
+
+        def read(incoming, outgoing, port=19494):
+            pcap = observed.Pcap(Path('/unused'), '192.0.2.17', 325)
+            flow = {'request': observed.Prefix(), 'response': observed.Prefix(), 'firstAt': 100, 'lastAt': 101}
+            for key, data in (('response', incoming), ('request', outgoing)):
+                flow[key].start = 1
+                flow[key].feed(1, data)
+            pcap.flows[(port, 34610)] = flow
+            return pcap.direct_rejections(control)
+
+        self.assertEqual(read(request, response)[0]['upnpErrorCode'], 716)
+        invalid = [(request, response[:-1], 19494), (request[:-1], response, 19494),
+            (request.replace(b'pattern.mp4', b'foreign.mp4'), response, 19494),
+            (request, response.replace(b'>716<', b'>714<'), 19494),
+            (request, response.replace(b'500', b'200'), 19494),
+            (request.replace(b'#SetAVTransportURI', b'#GetTransportInfo'), response, 19494),
+            (request.replace(b'POST /Control/', b'POST /OtherXX/'), response, 19494),
+            (request, response, 19495)]
+        for incoming, outgoing, port in invalid:
+            with self.subTest(port=port, incoming=incoming, outgoing=outgoing):
+                self.assertEqual(read(incoming, outgoing, port), [])
+
     def test_uri_change_during_soap_reads_cannot_be_recorded_as_direct_stopped(self):
         probe = observed.RendererProbe.__new__(observed.RendererProbe)
         probe.done = Mock()
@@ -89,7 +129,7 @@ assert Path(sys.modules[execute_ui.__module__].__file__).parent == current
         media = lambda value: ('<root><CurrentURI>' + value + '</CurrentURI></root>').encode()
         probe.soap = Mock(side_effect=[media(observed.DIRECT_URI),
             b"<root><CurrentTransportState>STOPPED</CurrentTransportState></root>",
-            media("http://192.0.2.17:12345/relay/Abcd1234Ef.ts")])
+            media("http://192.0.2.17:12345/relay/Abcd1234Ef.mp4")])
         probe.command, probe.pcap, probe.loopback = Mock(return_value=""), Mock(), Mock()
         probe.lock, probe.counter, probe.history, probe.errors = threading.Lock(), 0, [], []
         with tempfile.TemporaryDirectory() as folder:
@@ -109,7 +149,7 @@ assert Path(sys.modules[execute_ui.__module__].__file__).parent == current
              patch.object(observed.time, "sleep"), \
              patch.object(observed.http.client, "HTTPConnection") as connection, \
              self.assertRaises(ValueError):
-            probe.wait_stopped("http://192.0.2.17:12345/relay/Abcd1234Ef.ts", timeout=1)
+            probe.wait_stopped("http://192.0.2.17:12345/relay/Abcd1234Ef.mp4", timeout=1)
         connection.assert_not_called()
 
 

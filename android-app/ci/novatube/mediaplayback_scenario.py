@@ -138,7 +138,7 @@ def validate_relay_uri(uri: str, guest_ip: str) -> str:
     require(value.scheme == "http" and value.hostname == str(address) and value.port is not None
             and 1 <= value.port <= 65535 and value.username is None and value.password is None
             and not value.query and not value.fragment
-            and re.fullmatch(r"/relay/[A-Za-z0-9]{10}\.ts", value.path) is not None,
+            and re.fullmatch(r"/relay/[A-Za-z0-9]{10}\.mp4", value.path) is not None,
             "URI autre que le relais local NOVATUBE sur l'adresse Android")
     return uri
 
@@ -280,10 +280,12 @@ class MediaPlaybackScenario(shared.Scenario):
         self.device.foreground()
         xml = self.observe("cast-picker" if picker else "cast-active")
         observed = shared.observed_labels(xml)
-        title = self.translated("castSendTo" if picker else "castStopTooltip")
+        # La feuille reste ouverte après le choix. Son bouton est castStop
+        # (« Stop »), distinct du tooltip et de l'action de notification.
+        title = self.translated("castSendTo" if picker else "castConnected")
         require({shared.normalized(title), shared.normalized(friendly_name)} <= observed,
                 "Sélecteur ou session Cast du vrai renderer non observés")
-        unique_button(xml, friendly_name if picker else self.translated("castStopTooltip"))
+        unique_button(xml, friendly_name if picker else self.translated("castStop"))
         return xml
 
     def start_cast(self, friendly_name: str):

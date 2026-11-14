@@ -21,7 +21,7 @@ import xml.etree.ElementTree as ET
 import run_datasync_evidence as rec
 
 HOST_IP = "192.0.2.1"
-DIRECT_URI = "http://127.0.0.1:18765/live/pattern.ts"
+DIRECT_URI = "http://127.0.0.1:18765/vod/pattern.mp4"
 OLD_RELAY_AGENT = "NOVATUBE-Probe-Old-Relay-After-UI-Stop"
 DISPLAY = ":94.0"
 DISPLAY_WIDTH, DISPLAY_HEIGHT = 1280, 720
@@ -43,13 +43,13 @@ def relay_uri(value, guest_ip):
         return bool(uri.scheme == "http" and uri.hostname == guest_ip
                     and uri.port and 1 <= uri.port <= 65535
                     and not uri.username and not uri.password and not uri.query and not uri.fragment
-                    and re.fullmatch(r"/relay/[A-Za-z0-9]{10}\.ts", uri.path))
+                    and re.fullmatch(r"/relay/[A-Za-z0-9]{10}\.mp4", uri.path))
     except ValueError:
         return False
 
 
 class Prefix:
-    """Réassembler seulement les en-têtes TCP ; ne pas conserver le flux vidéo."""
+    """Réassembler au plus 16 Kio de HTTP/SOAP ; ne pas conserver la vidéo."""
     def __init__(self):
         self.start = None
         self.data = bytearray(16384)
@@ -91,6 +91,24 @@ class Prefix:
     def body_bytes(self):
         header = self.header()
         return sum(max(0, b - max(a, len(header))) for a, b in self.intervals) if header else 0
+
+    def message(self):
+        """Exiger un petit message HTTP complet avant d'analyser son vrai SOAP.
+
+        Les échanges de contrôle observés ferment leur connexion et annoncent
+        Content-Length. Une troncature, un doublon ou un autre encodage n'est
+        jamais interprété comme une réponse UPnP valide.
+        """
+        header = self.header()
+        if not header or re.search(rb"(?im)^transfer-encoding:", header):
+            return None
+        lengths = re.findall(rb"(?im)^content-length:[ \t]*([0-9]+)[ \t]*\r?$", header)
+        if len(lengths) != 1:
+            return None
+        end = len(header) + int(lengths[0])
+        if end > self.end or end > len(self.data):
+            return None
+        return header, bytes(self.data[len(header):end])
 
 
 class Pcap:
@@ -190,6 +208,61 @@ class Pcap:
                 "firstAt": flow["firstAt"], "lastAt": flow["lastAt"], "ownerPid": self.renderer_pid})
         return {"rendererGetObserved": bool(matches), "relayBytes": sum(x["bytes"] for x in matches),
                 "relayConnectionClosed": bool(matches) and all(x["closed"] for x in matches), "connections": matches}
+
+    def direct_rejections(self, control_url):
+        """Relier passivement le vrai SetURI Android au refus 716 de Rygel.
+
+        Rygel vérifie l'URL par HEAD avant de l'installer dans Playbin. Quand
+        le port loopback Android est inaccessible au renderer, son état peut
+        rester sans URI : exiger une URI installée ou une erreur de décodage
+        inventerait une étape qui ne s'est pas produite.
+        """
+        control = urllib.parse.urlsplit(control_url)
+        require(control.scheme == "http" and control.hostname == HOST_IP and control.port,
+                "Adresse du contrôle Rygel inattendue")
+        matches = []
+        for (host_port, android_port), flow in self.flows.items():
+            if host_port != control.port:
+                continue
+            # Ici Android est le client : le sens est l'inverse d'un GET média.
+            request, response = flow["response"].message(), flow["request"].message()
+            if not request or not response:
+                continue
+            request_header, request_body = request
+            response_header, response_body = response
+            if not request_header.startswith(("POST " + (control.path or "/") + " HTTP/1.1\r\n").encode()):
+                continue
+            if not re.match(rb"HTTP/1\.[01] 500\b", response_header):
+                continue
+            actions = re.findall(rb'(?im)^soapaction:[ \t]*"([^"\r\n]+)"[ \t]*\r?$', request_header)
+            if len(actions) != 1 or actions[0] not in (
+                    b"urn:schemas-upnp-org:service:AVTransport:1#SetAVTransportURI",
+                    b"urn:schemas-upnp-org:service:AVTransport:2#SetAVTransportURI"):
+                continue
+            service = actions[0].decode().split("#", 1)[0]
+            try:
+                envelope = ET.fromstring(request_body)
+                calls = envelope.findall("{http://schemas.xmlsoap.org/soap/envelope/}Body/{" + service + "}SetAVTransportURI")
+                if len(calls) != 1:
+                    continue
+                call = calls[0]
+                uris, instances = call.findall("CurrentURI"), call.findall("InstanceID")
+                if len(uris) != 1 or uris[0].text != DIRECT_URI or len(instances) != 1 or instances[0].text != "0":
+                    continue
+                reply = ET.fromstring(response_body)
+                errors = reply.findall("{http://schemas.xmlsoap.org/soap/envelope/}Body/"
+                    "{http://schemas.xmlsoap.org/soap/envelope/}Fault/detail/"
+                    "{urn:schemas-upnp-org:control-1-0}UPnPError/{urn:schemas-upnp-org:control-1-0}errorCode")
+                if len(errors) != 1 or errors[0].text != "716":
+                    continue
+            except ET.ParseError:
+                continue
+            matches.append({"uri": DIRECT_URI, "action": "SetAVTransportURI", "httpStatus": 500,
+                "upnpErrorCode": 716, "androidPort": android_port, "rendererPort": host_port,
+                "firstAt": flow["firstAt"], "lastAt": flow["lastAt"],
+                "requestSha256": hashlib.sha256(request_body).hexdigest(),
+                "responseSha256": hashlib.sha256(response_body).hexdigest()})
+        return matches
 
 
 class RendererProbe:
@@ -323,15 +396,23 @@ class RendererProbe:
             self.pcap.update()
             self.loopback.update()
             refused = [x for x in self.loopback.refused_direct if x["synAt"] >= self.started_wall]
-            direct = [x for x in self.history if x["uri"] == DIRECT_URI]
-            stopped = [x for x in direct if x["transportState"] == "STOPPED"
-                       and any(r["resetAt"] <= x["wallTime"] for r in refused)]
+            rejections = []
+            for rejection in self.pcap.direct_rejections(self.control_url):
+                resets = [r for r in refused if rejection["firstAt"] <= r["synAt"] <= r["resetAt"] <= rejection["lastAt"]]
+                if resets:
+                    rejections.append({**rejection, "connectionResets": resets})
+            direct = [x for x in self.history if x["uri"] in ("", DIRECT_URI)
+                      and any(r["resetAt"] <= x["wallTime"] <= r["resetAt"] + 8
+                              for item in rejections for r in item["connectionResets"])]
+            stopped = [x for x in direct if x["transportState"] == "STOPPED"]
             network = self.pcap.relay(target) if target else {
                 "rendererGetObserved": False, "relayBytes": 0, "relayConnectionClosed": False, "connections": []}
         renderer_log = (self.stage / "rygel.txt").read_text(errors="replace")
         genuine_error = "Error from GStreamer element" in renderer_log and "Going to STOPPED state" in renderer_log
+        precheck_error = ("Failed to access resource at " + DIRECT_URI + ":") in renderer_log
         result = {**current, **network, "phase": phase, "atUtc": utc(), "relayUri": target,
-            "directErrorObserved": bool(refused and direct and genuine_error), "directStoppedObserved": bool(stopped),
+            "directErrorObserved": bool(rejections and precheck_error), "directStoppedObserved": bool(stopped),
+            "directFailureKind": "set-uri-http-precheck", "directSetUriRejections": rejections,
             "rendererErrorLog": "rygel.txt", "rendererGstreamerErrorObserved": genuine_error,
             "directConnectionResets": refused, "directStates": direct,
             "videoMotion": False, "frameFiles": [], "frameContrast": [], "frameDifferences": [], "receiverVideoWindow": {}}

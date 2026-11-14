@@ -56,7 +56,12 @@ def namespace_guards(parent_netns, parent_mntns):
 
 
 class Fixture:
-    """Une mire réelle sur 8765 ; l'URL 18765 n'existe que dans Android."""
+    """La mire H264/AAC remuxée en vrai MP4, disponible seulement via Android.
+
+    Playbin0.42.5 accepte video/mp4 mais pas video/mp2t. On conserve les
+    pistes encodées du projet et produit de vrais fragments MP4 continus ;
+    ni le MIME d'un TS ni la liste de formats du renderer ne sont falsifiés.
+    """
     def __init__(self, path, stage):
         require(rec.digest(path) == rec.FIXTURE_SHA256, "Mire différente de l'AAB8")
         self.path, self.stage = path, stage
@@ -64,8 +69,38 @@ class Fixture:
         self.stopped = False
         self.server, self.thread = None, None
 
+    def stream_command(self):
+        return ["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error",
+            "-stream_loop", "-1", "-re", "-i", str(self.path), "-map", "0:v:0", "-map", "0:a:0",
+            "-c", "copy", "-bsf:a", "aac_adtstoasc", "-movflags",
+            "+frag_keyframe+empty_moov+default_base_moof", "-f", "mp4", "pipe:1"]
+
+    def validate_remux(self):
+        """Décoder un vrai échantillon produit avec les mêmes options du muxer."""
+        target = self.stage / "fixture-fmp4-decode-check.mp4"
+        command = self.stream_command()
+        command.remove("-re")
+        command[-1:] = ["-t", "4", str(target)]
+        subprocess.run(command, capture_output=True, check=True, timeout=30)
+        probe = json.loads(subprocess.check_output(["ffprobe", "-v", "error", "-show_streams", "-show_format",
+            "-of", "json", str(target)], timeout=20))
+        kinds = [(x.get("codec_type"), x.get("codec_name")) for x in probe["streams"]]
+        require(kinds == [("video", "h264"), ("audio", "aac")]
+                and "mp4" in probe["format"]["format_name"]
+                and 4 <= float(probe["format"]["duration"]) < 5, "Mire MP4 H264/AAC invalide")
+        subprocess.run(["ffmpeg", "-nostdin", "-v", "error", "-xerror", "-err_detect", "explode",
+            "-i", str(target), "-f", "null", "-"], capture_output=True, check=True, timeout=30)
+        provenance = {"sourceSha256": rec.FIXTURE_SHA256, "sourceFile": self.path.name,
+            "mode": "stream-copy-to-fragmented-mp4", "servedUri": DIRECT_URI, "contentType": "video/mp4",
+            "streamCommand": self.stream_command(), "sampleCommand": command, "sampleFile": target.name,
+            "sampleSha256": rec.digest(target), "sampleFullDecode": True, "sampleProbe": probe,
+            "ffmpegVersion": subprocess.check_output(["ffmpeg", "-version"], text=True).splitlines()[0]}
+        (self.stage / "fixture-fmp4-provenance.json").write_text(json.dumps(provenance, indent=2) + "\n")
+
     def start(self):
+        self.validate_remux()
         owner = self
+        media_path = urllib.parse.urlsplit(DIRECT_URI).path
         playlist = (f'#EXTM3U\n#EXTINF:-1 tvg-id="novatube-test" group-title="Demonstration",{rec.CHANNEL}\n'
                     + DIRECT_URI + "\n").encode()
 
@@ -74,11 +109,11 @@ class Fixture:
                 pass
 
             def do_HEAD(self):
-                if self.path not in ("/playlist.m3u", "/live/pattern.ts"):
+                if self.path not in ("/playlist.m3u", media_path):
                     self.send_error(404)
                     return
                 self.send_response(200)
-                self.send_header("Content-Type", "audio/x-mpegurl" if self.path == "/playlist.m3u" else "video/mp2t")
+                self.send_header("Content-Type", "audio/x-mpegurl" if self.path == "/playlist.m3u" else "video/mp4")
                 self.send_header("Connection", "close")
                 self.end_headers()
 
@@ -90,11 +125,13 @@ class Fixture:
                     self.end_headers()
                     self.wfile.write(playlist)
                     return
-                if self.path != "/live/pattern.ts":
+                if self.path != media_path:
                     self.send_error(404)
                     return
                 self.send_response(200)
-                self.send_header("Content-Type", "video/mp2t")
+                # Flux fragmenté continu : longueur inconnue, pas de promesse
+                # de Range. Une demande Range reçoit légalement le flux200.
+                self.send_header("Content-Type", "video/mp4")
                 self.send_header("Connection", "close")
                 self.end_headers()
                 record = {"startedAtUtc": datetime.now(timezone.utc).isoformat(), "bytes": 0,
@@ -104,9 +141,15 @@ class Fixture:
                     # aucun ffmpeg ne peut apparaître après l'inventaire final.
                     if owner.stopped:
                         return
-                    process = subprocess.Popen(["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error",
-                        "-stream_loop", "-1", "-re", "-i", str(owner.path), "-c", "copy", "-f", "mpegts", "pipe:1"],
-                        stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, start_new_session=True)
+                    stderr_file = f"fixture-stream-{len(owner.requests) + 1:03d}.txt"
+                    stderr = (owner.stage / stderr_file).open("wb")
+                    try:
+                        process = subprocess.Popen(owner.stream_command(), stdout=subprocess.PIPE,
+                            stderr=stderr, start_new_session=True)
+                    except BaseException:
+                        stderr.close()
+                        raise
+                    record["stderrFile"] = stderr_file
                     owner.processes.add(process)
                     owner.requests.append(record)
                 try:
@@ -119,6 +162,7 @@ class Fixture:
                 finally:
                     stop_owned_process(process)
                     process.stdout.close()
+                    stderr.close()
                     record["endedAtUtc"] = datetime.now(timezone.utc).isoformat()
                     with owner.lock:
                         owner.processes.discard(process)
@@ -216,7 +260,7 @@ class Runtime:
         (self.stage / "emulator-version.txt").write_text(version)
         require(f"version {ENGINE_VERSION}" in version and f"build_id {ENGINE_BUILD}" in version,
                 "Moteur différent du diagnostic TAP réussi")
-        for plugin in ("playbin", "souphttpsrc", "tsdemux", "h264parse", "avdec_h264", "aacparse", "avdec_aac",
+        for plugin in ("playbin", "souphttpsrc", "tsdemux", "qtdemux", "h264parse", "avdec_h264", "aacparse", "avdec_aac",
                        "videoconvert", "videoscale", "ximagesink", "audioconvert", "audioresample", "filesink"):
             (self.stage / ("gstreamer-" + plugin + ".txt")).write_text(self.run(["gst-inspect-1.0", plugin]))
         # Toute propagation et tout montage viennent après les deux gardes.

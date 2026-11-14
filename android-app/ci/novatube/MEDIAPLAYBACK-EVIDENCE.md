@@ -20,9 +20,10 @@ run `43608872429`, tentative `1`, artefact `14120095100`.
 
 La signature stricte, le manifeste et la provenance ont été vérifiés. Les
 608 tests Flutter, 10 tests Cast JVM et 42 tests d'enregistrement JVM passent
-dans le build. Aucun parcours Android de ce banc mediaPlayback n'a encore
-été exécuté ; le contrôle d'arrêt par notification reste à observer réellement.
-Le lot local intégrant les pins et ce scénario passe les 140 tests Python.
+dans le build. Les deux premiers essais Android restent des diagnostics :
+le second découvre le vrai renderer et atteint son relais, mais Rygel refuse
+le MIME MPEG-TS avant décodage. Le contrôle d'arrêt par notification reste
+donc à observer réellement. Les corrections ciblées passent 16 tests Python.
 Les trois contrôleurs vérifient les mêmes octets de workflow ; les empreintes
 des deux jobs vidéo sont recalculées sans changement de leurs gardes.
 Le runtime charge le scénario du banc avant les helpers du binaire : leur
@@ -38,19 +39,37 @@ montées en lecture seule dans un espace de montages privé. Les empreintes
 officielles sont dans `rygel-official-pins.json`. ADB, X11 et le bus de session
 sont privés. Le job refuse toute nouvelle acceptation interactive de licence.
 
-La mire H.264/AAC existante est servie sur le loopback hôte 8765, puis rendue
-accessible à Android par `adb reverse tcp:18765 tcp:8765`. Aucun service ne
+La mire H.264/AAC existante, dont l'empreinte reste vérifiée, est remuxée sans
+transcodage en vrai MP4 fragmenté continu. Rygel Playbin0.42.5 annonce une
+liste statique incluant `video/mp4` mais pas `video/mp2t` : aucun plugin ou
+MIME fictif ne remplace ce choix. Le serveur utilise `/vod/pattern.mp4`, le
+vrai type `video/mp4` et ne promet aucun Range. L'échantillon de contrôle du
+même muxer est entièrement décodé ; sa provenance et son empreinte restent
+dans les diagnostics. Le démultiplexeur officiel `qtdemux` est vérifié.
+
+Ce flux est servi sur le loopback hôte 8765, puis rendu accessible à Android
+par `adb reverse tcp:18765 tcp:8765`. Aucun service ne
 répond sur le port 18765 du renderer. L'application doit donc observer les
 échecs directs réels avant son propre repli vers son relais Android. Le banc
 ne modifie ni réponses SOAP/SSDP, ni cache Cast, ni état de l'application.
 Ses seules requêtes de contrôle UPnP sont des lectures d'URI et d'état.
+La capture passive exige le vrai `SetAVTransportURI` envoyé par Android,
+le refus HTTP500/UPnP716 correspondant et le SYN/RST loopback survenu pendant
+cet échange. Le journal Rygel et un relevé STOPPED doivent les corroborer.
+Cette validation HEAD précède l'installation de l'URI dans Playbin : une URI
+vide est conservée comme telle, sans inventer d'erreur GStreamer.
+
+Dans l'AAB8, l'import M3U conserve cette entrée dans Live, même pour `.mp4`.
+La feuille Cast reste ouverte après la sélection : elle doit montrer le vrai
+nom, `castConnected` et son bouton `castStop`. Cela ne prouve pas la lecture ;
+les contrôles média et FGS suivants restent tous indispensables.
 
 La qualification exige la sélection du nom réellement annoncé dans l'UI, le
 service `PlaybackForegroundService` type 2 et notification 1002, une requête
-GET 200/206 appartenant au PID Rygel vers le relais Android, des octets TCP
+GET 200/206 appartenant au PID Rygel vers le relais Android `.mp4`, des octets TCP
 uniques qui progressent, et des images décodées animées sous Xvfb. Les octets
 TCP du corps HTTP peuvent inclure le découpage HTTP ; ils ne sont pas présentés
-comme un décompte exact de paquets MPEG-TS. Le son est réellement décodé en PCM,
+comme un décompte exact d'échantillons vidéo. Le son est réellement décodé en PCM,
 sans prétendre démontrer un haut-parleur physique.
 
 Après Home, le service, le flux et les images doivent continuer au moins huit
@@ -84,6 +103,8 @@ Sources du renderer :
 - <https://packages.ubuntu.com/noble/rygel-playbin>
 - <https://docs.kernel.org/filesystems/overlayfs.html>
 - <https://dbus.freedesktop.org/doc/dbus-run-session.1.html>
+- <https://ffmpeg.org/ffmpeg-formats.html#Fragmentation>
+- <https://gstreamer.freedesktop.org/documentation/isomp4/qtdemux.html>
 
 Formats de lecture Android 15 utilisés pour identifier la notification :
 

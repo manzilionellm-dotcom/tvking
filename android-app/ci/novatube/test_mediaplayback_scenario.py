@@ -3,13 +3,14 @@
 
 import copy
 import unittest
+from unittest.mock import Mock
 
 import mediaplayback_scenario as media
 
 
 class MediaPlaybackScenarioTest(unittest.TestCase):
     def sample(self, phase, second, size):
-        uri = "http://192.0.2.10:31531/relay/Abcd1234Ef.ts"
+        uri = "http://192.0.2.10:31531/relay/Abcd1234Ef.mp4"
         return {"phase": phase, "atUtc": f"2026-11-14T14:00:{second:02d}+00:00", "uri": uri, "relayUri": uri,
                 "transportState": "PLAYING", "rendererGetObserved": True, "relayConnectionClosed": False,
                 "relayBytes": size, "directErrorObserved": True, "directStoppedObserved": True,
@@ -60,8 +61,9 @@ class MediaPlaybackScenarioTest(unittest.TestCase):
         good = self.sample("connected", 1, 10000)["relayUri"]
         self.assertEqual(media.validate_relay_uri(good, "192.0.2.10"), good)
         for bad in (good.replace("192.0.2.10", "127.0.0.1"), good.replace("192.0.2.10", "192.0.2.11"),
+                    good.replace(".mp4", ".ts"),
                     good.replace("/relay/", "/direct/"), good + "?different=1", good.replace("Abcd1234Ef", "invalid"),
-                    good.replace("http://", "http://user:password@"), "http://127.0.0.1:18765/live/pattern.ts"):
+                    good.replace("http://", "http://user:password@"), "http://127.0.0.1:18765/vod/pattern.mp4"):
             with self.subTest(uri=bad), self.assertRaises(ValueError):
                 media.validate_relay_uri(bad, "192.0.2.10")
 
@@ -89,7 +91,7 @@ class MediaPlaybackScenarioTest(unittest.TestCase):
             ("rendererStoppedAfterNotification", "relayConnectionClosed", False),
             ("rendererStoppedAfterNotification", "oldUriHttpStatus", 200),
             ("rendererStoppedAfterNotification", "oldUriRefused", False),
-            ("rendererStoppedAfterNotification", "relayUri", "http://192.0.2.10:31531/relay/Other12345.ts"),
+            ("rendererStoppedAfterNotification", "relayUri", "http://192.0.2.10:31531/relay/Other12345.mp4"),
             ("phoneVideoProbe", "decodeScope", "unchecked"),
             ("rendererVideoProbe", "durationSeconds", 30),
         ]
@@ -171,6 +173,26 @@ class MediaPlaybackScenarioTest(unittest.TestCase):
                     xml.replace('clickable="true"', 'clickable="false"'), '<hierarchy>' + node + node + '</hierarchy>'):
             with self.subTest(xml=bad), self.assertRaises(ValueError):
                 media.unique_button(bad, "Cast to a TV")
+
+    def test_connected_picker_uses_observed_stop_label_without_claiming_playback(self):
+        # Forme réellement observée dans média2 : la feuille n'est pas fermée
+        # par le choix. Le vrai Stop de cette feuille n'est pas Stop casting.
+        prefix = '<node package="com.sevenmotion.novatube" '
+        connected = prefix + 'content-desc="Casting on"/>'
+        name = prefix + 'content-desc="NOVATUBE test renderer"/>'
+        stop = prefix + 'content-desc="Stop" enabled="true" clickable="true" bounds="[796,1348][993,1474]"/>'
+        xml = '<hierarchy>' + connected + name + stop + '</hierarchy>'
+        scenario = media.MediaPlaybackScenario.__new__(media.MediaPlaybackScenario)
+        scenario.device = Mock()
+        scenario.observe = Mock(return_value=xml)
+        scenario.translated = {"castConnected": "Casting on", "castStop": "Stop"}.__getitem__
+        self.assertEqual(scenario.cast_state("NOVATUBE test renderer", picker=False), xml)
+        for bad in (xml.replace('Casting on', 'Searching'), xml.replace('NOVATUBE test renderer', 'Other renderer'),
+                    xml.replace('content-desc="Stop"', 'content-desc="Stop casting"'),
+                    '<hierarchy>' + connected + name + stop + stop + '</hierarchy>'):
+            scenario.observe.return_value = bad
+            with self.subTest(xml=bad), self.assertRaises(ValueError):
+                scenario.cast_state("NOVATUBE test renderer", picker=False)
 
 
 if __name__ == "__main__":
