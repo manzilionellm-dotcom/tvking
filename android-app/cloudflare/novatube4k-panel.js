@@ -2,6 +2,7 @@
 // Ce module ne crée ni appareil, ni licence, ni essai, ni source payante.
 // La clé est vérifiée par novatube4k.js AVANT tout appel à ces fonctions.
 // Les handlers historiques restent la référence des formats et du stockage.
+import { collectNovatubeBlackboxIncidents } from './panel-alerts-blackbox.js';
 
 export const PANEL_BODY_LIMITS = Object.freeze({
   panel: 16 * 1024,
@@ -321,9 +322,15 @@ export async function handleNovatube4kPanel(action, request, env, binding, input
   if (action === 'orders-ack') return ordersAck(env, binding, input, deps);
   if (action === 'blackbox') {
     if (typeof input.text !== 'string') return fail('text_required');
-    return deps.relay('POST', '/api/blackbox', {
-      mac: binding.mac, text: sanitizeNovatubeDiagnostic(input.text, binding.raw_mac),
-    });
+    const text = sanitizeNovatubeDiagnostic(input.text, binding.raw_mac);
+    const response = await deps.relay('POST', '/api/blackbox', { mac: binding.mac, text });
+    if (response.ok) {
+      try {
+        const saved = await response.clone().json();
+        if (saved?.ok === true && saved.skipped !== true) await collectNovatubeBlackboxIncidents(env, binding, text);
+      } catch { /* Le journal reste enregistré ; une collecte ultérieure peut réessayer. */ }
+    }
+    return response;
   }
   if (action === 'wait') {
     if (!env.RT_HUB || String(env.REALTIME_PUSH_OFF) === '1') return fail('realtime_unavailable', 503);

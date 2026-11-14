@@ -36,7 +36,9 @@ def main():
     (args.out / 'atlas-live.js').write_text(patched)
     here = Path(__file__).resolve().parent
     modules = ('novatube4k.js', 'novatube4k-wrapper.js', 'novatube4k-panel.js',
-               'novatube4k-panel-admin.js', 'novatube4k-transfer.js', 'novatube4k-trial.js', 'insights.js', 'page_query.js')
+               'novatube4k-panel-admin.js', 'novatube4k-transfer.js', 'novatube4k-trial.js',
+               'novatube4k-recovery.js', 'insights.js', 'page_query.js',
+               'panel-alerts.js', 'panel-alerts-api.js', 'panel-alerts-blackbox.js')
     for name in modules:
         (args.out / name).write_bytes((here / name).read_bytes())
     entry = """import legacy, { atlasOriginal, recordAck, markRevisionAck, rateLimitOk, recordPresence,

@@ -10,6 +10,7 @@
 import {
   PANEL_BODY_LIMITS, handleNovatube4kPanel, readNovatubePanelSignals,
 } from './novatube4k-panel.js';
+import { offerNovatubeRecovery } from './novatube4k-recovery.js';
 
 export const NOVATUBE4K_APP_ID = 'app_novatube4k';
 export const NOVATUBE4K_PACKAGE = 'com.manthefew';
@@ -33,6 +34,19 @@ function json(body, status = 200) {
 function error(code, status) {
   // Aucun message D1, mot de passe ou clé appareil dans la réponse.
   return json({ ok: false, error: code }, status);
+}
+
+function identityError(code, mac, recovery) {
+  // Le client vérifie aussi l'application et son code Atlas avant d'afficher
+  // une aide. Aucune MAC d'origine ni empreinte de clé dans ces erreurs.
+  return json({ ok: false, error: code, app_id: NOVATUBE4K_APP_ID, mac,
+    server_now: Date.now(), ...(recovery ? { recovery } : {}) }, 409);
+}
+
+async function keyConflict(env, prior, keyHash, input) {
+  const offered = await offerNovatubeRecovery(env, prior, keyHash, input);
+  if (offered.binding) return { binding: offered.binding, created: false };
+  return { response: identityError(offered.error || 'device_key_conflict', prior.mac, offered.recovery) };
 }
 
 export function normalizeNovatube4kRawMac(value) {
@@ -109,12 +123,12 @@ export async function isNovatube4kMac(env, value) {
   }
 }
 
-async function register(env, raw, keyHash) {
+async function register(env, raw, keyHash, input) {
   const prior = await bindingForRaw(env, raw);
   if (prior) {
     return sameHash(prior.device_key_hash, keyHash)
       ? { binding: prior, created: false }
-      : { response: error('device_key_conflict', 409) };
+      : await keyConflict(env, prior, keyHash, input);
   }
   const mac = await novatube4kAtlasMac(raw);
   // Même une fiche préparée manuellement ne doit pas être réclamée par une
@@ -125,8 +139,8 @@ async function register(env, raw, keyHash) {
     const winner = await bindingForRaw(env, raw);
     if (winner) return sameHash(winner.device_key_hash, keyHash)
       ? { binding: winner, created: false }
-      : { response: error('device_key_conflict', 409) };
-    return { response: error('device_identity_conflict', 409) };
+      : await keyConflict(env, winner, keyHash, input);
+    return { response: identityError('device_identity_conflict', mac) };
   }
 
   const configured = await env.DB.prepare('SELECT id, package_name FROM apps WHERE id = ? OR package_name = ?')
@@ -169,10 +183,10 @@ async function register(env, raw, keyHash) {
     if (winner) {
       return sameHash(winner.device_key_hash, keyHash)
         ? { binding: winner, created: false }
-        : { response: error('device_key_conflict', 409) };
+        : await keyConflict(env, winner, keyHash, input);
     }
     const conflict = await env.DB.prepare('SELECT id FROM devices WHERE mac = ?').bind(mac).first();
-    if (conflict) return { response: error('device_identity_conflict', 409) };
+    if (conflict) return { response: identityError('device_identity_conflict', mac) };
     throw e;
   }
   return { binding: { raw_mac: raw, mac, device_id: deviceId }, created: true };
@@ -278,7 +292,7 @@ async function touchPresence(env, binding, request, recordPresence, now, created
 async function state(env, binding, deps, created, request) {
   const now = Date.now();
   const access = await accessFor(env, binding, now);
-  if (!access) return error('device_registration_missing', 409);
+  if (!access) return identityError('device_registration_missing', binding.mac);
   const { row, status } = access;
   await touchPresence(env, binding, request, deps.recordPresence, now, created);
   await env.DB.prepare('UPDATE devices SET last_seen_at = ? WHERE id = ? AND last_seen_at < ?')
@@ -342,7 +356,7 @@ async function acknowledge(env, binding, input, deps) {
   if (input.applied !== true || !Number.isSafeInteger(rev) || rev <= 0) return error('invalid_ack', 400);
   const now = Date.now();
   const access = await accessFor(env, binding, now);
-  if (!access) return error('device_registration_missing', 409);
+  if (!access) return identityError('device_registration_missing', binding.mac);
   if (access.status !== 'active') return error('license_inactive', 403);
   if (Number(binding.last_served_rev) !== rev || await latestRevision(env, binding.mac) !== rev) {
     return error('source_revision_conflict', 409);
@@ -427,7 +441,7 @@ export async function handleNovatube4k(request, env, deps = {}) {
     await ensureSchema(env);
     const keyHash = await sha256(deviceKey);
     if (path.endsWith('/register')) {
-      const result = await register(env, raw, keyHash);
+      const result = await register(env, raw, keyHash, input);
       if (result.response) return result.response;
       return await state(env, result.binding, deps, result.created, request);
     }
@@ -435,7 +449,7 @@ export async function handleNovatube4k(request, env, deps = {}) {
     if (!binding || !sameHash(binding.device_key_hash, keyHash)) return error('device_auth_required', 401);
     if (panelAction) {
       const access = await accessFor(env, binding, Date.now());
-      if (!access) return error('device_registration_missing', 409);
+      if (!access) return identityError('device_registration_missing', binding.mac);
       return await handleNovatube4kPanel(action, request, env, binding, input, deps, access);
     }
     if (path.endsWith('/ack')) return await acknowledge(env, binding, input, deps);

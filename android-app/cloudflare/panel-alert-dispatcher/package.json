@@ -1,0 +1,16 @@
+{
+  "name": "atlas-panel-alert-dispatcher",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test *.test.mjs",
+    "test:workerd": "node dispatcher.workerd.mjs",
+    "build": "esbuild index.js --bundle --format=esm --platform=browser --target=es2022 --outfile=dist/worker.js"
+  },
+  "dependencies": {
+    "@block65/webcrypto-web-push": "2.0.0"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.12"
+  }
+}

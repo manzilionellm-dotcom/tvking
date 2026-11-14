@@ -74,7 +74,14 @@ de Durable Object et sans remplacer les secrets.
 
 La mise à jour Android conserve le package, la clé de signature dédiée et les
 préférences. L'effacement des données détruit la clé privée d'installation :
-une nouvelle clé est alors refusée sur l'ancienne fiche. Cette version ne
-fournit pas de procédure de réassociation après perte de clé. La suppression
-d'une fiche n'est pas une récupération neutre : ses licences peuvent être
-supprimées par les contraintes de la base.
+une nouvelle clé est alors refusée sur l'ancienne fiche. Le candidat de
+réassociation ajoute un code d'assistance temporaire affiché par l'appareil,
+un aperçu administrateur et une approbation explicite. Il remplace uniquement
+la clé après vérification transactionnelle ; il ne recrée pas la fiche et ne
+change ni licence, ni expiration, ni sources, ni crédits.
+
+Le contrat et les limites sont décrits dans [NOVATUBE_RECOVERY_CONTRACT.md](NOVATUBE_RECOVERY_CONTRACT.md).
+La présence du code dans le dépôt ne signifie pas que le Worker, le panel et
+l'APK correspondants sont déjà publiés. La suppression d'une fiche n'est pas
+une récupération neutre : ses licences peuvent être supprimées par les
+contraintes de la base.

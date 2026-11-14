@@ -8,6 +8,8 @@ import { notifyNovatubePanelMutation } from './novatube4k-panel.js';
 import { handleNovatubePanelAdmin } from './novatube4k-panel-admin.js';
 import { handleNovatube4kTransfer } from './novatube4k-transfer.js';
 import { handleNovatube4kTrialExtend } from './novatube4k-trial.js';
+import { handleNovatubeRecoveryAdmin } from './novatube4k-recovery.js';
+import { handlePanelAlertsApi } from './panel-alerts-api.js';
 
 function unavailable() {
   return Response.json({ error: 'novatube4k_unavailable' }, {
@@ -86,6 +88,16 @@ export function createNovatube4kEntry(legacy, original, hooks = {}) {
     ...legacy,
     async fetch(request, env, ctx) {
       const url = new URL(request.url);
+      const ownerAlerts = await handlePanelAlertsApi(request, env, ctx, original, hooks);
+      if (ownerAlerts) return ownerAlerts;
+      try {
+        const recovery = await handleNovatubeRecoveryAdmin(request, env, ctx, original, hooks);
+        if (recovery) return recovery;
+      } catch {
+        return Response.json({ ok: false, error: 'recovery_unavailable',
+          message: 'La réassociation est momentanément indisponible.' },
+        { status: 503, headers: { 'Cache-Control': 'no-store, private' } });
+      }
       const panelAdmin = await handleNovatubePanelAdmin(request, env, ctx, original);
       if (panelAdmin) return panelAdmin;
       if (url.pathname.startsWith('/api/novatube4k/')) {
