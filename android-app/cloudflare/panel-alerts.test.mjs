@@ -178,55 +178,93 @@ test('réactivation d’une catégorie relève enabled_at et corps incomplets re
   assert.ok(!JSON.stringify(f.db.prepare('SELECT * FROM audit_logs').all()).includes('must-not-store'));
 });
 
-test('nouvel enrôlement atomique une seule fois, licence inactive sans fausse activation', async (t) => {
-  const f = await fixture(t), mac = await f.register(); await f.register();
-  const events = f.events(); assert.equal(events.length, 1); assert.equal(events[0].type, 'new_device');
-  assert.equal(events[0].mac, mac); assert.equal(events[0].url, '/devices?mac=' + mac);
+test('nouvel essai : nouvelle box et licence activée distinctes, une seule fois sans paiement', async (t) => {
+  const f = await fixture(t, 2);
+  const first = await Promise.all([f.device(), f.device()]);
+  assert.ok(first.every((r) => r.status === 200));
+  assert.equal(first.filter((r) => r.json.created).length, 1);
+  const mac = first[0].json.mac;
+  assert.equal(first[0].json.plan, 'trial10');
+  assert.equal(first[0].json.trial.expires_at - first[0].json.trial.started_at, 10 * 86400000);
+  const events = f.events();
+  assert.equal(events.length, 2);
+  assert.deepEqual(events.map((r) => r.type), ['new_device', 'activation']);
+  assert.deepEqual(events.map((r) => r.source_kind), ['devices', 'licenses']);
+  assert.equal(new Set(events.map((r) => r.event_id)).size, 2);
+  assert.equal(new Set(events.map((r) => r.dedupe_key)).size, 2);
+  assert.equal(events[1].title, 'Licence activée');
+  assert.doesNotMatch(events.map((r) => r.title + ' ' + r.message).join('\n'), /paiement|payé|facturé|payment|paid|EUR|€/i);
+  assert.ok(events.every((r) => r.mac === mac && r.url === '/devices?mac=' + mac));
+  await f.register(); await f.device('state');
+  assert.deepEqual(f.events(), events, 'register et poll ne répètent aucune des deux alertes');
+  assert.equal(f.db.prepare('SELECT COUNT(*) n FROM credit_ledger').get().n, 0);
+  assert.equal(f.db.prepare('SELECT COUNT(*) n FROM payments').get().n, 0);
   assert.ok(!JSON.stringify(events).includes(RAW)); assert.ok(!JSON.stringify(events).includes(KEY));
+});
+
+test('échec du premier enrôlement après les triggers : aucune box, licence, ancre ou alerte engagée', async (t) => {
+  const f = await fixture(t);
+  f.faults.add({ match: /INSERT INTO novatube4k_devices/, times: 1, when: 'after' });
+  assert.equal((await f.device()).status, 503);
+  for (const table of ['devices', 'licenses', 'novatube4k_devices', 'novatube4k_trial_entitlements', 'credit_ledger', 'payments']) {
+    assert.equal(f.db.prepare('SELECT COUNT(*) n FROM ' + table).get().n, 0, table);
+  }
+  assert.deepEqual(f.events(), []);
+  const retry = await f.device(); assert.equal(retry.status, 200); assert.equal(retry.json.created, true);
+  assert.equal(retry.json.plan, 'trial10');
+  assert.deepEqual(f.events().map((r) => r.type), ['new_device', 'activation']);
+  await f.register();
+  assert.equal(f.events().length, 2);
 });
 
 test('activation engagée avec ou sans Idempotency-Key, renouvellement, no-op lifetime dédupliqué', async (t) => {
   const f = await fixture(t), mac = await f.register();
+  const trialEvents = f.events().filter((r) => r.type === 'activation').length;
+  assert.equal(trialEvents, 1, 'une activation réelle de la licence gratuite précède les achats');
   const body = { mac, plan: 'yearly' }, headers = { 'Idempotency-Key': 'fixture-owner-alert-idem-001' };
   assert.equal((await f.api('POST', '/api/v1/activate', { token: f.token, body, headers })).status, 201);
   assert.equal((await f.api('POST', '/api/v1/activate', { token: f.token, body, headers })).status, 201);
-  assert.equal(f.events().filter((r) => r.type === 'activation').length, 1);
+  assert.equal(f.events().filter((r) => r.type === 'activation').length, trialEvents + 1);
   assert.equal((await f.api('POST', '/api/v1/activate', { token: f.token, body })).status, 201);
-  assert.equal(f.events().filter((r) => r.type === 'activation').length, 2);
+  assert.equal(f.events().filter((r) => r.type === 'activation').length, trialEvents + 2);
   const id = f.db.prepare('SELECT id FROM licenses').get().id;
   assert.equal((await f.api('POST', '/api/v1/licenses/' + id + '/renew', { token: f.token, body: { plan: 'yearly' } })).status, 200);
-  assert.equal(f.events().filter((r) => r.type === 'activation').length, 3);
+  assert.equal(f.events().filter((r) => r.type === 'activation').length, trialEvents + 3);
   assert.equal((await f.api('POST', '/api/v1/activate', { token: f.token, body: { mac, plan: 'lifetime' } })).status, 201);
   assert.equal((await f.api('POST', '/api/v1/activate', { token: f.token, body: { mac, plan: 'lifetime' } })).status, 200);
-  assert.equal(f.events().filter((r) => r.type === 'activation').length, 4);
+  assert.equal(f.events().filter((r) => r.type === 'activation').length, trialEvents + 4);
 });
 
 test('rollback de transaction annule aussi l’alerte et SQL changes() garde sa sémantique', async (t) => {
   const f = await fixture(t), mac = await f.register();
   const licence = f.db.prepare('SELECT * FROM licenses').get();
+  const events = f.events(), until = licence.expires_at + 5000;
+  const updated = Math.max(Date.now(), licence.updated_at + 1);
   await assert.rejects(f.DB.batch([
-    f.DB.prepare("UPDATE licenses SET status='active',expires_at=?,updated_at=? WHERE id=?").bind(Date.now()+5000, Date.now(), licence.id),
+    f.DB.prepare("UPDATE licenses SET status='active',expires_at=?,updated_at=? WHERE id=?").bind(until, updated, licence.id),
     f.DB.prepare('INSERT INTO fixture_missing_table VALUES(1)'),
   ]));
-  assert.equal(f.db.prepare('SELECT status FROM licenses').get().status, 'inactive');
-  assert.equal(f.events().filter((r) => r.type === 'activation').length, 0);
+  assert.deepEqual(f.db.prepare('SELECT * FROM licenses').get(), licence);
+  assert.deepEqual(f.events(), events);
   const result = await f.DB.batch([
-    f.DB.prepare("UPDATE licenses SET status='active',expires_at=?,updated_at=? WHERE id=?").bind(Date.now()+5000, Date.now(), licence.id),
+    f.DB.prepare("UPDATE licenses SET status='active',expires_at=?,updated_at=? WHERE id=?").bind(until, updated, licence.id),
     f.DB.prepare('SELECT changes() n'),
   ]);
-  assert.equal(result[1].results[0].n, 1); assert.equal(f.events().filter((r) => r.type === 'activation').length, 1);
+  assert.equal(result[1].results[0].n, 1); assert.equal(f.events().filter((r) => r.type === 'activation').length, 2);
   assert.equal(f.events()[0].mac, mac);
 });
 
 test('inbox durable paginée et lecture propre à chaque owner', async (t) => {
   const f = await fixture(t); await f.register(); const second = await f.secondOwner();
   const first = await f.api('GET', ROOT + '/events', { token: f.token });
-  assert.equal(first.json.items.length, 1); assert.equal(first.json.unread_count, 1);
+  assert.equal(first.json.items.length, 2); assert.equal(first.json.unread_count, 2);
   const id = first.json.items[0].event_id;
   assert.equal((await f.api('POST', ROOT + '/read', { token: f.token, body: { event_ids: [id,id] } })).json.updated, 1);
   assert.equal((await f.api('GET', ROOT + '/events?after=' + first.json.next_cursor, { token: f.token })).json.items.length, 0);
+  assert.equal((await f.api('GET', ROOT + '/events', { token: f.token })).json.unread_count, 1);
+  assert.equal((await f.api('POST', ROOT + '/read', { token: f.token, body: { event_ids: [first.json.items[1].event_id] } })).json.updated, 1);
   assert.equal((await f.api('GET', ROOT + '/events', { token: f.token })).json.unread_count, 0);
-  assert.equal((await f.api('GET', ROOT + '/events', { token: second.token })).json.unread_count, 1);
+  assert.equal((await f.api('GET', ROOT + '/events', { token: second.token })).json.unread_count, 2);
   assert.equal((await f.api('GET', ROOT + '/events?after=-1', { token: f.token })).status, 400);
 });
 
