@@ -145,11 +145,111 @@ test('capacité et aperçu en lecture seule, sans migration ni énumération de 
   const before = f.protectedData();
   const capable = await f.capability(token, mac);
   assert.equal(capable.status, 200);
-  assert.deepEqual(capable.json, { ok: true, supported: true, app_id: APP, mac });
+  assert.ok(Number.isSafeInteger(capable.json.server_now));
+  assert.deepEqual(capable.json, { ok: true, supported: true, app_id: APP, mac,
+    installation_status: 'unknown', recovery_pending: false,
+    server_now: capable.json.server_now, recovery_expires_at: null });
   const missing = await f.preview(token, mac, '0000-0000-0000');
   assert.equal(missing.status, 409); assert.equal(missing.json.error, 'recovery_not_found');
   assert.equal(f.db.prepare('SELECT name FROM sqlite_master WHERE name=?').get('novatube4k_recovery_requests'), undefined);
   assert.deepEqual(f.protectedData(), before);
+});
+
+test('activation panel effective mais nouvelle installation bloquée : diagnostic propriétaire sans code ni mutation', async (t) => {
+  const f = fixture(t), mac = await f.registered(), token = await f.admin();
+  const offer = await f.offered();
+  // Les écrans génériques du panneau peuvent envoyer 7 MOTION ou omettre
+  // app_id. Le wrapper doit toujours modifier la seule licence NOVATUBE liée.
+  assert.equal((await f.api('POST', '/api/v1/activate', { token,
+    body: { mac, plan: 'lifetime', app_id: 'app_7motion' } })).status, 201);
+  const again = await f.api('POST', '/api/v1/activate', { token, body: { mac, plan: 'lifetime' } });
+  assert.equal(again.status, 200); assert.equal(again.json.already_lifetime, true);
+  assert.equal(f.rows('licenses').length, 1); assert.equal(f.rows('licenses')[0].app_id, APP);
+  assert.equal(f.rows('licenses')[0].status, 'active'); assert.equal(f.rows('licenses')[0].plan, 'lifetime');
+  assert.equal((await f.device('state', NEXT)).status, 401);
+  const before = f.protectedData(), binding = f.rows('novatube4k_devices'), requests = f.rows('novatube4k_recovery_requests');
+  const info = await f.capability(token, mac);
+  assert.equal(info.status, 200); assert.match(info.headers.get('cache-control'), /no-store/);
+  assert.deepEqual(info.json, { ok: true, supported: true, app_id: APP, mac,
+    installation_status: 'verification_required', recovery_pending: true,
+    server_now: info.json.server_now, recovery_expires_at: offer.json.recovery.expires_at });
+  assert.ok(Number.isSafeInteger(info.json.server_now));
+  assert.ok(info.json.recovery_expires_at > info.json.server_now);
+  assert.ok(info.json.recovery_expires_at - info.json.server_now <= 600_000);
+  for (const secret of [offer.json.recovery.code, requests[0].request_id, RAW, KEY, NEXT, hash(KEY), hash(NEXT)]) {
+    assert.ok(!info.raw.includes(secret));
+  }
+  assert.deepEqual(f.protectedData(), before);
+  assert.deepEqual(f.rows('novatube4k_devices'), binding);
+  assert.deepEqual(f.rows('novatube4k_recovery_requests'), requests);
+});
+
+test('diagnostic exclut les demandes expirées, traitées, incohérentes ou d’une ancienne liaison', async (t) => {
+  const f = fixture(t), mac = await f.registered(), token = await f.admin();
+  await f.offered();
+  const original = f.rows('novatube4k_recovery_requests')[0];
+  const update = f.db.prepare(`UPDATE novatube4k_recovery_requests SET state=?, expires_at=?,
+    old_key_hash=?, new_key_hash=?, mac=?, device_id=?, created_at=? WHERE request_id=?`);
+  for (const change of [
+    { expires_at: Date.now() - 1 }, { state: 'approved' }, { state: 'superseded' },
+    { old_key_hash: hash(THIRD) }, { new_key_hash: hash(KEY) },
+    { mac: 'MK:00:00:00:00:00' }, { device_id: 'fixture_other_device' },
+    { created_at: Date.now() + 600_000 }, { expires_at: Date.now() + 1_200_000 },
+  ]) {
+    const row = { ...original, ...change };
+    update.run(row.state, row.expires_at, row.old_key_hash, row.new_key_hash, row.mac,
+      row.device_id, row.created_at, row.request_id);
+    const info = await f.capability(token, mac);
+    assert.equal(info.status, 200);
+    assert.equal(info.json.installation_status, 'unknown');
+    assert.equal(info.json.recovery_pending, false); assert.equal(info.json.recovery_expires_at, null);
+  }
+  assert.equal(f.rows('novatube4k_devices')[0].device_key_hash, hash(KEY));
+  assert.equal(f.rows('audit_logs').filter((r) => r.action === 'device.key_reassociate').length, 0);
+});
+
+test('panne de lecture du diagnostic : erreur explicite et aucune confirmation factice', async (t) => {
+  const f = fixture(t), mac = await f.registered(), token = await f.admin();
+  await f.offered(); const before = f.protectedData(), binding = f.rows('novatube4k_devices');
+  f.faults.add({ match: /SELECT MAX\(r\.expires_at\)/, times: 1, when: 'before' });
+  const info = await f.capability(token, mac);
+  assert.equal(info.status, 503); assert.equal(info.json.error, 'recovery_unavailable');
+  assert.equal(info.json.installation_status, undefined);
+  assert.deepEqual(f.protectedData(), before); assert.deepEqual(f.rows('novatube4k_devices'), binding);
+});
+
+test('boîte noire : clé en conflit refusée puis journal persisté et visible après approbation légitime', async (t) => {
+  const f = fixture(t), mac = await f.registered(), token = await f.admin();
+  assert.equal((await f.api('POST', '/api/v1/activate', { token, body: { mac, plan: 'lifetime' } })).status, 201);
+  const offer = await f.offered();
+  const ask = await f.api('POST', '/api/v1/blackbox/' + encodeURIComponent(mac) + '/ask', { token, body: {} });
+  assert.equal(ask.status, 200); assert.ok(ask.json.requested_at > 0);
+  const before = f.rows('device_blackbox');
+  assert.equal(before.length, 1); assert.equal(before[0].body, ''); assert.equal(before[0].updated_at, 0);
+  const refused = await f.device('blackbox', NEXT, { text: 'FIXTURE AVANT VERIFICATION' });
+  assert.equal(refused.status, 401); assert.equal(refused.json.error, 'device_auth_required');
+  assert.deepEqual(f.rows('device_blackbox'), before);
+  assert.equal((await f.capability(token, mac)).json.installation_status, 'verification_required');
+  assert.equal((await f.approve(token, mac, offer.json.recovery.code)).status, 200);
+  const state = await f.device('register', NEXT);
+  assert.equal(state.status, 200); assert.equal(state.json.active, true);
+  assert.equal(state.json.blackbox_pull, ask.json.requested_at);
+  const commercial = f.protectedData();
+  const sent = await f.device('blackbox', NEXT, {
+    raw_mac: RAW.toLowerCase().match(/../g).join(':'), mac: 'MK:00:00:00:00:00',
+    text: 'NOVATUBE JOURNAL FIXTURE\napp_version=334.2.fixture',
+  });
+  assert.equal(sent.status, 200); assert.equal(sent.json.ok, true); assert.ok(sent.json.updated_at > 0);
+  const stored = f.rows('device_blackbox');
+  assert.equal(stored.length, 1); assert.equal(stored[0].mac, mac);
+  assert.equal(stored[0].updated_at, sent.json.updated_at); assert.ok(stored[0].body.includes('NOVATUBE JOURNAL FIXTURE'));
+  const path = '/api/v1/blackbox/' + encodeURIComponent(mac);
+  assert.equal((await f.api('GET', path)).status, 401);
+  const journal = await f.api('GET', path, { token });
+  assert.equal(journal.status, 200); assert.equal(journal.json.updated_at, sent.json.updated_at);
+  assert.ok(journal.json.text.includes('NOVATUBE JOURNAL FIXTURE'));
+  assert.equal((await f.device('blackbox', KEY, { text: 'ANCIENNE CLE' })).status, 401);
+  assert.deepEqual(f.rows('device_blackbox'), stored); assert.deepEqual(f.protectedData(), commercial);
 });
 
 test('seul super_admin authentifié peut voir ou approuver, origine et JWT d’origine conservés', async (t) => {
@@ -227,6 +327,9 @@ test('approbation conserve licence lifetime, sources, expiration et crédits ; a
   const auditText = JSON.stringify(audit);
   for (const value of [code, RAW, KEY, NEXT, hash(KEY), hash(NEXT)]) assert.ok(!auditText.includes(value));
   assert.equal(f.rows('novatube4k_recovery_guard').length, 0);
+  const diagnostic = await f.capability(token, mac);
+  assert.equal(diagnostic.json.installation_status, 'unknown');
+  assert.equal(diagnostic.json.recovery_pending, false); assert.equal(diagnostic.json.recovery_expires_at, null);
 });
 
 test('réassociation ne transforme pas une inscription inactive ni une licence expirée en accès', async (t) => {
