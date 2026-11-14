@@ -3,7 +3,7 @@
 ## Statut et portée
 
 Ce dossier prépare un job de preuves séparé, dans le workflow NOVATUBE déjà
-enregistré. Six essais Android ont été exécutés ; les plus avancés ont
+enregistré. Sept essais Android ont été exécutés ; les plus avancés ont
 affiché le lecteur avec la mire réelle. Aucun MP4 de l'interface n'est encore qualifié.
 Le scénario est destiné à une revue humaine avant toute utilisation dans
 Google Play Console ; une réussite machine ne vaut pas approbation de Google.
@@ -150,6 +150,17 @@ images de `motion("live")` et tous leurs seuils restent inchangés. Aucun
 nouveau tap REC ni redémarrage de l'app n'est ajouté ; une image toujours
 noire ou arrivée après le délai provoque encore l'échec.
 
+Le run `43605556714` confirme la mire animée, REC, Stop, le service dataSync
+et un fichier TS de 223 720 octets. Il échoue sur le premier relevé Activity
+immédiatement après Home ; le diagnostic final montre ensuite réellement
+le launcher Android, NOVATUBE invisible et hors PiP. Le banc attend donc
+au maximum quinze secondes après un seul Home, avec le même critère :
+une activité resumed doit être observée et aucune ne doit être NOVATUBE.
+Chaque relevé `home-activity-*`, son délai et son état sont conservés, même
+en cas d'échec. Les huit secondes de mesure du fichier commencent seulement
+après ce constat. Le service en arrière-plan, l'arrêt et la relecture restent
+obligatoires ; ils n'ont pas encore été atteints dans cet essai.
+
 ## Média contrôlé
 
 Seule la fixture H.264/AAC versionnée
@@ -195,7 +206,7 @@ modifiée, chemins ZIP dangereux, mauvais type FGS, éléments hors écran ou
 d'une autre application, croissance absente, arrêt incomplet et vidéo tronquée.
 Ils ne constituent aucune preuve d'exécution réelle du scénario Android.
 
-Validation locale du 14 novembre 2026 : les vingt-et-un tests passent. L'archive
+Validation locale du 14 novembre 2026 : les vingt-deux tests passent. L'archive
 originale 0.1.7 et son AAB ont passé leurs empreintes et la validation de provenance.
 Un client HTTP réel a reçu 357 200 octets de mire ; FFprobe a reconnu H.264,
 AAC, 160 × 90 et 9,101333 secondes. FFmpeg a décodé strictement les 8,101333
@@ -263,9 +274,9 @@ Les tests de workflow supplémentaires refusent l'élargissement d'une ancienne
 garde à l'intention REC, toute dépendance au build, toute suppression des
 contrôles d'acteur/SHA/branche, un secret de signature, un droit d'écriture,
 une recompilation et la promotion de diagnostics en preuve.
-Les 28 tests de workflow et les 21 tests du banc passent ensemble, soit
-49 tests ciblés, sur la tête incluant le diagnostic réseau séparé
-`5705f631d7f644a4c542ae70338eb9a36182abc5`. La comparaison des objets YAML confirme que les trois
+Les 28 tests de workflow et les 22 tests du banc passent ensemble, soit
+50 tests ciblés, sur la tête incluant le diagnostic réseau séparé
+`e0b3a9bccece196a7a31992d106132492efe6c78`. La comparaison des objets YAML confirme que les trois
 anciens jobs et les permissions globales sont identiques à la base
 `6b66f0a8302b0cb34c540bb671a4d6d7fae190c6`.
 

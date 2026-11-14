@@ -555,6 +555,30 @@ class Scenario:
         require(value.isdigit(), "Taille de fichier non observable")
         return int(value)
 
+    def home_background(self, timeout=15):
+        # REC7 atteint l'accueil après le premier dumpsys, trop précoce.
+        # Envoyer Home une seule fois et conserver chaque état de transition.
+        started, sample = time.monotonic(), 0
+        self.event("home-request")
+        self.device.command("shell", "input", "keyevent", "KEYCODE_HOME")
+        def probe():
+            nonlocal sample
+            sample += 1
+            activity = self.device.command("shell", "dumpsys", "activity", "activities")
+            elapsed = time.monotonic() - started
+            filename = f"home-activity-{sample:02d}.txt"
+            (self.stage / filename).write_text(activity, encoding="utf-8")
+            resumed = [line for line in activity.splitlines()
+                       if "topResumedActivity=" in line or "mResumedActivity:" in line]
+            background = bool(resumed) and all(PACKAGE + "/" not in line for line in resumed)
+            self.event("home-background-sample", elapsedSeconds=round(elapsed, 3),
+                       activityFile=filename, resumedActivities=resumed, background=background)
+            require(elapsed <= timeout, "Transition Home observée après le délai autorisé")
+            return activity if background else None
+        activity = self.wait(probe, "L'app n'est pas passée en arrière-plan", timeout)
+        (self.stage / "background-activity.txt").write_text(activity, encoding="utf-8")
+        self.event("home-background")
+
     def await_live_contrast(self, timeout=30):
         started = time.monotonic()
         def probe():
@@ -831,12 +855,7 @@ def execute_scenario(device, helpers, translations, fixture: Path, stage: Path) 
                 flow.player_controls([CHANNEL, flow.translated("tvStop")])
                 observations["serviceDuring"] = flow.service(True, "recording")
                 recording = flow.wait(flow.recording_file, "Fichier d'enregistrement absent", 15)
-                device.command("shell", "input", "keyevent", "KEYCODE_HOME")
-                activity = device.command("shell", "dumpsys", "activity", "activities")
-                resumed = [line for line in activity.splitlines() if "topResumedActivity=" in line or "mResumedActivity:" in line]
-                require(resumed and all(PACKAGE + "/" not in line for line in resumed), "L'app n'est pas passée en arrière-plan")
-                (stage / "background-activity.txt").write_text(activity, encoding="utf-8")
-                flow.event("home-background")
+                flow.home_background()
                 first = flow.size(recording)
                 time.sleep(8)
                 second = flow.size(recording)

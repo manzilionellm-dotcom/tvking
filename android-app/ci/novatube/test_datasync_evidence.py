@@ -360,6 +360,45 @@ class DataSyncEvidenceTest(unittest.TestCase):
                 with self.subTest(stamp=stamp), patch.object(evidence.time, "monotonic", return_value=stamp):
                     self.assertEqual(flow.controls_are_fresh(), expected)
 
+    def test_home_waits_for_real_transition_once_and_keeps_failed_observations(self):
+        # Le relevé final REC7, artefact 14118128135, expose ce launcher.
+        launcher = "      topResumedActivity=ActivityRecord{e2c5706 u0 com.android.launcher3/.uioverrides.QuickstepLauncher t7}\n"
+        app = "      topResumedActivity=ActivityRecord{test u0 com.sevenmotion.novatube/.NovatubeActivity t2}\n"
+        for samples, delay, accepted in ((["", app, launcher], 0, True),
+                                          ([app, app, app], 0, False),
+                                          (["", "", ""], 0, False),
+                                          ([launcher], 4, False)):
+            now, device, remaining = [0], Mock(), list(samples)
+            def advance(seconds):
+                now[0] += seconds
+            def command(*arguments):
+                if arguments == ("shell", "input", "keyevent", "KEYCODE_HOME"):
+                    return ""
+                self.assertEqual(arguments, ("shell", "dumpsys", "activity", "activities"))
+                now[0] += delay
+                return remaining.pop(0)
+            device.command.side_effect = command
+            with self.subTest(samples=samples, delay=delay), tempfile.TemporaryDirectory() as directory, \
+                    patch.object(evidence.time, "monotonic", side_effect=lambda: now[0]), \
+                    patch.object(evidence.time, "sleep", side_effect=advance):
+                stage = Path(directory)
+                flow = evidence.Scenario(device, None, {}, stage)
+                if accepted:
+                    flow.home_background(timeout=3)
+                    self.assertEqual((stage / "background-activity.txt").read_text(), launcher)
+                    self.assertEqual(flow.events[-1]["action"], "home-background")
+                else:
+                    with self.assertRaises(ValueError):
+                        flow.home_background(timeout=3)
+                    self.assertFalse((stage / "background-activity.txt").exists())
+                    self.assertNotIn("home-background", [event["action"] for event in flow.events])
+                seen = [event for event in flow.events if event["action"] == "home-background-sample"]
+                self.assertEqual([event["elapsedSeconds"] for event in seen],
+                                 [index + (index + 1) * delay for index in range(len(samples))])
+                self.assertEqual([path.read_text() for path in sorted(stage.glob('home-activity-*.txt'))], samples)
+                actions = [item.args for item in device.command.call_args_list if item.args[:2] == ("shell", "input")]
+                self.assertEqual(actions, [("shell", "input", "keyevent", "KEYCODE_HOME")])
+
     def test_reveal_is_followed_immediately_by_xml_and_expired_rec_is_never_returned(self):
         video, channel, rec = self.observed_player_controls()
         hidden = '<hierarchy>' + video + '</hierarchy>'
